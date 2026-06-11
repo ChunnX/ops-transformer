@@ -495,7 +495,7 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
         OP_CHECK_IF(dimNum == 3, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA BnBsH is not supported."),
                     return ge::GRAPH_FAILED);
         if (fiaInfo.sparseMode == SPARSE_MODE_INIT_SWA) {
-            OP_CHECK_IF(dimNum == 5, OP_LOGE(fiaInfo.opName, 
+            OP_CHECK_IF(dimNum == 5, OP_LOGE(fiaInfo.opName,
                 "In MXFP8 fullquant scenario, when sparse mode = 5, PA NZ is not supported."),
                 return ge::GRAPH_FAILED);
         }

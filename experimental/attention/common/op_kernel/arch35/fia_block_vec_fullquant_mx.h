@@ -1184,7 +1184,8 @@ public:
         }
         if (constInfo.sparseMode == static_cast<uint32_t>(INIT_SWA) && runInfo.s2Idx == 0U && subLoop == 0U &&
             isSkipMaskForNext) {
-            uint32_t globalKeepSize = AttentionCommon::Min(BAND_GLOBAL_WINDOW_SIZE, maskInfo.s2dealNum) * (maskInfo.gs1dealNum >> 1);
+            uint32_t globalKeepSize = AttentionCommon::Min(BAND_GLOBAL_WINDOW_SIZE, maskInfo.s2dealNum) *
+                                      (maskInfo.gs1dealNum >> 1);
             Duplicate(attenMaskUb, static_cast<uint8_t>(1U), globalKeepSize);
         }
     }

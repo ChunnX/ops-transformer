@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
  * \file memory_copy.h
@@ -160,9 +160,10 @@ __aicore__ inline constexpr UbFormat GetPseUbFormat() {
 // ----------------------------------------------Copy LSE UB To Gm arch22--------------------------------
 template <typename T, ActualSeqLensMode Q_MODE, bool WITH_ZERO_HEAD = false, typename ACTLEN_T = uint64_t>
 __aicore__ inline void DataCopySoftmaxLseBSND(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                                 uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
-                                                 const AttentionCommon::ConstInfo &constInfo,
-                                                 ActualSeqLensParser<Q_MODE, ACTLEN_T, WITH_ZERO_HEAD> qActSeqLensParser, uint64_t bIdx)
+                                              uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+                                              const AttentionCommon::ConstInfo &constInfo,
+                                              ActualSeqLensParser<Q_MODE, ACTLEN_T, WITH_ZERO_HEAD> qActSeqLensParser,
+                                              uint64_t bIdx)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
     uint32_t startGIdx = mOffset % constInfo.gSize;
@@ -173,7 +174,8 @@ __aicore__ inline void DataCopySoftmaxLseBSND(GlobalTensor<float> softmaxLseGm, 
     uint32_t curDealRowCount = 0;
     uint64_t s1LeftPaddingSize = 0;
     if (constInfo.isQHasLeftPadding) {
-        s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
+        s1LeftPaddingSize = constInfo.qSeqSize -
+                            constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
     }
 
     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
@@ -199,13 +201,15 @@ template <typename T, ActualSeqLensMode Q_MODE, bool WITH_ZERO_HEAD = false, typ
 __aicore__ inline void DataCopySoftmaxLseBNSD(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                             uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
                                             const AttentionCommon::ConstInfo &constInfo,
-                                            ActualSeqLensParser<Q_MODE, ACTLEN_T, WITH_ZERO_HEAD> qActSeqLensParser, uint64_t bIdx)
+                                            ActualSeqLensParser<Q_MODE, ACTLEN_T, WITH_ZERO_HEAD> qActSeqLensParser,
+                                            uint64_t bIdx)
 {
     uint64_t gOffset = mOffset / qActSeqLensParser.GetActualSeqLength(bIdx) * constInfo.qSeqSize;
     uint64_t seqOffset = mOffset % qActSeqLensParser.GetActualSeqLength(bIdx);
     uint64_t s1LeftPaddingSize = 0;
     if (constInfo.isQHasLeftPadding) {
-        s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
+        s1LeftPaddingSize = constInfo.qSeqSize -
+                            constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
     }
     uint64_t outOffset = bN2Offset + gOffset + seqOffset + s1LeftPaddingSize;
     uint64_t ubOffset = 0;
@@ -255,8 +259,8 @@ __aicore__ inline void DataCopySoftmaxLseBNSD(GlobalTensor<float> softmaxLseGm, 
 }
 
 template <typename T>
-__aicore__ inline void DataCopySoftmaxLseTND(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
-                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
+__aicore__ inline void DataCopySoftmaxLseTND(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
                                                 const AttentionCommon::ConstInfo &constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
@@ -287,8 +291,8 @@ __aicore__ inline void DataCopySoftmaxLseTND(GlobalTensor<float> softmaxLseGm, L
 }
 
 template <typename T>
-__aicore__ inline void DataCopySoftmaxLseNTD(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
-                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
+__aicore__ inline void DataCopySoftmaxLseNTD(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
                                                 const AttentionCommon::ConstInfo &constInfo, uint32_t s1Size)
 {
     uint32_t startS1Idx = mOffset % s1Size;
@@ -322,7 +326,7 @@ __aicore__ inline void DataCopySoftmaxLseNTD(GlobalTensor<float> softmaxLseGm, L
 template <GmFormat FORMAT, typename OUT_T, typename OffsetCalcType>
 __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, OffsetCalcType &offsetCalculator,
                                            GlobalTensor<OUT_T>& attentionOutGm)
-{  
+{
     if constexpr (FORMAT == GmFormat::TNGD) {
         uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetTBase(bIdx + 1) -
             offsetCalculator.actualSeqLensQParser.GetTBase(bIdx);
@@ -339,20 +343,20 @@ __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, Offset
             matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], s1Count * offsetCalculator.GetDimD(), 0);
         }
     }  else if constexpr (FORMAT == GmFormat::BNGSD) {
-        uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, 0, 0); 
+        uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, 0, 0);
         matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], offsetCalculator.GetStrideN2(), 0);
     }  else if constexpr (FORMAT == GmFormat::BSNGD) {
         uint32_t s1Size = offsetCalculator.GetDimS1();
         for (int s1Idx = 0; s1Idx < s1Size; s1Idx++) {
-            uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, s1Idx, 0);  
+            uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, s1Idx, 0);
             matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], offsetCalculator.GetStrideN2(), 0);
         }
     }  else if constexpr (FORMAT == GmFormat::NGBSD) {
         uint32_t gSize = offsetCalculator.GetDimG();
         for (int gIdx = 0; gIdx < gSize; gIdx++) {
-            uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, gIdx, 0, 0);  
+            uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, gIdx, 0, 0);
             matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], offsetCalculator.GetStrideB(), 0);
         }
-    } 
+    }
 }
 #endif

@@ -184,19 +184,19 @@ ge::graphStatus FiaTilingShape::CheckHasAxis(const FiaAxis &axis, const std::str
 std::string FiaTilingShapeCompare::CompareTypeToSerialString(const FiaCompareType compareType) const
 {
     switch (compareType) {
-        case FiaCompareType::EQUAL: 
+        case FiaCompareType::EQUAL:
             return "EQUAL";
-        case FiaCompareType::GREATER: 
+        case FiaCompareType::GREATER:
             return "GREATER";
-        case FiaCompareType::GREATER_EQUAL: 
+        case FiaCompareType::GREATER_EQUAL:
             return "GREATER_EQUAL";
-        case FiaCompareType::LESS: 
+        case FiaCompareType::LESS:
             return "LESS";
-        case FiaCompareType::LESS_EQUAL: 
+        case FiaCompareType::LESS_EQUAL:
             return "LESS_EQUAL";
-        case FiaCompareType::NOT_EQUAL: 
+        case FiaCompareType::NOT_EQUAL:
             return "NOT_EQUAL";
-        default: 
+        default:
             return "UNKNOWN";
     }
 }
@@ -204,19 +204,19 @@ std::string FiaTilingShapeCompare::CompareTypeToSerialString(const FiaCompareTyp
 std::string FiaTilingShapeCompare::CompareTypeToSerialSymbolString(const FiaCompareType &compareType) const
 {
     switch (compareType) {
-        case FiaCompareType::EQUAL: 
+        case FiaCompareType::EQUAL:
             return "==";
-        case FiaCompareType::GREATER: 
+        case FiaCompareType::GREATER:
             return ">";
-        case FiaCompareType::GREATER_EQUAL: 
+        case FiaCompareType::GREATER_EQUAL:
             return ">=";
-        case FiaCompareType::LESS: 
+        case FiaCompareType::LESS:
             return "<";
-        case FiaCompareType::LESS_EQUAL: 
+        case FiaCompareType::LESS_EQUAL:
             return "<=";
-        case FiaCompareType::NOT_EQUAL: 
+        case FiaCompareType::NOT_EQUAL:
             return "!=";
-        default: 
+        default:
             return "UNKNOWN";
     }
 }
@@ -291,7 +291,7 @@ FiaCompareType FiaTilingShapeCompare::GetCompareType(const std::map<FiaAxis, Fia
     return compareType;
 }
 
-ge::graphStatus FiaTilingShapeCompare::GetCompareFunc(const FiaCompareType &compareType, 
+ge::graphStatus FiaTilingShapeCompare::GetCompareFunc(const FiaCompareType &compareType,
     CompareFunc<int64_t> &compareFunc, const std::string &funcName) const
 {
     auto it = compareFuncMap_.find(compareType);
@@ -304,7 +304,8 @@ ge::graphStatus FiaTilingShapeCompare::GetCompareFunc(const FiaCompareType &comp
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FiaTilingShapeCompare::CompareShape(FiaTilingShapeCompareParam &param, const std::string &funcName) const
+ge::graphStatus FiaTilingShapeCompare::CompareShape(FiaTilingShapeCompareParam &param, 
+                                                    const std::string &funcName) const
 {
     param.H = param.N * param.D;
     gert::Shape shapeExpected;
@@ -319,7 +320,8 @@ ge::graphStatus FiaTilingShapeCompare::CompareShape(FiaTilingShapeCompareParam &
 
     if ((shape_.GetDimNum() != shapeExpected.GetDimNum()) || (shape_.GetDimNum() != layoutAxes.size())) {
         OP_LOGE(opName_,
-            "[%s] %s shape dimension is %zu, expected shape dimension is %zu, layout(%s) axes size is %zu, they should be equal.",
+            "[%s] %s shape dimension is %zu, expected shape dimension is %zu, "
+            "layout(%s) axes size is %zu, they should be equal.",
             funcName.c_str(), name_.c_str(), shape_.GetDimNum(), shapeExpected.GetDimNum(),
             LayoutToSerialString(layout_).c_str(), layoutAxes.size());
         return ge::GRAPH_FAILED;
@@ -339,7 +341,8 @@ ge::graphStatus FiaTilingShapeCompare::CompareShape(FiaTilingShapeCompareParam &
                     funcName.c_str(), name_.c_str(), LayoutToSerialString(layout_).c_str(),
                     GetShapeStr(shape_).c_str(), GetShapeStr(shapeExpected).c_str());
             } else {
-                OP_LOGE(opName_, "[%s] %s layout is %s, shape is %s, expected shape is %s, axis %s(%ld) should be %s expected %ld.",
+                OP_LOGE(opName_, "[%s] %s layout is %s, shape is %s, expected shape is %s, "
+                    "axis %s(%ld) should be %s expected %ld.",
                     funcName.c_str(), name_.c_str(), LayoutToSerialString(layout_).c_str(),
                     GetShapeStr(shape_).c_str(), GetShapeStr(shapeExpected).c_str(), AxisToSerialString(axis).c_str(),
                     shape_.GetDim(i), CompareTypeToSerialSymbolString(compareType).c_str(), shapeExpected.GetDim(i));

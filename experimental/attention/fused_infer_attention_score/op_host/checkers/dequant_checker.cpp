@@ -2724,7 +2724,8 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
             constexpr uint32_t optFp8VBlockSize = 512U; // 512 is V SInnerSize
             auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
             gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
-            if ((fiaInfo.qLayout == FiaLayout::BNSD && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT &&
+            if ((fiaInfo.qLayout == FiaLayout::BNSD &&
+                fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT &&
                 valueAntiquantScaleTensorShape.GetDim(2) == CeilDivision(fiaInfo.s2Size, static_cast<int64_t>(optFp8VBlockSize)))) {
                 enablePerblockQuantOpt = true;
                 OP_LOGI(fiaInfo.opName, "CheckSinglePara===enablePerblockQuantOpt.");

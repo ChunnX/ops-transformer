@@ -551,7 +551,7 @@ public:
             uint32_t fullPadK = (s2RealSize + 31) >> 5 << 5;
             InitKeyL1HeadRegion(dstTensor, localSkip, s2RealSize, constInfo.dSize); // 清零
             CopyKVSlicePartial(dstTensor, s2Offset + localSkip, validSize,
-                                fullPadK, localSkip, 0, constInfo.dSize, runInfo, keyGm);
+                               fullPadK, localSkip, 0, constInfo.dSize, runInfo, keyGm);
         } else {
             CopyKeySlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize, runInfo);
         }
@@ -1107,7 +1107,7 @@ public:
                 uint32_t fullPadK = (realK + 63) >> 6 << 6;
                 InitValueL1HeadRegion(mm2BTensor, vLocalSkip, realK, constInfo.dSizeV);
                 CopyKVSlicePartial(mm2BTensor, runInfo.s2Idx + k * baseK + vLocalSkip, vValidSize,
-                                      fullPadK, vLocalSkip, 0, constInfo.dSizeV, runInfo, valueGm);
+                                   fullPadK, vLocalSkip, 0, constInfo.dSizeV, runInfo, valueGm);
             } else {
                 CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
             }

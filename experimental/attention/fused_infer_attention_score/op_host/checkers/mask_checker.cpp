@@ -146,27 +146,27 @@ ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
 
     if (fiaInfo.sparseMode == SPARSE_MODE_INIT_SWA) {
         OP_CHECK_IF(fiaInfo.qLayout != FiaLayout::TND,
-            OP_LOGE(fiaInfo.opName, 
+            OP_LOGE(fiaInfo.opName,
             "Only support Query layout = TND in MXFP8 fullquant sparse 5 scenario"),
             return ge::GRAPH_FAILED);
         
         OP_CHECK_IF(fiaInfo.qkHeadDim != NUM_128,
-            OP_LOGE(fiaInfo.opName, 
+            OP_LOGE(fiaInfo.opName,
             "Only support D = 128 in MXFP8 fullquant sparse 5 scenario"),
             return ge::GRAPH_FAILED);
         
         OP_CHECK_IF(!isPa,
-            OP_LOGE(fiaInfo.opName, 
+            OP_LOGE(fiaInfo.opName,
             "Only support page attention in MXFP8 fullquant sparse 5 scenario"),
             return ge::GRAPH_FAILED);
         
         OP_CHECK_IF(fiaInfo.preToken != 1023 || fiaInfo.nextToken != 0,
-            OP_LOGE(fiaInfo.opName, 
+            OP_LOGE(fiaInfo.opName,
             "Only support preToken = 1023, nextToken = 0 in MXFP8 fullquant sparse 5 scenario"),
             return ge::GRAPH_FAILED);
         
         OP_CHECK_IF(fiaInfo.ropeMode != RopeMode::NO_ROPE,
-            OP_LOGE(fiaInfo.opName, 
+            OP_LOGE(fiaInfo.opName,
             "Rope is not supported in MXFP8 fullquant sparse 5 scenario"),
             return ge::GRAPH_FAILED);
     }
