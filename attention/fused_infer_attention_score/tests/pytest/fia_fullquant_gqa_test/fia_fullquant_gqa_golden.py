@@ -14,8 +14,8 @@ N_q = 1
 N_kv = 1
 D = 128
 
-ACTUAL_SEQ_Q = [128] * B
-ACTUAL_SEQ_KV = [256] * B
+ACTUAL_SEQ_Q = [128]
+ACTUAL_SEQ_KV = [256]
 
 # Layout 选择
 INPUT_LAYOUT = "NTD_TND"
@@ -316,46 +316,40 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
     
     for j, (kj, vj) in enumerate(zip(k_blocks, v_blocks)):
         kj = kj.contiguous()
+        kj_T = kj.transpose(-1, -2).contiguous()
         vj = vj.contiguous()
-        deq_kj = deq_k_blocks[j].contiguous()
-        
+        deq_kj = deq_k_blocks[j]
+        deq_kj_T = deq_kj.transpose(-1, -2).contiguous()
+
         for i, qi in enumerate(q_blocks):
-            qi = qi.contiguous()
-            oi = o_blocks[i].contiguous()
-            si = s_blocks[i].contiguous()
-            mi = m_blocks[i].contiguous()
-            deq_qi = deq_q_blocks[i].contiguous()
-            
-            sij = torch.matmul(qi, kj.transpose(-1, -2).contiguous())
-            sij = sij.contiguous()
-            sij = sij * deq_qi * deq_kj.transpose(-1, -2).contiguous()
+            oi = o_blocks[i]
+            si = s_blocks[i]
+            mi = m_blocks[i]
+            deq_qi = deq_q_blocks[i]
+
+            sij = torch.matmul(qi, kj_T)
+            sij = sij * deq_qi * deq_kj_T
             sij = sij * softmax_scale
-            sij = sij.contiguous()
 
             causal_mask = mask_blocks[i][j].contiguous()
             sij = sij.masked_fill(causal_mask, float('-inf'))
-            sij = sij.contiguous()
-            
+
             m_block, _ = torch.max(sij, dim=-1, keepdims=True)
             m_block = m_block - ln_p_scale
-            mi_new = torch.maximum(m_block, mi).contiguous()
+            mi_new = torch.maximum(m_block, mi)
             all_masked_block = (m_block == float('-inf'))
-            pij = torch.where(all_masked_block, 
-                              torch.zeros_like(sij), 
-                              torch.exp(sij - mi_new)).contiguous()
-            # pij = torch.exp(sij - mi_new).contiguous()
-            s_block = torch.sum(pij, dim=-1, keepdims=True).contiguous()
-            pij_drop = pij.to(FP8_DTYPE).to(torch.float32).contiguous()
-            pij_v = torch.matmul(pij_drop, vj).contiguous()
+            pij = torch.where(all_masked_block,
+                              torch.zeros_like(sij),
+                              torch.exp(sij - mi_new))
+            s_block = torch.sum(pij, dim=-1, keepdims=True)
+            pij_drop = pij.to(FP8_DTYPE).to(torch.float32)
+            pij_v = torch.matmul(pij_drop, vj)
             pij_v = pij_v * deq_v
-            # 防止 exp(mi - mi_new) 产生 NaN
             scale = torch.where(mi_new == float('-inf'),
                                 torch.ones_like(mi_new),
                                 torch.exp(mi - mi_new))
-            # si_new = torch.exp(mi - mi_new) * si + s_block
             si_new = scale * si + s_block
-            si_new = si_new.contiguous()
-            o_blocks[i] = ((si * torch.exp(mi - mi_new) * oi + pij_v) / (si_new + EPSILON)).contiguous()
+            o_blocks[i] = (si * torch.exp(mi - mi_new) * oi + pij_v) / (si_new + EPSILON)
             s_blocks[i] = si_new
             m_blocks[i] = mi_new
 
@@ -373,7 +367,7 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
     return result, lse
 
 # ==============================================================================
-# Layout 转换 (CPU)
+# Layout 转换
 # ==============================================================================
 def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
     """CPU: BNSD → 各种 layout"""
@@ -438,7 +432,7 @@ def make_accum_seq(seq_lens):
     return result
 
 # ==============================================================================
-# NPU 调用 (仅在需要时使用NPU)
+# NPU 调用
 # ==============================================================================
 def fa_run_npu(q, k, v, mask, actual_seq_q, actual_seq_kv,
                 dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
