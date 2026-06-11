@@ -13,10 +13,10 @@
  * \brief
  */
 
-#include "include/tensor_api/tensor.h"
-#include "basic_api/kernel_basic_intf.h"
-
 #pragma once
+
+#include "tensor_api/tensor.h"
+#include "basic_api/kernel_basic_intf.h"
 
 namespace Blaze {
 namespace Gemm {
@@ -68,6 +68,8 @@ public:
         int64_t inBlockIdx = tileIdx % blockSpan;
 
         int64_t firstValid = Min(loopFirst_ - blockIdx * SwizzleOffset, static_cast<int64_t>(SwizzleOffset));
+        // Defensive: firstValid is always >= 1 by construction, this silences static analyzer divide-by-zero warnings.
+        if (firstValid == 0) { firstValid = 1; }
         int64_t firstIdx = blockIdx * SwizzleOffset + inBlockIdx % firstValid;
         int64_t secondIdx = inBlockIdx / firstValid;
         if (blockIdx & 1) {
