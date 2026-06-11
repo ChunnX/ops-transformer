@@ -73,6 +73,9 @@ private:
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx,
         int32_t copyStartIdx, int32_t copyNum);
     __aicore__ inline void QuantProcessInRank();
+    __aicore__ inline void Gmm1Dispatch(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
+    __aicore__ inline void Gmm2Dispatch(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
+        uint32_t expertIdx);
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
@@ -951,6 +954,50 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
     SyncAll<true>();
 }
 
+// ===============================================================
+// Gmm1Dispatch：按 Weight1Type/QuantOutType 编译期分发到 generic 或 A8W4 路径
+// ===============================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Gmm1Dispatch(
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state)
+{
+    if constexpr (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
+                  Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value) {
+        MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
+            QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+            epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+    } else {
+        if (subBlockIdx_ == 0) {
+            MegaMoeImpl::GroupMatmulSwigluQuant<
+                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+        }
+    }
+}
+
+// ===============================================================
+// Gmm2Dispatch：按 Weight1Type/QuantOutType 编译期分发到 generic 或 A8W4 路径
+// ===============================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Gmm2Dispatch(
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx)
+{
+    if constexpr (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
+                  Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value) {
+        MegaMoeImpl::GroupMatmul2A8W4<
+            QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+            expertBeforeCnt_, gmm2PingPongIdx_, rankId_);
+    } else {
+        if (subBlockIdx_ == 0) {
+            MegaMoeImpl::GroupMatmul2Combine<
+                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                expertBeforeCnt_, gmm2PingPongIdx_);
+        }
+    }
+}
+
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
@@ -990,18 +1037,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
             }
         }
-        if (subBlockIdx_ == 0) {
-            if constexpr (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
-                          Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value) {
-                MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
-                    QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                    epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
-            } else {
-                MegaMoeImpl::GroupMatmulSwigluQuant<
-                    QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                    epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
-            }
-        }
+        Gmm1Dispatch(gmmAddrInfo, gmm1State);
     }
     EndSync(vecSetSyncCom_);
     if constexpr(g_coreType == AIV) {
@@ -1019,20 +1055,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmmAddrInfo, gmm2State);
-        if (subBlockIdx_ == 0) {
-            if constexpr (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
-                          Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value) {
-                MegaMoeImpl::GroupMatmul2A8W4<
-                    QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                    params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                    expertBeforeCnt_, gmm2PingPongIdx_, rankId_);
-            } else {
-                MegaMoeImpl::GroupMatmul2Combine<
-                    QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                    params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                    expertBeforeCnt_, gmm2PingPongIdx_);
-            }
-        }
+        Gmm2Dispatch(gmmAddrInfo, gmm2State, expertIdx);
     }
     EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
     PipeBarrier<PIPE_ALL>();
