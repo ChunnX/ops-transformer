@@ -81,7 +81,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
         KERNEL_LOG_ERROR("sparseSeqLen is nullptr");
         return false;
     }
-    if (sparseSeqLen_->GetTensorShape() == nullptr || sparseSeqLen_->GetTensorShape()->GetDimSize() != 2) {
+    if (sparseSeqLen_->GetTensorShape() == nullptr || sparseSeqLen_->GetTensorShape()->GetDims() != 2) {
         KERNEL_LOG_ERROR("sparseSeqLen must be 2D tensor");
         return false;
     }
