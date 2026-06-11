@@ -405,6 +405,41 @@ public:
             }
         }
     }
+
+    // 进入 FD 前消费 FA 预置的全部 MTE3_V flag；FD 结束后重新 Set，供下一 section FA 与 Process 末尾 FreeEventID。
+    __aicore__ inline void DrainFaMte3VPipesForFd()
+    {
+        if (constInfo.aicIdx >= constInfo.coreNum) {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+            SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_1);
+            SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_1);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_STAGE1_MTE3_TO_V_0);
+            SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_STAGE1_MTE3_TO_V_0);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_STAGE1_MTE3_TO_V_1);
+            SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_STAGE1_MTE3_TO_V_1);
+            AscendC::PipeBarrier<PIPE_MTE3>();
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::PipeBarrier<PIPE_MTE2>();
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
+    }
+
+    __aicore__ inline void RestoreFaMte3VAfterFd()
+    {
+        if (constInfo.aicIdx >= constInfo.coreNum) {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+            SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_1);
+            SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_STAGE1_MTE3_TO_V_0);
+            SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_STAGE1_MTE3_TO_V_1);
+        }
+    }
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
     {
         if (constInfo.aicIdx >= constInfo.coreNum) {
@@ -817,30 +852,16 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
+        DrainFaMte3VPipesForFd();
         vecFdBlock.InitBuffers();
         AscendC::ICachePreLoad(2);
-        vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
-        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
-        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
-        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
-        if (constInfo.aicIdx < constInfo.coreNum) {
-            if ASCEND_IS_AIV {
-                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                AscendC::PipeBarrier<PIPE_MTE3>();
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-        }
-        // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
-        // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
-        // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
-        // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
-        //   不会触发 aicore subErrType 0x4 timeout-trap。
+        vecFdBlock.AllocEventID();
         AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
         AscendC::SyncAll();
         vecFdBlock.FreeEventID();
+        RestoreFaMte3VAfterFd();
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)

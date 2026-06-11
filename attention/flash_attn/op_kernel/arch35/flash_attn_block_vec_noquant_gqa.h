@@ -63,7 +63,7 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
 
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 6U; // 避开 FA_MTE3_TO_V_0(0)/FD MTE3_V(2,4)，防止 ClearOutput 与 FA 争用 id0 导致冷启动 flag 计数错乱
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr LAYOUT_Q MASK_LAYOUT =
@@ -113,7 +113,7 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
 
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 6U; // 避开 FA_MTE3_TO_V_0(0)/FD MTE3_V(2,4)，防止 ClearOutput 与 FA 争用 id0 导致冷启动 flag 计数错乱
     // 静态 event ID 常量（避开 6/7，都在各自硬件通道独立）
     static constexpr uint32_t FA_MTE3_TO_V_0     = 0U;
     static constexpr uint32_t FA_MTE3_TO_V_1     = 1U;
@@ -288,6 +288,19 @@ public:
         }
     }
 
+    __aicore__ inline void ResetMte3VPipesColdStart()
+    {
+        // 新包安装后首次 launch，MTE3_V 通道可能残留上一版本/上一用例的挂起 flag；
+        // case_test_001 等大 case 跑通后再跑 TND 正常，即典型的跨 launch event 未复位问题。
+        constexpr uint32_t mte3VIds[] = {0U, 1U, 2U, 3U, 4U, 5U, 6U};
+        for (uint32_t i = 0; i < sizeof(mte3VIds) / sizeof(mte3VIds[0]); ++i) {
+            WaitFlag<AscendC::HardEvent::MTE3_V>(mte3VIds[i]);
+            SetFlag<AscendC::HardEvent::MTE3_V>(mte3VIds[i]);
+        }
+        AscendC::PipeBarrier<PIPE_MTE3>();
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
     __aicore__ inline void ClearOutput()
     {
         bool needOutputInit = IsInitAttentionOutGm();
@@ -298,6 +311,7 @@ public:
         // 内存而恰好通过）。因此 isFd 时在 kernel 入口整体清零该 workspace，使批跑与单跑行为一致。
         bool needFdWsInit = this->isFd;
         if (needOutputInit || needFdWsInit) {
+            ResetMte3VPipesColdStart();
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             if (needOutputInit) {
                 InitOutputSingleCore();
