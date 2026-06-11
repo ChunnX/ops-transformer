@@ -297,6 +297,8 @@ public:
     bool isSameSeqAllKVTensor_ = true;
     uint32_t actualLenDimsKV_ = 0;
     uint32_t actualLenDimsQ_ = 0;
+    uint32_t actualLenDimsCmpKV_ = 0;
+    uint32_t cmpResidualKVSize_ = 0;
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;

@@ -308,6 +308,10 @@ ge::graphStatus SMLAInfoParser::GetInOutDataType()
 ge::graphStatus SMLAInfoParser::GetSMLATemplateMode(SMLATilingInfo &smlaInfo)
 {
     if (opParamInfo_.oriKv.desc != nullptr) {
+        if (opParamInfo_.cmpRatio != nullptr && *opParamInfo_.cmpRatio <= 1) {
+            perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
+            return ge::GRAPH_SUCCESS;
+        }
         if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpSparseIndices.tensor != nullptr) {
             perfMode_ = SMLATemplateMode::SCFA_TEMPLATE_MODE;
         } else if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpSparseIndices.tensor == nullptr) {
@@ -539,7 +543,7 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1) < 0) {
-        OP_LOGE(opName_, "%s's second dimension(%lld) should be non-negative number.",
+        OP_LOGE(opName_, "%s's second dimension(%ld) should be non-negative number.",
             ORI_BLOCK_TABLE_NAME.c_str(), opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1));
         return ge::GRAPH_FAILED;
     }
@@ -552,7 +556,7 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
             return ge::GRAPH_FAILED;
         }
         if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
-            OP_LOGE(opName_, "%s's second dimension(%lld) should be greater than 0",
+            OP_LOGE(opName_, "%s's second dimension(%ld) should be greater than 0",
                 CMP_BLOCK_TABLE_NAME.c_str(), opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1));
             return ge::GRAPH_FAILED;
         }
@@ -701,7 +705,8 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             return ge::GRAPH_FAILED);
     } else if (kvLayout_ == SMLALayout::BSND) {
     } else {
-        OP_LOGE(opName_, "oriKV and cmpKv only support PA_BBND, TND and BSND layout, but got %d.", kvLayout_);
+        OP_LOGE(opName_, "oriKV and cmpKv only support PA_BBND, TND and BSND layout, but got %d.",
+                static_cast<int32_t>(kvLayout_));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -751,7 +756,7 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
 
     smlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
-    smlaInfo.cmpRatio = *opParamInfo_.cmpRatio;
+    smlaInfo.cmpRatio = (*opParamInfo_.cmpRatio == 0) ? 1 : *opParamInfo_.cmpRatio;
     smlaInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     smlaInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
     smlaInfo.oriWinLeft = *opParamInfo_.oriWinLeft;
@@ -1128,7 +1133,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpBlockTable() const
 ge::graphStatus SMLATilingCheck::CheckSingleParaSinks() const
 {
     if (opParamInfo_.sinks.tensor->GetStorageShape().GetDimNum() != DIM_NUM_ONE) {
-        OP_LOGE(opName_, "the dim num of %s is %u, it should be %u.", SINKS_NAME.c_str(),
+        OP_LOGE(opName_, "the dim num of %s is %zu, it should be %u.", SINKS_NAME.c_str(),
             opParamInfo_.sinks.tensor->GetStorageShape().GetDimNum(), DIM_NUM_ONE);
         return ge::GRAPH_FAILED;
     }
@@ -1154,8 +1159,8 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaMetadata() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
 {
-    OP_CHECK_IF(cmpRatio_ < 1 || cmpRatio_ > 128,
-                OP_LOGE(opName_, "cmpRatio should be in range [1, 128], but got %u", cmpRatio_),
+    OP_CHECK_IF(cmpRatio_ < 0 || cmpRatio_ > 128,
+                OP_LOGE(opName_, "cmpRatio should be in range [0, 128], but got %ld", cmpRatio_),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1182,11 +1187,6 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriWinRight() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
-    if (*opParamInfo_.cmpMaskMode == 3 && *opParamInfo_.cmpRatio != 1) {
-        OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor == nullptr,
-            OP_LOGE(opName_, "cmp_redisual_kv is required when cmp_mask_mode=3 and cmp_ratio != 1"),
-            return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1328,20 +1328,20 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(*opParamInfo_.oriMaskMode != 0 && *opParamInfo_.oriMaskMode != 3 && *opParamInfo_.oriMaskMode != 4,
-                OP_LOGE(opName_, "oriMaskMode should be {0, 3, 4}, but got %d", *opParamInfo_.oriMaskMode),
+                OP_LOGE(opName_, "oriMaskMode should be {0, 3, 4}, but got %u", *opParamInfo_.oriMaskMode),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 0 && *opParamInfo_.cmpMaskMode != 3,
-                OP_LOGE(opName_, "cmpMaskMode should be {0, 3}, but got %d", *opParamInfo_.cmpMaskMode),
+                OP_LOGE(opName_, "cmpMaskMode should be {0, 3}, but got %u", *opParamInfo_.cmpMaskMode),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(oriWinLeft_ != 127,
-                OP_LOGE(opName_, "oriWinLeft_ should be 127, but got %d", oriWinLeft_),
+                OP_LOGE(opName_, "oriWinLeft_ should be 127, but got %ld", oriWinLeft_),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(oriWinRight_ != 0,
-                OP_LOGE(opName_, "oriWinRight_ should be 0, but got %d", oriWinRight_),
+                OP_LOGE(opName_, "oriWinRight_ should be 0, but got %ld", oriWinRight_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(topkValueMode_ != 1,
-                OP_LOGE(opName_, "topkValueMode should be 1, but got %d", topkValueMode_),
+                OP_LOGE(opName_, "topkValueMode should be 1, but got %ld", topkValueMode_),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1578,6 +1578,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_actualLenDimsOriKV(tilingInfo->actualLenDimsOriKV);
     tilingData_.baseParams.set_actualLenDimsCmpKV(tilingInfo->actualLenDimsCmpKV);
     tilingData_.baseParams.set_cmpResidualKVSize(tilingInfo->cmpResidualKVSize);
+    tilingData_.baseParams.set_kvHeadNum(tilingInfo->n2Size);
 
     usedCoreNum_ = aicNum;
     tilingData_.baseParams.set_usedCoreNum(usedCoreNum_);
