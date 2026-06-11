@@ -97,11 +97,11 @@ def flash_attn_gpu(
         # 转换 block_table 为 tensor: (batch_size, max_num_blocks_per_seq)
         if isinstance(block_table, list):
             if isinstance(block_table[0], list):
-                block_table_tensor = torch.tensor(block_table, dtype=torch.int32, device=q.device)
+                block_table_tensor = torch.tensor(block_table, dtype=torch.int32, device="cpu").to(q.device)
             else:
-                block_table_tensor = torch.tensor([block_table], dtype=torch.int32, device=q.device)
+                block_table_tensor = torch.tensor([block_table], dtype=torch.int32, device="cpu").to(q.device)
         else:
-            block_table_tensor = block_table.to(device=q.device, dtype=torch.int32)
+            block_table_tensor = block_table.to(device="cpu", dtype=torch.int32).to(q.device)
         
         B, N, S, D = k.shape
         
@@ -120,11 +120,11 @@ def flash_attn_gpu(
         # 提取 seqused_kv 作为 cache_seqlens
         seqused_kv = kwargs.get("_npu_seqused_kv") or kwargs.get("seqused_kv")
         if seqused_kv is None:
-            cache_seqlens = torch.full((B,), S, dtype=torch.int32, device=q.device)
+            cache_seqlens = torch.full((B,), S, dtype=torch.int32, device="cpu").to(q.device)
         elif isinstance(seqused_kv, list):
-            cache_seqlens = torch.tensor(seqused_kv, dtype=torch.int32, device=q.device)
+            cache_seqlens = torch.tensor(seqused_kv, dtype=torch.int32, device="cpu").to(q.device)
         else:
-            cache_seqlens = seqused_kv.to(device=q.device, dtype=torch.int32)
+            cache_seqlens = seqused_kv.to(device="cpu", dtype=torch.int32).to(q.device)
         
         # 调用 flash_attn_with_kvcache
         out_bshd = flash_attn_with_kvcache(
@@ -162,8 +162,8 @@ def flash_attn_gpu(
         max_seqlen_q = max(seqlens_q) if seqlens_q else 0
         max_seqlen_kv = max(seqlens_kv) if seqlens_kv else 0
 
-        cu_q = torch.tensor(cu_seqlens_q, dtype=torch.int32, device=q.device)
-        cu_kv = torch.tensor(cu_seqlens_kv, dtype=torch.int32, device=q.device)
+        cu_q = torch.tensor(cu_seqlens_q, dtype=torch.int32, device="cpu").to(q.device)
+        cu_kv = torch.tensor(cu_seqlens_kv, dtype=torch.int32, device="cpu").to(q.device)
 
         # 调用 flash_attn_varlen_func（变长序列版本）
         out_tnd = flash_attn_varlen_func(

@@ -29,8 +29,8 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
     is_causal = False
     if mask_mode == 3:
         is_causal = True
-        mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
-        attn_mask = mask.to(dtype=torch.int8, device=device)
+        mask = torch.triu(torch.ones(2048, 2048, device="cpu"), diagonal=1)
+        attn_mask = mask.to(dtype=torch.int8, device="cpu").to(device)
     elif mask_mode != 0:
         wl = p.get("win_left", 2147483647)
         wr = p.get("win_right", 2147483647)
@@ -38,8 +38,8 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
     # === SeqLens 参数组 ===
     def _u32(x):
         if x is None: return None
-        if torch.is_tensor(x): return x.to(torch.int32, device=device).contiguous()
-        return torch.tensor(x, dtype=torch.int32, device=device).contiguous()
+        if torch.is_tensor(x): return x.to(dtype=torch.int32, device="cpu").contiguous().to(device)
+        return torch.tensor(x, dtype=torch.int32, device="cpu").contiguous().to(device)
 
     cu_q  = _u32(p.get("cu_seqlens_q"))
     cu_kv = _u32(p.get("cu_seqlens_kv"))
@@ -161,14 +161,13 @@ class InputSpec:
     def generate(self, params: dict, device,
                  layout: str = "BNSD", layout_kv: str = None, seed: int = 42
                  ) -> Dict[str, torch.Tensor]:
-        """在指定 device 上生成所有张量。"""
-        rng = torch.Generator(device=device)
+        """在 CPU 上生成所有张量，然后搬移到指定 device。"""
+        rng = torch.Generator(device="cpu")
         rng.manual_seed(seed)
         tensors = {}
         for it in self._items:
             if it["when"] and not it["when"](params):
                 continue
-            # layout_override: 字符串 → 从 params 取值; None → 用全局 layout
             lo = it.get("layout_override")
             if lo:
                 eff_layout = params.get(lo, layout)
@@ -183,8 +182,9 @@ class InputSpec:
             if rk and rk in params:
                 lo, hi = params[rk]
                 kw["low"], kw["high"] = float(lo), float(hi)
-            t = _generate(it["method"], shape, dt, device, rng, **kw)
+            t = _generate(it["method"], shape, dt, rng, **kw)
             tensors[it["name"]] = t
+        tensors = {k: v.to(device) for k, v in tensors.items()}
         return tensors
 
     # ── shape 解析 ──
@@ -227,19 +227,19 @@ def _infer_dtype(ds: str) -> torch.dtype:
     return torch.float16 if ds == "fp16" else torch.bfloat16
 
 
-def _generate(method, shape, dtype, device, rng, **kw):
+def _generate(method, shape, dtype, rng, **kw):
     if method == "randn":
-        return torch.randn(shape, dtype=dtype, device=device, generator=rng)
+        return torch.randn(shape, dtype=dtype, device="cpu", generator=rng)
     if method == "uniform":
         lo, hi = kw.get("low", 0.0), kw.get("high", 1.0)
-        t = torch.rand(shape, dtype=dtype, device=device, generator=rng)
+        t = torch.rand(shape, dtype=dtype, device="cpu", generator=rng)
         return t * (hi - lo) + lo
     if method == "fixed":
-        return torch.full(shape, kw.get("value", 10.0), dtype=dtype, device=device)
+        return torch.full(shape, kw.get("value", 10.0), dtype=dtype, device="cpu")
     if method == "zeros":
-        return torch.zeros(shape, dtype=dtype, device=device)
+        return torch.zeros(shape, dtype=dtype, device="cpu")
     if method == "custom":
-        return kw["fn"](shape, dtype, device, rng)
+        return kw["fn"](shape, dtype, "cpu", rng)
     raise ValueError(f"Unknown method: {method}")
 
 
