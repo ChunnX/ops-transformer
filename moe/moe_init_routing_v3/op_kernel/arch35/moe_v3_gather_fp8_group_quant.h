@@ -95,7 +95,8 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         Duplicate(zeroIntReg, 0U, maskAllUint);
 
         if (groupElemNum > vfLen) {
-            maskRight = UpdateMask<float>(groupElemNum - vfLen);
+            uint32_t rightElemNum = groupElemNum - vfLen;
+            maskRight = UpdateMask<float>(rightElemNum);
             LoadFp8GroupInput<T>(xLeftReg, xAddr, maskAll, 0);
             LoadFp8GroupInput<T>(xRightReg, xAddr, maskRight, vfLen);
             Abs(absLeftReg, xLeftReg, maskAll);
@@ -104,7 +105,8 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
             ReduceMax(maxRightReg, absRightReg, maskRight);
             Max(maxReg, maxReg, maxRightReg, maskScalar);
         } else if (groupElemNum > 0) {
-            maskLoop = UpdateMask<float>(groupElemNum);
+            uint32_t loopElemNum = groupElemNum;
+            maskLoop = UpdateMask<float>(loopElemNum);
             LoadFp8GroupInput<T>(xLeftReg, xAddr, maskLoop, 0);
             Abs(absLeftReg, xLeftReg, maskLoop);
             ReduceMax(maxReg, absLeftReg, maskLoop);
@@ -135,7 +137,8 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr, outLeftReg, maskAll);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + vfLen, outRightReg, maskRight);
         } else if (groupElemNum > 0) {
-            maskLoop = UpdateMask<float>(groupElemNum);
+            uint32_t loopElemNum = groupElemNum;
+            maskLoop = UpdateMask<float>(loopElemNum);
             LoadFp8GroupInput<T>(xLeftReg, xAddr, maskLoop, 0);
             Div<float, &divMode>(quantLeftReg, xLeftReg, roundScaleReg, maskLoop);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskLoop);
