@@ -36,3 +36,5 @@ from .lightning_indexer_v2 import npu_lightning_indexer_v2
 from .quant_lightning_indexer_v2 import npu_quant_lightning_indexer_v2
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
+from .quant_flash_attn import npu_quant_flash_attn
+from .quant_flash_attn_metadata import npu_quant_flash_attn_metadata
