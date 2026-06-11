@@ -238,9 +238,11 @@ public:
             __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
 
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_);
+                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_,
+                         constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_);
+                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
+                         constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
         }
 
         if constexpr (HAS_ROPE) {
@@ -281,7 +283,8 @@ public:
 
     __aicore__ inline void InitKVBuffer(uint32_t batchSize, uint32_t kvSeqSize, GlobalTensor<uint64_t> actualSeqLenGmKv,
                                         uint32_t actualLenDims, uint32_t n2Size, uint32_t kvCacheBlockSize,
-                                        uint32_t headDim, FaGmTensor<KV_T, KV_FORMAT> &kvGmTensor, __gm__ uint8_t *gm)
+                                        uint32_t headDim, FaGmTensor<KV_T, KV_FORMAT> &kvGmTensor, __gm__ uint8_t *gm,
+                                        uint64_t bnStrides, uint64_t n2Strides)
     {
         kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
@@ -299,7 +302,7 @@ public:
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, actualSeqLenGmKv, actualLenDims);
         } else if (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_FP8_BnNBsD_K) {
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
-                                             constInfo.maxBlockNumPerBatch);
+                                             constInfo.maxBlockNumPerBatch, bnStrides, n2Strides);
         }
     }
 
@@ -364,7 +367,7 @@ public:
         if constexpr (HAS_ROPE) {
             uint32_t ropeDealSize = constInfo.dSizeRope;
             uint32_t dstStrideRope = (runInfo.actMSize + 15) >> 4 << 4;
-            uint32_t offset = Align(nopeDealSize, blockNumDtype) * Align(runInfo.actMSize, blockNumDtype);
+            uint32_t offset = AttentionCommon::Align(nopeDealSize, blockNumDtype) * AttentionCommon::Align(runInfo.actMSize, blockNumDtype);
             FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor {
                 .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
                 .rowCount = dstStrideRope
@@ -440,7 +443,7 @@ public:
         if constexpr (HAS_ROPE) {
             uint32_t ropeDealSize = constInfo.dSizeRope;
             uint32_t dstStrideRope = (s2RealSize + 15) >> 4 << 4;
-            uint32_t offset = Align(nopeDealSize, blockNumDtype) * Align(s2RealSize, blockNumDtype);
+            uint32_t offset = AttentionCommon::Align(nopeDealSize, blockNumDtype) * AttentionCommon::Align(s2RealSize, blockNumDtype);
             FaL1Tensor<ROPE_T, L1Format::NZ> l1Tensor =  {
                 .tensor = (dstTensor[offset]).template ReinterpretCast<ROPE_T>(),
                 .rowCount = dstStrideRope
