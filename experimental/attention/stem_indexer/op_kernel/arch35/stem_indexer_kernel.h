@@ -28,7 +28,7 @@
 #include "../stem_indexer_metadata.h"
 
 namespace QLIKernel {
-using namespace QLICommon;
+using namespace SICommon;
 using namespace matmul;
 using namespace optiling;
 using namespace optiling::detail;
@@ -42,7 +42,7 @@ public:
     using SCORE_T = typename SIT::scoreType;
 
     __aicore__ inline void InitBuffers(TPipe *) {}
-    __aicore__ inline void InitParams(const QLICommon::ConstInfo &, const QLICommon::LdSplitCoreInfo &,
+    __aicore__ inline void InitParams(const SICommon::ConstInfo &, const SICommon::LdSplitCoreInfo &,
                                       const StemIndexerTilingData *__restrict)
     {}
     __aicore__ inline void InitVecInputTensor(GlobalTensor<float>, GlobalTensor<float>, GlobalTensor<float>,
@@ -53,9 +53,9 @@ public:
     {}
     __aicore__ inline void AllocEventID() {}
     __aicore__ inline void FreeEventID() {}
-    __aicore__ inline void ProcessDirectOutput(const QLICommon::RunInfo &) {}
-    __aicore__ inline void ProcessVec1(const QLICommon::RunInfo &) {}
-    __aicore__ inline void ProcessTopK(const QLICommon::RunInfo &, bool, bool) {}
+    __aicore__ inline void ProcessDirectOutput(const SICommon::RunInfo &) {}
+    __aicore__ inline void ProcessVec1(const SICommon::RunInfo &) {}
+    __aicore__ inline void ProcessTopK(const SICommon::RunInfo &, bool, bool) {}
 };
 
 template <typename SIT>
@@ -66,13 +66,13 @@ public:
 
     __aicore__ inline SIMatmul() {}
     __aicore__ inline void InitBuffers(TPipe *) {}
-    __aicore__ inline void InitParams(const QLICommon::ConstInfo &) {}
+    __aicore__ inline void InitParams(const SICommon::ConstInfo &) {}
     __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<int32_t> &, const GlobalTensor<K_T> &,
                                                const GlobalTensor<Q_T> &)
     {}
     __aicore__ inline void AllocEventID() {}
     __aicore__ inline void FreeEventID() {}
-    __aicore__ inline void ComputeMm1(const QLICommon::RunInfo &) {}
+    __aicore__ inline void ComputeMm1(const SICommon::RunInfo &) {}
 };
 
 // 由于S2循环前，RunInfo还没有赋值，使用TempLoopInfo临时存放B、N、S1轴相关的信息；同时减少重复计算
@@ -178,10 +178,10 @@ protected:
     uint32_t aiCoreIdx = 0U;
     uint32_t usedCoreNum = 0U;
 
-    QLICommon::ConstInfo constInfo{};
+    SICommon::ConstInfo constInfo{};
     TempLoopInfo tempLoopInfo{};
-    QLICommon::SplitCoreInfo splitCoreInfo{};
-    QLICommon::LdSplitCoreInfo ldInfo{};
+    SICommon::SplitCoreInfo splitCoreInfo{};
+    SICommon::LdSplitCoreInfo ldInfo{};
 
     // ================================Init functions==================================
     __aicore__ inline void InitTilingData(const StemIndexerTilingData *__restrict tilingData);
@@ -194,7 +194,7 @@ protected:
     // ================================Process functions================================
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
-                                            QLICommon::RunInfo runInfo);
+                                            SICommon::RunInfo runInfo);
     __aicore__ inline void ProcessInvalid();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
@@ -206,7 +206,7 @@ protected:
     __aicore__ inline uint32_t GetPromptTokenLen(uint32_t bIdx);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
-    __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QLICommon::RunInfo &runInfo);
+    __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo);
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start);
 };
 
@@ -667,7 +667,7 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QLICommon::RunInfo &runInfo)
+__aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo)
 {
     runInfo.loop = loop;
     runInfo.bIdx = tempLoopInfo.bIdx;
@@ -696,7 +696,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         runInfo.actualSingleProcessSInnerSize = tempLoopInfo.s2BasicSizeTail;
     }
     runInfo.actualSingleProcessSInnerSizeAlign =
-        QLICommon::Align((uint32_t)runInfo.actualSingleProcessSInnerSize, QLICommon::ConstInfo::BUFFER_SIZE_BYTE_32B);
+        SICommon::Align((uint32_t)runInfo.actualSingleProcessSInnerSize, SICommon::ConstInfo::BUFFER_SIZE_BYTE_32B);
 
     runInfo.isFirstS2InnerLoop = s2LoopIdx == splitCoreInfo.s2Start;
     runInfo.isLastS2InnerLoop = s2LoopIdx == tempLoopInfo.s2LoopEnd;
@@ -763,7 +763,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessInvalid()
         uint32_t aivCoreNum = GetBlockNum() * 2;  // 2 means c:v = 1:2
         uint64_t totalIndiceSize =
             constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.sparseCount;
-        uint64_t singleCoreIndiceSize = QLICommon::Align((totalIndiceSize + aivCoreNum - 1) / aivCoreNum,
+        uint64_t singleCoreIndiceSize = SICommon::Align((totalIndiceSize + aivCoreNum - 1) / aivCoreNum,
                                                          GM_ALIGN_BYTES / sizeof(int32_t));
         uint64_t indiceBaseSize = static_cast<uint64_t>(tmpBlockIdx) * singleCoreIndiceSize;
         if (indiceBaseSize < totalIndiceSize) {
@@ -775,7 +775,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessInvalid()
         }
 
         uint64_t totalLenSize = constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize;
-        uint64_t singleCoreLenSize = QLICommon::Align((totalLenSize + aivCoreNum - 1) / aivCoreNum,
+        uint64_t singleCoreLenSize = SICommon::Align((totalLenSize + aivCoreNum - 1) / aivCoreNum,
                                                       GM_ALIGN_BYTES / sizeof(int32_t));
         uint64_t lenBaseSize = static_cast<uint64_t>(tmpBlockIdx) * singleCoreLenSize;
         if (lenBaseSize < totalLenSize) {
@@ -796,13 +796,13 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
 
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
-        CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + 0);
-        CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + 1);
+        CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + 0);
+        CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + 1);
     } else {
         matmulService.AllocEventID();
     }
 
-    QLICommon::RunInfo runInfo;
+    SICommon::RunInfo runInfo;
     uint32_t gloop = 0;
     for (uint32_t bN2LoopIdx = splitCoreInfo.bN2Start; bN2LoopIdx <= splitCoreInfo.bN2End; bN2LoopIdx++) {
         CalcGS1LoopParams(bN2LoopIdx);
@@ -819,7 +819,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
                         splitCoreInfo.s2Start = 0;
                         continue;
                     }
-                    QLICommon::RunInfo directRunInfo;
+                    SICommon::RunInfo directRunInfo;
                     directRunInfo.loop = gloop;
                     directRunInfo.bN2Idx = tempLoopInfo.bN2Idx;
                     directRunInfo.bIdx = tempLoopInfo.bIdx;
@@ -833,8 +833,8 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
                     directRunInfo.actS2Size = tempLoopInfo.actS2Size;
                     directRunInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
                     directRunInfo.actualSingleProcessSInnerSize = tempLoopInfo.s2ValidSize;
-                    directRunInfo.actualSingleProcessSInnerSizeAlign = QLICommon::Align(
-                        tempLoopInfo.s2ValidSize, QLICommon::ConstInfo::BUFFER_SIZE_BYTE_32B);
+                    directRunInfo.actualSingleProcessSInnerSizeAlign = SICommon::Align(
+                        tempLoopInfo.s2ValidSize, SICommon::ConstInfo::BUFFER_SIZE_BYTE_32B);
                     directRunInfo.isFirstS2InnerLoop = true;
                     directRunInfo.isLastS2InnerLoop = true;
                     directRunInfo.isAllLoopEnd = (directRunInfo.bN2Idx == splitCoreInfo.bN2End) &&
@@ -880,13 +880,13 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
         vectorService.FreeEventID();
     } else {
         matmulService.FreeEventID();
-        CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + 0); 
-        CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + 1); 
+        CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_VC_EVENT + 0); 
+        CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_VC_EVENT + 1); 
     }
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, QLICommon::RunInfo runInfo)
+__aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, SICommon::RunInfo runInfo)
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
     if ASCEND_IS_AIC {

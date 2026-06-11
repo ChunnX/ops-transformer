@@ -24,27 +24,27 @@
 #include "../arch35/vf/stem_indexer_vector1.h"
 #include "../arch35/vf/stem_indexer_topk.h"
 
-namespace QLIKernel {
-using namespace QLICommon;
+namespace SIKernel {
+using namespace SICommon;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
-template <typename QLIT>
-class QLIVector {
+template <typename SIT>
+class SIVector {
 public:
     // =================================类型定义区=================================
-    static constexpr LI_LAYOUT Q_LAYOUT_T = QLIT::layout;
-    static constexpr LI_LAYOUT K_LAYOUT_T = QLIT::keyLayout;
-    static constexpr bool PAGE_ATTENTION = QLIT::pageAttention;
+    static constexpr LI_LAYOUT Q_LAYOUT_T = SIT::layout;
+    static constexpr LI_LAYOUT K_LAYOUT_T = SIT::keyLayout;
+    static constexpr bool PAGE_ATTENTION = SIT::pageAttention;
 
-    using QK_T = typename QLIT::queryKeyType;
+    using QK_T = typename SIT::queryKeyType;
     using SCORE_T = typename QLIT::scoreType;
 
-    __aicore__ inline QLIVector(){};
-    __aicore__ inline void ProcessVec1(const QLICommon::RunInfo &info);
-    __aicore__ inline void ProcessTopK(const QLICommon::RunInfo &info);
+    __aicore__ inline SIVector(){};
+    __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);
+    __aicore__ inline void ProcessTopK(const SICommon::RunInfo &info);
     __aicore__ inline void ProcessLD();
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitParams(const struct QLICommon::ConstInfo &constInfo,
-                                      const struct QLICommon::LdSplitCoreInfo &ldInfo,
+    __aicore__ inline void InitParams(const struct SICommon::ConstInfo &constInfo,
+                                      const struct SICommon::LdSplitCoreInfo &ldInfo,
                                       const StemIndexerTilingData *__restrict tilingData);
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
                                                     GlobalTensor<SCORE_T> ldScoreGm,
@@ -55,7 +55,7 @@ public:
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void InitLDBuffers(TPipe *pipe, const struct QLICommon::LdSplitCoreInfo &ldInfo);
+    __aicore__ inline void InitLDBuffers(TPipe *pipe, const struct SICommon::LdSplitCoreInfo &ldInfo);
 
 protected:
     GlobalTensor<SCORE_T> scoreGm;
@@ -85,7 +85,7 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
 
 private:
-    __aicore__ inline void GetKeyScale(const QLICommon::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
+    __aicore__ inline void GetKeyScale(const SICommon::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
                                        int64_t batchId, int64_t startS2, int64_t getLen);
     // ================================Local Buffer区====================================
 
@@ -150,13 +150,13 @@ private:
     uint32_t topkCountAlign16_ = 0; // LD读取到UB，需要满足32B对齐
     uint32_t trunkLen_ = 0;
 
-    struct QLICommon::ConstInfo constInfo_;
-    struct QLICommon::LdSplitCoreInfo ldInfo_;
+    struct SICommon::ConstInfo constInfo_;
+    struct SICommon::LdSplitCoreInfo ldInfo_;
     topk::LITopk<SCORE_T> topkOp_;
 };
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void SIVector<QLIT>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));   //大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
     resMm1UB_ = resMm1Buf_.Get<QK_T>();//qk
@@ -191,14 +191,14 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::InitLDBuffers(TPipe *pipe, const struct QLICommon::LdSplitCoreInfo &ldInfo)
+__aicore__ inline void SIVector<QLIT>::InitLDBuffers(TPipe *pipe, const struct SICommon::LdSplitCoreInfo &ldInfo)
 {
     ldIndexLocal_ = resMm1UB_.template ReinterpretCast<uint32_t>();
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::InitParams(const struct QLICommon::ConstInfo &constInfo,
-                                                   const struct QLICommon::LdSplitCoreInfo &ldInfo,
+__aicore__ inline void SIVector<QLIT>::InitParams(const struct SICommon::ConstInfo &constInfo,
+                                                   const struct SICommon::LdSplitCoreInfo &ldInfo,
                                                    const StemIndexerTilingData *__restrict tilingData)
 {
     this->constInfo_ = constInfo;
@@ -217,13 +217,13 @@ __aicore__ inline void QLIVector<QLIT>::InitParams(const struct QLICommon::Const
     blockId_ = GetBlockIdx();
     trunkLen_ = TRUNK_LEN_16K;
     topkCount_ = constInfo.sparseCount;
-    topkCountAlign256_ = QLICommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256
-    topkCountAlign16_ = QLICommon::Align(constInfo.sparseCount, (uint64_t)16); // topkCount对齐到16
+    topkCountAlign256_ = SICommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256
+    topkCountAlign16_ = SICommon::Align(constInfo.sparseCount, (uint64_t)16); // topkCount对齐到16
     topkOp_.Init(topkCount_, trunkLen_);
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
+__aicore__ inline void SIVector<QLIT>::InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
                                                            GlobalTensor<float> kScaleGm,
                                                            GlobalTensor<int32_t> indiceOutGm,
                                                            GlobalTensor<int32_t> blockTableGm)
@@ -236,7 +236,7 @@ __aicore__ inline void QLIVector<QLIT>::InitVecInputTensor(GlobalTensor<float> w
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
+__aicore__ inline void SIVector<QLIT>::InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
                                                             GlobalTensor<SCORE_T> ldScoreGm,
                                                             GlobalTensor<int32_t> ldIndexGm)
 {
@@ -246,7 +246,7 @@ __aicore__ inline void QLIVector<QLIT>::InitVecWorkspaceTensor(GlobalTensor<SCOR
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::AllocEventID()
+__aicore__ inline void SIVector<QLIT>::AllocEventID()
 {
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
@@ -259,7 +259,7 @@ __aicore__ inline void QLIVector<QLIT>::AllocEventID()
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::FreeEventID()
+__aicore__ inline void SIVector<QLIT>::FreeEventID()
 {
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
@@ -272,7 +272,7 @@ __aicore__ inline void QLIVector<QLIT>::FreeEventID()
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::CleanInvalidOutput(int64_t invalidS1Offset)
+__aicore__ inline void SIVector<QLIT>::CleanInvalidOutput(int64_t invalidS1Offset)
 {
     // init -1 and copy to output
     Duplicate(outInvalidLocal_, constInfo_.INVALID_IDX, constInfo_.sparseCount);
@@ -289,7 +289,7 @@ __aicore__ inline void QLIVector<QLIT>::CleanInvalidOutput(int64_t invalidS1Offs
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::GetKeyScale(const QLICommon::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
+__aicore__ inline void SIVector<QLIT>::GetKeyScale(const SICommon::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
                                                     int64_t batchId, int64_t startS2, int64_t getLen)
 {
     // startS2一定能整除kCacheBlockSize_
@@ -341,7 +341,7 @@ __aicore__ inline void QLIVector<QLIT>::GetKeyScale(const QLICommon::RunInfo &ru
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &info)
+__aicore__ inline void SIVector<QLIT>::ProcessVec1(const SICommon::RunInfo &info)
 {
     auto pingpong = (info.loop % 2);
     auto s1BaseSizePerAIV = CeilDiv(s1BaseSize_, 2);
@@ -352,8 +352,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
 
     if (curAivS1ProcNum == 0) {
-        CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_CV_EVENT + pingpong);  // V核等C核计算完mm1，mm1Res已搬运到UB
-        CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   // V核处理完，通知C核可以把mm1Res搬运到UB
+        CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + pingpong);  // V核等C核计算完mm1，mm1Res已搬运到UB
+        CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   // V核处理完，通知C核可以把mm1Res搬运到UB
         return;
     }
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
@@ -380,7 +380,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
 
     //CV同步
-    CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   //V核等C核计算完mm1，mm1Res已搬运到UB
+    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   //V核等C核计算完mm1，mm1Res已搬运到UB
 
     static_assert(std::is_same_v<SCORE_T, uint16_t>);
     auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCORE_T))];
@@ -401,19 +401,19 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     //outUB_ --->  scoreGm
     int64_t vec1OutGmOffset = blockId_ % 2 == 0 ? curS2Idx : 
-                            s1BaseSizePerAIV * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
+                            s1BaseSizePerAIV * SICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
     DataCopyExtParams copyOutParams;
     copyOutParams.blockCount = curAivS1ProcNum;
     copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
     copyOutParams.srcStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
-    copyOutParams.dstStride = (QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(SCORE_T);
+    copyOutParams.dstStride = (SICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(SCORE_T);
     DataCopyPad(scoreGm[vec1OutGmOffset], outBase, copyOutParams);
     SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
-    CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   //V核处理完，通知C核可以把mm1Res搬运到UB
+    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   //V核处理完，通知C核可以把mm1Res搬运到UB
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &info)
+__aicore__ inline void SIVector<QLIT>::ProcessTopK(const SICommon::RunInfo &info)
 {
     SetFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
     WaitFlag<HardEvent::MTE3_MTE2>(MTE3_MTE2_EVENT);
@@ -502,13 +502,13 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
         if (validS2Len >= topkCount_) {
             uint32_t s2LoopNum = (validS2Len + trunkLen_ - 1) / trunkLen_;
             if (s2LoopNum == 1) {
-                uint32_t validS2LenAlign = QLICommon::Align(validS2Len, (int32_t)256);
+                uint32_t validS2LenAlign = SICommon::Align(validS2Len, (int32_t)256);
                 Duplicate(mrgValueLocal_[validS2Len / 256 * 256], zero, validS2LenAlign - validS2Len / 256 * 256);
                 SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
                 WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
                 copyInParams.blockLen = validS2Len * sizeof(SCORE_T); // byte
                 AscendC::DataCopyPadExtParams<SCORE_T> padParams{true, 0, 0, 0};
-                AscendC::DataCopyPad(mrgValueLocal_, scoreGm[vecOffset * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + ldDstOffset], copyInParams, padParams);
+                AscendC::DataCopyPad(mrgValueLocal_, scoreGm[vecOffset * SICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + ldDstOffset], copyInParams, padParams);
                 SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                 WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                 topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, validS2LenAlign, 0, 1, info.isNeedLD);
@@ -516,7 +516,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                 for (uint32_t loopIdx = 0; loopIdx < s2LoopNum; loopIdx++) {
                     if (loopIdx == 0) {
                         copyInParams.blockLen = trunkLen_ * sizeof(SCORE_T); // byte
-                        AscendC::DataCopyPad(mrgValueLocal_, scoreGm[vecOffset * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + ldDstOffset], copyInParams, padParams);
+                        AscendC::DataCopyPad(mrgValueLocal_, scoreGm[vecOffset * SICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + ldDstOffset], copyInParams, padParams);
                         SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                         WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                         topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, trunkLen_, loopIdx, s2LoopNum, info.isNeedLD);
@@ -525,7 +525,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                     SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT2);
                     WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT2);
                     uint32_t validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len ? validS2Len % trunkLen_ : trunkLen_;
-                    uint32_t offset = vecOffset * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + loopIdx * trunkLen_ + ldDstOffset;
+                    uint32_t offset = vecOffset * SICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + loopIdx * trunkLen_ + ldDstOffset;
                     AscendC::DataCopy(mrgValueLocal_, scoreOutLocal_, topkCountAlign256_);
                     // topk如果没有对齐到256，则把topkCountAlign256_ - topkCount_部分刷0
                     if (topkCountAlign256_ != topkCount_) {
@@ -544,7 +544,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                     copyInParams.blockLen = validTrunkLen * sizeof(SCORE_T); // byte
                     // TOPK 直方图一次必须计算256，输入处理数据需要和256对齐
                     if ((topkCountAlign256_ + validTrunkLen) % 256 != 0) {
-                        Duplicate(mrgValueLocal_[topkCountAlign256_ + validTrunkLen / 256 * 256], zero, QLICommon::Align(validTrunkLen, (uint32_t)256) - validTrunkLen / 256 * 256);
+                        Duplicate(mrgValueLocal_[topkCountAlign256_ + validTrunkLen / 256 * 256], zero, SICommon::Align(validTrunkLen, (uint32_t)256) - validTrunkLen / 256 * 256);
                         SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
                         WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
                     }
@@ -552,7 +552,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                     AscendC::DataCopyPad(mrgValueLocal_[topkCountAlign256_], scoreGm[offset], copyInParams, padParams);
                     SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                     WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                    topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, QLICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256), loopIdx, s2LoopNum, info.isNeedLD);
+                    topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, SICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256), loopIdx, s2LoopNum, info.isNeedLD);
                     SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
                 }   
             }
@@ -561,7 +561,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
             // 如果需要LD 则将需要保存Value值
             if (info.isNeedLD) {
                 copyInParams.blockLen = validS2Len * sizeof(SCORE_T);
-                AscendC::DataCopyPad(scoreOutLocal_, scoreGm[vecOffset * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + ldDstOffset], copyInParams, padParams);
+                AscendC::DataCopyPad(scoreOutLocal_, scoreGm[vecOffset * SICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + ldDstOffset], copyInParams, padParams);
                 SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                 WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
             }
@@ -636,7 +636,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIVector<QLIT>::ProcessLD()
+__aicore__ inline void SIVector<QLIT>::ProcessLD()
 {
     AscendC::DataCopyParams copyOutParams;
     copyOutParams.blockCount = 1;
@@ -687,7 +687,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
             ldIndexParams.dstStride = 0;
 
             int32_t s2Len = topkCountAlign16_ * ldProWorkspaceNum + ldProcessOffset;
-            uint32_t s2LenAlign = QLICommon::Align(s2Len, (int32_t)256); // 寄存器需要256对齐
+            uint32_t s2LenAlign = SICommon::Align(s2Len, (int32_t)256); // 寄存器需要256对齐
             uint64_t LDGmOffset = ldInfo_.workspaceIdx * s1BaseSize_ * topkCountAlign16_ +
                                   topkCountAlign16_ * (ldInfo_.mStart + j) + i * ldWorkspaceNum * s1BaseSize_ * topkCountAlign16_; // 加入LD处理偏移
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
@@ -749,5 +749,5 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
     }
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
-}  // namespace QLIKernel
+}  // namespace SIKernel
 #endif

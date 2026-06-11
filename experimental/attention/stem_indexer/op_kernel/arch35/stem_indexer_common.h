@@ -15,7 +15,7 @@
 #ifndef stem_indexer_COMMON_H
 #define stem_indexer_COMMON_H
 using namespace AscendC;
-namespace QLICommon {
+namespace SICommon {
 
 // 与tiling的layout保持一致
 enum class LI_LAYOUT : uint32_t {
@@ -191,7 +191,7 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 {
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
-}  // namespace QLICommon
+}  // namespace SICommon
 
 // bank冲突优化
 // david 256KB bank layout
