@@ -13,9 +13,9 @@ import torch_npu
 from npu_ops_transformer.op_builder.builder import OpBuilder
 
 
-class EngramEmbedingUitlsOpBuilder(OpBuilder):
+class EngramEmbeddingUtilsOpBuilder(OpBuilder):
     def __init__(self):
-        super(EngramEmbedingUitlsOpBuilder, self).__init__("engram_embedding_utils")
+        super(EngramEmbeddingUtilsOpBuilder, self).__init__("engram_embedding_utils")
 
     def sources(self):
         return ['ops/csrc/engram_embedding_utils.cpp']
@@ -34,7 +34,7 @@ class EngramEmbedingUitlsOpBuilder(OpBuilder):
         return flags
 
 
-engram_embedding_utils_op_builder = EngramEmbedingUitlsOpBuilder()
+engram_embedding_utils_op_builder = EngramEmbeddingUtilsOpBuilder()
 op_module = engram_embedding_utils_op_builder.load()
 
-EngramEmbedingUitls = op_module.EngramEmbeddingUtils
+EngramEmbeddingUtils = op_module.EngramEmbeddingUtils
