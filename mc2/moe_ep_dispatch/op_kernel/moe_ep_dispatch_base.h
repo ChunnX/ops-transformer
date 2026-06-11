@@ -38,10 +38,15 @@ __aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2MoeContext *ctx, uint32_t
     return (GM_ADDR)ctx->epHcclBuffer[rankId] + A5_MTE_STATE_WIN_SIZE;
 }
 
+__aicore__ inline GM_ADDR GetStateAddrByRankId(__gm__ Mc2MoeContext *ctx, uint32_t rankId)
+{
+    return (GM_ADDR)ctx->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
+}
+
 __aicore__ inline uint64_t GetCommHandle(__gm__ Mc2MoeContext *ctx, uint32_t localRankId, uint32_t rankId)
 {
     uint32_t index = rankId > localRankId ? rankId - 1 : rankId;
-    return context_->hcommHandle_[index];
+    return ctx->hcommHandle_[index];
 }
 
 #endif  // MOE_EP_DISPATCH_BASE_H
