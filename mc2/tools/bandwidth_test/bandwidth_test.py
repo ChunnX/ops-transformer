@@ -575,6 +575,7 @@ def run_bandwidth_test_npu(
                     prof.step()
     else:
         if not is_perf_mode:
+            model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
             y, receive_cnt = model(**bandwidth_test_kwargs)
         else:
             torch._dynamo.reset()
