@@ -567,7 +567,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsT512Q64K8V8Aic32)
     EXPECT_EQ(tiling.coreGroupNum, 32U);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, Fp8NtdStagingCapacityIsEnforced)
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, Fp8NtdSegmentCapacityIsEnforced)
 {
     ContractTiling tiling;
     auto input = BuildInput(128, 80, 1, 1);
@@ -575,7 +575,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, Fp8NtdStagingCapacityIsEnforced)
     EXPECT_EQ(tiling.tokenTile, 2U);
     EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
     EXPECT_EQ(tiling.tokenTilePerAiv * std::max({tiling.numQHeads, tiling.numKHeads, tiling.numVHeads}),
-        QkvTiling::FP8_NTD_STAGING_ROWS_PER_AIV);
+        QkvTiling::FP8_NTD_SEGMENT_ROWS_PER_AIV);
 
     input = BuildInput(128, 81, 1, 1);
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
@@ -597,7 +597,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, T1024Q16K2V2Aic32KeepsQCopyBlockLenBou
     const uint64_t qCopyBlockLen = tiling.tokenTilePerAiv * input.headDim;
     EXPECT_EQ(qRowsPerAiv, 80U);
     EXPECT_LE(tiling.tokenTilePerAiv * std::max({tiling.numQHeads, tiling.numKHeads, tiling.numVHeads}),
-        QkvTiling::FP8_NTD_STAGING_ROWS_PER_AIV);
+        QkvTiling::FP8_NTD_SEGMENT_ROWS_PER_AIV);
     EXPECT_EQ(qCopyBlockLen, 640U);
 }
 
