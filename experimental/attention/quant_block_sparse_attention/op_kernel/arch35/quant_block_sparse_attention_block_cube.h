@@ -133,7 +133,7 @@ public:
         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                          CVSharedParams<isPa> *sharedParams, AttenMaskInfo *attenMaskInfo,
-                                         __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr);
+                                         __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
         RunInfo &runInfo, ConstInfo &constInfo);
 
@@ -144,8 +144,8 @@ public:
 
 private:
     __aicore__ inline void InitLocalBuffer();
-    __aicore__ inline void InitGmTensor(CVSharedParams<isPa> *sharedParams, __gm__ int64_t *actualSeqQlenAddr,
-        __gm__ int64_t *actualSeqKvlenAddr);
+    __aicore__ inline void InitGmTensor(CVSharedParams<isPa> *sharedParams, __gm__ int32_t *actualSeqQlenAddr,
+        __gm__ int32_t *actualSeqKvlenAddr);
     __aicore__ inline void CalcS1Coord(RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CalcS2Coord(RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void GetKvByTensorList(RunInfo &runInfo, const ConstInfo &constInfo,
@@ -166,11 +166,11 @@ private:
     GlobalTensor<int32_t> blockTableGm; // pageattention需要
     static constexpr GmFormat Q_FORMAT = QuantBlockSparseAttentionCube::GetQueryGmFormat<layout>();
     static constexpr GmFormat KV_FORMAT = QuantBlockSparseAttentionCube::GetKVGmFormat<kvLayout>();
-    FaGmTensor<INPUT_T, Q_FORMAT> queryGm;
-    FaGmTensor<INPUT_T, KV_FORMAT> keyGm;
-    FaGmTensor<INPUT_T, KV_FORMAT> valueGm;
-    FaGmTensor<INPUT_T, KV_FORMAT> keySharedPrefixGm;
-    FaGmTensor<INPUT_T, KV_FORMAT> valueSharedPrefixGm;
+    FaGmTensor<INPUT_T, Q_FORMAT, int32_t> queryGm;
+    FaGmTensor<INPUT_T, KV_FORMAT, int32_t> keyGm;
+    FaGmTensor<INPUT_T, KV_FORMAT, int32_t> valueGm;
+    FaGmTensor<INPUT_T, KV_FORMAT, int32_t> keySharedPrefixGm;
+    FaGmTensor<INPUT_T, KV_FORMAT, int32_t> valueSharedPrefixGm;
     GlobalTensor<float> deScaleQGm;
     GlobalTensor<float> deScaleKGm;
     GlobalTensor<float> deScaleVGm;
@@ -225,7 +225,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(
     __gm__ uint8_t *key, __gm__ uint8_t *value, CVSharedParams<isPa> *sharedParams,
-    AttenMaskInfo *attenMaskInfo, __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr)
+    AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
 {
     if ASCEND_IS_AIC {
         if (sharedParams->fromFused) {
@@ -296,18 +296,18 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isPa> *sharedParams,
-    __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr)
+    __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
 {
     if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
-        GlobalTensor<uint64_t> actualSeqQLen;
-        actualSeqQLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr);
+        GlobalTensor<int32_t> actualSeqQLen;
+        actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqQlenAddr);
         this->queryGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->gSize, sharedParams->dSize,
             actualSeqQLen, sharedParams->actualSeqLengthsSize);
 
     }
     // cube侧 KV地址访存  需要适配算子需求重新实现
-    GlobalTensor<uint64_t> actualSeqKVLen;
-    actualSeqKVLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr);
+    GlobalTensor<int32_t> actualSeqKVLen;
+    actualSeqKVLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqKvlenAddr);
     this->keyGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSize, actualSeqKVLen,
         sharedParams->actualSeqLengthsKVSize);
     this->valueGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeV, actualSeqKVLen,
@@ -651,7 +651,7 @@ public:
         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable) {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                          CVSharedParams<isPa> *sharedParams, AttenMaskInfo *attenMaskInfo,
-                                         __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr) {}
+                                         __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr) {}
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         RunInfo &runInfo, ConstInfo &constInfo) {}
 

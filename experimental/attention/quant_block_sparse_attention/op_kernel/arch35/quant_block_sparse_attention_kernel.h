@@ -122,8 +122,8 @@ public:
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> sparseSeqLenGm;
     GlobalTensor<int32_t> metadataGm;
-    __gm__ int64_t *actualSeqQlenAddr;
-    __gm__ int64_t *actualSeqKvlenAddr;
+    __gm__ int32_t *actualSeqQlenAddr;
+    __gm__ int32_t *actualSeqKvlenAddr;
     int32_t aicIdx;
 
     ConstInfo constInfo;
@@ -200,8 +200,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
     metadataGm.SetGlobalBuffer((__gm__ int32_t *)metadata);
     if constexpr (layout == BSALayout::TND) {
-        actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
-        actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
+        actualSeqQlenAddr = (__gm__ int32_t *)actualSeqLengths;
+        actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengthsKv;
     }
 
     uint64_t singleCoreOffset = 0;
