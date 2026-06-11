@@ -17,7 +17,9 @@
 #define GQMM_TENSOR_API_MX_KERNEL_H
 
 
-#include "blaze/gemm/block/block_mmad_qgmm_mx.h"
+#include <stdio.h>
+
+#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/kernel/kernel_qgmm_mx.h"
 #include "../../grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
@@ -29,67 +31,98 @@ template <class xType, class wType, class biasType, class scaleType, class ptSca
           class wLayout, class yLayout, class l0cType>
 __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
                                             GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
-                                            const GMMQuantParams *gmmBaseParamsIn,
-                                            const QuantBasicApiMMTiling *mmTilingDataIn, AscendC::TPipe *que)
+                                            const GMMQuantParams* gmmBaseParamsIn,
+                                            const QuantBasicApiMMTiling* mmTilingDataIn, AscendC::TPipe* que)
 {
     (void)workspace;
     (void)que;
     if ASCEND_IS_AIV {
         return;
     }
+    if ASCEND_IS_AIC {
+        if (AscendC::GetBlockIdx() == 0) {
+            AscendC::printf(
+                "[zzzlog][gqmm_tensor_api][L42] raw enter x=%p w=%p bias=%p scale=%p groupList=%p perTokenScale=%p "
+                "y=%p workspace=%p gmmBaseParamsIn=%p mmTilingDataIn=%p que=%p\n",
+                x, weight, bias, scale, groupList, perTokenScale, y, workspace, gmmBaseParamsIn, mmTilingDataIn, que);
+        }
+    }
     using AType = xType;
     using BType = wType;
-    using BiasType = biasType;
+    using BiasType = float;
     using YType = yType;
     using LayoutA = xLayout;
     using LayoutB = wLayout;
     using LayoutC = yLayout;
-    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0>;
-    using QgmmBlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC,
-                                                        BiasType, LayoutC>;
-    using BlockEpilogue = Blaze::Gemm::Block::BlockEpilogueEmpty;
-    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
-    using QgmmKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, QgmmBlockMmad, BlockEpilogue, BlockScheduler>;
-    using Params = typename QgmmKernel::Params;
-    using GMMTiling = typename QgmmKernel::GMMTiling;
+    using ProblemShape = Blaze::Gemm::MatmulShape;
+    using BlockMmadPolicy = Blaze::Gemm::MatmulWithScaleMx<0>;
+    using BlockMmad =
+        Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType,
+                                      LayoutC>;
+    using BlockEpilogue = void;
+    using GmmKernel = Blaze::Gemm::Kernel::KernelQGmmMx<ProblemShape, BlockMmad, BlockEpilogue>;
+    using Params = typename GmmKernel::Params;
+    using GMMTiling = typename GmmKernel::GMMTiling;
 
-    GMMTiling gmmParams{static_cast<uint32_t>(gmmBaseParamsIn->groupNum),
-                        static_cast<int64_t>(mmTilingDataIn->m),
-                        static_cast<int64_t>(mmTilingDataIn->n),
-                        static_cast<int64_t>(mmTilingDataIn->k),
-                        static_cast<uint32_t>(mmTilingDataIn->baseM),
-                        static_cast<uint32_t>(mmTilingDataIn->baseN),
-                        static_cast<uint32_t>(mmTilingDataIn->baseK),
-                        static_cast<uint32_t>(mmTilingDataIn->kAL1),
-                        static_cast<uint32_t>(mmTilingDataIn->kBL1),
-                        static_cast<uint32_t>(mmTilingDataIn->scaleKAL1),
-                        static_cast<uint32_t>(mmTilingDataIn->scaleKBL1),
-                        static_cast<uint8_t>(mmTilingDataIn->isBias),
-                        static_cast<uint8_t>(mmTilingDataIn->dbL0C),
-                        static_cast<int8_t>(gmmBaseParamsIn->groupType),
-                        static_cast<uint8_t>(gmmBaseParamsIn->groupListType)};
+    GMMTiling gmmParams{gmmBaseParamsIn->groupNum, mmTilingDataIn->m,          mmTilingDataIn->n,
+                        mmTilingDataIn->k,         mmTilingDataIn->baseM,      mmTilingDataIn->baseN,
+                        mmTilingDataIn->baseK,     mmTilingDataIn->kAL1,       mmTilingDataIn->kBL1,
+                        mmTilingDataIn->scaleKAL1, mmTilingDataIn->scaleKBL1,  mmTilingDataIn->isBias,
+                        mmTilingDataIn->dbL0C,     gmmBaseParamsIn->groupType, gmmBaseParamsIn->groupListType};
+
+    if ASCEND_IS_AIC {
+        if (AscendC::GetBlockIdx() == 0) {
+            AscendC::printf(
+                "[zzzlog][gqmm_tensor_api][L74] enter groupNum=%u m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u "
+                "kAL1=%u kBL1=%u scaleKAL1=%u scaleKBL1=%u isBias=%u dbL0C=%u groupType=%d groupListType=%u "
+                "x=%p w=%p bias=%p scale=%p groupList=%p perTokenScale=%p y=%p\n",
+                gmmParams.groupNum, gmmParams.m, gmmParams.n, gmmParams.k, gmmParams.baseM, gmmParams.baseN,
+                gmmParams.baseK, gmmParams.kAL1, gmmParams.kBL1, gmmParams.scaleKAL1, gmmParams.scaleKBL1,
+                gmmParams.isBias, gmmParams.dbL0C, static_cast<int>(gmmParams.groupType), gmmParams.groupListType, x,
+                weight, bias, scale, groupList, perTokenScale, y);
+        }
+    }
 
     GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AType>(0, x));
-    GM_ADDR bDataAddr = gmmBaseParamsIn->singleW == 1 ?
-                            reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BType>(0, weight)) :
-                            weight;
+    GM_ADDR bDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BType>(0, weight));
     GM_ADDR yDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
-    GM_ADDR biasDataAddr = mmTilingDataIn->isBias == 1 ?
-                               reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias)) :
-                               nullptr;
+    GM_ADDR biasDataAddr =
+        mmTilingDataIn->isBias == 1 ? reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias))
+                                    : nullptr;
     GM_ADDR perTokenScaleDataAddr = perTokenScale;
-    GM_ADDR scaleDataAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale));
+    GM_ADDR scaleDataAddr =
+        scale == nullptr ? nullptr
+                         : reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale));
     GM_ADDR groupListDataAddr = groupList;
 
-    Params params = {{gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},
-                     {aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr},
-                     {},
-                     groupListDataAddr,
-                     gmmParams};
+    if ASCEND_IS_AIC {
+        if (AscendC::GetBlockIdx() == 0) {
+            AscendC::printf(
+                "[zzzlog][gqmm_tensor_api][L101] resolved addr a=%p b=%p y=%p bias=%p scaleA=%p scaleB=%p "
+                "groupList=%p\n",
+                aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr, groupListDataAddr);
+        }
+    }
 
-    QgmmKernel gmm;
+    Params params = {
+        {static_cast<int64_t>(gmmParams.m), static_cast<int64_t>(gmmParams.n), static_cast<int64_t>(gmmParams.k),
+         static_cast<int64_t>(1)},
+        {aDataAddr, bDataAddr, yDataAddr, biasDataAddr, perTokenScaleDataAddr, scaleDataAddr},
+        groupListDataAddr,
+        gmmParams};
+
+    if ASCEND_IS_AIC {
+        if (AscendC::GetBlockIdx() == 0) {
+            AscendC::printf("[zzzlog][gqmm_tensor_api][L111] before gmm(params)\n");
+        }
+    }
+    GmmKernel gmm;
     gmm(params);
+    if ASCEND_IS_AIC {
+        if (AscendC::GetBlockIdx() == 0) {
+            AscendC::printf("[zzzlog][gqmm_tensor_api][L118] after gmm(params)\n");
+        }
+    }
 }
 
 #endif
