@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
  /*!
  * \file decode_update.h
  * \brief
@@ -114,10 +114,11 @@ private:
             this->gmStartOffset = static_cast<uint64_t>(GetBlockIdx()) * tdata->formerLength;
         } else {
             blockLength = tdata->tailLength;
-            this->gmStartOffset = static_cast<uint64_t>(tdata->formerNum) * tdata->formerLength +
-                                  static_cast<uint64_t>(GetBlockIdx() - tdata->formerNum) * tdata->tailLength; // tail block
+            this->gmStartOffset =
+                static_cast<uint64_t>(tdata->formerNum) * tdata->formerLength +
+                static_cast<uint64_t>(GetBlockIdx() - tdata->formerNum) * tdata->tailLength; // tail block
         }
-        
+
         if (sp <= MAX_EFFECTIVE_SP) {
             this->spLoopCount = 1;
             this->spFirstLoop = sp;
@@ -173,7 +174,7 @@ private:
             pipe.InitBuffer(inQueueIn, BUFFER_NUM,
                             tileLength * hDim * spAlloc * sizeof(float) + (spAlloc + NUM1) * NUM16);
         }
-        
+
         pipe.InitBuffer(outQueueOut, BUFFER_NUM, tileLength * hDim * sizeof(float));
         pipe.InitBuffer(outQueueLse, BUFFER_NUM, tileLengthAlig * sizeof(float));
 
@@ -204,9 +205,11 @@ private:
     {
         lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + gmSpIdx)), totalLength);
         if (curLength % ALIGNED_TO_8 == 0) {
-            DataCopy(lseLocal[posIdx * curLengthPad], lseGm[static_cast<uint64_t>(progress) * tileLength + gmStartOffset], curLength);
+            DataCopy(lseLocal[posIdx * curLengthPad],
+                     lseGm[static_cast<uint64_t>(progress) * tileLength + gmStartOffset], curLength);
         } else {
-            DataCopyPad(lseLocal[posIdx * curLengthPad], lseGm[static_cast<uint64_t>(progress) * tileLength + gmStartOffset],
+            DataCopyPad(lseLocal[posIdx * curLengthPad],
+                        lseGm[static_cast<uint64_t>(progress) * tileLength + gmStartOffset],
                         {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * sizeof(lseType)), 0, 0, 0},
                         {true, 0, static_cast<uint8_t>(NUM8 - curLength % NUM8), 0});
         }
@@ -215,7 +218,8 @@ private:
     __aicore__ inline void CopyInOPerSp(LocalTensor<float>& inLocal, LocalTensor<outType>& inLocalFp16,
                                          uint32_t posIdx, uint32_t gmSpIdx, int32_t progress)
     {
-        inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + gmSpIdx)), static_cast<uint64_t>(totalLength) * hDim);
+        inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + gmSpIdx)),
+                             static_cast<uint64_t>(totalLength) * hDim);
         uint32_t inOffset = posIdx * curLength * hDim;
         uint64_t gmOffset = static_cast<uint64_t>(progress) * tileLength * hDim + gmStartOffset * hDim;
         if constexpr (std::is_same<outType, float>::value) {
@@ -244,7 +248,7 @@ private:
         //  按照逻辑队列初始化的buffer数量和每块大小，分配对应大小的内存
         LocalTensor<float> lseLocal = inQueueLse.AllocTensor<float>();
         LocalTensor<float> inLocal = inQueueIn.AllocTensor<float>();
-        
+
         uint32_t curLengthPad = ((curLength + NUM7) / NUM8) * NUM8;
         uint32_t posOffset = (spLoopIdx == 0 && sp > MAX_EFFECTIVE_SP) ? 1 : (spLoopIdx > 0 ? 1 : 0);
         uint32_t gmSpBase = (spLoopIdx == 0) ? 0 : (spFirstLoop + (spLoopIdx - 1) * spNextLoop);
@@ -289,13 +293,13 @@ private:
     {
         LocalTensor<float> lseoutLocal = outQueueLse.DeQue<float>();
         LocalTensor<float> outLocal = outQueueOut.DeQue<float>();
-        
+
         LocalTensor<float> lseAccLocal = lseexpsumBuffer.Get<float>();
         DataCopy(lseAccLocal, lseoutLocal, ((curLength + NUM7) / NUM8) * NUM8);
         PipeBarrier<PIPE_V>();
         DataCopy(outAccLocal, outLocal, curLength * hDim);
         PipeBarrier<PIPE_V>();
-        
+
         outQueueLse.FreeTensor(lseoutLocal);
         outQueueOut.FreeTensor(outLocal);
     }
@@ -305,13 +309,13 @@ private:
         LocalTensor<float> lseAccLocal = lseexpsumBuffer.Get<float>();
         LocalTensor<float> outLocal = outQueueOut.AllocTensor<float>();
         LocalTensor<float> lseoutLocal = outQueueLse.AllocTensor<float>();
-        
+
         uint32_t curLengthPad = ((curLength + NUM7) / NUM8) * NUM8;
         DataCopy(outLocal, outAccLocal, curLength * hDim);
         PipeBarrier<PIPE_V>();
         DataCopy(lseoutLocal, lseAccLocal, curLengthPad);
         PipeBarrier<PIPE_V>();
-        
+
         outQueueOut.EnQue(outLocal);
         outQueueLse.EnQue(lseoutLocal);
     }
@@ -399,13 +403,13 @@ private:
             int64_t tmpTailStart = hDim - tmpTailLength;
             for (uint32_t i = 0; i < effectiveSp; i++) {
                 for (uint32_t k = 0; k < curLength; k++) {
-                    Mul(inLocal[i * curLength * hDim + k * hDim], 
-                                inLocal[i * curLength * hDim + k * hDim], 
+                    Mul(inLocal[i * curLength * hDim + k * hDim],
+                                inLocal[i * curLength * hDim + k * hDim],
                                 lseexpBroadcastLocal[i * curLengthPad * NUM64 + k * NUM64],
                                 NUM64, hDim / NUM64, {1, 1, 1, 8, 8, 0});
                     if (tmpTailLength > 0) {
                         Mul(inLocal[i * curLength * hDim + k * hDim + tmpTailStart],
-                                inLocal[i * curLength * hDim + k * hDim + tmpTailStart], 
+                                inLocal[i * curLength * hDim + k * hDim + tmpTailStart],
                                 lseexpBroadcastLocal[i * curLengthPad * NUM64 + k * NUM64],
                                 tmpTailLength, 1, {1, 1, 1, 8, 8, 0});
                     }
@@ -437,7 +441,8 @@ private:
     {
         LocalTensor<float> outLocal = outQueueOut.DeQue<float>();
         if constexpr (std::is_same<outType, float>::value) { // fp32直接搬运
-            DataCopy(outGm[gmStartOffset * hDim + static_cast<uint64_t>(progress) * tileLength * hDim], outLocal, curLength * hDim);
+            DataCopy(outGm[gmStartOffset * hDim + static_cast<uint64_t>(progress) * tileLength * hDim],
+                     outLocal, curLength * hDim);
         } else if constexpr (std::is_same<outType, bfloat16_t>::value) { // 先转fp32，再搬运
             LocalTensor<outType> outLocal16 = outLocal.template ReinterpretCast<outType>();
             Cast(outLocal16, outLocal, RoundMode::CAST_RINT, curLength * hDim);
@@ -454,7 +459,8 @@ private:
         outQueueOut.FreeTensor(outLocal);
         LocalTensor<float> lseoutLocal = outQueueLse.DeQue<float>();
         if (updateType == 1) {
-            uint64_t lseoutGmStart = gmStartOffset + static_cast<uint64_t>(progress) * tileLength; // lseout无hDim维度，直接按长度偏移
+            uint64_t lseoutGmStart =
+                gmStartOffset + static_cast<uint64_t>(progress) * tileLength; // lseout无hDim维度，直接按长度偏移
             uint32_t validBytes = static_cast<uint32_t>(curLength * sizeof(float));
             DataCopyExtParams copyParams{1, validBytes, 0, 0, 0};
             DataCopyPad(lseoutGm[lseoutGmStart], lseoutLocal, copyParams);
