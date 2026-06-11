@@ -1576,6 +1576,8 @@ constexpr int64_t QUANT_MODE_DYNAMIC = 1LL;
 constexpr int64_t QUANT_MODE_MXFP8_E5M2 = 2LL;
 constexpr int64_t QUANT_MODE_MXFP8_E4M3FN = 3LL;
 constexpr int64_t QUANT_MODE_STATIC = 0LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_E5M2 = 4LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_E4M3FN = 5LL;
 constexpr int64_t QUANT_MODE_HIF8_CAST = 6LL;
 constexpr int64_t QUANT_MODE_HIF8_PERTENSOR = 7LL;
 constexpr int64_t QUANT_MODE_HIF8_PERTOKEN = 8LL;
@@ -1583,6 +1585,8 @@ constexpr int64_t QUANT_MODE_MXFP4_E2M1 = 9LL;
 constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E5M2 = 11LL;
 constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12LL;
 constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15LL;
 constexpr int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
 // arch35可选rowIdxType
 constexpr int64_t ROW_IDX_TYPE_GATHER = 0LL;
@@ -1593,7 +1597,11 @@ const static std::unordered_map<int64_t, ge::DataType> QUANT_DST_TYPE_MAP = {
     {QUANT_MODE_DYNAMIC, ge::DT_INT8},
     {QUANT_MODE_MXFP8_E5M2, ge::DT_FLOAT8_E5M2},
     {QUANT_MODE_MXFP8_E4M3FN, ge::DT_FLOAT8_E4M3FN},
-    {QUANT_MODE_INT4_DYNAMIC, ge::DT_INT4}};
+    {QUANT_MODE_INT4_DYNAMIC, ge::DT_INT4},
+    {QUANT_MODE_FP8_GROUP_E5M2, ge::DT_FLOAT8_E5M2},
+    {QUANT_MODE_FP8_GROUP_E4M3FN, ge::DT_FLOAT8_E4M3FN},
+    {QUANT_MODE_FP8_GROUP_AMAX_E5M2, ge::DT_FLOAT8_E5M2},
+    {QUANT_MODE_FP8_GROUP_AMAX_E4M3FN, ge::DT_FLOAT8_E4M3FN}};
 } // namespace
 
 using ShapeList = std::initializer_list<int64_t>;
@@ -1830,6 +1838,30 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_dynamic_int8_2)
     RunSuccessTestcaseInferDataType(ge::DT_FLOAT, QUANT_MODE_DYNAMIC);
 }
 
+// FP16+FP8 PerGroup E5M2量化
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_fp8_group_e5m2)
+{
+    RunSuccessTestcaseInferDataType(ge::DT_FLOAT16, QUANT_MODE_FP8_GROUP_E5M2);
+}
+
+// BF16+FP8 PerGroup E4M3量化
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_fp8_group_e4m3)
+{
+    RunSuccessTestcaseInferDataType(ge::DT_BF16, QUANT_MODE_FP8_GROUP_E4M3FN);
+}
+
+// FP16+FP8 PerGroup E5M2量化 + amax
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_fp8_group_amax_e5m2)
+{
+    RunSuccessTestcaseInferDataType(ge::DT_FLOAT16, QUANT_MODE_FP8_GROUP_AMAX_E5M2);
+}
+
+// BF16+FP8 PerGroup E4M3量化 + amax
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_fp8_group_amax_e4m3)
+{
+    RunSuccessTestcaseInferDataType(ge::DT_BF16, QUANT_MODE_FP8_GROUP_AMAX_E4M3FN);
+}
+
 // 失败用例：FP32+E5M2量化
 TEST_F(MoeInitRoutingV3, moe_init_routing_v3_inferdatatype_mxquant_5)
 {
@@ -1869,8 +1901,12 @@ ge::DataType GetExpandedXDtype(ge::DataType xDtype, int64_t quantMode)
         case QUANT_MODE_INT4_DYNAMIC:
             return ge::DT_INT4;
         case QUANT_MODE_MXFP8_E5M2:
+        case QUANT_MODE_FP8_GROUP_E5M2:
+        case QUANT_MODE_FP8_GROUP_AMAX_E5M2:
             return ge::DT_FLOAT8_E5M2;
         case QUANT_MODE_MXFP8_E4M3FN:
+        case QUANT_MODE_FP8_GROUP_E4M3FN:
+        case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
             return ge::DT_FLOAT8_E4M3FN;
         case QUANT_MODE_HIF8_CAST:
             return ge::DT_HIFLOAT8;
@@ -2033,6 +2069,42 @@ TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_fp8_perblock_e4m3)
     RunExtendedSuccessInferShape({32, 512}, ge::DT_BF16, {32, 8}, {}, {}, 256, EXPERT_CAPACITY, 256, DROP_PAD_MODE,
                                  EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG, QUANT_MODE_FP8_PERBLOCK_E4M3FN,
                                  {0, 256}, ROW_IDX_TYPE_GATHER, {256, 512}, {256}, {256}, {256, 2, 2});
+}
+
+// FP8 PerGroup E5M2
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_fp8_group_e5m2)
+{
+    RunExtendedSuccessInferShape({32, 1024}, ge::DT_FLOAT16, {32, 8}, {}, {}, 256, EXPERT_CAPACITY, 256,
+                                 DROP_PAD_MODE, EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG,
+                                 QUANT_MODE_FP8_GROUP_E5M2, {0, 256}, ROW_IDX_TYPE_GATHER, {256, 1024}, {256},
+                                 {256}, {256, 8});
+}
+
+// FP8 PerGroup E4M3FN
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_fp8_group_e4m3)
+{
+    RunExtendedSuccessInferShape({32, 513}, ge::DT_BF16, {32, 8}, {}, {}, 256, EXPERT_CAPACITY, 256,
+                                 DROP_PAD_MODE, EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG,
+                                 QUANT_MODE_FP8_GROUP_E4M3FN, {0, 256}, ROW_IDX_TYPE_GATHER, {256, 513}, {256},
+                                 {256}, {256, 5});
+}
+
+// FP8 PerGroup E5M2 with amax clamp
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_fp8_group_amax_e5m2)
+{
+    RunExtendedSuccessInferShape({32, 1024}, ge::DT_FLOAT16, {32, 8}, {}, {}, 256, EXPERT_CAPACITY, 256,
+                                 DROP_PAD_MODE, EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG,
+                                 QUANT_MODE_FP8_GROUP_AMAX_E5M2, {0, 256}, ROW_IDX_TYPE_GATHER, {256, 1024},
+                                 {256}, {256}, {256, 8});
+}
+
+// FP8 PerGroup E4M3FN with amax clamp
+TEST_F(MoeInitRoutingV3, moe_init_routing_v3_infershape_fp8_group_amax_e4m3)
+{
+    RunExtendedSuccessInferShape({32, 513}, ge::DT_BF16, {32, 8}, {}, {}, 256, EXPERT_CAPACITY, 256,
+                                 DROP_PAD_MODE, EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_NUM_FLAG,
+                                 QUANT_MODE_FP8_GROUP_AMAX_E4M3FN, {0, 256}, ROW_IDX_TYPE_GATHER, {256, 513},
+                                 {256}, {256}, {256, 5});
 }
 
 // MXFP4 E2M1

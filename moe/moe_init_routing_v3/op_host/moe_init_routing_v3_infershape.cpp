@@ -51,6 +51,7 @@ static constexpr int64_t MX_QUANT_BLOCK_SIZE = 32LL;
 static constexpr int64_t SCALE_BLOCK_SIZE = 64LL;
 static constexpr int64_t SCALE_THIRD_DIM_SIZE = 2;
 static constexpr int64_t FP8_PERBLOCK_BLOCK_SIZE = 128LL;
+static constexpr int64_t FP8_GROUP_SIZE = 128LL;
 
 enum DropPadMode : int8_t {
     NO_DROP_PAD = 0,
@@ -63,13 +64,17 @@ enum QuantMode : int8_t {
     DYNAMIC_QUANT = 1,
     MXQUANT_FP8_E5M2 = 2,
     MXQUANT_FP8_E4M3FN = 3,
+    FP8_GROUP_E5M2 = 4,
+    FP8_GROUP_E4M3FN = 5,
     HIF8_CAST = 6,
     HIF8_PERTENSOR = 7,
     HIF8_PERTOKEN = 8,
     MXQUANT_FP4_E2M1 = 9,
     FP8_PERBLOCK_E5M2 = 11,
     FP8_PERBLOCK_E4M3FN = 12,
-    INT4_DYNAMIC_QUANT = 13
+    INT4_DYNAMIC_QUANT = 13,
+    FP8_GROUP_AMAX_E5M2 = 14,
+    FP8_GROUP_AMAX_E4M3FN = 15
 };
 
 const std::set<int64_t> validQuantModes = {
@@ -78,13 +83,17 @@ const std::set<int64_t> validQuantModes = {
     QuantMode::DYNAMIC_QUANT,
     QuantMode::MXQUANT_FP8_E5M2,
     QuantMode::MXQUANT_FP8_E4M3FN,
+    QuantMode::FP8_GROUP_E5M2,
+    QuantMode::FP8_GROUP_E4M3FN,
     QuantMode::HIF8_CAST,
     QuantMode::HIF8_PERTENSOR,
     QuantMode::HIF8_PERTOKEN,
     QuantMode::MXQUANT_FP4_E2M1,
     QuantMode::FP8_PERBLOCK_E5M2,
     QuantMode::FP8_PERBLOCK_E4M3FN,
-    QuantMode::INT4_DYNAMIC_QUANT
+    QuantMode::INT4_DYNAMIC_QUANT,
+    QuantMode::FP8_GROUP_AMAX_E5M2,
+    QuantMode::FP8_GROUP_AMAX_E4M3FN
 };
 
 enum ExpertTokenNumType : int8_t {
@@ -273,7 +282,7 @@ static ge::graphStatus GetAndCheckAttrQuantMode(const gert::RuntimeAttrs *attrs,
     quantMode = *quantModePtr;
     if (validQuantModes.count(quantMode) == 0) {
         OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "quant_mode", std::to_string(quantMode),
-                                  "-1, 0, 1, 2, 3, 6, 7, 8, 9, 11, 12 or 13");
+                                  "-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14 or 15");
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context, "End to do GetAndCheckQuantMode.");
@@ -475,10 +484,12 @@ static ge::graphStatus CheckInputScaleShape(const gert::InferShapeContext *conte
     OP_CHECK_IF((nullptr == scaleShape &&
                  (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
                   QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode ||
+                  QuantMode::FP8_GROUP_E5M2 == quantMode || QuantMode::FP8_GROUP_E4M3FN == quantMode ||
                   QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode ||
-                   QuantMode::MXQUANT_FP4_E2M1 == quantMode ||
-                   QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode ||
-                   QuantMode::INT4_DYNAMIC_QUANT == quantMode)),
+                  QuantMode::MXQUANT_FP4_E2M1 == quantMode ||
+                  QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode ||
+                  QuantMode::INT4_DYNAMIC_QUANT == quantMode || QuantMode::FP8_GROUP_AMAX_E5M2 == quantMode ||
+                  QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode)),
                 OP_LOGI(context, "When quant_mode is %ld , scale can be none.", quantMode), return ge::GRAPH_SUCCESS);
 
     if (QuantMode::NON_QUANT == quantMode) {
@@ -774,6 +785,13 @@ static void SetExpandedScaleShape(gert::Shape *expandedScaleShape, const gert::S
         int64_t dim1 = (cols == NEG_ONE) ? NEG_ONE :
                        Ops::Base::CeilAlign<int64_t>(Ops::Base::CeilDiv<int64_t>(cols, MX_QUANT_BLOCK_SIZE), 2LL);
         expandedScaleShape->SetDim(1U, dim1);
+    } else if (QuantMode::FP8_GROUP_E5M2 == quantMode || QuantMode::FP8_GROUP_E4M3FN == quantMode ||
+               QuantMode::FP8_GROUP_AMAX_E5M2 == quantMode ||
+               QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode) {
+        expandedScaleShape->SetDimNum(DIM_TWO);
+        expandedScaleShape->SetDim(0U, outNum);
+        int64_t dim1 = (cols == NEG_ONE) ? NEG_ONE : Ops::Base::CeilDiv<int64_t>(cols, FP8_GROUP_SIZE);
+        expandedScaleShape->SetDim(1U, dim1);
     } else if (QuantMode::HIF8_PERTOKEN == quantMode) {
         expandedScaleShape->SetDimNum(DIM_ONE);
         expandedScaleShape->SetDim(0U, outNum);
@@ -868,7 +886,9 @@ static ge::graphStatus ValidateInputDtype(const gert::InferDataTypeContext *cont
     } else if (QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode
         || QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode
         || QuantMode::HIF8_PERTENSOR == quantMode || QuantMode::MXQUANT_FP4_E2M1 == quantMode ||
-        QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode) {
+        QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode ||
+        QuantMode::FP8_GROUP_E5M2 == quantMode || QuantMode::FP8_GROUP_E4M3FN == quantMode ||
+        QuantMode::FP8_GROUP_AMAX_E5M2 == quantMode || QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode) {
         if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
             OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "xDtype", Ops::Base::ToString(xDtype),
                                       "DT_FLOAT16 or DT_BF16");
@@ -905,6 +925,12 @@ static ge::DataType DetermineOutputDtypes(const gert::InferDataTypeContext *cont
     } else if (QuantMode::MXQUANT_FP8_E4M3FN == quantMode) {
         expandedXDtype = ge::DT_FLOAT8_E4M3FN;
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;
+    } else if (QuantMode::FP8_GROUP_E5M2 == quantMode || QuantMode::FP8_GROUP_AMAX_E5M2 == quantMode) {
+        expandedXDtype = ge::DT_FLOAT8_E5M2;
+        expandedScaleDtype = ge::DT_FLOAT;
+    } else if (QuantMode::FP8_GROUP_E4M3FN == quantMode || QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode) {
+        expandedXDtype = ge::DT_FLOAT8_E4M3FN;
+        expandedScaleDtype = ge::DT_FLOAT;
     } else if (QuantMode::HIF8_CAST == quantMode) {
         expandedXDtype = ge::DT_HIFLOAT8;
     } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
@@ -960,7 +986,9 @@ static void SetExpandedScaleShapeRanges(gert::InferShapeRangeContext *context, i
         size_t dimNum = DIM_ONE;
         if (quantMode == QuantMode::MXQUANT_FP4_E2M1) {
             dimNum = DIM_THREE;
-        } else if (quantMode == QuantMode::MXQUANT_FP8_E5M2 || quantMode == QuantMode::MXQUANT_FP8_E4M3FN) {
+        } else if (quantMode == QuantMode::MXQUANT_FP8_E5M2 || quantMode == QuantMode::MXQUANT_FP8_E4M3FN ||
+                   quantMode == QuantMode::FP8_GROUP_E5M2 || quantMode == QuantMode::FP8_GROUP_E4M3FN ||
+                   quantMode == QuantMode::FP8_GROUP_AMAX_E5M2 || quantMode == QuantMode::FP8_GROUP_AMAX_E4M3FN) {
             dimNum = DIM_TWO;
         } else if (quantMode == QuantMode::NON_QUANT) {
             auto scale = context->GetInputShapeRange(MOE_INIT_ROUTING_V3_INPUT_SCALE);
