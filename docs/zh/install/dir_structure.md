@@ -80,6 +80,17 @@
 │   └── README.md                                       # 项目示例介绍文档
 ├── scripts                                             # 脚本目录，包含自定义算子、Kernel构建相关配置文件
 ├── tests                                               # 项目级测试目录
+├── torch_extension                                     # torch 扩展目录，用于开放 torch 扩展 api
+│   ├── cann_ops_transformer                            # torch 扩展 module 根目录
+│       ├── common                                      # torch 扩展用到的公共能力的目录
+│       ├── doc                                         # 扩展 API 的文档目录
+│       ├── op_builder                                  # op builder 基类
+│       ├── ops                                         # torch 扩展算子 api 目录
+│       │   ├── csrc                                    # 算子 api 的 c++ 文件目录
+│       │   ├── graph_convert                           # 算子 api 适配 torchair 图模式目录
+│       │   ├── ${api_name}.py                          # 算子 api 定义与实现的文件
+│       │   └── __init__.py                             # python module 文件
+│       └── __init__.py                                 # python module 文件
 ├── CMakeLists.txt                                      # 项目工程cmakelist入口
 ├── CONTRIBUTING.md                                     # 项目贡献指南文件
 ├── LICENSE                                             # 项目开源许可证信息
