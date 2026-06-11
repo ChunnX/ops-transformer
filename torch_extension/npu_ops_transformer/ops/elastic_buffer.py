@@ -106,23 +106,28 @@ class MoEElasticBuffer:
         cached_dst_slot = handle.dst_buffer_slot_idx if cached else None
         ep_world_size = self.ep_world_size.value
 
+        hp_addr = 0
+        if do_cpu_sync and not cached:
+            if self._host_pinned_counter is None:
+                from npu_ops_transformer.ops.host_pinned_counter import HostPinnedCounter
+                self._host_pinned_counter = HostPinnedCounter()
+            self._host_pinned_counter.reset()
+            hp_addr = self._host_pinned_counter.device_ptr()
+
         num_recv_per_rank_hp, num_recv_per_expert_hp, dst_slot, recv_src_meta_internal = \
             _op.npu_moe_ep_dispatch(
                 self.context, x, topk_idx, topk_weights, cached_dst_slot,
                 ep_world_size, self.rank_id, ne, nm, self.ccl_buffer_size.value,
-                expert_alignment=ea, do_cpu_sync=do_cpu_sync
-                # do_cpu_sync=do_cpu_sync and not cached,
+                expert_alignment=ea, do_cpu_sync=do_cpu_sync,
+                host_pinned_counter_addr=hp_addr
             )
 
         if cached:
             actual_a = handle.recv_src_metadata.shape[0]
-        # elif do_cpu_sync:
-        #     if self._host_pinned_counter is None:
-        #         from mc2.common.op_kernel.host_pinned_counter import HostPinnedCounter
-        #         self._host_pinned_counter = HostPinnedCounter()
-        #     actual_a = self._host_pinned_counter.SpinWait(num_recv_per_rank_hp)
+        elif do_cpu_sync:
+            actual_a = self._host_pinned_counter.spin_wait()
         else:
-            actual_a = ep_world_size * nm
+            actual_a = ep_world_size * nm * min(self.num_topk, ne // ep_world_size)
 
         recv_x = torch.empty((actual_a, self.hidden), dtype=torch.bfloat16, device=x.device)
         recv_topk_idx = torch.empty((actual_a, self.num_topk), dtype=torch.int32, device=x.device)
