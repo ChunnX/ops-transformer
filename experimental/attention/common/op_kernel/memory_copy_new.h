@@ -15,8 +15,8 @@
    PARope
  * \brief
  */
-#ifndef MEMMORY_COPY_H
-#define MEMMORY_COPY_H
+#ifndef MEMMORY_COPY_NEW_H
+#define MEMMORY_COPY_NEW_H
 #include "fia_public_define.h"
 #include "memcopy/gm_layout.h"
 #include "memcopy/parser.h"

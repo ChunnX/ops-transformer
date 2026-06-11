@@ -546,7 +546,9 @@ public:
             }
         }
 
-        if (localSkip > 0U && localSkip < s2RealSize) {
+        if (localSkip >= s2RealSize) {
+ 	        InitKeyL1HeadRegion(dstTensor, AttentionCommon::Align(s2RealSize, 32U), s2RealSize, constInfo.dSize);
+ 	    } else if (localSkip > 0U) {
             uint32_t validSize = s2RealSize - localSkip;
             uint32_t fullPadK = (s2RealSize + 31) >> 5 << 5;
             InitKeyL1HeadRegion(dstTensor, localSkip, s2RealSize, constInfo.dSize); // 清零
@@ -561,13 +563,14 @@ public:
         const uint32_t skipRows, const uint32_t totalRows, const uint32_t curD)
     {
         uint32_t curPadK = (totalRows + 31) >> 5 << 5;
-        if (skipRows == 0U || skipRows >= curPadK) {
+        if (skipRows == 0U) {
             return;
         }
+        uint32_t initRows = AttentionCommon::Min(skipRows, curPadK);
         InitConstValueParams<half> initParams;
         initParams.repeatTimes = AttentionCommon::Align(curD, 16U) / 32U;
-        initParams.blockNum = skipRows;
-        initParams.dstGap = curPadK - skipRows;
+        initParams.blockNum = initRows;
+        initParams.dstGap = curPadK - initRows;
         initParams.initValue = 0;
         InitConstValue(keyL1.template ReinterpretCast<half>()[0], initParams);
     }
@@ -576,13 +579,14 @@ public:
         const uint32_t skipRows, const uint32_t totalRows, const uint32_t curN)
     {
         uint32_t curPadK = (totalRows + 63) >> 6 << 6;
-        if (skipRows == 0U || skipRows >= curPadK) {
+        if (skipRows == 0U) {
             return;
         }
+        uint32_t initRows = AttentionCommon::Min(skipRows, curPadK);
         InitConstValueParams<half> initParams;
         initParams.repeatTimes = AttentionCommon::Align(curN, 16U) / 32U;
-        initParams.blockNum = skipRows;
-        initParams.dstGap = curPadK - skipRows;
+        initParams.blockNum = initRows;
+        initParams.dstGap = curPadK - initRows;
         initParams.initValue = 0;
         InitConstValue(valueL1.template ReinterpretCast<half>()[0], initParams);
     }
@@ -1102,7 +1106,9 @@ public:
                     vLocalSkip = AttentionCommon::Min(runInfo.bandHeadCopySkip - vSubLoopBase, realK);
                 }
             }
-            if (vLocalSkip > 0U && vLocalSkip < realK) {
+            if (vLocalSkip >= realK) {
+ 	            InitValueL1HeadRegion(mm2BTensor, AttentionCommon::Align(realK, 64U), realK, constInfo.dSizeV);
+ 	        } else if (vLocalSkip > 0U) {
                 uint32_t vValidSize = realK - vLocalSkip;
                 uint32_t fullPadK = (realK + 63) >> 6 << 6;
                 InitValueL1HeadRegion(mm2BTensor, vLocalSkip, realK, constInfo.dSizeV);
