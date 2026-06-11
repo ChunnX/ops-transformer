@@ -87,6 +87,8 @@ public:
         }
     };
 public:
+    inline SectionStreamKImpl();
+    inline ~SectionStreamKImpl() = default;
     inline std::vector<SectionStreamKImplResult> Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseInfo);
     inline uint32_t SetParam(const SectionStreamKParam &param);
 private:
@@ -223,6 +225,11 @@ private:
 private:
     SectionStreamKParam m_param {};
 };
+
+inline SectionStreamKImpl::SectionStreamKImpl()
+{
+    m_param.costFunc = CalcCost;
+}
 
 inline std::vector<SectionStreamKImpl::SectionStreamKImplResult>
 SectionStreamKImpl::Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseInfo)

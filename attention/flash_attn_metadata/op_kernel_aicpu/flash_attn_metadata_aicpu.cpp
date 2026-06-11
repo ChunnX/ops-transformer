@@ -138,8 +138,9 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     // Device info
     deviceInfo.aicCoreMaxNum = aicCoreNum_;
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
-    deviceInfo.aicCoreMinNum = aicCoreNum_;
     deviceInfo.aicCoreMinNum = 1;
+    deviceInfo.aivCoreMaxNum = aivCoreNum_;
+
     // baseInfo
     // actual seq size
     baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
@@ -221,19 +222,19 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     } else {
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
-    uint32_t qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BNSD;
+    uint32_t qLayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BNSD;
     if (baseInfo.layoutQuery == Layout::BSH || baseInfo.layoutQuery == Layout::BSND) {
-        qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BSH;
+        qLayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BSH;
     } else if (baseInfo.layoutQuery == Layout::TND) {
-        qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_TND;
+        qLayout = optiling::flash_attn::fa_tiling_util::LAYOUT_TND;
     }
     optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize,
-        baseInfo.kvSeqSize, baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken, qlayout,
+        baseInfo.kvSeqSize, baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken, qLayout,
         mBaseSize_, s2BaseSize_);
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_); // CV_Ratio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 72U * 1024U * 1024U;     // 72: 48MB, 1024: Mb2Kb, 1024:Kb2Mb
+    param.l2Byte = 72U * 1024U * 1024U;     // 72: 72MB, 1024: Mb2Kb, 1024:Kb2Mb
     param.fdTolerance = 3;                  // 3: least block
     param.fdOn = true;
     return true;
