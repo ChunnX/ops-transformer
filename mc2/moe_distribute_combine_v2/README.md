@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
+- 接口功能：进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。不支持TP域通信。
 
     相较于MoeDistributeCombine算子，该算子变更如下：
     -   输入了更详细的token信息辅助`MoeDistributeCombineV2`高效地进行全卡同步，因此原算子中shape为(`BS` * `K`,)的`expandIdx`入参替换为shape为(`A` * 128,)的`assistInfoForCombine`参数；
@@ -22,18 +22,8 @@
     详细说明请参考以下参数说明。
 - 计算公式：
 
-    - 不存在TP域通信时：
-
     $$
     ataOut = AllToAllV(expandX)\\
-    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-    $$
-
-    - 存在TP域通信时：
-
-    $$
-    rsOut = ReduceScatterV(expandX)\\
-    ataOut = AllToAllV(rsOut)\\
     xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
     $$
 
@@ -96,7 +86,7 @@
   <tr>
    <td>tpSendCountsOptional</td>
    <td>可选输入</td>
-   <td>从TP通信域各卡接收的token数，对应MoeDistributeDispatchV2中的tpRecvCounts输出，有TP域通信需传参，无TP域通信传空指针。</td>
+   <td>预留参数，TP域通信不再支持，传空指针即可。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
@@ -215,14 +205,14 @@
   <tr>
    <td>groupTp</td>
    <td>可选属性</td>
-   <td><li>TP通信域名称（数据并行通信域）。</li><li>默认值为""。</li></td>
+   <td><li>TP通信域名称（数据并行通信域），预留参数，TP域通信不再支持。</li><li>默认值为""。</li></td>
    <td>STRING</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>tpWorldSize</td>
    <td>可选属性</td>
-   <td><li>TP通信域大小。</li><li>默认值为0。</li></td>
+   <td><li>TP通信域大小，预留参数，TP域通信不再支持，仅允许0或1。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -403,9 +393,9 @@
     - 参数约束：
         - `epWorldSize`：取值支持8、16、32、64、128、144、256、288。
         - `moeExpertNum`：取值范围(0, 1024]。
-        - `groupTp`：字符串长度范围为[1, 128)，不能和`groupEp`相同。
-        - `tpWorldSize`：取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-        - `tpRankId`：取值范围[0, 1]，同一个TP通信域中各卡的`tpRankId`不重复。无TP域通信时，传0即可。
+        - `groupTp`：预留参数，TP域通信不再支持。
+        - `tpWorldSize`：预留参数，TP域通信不再支持，仅允许0或1。
+        - `tpRankId`：预留参数，TP域通信不再支持，传0即可。
         - `sharedExpertNum`：当前取值范围[0, 4]。
         - `commQuantMode`：int8量化当且仅当`tpWorldSize` < 2时可开启。
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
