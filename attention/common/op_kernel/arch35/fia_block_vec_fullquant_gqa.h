@@ -959,7 +959,7 @@ public:
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
                                               constInfo.s1Size, constInfo.dSizeV, actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize, false, 0);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout, USE_DN>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
@@ -968,7 +968,7 @@ public:
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
                                               constInfo.s1Size, constInfo.dSizeV, actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize, false, 0);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout, USE_DN>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
@@ -976,7 +976,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV,
                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout, USE_DN>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
@@ -984,7 +984,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV,
                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout, USE_DN>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
     }
@@ -1218,15 +1218,9 @@ public:
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         isSkipMask = IsSkipAttentionmask(maskInfo);
-        if (isSkipMask) {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSize);
-            return;
-        }
 
         if (!isSkipMask) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt, maskInfo);
-        } else {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSize);
         }
     }
 
