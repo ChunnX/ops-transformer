@@ -1,0 +1,43 @@
+%% Manifold-Constrained HC (mHC) — Operator View
+%% 在 VS Code (Mermaid 插件) / https://mermaid.live 中打开编辑
+
+flowchart TB
+    subgraph mHC["(c) Manifold-Constrained HC (mHC) — Operator View"]
+        direction TB
+
+        x_l["x<sub>l</sub>"]
+
+        H_pre["H<sub>pre</sub>"]
+        H_post["H<sub>post</sub>"]
+        H_res["H<sub>res</sub>"]
+
+        mhcPre["mhcPreSinkhorn<br/>x @ H<sub>pre</sub> → h<sub>l</sub><sup>in</sup>"]
+        h_in["h<sub>l</sub><sup>in</sup>"]
+        layerF["Layer ℱ"]
+        h_out["h<sub>l</sub><sup>out</sup>"]
+        mhcPost["mhcPost<br/>H<sub>post</sub> @ h<sub>l</sub><sup>out</sup> + H<sub>res</sub> @ x"]
+        x_l1["x<sub>l+1</sub>"]
+
+        x_l -.->|"由 x 生成"| H_pre
+        x_l -.-> H_post
+        x_l -.-> H_res
+
+        x_l --> mhcPre
+        H_pre --> mhcPre
+        mhcPre --> h_in --> layerF --> h_out --> mhcPost
+
+        H_post --> mhcPost
+        H_res --> mhcPost
+        x_l --> mhcPost
+        mhcPost --> x_l1
+    end
+
+    classDef matrix fill:#fff2cc,stroke:#d6b656,color:#000
+    classDef op fill:#d5e8d4,stroke:#82b366,color:#000
+    classDef layer fill:#dae8fc,stroke:#6c8ebf,color:#000
+    classDef tensor fill:#e0e0e0,stroke:#666,color:#000
+
+    class H_pre,H_post,H_res matrix
+    class mhcPre,mhcPost op
+    class layerF layer
+    class x_l,h_in,h_out,x_l1 tensor

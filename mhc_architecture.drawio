@@ -1,0 +1,167 @@
+<mxfile host="65bd71144e">
+    <diagram id="mhc" name="Manifold-Constrained HC">
+        <mxGraphModel dx="988" dy="720" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="920" pageHeight="900" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="(c) Manifold-Constrained HC (mHC) — Operator View" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#0D47A1;" parent="1" vertex="1">
+                    <mxGeometry x="190" y="10" width="540" height="28" as="geometry"/>
+                </mxCell>
+                <mxCell id="container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#37474F;strokeWidth=2;arcSize=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="40" width="820" height="820" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_post" value="&lt;b&gt;④ mhcPost 阶段&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 4;fillColor=#F3E5F5;strokeColor=#7B1FA2;strokeWidth=2.5;verticalAlign=top;align=left;spacingTop=8;spacingLeft=12;fontSize=12;fontColor=#4A148C;arcSize=6;opacity=80;" parent="1" vertex="1">
+                    <mxGeometry x="70" y="48" width="780" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_core" value="&lt;b&gt;③ Layer ℱ 核心计算&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 4;fillColor=#E3F2FD;strokeColor=#1565C0;strokeWidth=2.5;verticalAlign=top;align=left;spacingTop=8;spacingLeft=12;fontSize=12;fontColor=#0D47A1;arcSize=6;opacity=80;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="268" width="300" height="290" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_pre" value="&lt;b&gt;② mhcPreSinkhorn 阶段&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 4;fillColor=#E8F5E9;strokeColor=#2E7D32;strokeWidth=2.5;verticalAlign=top;align=left;spacingTop=8;spacingLeft=12;fontSize=12;fontColor=#1B5E20;arcSize=6;opacity=80;" parent="1" vertex="1">
+                    <mxGeometry x="280" y="578" width="360" height="95" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_hgen" value="&lt;b&gt;① 权重生成阶段&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 4;fillColor=#FFF3E0;strokeColor=#FF8F00;strokeWidth=2.5;verticalAlign=top;align=left;spacingTop=8;spacingLeft=12;fontSize=12;fontColor=#E65100;arcSize=6;opacity=80;" parent="1" vertex="1">
+                    <mxGeometry x="170" y="688" width="580" height="155" as="geometry"/>
+                </mxCell>
+                <mxCell id="xlp1" value="x&lt;sub&gt;l+1&lt;/sub&gt;" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#BBDEFB;strokeColor=#1565C0;strokeWidth=2;fontSize=15;fontStyle=1;fontColor=#0D47A1;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="58" width="160" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="add" value="⊕" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fillColor=#FFFFFF;strokeColor=#7B1FA2;strokeWidth=2.5;fontSize=22;fontStyle=1;fontColor=#4A148C;" vertex="1" parent="1">
+                    <mxGeometry x="430" y="118" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="postMain" value="H&lt;sub&gt;post&lt;/sub&gt; @ h&lt;sub&gt;l&lt;/sub&gt;&lt;sup&gt;out&lt;/sup&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontSize=13;fontStyle=1;fontColor=#1B5E20;" vertex="1" parent="1">
+                    <mxGeometry x="110" y="125" width="210" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="postRes" value="H&lt;sub&gt;res&lt;/sub&gt; @ x&lt;sub&gt;l&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFCDD2;strokeColor=#C62828;strokeWidth=2;fontSize=13;fontStyle=1;fontColor=#B71C1C;" vertex="1" parent="1">
+                    <mxGeometry x="600" y="125" width="210" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="postMainLabel" value="主路" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontColor=#2E7D32;fontStyle=2" vertex="1" parent="1">
+                    <mxGeometry x="175" y="178" width="80" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="postResLabel" value="残差路" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=10;fontColor=#C62828;fontStyle=2" vertex="1" parent="1">
+                    <mxGeometry x="665" y="178" width="80" height="18" as="geometry"/>
+                </mxCell>
+                <mxCell id="hout" value="h&lt;sub&gt;l&lt;/sub&gt;&lt;sup&gt;out&lt;/sup&gt;" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#BBDEFB;strokeColor=#1565C0;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#0D47A1;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="285" width="160" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="layerF" value="Layer ℱ" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#90CAF9;strokeColor=#1565C0;strokeWidth=2;fontSize=15;fontStyle=1;fontColor=#0D47A1;" parent="1" vertex="1">
+                    <mxGeometry x="370" y="385" width="180" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="hin" value="h&lt;sub&gt;l&lt;/sub&gt;&lt;sup&gt;in&lt;/sup&gt;" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#BBDEFB;strokeColor=#1565C0;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#0D47A1;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="485" width="160" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="mhcPreSinkhorn" value="x&lt;sub&gt;l&lt;/sub&gt; @ H&lt;sub&gt;pre&lt;/sub&gt; → h&lt;sub&gt;l&lt;/sub&gt;&lt;sup&gt;in&lt;/sup&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#2E7D32;strokeWidth=2;fontSize=13;fontStyle=1;fontColor=#1B5E20;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="595" width="280" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="Hres" value="H&lt;sub&gt;res&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE082;strokeColor=#FF8F00;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#E65100;" parent="1" vertex="1">
+                    <mxGeometry x="655" y="720" width="100" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="Hpre" value="H&lt;sub&gt;pre&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE082;strokeColor=#FF8F00;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#E65100;" parent="1" vertex="1">
+                    <mxGeometry x="410" y="720" width="100" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="Hpost" value="H&lt;sub&gt;post&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE082;strokeColor=#FF8F00;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#E65100;" parent="1" vertex="1">
+                    <mxGeometry x="165" y="720" width="100" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="xl" value="x&lt;sub&gt;l&lt;/sub&gt;" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#BBDEFB;strokeColor=#1565C0;strokeWidth=2;fontSize=15;fontStyle=1;fontColor=#0D47A1;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="790" width="160" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_pre_hin" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;strokeColor=#1565C0;endArrow=block;endFill=1;" parent="1" source="mhcPreSinkhorn" target="hin" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_hin_layer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;strokeColor=#1565C0;endArrow=block;endFill=1;" parent="1" source="hin" target="layerF" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_layer_hout" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;strokeColor=#1565C0;endArrow=block;endFill=1;" parent="1" source="layerF" target="hout" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_add_xlp1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;strokeColor=#1565C0;endArrow=block;endFill=1;" edge="1" parent="1" source="add" target="xlp1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_x_Hpre" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#FF6F00;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;" parent="1" source="xl" target="Hpre" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="460" y="770"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_x_Hpost" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#FF6F00;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;" parent="1" source="xl" target="Hpost" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="215" y="815"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_x_Hres" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#FF6F00;dashed=1;dashPattern=8 4;endArrow=block;endFill=1;" parent="1" source="xl" target="Hres" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="705" y="815"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_Hpre_pre" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#FF8F00;endArrow=block;endFill=1;" parent="1" source="Hpre" target="mhcPreSinkhorn" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="460" y="680"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_x_pre" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#2E7D32;endArrow=block;endFill=1;" parent="1" source="xl" target="mhcPreSinkhorn" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="340" y="815"/>
+                            <mxPoint x="340" y="628"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_hout_main" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#2E7D32;endArrow=block;endFill=1;" edge="1" parent="1" source="hout" target="postMain">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="215" y="310"/>
+                            <mxPoint x="215" y="175"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_Hpost_main" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#FF8F00;endArrow=block;endFill=1;" edge="1" parent="1" source="Hpost" target="postMain">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="215" y="680"/>
+                            <mxPoint x="215" y="175"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_main_add" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#2E7D32;endArrow=block;endFill=1;" edge="1" parent="1" source="postMain" target="add">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="320" y="148"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_x_res" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#C62828;endArrow=block;endFill=1;" edge="1" parent="1" source="xl" target="postRes">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="705" y="815"/>
+                            <mxPoint x="705" y="150"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_Hres_res" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#FF8F00;endArrow=block;endFill=1;" edge="1" parent="1" source="Hres" target="postRes">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="705" y="680"/>
+                            <mxPoint x="705" y="175"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_res_add" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2.5;strokeColor=#C62828;endArrow=block;endFill=1;" edge="1" parent="1" source="postRes" target="add">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="600" y="148"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="legend" value="&lt;b&gt;走线分区&lt;/b&gt;&#10;左道 x=215：H&lt;sub&gt;post&lt;/sub&gt; → 主路&#10;中道 x=460：H&lt;sub&gt;pre&lt;/sub&gt; → Pre&#10;右道 x=705：H&lt;sub&gt;res&lt;/sub&gt; → 残差" style="text;html=1;strokeColor=#37474F;strokeWidth=1;fillColor=#FFFFFF;align=left;verticalAlign=top;fontSize=11;fontColor=#212121;spacingLeft=8;spacingTop=6;" parent="1" vertex="1">
+                    <mxGeometry x="680" y="688" width="180" height="70" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

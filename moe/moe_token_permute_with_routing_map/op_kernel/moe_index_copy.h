@@ -274,9 +274,10 @@ __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::Process()
             if constexpr (ifNumOutTokens == true) {
                 for (int64_t tokenIdx = 0; tokenIdx < onceIndicesTokenNums; tokenIdx++) {
                     int64_t indicesBase = tokenIdx * topK;
-                    CopyInPerToken(tokenIdx * cols, indicesBase);
+                    CopyInPerToken(outoffset + tokenIdx * cols, indicesBase);
                     CopyOutPerToken(indicesBase);
                 }
+                outoffset += onceIndicesTokenNums * cols;
             } else {
                 for (int64_t innerLoop = 0; innerLoop < onceIndicesTokenMoveTimes; innerLoop++) {
                     CopyIn(outoffset, tokenCopyParams, padParams);
@@ -294,7 +295,7 @@ __aicore__ inline void MoeindexCopyOp<T, ifNumOutTokens>::Process()
         if constexpr (ifNumOutTokens == true) {
             for (int64_t tokenIdx = 0; tokenIdx < CoreLastTokenNums; tokenIdx++) {
                 int64_t indicesBase = tokenIdx * topK;
-                CopyInPerToken(tokenIdx * cols, indicesBase);
+                CopyInPerToken(outoffset + tokenIdx * cols, indicesBase);
                 CopyOutPerToken(indicesBase);
             }
         } else {
