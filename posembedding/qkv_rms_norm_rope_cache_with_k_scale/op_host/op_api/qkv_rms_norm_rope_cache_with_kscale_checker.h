@@ -291,21 +291,21 @@ private:
         int64_t nv = 0;
         CHECK_RET(ParseHeadNums(nq, nk, nv) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-        // qkv shape check: [T, Nq+Nk+Nv, D]
+        // qkv shape check: [Nq+Nk+Nv, T, D]
         const auto &qkvShape = params_.qkv->GetViewShape();
         uint64_t qkvDimNum = qkvShape.GetDimNum();
         if (unlikely(qkvDimNum != 3)) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "qkv",
-                std::to_string(qkvDimNum), "qkv must be a 3D tensor [T, Nq+Nk+Nv, D]");
+                std::to_string(qkvDimNum), "qkv must be a 3D tensor [Nq+Nk+Nv, T, D]");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        const int64_t t = qkvShape.GetDim(0);
-        const int64_t hqkv = qkvShape.GetDim(1);
+        const int64_t hqkv = qkvShape.GetDim(0);
+        const int64_t t = qkvShape.GetDim(1);
         const int64_t d = qkvShape.GetDim(2);
         if (unlikely(hqkv != nq + nk + nv)) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "qkv and headNums",
-                "qkv.shape[1]=" + std::to_string(hqkv) + ", Nq+Nk+Nv=" + std::to_string(nq + nk + nv),
-                "qkv shape[1] must equal Nq+Nk+Nv from headNums");
+                "qkv.shape[0]=" + std::to_string(hqkv) + ", Nq+Nk+Nv=" + std::to_string(nq + nk + nv),
+                "qkv shape[0] must equal Nq+Nk+Nv from headNums");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(d != HEAD_DIM_FAST_PATH)) {
@@ -416,11 +416,11 @@ private:
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-        // Output shape check: qOut [T, Nq, D], qScale [T, Nq]
-        if (!IsShape(params_.qOut, {t, nq, d}) || !IsShape(params_.qScale, {t, nq})) {
+        // Output shape check: qOut [Nq, T, D], qScale [Nq, T]
+        if (!IsShape(params_.qOut, {nq, t, d}) || !IsShape(params_.qScale, {nq, t})) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "qOut, qScale",
                 ShapeToString(params_.qOut) + ", " + ShapeToString(params_.qScale),
-                "qOut must have shape [T, Nq, D], qScale must have shape [T, Nq]");
+                "qOut must have shape [Nq, T, D], qScale must have shape [Nq, T]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
