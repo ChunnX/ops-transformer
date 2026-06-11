@@ -402,7 +402,7 @@ struct Gmm1ArgsA8W4 {
 };
 
 struct Gmm2ArgsA8W4 {
-    uint32_t groupIdx;
+    uint32_t groupCnt;
     uint16_t& pingpongIdx;
 };
 
@@ -645,7 +645,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp& swigluQuantOp, Scheduler& 
 
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void AivGmm2PostA8W4(Scheduler& scheduler, TensorC& l0cOutGm, const Params& params,
-    uint32_t groupIdx, const Config& config, uint32_t startLoopIdx, uint32_t tileNum)
+    uint32_t groupCnt, const Config& config, uint32_t startLoopIdx, uint32_t tileNum)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -664,18 +664,14 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler& scheduler, TensorC& l0cOutGm, 
         auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
         AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
 
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
         AscendC::GlobalTensor<int32_t> tripleGm;
         int32_t lenTile = Get<M_VALUE>(actualShape);
         LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECCALC, 200 * 1024, lenTile * 8);
         tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
-            (groupIdx + mLoc) * 32));
+            (groupCnt + mLoc) * 32));
         AscendC::DataCopy(tripleTensor, tripleGm, lenTile * 8);
         MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
             mLoc, nLoc, config.n, tripleTensor, l0cOutUbGMM2, actualShape, params);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     }
@@ -715,7 +711,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
                     args.swigluQuantOp, workSet.scheduler, workSet.l0cOutGm, config, startLoopIdx, tileNum);
             } else {
                 AivGmm2PostA8W4<ElementC, MakeLayoutC>(
-                    workSet.scheduler, workSet.l0cOutGm, params, args.groupIdx, config,
+                    workSet.scheduler, workSet.l0cOutGm, params, args.groupCnt, config,
                     startLoopIdx, tileNum);
             }
         }
@@ -797,11 +793,11 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2CombineA8W4(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupCnt,
     uint16_t& pingpongIdx)
 {
     (void)vecSetSyncCom2;
-    Detail::Gmm2ArgsA8W4 args{groupIdx, pingpongIdx};
+    Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx};
     Detail::GroupMatmulA8W4Impl<Detail::Gmm2PolicyA8W4, ElementA, ElementB, ElementC, ElementMxScaleA,
         ElementMxScaleB>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
