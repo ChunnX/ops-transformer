@@ -25,9 +25,9 @@
 class HostPinnedCounter {
 public:
 HostPinnedCounter() {
-        ACL_CHECK(aclrtMallocHost(&hostPtr_, sizeof(int32_t),
+        ACL_CHECK(aclrtMallocHost(&hostPtr_, 8 * sizeof(int32_t),
                                   ACL_HOST_MEM_MAP_DEVICE));
-        ACL_CHECK(aclrtHostRegisterV2(hostPtr_, sizeof(int32_t), ACL_HOST_REG_MAPPED));
+        ACL_CHECK(aclrtHostRegisterV2(hostPtr_, 8 * sizeof(int32_t), ACL_HOST_REG_MAPPED));
         ACL_CHECK(aclrtHostGetDevicePointer(hostPtr_, &devPtr_, 0));
         Reset();
     }
