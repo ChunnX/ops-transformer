@@ -39,73 +39,14 @@ extern "C" {
 
 namespace {
 
-static bool IsFirstTwoDimsTranspose(const aclTensor *tensor)
+static aclnnStatus Contiguous(const aclTensor *&qkv, const aclTensor *&qGamma, const aclTensor *&kGamma,
+                              const aclTensor *&cosSin, const aclTensor *&slotMapping, const aclTensor *&cuSeqLen,
+                              const aclTensor *&optionalQRotation, const aclTensor *&optionalKRotation,
+                              const aclTensor *&optionalVScale, aclOpExecutor *executor)
 {
-    if (tensor == nullptr || tensor->GetViewShape().GetDimNum() != 3) {
-        return false;
-    }
-    const auto &shape = tensor->GetViewShape();
-    const auto &strides = tensor->GetViewStrides();
-    // For a 3D tensor with view shape [dim0, dim1, dim2]:
-    // Contiguous strides: [dim1*dim2, dim2, 1]
-    // Transposed (0,1) strides: [dim2, dim0*dim2, 1]
-    // Detect transposition by checking if stride[0] == shape[2] and stride[1] == shape[0]*shape[2]
-    if (strides[2] == 1 && strides[0] == shape[2] &&
-        strides[1] == shape[0] * shape[2]) {
-        if (shape[0] == 1 && shape[1] == 1) {
-            return false;
-        }
-        return true;
-    }
-    return false;
-}
-
-static op::Shape SwapFirstTwoDims(const op::Shape &tensorShape)
-{
-    op::Shape swappedShape = tensorShape;
-    if (tensorShape.GetDimNum() >= 2) {
-        int64_t firstDim = tensorShape.GetDim(0);
-        swappedShape.SetDim(0, tensorShape.GetDim(1));
-        swappedShape.SetDim(1, firstDim);
-    }
-    return swappedShape;
-}
-
-static aclnnStatus TransposeQkvTensorProcess(const aclTensor *&qkv, aclOpExecutor *executor)
-{
-    if (qkv == nullptr) {
-        OP_LOGD("QkvRmsNormRopeCacheWithKScale qkv is nullptr, skip transpose process.");
-        return ACLNN_SUCCESS;
-    }
-    if (qkv->GetViewShape().GetDimNum() != 3) {
-        OP_LOGD("QkvRmsNormRopeCacheWithKScale qkv is not 3D, skip transpose process.");
-        qkv = l0op::Contiguous(qkv, executor);
-        CHECK_RET(qkv != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        return ACLNN_SUCCESS;
-    }
-
-    auto transposeFlag = IsFirstTwoDimsTranspose(qkv);
-    if (transposeFlag) {
-        qkv = executor->CreateView(qkv, SwapFirstTwoDims(qkv->GetViewShape()),
-                                    qkv->GetViewOffset());
-        OP_LOGD("QkvRmsNormRopeCacheWithKScale qkv is transposed, created transposed view: "
-                "Shape=%s, Stride=%s",
-                op::ToString(qkv->GetViewShape()).GetString(),
-                op::ToString(qkv->GetViewStrides()).GetString());
-    } else {
-        qkv = l0op::Contiguous(qkv, executor);
-    }
+    qkv = l0op::Contiguous(qkv, executor);
     CHECK_RET(qkv != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    return ACLNN_SUCCESS;
-}
 
-static aclnnStatus ContiguousOtherInputs(const aclTensor *&qGamma, const aclTensor *&kGamma,
-                                         const aclTensor *&cosSin, const aclTensor *&slotMapping,
-                                         const aclTensor *&cuSeqLen,
-                                         const aclTensor *&optionalQRotation,
-                                         const aclTensor *&optionalKRotation,
-                                         const aclTensor *&optionalVScale, aclOpExecutor *executor)
-{
     qGamma = l0op::Contiguous(qGamma, executor);
     CHECK_RET(qGamma != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
@@ -169,22 +110,18 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
                           optionalQRotation, optionalKRotation, optionalVScale, headNums, epsilon),
                    DFX_OUT(qOut, qScale, kCache, vCache, kScaleCache));
 
-    auto uniqueExecutor = CREATE_EXECUTOR();
-    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
-    aclOpExecutor *l0Executor = uniqueExecutor.get();
-
-    CHECK_RET(TransposeQkvTensorProcess(params.qkv, l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
-
     QkvRmsNormRopeCacheWithKScaleChecker checker;
     aclnnStatus checkRet = checker.CheckParams(params);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
-    CHECK_RET(ContiguousOtherInputs(params.qGamma, params.kGamma, params.cosSin,
-                                    params.slotMapping, params.cuSeqLen, params.optionalQRotation,
-                                    params.optionalKRotation, params.optionalVScale,
-                                    l0Executor) == ACLNN_SUCCESS,
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    aclOpExecutor *l0Executor = uniqueExecutor.get();
+    CHECK_RET(Contiguous(params.qkv, params.qGamma, params.kGamma, params.cosSin,
+                         params.slotMapping, params.cuSeqLen, params.optionalQRotation,
+                         params.optionalKRotation, params.optionalVScale,
+                         l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
 
     auto kCacheView = l0Executor->CreateView(params.kCache,
