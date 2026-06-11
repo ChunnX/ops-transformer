@@ -256,18 +256,19 @@ public:
             auto gmTileD = gmRemotePeer[gmDstOffset];
             LayoutC layoutGM2{lenData, actualBlockShape.n(), params.n2};
             LayoutC layoutUB2{lenData, actualBlockShape.n(), n0};
-            bool isCrossServer = false;
             if constexpr (IS_A2) {
-                isCrossServer = (dstEpIdx / SERVER_RANK_SIZE_A2) != (params.rank / SERVER_RANK_SIZE_A2);
-            }
-            if (isCrossServer) {
-                AscendC::GlobalTensor<ElementD> gmLocalWindowsOut;
-                gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
-                    params.shmem.windowsOutAddr() + params.offsetD));
-                MatrixCoord srcOffset{(uint32_t)(stData + preSrcExpertSum / 2), blockCoord.n()};
-                int64_t gmSrcOffset = params.layoutC.GetOffset(srcOffset);
-                auto gmTileLocal = gmLocalWindowsOut[gmSrcOffset];
-                copyUbToGmD(gmTileLocal, ubD[tileOffset *  n0], layoutGM2, layoutUB2);
+                bool isCrossServer = (dstEpIdx / SERVER_RANK_SIZE_A2) != (params.rank / SERVER_RANK_SIZE_A2);
+                if (isCrossServer) {
+                    AscendC::GlobalTensor<ElementD> gmLocalWindowsOut;
+                    gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
+                        params.shmem.windowsOutAddr() + params.offsetD));
+                    MatrixCoord srcOffset{(uint32_t)(stData + preSrcExpertSum / 2), blockCoord.n()};
+                    int64_t gmSrcOffset = params.layoutC.GetOffset(srcOffset);
+                    auto gmTileLocal = gmLocalWindowsOut[gmSrcOffset];
+                    copyUbToGmD(gmTileLocal, ubD[tileOffset *  n0], layoutGM2, layoutUB2);
+                } else {
+                    copyUbToGmD(gmTileD, ubD[tileOffset * n0], layoutGM2, layoutUB2);
+                }
             } else {
                 copyUbToGmD(gmTileD, ubD[tileOffset * n0], layoutGM2, layoutUB2);
             }

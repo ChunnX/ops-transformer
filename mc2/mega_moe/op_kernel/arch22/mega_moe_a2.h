@@ -141,7 +141,6 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(
     GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> ||
-                                     std::is_same_v<BType_, int32_t> ||
                                      std::is_same_v<BType_, int8_t>;
 
     contextGM_ = contextGM;
@@ -205,7 +204,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     using ArchTag = Arch::AtlasA2;
     constexpr bool enableUnitFlag = false;
     constexpr bool enableShuffleK = true;
-    constexpr bool isW4A8 = std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t>;
+    constexpr bool isW4A8 = std::is_same_v<BType_, AscendC::int4b_t>;
     constexpr bool isInt8 = std::is_same_v<BType_, int8_t>;
 
     using AElement = std::conditional_t<isW4A8, AscendC::int4b_t,
