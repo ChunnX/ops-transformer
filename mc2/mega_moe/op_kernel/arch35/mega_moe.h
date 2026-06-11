@@ -112,8 +112,6 @@ private:
     uint32_t expertBeforeCnt_ = 0;
     uint32_t dataResAddr_ = 0;
     uint32_t dataResSize_ = 0;
-    uint32_t resetTokenAddr_ = 0;
-    uint32_t resetTokenSize_ = 0;
     uint32_t dataResFp32Addr_ = 0;
     uint32_t dataResFp32Size_ = 0;
     uint32_t topKWeightsAddr_ = 0;
@@ -158,7 +156,6 @@ private:
     LocalTensor<int32_t> sendCntAcc_;                     // SendMaskCal 源卡每核 per-owned-expert 跨 chunk count 累加
     LocalTensor<int32_t> expertTokenNumsOutTensor_;
     LocalTensor<bfloat16_t> dataResTensor_;
-    LocalTensor<int32_t> resetTokenTensor_;
     LocalTensor<float> dataResFp32Tensor_;
     LocalTensor<float> topKWeightsTensor_;    // 仅存本核 token 段的 weights(大 bs 适配)
     int32_t wCoreOffset_ = 0;                 // 本核 Unpermute token 段起点(与 Unpermute 的 TilingByCore 一致)
@@ -267,7 +264,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
 //
 // 时段 C: SecondBuffInit (Unpermute, 再次覆盖地址 0 起整片)
 //   [0)                dataResTensor_      3*H*2B        bf16 累加 ping-pong(偏移 k_/2k_ 复用)
-//   [+...)             resetTokenTensor_   ws*align128(ws*epr)*4
 //   [+...)             dataResFp32Tensor_  3*H*4B
 //   [+...)             topKWeightsTensor_  bs*topK*4B
 //   [+...)             tempLocal(bf16 时)  bs*topK*2B    Cast 临时
@@ -570,9 +566,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < curentNum; index++) {
-        srcGlobalTensor.SetGlobalBuffer((__gm__ XType*)(params_.aGmAddr + (curentOffset + index) * H * sizeof(XType)));
+        srcGlobalTensor.SetGlobalBuffer((__gm__ XType*)(params_.aGmAddr +
+            static_cast<uint64_t>(curentOffset + index) * H * sizeof(XType)));
         dstGlobalTensor.SetGlobalBuffer((__gm__ uint8_t*)(params_.peermemInfo.quantTokenScalePtr +
-        (curentOffset + index) * mxFp8TokenScaleAlignBytes_));
+            static_cast<uint64_t>(curentOffset + index) * mxFp8TokenScaleAlignBytes_));
         auto event = (index % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
         auto xInTensor = (index % DOUBLE_BUFFER == 0) ? xInTensor1_ : xInTensor2_;
         auto xOutTensor = (index % DOUBLE_BUFFER == 0) ? xOutTensor1_ : xOutTensor2_;
@@ -993,8 +990,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit()
 {
     uint32_t dataResBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
-    int32_t num = worldSize_ * Ops::Base::CeilAlign(
-        static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128)) * sizeof(int32_t);
     uint32_t dataResFp32BufAlign = dataResBufAlign * HALF_TO_FP32;
     // 大 bs 适配: weights 只载本核负责的 token 段(Unpermute 按 TilingByCore 分核, 每核只读自己
     // [coreOffset, coreOffset+coreLen) 的 weights), UB 占用 O(bs/coreNum) 而非 O(bs)。
@@ -1011,12 +1006,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit()
     dataResAddr_ = 0;
     dataResSize_ = dataResBufAlign / sizeof(bfloat16_t);
     dataResTensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, dataResAddr_, dataResSize_);
-    // [+ws*align128(ws*epr)*4): win 区 token 槽位清理用零缓冲。
-    resetTokenAddr_ = dataResAddr_ + dataResBufAlign;
-    resetTokenSize_ = num / sizeof(int32_t);
-    resetTokenTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetTokenAddr_, resetTokenSize_);
     // [+3H*4B): fp32 区, 与 bf16 区同切分([0,H) 累加器 + 两块 ping-pong)。
-    dataResFp32Addr_ = resetTokenAddr_ + num;
+    dataResFp32Addr_ = dataResAddr_ + dataResBufAlign;
     dataResFp32Size_ = dataResFp32BufAlign / sizeof(float);
     dataResFp32Tensor_ = LocalTensor<float>(TPosition::VECCALC, dataResFp32Addr_, dataResFp32Size_);
     // [+coreLen*topK*4B): 本核 token 段的 topkWeights(fp32), Unpermute 驻留只读(下标 = (token-wCoreOffset_)*topK)。
@@ -1073,7 +1064,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
             auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
             auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
             WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-            DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * k_], k_);
+            DataCopy(dataInBf16, expandedX[(static_cast<uint64_t>(tokenIdx) * topK_ + expId) * k_], k_);
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
             SetFlag<AscendC::HardEvent::S_V>(event);
@@ -1094,7 +1085,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         // fp32 -> bf16
         Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
         SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
-        DataCopy(output[tokenIdx * k_], dataResTensor_, k_);
+        DataCopy(output[static_cast<uint64_t>(tokenIdx) * k_], dataResTensor_, k_);
     }
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);

@@ -366,7 +366,8 @@ __aicore__ inline void GroupMatmul2Combine(
             AscendC::GlobalTensor<int32_t> tripleGm;
             int32_t lenTile = Get<M_VALUE>(actualShape);
             LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECCALC, 200 * 1024, lenTile * 8);
-            tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr + (groupCnt + mLoc) * 32));
+            tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
+                (static_cast<uint64_t>(groupCnt) + mLoc) * 32));
             AscendC::DataCopy(tripleTensor, tripleGm, lenTile * 8);
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
                 mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);

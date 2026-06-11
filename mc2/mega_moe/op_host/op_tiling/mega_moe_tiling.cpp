@@ -250,11 +250,18 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
-    // leastCclBufferSize = PEERMEM_DATA_OFFSET + tokenPerExpert + quantTokenScale + combineOut
+    // leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecv + quantTokenScale + combineOut。
+    // 与 kernel PeermemInfo(mega_moe_base.h)逐项一致, 否则拦截失真:
+    //   maskRecv: 每 (localExpert, srcRank) 槽 = align32(align256(bs*topK*4)/4/8) mask + 32B count;
+    //   quantTokenScale: bs 个 align32(align256(h) data + h/32 scale) token;
+    //   combineOut: bs*topK 行 h*yDtype(GMM2 回送全量驻留 win, 大 bs*topK 的主限制, 见设计文档遗留项)。
+    int64_t maskSlotBytes = ops::CeilAlign(ops::CeilAlign(bs * topK * (int64_t)sizeof(int32_t), ALIGN_256) /
+        (int64_t)sizeof(int32_t) / 8, UB_BLOCK_SIZE) + UB_BLOCK_SIZE;
+    int64_t quantTokenBytes = ops::CeilAlign(ops::CeilAlign(h, ALIGN_256) + h / MXFP_SCALE_GROUP_NUM, UB_BLOCK_SIZE);
     int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET +
-        (epWorldSize * ops::CeilAlign(epWorldSize * expertPerRank, ALIGN_128) * sizeof(int32_t)) + // tokenPerExpert
-        (ops::CeilAlign(bs * topK * (h + h / MXFP_SCALE_GROUP_NUM), ALIGN_512) * sizeof(int8_t)) + // quantTokenScale
-        (ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512)); // combineOut
+        ops::CeilAlign(expertPerRank * epWorldSize * maskSlotBytes, ALIGN_512) + // maskRecv
+        ops::CeilAlign(bs * quantTokenBytes, ALIGN_512) +                        // quantTokenScale
+        ops::CeilAlign(bs * topK * h * yDtypeSize, ALIGN_512);                   // combineOut
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize",
             std::to_string(cclBufferSize).c_str(),

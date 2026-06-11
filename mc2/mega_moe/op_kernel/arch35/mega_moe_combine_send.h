@@ -39,7 +39,8 @@ __aicore__ inline void CombineTokens(
         uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
         uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
         gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
-        uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
+        // 64 位算偏移: bs*topK*H 可超 2^32, uint32 乘法会回绕且直接写远端 win。
+        uint64_t gmDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n + nLoc;
         AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
     }
 }

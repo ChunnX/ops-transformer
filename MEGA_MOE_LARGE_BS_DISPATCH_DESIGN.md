@@ -502,6 +502,15 @@ for c in [0, numChunks_) while matchedSoFar < coreHi:
   `[wCoreOffset_, +coreLen)` 段的 weights。`SecondBuffInit` 改为只分配/加载 `coreLen·topK`，
   `Unpermute` 取数下标改为 `(tokenIdx - wCoreOffset_)·topK + expId`。UB 从 O(bs) → O(bs/核数)，
   数值与改前逐位一致（各核只读不写、且只读自己的段）。
+- **残留容量约束**：时段 C 仍 O(bs·topK/核)。预算 `coreLen·topK·6B + 18H·B ≤ 256KB`，
+  H=7168、48 AIV 核 ⇒ `bs·topK ≲ 105 万`（topK=8 → bs≲13万；topK=32 → bs≲3.3万）。
+  触线时把 weights 改成 Unpermute 内按 token tile 现取（带宽开销 ≈0.03%），暂不实施。
+
+### 6.6 uint32 偏移回绕修复 + win 容量拦截（大 bs·topK 适配）
+- 字节/元素偏移先在 32 位算完才升 64 位的乘法，`bs·topK·H ≥ 2^32` 时回绕（topK=32、H=7168 ⇒ bs≈18700 触发），已全部 cast：
+  `combine_send.h:42`（写远端 win）、`mega_moe.h` Unpermute 读/写（:1076/:1097）、QuantProcessInRank（:573）、`impl.h:369`（tripleGm）。
+- host `CheckAttrParams` 的 `leastCclBufferSize` 公式重写：mask 区改 `epr·ws·(align32(ST/8)+32)` 与
+  `PeermemInfo` 逐项一致；quant 区去掉错误的 `×topK`。放不下直接拦截。workspace 全 int64 公式，超 HBM 由 GE 分配失败拦截。
 
 ---
 
@@ -539,6 +548,13 @@ for c in [0, numChunks_) while matchedSoFar < coreHi:
 4. 多卡（`ws>1`）：跨卡 mask 切片可见性 + cumsum 正确。
 5. 小 `blockLen` `DataCopyPad`：`SendInfoCal` 的 4B stride count 读 / `SendMaskCal` 末块 count 折叠写。
 
+**遗留事项（架构级，未解决）**：
+- **GMM2 回送 combine 区 win 放不下**：combine 区 = `bs·topK·H·2B` 全量驻留 HCCL win，
+  bs=128K/topK=32/H=7168 ⇒ 60GB，远超窗口容量；quant 区(bs·~7.4KB)/mask 区同样线性涨。
+  现状靠 host `leastCclBufferSize` 拦截直接报错（§6.6）。候选方案：host 按 sub-batch 分轮跑整条
+  流水复用 win（kernel 不改，sub-batch≲4K 时其余约束全部自然满足）；或 combine 流式分批回送+win 复用
+  （重排同步，代价高）。待评审定方案。
+
 ---
 
 ## 9. 附录：最终 UB 布局（256KB / AIV，时段间整块复用）
@@ -561,9 +577,9 @@ expertTokenNumsOut(epr·4) | [ubBufferUsedAddr_) tripleTensor_(动态,≤TT·32B
 合计 ≈ 8·CK + 48KB + TT·32 + 小项 ≈ 179KB —— 与 bs 无关
 ```
 
-**时段 C（`SecondBuffInit`：Unpermute）**：`dataRes(3H·2)` / `resetToken` / `dataResFp32(3H·4)` /
-`topKWeights(bs·topK·4)` / `temp(bs·topK·2)` —— 主体 `O(H)`，`topKWeights` 仍 `O(bs·topK)`
-（本次未分块，按需可后续同法处理）。
+**时段 C（`SecondBuffInit`：Unpermute）**：`dataRes(3H·2)` / `dataResFp32(3H·4)` /
+`topKWeights(coreLen·topK·4)` / `temp(coreLen·topK·2)` —— 主体 `O(H)`，weights 按核分段（§6.5），
+容量约束 `bs·topK ≲ 105 万`。死代码 `resetTokenTensor_` 已删。
 
 ---
 
@@ -573,5 +589,8 @@ expertTokenNumsOut(epr·4) | [ubBufferUsedAddr_) tripleTensor_(动态,≤TT·32B
 |---|---|
 | `mc2/mega_moe/op_kernel/arch35/mega_moe.h` | 成员增删；`Init`/`BuffInit`/`FirstBuffInit`/`SendMaskCal`/`SendInfoCal`/`TripleInfoCalAndDispatch` 分块重写；count 折叠；triple-tile。 |
 | `mc2/mega_moe/op_kernel/arch35/mega_moe_base.h` | 新增 3 个分批常量；`PeermemInfo` 槽位公式**数值不变**（仅注释）。 |
+| `mc2/mega_moe/op_kernel/arch35/mega_moe_combine_send.h` | combine 写远端 win 偏移 uint64 cast（§6.6）。 |
+| `mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h` | tripleGm 偏移 uint64 cast（§6.6）。 |
+| `mc2/mega_moe/op_host/op_tiling/mega_moe_tiling.cpp` | `leastCclBufferSize` 对齐 PeermemInfo 真实公式（§6.6）。 |
 
-> host / win 布局 / `_tiling.*` / `_workspace_info.h` **均未改动**。
+> win 布局 / `_workspace_info.h` 未改动；tiling 仅改容量拦截公式，不改 tilingData。
