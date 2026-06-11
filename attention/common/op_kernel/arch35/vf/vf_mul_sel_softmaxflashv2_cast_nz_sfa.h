@@ -146,7 +146,7 @@ __aicore__ inline void SFAUpdateExpSumAndExpMax(
 }
 
 template <typename T>
-__simd_vf__ inline void InitSoftmaxFromSinks(__ubuf__ T * sumUb, __ubuf__ T * maxUb, __ubuf__ T * sinksUb,
+__simd_vf__ inline void InitSoftmaxFromSinksVF(__ubuf__ T * sumUb, __ubuf__ T * maxUb, __ubuf__ T * sinksUb,
     uint32_t sinksOffset, const T R0, uint32_t m)
 {
     AscendC::MicroAPI::RegTensor<T> vreg_sinks;
