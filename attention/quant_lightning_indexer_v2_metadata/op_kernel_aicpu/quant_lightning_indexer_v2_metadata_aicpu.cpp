@@ -825,7 +825,7 @@ bool QuantLightningIndexerV2MetadataCpuKernel::BalanceSchedule(SplitResult &spli
 
 bool QuantLightningIndexerV2MetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
-    optiling::detail::qliV2Metadata* metadataPtr = static_cast<optiling::detail::qliV2Metadata*>(metadata_->GetData());
+    optiling::detail::QliV2Metadata* metadataPtr = static_cast<optiling::detail::QliV2Metadata*>(metadata_->GetData());
     *metadataPtr = {};
     // LI Metadata Generate
     for (size_t i = 0; i < aicCoreNum_; ++i) {
