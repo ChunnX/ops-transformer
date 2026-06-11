@@ -15,51 +15,20 @@
  * \brief
  */
 
-#ifndef SOFTMAX_DN_CAST_NZ_MXFP4_H_
-#define SOFTMAX_DN_CAST_NZ_MXFP4_H_
+#ifndef VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_H_
+#define VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_H_
 #include "kernel_tensor.h"
+#include "vf_common_def.h"
 namespace Mxfp4Api {
 using AscendC::LocalTensor;
 using namespace AscendC;
 using namespace MicroAPI;
 
-constexpr half LN2 = static_cast<half>(0.6931471806f);
-constexpr half INV_LN2 = static_cast<half>(1.4426950409f);
-constexpr half NEG_TWO_VALE = static_cast<half>(-2.0f);
-constexpr half TWO_VALE = static_cast<half>(2.0f);
-constexpr half MIN_VALUE = static_cast<half>(-65504.0f);
 
-constexpr static AscendC::MicroAPI::CastTrait castTraitZero = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_ROUND,
-};
 
-constexpr static AscendC::MicroAPI::CastTrait castTraitOne = {
-    AscendC::MicroAPI::RegLayout::ONE,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_ROUND,
-};
-
-constexpr static AscendC::MicroAPI::CastTrait castTraitTwo = {
-    AscendC::MicroAPI::RegLayout::TWO,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_ROUND,
-};
-
-constexpr static AscendC::MicroAPI::CastTrait castTraitThree = {
-    AscendC::MicroAPI::RegLayout::THREE,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_ROUND,
-};
-
-template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S2Base = 256, uint16_t S1Base = 128>
-__simd_vf__ inline void softmax_with_group_max_vf(__ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max,
-                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb, const T dScale)
+template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S1Base = 128>
+__simd_vf__ inline void softmax_with_group_max_align_qs128_kvs32_multi_vf(__ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max,
+                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb, const T dScale, uint16_t S2BaseAlign32, uint16_t S2BaseAlign64)
 {
     // ====================== 寄存器定义 ======================
     RegTensor<half> src_c0, src_c1, src_c2, src_c3;
@@ -76,10 +45,11 @@ __simd_vf__ inline void softmax_with_group_max_vf(__ubuf__ T2 *pDest, __ubuf__ T
 
     // ====================== 分块常量 ======================
     const uint16_t ROWS_PER_GROUP = 32;
-    const uint16_t GROUP_COUNT = S2Base / ROWS_PER_GROUP;
+    const uint16_t GROUP_COUNT = S2BaseAlign32 / ROWS_PER_GROUP;
+    const uint16_t GROUP_COUNT_ALIGN_64 = S2BaseAlign64 / ROWS_PER_GROUP;
     const uint16_t ROW_SUB_LOOP = 4;
     const uint16_t ITER_PER_GROUP = ROWS_PER_GROUP / ROW_SUB_LOOP;
-    uint32_t MID_VALID_CNT = S1Base * (ITER_PER_GROUP - 1);
+    uint32_t MID_VALID_CNT = S1Base * (GROUP_COUNT - 1);
 
     // ====================== 掩码定义 ======================
     MaskReg preg_all_16bit = CreateMask<uint16_t, MaskPattern::ALL>();
@@ -275,14 +245,19 @@ __simd_vf__ inline void softmax_with_group_max_vf(__ubuf__ T2 *pDest, __ubuf__ T
         Adds(next_group_max, next_group_max, NEG_TWO_VALE, preg_all_16bit);
         Muls(curr_group_max, next_group_max, LN2, preg_valid_max);
     }
+    // padding group_gmax 64 multi -inf, make pscale = 0
+    Duplicate(min_val_reg, MIN_VALUE);
+    for (int i = GROUP_COUNT; i < GROUP_COUNT_ALIGN_64; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(local_group_max + i * S1Base, min_val_reg, preg_all_16bit);
+    }
 }
 
-template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S2Base = 128, uint16_t S1Base = 128>
-__aicore__ inline void softmax_with_group_max(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
+template <bool clear_gmax, typename T, typename T2, bool hasAtten = false, uint16_t S1Base = 128>
+__aicore__ inline void SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
                                                   const LocalTensor<T> &local_group_max,
                                                   const LocalTensor<T> &global_max,
                                                   const LocalTensor<uint8_t> &indexesBuf,
-                                                  const T scale)
+                                                  const T scale, uint16_t S2BaseAlign32, uint16_t S2BaseAlign64)
 {
     __ubuf__ T2 *pDest = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ T *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -290,9 +265,9 @@ __aicore__ inline void softmax_with_group_max(const LocalTensor<T2> &dstTensor, 
     __ubuf__ T *globalMax = (__ubuf__ T*)global_max.GetPhyAddr();
     __ubuf__ uint8_t * indexesUb = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
 
-    softmax_with_group_max_vf<clear_gmax, T, T2, hasAtten, S2Base, S1Base>(
-        pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, scale);
+    softmax_with_group_max_align_qs128_kvs32_multi_vf<clear_gmax, T, T2, hasAtten, S1Base>(
+        pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, scale, S2BaseAlign32, S2BaseAlign64);
 }
 
 }
-#endif  // SOFTMAX_DN_CAST_NZ_MXFP4_H_
+#endif  // VF_SOFTMAX_DN_CAST_NZ_MXFP4_ALIGN_QS128_KVS32_MULTI_H_
