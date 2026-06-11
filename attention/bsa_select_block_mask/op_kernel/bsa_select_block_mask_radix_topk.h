@@ -419,7 +419,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                     DataCopyPad(tileHistGm_[tileHistOffset],
                                tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3],
                                DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
-                    BSA_TOPK_PIPE_ALL();
+                    // REMOVED_PIPE_ALL_422
                 }
                 if (GetBlockIdx() == 0) {
                     BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after tileHist ws write round=%d repeat=%d\n",
@@ -797,7 +797,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTileHistWs2Ub(
     MTE2ToVSync();
     // REMOVED_PIPE_ALL_798
     Sub(dstTensor, srcTensor, srcTensor[MAX_TILE_NUM_IN_UB_BY2], dataNum);
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_800
 }
 
 template <typename BSAT>
@@ -810,7 +810,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTileHistInWs(
     DataCopyExtParams params{
         static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
     DataCopyPad(tileHistGm_[dstOffset], tileHist, params);
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_813
 }
 
 template <typename BSAT>
