@@ -294,7 +294,6 @@ __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, i
         coreVid_ = AscendC::GetBlockIdx();
 
         yOutGM_.SetGlobalBuffer((__gm__ bfloat16_t*)yGM_);
-        return;
     }
 
     // matmul init in tensor api mode
