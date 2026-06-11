@@ -233,6 +233,10 @@ private:
     event_t eventIdMte2ToVInnerVecP;
     event_t eventIdMte2ToVInnerPreW;
     event_t eventIdMte2ToVInnerDwDqDk;
+    // MTE2_S
+    event_t eventIdMte2ToSPsum;
+    // S_V
+    event_t eventIdSToVPsum;
     // V_MTE2
     event_t eventIdVToMte24SY;
     event_t eventIdVToMte2P[2];
@@ -364,6 +368,10 @@ template <typename SLIT> __aicore__ inline void SLIKLLossVectorService<SLIT>::Al
     eventIdMte2ToVInnerVecP = EVENT_ID1;
     eventIdMte2ToVInnerPreW = EVENT_ID2;
     eventIdMte2ToVInnerDwDqDk = EVENT_ID3;
+    // MTE2_To_S
+    eventIdMte2ToSPsum = EVENT_ID0;
+    // S_To_V
+    eventIdSToVPsum = EVENT_ID0;
     // V_To_MTE2
     eventIdVToMte2Weight[0] = EVENT_ID0;
     eventIdVToMte2Weight[1] = EVENT_ID1;
@@ -1397,8 +1405,23 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
         WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
         DataCopy(reduceSumPUbSingleK, psySyncOtherGm, kRealSizeAlign16);
     }
+    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
+    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
+    if (runInfo.calcP) {
+        DataCopyPad(reduceSumDwResUb, psySyncGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
+    } else {
+        DataCopyPad(reduceSumDwResUb, psySyncOtherGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
+    }
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
+
+    SetFlag<HardEvent::MTE2_S>(eventIdMte2ToSPsum);
+    WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToSPsum);
+    T pSumValue = reduceSumDwResUb.GetValue(0);
+    SetFlag<HardEvent::S_V>(eventIdSToVPsum);
+    WaitFlag<HardEvent::S_V>(eventIdSToVPsum);
+    Muls(reduceSumYUbSingleK, reduceSumYUbSingleK, pSumValue, kRealSizeAlign16);
+    PipeBarrier<PIPE_V>();
 
     Sub(v1TmpUb, reduceSumYUbSingleK, reduceSumPUbSingleK, kRealSize);
     PipeBarrier<PIPE_V>();
@@ -1524,8 +1547,23 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
         WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
         DataCopy(reduceSumPUbSingleK, psySyncOtherGm[kLoopOffset], kRealSizeAlign16);
     }
+    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
+    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
+    if (runInfo.calcP) {
+        DataCopyPad(reduceSumDwResUb, psySyncGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
+    } else {
+        DataCopyPad(reduceSumDwResUb, psySyncOtherGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
+    }
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
+
+    SetFlag<HardEvent::MTE2_S>(eventIdMte2ToSPsum);
+    WaitFlag<HardEvent::MTE2_S>(eventIdMte2ToSPsum);
+    T pSumValue = reduceSumDwResUb.GetValue(0);
+    SetFlag<HardEvent::S_V>(eventIdSToVPsum);
+    WaitFlag<HardEvent::S_V>(eventIdSToVPsum);
+    Muls(reduceSumYUbSingleK, reduceSumYUbSingleK, pSumValue, kRealSizeAlign16);
+    PipeBarrier<PIPE_V>();
 
     Sub(v1TmpUb, reduceSumYUbSingleK, reduceSumPUbSingleK, kRealSize);
     PipeBarrier<PIPE_V>();
