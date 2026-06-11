@@ -11,13 +11,13 @@
 #include "all_to_all_matmul_transpose_a5_fusion_pass.h"
 
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
-#include "es_AlltoAllMatmul.h"
-#include "es_TransposeD.h"
-#include "es_math_ops.h"
+#include "es_AlltoAllMatmul.h" // es autogen header
+#include "es_TransposeD.h"     // es autogen header for stub op
+#include "es_math_ops.h"       // math ops stub
 #include "mc2_platform_info.h"
 #include "mc2_common_log.h"
 #include "ge/ge_utils.h"
-#include <dlfcn.h>
+#include <dlfcn.h> // dlopen 动态加载
 
 namespace ops {
 const std::string FUSION_PASS_NAME = "AllToAllMatmulTransposeA5FusionPass";
@@ -35,6 +35,7 @@ const size_t PERM_SIZE_ONE = 1;
 const size_t PERM_SIZE_TWO = 2;
 const size_t PERM_SIZE_THREE = 3;
 
+
 struct ReplaceGraphInputs {
     ge::es::EsTensorHolder rX1;
     ge::es::EsTensorHolder rX2;
@@ -46,6 +47,7 @@ struct ReplaceGraphInputs {
     ge::es::EsTensorHolder rX2Offset;
 };
 
+// 加载 EsTranspose 符号
 namespace {
     typedef EsCTensorHolder* (*EsTransposeFunc)(EsCTensorHolder*, EsCTensorHolder*);
     
@@ -88,22 +90,16 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
     
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     auto [x1, x2, bias, x1Scale, x2Scale] = graphBuilder.CreateInputs<5>();
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating Transpose node with perm [1,0]");
     auto transpose = TransposeDL(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
-    
+    // 必选attr 设置默认值
     std::string group = std::string("");
     int64_t worldSize = 0;
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating AlltoAllMatmul node in pattern (hasBias=%d)", hasBias);
+    // 有输入的data节点传入默认, 无输入的可选节点传入nullptr, 若后续场景扩充, 需仿照bias 扩充子pattern
     auto mc2 = ge::es::AlltoAllMatmul(x1, transpose, hasBias ? bias : nullptr, x1Scale, x2Scale, nullptr, nullptr,
                                        nullptr, group.c_str(), worldSize);
-    
     auto graph = graphBuilder.BuildAndReset({mc2.y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
-    
-    pattern->CaptureTensor({*mc2.y.GetProducer(), 0});
-    pattern->CaptureTensor({*transpose.GetProducer(), 0});
+    pattern->CaptureTensor({*mc2.y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
     
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MakePatternForTranspose completed");
     return pattern;
@@ -119,24 +115,16 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(bool hasBias)
     }
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern name: %s", patternName.c_str());
     
-    auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
+    auto graphBuilder = ge::es::EsGraphBuilder(FUSION_PASS_NAME.c_str());
     auto [x1, x2, bias, x1Scale, x2Scale] = graphBuilder.CreateInputs<5>();
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating TransposeD node with perm [1,0]");
     auto transposeD = ge::es::TransposeD(x2, std::vector<int64_t>{1, 0});
-    
     std::string group = std::string("");
     int64_t worldSize = 0;
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating AlltoAllMatmul node in pattern (hasBias=%d)", hasBias);
     auto mc2 = ge::es::AlltoAllMatmul(x1, transposeD, hasBias ? bias : nullptr, x1Scale, x2Scale, nullptr, nullptr,
                                        nullptr, group.c_str(), worldSize);
-    
     auto graph = graphBuilder.BuildAndReset({mc2.y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
-    
-    pattern->CaptureTensor({*mc2.y.GetProducer(), 0});
-    pattern->CaptureTensor({*transposeD.GetProducer(), 0});
+    pattern->CaptureTensor({*mc2.y.GetProducer(), 0}).CaptureTensor({*transposeD.GetProducer(), 0});
     
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MakePatternForTransposeD completed");
     return pattern;
@@ -171,12 +159,13 @@ static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t
     
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "GetTransposePerm: nodeType=%s", nodeTypeStr.c_str());
     
-    if (nodeTypeStr == PATTERN_TRANSPOSE_D) {
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "TransposeD node: getting perm from attr");
+    if (nodeTypeStr == PATTERN_TRANSPOSE_D) { // return when node is TransposeD
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Now in TransposeD node for getting perm");
         if (transposeNode.GetAttr("perm", permValue) != ge::GRAPH_SUCCESS) {
             OPS_LOG_W(FUSION_PASS_NAME.c_str(), "Get perm Attr from TransposeD node failed.");
             return false;
         }
+        // 打印 perm 值
         std::string permStr;
         for (size_t i = 0; i < permValue.size(); ++i) {
             permStr += std::to_string(permValue[i]) + " ";
@@ -185,6 +174,7 @@ static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t
         return !permValue.empty();
     }
 
+    // Transpose 的场景
     ge::TensorDesc permDesc;
     transposeNode.GetInputDesc(TRANSPOSE_PERM_IDX, permDesc);
     ge::Shape permShape = permDesc.GetShape();
@@ -224,6 +214,7 @@ static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t
         return false;
     }
 
+    // 打印 perm 值
     std::string permStr;
     for (size_t i = 0; i < permValue.size(); ++i) {
         permStr += std::to_string(permValue[i]) + " ";
@@ -242,6 +233,7 @@ static bool IsTransposePermValid(const std::unique_ptr<ge::fusion::MatchResult> 
                FUSION_PASS_NAME.c_str(), "Get Transpose node failed.");
     auto transposeNode = transposeOutput.node;
     
+    // 打印捕获节点的信息
     ge::AscendString capturedNodeName, capturedNodeType;
     transposeNode.GetName(capturedNodeName);
     transposeNode.GetType(capturedNodeType);
@@ -262,27 +254,29 @@ static bool IsTransposePermValid(const std::unique_ptr<ge::fusion::MatchResult> 
         return false;
     }
 
-    bool valid = (permValue[permSize - PERM_SIZE_ONE] == static_cast<int64_t>(permSize - PERM_SIZE_TWO)) &&
-                 (permValue[permSize - PERM_SIZE_TWO] == static_cast<int64_t>(permSize - PERM_SIZE_ONE));
+    if ((permValue[permSize - PERM_SIZE_ONE] != static_cast<int64_t>(permSize - PERM_SIZE_TWO)) ||
+        (permValue[permSize - PERM_SIZE_TWO] != static_cast<int64_t>(permSize - PERM_SIZE_ONE))) {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Transpose permutation last 2 dims must be [1, 0].");
+        return false;
+    }
     
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Perm valid: %d", valid);
-    
-    return valid;
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "IsTransposePermValid: valid=true");
+    return true;
 }
 
 static void GetInputsInfo(const std::vector<ge::fusion::SubgraphInput> &subGraphInputs,
                           std::vector<ge::Shape> &inputShapes, std::vector<ge::DataType> &inputDTypes,
                           std::vector<ge::Format> &inputFormats)
 {
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter GetInputsInfo, subGraphInputs size=%zu", subGraphInputs.size());
-    
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter GetInputsInfo for AllToAllMatmulTransposeA5FusionPass");
     for (const auto &subGraphInput : subGraphInputs) {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputsInfo: collecting input datas.");
         auto matchNodes = subGraphInput.GetAllInputs();
         if (matchNodes.empty()) {
             OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputsInfo: matchNodes is empty.");
             continue;
         }
-        auto matchNode = matchNodes.at(0);
+        auto matchNode = matchNodes.at(0); // NodeIo, input node 被多个当前pattern的节点消费时, 序号递增
         ge::TensorDesc tmpDesc;
         if (matchNode.node.GetInputDesc(matchNode.index, tmpDesc) != ge::GRAPH_SUCCESS) {
             OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputDesc failed.");
@@ -292,30 +286,29 @@ static void GetInputsInfo(const std::vector<ge::fusion::SubgraphInput> &subGraph
         inputDTypes.emplace_back(tmpDesc.GetDataType());
         inputFormats.emplace_back(tmpDesc.GetOriginFormat());
     }
-    
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputsInfo: collected %zu inputs", inputShapes.size());
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Finish GetInputsInfo for AllToAllMatmulTransposeA5FusionPass");
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
                                    const std::vector<ge::fusion::SubgraphInput> &subgraphInputs)
 {
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter InferShapeReplaceGraph");
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter InferShapeReplaceGraph for AllToAllMatmulTransposeA5FusionPass");
     std::vector<ge::Shape> inputShapes;
     for (const auto &subgraphInput : subgraphInputs) {
         auto matchNodes = subgraphInput.GetAllInputs();
         if (matchNodes.empty()) {
+            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph: matchNodes is empty.");
             continue;
         }
         auto matchNode = matchNodes.at(0);
         ge::TensorDesc tmpDesc;
         if (matchNode.node.GetInputDesc(matchNode.index, tmpDesc) != ge::GRAPH_SUCCESS) {
+            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputDesc failed.");
             continue;
         }
         inputShapes.emplace_back(tmpDesc.GetShape());
     }
-    bool result = (ge::GeUtils::InferShape(*replaceGraph, inputShapes) == ge::SUCCESS);
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph result: %d", result);
-    return result;
+    return (ge::GeUtils::InferShape(*replaceGraph, inputShapes) == ge::SUCCESS);
 }
 
 static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraphBuilder &replaceGraphBuilder,
@@ -323,7 +316,6 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
                                      const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to create inputs in Replacement.");
-    
     std::vector<ge::Shape> inputShapes;
     std::vector<ge::DataType> inputDTypes;
     std::vector<ge::Format> inputFormats;
@@ -336,7 +328,6 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Input Nums do not meet requirement without bias.");
         return false;
     }
-    
     ge::AscendString patternName = "";
     matchResult->GetPatternGraph().GetName(patternName);
     std::string patternNameStr = patternName.GetString();
@@ -347,17 +338,12 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
                                                  inputShapes[inputIdx].GetDims());
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Created input x1 at index %ld", inputIdx);
     ++inputIdx;
-    
     inputs.rX2 = replaceGraphBuilder.CreateInput(inputIdx, "x2", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                  inputShapes[inputIdx].GetDims());
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Created input x2 at index %ld", inputIdx);
     ++inputIdx;
-    
     inputs.rBias = nullptr;
-    bool hasBias = (patternNameStr.find(PATTERN_BIAS) != std::string::npos);
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Has bias: %d", hasBias);
-    
-    if (hasBias) {
+    if (patternNameStr.find(PATTERN_BIAS) != std::string::npos) {
         if (inputShapes.size() < INPUT_NUM_HAS_BIAS) {
             OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Input Nums do not meet requirement with bias.");
             return false;
@@ -367,16 +353,14 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Created input bias at index %ld", inputIdx);
         ++inputIdx;
     }
-    
     inputs.rX1Scale = replaceGraphBuilder.CreateInput(inputIdx, "x1_scale", inputDTypes[inputIdx],
                                                       inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Created input x1_scale at index %ld", inputIdx);
     ++inputIdx;
-    
     inputs.rX2Scale = replaceGraphBuilder.CreateInput(inputIdx, "x2_scale", inputDTypes[inputIdx],
                                                       inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Created input x2_scale at index %ld", inputIdx);
-    
+    // 当前支持场景下, 下面三个optional input 都为空, 后续扩展时可按上述inputs 仿写
     inputs.rCommScale = nullptr;
     inputs.rX1Offset = nullptr;
     inputs.rX2Offset = nullptr;
@@ -388,7 +372,7 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
 static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                                                   const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Start to build replaceGraph");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Start to build replaceGraph EsGraphBuilder.");
     auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
 
     ReplaceGraphInputs inputTensors;
@@ -402,6 +386,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
                FUSION_PASS_NAME.c_str(), "Capture AlltoAllMatmul node failed.");
     ge::GNode mc2Node = mc2NodeIo.node;
     
+    // 打印原始节点信息
     ge::AscendString originalNodeName, originalNodeType;
     mc2Node.GetName(originalNodeName);
     mc2Node.GetType(originalNodeType);
@@ -415,12 +400,13 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
 
     int64_t worldSize = -1;
     OP_LOGE_IF(mc2Node.GetAttr("world_size", worldSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
-               "Get Attr world_size failed.");
+               "Get Attr word_size failed.");
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Original world_size: %ld", worldSize);
 
     std::vector<int64_t> all2allAxes = {-2, -1};
     OP_LOGE_IF(mc2Node.GetAttr("all2all_axes", all2allAxes) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr all2all_axes failed.");
+    // 打印 all2allAxes
     std::string axesStr;
     for (auto ax : all2allAxes) axesStr += std::to_string(ax) + " ";
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Original all2all_axes: [%s]", axesStr.c_str());
@@ -469,6 +455,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
         transposeX2 = false;
     }
     
+    // 移除Transpose节点后，transpose x2 attr 置反
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Before negation: transposeX2=%d", transposeX2);
     transposeX2 = !transposeX2;
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "After negation (will set to new node): transposeX2=%d", transposeX2);
@@ -490,7 +477,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
                                inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
                                inputTensors.rX2Offset, group.GetString(), worldSize, all2allAxes, yDType, x1QuantMode,
                                x2QuantMode, commQuantMode, x1QuantDType, commQuantDType, transposeX1, transposeX2,
-                               groupSize, alltoallOutFlag);
+                               groupSize, "", alltoallOutFlag);
     
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "New AlltoAllMatmul node created successfully");
     
@@ -500,35 +487,25 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
 std::vector<ge::fusion::PatternUniqPtr> AllToAllMatmulTransposeA5FusionPass::Patterns()
 {
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter Patterns for AllToAllMatmulTransposeA5FusionPass");
-    
     bool hasBias = true;
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating patterns for Transpose (hasBias=true)");
     patternGraphs.emplace_back(MakePatternForTranspose(hasBias));
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating patterns for Transpose (hasBias=false)");
     patternGraphs.emplace_back(MakePatternForTranspose(!hasBias));
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating patterns for TransposeD (hasBias=true)");
     patternGraphs.emplace_back(MakePatternForTransposeD(hasBias));
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating patterns for TransposeD (hasBias=false)");
     patternGraphs.emplace_back(MakePatternForTransposeD(!hasBias));
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Patterns created, total count=%zu", patternGraphs.size());
-    
     return patternGraphs;
 }
 
 bool AllToAllMatmulTransposeA5FusionPass::MeetRequirements(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter MeetRequirements");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter MeetRequirements for AllToAllMatmulTransposeA5FusionPass");
     
+    // 打印匹配到的图信息
     ge::AscendString patternGraphName;
     matchResult->GetPatternGraph().GetName(patternGraphName);
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Matched pattern graph: %s", patternGraphName.GetString());
 
+    // 检查是否能正确捕获 AlltoAllMatmul 节点
     ge::fusion::NodeIo mc2NodeIo;
     auto captureRet = matchResult->GetCapturedTensor(ALL2ALLMATMUL_CAPTURE_IDX, mc2NodeIo);
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "GetCapturedTensor for ALL2ALLMATMUL: ret=%d", captureRet);
@@ -544,6 +521,7 @@ bool AllToAllMatmulTransposeA5FusionPass::MeetRequirements(const std::unique_ptr
         return false;
     }
     
+    // 检查是否能正确捕获 Transpose 节点
     ge::fusion::NodeIo transposeIo;
     captureRet = matchResult->GetCapturedTensor(TRANSPOSE_CAPTURE_IDX, transposeIo);
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "GetCapturedTensor for TRANSPOSE: ret=%d", captureRet);
@@ -559,23 +537,25 @@ bool AllToAllMatmulTransposeA5FusionPass::MeetRequirements(const std::unique_ptr
         return false;
     }
 
+    // 是否ascend950
     if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Check target platform fail! Not A5 architecture.");
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Check target platform fail!");
         return false;
     }
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Platform check passed: A5 architecture");
 
+    // 是否mx quant
     if (!IsMXQuantMode(matchResult)) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Quant mode is not MX QUANT, fusion will be skipped.");
         return false;
     }
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MX quant mode check passed");
 
+    // 是否transpose 条件吻合
     if (!IsTransposePermValid(matchResult)) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Transpose permutation is not valid.");
         return false;
     }
-    
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Found One pattern that meets requirements");
     return true;
 }
@@ -583,22 +563,22 @@ bool AllToAllMatmulTransposeA5FusionPass::MeetRequirements(const std::unique_ptr
 ge::fusion::GraphUniqPtr
 AllToAllMatmulTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter Replacement");
-    
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Replacement for AllToAllMatmulTransposeA5FusionPass");
     std::vector<ge::fusion::SubgraphInput> subgraphInputs;
     if (matchResult->ToSubgraphBoundary()->GetAllInputs(subgraphInputs) != ge::SUCCESS) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Get subgraph inputs failed in Replacement.");
         return nullptr;
     }
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Subgraph input size is %zu", subgraphInputs.size());
+    size_t subgraphInputSize = subgraphInputs.size();
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Subgraph input size is %zu.", subgraphInputSize);
 
+    // build replace graph with transpose x2 reversed
     ge::fusion::GraphUniqPtr replaceGraph = BuildReplaceGraph(subgraphInputs, matchResult);
     if (replaceGraph == nullptr) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph failed in Replacement.");
         return nullptr;
     }
-    
+    // infershape for node x2
     if (!InferShapeReplaceGraph(replaceGraph, subgraphInputs)) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph failed in Replacement.");
         return nullptr;
@@ -609,6 +589,6 @@ AllToAllMatmulTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusio
 }
 
 REG_FUSION_PASS(AllToAllMatmulTransposeA5FusionPass)
-    .Stage(ge::CustomPassStage::kCompatibleInherited);
+    .Stage(ge::CustomPassStage::kCompatibleInherited); // 兼容性场景下指定stage
 } // namespace ops
 #endif // GRAPH_FUSION_SUPPORT_VERSION
