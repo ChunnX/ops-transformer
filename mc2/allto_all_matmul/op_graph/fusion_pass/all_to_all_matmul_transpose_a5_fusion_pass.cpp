@@ -99,8 +99,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
     auto mc2 = ge::es::AlltoAllMatmul(x1, transpose, hasBias ? bias : nullptr, x1Scale, x2Scale, nullptr, nullptr,
                                        nullptr, group.c_str(), worldSize);
     
-    std::vector<ge::es::EsTensorHolder> outputs = {mc2.y};
-    auto graph = graphBuilder.BuildAndReset(outputs);
+    auto graph = graphBuilder.BuildAndReset({mc2.y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     
     pattern->CaptureTensor({*mc2.y.GetProducer(), 0});
@@ -133,8 +132,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(bool hasBias)
     auto mc2 = ge::es::AlltoAllMatmul(x1, transposeD, hasBias ? bias : nullptr, x1Scale, x2Scale, nullptr, nullptr,
                                        nullptr, group.c_str(), worldSize);
     
-    std::vector<ge::es::EsTensorHolder> outputs = {mc2.y};
-    auto graph = graphBuilder.BuildAndReset(outputs);
+    auto graph = graphBuilder.BuildAndReset({mc2.y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     
     pattern->CaptureTensor({*mc2.y.GetProducer(), 0});
@@ -179,7 +177,6 @@ static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t
             OPS_LOG_W(FUSION_PASS_NAME.c_str(), "Get perm Attr from TransposeD node failed.");
             return false;
         }
-        // 打印 perm 值
         std::string permStr;
         for (size_t i = 0; i < permValue.size(); ++i) {
             permStr += std::to_string(permValue[i]) + " ";
@@ -188,7 +185,6 @@ static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t
         return !permValue.empty();
     }
 
-    // Transpose 场景
     ge::TensorDesc permDesc;
     transposeNode.GetInputDesc(TRANSPOSE_PERM_IDX, permDesc);
     ge::Shape permShape = permDesc.GetShape();
@@ -228,7 +224,6 @@ static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t
         return false;
     }
 
-    // 打印 perm 值
     std::string permStr;
     for (size_t i = 0; i < permValue.size(); ++i) {
         permStr += std::to_string(permValue[i]) + " ";
@@ -247,7 +242,6 @@ static bool IsTransposePermValid(const std::unique_ptr<ge::fusion::MatchResult> 
                FUSION_PASS_NAME.c_str(), "Get Transpose node failed.");
     auto transposeNode = transposeOutput.node;
     
-    // 打印捕获节点的信息
     ge::AscendString capturedNodeName, capturedNodeType;
     transposeNode.GetName(capturedNodeName);
     transposeNode.GetType(capturedNodeType);
@@ -403,20 +397,17 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
         return nullptr;
     }
 
-    // 获取原始 AlltoAllMatmul 节点
     ge::fusion::NodeIo mc2NodeIo;
     OP_LOGE_IF(matchResult->GetCapturedTensor(ALL2ALLMATMUL_CAPTURE_IDX, mc2NodeIo) != ge::SUCCESS, nullptr,
                FUSION_PASS_NAME.c_str(), "Capture AlltoAllMatmul node failed.");
     ge::GNode mc2Node = mc2NodeIo.node;
     
-    // 打印原始节点信息
     ge::AscendString originalNodeName, originalNodeType;
     mc2Node.GetName(originalNodeName);
     mc2Node.GetType(originalNodeType);
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Original AlltoAllMatmul node: name=%s, type=%s",
               originalNodeName.GetString(), originalNodeType.GetString());
 
-    // 读取所有属性
     ge::AscendString group = "";
     OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr group failed.");
@@ -478,7 +469,6 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
         transposeX2 = false;
     }
     
-    // 关键：取反
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Before negation: transposeX2=%d", transposeX2);
     transposeX2 = !transposeX2;
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "After negation (will set to new node): transposeX2=%d", transposeX2);
@@ -488,36 +478,23 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
                "Get Attr group_size failed.");
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Original group_size: %ld", groupSize);
 
-    // 注意：alltoall_out_flag 属性在 AlltoAllMatmul 函数的参数列表中不存在
-    // 所以不需要读取和传递它
-    // bool alltoallOutFlag = true;
-    // OP_LOGE_IF(mc2Node.GetAttr("alltoall_out_flag", alltoallOutFlag) != ge::GRAPH_SUCCESS, nullptr,
-    //            FUSION_PASS_NAME.c_str(), "Get Attr alltoall_out_flag failed.");
-    // OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Original alltoall_out_flag: %d", alltoallOutFlag);
+    bool alltoallOutFlag = true;
+    OP_LOGE_IF(mc2Node.GetAttr("alltoall_out_flag", alltoallOutFlag) != ge::GRAPH_SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Get Attr alltoall_out_flag failed.");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Original alltoall_out_flag: %d", alltoallOutFlag);
 
-    // 创建新节点（20个参数，不包含 alltoall_out_flag）
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating new AlltoAllMatmul node with transposeX2=%d", transposeX2);
     
     auto mc2 =
         ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
                                inputTensors.rX2Offset, group.GetString(), worldSize, all2allAxes, yDType, x1QuantMode,
-                               x2QuantMode, commQuantMode, commQuantDType, x1QuantDType, transposeX1, transposeX2,
-                               groupSize);
-    
-    // 验证新节点的属性
-    bool verifyTransposeX2 = false;
-    if (mc2.GetAttr("transpose_x2", verifyTransposeX2) == ge::GRAPH_SUCCESS) {
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "VERIFY: New node transpose_x2 = %d", verifyTransposeX2);
-    } else {
-        OPS_LOG_W(FUSION_PASS_NAME.c_str(), "VERIFY: Failed to get new node transpose_x2 attribute");
-    }
+                               x2QuantMode, commQuantMode, x1QuantDType, commQuantDType, transposeX1, transposeX2,
+                               groupSize, alltoallOutFlag);
     
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "New AlltoAllMatmul node created successfully");
     
-    // 修复 BuildAndReset 调用：使用 vector 而不是初始化列表
-    std::vector<ge::es::EsTensorHolder> outputs = {mc2.y};
-    return replaceGraphBuilder.BuildAndReset(outputs);
+    return replaceGraphBuilder.BuildAndReset({mc2.y});
 }
 
 std::vector<ge::fusion::PatternUniqPtr> AllToAllMatmulTransposeA5FusionPass::Patterns()
