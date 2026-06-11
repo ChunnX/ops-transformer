@@ -991,9 +991,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
         if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            if constexpr (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
+                          Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value) {
+                MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
+                    QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            } else {
+                MegaMoeImpl::GroupMatmulSwigluQuant<
+                    QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            }
         }
     }
     EndSync(vecSetSyncCom_);
@@ -1013,10 +1020,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmmAddrInfo, gmm2State);
         if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmul2Combine<QuantOutType, QuantOutType, bfloat16_t,
-                QuantScaleOutType, QuantScaleOutType>(
-                params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                expertBeforeCnt_, gmm2PingPongIdx_);
+            if constexpr (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
+                          Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value) {
+                MegaMoeImpl::GroupMatmul2A8W4<
+                    QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                    expertBeforeCnt_, gmm2PingPongIdx_, rankId_);
+            } else {
+                MegaMoeImpl::GroupMatmul2Combine<
+                    QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                    expertBeforeCnt_, gmm2PingPongIdx_);
+            }
         }
     }
     EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
