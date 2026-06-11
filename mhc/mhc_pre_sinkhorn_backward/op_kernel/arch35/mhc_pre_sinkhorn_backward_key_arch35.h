@@ -10,11 +10,12 @@
 
 
 /*!
-* \file index_put_with_sort_v2_key.h
+* \file mhc_pre_sinkhorn_backward_key_arch35.h
 * \brief
 */
 #ifndef MHC_PRE_SINKHORN_BACKWARD_KEY_ARCH35_H
 #define MHC_PRE_SINKHORN_BACKWARD_KEY_ARCH35_H
+
 #include "ascendc/host_api/tiling/template_argument.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_sinkhorn_backward_data_arch35.h"

@@ -9,8 +9,8 @@
  */
 
 /* !
- * \file scatter_nd_update_tiling.h
- * \brief ascendc scatter nd update tiling h
+ * \file mhc_pre_sinkhorn_backward_arch35_tiling_base.h
+ * \brief
  */
 
 #ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_
@@ -76,4 +76,4 @@ private:
 };
 
 } //namespace optiling
-#endif  // AIR_CXX_RUNTIME_V2_OP_IMPL_MHC_PRE_SINKHORN_BACKWARD_TILING_H_
+#endif  // MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_

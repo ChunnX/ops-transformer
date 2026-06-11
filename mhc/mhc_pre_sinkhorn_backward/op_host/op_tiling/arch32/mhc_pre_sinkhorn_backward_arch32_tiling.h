@@ -25,4 +25,4 @@ namespace optiling {
     ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context);
 }
 
-#endif
+#endif  //  MHC_PRE_SINKHORN_BACKWARD_ARCH32_TILING_H_

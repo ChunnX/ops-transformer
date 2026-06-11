@@ -9,7 +9,7 @@
  */
 
 /* !
- * \file mhc_pre_sinkhorn_backward_arch35_tiling.h
+ * \file mhc_pre_sinkhorn_backward_tiling.h
  * \brief
  */
 
@@ -27,4 +27,4 @@ struct MhcPreSinkhornBackwardCompileInfo {
 };
 } // namespace optiling
 
-#endif
+#endif  //  MHC_PRE_SINKHORN_BACKWARD_TILING_H_

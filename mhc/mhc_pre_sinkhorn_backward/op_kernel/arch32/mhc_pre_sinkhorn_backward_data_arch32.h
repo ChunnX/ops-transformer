@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file index_put_v2_tiling_data.h
+ * \file mhc_pre_sinkhorn_backward_data_arch32.h
  * \brief tiling data struct
  */
 
