@@ -1355,9 +1355,7 @@ static ge::graphStatus CheckFAILseOutput(const gert::TilingContext *context)
 }
 
 static ge::graphStatus ValidateCacheNonFirstAxisContiguous(const gert::TilingContext *context,
-                                                const uint64_t inputIndex,
-                                                const gert::Shape &shape,
-                                                const char *tensorName)
+    const uint64_t inputIndex, const gert::Shape &shape, const char *tensorName)
 {
     auto *stride = context->GetDynamicInputStride(inputIndex, 0);
     if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
