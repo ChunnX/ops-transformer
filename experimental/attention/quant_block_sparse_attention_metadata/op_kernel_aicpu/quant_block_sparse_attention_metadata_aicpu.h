@@ -24,7 +24,7 @@
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
 #include "quant_block_sparse_attention_metadata.h"
-#include "../../../../common/op_kernel/aicpu_common.h"
+#include "../../../../attention/common/op_kernel/aicpu_common.h"
 
 namespace aicpu {
 
