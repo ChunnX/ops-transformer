@@ -10,16 +10,14 @@
 
 #include "kernel_operator.h"
 #include "arch35/stem_oam_prep_varlen_q_regbase.h"
-#include "arch35/stem_oam_prep_varlen_q_tiling_data.h"
 
 extern "C" __global__ __aicore__ void stem_oam_prep_varlen_q(
-    GM_ADDR q, GM_ADDR qScale, GM_ADDR kScale,
-    GM_ADDR qSeqLens, GM_ADDR cuSeqLensQ,
+    GM_ADDR q, GM_ADDR qScale, GM_ADDR qSeqLens, GM_ADDR cuSeqLensQ,
     GM_ADDR qFlat, GM_ADDR workspace, GM_ADDR tiling)
 {
-    const __gm__ StemPrepQTilingData* tilingData =
-        (const __gm__ StemPrepQTilingData*)tiling;
+    GET_TILING_DATA_WITH_STRUCT(StemPrepQTilingData, tilingData, tiling);
+
     KernelStemPrepQ op;
-    op.Init(q, qScale, kScale, qSeqLens, cuSeqLensQ, qFlat, tilingData);
+    op.Init(q, qScale, qSeqLens, cuSeqLensQ, qFlat, &tilingData);
     op.Process();
 }

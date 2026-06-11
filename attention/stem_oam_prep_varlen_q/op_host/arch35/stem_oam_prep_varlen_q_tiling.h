@@ -23,30 +23,27 @@ struct StemPrepQCompileInfo {
     int32_t ub_size;
 };
 
-struct StemPrepQTilingData {
-    uint32_t batch_size = 0;
-    uint32_t num_q_heads = 0;
-    uint32_t dim_qk = 128;
-    uint32_t stem_block_size = 128;
-    uint32_t stem_stride = 16;
-    uint32_t R_val = 8;
-    uint32_t kflat_dim = 2048;
-    uint32_t max_q_padded = 0;
-    uint32_t max_Qb = 0;
-    uint32_t total_tokens = 0;
-    uint32_t total_tasks = 0;
-    uint32_t used_core_num = 0;
-    uint32_t split_mode = 0;
-    uint32_t cores_per_bh_base = 1;
-    uint32_t remainder_bh = 0;
-    uint32_t total_blocks = 0;
-    uint32_t blocks_per_core_base = 0;
-    uint32_t blocks_remainder = 0;
-    uint32_t num_Qb_per_batch[MAX_BATCH_SIZE_HOST] = {};
-    uint32_t core_batch_idx[MAX_CORE_NUM_HOST] = {};
-    uint32_t core_head_idx[MAX_CORE_NUM_HOST] = {};
-    uint32_t core_block_idx[MAX_CORE_NUM_HOST] = {};
-    uint32_t core_block_num[MAX_CORE_NUM_HOST] = {};
-};
+BEGIN_TILING_DATA_DEF(StemPrepQTilingData)
+TILING_DATA_FIELD_DEF(uint32_t, batch_size)
+TILING_DATA_FIELD_DEF(uint32_t, num_q_heads)
+TILING_DATA_FIELD_DEF(uint32_t, dim_qk)
+TILING_DATA_FIELD_DEF(uint32_t, stem_block_size)
+TILING_DATA_FIELD_DEF(uint32_t, stem_stride)
+TILING_DATA_FIELD_DEF(uint32_t, R_val)
+TILING_DATA_FIELD_DEF(uint32_t, kflat_dim)
+TILING_DATA_FIELD_DEF(uint32_t, max_q_padded)
+TILING_DATA_FIELD_DEF(uint32_t, max_Qb)
+TILING_DATA_FIELD_DEF(uint32_t, total_tokens)
+TILING_DATA_FIELD_DEF(uint32_t, total_tasks)
+TILING_DATA_FIELD_DEF(uint32_t, used_core_num)
+TILING_DATA_FIELD_DEF(uint32_t, split_mode)
+TILING_DATA_FIELD_DEF(uint32_t, cores_per_bh_base)
+TILING_DATA_FIELD_DEF(uint32_t, remainder_bh)
+TILING_DATA_FIELD_DEF(uint32_t, total_blocks)
+TILING_DATA_FIELD_DEF(uint32_t, blocks_per_core_base)
+TILING_DATA_FIELD_DEF(uint32_t, blocks_remainder)
+END_TILING_DATA_DEF
+
+REGISTER_TILING_DATA_CLASS(StemOamPrepVarlenQ, StemPrepQTilingData)
 
 }  // namespace optiling
