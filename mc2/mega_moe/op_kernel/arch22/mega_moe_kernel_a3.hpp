@@ -128,7 +128,6 @@ public:
         int32_t listLen;
         int32_t expertPerRank;
         uint32_t maxOutputSize;
-        //--------------
         GM_ADDR expertIdx;
         GM_ADDR moeInitRoutingQuantV2Scale;
         GM_ADDR moeInitRoutingQuantV2Offset;
@@ -153,7 +152,6 @@ public:
             MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
             MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
         };
-        //--------------
 
         // Methods
         CATLASS_HOST_DEVICE
@@ -362,7 +360,6 @@ private:
         AscendC::LocalTensor<T> tmpBuffer2 = resource.ubBuf.template GetBufferByByte<T>(tmpBufferOffset);
         tmpBuffer2.SetSize(tmpBufferSize);
 
-        // [ReduceScatter] 2. Pre Interface Sync
         int pingpongId = 0;
         auto processCount = CeilDiv(elemNum, ubMoveNum);
         for (uint32_t processIndex = 0; processIndex < processCount; ++processIndex) {
@@ -374,19 +371,15 @@ private:
 
             auto inputOffset = processOffset;
             auto outputOffset = processOffset;
-            // [ReduceScatter] 2. Pre Interface Sync
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
-            // [ReduceScatter] 3. Start shmem_mte_get_mem_nbi
             copyGmToUb(buf, src[inputOffset], layout::RowMajor{1, curProcessNum}, layout::RowMajor{1, curProcessNum});
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
             copyUbToGm(dst[outputOffset], buf, layout::RowMajor{1, curProcessNum}, layout::RowMajor{1, curProcessNum});
 
-            // [ReduceScatter] 4. Post Interface Sync
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
             pingpongId = (pingpongId + 1) % BufferNum;
         }
-        // [ReduceScatter] 4. Post Interface Sync
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
@@ -517,7 +510,6 @@ private:
 
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID);
-            // 远端 scale 拷贝到GM
             AscendC::DataCopyPad(dstScale[processIndex], bufScale, {1, 4, 0, 0, 0});
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID);
@@ -924,9 +916,9 @@ private:
         // 尾核起始索引
         uint32_t tailCoreIdx = totalM - (eachCoreTaskNum - 1) * usedCoreNum;
         uint32_t curCoreId = GetBlockIdx();
-        // 每个核处理的任务数量 = 是否为尾核 ？均分任务数 ：(均分任务数 - 1)
+        // 每个核处理的任务数量 = 非尾核 ? 均分任务数 : (均分任务数 - 1)
         curCoreTaskNum_ = curCoreId < tailCoreIdx ? eachCoreTaskNum : eachCoreTaskNum - 1;
-        // 每个核处理的起始偏移地址 = 是否为尾核 ？均分任务数 * blockId : (均分任务数 - 1) * blockId + 尾核起始索引
+        // 每个核处理的起始偏移地址 = 非尾核 ? 均分任务数 * blockId : (均分任务数 - 1) * blockId + 尾核起始索引
         curCoreStartOffset_ =
             curCoreId < tailCoreIdx ? eachCoreTaskNum * curCoreId : ((eachCoreTaskNum - 1) * curCoreId + tailCoreIdx);
     }
@@ -1257,7 +1249,6 @@ private:
             // rank's local peer-mem and runs the pre-process step.
             // ----------------------------------------------------------
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
-            // Pull-based ReduceScatter.
             for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
                 uint32_t rowStart =
                     (dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx)) + prevGroupSum1;
@@ -1694,11 +1685,11 @@ private:
             ptrTokenPerExpert = params.ptrWorkspace + workspaceOffset;
 
             workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
-            ptrC = params.ptrWorkspace + workspaceOffset; // 7
+            ptrC = params.ptrWorkspace + workspaceOffset;
 
             if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                 workspaceOffset += params.maxOutputSize * params.problemShape.n() * sizeof(ElementC) * 2;
-                ptrC2 = params.ptrWorkspace + workspaceOffset; // 8
+                ptrC2 = params.ptrWorkspace + workspaceOffset;
                 workspaceOffset += params.maxOutputSize * n2 * sizeof(ElementC) * 2;
             } else if constexpr (std::is_same_v<ElementA, int8_t>) {
                 ptrC2 = ptrC;
