@@ -153,7 +153,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     const aclTensor *tempTensor = nullptr;
     if (softmaxLseFlag == false) {
         std::vector<int64_t> shape = {0};
-        int64_t addr = 0xff;
+        int64_t* addr = nullptr;
         tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
                                      shape.data(), shape.size(), static_cast<void*>(&addr));
         placeHolder = tempTensor;

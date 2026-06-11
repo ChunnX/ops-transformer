@@ -52,7 +52,8 @@ public:
     static constexpr uint32_t pseInputSize = s1BaseSize / CV_RATIO * s2BaseSize * sizeof(Q_T);
     static constexpr uint32_t attenMaskSize = s1BaseSize / CV_RATIO * s2BaseSize * 1;
     static constexpr uint32_t kvInputSize = dTemplateAlign64 * s2BaseSize / 4;
-    static constexpr uint32_t kvOutSize = dTemplateAlign64 * s2BaseSize * 2 *0.25 + 1024;
+    // 2: dtype字节数, 4: vector一次处理1/4元素
+    static constexpr uint32_t kvOutSize = dTemplateAlign64 * s2BaseSize * 2 / 4 + 1024;
     static constexpr uint32_t mm1ResultSize = s1BaseSize / CV_RATIO * s2BaseSize * sizeof(T);
     static constexpr uint32_t mm2ResultSize = s1BaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
     static constexpr uint32_t mm2LeftSize = s1BaseSize * s2BaseSize * sizeof(Q_T);
