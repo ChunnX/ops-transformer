@@ -52,7 +52,7 @@ void EngramEmbedingUtilsBuilder::AcquireHcclHandle(const std::string &group, Hcc
 void EngramEmbedingUtilsBuilder::BuildContext(const HcclComm &hcclHandle, const std::string &group,
                       CommContext &commContextStruct)
 {
-    std::string mc2ContextTag = std::string(group) + "moe_dispatch_ffn_combine";
+    std::string mc2ContextTag = std::string(group) + "engram_embedding";
     TORCH_CHECK(mc2ContextTag.size() <= 255, "Mc2ContextTag is too long, max size is 255, got ",
                 mc2ContextTag.size());
     CommEngine engine = CommEngine::COMM_ENGINE_AIV;
@@ -168,11 +168,6 @@ void EngramEmbedingUtilsBuilder::GetHcclCommResource(const HcclComm &commHandle,
         auto hcclRet = HcclChannelGetRemoteMemsFunc(commHandle, commContextStruct->hcommHandle_[i],
                                                       &memNum, &remoteMems, &memTags);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") failed, ret=", hcclRet);
-        for (uint32_t m = 0; m < memNum; ++m) {
-            ASCEND_LOGI("[DBG_BUF] peer=%u, mem[%u] addr=%p size=%lu tag='%s'",
-                        i, m, remoteMems[m].addr, remoteMems[m].size,
-                        memTags && memTags[m] ? memTags[m] : "(null)");
-        }
         // 取第一个remote mem作为peer的注册buffer地址
         if (memNum > 0 && remoteMems != nullptr) {
             commContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(remoteMems[0].addr);
