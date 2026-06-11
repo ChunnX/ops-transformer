@@ -11,7 +11,7 @@
 
 import torch
 import math
-from utils import *
+from utils.data import generate_cpu_mask
 
 
 def tsoftmax(x):
