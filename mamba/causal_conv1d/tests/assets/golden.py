@@ -17,10 +17,62 @@ __golden__ = {
     }
 }
 
+__input__ = {
+    "kernel": {
+        "causal_conv1d": "CausalConv1d_input"
+    }
+}
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 import ml_dtypes
+
+
+def CausalConv1d_input(*input_arrays, **kwargs):
+    """Custom input generator for causal_conv1d.
+    
+    Generates proper query_start_loc values (monotonically increasing sequence)
+    instead of random values.
+    """
+    input_arrays = list(input_arrays)
+    
+    # Find query_start_loc in inputs (5th input, index 4)
+    # Input order: x, weight, conv_states, bias, query_start_loc, ...
+    if len(input_arrays) > 4 and input_arrays[4] is not None:
+        qsl = input_arrays[4]
+        if qsl.ndim == 1 and qsl.shape[0] > 1:
+            # Generate monotonically increasing sequence
+            batch_size = qsl.shape[0] - 1
+            
+            # Get x shape to determine total tokens
+            x = input_arrays[0]
+            if x.ndim == 2:
+                # Varlen mode: x shape is (total_tokens, dim)
+                total_tokens = x.shape[0]
+            else:
+                # Batch mode: x shape is (batch, seq_len, dim)
+                total_tokens = x.shape[0] * x.shape[1]
+            
+            # Calculate sequence length from test case name if available
+            testcase_name = kwargs.get('testcase_name', '')
+            seq_len = None
+            if '_s' in testcase_name:
+                # Extract seq_len from testcase name like "fn_varlen_b16_s16_d4096_w4_bias_act0_qsl"
+                import re
+                match = re.search(r'_s(\d+)_', testcase_name)
+                if match:
+                    seq_len = int(match.group(1))
+            
+            # If seq_len not found, calculate from total tokens
+            if seq_len is None:
+                seq_len = total_tokens // batch_size
+            
+            # Generate query_start_loc: [0, seq_len, 2*seq_len, ..., total_tokens]
+            qsl_values = np.arange(batch_size + 1, dtype=np.int32) * seq_len
+            input_arrays[4] = qsl_values
+    
+    return input_arrays
 
 
 def _to_torch(arr):
@@ -51,15 +103,15 @@ def _split_sequences(x: torch.Tensor, query_start_loc: torch.Tensor | None
 def CausalConv1d(
     x,                  # [T, D] varlen or [B, S, D] batch
     weight,             # [W, D]
-    bias,               # [D] or None
     conv_states,        # [num_cache_lines, state_len, D]
+    bias=None,          # [D] or None
     query_start_loc=None,            # [batch+1] int32
     cache_indices=None,              # [batch] int32
     initial_state_mode=None,         # [batch] int32
     num_accepted_tokens=None,        # [batch] int32
     *,
     activation_mode=0,   # attr
-    pad_slot_id=-1,      # attr
+    null_block_id=0,      # attr
     run_mode=0,          # attr
     **extra,
 ):
@@ -76,10 +128,21 @@ def CausalConv1d(
         initial_state_mode: initial state mode (OPTIONAL) - [batch] int32
         num_accepted_tokens: number of accepted tokens (OPTIONAL) - [batch] int32
         activation_mode: activation mode, 0=Identity, 1=SiLU - Attr
-        pad_slot_id: pad slot id - Attr
+        null_block_id: null block id - Attr
         run_mode: run mode, 0=forward, 1=update - Attr
         **extra: extended parameters
     """
+    # DEBUG: print actual arguments
+    print(f"[GOLDEN DEBUG] x shape={x.shape if hasattr(x, 'shape') else type(x)}")
+    print(f"[GOLDEN DEBUG] weight shape={weight.shape if hasattr(weight, 'shape') else type(weight)}")
+    print(f"[GOLDEN DEBUG] conv_states shape={conv_states.shape if hasattr(conv_states, 'shape') else type(conv_states)}")
+    print(f"[GOLDEN DEBUG] bias shape={bias.shape if bias is not None and hasattr(bias, 'shape') else type(bias)}")
+    print(f"[GOLDEN DEBUG] query_start_loc shape={query_start_loc.shape if query_start_loc is not None and hasattr(query_start_loc, 'shape') else type(query_start_loc)}")
+    print(f"[GOLDEN DEBUG] cache_indices={cache_indices}")
+    print(f"[GOLDEN DEBUG] initial_state_mode={initial_state_mode}")
+    print(f"[GOLDEN DEBUG] num_accepted_tokens={num_accepted_tokens}")
+    print(f"[GOLDEN DEBUG] activation_mode={activation_mode}, null_block_id={null_block_id}, run_mode={run_mode}")
+    print(f"[GOLDEN DEBUG] extra={extra}")
     # Step 1: convert inputs to torch tensors and cast to float32
     x_t = _to_torch(x)
     orig_dtype = x_t.dtype  # save before float32 cast for output conversion
@@ -118,20 +181,23 @@ def CausalConv1d(
     # Step 3: compute per sequence
     for i in range(B):
         ci = int(cache_idx[i])
-        if ci == pad_slot_id:
+        if ci == null_block_id:
             seq_len = x_t.shape[1] if is_3d else xs[i].shape[0]
             ys.append(torch.zeros(seq_len, x_t.shape[-1], dtype=torch.float32, device=device))
             continue
 
         seq_x = xs[i]
         has_init = (run_mode == 1) or bool(ism[i])
+        print(f"[GOLDEN DEBUG] seq {i}: ci={ci}, has_init={has_init}, run_mode={run_mode}, ism[i]={ism[i]}")
         if has_init:
             history = cs_t[ci][:W - 1].to(torch.float32)
         else:
             history = torch.zeros(W - 1, seq_x.shape[-1], dtype=torch.float32, device=device)
+        print(f"[GOLDEN DEBUG] seq {i}: history shape={history.shape}, seq_x shape={seq_x.shape}")
 
         # Step 4: causal conv1d via F.conv1d(groups=dim)
         padded = torch.cat([history, seq_x], dim=0)
+        print(f"[GOLDEN DEBUG] seq {i}: padded shape={padded.shape}, W={W}")
         w = w_t.T.unsqueeze(1)
         b = b_t
         result = F.conv1d(padded.T.unsqueeze(0), w, bias=b,
@@ -179,12 +245,12 @@ if __name__ == "__main__":
     bias = torch.randn(D, dtype=torch.float16)
     cs_fwd = torch.zeros(B, W - 1, D, dtype=torch.float16)
 
-    cs_out, y = CausalConv1d(x.numpy(), weight.numpy(), bias.numpy(), cs_fwd.numpy(),
+    cs_out, y = CausalConv1d(x.numpy(), weight.numpy(), cs_fwd.numpy(), bias.numpy(),
                               None, None, None, None, activation_mode=1, run_mode=0)
     print(f"fwd:    y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}")
 
     x_upd = x[:, -1:, :]
-    cs_out, y = CausalConv1d(x_upd.numpy(), weight.numpy(), bias.numpy(), cs_fwd.numpy(),
+    cs_out, y = CausalConv1d(x_upd.numpy(), weight.numpy(), cs_fwd.numpy(), bias.numpy(),
                               None, None, None, None, activation_mode=1, run_mode=1)
     print(f"update: y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}")
 

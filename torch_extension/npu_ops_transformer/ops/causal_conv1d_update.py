@@ -79,14 +79,14 @@ def npu_causal_conv1d_update(
         weight: convolution weight [kW, D]
         bias: optional bias [D]
         conv_states: convolution hidden states [numSlots, kW-1, D] (in/out)
-        conv_state_indices: optional token→conv_state slot mapping   (NEW, not yet wired)
+        conv_state_indices: optional token→conv_state slot mapping
         query_start_loc: optional query start locations for varlen
-        initial_state_idx: optional index of sequences with initial state  (NEW, not yet wired)
+        initial_state_idx: optional index of sequences with initial state
         num_accepted_tokens: optional accepted token count (speculative decode)
-        block_idx_last_scheduled_token: optional                        (NEW, not yet wired)
+        block_idx_last_scheduled_token: optional
         activation: "silu" or None
-        null_block_id: null block id                                    (NEW, not yet wired)
-        max_query_len: max query length, -1=unlimited                   (NEW, not yet wired)
+        null_block_id: null block id
+        max_query_len: max query length, -1=unlimited
 
     Returns:
         y: output and updated hidden states
