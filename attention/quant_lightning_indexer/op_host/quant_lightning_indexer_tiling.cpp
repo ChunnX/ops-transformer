@@ -451,8 +451,10 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
                 "The dtype of block_table must be int32."), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor != nullptr,
-                   OP_LOGE(opName_, "key layout is not PA_BSND, input block_table must be null"),
-                   return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "block_table",
+                        Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()).c_str(),
+                        "when key layout is not PA_BSND, input block_table must be null."), 
+                    return ge::GRAPH_FAILED);
     }
 
     if (kLayout_ == DataLayout::TND) {
@@ -582,7 +584,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckN2Size()
 ge::graphStatus QLIInfoParser::GetGSize()
 {
     if (n1Size_ % n2Size_ != 0) {
-        OP_LOGE(opName_, "input query's head_num %u can not be a multiple of key's head_num %u.", n1Size_, n2Size_);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
+            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+            "input query's head_num can not be a multiple of key's head_num.");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -591,12 +595,15 @@ ge::graphStatus QLIInfoParser::GetGSize()
         OP_CHECK_IF(gSize_ != G_SIZE_LIMIT_950 && gSize_ != G_SIZE_LIMIT &&
                     gSize_ != G_SIZE_LIMIT_32_950 && gSize_ != G_SIZE_LIMIT_16_950 &&
                     gSize_ != G_SIZE_LIMIT_8_950,
-               OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must equal 64 or 32 or 24 or 16 or 8.",
-                    n1Size_, n2Size_),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                "input query's head_num divided by input key's head_num must equal 64 or 32 or 24 or 16 or 8."),
                return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(gSize_ > G_SIZE_LIMIT,
-               OP_LOGE(opName_, "N1 is %u, N2 is %u, N1 divided by N2 must <= %u.", n1Size_, n2Size_, G_SIZE_LIMIT),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                "input query's head_num divided by input key's head_num must <= " + std::to_string(G_SIZE_LIMIT) + "."),
                return ge::GRAPH_FAILED);        
     }
     
@@ -664,7 +671,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckBlockSize()
 
     OP_CHECK_IF(
         ((blockSize_ % BLOCK_SIZE_FACTOR != 0) || (blockSize_ == 0) || (blockSize_ > BLOCK_SIZE_LIMIT)),
-        OP_LOGE(opName_, "input key's block_size must be a multiple of 16 and belong to (0, 1024], but now is %d.", blockSize_),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetShape()).c_str(),
+            "input key's block_size must be a multiple of 16 and be within the range (0, 1024]."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -677,7 +686,10 @@ ge::graphStatus QLIInfoParser::GetS2SizeForPageAttention()
     }
 
     int32_t blockCount_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetShape().GetDim(0));
-    OP_CHECK_IF((blockCount_ == 0), OP_LOGE(opName_, "input key's block_count cannot be 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((blockCount_ == 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetShape()).c_str(),
+            "input key's block_count cannot be 0."), return ge::GRAPH_FAILED);
 
     maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
     s2Size_ = maxBlockNumPerBatch_ * blockSize_;
