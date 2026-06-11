@@ -482,6 +482,20 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, QkAlignedRowsOnlyLimitSideBySideL0c)
     EXPECT_LE(AlignUp(tiling.tokenTile * input.numKHeads, 16), QkvTiling::L0A_FULL_DIM_SEGMENT_ROWS);
 }
 
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, SelectsSingleTokenTileWhenOnlyMinimumFitsL0c)
+{
+    ContractTiling tiling;
+    auto input = BuildInput(128, 121, 7, 7);
+    ASSERT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(tiling.tokenTile, 1U);
+    EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
+    EXPECT_EQ(tiling.rowTile, 128U);
+    EXPECT_EQ(tiling.rowTileAligned, 128U);
+    EXPECT_LE(AlignUp(input.numQHeads, 16) + AlignUp(input.numKHeads, 16), QkvTiling::L0C_MAX_ROWS);
+    EXPECT_GT(AlignUp(2U * input.numQHeads, 16) + AlignUp(2U * input.numKHeads, 16),
+        QkvTiling::L0C_MAX_ROWS);
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
 {
     ContractTiling tiling;
