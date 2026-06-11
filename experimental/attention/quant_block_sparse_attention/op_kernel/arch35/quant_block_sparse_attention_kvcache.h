@@ -226,11 +226,11 @@ __aicore__ inline void UpdateLoopFlagsBasedOnS1Index(
     }
 }
 __aicore__ inline void AttentionMaskFullProcessingOrRequired(
-    uint32_t s1Offset, uint32_t s2Offset, uint32_t delta, uint32_t realSize, 
+    uint32_t s1Offset, uint32_t s2Offset, int64_t delta, uint32_t realSize, 
     int64_t& sparseBlkIdx, bool& sparseBlkPartialMask
 )
 {
-    uint32_t offsetDiff = s1Offset - s2Offset - delta;
+    int64_t offsetDiff = s1Offset - s2Offset + delta;
     if (offsetDiff + realSize - 1 < 0) {
         // 情景三
         sparseBlkIdx = -1;
