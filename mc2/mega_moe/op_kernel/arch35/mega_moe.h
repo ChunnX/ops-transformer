@@ -93,6 +93,7 @@ private:
     uint32_t worldSize_ = 0;
     uint32_t expertPerRank_ = 0;
     uint64_t maxOutputSize_ = 0;
+    int64_t hiddenDim_ = 0;
     int32_t vecSetSyncCom_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t blockNumPerRank_ = 2;
