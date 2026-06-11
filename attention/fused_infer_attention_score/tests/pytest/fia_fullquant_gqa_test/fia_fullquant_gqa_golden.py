@@ -35,6 +35,7 @@ ENABLE_LSE = True
 BLOCK_SIZE = 128
 SPARSE_MODE = 3
 SCALE_VALUE = None
+IS_CONTIGUOUS = True
 
 # Seed
 SEED_Q = 54
@@ -456,7 +457,11 @@ def fa_run_npu(q, k, v, mask, actual_seq_q, actual_seq_kv,
     dequant_scale_k = dequant_scale_k.float().npu()
     dequant_scale_v = dequant_scale_v.float().npu()
     p_scale = p_scale.float().npu()
-    
+    if not IS_CONTIGUOUS and ENABLE_PA: # .float()之后tensor会变成连续，因此构造scale非连续需在float后
+        fake_kscale_tensor = torch.ones_like(dequant_scale_k)
+        double_kscale = torch.stack([dequant_scale_k, fake_kscale_tensor], dim=2)
+        double_kscale = double_kscale.npu()
+        dequant_scale_k = double_kscale[:, :, 0] # 覆写为非连续
     # block_table 必须是 int32 类型
     block_table = block_table.int().npu()
     
@@ -472,6 +477,10 @@ def fa_run_npu(q, k, v, mask, actual_seq_q, actual_seq_kv,
     print(f"[INFO] deq_k dtype: {dequant_scale_k.dtype}, shape: {dequant_scale_k.shape}")
     print(f"[INFO] deq_v dtype: {dequant_scale_v.dtype}, shape: {dequant_scale_v.shape}")
     print(f"[INFO] NPU input layout: {layout}")
+    print(f"[INFO] key is_contiguous: {k.is_contiguous()}, value is_contiguous: {v.is_contiguous()}")
+    print(f"[INFO] key stride: {k.stride()}, value stride: {v.stride()}")
+    print(f"[INFO] deq_k is_contiguous: {dequant_scale_k.is_contiguous()}")
+    print(f"[INFO] deq_k stride: {dequant_scale_k.stride()}")
 
     if GRAPH_PATH == 0:
         print("[INFO] GRAPH_PATH == 0 ...")
@@ -542,6 +551,12 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
   
         # 转换为tensor，确保类型正确
         block_table_tensor = torch.as_tensor(block_table, dtype=torch.int32)
+        # 构造kvcache非连续
+        if not IS_CONTIGUOUS:
+            kv_cache = torch.stack([k_pa, v_pa], dim=2)
+            kv_cache = kv_cache.npu()
+            k_pa = kv_cache[:, :, 0]
+            v_pa = kv_cache[:, :, 1]
         
         # 调用NPU
         output = fa_run_npu(q_npu, k_pa, v_pa, mask, accum_seq_q, actual_seq_kv,
