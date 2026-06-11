@@ -166,7 +166,7 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 ## 约束说明
 
 - 该接口支持训练、推理场景下使用。
-- 该接口支持单算子模式和TorchAir图模式调用。
+- 该接口支持单算子模式调用。
 - 数据类型约束：
     - `x`和`h_out`的数据类型必须相同。
     - 输出`y`的数据类型与`x`保持一致。
@@ -186,16 +186,9 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 
 - 所有输入Tensor的shape各维度值必须为正数（大于0）。
 
-- 参数里Shape使用的变量如下：
-    - B：表示Batch批量大小。
-    - S：表示Seq-Length序列长度。
-    - T：表示所有Batch序列长度的累加和，$T = B \times S$。
-    - n：表示head数量（头数）。
-    - D：表示每个头的隐藏维度大小（headdim）。
-
 ## 确定性计算
 
-`mhc_post`默认确定性实现。
+默认支持确定性计算。
 
 ## 调用示例
 
@@ -217,38 +210,5 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
     h_post = torch.randn(B, S, n, dtype=torch.float32).npu()
 
     y = mhc_post(x, h_res, h_out, h_post)
-    print(f"output shape: {y.shape}")
-    ```
-
-- TorchAir图模式调用
-
-    ```python
-    import torch
-    import torch_npu
-    import torchair
-    from torchair.configs.compiler_config import CompilerConfig
-    from npu_ops_transformer.ops import mhc_post
-
-    class MhcPostModel(torch.nn.Module):
-        def forward(self, x, h_res, h_out, h_post):
-            return mhc_post(x, h_res, h_out, h_post)
-
-    B = 2
-    S = 8
-    n = 4
-    D = 128
-
-    x = torch.randn(B, S, n, D, dtype=torch.bfloat16).npu()
-    h_res = torch.randn(B, S, n, n, dtype=torch.float32).npu()
-    h_out = torch.randn(B, S, D, dtype=torch.bfloat16).npu()
-    h_post = torch.randn(B, S, n, dtype=torch.float32).npu()
-
-    model = MhcPostModel().npu()
-    config = CompilerConfig()
-    config.mode = "reduce-overhead"
-    npu_backend = torchair.get_npu_backend(compiler_config=config)
-    compiled_model = torch.compile(model, fullgraph=True, backend=npu_backend, dynamic=False)
-
-    y = compiled_model(x, h_res, h_out, h_post)
     print(f"output shape: {y.shape}")
     ```
