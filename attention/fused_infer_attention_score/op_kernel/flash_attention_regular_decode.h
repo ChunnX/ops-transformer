@@ -33,7 +33,6 @@ namespace SplitFuse {
     class FAInferKernelDecoding {
     public:
         using ArchTag = typename BlockMmadQK::ArchTag;
-        using L1TileShape = typename BlockMmadQK::L1TileShape;
         using ElementQ = typename BlockMmadQK::ElementA;
         using LayoutQ = typename BlockMmadQK::LayoutA;
         using ElementK = typename BlockMmadQK::ElementB;
@@ -45,21 +44,22 @@ namespace SplitFuse {
         using LayoutP = typename BlockMmadPV::LayoutA;
         using ElementV = typename BlockMmadPV::ElementB;
         using LayoutV = typename BlockMmadPV::LayoutB;
+        using L1TileShape = typename BlockMmadQK::L1TileShape;
 
         using ElementMask = typename EpilogueOnlineSoftmax::ElementMask;
         using LayoutMask = typename EpilogueOnlineSoftmax::LayoutMask;
-
-        using ElementO = typename EpilogueRescaleO::ElementOutput;
-        using LayoutO = typename EpilogueRescaleO::LayoutOutput;
-
-        using ElementOTmp = typename EpilogueRescaleO::ElementInput;
-        using LayoutOTmp = typename EpilogueRescaleO::LayoutInput;
 
         using ElementLse = typename EpilogueRescaleO::ElementLse;
         using LayoutLse = typename EpilogueRescaleO::LayoutLse;
 
         using ElementUpdate = typename EpilogueRescaleO::ElementUpdate;
         using LayoutUpdate = typename EpilogueRescaleO::LayoutUpdate;
+
+        using ElementOTmp = typename EpilogueRescaleO::ElementInput;
+        using LayoutOTmp = typename EpilogueRescaleO::LayoutInput;
+
+        using ElementO = typename EpilogueRescaleO::ElementOutput;
+        using LayoutO = typename EpilogueRescaleO::LayoutOutput;
 
         static constexpr Epilogue::LseMode LSE_MODE = EpilogueRescaleO::LSE_MODE;
         static constexpr Epilogue::SinkMode SINK_MODE = EpilogueOnlineSoftmax::SINK_MODE;
@@ -506,9 +506,9 @@ namespace SplitFuse {
                     uint32_t kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, pagedBlockSize);
 
                     uint32_t blockStackNum = MAX_KV_STACK_LEN / pagedBlockSize;
-                    uint32_t stackSeqTile;
                     uint32_t stackSeqTilePad = blockStackNum * pagedBlockSize;
                     uint32_t preKVNum = PRE_LAUNCH * blockStackNum;
+                    uint32_t stackSeqTileTemp;
                     int32_t stackSeqCount = 0;
 
 #ifdef __DAV_C220_CUBE__
@@ -519,9 +519,9 @@ namespace SplitFuse {
                     for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx += blockStackNum) {
                         if (kvSIdx < kvSLoopNumTotal) {
                             if (kvSIdx + blockStackNum > kvSLoopNumTotal - 1U) {
-                                stackSeqTile = noSkipKvS - kvSIdx * pagedBlockSize;
+                                stackSeqTileTemp = noSkipKvS - kvSIdx * pagedBlockSize;
                             } else {
-                                stackSeqTile = pagedBlockSize * blockStackNum;
+                                stackSeqTileTemp = pagedBlockSize * blockStackNum;
                             }
                             uint32_t curStackTileMod = stackSeqCount % (PRE_LAUNCH + 1U);
 #ifdef __DAV_C220_CUBE__
@@ -544,8 +544,8 @@ namespace SplitFuse {
                                 uint64_t gmOffsetS =
                                     static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
                                     curStackTileMod * WORKSPACE_BLOCK_SIZE_DB + sWorkspaceIncreOffset);
-                                GemmCoord actualBlockShapeQK{rowNum, stackSeqTile, embed};
-                                LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
+                                GemmCoord actualBlockShapeQK{rowNum, stackSeqTileTemp, embed};
+                                LayoutS layOutS(rowNum, stackSeqTileTemp, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
                                 if constexpr (PAGED_CACHE_FLAG) {
                                     blockMmadQK(
@@ -570,13 +570,13 @@ namespace SplitFuse {
 #endif
                             }
 #ifdef __DAV_C220_VEC__
-                            LayoutP layOutP(rowNum * tailKvNBlockSize, stackSeqTile, stackSeqTilePad);
+                            LayoutP layOutP(rowNum * tailKvNBlockSize, stackSeqTileTemp, stackSeqTilePad);
                             uint64_t gmOffsetSBase =
                                 static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
                                 curStackTileMod * WORKSPACE_BLOCK_SIZE_DB);
                             uint64_t gmOffsetPBase = gmOffsetSBase;
-                            LayoutS layOutS(rowNum * tailKvNBlockSize, stackSeqTile, stackSeqTilePad);
-                            GemmCoord actualBlockShapeQK{rowNum * tailKvNBlockSize, stackSeqTile, embed};
+                            LayoutS layOutS(rowNum * tailKvNBlockSize, stackSeqTileTemp, stackSeqTilePad);
+                            GemmCoord actualBlockShapeQK{rowNum * tailKvNBlockSize, stackSeqTileTemp, embed};
 
                             epilogueOnlineSoftmax(
                                 gP[gmOffsetPBase],
@@ -600,9 +600,9 @@ namespace SplitFuse {
                         if (kvSIdx >= preKVNum) {
                             uint32_t nowkvSIdx = kvSIdx - preKVNum;
                             if (nowkvSIdx + blockStackNum > kvSLoopNumTotal - 1U) {
-                                stackSeqTile = noSkipKvS - nowkvSIdx * pagedBlockSize;
+                                stackSeqTileTemp = noSkipKvS - nowkvSIdx * pagedBlockSize;
                             } else {
-                                stackSeqTile = pagedBlockSize * blockStackNum;
+                                stackSeqTileTemp = pagedBlockSize * blockStackNum;
                             }
                             uint32_t curStackTileMod = (stackSeqCount - PRE_LAUNCH) % (PRE_LAUNCH + 1U);
 
@@ -617,13 +617,13 @@ namespace SplitFuse {
                                 uint64_t gmOffsetOTmp =
                                     static_cast<uint64_t>(coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
                                     curStackTileMod * WORKSPACE_BLOCK_SIZE_DB + oWorkspaceIncreOffset);
-                                GemmCoord actualBlockShapePV{rowNum, embedV, stackSeqTile};
+                                GemmCoord actualBlockShapePV{rowNum, embedV, stackSeqTileTemp};
                                 LayoutOTmp layoutOTmp(rowNum, embedV, embedRoundV);
 #ifdef __DAV_C220_CUBE__
                                 uint32_t pWorkspaceIncreOffset = kvNIncreIdx * rowNum * stackSeqTilePad;
                                 uint64_t gmOffsetP = coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) +
                                     curStackTileMod * WORKSPACE_BLOCK_SIZE_DB + pWorkspaceIncreOffset;
-                                LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
+                                LayoutP layoutPTemp(rowNum, stackSeqTileTemp, stackSeqTilePad);
 
                                 blockMmadPV(
                                     gP[gmOffsetP],
@@ -652,7 +652,7 @@ namespace SplitFuse {
                             LayoutOTmp layoutUpdate(rowNum * tailKvNBlockSize, embed, embedRound);
                             LayoutLse layoutLse(totalQTokens, qHeads);
                             LayoutOTmp layoutOTmp(rowNum * tailKvNBlockSize, embedV, embedRoundV);
-                            GemmCoord actualBlockShapePV{rowNum * tailKvNBlockSize, embedV, stackSeqTile};
+                            GemmCoord actualBlockShapePV{rowNum * tailKvNBlockSize, embedV, stackSeqTileTemp};
 
                             Arch::CrossCoreWaitFlag(pvReady);
 
@@ -737,8 +737,8 @@ namespace SplitFuse {
 
         BlockMmadQK blockMmadQK;
         BlockMmadPV blockMmadPV;
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax;
         EpilogueRescaleO epilogueRescaleO;
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax;
         EpilogueInitOut epilogueInitOut;
     };
 }
