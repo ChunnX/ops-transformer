@@ -1235,20 +1235,17 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
     FindBoundaryBin(globalHist, roundId);
 
     AddTileHistToTileTopK(globalHist);
-    BSA_TOPK_PIPE_ALL();
 
     remainK_ = kValue_ - totalDefinitelyInTopK_;
     LocalTensor<float> tileHistFp32 = resTensor.ReinterpretCast<float>();
 
     if (roundId == 0 && remainK_ > 0) {
         HandleLastRoundBoundary(resTensor, tileHistFp32);
-        BSA_TOPK_PIPE_ALL();
     }
 
     bool isLastRound = (remainK_ == 0 || roundId == 0);
     if (isLastRound) {
         WriteCoreTopKFromWs(resTensor, tileHistFp32);
-        BSA_TOPK_PIPE_ALL();
     }
 
     return isLastRound;
@@ -1431,7 +1428,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
             }
 
             WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
-            BSA_TOPK_PIPE_ALL();
 
             LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLen_].template ReinterpretCast<half>();
 
@@ -1443,7 +1439,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
             }
 
             SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
-            BSA_TOPK_PIPE_ALL();
 
             // === DUMP 701: After GT phase ===
             if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
@@ -1459,7 +1454,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
                 }
 
                 SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
-                BSA_TOPK_PIPE_ALL();
 
                 // === DUMP 801: After EQ phase ===
                 if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
@@ -1500,7 +1494,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batc
                     DataCopyPadExtParams<uint8_t>(false, 0,
                         static_cast<uint8_t>(alignLen - curTileLen), 0));
         MTE2ToMTE3Sync();
-        BSA_TOPK_PIPE_ALL();
 
         // Write to maskOutGm
         // Note: uint8_t and int8_t have identical memory layout (1 byte each)
@@ -1514,7 +1507,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batc
             (outputOffset + tileGmOffset) * sizeof(OUT_T));
         DataCopyPad(maskOutGmU8, maskLocal8,
                     DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
-        BSA_TOPK_PIPE_ALL();
     }
 }
 
