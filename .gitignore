@@ -48,3 +48,23 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+ops-code-reviewer/.gitignore
+ops-code-reviewer/6142_review_summary.md
+ops-code-reviewer/6276_review_summary.md
+ops-code-reviewer/AGENTS.md
+ops-code-reviewer/init.sh
+ops-code-reviewer/quickstart.md
+ops-code-reviewer/stderr.txt
+ops-code-reviewer/stdout.txt
+ops-code-reviewer/.claude-plugin/plugin.json
+ops-code-reviewer/agents/ascendc-code-summarizer.md
+ops-code-reviewer/agents/ascendc-ops-reviewer.md
+ops-code-reviewer/hooks/hooks.json
+ops-code-reviewer/hooks/run-hook.cmd
+ops-code-reviewer/hooks/session-start-reviewer
+ops-code-reviewer/operators/.pr_diff/6142_effective.diff
+ops-code-reviewer/operators/.pr_diff/6142.diff
+ops-code-reviewer/operators/.pr_diff/6276.diff
+ops-code-reviewer/operators/pr-6142/code_summary.md
+ops-code-reviewer/operators/pr-6276/6276_review_summary.md
+ops-code-reviewer/operators/pr-6276/code_summary.md
