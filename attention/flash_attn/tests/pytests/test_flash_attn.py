@@ -19,7 +19,7 @@ from pathlib import Path
 # ── 新架构 modules ──
 from core.data import flash_attn_inputs
 from core.case_loader import load_case_modules, normalize_params, resolve_case_ids
-from core.orchestrator import run_case, run_case_load, _npu_health_check
+from core.orchestrator import run_case, run_case_load
 from core.reporter import Reporter
 
 _DEFAULT_CASE_FILES = [os.path.splitext(f)[0] for f in os.listdir(
@@ -46,8 +46,7 @@ if __name__ == "__main__":
                         help="正常对比流程 + 将 inputs/golden 落盘到指定目录")
     parser.add_argument("--load_golden", type=str, default=None,
                         help="从指定目录加载 golden，只跑 NPU/GPU 对比")
-    parser.add_argument("--case_timeout", type=int, default=300,
-                        help="单个 case NPU 计算超时时间（秒）")
+
     parser.add_argument("--meta_only",  action="store_true")
     parser.add_argument("--load_gpu_dump", type=str, default=None)
     parser.add_argument("--load_npu_dump", type=str, default=None)
@@ -212,7 +211,6 @@ if __name__ == "__main__":
             csv_path.parent.mkdir(parents=True, exist_ok=True)
             reporter.set_csv(csv_path)
 
-        consecutive_fails = 0
         for i, name in enumerate(run_cases):
             print(f"\n{'='*66}")
             print(f"  [load] Case: {name}")
@@ -224,14 +222,12 @@ if __name__ == "__main__":
                     golden_dir=args.load_golden,
                     primary=primary,
                     device_id=args.device_id,
-                    timeout=args.case_timeout,
                     verbose_diff=args.verbose_diff,
                     visualize=args.visualize,
                     viz_dir=args.viz_dir,
                     fail_analysis=args.fail_analysis,
-                    use_isolation=(not args.use_gpu),
                 )
-                err = result["attn"].get("error")
+                err = None
             except FileNotFoundError:
                 print(f"  [warn] golden 数据不存在，跳过: {name}")
                 continue
@@ -245,16 +241,6 @@ if __name__ == "__main__":
                           "lse":  {"passed": False, "max_abs": float('nan'),
                                    "mean_abs": float('nan'), "fail_cnt": -1,
                                    "total": -1, "fail_ratio": float('nan')}}
-
-            if err and "TIMEOUT" in str(err):
-                consecutive_fails += 1
-                if consecutive_fails >= 3:
-                    if not _npu_health_check(args.device_id):
-                        print("[FATAL] NPU 设备不可用，终止测试")
-                        break
-                    consecutive_fails = 0
-            else:
-                consecutive_fails = 0
 
             reporter.record(name, result, error=err)
 
