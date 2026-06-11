@@ -365,5 +365,9 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
 
 IMPL_OP_INFERSHAPE(MoeFinalizeRoutingV2)
     .InferShape(Infershape4MoeFinalizeRoutingV2)
-    .InferDataType(InferDataTypeMoeFinalizeRoutingV2);
+    .InferDataType(InferDataTypeMoeFinalizeRoutingV2)
+    .PrivateAttr("zero_expert_range", std::vector<int64_t>{-1, -1})
+    .PrivateAttr("copy_expert_range", std::vector<int64_t>{-1, -1})
+    .PrivateAttr("constant_expert_range", std::vector<int64_t>{-1, -1})
+    .PrivateAttr("k", static_cast<int64_t>(1));
 } // namespace ops

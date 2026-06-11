@@ -113,6 +113,10 @@ ge::graphStatus TilingPrepareForMoeFinalizeRoutingV2(gert::TilingParseContext* c
 
 IMPL_OP_OPTILING(MoeFinalizeRoutingV2)
     .Tiling(TilingForMoeFinalizeRoutingV2)
-    .TilingParse<MoeFinalizeRoutingCompileInfoV2>(TilingPrepareForMoeFinalizeRoutingV2);
+    .TilingParse<MoeFinalizeRoutingCompileInfoV2>(TilingPrepareForMoeFinalizeRoutingV2)
+    .PrivateAttr("zero_expert_range", std::vector<int64_t>{-1, -1})
+    .PrivateAttr("copy_expert_range", std::vector<int64_t>{-1, -1})
+    .PrivateAttr("constant_expert_range", std::vector<int64_t>{-1, -1})
+    .PrivateAttr("k", static_cast<int64_t>(1));
 
 } // namespace optiling
