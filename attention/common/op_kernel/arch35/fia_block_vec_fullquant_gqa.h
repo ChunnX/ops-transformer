@@ -223,7 +223,7 @@ public:
                     queryScaleGm, deqScaleQ);
         InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGmKv, constInfo.actualSeqLenKVSize,
                     constInfo.n2Size, constInfo.blockSize, keyScaleGm,
-                    deqScaleK);
+                    deqScaleK, constInfo.kScaleStrides.bnStride, constInfo.kScaleStrides.n2Stride);
 
         if constexpr (FLASH_DECODE) {
             accumOutGm.SetGlobalBuffer((__gm__ float *)workspace);
@@ -247,12 +247,13 @@ public:
     __aicore__ inline void InitKScaleBuffer(uint32_t batchSize, uint32_t kvSeqSize,
                                             GlobalTensor<uint64_t> actualSeqLenGmKv, uint32_t actualLenDims,
                                             uint32_t n2Size, uint32_t kvCacheBlockSize,
-                                            FaGmTensor<float, K_SCALE_FORMAT> &kScaleGmTensor, __gm__ uint8_t *gm)
+                                            FaGmTensor<float, K_SCALE_FORMAT> &kScaleGmTensor, __gm__ uint8_t *gm,
+                                            uint64_t bnStrides, uint64_t n2Strides)
     {
         kScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ float *)gm);
         if constexpr (GmLayoutParams<K_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_FP8_BnNBs_K_SCLAE) {
             kScaleGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, blockTableGm,
-                                                 constInfo.maxBlockNumPerBatch);
+                                                 constInfo.maxBlockNumPerBatch, bnStrides, n2Strides);
         }
     }
 
@@ -898,9 +899,9 @@ public:
                                       RunInfoX &runInfo, int64_t dSizeAligned64)
     {
         if constexpr (HAS_MASK) {
-            int64_t s1FirstValidToken = Min(Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
-            int64_t s1LastValidToken = Min(Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
-            s1LastValidToken = Max(s1LastValidToken - 1, 0);
+            int64_t s1FirstValidToken = AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
+            int64_t s1LastValidToken = AttentionCommon::Min(AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+            s1LastValidToken = AttentionCommon::Max(s1LastValidToken - 1, 0);
             bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
             bool batchNeedRowInvalid = constInfo.isRowInvalidOpen || // 手动开启行无效
                                        ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
@@ -1161,7 +1162,7 @@ public:
         maskInfo.batchIdx = (constInfo.attenMaskBatch == 1) ? 0 : runInfo.bIdx;
         maskInfo.attenMaskBatchStride = constInfo.attenMaskS1Size * constInfo.attenMaskS2Size;
         maskInfo.attenMaskS1Stride = constInfo.attenMaskS2Size;
-        maskInfo.attenMaskDstStride = (s2BaseSize - Align(maskInfo.s2dealNum, 32U)) / 32;
+        maskInfo.attenMaskDstStride = (s2BaseSize - AttentionCommon::Align(maskInfo.s2dealNum, 32U)) / 32;
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
