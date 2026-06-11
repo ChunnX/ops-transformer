@@ -28,6 +28,7 @@
 
 #include "moe_distribute_dispatch_tiling_v2.h"
 #include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;

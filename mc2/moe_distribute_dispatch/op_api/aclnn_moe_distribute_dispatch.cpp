@@ -14,6 +14,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnnInner_moe_distribute_dispatch.h"

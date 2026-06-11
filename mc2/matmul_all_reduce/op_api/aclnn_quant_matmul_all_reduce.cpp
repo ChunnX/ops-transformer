@@ -19,6 +19,7 @@
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
 #include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 

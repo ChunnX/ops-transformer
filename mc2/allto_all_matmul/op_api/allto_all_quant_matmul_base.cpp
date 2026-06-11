@@ -12,6 +12,7 @@
 
 #include "acl/acl.h"
 #include "log/log.h"
+#include "mc2_log_compat.h"
 #include "aclnnInner_allto_all_matmul.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/transdata.h"

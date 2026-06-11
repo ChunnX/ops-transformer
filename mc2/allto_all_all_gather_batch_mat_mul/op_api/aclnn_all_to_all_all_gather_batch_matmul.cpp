@@ -17,6 +17,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "log/log.h"
+#include "mc2_log_compat.h"
 #include "aclnnInner_allto_all_all_gather_batch_mat_mul.h"
 
 using namespace op;

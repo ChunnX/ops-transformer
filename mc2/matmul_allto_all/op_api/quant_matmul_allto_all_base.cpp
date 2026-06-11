@@ -27,6 +27,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
 #include "common/utils/hccl_util.h"
