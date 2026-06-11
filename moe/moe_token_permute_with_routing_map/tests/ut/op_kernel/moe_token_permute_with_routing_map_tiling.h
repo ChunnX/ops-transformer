@@ -86,6 +86,7 @@ struct MaskedSelectRMTilingData {
     uint64_t tailtileLength = 0;
     uint64_t taillasttileLength = 1;
     uint64_t tokenNum = 8;
+    int64_t topK = 2;
     int64_t needCoreNum = 1;
 };
 

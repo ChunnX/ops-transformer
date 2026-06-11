@@ -171,6 +171,7 @@ public:
         tileLengthAlign = (tileLength + alignNum - 1) / alignNum * alignNum;
 
         offsetGlobal.SetGlobalBuffer((__gm__ int32_t*)workspace, numBlocks);
+        indicesWorkspaceGm.SetGlobalBuffer((__gm__ int32_t*)workspace, tokenNum * topK);
         SetPipeBuffer(hasProb);
         indexLocal = indexBuf.Get<int32_t>();
         offsetLocal = offsetBuf.Get<int32_t>();
@@ -219,13 +220,20 @@ public:
             actualOutTokens += offsetLocal.GetValue(i);
         }
 
+        int32_t alignedTotalLength = static_cast<int32_t>(topK * tokenNum);
+        bool isAlignedPath = (actualOutTokens == alignedTotalLength);
+
         if (this->blockIdx < needCoreNum) {
             this->outOffset = 0;
             if (hasProb) {
                 yGlobal.SetGlobalBuffer((__gm__ T*)y + ind);
             }
 
-            indexGlobal.SetGlobalBuffer((__gm__ int32_t*)sortedIndices + ind);
+            if (isAlignedPath) {
+                indexGlobal.SetGlobalBuffer((__gm__ int32_t*)sortedIndices + ind);
+            } else {
+                indexGlobal.SetGlobalBuffer(indicesWorkspaceGm[ind]);
+            }
             PipeBarrier<PIPE_ALL>();
 
             for (int32_t i = 0; i < tileNum; ++i) {
@@ -255,6 +263,7 @@ private:
         this->tailtileLength = maskedSelectTilingData->tailtileLength;
         this->taillasttileLength = maskedSelectTilingData->taillasttileLength;
         this->tokenNum = maskedSelectTilingData->tokenNum;
+        this->topK = maskedSelectTilingData->topK;
     }
 
     __aicore__ inline void SetPipeBuffer(int64_t hasProb) {
@@ -519,6 +528,7 @@ private:
     GlobalTensor<uint8_t> maskGlobal;
     GlobalTensor<T> workGlobal;
     GlobalTensor<int32_t> offsetGlobal;
+    GlobalTensor<int32_t> indicesWorkspaceGm;
     LocalTensor<int32_t> offsetLocal;
     LocalTensor<half> maskHalfLocal;
     LocalTensor<int32_t> indexLocal;
@@ -537,6 +547,7 @@ private:
     uint64_t tailtileLength;
     uint64_t taillasttileLength;
     uint64_t tokenNum;
+    int64_t topK;
     uint64_t tileLengthAlign;
     // 本block/核的
     uint64_t tileNum;

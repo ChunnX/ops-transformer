@@ -934,6 +934,7 @@ void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4MaskedSelect()
     tilingData->set_formertileLength(formerTileLength);
     tilingData->set_formerlasttileLength(formerLastTileLength);
     tilingData->set_tokenNum(numTokens);
+    tilingData->set_topK(topK);
 
     tilingData->set_tailNum(tailNum);
     tilingData->set_tailLength(tailLength);

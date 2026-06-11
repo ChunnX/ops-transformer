@@ -22,6 +22,16 @@
 #include "masked_select_v3.h"
 #include "moe_permute_prob.h"
 
+// A/B 测试：1=GM 直读路径，0=UB 分批读路径。性能择优后删除未选中路径及本宏。
+#ifndef MOE_INDICES_PAD_USE_GM
+#define MOE_INDICES_PAD_USE_GM 1
+#endif
+#if MOE_INDICES_PAD_USE_GM
+#include "moe_indices_pad_multi_core_gm.h"
+#else
+#include "moe_indices_pad_multi_core_ub.h"
+#endif
+
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/gather_v2_simd_two_dim.h"
 #include "arch35/gather_v2_simt_two_dim.h"
@@ -61,10 +71,12 @@ using namespace MoeTokenPermute;
 #define NONALIGNED_SORT_COPY_IMPL(indexCopyClass, tokenDtype)                          \
     do {                                                                               \
         TPipe sortPipe2;                                                               \
-        MoeSortMultiCore<int32_t> op2;                                                 \
-        op2.RecalcVBSMultiCoreParams(sortedIndices, actualOutTokens, GetBlockNum(), t);  \
-        op2.SetNeedPad(true, t->topK, t->n);                                           \
-        op2.InitAfterRecalc(sortedIndices, userWS, t, &sortPipe2);                     \
+#if MOE_INDICES_PAD_USE_GM                                                             \
+        MoeIndicesPadMultiCoreGm op2;                                                  \
+#else                                                                                  \
+        MoeIndicesPadMultiCoreUb op2;                                                  \
+#endif                                                                                 \
+        op2.Init(userWS, sortedIndices, actualOutTokens, t, userWS, &sortPipe2); \
         op2.Process();                                                                 \
         sortPipe2.Destroy();                                                           \
         TPipe MoeindexCopyPipe;                                                        \

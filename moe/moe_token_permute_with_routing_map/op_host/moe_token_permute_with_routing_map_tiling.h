@@ -91,6 +91,7 @@ TILING_DATA_FIELD_DEF(uint64_t, tailtileNum);
 TILING_DATA_FIELD_DEF(uint64_t, tailtileLength);
 TILING_DATA_FIELD_DEF(uint64_t, taillasttileLength);
 TILING_DATA_FIELD_DEF(uint64_t, tokenNum);
+TILING_DATA_FIELD_DEF(int64_t, topK);
 TILING_DATA_FIELD_DEF(int64_t, needCoreNum);
 
 END_TILING_DATA_DEF;
