@@ -37,7 +37,7 @@ public:
     static constexpr bool PAGE_ATTENTION = SIT::pageAttention;
 
     using QK_T = typename SIT::queryKeyType;
-    using SCORE_T = typename QLIT::scoreType;
+    using SCORE_T = typename SIT::scoreType;
 
     __aicore__ inline SIVector(){};
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);
@@ -125,8 +125,8 @@ private:
     TBuf<TPosition::VECCALC> mrgValueBuf_;
     LocalTensor<uint32_t> mrgValueLocal_;
 
-    TBuf<TPosition::VECCALC> globalIndex_;
-    LocalTensor<uint32_t> globalIndex_;
+    TBuf<TPosition::VECCALC> globalIndexBuf_;
+    LocalTensor<uint32_t> globalIndexLocal_;
 
     TBuf<TPosition::VECCALC> indicesOutBuf_;
     LocalTensor<uint32_t> indicesOutLocal_;
@@ -183,8 +183,8 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(mrgValueBuf_, constInfo_.mBaseSize / 2 * (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     mrgValueLocal_ = mrgValueBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(globalIndex_, constInfo_.mBaseSize / 2 * (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
-    globalIndex_ = globalIndex_.Get<uint32_t>();
+    pipe->InitBuffer(globalIndexBuf_, constInfo_.mBaseSize / 2 * (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
+    globalIndexLocal_ = globalIndexBuf_.Get<uint32_t>();
 
     pipe->InitBuffer(indicesOutBuf_, MAX_TOPK_COUNT * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
@@ -724,7 +724,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             copyMask = (copyCount <= 64) ? copyCount : 64;
             copyRepeat = (copyCount + 63) / 64;
             AscendC::Copy(mrgValueLocal_[mInnerOffset], scoreOutLocal_, copyMask, copyRepeat, copyRepeatParams);
-            AscendC::Copy(globalIndex_[mInnerOffset], indicesOutLocal_, copyMask, copyRepeat, copyRepeatParams);
+            AscendC::Copy(globalIndexLocal_[mInnerOffset], indicesOutLocal_, copyMask, copyRepeat, copyRepeatParams);
             // ========== 索引重组和GM搬出（仅最后一个基本块）==========
             if (isLastS2InnerLoop) {
                 int64_t rowOffset = ((int64_t)gIdx * info.actS1Size + globalS1Pos) * info.actS2SizeOrig;
@@ -745,7 +745,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 copyOutParams.blockLen = (uint16_t)((uint32_t)topkSelectNum * sizeof(int32_t));
                 AscendC::DataCopyPad(indiceOutGm[gmBase + actualInit],
-                                     globalIndex_[mInnerOffset].ReinterpretCast<int32_t>(), copyOutParams);
+                                     globalIndexLocal_[mInnerOffset].ReinterpretCast<int32_t>(), copyOutParams);
                 SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                 
                 if (actualWindow > 0) {

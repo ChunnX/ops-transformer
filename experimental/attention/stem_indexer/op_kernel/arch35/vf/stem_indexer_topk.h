@@ -99,10 +99,10 @@ class LITopk<uint16_t> {
 public:
     __aicore__ inline uint32_t GetSharedTmpBufferSize()
     {
-        // 2 * QLICommon::Align(topK, (uint32_t)256):两块hisIndexLocal；3 * 256：histogramsLocal idxHighLocal idxLowLocal；64：nkValueLocal
-        uint64_t bufferSize1 = (2 * QLICommon::Align(topK, (uint32_t)256) + 3 * 256 + 64)  * sizeof(uint32_t);
-        // QLICommon::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
-        uint64_t bufferSize2 = (QLICommon::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint16_t);
+        // 2 * SICommon::Align(topK, (uint32_t)256):两块hisIndexLocal；3 * 256：histogramsLocal idxHighLocal idxLowLocal；64：nkValueLocal
+        uint64_t bufferSize1 = (2 * SICommon::Align(topK, (uint32_t)256) + 3 * 256 + 64)  * sizeof(uint32_t);
+        // SICommon::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
+        uint64_t bufferSize2 = (SICommon::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint16_t);
         return bufferSize1 + bufferSize2;
     }
 
@@ -115,10 +115,10 @@ public:
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
     {
         LocalTensor<uint32_t> hisIndexLocal1 = sharedTmpBuffer[0];
-        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[QLICommon::Align(topK, (uint32_t)256)];
+        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[SICommon::Align(topK, (uint32_t)256)];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
-        histogramsLocal = hisIndexLocal2[QLICommon::Align(topK, (uint32_t)256)];
+        histogramsLocal = hisIndexLocal2[SICommon::Align(topK, (uint32_t)256)];
         idxHighLocal = histogramsLocal[256];
         idxLowLocal = idxHighLocal[256];
         nkValueLocal = idxLowLocal[256];
@@ -148,10 +148,10 @@ public:
             topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
             topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, tmpIndexLocal,
-                                          hisIndexLocal[loopIdx % 2], topK, loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256), s2SeqLen);
+                                          hisIndexLocal[loopIdx % 2], topK, loopIdx * trunkLen - SICommon::Align(topK, (uint32_t)256), s2SeqLen);
             if (loopIdx == s2LoopNum - 1) {
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], QLICommon::Align(topK, (uint32_t)256));
+                AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], SICommon::Align(topK, (uint32_t)256));
             }
         }
 
@@ -160,14 +160,14 @@ public:
             PipeBarrier<PIPE_V>();
             Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], QLICommon::Align(topK, (uint32_t)256));
+            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], SICommon::Align(topK, (uint32_t)256));
         } else if (loopIdx != 0 && isNeedLD) {
             topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
             topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2],
-                                          topK, loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256), s2SeqLen);
+                                          topK, loopIdx * trunkLen - SICommon::Align(topK, (uint32_t)256), s2SeqLen);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], QLICommon::Align(topK, (uint32_t)256));
+            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], SICommon::Align(topK, (uint32_t)256));
         }
     }
     __aicore__ inline void LdTopK(LocalTensor<uint16_t>& mrgValueLocal, LocalTensor<uint32_t> indexLocal, LocalTensor<uint32_t>& indicesOutLocal,
