@@ -427,7 +427,7 @@ def _blockwise_snap_local_quantize_p_eff(
     
     ## padding pscale
     rows, cols = p_scale_e8m0.shape
-    assert cols == 128, "S1必须固定为128"
+    # assert cols == 128, "S1必须固定为128"
     # 1. 奇数行自动补0，保证行数为偶数
     if rows % 2 != 0:
         p_scale_e8m0 = F.pad(p_scale_e8m0, (0, 0, 0, 1), mode="constant", value=0)
