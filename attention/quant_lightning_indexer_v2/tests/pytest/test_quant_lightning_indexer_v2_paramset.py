@@ -113,9 +113,26 @@ TEST_PARAMS = {
 
 }
 
-# 按需选择要启用的测试参数（例如默认启用所有）
+# 按需选择要启用的测试参数（字典形式，key 为用例名称，value 为参数配置）
+# 添加更多用例只需在此字典中增加键值对
 properties = torch.npu.get_device_properties()
 if "Ascend910_93" in properties.name:
-    ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a3"]]
+    ENABLED_PARAMS = {
+        "quant_li_default_a3": TEST_PARAMS["quant_li_default_a3"],
+    }
 elif "Ascend950" in properties.name:
-    ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a5"]] 
+    ENABLED_PARAMS = {
+        "quant_li_default_a5": TEST_PARAMS["quant_li_default_a5"],
+        "quant_li_default_hifp8_a5": TEST_PARAMS["quant_li_default_hifp8_a5"],
+    }
+else:
+    ENABLED_PARAMS = {
+        "quant_li_default_a5": TEST_PARAMS["quant_li_default_a5"],
+    }
+
+# 若要同时跑所有用例，直接包含全部键值对即可，例如：
+# ENABLED_PARAMS = {
+#     "quant_li_default_a3": TEST_PARAMS["quant_li_default_a3"],
+#     "quant_li_default_a5": TEST_PARAMS["quant_li_default_a5"],
+#     "quant_li_default_hifp8_a5": TEST_PARAMS["quant_li_default_hifp8_a5"],
+# } 

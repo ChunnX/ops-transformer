@@ -18,13 +18,16 @@ import result_compare_method
 import quant_lightning_indexer_v2_golden
 import pytest
 
-for _, params in enumerate(ENABLED_PARAMS):
+# 将所有用例的参数组合收集到一个列表中
+all_param_combinations = []
+
+for case_name, params in ENABLED_PARAMS.items():
     # 将params的所有字段注册为局部变量
     for key, value in params.items():
         locals()[f"param_{key}"] = value
     # 生成所有参数组合
     param_names = [
-        "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim", 
+        "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim",
         "block_size", "block_num", "qk_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
         "cu_seqlens_k", "act_seq_q", "act_seq_k", "cmp_residual_k", "max_seqlen_q", "quant_mode",
         "layout_query", "layout_key", "sparse_count", "sparse_mode",  "query_datarange", "key_datarange",
@@ -36,7 +39,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_k_seq"],
         locals()["param_q_t_size"],
         locals()["param_k_t_size"],
-        locals()["param_q_head_num"], 
+        locals()["param_q_head_num"],
         locals()["param_k_head_num"],
         locals()["param_head_dim"],
         locals()["param_block_size"],
@@ -65,57 +68,61 @@ for _, params in enumerate(ENABLED_PARAMS):
     ]
 
     # 生成所有的组合，并转换为字典列表
-    locals()["param_combinations"] = []
     for combo in itertools.product(*param_values):
         param_dict = dict(zip(param_names, combo))
-        locals()["param_combinations"].append(param_dict)
+        param_dict["case_name"] = case_name  # 注入用例名称
+        all_param_combinations.append(param_dict)
 
-    @pytest.mark.ci
-    @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
-    def test_qliv2(param_combinations):   # 初始化参数和tensor
-        batch_size = param_combinations['batch_size']
-        q_seq = param_combinations['q_seq']
-        k_seq = param_combinations['k_seq']
-        q_t_size = param_combinations['q_t_size']
-        k_t_size = param_combinations['k_t_size']
-        q_head_num = param_combinations['q_head_num']
-        k_head_num = param_combinations['k_head_num']
-        head_dim = param_combinations['head_dim']
-        block_size = param_combinations['block_size']
-        block_num = param_combinations['block_num']
-        qk_dtype= param_combinations['qk_dtype']
-        dequant_dtype = param_combinations['dequant_dtype']
-        actual_seq_dtype = param_combinations['actual_seq_dtype']
-        cu_seqlens_q = param_combinations['cu_seqlens_q']
-        cu_seqlens_k = param_combinations['cu_seqlens_k']
-        act_seq_q = param_combinations['act_seq_q']
-        act_seq_k = param_combinations['act_seq_k']
-        cmp_residual_k = param_combinations['cmp_residual_k']
-        max_seqlen_q = param_combinations['max_seqlen_q']
-        quant_mode = param_combinations['quant_mode']
-        layout_query = param_combinations['layout_query']
-        layout_key = param_combinations['layout_key']
-        sparse_count = param_combinations['sparse_count']
-        sparse_mode = param_combinations['sparse_mode']
-        query_datarange = param_combinations['query_datarange']
-        key_datarange = param_combinations['key_datarange']
-        weights_datarange = param_combinations['weights_datarange']
-        q_scale_datarange = param_combinations['q_scale_datarange']
-        k_scale_datarange = param_combinations['k_scale_datarange']
-        cmp_ratio = param_combinations['cmp_ratio']
-        return_value = param_combinations['return_value']
-        torch_npu.npu.set_device(0)
-        test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
-                    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,\
-                    act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
-                    sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
-                    k_scale_datarange, cmp_ratio, return_value
+@pytest.mark.ci
+@pytest.mark.parametrize("param_combinations", all_param_combinations)
+def test_qliv2(param_combinations):   # 初始化参数和tensor
+    case_name = param_combinations.get('case_name', 'unknown')
+    print(f"\n{'='*60}")
+    print(f"[CASE] {case_name}")
+    print(f"{'='*60}")
+    batch_size = param_combinations['batch_size']
+    q_seq = param_combinations['q_seq']
+    k_seq = param_combinations['k_seq']
+    q_t_size = param_combinations['q_t_size']
+    k_t_size = param_combinations['k_t_size']
+    q_head_num = param_combinations['q_head_num']
+    k_head_num = param_combinations['k_head_num']
+    head_dim = param_combinations['head_dim']
+    block_size = param_combinations['block_size']
+    block_num = param_combinations['block_num']
+    qk_dtype= param_combinations['qk_dtype']
+    dequant_dtype = param_combinations['dequant_dtype']
+    actual_seq_dtype = param_combinations['actual_seq_dtype']
+    cu_seqlens_q = param_combinations['cu_seqlens_q']
+    cu_seqlens_k = param_combinations['cu_seqlens_k']
+    act_seq_q = param_combinations['act_seq_q']
+    act_seq_k = param_combinations['act_seq_k']
+    cmp_residual_k = param_combinations['cmp_residual_k']
+    max_seqlen_q = param_combinations['max_seqlen_q']
+    quant_mode = param_combinations['quant_mode']
+    layout_query = param_combinations['layout_query']
+    layout_key = param_combinations['layout_key']
+    sparse_count = param_combinations['sparse_count']
+    sparse_mode = param_combinations['sparse_mode']
+    query_datarange = param_combinations['query_datarange']
+    key_datarange = param_combinations['key_datarange']
+    weights_datarange = param_combinations['weights_datarange']
+    q_scale_datarange = param_combinations['q_scale_datarange']
+    k_scale_datarange = param_combinations['k_scale_datarange']
+    cmp_ratio = param_combinations['cmp_ratio']
+    return_value = param_combinations['return_value']
+    torch_npu.npu.set_device(0)
+    test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
+                block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,\
+                act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
+                sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
+                k_scale_datarange, cmp_ratio, return_value
 
-        # 获得cpu结果(真值)和算子结果（测试值）
-        cpu_result, npu_result, topk_value = quant_lightning_indexer_v2_golden.qliv2_output_single(test_data)
-        print("npu_result", npu_result)
-        print("cpu_result:", cpu_result)
-        # 结果精度对比
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, test_data)
-        print("result", result)
-        print("result", fulfill_percent)
+    # 获得cpu结果(真值)和算子结果（测试值）
+    cpu_result, npu_result, topk_value = quant_lightning_indexer_v2_golden.qliv2_output_single(test_data)
+    print("npu_result", npu_result)
+    print("cpu_result:", cpu_result)
+    # 结果精度对比
+    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, test_data)
+    print("result", result)
+    print("result", fulfill_percent)
