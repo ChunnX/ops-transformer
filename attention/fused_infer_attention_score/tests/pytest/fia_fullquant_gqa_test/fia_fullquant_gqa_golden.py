@@ -14,11 +14,11 @@ N_q = 1
 N_kv = 1
 D = 128
 
-ACTUAL_SEQ_Q = [128]
-ACTUAL_SEQ_KV = [256]
+ACTUAL_SEQ_Q = [128] * B
+ACTUAL_SEQ_KV = [256] * B
 
 # Layout 选择
-INPUT_LAYOUT = "NTD"
+INPUT_LAYOUT = "NTD_TND"
 OUTPUT_LAYOUT = "TND"
 Q_SCALE_LAYOUT = "NT"
 
@@ -226,9 +226,9 @@ def generate_data():
     k_fp8 = quant_fp16_to_fp8(k_fp16, quant_scale_k)
     v_fp8 = quant_fp16_to_fp8(v_fp16, quant_scale_v)
 
-    print(f"q_fp8 shape: {q_fp8.shape}, dtype: {q_fp8.dtype}")
-    print(f"k_fp8 shape: {k_fp8.shape}, dtype: {k_fp8.dtype}")
-    print(f"v_fp8 shape: {v_fp8.shape}, dtype: {v_fp8.dtype}")
+    print(f"[INFO] q_fp8 shape: {q_fp8.shape}, dtype: {q_fp8.dtype}")
+    print(f"[INFO] k_fp8 shape: {k_fp8.shape}, dtype: {k_fp8.dtype}")
+    print(f"[INFO] v_fp8 shape: {v_fp8.shape}, dtype: {v_fp8.dtype}")
 
     # p_scale 使用 float32
     p_scale = torch.tensor([P_SCALE], dtype=torch.float32).cpu().contiguous()
@@ -379,7 +379,7 @@ def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
                 result[t:t + act_s, n, :] = tensor[b, n, :act_s, :]
             t += act_s
         return result.contiguous()
-    elif layout == "NTD":
+    elif layout == "NTD_TND":
         T = sum(seq_lens)
         result = torch.zeros((N, T, D), dtype=tensor.dtype, device=tensor.device)
         t = 0
@@ -447,15 +447,16 @@ def fa_run_npu(q, k, v, mask, actual_seq_q, actual_seq_kv,
         mask = mask.bool().npu()
     
     # 打印调试信息
-    print(f"[NPU] q dtype: {q.dtype}, shape: {q.shape}")
-    print(f"[NPU] k dtype: {k.dtype}, shape: {k.shape}")
-    print(f"[NPU] v dtype: {v.dtype}, shape: {v.shape}")
-    print(f"[NPU] deq_q dtype: {dequant_scale_q.dtype}, shape: {dequant_scale_q.shape}")
-    print(f"[NPU] deq_k dtype: {dequant_scale_k.dtype}, shape: {dequant_scale_k.shape}")
-    print(f"[NPU] deq_v dtype: {dequant_scale_v.dtype}, shape: {dequant_scale_v.shape}")
-    
+    print(f"[INFO] q dtype: {q.dtype}, shape: {q.shape}")
+    print(f"[INFO] k dtype: {k.dtype}, shape: {k.shape}")
+    print(f"[INFO] v dtype: {v.dtype}, shape: {v.shape}")
+    print(f"[INFO] deq_q dtype: {dequant_scale_q.dtype}, shape: {dequant_scale_q.shape}")
+    print(f"[INFO] deq_k dtype: {dequant_scale_k.dtype}, shape: {dequant_scale_k.shape}")
+    print(f"[INFO] deq_v dtype: {dequant_scale_v.dtype}, shape: {dequant_scale_v.shape}")
+    print(f"[INFO] NPU input layout: {layout}")
+
     if GRAPH_PATH == 0:
-        print("[NPU] 调用单算子模式...")
+        print("[INFO] GRAPH_PATH == 0 ...")
         atten_out, lse_out = torch_npu.npu_fused_infer_attention_score_v2(
             q, k, v,
             atten_mask=mask,
@@ -496,19 +497,14 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
     softmax_scale = 1.0 / math.sqrt(D)
     accum_seq_q = make_accum_seq(actual_seq_q)
 
-    # 数据准备 (在CPU上)
     npu_input_layout = INPUT_LAYOUT
     
     # 确保 q 是 FP8 类型
     q_npu = convert_q_bnsd_to_layout(q_fp8, actual_seq_q, npu_input_layout)
-    print(f"[CPU] q shape={q_npu.shape}, dtype={q_npu.dtype}")
-    
+
     # dequant scales 使用 float32
     deq_q_npu = convert_scale_to_layout(dequant_scale_q, ACTUAL_SEQ_Q, 'deq_q')
     deq_v_npu = convert_scale_to_layout(dequant_scale_v, ACTUAL_SEQ_KV, 'deq_v')
-    
-    print(f"[CPU] deq_q dtype={deq_q_npu.dtype}, shape={deq_q_npu.shape}")
-    print(f"[CPU] deq_v dtype={deq_v_npu.dtype}, shape={deq_v_npu.shape}")
     
     out_dtype = torch.float16
 
@@ -524,18 +520,12 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
         # 确保 k_pa 和 v_pa 是正确的数据类型
         k_pa = bnsd_to_k_cache(k_fp8, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table)
         v_pa = bnsd_to_v_cache(v_fp8, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table)
-        
-        print(f"[CPU] k_pa dtype={k_pa.dtype}, shape={k_pa.shape}")
-        print(f"[CPU] v_pa dtype={v_pa.dtype}, shape={v_pa.shape}")
-        
         deq_k_npu = bns1_to_k_scale_cache_fp32(dequant_scale_k, actual_seq_kv, BLOCK_SIZE, block_table)
-        print(f"[CPU] deq_k dtype={deq_k_npu.dtype}, shape={deq_k_npu.shape}")
-        
+  
         # 转换为tensor，确保类型正确
         block_table_tensor = torch.as_tensor(block_table, dtype=torch.int32)
         
-        # 调用NPU执行
-        print("[NPU] 调用 PA 模式...")
+        # 调用NPU
         output = fa_run_npu(q_npu, k_pa, v_pa, mask, accum_seq_q, actual_seq_kv,
                            deq_q_npu, deq_k_npu, deq_v_npu, p_scale, 
                            block_table_tensor, BLOCK_SIZE, N_q, N_kv, 
@@ -547,7 +537,6 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
     T_actual = sum(actual_seq_q)
     if atten_out.shape[0] > T_actual:
         atten_out = atten_out[:T_actual]
-    print(f"[NPU] atten_out shape = {atten_out.shape}, dtype={atten_out.dtype}")
     return output
 
 # ==============================================================================
@@ -557,9 +546,10 @@ if __name__ == '__main__':
     print("=" * 60)
     print("FIA Full Quant GQA GOLDEN")
     print("=" * 60)
-    print(f"场景: {'PA' if ENABLE_PA else 'TND'}, INPUT_LAYOUT: {INPUT_LAYOUT}, OUTPUT_LAYOUT: {OUTPUT_LAYOUT}")
-    print(f"B={B}, N_q={N_q}, N_kv={N_kv}, D={D}")
-    print(f"ACTUAL_SEQ_Q={ACTUAL_SEQ_Q}, ACTUAL_SEQ_KV={ACTUAL_SEQ_KV}")
+    print(f"[INFO] 场景: {'PA' if ENABLE_PA else ''}, INPUT_LAYOUT: {INPUT_LAYOUT}, OUTPUT_LAYOUT: {OUTPUT_LAYOUT}")
+    print(f"[INFO] B={B}, N_q={N_q}, N_kv={N_kv}, D={D}")
+    print(f"[INFO] ACTUAL_SEQ_Q={ACTUAL_SEQ_Q}")
+    print(f"[INFO] ACTUAL_SEQ_KV={ACTUAL_SEQ_KV}")
 
     print("\n[Step 1] CPU: 数据生成")
     (q_fp8, k_fp8, v_fp8, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale) = generate_data()
@@ -568,25 +558,27 @@ if __name__ == '__main__':
     cpu_out= cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
                                                     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                                                     ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
-    # print("cpu_atten_out: ", cpu_out[0])
-    print("cpu_atten_out shape", cpu_out[0].shape)
+    # print("cpu_out[0]: ", cpu_out[0])
+    print("[INFO] cpu_out[0] shape", cpu_out[0].shape)
     if ENABLE_LSE:
-        print("cpu_lse_out shape", cpu_out[1].shape)
+        print("[INFO] cpu_out[1] shape", cpu_out[1].shape)
+
     print("\n[Step 3] NPU: 执行NPU计算")
     npu_out = npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
                                  dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                                  ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
-    print(f"npu_out[0] shape: {npu_out[0].shape}, dtype: {npu_out[0].dtype}")
+    print(f"[INFO] npu_out[0] shape: {npu_out[0].shape}, dtype: {npu_out[0].dtype}")
     if ENABLE_LSE:
-        print(f"npu_lse_out shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}")
+        print(f"[INFO] npu_out[1] shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}")
 
-    print("\n[Step 4] 精度对比")
+    print("\n[Step 4] Atten out 精度对比")
     cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out[0], ACTUAL_SEQ_Q, OUTPUT_LAYOUT)
-    print(f"cpu atten out shape = {cpu_tnd_torch.shape}")
+    print(f"cpu_out[0] final shape = {cpu_tnd_torch.shape}")
     result_compare_method.check_result(cpu_tnd_torch, npu_out[0])
 
     if ENABLE_LSE:
-        print("\n[Step 5] lse精度对比")
+        print("\n[Step 5] LSE 精度对比")
         cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_out[1], ACTUAL_SEQ_Q, "TND")
         result_compare_method.check_result(cpu_lse_tnd_torch, npu_out[1])
     print("#" * 60)
+    print()
