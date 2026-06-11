@@ -618,14 +618,14 @@ def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, K, 
     valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(dtype)
     sparse_idx_safe = sparse_idx_3d.clamp(min=0)
 
-    key_2d = key[:, :, 0, :].unsqueeze(2).expand(B, S2, 1, DQuery)
-    key_index_2d = key_index[:, :, 0, :].unsqueeze(2).expand(B, S2, 1, DQueryIndex)
+    key_2d = key[:, :, 0, :]
+    key_index_2d = key_index[:, :, 0, :]
 
-    idx_k = sparse_idx_safe.unsqueeze(-1).expand(B, S1, K, DQuery)
-    gather_key = torch.gather(key_2d, 1, idx_k).contiguous()
+    idx_k = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQuery)
+    gather_key = torch.gather(key_2d, 1, idx_k).reshape(B, S1, K, DQuery).contiguous()
 
-    idx_ki = sparse_idx_safe.unsqueeze(-1).expand(B, S1, K, DQueryIndex)
-    gather_key_index = torch.gather(key_index_2d, 1, idx_ki).contiguous()
+    idx_ki = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQueryIndex)
+    gather_key_index = torch.gather(key_index_2d, 1, idx_ki).reshape(B, S1, K, DQueryIndex).contiguous()
 
     gather_key.mul_(valid_mask)
     gather_key_index.mul_(valid_mask)
@@ -789,9 +789,9 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
         if query_rope is not None and key_rope is not None:
             _sparse_idx_rope = sparse_indices[:, :, 0, :].clamp(min=0)
-            key_rope_2d = key_rope[:, :, 0, :].unsqueeze(2).expand(B, S2, 1, d_rope_orig)
-            idx_rope = _sparse_idx_rope.unsqueeze(-1).expand(B, S1, K, d_rope_orig)
-            gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).contiguous()
+            key_rope_2d = key_rope[:, :, 0, :]
+            idx_rope = _sparse_idx_rope.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
+            gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig).contiguous()
             _valid_mask_rope = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1).to(query.dtype)
             gather_key_rope.mul_(_valid_mask_rope)
         else:
