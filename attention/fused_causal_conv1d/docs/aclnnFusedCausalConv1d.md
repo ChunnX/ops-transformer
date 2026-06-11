@@ -643,27 +643,29 @@ aclnnStatus aclnnFusedCausalConv1d(
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]。
-    - batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
+    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]，batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(max_query_len, block_size)。
   - prefill和decode混合场景：
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]。
-    - batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
+    - cu_seq_len范围[batch, 1024 * 1024]，dim范围[64, 16384]且是16的倍数，且两者乘积需满足[64 * batch, 4G]，batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(max_query_len, block_size)。
   - decode场景（变长序列）：
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., k-1+m, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - cu_seq_len范围[batch, batch*8]，每个batch的token个数范围为[1, 8]。dim范围[64, 16384]且是16的倍数，batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
+    - cu_seq_len范围[batch, batch*8]，每个batch的token个数范围为[1, 8]。dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(max_query_len, block_size)。
   - decode场景（固定batch）：
     - x支持3维[batch, m+1, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
     - conv_states必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于batch，同时大于等于cache_indices总维度大小。
     - cache_indices为1维[batch, ]或2维[batch, maxNumBlocks]，其中1维表示未开启APC，2维表示开启APC。
-    - m范围[0, 7]，dim范围[64, 16384]且是16的倍数，batch范围[1, 256]，maxNumBlocks范围[1, 1024]。
+    - m范围[0, 7]，dim范围[64, 16384]且是16的倍数，batch范围[1, 256]。
+    - maxNumBlocks >= ceiv(max_query_len, block_size)。
 
 - 输入值域限制：
   - query_start_loc是累计偏移量，取值范围[0, cu_seq_len]，长度为batch+1，query_start_loc[i]表示第i个序列的起始偏移，query_start_loc[batch+1]表示最后一个序列的结束位置。
