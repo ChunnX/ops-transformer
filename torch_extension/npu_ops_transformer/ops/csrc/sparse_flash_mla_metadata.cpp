@@ -17,7 +17,6 @@
 #include "aclnn_common.h"
 
 namespace op_api {
-using npu_utils = at_npu::native::NpuUtils;
 constexpr int64_t OUTPUT_SIZE = 1024;
 
 const c10::optional<at::Tensor> smla_get_valid_tensor(const c10::optional<at::Tensor> &tensor_opt, at::Device device)
@@ -25,7 +24,7 @@ const c10::optional<at::Tensor> smla_get_valid_tensor(const c10::optional<at::Te
     return tensor_opt.has_value() ? tensor_opt : torch::empty({0}, torch::dtype(torch::kInt32).device(device));
 };
 
-at::Tensor npu_sparse_flash_mla_metadata(
+at::Tensor sparse_flash_mla_metadata(
     int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim, const c10::optional<at::Tensor> &cu_seqlens_q,
     const c10::optional<at::Tensor> &cu_seqlens_ori_kv, const c10::optional<at::Tensor> &cu_seqlens_cmp_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_ori_kv,
@@ -83,6 +82,6 @@ at::Tensor npu_sparse_flash_mla_metadata(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_sparse_flash_mla_metadata", &npu_sparse_flash_mla_metadata, "npu_sparse_flash_mla_metadata");
+    m.def("sparse_flash_mla_metadata", &sparse_flash_mla_metadata, "sparse_flash_mla_metadata");
 }
 } // namespace op_api
