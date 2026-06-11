@@ -8,6 +8,8 @@
 
 - `x` 为单 tensor：`aclTensorList` 中仅包含 1 个 tensor；
 - `weight` 为多 tensor：`aclTensorList` 中包含多个 tensor，每个 group 使用一个独立 weight tensor；
+- `weightScale` 为多 tensor：在代码中对应 `antiquantScaleOptional` / `antiquantScaleGm_`，长度与 `weight` 相同；
+- `bias` 为多 tensor：当 `biasOptional` 存在时，长度与 `weight` 相同；
 - `y` 为单 tensor：`aclTensorList` 中仅包含 1 个 tensor。
 
 本需求仅面向 MxA8W4 数据流，不扩展到其他 weight quant / anti-quant 数据流。
@@ -49,8 +51,8 @@
 | 术语 | 说明 |
 | --- | --- |
 | GMM | Grouped Matmul 算子 |
-| MxA8W4 | x 为 FP8 E4M3，weight 为 FP4 E2M1，antiquantScale 为 FP8 E8M0 的 MX 伪量化数据流 |
-| 单多单 | x 单 tensor、weight 多 tensor、y 单 tensor |
+| MxA8W4 | x 为 FP8 E4M3，weight 为 FP4 E2M1，antiquantScale/weightScale 为 FP8 E8M0 的 MX 伪量化数据流 |
+| 单多单 | x 单 tensor、weight 多 tensor、weightScale 多 tensor、bias 多 tensor（若存在）、y 单 tensor |
 | TilingKey | host 侧生成并传入 kernel 的模板实例选择 key |
 | resplit controller | `GMMWeightQuantResplitController`，负责 GMM weight quant resplit 场景的 group 循环、地址更新和 basic block 调度 |
 
@@ -117,18 +119,36 @@ if (nextGroupIdx < gmmBaseTiling_->groupNum) {
 }
 ```
 
-### FR-5：单多单场景辅助 tensor 地址更新
+### FR-5：单多单场景 weightScale 和 bias 地址更新
 
-在 MxA8W4 单多单场景下，与 `weight` 按 group 对应的辅助输入也应使用 tensor list 下标更新。
+在 MxA8W4 单多单场景下，`weightScale` 和 `bias` 也应为多 tensor，并与 `weight` 按 group 一一对应。
 
-至少包括：
+在 kernel 代码中：
 
-- `antiquantScaleGm_`；
-- `biasGm_`，仅在 `hasBias != 0` 时更新；
-- `antiquantOffsetGm_`，仅在 `wqmmConfig.hasAntiQuantOffset` 为 true 时更新；
-- `scaleGm_`，仅在 `wqmmConfig.quantType != QuantType::NONE` 时更新。
+- `weightScale` 对应 `antiquantScaleOptional` 输入和 `antiquantScaleGm_` 地址；
+- `bias` 对应 `biasOptional` 输入和 `biasGm_` 地址。
 
-说明：MxA8W4 当前主路径通常不使用 antiquantOffset 和 scale，但保留编译期条件可避免影响其他复用路径。
+地址更新要求：
+
+1. `antiquantScaleGm_` 不应按连续 offset 推进，应使用 `GetTensorAddr<antiQuantScaleType>(nextGroupIdx, antiquantScaleTensorPtr_)` 切换到下一 group 的 weightScale tensor；
+2. 当 `hasBias != 0` 时，`biasGm_` 不应按连续 offset 推进，应使用 `GetTensorAddr<biasType>(nextGroupIdx, biasTensorPtr_)` 切换到下一 group 的 bias tensor；
+3. `antiquantScaleOptional` 的 tensor list 长度必须等于 `weight` tensor list 长度；
+4. 当 `biasOptional` 存在时，其 tensor list 长度必须等于 `weight` tensor list 长度。
+
+示例逻辑：
+
+```cpp
+uint64_t nextGroupIdx = groupIdx + 1;
+if (nextGroupIdx < gmmBaseTiling_->groupNum) {
+    weightGm_ = GetTensorAddr<wType>(nextGroupIdx, weightTensorPtr_);
+    antiquantScaleGm_ = GetTensorAddr<antiQuantScaleType>(nextGroupIdx, antiquantScaleTensorPtr_);
+    if (gmmBaseTiling_->hasBias != 0) {
+        biasGm_ = GetTensorAddr<biasType>(nextGroupIdx, biasTensorPtr_);
+    }
+}
+```
+
+说明：MxA8W4 当前主路径不要求 `antiquantOffset` 和 `scale` 为多 tensor；单多单分支中不对二者做 tensor list 切换。
 
 ### FR-6：x、y、perTokenScale 地址更新保持单 tensor 连续推进
 
@@ -188,7 +208,9 @@ antiquantScaleGm_ = GetTensorAddr<antiQuantScaleType>(0, antiquantScaleTensorPtr
 biasGm_ = GetTensorAddr<biasType>(0, biasTensorPtr_);
 ```
 
-因此 group 0 计算前，controller 中保存的是第 0 个 group 的地址。
+其中 `antiquantScaleTensorPtr_` 保存的是 MxA8W4 的 `weightScale` tensor list 原始地址，`biasTensorPtr_` 保存的是 `biasOptional` tensor list 原始地址。
+
+因此 group 0 计算前，controller 中保存的是第 0 个 group 的 weight / weightScale / bias 地址。
 
 ### 7.2 group 循环阶段
 
@@ -200,12 +222,12 @@ biasGm_ = GetTensorAddr<biasType>(0, biasTensorPtr_);
 
 因此在 `UpdateGmAddr` 中，单多单路径取 tensor list 下标时使用 `groupIdx + 1`，表示下一 group 的 tensor 地址。
 
-| 当前 `groupIdx` | 当前计算使用的 weight tensor | `UpdateGmAddr` 后切换到 |
+| 当前 `groupIdx` | 当前计算使用的 tensor | `UpdateGmAddr` 后切换到 |
 | --- | --- | --- |
-| 0 | weight[0] | weight[1] |
-| 1 | weight[1] | weight[2] |
+| 0 | weight[0] / weightScale[0] / bias[0] | weight[1] / weightScale[1] / bias[1] |
+| 1 | weight[1] / weightScale[1] / bias[1] | weight[2] / weightScale[2] / bias[2] |
 | ... | ... | ... |
-| groupNum - 1 | weight[groupNum - 1] | 不再更新，避免越界 |
+| groupNum - 1 | weight[groupNum - 1] / weightScale[groupNum - 1] / bias[groupNum - 1] | 不再更新，避免越界 |
 
 ## 8. 涉及文件
 
@@ -213,8 +235,8 @@ biasGm_ = GetTensorAddr<biasType>(0, biasTensorPtr_);
 | --- | --- |
 | `gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp` | MxA8W4 调用宏传入 `IS_SINGLE_MULTI_SINGLE`；kernel 模板形参新增该 bool 参数 |
 | `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h` | TilingKey 模板参数新增 `IS_SINGLE_MULTI_SINGLE` |
-| `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/grouped_matmul_weight_quant_resplit_controller.h` | controller 模板参数新增 `isSingleMultiSingle`；`UpdateGmAddr` 增加单多单地址更新逻辑 |
-| `gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp` | MxA8W4 场景设置 TilingKey 中的 `isSingleMultiSingle` |
+| `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/grouped_matmul_weight_quant_resplit_controller.h` | controller 模板参数新增 `isSingleMultiSingle`；`UpdateGmAddr` 增加单多单 weight / weightScale / bias 地址更新逻辑 |
+| `gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp` | MxA8W4 场景设置 TilingKey 中的 `isSingleMultiSingle`；单多单时要求 `antiquantScaleOptional` 和 `biasOptional` 与 `weight` 等长 |
 | `gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.h` | TilingKey 配置结构新增 `isSingleMultiSingle` 字段 |
 
 ## 9. 验收标准
@@ -231,16 +253,25 @@ MxA8W4 kernel 编译实例中应能从 TilingKey 获取 `IS_SINGLE_MULTI_SINGLE`
 - `antiquantScaleGm_`、`antiquantOffsetGm_`、`scaleGm_`、`biasGm_` 按原逻辑推进；
 - `xGm_`、`yGm_`、`perTokenScaleGm_` 按原逻辑推进。
 
-### AC-3：单多单路径 weight 地址正确
+### AC-3：单多单路径 weight / weightScale / bias 地址正确
 
 单多单路径下：
 
-1. group 0 使用 tensor list 下标 0 的 weight；
-2. group 1 使用 tensor list 下标 1 的 weight；
-3. group N 使用 tensor list 下标 N 的 weight；
-4. 最后一个 group 后不再访问 `groupNum` 下标。
+1. group 0 使用 tensor list 下标 0 的 weight / weightScale / bias；
+2. group 1 使用 tensor list 下标 1 的 weight / weightScale / bias；
+3. group N 使用 tensor list 下标 N 的 weight / weightScale / bias；
+4. 最后一个 group 后不再访问 `groupNum` 下标；
+5. 当 `hasBias == 0` 时，不要求更新 `biasGm_`。
 
-### AC-4：无运行时单多单判断
+### AC-4：weightScale 和 bias tensor list 长度正确
+
+MxA8W4 单多单路径下：
+
+1. `antiquantScaleOptional`（weightScale）tensor list 长度必须等于 `weight` tensor list 长度；
+2. 当 `biasOptional` 存在时，`biasOptional` tensor list 长度必须等于 `weight` tensor list 长度；
+3. `perTokenScaleOptional` 仍与 `x` 对应，保持单 tensor。
+
+### AC-5：无运行时单多单判断
 
 `INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL` 中不应存在以下运行时判断：
 
@@ -250,7 +281,7 @@ gmmBaseParams_.singleWeight == 0 &&
 gmmBaseParams_.singleY == 1
 ```
 
-### AC-5：静态检查通过
+### AC-6：静态检查通过
 
 修改文件应通过基础静态检查：
 
@@ -262,9 +293,10 @@ git diff --check
 
 1. TilingKey 参数顺序必须与 kernel 模板形参顺序严格一致。
 2. 新增 TilingKey bool 参数后，所有合法模板组合均需补齐 `ASCENDC_TPL_BOOL_SEL`，否则可能导致 TilingKey 校验失败。
-3. 单多单路径中 `weightTensorPtr_` 等应保存原始 tensor list 地址，不能用当前 `weightGm_` 反推 tensor list 地址。
+3. 单多单路径中 `weightTensorPtr_`、`antiquantScaleTensorPtr_`、`biasTensorPtr_` 等应保存原始 tensor list 地址，不能用当前 GM 指针反推 tensor list 地址。
 4. `UpdateGmAddr` 使用 `groupIdx + 1` 是因为该函数在当前 group 计算结束后调用，更新的是下一 group 地址。
-5. 若后续 host 侧放开 MxA8W4 单多单输入校验，应确保 `isSingleMultiSingle` 的设置与 API 实际场景一致。
+5. `antiquantScaleOptional` 和 `biasOptional`（若存在）必须与 `weight` 等长，否则 kernel 按相同 `nextGroupIdx` 取址时存在越界风险。
+6. 若后续 host 侧放开 MxA8W4 单多单输入校验，应确保 `isSingleMultiSingle` 的设置与 API 实际场景一致。
 
 ## 11. 变更摘要
 
@@ -273,4 +305,4 @@ git diff --check
 - 通过 TilingKey 增加 `IS_SINGLE_MULTI_SINGLE` 编译期参数；
 - MxA8W4 调用宏直接传递该参数；
 - resplit controller 根据该模板参数在 `UpdateGmAddr` 中选择地址推进方式；
-- 单多单时 weight 相关地址通过 tensor list 下标切换，x/y/perTokenScale 仍按单 tensor 内部 offset 推进。
+- 单多单时 weight、weightScale/antiquantScale、bias 相关地址通过 tensor list 下标切换，x/y/perTokenScale 仍按单 tensor 内部 offset 推进。

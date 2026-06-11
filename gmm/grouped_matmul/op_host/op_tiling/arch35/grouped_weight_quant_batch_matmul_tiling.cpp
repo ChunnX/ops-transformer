@@ -117,7 +117,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize() const
                         "When groupType is 0 (split M), the sizes of x and weight should all be 1"),
                     return false);
     }
-    uint16_t expectedParamNum = isSingleMultiSingle ? 1 : numWeight_;
+    uint16_t expectedParamNum = numWeight_;
     OP_CHECK_IF(numAntiquantScale_ != expectedParamNum,
                 OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "antiquantScaleOptional",
                 std::to_string(numAntiquantScale_),
