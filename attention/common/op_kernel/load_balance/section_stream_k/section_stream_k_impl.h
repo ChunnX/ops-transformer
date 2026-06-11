@@ -326,7 +326,7 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
         uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
             tokenCost = s2Size * headDim * kvTypeSize * 2U;     // 2: k and v
-            if ((static_cast<uint64_t>(m_param.l2Byte) > tokenSize + tokenCost) && tokenSize != 0U) {
+            if ((static_cast<uint64_t>(m_param.l2Byte) < (tokenSize + tokenCost)) && tokenSize != 0U) {
                 gridInfo.sectionBn2Idx.emplace_back(bn2Idx);
                 gridInfo.sectionNum++;
                 tokenSize = 0U;
@@ -766,6 +766,8 @@ inline bool SectionStreamKImpl::CheckChooseWithFd(const SectionStreamKImplResult
 
     const int64_t full_block_cost = m_param.costFunc(m_param.mBaseSize, m_param.s2BaseSize);
     int64_t fdTolerance = std::max(withFd.maxCost / 2, m_param.fdTolerance * full_block_cost);
+    // int64_t fdTolerance = std::max(static_cast<int64_t>(std::sqrt(withFd.maxCost)),
+    //     m_param.fdTolerance * full_block_cost);
     return noFd.maxCost - fdTolerance > withFd.maxCost;        // using minus in case overflow
 }
 
