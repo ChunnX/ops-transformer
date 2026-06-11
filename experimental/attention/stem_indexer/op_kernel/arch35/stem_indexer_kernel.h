@@ -54,6 +54,7 @@ public:
     __aicore__ inline void ProcessDirectOutput(const SICommon::RunInfo &) {}
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &) {}
     __aicore__ inline void ProcessTopK(const SICommon::RunInfo &, bool, bool) {}
+    __aicore__ inline void initS2LenToNeg(const SICommon::RunInfo &) {}
 };
 
 template <typename SIT>
