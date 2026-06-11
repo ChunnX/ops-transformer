@@ -3,6 +3,9 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -32,8 +35,8 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
     // Phase X writes only UB; the chunk loop flushes int8 to xL1 via
     // ScatterZZToL1 before Phase MM.
 
-    const uint32_t K           = K_;
-    const uint32_t kBytes      = tiling_->originKAligned32;
+    const uint32_t K = K_;
+    const uint32_t kBytes = tiling_->originKAligned32;
     const uint32_t chunkHalves = tiling_->phaseXChunk;
 
     // Previous iter's Phase X WriteXL1 must have finished MTE3 UB->L1 before
@@ -64,10 +67,8 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
         // ================ Pass 1: max-reduce over K chunks ================
         float running_max = 0.0f;
         for (uint32_t coff = 0; coff < kBytes; coff += chunkHalves) {
-            const uint32_t thisChunk =
-                (coff + chunkHalves > kBytes) ? (kBytes - coff) : chunkHalves;
-            const uint32_t realInChunk =
-                (coff >= K) ? 0u : ((K - coff < thisChunk) ? (K - coff) : thisChunk);
+            const uint32_t thisChunk = (coff + chunkHalves > kBytes) ? (kBytes - coff) : chunkHalves;
+            const uint32_t realInChunk = (coff >= K) ? 0u : ((K - coff < thisChunk) ? (K - coff) : thisChunk);
             // Wait for previous chunk's V ops to finish reading xRawPingLT_
             // before MTE2 clobbers it. Primed outside the loop / re-set after
             // each chunk's V body.
@@ -78,9 +79,7 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
                 WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
             }
             if (realInChunk < thisChunk) {
-                Duplicate<half>(xRawPingLT_[realInChunk],
-                                static_cast<half>(0),
-                                thisChunk - realInChunk);
+                Duplicate<half>(xRawPingLT_[realInChunk], static_cast<half>(0), thisChunk - realInChunk);
                 PipeBarrier<PIPE_V>();
             }
 
@@ -93,10 +92,8 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
             // No-smooth: fp16 max-reduce path.
             float part_f = 0.0f;
             if constexpr (HasSmooth) {
-                Cast<float, half>(smoothFp32LT_, smoothScaleLT_[coff],
-                                  RoundMode::CAST_NONE, thisChunk);
-                Cast<float, half>(xCastFloatLT_, xRawPingLT_,
-                                  RoundMode::CAST_NONE, thisChunk);
+                Cast<float, half>(smoothFp32LT_, smoothScaleLT_[coff], RoundMode::CAST_NONE, thisChunk);
+                Cast<float, half>(xCastFloatLT_, xRawPingLT_, RoundMode::CAST_NONE, thisChunk);
                 PipeBarrier<PIPE_V>();
                 Mul<float>(xScaledLT_, xCastFloatLT_, smoothFp32LT_, thisChunk);
                 PipeBarrier<PIPE_V>();
@@ -106,14 +103,11 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
                 // ReduceMax<float>: borrow xInt32LT_ as fp32 work buffer
                 // (sized chunkHalves * 4 bytes, same as input). maxLT_
                 // (32 B) reinterprets to a fp32 lane.
-                LocalTensor<float> reduceWorkFp32 =
-                    xInt32LT_.ReinterpretCast<float>();
-                LocalTensor<float> maxFp32 =
-                    maxLT_.ReinterpretCast<float>();
+                LocalTensor<float> reduceWorkFp32 = xInt32LT_.ReinterpretCast<float>();
+                LocalTensor<float> maxFp32 = maxLT_.ReinterpretCast<float>();
                 Duplicate<float>(maxFp32, 0.0f, 8);
                 PipeBarrier<PIPE_V>();
-                ReduceMax<float>(maxFp32, xCastFloatLT_,
-                                 reduceWorkFp32, thisChunk, false);
+                ReduceMax<float>(maxFp32, xCastFloatLT_, reduceWorkFp32, thisChunk, false);
                 PipeBarrier<PIPE_V>();
                 part_f = maxFp32.GetValue(0);
             } else {
@@ -127,7 +121,8 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
                 part_f = static_cast<float>(part_h);
             }
 
-            if (part_f > running_max) running_max = part_f;
+            if (part_f > running_max)
+                running_max = part_f;
             // xRawPingLT_ is now safe to overwrite.
             SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
         }
@@ -140,23 +135,24 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
     }
 
-    // ================ Pass 2: chunk-outer / row-inner =================
-    // Per-chunk MTE3 scatter int8 -> xL1; bounds int8Scratch UB to
-    // Mb*chunkHalves (not Mb*K) so tiling can pick larger Mb at K>=4096.
-    //
-    //   for coff in chunks:
-    //     for m in mCount:
-    //       MTE2 fp16 chunk -> xRawPingLT_
-    //       V: cast triad with scale = 1/pts[m] -> int8ScratchLT_[m*chunk]
-    //     (after all rows for this chunk filled int8Scratch)
-    //     V -> MTE3 sync; ScatterZZToL1 chunk to xL1[coff..coff+thisChunk]
-    //     (gate next chunk's V on MTE3 done)
-    //
-    // Sync flags (cross-chunk): V_MTE3 + MTE3_V on EVENT_ID0.
+    /**
+     * Pass 2: chunk-outer / row-inner
+     * Per-chunk MTE3 scatter int8 -> xL1; bounds int8Scratch UB to
+     * Mb*chunkHalves (not Mb*K) so tiling can pick larger Mb at K>=4096.
+     *
+     *   for coff in chunks:
+     *     for m in mCount:
+     *       MTE2 fp16 chunk -> xRawPingLT_
+     *       V: cast triad with scale = 1/pts[m] -> int8ScratchLT_[m*chunk]
+     *     (after all rows for this chunk filled int8Scratch)
+     *     V -> MTE3 sync; ScatterZZToL1 chunk to xL1[coff..coff+thisChunk]
+     *     (gate next chunk's V on MTE3 done)
+     *
+     * Sync flags (cross-chunk): V_MTE3 + MTE3_V on EVENT_ID0.
+     */
     {
-        const uint32_t kBytes2      = tiling_->originKAligned32;
-        const uint32_t mAligned     = ((static_cast<uint32_t>(mCount) + M_FRACTAL - 1)
-                                       / M_FRACTAL) * M_FRACTAL;
+        const uint32_t kBytes2 = tiling_->originKAligned32;
+        const uint32_t mAligned = ((static_cast<uint32_t>(mCount) + M_FRACTAL - 1) / M_FRACTAL) * M_FRACTAL;
         const uint32_t l1TurnStride = kBytes2 * M_FRACTAL;
 
         // Gate first chunk's MTE3 on previous iter's MTE1 having finished
@@ -168,10 +164,8 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
         SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
 
         for (uint32_t coff = 0; coff < kBytes2; coff += chunkHalves) {
-            const uint32_t thisChunk =
-                (coff + chunkHalves > kBytes2) ? (kBytes2 - coff) : chunkHalves;
-            const uint32_t realInChunk =
-                (coff >= K) ? 0u : ((K - coff < thisChunk) ? (K - coff) : thisChunk);
+            const uint32_t thisChunk = (coff + chunkHalves > kBytes2) ? (kBytes2 - coff) : chunkHalves;
+            const uint32_t realInChunk = (coff >= K) ? 0u : ((K - coff < thisChunk) ? (K - coff) : thisChunk);
 
             for (uint64_t m = 0; m < mCount; ++m) {
                 const uint64_t rowGmOff = (mStart + m) * static_cast<uint64_t>(K);
@@ -185,9 +179,7 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
                     WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 }
                 if (realInChunk < thisChunk) {
-                    Duplicate<half>(xRawPingLT_[realInChunk],
-                                    static_cast<half>(0),
-                                    thisChunk - realInChunk);
+                    Duplicate<half>(xRawPingLT_[realInChunk], static_cast<half>(0), thisChunk - realInChunk);
                     PipeBarrier<PIPE_V>();
                 }
 
@@ -195,30 +187,24 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
                 // half ROUND -> int8 TRUNC.
                 LocalTensor<float> fpAfterScale;
                 if constexpr (HasSmooth) {
-                    Cast<float, half>(smoothFp32LT_, smoothScaleLT_[coff],
-                                      RoundMode::CAST_NONE, thisChunk);
-                    Cast<float, half>(xCastFloatLT_, xRawPingLT_,
-                                      RoundMode::CAST_NONE, thisChunk);
+                    Cast<float, half>(smoothFp32LT_, smoothScaleLT_[coff], RoundMode::CAST_NONE, thisChunk);
+                    Cast<float, half>(xCastFloatLT_, xRawPingLT_, RoundMode::CAST_NONE, thisChunk);
                     PipeBarrier<PIPE_V>();
-                    Mul<float>(xScaledLT_, xCastFloatLT_, smoothFp32LT_,
-                               thisChunk);
+                    Mul<float>(xScaledLT_, xCastFloatLT_, smoothFp32LT_, thisChunk);
                     PipeBarrier<PIPE_V>();
                     Muls<float>(xCastFloatLT_, xScaledLT_, scale, thisChunk);
                     fpAfterScale = xCastFloatLT_;
                 } else {
-                    Cast<float, half>(xCastFloatLT_, xRawPingLT_,
-                                      RoundMode::CAST_NONE, thisChunk);
+                    Cast<float, half>(xCastFloatLT_, xRawPingLT_, RoundMode::CAST_NONE, thisChunk);
                     PipeBarrier<PIPE_V>();
                     Muls<float>(xScaledLT_, xCastFloatLT_, scale, thisChunk);
                     fpAfterScale = xScaledLT_;
                 }
                 PipeBarrier<PIPE_V>();
-                Cast<int32_t, float>(xInt32LT_, fpAfterScale,
-                                     RoundMode::CAST_RINT, thisChunk);
+                Cast<int32_t, float>(xInt32LT_, fpAfterScale, RoundMode::CAST_RINT, thisChunk);
                 SetDeqScale(static_cast<half>(1.0f));
                 PipeBarrier<PIPE_V>();
-                Cast<half, int32_t>(xHalfLT_, xInt32LT_,
-                                    RoundMode::CAST_ROUND, thisChunk);
+                Cast<half, int32_t>(xHalfLT_, xInt32LT_, RoundMode::CAST_ROUND, thisChunk);
                 PipeBarrier<PIPE_V>();
                 // int8Scratch slot for this row uses STRIDE = thisChunk
                 // (NOT chunkHalves) so the per-row data is packed tight
@@ -226,8 +212,7 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
                 // thisChunk). For the last chunk of a K not divisible by
                 // chunkHalves, thisChunk < chunkHalves; using chunkHalves
                 // would leave gaps that ScatterZZToL1 reads as garbage.
-                Cast<int8_t, half>(int8ScratchLT_[m * thisChunk], xHalfLT_,
-                                   RoundMode::CAST_TRUNC, thisChunk);
+                Cast<int8_t, half>(int8ScratchLT_[m * thisChunk], xHalfLT_, RoundMode::CAST_TRUNC, thisChunk);
                 PipeBarrier<PIPE_V>();
                 SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
             }
@@ -238,19 +223,14 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
             // rows 0..mCount-1. Reinterpret as half + chunked Duplicate
             // (<=128) since Duplicate<half>(count>128) silently truncates.
             if (mCount < mAligned) {
-                LocalTensor<half> int8AsHalf =
-                    int8ScratchLT_.template ReinterpretCast<half>();
+                LocalTensor<half> int8AsHalf = int8ScratchLT_.template ReinterpretCast<half>();
                 const uint32_t halvesPerRow = thisChunk / 2; // 2 bytes int8 = 1 half
-                for (uint64_t pad_m = static_cast<uint64_t>(mCount);
-                     pad_m < static_cast<uint64_t>(mAligned); ++pad_m) {
+                for (uint64_t pad_m = static_cast<uint64_t>(mCount); pad_m < static_cast<uint64_t>(mAligned); ++pad_m) {
                     uint32_t written = 0;
-                    const uint32_t base = static_cast<uint32_t>(pad_m) *
-                                          (thisChunk / 2);
+                    const uint32_t base = static_cast<uint32_t>(pad_m) * (thisChunk / 2);
                     while (written < halvesPerRow) {
-                        const uint32_t cnt = (halvesPerRow - written > 128U)
-                                              ? 128U : (halvesPerRow - written);
-                        Duplicate<half>(int8AsHalf[base + written],
-                                        static_cast<half>(0), cnt);
+                        const uint32_t cnt = (halvesPerRow - written > 128U) ? 128U : (halvesPerRow - written);
+                        Duplicate<half>(int8AsHalf[base + written], static_cast<half>(0), cnt);
                         written += cnt;
                     }
                 }
@@ -263,8 +243,8 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             // mValid=mAligned to scatter zero padding rows too; overwrites
             // xL1 stale padding from prev iter.
-            ScatterZZToL1(xL1_, int8ScratchLT_, mAligned, coff, thisChunk,
-                          l1TurnStride, static_cast<uint32_t>(mAligned));
+            ScatterZZToL1(xL1_, int8ScratchLT_, mAligned, coff, thisChunk, l1TurnStride,
+                          static_cast<uint32_t>(mAligned));
             // Gate the NEXT chunk's V (which overwrites int8Scratch) on the
             // current chunk's MTE3 read finishing. Skip on the last chunk.
             if (coff + thisChunk < kBytes2) {
@@ -293,6 +273,6 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
     SetFlag<HardEvent::MTE3_V>(EVENT_ID7);
 }
 
-}  // namespace AscendC
+} // namespace AscendC
 
-#endif  // QUANT_GROUPED_MATMUL_DEQUANT_PHASE_X_H
+#endif // QUANT_GROUPED_MATMUL_DEQUANT_PHASE_X_H

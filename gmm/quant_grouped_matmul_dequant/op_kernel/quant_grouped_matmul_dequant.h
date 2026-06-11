@@ -46,30 +46,18 @@
 
 namespace AscendC {
 
-template <
-    bool HasPertoken,
-    bool HasSmoothScale,
-    bool ScaleIsInt64,
-    bool BlockedZN,
-    bool SmallM,
-    bool UseXZNStage     // false: PhaseX writes xL1 (per-core, per-mTile); true: PhaseX writes xZNGm_, PhaseMM reads xZNGm_
->
+template <bool HasPertoken, bool HasSmoothScale, bool ScaleIsInt64, bool BlockedZN, bool SmallM,
+          bool UseXZNStage // false: PhaseX writes xL1 (per-core, per-mTile); true: PhaseX writes xZNGm_, PhaseMM reads
+                           // xZNGm_
+          >
 class QuantGroupedMatmulDequant {
 public:
     __aicore__ inline QuantGroupedMatmulDequant() = default;
 
     // Bind GM tensors + tiling data. Must be called before Process().
-    __aicore__ inline void Init(GM_ADDR x,
-                                GM_ADDR quantized_weight,
-                                GM_ADDR weight_scale,
-                                GM_ADDR group_list,
-                                GM_ADDR bias,
-                                GM_ADDR x_scale,
-                                GM_ADDR x_offset,
-                                GM_ADDR smooth_scale,
-                                GM_ADDR y,
-                                GM_ADDR usr_workspace,
-                                const QuantMatmulDequantTilingData *__restrict tiling,
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_scale, GM_ADDR group_list,
+                                GM_ADDR bias, GM_ADDR x_scale, GM_ADDR x_offset, GM_ADDR smooth_scale, GM_ADDR y,
+                                GM_ADDR usr_workspace, const QuantMatmulDequantTilingData *__restrict tiling,
                                 TPipe *pipe);
 
     // Main compute loop - iter-level distribution over experts.
@@ -82,18 +70,15 @@ private:
     __aicore__ inline void InitL0Layout();
     __aicore__ inline void PrimeEvents();
     __aicore__ inline void DrainEvents();
-    __aicore__ inline void InitSyncWs();           // zero-init syncGmWs_ once at kernel start (UseXZNStage_ only)
-    __aicore__ inline void MySyncAllSwift();       // cross-core barrier between PhaseX-out and PhaseMM-in
-    __aicore__ inline void ProcessGroup(uint32_t groupIdx, uint64_t mStart, uint64_t mCount,
-                                        uint32_t nCoreIdx, uint32_t nCoreNum);
+    __aicore__ inline void InitSyncWs();     // zero-init syncGmWs_ once at kernel start (UseXZNStage_ only)
+    __aicore__ inline void MySyncAllSwift(); // cross-core barrier between PhaseX-out and PhaseMM-in
+    __aicore__ inline void ProcessGroup(uint32_t groupIdx, uint64_t mStart, uint64_t mCount, uint32_t nCoreIdx,
+                                        uint32_t nCoreNum);
     __aicore__ inline void PhaseXDynamicQuant(uint64_t mStart, uint64_t mCount);
     __aicore__ inline void PhaseXWriteXL1(uint64_t mCount);
-    __aicore__ inline void ProcessColBatch(uint32_t groupIdx, uint32_t cbIdx,
-                                           uint64_t mStart, uint64_t mCount,
-                                           uint64_t curColCount, uint32_t numCbs,
-                                           uint32_t cbStart);
-    __aicore__ inline void LoadScaleToUB(uint32_t groupIdx, uint32_t cbIdx,
-                                         uint64_t curColCount, bool usePing);
+    __aicore__ inline void ProcessColBatch(uint32_t groupIdx, uint32_t cbIdx, uint64_t mStart, uint64_t mCount,
+                                           uint64_t curColCount, uint32_t numCbs, uint32_t cbStart);
+    __aicore__ inline void LoadScaleToUB(uint32_t groupIdx, uint32_t cbIdx, uint64_t curColCount, bool usePing);
     __aicore__ inline void DequantAndScatter(uint64_t mCount, uint64_t curColCount, bool usePing);
 
     // -------------------------------------------------------------
@@ -105,15 +90,15 @@ private:
     // -------------------------------------------------------------
     // GM tensors (bound in Init()).
     // -------------------------------------------------------------
-    GlobalTensor<half>     xGm_;
-    GlobalTensor<int8_t>   weightGm_;
-    GlobalTensor<float>    weightScaleFp32Gm_;
+    GlobalTensor<half> xGm_;
+    GlobalTensor<int8_t> weightGm_;
+    GlobalTensor<float> weightScaleFp32Gm_;
     GlobalTensor<uint64_t> weightScaleU64Gm_;
-    GlobalTensor<int64_t>  groupListGm_;
-    GlobalTensor<float>    xScaleFp32Gm_;
-    GlobalTensor<half>     xScaleHalfGm_;
-    GlobalTensor<half>     smoothScaleGm_;
-    GlobalTensor<half>     yGm_;
+    GlobalTensor<int64_t> groupListGm_;
+    GlobalTensor<float> xScaleFp32Gm_;
+    GlobalTensor<half> xScaleHalfGm_;
+    GlobalTensor<half> smoothScaleGm_;
+    GlobalTensor<half> yGm_;
     // Workspace base pointer. xZNGm_ / syncGmWs_ GlobalTensors are derived
     // on-demand inside the staged-PhaseX/PhaseMM code paths - keeping them
     // as class members exceeds the 16000-byte aicore stack frame limit.
@@ -128,34 +113,34 @@ private:
     // -------------------------------------------------------------
     TBuf<TPosition::VECCALC> ubArena_;
     // Persistent slots (live across Phase X <-> Phase D).
-    LocalTensor<half>    outPingLT_;
-    LocalTensor<half>    outPongLT_;
-    LocalTensor<float>   pertokenLT_;
+    LocalTensor<half> outPingLT_;
+    LocalTensor<half> outPongLT_;
+    LocalTensor<float> pertokenLT_;
     LocalTensor<uint64_t> scaleU64PingLT_;
     LocalTensor<uint64_t> scaleU64PongLT_;
     LocalTensor<uint32_t> scatterIdxLT_;
-    LocalTensor<half>    smoothScaleLT_;
-    LocalTensor<float>   smoothFp32LT_;     // per-chunk fp32 cast of smooth_scale
+    LocalTensor<half> smoothScaleLT_;
+    LocalTensor<float> smoothFp32LT_; // per-chunk fp32 cast of smooth_scale
     // Aliased Phase X workspace (int8 scratch + raw ping/pong).
-    LocalTensor<half>    xRawPingLT_;
-    LocalTensor<half>    xRawPongLT_;
-    LocalTensor<int8_t>  int8ScratchLT_;
+    LocalTensor<half> xRawPingLT_;
+    LocalTensor<half> xRawPongLT_;
+    LocalTensor<int8_t> int8ScratchLT_;
     // Phase X per-row scratch (single-rounding chain scratch).
-    LocalTensor<half>    absLT_;
-    LocalTensor<half>    reduceWorkLT_;
-    LocalTensor<half>    maxLT_;
-    LocalTensor<float>   xCastFloatLT_;
-    LocalTensor<float>   xScaledLT_;
+    LocalTensor<half> absLT_;
+    LocalTensor<half> reduceWorkLT_;
+    LocalTensor<half> maxLT_;
+    LocalTensor<float> xCastFloatLT_;
+    LocalTensor<float> xScaledLT_;
     LocalTensor<int32_t> xInt32LT_;
-    LocalTensor<half>    xHalfLT_;
+    LocalTensor<half> xHalfLT_;
     // Aliased Phase D workspace (reuses Phase X region after drain). Single
     // dequantScratch NZ buffer; the cb-alternating copyOut reuses outPing/Pong.
-    LocalTensor<half>    dequantScratchLT_;
-    LocalTensor<float>   scaleFp32StagingLT_;
+    LocalTensor<half> dequantScratchLT_;
+    LocalTensor<float> scaleFp32StagingLT_;
 
     // Persistent pertoken row-broadcast: filled once per mTile (Duplicate of
     // pertokenLT_ across Nb cols), read by bulk Mul<half> per cb.
-    LocalTensor<half>    pertokenBcastLT_;
+    LocalTensor<half> pertokenBcastLT_;
 
     // -------------------------------------------------------------
     // L1 buffers. xL1 single-buffered across the mTile; weight ping/pong
@@ -170,42 +155,42 @@ private:
     LocalTensor<int8_t> xL1_;
     LocalTensor<int8_t> wL1PingLT_;
     LocalTensor<int8_t> wL1PongLT_;
-    LocalTensor<half>   xRawL1_;   // within-mTile raw-X cache
+    LocalTensor<half> xRawL1_; // within-mTile raw-X cache
 
     // L0 buffers (fixed 310P sizes - L0A/L0B 64 KB, L0C 256 KB).
-    TBuf<TPosition::A2>       l0aBuf_;
-    TBuf<TPosition::B2>       l0bBuf_;
-    TBuf<QuePosition::CO1>    l0cBuf_;
+    TBuf<TPosition::A2> l0aBuf_;
+    TBuf<TPosition::B2> l0bBuf_;
+    TBuf<QuePosition::CO1> l0cBuf_;
 
     // -------------------------------------------------------------
     // Cached tiling values (to avoid repeated indirections in hot loops).
     // -------------------------------------------------------------
-    uint32_t coreIdx_      = 0;
-    uint32_t coreNum_      = 0;
-    uint32_t MCoreNum_     = 1;     // M-axis core count
-    uint32_t NCoreNum_     = 1;     // N-axis core count (cb-axis split)
+    uint32_t coreIdx_ = 0;
+    uint32_t coreNum_ = 0;
+    uint32_t MCoreNum_ = 1; // M-axis core count
+    uint32_t NCoreNum_ = 1; // N-axis core count (cb-axis split)
     // wL1 buffer index toggles with each weight MTE2 (chunk or cb-cross
     // prefetch) so a prefetch can use the opposite buffer; persists across cbs.
-    uint32_t wBufIdx_      = 0u;
-    uint32_t M_            = 0;
-    uint32_t K_            = 0;
-    uint32_t N_            = 0;
-    uint32_t E_            = 0;
-    uint32_t Mb_           = 0;
-    uint32_t Nb_           = 0;
-    uint32_t Kb_           = 0;
-    uint32_t fracN_        = 0;
-    uint32_t fracK_        = 0;
+    uint32_t wBufIdx_ = 0u;
+    uint32_t M_ = 0;
+    uint32_t K_ = 0;
+    uint32_t N_ = 0;
+    uint32_t E_ = 0;
+    uint32_t Mb_ = 0;
+    uint32_t Nb_ = 0;
+    uint32_t Kb_ = 0;
+    uint32_t fracN_ = 0;
+    uint32_t fracK_ = 0;
     uint32_t weightBlockN1_ = 0;
     uint32_t perCoreIters_ = 0;
     uint32_t remainderIters_ = 0;
-    uint32_t nBlockSize_   = 1;     // cbs that fit L2 simultaneously
-    uint64_t ubKMask_      = 0;
-    bool     hasXRawL1_    = false;
-    bool     useL2Hint_    = false;
-    bool     l2WeightFits_ = false;
-    bool     dbL0c_        = false;     // L0C ping-pong across cbs
-    uint32_t l0cHalfElems_ = 0;         // = Mb*Nb (int32 elems per L0C half when dbL0c_)
+    uint32_t nBlockSize_ = 1; // cbs that fit L2 simultaneously
+    uint64_t ubKMask_ = 0;
+    bool hasXRawL1_ = false;
+    bool useL2Hint_ = false;
+    bool l2WeightFits_ = false;
+    bool dbL0c_ = false;        // L0C ping-pong across cbs
+    uint32_t l0cHalfElems_ = 0; // = Mb*Nb (int32 elems per L0C half when dbL0c_)
 };
 
 
@@ -224,9 +209,9 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
     // First pass: total iters across all experts (cumulative group_list).
     // prevCum is reused by the second pass; declared once at function scope.
     uint64_t totalIters = 0;
-    int64_t  prevCum = 0;
-    int64_t  endM;
-    int64_t  tokens;
+    int64_t prevCum = 0;
+    int64_t endM;
+    int64_t tokens;
     for (uint32_t g = 0; g < E_; ++g) {
         endM = groupListGm_.GetValue(g);
         tokens = endM - prevCum;
@@ -245,34 +230,39 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
     //   N_ONLY : MCoreNum==1 && NCoreNum>=2 - all cores share single mTile,
     //            partition its cbs (avoids 1-core run when totalIters=1).
     //   CONTIGUOUS: otherwise - contiguous-iter slice across coreNum cores.
-    enum class WorkMode { CONTIGUOUS, COOPBATCH_MN, COOPBATCH_N_ONLY };
+    enum class WorkMode {
+        CONTIGUOUS,
+        COOPBATCH_MN,
+        COOPBATCH_N_ONLY
+    };
     WorkMode mode;
     // N_ONLY only when cb-per-core >= threshold: below it, PhaseX re-quantizes
     // all rows of the mTile on every core, outweighing the cb-split parallelism.
     constexpr uint32_t COOP_N_ONLY_MIN_CBS_PER_CORE = 16u;
     const uint32_t totalColBatchProcess = (N_ + Nb_ - 1) / Nb_;
-    const bool nOnlyWorthwhile = (NCoreNum_ > 0u) &&
-        ((totalColBatchProcess / NCoreNum_) >= COOP_N_ONLY_MIN_CBS_PER_CORE);
-    if (MCoreNum_ >= 2u && NCoreNum_ >= 2u)                    mode = WorkMode::COOPBATCH_MN;
+    const bool nOnlyWorthwhile =
+        (NCoreNum_ > 0u) && ((totalColBatchProcess / NCoreNum_) >= COOP_N_ONLY_MIN_CBS_PER_CORE);
+    if (MCoreNum_ >= 2u && NCoreNum_ >= 2u)
+        mode = WorkMode::COOPBATCH_MN;
     else if (MCoreNum_ == 1u && NCoreNum_ >= 2u && nOnlyWorthwhile)
-                                                                mode = WorkMode::COOPBATCH_N_ONLY;
-    else                                                        mode = WorkMode::CONTIGUOUS;
-    const bool   coopBatch  = (mode != WorkMode::CONTIGUOUS);
-    const uint32_t mCoreIdx = (mode == WorkMode::COOPBATCH_MN)     ? (coreIdx_ / NCoreNum_)
-                            : (mode == WorkMode::COOPBATCH_N_ONLY) ? 0u
-                            :                                        coreIdx_;
-    const uint32_t nCoreIdx = (mode == WorkMode::COOPBATCH_MN)     ? (coreIdx_ % NCoreNum_)
-                            : (mode == WorkMode::COOPBATCH_N_ONLY) ? coreIdx_
-                            :                                        0u;
-    const uint32_t splitDen = (mode == WorkMode::COOPBATCH_MN)     ? MCoreNum_
-                            : (mode == WorkMode::COOPBATCH_N_ONLY) ? 1u
-                            :                                        coreNum_;
-    const uint64_t perCore   = totalIters / splitDen;
-    const uint64_t rem       = totalIters % splitDen;
-    const uint64_t myIters   = perCore + (mCoreIdx < rem ? 1 : 0);
-    const uint64_t startIter = perCore * mCoreIdx
-                               + (mCoreIdx < rem ? mCoreIdx : rem);
-    const uint64_t endIter   = startIter + myIters;
+        mode = WorkMode::COOPBATCH_N_ONLY;
+    else
+        mode = WorkMode::CONTIGUOUS;
+    const bool coopBatch = (mode != WorkMode::CONTIGUOUS);
+    const uint32_t mCoreIdx = (mode == WorkMode::COOPBATCH_MN)     ? (coreIdx_ / NCoreNum_) :
+                              (mode == WorkMode::COOPBATCH_N_ONLY) ? 0u :
+                                                                     coreIdx_;
+    const uint32_t nCoreIdx = (mode == WorkMode::COOPBATCH_MN)     ? (coreIdx_ % NCoreNum_) :
+                              (mode == WorkMode::COOPBATCH_N_ONLY) ? coreIdx_ :
+                                                                     0u;
+    const uint32_t splitDen = (mode == WorkMode::COOPBATCH_MN)     ? MCoreNum_ :
+                              (mode == WorkMode::COOPBATCH_N_ONLY) ? 1u :
+                                                                     coreNum_;
+    const uint64_t perCore = totalIters / splitDen;
+    const uint64_t rem = totalIters % splitDen;
+    const uint64_t myIters = perCore + (mCoreIdx < rem ? 1 : 0);
+    const uint64_t startIter = perCore * mCoreIdx + (mCoreIdx < rem ? mCoreIdx : rem);
+    const uint64_t endIter = startIter + myIters;
 
     // Second pass: walk experts and pick out iters in [startIter, endIter).
     // globalIterIdx is the cumulative iter counter across experts.
@@ -284,51 +274,49 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
             endM = groupListGm_.GetValue(g);
             tokens = endM - prevCum;
             prevCum = endM;
-            if (tokens <= 0) continue;
+            if (tokens <= 0)
+                continue;
             const uint64_t expertTokens = static_cast<uint64_t>(tokens);
-            const uint64_t itersThis =
-                (expertTokens + Mb_ - 1) / Mb_;
+            const uint64_t itersThis = (expertTokens + Mb_ - 1) / Mb_;
 
             // Fast-skip experts entirely outside our slice.
             if (globalIterIdx + itersThis <= startIter) {
                 globalIterIdx += itersThis;
-                passedTokens  += expertTokens;
+                passedTokens += expertTokens;
                 continue;
             }
-            if (globalIterIdx >= endIter) break;
+            if (globalIterIdx >= endIter)
+                break;
 
             // First iter in this expert that belongs to us.
-            const uint64_t localStart =
-                (startIter > globalIterIdx) ? (startIter - globalIterIdx) : 0;
+            const uint64_t localStart = (startIter > globalIterIdx) ? (startIter - globalIterIdx) : 0;
             // Last iter in this expert that belongs to us (exclusive).
-            const uint64_t localEnd =
-                (endIter - globalIterIdx < itersThis)
-                ? (endIter - globalIterIdx) : itersThis;
+            const uint64_t localEnd = (endIter - globalIterIdx < itersThis) ? (endIter - globalIterIdx) : itersThis;
 
             for (uint64_t it = localStart; it < localEnd; ++it) {
-                const uint64_t mOff   = it * Mb_;
+                const uint64_t mOff = it * Mb_;
                 const uint64_t mStart = passedTokens + mOff;
-                const uint64_t mTail  = expertTokens - mOff;
+                const uint64_t mTail = expertTokens - mOff;
                 const uint64_t mCount = (mTail < Mb_) ? mTail : Mb_;
                 // nCoreNum passed to ProcessGroup depends on mode:
                 //   MN     -> NCoreNum_ (cores in an M-group partition cbs)
                 //   N_ONLY -> coreNum_  (all cores partition cbs of the mTile)
                 //   CONTIG -> 1         (each core walks ALL cbs of its iters)
-                const uint32_t pgNCoreNum = (mode == WorkMode::COOPBATCH_MN)     ? NCoreNum_
-                                          : (mode == WorkMode::COOPBATCH_N_ONLY) ? coreNum_
-                                          :                                        1u;
+                const uint32_t pgNCoreNum = (mode == WorkMode::COOPBATCH_MN)     ? NCoreNum_ :
+                                            (mode == WorkMode::COOPBATCH_N_ONLY) ? coreNum_ :
+                                                                                   1u;
                 ProcessGroup(g, mStart, mCount, nCoreIdx, pgNCoreNum);
             }
 
             globalIterIdx += itersThis;
-            passedTokens  += expertTokens;
+            passedTokens += expertTokens;
         }
     }
 
     DrainEvents();
 }
 
-}  // namespace AscendC
+} // namespace AscendC
 
 // Member function definitions for Phase X / MM / D and Init helpers live in
 // chunked headers. Include them after the class declaration so out-of-class
@@ -338,4 +326,4 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
 #include "quant_grouped_matmul_dequant_phase_mm.h"
 #include "quant_grouped_matmul_dequant_phase_d.h"
 
-#endif  // QUANT_GROUPED_MATMUL_DEQUANT_H
+#endif // QUANT_GROUPED_MATMUL_DEQUANT_H

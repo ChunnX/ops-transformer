@@ -26,18 +26,18 @@ namespace AscendC {
 // Bit positions inside TilingData::flags.
 // Any change here must be mirrored in host tiling EmitTilingData.
 enum QgmmdFlagBit : uint32_t {
-    FLAG_BIT_DYNAMIC_QUANT      = 0,  // 0 = static-quant (x_scale path), 1 = dynamic
-    FLAG_BIT_HAS_SMOOTH         = 1,  // smooth_scale input present
-    FLAG_BIT_PER_TOKEN          = 2,  // per-token quant (vs pertensor)
-    FLAG_BIT_SCALE_IS_INT64     = 3,  // weight_scale pre-encoded uint64 vs fp32
-    FLAG_BIT_BLOCKED_ZN         = 4,  // weight storage = 6-D blocked ZN
-    FLAG_BIT_SMALL_M            = 5,  // Mb <= SMALL_M_THRESHOLD
-    FLAG_BIT_L2_WEIGHT_FITS     = 6,  // K*N <= L2_HEADROOM_BYTES
-    FLAG_BIT_HAS_X_RAW_L1       = 7,  // xRawL1 cross-iter pre-load fits L1
-    FLAG_BIT_USE_L2_HINT        = 8,  // SetL2CacheHint runtime call (S16-pre gated)
-    FLAG_BIT_DBL0C              = 9,  // Y.2: L0C ping-pong across cbs
-    FLAG_BIT_USE_XZN_WORKSPACE  = 10, // xZN GM workspace stage: PhaseX writes quantized x to GM,
-                                      //   PhaseMM reads from GM (replaces cross-cb xL1 reuse).
+    FLAG_BIT_DYNAMIC_QUANT = 0,      // 0 = static-quant (x_scale path), 1 = dynamic
+    FLAG_BIT_HAS_SMOOTH = 1,         // smooth_scale input present
+    FLAG_BIT_PER_TOKEN = 2,          // per-token quant (vs pertensor)
+    FLAG_BIT_SCALE_IS_INT64 = 3,     // weight_scale pre-encoded uint64 vs fp32
+    FLAG_BIT_BLOCKED_ZN = 4,         // weight storage = 6-D blocked ZN
+    FLAG_BIT_SMALL_M = 5,            // Mb <= SMALL_M_THRESHOLD
+    FLAG_BIT_L2_WEIGHT_FITS = 6,     // K*N <= L2_HEADROOM_BYTES
+    FLAG_BIT_HAS_X_RAW_L1 = 7,       // xRawL1 cross-iter pre-load fits L1
+    FLAG_BIT_USE_L2_HINT = 8,        // SetL2CacheHint runtime call (S16-pre gated)
+    FLAG_BIT_DBL0C = 9,              // Y.2: L0C ping-pong across cbs
+    FLAG_BIT_USE_XZN_WORKSPACE = 10, // xZN GM workspace stage: PhaseX writes quantized x to GM,
+                                     //   PhaseMM reads from GM (replaces cross-cb xL1 reuse).
 };
 
 __aicore__ inline bool GetFlag(uint32_t flags, QgmmdFlagBit bit)
@@ -55,14 +55,14 @@ struct QgmmdTilingKey {
 
     constexpr uint32_t Pack() const
     {
-        return (static_cast<uint32_t>(hasPertoken)        << FLAG_BIT_PER_TOKEN) |
-               (static_cast<uint32_t>(hasSmoothScale)     << FLAG_BIT_HAS_SMOOTH) |
+        return (static_cast<uint32_t>(hasPertoken) << FLAG_BIT_PER_TOKEN) |
+               (static_cast<uint32_t>(hasSmoothScale) << FLAG_BIT_HAS_SMOOTH) |
                (static_cast<uint32_t>(weightScaleIsInt64) << FLAG_BIT_SCALE_IS_INT64) |
-               (static_cast<uint32_t>(blockedZN)          << FLAG_BIT_BLOCKED_ZN) |
-               (static_cast<uint32_t>(smallM)             << FLAG_BIT_SMALL_M);
+               (static_cast<uint32_t>(blockedZN) << FLAG_BIT_BLOCKED_ZN) |
+               (static_cast<uint32_t>(smallM) << FLAG_BIT_SMALL_M);
     }
 };
 
-}  // namespace AscendC
+} // namespace AscendC
 
-#endif  // QUANT_GROUPED_MATMUL_DEQUANT_TILING_KEY_H
+#endif // QUANT_GROUPED_MATMUL_DEQUANT_TILING_KEY_H

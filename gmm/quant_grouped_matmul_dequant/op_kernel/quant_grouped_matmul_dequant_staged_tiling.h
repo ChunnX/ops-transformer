@@ -34,7 +34,7 @@ struct QuantGroupedMatmulDequantTilingData {
     uint32_t perToken;
     uint32_t dynamicQuant;
     uint32_t smoothScale;
-    //
+
     uint32_t originE;
     uint32_t originM;
     uint32_t originN;
@@ -87,7 +87,7 @@ struct QuantGroupedMatmulDequantTilingData {
     uint32_t isXScaleHalf;
 };
 
-}  // namespace qgmmd_staged
-}  // namespace AscendC
+} // namespace qgmmd_staged
+} // namespace AscendC
 
-#endif  // QUANT_GROUPED_MATMUL_DEQUANT_STAGED_TILING_H
+#endif // QUANT_GROUPED_MATMUL_DEQUANT_STAGED_TILING_H
