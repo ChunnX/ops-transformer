@@ -404,14 +404,14 @@ private:
             for (uint32_t i = 0; i < effectiveSp; i++) {
                 for (uint32_t k = 0; k < curLength; k++) {
                     Mul(inLocal[i * curLength * hDim + k * hDim],
-                                inLocal[i * curLength * hDim + k * hDim],
-                                lseexpBroadcastLocal[i * curLengthPad * NUM64 + k * NUM64],
-                                NUM64, hDim / NUM64, {1, 1, 1, 8, 8, 0});
+                        inLocal[i * curLength * hDim + k * hDim],
+                        lseexpBroadcastLocal[i * curLengthPad * NUM64 + k * NUM64],
+                        NUM64, hDim / NUM64, {1, 1, 1, 8, 8, 0});
                     if (tmpTailLength > 0) {
                         Mul(inLocal[i * curLength * hDim + k * hDim + tmpTailStart],
-                                inLocal[i * curLength * hDim + k * hDim + tmpTailStart],
-                                lseexpBroadcastLocal[i * curLengthPad * NUM64 + k * NUM64],
-                                tmpTailLength, 1, {1, 1, 1, 8, 8, 0});
+                            inLocal[i * curLength * hDim + k * hDim + tmpTailStart],
+                            lseexpBroadcastLocal[i * curLengthPad * NUM64 + k * NUM64],
+                            tmpTailLength, 1, {1, 1, 1, 8, 8, 0});
                     }
                 }
             }
