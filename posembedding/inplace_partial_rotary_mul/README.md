@@ -54,9 +54,9 @@
 </thead>
 <tbody>
   <tr>
-    <td>x</td>
+    <td>xRef</td>
     <td>输入</td>
-    <td>公式中的x，待执行旋转位置编码的张量。Inplace模式，x同时作为输出写入结果。</td>
+    <td>公式中的x，待执行旋转位置编码的张量。Inplace模式，xRef同时作为输出写入结果。</td>
     <td>BFLOAT16、FLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
@@ -94,19 +94,20 @@
 ## 约束说明
 
 - 不支持非连续。
-- 输入张量x最后一维（D）大小不超过1024。
-- interleave模式（rotary_mode = 1）下，x最后一维（D）大小必须为2的倍数。
+- 输入张量xRef最后一维（D）大小不超过1024。
+- interleave模式（rotary_mode = 1）下，xRef最后一维（D）大小必须为2的倍数。
 - 输入张量cos、sin最后一维大小必须相同，且必须等于partialSlice的切片长度（即partialSlice[1] - partialSlice[0]）。
-- partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ x最后一维（D）大小，sliceLength = sliceEnd - sliceStart >= 0，当sliceEnd和sliceStart相同时，不做旋转位置编码，直接返回。
+- partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ xRef最后一维（D）大小，sliceLength = sliceEnd - sliceStart >= 0，当sliceEnd和sliceStart相同时，不做旋转位置编码，直接返回。
 - 仅支持interleave模式（rotary_mode = 1）。
-- Inplace执行：输入x和输出共享同一个Tensor，计算结果直接写回输入x。
-- cos/sin的shape必须与x满足广播关系。
+- Inplace执行：输入xRef和输出共享同一个Tensor，计算结果直接写回输入xRef。
+- xRef的shape为BSND。
+- cos/sin的shape必须与xRef满足广播关系，且存在如下约束：
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
-  输入张量x当前只支持BSND、B1ND、B11D、111D排布。
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    cos/sin的shape当前只支持BSND、B1ND、B11D、111D排布。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-  输入张量x当前只支持BS1D、B11D排布。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    cos/sin的shape当前只支持BS1D、B11D排布。
 
 ## 调用说明
 

@@ -21,14 +21,14 @@ extern "C" {
  * @brief aclnnInplacePartialRotaryMul的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  *
- * @param [in] x: npu
+ * @param [in] xRef: npu
  * device侧的aclTensor, 数据类型支持FLOAT32,FLOAT16,BFLOAT16,支持非连续的Tensor,数据格式支持ND。
- * Inplace模式，x同时作为输出写入结果。
+ * Inplace模式，xRef同时作为输出写入结果。
  * @param [in] cos: npu
- * device侧的aclTensor, 数据类型支持FLOAT32,FLOAT16,BFLOAT16,数据类型与x一致,
+ * device侧的aclTensor, 数据类型支持FLOAT32,FLOAT16,BFLOAT16,数据类型与xRef一致,
  * 支持非连续的Tensor,数据格式支持ND。
  * @param [in] sin: npu
- * device侧的aclTensor, 数据类型支持FLOAT32,FLOAT16,BFLOAT16,数据类型与x一致,shape与cos一致
+ * device侧的aclTensor, 数据类型支持FLOAT32,FLOAT16,BFLOAT16,数据类型与xRef一致,shape与cos一致
  * 支持非连续的Tensor,数据格式支持ND。
  * @param [in] rotary_mode: 支持int64_t类型, 当前仅支持interleave模式(rotary_mode=1)。
  * @param [in] partialSlice: 部分旋转的切片范围 [start, end)，作用于最后一维。
@@ -36,7 +36,7 @@ extern "C" {
  * @param [out] executor: 返回op执行器，包含算子计算流程。
  * @return aclnnStatus: 返回状态码。
  */
-ACLNN_API aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTensor* x, const aclTensor* cos,
+ACLNN_API aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTensor* xRef, const aclTensor* cos,
                                                                    const aclTensor* sin, int64_t rotary_mode,
                                                                    const aclIntArray *partialSlice,
                                                                    uint64_t* workspaceSize, aclOpExecutor** executor);
