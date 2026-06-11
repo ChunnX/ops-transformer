@@ -205,10 +205,6 @@ private:
                 commOp.WaitScaleCombinedAic(turnIdx);
             }
 
-            if (turnIdx == 0U) {
-                AscendC::DumpTensor(commOutGm_, "commOut_turn0", 16);
-            }
-
             computeOp.ProcessCombined(turnIdx, realCombineSize, combinedGroupListGm_, yOffsetListGm_);
         }
     }
