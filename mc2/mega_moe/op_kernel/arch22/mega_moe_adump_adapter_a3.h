@@ -13,7 +13,7 @@
  * \brief 实现 MegaMoe 算子的 adump 记录引擎，适配 A3 架构
  */
 #ifndef MEGA_MOE_ADUMP_ADAPTER_A3
-#ifdef MEGA_MOE_ADUMP_ADAPTER_A3
+#define MEGA_MOE_ADUMP_ADAPTER_A3
 
 #include "../../../common/op_kernel/mc2_adump_engine.h"
 
