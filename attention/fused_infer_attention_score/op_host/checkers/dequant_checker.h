@@ -19,6 +19,7 @@
 #include <numeric>
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
+#include "fia_tiling_info.h"
 
 namespace optiling {
 class DequantChecker : public BaseChecker {

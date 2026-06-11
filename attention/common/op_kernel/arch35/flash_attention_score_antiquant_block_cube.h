@@ -260,21 +260,21 @@ template <typename T>
 struct CubeBlockTraitsAntiquant;
 
 /* 生成CubeBlockTraits */
-#define GEN_TRAIT_TYPE_ANTIQUANT(name, ...) using name##_TRAITS = name;
-#define GEN_TRAIT_CONST_ANTIQAUNT(name, type, ...) static constexpr type name##Traits = name;
+#define GEN_TRAIT_TYPE_ANTIQUANT(name, ...) using name##_TRAITS = name
+#define GEN_TRAIT_CONST_ANTIQAUNT(name, type, ...) static constexpr type name##Traits = name
 
 #define DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(CUBE_BLOCK_CLASS_ANTIQUANT) \
     ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT \
     struct CubeBlockTraitsAntiquant<CUBE_BLOCK_CLASS_ANTIQUANT<ANTIQUANT_TEMPLATE_ARGS>> { \
         ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE_ANTIQUANT) \
         ANTIQUANT_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST_ANTIQAUNT) \
-    };
+    }
 
 DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(FABlockCubeAntiquant);
 DEFINE_CUBE_BLOCK_TRAITS_ANTIQUANT(FABlockCubeAntiquantDummy);
 
-#define GEN_ARGS_TYPE_ANTIQUANT(name, ...) using name = typename CubeBlockTraitsAntiquant<AntiquantCubeBlockType>::name##_TRAITS;
-#define GEN_ARGS_CONST_ANTIQUANT(name, type, ...) static constexpr type name = CubeBlockTraitsAntiquant<AntiquantCubeBlockType>::name##Traits;
+#define GEN_ARGS_TYPE_ANTIQUANT(name, ...) using name = typename CubeBlockTraitsAntiquant<AntiquantCubeBlockType>::name##_TRAITS
+#define GEN_ARGS_CONST_ANTIQUANT(name, type, ...) static constexpr type name = CubeBlockTraitsAntiquant<AntiquantCubeBlockType>::name##Traits
 #define ARGS_TRAITS_ANTIQUANT \
     ANTIQUANT_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE_ANTIQUANT)\
     ANTIQUANT_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST_ANTIQUANT)

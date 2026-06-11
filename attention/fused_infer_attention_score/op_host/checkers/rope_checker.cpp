@@ -397,7 +397,6 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo)
     // 全量化场景下 QS仅支持1-16
     constexpr uint32_t maxQuerySeqLenForMLAFullquant = 16U;
     
-
     OP_CHECK_IF((fiaInfo.s1Size < NUM1),
         OP_LOGE(fiaInfo.opName,
             "In the Decode MLA scenario, sequence length(%u) of query should be larger than 0.",
