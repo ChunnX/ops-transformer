@@ -95,8 +95,8 @@ ge::graphStatus KvCompressEpilogTiling::GetAttributes()
     if (attrQuantMode != nullptr) {
         quantMode_ = *attrQuantMode;
     }
-    OP_CHECK_IF(quantMode_ != 1 && quantMode_ != 2,
-              OP_LOGE(context_->GetNodeName(), "quantMode should be 1 or 2"),
+    OP_CHECK_IF(quantMode_ != 1 && quantMode_ != 2 && quantMode_ != 3,
+              OP_LOGE(context_->GetNodeName(), "quantMode should be 1, 2 or 3"),
               return ge::GRAPH_FAILED);
 
     const int64_t* attrRoundScale = attrs->GetAttrPointer<int64_t>(ROUND_SCALE_ATTR_INDEX);
@@ -107,15 +107,9 @@ ge::graphStatus KvCompressEpilogTiling::GetAttributes()
     auto scaleAttr = attrs->GetAttrPointer<float>(SCALE_ATTR_INDEX);
     scalesAttr_ = scaleAttr == nullptr ? 1.0f : *scaleAttr;
 
-    const int64_t* attrBlockSize = attrs->GetAttrPointer<int64_t>(BLOCK_SIZE_ATTR_INDEX);
-    blockSizeAttr_ = (attrBlockSize != nullptr) ? *attrBlockSize : 0;
-
-    const int64_t* attrBlockStride = attrs->GetAttrPointer<int64_t>(BLOCK_STRIDE_ATTR_INDEX);
-    blockStrideAttr_ = (attrBlockStride != nullptr) ? *attrBlockStride : 0;
-
     OP_LOGI(context_->GetNodeName(),
-            "quant_group_size: %ld quantMode_: %ld roundScale_: %ld blockSize: %ld blockStride: %ld",
-            quantGroupSize_, quantMode_, roundScale_, blockSizeAttr_, blockStrideAttr_);
+            "quant_group_size: %ld quantMode_: %ld roundScale_: %ld",
+            quantGroupSize_, quantMode_, roundScale_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -183,29 +177,63 @@ ge::graphStatus KvCompressEpilogTiling::ValidateDtypes()
     return ge::GRAPH_SUCCESS;
 }
 
+bool KvCompressEpilogTiling::GetCacheViewLayout(
+    size_t inputIdx, int64_t &blockSize, int64_t &rowStride, int64_t &blockStride)
+{
+    // Scatter-style non-contiguous handling: recover the paged layout from the tensor's
+    // RUNTIME VIEW strides. The aclnn layer wraps kv_compress_cache in a CreateView, so the
+    // GE tiling context exposes the view shape/strides here (mirrors ScatterPaKvCache's
+    // GetTensorInfo via InputIsView()/GetInputStride()).
+    if (!context_->InputIsView(inputIdx)) {
+        return false;
+    }
+    auto *inputStride = context_->GetInputStride(inputIdx);
+    if (inputStride == nullptr || inputStride->GetDimNum() != CACHE_VIEW_DIM_NUM) {
+        return false;
+    }
+    auto *inputShape = context_->GetInputShape(inputIdx);
+    if (inputShape == nullptr) {
+        return false;
+    }
+    const auto &viewShape = inputShape->GetShape();
+    if (viewShape.GetDimNum() != CACHE_VIEW_DIM_NUM) {
+        return false;
+    }
+    // [blockNum, blockSize, 1, headDim]
+    blockSize = viewShape.GetDim(CACHE_BLOCKSIZE_DIM);
+    rowStride = inputStride->GetStride(CACHE_BLOCKSIZE_DIM);
+    blockStride = inputStride->GetStride(CACHE_BLOCKNUM_DIM);
+    return (blockSize > 0 && rowStride > 0 && blockStride > 0);
+}
+
 ge::graphStatus KvCompressEpilogTiling::GetKvCacheLayout()
 {
     // kv_compress_cache is the in-place output (input 0 == output 0), a 4D paged cache
     // [blockNum, blockSize, 1, headDim]. The blockNum dimension is NON-CONTIGUOUS: its
-    // physical stride is an ARBITRARY value (>= blockSize*headDim), independent of the
-    // inner three dims. The GE tiling context does NOT expose view strides for an
-    // aclnn-launched view (GetInputStride()/GetOutputStride() both return empty), so the
-    // blockNum stride (and the logical blockSize) are passed explicitly as op attributes.
+    // physical stride can be an arbitrary value (>= blockSize*headDim).
+    //
+    // Like ScatterPaKvCache, the layout (logical blockSize and the blockNum stride) is
+    // derived entirely from the cache tensor's RUNTIME VIEW strides (exposed by the aclnn
+    // CreateView). There are no block_size/block_stride attributes. When no strided view is
+    // present the cache is treated as contiguous flat slots (blockSize=1 => slot * rowStride).
     //
     // Each token row of kvCacheCol (== headDim) bytes is written at
     //   gmOffset = block * kvCacheBlockStride + pos * kvCacheRowStride
-    // with block = slot / kvCacheBlockSize, pos = slot % kvCacheBlockSize. Positions within
-    // a block are contiguous, so the per-position stride is headDim (== kvCacheCol).
-    OP_CHECK_IF(blockSizeAttr_ <= 0,
-              OP_LOGE(context_->GetNodeName(),
-                       "block_size attr must be > 0 for the 4D paged cache, got %ld", blockSizeAttr_),
-              return ge::GRAPH_FAILED);
-
-    kvCacheBlockSize_ = blockSizeAttr_;
+    // with block = slot / kvCacheBlockSize, pos = slot % kvCacheBlockSize.
     kvCacheRowStride_ = kvCacheCol_;
+    kvCacheBlockSize_ = 1;                 // default: contiguous flat slots (slot * rowStride)
+    kvCacheBlockStride_ = kvCacheCol_;
 
-    int64_t contiguousBlockStride = kvCacheBlockSize_ * kvCacheCol_;
-    kvCacheBlockStride_ = (blockStrideAttr_ > 0) ? blockStrideAttr_ : contiguousBlockStride;
+    int64_t viewBlockSize = 0;
+    int64_t viewRowStride = 0;
+    int64_t viewBlockStride = 0;
+    if (GetCacheViewLayout(KV_COMPRESS_CACHE_INPUT_INDEX, viewBlockSize, viewRowStride, viewBlockStride)) {
+        kvCacheBlockSize_ = viewBlockSize;
+        kvCacheRowStride_ = viewRowStride;
+        kvCacheBlockStride_ = viewBlockStride;
+    }
+
+    int64_t contiguousBlockStride = kvCacheBlockSize_ * kvCacheRowStride_;
     OP_CHECK_IF(kvCacheBlockStride_ < contiguousBlockStride,
               OP_LOGE(context_->GetNodeName(),
                        "block_stride %ld must be >= blockSize*headDim %ld", kvCacheBlockStride_, contiguousBlockStride),
@@ -223,17 +251,26 @@ ge::graphStatus KvCompressEpilogTiling::DoOpTiling()
     usedCoreNums_ = std::min(CeilDiv(bs_, rowOfFormerBlock_), static_cast<int64_t>(coreNum_));
     rowOfTailBlock_ = bs_ - (usedCoreNums_ - 1) * rowOfFormerBlock_;
 
-    // Supporting quantmode=3 scenarios requires modifying this part
-    scaleCol_ = CeilDiv(d_ - 64, static_cast<int64_t>(64));
-    int64_t scaleBytes = 1;
-    if (quantMode_ == QUANT_MDOE_GROUP_QUANT_BF16) {
-        scaleBytes = 2;
+    // quant_mode=3 (HiFloat8): whole-row quant, no rope/group/scale structure -> cache row is
+    // exactly d hifloat8 bytes (kvCacheCol == d, no concat/pad). modes 1/2 keep the
+    // rope(64 verbatim) + per-group fp8 + per-group scale concat layout.
+    int64_t concatCol;
+    int64_t padCol;
+    if (quantMode_ == QUANT_MODE_HIFLOAT) {
+        scaleCol_ = 0;
+        concatCol = d_;
+        kvCacheCol_ = d_;
+        padCol = 0;
+    } else {
+        scaleCol_ = CeilDiv(d_ - 64, static_cast<int64_t>(64));
+        int64_t scaleBytes = 1;
+        if (quantMode_ == QUANT_MODE_GROUP_QUANT_BF16) {
+            scaleBytes = 2;
+        }
+        concatCol = d_ - SLICE_SIZE + SLICE_SIZE * 2 + scaleCol_ * scaleBytes;
+        kvCacheCol_ = RoundUp(concatCol, DEFAULT_QUANT_GROUP_SIZE);
+        padCol = kvCacheCol_ - concatCol;
     }
-
-    int64_t concatCol = d_ - SLICE_SIZE + SLICE_SIZE * 2 + scaleCol_ * scaleBytes;
-    kvCacheCol_ = RoundUp(concatCol, DEFAULT_QUANT_GROUP_SIZE);
-
-    int64_t padCol = kvCacheCol_ - concatCol;
 
     // Resolve the kv_compress_cache 4D paged layout (with a non-contiguous blockNum
     // dimension) to drive per-token GM offsets in the kernel.

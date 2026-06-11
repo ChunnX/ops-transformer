@@ -16,6 +16,8 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "opdev/shape_utils.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -31,16 +33,12 @@ aclnnStatus aclnnIndexerQuantCacheGetWorkspaceSize(
     int64_t quantMode,
     bool roundScale,
     double scale,
-    int64_t blockSize,
-    int64_t cacheBlockStride,
-    int64_t scaleBlockStride,
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnIndexerQuantCache,
                    DFX_IN(indexerCompressCacheRef, indexerCompressCacheScaleRef,
-                          x, slotMapping, quantMode, roundScale, scale,
-                          blockSize, cacheBlockStride, scaleBlockStride),
+                          x, slotMapping, quantMode, roundScale, scale),
                    DFX_OUT());
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -56,11 +54,28 @@ aclnnStatus aclnnIndexerQuantCacheGetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    // Scatter-style non-contiguous handling: wrap the two in-place paged caches in views that
+    // preserve their (possibly non-contiguous) storage shape / view strides, so the GE tiling
+    // context can recover the blockNum strides directly from the tensor layout instead of from
+    // explicit block_size/*_block_stride attributes. Mirrors ScatterPaKvCache's ProcessNonContiguous.
+    auto cacheView = uniqueExecutor->CreateView(indexerCompressCacheRef,
+                                                indexerCompressCacheRef->GetViewShape(),
+                                                indexerCompressCacheRef->GetStorageShape(),
+                                                indexerCompressCacheRef->GetViewStrides(),
+                                                indexerCompressCacheRef->GetViewOffset());
+    CHECK_RET(cacheView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto scaleView = uniqueExecutor->CreateView(indexerCompressCacheScaleRef,
+                                                indexerCompressCacheScaleRef->GetViewShape(),
+                                                indexerCompressCacheScaleRef->GetStorageShape(),
+                                                indexerCompressCacheScaleRef->GetViewStrides(),
+                                                indexerCompressCacheScaleRef->GetViewOffset());
+    CHECK_RET(scaleView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
     auto output = l0op::IndexerQuantCache(
-        indexerCompressCacheRef, indexerCompressCacheScaleRef,
+        const_cast<aclTensor *>(cacheView), const_cast<aclTensor *>(scaleView),
         x, slotMapping,
         quantMode, roundScale, scale,
-        blockSize, cacheBlockStride, scaleBlockStride,
         uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

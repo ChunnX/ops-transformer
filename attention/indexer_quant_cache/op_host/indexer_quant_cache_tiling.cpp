@@ -40,17 +40,21 @@ int64_t RoundUp(int64_t x, int64_t y) {
 }
 
 
+constexpr int64_t INPUT_CACHE_IDX = 0;
+constexpr int64_t INPUT_SCALE_IDX = 1;
 constexpr int64_t INPUT_X_IDX = 2;
 constexpr int64_t INPUT_SLOT_MAPPING_IDX = 3;
+// 4D paged cache view [blockNum, blockSize, 1, headDim]
+constexpr size_t CACHE_VIEW_DIM_NUM = 4;
+constexpr size_t CACHE_BLOCKNUM_DIM = 0;
+constexpr size_t CACHE_BLOCKSIZE_DIM = 1;
 constexpr int64_t ATTR_QUANT_MODE_INDEX = 0;
 constexpr int64_t ATTR_ROUND_SCALE_INDEX = 1;
 constexpr int64_t ATTR_SCALE_INDEX = 2;
-constexpr int64_t ATTR_BLOCK_SIZE_INDEX = 3;
-constexpr int64_t ATTR_CACHE_BLOCK_STRIDE_INDEX = 4;
-constexpr int64_t ATTR_SCALE_BLOCK_STRIDE_INDEX = 5;
 constexpr int64_t BLOCK_SIZE = 32;
 constexpr int64_t REPEAT_SIZE = 256;
 constexpr int64_t DOUBLE_BUFFER = 2;
+constexpr int64_t FP4_PACK_NUM = 2;   // MX-FP4: 2 fp4 values packed per byte
 // per_block量化,每128个f16需要量化出一个scale, 因此切分尾轴时，以128为factor进行切分
 constexpr int64_t PER_BLOCK_FP16 = 128;
 // MX-FP4 (quant_mode=3) 采用标准 MX 量化块, 每32个元素一个 e8m0 scale
@@ -96,14 +100,36 @@ ge::graphStatus IndexerQuantCacheTiling::GetAttr()
     auto scaleAttr = attrs->GetAttrPointer<float>(ATTR_SCALE_INDEX);
     scalesAttr_ = scaleAttr == nullptr ? 1.0f : *scaleAttr;
 
-    auto blockSizeAttr = attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX);
-    blockSizeAttr_ = (blockSizeAttr != nullptr) ? *blockSizeAttr : 0;
-    auto cacheBlockStrideAttr = attrs->GetAttrPointer<int64_t>(ATTR_CACHE_BLOCK_STRIDE_INDEX);
-    cacheBlockStrideAttr_ = (cacheBlockStrideAttr != nullptr) ? *cacheBlockStrideAttr : 0;
-    auto scaleBlockStrideAttr = attrs->GetAttrPointer<int64_t>(ATTR_SCALE_BLOCK_STRIDE_INDEX);
-    scaleBlockStrideAttr_ = (scaleBlockStrideAttr != nullptr) ? *scaleBlockStrideAttr : 0;
-
     return ge::GRAPH_SUCCESS;
+}
+
+bool IndexerQuantCacheTiling::GetCacheViewLayout(
+    size_t inputIdx, int64_t &blockSize, int64_t &rowStride, int64_t &blockStride)
+{
+    // Scatter-style non-contiguous handling: recover the paged layout from the tensor's
+    // RUNTIME VIEW strides (mirrors ScatterPaKvCache's GetTensorInfo via
+    // InputIsView()/GetInputStride()). The aclnn layer wraps the cache/scale tensors in a
+    // CreateView so the GE tiling context exposes the view shape/strides here.
+    if (!context_->InputIsView(inputIdx)) {
+        return false;
+    }
+    auto *inputStride = context_->GetInputStride(inputIdx);
+    if (inputStride == nullptr || inputStride->GetDimNum() != CACHE_VIEW_DIM_NUM) {
+        return false;
+    }
+    auto *inputShape = context_->GetInputShape(inputIdx);
+    if (inputShape == nullptr) {
+        return false;
+    }
+    const auto &viewShape = inputShape->GetShape();
+    if (viewShape.GetDimNum() != CACHE_VIEW_DIM_NUM) {
+        return false;
+    }
+    // [blockNum, blockSize, 1, headDim]
+    blockSize = viewShape.GetDim(CACHE_BLOCKSIZE_DIM);
+    rowStride = inputStride->GetStride(CACHE_BLOCKSIZE_DIM);
+    blockStride = inputStride->GetStride(CACHE_BLOCKNUM_DIM);
+    return (blockSize > 0 && rowStride > 0 && blockStride > 0);
 }
 
 ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
@@ -148,7 +174,7 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
 }
 
 
-ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling() 
+ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
 {
     rowOfFormerBlock_ = CeilDiv(bs_, static_cast<int64_t>(coreNum_));
     usedCoreNums_ = std::min(CeilDiv(bs_, rowOfFormerBlock_), static_cast<int64_t>(coreNum_));
@@ -156,8 +182,8 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
 
     int64_t minRowPerCore = 1;
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
-    
-    rowFactor_ = rowOnceLoop; 
+
+    rowFactor_ = rowOnceLoop;
     int64_t scaleByteSize = 4;
     if (quantMode_ == MXFP8_QUANT_MODE || quantMode_ == MXFP4_QUANT_MODE) {
         scaleByteSize = 1;  // MX 模式 scale 为 e8m0, 占1字节
@@ -186,18 +212,41 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     tailRowFactorOfTailBlock_ = rowOfTailBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfTailBlock_ % rowFactor_;
 
     // 4D paged 输出布局推导 [blockNum, blockSize, 1, headDim], 仅 blockNum 非连续。
-    // block_size<=0 => 连续 (blockSize=1, 退化为 slot*rowStride)。MX-FP4 的 cache 末维为打包字节 (d/2)。
+    // 与 ScatterPaKvCache 一致: 完全从 cache/scale 张量的 RUNTIME VIEW strides 推导布局
+    // (aclnn 层对两个 cache 做 CreateView, 使 GE tiling context 暴露 view shape/strides),
+    // 不再使用 block_size / *_block_stride 属性。无 view 时按连续 flat slots 处理
+    // (blockSize=1 => slot * rowStride)。MX-FP4 的 cache 末维为打包字节 (d/2)。
     int64_t cacheCol = (quantMode_ == MXFP4_QUANT_MODE) ? (d_ + 1) / 2 : d_;
     cacheRowStride_ = cacheCol;
     scaleRowStride_ = scaleCol_;
-    if (blockSizeAttr_ <= 0) {
-        blockSize_ = 1;
-        cacheBlockStride_ = cacheRowStride_;
-        scaleBlockStride_ = scaleRowStride_;
-    } else {
-        blockSize_ = blockSizeAttr_;
-        cacheBlockStride_ = (cacheBlockStrideAttr_ > 0) ? cacheBlockStrideAttr_ : blockSize_ * cacheRowStride_;
-        scaleBlockStride_ = (scaleBlockStrideAttr_ > 0) ? scaleBlockStrideAttr_ : blockSize_ * scaleRowStride_;
+    blockSize_ = 1;                 // default: contiguous flat slots (slot * rowStride)
+    cacheBlockStride_ = cacheRowStride_;
+    scaleBlockStride_ = scaleRowStride_;
+
+    int64_t cacheViewBlockSize = 0;
+    int64_t cacheViewRowStride = 0;
+    int64_t cacheViewBlockStride = 0;
+    int64_t scaleViewBlockSize = 0;
+    int64_t scaleViewRowStride = 0;
+    int64_t scaleViewBlockStride = 0;
+    bool cacheHasView =
+        GetCacheViewLayout(INPUT_CACHE_IDX, cacheViewBlockSize, cacheViewRowStride, cacheViewBlockStride);
+    bool scaleHasView =
+        GetCacheViewLayout(INPUT_SCALE_IDX, scaleViewBlockSize, scaleViewRowStride, scaleViewBlockStride);
+    if (cacheHasView && scaleHasView) {
+        blockSize_ = cacheViewBlockSize;
+        cacheRowStride_ = cacheViewRowStride;
+        cacheBlockStride_ = cacheViewBlockStride;
+        scaleRowStride_ = scaleViewRowStride;
+        scaleBlockStride_ = scaleViewBlockStride;
+        // MX-FP4 cache is a packed fp4 type (DT_FLOAT4_E2M1/E1M2, 2 values/byte). GetInputStride
+        // returns the cache view strides in fp4 ELEMENTS, but the kernel byte-addresses the packed
+        // cache (int8 GM), so convert the cache strides to BYTES (÷2). scale (e8m0, 1 byte) is
+        // already byte-equal so it is left unchanged.
+        if (quantMode_ == MXFP4_QUANT_MODE) {
+            cacheRowStride_ = cacheRowStride_ / FP4_PACK_NUM;
+            cacheBlockStride_ = cacheBlockStride_ / FP4_PACK_NUM;
+        }
     }
 
     tilingData_.set_bs(bs_);

@@ -39,12 +39,10 @@ constexpr int64_t QUANT_GROUP_SIZE_ATTR_INDEX = 0;
 constexpr int64_t QUANT_MODE_ATTR_INDEX = 1;
 constexpr int64_t ROUND_SCALE_ATTR_INDEX = 2;
 constexpr int64_t SCALE_ATTR_INDEX = 3;
-constexpr int64_t BLOCK_SIZE_ATTR_INDEX = 4;
-constexpr int64_t BLOCK_STRIDE_ATTR_INDEX = 5;
 
-constexpr int64_t QUANT_MDOE_GROUP_QUANT_BF16 = 1;
-constexpr int64_t QUANT_MDOE_GROUP_QUANT_E8M0 = 2;
-constexpr int64_t QUANT_MDOE_HIFLOAT = 3;
+constexpr int64_t QUANT_MODE_GROUP_QUANT_BF16 = 1;
+constexpr int64_t QUANT_MODE_GROUP_QUANT_E8M0 = 2;
+constexpr int64_t QUANT_MODE_HIFLOAT = 3;
 
 constexpr int64_t DEFAULT_QUANT_GROUP_SIZE = 128;
 constexpr int64_t DEFAULT_WORKSPACE_SIZE = 32;
@@ -55,6 +53,10 @@ constexpr int64_t SLICE_SIZE = 64;
 constexpr int64_t BLOCK_SIZE = 32;
 constexpr int64_t REPEAT_SIZE = 256;
 constexpr int64_t DOUBLE_BUFFER = 2;
+// 4D paged cache view [blockNum, blockSize, 1, headDim]
+constexpr size_t CACHE_VIEW_DIM_NUM = 4;
+constexpr size_t CACHE_BLOCKNUM_DIM = 0;
+constexpr size_t CACHE_BLOCKSIZE_DIM = 1;
 // per_block量化,每128个f16需要量化出一个scale, 因此切分尾轴时，以128为factor进行切分
 
 // ---------- TilingData Structure ----------
@@ -109,6 +111,10 @@ protected:
     ge::graphStatus GetAttributes();
     ge::graphStatus GetDtypeInfo();
     ge::graphStatus GetKvCacheLayout();
+    // Scatter-style: read the cache tensor's runtime VIEW strides (exposed by the aclnn
+    // CreateView) to recover the 4D paged layout [blockNum, blockSize, 1, headDim]. Returns
+    // true and fills blockSize/rowStride/blockStride when a 4D strided view is available.
+    bool GetCacheViewLayout(size_t inputIdx, int64_t &blockSize, int64_t &rowStride, int64_t &blockStride);
     void CountTilingKey();
 
     // Validation
@@ -153,8 +159,6 @@ private:
     int64_t quantMode_ = 1;
     int64_t roundScale_ = 1;
     float scalesAttr_ = 0;
-    int64_t blockSizeAttr_ = 0;    // tokens per block (logical); required for the 4D paged cache
-    int64_t blockStrideAttr_ = 0;  // arbitrary blockNum stride in elements (0 => contiguous blockSize*headDim)
 
     // Data types
     ge::DataType xDtype_ = ge::DT_BF16;

@@ -46,8 +46,6 @@ public:
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(2);
         this->Attr("round_scale").AttrType(OPTIONAL).Int(1);
         this->Attr("scale").AttrType(OPTIONAL).Float(1.0f);
-        this->Attr("block_size").AttrType(OPTIONAL).Int(0);
-        this->Attr("block_stride").AttrType(OPTIONAL).Int(0);
 
         this->AICore().AddConfig("ascend950");
     }

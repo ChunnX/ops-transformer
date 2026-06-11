@@ -86,6 +86,10 @@ public:
     ge::graphStatus GetAttr();
     ge::graphStatus GetShapeAttrsInfoInner();
     ge::graphStatus CalcOpTiling();
+    // Scatter-style: read a cache/scale tensor's runtime VIEW strides (exposed by the aclnn
+    // CreateView) to recover the 4D paged layout [blockNum, blockSize, 1, headDim]. Returns
+    // true and fills blockSize/rowStride/blockStride when a 4D strided view is available.
+    bool GetCacheViewLayout(size_t inputIdx, int64_t &blockSize, int64_t &rowStride, int64_t &blockStride);
 private:
     gert::TilingContext *context_ = nullptr;
     IndexerQuantCacheTilingData tilingData_;
@@ -106,15 +110,12 @@ private:
     int64_t quantMode_ = 1;
     float scalesAttr_ = 0;
     bool roundScale_ = true;
-    int64_t blockSizeAttr_ = 0;
-    int64_t cacheBlockStrideAttr_ = 0;
-    int64_t scaleBlockStrideAttr_ = 0;
     int64_t blockSize_ = 1;
     int64_t cacheRowStride_ = 0;
     int64_t cacheBlockStride_ = 0;
     int64_t scaleRowStride_ = 0;
     int64_t scaleBlockStride_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
     int64_t tilingKey_ = 0;
 };
 

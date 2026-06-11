@@ -58,7 +58,7 @@ private:
     float maxValue = 0.0f;
     float fp8Min = 0.0f;
     float fp8Max = 0.0f;
-    float scalesAttr_ = 1.0f;
+    float scalesAttr = 1.0f;
 
     // Tiling data
     const KvCompressEpilogTilingData* tilingData = nullptr;
@@ -74,7 +74,7 @@ __aicore__ inline void KvCompressEpilogRegBase<T0, U, T1>::Init(
     const KvCompressEpilogTilingData* tilingDataPtr)
 {
         tilingData = tilingDataPtr;
-        scalesAttr_ = tilingData->scalesAttr;
+        scalesAttr = tilingData->scalesAttr;
         
         int64_t xGmBaseOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->d;
 
@@ -123,7 +123,7 @@ template <typename T0, typename U, typename T1>
             xLocal = xQue.template DeQue<T0>();
 
             kvCacheLocal = kvCacheQue.template AllocTensor<T1>();
-            if (tilingData->quantMode == QUANT_MDOE_GROUP_QUANT_BF16) {
+            if (tilingData->quantMode == QUANT_MODE_GROUP_QUANT_BF16) {
                 if (tilingData->roundScale == 1) {
                     VFProcessFP8PerGroupQuant<T0, T1, true, true>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max, validIdx,
                         tilingData->d, tilingData->concatCol, tilingData->padCol);
@@ -131,7 +131,7 @@ template <typename T0, typename U, typename T1>
                     VFProcessFP8PerGroupQuant<T0, T1, false, true>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max, validIdx,
                         tilingData->d, tilingData->concatCol, tilingData->padCol);
                 }
-            } else if (tilingData->quantMode == QUANT_MDOE_GROUP_QUANT_E8M0) {
+            } else if (tilingData->quantMode == QUANT_MODE_GROUP_QUANT_E8M0) {
                 if (tilingData->roundScale == 1) {
                     VFProcessFP8PerGroupQuant<T0, T1, true, false>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max, validIdx,
                         tilingData->d, tilingData->concatCol, tilingData->padCol);
@@ -139,6 +139,9 @@ template <typename T0, typename U, typename T1>
                     VFProcessFP8PerGroupQuant<T0, T1, false, false>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max, validIdx,
                         tilingData->d, tilingData->concatCol, tilingData->padCol);
                 }
+            } else if (tilingData->quantMode == QUANT_MODE_HIFLOAT) {
+                // HiFloat8 whole-row quant: cache row = d hifloat8 bytes (kvCacheCol == d).
+                VFProcessHifp8Quant<T0, T1>(kvCacheLocal, xLocal, validIdx, tilingData->d, scalesAttr);
             }
 
             xQue.template FreeTensor(xLocal);

@@ -16,6 +16,8 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "opdev/shape_utils.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -31,14 +33,12 @@ aclnnStatus aclnnKvCompressEpilogGetWorkspaceSize(
     int64_t quantMode,
     int64_t roundScale,
     double scale,
-    int64_t blockSize,
-    int64_t blockStride,
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnKvCompressEpilog,
                    DFX_IN(kvCompressCacheRef,
-                          x, slotMapping, quantGroupSize, quantMode, roundScale, scale, blockSize, blockStride),
+                          x, slotMapping, quantGroupSize, quantMode, roundScale, scale),
                    DFX_OUT());
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -53,10 +53,21 @@ aclnnStatus aclnnKvCompressEpilogGetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    // Scatter-style non-contiguous handling: wrap the in-place paged cache in a view that
+    // preserves its (possibly non-contiguous) storage shape / view strides, so the GE tiling
+    // context can recover the blockNum stride directly from the tensor layout instead of from
+    // explicit block_size/block_stride attributes. Mirrors ScatterPaKvCache's ProcessNonContiguous.
+    auto kvCacheView = uniqueExecutor->CreateView(kvCompressCacheRef,
+                                                  kvCompressCacheRef->GetViewShape(),
+                                                  kvCompressCacheRef->GetStorageShape(),
+                                                  kvCompressCacheRef->GetViewStrides(),
+                                                  kvCompressCacheRef->GetViewOffset());
+    CHECK_RET(kvCacheView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
     auto output = l0op::KvCompressEpilog(
-        kvCompressCacheRef,
+        const_cast<aclTensor *>(kvCacheView),
         x, slotMapping,
-        quantGroupSize, quantMode, roundScale, scale, blockSize, blockStride,
+        quantGroupSize, quantMode, roundScale, scale,
         uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

@@ -31,9 +31,9 @@ constexpr float FP8_E5M2_MAX_VALUE = 57344.0f;
 constexpr float FP8_E4M3FN_MAX_VALUE = 448.0f;
 constexpr float FP8_E5M2_MIN_VALUE = -57344.0f;
 constexpr float FP8_E4M3FN_MIN_VALUE = -448.0f;
-constexpr int64_t QUANT_MDOE_GROUP_QUANT_BF16 = 1;
-constexpr int64_t QUANT_MDOE_GROUP_QUANT_E8M0 = 2;
-constexpr int64_t QUANT_MDOE_HIFLOAT = 3;
+constexpr int64_t QUANT_MODE_GROUP_QUANT_BF16 = 1;
+constexpr int64_t QUANT_MODE_GROUP_QUANT_E8M0 = 2;
+constexpr int64_t QUANT_MODE_HIFLOAT = 3;
 constexpr uint32_t FAST_LOG_SHIFT_BITS = 23U;
 constexpr uint32_t FAST_LOG_AND_VALUE1 = 0xFF;
 constexpr uint32_t FAST_LOG_AND_VALUE2 = (((uint32_t)1 << (uint32_t)23) - (uint32_t)1);
@@ -263,6 +263,39 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
             __local_mem__ T1* rowPadLocalAddr = yLocalAddr + i * dstCurColNumAlign + concatColNum;
             StoreUnAlign(rowPadLocalAddr, (RegTensor<T1>&)zero, ureg1, padColNum);
             StoreUnAlignPost(rowPadLocalAddr, ureg1, 0);
+        }
+    }
+}
+
+// quant_mode=3 (HiFloat8): whole-row quant (no rope/group/scale structure). Each x row is
+// scaled by the scale attr and cast to hifloat8 (1 byte/elem) -> cache row = d hifloat8 bytes.
+// Ported from cann-recipes-infer kv_compress_epilog VFProcessHifp8Quant.
+template <typename T0, typename T1>
+__aicore__ inline void VFProcessHifp8Quant(
+    const LocalTensor<T1>& yLocal, const LocalTensor<T0>& xLocal,
+    const uint16_t curRowNum, const uint32_t curColNum, const float scales)
+{
+    LocalTensor<hifloat8_t> outLocal = yLocal.template ReinterpretCast<hifloat8_t>();
+    __local_mem__ hifloat8_t* yLocalAddr = (__local_mem__ hifloat8_t*)outLocal.GetPhyAddr();
+    __local_mem__ T0* xLocalAddr = (__local_mem__ T0*)xLocal.GetPhyAddr();
+    uint16_t loopCount = CeilDiv(static_cast<int32_t>(curColNum), static_cast<int>(VL_FP32));
+    uint32_t curColNumAlign = RoundUp<T0>(curColNum);
+    uint32_t dstCurColNumAlign = RoundUp<T1>(curColNum);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> xReg;
+        RegTensor<hifloat8_t> tmp;
+        MaskReg pregLoop = CreateMask<float>();
+        for (uint16_t i = 0; i < curRowNum; i++) {
+            uint32_t sreg = curColNum;
+            for (uint16_t j = 0; j < loopCount; j++) {
+                pregLoop = UpdateMask<float>(sreg);
+                LoadInputData<T0>(xReg, xLocalAddr, pregLoop, j * VL_FP32 + i * curColNumAlign);
+                Muls(xReg, xReg, scales, pregLoop);
+                Cast<hifloat8_t, float, castTraitF32toh8>(tmp, xReg, pregLoop);
+                DataCopy<hifloat8_t, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign, tmp, pregLoop);
+            }
         }
     }
 }

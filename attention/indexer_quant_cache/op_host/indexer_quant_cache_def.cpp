@@ -96,12 +96,8 @@ public:
         this->Attr("round_scale").AttrType(OPTIONAL).Bool(true);
         this->Attr("scale").AttrType(OPTIONAL).Float(1.0f);
         // 4D paged outputs [blockNum, blockSize, 1, headDim]; only blockNum is non-contiguous.
-        // block_size is the blockSize dim; *_block_stride are the per-block (blockNum) physical
-        // strides of cache / scale respectively (in elements). 0 => contiguous default
-        // (blockSize*headDim for cache, blockSize*scaleCol for scale). See kv_compress_epilog.
-        this->Attr("block_size").AttrType(OPTIONAL).Int(0);
-        this->Attr("cache_block_stride").AttrType(OPTIONAL).Int(0);
-        this->Attr("scale_block_stride").AttrType(OPTIONAL).Int(0);
+        // The paged layout (blockSize + blockNum strides of cache/scale) is recovered from the
+        // tensors' runtime view strides (scatter-style), so no block_size/block_stride attrs.
         this->AICore().AddConfig("ascend950");
     }
 };
