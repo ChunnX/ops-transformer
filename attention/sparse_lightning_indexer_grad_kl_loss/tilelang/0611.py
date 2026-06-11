@@ -636,22 +636,24 @@ def sparse_lightning_indexer_grad_kl_loss(
         if weights.dtype == torch.float32:
             weights = weights.to(input_dtype)
 
-        _t_gather_start = torch.npu.Event(enable_timing=True)
-        _t_gather_end = torch.npu.Event(enable_timing=True)
-        _t_gather_start.record()
+        _PROFILE = os.environ.get("SLIG_PROFILE", "0") == "1"
+        if _PROFILE:
+            _t_gather_start = torch.npu.Event(enable_timing=True)
+            _t_gather_end = torch.npu.Event(enable_timing=True)
+            _t_gather_start.record()
         gather_key, gather_key_index = _preprocess_gather(
             key, key_index, sparse_indices,
             B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex,
         )
-        _t_gather_end.record()
+        if _PROFILE:
+            _t_gather_end.record()
 
-        # Pre-transpose GatherKeyIndex for Matmul4: (B,S1,K,DQueryIndex) -> (B,S1,DQueryIndex,K)
         gather_key_index_t = gather_key_index.permute(0, 1, 3, 2).contiguous()
 
-        # Gather rope key
-        _t_rope_start = torch.npu.Event(enable_timing=True)
-        _t_rope_end = torch.npu.Event(enable_timing=True)
-        _t_rope_start.record()
+        if _PROFILE:
+            _t_rope_start = torch.npu.Event(enable_timing=True)
+            _t_rope_end = torch.npu.Event(enable_timing=True)
+            _t_rope_start.record()
         d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
         if query_rope is not None and key_rope is not None:
             _sparse_idx_rope = sparse_indices[:, :, 0, :].clamp(min=0)
@@ -663,7 +665,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         else:
             gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=query.dtype, device=query.device)
 
-        _t_rope_end.record()
+        if _PROFILE:
+            _t_rope_end.record()
 
         # Pad rope dims to k_block alignment to avoid partial T.copy in kernel
         d_rope = ((d_rope_orig + BLOCK_K - 1) // BLOCK_K) * BLOCK_K if d_rope_orig > 0 else 0
@@ -705,9 +708,10 @@ def sparse_lightning_indexer_grad_kl_loss(
             _workspace_cache[ws_key] = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
                                         d_query_index_ws, d_query_index_out, d_weight_out, relu_grad_out, loss_out)
 
-        _t_kernel_start = torch.npu.Event(enable_timing=True)
-        _t_kernel_end = torch.npu.Event(enable_timing=True)
-        _t_kernel_start.record()
+        if _PROFILE:
+            _t_kernel_start = torch.npu.Event(enable_timing=True)
+            _t_kernel_end = torch.npu.Event(enable_timing=True)
+            _t_kernel_start.record()
         results = func(
             query, query_rope, gather_key, gather_key_rope,
             query_index, gather_key_index, gather_key_index_t,
@@ -717,7 +721,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             d_query_index_out, d_weight_out, relu_grad_out, loss_out,
             d_query_index_ws,
         )
-        _t_kernel_end.record()
+        if _PROFILE:
+            _t_kernel_end.record()
 
         d_query_index = results[0]
         d_weight = results[1]
@@ -726,15 +731,17 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         kl_loss = loss_out[:, :, 0].sum()
 
-        _t_scatter_start = torch.npu.Event(enable_timing=True)
-        _t_scatter_end = torch.npu.Event(enable_timing=True)
-        _t_scatter_start.record()
+        if _PROFILE:
+            _t_scatter_start = torch.npu.Event(enable_timing=True)
+            _t_scatter_end = torch.npu.Event(enable_timing=True)
+            _t_scatter_start.record()
         d_key_index = _compute_d_key_index(
             relu_grad, query_index, sparse_indices,
             B, S1, S2, Nidx1, Nidx2, K, DQueryIndex,
             query.device, input_dtype,
         )
-        _t_scatter_end.record()
+        if _PROFILE:
+            _t_scatter_end.record()
 
         if weights_orig_dtype == torch.float32:
             d_weight = d_weight.float()
@@ -743,7 +750,7 @@ def sparse_lightning_indexer_grad_kl_loss(
 
         loss_tensor = kl_loss.reshape(1).to(torch.float32).npu()
 
-        _PROFILE = os.environ.get("SLIG_PROFILE", "0") == "1"
+
         if _PROFILE:
             torch.npu.synchronize()
             g_ms = _t_gather_start.elapsed_time(_t_gather_end)
