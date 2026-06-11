@@ -38,7 +38,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FaTilingInfo &faInfo)
         int64_t returnSoftmaxLseVal = *returnSoftmaxLse;
         OP_CHECK_IF(
             returnSoftmaxLseVal != 0 && returnSoftmaxLseVal != 1,
-            OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "return_softmax_lse", std::to_string(returnSoftmaxLseVal).c_str(), "0 or 1"),
+            OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "return_softmax_lse",
+                std::to_string(returnSoftmaxLseVal).c_str(), "0 or 1"),
             return ge::GRAPH_FAILED);
     }
 

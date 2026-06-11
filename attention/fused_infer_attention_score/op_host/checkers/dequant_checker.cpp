@@ -79,11 +79,14 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeMLAFullquant(const FiaTili
     if (fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT ||
                     fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT ||
                     fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT) {
-        std::string paramNames = "dequant_scale_query, key_antiquant_scale, value_antiquant_scale";
-        std::string incorrectDtypes = std::string(ToString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str()) + ", " +
-                                      std::string(ToString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str()) + ", " +
-                                      std::string(ToString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str());
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(), incorrectDtypes.c_str(), "must be FLOAT32 in MLA fullquant scenario");
+        std::string paramNames = "dequant_scale_query, key_antiquant_scale and value_antiquant_scale";
+        std::string incorrectDtypes =
+            std::string(ToString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str()) + ", " +
+            std::string(ToString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str()) + ", " +
+            std::string(ToString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(), incorrectDtypes.c_str(),
+            "The datatype of dequant_scale_query, key_antiquant_scale and value_antiquant_scale"
+            " must be FLOAT32 in MLA fullquant scenario");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -101,12 +104,13 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPerblock(const FiaTilin
         return ge::GRAPH_SUCCESS;
     }
     if (fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT ||
-                    fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT ||
-                    fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT) {
+        fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT ||
+        fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT) {
         std::string paramNames = "dequant_scale_query, key_antiquant_scale, value_antiquant_scale";
-        std::string incorrectDtypes = std::string(ToString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str()) + ", " +
-                                      std::string(ToString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str()) + ", " +
-                                      std::string(ToString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str());
+        std::string incorrectDtypes =
+            std::string(ToString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str()) + ", " +
+            std::string(ToString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str()) + ", " +
+            std::string(ToString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str());
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(), incorrectDtypes.c_str(),
             "In per-block quant scenario, the datatypes of dequantScaleQuery, keyAntiquantScale "
             "and valueAntiquantScale must be float32");
@@ -253,7 +257,8 @@ ge::graphStatus DequantChecker::CheckDequantModeGQAPerblock(const FiaTilingInfo 
             (std::to_string(*fiaInfo.opParamInfo.queryQuantMode) + ", "
                 + std::to_string(*fiaInfo.opParamInfo.keyAntiquantMode) + " and "
                 + std::to_string(*fiaInfo.opParamInfo.valueAntiquantMode)).c_str(),
-            "In per-block scenario, query_quant_mode, key_antiquant_mode and value_antiquant_mode must be per-block(7)"),
+            "In per-block scenario, query_quant_mode, key_antiquant_mode "
+            "and value_antiquant_mode must be per-block(7)"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -268,12 +273,13 @@ ge::graphStatus DequantChecker::CheckDequantModeGQAPertensor(const FiaTilingInfo
     OP_CHECK_IF((*fiaInfo.opParamInfo.keyAntiquantMode != PER_CHANNEL_MODE ||
                  *fiaInfo.opParamInfo.valueAntiquantMode != PER_CHANNEL_MODE ||
                  *fiaInfo.opParamInfo.queryQuantMode != PER_CHANNEL_MODE),
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName,
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName,
             "query_quant_mode, key_antiquant_mode and value_antiquant_mode",
             (std::to_string(*fiaInfo.opParamInfo.queryQuantMode) + ", "
                 + std::to_string(*fiaInfo.opParamInfo.keyAntiquantMode) + " and "
                 + std::to_string(*fiaInfo.opParamInfo.valueAntiquantMode)).c_str(),
-            "In per-tensor scenario, query_quant_mode, key_antiquant_mode and value_antiquant_mode must be per-tensor(0)"),
+            "In per-tensor scenario, query_quant_mode, key_antiquant_mode "
+            "and value_antiquant_mode must be per-tensor(0)"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -716,12 +722,14 @@ ge::graphStatus DequantChecker::CheckFeatureMXFP8Fullquant(const FiaTilingInfo &
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query_padding_size and kv_padding_size", "not empty",
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName,
+                    "query_padding_size and kv_padding_size", "not empty",
                     "In MXFP8 fullquant scenario, query_padding_size and kv_padding_size must be empty"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.sysPrefixFlag,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix", "not empty",
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName,
+                    "key_shared_prefix and value_shared_prefix", "not empty",
                     "In MXFP8 fullquant scenario, key_shared_prefix and value_shared_prefix must be empty"),
                 return ge::GRAPH_FAILED);
 
@@ -763,7 +771,8 @@ ge::graphStatus DequantChecker::CheckDequantScaleKVMLAFullquant(const FiaTilingI
          fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetShapeSize() != NUM1)) {
         std::string shapeStr = ToString(fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape());
         std::string reasonMsg = "In MLA fullquant scenario, the shape of keyAntiquantScale must be [1].";
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", shapeStr.c_str(), reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+            shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     if ((fiaInfo.opParamInfo.valueAntiquantScale.tensor != nullptr) &&
@@ -771,7 +780,8 @@ ge::graphStatus DequantChecker::CheckDequantScaleKVMLAFullquant(const FiaTilingI
          fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetShapeSize() != NUM1)) {
         std::string shapeStr = ToString(fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape());
         std::string reasonMsg = "In MLA fullquant scenario, the shape of valueAntiquantScale must be [1].";
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale", shapeStr.c_str(), reasonMsg.c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+            shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1368,7 +1378,8 @@ ge::graphStatus DequantChecker::CheckInputDTypeFullquant(const FiaTilingInfo &fi
                                           ToString(fiaInfo.inputKvType);
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(),
                 incorrectDtypes.c_str(),
-                "In MLA fullquant scenario, the datatype of query, key and value must be FLOAT8_E4M3FN, INT8 or HIFLOAT8");
+                "In MLA fullquant scenario, the datatype of query, key and value must be "
+                "FLOAT8_E4M3FN, INT8 or HIFLOAT8");
             return ge::GRAPH_FAILED;
         }
 
@@ -1423,7 +1434,8 @@ ge::graphStatus DequantChecker::CheckInputDTypeFullquant(const FiaTilingInfo &fi
                                               ToString(fiaInfo.inputKRopeType);
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(),
                     incorrectDtypes.c_str(),
-                    "In MXFP8 fullquant scenario, when rope is split, the datatype of query_rope and key_rope must be BF16");
+                    "In MXFP8 fullquant scenario, when rope is split, the datatype of "
+                    "query_rope and key_rope must be BF16");
                 return ge::GRAPH_FAILED;
             }
             OP_CHECK_IF(fiaInfo.outputType != ge::DT_BF16,
@@ -1941,12 +1953,12 @@ ge::graphStatus DequantChecker::CheckOffsetExistenceForAntiquant(const FiaTiling
 
     // keyAntiquantOffset和valueAntiquantOffset要么同时存在，要么同时不存在
     OP_CHECK_IF((keyAntiquantOffsetTensor != nullptr && valueAntiquantOffsetTensor == nullptr),
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_antiquant_offset and value_antiquant_offset", "not empty",
-            "When keyAntiquantOffsetTensor exists, valueAntiquantOffsetDesc cannot be empty"),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_antiquant_offset and value_antiquant_offset",
+            "not empty", "When keyAntiquantOffsetTensor exists, valueAntiquantOffsetDesc cannot be empty"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((valueAntiquantOffsetTensor != nullptr && keyAntiquantOffsetTensor == nullptr),
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_antiquant_offset and value_antiquant_offset", "not empty",
-            "When keyAntiquantOffsetTensor is empty, valueAntiquantOffsetDesc must be empty"),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_antiquant_offset and value_antiquant_offset",
+            "not empty", "When keyAntiquantOffsetTensor is empty, valueAntiquantOffsetDesc must be empty"),
         return ge::GRAPH_FAILED);
     // key、value的datatype为FLOAT8_E4M3FN、HIFLOAT8和FLOAT4_E2M1时，不支持Offset
     if (inputKvType == ge::DT_FLOAT8_E4M3FN || inputKvType == ge::DT_HIFLOAT8 || inputKvType == ge::DT_FLOAT4_E2M1) {
@@ -2019,7 +2031,8 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
             fiaInfo.inputKvType == ge::DT_INT8) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "keyAntiquantModee",
                 std::to_string(keyAntiquantMode).c_str(),
-                "When the datatype of key/value is int8 and the S axis of query > 1, keyAntiquantMode 2, 3, 4, 5 are not supported");
+                "When the datatype of key/value is int8 and the S axis of query > 1, "
+                "keyAntiquantMode 2, 3, 4, 5 are not supported");
             return ge::GRAPH_FAILED;
         }
 
@@ -2053,7 +2066,8 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
             std::string dtypeMsg = ToString(fiaInfo.inputKvType);
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key/value",
                 dtypeMsg.c_str(),
-                "In keyAntiquant/valueAntiquant split mode scenario, the datatypes of key and value cannot be int4 or int32");
+                "In keyAntiquant/valueAntiquant split mode scenario, the datatypes of key "
+                "and value cannot be int4 or int32");
             return ge::GRAPH_FAILED;
         }
     }
@@ -2087,7 +2101,6 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
         // shape 可能为(1, B, S)或(B, S)
         uint32_t dimNum = keyAntiquantScaleTensor->GetStorageShape().GetDimNum();
         if (keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize) {
-            // TODO: Fix keyAntiquant/valueAntiquant is splited after translated
             std::string shapeStr = ToString(keyAntiquantScaleTensor->GetStorageShape());
             std::string reasonMsg =
                 "The last dimension of key_antiquant_scale should be >= (maxBlockNumPerBatch * blockSize) when "
@@ -2097,7 +2110,6 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
             return ge::GRAPH_FAILED;
         }
         if (valueAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize) {
-            // TODO: Fix keyAntiquant/valueAntiquant is splited after translated
             std::string shapeStr = ToString(valueAntiquantScaleTensor->GetStorageShape());
             std::string reasonMsg =
                 "The last dimension of value_antiquant_scale should be >= (maxBlockNumPerBatch * blockSize) when "
@@ -2112,7 +2124,6 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
     if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
         uint32_t dimNum = keyAntiquantScaleTensor->GetStorageShape().GetDimNum();
         if (keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize) {
-            // TODO: Fix keyAntiquant/valueAntiquant is splited after translated
             std::string shapeStr = ToString(keyAntiquantScaleTensor->GetStorageShape());
             std::string reasonMsg = "The last dimension of key_antiquant_scale should be >= maxBlockNumPerBatch * "
                                     "blockSize when keyAntiquantMode and valueAntiquantMode are per-token-head mode "
@@ -2122,7 +2133,6 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
             return ge::GRAPH_FAILED;
         }
         if (valueAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 1) < maxBlockNumPerBatch * blockSize) {
-            // TODO: Fix keyAntiquant/valueAntiquant is splited after translated
             std::string shapeStr = ToString(valueAntiquantScaleTensor->GetStorageShape());
             std::string reasonMsg = "The last dimension of value_antiquant_scale should be >= maxBlockNumPerBatch * "
                                     "blockSize when keyAntiquantMode and valueAntiquantMode are per-token-head mode "
@@ -2135,7 +2145,6 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
     // per-token-group模式，antiquantScale输入倒数第二维需要大于等于maxBlockNumPerSeq * blockSize
     // shape为(1,B,N,S,D/32)
     if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-        // TODO: Fix keyAntiquant/valueAntiquant is splited after translated
         uint32_t dimNum = keyAntiquantScaleTensor->GetStorageShape().GetDimNum();
         if (keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 2) < maxBlockNumPerBatch * blockSize) {
             std::string shapeStr = ToString(keyAntiquantScaleTensor->GetStorageShape());
@@ -2371,7 +2380,6 @@ ge::graphStatus DequantChecker::CheckScaleShapeForAntiquant(const FiaTilingInfo 
         // 除key支持per-channel叠加value支持per-token模式以外
         // keyAntiquantScale的shape必须与valueAntiquantScale一致
         if (keyAntiquantScaleTensorShape != valueAntiquantScaleTensorShape) {
-            // TODO: Fix per-channel mode after translated
             std::string shapeMsg =
                 ToString(keyAntiquantScaleTensorShape) + " and " + ToString(valueAntiquantScaleTensorShape);
             std::string reasonMsg =
@@ -2436,7 +2444,6 @@ ge::graphStatus DequantChecker::CheckOffsetShapeForAntiquant(const FiaTilingInfo
     gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
 
     if (keyAntiquantOffsetTensorShape != keyAntiquantScaleTensorShape) {
-        // TODO: Fix in split mode after translated
         std::string shapeMsg =
             ToString(keyAntiquantOffsetTensorShape) + " and " + ToString(keyAntiquantScaleTensorShape);
         std::string reasonMsg = "The shape of key_antiquant_offset and key_antiquant_scale must be the same when "
@@ -2447,7 +2454,6 @@ ge::graphStatus DequantChecker::CheckOffsetShapeForAntiquant(const FiaTilingInfo
     }
 
     if (valueAntiquantOffsetTensorShape != valueAntiquantScaleTensorShape) {
-        // TODO: Fix in split mode after translated
         std::string shapeMsg =
             ToString(valueAntiquantOffsetTensorShape) + " and " + ToString(valueAntiquantScaleTensorShape);
         std::string reasonMsg = "The shape of value_antiquant_offset and value_antiquant_scale must be the same when "
@@ -2475,7 +2481,6 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerChannelPerTensorMode(const
         gert::Shape expectedShape1 = gert::Shape({1});
         if ((keyAntiquantScaleTensorShape != expectedShapeH) && (keyAntiquantScaleTensorShape != expectedShape1)) {
             std::string actualShape = ToString(keyAntiquantScaleTensorShape);
-            // TODO: Fix is per-channel mode after translated
             std::string reasonMsg = "The shape of keyAntiquantScale must be [H(" +
                 std::to_string(numKeyValueHeads * headDim) + ")] when keyAntiquantMode is per-channel mode "
                 "or [1] when keyAntiquantMode is per-tensor mode";
@@ -2491,7 +2496,6 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerChannelPerTensorMode(const
         gert::Shape expectedShapeND = gert::Shape({numKeyValueHeads, headDim});
         if ((keyAntiquantScaleTensorShape != expectedShape1H) && (keyAntiquantScaleTensorShape != expectedShapeND)) {
             std::string actualShape = ToString(keyAntiquantScaleTensorShape);
-            // TODO: Fix per-channel/per-tensor mode after translated
             std::string reasonMsg = "The shape of keyAntiquantScale must be [1, H(" +
                 std::to_string(numKeyValueHeads * headDim) + ")] or [N(" + std::to_string(numKeyValueHeads) +
                 "), D(" + std::to_string(headDim) + ")] when keyAntiquantMode is per-channel mode and "
@@ -2508,7 +2512,6 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerChannelPerTensorMode(const
         gert::Shape expectedShapeN1D = gert::Shape({numKeyValueHeads, 1, headDim});
         if ((keyAntiquantScaleTensorShape != expectedShape1ND) && (keyAntiquantScaleTensorShape != expectedShapeN1D)) {
             std::string actualShape = ToString(keyAntiquantScaleTensorShape);
-            // TODO: Fix per-channel/per-tensor mode after translated
             std::string reasonMsg = "The shape of keyAntiquantScale must be [1, N(" +
                 std::to_string(numKeyValueHeads) + "), D(" + std::to_string(headDim) + ")] or [N(" +
                 std::to_string(numKeyValueHeads) + "), 1, D(" + std::to_string(headDim) +
@@ -2523,9 +2526,9 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerChannelPerTensorMode(const
         // 维度为4，shape仅支持[1, N, 1, D] 或者 [1, 1, N, D]
         gert::Shape expectedShape1N1D = gert::Shape({1, numKeyValueHeads, 1, headDim});
         gert::Shape expectedShape11ND = gert::Shape({1, 1, numKeyValueHeads, headDim});
-        if ((keyAntiquantScaleTensorShape != expectedShape1N1D) && (keyAntiquantScaleTensorShape != expectedShape11ND)) {
+        if ((keyAntiquantScaleTensorShape != expectedShape1N1D) &&
+            (keyAntiquantScaleTensorShape != expectedShape11ND)) {
             std::string actualShape = ToString(keyAntiquantScaleTensorShape);
-            // TODO: Fix per-channel/per-tensor mode after translated
             std::string reasonMsg = "The shape of keyAntiquantScale must be [1, N(" +
                 std::to_string(numKeyValueHeads) + "), 1, D(" + std::to_string(headDim) + ")] or [1, 1, N(" +
                 std::to_string(numKeyValueHeads) + "), D(" + std::to_string(headDim) +
@@ -2595,7 +2598,6 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTensorHeadMode(const FiaTi
         gert::Shape expectedShapeN = gert::Shape({numKeyValueHeads});
         if (keyAntiquantScaleTensorShape != expectedShapeN) {
             std::string actualShape = ToString(keyAntiquantScaleTensorShape);
-            // TODO: Fix per-tensor-head mode after translated
             std::string reasonMsg = "The shape of keyAntiquantScale must be [N(" +
                 std::to_string(numKeyValueHeads) + ")] when keyAntiquantMode is per-tensor-head mode";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
@@ -2627,7 +2629,6 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenHeadMode(const FiaTil
             keyAntiquantScaleTensorShape.GetDim(DIM_NUM_1) != numKeyValueHeads ||
             keyAntiquantScaleTensorShape.GetDim(DIM_NUM_2) < seqLength) {
             std::string actualShape = ToString(keyAntiquantScaleTensorShape);
-            // TODO: Fix per-token-head mode after translated
             std::string reasonMsg = "The shape of keyAntiquantScale must be [B(" + std::to_string(batchSize) +
                 "), N(" + std::to_string(numKeyValueHeads) + "), >=S(" + std::to_string(seqLength) +
                 ")] when keyAntiquantMode is per-token-head mode";
@@ -2655,7 +2656,6 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenPAMode(const FiaTilin
         gert::Shape expectedShape = gert::Shape({blockNum, blockSize});
         if (keyAntiquantScaleTensorShape != expectedShape) {
             std::string actualShape = ToString(keyAntiquantScaleTensorShape);
-            // TODO: Fix per-token-pa mode after translated
             std::string reasonMsg = "The shape of keyAntiquantScale must be [blockNum(" +
                 std::to_string(blockNum) + "), blockSize(" + std::to_string(blockSize) +
                 ")] when keyAntiquantMode is per-token-pa mode";
@@ -2684,7 +2684,6 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenHeadPAMode(const FiaT
         gert::Shape expectedShape = gert::Shape({blockNum, numKeyValueHeads, blockSize});
         if (keyAntiquantScaleTensorShape != expectedShape) {
             std::string actualShape = ToString(keyAntiquantScaleTensorShape);
-            // TODO: Fix per-token-head-pa mode after translated
             std::string reasonMsg = "The shape of keyAntiquantScale must be [blockNum(" +
                 std::to_string(blockNum) + "), N(" + std::to_string(numKeyValueHeads) + "), blockSize(" +
                 std::to_string(blockSize) + ")] when keyAntiquantMode is per-token-head-pa mode";
@@ -2720,7 +2719,6 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenGroupMode(const FiaTi
             keyAntiquantScaleTensorShape.GetDim(DIM_NUM_3) < fiaInfo.s2Size ||
             keyAntiquantScaleTensorShape.GetDim(DIM_NUM_4) != headDim / 32) {
             std::string actualShape = ToString(keyAntiquantScaleTensorShape);
-            // TODO: Fix per-token-group mode after translated
             std::string reasonMsg = "The shape of keyAntiquantScale must be [1, B(" +
                 std::to_string(batchSize) + "), N(" + std::to_string(numKeyValueHeads) + "), >=S(" +
                 std::to_string(seqLength) + "), D/32(" + std::to_string(headDim / 32) +
@@ -2753,7 +2751,6 @@ ge::graphStatus DequantChecker::CheckVScaleShapeForPerTokenMode(const FiaTilingI
         if (valueAntiquantScaleTensorShape.GetDim(DIM_NUM_0) != batchSize ||
             valueAntiquantScaleTensorShape.GetDim(DIM_NUM_1) < seqLength) {
             std::string actualShape = ToString(valueAntiquantScaleTensorShape);
-            // TODO: Fix per-token mode after translated
             std::string reasonMsg = "The shape of valueAntiquantScale must be [B(" +
                 std::to_string(batchSize) + "), >=S(" + std::to_string(seqLength) +
                 ")] when valueAntiquantMode is per-token mode, the shape of valueAntiquantScale is 2D.";
@@ -2769,7 +2766,6 @@ ge::graphStatus DequantChecker::CheckVScaleShapeForPerTokenMode(const FiaTilingI
             valueAntiquantScaleTensorShape.GetDim(DIM_NUM_1) != batchSize ||
             valueAntiquantScaleTensorShape.GetDim(DIM_NUM_2) < seqLength) {
             std::string actualShape = ToString(valueAntiquantScaleTensorShape);
-            // TODO: Fix per-token mode after translated
             std::string reasonMsg = "The shape of valueAntiquantScale must be [1, B(" +
                 std::to_string(batchSize) + "), >=S(" + std::to_string(seqLength) +
                 ")] when valueAntiquantMode is per-token mode, the shape of valueAntiquantScale is 3D.";

@@ -66,8 +66,9 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
     }
 
     uint32_t dimNum = blockTableTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != 2, OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "block_table", (std::to_string(dimNum) + "D").c_str(), "2D"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dimNum != 2,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "block_table", (std::to_string(dimNum) + "D").c_str(), "2D"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

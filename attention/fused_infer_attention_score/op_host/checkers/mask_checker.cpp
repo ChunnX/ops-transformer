@@ -208,7 +208,8 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query_padding_size and kv_padding_size", "not empty",
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName,
+                "query_padding_size and kv_padding_size", "not empty",
                 ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
                     + " scenario, when sparse_mode is " + std::to_string(sparseMode)
                     + ", query_padding_size and kv_padding_size must be empty").c_str()),
@@ -278,7 +279,8 @@ ge::graphStatus MaskChecker::CheckPretokenAndNexttoken(const FiaTilingInfo &fiaI
          ((fiaInfo.preToken < 0) || fiaInfo.nextToken < 0)),
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "pre_tokens and next_tokens",
             (std::to_string(fiaInfo.preToken) + " and " + std::to_string(fiaInfo.nextToken)).c_str(),
-            "When the datatype of attention_out is int8 and sparse_mode is 4, preTokens and nextTokens cannot be negative"),
+            "When the datatype of attention_out is int8 and sparse_mode is 4, "
+            "preTokens and nextTokens cannot be negative"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -399,9 +401,11 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
                         };
                         std::string layoutStr(fiaInfo.opParamInfo.layOut);
                         std::string layout = layoutStr;
-                        if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
-                            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(fiaInfo.opName, "attention_mask",
-                                layout.c_str(), "In gqa noquant situation, when rope is not used and qkHeadDim = vHeadDim and sparseMode is 0 or 1, "
+                        if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) ==
+                            layoutSupportList.end()) {
+                            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(fiaInfo.opName, "attention_mask", layout.c_str(),
+                                "In gqa noquant situation, when rope is not used and "
+                                "qkHeadDim = vHeadDim and sparseMode is 0 or 1, "
                                 "the layout of two dim mask only supports BSH, BSND, BNSD or BNSD_BSND");
                             return ge::GRAPH_FAILED;
                         }
