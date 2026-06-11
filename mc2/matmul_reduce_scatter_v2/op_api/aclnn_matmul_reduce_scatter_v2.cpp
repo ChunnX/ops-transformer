@@ -221,8 +221,18 @@ static aclnnStatus CheckCommMode(const char* commMode)
 
 static bool CheckShape(const aclTensor* x1, const aclTensor* x2, bool isTransA)
 {
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1",
+            (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1 must be 2D.");
+        return false;
+    }
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return false;
+    }
     int64_t kVal1 = 0, kVal2 = 0;
     if (isTransA) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "x1", "transposed",
