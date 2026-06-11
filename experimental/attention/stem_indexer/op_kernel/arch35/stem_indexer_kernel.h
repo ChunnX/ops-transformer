@@ -463,7 +463,7 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
             uint32_t actualSeqLengthsGmQIdx = (constInfo.batchSupperFlag) ? ldInfo.bIdx : ldInfo.bIdx - 1;
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
-        } else { // BSND
+        } else { // BNSD
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : ldInfo.bIdx * constInfo.qSeqSize;
         }
         ldInfo.indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + ldInfo.n2Idx * constInfo.sparseCount +
@@ -497,7 +497,7 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
                     AscendC::InitGlobalMemory(indiceLen, 1, static_cast<int32_t>(0));
                 }
             }
-        } else if (constInfo.outputLayout == LI_LAYOUT::BSND) {
+        } else if (constInfo.outputLayout == LI_LAYOUT::BNSD) {
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
                 for (uint32_t gIdx = 0; gIdx < constInfo.gSize; gIdx++) {
                     uint64_t indiceOutOffset =
@@ -658,7 +658,7 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 
     uint32_t gS1SplitNum = (tempLoopInfo.actS1Size * constInfo.gSize + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
     tempLoopInfo.gS1LoopEnd = (bN2LoopIdx == splitCoreInfo.bN2End) ? splitCoreInfo.gS1End : gS1SplitNum - 1;
-    if constexpr (Q_LAYOUT_T == LI_LAYOUT::BSND) {
+    if constexpr (Q_LAYOUT_T == LI_LAYOUT::BNSD) {
         if (tempLoopInfo.gS1LoopEnd == gS1SplitNum - 1 && constInfo.qSeqSize > tempLoopInfo.actS1Size) {
             tempLoopInfo.needDealActS1LessThanS1 = true;
         }
@@ -707,7 +707,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
             uint32_t actualSeqLengthsGmQIdx = (constInfo.batchSupperFlag) ? runInfo.bIdx : runInfo.bIdx - 1;
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
-        } else {  // BSND
+        } else {  // BNSD
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
         }
         uint64_t qBatchOffset = actualSeqQPrefixSum * constInfo.qHeadNum;

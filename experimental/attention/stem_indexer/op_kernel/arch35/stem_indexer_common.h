@@ -19,9 +19,9 @@ namespace SICommon {
 
 // 与tiling的layout保持一致
 enum class LI_LAYOUT : uint32_t {
-    BSND = 0,
+    BNSD = 0,
     TND = 1,
-    PA_BSND = 2
+    PA_BNSD = 2
 };
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false, typename... Args>
@@ -34,8 +34,8 @@ struct SIType {
 
     static constexpr bool causalFlag = CAUSAL;
     static constexpr bool pageAttention = false;
-    static constexpr LI_LAYOUT layout = LI_LAYOUT::BSND;
-    static constexpr LI_LAYOUT keyLayout = LI_LAYOUT::BSND;
+    static constexpr LI_LAYOUT layout = LI_LAYOUT::BNSD;
+    static constexpr LI_LAYOUT keyLayout = LI_LAYOUT::BNSD;
 };
 
 struct RunInfo {
