@@ -121,6 +121,7 @@ const int g_toAclOffset = 256;
     _(at::ScalarType::Int6, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int7, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Float8_e8m0fnu, ACL_FLOAT8_E8M0)                                                                \
+    _(at::ScalarType::Float4_e2m1fn_x2, ACL_FLOAT4_E2M1)                                                               \
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
@@ -241,6 +242,25 @@ inline void CollectB4ShapeInfo(const at::Tensor &at_tensor,
         TORCH_CHECK(false, "unsupported tensor size() in 4-bit dtype.");
     }
 }
+
+TensorWrapper make_wrapper(const at::Tensor &tensor, const int64_t real_dtype)
+{
+    TensorWrapper wrapper = {tensor, ACL_DT_UNDEFINED};
+    int64_t temp = static_cast<int64_t>(tensor.scalar_type());
+    if (kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())] == ACL_UINT8) {
+        if (real_dtype == 296) {
+            wrapper.dtype = ACL_FLOAT4_E2M1;
+        } else if (real_dtype == 293) {
+            wrapper.dtype = ACL_FLOAT8_E8M0;
+        } else if (real_dtype == 290) {
+            wrapper.dtype = ACL_HIFLOAT8;
+        }
+    } else {
+        wrapper.dtype = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())];
+    }
+    return wrapper;
+}
+
 
 enum QuantMode {
     QUANT_MODE_NO_QUANT = 0,
