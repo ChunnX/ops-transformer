@@ -22,9 +22,9 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
-    const aclTensor* tokens, const aclTensor* indices, int64_t numOutTokens, bool paddedMode,
-    const aclTensor* permuteTokensOut, const aclTensor* sortedIndicesOut, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+    const aclTensor* tokens, const aclTensor* indices, int64_t numOutTokens, bool paddedMode, int64_t quantMode,
+    const aclTensor* permuteTokensOut, const aclTensor* sortedIndicesOut, const aclTensor* expandedScaleOut,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
 /* @brief aclnnMoeTokenPermute的第二段接口，用于执行计算。 */
 ACLNN_API aclnnStatus
 aclnnMoeTokenPermute(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
