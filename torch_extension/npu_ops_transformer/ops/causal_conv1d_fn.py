@@ -85,14 +85,14 @@ def npu_causal_conv1d_fn(
         query_start_loc: optional query start locations for varlen
         cache_indices: optional cache line index per batch
         has_initial_state: optional flag per sequence
-        initial_state_idx: optional index of sequences with initial state  (NEW, not yet wired)
-        num_computed_tokens: optional computed token count              (NEW, not yet wired)
-        block_idx_first_scheduled_token: optional                       (NEW, not yet wired)
-        block_idx_last_scheduled_token: optional                        (NEW, not yet wired)
+        initial_state_idx: optional index of sequences with initial state
+        num_computed_tokens: optional computed token count
+        block_idx_first_scheduled_token: optional
+        block_idx_last_scheduled_token: optional
         activation: "silu" or None
         pad_slot_id: padding slot id
-        null_block_id: null block id                                    (NEW, not yet wired)
-        block_size_to_align: block alignment hint                       (NEW, not yet wired)
+        null_block_id: null block id
+        block_size_to_align: block alignment hint
 
     Returns:
         y: output tensor
@@ -105,7 +105,7 @@ def npu_causal_conv1d_fn(
         num_computed_tokens,
         block_idx_first_scheduled_token,
         block_idx_last_scheduled_token,
-        activation_mode, pad_slot_id,
+        activation_mode, null_block_id,
         null_block_id, block_size_to_align,
     )
 

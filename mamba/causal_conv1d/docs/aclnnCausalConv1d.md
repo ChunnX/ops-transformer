@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：完成因果一维卷积（Causal Conv1d）计算，支持前向计算（runMode=0）和状态更新（runMode=1）两种运行模式。算子内部支持 SiLU 激活、缓存索引（cacheIndices）、初始状态模式（initialStateMode）、投机解码（numAcceptedTokens）等特性。
+- 接口功能：完成因果一维卷积（Causal Conv1d）计算，支持前向计算（prefill）和状态更新（decode/update）两种运行模式，模式由输入形状自动推断。算子内部支持 SiLU 激活、缓存索引（cacheIndices）、初始状态模式（initialStateMode）、投机解码（numAcceptedTokens）等特性。
 
 - 支持以下场景：
   - 场景一（prefill场景 — 固定batch）：
@@ -30,8 +30,7 @@
     initial_state_mode: [batch] 或 None
     num_accepted_tokens: 不支持
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
-    run_mode: 0
+    null_block_id: 默认值 0
     y: [batch, seqLen, dim]
     ```
 
@@ -47,8 +46,7 @@
     initial_state_mode: [batch] 或 None
     num_accepted_tokens: 不支持
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
-    run_mode: 0
+    null_block_id: 默认值 0
     y: [cuSeqLen, dim]
     ```
 
@@ -66,8 +64,7 @@
     initial_state_mode: 不支持
     num_accepted_tokens: [batch] 或 None（投机解码场景，仅K=4支持）
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
-    run_mode: 1
+    null_block_id: 默认值 0
     y: [batch, 1, dim]
     ```
 
@@ -83,8 +80,7 @@
     initial_state_mode: 不支持
     num_accepted_tokens: [batch] 或 None（投机解码场景，仅K=4支持）
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
-    run_mode: 1
+    null_block_id: 默认值 0
     y: [cuSeqLen, dim]
     ```
 
@@ -98,7 +94,12 @@
 
   其中，$W$ 为卷积核宽度（支持2、3、4），$w_j$ 为卷积权重，$b$ 为偏置（可选），$\text{Activation}$ 为激活函数（可选，SiLU）。当 `activationMode=0` 时不使用激活函数，`activationMode=1` 时使用 SiLU 激活函数。
 
-  对于 $t < W-1$ 且无历史状态时，输出为零（因果约束）。
+   对于 $t < W-1$ 且无历史状态时，输出为零（因果约束）。
+
+- 运行模式由输入形状自动推断，无需手动指定：
+  - **prefill（前向计算）**：x 为 3D `[B, L, D]` 且 L > 1，或 x 为 2D `[T, D]` 且 `query_start_loc` 中存在段长 > 1。
+  - **decode/update（状态更新）**：x 为 2D `[B, D]` 且无 `query_start_loc`，或 `num_accepted_tokens` 有效。
+  - 推断逻辑见 `causal_conv1d_tiling.cpp` 中 `InferIsFnMode()`。
 
 ## 函数原型
 
@@ -115,8 +116,7 @@ aclnnStatus aclnnCausalConv1dGetWorkspaceSize(
     const aclTensor *initialStateMode,
     const aclTensor *numAcceptedTokens,
     int64_t         activationMode,
-    int64_t         padSlotId,
-    int64_t         runMode,
+    int64_t         nullBlockId,
     aclTensor       *y,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
@@ -211,7 +211,7 @@ aclnnStatus aclnnCausalConv1d(
       <td>cacheIndices（aclTensor*）</td>
       <td>可选输入</td>
       <td>缓存索引，指定每个序列对应的缓存状态在convStates中的索引。</td>
-      <td><ul><li>可为None，此时使用恒等映射（cacheIndices[i]=i），要求numCacheLines≥batch。</li><li>shape为[batch]。</li><li>值∈[0, numCacheLines)，或等于padSlotId表示跳过该序列。</li></ul></td>
+      <td><ul><li>可为None，此时使用恒等映射（cacheIndices[i]=i），要求numCacheLines≥batch。</li><li>shape为[batch]。</li><li>值∈[0, numCacheLines)，或等于nullBlockId表示跳过该序列。</li></ul></td>
       <td>INT64</td>
       <td>ND</td>
       <td>1</td>
@@ -221,7 +221,7 @@ aclnnStatus aclnnCausalConv1d(
       <td>initialStateMode（aclTensor*）</td>
       <td>可选输入</td>
       <td>初始状态标志，表示各序列是否使用缓存的初始状态。</td>
-      <td><ul><li>仅runMode=0（prefill）支持。</li><li>可为None，此时全部从零初始化。</li><li>shape为[batch]。</li><li>值：0=零初始化，1=使用缓存状态。</li><li>开启时需额外workspace用于快照。</li></ul></td>
+      <td><ul><li>仅prefill（prefill）支持。</li><li>可为None，此时全部从零初始化。</li><li>shape为[batch]。</li><li>值：0=零初始化，1=使用缓存状态。</li><li>开启时需额外workspace用于快照。</li></ul></td>
       <td>INT64</td>
       <td>ND</td>
       <td>1</td>
@@ -231,7 +231,7 @@ aclnnStatus aclnnCausalConv1d(
       <td>numAcceptedTokens（aclTensor*）</td>
       <td>可选输入</td>
       <td>投机解码中每个batch已接受的token数。</td>
-      <td><ul><li>仅runMode=1（decode）且K=4支持。</li><li>可为None表示未开启投机解码。</li><li>shape为[batch]。</li><li>值∈[0, seqLen]，0表示全为投机token。</li></ul></td>
+      <td><ul><li>仅decode/update（decode）且K=4支持。</li><li>可为None表示未开启投机解码。</li><li>shape为[batch]。</li><li>值∈[0, seqLen]，0表示全为投机token。</li></ul></td>
       <td>INT64</td>
       <td>ND</td>
       <td>1</td>
@@ -248,20 +248,10 @@ aclnnStatus aclnnCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>padSlotId（int64_t）</td>
+      <td>nullBlockId（int64_t）</td>
       <td>属性</td>
       <td>用于跳过不需要参与计算的batch。</td>
-      <td><ul><li>当cacheIndices[i]==padSlotId时跳过该batch，对应输出填零。</li><li>默认值-1表示不跳过任何batch。</li></ul></td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>runMode（int64_t）</td>
-      <td>属性</td>
-      <td>运行模式。</td>
-      <td><ul><li>取值为0、1：<br>0：前向计算模式（prefill），K为编译时已知常量；<br>1：状态更新模式（decode），K为运行时参数。</li></ul></td>
+      <td><ul><li>当cacheIndices[i]==nullBlockId时跳过该batch，对应输出填零。</li><li>默认值0表示不跳过任何batch。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -334,7 +324,7 @@ aclnnStatus aclnnCausalConv1d(
       输入的属性不在支持的范围内。<br>
       dim不满足对齐要求（需满足 (dim * dtypeSize) % 32 == 0）。<br>
       K不在[2,4]范围内。<br>
-      runMode=0（prefill）时未提供queryStartLoc（变长场景）。<br>
+      prefill（prefill）时未提供queryStartLoc（变长场景）。<br>
       </td>
     </tr>
   </tbody></table>
@@ -409,13 +399,13 @@ aclnnStatus aclnnCausalConv1d(
 
 - 输入值域限制：
   - queryStartLoc[0]必须为0，queryStartLoc[-1]必须等于cuSeqLen，值必须非递减。
-  - cacheIndices中的值∈[0, numCacheLines)，或等于padSlotId表示跳过。
-  - initialStateMode仅在runMode=0时支持，值∈{0,1}。
-  - numAcceptedTokens仅在runMode=1且K=4时支持，值∈[0, seqLen]。
+  - cacheIndices中的值∈[0, numCacheLines)，或等于nullBlockId表示跳过。
+  - initialStateMode仅在prefill时支持，值∈{0,1}。
+  - numAcceptedTokens仅在decode/update且K=4时支持，值∈[0, seqLen]。
 
 - 卷积核宽度K仅支持2、3、4。
-- runMode=0（前向计算模式）时，K为编译时已知常量，支持FnRolling快速路径优化。
-- runMode=1（状态更新模式）时，K为运行时参数。
+- prefill（前向计算模式）时，K为编译时已知常量，支持FnRolling快速路径优化。
+- decode/update（状态更新模式）时，K为运行时参数。
 - 当存在initialStateMode输入时，算子需要额外的workspace用于初始状态快照。
 
 ## 调用示例
@@ -549,11 +539,10 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     int64_t activationMode = 0;
-    int64_t padSlotId = -1;
-    int64_t runMode = 0;
+    int64_t nullBlockId = 0;
 
     ret = aclnnCausalConv1dGetWorkspaceSize(x, weight, bias, convStates, queryStartLoc, nullptr, nullptr, nullptr,
-                                            activationMode, padSlotId, runMode, y, &workspaceSize, &executor);
+                                            activationMode, nullBlockId, y, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 

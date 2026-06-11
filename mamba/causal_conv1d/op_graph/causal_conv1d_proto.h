@@ -50,11 +50,8 @@ namespace ge {
 
 * @par Attributes:
 * @li activation_mode: A optional int. Activation type applied after convolution: 0 = Identity, 1 = SiLU. Default: 0.
-* @li pad_slot_id: A optional int. Cache slot ID treated as padding (skipped). Default: -1 (no padding).
-* @li run_mode: A optional int. Execution mode: 0 = prefill (full sequence forward), 1 = decode (incremental update).
-* Default: 0.
-
-* @par Outputs:
+* @li null_block_id: A optional int. Cache slot ID treated as padding (skipped). Default: 0 (no padding).
+ * @par Outputs:
 * @li conv_states: Updated state cache tensor. Last state_len tokens of (history || x) written back per sequence.
 * Same shape and type as input conv_states.
 * @li y: Output sequence tensor. When run_mode=0, first (W-1) tokens are bias-only if initial_state_mode=0.
@@ -70,8 +67,7 @@ REG_OP(CausalConv1d)
     .OPTIONAL_INPUT(initial_state_mode, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(num_accepted_tokens, TensorType({DT_INT32}))
     .ATTR(activation_mode, Int, 0)
-    .ATTR(pad_slot_id, Int, -1)
-    .ATTR(run_mode, Int, 0)
+    .ATTR(null_block_id, Int, 0)
     .OUTPUT(conv_states, TensorType({DT_BF16, DT_FLOAT16}))
     .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))
     .OP_END_FACTORY_REG(CausalConv1d)

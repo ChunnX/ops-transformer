@@ -66,8 +66,7 @@ struct CausalConv1dCompileInfo {};
 
 struct CausalConv1dAttrInfo {
     int64_t activationMode = 0;
-    int64_t padSlotId = -1;
-    int64_t runMode = 0;
+    int64_t nullBlockId = 0;
 };
 
 struct CausalConv1dInputInfo {
@@ -140,11 +139,12 @@ private:
     ge::graphStatus ParseWeightShape();
     ge::graphStatus ParseConvStatesShape();
     ge::graphStatus ParseQueryStartLoc(bool isFnMode);
-    ge::graphStatus ParseCacheIndices(int64_t padSlotId);
+    ge::graphStatus ParseCacheIndices(int64_t nullBlockId);
     ge::graphStatus ParseInitialStateMode(bool isFnMode);
     ge::graphStatus ParseNumAcceptedTokens(bool isFnMode);
     ge::graphStatus ValidateNumAcceptedTokensValues();
     ge::graphStatus ParseBias();
+    bool InferIsFnMode();
 
     int64_t ComputeUbLimitedBaseDim();
 };
@@ -214,8 +214,7 @@ ge::graphStatus CausalConv1dTiling::SetupFnInitStateWorkspace()
 ge::graphStatus CausalConv1dTiling::GetAttrsInfo(CausalConv1dAttrInfo &attrInfo)
 {
     constexpr int32_t kActivationModeAttrIndex = 0;
-    constexpr int32_t kPadSlotIdAttrIndex = 1;
-    constexpr int32_t kRunModeAttrIndex = 2;
+    constexpr int32_t kNullBlockIdAttrIndex = 1;
 
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -229,20 +228,12 @@ ge::graphStatus CausalConv1dTiling::GetAttrsInfo(CausalConv1dAttrInfo &attrInfo)
                                                       "only supports 0 (none) or 1 (silu)"),
                 return ge::GRAPH_FAILED);
 
-    const int64_t *padSlotIdPtr = attrs->GetAttrPointer<int64_t>(kPadSlotIdAttrIndex);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, padSlotIdPtr);
-    attrInfo.padSlotId = *padSlotIdPtr;
+    const int64_t *nullBlockIdPtr = attrs->GetAttrPointer<int64_t>(kNullBlockIdAttrIndex);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, nullBlockIdPtr);
+    attrInfo.nullBlockId = *nullBlockIdPtr;
 
-    const int64_t *runModePtr = attrs->GetAttrPointer<int64_t>(kRunModeAttrIndex);
-    attrInfo.runMode = (runModePtr != nullptr) ? *runModePtr : 0;
-    OP_CHECK_IF(attrInfo.runMode != 0 && attrInfo.runMode != 1,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "run_mode",
-                                                      std::to_string(attrInfo.runMode).c_str(),
-                                                      "only supports 0 (prefill) or 1 (decode/update)"),
-                return ge::GRAPH_FAILED);
-
-    OP_LOGI(context_, "AttrsInfo: activationMode[%ld], padSlotId[%ld], runMode[%ld].", attrInfo.activationMode,
-            attrInfo.padSlotId, attrInfo.runMode);
+    OP_LOGI(context_, "AttrsInfo: activationMode[%ld], nullBlockId[%ld].", attrInfo.activationMode,
+            attrInfo.nullBlockId);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -520,7 +511,7 @@ ge::graphStatus CausalConv1dTiling::ParseQueryStartLoc(bool isFnMode)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CausalConv1dTiling::ParseCacheIndices(int64_t padSlotId)
+ge::graphStatus CausalConv1dTiling::ParseCacheIndices(int64_t nullBlockId)
 {
     auto cIdxShapePtr = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
     if (cIdxShapePtr == nullptr) {
@@ -557,7 +548,7 @@ ge::graphStatus CausalConv1dTiling::ParseCacheIndices(int64_t padSlotId)
     }
     for (int64_t i = 0; i < inputInfo_.batch; ++i) {
         const int64_t v = cIdxData[i];
-        if (v == padSlotId) {
+        if (v == nullBlockId) {
             continue;
         }
         OP_CHECK_IF(v > static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
@@ -570,7 +561,7 @@ ge::graphStatus CausalConv1dTiling::ParseCacheIndices(int64_t padSlotId)
                         context_->GetNodeName(), ("cache_indices[" + std::to_string(i) + "]").c_str(),
                         std::to_string(v).c_str(),
                         ("valid range [0, " + std::to_string(inputInfo_.numCacheLines) +
-                         "), pad_slot_id=" + std::to_string(padSlotId))
+                         "), null_block_id=" + std::to_string(nullBlockId))
                             .c_str()),
                     return ge::GRAPH_FAILED);
     }
@@ -759,7 +750,7 @@ ge::graphStatus CausalConv1dTiling::ParseBias()
 
 ge::graphStatus CausalConv1dTiling::ParseCausalConv1dInputInfo(const CausalConv1dAttrInfo &attrInfo)
 {
-    const bool isFnMode = (attrInfo.runMode == 0);
+    const bool isFnMode = InferIsFnMode();
 
     // Parse order and data flow (all functions write to inputInfo_ directly):
     //
@@ -771,8 +762,8 @@ ge::graphStatus CausalConv1dTiling::ParseCausalConv1dInputInfo(const CausalConv1
     //  └─ ParseCacheIndices ──► hasCacheIndices (needs batch, numCacheLines)
     //
     //  ┌─ ParseInitialStateMode ──► hasInitialStateMode (needs batch)
-    //  ├─ ParseNumAcceptedTokens ──► hasNumAcceptedTokens (needs batch, kernelWidth, stateLen, seqLen, inputModeKey)
-    //  └─ ParseBias ───────────────► hasBias (needs dim)
+    //  ├─ ParseNumAcceptedTokens ──► hasNumAcceptedTokens (needs batch, kernelWidth, stateLen, seqLen,
+    //  inputModeKey) └─ ParseBias ───────────────► hasBias (needs dim)
 
     // Phase 1: x shape + batch refinement
     OP_CHECK_IF(ParseXShape(isFnMode) != ge::GRAPH_SUCCESS, OP_LOGE(context_, "ParseXShape error"),
@@ -785,7 +776,7 @@ ge::graphStatus CausalConv1dTiling::ParseCausalConv1dInputInfo(const CausalConv1
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(ParseConvStatesShape() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "ParseConvStatesShape error"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ParseCacheIndices(attrInfo.padSlotId) != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(ParseCacheIndices(attrInfo.nullBlockId) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "ParseCacheIndices error"), return ge::GRAPH_FAILED);
 
     // Phase 3: remaining optional inputs
@@ -896,7 +887,66 @@ bool CausalConv1dTiling::ChooseBaseDim(int64_t cuSeqlen, int64_t dim)
 using namespace CausalConv1d;
 
 // ============================================================
-// Tiling entry
+// Inference: determine prefill vs decode from tensor shapes
+// ============================================================
+
+bool CausalConv1dTiling::InferIsFnMode()
+{
+    auto xShapePtr = context_->GetInputShape(X_INDEX);
+    if (xShapePtr == nullptr) {
+        OP_LOGE(context_, "InferIsFnMode: x shape is null");
+        return true; // default to prefill
+    }
+    auto xShape = EnsureNotScalar(xShapePtr->GetStorageShape());
+    int64_t xDims = xShape.GetDimNum();
+
+    // num_accepted_tokens is only meaningful in decode mode — strong signal
+    auto numAccShapePtr = context_->GetInputShape(NUM_ACCEPTED_TOKENS_INDEX);
+    if (numAccShapePtr != nullptr) {
+        auto numAccShape = EnsureNotScalar(numAccShapePtr->GetStorageShape());
+        if (numAccShape.GetDimNum() > 0 && numAccShape.GetDim(0) > 0) {
+            return false; // update
+        }
+    }
+
+    if (xDims == 3) {
+        // 3D: [B, L, D].  L > 1 => prefill; L == 1 => prefill (single-token fn matches update semantics)
+        return true;
+    }
+
+    // 2D: [N, D]
+    auto qslShapePtr = context_->GetInputShape(QUERY_START_LOC_INDEX);
+    if (qslShapePtr == nullptr) {
+        // No query_start_loc => update batch mode
+        return false;
+    }
+    auto qslShape = EnsureNotScalar(qslShapePtr->GetStorageShape());
+    if (qslShape.GetDimNum() == 0 || qslShape.GetDim(0) == 0) {
+        return false;
+    }
+
+    // Has query_start_loc — read actual values to determine segment lengths
+    const gert::Tensor *qslTensor = context_->GetOptionalInputTensor(QUERY_START_LOC_INDEX);
+    if (qslTensor == nullptr) {
+        return false;
+    }
+    queryStartLocData_ = qslTensor->GetData<int32_t>();
+    if (queryStartLocData_ == nullptr) {
+        OP_LOGE(context_, "InferIsFnMode: queryStartLoc data is null");
+        return true;
+    }
+    int64_t qslSize = qslShape.GetDim(0);
+    // If any segment has length > 1, it's prefill
+    for (int64_t i = 0; i < qslSize - 1; ++i) {
+        if (queryStartLocData_[i + 1] - queryStartLocData_[i] > 1) {
+            return true; // prefill varlen
+        }
+    }
+    return false; // update varlen (all segments ≤ 1)
+}
+
+// ============================================================
+// Tiling data serialization
 // ============================================================
 
 ge::graphStatus CausalConv1dTiling::SetTilingData(const CausalConv1dAttrInfo &attrInfo)
@@ -905,7 +955,7 @@ ge::graphStatus CausalConv1dTiling::SetTilingData(const CausalConv1dAttrInfo &at
     OP_CHECK_NULL_WITH_CONTEXT(context_, tiling);
 
     tiling->activationMode = attrInfo.activationMode;
-    tiling->padSlotId = attrInfo.padSlotId;
+    tiling->nullBlockId = attrInfo.nullBlockId;
     tiling->dim = inputInfo_.dim;
     tiling->cuSeqlen = inputInfo_.cuSeqlen;
     tiling->seqLen = inputInfo_.seqLen;
@@ -924,12 +974,12 @@ ge::graphStatus CausalConv1dTiling::SetTilingData(const CausalConv1dAttrInfo &at
 
     OP_LOGI(context_,
             "TilingData: dim[%ld], cuSeqlen[%ld], seqLen[%ld], batch[%ld], kernelWidth[%ld], "
-            "stateLen[%ld], numCacheLines[%ld], activationMode[%ld], padSlotId[%ld], "
+            "stateLen[%ld], numCacheLines[%ld], activationMode[%ld], nullBlockId[%ld], "
             "baseDim[%d], coBatch[%d], tokensPerBlock[%ld], tokenBlockCnt[%ld], "
             "hasNumAcceptedTokens[%d], hasCacheIndices[%d], hasInitialStateMode[%d], "
             "hasInitStateWorkspace[%d], hasBias[%d].",
             tiling->dim, tiling->cuSeqlen, tiling->seqLen, tiling->batch, tiling->kernelWidth, tiling->stateLen,
-            tiling->numCacheLines, tiling->activationMode, tiling->padSlotId, tiling->baseDim, tiling->coBatch,
+            tiling->numCacheLines, tiling->activationMode, tiling->nullBlockId, tiling->baseDim, tiling->coBatch,
             tiling->tokensPerBlock, tiling->tokenBlockCnt, static_cast<int32_t>(tiling->hasNumAcceptedTokens),
             static_cast<int32_t>(tiling->hasCacheIndices), static_cast<int32_t>(tiling->hasInitialStateMode),
             static_cast<int32_t>(tiling->hasInitStateWorkspace), static_cast<int32_t>(inputInfo_.hasBias));
