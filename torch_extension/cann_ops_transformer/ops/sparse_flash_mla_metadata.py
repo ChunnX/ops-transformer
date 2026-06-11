@@ -19,7 +19,7 @@ SMLA_METADATA_SIZE = 1024
 
 class SparseFlashMlaMetadataOpBuilder(OpBuilder):
     def __init__(self):
-        super(SparseFlashMlaMetadataOpBuilder, self).__init__("npu_sparse_flash_mla_metadata")
+        super(SparseFlashMlaMetadataOpBuilder, self).__init__("sparse_flash_mla_metadata")
 
     def sources(self):
         """Path to C++ source code."""
@@ -27,7 +27,7 @@ class SparseFlashMlaMetadataOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "npu_sparse_flash_mla_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, " \
+        return "sparse_flash_mla_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, " \
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, Tensor? cu_seqlens_cmp_kv=None, " \
             "Tensor? seqused_q=None, Tensor? seqused_ori_kv=None, Tensor? seqused_cmp_kv=None, " \
             "Tensor? cmp_residual_kv=None, Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, " \
@@ -42,7 +42,7 @@ class SparseFlashMlaMetadataOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @torch.library.register_fake("npu_ops_transformer::" + self.name)
-        def npu_sparse_flash_mla_metadata_meta(
+        def sparse_flash_mla_metadata_meta(
             num_heads_q: int, num_heads_kv: int, head_dim: int, cu_seqlens_q: Optional[Tensor] = None,
             cu_seqlens_ori_kv: Optional[Tensor] = None, cu_seqlens_cmp_kv: Optional[Tensor] = None,
             seqused_q: Optional[Tensor] = None, seqused_ori_kv: Optional[Tensor] = None,
@@ -62,7 +62,7 @@ op_module = sparse_flash_mla_metadata_op_builder.load()
 
 
 @impl(AS_LIBRARY, sparse_flash_mla_metadata_op_builder.name, "PrivateUse1")
-def npu_sparse_flash_mla_metadata(
+def sparse_flash_mla_metadata(
     num_heads_q: int, num_heads_kv: int, head_dim: int, cu_seqlens_q: Optional[Tensor] = None,
     cu_seqlens_ori_kv: Optional[Tensor] = None, cu_seqlens_cmp_kv: Optional[Tensor] = None,
     seqused_q: Optional[Tensor] = None, seqused_ori_kv: Optional[Tensor] = None,
@@ -93,15 +93,15 @@ def npu_sparse_flash_mla_metadata(
     has_ori_kv = True if has_ori_kv is None else has_ori_kv
     has_cmp_kv = True if has_cmp_kv is None else has_cmp_kv
 
-    return op_module.npu_sparse_flash_mla_metadata(
+    return op_module.sparse_flash_mla_metadata(
         num_heads_q, num_heads_kv, head_dim, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, batch_size, max_seqlen_q,
         max_seqlen_ori_kv, max_seqlen_cmp_kv, ori_topk, cmp_topk, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left,
         ori_win_right, layout_q, layout_kv, has_ori_kv, has_cmp_kv)
 
 
-@torch.library.register_kernel("npu_ops_transformer::npu_sparse_flash_mla_metadata", None)
-def npu_sparse_flash_mla_metadata_fallback(
+@torch.library.register_kernel("npu_ops_transformer::sparse_flash_mla_metadata", None)
+def sparse_flash_mla_metadata_fallback(
     num_heads_q: int, num_heads_kv: int, head_dim: int, cu_seqlens_q: Optional[Tensor] = None,
     cu_seqlens_ori_kv: Optional[Tensor] = None, cu_seqlens_cmp_kv: Optional[Tensor] = None,
     seqused_q: Optional[Tensor] = None, seqused_ori_kv: Optional[Tensor] = None,
@@ -114,10 +114,10 @@ def npu_sparse_flash_mla_metadata_fallback(
     layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None, has_cmp_kv: Optional[bool] = None):
     # 处理所有 tensor 都为 None 的情况
     # 调用 NPU 实现
-    return npu_sparse_flash_mla_metadata(
+    return sparse_flash_mla_metadata(
         num_heads_q, num_heads_kv, head_dim, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, batch_size, max_seqlen_q,
         max_seqlen_ori_kv, max_seqlen_cmp_kv, ori_topk, cmp_topk, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left,
         ori_win_right, layout_q, layout_kv, has_ori_kv, has_cmp_kv)
 
-torch.compiler.allow_in_graph(npu_sparse_flash_mla_metadata)
+torch.compiler.allow_in_graph(sparse_flash_mla_metadata)
