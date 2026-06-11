@@ -199,6 +199,38 @@ void MatmulPerformanceModel::ChangeCubeUtilByKAlign() {
   }
 }
 
+double MatmulPerformanceModel::Apply910BCubeUtilFix(uint64_t mSize, uint64_t rankTileNum, double baseUtil) {
+  // 910B cubeUtil 修正：950 风格小 shape 降额 + base block 几何量化 + K 对齐折扣
+  // (1) 950 风格小 shape 修正：MN 调和平均 + K 指数，正增益有界、负增益无界
+  double mEff = static_cast<double>(mSize * rankTileNum);
+  double mnHarmonic = (mEff * static_cast<double>(mmShapeInfo_.nValue)) /
+                      (mEff + static_cast<double>(mmShapeInfo_.nValue));
+  double kExp = std::min(MatmulPerformance::B_MAX_ENHANCE_FACTOR,
+      std::pow(static_cast<double>(mmShapeInfo_.kValue), MatmulPerformance::B_CUBE_UTIL_EXP) /
+      std::pow(MatmulPerformance::B_KVALUE_THRESHOLD, MatmulPerformance::B_CUBE_UTIL_EXP));
+  double mnExp = std::min(MatmulPerformance::B_MAX_ENHANCE_FACTOR,
+      std::pow(mnHarmonic, MatmulPerformance::B_FRONT_UTIL_EXP) /
+      std::pow(MatmulPerformance::B_MNVALUE_THRESHOLD, MatmulPerformance::B_FRONT_UTIL_EXP));
+  double shapeUtil = MatmulPerformance::B_AVERAGE_CUBE_UTIL * kExp * mnExp;
+  // 取 L2 占用 util 与小 shape util 的较小者：小 shape 时由 shapeUtil 拉低
+  double util = std::min(baseUtil, shapeUtil);
+
+  // (2) base block 几何量化损失：N/M 非整除 baseN/baseM 时有效算力打折
+  double nGeom = static_cast<double>(mmShapeInfo_.nValue) /
+      static_cast<double>((mmShapeInfo_.nValue + mmShapeInfo_.baseN - 1) / mmShapeInfo_.baseN *
+                          mmShapeInfo_.baseN);
+  double mGeom = static_cast<double>(mSize) /
+      static_cast<double>((mSize + mmShapeInfo_.baseM - 1) / mmShapeInfo_.baseM * mmShapeInfo_.baseM);
+  util *= nGeom * mGeom;
+
+  // (3) K 方向 MTE2：K cache line 不对齐折扣（reduce_scatter 路径原本不计）
+  if ((mmShapeInfo_.kValue * mmShapeInfo_.inMatrixADtypeSize) % MatmulPerformance::B_K_CACHELINE_LEN != 0) {
+    util *= MatmulPerformance::B_K_UNALIGN_RATIO;
+  }
+
+  return std::min(MatmulPerformance::B_MAX_CUBE_UTIL, util);
+}
+
 void MatmulPerformanceModel::FindCubeUtil(uint64_t mSize, uint64_t rankTileNum,
                                           bool flagAllReduce,
                                           uint64_t* maxTileLen) {
@@ -213,6 +245,15 @@ void MatmulPerformanceModel::FindCubeUtil(uint64_t mSize, uint64_t rankTileNum,
   }
 
   cubeUtil_ = FindCubeUtilByL2Usage(mSize, rankTileNum, maxTileLen);
+  rawL2Util_ = cubeUtil_;  // 修正前量纲，供 reduce_scatter 带宽冲突判定
+
+  // 910B 小 shape / 几何量化修正（socType==SOC910_B，非量化场景）：
+  // 把 950 的"小 shape 提供负增益、大 shape 提供有界正增益"思想移植到 910B，
+  // 并叠加 base block 几何量化损失，使 util 能落到实测 ~0.6 量级。
+  if (MatmulPerformance::ENABLE_910B_CUBEUTIL_FIX &&
+      mmShapeInfo_.socType == SocVersion::SOC910_B && calcType_ == MatmulCalcType::FP16) {
+    cubeUtil_ = Apply910BCubeUtilFix(mSize, rankTileNum, rawL2Util_);
+  }
 
   if (mmShapeInfo_.socType == SocVersion::SOC950) {
     double mnharmonicMean =

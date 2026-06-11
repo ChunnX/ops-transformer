@@ -53,6 +53,21 @@ constexpr double FRONT_UTIL_EXPONENT_COEFFICIENT = 0.6;
 constexpr double CUBE_UTIL_EXPONENT_COEFFICIENT = 0.7;
 constexpr double MAX_CUBE_UTIL = 0.95;
 constexpr double AVERAGE_CUBE_UTIL = 0.75;
+// 910B cubeUtil 修正参数：原模型在 910B 分支把 cubeUtil 锁死在 L2 占用率，既无小 shape 降额，
+// 也不计 base block 几何量化损失，导致系统性高估 cube 利用率。下面三类修正：
+//   1) block 几何量化：N/M 非 baseN/baseM 整除时的有效算力折扣
+//   2) 950 风格小 shape 修正：MN 调和平均 + K 指数降额（移植到 910B）
+//   3) reduce_scatter 路径 K cache line 对齐折扣（原仅 allreduce 场景计）
+constexpr bool ENABLE_910B_CUBEUTIL_FIX = true;
+constexpr double B_MNVALUE_THRESHOLD = 820;     // MN 调和平均增益分界
+constexpr double B_KVALUE_THRESHOLD = 1280;     // K 增益分界
+constexpr double B_FRONT_UTIL_EXP = 0.6;        // MN 指数（缓和增长）
+constexpr double B_CUBE_UTIL_EXP = 0.7;         // K 指数（缓和增长）
+constexpr double B_MAX_ENHANCE_FACTOR = 1.4;    // 单项最大正增益
+constexpr double B_AVERAGE_CUBE_UTIL = 0.75;    // 910B 实测中位 util 基准
+constexpr double B_MAX_CUBE_UTIL = 0.85;        // 910B cube 利用率上限（实测难超 0.85）
+constexpr uint64_t B_K_CACHELINE_LEN = 512;     // K 方向 MTE2 cache line
+constexpr double B_K_UNALIGN_RATIO = 0.85;      // K cache line 不对齐折扣
 }
 
 class MatmulPerformanceModel {
@@ -60,6 +75,9 @@ public:
     MatmulParameters mmShapeInfo_;
     MatmulCalcType calcType_; // Distinguish the non-quantization, full-quantization and fake-quantization
     double cubeUtil_ = 0.8;
+    // 记录修正前的 L2 占用 util（原始 0.85 量纲），供 comm 带宽冲突判定使用，
+    // 避免 cubeUtil 重标定后误触 SetCommTimeFactor 里的 <0.85 阈值。
+    double rawL2Util_ = 0.8;
     double matmulGradient_ = 1.0;
     uint64_t mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_OTHER_SOC; 
 
@@ -126,6 +144,7 @@ public:
     void CheckKvalueAlignVersion310P();
     void FindCubeUtil(uint64_t mSize, uint64_t rankTileNum, bool flagAllReduce, uint64_t* maxTileLen = nullptr);
     double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t rankTileNum, uint64_t* maxTileLen = nullptr);
+    double Apply910BCubeUtilFix(uint64_t mSize, uint64_t rankTileNum, double baseUtil);
     double FindCubeUtilQuantVersion310P() const;
     double FindCubeUtilVersion310P() const;
     void ChangeCubeUtilByKAlign();
