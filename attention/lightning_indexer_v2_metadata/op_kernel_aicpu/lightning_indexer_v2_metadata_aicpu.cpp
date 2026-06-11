@@ -817,7 +817,7 @@ bool LightningIndexerV2MetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
 
 bool LightningIndexerV2MetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
-    optiling::detail::liV2MetaData* metadataPtr = static_cast<optiling::detail::liV2MetaData*>(metadata_->GetData());
+    optiling::detail::LiV2Metadata* metadataPtr = static_cast<optiling::detail::LiV2Metadata*>(metadata_->GetData());
     *metadataPtr = {};
     // LI Metadata Generate
     for (size_t i = 0; i < aicCoreNum_; ++i) {
