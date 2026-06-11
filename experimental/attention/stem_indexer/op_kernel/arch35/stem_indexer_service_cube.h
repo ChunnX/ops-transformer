@@ -29,6 +29,7 @@ class SIMatmul {
 public:
     using Q_T = typename SIT::queryType;
     using K_T = typename SIT::keyType;
+    using QK_T = float32_t;
 
     __aicore__ inline SIMatmul(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);

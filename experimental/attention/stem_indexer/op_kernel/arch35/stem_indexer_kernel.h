@@ -38,7 +38,6 @@ using AscendC::CrossCoreWaitFlag;
 template <typename SIT>
 class SIVector {
 public:
-    using SCORE_T = typename SIT::scoreType;
 
     __aicore__ inline void InitBuffers(TPipe *) {}
     __aicore__ inline void InitParams(const SICommon::ConstInfo &, const SICommon::LdSplitCoreInfo &,
@@ -114,11 +113,10 @@ public:
     using Q_T = typename SIT::queryType;
     using K_T = typename SIT::keyType;
     using OUT_T = typename SIT::outputType;
-    static constexpr bool PAGE_ATTENTION = SIT::pageAttention;
-    static constexpr LI_LAYOUT Q_LAYOUT_T = SIT::layout;
-    static constexpr LI_LAYOUT K_LAYOUT_T = SIT::keyLayout;
+    static constexpr SI_LAYOUT Q_LAYOUT_T = SIT::layout;
+    static constexpr SI_LAYOUT K_LAYOUT_T = SIT::keyLayout;
 
-    using SCORE_T = typename SIT::scoreType;
+    using SCORE_T = uint32_t;
 
     SIMatmul<SIT> matmulService;
     SIVector<SIT> vectorService;
@@ -149,19 +147,8 @@ protected:
     uint64_t indiceLenCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
     // ================================Global Buffer区=================================
-    GlobalTensor<Q_T> queryGm;
-    GlobalTensor<K_T> keyGm;
-    GlobalTensor<float> weightsGm;
-    GlobalTensor<float> qScaleGm;
-    GlobalTensor<float> kScaleGm;
+
     GlobalTensor<uint32_t> metadataGm;
-
-    GlobalTensor<int32_t> indiceOutGm;
-    GlobalTensor<int32_t> indiceLenGm;
-    GlobalTensor<int32_t> blockTableGm;
-
-    GlobalTensor<uint32_t> actualSeqLengthsGmQ;
-    GlobalTensor<uint32_t> actualSeqLengthsGm;
     GlobalTensor<Q_T> qflatGm;
     GlobalTensor<K_T> kflatGm;
     GlobalTensor<float> vbiasGm;
@@ -242,10 +229,10 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.kBlockNumBiasLarge = tilingData->kBlockNumBiasLarge;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     constInfo.attenMaskFlag = tilingData->causal != 0U;
-    if (Q_LAYOUT_T == LI_LAYOUT::TND) {
+    if (Q_LAYOUT_T == SI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
     }
-    if (K_LAYOUT_T == LI_LAYOUT::TND) {
+    if (K_LAYOUT_T == SI_LAYOUT::TND) {
         constInfo.isAccumSeqS2 = true;
     }
 }
@@ -459,7 +446,7 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
         ldInfo.mStart = metadataGm.GetValue(ldMstartIndex);
         ldInfo.mNum = metadataGm.GetValue(ldMNumIndex);
         uint64_t actualSeqQPrefixSum = 0;
-        if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+        if constexpr (Q_LAYOUT_T == SI_LAYOUT::TND) {
             uint32_t actualSeqLengthsGmQIdx = (constInfo.batchSupperFlag) ? ldInfo.bIdx : ldInfo.bIdx - 1;
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
         } else { // BNSD
@@ -474,7 +461,7 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
 {
     if ASCEND_IS_AIV {
-        if (constInfo.outputLayout == LI_LAYOUT::TND) {
+        if (constInfo.outputLayout == SI_LAYOUT::TND) {
             uint32_t tBase = 0;
             if (bIdx > 0) {
                 uint32_t tBaseIdx = (constInfo.batchSupperFlag) ? bIdx : bIdx - 1;
@@ -496,7 +483,7 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
                     AscendC::InitGlobalMemory(indiceLen, 1, static_cast<int32_t>(0));
                 }
             }
-        } else if (constInfo.outputLayout == LI_LAYOUT::BNSD) {
+        } else if (constInfo.outputLayout == SI_LAYOUT::BNSD) {
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
                 for (uint32_t gIdx = 0; gIdx < constInfo.gSize; gIdx++) {
                     uint64_t indiceOutOffset =
@@ -534,7 +521,7 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
 
     InitTilingData(tiling);
     InitActualSeqLen(qSeqLens, kvSeqLens);
-    numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
+    
 
     // 获取 AICPU metadata 算好的分核信息。
     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
@@ -550,28 +537,24 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
     GlobalTensor<SCORE_T> ldScoreGm;
     GlobalTensor<int32_t> ldIndexGm;
 
-    qflatGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
-    kflatGm.SetGlobalBuffer((__gm__ K_T *)kflat);
-    vbiasGm.SetGlobalBuffer((__gm__ float *)vbias);
+    
+    
     qSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)qSeqLens);
     kvSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)kvSeqLens);
-    sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-    sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
-
-    queryGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
-    keyGm.SetGlobalBuffer((__gm__ K_T *)kflat);
-    weightsGm.SetGlobalBuffer((__gm__ float *)vbias);
-    qScaleGm.SetGlobalBuffer((__gm__ float *)vbias);
-    kScaleGm.SetGlobalBuffer((__gm__ float *)vbias);
-    indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-    indiceLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
-    blockTableGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
+    
+    
 
     if ASCEND_IS_AIV {
+        vbiasGm.SetGlobalBuffer((__gm__ float *)vbias);
+        numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
+        sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+        sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
         vectorService.InitParams(constInfo, ldInfo, tiling);
-        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, indiceLenGm, blockTableGm);
+        vectorService.InitVecInputTensor(vbiasGm, numPromptTokensGm, sparseIndicesGm, sparseSeqLenGm);
         vectorService.InitVecWorkspaceTensor(scoreGm, ldScoreGm, ldIndexGm);
     } else {
+        qflatGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
+        kflatGm.SetGlobalBuffer((__gm__ K_T *)kflat);
         matmulService.InitParams(constInfo);
         matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
     }
@@ -657,7 +640,7 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 
     uint32_t gS1SplitNum = (tempLoopInfo.actS1Size * constInfo.gSize + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
     tempLoopInfo.gS1LoopEnd = (bN2LoopIdx == splitCoreInfo.bN2End) ? splitCoreInfo.gS1End : gS1SplitNum - 1;
-    if constexpr (Q_LAYOUT_T == LI_LAYOUT::BNSD) {
+    if constexpr (Q_LAYOUT_T == SI_LAYOUT::BNSD) {
         if (tempLoopInfo.gS1LoopEnd == gS1SplitNum - 1 && constInfo.qSeqSize > tempLoopInfo.actS1Size) {
             tempLoopInfo.needDealActS1LessThanS1 = true;
         }
@@ -706,7 +689,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
 
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
-        if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+        if constexpr (Q_LAYOUT_T == SI_LAYOUT::TND) {
             uint32_t actualSeqLengthsGmQIdx = (constInfo.batchSupperFlag) ? runInfo.bIdx : runInfo.bIdx - 1;
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
         } else {  // BNSD
@@ -724,7 +707,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         indiceLenCoreOffset = qBatchOffset + qHeadOffset;
     }
     uint64_t actualSeqKPrefixSum;
-    if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D
+    if constexpr (K_LAYOUT_T == SI_LAYOUT::TND) { // T N2 D
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGm.GetValue(runInfo.bIdx - 1);
         actualSeqKPrefixSum = actualSeqKPrefixSum / constInfo.cmpRatio;
     } else {
