@@ -32,12 +32,11 @@ template <typename SIT>
 class SIVector {
 public:
     // =================================类型定义区=================================
-    static constexpr LI_LAYOUT Q_LAYOUT_T = SIT::layout;
-    static constexpr LI_LAYOUT K_LAYOUT_T = SIT::keyLayout;
-    static constexpr bool PAGE_ATTENTION = SIT::pageAttention;
+    static constexpr SI_LAYOUT Q_LAYOUT_T = SIT::layout;
+    static constexpr SI_LAYOUT K_LAYOUT_T = SIT::keyLayout;
 
-    using QK_T = typename SIT::queryKeyType;
-    using SCORE_T = typename SIT::scoreType;
+    using QK_T = float32_t;
+    using SCORE_T = uint32_t;
 
     __aicore__ inline SIVector(){};
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);

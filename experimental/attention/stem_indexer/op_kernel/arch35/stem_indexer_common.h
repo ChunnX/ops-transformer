@@ -21,7 +21,8 @@ namespace SICommon {
 enum class SI_LAYOUT : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BNSD = 2
+    PA_BNSD = 2, 
+    BNSD = 3
 };
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false, typename... Args>
@@ -29,12 +30,10 @@ struct SIType {
     using queryType = Q_T;
     using keyType = K_T;
     using outputType = OUT_T;
-    using queryKeyType = float;
-    using scoreType = float;
 
     static constexpr bool causalFlag = CAUSAL;
-    static constexpr LI_LAYOUT layout = LI_LAYOUT::BSND;
-    static constexpr LI_LAYOUT keyLayout = LI_LAYOUT::BSND;
+    static constexpr SI_LAYOUT layout = SI_LAYOUT::BNSD;
+    static constexpr SI_LAYOUT keyLayout = SI_LAYOUT::BNSD;
 };
 
 struct RunInfo {
@@ -128,7 +127,7 @@ struct ConstInfo {
     uint32_t kBlockNumBiasLarge = 30U;
     uint32_t kCacheBlockSize = 0;      // PA场景的block size
     uint32_t maxBlockNumPerBatch = 0;  // PA场景的最大单batch block number
-    LI_LAYOUT outputLayout;            // 输出的格式
+    SI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1;
     bool batchSupperFlag = false;      // actual_seq长度是否为B+1
