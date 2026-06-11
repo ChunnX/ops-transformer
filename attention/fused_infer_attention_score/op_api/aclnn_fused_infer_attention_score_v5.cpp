@@ -50,7 +50,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnFusedInferAttentionScore
     int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode, int64_t pseType,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-aclnnStatus CheckKVContiguous(
+__attribute__((visibility("default"))) aclnnStatus CheckTensorContiguous(
     const aclTensorList *key, const aclTensorList *value,
     const aclTensor *keyAntiquantScaleOptional,
     const aclTensor *valueAntiquantScaleOptional,
@@ -183,7 +183,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     return ret;
 }
 
-aclnnStatus CheckKVContiguous(
+aclnnStatus CheckTensorContiguous(
     const aclTensorList *key, const aclTensorList *value,
     const aclTensor *keyAntiquantScaleOptional,
     const aclTensor *valueAntiquantScaleOptional,
@@ -247,7 +247,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
-    aclnnStatus ret = CheckKVContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
+    aclnnStatus ret = CheckTensorContiguous(key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         return ret;
     }
