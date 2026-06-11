@@ -200,6 +200,11 @@ __aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount)
     return (QKV_RRC_HEAD_DIM_D128 / QKV_RRC_NZ_C0) * NzRowAligned(rowCount) * QKV_RRC_NZ_C0;
 }
 
+__aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount, uint64_t colCount)
+{
+    return CeilDiv(colCount, QKV_RRC_NZ_C0) * NzRowAligned(rowCount) * QKV_RRC_NZ_C0;
+}
+
 __aicore__ inline uint32_t MakeDataBufferId(uint64_t tileBufferId)
 {
     return static_cast<uint32_t>(tileBufferId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
