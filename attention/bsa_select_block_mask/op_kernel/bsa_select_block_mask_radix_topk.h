@@ -313,7 +313,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
         VToMTE3Sync();
         DataCopyExtParams params{1, static_cast<uint32_t>(numValue_ * sizeof(int32_t)), 0, 0, 0};
         DataCopyPad(globalHistGm_[GetBlockIdx() * numValue_], globalHist, params);
-        BSA_TOPK_PIPE_ALL();
     }
 
     // 5. RADIX LOOP
@@ -760,7 +759,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearTileHistInWs(
             static_cast<uint16_t>(1),
             static_cast<uint32_t>(sizeof(int32_t) * MAX_TILE_NUM_IN_UB), 0, 0, 0};
         DataCopyPad(tileHistGm_[dstOffset + i * MAX_TILE_NUM_IN_UB], tileHist, params);
-        BSA_TOPK_PIPE_ALL();
     }
     if (remain > 0) {
         Duplicate<int32_t>(tileHist, 0, remain);
@@ -769,7 +767,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearTileHistInWs(
             static_cast<uint16_t>(1),
             static_cast<uint32_t>(sizeof(int32_t) * remain), 0, 0, 0};
         DataCopyPad(tileHistGm_[dstOffset + repeatTimes * MAX_TILE_NUM_IN_UB], tileHist, params);
-        BSA_TOPK_PIPE_ALL();
     }
 }
 
@@ -874,7 +871,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
                 static_cast<uint16_t>(1),
                 static_cast<uint32_t>(sizeof(int32_t) * MAX_TILE_NUM_IN_UB), 0, 0, 0};
             DataCopyPad(tileHistGm_[i * MAX_TILE_NUM_IN_UB], tileHist, params);
-            BSA_TOPK_PIPE_ALL();
         }
         if (tileNumRemain_ > 0) {
             Duplicate<int32_t>(tileHist, static_cast<int32_t>(tileLen_), tileNumRemain_);
@@ -889,7 +885,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
                 static_cast<uint16_t>(1),
                 static_cast<uint32_t>(sizeof(int32_t) * tileNumRemain_), 0, 0, 0};
             DataCopyPad(tileHistGm_[tileNumRepeatTimes_ * MAX_TILE_NUM_IN_UB], tileHist, params);
-            BSA_TOPK_PIPE_ALL();
         }
         globalHistBoundaryNum_ = (tileNum_ > 0) ? (tileNum_ - 1) * tileLen_ + tailTileLen_ : 0;
     } else {
@@ -907,7 +902,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
     ClearTileHistInWs(static_cast<uint32_t>(tileNum_),
                       (numValue_ - 1) * static_cast<uint32_t>(tileNum_));
     MTE3ToMTE2Sync();
-    BSA_TOPK_PIPE_ALL();
 }
 
 template <typename BSAT>
