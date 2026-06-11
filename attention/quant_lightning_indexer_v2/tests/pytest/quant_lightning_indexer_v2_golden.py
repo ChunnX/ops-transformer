@@ -160,14 +160,14 @@ class GeneralizedQLIV2:
 
         out_shape_bnss = copy.deepcopy(self.q_bnsd_shape)
         out_shape_bnss[1] = n2
-        out_shape_bnss[-1] = math.floor(max(actualSeqLengths_k)/cmp_ratio)
+        out_shape_bnss[-1] = math.floor(max(actualSeqLengths_k))
 
         y = torch.full(out_shape_bnsd,-1,dtype = torch.int32)
         y_value = torch.full(out_shape_bnss,-float('inf'), dtype=torch.float32)
 
         for b_idx in range(batch_size):
             curr_actualSeq_q = actualSeqLengths_q[b_idx]
-            curr_actualSeq_k = math.floor(actualSeqLengths_k[b_idx] /cmp_ratio)
+            curr_actualSeq_k = math.floor(actualSeqLengths_k[b_idx])
             self.cur_actseq_q = curr_actualSeq_q
             self.cur_actseq_k = curr_actualSeq_k
             self.cur_q = q_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
@@ -529,6 +529,7 @@ class GeneralizedQLIV2:
         mask_s_q = m_shape[0]
         mask_s_kv = m_shape[1]
         cmp_ratio = self.cmp_ratio
+        cmp_residual_k = self.cmp_residual_k
         next_tokens_list = []
         re_mask_batch = []
         pre_tokens = 214748647
@@ -541,10 +542,10 @@ class GeneralizedQLIV2:
             if len(actualSeqLengthsK) == 0:
                 S2 = mask_s_kv
             else:
-                S2 = math.floor(actualSeqLengthsK[i]/cmp_ratio)
+                S2 = math.floor(actualSeqLengthsK[i])
             next_tokens = S2-S1
             next_tokens_list.append(next_tokens)
-            act_k = actualSeqLengthsK[i]
+            act_k = actualSeqLengthsK[i] *  cmp_ratio + cmp_residual_k
             atten_masks = self.create_mask(m_shape, act_k, S1)
             re_mask_batch.append(atten_masks)
         re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
@@ -613,7 +614,7 @@ class GeneralizedQLIV2:
             self.actual_seq_lengths_key = actual_seq_lengths_key
             actualSeqLengths_k = self.actual_seq_lengths_key
             layout_key_scale = layout_key
-            k_max_s2 = math.floor(max(actualSeqLengths_k)/self.cmp_ratio)
+            k_max_s2 = math.floor(max(actualSeqLengths_k))
             k_shape = [batch_size, k_head_num, k_max_s2, head_dim]
             k_scale_shape = [batch_size, k_head_num, k_max_s2]
         query = query.cpu()
@@ -629,13 +630,13 @@ class GeneralizedQLIV2:
 
         ## BSND/TND/ -> BNSD
         k_bnsd_tensor, k_bnsd_shape = self.trans_shape_to_bnsd(key, k_shape, layout_key,
-                                                        k_head_num, torch.floor(actualSeqLengths_k/cmp_ratio).to(actual_seq_dtype))
+                                                        k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
 
 
 
         k_scale_bnsd_tensor, k_scale_bnsd_shape = self.trans_shape_to_bnsd(key_dequant_scale, k_scale_shape,
                                                                     layout_key_scale,
-                                                                    k_head_num, torch.floor(actualSeqLengths_k/cmp_ratio).to(actual_seq_dtype))
+                                                                    k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
 
         ## BSN1 -> BNS1   TN1 -> BNS1
         is_weights = True
@@ -850,7 +851,7 @@ def qliv2_output_single(params):
 
     elif layout_key == "PA_BBND":
         # 以不同batch中最大seq为标准初始化key(bnsd)和key_dequant_scale(bns)
-        k_max_s2 = math.floor(max(act_seq_k)/cmp_ratio)
+        k_max_s2 = math.floor(max(act_seq_k))
         k_max_block_num_per_batch = math.ceil(k_max_s2 / block_size) #遍历batch得到的最大的block num
         if hifp8mode ==1:
             key_bnsd = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1],(batch_size, k_head_num, k_max_s2, head_dim))).to(torch.float)
@@ -863,7 +864,7 @@ def qliv2_output_single(params):
         key_block_num_per_batch = []
         key_block_num_sum = 0
         for cur_act_k in act_seq_k:
-            cur_cmp_act_k = math.floor(cur_act_k / cmp_ratio)
+            cur_cmp_act_k = math.floor(cur_act_k)
             cur_key_block_num = math.ceil(cur_cmp_act_k / block_size)
             key_block_num_per_batch.append(cur_key_block_num)
             key_block_num_sum += cur_key_block_num

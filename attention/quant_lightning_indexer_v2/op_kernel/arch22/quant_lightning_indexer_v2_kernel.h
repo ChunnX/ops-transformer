@@ -264,10 +264,11 @@ __aicore__ inline uint32_t QLIV2Preload<QLIV2T>::GetActualSeqLenKey(uint32_t bId
 {
     if (actualLenDims == 0) {
         return defaultSeqLen * cmpRatio;
-    } else if (isAccumSeq && bIdx > 0) {
-        return actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1);
+    } else if (isAccumSeq) {
+        // TND with cu_seqlens: length[i] = cu_seqlens[i+1] - cu_seqlens[i]
+        return (actualSeqLengthsGm.GetValue(bIdx + 1) - actualSeqLengthsGm.GetValue(bIdx)) * cmpRatio;
     } else {
-        return actualSeqLengthsGm.GetValue(bIdx);
+        return (actualSeqLengthsGm.GetValue(bIdx)) * cmpRatio;
     }
 }
 
