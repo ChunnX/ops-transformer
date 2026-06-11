@@ -146,7 +146,7 @@ __aicore__ inline void SFAUpdateExpSumAndExpMax(
 }
 
 template <typename T>
-__simd_vf__ inline void PreprocessMaxAndSumVF(__ubuf__ T * sumUb, __ubuf__ T * maxUb, __ubuf__ T * sinksUb,
+__simd_vf__ inline void InitSoftmaxFromSinks(__ubuf__ T * sumUb, __ubuf__ T * maxUb, __ubuf__ T * sinksUb,
     uint32_t sinksOffset, const T R0, uint32_t m)
 {
     AscendC::MicroAPI::RegTensor<T> vreg_sinks;
@@ -162,13 +162,13 @@ __simd_vf__ inline void PreprocessMaxAndSumVF(__ubuf__ T * sumUb, __ubuf__ T * m
 }
 
 template <typename T>
-__aicore__ inline void PreprocessMaxAndSum(const LocalTensor<T>& sumTensor, const LocalTensor<T>& maxTensor,
+__aicore__ inline void InitSoftmaxFromSinks(const LocalTensor<T>& sumTensor, const LocalTensor<T>& maxTensor,
     const LocalTensor<T>& sinksTensor, uint32_t sinksOffset, const T R0, uint32_t m)
 {
     __ubuf__ T * sumUb = (__ubuf__ T*)sumTensor.GetPhyAddr();
     __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
     __ubuf__ T * sinksUb = (__ubuf__ T*)sinksTensor.GetPhyAddr();
-    PreprocessMaxAndSumVF<T>(sumUb, maxUb, sinksUb, sinksOffset, R0, m);
+    InitSoftmaxFromSinksVF<T>(sumUb, maxUb, sinksUb, sinksOffset, R0, m);
 }
 } // namespace
 #endif // MUL_SEL_SOFTMAX_FLASH_V2_CAST_NZ_SFA_INTERFACE_H
