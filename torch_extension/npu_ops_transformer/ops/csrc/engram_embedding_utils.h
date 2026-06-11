@@ -43,7 +43,7 @@ constexpr int COMM_PROTOCOL_UBC_TP_VALUE  = 5;
 struct CommContext {
     uint32_t epRankId = 0;
     uint32_t rankSize = 0;
-    uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
+    uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE] = {};
 };
 

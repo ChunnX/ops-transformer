@@ -158,7 +158,7 @@ void EngramEmbedingUtilsBuilder::GetHcclCommResource(const HcclComm &commHandle,
         commContextStruct->hcommHandle_[peer] = handlesByRank[peer];
     }
 
-    commContextStruct->epHcclBuffer_[rankId] = reinterpret_cast<uint64_t>(selfBufDev_);
+    commContextStruct->virtualAddrList[rankId] = reinterpret_cast<uint64_t>(selfBufDev_);
 
     for (uint32_t i = 0; i < rankSize; ++i) {
         if (i == rankId) continue;
@@ -170,7 +170,7 @@ void EngramEmbedingUtilsBuilder::GetHcclCommResource(const HcclComm &commHandle,
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") failed, ret=", hcclRet);
         // 取第一个remote mem作为peer的注册buffer地址
         if (memNum > 0 && remoteMems != nullptr) {
-            commContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(remoteMems[0].addr);
+            commContextStruct->virtualAddrList[i] = reinterpret_cast<uint64_t>(remoteMems[0].addr);
         }
     }
 }
@@ -201,14 +201,7 @@ EngramEmbeddingUtils::EngramEmbeddingUtils(const std::string &group, int64_t ccl
     : group_(group), cclBufferSize_(cclBufferSize), initialized_(false),
       myBufHost_(nullptr) {}
 
-EngramEmbeddingUtils::~EngramEmbeddingUtils()
-{
-    if (myBufHost_ != nullptr) {
-        aclrtHostUnregister(myBufHost_);
-        aclrtFreeHost(myBufHost_);
-        myBufHost_ = nullptr;
-    }
-}
+EngramEmbeddingUtils::~EngramEmbeddingUtils() {}
 
 at::Tensor EngramEmbeddingUtils::create_context()
 {
@@ -275,8 +268,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              py::arg("group"), py::arg("cclBufferSize"))
         .def("create_context", &EngramEmbeddingUtils::create_context)
         .def("update_group", &EngramEmbeddingUtils::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
-        .def_property_readonly("ccl_buffer_size", &EngramEmbeddingUtils::ccl_buffer_size)
-        .def_property_readonly("host_ptr", &EngramEmbeddingUtils::host_ptr);
+        .def("host_ptr", &EngramEmbeddingUtils::host_ptr);
 }
 
 } // namespace op_api
