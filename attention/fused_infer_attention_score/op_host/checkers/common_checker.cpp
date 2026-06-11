@@ -29,7 +29,6 @@ using std::pair;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
-using namespace Ops::Base;
 
 // 公共校验函数
 ge::graphStatus CommonChecker::CheckInputFormat(const FiaTilingInfo &fiaInfo)

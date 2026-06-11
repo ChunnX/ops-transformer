@@ -27,7 +27,6 @@ using std::pair;
 using std::string;
 using namespace ge;
 using namespace AscendC;
-using namespace Ops::Base;
 namespace optiling {
 
 ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const

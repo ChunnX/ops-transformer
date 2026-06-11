@@ -29,7 +29,6 @@ using std::pair;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
-using namespace Ops::Base;
 
 // check sink dtype
 ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo &fiaInfo)

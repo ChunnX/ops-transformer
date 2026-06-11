@@ -23,7 +23,6 @@
 
 namespace optiling {
 using std::string;
-using namespace Ops::Base;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;

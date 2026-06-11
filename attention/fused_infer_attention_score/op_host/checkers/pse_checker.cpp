@@ -29,7 +29,6 @@ using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
-using namespace Ops::Base;
 
 constexpr int32_t PSE_SHIFT_MAX = 1048576;  // 2^20
 constexpr int32_t PSE_SHIFT_MIN = -1048576; // -2^20
