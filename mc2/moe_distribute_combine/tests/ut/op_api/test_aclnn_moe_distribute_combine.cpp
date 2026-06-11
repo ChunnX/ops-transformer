@@ -42,7 +42,7 @@ TEST_F(L2MoeDistributeCombineTest, TestMoeDistributeCombineFirstApi)
     TensorDesc expandIdx = TensorDesc({32*8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epSendCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertScales = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc tpSendCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc tpSendCounts = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc xActiveMask = TensorDesc({}, ACL_BOOL, ACL_FORMAT_ND);
     TensorDesc activationScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc weightScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -50,7 +50,7 @@ TEST_F(L2MoeDistributeCombineTest, TestMoeDistributeCombineFirstApi)
     TensorDesc expandScales = TensorDesc({32}, ACL_FLOAT, ACL_FORMAT_ND);
 
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -126,7 +126,7 @@ TEST_F(L2MoeDistributeCombineTest, Ascend910B2TestMoeDistributeCombineNon910BPla
     TensorDesc expandIdx = TensorDesc({32*8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epSendCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertScales = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc tpSendCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc tpSendCounts = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc xActiveMask = TensorDesc({}, ACL_BOOL, ACL_FORMAT_ND);
     TensorDesc activationScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc weightScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -134,7 +134,7 @@ TEST_F(L2MoeDistributeCombineTest, Ascend910B2TestMoeDistributeCombineNon910BPla
     TensorDesc expandScales = TensorDesc({32}, ACL_FLOAT, ACL_FORMAT_ND);
 
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -172,7 +172,7 @@ TEST_F(L2MoeDistributeCombineTest, GroupEpExceedsMaxLength)
     TensorDesc expandIdx = TensorDesc({32*8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epSendCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertScales = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc tpSendCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc tpSendCounts = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc xActiveMask = TensorDesc({}, ACL_BOOL, ACL_FORMAT_ND);
     TensorDesc activationScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc weightScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -180,7 +180,7 @@ TEST_F(L2MoeDistributeCombineTest, GroupEpExceedsMaxLength)
     TensorDesc expandScales = TensorDesc({32}, ACL_FLOAT, ACL_FORMAT_ND);
 
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -214,7 +214,7 @@ TEST_F(L2MoeDistributeCombineTest, GroupEpEmptyString)
     TensorDesc expandIdx = TensorDesc({32*8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epSendCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertScales = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc tpSendCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc tpSendCounts = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc xActiveMask = TensorDesc({}, ACL_BOOL, ACL_FORMAT_ND);
     TensorDesc activationScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc weightScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -222,7 +222,7 @@ TEST_F(L2MoeDistributeCombineTest, GroupEpEmptyString)
     TensorDesc expandScales = TensorDesc({32}, ACL_FLOAT, ACL_FORMAT_ND);
 
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -258,7 +258,7 @@ TEST_F(L2MoeDistributeCombineTest, Non910BPlatformWithTpGroup)
     TensorDesc expandIdx = TensorDesc({32*8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epSendCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertScales = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc tpSendCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc tpSendCounts = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc xActiveMask = TensorDesc({}, ACL_BOOL, ACL_FORMAT_ND);
     TensorDesc activationScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc weightScale = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -266,7 +266,7 @@ TEST_F(L2MoeDistributeCombineTest, Non910BPlatformWithTpGroup)
     TensorDesc expandScales = TensorDesc({32}, ACL_FLOAT, ACL_FORMAT_ND);
 
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
