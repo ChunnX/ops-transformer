@@ -38,7 +38,7 @@ using AscendC::CrossCoreWaitFlag;
 template <typename SIT>
 class SIVector {
 public:
-
+    using SCORE_T = uint32_t;
     __aicore__ inline void InitBuffers(TPipe *) {}
     __aicore__ inline void InitParams(const SICommon::ConstInfo &, const SICommon::LdSplitCoreInfo &,
                                       const StemIndexerTilingData *__restrict)
@@ -165,9 +165,9 @@ protected:
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                               GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
+                                               GlobalTensor<int32_t> &kvSeqLensGm, uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                            GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen, uint32_t cmpRatio);                                              
+                                            GlobalTensor<int32_t> &kvSeqLensGm, uint32_t defaultSeqLen, uint32_t cmpRatio);                                              
     __aicore__ inline uint32_t GetPromptTokenLen(uint32_t bIdx);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
@@ -234,51 +234,51 @@ __aicore__ inline void SIPreload<SIT>::InitActualSeqLen(__gm__ uint8_t *actualSe
         constInfo.actualLenQDims = 0;
     } else {
         constInfo.actualLenQDims = (constInfo.batchSupperFlag) ? constInfo.batchSize + 1 : constInfo.batchSize;
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
+        qSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
     }
     if (actualSeqLengthsK == nullptr) {
         constInfo.actualLenDims = 0;
     } else {
         constInfo.actualLenDims = constInfo.batchSize;
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)actualSeqLengthsK, constInfo.actualLenDims);
+        kvSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsK, constInfo.actualLenDims);
     }
 }
 
 template <typename SIT>
 __aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                                             GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                                             GlobalTensor<int32_t> &kvSeqLensGm,
                                                              uint32_t defaultSeqLen)
 {
     bIdx = (constInfo.batchSupperFlag)? bIdx + 1 : bIdx; // 如果为B+1情况，则向后移动一位
     if (actualLenDims == 0) {
         return defaultSeqLen;
     } else if (isAccumSeq && bIdx > 0) { // TND
-        return actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1);
+        return kvSeqLensGm.GetValue(bIdx) - kvSeqLensGm.GetValue(bIdx - 1);
     } else {
-        return actualSeqLengthsGm.GetValue(bIdx);
+        return kvSeqLensGm.GetValue(bIdx);
     }
 }
 
 template <typename SIT>
 __aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                                             GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                                             GlobalTensor<int32_t> &kvSeqLensGm,
                                                              uint32_t defaultSeqLen, uint32_t cmpRatio)
 {
     if (actualLenDims == 0) {
         return defaultSeqLen * cmpRatio;
     } else if (isAccumSeq && bIdx > 0) { // TND
-        return actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1);
+        return kvSeqLensGm.GetValue(bIdx) - kvSeqLensGm.GetValue(bIdx - 1);
     } else {
-        return actualSeqLengthsGm.GetValue(bIdx);
+        return kvSeqLensGm.GetValue(bIdx);
     }
 }
 
 template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig)
 {
-    uint32_t qTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
+    uint32_t qTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, qSeqLensGm,
                                          constInfo.qSeqSize * constInfo.stemBlockSize);
-    uint32_t kTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, actualSeqLengthsGm,
+    uint32_t kTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, kvSeqLensGm,
                                          constInfo.kSeqSize * constInfo.stemBlockSize);
     uint32_t promptTokenLen = GetPromptTokenLen(bIdx);
     uint32_t lastKvTokenIdx = (kTokenLen > 0U) ? (kTokenLen - 1U) : 0U;
@@ -426,8 +426,8 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
         ldInfo.mNum = metadataGm.GetValue(ldMNumIndex);
         uint64_t actualSeqQPrefixSum = 0;
         if constexpr (Q_LAYOUT_T == SI_LAYOUT::TND) {
-            uint32_t actualSeqLengthsGmQIdx = (constInfo.batchSupperFlag) ? ldInfo.bIdx : ldInfo.bIdx - 1;
-            actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
+            uint32_t qSeqLensGmIdx = (constInfo.batchSupperFlag) ? ldInfo.bIdx : ldInfo.bIdx - 1;
+            actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : qSeqLensGm.GetValue(qSeqLensGmIdx);
         } else { // BNSD
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : ldInfo.bIdx * constInfo.qSeqSize;
         }
@@ -444,7 +444,7 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
             uint32_t tBase = 0;
             if (bIdx > 0) {
                 uint32_t tBaseIdx = (constInfo.batchSupperFlag) ? bIdx : bIdx - 1;
-                tBase = actualSeqLengthsGmQ.GetValue(tBaseIdx);
+                tBase = qSeqLensGm.GetValue(tBaseIdx);
             }
             uint32_t s1Count = tempLoopInfo.actS1Size;
 
@@ -455,8 +455,8 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
                         constInfo.sparseCount;
                     uint64_t indiceLenOffset =
                         ((tBase + s1Idx) * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx;
-                    GlobalTensor<int32_t> indiceOut = indiceOutGm[indiceOutOffset];
-                    GlobalTensor<int32_t> indiceLen = indiceLenGm[indiceLenOffset];
+                    GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
+                    GlobalTensor<int32_t> indiceLen = sparseSeqLenGm[indiceLenOffset];
                     AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
                                               static_cast<int32_t>(constInfo.INVALID_IDX));
                     AscendC::InitGlobalMemory(indiceLen, 1, static_cast<int32_t>(0));
@@ -471,8 +471,8 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
                         constInfo.sparseCount;
                     uint64_t indiceLenOffset =
                         ((bIdx * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize + s1Idx;
-                    GlobalTensor<int32_t> indiceOut = indiceOutGm[indiceOutOffset];
-                    GlobalTensor<int32_t> indiceLen = indiceLenGm[indiceLenOffset];
+                    GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
+                    GlobalTensor<int32_t> indiceLen = sparseSeqLenGm[indiceLenOffset];
                     AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
                                               static_cast<int32_t>(constInfo.INVALID_IDX));
                     AscendC::InitGlobalMemory(indiceLen, 1, static_cast<int32_t>(0));
@@ -669,8 +669,8 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
         if constexpr (Q_LAYOUT_T == SI_LAYOUT::TND) {
-            uint32_t actualSeqLengthsGmQIdx = (constInfo.batchSupperFlag) ? runInfo.bIdx : runInfo.bIdx - 1;
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
+            uint32_t qSeqLensGmIdx = (constInfo.batchSupperFlag) ? runInfo.bIdx : runInfo.bIdx - 1;
+            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : qSeqLensGm.GetValue(qSeqLensGmIdx);
         } else {  // BNSD
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
         }
@@ -687,7 +687,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == SI_LAYOUT::TND) { // T N2 D
-        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGm.GetValue(runInfo.bIdx - 1);
+        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : kvSeqLensGm.GetValue(runInfo.bIdx - 1);
         actualSeqKPrefixSum = actualSeqKPrefixSum / constInfo.cmpRatio;
     } else {
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
@@ -733,7 +733,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessInvalid()
             uint64_t dealIndiceSize = (indiceBaseSize + singleCoreIndiceSize <= totalIndiceSize)
                                           ? singleCoreIndiceSize
                                           : totalIndiceSize - indiceBaseSize;
-            GlobalTensor<int32_t> indiceOut = indiceOutGm[indiceBaseSize];
+            GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceBaseSize];
             AscendC::InitGlobalMemory(indiceOut, dealIndiceSize, static_cast<int32_t>(constInfo.INVALID_IDX));
         }
 
@@ -744,7 +744,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessInvalid()
         if (lenBaseSize < totalLenSize) {
             uint64_t dealLenSize =
                 (lenBaseSize + singleCoreLenSize <= totalLenSize) ? singleCoreLenSize : totalLenSize - lenBaseSize;
-            GlobalTensor<int32_t> indiceLen = indiceLenGm[lenBaseSize];
+            GlobalTensor<int32_t> indiceLen = sparseSeqLenGm[lenBaseSize];
             AscendC::InitGlobalMemory(indiceLen, dealLenSize, static_cast<int32_t>(0));
         }
     }

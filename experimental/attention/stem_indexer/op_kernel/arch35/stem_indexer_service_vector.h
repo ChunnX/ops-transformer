@@ -51,8 +51,8 @@ public:
                                                     GlobalTensor<SCORE_T> ldScoreGm,
                                                     GlobalTensor<int32_t> ldIndexGm);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
-                                              GlobalTensor<float> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
-                                              GlobalTensor<int32_t> indiceLenGm,
+                                              GlobalTensor<float> kScaleGm, GlobalTensor<int32_t> sparseIndicesGm,
+                                              GlobalTensor<int32_t> sparseSeqLenGm,
                                               GlobalTensor<int32_t> blockTableGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void initS2LenToNeg(uint32_t actMBaseSize, uint64_t indiceOutOffset);
@@ -67,8 +67,8 @@ protected:
     GlobalTensor<int32_t> ldIndexGm;
     GlobalTensor<float> qScaleGm;
     GlobalTensor<float> kScaleGm;
-    GlobalTensor<int32_t> indiceOutGm;
-    GlobalTensor<int32_t> indiceLenGm;
+    GlobalTensor<int32_t> sparseIndicesGm;
+    GlobalTensor<int32_t> sparseSeqLenGm;
     GlobalTensor<int32_t> blockTableGm;
     // =================================常量区=================================
     static constexpr uint32_t VEC1_V_MTE2_EVENT = EVENT_ID0;
@@ -90,11 +90,9 @@ protected:
     static constexpr uint32_t MAX_TOPK_COUNT = 256;
 
 private:
-    __aicore__ inline void GetKeyScale(const SICommon::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
-                                       int64_t batchId, int64_t startS2, int64_t getLen);
     __aicore__ inline uint32_t CalcDynamicTopkCount(uint32_t s1Idx, int32_t kbOffset, int32_t numPromptK);
     // ================================Local Buffer区====================================
-
+    using SCORE_T = uint32_t;
     // tmp buff for vector
     TBuf<TPosition::VECCALC> resMm1Buf_;
     LocalTensor<QK_T> resMm1UB_;
@@ -254,15 +252,15 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
                                                            GlobalTensor<float> kScaleGm,
-                                                           GlobalTensor<int32_t> indiceOutGm,
-                                                           GlobalTensor<int32_t> indiceLenGm,
+                                                           GlobalTensor<int32_t> sparseIndicesGm,
+                                                           GlobalTensor<int32_t> sparseSeqLenGm,
                                                            GlobalTensor<int32_t> blockTableGm)
 {
     this->weightsGm = weightsGm;
     this->qScaleGm = qScaleGm;
     this->kScaleGm = kScaleGm;
-    this->indiceOutGm = indiceOutGm;
-    this->indiceLenGm = indiceLenGm;
+    this->sparseIndicesGm = sparseIndicesGm;
+    this->sparseSeqLenGm = sparseSeqLenGm;
     this->blockTableGm = blockTableGm;
 }
 
@@ -316,7 +314,7 @@ __aicore__ inline void SIVector<SIT>::CleanInvalidOutput(int64_t invalidS1Offset
     dataCopyOutParams.blockLen = constInfo_.sparseCount * sizeof(int32_t);
     dataCopyOutParams.srcStride = 0;
     dataCopyOutParams.dstStride = 0;
-    AscendC::DataCopyPad(indiceOutGm[invalidS1Offset], outInvalidLocal_, dataCopyOutParams);
+    AscendC::DataCopyPad(sparseIndicesGm[invalidS1Offset], outInvalidLocal_, dataCopyOutParams);
 }
 
 template <typename SIT>
@@ -324,61 +322,10 @@ __aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t actMBaseSize, uint
 {
     int32_t neg = -1;
 
-    GlobalTensor<int32_t> indiceOut = indiceOutGm[indiceOutOffset];
+    GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
     AscendC::InitGlobalMemory(indiceOut, actMBaseSize * constInfo_.kSeqSize, neg);
 
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-}
-template <typename SIT>
-__aicore__ inline void SIVector<SIT>::GetKeyScale(const SICommon::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
-                                                    int64_t batchId, int64_t startS2, int64_t getLen)
-{
-    // startS2一定能整除kCacheBlockSize_
-    AscendC::DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
-    AscendC::DataCopyExtParams copyInParams;
-    if constexpr (PAGE_ATTENTION) {
-        int32_t startBlockTableIdx = startS2 / kCacheBlockSize_;
-        int32_t startBlockTableOffset = startS2 % kCacheBlockSize_;
-        int32_t blockTableBatchOffset = batchId * maxBlockNumPerBatch_;
-        copyInParams.blockCount = 1;
-        copyInParams.srcStride = 0;
-        copyInParams.dstStride = 0;
-        copyInParams.rsv = 0;
-        int32_t resUbBaseOffset = 0;
-        if (startBlockTableOffset > 0) {
-            int32_t firstPartLen =
-                kCacheBlockSize_ - startBlockTableOffset > getLen ? getLen : kCacheBlockSize_ - startBlockTableOffset;
-            copyInParams.blockLen = firstPartLen * sizeof(float);
-            int32_t blockId = blockTableGm.GetValue(blockTableBatchOffset + startBlockTableIdx);
-            SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
-            WaitFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
-            AscendC::DataCopyPad(kScaleUB[(runInfo.loop % 2) * s2BaseSize_], kScaleGm[blockId * constInfo_.keyDequantScaleStride0 + startBlockTableOffset],
-                                 copyInParams, padParams);
-            startBlockTableIdx++;
-            getLen = getLen - firstPartLen;
-            resUbBaseOffset = firstPartLen;
-        }
-        int32_t getLoopNum = CeilDiv(getLen, kCacheBlockSize_);
-        copyInParams.blockLen = kCacheBlockSize_ * sizeof(float);
-        for (int32_t i = 0; i < getLoopNum; i++) {
-            if (i == getLoopNum - 1) {
-                copyInParams.blockLen = (getLen - i * kCacheBlockSize_) * sizeof(float);
-            }
-            int32_t blockId = blockTableGm.GetValue(blockTableBatchOffset + startBlockTableIdx + i);
-            SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
-            WaitFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
-            AscendC::DataCopyPad(kScaleUB[(runInfo.loop % 2) * s2BaseSize_ + resUbBaseOffset + i * kCacheBlockSize_], 
-                                 kScaleGm[blockId * constInfo_.keyDequantScaleStride0],
-                                 copyInParams, padParams);
-        }
-    } else {
-        copyInParams.blockCount = 1;
-        copyInParams.blockLen = getLen * sizeof(float);
-        copyInParams.srcStride = 0;
-        copyInParams.dstStride = 0;
-        copyInParams.rsv = 0;
-        AscendC::DataCopyPad(kScaleUB[(runInfo.loop % 2) * s2BaseSize_], kScaleGm[runInfo.tensorKeyScaleOffset], copyInParams, padParams);
-    }
 }
 
 template <typename SIT>
@@ -414,11 +361,6 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     DataCopyPad(qScaleUB_[pingpong * (UB_BANK_STRIDE / sizeof(float))],
                 qScaleGm[weightGmOffset], qwDataCopyExtParams, padQScaleParams);
 
-    //kScaleGm  -->  kScaleUB_
-    GetKeyScale(info, kScaleUB_, info.bIdx, curS2Idx, info.actualSingleProcessSInnerSize);
-    SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
-    WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
-    WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
 
     //CV同步
     CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   //V核等C核计算完mm1，mm1Res已搬运到UB
@@ -570,7 +512,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             indiceLenCopyParams.blockLen = (uint16_t)(sizeof(uint32_t));
             indiceLenCopyParams.srcStride = 0;
             indiceLenCopyParams.dstStride = (constInfo_.qSeqSize - 1) * sizeof(uint32_t);
-            AscendC::DataCopyPad(indiceLenGm[info.indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
+            AscendC::DataCopyPad(sparseSeqLenGm[info.indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
             // 搬出indice到gm
@@ -582,7 +524,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             copyOutParams.blockLen = (uint16_t)(curS1TotalS2Len * sizeof(int32_t));
             copyOutParams.srcStride = 0;
             copyOutParams.dstStride = (uint16_t)((constInfo_.qSeqSize * constInfo_.kSeqSize - curS1TotalS2Len) * sizeof(int32_t));
-            AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + globalS1Pos * constInfo_.kSeqSize],
+            AscendC::DataCopyPad(sparseIndicesGm[info.indiceOutOffset + globalS1Pos * constInfo_.kSeqSize],
                                 indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
@@ -611,7 +553,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             indiceLenCopyParams.blockCount = gSize_;
             indiceLenCopyParams.srcStride = 0;
             indiceLenCopyParams.dstStride = (constInfo_.qSeqSize - 1) * sizeof(uint32_t);
-            AscendC::DataCopyPad(indiceLenGm[info.indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
+            AscendC::DataCopyPad(sparseSeqLenGm[info.indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
             SetFlag<HardEvent::MTE3_V>(TOPK_V_MTE3_EVENT);
             // 计算 baseOffset
             int64_t baseOffset = info.indiceOutOffset + globalS1Pos * constInfo_.kSeqSize;
@@ -625,7 +567,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             copyOutParams.blockLen = (uint16_t)((uint32_t)curS1RealS2Len * sizeof(int32_t));
             copyOutParams.srcStride = 0;
             copyOutParams.dstStride = (uint16_t)((fullStride - (uint32_t)curS1RealS2Len) * sizeof(int32_t));
-            AscendC::DataCopyPad(indiceOutGm[baseOffset], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+            AscendC::DataCopyPad(sparseIndicesGm[baseOffset], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             // 第二次copyout， [topkSelectNum, topkSelectNum+actualWindow-1]
             if (actualWindow > 0) {
@@ -636,7 +578,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 copyOutParams.blockLen = (uint16_t)((uint32_t)actualWindow * sizeof(int32_t));
                 copyOutParams.srcStride = 0;
                 copyOutParams.dstStride = (uint16_t)((fullStride - (uint32_t)actualWindow) * sizeof(int32_t));
-                AscendC::DataCopyPad(indiceOutGm[baseOffset + actualInit + topkSelectNum], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+                AscendC::DataCopyPad(sparseIndicesGm[baseOffset + actualInit + topkSelectNum], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
                 SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             }
             continue;
@@ -669,7 +611,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         indiceLenCopyParams.blockCount = curGsize;
         indiceLenCopyParams.srcStride = 0;
         indiceLenCopyParams.dstStride = (constInfo_.qSeqSize - 1) * sizeof(uint32_t);
-        AscendC::DataCopyPad(indiceLenGm[info.indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
+        AscendC::DataCopyPad(sparseSeqLenGm[info.indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         uint32_t copyCount = s2BlockValidLen;
         uint64_t copyMask = (copyCount <= 64) ? copyCount : 64;
@@ -711,7 +653,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 Duplicate(mrgValueLocal_[mInnerOffset + topkSelectNumAlign256 + s2BlockValidLen / 64 * 64], (uint32_t)zero, mask, 1, 1, 0);
                 PipeBarrier<PIPE_V>();
                 Duplicate(mrgValueLocal_[mInnerOffset + topkSelectNumAlign256 + s2BlockValidLen / 64 * 64 + 64], (uint32_t)zero,
-                            s2BlockValidLen256 - (s2BlockValidLen / 64 * 64 + 64));
+                            s2BlockValidLenAlign256 - (s2BlockValidLen / 64 * 64 + 64));
             }
             if (isFirstS2InnerLoop) {
                 // 如果是首块，需要把initBlock的位置刷0
@@ -740,14 +682,14 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                     WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                     copyOutParams.blockLen = (uint16_t)((uint32_t)actualInit * sizeof(int32_t));
-                    AscendC::DataCopyPad(indiceOutGm[gmBase],
+                    AscendC::DataCopyPad(sparseIndicesGm[gmBase],
                                          mrgValueLocal_[mInnerOffset].ReinterpretCast<int32_t>(), copyOutParams);
                 }
 
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 copyOutParams.blockLen = (uint16_t)((uint32_t)topkSelectNum * sizeof(int32_t));
-                AscendC::DataCopyPad(indiceOutGm[gmBase + actualInit],
+                AscendC::DataCopyPad(sparseIndicesGm[gmBase + actualInit],
                                      globalIndexLocal_[mInnerOffset].ReinterpretCast<int32_t>(), copyOutParams);
                 SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                 
@@ -760,7 +702,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                     WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                     copyOutParams.blockLen = (uint16_t)((uint32_t)actualWindow * sizeof(int32_t));
-                    AscendC::DataCopyPad(indiceOutGm[gmBase + actualInit + topkSelectNum],
+                    AscendC::DataCopyPad(sparseIndicesGm[gmBase + actualInit + topkSelectNum],
                                          mrgValueLocal_[mInnerOffset].ReinterpretCast<int32_t>(), copyOutParams);
                     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                 }
@@ -827,7 +769,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         indiceLenCopyParams.blockCount = curGsize;
         indiceLenCopyParams.srcStride = 0;
         indiceLenCopyParams.dstStride = (constInfo_.qSeqSize - 1) * sizeof(uint32_t);
-        AscendC::DataCopyPad(indiceLenGm[indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
+        AscendC::DataCopyPad(sparseSeqLenGm[indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
         
         uint32_t fullStride = constInfo_.qSeqSize * constInfo_.kSeqSize;
         int64_t baseOffset = indiceOutOffset + globalS1Pos * constInfo_.kSeqSize;
@@ -841,7 +783,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
             copyOutParams.blockLen = (uint16_t)(curS1RealS2Len * sizeof(int32_t));
             copyOutParams.srcStride = 0;
             copyOutParams.dstStride = (uint16_t)((fullStride - curS1RealS2Len) * sizeof(int32_t));
-            AscendC::DataCopyPad(indiceOutGm[baseOffset], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+            AscendC::DataCopyPad(sparseIndicesGm[baseOffset], indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         }
     }
