@@ -26,13 +26,13 @@ class MoeEpDispatchOpBuilder(OpBuilder):
         return "npu_moe_ep_dispatch(Tensor context, Tensor x, Tensor? topk_idx, Tensor? topk_weights, " \
                "Tensor? cached_handle_dst_buffer_slot_idx, int ep_world_size, int ep_rank_id, " \
                "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size, " \
-               "*, int expert_alignment=1, bool do_cpu_sync=True) -> (Tensor, Tensor, Tensor, Tensor)"
+               "*, int expert_alignment=1, bool do_cpu_sync=True, int host_pinned_counter_addr=0) -> (Tensor, Tensor, Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_moe_ep_dispatch_meta(context, x, topk_idx, topk_weights, cached_handle_dst_buffer_slot_idx,
                                      ep_world_size, ep_rank_id, num_experts, num_max_tokens_per_rank,
-                                     ccl_buffer_size, *, expert_alignment=1, do_cpu_sync=True):
+                                     ccl_buffer_size, *, expert_alignment=1, do_cpu_sync=True, host_pinned_counter_addr=0):
             torch._check(
                 ep_world_size != 0,
                 lambda: (
@@ -114,13 +114,13 @@ def npu_moe_ep_dispatch(context, x, topk_idx, topk_weights,
                         cached_handle_dst_buffer_slot_idx,
                         ep_world_size, ep_rank_id,
                         num_experts, num_max_tokens_per_rank, ccl_buffer_size,
-                        *, expert_alignment=1, do_cpu_sync=True):
+                        *, expert_alignment=1, do_cpu_sync=True, host_pinned_counter_addr=0):
     return op_module_dispatch.npu_moe_ep_dispatch(
         context, x, topk_idx, topk_weights,
         cached_handle_dst_buffer_slot_idx,
         ep_world_size, ep_rank_id,
         num_experts, num_max_tokens_per_rank, ccl_buffer_size,
-        expert_alignment, do_cpu_sync
+        expert_alignment, do_cpu_sync, host_pinned_counter_addr
     )
 
 
