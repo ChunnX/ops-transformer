@@ -1,6 +1,6 @@
 # aclnnCausalConv1d
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/causal_conv1d)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mamba/causal_conv1d)
 
 ## 产品支持情况
 
@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：完成因果一维卷积（Causal Conv1d）计算，支持前向计算（runMode=0）和状态更新（runMode=1）两种运行模式。算子内部支持 SiLU 激活、缓存索引（cacheIndices）、初始状态模式（initialStateMode）、投机解码（numAcceptedTokens）等特性。
+- 接口功能：完成因果一维卷积（Causal Conv1d）计算，支持前向计算（prefill）和状态更新（decode/update）两种运行模式，模式由输入形状自动推断。算子内部支持 SiLU 激活、缓存索引（cacheIndices）、初始状态模式（initialStateMode）、投机解码（numAcceptedTokens）等特性。
 
 - 支持以下场景：
   - 场景一（prefill场景 — 固定batch）：
@@ -30,8 +30,7 @@
     initial_state_mode: [batch] 或 None
     num_accepted_tokens: 不支持
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
-    run_mode: 0
+    null_block_id: 默认值 0
     y: [batch, seqLen, dim]
     ```
 
@@ -47,8 +46,7 @@
     initial_state_mode: [batch] 或 None
     num_accepted_tokens: 不支持
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
-    run_mode: 0
+    null_block_id: 默认值 0
     y: [cuSeqLen, dim]
     ```
 
@@ -66,8 +64,7 @@
     initial_state_mode: 不支持
     num_accepted_tokens: [batch] 或 None（投机解码场景，仅K=4支持）
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
-    run_mode: 1
+    null_block_id: 默认值 0
     y: [batch, 1, dim]
     ```
 
@@ -83,8 +80,7 @@
     initial_state_mode: 不支持
     num_accepted_tokens: [batch] 或 None（投机解码场景，仅K=4支持）
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
-    run_mode: 1
+    null_block_id: 默认值 0
     y: [cuSeqLen, dim]
     ```
 
@@ -98,7 +94,12 @@
 
   其中，$W$ 为卷积核宽度（支持2、3、4），$w_j$ 为卷积权重，$b$ 为偏置（可选），$\text{Activation}$ 为激活函数（可选，SiLU）。当 `activationMode=0` 时不使用激活函数，`activationMode=1` 时使用 SiLU 激活函数。
 
-  对于 $t < W-1$ 且无历史状态时，输出为零（因果约束）。
+   对于 $t < W-1$ 且无历史状态时，输出为零（因果约束）。
+
+- 运行模式由输入形状自动推断，无需手动指定：
+  - **prefill（前向计算）**：x 为 3D `[B, L, D]` 且 L > 1，或 x 为 2D `[T, D]` 且 `query_start_loc` 中存在段长 > 1。
+  - **decode/update（状态更新）**：x 为 3D `[B, 1, D]`（L == 1），或 x 为 2D `[B, D]` 且无 `query_start_loc`，或 `num_accepted_tokens` 有效。
+  - 推断逻辑见 `causal_conv1d_tiling.cpp` 中 `InferIsFnMode()`。
 
 ## 函数原型
 
@@ -108,15 +109,14 @@
 aclnnStatus aclnnCausalConv1dGetWorkspaceSize(
     const aclTensor *x,
     const aclTensor *weight,
-    const aclTensor *bias,
-    aclTensor       *convStates,
-    const aclTensor *queryStartLoc,
-    const aclTensor *cacheIndices,
-    const aclTensor *initialStateMode,
-    const aclTensor *numAcceptedTokens,
+    aclTensor       *convStatesRef,
+    const aclTensor *biasOptional,
+    const aclTensor *queryStartLocOptional,
+    const aclTensor *cacheIndicesOptional,
+    const aclTensor *initialStateModeOptional,
+    const aclTensor *numAcceptedTokensOptional,
     int64_t         activationMode,
-    int64_t         padSlotId,
-    int64_t         runMode,
+    int64_t         nullBlockId,
     aclTensor       *y,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
@@ -178,17 +178,7 @@ aclnnStatus aclnnCausalConv1d(
       <td>×</td>
     </tr>
     <tr>
-      <td>bias（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>卷积的偏置。</td>
-      <td><ul><li>可为None。</li><li>shape为[dim]。</li></ul></td>
-      <td>数据类型与x一致</td>
-      <td>ND</td>
-      <td>1</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>convStates（aclTensor*）</td>
+      <td>convStatesRef（aclTensor*）</td>
       <td>输入/输出</td>
       <td>缓存状态张量，存储各序列的历史token数据，各序列计算完成后原地更新为最新状态。</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[numCacheLines, stateLen, dim]。</li><li>stateLen ≥ K-1。</li><li>numCacheLines ≥ batch（未提供cacheIndices时）。</li><li>每次调用后，算子将最新状态写回此张量。</li></ul></td>
@@ -198,41 +188,51 @@ aclnnStatus aclnnCausalConv1d(
       <td>√</td>
     </tr>
     <tr>
-      <td>queryStartLoc（aclTensor*）</td>
+      <td>biasOptional（aclTensor*）</td>
+      <td>可选输入</td>
+      <td>卷积的偏置。</td>
+      <td><ul><li>可为None。</li><li>shape为[dim]。</li></ul></td>
+      <td>数据类型与x一致</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>queryStartLocOptional（aclTensor*）</td>
       <td>可选输入</td>
       <td>序列起始位置索引，记录各序列在拼接张量x中的起始位置。</td>
       <td><ul><li>变长序列场景必须提供，固定batch场景可为None。</li><li>shape为[batch+1]。</li><li>queryStartLoc[0]必须为0，queryStartLoc[-1]必须等于cuSeqLen。</li><li>值必须非递减。</li></ul></td>
-      <td>INT64</td>
+      <td>INT32</td>
       <td>ND</td>
       <td>1</td>
       <td>×</td>
     </tr>
     <tr>
-      <td>cacheIndices（aclTensor*）</td>
+      <td>cacheIndicesOptional（aclTensor*）</td>
       <td>可选输入</td>
       <td>缓存索引，指定每个序列对应的缓存状态在convStates中的索引。</td>
-      <td><ul><li>可为None，此时使用恒等映射（cacheIndices[i]=i），要求numCacheLines≥batch。</li><li>shape为[batch]。</li><li>值∈[0, numCacheLines)，或等于padSlotId表示跳过该序列。</li></ul></td>
-      <td>INT64</td>
+      <td><ul><li>可为None，此时使用恒等映射（cacheIndices[i]=i），要求numCacheLines≥batch。</li><li>shape为[batch]。</li><li>值∈[0, numCacheLines)，或等于nullBlockId表示跳过该序列。</li></ul></td>
+      <td>INT32</td>
       <td>ND</td>
       <td>1</td>
       <td>×</td>
     </tr>
     <tr>
-      <td>initialStateMode（aclTensor*）</td>
+      <td>initialStateModeOptional（aclTensor*）</td>
       <td>可选输入</td>
       <td>初始状态标志，表示各序列是否使用缓存的初始状态。</td>
-      <td><ul><li>仅runMode=0（prefill）支持。</li><li>可为None，此时全部从零初始化。</li><li>shape为[batch]。</li><li>值：0=零初始化，1=使用缓存状态。</li><li>开启时需额外workspace用于快照。</li></ul></td>
-      <td>INT64</td>
+      <td><ul><li>仅prefill（prefill）支持。</li><li>可为None，此时全部从零初始化。</li><li>shape为[batch]。</li><li>值：0=零初始化，1=使用缓存状态。</li><li>开启时需额外workspace用于快照。</li></ul></td>
+      <td>INT32</td>
       <td>ND</td>
       <td>1</td>
       <td>×</td>
     </tr>
     <tr>
-      <td>numAcceptedTokens（aclTensor*）</td>
+      <td>numAcceptedTokensOptional（aclTensor*）</td>
       <td>可选输入</td>
-      <td>投机解码中每个batch已接受的token数。</td>
-      <td><ul><li>仅runMode=1（decode）且K=4支持。</li><li>可为None表示未开启投机解码。</li><li>shape为[batch]。</li><li>值∈[0, seqLen]，0表示全为投机token。</li></ul></td>
-      <td>INT64</td>
+      <td>投机解码中每个batch已接受的token数，用于确定从convStates中读取历史状态的起始位置。</td>
+      <td><ul><li>仅decode/update（decode）且K=4支持。</li><li>可为None表示未开启投机解码，此时从convStates的最后一个位置开始读取历史。</li><li>shape为[batch]。</li><li>值∈[0, seqLen]，0表示全为投机token。</li><li>算子从convStates的第(numAcceptedTokens[i]-1)个位置开始读取历史状态进行卷积计算。</li></ul></td>
+      <td>INT32</td>
       <td>ND</td>
       <td>1</td>
       <td>×</td>
@@ -248,20 +248,10 @@ aclnnStatus aclnnCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>padSlotId（int64_t）</td>
+      <td>nullBlockId（int64_t）</td>
       <td>属性</td>
       <td>用于跳过不需要参与计算的batch。</td>
-      <td><ul><li>当cacheIndices[i]==padSlotId时跳过该batch，对应输出填零。</li><li>默认值-1表示不跳过任何batch。</li></ul></td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>runMode（int64_t）</td>
-      <td>属性</td>
-      <td>运行模式。</td>
-      <td><ul><li>取值为0、1：<br>0：前向计算模式（prefill），K为编译时已知常量；<br>1：状态更新模式（decode），K为运行时参数。</li></ul></td>
+      <td><ul><li>当cacheIndices[i]==nullBlockId时跳过该batch，对应输出填零。</li><li>默认值0，但用户应设置为一个不会出现在cacheIndices中的值（如-1），以避免误跳过有效batch。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -321,20 +311,20 @@ aclnnStatus aclnnCausalConv1d(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>传入的x、weight、convStates、y是空指针。</td>
+      <td>传入的x、weight、convStatesRef、y是空指针。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
       <td>561002</td>
       <td>
       输入和输出的数据类型不在支持的范围内。<br>
-      x、weight、convStates、bias、y的数据类型不一致。<br>
-      queryStartLoc、cacheIndices、initialStateMode、numAcceptedTokens的数据类型不是INT64。<br>
+      x、weight、convStatesRef、biasOptional、y的数据类型不一致。<br>
+      queryStartLocOptional、cacheIndicesOptional、initialStateModeOptional、numAcceptedTokensOptional的数据类型不是INT32。<br>
       输入、输出Tensor的shape不在支持的范围内。<br>
       输入的属性不在支持的范围内。<br>
       dim不满足对齐要求（需满足 (dim * dtypeSize) % 32 == 0）。<br>
       K不在[2,4]范围内。<br>
-      runMode=0（prefill）时未提供queryStartLoc（变长场景）。<br>
+      prefill（prefill）时未提供queryStartLocOptional（变长场景）。<br>
       </td>
     </tr>
   </tbody></table>
@@ -391,32 +381,32 @@ aclnnStatus aclnnCausalConv1d(
   - prefill场景（固定batch）：
     - x为3维[batch, seqLen, dim]。
     - weight为2维[K, dim]，K∈{2,3,4}。
-    - convStates为3维[batch, stateLen, dim]，stateLen ≥ K-1。
+    - convStatesRef为3维[batch, stateLen, dim]，stateLen ≥ K-1。
     - dim范围[64, 16384]且满足 (dim * dtypeSize) % 32 == 0，batch范围[1, 1024]，seqLen范围[1, 16384]。
   - prefill场景（变长序列）：
     - x为2维[cuSeqLen, dim]。
-    - queryStartLoc为1维[batch+1]，必须提供。
-    - convStates为3维[numCacheLines, stateLen, dim]，numCacheLines ≥ batch。
+    - queryStartLocOptional为1维[batch+1]，必须提供。
+    - convStatesRef为3维[numCacheLines, stateLen, dim]，numCacheLines ≥ batch。
     - cuSeqLen范围[batch, 1024×1024]。
   - decode场景（固定batch）：
     - x为3维[batch, 1, dim]。
     - weight为2维[K, dim]，K∈{2,3,4}。
-    - convStates为3维[batch, stateLen, dim]，stateLen ≥ K-1。
+    - convStatesRef为3维[batch, stateLen, dim]，stateLen ≥ K-1。
   - decode场景（变长序列）：
     - x为2维[cuSeqLen, dim]。
-    - queryStartLoc为1维[batch+1]，必须提供。
+    - queryStartLocOptional为1维[batch+1]，必须提供。
     - cuSeqLen范围[batch, batch×8]。
 
 - 输入值域限制：
-  - queryStartLoc[0]必须为0，queryStartLoc[-1]必须等于cuSeqLen，值必须非递减。
-  - cacheIndices中的值∈[0, numCacheLines)，或等于padSlotId表示跳过。
-  - initialStateMode仅在runMode=0时支持，值∈{0,1}。
-  - numAcceptedTokens仅在runMode=1且K=4时支持，值∈[0, seqLen]。
+  - queryStartLocOptional[0]必须为0，queryStartLocOptional[-1]必须等于cuSeqLen，值必须非递减。
+  - cacheIndicesOptional中的值∈[0, numCacheLines)，或等于nullBlockId表示跳过。
+  - initialStateModeOptional仅在prefill时支持，值∈{0,1}。
+  - numAcceptedTokensOptional仅在decode/update且K=4时支持，值∈[0, seqLen]。
 
 - 卷积核宽度K仅支持2、3、4。
-- runMode=0（前向计算模式）时，K为编译时已知常量，支持FnRolling快速路径优化。
-- runMode=1（状态更新模式）时，K为运行时参数。
-- 当存在initialStateMode输入时，算子需要额外的workspace用于初始状态快照。
+- prefill（前向计算模式）时，K为编译时已知常量，支持FnRolling快速路径优化。
+- decode/update（状态更新模式）时，K为运行时参数。
+- 当存在initialStateModeOptional输入时，算子需要额外的workspace用于初始状态快照。
 
 ## 调用示例
 
@@ -530,7 +520,7 @@ int main()
     std::vector<int16_t> weightHostData(GetShapeSize(weightShape), 1);
     std::vector<int16_t> biasHostData(GetShapeSize(biasShape), 0);
     std::vector<int16_t> convStatesHostData(GetShapeSize(convStatesShape), 0);
-    std::vector<int64_t> queryStartLocHostData = {0, seqLen, batchSize * seqLen};
+    std::vector<int32_t> queryStartLocHostData = {0, seqLen, batchSize * seqLen};
     std::vector<int16_t> yHostData(GetShapeSize(yShape), 0);
 
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
@@ -541,7 +531,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(convStatesHostData, convStatesShape, &convStatesDeviceAddr, aclDataType::ACL_BF16, &convStates);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(queryStartLocHostData, queryStartLocShape, &queryStartLocDeviceAddr, aclDataType::ACL_INT64, &queryStartLoc);
+    ret = CreateAclTensor(queryStartLocHostData, queryStartLocShape, &queryStartLocDeviceAddr, aclDataType::ACL_INT32, &queryStartLoc);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(yHostData, yShape, &yDeviceAddr, aclDataType::ACL_BF16, &y);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -549,11 +539,10 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     int64_t activationMode = 0;
-    int64_t padSlotId = -1;
-    int64_t runMode = 0;
+    int64_t nullBlockId = 0;
 
-    ret = aclnnCausalConv1dGetWorkspaceSize(x, weight, bias, convStates, queryStartLoc, nullptr, nullptr, nullptr,
-                                            activationMode, padSlotId, runMode, y, &workspaceSize, &executor);
+    ret = aclnnCausalConv1dGetWorkspaceSize(x, weight, convStates, bias, queryStartLoc, nullptr, nullptr, nullptr,
+                                            activationMode, nullBlockId, y, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 

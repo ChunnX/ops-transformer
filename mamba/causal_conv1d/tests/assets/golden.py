@@ -11,16 +11,60 @@
 # ----------------------------------------------------------------------------
 """CausalConv1d golden function."""
 
-__golden__ = {
-    "kernel": {
-        "causal_conv1d": "CausalConv1d"
-    }
-}
+__golden__ = {"kernel": {"causal_conv1d": "CausalConv1d"}}
+
+__input__ = {"kernel": {"causal_conv1d": "CausalConv1d_input"}}
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 import ml_dtypes
+
+
+def CausalConv1d_input(*input_arrays, **kwargs):
+    """Custom input generator for causal_conv1d.
+    
+    Generates proper query_start_loc values (monotonically increasing sequence)
+    instead of random values.
+    """
+    input_arrays = list(input_arrays)
+
+    # Find query_start_loc in inputs (5th input, index 4)
+    # Input order: x, weight, conv_states, bias, query_start_loc, ...
+    if len(input_arrays) > 4 and input_arrays[4] is not None:
+        qsl = input_arrays[4]
+        if qsl.ndim == 1 and qsl.shape[0] > 1:
+            # Generate monotonically increasing sequence
+            batch_size = qsl.shape[0] - 1
+
+            # Get x shape to determine total tokens
+            x = input_arrays[0]
+            if x.ndim == 2:
+                # Varlen mode: x shape is (total_tokens, dim)
+                total_tokens = x.shape[0]
+            else:
+                # Batch mode: x shape is (batch, seq_len, dim)
+                total_tokens = x.shape[0] * x.shape[1]
+
+            # Calculate sequence length from test case name if available
+            testcase_name = kwargs.get('testcase_name', '')
+            seq_len = None
+            if '_s' in testcase_name:
+                # Extract seq_len from testcase name like "fn_varlen_b16_s16_d4096_w4_bias_act0_qsl"
+                import re
+                match = re.search(r'_s(\d+)_', testcase_name)
+                if match:
+                    seq_len = int(match.group(1))
+
+            # If seq_len not found, calculate from total tokens
+            if seq_len is None:
+                seq_len = total_tokens // batch_size
+
+            # Generate query_start_loc: [0, seq_len, 2*seq_len, ..., total_tokens]
+            qsl_values = np.arange(batch_size + 1, dtype=np.int32) * seq_len
+            input_arrays[4] = qsl_values
+
+    return input_arrays
 
 
 def _to_torch(arr):
@@ -38,29 +82,29 @@ def _silu(x: torch.Tensor) -> torch.Tensor:
     return x * torch.sigmoid(x)
 
 
-def _split_sequences(x: torch.Tensor, query_start_loc: torch.Tensor | None
-                     ) -> tuple[list[torch.Tensor], int]:
+def _split_sequences(
+        x: torch.Tensor, query_start_loc: torch.Tensor | None
+) -> tuple[list[torch.Tensor], int]:
     if x.ndim == 3:
         B = x.shape[0]
         return [x[i] for i in range(B)], B
     qsl = query_start_loc.to(torch.int64)
     B = qsl.shape[0] - 1
-    return [x[qsl[i] : qsl[i + 1]] for i in range(B)], B
+    return [x[qsl[i]:qsl[i + 1]] for i in range(B)], B
 
 
 def CausalConv1d(
-    x,                  # [T, D] varlen or [B, S, D] batch
-    weight,             # [W, D]
-    bias,               # [D] or None
-    conv_states,        # [num_cache_lines, state_len, D]
-    query_start_loc=None,            # [batch+1] int32
-    cache_indices=None,              # [batch] int32
-    initial_state_mode=None,         # [batch] int32
-    num_accepted_tokens=None,        # [batch] int32
+    x,  # [T, D] varlen or [B, S, D] batch
+    weight,  # [W, D]
+    conv_states,  # [num_cache_lines, state_len, D]
+    bias=None,  # [D] or None
+    query_start_loc=None,  # [batch+1] int32
+    cache_indices=None,  # [batch] int32
+    initial_state_mode=None,  # [batch] int32
+    num_accepted_tokens=None,  # [batch] int32
     *,
-    activation_mode=0,   # attr
-    pad_slot_id=-1,      # attr
-    run_mode=0,          # attr
+    activation_mode=0,  # attr
+    null_block_id=0,  # attr
     **extra,
 ):
     """
@@ -69,19 +113,34 @@ def CausalConv1d(
     Args:
         x: input tensor (REQUIRED) - [T, D] or [B, S, D]
         weight: weight tensor (REQUIRED) - [W, D]
-        bias: bias tensor (OPTIONAL) - [D]
         conv_states: conv states tensor (REQUIRED) - [num_cache_lines, state_len, D]
+        bias: bias tensor (OPTIONAL) - [D]
         query_start_loc: query start locations (OPTIONAL) - [batch+1] int32
         cache_indices: cache indices (OPTIONAL) - [batch] int32
         initial_state_mode: initial state mode (OPTIONAL) - [batch] int32
         num_accepted_tokens: number of accepted tokens (OPTIONAL) - [batch] int32
         activation_mode: activation mode, 0=Identity, 1=SiLU - Attr
-        pad_slot_id: pad slot id - Attr
-        run_mode: run mode, 0=forward, 1=update - Attr
+        null_block_id: null block id - Attr
         **extra: extended parameters
     """
-    # Step 1: convert inputs to torch tensors and cast to float32
+    # Infer run mode from shapes (same logic as InferIsFnMode in tiling)
     x_t = _to_torch(x)
+    is_fn_mode = False
+    if num_accepted_tokens is not None:
+        is_fn_mode = False  # update mode
+    elif x_t.ndim == 3:
+        seq_len = x_t.shape[1]
+        is_fn_mode = seq_len > 1
+    elif x_t.ndim == 2:
+        if query_start_loc is None:
+            is_fn_mode = False  # update mode
+        else:
+            qsl = _to_torch(query_start_loc)
+            batch = qsl.shape[0] - 1
+            x_first_dim = x_t.shape[0]
+            is_fn_mode = x_first_dim > batch
+
+    # Step 1: convert inputs to torch tensors and cast to float32
     orig_dtype = x_t.dtype  # save before float32 cast for output conversion
     x_t = x_t.to(torch.float32)
     w_t = _to_torch(weight).to(torch.float32)
@@ -106,7 +165,7 @@ def CausalConv1d(
     else:
         qsl = qsl_t.to(torch.int64)
         B = qsl.shape[0] - 1
-        xs = [x_t[qsl[i] : qsl[i + 1]] for i in range(B)]
+        xs = [x_t[qsl[i]:qsl[i + 1]] for i in range(B)]
         is_3d = False
 
     cache_idx = ci_t.tolist() if ci_t is not None else list(range(B))
@@ -118,24 +177,35 @@ def CausalConv1d(
     # Step 3: compute per sequence
     for i in range(B):
         ci = int(cache_idx[i])
-        if ci == pad_slot_id:
+        if ci_t is not None and ci == null_block_id:
             seq_len = x_t.shape[1] if is_3d else xs[i].shape[0]
-            ys.append(torch.zeros(seq_len, x_t.shape[-1], dtype=torch.float32, device=device))
+            ys.append(
+                torch.zeros(seq_len,
+                            x_t.shape[-1],
+                            dtype=torch.float32,
+                            device=device))
             continue
 
         seq_x = xs[i]
-        has_init = (run_mode == 1) or bool(ism[i])
+        has_init = (not is_fn_mode) or bool(ism[i])
         if has_init:
             history = cs_t[ci][:W - 1].to(torch.float32)
         else:
-            history = torch.zeros(W - 1, seq_x.shape[-1], dtype=torch.float32, device=device)
+            history = torch.zeros(W - 1,
+                                  seq_x.shape[-1],
+                                  dtype=torch.float32,
+                                  device=device)
 
         # Step 4: causal conv1d via F.conv1d(groups=dim)
         padded = torch.cat([history, seq_x], dim=0)
         w = w_t.T.unsqueeze(1)
         b = b_t
-        result = F.conv1d(padded.T.unsqueeze(0), w, bias=b,
-                           stride=1, padding=0, groups=seq_x.shape[-1]).squeeze(0).T
+        result = F.conv1d(padded.T.unsqueeze(0),
+                          w,
+                          bias=b,
+                          stride=1,
+                          padding=0,
+                          groups=seq_x.shape[-1]).squeeze(0).T
 
         # Step 5: zero first W-1 outputs when no prior history
         if not has_init:
@@ -148,7 +218,8 @@ def CausalConv1d(
         ys.append(result.to(dtype))
 
         # Step 7: write back conv_states
-        write_history = history if has_init else torch.zeros(W - 1, seq_x.shape[-1], dtype=torch.float32, device=device)
+        write_history = history if has_init else torch.zeros(
+            W - 1, seq_x.shape[-1], dtype=torch.float32, device=device)
         write_padded = torch.cat([write_history, seq_x], dim=0)
         cs_out[ci] = write_padded[-state_len:].to(dtype)
 
@@ -179,13 +250,33 @@ if __name__ == "__main__":
     bias = torch.randn(D, dtype=torch.float16)
     cs_fwd = torch.zeros(B, W - 1, D, dtype=torch.float16)
 
-    cs_out, y = CausalConv1d(x.numpy(), weight.numpy(), bias.numpy(), cs_fwd.numpy(),
-                              None, None, None, None, activation_mode=1, run_mode=0)
-    print(f"fwd:    y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}")
+    cs_out, y = CausalConv1d(x.numpy(),
+                             weight.numpy(),
+                             cs_fwd.numpy(),
+                             bias.numpy(),
+                             None,
+                             None,
+                             None,
+                             None,
+                             activation_mode=1,
+                             run_mode=0)
+    print(
+        f"fwd:    y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}"
+    )
 
     x_upd = x[:, -1:, :]
-    cs_out, y = CausalConv1d(x_upd.numpy(), weight.numpy(), bias.numpy(), cs_fwd.numpy(),
-                              None, None, None, None, activation_mode=1, run_mode=1)
-    print(f"update: y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}")
+    cs_out, y = CausalConv1d(x_upd.numpy(),
+                             weight.numpy(),
+                             cs_fwd.numpy(),
+                             bias.numpy(),
+                             None,
+                             None,
+                             None,
+                             None,
+                             activation_mode=1,
+                             run_mode=1)
+    print(
+        f"update: y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}"
+    )
 
     print("All passed.")
