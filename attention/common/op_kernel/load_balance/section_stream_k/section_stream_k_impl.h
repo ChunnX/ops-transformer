@@ -318,14 +318,15 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     }
 
     // calc section
-    uint32_t tokenSize = 0U;
+    uint64_t tokenSize = 0U;
     uint32_t bn2Idx = 0U;
-    uint32_t tokenCost;
+    uint64_t tokenCost;
+    uint64_t kvTypeSize = static_cast<uint64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType()));
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
         uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
-            tokenCost = s2Size * headDim * GetDataTypeByteSize(baseInfo.GetKvDataType()) * 2U;     // 2: k and v
-            if (!IsWithinTolerance(m_param.l2Byte, 0U, tokenSize + tokenCost) && tokenSize != 0U) {
+            tokenCost = s2Size * headDim * kvTypeSize * 2U;     // 2: k and v
+            if ((static_cast<uint64_t>(m_param.l2Byte) > tokenSize + tokenCost) && tokenSize != 0U) {
                 gridInfo.sectionBn2Idx.emplace_back(bn2Idx);
                 gridInfo.sectionNum++;
                 tokenSize = 0U;

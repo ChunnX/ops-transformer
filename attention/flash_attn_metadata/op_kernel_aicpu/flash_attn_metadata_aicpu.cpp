@@ -139,7 +139,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     deviceInfo.aicCoreMaxNum = aicCoreNum_;
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
     deviceInfo.aicCoreMinNum = 1;
-    deviceInfo.aivCoreMaxNum = aivCoreNum_;
+    deviceInfo.aivCoreMinNum = aivCoreNum_;
 
     // baseInfo
     // actual seq size
