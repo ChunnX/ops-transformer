@@ -584,12 +584,12 @@ public:
         GlobalTensor<float8_e4m3_t> valueGmTensor;
         valueGmTensor.SetGlobalBuffer((__gm__ float8_e4m3_t *)(valueGm + gmVOffset));
 
-        uint32_t s2RealSizeAlign32 = (s2RealSize + MXFP_GROUP_SIZE - 1) / MXFP_GROUP_SIZE * MXFP_GROUP_SIZE; // s2: L1行步长32对齐
+        uint32_t s2RealSizeAlign64 = (s2RealSize + MXFP_DIVISOR_SIZE - 1) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE; // s2: L1行步长64对齐(匹配mm2 LoadData)
 
         DataCopyParams intriParams;
         intriParams.blockCount = 4;
         intriParams.blockLen = s2RealSize; // s2: 实际行数
-        intriParams.dstStride = s2RealSizeAlign32 - s2RealSize; // s2: L1填充
+        intriParams.dstStride = s2RealSizeAlign64 - s2RealSize; // s2: L1填充
         intriParams.srcStride = s2BaseSize - s2RealSize; // s2: GM跳转步长
 
         DataCopy(vL1Tensor, valueGmTensor, intriParams);
@@ -617,12 +617,11 @@ public:
         vScaleGmTensor.SetGlobalBuffer((__gm__ float8_e8m0_t *)(deScaleVGm + gmVScaleOffset));
 
         // V Scale走PA_NZ格式(与K/V Data相同，非PA_NZ_K_SCALE)
-        uint32_t s2RealSizeAlign32 = (s2RealSize + MXFP_GROUP_SIZE - 1) / MXFP_GROUP_SIZE * MXFP_GROUP_SIZE; // s2: L1行步长32对齐
-
+        // V Scale的L1行步长不对齐，参考CopyValueScaleSlice: rowCount = s2RealSize
         DataCopyParams intriParams;
         intriParams.blockCount = 4;
         intriParams.blockLen = s2RealSize; // s2: 实际行数
-        intriParams.dstStride = s2RealSizeAlign32 - s2RealSize; // s2: L1填充
+        intriParams.dstStride = 0; // s2: 不对齐，V Scale的LoadData不依赖L1行步长
         intriParams.srcStride = s2BaseSize - s2RealSize; // s2: GM跳转步长
 
         DataCopy(vScaleL1Tensor, vScaleGmTensor, intriParams);
@@ -637,7 +636,7 @@ public:
         LocalTensor<float8_e8m0_t> aScaleL1Tensor = L1_PScale.Get<float8_e8m0_t>();
 
         constexpr uint32_t mSplitSize = 32;  // P的M维度=s1
-        uint32_t kSplitSize = realK; // s2: P的K维度=s2
+        uint32_t kSplitSize = (realK + MXFP_DIVISOR_SIZE - 1) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE; // s2: 64对齐匹配MmadParams.k
 
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
@@ -669,7 +668,7 @@ public:
         LocalTensor<float8_e8m0_t> bScaleL1Tensor = L1_KV.Get<float8_e8m0_t>()[ivkuse * singleVBufferOffset + mm2VSize];
 
         // V矩阵(B矩阵)转置: N×K = d×s2 → ifTranspose=true, M方向=s2, K方向=d
-        uint32_t kSplitSize = s2RealSize; // s2: 转置后M方向
+        uint32_t kSplitSize = (s2RealSize + MXFP_DIVISOR_SIZE - 1) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE; // s2: 64对齐匹配MmadParams.k
         constexpr uint32_t nSplitSize = 128;
 
         LoadData2DParamsV2 loadData2DParamsB;
