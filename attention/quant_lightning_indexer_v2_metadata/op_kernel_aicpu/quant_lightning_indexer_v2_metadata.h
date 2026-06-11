@@ -21,9 +21,9 @@
 namespace optiling {
 
 // Constants
-inline constexpr uint32_t AIC_CORE_NUM = 36;
-inline constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t QLI_V2_META_SIZE = 1024;
+inline constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+inline constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t QLI_V2_METADATA_TOTAL_SIZE = 1024;
 using QLI_V2_METADATA_T = int32_t;
 
 inline constexpr uint32_t QLI_V2_METADATA_SIZE = 8;
@@ -59,7 +59,7 @@ inline constexpr uint32_t QLD_V2_M_NUM_INDEX = 6;
 __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, bool isAIV = false)
 {
     if (isAIV) {
-        return QLI_V2_METADATA_SIZE * AIC_CORE_NUM + QLD_V2_METADATA_SIZE * coreIdx + metaIdx;
+        return QLI_V2_METADATA_SIZE * AIC_CORE_MAX_NUM + QLD_V2_METADATA_SIZE * coreIdx + metaIdx;
     } else {
         return QLI_V2_METADATA_SIZE * coreIdx + metaIdx;
     }
@@ -67,13 +67,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct qliV2MetaData {
-        uint32_t qliV2Metadata[AIC_CORE_NUM][QLI_V2_METADATA_SIZE];
-        uint32_t qldV2Metadata[AIV_CORE_NUM][QLD_V2_METADATA_SIZE];
+    struct qliV2Metadata {
+        uint32_t qliV2Metadata[AIC_CORE_MAX_NUM][QLI_V2_METADATA_SIZE];
+        uint32_t qldV2Metadata[AIV_CORE_MAX_NUM][QLD_V2_METADATA_SIZE];
     };
 };
 
-static_assert(QLI_V2_META_SIZE * sizeof(QLI_V2_METADATA_T) >= sizeof(detail::qliV2MetaData));
+static_assert(QLI_V2_METADATA_TOTAL_SIZE * sizeof(QLI_V2_METADATA_T) >= sizeof(detail::qliV2Metadata));
 };
 
 #endif
