@@ -13,9 +13,6 @@
  * \brief
  */
 
-#ifndef NPU_OPS_TRANSFORMER_ACLNN_COMMON_H
-#define NPU_OPS_TRANSFORMER_ACLNN_COMMON_H
-
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
 #include <dlfcn.h>
 #include <vector>
@@ -25,22 +22,18 @@
 #include <climits>
 #include <functional>
 #include <type_traits>
-#include <unordered_map>
 #include <ATen/Tensor.h>
 #include <acl/acl_base.h>
 #include <acl/acl_rt.h>
-#include <c10/core/StorageImpl.h>
 #include <c10/util/Exception.h>
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
 #include "torch_npu/csrc/framework/interface/EnvVariables.h"
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
-#include "torch_npu/csrc/core/npu/NPUFormat.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
 #include "torch_npu/csrc/flopcount/FlopCount.h"
 #endif
-
 #define NPU_NAME_SPACE at_npu::native
 
 using aclOpExecutor = struct aclOpExecutor;
@@ -100,8 +93,8 @@ const int g_toAclOffset = 256;
     _(at::ScalarType::Bits4x2, ACL_DT_UNDEFINED)                                                                       \
     _(at::ScalarType::Bits8, ACL_DT_UNDEFINED)                                                                         \
     _(at::ScalarType::Bits16, ACL_DT_UNDEFINED)                                                                        \
-    _(at::ScalarType::Float8_e5m2, C_DT_FLOAT8_E5M2)                                                                    \
-    _(at::ScalarType::Float8_e4m3fn, C_DT_FLOAT8_E4M3FN)                                                                \
+    _(at::ScalarType::Float8_e5m2, ACL_FLOAT8_E5M2)                                                                    \
+    _(at::ScalarType::Float8_e4m3fn, ACL_FLOAT8_E4M3FN)                                                                \
     _(at::ScalarType::Float8_e5m2fnuz, ACL_DT_UNDEFINED)                                                               \
     _(at::ScalarType::Float8_e4m3fnuz, ACL_DT_UNDEFINED)                                                               \
     _(at::ScalarType::UInt16, ACL_UINT16)                                                                              \
@@ -121,11 +114,11 @@ const int g_toAclOffset = 256;
     _(at::ScalarType::Int5, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int6, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int7, ACL_DT_UNDEFINED)                                                                          \
-    _(at::ScalarType::Float8_e8m0fnu, C_DT_FLOAT8_E8M0)                                                                \
+    _(at::ScalarType::Float8_e8m0fnu, ACL_FLOAT8_E8M0)                                                                \
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
-constexpr int kATenScalarTypeToAclDataTypeTable[] = {
+constexpr aclDataType kATenScalarTypeToAclDataTypeTable[] = {
 #define DEFINE_ENUM(_1, n) n,
     AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
 #undef DEFINE_ENUM
@@ -154,14 +147,14 @@ enum class DType {
     ENUM_OFFSET(INT4, ACL_INT4)
     ENUM_OFFSET(UINT1, ACL_UINT1)
     ENUM_OFFSET(COMPLEX32, ACL_COMPLEX32)
-    ENUM_OFFSET(HIFLOAT8, C_DT_HIFLOAT8)
-    ENUM_OFFSET(FLOAT8_E5M2, C_DT_FLOAT8_E5M2)
-    ENUM_OFFSET(FLOAT8_E4M3FN, C_DT_FLOAT8_E4M3FN)
-    ENUM_OFFSET(FLOAT8_E8M0, C_DT_FLOAT8_E8M0)
-    ENUM_OFFSET(FLOAT6_E3M2, C_DT_FLOAT6_E3M2)
-    ENUM_OFFSET(FLOAT6_E2M3, C_DT_FLOAT6_E2M3)
-    ENUM_OFFSET(FLOAT4_E2M1, C_DT_FLOAT4_E2M1)
-    ENUM_OFFSET(FLOAT4_E1M2, C_DT_FLOAT4_E1M2)
+    ENUM_OFFSET(HIFLOAT8, ACL_HIFLOAT8)
+    ENUM_OFFSET(FLOAT8_E5M2, ACL_FLOAT8_E5M2)
+    ENUM_OFFSET(FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN)
+    ENUM_OFFSET(FLOAT8_E8M0, ACL_FLOAT8_E8M0)
+    ENUM_OFFSET(FLOAT6_E3M2, ACL_FLOAT6_E3M2)
+    ENUM_OFFSET(FLOAT6_E2M3, ACL_FLOAT6_E2M3)
+    ENUM_OFFSET(FLOAT4_E2M1, ACL_FLOAT4_E2M1)
+    ENUM_OFFSET(FLOAT4_E1M2, ACL_FLOAT4_E1M2)
 };
 
 namespace op_infer {
@@ -190,23 +183,9 @@ typedef struct {
 
 inline bool Is4BitDtype(const aclDataType acl_data_type)
 {
-    return acl_data_type == C_DT_FLOAT4_E2M1 || acl_data_type == C_DT_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
+    return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
 }
 
-static std::unordered_map<aclFormat, aclFormat> FORMAT_FAKE_TO_REAL {
-    { ACL_FORMAT_FRACTAL_NZ_C0_16, ACL_FORMAT_FRACTAL_NZ_C0_32 },
-    { ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_FRACTAL_NZ }
-};
-
-static inline bool IsOpInputBaseFormat(const at::Tensor &at_tensor)
-{
-    if (!torch_npu::utils::is_npu(at_tensor)) {
-        return true;
-    }
-    const auto format = static_cast<aclFormat>(at_npu::native::get_npu_format(at_tensor));
-    return (format == ACL_FORMAT_ND) || (format == ACL_FORMAT_NCHW) ||
-           (format == ACL_FORMAT_NHWC) || (format == ACL_FORMAT_NCDHW);
-}
 
 inline void CollectB4ShapeInfo(const at::Tensor &at_tensor,
                                c10::SmallVector<int64_t, MAX_DIM_NUM>& wrapperStride,
@@ -271,7 +250,7 @@ aclDataType ConvertToAclDataType(const at::ScalarType &data_type)
                 ") is out of range: [0, ",
                 static_cast<int64_t>(at::ScalarType::NumOptions),
                 "]")
-    auto acl_dtype = static_cast<aclDataType>(kATenScalarTypeToAclDataTypeTable[dtype_index]);
+    auto acl_dtype = kATenScalarTypeToAclDataTypeTable[dtype_index];
     TORCH_CHECK(acl_dtype != ACL_DT_UNDEFINED,
                 std::string(c10::toString(data_type)) + " has not been supported")
     return acl_dtype;
@@ -439,60 +418,55 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
     aclDataType acl_data_type = ConvertToAclDataType(scalar_data_type);
     TORCH_CHECK(
         acl_data_type != ACL_DT_UNDEFINED, std::string(c10::toString(scalar_data_type)) + " has not been supported")
-    std::vector<int64_t> storageDims;
-    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperStride = op_infer::array_to_small_vector(at_tensor.strides());
-    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperShape = op_infer::array_to_small_vector(at_tensor.sizes());
+    c10::SmallVector<int64_t, 5> storageDims;
+    // if acl_data_type is ACL_STRING, storageDims is empty.
+    auto itemsize = at_tensor.itemsize();
+    if (itemsize == 0) {
+        AT_ERROR("When ConvertType, tensor item size of cannot be zero.");
+        return nullptr;
+    }
+    if (acl_data_type != ACL_STRING) {
+        storageDims.push_back(at_tensor.storage().nbytes() / itemsize);
+    }
 
     const auto dimNum = at_tensor.sizes().size();
     aclFormat format = ACL_FORMAT_ND;
-    const bool isBaseFormat = IsOpInputBaseFormat(at_tensor);
-    if (!isBaseFormat) {
-        format = static_cast<aclFormat>(at_npu::native::get_npu_format(at_tensor));
-        if (acl_data_type != ACL_STRING) {
-            TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
-            storageDims = at_npu::native::get_npu_storage_sizes(at_tensor);
-        }
-    } else {
-        switch (dimNum) {
-            case 3:
-                format = ACL_FORMAT_NCL;
-                break;
-            case 4:
-                format = ACL_FORMAT_NCHW;
-                break;
-            case 5:
-                format = ACL_FORMAT_NCDHW;
-                break;
-            default:
-                format = ACL_FORMAT_ND;
-        }
-        if (acl_data_type != ACL_STRING) {
-            TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
-            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
-        }
-    }
-
-    if (acl_data_type != ACL_STRING && Is4BitDtype(acl_data_type)) {
-        CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape);
-        storageDims.back() *= FP4_IN_INT8;
-        if (!isBaseFormat) {
-            auto realFormat = FORMAT_FAKE_TO_REAL.find(format);
-            TORCH_CHECK(realFormat != FORMAT_FAKE_TO_REAL.end(), "not support convert ", format, ".");
-            format = realFormat->second;
-        }
+    switch (dimNum) {
+        case 3:
+            format = ACL_FORMAT_NCL;
+            break;
+        case 4:
+            format = ACL_FORMAT_NCHW;
+            break;
+        case 5:
+            format = ACL_FORMAT_NCDHW;
+            break;
+        default:
+            format = ACL_FORMAT_ND;
     }
 
     if (at_tensor.unsafeGetTensorImpl()->is_wrapped_number()) {
         c10::Scalar expScalar = ConvertTensorToScalar(at_tensor);
         at::Tensor aclInput = CopyScalarToDevice(expScalar, scalar_data_type);
-        return aclCreateTensor(aclInput.sizes().data(), aclInput.sizes().size(), acl_data_type,
-                               aclInput.strides().data(), aclInput.storage_offset(), format, storageDims.data(),
-                               storageDims.size(), const_cast<void *>(aclInput.storage().data()));
+        return aclCreateTensor(aclInput.sizes().data(),
+            aclInput.sizes().size(),
+            acl_data_type,
+                               aclInput.strides().data(),
+            aclInput.storage_offset(),
+            format,
+            storageDims.data(),
+                               storageDims.size(),
+            const_cast<void *>(aclInput.storage().data()));
     }
 
-    auto acl_tensor =
-        aclCreateTensor(wrapperShape.data(), at_tensor.sizes().size(), acl_data_type, wrapperStride.data(),
-                        at_tensor.storage_offset(), format, storageDims.data(), storageDims.size(),
+    auto acl_tensor = aclCreateTensor(at_tensor.sizes().data(),
+        at_tensor.sizes().size(),
+        acl_data_type,
+        at_tensor.strides().data(),
+                        at_tensor.storage_offset(),
+        format,
+        storageDims.data(),
+        storageDims.size(),
                         const_cast<void *>(at_tensor.storage().data()));
     return acl_tensor;
 }
@@ -636,46 +610,33 @@ aclTensor *ConvertType(const TensorWrapper &tensor_r)
     }
 
     aclDataType acl_data_type = tensor_r.dtype;
-    std::vector<int64_t> storageDims;
+    c10::SmallVector<int64_t, MAX_DIM_NUM> storageDims;
     c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperStride = op_infer::array_to_small_vector(at_tensor.strides());
     c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperShape = op_infer::array_to_small_vector(at_tensor.sizes());
 
     const auto dimNum = at_tensor.sizes().size();
     aclFormat format = ACL_FORMAT_ND;
-    const bool isBaseFormat = IsOpInputBaseFormat(at_tensor);
-    if (!isBaseFormat) {
-        format = static_cast<aclFormat>(at_npu::native::get_npu_format(at_tensor));
-        if (acl_data_type != ACL_STRING) {
-            TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
-            storageDims = at_npu::native::get_npu_storage_sizes(at_tensor);
-        }
-    } else {
-        switch (dimNum) {
-            case 3:
-                format = ACL_FORMAT_NCL;
-                break;
-            case 4:
-                format = ACL_FORMAT_NCHW;
-                break;
-            case 5:
-                format = ACL_FORMAT_NCDHW;
-                break;
-            default:
-                format = ACL_FORMAT_ND;
-        }
-        if (acl_data_type != ACL_STRING) {
-            TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
-            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
-        }
+    switch (dimNum) {
+        case 3:
+            format = ACL_FORMAT_NCL;
+            break;
+        case 4:
+            format = ACL_FORMAT_NCHW;
+            break;
+        case 5:
+            format = ACL_FORMAT_NCDHW;
+            break;
+        default:
+            format = ACL_FORMAT_ND;
     }
-
-    if (acl_data_type != ACL_STRING && Is4BitDtype(acl_data_type)) {
-        CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape);
-        storageDims.back() *= FP4_IN_INT8;
-        if (!isBaseFormat) {
-            auto realFormat = FORMAT_FAKE_TO_REAL.find(format);
-            TORCH_CHECK(realFormat != FORMAT_FAKE_TO_REAL.end(), "not support convert ", format, ".");
-            format = realFormat->second;
+    // if acl_data_type is ACL_STRING, storageDims is empty.
+    if (acl_data_type != ACL_STRING) {
+        TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
+        if (Is4BitDtype(acl_data_type)) {
+            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize() * FP4_IN_INT8);
+            CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape);
+        } else {
+            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
         }
     }
 
@@ -956,5 +917,3 @@ auto DecodeDevice(Ts&... args) -> at::Device
             unInitMemFunc(nullptr, false);                                                                  \
         }                                                                                                   \ 
     } while (false)
-
-#endif  // NPU_OPS_TRANSFORMER_ACLNN_COMMON_H

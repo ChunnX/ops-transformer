@@ -31,8 +31,8 @@ using namespace Ops::Transformer::OpTiling;
 
 constexpr uint32_t X_INDEX = 0;
 constexpr uint32_t WEIGHT_INDEX = 1;
-constexpr uint32_t BIAS_INDEX = 2;
-constexpr uint32_t CONV_STATES_INDEX = 3;
+constexpr uint32_t CONV_STATES_INDEX = 2;
+constexpr uint32_t BIAS_INDEX = 3;
 constexpr uint32_t QUERY_START_LOC_INDEX = 4;
 constexpr uint32_t CACHE_INDICES_INDEX = 5;
 constexpr uint32_t INITIAL_STATE_MODE_INDEX = 6;
@@ -66,8 +66,7 @@ struct CausalConv1dCompileInfo {};
 
 struct CausalConv1dAttrInfo {
     int64_t activationMode = 0;
-    int64_t padSlotId = -1;
-    int64_t runMode = 0;
+    int64_t nullBlockId = 0;
 };
 
 struct CausalConv1dInputInfo {
@@ -140,11 +139,12 @@ private:
     ge::graphStatus ParseWeightShape();
     ge::graphStatus ParseConvStatesShape();
     ge::graphStatus ParseQueryStartLoc(bool isFnMode);
-    ge::graphStatus ParseCacheIndices(int64_t padSlotId);
+    ge::graphStatus ParseCacheIndices(int64_t nullBlockId);
     ge::graphStatus ParseInitialStateMode(bool isFnMode);
     ge::graphStatus ParseNumAcceptedTokens(bool isFnMode);
     ge::graphStatus ValidateNumAcceptedTokensValues();
     ge::graphStatus ParseBias();
+    bool InferIsFnMode();
 
     int64_t ComputeUbLimitedBaseDim();
 };
@@ -214,8 +214,7 @@ ge::graphStatus CausalConv1dTiling::SetupFnInitStateWorkspace()
 ge::graphStatus CausalConv1dTiling::GetAttrsInfo(CausalConv1dAttrInfo &attrInfo)
 {
     constexpr int32_t kActivationModeAttrIndex = 0;
-    constexpr int32_t kPadSlotIdAttrIndex = 1;
-    constexpr int32_t kRunModeAttrIndex = 2;
+    constexpr int32_t kNullBlockIdAttrIndex = 1;
 
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -229,20 +228,12 @@ ge::graphStatus CausalConv1dTiling::GetAttrsInfo(CausalConv1dAttrInfo &attrInfo)
                                                       "only supports 0 (none) or 1 (silu)"),
                 return ge::GRAPH_FAILED);
 
-    const int64_t *padSlotIdPtr = attrs->GetAttrPointer<int64_t>(kPadSlotIdAttrIndex);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, padSlotIdPtr);
-    attrInfo.padSlotId = *padSlotIdPtr;
+    const int64_t *nullBlockIdPtr = attrs->GetAttrPointer<int64_t>(kNullBlockIdAttrIndex);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, nullBlockIdPtr);
+    attrInfo.nullBlockId = *nullBlockIdPtr;
 
-    const int64_t *runModePtr = attrs->GetAttrPointer<int64_t>(kRunModeAttrIndex);
-    attrInfo.runMode = (runModePtr != nullptr) ? *runModePtr : 0;
-    OP_CHECK_IF(attrInfo.runMode != 0 && attrInfo.runMode != 1,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "run_mode",
-                                                      std::to_string(attrInfo.runMode).c_str(),
-                                                      "only supports 0 (prefill) or 1 (decode/update)"),
-                return ge::GRAPH_FAILED);
-
-    OP_LOGI(context_, "AttrsInfo: activationMode[%ld], padSlotId[%ld], runMode[%ld].", attrInfo.activationMode,
-            attrInfo.padSlotId, attrInfo.runMode);
+    OP_LOGI(context_, "AttrsInfo: activationMode[%ld], nullBlockId[%ld].", attrInfo.activationMode,
+            attrInfo.nullBlockId);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -263,42 +254,8 @@ ge::graphStatus CausalConv1dTiling::ValidateDimSize(int64_t dim, ge::DataType xD
 ge::graphStatus CausalConv1dTiling::ResolveQslData(int64_t qslSize, int64_t cuSeqlen)
 {
     const gert::Tensor *queryStartLocTensor = context_->GetOptionalInputTensor(QUERY_START_LOC_INDEX);
-    queryStartLocData_ = (queryStartLocTensor != nullptr) ? queryStartLocTensor->GetData<int32_t>() : nullptr;
-    if (queryStartLocData_ == nullptr) {
+    if (queryStartLocTensor == nullptr) {
         return ge::GRAPH_SUCCESS;
-    }
-    OP_CHECK_IF(queryStartLocData_[0] != 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "query_start_loc[0]",
-                                                      std::to_string(queryStartLocData_[0]).c_str(), "must be 0"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(queryStartLocData_[qslSize - 1] != cuSeqlen,
-                OP_LOGE_FOR_INVALID_SHAPESIZE(context_->GetNodeName(), "query_start_loc",
-                                              std::to_string(queryStartLocData_[qslSize - 1]).c_str(),
-                                              ("cuSeqlen=" + std::to_string(cuSeqlen)).c_str()),
-                return ge::GRAPH_FAILED);
-    for (int64_t i = 0; i + 1 < qslSize; ++i) {
-        const int64_t cur = queryStartLocData_[i];
-        const int64_t nxt = queryStartLocData_[i + 1];
-        OP_CHECK_IF(cur < 0 || cur > cuSeqlen,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        context_->GetNodeName(), ("query_start_loc[" + std::to_string(i) + "]").c_str(),
-                        std::to_string(cur).c_str(),
-                        ("valid range [0, cuSeqlen=" + std::to_string(cuSeqlen) + "]").c_str()),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(nxt < 0 || nxt > cuSeqlen,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        context_->GetNodeName(), ("query_start_loc[" + std::to_string(i + 1) + "]").c_str(),
-                        std::to_string(nxt).c_str(),
-                        ("valid range [0, cuSeqlen=" + std::to_string(cuSeqlen) + "]").c_str()),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            nxt < cur,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                context_->GetNodeName(),
-                ("query_start_loc[" + std::to_string(i) + "] and query_start_loc[" + std::to_string(i + 1) + "]")
-                    .c_str(),
-                (std::to_string(cur) + " > " + std::to_string(nxt)).c_str(), "query_start_loc must be non-decreasing"),
-            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -520,7 +477,7 @@ ge::graphStatus CausalConv1dTiling::ParseQueryStartLoc(bool isFnMode)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CausalConv1dTiling::ParseCacheIndices(int64_t padSlotId)
+ge::graphStatus CausalConv1dTiling::ParseCacheIndices(int64_t nullBlockId)
 {
     auto cIdxShapePtr = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
     if (cIdxShapePtr == nullptr) {
@@ -551,28 +508,8 @@ ge::graphStatus CausalConv1dTiling::ParseCacheIndices(int64_t padSlotId)
                 return ge::GRAPH_FAILED);
 
     const gert::Tensor *cIdxTensor = context_->GetOptionalInputTensor(CACHE_INDICES_INDEX);
-    const int32_t *cIdxData = (cIdxTensor != nullptr) ? cIdxTensor->GetData<int32_t>() : nullptr;
-    if (cIdxData == nullptr) {
+    if (cIdxTensor == nullptr) {
         return ge::GRAPH_SUCCESS;
-    }
-    for (int64_t i = 0; i < inputInfo_.batch; ++i) {
-        const int64_t v = cIdxData[i];
-        if (v == padSlotId) {
-            continue;
-        }
-        OP_CHECK_IF(v > static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
-                                                          ("cache_indices[" + std::to_string(i) + "]").c_str(),
-                                                          std::to_string(v).c_str(), "exceeds int32 range"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(v < 0 || v >= inputInfo_.numCacheLines,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        context_->GetNodeName(), ("cache_indices[" + std::to_string(i) + "]").c_str(),
-                        std::to_string(v).c_str(),
-                        ("valid range [0, " + std::to_string(inputInfo_.numCacheLines) +
-                         "), pad_slot_id=" + std::to_string(padSlotId))
-                            .c_str()),
-                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -612,17 +549,8 @@ ge::graphStatus CausalConv1dTiling::ParseInitialStateMode(bool isFnMode)
                 return ge::GRAPH_FAILED);
 
     const gert::Tensor *initStTensor = context_->GetOptionalInputTensor(INITIAL_STATE_MODE_INDEX);
-    const int32_t *initStData = (initStTensor != nullptr) ? initStTensor->GetData<int32_t>() : nullptr;
-    if (initStData == nullptr) {
+    if (initStTensor == nullptr) {
         return ge::GRAPH_SUCCESS;
-    }
-    for (int64_t i = 0; i < inputInfo_.batch; ++i) {
-        const int64_t v = initStData[i];
-        OP_CHECK_IF(v != 0 && v != 1,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
-                                                          ("initial_state_mode[" + std::to_string(i) + "]").c_str(),
-                                                          std::to_string(v).c_str(), "only supports 0 or 1"),
-                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -684,34 +612,8 @@ ge::graphStatus CausalConv1dTiling::ParseNumAcceptedTokens(bool isFnMode)
 ge::graphStatus CausalConv1dTiling::ValidateNumAcceptedTokensValues()
 {
     const gert::Tensor *numAccTensor = context_->GetOptionalInputTensor(NUM_ACCEPTED_TOKENS_INDEX);
-    const int32_t *numAccData = (numAccTensor != nullptr) ? numAccTensor->GetData<int32_t>() : nullptr;
-    if (numAccData == nullptr) {
+    if (numAccTensor == nullptr) {
         return ge::GRAPH_SUCCESS;
-    }
-    for (int64_t i = 0; i < inputInfo_.batch; ++i) {
-        const int64_t a = numAccData[i];
-        OP_CHECK_IF(a < 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
-                                                          ("num_accepted_tokens[" + std::to_string(i) + "]").c_str(),
-                                                          std::to_string(a).c_str(), "must be >= 0"),
-                    return ge::GRAPH_FAILED);
-
-        if (!IsVarlenInputModeKey(inputInfo_.inputModeKey)) {
-            OP_CHECK_IF(a > inputInfo_.seqLen,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            context_->GetNodeName(), ("num_accepted_tokens[" + std::to_string(i) + "]").c_str(),
-                            std::to_string(a).c_str(),
-                            ("must be <= seqlen=" + std::to_string(inputInfo_.seqLen)).c_str()),
-                        return ge::GRAPH_FAILED);
-        } else if (queryStartLocData_ != nullptr) {
-            const int64_t lenI = queryStartLocData_[i + 1] - queryStartLocData_[i];
-            OP_CHECK_IF(a > lenI,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            context_->GetNodeName(), ("num_accepted_tokens[" + std::to_string(i) + "]").c_str(),
-                            std::to_string(a).c_str(),
-                            ("must be <= varlen segment length=" + std::to_string(lenI)).c_str()),
-                        return ge::GRAPH_FAILED);
-        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -759,7 +661,7 @@ ge::graphStatus CausalConv1dTiling::ParseBias()
 
 ge::graphStatus CausalConv1dTiling::ParseCausalConv1dInputInfo(const CausalConv1dAttrInfo &attrInfo)
 {
-    const bool isFnMode = (attrInfo.runMode == 0);
+    const bool isFnMode = InferIsFnMode();
 
     // Parse order and data flow (all functions write to inputInfo_ directly):
     //
@@ -771,8 +673,8 @@ ge::graphStatus CausalConv1dTiling::ParseCausalConv1dInputInfo(const CausalConv1
     //  └─ ParseCacheIndices ──► hasCacheIndices (needs batch, numCacheLines)
     //
     //  ┌─ ParseInitialStateMode ──► hasInitialStateMode (needs batch)
-    //  ├─ ParseNumAcceptedTokens ──► hasNumAcceptedTokens (needs batch, kernelWidth, stateLen, seqLen, inputModeKey)
-    //  └─ ParseBias ───────────────► hasBias (needs dim)
+    //  ├─ ParseNumAcceptedTokens ──► hasNumAcceptedTokens (needs batch, kernelWidth, stateLen, seqLen,
+    //  inputModeKey) └─ ParseBias ───────────────► hasBias (needs dim)
 
     // Phase 1: x shape + batch refinement
     OP_CHECK_IF(ParseXShape(isFnMode) != ge::GRAPH_SUCCESS, OP_LOGE(context_, "ParseXShape error"),
@@ -785,7 +687,7 @@ ge::graphStatus CausalConv1dTiling::ParseCausalConv1dInputInfo(const CausalConv1
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(ParseConvStatesShape() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "ParseConvStatesShape error"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ParseCacheIndices(attrInfo.padSlotId) != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(ParseCacheIndices(attrInfo.nullBlockId) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "ParseCacheIndices error"), return ge::GRAPH_FAILED);
 
     // Phase 3: remaining optional inputs
@@ -896,7 +798,60 @@ bool CausalConv1dTiling::ChooseBaseDim(int64_t cuSeqlen, int64_t dim)
 using namespace CausalConv1d;
 
 // ============================================================
-// Tiling entry
+// Inference: determine prefill vs decode from tensor shapes
+// ============================================================
+
+bool CausalConv1dTiling::InferIsFnMode()
+{
+    auto xShapePtr = context_->GetInputShape(X_INDEX);
+    if (xShapePtr == nullptr) {
+        OP_LOGE(context_, "InferIsFnMode: x shape is null");
+        return true; // default to prefill
+    }
+    auto xShape = EnsureNotScalar(xShapePtr->GetStorageShape());
+    int64_t xDims = xShape.GetDimNum();
+
+    // num_accepted_tokens is only meaningful in decode mode — strong signal
+    auto numAccShapePtr = context_->GetOptionalInputShape(NUM_ACCEPTED_TOKENS_INDEX);
+    if (numAccShapePtr != nullptr) {
+        auto numAccShape = EnsureNotScalar(numAccShapePtr->GetStorageShape());
+        if (numAccShape.GetDimNum() > 0 && numAccShape.GetDim(0) > 0) {
+            return false; // update
+        }
+    }
+
+    if (xDims == 3) {
+        // 3D: [B, L, D].  L > 1 => prefill; L == 1 => update
+        int64_t seqLen = xShape.GetDim(1);
+        return seqLen > 1;
+    }
+
+    // 2D: [N, D]
+    auto qslShapePtr = context_->GetOptionalInputShape(QUERY_START_LOC_INDEX);
+    if (qslShapePtr == nullptr) {
+        // No query_start_loc => update batch mode
+        return false;
+    }
+    auto qslShape = EnsureNotScalar(qslShapePtr->GetStorageShape());
+    if (qslShape.GetDimNum() == 0 || qslShape.GetDim(0) == 0) {
+        return false;
+    }
+
+    // Has query_start_loc — infer mode from shape relationship
+    // prefill varlen: x is (cu_seqlen, dim), cu_seqlen > batch (multiple tokens per segment)
+    // update varlen: x is (batch, dim), cu_seqlen == batch (one token per segment)
+    int64_t qslSize = qslShape.GetDim(0);
+    int64_t xFirstDim = xShape.GetDim(0);
+    int64_t batch = qslSize - 1;
+
+    if (xFirstDim > batch) {
+        return true; // prefill varlen
+    }
+    return false; // update varlen
+}
+
+// ============================================================
+// Tiling data serialization
 // ============================================================
 
 ge::graphStatus CausalConv1dTiling::SetTilingData(const CausalConv1dAttrInfo &attrInfo)
@@ -905,7 +860,7 @@ ge::graphStatus CausalConv1dTiling::SetTilingData(const CausalConv1dAttrInfo &at
     OP_CHECK_NULL_WITH_CONTEXT(context_, tiling);
 
     tiling->activationMode = attrInfo.activationMode;
-    tiling->padSlotId = attrInfo.padSlotId;
+    tiling->nullBlockId = attrInfo.nullBlockId;
     tiling->dim = inputInfo_.dim;
     tiling->cuSeqlen = inputInfo_.cuSeqlen;
     tiling->seqLen = inputInfo_.seqLen;
@@ -924,12 +879,12 @@ ge::graphStatus CausalConv1dTiling::SetTilingData(const CausalConv1dAttrInfo &at
 
     OP_LOGI(context_,
             "TilingData: dim[%ld], cuSeqlen[%ld], seqLen[%ld], batch[%ld], kernelWidth[%ld], "
-            "stateLen[%ld], numCacheLines[%ld], activationMode[%ld], padSlotId[%ld], "
+            "stateLen[%ld], numCacheLines[%ld], activationMode[%ld], nullBlockId[%ld], "
             "baseDim[%d], coBatch[%d], tokensPerBlock[%ld], tokenBlockCnt[%ld], "
             "hasNumAcceptedTokens[%d], hasCacheIndices[%d], hasInitialStateMode[%d], "
             "hasInitStateWorkspace[%d], hasBias[%d].",
             tiling->dim, tiling->cuSeqlen, tiling->seqLen, tiling->batch, tiling->kernelWidth, tiling->stateLen,
-            tiling->numCacheLines, tiling->activationMode, tiling->padSlotId, tiling->baseDim, tiling->coBatch,
+            tiling->numCacheLines, tiling->activationMode, tiling->nullBlockId, tiling->baseDim, tiling->coBatch,
             tiling->tokensPerBlock, tiling->tokenBlockCnt, static_cast<int32_t>(tiling->hasNumAcceptedTokens),
             static_cast<int32_t>(tiling->hasCacheIndices), static_cast<int32_t>(tiling->hasInitialStateMode),
             static_cast<int32_t>(tiling->hasInitStateWorkspace), static_cast<int32_t>(inputInfo_.hasBias));
