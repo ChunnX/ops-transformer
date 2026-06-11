@@ -20,7 +20,7 @@
 #include "err/ops_err.h"
 #include "fused_infer_attention_score_tiling_index.h"
 #include "fused_infer_attention_score_tiling_info_parser.h"
-
+#include "fused_infer_attention_score_tiling_utils.h"
 
 using std::map;
 using std::pair;
