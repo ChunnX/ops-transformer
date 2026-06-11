@@ -182,9 +182,9 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
     GlobalTensor<int32_t>& sparseSeqLenGm, int64_t s1Index)
 {
     int64_t sparseSeqLenFlatIdx = (runParam.boIdx * constInfo.n1Size + runParam.n1oIdx) * constInfo.maxQb + s1Index;
-    runParam.sparseSeqLen = sparseSeqLenGm.GetValue(sparseSeqLenFlatIdx);
-    runParam.s2LoopEndIdx = (runParam.sparseSeqLen + 2 - 1) / 2;     // sparse块为128  基本块为256
-    return runParam.sparseSeqLen <= 0;
+    runParam.actSparseLen = sparseSeqLenGm.GetValue(sparseSeqLenFlatIdx);
+    runParam.s2LoopEndIdx = (runParam.actSparseLen + 2 - 1) / 2;     // sparse块为128  基本块为256
+    return runParam.actSparseLen <= 0;
 }
 
 TEMPLATE_INTF

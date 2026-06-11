@@ -155,6 +155,8 @@ private:
 
     __aicore__ inline void IterateBmm1Nd(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+        RunInfo &runInfo, ConstInfo &constInfo);
 
     // --------------------Bmm2--------------------------
     __aicore__ inline bool IsGS1Merge(ConstInfo &constInfo);
@@ -251,7 +253,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(
         attenMaskInfo->attenMaskS2Size = sharedParams->attenMaskS2Size;
         if constexpr (isPa) {
             this->blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blocktablePtr);
-            this->kvCacheBlockSize = sharedParams->blockSize;
+            // this->kvCacheBlockSize = sharedParams->blockSize;
             this->maxBlockNumPerBatch = sharedParams->blockTableDim2;
             if (sharedParams->paLayoutType == 2) { // NZ下paLayoutType == 2
                 pa_kvLayout = KVLAYOUT::NZ;
@@ -328,7 +330,10 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo &runInfo,
     ConstInfo &constInfo)
 {
-    coordInfo[runInfo.taskIdMod3].s2Coord = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
+    // BSA sparse: sparse block indices 已在 SetRunInfo 中预计算
+    coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] = runInfo.sparseBlkIdx1;
+    coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] = runInfo.sparseBlkIdx2;
+    coordInfo[runInfo.taskIdMod3].s2Coord = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
     coordInfo[runInfo.taskIdMod3].curBIdx = runInfo.boIdx;
     if (constInfo.isKvContinuous == 0) {
         coordInfo[runInfo.taskIdMod3].curBIdx = 0;
@@ -343,7 +348,11 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
     CalcS1Coord(runInfo, constInfo);
     CalcS2Coord(runInfo, constInfo);
     if constexpr (isFp8) {
-        IterateBmm1Nd(outputBuf, runInfo, constInfo);
+        if constexpr (useDn) {
+            IterateBmm1Dn(outputBuf, runInfo, constInfo);
+        } else {
+            IterateBmm1Nd(outputBuf, runInfo, constInfo);
+        }
     }
 }
 
@@ -357,28 +366,42 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
     mm2A.WaitCrossCore();
     mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
     LocalTensor<INPUT_T> mm2BTensor = mm2B.GetTensor<INPUT_T>();
+    int32_t remainBlocks = runInfo.actSparseLen - runInfo.s2LoopCount * 2;
     if constexpr (isPa) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
-        startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
+        startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] * constInfo.kvSparseBlockSize;
         startPos.dIdx = 0;
         PAShape shape;
-        shape.blockSize = kvCacheBlockSize;
+        shape.blockSize = constInfo.kvSparseBlockSize;
         shape.headNum = constInfo.n2Size;
         shape.headDim = constInfo.dSizeV;
         shape.actHeadDim = constInfo.dSizeV;
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
-        shape.copyRowNum = runInfo.s2RealSize;
+        shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
         shape.pageStride = constInfo.paBlockStride;
         shape.rowStride = constInfo.combineDim;
         if constexpr (isFp8) {
-            shape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
+            shape.copyRowNumAlign = (shape.copyRowNum + 31) >> 5 << 5;
         } else {
-            shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+            shape.copyRowNumAlign = (shape.copyRowNum + 15) >> 4 << 4;
         }
         GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+
+        if (remainBlocks >= 2) {
+            startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] * constInfo.kvSparseBlockSize;
+            shape.copyRowNum = runInfo.s2SparseBlk2RealSize;
+            if constexpr (isFp8) {
+                shape.copyRowNumAlign = (shape.copyRowNum + 31) >> 5 << 5;
+            } else {
+                shape.copyRowNumAlign = (shape.copyRowNum + 15) >> 4 << 4;
+            }
+            uint32_t halfOffset = runInfo.s2SparseBlk1RealSize * constInfo.dSizeV;
+            LocalTensor<INPUT_T> mm2BTensor2 = mm2BTensor[halfOffset];
+            GmCopyInToL1PA<INPUT_T>(mm2BTensor2, mm2BGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+        }
     } else {
         uint64_t gmOffset = runInfo.keyOffset;
         if (constInfo.dSize != constInfo.dSizeV) {
@@ -393,13 +416,19 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
 
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
     mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
+    uint32_t actualS2RealSize = (uint32_t)runInfo.s2SparseBlk1RealSize;
+    if (remainBlocks >= 2) {
+        actualS2RealSize += (uint32_t)runInfo.s2SparseBlk2RealSize;
+    }
     MMParam param = {(uint32_t)s1BaseSize,  // singleM 128
                     (uint32_t)constInfo.dSizeV, // singleN 128
-                    (uint32_t)runInfo.s2RealSize,  // singleK
-                    false,    // isLeftTranspose
+                    (uint32_t)actualS2RealSize,  // singleK
+                    useDn,    // isLeftTranspose
                     false     // isRightTranspose
                     };
-    param.realM = (uint32_t)runInfo.s1RealSize;
+    if constexpr (!useDn) {
+        param.realM = (uint32_t)runInfo.s1RealSize;
+    }
     mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
     if constexpr (isFp8) {
         MatmulFull<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
@@ -455,11 +484,16 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
         fixpipeParams.nSize = constInfo.dSizeV; // L0C上的bmm1结果矩阵N方向的size大小
     }
 
-    fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
-    bool isS1Odd = (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
-    if (IsGS1Merge(constInfo) && isS1Odd) {
-        fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
+    if constexpr (useDn) {
+        fixpipeParams.mSize = s1BaseSize;
+        fixpipeParams.srcStride = ((s1BaseSize + 15) / 16) * 16;
+    } else {
+        fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
+        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
+        bool isS1Odd = (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
+        if (IsGS1Merge(constInfo) && isS1Odd) {
+            fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
+        }
     }
     if constexpr (bmm2Write2Ub) {
         fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
@@ -472,6 +506,106 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
     fixpipeParams.params.dstNdStride = 0;
     Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
+    outputBuf.SetCrossCore();
+}
+
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void
+BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+                                           RunInfo &runInfo, ConstInfo &constInfo)
+{
+    Buffer<BufferType::L1> mm1A;
+    Buffer<BufferType::L1> mm1B;
+    if (unlikely(runInfo.s2LoopCount == 0)) {
+        mm1B = l1QBuffers.Get();
+        mm1B.Wait<HardEvent::MTE1_MTE2>();
+        LocalTensor<INPUT_T> mm1BTensor = mm1B.GetTensor<INPUT_T>();
+        CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize,
+                               constInfo.dSize, constInfo.mm1Ka);
+        mm1B.Set<HardEvent::MTE2_MTE1>();
+    } else {
+        mm1B = l1QBuffers.GetPre();
+        mm1B.Set<HardEvent::MTE2_MTE1>();
+    }
+    mm1A = l1KBuffers.Get();
+    mm1A.Wait<HardEvent::MTE1_MTE2>();
+    LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
+    int32_t remainBlocks = runInfo.actSparseLen - runInfo.s2LoopCount * 2;
+    if constexpr (isPa) {
+        Position startPos;
+        startPos.bIdx = runInfo.boIdx;
+        startPos.n2Idx = runInfo.n2oIdx;
+        startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] * constInfo.kvSparseBlockSize;
+        startPos.dIdx = 0;
+        PAShape shape;
+        shape.blockSize = constInfo.kvSparseBlockSize;
+        shape.headNum = constInfo.n2Size;
+        shape.headDim = constInfo.dSize;
+        shape.actHeadDim = constInfo.dSize;
+        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+        shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
+        shape.pageStride = constInfo.paBlockStride;
+        shape.rowStride = constInfo.combineDim;
+        shape.copyRowNumAlign = (shape.copyRowNum + 15) >> 4 << 4;
+        GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
+        GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+
+        if (remainBlocks >= 2) {
+            startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] * constInfo.kvSparseBlockSize;
+            shape.copyRowNum = runInfo.s2SparseBlk2RealSize;
+            shape.copyRowNumAlign = (shape.copyRowNum + 15) >> 4 << 4;
+            uint32_t halfOffset = runInfo.s2SparseBlk1RealSize * constInfo.dSize;
+            LocalTensor<INPUT_T> mm1ATensor2 = mm1ATensor[halfOffset];
+            GmCopyInToL1PA<INPUT_T>(mm1ATensor2, mm1AGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+        }
+    } else {
+        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
+            coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+        CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
+                               constInfo.dSize, constInfo.mm1Kb);
+    }
+    mm1A.Set<HardEvent::MTE2_MTE1>();
+
+    mm1A.Wait<HardEvent::MTE2_MTE1>();
+    mm1B.Wait<HardEvent::MTE2_MTE1>();
+
+    Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
+    mm1ResL0C.Wait<HardEvent::FIX_M>();
+    uint32_t actualS2RealSize = (uint32_t)runInfo.s2SparseBlk1RealSize;
+    if (remainBlocks >= 2) {
+        actualS2RealSize += (uint32_t)runInfo.s2SparseBlk2RealSize;
+    }
+    MMParam param = {actualS2RealSize, (uint32_t)runInfo.s1RealSize, (uint32_t)(constInfo.dSize), 0, 1};
+    MatmulBase<INPUT_T, INPUT_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
+        mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+        param);
+
+    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+        mm1B.Set<HardEvent::MTE1_MTE2>();
+    }
+    mm1A.Set<HardEvent::MTE1_MTE2>();
+
+    mm1ResL0C.Set<HardEvent::M_FIX>();
+    mm1ResL0C.Wait<HardEvent::M_FIX>();
+
+    outputBuf.WaitCrossCore();
+
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+    fixpipeParams.nSize = (runInfo.s1RealSize + 31) >> 5 << 5;
+    fixpipeParams.mSize = actualS2RealSize;
+    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+    if constexpr (useDn && isFp8) {
+        fixpipeParams.dstStride = 64;
+    } else {
+        fixpipeParams.dstStride = fixpipeParams.nSize / 2;
+    }
+    fixpipeParams.dualDstCtl = 2;
+    fixpipeParams.params.ndNum = 1;
+    fixpipeParams.params.srcNdStride = 0;
+    fixpipeParams.params.dstNdStride = 0;
+    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), fixpipeParams);
+    mm1ResL0C.Set<HardEvent::FIX_M>();
     outputBuf.SetCrossCore();
 }
 
@@ -562,7 +696,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
         startPos.dIdx = 0;
         PAShape shape;
-        shape.blockSize = kvCacheBlockSize;
+        shape.blockSize = constInfo.kvSparseBlockSize;
         shape.headNum = constInfo.n2Size;
         shape.headDim = constInfo.dSize;
         shape.actHeadDim = constInfo.dSize;
