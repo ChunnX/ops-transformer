@@ -709,49 +709,6 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void InverseAIV(uint64_t offset, uint32_t inverseVecLen)
-    {
-        PipeBarrier<PIPE_V>();
-        uint64_t inverseBufferOffset = 0;
-        auto row = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto col = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen + inverseVecLen;
-        auto yLocal = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto ei = inverseBuffer_[inverseBufferOffset];
-
-        Duplicate(ei, static_cast<float>(0.0), inverseVecLen);
-        Duplicate(yLocal, static_cast<float>(0.0), inverseVecLen * inverseVecLen);
-        inverseRes_.SetValue(offset, static_cast<float>(1.0));
-
-        uint32_t srcShape[2] = {1, inverseVecLen};
-        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
-        SetFlag<HardEvent::S_V>(eventID);
-        WaitFlag<HardEvent::S_V>(eventID);
-        for (int i = 1; i < inverseVecLen; ++i) {
-            uint32_t curI = i - 1;
-            uint32_t validRows = inverseVecLen - i;
-            Gather(col, attnUbFloat_[offset + i * chunkSize_ + curI],
-                   inverseGatherBuffer_, static_cast<uint32_t>(0), validRows);
-            PipeBarrier<PIPE_V>();
-            uint32_t dstShape[2] = {validRows, inverseVecLen};
-            uint32_t colSrcShape[2] = {validRows, 1};
-            Broadcast<float, BROADCAST_AXIS, 1>(col[inverseVecLen], col, dstShape, colSrcShape);
-            Broadcast<float, BROADCAST_AXIS, 0>(row, inverseRes_[offset + curI * chunkSize_],
-                                                dstShape, srcShape);
-            PipeBarrier<PIPE_V>();
-            MulAddDst(yLocal[i * inverseVecLen], col[inverseVecLen], row, inverseVecLen * validRows);
-            PipeBarrier<PIPE_V>();
-            ei.SetValue(i - 1, static_cast<float>(0.0));
-            ei.SetValue(i, static_cast<float>(1.0));
-            eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
-            SetFlag<HardEvent::S_V>(eventID);
-            WaitFlag<HardEvent::S_V>(eventID);
-            Sub(inverseRes_[offset + i * chunkSize_], ei, yLocal[i * inverseVecLen], inverseVecLen);
-            PipeBarrier<PIPE_V>();
-        }
-    }
 
     __aicore__ inline void GBKCompute(const GlobalTensor<bfloat16_t> gBKWsGm,
                                       const GlobalTensor<bfloat16_t> outKgGm,
