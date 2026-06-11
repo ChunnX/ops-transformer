@@ -340,7 +340,7 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ u
  * @param idxLowLocal 目标桶低八位 256 * 4B 
  * @param nkValueLocal 存储next_k的值 64 * 4B
  * @param topK topK元素
- * @param validLen 有效元素个数:QLICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256)
+ * @param validLen 有效元素个数:SICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256)
  */
 template<bool ISOUTVALUE> // 是否输出VALUE
 __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
@@ -382,7 +382,7 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
     FindKthVFImpl(nkValueBuf, histogramsBuf, idxHighBuf, idxLowBuf);
 
     // filter
-    AscendC::Duplicate(tmpIdxLocal, (uint16_t)(0), QLICommon::Align(topK, (uint32_t)128));
+    AscendC::Duplicate(tmpIdxLocal, (uint16_t)(0), SICommon::Align(topK, (uint32_t)128));
     // 输出大于k-value的值idx
     FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
     // 输出等于k-value的值idx
