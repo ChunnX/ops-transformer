@@ -29,11 +29,11 @@ extern "C" {
 
 namespace {
 
-aclnnStatus CausalConv1dCommonProcess(const aclTensor *x, const aclTensor *weight, const aclTensor *bias,
-                                      aclTensor *convStates, const aclTensor *queryStartLoc,
+aclnnStatus CausalConv1dCommonProcess(const aclTensor *x, const aclTensor *weight, aclTensor *convStates,
+                                      const aclTensor *bias, const aclTensor *queryStartLoc,
                                       const aclTensor *cacheIndices, const aclTensor *initialStateMode,
-                                      const aclTensor *numAcceptedTokens, int64_t activationMode, int64_t padSlotId,
-                                      int64_t runMode, aclTensor *y, uint64_t *workspaceSize, aclOpExecutor **executor)
+                                      const aclTensor *numAcceptedTokens, int64_t activationMode, int64_t nullBlockId,
+                                      aclTensor *y, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto uniqueExecutor = CREATE_EXECUTOR();
 
@@ -67,8 +67,8 @@ aclnnStatus CausalConv1dCommonProcess(const aclTensor *x, const aclTensor *weigh
         CHECK_COND(numAcceptedTokens != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous numAcceptedTokens failed.");
     }
 
-    bool ok = l0op::CausalConv1d(xFinal, weight, bias, convStatesFinal, queryStartLoc, cacheIndices, initialStateMode,
-                                 numAcceptedTokens, activationMode, padSlotId, runMode, y, uniqueExecutor.get());
+    bool ok = l0op::CausalConv1d(xFinal, weight, convStatesFinal, bias, queryStartLoc, cacheIndices, initialStateMode,
+                                 numAcceptedTokens, activationMode, nullBlockId, y, uniqueExecutor.get());
     CHECK_RET(ok, ACLNN_ERR_INNER_TILING_ERROR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -79,19 +79,19 @@ aclnnStatus CausalConv1dCommonProcess(const aclTensor *x, const aclTensor *weigh
 } // namespace
 
 ACLNN_API aclnnStatus aclnnCausalConv1dGetWorkspaceSize(const aclTensor *x, const aclTensor *weight,
-                                                        const aclTensor *bias, aclTensor *convStates,
+                                                        aclTensor *convStates, const aclTensor *bias,
                                                         const aclTensor *queryStartLoc, const aclTensor *cacheIndices,
                                                         const aclTensor *initialStateMode,
                                                         const aclTensor *numAcceptedTokens, int64_t activationMode,
-                                                        int64_t padSlotId, int64_t runMode, aclTensor *y,
-                                                        uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                        int64_t nullBlockId, aclTensor *y, uint64_t *workspaceSize,
+                                                        aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(
         aclnnCausalConv1d,
-        DFX_IN(x, weight, bias, convStates, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens),
+        DFX_IN(x, weight, convStates, bias, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens),
         DFX_OUT(convStates, y));
-    return CausalConv1dCommonProcess(x, weight, bias, convStates, queryStartLoc, cacheIndices, initialStateMode,
-                                     numAcceptedTokens, activationMode, padSlotId, runMode, y, workspaceSize, executor);
+    return CausalConv1dCommonProcess(x, weight, convStates, bias, queryStartLoc, cacheIndices, initialStateMode,
+                                     numAcceptedTokens, activationMode, nullBlockId, y, workspaceSize, executor);
 }
 
 ACLNN_API aclnnStatus aclnnCausalConv1d(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

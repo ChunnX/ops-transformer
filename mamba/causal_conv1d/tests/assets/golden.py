@@ -51,15 +51,15 @@ def _split_sequences(x: torch.Tensor, query_start_loc: torch.Tensor | None
 def CausalConv1d(
     x,                  # [T, D] varlen or [B, S, D] batch
     weight,             # [W, D]
-    bias,               # [D] or None
     conv_states,        # [num_cache_lines, state_len, D]
+    bias=None,           # [D] or None
     query_start_loc=None,            # [batch+1] int32
     cache_indices=None,              # [batch] int32
     initial_state_mode=None,         # [batch] int32
     num_accepted_tokens=None,        # [batch] int32
     *,
     activation_mode=0,   # attr
-    pad_slot_id=-1,      # attr
+    null_block_id=0,      # attr
     run_mode=0,          # attr
     **extra,
 ):
@@ -76,7 +76,7 @@ def CausalConv1d(
         initial_state_mode: initial state mode (OPTIONAL) - [batch] int32
         num_accepted_tokens: number of accepted tokens (OPTIONAL) - [batch] int32
         activation_mode: activation mode, 0=Identity, 1=SiLU - Attr
-        pad_slot_id: pad slot id - Attr
+        null_block_id: null block id - Attr
         run_mode: run mode, 0=forward, 1=update - Attr
         **extra: extended parameters
     """
@@ -118,7 +118,7 @@ def CausalConv1d(
     # Step 3: compute per sequence
     for i in range(B):
         ci = int(cache_idx[i])
-        if ci == pad_slot_id:
+        if ci == null_block_id:
             seq_len = x_t.shape[1] if is_3d else xs[i].shape[0]
             ys.append(torch.zeros(seq_len, x_t.shape[-1], dtype=torch.float32, device=device))
             continue
@@ -179,12 +179,12 @@ if __name__ == "__main__":
     bias = torch.randn(D, dtype=torch.float16)
     cs_fwd = torch.zeros(B, W - 1, D, dtype=torch.float16)
 
-    cs_out, y = CausalConv1d(x.numpy(), weight.numpy(), bias.numpy(), cs_fwd.numpy(),
+    cs_out, y = CausalConv1d(x.numpy(), weight.numpy(), cs_fwd.numpy(), bias.numpy(),
                               None, None, None, None, activation_mode=1, run_mode=0)
     print(f"fwd:    y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}")
 
     x_upd = x[:, -1:, :]
-    cs_out, y = CausalConv1d(x_upd.numpy(), weight.numpy(), bias.numpy(), cs_fwd.numpy(),
+    cs_out, y = CausalConv1d(x_upd.numpy(), weight.numpy(), cs_fwd.numpy(), bias.numpy(),
                               None, None, None, None, activation_mode=1, run_mode=1)
     print(f"update: y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}")
 

@@ -31,13 +31,13 @@ namespace ge {
 * @par Inputs:
 * @li x: Input sequence tensor. 2D varlen shape [cu_seq_len, dim] or 3D batch shape [batch, seqlen, dim].
 * Supports float16, bfloat16.
-* @li weight: Convolution kernel filter. shape [K, dim] where K in {2, 3, 4}.
-* Weight layout: weight[0] applies to x[t], weight[1] to x[t-1], ..., weight[K-1] to x[t-K+1].
-* Same type as x.
-* @li bias: Optional. Convolution bias added after the weighted sum. shape [dim]. Same type as x.
-* @li conv_states: State cache tensor. shape [num_cache_lines, state_len, dim]. Stores historical tokens for
-* each cache line. Updated in-place by this operator. Same type as x.
-* state_len should be >= kernel_width - 1 for prefill, >= kernel_width for decode.
+ * @li weight: Convolution kernel filter. shape [K, dim] where K in {2, 3, 4}.
+ * Weight layout: weight[0] applies to x[t], weight[1] to x[t-1], ..., weight[K-1] to x[t-K+1].
+ * Same type as x.
+ * @li conv_states: State cache tensor. shape [num_cache_lines, state_len, dim]. Stores historical tokens for
+ * each cache line. Updated in-place by this operator. Same type as x.
+ * state_len should be >= kernel_width - 1 for prefill, >= kernel_width for decode.
+ * @li bias: Optional. Convolution bias added after the weighted sum. shape [dim]. Same type as x.
 * @li query_start_loc: Optional. Cumulative token offset for varlen input. shape [batch+1]. int32.
 * Required when x is 2D; None when x is 3D batch.
 * @li cache_indices: Optional. Maps each sequence index to its cache slot in conv_states. shape [batch]. int32.
@@ -50,11 +50,8 @@ namespace ge {
 
 * @par Attributes:
 * @li activation_mode: A optional int. Activation type applied after convolution: 0 = Identity, 1 = SiLU. Default: 0.
-* @li pad_slot_id: A optional int. Cache slot ID treated as padding (skipped). Default: -1 (no padding).
-* @li run_mode: A optional int. Execution mode: 0 = prefill (full sequence forward), 1 = decode (incremental update).
-* Default: 0.
-
-* @par Outputs:
+* @li null_block_id: A optional int. Cache slot ID treated as padding (skipped). Default: 0 (no padding).
+ * @par Outputs:
 * @li conv_states: Updated state cache tensor. Last state_len tokens of (history || x) written back per sequence.
 * Same shape and type as input conv_states.
 * @li y: Output sequence tensor. When run_mode=0, first (W-1) tokens are bias-only if initial_state_mode=0.
@@ -63,15 +60,14 @@ namespace ge {
 REG_OP(CausalConv1d)
     .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))
     .INPUT(weight, TensorType({DT_BF16, DT_FLOAT16}))
-    .OPTIONAL_INPUT(bias, TensorType({DT_BF16, DT_FLOAT16}))
     .INPUT(conv_states, TensorType({DT_BF16, DT_FLOAT16}))
+    .OPTIONAL_INPUT(bias, TensorType({DT_BF16, DT_FLOAT16}))
     .OPTIONAL_INPUT(query_start_loc, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cache_indices, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(initial_state_mode, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(num_accepted_tokens, TensorType({DT_INT32}))
     .ATTR(activation_mode, Int, 0)
-    .ATTR(pad_slot_id, Int, -1)
-    .ATTR(run_mode, Int, 0)
+    .ATTR(null_block_id, Int, 0)
     .OUTPUT(conv_states, TensorType({DT_BF16, DT_FLOAT16}))
     .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))
     .OP_END_FACTORY_REG(CausalConv1d)

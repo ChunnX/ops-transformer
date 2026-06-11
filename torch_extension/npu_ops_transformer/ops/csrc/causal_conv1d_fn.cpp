@@ -10,7 +10,7 @@
 
 /*!
  * \file causal_conv1d_fn.cpp
- * \brief Torch bridge — prefill / chunk-prefill, delegates to aclnnCausalConv1d(runMode=0).
+ * \brief Torch bridge — prefill / chunk-prefill, delegates to aclnnCausalConv1d.
  */
 
 #include <torch/extension.h>
@@ -18,34 +18,25 @@
 
 namespace op_api {
 
-at::Tensor
-npu_causal_conv1d_fn(
-    const at::Tensor &x, const at::Tensor &weight, const c10::optional<at::Tensor> &bias,
-    at::Tensor &conv_states,
-    const c10::optional<at::Tensor> &query_start_loc, const c10::optional<at::Tensor> &cache_indices,
-    const c10::optional<at::Tensor> &has_initial_state, const c10::optional<at::Tensor> &initial_state_idx,
-    const c10::optional<at::Tensor> &num_computed_tokens,
-    const c10::optional<at::Tensor> &block_idx_first_scheduled_token,
-    const c10::optional<at::Tensor> &block_idx_last_scheduled_token,
-    int64_t activation_mode, int64_t pad_slot_id,
-    int64_t null_block_id, int64_t block_size_to_align)
+at::Tensor npu_causal_conv1d_fn(const at::Tensor &x, const at::Tensor &weight, const c10::optional<at::Tensor> &bias,
+                                at::Tensor &conv_states, const c10::optional<at::Tensor> &query_start_loc,
+                                const c10::optional<at::Tensor> &cache_indices,
+                                const c10::optional<at::Tensor> &has_initial_state,
+                                const c10::optional<at::Tensor> &initial_state_idx,
+                                const c10::optional<at::Tensor> &num_computed_tokens,
+                                const c10::optional<at::Tensor> &block_idx_first_scheduled_token,
+                                const c10::optional<at::Tensor> &block_idx_last_scheduled_token,
+                                int64_t activation_mode, int64_t pad_slot_id, int64_t null_block_id,
+                                int64_t block_size_to_align)
 {
-    // TODO: null_block_id, block_size_to_align not yet supported by current aclnnCausalConv1d.
-    (void)null_block_id;
+    // TODO: block_size_to_align not yet supported by current aclnnCausalConv1d.
+    (void)pad_slot_id;
     (void)block_size_to_align;
 
     at::Tensor y = at::empty_like(x);
 
-    int64_t run_mode = 0;  // prefill
-
-    ACLNN_CMD(aclnnCausalConv1d,
-              x, weight, bias, conv_states,
-              query_start_loc, cache_indices,
-              has_initial_state,
-              num_computed_tokens,
-              activation_mode, pad_slot_id,
-              run_mode,
-              y);
+    ACLNN_CMD(aclnnCausalConv1d, x, weight, conv_states, bias, query_start_loc, cache_indices, has_initial_state,
+              num_computed_tokens, activation_mode, null_block_id, y);
 
     return y;
 }

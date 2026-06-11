@@ -23,13 +23,13 @@ namespace CausalConv1d {
 template <typename T, uint32_t inputModeKey, uint32_t widthKey, uint32_t hasBiasKey, uint32_t activationKey>
 class CausalConv1dFn : public CausalConv1d<T, inputModeKey, widthKey, hasBiasKey, activationKey> {
 public:
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR convStates, GM_ADDR queryStartLoc,
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR bias, GM_ADDR queryStartLoc,
                                 GM_ADDR cacheIndices, GM_ADDR initialStateMode, GM_ADDR numAcceptedTokens,
                                 GM_ADDR convStatesOut, GM_ADDR y, GM_ADDR workspace,
                                 const CausalConv1dTilingData *tilingData)
     {
         (void)numAcceptedTokens;
-        this->InitGlobalBuffers(x, weight, bias, convStates, queryStartLoc, cacheIndices, y, convStatesOut, tilingData);
+        this->InitGlobalBuffers(x, weight, convStates, bias, queryStartLoc, cacheIndices, y, convStatesOut, tilingData);
         this->initialStateModeGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(initialStateMode));
         if (tilingData->hasInitStateWorkspace) {
             this->initStateWorkspaceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(workspace));
@@ -394,13 +394,13 @@ protected:
 };
 
 template <typename T, uint32_t inputModeKey, uint32_t widthKey, uint32_t hasBiasKey, uint32_t activationKey>
-__aicore__ inline void RunCausalConv1dFn(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR convStates,
+__aicore__ inline void RunCausalConv1dFn(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR bias,
                                          GM_ADDR queryStartLoc, GM_ADDR cacheIndices, GM_ADDR initialStateMode,
                                          GM_ADDR numAcceptedTokens, GM_ADDR convStatesOut, GM_ADDR y, GM_ADDR workspace,
                                          const CausalConv1dTilingData *tilingData)
 {
     CausalConv1dFn<T, inputModeKey, widthKey, hasBiasKey, activationKey> op;
-    op.Init(x, weight, bias, convStates, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
+    op.Init(x, weight, convStates, bias, queryStartLoc, cacheIndices, initialStateMode, numAcceptedTokens,
             convStatesOut, y, workspace, tilingData);
     op.Process();
 }
