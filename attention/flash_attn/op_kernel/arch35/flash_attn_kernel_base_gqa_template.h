@@ -75,14 +75,27 @@ public:
     using T = typename CubeBlockType::MM_T;
     using ConstInfoX = typename CubeBlockType::ConstInfoX;
 
-    // CV buffers
-    BufferManager<BufferType::GM> gmBufferManager;
-    BufferManager<BufferType::UB> ubBufferManager;
-    BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    // ===== 核间共享 buffer slots（静态 LocalTensor，无 BufferManager / BuffersPolicy）=====
+    LocalTensor<uint8_t> bmm1UbSlot[2];   // bmm1 双缓冲 (UB, AIC→AIV, BOTH)
+    LocalTensor<uint8_t> bmm2UbSlot[2];   // bmm2 双缓冲 (UB, AIC→AIV, BOTH)，仅 BMM2_TOUB
+    LocalTensor<uint8_t> l1PSlot[3];      // l1P 三缓冲 (L1, AIV→AIC, FORWARD)
+    GlobalTensor<T>      bmm2GmSlot[3];   // bmm2 三缓冲 (GM, AIC→AIV, FORWARD)，仅 !BMM2_TOUB
+
+    // ===== 静态 cross-core 事件 ID（避开 6、7，Set/Wait 对称）=====
+    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
+    static constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+    static constexpr uint32_t CC_BMM1_0 = 0U;   // bmm1 ping（BOTH 双向）
+    static constexpr uint32_t CC_BMM1_1 = 1U;   // bmm1 pong
+    static constexpr uint32_t CC_BMM2_0 = 2U;   // bmm2 slot0 / ping
+    static constexpr uint32_t CC_BMM2_1 = 3U;   // bmm2 slot1 / pong
+    static constexpr uint32_t CC_BMM2_2 = 4U;   // bmm2 slot2（仅 GM 三缓冲）
+    static constexpr uint32_t CC_L1P_0  = 5U;   // l1P slot0（FORWARD）
+    static constexpr uint32_t CC_L1P_1  = 8U;   // l1P slot1（跳过 6、7）
+    static constexpr uint32_t CC_L1P_2  = 9U;   // l1P slot2
+    // 注：跨核 barrier 沿用 AscendC 内置 SyncAll() 硬同步接口（占用 flagId [11-14]），
+    // 与上面静态分配的 mode 4 flagId [0-9] 完全不冲突，是 Mix 算子(__mix__(1,2)) 的标准做法。
+    // 不再使用 CrossCoreSetFlag<0> 自实现 barrier ：手动 mode 0 + PIPE_ALL 在某些时序下会
+    // 触发 aicore subErrType 0x4 trap（见 base04_aicore.log），SyncAll 内部封装更稳健。
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> cuSeqLensGmKv;
@@ -98,7 +111,6 @@ public:
     ConstInfoX constInfo;
 
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
-    TPipe *pipe;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
     VecFdBlockType vecFdBlock;
@@ -141,11 +153,6 @@ public:
     // fd metadata
     FDparamsX fdParams_;
 
-    //  Shared buffer between fa and fd
-    TQue<QuePosition::VECOUT, 1> SharedBuffer1[2]; // 共用
-    TQue<QuePosition::VECIN, 1> SharedBuffer2[2];  // 共用
-    TBuf<> SharedBuffer3;                          // 共用
-
     // 非tnd时不使用cuSeqLens，这里保证定义
     typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE>>::type
@@ -166,9 +173,8 @@ public:
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
+                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling)
     {
-        this->pipe = tPipe;
         this->tilingData = tiling;
 
         InitConstInfo();
@@ -207,11 +213,11 @@ public:
             FA_AIV_CORE_NUM * 16U * sectionNum_);
             vecFaBlock.isFd = isFd;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
+                vecFaBlock.InitVecBlock(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
                                         attentionOut, workspace);
                 vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
             } else {
-                vecFaBlock.InitVecBlock(tPipe, seqUsedQ, seqUsedKv, attenMask, learnableSink, softmaxLse, attentionOut,
+                vecFaBlock.InitVecBlock(seqUsedQ, seqUsedKv, attenMask, learnableSink, softmaxLse, attentionOut,
                                         workspace);
                 vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
@@ -220,10 +226,10 @@ public:
 
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, qCuSeqLensParser,
+                cubeBlock.InitCubeBlock(query, key, value, blockTable, qCuSeqLensParser,
                                         kvCuSeqLensParser);
             } else {
-                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, qSeqUsedParser,
+                cubeBlock.InitCubeBlock(query, key, value, blockTable, qSeqUsedParser,
                                         kvSeqUsedParser);
             }
         }
@@ -252,31 +258,34 @@ public:
 
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
     {
-        uint32_t mm1OutDtype = sizeof(T);
+        constexpr uint32_t mm1SlotSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
+        constexpr uint32_t mm2SlotSize = BMM2_TOUB ?
+            (mBaseSize / CV_RATIO * dVBaseSize * sizeof(T)) : 0U;
+        constexpr uint32_t l1PSlotSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
+        constexpr uint32_t bmm1UbBase  = 2U * mm2SlotSize; // bmm2 在前，bmm1 在后
 
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
-        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
-        l1BufferManager.Init(pipe, 524288); // 512 * 1024
-        // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        l1PBuffers.Init(l1BufferManager, mm2LeftSize);
+        // bmm2 双缓冲（仅 BMM2_TOUB）
         if constexpr (BMM2_TOUB) {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
-            bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-        } else {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2);
+            bmm2UbSlot[0] = LocalTensor<uint8_t>(TPosition::VECIN, 0U,          mm2SlotSize);
+            bmm2UbSlot[1] = LocalTensor<uint8_t>(TPosition::VECIN, mm2SlotSize, mm2SlotSize);
         }
-        bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
+        // bmm1 双缓冲
+        bmm1UbSlot[0] = LocalTensor<uint8_t>(TPosition::VECIN, bmm1UbBase,               mm1SlotSize);
+        bmm1UbSlot[1] = LocalTensor<uint8_t>(TPosition::VECIN, bmm1UbBase + mm1SlotSize, mm1SlotSize);
 
-        // GM Buffer
+        // l1P 三缓冲
+        l1PSlot[0] = LocalTensor<uint8_t>(TPosition::A1, 0U,               l1PSlotSize);
+        l1PSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1PSlotSize,      l1PSlotSize);
+        l1PSlot[2] = LocalTensor<uint8_t>(TPosition::A1, 2U * l1PSlotSize, l1PSlotSize);
+
+        // bmm2 GM 三缓冲（仅 !BMM2_TOUB）
         if constexpr (!BMM2_TOUB) {
-            int64_t mm2ResultSize =
-                mBaseSize * constInfo.dBasicBlock; // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
-            int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * mm2ResultSize; // 3为preload次数
-            // SameB模式下V0和V1调用IterateAll的时候填写的地址相同
-            gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
-            bmm2ResGmBuffers.Init(gmBufferManager, mm2ResultSize * sizeof(T));
-            workspace = workspace + constInfo.coreNum * 3 * mm2ResultSize * sizeof(T);
+            int64_t mm2GmSlotElems = mBaseSize * constInfo.dBasicBlock;
+            int64_t prevCoreOffset = constInfo.aicIdx * 3 * mm2GmSlotElems;
+            bmm2GmSlot[0].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset);
+            bmm2GmSlot[1].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset + mm2GmSlotElems);
+            bmm2GmSlot[2].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset + 2 * mm2GmSlotElems);
+            workspace = workspace + constInfo.coreNum * 3 * mm2GmSlotElems * sizeof(T);
         }
     }
 
@@ -362,28 +371,37 @@ public:
 
     __aicore__ inline void CrossCoreBufferInit()
     {
-        if constexpr (BMM2_TOUB) {
-            if ASCEND_IS_AIV {
-                bmm2Buffers.Get().SetCrossCore();
-                bmm2Buffers.Get().SetCrossCore();
-            }
-        }
         if ASCEND_IS_AIV {
-            bmm1Buffers.Get().SetCrossCore();
-            bmm1Buffers.Get().SetCrossCore();
+            // 注意：AIV 侧的 CrossCoreSetFlag 每个 buffer slot 只调用一次，不能加 +AIV0_AIV1_OFFSET。
+            // Ascend 950 mode 4 已经在硬件层做了 AIV→AIC 的 flagId 自动映射：
+            //   - AIV0 SetFlag(N)  →  AIC's flagId N
+            //   - AIV1 SetFlag(N)  →  AIC's flagId N + 16
+            // 如果 AIV 显式调用 SetFlag(N+16)，会落到 AIV 自己的 flagId 16 (超过 AIV 0-10 范围)，
+            // 触发硬件 4-bit 截断 → 等效于 SetFlag(N+16 & 0xF) = SetFlag(N) 重复一次，
+            // 使 AIC 端计数器 +2，与 AIC 端只 Wait 一次的逻辑不对称，进而在 m=0 / S2-split 尾 m 等
+            // 边界场景上引起 stage1OutBuf 读到 stale bmm1 数据，导致整行 attention 输出精度异常。
+            // 对应 common/op_kernel/buffer.h::Buffer<UB>::SetCrossCore() 的 AIV 分支也是单次 Set。
+            if constexpr (BMM2_TOUB) {
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
+            }
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
         }
     }
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
         if ASCEND_IS_AIC {
-            bmm1Buffers.Get().WaitCrossCore();
-            bmm1Buffers.Get().WaitCrossCore();
-        }
-        if constexpr (BMM2_TOUB) {
-            if ASCEND_IS_AIC {
-                bmm2Buffers.Get().WaitCrossCore();
-                bmm2Buffers.Get().WaitCrossCore();
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0 + AIV0_AIV1_OFFSET);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1 + AIV0_AIV1_OFFSET);
+            if constexpr (BMM2_TOUB) {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0 + AIV0_AIV1_OFFSET);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
             }
         }
     }
@@ -628,29 +646,47 @@ public:
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
-        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
+        uint32_t slotIdx = runInfo.loop % 2U;
+        auto bmm1Tensor = bmm1UbSlot[slotIdx].template ReinterpretCast<T>();
+        cubeBlock.IterateBmm1(bmm1Tensor, CC_BMM1_0 + slotIdx, CC_BMM1_0 + slotIdx, runInfo);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
+        uint32_t outSlot = runInfo.loop % 2U;
+        uint32_t l1PIdx  = runInfo.loop % 3U;
+        uint32_t l1PCcId = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
+        auto l1PTensor   = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
         if constexpr (BMM2_TOUB) {
-            cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
+            auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
+            cubeBlock.IterateBmm2(bmm2Tensor, CC_BMM2_0 + outSlot, CC_BMM2_0 + outSlot,
+                                  l1PTensor, l1PCcId, runInfo);
         } else {
-            cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo);
+            cubeBlock.IterateBmm2(bmm2GmSlot[runInfo.loop % 3U],
+                                  CC_BMM2_0 + (runInfo.loop % 3U), 0U,
+                                  l1PTensor, l1PCcId, runInfo);
         }
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
+        uint32_t bmm1Slot = runInfo.loop % 2U;
+        uint32_t l1PIdx   = runInfo.loop % 3U;
+        uint32_t l1PCcId  = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
+        auto l1PTensor    = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
+        auto bmm1Tensor   = bmm1UbSlot[bmm1Slot].template ReinterpretCast<T>();
+        vecFaBlock.ProcessVec1(l1PTensor, l1PCcId, bmm1Tensor, CC_BMM1_0 + bmm1Slot, runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
+        uint32_t outSlot = runInfo.loop % 2U;
         if constexpr (BMM2_TOUB) {
-            this->vecFaBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo);
+            auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
+            vecFaBlock.ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot, runInfo);
         } else {
-            this->vecFaBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo);
+            vecFaBlock.ProcessVec2(bmm2GmSlot[runInfo.loop % 3U],
+                                   CC_BMM2_0 + (runInfo.loop % 3U), runInfo);
         }
     }
 
@@ -781,14 +817,29 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
-        vecFdBlock.InitBuffers(this->pipe, SharedBuffer1, SharedBuffer2, SharedBuffer3);
+        vecFdBlock.InitBuffers();
         AscendC::ICachePreLoad(2);
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
-        SyncAll();
+        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
+        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
+        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                AscendC::PipeBarrier<PIPE_MTE3>();
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+        }
+        // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
+        // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
+        // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
+        // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
+        //   不会触发 aicore subErrType 0x4 timeout-trap。
+        AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
-        SyncAll();
-        vecFdBlock.FreeBuffers(SharedBuffer1, SharedBuffer2);
+        AscendC::SyncAll();
         vecFdBlock.FreeEventID();
     }
 
@@ -827,7 +878,7 @@ public:
         if (constInfo.aicIdx < constInfo.coreNum) {
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {
-                vecFaBlock.InitBuffers(SharedBuffer1, SharedBuffer2, SharedBuffer3);
+                vecFaBlock.InitBuffers();
                 vecFaBlock.AllocEventID();
             } else {
                 cubeBlock.InitBuffers();
