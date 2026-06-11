@@ -99,7 +99,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
 
     if constexpr (hasAtten) {
         if (runParam.nextTokensPerBatch < 0) {
-            uint32_t nextTokensOuterSize = (-runParam.nextTokensPerBatch) / constInfo.s1BaseSize;       // 向下取整
+            int64_t nextTokensOuterSize = (-runParam.nextTokensPerBatch) / constInfo.s1BaseSize;       // 向下取整
             runParam.s1LoopStart = Max(runParam.s1LoopStart, nextTokensOuterSize);
         }
     }
