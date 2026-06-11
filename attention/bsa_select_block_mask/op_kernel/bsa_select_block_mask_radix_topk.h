@@ -948,7 +948,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ReduceGlobalHist(LocalTensor<i
         splitPoint /= 2;
     }
     VToSSync();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_951
     for (int32_t binMask = 0; binMask < static_cast<int32_t>(numValue_); binMask++) {
         int32_t sum = 0;
         for (int32_t i = 0; i < BSAMin(remain, coresInBlock); i++) {
@@ -1035,7 +1035,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ComputeCumSumPrev(
     DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
     DataCopyPad(resTensor, boundaryBinCumSumGm_, copyInParams, padParams);
     MTE2ToSSync();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_1038
     cumSumValuePrev = 0;
     for (int32_t coreId = 0; coreId < static_cast<int32_t>(GetBlockIdx()); coreId++) {
         cumSumValuePrev += resTensor.GetValue(coreId);
@@ -1070,13 +1070,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
                 dataNum);
             MTE2ToVSync();
             Cast(tileHistFp32, resTensor, RoundMode::CAST_NONE, dataNum);
-            BSA_TOPK_PIPE_ALL();
+            // REMOVED_PIPE_ALL_1073
         } else {
             CopyTileHistWs2Ub(resTensor,
                 boundaryBin * static_cast<uint32_t>(tileNum_) + i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
             MTE2ToVSync();
             Cast(tileHistFp32, resTensor, RoundMode::CAST_NONE, dataNum);
-            BSA_TOPK_PIPE_ALL();
+            // REMOVED_PIPE_ALL_1079
         }
 
         int32_t int32Align = UB_BLOCK_SIZE / sizeof(int32_t);
@@ -1092,7 +1092,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
             int32_t curSegLen = BSAMin(segSize, static_cast<int32_t>(dataNum) - segOff);
             ReduceSum(tileHistFp32, tileHistFp32[segOff], tileHistFp32[segOff], curSegLen);
             VToSSync();
-            BSA_TOPK_PIPE_ALL();
+            // REMOVED_PIPE_ALL_1095
             reduceSumValue += static_cast<uint32_t>(static_cast<int32_t>(tileHistFp32.GetValue(0)));
         }
     }
@@ -1101,7 +1101,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
     SToMTE3Sync();
     CopyOutBoundaryBinCumSum(resTensor);
     SyncAll();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_1104
 
     int32_t cumSumValuePrev = 0;
     ComputeCumSumPrev(resTensor, cumSumValuePrev);
@@ -1130,7 +1130,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
                 boundaryBinPrev * static_cast<uint32_t>(tileNum_) + startTileId, dataNum);
             CopyTileTopKWs2Ub(tileTopK, startTileId, dataNum);
             MTE2ToSSync();
-            BSA_TOPK_PIPE_ALL();
+            // REMOVED_PIPE_ALL_1133
 
             for (int32_t tileId = static_cast<int32_t>(startTileId);
                  tileId < static_cast<int32_t>(endTileId); tileId++) {
@@ -1162,7 +1162,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
             SToMTE3Sync();
             CopyTileTopKUb2Ws(tileTopK, startTileId, dataNum);
             MTE3ToMTE2Sync();
-            BSA_TOPK_PIPE_ALL();
+            // REMOVED_PIPE_ALL_1165
         }
     }
 }
@@ -1185,17 +1185,17 @@ __aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(
         if (dataNum == 0) continue;
         CopyTileTopKWs2Ub(tileTopK, i * MAX_TILE_NUM_IN_UB, dataNum);
         MTE2ToVSync();
-        BSA_TOPK_PIPE_ALL();
+        // REMOVED_PIPE_ALL_1188
         int32_t segSize = static_cast<int32_t>(dataNum) < safeSumTileNum ?
             static_cast<int32_t>(dataNum) : safeSumTileNum;
         for (int32_t segOff = 0; segOff < static_cast<int32_t>(dataNum); segOff += segSize) {
             int32_t curSegLen = BSAMin(segSize, static_cast<int32_t>(dataNum) - segOff);
             SToVSync();
             Cast(tileHistFp32, tileTopK[segOff], RoundMode::CAST_NONE, curSegLen);
-            BSA_TOPK_PIPE_ALL();
+            // REMOVED_PIPE_ALL_1195
             ReduceSum(tileHistFp32, tileHistFp32, tileHistFp32, curSegLen);
             VToSSync();
-            BSA_TOPK_PIPE_ALL();
+            // REMOVED_PIPE_ALL_1198
             totalTileTopKInCore += static_cast<int32_t>(tileHistFp32.GetValue(0));
         }
     }
@@ -1217,7 +1217,7 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
 
     CopyInGlobalHist(globalHist);
     MTE2ToVSync();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_1220
     ReduceGlobalHist(globalHist);
     FindBoundaryBin(globalHist, roundId);
 
@@ -1285,14 +1285,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
     MTE3ToMTE2Sync();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_1288
 
     LocalTensor<half> tempHalf = outIndexBuf_.Get<half>();
     uint64_t rsvdCnt = 0;
     GatherMask(tempHalf, tempHalf, cmpMask.template ReinterpretCast<uint16_t>(),
                true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
     VToSSync();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_1295
 
     // === DUMP 730: rsvdCnt after GatherMask ===
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
@@ -1324,7 +1324,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     GatherMask(vecIndex, vecIndex, cmpMask.template ReinterpretCast<uint32_t>(),
                true, curTileLen, {1, 1, 0, 0}, eqRsvdCnt);
     VToSSync();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_1327
 
     uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
 
@@ -1334,7 +1334,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
                 DataCopyPadExtParams<uint8_t>(false, 0,
                     static_cast<uint8_t>(alignLen - curTileLen), 0));
     MTE2ToSSync();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_1337
 
     uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
     for (uint32_t i = 0; i < writeCnt; i++) {
@@ -1346,7 +1346,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskLocal,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
     MTE3ToMTE2Sync();
-    BSA_TOPK_PIPE_ALL();
+    // REMOVED_PIPE_ALL_1349
 
     curTileK -= static_cast<int32_t>(writeCnt);
 }
