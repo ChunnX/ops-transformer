@@ -38,7 +38,7 @@ using namespace MoeDistributeCombineA2Impl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-template<bool HasTp, uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
+template <uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
 __global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
                                                 GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCount,
                                                 GM_ADDR xActiveMask, GM_ADDR activationScale,
@@ -57,15 +57,15 @@ __global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM_ADDR exper
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineTilingData, tilingData, tilingGM);
-        MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT> op;
-        op.Init(expandX, expertIds, expandIdx, epSendCount, tpSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
+        MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, QuantMode == TILINGKEY_INT8_QUANT> op;
+        op.Init(expandX, expertIds, expandIdx, epSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 #else
     if constexpr (ArchTag == TILINGKEY_TPL_A3) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineTilingData, tilingData, tilingGM);
-        MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT> op;
-        op.Init(expandX, expertIds, expandIdx, epSendCount, tpSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
+        MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, QuantMode == TILINGKEY_INT8_QUANT> op;
+        op.Init(expandX, expertIds, expandIdx, epSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 
