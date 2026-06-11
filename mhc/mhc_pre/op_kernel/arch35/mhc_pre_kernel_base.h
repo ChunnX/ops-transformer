@@ -99,6 +99,7 @@ public:
     static constexpr uint32_t kAlphaPostIndex = 1;
     static constexpr uint32_t kAlphaCombIndex = 2;
     static constexpr uint32_t kAlphaCombBaseOffset = 2;
+
     static constexpr uint32_t kSupportedN4 = 4;
     static constexpr uint32_t kSupportedN6 = 6;
     static constexpr uint32_t kSupportedN8 = 8;
@@ -149,6 +150,7 @@ public:
         chunkTSize_ = tiling_->chunkTSize;
         v1ChunkDSize_ = tiling_->v1ChunkDSize;
         hasGamma_ = (tiling_->hasGamma != 0);
+        hasRes_ = (tiling_->hasRes != 0);
         eleNumPerVf_ = MhcPreUtils::GetVRegSize() / sizeof(P);
     }
 
@@ -172,7 +174,6 @@ public:
         uint32_t offset2 = 0;
         uint32_t offset3 = 0;
         uint32_t curOffset = 0;
-        uint32_t nSquare = N_ * N_;
         for (uint32_t i = 0; i < V1_BASE_T; i++) {
             for (uint32_t j = 0; j < N_; j++) {
                 preOffsetBuf_.SetValue(offset1++, curOffset * sizeof(P));
@@ -182,9 +183,12 @@ public:
                 postOffsetBuf_.SetValue(offset2++, curOffset * sizeof(P));
                 curOffset++;
             }
-            for (uint32_t j = 0; j < nSquare; j++) {
-                resOffsetBuf_.SetValue(offset3++, curOffset * sizeof(P));
-                curOffset++;
+            if (hasRes_) {
+                uint32_t nSquare = N_ * N_;
+                for (uint32_t j = 0; j < nSquare; j++) {
+                    resOffsetBuf_.SetValue(offset3++, curOffset * sizeof(P));
+                    curOffset++;
+                }
             }
         }
     }
@@ -372,14 +376,23 @@ public:
 
         float alphaPre = alphaGm_.GetValue(kAlphaPreIndex);
         float alphaPost = alphaGm_.GetValue(kAlphaPostIndex);
-        float alphaComb = alphaGm_.GetValue(kAlphaCombIndex);
+
+  
         for (uint64_t i = 0; i < N_; ++i) {
             alphaInUb_.SetValue(i, alphaPre);
             alphaInUb_.SetValue(i + N_, alphaPost);
-            for (uint64_t j = 0; j < N_; ++j) {
-                alphaInUb_.SetValue((kAlphaCombBaseOffset + i) * N_ + j, alphaComb);
+        }
+
+  
+        if (hasRes_) {
+            float alphaComb = alphaGm_.GetValue(kAlphaCombIndex);
+            for (uint64_t i = 0; i < N_; ++i) {
+                for (uint64_t j = 0; j < N_; ++j) {
+                    alphaInUb_.SetValue((kAlphaCombBaseOffset + i) * N_ + j, alphaComb);
+                }
             }
         }
+  
         BiasCopyIn();
         biasInUb_ = biasInQue_.DeQue<P>();
     }
@@ -641,6 +654,7 @@ protected:
     uint64_t D_;
     bool outFlag_;
     bool hasGamma_;
+    bool hasRes_ = true;
 
     GlobalTensor<T> xGm_;
     GlobalTensor<P> phiGm_;
