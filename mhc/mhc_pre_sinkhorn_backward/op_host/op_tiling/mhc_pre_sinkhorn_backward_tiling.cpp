@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file mhc_pre_sinkhorn_backward.cc
+ * \file mhc_pre_sinkhorn_backward_tiling.cpp
  * \brief MhcPreSinkhornBackward tiling file
  */
 

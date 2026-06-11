@@ -9,8 +9,8 @@
  */
 
 /* !
- * \file scatter_nd_update_tiling.cc
- * \brief ascendc scatter nd update tiling cpp
+ * \file mhc_pre_sinkhorn_backward_arch35_tiling_base.cpp
+ * \brief
  */
 
 #include "register/op_def_registry.h"
