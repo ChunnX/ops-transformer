@@ -402,8 +402,12 @@ protected:
         if (realSingleCoreM == 0 || realSingleCoreN == 0) {
             return;
         }
-        DataCopyParams repeatParamsX, repeatParamsY, repeatParamsWScale, repeatParamsPertokenScale, repeatParamsYND,
-            repeatParamsNZ2ND;
+        DataCopyParams repeatParamsX;
+        DataCopyParams repeatParamsY;
+        DataCopyParams repeatParamsWScale;
+        DataCopyParams repeatParamsPertokenScale;
+        DataCopyParams repeatParamsYND;
+        DataCopyParams repeatParamsNZ2ND;
         LoadData2dParams loadData2DX;
         DataCopyEnhancedParams enhancedParams;
         MmadParams mmadParams;

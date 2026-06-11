@@ -5,8 +5,7 @@
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * See LICENSE in the root of the software repository for the full text of the License. */
 
 /*!
  * \file quant_matmul_dequant_grouped.h
@@ -37,7 +36,8 @@ public:
     {
         uint32_t realsingleCoreFracN =
             tilingData->singleCoreFracN - (block_id < tilingData->singleCoreFracNTail ? 0 : 1);
-        uint32_t startM = 0, endM;
+        uint32_t startM = 0;
+        uint32_t endM;
         fracM_ = 0;
         GlobalTensor<half> xGm0 = xGm;
         GlobalTensor<int8_t> quantizedWeightGm0 = quantizedWeightGm;
@@ -292,7 +292,7 @@ protected:
                 uint32_t BaseMFractalN_ = (singleCoreM + baseMNum - 1) / baseMNum + 1;
                 while (baseNNum > 1 &&
                        BaseMFractalN_ * ((singleCoreN + baseNNum - NUMBER_2) / (baseNNum - 1) + extraN) <=
-                           l0CMNFractal) {
+                       l0CMNFractal) {
                     baseNNum -= 1;
                 }
                 uint32_t BaseNFractalN_ = (singleCoreN + baseNNum - 1) / baseNNum + extraN;
@@ -309,7 +309,7 @@ protected:
                 uint32_t BaseMFractalN_ = (singleCoreM + baseMNum - 1) / baseMNum + 1;
                 while (baseNNum > 1 &&
                        BaseMFractalN_ * ((singleCoreN + baseNNum - NUMBER_2) / (baseNNum - 1) + extraN) <=
-                           l0CMNFractal) {
+                       l0CMNFractal) {
                     baseNNum -= 1;
                 }
             }
