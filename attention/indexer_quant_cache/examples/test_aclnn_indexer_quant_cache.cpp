@@ -38,7 +38,7 @@ int main()
     // 2. 设置属性
     int64_t quantMode = 1;   // Normal block quantization
     bool roundScale = true;
-    double scale = 1.0;
+    float scale = 1.0f;
 
     // 3. 第一阶段：获取 workspace 大小和 executor
     uint64_t workspaceSize = 0;

@@ -56,7 +56,7 @@ namespace ge {
  * @code{.c}
  *  - indexer_compress_cache and indexer_compress_cache_scale are both input and output (in-place update).
  *  - slot_mapping dimensions should equal x dimensions minus 1.
- *  - The last dimension of x is quantized in blocks of 128 elements (per-block quantization).
+ *  - The last dimension (d) of x must be 32-aligned (d % 32 == 0).
  *  - Ascend 950 AI Processor only.
  * @endcode
  */

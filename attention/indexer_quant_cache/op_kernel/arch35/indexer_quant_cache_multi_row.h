@@ -88,9 +88,12 @@ public:
             if (quantMode_ == HIFLOAT_QUANT_MODE) {
                 VFProcessHifp8Quant(indexerCompressCacheLocal, indexerCompressCacheScaleLocal, xLocal,
                                     maxValue, validIdx, tilingData->d, scalesAttr_);
+            } else if (tilingData->roundScale == 1) {
+                VFProcessDynamicBlockQuant<T1, T0, true>(indexerCompressCacheLocal, indexerCompressCacheScaleLocal,
+                                                         xLocal, maxValue, validIdx, tilingData->d);
             } else {
-                VFProcessDynamicBlockQuant(indexerCompressCacheLocal, indexerCompressCacheScaleLocal, xLocal,
-                                           maxValue, validIdx, tilingData->d);
+                VFProcessDynamicBlockQuant<T1, T0, false>(indexerCompressCacheLocal, indexerCompressCacheScaleLocal,
+                                                          xLocal, maxValue, validIdx, tilingData->d);
             }
             xQue.template FreeTensor(xLocal);
             indexerCompressCacheQue.template EnQue(indexerCompressCacheLocal);

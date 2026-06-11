@@ -154,6 +154,13 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
     d_ = xStorageShape.GetDim(xDims - 1);
     bs_ = bs;
 
+    // x 尾轴 d 必须 32 对齐: MX 模式每 32 个元素一个 scale, 且各量化分支按 32 元素块对齐处理,
+    // 非 32 对齐会导致尾块读越界/scale 错位。
+    OP_CHECK_IF(d_ <= 0 || d_ % BLOCK_SIZE != 0,
+                  OP_LOGE(context_->GetNodeName(),
+                          "the last dim (d) of x should be 32-aligned, got %ld", d_),
+                  return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
                   OP_LOGE(context_->GetNodeName(), "get attr failed."),
                   return ge::GRAPH_FAILED);

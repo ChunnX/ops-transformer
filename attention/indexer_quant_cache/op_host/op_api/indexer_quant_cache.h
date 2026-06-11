@@ -27,7 +27,7 @@ const aclTensor *IndexerQuantCache(
     const aclTensor *slotMapping,
     int64_t quantMode,
     bool roundScale,
-    double scale,
+    float scale,
     aclOpExecutor *executor);
 
 }  // namespace l0op

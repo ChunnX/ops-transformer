@@ -40,9 +40,9 @@ constexpr int64_t QUANT_MODE_ATTR_INDEX = 1;
 constexpr int64_t ROUND_SCALE_ATTR_INDEX = 2;
 constexpr int64_t SCALE_ATTR_INDEX = 3;
 
-constexpr int64_t QUANT_MODE_GROUP_QUANT_BF16 = 1;
-constexpr int64_t QUANT_MODE_GROUP_QUANT_E8M0 = 2;
-constexpr int64_t QUANT_MODE_HIFLOAT = 3;
+constexpr int64_t QUANT_MODE_GROUP_QUANT_BF16 = 0;
+constexpr int64_t QUANT_MODE_GROUP_QUANT_E8M0 = 1;
+constexpr int64_t QUANT_MODE_HIFLOAT = 2;
 
 constexpr int64_t DEFAULT_QUANT_GROUP_SIZE = 128;
 constexpr int64_t DEFAULT_WORKSPACE_SIZE = 32;

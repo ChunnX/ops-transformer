@@ -31,9 +31,9 @@ constexpr float FP8_E5M2_MAX_VALUE = 57344.0f;
 constexpr float FP8_E4M3FN_MAX_VALUE = 448.0f;
 constexpr float FP8_E5M2_MIN_VALUE = -57344.0f;
 constexpr float FP8_E4M3FN_MIN_VALUE = -448.0f;
-constexpr int64_t QUANT_MODE_GROUP_QUANT_BF16 = 1;
-constexpr int64_t QUANT_MODE_GROUP_QUANT_E8M0 = 2;
-constexpr int64_t QUANT_MODE_HIFLOAT = 3;
+constexpr int64_t QUANT_MODE_GROUP_QUANT_BF16 = 0;
+constexpr int64_t QUANT_MODE_GROUP_QUANT_E8M0 = 1;
+constexpr int64_t QUANT_MODE_HIFLOAT = 2;
 constexpr uint32_t FAST_LOG_SHIFT_BITS = 23U;
 constexpr uint32_t FAST_LOG_AND_VALUE1 = 0xFF;
 constexpr uint32_t FAST_LOG_AND_VALUE2 = (((uint32_t)1 << (uint32_t)23) - (uint32_t)1);
@@ -267,7 +267,7 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
     }
 }
 
-// quant_mode=3 (HiFloat8): whole-row quant (no rope/group/scale structure). Each x row is
+// quant_mode=2 (HiFloat8): whole-row quant (no rope/group/scale structure). Each x row is
 // scaled by the scale attr and cast to hifloat8 (1 byte/elem) -> cache row = d hifloat8 bytes.
 // Ported from cann-recipes-infer kv_compress_epilog VFProcessHifp8Quant.
 template <typename T0, typename T1>

@@ -187,6 +187,7 @@ __aicore__ inline void VFProcessDynamicMxFp8Quant(
         RegTensor<float> xAbs;
         RegTensor<float> max2;
         RegTensor<float> dupScale;
+        RegTensor<float> invScale;
         RegTensor<uint32_t> tmp0;
         RegTensor<uint32_t> tmp1;
         RegTensor<uint32_t> vreg0;
@@ -233,9 +234,17 @@ __aicore__ inline void VFProcessDynamicMxFp8Quant(
                     Add(vreg1, vreg1, vreg4, pregMerge);
                     Adds(vreg5, (RegTensor<int32_t> &)vreg1, static_cast<int32_t>(127), pregMerge);
                     ShiftLefts((RegTensor<int32_t> &)max2, vreg5, static_cast<int16_t>(23), pregMerge);
+                    // invScale = 2^(-exp_scale) = ((127 - exp_scale) << 23). The pow2 scale has an
+                    // exact reciprocal, so quantize with an exact Mul instead of the approximate
+                    // vector Div (== swiglu_group_quant VFProcessSwigluMxFp8 InvScale path).
+                    Sub((RegTensor<int32_t> &)vreg5, (RegTensor<int32_t> &)tmp3, (RegTensor<int32_t> &)vreg1, pregMerge);  // 127 - exp_scale
+                    ShiftLefts((RegTensor<int32_t> &)invScale, vreg5, static_cast<int16_t>(23), pregMerge);
+                    Duplicate(dupScale, invScale, pm);
+                    Mul(x, x, dupScale, pm);
+                } else {
+                    Duplicate(dupScale, max2, pm);
+                    Div(x, x, dupScale, pm);
                 }
-                Duplicate(dupScale, max2, pm);
-                Div(x, x, dupScale, pm);
                 Maxs(x, x, fp8Min, pm);
                 Mins(x, x, fp8Max, pm);
                 Cast<T0, float, castTraitF32toFp8Even>(outReg, x, pm);
@@ -250,7 +259,8 @@ __aicore__ inline void VFProcessDynamicMxFp8Quant(
 
 // Normal 动态量化, 整行一个 float32 scale (scale = rowmax / fp8max)。两遍处理:
 // 第一遍跨整行求 amax, 第二遍按该 scale 量化。NaN 安全 (排除 NaN 求 max, 结果 NaN 时保留原值)。
-template <typename T0, typename T1>
+// roundScale=true 时把 scale 向上取到最近的 2 的幂 (与 kv_compress_epilog 的 roundScale 一致)。
+template <typename T0, typename T1, bool roundScale = true>
 __aicore__ inline void VFProcessDynamicBlockQuant(
     const LocalTensor<T0>& yLocal, const LocalTensor<float>& scaleLocal, const LocalTensor<T1>& xLocal,
     float coeff, const uint16_t curRowNum, const uint32_t curColNum)
@@ -286,16 +296,28 @@ __aicore__ inline void VFProcessDynamicBlockQuant(
         RegTensor<float> inf;
         RegTensor<float> zero;
         RegTensor<uint32_t> coeffReg;
+        RegTensor<uint32_t> rsExp;
+        RegTensor<uint32_t> rsMant;
+        RegTensor<uint32_t> rsSel;
+        RegTensor<uint32_t> rsZeroU;
+        RegTensor<uint32_t> rsOneU;
+        RegTensor<uint32_t> rsMantMask;
         MaskReg pregMain = CreateMask<float>();
         MaskReg preg1 = CreateMask<float, AscendC::MicroAPI::MaskPattern::VL1>();
         MaskReg pm;
         MaskReg cmpAbs;
         MaskReg cmpScalar;
         MaskReg cmpQ;
+        MaskReg rsCmp;
         Duplicate(coeffReg, maxValueInt, pregMain);
         Duplicate(zero, 0.0f, pregMain);
         Duplicate(inf, 1.0f, pregMain);
         Div<float, &mode>(inf, inf, zero, pregMain);
+        if constexpr (roundScale) {
+            Duplicate(rsZeroU, static_cast<uint32_t>(0), preg1);
+            Duplicate(rsOneU, static_cast<uint32_t>(1), preg1);
+            Duplicate(rsMantMask, FAST_LOG_AND_VALUE2, preg1);
+        }
         for (uint16_t i = 0; i < curRowNum; i++) {
             // pass 1: 整行 amax (排除 NaN)
             Duplicate(rowMax, 0.0f, preg1);
@@ -313,6 +335,16 @@ __aicore__ inline void VFProcessDynamicBlockQuant(
             CompareScalar<float, CMPMODE::NE>(cmpScalar, rowMax, (float)0.0, preg1);
             Mul(scale, rowMax, (RegTensor<float>&)coeffReg, cmpScalar);  // rowmax / fp8max
             Min(scale, scale, inf, preg1);
+            if constexpr (roundScale) {
+                // round scale up to the nearest power of two (== kv_compress_epilog roundScale):
+                // exp + (mantissa != 0), then rebuild the float with a zero mantissa.
+                ShiftRights(rsExp, (RegTensor<uint32_t>&)scale, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
+                And(rsMant, (RegTensor<uint32_t>&)scale, rsMantMask, preg1);
+                Compare<uint32_t, AscendC::CMPMODE::NE>(rsCmp, rsMant, rsZeroU, preg1);
+                Select(rsSel, rsOneU, rsZeroU, rsCmp);
+                Add(rsExp, rsExp, rsSel, preg1);
+                ShiftLefts((RegTensor<int32_t>&)scale, (RegTensor<int32_t>&)rsExp, static_cast<int16_t>(23), preg1);
+            }
             DataCopy<float, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
                 scaleLocalAddr + i * scaleRowAlign, scale, preg1);
             // pass 2: 量化

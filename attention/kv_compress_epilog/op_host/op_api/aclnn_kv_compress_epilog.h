@@ -28,7 +28,7 @@ extern "C" {
         int64_t quantGroupSize,
         int64_t quantMode,
         int64_t roundScale,
-        double scale,
+        float scale,
         uint64_t *workspaceSize,
         aclOpExecutor **executor);
 

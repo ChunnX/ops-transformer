@@ -33,7 +33,7 @@ const aclTensor *KvCompressEpilog(
     int64_t quantGroupSize,
     int64_t quantMode,
     int64_t roundScale,
-    double scale,
+    float scale,
     aclOpExecutor *executor)
 {
     L0_DFX(KvCompressEpilog,
@@ -45,7 +45,7 @@ const aclTensor *KvCompressEpilog(
                                 OP_INPUT(kvCompressCache,
                                          x, slotMapping),
                                 OP_OUTPUT(kvCompressCache),
-                                OP_ATTR(quantGroupSize, quantMode, roundScale, static_cast<float>(scale)));
+                                OP_ATTR(quantGroupSize, quantMode, roundScale, scale));
 
     return kvCompressCache;
 }

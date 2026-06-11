@@ -95,8 +95,9 @@ ge::graphStatus KvCompressEpilogTiling::GetAttributes()
     if (attrQuantMode != nullptr) {
         quantMode_ = *attrQuantMode;
     }
-    OP_CHECK_IF(quantMode_ != 1 && quantMode_ != 2 && quantMode_ != 3,
-              OP_LOGE(context_->GetNodeName(), "quantMode should be 1, 2 or 3"),
+    OP_CHECK_IF(quantMode_ != QUANT_MODE_GROUP_QUANT_BF16 && quantMode_ != QUANT_MODE_GROUP_QUANT_E8M0 &&
+                  quantMode_ != QUANT_MODE_HIFLOAT,
+              OP_LOGE(context_->GetNodeName(), "quantMode should be 0, 1 or 2"),
               return ge::GRAPH_FAILED);
 
     const int64_t* attrRoundScale = attrs->GetAttrPointer<int64_t>(ROUND_SCALE_ATTR_INDEX);
@@ -251,7 +252,7 @@ ge::graphStatus KvCompressEpilogTiling::DoOpTiling()
     usedCoreNums_ = std::min(CeilDiv(bs_, rowOfFormerBlock_), static_cast<int64_t>(coreNum_));
     rowOfTailBlock_ = bs_ - (usedCoreNums_ - 1) * rowOfFormerBlock_;
 
-    // quant_mode=3 (HiFloat8): whole-row quant, no rope/group/scale structure -> cache row is
+    // quant_mode=2 (HiFloat8): whole-row quant, no rope/group/scale structure -> cache row is
     // exactly d hifloat8 bytes (kvCacheCol == d, no concat/pad). modes 1/2 keep the
     // rope(64 verbatim) + per-group fp8 + per-group scale concat layout.
     int64_t concatCol;

@@ -33,7 +33,7 @@ const aclTensor *IndexerQuantCache(
     const aclTensor *slotMapping,
     int64_t quantMode,
     bool roundScale,
-    double scale,
+    float scale,
     aclOpExecutor *executor)
 {
     L0_DFX(IndexerQuantCache,
@@ -45,7 +45,7 @@ const aclTensor *IndexerQuantCache(
                                 OP_INPUT(indexerCompressCache, indexerCompressCacheScale,
                                          x, slotMapping),
                                 OP_OUTPUT(indexerCompressCache, indexerCompressCacheScale),
-                                OP_ATTR(quantMode, roundScale, static_cast<float>(scale)));
+                                OP_ATTR(quantMode, roundScale, scale));
 
     return indexerCompressCache;
 }
