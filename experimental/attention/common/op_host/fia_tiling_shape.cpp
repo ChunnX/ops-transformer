@@ -304,7 +304,7 @@ ge::graphStatus FiaTilingShapeCompare::GetCompareFunc(const FiaCompareType &comp
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FiaTilingShapeCompare::CompareShape(FiaTilingShapeCompareParam &param, 
+ge::graphStatus FiaTilingShapeCompare::CompareShape(FiaTilingShapeCompareParam &param,
                                                     const std::string &funcName) const
 {
     param.H = param.N * param.D;

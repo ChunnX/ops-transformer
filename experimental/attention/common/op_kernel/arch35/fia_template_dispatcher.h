@@ -35,7 +35,7 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     constexpr TPosition bmm2OutPos =
         BaseApi::GetC2Position(dVTemplateType,
                       BaseApi::UbOutCondition<INPUT_T>(false, static_cast<PseTypeEnum>(pseMode), hasAttenMask,
-                                              false, hasRope,(uint32_t)s1TemplateType == 64),
+                                              false, hasRope, (uint32_t)s1TemplateType == 64),
                       ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
     constexpr bool useDn = (quantMode == FULLQUANT_MODE_QKV_MXFP8_PREFILL);
     constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
