@@ -15,6 +15,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "log/log.h"
+#include "mc2_log_compat.h"
 #include "aclnnInner_ffn_to_attention.h"
 
 using namespace op;

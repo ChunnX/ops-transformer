@@ -31,6 +31,11 @@
 #include "err_mgr.h"
 #endif
 
+// Forward compatibility: provides OP_LOGE_LIBOPAPI_REPORT and
+// OP_LOGE_FOR_* macros (EZ0008-EZ0034) when using an older log.h.
+// See mc2_log_compat.h for details.
+#include "mc2_log_compat.h"
+
 struct ErrorResult {
     operator bool() const
     {

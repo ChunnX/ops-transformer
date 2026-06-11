@@ -22,6 +22,7 @@
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
 #include "log/log.h"
+#include "mc2_log_compat.h"
 
 namespace {
 
