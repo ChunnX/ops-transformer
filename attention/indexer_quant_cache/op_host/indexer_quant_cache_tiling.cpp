@@ -197,12 +197,19 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     }
     int64_t perBlockScaleElemNum = BLOCK_SIZE / scaleByteSize;
     // d全载,尝试搬入更多的bs
+    // MX-FP8(mode0) 宽化按 128 元素读 x, x 输入 buffer 按 128 对齐 (与 kernel InitBuffer 保持一致);
+    // 其余模式仍按 16 对齐。
+    int64_t xAlign = (quantMode_ == MXFP8_QUANT_MODE) ? PER_BLOCK_FP16 : 16;
     while (rowFactor_ <= rowOfFormerBlock_) {
-        int64_t xSize = rowFactor_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
+        int64_t xSize = rowFactor_ * RoundUp(d_, xAlign) * 2 * DOUBLE_BUFFER;
         int64_t ySize = rowFactor_ * RoundUp(d_, 32) * 1 * DOUBLE_BUFFER;
         int64_t scaleSize = rowFactor_ * RoundUp(scaleCol_, perBlockScaleElemNum) * scaleByteSize * DOUBLE_BUFFER;
         int64_t tmpBufferSize = RoundUp(rowFactor_, 8) * 4;
-        int64_t totalSize = xSize + ySize + scaleSize + tmpBufferSize;
+        // MX-FP8 两函数式额外的 fp32 中间 buffer + invScale 广播 buffer (单 buffer, 非 double)
+        int64_t mxScratchSize = (quantMode_ == MXFP8_QUANT_MODE)
+            ? (rowFactor_ * RoundUp(d_, 8) * 4 + rowFactor_ * RoundUp(CeilDiv(d_, 8), 8) * 4)
+            : 0;
+        int64_t totalSize = xSize + ySize + scaleSize + tmpBufferSize + mxScratchSize;
         if (totalSize > ubSize_) {
             rowFactor_ = rowFactor_ - 1;
             break;

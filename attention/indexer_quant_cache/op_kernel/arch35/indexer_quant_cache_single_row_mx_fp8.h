@@ -41,12 +41,19 @@ public:
 
         roundScale = (tilingData->roundScale == 1);
 
-        pipe->InitBuffer(xQue, 2, tilingData->rowFactor * RoundUp<T0>(tilingData->d) * sizeof(T0));
+        // MX-FP8 宽化按 128 元素读 x, x 输入 buffer 必须按 128 对齐以保证 128 宽读不越界 (尾块)
+        pipe->InitBuffer(xQue, 2, tilingData->rowFactor * RoundUp<T0>(tilingData->d, 128) * sizeof(T0));
         pipe->InitBuffer(indexerCompressCacheQue, 2, tilingData->rowFactor * RoundUp<T1>(tilingData->d) * sizeof(T1));
         pipe->InitBuffer(
             indexerCompressCacheScaleQue, 2,
             tilingData->rowFactor * RoundUp<T2>(tilingData->scaleCol) * sizeof(T2));
         pipe->InitBuffer(indexBuf, RoundUp<int32_t>(tilingData->rowFactor) * sizeof(int32_t));
+        // MX-FP8 两函数式: fp32 中间 buffer (InvScale 写, Quant 读) + invScale 广播 buffer
+        pipe->InitBuffer(yFp32Buf, tilingData->rowFactor * RoundUp<float>(tilingData->d) * sizeof(float));
+        pipe->InitBuffer(
+            invScaleBuf, tilingData->rowFactor * RoundUp<float>(CeilDiv(tilingData->d, 8)) * sizeof(float));
+        yFp32Local = yFp32Buf.Get<float>();
+        mxInvScaleLocal = invScaleBuf.Get<float>();
         AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     }
 
@@ -75,12 +82,13 @@ public:
             indexerCompressCacheScaleLocal = indexerCompressCacheScaleQue.AllocTensor<T2>();
 
             if (roundScale) {
-                VFProcessDynamicMxFp8Quant<T1, T2, T0, true>(
-                indexerCompressCacheLocal, indexerCompressCacheScaleLocal, xLocal, maxValue, fp8Min, fp8Max, 1, tilingData->d);
+                VFProcessMxFp8InvScale<T0, T2, true>(
+                    yFp32Local, indexerCompressCacheScaleLocal, mxInvScaleLocal, xLocal, maxValue, 1, tilingData->d);
             } else {
-                VFProcessDynamicMxFp8Quant<T1, T2, T0, false>(
-                indexerCompressCacheLocal, indexerCompressCacheScaleLocal, xLocal, maxValue, fp8Min, fp8Max, 1, tilingData->d);
+                VFProcessMxFp8InvScale<T0, T2, false>(
+                    yFp32Local, indexerCompressCacheScaleLocal, mxInvScaleLocal, xLocal, maxValue, 1, tilingData->d);
             }
+            VFProcessMxFp8Quant<T1>(indexerCompressCacheLocal, yFp32Local, mxInvScaleLocal, 1, tilingData->d);
                 
             xQue.template FreeTensor(xLocal);
             indexerCompressCacheQue.template EnQue(indexerCompressCacheLocal);
@@ -129,10 +137,14 @@ private:
     TQue<QuePosition::VECOUT, 1> indexerCompressCacheQue;
     TQue<QuePosition::VECOUT, 1> indexerCompressCacheScaleQue;
     TBuf<QuePosition::VECCALC> indexBuf;
+    TBuf<QuePosition::VECCALC> yFp32Buf;
+    TBuf<QuePosition::VECCALC> invScaleBuf;
 
     LocalTensor<T0> xLocal;
     LocalTensor<T1> indexerCompressCacheLocal;
     LocalTensor<T2> indexerCompressCacheScaleLocal;
+    LocalTensor<float> yFp32Local;
+    LocalTensor<float> mxInvScaleLocal;
     float maxValue = 0.0f;
     float fp8Min = 0.0f;
     float fp8Max = 0.0f;
