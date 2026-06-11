@@ -400,7 +400,7 @@ protected:
 
     // 查询 batchId 对应的物理 cache slot，用于多请求复用 conv_states 的场景。
     // cacheIndices 是 1D tensor，shape (batch,)，每个元素告知对应 batch 读哪个 slot。
-    // 当 cacheIndices[batchId] == padSlotId 时返回 false，表示该 batch 为填充位应跳过。
+    // 当 cacheIndices[batchId] == nullBlockId 时返回 false，表示该 batch 为填充位应跳过。
     __aicore__ inline bool ResolveBatchCacheIndex(int32_t batchId, bool hasCacheIndices, int32_t &cacheIdx) const
     {
         cacheIdx = batchId;
@@ -409,7 +409,7 @@ protected:
         }
 
         const int32_t cacheIdxVal = this->cacheIndicesGm_.GetValue(batchId);
-        if (cacheIdxVal == this->tilingData_->padSlotId) {
+        if (cacheIdxVal == this->tilingData_->nullBlockId) {
             return false;
         }
         cacheIdx = cacheIdxVal;

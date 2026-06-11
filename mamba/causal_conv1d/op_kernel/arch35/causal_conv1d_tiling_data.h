@@ -29,7 +29,7 @@ struct CausalConv1dTilingData {
     int64_t numCacheLines;
 
     int64_t activationMode;
-    int64_t padSlotId;
+    int64_t nullBlockId;
 
     int32_t baseDim;
     int64_t tokensPerBlock;
