@@ -93,12 +93,7 @@
                     "value": 0
                 },
                 {
-                    "name": "pad_slot_id",
-                    "dtype": "int",
-                    "value": -1
-                },
-                {
-                    "name": "run_mode",
+                    "name": "null_block_id",
                     "dtype": "int",
                     "value": 0
                 }
@@ -207,12 +202,7 @@
                     "value": 0
                 },
                 {
-                    "name": "pad_slot_id",
-                    "dtype": "int",
-                    "value": -1
-                },
-                {
-                    "name": "run_mode",
+                    "name": "null_block_id",
                     "dtype": "int",
                     "value": 0
                 }

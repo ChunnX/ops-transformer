@@ -30,7 +30,7 @@
     initial_state_mode: [batch] 或 None
     num_accepted_tokens: 不支持
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
+    null_block_id: 默认值 0
     run_mode: 0
     y: [batch, seqLen, dim]
     ```
@@ -47,7 +47,7 @@
     initial_state_mode: [batch] 或 None
     num_accepted_tokens: 不支持
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
+    null_block_id: 默认值 0
     run_mode: 0
     y: [cuSeqLen, dim]
     ```
@@ -66,7 +66,7 @@
     initial_state_mode: 不支持
     num_accepted_tokens: [batch] 或 None（投机解码场景，仅K=4支持）
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
+    null_block_id: 默认值 0
     run_mode: 1
     y: [batch, 1, dim]
     ```
@@ -83,7 +83,7 @@
     initial_state_mode: 不支持
     num_accepted_tokens: [batch] 或 None（投机解码场景，仅K=4支持）
     activation_mode: 0=Identity, 1=SiLU
-    pad_slot_id: 默认值 -1
+    null_block_id: 默认值 0
     run_mode: 1
     y: [cuSeqLen, dim]
     ```
@@ -115,7 +115,7 @@ aclnnStatus aclnnCausalConv1dGetWorkspaceSize(
     const aclTensor *initialStateMode,
     const aclTensor *numAcceptedTokens,
     int64_t         activationMode,
-    int64_t         padSlotId,
+    int64_t         nullBlockId,
     int64_t         runMode,
     aclTensor       *y,
     uint64_t        *workspaceSize,
@@ -211,7 +211,7 @@ aclnnStatus aclnnCausalConv1d(
       <td>cacheIndices（aclTensor*）</td>
       <td>可选输入</td>
       <td>缓存索引，指定每个序列对应的缓存状态在convStates中的索引。</td>
-      <td><ul><li>可为None，此时使用恒等映射（cacheIndices[i]=i），要求numCacheLines≥batch。</li><li>shape为[batch]。</li><li>值∈[0, numCacheLines)，或等于padSlotId表示跳过该序列。</li></ul></td>
+      <td><ul><li>可为None，此时使用恒等映射（cacheIndices[i]=i），要求numCacheLines≥batch。</li><li>shape为[batch]。</li><li>值∈[0, numCacheLines)，或等于nullBlockId表示跳过该序列。</li></ul></td>
       <td>INT64</td>
       <td>ND</td>
       <td>1</td>
@@ -248,10 +248,10 @@ aclnnStatus aclnnCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>padSlotId（int64_t）</td>
+      <td>nullBlockId（int64_t）</td>
       <td>属性</td>
       <td>用于跳过不需要参与计算的batch。</td>
-      <td><ul><li>当cacheIndices[i]==padSlotId时跳过该batch，对应输出填零。</li><li>默认值-1表示不跳过任何batch。</li></ul></td>
+      <td><ul><li>当cacheIndices[i]==nullBlockId时跳过该batch，对应输出填零。</li><li>默认值0表示不跳过任何batch。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -409,7 +409,7 @@ aclnnStatus aclnnCausalConv1d(
 
 - 输入值域限制：
   - queryStartLoc[0]必须为0，queryStartLoc[-1]必须等于cuSeqLen，值必须非递减。
-  - cacheIndices中的值∈[0, numCacheLines)，或等于padSlotId表示跳过。
+  - cacheIndices中的值∈[0, numCacheLines)，或等于nullBlockId表示跳过。
   - initialStateMode仅在runMode=0时支持，值∈{0,1}。
   - numAcceptedTokens仅在runMode=1且K=4时支持，值∈[0, seqLen]。
 
@@ -549,11 +549,11 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     int64_t activationMode = 0;
-    int64_t padSlotId = -1;
+    int64_t nullBlockId = 0;
     int64_t runMode = 0;
 
     ret = aclnnCausalConv1dGetWorkspaceSize(x, weight, bias, convStates, queryStartLoc, nullptr, nullptr, nullptr,
-                                            activationMode, padSlotId, runMode, y, &workspaceSize, &executor);
+                                            activationMode, nullBlockId, runMode, y, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
