@@ -424,7 +424,8 @@ int64_t FusedInferAttentionScoreTilingImpl::SumOfArithmeticSeries(int64_t an, in
     int64_t term2 = an / d + 1;
     if (term1 > INT64_MAX / term2) {
         OP_LOGI("FusedInferAttentionScore",
-            "SumOfArithmeticSeries overflow: term1=%lld, term2=%lld, an=%lld, d=%lld, clamped to INT64_MAX", term1, term2, an, d);
+            "SumOfArithmeticSeries overflow: term1=%lld, term2=%lld, an=%lld, d=%lld, clamped to INT64_MAX", 
+            term1, term2, an, d);
         return INT64_MAX;
     }
     return term1 * term2 / 2; // 2:等差数列求和公式分母
