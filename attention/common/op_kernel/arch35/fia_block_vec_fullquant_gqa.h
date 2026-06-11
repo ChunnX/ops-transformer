@@ -545,19 +545,19 @@ public:
         softmaxLseQueue.template EnQue(lseUb);
         softmaxLseQueue.DeQue<float>();
 
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.realN2Size * constInfo.realGSize +
                                  runInfo.realN2Idx * constInfo.realGSize;
             DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
                                                                  runInfo.actVecMSize, constInfo);
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
             DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                        constInfo, s1Size);
-        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
@@ -959,7 +959,7 @@ public:
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
                                               constInfo.s1Size, constInfo.dSizeV, actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize, false, 0);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout, USE_DN>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
@@ -968,7 +968,7 @@ public:
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize,
                                               constInfo.s1Size, constInfo.dSizeV, actualSeqLengthsGmQ,
                                               constInfo.actualSeqLenSize, false, 0);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout, USE_DN>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
@@ -976,7 +976,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV,
                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout, USE_DN>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
@@ -984,7 +984,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV,
                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout, USE_DN>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
     }
@@ -1218,9 +1218,15 @@ public:
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         isSkipMask = IsSkipAttentionmask(maskInfo);
+        if (isSkipMask) {
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSize);
+            return;
+        }
 
         if (!isSkipMask) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt, maskInfo);
+        } else {
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSize);
         }
     }
 
