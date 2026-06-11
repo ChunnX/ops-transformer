@@ -255,23 +255,13 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
                   verbose_diff: bool = False,
                   visualize: bool = False,
                   viz_dir: str = "./viz_output",
-                  fail_analysis: bool = False,
-                  use_isolation: bool = True) -> dict:
+                  fail_analysis: bool = False) -> dict:
     inputs, golden_data, params = load_golden_case(case_name, golden_dir)
 
-    if use_isolation and primary.name == "npu":
-        npu_out, error = run_npu_isolated(inputs, params, device_id, timeout)
-        if error:
-            return {"attn": {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
-                             "fail_cnt": -1, "total": -1, "fail_ratio": float('nan'),
-                             "error": error},
-                    "lse": {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
-                            "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}}
-    else:
-        dev_inputs = {k: v.to(primary.device) for k, v in inputs.items()}
-        npu_out_raw = primary.compute(dev_inputs, params)
-        npu_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
-                   for k, v in npu_out_raw.items()}
+    dev_inputs = {k: v.to(primary.device) for k, v in inputs.items()}
+    npu_out_raw = primary.compute(dev_inputs, params)
+    npu_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
+               for k, v in npu_out_raw.items()}
 
     out_layout = params.get("layout_out", params.get("layout_q", "BNSD"))
 
