@@ -340,7 +340,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
                 aiv_num=test_aiv_num
             )
             [y, receive_cnt] = output
-            input_x = y[:max_bs]
+            input_x = y[:test_max_bs]
         return output
 
 # endregion
@@ -549,11 +549,11 @@ def run_bandwidth_test_npu(
         'x': x_npu,
         'dstrank_id': dstrank_id_npu,
         'group': hcomm_info,
-        'world_size': test_world_size,
-        'max_bs': test_max_bs,
-        'mode': test_mode,
-        'comm_alg': comm_alg,
-        'aiv_num': aiv_num,
+        'test_world_size': test_world_size,
+        'test_max_bs': test_max_bs,
+        'test_mode': test_mode,
+        'test_comm_alg': comm_alg,
+        'test_aiv_num': aiv_num,
     }
 
     torch.npu.synchronize()
@@ -668,8 +668,8 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         dstrank_id_npu = dstrank_id.to(torch.int32).npu()
         
         bandwidth_test_kwargs = {
-            'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'world_size': test_world_size,
-            'max_bs': test_max_bs, 'mode': mode, 'comm_alg': comm_alg, 'aiv_num': aiv_num,
+            'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'test_world_size': test_world_size,
+            'test_max_bs': test_max_bs, 'test_mode': mode, 'test_comm_alg': comm_alg, 'test_aiv_num': aiv_num,
         }
 
         torch.npu.synchronize()
