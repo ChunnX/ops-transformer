@@ -18,6 +18,7 @@
 #ifndef UPDATESCALE_DN_MXFP4_H_
 #define UPDATESCALE_DN_MXFP4_H_
 #include "kernel_tensor.h"
+#include "vf_common_def.h"
 namespace Mxfp4Api {
 using AscendC::LocalTensor;
 using namespace AscendC;

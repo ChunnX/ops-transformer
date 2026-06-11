@@ -505,7 +505,10 @@ public:
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)AttentionCommon::BYTE_BLOCK); // 统一对齐到32
-
+        info.actSingleLoopS2SizeAlign16 =
+            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)16); // 统一对齐到16
+        info.actSingleLoopS2SizeAlign64 =
+            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)BUFFER_SIZE_BYTE_64B); // 统一对齐到64
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
         // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
@@ -532,6 +535,7 @@ public:
 
         if constexpr (SOFTMAX_DN) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+            info.actMSizeAlign128 = (info.actMSize + 127) >> 7 << 7;
             info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         } else {
             info.actVecMSize = (info.actMSize + 1) >> 1;
@@ -555,6 +559,12 @@ public:
                 info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
             }
         }
+        // PRINTF("索引信息: bIdx=%d n2Idx=%d gIdx=%d gS1Idx=%d s1Idx=%d s2Idx=%d curS2LoopIdx=%d\n",
+        //     info.bIdx, info.n2Idx, info.gIdx, info.gS1Idx, info.s1Idx, info.s2Idx, info.curS2LoopIdx);
+        // PRINTF("尺寸信息: actS1Size=%lld actS2Size=%lld actMSize=%d actMSizeAlign32=%d actVecMSize=%d vecMbaseIdx=%d\n",
+        //     info.actS1Size, info.actS2Size, info.actMSize, info.actMSizeAlign32, info.actVecMSize, info.vecMbaseIdx);
+        // PRINTF("S2信息: actSingleLoopS2Size=%d actSingleLoopS2SizeAlign=%d, actSingleLoopS2SizeAlign64=%d\n",
+        //     info.actSingleLoopS2Size, info.actSingleLoopS2SizeAlign, info.actSingleLoopS2SizeAlign64);
     }
 
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
@@ -659,6 +669,7 @@ public:
         //         cubeBlock.FreeEventID();
         //     }
         // }
+        PipeBarrier<PIPE_ALL>();
     }
 };
 
