@@ -135,7 +135,7 @@ private:
     __aicore__ inline int32_t GetActualS1Size(uint32_t bIdx, __gm__ int32_t *actualSeqQlenAddr,
         __gm__ int32_t *cuSeqlensQAddr, const ConstInfo &constInfo);
     __aicore__ inline int32_t GetActualS2Size(uint32_t bIdx, __gm__ int32_t *actualSeqKvlenAddr,
-        const ConstInfo &constInfo, bool subtractPrevious);
+        const ConstInfo &constInfo);
 
     TPipe *tPipe;
 
@@ -217,10 +217,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *token
     }
     int64_t cmpS2LoopCnt = runInfo.s2LoopCount - runInfo.oriKvLoopEndIdx;
     uint64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
+    GlobalTensor<int64_t> kvPhyAddrGm64 = kvPhyAddrGm.template ReinterpretCast<int64_t>();
     for (uint64_t i = 0; i < 8; ++i) {
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
         if (likely((topkKIdx + i < constInfo.sparseBlockCount) && (s2IdxInBase + i < procS2End))) {
-            GlobalTensor<int64_t> kvPhyAddrGm64 = kvPhyAddrGm.template ReinterpretCast<int64_t>();
             tokenData[i] = kvPhyAddrGm64.GetValue(idx);
         } else {
             break;
@@ -381,7 +381,6 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T* ubKRopeNzAddr, __ubuf__ in
     __ubuf__ Q_T* ubDstAddr, __ubuf__ bfloat16_t* ubScaleSrcAddr, __ubuf__ int8_t* ubKRopeAddr,
     uint32_t dealRowCount)
 {
-    uint32_t combineDim = 640; // 128对齐
     MicroAPI::RegTensor<KV_T> vKvData0;
     MicroAPI::RegTensor<KV_T> vKvData1;
     MicroAPI::RegTensor<Q_T> vScale0Bf16;
@@ -405,6 +404,8 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T* ubKRopeNzAddr, __ubuf__ in
     MicroAPI::MaskReg kvRopeTypeMaskHalf = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::H>();
     MicroAPI::MaskReg fp32MaskAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg fp16MaskAll = MicroAPI::CreateMask<bfloat16_t, MicroAPI::MaskPattern::ALL>();
+    uint32_t combineDim = 640; // 128对齐
+    uint32_t scaleRowStride = 320; // combineDim / 2，scale数据的行步长
     uint32_t blockStride = 17; // +1 to solve bank confict
     uint32_t repeatStride = 1;
     const uint32_t nopeDim = 448;
@@ -426,9 +427,9 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T* ubKRopeNzAddr, __ubuf__ in
 
             // bf16 brc 128
             MicroAPI::LoadAlign<Q_T, MicroAPI::LoadDist::DIST_BRC_B16>(
-                (MicroAPI::RegTensor<Q_T>&)vScale0Bf16, ubScaleSrcAddrTemp + i * 320);
+                (MicroAPI::RegTensor<Q_T>&)vScale0Bf16, ubScaleSrcAddrTemp + i * scaleRowStride);
             MicroAPI::LoadAlign<Q_T, MicroAPI::LoadDist::DIST_BRC_B16>(
-                (MicroAPI::RegTensor<Q_T>&)vScale1Bf16, ubScaleSrcAddrTemp + 1 + i * 320);
+                (MicroAPI::RegTensor<Q_T>&)vScale1Bf16, ubScaleSrcAddrTemp + 1 + i * scaleRowStride);
 
             MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
             MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res1, vKvData1, fp32MaskAll);
@@ -458,7 +459,7 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T* ubKRopeNzAddr, __ubuf__ in
         MicroAPI::LoadAlign<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
             (MicroAPI::RegTensor<int8_t>&)vKvData0, ubSrcTemp, combineDim);
         MicroAPI::LoadAlign<Q_T, MicroAPI::LoadDist::DIST_BRC_B16>(
-            (MicroAPI::RegTensor<Q_T>&)vScale0Bf16, ubScaleSrcAddrTemp + i * 320);
+            (MicroAPI::RegTensor<Q_T>&)vScale0Bf16, ubScaleSrcAddrTemp + i * scaleRowStride);
         MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
         MicroAPI::Cast<Q_T, float, castTraitFp8_3>(vCastRes0, vCastFp32Res0, fp16MaskAll);
         MicroAPI::Mul<Q_T, MicroAPI::MaskMergeMode::ZEROING>(vMulRes0, vCastRes0, vScale0Bf16, fp16MaskAll);
@@ -980,7 +981,7 @@ __aicore__ inline int32_t SCFABlockVec<TEMPLATE_ARGS>::GetActualS1Size(uint32_t 
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline int32_t SCFABlockVec<TEMPLATE_ARGS>::GetActualS2Size(uint32_t bIdx,
-    __gm__ int32_t *actualSeqKvlenAddr, const ConstInfo &constInfo, bool subtractPrevious)
+    __gm__ int32_t *actualSeqKvlenAddr, const ConstInfo &constInfo)
 {
     int32_t actualS2Size = 0;
     if (constInfo.isActualLenDimsKVNull) {
@@ -1238,9 +1239,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
         return;
     }
     static constexpr uint16_t s2NumPerLoop =128;
-    static constexpr uint32_t vecCoreNum = IS_SPLIT_G ? 4 : 2;
+    static constexpr uint32_t vecCoreNum = IS_SPLIT_G ? 4 : 2; // N1=128时相邻4个v核分核数据一致，N1=64时两个v核分核数据一致
     int32_t blkSize = constInfo.cmpBlockSize;
-    uint32_t vecCoreIdx = IS_SPLIT_G ? constInfo.aivIdx % 4 : constInfo.aivIdx % 2;
+    uint32_t vecCoreIdx = IS_SPLIT_G ? constInfo.aivIdx % 4 : constInfo.aivIdx % 2; // N1=128时相邻4个v核分核数据一致，N1=64时两个v核分核数据一致
     
     // 计算右移位数
     int16_t shiftRightNum = 0;
@@ -1252,8 +1253,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     // GM分配
     int64_t v0TotalOffset = 0;
     if constexpr (IS_SPLIT_G) {
-        uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
-        v0TotalOffset = v0ResSize * 3 * (32 >> 1U);
+        uint32_t v0ResSize = constInfo.s2BaseSize * constInfo.dSize * sizeof(Q_T); //D=512
+        v0TotalOffset = v0ResSize * 3 * (GetBlockNum() >> 1U); // 3buffer
     }
     this->kvPhyAddrGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + v0TotalOffset));
 
@@ -1262,7 +1263,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     TBuf<> blkTableBuf;
     TBuf<> sparseIdxBuf;
     TBuf<> kvPhyAddrBuf;
-    tPipe->InitBuffer(blkTableBuf, 128 * 1024); // 最大能分配 128K constInfo.cmpMaxBlockNumPerBatch * sizeof(int32_t) TODO 拦截
+    tPipe->InitBuffer(blkTableBuf, constInfo.cmpMaxBlockNumPerBatch * sizeof(int32_t));
     tPipe->InitBuffer(sparseIdxBuf, constInfo.sparseBlockCount * sizeof(int32_t)); // k <= 1024
     tPipe->InitBuffer(kvPhyAddrBuf, constInfo.sparseBlockCount * sizeof(int64_t)); // k <= 1024
     LocalTensor<int32_t> blkTableUb = blkTableBuf.template Get<int32_t>();
@@ -1280,7 +1281,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
             s1End = nextGs1Idx;
         }
 
-        int32_t actualS2Size = GetActualS2Size(bIdx, actualSeqKvlenAddr, constInfo, constInfo.isActualLenDimsKVNull);
+        int32_t actualS2Size = GetActualS2Size(bIdx, actualSeqKvlenAddr, constInfo);
 
         for (int32_t s1Idx = tmpGS1Start; s1Idx < s1End; ++s1Idx) {
             int32_t numerator = actualS2Size - actualS1Size + 1 + s1Idx;
@@ -1330,7 +1331,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
             s1End = nextGs1Idx;
         }
 
-        int32_t actualS2Size = GetActualS2Size(bIdx, actualSeqKvlenAddr, constInfo, false);
+        int32_t actualS2Size = GetActualS2Size(bIdx, actualSeqKvlenAddr, constInfo);
 
         WaitFlag<AscendC::HardEvent::V_MTE2>(3);
         CopyPaTableToUb(blkTableUb, bIdx, constInfo);

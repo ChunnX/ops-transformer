@@ -487,7 +487,7 @@ __aicore__ inline void MatmulK1(
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType>
 __aicore__ inline void MatmulN1(
     const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, LocalTensor<L0AType> &aL0Tensor,
-    LocalTensor<L0BType> &bL0Tensor, const LocalTensor<C> &cL0Tensor, struct MMParam &param,
+    LocalTensor<L0BType> &bL0Tensor, const LocalTensor<C> &cL0Tensor, const MMParam &param,
     uint32_t l0ABMToMte1FlagId, uint32_t l0ABMte1ToMFlagId, uint32_t &l0ABBufId)
 {
     uint32_t nLoops = (param.singleN + baseN - 1) / baseN; // 尾块处理

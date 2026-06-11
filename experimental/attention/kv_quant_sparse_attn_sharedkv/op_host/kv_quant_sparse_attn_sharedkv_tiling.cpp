@@ -595,7 +595,7 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
     constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
     uint32_t totalBS1 = (tilingInfo->qLayout == SASLayout::TND) ?
         tilingInfo->s1Size : (tilingInfo->bSize * tilingInfo->s1Size);
-    uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (tilingInfo->gSize > 64) {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
     }
