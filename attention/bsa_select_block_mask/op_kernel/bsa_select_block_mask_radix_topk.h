@@ -704,7 +704,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyTileHistWs2Ub(
         static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
     DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
     DataCopyPad(dstTensor, tileHistGm_[srcOffset], params, padParams);
-    BSA_TOPK_PIPE_ALL();
 }
 
 template <typename BSAT>
@@ -715,7 +714,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyTileTopKWs2Ub(
         static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
     DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
     DataCopyPad(dstTensor, tileTopKGm_[srcOffset], params, padParams);
-    BSA_TOPK_PIPE_ALL();
 }
 
 template <typename BSAT>
@@ -934,7 +932,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyInGlobalHist(LocalTensor<i
         static_cast<uint32_t>(sizeof(int32_t) * numValue_ * constInfo.aivNum), 0, 0, 0};
     DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
     DataCopyPad(globalHist, globalHistGm_, copyParams, padParams);
-    BSA_TOPK_PIPE_ALL();
 }
 
 template <typename BSAT>
