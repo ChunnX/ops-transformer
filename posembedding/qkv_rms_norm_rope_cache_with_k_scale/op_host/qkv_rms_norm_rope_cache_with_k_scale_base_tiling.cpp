@@ -99,20 +99,21 @@ void QkvRmsNormRopeCacheWithKScaleTiling::LogContractInputSummary(const std::str
             tiling.numQkvHeads, input.headDim, input.maxSeqLen, input.blockNum, input.blockSize, aicNum);
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%lu ubInputRowsPerAiv=%lu "
-            "ubOutputRowsPerAiv=%lu fp8NtdStagingRowsPerAiv=%lu l0aMaxRows=%lu l0cMaxRows=%lu aivPerAic=%lu.",
-            kMaxTokenTile, kUbInputRowsPerAiv, kUbOutputRowsPerAiv, kFp8NtdStagingRowsPerAiv, kL0aMaxRows, kL0cMaxRows,
-            kAivPerAic);
+            "ubOutputRowsPerAiv=%lu fp8NtdStagingRowsPerAiv=%lu l0aFullDimSegmentRows=%lu l0cMaxRows=%lu "
+            "aivPerAic=%lu.",
+            kMaxTokenTile, kUbInputRowsPerAiv, kUbOutputRowsPerAiv, kFp8NtdStagingRowsPerAiv,
+            kL0aFullDimSegmentRows, kL0cMaxRows, kAivPerAic);
 }
 
 void QkvRmsNormRopeCacheWithKScaleTiling::LogTokenTileCandidate(const std::string &opName, uint64_t tokenTilePerAiv,
                                                                 uint64_t tokenTile, uint64_t rowTile,
                                                                 uint64_t rowTileAligned, uint64_t qkAlignedRows,
-                                                                bool fitsUb, bool fitsL0a, bool fitsL0c, bool accepted)
+                                                                bool fitsUb, bool fitsL0c, bool accepted)
 {
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale token tile candidate: tokenTilePerAiv=%lu tokenTile=%lu rowTile=%lu "
-            "rowTileAligned=%lu qkAlignedRows=%lu fitsUb=%u fitsL0a=%u fitsL0c=%u accepted=%u.",
-            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb ? 1U : 0U, fitsL0a ? 1U : 0U,
+            "rowTileAligned=%lu qkAlignedRows=%lu fitsUb=%u fitsSideBySideL0c=%u accepted=%u.",
+            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb ? 1U : 0U,
             fitsL0c ? 1U : 0U, accepted ? 1U : 0U);
 }
 
@@ -337,10 +338,9 @@ bool QkvRmsNormRopeCacheWithKScaleTiling::TrySelectTokenTile(const ContractTilin
     const bool fitsUb = tokenTilePerAiv * tiling.numQkHeads <= kUbOutputRowsPerAiv &&
                         tokenTilePerAiv * tiling.numQkvHeads <= kUbInputRowsPerAiv &&
                         tokenTilePerAiv * fp8NtdStagingHeads <= kFp8NtdStagingRowsPerAiv;
-    const bool fitsL0a = qkAlignedRows <= kL0aMaxRows;
     const bool fitsL0c = rowTile <= kL0cMaxRows && rowTileAligned <= kL0cMaxRows && qkAlignedRows <= kL0cMaxRows;
-    const bool accepted = fitsUb && fitsL0a && fitsL0c;
-    LogTokenTileCandidate(opName, tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb, fitsL0a,
+    const bool accepted = fitsUb && fitsL0c;
+    LogTokenTileCandidate(opName, tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb,
                           fitsL0c, accepted);
     if (accepted) {
         selection.tokenTile = tokenTile;

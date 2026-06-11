@@ -123,7 +123,7 @@ class __attribute__((visibility("default"))) QkvRmsNormRopeCacheWithKScaleTiling
 public:
     static constexpr uint64_t kHeadDimFast = 128;
     static constexpr uint64_t kMaxTokenTile = 16;
-    static constexpr uint64_t kL0aMaxRows = 128;
+    static constexpr uint64_t kL0aFullDimSegmentRows = 128;
     static constexpr uint64_t kL0cMaxRows = 256;
     static constexpr uint64_t kUbInputRowsPerAiv = 160;
     static constexpr uint64_t kUbOutputRowsPerAiv = 128;
@@ -170,7 +170,7 @@ private:
                                         const ContractTiling &tiling);
     static void LogTokenTileCandidate(const std::string &opName, uint64_t tokenTilePerAiv, uint64_t tokenTile,
                                       uint64_t rowTile, uint64_t rowTileAligned, uint64_t qkAlignedRows, bool fitsUb,
-                                      bool fitsL0a, bool fitsL0c, bool accepted);
+                                      bool fitsL0c, bool accepted);
     static void FillContractHeadNums(const ContractInput &input, ContractTiling &tiling);
     static ge::graphStatus ValidateHeadNums(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateScalarInputs(const ContractInput &input, const std::string &opName);

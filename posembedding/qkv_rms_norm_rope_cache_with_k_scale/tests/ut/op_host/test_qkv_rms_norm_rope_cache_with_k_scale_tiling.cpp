@@ -430,14 +430,18 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
         uint32_t tokenTile;
         uint32_t rowTile;
         uint32_t rowTileAligned;
+        uint32_t qkAlignedRows;
     };
     const Case cases[] = {
-        {16, 2, 6, 108, 112},
-        {16, 4, 6, 120, 128},
-        {16, 8, 4, 96, 96},
-        {32, 2, 2, 68, 80},
-        {32, 4, 2, 72, 80},
-        {32, 8, 2, 80, 80},
+        {16, 2, 10, 180, 192, 192},
+        {16, 4, 10, 200, 208, 208},
+        {16, 8, 10, 240, 240, 240},
+        {32, 2, 4, 136, 144, 144},
+        {32, 4, 4, 144, 144, 144},
+        {32, 8, 4, 160, 160, 160},
+        {64, 2, 2, 132, 144, 144},
+        {64, 4, 2, 136, 144, 144},
+        {64, 8, 2, 144, 144, 144},
     };
 
     for (const auto &item : cases) {
@@ -450,24 +454,30 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
         EXPECT_EQ(tiling.tokenTilePerAiv, item.tokenTile / 2);
         EXPECT_EQ(tiling.rowTile, item.rowTile);
         EXPECT_EQ(tiling.rowTileAligned, item.rowTileAligned);
+        EXPECT_EQ(AlignUp(tiling.tokenTile * input.numQHeads, 16) +
+                AlignUp(tiling.tokenTile * input.numKHeads, 16),
+            item.qkAlignedRows);
         EXPECT_EQ(tiling.numQkHeads, item.numQHeads + item.numKHeads);
         EXPECT_EQ(tiling.numVHeads, item.numKHeads);
         EXPECT_EQ(tiling.dimTile, 128U);
     }
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, QkAlignedL0aRowsCanReduceTokenTile)
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, QkAlignedRowsOnlyLimitSideBySideL0c)
 {
     ContractTiling tiling;
-    auto input = BuildInput(128, 14, 4, 4);
+    auto input = BuildInput(128, 16, 2, 2);
     EXPECT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
-    EXPECT_EQ(tiling.tokenTile, 6U);
-    EXPECT_EQ(tiling.tokenTilePerAiv, 3U);
-    EXPECT_EQ(tiling.rowTile, 108U);
-    EXPECT_EQ(tiling.rowTileAligned, 112U);
-    EXPECT_LE(AlignUp(tiling.tokenTile * input.numQHeads, 16) +
-            AlignUp(tiling.tokenTile * input.numKHeads, 16),
-        QkvTiling::kL0aMaxRows);
+    EXPECT_EQ(tiling.tokenTile, 10U);
+    EXPECT_EQ(tiling.tokenTilePerAiv, 5U);
+    EXPECT_EQ(tiling.rowTile, 180U);
+    EXPECT_EQ(tiling.rowTileAligned, 192U);
+    const uint64_t qkAlignedRows = AlignUp(tiling.tokenTile * input.numQHeads, 16) +
+        AlignUp(tiling.tokenTile * input.numKHeads, 16);
+    EXPECT_GT(qkAlignedRows, QkvTiling::kL0aFullDimSegmentRows);
+    EXPECT_LE(qkAlignedRows, QkvTiling::kL0cMaxRows);
+    EXPECT_GT(AlignUp(tiling.tokenTile * input.numQHeads, 16), QkvTiling::kL0aFullDimSegmentRows);
+    EXPECT_LE(AlignUp(tiling.tokenTile * input.numKHeads, 16), QkvTiling::kL0aFullDimSegmentRows);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
@@ -488,10 +498,10 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
 
     input = BuildInput(128, 64, 2, 2);
     EXPECT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
-    EXPECT_EQ(tiling.tokenTile, 1U);
+    EXPECT_EQ(tiling.tokenTile, 2U);
     EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
-    EXPECT_EQ(tiling.rowTile, 66U);
-    EXPECT_EQ(tiling.rowTileAligned, 80U);
+    EXPECT_EQ(tiling.rowTile, 132U);
+    EXPECT_EQ(tiling.rowTileAligned, 144U);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsT512Q64K8V8Aic32)
@@ -499,10 +509,10 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsT512Q64K8V8Aic32)
     ContractTiling tiling;
     auto input = BuildInput(512, 64, 8, 8);
     ASSERT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
-    EXPECT_EQ(tiling.tokenTile, 1U);
+    EXPECT_EQ(tiling.tokenTile, 2U);
     EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
-    EXPECT_EQ(tiling.rowTile, 72U);
-    EXPECT_EQ(tiling.rowTileAligned, 80U);
+    EXPECT_EQ(tiling.rowTile, 144U);
+    EXPECT_EQ(tiling.rowTileAligned, 144U);
     EXPECT_EQ(tiling.numQkHeads, 72U);
     EXPECT_EQ(tiling.numVHeads, 8U);
     EXPECT_EQ(tiling.coreTokenTile, 16U);
@@ -514,7 +524,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, Fp8NtdStagingCapacityIsEnforced)
     ContractTiling tiling;
     auto input = BuildInput(128, 80, 1, 1);
     ASSERT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
-    EXPECT_EQ(tiling.tokenTile, 1U);
+    EXPECT_EQ(tiling.tokenTile, 2U);
     EXPECT_EQ(tiling.tokenTilePerAiv, 1U);
     EXPECT_EQ(tiling.tokenTilePerAiv * std::max({tiling.numQHeads, tiling.numKHeads, tiling.numVHeads}),
         QkvTiling::kFp8NtdStagingRowsPerAiv);
@@ -529,19 +539,19 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, T1024Q16K2V2Aic32KeepsQCopyBlockLenBou
     ContractTiling tiling;
     auto input = BuildInput(1024, 16, 2, 2);
     ASSERT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
-    EXPECT_EQ(tiling.tokenTile, 6U);
-    EXPECT_EQ(tiling.tokenTilePerAiv, 3U);
-    EXPECT_EQ(tiling.rowTile, 108U);
-    EXPECT_EQ(tiling.rowTileAligned, 112U);
+    EXPECT_EQ(tiling.tokenTile, 10U);
+    EXPECT_EQ(tiling.tokenTilePerAiv, 5U);
+    EXPECT_EQ(tiling.rowTile, 180U);
+    EXPECT_EQ(tiling.rowTileAligned, 192U);
     EXPECT_EQ(tiling.coreTokenTile, 32U);
     EXPECT_EQ(tiling.coreGroupNum, 32U);
 
     const uint64_t qRowsPerAiv = tiling.tokenTilePerAiv * tiling.numQHeads;
     const uint64_t qCopyBlockLen = tiling.tokenTilePerAiv * input.headDim;
-    EXPECT_EQ(qRowsPerAiv, 48U);
+    EXPECT_EQ(qRowsPerAiv, 80U);
     EXPECT_LE(tiling.tokenTilePerAiv * std::max({tiling.numQHeads, tiling.numKHeads, tiling.numVHeads}),
         QkvTiling::kFp8NtdStagingRowsPerAiv);
-    EXPECT_EQ(qCopyBlockLen, 384U);
+    EXPECT_EQ(qCopyBlockLen, 640U);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RealTilingIsStableAcrossThreads)
@@ -549,9 +559,9 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RealTilingIsStableAcrossThreads)
     constexpr uint32_t kThreadCount = 8U;
     constexpr uint32_t kIterations = 64U;
     const std::array<ConcurrentTilingCase, 5U> cases = {{
-        {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 6, 4, 32},
-        {512, 64, 8, 8, 128, 32, ge::GRAPH_SUCCESS, 1, 16, 32},
-        {1024, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 6, 32, 32},
+        {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 10, 4, 32},
+        {512, 64, 8, 8, 128, 32, ge::GRAPH_SUCCESS, 2, 16, 32},
+        {1024, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 10, 32, 32},
         {128, 128, 8, 8, 128, 32, ge::GRAPH_FAILED, 0, 0, 0},
         {128, 16, 2, 2, 64, 32, ge::GRAPH_FAILED, 0, 0, 0},
     }};
@@ -747,18 +757,18 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
 {
     ContractTiling tiling;
-    auto input = BuildInput(13, 16, 2, 2);
+    auto input = BuildInput(21, 16, 2, 2);
     ASSERT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(tiling.tokenTile, 6U);
+    ASSERT_EQ(tiling.tokenTile, 10U);
     ASSERT_EQ(Ops::Base::CeilDiv(input.totalTokens, tiling.tokenTile), 3U);
 
     auto firstTile = MakeTileParamForTest(0, 0, tiling.tokenTile, input.totalTokens, tiling);
     EXPECT_EQ(firstTile.tokenOffset, 0U);
-    EXPECT_EQ(firstTile.tokenSize, 6U);
+    EXPECT_EQ(firstTile.tokenSize, 10U);
     EXPECT_EQ(firstTile.rowSize, tiling.rowTile);
 
-    auto tailTile = MakeTileParamForTest(0, 12, 1, input.totalTokens, tiling);
-    EXPECT_EQ(tailTile.tokenOffset, 12U);
+    auto tailTile = MakeTileParamForTest(0, 20, 1, input.totalTokens, tiling);
+    EXPECT_EQ(tailTile.tokenOffset, 20U);
     EXPECT_EQ(tailTile.tokenSize, 1U);
     EXPECT_EQ(tailTile.rowSize, tiling.numQkHeads);
 
@@ -773,9 +783,9 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
 {
     ContractTiling tiling;
-    auto input = BuildInput(11, 16, 2, 2);
+    auto input = BuildInput(19, 16, 2, 2);
     ASSERT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(tiling.tokenTile, 6U);
+    ASSERT_EQ(tiling.tokenTile, 10U);
 
     auto fullTile = MakeTileParamForTest(0, 0, tiling.tokenTile, input.totalTokens, tiling);
     auto fullAiv0 = MakeAivSlice(fullTile, tiling.numQkHeads, 0);
@@ -794,42 +804,42 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
     EXPECT_EQ(fullAiv1.rowOffset, fullAiv0.rowSize);
     EXPECT_EQ(fullAiv0.rowSize + fullAiv1.rowSize, fullTile.rowSize);
 
-    auto tailTile = MakeTileParamForTest(1, 6, 5, input.totalTokens, tiling);
+    auto tailTile = MakeTileParamForTest(1, 10, 9, input.totalTokens, tiling);
     auto tailAiv0 = MakeAivSlice(tailTile, tiling.numQkHeads, 0);
     auto tailAiv1 = MakeAivSlice(tailTile, tiling.numQkHeads, 1);
     const auto tailUses = outputUses.NextTile();
-    ASSERT_EQ(tailTile.tokenOffset, 6U);
-    ASSERT_EQ(tailTile.tokenSize, 5U);
+    ASSERT_EQ(tailTile.tokenOffset, 10U);
+    ASSERT_EQ(tailTile.tokenSize, 9U);
     EXPECT_EQ(tailTile.bufferId, 1U);
     EXPECT_EQ(tailUses.preprocess, 2U);
     EXPECT_EQ(tailUses.qk, 3U);
     EXPECT_EQ(MakeOutputBufferIdForTest(tailUses.preprocess), 0U);
     EXPECT_EQ(MakeOutputBufferIdForTest(tailUses.qk), 1U);
-    EXPECT_EQ(tailTile.rowSize, 5U * tiling.numQkHeads);
-    EXPECT_EQ(tailAiv0.tokenOffset, 6U);
-    EXPECT_EQ(tailAiv0.tokenSize, 3U);
+    EXPECT_EQ(tailTile.rowSize, 9U * tiling.numQkHeads);
+    EXPECT_EQ(tailAiv0.tokenOffset, 10U);
+    EXPECT_EQ(tailAiv0.tokenSize, 5U);
     EXPECT_EQ(tailAiv0.rowOffset, 0U);
-    EXPECT_EQ(tailAiv0.rowSize, 3U * tiling.numQkHeads);
+    EXPECT_EQ(tailAiv0.rowSize, 5U * tiling.numQkHeads);
     EXPECT_EQ(tailAiv1.tokenOffset, tailTile.tokenOffset + tailAiv0.tokenSize);
-    EXPECT_EQ(tailAiv1.tokenSize, 2U);
+    EXPECT_EQ(tailAiv1.tokenSize, 4U);
     EXPECT_EQ(tailAiv1.rowOffset, tailAiv0.rowSize);
-    EXPECT_EQ(tailAiv1.rowSize, 2U * tiling.numQkHeads);
+    EXPECT_EQ(tailAiv1.rowSize, 4U * tiling.numQkHeads);
     EXPECT_EQ(tailAiv0.rowSize + tailAiv1.rowSize, tailTile.rowSize);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseDisjointGlobalTokenBases)
 {
     ContractTiling tiling;
-    auto input = BuildInput(17, 16, 2, 2);
+    auto input = BuildInput(29, 16, 2, 2);
     ASSERT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
 
-    auto tile = MakeTileParamForTest(1, 6, 5, input.totalTokens, tiling);
+    auto tile = MakeTileParamForTest(1, 10, 9, input.totalTokens, tiling);
     auto aiv0 = MakeAivSlice(tile, tiling.numQkHeads, 0);
     auto aiv1 = MakeAivSlice(tile, tiling.numQkHeads, 1);
 
-    ASSERT_EQ(tile.tokenOffset, 6U);
-    ASSERT_EQ(tile.tokenSize, 5U);
-    EXPECT_EQ(aiv0.tokenSize, 3U);
+    ASSERT_EQ(tile.tokenOffset, 10U);
+    ASSERT_EQ(tile.tokenSize, 9U);
+    EXPECT_EQ(aiv0.tokenSize, 5U);
     EXPECT_EQ(aiv0.tokenOffset, tile.tokenOffset);
     EXPECT_EQ(aiv1.tokenOffset, tile.tokenOffset + aiv0.tokenSize);
     EXPECT_EQ(aiv0.tokenOffset + aiv0.tokenSize, aiv1.tokenOffset);
@@ -839,9 +849,9 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseDisjointGlobalTokenBases)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailAndEmptySlicesKeepFixedCrossCoreProtocol)
 {
     ContractTiling tiling;
-    auto input = BuildInput(6, 16, 2, 2);
+    auto input = BuildInput(10, 16, 2, 2);
     ASSERT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(tiling.tokenTile, 6U);
+    ASSERT_EQ(tiling.tokenTile, 10U);
 
     for (uint64_t tokenSize = 1; tokenSize <= tiling.tokenTile; ++tokenSize) {
         const auto tile = MakeTileParamForTest(tokenSize - 1U, 0U, tokenSize, tokenSize, tiling);
@@ -898,15 +908,15 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreTokenRangeUsesHostCeilTokenTile)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreLocalTilesFollowContiguousTokenRange)
 {
     ContractTiling tiling;
-    auto input = BuildInput(40, 16, 2, 2);
+    auto input = BuildInput(68, 16, 2, 2);
     ASSERT_EQ(ValidateThenBuildTiling(input, tiling, 3), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(tiling.tokenTile, 6U);
-    ASSERT_EQ(tiling.coreTokenTile, 14U);
+    ASSERT_EQ(tiling.tokenTile, 10U);
+    ASSERT_EQ(tiling.coreTokenTile, 23U);
     ASSERT_EQ(tiling.coreGroupNum, 3U);
 
     const auto range = MakeCoreTokenRangeForTest(input.totalTokens, 0, tiling);
     ASSERT_EQ(range.begin, 0U);
-    ASSERT_EQ(range.end, 14U);
+    ASSERT_EQ(range.end, 23U);
 
     auto tile0 = MakeTileParamForTest(0, range.begin, tiling.tokenTile, input.totalTokens, tiling);
     auto tile1 = MakeTileParamForTest(
@@ -919,21 +929,21 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreLocalTilesFollowContiguousTokenRan
     const auto tile2Uses = outputUses.NextTile();
 
     EXPECT_EQ(tile0.tokenOffset, 0U);
-    EXPECT_EQ(tile0.tokenSize, 6U);
+    EXPECT_EQ(tile0.tokenSize, 10U);
     EXPECT_EQ(tile0.bufferId, 0U);
     EXPECT_EQ(tile0Uses.preprocess, 0U);
     EXPECT_EQ(tile0Uses.qk, 1U);
     EXPECT_EQ(MakeOutputBufferIdForTest(tile0Uses.preprocess), 0U);
     EXPECT_EQ(MakeOutputBufferIdForTest(tile0Uses.qk), 1U);
-    EXPECT_EQ(tile1.tokenOffset, 6U);
-    EXPECT_EQ(tile1.tokenSize, 6U);
+    EXPECT_EQ(tile1.tokenOffset, 10U);
+    EXPECT_EQ(tile1.tokenSize, 10U);
     EXPECT_EQ(tile1.bufferId, 1U);
     EXPECT_EQ(tile1Uses.preprocess, 2U);
     EXPECT_EQ(tile1Uses.qk, 3U);
     EXPECT_EQ(MakeOutputBufferIdForTest(tile1Uses.preprocess), 0U);
     EXPECT_EQ(MakeOutputBufferIdForTest(tile1Uses.qk), 1U);
-    EXPECT_EQ(tile2.tokenOffset, 12U);
-    EXPECT_EQ(tile2.tokenSize, 2U);
+    EXPECT_EQ(tile2.tokenOffset, 20U);
+    EXPECT_EQ(tile2.tokenSize, 3U);
     EXPECT_EQ(tile2.bufferId, 0U);
     EXPECT_EQ(tile2Uses.preprocess, 4U);
     EXPECT_EQ(tile2Uses.qk, 5U);
@@ -942,22 +952,22 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreLocalTilesFollowContiguousTokenRan
     EXPECT_EQ(tile0.tokenSize + tile1.tokenSize + tile2.tokenSize, range.end - range.begin);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, T512Aic40CoreTilesKeepSingleTokenTail)
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, T512Aic25CoreTilesKeepSingleTokenTail)
 {
     ContractTiling tiling;
     auto input = BuildInput(512, 16, 2, 2);
-    ASSERT_EQ(ValidateThenBuildTiling(input, tiling, 40), ge::GRAPH_SUCCESS);
-    ASSERT_EQ(tiling.tokenTile, 6U);
-    ASSERT_EQ(tiling.tokenTilePerAiv, 3U);
-    ASSERT_EQ(tiling.coreTokenTile, 13U);
-    ASSERT_EQ(tiling.coreGroupNum, 40U);
+    ASSERT_EQ(ValidateThenBuildTiling(input, tiling, 25), ge::GRAPH_SUCCESS);
+    ASSERT_EQ(tiling.tokenTile, 10U);
+    ASSERT_EQ(tiling.tokenTilePerAiv, 5U);
+    ASSERT_EQ(tiling.coreTokenTile, 21U);
+    ASSERT_EQ(tiling.coreGroupNum, 25U);
 
     const auto group0 = MakeCoreTokenRangeForTest(input.totalTokens, 0, tiling);
     const auto group1 = MakeCoreTokenRangeForTest(input.totalTokens, 1, tiling);
     ASSERT_EQ(group0.begin, 0U);
-    ASSERT_EQ(group0.end, 13U);
-    ASSERT_EQ(group1.begin, 13U);
-    ASSERT_EQ(group1.end, 26U);
+    ASSERT_EQ(group0.end, 21U);
+    ASSERT_EQ(group1.begin, 21U);
+    ASSERT_EQ(group1.end, 42U);
 
     auto tile0 = MakeTileParamForTest(0, group0.begin, tiling.tokenTile, input.totalTokens, tiling);
     auto tile1 = MakeTileParamForTest(
@@ -970,20 +980,20 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, T512Aic40CoreTilesKeepSingleTokenTail)
     const auto tile2Uses = outputUses.NextTile();
 
     EXPECT_EQ(tile0.tokenOffset, 0U);
-    EXPECT_EQ(tile0.tokenSize, 6U);
+    EXPECT_EQ(tile0.tokenSize, 10U);
     EXPECT_EQ(tile0.bufferId, 0U);
     EXPECT_EQ(tile0Uses.preprocess, 0U);
     EXPECT_EQ(tile0Uses.qk, 1U);
     EXPECT_EQ(MakeOutputBufferIdForTest(tile0Uses.preprocess), 0U);
     EXPECT_EQ(MakeOutputBufferIdForTest(tile0Uses.qk), 1U);
-    EXPECT_EQ(tile1.tokenOffset, 6U);
-    EXPECT_EQ(tile1.tokenSize, 6U);
+    EXPECT_EQ(tile1.tokenOffset, 10U);
+    EXPECT_EQ(tile1.tokenSize, 10U);
     EXPECT_EQ(tile1.bufferId, 1U);
     EXPECT_EQ(tile1Uses.preprocess, 2U);
     EXPECT_EQ(tile1Uses.qk, 3U);
     EXPECT_EQ(MakeOutputBufferIdForTest(tile1Uses.preprocess), 0U);
     EXPECT_EQ(MakeOutputBufferIdForTest(tile1Uses.qk), 1U);
-    EXPECT_EQ(tile2.tokenOffset, 12U);
+    EXPECT_EQ(tile2.tokenOffset, 20U);
     EXPECT_EQ(tile2.tokenSize, 1U);
     EXPECT_EQ(tile2.bufferId, 0U);
     EXPECT_EQ(tile2Uses.preprocess, 4U);
@@ -997,12 +1007,12 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, T512Aic40CoreTilesKeepSingleTokenTail)
     const auto tile0Aiv1 = MakeAivSlice(tile0, tiling.numQkHeads, 1);
     const auto tile1Aiv1 = MakeAivSlice(tile1, tiling.numQkHeads, 1);
     const auto tile2Aiv1 = MakeAivSlice(tile2, tiling.numQkHeads, 1);
-    EXPECT_EQ(tile0Aiv0.tokenSize, 3U);
-    EXPECT_EQ(tile1Aiv0.tokenSize, 3U);
+    EXPECT_EQ(tile0Aiv0.tokenSize, 5U);
+    EXPECT_EQ(tile1Aiv0.tokenSize, 5U);
     EXPECT_EQ(tile2Aiv0.tokenSize, 1U);
-    EXPECT_EQ(tile2Aiv0.tokenOffset, 12U);
-    EXPECT_EQ(tile0Aiv1.tokenSize, 3U);
-    EXPECT_EQ(tile1Aiv1.tokenSize, 3U);
+    EXPECT_EQ(tile2Aiv0.tokenOffset, 20U);
+    EXPECT_EQ(tile0Aiv1.tokenSize, 5U);
+    EXPECT_EQ(tile1Aiv1.tokenSize, 5U);
     EXPECT_EQ(tile2Aiv1.tokenSize, 0U);
     EXPECT_TRUE(HasPreprocessWorkForTest(tile0Aiv1));
     EXPECT_TRUE(HasPreprocessWorkForTest(tile1Aiv1));
