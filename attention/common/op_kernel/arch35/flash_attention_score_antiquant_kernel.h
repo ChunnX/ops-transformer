@@ -53,7 +53,7 @@ using namespace regbaseutil;
 using namespace fa_base_matmul;
 using matmul::MatmulType;
 using namespace optiling;
-
+//
 namespace BaseApi {
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
 class FlashAttentionScoreAntiquantKernel {
