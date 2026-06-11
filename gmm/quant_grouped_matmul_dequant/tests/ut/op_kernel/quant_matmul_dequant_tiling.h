@@ -78,7 +78,6 @@ struct QuantMatmulDequantTilingData {
 
     uint64_t ubKMask = 0;
     uint32_t isXScaleHalf = 0;
-
 };
 #pragma pack()
 
