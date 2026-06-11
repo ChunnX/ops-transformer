@@ -55,7 +55,7 @@ public:
         ParseTilingData(tdata);
         CalcTileLength();
         // 设置全局变量的起始地址与总长度: BLOCK_LENGTH; sp, B*s*hc in1 sp; B*s*hc, hd in2
-        outGm.SetGlobalBuffer((__gm__ outType *)out, totalLength * hDim);
+        outGm.SetGlobalBuffer((__gm__ outType *)out, static_cast<uint64_t>(totalLength) * hDim);
         lseoutGm.SetGlobalBuffer((__gm__ lseType *)lesout, totalLength);
         InitBuffers();
     }
@@ -111,11 +111,11 @@ private:
         this->updateType = tdata->updateType;
         if (GetBlockIdx() < tdata->formerNum) {
             blockLength = tdata->formerLength;
-            this->gmStartOffset = GetBlockIdx() * tdata->formerLength;
+            this->gmStartOffset = static_cast<uint64_t>(GetBlockIdx()) * tdata->formerLength;
         } else {
             blockLength = tdata->tailLength;
-            this->gmStartOffset = tdata->formerNum * tdata->formerLength +
-                                  (GetBlockIdx() - tdata->formerNum) * tdata->tailLength; // tail block
+            this->gmStartOffset = static_cast<uint64_t>(tdata->formerNum) * tdata->formerLength +
+                                  static_cast<uint64_t>(GetBlockIdx() - tdata->formerNum) * tdata->tailLength; // tail block
         }
         
         if (sp <= MAX_EFFECTIVE_SP) {
@@ -204,9 +204,9 @@ private:
     {
         lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + gmSpIdx)), totalLength);
         if (curLength % ALIGNED_TO_8 == 0) {
-            DataCopy(lseLocal[posIdx * curLengthPad], lseGm[progress * tileLength + gmStartOffset], curLength);
+            DataCopy(lseLocal[posIdx * curLengthPad], lseGm[static_cast<uint64_t>(progress) * tileLength + gmStartOffset], curLength);
         } else {
-            DataCopyPad(lseLocal[posIdx * curLengthPad], lseGm[progress * tileLength + gmStartOffset],
+            DataCopyPad(lseLocal[posIdx * curLengthPad], lseGm[static_cast<uint64_t>(progress) * tileLength + gmStartOffset],
                         {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * sizeof(lseType)), 0, 0, 0},
                         {true, 0, static_cast<uint8_t>(NUM8 - curLength % NUM8), 0});
         }
@@ -215,9 +215,9 @@ private:
     __aicore__ inline void CopyInOPerSp(LocalTensor<float>& inLocal, LocalTensor<outType>& inLocalFp16,
                                          uint32_t posIdx, uint32_t gmSpIdx, int32_t progress)
     {
-        inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + gmSpIdx)), totalLength * hDim);
+        inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + gmSpIdx)), static_cast<uint64_t>(totalLength) * hDim);
         uint32_t inOffset = posIdx * curLength * hDim;
-        uint32_t gmOffset = progress * tileLength * hDim + gmStartOffset * hDim;
+        uint64_t gmOffset = static_cast<uint64_t>(progress) * tileLength * hDim + gmStartOffset * hDim;
         if constexpr (std::is_same<outType, float>::value) {
             DataCopy(inLocal[inOffset], inGm[gmOffset], curLength * hDim);
         } else {
@@ -437,24 +437,24 @@ private:
     {
         LocalTensor<float> outLocal = outQueueOut.DeQue<float>();
         if constexpr (std::is_same<outType, float>::value) { // fp32直接搬运
-            DataCopy(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal, curLength * hDim);
+            DataCopy(outGm[gmStartOffset * hDim + static_cast<uint64_t>(progress) * tileLength * hDim], outLocal, curLength * hDim);
         } else if constexpr (std::is_same<outType, bfloat16_t>::value) { // 先转fp32，再搬运
             LocalTensor<outType> outLocal16 = outLocal.template ReinterpretCast<outType>();
             Cast(outLocal16, outLocal, RoundMode::CAST_RINT, curLength * hDim);
             PipeBarrier<PIPE_V>();
-            DataCopyPad(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal16,
+            DataCopyPad(outGm[gmStartOffset * hDim + static_cast<uint64_t>(progress) * tileLength * hDim], outLocal16,
                         {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0});
         } else {
             LocalTensor<outType> outLocal16 = outLocal.template ReinterpretCast<outType>();
             Cast(outLocal16, outLocal, RoundMode::CAST_NONE, curLength * hDim);
             PipeBarrier<PIPE_V>();
-            DataCopyPad(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal16,
+            DataCopyPad(outGm[gmStartOffset * hDim + static_cast<uint64_t>(progress) * tileLength * hDim], outLocal16,
                         {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0});
         }
         outQueueOut.FreeTensor(outLocal);
         LocalTensor<float> lseoutLocal = outQueueLse.DeQue<float>();
         if (updateType == 1) {
-            uint32_t lseoutGmStart = gmStartOffset + progress * tileLength; // lseout无hDim维度，直接按长度偏移
+            uint64_t lseoutGmStart = gmStartOffset + static_cast<uint64_t>(progress) * tileLength; // lseout无hDim维度，直接按长度偏移
             uint32_t validBytes = static_cast<uint32_t>(curLength * sizeof(float));
             DataCopyExtParams copyParams{1, validBytes, 0, 0, 0};
             DataCopyPad(lseoutGm[lseoutGmStart], lseoutLocal, copyParams);
@@ -493,7 +493,7 @@ private:
     uint32_t tileLengthAlig;
     uint32_t lastLengthAlig;
     uint32_t totalLength;
-    uint32_t gmStartOffset;
+    uint64_t gmStartOffset;
     uint32_t updateType;
     uint32_t spLoopCount;
     uint32_t spFirstLoop;
