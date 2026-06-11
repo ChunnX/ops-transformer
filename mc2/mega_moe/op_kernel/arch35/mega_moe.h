@@ -987,7 +987,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
         MegaMoeImpl::GroupMatmul2CombineA8W4<
             QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
             params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-            expertBeforeCnt_, gmm2PingPongIdx_, rankId_);
+            expertBeforeCnt_, gmm2PingPongIdx_);
     } else {
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmul2Combine<
