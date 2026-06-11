@@ -94,7 +94,7 @@ public:
         typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;
     using CopyL0CToGm = typename std::conditional<
         std::is_same_v<ElementA, int8_t>,
-        Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType_, Gemm::Tile::ScaleGranularity::PER_CHANNEL>,
+        Gemm::Tile::CopyL0CToGmPerChannel<ElementAccumulator, ElementC>,
         typename TileCopy_::CopyL0CToGm
     >::type;
     using LayoutAInL1 = typename CopyL1ToL0A::LayoutSrc;
