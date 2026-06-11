@@ -40,8 +40,8 @@ using namespace arch35FA;
 ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
 {
     const std::vector<FaLayout> supportedQLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
-    const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND, FaLayout::PA_BBND,
-                                                      FaLayout::PA_BNBD, FaLayout::PA_NZ};
+    const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BNSD,    FaLayout::BSND,    FaLayout::TND,
+                                                      FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ};
     const std::vector<FaLayout> supportedOutLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
 
     OP_CHECK_IF(std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
@@ -52,7 +52,8 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
 
     OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
                     supportedKvLayouts.end(),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
                     "The value of layout_kv(layout of K/V) can only be BNSD/BSND/TND/PA_BBND/PA_BNBD/PA_NZ"),
                 return ge::GRAPH_FAILED);
 
@@ -208,12 +209,14 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
 
     const std::vector<int64_t> supportedHeadDims = {64, 128, 256};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.qkHeadDim, supportedHeadDims),
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo.opName, "axis D of query and key", std::to_string(faInfo.qkHeadDim).c_str(),
-                    "The value of axis D of query and key can only be 64/128/256"),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo.opName, "axis D of query and key",
+                                                       std::to_string(faInfo.qkHeadDim).c_str(),
+                                                       "The value of axis D of query and key can only be 64/128/256"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.vHeadDim, supportedHeadDims),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis D of value", std::to_string(faInfo.vHeadDim).c_str(),
-                    "The value of The axis D of value can only be 64/128/256"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis D of value",
+                                                      std::to_string(faInfo.vHeadDim).c_str(),
+                                                      "The value of axis D of value can only be 64/128/256"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -229,7 +232,8 @@ struct LayoutConstraintConfig {
 };
 
 static const std::map<FaLayout, LayoutConstraintConfig> LAYOUT_CONSTRAINT_TABLE = {
-    {FaLayout::BNSD, {{FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ}, {FaLayout::BNSD, FaLayout::BSND}}},
+    {FaLayout::BNSD,
+     {{FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ}, {FaLayout::BNSD, FaLayout::BSND}}},
     {FaLayout::BSND, {{FaLayout::BSND, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ}, {FaLayout::BSND}}},
     {FaLayout::TND, {{FaLayout::TND, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ}, {FaLayout::TND}}},
 };
@@ -342,7 +346,8 @@ ge::graphStatus CommonChecker::CheckKVShape(const FaTilingInfo &faInfo) const
         return CheckKVShapeForContinuous(faInfo);
     }
 
-    if (faInfo.kvLayout == FaLayout::PA_BBND || faInfo.kvLayout == FaLayout::PA_BNBD || faInfo.kvLayout == FaLayout::PA_NZ) {
+    if (faInfo.kvLayout == FaLayout::PA_BBND || faInfo.kvLayout == FaLayout::PA_BNBD ||
+        faInfo.kvLayout == FaLayout::PA_NZ) {
         if (faInfo.pageAttentionFlag) {
             return CheckKVShapeForPageAttention(faInfo);
         }

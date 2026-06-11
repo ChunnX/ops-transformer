@@ -145,8 +145,9 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
     } else if (faInfo_->qkHeadDim == 256) {
         tilingKeyInfo_.config = 4;
     } else {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)", std::to_string(faInfo_->qkHeadDim).c_str(),
-            "The value of qkHeadDim(Head num of Q/K) can only be 64/128/256");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)",
+                                               std::to_string(faInfo_->qkHeadDim).c_str(),
+                                               "The value of qkHeadDim(Head num of Q/K) can only be 64/128/256");
     }
 }
 
@@ -181,8 +182,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
-    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL) ||
-                                   faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
@@ -266,8 +266,7 @@ void FlashAttnTilingImpl::FillTiling()
 void FlashAttnTilingImpl::ComputeTilingData()
 {
     tilingData_.baseTiling.flashAttnAttenMaskParams.sparseMode = faInfo_->maskMode;
-    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL) ||
-                                   faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
 
     if (tilingKeyInfo_.hasAttenMask) {
         uint64_t maskBatch = 1;
@@ -335,8 +334,7 @@ void FlashAttnTilingImpl::SetFATilingData()
     // 1、存在seqUsedQ
     // 2、存在seqUsedKv(可能导致S2小于S1出现行无效)
     // 3、带mask且S2小于S1
-    if (seqUsedQFlag_ || seqUsedKvFlag_ ||
-       ((faInfo_->s1Size > faInfo_->s2Size) && tilingKeyInfo_.hasAttenMask)) {
+    if (seqUsedQFlag_ || seqUsedKvFlag_ || ((faInfo_->s1Size > faInfo_->s2Size) && tilingKeyInfo_.hasAttenMask)) {
         tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = true;
     } else {
         tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = false;
