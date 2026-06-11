@@ -136,6 +136,8 @@ public:
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);   // 读完之前AIV不能写
                     CrossCoreWaitFlag(0x5);
                     CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], finalState);
+                    SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
+                    WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
                 }
             }
