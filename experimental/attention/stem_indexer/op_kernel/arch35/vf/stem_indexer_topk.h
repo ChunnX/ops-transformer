@@ -111,6 +111,11 @@ public:
         this->topK = topK;
         this->trunkLen =  trunkLen;
     }
+
+    __aicore__ inline void SetTopK(uint32_t topK)
+    {
+        this->topK = topK;
+    }
     
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
     {

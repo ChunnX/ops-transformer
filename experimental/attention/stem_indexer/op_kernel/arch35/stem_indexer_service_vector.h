@@ -92,7 +92,6 @@ protected:
 private:
     __aicore__ inline uint32_t CalcDynamicTopkCount(uint32_t s1Idx, int32_t kbOffset, int32_t numPromptK);
     // ================================Local Buffer区====================================
-    using SCORE_T = uint32_t;
     // tmp buff for vector
     TBuf<TPosition::VECCALC> resMm1Buf_;
     LocalTensor<QK_T> resMm1UB_;
