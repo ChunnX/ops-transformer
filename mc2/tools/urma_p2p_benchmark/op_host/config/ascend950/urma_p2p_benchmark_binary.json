@@ -1,0 +1,85 @@
+{
+    "op_type": "UrmaP2pBenchmark",
+    "op_list": [
+        {
+            "bin_filename": "UrmaP2pBenchmark_ND_ND_FP16_FP16",
+            "inputs": [
+                {
+                    "name": "x",
+                    "index": 0,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "y",
+                    "index": 0,
+                    "dtype": "float16",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "receive_cnt",
+                    "index": 1,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-2],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "performance_info",
+                    "index": 2,
+                    "dtype": "int64",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-1],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "attrs": [
+                {
+                    "name": "group",
+                    "dtype": "string",
+                    "value": ""
+                },
+                {
+                    "name": "world_size",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "max_bs",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "mode",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "ccl_buffer_size",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "dst_rank_id",
+                    "dtype": "int",
+                    "value": -1
+                },
+                {
+                    "name": "aiv_num",
+                    "dtype": "int",
+                    "value": -1
+                }
+            ]
+        }
+    ]
+}
