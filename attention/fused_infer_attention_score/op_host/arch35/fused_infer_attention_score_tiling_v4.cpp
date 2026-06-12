@@ -20,12 +20,8 @@
 #include "../checkers/fia_checker.h"
 
 #include "log/log.h"
-#include "log/error_code.h"
 #include "err/ops_err.h"
 #include "tiling/tiling_api.h"
-#include "platform/platform_info.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
-#include "../../op_kernel/fused_infer_attention_score_template_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
