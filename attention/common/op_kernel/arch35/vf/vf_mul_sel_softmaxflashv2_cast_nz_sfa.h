@@ -127,38 +127,29 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxVF(__ubuf__ T * maxUb, __ubuf__ T *
 }
 
 template <typename T>
-__aicore__ inline void SFAUpdateExpSumAndExpMax(
-    const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
-    const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& inExpSumTensor,
-    const LocalTensor<T>& inMaxTensor,  const LocalTensor<T>& sharedTmpBuffer, const uint32_t m)
+__simd_vf__ inline void InitSoftmaxFromSinksVF(__ubuf__ T * sumUb, __ubuf__ T * maxUb, __ubuf__ T * sinksUb,
+ 	     uint32_t sinksOffset, const T R0, uint32_t m)
 {
-    __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
-    __ubuf__ T * inMaxUb = (__ubuf__ T*)inMaxTensor.GetPhyAddr();
-
-    __ubuf__ T * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ T * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
-    __ubuf__ T * inExpSumUb = (__ubuf__ T*)inExpSumTensor.GetPhyAddr();
-
-    __ubuf__ T * tmpExpSumUb = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr();
-    __ubuf__ T * tmpMaxUb = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr() + 64;
-
-    UpdateExpSumAndExpMaxVF<T>(maxUb, inMaxUb, expMaxUb, expSumUb, inExpSumUb, tmpExpSumUb, tmpMaxUb, m);
-}
-
-template <typename T>
-__simd_vf__ inline void DuplicateSumWithR0VF(__ubuf__ T * sumUb, const T R0, uint32_t m) {
+    AscendC::MicroAPI::RegTensor<T> vreg_sinks;
     AscendC::MicroAPI::RegTensor<T> vreg_sum;
     AscendC::MicroAPI::MaskReg preg_m = AscendC::MicroAPI::UpdateMask<T>(m);
-    AscendC::MicroAPI::UnalignRegForStore ureg;
+    AscendC::MicroAPI::UnalignRegForLoad ureg;
+    auto srcUbT = sinksUb + sinksOffset;
+    AscendC::MicroAPI::LoadUnAlignPre(ureg, srcUbT);
+    AscendC::MicroAPI::LoadUnAlign(vreg_sinks, ureg, srcUbT);
+    AscendC::MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(maxUb, vreg_sinks, preg_m);
     AscendC::MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_sum, R0, preg_m);
     AscendC::MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(sumUb, vreg_sum, preg_m);
 }
 
 template <typename T>
-__aicore__ inline void DuplicateSumWithR0(const LocalTensor<T>& sumTensor, const T R0, uint32_t m)
+__aicore__ inline void InitSoftmaxFromSinks(const LocalTensor<T>& sumTensor, const LocalTensor<T>& maxTensor,
+    const LocalTensor<T>& sinksTensor, uint32_t sinksOffset, const T R0, uint32_t m)
 {
     __ubuf__ T * sumUb = (__ubuf__ T*)sumTensor.GetPhyAddr();
-    DuplicateSumWithR0VF<T>(sumUb, R0, m);
+    __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ T * sinksUb = (__ubuf__ T*)sinksTensor.GetPhyAddr();
+    InitSoftmaxFromSinksVF<T>(sumUb, maxUb, sinksUb, sinksOffset, R0, m);
 }
 } // namespace
 #endif // MUL_SEL_SOFTMAX_FLASH_V2_CAST_NZ_SFA_INTERFACE_H

@@ -1292,8 +1292,8 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                 OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(n1Size_ != 64 && n1Size_ != 128,
-                OP_LOGE(opName_, "q_head_num should be 64 or 128, but got %u", n1Size_),
+    OP_CHECK_IF(n1Size_ < 1 || n1Size_ > 128,
+            OP_LOGE(opName_, "n1Size_ only should be in range [1, 128], but got %u.", n1Size_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n2Size_ != 1,
@@ -1302,10 +1302,6 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
 
     OP_CHECK_IF(n1Size_ % n2Size_ != 0,
                 OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(gSize_ !=64 && gSize_ !=128,
-                OP_LOGE(opName_, "group num should be 64 or 128, but got %u", gSize_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qHeadDim_ != DIM_LIMIT,
