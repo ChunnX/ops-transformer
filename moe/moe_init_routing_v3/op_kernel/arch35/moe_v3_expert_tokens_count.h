@@ -41,6 +41,7 @@ private:
     __aicore__ inline void expertCountCompute();
     __aicore__ inline void expertCountCopyOut();
     __aicore__ inline void ClearKeyValueOutput();
+    __aicore__ inline void CopyKeyValueOutput(LocalTensor<int64_t> &expertCountOutLocal);
     __aicore__ inline void InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
 
 private:
@@ -315,11 +316,13 @@ __aicore__ inline void ExpertTokensCount::expertCountCopyOut()
     LocalTensor<int32_t> expertTotalCountLocal = expertTotalCountQueue_.DeQue<int32_t>();
     if (expertTokensNumType_ == KEY_VALUE_MODE) {
         ClearKeyValueOutput();
+        CopyKeyValueOutput(expertCountOutLocal);
+    } else {
+        DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                     static_cast<uint32_t>(expertCountElements_ * sizeof(int64_t)), 0, 0, 0};
+        DataCopyPad(expertTokensCountGm_, expertCountOutLocal, copyParams);
     }
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1),
-                                 static_cast<uint32_t>(expertCountElements_ * sizeof(int64_t)), 0, 0, 0};
-    DataCopyPad(expertTokensCountGm_, expertCountOutLocal, copyParams);
-    copyParams.blockLen = sizeof(int32_t);
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
     DataCopyPad(expertTotalCountGm_, expertTotalCountLocal, copyParams);
     expertIdxCountOutQueue_.FreeTensor(expertCountOutLocal);
     expertTotalCountQueue_.FreeTensor(expertTotalCountLocal);
@@ -327,16 +330,26 @@ __aicore__ inline void ExpertTokensCount::expertCountCopyOut()
 
 __aicore__ inline void ExpertTokensCount::ClearKeyValueOutput()
 {
-    constexpr int64_t int64PerBlock = BLOCK_BYTES / static_cast<int64_t>(sizeof(int64_t));
-    int64_t alignedElements = keyValueOutputElements_ / int64PerBlock * int64PerBlock;
-    if (alignedElements > 0) {
-        InitGlobalMemory(expertTokensCountGm_, alignedElements, static_cast<int64_t>(0));
-        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
-    }
-    for (int64_t i = alignedElements; i < keyValueOutputElements_; ++i) {
+    for (int64_t i = 0; i < keyValueOutputElements_; ++i) {
         expertTokensCountGm_.SetValue(i, static_cast<int64_t>(0));
     }
-    if (alignedElements < keyValueOutputElements_) {
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+}
+
+__aicore__ inline void ExpertTokensCount::CopyKeyValueOutput(LocalTensor<int64_t> &expertCountOutLocal)
+{
+    constexpr int64_t int64PerBlock = BLOCK_BYTES / static_cast<int64_t>(sizeof(int64_t));
+    int64_t alignedElements = expertCountElements_ / int64PerBlock * int64PerBlock;
+    if (alignedElements > 0) {
+        DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                     static_cast<uint32_t>(alignedElements * sizeof(int64_t)), 0, 0, 0};
+        DataCopyPad(expertTokensCountGm_, expertCountOutLocal, copyParams);
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+    }
+    for (int64_t i = alignedElements; i < expertCountElements_; ++i) {
+        expertTokensCountGm_.SetValue(i, expertCountOutLocal.GetValue(i));
+    }
+    if (alignedElements < expertCountElements_) {
         SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
     }
 }
