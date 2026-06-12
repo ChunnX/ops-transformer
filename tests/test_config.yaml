@@ -617,7 +617,9 @@ moe:
       - moe/moe_finalize_routing_v2/docs
       - moe/moe_finalize_routing_v2/README.md
     ut_cov_exclude:
-      - moe/moe_finalize_routing_v2
+      - moe/moe_finalize_routing_v2/op_api
+      - moe/moe_finalize_routing_v2/op_graph
+      - moe/moe_finalize_routing_v2/op_kernel
     test:
       examples: True
     options:
@@ -660,7 +662,9 @@ moe:
       - moe/moe_finalize_routing_v2_grad/docs
       - moe/moe_finalize_routing_v2_grad/README.md
     ut_cov_exclude:
-      - moe/moe_finalize_routing_v2_grad
+      - moe/moe_finalize_routing_v2_grad/op_api
+      - moe/moe_finalize_routing_v2_grad/op_graph
+      - moe/moe_finalize_routing_v2_grad/op_kernel
     options:
       - moe_finalize_routing_v2_grad
 
@@ -672,7 +676,9 @@ moe:
       - moe/moe_fused_topk/docs
       - moe/moe_fused_topk/README.md
     ut_cov_exclude:
-      - moe/moe_fused_topk
+      - moe/moe_fused_topk/op_api
+      - moe/moe_fused_topk/op_graph
+      - moe/moe_fused_topk/op_kernel
     options:
       - moe_fused_topk
 
@@ -684,7 +690,9 @@ moe:
       - moe/moe_gating_top_k/docs
       - moe/moe_gating_top_k/README.md
     ut_cov_exclude:
-      - moe/moe_gating_top_k
+      - moe/moe_gating_top_k/op_api
+      - moe/moe_gating_top_k/op_graph
+      - moe/moe_gating_top_k/op_kernel
     options:
       - moe_gating_top_k
 
@@ -699,6 +707,9 @@ moe:
       - moe/moe_gating_top_k_backward/docs
       - moe/moe_gating_top_k_backward/examples
       - moe/moe_gating_top_k_backward/tests
+      - moe/moe_gating_top_k_backward/op_api
+      - moe/moe_gating_top_k_backward/op_graph
+      - moe/moe_gating_top_k_backward/op_kernel
     test:
       examples: True
       ut: True
@@ -713,7 +724,9 @@ moe:
       - moe/moe_gating_top_k_softmax/docs
       - moe/moe_gating_top_k_softmax/README.md
     ut_cov_exclude:
-      - moe/moe_gating_top_k_softmax
+      - moe/moe_gating_top_k_softmax/op_api
+      - moe/moe_gating_top_k_softmax/op_graph
+      - moe/moe_gating_top_k_softmax/op_kernel
     options:
       - moe_gating_top_k_softmax
 
@@ -753,7 +766,9 @@ moe:
       - moe/moe_init_routing_quant/docs
       - moe/moe_init_routing_quant/README.md
     ut_cov_exclude:
-      - moe/moe_init_routing_quant
+      - moe/moe_init_routing_quant/op_api
+      - moe/moe_init_routing_quant/op_graph
+      - moe/moe_init_routing_quant/op_kernel
     options:
       - moe_init_routing_quant
 
@@ -793,7 +808,9 @@ moe:
       - moe/moe_init_routing_v2_grad/docs
       - moe/moe_init_routing_v2_grad/README.md
     ut_cov_exclude:
-      - moe/moe_init_routing_v2_grad
+      - moe/moe_init_routing_v2_grad/op_api
+      - moe/moe_init_routing_v2_grad/op_graph
+      - moe/moe_init_routing_v2_grad/op_kernel
     options:
       - moe_init_routing_v2_grad
       - moe_token_permute_grad
@@ -862,7 +879,9 @@ moe:
       - moe/moe_token_permute_with_ep/docs
       - moe/moe_token_permute_with_ep/README.md
     ut_cov_exclude:
-      - moe/moe_token_permute_with_ep
+      - moe/moe_token_permute_with_ep/op_api
+      - moe/moe_token_permute_with_ep/op_graph
+      - moe/moe_token_permute_with_ep/op_kernel
     options:
       - moe_token_permute_with_ep
 
@@ -874,7 +893,9 @@ moe:
       - moe/moe_token_permute_with_ep_grad/docs
       - moe/moe_token_permute_with_ep_grad/README.md
     ut_cov_exclude:
-      - moe/moe_token_permute_with_ep_grad
+      - moe/moe_token_permute_with_ep_grad/op_api
+      - moe/moe_token_permute_with_ep_grad/op_graph
+      - moe/moe_token_permute_with_ep_grad/op_kernel
     options:
       - moe_token_permute_with_ep_grad
 
@@ -886,7 +907,9 @@ moe:
       - moe/moe_token_permute_with_routing_map/docs
       - moe/moe_token_permute_with_routing_map/README.md
     ut_cov_exclude:
-      - moe/moe_token_permute_with_routing_map
+      - moe/moe_token_permute_with_routing_map/op_api
+      - moe/moe_token_permute_with_routing_map/op_graph
+      - moe/moe_token_permute_with_routing_map/op_kernel
     options:
       - moe_token_permute_with_routing_map
     test:
@@ -900,7 +923,9 @@ moe:
       - moe/moe_token_permute_with_routing_map_grad/docs
       - moe/moe_token_permute_with_routing_map_grad/README.md
     ut_cov_exclude:
-      - moe/moe_token_permute_with_routing_map_grad
+      - moe/moe_token_permute_with_routing_map_grad/op_api
+      - moe/moe_token_permute_with_routing_map_grad/op_graph
+      - moe/moe_token_permute_with_routing_map_grad/op_kernel
     options:
       - moe_token_permute_with_routing_map_grad
       - moe_token_unpermute
@@ -944,7 +969,9 @@ moe:
       - moe/moe_token_unpermute_with_ep/docs
       - moe/moe_token_unpermute_with_ep/README.md
     ut_cov_exclude:
-      - moe/moe_token_unpermute_with_ep
+      - moe/moe_token_unpermute_with_ep/op_api
+      - moe/moe_token_unpermute_with_ep/op_graph
+      - moe/moe_token_unpermute_with_ep/op_kernel
     options:
       - moe_token_unpermute_with_ep
 
@@ -956,7 +983,9 @@ moe:
       - moe/moe_token_unpermute_with_ep_grad/docs
       - moe/moe_token_unpermute_with_ep_grad/README.md
     ut_cov_exclude:
-      - moe/moe_token_unpermute_with_ep_grad
+      - moe/moe_token_unpermute_with_ep_grad/op_api
+      - moe/moe_token_unpermute_with_ep_grad/op_graph
+      - moe/moe_token_unpermute_with_ep_grad/op_kernel
     options:
       - moe_token_unpermute_with_ep_grad
 
@@ -968,7 +997,9 @@ moe:
       - moe/moe_token_unpermute_with_routing_map/docs
       - moe/moe_token_unpermute_with_routing_map/README.md
     ut_cov_exclude:
-      - moe/moe_token_unpermute_with_routing_map
+      - moe/moe_token_unpermute_with_routing_map/op_api
+      - moe/moe_token_unpermute_with_routing_map/op_graph
+      - moe/moe_token_unpermute_with_routing_map/op_kernel
     options:
       - moe_token_unpermute_with_routing_map
     test:
@@ -982,7 +1013,9 @@ moe:
       - moe/moe_token_unpermute_with_routing_map_grad/docs
       - moe/moe_token_unpermute_with_routing_map_grad/README.md
     ut_cov_exclude:
-      - moe/moe_token_unpermute_with_routing_map_grad
+      - moe/moe_token_unpermute_with_routing_map_grad/op_api
+      - moe/moe_token_unpermute_with_routing_map_grad/op_graph
+      - moe/moe_token_unpermute_with_routing_map_grad/op_kernel
     options:
       - moe_token_unpermute_with_routing_map_grad
 
