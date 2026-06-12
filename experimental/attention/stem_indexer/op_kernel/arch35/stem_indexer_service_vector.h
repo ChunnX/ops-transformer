@@ -665,13 +665,11 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
     copyOutParams.dstStride = 0;
     
     uint32_t curS1RealS2Len = actS2Size;
-    // 外层循环：按 S1 位置遍历（同一个 S1 位置下的 G 个行共享相同的 curS1TotalS2Len）
+    // 外层循环：按 S1 位置遍历（同一个 S1 位置下的 G 个行共享相同的 S2Len）
     uint32_t curAivS1Size = CeilDiv(curAivGS1ProcNum, gSize_);
     for (uint32_t s1Pos = 0; s1Pos < curAivS1Size; s1Pos++) {
-        // B,N2,G,S1,S2 布局下当前行的 GM 偏移
         uint32_t globalS1Pos = gS1Idx * s1BaseSize_ + s1Pos;
         
-        // 计算当前 S1 位置的输出长度（同一 S1 位置下共享）
         if (constInfo_.attenMaskFlag) {
             int32_t curS1RealS2LenTmp = static_cast<int32_t>(actS2Size) - static_cast<int32_t>(actS1Size) +
                                         static_cast<int32_t>(curAivGS1Idx % actS1Size) +
@@ -703,7 +701,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         
         if (curS1RealS2Len > 0) {
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)0, curS1RealS2Len);
-            // 有效数据：一次搬出 G 个块
+            // 有效数据：一次搬出 curGsize 个块
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             copyOutParams.blockCount = curGsize;

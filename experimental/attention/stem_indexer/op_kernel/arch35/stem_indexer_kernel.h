@@ -676,7 +676,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
             // 短路分支：s2ValidSize <= constInfo.initialBlocks时直接输出连续索引
-            if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks) {
+            if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks + constInfo.windowSize) {
                 vectorService.ProcessDirectOutput(tempLoopInfo, gS1LoopIdx);
                 splitCoreInfo.s2Start = 0;
                 continue;
