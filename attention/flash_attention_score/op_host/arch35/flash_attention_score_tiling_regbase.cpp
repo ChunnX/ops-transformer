@@ -296,7 +296,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     OP_CHECK_IF(dSizeV > dSize,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
                 std::to_string(dSizeV).c_str(),
-                "The value of input dSize must be greater than the query dSize"),
+                "The value of dSizeV must be less than or equal to the dSize of query/key"),
             return false);
     OP_CHECK_IF(n1Size % n2Size != 0,
                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "head_num",
@@ -377,7 +377,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
         t1Size < accumS1 || t2Size < accumS2,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "query and key",
             (std::to_string(t1Size) + ", " + std::to_string(t2Size)).c_str(),
-            "The dim of query and key must be greater than the sum of actual_seq_qlen and actual_seq_kvlen"),
+            "The dim of query and key must be greater than or equal to the sum of actual_seq_qlen and actual_seq_kvlen"),
         return false);
     uint32_t firstValidIndex = 0;
     uint32_t lastValidIndex = static_cast<uint32_t>(bSize - 1);
@@ -889,7 +889,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInput()
                        return false);
         } else {
             OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "atten_mask",
-                "2D or 4D", (std::to_string(attenMaskDimNum) + "D").c_str());
+                (std::to_string(attenMaskDimNum) + "D").c_str(), "2D or 4D");
             return false;
         }
 
@@ -939,7 +939,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
         if (dropMaskShapeSize < shapeSize) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(context_->GetNodeName(), "drop_mask",
                 std::to_string(dropMaskShapeSize).c_str(),
-                "The shape size of drop_mask must be less than " + std::to_string(shapeSize));
+                "The shape size of drop_mask must not be less than " + std::to_string(shapeSize));
             return false;
         }
         dropMaskOuter = true;
