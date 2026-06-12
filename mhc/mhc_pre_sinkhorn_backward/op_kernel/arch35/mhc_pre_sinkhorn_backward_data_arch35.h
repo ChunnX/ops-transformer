@@ -44,7 +44,7 @@ struct MhcPreSinkhornBackwardArch35DeterminiticTilingData {
     int64_t n = 0;
     int64_t aivNum = 0;
     int64_t cLoopDataLen = 0;
-    int64_t bsLoopDataLe = 0;
+    int64_t bsLoopDataLen = 0;
     int64_t skIterCount = 0;
     int64_t bsTaskCount = 0;
     int64_t tailBsTaskCount = 0;

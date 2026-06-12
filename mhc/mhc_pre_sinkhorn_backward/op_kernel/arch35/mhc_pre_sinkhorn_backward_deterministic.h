@@ -148,8 +148,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeFirst(uint64_
     LocalTensor<U> invRmsLocal = invRmsQue_.AllocTensor<U>();
     LocalTensor<U> gradHPostLocal = gradHPostQue_.AllocTensor<U>();
     LocalTensor<X_T> xLocal = xQue_.AllocTensor<X_T>();
-    LocalTensor<X_T> gradHinLocal = gradHinQue_.AllocTensor<X_T>();
-    LocalTensor<X_T> xFp32Local = xFp32Que_.AllocTensor<X_T>();
+    LocalTensor<GRADHIN_T> gradHinLocal = gradHinQue_.AllocTensor<GRADHIN_T>();
+    LocalTensor<U> xFp32Local = xFp32Que_.AllocTensor<U>();
+
+    LocalTensor<U> gradHPreLocal = gradHPreBuf_.Get<U>();
+    LocalTensor<U> gradXFromHinLocal = gradXFromHinBuf_.Get<U>();
+
+    Duplicate(gradXFromHinLocal, float(0), bsLen * n_);
 
     uint64_t cLoopDataLen = cLoopDataLen_;
     uint64_t cLoopNum = ops::CeilDiv(c_, cLoopDataLen);
@@ -162,19 +167,19 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeFirst(uint64_
     uint64_t xOffset = bsOffset * n_ * c_;
     uint64_t gradHinOffset = bsOffset * c_;
 
-    CopyIn(hPreLocal, hPreGm_[hPreOffset], bsLen * n_, 0, 0);
-    CopyIn(hcBeforeNormLocal, hcBeforeNormGm_[hcBeforeOffset], bsLen * k_, 0, 0);
-    CopyIn(invRmsLocal, invRmsGm_[invRmsOffset], bsLen, 0, 0);
-    CopyIn(gradHPostLocal, gradHPostGm_[gradHPostOffset], bsLen * n_, 0, 0);
+    CopyIn(hPreLocal, hPreGm_[hPreOffset], 1, bsLen * n_, 0, 0);
+    CopyIn(hcBeforeNormLocal, hcBeforeNormGm_[hcBeforeOffset], 1, bsLen * k_, 0, 0);
+    CopyIn(invRmsLocal, invRmsGm_[invRmsOffset], 1, bsLen, 0, 0);
+    CopyIn(gradHPostLocal, gradHPostGm_[gradHPostOffset], 1, bsLen * n_, 0, 0);
     uint32_t vfLen = V_REG_SIZE / sizeof(U);
 
     for (uint64_t cIdx = 0; cIdx < cLoopNum; cIdx++) {
         auto cLen = cIdx == cLoopNum - 1 ? cTailDataLen : cLoopDataLen;
         uint64_t xStartOft = xOffset + cIdx * cLoopDataLen;
         uint64_t gradHinStartOft = gradHinOffset + cIdx * cLoopDataLen;
-        CopyIn(xLocal, xGm_[xStartOft], bsLen * n_ * cLen, 0, cLoopDataLen * sizeof(X_T));
-        CopyIn(gradHinLocal, gradHinGm_[gradHinStartOft], bsLen * cLen, 0, cLoopDataLen * sizeof(GRADHIN_T));
-        ComputeProcess1(xLocal, xFp32Local, hPreLocal, bsLen, cLen, n_);
+        CopyIn(xLocal, xGm_[xStartOft], bsLen * n_, cLen, 0, (c_ - cLoopDataLen) * sizeof(X_T));
+        CopyIn(gradHinLocal, gradHinGm_[gradHinStartOft], bsLen, cLen, 0, (c_ - cLoopDataLen) * sizeof(GRADHIN_T));
+        ComputeProcess1(xLocal, xFp32Local, hPreLocal, gradHPreLocal, gradXFromHinLocal, bsLen, cLen, n_);
 /*      
         DataCopy(UB, x);
         DataCopy(UB, grad_h_in);
