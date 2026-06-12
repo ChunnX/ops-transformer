@@ -25,7 +25,7 @@
 #include "fia_public_define_arch35.h"
 #include "../memory_copy_arch35.h"
 #include "./vf/vf_post_quant_gs1.h"
-
+//
 namespace BaseApi {
 struct TaskInfo {
     uint32_t bIdx;
