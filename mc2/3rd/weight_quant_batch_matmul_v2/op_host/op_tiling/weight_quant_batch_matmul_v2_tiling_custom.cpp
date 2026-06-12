@@ -165,7 +165,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingCustom::InstantiateTilingData()
     size_t tilingDataSize = sizeof(Mc2WeightQuantBatchMatmulV2TilingData);
     if (tilingData_ == nullptr) {
         OP_TILING_CHECK(
-            isOutTilingData_, OP_LOGE(opName_, "The out incoming tilingData is nullptr"),
+            isOutTilingData_, OP_LOGE_WITH_INVALID_INPUT(opName_, "out tilingData"),
             return ge::GRAPH_FAILED);
         tilingDataManager_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2TilingData>(
             new (std::nothrow) Mc2WeightQuantBatchMatmulV2TilingData());

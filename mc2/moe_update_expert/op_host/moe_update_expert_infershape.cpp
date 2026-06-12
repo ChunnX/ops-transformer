@@ -43,11 +43,13 @@ namespace ops
         auto expertIdsDimNum = expertIdsShape->GetDimNum();
         auto eplbTableDimNum = eplbTableShape->GetDimNum();
         if (expertIdsDimNum != DIM_NUM_2) {
-            VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "only expert_ids with dim 2 is supported");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "expert_ids",
+                std::to_string(expertIdsDimNum).c_str(), "2");
             result = ge::GRAPH_FAILED;
         }
         if (eplbTableDimNum != DIM_NUM_2) {
-            VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "only eplb_table with dim 2 is supported");
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "eplb_table",
+                std::to_string(eplbTableDimNum).c_str(), "2");
             result = ge::GRAPH_FAILED;
         }
         return result;
@@ -65,7 +67,7 @@ namespace ops
         OPS_CHECK_NULL_WITH_CONTEXT(context, balancedExpertIdsShape);
         OPS_CHECK_NULL_WITH_CONTEXT(context, balancedActiveMaskShape);
         OP_CHECK_IF(CheckDims(context, expertIdsShape, eplbTableShape) != ge::GRAPH_SUCCESS, 
-            VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "checkDims failed"), return ge::GRAPH_FAILED);
+            OP_LOGE(context->GetNodeName(), "%s", "checkDims failed"), return ge::GRAPH_FAILED);
 
         int64_t BS = expertIdsShape->GetDim(DIM_0);
         int64_t K = expertIdsShape->GetDim(DIM_1);

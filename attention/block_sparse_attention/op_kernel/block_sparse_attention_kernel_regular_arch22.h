@@ -16,7 +16,7 @@
 #ifndef BLOCK_SPARSE_ATTENTION_KERNEL_H
 #define BLOCK_SPARSE_ATTENTION_KERNEL_H
 
-#include "kernel_common.hpp"
+#include "block_sparse_attention_kernel_common.hpp"
 
 using namespace NpuArch;
 using namespace RfaKenelCommon;

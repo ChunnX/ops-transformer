@@ -26,6 +26,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "log/log.h"
 #include "aclnn_kernels/contiguous.h"
 #include "matmul_all_reduce_arn_util.h"
 #include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
@@ -54,7 +55,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     // dequantScale转为uint64
     auto dequant = const_cast<aclTensor*>(dequantScale);
     if (dequant == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantMatmulAllReduceAddRmsNorm, dequant is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize", "dequantScale");
         return ACLNN_ERR_INNER;
     }
     if (dequant->GetDataType() == op::DataType::DT_INT64) {
@@ -68,7 +69,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
         int64_t kValue = x1->GetViewShape().GetDim(x1->GetViewShape().GetDimNum() - 1);
         OP_LOGD("QuantMatmulAllReduceAddRmsNorm, kValue: %ld.", kValue);
         if (kValue == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantMatmulAllReduceAddRmsNorm does not support k = 0.");
+            OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1 k-dim", "0", "non-zero");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 固定写法，创建OpExecutor
@@ -105,7 +106,7 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
     aclnnStatus ret = aclnnInnerMatmulAllReduceAddRmsNorm(workspace, workspaceSize, executor, stream);
     OP_LOGD("QuantMatmulAllReduceAddRmsNorm, aclnnQuantMatmulAllReduceAddRmsNorm ret %d", ret);
     if (ret != 0) {
-        OP_LOGE(ACLNN_ERR_INNER, "QuantMatmulAllReduceAddRmsNorm, This is an error in launch aicore");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnQuantMatmulAllReduceAddRmsNorm", "This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     }
 

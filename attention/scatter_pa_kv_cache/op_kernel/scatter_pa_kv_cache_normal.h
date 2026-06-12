@@ -64,10 +64,10 @@ public:
             }
             // key
             uint64_t kOffsetIn = (startTaskId_ + i) * kTokenSize;
-            uint64_t kOffsetOut = slotValue * kTokenSize;
+            uint64_t kOffsetOut = GetCacheOffset(slotValue, kTokenSize, tilingData_->kCacheBlockStride);
             // value
             uint64_t vOffsetIn = (startTaskId_ + i) * vTokenSize;
-            uint64_t vOffsetOut = slotValue * vTokenSize;
+            uint64_t vOffsetOut = GetCacheOffset(slotValue, vTokenSize, tilingData_->vCacheBlockStride);
             if (NCT) {
                 kOffsetIn = (startTaskId_ + i) * tilingData_->kStride + tilingData_->kOffset;
                 vOffsetIn = (startTaskId_ + i) * tilingData_->vStride + tilingData_->vOffset;
@@ -106,10 +106,12 @@ public:
             }
             // key
             int64_t kOffsetIn = (startTaskId_ + i) * kTokenSize;
-            int64_t kOffsetOut = slotValue * kTokenSize;
+            int64_t kOffsetOut = static_cast<int64_t>(
+                GetCacheOffset(slotValue, static_cast<uint64_t>(kTokenSize), tilingData_->kCacheBlockStride));
             // value
             int64_t vOffsetIn = (startTaskId_ + i) * vTokenSize;
-            int64_t vOffsetOut = slotValue * vTokenSize;
+            int64_t vOffsetOut = static_cast<int64_t>(
+                GetCacheOffset(slotValue, static_cast<uint64_t>(vTokenSize), tilingData_->vCacheBlockStride));
             if (NCT) {
                 kOffsetIn = (startTaskId_ + i) * tilingData_->kStride + tilingData_->kOffset;
                 vOffsetIn = (startTaskId_ + i) * tilingData_->vStride + tilingData_->vOffset;
@@ -127,6 +129,16 @@ public:
     }
 
 private:
+    __aicore__ inline uint64_t GetCacheOffset(int64_t slotValue, uint64_t tokenSize, int64_t cacheBlockStride) const
+    {
+        if (cacheBlockStride > 0) {
+            int64_t blockIndex = slotValue / tilingData_->blockSize;
+            int64_t blockOffset = slotValue % tilingData_->blockSize;
+            return static_cast<uint64_t>(blockIndex) * static_cast<uint64_t>(cacheBlockStride) +
+                static_cast<uint64_t>(blockOffset) * tokenSize;
+        }
+        return static_cast<uint64_t>(slotValue) * tokenSize;
+    }
     GlobalTensor<T1> keyInGm_;
     GlobalTensor<T1> keyCacheOutGm_;
     GlobalTensor<T2> valueInGm_;

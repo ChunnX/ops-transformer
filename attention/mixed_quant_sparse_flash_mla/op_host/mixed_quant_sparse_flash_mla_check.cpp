@@ -121,7 +121,6 @@ void QSMLATilingCheck::Init()
         dSizeCmpKvInput_ = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), QSMLAAxis::D, kvLayout_);
     }
 
-    actualLenDimsQ_ = qsmlaInfo_.actualLenDimsQ;
     maxActualseq_ = qsmlaInfo_.maxActualseq;
 
     ropeHeadDim_ = qsmlaInfo_.ropeHeadDim;

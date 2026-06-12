@@ -237,17 +237,19 @@ __aicore__ inline void GMMProcess<ComputeType>::SetMKN(const int32_t splitValue,
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig) {
+__aicore__ inline void GMMProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig)
+{
     if constexpr (B::format == CubeFormat::NZ) {
-        mnConfig.wBaseOffset += AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.n);  // 16: nz format last two dim size
+        mnConfig.wBaseOffset +=
+            static_cast<uint64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<16>(mnConfig.n); // 16: nz format last two dim size
     } else {
-        mnConfig.wBaseOffset += mnConfig.k * mnConfig.n;
+        mnConfig.wBaseOffset += static_cast<uint64_t>(mnConfig.k) * mnConfig.n;
     }
     mnConfig.nAxisBaseOffset += mnConfig.n;
     mnConfig.scaleIndex++;
     mnConfig.mAxisBaseOffset += mnConfig.m;
-    mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-    mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+    mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+    mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
 }
 
 template <typename ComputeType>
@@ -255,19 +257,19 @@ __aicore__ inline bool GMMProcess<ComputeType>::UpdateMnConfigForGroupListMSpars
     MNConfig &mnConfig, uint32_t splitValue, uint32_t groupIdx)
 {
     mnConfig.mAxisBaseOffset += mnConfig.m;
-    mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-    mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+    mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+    mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
     mnConfig.scaleIndex++;
     SetMNConfig(splitValue, groupIdx, mnConfig);
     if (mnConfig.m <= 0 || mnConfig.k <= 0 || mnConfig.n <= 0) {
         return true; // skip
     }
 
-    mnConfig.nAxisBaseOffset = groupIdx * mnConfig.n;
+    mnConfig.nAxisBaseOffset = static_cast<uint64_t>(groupIdx) * mnConfig.n;
     if constexpr (GMMProcess<ComputeType>::B::format == CubeFormat::NZ) {
-        mnConfig.wBaseOffset = AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.nAxisBaseOffset);
+        mnConfig.wBaseOffset = static_cast<uint64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<16>(mnConfig.nAxisBaseOffset);
     } else {
-        mnConfig.wBaseOffset = mnConfig.k * mnConfig.nAxisBaseOffset;
+        mnConfig.wBaseOffset = static_cast<uint64_t>(mnConfig.k) * mnConfig.nAxisBaseOffset;
     }
     return false; // no skip
 }

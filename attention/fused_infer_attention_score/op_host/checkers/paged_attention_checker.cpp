@@ -488,7 +488,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
 
         // mxfp8 仅支持blocksize等于512或者1024
         OP_CHECK_IF(
-            fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT &&
+            fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT &&
             (fiaInfo.blockSize != BLOCK_SIZE_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8),
             OP_LOGE(fiaInfo.opName,
                     "In MXFP8 fullquant scenario, when page attention enable, "
@@ -506,7 +506,7 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
     }
     const string inputLayout = fiaInfo.opParamInfo.layOut;
     const uint32_t dimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-    if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         OP_CHECK_IF(dimNum == 3, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA BnBsH is not supported."),
                     return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {

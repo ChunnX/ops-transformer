@@ -169,11 +169,11 @@ __aicore__ inline void GmmAddProcess<ComputeType>::SetMKN(const int32_t splitVal
 template <typename ComputeType>
 __aicore__ inline void GmmAddProcess<ComputeType>::UpdateMnConfig(MNConfig& mnConfig)
 {
-    mnConfig.wBaseOffset += mnConfig.k * mnConfig.n;
+    mnConfig.wBaseOffset += static_cast<uint64_t>(mnConfig.k) * mnConfig.n;
     mnConfig.nAxisBaseOffset += mnConfig.n;
     mnConfig.mAxisBaseOffset += mnConfig.m;
-    mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-    mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+    mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+    mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
 }
 
 template <typename ComputeType>

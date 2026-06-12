@@ -124,28 +124,25 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
 
     if (keyDesc != nullptr) {
         OP_CHECK_IF(keyDesc->GetDataType() != queryDtype,
-                    OP_LOGE(faInfo.opName,
-                                                "key dtype(%s) should be consistent with query dtype(%s).",
-                                                DataTypeToSerialString(keyDesc->GetDataType()).c_str(),
-                                                DataTypeToSerialString(queryDtype).c_str()),
+                    OP_LOGE(faInfo.opName, "key dtype(%s) should be consistent with query dtype(%s).",
+                            DataTypeToSerialString(keyDesc->GetDataType()).c_str(),
+                            DataTypeToSerialString(queryDtype).c_str()),
                     return ge::GRAPH_FAILED);
     }
 
     if (valueDesc != nullptr) {
         OP_CHECK_IF(valueDesc->GetDataType() != queryDtype,
-                    OP_LOGE(faInfo.opName,
-                                                "value dtype(%s) should be consistent with query dtype(%s).",
-                                                DataTypeToSerialString(valueDesc->GetDataType()).c_str(),
-                                                DataTypeToSerialString(queryDtype).c_str()),
+                    OP_LOGE(faInfo.opName, "value dtype(%s) should be consistent with query dtype(%s).",
+                            DataTypeToSerialString(valueDesc->GetDataType()).c_str(),
+                            DataTypeToSerialString(queryDtype).c_str()),
                     return ge::GRAPH_FAILED);
     }
 
     if (attnOutDesc != nullptr) {
         OP_CHECK_IF(attnOutDesc->GetDataType() != queryDtype,
-                    OP_LOGE(faInfo.opName,
-                                                "attentionOut dtype(%s) should be consistent with query dtype(%s).",
-                                                DataTypeToSerialString(attnOutDesc->GetDataType()).c_str(),
-                                                DataTypeToSerialString(queryDtype).c_str()),
+                    OP_LOGE(faInfo.opName, "attentionOut dtype(%s) should be consistent with query dtype(%s).",
+                            DataTypeToSerialString(attnOutDesc->GetDataType()).c_str(),
+                            DataTypeToSerialString(queryDtype).c_str()),
                     return ge::GRAPH_FAILED);
     }
 
@@ -162,11 +159,14 @@ ge::graphStatus CommonChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
         OP_LOGE(faInfo.opName, "numHeads(%ld) or numKeyValueHeads(%ld) is negative!", faInfo.n1Size, faInfo.n2Size);
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(faInfo.n1Size < faInfo.n2Size,
+                OP_LOGE(faInfo.opName, "numHeads(%ld) should be greater than or equal to numKeyValueHeads(%ld)!",
+                        faInfo.n1Size, faInfo.n2Size),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(faInfo.n1Size % faInfo.n2Size != 0,
-                OP_LOGE(faInfo.opName,
-                                            "numHeads(%ld) should be an integer multiple of numKeyValueHeads(%ld)!",
-                                            faInfo.n1Size, faInfo.n2Size),
+                OP_LOGE(faInfo.opName, "numHeads(%ld) should be an integer multiple of numKeyValueHeads(%ld)!",
+                        faInfo.n1Size, faInfo.n2Size),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

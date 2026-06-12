@@ -187,7 +187,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
       <td>输入</td>
       <td>layernorm 计算除0保护值。</td>
       <td>为了保证精度，取值建议小于等于1e-4。</td>
-      <td>float</td>
+      <td>double</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

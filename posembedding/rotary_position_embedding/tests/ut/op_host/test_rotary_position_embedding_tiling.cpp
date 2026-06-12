@@ -148,6 +148,33 @@ TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_fp32_001_tnd)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
+TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_interleave_fp16)
+{
+    optiling::RotaryPositionEmbeddingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("RotaryPositionEmbedding",
+                                              {
+                                                  // input info
+                                                  {{{1, 64, 2, 64}, {1, 64, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{1, 64, 2, 64}, {1, 64, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // attr
+                                                  {"mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                              },
+                                              &compileInfo);
+    uint64_t expectTilingKey = 2000;
+    string expectTilingData = "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+                              "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+                              "0 0 0 0 0 1 64 2 64 64 0 1 1 1 1 0 1 1 0 0 0 0 0 0 0 ";
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
 // Test rotate matrix mode with BNSD layout
 // Input: x=(1, 24, 32, 128) bf16, cos/sin=(1, 1, 32, 128) bf16, rotate=(128, 128) bf16
 TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_rotate_matrix_bf16_001)
@@ -178,6 +205,73 @@ TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_rotate_matrix_bf16
                               "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {50331648};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_fail_odd_head_dim)
+{
+    optiling::RotaryPositionEmbeddingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("RotaryPositionEmbedding",
+                                              {
+                                                  // input info
+                                                  {{{1, 16, 2, 65}, {1, 16, 2, 65}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 16, 1, 65}, {1, 16, 1, 65}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 16, 1, 65}, {1, 16, 1, 65}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{1, 16, 2, 65}, {1, 16, 2, 65}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // attr
+                                                  {"mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                              },
+                                              &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_fail_dtype_mismatch)
+{
+    optiling::RotaryPositionEmbeddingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("RotaryPositionEmbedding",
+                                              {
+                                                  // input info
+                                                  {{{1, 16, 2, 64}, {1, 16, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 16, 1, 64}, {1, 16, 1, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1, 16, 1, 64}, {1, 16, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{1, 16, 2, 64}, {1, 16, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // attr
+                                                  {"mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                              },
+                                              &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_fail_rotate_not_square)
+{
+    optiling::RotaryPositionEmbeddingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("RotaryPositionEmbedding",
+                                              {
+                                                  // input info
+                                                  {{{1, 8, 16, 64}, {1, 8, 16, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1, 1, 16, 64}, {1, 1, 16, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1, 1, 16, 64}, {1, 1, 16, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{64, 32}, {64, 32}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // output info
+                                                  {{{1, 8, 16, 64}, {1, 8, 16, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  // attr
+                                                  {"mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                              },
+                                              &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 // Test rotate matrix mode with variable S dimension

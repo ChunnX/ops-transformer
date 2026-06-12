@@ -739,8 +739,9 @@ NormRopeConcatGrad<normType, addedNormType, ropeType, concatOrder>::Init(TPipe *
             avgHeadsLow_ <<= 1;
         }
 
-        uint32_t headDimNums = batch_ * ((maxAffineSeq + GetBlockNum() - 1) / GetBlockNum()) * splitHeadNum_;
-        uint32_t current = 1;
+        uint64_t headDimNums = static_cast<uint64_t>(batch_) *
+                               ((maxAffineSeq + GetBlockNum() - 1) / GetBlockNum()) * splitHeadNum_;
+        uint64_t current = 1;
         while (current < headDimNums && avgHeadsLow_ != 1) {
             current *= avgHeadsLow_;
             affineBlockNums_++;
@@ -886,23 +887,24 @@ __aicore__ inline void NormRopeConcatGrad<normType, addedNormType, ropeType, con
         for (uint32_t s = startSeq; s < endSeq; ++s) {
             ropeOp.PreProcess(outputSeq + s);
             for (uint32_t b = 0; b < batch_; ++b) {
-                uint32_t outGradOffset = (b * headNum_ * totalSeq + outputSeq + s) * headDim_;
-                uint32_t inOffset = (b * xSeq + s) * headNum_ * headDim_;
-                uint32_t normOffset = (b * xSeq + s) * headNum_;
+                uint64_t outGradOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ +
+                                         static_cast<uint64_t>(outputSeq + s) * headDim_;
+                uint64_t inOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_ * headDim_;
+                uint64_t normOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_;
                 for (uint32_t n = 0; n < splitHeadNum_ - 1; ++n) {
                     LocalTensor<float> buf = buf_.Get<float>();
                     ropeOp.Process(buf, outGradOffset, avgHeads_);
                     normOp.Process(buf, workspaceAffineGM_, inOffset, normOffset, avgHeads_);
-                    outGradOffset += avgHeads_ * totalSeq * headDim_;
-                    inOffset += avgHeads_ * headDim_;
+                    outGradOffset += static_cast<uint64_t>(avgHeads_) * totalSeq * headDim_;
+                    inOffset += static_cast<uint64_t>(avgHeads_) * headDim_;
                     normOffset += avgHeads_;
                 }
                 // tail
                 LocalTensor<float> buf = buf_.Get<float>();
                 ropeOp.Process(buf, outGradOffset, tailHeads_);
                 normOp.Process(buf, workspaceAffineGM_, inOffset, normOffset, tailHeads_);
-                outGradOffset += tailHeads_ * totalSeq * headDim_;
-                inOffset += tailHeads_ * headDim_;
+                outGradOffset += static_cast<uint64_t>(tailHeads_) * totalSeq * headDim_;
+                inOffset += static_cast<uint64_t>(tailHeads_) * headDim_;
                 normOffset += tailHeads_;
             }
         }
@@ -933,23 +935,24 @@ __aicore__ inline void NormRopeConcatGrad<normType, addedNormType, ropeType, con
         for (uint32_t s = startSeq; s < endSeq; ++s) {
             ropeOp.PreProcess(outputSeq + s);
             for (uint32_t b = 0; b < batch_; ++b) {
-                uint32_t outGradOffset = (b * headNum_ * totalSeq + outputSeq + s) * headDim_;
-                uint32_t inOffset = (b * xSeq + s) * headNum_ * headDim_;
-                uint32_t normOffset = (b * xSeq + s) * headNum_;
+                uint64_t outGradOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ +
+                                         static_cast<uint64_t>(outputSeq + s) * headDim_;
+                uint64_t inOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_ * headDim_;
+                uint64_t normOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_;
                 for (uint32_t n = 0; n < splitHeadNum_ - 1; ++n) {
                     LocalTensor<float> buf = buf_.Get<float>();
                     ropeOp.Process(buf, outGradOffset, avgHeads_);
                     normOp.Process(buf, workspaceAffineGM_, inOffset, normOffset, avgHeads_);
-                    outGradOffset += avgHeads_ * totalSeq * headDim_;
-                    inOffset += avgHeads_ * headDim_;
+                    outGradOffset += static_cast<uint64_t>(avgHeads_) * totalSeq * headDim_;
+                    inOffset += static_cast<uint64_t>(avgHeads_) * headDim_;
                     normOffset += avgHeads_;
                 }
                 // tail
                 LocalTensor<float> buf = buf_.Get<float>();
                 ropeOp.Process(buf, outGradOffset, tailHeads_);
                 normOp.Process(buf, workspaceAffineGM_, inOffset, normOffset, tailHeads_);
-                outGradOffset += tailHeads_ * totalSeq * headDim_;
-                inOffset += tailHeads_ * headDim_;
+                outGradOffset += static_cast<uint64_t>(tailHeads_) * totalSeq * headDim_;
+                inOffset += static_cast<uint64_t>(tailHeads_) * headDim_;
                 normOffset += tailHeads_;
             }
         }
@@ -980,23 +983,24 @@ __aicore__ inline void NormRopeConcatGrad<normType, addedNormType, ropeType, con
         for (uint32_t s = startSeq; s < endSeq; ++s) {
             ropeOp.PreProcess(s);
             for (uint32_t b = 0; b < batch_; ++b) {
-                uint32_t outGradOffset = (b * headNum_ * totalSeq + outputSeq + s) * headDim_;
-                uint32_t inOffset = (b * xSeq + s) * headNum_ * headDim_;
-                uint32_t normOffset = (b * xSeq + s) * headNum_;
+                uint64_t outGradOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ +
+                                        static_cast<uint64_t>(outputSeq + s) * headDim_;
+                uint64_t inOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_ * headDim_;
+                uint64_t normOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_;
                 for (uint32_t n = 0; n < splitHeadNum_ - 1; ++n) {
                     LocalTensor<float> buf = buf_.Get<float>();
                     ropeOp.Process(buf, outGradOffset, avgHeads_);
                     normOp.Process(buf, workspaceAffineGM_, inOffset, normOffset, avgHeads_);
-                    outGradOffset += avgHeads_ * totalSeq * headDim_;
-                    inOffset += avgHeads_ * headDim_;
+                    outGradOffset += static_cast<uint64_t>(avgHeads_) * totalSeq * headDim_;
+                    inOffset += static_cast<uint64_t>(avgHeads_) * headDim_;
                     normOffset += avgHeads_;
                 }
                 // tail
                 LocalTensor<float> buf = buf_.Get<float>();
                 ropeOp.Process(buf, outGradOffset, tailHeads_);
                 normOp.Process(buf, workspaceAffineGM_, inOffset, normOffset, tailHeads_);
-                outGradOffset += tailHeads_ * totalSeq * headDim_;
-                inOffset += tailHeads_ * headDim_;
+                outGradOffset += static_cast<uint64_t>(tailHeads_) * totalSeq * headDim_;
+                inOffset += static_cast<uint64_t>(tailHeads_) * headDim_;
                 normOffset += tailHeads_;
             }
         }

@@ -16,7 +16,7 @@
 #pragma once
 #include "lib/matmul_intf.h"
 #include "kernel_operator.h"
-#include "../basic_modules/common_header.h"
+#include "../basic_modules/nsa_selected_attention_grad_common_header.h"
 using namespace AscendC;
 using matmul::Matmul;
 using matmul::MatmulType;

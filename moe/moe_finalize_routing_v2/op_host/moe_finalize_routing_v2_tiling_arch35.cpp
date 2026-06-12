@@ -14,7 +14,7 @@
  */
 #include "op_host/tiling_util.h"
 #include "moe_finalize_routing_v2_tiling.h"
-#include "moe_finalize_routing_v2_tiling_arch35.h"
+#include "../op_kernel/arch35/moe_finalize_routing_v2_tiling_struct.h"
 
 namespace optiling {
 static constexpr int64_t TWO = 2;
@@ -767,7 +767,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoOpTilingRowKHFullLoad(int64_t row
 ge::graphStatus MoeFinalizeRoutingV2Regbase::DoOpTilingKHFullLoad(int64_t rowOfFormerBlock, int64_t rowOfTailBlock)
 {
     int64_t rowFactor = 1;
-    if (k == 1) {
+    if (k <= 4) {
         int64_t ubSizeRemained = ubSize_ / DOUBLE_BUFFER;
         rowFactor = CalcRowFactorForKHFullLoad(ubSizeRemained, true);
     } else {

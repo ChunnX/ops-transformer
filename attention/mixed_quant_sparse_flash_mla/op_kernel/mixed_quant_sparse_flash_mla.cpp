@@ -52,15 +52,14 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-    constexpr bool isPa = (KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND);
     if constexpr (KV_DTYPE == DTYPE_FP8_E4M3FN) {
         QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
-            fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, isPa,
+            fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
             static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
             static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
     } else {
         QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
-            hifloat8_t, float, bfloat16_t, FLASH_DECODE, isPa,
+            hifloat8_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
             static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
             static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
     }

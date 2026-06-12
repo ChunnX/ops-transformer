@@ -136,6 +136,19 @@ protected:
     void Tiling4VBSOneCoreCompute(MoeV2VBSComputeTilingData *tilingData);
     virtual bool IsFullLoad();
 
+    void ShowBasicTilingData();
+    void ShowSortTilingData();
+    void ShowSrcToDstTilingData();
+    void ShowGatherOutTilingData();
+    void SetGatherOutLoopParams(int64_t perCoreRows, int64_t lastCoreRows, int64_t rowSize, int64_t colSize);
+
+    ge::graphStatus GetInputShapes(gert::Shape &xShape, gert::Shape &expertIdxShape);
+    ge::graphStatus GetAttrsParams();
+    ge::graphStatus ValidateInputShapes(const gert::Shape &xShape, const gert::Shape &expertIdxShape);
+    ge::graphStatus ValidateAttrsParams(const gert::Shape &xShape);
+    ge::graphStatus ProcessParamsAndSetTilingData(const gert::Shape &xShape, const gert::Shape &expertIdxShape);
+    ge::graphStatus ValidateExpandedXShape(const gert::Shape &expandedXShape, bool isRegbase);
+
     int64_t aivNum;
     int64_t sortLoopMaxElement = 0;
     int64_t mrgSortListMaxElement = 2040;

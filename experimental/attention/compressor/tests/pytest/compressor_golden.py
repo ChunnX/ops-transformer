@@ -310,7 +310,7 @@ def rotary_emb(x, rope_sin, rope_cos, rotary_mode):
 # state.shape is (block_num, block_size, coff * head_dim), is numpy type
 # new_state.shape is (s, coff * head_dim), data writed to state
 # block_table.shape is (B, (s_max + block_size - 1) // block_size)
-def write_state_page_cache(state, sc_new_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=1):
+def write_state_page_cache(state, update_position, sc_new_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=1):
     block_size = state.shape[1] # 应该从state，不是从block_table
     seq_cnt = end_seq_idx - start_seq_idx
     finish_cnt = 0
@@ -327,6 +327,7 @@ def write_state_page_cache(state, sc_new_state, b_idx, start_seq_idx, end_seq_id
         # block_id为0表示block无效,不写数据
         if (cache_mode == 1 and block_id != 0) or cache_mode == 2:
             state[block_id:(block_id+1), block_start_seq_id:(block_start_seq_id + can_write_seq_cnt), :] = sc_new_state[finish_cnt:(finish_cnt + can_write_seq_cnt), :]
+            update_position[block_id:(block_id+1), block_start_seq_id:(block_start_seq_id + can_write_seq_cnt), :] = True
         finish_cnt = finish_cnt + can_write_seq_cnt
 
 # state.shape is (block_num, block_size, coff * head_dim)
@@ -357,7 +358,7 @@ def read_state_page_cache(state, b_idx, start_seq_idx, end_seq_idx, block_table,
     return result
 
 def cpu_compressor(
-    x, wkv, wgate, kv_state, score_state, ape, norm_weight, rope_sin, rope_cos,
+    x, wkv, wgate, kv_state, score_state, update_kv_position, update_score_position, ape, norm_weight, rope_sin, rope_cos,
     block_table=None, cu_seqlens=None, seqused=None, start_pos=None,
     rope_head_dim=64, cmp_ratio=4, coff=1, norm_eps=1e-6, rotary_mode=1, cache_mode=1):
     x_dtype = x.dtype
@@ -439,8 +440,8 @@ def cpu_compressor(
             if save_flag:
                 tmp_kv_state = new_kv_state[start_offset:end_offset, :]
                 tmp_score_state = new_score_state[start_offset:end_offset, :]
-                write_state_page_cache(kv_state, tmp_kv_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=cache_mode)
-                write_state_page_cache(score_state, tmp_score_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=cache_mode)
+                write_state_page_cache(kv_state, update_kv_position, tmp_kv_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=cache_mode)
+                write_state_page_cache(score_state, update_score_position, tmp_score_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=cache_mode)
 
             if compress_flag:
                 # init value and shape of one sc state
@@ -686,12 +687,15 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     # ======================== execute cpu start =================================
     cpu_kv_state = kv_state.clone()
     cpu_score_state = score_state.clone()
+
+    update_kv = torch.zeros((cpu_kv_state.shape[0],cpu_kv_state.shape[1],cpu_kv_state.shape[2]), dtype=torch.bool)
+    update_score = torch.zeros((cpu_score_state.shape[0],cpu_score_state.shape[1],cpu_score_state.shape[2]), dtype=torch.bool)
+
     cpu_out, cmp_kv_mask = cpu_compressor(
-        x, wkv, wgate, cpu_kv_state, cpu_score_state, ape, norm_weight, rope_sin, rope_cos,
+        x, wkv, wgate, cpu_kv_state, cpu_score_state, update_kv, update_score,  ape, norm_weight, rope_sin, rope_cos,
         block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
         rope_head_dim=rope_head_dim, cmp_ratio=cmp_ratio, coff=coff, norm_eps=norm_eps, rotary_mode=rotary_mode, cache_mode=cache_mode)
-    update_kv = cpu_kv_state != kv_state
-    update_score = cpu_score_state != score_state
+
     # ======================== execute cpu finish ================================
 
     # ======================== execute npu start =================================

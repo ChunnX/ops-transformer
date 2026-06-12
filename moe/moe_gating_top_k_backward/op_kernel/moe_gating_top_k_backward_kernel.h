@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file moe_gating_top_k_backward.h
+ * \file moe_gating_top_k_backward_kernel.h
  * \brief
  */
-#ifndef MOE_GATING_TOP_K_E_K_GENERALIZED_H
-#define MOE_GATING_TOP_K_E_K_GENERALIZED_H
+#ifndef MOE_GATING_TOP_K_BACKWARD_KERNEL_H
+#define MOE_GATING_TOP_K_BACKWARD_KERNEL_H
 #include "kernel_operator.h"
 #include "common.h"
 #include "basic_api/kernel_operator_utils_intf.h"
@@ -343,4 +343,4 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyOut(int64_t loopIdx)
 }
 
 } // namespace MoeGatingTopKBackward
-#endif // MOE_GATING_TOP_K_BACKWARD_H
+#endif // MOE_GATING_TOP_K_BACKWARD_KERNEL_H

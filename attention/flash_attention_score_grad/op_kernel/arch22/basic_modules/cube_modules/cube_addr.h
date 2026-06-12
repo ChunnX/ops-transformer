@@ -14,7 +14,7 @@
  */
 #ifndef _CUBE_ADDR_H_
 #define _CUBE_ADDR_H_
-#include "../common_header.h"
+#include "../flash_attention_score_grad_common_header.h"
 
 namespace CUBE_ADDR {
 class CubeAddr {

@@ -201,7 +201,7 @@ aclnnStatus aclnnRotaryPositionEmbedding(
       <td>与x数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>4</td>
+      <td>3或4</td>
       <td>x</td>
     </tr>
     <tr>

@@ -107,8 +107,8 @@ __aicore__ inline void GMMPreTilingProcess::Process(GMMBaseParams& tilingData, T
     // modify baseM
     int32_t mDim = Ceil(tokenPerGroup, baseM);
     int32_t nDim = Ceil(n, baseN);
-    int32_t taskNum = mDim * nDim * groupNum;
-    int32_t taskNumPerCore = Ceil(taskNum, coreNum);
+    int64_t taskNum = static_cast<int64_t>(mDim) * nDim * static_cast<int64_t>(groupNum);
+    int64_t taskNumPerCore = Ceil(taskNum, static_cast<int64_t>(coreNum));
     int32_t newBaseM = AlignUp(Ceil(tokenPerGroup, mDim), BASE_M_ALIGN_UP);
     if(newBaseM < BASE_M_ALIGN_UP) {
         return;
@@ -119,7 +119,7 @@ __aicore__ inline void GMMPreTilingProcess::Process(GMMBaseParams& tilingData, T
     // modify singleN
     if(taskNumPerCore >= 2 && n > baseN) { // 2 : taskNum < coreNum, singleN remains unchanged.
         int32_t curNDim = 0;
-        int32_t curTaskNum = 0;
+        int64_t curTaskNum = 0;
         bool isModifySingleN = false;
         int32_t bestSingleN = tilingData.singleN;
         float ratio = 0;
@@ -127,8 +127,9 @@ __aicore__ inline void GMMPreTilingProcess::Process(GMMBaseParams& tilingData, T
         for (int i = 1; i <= coreNum; ++i) {
             bestSingleN = AlignUp(Ceil(n, i), BASE_SINGLE_N_ALIGN_UP);
             curNDim = Ceil(n, bestSingleN);
-            curTaskNum = mDim * curNDim * groupNum;
-            ratio = static_cast<float>(curTaskNum) / AlignUp(curTaskNum, coreNum);
+            curTaskNum = static_cast<int64_t>(mDim) * curNDim * static_cast<int64_t>(groupNum);
+            ratio =
+                static_cast<float>(curTaskNum) / static_cast<float>(AlignUp(curTaskNum, static_cast<int64_t>(coreNum)));
 #if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
             isModifySingleN = ratio >= EFFECTIVE_TASK_RATIO;
 #else

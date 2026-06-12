@@ -175,30 +175,30 @@ __aicore__ inline void MatMulEmptyTensorBrcBias(GM_ADDR biasGM, GM_ADDR cGM,
     biasGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ DTYPE_Y*>(biasGM));
     TBuffAddr buffAddr;
     buffAddr.logicPos = (uint8_t)QuePosition::VECCALC;
-    uint32_t eleCnt = 32 / sizeof(DTYPE_Y);
-    uint32_t alSize = (tilingData->param.rankN / eleCnt) * eleCnt;
-    if (alSize > 0) {
-        DataCopy(bias, biasGlobal, alSize);
-        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
-        SetFlag<HardEvent::MTE2_MTE3>(eventID);
-        WaitFlag<HardEvent::MTE2_MTE3>(eventID);
+    uint32_t eleCntWq = 32 / sizeof(DTYPE_Y);
+    uint32_t alSizeWq = (tilingData->param.rankN / eleCntWq) * eleCntWq;
+    if (alSizeWq > 0) {
+        DataCopy(bias, biasGlobal, alSizeWq);
+        event_t eventIDWq = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+        SetFlag<HardEvent::MTE2_MTE3>(eventIDWq);
+        WaitFlag<HardEvent::MTE2_MTE3>(eventIDWq);
         for (uint32_t i = 0; i < tilingData->param.rankM; ++i) {
-            uint32_t offsetDst = i * tilingData->param.rankN;
-            DataCopy(cGlobalHalf[offsetDst], bias, alSize);
+            uint32_t offsetDstWq = i * tilingData->param.rankN;
+            DataCopy(cGlobalHalf[offsetDstWq], bias, alSizeWq);
         }
     }
-    if (tilingData->param.rankN % eleCnt) {
+    if (tilingData->param.rankN % eleCntWq) {
         // 搬运biase非对齐部分
-        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-        SetFlag<HardEvent::MTE3_MTE2>(eventID);
-        WaitFlag<HardEvent::MTE3_MTE2>(eventID);
-        DataCopy(bias, biasGlobal[tilingData->param.rankN - eleCnt], eleCnt);
-        eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
-        SetFlag<HardEvent::MTE2_MTE3>(eventID);
-        WaitFlag<HardEvent::MTE2_MTE3>(eventID);
+        event_t eventIDWq = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+        SetFlag<HardEvent::MTE3_MTE2>(eventIDWq);
+        WaitFlag<HardEvent::MTE3_MTE2>(eventIDWq);
+        DataCopy(bias, biasGlobal[tilingData->param.rankN - eleCntWq], eleCntWq);
+        eventIDWq = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+        SetFlag<HardEvent::MTE2_MTE3>(eventIDWq);
+        WaitFlag<HardEvent::MTE2_MTE3>(eventIDWq);
         for (uint32_t i = 0; i < tilingData->param.rankM; ++i) {
-            uint32_t offsetDst = (i + 1) * tilingData->param.rankN - eleCnt;
-            DataCopy(cGlobalHalf[offsetDst], bias, eleCnt);
+            uint32_t offsetDstWq = (i + 1) * tilingData->param.rankN - eleCntWq;
+            DataCopy(cGlobalHalf[offsetDstWq], bias, eleCntWq);
         }
     }
 }

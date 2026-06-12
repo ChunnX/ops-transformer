@@ -95,21 +95,21 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">keyCache（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示在当前层存储的key向量缓存。</td>
-      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]，数据格式必须时ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须时FRACTAL_NZ。</td>
+      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]，数据格式必须是ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须是FRACTAL_NZ。</td>
       <td class="tg-0pky">INT8、FLOAT16、BFLOAT16、FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
       <td class="tg-0pky">ND、FRACTAL_NZ</td>
       <td class="tg-0pky">4</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√，当cacheMode为"Norm"时，D轴（最后一维head_size）必须连续，D轴之前的维度支持非连续；当cacheMode为"PA_NZ"时，仅dim0（num_blocks维）支持非连续。</td>
     </tr>
     <tr>
       <td class="tg-0pky">valueCache（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示在当前层存储的value向量缓存。</td>
-      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]，数据格式必须时ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须时FRACTAL_NZ。</td>
+      <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]，数据格式必须是ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须是FRACTAL_NZ。</td>
       <td class="tg-0pky">与keyCache保持一致</td>
       <td class="tg-0pky">ND、FRACTAL_NZ</td>
       <td class="tg-0pky">4</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√，与keyCache非连续约束一致。</td>
     </tr>
     <tr>
       <td class="tg-0pky">blockTables（aclTensor*）</td>
@@ -139,7 +139,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">与keyCache保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">2-3</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√，B、S维度支持非连续，N、D维度必须连续。</td>
     </tr>
     <tr>
       <td class="tg-0pky">valueRef（aclTensor*）</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">与keyCache保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">2-3</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√，与keyRef非连续约束一致。</td>
     </tr>
     <tr>
       <td class="tg-0pky">seqOffsetOptional（aclTensor*）</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnGatherPaKvCache(
     <tr>
       <td class="tg-0pky">cacheMode（char*）</td>
       <td class="tg-0pky">输入</td>
-      <td class="tg-0pky">支持["Norm", "PA_NZ"]两种模式，分别表示输入keyCache和keyCache数据格式时ND、FRACTAL_NZ。</td>
+      <td class="tg-0pky">支持["Norm", "PA_NZ"]两种模式，分别表示输入keyCache和keyCache数据格式是ND、FRACTAL_NZ。</td>
       <td class="tg-0pky">-</td>
       <td class="tg-0pky">-</td>
       <td class="tg-0pky">-</td>

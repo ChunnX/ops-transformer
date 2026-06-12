@@ -33,22 +33,6 @@
 #include "../../common/arch35/vf/vf_flashupdate_new.h"
 #endif
 
-#if __has_include("../../common/op_kernel/buffers_policy.h")
-#include "../../common/op_kernel/buffers_policy.h"
-#else
-#include "../../common/buffers_policy.h"
-#endif
-#if __has_include("../../common/op_kernel/buffer_manager.h")
-#include "../../common/op_kernel/buffer_manager.h"
-#else
-#include "../../common/buffer_manager.h"
-#endif
-#if __has_include("../../common/op_kernel/buffer.h")
-#include "../../common/op_kernel/buffer.h"
-#else
-#include "../../common/buffer.h"
-#endif
-
 using namespace AscendC;
 using namespace FaVectorApi;
 using namespace AscendC::Impl::Detail;
@@ -67,7 +51,7 @@ public:
     static constexpr uint32_t s2BaseSize = 128;
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dVTemplateType = 512;
-    static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
+    static constexpr uint32_t qsfaDTemplateAlign64 = Align64Func(dVTemplateType);
     static constexpr uint32_t dVTemplateTypeInput = 672;
     static constexpr float R0 = 1.0f;
     static constexpr uint64_t SYNC_SINKS_BUF_FLAG = 6;
@@ -135,10 +119,11 @@ private:
     using VEC2_RES_T = T;
     template <typename VEC2_RES_T>
     __aicore__ inline void Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-        LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize = 0);
+        LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t qsfaVec2CalcSize = 0);
     template <typename VEC2_RES_T>
     __aicore__ inline void CopyOutAttentionOut(
-        RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize);
+        RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
+        int64_t qsfaVec2CalcSize);
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
@@ -167,7 +152,7 @@ private:
     T negativeFloatScalar;
     uint32_t maxBlockNumPerBatch;
     uint32_t blockSize;
-    int64_t sparseCalSize;
+    int64_t qsfaSparseCalSize;
     int64_t sparseS2Start;
     int64_t sparseS2End;
 };
@@ -449,30 +434,30 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const 
         uint32_t v0S2SizeSecondCore = runInfo.s2RealSize - v0S2SizeFirstCore;
         if (aicIdx % 2U == 0) {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2); // 2: Vector split size for first core (first half)
+                qsfaSparseCalSize = CeilDiv(v0S2SizeFirstCore, 2); // 2: Vector split size for first core (first half)
                 sparseS2Start = 0;
             } else {
                 // 2: Vector split size for first core (second half)
-                sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2);
+                qsfaSparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2);
                 sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2); // 2: Start offset for second half of first core
             }
         } else {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
+                qsfaSparseCalSize = CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
                 sparseS2Start = v0S2SizeFirstCore;
             } else {
-                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
+                qsfaSparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
                 sparseS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
             }
         }
-        sparseS2End = sparseS2Start + sparseCalSize;
+        sparseS2End = sparseS2Start + qsfaSparseCalSize;
     } else {
         int64_t s2PerVecLoop = 2LL;
         int64_t vecNum = 2LL;
         int64_t s2Loops = CeilDiv(CeilDiv(runInfo.s2RealSize, vecNum), s2PerVecLoop);
         sparseS2Start = GetSubBlockIdx() == 0 ? 0 : s2Loops * s2PerVecLoop;
         sparseS2End = GetSubBlockIdx() == 0 ? s2Loops * s2PerVecLoop : runInfo.s2RealSize;
-        sparseCalSize = sparseS2End - sparseS2Start;
+        qsfaSparseCalSize = sparseS2End - sparseS2Start;
     }
 }
 
@@ -505,7 +490,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    if (sparseCalSize == 0) {
+    if (qsfaSparseCalSize == 0) {
         return;
     }
     // Left-closed, right-open interval
@@ -522,7 +507,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
         int64_t dealRow = 0;
         // 1、copy kv in, gm ->ub
         LocalTensor<KV_T> kvInUb = stage0InQue.AllocTensor<KV_T>();
-        while (dealRow < Min(16, sparseCalSize) && s2<sparseS2End) { // 拷贝满16行或者遇到-1
+        while (dealRow < Min(16, qsfaSparseCalSize) && s2<sparseS2End) { // 拷贝满16行或者遇到-1
             GetRealCmpS2Idx(token0Idx, token1Idx, s2, runInfo, constInfo);
             s2 += 2; // 每次搬运2行
             if (token0Idx== -1 && token1Idx == -1) {
@@ -570,7 +555,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
 
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-    LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
+    LocalTensor<float> qsfaExpUb = this->softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
     int64_t stage1Offset = runInfo.taskIdMod2;
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<Q_T>();
 
@@ -624,7 +609,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
 
     outputBuf.SetCrossCore();
     if (runInfo.s2LoopCount != 0) {
-        SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
+        SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, qsfaExpUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
 }
 
@@ -641,23 +626,25 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec2(
     
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
     runInfo.vec2MRealSize = runInfo.vec2MBaseSize;
-    int64_t vec2CalcSize = runInfo.vec2MRealSize * dTemplateAlign64;
+    int64_t qsfaVec2CalcSize = runInfo.vec2MRealSize * qsfaDTemplateAlign64;
 
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
 
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     if (unlikely(runInfo.s2LoopCount == 0)) {
-        DataCopy(vec2ResUb, mmRes, vec2CalcSize);
+        DataCopy(vec2ResUb, mmRes, qsfaVec2CalcSize);
     } else {
-        LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
+        LocalTensor<T> qsfaExpUb = softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
-            FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
+            FlashUpdateNew<T, Q_T, OUTPUT_T, qsfaDTemplateAlign64, false, false>(
+                vec2ResUb, mmRes, vec2ResUb, qsfaExpUb, qsfaExpUb, runInfo.vec2MRealSize,
+                qsfaDTemplateAlign64, 1.0, 1.0);
         } else {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
+            FlashUpdateLastNew<T, Q_T, OUTPUT_T, qsfaDTemplateAlign64, false, false>(
+                vec2ResUb, mmRes, vec2ResUb, qsfaExpUb, qsfaExpUb, sumUb, runInfo.vec2MRealSize,
+                qsfaDTemplateAlign64, 1.0, 1.0);
         }
     }
 
@@ -665,11 +652,11 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec2(
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
-                vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
+            LastDivNew<T, Q_T, OUTPUT_T, qsfaDTemplateAlign64, false>(
+                vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, qsfaDTemplateAlign64, 1.0);
         }
 
-        this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
+        this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, qsfaVec2CalcSize);
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
 }
@@ -677,13 +664,13 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec2(
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut (RunInfo &runInfo, ConstInfo &constInfo,
-    LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
+    LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t qsfaVec2CalcSize)
 {
     LocalTensor<OUTPUT_T> attenOut;
-    int64_t dSizeAligned64 = (int64_t)dTemplateAlign64;
+    int64_t dSizeAligned64 = (int64_t)qsfaDTemplateAlign64;
 
     attenOut.SetAddr(vec2ResUb.address_);
-    Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
+    Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, qsfaVec2CalcSize);
     SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
 
@@ -699,9 +686,10 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut (RunInf
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutAttentionOut(
-    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
+    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
+    int64_t vec2S1Idx, int64_t qsfaVec2CalcSize)
 {
-    this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
+    this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, qsfaVec2CalcSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -775,7 +763,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *
 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
-    tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
+    tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * qsfaDTemplateAlign64 * sizeof(T));
 
     mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();

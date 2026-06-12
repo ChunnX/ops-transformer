@@ -54,7 +54,14 @@ public:
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    // task ring buffer 至少需要 PRELOAD_N+1(=3) 个slot；为了用位掩码(loop & MASK)代替取模(loop % SIZE)，
+    // 将容量向上取整到最近的2的幂(=4)。代价仅为多1个RunInfoX slot，换取消除内层循环的取模scalar bound。
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
+    static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1,
+                  "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
+    static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
+                  "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
@@ -543,7 +550,7 @@ public:
 
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
-        int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+        int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
                                    static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
                                1;
         int64_t s1FirstToken = 0;
@@ -587,19 +594,19 @@ public:
 
         if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) { // first line
             headS2Split = s2OStart_ > s2StartWithSparse ? true : false;
-            curS2Start = Max(s2StartWithSparse, s2OStart_);
+            curS2Start = AttentionCommon::Max(s2StartWithSparse, s2OStart_);
         }
         if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) { // last line
             tailS2Split = s2OEnd_ > 0U ? true : false;
-            curS2End = s2OEnd_ > 0U ? Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
+            curS2End = s2OEnd_ > 0U ? AttentionCommon::Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
         }
         return;
     }
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
+        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];                  // 本轮任务
+        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -650,7 +657,7 @@ public:
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE]; // 本轮任务
+        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
@@ -684,7 +691,7 @@ public:
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
         info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
         if (constInfo.isKvContinuous) {
             info.isChangeBatch = false;
         } else {

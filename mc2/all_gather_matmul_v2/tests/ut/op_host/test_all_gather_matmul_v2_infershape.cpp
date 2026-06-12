@@ -58,7 +58,7 @@ TEST_F(AllGatherMatmulV2InferShapeTest, Basic)
             {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
+            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
         }
     );
     Mc2Hcom::MockValues hcomTopologyMockValues {
@@ -97,7 +97,7 @@ TEST_F(AllGatherMatmulV2InferShapeTest, EmptyTensorFailTest)
             {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
+            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
         }
     );
     Mc2Hcom::MockValues hcomTopologyMockValues {
@@ -140,7 +140,7 @@ TEST_F(AllGatherMatmulV2InferShapeTest, Pertensor)
             {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
+            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
         }
     );
     Mc2Hcom::MockValues hcomTopologyMockValues {
@@ -184,7 +184,7 @@ TEST_F(AllGatherMatmulV2InferShapeTest, Perblock)
             {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
+            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
         }
     );
     Mc2Hcom::MockValues hcomTopologyMockValues {
@@ -298,7 +298,7 @@ TEST_F(AllGatherMatmulV2InferShapeTest, AmaxOutTrue)
          {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
          {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}});
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{65536, 3904}, {0}, {1}};
@@ -333,7 +333,7 @@ TEST_F(AllGatherMatmulV2InferShapeTest, AmaxOutTrueFP8)
          {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
          {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
          {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}});
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{65536, 3904}, {65536, 12288}, {1}};

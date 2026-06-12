@@ -24,7 +24,7 @@ bool UnQuantMatmulAllReduceTiling310::IsCapable()
 {
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
     OP_TILING_CHECK(
-        weightTensor == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "weight tensor is invalid"),
+        weightTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"),
         return false);
     auto format = weightTensor->GetStorageFormat();
     if ((npuArch_ != NpuArch::DAV_2002) || (format == ge::Format::FORMAT_ND)) {
@@ -41,6 +41,7 @@ bool UnQuantMatmulAllReduceTiling310::IsCapable()
 
 ge::graphStatus UnQuantMatmulAllReduceTiling310::DoOpTiling()
 {
+    MC2_CHECK_LOG_RET(opName_, CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     if (isKZero_) {
@@ -50,7 +51,7 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoOpTiling()
         DoAllReduceTiling();
         return ge::GRAPH_SUCCESS;
     }
-    GE_ASSERT_GRAPH_SUCCESS(DoUnQuantTiling());
+    MC2_CHECK_LOG_RET(opName_, DoUnQuantTiling());
     DoAllReduceTiling();
     return ge::GRAPH_SUCCESS;
 }
@@ -100,7 +101,7 @@ uint64_t UnQuantMatmulAllReduceTiling310::GetTilingKey() const
 
 ge::graphStatus UnQuantMatmulAllReduceTiling310::GetWorkspaceSize()
 {
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
     myWorkSpaceSize_ = myWorkSpaceSize_ + (workspaceSize_ - libApiWorkSpaceSize_);
     OP_LOGI(opName_, " set max workspace size %lu to context", myWorkSpaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
@@ -116,8 +117,7 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::PostTiling()
         tilingDataSize, context_->GetRawTilingData()->GetCapacity());
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", tilingDataSize),
         return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
@@ -142,7 +142,7 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::PostTiling()
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret); 
+    MC2_CHECK_LOG_RET(opName_, ret); 
 
     return ge::GRAPH_SUCCESS;
 }
@@ -176,7 +176,7 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
         matmulTPLParam_ = mmTile.GetMatmulTPLParam();
         return res;
     } else {
-        GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         if (MutableRCSTilingData().tailCnt == 0) {
             matmulTPLParam_ = mmTile.GetMatmulTPLParam();
 
@@ -192,23 +192,23 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
 
 CutResult UnQuantMatmulAllReduceTiling310::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+    CutResult mCutAllreduceRet;
+    SocVersion socVer = SocVersion::SOC910_B;
+    SetMCutSocVersion(socVer);
+    const gert::StorageShape* commQuantScaleOne = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleTwo = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQuantScaleOne != nullptr) && (commQuantScaleTwo != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+        MMPlusQuantAllReduce quantAllReduceHcclTiling(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, socVer);
+        quantAllReduceHcclTiling.GetTiling();
+        mCutAllreduceRet = quantAllReduceHcclTiling.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce allReduceHcclTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVer, isPerBlock_);
+        allReduceHcclTiling.GetTiling();
+        mCutAllreduceRet = allReduceHcclTiling.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutAllreduceRet;
 }
 
 //注册Tiling
