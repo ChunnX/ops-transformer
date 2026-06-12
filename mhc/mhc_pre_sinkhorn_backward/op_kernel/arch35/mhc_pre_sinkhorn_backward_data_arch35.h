@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -18,8 +18,7 @@
 
 #include <cstdint>
 
-class MhcPreSinkhornBackwardArch35TilingData {
-public:
+struct MhcPreSinkhornBackwardArch35TilingData {
     int64_t batchSize = 0;
     int64_t seqLength = 0;
     int64_t c = 0;
@@ -33,6 +32,22 @@ public:
     int64_t tileSize = 0;
     int64_t skIterCount = 0;
     int64_t ubSize = 0;
+    float eps = 0;
+    TCubeTiling mm1TilingData;
+    TCubeTiling mm2TilingData;
+};
+
+struct MhcPreSinkhornBackwardArch35DeterminiticTilingData {
+    int64_t batchSize = 0;
+    int64_t seqLength = 0;
+    int64_t c = 0;
+    int64_t n = 0;
+    int64_t aivNum = 0;
+    int64_t cLoopDataLen = 0;
+    int64_t bsLoopDataLe = 0;
+    int64_t skIterCount = 0;
+    int64_t bsTaskCount = 0;
+    int64_t tailBsTaskCount = 0;
     float eps = 0;
     TCubeTiling mm1TilingData;
     TCubeTiling mm2TilingData;
