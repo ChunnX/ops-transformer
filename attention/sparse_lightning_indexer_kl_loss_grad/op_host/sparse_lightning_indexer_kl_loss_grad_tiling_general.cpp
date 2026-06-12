@@ -393,7 +393,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
     int64_t bmm1Size = static_cast<int64_t>(gSizeQuery) * kSize * sizeof(float);
     int64_t bmm2Size = static_cast<int64_t>(gSizeQueryIndex) * kSize * sizeof(float);
     int64_t reluGradSize = static_cast<int64_t>(gSizeQueryIndex) * kSize * sizeof(float);
-    int64_t psySyncSize = static_cast<int64_t>(kSize) * 2 * sizeof(float);
+    int64_t psySyncSize = (static_cast<int64_t>(kSize) * 2 + 32 / sizeof(float)) * sizeof(float);
     int64_t bmm3Size = static_cast<int64_t>(kSize) * dSizeQueryIndex * sizeof(float);
     int64_t scatterAddOutSize = (tilingKeyLayout == LayoutType::LAYOUT_TND) ?
         accumS2 * dSizeQueryIndex * sizeof(float) :

@@ -76,7 +76,18 @@ public:
 private:
     __aicore__ inline int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
         GlobalTensor<int32_t> &actualSeqLensGm, SLILayout layout, int64_t &accumLen);
-    __aicore__ inline int32_t GetS2SparseLen(int32_t s1Idx, int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode);
+    __aicore__ inline int32_t GetCmpResidualK(int32_t bIdx);
+    __aicore__ inline int64_t GetPreCompressS2Len(int32_t bIdx, int32_t actualSeqLensK);
+    __aicore__ inline int32_t GetS2SparseLen(int32_t bIdx, int32_t s1Idx,
+        int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode);
+    __aicore__ inline int64_t GetInvalidS1Size(int64_t bIdx, int64_t actualSeqLensQ, int64_t actualSeqLensK);
+    __aicore__ inline void CalcCoreClearRange(int64_t totalSize, int64_t totalCoreNum,
+        int64_t &clearStart, int64_t &clearEnd);
+    template <typename CLEAR_T>
+    __aicore__ inline void ClearInvalidS1Output(GlobalTensor<CLEAR_T> &outputGm,
+        int64_t clearStart, int64_t clearEnd, int64_t invalidS1Base,
+        int64_t invalidS1Size, int64_t gmS1Base, int64_t rowSize);
+    __aicore__ inline void InitInvalidS1Outputs();
     __aicore__ inline int64_t FindBIndex(int64_t bIndex, int64_t curIndex, int64_t &accumulateLen);
     __aicore__ inline int64_t GetEndS1(int64_t bIdx);
     __aicore__ inline int64_t GetMetadataTotalSize();
@@ -106,6 +117,7 @@ private:
     GlobalTensor<T> attnSoftmaxL1NormGm;
     GlobalTensor<int32_t> topKIndexGm;
     GlobalTensor<int32_t> actualSeqLengthsQueryGm, actualSeqLengthsKeyGm;
+    GlobalTensor<int32_t> cmpResidualKeyGm;
     GlobalTensor<int32_t> metadataGm;
     // output GM
     GlobalTensor<OUT_T> dQueryIndexGm, dKeyIndexGm;
@@ -150,7 +162,6 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Init(
     // init input global buffer
     (void)sequsedQ;
     (void)sequsedK;
-    (void)cmpResidualK;
     queryGm.SetGlobalBuffer((__gm__ Q_T *)q);
     keyGm.SetGlobalBuffer((__gm__ KV_T *)k);
     queryIndexGm.SetGlobalBuffer((__gm__ Q_T *)q);
@@ -172,6 +183,11 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Init(
     } else {
         actualSeqLengthsKeyGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensK, 0);
     }
+    if (cmpResidualK != nullptr) {
+        cmpResidualKeyGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualK, constInfo.bSize);
+    } else {
+        cmpResidualKeyGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualK, 0);
+    }
     hasMetadata = metadata != nullptr;
     if (hasMetadata) {
         metadataGm.SetGlobalBuffer((__gm__ int32_t *)metadata, optiling::SLI_METADATA_SIZE);
@@ -187,7 +203,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Init(
 
     if ASCEND_IS_AIV {
         // InitVecOP
-        vectorService.InitParams(constInfo, tilingData, metadataGm, hasMetadata);
+        vectorService.InitParams(constInfo, tilingData, metadataGm, cmpResidualKeyGm, hasMetadata);
         vectorService.InitVector0GM(keyGm, keyRopeGm, keyIndexGm, topKIndexGm,
                                     actualSeqLengthsQueryGm, actualSeqLengthsKeyGm,
                                     gatherPRes, gatherSYRes);
@@ -249,7 +265,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitWorkspace
     int64_t pOffset = topKSize * (constInfo.dSizeQuery + constInfo.dSizeQueryRope) * sizeof(KV_T); // * 2;
     int64_t syOffset = topKSize * constInfo.dSizeQueryIndex * sizeof(KV_T); // * 2;
     int64_t bmm1Offset = constInfo.gSizeQuery * topKSize * sizeof(float); // * 2;
-    int64_t psySyncSize = topKSize * sizeof(float) * 2;
+    int64_t psySyncSize = (topKSize * 2 + 32 / sizeof(float)) * sizeof(float);
     int64_t bmm2Offset = constInfo.gSizeQueryIndex * topKSize * sizeof(float); // * 2;
     int64_t reluGradOffset = constInfo.gSizeQueryIndex * topKSize * sizeof(float); // * 2;
     int64_t bmm3Offset =  topKSize * constInfo.dSizeQueryIndex * sizeof(float); // * 2;
@@ -325,6 +341,131 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitWorkspace
 }
 
 template <typename SLIT>
+__aicore__ inline int64_t SparseLightningIndexerKLLossGradBase<SLIT>::GetInvalidS1Size(
+    int64_t bIdx, int64_t actualSeqLensQ, int64_t actualSeqLensK)
+{
+    int64_t invalidS1Size = 0;
+    if (constInfo.sparseMode == SLISparseMode::RightDown) {
+        if (constInfo.cmpRatio != 0) {
+            invalidS1Size = actualSeqLensQ - GetPreCompressS2Len(bIdx, actualSeqLensK) + constInfo.cmpRatio - 1;
+        } else {
+            invalidS1Size = actualSeqLensQ - actualSeqLensK;
+        }
+    } else if (constInfo.sparseMode == SLISparseMode::NoMask && actualSeqLensK <= 0) {
+        invalidS1Size = actualSeqLensQ;
+    }
+    return Min(Max(invalidS1Size, static_cast<int64_t>(0)), actualSeqLensQ);
+}
+
+template <typename SLIT>
+__aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::CalcCoreClearRange(
+    int64_t totalSize, int64_t totalCoreNum, int64_t &clearStart, int64_t &clearEnd)
+{
+    int64_t singleCoreSize = CeilDiv(totalSize, totalCoreNum);
+    clearStart = Min(static_cast<int64_t>(constInfo.aivIdx) * singleCoreSize, totalSize);
+    clearEnd = Min(clearStart + singleCoreSize, totalSize);
+}
+
+template <typename SLIT>
+template <typename CLEAR_T>
+__aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::ClearInvalidS1Output(
+    GlobalTensor<CLEAR_T> &outputGm, int64_t clearStart, int64_t clearEnd, int64_t invalidS1Base,
+    int64_t invalidS1Size, int64_t gmS1Base, int64_t rowSize)
+{
+    int64_t segmentStart = invalidS1Base * rowSize;
+    int64_t segmentEnd = segmentStart + invalidS1Size * rowSize;
+    int64_t localStart = Max(clearStart, segmentStart);
+    int64_t localEnd = Min(clearEnd, segmentEnd);
+    if (localStart < localEnd) {
+        int64_t gmOffset = gmS1Base * rowSize + localStart - segmentStart;
+        AscendC::InitOutput(outputGm[gmOffset], localEnd - localStart, static_cast<CLEAR_T>(0));
+    }
+}
+
+template <typename SLIT>
+__aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitInvalidS1Outputs()
+{
+    if ASCEND_IS_AIV {
+        int64_t totalCoreNum = GetBlockNum() * GetTaskRation();
+        int64_t qRowSize = constInfo.gSizeQuery * constInfo.dSizeQuery;
+        int64_t dwRowSize = constInfo.gSizeQueryIndex;
+        int64_t softmaxRowSize = constInfo.n2Size * topKSize;
+        int64_t totalInvalidS1Size = 0;
+
+        if constexpr (LAYOUT_T == SLILayout::TND) {
+            for (int64_t bIdx = 0; bIdx < constInfo.bSize; ++bIdx) {
+                int64_t accumS1Len = 0;
+                int64_t accumS2Len = 0;
+                int64_t actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size,
+                    actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
+                int64_t actualSeqLensK = 0;
+                if constexpr (KV_LAYOUT_T == SLILayout::TND) {
+                    actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size,
+                        actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
+                } else {
+                    actualSeqLensK = constInfo.s2Size;
+                }
+                totalInvalidS1Size += GetInvalidS1Size(bIdx, actualSeqLensQ, actualSeqLensK);
+            }
+        } else if constexpr (LAYOUT_T == SLILayout::BSND) {
+            for (int64_t bIdx = 0; bIdx < constInfo.bSize; ++bIdx) {
+                totalInvalidS1Size += GetInvalidS1Size(bIdx, constInfo.s1Size, constInfo.s2Size);
+            }
+        }
+
+        int64_t dqClearStart = 0;
+        int64_t dqClearEnd = 0;
+        int64_t dwClearStart = 0;
+        int64_t dwClearEnd = 0;
+        int64_t softmaxClearStart = 0;
+        int64_t softmaxClearEnd = 0;
+        CalcCoreClearRange(totalInvalidS1Size * qRowSize, totalCoreNum, dqClearStart, dqClearEnd);
+        CalcCoreClearRange(totalInvalidS1Size * dwRowSize, totalCoreNum, dwClearStart, dwClearEnd);
+        CalcCoreClearRange(totalInvalidS1Size * softmaxRowSize, totalCoreNum, softmaxClearStart, softmaxClearEnd);
+
+        if constexpr (LAYOUT_T == SLILayout::TND) {
+            int64_t invalidS1Base = 0;
+            for (int64_t bIdx = 0; bIdx < constInfo.bSize && invalidS1Base < totalInvalidS1Size; ++bIdx) {
+                int64_t accumS1Len = 0;
+                int64_t accumS2Len = 0;
+                int64_t actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size,
+                    actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
+                int64_t actualSeqLensK = 0;
+                if constexpr (KV_LAYOUT_T == SLILayout::TND) {
+                    actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size,
+                        actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
+                } else {
+                    actualSeqLensK = constInfo.s2Size;
+                }
+                int64_t invalidS1Size = GetInvalidS1Size(bIdx, actualSeqLensQ, actualSeqLensK);
+                ClearInvalidS1Output(dQueryIndexGm, dqClearStart, dqClearEnd,
+                                     invalidS1Base, invalidS1Size, accumS1Len, qRowSize);
+                ClearInvalidS1Output(dWeightGm, dwClearStart, dwClearEnd,
+                                     invalidS1Base, invalidS1Size, accumS1Len, dwRowSize);
+                ClearInvalidS1Output(softmaxOutGm, softmaxClearStart, softmaxClearEnd,
+                                     invalidS1Base, invalidS1Size, accumS1Len, softmaxRowSize);
+                invalidS1Base += invalidS1Size;
+            }
+        } else if constexpr (LAYOUT_T == SLILayout::BSND) {
+            int64_t invalidS1Base = 0;
+            for (int64_t bIdx = 0; bIdx < constInfo.bSize && invalidS1Base < totalInvalidS1Size; ++bIdx) {
+                int64_t invalidS1Size = GetInvalidS1Size(bIdx, constInfo.s1Size, constInfo.s2Size);
+                int64_t batchS1Base = bIdx * constInfo.s1Size;
+
+                ClearInvalidS1Output(dQueryIndexGm, dqClearStart, dqClearEnd,
+                                     invalidS1Base, invalidS1Size, batchS1Base, qRowSize);
+                ClearInvalidS1Output(dWeightGm, dwClearStart, dwClearEnd,
+                                     invalidS1Base, invalidS1Size, batchS1Base, dwRowSize);
+                ClearInvalidS1Output(softmaxOutGm, softmaxClearStart, softmaxClearEnd,
+                                     invalidS1Base, invalidS1Size, batchS1Base, softmaxRowSize);
+                invalidS1Base += invalidS1Size;
+            }
+        }
+    }
+    SyncAll();
+}
+
+template <typename SLIT>
 __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitBuffer(TPipe *pipe)
 {
     if ASCEND_IS_AIC {
@@ -392,6 +533,13 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::CalcMultiCore
     int64_t bS1Index = GetMetadataBS1Index(constInfo.aicIdx);
     int64_t bS1EndIndex = constInfo.aicIdx + 1 < optiling::MAX_CORE_NUM ?
                 GetMetadataBS1Index(constInfo.aicIdx + 1) : GetMetadataTotalSize();
+    if (bS1Index >= bS1EndIndex || bS1Index >= GetMetadataTotalSize()) {
+        bStartIdx = 1;
+        bEndIdx = 0;
+        s1StartIdx = 0;
+        s1EndIdx = 0;
+        return;
+    }
     if constexpr (LAYOUT_T == SLILayout::TND) {
         bStartIdx = FindBIndex(0, bS1Index, actualSum);
         s1StartIdx = bS1Index - actualSum;
@@ -422,6 +570,8 @@ __aicore__ inline int64_t SparseLightningIndexerKLLossGradBase<SLIT>::CalcBS1Loo
 template <typename SLIT>
 __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Process()
 {
+    InitInvalidS1Outputs();
+
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
     } else {
@@ -443,44 +593,26 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Process()
         int32_t actualSeqLensQ = 0;
         int32_t actualSeqLensK = 0;
         if constexpr (LAYOUT_T == SLILayout::TND) {
-            s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;
-            s1EndIdxThisBatch = (!lastB) ? GetEndS1Etx(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T) : s1EndIdx;
             actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T, accumS1Len);
-            actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size, actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2Len);
+            if constexpr (KV_LAYOUT_T == SLILayout::TND) {
+                actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size, actualSeqLengthsKeyGm, KV_LAYOUT_T,
+                                                  accumS2Len);
+            } else {
+                actualSeqLensK = constInfo.s2Size;
+                accumS2Len = bIdx * constInfo.s2Size;
+            }
+            s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;
+            s1EndIdxThisBatch = (!lastB) ? actualSeqLensQ : s1EndIdx;
         } else if constexpr (LAYOUT_T == SLILayout::BSND) {
             s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;
             s1EndIdxThisBatch = (!lastB) ? constInfo.s1Size : s1EndIdx;
+            actualSeqLensQ = constInfo.s1Size;
+            actualSeqLensK = constInfo.s2Size;
         }
+        int64_t invalidS1Size = GetInvalidS1Size(bIdx, actualSeqLensQ, actualSeqLensK);
+        s1StartIdxThisBatch = Min(Max(s1StartIdxThisBatch, invalidS1Size), s1EndIdxThisBatch);
         if (lastB) {
             extraLoopTimes = 2;// 最后一个Batch需要额外循环两次，因为preload方式会产生尾巴
-        }
-
-        if (constInfo.cmpRatio == 4) {
-            int32_t realKvLen = 0;
-            if constexpr (LAYOUT_T == SLILayout::TND) {
-                realKvLen = GetS2SparseLen(s1StartIdxThisBatch, actualSeqLensQ, actualSeqLensK, constInfo.sparseMode);
-            } else {
-                realKvLen = GetS2SparseLen(s1StartIdxThisBatch, constInfo.s1Size, constInfo.s2Size, constInfo.sparseMode);
-            }
-
-            if (realKvLen <= 0 && s1StartIdxThisBatch < constInfo.cmpRatio - 1) {
-                // init invalid s1 loop output[s1StartIdxThisBatch, cmpRatio - 1]
-                int64_t s1Offset = 0;
-                if constexpr (LAYOUT_T == SLILayout::TND) {
-                    s1Offset = accumS1Len;
-                } else if constexpr (LAYOUT_T == SLILayout::BSND) {
-                    s1Offset = bIdx * constInfo.s1Size;
-                }
-                int64_t qBaseOffset = constInfo.gSizeQuery * constInfo.dSizeQuery;
-                int64_t s1CleanLen = Min(constInfo.cmpRatio - 1, s1EndIdxThisBatch) - s1StartIdxThisBatch;
-                AscendC::InitOutput(dQueryIndexGm[(s1Offset + s1StartIdxThisBatch) * qBaseOffset], qBaseOffset * s1CleanLen, static_cast<OUT_T>(0));
-                AscendC::InitOutput(dWeightGm[(s1Offset + s1StartIdxThisBatch) * constInfo.gSizeQuery], constInfo.gSizeQuery * s1CleanLen, static_cast<T>(0));
-                AscendC::InitOutput(softmaxOutGm[(s1Offset + s1StartIdxThisBatch) * constInfo.n2Size * topKSize],
-                                    constInfo.n2Size * topKSize * s1CleanLen, static_cast<T>(0));
-
-                // skip invalid s1 loop
-                s1StartIdxThisBatch = Min(s1EndIdxThisBatch, constInfo.cmpRatio - 1);
-            }
         }
 
         for (int64_t s1Idx = s1StartIdxThisBatch; s1Idx < s1EndIdxThisBatch + extraLoopTimes; s1Idx++) {
@@ -590,12 +722,30 @@ __aicore__ inline int32_t SparseLightningIndexerKLLossGradBase<SLIT>::GetActualS
 }
 
 template <typename SLIT>
-__aicore__ inline int32_t SparseLightningIndexerKLLossGradBase<SLIT>::GetS2SparseLen(int32_t s1Idx,
+__aicore__ inline int32_t SparseLightningIndexerKLLossGradBase<SLIT>::GetCmpResidualK(int32_t bIdx)
+{
+    if (cmpResidualKeyGm.GetSize() <= 0) {
+        return 0;
+    }
+    return cmpResidualKeyGm.GetValue(bIdx);
+}
+
+template <typename SLIT>
+__aicore__ inline int64_t SparseLightningIndexerKLLossGradBase<SLIT>::GetPreCompressS2Len(int32_t bIdx,
+    int32_t actualSeqLensK)
+{
+    int64_t preCompressS2Len = static_cast<int64_t>(actualSeqLensK) * constInfo.cmpRatio + GetCmpResidualK(bIdx);
+    return Max(preCompressS2Len, static_cast<int64_t>(0));
+}
+
+template <typename SLIT>
+__aicore__ inline int32_t SparseLightningIndexerKLLossGradBase<SLIT>::GetS2SparseLen(int32_t bIdx, int32_t s1Idx,
     int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode)
 {
     if (sparseMode == SLISparseMode::RightDown) {
         if (constInfo.cmpRatio != 0) {
-            return (actualSeqLensK * constInfo.cmpRatio - actualSeqLensQ + s1Idx + 1) / constInfo.cmpRatio;
+            int64_t preCompressS2Len = GetPreCompressS2Len(bIdx, actualSeqLensK);
+            return static_cast<int32_t>((preCompressS2Len - actualSeqLensQ + s1Idx + 1) / constInfo.cmpRatio);
         } else {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
         }
@@ -632,7 +782,13 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::GetRunInfo(in
         runInfo.accumS2Idx = bIdx * constInfo.s2Size;
     }
 
-    runInfo.s2SparseLen = GetS2SparseLen(runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size, constInfo.sparseMode);
+    runInfo.s2SparseLen = GetS2SparseLen(runInfo.bIdx, runInfo.s1Idx, runInfo.actS1Size,
+        runInfo.actS2Size, constInfo.sparseMode);
+    if (runInfo.s2SparseLen <= 0) {
+        runInfo.isValid = false;
+        return;
+    }
+
     runInfo.s2RealSize = Min(topKSize, runInfo.s2SparseLen);
     if (constInfo.cmpRatio != 0){
         runInfo.s2RealSize = Max(1, runInfo.s2RealSize);
