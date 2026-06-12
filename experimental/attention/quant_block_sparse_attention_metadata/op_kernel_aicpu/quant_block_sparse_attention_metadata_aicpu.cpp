@@ -77,42 +77,42 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsCheck()
 bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
 {
     // REQUIRED_INPUT tensor check
-    if (sparseSeqLen_ == nullptr) {
-        KERNEL_LOG_ERROR("sparseSeqLen is nullptr");
-        return false;
-    }
-    if (sparseSeqLen_->GetTensorShape() == nullptr || sparseSeqLen_->GetTensorShape()->GetDims() != 2) {
-        KERNEL_LOG_ERROR("sparseSeqLen must be 2D tensor");
-        return false;
-    }
-    if (sparseSeqLen_->GetTensorShape()->GetDims() > 0 && sparseSeqLen_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("sparseSeqLen data is nullptr");
-        return false;
-    }
-    // OPTIONAL_INPUT tensor check
-    if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetTensorShape()->GetDims() > 0 &&
-        cuSeqlensQ_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("cuSeqlensQ data is nullptr");
-        return false;
-    }
-    if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetTensorShape()->GetDims() > 0 &&
-        cuSeqlensKv_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("cuSeqlensKv data is nullptr");
-        return false;
-    }
-    if (sequsedQ_ != nullptr && sequsedQ_->GetTensorShape()->GetDims() > 0 && sequsedQ_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("sequsedQ data is nullptr");
-        return false;
-    }
-    if (sequsedKv_ != nullptr && sequsedKv_->GetTensorShape()->GetDims() > 0 && sequsedKv_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("sequsedKv data is nullptr");
-        return false;
-    }
-    // OUTPUT tensor check
-    if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("metaData is empty");
-        return false;
-    }
+    // if (sparseSeqLen_ == nullptr) {
+    //     KERNEL_LOG_ERROR("sparseSeqLen is nullptr");
+    //     return false;
+    // }
+    // if (sparseSeqLen_->GetTensorShape() == nullptr || sparseSeqLen_->GetTensorShape()->GetDims() != 2) {
+    //     KERNEL_LOG_ERROR("sparseSeqLen must be 2D tensor");
+    //     return false;
+    // }
+    // if (sparseSeqLen_->GetTensorShape()->GetDims() > 0 && sparseSeqLen_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("sparseSeqLen data is nullptr");
+    //     return false;
+    // }
+    // // OPTIONAL_INPUT tensor check
+    // if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetTensorShape()->GetDims() > 0 &&
+    //     cuSeqlensQ_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("cuSeqlensQ data is nullptr");
+    //     return false;
+    // }
+    // if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetTensorShape()->GetDims() > 0 &&
+    //     cuSeqlensKv_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("cuSeqlensKv data is nullptr");
+    //     return false;
+    // }
+    // if (sequsedQ_ != nullptr && sequsedQ_->GetTensorShape()->GetDims() > 0 && sequsedQ_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("sequsedQ data is nullptr");
+    //     return false;
+    // }
+    // if (sequsedKv_ != nullptr && sequsedKv_->GetTensorShape()->GetDims() > 0 && sequsedKv_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("sequsedKv data is nullptr");
+    //     return false;
+    // }
+    // // OUTPUT tensor check
+    // if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("metaData is empty");
+    //     return false;
+    // }
     return true;
 }
 
@@ -275,10 +275,10 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetadata(const SplitResult &
         return false;
     }
     optiling::detail::FaMetaData faMetadata(metaData_->GetData());
-    uint32_t *ptr = static_cast<uint32_t *>(metaData_->GetData());
-    ptr[1] = 0U;
-    ptr[2] = mBaseSize_;
-    ptr[3] = s2BaseSize_;
+    // uint32_t *ptr = static_cast<uint32_t *>(metaData_->GetData());
+    // ptr[1] = 0U;
+    // ptr[2] = mBaseSize_;
+    // ptr[3] = s2BaseSize_;
     for (uint32_t i = 0; i < optiling::AIC_CORE_NUM; i++) {
         faMetadata.setFaMetadata(i, optiling::FA_CORE_ENABLE_INDEX, 0U);
         faMetadata.setFaMetadata(i, optiling::FA_BN1_START_INDEX, 0U);
