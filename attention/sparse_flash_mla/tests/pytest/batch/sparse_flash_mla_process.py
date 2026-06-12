@@ -25,7 +25,7 @@ TORCH_EXT_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(_
 if TORCH_EXT_PATH not in sys.path:
     sys.path.insert(0, TORCH_EXT_PATH)
 from npu_ops_transformer.ops import sparse_flash_mla as _smla_registration  # noqa: F401
-from npu_ops_transformer.ops import quant_lightning_indexer_v2_metadata as _metadata_registration  # noqa: F401
+from npu_ops_transformer.ops import sparse_flash_mla_metadata as _metadata_registration  # noqa: F401
 
 class Network(torch.nn.Module):
     def __init__(self):
@@ -99,16 +99,11 @@ def call_npu(input_data):
         cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
         seqused_q=seqused_q,
         seqused_ori_kv=seqused_ori_kv,
-        seqused_cmp_kv=seqused_cmp_kv,
-        cmp_residual_kv=cmp_residual_kv,
-        ori_topk_length=ori_topk_length,
-        cmp_topk_length=cmp_topk_length,
         batch_size=B,
         max_seqlen_q=max_seqlen_q,
-        # max_seqlen_ori_kv=max_seqlen_ori_kv,
-        # max_seqlen_cmp_kv=max_seqlen_cmp_kv,
+        max_seqlen_kv=ori_max_s2,
         ori_topk=K,
-        # cmp_topk=cmp_topk,
+        cmp_topk=K if cmp_sparse_indices is not None else 0,
         cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
         ori_mask_mode=ori_mask_mode,
         cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 3,
@@ -117,8 +112,7 @@ def call_npu(input_data):
         layout_q=layout_q,
         layout_kv=layout_kv,
         has_ori_kv=ori_kv != None,
-        has_cmp_kv=cmp_kv != None,
-        batch_invariant=0)
+        has_cmp_kv=cmp_kv != None)
 
     # 统一调用 npu_sparse_flash_mla，所有参数可选带默认值
     print("npu_sparse_flash_mla...")
@@ -149,8 +143,7 @@ def call_npu(input_data):
                                                             layout_q=layout_q,
                                                             layout_kv=layout_kv,
                                                             topk_value_mode=1,
-                                                            return_softmax_lse=return_softmax_lse if return_softmax_lse is not None else False,
-                                                            batch_invariant=0)
+                                                            return_softmax_lse=return_softmax_lse if return_softmax_lse is not None else False)
     print("npu_sparse_flash_mla end")
 
     torch.npu.synchronize()

@@ -99,6 +99,10 @@ int32_t SparseFlashMlaMetadataCpuKernel::GetQueryBatchSize()
 bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
 {
     batchSize_ = GetQueryBatchSize();
+    cmpRatio_ = (cmpRatio_ == 0) ? 1 : cmpRatio_;
+    if (cmpRatio_ <= 1) {
+        hasCmpKv_ = false;
+    }
     auto mode = static_cast<SparseMode>(oriMaskMode_);
     if (mode == SparseMode::DEFAULT_MASK) {
         preToken_ = INT64_MAX;
@@ -114,7 +118,15 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
         attentionMode_ = 1;
     }
     isS1G_ = (layoutQuery_ == "BSND" || layoutQuery_ == "BSH" || layoutQuery_ == "TND");
+    if (kvHeadNum_ == 0 || queryHeadNum_ % kvHeadNum_ != 0) {
+        KERNEL_LOG_ERROR("num_heads_q should be divisible by num_heads_kv.");
+        return false;
+    }
     groupSize_ = queryHeadNum_ / kvHeadNum_;
+    if (groupSize_ == 0 || groupSize_ > 128 || ((groupSize_ & (groupSize_ - 1U)) != 0U)) {
+        KERNEL_LOG_ERROR("num_heads_q / num_heads_kv should be power of two in [1, 128].");
+        return false;
+    }
     if (hasCmpKv_) {
         if (cmpTopK_ > 0) {
             isSCFA = true;
