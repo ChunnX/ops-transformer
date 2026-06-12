@@ -19,7 +19,7 @@ from pathlib import Path
 # ── 新架构 modules ──
 from core.data import flash_attn_inputs
 from core.case_loader import load_case_modules, normalize_params, resolve_case_ids
-from core.orchestrator import run_case, run_case_load
+from core.orchestrator import run_case, run_case_load, run_case_compare
 from core.reporter import Reporter
 
 _DEFAULT_CASE_FILES = [os.path.splitext(f)[0] for f in os.listdir(
@@ -65,6 +65,10 @@ if __name__ == "__main__":
 
     if args.save_golden and args.load_golden:
         print("[ERROR] --save_golden 和 --load_golden 不能同时使用")
+        sys.exit(1)
+
+    if args.compare_mode and not args.load_golden:
+        print("[ERROR] --compare_mode 必须搭配 --load_golden 指定 GPU 结果目录")
         sys.exit(1)
 
     # ── 加载用例 ──
@@ -186,6 +190,64 @@ if __name__ == "__main__":
                     print(f"  case_{idx:04d}  {run_cases[idx]}")
 
         sys.exit(0)
+
+    # ── compare 模式（NPU vs GPU）──
+    if args.compare_mode:
+        try:
+            from core.backends.npu import NPUBackend
+            primary = NPUBackend(args.device_id)
+        except ImportError:
+            print("[ERROR] NPU backend 不可用"); sys.exit(1)
+
+        if not primary.is_available():
+            print("[ERROR] NPU backend 不可用"); sys.exit(1)
+
+        reporter = Reporter()
+        if args.result_csv:
+            csv_path = Path(args.result_csv)
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+            reporter.set_csv(csv_path)
+
+        for i, name in enumerate(run_cases):
+            print(f"\n{'='*66}")
+            print(f"  [compare] Case: {name}  (NPU vs GPU)")
+            print(f"{'='*66}")
+
+            try:
+                result = run_case_compare(
+                    case_name=name,
+                    compare_dir=args.load_golden,
+                    primary=primary,
+                    verbose_diff=args.verbose_diff,
+                    visualize=args.visualize,
+                    viz_dir=args.viz_dir,
+                    fail_analysis=args.fail_analysis,
+                )
+                err = None
+            except FileNotFoundError as e:
+                print(f"  [warn] {e}，跳过")
+                continue
+            except Exception as e:
+                import traceback
+                err = f"{e}\n{traceback.format_exc()}"
+                print(f"[ERROR] {name} 运行异常: {e}")
+                result = {"attn": {"passed": False, "max_abs": float('nan'),
+                                   "mean_abs": float('nan'), "fail_cnt": -1,
+                                   "total": -1, "fail_ratio": float('nan')},
+                          "lse":  {"passed": False, "max_abs": float('nan'),
+                                   "mean_abs": float('nan'), "fail_cnt": -1,
+                                   "total": -1, "fail_ratio": float('nan')}}
+
+            reporter.record(name, result, error=err)
+
+            if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
+                    and (i + 1) < len(run_cases):
+                reporter.print_interim(len(run_cases))
+
+        fail_cnt = reporter.print_final()
+        if args.result_csv:
+            print(f"[result] {args.result_csv}")
+        sys.exit(0 if fail_cnt == 0 else 1)
 
     # ── load_golden 模式 ──
     if args.load_golden:

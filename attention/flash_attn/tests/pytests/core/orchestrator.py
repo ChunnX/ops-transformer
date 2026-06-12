@@ -19,7 +19,8 @@ _ctx = mp.get_context('spawn')
 # ─── Golden 持久化 ───────────────────────────────────────────────────────────
 
 def save_golden_case(case_name: str, inputs: dict,
-                     golden_out: dict, params: dict, golden_dir: str):
+                     golden_out: dict, params: dict, golden_dir: str,
+                     primary_out: dict = None, primary_name: str = None):
     safe_name = case_name.replace("/", "_")
     case_dir = Path(golden_dir) / safe_name
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -37,6 +38,13 @@ def save_golden_case(case_name: str, inputs: dict,
         if isinstance(v, torch.Tensor):
             golden_save[k] = v.cpu().float()
     torch.save(golden_save, case_dir / "golden.pt")
+
+    if primary_out and primary_name:
+        dev_save = {}
+        for k, v in primary_out.items():
+            if isinstance(v, torch.Tensor):
+                dev_save[k] = v.cpu().float()
+        torch.save(dev_save, case_dir / f"{primary_name}_out.pt")
 
 
 def load_golden_case(case_name: str, golden_dir: str):
@@ -216,7 +224,8 @@ def run_case(params: dict,
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
 
     if golden_dir and case_name:
-        save_golden_case(case_name, cpu_inputs, golden_out, params, golden_dir)
+        save_golden_case(case_name, cpu_inputs, golden_out, params, golden_dir,
+                         primary_out=primary_out, primary_name=primary.name)
 
     attn_passed = ret["attn"].get("passed", True) if isinstance(ret["attn"], dict) else True
     if not attn_passed:
@@ -306,6 +315,82 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
                 visualize_from_tensors(
                     cpu_out.float().numpy(),
                     dev_raw.float().numpy(),
+                    case_name=case_name,
+                    out_dir=viz_dir,
+                )
+            except Exception as e:
+                print(f"  [warn] visualize 异常: {e}")
+
+    return ret
+
+
+def run_case_compare(case_name: str, compare_dir: str, primary: Backend,
+                     verbose_diff: bool = False,
+                     visualize: bool = False,
+                     viz_dir: str = "./viz_output",
+                     fail_analysis: bool = False) -> dict:
+    """Compare mode: 加载 GPU 输出，跑 NPU，对比 NPU vs GPU。"""
+    safe_name = case_name.replace("/", "_")
+    case_dir = Path(compare_dir) / safe_name
+
+    gpu_out_path = case_dir / "gpu_out.pt"
+    if not gpu_out_path.exists():
+        raise FileNotFoundError(f"GPU output 不存在: {gpu_out_path}")
+
+    inputs, _, params = load_golden_case(case_name, compare_dir)
+    gpu_out = torch.load(gpu_out_path, map_location="cpu", weights_only=False)
+
+    dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
+                  for k, v in inputs.items()}
+    print(f"  [primary] {primary.name} 计算...")
+    npu_out_raw = primary.compute(dev_inputs, params)
+    npu_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
+               for k, v in npu_out_raw.items()}
+
+    out_layout = params.get("layout_out", params.get("layout_q", "BNSD"))
+
+    gpu_raw = gpu_out["out"]
+    npu_raw = npu_out["out"]
+
+    gpu_cmp = trans_bnsd_to_layout(gpu_raw, out_layout, **params) if out_layout != "BNSD" else gpu_raw
+
+    print(f"  [compare] GPU vs {primary.name}")
+    attn_result = check_result("GPU_vs_NPU",
+                               gpu_cmp.float(), npu_raw.float(),
+                               except_label="GPU", comp_label=primary.name,
+                               verbose_diff=verbose_diff)
+
+    lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
+                  "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
+    if params.get("return_softmax_lse", 0) and "lse" in gpu_out and "lse" in npu_out:
+        gpu_lse = gpu_out["lse"]
+        npu_lse = npu_out["lse"]
+        if isinstance(gpu_lse, torch.Tensor) and isinstance(npu_lse, torch.Tensor):
+            lse_result = check_result("LSE_GPU_vs_NPU", gpu_lse.float(), npu_lse.float(),
+                                      except_label="GPU_lse", comp_label=f"{primary.name}_lse",
+                                      verbose_diff=verbose_diff)
+
+    ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
+
+    attn_passed = ret["attn"].get("passed", True) if isinstance(ret["attn"], dict) else True
+    if not attn_passed:
+        if fail_analysis:
+            try:
+                from utils.compare import analyze_fail_distribution
+                analyze_fail_distribution(
+                    test_name=case_name,
+                    expect=gpu_cmp.float(),
+                    result=npu_raw.float(),
+                    dump_dir=viz_dir,
+                )
+            except Exception as e:
+                print(f"  [warn] fail_analysis 异常: {e}")
+        if visualize:
+            try:
+                from utils.precision_visual import visualize_from_tensors
+                visualize_from_tensors(
+                    gpu_cmp.float().numpy(),
+                    npu_raw.float().numpy(),
                     case_name=case_name,
                     out_dir=viz_dir,
                 )
