@@ -50,24 +50,7 @@ struct QLIType {
     static constexpr LI_LAYOUT keyLayout = K_LAYOUT_T;
     using weightType = W_T;
     using scaleType = SCALE_T;
-    static constexpr bool isMxFp8 = false;
-};
-
-// MXFP8 特化：Q/K为fp8_e4m3，scale为fp8_e8m0，mmad_mx输出float
-template <typename OUT_T, const bool PAGE_ATTENTION, LI_LAYOUT Q_LAYOUT_T, LI_LAYOUT K_LAYOUT_T,
-          typename W_T, typename... Args>
-struct QLIType<FP8E4M3, FP8E4M3, OUT_T, PAGE_ATTENTION, Q_LAYOUT_T, K_LAYOUT_T,
-               W_T, FP8E8M0, float, Args...> {
-    using queryType = FP8E4M3;
-    using keyType = FP8E4M3;
-    using qkType = float;
-    using outputType = OUT_T;
-    static constexpr bool pageAttention = PAGE_ATTENTION;
-    static constexpr LI_LAYOUT layout = Q_LAYOUT_T;
-    static constexpr LI_LAYOUT keyLayout = K_LAYOUT_T;
-    using weightType = W_T;
-    using scaleType = FP8E8M0;
-    static constexpr bool isMxFp8 = true;
+    static constexpr bool isMxFp8 = std::is_same_v<Q_T, FP8E4M3> && std::is_same_v<SCALE_T, FP8E8M0>;
 };
 
 struct RunInfo {
