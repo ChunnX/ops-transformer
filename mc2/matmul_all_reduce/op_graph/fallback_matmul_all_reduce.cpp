@@ -17,7 +17,7 @@
 #include "mc2_common_log.h"
 
 namespace fallback {
-inline const char* kInnerDebug = "MmAllReduceFallback";
+static const char* kInnerDebug = "MmAllReduceFallback";
 
 struct MatmulParas {
     /* const aclTensor *会导致Release重载方法匹配不上，造成内存泄漏 */
@@ -26,9 +26,10 @@ struct MatmulParas {
     const gert::Tensor* bias;
 };
 
-inline ge::graphStatus GetMatmulPara(
+static ge::graphStatus GetMatmulPara(
     const gert::OpExecuteContext* host_api_ctx, size_t x1_idx, size_t x2_idx, size_t bias_idx, MatmulParas& para)
 {
+    OP_LOGD(kInnerDebug, "Enter GetMatmulPara.");
     const auto x1 = host_api_ctx->GetInputTensor(x1_idx);
     OPS_CHECK(x1 == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1"), return ge::GRAPH_FAILED);
 
@@ -70,10 +71,11 @@ struct QuantParas {
     Mc2QuantType type;
 };
 
-inline ge::graphStatus GetQuantPara(
+static ge::graphStatus GetQuantPara(
     const gert::OpExecuteContext* host_api_ctx, size_t scale_idx, size_t offset_idx, size_t dequant_idx, size_t pertoken_idx,
     size_t comm_quant_scale_1_idx, size_t comm_quant_scale_2_idx, QuantParas& para)
 {
+    OP_LOGD(kInnerDebug, "Enter GetQuantPara.");
     const auto attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
 
@@ -122,9 +124,12 @@ struct CommParas {
     const char* comm_mode;
 };
 
-inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
+static int32_t AAA = 0;
+
+static ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
 {
-    const auto attrs = host_api_ctx->GetAttrs();
+    OP_LOGD(kInnerDebug, "Enter GetCommPara.");
+    const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
 
     para.group = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_GROUP));
@@ -137,8 +142,20 @@ inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, C
     para.comm_turn = (comm_turn_ptr != nullptr ? *comm_turn_ptr : 0);
 
     para.comm_mode = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
+    if (para.comm_mode == nullptr) {
+        std::cout << "para.comm_mode is nullptr~" << std::endl;
+    } else {
+        std::cout << "para.comm_mode's addr is: " << (void*)&para.comm_mode << ", id: " << AAA << std::endl;
+        std::cout << "para.comm_mode point to: " << (void*)para.comm_mode << ", id: " << AAA << std::endl;
+        std::cout << "para.comm_mode point to char is: " << para.comm_mode << ", id: " << AAA << std::endl;
+        std::cout << "para.comm_mode point to the first char is: " << *para.comm_mode << ", id: " << AAA << std::endl;
+    }
     para.comm_mode = (para.comm_mode == nullptr ? "" : para.comm_mode);
-
+    std::cout << "after deal para.comm_mode's addr is: " << (void*)&para.comm_mode << ", id: " << AAA << std::endl;
+    std::cout << "after deal para.comm_mode point to: " << (void*)para.comm_mode << ", id: " << AAA << std::endl;
+    std::cout << "after deal para.comm_mode point to char is: " << para.comm_mode << ", id: " << AAA << std::endl;
+    std::cout << "after deal para.comm_mode point to the first char is: " << *para.comm_mode << ", id: " << AAA << std::endl;
+    AAA++;
     return ge::SUCCESS;
 }
 struct AllReduceParas {
@@ -147,8 +164,9 @@ struct AllReduceParas {
     int64_t comm_quant_mode;
 };
 
-ge::graphStatus GetAllReducePara(const gert::OpExecuteContext* host_api_ctx, AllReduceParas& para)
+static ge::graphStatus GetAllReducePara(const gert::OpExecuteContext* host_api_ctx, AllReduceParas& para)
 {
+    OP_LOGD(kInnerDebug, "Enter GetAllReducePara.");
     const auto attrs = host_api_ctx->GetAttrs();
 
     OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
@@ -164,7 +182,7 @@ ge::graphStatus GetAllReducePara(const gert::OpExecuteContext* host_api_ctx, All
     return ge::SUCCESS;
 }
 
-ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
+static ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 {
     OP_LOGD(kInnerDebug, "Start to fallback for matmul all reduce.");
     OPS_CHECK(host_api_ctx == nullptr, OP_LOGE_WITH_INVALID_INPUT(kInnerDebug, "host_api_ctx"), return ge::GRAPH_FAILED);
@@ -207,6 +225,10 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 
     bool isCommMode = false;
     if (comm_para.comm_mode != nullptr) {
+        std::cout << "comm_para.comm_mode's addr is: " << (void*)&comm_para.comm_mode << ", id: " << AAA << std::endl;
+        std::cout << "comm_para.comm_mode point to: " << (void*)comm_para.comm_mode << ", id: " << AAA << std::endl;
+        std::cout << "comm_para.comm_mode point to char is: " << comm_para.comm_mode << ", id: " << AAA << std::endl;
+        std::cout << "comm_para.comm_mode point to the first char is: " << *comm_para.comm_mode << ", id: " << AAA << std::endl;
         isCommMode =
             std::strcmp(comm_para.comm_mode, "ccu") == 0 ||
             std::strcmp(comm_para.comm_mode, "ai_cpu") == 0;
@@ -215,15 +237,18 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
     switch (quant_para.type) {
         case Mc2QuantType::K_NONE_QUANT:
             if (isCommMode) {
+                std::cout << "enter aclnnMatmulAllReduceV3" << std::endl;
                 return EXEC_OPAPI_CMD(
                     aclnnMatmulAllReduceV3, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3, comm_para.group,
                     comm_para.op, comm_para.comm_mode, comm_para.comm_turn, comm_para.stream_mode, y);
             } else {
                 if (x3 != nullptr) {
+                    std::cout << "enter aclnnMatmulAllReduceV2" << std::endl;
                     return EXEC_OPAPI_CMD(
                         aclnnMatmulAllReduceV2, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3, comm_para.group,
                         comm_para.op, comm_para.comm_turn, comm_para.stream_mode, y);
                 } else {
+                    std::cout << "enter aclnnMatmulAllReduce" << std::endl;
                     return EXEC_OPAPI_CMD(
                         aclnnMatmulAllReduce, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, comm_para.group,
                         comm_para.op, comm_para.comm_turn, comm_para.stream_mode, y);
@@ -231,12 +256,14 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
             }
         case Mc2QuantType::K_WEIGHT_QUANT:
             if (isCommMode) {
+                std::cout << "enter aclnnWeightQuantMatmulAllReduceV2" << std::endl;
                 return EXEC_OPAPI_CMD(
                     aclnnWeightQuantMatmulAllReduceV2, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias,
                     quant_para.antiquant_scale_acl, quant_para.antiquant_offset_acl, x3, comm_para.group,
                     comm_para.op, comm_para.comm_mode, comm_para.comm_turn, comm_para.stream_mode,
                     quant_para.antiquant_group_size, y);
             }
+            std::cout << "enter aclnnWeightQuantMatmulAllReduce" << std::endl;
             return EXEC_OPAPI_CMD(
                 aclnnWeightQuantMatmulAllReduce, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias,
                 quant_para.antiquant_scale_acl, quant_para.antiquant_offset_acl, x3, comm_para.group, comm_para.op,
@@ -244,6 +271,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
         case Mc2QuantType::K_QUANT:
             if (all_reduce_para.y_dtype != static_cast<uint64_t>(ge::DataType::DT_UNDEFINED)) {
                 if (isCommMode) {
+                    std::cout << "enter aclnnQuantMatmulAllReduceV5" << std::endl;
                     return EXEC_OPAPI_CMD(
                         aclnnQuantMatmulAllReduceV5, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
                         quant_para.pertoken_scale, quant_para.dequant_scale, quant_para.comm_quant_scale_1,
@@ -251,6 +279,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
                         comm_para.comm_turn, comm_para.stream_mode, all_reduce_para.group_size,
                         all_reduce_para.comm_quant_mode, y);
                 }
+                std::cout << "enter aclnnQuantMatmulAllReduceV4" << std::endl;
                 return EXEC_OPAPI_CMD(
                     aclnnQuantMatmulAllReduceV4, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
                     quant_para.pertoken_scale, quant_para.dequant_scale, quant_para.comm_quant_scale_1,
@@ -258,6 +287,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
                     comm_para.stream_mode, all_reduce_para.group_size, all_reduce_para.comm_quant_mode, y);
             } else if ((comm_quant_scale_1 != nullptr) && (comm_quant_scale_2 != nullptr)) {
                 if (isCommMode) {
+                    std::cout << "enter aclnnQuantMatmulAllReduceV5" << std::endl;
                     return EXEC_OPAPI_CMD(
                         aclnnQuantMatmulAllReduceV5, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
                         quant_para.pertoken_scale, quant_para.dequant_scale, quant_para.comm_quant_scale_1,
@@ -265,6 +295,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
                         comm_para.comm_turn, comm_para.stream_mode, all_reduce_para.group_size,
                         all_reduce_para.comm_quant_mode, y);
                 }
+                std::cout << "enter aclnnQuantMatmulAllReduceV3" << std::endl;
                 return EXEC_OPAPI_CMD(
                     aclnnQuantMatmulAllReduceV3, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
                     quant_para.dequant_scale, quant_para.pertoken_scale, quant_para.comm_quant_scale_1,
@@ -272,6 +303,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
                     comm_para.stream_mode, y);
             } else {
                 if (isCommMode) {
+                    std::cout << "enter aclnnQuantMatmulAllReduceV5" << std::endl;
                     return EXEC_OPAPI_CMD(
                         aclnnQuantMatmulAllReduceV5, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
                         quant_para.dequant_scale, quant_para.pertoken_scale, quant_para.comm_quant_scale_1,
@@ -279,6 +311,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
                         comm_para.comm_turn, comm_para.stream_mode, all_reduce_para.group_size,
                         all_reduce_para.comm_quant_mode, y);
                 }
+                std::cout << "enter aclnnQuantMatmulAllReduceV2" << std::endl;
                 return EXEC_OPAPI_CMD(
                     aclnnQuantMatmulAllReduceV2, mm_para.x1_acl, mm_para.x2_acl, mm_para.bias, x3,
                     quant_para.dequant_scale, quant_para.pertoken_scale, comm_para.group, comm_para.op,
