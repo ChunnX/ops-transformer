@@ -51,7 +51,7 @@ ge::graphStatus RopeChecker::CheckRopeDtype(const FiaTilingInfo &fiaInfo)
 }
 
 // check rope DSize
-ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo) const
 {
     if (fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) {
         return ge::GRAPH_SUCCESS;
@@ -65,7 +65,7 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo) const
 {
     if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_64 && fiaInfo.qkHeadDim != NUM_128),
@@ -157,7 +157,7 @@ ge::graphStatus RopeChecker::CheckRopeDtypeConsistency(const FiaTilingInfo &fiaI
 
 // 除D轴外 queryRope/keyRope其余轴需和query/key一致
 ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInfo &fiaInfo,
-    const gert::Shape shape, const gert::Shape ropeShape, const std::string &inputName)
+    const gert::Shape shape, const gert::Shape ropeShape, const std::string &inputName) const
 {
     if (inputName == "key" && fiaInfo.kvStorageMode != KvStorageMode::BATCH_CONTINUOUS) {
         return ge::GRAPH_SUCCESS;
@@ -200,7 +200,7 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
 
 // PA场景 除D轴外 keyRope其余轴需和key一致
 ge::graphStatus RopeChecker::CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo,
-    const gert::Shape &keyShape, const gert::Shape &keyRopeShape)
+    const gert::Shape &keyShape, const gert::Shape &keyRopeShape) const
 {
     if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION) {
         return ge::GRAPH_SUCCESS;
@@ -267,7 +267,7 @@ ge::graphStatus RopeChecker::CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilin
 }
 
 // tensorlist keyRope和key的一致性校验
-ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo) const
 {
     if (fiaInfo.kvStorageMode != KvStorageMode::TENSOR_LIST) {
         return ge::GRAPH_SUCCESS;
@@ -348,7 +348,7 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeChecker::CheckRopeExistence(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckRopeExistence(const FiaTilingInfo &fiaInfo) const
 {
     const gert::Tensor *queryRopeTensor = fiaInfo.opParamInfo.queryRope.tensor;
     const gert::Tensor *keyRopeTensor = fiaInfo.opParamInfo.keyRope.tensor;
@@ -375,7 +375,7 @@ ge::graphStatus RopeChecker::CheckRopeExistence(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo) const
 {
     if (fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) {
         return ge::GRAPH_SUCCESS;
@@ -419,7 +419,7 @@ ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeChecker::CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo) const
 {
     if (fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512) {
         return ge::GRAPH_SUCCESS;
@@ -438,7 +438,7 @@ ge::graphStatus RopeChecker::CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeChecker::CheckFeatureAntiQuant(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckFeatureAntiQuant(const FiaTilingInfo &fiaInfo) const
 {
     // 不支持伪量化
     OP_CHECK_IF(fiaInfo.opParamInfo.queryRope.tensor != nullptr || fiaInfo.opParamInfo.keyRope.tensor != nullptr,
@@ -449,7 +449,7 @@ ge::graphStatus RopeChecker::CheckFeatureAntiQuant(const FiaTilingInfo &fiaInfo)
 }
 
 // check QS size
-ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo) const
 {
     if (fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 || fiaInfo.isMaxWorkspace) {
         return ge::GRAPH_SUCCESS;
@@ -475,7 +475,7 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo)
 }
 
 // Decode MLA N1:1/2/4/8/16/32/64/128 N2:1
-ge::graphStatus RopeChecker::CheckNSize(const FiaTilingInfo &fiaInfo)
+ge::graphStatus RopeChecker::CheckNSize(const FiaTilingInfo &fiaInfo) const
 {
     if (fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512) {
         return ge::GRAPH_SUCCESS;
