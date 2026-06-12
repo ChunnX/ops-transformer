@@ -151,8 +151,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <td>
         <ul>
             <li>参数key、value中对应tensor的shape需要完全一致。</li>
-            <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
-            <li>由于tensorlist限制, 非连续场景下B不能大于256。</li>
+            <li>非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
+            <li>由于tensorlist限制,非连续场景下B不能大于256。</li>
             <li>key仅支持首轴非连续。</li>
         </ul>
         </td>
@@ -168,8 +168,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <td>
         <ul>
             <li>参数key、value中对应tensor的shape需要完全一致。</li>
-            <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
-            <li>由于tensorlist限制, 非连续场景下B不能大于256。</li></ul>
+            <li>非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
+            <li>由于tensorlist限制,非连续场景下B不能大于256。</li></ul>
             <li>value仅支持首轴非连续。</li>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)</td>
@@ -185,7 +185,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
                 <li>约束请见<a href="#pseShift">pseShift</a>。</li></ul></td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>建议shape输入 (B,Q_N,Q_S,KV_S)、(1,Q_N,Q_S,KV_S)</td>
+        <td>建议shape输入(B,Q_N,Q_S,KV_S)、(1,Q_N,Q_S,KV_S)</td>
         <td>×</td>
     </tr>
     <tr>
@@ -774,7 +774,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <td>softmaxLse</td>
         <td>输出</td>
         <td>
-        RingAttention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max, 再取exp，接着求sum，得到softmax_sum。最后对softmax_sum取log，再加上softmax_max得到的结果。</td>
+        RingAttention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max,再取exp，接着求sum，得到softmax_sum。最后对softmax_sum取log，再加上softmax_max得到的结果。</td>
         <td>
         <ul>    
             <li>softmaxLseFlag为True时，数据为inf的代表无效数据。</li>
@@ -1016,7 +1016,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>
             支持key、value dtype为FLOAT16/BFLOAT16/INT8。
             PagedAttention场景下，支持的KV Cache layout有BnBsH（BlockNum，BlockSize，H）、BnNBsD（BlockNum，N，BlockSize，D）、NZ（BlockNum，N，D/16，BlockSize，16），支持Q的layout（BSH/BSND、BNSD、TND、NTD）交叉。</td>
-            <td>PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。<br>blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。<br>PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。</td>
+            <td>PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。<br>blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。<br>PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且KV_N * D超过65535时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。</td>
         </tr>
         <tr>
             <td>actualSeqLengthsKv</td>
@@ -1024,7 +1024,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>-</td>
         </tr>
         <tr>
-            <td colspan="4">PagedAttention 不支持tensorlist场景，不支持左padding场景。</td>
+            <td colspan="4">PagedAttention不支持tensorlist场景，不支持左padding场景。</td>
         </tr>
         </tbody>
     </table>
@@ -1222,12 +1222,12 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <td>quantScale2</td>
-                <td>类型为FLOAT32/BFLOAT16,支持 per-tensor/per-channel 两种格式。
+                <td>类型为FLOAT32/BFLOAT16,支持per-tensor/per-channel两种格式。
                 </td>
             </tr>
             <tr>
                 <td>quantOffset2</td>
-                <td>可选参数，若传入 quantOffset2 ，需保证其类型和shape信息与quantScale2 一致。不传时默认为nullptr，表示为0。
+                <td>可选参数，若传入quantOffset2 ，需保证其类型和shape信息与quantScale2一致。不传时默认为nullptr，表示为0。
                 </td>
             </tr>
             <tr>
@@ -1297,18 +1297,18 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <td>quantScale2</td>
-                <td>支持 per-tensor/per-channel 两种格式和 FLOAT32/BFLOAT16 两种数据类型
+                <td>支持per-tensor/per-channel两种格式和FLOAT32/BFLOAT16两种数据类型
                     <ul>
                     <li>当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32。</li>
-                    <li>per-channel 格式：当layout为BSH、BSND、BNSD、BNSD_BSND时，要求 quantScale2
+                    <li>per-channel格式：当layout为BSH、BSND、BNSD、BNSD_BSND时，要求quantScale2
                         所有维度的乘积等于N*D(H)；其他layout要求shape为[N,D]。</li>
-                    <li>per-tensor 格式：仅支持shape为[1]。</li>
+                    <li>per-tensor格式：仅支持shape为[1]。</li>
                     </ul>
                 </td>
             </tr>
             <tr>
                 <td>quantOffset2</td>
-                <td>可选参数，若传入 quantOffset2 ，需保证其类型和shape信息与quantScale2 一致。不传时默认为nullptr,表示为0。
+                <td>可选参数，若传入quantOffset2 ，需保证其类型和shape信息与quantScale2一致。不传时默认为nullptr,表示为0。
                 </td>
             </tr>
             <tr>
@@ -1322,10 +1322,10 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                     <li>输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。</li>
                     <li>输出为int8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部开启）：</li>
                         <ul>
-                        <li>sparseMode = 0，attenMaskOptional如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - actualSharedPrefixLen - preTokens > 0 或 nextTokens < 0 时，满足拦截条件</li>
-                        <li>sparseMode = 1 或 2，不会出现满足拦截条件的情况</li>
+                        <li>sparseMode = 0，attenMaskOptional如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - actualSharedPrefixLen - preTokens > 0或nextTokens < 0时，满足拦截条件</li>
+                        <li>sparseMode = 1或2，不会出现满足拦截条件的情况</li>
                         <li>sparseMode = 3，每个batch actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0，满足拦截条件</li>
-                        <li>sparseMode = 4，preTokens < 0 或 每个batch nextTokens + actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0 时，满足拦截条件</li>
+                        <li>sparseMode = 4，preTokens < 0或每个batch nextTokens + actualSeqLengthsKV + actualSharedPrefixLen - actualSeqLengths < 0时，满足拦截条件</li>
                         </ul>
                     </ul>
                 </td>
@@ -1339,7 +1339,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
 
 <summary><a id="AntiQuant"></a>伪量化参数约束：</summary>
 
-- 当伪量化参数 和 KV分离量化参数同时传入时，以KV分离量化参数为准。
+- 当伪量化参数和KV分离量化参数同时传入时，以KV分离量化参数为准。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
@@ -1368,9 +1368,9 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <th>antiquantMode</th>
                 <th>antiquantScale</th>
                 <th>antiquantOffset</th>
-                <th>keyAntiquantMode 和 valueAntiquantMode</th>
-                <th colspan="2">keyAntiquantScaleOptional 和 valueAntiquantScaleOptional</th>
-                <th>keyAntiquantOffset 和 valueAntiquantOffset</th>
+                <th>keyAntiquantMode和valueAntiquantMode</th>
+                <th colspan="2">keyAntiquantScaleOptional和valueAntiquantScaleOptional</th>
+                <th>keyAntiquantOffset和valueAntiquantOffset</th>
             </tr>
         </thead>
         <tbody>
@@ -1389,11 +1389,11 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td rowspan="2">
                     <ul>
                     <li>仅支持传入值为0、1，其他值会执行异常。</li>
-                    <li>keyAntiquantMode 和 valueAntiquantMode需要保持一致。</li>
+                    <li>keyAntiquantMode和valueAntiquantMode需要保持一致。</li>
                     </ul>
                 </td>
                 <td rowspan="2">
-                    KeyAntiquantScale 和valueAntiquantScaleOptional都不为空时：
+                    KeyAntiquantScale和valueAntiquantScaleOptional都不为空时：
                         <ul>
                         <li>shape需要保持一致；</li>
                         <li>要求query的s小于等于16</li>
@@ -1406,8 +1406,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 </td>
                 <td rowspan="2">
                     <ul>
-                    <li>keyAntiquantOffset 和 valueAntiquantOffset要么都为空，要么都不为空</li>
-                    <li>keyAntiquantOffset 和 valueAntiquantOffset都不为空时：其shape需要保持一致
+                    <li>keyAntiquantOffset和valueAntiquantOffset要么都为空，要么都不为空</li>
+                    <li>keyAntiquantOffset和valueAntiquantOffset都不为空时：其shape需要保持一致
                     </li>
                     </ul>
                 </td>
@@ -1426,9 +1426,9 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td rowspan="7">传入0和1之外的其他值会执行异常</td>
                 <td rowspan="7">数据类型支持FLOAT16、BFLOAT16、FLOAT32。</td>
                 <td rowspan="7">数据类型支持FLOAT16、BFLOAT16、FLOAT32。</td>
-                <td rowspan="7">除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，keyAntiquantMode 和 valueAntiquantMode需要保持一致</td>
+                <td rowspan="7">除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，keyAntiquantMode和valueAntiquantMode需要保持一致</td>
                 <td rowspan="7">
-                keyAntiquantScaleOptional 和valueAntiquantScaleOptional都不为空时：
+                keyAntiquantScaleOptional和valueAntiquantScaleOptional都不为空时：
                     <ul>
                     <li>除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致</li>
                     </ul>
@@ -1441,9 +1441,9 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 </td>
                 <td rowspan="7">
                     <ul>
-                    <li>keyAntiquantOffset 和 valueAntiquantOffset要么都为空，要么都不为空</li>
+                    <li>keyAntiquantOffset和valueAntiquantOffset要么都为空，要么都不为空</li>
                     <li>
-                        keyAntiquantOffset 和 valueAntiquantOffset都不为空时：
+                        keyAntiquantOffset和valueAntiquantOffset都不为空时：
                         除了keyAntiquantMode为0并且valueAntiquantMode为1的场景外，其shape需要保持一致
                     </li>
                     </ul>
@@ -1570,7 +1570,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                     <ul>
                     <li>sparse=0（attenMask为nullptr）</li>
                     <li>sparse=3（传优化后的attenMask）</li>
-                    <li>sparse=4（传优化后的attenMask，需满足：Q_D=K_D=V_D≤256 或 Q_D=K_D=192且V_D=128/192；同时preTokens≥-actualSeqLengths、nextTokens≥-actualSeqLengthsKv、preTokens+nextTokens≥0）</li>
+                    <li>sparse=4（传优化后的attenMask，需满足：Q_D=K_D=V_D≤256或Q_D=K_D=192且V_D=128/192；同时preTokens≥-actualSeqLengths、nextTokens≥-actualSeqLengthsKv、preTokens+nextTokens≥0）</li>
                     <li>sparse=9（传入tree mask，inputLayout为BSH/BSND/BNSD时shape为(B,Q_S,Q_S)，inputLayout为TND时shape为(∑Q_Si²,)）</li>
                     </ul>
                 </li>
@@ -1708,17 +1708,17 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         </tr>
         <tr>
             <td>dequantScaleQueryOptional</td>
-            <td>FLOAT32; 需与keyAntiquantScaleOptional, valueAntiquantScaleOptional同时存在</td>
+            <td>FLOAT32;需与keyAntiquantScaleOptional, valueAntiquantScaleOptional同时存在</td>
             <td>无D维度，其余维度需要与入参query的shape保持一致</td>
         </tr>
         <tr>
             <td>keyAntiquantScaleOptional</td>
-            <td>FLOAT32; 需与dequantScaleQueryOptional, valueAntiquantScaleOptional同时存在，不支持传入keyAntiquantOffsetOptional和valueAntiquantOffsetOptional; 仅支持pertensor模式</td>
+            <td>FLOAT32;需与dequantScaleQueryOptional, valueAntiquantScaleOptional同时存在，不支持传入keyAntiquantOffsetOptional和valueAntiquantOffsetOptional;仅支持pertensor模式</td>
             <td>shape为(1)</td>
         </tr>
         <tr>
             <td>valueAntiquantScaleOptional</td>
-            <td>FLOAT32; 需与dequantScaleQueryOptional, keyAntiquantScaleOptional同时存在，不支持传入keyAntiquantOffsetOptional和valueAntiquantOffsetOptional; 仅支持pertensor模式</td>
+            <td>FLOAT32;需与dequantScaleQueryOptional, keyAntiquantScaleOptional同时存在，不支持传入keyAntiquantOffsetOptional和valueAntiquantOffsetOptional;仅支持pertensor模式</td>
             <td>shape为(1)</td>
         </tr>
         <tr>
@@ -1997,8 +1997,8 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>query、key、value</td>
                 <td>
                 <ul>
-                    <li>PagedAttention 伪量化场景：支持query为FLOAT16/BFLOAT16，支持key、value为INT8。</li>
-                    <li>PagedAttention 全量化场景：不支持query dtype为INT8。</li>
+                    <li>PagedAttention伪量化场景：支持query为FLOAT16/BFLOAT16，支持key、value为INT8。</li>
+                    <li>PagedAttention全量化场景：不支持query dtype为INT8。</li>
                 <li>传入Mask时，并且sparseMode不为2，3，4时，Mask的最后一维需要大于等于maxBlockNumPerSeq * blockSize</li>
                 <li>传入pseShift时，pseShift的最后一维需要大于等于maxBlockNumPerSeq * blockSize</li>
                 </ul>
@@ -2029,10 +2029,10 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <td rowspan="3">INT8量化场景</td>
-                <td>quantScale2 和 quantOffset2</td>
+                <td>quantScale2和quantOffset2</td>
                 <td>kvCache反量化的合成参数场景仅支持query为FLOAT16时，将INT8类型的key和value反量化到FLOAT16。入参key/value的datarange与入参antiquantScale的datarange乘积范围在（-1，1）范围内，高性能模式可以保证精度，否则需要开启高精度模式来保证精度。
                     <ul>
-                    <li>输出为int8时，quantScale2 和 quantOffset2 为 per-channel 时，暂不支持左padding、RingAttention或者D非32Byte对齐的场景。</li>
+                    <li>输出为int8时，quantScale2和quantOffset2为per-channel时，暂不支持左padding、RingAttention或者D非32Byte对齐的场景。</li>
                     </ul>
                 </td>
             </tr>
@@ -2099,7 +2099,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>blockSize</td>
                 <td>
                 <ul>
-                <li>key、value输入类型为FLOAT16/BFLOAT16时需要16对齐；key、value 输入类型为INT8时需要32对齐，推荐使用128。</li>
+                <li>key、value输入类型为FLOAT16/BFLOAT16时需要16对齐；key、value输入类型为INT8时需要32对齐，推荐使用128。</li>
                 </ul>
                 </td>
             </tr>
