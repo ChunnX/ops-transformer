@@ -47,10 +47,26 @@ class GPUBackend(Backend):
         atten_mask = generate_npu_mask(b, s1, s2, mask_mode, wl, wr)
         mask_gpu = atten_mask.to(self._device) if atten_mask is not None else None
 
-        out_bnsd = flash_attn_gpu(
-            inputs["q"], inputs["k"], inputs["v"],
-            None, None, mask_gpu, **params,
-        )
+        layout_kv = params.get("layout_kv", params.get("input_layout", "BNSD"))
+        block_size = params.get("block_size", 256)
+
+        if layout_kv.startswith("PA_") and block_size % 256 != 0:
+            from core.backends.cpu import _pa_to_bnsd
+            k_bnsd = _pa_to_bnsd(inputs["k"], layout_kv, params).to(self._device)
+            v_bnsd = _pa_to_bnsd(inputs["v"], layout_kv, params).to(self._device)
+            non_pa_params = dict(params)
+            non_pa_params["layout_kv"] = "BNSD"
+            non_pa_params.pop("block_table", None)
+            print(f"  [gpu] block_size={block_size} 非256整数倍，PA→BNSD 降级")
+            out_bnsd = flash_attn_gpu(
+                inputs["q"], k_bnsd, v_bnsd,
+                None, None, mask_gpu, **non_pa_params,
+            )
+        else:
+            out_bnsd = flash_attn_gpu(
+                inputs["q"], inputs["k"], inputs["v"],
+                None, None, mask_gpu, **params,
+            )
 
         torch.cuda.synchronize()
         return {"out": out_bnsd}
