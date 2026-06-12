@@ -360,17 +360,17 @@ inline constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
 
 // BLOCK和REPEAT的字节数
-inline constexpr uint64_t BYTE_BLOCK = 32UL;
+inline constexpr uint32_t BYTE_BLOCK = 32UL;
 inline constexpr uint32_t REPEAT_BLOCK_BYTE = 256U;
 
 template <typename C>
-__aicore__ inline constexpr C BlockElementNum()
+__aicore__ inline constexpr uint32_t BlockElementNum()
 {
     return (BYTE_BLOCK / sizeof(C));
 }
 
 template <typename C>
-__aicore__ inline constexpr C RepeatElementNum()
+__aicore__ inline constexpr uint32_t RepeatElementNum()
 {
     return (REPEAT_BLOCK_BYTE / sizeof(C));
 }
