@@ -458,7 +458,6 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo)
     // 全量化场景下 QS仅支持1-16
     constexpr uint32_t maxQuerySeqLenForMLAFullquant = 16U;
 
-
     if (fiaInfo.s1Size < NUM1) {
         std::string shapeStr = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query", shapeStr.c_str(),
