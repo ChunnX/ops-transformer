@@ -1478,35 +1478,70 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
                 }
             }
         } else if (quantMode_ == 0) {
-            // === 静态量化：整行共享量化结果 ===
-            int64_t curLoopRow = 0;
-            for (int64_t rowIdx = 0; rowIdx < totalRows; rowIdx++) {
-                int64_t row = currentLoopStartRow + rowIdx;
-                int64_t rowStart = curLoopRow;
-                while (curLoopRow < batchSize && (initialRow + curLoopRow) / k_ == row) {
-                    curLoopRow++;
+            // === 静态量化 double buffer: MTE2↔V 重叠 ===
+            // 流水线: MTE2(load x) → V(Cast+Quant) → MTE3(write int8)
+            // 双缓冲: V 读完 xBuf[bc] 后立即 MTE2 加载下一行到 xBuf[1-bc]，
+            //         与 StaticQuantCompute 并行执行
+            int64_t colsTileLength = perLoopCols_;
+            for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
+                if (colsLoop == colsLoops_ - 1) {
+                    colsTileLength = lastLoopCols_;
                 }
-                int64_t rowEnd = curLoopRow;
+                int64_t curLoopAligned = OpsBaseCeilAlign(
+                    colsTileLength * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+                    static_cast<int64_t>(sizeof(T));
+                int64_t colsOff = colsLoop * perLoopCols_;
 
-                int64_t curLoopCols = perLoopCols_;
-                for (int64_t cl = 0; cl < colsLoops_; cl++) {
-                    if (cl == colsLoops_ - 1) {
-                        curLoopCols = lastLoopCols_;
-                    }
-                    int64_t curLoopAligned = OpsBaseCeilAlign(
-                        curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
-                        static_cast<int64_t>(sizeof(T));
-                    int64_t colsOff = cl * perLoopCols_;
-                    
-                    DataCopyExtParams int8Out{
-                        static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
+                DataCopyExtParams xCp{
+                    static_cast<uint16_t>(1), static_cast<uint32_t>(colsTileLength * sizeof(T)), 0, 0, 0};
+                DataCopyExtParams int8Out{
+                    static_cast<uint16_t>(1), static_cast<uint32_t>(colsTileLength * sizeof(int8_t)), 0, 0, 0};
 
+                // 初始加载 row 0 → xBuf0
+                if (totalRows >= 1) {
+                    DataCopyPad(xBuf0, xGm_[currentLoopStartRow * cols_ + colsOff], xCp, xPadParams);
+                }
+
+                int64_t curLoopRow = 0;
+                for (int64_t rowIdx = 0; rowIdx < totalRows; rowIdx++) {
+                    int64_t row = currentLoopStartRow + rowIdx;
+                    int32_t bc = static_cast<int32_t>(rowIdx & 1);
+                    LocalTensor<T>& curBuf = (bc == 0) ? xBuf0 : xBuf1;
+                    LocalTensor<T>& nextBuf = (bc == 0) ? xBuf1 : xBuf0;
+
+                    // 等 MTE2 搬入 curBuf 完成 + 上一行 MTE3 读完 quantInt8Local
+                    SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+                    SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
                     SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                    LoadAndCastToFloat(quantFloatLocal, xBuf0, row * cols_ + colsOff, curLoopCols, curLoopAligned);
-                    StaticQuantCompute(quantFloatLocal, quantInt8Local, curLoopAligned);
+
+                    // V: Cast + StaticQuant
+                    if constexpr (IsSameType<T, float>::value) {
+                        // T=float: StaticQuantCompute 直接操作 curBuf（in-place 破坏）
+                        StaticQuantCompute(curBuf, quantInt8Local, curLoopAligned);
+                        // V 完成后再发预取（curBuf 被破坏前 V 必须先完成）
+                        if (rowIdx + 1 < totalRows) {
+                            DataCopyPad(nextBuf, xGm_[(row + 1) * cols_ + colsOff], xCp, xPadParams);
+                        }
+                    } else if constexpr (!IsSameType<T, int8_t>::value){
+                        // T=half/bf16: Cast 读完 curBuf 后立刻释放
+                        Cast(quantFloatLocal, curBuf, RoundMode::CAST_NONE,
+                            static_cast<int32_t>(curLoopAligned));
+                        PipeBarrier<PIPE_V>();
+                        // curBuf 已释放 → 立刻发 MTE2 预取下一行（与 StaticQuantCompute 并行！）
+                        if (rowIdx + 1 < totalRows) {
+                            DataCopyPad(nextBuf, xGm_[(row + 1) * cols_ + colsOff], xCp, xPadParams);
+                        }
+                        StaticQuantCompute(quantFloatLocal, quantInt8Local, curLoopAligned);
+                    }
+
+                    // 等 V 完成后 MTE3 搬出 int8
                     SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
-                    for (int64_t r = rowStart; r < rowEnd; r++) {
+                    int64_t rowStart = curLoopRow;
+                    while (curLoopRow < batchSize && (initialRow + curLoopRow) / k_ == row) {
+                        curLoopRow++;
+                    }
+                    for (int64_t r = rowStart; r < curLoopRow; r++) {
                         int32_t newPos = gatheredIdxLocal.GetValue(r);
                         if (newPos == -1) continue;
                         DataCopyPad(
@@ -1514,6 +1549,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
                             quantInt8Local, int8Out);
                     }
                 }
+                // 等最后一行 MTE3 搬出完成后再进入下一个 colsLoop
+                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
             }
         } else if (smoothType_ != SCALE_EH) {
             // === 动态量化 NO_SCALE/SCALE_1H：整行共享 ===
