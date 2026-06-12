@@ -31,7 +31,7 @@ using Range = std::pair<T, T>;
 template<class T, size_t ROW, size_t COL>
 using Table = std::array<std::array<T, COL>, ROW>;
 
-using CostFunc = std::function<uint32_t(uint32_t, uint32_t)>;       // The cost function of the algo
+using CostFunc = std::function<int64_t(uint32_t, uint32_t)>;       // The cost function of the algo
 
 enum class SocVersion : uint32_t {
     BUTT
@@ -42,7 +42,6 @@ struct DeviceInfo {
     uint32_t aicCoreMinNum { 0U };      // At least amount of aic core would be turned on, this is not final used number
     uint32_t aivCoreMaxNum { 0U };      // At most amount of aiv core would be turned on, this is not final used number
     uint32_t aivCoreMinNum { 0U };      // At least amount of aiv core would be turned on, this is not final used number
-    uint32_t cvRadio {0U};
     SocVersion version { SocVersion::BUTT };
 };
 
@@ -51,7 +50,8 @@ struct GeneralBalanceParam {
     uint32_t s2BaseSize { 1U };             // At least one
     int64_t faToleranceRatio { 2U };        // Larger the value, the smaller the tolerance is
     bool fdOn { true };                     // Turn on to activate FD
-    int64_t fdTolerance { 0U };             // if no fd + tolerance <= fd, then choose no fd
+    int64_t fdTolerance { 0U };             // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
+                                            // full_block_cost is costFunc(mBaseSize, s2BaseSize)
     CostFunc costFunc { nullptr };          // Customize cost func. Set nullptr to use default cost func
 };
 
@@ -171,7 +171,7 @@ inline bool IsWithinTolerance(T limit, T tolerance, T value)
     return limit + tolerance >= value;
 }
 
-static Layout ConvertToLayout(const std::string &layoutStr)
+static inline Layout ConvertToLayout(const std::string &layoutStr)
 {
     static std::unordered_map<std::string, Layout> layoutTable {
         { "BSND",  Layout::BSND },
@@ -180,9 +180,7 @@ static Layout ConvertToLayout(const std::string &layoutStr)
         { "NBSD",  Layout::NBSD },
         { "TND",   Layout::TND },
         { "NTD",   Layout::NTD },
-        { "PA_NZ", Layout::PA_NZ },
-        { "PA_BBND", Layout::PA_BBND },
-        { "PA_BNBD", Layout::PA_BNBD }
+        { "PA_NZ", Layout::PA_NZ }
     };
     if (layoutTable.find(layoutStr) != layoutTable.end()) {
         return layoutTable[layoutStr];
@@ -190,7 +188,7 @@ static Layout ConvertToLayout(const std::string &layoutStr)
     return Layout::BUTT;
 }
 
-static uint32_t GetDataTypeByteSize(DataType type)
+static inline uint32_t GetDataTypeByteSize(DataType type)
 {
     switch (type) {
         case (DataType::FP32):
