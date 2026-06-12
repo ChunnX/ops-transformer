@@ -185,7 +185,7 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (aicCoreNum > optiling::AIC_CORE_MAX_NUM) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The maximum supported AIC num is %u., but got %u", optiling::AIC_CORE_MAX_NUM,
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The maximum supported AIC num is %u, but got %u", optiling::AIC_CORE_MAX_NUM,
             aicCoreNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -194,7 +194,7 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (aivCoreNum > optiling::AIV_CORE_MAX_NUM) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The maximum supported AIV num is %u., but got %u", optiling::AIV_CORE_MAX_NUM,
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The maximum supported AIV num is %u, but got %u", optiling::AIV_CORE_MAX_NUM,
             aivCoreNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
