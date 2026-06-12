@@ -425,7 +425,7 @@ public:
 
         uint64_t recvSumCntSrc[MAX_EXPERT_SIZE] = {0UL};
         uint64_t recvSumCntDst[MAX_EXPERT_SIZE] = {0UL};
-        DumpTensor(outputPermuteSrcBuffer_[outputPermuteSrcBaseOffset_], 100U, 16U);
+        // DumpTensor(outputPermuteSrcBuffer_[outputPermuteSrcBaseOffset_], 100U, 16U);
 
         for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
             for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
@@ -488,13 +488,13 @@ public:
 
                 uint64_t firstLen = (tileNum == 1UL) ? totalCnt : DATACOPY_MAX_BLOCK_LEN;
                 dataCopyParams.blockLen = static_cast<uint16_t>(firstLen);
-                DataCopyPad(ubBufA, outputPermuteSrcBuffer_[srcOffset], dataCopyParams, dataCopyPadParams);
+                // DataCopyPad(ubBufA, outputPermuteSrcBuffer_[srcOffset], dataCopyParams, dataCopyPadParams);
                 readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
                 SetFlag<HardEvent::MTE2_MTE3>(readEvent);
                 WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
 
                 if (tileNum == 1UL) {
-                    DataCopyPad(outputPermuteDstBuffer_[dstOffset], ubBufA, dataCopyParams);
+                    // DataCopyPad(outputPermuteDstBuffer_[dstOffset], ubBufA, dataCopyParams);
                     writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
                     SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
                     WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
@@ -504,10 +504,10 @@ public:
                         dataCopyParams.blockLen = static_cast<uint16_t>(realLength);
                         LocalTensor<hcclDataType> &readBuf = (tile % 2UL == 1UL) ? ubBufB : ubBufA;
                         LocalTensor<hcclDataType> &writeBuf = (tile % 2UL == 1UL) ? ubBufA : ubBufB;
-                        DataCopyPad(readBuf, outputPermuteSrcBuffer_[srcOffset + tile * DATACOPY_MAX_BLOCK_LEN],
-                                    dataCopyParams, dataCopyPadParams);
-                        DataCopyPad(outputPermuteDstBuffer_[dstOffset + (tile - 1UL) * DATACOPY_MAX_BLOCK_LEN],
-                                    writeBuf, dataCopyParams);
+                        // DataCopyPad(readBuf, outputPermuteSrcBuffer_[srcOffset + tile * DATACOPY_MAX_BLOCK_LEN],
+                        //             dataCopyParams, dataCopyPadParams);
+                        // DataCopyPad(outputPermuteDstBuffer_[dstOffset + (tile - 1UL) * DATACOPY_MAX_BLOCK_LEN],
+                        //             writeBuf, dataCopyParams);
                         readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
                         SetFlag<HardEvent::MTE2_MTE3>(readEvent);
                         WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
@@ -518,8 +518,8 @@ public:
                     uint64_t lastLen = totalCnt - (tileNum - 1UL) * DATACOPY_MAX_BLOCK_LEN;
                     dataCopyParams.blockLen = static_cast<uint16_t>(lastLen);
                     LocalTensor<hcclDataType> &lastBuf = ((tileNum - 1UL) % 2UL == 0UL) ? ubBufA : ubBufB;
-                    DataCopyPad(outputPermuteDstBuffer_[dstOffset + (tileNum - 1UL) * DATACOPY_MAX_BLOCK_LEN],
-                                lastBuf, dataCopyParams);
+                    // DataCopyPad(outputPermuteDstBuffer_[dstOffset + (tileNum - 1UL) * DATACOPY_MAX_BLOCK_LEN],
+                    //             lastBuf, dataCopyParams);
                     writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
                     SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
                     WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
@@ -533,7 +533,7 @@ public:
                 turnTotalData += static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
             }
         }
-        DumpTensor(outputPermuteDstBuffer_[outputPermuteDstBaseOffset_], 200U, 16U);
+        // DumpTensor(outputPermuteDstBuffer_[outputPermuteDstBaseOffset_], 200U, 16U);
         AscendC::printf("[LBH] PermuteOutput turn=%u done turnTotalData=%lu newSrcBase=%lu newDstBase=%lu\n",
             turnIdx, turnTotalData, outputPermuteSrcBaseOffset_ + turnTotalData, outputPermuteDstBaseOffset_ + turnTotalData);
         outputPermuteSrcBaseOffset_ += turnTotalData;
