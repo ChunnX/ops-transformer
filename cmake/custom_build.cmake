@@ -1173,6 +1173,7 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
             COMMAND cp -r ${ASCEND_PROJECT_DIR_SCRIPTS_PATH}/* ${CMAKE_CURRENT_BINARY_DIR}/scripts/
             COMMAND chmod +w ${CMAKE_CURRENT_BINARY_DIR}/scripts/*
             COMMAND sed -i "s/vendor_name=customize/vendor_name=${VENDOR_NAME}_transformer/g" ${CMAKE_CURRENT_BINARY_DIR}/scripts/*
+            DEPENDS ${ASCEND_PROJECT_DIR_SCRIPTS_PATH}/install.sh ${ASCEND_PROJECT_DIR_SCRIPTS_PATH}/upgrade.sh
     )
 
     install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/scripts/
