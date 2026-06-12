@@ -95,10 +95,10 @@ inline std::string FormatToSerialString(const ge::Format format)
 }
 
 /*
-* @brief: get format string from enum
-* @param [in] format: enum format
-* @return string: format string
-*/
+ * @brief: get format string from enum
+ * @param [in] format: enum format
+ * @return string: format string
+ */
 inline std::string ToString(ge::Format format)
 {
     return FormatToSerialString(format);

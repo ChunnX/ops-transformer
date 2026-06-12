@@ -27,8 +27,11 @@ def generate_cpu_mask(b, s1, s2, mask_mode, win_left, win_right, prefix=None, in
     elif mask_mode == 3:
         mask = torch.triu(torch.ones(s1, s2), diagonal=s2 - s1 + 1).bool()
     elif mask_mode == 4:
-        atten_mask_u = torch.triu(torch.ones(s1, s2), diagonal=win_right + 1 + s2 - s1)
-        atten_mask_l = torch.tril(torch.ones(s1, s2), diagonal=-win_left - 1 + s2 - s1)
+        # -1 means infinity (no mask on that side)
+        effective_win_right = s2 if win_right == -1 else win_right
+        effective_win_left = s1 if win_left == -1 else win_left
+        atten_mask_u = torch.triu(torch.ones(s1, s2), diagonal=effective_win_right + 1 + s2 - s1)
+        atten_mask_l = torch.tril(torch.ones(s1, s2), diagonal=-effective_win_left - 1 + s2 - s1)
         mask = (atten_mask_u + atten_mask_l).bool()
     return mask
 
@@ -125,7 +128,7 @@ def rearrange_by_block_table(bnsd_tensor, block_table, block_size, b, act_seq_le
         return page_cache_tensor.permute(0, 2, 1, 3)
     elif kv_storage_mode == "PA_BNBD":
         return page_cache_tensor
-    elif kv_storage_mode == "PA_NZ":
+    elif kv_storage_mode == "PA_NZ":  # PA_NZ: shape=(NumBlocks, N_kv, BlockSize/16, D, 16)，分页注意力NZ格式
         blk_elem = 32 // dtype_sizeof(kv_dtype)
         page_cache_tensor = page_cache_tensor.reshape(page_cache_tensor.shape[0],
                                                        page_cache_tensor.shape[1],
