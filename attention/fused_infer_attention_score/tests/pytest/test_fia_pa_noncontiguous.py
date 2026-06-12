@@ -36,10 +36,11 @@ D = 128
 Q_SEQ = 4
 KV_SEQ = 512
 BLOCK_SIZE = 512
+NUM_LAYERS = 2              # 物理内存中的层数，用于构造非连续stride
 IN_LAYOUT = "BNSD"
-CACHE_LAYOUT = "BNBD"   # [BlockNum, N_kv, BlockSize, D]
+CACHE_LAYOUT = "BNBD"       # [BlockNum, N_kv, BlockSize, D]
 DTYPE = torch.float16
-IS_CONTIGUOUS = False   # False: 构造非连续kvcache做验证
+IS_CONTIGUOUS = False       # False: 构造非连续kvcache做验证
 DEVICE_ID = 0
 
 
@@ -190,19 +191,28 @@ def test_pa_noncontiguous():
         return
 
     # ==========================
-    # 非连续版本：在dim=1上垫一行padding后slice，保证dim0 stride错误从而强制非连续
-    # k_padded: [Bn, N_kv+1, Bs, D], dim0 stride = (N_kv+1)*Bs*D
-    # slice [:,:N_kv]: [Bn, N_kv, Bs, D], dim0 stride 仍为 (N_kv+1)*Bs*D
-    # 但连续[Bn, N_kv, Bs, D]的 dim0 stride 应为 N_kv*Bs*D
-    # (N_kv+1)*Bs*D ≠ N_kv*Bs*D → 必定非连续
+    # 非连续版本：物理6D tensor → as_strided 构造5D逻辑视图
+    # 物理: [Bn, N_kv, L, 2, Bs, D]
+    # 逻辑: [2, Bn, N_kv, Bs, D]
+    # 逻辑[0]对应k, 逻辑[1]对应v
+    # dim间stride因L层间插导致非连续
     # ==========================
-    k_padded = torch.randn(total_blocks, N_kv + 1, BLOCK_SIZE, D, dtype=DTYPE)
-    v_padded = torch.randn(total_blocks, N_kv + 1, BLOCK_SIZE, D, dtype=DTYPE)
-    k_padded[:, :N_kv] = k_cache_cpu
-    v_padded[:, :N_kv] = v_cache_cpu
+    phys = torch.randn(total_blocks, N_kv, NUM_LAYERS, 2, BLOCK_SIZE, D, dtype=DTYPE)
+    # 将连续k/v数据填入phys[..., 0, :, :, :, :]
+    phys[:, :, 0, 0] = k_cache_cpu
+    phys[:, :, 0, 1] = v_cache_cpu
 
-    k_noncont_cpu = k_padded[:, :N_kv, :, :]
-    v_noncont_cpu = v_padded[:, :N_kv, :, :]
+    logical = torch.as_strided(
+        phys,
+        size=(2, total_blocks, N_kv, BLOCK_SIZE, D),
+        stride=(phys.stride(3),    # dim0: k/v之间stride = Bs*D
+                phys.stride(0),    # dim1: Bn之间stride = N_kv*L*2*Bs*D
+                phys.stride(1),    # dim2: N_kv之间stride = L*2*Bs*D
+                phys.stride(4),    # dim3: Bs之间stride = D
+                phys.stride(5))    # dim4: D之间stride = 1
+    )
+    k_noncont_cpu = logical[0]
+    v_noncont_cpu = logical[1]
 
     logger.info(f"[CPU] k is_contiguous: {k_noncont_cpu.is_contiguous()}")
     logger.info(f"[CPU] v is_contiguous: {v_noncont_cpu.is_contiguous()}")
