@@ -42,23 +42,6 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
     }
     PhaseXDynamicQuant(mStart, mCount);
     PhaseXWriteXL1(mCount);
-    // Pre-broadcast pertoken values once per mTile so the cb loop uses one
-    // bulk Mul; gated on E==1. E>1 keeps per-row Muls in ProcessColBatch.
-    if constexpr (HasPertoken) {
-        if (E_ == 1u) {
-            for (uint32_t m = 0; m < mCount; ++m) {
-                const float pts_f = pertokenLT_.GetValue(static_cast<uint32_t>(m));
-                const half pts_h = static_cast<half>(pts_f);
-                uint32_t written = 0;
-                while (written < Nb_) {
-                    const uint32_t chunk = (Nb_ - written > 128U) ? 128U : (Nb_ - written);
-                    Duplicate<half>(pertokenBcastLT_[m * Nb_ + written], pts_h, chunk);
-                    written += chunk;
-                }
-            }
-            PipeBarrier<PIPE_V>();
-        }
-    }
 
     // Linear cb iteration 0..totalColBatch-1; L2 reuse comes from the
     // SetL2CacheHint at kernel entry. cb range split by (nCoreIdx, nCoreNum):
@@ -369,17 +352,26 @@ QuantGroupedMatmulDequant<HasPertoken, HasSmooth, ScaleIsU64, BlockedZN_, SmallM
     }
     PipeBarrier<PIPE_V>();
 
-    // finalOut[m,n] = scatterDst[m,n] * pertoken[m]. E==1 uses one bulk
-    // Mul against the pre-broadcast tensor; E>1 uses per-row Muls<half>.
+    // finalOut[m,n] = scatterDst[m,n] * pertoken[m].
+    // Per-row fp32 intermediate multiply: dequantScratchLT_ is free after the
+    // NZ->ND scatter above (VDEQ16 NZ data no longer needed). Reinterpret it
+    // as float scratch for one row's Cast<float,half> + Muls<float> +
+    // Cast<half,float> chain. This preserves fp32 precision for the pertoken
+    // multiply, matching the pre-optimization reference kernel which applies
+    // weight_scale and pertoken both in fp32 before the final half truncation.
+    // The VDEQ16 int32*fp16_scale->fp16 step still quantizes to fp16, but the
+    // pertoken factor is now applied at fp32, recovering one layer of fp16
+    // precision loss.
     if constexpr (HasPertoken) {
-        if (E_ == 1u) {
-            Mul<half>(finalOut, scatterDst, pertokenBcastLT_, mCount * nSize);
-        } else {
-            for (uint32_t m = 0; m < mCount; ++m) {
-                const float pts_f = pertokenLT_.GetValue(static_cast<uint32_t>(m));
-                const half pts_h = static_cast<half>(pts_f);
-                Muls<half>(finalOut[m * nSize], scatterDst[m * nSize], pts_h, nSize);
-            }
+        LocalTensor<float> rowFp32 = dequantScratchLT_.template ReinterpretCast<float>();
+        for (uint32_t m = 0; m < mCount; ++m) {
+            const float pts_f = pertokenLT_.GetValue(static_cast<uint32_t>(m));
+            Cast<float, half>(rowFp32, scatterDst[m * nSize], RoundMode::CAST_NONE, nSize);
+            PipeBarrier<PIPE_V>();
+            Muls<float>(rowFp32, rowFp32, pts_f, nSize);
+            PipeBarrier<PIPE_V>();
+            Cast<half, float>(finalOut[m * nSize], rowFp32, RoundMode::CAST_NONE, nSize);
+            PipeBarrier<PIPE_V>();
         }
     }
     // Non-pertoken: scatterDst == finalOut, scatter already wrote the result.
