@@ -116,6 +116,15 @@ private:
     TBuf<TPosition::VECCALC> alphaBuf_;
     TBuf<TPosition::VECCALC> biasBuf_;
     
+    // Step1 计算块模型：独立buffer，不与tmpBuf_共享，支持并行搬入+独立VF计算
+    TBuf<TPosition::VECCALC> gradHinInputBuf_;   // BF16/FP16 grad_hin输入chunk（独立buffer，不与xInput共享）
+    TBuf<TPosition::VECCALC> xInputBuf_;         // BF16/FP16 x输入chunk（独立buffer）
+    TBuf<TPosition::VECCALC> xFp32Buf_;          // FP32 x cast结果（独立buffer）
+    // Step3: 独立buffer（SigmoidGrad需要4个输入同时共存）
+    TBuf<TPosition::VECCALC> sigmaPreBuf_;         // Sigmoid(z_pre)结果
+    TBuf<TPosition::VECCALC> sigmaPostBuf_;        // Sigmoid(z_post)结果
+    TBuf<TPosition::VECCALC> gradHPostBuf_;        // grad_h_post MTE2输入
+    
     // Queue（流水线）— GM→UB输入用TQue替代PipeBarrier
     TQue<QuePosition::VECIN, DOUBLE_BUF> hPreQueue_;
     TBuf<TPosition::VECCALC> gradAlphaBuf_;
@@ -239,6 +248,15 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::InitBuffer() {
     pipe_->InitBuffer(tmpBuf_, tile_ * n_ * c0_ * FP32_BYTE_SIZE);
     pipe_->InitBuffer(alphaBuf_, 3 * FP32_BYTE_SIZE);
     pipe_->InitBuffer(biasBuf_, (n_ * n_ + 2 * n_) * FP32_BYTE_SIZE);
+    
+    // Step1: 独立输入/中间buffer（c0_大小，按chunk分配）
+    pipe_->InitBuffer(gradHinInputBuf_, c0_ * sizeof(U));
+    pipe_->InitBuffer(xInputBuf_, c0_ * sizeof(U));
+    pipe_->InitBuffer(xFp32Buf_, c0_ * FP32_BYTE_SIZE);
+    // Step3: 独立Sigmoid中间buffer（SigmoidGrad需要4个输入同时共存）
+    pipe_->InitBuffer(sigmaPreBuf_, tile_ * n_ * FP32_BYTE_SIZE);
+    pipe_->InitBuffer(sigmaPostBuf_, tile_ * n_ * FP32_BYTE_SIZE);
+    pipe_->InitBuffer(gradHPostBuf_, tile_ * n_ * FP32_BYTE_SIZE);
     pipe_->InitBuffer(hPreQueue_, DOUBLE_BUF, tile_ * n_ * FP32_BYTE_SIZE);
     pipe_->InitBuffer(gradAlphaBuf_, 3 * FP32_BYTE_SIZE);
     pipe_->InitBuffer(gradBiasBuf_, (n_ * n_ + 2 * n_) * FP32_BYTE_SIZE);
@@ -301,76 +319,97 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Process() {
 
 // ========== Step 1: 输入聚合（golden_v2.py 117-118行）==========
 // 【责任人: llh】
-// 【计算过程】:
-//   ★D切分循环 + 随路broadcast优化（Muls替代Dup+Mul）
-//   1. grad_x_from_hin: 逐D_chunk, Muls随路乘h_pre_scalar，写入workspace
-//   2. x_fp32: 逐D_chunk Cast后写入workspace（供Step14使用）
-//   3. grad_h_pre: 逐D_chunk累加ReduceSum
+// 【设计原则】:
+//   - x的Cast前置到j循环之前（用户要求），一次性Cast并搬workspace
+//   - h_pre一次搬入，随路broadcast使用（Muls替代Dup+Mul）
+//   - grad_hin逐D_chunk搬入，VF内Cast
+//   - grad_x写入workspace，x_fp32写入workspace供Step14使用
+//   - grad_h_pre逐D_chunk累加ReduceSum
 template<typename T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step1_InputAggregation() {
     int64_t gmOffset = blkIdx_ * tile_;
     int64_t wsBase = blkIdx_ * wsPerCoreSize_;
     
-    // 加载h_pre到UB（[1,N], N维度）→ 用TQue流水同步替代PipeBarrier
+    // ===== Phase 0: h_pre一次搬入（整个tile生命周期驻留）=====
     LocalTensor<T> hPreLocal = hPreQueue_.AllocTensor<T>();
-    DataCopyPad(hPreLocal, hPreGlobal_[gmOffset * n_], {1, static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
+    AscendC::DataCopyPad(hPreLocal, hPreGlobal_[gmOffset * n_], 
+        {1, static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
     hPreQueue_.EnQue(hPreLocal);
-    
-    // DeQue获取数据（MTE2搬运完成后）
     hPreLocal = hPreQueue_.DeQue<T>();
     
-    // ★D切分参数
     uint32_t c0_u = static_cast<uint32_t>(c0_);
     uint32_t cTail_u = static_cast<uint32_t>(cTail_);
     uint32_t c_u = static_cast<uint32_t>(c_);
     uint32_t n_u = static_cast<uint32_t>(n_);
     uint32_t D_chunk_cnt = static_cast<uint32_t>(D_chunk_count_);
     
-    // ★grad_h_pre = (grad_hin * x).sum(-1) [golden 118行]
-    // 逐D_chunk累加：先初始化为0，然后逐chunk累加
     LocalTensor<T> gradHPreLocal = gradHPreBuf_.Get<T>();
-    Duplicate(gradHPreLocal, static_cast<T>(0), n_);
+    AscendC::Duplicate(gradHPreLocal, static_cast<T>(0), n_);
     
-    LocalTensor<U> gradHinInput = tmpBuf_.Get<U>();
-    LocalTensor<U> xInput = tmpBuf_.Get<U>();
-    LocalTensor<T> gradHinFp32Chunk = tmpBuf_.Get<T>();
-    LocalTensor<T> xFp32Chunk = tmpBuf_.Get<T>();
+    // ===== Phase 1: x一次性Cast并搬workspace（前置到j循环之前）=====
+    // 对齐说明: DataCopyPad可处理非对齐cur_c，自动padding
+    //           workspace地址：wsXFp32Offset_ + j*c_*FP32_BYTE_SIZE + d_offset*FP32_BYTE_SIZE
+    //           c_和c0_按Tiling分配，可能非VL对齐，DataCopyPad自动处理
+    LocalTensor<U> xInputChunk = xInputBuf_.Get<U>();
+    LocalTensor<T> xFp32Chunk = xFp32Buf_.Get<T>();
+    
+    for (uint16_t d_idx = 0; d_idx < D_chunk_cnt; d_idx++) {
+        uint32_t cur_c = (d_idx == D_chunk_cnt - 1) ? cTail_u : c0_u;
+        uint32_t d_offset = d_idx * c0_u;
+        
+        // 逐j循环：搬入x[j*D_chunk]，Cast并写workspace
+        for (uint16_t j = 0; j < n_u; j++) {
+            // MTE2: 从GM搬x[j*D_chunk]到UB(U)
+            AscendC::DataCopyPad(xInputChunk, xGlobal_[gmOffset * n_u * c_u + j * c_u + d_offset],
+                {1, static_cast<uint32_t>(cur_c * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
+            AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+            AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+            
+            // V: Cast x(U→FP32)（MemBase，在UB完成）
+            AscendC::Cast(xFp32Chunk, xInputChunk, AscendC::RoundMode::CAST_NONE, cur_c);
+            
+            // MTE3: 写workspace（wsXFp32Offset + j*c + d_offset）
+            int64_t wsXFp32Offset_j = wsBase + wsXFp32Offset_ + j * c_ * FP32_BYTE_SIZE + d_offset * FP32_BYTE_SIZE;
+            AscendC::DataCopyPad(workspaceGlobal_[wsXFp32Offset_j / sizeof(T)], xFp32Chunk,
+                {1, static_cast<uint16_t>(cur_c * sizeof(T)), 0, 0});
+            AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+            AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+        }
+    }
+    
+    // ===== Phase 2: InputAggregationVf循环（从workspace读xFp32）=====
+    LocalTensor<U> gradHinInput = gradHinInputBuf_.Get<U>();
+    LocalTensor<T> xFp32Input = xFp32Buf_.Get<T>();  // 从workspace读回，用于VF输入
     LocalTensor<T> gradXChunk = tmpBuf_.Get<T>();
-    LocalTensor<T> mulHinXChunk = tmpBuf_.Get<T>();
     
-    // ★逐N × 逐D_chunk: grad_x_from_hin写入workspace + grad_h_pre累加 + x_fp32写入workspace
     for (uint16_t j = 0; j < n_u; j++) {
-        T hPreScalar = hPreLocal.GetValue(j);
+        T hPreScalar = hPreLocal.GetValue(j);  // 随路broadcast，h_pre只搬一次
         
         for (uint16_t d_idx = 0; d_idx < D_chunk_cnt; d_idx++) {
             uint32_t cur_c = (d_idx == D_chunk_cnt - 1) ? cTail_u : c0_u;
             uint32_t d_offset = d_idx * c0_u;
             
-            // 从GM加载grad_hin[1, d_offset:d_offset+cur_c]
-            DataCopyPad(gradHinInput, gradHinGlobal_[gmOffset * c_u + d_offset], {1, static_cast<uint32_t>(cur_c * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
-            AscendC::PipeBarrier<PIPE_ALL>();
-            Cast(gradHinFp32Chunk, gradHinInput, RoundMode::CAST_NONE, cur_c);
+            // MTE2: gradHin_chunk + xFp32_chunk(从workspace读回)
+            AscendC::DataCopyPad(gradHinInput, gradHinGlobal_[gmOffset * c_u + d_offset],
+                {1, static_cast<uint32_t>(cur_c * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
+            int64_t wsXFp32ReadOffset_j = wsBase + wsXFp32Offset_ + j * c_ * FP32_BYTE_SIZE + d_offset * FP32_BYTE_SIZE;
+            AscendC::DataCopyPad(xFp32Input, workspaceGlobal_[wsXFp32ReadOffset_j / sizeof(T)],
+                {1, static_cast<uint32_t>(cur_c * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
+            AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+            AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
             
-            // ★随路broadcast: Muls(grad_x_chunk, grad_hin_fp32_chunk, h_pre_scalar, cur_c)
-            // 不做真dup，Muls直接乘标量
-            Muls(gradXChunk, gradHinFp32Chunk, hPreScalar, cur_c);
+            // VF: InputAggregationVf（已简化，只cast gradHin，xFp32已FP32）
+            InputAggregationVf<T, U>(gradXChunk, gradHPreLocal, j, gradHinInput, xFp32Input, hPreScalar, cur_c);
             
-            // ★写入workspace: wsGradXFromHin[j*c + d_offset]
+            AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+            AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+            
+            // MTE3: gradX写workspace
             int64_t wsGradXOffset_j = wsBase + wsGradXOffset_ + j * c_ * FP32_BYTE_SIZE + d_offset * FP32_BYTE_SIZE;
-            DataCopyPad(workspaceGlobal_[wsGradXOffset_j / sizeof(T)], gradXChunk, {1, static_cast<uint32_t>(cur_c * sizeof(T)), 0, 0, 0});
-            
-            // grad_h_pre累加: 加载x[1, j, d_offset:d_offset+cur_c]
-            DataCopyPad(xInput, xGlobal_[gmOffset * n_u * c_u + j * c_u + d_offset], {1, static_cast<uint32_t>(cur_c * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
-            AscendC::PipeBarrier<PIPE_ALL>();
-            Cast(xFp32Chunk, xInput, RoundMode::CAST_NONE, cur_c);
-            
-            // ★VF: Mul(grad_hin * x) → ReduceSum累加到grad_h_pre[j]
-            MulReduceSumVf<T>(gradHPreLocal[j], gradHinFp32Chunk, xFp32Chunk, cur_c);
-            AscendC::PipeBarrier<PIPE_ALL>();
-            
-            // ★写入workspace: wsXFp32[j*c + d_offset]（x_fp32供Step14使用）
-            int64_t wsXFp32Offset_j = wsBase + wsXFp32Offset_ + j * c_ * FP32_BYTE_SIZE + d_offset * FP32_BYTE_SIZE;
-            DataCopyPad(workspaceGlobal_[wsXFp32Offset_j / sizeof(T)], xFp32Chunk, {1, static_cast<uint32_t>(cur_c * sizeof(T)), 0, 0, 0});
+            AscendC::DataCopyPad(workspaceGlobal_[wsGradXOffset_j / sizeof(T)], gradXChunk,
+                {1, static_cast<uint16_t>(cur_c * sizeof(T)), 0, 0});
+            AscendC::SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(0));
+            AscendC::WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(0));
         }
     }
     hPreQueue_.FreeTensor(hPreLocal);
@@ -396,34 +435,31 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step2_ComputeF
     LocalTensor<T> hcBeforeNormLocal = hcBeforeNormQueue_.AllocTensor<T>();
     LocalTensor<T> invRmsLocal = invRmsQueue_.AllocTensor<T>();
     
-    DataCopyPad(hcBeforeNormLocal, hcBeforeNormGlobal_[gmOffset * (n_ * n_ + 2 * n_)], 
+    AscendC::DataCopyPad(hcBeforeNormLocal, hcBeforeNormGlobal_[gmOffset * (n_ * n_ + 2 * n_)], 
         {1, static_cast<uint32_t>(tile_ * (n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    DataCopyPad(invRmsLocal, invRmsGlobal_[gmOffset], {1, static_cast<uint32_t>(tile_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    AscendC::PipeBarrier<PIPE_ALL>();
-    
-    hcBeforeNormQueue_.EnQue(hcBeforeNormLocal);
-    invRmsQueue_.EnQue(invRmsLocal);
+    AscendC::DataCopyPad(invRmsLocal, invRmsGlobal_[gmOffset], 
+        {1, static_cast<uint32_t>(tile_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
     
     LocalTensor<T> alphaLocal = alphaBuf_.Get<T>();
     LocalTensor<T> biasLocal = biasBuf_.Get<T>();
-    DataCopyPad(alphaLocal, alphaGlobal_, {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    DataCopyPad(biasLocal, biasGlobal_, {1, static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::DataCopyPad(alphaLocal, alphaGlobal_, 
+        {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
+    AscendC::DataCopyPad(biasLocal, biasGlobal_, 
+        {1, static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
     
+    AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+    AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+    
+    hcBeforeNormQueue_.EnQue(hcBeforeNormLocal);
+    invRmsQueue_.EnQue(invRmsLocal);
     hcBeforeNormLocal = hcBeforeNormQueue_.DeQue<T>();
     invRmsLocal = invRmsQueue_.DeQue<T>();
     
     LocalTensor<T> normOutForwardLocal = normOutForwardBuf_.Get<T>();
-    Mul(normOutForwardLocal, hcBeforeNormLocal, invRmsLocal, tile_ * (n_ * n_ + 2 * n_));
-    AscendC::PipeBarrier<PIPE_ALL>();
-    
     LocalTensor<T> zPreLocal = zPreBuf_.Get<T>();
     LocalTensor<T> zPostLocal = zPostBuf_.Get<T>();
     LocalTensor<T> zResLocal = zResBuf_.Get<T>();
-    
-    // ★VF: z = norm_out * alpha + bias (三路)
-    ComputeForwardZVf<T>(zPreLocal, zPostLocal, zResLocal, normOutForwardLocal, alphaLocal, biasLocal, n_, tile_ * (n_ * n_ + 2 * n_));
-    AscendC::PipeBarrier<PIPE_ALL>();
+    ComputeForwardZFullVf<T>(zPreLocal, zPostLocal, zResLocal, normOutForwardLocal, hcBeforeNormLocal, invRmsLocal, alphaLocal, biasLocal, n_, tile_ * (n_ * n_ + 2 * n_));
     
     hcBeforeNormQueue_.FreeTensor(hcBeforeNormLocal);
     invRmsQueue_.FreeTensor(invRmsLocal);
@@ -446,22 +482,21 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step3_SigmoidG
     LocalTensor<T> gradZPreLocal = gradZPreBuf_.Get<T>();
     LocalTensor<T> gradZPostLocal = gradZPostBuf_.Get<T>();
     
-    LocalTensor<T> gradHPostLocal = tmpBuf_.Get<T>();
-    LocalTensor<T> gradHPreLocal = gradHPreBuf_.Get<T>();
+    LocalTensor<T> gradHPostLocal = gradHPostBuf_.Get<T>();
     int64_t gmOffset = blkIdx_ * tile_;
-    DataCopyPad(gradHPostLocal, gradHPostGlobal_[gmOffset * n_], {1, static_cast<uint32_t>(tile_ * n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::DataCopyPad(gradHPostLocal, gradHPostGlobal_[gmOffset * n_], 
+        {1, static_cast<uint32_t>(tile_ * n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
+    AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+    AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
     
-    LocalTensor<T> sigmaPreLocal = tmpBuf_.Get<T>();
-    Sigmoid(sigmaPreLocal, zPreLocal, tile_ * n_);
-    Adds(sigmaPreLocal, sigmaPreLocal, static_cast<T>(-HC_EPS), tile_ * n_);
+    LocalTensor<T> sigmaPreLocal = sigmaPreBuf_.Get<T>();
+    AscendC::Sigmoid(sigmaPreLocal, zPreLocal, tile_ * n_);
     
-    LocalTensor<T> sigmaPostLocal = tmpBuf_.Get<T>();
-    Sigmoid(sigmaPostLocal, zPostLocal, tile_ * n_);
-    AscendC::PipeBarrier<PIPE_ALL>();
+    LocalTensor<T> sigmaPostLocal = sigmaPostBuf_.Get<T>();
+    AscendC::Sigmoid(sigmaPostLocal, zPostLocal, tile_ * n_);
     
-    SigmoidGradArithmeticVf<T>(gradZPreLocal, gradZPostLocal, sigmaPreLocal, sigmaPostLocal, gradHPreLocal, gradHPostLocal, tile_ * n_);
-    AscendC::PipeBarrier<PIPE_ALL>();
+    LocalTensor<T> gradHPreLocal = gradHPreBuf_.Get<T>();
+    SigmoidGradArithmeticVf<T>(gradZPreLocal, gradZPostLocal, sigmaPreLocal, sigmaPostLocal, gradHPreLocal, gradHPostLocal, tile_ * n_, static_cast<T>(HC_EPS));
 }
 
 // ========== Step 4-5: alpha/bias梯度（pre/post）（golden_v2.py 141-148行）==========
@@ -481,37 +516,36 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step45_AlphaBi
     LocalTensor<T> gradAlphaLocal = gradAlphaBuf_.Get<T>();
     LocalTensor<T> gradBiasLocal = gradBiasBuf_.Get<T>();
     
-    // ★VF: grad_alpha_pre = (norm_out_forward_part1 * grad_z_pre).sum()  [golden 141行]
-    MulReduceSumVf<T>(gradAlphaLocal[0], normOutForwardLocal[0], gradZPreLocal, tile_ * n_);
-    AscendC::PipeBarrier<PIPE_ALL>();
+    // ===== 计算阶段1：大VF（AlphaBiasGradPrePostVf）=====
+    AlphaBiasGradPrePostVf<T>(gradAlphaLocal, gradBiasLocal, normOutForwardLocal, gradZPreLocal, gradZPostLocal, n_, tile_ * n_);
     
-    // ★VF: grad_alpha_post = (norm_out_forward_part2 * grad_z_post).sum()  [golden 142行]
-    MulReduceSumVf<T>(gradAlphaLocal[1], normOutForwardLocal[n_], gradZPostLocal, tile_ * n_);
-    AscendC::PipeBarrier<PIPE_ALL>();
-    
-    // ★VF: grad_bias_part1 = grad_z_pre.sum((0,1))  [golden 147行]
-    ReduceSumVf<T>(gradBiasLocal[0], gradZPreLocal, tile_ * n_);
-    AscendC::PipeBarrier<PIPE_ALL>();
-    
-    // ★VF: grad_bias_part2 = grad_z_post.sum((0,1))  [golden 148行]
-    ReduceSumVf<T>(gradBiasLocal[n_], gradZPostLocal, tile_ * n_);
-    AscendC::PipeBarrier<PIPE_ALL>();
-    
-    // workspace累加
+    // ===== 搬入阶段：workspace旧值并行读取 =====
     int64_t wsOffset = blkIdx_ * wsPerCoreSize_;
     GlobalTensor<T> wsGradAlpha = workspaceGlobal_[wsOffset + wsGradAlphaOffset_];
     GlobalTensor<T> wsGradBias = workspaceGlobal_[wsOffset + wsGradBiasOffset_];
     
-    // ★workspace是GlobalTensor，需要用DataCopy+Add方式累加（先从GM读到UB，再写回）
+    // tmpBuf偏移分离：wsGradAlphaLocal在偏移0处，wsGradBiasLocal在偏移3处，互不覆盖
     LocalTensor<T> wsGradAlphaLocal = tmpBuf_.Get<T>();
-    LocalTensor<T> wsGradBiasLocal = tmpBuf_.Get<T>();
-    DataCopyPad(wsGradAlphaLocal, wsGradAlpha, {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    DataCopyPad(wsGradBiasLocal, wsGradBias, {1, static_cast<uint32_t>((2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    AscendC::PipeBarrier<PIPE_ALL>();
-    Add(wsGradAlphaLocal, wsGradAlphaLocal, gradAlphaLocal, 3);
-    Add(wsGradBiasLocal, wsGradBiasLocal, gradBiasLocal, 2 * n_);
-    DataCopyPad(wsGradAlpha, wsGradAlphaLocal, {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0});
-    DataCopyPad(wsGradBias, wsGradBiasLocal, {1, static_cast<uint32_t>((2 * n_) * sizeof(T)), 0, 0, 0});
+    LocalTensor<T> wsGradBiasLocal = tmpBuf_.Get<T>()[3];
+    
+    AscendC::DataCopyPad(wsGradAlphaLocal, wsGradAlpha,
+        {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
+    AscendC::DataCopyPad(wsGradBiasLocal, wsGradBias,
+        {1, static_cast<uint32_t>((2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
+    AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+    AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+    
+    // ===== 计算阶段2：加法累加 =====
+    AscendC::Add(wsGradAlphaLocal, wsGradAlphaLocal, gradAlphaLocal, 3);
+    AscendC::Add(wsGradBiasLocal, wsGradBiasLocal, gradBiasLocal, 2 * n_);
+    
+    // ===== 搬出阶段：并行写回workspace =====
+    AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+    AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+    AscendC::DataCopyPad(wsGradAlpha, wsGradAlphaLocal,
+        {1, static_cast<uint16_t>(3 * sizeof(T)), 0, 0});
+    AscendC::DataCopyPad(wsGradBias, wsGradBiasLocal,
+        {1, static_cast<uint16_t>((2 * n_) * sizeof(T)), 0, 0});
 }
 
 // ========== Step 6-8: Sinkhorn + Exp梯度（golden_v2.py 155-166行）==========
@@ -527,7 +561,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step678_Sinkho
     
     LocalTensor<T> gradHResLocal = gradHResQueue_.AllocTensor<T>();
     DataCopyPad(gradHResLocal, gradHResGlobal_[gmOffset * n_ * n_], {1, static_cast<uint32_t>(tile_ * n_ * n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_MTE2>();
     gradHResQueue_.EnQue(gradHResLocal);
     
     LocalTensor<T> sumOutLocal = sumOutQueue_.AllocTensor<T>();
@@ -634,7 +668,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step678_Sinkho
     LocalTensor<T> wsGradBiasLocal = tmpBuf_.Get<T>();
     DataCopyPad(wsGradAlphaLocal, wsGradAlpha, {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
     DataCopyPad(wsGradBiasLocal, wsGradBias, {1, static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_MTE2>();
     Add(wsGradAlphaLocal, wsGradAlphaLocal, gradAlphaLocal, 3);
     Add(wsGradBiasLocal, wsGradBiasLocal, gradBiasLocal, n_ * n_ + 2 * n_);
     DataCopyPad(wsGradAlpha, wsGradAlphaLocal, {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0});
@@ -661,14 +695,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step911_Linear
     
     LocalTensor<T> gradNormOutLocal = gradNormOutBuf_.Get<T>();
     
-    // ★VF: grad_norm_out = grad_z * alpha (三路)
     ComputeLinearGradVf<T>(gradNormOutLocal, gradZPreLocal, gradZPostLocal, gradZResLocal, alphaLocal, n_, tile_ * (n_ * n_ + 2 * n_));
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
 // ========== Step 12: RMSNorm梯度（golden_v2.py 191-192行）==========
-// 【责任人: lhp】
-// 【计算过程】: grad_hc = grad_norm_out*inv_rms, grad_inv_rms = (hc*grad_norm_out).sum(-1)
 template<typename T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step12_RMSNormGrad() {
     LocalTensor<T> gradNormOutLocal = gradNormOutBuf_.Get<T>();
@@ -676,13 +707,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step12_RMSNorm
     
     int64_t gmOffset = blkIdx_ * tile_;
     DataCopyPad(invRmsLocal, invRmsGlobal_[gmOffset], {1, static_cast<uint32_t>(tile_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_MTE2>();
     
     LocalTensor<T> gradHcLocal = gradHcQueue_.AllocTensor<T>();
     
     // ★VF: grad_hc = grad_norm_out * inv_rms
     ComputeRMSNormGradVf<T>(gradHcLocal, gradNormOutLocal, invRmsLocal, tile_ * (n_ * n_ + 2 * n_));
-    AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_V>();
     
     gradHcQueue_.EnQue(gradHcLocal);
 }
@@ -703,12 +734,12 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step14_RMSNorm
     DataCopyPad(hcBeforeNormLocal, hcBeforeNormGlobal_[gmOffset * (n_ * n_ + 2 * n_)], 
         {1, static_cast<uint32_t>(tile_ * (n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
     DataCopyPad(invRmsLocal, invRmsGlobal_[gmOffset], {1, static_cast<uint32_t>(tile_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_MTE2>();
     
     // ★VF: grad_inv_rms = (hc_before_norm * grad_norm_out).sum(-1) [golden 192行]
     LocalTensor<T> gradInvRmsLocal = tmpBuf_.Get<T>();
     MulReduceSumVf<T>(gradInvRmsLocal, hcBeforeNormLocal, gradNormOutLocal, tile_ * (n_ * n_ + 2 * n_));
-    AscendC::PipeBarrier<PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_V>();
     
     // ★D切分循环计算grad_x_from_rms，逐chunk写入workspace
     // 公式：grad_x_from_rms = - (inv_rms^3) * x * grad_inv_rms / NC
@@ -735,7 +766,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step14_RMSNorm
         
         int64_t wsXFp32ReadOffset = wsBase + wsXFp32Offset_ + d_offset * FP32_BYTE_SIZE;
         DataCopyPad(xFp32Chunk, workspaceGlobal_[wsXFp32ReadOffset / sizeof(T)], {1, static_cast<uint32_t>(cur_c * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::PipeBarrier<PIPE_MTE2>();
         
         // -inv_rms^3 * x * grad_inv_rms / NC  (broadcast invRmsCubed & gradInvRms)
         // 逐N做Muls: gradXFromRms[n][d_chunk] = Muls(xFp32[n][d_chunk], -ncScalar * invRmsCubed[n] * gradInvRms[n])
@@ -798,14 +829,14 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::ReduceWorkspac
         // grad_alpha累加
         LocalTensor<T> totalGradAlpha = gradAlphaBuf_.Get<T>();
         DataCopyPad(totalGradAlpha, workspaceGlobal_[wsGradAlphaOffset_], {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::PipeBarrier<PIPE_MTE2>();
         
         for (int64_t c = 1; c < aivNum_; c++) {
             int64_t wsOffset = c * wsPerCoreSize_ + wsGradAlphaOffset_;
             GlobalTensor<T> wsGradAlphaCore = workspaceGlobal_[wsOffset];
             LocalTensor<T> wsGradAlphaLocal = tmpBuf_.Get<T>();
             DataCopyPad(wsGradAlphaLocal, wsGradAlphaCore, {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-            AscendC::PipeBarrier<PIPE_ALL>();
+            AscendC::PipeBarrier<PIPE_MTE2>();
             Add(totalGradAlpha, totalGradAlpha, wsGradAlphaLocal, 3);
         }
         DataCopyPad(gradAlphaGlobal_, totalGradAlpha, {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0});
@@ -813,14 +844,14 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::ReduceWorkspac
         // grad_bias累加
         LocalTensor<T> totalGradBias = gradBiasBuf_.Get<T>();
         DataCopyPad(totalGradBias, workspaceGlobal_[wsGradBiasOffset_], {1, static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::PipeBarrier<PIPE_MTE2>();
         
         for (int64_t c = 1; c < aivNum_; c++) {
             int64_t wsOffset = c * wsPerCoreSize_ + wsGradBiasOffset_;
             GlobalTensor<T> wsGradBiasCore = workspaceGlobal_[wsOffset];
             LocalTensor<T> wsGradBiasLocal = tmpBuf_.Get<T>();
             DataCopyPad(wsGradBiasLocal, wsGradBiasCore, {1, static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-            AscendC::PipeBarrier<PIPE_ALL>();
+            AscendC::PipeBarrier<PIPE_MTE2>();
             Add(totalGradBias, totalGradBias, wsGradBiasLocal, n_ * n_ + 2 * n_);
         }
         DataCopyPad(gradBiasGlobal_, totalGradBias, {1, static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0});
@@ -828,14 +859,14 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::ReduceWorkspac
         // grad_phi累加
         LocalTensor<T> totalGradPhi = tmpBuf_.Get<T>();
         DataCopyPad(totalGradPhi, workspaceGlobal_[wsGradPhiOffset_], {1, static_cast<uint32_t>((n_ * n_ + 2 * n_) * n_ * c_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::PipeBarrier<PIPE_MTE2>();
         
         for (int64_t c = 1; c < aivNum_; c++) {
             int64_t wsOffset = c * wsPerCoreSize_ + wsGradPhiOffset_;
             GlobalTensor<T> wsGradPhiCore = workspaceGlobal_[wsOffset];
             LocalTensor<T> wsGradPhiLocal = tmpBuf_.Get<T>();
             DataCopyPad(wsGradPhiLocal, wsGradPhiCore, {1, static_cast<uint32_t>((n_ * n_ + 2 * n_) * n_ * c_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-            AscendC::PipeBarrier<PIPE_ALL>();
+            AscendC::PipeBarrier<PIPE_MTE2>();
             Add(totalGradPhi, totalGradPhi, wsGradPhiLocal, (n_ * n_ + 2 * n_) * n_ * c_);
         }
         DataCopyPad(gradPhiGlobal_, totalGradPhi, {1, static_cast<uint32_t>((n_ * n_ + 2 * n_) * n_ * c_ * sizeof(T)), 0, 0, 0});
@@ -865,15 +896,15 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::ReduceWorkspac
                 // 初始化累加结果（从core0的workspace读取）
                 int64_t wsGradXOffset_core0 = wsGradXOffset_ + d_offset * FP32_BYTE_SIZE;
                 DataCopyPad(gradXFromHinChunk, workspaceGlobal_[wsGradXOffset_core0 / sizeof(T)], {1, static_cast<uint32_t>(cur_c * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-                AscendC::PipeBarrier<PIPE_ALL>();
+                AscendC::PipeBarrier<PIPE_MTE2>();
                 
                 int64_t wsGradXFromRmsOffset_core0 = wsGradXFromRmsOffset_ + d_offset * FP32_BYTE_SIZE;
                 DataCopyPad(gradXFromRmsChunk, workspaceGlobal_[wsGradXFromRmsOffset_core0 / sizeof(T)], {1, static_cast<uint32_t>(cur_c * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-                AscendC::PipeBarrier<PIPE_ALL>();
+                AscendC::PipeBarrier<PIPE_MTE2>();
                 
                 LocalTensor<U> gradXFromMatmulInput = tmpBuf_.Get<U>();
                 DataCopyPad(gradXFromMatmulInput, gradXGlobal_[gmOffset * n_c + d_offset], {1, static_cast<uint32_t>(cur_c * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
-                AscendC::PipeBarrier<PIPE_ALL>();
+                AscendC::PipeBarrier<PIPE_MTE2>();
                 Cast(gradXFromMatmulChunk, gradXFromMatmulInput, RoundMode::CAST_NONE, cur_c);
                 
                 for (int64_t core = 1; core < aivNum_; core++) {
@@ -882,14 +913,14 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::ReduceWorkspac
                     GlobalTensor<T> wsGradXFromHinCore = workspaceGlobal_[wsGradXOff_core / sizeof(T)];
                     LocalTensor<T> wsGradXFromHinLocal = tmpBuf_.Get<T>();
                     DataCopyPad(wsGradXFromHinLocal, wsGradXFromHinCore, {1, static_cast<uint32_t>(cur_c * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-                    AscendC::PipeBarrier<PIPE_ALL>();
+                    AscendC::PipeBarrier<PIPE_MTE2>();
                     Add(gradXFromHinChunk, gradXFromHinChunk, wsGradXFromHinLocal, cur_c);
                     
                     int64_t wsGradXFromRmsOff_core = wsBaseCore + wsGradXFromRmsOffset_ + d_offset * FP32_BYTE_SIZE;
                     GlobalTensor<T> wsGradXFromRmsCore = workspaceGlobal_[wsGradXFromRmsOff_core / sizeof(T)];
                     LocalTensor<T> wsGradXFromRmsLocal = tmpBuf_.Get<T>();
                     DataCopyPad(wsGradXFromRmsLocal, wsGradXFromRmsCore, {1, static_cast<uint32_t>(cur_c * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-                    AscendC::PipeBarrier<PIPE_ALL>();
+                    AscendC::PipeBarrier<PIPE_MTE2>();
                     Add(gradXFromRmsChunk, gradXFromRmsChunk, wsGradXFromRmsLocal, cur_c);
                 }
                 
