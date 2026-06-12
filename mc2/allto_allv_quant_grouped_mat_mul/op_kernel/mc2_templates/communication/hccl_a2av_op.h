@@ -410,23 +410,24 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
-        uint32_t subBlockIdx = GetSubBlockIdx();
+        uint32_t blockIdx     = GetBlockIdx();
+        uint32_t numAivBlocks = GetBlockDim();
+        uint32_t subBlockIdx  = GetSubBlockIdx();
+        uint32_t subBlockDim  = GetSubBlockDim();
         uint32_t startExpertIdx = turnIdx * taskTilingInfo_->combineExpertSize;
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
         static constexpr uint64_t DATACOPY_MAX_BLOCK_LEN = 65535UL;
 
-        AscendC::printf("[LBH] PermuteOutput turn=%u realCombineSize=%u startExpert=%u H1=%u PACK_FACTOR=%u axis=%lu rankDim=%u e=%u subBlock=%u\n",
-            turnIdx, realCombineSize, startExpertIdx, H1_, PACK_FACTOR, axis, rankDim_, e_, subBlockIdx);
-        AscendC::printf("[LBH] PermuteOutput srcBaseOffset=%lu dstBaseOffset=%lu\n",
-            outputPermuteSrcBaseOffset_, outputPermuteDstBaseOffset_);
-
-        uint32_t expertStart = (subBlockIdx == 0U) ? 0U : realCombineSize / 2U;
-        uint32_t expertEnd = (subBlockIdx == 0U) ? realCombineSize / 2U : realCombineSize;
+        uint32_t totalPairs     = realCombineSize * rankDim_;
+        uint32_t pairsPerBlock  = totalPairs / numAivBlocks;
+        uint32_t pairsRemainder = totalPairs % numAivBlocks;
+        uint32_t pairStart      = blockIdx * pairsPerBlock +
+                                  (blockIdx < pairsRemainder ? blockIdx : pairsRemainder);
+        uint32_t pairEnd        = pairStart + pairsPerBlock +
+                                  (blockIdx < pairsRemainder ? 1U : 0U);
 
         uint64_t recvSumCntSrc[MAX_EXPERT_SIZE] = {0UL};
         uint64_t recvSumCntDst[MAX_EXPERT_SIZE] = {0UL};
-        // DumpTensor(outputPermuteSrcBuffer_[outputPermuteSrcBaseOffset_], 100U, 16U);
-
         for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
             for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
                 uint32_t posBefore = rankIndex * realCombineSize + localIdx;
@@ -436,11 +437,8 @@ public:
                 if (posBefore != 0U) {
                     recvSumCntSrc[posBefore] += recvSumCntSrc[posBefore - 1U];
                 }
-                AscendC::printf("[LBH] recvCnt rank=%u expert=%u cnt=%lu recvSumSrc[%u]=%lu\n",
-                    rankIndex, globalExpertIdx, cnt, posBefore, recvSumCntSrc[posBefore]);
             }
         }
-
         for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
             for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
                 uint32_t posAfter = localIdx * rankDim_ + rankIndex;
@@ -449,95 +447,69 @@ public:
                 if (posAfter != 0U) {
                     recvSumCntDst[posAfter] += recvSumCntDst[posAfter - 1U];
                 }
-                AscendC::printf("[LBH] recvSumDst[%u]=%lu (expert=%u rank=%u)\n",
-                    posAfter, recvSumCntDst[posAfter], globalExpertIdx, rankIndex);
             }
         }
 
         TPipe *permutePipe = GetTPipePtr();
-        permutePipe->Reset();
-        LocalTensor<hcclDataType> ubBufA = outputPermuteBufA_.Get<hcclDataType>();
-        LocalTensor<hcclDataType> ubBufB = outputPermuteBufB_.Get<hcclDataType>();
+        LocalTensor<hcclDataType> ubBuf = outputPermuteBufA_.Get<hcclDataType>();
 
-        for (uint32_t localIdx = expertStart; localIdx < expertEnd; localIdx++) {
-            for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
-                uint32_t posBefore = rankIndex * realCombineSize + localIdx;
-                uint32_t posAfter = localIdx * rankDim_ + rankIndex;
-                uint64_t srcOffset = outputPermuteSrcBaseOffset_;
-                if (posBefore != 0U) {
-                    srcOffset += recvSumCntSrc[posBefore - 1U];
-                }
-                uint64_t dstOffset = outputPermuteDstBaseOffset_;
-                if (posAfter != 0U) {
-                    dstOffset += recvSumCntDst[posAfter - 1U];
-                }
-                uint64_t totalCnt = static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
-                uint64_t tileNum = CeilDiv(totalCnt, DATACOPY_MAX_BLOCK_LEN);
+        for (uint32_t pairIdx = pairStart; pairIdx < pairEnd; pairIdx++) {
+            uint32_t localIdx  = pairIdx % realCombineSize;
+            uint32_t rankIndex = pairIdx / realCombineSize;
+            uint32_t posBefore = rankIndex * realCombineSize + localIdx;
+            uint32_t posAfter  = localIdx * rankDim_ + rankIndex;
+            uint32_t globalExpertIdx = startExpertIdx + localIdx;
 
-                AscendC::printf("[LBH] copy expert=%u rank=%u posBef=%u posAft=%u srcOff=%lu dstOff=%lu totalCnt=%lu tileNum=%lu\n",
-                    startExpertIdx + localIdx, rankIndex, posBefore, posAfter, srcOffset, dstOffset, totalCnt, tileNum);
+            uint64_t srcOffset = outputPermuteSrcBaseOffset_;
+            if (posBefore != 0U) {
+                srcOffset += recvSumCntSrc[posBefore - 1U];
+            }
+            uint64_t dstOffset = outputPermuteDstBaseOffset_;
+            if (posAfter != 0U) {
+                dstOffset += recvSumCntDst[posAfter - 1U];
+            }
+            uint64_t totalCnt = static_cast<uint64_t>(recvCounts_[globalExpertIdx + rankIndex * e_]) * axis;
+            if (totalCnt == 0UL) {
+                continue;
+            }
 
-                if (tileNum == 0UL) {
-                    continue;
-                }
+            uint64_t subBaseLen  = totalCnt / subBlockDim;
+            uint64_t subRemainder = totalCnt % subBlockDim;
+            uint64_t subStart = subBlockIdx * subBaseLen +
+                                (subBlockIdx < subRemainder ? subBlockIdx : subRemainder);
+            uint64_t subLen   = subBaseLen + ((subBlockIdx < subRemainder) ? 1UL : 0UL);
 
-                DataCopyParams dataCopyParams{1U, 0U, 0U, 0U};
+            for (uint64_t tile = 0UL; tile * DATACOPY_MAX_BLOCK_LEN < subLen; tile++) {
+                uint64_t tileStart = subStart + tile * DATACOPY_MAX_BLOCK_LEN;
+                uint64_t remaining = subLen - tile * DATACOPY_MAX_BLOCK_LEN;
+                uint64_t tileLen = (remaining >= DATACOPY_MAX_BLOCK_LEN) ? DATACOPY_MAX_BLOCK_LEN : remaining;
+
+                DataCopyParams dataCopyParams{static_cast<uint16_t>(tileLen), 0U, 0U, 0U};
                 DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
-                int32_t readEvent = 0;
-                int32_t writeEvent = 0;
 
-                uint64_t firstLen = (tileNum == 1UL) ? totalCnt : DATACOPY_MAX_BLOCK_LEN;
-                dataCopyParams.blockLen = static_cast<uint16_t>(firstLen);
-                // DataCopyPad(ubBufA, outputPermuteSrcBuffer_[srcOffset], dataCopyParams, dataCopyPadParams);
-                readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
+                DataCopyPad(ubBuf, outputPermuteSrcBuffer_[srcOffset + tileStart],
+                            dataCopyParams, dataCopyPadParams);
+                int32_t readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
                 SetFlag<HardEvent::MTE2_MTE3>(readEvent);
                 WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
 
-                if (tileNum == 1UL) {
-                    // DataCopyPad(outputPermuteDstBuffer_[dstOffset], ubBufA, dataCopyParams);
-                    writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
-                    SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
-                    WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
-                } else {
-                    for (uint64_t tile = 1UL; tile < tileNum; tile++) {
-                        uint64_t realLength = (tile == tileNum - 1UL) ? (totalCnt - tile * DATACOPY_MAX_BLOCK_LEN) : DATACOPY_MAX_BLOCK_LEN;
-                        dataCopyParams.blockLen = static_cast<uint16_t>(realLength);
-                        LocalTensor<hcclDataType> &readBuf = (tile % 2UL == 1UL) ? ubBufB : ubBufA;
-                        LocalTensor<hcclDataType> &writeBuf = (tile % 2UL == 1UL) ? ubBufA : ubBufB;
-                        // DataCopyPad(readBuf, outputPermuteSrcBuffer_[srcOffset + tile * DATACOPY_MAX_BLOCK_LEN],
-                        //             dataCopyParams, dataCopyPadParams);
-                        // DataCopyPad(outputPermuteDstBuffer_[dstOffset + (tile - 1UL) * DATACOPY_MAX_BLOCK_LEN],
-                        //             writeBuf, dataCopyParams);
-                        readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
-                        SetFlag<HardEvent::MTE2_MTE3>(readEvent);
-                        WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
-                        writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
-                        SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
-                        WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
-                    }
-                    uint64_t lastLen = totalCnt - (tileNum - 1UL) * DATACOPY_MAX_BLOCK_LEN;
-                    dataCopyParams.blockLen = static_cast<uint16_t>(lastLen);
-                    LocalTensor<hcclDataType> &lastBuf = ((tileNum - 1UL) % 2UL == 0UL) ? ubBufA : ubBufB;
-                    // DataCopyPad(outputPermuteDstBuffer_[dstOffset + (tileNum - 1UL) * DATACOPY_MAX_BLOCK_LEN],
-                    //             lastBuf, dataCopyParams);
-                    writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
-                    SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
-                    WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
-                }
+                DataCopyPad(outputPermuteDstBuffer_[dstOffset + tileStart], ubBuf, dataCopyParams);
+                int32_t writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
+                SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
             }
         }
 
         uint64_t turnTotalData = 0UL;
-        for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
-            for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
-                turnTotalData += static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
-            }
+        for (uint32_t pairIdx = 0U; pairIdx < totalPairs; pairIdx++) {
+            uint32_t localIdx  = pairIdx % realCombineSize;
+            uint32_t rankIndex = pairIdx / realCombineSize;
+            turnTotalData += static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
         }
-        // DumpTensor(outputPermuteDstBuffer_[outputPermuteDstBaseOffset_], 200U, 16U);
-        AscendC::printf("[LBH] PermuteOutput turn=%u done turnTotalData=%lu newSrcBase=%lu newDstBase=%lu\n",
-            turnIdx, turnTotalData, outputPermuteSrcBaseOffset_ + turnTotalData, outputPermuteDstBaseOffset_ + turnTotalData);
         outputPermuteSrcBaseOffset_ += turnTotalData;
         outputPermuteDstBaseOffset_ += turnTotalData;
+
+        SyncAll<true>();
     }
 
     __aicore__ inline void End()
