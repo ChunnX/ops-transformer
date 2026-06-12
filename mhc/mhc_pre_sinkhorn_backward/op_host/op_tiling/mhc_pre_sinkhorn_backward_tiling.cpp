@@ -128,7 +128,8 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                         gradHResShape.GetDim(2) != n || gradHResShape.GetDim(3) != n,
                     OPS_REPORT_VECTOR_INNER_ERR(
                         opName,
-                        "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), but got (%ld, %ld, %ld, %ld)",
+                        "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), "
+                        "but got (%ld, %ld, %ld, %ld)",
                         batchSize, seqLength, n, n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
                         gradHResShape.GetDim(2), gradHResShape.GetDim(3)),
                     return ge::GRAPH_FAILED);
