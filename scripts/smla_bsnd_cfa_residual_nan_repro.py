@@ -8,10 +8,12 @@
 #   If cmp_kv padding rows are filled with NaN, the output must still be finite.
 
 import argparse
+import importlib.util
 import json
 import math
 import pathlib
 import sys
+import types
 from typing import Dict, List
 
 import torch
@@ -24,9 +26,38 @@ def add_torch_extension_to_path(repo_root: pathlib.Path) -> None:
         sys.path.insert(0, str(torch_extension))
 
 
-def import_smla_ops() -> None:
-    import npu_ops_transformer.ops.sparse_flash_mla_metadata  # noqa: F401
-    import npu_ops_transformer.ops.sparse_flash_mla  # noqa: F401
+def load_module(module_name: str, module_path: pathlib.Path):
+    spec = importlib.util.spec_from_file_location(module_name, str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def import_smla_ops(repo_root: pathlib.Path) -> None:
+    package_root = repo_root / "torch_extension" / "npu_ops_transformer"
+
+    # Avoid importing npu_ops_transformer.__init__, because it imports all ops and
+    # triggers unrelated JIT builds such as comm_context. The repro only needs SMLA.
+    pkg = types.ModuleType("npu_ops_transformer")
+    pkg.__file__ = str(package_root / "__init__.py")
+    pkg.__path__ = [str(package_root)]
+    sys.modules["npu_ops_transformer"] = pkg
+
+    op_builder_pkg = types.ModuleType("npu_ops_transformer.op_builder")
+    op_builder_pkg.__path__ = [str(package_root / "op_builder")]
+    sys.modules["npu_ops_transformer.op_builder"] = op_builder_pkg
+
+    ops_pkg = types.ModuleType("npu_ops_transformer.ops")
+    ops_pkg.__path__ = [str(package_root / "ops")]
+    sys.modules["npu_ops_transformer.ops"] = ops_pkg
+
+    load_module("npu_ops_transformer.op_builder.builder", package_root / "op_builder" / "builder.py")
+    load_module(
+        "npu_ops_transformer.ops.sparse_flash_mla_metadata",
+        package_root / "ops" / "sparse_flash_mla_metadata.py",
+    )
+    load_module("npu_ops_transformer.ops.sparse_flash_mla", package_root / "ops" / "sparse_flash_mla.py")
 
 
 def make_tensor_with_stride_padding(shape, dtype, device, scale=0.02, pad_stride=0):
@@ -188,7 +219,7 @@ def main():
         args.softmax_scale = 1.0 / math.sqrt(args.head_dim)
 
     add_torch_extension_to_path(args.repo_root)
-    import_smla_ops()
+    import_smla_ops(args.repo_root)
     torch.npu.set_device(args.device)
 
     expected_ori_len = args.cmp_act_len * args.cmp_ratio + args.cmp_residual
