@@ -41,7 +41,7 @@ public:
     __aicore__ inline SIVector(){};
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);
     __aicore__ inline void ProcessTopK(const SICommon::RunInfo &info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop);
-    __aicore__ inline void ProcessDirectOutput(const SICommon::RunInfo &info);
+    __aicore__ inline void ProcessDirectOutput(const SICommon::TempLoopInfo &tempLoopInfo, uint32_t gS1Idx);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct SICommon::ConstInfo &constInfo,
                                       const StemIndexerTilingData *__restrict tilingData);
@@ -53,7 +53,7 @@ public:
     __aicore__ inline void FreeEventID();
 
 protected:
-    GlobalTensor<float> vbiasGm;
+    GlobalTensor<float> vBiasGm;
     GlobalTensor<int32_t> numPromptTokensGm;
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> sparseSeqLenGm;
@@ -82,15 +82,9 @@ private:
     // tmp buff for vector
     TBuf<TPosition::VECCALC> resMm1Buf_;
     LocalTensor<QK_T> resMm1UB_;
-    //tmp buff for weight
-    TBuf<TPosition::VECCALC> weightBuf_;
-    LocalTensor<float> weightUB_;
-    //tmp buff for kScale
-    TBuf<TPosition::VECCALC> kScaleBuf_;
-    LocalTensor<float> kScaleUB_;
-    //tmp buff for qScale
-    TBuf<TPosition::VECCALC> qScaleBuf_;
-    LocalTensor<float> qScaleUB_;
+    // tmp buff for vbias
+    TBuf<TPosition::VECCALC> vBiasBuf_;
+    LocalTensor<float> vBiasLocal_;
     //tmp buff for out
     TBuf<TPosition::VECCALC> outBuf_;
     LocalTensor<SCORE_T> vec1OutUB_;
@@ -146,22 +140,19 @@ private:
     uint32_t initialBlocks_ = 4U;
     uint32_t windowSize_ = 4U;
     struct SICommon::ConstInfo constInfo_;
-    topk::LITopk<SCORE_T> topkOp_;
+    SIKernel::SITopk<SCORE_T> topkOp_;
 };
 
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));   //大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
-    resMm1UB_ = resMm1Buf_.Get<QK_T>();//qk
-    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * gSize_* sizeof(float));   // 大小：2(开dB) * 2 * 64 * 2 = 0.5KB 
-    weightUB_ = weightBuf_.Get<float>();//weight
-    pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * sizeof(float));                   // 大小：2(开dB) * 128 * 4 = 1KB
-    kScaleUB_ = kScaleBuf_.Get<float>();//kScale
-    pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, 2) * gSize_* sizeof(float));      // 大小：2(开dB) * 2 * 64 * 4 = 1KB
-    qScaleUB_ = qScaleBuf_.Get<float>();//qScale
-    pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));      // 大小：2(开dB) * 2 * 128 * 4 = 2KB
-    vec1OutUB_ = outBuf_.Get<SCORE_T>();//out
+    resMm1UB_ = resMm1Buf_.Get<QK_T>();// qk
+    // TODO kbSize获取
+    pipe->InitBuffer(vBiasBuf_, 2 * s2BaseSize_ * sizeof(float));   // 大小：2(开dB) * kbSize(256) * 4 = 4KB 
+    vBiasLocal_ = vBiasBuf_.Get<float>();                      // vBias
+    pipe->InitBuffer(outBuf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(SCORE_T));      // 大小：2(开dB) * 2 * 128 * 4 = 2KB
+    vec1OutUB_ = outBuf_.Get<SCORE_T>();// out
 
     // Topk
     pipe->InitBuffer(mrgValueBuf_, constInfo_.mBaseSize / 2 * (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
@@ -188,8 +179,6 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     // indice_len
     pipe->InitBuffer(indiceLenBuf_, constInfo_.mBaseSize * sizeof(uint32_t));
     indiceLenLocal_ = indiceLenBuf_.Get<uint32_t>();
-
-    Duplicate(kScaleUB_, float(0), 2 * s2BaseSize_);
 }
 
 template <typename SIT>
@@ -222,10 +211,10 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::InitVecInputTensor(GlobalTensor<float> vbiasGm, GlobalTensor<int32_t> numPromptTokensGm,
+__aicore__ inline void SIVector<SIT>::InitVecInputTensor(GlobalTensor<float> vBiasGm, GlobalTensor<int32_t> numPromptTokensGm,
                                               GlobalTensor<int32_t> sparseIndicesGm, GlobalTensor<int32_t> sparseSeqLenGm)
 {
-    this->vbiasGm = vbiasGm;
+    this->vBiasGm = vBiasGm;
     this->numPromptTokensGm = numPromptTokensGm;
     this->sparseIndicesGm = sparseIndicesGm;
     this->sparseSeqLenGm = sparseSeqLenGm;
@@ -289,11 +278,10 @@ template <typename SIT>
 __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
 {
     auto pingpong = (info.loop % 2);
-    auto s1BaseSizePerAIV = CeilDiv(s1BaseSize_, 2);
-    int64_t curS1Idx = info.gS1Idx * s1BaseSize_;	 
+    int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
+    int64_t gS1BasePerVecSize_ = CeilDiv(constInfo_.mBaseSize, 2); // 当前每个vec核上分到的mbase/2行
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
     int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;	 
-    int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
     int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
 
     if (curAivS1ProcNum == 0) {
@@ -302,54 +290,31 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
         return;
     }
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
-    //weightsGm --> weightUB_ 
-    int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
-    DataCopyPadExtParams<float> padWeightsParams{false, 0, 0, 0};
-    DataCopyExtParams qwDataCopyExtParams;
-    qwDataCopyExtParams.blockCount = curAivS1ProcNum;
-    qwDataCopyExtParams.blockLen = gSize_ * sizeof(float);
-    qwDataCopyExtParams.srcStride = 0;
-    qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
-    DataCopyPad(weightUB_[pingpong * (UB_BANK_STRIDE / sizeof(float))], 
-                weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
+    // vBiasGm --> vBiasLocal_ 搬运vBias
+    int64_t vBiasGmOffset = info.tensorVBiasOffset + curS2Idx;
+    DataCopyPadExtParams<float> padVBiasParams{false, 0, 0, 0};
+    DataCopyExtParams vBiasDataCopyExtParams;
+    vBiasDataCopyExtParams.blockCount = 1;
+    vBiasDataCopyExtParams.blockLen = s2BaseSize_ * sizeof(float);
+    vBiasDataCopyExtParams.srcStride = 0;
+    vBiasDataCopyExtParams.dstStride = 0;
+    DataCopyPad(vBiasLocal_[pingpong * s2BaseSize_], vBiasGm[vBiasGmOffset], vBiasDataCopyExtParams, padVBiasParams);
 
-    //qScaleGm  -->  qScaleUB_
-    DataCopyPadExtParams<float> padQScaleParams{false, 0, 0, 0};
-    DataCopyPad(qScaleUB_[pingpong * (UB_BANK_STRIDE / sizeof(float))],
-                qScaleGm[weightGmOffset], qwDataCopyExtParams, padQScaleParams);
-
+    SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
+    WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
 
     //CV同步
-    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   //V核等C核计算完mm1，mm1Res已搬运到UB
+    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + pingpong);   //V核等C核计算完mm1，mm1Res已搬运到U
 
-    static_assert(std::is_same_v<SCORE_T, uint16_t>);
-    auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCORE_T))];
-    auto weightBase = weightUB_[pingpong * (UB_BANK_STRIDE / sizeof(float))];
-    auto qScaleBase = qScaleUB_[pingpong * (UB_BANK_STRIDE / sizeof(float))];
-    auto kScaleBase = kScaleUB_[pingpong * s2BaseSize_];
+    auto qkBase = resMm1UB_[pingpong * (gS1BasePerVecSize_ * s2BaseSize_)];
+    auto outBase = mrgValueLocal_[MAX_TOPK_COUNT];
+    auto vBiasBase = vBiasLocal_[pingpong * s2BaseSize_];
 
-    auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
-    auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / 2 * constInfo_.mBaseSize;
-    vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
-                                        qkBase, qkVLstride, (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)), 
-                                        weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
-                                        kScaleBase, (uint32_t)0,
-                                        qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
-                                        gSize_, curAivS1ProcNum);
+    vector1::MulRSquareAndAddVBiasVF(outBase, qkBase, vBiasBase, constInfo_.rSquare, gS1BasePerVecSize_, s2BaseSize_, (trunkLen_ + MAX_TOPK_COUNT));
+
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
-    SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
-    WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
-    //outUB_ --->  scoreGm
-    int64_t vec1OutGmOffset = blockId_ % 2 == 0 ? curS2Idx : 
-                            s1BaseSizePerAIV * SICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
-    DataCopyExtParams copyOutParams;
-    copyOutParams.blockCount = curAivS1ProcNum;
-    copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
-    copyOutParams.srcStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
-    copyOutParams.dstStride = (SICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(SCORE_T);
-    DataCopyPad(scoreGm[vec1OutGmOffset], outBase, copyOutParams);
-    SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
-    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + pingpong);
+    
+    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   //V核处理完，通知C核可以把mm1Res搬运到UB
 }
 
 template <typename SIT>
@@ -745,5 +710,5 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         }
     }
 }
-}  // namespace QLIKernel
+}  // namespace SIKernel
 #endif

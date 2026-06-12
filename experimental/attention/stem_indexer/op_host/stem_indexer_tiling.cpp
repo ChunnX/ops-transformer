@@ -344,7 +344,7 @@ void StemIndexerInfoParser::GenerateInfo(StemIndexerTilingInfo &stemInfo)
     stemInfo.kBlockNumRateLarge = *opParamInfo_.kBlockNumRateLarge;
     stemInfo.kBlockNumBiasLarge = static_cast<uint32_t>(*opParamInfo_.kBlockNumBiasLarge);
     uint32_t stemRepTokens = stemInfo.stemBlockSize / stemInfo.stemStride;
-    stemInfo.scoreScale = 1.0f / static_cast<float>(stemRepTokens * stemRepTokens);
+    stemInfo.rSquare = 1.0f / static_cast<float>(stemRepTokens * stemRepTokens);
     stemInfo.inputQType = inputQType_;
     stemInfo.inputKType = inputKType_;
     stemInfo.outputType = outputType_;
@@ -403,7 +403,7 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     tilingData_.set_windowSize(tilingInfo->windowSize);
     tilingData_.set_mBaseSize(STEM_M_BASE_SIZE);
     tilingData_.set_nBaseSize(STEM_N_BASE_SIZE);
-    tilingData_.set_scoreScale(tilingInfo->scoreScale);
+    tilingData_.set_rSquare(tilingInfo->rSquare);
     tilingData_.set_alpha(tilingInfo->alpha);
     tilingData_.set_kBlockNumRateMedium(tilingInfo->kBlockNumRateMedium);
     tilingData_.set_kBlockNumBiasMedium(tilingInfo->kBlockNumBiasMedium);

@@ -94,7 +94,7 @@ TILING_DATA_FIELD_DEF(uint32_t, initialBlocks)
 TILING_DATA_FIELD_DEF(uint32_t, windowSize)
 TILING_DATA_FIELD_DEF(uint32_t, mBaseSize)
 TILING_DATA_FIELD_DEF(uint32_t, nBaseSize)
-TILING_DATA_FIELD_DEF(float, scoreScale)
+TILING_DATA_FIELD_DEF(float, rSquare)
 TILING_DATA_FIELD_DEF(float, alpha)
 TILING_DATA_FIELD_DEF(float, kBlockNumRateMedium)
 TILING_DATA_FIELD_DEF(uint32_t, kBlockNumBiasMedium)
@@ -151,7 +151,7 @@ public:
     uint32_t kBlockNumBiasMedium = 30;
     float kBlockNumRateLarge = K_BLOCK_NUM_RATE_LARGE_LIMIT;
     uint32_t kBlockNumBiasLarge = 30;
-    float scoreScale = 1.0f / 64.0f;
+    float rSquare = 1.0f / 64.0f;
     ge::DataType inputQType = ge::DT_BF16;
     ge::DataType inputKType = ge::DT_BF16;
     ge::DataType outputType = ge::DT_INT32;
