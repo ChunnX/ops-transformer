@@ -545,7 +545,7 @@ class GeneralizedQLIV2:
                 S2 = math.floor(actualSeqLengthsK[i])
             next_tokens = S2-S1
             next_tokens_list.append(next_tokens)
-            act_k = actualSeqLengthsK[i] *  cmp_ratio + cmp_residual_k
+            act_k = actualSeqLengthsK[i] *  cmp_ratio + cmp_residual_k[i]
             atten_masks = self.create_mask(m_shape, act_k, S1)
             re_mask_batch.append(atten_masks)
         re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
