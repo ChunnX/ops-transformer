@@ -28,6 +28,11 @@ static bool IsPowerOfTwoInRangeSas(int64_t value, int64_t minValue, int64_t maxV
     return value >= minValue && value <= maxValue && ((value & (value - 1)) == 0);
 }
 
+static bool IsPaLayoutSas(const char* layout)
+{
+    return layout != nullptr && (strcmp(layout, "PA_BNBD") == 0 || strcmp(layout, "PA_BBND") == 0);
+}
+
 aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t numHeadsQ, int64_t numHeadsKv,
                                 int64_t cmpTopK, int64_t cmpRatio, int64_t oriMaskMode, int64_t oriWinLeft,
                                 char* layoutQOptional, char* layoutKvOptional, bool hasCmpKv)
@@ -53,6 +58,10 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t n
     }
     if (numHeadsKv <= 0 || numHeadsKv > 128) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_kv should be in range [1, 128], but got %ld", numHeadsKv);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (numHeadsKv != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_kv should only be 1, but got %ld", numHeadsKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (numHeadsQ % numHeadsKv != 0) {
@@ -98,9 +107,9 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t n
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_kv 校验
-    if ((strcmp(layoutKvOptional, "PA_BNBD") != 0) && (strcmp(layoutKvOptional, "TND") != 0) &&
+    if (!IsPaLayoutSas(layoutKvOptional) && (strcmp(layoutKvOptional, "TND") != 0) &&
         (strcmp(layoutKvOptional, "BSND") != 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BNBD!");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND, PA_BNBD or PA_BBND!");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -122,10 +131,10 @@ aclnnStatus CheckExistenceSas(char* layoutQOptional, char* layoutKvOptional, con
         }
     }
     // seqused_ori_kv 存在性校验
-    if (strcmp(layoutKvOptional, "PA_BNBD") == 0) {
+    if (IsPaLayoutSas(layoutKvOptional)) {
         auto ret = aclGetViewShape(sequsedOriKvOptional, &viewDims, &viewDimsNum);
         if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_kv PA_BNBD, seqused_ori_kv must be provided!");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For PA layout_kv, seqused_ori_kv must be provided!");
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }

@@ -143,9 +143,10 @@ ge::graphStatus SMLAInfoParser::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr, OP_LOGE(opName_, "tensor of oriKv is nullptr"),
                 return ge::GRAPH_FAILED);
-    if (opParamInfo_.layoutKv == "PA_BBND") {
+    const std::string layoutKv(opParamInfo_.layoutKv == nullptr ? "" : opParamInfo_.layoutKv);
+    if (layoutKv == "PA_BBND" || layoutKv == "PA_BNBD") {
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
-                    OP_LOGE(opName_, "tensor of oriBlockTable is nullptr when layoutKv is PA_BBND"),
+                    OP_LOGE(opName_, "tensor of oriBlockTable is nullptr when layoutKv is PA layout"),
                     return ge::GRAPH_FAILED);
     }
     if (perfMode_ == SMLATemplateMode::CFA_TEMPLATE_MODE) {
@@ -360,6 +361,7 @@ ge::graphStatus SMLAInfoParser::GetKvLayout()
 {
     const map<string, SMLALayout> layoutKVMap = {
         {"PA_BBND",     SMLALayout::PA_BBND},
+        {"PA_BNBD",     SMLALayout::PA_BBND},
         {"TND",       SMLALayout::TND},
         {"BSND",      SMLALayout::BSND},
     };

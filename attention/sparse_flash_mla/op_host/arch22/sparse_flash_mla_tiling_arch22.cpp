@@ -357,6 +357,7 @@ ge::graphStatus SMLAInfoParser::GetKvLayout()
 {
     const map<string, SMLALayout> layoutKVMap = {
         {"PA_BBND",     SMLALayout::PA_BBND},
+        {"PA_BNBD",     SMLALayout::PA_BBND},
         {"BSND",     SMLALayout::BSND},
         {"TND",     SMLALayout::TND},
     };
