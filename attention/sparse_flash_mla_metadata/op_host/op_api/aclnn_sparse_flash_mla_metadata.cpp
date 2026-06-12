@@ -29,6 +29,22 @@
 #include "opdev/make_op_executor.h"
 #include "../sparse_flash_mla_metadata_check.h"
 
+namespace {
+const aclTensor* OptionalContiguous(const aclTensor* tensor, aclOpExecutor* executor, const char* tensorName,
+                                    aclnnStatus &status)
+{
+    if (tensor == nullptr) {
+        return nullptr;
+    }
+    auto contiguousTensor = l0op::Contiguous(tensor, executor);
+    if (contiguousTensor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "%s contiguous is none", tensorName);
+        status = ACLNN_ERR_INNER_NULLPTR;
+    }
+    return contiguousTensor;
+}
+} // namespace
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -51,10 +67,12 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
+    int64_t effectiveCmpRatio = (cmpRatio == 0) ? 1 : cmpRatio;
+    bool effectiveHasCmpKv = hasCmpKv && effectiveCmpRatio > 1;
     auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, numHeadsQ, numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenKv,
-                           oriTopK, cmpTopK, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-                           layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, metadata);
+                           oriTopK, cmpTopK, effectiveCmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
+                           layoutQOptional, layoutKvOptional, hasOriKv, effectiveHasCmpKv, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
@@ -62,42 +80,29 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
-    auto cuSeqLensQOptionalContiguous = l0op::Contiguous(cuSeqLensQOptional, uniqueExecutor.get());
-    if (cuSeqLensQOptionalContiguous == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_q contiguous is none");
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-
-    auto cuSeqLensOriKvOptionalContiguous = l0op::Contiguous(cuSeqLensOriKvOptional, uniqueExecutor.get());
-    if (cuSeqLensOriKvOptionalContiguous == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_ori_kv contiguous is none");
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-
-    auto cuSeqLensCmpKvOptionalContiguous = l0op::Contiguous(cuSeqLensCmpKvOptional, uniqueExecutor.get());
-    if (cuSeqLensCmpKvOptionalContiguous == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_cmp_kv contiguous is none");
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-
-    auto sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
-    if (sequsedQOptionalContiguous == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_q contiguous is none");
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-
-    auto sequsedOriKvOptionalContiguous = l0op::Contiguous(sequsedOriKvOptional, uniqueExecutor.get());
-    if (sequsedOriKvOptionalContiguous == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_ori_kv contiguous is none");
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
+    aclnnStatus contiguousStatus = ACLNN_SUCCESS;
+    auto cuSeqLensQOptionalContiguous =
+        OptionalContiguous(cuSeqLensQOptional, uniqueExecutor.get(), "cu_seqlens_q", contiguousStatus);
+    CHECK_RET(contiguousStatus == ACLNN_SUCCESS, contiguousStatus);
+    auto cuSeqLensOriKvOptionalContiguous =
+        OptionalContiguous(cuSeqLensOriKvOptional, uniqueExecutor.get(), "cu_seqlens_ori_kv", contiguousStatus);
+    CHECK_RET(contiguousStatus == ACLNN_SUCCESS, contiguousStatus);
+    auto cuSeqLensCmpKvOptionalContiguous =
+        OptionalContiguous(cuSeqLensCmpKvOptional, uniqueExecutor.get(), "cu_seqlens_cmp_kv", contiguousStatus);
+    CHECK_RET(contiguousStatus == ACLNN_SUCCESS, contiguousStatus);
+    auto sequsedQOptionalContiguous =
+        OptionalContiguous(sequsedQOptional, uniqueExecutor.get(), "seqused_q", contiguousStatus);
+    CHECK_RET(contiguousStatus == ACLNN_SUCCESS, contiguousStatus);
+    auto sequsedOriKvOptionalContiguous =
+        OptionalContiguous(sequsedOriKvOptional, uniqueExecutor.get(), "seqused_ori_kv", contiguousStatus);
+    CHECK_RET(contiguousStatus == ACLNN_SUCCESS, contiguousStatus);
 
     auto output = l0op::SparseFlashMlaMetadata(
         cuSeqLensQOptionalContiguous, cuSeqLensOriKvOptionalContiguous, cuSeqLensCmpKvOptionalContiguous,
         sequsedQOptionalContiguous, sequsedOriKvOptionalContiguous, numHeadsQ, numHeadsKv, headDim, batchSize,
-        maxSeqlenQ, maxSeqlenKv, oriTopK, cmpTopK, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-        layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, socVersion, aicCoreNum, aivCoreNum, metadata,
-        uniqueExecutor.get());
+        maxSeqlenQ, maxSeqlenKv, oriTopK, cmpTopK, effectiveCmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft,
+        oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, effectiveHasCmpKv, socVersion, aicCoreNum,
+        aivCoreNum, metadata, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

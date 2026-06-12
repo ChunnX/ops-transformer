@@ -287,7 +287,7 @@ inline aclDataType GetAclDataType(int64_t t)
 
 inline const char *GetOpApiLibName(void)
 {
-    return "libopapi.so";
+    return "libopapi_transformer.so";
 }
 
 inline const char *GetCustOpApiLibName(void)
