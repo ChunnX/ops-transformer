@@ -27,6 +27,7 @@ class L2AclnnMoeEpDispatchTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
         cout << "L2AclnnMoeEpDispatchTest SetUp" << endl;
     }
     static void TearDownTestCase()
@@ -59,12 +60,13 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchBasic)
     TensorDesc recvSrcMetaInternalDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeEpDispatch,
-                        INPUT(contextDesc, xDesc, topkIdxDesc, topkWeightsDesc, TensorDesc(), epWorldSize, epRankId,
+                        INPUT(contextDesc, xDesc, topkIdxDesc, topkWeightsDesc, nullptr, epWorldSize, epRankId,
                               numExperts, numMaxTokensPerRank, cclBufferSize, expertAlignment, true),
                         OUTPUT(numRecvPerRankHpDesc, numRecvPerExpertHpDesc, dstSlotIdxDesc, recvSrcMetaInternalDesc));
 
     uint64_t workspaceSize = 0;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
@@ -83,7 +85,7 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchNullTopk)
     TensorDesc nullDesc;
 
     auto ut = OP_API_UT(aclnnMoeEpDispatch,
-                        INPUT(contextDesc, xDesc, nullDesc, nullDesc, nullDesc, epWorldSize, 0, numExperts,
+                        INPUT(contextDesc, xDesc, nullptr, nullDesc, nullptr, epWorldSize, 0, numExperts,
                               numMaxTokensPerRank, cclBufferSize, 1, true),
                         OUTPUT(TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND),
                                TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND),
@@ -91,7 +93,8 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchNullTopk)
                                TensorDesc({epWorldSize * numMaxTokensPerRank, 3}, ACL_INT32, ACL_FORMAT_ND)));
 
     uint64_t workspaceSize = 0;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
@@ -108,12 +111,13 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchInvalidEpWorldSize)
 
     auto ut = OP_API_UT(aclnnMoeEpDispatch,
                         INPUT(contextDesc, xDesc, topkIdxDesc, TensorDesc({numTokens, topK}, ACL_FLOAT, ACL_FORMAT_ND),
-                              TensorDesc(), 1, 0, 8, 2048, cclBufferSize, 1, true),
+                              nullptr, 1, 0, 8, 2048, cclBufferSize, 1, true),
                         OUTPUT(TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND), TensorDesc({8}, ACL_INT64, ACL_FORMAT_ND),
                                TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND),
                                TensorDesc({2048, 3}, ACL_INT32, ACL_FORMAT_ND)));
 
     uint64_t workspaceSize = 0;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
