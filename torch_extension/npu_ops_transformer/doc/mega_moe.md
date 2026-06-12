@@ -9,15 +9,93 @@
 
 ## 功能说明
 
-    Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为，从而使通信与张量核心计算实现重叠。
+    Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为单个算子，实现计算和通信的重叠
 
 -   API功能：
 
-    需与[get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明)配套使用，该算子将 `MoE（Mixture of Experts）`以及 `FFN（Feed-Forward Network）`的完整计算流程融合为单个算子，实现 `Dispatch + Linear1 + SwiGLUQuant + Linear2 + Combine` 的端到端融合计算。
+    需与[get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明)配套使用，该算子将 `MoE（Mixture of Experts）`以及 `FFN（Feed-Forward Network）`的完整计算流程融合为单个算子，实现 `Dispatch + Linear1 + SwiGLU + Linear2 + Combine` 的端到端融合计算。
 
--   计算公式：
-    Mega Moe
-    $$y=(SwiGLU(Clamp(x * l1_weights + l1_bias, activation_clamp)) * l2_weights + l2_bias$$
+-   基础计算公式如下（详细公式请参见计算公式）：
+    ### 输入与维度约定
+
+    - $\mathbf{x} \in \mathbb{R}^{\text{num\_tokens} \times \text{hidden}}$
+    - $\text{topk\_idx} \in \mathbb{Z}^{\text{num\_tokens} \times \text{num\_topk}}$
+    - $\text{topk\_weights} \in \mathbb{R}^{\text{num\_tokens} \times \text{num\_topk}}$
+    - $\text{l1\_weights} \in \mathbb{R}^{\text{num\_experts} \times \text{hidden} \times 2\cdot\text{intermediate\_hidden}}$
+    - $\text{l2\_weights} \in \mathbb{R}^{\text{num\_experts} \times \text{intermediate\_hidden} \times \text{hidden}}$
+
+    ---
+
+    ### 对 token $i\;(0 \le i < \text{num\_tokens})$
+
+    记它选择的专家编号与路由权重为  
+
+    $$
+    e_k = \text{topk\_idx}[i,k],\qquad
+    w_k = \text{topk\_weights}[i,k],\qquad k = 1,\dots,\text{num\_topk}
+    $$
+
+    ---
+
+    #### 🔹 Dispatch（分发）
+
+    Token $i$ 的特征向量 $\mathbf{x}_i \in \mathbb{R}^{\text{hidden}}$ 被**复制**给 $\text{num\_topk}$ 个专家 $e_k$，每个专家关联一个权重 $w_k$。
+
+    ---
+
+    #### 🔹 专家 $e_k$ 的内部计算（针对该单一 token）
+
+    **Linear1 投影（gate + up）**
+
+    $$
+    \mathbf{h}^{(k)} = \mathbf{x}_i \cdot \text{l1\_weights}[e_k]
+    \quad\bigl(\in \mathbb{R}^{2\cdot\text{intermediate\_hidden}}\bigr)
+    $$
+
+    **拆分 gate 与 up**
+
+    $$
+    \mathbf{h}_{\text{gate}}^{(k)} = \mathbf{h}^{(k)}\bigl[:\text{intermediate\_hidden}\bigr],\qquad
+    \mathbf{h}_{\text{up}}^{(k)} = \mathbf{h}^{(k)}\bigl[\text{intermediate\_hidden}:\bigr]
+    $$
+
+    **SwiGLU 激活**
+
+    $$
+    \mathbf{a}^{(k)} = \text{SiLU}\bigl(\mathbf{h}_{\text{gate}}^{(k)}\bigr) \;\odot\; \mathbf{h}_{\text{up}}^{(k)}
+    \quad\bigl(\in \mathbb{R}^{\text{intermediate\_hidden}}\bigr)
+    $$
+
+    其中 $\text{SiLU}(z) = z \cdot \sigma(z)$，$\odot$ 为逐元素乘法。
+
+    **Linear2 投影（down projection）**
+
+    $$
+    \mathbf{y}^{(k)} = \mathbf{a}^{(k)} \cdot \text{l2\_weights}[e_k]
+    \quad\bigl(\in \mathbb{R}^{\text{hidden}}\bigr)
+    $$
+
+    ---
+
+    #### 🔹 Combine（聚合）
+
+    Token $i$ 将所有专家的输出按其门控权重加权求和：
+
+    $$
+    \mathbf{y}_i = \sum_{k=1}^{\text{num\_topk}} w_k \;\cdot\; \mathbf{y}^{(k)}
+    \qquad\bigl(\in \mathbb{R}^{\text{hidden}}\bigr)
+    $$
+
+    所有 token 的结果堆叠为最终输出 $\mathbf{Y} \in \mathbb{R}^{\text{num\_tokens} \times \text{hidden}}$。
+
+    ---
+
+    ### 流程说明
+
+    - **Dispatch**：同一个 $\mathbf{x}_i$ 被同时送入 $\text{num\_topk}$ 个专家，展开多条独立计算流。
+    - **专家计算**：每个专家依次执行 Linear1（合并 gate/up）、SwiGLU 激活、Linear2（down projection）。
+    - **Combine**：各专家的输出 $\mathbf{y}^{(k)}$ 通过门控权重 $w_k$ 加权累加，恢复为 token $i$ 的最终表示。
+    $$y = (\text{SwiGLU}(x \cdot l1\_weights)) \cdot l2\_weights$$
 
     MegaMoe 是一个多阶段融合的 MoE 算子，在专家并行场景下依次完成 Token 路由分发与量化、分组矩阵乘法 + SwiGLU 激活、二次分组矩阵乘法与跨 Rank 聚合、以及加权求和，完整计算流程可以分解为以下四个阶段。
     
