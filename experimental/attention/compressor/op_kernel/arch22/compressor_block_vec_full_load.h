@@ -926,8 +926,7 @@ CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T>
     LocalTensor<X_T> outputUb = comperssoredUb.ReinterpretCast<X_T>();
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, totalElements);
     PipeBarrier<PIPE_V>();
-    DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize,
-                        int constInfo_.headDim);
+    DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize, constInfo_.headDim);
 }
 
 template <typename COMP>
