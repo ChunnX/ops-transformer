@@ -51,7 +51,7 @@ public:
         // MX-FP8 两函数式: fp32 中间 buffer (InvScale 写, Quant 读) + invScale 广播 buffer
         pipe->InitBuffer(yFp32Buf, tilingData->rowFactor * RoundUp<float>(tilingData->d) * sizeof(float));
         pipe->InitBuffer(
-            invScaleBuf, tilingData->rowFactor * RoundUp<float>(CeilDiv(tilingData->d, 8)) * sizeof(float));
+            invScaleBuf, tilingData->rowFactor * CeilDiv(tilingData->d, 128) * 16 * sizeof(float));
         yFp32Local = yFp32Buf.Get<float>();
         mxInvScaleLocal = invScaleBuf.Get<float>();
         AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
@@ -81,13 +81,9 @@ public:
             indexerCompressCacheLocal = indexerCompressCacheQue.template AllocTensor<T1>();
             indexerCompressCacheScaleLocal = indexerCompressCacheScaleQue.AllocTensor<T2>();
 
-            if (roundScale) {
-                VFProcessMxFp8InvScale<T0, T2, true>(
-                    yFp32Local, indexerCompressCacheScaleLocal, mxInvScaleLocal, xLocal, maxValue, 1, tilingData->d);
-            } else {
-                VFProcessMxFp8InvScale<T0, T2, false>(
-                    yFp32Local, indexerCompressCacheScaleLocal, mxInvScaleLocal, xLocal, maxValue, 1, tilingData->d);
-            }
+            // MX-FP8 scale 恒为 e8m0 (2 的幂), InvScale 只有 round 路径
+            VFProcessMxFp8InvScale<T0, T2>(
+                yFp32Local, indexerCompressCacheScaleLocal, mxInvScaleLocal, xLocal, maxValue, 1, tilingData->d);
             VFProcessMxFp8Quant<T1>(indexerCompressCacheLocal, yFp32Local, mxInvScaleLocal, 1, tilingData->d);
                 
             xQue.template FreeTensor(xLocal);

@@ -206,8 +206,9 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
         int64_t scaleSize = rowFactor_ * RoundUp(scaleCol_, perBlockScaleElemNum) * scaleByteSize * DOUBLE_BUFFER;
         int64_t tmpBufferSize = RoundUp(rowFactor_, 8) * 4;
         // MX-FP8 两函数式额外的 fp32 中间 buffer + invScale 广播 buffer (单 buffer, 非 double)
+        // invScale 每 128-chunk 固定 16 个 -> 每行 ceil(d/128)*16
         int64_t mxScratchSize = (quantMode_ == MXFP8_QUANT_MODE)
-            ? (rowFactor_ * RoundUp(d_, 8) * 4 + rowFactor_ * RoundUp(CeilDiv(d_, 8), 8) * 4)
+            ? (rowFactor_ * RoundUp(d_, 8) * 4 + rowFactor_ * CeilDiv(d_, 128) * 16 * 4)
             : 0;
         int64_t totalSize = xSize + ySize + scaleSize + tmpBufferSize + mxScratchSize;
         if (totalSize > ubSize_) {
