@@ -202,7 +202,6 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeMXFP8Fullquant(const FiaTi
     return ge::GRAPH_SUCCESS;
 }
 
-
 ge::graphStatus DequantChecker::CheckDequantScaleDtypeFullquant(const FiaTilingInfo &fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckDequantScaleDtypeMLAFullquant(fiaInfo) ||
