@@ -373,7 +373,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
         t1Size < accumS1 || t2Size < accumS2,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "query and key",
             (std::to_string(t1Size) + ", " + std::to_string(t2Size)).c_str(),
-            "The dim of query and key must be greater than or equal to the sum of actual_seq_qlen and actual_seq_kvlen"),
+            "The dim of query and key must be greater than or equal to "
+            "the sum of actual_seq_qlen and actual_seq_kvlen"),
         return false);
     uint32_t firstValidIndex = 0;
     uint32_t lastValidIndex = static_cast<uint32_t>(bSize - 1);
