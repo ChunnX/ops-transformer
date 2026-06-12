@@ -38,6 +38,8 @@ inline constexpr int64_t MQSMLA_QUANT_MODE_LOWER_BOUND = 1;
 inline constexpr int64_t MQSMLA_QUANT_MODE_UPPER_BOUND = 2;
 inline constexpr int64_t MQSMLA_CMP_RATIO_LOWER_BOUND = 1;
 inline constexpr int64_t MQSMLA_CMP_RATIO_UPPER_BOUND = 128;
+inline constexpr int64_t MQSMLA_NUM_HEADS_Q_LOWER_BOUND = 1;
+inline constexpr int64_t MQSMLA_NUM_HEADS_Q_UPPER_BOUND = 128;
 
 inline bool IsTensorExistMqsmla(const aclTensor *tensor)
 {
@@ -89,9 +91,9 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "max_seqlen_cmp_kv should be >= 0, but got %lld", maxSeqlenCmpKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // num_heads_q >= 0
-    if (numHeadsQ <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should be > 0, but got %lld", numHeadsQ);
+    // num_heads_q [1, 128]
+    if (numHeadsQ < MQSMLA_NUM_HEADS_Q_LOWER_BOUND || numHeadsQ > MQSMLA_NUM_HEADS_Q_UPPER_BOUND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should be [1, 128], but got %lld", numHeadsQ);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // num_heads_kv: 1
