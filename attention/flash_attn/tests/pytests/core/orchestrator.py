@@ -161,7 +161,8 @@ def run_case(params: dict,
              verbose_diff: bool = False,
              visualize: bool = False,
              viz_dir: str = "./viz_output",
-             fail_analysis: bool = False) -> dict:
+             fail_analysis: bool = False,
+             compare_dir: str = None) -> dict:
     spec = spec or flash_attn_inputs
     comparators = comparators or []
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
@@ -182,16 +183,33 @@ def run_case(params: dict,
                   for k, v in cpu_inputs.items()}
     primary_out = primary.compute(dev_inputs, params)
 
-    cpu_raw = golden_out["out"]
     dev_raw = primary_out["out"].cpu() if primary_out["out"].is_cuda or str(primary_out["out"].device).startswith("npu") else primary_out["out"]
-
-    cpu_out = trans_bnsd_to_layout(cpu_raw, out_layout, **params) if out_layout != "BNSD" else cpu_raw
     dev_out = dev_raw
 
-    print(f"  [compare] CPU vs {primary.name}")
-    attn_result = check_result(f"CPU_vs_{primary.name}",
-                               cpu_out.float(), dev_out.float(),
-                               except_label="CPU", comp_label=primary.name,
+    if compare_dir and case_name:
+        other_name = "gpu" if primary.name == "npu" else "npu"
+        safe_name = case_name.replace("/", "_")
+        other_path = Path(compare_dir) / safe_name / f"{other_name}_out.pt"
+        if other_path.exists():
+            other_out = torch.load(other_path, map_location="cpu", weights_only=False)
+            other_raw = other_out["out"]
+            compare_label = other_name.upper()
+            compare_target = other_raw.float()
+        else:
+            print(f"  [warn] {other_path} 不存在，退回 CPU 对比")
+            compare_label = "CPU"
+            compare_target = (trans_bnsd_to_layout(golden_out["out"], out_layout, **params)
+                              if out_layout != "BNSD" else golden_out["out"]).float()
+    else:
+        cpu_raw = golden_out["out"]
+        compare_label = "CPU"
+        compare_target = (trans_bnsd_to_layout(cpu_raw, out_layout, **params)
+                          if out_layout != "BNSD" else cpu_raw).float()
+
+    print(f"  [compare] {compare_label} vs {primary.name}")
+    attn_result = check_result(f"{compare_label}_vs_{primary.name}",
+                               compare_target, dev_out.float(),
+                               except_label=compare_label, comp_label=primary.name,
                                verbose_diff=verbose_diff)
 
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
@@ -315,89 +333,6 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
                 visualize_from_tensors(
                     cpu_out.float().numpy(),
                     dev_raw.float().numpy(),
-                    case_name=case_name,
-                    out_dir=viz_dir,
-                )
-            except Exception as e:
-                print(f"  [warn] visualize 异常: {e}")
-
-    return ret
-
-
-def run_case_compare(case_name: str, compare_dir: str, primary: Backend,
-                     verbose_diff: bool = False,
-                     visualize: bool = False,
-                     viz_dir: str = "./viz_output",
-                     fail_analysis: bool = False) -> dict:
-    """Compare mode: 加载对端输出，跑当前 primary，对比两端结果。
-    NPU 模式 → 加载 gpu_out.pt，对比 NPU vs GPU
-    GPU 模式 → 加载 npu_out.pt，对比 GPU vs NPU
-    """
-    safe_name = case_name.replace("/", "_")
-    case_dir = Path(compare_dir) / safe_name
-
-    other_name = "gpu" if primary.name == "npu" else "npu"
-    other_path = case_dir / f"{other_name}_out.pt"
-    if not other_path.exists():
-        raise FileNotFoundError(f"{other_name}_out.pt 不存在: {other_path}")
-
-    inputs, _, params = load_golden_case(case_name, compare_dir)
-    other_out = torch.load(other_path, map_location="cpu", weights_only=False)
-
-    dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
-                  for k, v in inputs.items()}
-    print(f"  [primary] {primary.name} 计算...")
-    primary_out_raw = primary.compute(dev_inputs, params)
-    primary_result = {k: v.cpu() if isinstance(v, torch.Tensor) else v
-                      for k, v in primary_out_raw.items()}
-
-    out_layout = params.get("layout_out", params.get("layout_q", "BNSD"))
-
-    other_raw = other_out["out"]
-    primary_raw = primary_result["out"]
-
-    other_cmp = trans_bnsd_to_layout(other_raw, out_layout, **params) if out_layout != "BNSD" else other_raw
-
-    print(f"  [compare] {other_name.upper()} vs {primary.name.upper()}")
-    attn_result = check_result(f"{other_name.upper()}_vs_{primary.name.upper()}",
-                               other_cmp.float(), primary_raw.float(),
-                               except_label=other_name.upper(),
-                               comp_label=primary.name.upper(),
-                               verbose_diff=verbose_diff)
-
-    lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
-                  "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    if params.get("return_softmax_lse", 0) and "lse" in other_out and "lse" in primary_result:
-        other_lse = other_out["lse"]
-        primary_lse = primary_result["lse"]
-        if isinstance(other_lse, torch.Tensor) and isinstance(primary_lse, torch.Tensor):
-            lse_result = check_result(f"LSE_{other_name.upper()}_vs_{primary.name.upper()}",
-                                      other_lse.float(), primary_lse.float(),
-                                      except_label=f"{other_name.upper()}_lse",
-                                      comp_label=f"{primary.name.upper()}_lse",
-                                      verbose_diff=verbose_diff)
-
-    ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
-
-    attn_passed = ret["attn"].get("passed", True) if isinstance(ret["attn"], dict) else True
-    if not attn_passed:
-        if fail_analysis:
-            try:
-                from utils.compare import analyze_fail_distribution
-                analyze_fail_distribution(
-                    test_name=case_name,
-                    expect=other_cmp.float(),
-                    result=primary_raw.float(),
-                    dump_dir=viz_dir,
-                )
-            except Exception as e:
-                print(f"  [warn] fail_analysis 异常: {e}")
-        if visualize:
-            try:
-                from utils.precision_visual import visualize_from_tensors
-                visualize_from_tensors(
-                    other_cmp.float().numpy(),
-                    primary_raw.float().numpy(),
                     case_name=case_name,
                     out_dir=viz_dir,
                 )
