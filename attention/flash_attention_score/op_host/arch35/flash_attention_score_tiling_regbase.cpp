@@ -54,9 +54,7 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::GetPlatformInfo()
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const FlashAttentionScoreCompileInfo *>(context_->GetCompileInfo());
-        OP_CHECK_IF(compileInfoPtr == nullptr,
-                   OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "compileInfoPtr",
-                       "The compileInfoPtr cannot be nullptr"),
+        OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "compileInfoPtr is null."),
                    return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
@@ -1249,9 +1247,7 @@ void FlashAttentionScoreTilingRegbase::CalcThresholdForS2Size()
     int64_t n2Num = std::min(2 * actualUsedCoreNum, bSize * n2Size);
     int64_t dataTypeSize = ge::GetSizeByDataType(inputDtype);
     if (n2Num == 0 || dataTypeSize == 0) {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "n2Num, dataTypeSize",
-            std::to_string(n2Num) + ", " + std::to_string(dataTypeSize),
-            "The value of n2Num and dataTypeSize cannot be 0.");
+        OP_LOGE(context_, "The n2Num[%ld] and dataTypeSize[%ld] cann not be zero.", n2Num, dataTypeSize);
         return;
     }
 
@@ -1578,8 +1574,8 @@ bool FlashAttentionScoreTilingRegbase::GetSparseInfo(SparseEnum &sparseType)
 bool FlashAttentionScoreTilingRegbase::InitSparseValidArray(std::vector<int64_t> &sparseValidArray, int64_t bIdx)
 {
     OP_CHECK_IF(sparseValidArray.empty(),
-               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparseValidArray", "0",
-                   "The value of sparseValidArray size must be greater than 0"), return false);
+               OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse valid array size should be larger than 0."),
+               return false);
     uint8_t sparseType = inputParamsRegbase_->get_sparseType();
     if (sparseType == static_cast<uint8_t>(SparseEnum::PREFIX)) {
         for (int64_t i = 0; i < static_cast<int64_t>(sparseValidArray.size()); i++) {
@@ -1621,13 +1617,12 @@ bool FlashAttentionScoreTilingRegbase::PartitionSparseData(const std::vector<int
                                                         int64_t loadMaxEachCore, std::vector<int64_t> &partitionResult)
 {
     OP_CHECK_IF(partitionResult.empty(),
-               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "partitionResult", "0",
-                   "The value of size of partitionResult must be greater than 0"), return false);
+               OPS_REPORT_VECTOR_INNER_ERR(opName, "partitionResult size should be larger than 0."),
+               return false);
 
     OP_CHECK_IF(sparseRollingArraySum <= 0,
-               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparseRollingArraySum",
-                   std::to_string(sparseRollingArraySum).c_str(),
-                   "The value of sparseRollingArraySum should be greater than 0"), return false);
+               OPS_REPORT_VECTOR_INNER_ERR(opName, "sparseRollingArraySum should be larger than 0."),
+               return false);
     int64_t s1OuterCutEachCore = loadMaxEachCore / sparseRollingArraySum;
     int64_t s1OuterLoadEachCore = s1OuterCutEachCore * sparseRollingArraySum;
     int64_t s1OuterNumEachCore = s1OuterCutEachCore * sparseRollingArray.size();
@@ -1753,8 +1748,7 @@ bool FlashAttentionScoreTilingRegbase::SetSparseStartIdx(const std::vector<int64
     std::vector<int64_t> lastValidPartitionResult(validAivNum, totalSize);
     int64_t sparseArraySum = std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0LL);
     int64_t loadTotal = sparseArraySum * (totalSize / sparseValidArray.size());
-    OP_CHECK_IF(validAivNum <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "validAivNum",
-               std::to_string(validAivNum).c_str(), "The value of validAivNum must be greater than 0"),
+    OP_CHECK_IF(validAivNum <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "validAivNum should be larger than 0."),
                return false);
     int64_t loadEachCoreLowerBound = loadTotal / validAivNum - 1;
     int64_t loadEachCoreUpperBound =

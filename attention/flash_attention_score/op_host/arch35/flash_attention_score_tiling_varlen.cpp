@@ -670,8 +670,7 @@ protected:
     {
         (void)bIdx;
         OP_CHECK_IF(sparseValidArray.size() == 0,
-                   OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparseValidArray", "0",
-                       "The value of size of sparseValidArray must be greater than 0"),
+                   OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse valid array size should be larger than 0."),
                    return false);
 
         // 特殊系数, 代表s2Size=[128, 256, 384, 512, 640, 768, 896, 1024] 对应的真实耗时膨胀值
@@ -781,8 +780,7 @@ protected:
         int64_t totalSize = multiCoreParamsRegbase.get_totalSize(); // BN2GS1.o
         int64_t *sparseStartIdx = multiCoreParamsRegbase.get_sparseStartIdxPtr();
 
-        OP_CHECK_IF(totalSize <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "totalSize",
-                   std::to_string(totalSize).c_str(), "The value of totalSize must be greater than 0"),
+        OP_CHECK_IF(totalSize <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "totalSize should be larger than 0."),
                    return false);
 
         // initLoad: 使用均分策略, 保证后续不会比均分差
