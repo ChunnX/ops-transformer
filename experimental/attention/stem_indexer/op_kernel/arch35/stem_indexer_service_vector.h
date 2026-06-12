@@ -392,14 +392,17 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     AscendC::DataCopyParams indiceLenCopyParams;
 
     // 计算当前S2方向的有效长度（基于第一个S1位置）
-    uint32_t firstS2Len = info.actS2Size - windowSize_;
+    int32_t firstS2Len = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(windowSize_);
     if (constInfo_.attenMaskFlag) {
         // causal 场景：当前AIV核处理的第一个S1位置对应的s2合法长度
-        firstS2Len = info.actS2SizeOrig - info.actS1Size + curAivGS1Idx % info.actS1Size + 1 - windowSize_;
-    } 
+        firstS2Len = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size) +
+                     static_cast<int32_t>(curAivGS1Idx % info.actS1Size) + 1 -
+                     static_cast<int32_t>(windowSize_);
+    }
+    firstS2Len = firstS2Len > 0 ? firstS2Len : 0;
     
     // 计算动态 topkCount 所需的块级常量（使用原始 actS2Size）
-    int32_t kbOffset = (int32_t)info.actS2SizeOrig - (int32_t)info.actS1Size;
+    int32_t kbOffset = (int32_t)info.actS2Size - (int32_t)info.actS1Size;
     int32_t numPromptK = (int32_t)info.numPromptTokens;
     
     // 常量定义：用于填充零值和无效索引
@@ -408,7 +411,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
 
     // 当前核处理的 S1 轴大小
     uint32_t curAivS1Size = CeilDiv(curAivGS1ProcNum, gSize_); // 48 / 32 向上取整 = 2
-    uint32_t curS1RealS2Len = firstS2Len;
+    uint32_t curS1RealS2Len = static_cast<uint32_t>(firstS2Len);
     // 外层循环：按 S1 位置遍历（同一个 S1 位置下的 G 个行共享相同的 s2Len和topkCount）
     for (uint32_t s1Pos = 0; s1Pos < curAivS1Size; s1Pos++) {
 
@@ -416,10 +419,10 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
 
         // causal 场景：基于 S1 位置索引更新
         if (constInfo_.attenMaskFlag) {
-            curS1RealS2Len = s1Pos + firstS2Len;
+            int32_t curS1RealS2LenTmp = firstS2Len + static_cast<int32_t>(s1Pos);
+            curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);
         }
 
-        curS1RealS2Len = Max(curS1RealS2Len, 0);
         // 短路1：如果causal 场景的s2有效长度小于init_block + windows_block的长度，直接输出连续索引，跳过 TopK
         if (constInfo_.attenMaskFlag && (curS1RealS2Len <= initialBlocks_)) {
             if (!isFirstS2InnerLoop) continue;  // 非首块跳过，避免重复写入GM
@@ -638,7 +641,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
 {
     uint32_t actMBaseSize = tempLoopInfo.actMBaseSize;
     uint32_t actS1Size = tempLoopInfo.actS1Size;
-    uint32_t actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
+    uint32_t actS2Size = tempLoopInfo.actS2Size;
     uint64_t qFlatBase = (uint64_t)tempLoopInfo.bIdx * constInfo_.qSeqSize * constInfo_.qHeadNum
                        + (uint64_t)tempLoopInfo.n2Idx * constInfo_.gSize * constInfo_.qSeqSize;
     uint32_t indiceLenOffset = (uint32_t)qFlatBase;
@@ -661,7 +664,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
     copyOutParams.srcStride = 0;
     copyOutParams.dstStride = 0;
     
-    uint32_t curS1RealS2Len = actS2SizeOrig;
+    uint32_t curS1RealS2Len = actS2Size;
     // 外层循环：按 S1 位置遍历（同一个 S1 位置下的 G 个行共享相同的 curS1TotalS2Len）
     uint32_t curAivS1Size = CeilDiv(curAivGS1ProcNum, gSize_);
     for (uint32_t s1Pos = 0; s1Pos < curAivS1Size; s1Pos++) {
@@ -670,8 +673,10 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         
         // 计算当前 S1 位置的输出长度（同一 S1 位置下共享）
         if (constInfo_.attenMaskFlag) {
-            curS1RealS2Len = actS2SizeOrig - actS1Size + (int32_t)(curAivGS1Idx % actS1Size) + s1Pos + 1;
-            curS1RealS2Len = Max(curS1RealS2Len, 0);
+            int32_t curS1RealS2LenTmp = static_cast<int32_t>(actS2Size) - static_cast<int32_t>(actS1Size) +
+                                        static_cast<int32_t>(curAivGS1Idx % actS1Size) +
+                                        static_cast<int32_t>(s1Pos) + 1;
+            curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);
         }
         // 如果mBaseSize 无法整除 g，后一部分g处理的s1Num比前一部分g少一个，所以这里搬出g的数量需要根据s1位置变化
         int32_t curGsize = gSize_;

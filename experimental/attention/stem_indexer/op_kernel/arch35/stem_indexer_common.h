@@ -45,7 +45,6 @@ struct TempLoopInfo {
     uint32_t s2LoopEnd = 0U;    // S2方向循环的结束Idx
     uint32_t actS1Size = 1ULL;  // 当前Batch循环处理的S1轴的实际大小
     uint32_t actS2Size = 0ULL;
-    uint32_t actS2SizeOrig = 0ULL;//压缩前s2
     uint32_t actQTokenLen = 0ULL;
     uint32_t actKVTokenLen = 0ULL;
     uint32_t promptTokenLen = 0ULL;
@@ -70,7 +69,6 @@ struct RunInfo {
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
-    uint32_t actS2SizeOrig = 1;    
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
