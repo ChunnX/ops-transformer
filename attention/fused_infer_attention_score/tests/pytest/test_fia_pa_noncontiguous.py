@@ -190,11 +190,19 @@ def test_pa_noncontiguous():
         return
 
     # ==========================
-    # 非连续版本：CPU上stack+slice先确保非连续，再转NPU
+    # 非连续版本：在dim=1上垫一行padding后slice，保证dim0 stride错误从而强制非连续
+    # k_padded: [Bn, N_kv+1, Bs, D], dim0 stride = (N_kv+1)*Bs*D
+    # slice [:,:N_kv]: [Bn, N_kv, Bs, D], dim0 stride 仍为 (N_kv+1)*Bs*D
+    # 但连续[Bn, N_kv, Bs, D]的 dim0 stride 应为 N_kv*Bs*D
+    # (N_kv+1)*Bs*D ≠ N_kv*Bs*D → 必定非连续
     # ==========================
-    kv_stacked = torch.stack([k_cache_cpu, v_cache_cpu], dim=1)  # [Bn, 2, N_kv, Bs, D]
-    k_noncont_cpu = kv_stacked[:, 0]  # [Bn, N_kv, Bs, D] 非连续：dim0 stride=2*N_kv*Bs*D
-    v_noncont_cpu = kv_stacked[:, 1]
+    k_padded = torch.randn(total_blocks, N_kv + 1, BLOCK_SIZE, D, dtype=DTYPE)
+    v_padded = torch.randn(total_blocks, N_kv + 1, BLOCK_SIZE, D, dtype=DTYPE)
+    k_padded[:, :N_kv] = k_cache_cpu
+    v_padded[:, :N_kv] = v_cache_cpu
+
+    k_noncont_cpu = k_padded[:, :N_kv, :, :]
+    v_noncont_cpu = v_padded[:, :N_kv, :, :]
 
     logger.info(f"[CPU] k is_contiguous: {k_noncont_cpu.is_contiguous()}")
     logger.info(f"[CPU] v is_contiguous: {v_noncont_cpu.is_contiguous()}")
