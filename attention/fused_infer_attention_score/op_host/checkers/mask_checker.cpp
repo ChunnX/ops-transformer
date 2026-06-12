@@ -131,7 +131,8 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
 
                 if (fiaInfo.attenMaskFlag) {
                     const gert::Tensor *maskTensor = fiaInfo.opParamInfo.attenMask.tensor;
-                    std::string shapeStr = (maskTensor != nullptr) ? ToStringRaw(maskTensor->GetStorageShape()) : "null";
+                    std::string shapeStr =
+                        (maskTensor != nullptr) ? ToStringRaw(maskTensor->GetStorageShape()) : "null";
                     std::string reasonMsg = "In MLA FullQuant Scenario, attenMask must be empty, when the datatype of "
                         "query is INT8, inputLayout is not TND or TND_NTD and the S axis of query = 1";
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask",
@@ -150,7 +151,8 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
 
                 if (!fiaInfo.attenMaskFlag) {
                     const gert::Tensor *maskTensor = fiaInfo.opParamInfo.attenMask.tensor;
-                    std::string shapeStr = (maskTensor != nullptr) ? ToStringRaw(maskTensor->GetStorageShape()) : "null";
+                    std::string shapeStr =
+                        (maskTensor != nullptr) ? ToStringRaw(maskTensor->GetStorageShape()) : "null";
 
                     std::string reasonMsg = "In MLA FullQuant Scenario, attenMask cannot be empty, when "
                         "the datatype of query is INT8, inputLayout is not TND or TND_NTD and the S axis of query > 1";
