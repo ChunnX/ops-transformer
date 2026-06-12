@@ -16,6 +16,7 @@
 #ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_REGBASE_H_
 #define FLASH_ATTENTION_SCORE_GRAD_TILING_REGBASE_H_
 
+#include "../fia_tiling_data_public.h"
 
 namespace optiling {
 class FlashAttentionScoreEmptyInputTilingDataRegbase {
@@ -57,19 +58,7 @@ public:
     void set_attentionOutLastCoreIndex(uint64_t attentionOutLastCoreIndexParam) {this->attentionOutLastCoreIndex = attentionOutLastCoreIndexParam;}
 };
 
-class stridesParams {
-public:
-    uint64_t bnStride = 0;
-    uint64_t n2Stride = 0;
 
-    void set_bnStride(uint64_t bnStride) {this->bnStride = bnStride;}
-
-    uint64_t get_bnStride() const {return bnStride;}
-
-    void set_n2Stride(uint64_t n2Stride) {this->n2Stride = n2Stride;}
-
-    uint64_t get_n2Stride() const {return n2Stride;}
-};
 class InputParamsRegbase {
 public:
     int64_t bSize;
