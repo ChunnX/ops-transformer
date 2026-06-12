@@ -134,7 +134,7 @@ ge::graphStatus LearnableSinkChecker::CheckSinkShapeSupport(const FiaTilingInfo 
         std::string reason = "The shape of learnable_sink must be equal to axis N(" + std::to_string(fiaInfo.n1Size) +
             ") of query when learnable sink is enabled.";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "learnable_sink",
-            ToString(fiaInfo.opParamInfo.learnableSink.tensor->GetStorageShape()).c_str(), reason.c_str());
+            ToStringRaw(fiaInfo.opParamInfo.learnableSink.tensor->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -150,13 +150,13 @@ ge::graphStatus LearnableSinkChecker::CheckAxisSupport(const FiaTilingInfo &fiaI
     if (fiaInfo.qkHeadDim != NUM_192 && fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_64) {
         std::string reason = "D of query must be in the range of {64, 128, 192} when learnable sink is enabled.";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
-            ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
+            ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo.vHeadDim != NUM_128 && fiaInfo.vHeadDim != NUM_64) {
         std::string reason = "D of value must be in the range of {64, 128} when learnable sink is enabled.";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value",
-            ToString(fiaInfo.opParamInfo.value.shape->GetStorageShape()).c_str(), reason.c_str());
+            ToStringRaw(fiaInfo.opParamInfo.value.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
