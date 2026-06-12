@@ -54,6 +54,8 @@ public:
         this->inPtr = GetTensorPtr(in);
         ParseTilingData(tdata);
         CalcTileLength();
+        // totalLength 表示 Tiling 约束下的元素个数，保证可落在 uint32_t 内；
+        // 参与 GM 地址计算（如 totalLength * hDim）时再显式宽化到 uint64_t。
         // 设置全局变量的起始地址与总长度: BLOCK_LENGTH; sp, B*s*hc in1 sp; B*s*hc, hd in2
         outGm.SetGlobalBuffer((__gm__ outType *)out, static_cast<uint64_t>(totalLength) * hDim);
         lseoutGm.SetGlobalBuffer((__gm__ lseType *)lesout, totalLength);
@@ -228,7 +230,7 @@ private:
             if (curLength % ALIGNED_TO_8 == 0) {
                 DataCopy(inLocalFp16[inOffset], inGm[gmOffset], curLength * hDim);
             } else {
-                uint64_t fp16Offset = posIdx * curLength * hDim * NUM2;
+                uint64_t fp16Offset = static_cast<uint64_t>(posIdx) * curLength * hDim * NUM2;
                 if (fp16Offset % NUM32 == NUM16) {
                     fp16Offset += NUM16;
                 }
@@ -262,7 +264,7 @@ private:
             CopyInSpAccData(lseLocal, inLocal, spLoopIdx, curLengthPad);
         }
 
-        uint64_t inLocalFp16Offset = tileLength * hDim * spAlloc;
+        uint64_t inLocalFp16Offset = static_cast<uint64_t>(tileLength) * hDim * spAlloc;
         if ((inLocalFp16Offset * NUM2) % NUM32 == NUM16) {
             inLocalFp16Offset += NUM8;
         }
@@ -498,7 +500,7 @@ private:
     uint32_t sp;
     uint32_t tileLengthAlig;
     uint32_t lastLengthAlig;
-    uint32_t totalLength;
+    uint32_t totalLength; // 由 Tiling 保证元素个数不超过 uint32_t；地址计算（如 totalLength * hDim）使用 uint64_t。
     uint64_t gmStartOffset;
     uint32_t updateType;
     uint32_t spLoopCount;
