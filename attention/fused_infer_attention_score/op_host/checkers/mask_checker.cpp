@@ -216,7 +216,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
             return ge::GRAPH_FAILED);
         // 不支持PSE
         OP_CHECK_IF(fiaInfo.pseShiftFlag,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pse_shift", "not empty",
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pse_shift",
                 ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
                     + " scenario, when sparse_mode is " + std::to_string(sparseMode)
                     + ", pse_shift must be empty").c_str()),
@@ -224,7 +224,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
 
         OP_CHECK_IF(fiaInfo.sysPrefixFlag,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
-                "not empty", ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
+                ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
                     + " scenario, when sparse_mode is " + std::to_string(sparseMode)
                     + ", key_shared_prefix and value_shared_prefix must be empty").c_str()),
             return ge::GRAPH_FAILED);
