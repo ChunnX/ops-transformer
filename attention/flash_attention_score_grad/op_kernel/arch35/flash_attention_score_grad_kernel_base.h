@@ -57,8 +57,6 @@ public:
     __aicore__ inline int64_t GetNextValidIdxForSwizzle(FagRunInfo &runInfo, int64_t loopIdx);
     __aicore__ inline int64_t GetNextValidIdxForSwizzleDense(FagRunInfo &runInfo, int64_t loopIdx);
     __aicore__ inline int64_t GetNextValidIdxForSwizzleCasual(FagRunInfo &runInfo, int64_t loopIdx);
-    __aicore__ inline int64_t GetDeqScaleQOffset(FagRunInfo &runInfo);
-    __aicore__ inline int64_t GetDeqScaleKOffset(FagRunInfo &runInfo);
     template <bool IS_MM1_MM2 = true>
     __aicore__ inline int64_t GetQueryOffset(FagRunInfo &runInfo);
     __aicore__ inline int64_t GetQueryRopeOffset(FagRunInfo &runInfo);
@@ -78,11 +76,7 @@ public:
     {
         return static_cast<ChildClass *>(this);
     }
- 
-    constexpr static bool IS_FP8_INPUT =
-        IsSameType<INPUT_TYPE, fp8_e5m2_t>::value || IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value || IsSameType<INPUT_TYPE, hifloat8_t>::value;
     constexpr static bool IS_FP32_INPUT = IsSameType<INPUT_TYPE, float>::value;
-    constexpr static float FP8_MAX = IsSameType<INPUT_TYPE, fp8_e5m2_t>::value ? 57344 : IsSameType<INPUT_TYPE, fp8_e4m3fn_t>::value ? 448 : 32768;
     constexpr static uint8_t ALIGN_NUM_32 = 32;
     constexpr static uint8_t VEC_CORE_NUM_64 = 64;    
     constexpr static uint32_t BITS_EACH_UINT64 = 64;
@@ -113,14 +107,11 @@ public:
         (CUBE_BASEM == CUBE_BASEN ? 0 : (CUBE_BASEM > CUBE_BASEN ? 2 : 1));
     constexpr static uint32_t DETER_CUBE_BASEM = CUBE_BASEM < CUBE_BASEN ? CUBE_BASEN : CUBE_BASEM;
     constexpr static uint32_t DETER_CUBE_BASEN = CUBE_BASEM > CUBE_BASEN ? CUBE_BASEM : CUBE_BASEN;
-
 protected:
     TPipe *pipe;
  
     // output global mmemory
     GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm;
-    GlobalTensor<float> deqScaleQGm, deqScaleKGm, deqScaleVGm, deqScaleDyGm; // only FP8
- 
     GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm;
  
     // CV核间共享Buffer
@@ -129,8 +120,6 @@ protected:
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buf;
     BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buf;
-    typename std::conditional<IS_FP8_INPUT, BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC>, std::nullptr_t>::type dSTransL1Buf;    
-    typename std::conditional<IS_FP8_INPUT, BuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC>, std::nullptr_t>::type vL1Buf;
  
     GM_ADDR prefixNAddr;
     GM_ADDR actualSeqQlenAddr;
@@ -261,11 +250,6 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
     dqGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dq);
     dkGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
     dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
-    deqScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
-    deqScaleKGm.SetGlobalBuffer((__gm__ float *)deqScaleK);
-    deqScaleVGm.SetGlobalBuffer((__gm__ float *)deqScaleV);
-
- 
     // init workspace address
     if constexpr (!IS_FP32_INPUT) {
         if constexpr (SPLIT_AXIS == BN2 && !IS_BN2_MULTIBLK) {
@@ -298,17 +282,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
     if constexpr ((DETER_SPARSE_TYPE) == DETER_OLD) {
         dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE) * NUM_TWO);
-    } else if constexpr (IS_FP8_INPUT) {
-        dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
-        dSTransL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));        
     } else {
         dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));  
     }
     pL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(OUTDTYPE));
-    if constexpr (IS_FP8_INPUT) {
-        vL1Buf.Init(l1BufferManager, CUBE_BASEN * HEAD_DIM_ALIGN * sizeof(OUTDTYPE));
-    }
- 
     pipe->InitBuffer(mm1ResBuf[0], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
     pipe->InitBuffer(mm1ResBuf[1], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
     pipe->InitBuffer(mm2ResBuf[0], VECTOR_BASEM * VECTOR_BASEN * sizeof(CALC_TYPE));
@@ -717,14 +694,15 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     }
     constInfo.commonConstInfo.subBlockIdx = vSubBlockIdx;
     constInfo.aicCoreNum = tilingData->s1s2BNGS1S2BaseParams.coreNum >> 1;
-    constInfo.enablePreSfmg = ((uint32_t)dTemplateType > 128) && tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg;
+    constInfo.enablePreSfmg = ((uint32_t)dTemplateType > 64) && tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg;
+    constInfo.dAlign16 = AlignTo16(constInfo.commonConstInfo.dSize);
+    constInfo.dvAlign16 = AlignTo16(constInfo.commonConstInfo.dSizeV);
     uint32_t tmp = 0xFF7FFFFF;
     if ASCEND_IS_AIV {
         constInfo.attenMaskMinValue = *((float *)&tmp);
         constInfo.commonConstInfo.keepProb = tilingData->s1s2BNGS1S2BaseParams.keepProb;
         constInfo.sfmgMaxLoopSize = VECTOR_BASEM * VECTOR_BASEN / HEAD_DIM_ALIGN; // softmaxGrad每次最大能处理的m轴大小
         constInfo.dAlignToBlock = AlignTo(constInfo.commonConstInfo.dSizeV, INPUT_BLOCK_NUM);
-        constInfo.dAlignToBlockForFp8 = AlignTo(constInfo.commonConstInfo.dSizeV, INPUT_BLOCK_NUM_FOR_FP8);
         constInfo.tndMaxSumLayout = tilingData->s1s2BNGS1S2BaseParams.tndMaxSumLayout;
     }
     SetSwizzleConstInfo();
@@ -890,21 +868,23 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         runInfo.commonRunInfo.taskId = taskId;
         runInfo.commonRunInfo.taskIdMod2 = taskId & 1;
         runInfo.commonRunInfo.s2RealSize = runInfo.s2CvEnd - runInfo.s2CvBegin; // 真实s2基本块大小
-        runInfo.halfS2RealSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1;
-        runInfo.firstHalfS2RealSize = runInfo.halfS2RealSize;
-        runInfo.commonRunInfo.halfS1RealSize = (runInfo.commonRunInfo.s1RealSize + 1) >> 1;
-        runInfo.commonRunInfo.firstHalfS1RealSize = runInfo.commonRunInfo.halfS1RealSize;
-        if (vSubBlockIdx == 1) {
-            runInfo.commonRunInfo.halfS1RealSize =
-                runInfo.commonRunInfo.s1RealSize - runInfo.commonRunInfo.halfS1RealSize;
-            runInfo.halfS2RealSize = runInfo.commonRunInfo.s2RealSize - runInfo.halfS2RealSize;
+        if ASCEND_IS_AIV {
+            runInfo.halfS2RealSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1;
+            runInfo.firstHalfS2RealSize = runInfo.halfS2RealSize;
+            runInfo.commonRunInfo.halfS1RealSize = (runInfo.commonRunInfo.s1RealSize + 1) >> 1;
+            runInfo.commonRunInfo.firstHalfS1RealSize = runInfo.commonRunInfo.halfS1RealSize;
+            if (vSubBlockIdx == 1) {
+                runInfo.commonRunInfo.halfS1RealSize =
+                    runInfo.commonRunInfo.s1RealSize - runInfo.commonRunInfo.halfS1RealSize;
+                runInfo.halfS2RealSize = runInfo.commonRunInfo.s2RealSize - runInfo.halfS2RealSize;
+            }
+            runInfo.commonRunInfo.s2SizeAcc = runInfo.lastBatchTotalS2Size;
+            runInfo.commonRunInfo.b1SSOffsetAlign = runInfo.lastBatchTotalS1S2SizeAlign;
+            runInfo.commonRunInfo.b1SSOffset = runInfo.lastBatchTotalS1S2Size;
+            runInfo.commonRunInfo.b1SSAttenMaskOffset = runInfo.commonRunInfo.b1SSOffset;
+            runInfo.commonRunInfo.vecCoreOffset = vSubBlockIdx * runInfo.commonRunInfo.firstHalfS1RealSize;
         }
-        runInfo.commonRunInfo.s2SizeAcc = runInfo.lastBatchTotalS2Size;
-        runInfo.commonRunInfo.b1SSOffsetAlign = runInfo.lastBatchTotalS1S2SizeAlign;
-        runInfo.commonRunInfo.b1SSOffset = runInfo.lastBatchTotalS1S2Size;
-        runInfo.commonRunInfo.b1SSAttenMaskOffset = runInfo.commonRunInfo.b1SSOffset;
         runInfo.commonRunInfo.s2StartIdx = runInfo.s2CvBegin;
-        runInfo.commonRunInfo.vecCoreOffset = vSubBlockIdx * runInfo.commonRunInfo.firstHalfS1RealSize;
         runInfo.commonRunInfo.s2AlignedSize = AlignTo16(runInfo.commonRunInfo.s2RealSize);
     } else if constexpr (IS_TND) {
         int64_t resbaseIdx = index - curBatchTotalBaseIdx;
@@ -947,14 +927,16 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                 runInfo.commonRunInfo.taskId = taskId;
                 runInfo.commonRunInfo.taskIdMod2 = taskId & 1;
                 runInfo.commonRunInfo.s2RealSize = runInfo.s2CvEnd - runInfo.s2CvBegin; // 真实s2基本块大小
-                runInfo.halfS2RealSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1;
-                runInfo.firstHalfS2RealSize = runInfo.halfS2RealSize;
-                runInfo.commonRunInfo.halfS1RealSize = (runInfo.commonRunInfo.s1RealSize + 1) >> 1;
-                runInfo.commonRunInfo.firstHalfS1RealSize = runInfo.commonRunInfo.halfS1RealSize;
-                if (vSubBlockIdx == 1) {
-                    runInfo.commonRunInfo.halfS1RealSize =
-                        runInfo.commonRunInfo.s1RealSize - runInfo.commonRunInfo.halfS1RealSize;
-                    runInfo.halfS2RealSize = runInfo.commonRunInfo.s2RealSize - runInfo.halfS2RealSize;
+                if ASCEND_IS_AIV {
+                    runInfo.halfS2RealSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1;
+                    runInfo.firstHalfS2RealSize = runInfo.halfS2RealSize;
+                    runInfo.commonRunInfo.halfS1RealSize = (runInfo.commonRunInfo.s1RealSize + 1) >> 1;
+                    runInfo.commonRunInfo.firstHalfS1RealSize = runInfo.commonRunInfo.halfS1RealSize;
+                    if (vSubBlockIdx == 1) {
+                        runInfo.commonRunInfo.halfS1RealSize =
+                            runInfo.commonRunInfo.s1RealSize - runInfo.commonRunInfo.halfS1RealSize;
+                        runInfo.halfS2RealSize = runInfo.commonRunInfo.s2RealSize - runInfo.halfS2RealSize;
+                    }
                 }
                 curBatchIdx = bIdx;
 
@@ -1049,28 +1031,30 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         runInfo.commonRunInfo.taskId = taskId;
         runInfo.commonRunInfo.taskIdMod2 = taskId & 1;
         runInfo.commonRunInfo.s2RealSize = runInfo.s2CvEnd - runInfo.s2CvBegin; // 真实s2基本块大小
-        runInfo.halfS2RealSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1;
-        runInfo.firstHalfS2RealSize = runInfo.halfS2RealSize;
-        runInfo.commonRunInfo.halfS1RealSize = (runInfo.commonRunInfo.s1RealSize + 1) >> 1;
-        runInfo.commonRunInfo.firstHalfS1RealSize = runInfo.commonRunInfo.halfS1RealSize;
-        if (vSubBlockIdx == 1) {
-            runInfo.commonRunInfo.halfS1RealSize =
-                runInfo.commonRunInfo.s1RealSize - runInfo.commonRunInfo.halfS1RealSize;
-            runInfo.halfS2RealSize = runInfo.commonRunInfo.s2RealSize - runInfo.halfS2RealSize;
+        if ASCEND_IS_AIV {
+            runInfo.halfS2RealSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1;
+            runInfo.firstHalfS2RealSize = runInfo.halfS2RealSize;
+            runInfo.commonRunInfo.halfS1RealSize = (runInfo.commonRunInfo.s1RealSize + 1) >> 1;
+            runInfo.commonRunInfo.firstHalfS1RealSize = runInfo.commonRunInfo.halfS1RealSize;
+            if (vSubBlockIdx == 1) {
+                runInfo.commonRunInfo.halfS1RealSize =
+                    runInfo.commonRunInfo.s1RealSize - runInfo.commonRunInfo.halfS1RealSize;
+                runInfo.halfS2RealSize = runInfo.commonRunInfo.s2RealSize - runInfo.halfS2RealSize;
+            }
+            // pse
+            runInfo.commonRunInfo.b1SSOffset = runInfo.commonRunInfo.boIdx * constInfo.commonConstInfo.s1S2;
+            runInfo.commonRunInfo.b1SSAttenMaskOffset = runInfo.commonRunInfo.b1SSOffset;
+            runInfo.commonRunInfo.s2SizeAcc = runInfo.commonRunInfo.boIdx * constInfo.commonConstInfo.s2Size;
+            runInfo.commonRunInfo.s2StartIdx = runInfo.s2CvBegin;
+            runInfo.commonRunInfo.vecCoreOffset = vSubBlockIdx * runInfo.commonRunInfo.firstHalfS1RealSize;
+            runInfo.commonRunInfo.b1SSOffsetAlign = runInfo.commonRunInfo.boIdx * constInfo.commonConstInfo.s1Size *
+                                                    AlignTo16(constInfo.commonConstInfo.s2Size);
+            runInfo.commonRunInfo.preTokensPerBatch = attenMaskInfo.preTokens;
+            runInfo.commonRunInfo.nextTokensPerBatch = attenMaskInfo.nextTokens;
         }
-        // pse
-        runInfo.commonRunInfo.b1SSOffset = runInfo.commonRunInfo.boIdx * constInfo.commonConstInfo.s1S2;
-        runInfo.commonRunInfo.b1SSAttenMaskOffset = runInfo.commonRunInfo.b1SSOffset;
-        runInfo.commonRunInfo.s2SizeAcc = runInfo.commonRunInfo.boIdx * constInfo.commonConstInfo.s2Size;
-        runInfo.commonRunInfo.s2StartIdx = runInfo.s2CvBegin;
         runInfo.commonRunInfo.s2AlignedSize = AlignTo16(runInfo.commonRunInfo.s2RealSize);
         runInfo.commonRunInfo.actualS1Size = constInfo.commonConstInfo.s1Size;
         runInfo.commonRunInfo.actualS2Size = constInfo.commonConstInfo.s2Size;
-        runInfo.commonRunInfo.vecCoreOffset = vSubBlockIdx * runInfo.commonRunInfo.firstHalfS1RealSize;
-        runInfo.commonRunInfo.b1SSOffsetAlign = runInfo.commonRunInfo.boIdx * constInfo.commonConstInfo.s1Size *
-                                                AlignTo16(constInfo.commonConstInfo.s2Size);
-        runInfo.commonRunInfo.preTokensPerBatch = attenMaskInfo.preTokens;
-        runInfo.commonRunInfo.nextTokensPerBatch = attenMaskInfo.nextTokens;
     }
 
     // BN2扩展模板专用
@@ -1083,13 +1067,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         lastS2oCvDimIdx = runInfo.s2oIdx;
         lastBdimIdx = runInfo.commonRunInfo.boIdx;
         lastN2dimIdx = runInfo.commonRunInfo.n2oIdx;
-    }
-    if constexpr (IS_FP8_INPUT) {
-        int64_t deqScaleQGmOffset = GetDeqScaleQOffset(runInfo);
-        int64_t deqScaleKGmOffset = GetDeqScaleKOffset(runInfo);
-        runInfo.quantScaleInfo.deqScaleQValue = deqScaleQGm.GetValue(deqScaleQGmOffset);
-        runInfo.quantScaleInfo.deqScaleKValue = deqScaleKGm.GetValue(deqScaleKGmOffset);
-        runInfo.quantScaleInfo.deqScaleVValue = deqScaleVGm.GetValue(deqScaleKGmOffset);
     }
     if (unlikely(sinkOptional)) {
         runInfo.sinkN1Idx = runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize
@@ -1122,7 +1099,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
             return;
         }
     }
-
     runInfo.commonRunInfo.keyOffset = GetKeyOffset(runInfo);
     runInfo.commonRunInfo.valueOffset = runInfo.commonRunInfo.keyOffset;
     if constexpr (IS_D_NO_EQUAL) {
@@ -2236,40 +2212,6 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetV
     }
     rightMatrixOffset = bOffset + n2Offset + s2Offset;
     return rightMatrixOffset;
-}
- 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetDeqScaleQOffset(FagRunInfo &runInfo)
-{
-    int64_t scaleOffset = 0;
-    int64_t bOffset = 0;
-    int64_t n2Offset = 0;
-    int64_t gOffset = 0;
-    int64_t s1Offset = 0;
-    int64_t scaleNumPerS1 = Ceil<int64_t>(constInfo.commonConstInfo.s1Size, CUBE_BASEM * 2);    // FP8基本块=64*256，S1量化粒度=128
-    bOffset = runInfo.commonRunInfo.boIdx * constInfo.commonConstInfo.n2G * scaleNumPerS1;
-    n2Offset = runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize * scaleNumPerS1;
-    gOffset = runInfo.commonRunInfo.goIdx * scaleNumPerS1;
-    s1Offset = runInfo.commonRunInfo.s1oIdx / 2;    // FP8基本块=64*256，S1量化粒度=128
-    scaleOffset = bOffset + n2Offset + gOffset + s1Offset;
-    return scaleOffset;
-}
- 
-template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetDeqScaleKOffset(FagRunInfo &runInfo)
-{
-    int64_t scaleOffset = 0;
-    int64_t bOffset = 0;
-    int64_t n2Offset = 0;
-    int64_t s2Offset = 0;
-    int64_t scaleNumPerS2 = Ceil<int64_t>(constInfo.commonConstInfo.s2Size, CUBE_BASEN);
-    bOffset = runInfo.commonRunInfo.boIdx * constInfo.n2Size * scaleNumPerS2;
-    n2Offset = runInfo.commonRunInfo.n2oIdx * scaleNumPerS2;
-    s2Offset = runInfo.s2oIdx;
-    scaleOffset = bOffset + n2Offset + s2Offset;
-    return scaleOffset;
 }
  
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>

@@ -1627,13 +1627,15 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
         (fBaseParams.d <= BN2S2_WRITE_UB_D) &&
         (!fBaseParams.isSparse) &&
         (!fBaseParams.isDeterministic);
-    bool bn2S2RouteLimit = !fBaseParams.hasRope && fBaseParams.d <= BN2_MAX_D &&
+    bool bn2S2RouteLimit =
+        !fBaseParams.hasRope && fBaseParams.d <= BN2_MAX_D &&
         (fBaseParams.layoutType == INPUT_FORMAT_TND || (fBaseParams.isAllSame && !fBaseParams.isDeterministic) ||
-        bn2S2NotTndLimit) &&
-        (fBaseParams.n1 == fBaseParams.n2) &&
-        (fBaseParams.queryType != ge::DT_FLOAT) &&
-        !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 ||
-        fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN || fBaseParams.queryType == ge::DT_HIFLOAT8);
+         bn2S2NotTndLimit) &&
+        (fBaseParams.keepProb >= 1 ||
+         (fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) && fBaseParams.keepProb < 1)) &&
+        (fBaseParams.n1 == fBaseParams.n2) && (fBaseParams.queryType != ge::DT_FLOAT) &&
+        !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
+          fBaseParams.queryType == ge::DT_HIFLOAT8);
 
     if (!fBaseParams.isBn2 && bn2S2RouteLimit) {
         fBaseParams.layoutType = fBaseParams.isAllSame ? INPUT_FORMAT_TND : fBaseParams.layoutType;
