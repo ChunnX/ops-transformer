@@ -23,6 +23,8 @@
 #include "../op_kernel/arch22/sparse_lightning_indexer_kl_loss_grad_tiling.h"
 #include "sparse_lightning_indexer_kl_loss_grad_tiling_general.h"
 #include "platform/platform_info.h"
+#include "tiling_base/tiling_templates_registry.h"
+#include "sparse_lightning_indexer_klloss_grad_tiling_common.h"
 
 using std::map;
 using std::string;
@@ -49,9 +51,17 @@ static const std::string ATTEN_OUT_NAME = "attention_out";
 
 ge::graphStatus TilingSparseLightningIndexerKLLossGrad(gert::TilingContext *context)
 {
-    SparseLightningIndexerKLLossGradTilingBase sligKLLossTiling(context);
-    sligKLLossTiling.DoTiling();
-    return ge::GRAPH_SUCCESS;
+    auto platformInfoPtr = context->GetPlatformInfo();
+    auto sligPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    if (sligPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGW(context, "Current npu arch is dav-3510.");
+		return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
+    } else {
+        OP_LOGW(context, "Current npu arch is not dav-3510.");
+	    SparseLightningIndexerKLLossGradTilingBase sligKLLossTiling(context);
+	    sligKLLossTiling.DoTiling();
+	    return ge::GRAPH_SUCCESS;
+    }
 }
 
 ge::graphStatus TilingPrepareForSparseLightningIndexerKLLossGrad(gert::TilingParseContext *context)
