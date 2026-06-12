@@ -66,6 +66,7 @@ protected:
     ge::graphStatus CheckGroupSize();
     ge::graphStatus CheckPerBlockScaleInput();
     ge::graphStatus CheckMXFPScaleInput();
+    ge::graphStatus CheckMXFP4Input();
     ge::graphStatus CheckPerTensorScaleInput();
     ge::graphStatus CheckBiasInput();
     ge::graphStatus SetQuantScene();
@@ -81,6 +82,7 @@ private:
     uint64_t myWorkSpaceSize_{0U};
     uint64_t scale1kSpaceSize_{0U};
     mc2tiling::Mc2QuantMode quantMmMode_{mc2tiling::Mc2QuantMode::INVALID_MODE};
+    bool isFp4_ = false;
 };
 
 class AllGatherQuantBmmHelper : public Mc2AdaptiveSlidingWindowTiling
