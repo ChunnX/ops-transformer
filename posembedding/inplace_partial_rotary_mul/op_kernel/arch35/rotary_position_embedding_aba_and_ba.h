@@ -352,23 +352,23 @@ __aicore__ inline void RotaryPositionEmbeddingABAAndBA<T, IsBBoardcast>::Compute
     LocalTensor<T> outUb = this->qOutQueue_.template AllocTensor<T>();
     if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::HALF)) {
         BatchHalfAlignVF<T, IsBBoardcast>(
-            (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(), (__local_mem__ T*)sin.GetPhyAddr(),
-            (__local_mem__ T*)outUb.GetPhyAddr(), sLength, bLength, nLength, tilingData_->sliceLength, dAlign_,
+            (__ubuf__ T*)inUb.GetPhyAddr(), (__ubuf__ T*)cos.GetPhyAddr(), (__ubuf__ T*)sin.GetPhyAddr(),
+            (__ubuf__ T*)outUb.GetPhyAddr(), sLength, bLength, nLength, tilingData_->sliceLength, dAlign_,
                 ubFactorS_, ubFactorN_);
     } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::INTERLEAVE)) {
         BatchInterleaveModeVF<T, IsBBoardcast>(
-            (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(), (__local_mem__ T*)sin.GetPhyAddr(),
-            (__local_mem__ T*)outUb.GetPhyAddr(), sLength, bLength, nLength, tilingData_->sliceLength, dAlign_,
+            (__ubuf__ T*)inUb.GetPhyAddr(), (__ubuf__ T*)cos.GetPhyAddr(), (__ubuf__ T*)sin.GetPhyAddr(),
+            (__ubuf__ T*)outUb.GetPhyAddr(), sLength, bLength, nLength, tilingData_->sliceLength, dAlign_,
                 ubFactorS_, ubFactorN_);
     } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
         BatchQuarterAlignVF<T, IsBBoardcast>(
-            (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(), (__local_mem__ T*)sin.GetPhyAddr(),
-            (__local_mem__ T*)outUb.GetPhyAddr(), sLength, bLength, nLength, tilingData_->sliceLength, dAlign_,
+            (__ubuf__ T*)inUb.GetPhyAddr(), (__ubuf__ T*)cos.GetPhyAddr(), (__ubuf__ T*)sin.GetPhyAddr(),
+            (__ubuf__ T*)outUb.GetPhyAddr(), sLength, bLength, nLength, tilingData_->sliceLength, dAlign_,
                 ubFactorS_, ubFactorN_);
     } else {
         BatchDeepSeekInterleaveModeVF<T, IsBBoardcast>(
-            (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(), (__local_mem__ T*)sin.GetPhyAddr(),
-            (__local_mem__ T*)outUb.GetPhyAddr(), sLength, bLength, nLength, tilingData_->sliceLength, dAlign_,
+            (__ubuf__ T*)inUb.GetPhyAddr(), (__ubuf__ T*)cos.GetPhyAddr(), (__ubuf__ T*)sin.GetPhyAddr(),
+            (__ubuf__ T*)outUb.GetPhyAddr(), sLength, bLength, nLength, tilingData_->sliceLength, dAlign_,
                 ubFactorS_, ubFactorN_);
     }
     this->qInQueue_.FreeTensor(inUb);
