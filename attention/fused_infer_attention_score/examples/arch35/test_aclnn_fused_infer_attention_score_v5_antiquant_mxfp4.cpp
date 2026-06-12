@@ -257,7 +257,7 @@ int main() {
     // 5. Retrieve the output value, copy the result from the device side memory to the host side, and modify it
     // according to the specific API interface definition.
     auto size = GetShapeSize(outShape);
-    std::vector<float> resultData(size, 0);
+    std::vector<uint16_t> resultData(size, 0);
     ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) { 
