@@ -79,6 +79,7 @@ struct RunInfo {
     uint64_t tensorKeyOffset;
     uint64_t tensorKeyScaleOffset;
     uint64_t tensorWeightsOffset;
+    uint64_t tensorVBiasOffset;
     uint64_t indiceOutOffset;
     uint64_t indiceLenOffset;
     uint32_t numPromptTokens;
@@ -141,7 +142,7 @@ struct ConstInfo {
     uint32_t stemStride = 16U;
     uint32_t initialBlocks = 4U;
     uint32_t windowSize = 4U;
-    float scoreScale = 1.0f / 64.0f;
+    float rSquare = 1.0f / 64.0f;
     float alpha = 1.0f;
     float kBlockNumRateMedium = 0.2f;
     uint32_t kBlockNumBiasMedium = 30U;

@@ -20,7 +20,7 @@
 
 #endif
 #include "stem_indexer_template_tiling_key.h"
-using namespace QLIKernel;
+using namespace SIKernel;
 using namespace optiling::detail;
 
 #define INVOKE_LI_NO_KFC_OP_IMPL(templateClass, ...)                                                         \

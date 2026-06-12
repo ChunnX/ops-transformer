@@ -26,7 +26,7 @@
 #include "stem_indexer_service_cube.h"
 #include "../stem_indexer_metadata.h"
 
-namespace QLIKernel {
+namespace SIKernel {
 using namespace SICommon;
 using namespace matmul;
 using namespace optiling;
@@ -36,21 +36,6 @@ using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
 template <typename SIT>
-class SIMatmul {
-public:
-    using Q_T = typename SIT::queryType;
-    using K_T = typename SIT::keyType;
-
-    __aicore__ inline SIMatmul() {}
-    __aicore__ inline void InitBuffers(TPipe *) {}
-    __aicore__ inline void InitParams(const SICommon::ConstInfo &) {}
-    __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<int32_t> &, const GlobalTensor<K_T> &,
-                                               const GlobalTensor<Q_T> &)
-    {}
-    __aicore__ inline void AllocEventID() {}
-    __aicore__ inline void FreeEventID() {}
-    __aicore__ inline void ComputeMm1(const SICommon::RunInfo &) {}
-};
 
 // 由于S2循环前，RunInfo还没有赋值，使用TempLoopInfo临时存放B、N、S1轴相关的信息；同时减少重复计算
 struct TempLoopInfo {
@@ -118,6 +103,7 @@ protected:
     // offset
     uint64_t queryCoreOffset = 0ULL;
     uint64_t keyCoreOffset = 0ULL;
+    uint64_t vBiasCoreOffset = 0ULL;
     uint64_t keyScaleCoreOffset = 0ULL;
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
@@ -131,6 +117,7 @@ protected:
     GlobalTensor<float> vbiasGm;
     GlobalTensor<int32_t> qSeqLensGm;
     GlobalTensor<int32_t> kvSeqLensGm;
+    GlobalTensor<int32_t> actualSeqLengthsGm;
     GlobalTensor<int32_t> numPromptTokensGm;
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> sparseSeqLenGm;
@@ -162,7 +149,7 @@ protected:
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                               GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);                                              
+                                               GlobalTensor<int32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);                                              
     __aicore__ inline uint32_t GetPromptTokenLen(uint32_t bIdx);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
@@ -195,7 +182,7 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.nBaseSize = tilingData->nBaseSize;
     constInfo.s2BaseSize = tilingData->nBaseSize;
     constInfo.s1BaseSize = CeilDiv(tilingData->mBaseSize, tilingData->gSize);
-    constInfo.scoreScale = tilingData->scoreScale;
+    constInfo.rSquare = tilingData->rSquare;
     constInfo.alpha = tilingData->alpha;
     constInfo.kBlockNumRateMedium = tilingData->kBlockNumRateMedium;
     constInfo.kBlockNumBiasMedium = tilingData->kBlockNumBiasMedium;
@@ -229,13 +216,13 @@ __aicore__ inline void SIPreload<SIT>::InitActualSeqLen(__gm__ uint8_t *qSeqLens
         constInfo.actualLenQDims = 0;
     } else {
         constInfo.actualLenQDims = constInfo.batchSize;
-        qSeqLensGm.SetGlobalBuffer((__gm__ uint32_t *)qSeqLens, constInfo.actualLenQDims);
+        qSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)qSeqLens, constInfo.actualLenQDims);
     }
     if (kvSeqLens == nullptr) {
         constInfo.actualLenDims = 0;
     } else {
         constInfo.actualLenDims = constInfo.batchSize;
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)kvSeqLens, constInfo.actualLenDims);
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ int32_t *)kvSeqLens, constInfo.actualLenDims);
     }
 }
 
@@ -615,10 +602,12 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         (kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.headDim;
     keyScaleCoreOffset = kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize;
     weightsCoreOffset = kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize;
+    vBiasCoreOffset = (runInfo.bIdx * constInfo.kHeadNum * runInfo.actS2Size) + (runInfo.n2Idx * runInfo.actS2Size);
     runInfo.tensorQueryOffset = queryCoreOffset;
     runInfo.tensorKeyOffset = keyCoreOffset;
     runInfo.tensorKeyScaleOffset = keyScaleCoreOffset;
     runInfo.tensorWeightsOffset = weightsCoreOffset;
+    runInfo.tensorVBiasOffset = vBiasCoreOffset;
     runInfo.indiceOutOffset = indiceOutCoreOffset;
     runInfo.indiceLenOffset = indiceLenCoreOffset;
 }
@@ -735,5 +724,5 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
     }
 }
 
-}  // namespace QLIKernel
+}  // namespace SIKernel
 #endif  // stem_indexer_KERNEL_H

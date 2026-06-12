@@ -18,7 +18,7 @@
 #include "kernel_operator.h"
 #include "vf_topk_gather.h"
 
-namespace SITopk {
+namespace SIKernel {
 template<typename T>
 class SITopk {
 public:
