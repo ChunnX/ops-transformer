@@ -705,20 +705,13 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
         OP_LOGE(opName_, "ori_kv and cmp_kv only support PA_BBND, BSND and TND layout.");
         return ge::GRAPH_FAILED;
     }
+    uint32_t actualBatchSize = (qLayout_ == SMLALayout::TND) ? (bSize_ - 1) : bSize_;
     if (kvLayout_ == SMLALayout::PA_BBND) {
         if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
-            if (qLayout_ == SMLALayout::BSND){
-                if (opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != bSize_) {
-                    OP_LOGE(opName_, "seqused_ori_kv's dimension should be equal to %u, but got %ld.",
-                        bSize_, opParamInfo_.sequsedOriKv.tensor->GetShapeSize());
-                    return ge::GRAPH_FAILED;
-                }
-            } else {
-                if (opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != (bSize_ - 1)) {
-                    OP_LOGE(opName_, "seqused_ori_kv's dimension should be equal to %u (bSize - 1), but got %ld.",
-                        (bSize_ - 1), opParamInfo_.sequsedOriKv.tensor->GetShapeSize());
-                    return ge::GRAPH_FAILED;
-                }
+            if (opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != actualBatchSize) {
+                OP_LOGE(opName_, "seqused_ori_kv's dimension should be equal to %u, but got %ld.",
+                    actualBatchSize, opParamInfo_.sequsedOriKv.tensor->GetShapeSize());
+                return ge::GRAPH_FAILED;
             }
             OP_CHECK_IF(opParamInfo_.sequsedOriKv.desc->GetDataType() != ge::DT_INT32,
                         OP_LOGE(opName_, "seqused_ori_kv's dtype must be DT_INT32."),
@@ -733,9 +726,9 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
         }
     } else if (kvLayout_ == SMLALayout::BSND) {
         if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
-            if (opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != bSize_) {
+            if (opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != actualBatchSize) {
                 OP_LOGE(opName_, "seqused_ori_kv's dimension should be equal to %u, but got %ld.",
-                    bSize_, opParamInfo_.sequsedOriKv.tensor->GetShapeSize());
+                    actualBatchSize, opParamInfo_.sequsedOriKv.tensor->GetShapeSize());
                 return ge::GRAPH_FAILED;
             }
             OP_CHECK_IF(opParamInfo_.sequsedOriKv.desc->GetDataType() != ge::DT_INT32,
@@ -773,15 +766,14 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
         actualLenDimsQ_ = opParamInfo_.cuSeqLensQ.tensor->GetShapeSize() - 1; // cuSeqLensQ shape is B+1
     }
     if (perfMode_ != SMLATemplateMode::SWA_TEMPLATE_MODE) {
-        uint32_t actualBatchSize = (qLayout_ == SMLALayout::TND) ? (bSize_ - 1) : bSize_;
         if (kvLayout_ == SMLALayout::TND) {
             if (opParamInfo_.cuSeqLensCmpKv.tensor == nullptr) {
                 OP_LOGE(opName_, "When kv layout is TND and cmp_kv is enabled, input cuSeqLensCmpKv must be provided");
                 return ge::GRAPH_FAILED;
             }
-            if (opParamInfo_.cuSeqLensCmpKv.tensor->GetShapeSize() != bSize_) {
+            if (opParamInfo_.cuSeqLensCmpKv.tensor->GetShapeSize() != actualBatchSize + 1) {
                 OP_LOGE(opName_, "cuSeqLensCmpKv's dimension should be equal to %u, but got %ld.",
-                    bSize_, opParamInfo_.cuSeqLensCmpKv.tensor->GetShapeSize());
+                    actualBatchSize + 1, opParamInfo_.cuSeqLensCmpKv.tensor->GetShapeSize());
                 return ge::GRAPH_FAILED;
             }
             OP_CHECK_IF(opParamInfo_.cuSeqLensCmpKv.desc->GetDataType() != ge::DT_INT32,

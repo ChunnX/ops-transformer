@@ -61,14 +61,9 @@ private:
     const aclTensor *inner_;
 };
 
-bool IsPaLayout(const char *layout)
+int64_t GetKvStride0(const aclTensor *tensor, int64_t attrStride)
 {
-    return layout != nullptr && (std::strcmp(layout, "PA_BBND") == 0 || std::strcmp(layout, "PA_BNBD") == 0);
-}
-
-int64_t GetPaKvStride(const aclTensor *tensor, const char *layout, int64_t attrStride)
-{
-    if (attrStride != 0 || tensor == nullptr || !IsPaLayout(layout) || tensor->GetViewShape().GetDimNum() == 0) {
+    if (attrStride != 0 || tensor == nullptr || tensor->GetViewShape().GetDimNum() == 0) {
         return attrStride;
     }
     return tensor->GetViewStrides()[0];
@@ -126,8 +121,8 @@ aclnnStatus aclnnSparseFlashMlaGetWorkspaceSize(
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     int64_t effectiveCmpRatio = (cmpRatio == 0) ? 1 : cmpRatio;
-    int64_t effectiveOriKvStride = GetPaKvStride(oriKv, layoutKv, oriKvStride);
-    int64_t effectiveCmpKvStride = GetPaKvStride(cmpKv, layoutKv, cmpKvStride);
+    int64_t effectiveOriKvStride = GetKvStride0(oriKv, oriKvStride);
+    int64_t effectiveCmpKvStride = GetKvStride0(cmpKv, cmpKvStride);
 
     TensorHolder softmaxLseHolder(softmaxLse, aclDataType::ACL_FLOAT);
 

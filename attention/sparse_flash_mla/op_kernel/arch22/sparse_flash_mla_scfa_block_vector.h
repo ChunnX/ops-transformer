@@ -545,11 +545,17 @@ __aicore__ inline int64_t SMLAVectorBlock<SMLAT>::GetKeyGmOffset(int64_t realS2I
                           blkTableOffset * static_cast<int64_t>(constInfo.kvHeadNum) * static_cast<int64_t>(constInfo.headDim);
 
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
-        realKeyGmOffset = runInfo.bIdx * constInfo.cmpSeqSize * constInfo.kvHeadNum +
-            realS2Idx * constInfo.kvHeadNum;
+        int64_t batchStride = (constInfo.cmpKvStride0 == 0) ?
+            static_cast<int64_t>(constInfo.cmpSeqSize) * static_cast<int64_t>(constInfo.kvHeadNum) *
+                static_cast<int64_t>(constInfo.headDim) :
+            static_cast<int64_t>(constInfo.cmpKvStride0);
+        realKeyGmOffset = static_cast<int64_t>(runInfo.bIdx) * batchStride +
+            realS2Idx * static_cast<int64_t>(constInfo.kvHeadNum) * static_cast<int64_t>(constInfo.headDim) +
+            static_cast<int64_t>(runInfo.n2Idx) * static_cast<int64_t>(constInfo.headDim);
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
-        realKeyGmOffset = (runInfo.tensorCmpBOffset + realS2Idx * constInfo.kvHeadNum * constInfo.headDim) /
-                           constInfo.headDim;
+        realKeyGmOffset = runInfo.tensorCmpBOffset +
+            realS2Idx * static_cast<int64_t>(constInfo.kvHeadNum) * static_cast<int64_t>(constInfo.headDim) +
+            static_cast<int64_t>(runInfo.n2Idx) * static_cast<int64_t>(constInfo.headDim);
     }
     return realKeyGmOffset;
 }
@@ -570,15 +576,9 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::CopyInSingleKv(int64_t &mte2Size,
     intriParams.dstStride = 0;
     intriParams.srcStride = 0;
     DataCopyPadExtParams<KV_T> padParams;
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-        DataCopyPad(
-            kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * constInfo.headDim],
-            cmpKvGm_[keyBNBOffset], intriParams, padParams);
-    } else {
-        DataCopyPad(
-            kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * constInfo.headDim],
-            cmpKvGm_[keyBNBOffset * constInfo.headDim], intriParams, padParams);
-    }
+    DataCopyPad(
+        kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * constInfo.headDim],
+        cmpKvGm_[keyBNBOffset], intriParams, padParams);
     mte2Size += validS2Count;
 }
 
@@ -595,18 +595,8 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::CopyInKv(int64_t &mte2Size, int64
     }
 
     int64_t keySrcStride = 0;
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-        int64_t blkTableSrcStride =
-        ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-        (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize * constInfo.headDim);
-        keySrcStride = blkTableSrcStride * sizeof(KV_T);
-    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
-        keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                        (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * constInfo.headDim * sizeof(KV_T);
-    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
-        keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                        (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * constInfo.headDim * sizeof(KV_T);
-    }
+    keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
+                    (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize * constInfo.headDim) * sizeof(KV_T);
     if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0 ||
         realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
         realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit)) {
@@ -626,15 +616,9 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::CopyInKv(int64_t &mte2Size, int64
         if (keyOffset2 > -1 && keyOffset2 < keyOffset1) {
             startGmOffset = keyOffset2;
         }
-        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-            DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) +
-                              (mte2Size - mte3Size) * constInfo.headDim],
-                    cmpKvGm_[startGmOffset], intriParams, padParams);
-        } else {
-            DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) +
-                              (mte2Size - mte3Size) * constInfo.headDim],
-                    cmpKvGm_[startGmOffset * constInfo.headDim], intriParams, padParams);
-        }
+        DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) +
+                          (mte2Size - mte3Size) * constInfo.headDim],
+                cmpKvGm_[startGmOffset], intriParams, padParams);
         mte2Size += ((keyOffset1 > -1) + (keyOffset2 > -1)) * constInfo.sparseBlockSize;
     }
 }
