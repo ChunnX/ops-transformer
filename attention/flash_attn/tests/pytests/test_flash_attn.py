@@ -19,7 +19,7 @@ from pathlib import Path
 # ── 新架构 modules ──
 from core.data import flash_attn_inputs
 from core.case_loader import load_case_modules, normalize_params, resolve_case_ids
-from core.orchestrator import run_case, run_case_load, run_case_compare
+from core.orchestrator import run_case, run_case_load
 from core.reporter import Reporter
 
 _DEFAULT_CASE_FILES = [os.path.splitext(f)[0] for f in os.listdir(
@@ -191,74 +191,11 @@ if __name__ == "__main__":
 
         sys.exit(0)
 
-    # ── compare 模式（当前 primary vs 对端保存结果）──
-    if args.compare_mode:
-        if args.use_gpu:
-            try:
-                from core.backends.gpu import GPUBackend
-                primary = GPUBackend(args.gpu_device)
-            except ImportError:
-                print("[ERROR] GPU backend 不可用"); sys.exit(1)
-        else:
-            try:
-                from core.backends.npu import NPUBackend
-                primary = NPUBackend(args.device_id)
-            except ImportError:
-                print("[ERROR] NPU backend 不可用"); sys.exit(1)
-
-        if not primary.is_available():
-            print(f"[ERROR] {primary.name} backend 不可用"); sys.exit(1)
-
-        reporter = Reporter()
-        if args.result_csv:
-            csv_path = Path(args.result_csv)
-            csv_path.parent.mkdir(parents=True, exist_ok=True)
-            reporter.set_csv(csv_path)
-
-        for i, name in enumerate(run_cases):
-            other = "GPU" if primary.name == "npu" else "NPU"
-            print(f"\n{'='*66}")
-            print(f"  [compare] Case: {name}  ({primary.name.upper()} vs {other})")
-            print(f"{'='*66}")
-
-            try:
-                result = run_case_compare(
-                    case_name=name,
-                    compare_dir=args.load_golden,
-                    primary=primary,
-                    verbose_diff=args.verbose_diff,
-                    visualize=args.visualize,
-                    viz_dir=args.viz_dir,
-                    fail_analysis=args.fail_analysis,
-                )
-                err = None
-            except FileNotFoundError as e:
-                print(f"  [warn] {e}，跳过")
-                continue
-            except Exception as e:
-                import traceback
-                err = f"{e}\n{traceback.format_exc()}"
-                print(f"[ERROR] {name} 运行异常: {e}")
-                result = {"attn": {"passed": False, "max_abs": float('nan'),
-                                   "mean_abs": float('nan'), "fail_cnt": -1,
-                                   "total": -1, "fail_ratio": float('nan')},
-                          "lse":  {"passed": False, "max_abs": float('nan'),
-                                   "mean_abs": float('nan'), "fail_cnt": -1,
-                                   "total": -1, "fail_ratio": float('nan')}}
-
-            reporter.record(name, result, error=err)
-
-            if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
-                    and (i + 1) < len(run_cases):
-                reporter.print_interim(len(run_cases))
-
-        fail_cnt = reporter.print_final()
-        if args.result_csv:
-            print(f"[result] {args.result_csv}")
-        sys.exit(0 if fail_cnt == 0 else 1)
+    # ── compare 模式复用正常流程，只改对比目标 ──
+    # 不单独分支，通过 compare_dir 参数传入 run_case 即可
 
     # ── load_golden 模式 ──
-    if args.load_golden:
+    if args.load_golden and not args.compare_mode:
         if args.use_gpu:
             try:
                 from core.backends.gpu import GPUBackend
@@ -402,6 +339,7 @@ if __name__ == "__main__":
                 visualize=args.visualize,
                 viz_dir=args.viz_dir,
                 fail_analysis=args.fail_analysis,
+                compare_dir=args.load_golden if args.compare_mode else None,
             )
             err = None
         except Exception as e:
