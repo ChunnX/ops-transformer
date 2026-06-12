@@ -187,7 +187,6 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
 #if CVRATIO > 1
     CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + QLICommon::ConstInfo::AIV0_AIV1_OFFSET);
 #endif
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] 确保跨核同步完成后所有pipeline空闲
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
@@ -201,16 +200,13 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
             }else {
                 KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
             }
-            PipeBarrier<PIPE_ALL>(); // [DEBUG] KeyNd2Nz MTE1完成后
             // MXFP8: 加载 kScale 到 L1（与 Key 数据一起）
             if constexpr (IS_MXFP8) {
                 LoadKScaleToL1(s2L1RealSize, s2GmBaseOffset + s2GmOffset, runInfo);
-                PipeBarrier<PIPE_ALL>(); // [DEBUG] LoadKScaleToL1 MTE1完成后
             }
 
             SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-            PipeBarrier<PIPE_ALL>(); // [DEBUG] keyL1_ MTE1全部完成，MTE2可以安全读取
             // s1gProcessSize当前必定不会超过2倍的s1g basic block
             for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += constInfo_.mBaseSize) {
                 uint64_t s1gL1RealSize =
@@ -223,49 +219,37 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
-                    PipeBarrier<PIPE_ALL>(); // [DEBUG] QueryNd2Nz MTE1完成后
                     // MXFP8: 加载 qScale 到 L1（与 Query 数据一起）
                     if constexpr (IS_MXFP8) {
                         LoadQScaleToL1(s1gL1RealSize, s1gGmOffset, runInfo);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] LoadQScaleToL1 MTE1完成后
                     }
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-                    PipeBarrier<PIPE_ALL>(); // [DEBUG] queryL1_ MTE1全部完成，MTE2可以安全读取
                 } else {
                     queryL1Mte1BufIdx_ =
                         queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSize) - 1 - (s1gGmOffset > 0));
-                    PipeBarrier<PIPE_ALL>(); // [DEBUG] 复用queryL1_前确保上一轮所有pipeline空闲
                 }
                 for (uint64_t s2L1Offset = 0; s2L1Offset < s2L1RealSize; s2L1Offset += S2_BASIC_BLOCK_L0) {
                     uint64_t s2L0RealSize =
                         s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
                     for (uint64_t s1gOffset = 0; s1gOffset < s1gL1SizeAlign2G; s1gOffset += constInfo_.mBaseSize) {
                         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] L0 slot确认空闲
                         uint64_t s1gL0RealSize =
                             s1gOffset + constInfo_.mBaseSize > s1gL1SizeAlign2G ?
                                                    s1gL1SizeAlign2G - s1gOffset :
                                                    constInfo_.mBaseSize;
                         LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] LoadQueryToL0a MTE2完成后
                         LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, runInfo);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] LoadKeyToL0b MTE2完成后
 
                         SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
                         WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] L0a+L0b全部就绪，M可以安全读取
                         
                         WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] L0C slot确认空闲
                         ComputeL0c(s1gL0RealSize, s2L0RealSize, runInfo);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] Mmad + PipeBarrier<PIPE_M>完成后
 
                         SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] L0 slot已释放
                         
                         Fixp(s1gGmOffset + s1gOffset, s2GmOffset + s2L1Offset, s1gL0RealSize, s2L0RealSize, runInfo);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] Fixp L0C→UB完成后
                         SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         l0BufIdx_++;
                     }
@@ -274,7 +258,6 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte1BufIdx_ % QUERY_BUF_NUM);
                 }
             }
-            PipeBarrier<PIPE_ALL>(); // [DEBUG] s2循环结束前确保所有pipeline空闲
             SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
             keyL1BufIdx_++;
         }
@@ -297,11 +280,9 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                 }else {
                     KeyNd2Nz(s2L1LoadSize, s2GmOffset, runInfo);
                 }
-                PipeBarrier<PIPE_ALL>(); // [DEBUG] KeyNd2Nz MTE1完成后
 
                 SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-                PipeBarrier<PIPE_ALL>(); // [DEBUG] keyL1_ MTE1全部完成
 
                 isKeyCacheValid_ = true;
                 keyGmStart_ = s2GmBaseOffset;
@@ -321,14 +302,11 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
-                    PipeBarrier<PIPE_ALL>(); // [DEBUG] QueryNd2Nz MTE1完成后
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-                    PipeBarrier<PIPE_ALL>(); // [DEBUG] queryL1_ MTE1全部完成
                 } else {
                     queryL1Mte1BufIdx_ =
                         queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSize) - 1 - (s1gGmOffset > 0));
-                    PipeBarrier<PIPE_ALL>(); // [DEBUG] 复用queryL1_前确保pipeline空闲
                 }
                 uint64_t s2Boundry = l1S2Offset + s2ProcessSize;
                 for (uint64_t s2L1Offset = l1S2Offset; s2L1Offset < s2Boundry; s2L1Offset += S2_BASIC_BLOCK_L0) {
@@ -338,31 +316,23 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                                             S2_BASIC_BLOCK_L0;
                     for (uint64_t s1gOffset = 0; s1gOffset < s1gL1SizeAlign2G; s1gOffset += constInfo_.mBaseSize) {
                         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] L0 slot确认空闲
                         uint64_t s1gL0RealSize =
                             s1gOffset + constInfo_.mBaseSize > s1gL1SizeAlign2G ?
                                                     s1gL1SizeAlign2G - s1gOffset :
                                                     constInfo_.mBaseSize;
                         LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] LoadQueryToL0a MTE2完成后
                         LoadKeyToL0b(s2L1Offset, l1TotalSize, s2L0RealSize, runInfo);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] LoadKeyToL0b MTE2完成后
 
                         SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
                         WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] L0a+L0b全部就绪
                         
                         WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] L0C slot确认空闲
                         ComputeL0c(s1gL0RealSize, s2L0RealSize, runInfo);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] Mmad完成后
 
                         SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] L0 slot已释放
                         
                         Fixp(s1gGmOffset + s1gOffset, (s2L1Offset - l1S2Offset),
                                                 s1gL0RealSize, s2L0RealSize, runInfo);
-                        PipeBarrier<PIPE_ALL>(); // [DEBUG] Fixp完成后
                         SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         l0BufIdx_++;
                     }
@@ -371,7 +341,6 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte1BufIdx_ % QUERY_BUF_NUM);
                 }
             }
-            PipeBarrier<PIPE_ALL>(); // [DEBUG] s2循环结束前确保所有pipeline空闲
             bool l1FullyUsed = (s2GmBaseOffset + s2ProcessSize >= keyGmStart_ + keyLoadedSize_);
             if (l1FullyUsed || runInfo.isLastS2InnerLoop) {
                 SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
@@ -380,7 +349,6 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
             }
         }
     }
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] 所有计算完成，准备通知Vector核
     CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2);
 #if CVRATIO > 1
     CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + QLICommon::ConstInfo::AIV0_AIV1_OFFSET);
@@ -401,10 +369,8 @@ __aicore__ inline void QLIMatmul<QLIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] DataCopy前确保无残留
     DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_],
              keyGm_[runInfo.tensorKeyOffset + s2GmOffset * constInfo_.headDim], nd2nzPara);
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] DataCopy后等待MTE1完成
 }
 
 // blkNum, blkSize, N2, D
@@ -431,10 +397,8 @@ __aicore__ inline void QLIMatmul<QLIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uin
         nd2nzPara.dstNzNStride = 1;
         nd2nzPara.srcNdMatrixStride = 0;
         nd2nzPara.dstNzMatrixStride = 0;
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] PA DataCopy前确保无残留
         DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_ + s2L1Offset * FP8_BLOCK_CUBE],
                  keyGm_[keyGmOffset], nd2nzPara);
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] PA DataCopy后等待MTE1完成
 
         s2L1Offset += s2Mte2Size;
     }
@@ -466,9 +430,7 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQScaleToL1(uint64_t s1gL1RealSize, u
     dn2Nzparam.dstNzNStride = 1;
     dn2Nzparam.dstNzMatrixStride = scalePerToken / FP8_TWO;
     uint64_t gmOffset = runInfo.tensorQScaleOffset + s1gGmOffset * scalePerToken;
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] qScale DataCopy前
     DataCopy(scaleL1, scaleGmCast[gmOffset / FP8_TWO], dn2Nzparam);
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] qScale DataCopy后
 }
 
 // MXFP8: 加载 kScale 到 L1（存储在 keyL1_ buffer 的尾部区域）
@@ -510,9 +472,7 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKScaleToL1(uint64_t s2L1RealSize, ui
             dn2Nzparam.dstNzC0Stride = scalePerToken / FP8_TWO;
             dn2Nzparam.dstNzNStride = 1;
             dn2Nzparam.dstNzMatrixStride = scalePerToken / FP8_TWO;
-            PipeBarrier<PIPE_ALL>(); // [DEBUG] PA kScale DataCopy前
             DataCopy(scaleL1[s2L1Offset * scalePerToken / FP8_TWO], scaleGmCast[gmOffset / FP8_TWO], dn2Nzparam);
-            PipeBarrier<PIPE_ALL>(); // [DEBUG] PA kScale DataCopy后
 
             s2L1Offset += s2Mte2Size;
         }
@@ -527,9 +487,7 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKScaleToL1(uint64_t s2L1RealSize, ui
         dn2Nzparam.dstNzNStride = 1;
         dn2Nzparam.dstNzMatrixStride = scalePerToken / FP8_TWO;
         uint64_t gmOffset = runInfo.tensorKeyScaleOffset + s2GmOffset * scalePerToken;
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] non-PA kScale DataCopy前
         DataCopy(scaleL1, scaleGmCast[gmOffset / FP8_TWO], dn2Nzparam);
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] non-PA kScale DataCopy后
     }
 }
 
@@ -550,10 +508,8 @@ __aicore__ inline void QLIMatmul<QLIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint6
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
     // MXFP8: 使用 QUERY_L1_PINGPONG_STRIDE（含 scale 空间）而非 QUERY_BUFFER_OFFSET
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] QueryNd2Nz DataCopy前
     DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE],
              queryGm_[runInfo.tensorQueryOffset + s1gGmOffset * constInfo_.headDim], nd2nzPara);
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] QueryNd2Nz DataCopy后
 }
 
 template <typename QLIT>
@@ -593,16 +549,12 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uin
         DumpTensor(queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE], 1003, 128*128, shapeInfo1);
         DumpTensor(queryL1_, 1004, 128*128, shapeInfo1);
         DumpTensor(scaleL1, 1005, 128*128, shapeInfo1);
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] MXFP8 LoadQueryToL0a LoadData前
         LoadData(dstTensor,
                  queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE],
                  scaleL1, loadData2DParams, loadAScaleParam);
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] MXFP8 LoadQueryToL0a LoadData后
     } else {
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] non-MXFP8 LoadQueryToL0a LoadData前
         LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
                  queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParams);
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] non-MXFP8 LoadQueryToL0a LoadData后
     }
 }
 
@@ -643,19 +595,15 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64
         DumpTensor(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_], 1006, 128*128, shapeInfo1);
         DumpTensor(keyL1_, 1007, 128*128, shapeInfo1);
         DumpTensor(scaleL1, 1008, 128*128, shapeInfo1);
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] MXFP8 LoadKeyToL0b LoadData前
         LoadData(dstTensor,
                  keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_],
                  scaleL1, loadData2DParams, loadDataMxParams);
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] MXFP8 LoadKeyToL0b LoadData后
     } else {
         // 非 MXFP8 不需要转置
         loadData2DParams.ifTranspose = false;
 
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] non-MXFP8 LoadKeyToL0b LoadData前
         LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
                  keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_], loadData2DParams);
-        PipeBarrier<PIPE_ALL>(); // [DEBUG] non-MXFP8 LoadKeyToL0b LoadData后
     }
 }
 
@@ -669,7 +617,6 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeL0c(uint64_t s1gL0RealSize, uint6
     mmadParams.k = constInfo_.headDim;
     mmadParams.cmatrixInitVal = true;
     mmadParams.cmatrixSource = false;
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] Mmad前确保L0a/L0b全部就绪
     if constexpr (IS_MXFP8) {
         // MXFP8: 使用 mx_fp8_e4m3_t 类型触发 mmad_mx 硬件指令
         LocalTensor<mx_fp8_e4m3_t> qL0Mx =
@@ -685,7 +632,6 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeL0c(uint64_t s1gL0RealSize, uint6
     // if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
         PipeBarrier<PIPE_M>();
     // }
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] Mmad+PipeBarrier_M后确保L0C写入完成
 }
 
 template <typename QLIT>
@@ -723,10 +669,8 @@ __aicore__ inline void QLIMatmul<QLIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2Gm
     uint32_t array1[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(128)};
     ShapeInfo shapeInfo1(2, array1);
     DumpTensor(cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], 1002, 128*128, shapeInfo1);
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] Fixpipe前确保L0C数据就绪
     Fixpipe<QK_T, QK_T, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
                                                 cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
-    PipeBarrier<PIPE_ALL>(); // [DEBUG] Fixpipe后确保UB写入完成
 }
 
 template <typename QLIT>
