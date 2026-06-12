@@ -5,10 +5,10 @@
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
 | <term>Ascend 950DT</term>                             |    ×    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 推理系列产品</term>                               |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
 
 ## 功能说明
@@ -48,7 +48,7 @@ $$
 
 其中，$emax$表示该类型最大正规数对应的指数部分的值。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该算子必须与`MoeDistributeCombineV3`一起使用。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：该算子必须与`MoeDistributeCombineV3`一起使用。
 
 相较于`MoeDistributeDispatchV3`算子，该算子变更如下：
 
@@ -206,7 +206,7 @@ $$
   <tr>
    <td>global_bs</td>
    <td>可选属性</td>
-   <td><li>EP域全局的batch size大小；各rank BS一致时，global_bs = BS * ep_world_size 或 0；各rank BS不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡BS最大值）。</li><li>默认值为0。</li></td>
+   <td><li>EP域全局的batch size大小；各rank BS一致时，global_bs = BS * ep_world_size或0；各rank BS不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡BS最大值）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -297,7 +297,7 @@ $$
  </tbody>
 </table>
 
-* <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+* <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     * 不支持`expand_scales_out`。
     
 ## 约束说明
@@ -318,9 +318,9 @@ $$
         - 对于MoE专家卡，`local_expert_num` = `moe_expert_num` / (`ep_world_size` - `shared_expert_rank_num`)，`local_expert_num` > 1时，不支持TP域通信。
 
 - 属性约束：
-    - `zero_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是[`moe_expert_num`, `moe_expert_num` + `zero_expert_num`)。
-    - `copy_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的copy专家的ID的值是[`moe_expert_num` + `zero_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num`)。
-    - `const_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的常量专家的ID的值是[`moe_expert_num` + `zero_expert_num` + `copy_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`)。
+    - `zero_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的零专家的ID的值是[`moe_expert_num`, `moe_expert_num` + `zero_expert_num`)。
+    - `copy_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的copy专家的ID的值是[`moe_expert_num` + `zero_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num`)。
+    - `const_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的常量专家的ID的值是[`moe_expert_num` + `zero_expert_num` + `copy_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`)。
 
 - 本文公式中的"/"表示整除。
 - 通信域使用约束：
@@ -330,7 +330,7 @@ $$
 - 通信方式约束：
     - <term>Ascend 950DT</term>：仅支持UB Memory通信。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数约束：
         - `elastic_info_optional`：当前版本不支持，传空指针即可。
@@ -341,7 +341,7 @@ $$
             - ""：默认值，开启fullmesh_v1模板。
             - "fullmesh_v1"：开启fullmesh_v1模板。
             - "fullmesh_v2"：开启fullmesh_v2模板，其中`comm_alg`仅在`tp_world_size`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下开启。
-        - `ep_recv_count_out`：要求shape为 (`ep_world_size` * max(`tp_world_size`, 1) * `local_expert_num`, )。
+        - `ep_recv_count_out`：要求shape为(`ep_world_size` * max(`tp_world_size`, 1) * `local_expert_num`, )。
         - `performance_Info_optional`：预留参数，当前版本不支持，传空指针即可。
         - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/npu_ops_transformer/ops/deep_ep.py)。
     - 参数说明里shape格式说明：
