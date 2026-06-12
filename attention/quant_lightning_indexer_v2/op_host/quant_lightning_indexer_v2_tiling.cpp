@@ -126,6 +126,8 @@ void QLIV2InfoParser::GetOptionalInputParaInfo()
     opParamInfo_.sequsedQ.desc = context_->GetOptionalInputDesc(SEQUSED_Q_INDEX);
     opParamInfo_.sequsedK.tensor = context_->GetOptionalInputTensor(SEQUSED_K_INDEX);
     opParamInfo_.sequsedK.desc = context_->GetOptionalInputDesc(SEQUSED_K_INDEX);
+    opParamInfo_.cmpResidualK.tensor = context_->GetOptionalInputTensor(CMP_RESIDUAL_K_INDEX);
+    opParamInfo_.cmpResidualK.desc = context_->GetOptionalInputDesc(CMP_RESIDUAL_K_INDEX);
     opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
     opParamInfo_.blockTable.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_INDEX);
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
@@ -205,10 +207,16 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
 
     if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(
-                ((std::string(opParamInfo_.layOutKey) != "PA_BBND")),
-                OP_LOGE(opName_, "input attr layout_key only supported PA_BBND,"
-                            "but now layout_key is %s.", layout_key.c_str()),
-                            return ge::GRAPH_FAILED);
+            ((std::string(opParamInfo_.layOutKey) != "PA_BBND")),
+              OP_LOGE(opName_, "input attr layout_key only supported PA_BBND,"
+                      "but now layout_key is %s.", layout_key.c_str()),
+                      return ge::GRAPH_FAILED);
+    } else if (npuArch_ == NpuArch::DAV_3510) {
+        OP_CHECK_IF(
+            ((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
+             (std::string(opParamInfo_.layOutKey) != "BSND") &&
+             (std::string(opParamInfo_.layOutKey) != "TND")), OP_LOGE(opName_,
+              "input attr layout_key only supported PA_BSND, BSND or TND"), return ge::GRAPH_FAILED);
     }
 
     if (npuArch_ == NpuArch::DAV_2201) {
@@ -389,6 +397,27 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
     if (kLayout_ != DataLayout::PA_BBND) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor != nullptr,
                    OP_LOGE(opName_, "key layout is not PA_BBND, input block_table must be null"),
+                   return ge::GRAPH_FAILED);
+    }
+
+    // =============== cmpResidualK 校验 ===============
+    // cmpRatio 不等于 1 且 sparseMode 不等于 0 时 cmpResidualK 必传
+    if (opParamInfo_.cmpRatio != nullptr && *opParamInfo_.cmpRatio != 1 &&
+        opParamInfo_.sparseMode != nullptr && *opParamInfo_.sparseMode != 0) {
+        OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor == nullptr,
+                   OP_LOGE(opName_, "cmp_ratio is not 1 and sparse_mode is not 0, "
+                           "input cmp_residual_k must not be null"),
+                   return ge::GRAPH_FAILED);
+    } esle {
+        OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor != nullptr,
+                   OP_LOGE(opName_, "cmp_ratio is 1 or sparse_mode is 0, "
+                           "input cmp_residual_k must be null"),
+                   return ge::GRAPH_FAILED);
+    }
+    // cmpResidualK 传入时校验数据类型
+    if (opParamInfo_.cmpResidualK.tensor != nullptr) {
+        OP_CHECK_IF(opParamInfo_.cmpResidualK.desc->GetDataType() != ge::DT_INT32,
+                   OP_LOGE(opName_, "input cmp_residual_k data type only support int32"),
                    return ge::GRAPH_FAILED);
     }
 
@@ -775,6 +804,13 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
                OP_LOGE(opName_, "output sparse_indices shape last dim must be same as attr sparse_count."),
                return ge::GRAPH_FAILED);
+    // -----------------------check cmp_residual_k-------------------
+    if (opParamInfo_.cmpResidualK.tensor != nullptr) {
+        OP_CHECK_IF((opParamInfo_.cmpResidualK.tensor->GetShapeSize() != bSize_),
+                   OP_LOGE(opName_, "input cmp_residual_k's shape size (%u) must be equal to batch_size (%u).",
+                           opParamInfo_.cmpResidualK.tensor->GetShapeSize(), bSize_),
+                   return ge::GRAPH_FAILED);
+    }
     // -----------------------check metadata-------------------
      OP_CHECK_IF((opParamInfo_.metadata.tensor->GetShapeSize() != METADATA_LIMIT),
                 OP_LOGE(opName_, "input metadata dim 0 must be %u.", METADATA_LIMIT),
