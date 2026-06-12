@@ -101,11 +101,6 @@ struct SparseLightningIndexerGradCompileInfo {
     NpuArch npuArch;
 };
 
-template <typename T> inline T Align(T num, T rnd)
-{
-    return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
-}
-
 } // namespace optiling
 
 #endif

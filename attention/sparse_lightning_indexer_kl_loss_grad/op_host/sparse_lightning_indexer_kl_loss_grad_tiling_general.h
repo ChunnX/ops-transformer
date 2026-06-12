@@ -40,16 +40,6 @@ using namespace AscendC;
 
 namespace optiling {
 
-struct AiCoreParams {
-    uint64_t ubSize = 0;
-    uint64_t blockDim = 0;
-    uint64_t aicNum = 0;
-    uint64_t l1Size = 0;
-    uint64_t l0aSize = 0;
-    uint64_t l0bSize = 0;
-    uint64_t l0cSize = 0;
-};
-
 class TilingBaseClass {
 public:
     explicit TilingBaseClass(gert::TilingContext* context) : context_(context)
