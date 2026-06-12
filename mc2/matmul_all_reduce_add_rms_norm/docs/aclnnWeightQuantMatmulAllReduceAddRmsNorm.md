@@ -10,7 +10,7 @@
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term > |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -360,7 +360,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
 - antiquantGroupSize取值满足取值范围[32, min(k-1, INT_MAX)]且为32倍数。
 - 支持1、2、4、8卡，并且仅支持hccs链路all mesh组网。
 - 支持(b*s)、n为0的空tensor，不支持k为0的空tensor。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：一个模型中的通算融合MC2算子，仅支持相同通信域。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 
 ## 调用示例
 

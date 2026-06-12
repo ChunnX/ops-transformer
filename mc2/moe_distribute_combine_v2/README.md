@@ -6,7 +6,7 @@
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term > |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -320,7 +320,7 @@
  </tbody>
 </table>
 
-* <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+* <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     * 不支持共享专家场景，不支持`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`sharedExpertXOptional`。
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出为无效内容。
     * 不支持动态缩容场景，不支持`elasticInfoOptional`。
@@ -374,7 +374,7 @@
 - 通信方式约束：
     - <term>Ascend 950DT</term>：仅支持UB Memory通信。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - `commAlg`：当前版本支持nullptr，""，"fullmesh"，"hierarchy"四种输入方式，若配置"hierarchy"，建议搭配25.0.RC1.1及以上版本驱动使用。
         - nullptr和""：仅在此场景下，`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`配置生效。当`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0时，调用"hierarchy"算法，否则调用"fullmesh"算法。不推荐使用该方式。
         - "fullmesh"：token数据直接通过RDMA方式发往topk个目标专家所在的卡。

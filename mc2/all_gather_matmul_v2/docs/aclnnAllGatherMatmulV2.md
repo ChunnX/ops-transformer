@@ -8,7 +8,7 @@
 | :----------------------------------------------------------- | :------:|
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term > |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -23,7 +23,7 @@
         
         新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../../docs/zh/context/量化介绍.md)。
     
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         
         新增了对低精度数据类型INT8/INT4的支持。支持pertoken/perchannel[量化方式](../../../docs/zh/context/量化介绍.md)。
 
@@ -152,7 +152,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>bias (aclTensor*)</td>
         <td>输入</td>
         <td>即计算公式中的bias。</td>
-        <td><ul><li><term>Ascend 950PR/Ascend 950DT</term>：支持传入一维输入或者空指针。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：当前版本仅支持传入空指针。</li></ul></td>
+        <td><ul><li><term>Ascend 950PR/Ascend 950DT</term>：支持传入一维输入或者空指针。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：当前版本仅支持传入空指针。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT</td>
         <td>ND</td>
         <td>1</td>
@@ -262,7 +262,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>output (aclTensor*)</td>
         <td>输出</td>
         <td>AllGather通信与MatMul计算的结果，即计算公式中的output。</td>
-        <td><ul><li><term>Ascend 950PR/Ascend 950DT</term>：支持空Tensor。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：不支持空Tensor。</li></ul></td>
+        <td><ul><li><term>Ascend 950PR/Ascend 950DT</term>：支持空Tensor。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持空Tensor。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT</td>
         <td>ND</td>
         <td>2</td>
@@ -272,7 +272,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>gatherOut (aclTensor*)</td>
         <td>输出</td>
         <td>仅输出all_gather通信后的结果。即公式中的gatherOut。</td>
-        <td><ul><li><term>Ascend 950PR/Ascend 950DT</term>：支持空Tensor。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：不支持空Tensor。</li><li>数据类型与x1的数据类型保持一致。</li></ul></td>
+        <td><ul><li><term>Ascend 950PR/Ascend 950DT</term>：支持空Tensor。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持空Tensor。</li><li>数据类型与x1的数据类型保持一致。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、INT8、INT4</td>
         <td>ND</td>
         <td>2</td>
@@ -310,7 +310,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
     </tr>
     </tbody></table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
         - x1、x2：数据类型支持FLOAT16、BFLOAT16、INT8、INT4。
         - bias：在commMode为aiv时，当前版本仅支持输入nullptr。
         - x1Scale：数据类型支持FLOAT。当x1和x2数据类型为FLOAT16/BFLOAT16时，仅支持输入为nullptr。在pertoken场景，shape为(m, 1)。
@@ -429,7 +429,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
     - 支持2、4、8、16、32、64卡。
     - allgather(x1)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
     - 输入x1必须是2维，其shape为\(m, k\)。
     - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
@@ -446,7 +446,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
     ```c++
     #include <iostream>
     #include <vector>

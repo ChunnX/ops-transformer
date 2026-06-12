@@ -8,7 +8,7 @@
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term > |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -110,7 +110,7 @@
 
     其中，$emax$表示该类型最大正规数对应的指数部分的值。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：该接口必须与`aclnnMoeDistributeCombineV2`配套使用。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该接口必须与`aclnnMoeDistributeCombineV2`配套使用。
 - <term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：该接口必须与`aclnnMoeDistributeCombineV2`或`aclnnMoeDistributeCombineAddRmsNorm`配套使用。
 
 > 说明：
@@ -470,7 +470,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     </tbody>
     </table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - `dynamicScalesOut`仅quantMode取值为2时有输出。
         - `commAlg`支持nullptr、""、"fullmesh"、"hierarchy"；推荐配置"hierarchy"并搭配≥25.0.RC1.1版本驱动；nullptr和""依HCCL环境变量选择算法（不推荐）；"fullmesh"通过RDMA直传token；"hierarchy"经跨机、机内两次发送优化通信。
         - `commAlg`为"hierarchy"或HCCL_INTRA_PCIE_ENABLE=1且HCCL_INTRA_ROCE_ENABLE=0时，scalesOptional需传nullptr。
@@ -627,14 +627,14 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
   | 变量         | 定义与取值范围                                                                 |
   | :----------- | :----------------------------------------------------------------------------- |
   | A            | 表示本卡需要分发的最大token数量，取值范围如下：<ul> <li>对于共享专家，要满足A = BS * epWorldSize * sharedExpertNum / sharedExpertRankNum。</li> <li>对于MoE专家，当globalBS为0时，要满足A >= BS * epWorldSize * min(localExpertNum, K)；当globalBS非0时，要满足A >= globalBS * min(localExpertNum, K)。</li> </ul>|
-  | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：(0, 10240]且为32的整数倍。</li> <li><term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：取值范围[1024, 8192]。</li> </ul> |
-  | BS           | 表示本卡最终输出token数。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：依commAlg取值，"fullmesh"取值范围为(0 < BS ≤ 256)；"hierarchy"并且驱动版本≥25.0.RC1.1时取值范围为(0 < BS ≤ 512)；</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：0 < BS ≤ 512。 </li> </ul> |
+  | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：(0, 10240]且为32的整数倍。</li> <li><term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：取值范围[1024, 8192]。</li> </ul> |
+  | BS           | 表示本卡最终输出token数。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"取值范围为(0 < BS ≤ 256)；"hierarchy"并且驱动版本≥25.0.RC1.1时取值范围为(0 < BS ≤ 512)；</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：0 < BS ≤ 512。 </li> </ul> |
   | K    | 表示选取topK个专家，取值范围为(0 < K ≤ 16)且满足(0 < K ≤ moeExpertNum)。|
   | serverNum    | 表示服务器节点数，仅支持2、4、8。<br>Atlas A2训练系列产品/Atlas A2推理系列产品：仅该场景的shape使用了该变量。                                                  |
   | localExpertNum |  本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum / (epWorldSize - sharedExpertRankNum)</code>，localExpertNum > 1时不支持TP通信。 </li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：应满足0 < localExpertNum * epWorldSize ≤ 2048。</li></ul>|
 
 - **quantMode相关约束**：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
       - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
       - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
           - 输入`scalesOptional`可传入空指针。
@@ -676,7 +676,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：
       调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB：
-          - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+          - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
               - commAlg为""或nullptr：依HCCL环境变量选择“fullmesh”或“hierarchy”公式。
               - commAlg为"fullmesh"：设置大小要求(≥ 2 * (BS * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
               - commAlg为"hierarchy"：设置大小要求(≥ (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBS` * (`H` * 2 + 16 * Align8  (`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512)。
@@ -686,7 +686,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
           - <term>Ascend 950DT</term>：ep通信域内设置大小要求(≥ 2)且满足(≥ 2 * (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。不支持TP通信域。
 
   - **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：该环境变量不再推荐使用，建议通过`commAlg`配置为"hierarchy"。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议通过`commAlg`配置为"hierarchy"。
       - <term>Atlas A3训练系列产品/Atlas A3推理系列产品/Ascend 950DT</term>：不支持该环境变量。
 
 - **通信域使用约束**：
@@ -698,7 +698,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
   - <term>Ascend 950DT</term>：仅支持UB Memory通信。
   
 - **组网约束**：
-   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：多机场景仅支持交换机组网，不支持双机直连组网。
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
 
 - **其他约束**：
   - 公式中的“/”表示整除。
@@ -720,7 +720,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     ```
     单机16卡场景则无需修改。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。 
 
@@ -742,7 +742,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950DT</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950DT</term>：
 
     ```Cpp
     #include <thread>

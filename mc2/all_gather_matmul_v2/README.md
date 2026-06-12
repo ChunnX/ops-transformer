@@ -6,7 +6,7 @@
 | ---- | :----: |
 | <term>Ascend 950PR/Ascend 950DT</term> | √ |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term > | √ |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
 | <term>Atlas 200I/500 A2推理产品</term> | x |
 | <term>Atlas 推理系列产品</term> | x |
 | <term>Atlas 训练系列产品</term> | x |
@@ -20,7 +20,7 @@
           
     新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../docs/zh/context/量化介绍.md)。
       
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
           
     新增了对低精度数据类型INT8/INT4的支持。支持pertoken/perchannel[量化方式](../../docs/zh/context/量化介绍.md)。
 
@@ -213,7 +213,7 @@
     - 支持2、4、8、16、32、64卡。
     - allgather(x1)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
     - 输入x1必须是2维，其shape为\(m, k\)。
     - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。

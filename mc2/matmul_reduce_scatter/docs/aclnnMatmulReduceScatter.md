@@ -8,7 +8,7 @@
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term > |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -122,7 +122,7 @@ aclnnStatus aclnnMatmulReduceScatter(
             <ul>
                 <li>shape为（n）。</li>
                 <li>支持传入空指针场景。</li>
-                <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：暂不支持输入为非0的场景。</li>
+                <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：暂不支持输入为非0的场景。</li>
                 <li><term>Ascend 950PR/Ascend 950DT</term>：支持输入为非0的场景。</li>
             </ul>
         </td>
@@ -291,7 +291,7 @@ aclnnStatus aclnnMatmulReduceScatter(
 ## 约束说明
 
 - 通信引擎约束：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：仅支持AICPU通信。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持AICPU通信。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：仅支持AICPU通信。
   - <term>Ascend 950PR/Ascend 950DT</term>：仅支持CCU通信。
 
@@ -305,7 +305,7 @@ aclnnStatus aclnnMatmulReduceScatter(
   - rank_size为卡数。
 - x2支持转置/不转置场景，x1只支持不转置场景。
 - x1、x2计算输入的数据类型要和output计算输出的数据类型一致。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - 支持2、4、8卡，并且仅支持hccs链路all mesh组网。
   - 一个模型中的通算融合MC2算子，仅支持相同通信域。
   - aclnnMatmulReduceScatter默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
@@ -322,7 +322,7 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
     #include <thread>

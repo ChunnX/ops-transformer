@@ -8,7 +8,7 @@
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term > |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -261,7 +261,7 @@ aclnnStatus aclnnMatmulAllReduce(
 ## 约束说明
 
 - 确定性计算：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：`aclnnMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
   - Ascend 950PR/Ascend 950DT：`aclnnMatmulAllReduce`默认确定性实现。
 - 增量场景不开启MC2，全量场景开启MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等。bias若非空，其shape为(n)。
@@ -269,9 +269,9 @@ aclnnStatus aclnnMatmulAllReduce(
 - 当输入x1的shape为(b, s, k)时，输出output的shape为(b, s, n)，当输入x1的shape为(m, k)时，输出output的shape为(m, n)。
 - x1、x2、bias计算输入的数据类型要和output计算输出的数据类型一致。
 - 仅支持HCCS链路all mesh组网。
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：支持1、2、4、8卡。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
     - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：一个模型中的通算融合MC2算子，仅支持相同通信域。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 - 空tensor支持度：
   - 支持k为0的场景，输出为bias。
   - 支持bs/m/n为0，此时传入的输出也应该是空tensor，此场景不进入kernel计算，直接返回。
@@ -282,7 +282,7 @@ aclnnStatus aclnnMatmulAllReduce(
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
     #include <iostream>

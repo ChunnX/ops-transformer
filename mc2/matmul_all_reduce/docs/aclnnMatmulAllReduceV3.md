@@ -8,7 +8,7 @@
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term > |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -282,7 +282,7 @@ aclnnStatus aclnnMatmulAllReduceV3(
 ## 约束说明
 
 - 通信引擎commMode支持度：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：目前不支持指定通信引擎，commMode仅允许输入为空字符串，默认使用AICPU。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：目前不支持指定通信引擎，commMode仅允许输入为空字符串，默认使用AICPU。
   - <term>Ascend 950PR/Ascend 950DT</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"、"ccu"和空字符串，前两者直接指定AICPU和CCU，空字符串表示自适应模式，优先选择最佳的通信引擎，当前版本默认使用CCU作为通信引擎。
   - 同一条通信链路内，只能选择同一种通信引擎。
   - AICPU和CCU通信引擎简单介绍：
@@ -290,7 +290,7 @@ aclnnStatus aclnnMatmulAllReduceV3(
     - CCU：能够减少访存带宽与计算核占用，但受限于片上资源，支持的通信域数量有限。适用于高带宽、低时延的通信场景。
     - 更详细的通信引擎介绍，请参考[通信引擎](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/910beta1/programug/commopdev/hcclopdev_000005.html)。
 - 确定性计算：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：`aclnnMatmulAllReduceV3`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnMatmulAllReduceV3`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
   - <term>Ascend 950PR/Ascend 950DT</term>：`aclnnMatmulAllReduceV3`默认确定性实现。
 - 增量场景不使能MC2，全量场景使能MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等。bias若非空，其shape为(n)。
@@ -298,9 +298,9 @@ aclnnStatus aclnnMatmulAllReduceV3(
 - 当输入x1的shape为(b, s, k)时，输出output的shape为(b, s, n)；当输入x1的shape为(m, k)时，输出output的shape为(m, n)。
 - x1、x2、bias计算输入的数据类型要和output计算输出的数据类型一致，传入的x1、x2、x3或者output不为空指针。
 - 仅支持HCCS链路all mesh组网。
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：支持1、2、4、8卡。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
     - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：一个模型中的通算融合MC2算子，仅支持相同通信域。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
 - 空tensor支持度：
   - 支持k为0的场景，输出为bias + x3。
   - 支持bs/m/n为0，此时传入的输出也应该是空tensor，此场景不进入kernel计算，直接返回。
@@ -311,7 +311,7 @@ aclnnStatus aclnnMatmulAllReduceV3(
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
     #include <iostream>
