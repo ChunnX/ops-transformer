@@ -1,22 +1,33 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef FUSED_BLOCK_EPILOGUE_ONLINE_SOFTMAX_LOW_PREC_OPERATOR_INC_HPP
 #define FUSED_BLOCK_EPILOGUE_ONLINE_SOFTMAX_LOW_PREC_OPERATOR_INC_HPP
 
     __aicore__ inline
-    void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<half> gInput, AscendC::GlobalTensor<ElementSink> gSink,
-        const LayoutOutput &layoutOutput, const LayoutInput &layoutInput, GemmCoord actualBlockShape,
-        uint32_t isFirstStackTile, uint32_t isLastNoMaskStackTile,
-        uint32_t qSBlockSize, uint32_t qNBlockSize, uint32_t curStackTileMod, bool isLastStackTile, bool isSplitKV = false,
-        bool startsWithMaskTile = false, bool startsWithMaskThenNomaskFlag = false)
+    void operator()(
+        AscendC::GlobalTensor<ElementOutput> gOutput,
+        AscendC::GlobalTensor<half> gInput,
+        AscendC::GlobalTensor<ElementSink> gSink,
+        const LayoutOutput &layoutOutput,
+        const LayoutInput &layoutInput,
+        GemmCoord actualBlockShape,
+        uint32_t isFirstStackTile,
+        uint32_t isLastNoMaskStackTile,
+        uint32_t qSBlockSize,
+        uint32_t qNBlockSize,
+        uint32_t curStackTileMod,
+        bool isLastStackTile,
+        bool isSplitKV = false,
+        bool startsWithMaskTile = false,
+        bool startsWithMaskThenNomaskFlag = false)
     {
         uint32_t rowNum = actualBlockShape.m();
         uint32_t columnNum = actualBlockShape.n();
@@ -71,11 +82,26 @@
     }
 
     __aicore__ inline
-    void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<half> gInput, AscendC::GlobalTensor<ElementSink> gSink,
-        AscendC::GlobalTensor<ElementMask> gMask, const LayoutOutput &layoutOutput, const LayoutInput &layoutInput,
-        const LayoutInput &layoutMask, GemmCoord actualBlockShape, uint32_t isFirstStackTile, uint32_t qSBlockSize,
-        uint32_t qNBlockSize, uint32_t curStackTileMod, Arch::CrossCoreFlag qkReady, uint32_t triUp, uint32_t triDown,
-        uint32_t kvSStartIdx, uint32_t kvSEndIdx, bool isLastStackTile, bool isSplitKV = false)
+    void operator()(
+        AscendC::GlobalTensor<ElementOutput> gOutput,
+        AscendC::GlobalTensor<half> gInput,
+        AscendC::GlobalTensor<ElementSink> gSink,
+        AscendC::GlobalTensor<ElementMask> gMask,
+        const LayoutOutput &layoutOutput,
+        const LayoutInput &layoutInput,
+        const LayoutInput &layoutMask,
+        GemmCoord actualBlockShape,
+        uint32_t isFirstStackTile,
+        uint32_t qSBlockSize,
+        uint32_t qNBlockSize,
+        uint32_t curStackTileMod,
+        Arch::CrossCoreFlag qkReady,
+        uint32_t triUp,
+        uint32_t triDown,
+        uint32_t kvSStartIdx,
+        uint32_t kvSEndIdx,
+        bool isLastStackTile,
+        bool isSplitKV = false)
     {
         uint32_t rowNum = actualBlockShape.m();
         uint32_t columnNum = actualBlockShape.n();

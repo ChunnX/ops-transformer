@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef FUSED_BLOCK_EPILOGUE_ONLINE_SOFTMAX_SOFTMAX_INC_HPP
 #define FUSED_BLOCK_EPILOGUE_ONLINE_SOFTMAX_SOFTMAX_INC_HPP
@@ -91,8 +91,17 @@
     }
 
     __aicore__ inline
-    void UpdateGlobalRowMax(AscendC::GlobalTensor<ElementSink> gSink, uint32_t rowNumCurLoop, uint32_t rowNumCurLoopRound, uint32_t columnNum,
-        uint32_t columnNumRound, uint32_t dmUbOffsetCurCycle, uint32_t rowOffset, uint32_t isFirstStackTile, bool isLastStackTile, SinkLoopParam &curLoop)
+    void UpdateGlobalRowMax(
+        AscendC::GlobalTensor<ElementSink> gSink,
+        uint32_t rowNumCurLoop,
+        uint32_t rowNumCurLoopRound,
+        uint32_t columnNum,
+        uint32_t columnNumRound,
+        uint32_t dmUbOffsetCurCycle,
+        uint32_t rowOffset,
+        uint32_t isFirstStackTile,
+        bool isLastStackTile,
+        SinkLoopParam &curLoop)
     {
         if (isFirstStackTile) {
             AscendC::DataCopy(
@@ -101,7 +110,7 @@
                 AscendC::DataCopyParams(1, rowNumCurLoopRound / FLOAT_BLOCK_SIZE, 0, 0));
             AscendC::PipeBarrier<PIPE_V>();
             // hm = Maxs(hm, sink)
-            if constexpr (SINK_MODE == SinkMode::ENABLE){
+            if constexpr (SINK_MODE == SinkMode::ENABLE) {
                 if (isLastStackTile) {
                     UpdateRowMaxWithSink(gSink, rowOffset, dmUbOffsetCurCycle, curLoop);
                 }
@@ -118,7 +127,7 @@
             AscendC::PipeBarrier<PIPE_V>();
 
             // hm = Maxs(hm, sink)
-            if constexpr (SINK_MODE == SinkMode::ENABLE){
+            if constexpr (SINK_MODE == SinkMode::ENABLE) {
                 if (isLastStackTile) {
                     UpdateRowMaxWithSink(gSink, rowOffset, dmUbOffsetCurCycle, curLoop);
                     SetVecMask(rowNumCurLoop);
@@ -130,7 +139,7 @@
                 dmUbTensor[dmUbOffsetCurCycle],
                 gmUbTensor[rowOffset],
                 hmUbTensor[rowOffset],
-                (uint64_t)0,  1,
+                (uint64_t)0, 1,
                 AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
             AscendC::PipeBarrier<PIPE_V>();
             // *** dm = exp(dm)
@@ -264,8 +273,16 @@
     }
 
     __aicore__ inline
-    void UpdateGlobalRowSum(AscendC::GlobalTensor<ElementSink> gSink, uint32_t sUbOffset, uint32_t rowNumCurLoop, uint32_t rowNumCurLoopRound,
-        uint32_t dmUbOffsetCurCycle, uint32_t rowOffset, uint32_t isFirstStackTile, bool isLastStackTile, SinkLoopParam &curLoop)
+    void UpdateGlobalRowSum(
+        AscendC::GlobalTensor<ElementSink> gSink,
+        uint32_t sUbOffset,
+        uint32_t rowNumCurLoop,
+        uint32_t rowNumCurLoopRound,
+        uint32_t dmUbOffsetCurCycle,
+        uint32_t rowOffset,
+        uint32_t isFirstStackTile,
+        bool isLastStackTile,
+        SinkLoopParam &curLoop)
     {
         if (isFirstStackTile) {
             // *** copy ll to g1
@@ -274,7 +291,6 @@
                 llUbTensor[rowOffset],
                 AscendC::DataCopyParams(1, rowNumCurLoopRound / FLOAT_BLOCK_SIZE, 0, 0));
             AscendC::PipeBarrier<PIPE_V>();
-
         } else {
             SetVecMask(rowNumCurLoop);
             // *** gl *= dm
