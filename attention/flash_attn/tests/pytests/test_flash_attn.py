@@ -191,16 +191,23 @@ if __name__ == "__main__":
 
         sys.exit(0)
 
-    # ── compare 模式（NPU vs GPU）──
+    # ── compare 模式（当前 primary vs 对端保存结果）──
     if args.compare_mode:
-        try:
-            from core.backends.npu import NPUBackend
-            primary = NPUBackend(args.device_id)
-        except ImportError:
-            print("[ERROR] NPU backend 不可用"); sys.exit(1)
+        if args.use_gpu:
+            try:
+                from core.backends.gpu import GPUBackend
+                primary = GPUBackend(args.gpu_device)
+            except ImportError:
+                print("[ERROR] GPU backend 不可用"); sys.exit(1)
+        else:
+            try:
+                from core.backends.npu import NPUBackend
+                primary = NPUBackend(args.device_id)
+            except ImportError:
+                print("[ERROR] NPU backend 不可用"); sys.exit(1)
 
         if not primary.is_available():
-            print("[ERROR] NPU backend 不可用"); sys.exit(1)
+            print(f"[ERROR] {primary.name} backend 不可用"); sys.exit(1)
 
         reporter = Reporter()
         if args.result_csv:
@@ -209,8 +216,9 @@ if __name__ == "__main__":
             reporter.set_csv(csv_path)
 
         for i, name in enumerate(run_cases):
+            other = "GPU" if primary.name == "npu" else "NPU"
             print(f"\n{'='*66}")
-            print(f"  [compare] Case: {name}  (NPU vs GPU)")
+            print(f"  [compare] Case: {name}  ({primary.name.upper()} vs {other})")
             print(f"{'='*66}")
 
             try:
