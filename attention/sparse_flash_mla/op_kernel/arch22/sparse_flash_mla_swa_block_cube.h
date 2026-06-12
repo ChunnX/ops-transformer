@@ -531,6 +531,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                     uint32_t headStride  = constInfo.headDim;
                     uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
                     if (oriSizeCur > 0) {
+                        nd2nzPara.nValue = oriSizeCur;
                         uint32_t batchStride = constInfo.kvSeqSize * seqStride;
                         uint64_t curS2 = (uint64_t)info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint + \
                             nL1 * N_SPLIT_SIZE;
@@ -539,6 +540,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                         DataCopy(bL1Tensor, oriKvGm[offset], nd2nzPara);
                     }
                     if (cmpSizeCur > 0) {
+                        nd2nzPara.nValue = cmpSizeCur;
                         uint32_t batchStride = constInfo.cmpSeqSize * seqStride;
                         uint32_t cmpMixsizeCur = N_SPLIT_SIZE - info.actualSingleProcessSInnerOriSize % N_SPLIT_SIZE;
                         uint32_t oriOnlyLoopTimes = info.actualSingleProcessSInnerOriSize / N_SPLIT_SIZE;
