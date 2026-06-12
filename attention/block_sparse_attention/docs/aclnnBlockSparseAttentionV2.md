@@ -610,7 +610,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
   - kDequantScale和vDequantScale的shape必须一致，为(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)。
   - 当query、key、value中任意一个数据类型不为FLOAT8_E4M3FN时，qDequantScale、kDequantScale、vDequantScale必须传入nullptr。
   - blockShapeOptional必须传入。
-  - q和kv的量化稀疏块大小必须与blockShapeOptional的两个元素大小分别保持一致。
+  - q和kv的量化块大小必须与blockShapeOptional的两个元素大小分别保持一致。
 
 ## 调用示例
 
