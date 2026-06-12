@@ -153,10 +153,10 @@ int main() {
     int64_t keyAntiquantScaleShapeSize = GetShapeSize(keyAntiquantScaleShape); // (1, B, N, >=KV_S, D/32)
     int64_t valueAntiquantScaleShapeSize = GetShapeSize(valueAntiquantScaleShape); // (1, B, N, >=KV_S, D/32)
     int64_t outShapeSize = GetShapeSize(outShape);     // BNSD
-    std::vector<uint16_t> queryHostData(queryShapeSize, 0x3C00);
-    std::vector<uint8_t> keyHostData(keyShapeSize / 2, 0b0010 + (0b0010 << 4));
+    std::vector<uint16_t> queryHostData(queryShapeSize, 0x3C00); // fp16 1.0
+    std::vector<uint8_t> keyHostData(keyShapeSize / 2, 0b0010 + (0b0010 << 4)); // double fp4 1.0
     std::vector<uint8_t> valueHostData(valueShapeSize / 2, 0b0010 + (0b0010 << 4));
-    std::vector<uint8_t> keyAntiquantScaleHostData(keyAntiquantScaleShapeSize, 0b01111111);
+    std::vector<uint8_t> keyAntiquantScaleHostData(keyAntiquantScaleShapeSize, 0b01111111); // fp8 1.0
     std::vector<uint8_t> valueAntiquantScaleHostData(valueAntiquantScaleShapeSize, 0b01111111);
     std::vector<uint16_t> outHostData(outShapeSize, 0x3C00);
 
