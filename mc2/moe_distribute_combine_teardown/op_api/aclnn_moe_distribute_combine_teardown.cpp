@@ -91,7 +91,6 @@ extern "C" aclnnStatus aclnnInnerMoeDistributeCombineTeardownGetWorkspaceSize(
     const aclTensor *commCmdInfo,
     const aclTensor *xActiveMaskOptional,
     const aclTensor *sharedExpertXOptional,
-    aclTensor *xOut,
     int64_t epWorldSize,
     int64_t epRankId,
     int64_t moeExpertNum,
@@ -103,6 +102,7 @@ extern "C" aclnnStatus aclnnInnerMoeDistributeCombineTeardownGetWorkspaceSize(
     int64_t commQuantMode,
     int64_t commType,
     const char *commAlg,
+    aclTensor *xOut,
     uint64_t *workspaceSize,
     aclOpExecutor **executor
 );
@@ -147,7 +147,6 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
         commCmdInfo,
         xActiveMaskOptional,
         sharedExpertXOptional,
-        xOut,
         epWorldSize,
         epRankId,
         moeExpertNum,
@@ -159,6 +158,7 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
         commQuantMode,
         commType,
         const_cast<char*>(commAlg),
+        xOut,
         workspaceSize,
         executor
     );
