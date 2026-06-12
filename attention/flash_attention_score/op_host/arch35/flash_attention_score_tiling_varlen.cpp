@@ -361,8 +361,10 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
                 return false;
             }
             if ((i == bandIndex) && (actualSeqLenData[i] - nextTokens > actualSeqLenKvData[i])) {
-                OP_LOGE(context_, "Batch[%ld], s1[%ld], s2[%ld], next_tokens[%ld], has invalid row.", i,
-                            actualSeqLenData[i], actualSeqLenKvData[i], nextTokens);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "next_tokens",
+                    std::to_string(nextTokens).c_str(),
+                    ("The following constraint must be met for batch " + std::to_string(i) +
+                     ": actual_seq_len_q - next_tokens <= actual_seq_len_kv").c_str());
                 return false;
             }
         }
@@ -488,7 +490,8 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
     {
         auto prefixN = context_->GetOptionalInputTensor(PREFIX_INPUT_INDEX);
         if (prefixN == nullptr) {
-            OP_LOGE(context_, "[%s] prefixN is null pointer while sparse mode is prefix compress", templateName);
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "prefix",
+                "The input prefix cannot be nullptr when sparse mode is prefix compress");
             return false;
         }
 
@@ -511,7 +514,8 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
         /* Get Data from tensor. */
         prefixNData = prefixN->GetData<int64_t>();
         if (prefixNData == nullptr) {
-            OP_LOGE(context_, "[%s] prefixN data is null pointer", templateName);
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, "prefix",
+                "The data of input prefix cannot be nullptr");
             return false;
         }
 

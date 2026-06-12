@@ -161,10 +161,15 @@ static bool GetEmptyArgs(EmptyArgs &emptyArgs, gert::TilingContext *context, con
 {
     emptyArgs.coreNum = coreNum;
     OP_CHECK_IF((coreNum <= 0),
-                 OP_LOGE(context, "platform info is invalid, coreNum=%u.", coreNum), return false);
+                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "coreNum",
+                     std::to_string(coreNum).c_str(),
+                     "The value of coreNum must be greater than 0"),
+                 return false);
     auto kernelType = context->GetInputDesc(KEY_INPUT_INDEX)->GetDataType();
     OP_CHECK_IF((kernelType != ge::DT_FLOAT16 && kernelType != ge::DT_FLOAT && kernelType != ge::DT_BF16),
-                OP_LOGE(context, "kernelType is invalid, kernelType is %d.", kernelType),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "key",
+                    ge::TypeUtils::DataTypeToSerialString(kernelType).c_str(),
+                    "The dtype of input key must be FLOAT16, FLOAT or BF16"),
                 return false);
     uint32_t kernelTypeSize = ge::GetSizeByDataType(kernelType);
     OP_CHECK_IF((kernelTypeSize <= 0),
@@ -289,7 +294,9 @@ static bool IsEmptyInputRegbase(gert::TilingContext *context)
         FlashAttentionScoreEmptyInputTilingDataRegbase* regbaseEmptyInputTiling =
             context->GetTilingData<FlashAttentionScoreEmptyInputTilingDataRegbase>();
         auto compileInfoPtr = reinterpret_cast<const FlashAttentionScoreCompileInfo *>(context->GetCompileInfo());
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context, "compileInfoPtr is null"),
+        OP_CHECK_IF(compileInfoPtr == nullptr,
+                   OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "compileInfoPtr",
+                       "The compileInfoPtr cannot be nullptr"),
                    return false);
 
         EmptyArgs emptyArgs;
@@ -354,7 +361,9 @@ static bool IsEmptyInput(gert::TilingContext *context)
         FlashAttentionScoreTilingData* emptyInputTiling = context->GetTilingData<FlashAttentionScoreTilingData>();
         emptyInputTiling->reset();
         auto compileInfoPtr = reinterpret_cast<const FlashAttentionScoreCompileInfo *>(context->GetCompileInfo());
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context, "compileInfoPtr is null"),
+        OP_CHECK_IF(compileInfoPtr == nullptr,
+                   OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "compileInfoPtr",
+                       "The compileInfoPtr cannot be nullptr"),
                    return false);
         EmptyArgs emptyArgs;
         if (!GetEmptyArgs(emptyArgs, context, compileInfoPtr->aivNum, attentionOutShapeSize, softmaxSumShapeSize)){
@@ -373,7 +382,10 @@ static bool IsEmptyInput(gert::TilingContext *context)
         emptyInputTiling->emptyInputTilingData.set_attentionOutLastCoreIndex(emptyArgs.attentionOutLastCoreIndex);
         context->SetTilingKey(FA_EMPTY_TILING_KEY);
         auto platformInfoPtr = context->GetPlatformInfo();
-        OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context, "platformInfoPtr is null"), return false);
+        OP_CHECK_IF(platformInfoPtr == nullptr,
+                   OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "platformInfoPtr",
+                       "The platformInfoPtr cannot be nullptr"),
+                   return false);
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
         context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(emptyArgs.aivActualNum, 0, compileInfoPtr->aivNum));
         size_t *workspaces = context->GetWorkspaceSizes(1);
@@ -393,7 +405,8 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionScore(gert::TilingContext *
  
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr,
-        OP_LOGE(context, "platformInfoPtr is null"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "platformInfoPtr",
+            "The platformInfoPtr cannot be nullptr"),
         return ge::GRAPH_FAILED);
  
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
@@ -417,11 +430,13 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScore(gert::Tilin
 {
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr,
-        OP_LOGE(context, "platformInfoPtr is null"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "platformInfoPtr",
+            "The platformInfoPtr cannot be nullptr"),
         return ge::GRAPH_FAILED);
     auto compileInfoPtr = context->GetCompiledInfo<FlashAttentionScoreCompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr,
-        OP_LOGE(context, "compileInfoPtr is null"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "compileInfoPtr",
+            "The compileInfoPtr cannot be nullptr"),
         return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
