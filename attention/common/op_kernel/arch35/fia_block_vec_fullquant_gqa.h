@@ -1227,7 +1227,7 @@ public:
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
     {
-        uint32_t n2Idx = (bN2Cur / (constInfo.realN2Size / constInfo.n2Size)) % constInfo.n2Size;
+        uint32_t n2Idx = bN2Cur % constInfo.realN2Size;
         uint32_t bIdx = bN2Cur / constInfo.realN2Size;
         // 对整个batch的结果置0
         if constexpr (POST_QUANT) { // out int8
