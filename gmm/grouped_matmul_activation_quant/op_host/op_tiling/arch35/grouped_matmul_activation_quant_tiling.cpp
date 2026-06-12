@@ -28,9 +28,10 @@ namespace optiling {
 namespace {
 constexpr uint32_t X_INDEX = 0;
 constexpr uint32_t GROUP_LIST_INDEX = 1;
-constexpr uint32_t X_SCALE_INDEX = 2;
-constexpr uint32_t WEIGHT_INDEX = 3;
-constexpr uint32_t WEIGHT_SCALE_INDEX = 4;
+constexpr uint32_t WEIGHT_INDEX = 2;
+constexpr uint32_t WEIGHT_SCALE_INDEX = 3;
+constexpr uint32_t BIAS_INDEX = 4;
+constexpr uint32_t X_SCALE_INDEX = 5;
 constexpr uint32_t Y_INDEX = 0;
 constexpr uint32_t Y_SCALE_INDEX = 1;
 constexpr uint32_t ATTR_INDEX_ACTIVATION_TYPE = 0;
@@ -55,7 +56,9 @@ constexpr uint32_t WEIGHT_NZ_C0_DIM_INDEX = 3;
 constexpr uint32_t WEIGHT_NZ_LAST_DIM_INDEX = 4;
 constexpr uint32_t WEIGHT_NZ_LAST_DIM_FP8 = 32;
 constexpr uint32_t WEIGHT_NZ_C0_DIM = 16;
-constexpr uint32_t N_SIZE_ALIGN = 64;
+constexpr uint32_t BIAS_DIM_NUM = 2;
+constexpr uint32_t BIAS_GROUP_DIM_INDEX = 0;
+constexpr uint32_t BIAS_N_DIM_INDEX = 1;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
 constexpr uint32_t FP8_E5M2_VALUE = 35;
 constexpr uint8_t ROUND_MODE_RINT = 4;
@@ -132,11 +135,8 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
 
 bool GroupedMatmulActivationQuantTiling950::CheckDtype() const
 {
-    OP_CHECK_IF(!IsFp8(inputParams_.aDtype),
-                OP_LOGE(context_->GetNodeName(), "x must be FLOAT8_E4M3FN or FLOAT8_E5M2."),
-                return false);
-    OP_CHECK_IF(inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN,
-                OP_LOGE(context_->GetNodeName(), "weight only supports FLOAT8_E4M3FN."),
+    OP_CHECK_IF(!IsFp8(inputParams_.aDtype) || !IsFp8(inputParams_.bDtype),
+                OP_LOGE(context_->GetNodeName(), "x and weight must be FLOAT8_E4M3FN or FLOAT8_E5M2."),
                 return false);
     OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0 ||
                     inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0,
@@ -148,6 +148,8 @@ bool GroupedMatmulActivationQuantTiling950::CheckDtype() const
                 OP_LOGE(context_->GetNodeName(), "y dtype and quant_dtype must be the same."), return false);
     OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE(context_->GetNodeName(), "y_scale must be FLOAT8_E8M0."), return false);
+    OP_CHECK_IF(inputParams_.biasDtype != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "bias must be FLOAT."), return false);
     return true;
 }
 
@@ -157,19 +159,23 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeDtype()
     auto wDesc = context_->GetInputDesc(WEIGHT_INDEX);
     auto xScaleDesc = context_->GetInputDesc(X_SCALE_INDEX);
     auto wScaleDesc = context_->GetInputDesc(WEIGHT_SCALE_INDEX);
+    auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
     auto yDesc = context_->GetOutputDesc(Y_INDEX);
     auto yScaleDesc = context_->GetOutputDesc(Y_SCALE_INDEX);
     OP_CHECK_IF(xDesc == nullptr || wDesc == nullptr || xScaleDesc == nullptr || wScaleDesc == nullptr ||
-                    yDesc == nullptr || yScaleDesc == nullptr,
+                    biasDesc == nullptr || yDesc == nullptr || yScaleDesc == nullptr,
                 OP_LOGE(context_->GetNodeName(), "input or output desc is nullptr."), return false);
     inputParams_.aDtype = xDesc->GetDataType();
     inputParams_.bDtype = wDesc->GetDataType();
     inputParams_.scaleDtype = wScaleDesc->GetDataType();
     inputParams_.perTokenScaleDtype = xScaleDesc->GetDataType();
+    inputParams_.biasDtype = biasDesc->GetDataType();
     inputParams_.outDataDtype = yDesc->GetDataType();
     inputParams_.outScaleDtype = yScaleDesc->GetDataType();
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
-    inputParams_.hasBias = false;
+    inputParams_.hasBias = true;
+    OP_CHECK_IF(static_cast<ge::Format>(ge::GetPrimaryFormat(biasDesc->GetStorageFormat())) != ge::FORMAT_ND,
+                OP_LOGE(context_->GetNodeName(), "bias must use ND format."), return false);
     return CheckDtype();
 }
 
@@ -213,6 +219,16 @@ bool GroupedMatmulActivationQuantTiling950::CheckWeightNzShape(const gert::Shape
     return true;
 }
 
+bool GroupedMatmulActivationQuantTiling950::CheckBiasShape(const gert::Shape &biasShape) const
+{
+    OP_CHECK_IF(biasShape.GetDimNum() != BIAS_DIM_NUM,
+                OP_LOGE(context_->GetNodeName(), "bias shape must be 2D."), return false);
+    OP_CHECK_IF(biasShape.GetDim(BIAS_GROUP_DIM_INDEX) != static_cast<int64_t>(inputParams_.groupNum) ||
+                    biasShape.GetDim(BIAS_N_DIM_INDEX) != static_cast<int64_t>(inputParams_.nSize),
+                OP_LOGE(context_->GetNodeName(), "bias shape must be (E, N)."), return false);
+    return true;
+}
+
 bool GroupedMatmulActivationQuantTiling950::CheckCoreNum() const
 {
     auto compileInfo = context_->GetCompileInfo<GMMCompileInfo>();
@@ -234,16 +250,13 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     auto xScaleStorageShape = context_->GetInputShape(X_SCALE_INDEX);
     auto wScaleStorageShape = context_->GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0);
+    auto biasStorageShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
     OP_CHECK_IF(xStorageShape == nullptr || wStorageShape == nullptr || xScaleStorageShape == nullptr ||
-                    wScaleStorageShape == nullptr,
+                    wScaleStorageShape == nullptr || biasStorageShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "input shape is nullptr."), return false);
     OP_CHECK_IF(!SetGroupNum(GROUP_LIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
     OP_CHECK_IF(!SetMKN(xStorageShape->GetOriginShape(), wStorageShape->GetOriginShape()),
                 OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-    OP_CHECK_IF(inputParams_.nSize % N_SIZE_ALIGN != 0,
-                OP_LOGE(inputParams_.opName, "N must be a multiple of %u, actual is %u.", N_SIZE_ALIGN,
-                        static_cast<uint32_t>(inputParams_.nSize)),
-                return false);
     inputParams_.aQuantMode = optiling::QuantMode::MX_PERGROUP_MODE;
     inputParams_.bQuantMode = optiling::QuantMode::MX_PERGROUP_MODE;
     inputParams_.isSingleX = true;
@@ -253,6 +266,8 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
                 OP_LOGE(inputParams_.opName, "CheckMxScaleShape failed."), return false);
     OP_CHECK_IF(!CheckWeightNzShape(wStorageShape->GetStorageShape()),
                 OP_LOGE(inputParams_.opName, "CheckWeightNzShape failed."), return false);
+    OP_CHECK_IF(!CheckBiasShape(biasStorageShape->GetOriginShape()),
+                OP_LOGE(inputParams_.opName, "CheckBiasShape failed."), return false);
     OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);
     return true;
 }
@@ -295,7 +310,7 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
             basicTiling_.baseK,
         inputParams_.kSize);
     tilingData_.mmTilingData.scaleKBL1 = tilingData_.mmTilingData.scaleKAL1;
-    tilingData_.mmTilingData.isBias = 0;
+    tilingData_.mmTilingData.isBias = inputParams_.hasBias ? 1 : 0;
     tilingData_.mmTilingData.dbL0C = basicTiling_.dbL0c;
     return ge::GRAPH_SUCCESS;
 }
