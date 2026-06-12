@@ -16,19 +16,20 @@ from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
 class MhcPostFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, hRes, hOut, hPost):
-        out = op_module.mhc_post(x, hRes, hOut, hPost)
-        ctx.save_for_backward(x, hRes, hOut, hPost)
+    def forward(ctx, x, h_res, h_out, h_post):
+        out = op_module.mhc_post(x, h_res, h_out, h_post)
+        ctx.save_for_backward(x, h_res, h_out, h_post)
         return out
 
     @staticmethod
-    def backward(ctx, gradOutput):
-        x, hRes, hOut, hPost = ctx.saved_tensors
+    def backward(ctx, grad_output):
+        x, h_res, h_out, h_post = ctx.saved_tensors
         from npu_ops_transformer.ops.mhc_post_backward import mhc_post_backward
-        gradX, gradHres, gradHout, gradHpost = mhc_post_backward(
-            gradOutput, x, hRes, hOut, hPost
+        grad_x, grad_h_res, grad_h_out, grad_h_post = mhc_post_backward(
+            grad_output, x, h_res, h_out, h_post
         )
-        return gradX, gradHres, gradHout, gradHpost
+        return grad_x, grad_h_res, grad_h_out, grad_h_post
+
 
 class MhcPostOpBuilder(OpBuilder):
     def __init__(self):
@@ -42,20 +43,22 @@ class MhcPostOpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def mhc_post_meta(x, hRes, hOut, hPost):
+        def mhc_post_meta(x, h_res, h_out, h_post):
             return torch.empty_like(x)
 
 mhc_post_op_builder = MhcPostOpBuilder()
 op_module = mhc_post_op_builder.load()
 
-@impl(AS_LIBRARY, mhc_post_op_builder.name, "PrivateUse1")
-def _mhc_post_dispatch(x, hRes, hOut, hPost):
-    return op_module.mhc_post(x, hRes, hOut, hPost)
 
-def mhc_post(x, hRes, hOut, hPost):
-    needs_grad = x.requires_grad or hRes.requires_grad or hOut.requires_grad or hPost.requires_grad
+@impl(AS_LIBRARY, mhc_post_op_builder.name, "PrivateUse1")
+def _mhc_post_dispatch(x, h_res, h_out, h_post):
+    return op_module.mhc_post(x, h_res, h_out, h_post)
+
+
+def mhc_post(x, h_res, h_out, h_post):
+    needs_grad = x.requires_grad or h_res.requires_grad or h_out.requires_grad or h_post.requires_grad
 
     if needs_grad:
-        return MhcPostFunction.apply(x, hRes, hOut, hPost)
+        return MhcPostFunction.apply(x, h_res, h_out, h_post)
     else:
-        return op_module.mhc_post(x, hRes, hOut, hPost)
+        return op_module.mhc_post(x, h_res, h_out, h_post)
