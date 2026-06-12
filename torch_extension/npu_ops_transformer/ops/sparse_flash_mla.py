@@ -40,6 +40,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                                             "int ori_win_left=127, int ori_win_right=0, " \
                                             "str layout_q=\"BSND\", str layout_kv=\"PA_BBND\", " \
                                             "int topk_value_mode=1, bool return_softmax_lse=False, " \
+                                            "int batch_invariant=0, " \
                                             "int? key_dtype=None, int? value_dtype=None) -> (Tensor, Tensor)"
  
     def register_meta(self):
@@ -63,6 +64,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                                                 ori_win_left=127, ori_win_right=0,
                                                 layout_q='BSND', layout_kv='PA_BBND',
                                                 topk_value_mode=1, return_softmax_lse=False,
+                                                batch_invariant=0,
                                                 key_dtype=None, value_dtype=None):
             key_headnum = ori_kv.shape[1] if layout_kv == "TND" else ori_kv.shape[2]
             if layout_q == "BSND":
@@ -105,6 +107,7 @@ def npu_sparse_flash_mla(q,
                                     ori_win_left=127, ori_win_right=0,
                                     layout_q='BSND', layout_kv='PA_BBND',
                                     topk_value_mode=1, return_softmax_lse=False,
+                                    batch_invariant=0,
                                     key_dtype=None, value_dtype=None):
     """
     dispatcher implementation for NPU.zhe
@@ -125,4 +128,5 @@ def npu_sparse_flash_mla(q,
                                                 ori_win_left, ori_win_right,
                                                 layout_q, layout_kv,
                                                 topk_value_mode, return_softmax_lse,
+                                                batch_invariant,
                                                 key_dtype, value_dtype)
