@@ -5,7 +5,7 @@
 #include <string>
 #include <cstdint>
 #include "gtest/gtest.h"
-#include "aclnn_moe_ep_dispatch_epilogue.h"
+#include "../../../op_api/aclnn_moe_ep_dispatch_epilogue.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
@@ -15,15 +15,19 @@ using namespace std;
 
 class L2AclnnMoeEpDispatchEpilogueTest : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
         cout << "L2AclnnMoeEpDispatchEpilogueTest SetUp" << endl;
     }
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         cout << "L2AclnnMoeEpDispatchEpilogueTest TearDown" << endl;
     }
 };
 
-TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueBasic) {
+TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueBasic)
+{
     int64_t numTokens = 2048;
     int64_t topK = 8;
     int64_t epWorldSize = 8;
@@ -47,15 +51,15 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueBasic) {
     TensorDesc numRecvPerRankDesc = TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc numRecvPerExpertDesc = TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeEpDispatchEpilogue,
-        INPUT(contextDesc, dstSlotDesc, recvSrcMetaInternalDesc,
-              numRecvPerRankHpDesc, numRecvPerExpertHpDesc),
-        ATTR(epWorldSize, 0, numExperts, numMaxTokensPerRank, cclBufferSize, 1),
-        OUTPUT(recvXDesc, recvTopkIdxDesc, recvTopkWeightsDesc,
-               recvSrcMetadataDesc, numRecvPerRankDesc, numRecvPerExpertDesc));
+    auto ut =
+        OP_API_UT(aclnnMoeEpDispatchEpilogue,
+                  INPUT(contextDesc, dstSlotDesc, recvSrcMetaInternalDesc, numRecvPerRankHpDesc, numRecvPerExpertHpDesc,
+                        epWorldSize, 0, numExperts, numMaxTokensPerRank, cclBufferSize, 1),
+                  OUTPUT(recvXDesc, recvTopkIdxDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, numRecvPerRankDesc,
+                         numRecvPerExpertDesc));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = ut.GetWorkspaceSize(&workspaceSize, &executor);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
