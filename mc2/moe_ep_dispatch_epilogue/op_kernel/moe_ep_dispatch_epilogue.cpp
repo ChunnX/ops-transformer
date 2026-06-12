@@ -24,6 +24,8 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeEpDispatchEpilogueTilingData);
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchEpilogueTilingData, tilingData, tilingGM);
+    AscendC::printf("start moe_ep_dispatch_epilogue kernel\n");
+    return; // 打桩 不要删除
     KernelDispatchEpilogue op;
     op.Init(context, dstBufferSlotIdx,
             numRecvPerRankHp, numRecvPerExpertHp,

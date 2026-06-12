@@ -58,6 +58,7 @@ constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
+constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;   // sizeof(int32)=sizeof(float)=4
 constexpr int64_t H_MIN = 1024;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 32;
@@ -224,9 +225,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     info.isCached = cached ? 1 : 0;
     info.hostPinnedCounterAddr = static_cast<uint64_t>(*hpCounterAddrPtr);
 
-    info.cfg.perSlotBytes = static_cast<uint32_t>(
-        ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN
-        + 80UL + 16UL);
+    // info.cfg.perSlotBytes = static_cast<uint32_t>(
+    //     ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN
+    //     + 80UL + 16UL);
+    uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    info.cfg.perSlotBytes = static_cast<uint32_t>((hAlign32 + kAlign32 * 2 + UB_ALIGN));
     OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.cfg.perSlotBytes, info.cfg.hidden);
 
     return ge::GRAPH_SUCCESS;
@@ -279,19 +283,13 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const MoeEpDis
     return ge::GRAPH_SUCCESS;
 }
 
-static uint64_t CalTilingKey(const uint32_t doCpuSync, const uint32_t isCached,
-                              const uint32_t networkMode)
+static uint64_t CalTilingKey(const uint32_t doCpuSync, const uint32_t isCached, const uint32_t networkMode)
 {
-    uint32_t tplDoCpuSync = doCpuSync ? 1 : 0;
-    uint32_t tplIsCached = isCached ? 1 : 0;
-    uint32_t tplNetworkMode = networkMode ? TILINGKEY_HYBRID : TILINGKEY_DIRECT;
-    return GET_TPL_TILING_KEY(tplDoCpuSync, tplIsCached, tplNetworkMode, TILINGKEY_TPL_A5);
+    return GET_TPL_TILING_KEY(doCpuSync, isCached, networkMode);
 }
 
 static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
 {
-    context->SetScheduleMode(1U);
-
     const char *nodeName = context->GetNodeName();
     OP_TILING_CHECK(nodeName == nullptr, OP_LOGE("unKnownNodeName", "nodeName is nullptr."),
         return ge::GRAPH_FAILED);
@@ -340,12 +338,14 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-    context->SetBlockDim(blockDim);
-
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
+    context->SetBlockDim(blockDim);
+    context->SetScheduleMode(1U);
     OP_LOGD(nodeName, "blockDim=%u, aivNum=%u, ubSize=%lu", blockDim, aivNum, ubSize);
+
     PrintTilingDataInfo(nodeName, info);
+
     return ge::GRAPH_SUCCESS;
 }
 

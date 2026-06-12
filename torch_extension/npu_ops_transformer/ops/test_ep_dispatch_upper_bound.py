@@ -39,7 +39,7 @@ def run_test(rank):
     recv_x, recv_topk_idx, recv_topk_weights, handle = buf.dispatch(
         x, topk_idx, topk_weights, do_cpu_sync=False)
 
-    upper_a = world_size * num_max_tokens_per_rank
+    upper_a = world_size * num_max_tokens_per_rank * min(top_k, num_experts // world_size)
     torch.npu.synchronize()
     print(f"[rank {rank}] recv_x shape={recv_x.shape}, expected upper_a={upper_a}")
     print(f"[rank {rank}] ccl_buffer_size={buf.ccl_buffer_size.value}, ep_world_size={buf.ep_world_size.value}")
