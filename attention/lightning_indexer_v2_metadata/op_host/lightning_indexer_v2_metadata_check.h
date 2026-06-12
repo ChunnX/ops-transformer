@@ -25,10 +25,14 @@ extern "C" {
 
 namespace {
 
-inline constexpr int64_t LI_NO_MASK_MODE = 0;
-inline constexpr int64_t LI_CAUSAL_MASK_MODE = 3;
-inline constexpr int64_t LI_CMP_RATIO_LOWER_BOUND = 1;
-inline constexpr int64_t LI_CMP_RATIO_UPPER_BOUND = 128;
+inline constexpr int64_t LI_V2_NO_MASK_MODE = 0;
+inline constexpr int64_t LI_V2_CAUSAL_MASK_MODE = 3;
+inline constexpr int64_t LI_V2_CMP_RATIO_LOWER_BOUND = 1;
+inline constexpr int64_t LI_V2_CMP_RATIO_UPPER_BOUND = 128;
+inline constexpr int64_t LI_V2_NUM_HEADS_Q_LOWER_BOUND = 1;
+inline constexpr int64_t LI_V2_NUM_HEADS_Q_UPPER_BOUND = 64;
+inline constexpr int64_t LI_V2_TOPK_LOWER_BOUND = 1;
+inline constexpr int64_t LI_V2_TOPK_UPPER_BOUND = 8192;
 
 inline bool IsTensorExistLiV2(const aclTensor *tensor)
 {
@@ -92,14 +96,15 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t t
     int64_t cmpRatio, uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion)
 {
     // num_heads_q 校验
-    CHECK_COND(numHeadsQ > 0, ACLNN_ERR_PARAM_INVALID,
-        "num_heads_q should be > 0, but got %lld", numHeadsQ);
+    CHECK_COND(numHeadsQ >= LI_V2_NUM_HEADS_Q_LOWER_BOUND && numHeadsQ <= LI_V2_NUM_HEADS_Q_UPPER_BOUND,
+        ACLNN_ERR_PARAM_INVALID, "num_heads_q should be [%lld, %lld], but got %lld",
+        LI_V2_NUM_HEADS_Q_LOWER_BOUND, LI_V2_NUM_HEADS_Q_UPPER_BOUND, numHeadsQ);
     // num_heads_k 校验
     CHECK_COND(numHeadsK == 1, ACLNN_ERR_PARAM_INVALID,
         "num_heads_kv should only be 1, but got %lld", numHeadsK);
     // topk 校验
-    CHECK_COND(topk >= 0, ACLNN_ERR_PARAM_INVALID,
-        "topk should not be negative, but got %lld", topk);
+    CHECK_COND(topk >= LI_V2_TOPK_LOWER_BOUND && topk <= LI_V2_TOPK_UPPER_BOUND, ACLNN_ERR_PARAM_INVALID,
+        "topk should not be [%lld, %lld], but got %lld", LI_V2_TOPK_LOWER_BOUND, LI_V2_TOPK_UPPER_BOUND, topk);
     // batch_size 非负校验
     CHECK_COND(batchSize >= 0, ACLNN_ERR_PARAM_INVALID,
         "batch_size should not be negative, but got %lld", batchSize);
@@ -110,14 +115,14 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t t
     CHECK_COND(maxSeqlenK >= -1, ACLNN_ERR_PARAM_INVALID,
         "max_seqlen_k should be >= -1, but got %lld", maxSeqlenK);
     // mask_mode 校验
-    CHECK_COND((maskMode == LI_NO_MASK_MODE) || (maskMode == LI_CAUSAL_MASK_MODE),
+    CHECK_COND((maskMode == LI_V2_NO_MASK_MODE) || (maskMode == LI_V2_CAUSAL_MASK_MODE),
         ACLNN_ERR_PARAM_INVALID,
-        "mask_mode should be %lld/%lld, but got %lld", LI_NO_MASK_MODE, LI_CAUSAL_MASK_MODE, maskMode);
+        "mask_mode should be %lld/%lld, but got %lld", LI_V2_NO_MASK_MODE, LI_V2_CAUSAL_MASK_MODE, maskMode);
     // cmp_ratio 校验
-    CHECK_COND((cmpRatio >= LI_CMP_RATIO_LOWER_BOUND) && (cmpRatio <= LI_CMP_RATIO_UPPER_BOUND),
+    CHECK_COND((cmpRatio >= LI_V2_CMP_RATIO_LOWER_BOUND) && (cmpRatio <= LI_V2_CMP_RATIO_UPPER_BOUND),
         ACLNN_ERR_PARAM_INVALID,
         "cmp_ratio should be between [%lld, %lld], but got %lld",
-        LI_CMP_RATIO_LOWER_BOUND, LI_CMP_RATIO_UPPER_BOUND, cmpRatio);
+        LI_V2_CMP_RATIO_LOWER_BOUND, LI_V2_CMP_RATIO_UPPER_BOUND, cmpRatio);
     // layout_q 校验
     CHECK_COND((layoutQOptional != nullptr), ACLNN_ERR_PARAM_INVALID, "layout_q is null!");
     CHECK_COND((strcmp(layoutQOptional, "TND") == 0) || (strcmp(layoutQOptional, "BSND") == 0), ACLNN_ERR_PARAM_INVALID,
@@ -161,7 +166,7 @@ aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTens
             "For layout_k PA_BBND, seqused_k must be provided!");
     }
     // cmp_residual_k 存在性校验
-    if (cmpRatio != LI_CMP_RATIO_LOWER_BOUND && maskMode == LI_CAUSAL_MASK_MODE) {
+    if (cmpRatio != LI_V2_CMP_RATIO_LOWER_BOUND && maskMode == LI_V2_CAUSAL_MASK_MODE) {
         CHECK_COND(IsTensorExistLiV2(cmpResidualKOptional), ACLNN_ERR_PARAM_INVALID,
             "When cmp_ratio is not 1 and mask_mode is CAUSAL, cmp_residual_k must be provided!");
     }
