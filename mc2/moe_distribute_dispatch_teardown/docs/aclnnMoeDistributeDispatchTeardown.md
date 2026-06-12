@@ -7,10 +7,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -23,7 +23,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnMoeDistributeDispatchTeardownGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchTeardown”接口执行计算。
+每个算子分为两段式接口，必须先调用“aclnnMoeDistributeDispatchTeardownGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchTeardown”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
@@ -211,7 +211,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
     <td>globalBs</td>
     <td>输入</td>
     <td>EP域全局的batch size大小。</td>
-    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize 或 0。</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
+    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize或0。</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -311,29 +311,29 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
     </table>
 
     - <term>Ascend 950DT</term>：
-        - groupEp 字符串长度范围为[1, 128)。
-        - epWorldSize 取值范围[2, 384]。当前仅支持2、8。
-        - epRankId 取值范围[0, epWorldSize)。同一个EP通信域中各卡的epRankId不能重复。
-        - moeExpertNum 取值范围(0, 512]。
-        - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
-        - sharedExpertNum 当前取值范围[0, 4]。
-        - sharedExpertRankNum 取值范围[0, epWorldSize / 2]。
-        - globalBs 当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize 或 globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。
+        - groupEp字符串长度范围为[1, 128)。
+        - epWorldSize取值范围[2, 384]。当前仅支持2、8。
+        - epRankId取值范围[0, epWorldSize)。同一个EP通信域中各卡的epRankId不能重复。
+        - moeExpertNum取值范围(0, 512]。
+        - expertShardType当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
+        - sharedExpertNum当前取值范围[0, 4]。
+        - sharedExpertRankNum取值范围[0, epWorldSize / 2]。
+        - globalBs当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize或globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。
         - expertTokenNumsType当前仅支持1。
-        - commType 当前仅支持2。
-        - commAlg 预留字段，当前版本不支持，传NULL即可。
+        - commType当前仅支持2。
+        - commAlg预留字段，当前版本不支持，传NULL即可。
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-        - groupEp 字符串长度范围为[1, 128)。
-        - epWorldSize 取值范围[2, 384]。
-        - epRankId 取值范围[0, epWorldSize)。同一个EP通信域中各卡的epRankId不能重复。
-        - moeExpertNum 取值范围(0, 512]。
-        - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
-        - sharedExpertNum 当前取值范围[0, 4]。
-        - sharedExpertRankNum 取值范围[0, epWorldSize / 2]。
-        - globalBs 当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize 或 globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。
-        - commType 当前仅支持0。
-        - commAlg 当前版本不支持，传空指针即可。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
+        - groupEp字符串长度范围为[1, 128)。
+        - epWorldSize取值范围[2, 384]。
+        - epRankId取值范围[0, epWorldSize)。同一个EP通信域中各卡的epRankId不能重复。
+        - moeExpertNum取值范围(0, 512]。
+        - expertShardType当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
+        - sharedExpertNum当前取值范围[0, 4]。
+        - sharedExpertRankNum取值范围[0, epWorldSize / 2]。
+        - globalBs当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize或globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。
+        - commType当前仅支持0。
+        - commAlg当前版本不支持，传空指针即可。
 
 - **返回值：**
   
@@ -427,7 +427,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
 
 2. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值所有卡需保持一致，`groupEp`、`epWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值在网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatchTeardown`，`aclnnMoeDistributeCombineSetup`，`aclnnMoeDistributeCombineTeardown`对应参数也保持一致。
 
-3. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
+3. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
 4. 参数说明里shape格式说明：
     * A：表示本卡可能接收的最大token数量，取值范围如下：
@@ -451,7 +451,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
     - <term>Ascend 950DT</term>：
       调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 4 * (`localExpertNum` * `maxBs` * `epWorldSize` * Align512(Align32(2 * H) + 44) + (`K` + `sharedExpertNum`) * `maxBs` * Align512(2 * `H`))，`localExpertNum`代表使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
     
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
       调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBs` * `epWorldSize` * Align512(Align32(2 * H) + 44) + (`K` + `sharedExpertNum`) * `maxBs` * Align512(2 * `H`))，`localExpertNum`代表使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
   
 6. 通信域使用约束：

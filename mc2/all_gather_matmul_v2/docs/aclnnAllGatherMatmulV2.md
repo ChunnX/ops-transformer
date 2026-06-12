@@ -7,7 +7,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------:|
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
@@ -23,7 +23,7 @@
         
         新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../../docs/zh/context/量化介绍.md)。
     
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         
         新增了对低精度数据类型INT8/INT4的支持。支持pertoken/perchannel[量化方式](../../../docs/zh/context/量化介绍.md)。
 
@@ -49,7 +49,7 @@
     gatherOut=AllGather(x1)
     $$
 
-    -   情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut, 当x1为(m, k)、x2为(k, n)时， x1Scale为(ceilDiv(m, 128)， ceilDiv(k, 128))、x2Scale为(ceilDiv(k, 128), ceilDiv(n, 128))时，入参x1和x1Scale进行AllGather后，对x1、x2进行perblock量化MatMul计算，然后进行dequant操作。
+    -   情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut,当x1为(m, k)、x2为(k, n)时， x1Scale为(ceilDiv(m, 128)， ceilDiv(k, 128))、x2Scale为(ceilDiv(k, 128), ceilDiv(n, 128))时，入参x1和x1Scale进行AllGather后，对x1、x2进行perblock量化MatMul计算，然后进行dequant操作。
 
         $$
         output=\sum_{0}^{\left \lfloor \frac{k}{blockSize=128} \right \rfloor} (AllGather(x1)_{pr}@x2_{rq}*(AllGather(x1Scale)_{pr}*x2Scale_{rq}))
@@ -59,7 +59,7 @@
         gatherOut=AllGather(x1)
         $$
 
-    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，x1为(m, k)、x2 为(n, k)，且x1Scale为(m, ceilDiv(k, 64), 2)、x2Scale为(n, ceilDiv(k, 64), 2)，入参x1和x1Scale进行AllGather后，对x1、x2进行MatMul计算，然后进行dequant操作；
+    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，x1为(m, k)、x2为(n, k)，且x1Scale为(m, ceilDiv(k, 64), 2)、x2Scale为(n, ceilDiv(k, 64), 2)，入参x1和x1Scale进行AllGather后，对x1、x2进行MatMul计算，然后进行dequant操作；
 
         $$
         output=\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (AllGather(x1)_{pr}@x2_{rq}*(AllGather(x1Scale)_{pr}*x2Scale_{rq}))
@@ -192,7 +192,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>blockSize （int64_t）</td>
         <td>输入</td>
         <td>用于表示mm输出矩阵在M轴方向上和N轴方向上可以用于对应方向上的多少个数的量化。</td>
-        <td>blockSize由blockSizeM、blockSizeN、blockSizeK三个值拼接而成，每个值占16位，计算公式为blockSize = blockSizeK | blockSizeN << 16 | blockSizeM << 32，mm输出矩阵不涉及K轴，blockSizeK固定为0, 当前版本只支持blockSizeM=blockSizeN=0。</td>
+        <td>blockSize由blockSizeM、blockSizeN、blockSizeK三个值拼接而成，每个值占16位，计算公式为blockSize = blockSizeK | blockSizeN << 16 | blockSizeM << 32，mm输出矩阵不涉及K轴，blockSizeK固定为0,当前版本只支持blockSizeM=blockSizeN=0。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -252,7 +252,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>commMode (char*)</td>
         <td>输入</td>
         <td>通信模式。</td>
-        <td>支持输入空字符串""、 "ai_cpu"、 "ccu" 或 "aiv"</td>
+        <td>支持输入空字符串""、 "ai_cpu"、 "ccu"或"aiv"</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -310,21 +310,21 @@ aclnnStatus aclnnAllGatherMatmulV2(
     </tr>
     </tbody></table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
         - x1、x2：数据类型支持FLOAT16、BFLOAT16、INT8、INT4。
         - bias：在commMode为aiv时，当前版本仅支持输入nullptr。
         - x1Scale：数据类型支持FLOAT。当x1和x2数据类型为FLOAT16/BFLOAT16时，仅支持输入为nullptr。在pertoken场景，shape为(m, 1)。
         - x2Scale：数据类型支持FLOAT、INT64。INT64数据类型仅在x1和x2数据类型为INT4或者output数据类型为FLOAT16场景支持。当x1和x2数据类型为FLOAT16/BFLOAT16时，仅支持输入为nullptr。在perchannel场景，shape为(1, n)。
         - groupSize：当前版本仅支持输入为0。
         - commMode：当前仅支持aiv模式。aiv模式下使用AI VECTOR核完成通信任务。当前版本仅支持输入“aiv”。
-        - output：数据类型支持FLOAT16、BFLOAT16。 如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。
+        - output：数据类型支持FLOAT16、BFLOAT16。如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。
         - gatherOut：数据类型支持FLOAT16、BFLOAT16、INT8、INT4。
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - x1、x2：的数据类型支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8。
         - bias：如果x1的数据类型是FLOAT16、BFLOAT16，则bias的数据类型必须为FLOAT16、BFLOAT16。如果x1的数据类型是FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8时，在pertensor和mx量化场景下，bias的数据类型必须为FLOAT。在perblock场景下，仅支持输入为nullptr。
         - x1Scale：当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在pertensor场景下，shape为[1]。在perblock场景下，shape为[ceilDiv(m, 128), ceilDiv(k, 128)]。在pertensor和perblock场景下，数据类型支持FLOAT。在mx量化场景下，数据类型为FLOAT8_E8M0，shape为(m, ceilDiv(k, 64), 2)。
         - x2Scale：当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在pertensor场景下，shape为[1]。在perblock场景下，shape为[ceilDiv(k, 128), ceilDiv(n, 128)]。在pertensor和perblock场景下，数据类型支持FLOAT。在mx场景下，数据类型为FLOAT8_E8M0，shape为(n, ceilDiv(k, 64), 2)，仅支持转置场景。
-        - commMode：当前版本仅支持输入空字符串、“ai_cpu” 或 “ccu”。
+        - commMode：当前版本仅支持输入空字符串、“ai_cpu”或“ccu”。
         - output：如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。如果x1类型为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8，则数据类型支持FLOAT16、BFLOAT16、FLOAT。
         - gatherOut：数据类型支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8。
         - groupSize:
@@ -429,7 +429,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
     - 支持2、4、8、16、32、64卡。
     - allgather(x1)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
     - 输入x1必须是2维，其shape为\(m, k\)。
     - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
@@ -442,7 +442,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
 
 ## 调用示例
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
@@ -588,7 +588,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         // 调用第二阶段接口
         ret = aclnnAllGatherMatmulV2(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAllGatherMatmulV2 failed. ret = %d \n", ret); return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);
@@ -840,7 +840,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         // 调用第二阶段接口
         ret = aclnnAllGatherMatmulV2(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAllGatherMatmulV2 failed. ret = %d \n", ret); return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);

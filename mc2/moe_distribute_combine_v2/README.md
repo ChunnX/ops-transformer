@@ -5,10 +5,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -257,7 +257,7 @@
   <tr>
    <td>globalBS</td>
    <td>可选属性</td>
-   <td><li>EP域全局的batch size大小；各rank BS一致时，globalBS = BS * epWorldSize 或 0；各rank BS不一致时，globalBS = maxBS * epWorldSize（maxBS为单卡BS最大值）。</li><li>默认值为0。</li></td>
+   <td><li>EP域全局的batch size大小；各rank BS一致时，globalBS = BS * epWorldSize或0；各rank BS不一致时，globalBS = maxBS * epWorldSize（maxBS为单卡BS最大值）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -327,11 +327,11 @@
     * 当`commAlg` = "hierarchy"，必须传入`expandScalesOptional`。
     * 不支持常量专家场景，不支持`constExpertNum`、`constExpertAlpha1Optional`、`constExpertAlpha2Optional`和`constExpertVOptional`，使用默认值即可。
     
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     * 当`commAlg` = "hierarchy"，必须传入`expandScalesOptional`。
-    * commAlg 支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板，该模板仅支持tpWorldSize为1场景；"hierarchy": 开启跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
-    * epWorldSize 取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
-    * moeExpertNum 取值范围(0, 1024]；当commAlg="hierarchy"场景时，取值范围为(0, 512]。
+    * commAlg支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板，该模板仅支持tpWorldSize为1场景；"hierarchy": 开启跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
+    * epWorldSize取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
+    * moeExpertNum取值范围(0, 1024]；当commAlg="hierarchy"场景时，取值范围为(0, 512]。
 
 - <term>Ascend 950DT</term>：
     * 不支持`expandScalesOptional`。
@@ -358,10 +358,10 @@
         - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，`localExpertNum` > 1时，不支持TP域通信。
 
 - 参数约束：
-    - `zeroExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是[`moeExpertNum`, `moeExpertNum` + `zeroExpertNum`)。
-    - `copyExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的copy专家的ID的值是[`moeExpertNum` + `zeroExpertNum`, `moeExpertNum` + `zeroExpertNum` + `copyExpertNum`)。
-    - `constExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的常量专家的ID的值是[`moeExpertNum` + `zeroExpertNum` + `copyExpertNum`, `moeExpertNum` + `zeroExpertNum` + `copyExpertNum` + `constExpertNum`)。
-    - `oriXOptional`：可选择传入有效数据或填空指针，当`copyExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为 (`BS`, `H`)，数据类型需与`expandX`保持一致。
+    - `zeroExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的零专家的ID的值是[`moeExpertNum`, `moeExpertNum` + `zeroExpertNum`)。
+    - `copyExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的copy专家的ID的值是[`moeExpertNum` + `zeroExpertNum`, `moeExpertNum` + `zeroExpertNum` + `copyExpertNum`)。
+    - `constExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的常量专家的ID的值是[`moeExpertNum` + `zeroExpertNum` + `copyExpertNum`, `moeExpertNum` + `zeroExpertNum` + `copyExpertNum` + `constExpertNum`)。
+    - `oriXOptional`：可选择传入有效数据或填空指针，当`copyExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`BS`, `H`)，数据类型需与`expandX`保持一致。
     - `constExpertAlpha1Optional`：可选择传入有效数据或填空指针，当`constExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`constExpertNum`, )，数据类型需与`expandX`保持一致。
     - `constExpertAlpha2Optional`：可选择传入有效数据或填空指针，当`constExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`constExpertNum`, )，数据类型需与`expandX`保持一致。
     - `constExpertVOptional`：可选择传入有效数据或填空指针，当`constExpertNum`不为0或`constExpertNum`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`constExpertNum`, `H`)，数据类型需与`expandX`保持一致。
@@ -375,7 +375,7 @@
     - <term>Ascend 950DT</term>：仅支持UB Memory通信。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    - `commAlg`：当前版本支持nullptr， ""， "fullmesh"， "hierarchy"四种输入方式，若配置"hierarchy"，建议搭配25.0.RC1.1及以上版本驱动使用。
+    - `commAlg`：当前版本支持nullptr，""，"fullmesh"，"hierarchy"四种输入方式，若配置"hierarchy"，建议搭配25.0.RC1.1及以上版本驱动使用。
         - nullptr和""：仅在此场景下，`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`配置生效。当`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0时，调用"hierarchy"算法，否则调用"fullmesh"算法。不推荐使用该方式。
         - "fullmesh"：token数据直接通过RDMA方式发往topk个目标专家所在的卡。
         - "hierarchy"：token数据经过跨机、机内两次发送，仅不同server同号卡之间使用RDMA通信，server内使用HCCS通信。
@@ -395,7 +395,7 @@
         - `commAlg` = "fullmesh"：要求 >= (`BS` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * 4B + 4MB)。
         - `commAlg` = "hierarchy"：要求 >= (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBS` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
@@ -417,7 +417,7 @@
 - <term>Ascend 950DT</term>：
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
-        - `BS`：表示batch sequence size，即本卡最终输出的token数量，依commAlg取值，"fullmesh_v2"和"hierarchy"取值范围为 (0 < BS ≤ 256), "fullmesh_v1"和""取值范围为 (0 < BS ≤ 512)。
+        - `BS`：表示batch sequence size，即本卡最终输出的token数量，依commAlg取值，"fullmesh_v2"和"hierarchy"取值范围为(0 < BS ≤ 256), "fullmesh_v1"和""取值范围为(0 < BS ≤ 512)。
     - 参数约束：
         - `epWorldSize`：取值支持[2, 768]。
         - `moeExpertNum`：取值范围(0, 1024]。

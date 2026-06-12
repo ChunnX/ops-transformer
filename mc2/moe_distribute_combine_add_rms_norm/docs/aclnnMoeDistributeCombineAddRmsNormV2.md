@@ -7,10 +7,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950DT</term>     |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -52,7 +52,7 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeDistributeCombineAddRmsNormV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeCombineAddRmsNormV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeDistributeCombineAddRmsNormV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeCombineAddRmsNormV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2GetWorkspaceSize(
@@ -141,7 +141,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>expandX</td>
     <td>输入</td>
     <td>根据expertIds扩展的token特征。</td>
-    <td>Device侧2D Tensor，shape为 (max(tpWorldSize, 1) * A, H)。</td>
+    <td>Device侧2D Tensor，shape为(max(tpWorldSize, 1) * A, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>2</td>
@@ -151,7 +151,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>expertIds</td>
     <td>输入</td>
     <td>每个token的topK个专家索引。</td>
-    <td>Device侧2D Tensor，shape为 (Bs, K)。</td>
+    <td>Device侧2D Tensor，shape为(Bs, K)。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>2</td>
@@ -161,7 +161,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>assistInfoForCombine</td>
     <td>输入</td>
     <td>对应<code>aclnnMoeDistributeDispatchV3</code>的<code>assistInfoForCombineOut</code>输出。</td>
-    <td>Device侧1D Tensor，shape为 (A * 128, )。</td>
+    <td>Device侧1D Tensor，shape为(A * 128, )。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>1</td>
@@ -171,7 +171,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>epSendCounts</td>
     <td>输入</td>
     <td>对应<code>aclnnMoeDistributeDispatchV3</code>的<code>epRecvCounts</code>输出。</td>
-    <td>Device侧1D Tensor，shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。</td>
+    <td>Device侧1D Tensor，shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>1</td>
@@ -181,7 +181,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>expertScales</td>
     <td>输入</td>
     <td>每个token的topK个专家权重。</td>
-    <td>Device侧2D Tensor，shape为 (Bs, K)。</td>
+    <td>Device侧2D Tensor，shape为(Bs, K)。</td>
     <td>FLOAT32</td>
     <td>ND</td>
     <td>2</td>
@@ -191,7 +191,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>residualX</td>
     <td>输入</td>
     <td>AddRmsNorm中Add的右矩阵。</td>
-    <td>Device侧3D Tensor，shape为 (Bs, 1, H)。</td>
+    <td>Device侧3D Tensor，shape为(Bs, 1, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>3</td>
@@ -201,7 +201,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>gamma</td>
     <td>输入</td>
     <td>RmsNorm中的gamma参数。</td>
-    <td>Device侧1D Tensor，shape为 (H, )。</td>
+    <td>Device侧1D Tensor，shape为(H, )。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>1</td>
@@ -211,7 +211,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>tpSendCountsOptional</td>
     <td>输入</td>
     <td>对应<code>aclnnMoeDistributeDispatchV3</code>的<code>tpRecvCounts</code>输出。</td>
-    <td>有TP域通信时传1D Tensor, shape为 (tpWorldSize, )，否则传空指针。</td>
+    <td>有TP域通信时传1D Tensor, shape为(tpWorldSize, )，否则传空指针。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>-</td>
@@ -221,7 +221,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>xActiveMaskOptional</td>
     <td>输入</td>
     <td>标识token是否参与通信。</td>
-    <td><ul><li>可传有效数据或空指针，默认所有token参与通信，1D时shape为 (BS, )，2D时shape为 (BS, K)。</li><li>各卡BS不一致时所有token需有效。</li></ul></td>
+    <td><ul><li>可传有效数据或空指针，默认所有token参与通信，1D时shape为(BS, )，2D时shape为(BS, K)。</li><li>各卡BS不一致时所有token需有效。</li></ul></td>
     <td>BOOL</td>
     <td>ND</td>
     <td>-</td>
@@ -271,7 +271,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>sharedExpertXOptional</td>
     <td>输入</td>
     <td>共享专家计算后的token。</td>
-    <td>可传有效数据或空指针，Device侧2D时shape为 (Bs, H)或3D时shape为 (Bs, 1, H)。</td>
+    <td>可传有效数据或空指针，Device侧2D时shape为(Bs, H)或3D时shape为(Bs, 1, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>-</td>
@@ -291,7 +291,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>oriXOptional</td>
     <td>输入</td>
     <td>未经过FFN的token数据（公式中的oriXOptional）。</td>
-    <td>copyExpertNum/constExpertNum>0时必传；传入时为2D Tensor, shape为 (Bs, H)。</td>
+    <td>copyExpertNum/constExpertNum>0时必传；传入时为2D Tensor, shape为(Bs, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>-</td>
@@ -301,7 +301,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>constExpertAlpha1Optional</td>
     <td>输入</td>
     <td>constExpert场景的计算系数（公式中的constExpertAlpha1Optional）。</td>
-    <td>constExpertNum>0时必传；传入时为2D Tensor, shape为 (constExpertNum, H)。</td>
+    <td>constExpertNum>0时必传；传入时为2D Tensor, shape为(constExpertNum, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>-</td>
@@ -311,7 +311,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>constExpertAlpha2Optional</td>
     <td>输入</td>
     <td>constExpert场景的计算系数（公式中的constExpertAlpha2Optional）。</td>
-    <td>constExpertNum>0时必传；传入时为2D Tensor, shape为 (constExpertNum, H)。</td>
+    <td>constExpertNum>0时必传；传入时为2D Tensor, shape为(constExpertNum, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>-</td>
@@ -321,7 +321,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>constExpertVOptional</td>
     <td>输入</td>
     <td>constExpert场景的计算系数（公式中的constExpertVOptional）。</td>
-    <td>constExpertNum>0时必传；传入时为2D Tensor, shape为 (constExpertNum, H)。</td>
+    <td>constExpertNum>0时必传；传入时为2D Tensor, shape为(constExpertNum, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>-</td>
@@ -431,7 +431,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>globalBs</td>
     <td>输入</td>
     <td>EP域全局batch size。</td>
-    <td><ul><li>各卡Bs一致时：<code>globalBs = Bs*epWorldSize</code> 或 0。</li><li>各卡Bs不一致时：<code>globalBs = maxBs*epWorldSize</code>（maxBs为单卡Bs最大值）。</li></ul></td>
+    <td><ul><li>各卡Bs一致时：<code>globalBs = Bs*epWorldSize</code> 或0。</li><li>各卡Bs不一致时：<code>globalBs = maxBs*epWorldSize</code>（maxBs为单卡Bs最大值）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -521,7 +521,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>yOut</td>
     <td>输出</td>
     <td>RmsNorm后的结果。</td>
-    <td>Device侧3D Tensor，shape为 (Bs, 1, H)。</td>
+    <td>Device侧3D Tensor，shape为(Bs, 1, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>3</td>
@@ -531,7 +531,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>rstdOut</td>
     <td>输出</td>
     <td>RmsNorm计算的标准化系数。</td>
-    <td>Device侧3D Tensor, shape为 (Bs, 1, 1)。</td>
+    <td>Device侧3D Tensor, shape为(Bs, 1, 1)。</td>
     <td>FLOAT32</td>
     <td>ND</td>
     <td>3</td>
@@ -541,7 +541,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     <td>xOut</td>
     <td>输出</td>
     <td>Add后的结果。</td>
-    <td>Device侧3D Tensor，shape为 (Bs, 1, H)。</td>
+    <td>Device侧3D Tensor，shape为(Bs, 1, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>3</td>
@@ -571,19 +571,19 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
     </table>
 
     <details>
-    <summary><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</summary>
+    <summary><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：</summary>
 
-    - groupTp 字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
-    - tpWorldSize 取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-    - tpRankId 取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
+    - groupTp字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
+    - tpWorldSize取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
+    - tpRankId取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
     </details>
 
     <details>
     <summary><term>Ascend 950DT</term>：</summary>
 
-    - groupTp 当前版本不支持，传空字符即可。
-    - tpWorldSize 当前版本不支持，传0即可。
-    - tpRankId 当前版本不支持，传0即可。
+    - groupTp当前版本不支持，传空字符即可。
+    - tpWorldSize当前版本不支持，传0即可。
+    - tpRankId当前版本不支持，传0即可。
     </details>
 
 - **返回值**
@@ -682,7 +682,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
   - 调用接口过程中使用的expertIds、xActiveMaskOptional、elasticInfoOptional、groupEp、epWorldSize、moeExpertNum、groupTp、tpWorldSize、expertShardType、sharedExpertNum、sharedExpertRankNum、globalBs、commAlg、zeroExpertNum、     copyExpertNum、constExpertNum参数、HCCL_BUFFSIZE取值所有卡需保持一致，网络中不同层中也需保持一致，且和DispatchV3对应参数也保持一致。
 
 - 产品特定约束 
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
 - Shape变量约束：
     - A：表示本卡需要分发的最大token数量，取值范围如下：
@@ -704,18 +704,18 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
 - 通信域使用约束：
     - 一个模型中的aclnnMoeDistributeCombineAddRmsNormV2和aclnnMoeDistributeDispatchV3仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 一个模型中的aclnnMoeDistributeCombineAddRmsNormV2和aclnnMoeDistributeDispatchV3仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
 - 通信方式约束：
     - <term>Ascend 950DT</term>：仅支持UB Memory通信。
 
 - 其他约束：
     - moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum < MAX_INT32，其中MAX_INT32值为2147483647。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950DT</term>：暂不支持动态缩容。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950DT</term>：暂不支持动态缩容。
 
 ## 调用示例
 
-<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950DT</term>，调用aclnnMoeDistributeDispatchV3和aclnnMoeDistributeCombineAddRmsNormV2接口，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950DT</term>，调用aclnnMoeDistributeDispatchV3和aclnnMoeDistributeCombineAddRmsNormV2接口，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - 示例代码如下，仅供参考
 
@@ -1086,7 +1086,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormV2(
         ret = aclnnMoeDistributeCombineAddRmsNormV2(combineWorkspaceAddr, combineAddRmsNormWorkspaceSize, combineAddRmsNormExecutor, args.combineStream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeCombineAddRmsNormV2 failed. ret = %d \n", ret);
             return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.combineStream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);

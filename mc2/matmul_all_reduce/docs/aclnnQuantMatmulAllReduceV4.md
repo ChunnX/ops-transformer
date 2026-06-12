@@ -7,10 +7,10 @@
 | 产品                                                                                     | 是否支持 |
 | :--------------------------------------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                                                                      |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                        |    ×    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                          |    ×    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
-| <term>Atlas 推理系列产品</term>                                                 |    ×    |
+| <term>Atlas 推理系列产品</term>                                                   |    ×    |
 | <term>Atlas 训练系列产品</term>                                                 |    ×    |
 
 ## 功能说明
@@ -730,7 +730,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
@@ -906,7 +906,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
       std::vector<op::fp16_t> commQuantScale2HostData(commQuantScale2ShapeSize, 1);
       std::vector<op::fp16_t> x3HostData(x3ShapeSize, 1);
       std::vector<op::fp16_t> outHostData(outShapeSize, 0);
-      // 创建 tensor
+      // 创建tensor
       ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       if (args.format == "NZ") {

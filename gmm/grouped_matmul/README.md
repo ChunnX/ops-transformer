@@ -8,8 +8,8 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      √     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas推理系列产品</term>|      √     |
+|<term>Atlas训练系列产品</term>|      ×     |
 |<term>Kirin X90 处理器系列产品</term> | √ |
 |<term>Kirin 9030 处理器系列产品</term> | √ |
 
@@ -316,7 +316,7 @@
       - 该场景仅支持groupType=0(x,weight,y均为单tensor)，actType=0，groupListType=0/1。
       - 该场景不支持weight转置。
 
-    - 仅量化场景 (per-token)、反量化场景支持激活函数计算。
+    - 仅量化场景(per-token)、反量化场景支持激活函数计算。
 
     - <a id="groupType-constraints"></a>不同groupType支持场景：
       - 伪量化仅支持groupType为-1和0场景。
@@ -329,7 +329,7 @@
       | 0 | 单单单 | 2/3 | 1）必须传groupListOptional<br>2）当groupListType为0时，最后一个值应小于等于x中tensor的第一维；当groupListType为1时，数值的总和应小于等于x中tensor的第一维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第一维<br>3）groupListOptional第1维最大支持1024，即最多支持1024个group |1）x不支持转置<br>2）支持weight转置，A8W4与A4W4场景不支持weight转置 |1）weight中tensor需为3维，x，y中tensor需为2维|
       | 0 | 单多单 | 2/3 | 1）必须传groupListOptional<br>2）当groupListType为0时，最后一个值应小于等于x中tensor的第一维；当groupListType为1时，数值的总和应小于等于x中tensor的第一维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第一维<br>3）groupListOptional第1维最大支持128，即最多支持128个group|1）x不支持转置<br>2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一 |1）x，weight，y中tensor需为2维<br>2）weight中每个tensor的N轴必须相等 |
       | 0 | 多多单 | 2/3 | 1）groupListOptional可选<br>2）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应；当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应；当groupListType为2时，groupListOptional第二列的数值需与x中tensor的第一维一一对应<br>3）groupListOptional第1维最大支持128，即最多支持128个group |1）x不支持转置<br> 2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一| 1）x，weight，y中tensor需为2维<br>2）weight中每个tensor的N轴必须相等 |
-      | 2 | 单单单 | 2/3 | 1）必须传groupListOptional<br>2）当groupListType为0时，最后一个值应小于等于x中tensor的第二维；当groupListType为1时，数值的总和与x应小于等于tensor的第二维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第二维<br>3）groupListOptional第1维最大支持1024， 即最多支持1024个group | 1）x必须转置<br>2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维<br>2）bias必须传空|
+      | 2 | 单单单 | 2/3 | 1）必须传groupListOptional<br>2）当groupListType为0时，最后一个值应小于等于x中tensor的第二维；当groupListType为1时，数值的总和与x应小于等于tensor的第二维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第二维<br>3）groupListOptional第1维最大支持1024，即最多支持1024个group | 1）x必须转置<br>2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维<br>2）bias必须传空|
       | 2 | 单多多 | 0/1 | groupListOptional必须传空 | 1）x必须转置<br>2）weight不能转置<br>| 1）x，weight，y中tensor需为2维<br>2）weight长度最大支持128，即最多支持128个group<br>3）原始shape中weight每个tensor的第一维之和不应超过x第一维<br>4）bias必须传空 |
 
   - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：

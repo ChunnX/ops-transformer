@@ -10,8 +10,8 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      √     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas推理系列产品</term>|      √     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -526,7 +526,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
     - x为INT8、weight为INT8、biasOptional为INT32、scaleOptional为BFLOAT16、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为空或FLOAT32、activationInputOptional为空、out为BFLOAT16。
     - x为INT8、weight为INT8、biasOptional为INT32、scaleOptional为FLOAT32、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为空或为FLOAT32、activationInputOptional为空、out为FLOAT16。
-    - x为INT4、weight为INT4、biasOptional为空、scaleOptional为UINT64、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为空或为FLOAT32、activationInputOptional为空、out为FLOAT16或BFLOAT16。weight支持NZ转置输入，即输入为[E,N,K]， 但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐， K按照64对齐， N按照16对齐， ND不支持转置输入。
+    - x为INT4、weight为INT4、biasOptional为空、scaleOptional为UINT64、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为空或为FLOAT32、activationInputOptional为空、out为FLOAT16或BFLOAT16。weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐， K按照64对齐， N按照16对齐， ND不支持转置输入。
 
   - 伪量化场景支持的输入类型为：
 
@@ -588,7 +588,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - groupListType：支持取值0、1、2。
       - 当groupListType为0时，groupListOptional必须为非负单调非递减数列；
       - 当groupListType为1时，groupListOptional必须为非负数列。
-      - 仅全量化且groupType为0场景下支持groupListType为2，此时要求 groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
+      - 仅全量化且groupType为0场景下支持groupListType为2，此时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
     - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
       - 在伪量化和非量化场景下，actType仅支持0。
@@ -628,7 +628,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - 当x为INT8， weight为INT4/INT32的场景， groupSize只支持128、192、256、512。
       - 当x的shape固定为（M, K）, out的shape固定为（M, N）。
       - mx伪量化和K-CG伪量化场景，weight的K轴和N轴均要求32B对齐。
-      - 当x和weight的类型分别为BFLOAT16/FLOAT16和FLOAT4_E2M1/FLOAT32时，或为INT8和INT4/INT32时，仅支持x、weight均不转置, 为FLOAT8_E4M3FN和FLOAT4_E2M1/FLOAT32时仅支持x不转置且weight转置。
+      - 当x和weight的类型分别为BFLOAT16/FLOAT16和FLOAT4_E2M1/FLOAT32时，或为INT8和INT4/INT32时，仅支持x、weight均不转置,为FLOAT8_E4M3FN和FLOAT4_E2M1/FLOAT32时仅支持x不转置且weight转置。
       - antiquantScale的转置与否和weight保持一致。
 
   - 静态量化场景支持的输入类型与shape为：
@@ -693,7 +693,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:---------:|:-------:| :------ |
       | -1 | 多多多 |1）仅支持splitItem为0/1<br>2）x，out中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3） groupListOptional必须传空<br>4）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>5）x不支持转置<br>6）仅支持非量化|
       | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（E, N, K）或（E, K, N）；x，out中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（E, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维，当groupListType为2时，第二列数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持x不转置，weight转置、不转置均支持|
-      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional， 且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总和与x中tensor的第一维相等，长度最大为1024<br>3）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
+      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总和与x中tensor的第一维相等，长度最大为1024<br>3）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
       | 0 | 多多单 |1）仅支持splitItem为2/3<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
 
 </details>
@@ -869,7 +869,7 @@ int CreateAclTensorListNz(const std::vector<std::vector<T>> &hostData,
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -958,7 +958,7 @@ int main() {
   ret = aclnnGroupedMatmulWeightNz(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulWeightNz failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -1323,7 +1323,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     ret = aclnnGroupedMatmulWeightNz(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulWeightNz failed. ERROR: %d\n", ret); return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -1343,7 +1343,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
 }
 int main()
 {
-    // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

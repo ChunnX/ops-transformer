@@ -7,10 +7,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -330,7 +330,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 - 确定性计算：
   - aclnnGroupedMatMulAlltoAllv默认确定性实现。
 - 通信引擎约束：
-  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AICPU通信。
+  - Atlas A3训练系列产品/Atlas A3推理系列产品：支持AICPU通信。
   - Ascend 950PR/Ascend 950DT：支持CCU通信。
 
 - 参数说明里shape使用的变量：
@@ -343,17 +343,17 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
   - BS：batch sequence size。
   - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡发送的token数，是sendCounts参数累加之和。
-  - ep通信域内所有卡的 A 参数的累加和等于所有卡上的 BSK 参数的累加和。
+  - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>: 单卡通信量在2MB以下可能存在性能劣化。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  : 单卡通信量在2MB以下可能存在性能劣化。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
     #include <thread>
@@ -417,7 +417,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         aclrtContext context;
     };
 
-    // shape 基本信息
+    // shape基本信息
     constexpr int64_t EP_WORLD_SIZE = 8;
     constexpr int64_t BS = 4096;
     constexpr int64_t K = 2;
@@ -536,7 +536,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         ret = aclnnGroupedMatMulAlltoAllv(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnGroupedMatMulAlltoAllv failed. ret = %d \n", ret);
                 return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); 
                 return ret);

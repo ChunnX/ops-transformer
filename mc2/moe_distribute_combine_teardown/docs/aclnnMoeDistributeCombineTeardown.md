@@ -7,10 +7,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -29,7 +29,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “`aclnnMoeDistributeCombineTeardownGetWorkspaceSize`”接口获取入参并根据计算流程计算所需workspace大小获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“`aclnnMoeDistributeCombineTeardown`”接口执行计算。
+每个算子分为两段式接口，必须先调用“`aclnnMoeDistributeCombineTeardownGetWorkspaceSize`”接口获取入参并根据计算流程计算所需workspace大小获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“`aclnnMoeDistributeCombineTeardown`”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
@@ -165,7 +165,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
         <td>sharedExpertXOptional（aclTensor*）</td>
         <td>可选输入</td>
         <td>表示共享专家计算后的Token</td>
-        <td>不支持空Tensor。要求是一个2D或3D的Tensor，当Tensor为2D时，shape为 (BS,H)；当Tensor为3D时，前两位的乘积需等于BS，第三维需等于H。数据类型需跟expandX保持一致。可选择传入有效数据或填空指针，传入有效数据时，sharedExpertNum需为0。</td>
+        <td>不支持空Tensor。要求是一个2D或3D的Tensor，当Tensor为2D时，shape为(BS,H)；当Tensor为3D时，前两位的乘积需等于BS，第三维需等于H。数据类型需跟expandX保持一致。可选择传入有效数据或填空指针，传入有效数据时，sharedExpertNum需为0。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(BS, H)或(a, b, H)</td>
@@ -245,7 +245,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
         <td>globalBs</td>
         <td>输入</td>
         <td>EP域全局的batch size大小</td>
-        <td>当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize 或 globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。</td>
+        <td>当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize或globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -322,9 +322,9 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
     - sharedExpertRankNum表示共享专家卡数，当前不支持共享专家，仅能传入0。
     - commQuantMode当前仅支持传入0，表示不进行量化。
     - commType取值范围[0, 2]，当前仅支持2，表示URMA通路。
-    - commAlg 当前版本不支持，传空指针即可。
+    - commAlg当前版本不支持，传空指针即可。
   
-  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：
+  - Atlas A3训练系列产品/Atlas A3推理系列产品：
     - 不支持共享专家场景。
     - epWorldSize当前取值仅支持2、8。
     - moeExpertNum表示MoE专家数量，当前仅能传入32。
@@ -333,7 +333,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
     - sharedExpertRankNum表示共享专家卡数，当前不支持共享专家，仅能传入0。
     - commQuantMode当前仅支持传入0，表示不进行量化。
     - commType取值范围[0, 2]，当前仅支持2，表示URMA通路。
-    - commAlg 当前版本不支持，传空指针即可。
+    - commAlg当前版本不支持，传空指针即可。
 
 - **返回值**
   
@@ -439,7 +439,7 @@ aclnnStatus aclnnMoeDistributeCombineTeardown(
   调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
   - Ascend 950DT：
     - 要求 >= 2且满足>= 4 \* (localExpertNum \* maxBs \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBs \* Align512(2 \* H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32
-  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：
+  - Atlas A3训练系列产品/Atlas A3推理系列产品：
     - 要求 >= 2且满足>= 2 \* (localExpertNum \* maxBs \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBs \* Align512(2 \* H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32
 - 通信域使用约束：
   - 一个模型中的aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口，aclnnMoeDistributeCombineTeardown接口仅支持相同EP通信域，且该通信域中不允许有其他算子。

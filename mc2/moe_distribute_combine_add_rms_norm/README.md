@@ -5,10 +5,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950DT</term>     |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -56,7 +56,7 @@ $$
 <td>expandX</td>
 <td>输入</td>
 <td>根据expertIds进行扩展过的token特征。</td>
-<td>要求为2D Tensor，shape为 (max(tpWorldSize, 1) * A , H)。</td>
+<td>要求为2D Tensor，shape为(max(tpWorldSize, 1) * A , H)。</td>
 <td>BFLOAT16</td>
 <td>ND</td>
 <td>2</td>
@@ -66,7 +66,7 @@ $$
 <td>expertIds</td>
 <td>输入</td>
 <td>每个token的topK个专家索引。</td>
-<td>要求为2D Tensor，shape为 (Bs, K)。</td>
+<td>要求为2D Tensor，shape为(Bs, K)。</td>
 <td>INT32</td>
 <td>ND</td>
 <td>2</td>
@@ -76,7 +76,7 @@ $$
 <td>assistInfoForCombine</td>
 <td>输入</td>
 <td>对应aclnnMoeDistributeDispatchV2中的assistInfoForCombineOut输出。</td>
-<td>要求为1D Tensor，shape为 (A * 128, )。</td>
+<td>要求为1D Tensor，shape为(A * 128, )。</td>
 <td>INT32</td>
 <td>ND</td>
 <td>1</td>
@@ -86,7 +86,7 @@ $$
 <td>epSendCounts</td>
 <td>输入</td>
 <td>对应aclnnMoeDistributeDispatchV2中的epRecvCounts输出。</td>
-<td>要求为1D Tensor，shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。</td>
+<td>要求为1D Tensor，shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。</td>
 <td>INT32</td>
 <td>ND</td>
 <td>1</td>
@@ -96,7 +96,7 @@ $$
 <td>expertScales</td>
 <td>输入</td>
 <td>每个token的topK个专家的权重。</td>
-<td>要求为2D Tensor，shape为 (Bs, K)。</td>
+<td>要求为2D Tensor，shape为(Bs, K)。</td>
 <td>FLOAT32</td>
 <td>ND</td>
 <td>2</td>
@@ -106,7 +106,7 @@ $$
 <td>residualX</td>
 <td>输入</td>
 <td>AddRmsNorm中Add的右矩阵。</td>
-<td>要求为3D Tensor，shape为 (Bs，1，H)。</td>
+<td>要求为3D Tensor，shape为(Bs，1，H)。</td>
 <td>BFLOAT16</td>
 <td>ND</td>
 <td>3</td>
@@ -116,7 +116,7 @@ $$
 <td>gamma</td>
 <td>输入</td>
 <td>RmsNorm中的gamma输入。</td>
-<td>要求为1D Tensor，shape为 (H, )。</td>
+<td>要求为1D Tensor，shape为(H, )。</td>
 <td>BFLOAT16</td>
 <td>ND</td>
 <td>1</td>
@@ -126,7 +126,7 @@ $$
 <td>tpSendCountsOptional</td>
 <td>输入</td>
 <td>对应aclnnMoeDistributeDispatchV2中的tpRecvCounts输出。</td>
-<td>有TP域通信需传参，无TP域通信传空指针；有TP域通信时为1D Tensor，shape为 (tpWorldSize, )。</td>
+<td>有TP域通信需传参，无TP域通信传空指针；有TP域通信时为1D Tensor，shape为(tpWorldSize, )。</td>
 <td>INT32</td>
 <td>ND</td>
 <td>-</td>
@@ -296,7 +296,7 @@ $$
 <td>globalBS</td>
 <td>输入</td>
 <td>EP域全局的batch size大小。</td>
-<td><ul><li>各rank Bs一致时，globalBS = Bs * epWorldSize 或 0。</li><li>各rank Bs不一致时，globalBS = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
+<td><ul><li>各rank Bs一致时，globalBS = Bs * epWorldSize或0。</li><li>各rank Bs不一致时，globalBS = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
 <td>INT64</td>
 <td>ND</td>
 <td>-</td>
@@ -376,7 +376,7 @@ $$
 <td>xOut</td>
 <td>输出</td>
 <td>Add后的输出结果。</td>
-<td>要求为3D Tensor，shape为 (Bs, 1，H)。</td>
+<td>要求为3D Tensor，shape为(Bs, 1，H)。</td>
 <td>BFLOAT16</td>
 <td>ND</td>
 <td>3</td>
@@ -411,7 +411,7 @@ $$
 
 - 调用接口过程中使用的groupEp、epWorldSize、moeExpertNum、groupTp、tpWorldSize、expertShardType、sharedExpertNum、sharedExpertRankNum、globalBs参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和aclnnMoeDistributeDispatchV2对应参数也保持一致。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
 - 参数说明里shape格式说明：
     - A：表示本卡需要分发的最大token数量，取值范围如下：

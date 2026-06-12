@@ -11,7 +11,7 @@
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列加速卡产品</term>|      √     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term> Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -606,7 +606,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+  // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -664,7 +664,7 @@ int main() {
   ret = aclnnFFNV2(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFFNV2 failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
