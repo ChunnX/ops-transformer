@@ -25,6 +25,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "../../../common/op_kernel/memory_copy.h"
 
 namespace BaseApi {
 struct TaskInfo {
@@ -253,20 +254,24 @@ public:
             fdLseUbBuf     = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF2A + 2U * BUFFER_SIZE_BYTE_256B,
                                  BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
 
-            // Sink 缓冲区（紧接 fdLseUbBuf，仅 learnableSinkFlag=true 时使用）
-            if (unlikely(learnableSinkFlag)) {
-                constexpr uint32_t SINK_BASE = OFF_BUF2A + 3U * BUFFER_SIZE_BYTE_256B; // OFF_BUF2A + 768
-                fdSinkCopyInBuf = LocalTensor<uint8_t>(TPosition::VECIN, SINK_BASE,
-                                      BUFFER_SIZE_BYTE_2K).template ReinterpretCast<T>();
-                fdSinkValueBuf  = LocalTensor<uint8_t>(TPosition::VECIN, SINK_BASE + BUFFER_SIZE_BYTE_2K,
-                                      BUFFER_SIZE_BYTE_2K).template ReinterpretCast<T>();
-                fdSinkExpBuf    = LocalTensor<uint8_t>(TPosition::VECIN,
-                                      SINK_BASE + 2U * BUFFER_SIZE_BYTE_2K,
-                                      BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
-                fdSinkTmpBuf    = LocalTensor<uint8_t>(TPosition::VECIN,
-                                      SINK_BASE + 2U * BUFFER_SIZE_BYTE_2K + BUFFER_SIZE_BYTE_256B,
-                                      BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
-            }
+            // Sink 缓冲区（紧接 fdLseUbBuf）。即使 learnableSinkFlag=false，
+            // ComputeScaleValue 仍会将 fdSinkExpBuf 作为参数传入 __simd_vf__ 函数；
+            // 该 VF 函数虽然在 `for(i=0; i<learnableSinkFlag; ++i)` 中保护了 lseSink 的访问，
+            // 但编译器/调度器可能在循环外提前准备地址寄存器，未初始化的 LocalTensor
+            // (address_==0) 会让 VEC 取到非法地址 → aicore subErrType 0x4 / errcode 340
+            // (The address for VEC to access UB is not aligned)。因此无条件按编译期常量
+            // 初始化 sink 4 槽位，保证地址在硬件视角下始终合法（位于 UB 内、32B 对齐）。
+            constexpr uint32_t SINK_BASE = OFF_BUF2A + 3U * BUFFER_SIZE_BYTE_256B; // OFF_BUF2A + 768
+            fdSinkCopyInBuf = LocalTensor<uint8_t>(TPosition::VECIN, SINK_BASE,
+                                  BUFFER_SIZE_BYTE_2K).template ReinterpretCast<T>();
+            fdSinkValueBuf  = LocalTensor<uint8_t>(TPosition::VECIN, SINK_BASE + BUFFER_SIZE_BYTE_2K,
+                                  BUFFER_SIZE_BYTE_2K).template ReinterpretCast<T>();
+            fdSinkExpBuf    = LocalTensor<uint8_t>(TPosition::VECIN,
+                                  SINK_BASE + 2U * BUFFER_SIZE_BYTE_2K,
+                                  BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
+            fdSinkTmpBuf    = LocalTensor<uint8_t>(TPosition::VECIN,
+                                  SINK_BASE + 2U * BUFFER_SIZE_BYTE_2K + BUFFER_SIZE_BYTE_256B,
+                                  BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
         }
     }
     __aicore__ inline void AllocEventID()
