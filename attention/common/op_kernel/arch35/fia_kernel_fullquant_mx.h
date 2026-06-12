@@ -736,7 +736,7 @@ public:
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
         if (IsSpecialBandSparse() && s2Cur == 0U && !(s2Cur >= curS2Start && s2Cur < curS2End)) {
-            info.actSingleLoopS2Size = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
+            info.actSingleLoopS2Size = AttentionCommon::Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
         }
 
         info.bandHeadCopySkip = 0U;

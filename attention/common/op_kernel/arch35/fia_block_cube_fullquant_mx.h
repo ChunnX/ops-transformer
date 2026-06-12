@@ -547,7 +547,7 @@ public:
         if (runInfo.bandHeadCopySkip > 0U) {
             uint32_t subLoopBase = (subLoop % 2 == 0) ? 0U : s2SplitSize;
             if (runInfo.bandHeadCopySkip > subLoopBase) {
-                localSkip = Min(runInfo.bandHeadCopySkip - subLoopBase, s2RealSize);
+                localSkip = AttentionCommon::Min(runInfo.bandHeadCopySkip - subLoopBase, s2RealSize);
             }
         }
 
@@ -570,7 +570,7 @@ public:
             return;
         }
         InitConstValueParams<half> initParams;
-        initParams.repeatTimes = Align(curD, 16U) / 32U;
+        initParams.repeatTimes = AttentionCommon::Align(curD, 16U) / 32U;
         initParams.blockNum = skipRows;
         initParams.dstGap = curPadK - skipRows;
         initParams.initValue = 0;
@@ -585,7 +585,7 @@ public:
             return;
         }
         InitConstValueParams<half> initParams;
-        initParams.repeatTimes = Align(curN, 16U) / 32U;
+        initParams.repeatTimes = AttentionCommon::Align(curN, 16U) / 32U;
         initParams.blockNum = skipRows;
         initParams.dstGap = curPadK - skipRows;
         initParams.initValue = 0;
@@ -1092,7 +1092,7 @@ public:
             if (runInfo.bandHeadCopySkip > 0U) {
                 uint32_t vSubLoopBase = k * baseK;
                 if (runInfo.bandHeadCopySkip > vSubLoopBase) {
-                    vLocalSkip = Min(runInfo.bandHeadCopySkip - vSubLoopBase, realK);
+                    vLocalSkip = AttentionCommon::Min(runInfo.bandHeadCopySkip - vSubLoopBase, realK);
                 }
             }
             if (vLocalSkip > 0U && vLocalSkip < realK) {
