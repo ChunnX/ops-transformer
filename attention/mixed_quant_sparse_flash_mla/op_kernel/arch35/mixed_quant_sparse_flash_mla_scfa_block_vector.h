@@ -136,6 +136,8 @@ public:
         ConstInfo &constInfo);
 
 private:
+    __aicore__ inline void CopyMaxSumToStaging(RunInfo &runInfo, ConstInfo &constInfo,
+        LocalTensor<float> &sumUb, LocalTensor<float> &maxUb);
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo,
         ConstInfo &constInfo);
@@ -884,6 +886,55 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
+
+    // ========== FD: S2跨核切分场景, 在vec1末轮把最终max/sum广播拷出到GM staging ==========
+    // 参考flash_attention_score_antiquant_block_vec.h的ComputeLogSumExpAndCopyToGm:
+    // softmax算完即拷出, 避免sumUb/maxUb被后续task复用覆盖。归一化留给FD规约阶段。
+    if (runInfo.isS2Split && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+        CopyMaxSumToStaging(runInfo, constInfo, sumUb, maxUb);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyMaxSumToStaging(
+    RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
+{
+    constexpr uint32_t ATTEN_OUT_BYTES = regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
+    constexpr uint32_t MAX_SUM_BYTES = regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES;
+    constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
+    constexpr uint32_t FD_BLOCK_ELEM = 8;
+    uint32_t stagingSlotNum = MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
+    __gm__ uint8_t *basePtr = s2SplitStagingBase;
+    __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * ATTEN_OUT_BYTES;
+    __gm__ uint8_t *sumRegion = maxRegion + stagingSlotNum * MAX_SUM_BYTES;
+    GlobalTensor<float> maxGm;
+    maxGm.SetGlobalBuffer((__gm__ float *)maxRegion);
+    GlobalTensor<float> sumGm;
+    sumGm.SetGlobalBuffer((__gm__ float *)sumRegion);
+
+    uint32_t workspaceIdx = static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx);
+    uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
+        static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
+
+    // 广播暂存复用dequantScaleBuff(vec1阶段空闲, 8192B足够放max+sum各一份)
+    LocalTensor<float> tmpMaxBlockUb = this->dequantScaleBuff.template Get<float>();
+    LocalTensor<float> tmpSumBlockUb = tmpMaxBlockUb[1024 / sizeof(float)];
+    uint32_t mSizeAlign8 = (runInfo.halfMRealSize + FD_BLOCK_ELEM - 1) / FD_BLOCK_ELEM * FD_BLOCK_ELEM;
+    uint32_t brcbRepeat = mSizeAlign8 / FD_BLOCK_ELEM;
+    Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, FD_BLOCK_ELEM});
+    Brcb(tmpSumBlockUb, sumUb, brcbRepeat, {1, FD_BLOCK_ELEM});
+    SetFlag<HardEvent::V_MTE3>(vToMte3Id);
+    WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
+
+    uint32_t floatOffset = workspaceIdx * (MAX_SUM_BYTES / sizeof(float)) +
+        stagingMOffset * FD_BLOCK_ELEM;
+    // blockCount=行数, blockLen=每行8float字节数(广播block布局)
+    DataCopyExtParams lseOutParams{static_cast<uint16_t>(runInfo.halfMRealSize),
+        static_cast<uint32_t>(FD_BLOCK_ELEM * sizeof(float)), 0, 0, 0};
+    DataCopyPad(sumGm[floatOffset], tmpSumBlockUb, lseOutParams);
+    DataCopyPad(maxGm[floatOffset], tmpMaxBlockUb, lseOutParams);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVId);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -912,10 +963,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
                 vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
         } else if (runInfo.isS2Split) {
-            // S2跨核切分: 最后一轮只做flash累加(pre*expMax+cur)不除sum,
-            // 归一化(/sum)留给FD规约阶段ReduceFinalRes用lseExp权重完成, 避免双重除sum
-            FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                vec2ResUb, mmRes, vec2ResUb, expUb, expUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
+            // S2跨核切分: 与参考算子一致, 末轮用FlashUpdateLastNew除以本split的sum,
+            // partialO_i = (Σexp(x-max_i)·V)/sum_i。FD规约阶段scale=correction_i·sum_i/globalSum,
+            // 两者相乘sum_i抵消, 得到Σcorrection_i·(Σexp·V)/globalSum的正确结果。
+            LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+            FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
         } else {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
             FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
@@ -926,14 +979,16 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     bmm2ResBuf.SetCrossCore();
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (runInfo.isS2Split) {
+            // S2跨核切分: 拷出partial attentOut。max/sum已在vec1阶段拷出。
+            // partialO需除本split的sum, 与FD规约阶段VF scale(correction*sum/globalSum)匹配,
+            // sum_i抵消后得到correction_i*(原始Σexp·V)/globalSum。
+            // 单轮(s2LoopCount==0)走上面DataCopy未除sum, 此处补除; 多轮已在FlashUpdateLastNew除过。
             if (unlikely(runInfo.s2LoopCount == 0)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-                Duplicate(sumUb, 1.0f, runInfo.vec2MRealSize);
+                LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
+                    vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
             }
             constexpr uint32_t ATTEN_OUT_BYTES = regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
-            constexpr uint32_t MAX_SUM_BYTES = regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES;
-            constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
-            uint32_t stagingSlotNum = MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
             __gm__ uint8_t *basePtr = s2SplitStagingBase;
 
             GlobalTensor<float> stagingOut;
@@ -950,30 +1005,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             outParams.dstStride = 0;
             outParams.blockCount = runInfo.vec2MRealSize;
             DataCopyPad(stagingOut[stagingMOffset * constInfo.dSizeV], vec2ResUb, outParams);
-
-            __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * ATTEN_OUT_BYTES;
-            __gm__ uint8_t *sumRegion = maxRegion + stagingSlotNum * MAX_SUM_BYTES;
-            GlobalTensor<float> maxGm;
-            maxGm.SetGlobalBuffer((__gm__ float *)maxRegion);
-            GlobalTensor<float> sumGm;
-            sumGm.SetGlobalBuffer((__gm__ float *)sumRegion);
-
-            LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            LocalTensor<float> tmpMaxBlockUb = this->stage0OutBuf[0].template Get<float>();
-            LocalTensor<float> tmpSumBlockUb = this->stage0OutBuf[1].template Get<float>();
-            constexpr uint32_t FD_BLOCK_ELEM = 8;
-            uint32_t mSizeAlign8 = (runInfo.vec2MRealSize + FD_BLOCK_ELEM - 1) / FD_BLOCK_ELEM * FD_BLOCK_ELEM;
-            uint32_t brcbRepeat = mSizeAlign8 / FD_BLOCK_ELEM;
-            Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, FD_BLOCK_ELEM});
-            Brcb(tmpSumBlockUb, sumUb, brcbRepeat, {1, FD_BLOCK_ELEM});
-            PipeBarrier<PIPE_V>();
-            uint32_t floatOffset = workspaceIdx * (MAX_SUM_BYTES / sizeof(float)) +
-                static_cast<uint32_t>(stagingMOffset) * FD_BLOCK_ELEM;
-            DataCopyExtParams lseOutParams{static_cast<uint16_t>(FD_BLOCK_ELEM * sizeof(float)),
-                static_cast<uint32_t>(mSizeAlign8 * sizeof(float)), 0, 0, 0};
-            DataCopyPad(sumGm[floatOffset], tmpSumBlockUb, lseOutParams);
-            DataCopyPad(maxGm[floatOffset], tmpMaxBlockUb, lseOutParams);
         } else {
             if (unlikely(runInfo.s2LoopCount == 0)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
@@ -1000,8 +1031,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     }
     int64_t attentionOutOffset = seqOffset * constInfo.n2GDv + // batch维度起始偏移（token数 × 每token所有head的V元素数）
         fdRunInfo.mIdx * constInfo.s1BaseSize * constInfo.n2GDv + // 当前M轴基本块之前的所有块的偏移
-        fdRunInfo.mStartIdx * constInfo.n2GDv; // 当前核负责的M轴token起始偏移
-    constexpr uint32_t DEAL_ROW_COUNT = 8;
+        fdRunInfo.mStartIdx * constInfo.dSizeV; // 当前核负责的M轴token起始偏移
+    constexpr uint32_t DEAL_ROW_COUNT = 16;
     constexpr uint32_t BLOCK_ELEM = 8; // common VF按每行8 float块布局访问max/sum/lse
 
     // ========== 1. 内存准备：分配UB buffer、定位GM staging区域 ==========
@@ -1009,7 +1040,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     LocalTensor<float> lseExpUb = this->dequantScaleBuff.template Get<float>();
     LocalTensor<float> blockMaxUb = this->stage0OutBuf[0].template Get<float>();
     LocalTensor<float> blockSumUb = this->stage0OutBuf[1].template Get<float>();
-    LocalTensor<float> globalMaxReduceUb = this->softmaxMaxBuf[0].template Get<float>();
     LocalTensor<T> sinkUb = this->sinksBuf.template Get<T>();
 
     constexpr uint32_t ATTEN_OUT_BYTES = regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
@@ -1051,14 +1081,16 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
         SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
         WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
 
-        // ========== 3. 调用VF计算LSE reduce权重 ==========
-        FaVectorApi::ComputeScaleValue_8_FD<T, T>(
-            sinkUb, blockMaxUb, blockSumUb,
-            lseExpUb, globalMaxReduceUb, globalMaxReduceUb,
-            dealRowCount, fdRunInfo.workspaceNum, false, this->isSinks);
+        // ========== 3. 用 common flashdecode 的 VF 计算 scale 值 ==========
+        // blockMaxUb 为输入 max；blockSumUb 输入 sum，且被原地写回归一化 scale（广播block布局）。
+        // staging 数据已 broadcast（与参考一致：先 BroadcastMaxSum 再拷出 GM）。
+        // sinks 已在各 split softmax 中累加，且本算子 FD 不输出 LSE，故两个 flag 均为 false。
+        ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
+                                   dealRowCount, fdRunInfo.workspaceNum, false, false);
         PipeBarrier<PIPE_V>();
 
-        // ========== 4. 逐split读回partial output并reduce累加 ==========
+        // ========== 4. 逐split读回partial output并用 VF 归约累加 ==========
+        LocalTensor<T> chunkAccumO = accumulatedO[startRow * dTemplateAlign64];
         for (uint32_t splitIdx = 0; splitIdx < fdRunInfo.workspaceNum; splitIdx++) {
             DataCopyExtParams inParams;
             inParams.blockLen = constInfo.dSizeV * sizeof(float);
@@ -1069,16 +1101,19 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
             DataCopyPadExtParams<float> padParams{true, 0,
                 static_cast<uint8_t>((dTemplateAlign64 - constInfo.dSizeV) % outputElemsPerBlock), 0};
             uint32_t outSrcOffset = splitIdx * outSplitStride + (fdMOffset + startRow) * constInfo.dSizeV;
+            // 反向同步: 等上一轮split的ReduceFinalRes(V)读完partialOFp32, 再覆写(MTE2), 避免跨split竞态
+            WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
             DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
             SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
 
-            LocalTensor<T> chunkAccumO = accumulatedO[startRow * dTemplateAlign64];
-            FaVectorApi::ReduceFinalRes_VF<T>(chunkAccumO, lseExpUb, partialOFp32,
-                dealRowCount, static_cast<uint64_t>(dTemplateAlign64), splitIdx);
+            // splitIdx==0: dst = scale*partialO；否则 dst += scale*partialO（VF内部按行广播scale）
+            ReduceFinalRes_const_VF<T, dTemplateAlign64>(chunkAccumO, blockSumUb, partialOFp32,
+                                                         dealRowCount, splitIdx);
+            // 正向同步: 标记本轮V读完partialOFp32, 允许下一轮MTE2覆写
+            SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
         }
     }
-
     // ========== 5. 数据拷出：reduce结果去padding写回GM ==========
     RunInfo runInfo;
     runInfo.vec2MRealSize = fdRunInfo.mNum;
@@ -1098,7 +1133,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &run
     Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
     SetFlag<HardEvent::V_MTE3>(vToMte3Id);
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
-    // DumpTensor(attenOut, 111, 512);
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
     dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) >> 4; // 以32B为单位偏移，bf16类型即偏移16个数，右移4
@@ -1229,7 +1263,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
-    tPipe->InitBuffer(fdPartialBuf, 8 * dTemplateAlign64 * sizeof(T));
+    tPipe->InitBuffer(fdPartialBuf, 16 * dTemplateAlign64 * sizeof(T));
     // FD规约阶段临时buffer全部复用主计算阶段空闲buffer(stage0InBuf/stage0OutBuf/dequantScaleBuff),
     // 避免新增UB导致总分配超过192KB物理上限
 

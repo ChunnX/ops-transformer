@@ -112,3 +112,120 @@
 - `op_kernel/arch35/mixed_quant_sparse_flash_mla_scfa_block_vector.h`：FD step 4 同步修复、Vec2 写端 V_MTE3 同步和 srcStride
 - `op_kernel/arch35/mixed_quant_sparse_flash_mla_scfa_kernel.h`：printf 清理
 - `op_host/mixed_quant_sparse_flash_mla_tiling.cpp`：workspace 大小对齐
+
+## 2026-06-12：lseExpUb dump 大量 0 问题定位与尝试修复
+
+### 问题分析
+- 用户发现 `lseExpUb` dump 出大量 0，只有少数位置有非零值（如每隔 64 个元素才有一个有效值）
+- 根因定位：`vf_flash_decode.h` 中 `ComputeScaleValue_8_VF_FD` 函数 stride 参数有 bug
+  - `blockStride = 0x1`, `repeatStride = dealRowCount = 8`
+  - 在 `DATA_BLOCK_COPY` + `POST_MODE_UPDATE` 模式下，`repeatStride` 以数据块为单位（每块 8 float）
+  - 当 `actualCombineLoopSize > 1` 时，写入位置分散：
+    - split 0: 位置 0, 64, 128, 192...
+    - split 1: 位置 8, 72, 136, 200...
+  - 期望布局应为连续：split 0 写入 0-63，split 1 写入 64-127...
+- 参考代码 `flash_attention_score_antiquant_block_vec.h` 使用同样的 VF 函数（`ComputeScaleValue_VF` 底层调用 `ComputeScaleValue_8`，stride 参数相同），但能正常工作
+- 关键差异：参考代码使用 `DataCopyPad` + `dstStride = 0` 连续读取 LSE，而非循环写入
+
+### 尝试方案
+
+#### 方案 1：修改 LSE 读取方式（参考 antiquant）
+- 使用 `DataCopyPad` + `blockCount = workspaceNum` + `dstStride = 0` 连续读取
+- 调用 `ComputeScaleValue_VF` 和 `ReduceFinalRes_const_VF`
+- 结果：精度 0.01%，失败。`srcStride` 计算可能有误。
+
+#### 方案 2：手动实现 FD 归约（不依赖 VF stride）
+- 对每行计算：
+  1. 全局 max = max(split_max[0..N])
+  2. globalSum = sum(exp(split_max[i] - globalMax) * split_sum[i])
+  3. scale[i] = exp(split_max[i] - globalMax) * split_sum[i] / globalSum
+- 使用 `GetValue`/`SetValue` 读取/写入数据（效率低，不适合 Ascend C）
+- 结果：精度 0.02%，微小改善但失败。
+
+#### 方案 3：手动实现 + 使用 Duplicate
+- 利用 staging 数据已 broadcast（每行 8 个 float 相同），只读取第一个元素
+- 使用 `Duplicate` broadcast 写入 scale 值
+- 结果：精度 0.02%，失败。
+
+### 当前状态
+- **精度未调通**：测试精度 0.02%，失败
+- **FD 可能未触发**：printf 输出未显示，`fdRunInfo.coreEnable` 从 metadata 读取，可能 FD 未启用
+- **大量 RealOut = 0**：测试输出中大量位置为 0，算子整体流程可能有问题
+
+### 待解决问题
+1. **确认 FD 是否被正确触发**：检查 metadata 中 FD 相关参数是否正确设置
+2. **stride 参数修复**：需要修改 `vf_flash_decode.h` 中的 stride 参数（`repeatStride` 应为 `0x1`），但用户不允许修改 common 代码
+3. **算子整体流程排查**：大量输出为 0，需排查 FA 主循环是否正确执行
+
+### 涉及文件
+- `op_kernel/arch35/mixed_quant_sparse_flash_mla_scfa_block_vector.h`：ProcessFlashDecode 多次尝试修改
+- `attention/common/op_kernel/arch35/vf/vf_flash_decode.h`：stride 参数 bug（不允许修改）
+- `attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_vec.h`：参考实现
+
+## 2026-06-12：FD 精度从 0.01% 调通至 PASS（完整定位链）
+
+本轮以参考算子 `flash_attention_score_antiquant_block_vec.h` 为基准，逐项对齐 QSMLA 的 FD 实现，最终 `single_batch_2_cores` 精度 PASS。按发现顺序记录根因与修复。
+
+### case 关键事实（先澄清，避免误判）
+- `single_batch_2_cores`：BSND/PA_BBND, B=1, S1=1, S2=512, N1=64(gSize), N2=1, CFA, cmp_ratio=4, 有 sinks。
+- S2=512 实际只算 256 token（ori 选 128 + cmp 选 128），均分到 2 个 cube 核 → 每核 vec1 **单轮 S2 循环**（`s2LoopLimit=0`），对应 FD 的 2 个 split。
+- FD 阶段：64 行（gSize=64）规约任务被切到 **64 个 AIV 核**，每核 `mStartIdx=核号, mNum=1`，各算 1 行。
+
+### 根因 1：`expf` 在 Ascend C 内核不可用
+- 现象：`splitCorrection[i] = expf(...)` 编译报 `expf undeclared`。
+- 处理：放弃标量 `expf`/手写归约，改用参考的 VF 微内核 `ComputeScaleValue_VF` + `ReduceFinalRes_const_VF`（`vf_flash_decode.h`），全程寄存器内 `MicroAPI::Exp/Max` 完成 online-softmax 合并。
+
+### 根因 2：staging max/sum 的 `DataCopyExtParams` 参数写反
+- 现象：FD 读回的 max/sum「每行 8 个广播值不一致」「sum 有的 1.0 有的不是」。
+- 根因：`DataCopyExtParams` 构造顺序是 `{blockCount, blockLen, srcStride, dstStride, rsv}`，原代码把 blockCount 和 blockLen 写反，导致越界读 + 槽内布局被打乱。
+- 修复：改为 `{blockCount=行数, blockLen=FD_BLOCK_ELEM*sizeof(float)}`，与 attentOut 同构连续写。
+
+### 确认点：广播时机 = 拷出前（与参考一致）
+- 参考 `ComputeLogSumExpAndCopyToGm`：先 `BroadcastMaxSum` 再 `DataCopy` 到 GM。所以 GM staging 存的就是已广播 `[split][row][8]` 布局，FD 读回直接用。
+
+### 根因 3：max/sum 拷出时机错误（应在 vec1 而非 vec2）
+- 参考在 **vec1**（softmax 算完即拷出），避免 `sumUb`/`maxUb` 被后续 task 复用覆盖。
+- 修复：新增 `CopyMaxSumToStaging`，在 vec1 末轮（`isS2Split && s2LoopCount==s2LoopLimit`）调用。行数用 vec1 的 `halfMRealSize`；Brcb 暂存复用 vec1 空闲的 `dequantScaleBuff`（8192B，max/sum 各占 1024B 偏移分开）。vec2 只保留 attentOut 拷出。
+
+### 根因 4：`DEAL_ROW_COUNT` 与 buffer 容量
+- `DEAL_ROW_COUNT` 8→16 时 `fdPartialBuf` 只按 8 行分配会越界，已同步扩到 16 行（`16*dTemplateAlign64*sizeof(T)`）。`MAX_S2_SPLIT_NUM=2`，blockMax/SumUb、lseExpUb 容量校验通过。
+
+### 关于 vec1 的 sum/max 更新机制（排查 sum 全 1.0 的误判）
+- `ProcessVec1Vf` 的 Update 路径（`ProcessVec1UpdateImpl128`）**不直接写** `maxUb`/`sumUb`，只把局部 max/sum 写到 `apiTmpBuffer`。
+- 真正合并写回 `maxUb`/`sumUb` 的是随后的 `SFAUpdateExpSumAndExpMax`（从 `apiTmpBuffer` 读局部值与 in_max/in_sum 合并）。
+- 所以「`SFAUpdateExpSumAndExpMax` 之前 dump 到 sum=1.0」是 sinks 初值（`DuplicateSumWithR0`），属正常；update 之后的 dump 才是最终值（非 1.0）。vec1 拷出链路无误。
+- 教训：误把照搬自旧 vec2 的 `if (s2LoopCount==0) Duplicate(sumUb,1.0f)` 带进 `CopyMaxSumToStaging`，会把单轮场景真实 sum 覆盖成 1.0，已删除。
+
+### 根因 5（精度主因）：partialO 与 scale 的「除 sum」错配
+- VF `ComputeScaleValue_VF` 算出的 scale = `correction_i·sum_i/globalSum`（带 `sum_i`），这要求 partialO **已除过 sum_i**（参考路线）。
+- 而 QSMLA 原本 vec2 末轮用 `FlashUpdateNew`（不除 sum），单轮更是直接 `DataCopy(P@V)`（不除 sum），导致最终多乘一个 `sum_i`。
+- 修复：对齐参考路线 A——vec2 的 `isS2Split` 分支统一除 sum：
+  - 多轮末轮：`FlashUpdateNew` → `FlashUpdateLastNew`（除 sum）。
+  - 单轮（`s2LoopCount==0`）：拷出前补 `LastDivNew` 除 sum。
+- 这样 partialO 除过 sum_i，与 VF scale 的 `sum_i` 相乘抵消，得到 `Σ correction_i·(Σexp·V)/globalSum`。
+
+### 根因 6（致命，0.01%→81%）：FD 输出 `attentionOutOffset` 行步长错误
+- 现象：输出连续后几行全 0，第一行偶尔对。
+- 根因：行偏移项写成 `mStartIdx * n2GDv`，而 BSND 下 m 方向相邻行（相邻 head）内存间隔是 `dSizeV`。`n2GDv = n2*gSize*dSizeV = 64*dSizeV`，导致核 k 把结果写到正确位置的 64 倍远处，除核 0 外全部写飞，真实行保持 InitOutput 的 0。
+- 修复：`mStartIdx * n2GDv` → `mStartIdx * dSizeV`。精度 0.01% → 81%。
+- 备注：`mIdx * s1BaseSize * n2GDv` 这项本 case `mIdx=0` 不暴露，多 m 基本块场景需再核对其步长。
+
+### 根因 7（致命，81%→PASS）：FD split 累加循环的同步竞态
+- 现象：剩余 19% 误差**非确定性**（多次运行有时分散、有时连续），是竞态而非逻辑错误的标志。
+- 根因：split 循环每轮复用同一 `partialOFp32` buffer，缺少反向 `V_MTE2` 同步——split N 的 `ReduceFinalRes`（V 读）尚未读完，split N+1 的 `DataCopyPad`（MTE2 写）已覆写。
+- 修复（方案 A，加同步）：在 split 循环内，`DataCopyPad` 前 `WaitFlag<V_MTE2>`，`ReduceFinalRes` 后 `SetFlag<V_MTE2>`，保证「读完才覆写」。事件 ID 复用 `vToMte2V0Id[0]`（init 时已 SetFlag 配平）。
+- 结果：精度 PASS。
+
+### 最终修复涉及文件
+- `op_kernel/arch35/mixed_quant_sparse_flash_mla_scfa_block_vector.h`：
+  - `ProcessFlashDecode` 改用 VF 微内核；`attentionOutOffset` 行步长 `n2GDv→dSizeV`；split 循环加 `V_MTE2` 反向同步。
+  - 新增 `CopyMaxSumToStaging`（vec1 末轮拷出 max/sum，Brcb 暂存复用 `dequantScaleBuff`）。
+  - vec2 `isS2Split` 分支统一除 sum（多轮 `FlashUpdateLastNew`，单轮补 `LastDivNew`）。
+  - `DataCopyExtParams` 参数顺序修正；`fdPartialBuf` 扩到 16 行；`DEAL_ROW_COUNT=16`。
+- `op_kernel/arch35/util_regbase.h`：`MAX_SUM_BYTES` 等常量。
+
+### 调试方法论小结（供后续复用）
+- DumpTensor 直接打屏，`bash test_run.sh single` 即可看到；dump_size=16 的小张量配合每行 8 广播值判断布局是否错位。
+- 「广播值不一致」→ offset/参数错位；「连续整行为 0」→ 输出偏移/核覆盖问题；「结果非确定性波动」→ 同步竞态；「每次稳定偏差」→ 逻辑/数值错配。
+- 所有 DumpTensor/printf 调试代码已清理。
+

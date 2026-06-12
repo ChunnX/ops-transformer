@@ -45,12 +45,14 @@ else:
 
 def qsmla(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
+    npu_error_msg = None
     try:
         npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
             test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
-        print("NPU ERROR：", e)
+        npu_error_msg = str(e)
+        print("NPU ERROR：", npu_error_msg)
         result = "NPU ERROR"
         fulfill_percent = 0
 
@@ -59,7 +61,7 @@ def qsmla(testcase_files):
     if result == "Failed":
         pytest.fail(f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
     if result == "NPU ERROR":
-        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR 具体原因见算子报错")
+        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR: {npu_error_msg}")
 
 testcase_ids = [os.path.splitext(os.path.basename(f))[0] for f in testcase_files]
 

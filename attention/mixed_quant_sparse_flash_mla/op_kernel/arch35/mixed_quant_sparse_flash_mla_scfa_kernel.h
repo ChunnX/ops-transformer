@@ -624,11 +624,6 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     fdRunInfo.workspaceNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_NUM_INDEX, true));
     fdRunInfo.mStartIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_START_INDEX, true));
     fdRunInfo.mNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_NUM_INDEX, true));
-    
-    // printf("fdRunInfo.mIdx: %d\n", fdRunInfo.mIdx);
-    // printf("fdRunInfo.mStartIdx: %d\n", fdRunInfo.mStartIdx);
-    // printf("fdRunInfo.mNum: %d\n", fdRunInfo.mNum);
-    // printf("fdRunInfo.coreEnable: %d\n", fdRunInfo.coreEnable);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
