@@ -328,9 +328,9 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, Co
         }
         int64_t s2Offset = 0;
         if (first_block) {
-            s2Offset = runInfo.sparseBlkIdx1 * constInfo.blockSize;
+            s2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
         } else {
-            s2Offset = runInfo.sparseBlkIdx2 * constInfo.blockSize;
+            s2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
         }
         
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
