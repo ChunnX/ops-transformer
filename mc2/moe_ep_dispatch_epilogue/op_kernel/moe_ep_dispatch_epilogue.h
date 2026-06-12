@@ -206,8 +206,8 @@ __aicore__ inline void KernelDispatchEpilogue::Init(
     DataCopy(ubExpertPfx_, numRecvPerExpertHpGm_, numLocalExperts_);
     PipeBarrier<PIPE_MTE2>();
     uint32_t expertSum = 0;
-    for (uint32_t e = 0; e < numLocalExperts_; ++e) {
-        expertSum += static_cast<uint32_t>(ubExpertPfx_.GetValue(e));
+    for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
+        expertSum += static_cast<uint32_t>(ubExpertPfx_.GetValue(localExpertIdx));
     }
     expertSum_ = expertSum;
 
@@ -223,8 +223,8 @@ __aicore__ inline void KernelDispatchEpilogue::Process()
     SyncAll<true>();
 
     uint32_t myTotalHits = 0;
-    for (uint32_t e = 0; e < numLocalExperts_; ++e) {
-        myTotalHits += static_cast<uint32_t>(ubHitCount_.GetValue(e));
+    for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
+        myTotalHits += static_cast<uint32_t>(ubHitCount_.GetValue(localExpertIdx));
     }
 
     if (myTotalHits != 0) {
@@ -238,11 +238,11 @@ __aicore__ inline void KernelDispatchEpilogue::Process()
 
 __aicore__ inline void KernelDispatchEpilogue::ComputePrefixSums()
 {
-    int64_t acc = 0;
-    for (uint32_t e = 0; e < numLocalExperts_; ++e) {
-        int64_t val = ubExpertPfx_.GetValue(e);
-        ubExpertPfx_.SetValue(e, acc);
-        acc += val;
+    int64_t cumulativeRowOffset = 0;
+    for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
+        int64_t expertTokenCnt = ubExpertPfx_.GetValue(localExpertIdx);
+        ubExpertPfx_.SetValue(localExpertIdx, cumulativeRowOffset);
+        cumulativeRowOffset += expertTokenCnt;
     }
 }
 
@@ -251,38 +251,38 @@ __aicore__ inline void KernelDispatchEpilogue::CountHits()
     Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
 
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
-        int32_t cnt = ubRecvCnt_.GetValue(rankId);
-        if (cnt == 0) { continue; }
+        int32_t slotCnt = ubRecvCnt_.GetValue(rankId);
+        if (slotCnt == 0) { continue; }
 
         uint32_t slotStart, slotEnd;
-        SplitToCore(static_cast<uint32_t>(cnt), slotStart, slotEnd);
+        SplitToCore(static_cast<uint32_t>(slotCnt), slotStart, slotEnd);
         if (slotStart >= slotEnd) { continue; }
 
         GM_ADDR srcRankBase = localWinBase_ + recvCounterOffset_
                               + rankId * numMaxTokensPerRank_ * perSlotBytes_;
-        uint32_t numSlots = slotEnd - slotStart;
-        GM_ADDR firstSlotAddr = srcRankBase + slotStart * perSlotBytes_;
+        uint32_t slotCntPerAiv = slotEnd - slotStart;
+        GM_ADDR firstSlotAddrThisAiv = srcRankBase + slotStart * perSlotBytes_;
 
         GlobalTensor<int32_t> srcMetaGm;
-        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddr + metaOffset_));
-        DataCopyExtParams metaCopyParams{static_cast<uint16_t>(numSlots), metaBytes_,
+        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
+        DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
             perSlotBytes_ - metaBytes_, 0, 0};
         DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
         DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
         PipeBarrier<PIPE_MTE2>();
 
-        for (uint32_t localSlot = 0; localSlot < numSlots; ++localSlot) {
+        for (uint32_t localSlot = 0; localSlot < slotCntPerAiv; ++localSlot) {
             uint32_t metaBase = localSlot * paddedMetaElems_;
 
-            for (uint32_t kk = 0; kk < topK_; ++kk) {
-                int32_t expert = ubMeta_.GetValue(metaBase + kk);
-                if (expert < 0) { continue; }
-                uint32_t dst_rank = static_cast<uint32_t>(expert) / numLocalExperts_;
-                if (dst_rank != rankId_) { continue; }
-                uint32_t local_expert = static_cast<uint32_t>(expert) % numLocalExperts_;
+            for (uint32_t topkIdx = 0; topkIdx < topK_; ++topkIdx) {
+                int32_t expertId = ubMeta_.GetValue(metaBase + topkIdx);
+                if (expertId < 0) { continue; }
+                uint32_t dstRank = static_cast<uint32_t>(expertId) / numLocalExperts_;
+                if (dstRank != rankId_) { continue; }
+                uint32_t localExpertId = static_cast<uint32_t>(expertId) % numLocalExperts_;
 
-                int32_t cur = ubHitCount_.GetValue(local_expert);
-                ubHitCount_.SetValue(local_expert, cur + 1);
+                int32_t currentHits = ubHitCount_.GetValue(localExpertId);
+                ubHitCount_.SetValue(localExpertId, currentHits + 1);
             }
         }
     }
@@ -298,30 +298,30 @@ __aicore__ inline void KernelDispatchEpilogue::CopyFromWindowByExpert()
     DataCopy(ubHitCountFull_, hitCountGm_, aivNum_ * numLocalExperts_);
     PipeBarrier<PIPE_MTE2>();
 
-    for (uint32_t e = 0; e < numLocalExperts_; ++e) {
-        int64_t offset = ubExpertPfx_.GetValue(e);
+    for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
+        int64_t expertGlobalRowStart = ubExpertPfx_.GetValue(localExpertIdx);
         for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
-            offset += ubHitCountFull_.GetValue(aiv * numLocalExperts_ + e);
+            expertGlobalRowStart += ubHitCountFull_.GetValue(aiv * numLocalExperts_ + localExpertIdx);
         }
-        ubRowStart_.SetValue(e, offset);
+        ubRowStart_.SetValue(localExpertIdx, expertGlobalRowStart);
     }
 
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
-        int32_t cnt = ubRecvCnt_.GetValue(rankId);
-        if (cnt == 0) { continue; }
+        int32_t slotCnt = ubRecvCnt_.GetValue(rankId);
+        if (slotCnt == 0) { continue; }
 
         uint32_t slotStart, slotEnd;
-        SplitToCore(static_cast<uint32_t>(cnt), slotStart, slotEnd);
+        SplitToCore(static_cast<uint32_t>(slotCnt), slotStart, slotEnd);
         if (slotStart >= slotEnd) { continue; }
 
         GM_ADDR srcRankBase = localWinBase_ + recvCounterOffset_
                               + rankId * numMaxTokensPerRank_ * perSlotBytes_;
-        uint32_t numSlots = slotEnd - slotStart;
-        GM_ADDR firstSlotAddr = srcRankBase + slotStart * perSlotBytes_;
+        uint32_t slotCntPerAiv = slotEnd - slotStart;
+        GM_ADDR firstSlotAddrThisAiv = srcRankBase + slotStart * perSlotBytes_;
 
         GlobalTensor<int32_t> srcMetaGm;
-        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddr + metaOffset_));
-        DataCopyExtParams metaCopyParams{static_cast<uint16_t>(numSlots), metaBytes_,
+        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
+        DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
             perSlotBytes_ - metaBytes_, 0, 0};
         DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
         DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
@@ -329,7 +329,7 @@ __aicore__ inline void KernelDispatchEpilogue::CopyFromWindowByExpert()
 
         bool hasPendingWrite = false;
 
-        for (uint32_t localSlot = 0; localSlot < numSlots; ++localSlot) {
+        for (uint32_t localSlot = 0; localSlot < slotCntPerAiv; ++localSlot) {
             uint32_t metaBase = localSlot * paddedMetaElems_;
             GM_ADDR slotAddr = srcRankBase + (slotStart + localSlot) * perSlotBytes_;
 
@@ -342,30 +342,30 @@ __aicore__ inline void KernelDispatchEpilogue::CopyFromWindowByExpert()
             DataCopy(ubToken_, srcTokenTensor, hidden_);
             PipeBarrier<PIPE_MTE2>();
 
-            for (uint32_t kk = 0; kk < topK_; ++kk) {
-                int32_t expert = ubMeta_.GetValue(metaBase + kk);
-                if (expert < 0) { continue; }
-                uint32_t dst_rank = static_cast<uint32_t>(expert) / numLocalExperts_;
-                if (dst_rank != rankId_) { continue; }
-                uint32_t local_expert = static_cast<uint32_t>(expert) % numLocalExperts_;
+            for (uint32_t topkIdx = 0; topkIdx < topK_; ++topkIdx) {
+                int32_t expertId = ubMeta_.GetValue(metaBase + topkIdx);
+                if (expertId < 0) { continue; }
+                uint32_t dstRank = static_cast<uint32_t>(expertId) / numLocalExperts_;
+                if (dstRank != rankId_) { continue; }
+                uint32_t localExpertId = static_cast<uint32_t>(expertId) % numLocalExperts_;
 
-                int64_t expertRowStart = ubRowStart_.GetValue(local_expert);
-                int32_t localSeq = ubLocalSeq_.GetValue(local_expert);
-                uint32_t globalRow = static_cast<uint32_t>(expertRowStart + localSeq);
+                int64_t expertRowStart = ubRowStart_.GetValue(localExpertId);
+                int32_t localWrittenRow = ubLocalSeq_.GetValue(localExpertId);
+                uint32_t globalRow = static_cast<uint32_t>(expertRowStart + localWrittenRow);
 
                 if (globalRow >= expertSum_) { continue; }
 
-                ubLocalSeq_.SetValue(local_expert, localSeq + 1);
+                ubLocalSeq_.SetValue(localExpertId, localWrittenRow + 1);
 
                 DataCopy(recvXGm_[globalRow * hidden_], ubToken_, hidden_);
                 DataCopy(recvTopkIdxGm_[globalRow * topK_], ubMeta_[metaBase], topK_);
                 hasPendingWrite = true;
 
-                int32_t rawBits = ubMeta_.GetValue(metaBase + topK_ + kk);
+                int32_t rawBits = ubMeta_.GetValue(metaBase + topK_ + topkIdx);
                 recvTopkWeightsGm_.SetValue(globalRow, *reinterpret_cast<float*>(&rawBits));
                 recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 0, src_token_idx);
                 recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 1, src_rank_id);
-                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 2, static_cast<int32_t>(kk));
+                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 2, static_cast<int32_t>(topkIdx));
             }
 
             if (hasPendingWrite) {
