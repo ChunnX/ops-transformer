@@ -299,6 +299,9 @@ struct ConstInfo {
     uint32_t actualLenDimsQ = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDimsKV = 0U; // KV 的actualSeqLength 的维度
 
+    uint32_t actualLenDimsCmpKV = 0U;
+    uint32_t cmpResidualKVSize = 0U;
+
     // TND
     uint32_t s2Start = 0U; // TND场景下，S2的起始位置
     uint32_t s2End = 0U;   // 单核TND场景下S2循环index上限
@@ -320,6 +323,8 @@ struct ConstInfo {
 
     // cmp attr
     int64_t cmpRatio = 0;
+
+    uint64_t cmpSeqSize = 0ULL;
 
     // win
     int32_t oriWinRight = 0;
