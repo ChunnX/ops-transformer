@@ -127,8 +127,27 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxVF(__ubuf__ T * maxUb, __ubuf__ T *
 }
 
 template <typename T>
+__aicore__ inline void SFAUpdateExpSumAndExpMax(
+    const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
+    const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& inExpSumTensor,
+    const LocalTensor<T>& inMaxTensor,  const LocalTensor<T>& sharedTmpBuffer, const uint32_t m)
+{
+    __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ T * inMaxUb = (__ubuf__ T*)inMaxTensor.GetPhyAddr();
+
+    __ubuf__ T * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ T * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ T * inExpSumUb = (__ubuf__ T*)inExpSumTensor.GetPhyAddr();
+
+    __ubuf__ T * tmpExpSumUb = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr();
+    __ubuf__ T * tmpMaxUb = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr() + 64;
+
+    UpdateExpSumAndExpMaxVF<T>(maxUb, inMaxUb, expMaxUb, expSumUb, inExpSumUb, tmpExpSumUb, tmpMaxUb, m);
+}
+
+template <typename T>
 __simd_vf__ inline void InitSoftmaxFromSinksVF(__ubuf__ T * sumUb, __ubuf__ T * maxUb, __ubuf__ T * sinksUb,
- 	     uint32_t sinksOffset, const T R0, uint32_t m)
+    uint32_t sinksOffset, const T R0, uint32_t m)
 {
     AscendC::MicroAPI::RegTensor<T> vreg_sinks;
     AscendC::MicroAPI::RegTensor<T> vreg_sum;
