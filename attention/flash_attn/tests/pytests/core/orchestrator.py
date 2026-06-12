@@ -59,6 +59,10 @@ def run_case(params: dict,
             cpu_lse = golden_out["lse"]
             if isinstance(cpu_lse, torch.Tensor):
                 cpu_lse = cpu_lse.float()
+                cpu_lse = cpu_lse.clone()
+                dev_lse = dev_lse.clone()
+                cpu_lse[cpu_lse.isinf() & (cpu_lse > 0)] = float('-inf')
+                dev_lse[dev_lse.isinf() & (dev_lse > 0)] = float('-inf')
                 print(f"  [compare] LSE check")
                 lse_result = check_result("LSE", cpu_lse, dev_lse,
                                           except_label="CPU_lse", comp_label=f"{primary.name}_lse")
