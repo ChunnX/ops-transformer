@@ -25,7 +25,7 @@ TORCH_EXT_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(_
 if TORCH_EXT_PATH not in sys.path:
     sys.path.insert(0, TORCH_EXT_PATH)
 from npu_ops_transformer.ops import sparse_flash_mla as _smla_registration  # noqa: F401
-from npu_ops_transformer.ops import quant_lightning_indexer_v2_metadata as _metadata_registration  # noqa: F401
+from npu_ops_transformer.ops import sparse_flash_mla_metadata as _metadata_registration  # noqa: F401
 
 class Network(torch.nn.Module):
     def __init__(self):
