@@ -76,6 +76,7 @@ protected:
     uint64_t bufferLenSize;
     uint64_t gatherOffsetLenSize;
     uint32_t triBlockNum = BLOCK_SIZE / sizeof(float);
+    uint32_t triHeadDimAlign;
 
     __aicore__ inline void InitData(const InplacePartialRopeRegbaseTilingData *tiling);
     __aicore__ inline void CopyInX(LocalTensor<T> &x, uint32_t loopIdx, uint32_t calcLen);
@@ -157,6 +158,7 @@ __aicore__ inline void InterleavedSplitSPadMixed<T>::InitData(const InplaceParti
     alignLen = (std::is_same<T, bfloat16_t>::value || std::is_same<T, half>::value) ? ALIGN_16 : ALIGN_32;
     headDimAlign = (headDim + alignLen - 1) / alignLen * alignLen;
     allHeadDimAlign = (allHeadDim + alignLen - 1) / alignLen * alignLen;
+    triHeadDimAlign = (headDim + triBlockNum - 1) / triBlockNum * triBlockNum;
 }
 
 template <typename T>
@@ -186,7 +188,9 @@ __aicore__ inline void InterleavedSplitSPadMixed<T>::CopyInCos(LocalTensor<float
     dataCopyTriParams.blockCount = calcLen;
     dataCopyTriParams.blockLen = headDim * sizeof(float);
     dataCopyTriParams.srcStride = 0;
-    dataCopyTriParams.dstStride = static_cast<uint16_t>((numHeads - 1) * headDimAlign / triBlockNum);
+    // Reserve one SND row for later broadcast; subtract the float-aligned tri data already copied.
+    dataCopyTriParams.dstStride = static_cast<uint16_t>(
+        (numHeads * headDimAlign - triHeadDimAlign) / triBlockNum);
     DataCopyPad(cos, cosGm[loopIdx * ubCalcSeq * headDim], dataCopyTriParams, {false, 0, 0, 0});
     event_t eventId2MTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(eventId2MTE2ToV);
@@ -205,7 +209,9 @@ __aicore__ inline void InterleavedSplitSPadMixed<T>::CopyInSin(LocalTensor<float
     dataCopyTriParams.blockCount = calcLen;
     dataCopyTriParams.blockLen = headDim * sizeof(float);
     dataCopyTriParams.srcStride = 0;
-    dataCopyTriParams.dstStride = static_cast<uint16_t>((numHeads - 1) * headDimAlign / triBlockNum);
+    // Reserve one SND row for later broadcast; subtract the float-aligned tri data already copied.
+    dataCopyTriParams.dstStride = static_cast<uint16_t>(
+        (numHeads * headDimAlign - triHeadDimAlign) / triBlockNum);
     DataCopyPad(sin, sinGm[loopIdx * ubCalcSeq * headDim], dataCopyTriParams, {false, 0, 0, 0});
     event_t eventId3MTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(eventId3MTE2ToV);
