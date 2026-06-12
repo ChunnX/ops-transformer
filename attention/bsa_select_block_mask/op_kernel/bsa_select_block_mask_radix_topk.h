@@ -1228,38 +1228,32 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, cmpMode, alignLen);
     PipeBarrier<PIPE_V>();
 
-    LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
-    LocalTensor<half> onesHalf = outIndexBuf_.Get<half>();
+    LocalTensor<uint8_t> maskU8 = maskLocalBuf_.Get<uint8_t>();
+    uint8_t defaultValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 0 : 1;
+    uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
+    Duplicate<uint8_t>(maskU8, defaultValue, alignLen);
+    PipeBarrier<PIPE_V>();
 
-    if (constInfo.sparsityMode == BSASparseMode::TopK) {
-        Duplicate<half>(maskHalf, (half)0, alignLen);
-        Duplicate<half>(onesHalf, (half)1, alignLen);
-        PipeBarrier<PIPE_V>();
-        Select<half>(maskHalf, cmpMask, onesHalf, (half)0,
-                    SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
-    } else {
-        Duplicate<half>(maskHalf, (half)1, alignLen);
-        Duplicate<half>(onesHalf, (half)0, alignLen);
-        PipeBarrier<PIPE_V>();
-        Select<half>(maskHalf, cmpMask, onesHalf, (half)1,
-                    SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
+    LocalTensor<int32_t> vecIndex = outIndexBuf_.Get<int32_t>();
+    for (uint64_t i = 0; i < curTileLen; i++) {
+        vecIndex.SetValue(i, static_cast<int32_t>(i));
     }
-    PipeBarrier<PIPE_V>();
+    SToVSync();
 
-    LocalTensor<uint8_t> maskU8 = outIndexBuf_.Get<uint8_t>();
-    Cast<uint8_t, half>(maskU8, maskHalf, RoundMode::CAST_NONE, alignLen);
-    PipeBarrier<PIPE_V>();
+    uint64_t rsvdCnt = 0;
+    GatherMask(vecIndex, vecIndex, cmpMask.template ReinterpretCast<uint32_t>(),
+               true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
+    VToSSync();
 
-    VToMTE3Sync();
+    for (uint32_t i = 0; i < static_cast<uint32_t>(rsvdCnt); i++) {
+        int32_t idx = vecIndex.GetValue(i);
+        maskU8.SetValue(idx, writeValue);
+    }
+
+    SToMTE3Sync();
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
     MTE3ToMTE2Sync();
-
-    LocalTensor<half> tempHalf = outIndexBuf_.Get<half>();
-    uint64_t rsvdCnt = 0;
-    GatherMask(tempHalf, tempHalf, cmpMask.template ReinterpretCast<uint16_t>(),
-               true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
-    VToSSync();
 
     // === DUMP 730: rsvdCnt after GatherMask ===
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
