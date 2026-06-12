@@ -6,15 +6,14 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-from typing import Optional
 import torch
-import torchair
+import torch_npu
 from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
-from torchair.ge._ge_graph import Tensor, TensorSpec, DataType
+from typing import Optional
 
-
+print("xxxxxxxxxxxxxxxxxxxxx")
 class QuantBlockSparseAttentionMetadataOpBuilder(OpBuilder):
     def __init__(self):
         super(QuantBlockSparseAttentionMetadataOpBuilder, self).__init__(
@@ -26,10 +25,9 @@ class QuantBlockSparseAttentionMetadataOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "npu_quant_block_sparse_attention_metadata(Tensor sparse_seq_len, *, "                         \
+        return "npu_quant_block_sparse_attention_metadata(Tensor sparse_seq_len, int num_heads_q, int num_heads_kv, int head_dim, *, "                         \
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, "                \
-            "Tensor? seqused_kv=None, int batch_size=0, int num_heads_q=0, int num_heads_kv=0, "             \
-            "int head_dim=0, int sparse_block_size_q=128, int sparse_block_size_kv=128, int quant_mode=0, "  \
+            "Tensor? seqused_kv=None, int batch_size=0, int sparse_block_size_q=128, int sparse_block_size_kv=128, int quant_mode=0, "  \
             "int mask_mode=3, int max_seqlen_q=0, int max_seqlen_kv=0, str layout_q='BSND', "               \
             "str layout_kv='PA_BNSD', str layout_sparse_indices='B_N_Qb_Kb') -> Tensor"
 
@@ -40,11 +38,11 @@ class QuantBlockSparseAttentionMetadataOpBuilder(OpBuilder):
         """
         @torch.library.register_fake("npu_ops_transformer::" + self.name)
         def npu_quant_block_sparse_attention_metadata_meta(
-            sparse_seq_len: Tensor, cu_seqlens_q: Optional[Tensor] = None,
-            cu_seqlens_kv: Optional[Tensor] = None, seqused_q: Optional[Tensor] = None,
-            seqused_kv: Optional[Tensor] = None, batch_size: Optional[int] = None,
-            num_heads_q: Optional[int] = None, num_heads_kv: Optional[int] = None,
-            head_dim: Optional[int] = None, sparse_block_size_q: Optional[int] = None,
+            sparse_seq_len: torch.Tensor, num_heads_q: int, num_heads_kv: int, head_dim: int, 
+            cu_seqlens_q: Optional[torch.Tensor] = None,
+            cu_seqlens_kv: Optional[torch.Tensor] = None, seqused_q: Optional[torch.Tensor] = None,
+            seqused_kv: Optional[torch.Tensor] = None, batch_size: Optional[int] = None,
+             sparse_block_size_q: Optional[int] = None,
             sparse_block_size_kv: Optional[int] = None, quant_mode: Optional[int] = None,
             mask_mode: Optional[int] = None, max_seqlen_q: Optional[int] = None,
             max_seqlen_kv: Optional[int] = None, layout_q: Optional[str] = None,
@@ -59,9 +57,9 @@ op_module = quant_block_sparse_attention_metadata_op_builder.load()
 
 @impl(AS_LIBRARY, quant_block_sparse_attention_metadata_op_builder.name, "PrivateUse1")
 def npu_quant_block_sparse_attention_metadata(
-    sparse_seq_len: Tensor, cu_seqlens_q: Optional[Tensor] = None, cu_seqlens_kv: Optional[Tensor] = None,
-    seqused_q: Optional[Tensor] = None, seqused_kv: Optional[Tensor] = None, batch_size: Optional[int] = None,
-    num_heads_q: Optional[int] = None, num_heads_kv: Optional[int] = None, head_dim: Optional[int] = None,
+    sparse_seq_len: torch.Tensor, num_heads_q: int, num_heads_kv: int, head_dim: int,
+    cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None, batch_size: Optional[int] = None,
     sparse_block_size_q: Optional[int] = None, sparse_block_size_kv: Optional[int] = None,
     quant_mode: Optional[int] = None, mask_mode: Optional[int] = None, max_seqlen_q: Optional[int] = None,
     max_seqlen_kv: Optional[int] = None, layout_q: Optional[str] = None, layout_kv: Optional[str] = None,
@@ -71,9 +69,6 @@ def npu_quant_block_sparse_attention_metadata(
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
     batch_size = 0 if batch_size is None else batch_size
-    num_heads_q = 0 if num_heads_q is None else num_heads_q
-    num_heads_kv = 0 if num_heads_kv is None else num_heads_kv
-    head_dim = 0 if head_dim is None else head_dim
     sparse_block_size_q = 128 if sparse_block_size_q is None else sparse_block_size_q
     sparse_block_size_kv = 128 if sparse_block_size_kv is None else sparse_block_size_kv
     quant_mode = 0 if quant_mode is None else quant_mode
@@ -85,23 +80,23 @@ def npu_quant_block_sparse_attention_metadata(
     layout_sparse_indices = "B_N_Qb_Kb" if layout_sparse_indices is None else layout_sparse_indices
 
     return op_module.npu_quant_block_sparse_attention_metadata(
-        sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, batch_size, num_heads_q, num_heads_kv,
-        head_dim, sparse_block_size_q, sparse_block_size_kv, quant_mode, mask_mode, max_seqlen_q, max_seqlen_kv,
+        sparse_seq_len, num_heads_q, num_heads_kv, head_dim, 
+        cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, batch_size,  sparse_block_size_q, sparse_block_size_kv, quant_mode, mask_mode, max_seqlen_q, max_seqlen_kv,
         layout_q, layout_kv, layout_sparse_indices)
 
 
 @torch.library.register_kernel("npu_ops_transformer::npu_quant_block_sparse_attention_metadata", None)
 def npu_quant_block_sparse_attention_metadata_fallback(
-    sparse_seq_len: Tensor, cu_seqlens_q: Optional[Tensor] = None, cu_seqlens_kv: Optional[Tensor] = None,
-    seqused_q: Optional[Tensor] = None, seqused_kv: Optional[Tensor] = None, batch_size: Optional[int] = None,
-    num_heads_q: Optional[int] = None, num_heads_kv: Optional[int] = None, head_dim: Optional[int] = None,
+    sparse_seq_len: torch.Tensor, num_heads_q: int, num_heads_kv: int, head_dim: int, 
+    cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_kv: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None, seqused_kv: Optional[torch.Tensor] = None, batch_size: Optional[int] = None,
     sparse_block_size_q: Optional[int] = None, sparse_block_size_kv: Optional[int] = None,
     quant_mode: Optional[int] = None, mask_mode: Optional[int] = None, max_seqlen_q: Optional[int] = None,
     max_seqlen_kv: Optional[int] = None, layout_q: Optional[str] = None, layout_kv: Optional[str] = None,
     layout_sparse_indices: Optional[str] = None):
     return npu_quant_block_sparse_attention_metadata(
-        sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, batch_size, num_heads_q, num_heads_kv,
-        head_dim, sparse_block_size_q, sparse_block_size_kv, quant_mode, mask_mode, max_seqlen_q, max_seqlen_kv,
+        sparse_seq_len, num_heads_q, num_heads_kv, head_dim, 
+        cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, batch_size,  sparse_block_size_q, sparse_block_size_kv, quant_mode, mask_mode, max_seqlen_q, max_seqlen_kv,
         layout_q, layout_kv, layout_sparse_indices)
 
 

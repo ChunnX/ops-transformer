@@ -27,10 +27,9 @@ const c10::optional<at::Tensor> qbsa_get_valid_tensor(const c10::optional<at::Te
 };
 
 at::Tensor npu_quant_block_sparse_attention_metadata(
-    const at::Tensor &sparse_seq_len, const c10::optional<at::Tensor> &cu_seqlens_q,
-    const c10::optional<at::Tensor> &cu_seqlens_kv, const c10::optional<at::Tensor> &seqused_q,
-    const c10::optional<at::Tensor> &seqused_kv, int64_t batch_size, int64_t num_heads_q, int64_t num_heads_kv,
-    int64_t head_dim, int64_t sparse_block_size_q, int64_t sparse_block_size_kv, int64_t quant_mode,
+    const at::Tensor &sparse_seq_len, int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim,
+    const c10::optional<at::Tensor> &cu_seqlens_q,const c10::optional<at::Tensor> &cu_seqlens_kv, const c10::optional<at::Tensor> &seqused_q,
+    const c10::optional<at::Tensor> &seqused_kv, int64_t batch_size,  int64_t sparse_block_size_q, int64_t sparse_block_size_kv, int64_t quant_mode,
     int64_t mask_mode, int64_t max_seqlen_q, int64_t max_seqlen_kv, c10::string_view layout_q,
     c10::string_view layout_kv, c10::string_view layout_sparse_indices)
 {
