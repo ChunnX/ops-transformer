@@ -186,31 +186,65 @@ def run_case(params: dict,
     dev_raw = primary_out["out"].cpu() if primary_out["out"].is_cuda or str(primary_out["out"].device).startswith("npu") else primary_out["out"]
     dev_out = dev_raw
 
+    cpu_raw = golden_out["out"]
+    cpu_out = (trans_bnsd_to_layout(cpu_raw, out_layout, **params)
+               if out_layout != "BNSD" else cpu_raw).float()
+
     if compare_dir and case_name:
         other_name = "gpu" if primary.name == "npu" else "npu"
         safe_name = case_name.replace("/", "_")
         other_path = Path(compare_dir) / safe_name / f"{other_name}_out.pt"
         if other_path.exists():
+            from utils.compare import data_compare_benchmark_new
             other_out = torch.load(other_path, map_location="cpu", weights_only=False)
-            other_raw = other_out["out"]
-            compare_label = other_name.upper()
-            compare_target = other_raw.float()
+            other_raw = other_out["out"].float()
+            output_dtype = params.get("Dtype", "fp16")
+            cmp_params = {
+                "case_name": case_name,
+                "op_name": "flash_attn",
+                "dtype_output": [output_dtype],
+                "dtype_input": [output_dtype],
+                "red_range": {
+                    "fp32": "0.000001/0.00001/0.0001/0.0005",
+                    "fp16": "0.001/0.002/0.005/0.01",
+                    "bf16": "0.001/0.002/0.005/0.01",
+                },
+                "bm_cmp_std": {
+                    "fp32": {"max_re_rtol": 10.0, "avg_re_rtol": 2.0, "rmse_rtol": 2.0,
+                             "small_value": 1e-06, "small_value_atol": 0.0},
+                    "fp16": {"max_re_rtol": 10.0, "avg_re_rtol": 2.0, "rmse_rtol": 2.0,
+                             "small_value": 0.001, "small_value_atol": 0.001},
+                    "bf16": {"max_re_rtol": 10.0, "avg_re_rtol": 2.0, "rmse_rtol": 2.0,
+                             "small_value": 1e-07, "small_value_atol": 0.004},
+                },
+            }
+            print(f"\n{'='*40} 三方对比模式（详细精度统计） {'='*40}")
+            str1, str2, data = data_compare_benchmark_new(
+                cmp_params,
+                dev_out.float().numpy(),
+                other_raw.numpy(),
+                cpu_out.numpy(),
+                output_dtype, 0)
+            print(f"\n====== 三方对比结果 ======")
+            print(f"状态: {str1}, 原因: {str2}")
+            passed = (str1 == "Pass" or str1 == "warning")
+            attn_result = {"passed": passed, "max_abs": 0.0, "mean_abs": 0.0,
+                           "fail_cnt": 0 if passed else 1, "total": 1,
+                           "fail_ratio": 0.0 if passed else 1.0,
+                           "verdict_npu": str1, "verdict_gpu": str2}
         else:
             print(f"  [warn] {other_path} 不存在，退回 CPU 对比")
-            compare_label = "CPU"
-            compare_target = (trans_bnsd_to_layout(golden_out["out"], out_layout, **params)
-                              if out_layout != "BNSD" else golden_out["out"]).float()
+            print(f"  [compare] CPU vs {primary.name}")
+            attn_result = check_result(f"CPU_vs_{primary.name}",
+                                       cpu_out, dev_out.float(),
+                                       except_label="CPU", comp_label=primary.name,
+                                       verbose_diff=verbose_diff)
     else:
-        cpu_raw = golden_out["out"]
-        compare_label = "CPU"
-        compare_target = (trans_bnsd_to_layout(cpu_raw, out_layout, **params)
-                          if out_layout != "BNSD" else cpu_raw).float()
-
-    print(f"  [compare] {compare_label} vs {primary.name}")
-    attn_result = check_result(f"{compare_label}_vs_{primary.name}",
-                               compare_target, dev_out.float(),
-                               except_label=compare_label, comp_label=primary.name,
-                               verbose_diff=verbose_diff)
+        print(f"  [compare] CPU vs {primary.name}")
+        attn_result = check_result(f"CPU_vs_{primary.name}",
+                                   cpu_out, dev_out.float(),
+                                   except_label="CPU", comp_label=primary.name,
+                                   verbose_diff=verbose_diff)
 
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                   "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
