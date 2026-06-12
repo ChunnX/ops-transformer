@@ -22,7 +22,7 @@
   topK\_num= permutedTokens.size(0) // routingMapOptional.size(0)
   $$
 
-  其中 `topK_num` 表示每个 token 预留的最大专家槽位数。`paddedMode` 为 `false` 时，每个 token 实际选择的专家数可以小于等于 `topK_num`；未使用的槽位在 `sortedIndices` 中以 `-1` 表示，计算时跳过该槽位。
+  其中`topK_num`表示每个token预留的最大专家槽位数。`paddedMode`为`false`时，每个token实际选择的专家数可以小于等于`topK_num`；未使用的槽位在`sortedIndices`中以`-1`表示，计算时跳过该槽位。
 
   $$
   numExperts = probs.size(1)

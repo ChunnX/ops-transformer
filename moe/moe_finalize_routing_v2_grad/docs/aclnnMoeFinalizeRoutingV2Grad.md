@@ -154,7 +154,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
       <td>expertIdxOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示每一个特征对应的处理专家索引。</td>
-      <td>当biasOptional非空指针时，expertIdxOptional也不能是空指针，取值范围是[0, E - 1], E &gt;= 1, 允许有重复索引。E代表专家数。</td>
+      <td>当biasOptional非空指针时，expertIdxOptional也不能是空指针，取值范围是[0, E - 1], E &gt;= 1,允许有重复索引。E代表专家数。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(R, K)</td>
@@ -418,7 +418,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -505,7 +505,7 @@ int main() {
   ret = aclnnMoeFinalizeRoutingV2Grad(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeFinalizeRoutingV2Grad failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

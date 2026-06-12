@@ -20,7 +20,7 @@
    
   **Step 1: 归一化**                                                                                                                 
                 
-  根据 normType 对输入 x 做归一化：
+  根据normType对输入x做归一化：
 
   $$
   normOut = 
@@ -33,7 +33,7 @@
 
   **Step 2: 加偏置**
 
-  若 bias 不为空，加偏置得到用于选择的值：
+  若bias不为空，加偏置得到用于选择的值：
 
   $$
   normValue = normOut + bias
@@ -41,9 +41,9 @@
 
   否则 $normValue = normOut$。
 
-  **Step 3: 分组筛选**（仅 groupCount > 1 时执行）
+  **Step 3: 分组筛选**（仅groupCount > 1 时执行）
 
-  将 normValue 按 groupCount 分组，根据 groupSelectMode 计算每组得分：
+  将normValue按groupCount分组，根据groupSelectMode计算每组得分：
 
   $$
   groupedValue = Reshape(normValue,\ [batch,\ groupCount,\ -1])
@@ -56,7 +56,7 @@
   \end{cases}
   $$
 
-  选取得分最高的 kGroup 个组，将未选中组的对应位置置为 $-\infty$：
+  选取得分最高的kGroup个组，将未选中组的对应位置置为 $-\infty$：
 
   $$
   groupIdx = TopK(groupScore,\ k=kGroup).indices
@@ -66,23 +66,23 @@
   normValue = Mask(groupedValue,\ groupIdx,\ fillValue=-\infty)
   $$
 
-  **Step 4: Top-K 专家选择**
+  **Step 4: Top-K专家选择**
 
-  对 normValue 取 Top-K 得到专家索引，这里只需要expertIdxOut：
+  对normValue取Top-K得到专家索引，这里只需要expertIdxOut：
 
   $$
   y, expertIdxOut = TopK(normValue[groupIdx, :],\ k=k)
   $$
 
-  **Step 5: Renorm 与缩放**
+  **Step 5: Renorm与缩放**
 
-  根据 expertIdxOut 从 normOut 中取出对应的 k 个专家得分：
+  根据expertIdxOut从normOut中取出对应的k个专家得分：
 
   $$
   gathered = normOut[\text{expertIdxOut}]
   $$
 
-  normType=1 or normType=2 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
+  normType=1 or normType=2 时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：
 
   $$
   if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
@@ -102,7 +102,7 @@
 
   **Step 6: 可选输出**
 
-  若 outFlag 为 True，第三个输出为 normOut；否则为空。
+  若outFlag为True，第三个输出为normOut；否则为空。
 
 ## 函数原型
 
@@ -503,7 +503,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化, 参考AscendCL对外接口列表
+  // 1.（固定写法）device/stream初始化,参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -569,7 +569,7 @@ int main() {
   ret = aclnnMoeGatingTopK(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeGatingTopK failed. ERROR: %d\n", ret); return ret);
 
-  // 4.（ 固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

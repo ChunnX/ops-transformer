@@ -333,7 +333,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化,参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -362,7 +362,7 @@ int main() {
     int32_t dropPadModeValue = 0;
     int32_t activeNumValue = 0;
 
-    // 创建输入 aclTensor
+    // 创建输入aclTensor
     ret = CreateAclTensor(gradExpandedXHostData, gradExpandedXShape, &gradExpandedXDeviceAddr, aclDataType::ACL_FLOAT, &gradExpandedX);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expandedRowIdxHostData, expandedRowIdxShape, &expandedRowIdxDeviceAddr, aclDataType::ACL_INT32, &expandedRowIdx);
@@ -373,7 +373,7 @@ int main() {
     CHECK_RET(dropPadMode != nullptr, return ret);
     activeNum = aclCreateScalar(&activeNumValue, aclDataType::ACL_INT32);
     CHECK_RET(activeNum != nullptr, return ret);
-    // 创建输出 aclTensor
+    // 创建输出aclTensor
     ret = CreateAclTensor(gradXOutHostData, gradXShape, &gradXDeviceAddr, aclDataType::ACL_FLOAT, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 

@@ -328,7 +328,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
 
 - **返回值：**
 
-  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn 返回码</a>。
+  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。
 
   一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed; width: 1180px"> 
@@ -485,7 +485,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化,参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

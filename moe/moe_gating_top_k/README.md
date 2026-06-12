@@ -23,7 +23,7 @@
   \begin{cases}
       \text{SoftMax}(x),      & normType = 0 \\
       \text{Sigmoid}(x),      & normType = 1 \\
-      \text{Softplus}(x),     & normType = 2\ （仅<term>Ascend 950PR/Ascend 950DT</term> 支持）
+      \text{Softplus}(x),     & normType = 2\（仅<term>Ascend 950PR/Ascend 950DT</term> 支持）
   \end{cases}
   $$
 
@@ -178,7 +178,7 @@
       * 要求1 <= k <= x_shape[-1] / groupCount * kGroup。
       * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
       * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
-      * renorm支持0和1。normType=1或者normType=2时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：。
+      * renorm支持0和1。normType=1或者normType=2时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：。
   * 其他限制：
       * groupSelectMode取值0和1，0表示使用最大值对group进行排序, 1表示使用topk2的sum值对group进行排序。
       * normType取值0、1和2（仅<term>Ascend 950PR/Ascend 950DT</term> 支持），0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用Softplus函数。
