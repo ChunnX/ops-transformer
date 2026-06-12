@@ -84,7 +84,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
                 std::string shapeStr = ToString(lseShape->GetStorageShape());
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     fiaInfo.opName, "softmax_lse", shapeStr.c_str(),
-                    "The shape of softmax_lse must be [T, N, 1].");
+                    "The shape of softmax_lse must be [T, N, 1]");
                 return ge::GRAPH_FAILED;
             }
         } else {

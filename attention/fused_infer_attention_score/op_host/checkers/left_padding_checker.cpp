@@ -81,14 +81,14 @@ ge::graphStatus LeftPaddingChecker::CheckExistenceDesc(const FiaTilingInfo &fiaI
     if (fiaInfo.qPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.opParamInfo.queryPaddingSize.desc == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
-                        "queryPaddingSize", "desc of queryPaddingSize cannot be empty."),
+                        "queryPaddingSize", "desc of queryPaddingSize cannot be empty"),
                     return ge::GRAPH_FAILED);
     }
 
     if (fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.opParamInfo.kvPaddingSize.desc == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
-                        "kvPaddingSize", "desc of kvPaddingSize cannot be empty."),
+                        "kvPaddingSize", "desc of kvPaddingSize cannot be empty"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -103,7 +103,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureActualLen(const FiaTilingInfo &f
         OP_CHECK_IF(fiaInfo.opParamInfo.actualSeqLengthsQ.tensor == nullptr ||
                         fiaInfo.opParamInfo.actualSeqLengthsQ.tensor->GetShapeSize() == 0U,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsQ",
-                        "actualSeqLengthsQ cannot be empty when query_padding_size exists."),
+                        "actualSeqLengthsQ cannot be empty when query_padding_size exists"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -111,7 +111,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureActualLen(const FiaTilingInfo &f
         OP_CHECK_IF(fiaInfo.opParamInfo.actualSeqLengths.tensor == nullptr ||
                         fiaInfo.opParamInfo.actualSeqLengths.tensor->GetShapeSize() == 0U,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsKv",
-                        "actualSeqLengthsKv cannot be empty when kv_padding_size exists."),
+                        "actualSeqLengthsKv cannot be empty when kv_padding_size exists"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -125,32 +125,32 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo &fiaI
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
         if (layoutStr == "BSH_BNSD") {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "BSH_BNSD",
-                "The value of input_layout cannot be BSH_BNSD when leftpadding is enabled.");
+                "The value of input_layout cannot be BSH_BNSD when leftpadding is enabled");
             return ge::GRAPH_FAILED;
         }
         if (layoutStr == "BSND_BNSD") {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "BSND_BNSD",
-                "The value of input_layout cannot be BSND_BNSD when leftpadding is enabled.");
+                "The value of input_layout cannot be BSND_BNSD when leftpadding is enabled");
             return ge::GRAPH_FAILED;
         }
         if (layoutStr == "TND") {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "TND",
-                "The value of input_layout cannot be TND when leftpadding is enabled.");
+                "The value of input_layout cannot be TND when leftpadding is enabled");
             return ge::GRAPH_FAILED;
         }
         if (layoutStr == "NTD") {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "NTD",
-                "The value of input_layout cannot be NTD when leftpadding is enabled.");
+                "The value of input_layout cannot be NTD when leftpadding is enabled");
             return ge::GRAPH_FAILED;
         }
         if (layoutStr == "NTD_TND") {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "NTD_TND",
-                "The value of input_layout cannot be NTD_TND when leftpadding is enabled.");
+                "The value of input_layout cannot be NTD_TND when leftpadding is enabled");
             return ge::GRAPH_FAILED;
         }
         if (layoutStr == "TND_NTD") {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "TND_NTD",
-                "The value of input_layout cannot be TND_NTD when leftpadding is enabled.");
+                "The value of input_layout cannot be TND_NTD when leftpadding is enabled");
             return ge::GRAPH_FAILED;
         }
     }
@@ -164,7 +164,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureAlibiPse(const FiaTilingInfo &fi
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.enableAlibiPse,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "leftPadding",
-                        "leftPadding must be empty when pseType = 2/3."),
+                        "leftPadding must be empty when pseType = 2/3"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -177,7 +177,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeaturePageAttention(const FiaTilingInf
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "leftPadding",
-                        "leftPadding must be empty when page attention is enabled."),
+                        "leftPadding must be empty when page attention is enabled"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -198,7 +198,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaI
                     fiaInfo.inputKvType == ge::DT_INT8,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "leftPadding",
                     "leftPadding must be empty in keyAntiquant/valueAntiquant split mode and data type of "
-                    "key/value is int8 scenario, when keyAntiquantMode/valueAntiquantMode is 0 or 1."),
+                    "key/value is int8 scenario, when keyAntiquantMode/valueAntiquantMode is 0 or 1"),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -238,7 +238,7 @@ ge::graphStatus LeftPaddingChecker::CheckCrossFeature(const FiaTilingInfo &fiaIn
         OP_CHECK_IF(
             fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "leftPadding",
-                "leftPadding must be empty in the GQA scenario, when D of query and key is not equal to D of value."),
+                "leftPadding must be empty in the GQA scenario, when D of query and key is not equal to D of value"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
