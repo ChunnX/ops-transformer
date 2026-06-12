@@ -543,7 +543,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::AttenMaskTran
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::ElewiseCompute310P(LocalTensor<mm1OutputType>& mmResUb, uint32_t SInnerSize, uint32_t SOuterSize) {
     uint32_t computeSize = SInnerSize * SOuterSize;
-    
+
     Muls(mmResUb, mmResUb, static_cast<mm1OutputType>(tilingData->promptAttentionBaseParams.scaleValue), computeSize);
     PipeBarrier<PIPE_V>();
     if (needCalMask_) {
@@ -553,13 +553,13 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::ElewiseComput
             Cast(tmpUb, attenMaskUb, RoundMode::CAST_NONE, tmpUb.GetSize());
             PipeBarrier<PIPE_V>();
             Add(mmResUb, mmResUb, tmpUb, computeSize);
-            PipeBarrier<PIPE_V>();     
+            PipeBarrier<PIPE_V>();
         }
         else{
             LocalTensor<mmOutputType> tmpUb = this->attenMaskUb_.template Get<mmOutputType>(this->attenMaskUbSize);
             Add(mmResUb, mmResUb, tmpUb, computeSize);
             PipeBarrier<PIPE_V>();
-        }   
+        }
     }
 }
 
@@ -661,12 +661,12 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::Bmm2UpdateDiv
     int32_t loop = tilingData->promptAttentionBaseParams.headSize / BLOCK_CUBE;
     int32_t outerSize = isOuterTail_ ? singleProcessSOuterSizeTailAlign : singleProcessSOuterSize;
     int32_t repeat = 16 * outerSize * sizeof(mmOutputType) / 256;
-	
+
 	constexpr int32_t FP32_BLOCK_NUM = 8;
     int32_t calcSize = outerSize * FP32_BLOCK_NUM;
     LocalTensor<float> tmpBuffer = tmpmm2Ub_.template Get<float>();
 	DataCopy(tmpBuffer, softmaxSumUb, {static_cast<uint16_t>(outerSize), 1, 0, 1});
-    DataCopy(tmpBuffer[FP32_BLOCK_NUM], softmaxSumUb, {static_cast<uint16_t>(outerSize), 1, 0, 1});    
+    DataCopy(tmpBuffer[FP32_BLOCK_NUM], softmaxSumUb, {static_cast<uint16_t>(outerSize), 1, 0, 1});
     PipeBarrier<PIPE_V>();
 	if constexpr (IsSameType<softmaxType, half>::value) {
         Cast(softmaxExpUb, tmpBuffer, RoundMode::CAST_ODD, calcSize * 2);
@@ -680,7 +680,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::Bmm2UpdateDiv
         }
 
     } else if constexpr (IsSameType<softmaxType, float>::value){
-        LocalTensor<half> tmpSoftmaxSum = tmpmm2Ub_.template Get<half>(); 
+        LocalTensor<half> tmpSoftmaxSum = tmpmm2Ub_.template Get<half>();
         Cast(tmpSoftmaxSum, tmpBuffer, RoundMode::CAST_NONE, calcSize * 2);
         PipeBarrier<PIPE_V>();
         for (int i = 0; i < loop; i++) {
@@ -701,7 +701,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::Bmm2UpdateDiv
     repeatParams.src0BlkStride = 1;
     repeatParams.src1BlkStride = 1;
     repeatParams.dstBlkStride = 1;
-    
+
     repeatParams.src0RepStride = 8;
     repeatParams.src1RepStride = 8;
     repeatParams.dstRepStride = 8;
@@ -752,14 +752,14 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::UpdateVmul(Lo
         constexpr int32_t FP32_BLOCK_NUM = 8;
         int32_t calcSize = outerSize * FP32_BLOCK_NUM;
         LocalTensor<float> tmpBuffer = tmpmm2Ub_.template Get<float>();
-        LocalTensor<half> tmpSoftmaxExp = tmpmm2Ub_.template Get<half>(); 
+        LocalTensor<half> tmpSoftmaxExp = tmpmm2Ub_.template Get<half>();
         DataCopy(tmpBuffer, softmaxExpUb, {static_cast<uint16_t>(outerSize), 1, 0, 1});
         DataCopy(tmpBuffer[FP32_BLOCK_NUM], softmaxExpUb, {static_cast<uint16_t>(outerSize), 1, 0, 1});
         PipeBarrier<PIPE_V>();
         Cast(tmpSoftmaxExp, tmpBuffer, RoundMode::CAST_ODD, calcSize * 2);
         PipeBarrier<PIPE_V>();
-       
- 
+
+
         for (int i = 0; i < loop; i++) {
             PipeBarrier<PIPE_V>();
             Mul(bmm2ResPreUb[i * BLOCK_CUBE * outerSize], tmpSoftmaxExp, bmm2ResPreUb[i * BLOCK_CUBE * outerSize], BLOCK_CUBE * outerSize);
@@ -858,7 +858,8 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::Bmm1Compute(L
 }
 
 template<typename PFAT>
-__aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOffsetInitWithBSH(uint64_t seqListOffsetSize, int sIdx) {
+__aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOffsetInitWithBSH(
+    uint64_t seqListOffsetSize, int sIdx) {
     uint64_t attenMaskBatchOffset = 0;
     if (attenMaskBatch != 1) {
         attenMaskBatchOffset = (uint64_t)sIdx * (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize *
@@ -925,7 +926,8 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOff
 }
 
 template<typename PFAT>
-__aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOffsetInit(uint64_t seqListOffsetSize, int sIdx) {
+__aicore__ inline void PromptFlashAttentionS1s2Bns1X310Base<PFAT>::LoopSOuterOffsetInit(
+    uint64_t seqListOffsetSize, int sIdx) {
     if constexpr (PFAT::layout == PFALayoutNZ::BSH) {
         LoopSOuterOffsetInitWithBSH(seqListOffsetSize, sIdx);
     } else { // BNSD
