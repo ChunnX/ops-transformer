@@ -116,7 +116,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     }
     if constexpr(useDn) {
         runParam.s1RealSizeAlign32 = ((runParam.s1RealSize + 31) >> 5 << 5);
-        runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : runParam.s1RealSizeAlign32 / 2;
+        runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : runParam.s1RealSizeAlign32 >> 1;
     } else {
         runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
     }
@@ -137,7 +137,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
     int64_t actualSeqLen = 0;
     int64_t seqOffset = 0;
     if constexpr (layout == BSALayout::TND) {
-        actualSeqLen = (bIdx == 0) ? actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
+        actualSeqLen = (bIdx == 0) ? actualSeqQlenAddr[0] : runParam.actualS1Size;
         seqOffset = (bIdx == 0) ? 0 : actualSeqQlenAddr[bIdx - 1];
     }
     if ASCEND_IS_AIC {
@@ -183,7 +183,7 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
 {
     int64_t sparseSeqLenFlatIdx = (runParam.boIdx * constInfo.n1Size + runParam.n1oIdx) * constInfo.maxQb + s1Index;
     runParam.actSparseLen = sparseSeqLenGm.GetValue(sparseSeqLenFlatIdx);
-    runParam.s2LoopEndIdx = (runParam.actSparseLen + 2 - 1) / 2;     // sparse块为128  基本块为256
+    runParam.s2LoopEndIdx = (runParam.actSparseLen + 2 - 1) >> 1;     // sparse块为128  基本块为256
     return runParam.actSparseLen <= 0;
 }
 
