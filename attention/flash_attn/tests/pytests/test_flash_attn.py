@@ -47,7 +47,7 @@ if __name__ == "__main__":
     parser.add_argument("--fail_analysis", action="store_true")
     parser.add_argument("--report_interval", type=int, default=20)
     parser.add_argument("--perf_mode",   action="store_true")
-    parser.add_argument("--perf_runs",   type=int,  default=5)
+    parser.add_argument("--perf_runs",   type=int,  default=50)
     parser.add_argument("--perf_cold_thr", type=int, default=16)
     parser.add_argument("--perf_output", type=str,  default="./perf_output")
     parser.add_argument("--skip_accuracy", action="store_true")
