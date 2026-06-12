@@ -197,8 +197,9 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::ComputeMul(
             repeatParams_.dstBlkStride = 1;
             repeatParams_.src0BlkStride = 1;
             repeatParams_.src1BlkStride = 1;
-            repeatParams_.dstRepStride = 8;
-            repeatParams_.src0RepStride = 8;
+            int32_t repStride = headDim / perBlock32;
+            repeatParams_.dstRepStride = repStride;
+            repeatParams_.src0RepStride = repStride;
             repeatParams_.src1RepStride = 0;
             for (int64_t j = 0; j<onceA; j++) {
                 Mul(dtsUb[j*count], src0Ub[j*count], src1Ub[j*headDim], mask, numHead,

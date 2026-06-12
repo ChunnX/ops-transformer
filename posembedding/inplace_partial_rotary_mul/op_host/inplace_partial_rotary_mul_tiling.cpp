@@ -795,6 +795,19 @@ ge::graphStatus InplacePartialRotaryMulTiling::DoTiling()
         CheckInput() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "CheckInputShapes is failed"),
         return ge::GRAPH_FAILED);
+    // No-op: empty slice (sliceStart==sliceEnd), nothing to compute
+    if (headDim_ == 0) {
+        tilingKey_ = TILING_KEY_NOOP;
+        FillTilingData();
+        context_->SetBlockDim(1);
+        context_->SetTilingKey(tilingKey_);
+        size_t* workspaces = context_->GetWorkspaceSizes(1);
+        workspaces[0] = static_cast<size_t>(16 * 1024 * 1024);
+        tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
+        context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+        OP_LOGI(context_->GetNodeName(), "InplacePartialRotaryMulTiling no-op: sliceStart==sliceEnd, return directly");
+        return ge::GRAPH_SUCCESS;
+    }
     if (isMixedPrecision_) {
         return DoTilingMixedPrecision();
     }
@@ -821,19 +834,6 @@ ge::graphStatus InplacePartialRotaryMulTiling::DoTilingMixedPrecision()
 
 ge::graphStatus InplacePartialRotaryMulTiling::DoTilingRegular()
 {
-    // No-op: empty slice (sliceStart==sliceEnd), nothing to compute
-    if (headDim_ == 0) {
-        tilingKey_ = TILING_KEY_NOOP;
-        FillTilingData();
-        context_->SetBlockDim(1);
-        context_->SetTilingKey(tilingKey_);
-        size_t* workspaces = context_->GetWorkspaceSizes(1);
-        workspaces[0] = static_cast<size_t>(16 * 1024 * 1024);
-        tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
-        context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
-        OP_LOGI(context_->GetNodeName(), "InplacePartialRotaryMulTiling no-op: sliceStart==sliceEnd, return directly");
-        return ge::GRAPH_SUCCESS;
-    }
     if (CalTilingData() == ge::GRAPH_SUCCESS) {
         FillTilingData();
         PrintTilingData();
