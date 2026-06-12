@@ -30,6 +30,7 @@
 #include "opdev/fast_vector.h"
 #include "runtime/context.h"
 #include "acl/acl_rt.h"
+#include "op_common/log/log.h"
 
 using namespace op;
 #ifdef __cplusplus
@@ -183,7 +184,7 @@ static bool CheckDimT(const FagInShapeInfo &fagShape,
                        int64_t &sumSeqQLen, int64_t &sumSeqKvLen)
 {
     if (actualSeqQLenOptional == nullptr || actualSeqKvLenOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] missing actualSeqQLen/actualSeqKvLen parameter, required when layout is TND");
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "actualSeqQLenOptional, actualSeqKvLenOptional");
         return false;
     }
     GetActSeqLen(actualSeqQLenOptional, sumSeqQLen);
@@ -245,11 +246,11 @@ static aclnnStatus InvalidTensorDimCheck(const aclTensor *query, const aclTensor
         auto dqRopeDimNum = dqRope->GetViewShape().GetDimNum();
         auto dkRopeDimNum = dkRope->GetViewShape().GetDimNum();
         if (queryRopeDimNum < MIN_DIM || keyRopeDimNum < MIN_DIM || dqRopeDimNum < MIN_DIM || dkRopeDimNum < MIN_DIM) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "In op [FlashAttentionScoreGrad], the shape of input/output tensor dimensions < 3 is not supported, "
-                    "the reason is: [queryRope dim num, keyRope dim num, dqRope dim num and dkRope dim num should not be less than 3, "
-                    "queryRope dim num=%zu, keyRope dim num=%zu, dqRope dim num=%zu, dkRope dim num=%zu]",
-                    queryRopeDimNum, keyRopeDimNum, dqRopeDimNum, dkRopeDimNum);
+            std::string dimsMsg = "{" + std::to_string(queryRopeDimNum) + ", " + std::to_string(keyRopeDimNum) +
+                                  ", " + std::to_string(dqRopeDimNum) + ", " + std::to_string(dkRopeDimNum) + "}";
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("FlashAttentionScoreGrad",
+                "queryRopeOptional, keyRopeOptional, dqRopeOut, dkRopeOut", dimsMsg.c_str(),
+                "The shape dims of queryRopeOptional, keyRopeOptional, dqRopeOut, dkRopeOut cannot be less than 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -263,12 +264,13 @@ static aclnnStatus InvalidTensorDimCheck(const aclTensor *query, const aclTensor
     auto dvDimNum = dv->GetViewShape().GetDimNum();
     if (queryDimNum < MIN_DIM || keyDimNum < MIN_DIM || valueDimNum < MIN_DIM || dyDimNum < MIN_DIM ||
         attentionInDimNum < MIN_DIM || dqDimNum < MIN_DIM || dkDimNum < MIN_DIM || dvDimNum < MIN_DIM) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [FlashAttentionScoreGrad], the shape of input/output tensor dimensions < 3 is not supported, "
-                "the reason is: [query/key/value/dy/attentionIn/dq/dk/dv dim num should not be less than 3, "
-                "query dim num=%zu, key dim num=%zu, value dim num=%zu, dy dim num=%zu, "
-                "attentionIn dim num=%zu, dq dim num=%zu, dk dim num=%zu, dv dim num=%zu]",
-                queryDimNum, keyDimNum, valueDimNum, dyDimNum, attentionInDimNum, dqDimNum, dkDimNum, dvDimNum);
+        std::string dimsMsg = "{" + std::to_string(queryDimNum) + ", " + std::to_string(keyDimNum) + ", " +
+                              std::to_string(valueDimNum) + ", " + std::to_string(dyDimNum) + ", " +
+                              std::to_string(attentionInDimNum) + ", " + std::to_string(dqDimNum) + ", " +
+                              std::to_string(dkDimNum) + ", " + std::to_string(dvDimNum) + "}";
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("FlashAttentionScoreGrad",
+            "query, keyIn, value, attentionIn, dqOut, dkOut, dvOut", dimsMsg.c_str(),
+            "The shape dims of query, keyIn, value, attentionIn, dqOut, dkOut, dvOut cannot be less than 3");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -276,10 +278,9 @@ static aclnnStatus InvalidTensorDimCheck(const aclTensor *query, const aclTensor
         auto sinkInDim = sinkIn->GetViewShape().GetDimNum();
         auto dsinkDim = dsinkOut->GetViewShape().GetDimNum();
         if (sinkInDim != DIM_NUM_1 || dsinkDim != DIM_NUM_1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "In op [FlashAttentionScoreGrad], sink tensor dim != 1 is not supported, "
-                    "the reason is: [sinkIn dim num and dsinkOut dim num should be 1, sinkIn dim num=%zu, dsinkOut dim num=%zu]",
-                    sinkInDim, dsinkDim);
+            std::string dimsMsg = "{" + std::to_string(sinkInDim) + ", " + std::to_string(dsinkDim) + "}";
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("FlashAttentionScoreGrad", "sinkInOptional, dsinkOut",
+                dimsMsg.c_str(), "The shape dims of sinkInOptional, dsinkOut must be 1");
             return ACLNN_ERR_PARAM_INVALID;
         } 
     }
@@ -391,7 +392,8 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
         fagShape.h2Dim = keyShape.GetDim(2);    // 2:h2
         auto h3Dim = valueShape.GetDim(2);    // 3:h3，h of v
         if (headNum == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: The headNum is zero.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "headNum", std::to_string(headNum),
+                "The value of headNum must be positive number");
             return ACLNN_ERR_PARAM_INVALID;
         }
         fagShape.dDim = fagShape.h1Dim / headNum; // q Head-dim
@@ -425,32 +427,54 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
         fagShape.dvDim = valueShape.GetDim(3); // value Head-dim
     } else {
         // query dimNum <= 3 and layout is not BSH/SBH/TND
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "The op [FlashAttentionScoreGrad] received bad params, the reason is: "
-            "[inputLayout=%s, query dimNum=%zu: layout is not BSH/SBH/TND and dimNum <= 3]",
-            fagShape.inputLayoutStr.c_str(), queryShape.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FlashAttentionScoreGrad", "query",
+            std::to_string(queryShape.GetDimNum()).c_str(),
+            "When inputLayout is not BSH or SBH or TND, the shape dim of query cannot be less than or equal to 3");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (fagShape.dDim != fagShape.dkDim && queryShape.GetDimNum() == DIM_NUM_3) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: qD and kD should be same, q shape = [%ld, %ld, %ld], k shape = [%ld, %ld, %ld].",
-            queryShape.GetDim(0), queryShape.GetDim(1), queryShape.GetDim(DIM_NUM_2),
-            keyShape.GetDim(0), keyShape.GetDim(1), keyShape.GetDim(DIM_NUM_2));
+        std::string shapesMsg = "{[" + std::to_string(queryShape.GetDim(0)) + ", " +
+                                std::to_string(queryShape.GetDim(1)) + ", " +
+                                std::to_string(queryShape.GetDim(2)) + "], [" +
+                                std::to_string(keyShape.GetDim(0)) + ", " + std::to_string(keyShape.GetDim(1)) +
+                                ", " + std::to_string(keyShape.GetDim(2)) + "]}";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn", shapesMsg.c_str(),
+            "D axis of query must be equal to d axis of keyIn");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (fagShape.dDim != fagShape.dkDim && queryShape.GetDimNum() == DIM_NUM_4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: qD and kD should be same, q shape = [%ld, %ld, %ld, %ld], k shape = [%ld, %ld, %ld, %ld].",
-            queryShape.GetDim(0), queryShape.GetDim(1), queryShape.GetDim(DIM_NUM_2), queryShape.GetDim(DIM_NUM_3),
-            keyShape.GetDim(0), keyShape.GetDim(1), keyShape.GetDim(DIM_NUM_2), keyShape.GetDim(DIM_NUM_3));
+        std::string shapesMsg = "{[" + std::to_string(queryShape.GetDim(0)) + ", " +
+                                std::to_string(queryShape.GetDim(1)) + ", " +
+                                std::to_string(queryShape.GetDim(2)) + ", " +
+                                std::to_string(queryShape.GetDim(3)) + "], [" +
+                                std::to_string(keyShape.GetDim(0)) + ", " + std::to_string(keyShape.GetDim(1)) +
+                                ", " + std::to_string(keyShape.GetDim(2)) + ", " +
+                                std::to_string(keyShape.GetDim(3)) + "]}";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn", shapesMsg.c_str(),
+            "D axis of query must be equal to d axis of keyIn");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (fagShape.dDim < fagShape.dvDim) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [FlashAttentionScoreGrad], the shape of headDim of value > headDim of key is not supported, "
-                "the reason is: [key head dim should be greater than or equal to value head dim, key head dim=%ld, value head dim=%ld]",
-                fagShape.dDim, fagShape.dvDim);
+        std::string qvShapesMsg = "{[";
+        for (int i = 0; i < queryShape.GetDimNum(); i++) {
+            if (i < queryShape.GetDimNum() - 1) {
+                qvShapesMsg += std::to_string(queryShape.GetDim(i)) + ", ";
+            } else {
+                qvShapesMsg += std::to_string(queryShape.GetDim(i)) + "], [";
+            }
+        }
+        for (int i = 0; i < valueShape.GetDimNum(); i++) {
+            if (i < valueShape.GetDimNum() - 1) {
+                qvShapesMsg += std::to_string(valueShape.GetDim(i)) + ", ";
+            } else {
+                qvShapesMsg += std::to_string(valueShape.GetDim(i)) + "]}";
+            }
+        }
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, value", qvShapesMsg.c_str(),
+            "D axis for query cannot be less than d axis of value");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -530,8 +554,14 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
             int64_t sumSeqQLen = 0;
             int64_t sumSeqKvLen = 0;
             if (!CheckDimT(fagShape, actualSeqQLenOptional, actualSeqKvLenOptional, sumSeqQLen, sumSeqKvLen)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: Query T(%ld) and key T(%ld) need larger than respectively sum of seqQLen(%ld) and seqKvLen(%ld).",
-                                            fagShape.t1, fagShape.t2, sumSeqQLen, sumSeqKvLen);
+                std::string shapesMsg = "{[" + std::to_string(fagShape.t1) + ", " + std::to_string(fagShape.n1Dim) +
+                                        ", " + std::to_string(fagShape.dDim) + "], [" + std::to_string(fagShape.t2) +
+                                        ", " + std::to_string(fagShape.n2Dim) + ", " + std::to_string(fagShape.dDim) +
+                                        "]}";
+                std::string reasonMsg = "T axis of query and keyIn cannot be less than " + std::to_string(sumSeqQLen) +
+                                        " and " + std::to_string(sumSeqKvLen);
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn", shapesMsg.c_str(),
+                    reasonMsg.c_str());
                 return ACLNN_ERR_PARAM_INVALID;
             }
             // 校验EOD场景尾部是否补0
@@ -539,8 +569,10 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
                 int64_t actSeqQLenEnd = static_cast<int64_t>((*actualSeqQLenOptional)[actualSeqQLenOptional->Size() - 1]);
                 int64_t actSeqKvLenEnd = static_cast<int64_t>((*actualSeqKvLenOptional)[actualSeqKvLenOptional->Size() - 1]);
                 if (actSeqQLenEnd != 0 || actSeqKvLenEnd !=0) {
-                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: The end of actualSeqQLen & actualSeqKvLen should be 0 in EOD scenario, but got (%ld) and (%ld).",
-                                            actSeqQLenEnd, actSeqKvLenEnd);
+                    std::string valuesMsg = std::to_string(actSeqQLenEnd) + ", " + std::to_string(actSeqKvLenEnd);
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScoreGrad",
+                        "actualSeqQLenOptional, actualSeqKvLenOptional", valuesMsg.c_str(),
+                        "The values of the actualSeqQLenOptional end and actualSeqKvLenOptional end must be 0");
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             }
@@ -892,25 +924,25 @@ static aclnnStatus ReshapeInputTensor(const aclTensor **query, const aclTensor *
     // reshape input
     *query = l0op::Reshape(*query, queryShapeArray, executor);
     OP_CHECK(*query != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape query failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "query"),
         return ACLNN_ERR_PARAM_NULLPTR);
     *key = l0op::Reshape(*key, keyShapeArray, executor);
     OP_CHECK(*key != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape key failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "keyIn"),
         return ACLNN_ERR_PARAM_NULLPTR);
     *value = l0op::Reshape(*value, keyShapeArray, executor);
     OP_CHECK(*value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape value failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "value"),
         return ACLNN_ERR_PARAM_NULLPTR);
     *dy = l0op::Reshape(*dy, queryShapeArray, executor);
     OP_CHECK(*dy != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape dy failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dy"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     if (*attentionInOptional != nullptr && (*attentionInOptional)->GetViewShape().GetDimNum() != 0) {
         *attentionInOptional = l0op::Reshape(*attentionInOptional, queryShapeArray, executor);
         OP_CHECK(*attentionInOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape attentionInOptional failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "attentionInOptional"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
 
@@ -936,15 +968,15 @@ static aclnnStatus ReshapeOutputTensor(std::array<const aclTensor *, l0op::MAX_F
     // reshape
     fagOut[0] = l0op::Reshape(fagOut[0], dqShapeArray, executor);
     OP_CHECK(fagOut[0] != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape dq_out failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dqOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     fagOut[1] = l0op::Reshape(fagOut[1], dkShapeArray, executor);
     OP_CHECK(fagOut[1] != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape dk_out failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dkOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     fagOut[2] = l0op::Reshape(fagOut[2], dkShapeArray, executor); // 2:dv
     OP_CHECK(fagOut[2] != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape dv_out failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dvOut"),
         return ACLNN_ERR_PARAM_NULLPTR);     // 2:dv
 
     return ACLNN_SUCCESS;
@@ -976,32 +1008,32 @@ static aclnnStatus PaddingInputTensorDdim(const aclTensor **query, const aclTens
 
     *query = l0op::Pad(*query, padTensor, executor);
     OP_CHECK(*query != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Pad query failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "query"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     // key
     *key = l0op::Pad(*key, padTensor, executor);
     OP_CHECK(*key != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Pad key failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "keyIn"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     // value
     *value = l0op::Pad(*value, padTensor, executor);
     OP_CHECK(*value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Pad value failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "value"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     // dy
     *dy = l0op::Pad(*dy, padTensor, executor);
     OP_CHECK(*dy != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Pad dy failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dy"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     // attenmask_in
     if (*attentionInOptional != nullptr && (*attentionInOptional)->GetViewShape().GetDimNum() != 0) {
         *attentionInOptional = l0op::Pad(*attentionInOptional, padTensor, executor);
         OP_CHECK(*attentionInOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Pad attentionInOptional failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "attentionInOptional"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
 
@@ -1042,18 +1074,18 @@ static aclnnStatus SliceOutputTensorDdim(std::array<const aclTensor *, l0op::MAX
     auto dqOutSize = executor->AllocIntArray(dqOutSizeVector.data(), dqOutSizeVector.size());
     fagOut[0] = l0op::Slice(fagOut[0], offsets, dqOutSize, executor); // 0: dq
     OP_CHECK(fagOut[0] != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Slice dq_out failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dqOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     dkOutSizeVector.emplace_back(fagShape.dDim);
     auto dkOutSize = executor->AllocIntArray(dkOutSizeVector.data(), dkOutSizeVector.size());
     fagOut[1] = l0op::Slice(fagOut[1], offsets, dkOutSize, executor); // 1: dk
     OP_CHECK(fagOut[1] != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Slice dk_out failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dkOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     fagOut[2] = l0op::Slice(fagOut[2], offsets, dkOutSize, executor); // 2: dv
     OP_CHECK(fagOut[2] != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Slice dv_out failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dvOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     return ACLNN_SUCCESS;
@@ -1085,16 +1117,16 @@ static aclnnStatus PaddingValueDim(const aclTensor **value, const aclTensor **dy
     if (fagShape.inputLayoutStr == "SBH" || fagShape.inputLayoutStr == "BSH") {
         *value = l0op::Reshape(*value, fagShapeArray.valueReshapeBefore, executor);
         OP_CHECK(*value != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape value failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "value"),
             return ACLNN_ERR_PARAM_NULLPTR);
         *dy = l0op::Reshape(*dy, fagShapeArray.attenInReshapeBefore, executor);
 
         OP_CHECK(*dy != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape dy failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dy"),
             return ACLNN_ERR_PARAM_NULLPTR);
         *attentionInOptional = l0op::Reshape(*attentionInOptional, fagShapeArray.attenInReshapeBefore, executor);
         OP_CHECK(*attentionInOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape attentionInOptional failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "attentionInOptional"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
  
@@ -1102,31 +1134,31 @@ static aclnnStatus PaddingValueDim(const aclTensor **value, const aclTensor **dy
     auto paddings = GeneratePaddings(dimNum, fagShape.dDim - fagShape.dvDim, executor);
     *value = l0op::Pad(*value, paddings, executor);
     OP_CHECK(*value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Pad value failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "value"),
         return ACLNN_ERR_PARAM_NULLPTR);
  
     *dy = l0op::Pad(*dy, paddings, executor);
     OP_CHECK(*dy != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Pad dy failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dy"),
         return ACLNN_ERR_PARAM_NULLPTR);
  
     *attentionInOptional = l0op::Pad(*attentionInOptional, paddings, executor);
     OP_CHECK(*attentionInOptional != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Pad attentionInOptional failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "attentionInOptional"),
         return ACLNN_ERR_PARAM_NULLPTR);
  
     if (fagShape.inputLayoutStr == "SBH" || fagShape.inputLayoutStr == "BSH") {
         *value = l0op::Reshape(*value, fagShapeArray.valueReshapeAfter, executor);
         OP_CHECK(*value != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape value failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "value"),
             return ACLNN_ERR_PARAM_NULLPTR);
         *dy = l0op::Reshape(*dy, fagShapeArray.attenInReshapeAfter, executor);
         OP_CHECK(*dy != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape dy failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dy"),
             return ACLNN_ERR_PARAM_NULLPTR);
         *attentionInOptional = l0op::Reshape(*attentionInOptional, fagShapeArray.attenInReshapeAfter, executor);
         OP_CHECK(*attentionInOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape attentionInOptional failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "attentionInOptional"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
  
@@ -1143,7 +1175,7 @@ static aclnnStatus SliceDvOut(std::array<const aclTensor *, l0op::MAX_FAG_OUTPUT
     if (fagShape.inputLayoutStr == "SBH" || fagShape.inputLayoutStr == "BSH") {
         fagOut[2] = l0op::Reshape(fagOut[2], fagShapeArray.dvReshapeBefore, executor);
         OP_CHECK(fagOut[2] != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape dv_out failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dvOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
  
@@ -1155,21 +1187,21 @@ static aclnnStatus SliceDvOut(std::array<const aclTensor *, l0op::MAX_FAG_OUTPUT
         fagOut[2] = l0op::Slice(fagOut[2], executor->AllocIntArray(offsets.data(), offsets.size()),
                                 dvOutSize, executor); // 2: dv
         OP_CHECK(fagOut[2] != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Slice dv_out failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dvOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
     } else {
         FVector<int64_t, DIM_NUM_3> offsets(DIM_NUM_3, 0);
         fagOut[2] = l0op::Slice(fagOut[2], executor->AllocIntArray(offsets.data(), offsets.size()),
                                 dvOutSize, executor); // 2: dv
         OP_CHECK(fagOut[2] != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Slice dv_out failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dvOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     
     if (fagShape.inputLayoutStr == "SBH" || fagShape.inputLayoutStr == "BSH") {
         fagOut[2] = l0op::Reshape(fagOut[2], fagShapeArray.dvReshapeAfter, executor);
         OP_CHECK(fagOut[2] != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Reshape dv_out failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dvOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
  
@@ -1200,32 +1232,32 @@ static aclnnStatus TransposeInputTensor(const aclTensor **query, const aclTensor
     // query
     *query = l0op::Transpose(*query, perm, executor);
     OP_CHECK(*query != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Transpose query failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "query"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     // key
     *key = l0op::Transpose(*key, perm, executor);
     OP_CHECK(*key != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Transpose key failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "keyIn"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     // value
     *value = l0op::Transpose(*value, perm, executor);
     OP_CHECK(*value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Transpose value failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "value"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     // dy
     *dy = l0op::Transpose(*dy, perm, executor);
     OP_CHECK(*dy != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Transpose dy failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dy"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     // attentionInOptional
     if (*attentionInOptional != nullptr && (*attentionInOptional)->GetViewShape().GetDimNum() != 0) {
         *attentionInOptional = l0op::Transpose(*attentionInOptional, perm, executor);
         OP_CHECK(*attentionInOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Transpose attentionInOptional failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "attentionInOptional"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
 
@@ -1269,19 +1301,19 @@ static aclnnStatus TransposeOutputTensor(std::array<const aclTensor *, l0op::MAX
     // dqOut
     fagOut[0] = l0op::Transpose(fagOut[0], perm, executor);
     OP_CHECK(fagOut[0] != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Transpose dq_out failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dqOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
 
     // dkOut
     fagOut[1] = l0op::Transpose(fagOut[1], perm, executor);
     OP_CHECK(fagOut[1] != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Transpose dk_out failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dkOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
 
     // dvOut
     fagOut[2] = l0op::Transpose(fagOut[2], perm, executor);   // 2:dvOut
     OP_CHECK(fagOut[2] != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [Transpose dv_out failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dvOut"),
             return ACLNN_ERR_PARAM_NULLPTR); // 2:dvOut
 
     // dpseOut
@@ -1295,21 +1327,31 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     auto qDtype = query->GetDataType();
     auto dyDtype = dy->GetDataType();
     if (!(qDtype == op::DataType::DT_FLOAT8_E4M3FN || qDtype == op::DataType::DT_FLOAT8_E5M2 || qDtype == op::DataType::DT_HIFLOAT8) && (qDtype != kDtype || kDtype != vDtype || vDtype != dyDtype)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the data types of query, key, value, dy are mismatched, "
-                "the reason is: query=[%s], key=[%s], value=[%s], dy=[%s] are not equal.",
-                op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(vDtype)).GetString(), op::ToString(DataType(dyDtype)).GetString());
+        std::string dTypesMsg = std::string("{") + op::ToString(DataType(qDtype)).GetString() + std::string(", ") +
+                                op::ToString(DataType(kDtype)) .GetString()+ std::string(", ") +
+                                op::ToString(DataType(vDtype)).GetString() + std::string(", ") +
+                                op::ToString(DataType(dyDtype)).GetString() + std::string("}");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn, value, dy", dTypesMsg.c_str(),
+            "when the dtype of query is  not FLOAT8_E5M2 or FLOAT8_E4M3FN or HIFLOAT8, "
+            "the dtypes of query, keyIn, value, dy must be the same");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (StrideLimited() && !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the data type of query/key/value is not supported, got [%s], expected fp16, bf16 or fp32",
-                op::ToString(DataType(qDtype)).GetString());
+        std::string dTypesMsg = std::string("{") + op::ToString(DataType(qDtype)).GetString() + std::string(", ") +
+                                op::ToString(DataType(kDtype)) .GetString()+ std::string(", ") +
+                                op::ToString(DataType(vDtype)).GetString() + std::string("}");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn, value", dTypesMsg.c_str(),
+            "the dtypes of query, keyIn, value, dy must be FLOAT32 or FLOAT16 or BFLOAT16");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (!StrideLimited() && !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16 ||
         qDtype == op::DataType::DT_FLOAT8_E4M3FN || qDtype == op::DataType::DT_FLOAT8_E5M2 || qDtype == op::DataType::DT_HIFLOAT8)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the data type of query/key/value is not supported, got [%s], expected fp8, fp16, bf16 or fp32",
-                op::ToString(DataType(qDtype)).GetString());
+        std::string dTypesMsg = std::string("{") + op::ToString(DataType(qDtype)).GetString() + std::string(", ") +
+                                op::ToString(DataType(kDtype)) .GetString()+ std::string(", ") +
+                                op::ToString(DataType(vDtype)).GetString() + std::string("}");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn, value", dTypesMsg.c_str(),
+            "the dtypes of query, keyIn, value, dy must be FLOAT32 or FLOAT16 or BFLOAT16 or FLOAT8_E5M2 or "
+            "FLOAT8_E4M3FN or HIFLOAT8");
         return ACLNN_ERR_PARAM_INVALID;   
     }
     return ACLNN_SUCCESS;
@@ -1381,39 +1423,39 @@ static aclnnStatus PostFlashAttentionScoreGrad(std::array<const aclTensor *, l0o
     // 如果出参是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto dqOutViewCopyRes = l0op::ViewCopy(fagOut[0], *dqOut, executor);
     OP_CHECK(dqOutViewCopyRes != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dq_out ViewCopy failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dqOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     auto dkOutViewCopyRes = l0op::ViewCopy(fagOut[1], *dkOut, executor);
     OP_CHECK(dkOutViewCopyRes != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dk_out ViewCopy failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dkOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     auto dvOutViewCopyRes = l0op::ViewCopy(fagOut[2], *dvOut, executor);
     OP_CHECK(dvOutViewCopyRes != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dv_out ViewCopy failed]"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dvOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     if (!(dpseOut == nullptr || *dpseOut == nullptr || (*dpseOut)->GetDataType() == ge::DataType::DT_FLOAT)) {
         auto dpseOutViewCopyRes = l0op::ViewCopy(fagOut[3], *dpseOut, executor);
         OP_CHECK(dpseOutViewCopyRes != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dpse_out ViewCopy failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dpseOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
  
     if (dqRopeOut != nullptr && *dqRopeOut != nullptr && !((*dqRopeOut)->GetViewShape().GetDimNum() == 1 && (*dqRopeOut)->GetViewShape()[0] == 0)) {
         auto dqRopeOutViewCopyRes = l0op::ViewCopy(fagOut[4], *dqRopeOut, executor);
         OP_CHECK(dqRopeOutViewCopyRes != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dq_rope_out ViewCopy failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dqRopeOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (dkRopeOut != nullptr && *dkRopeOut != nullptr && !((*dkRopeOut)->GetViewShape().GetDimNum() == 1 && (*dkRopeOut)->GetViewShape()[0] == 0)) {
         auto dkRopeOutViewCopyRes = l0op::ViewCopy(fagOut[5], *dkRopeOut, executor);
         OP_CHECK(dkRopeOutViewCopyRes != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dk_rope_out ViewCopy failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dkRopeOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (dsinkOut != nullptr && *dsinkOut != nullptr && !((*dsinkOut)->GetViewShape().GetDimNum() == 1 && (*dsinkOut)->GetViewShape()[0] == 0)) {
         auto dsinkOutViewCopyRes = l0op::ViewCopy(fagOut[6], *dsinkOut, executor);
         OP_CHECK(dsinkOutViewCopyRes != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dsink_out ViewCopy failed]"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dsinkOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     return ACLNN_SUCCESS;
@@ -2679,7 +2721,7 @@ static aclnnStatus CheckSinkOptionalInput(const aclTensor *sinkInOptional, const
 {
     if (sinkInOptional != nullptr) {
         OP_CHECK(dsinkOut != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing dsink parameter"),
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "sinkInOptional"),
             return ACLNN_ERR_PARAM_NULLPTR);
         auto qDtype = query->GetDataType();
         auto kDtype = key->GetDataType();
@@ -2692,55 +2734,68 @@ static aclnnStatus CheckSinkOptionalInput(const aclTensor *sinkInOptional, const
         auto sinkDtype = sinkInOptional->GetDataType();
         auto dsinkDtype = dsinkOut->GetDataType();
         OP_CHECK((sinkDtype == ge::DataType::DT_FLOAT),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, sink dtype should be fp32, got [%s]]",
-            op::ToString(DataType(sinkDtype)).GetString()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "sinkInOptional",
+                op::ToString(DataType(sinkDtype)).GetString(),
+                "When optional parameter sinkInOptional exists, the dtype of sinkInOptional must be FLOAT32"),
             return ACLNN_ERR_PARAM_INVALID);
         OP_CHECK((dsinkDtype == ge::DataType::DT_FLOAT),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, dsink dtype should be fp32, got [%s]]",
-            op::ToString(DataType(dsinkDtype)).GetString()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "dsinkOut",
+                op::ToString(DataType(dsinkDtype)).GetString(),
+                "When optional parameter sinkInOptional exists, the dtype of dsinkOut must be FLOAT32"),
             return ACLNN_ERR_PARAM_INVALID);
         OP_CHECK((qDtype == ge::DataType::DT_BF16 || qDtype == ge::DataType::DT_FLOAT16),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, q dtype should be bf16 or fp16, got [%s]]",
-            op::ToString(DataType(qDtype)).GetString()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "query",
+                op::ToString(DataType(qDtype)).GetString(),
+                "When optional parameter sinkInOptional exists, the dtype of query must be FLOAT16 or BFLOAT16"),
             return ACLNN_ERR_PARAM_INVALID);
         OP_CHECK((kDtype == ge::DataType::DT_BF16 || kDtype == ge::DataType::DT_FLOAT16),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, k dtype should be bf16 or fp16, got [%s]]",
-            op::ToString(DataType(kDtype)).GetString()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "keyIn",
+                op::ToString(DataType(kDtype)).GetString(),
+                "When optional parameter sinkInOptional exists, the dtype of keyIn must be FLOAT16 or BFLOAT16"),
             return ACLNN_ERR_PARAM_INVALID);
         OP_CHECK((vDtype == ge::DataType::DT_BF16 || vDtype == ge::DataType::DT_FLOAT16),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, v dtype should be bf16 or fp16, got [%s]]",
-            op::ToString(DataType(vDtype)).GetString()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "value",
+                op::ToString(DataType(vDtype)).GetString(),
+                "When optional parameter sinkInOptional exists, the dtype of value must be FLOAT16 or BFLOAT16"),
             return ACLNN_ERR_PARAM_INVALID);
         OP_CHECK((dyDtype == ge::DataType::DT_BF16 || dyDtype == ge::DataType::DT_FLOAT16),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, dy dtype should be bf16 or fp16, got [%s]]",
-            op::ToString(DataType(dyDtype)).GetString()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "dy",
+                op::ToString(DataType(dyDtype)).GetString(),
+                "When optional parameter sinkInOptional exists, the dtype of dy must be FLOAT16 or BFLOAT16"),
             return ACLNN_ERR_PARAM_INVALID);
         OP_CHECK((yDtype == ge::DataType::DT_BF16 || yDtype == ge::DataType::DT_FLOAT16),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, attentionIn dtype should be bf16 or fp16, got [%s]]",
-            op::ToString(DataType(yDtype)).GetString()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "attentionInOptional",
+                op::ToString(DataType(yDtype)).GetString(),
+                "When optional parameter sinkInOptional exists, "
+                "the dtype of attentionInOptional must be FLOAT16 or BFLOAT16"),
             return ACLNN_ERR_PARAM_INVALID);
         OP_CHECK((dqOutDtype == ge::DataType::DT_BF16 || dqOutDtype == ge::DataType::DT_FLOAT16),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, dq dtype should be bf16 or fp16, got [%s]]",
-            op::ToString(DataType(dqOutDtype)).GetString()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "dqOut",
+                op::ToString(DataType(dqOutDtype)).GetString(),
+                "When optional parameter sinkInOptional exists, the dtype of dqOut must be FLOAT16 or BFLOAT16"),
             return ACLNN_ERR_PARAM_INVALID);
         OP_CHECK((dkOutDtype == ge::DataType::DT_BF16 || dkOutDtype == ge::DataType::DT_FLOAT16),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, dk dtype should be bf16 or fp16, got [%s]]",
-            op::ToString(DataType(dkOutDtype)).GetString()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "dkOut",
+                op::ToString(DataType(dkOutDtype)).GetString(),
+                "When optional parameter sinkInOptional exists, the dtype of dkOut must be FLOAT16 or BFLOAT16"),
             return ACLNN_ERR_PARAM_INVALID);
         OP_CHECK((dvOutDtype == ge::DataType::DT_BF16 || dvOutDtype == ge::DataType::DT_FLOAT16),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, dv dtype should be bf16 or fp16, got [%s]]",
-            op::ToString(DataType(dvOutDtype)).GetString()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "dvOut",
+                op::ToString(DataType(dvOutDtype)).GetString(),
+                "When optional parameter sinkInOptional exists, the dtype of dvOut must be FLOAT16 or BFLOAT16"),
             return ACLNN_ERR_PARAM_INVALID);
         if (queryRopeOptional != nullptr && keyRopeOptional != nullptr) {
             auto qRopeDtype = queryRopeOptional->GetDataType();
             auto kRopeDtype = keyRopeOptional->GetDataType();
             OP_CHECK((qRopeDtype == ge::DataType::DT_BF16 || qRopeDtype == ge::DataType::DT_FLOAT16),
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, qRope dtype should be bf16 or fp16, got [%s]]",
-                op::ToString(DataType(qRopeDtype)).GetString()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional",
+                    op::ToString(DataType(qRopeDtype)).GetString(), "When optional parameter sinkInOptional exists, "
+                    "the dtype of queryRopeOptional must be FLOAT16 or BFLOAT16"),
                 return ACLNN_ERR_PARAM_INVALID);
             OP_CHECK((kRopeDtype == ge::DataType::DT_BF16 || kRopeDtype == ge::DataType::DT_FLOAT16),
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [if sink exists, kRope dtype should be bf16 or fp16, got [%s]]",
-                op::ToString(DataType(kRopeDtype)).GetString()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FlashAttentionScoreGrad", "keyRopeOptional",
+                    op::ToString(DataType(kRopeDtype)).GetString(), "When optional parameter sinkInOptional exists, "
+                    "the dtype of keyRopeOptional must be FLOAT16 or BFLOAT16"),
                 return ACLNN_ERR_PARAM_INVALID);
         }
     }
@@ -2783,11 +2838,12 @@ static aclnnStatus FlashAttentionScoreGradV4GetWorkspace(
     if (softmaxInLayout != nullptr) {
         if (strcmp(inputLayout, "TND") == 0 && strcmp(softmaxInLayout, "same_as_input") != 0 &&
             strcmp(softmaxInLayout, "") != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the format of softmaxInLayout is not supported, got [%s], expected same_as_input or empty",
-                    softmaxInLayout);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "softmaxInLayout", softmaxInLayout,
+                "When inputLayout is TND, the value of softmaxInLayout must be same_as_input or empty string");
             return ACLNN_ERR_PARAM_INVALID;
         } else if (strcmp(inputLayout, "TND") != 0 && strcmp(softmaxInLayout, "") != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the format of softmaxInLayout is not supported, softmaxInLayout must be empty for non-TND layout");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "softmaxInLayout", softmaxInLayout,
+                "When inputLayout is not TND, the value of softmaxInLayout must be empty string");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -2890,28 +2946,28 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
  
     // 空Tensor处理
     OP_CHECK(query != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing query parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "query"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(keyIn != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing keyIn parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "keyIn"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing value parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "value"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(dy != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing dy parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dy"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(attentionInOptional != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing attentionInOptional parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "attentionInOptional"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(dqOut != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing dqOut parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dqOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(dkOut != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing dkOut parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dkOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(dvOut != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing dvOut parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dvOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     if (dqOut->IsEmpty() && dkOut->IsEmpty() && dvOut->IsEmpty()) {
         if (dpseOut == nullptr || dpseOut->IsEmpty()) {
@@ -2924,9 +2980,8 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
  
     // 异常防护
     if (headNum <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The op [FlashAttentionScoreGrad] received bad params, "
-                "the reason is: [headNum should be greater than 0, headNum=%ld]", headNum);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "headNum", std::to_string(headNum).c_str(),
+            "The value of headNum must be greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
  
@@ -3098,25 +3153,25 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspaceSize(
  
     // 空Tensor处理
     OP_CHECK(query != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing query parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "query"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(keyIn != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing keyIn parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "keyIn"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing value parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "value"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(dy != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing dy parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dy"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(dqOut != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing dqOut parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dqOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(dkOut != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing dkOut parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dkOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK(dvOut != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The op [FlashAttentionScoreGrad] missing dvOut parameter"),
+        OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "dvOut"),
         return ACLNN_ERR_PARAM_NULLPTR);
     if (dqOut->IsEmpty() && dkOut->IsEmpty() && dvOut->IsEmpty()) {
         OP_LOGD("All out tensor is empty");
@@ -3126,9 +3181,8 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspaceSize(
     }
     // 异常防护
     if (headNum <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The op [FlashAttentionScoreGrad] received bad params, "
-                "the reason is: [headNum should be greater than 0, headNum=%ld]", headNum);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "headNum", std::to_string(headNum).c_str(),
+            "The value of headNum must be greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
  

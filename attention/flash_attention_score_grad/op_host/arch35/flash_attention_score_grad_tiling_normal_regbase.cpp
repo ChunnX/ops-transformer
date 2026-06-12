@@ -41,7 +41,12 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
     const gert::Shape *keyRopeShape = &keyRope->GetStorageShape();
     bool hasKeyRope = keyRope != nullptr && keyRopeShape->GetDimNum() != 0;
     if (hasQueryRope ^ hasKeyRope) {
-        OP_LOGE(context_, "query_rope and key_rope should be present or absent at the same time, check this.");
+        std::string qrShape = hasQueryRope ? Ops::Base::ToString(*queryRopeShape) : "null";
+        std::string krShape = hasKeyRope ? Ops::Base::ToString(*keyRopeShape) : "null";
+        std::string shapeMsg = "{" + qrShape + ", " + krShape + "}";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional",
+            shapeMsg.c_str(), "queryRopeOptional, keyRopeOptional cannot be empty tensors, if queryRopeOptional is an "
+            "empty tensor, keyRopeOptional must also be an empty tensor");
         return ge::GRAPH_PARAM_INVALID;
     }
     fBaseParams.hasRope = hasQueryRope && hasKeyRope;
@@ -100,14 +105,17 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         auto actualSeqKvlenTensor =
             context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_KV_LEN));
         if (actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr) {
-            OP_LOGE("inputLayout = TND", "actualSeqQlenTensor or actualSeqKvlenTensor is nullptr");
+            OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "actualSeqQLenOptional, actualSeqKvLenOptional");
             return ge::GRAPH_PARAM_INVALID;
         }
 
         const size_t seqQShapeSize = actualSeqQlenTensor->GetShapeSize();
         const size_t kvSeqShapeSize = actualSeqKvlenTensor->GetShapeSize();
         if (seqQShapeSize != kvSeqShapeSize) {
-            OP_LOGE("inputLayout = TND", "actualSeqQlenTensor shapeSize is not equal actualSeqKvlenTensor");
+            std::string shapeSizeMsg = std::to_string(seqQShapeSize) + ", " + std::to_string(kvSeqShapeSize);
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON("FlashAttentionScoreGrad",
+                "actualSeqQLenOptional, actualSeqKvLenOptional", shapeSizeMsg.c_str(),
+                "The shape sizes of actualSeqQLenOptional and actualSeqKvLenOptional must be same");
             return ge::GRAPH_PARAM_INVALID;
         }
 
@@ -144,7 +152,11 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                     ++fBaseParams.tailZeroCount;
                     fBaseParams.sValueZeroUnderTND = true;
                 } else if (isEOD && (qValue[i] != 0 || kvValue[i] != 0)) {
-                    OP_LOGE("inputLayout = TND EOD", "In EOD mode, the last several actualSeq values must all be 0.");
+                    std::string valuesMsg = "{" + std::to_string(qValue[i]) + ", " + std::to_string(kvValue[i]) + "}";
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScoreGrad",
+                        "actualSeqQlenOptional, actualSeqKvlenOptional", valuesMsg.c_str(),
+                        "When inputLayout is TND EOD, the values of last several actualSeqQlenOptional and "
+                        "actualSeqKvlenOptional must be 0");
                     return ge::GRAPH_PARAM_INVALID;
                 }
                 fBaseParams.isAllSame = (kvValue[i] - kvValue[i - 1] == lastKvLen) &&
@@ -188,7 +200,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
     // check rope
     if (fBaseParams.hasRope) {
         if (qRopeD != kRopeD || qRopeD != ROPE_D_64) {
-            OP_LOGE(context_, "query_rope and key_rope only support 64D, check this.");
+            std::string shapesMsg = Ops::Base::ToString(*queryRopeShape) + ", " + Ops::Base::ToString(*keyRopeShape);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional",
+                shapesMsg.c_str(), "D of queryRopeOptional and keyRopeOptional must be equal to 64");
             return ge::GRAPH_PARAM_INVALID;
         }
     }
@@ -228,12 +242,11 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo()
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, fBaseParams.l2CacheSize);
     }
     OP_CHECK_IF((fBaseParams.coreNum == 0) || (fBaseParams.aicNum == 0),
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
-                                            "num of coreNum(aivNum) is %lu, num of aicNum is %lu.", fBaseParams.coreNum,
-                                            fBaseParams.aicNum),
+                OP_LOGE(context_->GetNodeName(), "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
+                        fBaseParams.coreNum, fBaseParams.aicNum),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(fBaseParams.ubSize <= 0, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "ubSize is invalid."),
+    OP_CHECK_IF(fBaseParams.ubSize <= 0, OP_LOGE(context_->GetNodeName(), "ubSize is invalid."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1312,9 +1325,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::PostTiling()
                                      fBaseParams.aicNum, fBaseParams.coreNum);
     }
     OP_CHECK_IF(numBlocks == 0,
-                OPS_REPORT_VECTOR_INNER_ERR("FlashAttentionScoreGradTilingNormalRegbase",
-                                            "numBlocks is 0, aicNum is %lu, aivNum is %lu.", fBaseParams.aicNum,
-                                            fBaseParams.coreNum),
+                OP_LOGE("FlashAttentionScoreGradTilingNormalRegbase", "numBlocks is 0, aicNum is %lu, aivNum is %lu.",
+                        fBaseParams.aicNum, fBaseParams.coreNum),
                 return ge::GRAPH_FAILED);
     context_->SetBlockDim(numBlocks);
 
