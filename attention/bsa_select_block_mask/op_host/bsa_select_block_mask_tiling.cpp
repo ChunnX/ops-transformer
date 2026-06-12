@@ -50,8 +50,8 @@ bool BSASelectBlockMaskTilingBase::AnalyzeAttrs()
     }
     sparsity = *sparsityPtr;
 
-    OP_CHECK_IF(sparsity < SPARSITY_MIN || sparsity > SPARSITY_MAX,
-        OP_LOGE(opName, "sparsity[%f] out of range [0.3, 0.98].", sparsity), return false);
+    OP_CHECK_IF(sparsity <= SPARSITY_MIN || sparsity >= SPARSITY_MAX,
+        OP_LOGE(opName, "sparsity[%f] out of range (0, 1).", sparsity), return false);
 
     if (sparsity <= 0.5f) {
         sparsityMode = static_cast<uint8_t>(SparsityMode::TOP_K);
