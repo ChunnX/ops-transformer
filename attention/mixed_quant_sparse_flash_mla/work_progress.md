@@ -229,3 +229,29 @@
 - 「广播值不一致」→ offset/参数错位；「连续整行为 0」→ 输出偏移/核覆盖问题；「结果非确定性波动」→ 同步竞态；「每次稳定偏差」→ 逻辑/数值错配。
 - 所有 DumpTensor/printf 调试代码已清理。
 
+## 2026-06-12：FD split 循环同步方案 A vs 方案 B（双缓冲）评估
+
+修复根因 7 时有两个候选方案，最终选 A。此处记录评估结论，供后续优化参考。
+
+### 两方案
+- **方案 A（已采用，加同步）**：单块 `fdPartialBuf`，split 循环内 `DataCopyPad` 前 `WaitFlag<V_MTE2>`、`ReduceFinalRes` 后 `SetFlag<V_MTE2>`，强制「读完才覆写」。代价：MTE2 搬入与 V 计算串行化。
+- **方案 B（双缓冲 ping-pong）**：两块 `fdPartialBuf` 交替，靠 buffer 隔离消除竞态，可让 split N+1 的 MTE2 搬入与 split N 的 V 计算重叠。代价：多占 32KB UB（32KB→64KB），逼近 192KB 物理上限。
+
+### 决定性约束：`MAX_S2_SPLIT_NUM = 2`（util_regbase.h:26）
+- staging 只分配 2 个 slot，所有 case 的 `workspaceNum`（每 FD 任务 split 数）≤ 2，FD 内层 split 循环最多 2 次 → 每 chunk 最多 1 次 load/compute 重叠机会。
+
+### 全 paramset 的 FD 负载特征
+- host `SplitFD`（metadata aicpu）按 `averageLoad` 把 `fdMSize`（=g×s1_block，单 batch 为 64）行尽量摊到多核。单 batch FD 总负载小（`splitNum=2 × mSize=64=128`），`averageLoad` 极小 → `curFDVectorNum` 拉满到 64 → **64 核每核 mNum=1**。
+- 各 case：`single_batch_*`、`K_1024`、`N128` 等单 batch case 均为 split≤2、mNum=1、mChunks=1；`multi_batch_full_cores`(B=8)、`1_core_has_2_reduce`(B=33) 多 FD 头，但每核单任务仍是「2 split × 极少行」。
+
+### 结论：所有 case 切方案 B 都无实际性能收益
+1. split ≤ 2 → 每 chunk 最多 1 次重叠。
+2. mNum 普遍=1 → 每 split 搬入仅 `1×512` fp32 ≈ 2KB，DMA 极快。
+3. mChunks=1（mNum<DEAL_ROW_COUNT=16）→ 无 chunk 间流水。
+4. FD 在 `SyncAll()` 之后收尾阶段单独跑，不与主 cube/vec 流水线重叠，省下的 cycle 不影响整体吞吐。
+- 反而多占 32KB UB + 增加 ping-pong 复杂度。**维持方案 A**。
+
+### 真要做 FD 性能优化的更优方向（非本轮）
+- 提高 `MAX_S2_SPLIT_NUM`：让长序列切更多 split，增大 cube 阶段并行度（量级更大的改动）。
+- 调 `SplitFD` 的 `averageLoad`：让每核 mNum 更大、用满 `DEAL_ROW_COUNT=16` 的 chunk 能力，减少 FD 启用核数与调度开销。
+
