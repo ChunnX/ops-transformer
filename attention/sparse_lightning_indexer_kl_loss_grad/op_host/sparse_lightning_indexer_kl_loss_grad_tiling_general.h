@@ -287,7 +287,7 @@ protected:
     bool AnalyzeLayout();
     int64_t CalcTotalSize();
     void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum);
-    void InitOutputSplit();
+    ge::graphStatus InitOutputSplit();
 
     // 基础输入参数
     int32_t bSize;

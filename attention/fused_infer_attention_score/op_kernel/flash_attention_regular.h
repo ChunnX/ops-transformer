@@ -114,6 +114,8 @@ namespace SplitFuse {
             nextToken = fATilingData->nextToken;
             pseQ = fATilingData->pseQ;
             pseKv = fATilingData->pseKv;
+            keyBnStride = fATilingData->keyStrides.bnStride;
+            valueBnStride = fATilingData->valueStrides.bnStride;
             uint64_t Lsesize = 0;
             uint64_t Losize = 0;
             if constexpr (IS_FD) {
@@ -667,10 +669,11 @@ namespace SplitFuse {
                                 layoutKTemp,
                                 layOutS,
                                 actualBlockShapeQK,
-                                kvSIdx,
-                                kvSLoopNumTotal,
-                                pagedBlockSize,
-                                strideK);
+                                kvSIdx, 
+                                kvSLoopNumTotal, 
+                                pagedBlockSize, 
+                                strideK,
+                                keyBnStride);
                         } else {
                             blockMmadQK(
                                 gQ[gmOffsetQ],
@@ -681,10 +684,11 @@ namespace SplitFuse {
                                 layoutKTemp,
                                 layOutS,
                                 actualBlockShapeQK,
-                                kvSIdx,
-                                kvSLoopNumTotal,
-                                pagedBlockSize,
-                                strideK);
+                                kvSIdx, 
+                                kvSLoopNumTotal, 
+                                pagedBlockSize, 
+                                strideK,
+                                keyBnStride);
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
 #endif
@@ -932,38 +936,42 @@ namespace SplitFuse {
                             static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1U) +
                             static_cast<uint64_t>(curStackTileMod) * WORKSPACE_BLOCK_SIZE_DB;
                         if constexpr (PAGED_CACHE_FLAG) {
-                            blockMmadPV(gP[gmOffsetP],
-                                        gV[gmOffsetV],
-                                        gOTmp[gmOffsetOTmp],
-                                        gBlockTable[blockBOffset],
-                                        layoutPTemp,
-                                        layoutVTemp,
-                                        layoutOTmp,
-                                        actualBlockShapePV,
-                                        nowkvSIdx,
-                                        kvSLoopNumTotal,
-                                        pagedBlockSize,
-                                        noSkipKvS,
-                                        strideV,
-                                        blockStackNum,
-                                        softmaxReady);
+                            blockMmadPV(
+                            gP[gmOffsetP], 
+                            gV[gmOffsetV], 
+                            gOTmp[gmOffsetOTmp], 
+                            gBlockTable[blockBOffset],
+                            layoutPTemp, 
+                            layoutVTemp, 
+                            layoutOTmp, 
+                            actualBlockShapePV,
+                            nowkvSIdx, 
+                            kvSLoopNumTotal, 
+                            pagedBlockSize, 
+                            noSkipKvS, 
+                            strideV, 
+                            blockStackNum, 
+                            softmaxReady,
+                            valueBnStride);
                         } else {
-                            blockMmadPV(gP[gmOffsetP],
-                                        gV[gmOffsetV],
-                                        gOTmp[gmOffsetOTmp],
-                                        gBlockTable,
-                                        layoutPTemp,
-                                        layoutVTemp,
-                                        layoutOTmp,
-                                        actualBlockShapePV,
-                                        nowkvSIdx,
-                                        kvSLoopNumTotal,
-                                        pagedBlockSize,
-                                        noSkipKvS,
-                                        strideV,
-                                        blockStackNum,
-                                        softmaxReady);
-                            }
+                            blockMmadPV(
+                            gP[gmOffsetP], 
+                            gV[gmOffsetV], 
+                            gOTmp[gmOffsetOTmp], 
+                            gBlockTable,
+                            layoutPTemp, 
+                            layoutVTemp, 
+                            layoutOTmp, 
+                            actualBlockShapePV,
+                            nowkvSIdx, 
+                            kvSLoopNumTotal, 
+                            pagedBlockSize, 
+                            noSkipKvS, 
+                            strideV, 
+                            blockStackNum, 
+                            softmaxReady,
+                            valueBnStride);
+                        }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
 #endif
 #ifdef __DAV_C220_VEC__
@@ -1059,6 +1067,8 @@ namespace SplitFuse {
         uint64_t strideO;
         uint64_t strideK;
         uint64_t strideV;
+        uint64_t keyBnStride;
+        uint64_t valueBnStride;
         uint32_t embedRound;
         uint32_t embedRoundV;
         uint32_t groupSize;

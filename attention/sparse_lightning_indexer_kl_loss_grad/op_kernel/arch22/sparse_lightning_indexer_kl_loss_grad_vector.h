@@ -607,7 +607,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::MergeKv(const SLIKLLossGrad
     if (s2GmLimit > gatherParams.s2ProcessSize) {
         s2GmLimit = gatherParams.s2ProcessSize;
     }
-    int64_t s2IdxOffset = runInfo.s2Idx * constInfo.s2BaseSize;
+    int64_t s2IdxOffset = static_cast<int64_t>(runInfo.s2Idx) * constInfo.s2BaseSize;
     for (int64_t s2GmOffsetArray = s2GmStartOffset; s2GmOffsetArray < s2GmLimit; s2GmOffsetArray += 2 * constInfo.sparseBlockSize) {
         if (needWaitMte3ToMte2) {
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx + IdStart);
@@ -875,7 +875,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessDeterVector2(SLIKLLo
         int64_t realS2Idx1, realS2Idx2, s2GmOffset;
         event_t eventIdArr[2] = {eventIdScatterAdd, eventIdScatterAddPong};
         runInfo.s2Idx = 0;
-        int64_t s2IdxOffset = runInfo.s2Idx * constInfo.s2BaseSize;
+        int64_t s2IdxOffset = static_cast<int64_t>(runInfo.s2Idx) * constInfo.s2BaseSize;
 
         CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
         SetAtomicAdd<T>();
@@ -979,7 +979,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector2(SLIKLLossGra
     int64_t realS2Idx1, realS2Idx2, s2GmOffset;
     event_t eventIdArr[2] = {eventIdScatterAdd, eventIdScatterAddPong};
     runInfo.s2Idx = 0;
-    int64_t s2IdxOffset = runInfo.s2Idx * constInfo.s2BaseSize;
+    int64_t s2IdxOffset = static_cast<int64_t>(runInfo.s2Idx) * constInfo.s2BaseSize;
 
     SetAtomicAdd<T>();
     for (int32_t kLoopIdx = 0; kLoopIdx < kLoopTimes; ++kLoopIdx) {

@@ -31,6 +31,7 @@ class SelectedAttentionGradBasic {
     static constexpr bool HAS_ROPE = SFAGT::has_rope;
     static constexpr bool IS_BSND = SFAGT::is_bsnd;
     static constexpr bool IS_DETERMINISTIC = SFAGT::is_deterministic;
+    static constexpr bool KV_MERGE = SFAGT::kv_merge;
 
 public:
     __aicore__ inline SelectedAttentionGradBasic(){};
@@ -117,10 +118,10 @@ private:
 
     int32_t lastblkCntOffset;
     // workspace
-    uint32_t selectedKWorkspaceLen;
-    uint32_t selectedVWorkspaceLen;
-    uint32_t mm12WorkspaceLen;
-    uint32_t mm345WorkspaceLen;
+    uint64_t selectedKWorkspaceLen;
+    uint64_t selectedVWorkspaceLen;
+    uint64_t mm12WorkspaceLen;
+    uint64_t mm345WorkspaceLen;
     // Index
     int64_t bIndex{0};
     int64_t s1Index{0};
@@ -403,9 +404,15 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
         pipeVec.Destroy();
 
         TPipe pipeCast;
-        SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
-        opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
-        opCast.Process();
+        if constexpr (KV_MERGE) {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, false, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        } else {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        }
     }
 }
 
@@ -613,9 +620,15 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
         pipeVec.Destroy();
 
         TPipe pipeCast;
-        SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
-        opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
-        opCast.Process();
+        if constexpr (KV_MERGE) {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, false, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        } else {
+            SparseFlashAttentionGradPost<T1, TILING_CLASS, true, 3, 0, HAS_ROPE> opCast;
+            opCast.Init(dq, dk, dv, actual_seq_qlen, actual_seq_kvlen, dq_rope, dk_rope, workspace, tilingData, &pipeCast);
+            opCast.Process();
+        }
     }
 }
 
@@ -953,8 +966,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLenScatter(co
         } else {
             t1OffsetScatterIndex = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
             t2OffsetScatterIndex = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
-            curS1Scatter = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex] - ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
-            curS2Scatter = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex] - ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
+            curS1Scatter = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex] -
+                ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
+            curS2Scatter = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex] -
+                ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
         }
 
         s1IndexScatterIndex = t1Idx - t1OffsetScatterIndex;
@@ -985,8 +1000,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLen(const GM_
         } else {
             t1Offset = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
             t2Offset = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex - 1];
-            curS1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
-            curS2 = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex - 1];
+            curS1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex] -
+                ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
+            curS2 = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex] -
+                ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex - 1];
         }
 
         s1Index = t1Idx - t1Offset;

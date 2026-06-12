@@ -289,7 +289,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
         <td>输出的shape类型由softmaxOutLayout决定。</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>[N,T,8]或[T,N,8]</td>
+        <td>[T,N,8]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -299,7 +299,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
         <td>输出的shape类型由softmaxOutLayout决定。</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>[N,T,8]或[T,N,8]</td>
+        <td>[T,N,8]</td>
         <td>√</td>
       </tr>
       <tr>

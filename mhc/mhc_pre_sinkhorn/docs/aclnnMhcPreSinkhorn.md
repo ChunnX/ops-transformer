@@ -37,29 +37,29 @@
     \begin{aligned}
         \mathbf{normOut}[0] &= \text{softmax}(\mathbf{H^{res}_l},  \dim=-1) + \epsilon, \\
         \mathbf{sumOut}[1] &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \mathbf{normOut}[0] + \epsilon, \\
-        \mathbf{normOut}[1] &= \frac{\mathbf{normOut}[0]}{\mathbf{sum\_out}[1]}, \\
+        \mathbf{normOut}[1] &= \frac{\mathbf{normOut}[0]}{\mathbf{sumOut}[1]}, \\
     \end{aligned}
     $$
 
-    第$i$次迭代（$i = 1, 2, \dots, \mathbf({num\_iters}-1)$）：
+    第$i$次迭代（$i = 1, 2, \dots, \mathbf({numIters}-1)$）：
 
     $$
     \begin{aligned}
         \mathbf{sumOut}[2i] &= \sum_{\dim=-1,\text{keepdim}=\text{True}} \mathbf{normOut}[2i-1] + \epsilon, \\
-        \mathbf{normOut}[2i] &= \frac{\mathbf{normOut}[2i-1]}{\mathbf{sum\_out}[2i]}, \\
+        \mathbf{normOut}[2i] &= \frac{\mathbf{normOut}[2i-1]}{\mathbf{sumOut}[2i]}, \\
         \mathbf{sumOut}[2i+1] &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \mathbf{normOut}[2i] + \epsilon, \\
-        \mathbf{normOut}[2i+1] &= \frac{\mathbf{normOut}[2i]}{\mathbf{sum\_out}[2i+1]}, \\
+        \mathbf{normOut}[2i+1] &= \frac{\mathbf{normOut}[2i]}{\mathbf{sumOut}[2i+1]}, \\
     \end{aligned}
     $$
 
   - 最终输出
 
   $$
-  \mathbf{normOut}[2 \times \mathbf{num\_iters} - 1]
+  \mathbf{normOut}[2 \times \mathbf{numIters} - 1]
   $$
 
   $$
-  \mathbf{sumOut}[2 \times \mathbf{num\_iters} - 1]
+  \mathbf{sumOut}[2 \times \mathbf{numIters} - 1]
   $$
 
   - 符号说明

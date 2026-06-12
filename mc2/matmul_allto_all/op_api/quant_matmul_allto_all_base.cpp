@@ -106,8 +106,18 @@ static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool t
 static bool Check1DScaleShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
                               const aclTensor *x2Scale, bool transposeX2)
 {
-    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1Scale, ONE_DIM, KC_SCENE, return false);
-    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2Scale, ONE_DIM, KC_SCENE, return false);
+    if (x1Scale->GetViewShape().GetDimNum() != ONE_DIM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale",
+            (std::to_string(x1Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1Scale must be 1D.");
+        return false;
+    }
+    if (x2Scale->GetViewShape().GetDimNum() != ONE_DIM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale",
+            (std::to_string(x2Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2Scale must be 1D.");
+        return false;
+    }
     auto mVal = x1->GetViewShape().GetDim(0);
     auto x1ScaleDim = x1Scale->GetViewShape().GetDim(0);
     if (x1ScaleDim != mVal) {
@@ -129,8 +139,18 @@ static bool Check1DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
 static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
                               const aclTensor *x2Scale, bool transposeX2)
 {
-    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1Scale, THREE_DIMS, MX_SCENE, return false);
-    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2Scale, THREE_DIMS, MX_SCENE, return false);
+    if (x1Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale",
+            (std::to_string(x1Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1Scale must be 3D.");
+        return false;
+    }
+    if (x2Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale",
+            (std::to_string(x2Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2Scale must be 3D.");
+        return false;
+    }
     auto mVal = x1->GetViewShape().GetDim(0);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x1ScaleMVal = x1Scale->GetViewShape().GetDim(0);
