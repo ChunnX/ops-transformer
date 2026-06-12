@@ -7,7 +7,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                 |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term> |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term> |      ×     |
 | <term>Atlas 推理系列产品</term> |      ×     |
@@ -118,7 +118,7 @@
     ```
 
 - 上述场景根据构造的参数来区别，符合第一种入参构造走场景一，符合第二种构造走场景二，符合第三种构造走场景三，符合第四种构造走场景四，符合第五种构造走场景五，符合第六种构造走场景六。场景一、场景二、场景六没有compressLensOptional、seqLensOptional、compressSeqOffsetOptional这三个可选参数。场景四没有compressSeqOffsetOptional可选参数。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持场景一、二、四、五、六、七。
+- <term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持场景一、二、四、五、六、七。
 - <term>Ascend 950PR/Ascend 950DT</term>：仅支持场景一、二、三、四、五。
 
 ## 函数原型
@@ -319,7 +319,7 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
   </tbody></table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>：
 
     - 输入key、keyCacheRef、value、valueCacheRef不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1数据类型。
 
@@ -434,7 +434,7 @@ aclnnStatus aclnnScatterPaKvCache(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
   ```c++
   #include <iostream>
@@ -496,7 +496,7 @@ aclnnStatus aclnnScatterPaKvCache(
   }
 
   int main() {
-    // 1. （固定写法）device/stream初始化，参考acl API手册
+    // 1.（固定写法）device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -574,7 +574,7 @@ aclnnStatus aclnnScatterPaKvCache(
     ret = aclnnScatterPaKvCache(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnScatterPaKvCache failed. ERROR: %d\n", ret); return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

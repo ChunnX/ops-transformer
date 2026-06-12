@@ -7,8 +7,8 @@
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
 |<term>Ascend 950PR/Ascend 950DT</term>|     √      |
-|<term>Atlas A2 推理系列产品</term>   | √  |
-|<term>Atlas A3 推理系列产品</term>   | √  |
+|<term>Atlas A2推理系列产品</term>   | √  |
+|<term>Atlas A3推理系列产品</term>   | √  |
 
 ## 功能说明
 
@@ -387,7 +387,7 @@ aclnnStatus aclnnSparseFlashAttention(
    <tr>
       <td>softmaxSumOut（aclTensor）</td>
       <td>输出</td>
-      <td>Attention算法query乘key的结果减去softmax_max, 再取exp，接着求sum，得到softmax_sum。</td>
+      <td>Attention算法query乘key的结果减去softmax_max,再取exp，接着求sum，得到softmax_sum。</td>
       <td>不支持空tensor。</td>
       <td>FLOAT</td>
       <td>ND</td>
@@ -506,7 +506,7 @@ aclnnStatus aclnnSparseFlashAttention(
 - 支持sparse_block_size整除block_size。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - 只支持sparse_block_size为1。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size
 
 ## 调用示例

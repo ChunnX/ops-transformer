@@ -5,7 +5,7 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
@@ -316,7 +316,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>选择的块的大小。</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1、8、16、32、64<br>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>支持1、8、16、32、64<br>
             <term>Ascend 950PR/Ascend 950DT</term>支持1
             </td>
             <td>INT64</td>
@@ -354,7 +354,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
         <td>preTokens</td>
             <td>输入</td>
-            <td>Attention算子里, 对S矩阵的滑窗起始位置。</td>
+            <td>Attention算子里,对S矩阵的滑窗起始位置。</td>
             <td>
             <ul>
                 <li>sparseMode=4时，pre_tokens生效。</li>
@@ -369,7 +369,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
         <td>nextTokens</td>
             <td>输入</td>
-            <td>Attention算子里, 对S矩阵的滑窗终止位置。</td>
+            <td>Attention算子里,对S矩阵的滑窗终止位置。</td>
             <td>
             <ul>
                 <li>sparseMode=4时，next_tokens生效。</li>
@@ -765,7 +765,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;
@@ -906,7 +906,7 @@ int main() {
   ret = aclnnSparseFlashAttentionGrad(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashAttentionGrad failed. ERROR: %d\n", ret); return ret);
   
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
   

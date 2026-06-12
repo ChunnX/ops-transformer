@@ -5,7 +5,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                 |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term> |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term> |      ×     |
 | <term>Atlas 推理系列产品</term> |      ×     |
@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：将两次FlashAttention的输出根据其不同的softmax的max和sum更新。**与[RingAttentionUpdate](./aclnnRingAttentionUpdate.md)接口的区别是：在输入排布为TND的场景下，原RingAttentionUpdate接口中的softmax相关输入的数据排布为BNS8，RingAttentionUpdateV2 接口支持传入字符串参数 inputSoftmaxLayout，用于控制 softmax 相关输入的数据排布是否与attention保持一致（即采用 TND 排布）。**
+- 接口功能：将两次FlashAttention的输出根据其不同的softmax的max和sum更新。**与[RingAttentionUpdate](./aclnnRingAttentionUpdate.md)接口的区别是：在输入排布为TND的场景下，原RingAttentionUpdate接口中的softmax相关输入的数据排布为BNS8，RingAttentionUpdateV2接口支持传入字符串参数inputSoftmaxLayout，用于控制softmax相关输入的数据排布是否与attention保持一致（即采用TND排布）。**
 - 计算公式：
 
 $$
@@ -252,7 +252,7 @@ aclnnStatus aclnnRingAttentionUpdateV2(
       </tbody>
   </table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当输入数据排布inputLayoutOptional为TND时，D限制为64的倍数。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>：当输入数据排布inputLayoutOptional为TND时，D限制为64的倍数。
 
 - **返回值**
 
@@ -346,9 +346,9 @@ aclnnStatus aclnnRingAttentionUpdateV2(
 - 当inputLayoutOptional为“TND”时，actualSeqQlenOptional为必填。
 - 当inputLayoutOptional为“TND”时，其中：
     - N：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N<=256。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>：N<=256。
     - D：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：D<=768且D为64的倍数。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>：D<=768且D为64的倍数。
 - **当inputLayoutOptional为“TND”时，inputSoftmaxLayoutOptional才生效。inputSoftmaxLayoutOptional只支持三种输入：空字符串、“SBH”、“TND”**
 
 ## 调用示例
@@ -417,7 +417,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. (固定写法)device/stream初始化, 参考acl API手册
+  // 1. (固定写法)device/stream初始化,参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;

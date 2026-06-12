@@ -7,7 +7,7 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×     |
+|<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>|    ×     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
@@ -335,7 +335,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 int main()
 {
-    // 1. 固定写法，device/stream初始化, 参考acl API
+    // 1. 固定写法，device/stream初始化,参考acl API
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -411,7 +411,7 @@ int main()
     aclDestroyTensor(mask);
     aclDestroyTensor(y);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(xDeviceAddr);
     aclrtFree(weightDeviceAddr);
     aclrtFree(maskDeviceAddr);

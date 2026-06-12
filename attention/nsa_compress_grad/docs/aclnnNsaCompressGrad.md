@@ -5,7 +5,7 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     x      |
+|<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>|     x      |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
@@ -294,7 +294,7 @@ aclnnStatus aclnnNsaCompressGrad(
 
 ## 调用示例
 
-通过aclnn单算子调用示例代码如下（以Atlas A2 训练系列产品），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+通过aclnn单算子调用示例代码如下（以Atlas A2训练系列产品），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
 #include <algorithm>
@@ -415,7 +415,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-    // 1. （固定写法）device/context/stream初始化，参考acl对外接口列表
+    // 1.（固定写法）device/context/stream初始化，参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtContext context;
@@ -496,7 +496,7 @@ int main() {
     ret = aclnnNsaCompressGrad(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaCompressGrad failed. ERROR: %d\n", ret); return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

@@ -5,7 +5,7 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                 |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term> |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term> |      ×     |
 | <term>Atlas 推理系列产品</term> |      ×     |
@@ -240,7 +240,7 @@ aclnnStatus aclnnRingAttentionUpdate(
       </tbody>
   </table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当输入数据排布inputLayoutOptional为TND时，D限制为64的倍数。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>：当输入数据排布inputLayoutOptional为TND时，D限制为64的倍数。
   
 - **返回值**
 
@@ -263,7 +263,7 @@ aclnnStatus aclnnRingAttentionUpdate(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>传入的 prevAttnOut、prevSoftmaxMax、prevSoftmaxSum、curAttnOut、curSoftmaxMax、curSoftmaxSum、attnOutOut、softmaxMaxOut、softmaxSumOut是空指针时。</td>
+      <td>传入的prevAttnOut、prevSoftmaxMax、prevSoftmaxSum、curAttnOut、curSoftmaxMax、curSoftmaxSum、attnOutOut、softmaxMaxOut、softmaxSumOut是空指针时。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
@@ -333,9 +333,9 @@ aclnnStatus aclnnRingAttentionUpdate(
   - 当inputLayoutOptional为“TND”时，actualSeqQlenOptional为必填。
   - 当inputLayoutOptional为“TND”时，其中：
     - N：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N<=256。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>：N<=256。
     - D：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：D<=768且D为64的倍数。
+      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>：D<=768且D为64的倍数。
 
 ## 调用示例
 
@@ -403,7 +403,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. (固定写法)device/stream初始化, 参考acl API手册
+  // 1. (固定写法)device/stream初始化,参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;

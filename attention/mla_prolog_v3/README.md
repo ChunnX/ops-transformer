@@ -5,7 +5,7 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
 ## 功能说明
@@ -51,7 +51,7 @@
     $$
     q^N = q^C \cdot W^{UK}
     $$
-    其中 $\alpha_q$ 是 Query 的尺度矫正参数。
+    其中 $\alpha_q$ 是Query的尺度矫正参数。
 
     对Query进行ROPE旋转位置编码
 
@@ -68,7 +68,7 @@
     $$
     k^C = \mathrm{Cache}(c^{KV})
     $$
-    其中 $\alpha_{kv}$ 是 Key 的尺度矫正参数。
+    其中 $\alpha_{kv}$ 是Key的尺度矫正参数。
 
     对Key进行ROPE旋转位置编码，并将结果存入cache
 
@@ -119,7 +119,7 @@
 | query_norm               | 输出      | 公式中tokenX做rmsNorm后的输出tensor（对应$c^Q$）。 | BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | ND |
 | dequant_scale_q_norm | 输出     | query_norm的输出tensor的量化参数。   | FLOAT、FLOAT8_E8M0 | ND         |
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - token_x、weight_dq、weight_uq_qr、weight_dkv_kr、kv_cache、query、query_norm不支持FLOAT8_E4M3FN、HIFLOAT8数据类型。
   - dequant_scale_x、dequant_scale_w_dq、dequant_scale_w_uq_qr、dequant_scale_w_dkv_kr、dequant_scale_q_norm不支持FLOAT8_E8M0数据类型。
 
@@ -162,7 +162,7 @@
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。
   - kvcache per-tensor量化模式下，kvCacheQuantMode和queryQuantMode必须同时为1。
 - aclnnMlaPrologV3WeightNz接口支持场景：
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当前不支持 fp8/hif8/mxfp8 全量化场景
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>：当前不支持fp8/hif8/mxfp8全量化场景
     - <term>Ascend 950PR/Ascend 950DT</term>：当前支持所有量化场景
   <table style="table-layout: auto;" border="1">
     <tr>

@@ -5,7 +5,7 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|     √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    √     |
+|<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>|    √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
@@ -30,7 +30,7 @@
    L(I){=}\sum_tD_{KL}(p_{t,:}||Softmax(I_{t,:}))
    $$
 
-   其中，$p$是target distribution，通过对main attention score 进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
+   其中，$p$是target distribution，通过对main attention score进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
    
    $$
    D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
@@ -224,7 +224,7 @@
     </tbody>
 </table>
 
-- Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：
+- Atlas A2训练系列产品/Atlas A2推理系列产品、Atlas A3训练系列产品/Atlas A3推理系列产品：
   - T1支持大于等于actualSeqLengthsQuery的累加和，T2支持大于等于actualSeqLengthsKey的累加和。
 
 ## 约束说明
@@ -316,13 +316,13 @@
             <td>deterministic</td>
             <td>bool</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持确定性计算<br>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>支持确定性计算<br>
             <term>Ascend 950PR/Ascend 950DT</term>支持确定性计算
             </td>
         </tr>
         <tr>
             <td>B</td>
-            <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1~256<br>
+            <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>支持1~256<br>
                 <term>Ascend 950PR/Ascend 950DT</term>支持1~128</td>
             <td>-</td>
         </tr>
@@ -339,7 +339,7 @@
         <tr>
             <td>Nidx1</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持8、16、32、64<br>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>支持8、16、32、64<br>
             <term>Ascend 950PR/Ascend 950DT</term>支持32、64
             </td>
             <td>SparseFA为MQA</td>
@@ -398,7 +398,7 @@
         <tr>
             <td>queryIndex</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持N1 = 64/32/16/8；  D = 128 ； S1 = 64k/128k<br>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A 3推理系列产品</term>支持N1 = 64/32/16/8；  D = 128 ； S1 = 64k/128k<br>
             <term>Ascend 950PR/Ascend 950DT</term>支持N1 = 64/32；D = 128 ； S1 = 64k/128k
             </td>
         </tr>
