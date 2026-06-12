@@ -47,6 +47,8 @@ static constexpr int64_t CMP_MAX_LEN = 7;
 static const std::initializer_list<ge::DataType> FP8_DTYPE_SUPPORT_LIST = { ge::DataType::DT_FLOAT8_E4M3FN,
     ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_HIFLOAT8 };
 
+static const std::initializer_list<ge::DataType> FP4_DTYPE_SUPPORT_LIST = { ge::DataType::DT_FLOAT4_E2M1 };
+
 static bool CheckSupportDtype(const ge::DataType x1DataType, const std::initializer_list<ge::DataType> &supportTypes)
 {
     return std::find(supportTypes.begin(), supportTypes.end(), x1DataType) != supportTypes.end();
@@ -151,7 +153,8 @@ bool AllGatherMatmulTilingBase::CheckInputParaArraySize()
         x2KValue = x2Dim0;
     }
 
-    if (CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST)) {
+    if (CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST) ||
+        CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP4_DTYPE_SUPPORT_LIST)) {
         OP_TILING_CHECK((x1Dim1 != x2KValue) || (x1Dim1 == 0) || (x2KValue == 0),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Dim1 and x2KValue",
             (std::to_string(x1Dim1) + " and " + std::to_string(x2KValue)).c_str(),
@@ -410,7 +413,13 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rc
  */
 ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 {
-    uint64_t sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
+    OP_LOGD(opName_, "[tzydebug]geAType[%d],GetSizeByDataType[%d]", args_.geAType, ge::GetSizeByDataType(args_.geAType));
+    uint64_t sizeOfSingleM = 0;
+    if (ge::GetSizeByDataType(args_.geAType) < 1000) { // TODO 注意ge::GetSizeByDataType
+        sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
+    } else {
+        sizeOfSingleM = args_.kValue * args_.rankDim * (ge::GetSizeByDataType(args_.geAType) - 1000) / 8;
+    }
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size",
             std::to_string(sizeOfSingleM).c_str(), "The value of x1 size must not exceed 256MB even after splitting into (1, k)"),
@@ -433,7 +442,11 @@ void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling &rcsCfg, 
 
     SetMC2AllGatherDataInfo(rcsCfg, mmTiling, tailTiling, debugMode_);
 
-    dataType = (static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType))); // hccl数据类型
+    if (args_.geAType == ge::DataType::DT_FLOAT4_E2M1) {
+        dataType = static_cast<uint32_t>(mc2tiling::HcclDataType::HCCL_DATA_TYPE_UINT8);
+    } else {
+        dataType = (static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType))); // hccl数据类型
+    }
 
     // 计算一下额外申请的内存
     storageA_ = GetStorageA(rcsCfg);
@@ -678,9 +691,17 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
         uint64_t gatherLen = 0;
         if (args_.isStorageGather == false) {
             if (gatherIndex == 0U) { // A矩阵
-                gatherLen = mc2tiling::AlignUp(rcsCfg.rankM * rcsCfg.rankK * args_.inputDtypeSize, alignAddrLen);
+                if (CheckSupportDtype(args_.geAType, FP4_DTYPE_SUPPORT_LIST)) {
+                    gatherLen = mc2tiling::AlignUp(rcsCfg.rankM * rcsCfg.rankK / 2, alignAddrLen);
+                } else {
+                    gatherLen = mc2tiling::AlignUp(rcsCfg.rankM * rcsCfg.rankK * args_.inputDtypeSize, alignAddrLen);
+                }
             } else {
-                gatherLen = mc2tiling::AlignUp(rcsCfg.rankK * rcsCfg.rankN * args_.inputDtypeSize, alignAddrLen);
+                if (CheckSupportDtype(args_.geAType, FP4_DTYPE_SUPPORT_LIST)) {
+                    gatherLen = mc2tiling::AlignUp(rcsCfg.rankK * rcsCfg.rankN / 2, alignAddrLen);
+                } else {
+                    gatherLen = mc2tiling::AlignUp(rcsCfg.rankK * rcsCfg.rankN * args_.inputDtypeSize, alignAddrLen);
+                }
             }
             gatherLen *= rcsCfg.rankDim;
         }
