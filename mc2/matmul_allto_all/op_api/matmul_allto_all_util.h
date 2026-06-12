@@ -58,7 +58,7 @@ enum class QuantModeType : int64_t {
   if (tensor->GetViewShape().GetDimNum() != expectedDimNum) { \
     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, #tensor, \
         std::to_string(tensor->GetViewShape().GetDimNum()).c_str(), \
-        ("in " + std::string(scenario) + " scenario, expected " + std::to_string(expectedDimNum) + "D").c_str()); \
+        ("In " + std::string(scenario) + " scenario, the shape of " + #tensor + " must be " + std::to_string(expectedDimNum) + "D.").c_str()); \
     retExpr; \
   }
 
@@ -66,7 +66,7 @@ enum class QuantModeType : int64_t {
   if (!CheckType(tensor->GetDataType(), supportList)) { \
     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, #tensor, \
         op::ToString(tensor->GetDataType()).GetString(), \
-        ("not supported in " + std::string(scenario) + " scenario").c_str()); \
+        ("In " + std::string(scenario) + " scenario, the dtype of " + #tensor + " must be within the supported range.").c_str()); \
     retExpr; \
   }
 
@@ -75,7 +75,7 @@ enum class QuantModeType : int64_t {
     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName, \
         (std::string(#tensor1) + "," + #tensor2).c_str(), \
         (std::string(op::ToString(tensor1->GetDataType()).GetString()) + "," + op::ToString(tensor2->GetDataType()).GetString()).c_str(), \
-        ("in " + std::string(scenario) + " scenario").c_str()); \
+        ("In " + std::string(scenario) + " scenario, the dtypes of " + #tensor1 + " and " + #tensor2 + " must be the same.").c_str()); \
     retExpr; \
   }
 
