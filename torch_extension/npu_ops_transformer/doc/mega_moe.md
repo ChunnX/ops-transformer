@@ -17,10 +17,7 @@
 
 -   计算公式：
     Mega Moe
-    非量化
-    $$y=(activation(Clamp(x * W1)) * W2$$
-    量化
-    $$y=((activation(Clamp(((x * quant_scale1) * weight1) * (1 / quant_scale1) * weight_scale1)) * quant_scale2) * weight2) * weight_scale2 * (1 / quant_scale2)$$
+    $$y=(SwiGLU(Clamp(x * l1_weights + l1_bias, activation_clamp)) * l2_weights + l2_bias$$
 
     MegaMoe 是一个多阶段融合的 MoE 算子，在专家并行场景下依次完成 Token 路由分发与量化、分组矩阵乘法 + SwiGLU 激活、二次分组矩阵乘法与跨 Rank 聚合、以及加权求和，完整计算流程可以分解为以下四个阶段。
     
