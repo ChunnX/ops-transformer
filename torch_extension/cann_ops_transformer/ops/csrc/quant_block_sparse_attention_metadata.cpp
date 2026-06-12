@@ -35,6 +35,7 @@ at::Tensor npu_quant_block_sparse_attention_metadata(
 {
     at::Device output_device = sparse_seq_len.device();
     at::Tensor output = torch::empty({OUTPUT_SIZE}, torch::dtype(torch::kInt32).device(output_device));
+    auto sparse_seq_len_val = qbsa_get_valid_tensor(sparse_seq_len, output_device);
     auto cu_seqlens_q_val = qbsa_get_valid_tensor(cu_seqlens_q, output_device);
     auto cu_seqlens_kv_val = qbsa_get_valid_tensor(cu_seqlens_kv, output_device);
     auto seqused_q_val = qbsa_get_valid_tensor(seqused_q, output_device);
