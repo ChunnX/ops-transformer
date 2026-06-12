@@ -75,11 +75,11 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
     bs  = params.get("block_size", 128)
     bt  = params.get("block_table")
     if bt is None:
-        return t.clone().float()
+        return t.clone()
 
     if isinstance(bt, torch.Tensor):
         bt = bt.cpu().numpy()
-    result = torch.zeros(b, n2, s2, d, dtype=torch.float32)
+    result = torch.zeros(b, n2, s2, d, dtype=t.dtype)
 
     if layout == "PA_BBND":
         for bi in range(b):
@@ -93,7 +93,7 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
                 end = min(start + bs, slen)
                 cnt = end - start
                 if cnt > 0:
-                    result[bi, :, start:end, :] = t[blk_id, :cnt, :, :].permute(1, 0, 2).float()
+                    result[bi, :, start:end, :] = t[blk_id, :cnt, :, :].permute(1, 0, 2)
 
     elif layout == "PA_BNBD":
         for bi in range(b):
@@ -107,13 +107,13 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
                 end = min(start + bs, slen)
                 cnt = end - start
                 if cnt > 0:
-                    result[bi, :, start:end, :] = t[blk_id, :, :cnt, :].float()
+                    result[bi, :, start:end, :] = t[blk_id, :, :cnt, :]
 
     elif layout == "PA_NZ":
         dtype_str = params.get("Dtype", "fp16")
         blk_elem = 16 if dtype_str in ("fp16", "bf16") else 32
         d_actual = t.shape[2] * t.shape[4]
-        result = torch.zeros(b, n2, s2, d_actual, dtype=torch.float32)
+        result = torch.zeros(b, n2, s2, d_actual, dtype=t.dtype)
         for bi in range(b):
             slen = seq_kv[bi] if bi < len(seq_kv) else seq_kv[0]
             nblk = (slen + bs - 1) // bs
@@ -128,9 +128,9 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
                     block_data = t[blk_id, :, :, :cnt, :]
                     block_data = block_data.permute(0, 2, 1, 3).reshape(
                         block_data.shape[0], cnt, -1)
-                    result[bi, :, start:end, :] = block_data.float()
+                    result[bi, :, start:end, :] = block_data
 
     else:
-        return t.clone().float()
+        return t.clone()
 
     return result
