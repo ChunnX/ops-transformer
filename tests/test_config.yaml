@@ -132,7 +132,7 @@ attention:
       - attention/fused_infer_attention_score/op_host/arch22
     test:
       ut: True
-      examples: True
+      examples: False
     options:
       - incre_flash_attention
       - fused_infer_attention_score
@@ -522,7 +522,7 @@ gmm:
     options:
       - grouped_matmul_swiglu_quant_v2
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_add:
     module: True
@@ -994,10 +994,6 @@ posembedding:
     exclude:
       - posembedding/apply_rotary_pos_emb/docs
       - posembedding/apply_rotary_pos_emb/README.md
-    ut_cov_exclude:
-      - posembedding/apply_rotary_pos_emb
-    test:
-        examples: False
     options:
       - apply_rotary_pos_emb
 

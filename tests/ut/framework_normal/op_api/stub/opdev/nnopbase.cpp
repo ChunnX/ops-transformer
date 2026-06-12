@@ -22,4 +22,11 @@ aclnnStatus NnopbaseSetHcomGroup(void *const executor, char *const group) {
 aclnnStatus NnopbaseDisableOptionalInput(void *executor, const size_t irIndex) {
     return OK;
 }
+
+aclnnStatus NnopbaseRunWithWorkspace(void *executor, aclrtStream stream, void *workspace, uint64_t workspaceSize) {
+    return OK;
+}
+
+void NnopbaseSetHcclServerType(void *executor, uint32_t sType) {
+}
 }

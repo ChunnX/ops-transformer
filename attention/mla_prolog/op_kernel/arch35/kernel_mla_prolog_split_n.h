@@ -1137,10 +1137,12 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
         if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
             uint32_t offsetL1B =
                 L1_B_SIZE / 2 / sizeof(rmsNormCqOutputType); // // 2表示scale起始地址固定从L1B上ping的64k开始
+            WaitFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
             LoadL1AAndScale<rmsNormCqOutputType, dequantScaleType, false, true>(
                 rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
                 dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset], mmQcQrParam_.m, mmQcQrParam_.k,
                 mmQcQrParam_.k, mmQcQrParam_.kScale, offsetL1B, bufParam_);
+            SetFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
         } else {
             LoadL1A(rmsNormCqResGm_[aicOffset.rmsNormCqResOffset], mmQcQrParam_.m, mmQcQrParam_.k, mmQcQrParam_.k,
                     bufParam_);

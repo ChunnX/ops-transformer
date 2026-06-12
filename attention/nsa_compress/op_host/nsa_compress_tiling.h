@@ -24,9 +24,9 @@ const size_t MAX_CORE_NUM = 48; // 使用的CORE数
 
 BEGIN_TILING_DATA_DEF(NsaCompressTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, InputDtype);        // 输入kv的总大小，初始化时指定kvGM的大小
-TILING_DATA_FIELD_DEF(uint32_t, TotalKvSize);       // 输入kv的总大小，初始化时指定kvGM的大小
-TILING_DATA_FIELD_DEF(uint32_t, TotalCompressSize); // 输出compress_kv的总大小，初始化时指定compressKvGM的大小
-TILING_DATA_FIELD_DEF(uint32_t, WeightSize);        // 输入weight的总大小，初始化时指定weightGM的大小
+TILING_DATA_FIELD_DEF(uint64_t, TotalKvSize);       // 输入kv的总大小，初始化时指定kvGM的大小
+TILING_DATA_FIELD_DEF(uint64_t, TotalCompressSize); // 输出compress_kv的总大小，初始化时指定compressKvGM的大小
+TILING_DATA_FIELD_DEF(uint64_t, WeightSize);        // 输入weight的总大小，初始化时指定weightGM的大小
 TILING_DATA_FIELD_DEF(uint32_t, BatchSize);         // 输入Kv的batch数，用于指定actseqlenGM的大小
 TILING_DATA_FIELD_DEF(uint32_t, CompressBlockSize); // 属性CompressBlockSize值
 TILING_DATA_FIELD_DEF(uint32_t, CompressStride);    // 属性CompressStride值

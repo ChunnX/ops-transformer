@@ -136,6 +136,7 @@ constexpr int FINISH_VEC_CKVKR = 0x9;
 constexpr int FINISH_VEC_ALL = 0x7;
 
 constexpr int FINISH_MM_QCQR_SPLIT_N = 0XA;
+constexpr int FINISH_MM_QCQR_SPLIT_BATCH = 0x3;
 constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N = 0X7;
 constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N_GAP = 0X1;
 constexpr int FINISH_MM_QN_SPLIT_N = 0X8;

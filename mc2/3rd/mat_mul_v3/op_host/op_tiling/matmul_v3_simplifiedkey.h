@@ -28,7 +28,7 @@ inline ge::graphStatus Mc2GenSimplifiedKey(gert::TilingContext *context, ge::cha
     static const int32_t INPUT1_INDEX = 1;
     static const int32_t BIAS_INDEX = 2;
     OP_LOGI(context->GetNodeName(), "Enter genSimplifiedKey.");
-    OP_TILING_CHECK(simplifiedKey == nullptr, OP_LOGE(context->GetNodeName(), "simplifiedKey is null."),
+    OP_TILING_CHECK(simplifiedKey == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "simplifiedKey"),
         return ge::GRAPH_FAILED);
 
     OPS_CHECK_NULL_WITH_CONTEXT(context, context->GetInputDesc(INPUT0_INDEX));

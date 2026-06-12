@@ -118,7 +118,7 @@
           - 3.1.将左矩阵$\mathbb{Z_8}$，转变为高低位 两部分的$\mathbb{Z_4}$
             $X\_high\_4bits_{i} = \lfloor \frac{X_{i}}{16} \rfloor$
             $X\_low\_4bits_{i} = X_{i} \& 0x0f - 8$
-          - 3.2.做矩阵乘时，使能per-channel或per-group量化
+          - 3.2.做矩阵乘时，开启per-channel或per-group量化
             per-channel：
 
             $C\_high_{i} = (X\_high\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$

@@ -183,7 +183,8 @@ protected:
     __aicore__ inline void InitCastWorkspace(GM_ADDR workspace);
     __aicore__ inline void InitDropWorkspace(GM_ADDR workspace);
     __aicore__ inline void AtomicClean();
-    __aicore__ inline void DumpGmZero(GlobalTensor<float> &gm, int64_t num);
+    __aicore__ inline void EODClean();
+    __aicore__ inline void DumpGmZero(GlobalTensor<float> &gm, int64_t num, int64_t offset = 0);
 
     // process
     __aicore__ inline void SendMatmulQK(const int64_t m, const int64_t n, const int64_t a_addr, const int64_t b_addr,
@@ -683,6 +684,9 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
             AtomicClean();
         }
     }
+    if constexpr (LAYOUT == TND) {
+        EODClean();
+    }
     InitUB(pipe_in);
 
     if constexpr (PSE_CFG != 0) {
@@ -930,7 +934,7 @@ template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DumpGmZero(GlobalTensor<float> &gm, int64_t num)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DumpGmZero(GlobalTensor<float> &gm, int64_t num, int64_t offset)
 {
     // dump 0 to gm by blockIdx
     int64_t perSize = (num + tilingData->opInfo.castUsedCoreNum - 1) / tilingData->opInfo.castUsedCoreNum;
@@ -943,7 +947,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 
     if (blockIdx < coreNum) {
-        InitOutput<float>(gm[blockIdx * perSize], initSize, 0);
+        InitOutput<float>(gm[blockIdx * perSize + offset], initSize, 0);
     }
 }
 
@@ -979,6 +983,35 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
     DumpGmZero(dqWorkspaceGm, dqSize);
     DumpGmZero(dkWorkspaceGm, dkvSize);
+}
+
+template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
+          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
+__aicore__ inline void
+FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::EODClean()
+{
+    int64_t realDimT_q = tilingData->postTilingData.t1;
+    int64_t realDimT_kv = tilingData->postTilingData.t2;
+    if (realDimT_q > dimT_q) {
+        int64_t dqGmCleanOffset = dimT_q * dimN2 * dimG * dimDAlign;
+        int64_t dqGmCleanSize = (realDimT_q - dimT_q) * dimN2 * dimG * dimDAlign;
+        DumpGmZero(dqWorkspaceGm, dqGmCleanOffset, dqGmCleanSize);
+    }
+    if (realDimT_kv > dimT_kv) {
+        int64_t dkvGmCleanOffset = dimT_kv * dimN2 * dimDAlign;
+        int64_t dkvGmCleanSize = (realDimT_kv - dimT_kv) * dimN2 * dimDAlign;
+        DumpGmZero(dkWorkspaceGm, dkvGmCleanOffset, dkvGmCleanSize);
+
+        if constexpr (sizeof(T1) == sizeof(float)) {
+            dkvGmCleanOffset = dimT_kv * dimN2 * dimD;
+            dkvGmCleanSize = (realDimT_kv - dimT_kv) * dimN2 * dimD;
+            DumpGmZero(dvGm, dkvGmCleanOffset, dkvGmCleanSize);
+        } else {
+            DumpGmZero(dvWorkspaceGm, dkvGmCleanOffset, dkvGmCleanSize);
+        }
+    }
 }
 
 template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,

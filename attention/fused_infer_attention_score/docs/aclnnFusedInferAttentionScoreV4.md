@@ -153,12 +153,13 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>参数key、value中对应tensor的shape需要完全一致。</li>
             <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
             <li>由于tensorlist限制, 非连续场景下B不能大于256。</li>
+            <li>key仅支持首轴非连续。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>value</td>
@@ -169,11 +170,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>参数key、value中对应tensor的shape需要完全一致。</li>
             <li>非连续场景下 key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
             <li>由于tensorlist限制, 非连续场景下B不能大于256。</li></ul>
+            <li>value仅支持首轴非连续。</li>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>pseShiftOptional</td>
@@ -357,7 +359,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>不支持空Tensor。</li>
             <li>query左padding场景query的搬运起点计算公式为：Q_S - queryPaddingSize - actualSeqLengths。query的搬运终点计算公式为：Q_S - queryPaddingSize。其中query的搬运起点不能小于0，终点不能大于Q_S，否则结果将不符合预期。</li>
             <li>query左padding场景queryPaddingSizeOptional小于0时将被置为0。</li>
-            <li>query左padding场景需要与actualSeqLengths参数一起使能，否则默认为query右padding场景。</li>
+            <li>query左padding场景需要与actualSeqLengths参数一起开启，否则默认为query右padding场景。</li>
             <li>仅支持Q_S&gt;1的场景，其余场景该参数无效。</li>
         </ul>
         </td>
@@ -375,7 +377,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <li>不支持空Tensor。</li>
             <li>kv左padding场景key和value的搬运起点计算公式为：KV_S - kvPaddingSize - actualSeqLengthsKv。key和value的搬运终点计算公式为：KV_S - kvPaddingSize。其中key和value的搬运起点不能小于0，终点不能大于KV_S，否则结果将不符合预期。</li>
             <li>kv左padding场景kvPaddingSize小于0时将被置为0。</li>
-            <li>kv左padding场景需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。</li>
+            <li>kv左padding场景需要与actualSeqLengths参数一起开启，否则默认为kv右padding场景。</li>
             <li>不支持Q为BF16/FP16、KV为INT4(INT32)的场景。</li>
         </ul>
         </td>
@@ -975,7 +977,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 <summary><a id="PagedAttention"></a>PagedAttention</summary>
 
-- PagedAttention的使能必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
+- PagedAttention的开启必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
@@ -997,7 +999,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <tr>
             <td rowspan="2">PagedAttention</td>
             <td>blockSize</td>
-            <td>在使能PagedAttention场景下，blockSize需要传入非0值。在非量化场景下有以下约束：<br>
+            <td>在开启PagedAttention场景下，blockSize需要传入非0值。在非量化场景下有以下约束：<br>
             Decode MLA/Prefill MLA场景：blockSize 16对齐，最大支持1024;<br>
             GQA场景：QueryHeadDim/KeyHeadDim/ValueHeadDim均为64或128时，blockSize 16对齐，最大支持1024；<br>
             其他情况下，若Q_S> 1，blockSize 128对齐，最大支持1024，若Q_S= 1，blockSize 16对齐，最大支持512。</td>
@@ -1014,7 +1016,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
             <td>
             支持key、value dtype为FLOAT16/BFLOAT16/INT8。
             PagedAttention场景下，支持的KV Cache layout有BnBsH（BlockNum，BlockSize，H）、BnNBsD（BlockNum，N，BlockSize，D）、NZ（BlockNum，N，D/16，BlockSize，16），支持Q的layout（BSH/BSND、BNSD、TND、NTD）交叉。</td>
-            <td>PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。<br>blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。<br>PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。</td>
+            <td>PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。<br>blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。<br>PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。</td>
         </tr>
         <tr>
             <td>actualSeqLengthsKv</td>
@@ -1037,8 +1039,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 <blockquote>
 BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLOAT16和INT8均生效。<br>
-当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来使能行无效功能以提升精度，但是该配置会导致性能下降。<br>
-如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparse_mode为3，Sq > Skv场景。
+当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来开启行无效功能以提升精度，但是该配置会导致性能下降。<br>
+如果算子可判断出存在无效行场景，会自动开启无效行计算，例如sparse_mode为3，Sq > Skv场景。
 </blockquote>
 
 <div style="overflow-x: auto;">
@@ -1318,7 +1320,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>
                     <ul>
                     <li>输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。</li>
-                    <li>输出为int8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部使能）：</li>
+                    <li>输出为int8时，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在FIA接口外部做后量化操作，不在FIA接口内部开启）：</li>
                         <ul>
                         <li>sparseMode = 0，attenMaskOptional如果非空指针，每个batch actualSeqLengths — actualSeqLengthsKV - actualSharedPrefixLen - preTokens > 0 或 nextTokens < 0 时，满足拦截条件</li>
                         <li>sparseMode = 1 或 2，不会出现满足拦截条件的情况</li>
@@ -2019,11 +2021,11 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 </td>
             </tr>
             <tr>
-                <td colspan="2">query左padding场景不支持PagedAttention，不能与blocktable参数一起使能。</td>
+                <td colspan="2">query左padding场景不支持PagedAttention，不能与blocktable参数一起开启。</td>
             </tr>
             <tr>
                 <td rowspan="1">kv左padding场景：</td>
-                <td colspan="2">kv左padding场景不支持PagedAttention，不能与blocktable参数一起使能。</td>
+                <td colspan="2">kv左padding场景不支持PagedAttention，不能与blocktable参数一起开启。</td>
             </tr>
             <tr>
                 <td rowspan="3">INT8量化场景</td>
@@ -2109,10 +2111,10 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
                 <td>blockTable</td>
                 <td>
                 <ul>
-                    <li>使能Attention Mask，当sparseMode不为2,3,4时，传入Mask的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
-                    <li>使能pseShift，传入pseShift的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
-                    <li>使能伪量化per-token模式：输入参数antiquantScale和antiquantOffset的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
-                    <li>使能per-token叠加per-head模式：输入参数antiquantScale和antiquantOffset的最后一维需要大于等于blockTable的第二维 * blockSize，数据类型固定为FLOAT32。（当key、value数据类型为INT8、INT4(INT32)时支持。）</li>
+                    <li>开启Attention Mask，当sparseMode不为2,3,4时，传入Mask的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
+                    <li>开启pseShift，传入pseShift的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
+                    <li>开启伪量化per-token模式：输入参数antiquantScale和antiquantOffset的最后一维需要大于等于blockTable的第二维 * blockSize。</li>
+                    <li>开启per-token叠加per-head模式：输入参数antiquantScale和antiquantOffset的最后一维需要大于等于blockTable的第二维 * blockSize，数据类型固定为FLOAT32。（当key、value数据类型为INT8、INT4(INT32)时支持。）</li>
                 </ul>
                 </td>
             </tr>
@@ -2124,7 +2126,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             <tr>
                 <td rowspan="2">kv左padding场景</td>
                 <td>attenMaskOptional</td>
-                <td>kv左padding场景与attenMaskOptional参数一起使能时，需要保证attenMaskOptional含义正确，即能够正确的对无效数据进行隐藏。否则将引入精度问题。</td>
+                <td>kv左padding场景与attenMaskOptional参数一起开启时，需要保证attenMaskOptional含义正确，即能够正确的对无效数据进行隐藏。否则将引入精度问题。</td>
             </tr>
             <tr>
                 <td colspan="2">kv左padding场景不支持PagedAttention、tensorlist，否则默认为kv右padding场景。</td>
@@ -2146,6 +2148,13 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
         </tbody>
     </table>
     
+</details>
+
+<details>
+
+<summary>key、value首轴非连续场景约束：</summary>
+&nbsp;&nbsp;仅支持PagedAttention场景，而且满足TND排布，sparseMode为0/3/4，Q_D=K_D=V_D且≤256，非MLA场景，innerPrecise=0的GQA/MQA，或MHA（MHA场景不支持BF16且innerPrecise=1，不支持sparseMode=0且attenMask非空）。key、value为BnBsH格式要求blockSize满足16对齐且≤512；NZ排布要求blockSize=128且D≠64/128。key、value仅第一个维度支持非连续，其他维度必须连续。
+
 </details>
 
 ## 调用示例
@@ -2244,43 +2253,44 @@ int main() {
     }
 
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
-    int32_t batchSize = 1;
-    int32_t numHeads = 2;
-    int32_t sequenceLengthQ = 1;
-    int32_t headDims = 16;
-    int32_t numKeyValueHeads = 2;
-    int32_t sequenceLengthKV = 16;
-    std::vector<int64_t> queryShape = {batchSize, numHeads, sequenceLengthQ, headDims};           // BNSD
-    std::vector<int64_t> keyShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};    // BNSD
-    std::vector<int64_t> valueShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};  // BNSD
-    std::vector<int64_t> attenMaskShape = {batchSize, 1, sequenceLengthQ, sequenceLengthKV};      // B 1 S1 S2
-    std::vector<int64_t> outShape = {batchSize, numHeads, sequenceLengthQ, headDims};             // BNSD
+    int64_t batchSize = 1;
+    int64_t numHeads = 2;
+    int64_t numKeyValueHeads = 1;
+    int64_t sequenceLengthQ = 1;
+    int64_t sequenceLengthKV = 16;
+    int64_t headDims = 128;
+
+    std::vector<int64_t> queryShape = {batchSize, numHeads, sequenceLengthQ, headDims};
+    std::vector<int64_t> keyShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};
+    std::vector<int64_t> valueShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};
+    std::vector<int64_t> attentionOutShape = {batchSize, numHeads, sequenceLengthQ, headDims};
+
     void *queryDeviceAddr = nullptr;
     void *keyDeviceAddr = nullptr;
     void *valueDeviceAddr = nullptr;
-    void *attenMaskDeviceAddr = nullptr;
-    void *outDeviceAddr = nullptr;
+    void *attentionOutDeviceAddr = nullptr;
+
     aclTensor *queryTensor = nullptr;
     aclTensor *keyTensor = nullptr;
     aclTensor *valueTensor = nullptr;
-    aclTensor *attenMaskTensor = nullptr;
-    aclTensor *outTensor = nullptr;
-    int64_t queryShapeSize = GetShapeSize(queryShape);          // BNSD
-    int64_t keyShapeSize = GetShapeSize(keyShape);              // BNSD
-    int64_t valueShapeSize = GetShapeSize(valueShape);          // BNSD
-    int64_t attenMaskShapeSize = GetShapeSize(attenMaskShape);  // B 1 S1 S2
-    int64_t outShapeSize = GetShapeSize(outShape);              // BNSD
+    aclTensor *attentionOutTensor = nullptr;
+
+    int64_t queryShapeSize = GetShapeSize(queryShape);
+    int64_t keyShapeSize = GetShapeSize(keyShape);
+    int64_t valueShapeSize = GetShapeSize(valueShape);
+    int64_t attentionOutShapeSize = GetShapeSize(attentionOutShape);
+
     std::vector<op::fp16_t> queryHostData(queryShapeSize, 1);
     std::vector<op::fp16_t> keyHostData(keyShapeSize, 1);
     std::vector<op::fp16_t> valueHostData(valueShapeSize, 1);
-    std::vector<int8_t> attenMaskHostData(attenMaskShapeSize, 1);
-    std::vector<op::fp16_t> outHostData(outShapeSize, 1);
+    std::vector<op::fp16_t> attentionOutHostData(attentionOutShapeSize, 1);
 
     // Create query aclTensor.
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
+
     // Create key aclTensor.
     ret = CreateAclTensor(keyHostData, keyShape, &keyDeviceAddr, aclDataType::ACL_FLOAT16, &keyTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -2290,6 +2300,7 @@ int main() {
     aclTensor *tensorsOfKey[kvTensorNum];
     tensorsOfKey[0] = keyTensor;
     auto tensorKeyList = aclCreateTensorList(tensorsOfKey, kvTensorNum);
+
     // Create value aclTensor.
     ret = CreateAclTensor(valueHostData, valueShape, &valueDeviceAddr, aclDataType::ACL_FLOAT16, &valueTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -2298,33 +2309,29 @@ int main() {
     aclTensor *tensorsOfValue[kvTensorNum];
     tensorsOfValue[0] = valueTensor;
     auto tensorValueList = aclCreateTensorList(tensorsOfValue, kvTensorNum);
-    // Create attenMask aclTensor.
-    ret = CreateAclTensor(attenMaskHostData, attenMaskShape, &attenMaskDeviceAddr, aclDataType::ACL_BOOL, &attenMaskTensor);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        return ret;
-    }
-    // Create out aclTensor.
-    ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &outTensor);
+
+    // Create attentionOut aclTensor.
+    ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOutTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
 
-    std::vector<int64_t> actualSeqlenVector = {2};
-    auto actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(), actualSeqlenVector.size());
-    
-    double scaleValue = 1 / sqrt(2); // 1/sqrt(d)
+    // Create Attrs.
+    double scaleValue = 1 / sqrt(headDims);
     int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
-    string sLayerOut = "BNSD";
-    char layerOut[sLayerOut.length()+1];
-    strcpy(layerOut, sLayerOut.c_str());
+    string sInputLayout = "BNSD";
+    char inputLayout[sInputLayout.length()+1];
+    strcpy(inputLayout, sInputLayout.c_str());
     int64_t sparseMode = 0;
-    int64_t innerPrecise = 1;
-    int blockSize = 0;
-    int antiquantMode = 0;
+    int64_t innerPrecise = 0;
+    int64_t blockSize = 0;
+    int64_t antiquantMode = 0;
     bool softmaxLseFlag = false;
     int keyAntiquantMode = 0;
-    int valueAntiquantMode = 0;
+    int64_t valueAntiquantMode = 0;
+    int64_t queryQuantMode = 0;
+
     // 3. Call CANN operator library API.
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
@@ -2332,9 +2339,9 @@ int main() {
     ret = aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
         queryTensor, tensorKeyList, tensorValueList, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, layerOut,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, inputLayout,
         numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode,
-        valueAntiquantMode, 0, outTensor, nullptr, &workspaceSize, &executor);
+        valueAntiquantMode, queryQuantMode, attentionOutTensor, nullptr, &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnFusedInferAttentionScoreV4GetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -2362,31 +2369,28 @@ int main() {
         return ret;
     }
 
-    // 5. Retrieve the output value, copy the result from the device side memory to the host side, and modify it
+    // 5. Retrieve the attentionOutput value, copy the result from the device side memory to the host side, and modify it
     // according to the specific API interface definition.
-    auto size = GetShapeSize(outShape);
+    auto size = GetShapeSize(attentionOutShape);
     std::vector<op::fp16_t> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
+    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), attentionOutDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) { 
         LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); 
         return ret;
     }
     for (int64_t i = 0; i < size; i++) {
-        std::cout << "index: " << i << ": " << static_cast<float>(resultData[i]) << std::endl;
+        LOG_PRINT("result[%ld] is: %f\n", i, static_cast<float>(resultData[i]));
     }
     // 6. Release resources.
     aclDestroyTensor(queryTensor);
     aclDestroyTensor(keyTensor);
     aclDestroyTensor(valueTensor);
-    aclDestroyTensor(attenMaskTensor);
-    aclDestroyTensor(outTensor);
-    aclDestroyIntArray(actualSeqLengths);
+    aclDestroyTensor(attentionOutTensor);
     aclrtFree(queryDeviceAddr);
     aclrtFree(keyDeviceAddr);
     aclrtFree(valueDeviceAddr);
-    aclrtFree(attenMaskDeviceAddr);
-    aclrtFree(outDeviceAddr);
+    aclrtFree(attentionOutDeviceAddr);
     if (workspaceSize > 0U) {
         aclrtFree(workspaceAddr);
     }

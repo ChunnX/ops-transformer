@@ -107,6 +107,7 @@ int main() {
   std::vector<int64_t> cuSeqQLenshape = {2};                 // B + 1
   std::vector<int64_t> cuSeqOriKvLenshape = {2};             // B + 1
   std::vector<int64_t> cuSeqCmpKvLenshape = {2};             // B + 1
+  std::vector<int64_t> cmpResidualKvShape = {1};             // B
   std::vector<int64_t> sinksShape = {2};                     // N1
 
   void* qDeviceAddr = nullptr;
@@ -118,6 +119,7 @@ int main() {
   void* cuSeqQLenDeviceAddr = nullptr;
   void* cuSeqOriKvLenDeviceAddr = nullptr;
   void* cuSeqCmpKvLenDeviceAddr = nullptr;
+  void* cmpResidualKvDeviceAddr = nullptr;
   void* sinksDeviceAddr = nullptr;
   void* dqDeviceAddr = nullptr;
   void* dOriKvDeviceAddr = nullptr;
@@ -135,6 +137,7 @@ int main() {
   aclTensor* cuSeqQLen = nullptr;
   aclTensor* cuSeqOriKvLen = nullptr;
   aclTensor* cuSeqCmpKvLen = nullptr;
+  aclTensor* cmpResidualKv = nullptr;
   aclTensor* sinks = nullptr;
   aclTensor* dq = nullptr;
   aclTensor* dOriKv = nullptr;
@@ -152,6 +155,7 @@ int main() {
   std::vector<int32_t> cuSeqQLenHostData = {0, 1};
   std::vector<int32_t> cuSeqOriKvLenHostData = {0, 2048};
   std::vector<int32_t> cuSeqCmpKvLenHostData = {0, 16};
+  std::vector<int32_t> cmpResidualKvHostData = {0};
   std::vector<float> sinksHostData(16, 128.0);
   std::vector<short> dqHostData(1 * 16 * 512, 0);
   std::vector<short> dOriKvHostData(2048 * 1 * 512, 0);
@@ -176,6 +180,8 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(cuSeqCmpKvLenHostData, cuSeqCmpKvLenshape, &cuSeqCmpKvLenDeviceAddr, aclDataType::ACL_INT32, &cuSeqCmpKvLen);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(cmpResidualKvHostData, cmpResidualKvShape, &cmpResidualKvDeviceAddr, aclDataType::ACL_INT32, &cmpResidualKv);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(sinksHostData, sinksShape, &sinksDeviceAddr, aclDataType::ACL_FLOAT, &sinks);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(dqHostData, qShape, &dqDeviceAddr, aclDataType::ACL_FLOAT16, &dq);
@@ -193,7 +199,6 @@ int main() {
   int64_t cmpMaskMode = 3;
   int64_t oriWinLeft = 127;
   int64_t oriWinRight = 0;
-  int64_t deterministic = 0;
   char layoutQ[5] = {'T', 'N', 'D', 0};
   char layoutKv[5] = {'T', 'N', 'D', 0};
   
@@ -202,9 +207,9 @@ int main() {
   aclOpExecutor* executor;
   
   // 调用aclnnSparseFlashMlaGrad第一段接口
-  ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, oriKv, cmpKv, dOut, out, lse, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
-            nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, sinks, nullptr, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-            layoutQ, layoutKv, deterministic, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
+  ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, dOut, out, lse, oriKv, cmpKv, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
+            nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, sinks, nullptr, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
+            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   
@@ -239,6 +244,7 @@ int main() {
   aclDestroyTensor(cuSeqQLen);
   aclDestroyTensor(cuSeqOriKvLen);
   aclDestroyTensor(cuSeqCmpKvLen);
+  aclDestroyTensor(cmpResidualKv);
   aclDestroyTensor(sinks);
   aclDestroyTensor(dq);
   aclDestroyTensor(dOriKv);
@@ -257,6 +263,7 @@ int main() {
   aclrtFree(cuSeqQLenDeviceAddr);
   aclrtFree(cuSeqOriKvLenDeviceAddr);
   aclrtFree(cuSeqCmpKvLenDeviceAddr);
+  aclrtFree(cmpResidualKvDeviceAddr);
   aclrtFree(sinksDeviceAddr);
   aclrtFree(dqDeviceAddr);
   aclrtFree(dOriKvDeviceAddr);

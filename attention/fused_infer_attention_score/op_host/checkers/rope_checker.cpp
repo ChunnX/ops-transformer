@@ -65,7 +65,7 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 {
-    if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
+    if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_64 && fiaInfo.qkHeadDim != NUM_128),
         OP_LOGE(fiaInfo.opName,
             "In MXFP8 fullquant scenario, when rope exist, "
@@ -79,6 +79,29 @@ ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
             fiaInfo.qkHeadDim),
         return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus RopeChecker::CheckKRopeContiguous(const FiaTilingInfo &fiaInfo)
+{
+    // mxfp8全量化场景检查krope连续性
+    if (!enableFullQuant_ || fiaInfo.fullQuantMode != FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const gert::Shape keyRopeShape = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape();
+    const uint32_t keyRopeDimNum = keyRopeShape.GetDimNum();
+    int32_t dimIndex = 0;
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyRopeDimNum, keyRopeShape, fiaInfo.kRopeStrides, dimIndex)) &&
+            !fiaInfo.pageAttentionFlag),
+        OP_LOGE(fiaInfo.opName,
+                "In non-PA scenarios, MXFP8 full quantization does not support non-contiguous tensors."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyRopeDimNum, keyRopeShape, fiaInfo.kRopeStrides, dimIndex)) &&
+            (dimIndex != 0 && dimIndex != 1) && fiaInfo.pageAttentionFlag),
+        OP_LOGE(fiaInfo.opName,
+                "In PA scenarios, krope only supports non-contiguous tensors in dimensions 0 or 1, " 
+                "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -471,7 +494,8 @@ ge::graphStatus RopeChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 
     if (ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckRopeDtypeConsistency(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckAxisSupport(fiaInfo)) {
+        ge::GRAPH_SUCCESS != CheckAxisSupport(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckKRopeContiguous(fiaInfo)) {
             return ge::GRAPH_FAILED;
     }
 
