@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- **算子功能**：`MhcPreSinkhornBackward` 是 `MhcPreSinkhorn` 的反向算子，用于计算 mHC（Manifold-Constrained Hyper-Connections）结构中 Sinkhorn 变换的反向梯度传播。
+- **算子功能**：`MhcPreSinkhornBackward`是`MhcPreSinkhorn`的反向算子，用于计算mHC（Manifold-Constrained Hyper-Connections）结构中Sinkhorn变换的反向梯度传播。
 - **主要输出**：`gradX`、`gradPhi`、`gradAlpha`、`gradBias`。
 - **前向缓存依赖**：`hPre`、`hcBeforeNorm`、`invRms`、`sumOut`、`normOut`。
 - **计算公式**：
@@ -166,12 +166,12 @@
 
 sumOut的shape记为(2*sk_iter_count,B,S,N)
 x的shape记为(B,S,N,C)
-- `sk_iter_count` 当前仅支持 `20`。
-- `N` 当前仅支持 `4`。
-- `C` 大于0 小于 100000 且可以被128整除。
+- `sk_iter_count`当前仅支持`20`。
+- `N`当前仅支持`4`。
+- `C`大于0小于100000且可以被128整除。
 
 ## 调用说明
 
 | 调用方式 | 调用样例 | 说明 |
 | :--- | :--- | :--- |
-| aclnn调用 | [test_aclnn_mhc_pre.cpp](examples/test_aclnn_mhc_pre_sinkhorn_backward.cpp) | 通过[aclnnMhcPreSinkhornBackward](docs/aclnnMhcPreSinkhornBackward.md) 接口方式调用MhcPreSinkhornBackward算子。 |
+| aclnn调用 | [test_aclnn_mhc_pre.cpp](examples/test_aclnn_mhc_pre_sinkhorn_backward.cpp) | 通过[aclnnMhcPreSinkhornBackward](docs/aclnnMhcPreSinkhornBackward.md)接口方式调用MhcPreSinkhornBackward算子。 |

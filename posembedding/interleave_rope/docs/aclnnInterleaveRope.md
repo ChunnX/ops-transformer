@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：针对单输入 x 进行旋转位置编码。
+- 接口功能：针对单输入x进行旋转位置编码。
 
 - 计算公式：
 
@@ -27,7 +27,7 @@
   q_{\text{embed}} = q \cdot \text{cos} + \text{RotateHalf}(q) \cdot \sin
   $$
 
-  其中：RotateHalf(q) 表示将 q 的 D 维后半部分元素移至前半部分并乘以 -1，后半部分用前半部分的值。
+  其中：RotateHalf(q)表示将q的D维后半部分元素移至前半部分并乘以 -1，后半部分用前半部分的值。
   $$
   \text{RotateHalf}(q)_{\text{i}} =
   \begin{cases}
@@ -312,7 +312,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl API手册
+    // 1. 固定写法，device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -403,7 +403,7 @@ int main() {
     aclDestroyTensor(sin);
     aclDestroyTensor(out);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(xDeviceAddr);
     aclrtFree(cosDeviceAddr);
     aclrtFree(sinDeviceAddr);
