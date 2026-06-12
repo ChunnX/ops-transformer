@@ -431,13 +431,15 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
                     T.barrier_all()
 
-                    loss_sum_local_ub = T.alloc_ub(16, calc_dtype)
-                    T.tile.fill(loss_sum_local_ub, 0)
+                    loss_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
                     for i in range(16):
-                        T.tile.add(loss_sum_local_ub[0], loss_sum_local_ub[0], loss_val_ub[i])
+                        T.tile.mul(loss_2d_ub[i, :], loss_val_ub, 1.0)
+                    T.barrier_all()
+                    loss_sum_ub = T.alloc_ub(16, calc_dtype)
+                    T.reduce_sum(loss_2d_ub, loss_sum_ub, 1)
                     T.barrier_all()
 
-                    T.copy(loss_sum_local_ub, LossOut[bz, s1_id, n_idx_k * 16:(n_idx_k + 1) * 16])
+                    T.copy(loss_sum_ub, LossOut[bz, s1_id, 0:16])
 
                 T.set_cross_flag("V", 12)
 
