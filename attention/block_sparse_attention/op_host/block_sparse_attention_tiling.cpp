@@ -715,12 +715,15 @@ ge::graphStatus BSATiling::CheckBlockShapeQuantConstraint(gert::TilingContext *b
         constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128;
         constexpr int64_t SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y = 256;
         if (blockShapeX_ != SUPPORTED_BLOCK_SHAPE_X) {
-            OP_LOGE(bsaContext->GetNodeName(), "BlockShape element 0 must be consistent with %ld, but now it is %ld.",
-                    SUPPORTED_BLOCK_SHAPE_X, blockShapeX_);
+            OP_LOGE(
+                bsaContext->GetNodeName(),
+                "In the float8_e4m3fn scenario, blockShape element 0 must be consistent with %ld, but now it is %ld.",
+                SUPPORTED_BLOCK_SHAPE_X, blockShapeX_);
             return ge::GRAPH_FAILED;
         }
         if (blockShapeY_ % SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y != 0) {
-            OP_LOGE(bsaContext->GetNodeName(), "BlockShape element 1 must be a multiple of %ld, but now it is %ld.",
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "In the float8_e4m3fn scenario, blockShape element 1 must be a multiple of %ld, but now it is %ld.",
                     SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y, blockShapeY_);
             return ge::GRAPH_FAILED;
         }
