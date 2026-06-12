@@ -107,9 +107,9 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
-    constexpr HcclServerType hcclServerType = COMMTYPE == ALL2ALL_COMM_TYPE_CCU ?
-                                                  HcclServerType::HCCL_SERVER_TYPE_CCU :
-                                                  HcclServerType::HCCL_SERVER_TYPE_AICPU;
+    constexpr HcclServerType hcclServerType = COMMTYPE != ALL2ALL_COMM_TYPE_CCU ?
+                                                  HcclServerType::HCCL_SERVER_TYPE_AICPU :
+                                                  HcclServerType::HCCL_SERVER_TYPE_CCU;                                                  ;
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     REGISTER_TILING_DEFAULT(AlltoAllMatmulTilingData);
