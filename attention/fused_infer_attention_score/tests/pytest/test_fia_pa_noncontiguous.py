@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 B = 1
 N_q = 2
-N_kv = 1
+N_kv = 2
 D = 128
 Q_SEQ = 4
 KV_SEQ = 512
@@ -39,6 +39,7 @@ BLOCK_SIZE = 512
 IN_LAYOUT = "BNSD"
 CACHE_LAYOUT = "BNBD"   # [BlockNum, N_kv, BlockSize, D]
 DTYPE = torch.float16
+IS_CONTIGUOUS = False   # False: 构造非连续kvcache做验证
 DEVICE_ID = 0
 
 
@@ -161,6 +162,8 @@ def test_pa_contiguous():
 
 def test_pa_noncontiguous():
     """验证：非连续 KV Cache（stack k/v 后 slice）"""
+    if not IS_CONTIGUOUS:
+        logger.info("IS_CONTIGUOUS=False, 构造非连续 kvcache")
     act_seq_q = [Q_SEQ] * B
     act_seq_kv = [KV_SEQ] * B
 
@@ -172,30 +175,46 @@ def test_pa_noncontiguous():
     torch.manual_seed(42)
     query = torch.randn(B, N_q, Q_SEQ, D, dtype=DTYPE).npu()
 
-    # 构造非连续 k/v: stack 在 dim=1 上拼接成 [total_blocks, 2, block_size, D]，再 slice
-    k_cache_cont = torch.randn(total_blocks, N_kv, BLOCK_SIZE, D, dtype=DTYPE)
-    v_cache_cont = torch.randn(total_blocks, N_kv, BLOCK_SIZE, D, dtype=DTYPE)
+    # ==========================
+    # 连续版本：直接创建连续tensor转NPU
+    # ==========================
+    k_cache_cpu = torch.randn(total_blocks, N_kv, BLOCK_SIZE, D, dtype=DTYPE)
+    v_cache_cpu = torch.randn(total_blocks, N_kv, BLOCK_SIZE, D, dtype=DTYPE)
 
-    # 连续版本的结果作为 golden（物理数据完全相同，只是 tensor 视图不同）
-    k_npu_cont = k_cache_cont.npu()
-    v_npu_cont = v_cache_cont.npu()
-    npu_out_cont = run_npu(query, k_npu_cont, v_npu_cont, block_table_npu, act_seq_q, act_seq_kv, scale)
+    k_cont_npu = k_cache_cpu.npu()
+    v_cont_npu = v_cache_cpu.npu()
+    npu_out_cont = run_npu(query, k_cont_npu, v_cont_npu, block_table_npu, act_seq_q, act_seq_kv, scale)
 
-    # 非连续版本
-    kv_stacked = torch.stack([k_cache_cont, v_cache_cont], dim=1)  # [total_blocks, 2, block_size, D]
-    kv_stacked = kv_stacked.npu()
-    k_npu_noncont = kv_stacked[:, 0]  # 非连续
-    v_npu_noncont = kv_stacked[:, 1]  # 非连续
+    if IS_CONTIGUOUS:
+        logger.info("[INFO] IS_CONTIGUOUS=True, skip non-contiguous test")
+        return
 
-    logger.info(f"k contiguous: {k_npu_noncont.is_contiguous()}")
-    logger.info(f"v contiguous: {v_npu_noncont.is_contiguous()}")
-    logger.info(f"k shape: {k_npu_noncont.shape}, stride: {k_npu_noncont.stride()}")
-    logger.info(f"v shape: {v_npu_noncont.shape}, stride: {v_npu_noncont.stride()}")
+    # ==========================
+    # 非连续版本：CPU上stack+slice先确保非连续，再转NPU
+    # ==========================
+    kv_stacked = torch.stack([k_cache_cpu, v_cache_cpu], dim=1)  # [Bn, 2, N_kv, Bs, D]
+    k_noncont_cpu = kv_stacked[:, 0]  # [Bn, N_kv, Bs, D] 非连续：dim0 stride=2*N_kv*Bs*D
+    v_noncont_cpu = kv_stacked[:, 1]
 
-    npu_out_noncont = run_npu(query, k_npu_noncont, v_npu_noncont, block_table_npu,
+    logger.info(f"[CPU] k is_contiguous: {k_noncont_cpu.is_contiguous()}")
+    logger.info(f"[CPU] v is_contiguous: {v_noncont_cpu.is_contiguous()}")
+    logger.info(f"[CPU] k shape: {k_noncont_cpu.shape}, stride: {k_noncont_cpu.stride()}")
+    logger.info(f"[CPU] v shape: {v_noncont_cpu.shape}, stride: {v_noncont_cpu.stride()}")
+
+    assert not k_noncont_cpu.is_contiguous(), "k should be non-contiguous on CPU!"
+    assert not v_noncont_cpu.is_contiguous(), "v should be non-contiguous on CPU!"
+
+    # 非连续CPU tensor转NPU，stride应被保留
+    k_noncont_npu = k_noncont_cpu.npu()
+    v_noncont_npu = v_noncont_cpu.npu()
+
+    logger.info(f"[NPU] k is_contiguous: {k_noncont_npu.is_contiguous()}")
+    logger.info(f"[NPU] v is_contiguous: {v_noncont_npu.is_contiguous()}")
+
+    npu_out_noncont = run_npu(query, k_noncont_npu, v_noncont_npu, block_table_npu,
                               act_seq_q, act_seq_kv, scale)
 
-    # 非连续版本与连续版本结果应一致
+    # 非连续版本与连续版本结果应一致（物理数据相同，仅stride不同）
     check_result(npu_out_cont, npu_out_noncont, "PA-noncontiguous-vs-contiguous")
 
 
@@ -204,6 +223,7 @@ if __name__ == '__main__':
     logger.info("非量化 PA KVCache 非连续测试")
     logger.info(f"B={B}, N_q={N_q}, N_kv={N_kv}, D={D}, QS={Q_SEQ}, KVS={KV_SEQ}")
     logger.info(f"LAYOUT={IN_LAYOUT}, CACHE={CACHE_LAYOUT}, BLOCK_SIZE={BLOCK_SIZE}")
+    logger.info(f"IS_CONTIGUOUS={IS_CONTIGUOUS}")
     logger.info("=" * 60)
 
     logger.info("\n[Test 1] PA 连续 — 基线")
