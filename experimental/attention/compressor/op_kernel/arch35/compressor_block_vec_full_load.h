@@ -156,8 +156,8 @@ private:
     __aicore__ inline void SoftmaxDN(const LocalTensor<T> &scoreLocal, uint32_t tcDealSize, uint32_t dDealSize);
     __aicore__ inline void KvMulReduceScore(const LocalTensor<T> &kvLocal, const LocalTensor<T> &scoreLocal,
                                             const LocalTensor<T> &dstLocal, uint32_t tcDealSize, uint32_t dDealSize);
-    __aicore__ inline void CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb, uint32_t compressTcSize,
-                                                  uint32_t dStartIdx, uint32_t dDealSize);
+    __aicore__ inline void CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb, const Vec1SliceInfo &sliceInfo,
+                                                  uint32_t compressTcSize, uint32_t dStartIdx, uint32_t dDealSize);
     __aicore__ inline void DealVec1BaseBlock(CompressorVec1SliceIterator<COMP> &sliceIterator, const LoopInfo &loopInfo,
                                              uint32_t dStartIdx, uint32_t dBaseOffset, uint32_t dDealSize,
                                              uint32_t dBaseSize, uint32_t dealSeqStartIdx);
@@ -975,25 +975,30 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::KvMulReduceScore(con
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb,
-                                                                                   uint32_t compressTcSize,
-                                                                                   uint32_t dStartIdx,
-                                                                                   uint32_t dDealSize)
+__aicore__ inline void
+CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb,
+                                                            const Vec1SliceInfo &sliceInfo, uint32_t compressTcSize,
+                                                            uint32_t dStartIdx, uint32_t dDealSize)
 {
-    uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
+    uint64_t outGmOffset;
+    if constexpr (COMP::xLayout == X_LAYOUT::BSH) {
+        uint32_t bOutputScLen = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
+        uint32_t padScIdx = sliceInfo.bIdx * bOutputScLen + ((sliceInfo.sIdx + sliceInfo.bStartPos) / cmpRatio_) -
+                   (sliceInfo.bStartPos / cmpRatio_);
+        outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
+    } else {
+        outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
+    }
     uint32_t totalElements = compressTcSize * dDealSize;
-    LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
+    LocalTensor<X_T> outputUb = comperssoredUb.ReinterpretCast<X_T>();
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, totalElements);
     PipeBarrier<PIPE_V>();
-    outputQue1.EnQue(outputUb);
-    outputQue1.DeQue<X_T>();
     DataCopyParams intriParams;
     intriParams.blockCount = compressTcSize;
-    intriParams.blockLen = dDealSize / (BYTE_BLOCK / sizeof(X_T));
-    intriParams.dstGap = (constInfo_.headDim - dDealSize) / (BYTE_BLOCK / sizeof(X_T));
+    intriParams.blockLen = dDealSize / FP16_BLOCK_ELEMENT_NUM;
+    intriParams.dstGap = (constInfo_.headDim - dDealSize) / FP16_BLOCK_ELEMENT_NUM;
     intriParams.srcGap = 0;
     DataCopy(cmpKvOutGm_[outGmOffset], outputUb, intriParams);
-    outputQue1.FreeTensor(outputUb);
 }
 
 
@@ -1020,7 +1025,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
         PipeBarrier<PIPE_V>();
         outputQue2.EnQue(comperssoredUb);
         outputQue2.DeQue<T>();
-        CopyOutVec1ResToOutput(comperssoredUb, statisticInfo.compressorScCnt, dStartIdx + dBaseOffset, dDealSize);
+        CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx + dBaseOffset,
+                               dDealSize);
         outputQue2.FreeTensor(comperssoredUb);
     }
     compressedCnt_ += statisticInfo.compressorScCnt;

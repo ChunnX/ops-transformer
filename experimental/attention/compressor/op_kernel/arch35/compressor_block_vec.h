@@ -147,8 +147,8 @@ private:
                                           const StatisticInfo &statisticInfo, const Vec1SliceInfo &originSliceInfo,
                                           uint32_t dStartIdx, uint32_t dDealSize, uint32_t dBaseSize,
                                           uint32_t needDealTcSize);
-    __aicore__ inline void CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb, uint32_t compressTcSize,
-                                                  uint32_t dStartIdx, uint32_t dDealSize);
+    __aicore__ inline void CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb, const Vec1SliceInfo &sliceInfo,
+                                                  uint32_t compressTcSize, uint32_t dStartIdx, uint32_t dDealSize);
     __aicore__ inline void CalcGroupInfo(const Vec1RunInfo &info, Vec1SplitInfo &splitInfo);
     __aicore__ inline void CalcTaskDistribution(const Vec1RunInfo &info, Vec1SplitInfo &splitInfo);
     __aicore__ inline void UpdateIteratorState(const Vec1RunInfo &info, Vec1SplitInfo &splitInfo);
@@ -910,23 +910,29 @@ CompressorBlockVector<COMP>::KvMulReduceScore(const LocalTensor<T> &kvLocal, con
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVector<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T> &comperssoredUb,
+                                                                           const Vec1SliceInfo &sliceInfo,
                                                                            uint32_t compressTcSize, uint32_t dStartIdx,
                                                                            uint32_t dDealSize)
 {
-    uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
+    uint64_t outGmOffset;
+    if constexpr (COMP::xLayout == X_LAYOUT::BSH) {
+        uint32_t bOutputScLen = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
+        uint32_t padScIdx = sliceInfo.bIdx * bOutputScLen + ((sliceInfo.sIdx + sliceInfo.bStartPos) / cmpRatio_) -
+                   (sliceInfo.bStartPos / cmpRatio_);
+        outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
+    } else {
+        outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
+    }
     uint32_t totalElements = compressTcSize * dDealSize;
-    LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
+    LocalTensor<X_T> outputUb = comperssoredUb.ReinterpretCast<X_T>();
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, totalElements);
     PipeBarrier<PIPE_V>();
-    outputQue1.EnQue(outputUb);
-    outputQue1.DeQue<X_T>();
     DataCopyParams intriParams;
     intriParams.blockCount = compressTcSize;
-    intriParams.blockLen = dDealSize / (BYTE_BLOCK / sizeof(X_T));
-    intriParams.dstGap = (constInfo_.headDim - dDealSize) / (BYTE_BLOCK / sizeof(X_T));
+    intriParams.blockLen = dDealSize / FP16_BLOCK_ELEMENT_NUM;
+    intriParams.dstGap = (constInfo_.headDim - dDealSize) / FP16_BLOCK_ELEMENT_NUM;
     intriParams.srcGap = 0;
     DataCopy(cmpKvOutGm_[outGmOffset], outputUb, intriParams);
-    outputQue1.FreeTensor(outputUb);
 }
 
 template <typename COMP>
@@ -1008,7 +1014,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::DealVec1BaseBlock(const Vec1
         PipeBarrier<PIPE_V>();
         outputQue2.EnQue(comperssoredUb);
         outputQue2.DeQue<T>();
-        CopyOutVec1ResToOutput(comperssoredUb, statisticInfo.compressorScCnt, dStartIdx, dDealSize);
+        CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx, dDealSize);
         outputQue2.FreeTensor(comperssoredUb);    
     }
     compressedCnt_ += statisticInfo.compressorScCnt;
