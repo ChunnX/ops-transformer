@@ -32,30 +32,30 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 // 根据API定义，需要列出所能支持的所有dtype
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_BIAS = {
+static const std::initializer_list<op::DataType> kDtypeBiasList = {
     op::DataType::DT_INT32, op::DataType::DT_FLOAT};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT = {
+static const std::initializer_list<op::DataType> kDtypeQuantList = {
     op::DataType::DT_INT8,     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2,
     op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E2M1};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT_FP4 = {
+static const std::initializer_list<op::DataType> kDtypeFp4List = {
     op::DataType::DT_FLOAT4_E2M1};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT_FP8 = {
+static const std::initializer_list<op::DataType> kDtypeFp8List = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_DEQUANT = {
+static const std::initializer_list<op::DataType> kDtypeDequantList = {
     op::DataType::DT_UINT64, op::DataType::DT_INT64, op::DataType::DT_BF16, op::DataType::DT_FLOAT,
     op::DataType::DT_FLOAT8_E8M0};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_PERTOKEN = {
+static const std::initializer_list<op::DataType> kDtypePertokenList = {
     op::DataType::DT_FLOAT, op::DataType::DT_FLOAT8_E8M0};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_WITHOUT_FLOAT = {
+static const std::initializer_list<op::DataType> kDtypeWithoutFloatList = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_FLOAT = {
+static const std::initializer_list<op::DataType> kDtypeFloatList = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT};
 
 // 检查入参是否为nullptr
@@ -79,40 +79,40 @@ static bool CheckDtypeValid(
     const aclTensor* output)
 {
     // 检查x1、x2、bias、scale、offset、x3、output的数据类型是否在算子的支持列表内
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, DTYPE_SUPPORT_LIST_DEQUANT, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x1, kDtypeQuantList, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x2, kDtypeQuantList, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, kDtypeDequantList, return false);
     // hif8/fp8/mxfp4 支持fp32的输出
-    const auto outputDtypeSupport = (CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP8) ||
-                                     CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP4)) ?
-                                        DTYPE_SUPPORT_LIST_FLOAT :
-                                        DTYPE_SUPPORT_LIST_WITHOUT_FLOAT;
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, outputDtypeSupport, return false);
+    const auto supportedOutputDtypes = (CheckType(x1->GetDataType(), kDtypeFp8List) ||
+                                     CheckType(x1->GetDataType(), kDtypeFp4List)) ?
+                                        kDtypeFloatList :
+                                        kDtypeWithoutFloatList;
+    OP_CHECK_DTYPE_NOT_SUPPORT(output, supportedOutputDtypes, return false);
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_BIAS, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(bias, kDtypeBiasList, return false);
     }
     if (x3 != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outputDtypeSupport, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(x3, supportedOutputDtypes, return false);
         // 检查x3和output的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(x3, output, return false);
     }
 
     // BF16场景，x2Scale的dtype与output一致，为BF16。fp8/fp4场景不检查
     if (((output->GetDataType() == op::DataType::DT_BF16) || (x2Scale->GetDataType() == op::DataType::DT_BF16)) &&
-        (!CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP8) &&
-         !CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP4))) {
+        (!CheckType(x1->GetDataType(), kDtypeFp8List) &&
+         !CheckType(x1->GetDataType(), kDtypeFp4List))) {
         OP_CHECK_DTYPE_NOT_SAME(x2Scale, output, return false);
     }
 
     if (x1Scale != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x1Scale, DTYPE_SUPPORT_LIST_PERTOKEN, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(x1Scale, kDtypePertokenList, return false);
     }
 
     if (commQuantScale1Optional != nullptr && commQuantScale2Optional != nullptr) {
         // 检查commQuantScale1 commQuantScale2的数据类型是否在算子的支持列表内
-        OP_CHECK_DTYPE_NOT_SUPPORT(commQuantScale1Optional, DTYPE_SUPPORT_LIST_WITHOUT_FLOAT, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(commQuantScale2Optional, DTYPE_SUPPORT_LIST_WITHOUT_FLOAT, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(commQuantScale1Optional, kDtypeWithoutFloatList, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(commQuantScale2Optional, kDtypeWithoutFloatList, return false);
         // 检查commQuantScale1Optional commQuantScale2Optional和output的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(commQuantScale1Optional, output, return false);
         OP_CHECK_DTYPE_NOT_SAME(commQuantScale2Optional, output, return false);
