@@ -425,9 +425,8 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     if (pseType == PSE_INNER_MUL_ADD || pseType == PSE_INNER_MUL_ADD_SQRT) {
         // Inner pse alibi, dtype must be fp32
         if (realShiftOptional == nullptr) {
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "pseShape",
-                "The input pseShape cannot be nullptr when the mode of pse is 2 or 3");
-            return ACLNN_ERR_PARAM_INVALID;
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "When pseType is 2 or 3, pseShape cannot be null.");
+            return ACLNN_ERR_PARAM_NULLPTR;
         }
         auto pseDtype = realShiftOptional->GetDataType();
         if (pseDtype != op::DataType::DT_FLOAT) {
@@ -1021,7 +1020,7 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
     Shape kRopeShape = keyRope->GetViewShape();
     if (qRopeShape[DIM_NUM_2] > faShape.axes.d || kRopeShape[DIM_NUM_2] > faShape.axes.d) {
         std::string dMsg = std::to_string(qRopeShape[DIM_NUM_2]) + " and " + std::to_string(kRopeShape[DIM_NUM_2]);
-        std::string reason = "The value of D dim of input query_rope and key_rope must be greater than "
+        std::string reason = "The value of D dim of input query_rope and key_rope must not be greater than "
                              "the value of D dim of input query";
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScore", "query_rope and key_rope",
             dMsg.c_str(), reason.c_str());
@@ -1065,7 +1064,7 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
         }
         if (faShape.inputLayout != InputLayout::TND) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout",
-                std::to_string(static_cast<int64_t>(faShape.inputLayout)).c_str(),
+                faShape.l0InputLayoutStr.c_str(),
                 "The query_rope and key_rope are only supported when input_layout is TND");
             return ACLNN_ERR_PARAM_INVALID;
         }

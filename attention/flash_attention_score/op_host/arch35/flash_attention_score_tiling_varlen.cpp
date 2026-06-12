@@ -138,7 +138,7 @@ protected:
         }
         if (pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_TYPE) ||
             pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-if (inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL_BAND)) {
+            if (inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL_BAND)) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_type",
                     std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
                     "The value of sparse_type cannot be RIGHT_DOWN_CAUSAL_BAND when pseType is 2 or 3");
@@ -146,12 +146,12 @@ if (inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::RI
             }
             if (inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::BAND_LEFT_UP_CAUSAL)) {
                 if (!SetBandLeftUpCausalPseParamsRegbase()) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_mode",
-                    std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
-                    "The parameters of input pse should be valid when sparse_mode is BAND_LEFT_UP_CAUSAL "
-                    "and pseType is 2 or 3");
-                return false;
-            }
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "pse",
+                        std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
+                        "The parameters of input pse should be valid when sparse_mode is BAND_LEFT_UP_CAUSAL "
+                        "and pseType is 2 or 3");
+                    return false;
+                }
                 return true;
             }
             for (int64_t i = 0L; i < bSize; ++i) {
@@ -185,14 +185,14 @@ if (inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::RI
                     return false;
                 }
             }
-if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
-                           inputParamsRegbase_->get_sparseType() !=
-                           static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL)) {
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_type",
-                        std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
-                        "The value of sparse_type must be CAUSAL or RIGHT_DOWN_CAUSAL when pse alibi is used");
-                    return false;
-                }
+            if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
+                inputParamsRegbase_->get_sparseType() !=
+                static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL)) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_type",
+                    std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
+                    "The value of sparse_type must be CAUSAL or RIGHT_DOWN_CAUSAL when pse alibi is used");
+                return false;
+            }
             pseEncodeType = PseEncodeType::PSE_ENCODE_ALIBI_S2_FULL;
             OP_LOGD(context_, "[%s] PSE_ENCODE_ALIBI_S2_FULL.", templateName);
         }
@@ -303,7 +303,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
     {
         if (preTokens < 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "pre_tokens",
-                std::to_string(preTokens).c_str(), "The value of pre_tokens must be greater than zero");
+                std::to_string(preTokens).c_str(), "The value of pre_tokens must be greater than or equal to zero");
             return false;
         }
         if (nextTokens < 0 && preTokens + nextTokens < 0) {
@@ -441,7 +441,7 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
         if (nextTokens < 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "next_tokens",
                 std::to_string(nextTokens).c_str(), "To have valid data blocks, the value of "
-                    "next_tokens must be greater than zero");
+                    "next_tokens must be greater than or equal to zero");
             return false;
         }
         if (preTokens >= maxS1Val && nextTokens >= maxS2Val) {
@@ -516,28 +516,28 @@ if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CA
         }
 
         for (int64_t i = 0; i < bSize; ++i) {
-if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
-                    if (prefixNData[i] < 0 || prefixNData[i] > actualSeqLenKvData[i]) {
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "prefix_n",
-                            std::to_string(prefixNData[i]).c_str(),
-                            "The value of prefix_n must be [0, actual_seq_len_kv] "
-                            "when actual_seq_len_q > actual_seq_len_kv");
-                        return false;
-                    }
+            if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
+                if (prefixNData[i] < 0 || prefixNData[i] > actualSeqLenKvData[i]) {
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "prefix_n",
+                        std::to_string(prefixNData[i]).c_str(),
+                        "The value of prefix_n must be [0, actual_seq_len_kv] "
+                        "when actual_seq_len_q > actual_seq_len_kv");
+                    return false;
+                }
                 if (prefixNData[i] == 0) {
                     implMode = ImplMode::AA_INVALID_LINE_HIGH_PRECISION;
                     OP_LOGD(context_, "Enable invalid line impl mode.");
                 }
-} else {
-                    if (prefixNData[i] < actualSeqLenKvData[i] - actualSeqLenData[i] ||
-                        prefixNData[i] > actualSeqLenKvData[i]) {
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "prefix_n",
-                            std::to_string(prefixNData[i]).c_str(),
-                            "The value of prefix_n must be [actual_seq_len_kv - actual_seq_len_q, "
-                            "actual_seq_len_kv] when actual_seq_len_q <= actual_seq_len_kv");
-                        return false;
-                    }
+            } else {
+                if (prefixNData[i] < actualSeqLenKvData[i] - actualSeqLenData[i] ||
+                    prefixNData[i] > actualSeqLenKvData[i]) {
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "prefix_n",
+                        std::to_string(prefixNData[i]).c_str(),
+                        "The value of prefix_n must be [actual_seq_len_kv - actual_seq_len_q, "
+                        "actual_seq_len_kv] when actual_seq_len_q <= actual_seq_len_kv");
+                    return false;
                 }
+            }
         }
 
         sparseType = SparseEnum::PREFIX;
