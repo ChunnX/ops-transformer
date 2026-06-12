@@ -174,8 +174,6 @@ def tilelang_grad_kl_loss_parallel_kernel(
             s1_end = T.min(s1_start + s1_block, S1)
             
             my_k_block = n_idx_k
-            
-            is_core0 = (n_idx_k == 0)
 
             Q_L1 = T.alloc_L1((N1, k_block), input_dtype)
             GK_L1 = T.alloc_L1((n_block, k_block), input_dtype)
@@ -288,42 +286,41 @@ def tilelang_grad_kl_loss_parallel_kernel(
             with T.Scope("V"):
                 T.wait_cross_flag(11)
 
-                if is_core0:
-                    max_partial_ub = T.alloc_ub(n_num, calc_dtype)
-                    sum_partial_ub = T.alloc_ub(n_num, calc_dtype)
-                    global_max_ub = T.alloc_ub(1, calc_dtype)
-                    global_sum_ub = T.alloc_ub(1, calc_dtype)
-                    max_2d_ub = T.alloc_ub((2, n_num), calc_dtype)
-                    sum_2d_ub = T.alloc_ub((2, n_num), calc_dtype)
+                max_partial_ub = T.alloc_ub(n_num, calc_dtype)
+                sum_partial_ub = T.alloc_ub(n_num, calc_dtype)
+                global_max_ub = T.alloc_ub(1, calc_dtype)
+                global_sum_ub = T.alloc_ub(1, calc_dtype)
+                max_2d_ub = T.alloc_ub((2, n_num), calc_dtype)
+                sum_2d_ub = T.alloc_ub((2, n_num), calc_dtype)
+                
+                for s1_id in T.serial(s1_start, s1_end):
+                    T.copy(ReduceSumY_max_partial[bz, s1_id, 0:n_num], max_partial_ub)
+                    T.copy(ReduceSumY_sum_partial[bz, s1_id, 0:n_num], sum_partial_ub)
                     
-                    for s1_id in T.serial(s1_start, s1_end):
-                        T.copy(ReduceSumY_max_partial[bz, s1_id, 0:n_num], max_partial_ub)
-                        T.copy(ReduceSumY_sum_partial[bz, s1_id, 0:n_num], sum_partial_ub)
-                        
-                        for i in range(n_num):
-                            T.tile.mul(max_2d_ub[0, i], max_partial_ub[i], 1.0)
-                            T.tile.mul(max_2d_ub[1, i], max_partial_ub[i], 1.0)
-                        T.barrier_all()
-                        T.reduce_max(max_2d_ub, global_max_ub, 0)
-                        
-                        for i in range(n_num):
-                            T.tile.mul(sum_2d_ub[0, i], sum_partial_ub[i], 1.0)
-                            T.tile.mul(sum_2d_ub[1, i], sum_partial_ub[i], 1.0)
-                        T.barrier_all()
-                        T.reduce_sum(sum_2d_ub, global_sum_ub, 0)
-                        
-                        T.copy(global_max_ub, ReduceSumY_max[bz, s1_id])
-                        T.copy(global_sum_ub, ReduceSumY_sum[bz, s1_id])
-                        
-                        rsy_chunk_ub2 = T.alloc_ub(n_block, calc_dtype)
-                        sm_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                        
-                        for n_idx_iter in T.serial(n_num):
-                            T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub2)
-                            T.tile.sub(rsy_chunk_ub2, rsy_chunk_ub2, global_max_ub[0])
-                            T.tile.exp(rsy_chunk_ub2, rsy_chunk_ub2)
-                            T.tile.div(rsy_chunk_ub2, rsy_chunk_ub2, global_sum_ub[0])
-                            T.copy(rsy_chunk_ub2, SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block])
+                    for i in range(n_num):
+                        T.tile.mul(max_2d_ub[0, i], max_partial_ub[i], 1.0)
+                        T.tile.mul(max_2d_ub[1, i], max_partial_ub[i], 1.0)
+                    T.barrier_all()
+                    T.reduce_max(max_2d_ub, global_max_ub, 0)
+                    
+                    for i in range(n_num):
+                        T.tile.mul(sum_2d_ub[0, i], sum_partial_ub[i], 1.0)
+                        T.tile.mul(sum_2d_ub[1, i], sum_partial_ub[i], 1.0)
+                    T.barrier_all()
+                    T.reduce_sum(sum_2d_ub, global_sum_ub, 0)
+                    
+                    T.copy(global_max_ub, ReduceSumY_max[bz, s1_id])
+                    T.copy(global_sum_ub, ReduceSumY_sum[bz, s1_id])
+                    
+                    rsy_chunk_ub2 = T.alloc_ub(n_block, calc_dtype)
+                    sm_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                    
+                    for n_idx_iter in T.serial(n_num):
+                        T.copy(ReduceSumY[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block], rsy_chunk_ub2)
+                        T.tile.sub(rsy_chunk_ub2, rsy_chunk_ub2, global_max_ub[0])
+                        T.tile.exp(rsy_chunk_ub2, rsy_chunk_ub2)
+                        T.tile.div(rsy_chunk_ub2, rsy_chunk_ub2, global_sum_ub[0])
+                        T.copy(rsy_chunk_ub2, SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block])
 
                 T.set_cross_flag("V", 12)
 

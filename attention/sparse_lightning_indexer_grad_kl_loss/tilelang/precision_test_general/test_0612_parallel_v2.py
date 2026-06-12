@@ -149,11 +149,16 @@ def main():
     inputs = gen_inputs()
 
     print("\n[1] TileLang (0612_parallel_v2 多核版)...")
+    print("  正在编译 kernel（第一次运行可能需要较长时间）...")
     torch.npu.synchronize()
+    
     try:
+        import time
+        start_time = time.time()
         d_qi_tl, d_ki_tl, dw_tl, loss_tl = call_tl(inputs)
         torch.npu.synchronize()
-        print("  完成")
+        elapsed = time.time() - start_time
+        print(f"  完成 (耗时: {elapsed:.2f}s)")
     except Exception as e:
         print(f"  错误: {e}")
         import traceback
