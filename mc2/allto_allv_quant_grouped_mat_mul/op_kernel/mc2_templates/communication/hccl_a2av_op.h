@@ -411,9 +411,9 @@ public:
             return;
         }
         uint32_t blockIdx     = GetBlockIdx();
-        uint32_t numAivBlocks = GetBlockDim();
+        uint32_t numAivBlocks = static_cast<uint32_t>(GetBlockNum());
         uint32_t subBlockIdx  = GetSubBlockIdx();
-        uint32_t subBlockDim  = GetSubBlockDim();
+        uint32_t subBlockDim  = static_cast<uint32_t>(GetSubBlockNum());
         uint32_t startExpertIdx = turnIdx * taskTilingInfo_->combineExpertSize;
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
         static constexpr uint64_t DATACOPY_MAX_BLOCK_LEN = 65535UL;
