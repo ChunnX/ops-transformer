@@ -305,16 +305,16 @@ inline constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
 inline constexpr uint64_t BYTE_BLOCK = 32UL;
 inline constexpr uint32_t REPEAT_BLOCK_BYTE = 256U;
 
-template <typename T>
-__aicore__ inline constexpr T BlockElementNum()
+template <typename C>
+__aicore__ inline constexpr C BlockElementNum()
 {
-    return BYTE_BLOCK / sizeof(T);
+    return (BYTE_BLOCK / sizeof(C));
 }
 
-template <typename T>
-__aicore__ inline constexpr T RepeatElementNum()
+template <typename C>
+__aicore__ inline constexpr C RepeatElementNum()
 {
-    return REPEAT_BLOCK_BYTE / sizeof(T);
+    return (REPEAT_BLOCK_BYTE / sizeof(C));
 }
 // BLOCK和REPEAT的FP32元素数
 inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float); // 8
