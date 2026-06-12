@@ -32,11 +32,11 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitFloatTo16 = {
 
 
 template <typename PARAM_T>
-__aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const GlobalTensor<PARAM_T>& srcTensor, int64_t dataLen, 
+__aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const GlobalTensor<PARAM_T>& srcTensor, int64_t dataLen, int64_t repTime
                                 uint32_t ubStride, uint32_t gmStride)
 {
     DataCopyExtParams copyParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(dataLen * sizeof(PARAM_T)), static_cast<uint32_t>(0),
+        static_cast<uint16_t>(repTime), static_cast<uint32_t>(dataLen * sizeof(PARAM_T)), static_cast<uint32_t>(0),
         static_cast<uint32_t>(gmStride), static_cast<uint32_t>(ubStride)};
     DataCopyPadExtParams<PARAM_T> padParams = {
         false, static_cast<uint8_t>(0), static_cast<uint8_t>(0), static_cast<PARAM_T>(0)};
@@ -44,18 +44,18 @@ __aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const Globa
 }
 
 template <typename PARAM_T>
-__aicore__ inline void CopyOut(const GlobalTensor<PARAM_T>& dstTensor, const LocalTensor<PARAM_T>& srcTensor, int64_t dataLen, 
+__aicore__ inline void CopyOut(const GlobalTensor<PARAM_T>& dstTensor, const LocalTensor<PARAM_T>& srcTensor, int64_t dataLen, int64_t repTime
                                 uint32_t ubStride, uint32_t gmStride)
 {
     DataCopyExtParams copyParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(dataLen * sizeof(PARAM_T)), static_cast<uint32_t>(0),
+        static_cast<uint16_t>(repTime), static_cast<uint32_t>(dataLen * sizeof(PARAM_T)), static_cast<uint32_t>(0),
         static_cast<uint32_t>(gmStride), static_cast<uint32_t>(ubStride)};
     DataCopyPad(dstTensor, srcTensor, copyParams);
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void ComputeProcess1 (LocalTensor<X_T>& xLocal, LocalTensor<X_T>& xCastLocal, LocalTensor<GRADHIN_T>& gradHInLocal, LocalTensor<U>& hPreLocal,
-    LocalTensor<U>& gradHPreLocal, LocalTensor<U>& gradXFromHinLocal, LocalTensor<float32>& gradHPostLocal, int64_t bsLen, int64_t cLen, int64_t n)
+    LocalTensor<U>& gradHPreLocal, LocalTensor<U>& gradXFromHinLocal, int64_t bsLen, int64_t cLen, int64_t n)
 {
     __local_mem__ X_T* xAddr = (__ubuf__ X_T*)xLocal.GetPhyAddr();
     __local_mem__ U* xCastAddr = (__ubuf__ U*)xCastLocal.GetPhyAddr();
@@ -74,6 +74,10 @@ __aicore__ inline void ComputeProcess1 (LocalTensor<X_T>& xLocal, LocalTensor<X_
         AscendC::MicroAPI::RegTensor<U> gradHInCastReg;
         AscendC::MicroAPI::RegTensor<U> gradHPreReg;
         AscendC::MicroAPI::RegTensor<U> gradXFromHinReg;
+        AscendC::MicroAPI::RegTensor<U> gradHPreRegSumReg;
+        AscendC::MicroAPI::MaskReg valueMaskReg;
+        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::VL1>();
+
         uint32_t maskLen = static_cast<uint32_t>(cLen);
         for (uint16_t i = 0; i < bsLen; i++) {
             auto gradHInStart = gradHInAddr + i * cLen;
@@ -86,16 +90,24 @@ __aicore__ inline void ComputeProcess1 (LocalTensor<X_T>& xLocal, LocalTensor<X_
                     U hPre = *(hPreAddr + i * n + k);
                     auto xCastStart = xCastAddr + i * k *cLen;
                     auto xAddrStart = xAddr + i * k * cLen;
+                    auto gradXFromHinStart = gradXFromHinAddr + i * k * cLen;
                     AscendC::MicroAPI::AddrReg xAddrOfst = AscendC::MicroAPI::CreateAddrReg<X_T>(j, vfLen);
                     AscendC::MicroAPI::AddrReg xCastAddrOfst = AscendC::MicroAPI::CreateAddrReg<U>(j, vfLen);
+                    AscendC::MicroAPI::AddrReg gradXFromHinAddrOfst = AscendC::MicroAPI::CreateAddrReg<U>(j, vfLen);
                     AscendC::MicroAPI::DataCopy<X_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(xReg, xAddrStart, xAddrOfst);
                     AscendC::MicroAPI::Cast<U, X_T, castTrait16ToFloat>(xCastReg, xReg, valueMaskReg);
                     AscendC::MicroAPI::Mul(gradHPreReg, xCastReg, gradHInCastReg, valueMaskReg);
                     AscendC::MicroAPI::Muls(gradXFromHinReg, gradHPreReg, hPre, valueMaskReg);
-                    
+
+                    AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float>(gradHPreReg, gradHPreReg, valueMaskReg);
+                    AscendC::MicroAPI::Add(gradHPreRegSumReg, gradHPreReg, OneMaskReg);
+
+                    AscendC::MicroAPI::DataCopy(gradXFromHinStart, gradXFromHinReg, gradXFromHinAddrOfst, valueMaskReg);
                     AscendC::MicroAPI::DataCopy(xCastStart, xCastReg, xCastAddrOfst, valueMaskReg);
+                    AscendC::MicroAPI::DataCopy(xCastStart, gradHPreRegSumReg, xCastAddrOfst, OneMaskReg);
                 }
             }
+            AscendC::MicroAPI::DataCopy(gradHPreStart, gradXFromHinSumReg, gradHPreAddrOfst, OneMaskReg);
         }
     }
 }
