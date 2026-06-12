@@ -198,5 +198,5 @@ def check_result(expect, npu_result):
                     (max_error, max_diff_hd))
     if result == "Failed":
         display_error_output_torch(real_data, data_compe,
-                                err_idx, err_diff[0:max_error_idx])
+                                err_idx[0:max_error_idx], err_diff[0:max_error_idx])
     return result, fulfill_percent
