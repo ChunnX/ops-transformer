@@ -441,7 +441,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
             commEngine = Mc2Comm::ENGINE_CCU;
         }
     }
-    OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
+    OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s.", commMode_);
     mc2CcTilingConfig.SetCommEngine(commEngine);
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ?
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
