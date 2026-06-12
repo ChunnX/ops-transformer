@@ -294,7 +294,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     OP_CHECK_IF(dSizeV > dSize,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
                 std::to_string(dSizeV).c_str(),
-                "The value of input dSize must be greater than the query dSize"),
+                "The value of dSizeV must be less than or equal to the dSize of query/key"),
             return false);
     OP_CHECK_IF(n1Size % n2Size != 0,
                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "head_num",
@@ -373,7 +373,8 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
         t1Size < accumS1 || t2Size < accumS2,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "query and key",
             (std::to_string(t1Size) + ", " + std::to_string(t2Size)).c_str(),
-            "The dim of query and key must be greater than the sum of actual_seq_qlen and actual_seq_kvlen"),
+            "The dim of query and key must be greater than or equal to "
+            "the sum of actual_seq_qlen and actual_seq_kvlen"),
         return false);
     uint32_t firstValidIndex = 0;
     uint32_t lastValidIndex = static_cast<uint32_t>(bSize - 1);
@@ -675,7 +676,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndPseOptionalInput(PseShapeType &
         std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
         std::string reason = "The shape of pse shape must be [B, N1, S1, S2], "
             "[B, N1, 1, S2] or [B, N1, ALIBI_S, S2] in TND mode";
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(),
             "pse shape", pseShapeStr.c_str(), reason);
         return false;
     }
@@ -711,7 +712,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
             std::string pseShapeStr = Ops::Base::ToString(pseShapeDims);
             std::string reason = "The S1 dim of input pse shape must be greater than " +
                 std::to_string(static_cast<int64_t>(PSE_ALIBI_S_SIZE));
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "pse shape", pseShapeStr.c_str(), reason.c_str());
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "pse shape", pseShapeStr.c_str(), reason.c_str());
             return false;
         }
         pseShapeType = PseShapeType::PSE_B_N2_G_S1_S2;
@@ -724,7 +725,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
         std::string expected3 = "[" + std::to_string(pseBSize) + ", " + std::to_string(n1Size) + ", " +
             std::to_string(static_cast<int64_t>(PSE_ALIBI_S_SIZE)) + ", " + std::to_string(s2Size) + "]";
         std::string reason = "The shape of real_shift must be " + expected1 + ", " + expected2 + " or " + expected3;
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "real_shift", pseShapeStr.c_str(), reason.c_str());
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "real_shift", pseShapeStr.c_str(), reason.c_str());
         return false;
     }
     return true;
@@ -796,7 +797,7 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimAttenOptionalInput(AttenMaskSh
             std::to_string(n1Size) + ", " + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
         std::string reason = "The shape of atten_mask must be " +
             expected1 + ", " + expected2 + " or " + expected3;
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(),
             "atten_mask", attenMaskShapeStr.c_str(), reason.c_str());
         return false;
     }
@@ -818,7 +819,7 @@ bool FlashAttentionScoreTilingRegbase::Analyze2DimAttenOptionalInput(AttenMaskSh
         std::string expected1 = "[" + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
         std::string expected2 = "[" + std::to_string(accumS1) + ", " + std::to_string(accumS2) + "]";
         std::string reason = "The shape of atten_mask must be " + expected1 + " or " + expected2;
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "atten_mask",
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "atten_mask",
             attenMaskShapeStr.c_str(), reason.c_str());
         return false;
     }
@@ -832,7 +833,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInputDimNumLimit(cons
          attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE)) &&
         ((attenMaskStorageShape.GetDim(attenMaskDimNum - ATTEN_MASK_S1_REV_INDEX) != ATTEN_MASK_COMPRESS_LIMIT) ||
          (attenMaskStorageShape.GetDim(attenMaskDimNum - 1) != ATTEN_MASK_COMPRESS_LIMIT))) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(),
             "atten_mask", Ops::Base::ToString(attenMaskStorageShape).c_str(),
             "The shape of input atten_mask should be [2048,2048] when the atten_mask mode is compression mode");
         return false;
@@ -841,7 +842,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInputDimNumLimit(cons
         ((attenMaskStorageShape.GetDim(attenMaskStorageShape.GetDimNum() - ATTEN_MASK_S1_REV_INDEX) !=
           ATTEN_MASK_COMPRESS_PREFIX_LIMIT) ||
          (attenMaskStorageShape.GetDim(attenMaskStorageShape.GetDimNum() - 1) != ATTEN_MASK_COMPRESS_LIMIT))) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "atten_mask",
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "atten_mask",
             Ops::Base::ToString(attenMaskStorageShape).c_str(),
             "The shape of input atten_mask should be [3072,2048]  when the atten_mask mode is compression mode");
         return false;
@@ -877,7 +878,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeAttenOptionalInput()
                        return false);
         } else {
             OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "atten_mask",
-                "2D or 4D", (std::to_string(attenMaskDimNum) + "D").c_str());
+                (std::to_string(attenMaskDimNum) + "D").c_str(), "2D or 4D");
             return false;
         }
 
@@ -926,7 +927,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDropOptionalInput()
         if (dropMaskShapeSize < shapeSize) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(context_->GetNodeName(), "drop_mask",
                 std::to_string(dropMaskShapeSize).c_str(),
-                "The shape size of drop_mask must be less than " + std::to_string(shapeSize));
+                "The shape size of drop_mask must not be less than " + std::to_string(shapeSize));
             return false;
         }
         dropMaskOuter = true;
@@ -964,7 +965,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
         int64_t dimValue3 = dScaleQShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_3);
         OP_CHECK_IF(dimValue0 != bSize || dimValue1 != n1Size ||
         (dimValue2 != (s1Size + QUANT_BLOCK_SIZE - 1) / QUANT_BLOCK_SIZE) || dimValue3 != D_SCALE_DIM_NUM_1,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "d_scale_q",
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "d_scale_q",
                     ("[" + std::to_string(dimValue0) + "," + std::to_string(dimValue1) + "," +
                      std::to_string(dimValue2) + "," + std::to_string(dimValue3) + "]").c_str(),
                     "The shape of input d_scale_q must be [B, N1, ceil(S1/128), 1]"),
@@ -992,7 +993,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
         
         OP_CHECK_IF(dimValue0 != bSize || dimValue1 != n2Size ||
             (dimValue2 != (s2Size + QUANT_K_BLOCK_SIZE  - 1) / QUANT_K_BLOCK_SIZE ) || dimValue3 != D_SCALE_DIM_NUM_1,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "d_scale_k",
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "d_scale_k",
                         ("[" + std::to_string(dimValue0) + "," + std::to_string(dimValue1) + "," +
                          std::to_string(dimValue2) + "," + std::to_string(dimValue3) + "]").c_str(),
                         "The shape of input d_scale_k must be [B, N2, ceil(S2/256), 1]"),
@@ -1019,7 +1020,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
         int64_t dimValue3 = dScaleVShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_3);
         OP_CHECK_IF(dimValue0 != bSize || dimValue1 != n2Size ||
             (dimValue2 != (s2Size + QUANT_V_BLOCK_SIZE - 1) / QUANT_V_BLOCK_SIZE) || dimValue3 != D_SCALE_DIM_NUM_1,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "d_scale_v",
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "d_scale_v",
                         ("[" + std::to_string(dimValue0) + "," + std::to_string(dimValue1) + "," +
                          std::to_string(dimValue2) + "," + std::to_string(dimValue3) + "]").c_str(),
                         "The shape of input d_scale_v must be [B, N2, ceil(S2/512), 1]"),
@@ -1071,7 +1072,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeSinkOptionalInput()
                 sinkShape += ", ";
             }
         }
-        OP_CHECK_IF(dimNum != 1, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "sink",
+        OP_CHECK_IF(dimNum != 1, OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "sink",
             ("[" + sinkShape + "]").c_str(),
             "The shape of input sink must be 1D format [n,]"),
             return false);
