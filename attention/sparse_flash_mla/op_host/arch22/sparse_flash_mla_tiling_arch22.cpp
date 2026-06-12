@@ -53,8 +53,8 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
 
 const std::map<std::string, std::vector<SMLALayout>> LAYOUT_SUPPORT_MAP = {
     {QUERY_NAME,            {SMLALayout::BSND, SMLALayout::TND}},
-    {ORI_KV_NAME,               {SMLALayout::PA_BNBD, SMLALayout::BSND, SMLALayout::TND}},
-    {CMP_KV_NAME,             {SMLALayout::PA_BNBD, SMLALayout::BSND, SMLALayout::TND}},
+    {ORI_KV_NAME,               {SMLALayout::PA_BBND, SMLALayout::BSND, SMLALayout::TND}},
+    {CMP_KV_NAME,             {SMLALayout::PA_BBND, SMLALayout::BSND, SMLALayout::TND}},
     {ATTEN_OUT_NAME,         {SMLALayout::BSND, SMLALayout::TND}},
     {ORI_SPARSE_INDICES,         {SMLALayout::BSND, SMLALayout::TND}},
     {CMP_SPARSE_INDICES,         {SMLALayout::BSND, SMLALayout::TND}},
@@ -99,13 +99,13 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
 static const std::map<SMLALayout, std::vector<SMLAAxis>> SMLA_LAYOUT_AXIS_MAP = {
     {SMLALayout::BSND, {SMLAAxis::B, SMLAAxis::S, SMLAAxis::N, SMLAAxis::D}},
     {SMLALayout::TND, {SMLAAxis::T, SMLAAxis::N, SMLAAxis::D}},
-    {SMLALayout::PA_BNBD, {SMLAAxis::Bn, SMLAAxis::Bs, SMLAAxis::N, SMLAAxis::D}},
+    {SMLALayout::PA_BBND, {SMLAAxis::Bn, SMLAAxis::Bs, SMLAAxis::N, SMLAAxis::D}},
 };
 
 static const std::map<SMLALayout, size_t> SMLA_LAYOUT_DIM_MAP = {
     {SMLALayout::BSND, DIM_NUM_FOUR},
     {SMLALayout::TND, DIM_NUM_THREE},
-    {SMLALayout::PA_BNBD, DIM_NUM_FOUR},
+    {SMLALayout::PA_BBND, DIM_NUM_FOUR},
 };
 
 static std::string SMLADataTypeToSerialString(ge::DataType type)
@@ -128,7 +128,7 @@ ge::graphStatus SMLAInfoParser::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr, OP_LOGE(opName_, "tensor of ori_Kv is nullptr"),
                 return ge::GRAPH_FAILED);
-    if (kvLayout_ == SMLALayout::PA_BNBD) {
+    if (kvLayout_ == SMLALayout::PA_BBND) {
             OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr, OP_LOGE(opName_, "tensor of ori_block_table is nullptr"),
                 return ge::GRAPH_FAILED);
     }
@@ -348,7 +348,7 @@ ge::graphStatus SMLAInfoParser::GetQueryAndOutLayout()
 ge::graphStatus SMLAInfoParser::GetKvLayout()
 {
     const map<string, SMLALayout> layoutKVMap = {
-        {"PA_BNBD",     SMLALayout::PA_BNBD},
+        {"PA_BBND",     SMLALayout::PA_BBND},
         {"BSND",     SMLALayout::BSND},
         {"TND",     SMLALayout::TND},
     };
@@ -624,7 +624,7 @@ ge::graphStatus SMLAInfoParser::GetS2Size()
         }
         return ge::GRAPH_FAILED;
     }
-    return (kvLayout_ == SMLALayout::PA_BNBD) ? GetS2SizeForPageAttention() : GetS2SizeForTND();
+    return (kvLayout_ == SMLALayout::PA_BBND) ? GetS2SizeForPageAttention() : GetS2SizeForTND();
 }
 
 ge::graphStatus SMLAInfoParser::GetQHeadDim()
@@ -685,11 +685,11 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             actualLenDimsQ_ = opParamInfo_.seqUsedQ.tensor->GetShapeSize();
         }
     }
-    if (kvLayout_ != SMLALayout::PA_BNBD && kvLayout_ != SMLALayout::BSND && kvLayout_ != SMLALayout::TND) {
-        OP_LOGE(opName_, "ori_kv and cmp_kv only support PA_BNBD, BSND and TND layout.");
+    if (kvLayout_ != SMLALayout::PA_BBND && kvLayout_ != SMLALayout::BSND && kvLayout_ != SMLALayout::TND) {
+        OP_LOGE(opName_, "ori_kv and cmp_kv only support PA_BBND, BSND and TND layout.");
         return ge::GRAPH_FAILED;
     }
-    if (kvLayout_ == SMLALayout::PA_BNBD) {
+    if (kvLayout_ == SMLALayout::PA_BBND) {
         if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
             if (qLayout_ == SMLALayout::BSND){
                 if (opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != bSize_) {
@@ -712,7 +712,7 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
                         OP_LOGE(opName_, "seqused_ori_kv cannot be empty tensor."),
                         return ge::GRAPH_FAILED);
         } else {
-                OP_LOGE(opName_, "When kv layout is PA_BNBD, input sequsedOriKv must be provided");
+                OP_LOGE(opName_, "When kv layout is PA_BBND, input sequsedOriKv must be provided");
                 return ge::GRAPH_FAILED;
         }
     } else if (kvLayout_ == SMLALayout::TND) {
@@ -770,7 +770,7 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.outputType = outputType_;
     smlaInfo.perfMode = perfMode_;
 
-    if (kvLayout_ == SMLALayout::PA_BNBD) {
+    if (kvLayout_ == SMLALayout::PA_BBND) {
         smlaInfo.totalBlockNum = (opParamInfo_.oriKv.tensor != nullptr) ?
             opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0) : 0;
     }
@@ -1277,7 +1277,7 @@ ge::graphStatus SMLATilingCheck::CheckExistenceByMap(std::map<std::string, const
 
 ge::graphStatus SMLATilingCheck::CheckParaExistence() const
 {
-    if (kvLayout_ != SMLALayout::PA_BNBD) {
+    if (kvLayout_ != SMLALayout::PA_BBND) {
         return ge::GRAPH_SUCCESS;
     }
     std::map<std::string, const void *> ParamExistMap = {

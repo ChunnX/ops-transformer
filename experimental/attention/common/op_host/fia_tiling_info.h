@@ -76,6 +76,7 @@ constexpr int32_t SPARSE_MODE_ALL_MASK = 1;
 constexpr int32_t SPARSE_MODE_LEFT_UP = 2;
 constexpr int32_t SPARSE_MODE_RIGHT_DOWN = 3;
 constexpr int32_t SPARSE_MODE_BAND = 4;
+constexpr int32_t SPARSE_MODE_INIT_SWA = 5;
 constexpr int32_t SPARSE_MODE_TREE = 9;
 constexpr int32_t SPARSE_MODE_INT_MAX = 2147483647;
 
@@ -177,10 +178,12 @@ enum class FiaTemplateId : uint32_t {
     HIGH_PERFORMANCE_MLA = 5
 };
 
-enum class FiaFullQuantMode : uint32_t{
+enum class FiaFullQuantMode : uint32_t {
     NO_FULL_QUANT = 0,
-    PER_TENSOR_FULL_QUANT = 1,
-    PER_BLOCK_FULL_QUANT = 2,
+    QKV_PER_TENSOR_FULL_QUANT = 1,
+    QKV_PER_BLOCK_FULL_QUANT = 2,
+    QKV_MXFP8_FULL_QUANT = 3,
+    Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT = 4,
 };
 
 std::string LayoutToSerialString(FiaLayout layout);

@@ -6,7 +6,7 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
@@ -268,7 +268,7 @@ aclnnStatus aclnnMoeDistributeCombineSetup(
     </tr>
     </tbody></table>
   
-  - Ascend 950PR/Ascend 950DT：
+  - Ascend 950DT：
     - 不支持共享专家场景。
     - epWorldSize当前取值仅支持2、8。
     - moeExpertNum表示MoE专家数量，当前仅能传入32。
@@ -392,12 +392,14 @@ aclnnStatus aclnnMoeDistributeCombineSetup(
   - 当前不支持共享专家。sharedExpertNum和sharedExpertRankNum当前仅支持0。
 - HCCL_BUFFSIZE：
   调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
-  - Ascend 950PR/Ascend 950DT：
+  - Ascend 950DT：
     - 要求 >= 2且满足>= 4 \* (localExpertNum \* maxBs \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBs \* Align512(2 \* H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32。
   - Atlas A3 训练系列产品/Atlas A3 推理系列产品：
     - 要求 >= 2且满足>= 2 \* (localExpertNum \* maxBs \* epWorldSize \* Align512(Align32(2 \* H) + 44) + (K + sharedExpertNum) \* maxBs \* Align512(2 \* H))，localExpertNum需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) \* 512，Align32(x) = ((x + 32 - 1) / 32) \* 32。
 - 通信域使用约束：
   - 一个模型中的aclnnMoeDistributeDispatchSetup、aclnnMoeDistributeDispatchTeardown、aclnnMoeDistributeCombineSetup、aclnnMoeDistributeCombineTeardown仅支持相同EP通信域，且该通信域中不允许有其他算子。
+- 通信方式约束：
+    - <term>Ascend 950DT</term>：仅支持URMA通信。
 
 ## 调用示例
 
@@ -436,7 +438,7 @@ aclnnStatus aclnnMoeDistributeCombineSetup(
     ```
     单机16卡场景则无需修改。
 
-- Ascend 950PR/Ascend 950DT：
+- Ascend 950DT：
 
     示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 

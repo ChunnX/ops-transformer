@@ -276,8 +276,8 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
                                           kDequantScale,
                                           vDequantScale,
                                           attentionOut,
-                                          lse,
                                           workspace,
+                                          lse,
                                           tiling};
     using BsaFullQuantKernelArch35 = BsaFullQuantKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax,
                                                               BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat>;

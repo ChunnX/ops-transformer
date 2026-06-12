@@ -136,21 +136,30 @@ public:
     }
 
     __aicore__ inline
-    void getKVOffset(uint32_t &kOffset, uint32_t nIdx, uint32_t &strideKV)
+    void getKVOffset(uint64_t &kOffset, uint32_t nIdx, uint32_t &strideKV)
     {
         kOffset = nIdx * maxKVStackLen * strideKV;
     }
 
     __aicore__ inline
-    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t blockStartOffset, 
-        uint32_t nowNIdx, uint32_t &strideKV, uint32_t &blockSize)
+    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t blockStartOffset,
+        uint32_t nowNIdx, uint32_t &strideKV, uint32_t &blockSize, uint64_t valueBnStride)
     {
         uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-        if constexpr (std::is_same_v<LayoutB, layout::zN>) {
-            constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
-            kOffset = blockTableId * blockSize * strideKV + blockStartOffset * ELE_NUM_PER_C0;
+        if (valueBnStride != 0) {
+            if constexpr (std::is_same_v<LayoutB, layout::zN>) {
+                constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
+                kOffset = blockTableId * valueBnStride + blockStartOffset * ELE_NUM_PER_C0;
+            } else {
+                kOffset = blockTableId * valueBnStride + blockStartOffset * strideKV;
+            }
         } else {
-            kOffset = blockTableId * blockSize * strideKV + blockStartOffset * strideKV;
+            if constexpr (std::is_same_v<LayoutB, layout::zN>) {
+                constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
+                kOffset = blockTableId * blockSize * strideKV + blockStartOffset * ELE_NUM_PER_C0;
+            } else {
+                kOffset = blockTableId * blockSize * strideKV + blockStartOffset * strideKV;
+            }
         }
     }
 
@@ -184,13 +193,13 @@ public:
         AscendC::GlobalTensor<int32_t> gBlockTable,
         LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
         uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV,
-        uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag)
+        uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag, uint64_t valueBnStride)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t embed = actualOriShape[COORD_DIM1];
         uint32_t stackSeqTile = actualOriShape[COORD_DIM2];
         GemmCoord actualShape{rowNum, embed, 0};
-        uint32_t gBOffset = 0;
+        uint64_t gBOffset = 0;
 
         LayoutBInL1 layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(stackSeqTile, embed);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
@@ -204,7 +213,7 @@ public:
                 uint32_t nowLen = (curBlockIdx < (curBlockTotalNum-1)) ? (blockSize - blockStartOffset) : (blockEnd - blockStartOffset);
                 uint32_t nowNIdx = nIdx * maxKVStackLen / blockSize + curBlockIdx;
                 getBlockShape(actualShape, nowLen);
-                getKVOffset(gBlockTable, gBOffset, blockStartOffset, nowNIdx, strideKV, blockSize);
+                getKVOffset(gBlockTable, gBOffset, blockStartOffset, nowNIdx, strideKV, blockSize, valueBnStride);
                 auto layoutBTile = layoutB.GetTileLayout(MakeCoord(actualShape.k(), actualShape.n()));
                 uint32_t curBlockSize = (curBlockIdx > 0) ? ((curBlockIdx - 1) * blockSize + blockStart) : 0;
                 MatrixCoord l1BTileCoord{curBlockSize, 0};
