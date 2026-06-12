@@ -812,7 +812,7 @@ ge::graphStatus FiaInfoParser::GetBlockSize()
     }
     blockSize_ = *(opParamInfo_.blockSize);
     if (blockSize_ <= 0) {
-        OP_LOGE_WITH_INVALID_ATTR(opName_, "block_size", std::to_string(blockSize_).c_str(), "greater than 0");
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "block_size", std::to_string(blockSize_).c_str(), "greater than 0");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
