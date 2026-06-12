@@ -25,9 +25,9 @@ using namespace AscendC;
 namespace KvCompressEpilogOps {
 
 template <typename T0, typename U, typename T1>
-class KvCompressEpilogRegBase {
+class KvCompressEpilog {
 public:
-    __aicore__ inline KvCompressEpilogRegBase(TPipe* pipe) : pipe_(pipe) {}
+    __aicore__ inline KvCompressEpilog(TPipe* pipe) : pipe_(pipe) {}
 
     __aicore__ inline void Init(
         GM_ADDR x,
@@ -36,7 +36,7 @@ public:
         const KvCompressEpilogTilingData* tilingData);
 
     __aicore__ inline void Process();
-    
+
     __aicore__ inline void SetMaxValue();
 
 private:
@@ -67,7 +67,7 @@ private:
 // Template implementations
 
 template <typename T0, typename U, typename T1>
-__aicore__ inline void KvCompressEpilogRegBase<T0, U, T1>::Init(
+__aicore__ inline void KvCompressEpilog<T0, U, T1>::Init(
     GM_ADDR x,
     GM_ADDR slotMapping,
     GM_ADDR kvCache,
@@ -75,7 +75,7 @@ __aicore__ inline void KvCompressEpilogRegBase<T0, U, T1>::Init(
 {
         tilingData = tilingDataPtr;
         scalesAttr = tilingData->scalesAttr;
-        
+
         int64_t xGmBaseOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * tilingData->d;
 
         xGm.SetGlobalBuffer((__gm__ T0*)x + xGmBaseOffset);
@@ -84,14 +84,14 @@ __aicore__ inline void KvCompressEpilogRegBase<T0, U, T1>::Init(
 
         pipe_->InitBuffer(xQue, 2, tilingData->rowFactor * RoundUp<T0>(tilingData->d) * sizeof(T0));
         pipe_->InitBuffer(kvCacheQue, 2, tilingData->rowFactor * RoundUp<T1>(tilingData->kvCacheCol) * sizeof(T1));
-        
+
         pipe_->InitBuffer(indexBuf, RoundUp<U>(tilingData->rowFactor) * sizeof(U));
         indexLocal = indexBuf.Get<U>();
         AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 }
 
 template <typename T0, typename U, typename T1>
- __aicore__ inline void KvCompressEpilogRegBase<T0, U, T1>::Process()
+ __aicore__ inline void KvCompressEpilog<T0, U, T1>::Process()
     {
         SetMaxValue();
         int64_t rowOuterLoop =
@@ -103,7 +103,8 @@ template <typename T0, typename U, typename T1>
             xLocal = xQue.template AllocTensor<T0>();
             validIdx = 0;
             for (int64_t rowInnerIdx = 0; rowInnerIdx < curRowFactor; rowInnerIdx++) {
-                int32_t curSlotIdx = GetBlockIdx() * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->rowFactor + rowInnerIdx;
+                int32_t curSlotIdx = GetBlockIdx() * tilingData->rowOfFormerBlock +
+                    rowOuterIdx * tilingData->rowFactor + rowInnerIdx;
                 int32_t slot = static_cast<int32_t>(slotMappingGm.GetValue(curSlotIdx));
                 if (slot == -1) {
                     continue;
@@ -125,19 +126,19 @@ template <typename T0, typename U, typename T1>
             kvCacheLocal = kvCacheQue.template AllocTensor<T1>();
             if (tilingData->quantMode == QUANT_MODE_GROUP_QUANT_BF16) {
                 if (tilingData->roundScale == 1) {
-                    VFProcessFP8PerGroupQuant<T0, T1, true, true>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max, validIdx,
-                        tilingData->d, tilingData->concatCol, tilingData->padCol);
+                    VFProcessFP8PerGroupQuant<T0, T1, true, true>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max,
+                        validIdx, tilingData->d, tilingData->concatCol, tilingData->padCol);
                 } else {
-                    VFProcessFP8PerGroupQuant<T0, T1, false, true>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max, validIdx,
-                        tilingData->d, tilingData->concatCol, tilingData->padCol);
+                    VFProcessFP8PerGroupQuant<T0, T1, false, true>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max,
+                        validIdx, tilingData->d, tilingData->concatCol, tilingData->padCol);
                 }
             } else if (tilingData->quantMode == QUANT_MODE_GROUP_QUANT_E8M0) {
                 if (tilingData->roundScale == 1) {
-                    VFProcessFP8PerGroupQuant<T0, T1, true, false>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max, validIdx,
-                        tilingData->d, tilingData->concatCol, tilingData->padCol);
+                    VFProcessFP8PerGroupQuant<T0, T1, true, false>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max,
+                        validIdx, tilingData->d, tilingData->concatCol, tilingData->padCol);
                 } else {
-                    VFProcessFP8PerGroupQuant<T0, T1, false, false>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max, validIdx,
-                        tilingData->d, tilingData->concatCol, tilingData->padCol);
+                    VFProcessFP8PerGroupQuant<T0, T1, false, false>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max,
+                        validIdx, tilingData->d, tilingData->concatCol, tilingData->padCol);
                 }
             } else if (tilingData->quantMode == QUANT_MODE_HIFLOAT) {
                 // HiFloat8 whole-row quant: cache row = d hifloat8 bytes (kvCacheCol == d).
@@ -168,12 +169,12 @@ template <typename T0, typename U, typename T1>
     }
 
     template <typename T0, typename U, typename T1>
-    __aicore__ inline void KvCompressEpilogRegBase<T0, U, T1>::SetMaxValue()
+    __aicore__ inline void KvCompressEpilog<T0, U, T1>::SetMaxValue()
     {
         maxValue = static_cast<float>(1.0) / FP8_E4M3FN_MAX_VALUE;
         fp8Max = FP8_E4M3FN_MAX_VALUE;
         fp8Min = FP8_E4M3FN_MIN_VALUE;
     }
-    
+
 }
 #endif  // KV_COMPRESS_EPILOG_H

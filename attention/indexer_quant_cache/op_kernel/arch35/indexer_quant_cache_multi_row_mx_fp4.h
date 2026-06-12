@@ -47,7 +47,8 @@ public:
             indexerCompressCacheScaleQue, 2,
             tilingData->rowFactor * ScaleRowAlignMxFp4(tilingData->scaleCol) * sizeof(T2));
         pipe->InitBuffer(xQue, 2, tilingData->rowFactor * RoundUp<T0>(tilingData->d) * sizeof(T0));
-        pipe->InitBuffer(indexerCompressCacheQue, 2, tilingData->rowFactor * RoundUp<int8_t>(cacheCol) * sizeof(int8_t));
+        pipe->InitBuffer(
+            indexerCompressCacheQue, 2, tilingData->rowFactor * RoundUp<int8_t>(cacheCol) * sizeof(int8_t));
         pipe->InitBuffer(maxExpBuf, RoundUp<uint16_t>(tilingData->scaleCol) * sizeof(uint16_t));
         pipe->InitBuffer(halfScaleBuf, RoundUp<uint16_t>(tilingData->scaleCol) * sizeof(uint16_t));
         pipe->InitBuffer(indexBuf, RoundUp<int32_t>(tilingData->rowFactor) * sizeof(int32_t));
@@ -68,7 +69,8 @@ public:
             xLocal = xQue.template AllocTensor<T0>();
             validIdx = 0;
             for (int64_t rowInnerIdx = 0; rowInnerIdx < curRowFactor; rowInnerIdx++) {
-                int64_t curSlotIdx = curBlockIdx * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->rowFactor + rowInnerIdx;
+                int64_t curSlotIdx = curBlockIdx * tilingData->rowOfFormerBlock +
+                    rowOuterIdx * tilingData->rowFactor + rowInnerIdx;
                 int64_t slot = slotMappingGm.GetValue(curSlotIdx);
                 if (slot == -1) {
                     continue;

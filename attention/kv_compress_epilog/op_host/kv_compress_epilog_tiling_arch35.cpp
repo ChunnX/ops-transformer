@@ -27,12 +27,13 @@ static inline T CeilDiv(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd)));
 }
 
-int64_t RoundUp(int64_t x, int64_t y) {
+int64_t RoundUp(int64_t x, int64_t y)
+{
     return CeilDiv(x, y) * y;
 }
 
 
-ge::graphStatus KvCompressEpilogTiling::GetPlatformInfo()
+ge::graphStatus KvCompressEpilogTilingArch35::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -52,7 +53,7 @@ ge::graphStatus KvCompressEpilogTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvCompressEpilogTiling::GetInputShapes()
+ge::graphStatus KvCompressEpilogTilingArch35::GetInputShapes()
 {
     auto shapeX = context_->GetInputShape(X_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, shapeX);
@@ -77,7 +78,7 @@ ge::graphStatus KvCompressEpilogTiling::GetInputShapes()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvCompressEpilogTiling::GetAttributes()
+ge::graphStatus KvCompressEpilogTilingArch35::GetAttributes()
 {
     auto* attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr,
@@ -115,7 +116,7 @@ ge::graphStatus KvCompressEpilogTiling::GetAttributes()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvCompressEpilogTiling::GetDtypeInfo()
+ge::graphStatus KvCompressEpilogTilingArch35::GetDtypeInfo()
 {
     auto xDesc = context_->GetInputDesc(X_INPUT_INDEX);
     OP_CHECK_IF(xDesc == nullptr,
@@ -142,7 +143,7 @@ ge::graphStatus KvCompressEpilogTiling::GetDtypeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvCompressEpilogTiling::ValidateShapes()
+ge::graphStatus KvCompressEpilogTilingArch35::ValidateShapes()
 {
     OP_CHECK_IF(bs_ <= 0,
               OP_LOGE(context_->GetNodeName(), "input x first dimension must be positive, got %ld", bs_),
@@ -161,7 +162,7 @@ ge::graphStatus KvCompressEpilogTiling::ValidateShapes()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvCompressEpilogTiling::ValidateDtypes()
+ge::graphStatus KvCompressEpilogTilingArch35::ValidateDtypes()
 {
     // Output should have same dtype as input kv_compress_cache
     auto kvCacheOutputDesc = context_->GetOutputDesc(KV_COMPRESS_CACHE_OUTPUT_INDEX);
@@ -178,7 +179,7 @@ ge::graphStatus KvCompressEpilogTiling::ValidateDtypes()
     return ge::GRAPH_SUCCESS;
 }
 
-bool KvCompressEpilogTiling::GetCacheViewLayout(
+bool KvCompressEpilogTilingArch35::GetCacheViewLayout(
     size_t inputIdx, int64_t &blockSize, int64_t &rowStride, int64_t &blockStride)
 {
     // Scatter-style non-contiguous handling: recover the paged layout from the tensor's
@@ -207,7 +208,7 @@ bool KvCompressEpilogTiling::GetCacheViewLayout(
     return (blockSize > 0 && rowStride > 0 && blockStride > 0);
 }
 
-ge::graphStatus KvCompressEpilogTiling::GetKvCacheLayout()
+ge::graphStatus KvCompressEpilogTilingArch35::GetKvCacheLayout()
 {
     // kv_compress_cache is the in-place output (input 0 == output 0), a 4D paged cache
     // [blockNum, blockSize, 1, headDim]. The blockNum dimension is NON-CONTIGUOUS: its
@@ -246,7 +247,7 @@ ge::graphStatus KvCompressEpilogTiling::GetKvCacheLayout()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvCompressEpilogTiling::DoOpTiling()
+ge::graphStatus KvCompressEpilogTilingArch35::DoOpTiling()
 {
     rowOfFormerBlock_ = CeilDiv(bs_, static_cast<int64_t>(coreNum_));
     usedCoreNums_ = std::min(CeilDiv(bs_, rowOfFormerBlock_), static_cast<int64_t>(coreNum_));
@@ -282,16 +283,16 @@ ge::graphStatus KvCompressEpilogTiling::DoOpTiling()
     int64_t minRowPerCore = 1;
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
 
-    int64_t xSize = rowOnceLoop * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;       
-    int64_t ySize = rowOnceLoop * RoundUp(kvCacheCol_, 32) * 1 * DOUBLE_BUFFER;    
+    int64_t xSize = rowOnceLoop * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
+    int64_t ySize = rowOnceLoop * RoundUp(kvCacheCol_, 32) * 1 * DOUBLE_BUFFER;
     int64_t tmpBufferSize = RoundUp(rowOnceLoop, 8) * 4;
     int64_t totalSize = xSize + ySize + tmpBufferSize;
-    rowFactor_ = rowOnceLoop; 
+    rowFactor_ = rowOnceLoop;
     // d全载,尝试搬入更多的bs
     while (rowFactor_ <= rowOfFormerBlock_) {
-        xSize = rowFactor_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;     
-        ySize = rowFactor_ * RoundUp(kvCacheCol_, 32) * 1 * DOUBLE_BUFFER;    
-        tmpBufferSize = RoundUp(rowFactor_, 8) * 4; 
+        xSize = rowFactor_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
+        ySize = rowFactor_ * RoundUp(kvCacheCol_, 32) * 1 * DOUBLE_BUFFER;
+        tmpBufferSize = RoundUp(rowFactor_, 8) * 4;
         totalSize = xSize + ySize + tmpBufferSize;
         if (totalSize > ubSize_) {
             rowFactor_ = rowFactor_ - 1;
@@ -304,8 +305,7 @@ ge::graphStatus KvCompressEpilogTiling::DoOpTiling()
     rowLoopOfFormerBlock_ = CeilDiv(rowOfFormerBlock_, rowFactor_);
     rowLoopOfTailBlock_ = CeilDiv(rowOfTailBlock_, rowFactor_);
     tailRowFactorOfFormerBlock_ = rowOfFormerBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfFormerBlock_ % rowFactor_;
-    tailRowFactorOfTailBlock_ = rowOfTailBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfTailBlock_ % rowFactor_;  
-
+    tailRowFactorOfTailBlock_ = rowOfTailBlock_ % rowFactor_ == 0 ? rowFactor_ : rowOfTailBlock_ % rowFactor_;
 
     tilingData_.set_bs(bs_);
     tilingData_.set_d(d_);
@@ -330,7 +330,7 @@ ge::graphStatus KvCompressEpilogTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvCompressEpilogTiling::PostTiling()
+ge::graphStatus KvCompressEpilogTilingArch35::PostTiling()
 {
     // Set block dimension (number of AI cores to use)
     context_->SetBlockDim(usedCoreNums_);
@@ -350,7 +350,7 @@ ge::graphStatus KvCompressEpilogTiling::PostTiling()
               OP_LOGE(context_->GetNodeName(), "get tilingdata nullptr"),
               return ge::GRAPH_FAILED);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(),
-                            context_->GetRawTilingData()->GetCapacity());
+        context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 
     // Log tiling information
@@ -359,7 +359,7 @@ ge::graphStatus KvCompressEpilogTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void KvCompressEpilogTiling::DumpTilingInfo()
+void KvCompressEpilogTilingArch35::DumpTilingInfo()
 {
     std::ostringstream info;
     info << "bs: " << tilingData_.get_bs();
@@ -384,12 +384,12 @@ void KvCompressEpilogTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "%s", info.str().c_str());
 }
 
-uint64_t KvCompressEpilogTiling::GetTilingKey() const
+uint64_t KvCompressEpilogTilingArch35::GetTilingKey() const
 {
     return 0;
 }
 
-ge::graphStatus KvCompressEpilogTiling::GetShapeAttrsInfo()
+ge::graphStatus KvCompressEpilogTilingArch35::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr,
               OP_LOGE(context_->GetNodeName(), "context can not be nullptr"),
@@ -418,7 +418,7 @@ ge::graphStatus KvCompressEpilogTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvCompressEpilogTiling::RunTiling()
+ge::graphStatus KvCompressEpilogTilingArch35::RunTiling()
 {
     OP_CHECK_IF(GetPlatformInfo() != ge::GRAPH_SUCCESS,
               OP_LOGE(context_->GetNodeName(), "GetPlatformInfo failed"),
@@ -446,7 +446,7 @@ ge::graphStatus TilingForKvCompressEpilog(gert::TilingContext* context)
               OPS_REPORT_VECTOR_INNER_ERR("KvCompressEpilog", "Tiling context is null"),
               return ge::GRAPH_FAILED);
 
-    KvCompressEpilogTiling tiling(context);
+    KvCompressEpilogTilingArch35 tiling(context);
     return tiling.RunTiling();
 }
 

@@ -284,7 +284,8 @@ __aicore__ inline void VFProcessMxFp8InvScale(
                 Adds(scale5, scale4, 127, pregMerge);                       // exp_scale + 127
                 ShiftLefts((RegTensor<int32_t>&)scale, scale5, static_cast<int16_t>(23), pregMerge);  // 存储 scale
                 Sub(scale5, c127Int, scale4, pregMerge);                    // 127 - exp_scale
-                ShiftLefts((RegTensor<int32_t>&)invScale, scale5, static_cast<int16_t>(23), pregMerge);  // 2^(-exp_scale)
+                // 2^(-exp_scale)
+                ShiftLefts((RegTensor<int32_t>&)invScale, scale5, static_cast<int16_t>(23), pregMerge);
                 // e8m0 字节存储: 每 128-chunk 固定 4 字节 (越界块入本行 32B scratch padding, CopyOut 只取 scaleCol)
                 ShiftRights(scale2, (RegTensor<uint32_t>&)scale, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), pregMerge);
                 Cast<uint8_t, int32_t, castTraitU32toU8Even>(tmp5, (RegTensor<int32_t>&)scale2, pregMerge);
@@ -432,7 +433,8 @@ __aicore__ inline void VFProcessDynamicBlockQuant(
                 Add(rsExp, rsExp, rsSel, preg1);   // 存储 scale 的指数字段 (scale = 2^(rsExp-127))
                 ShiftLefts((RegTensor<int32_t>&)scale, (RegTensor<int32_t>&)rsExp, static_cast<int16_t>(23), preg1);
                 Sub((RegTensor<int32_t>&)rsInvExp, (RegTensor<int32_t>&)rs254, (RegTensor<int32_t>&)rsExp, preg1);
-                ShiftLefts((RegTensor<int32_t>&)invScale, (RegTensor<int32_t>&)rsInvExp, static_cast<int16_t>(23), preg1);
+                ShiftLefts((RegTensor<int32_t>&)invScale, (RegTensor<int32_t>&)rsInvExp,
+                    static_cast<int16_t>(23), preg1);
             }
             DataCopy<float, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
                 scaleLocalAddr + i * scaleRowAlign, scale, preg1);

@@ -151,8 +151,9 @@ __aicore__ inline void StoreOutputData(
 
 template <typename T0, typename T1, bool roundScale = true, bool castBf16 = false>
 __aicore__ inline void VFProcessFP8PerGroupQuant(
-    const LocalTensor<T1>& yLocal, const LocalTensor<T0>& xLocal, 
-    float coeff, float fp8Min, float fp8Max, const uint16_t curRowNum, const uint32_t curColNum, const uint32_t concatColNum, const uint32_t padColNum) 
+    const LocalTensor<T1>& yLocal, const LocalTensor<T0>& xLocal,
+    float coeff, float fp8Min, float fp8Max, const uint16_t curRowNum, const uint32_t curColNum,
+    const uint32_t concatColNum, const uint32_t padColNum)
 {
     __local_mem__ T1* yLocalAddr = (__local_mem__ T1*)yLocal.GetPhyAddr();
     __local_mem__ T0* xLocalAddr = (__local_mem__ T0*)xLocal.GetPhyAddr();
@@ -215,7 +216,7 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
         for (uint16_t i = 0; i < curRowNum; i++) {
             // cat rope
             __local_mem__ T0* rowRopeXLocalAddr = xLocalAddr + i * curColNumAlign + quantColNum;
-            
+
             LoadUnAlignPre(ureg0, rowRopeXLocalAddr);
             LoadUnAlign(ropeReg, ureg0, rowRopeXLocalAddr, 64);
             DataCopy(ropeYLocalAddr + i * dstCurColNumAlign / 2, ropeReg, pregRope);
@@ -229,12 +230,14 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
                 Maxs(max2, max0, static_cast<float>(1e-4), pregMerge);
                 Muls(max2, max2, coeff, pregMerge);
                 if constexpr (roundScale) {
-                    ShiftRights(vreg1, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), pregMerge);
+                    ShiftRights(vreg1, (RegTensor<uint32_t> &)max2,
+                        static_cast<int16_t>(FAST_LOG_SHIFT_BITS), pregMerge);
                     And(vreg2, (RegTensor<uint32_t> &)max2, tmp1, pregMerge);
                     Compare<uint32_t, AscendC::CMPMODE::NE>(cmpMask, vreg2, zero, pregMerge);
                     Select(vreg4, one, zero, cmpMask);
                     Add(vreg1, vreg1, vreg4, pregMerge);
-                    ShiftLefts((RegTensor<int32_t> &)max2, (RegTensor<int32_t> &)vreg1, static_cast<int16_t>(23), pregMerge);
+                    ShiftLefts((RegTensor<int32_t> &)max2, (RegTensor<int32_t> &)vreg1,
+                        static_cast<int16_t>(23), pregMerge);
                 }
                 Duplicate(dupScale, max2, pregMain);
                 Div(x0, x0, dupScale, pregLoop);
@@ -251,10 +254,14 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
                 ShiftRights(scaleTmp0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                 if constexpr (castBf16) {
                     Cast<uint16_t, uint32_t, castTraitU32toU16Even>(scaleTmp1Bf16, scaleTmp0, preg1);
-                    DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B16>(scaleLocalBf16Addr + (((quantColNum + ropeNum + i * dstCurColNumAlign) >> 1) + j), (RegTensor<bfloat16_t> &)scaleTmp1Bf16, preg1);
+                    DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B16>(
+                        scaleLocalBf16Addr + (((quantColNum + ropeNum + i * dstCurColNumAlign) >> 1) + j),
+                        (RegTensor<bfloat16_t> &)scaleTmp1Bf16, preg1);
                 } else {
                     Cast<uint8_t, uint32_t, castTraitB322B8Even>(scaleTmp1, scaleTmp0, preg1);
-                    DataCopy<T1, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B8>(scaleLocalAddr + quantColNum + ropeNum + j + i * dstCurColNumAlign, (RegTensor<T1>&)scaleTmp1, preg1);
+                    DataCopy<T1, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B8>(
+                        scaleLocalAddr + quantColNum + ropeNum + j + i * dstCurColNumAlign,
+                        (RegTensor<T1>&)scaleTmp1, preg1);
                 }
             }
             LocalMemBar<MemType::VEC_STORE, MemType::VEC_STORE>();

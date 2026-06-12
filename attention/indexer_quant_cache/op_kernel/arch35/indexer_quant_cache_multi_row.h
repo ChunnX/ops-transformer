@@ -65,7 +65,8 @@ public:
             xLocal = xQue.template AllocTensor<T0>();
             validIdx = 0;
             for (int64_t rowInnerIdx = 0; rowInnerIdx < curRowFactor; rowInnerIdx++) {
-                int64_t curSlotIdx = curBlockIdx * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->rowFactor + rowInnerIdx;
+                int64_t curSlotIdx = curBlockIdx * tilingData->rowOfFormerBlock +
+                    rowOuterIdx * tilingData->rowFactor + rowInnerIdx;
                 int64_t slot = slotMappingGm.GetValue(curSlotIdx);
                 if (slot == -1) {
                     continue;

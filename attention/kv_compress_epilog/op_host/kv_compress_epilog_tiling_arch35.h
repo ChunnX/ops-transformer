@@ -92,10 +92,10 @@ struct KvCompressEpilogCompileInfo {
 };
 
 // ---------- Tiling Class ----------
-class KvCompressEpilogTiling {
+class KvCompressEpilogTilingArch35 {
 public:
-    explicit KvCompressEpilogTiling(gert::TilingContext* context) : context_(context) {}
-    ~KvCompressEpilogTiling() = default;
+    explicit KvCompressEpilogTilingArch35(gert::TilingContext* context) : context_(context) {}
+    ~KvCompressEpilogTilingArch35() = default;
 
     ge::graphStatus RunTiling();
 
@@ -152,7 +152,7 @@ private:
     int64_t rowLoopOfTailBlock_ = 0;
     int64_t rowFactor_ = 0;
     int64_t tailRowFactorOfFormerBlock_ = 0;
-    int64_t tailRowFactorOfTailBlock_= 0;
+    int64_t tailRowFactorOfTailBlock_ = 0;
 
     // Attributes
     int64_t quantGroupSize_ = DEFAULT_QUANT_GROUP_SIZE;

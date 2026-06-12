@@ -78,7 +78,7 @@ public:
     {
     }
     ~IndexerQuantCacheTiling() = default;
-    
+
     ge::graphStatus GetPlatformInfo();
     ge::graphStatus DoOpTiling();
     ge::graphStatus GetWorkspaceSize();
@@ -106,7 +106,7 @@ private:
     int64_t rowLoopOfTailBlock_ = 0;
     int64_t rowFactor_ = 0;
     int64_t tailRowFactorOfFormerBlock_ = 0;
-    int64_t tailRowFactorOfTailBlock_= 0;
+    int64_t tailRowFactorOfTailBlock_ = 0;
     int64_t quantMode_ = 1;
     float scalesAttr_ = 0;
     bool roundScale_ = true;

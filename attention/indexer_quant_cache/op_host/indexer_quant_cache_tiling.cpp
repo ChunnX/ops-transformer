@@ -29,13 +29,15 @@ int64_t CeilDiv(int64_t x, int64_t y)
     }
     return x;
 }
-int64_t DownAlign(int64_t x, int64_t y) {
+int64_t DownAlign(int64_t x, int64_t y)
+{
     if (y == 0) {
         return x;
     }
     return (x / y) * y;
 }
-int64_t RoundUp(int64_t x, int64_t y) {
+int64_t RoundUp(int64_t x, int64_t y)
+{
     return CeilDiv(x, y) * y;
 }
 
@@ -200,25 +202,29 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     // MX-FP8(mode0) 宽化按 128 元素读 x, x 输入 buffer 按 128 对齐 (与 kernel InitBuffer 保持一致);
     // 其余模式仍按 16 对齐。
     int64_t xAlign = (quantMode_ == MXFP8_QUANT_MODE) ? PER_BLOCK_FP16 : 16;
-    while (rowFactor_ <= rowOfFormerBlock_) {
-        int64_t xSize = rowFactor_ * RoundUp(d_, xAlign) * 2 * DOUBLE_BUFFER;
-        int64_t ySize = rowFactor_ * RoundUp(d_, 32) * 1 * DOUBLE_BUFFER;
-        int64_t scaleSize = rowFactor_ * RoundUp(scaleCol_, perBlockScaleElemNum) * scaleByteSize * DOUBLE_BUFFER;
-        int64_t tmpBufferSize = RoundUp(rowFactor_, 8) * 4;
+    // totalSize 随 rowFactor 单调递增, 故在 [rowOnceLoop, rowOfFormerBlock_] 内二分查找满足
+    // UB 约束的最大 rowFactor (与原线性扫描结果一致: 连最小值都放不下时取 rowOnceLoop-1)。
+    int64_t lo = rowOnceLoop;
+    int64_t hi = rowOfFormerBlock_;
+    rowFactor_ = lo - 1;
+    while (lo <= hi) {
+        int64_t mid = lo + (hi - lo) / 2;
+        int64_t xSize = mid * RoundUp(d_, xAlign) * 2 * DOUBLE_BUFFER;
+        int64_t ySize = mid * RoundUp(d_, BLOCK_SIZE) * 1 * DOUBLE_BUFFER;
+        int64_t scaleSize = mid * RoundUp(scaleCol_, perBlockScaleElemNum) * scaleByteSize * DOUBLE_BUFFER;
+        int64_t tmpBufferSize = RoundUp(mid, 8) * 4;
         // MX-FP8 两函数式额外的 fp32 中间 buffer + invScale 广播 buffer (单 buffer, 非 double)
         // invScale 每 128-chunk 固定 16 个 -> 每行 ceil(d/128)*16
         int64_t mxScratchSize = (quantMode_ == MXFP8_QUANT_MODE)
-            ? (rowFactor_ * RoundUp(d_, 8) * 4 + rowFactor_ * CeilDiv(d_, 128) * 16 * 4)
+            ? (mid * RoundUp(d_, 8) * 4 + mid * CeilDiv(d_, 128) * 16 * 4)
             : 0;
         int64_t totalSize = xSize + ySize + scaleSize + tmpBufferSize + mxScratchSize;
-        if (totalSize > ubSize_) {
-            rowFactor_ = rowFactor_ - 1;
-            break;
+        if (totalSize <= static_cast<int64_t>(ubSize_)) {
+            rowFactor_ = mid;   // 可行, 尝试更大的 rowFactor
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;       // 不可行, 缩小
         }
-        rowFactor_ = rowFactor_ + 1;
-    }
-    if (rowFactor_ > rowOfFormerBlock_) {
-        rowFactor_--;
     }
 
     rowLoopOfFormerBlock_ = CeilDiv(rowOfFormerBlock_, rowFactor_);

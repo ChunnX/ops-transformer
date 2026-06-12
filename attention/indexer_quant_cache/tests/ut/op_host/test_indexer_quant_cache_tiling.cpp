@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include <iostream>
+#include <limits>
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling_case_executor.h"
 
@@ -29,7 +30,7 @@ protected:
 
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_normal)
 {
-    gert::OptilingContextPara optilingContextPara("IndexerQuantCache",
+    gert::TilingContextPara optilingContextPara("IndexerQuantCache",
         {
             {{{2048, 128}, {2048, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
             {{{2048, 1}, {2048, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -44,14 +45,15 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_normal)
             {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-        }
+        },
+        nullptr, "Ascend950"
     );
-    ExecuteOptilingCase(optilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_mxfp8)
 {
-    gert::OptilingContextPara optilingContextPara("IndexerQuantCache",
+    gert::TilingContextPara optilingContextPara("IndexerQuantCache",
         {
             {{{2048, 128}, {2048, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
             {{{2048, 1}, {2048, 1}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
@@ -66,7 +68,8 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_mxfp8)
             {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-        }
+        },
+        nullptr, "Ascend950"
     );
-    ExecuteOptilingCase(optilingContextPara, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
