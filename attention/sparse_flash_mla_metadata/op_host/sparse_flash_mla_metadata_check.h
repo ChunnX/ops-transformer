@@ -91,7 +91,8 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
     }
     // num_heads_q [1, 128]
     if (numHeadsQ < SMLA_NUM_HEADS_Q_LOWER_BOUND || numHeadsQ > SMLA_NUM_HEADS_Q_UPPER_BOUND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should be [1, 128], but got %lld", numHeadsQ);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should be [%lld, %lld], but got %lld",
+            SMLA_NUM_HEADS_Q_LOWER_BOUND, SMLA_NUM_HEADS_Q_UPPER_BOUND, numHeadsQ);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // num_heads_kv: 1
@@ -141,8 +142,8 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
         }
         // cmp_ratio: 1~128
         if (cmpRatio < SMLA_CMP_RATIO_LOWER_BOUND || cmpRatio > SMLA_CMP_RATIO_UPPER_BOUND) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_ratio should be in [1, 128], but got %lld",
-                cmpRatio);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_ratio should be in [%lld, %lld], "
+                "but got %lld", SMLA_CMP_RATIO_LOWER_BOUND, SMLA_CMP_RATIO_UPPER_BOUND, cmpRatio);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
