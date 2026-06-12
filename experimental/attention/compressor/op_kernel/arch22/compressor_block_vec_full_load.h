@@ -185,7 +185,6 @@ private:
     // 临时tbuf
     TBuf<TPosition::VECCALC> tmpBuf1;
     TBuf<TPosition::VECCALC> tmpBuf2;
-    TBuf<TPosition::VECCALC> resultBuf_;
     // in queue
     TQue<QuePosition::VECIN, 1> inputQue1;
     TQue<QuePosition::VECIN, 1> inputQue2;
@@ -236,7 +235,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::InitBuffers(TPipe *p
     pipe->InitBuffer(tmpBuf1, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(tmpBuf2, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(outputQue1, 1, BUFFER_SIZE_BYTE_16K);
-    pipe->InitBuffer(resultBuf_, BUFFER_SIZE_BYTE_16K);
 
     PipeBarrier<PIPE_V>();
 }

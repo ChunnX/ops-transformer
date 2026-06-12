@@ -140,14 +140,6 @@ struct Vec1SplitInfo {
     uint32_t dLoopCount = 0;
 };
 
-struct Vec2SplitInfo {
-    uint32_t dealedScCnt = 0;
-    uint32_t preScCnt = 0;
-    uint32_t dealScNum = 0;
-    uint32_t curBStart = 0;
-    uint32_t curScStart = 0;
-};
-
 struct ConstInfo {
     // 整个AICORE的任务信息, 左闭右开区间[ (bStart, s2Start), (bEnd, s2End) )
     uint32_t bStart = 0U;
@@ -256,24 +248,6 @@ struct Vec1RunInfo {
     uint32_t bStart = 0;
     uint32_t sStart = 0;
     uint32_t dealTcNum = 0;
-    uint32_t dealScSize = 0;
-};
-
-struct Vec2RunInfo {
-    // uint32_t bStart = 0;
-    uint32_t v2DbIdx = 0;              // v2 doubleBuffer索引
-    uint32_t sStart = 0;
-    uint32_t bEnd = 0;
-    uint32_t sEnd = 0;
-    // v2分核信息 sc是左闭右开
-    uint32_t scStart = 0;
-    uint32_t scEnd = 0;
-    // uint32_t dealScSize = 0;
-
-    // 增加字段
-    uint32_t bStart = 0;
-    uint32_t compressedId = 0;
-    uint32_t bCompressedId = 0;
     uint32_t dealScSize = 0;
 };
 
