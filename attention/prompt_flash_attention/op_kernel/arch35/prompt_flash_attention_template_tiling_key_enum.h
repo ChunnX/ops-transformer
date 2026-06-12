@@ -218,6 +218,7 @@ static constexpr ConfigParams ConfigValue[] ={
 #define FULLQUANT_MODE_Q_PER_TOKEN_HEAD_KV_PER_TENSOR 18
 #define FULLQUANT_MODE_QKV_MXFP8_PREFILL 19
 #define FULLQUANT_MODE_QKV_MXFP8_DECODE 20
+#define FULLQUANT_MODE_QK_PER_TOKEN_HEAD_V_PER_HEAD 21
 #define FullQuantMode 30
 #define NoQuantMode 31
 
