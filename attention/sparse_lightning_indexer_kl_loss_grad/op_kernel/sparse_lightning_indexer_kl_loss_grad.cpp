@@ -55,8 +55,8 @@ using namespace Slig;
         op.Process();                                                                                                  \
     } while (0)
 #endif
-#if __CCE_AICORE__ != 310
 
+#if __CCE_AICORE__ != 310
 template< bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic>
  __global__ __aicore__ void
 sparse_lightning_indexer_kl_loss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k,
@@ -117,3 +117,4 @@ sparse_lightning_indexer_klloss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm_
                     HasCuSeqlensQ, HasCuSeqlensK, HasSequsedQ, HasSequsedK, HasCmpResidualK, Deterministic);
     }
 }
+#endif
