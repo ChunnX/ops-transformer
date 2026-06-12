@@ -28,10 +28,10 @@ namespace optiling {
 namespace {
 constexpr uint32_t X_INDEX = 0;
 constexpr uint32_t GROUP_LIST_INDEX = 1;
-constexpr uint32_t X_SCALE_INDEX = 2;
-constexpr uint32_t WEIGHT_INDEX = 3;
-constexpr uint32_t WEIGHT_SCALE_INDEX = 4;
-constexpr uint32_t BIAS_INDEX = 5;
+constexpr uint32_t WEIGHT_INDEX = 2;
+constexpr uint32_t WEIGHT_SCALE_INDEX = 3;
+constexpr uint32_t BIAS_INDEX = 4;
+constexpr uint32_t X_SCALE_INDEX = 5;
 constexpr uint32_t Y_INDEX = 0;
 constexpr uint32_t Y_SCALE_INDEX = 1;
 constexpr uint32_t ATTR_INDEX_ACTIVATION_TYPE = 0;
