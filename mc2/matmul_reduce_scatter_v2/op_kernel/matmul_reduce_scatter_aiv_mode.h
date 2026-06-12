@@ -537,10 +537,10 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                 EndFirstStep();
             }
 
+            SetAndWaitAivSync(flag_idx);
+            CrossRankSyncV2(FLAG_ONE_IDX, cal_idx + 1);
+            SetAndWaitAivSync(flag_idx);
             if (cal_idx < cal_count - MAX_BLOCK_COUNT) { // 最后两次不进行同步
-                SetAndWaitAivSync(flag_idx);
-                CrossRankSyncV2(FLAG_ONE_IDX, cal_idx + 1);
-                SetAndWaitAivSync(flag_idx);
                 // 发送aic同步
                 SetAicSync(flag_idx);
             }

@@ -83,9 +83,24 @@ static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const a
 static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias,
                                   const aclTensor* y1Out, const aclTensor* y2OutOptional, const aclTensor* y3OutOptional)
 {
-    OP_CHECK_WRONG_DIMENSION(x, SUPPORTED_DIMENSIONAL, return false);
-    OP_CHECK_WRONG_DIMENSION(weight, SUPPORTED_DIMENSIONAL, return false);
-    OP_CHECK_WRONG_DIMENSION(y1Out, SUPPORTED_DIMENSIONAL, return false);
+    if (x->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("AlltoAllAllGatherBatchMatMul", "x",
+            (std::to_string(x->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x must be " + std::to_string(SUPPORTED_DIMENSIONAL) + "D.");
+        return false;
+    }
+    if (weight->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("AlltoAllAllGatherBatchMatMul", "weight",
+            (std::to_string(weight->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of weight must be " + std::to_string(SUPPORTED_DIMENSIONAL) + "D.");
+        return false;
+    }
+    if (y1Out->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y1Out",
+            (std::to_string(y1Out->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of y1Out must be " + std::to_string(SUPPORTED_DIMENSIONAL) + "D.");
+        return false;
+    }
     if (bias != nullptr) {
         if ((bias->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) &&
             (bias->GetViewShape().GetDimNum() != BIAS_SUPPORTED_DIMENSIONAL)) {
@@ -95,10 +110,20 @@ static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, c
         }
     }
     if (y2OutOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(y2OutOptional, SUPPORTED_DIMENSIONAL, return false);
+        if (y2OutOptional->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y2OutOptional",
+                (std::to_string(y2OutOptional->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of y2OutOptional must be " + std::to_string(SUPPORTED_DIMENSIONAL) + "D.");
+            return false;
+        }
     }
     if (y3OutOptional != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(y3OutOptional, SUPPORTED_DIMENSIONAL, return false);
+        if (y3OutOptional->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("AlltoAllAllGatherBatchMatMul", "y3OutOptional",
+                (std::to_string(y3OutOptional->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of y3OutOptional must be " + std::to_string(SUPPORTED_DIMENSIONAL) + "D.");
+            return false;
+        }
     }
     return true;
 }

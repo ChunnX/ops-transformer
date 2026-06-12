@@ -20,7 +20,7 @@ $$
 \text{softmax}(\frac{Q@\tilde{K}^T}{\sqrt{d_k}})@\tilde{V}
 $$
 
-其中$\tilde{K},\tilde{V}$为基于某种选择算法（如`lightning_indexer`）得到的重要性较高的Key和Value，一般具有稀疏或分块稀疏的特征，$d_k$为$Q,\tilde{K}$每一个头的维度。KV merge场景下，若value为空指针，则$\tilde{V}$按$\tilde{K}$处理。
+其中$\tilde{K},\tilde{V}$为基于某种选择算法（如`lightning_indexer`）得到的重要性较高的Key和Value，一般具有稀疏或分块稀疏的特征，$d_k$为$Q,\tilde{K}$每一个头的维度。
 
 ## 函数原型
 
@@ -132,7 +132,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>value（aclTensor）</td>
       <td>输入</td>
       <td>attention结构的Value输入。</td>
-      <td>可选项。传入空指针时启用KV merge，内部按value=key处理。</td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>shape与key的shape一致。</td>
@@ -502,7 +502,7 @@ aclnnStatus aclnnSparseFlashAttention(
 - N1支持1~64和128。
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
 - 参数query中的D和key、value的D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
-- 参数query、key、value的数据类型必须保持一致。KV merge场景下value可为空指针，此时按key的数据类型处理。
+- 参数query、key、value的数据类型必须保持一致。
 - 支持sparse_block_size整除block_size。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - 只支持sparse_block_size为1。

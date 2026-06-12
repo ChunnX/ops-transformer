@@ -44,7 +44,8 @@ private:
     template <bool IS_INPUT_SCALE>
     __aicore__ inline float ComputeMax(LocalTensor<float> &inLocal, LocalTensor<float> &scaleLocal, int32_t srcIdx,
                                        int32_t expertIdx, int64_t j);
-    __aicore__ inline void QuantizeToInt4(LocalTensor<float> &inLocal, LocalTensor<int8_t> &outLocal, float scaleTemp);
+    __aicore__ inline void QuantizeToInt4(LocalTensor<float> &inLocal, LocalTensor<int8_t> &outLocal,
+                                          float quantFactor);
     __aicore__ inline void QuantizeToInt8(LocalTensor<float> &inLocal, LocalTensor<int8_t> &outLocal, float scaleTemp);
     __aicore__ inline void ComputeScale(LocalTensor<float> &inLocal, float scaleTemp, int64_t dstIndex, int64_t j);
     __aicore__ inline void SetColTileParams(int64_t j);
@@ -374,7 +375,7 @@ __aicore__ inline float MoeGatherOutDynamicQuant<T, QuantT>::ComputeMax(LocalTen
 template <typename T, typename QuantT>
 __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt4(LocalTensor<float> &inLocal,
                                                                            LocalTensor<int8_t> &outLocal,
-                                                                           float scaleTemp)
+                                                                           float quantFactor)
 {
     __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
     __local_mem__ int4x2_t *outUbAddrInt4 = (__local_mem__ int4x2_t *)outLocal.GetPhyAddr();
@@ -394,7 +395,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt4(Local
         for (uint16_t i = 0; i < repeatTimes; i++) {
             maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
             MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            MicroAPI::Duplicate(scaleReg, scaleTemp, maskRegLoop);
+            MicroAPI::Duplicate(scaleReg, quantFactor, maskRegLoop);
             MicroAPI::Mul(inReg, inReg, scaleReg, maskRegLoop);
             MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegLoop);
             MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegLoop);
@@ -512,8 +513,8 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutPartialXQuant
 
         float scaleTemp;
         if constexpr (IsSameType<QuantT, int4b_t>::value) {
-            scaleTemp = (reduceMax != 0.0f) ? (DYNAMIC_QUANT_INT4_SYM_SCALE / reduceMax) : 0.0f;
-            scaleLocal.SetValue(0, (reduceMax != 0.0f) ? (reduceMax / DYNAMIC_QUANT_INT4_SYM_SCALE) : 0.0f);
+            float scaleOutVal = (reduceMax != 0.0f) ? (reduceMax * (1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE)) : 0.0f;
+            scaleTemp = (scaleOutVal != 0.0f) ? (1.0f / scaleOutVal) : 0.0f;
         } else {
             scaleTemp = reduceMax / 127.0f;
         }
@@ -522,7 +523,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutPartialXQuant
         scaleLocal = scaleOutQueue_.DeQue<float>();
 
         if constexpr (IsSameType<QuantT, int4b_t>::value) {
-            float scaleOutVal = (reduceMax != 0.0f) ? (reduceMax / DYNAMIC_QUANT_INT4_SYM_SCALE) : 0.0f;
+            float scaleOutVal = (reduceMax != 0.0f) ? (reduceMax * (1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE)) : 0.0f;
             scaleLocal.SetValue(0, scaleOutVal);
         }
         DataCopyPad(expandedScaleGm_[(rowOffset + i)], scaleLocal, {1, 4, 0, 0, 0});

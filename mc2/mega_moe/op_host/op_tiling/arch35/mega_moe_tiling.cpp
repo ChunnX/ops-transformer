@@ -38,28 +38,9 @@ using namespace ge;
 
 namespace optiling {
 namespace {
-    // init routing
-    const static int64_t SIMT_DCACHE_SIZE = 64 * 1024LL;
-    const static int64_t SORT_API_MAX_ELEM = 32 * 255LL;
-    const static int64_t MRG_SORT_API_MAX_ELEM = 1024LL;
-    const static int64_t MX_QUANT_BLOCK_SIZE = 32LL;
-
     const static int64_t NUM_TWO = 2LL;
     const static int64_t NUM_FOUR = 4LL;
-    const static int64_t MRG_LIST_NUM = 4LL;
-    const static int64_t SORT32_ALIGN_ELEMENT = 32LL;
     const static int64_t UB_BLOCK_SIZE = 32LL;
-    const static size_t DIM_TWO = 2ULL;
-    const static int64_t KV_FACTOR = 2LL;
-    const static int64_t EXPERT_IDX_MAX = 10240LL;
-    const static int64_t KV_MODE_EXPERT_IDX_MAX = EXPERT_IDX_MAX / KV_FACTOR;
-
-    const static int64_t ROW_IDX_GATHER = 0LL;
-    const static int64_t ROW_IDX_SCATTER = 1LL;
-    const static int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
-    const static int64_t EXPERT_TOKENS_TYPE_KEY_VALUE = 2LL;
-    const static int64_t DROP_PAD_MODE_DROPLESS = 0LL;
-    const static int64_t SORT_CORE_TILINGKEY_BASE = 100000LL;
 
     const static int64_t FOUR_DIMS = 4LL;
     const static int64_t THREE_DIMS = 3LL;
@@ -74,154 +55,8 @@ namespace {
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
     const static int64_t MAX_EP_WORLD_SIZE = 768LL;
     const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
-    const static int64_t DISABLE_EXPERT_CAPACITY = -1LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
-}
-
-struct MegaMoeAuxTilingContext {
-    // Platform
-    int64_t aivCoreNum;
-    int64_t totalUbSize;
-    int64_t availUbSize;
-
-    // Critical Variable
-    int64_t sortLoopMaxElement;
-    int64_t totalLength;
-    int64_t n;
-    int64_t k;
-    int64_t cols;
-    int64_t inputXDtypeSize;
-    int64_t isInputScale;
-    int64_t isInputOffset;
-    int64_t sortMode;
-
-    // Op Attr
-    int64_t activeNum;
-    int64_t expertCapacity;
-    int64_t expertNum;
-    int64_t dropPadMode;
-    int64_t expertTokensNumType;
-    int64_t quantMode;
-    int64_t expertStart;
-    int64_t expertEnd;
-    int64_t rowIdxType;
-
-    bool expertTokensNumFlag;
-};
-
-inline static int64_t Align(int64_t elementNum, int64_t bytes)
-{
-    if (bytes == 0) {
-        return 0;
-    }
-    return (elementNum * bytes + UB_BLOCK_SIZE - 1) / UB_BLOCK_SIZE * UB_BLOCK_SIZE / bytes;
-}
-
-inline static int64_t AlignBytes(int64_t elementNum, int64_t bytes)
-{
-    return (elementNum * bytes + UB_BLOCK_SIZE - 1) / UB_BLOCK_SIZE * UB_BLOCK_SIZE;
-}
-
-inline static int64_t CeilLog4(int64_t x)
-{
-    if (x <= 1) return 0;
-    return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR)));
-}
-
-void PrintMoeV3Arch35VBSComputeTilingData(
-    const MoeV3Arch35VBSComputeTilingData& data, const char *nodeName)
-{
-    OP_LOGD(nodeName, "========== MoeV3Arch35VBSComputeTilingData ==========");
-    OP_LOGD(nodeName, "needCoreNum is %ld", data.needCoreNum);
-    OP_LOGD(nodeName, "perCoreElements is %ld", data.perCoreElements);
-    OP_LOGD(nodeName, "perCoreLoops is %ld", data.perCoreLoops);
-    OP_LOGD(nodeName, "perCorePerLoopElements is %ld", data.perCorePerLoopElements);
-    OP_LOGD(nodeName, "perCoreLastLoopElements is %ld", data.perCoreLastLoopElements);
-    OP_LOGD(nodeName, "lastCoreElements is %ld", data.lastCoreElements);
-    OP_LOGD(nodeName, "lastCoreLoops is %ld", data.lastCoreLoops);
-    OP_LOGD(nodeName, "lastCorePerLoopElements is %ld", data.lastCorePerLoopElements);
-    OP_LOGD(nodeName, "lastCoreLastLoopElements is %ld", data.lastCoreLastLoopElements);
-    OP_LOGD(nodeName, "oneLoopMaxElements is %ld", data.oneLoopMaxElements);
-}
-
-void PrintMoeV3Arch35VMSMiddleComputeTilingData(
-    const MoeV3Arch35VMSMiddleComputeTilingData& data, const char *nodeName)
-{
-    OP_LOGD(nodeName, "========== MoeV3Arch35VMSMiddleComputeTilingData ==========");
-    OP_LOGD(nodeName, "needCoreNum is %ld", data.needCoreNum);
-}
-
-void PrintMoeV3Arch35SortOutComputeTilingData(
-    const MoeV3Arch35SortOutComputeTilingData& data, const char *nodeName)
-{
-    OP_LOGD(nodeName, "========== MoeV3Arch35SortOutComputeTilingData ==========");
-    OP_LOGD(nodeName, "oneLoopMaxElements is %ld", data.oneLoopMaxElements);
-}
-
-void PrintMoeV3Arch35ExpertTokensCountTilingData(
-    const MoeV3Arch35ExpertTokensCountTilingData& data, const char *nodeName)
-{
-    OP_LOGD(nodeName, "========== MoeV3Arch35ExpertTokensCountTilingData ==========");
-    OP_LOGD(nodeName, "needCoreNum is %ld", data.needCoreNum);
-    OP_LOGD(nodeName, "perCoreElements is %ld", data.perCoreElements);
-    OP_LOGD(nodeName, "lastCoreElements is %ld", data.lastCoreElements);
-    OP_LOGD(nodeName, "perCoreLoops is %ld", data.perCoreLoops);
-    OP_LOGD(nodeName, "perCorePerLoopElements is %ld", data.perCorePerLoopElements);
-    OP_LOGD(nodeName, "perCoreLastLoopElements is %ld", data.perCoreLastLoopElements);
-    OP_LOGD(nodeName, "lastCoreLoops is %ld", data.lastCoreLoops);
-    OP_LOGD(nodeName, "lastCorePerLoopElements is %ld", data.lastCorePerLoopElements);
-    OP_LOGD(nodeName, "lastCoreLastLoopElements is %ld", data.lastCoreLastLoopElements);
-}
-
-void PrintMoeV3Arch35GatherOutComputeTilingData(
-    const MoeV3Arch35GatherOutComputeTilingData& data, const char *nodeName)
-{
-    OP_LOGD(nodeName, "========== MoeV3Arch35GatherOutComputeTilingData ==========");
-    OP_LOGD(nodeName, "needCoreNum is %ld", data.needCoreNum);
-    OP_LOGD(nodeName, "perCoreIndicesElements is %ld", data.perCoreIndicesElements);
-    OP_LOGD(nodeName, "lastCoreIndicesElements is %ld", data.lastCoreIndicesElements);
-    OP_LOGD(nodeName, "perCoreIndicesLoops is %ld", data.perCoreIndicesLoops);
-    OP_LOGD(nodeName, "perCorePerLoopIndicesElements is %ld", data.perCorePerLoopIndicesElements);
-    OP_LOGD(nodeName, "perCoreLastLoopIndicesElements is %ld", data.perCoreLastLoopIndicesElements);
-    OP_LOGD(nodeName, "lastCoreIndicesLoops is %ld", data.lastCoreIndicesLoops);
-    OP_LOGD(nodeName, "lastCorePerLoopIndicesElements is %ld", data.lastCorePerLoopIndicesElements);
-    OP_LOGD(nodeName, "lastCoreLastLoopIndicesElements is %ld", data.lastCoreLastLoopIndicesElements);
-    OP_LOGD(nodeName, "colsLoops is %ld", data.colsLoops);
-    OP_LOGD(nodeName, "perLoopCols is %ld", data.perLoopCols);
-    OP_LOGD(nodeName, "lastLoopCols is %ld", data.lastLoopCols);
-}
-
-void PrintMoeInitRoutingV3Arch35TilingData(
-    const MoeInitRoutingV3Arch35TilingData& data, const char *nodeName)
-{
-    OP_LOGD(nodeName, "========== MoeInitRoutingV3Arch35TilingData ==========");
-    OP_LOGD(nodeName, "coreNum is %ld", data.coreNum);
-    OP_LOGD(nodeName, "BS is %ld", data.n);
-    OP_LOGD(nodeName, "H is %ld", data.cols);
-    OP_LOGD(nodeName, "topK is %ld", data.k);
-    OP_LOGD(nodeName, "expertStart is %ld", data.expertStart);
-    OP_LOGD(nodeName, "expertEnd is %ld", data.expertEnd);
-    OP_LOGD(nodeName, "actualExpertNum is %ld", data.actualExpertNum);
-    OP_LOGD(nodeName, "quantMode is %ld", data.quantMode);
-    OP_LOGD(nodeName, "rowIdxType is %ld", data.rowIdxType);
-    OP_LOGD(nodeName, "isInputScale is %s", data.isInputScale ? "True" : "False");
-    OP_LOGD(nodeName, "isInputOffset is %s", data.isInputOffset ? "True" : "False");
-    OP_LOGD(nodeName, "expertNum is %ld", data.expertNum);
-    OP_LOGD(nodeName, "expertTokensNumType is %ld", data.expertTokensNumType);
-    OP_LOGD(nodeName, "expertTokensNumFlag is %ld", data.expertTokensNumFlag);
-    OP_LOGD(nodeName, "gatherFirstFullload is %ld", data.gatherFirstFullload);
-    OP_LOGD(nodeName, "epFullload is %ld", data.epFullload);
-    OP_LOGD(nodeName, "activeNum is %ld", data.activeNum);
-    OP_LOGD(nodeName, "dropPadMode is %ld", data.dropPadMode);
-    OP_LOGD(nodeName, "smoothType is %ld", data.smoothType);
-    OP_LOGD(nodeName, "InitRouting TilingKey is %ld", data.tilingKey);
-
-    PrintMoeV3Arch35VBSComputeTilingData(data.vbsComputeParamsOp, nodeName);
-    PrintMoeV3Arch35VMSMiddleComputeTilingData(data.vmsMiddleComputeParamsOp, nodeName);
-    PrintMoeV3Arch35SortOutComputeTilingData(data.sortOutComputeParamsOp, nodeName);
-    PrintMoeV3Arch35ExpertTokensCountTilingData(data.expertTokensCountTilingDataOp, nodeName);
-    PrintMoeV3Arch35GatherOutComputeTilingData(data.gatherOutComputeParamsOp, nodeName);
 }
 
 void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nodeName)
@@ -230,14 +65,13 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
 
     OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
-    
-    PrintMoeInitRoutingV3Arch35TilingData(tilingData->moeInitRoutingTilingData, nodeName);
 
     OP_LOGD(nodeName, "BS is %u", tilingData->bs);
     OP_LOGD(nodeName, "H is %u", tilingData->h);
     OP_LOGD(nodeName, "hiddenDim is %u", tilingData->hiddenDim);
 
     OP_LOGD(nodeName, "topK is %u", tilingData->topK);
+    OP_LOGD(nodeName, "aicNum is %u", tilingData->aicNum);
     OP_LOGD(nodeName, "expertPerRank is %u", tilingData->expertPerRank);
     OP_LOGD(nodeName, "groupListType is %u", tilingData->groupListType);
 
@@ -251,89 +85,40 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
 
 void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
 {
-    OP_LOGD(nodeName, "ptrA:                        %ld\n", info->ptrA);
-    OP_LOGD(nodeName, "ptrAScale:                   %ld\n", info->ptrAScale);
-    OP_LOGD(nodeName, "ptrA2:                       %ld\n", info->ptrA2);
-    OP_LOGD(nodeName, "ptrA2Scale:                  %ld\n", info->ptrA2Scale);
-    OP_LOGD(nodeName, "ptrcumsumMM:                 %ld\n", info->ptrcumsumMM);
-    OP_LOGD(nodeName, "expandedRowIdx:              %ld\n", info->expandedRowIdx);
-    OP_LOGD(nodeName, "ptrSumBeforeRank:            %ld\n", info->ptrSumBeforeRank);
-    OP_LOGD(nodeName, "ptrFlagSwiGluToGmm2:         %ld\n", info->ptrFlagSwiGluToGmm2);
-    OP_LOGD(nodeName, "ptrFlagDispatchToGmm1:       %ld\n", info->ptrFlagDispatchToGmm1);
-    OP_LOGD(nodeName, "workspaceSize:               %ld\n", info->workspaceSize);
+    OP_LOGD(nodeName, "dispatchRevDataPtr:         %ld\n", info->dispatchRevDataPtr);
+    OP_LOGD(nodeName, "dispatchRevScalePtr:        %ld\n", info->dispatchRevScalePtr);
+    OP_LOGD(nodeName, "swigluQuantDataPtr:         %ld\n", info->swigluQuantDataPtr);
+    OP_LOGD(nodeName, "swigluQuantScalePtr:        %ld\n", info->swigluQuantScalePtr);
+    OP_LOGD(nodeName, "expertRevTokenNumsPtr:      %ld\n", info->expertRevTokenNumsPtr);
+    OP_LOGD(nodeName, "tripleInfoPtr:              %ld\n", info->tripleInfoPtr);
+    OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
+    OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
 }
 
 void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
 {
     OP_LOGD(nodeName, "========== PeermemInfo ==========");
-
-    int64_t tokenPerExpert = static_cast<int64_t>(tilingData->epWorldSize) *
-        ops::CeilAlign(static_cast<int64_t>(tilingData->epWorldSize) *
-        tilingData->expertPerRank, ALIGN_128) *
-        sizeof(int32_t);
-
-    int64_t quantTokenScale = static_cast<int64_t>(tilingData->bs) *
-        tilingData->topK *
-        (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) *
-        sizeof(int8_t);
-
-    int64_t combineOut = static_cast<int64_t>(tilingData->bs) * tilingData->topK * tilingData->h * sizeof(int16_t);
-
-    int64_t peermemSize = PEERMEM_DATA_OFFSET + tokenPerExpert + quantTokenScale + combineOut;
-    OP_LOGD(nodeName, "peermemSize: {%ld}\n", peermemSize);
-
-    int64_t offset = PEERMEM_DATA_OFFSET;
-    OP_LOGD(nodeName, "ptrTokenPerExpert: {%ld}\n", offset);
-
-    offset += tokenPerExpert;
-    OP_LOGD(nodeName, "ptrA0: {%ld}\n", PEERMEM_DATA_OFFSET);
-
-    offset += quantTokenScale;
-    OP_LOGD(nodeName, "ptrD: {%ld}\n", offset);
-}
-
-void printAuxiliaryTilingCtx(const MegaMoeAuxTilingContext* ctx,
-    const uint32_t expertPerRank, const uint32_t epWorldSize,
-    const std::vector<int64_t>& expertIdxShape,
-    ge::DataType xDtype, const char *nodeName)
-{
-    OP_LOGD(nodeName, "========== AuxiliaryTilingCtx ==========");
-    OP_LOGD(nodeName, "BS is %ld", ctx->n);
-    OP_LOGD(nodeName, "H is %ld", ctx->cols);
-    OP_LOGD(nodeName, "topK is %ld", ctx->k);
-    OP_LOGD(nodeName, "expertPerRank is %ld", expertPerRank);
-    OP_LOGD(nodeName, "epWorldSize is %ld", epWorldSize);
-
-    OP_LOGD(nodeName, "availUbSize is %ld", ctx->availUbSize);
-    OP_LOGD(nodeName, "sortLoopMaxElement is %ld", ctx->sortLoopMaxElement);
-    OP_LOGD(nodeName, "totalLength is %ld", ctx->totalLength);
-    OP_LOGD(nodeName, "activeNum is %ld", ctx->activeNum);
-    OP_LOGD(nodeName, "expertCapacity is %ld", ctx->expertCapacity);
-    OP_LOGD(nodeName, "expertNum is %ld", ctx->expertNum);
-
-    OP_LOGD(nodeName, "x is %s, inputXDtypeSize = %ld", Ops::Base::ToString(xDtype).c_str(), ctx->inputXDtypeSize);
-    OP_LOGD(nodeName, "isInputScale is %s, isInputOffset is %s",
-        ctx->isInputScale ? "True" : "False", ctx->isInputOffset ? "True" : "False");
-    OP_LOGD(nodeName, "dropPadMode is %ld, expertTokensNumType is %ld",
-        ctx->dropPadMode, ctx->expertTokensNumType);
-    OP_LOGD(nodeName, "expertTokensNumFlag is %s, quantMode is %ld",
-        ctx->expertTokensNumFlag ? "True" : "False", ctx->quantMode);
-    
-    OP_LOGD(nodeName, "expertIdxShape is [%ld, %ld]", expertIdxShape[0], expertIdxShape[1]);
-    OP_LOGD(nodeName, "expertRange is [%ld, %ld]", ctx->expertStart, ctx->expertEnd);
-    OP_LOGD(nodeName, "rowIdxType is %ld", ctx->rowIdxType);
-}
-
-static int64_t OpQuantModeToInitRoutingQuantMode(const int64_t opQuantMode)
-{
-    // unsupport UNQUANT, STATIC, DYNAMIC currently
-    switch (opQuantMode) {
-        case DISPATCH_QUANT_OUT_DTYPE_E5M2: return 2LL;
-        case DISPATCH_QUANT_OUT_DTYPE_E4M3FN: return 3LL;
-        case DISPATCH_QUANT_OUT_DTYPE_E2M1: return 9LL;
-        default: return -1LL;
-    }
-    return -1LL;
+    int64_t rankSyncInWorldSize = PEERMEM_DATA_OFFSET;
+    OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", rankSyncInWorldSize);
+    int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
+    int64_t compareCount = ops::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
+        (int64_t)sizeof(int32_t);
+    int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
+    int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;  // mask + 32B count
+    int64_t maskRecvSize = ops::CeilAlign(
+        (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+    OP_LOGD(nodeName, "maskRecvSize: {%ld}\n", maskRecvSize);
+    uint32_t mxScaleNum = ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+    uint32_t dataBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+    uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
+    uint32_t tokenBytes = ops::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+    int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)),
+        (int64_t)ALIGN_512);
+    OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
+    int64_t combineSendSize = sendTotalNum * tilingData->h * 2; //  2 = sizeof(bfloat16_t)
+    OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
+    OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n",
+        rankSyncInWorldSize + maskRecvSize + quantTokenScaleSize + combineSendSize);
 }
 
 static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
@@ -375,422 +160,6 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
 
     return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode);
-}
-
-static ge::graphStatus CheckInitTilingData(
-    const int64_t expertTokensNumType, int64_t expertNum, const int64_t dropPadMode, const bool expertTokensNumFlag,
-    const int64_t quantMode, const int64_t rowIdxType, const std::vector<int64_t> expertRange,
-    const std::vector<int64_t> xShape, const std::vector<int64_t> expertIdxShape,
-    const char* nodeName)
-{
-    OP_TILING_CHECK(
-        expertTokensNumType != EXPERT_TOKENS_TYPE_COUNT && expertTokensNumType != EXPERT_TOKENS_TYPE_KEY_VALUE,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expert_tokens_num_type",
-            std::to_string(expertTokensNumType).c_str(),
-            (std::string("EXPERT_TOKENS_TYPE_COUNT(") + std::to_string(EXPERT_TOKENS_TYPE_COUNT) +
-             ") or EXPERT_TOKENS_TYPE_KEY_VALUE(" + std::to_string(EXPERT_TOKENS_TYPE_KEY_VALUE) + ")").c_str()),
-        return ge::GRAPH_FAILED);
-
-    int64_t maxExpertNum = (expertTokensNumType == EXPERT_TOKENS_TYPE_COUNT) ?
-                            EXPERT_IDX_MAX : KV_MODE_EXPERT_IDX_MAX;
-    OP_TILING_CHECK(
-        expertNum <= 0 || expertNum > maxExpertNum,
-        OP_LOGE_WITH_INVALID_ATTR(nodeName, "moe_expert_num",
-            std::to_string(expertNum).c_str(),
-            (std::string("[0, ") + std::to_string(maxExpertNum) + "]").c_str()),
-        return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        dropPadMode != DROP_PAD_MODE_DROPLESS,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "drop_pad_mode",
-            std::to_string(dropPadMode).c_str(),
-            (std::string("DROP_PAD_MODE_DROPLESS(") + std::to_string(DROP_PAD_MODE_DROPLESS) + ")").c_str()),
-        return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        !expertTokensNumFlag,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertTokensNumFlag", "false", "true"),
-        return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        quantMode != DISPATCH_QUANT_OUT_DTYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
-        quantMode != DISPATCH_QUANT_OUT_DTYPE_E2M1,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatch_quant_out_dtype",
-            std::to_string(quantMode).c_str(),
-            (std::string("E5M2(") + std::to_string(DISPATCH_QUANT_OUT_DTYPE_E5M2) +
-             "), E4M3FN(" + std::to_string(DISPATCH_QUANT_OUT_DTYPE_E4M3FN) +
-             ") or E2M1(" + std::to_string(DISPATCH_QUANT_OUT_DTYPE_E2M1) + ")").c_str()),
-        return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        rowIdxType != ROW_IDX_SCATTER && rowIdxType != ROW_IDX_GATHER,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "row_idx_type",
-            std::to_string(rowIdxType).c_str(),
-            (std::string("ROW_IDX_SCATTER(") + std::to_string(ROW_IDX_SCATTER) +
-             ") or ROW_IDX_GATHER(" + std::to_string(ROW_IDX_GATHER) + ")").c_str()),
-        return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        expertRange.size() != TWO_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPESIZE(nodeName, "expert_range",
-            std::to_string(expertRange.size()).c_str(), "2"),
-        return ge::GRAPH_FAILED);
-
-    int64_t expertStart = expertRange[0];
-    int64_t expertEnd = expertRange[1];
-    OP_TILING_CHECK(
-        expertStart < 0 || expertStart >= expertEnd || expertEnd > expertNum,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expert_range",
-            (std::string("[") + std::to_string(expertStart) + ", " + std::to_string(expertEnd) + "]").c_str(),
-            (std::string("[0, ") + std::to_string(expertNum) + "]").c_str()),
-        return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        xShape.size() != TWO_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "x",
-            (std::to_string(xShape.size()) + "D").c_str(), "2D"),
-        return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        expertIdxShape.size() != TWO_DIMS || expertIdxShape[0] != xShape[0],
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(nodeName, "topk_ids and x",
-            (std::string("[") + std::to_string(expertIdxShape.size()) + "D, dim0=" +
-             std::to_string(expertIdxShape[0]) + "]").c_str(),
-            "The shape of topk_ids must be 2D, and dim0 must be equal to dim0 of x"),
-        return ge::GRAPH_FAILED);
-    
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus CheckAndSetInitTilingData(
-    MegaMoeTilingData &tilingData, MoeInitRoutingV3Arch35TilingData &initTilingData,
-    const uint32_t aivNum, const int64_t opQuantMode, const char *nodeName)
-{
-    // Get Param
-    auto bs = tilingData.bs;
-    auto h = tilingData.h;
-    auto topK = tilingData.topK;
-    auto expertPerRank = tilingData.expertPerRank;
-    auto epWorldSize = tilingData.epWorldSize;
-
-    int64_t expertTokensNumType = EXPERT_TOKENS_TYPE_COUNT;
-    int64_t expertNum = epWorldSize * expertPerRank;
-    int64_t dropPadMode = DROP_PAD_MODE_DROPLESS;
-    bool expertTokensNumFlag = true;
-    int64_t quantMode = opQuantMode;
-    int64_t rowIdxType = ROW_IDX_SCATTER;
-
-    const std::vector<int64_t> expertRange = {0, expertNum};
-    std::vector<int64_t> xShape = {bs, h};
-    std::vector<int64_t> expertIdxShape = {bs, topK};
-
-    bool isInputScale = false;
-    bool isInputOffset = false;
-    
-    // Check Param
-    OP_TILING_CHECK(
-        CheckInitTilingData(
-            expertTokensNumType, expertNum, dropPadMode, expertTokensNumFlag, quantMode,
-            rowIdxType, expertRange, xShape, expertIdxShape, nodeName) == ge::GRAPH_FAILED,
-        OP_LOGE(nodeName, "CheckInitTilingData failed."), return ge::GRAPH_FAILED);
-
-    // Set Param
-    initTilingData.expertTokensNumType = expertTokensNumType;
-    initTilingData.expertNum = expertNum;
-    initTilingData.dropPadMode = dropPadMode;
-    initTilingData.expertTokensNumFlag = expertTokensNumFlag ? 1 : 0;
-    initTilingData.quantMode = OpQuantModeToInitRoutingQuantMode(quantMode);
-    initTilingData.rowIdxType = rowIdxType;
-
-    initTilingData.expertStart = expertRange[0];
-    initTilingData.expertEnd = expertRange[1];
-    initTilingData.actualExpertNum = expertRange[1] - expertRange[0];
-
-    initTilingData.n = bs;
-    initTilingData.cols = h;
-    initTilingData.k = topK;
-    initTilingData.isInputScale = isInputScale ? 1 : 0;
-    initTilingData.isInputOffset = isInputOffset ? 1 : 0;
-
-    initTilingData.coreNum = aivNum;
-
-    // Reserved
-    initTilingData.gatherFirstFullload = 0;
-    initTilingData.activeNum = initTilingData.n * initTilingData.k;
-    initTilingData.epFullload = 0;  // unsupported
-    initTilingData.smoothType = 0;  // unsupported
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus SetAuxiliaryTilingCtx(
-    MoeInitRoutingV3Arch35TilingData &initTilingData, MegaMoeAuxTilingContext &ctx,
-    const char* nodeName, const uint32_t aivNum, const uint64_t ubSize, ge::DataType xDtype)
-{
-    int64_t inputXDtypeSize = ge::GetSizeByDataType(xDtype);
-    OP_TILING_CHECK(
-        inputXDtypeSize < 0,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "x",
-            Ops::Base::ToString(xDtype).c_str(), "The dtype of x must be DT_BF16."),
-        return ge::GRAPH_FAILED);
-
-    ctx.aivCoreNum = aivNum;
-    ctx.totalUbSize = ubSize;
-    ctx.availUbSize = ubSize - SIMT_DCACHE_SIZE;
-
-    ctx.n = initTilingData.n;
-    ctx.cols = initTilingData.cols;
-    ctx.k = initTilingData.k;
-    ctx.inputXDtypeSize = inputXDtypeSize;
-    ctx.isInputScale = initTilingData.isInputScale;
-    ctx.isInputOffset = initTilingData.isInputOffset;
-
-    ctx.activeNum = initTilingData.activeNum;
-    ctx.expertCapacity = DISABLE_EXPERT_CAPACITY;
-    ctx.expertNum = initTilingData.expertNum;
-    ctx.dropPadMode = initTilingData.dropPadMode;
-    ctx.expertTokensNumType = initTilingData.expertTokensNumType;
-    ctx.expertTokensNumFlag = initTilingData.expertTokensNumFlag;
-    ctx.quantMode = initTilingData.quantMode;
-    
-    ctx.expertStart = initTilingData.expertStart;
-    ctx.expertEnd = initTilingData.expertEnd;
-    ctx.rowIdxType = initTilingData.rowIdxType;
-    ctx.totalLength = initTilingData.n * initTilingData.k;
-
-    ctx.sortLoopMaxElement = ctx.availUbSize /
-        (NUM_FOUR * NUM_TWO * NUM_FOUR) /
-        SORT32_ALIGN_ELEMENT *
-        SORT32_ALIGN_ELEMENT;
-    ctx.sortLoopMaxElement = std::min(ctx.sortLoopMaxElement, SORT_API_MAX_ELEM);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static void Tiling4VBSOneCore(MoeV3Arch35VBSComputeTilingData *vbsTiling,
-    const MegaMoeAuxTilingContext &ctx)
-{
-    vbsTiling->needCoreNum = 1;
-    vbsTiling->perCoreElements = ctx.totalLength;
-    vbsTiling->perCoreLoops = ops::CeilDiv(ctx.totalLength, ctx.sortLoopMaxElement);
-    vbsTiling->perCorePerLoopElements = std::min(ctx.totalLength, ctx.sortLoopMaxElement);
-    vbsTiling->perCoreLastLoopElements = vbsTiling->perCoreElements;
-    vbsTiling->lastCoreElements = vbsTiling->perCoreElements;
-    vbsTiling->lastCoreLoops = 1;
-    vbsTiling->lastCorePerLoopElements = vbsTiling->perCoreElements;
-    vbsTiling->lastCoreLastLoopElements = vbsTiling->perCoreElements;
-}
-
-static void Tiling4VBSMultiCore(MoeV3Arch35VBSComputeTilingData *vbsTiling,
-    MegaMoeAuxTilingContext &ctx)
-{
-    int64_t needCoreNum = ops::CeilDiv(ctx.totalLength, ctx.sortLoopMaxElement);
-    needCoreNum = static_cast<int64_t>(std::pow(4, CeilLog4(needCoreNum)));
-    if (needCoreNum == 0) {
-        needCoreNum = 1;
-    }
-    needCoreNum = std::min(needCoreNum, ctx.aivCoreNum);
-
-    int64_t perCoreElements = (needCoreNum == 0) ? 0 : (ctx.totalLength / needCoreNum);
-    int64_t alineFloorPerCoreElements = perCoreElements - perCoreElements % SORT32_ALIGN_ELEMENT;
-    int64_t lastCoreElement = ctx.totalLength - (needCoreNum - 1) * alineFloorPerCoreElements;
-    int64_t alineCeilPerCoreElements = perCoreElements + SORT32_ALIGN_ELEMENT - perCoreElements % SORT32_ALIGN_ELEMENT;
-    if (lastCoreElement > alineCeilPerCoreElements) {
-        perCoreElements = alineCeilPerCoreElements;
-        needCoreNum = ops::CeilDiv(ctx.totalLength, perCoreElements);
-    } else {
-        perCoreElements = alineFloorPerCoreElements;
-    }
-
-    vbsTiling->needCoreNum = needCoreNum;
-    do {
-        vbsTiling->perCoreElements = perCoreElements;
-        vbsTiling->perCoreLoops = ops::CeilDiv(vbsTiling->perCoreElements, ctx.sortLoopMaxElement);
-        vbsTiling->perCorePerLoopElements = std::min(vbsTiling->perCoreElements, ctx.sortLoopMaxElement);
-
-        vbsTiling->perCoreLastLoopElements =
-            vbsTiling->perCoreElements - (vbsTiling->perCoreLoops - 1) * vbsTiling->perCorePerLoopElements;
-
-        vbsTiling->lastCoreElements = ctx.totalLength - (vbsTiling->needCoreNum - 1) * vbsTiling->perCoreElements;
-        vbsTiling->lastCoreLoops = vbsTiling->perCoreLoops;
-        int64_t lastCorePerLoopElements =
-            ops::CeilAlign(ops::CeilDiv(vbsTiling->lastCoreElements, vbsTiling->lastCoreLoops), SORT32_ALIGN_ELEMENT);
-        vbsTiling->lastCorePerLoopElements = lastCorePerLoopElements;
-        vbsTiling->lastCoreLastLoopElements =
-            vbsTiling->lastCoreElements - (vbsTiling->lastCoreLoops - 1) * vbsTiling->lastCorePerLoopElements;
-        perCoreElements -= SORT32_ALIGN_ELEMENT;
-    } while (vbsTiling->lastCoreLastLoopElements <= 0 && perCoreElements > 0);
-}
-
-static void Tiling4VBSCompute(MoeInitRoutingV3Arch35TilingData *tilingData,
-    MegaMoeAuxTilingContext &ctx)
-{
-    auto *vbsTiling = &(tilingData->vbsComputeParamsOp);
-    vbsTiling->oneLoopMaxElements = ctx.sortLoopMaxElement;
-
-    if (ctx.totalLength <= ctx.sortLoopMaxElement) {
-        ctx.sortMode = 0;
-        Tiling4VBSOneCore(vbsTiling, ctx);
-    } else {
-        ctx.sortMode = 1;
-        Tiling4VBSMultiCore(vbsTiling, ctx);
-    }
-    tilingData->tilingKey = ctx.sortMode * SORT_CORE_TILINGKEY_BASE + 1031000;
-}
-
-static void Tiling4VMSMiddleCompute(MoeInitRoutingV3Arch35TilingData *tilingData)
-{
-    auto *vbsTiling = &(tilingData->vbsComputeParamsOp);
-    auto *vmsMiddleTiling = &(tilingData->vmsMiddleComputeParamsOp);
-
-    if (vbsTiling->needCoreNum <= MRG_LIST_NUM) {
-        vmsMiddleTiling->needCoreNum = 0;
-        return;
-    }
-    int64_t needCoreNum = ops::CeilDiv(vbsTiling->needCoreNum, MRG_LIST_NUM);
-    vmsMiddleTiling->needCoreNum = needCoreNum;
-}
-
-static void Tiling4SortOutCompute(MoeInitRoutingV3Arch35TilingData *tilingData)
-{
-    auto *sortOutTiling = &(tilingData->sortOutComputeParamsOp);
-    sortOutTiling->oneLoopMaxElements = MRG_SORT_API_MAX_ELEM;
-}
-
-static void Tiling4ExpertTokensCountCompute(MoeInitRoutingV3Arch35TilingData *tilingData,
-    const MegaMoeAuxTilingContext &ctx)
-{
-    auto *tokensCountTiling = &(tilingData->expertTokensCountTilingDataOp);
-    int64_t totalElements = tilingData->n * tilingData->k;
-    int64_t perCoreElements = ops::CeilDiv(totalElements, ctx.aivCoreNum);
-    int64_t needCoreNum = ops::CeilDiv(totalElements, perCoreElements);
-    int64_t lastCoreElements = totalElements - (needCoreNum - 1) * perCoreElements;
-
-    tokensCountTiling->needCoreNum = needCoreNum;
-    tokensCountTiling->perCoreElements = perCoreElements;
-    tokensCountTiling->lastCoreElements = lastCoreElements;
-
-    int64_t expertNumElement = (tilingData->expertTokensNumType != EXPERT_TOKENS_TYPE_KEY_VALUE) ?
-                                   tilingData->actualExpertNum :
-                                   (tilingData->actualExpertNum + 1) * DIM_TWO;
-    int64_t maxElementsPerLoop =
-        (ctx.availUbSize -
-         ops::CeilAlign(expertNumElement, UB_BLOCK_SIZE) *
-             (static_cast<int64_t>(sizeof(int32_t)) * NUM_TWO + static_cast<int64_t>(sizeof(int64_t))) -
-         UB_BLOCK_SIZE) /
-        static_cast<int64_t>(sizeof(int32_t));
-
-    int64_t perCoreLoops = ops::CeilDiv(perCoreElements, maxElementsPerLoop);
-    int64_t perCorePerLoopElements = ops::CeilDiv(perCoreElements, perCoreLoops);
-    int64_t perCoreLastLoopElements = perCoreElements - (perCoreLoops - 1) * perCorePerLoopElements;
-    tokensCountTiling->perCoreLoops = perCoreLoops;
-    tokensCountTiling->perCorePerLoopElements = perCorePerLoopElements;
-    tokensCountTiling->perCoreLastLoopElements = perCoreLastLoopElements;
-
-    int64_t lastCoreLoops = ops::CeilDiv(lastCoreElements, maxElementsPerLoop);
-    int64_t lastCorePerLoopElements = ops::CeilDiv(lastCoreElements, lastCoreLoops);
-    int64_t lastCoreLastLoopElements = lastCoreElements - (lastCoreLoops - 1) * lastCorePerLoopElements;
-    tokensCountTiling->lastCoreLoops = lastCoreLoops;
-    tokensCountTiling->lastCorePerLoopElements = lastCorePerLoopElements;
-    tokensCountTiling->lastCoreLastLoopElements = lastCoreLastLoopElements;
-}
-
-static int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols, int64_t inputXDtypeSize, int64_t availUbSize)
-{
-    int64_t xInSize = AlignBytes(perLoopCols, inputXDtypeSize) + AlignBytes(perLoopCols, sizeof(int8_t));
-    int64_t scaleSize = 2 * AlignBytes(perLoopCols / MX_QUANT_BLOCK_SIZE, inputXDtypeSize) +
-                        AlignBytes(perLoopCols / MX_QUANT_BLOCK_SIZE, sizeof(int8_t));
-    int64_t xOutSize = Align(perLoopCols / 4, sizeof(int8_t)) * 4;
-    return (availUbSize - (xInSize + scaleSize + xOutSize)) / static_cast<int64_t>(sizeof(int32_t));
-}
-
-static void Tiling4GatherOutMxQuant(MoeInitRoutingV3Arch35TilingData *tilingData,
-    const MegaMoeAuxTilingContext &ctx)
-{
-    auto *gatherOutTiling = &(tilingData->gatherOutComputeParamsOp);
-    int64_t perCoreIndicesElements = ops::CeilDiv(ctx.totalLength, ctx.aivCoreNum);
-    if (perCoreIndicesElements <= 0) {
-        gatherOutTiling->needCoreNum = 0;
-        return;
-    }
-    int64_t needCoreNum = ops::CeilDiv(ctx.totalLength, perCoreIndicesElements);
-    int64_t lastCoreIndicesElements = ctx.totalLength - (needCoreNum - 1) * perCoreIndicesElements;
-
-    int64_t perLoopCols = ops::CeilAlign(tilingData->cols, MX_QUANT_BLOCK_SIZE);
-    int64_t perLoopMaxIndicesElements = CalcMaxRowIdxPerLoopMxQuant(perLoopCols, ctx.inputXDtypeSize, ctx.availUbSize);
-    while (perLoopMaxIndicesElements <= 0) {
-        perLoopCols = ops::CeilAlign(ops::CeilDiv(perLoopCols, NUM_TWO), MX_QUANT_BLOCK_SIZE);
-        perLoopMaxIndicesElements = CalcMaxRowIdxPerLoopMxQuant(perLoopCols, ctx.inputXDtypeSize, ctx.availUbSize);
-    }
-    int64_t colsLoops = ops::CeilDiv(tilingData->cols, perLoopCols);
-    int64_t lastLoopCols = tilingData->cols - (colsLoops - 1) * perLoopCols;
-    gatherOutTiling->needCoreNum = needCoreNum;
-    gatherOutTiling->perCoreIndicesElements = perCoreIndicesElements;
-    gatherOutTiling->lastCoreIndicesElements = lastCoreIndicesElements;
-    gatherOutTiling->colsLoops = colsLoops;
-    gatherOutTiling->perLoopCols = perLoopCols;
-    gatherOutTiling->lastLoopCols = lastLoopCols;
-
-    int64_t perCorePerLoopIndicesElements = std::min(perLoopMaxIndicesElements, perCoreIndicesElements);
-    int64_t perCoreIndicesLoops = ops::CeilDiv(perCoreIndicesElements, perCorePerLoopIndicesElements);
-    int64_t perCoreLastLoopIndicesElements =
-        perCoreIndicesElements - (perCoreIndicesLoops - 1) * perCorePerLoopIndicesElements;
-    gatherOutTiling->perCoreIndicesLoops = perCoreIndicesLoops;
-    gatherOutTiling->perCorePerLoopIndicesElements = perCorePerLoopIndicesElements;
-    gatherOutTiling->perCoreLastLoopIndicesElements = perCoreLastLoopIndicesElements;
-
-    int64_t lastCorePerLoopIndicesElements = std::min(perLoopMaxIndicesElements, lastCoreIndicesElements);
-    int64_t lastCoreIndicesLoops = ops::CeilDiv(lastCoreIndicesElements, lastCorePerLoopIndicesElements);
-    int64_t lastCoreLastLoopIndicesElements =
-        lastCoreIndicesElements - (lastCoreIndicesLoops - 1) * lastCorePerLoopIndicesElements;
-    gatherOutTiling->lastCoreIndicesLoops = lastCoreIndicesLoops;
-    gatherOutTiling->lastCorePerLoopIndicesElements = lastCorePerLoopIndicesElements;
-    gatherOutTiling->lastCoreLastLoopIndicesElements = lastCoreLastLoopIndicesElements;
-}
-
-MoeInitRoutingV3Arch35TilingData ComputeMoeInitRoutingV3Tiling(
-    MoeInitRoutingV3Arch35TilingData &tilingData, MegaMoeAuxTilingContext &ctx)
-{
-    Tiling4VBSCompute(&tilingData, ctx);
-    Tiling4VMSMiddleCompute(&tilingData);
-    Tiling4SortOutCompute(&tilingData);
-    Tiling4ExpertTokensCountCompute(&tilingData, ctx);
-    Tiling4GatherOutMxQuant(&tilingData, ctx); // support fp8_e4m3fn, fp8_e5m2 currently
-    return tilingData;
-}
-
-static ge::graphStatus GetMoeInitRoutingV3Tiling(MegaMoeTilingData &tilingData,
-    const uint32_t aivNum, const uint64_t ubSize, const int64_t opQuantMode, ge::DataType xDtype, const char *nodeName)
-{
-    MoeInitRoutingV3Arch35TilingData initTilingData;
-    OP_TILING_CHECK(
-        CheckAndSetInitTilingData(tilingData, initTilingData, aivNum, opQuantMode, nodeName) == ge::GRAPH_FAILED,
-        OP_LOGE(nodeName, "SetInitTilingData failed."), return ge::GRAPH_FAILED);
-
-    MegaMoeAuxTilingContext ctx;
-    OP_TILING_CHECK(
-        SetAuxiliaryTilingCtx(initTilingData, ctx, nodeName, aivNum, ubSize, xDtype) == ge::GRAPH_FAILED,
-        OP_LOGE(nodeName, "SetAuxiliaryTilingCtx failed."), return ge::GRAPH_FAILED);
-
-    printAuxiliaryTilingCtx(&ctx, tilingData.expertPerRank, tilingData.epWorldSize,
-        {tilingData.bs, tilingData.topK}, xDtype, nodeName);
-
-    auto initRoutingTilingData = ComputeMoeInitRoutingV3Tiling(initTilingData, ctx);
-
-    int64_t leastCoreNum = std::max(
-        std::max(initTilingData.vbsComputeParamsOp.needCoreNum,
-            initTilingData.vmsMiddleComputeParamsOp.needCoreNum),
-        std::max(initTilingData.expertTokensCountTilingDataOp.needCoreNum,
-            initTilingData.gatherOutComputeParamsOp.needCoreNum));
-    bool isCoreNumValid = initTilingData.coreNum >= leastCoreNum;
-    OP_TILING_CHECK(
-        !isCoreNumValid,
-        OP_LOGE(nodeName, "aivNum(%ld) < leastCoreNum(%ld).", initTilingData.coreNum, leastCoreNum),
-        return ge::GRAPH_FAILED);
-    
-    tilingData.moeInitRoutingTilingData = initRoutingTilingData;
-
-    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
@@ -1578,6 +947,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    tilingData->aicNum = aicNum;
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
             (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
@@ -1593,13 +963,6 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     // Attr check & set
     OP_TILING_CHECK(CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED,
         OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
-
-    // InitRouting
-    int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
-    ge::DataType xDtype = context->GetInputDesc(config.xIndex)->GetDataType();
-    OP_TILING_CHECK(
-        GetMoeInitRoutingV3Tiling(*tilingData, aivNum, ubSize, opQuantMode, xDtype, nodeName) == ge::GRAPH_FAILED,
-        OP_LOGE(nodeName, "Moe init routing failed."), return ge::GRAPH_FAILED);
 
     // Cal TilingKey
     uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);

@@ -25,7 +25,6 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
-#include "../../../common/op_kernel/memory_copy.h"
 
 namespace BaseApi {
 struct TaskInfo {

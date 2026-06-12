@@ -36,15 +36,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_0)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // key              input1
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // value            input2
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},              // sparse_indices   input3
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                      // block_table      input4
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_kv 
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // query_rope       input5
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}      // key_rope         input6
         },
         {
             {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // attention_out
@@ -75,15 +75,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_1)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{2, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{2, 1, 206}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{2, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // query            input0
+            {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // key              input1
+            {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // value            input2
+            {{{2, 1, 206}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},            // sparse_indices   input3
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                  // block_table      input4
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},      // actual_seq_lengths_query
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},     // actual_seq_lengths_kv 
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},                                 // query_rope       input5
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}                                  // key_rope         input6
         },
         {
             {{{2, 128, 512}, {2, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},       // attention_out
@@ -114,15 +114,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_2)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // key              input1
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // value            input2
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},              // sparse_indices   input3
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                      // block_table      input4
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_kv 
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // query_rope       input5
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}      // key_rope         input6
         },
         {
             {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // attention_out
@@ -153,15 +153,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_3)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{184320, 1, 16}, {184320, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{10, 128}, {10, 128}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},   // key              input1
+            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},   // value            input2
+            {{{184320, 1, 16}, {184320, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},          // sparse_indices   input3
+            {{{10, 128}, {10, 128}}, ge::DT_INT32, ge::FORMAT_ND},                      // block_table      input4
+            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},        // actual_seq_lengths_query
+            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},       // actual_seq_lengths_kv 
+            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // query_rope       input5
+            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}      // key_rope         input6
         },
         {
             {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // attention_out
@@ -192,15 +192,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_4)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // key              input1
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // value            input2
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},              // sparse_indices   input3
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                      // block_table      input4
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_kv 
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // query_rope       input5
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}      // key_rope         input6
         },
         {
             {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // attention_out
@@ -231,15 +231,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_5)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{4096, 64, 1, 64}, {4096, 64, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{4096, 64, 1, 64}, {4096, 64, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // key              input1
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // value            input2
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},              // sparse_indices   input3
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                      // block_table      input4
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_kv 
+            {{{4096, 64, 1, 64}, {4096, 64, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},       // query_rope       input5
+            {{{4096, 64, 1, 64}, {4096, 64, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}        // key_rope         input6
         },
         {
             {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // attention_out
@@ -270,15 +270,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_6)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},             // key              input1
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},             // value            input2
+            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},          // sparse_indices   input3
+            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},                                // block_table      input4
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},              // actual_seq_lengths_query
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},             // actual_seq_lengths_kv 
+            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},               // query_rope       input5
+            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}                // key_rope         input6
         },
         {
             {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // attention_out
@@ -309,15 +309,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_7)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},             // key              input1
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},             // value            input2
+            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},          // sparse_indices   input3
+            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},                                // block_table      input4
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},              // actual_seq_lengths_query
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},             // actual_seq_lengths_kv 
+            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND},           // query_rope       input5
+            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}                // key_rope         input6
         },
         {
             {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // attention_out
@@ -354,15 +354,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_8)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{184320, 1, 16}, {184320, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},   // key              input1
+            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},   // value            input2
+            {{{184320, 1, 16}, {184320, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},          // sparse_indices   input3
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                                    // block_table      input4
+            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},        // actual_seq_lengths_query
+            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},       // actual_seq_lengths_kv 
+            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // query_rope       input5
+            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}      // key_rope         input6
         },
         {
             {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // attention_out
@@ -393,15 +393,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_9)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{184320, 1, 16}, {184320, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{1, 2, 1}, {1, 2, 1}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},   // key              input1
+            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},   // value            input2
+            {{{184320, 1, 16}, {184320, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},          // sparse_indices   input3
+            {{{1, 2, 1}, {1, 2, 1}}, ge::DT_INT32, ge::FORMAT_ND},                      // block_table      input4
+            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},        // actual_seq_lengths_query
+            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},       // actual_seq_lengths_kv 
+            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // query_rope       input5
+            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}      // key_rope         input6
         },
         {
             {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // attention_out
@@ -432,15 +432,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_10)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{184320, 1, 16}, {184320, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{1, -1}, {1, -1}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},   // key              input1
+            {{{10, 65488, 1, 512}, {10, 65488, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},   // value            input2
+            {{{184320, 1, 16}, {184320, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},          // sparse_indices   input3
+            {{{1, -1}, {1, -1}}, ge::DT_INT32, ge::FORMAT_ND},                          // block_table      input4
+            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},        // actual_seq_lengths_query
+            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},       // actual_seq_lengths_kv 
+            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // query_rope       input5
+            {{{753, 512, 1, 512}, {753, 512, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}      // key_rope         input6
         },
         {
             {{{184320, 4, 512}, {184320, 4, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // attention_out
@@ -471,15 +471,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_11)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // key              input1
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // value            input2
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},              // sparse_indices   input3
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                      // block_table      input4
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_kv 
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // query_rope       input5
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}      // key_rope         input6
         },
         {
             {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // attention_out
@@ -510,15 +510,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_12)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},             // key              input1
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},             // value            input2
+            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},          // sparse_indices   input3
+            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},                                // block_table      input4
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},              // actual_seq_lengths_query
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},             // actual_seq_lengths_kv 
+            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND},           // query_rope       input5
+            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}                // key_rope         input6
         },
         {
             {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // attention_out
@@ -549,15 +549,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_13)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}
         },
         {
             {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -588,15 +588,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_14)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}
         },
         {
             {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -627,15 +627,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_15)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{128, 512}, {128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{128, 512}, {128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}
         },
         {
             {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -666,15 +666,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_16)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}
         },
         {
             {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -705,15 +705,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_17)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{2, 128, 512}, {2, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{2, 1, 512}, {2, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{2, 1, 206}, {2, 1, 206}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{2, 1, 512}, {2, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{2, 1, 64}, {2, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{2, 1, 64}, {2, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{2, 128, 512}, {2, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{2, 1, 512}, {2, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{2, 1, 512}, {2, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{2, 1, 206}, {2, 1, 206}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{2, 1, 64}, {2, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{2, 1, 64}, {2, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}
         },
         {
             {{{2, 128, 512}, {2, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -744,15 +744,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_18)
     gert::TilingContextPara tilingContextPara(
         "SparseFlashAttention",
         {
-            {{{1, 1, 128, 512}, {1, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
-            {{{1, 8192, 1, 512}, {1, 8192, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
-            {{{1, 1, 1, 8192}, {1, 1, 1, 8192}}, ge::DT_INT32, ge::FORMAT_ND}, // sparse_indices   input2
-            {{{1, 8192, 1, 512}, {1, 8192, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input3
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // block_table      input4
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist}, // actual_seq_query input5
-            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_kv    input6
-            {{{1, 1, 128, 64}, {1, 1, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input7
-            {{{1, 8192, 1, 64}, {1, 8192, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}, // key_rope         input8
+            {{{1, 1, 128, 512}, {1, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 8192, 1, 512}, {1, 8192, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 8192, 1, 512}, {1, 8192, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 1, 1, 8192}, {1, 1, 1, 8192}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{1, 1, 128, 64}, {1, 1, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 8192, 1, 64}, {1, 8192, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}
         },
         {
             {{{1, 1, 128, 512}, {1, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},

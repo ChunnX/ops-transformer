@@ -19,6 +19,7 @@
 #include "opdev/fast_vector.h"
 #include "opdev/op_errno.h"
 #include "opdev/op_executor.h"
+#include "op_common/log/log.h"
 
 using namespace op;
 
@@ -206,17 +207,21 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         // key/value: (T,N2,D)
         AnalysisAxisForTnd(qShape, kShape, vShape, shapeInfo);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "not support inputLayout %s with dim_num %lu", inputLayout, shapeInfo.dimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "not support inputLayout %s with dim_num %lu",
+            inputLayoutStr.c_str(), shapeInfo.dimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d != shapeInfo.axes.dk) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qD and kD should be same, but got qD=%ld kD=%ld", shapeInfo.axes.d, 
-            shapeInfo.axes.dk);
+        std::string dMsg = std::to_string(shapeInfo.axes.d) + " and " + std::to_string(shapeInfo.axes.dk);
+        std::string reason = "The values of the D dim of input query and key must be the same";
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScore", "query and key", dMsg.c_str(), reason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d < shapeInfo.axes.dv) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "only support kD >= vD, but got kD=%ld vD=%ld", shapeInfo.axes.d, 
-            shapeInfo.axes.dv);
+        std::string dMsg = std::to_string(shapeInfo.axes.d) + " and " + std::to_string(shapeInfo.axes.dv);
+        std::string reason = "The value of D dim of input key must be greater than or equal to "
+                             "the value of D dim of input value";
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScore", "key and value", dMsg.c_str(), reason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -400,29 +405,35 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     auto qDtype = query->GetDataType();
     auto outDtype = attentionOut->GetDataType();
     if (qDtype != kDtype || kDtype != vDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], key[%s], value[%s] are not equal.",
-                op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(vDtype)).GetString());
+        std::string paramMsg = "query, key and value";
+        std::string dtypeMsg = std::string(op::ToString(DataType(qDtype)).GetString()) + ", " +
+            op::ToString(DataType(kDtype)).GetString() + " and " +
+            op::ToString(DataType(vDtype)).GetString();
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(), paramMsg.c_str(),
+            dtypeMsg.c_str(), "The dtypes of input query, key and value must be the same");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (StrideLimited() &&
         !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query/key/value is [%s], should be fp16, bf16 or fp32.",
-                op::ToString(DataType(qDtype)).GetString());
+        std::string dtypeStr = op::ToString(DataType(qDtype)).GetString();
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(),
+            "query, key and value", dtypeStr.c_str(),
+            "The dtypes of input query, key and value must be within the range {FLOAT, FLOAT16, BF16}");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (pseType == PSE_INNER_MUL_ADD || pseType == PSE_INNER_MUL_ADD_SQRT) {
         // Inner pse alibi, dtype must be fp32
         if (realShiftOptional == nullptr) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When pseType is 2 or 3, pseShape cannot be null.");
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "pseShape",
+                "The input pseShape cannot be nullptr when the mode of pse is 2 or 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
         auto pseDtype = realShiftOptional->GetDataType();
         if (pseDtype != op::DataType::DT_FLOAT) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type %s of pse is not invalid in pse type 2 or 3 mode, It must be float32",
-                    op::ToString(DataType(pseDtype)).GetString());
+            std::string dtypeStr = op::ToString(DataType(pseDtype)).GetString();
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "pse",
+                dtypeStr.c_str(), "The dtype of input pse must be FLOAT when the mode of pse is 2 or 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -430,18 +441,20 @@ static aclnnStatus InputDtypeCheck(const aclTensor *query, const aclTensor *key,
     if (realShiftOptional != nullptr) {
         auto pseDtype = realShiftOptional->GetDataType();
         if (pseDtype != outDtype) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type %s of pse is not equal to the data type %s of attentionOut.",
-                    op::ToString(DataType(pseDtype)).GetString(), op::ToString(DataType(outDtype)).GetString());
+            std::string paramMsg = "pse and attentionOut";
+            std::string dtypeMsg = std::string(op::ToString(DataType(pseDtype)).GetString()) + " and " +
+                op::ToString(DataType(outDtype)).GetString();
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(), paramMsg.c_str(),
+                dtypeMsg.c_str(), "The dtypes of input pse and output attentionOut must be the same");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     if (sinkOptional != nullptr) {
         auto sinkDtype = sinkOptional->GetDataType();
         if (sinkDtype != op::DataType::DT_FLOAT) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The data type of sink is [%s], should be fp32.",
-                    op::ToString(DataType(sinkDtype)).GetString());
+            std::string dtypeStr = op::ToString(DataType(sinkDtype)).GetString();
+            OP_LOGE_WITH_INVALID_INPUT_DTYPE(op::internal::GetLogApiInfo().c_str(), "sink",
+                dtypeStr.c_str(), "FLOAT");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -456,16 +469,21 @@ static aclnnStatus InputDtypeCheckQuant(const aclTensor *query, const aclTensor 
     auto qDtype = query->GetDataType();
     auto outDtype = attentionOut->GetDataType();
     if (qDtype != kDtype || kDtype != vDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], key[%s], value[%s] are not equal.",
-                op::ToString(DataType(qDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(vDtype)).GetString());
+        std::string paramMsg = "query, key and value";
+        std::string dtypeMsg = std::string(op::ToString(DataType(qDtype)).GetString()) + ", " +
+            op::ToString(DataType(kDtype)).GetString() + " and " +
+            op::ToString(DataType(vDtype)).GetString();
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(), paramMsg.c_str(),
+            dtypeMsg.c_str(), "The dtypes of input query, key and value must be the same");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (StrideLimited() &&
         !(qDtype == op::DataType::DT_FLOAT || qDtype == op::DataType::DT_FLOAT16 || qDtype == op::DataType::DT_BF16)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query/key/value is [%s], should be fp16, bf16 or fp32.",
-                op::ToString(DataType(qDtype)).GetString());
+        std::string dtypeStr = op::ToString(DataType(qDtype)).GetString();
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(),
+            "query, key and value", dtypeStr.c_str(),
+            "The dtypes of input query, key and value must be within the range {FLOAT, FLOAT16, BF16}");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -483,12 +501,15 @@ static inline bool CheckFormat(
                        softmaxSumOut->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ &&
                        attentionOutOut->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ;
     if (!formatValid) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Input and output format do not support [NZ]. Actual: query:[%s], key:[%s], value:[%s], softmaxMaxOut:[%s], softmaxSumOut:[%s], attentionOutOut:[%s].",
-            op::ToString(query->GetStorageFormat()).GetString(), op::ToString(key->GetStorageFormat()).GetString(),
-            op::ToString(value->GetStorageFormat()).GetString(), op::ToString(softmaxMaxOut->GetStorageFormat()).GetString(), 
-            op::ToString(softmaxSumOut->GetStorageFormat()).GetString(), op::ToString(attentionOutOut->GetStorageFormat()).GetString());
+        std::string formatMsg = op::ToString(query->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(key->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(value->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(softmaxMaxOut->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(softmaxSumOut->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(attentionOutOut->GetStorageFormat()).GetString();
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("FlashAttentionScore",
+            "query, key, value, softmax_max, softmax_sum and attention_out",
+            formatMsg.c_str(), "The format of input and output should not be NZ");
         return false;
     }
     if (queryRope != nullptr) {
@@ -513,11 +534,16 @@ static inline bool CheckFormat(
         formatValid = (formatValid && sinkOptional->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ);
     }
     if (!formatValid) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,"Optional input format do not support [NZ]. Actual: queryRope:[%s], keyRope:[%s], realShiftOptional:[%s], "
-            "dropMaskOptional:[%s], paddingMaskOptional:[%s], attenMaskOptional:[%s], sinkOptional:[%s].",op::ToString(queryRope->GetStorageFormat()).GetString(),
-            op::ToString(keyRope->GetStorageFormat()).GetString(),op::ToString(realShiftOptional->GetStorageFormat()).GetString(),
-            op::ToString(dropMaskOptional->GetStorageFormat()).GetString(),op::ToString(paddingMaskOptional->GetStorageFormat()).GetString(),
-            op::ToString(attenMaskOptional->GetStorageFormat()).GetString(),op::ToString(sinkOptional->GetStorageFormat()).GetString());
+        std::string formatMsg = op::ToString(queryRope->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(keyRope->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(realShiftOptional->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(dropMaskOptional->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(paddingMaskOptional->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(attenMaskOptional->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(sinkOptional->GetStorageFormat()).GetString();
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("FlashAttentionScore",
+            "query_rope, key_rope, real_shift, drop_mask, padding_mask, atten_mask and sink",
+            formatMsg.c_str(), "The format of optional inputs should not be NZ");
         return false;
     }
     return formatValid;
@@ -529,14 +555,16 @@ static aclnnStatus AnalysisInput(const aclTensor *query, const aclTensor *key, c
                                  const aclIntArray *actualSeqKvLenOptional = nullptr)
 {
     if (headNum <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "head_num must > 0, but got %ld", headNum);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "FlashAttentionScore", "headNum", std::to_string(headNum), "The value of headNum must be greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
     CHECK_RET(
         AnalysisAxis(query, key, value, inputLayout, headNum, shapeInfo) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     if (shapeInfo.axes.d > HEAD_DIM_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Head dim must <= 768, but got %ld", shapeInfo.axes.d);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "D dim",
+            std::to_string(shapeInfo.axes.d).c_str(), "The value of D dim can only be in the range of (0, 768]");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -643,74 +671,87 @@ static aclnnStatus Contiguous(const aclTensor *&query, const aclTensor *&key, co
 {
     query = l0op::Contiguous(query, executor);
     OP_CHECK(query != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "query",
+            "Try contiguous query failed, query cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     key = l0op::Contiguous(key, executor);
     OP_CHECK(key != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "key",
+            "Try contiguous key failed, key cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     value = l0op::Contiguous(value, executor);
     OP_CHECK(value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "value",
+            "Try contiguous value failed, value cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     if (realShiftOptional) {
         realShiftOptional = l0op::Contiguous(realShiftOptional, executor);
         OP_CHECK(realShiftOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if realShiftOptional is present, the realShiftOptional cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "real_shift",
+                "Try contiguous real_shift failed, real_shift cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (dropMaskOptional) {
         dropMaskOptional = l0op::Contiguous(dropMaskOptional, executor);
         OP_CHECK(dropMaskOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if dropMaskOptional is present, the dropMaskOptional cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "drop_mask",
+                "Try contiguous drop_mask failed, drop_mask cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (paddingMaskOptional) {
         paddingMaskOptional = l0op::Contiguous(paddingMaskOptional, executor);
         OP_CHECK(paddingMaskOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if paddingMaskOptional is present, the paddingMaskOptional cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "padding_mask",
+                "Try contiguous padding_mask failed, padding_mask cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (attenMaskOptional) {
         attenMaskOptional = l0op::Contiguous(attenMaskOptional, executor);
         OP_CHECK(attenMaskOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if attenMaskOptional is present, the attenMaskOptional cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "atten_mask",
+                "Try contiguous atten_mask failed, atten_mask cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (queryRope != nullptr) {
         queryRope = l0op::Contiguous(queryRope, executor);
         OP_CHECK(queryRope != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if queryRope is present, the queryRope cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "query_rope",
+                "Try contiguous query_rope failed, query_rope cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (keyRope != nullptr) {
         keyRope = l0op::Contiguous(keyRope, executor);
         OP_CHECK(keyRope != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if keyRope is present, the keyRope cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "key_rope",
+                "Try contiguous key_rope failed, key_rope cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (sinkOptional != nullptr) {
         sinkOptional = l0op::Contiguous(sinkOptional, executor);
         OP_CHECK(sinkOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if sinkOptional is present, the sinkOptional cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "sink",
+                "Try contiguous sink failed, sink cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (dScaleQOptional) {
         dScaleQOptional = l0op::Contiguous(dScaleQOptional, executor);
         OP_CHECK(dScaleQOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if dScaleQOptional is present, the dScaleQOptional cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "d_scale_q",
+                "Try contiguous d_scale_q failed, d_scale_q cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (dScaleKOptional) {
         dScaleKOptional = l0op::Contiguous(dScaleKOptional, executor);
         OP_CHECK(dScaleKOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if dScaleKOptional is present, the dScaleKOptional cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "d_scale_k",
+                "Try contiguous d_scale_k failed, d_scale_k cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     if (dScaleVOptional) {
         dScaleVOptional = l0op::Contiguous(dScaleVOptional, executor);
         OP_CHECK(dScaleVOptional != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if dScaleVOptional is present, the dScaleVOptional cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "d_scale_v",
+                "Try contiguous d_scale_v failed, d_scale_v cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     return ACLNN_SUCCESS;
@@ -722,31 +763,38 @@ static aclnnStatus ContiguousQuant(const aclTensor *&query, const aclTensor *&ke
 {
     query = l0op::Contiguous(query, executor);
     OP_CHECK(query != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "query",
+            "Try contiguous query failed, query cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     key = l0op::Contiguous(key, executor);
     OP_CHECK(key != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "key",
+            "Try contiguous key failed, key cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     value = l0op::Contiguous(value, executor);
     OP_CHECK(value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "value",
+            "Try contiguous value failed, value cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     dScaleQ = l0op::Contiguous(dScaleQ, executor);
     OP_CHECK(dScaleQ != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The dScaleQ cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "d_scale_q",
+            "Try contiguous d_scale_q failed, d_scale_q cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     dScaleK = l0op::Contiguous(dScaleK, executor);
     OP_CHECK(dScaleK != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The dScaleK cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "d_scale_k",
+            "Try contiguous d_scale_k failed, d_scale_k cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     dScaleV = l0op::Contiguous(dScaleV, executor);
     OP_CHECK(dScaleV != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The dScaleV cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "d_scale_v",
+            "Try contiguous d_scale_v failed, d_scale_v cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     pScale = l0op::Contiguous(pScale, executor);
     OP_CHECK(pScale != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The pScale cannot be nullptr"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "p_scale",
+            "Try contiguous p_scale failed, p_scale cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
@@ -762,21 +810,24 @@ static aclnnStatus PreprocessQKV(const aclTensor *&query, const aclTensor *&key,
             query, executor->AllocIntArray(shapeInfo.reshapedQueryShape.data(), shapeInfo.reshapedQueryShape.size()),
             executor);
         OP_CHECK(query != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "query",
+                "Try reshape query failed, query cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
         key = l0op::Reshape(
             key,
             executor->AllocIntArray(shapeInfo.reshapedKeyShape.data(), shapeInfo.reshapedKeyShape.size()),
             executor);
         OP_CHECK(key != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "key",
+                "Try reshape key failed, key cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
         value = l0op::Reshape(
             value,
             executor->AllocIntArray(shapeInfo.reshapedValueBefore.data(), shapeInfo.reshapedValueBefore.size()),
             executor);
         OP_CHECK(value != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "value",
+                "Try reshape value failed, value cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
 
@@ -787,17 +838,20 @@ static aclnnStatus PreprocessQKV(const aclTensor *&query, const aclTensor *&key,
         if (shapeInfo.padNum != 0) {
             query = l0op::Pad(query, qkPaddings, executor);
             OP_CHECK(query != nullptr,
-                OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "query",
+                    "Try pad query failed, query cannot be nullptr"),
                 return ACLNN_ERR_PARAM_NULLPTR);
             key = l0op::Pad(key, qkPaddings, executor);
             OP_CHECK(key != nullptr,
-                OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "key",
+                    "Try pad key failed, key cannot be nullptr"),
                 return ACLNN_ERR_PARAM_NULLPTR);
         }
         if (shapeInfo.padNumv != 0) {
             value = l0op::Pad(value, vPaddings, executor);
             OP_CHECK(value != nullptr,
-                OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "value",
+                    "Try pad value failed, value cannot be nullptr"),
                 return ACLNN_ERR_PARAM_NULLPTR);
         }
     }
@@ -807,15 +861,18 @@ static aclnnStatus PreprocessQKV(const aclTensor *&query, const aclTensor *&key,
         auto perm = executor->AllocIntArray(shapeInfo.perm_in.data(), shapeInfo.perm_in.size());
         query = l0op::Transpose(query, perm, executor);
         OP_CHECK(query != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "query",
+                "Try transpose query failed, query cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
         key = l0op::Transpose(key, perm, executor);
         OP_CHECK(key != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "key",
+                "Try transpose key failed, key cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
         value = l0op::Transpose(value, perm, executor);
         OP_CHECK(value != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "value",
+                "Try transpose value failed, value cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
 
@@ -833,15 +890,18 @@ static aclnnStatus PreprocessQKV(const aclTensor *&query, const aclTensor *&key,
 
         query = l0op::Reshape(query, executor->AllocIntArray(queryShape.data(), queryShape.size()), executor);
         OP_CHECK(query != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The query cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "query",
+                "Try reshape query failed, query cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
         key = l0op::Reshape(key, executor->AllocIntArray(keyShape.data(), keyShape.size()), executor);
         OP_CHECK(key != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The key cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "key",
+                "Try reshape key failed, key cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
         value = l0op::Reshape(value, executor->AllocIntArray(ValueShape.data(), ValueShape.size()), executor);
         OP_CHECK(value != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The value cannot be nullptr"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(op::internal::GetLogApiInfo().c_str(), "value",
+                "Try reshape value failed, value cannot be nullptr"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
     return ACLNN_SUCCESS;
@@ -960,20 +1020,28 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
     Shape qRopeShape = queryRope->GetViewShape();
     Shape kRopeShape = keyRope->GetViewShape();
     if (qRopeShape[DIM_NUM_2] > faShape.axes.d || kRopeShape[DIM_NUM_2] > faShape.axes.d) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, do not support query_rope and key_rope when"
-                " the head-dim of query_rope or key_rope is larger than the head-dim of query.");
+        std::string dMsg = std::to_string(qRopeShape[DIM_NUM_2]) + " and " + std::to_string(kRopeShape[DIM_NUM_2]);
+        std::string reason = "The value of D dim of input query_rope and key_rope must be greater than "
+                             "the value of D dim of input query";
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScore", "query_rope and key_rope",
+            dMsg.c_str(), reason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (qDtype !=  ge::DataType::DT_BF16 || kDtype != ge::DataType::DT_BF16 || vDtype != ge::DataType::DT_BF16
         || qRopeDtype != ge::DataType::DT_BF16 || kRopeDtype != ge::DataType::DT_BF16) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of query[%s], queryRope[%s], key[%s], keyRope[%s], value[%s]"
-                " should be BFloat16.", op::ToString(DataType(qDtype)).GetString(),
-                op::ToString(DataType(qRopeDtype)).GetString(), op::ToString(DataType(kDtype)).GetString(),
-                op::ToString(DataType(kRopeDtype)).GetString(), op::ToString(DataType(vDtype)).GetString());
+        std::string paramMsg = "query, queryRope, key, keyRope and value";
+        std::string dtypeMsg = std::string(op::ToString(DataType(qDtype)).GetString()) + ", " +
+            op::ToString(DataType(qRopeDtype)).GetString() + ", " +
+            op::ToString(DataType(kDtype)).GetString() + ", " +
+            op::ToString(DataType(kRopeDtype)).GetString() + " and " +
+            op::ToString(DataType(vDtype)).GetString();
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(op::internal::GetLogApiInfo().c_str(), paramMsg.c_str(),
+            dtypeMsg.c_str(), "The dtypes of input query, queryRope, key, keyRope and value must be BF16");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (sparseMode == 6) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, do not support query_rope and key_rope when sparseMode is 6.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "sparseMode", "6",
+            "The value of sparseMode cannot be 6 when queryRope and keyRope are provided");
         return ACLNN_ERR_PARAM_INVALID;
     }
     
@@ -991,16 +1059,20 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (keepProb < 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, only support query_rope and key_rope when keepProb = 1.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "keepProb", std::to_string(keepProb),
+                "The value of keepProb must be 1 when queryRope and keyRope are provided");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (faShape.inputLayout != InputLayout::TND) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, only support query_rope and key_rope as input for layout TND.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout",
+                std::to_string(static_cast<int64_t>(faShape.inputLayout)).c_str(),
+                "The query_rope and key_rope are only supported when input_layout is TND");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
         if (faShape.needPad || faShape.needTranspose || faShape.needReshape || faShape.needPadValue) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, do not support query_rope and key_rope as input when shape is not aligned with 128 or other corner cases.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "shape", "unaligned shape",
+                "The value of the shape must be aligned with 128 when query_rope and key_rope are provided as input");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -1963,7 +2035,8 @@ aclnnStatus ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(
     }
 
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The value of input_layout must be TND");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
