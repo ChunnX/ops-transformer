@@ -153,7 +153,9 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
         // 2 is blockSize_ dim
         blockSize_ = kCacheShape_.GetDim(2);
     } else {
-        OP_CHECK_IF(kCacheFormat != ge::Format::FORMAT_ND,
+        OP_LOGE(context_, "[DEBUG] key_cache Norm mode, kCacheFormat(StorageFormat) = %d",
+                static_cast<int32_t>(kCacheFormat));
+        OP_CHECK_IF(kCacheFormat != ge::Format::FORMAT_ND && kCacheFormat != ge::Format::FORMAT_NCHW,
                     OP_LOGE(context_, "key_cache format should be ND when cache_mode is Norm, please check."),
                     return ge::GRAPH_FAILED);
     }
