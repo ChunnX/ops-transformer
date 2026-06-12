@@ -10,7 +10,7 @@
 - [2025/12] 支持transformer类onnx算子插件，包括[NPUFlashAttention](attention/flash_attention_score/framework)、[NPUMultiHeadAttention](common/src/framework)、[NPUMoeComputeExpertTokens](moe/moe_compute_expert_tokens/framework)等。
 - [2025/12] 新支持算子[kv_rms_norm_rope_cache](posembedding/kv_rms_norm_rope_cache)、[attention_update](attention/attention_update)、[attention_worker_scheduler](attention/attention_worker_scheduler)、[gather_pa_kv_cache](attention/gather_pa_kv_cache)、[kv_quant_sparse_flash_attention](attention/kv_quant_sparse_flash_attention)、[lightning_indexer_grad](attention/lightning_indexer_grad)、[mla_preprocess](attention/mla_preprocess)、[mla_preprocess_v2](attention/mla_preprocess_v2)、[grouped_matmul_swiglu_quant_v2](gmm/grouped_matmul_swiglu_quant_v2)、[attention_to_ffn](mc2/attention_to_ffn)、[ffn_to_attention](mc2/ffn_to_attention)。
 - [2025/12] 开源算子支持[CANN Simulator](docs/zh/debug/cann_sim.md)仿真工具开发调试。
-- [2025/12] 开源算子支持Ascend 950PR/Ascend 950DT/KirinX90系列产品。
+- [2025/12] 开源算子支持[Ascend 950PR/Ascend 950DT](docs/zh/ascend950_op_list.md)/KirinX90系列产品。
 - [2025/11] 新支持算子[kv_quant_sparse_flash_attention](attention/kv_quant_sparse_flash_attention)、[lightning_indexer](attention/lightning_indexer)、[quant_lightning_indexer](attention/quant_lightning_indexer)、[sparse_flash_attention](attention/sparse_flash_attention)。
 - [2025/11] 新支持示例算子[rope_matrix](experimental/posembedding/rope_matrix)和[all_gather_add](examples/mc2/all_gather_add)。
 - [2025/11] 新增算子开发工程模板[NpuOpsTransformerExt](experimental/npu_ops_transformer_ext)，无缝集成PyTorch张量操作，支持自动微分和GPU/NPU统一接口。
@@ -34,13 +34,15 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 
 ## ⬇️源码下载
 
-环境准备好后，下载与CANN版本配套的分支源码，命令如下，\$\{tag\_version\}替换为分支标签名。
-
-> 说明：若环境中已存在配套分支源码，**可跳过本步骤**，例如CANNLab默认已提供最新商发版CANN对应的源码 。
+环境准备好后，下载与CANN版本配套的分支源码，通用命令如下，\$\{tag\_version\}替换为分支标签名。以9.0.0分支源码下载为例：
 
 ```bash
-git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
+# 通用命令：git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
+git clone -b 9.0.0 https://gitcode.com/cann/ops-transformer.git
 ```
+
+> 说明：若环境中已存在配套分支源码，**可跳过本步骤**，例如CANNLab默认已提供最新商发版CANN对应的源码。
+
 ## 📖学习教程
 
 - [快速入门](docs/QUICKSTART.md)：从零开始快速体验项目核心基础能力，涵盖源码编译、算子调用、开发与调试等操作。

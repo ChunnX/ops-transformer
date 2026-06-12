@@ -747,14 +747,16 @@ aclnnStatus InnerBlitzSparseAttentionGetWorkspaceSize(
     const aclTensor *deqScale1, const aclTensor *quantScale1, const aclTensor *deqScale2, const aclTensor *quantScale2,
     const aclTensor *quantOffset2, int64_t numHeads, double scaleValue, int64_t preTokens, int64_t nextTokens,
     char *inputLayout, int64_t numKeyValueHeads, int64_t sparseMode, int64_t innerPrecise,
-    const aclTensor *attentionOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    bool softmaxLseFlag, const aclIntArray *blockShape,
+    const aclTensor *attentionOut, const aclTensor *softmaxLse,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(InnerBlitzSparseAttention,
-                DFX_IN(query, key, value, pseShift, attenMask, sabi, actualSeqLengths, actualSeqLengthsKv,
-                        deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2,
-                        numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
-                        sparseMode, innerPrecise),
-                DFX_OUT(attentionOut));
+                   DFX_IN(query, key, value, pseShift, attenMask, sabi, actualSeqLengths, actualSeqLengthsKv,
+                          deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2,
+                          numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
+                          sparseMode, innerPrecise),
+                   DFX_OUT(attentionOut, softmaxLse));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -785,19 +787,45 @@ aclnnStatus InnerBlitzSparseAttentionGetWorkspaceSize(
 
     CHECK_RET(PreprocessQKVInput(query, key, value, quantScale2, quantOffset2, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
+    // When softmaxLseFlag is false, create a placeholder {0} tensor so the op still
+    // receives a valid second output pointer (mirrors the FIAS pattern).
+    const aclTensor *lsePlaceholder = nullptr;
+    const aclTensor *tempLseTensor  = nullptr;
+    if (!softmaxLseFlag) {
+        std::vector<int64_t> shape = {0};
+        int64_t addr = 0xff;
+        tempLseTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT,
+                                        shape.data(), 0, ACL_FORMAT_ND,
+                                        shape.data(), shape.size(), static_cast<void*>(&addr));
+        lsePlaceholder = tempLseTensor;
+    } else {
+        lsePlaceholder = softmaxLse;
+    }
+
+    const aclTensor *l0LseOut = nullptr;
     auto l0AttentionOutOut = l0op::BlitzSparseAttention(query, key, value, pseShift, attenMask, sabi,
                                                         actualSeqLengths, actualSeqLengthsKv,
                                                         deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2,
                                                         numHeads, scaleValue, preTokens, nextTokens,
                                                         inputLayout,
                                                         numKeyValueHeads, sparseMode, innerPrecise,
-                                                        attentionOut, l0Executor);
+                                                        softmaxLseFlag, blockShape,
+                                                        attentionOut, lsePlaceholder, l0Executor,
+                                                        &l0LseOut);
+    if (!softmaxLseFlag) {
+        aclDestroyTensor(tempLseTensor);
+    }
     CHECK_RET(l0AttentionOutOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(PostProcessOutput(l0AttentionOutOut, attentionOut, shapeInfo, l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(CheckResultOutShapePfa(l0AttentionOutOut, attentionOut), ACLNN_ERR_PARAM_INVALID);
     auto viewCopyResult = l0op::ViewCopy(l0AttentionOutOut, attentionOut, l0Executor);
     CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    if (softmaxLseFlag && l0LseOut != nullptr) {
+        auto viewCopyLseResult = l0op::ViewCopy(l0LseOut, softmaxLse, l0Executor);
+        CHECK_RET(viewCopyLseResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

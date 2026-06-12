@@ -587,7 +587,7 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     - 入参 quantScale2 和 quantOffset2 支持 per-tensor/per-channel 两种格式和 FLOAT32/BFLOAT16 两种数据类型。若传入 quantOffset2 ，需保证其类型和shape信息与 quantScale2 一致。当输入为BFLOAT16时，同时支持 FLOAT32和BFLOAT16 ，否则仅支持 FLOAT32 。per-channel 格式，当输出layout为BSH时，要求 quantScale2 所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）
     - 输出为int8，quantScale2 和 quantOffset2 为 per-channel时，暂不支持左padding、Ring Attention或者D非32Byte对齐的场景。
     - 输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。
-  - 当输出为INT8，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在PFA接口外部做后量化操作，不在PFA接口内部使能）:
+  - 当输出为INT8，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在PFA接口外部做后量化操作，不在PFA接口内部开启）:
     - sparseMode = 0，attenMask如果非空指针，每个batch actualSeqLengths - actualSeqLengthsKV - preTokens > 0 或 nextTokens < 0 时，满足拦截条件。
     - sparseMode = 1 或 2，不会出现满足拦截条件的情况。
     - sparseMode = 3，每个batch actualSeqLengthsKV - actualSeqLengths < 0，满足拦截条件。

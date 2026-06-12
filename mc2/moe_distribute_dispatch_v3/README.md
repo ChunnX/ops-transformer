@@ -4,7 +4,7 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×    |
+| <term>Ascend 950DT</term>                             |    ×    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
@@ -327,6 +327,9 @@ $$
     - 一个模型中的`CombineV3`系列算子和`MoeDistributeDispatchV3`仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 一个模型中的`CombineV3`系列算子和`MoeDistributeDispatchV3`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
 
+- 通信方式约束：
+    - <term>Ascend 950DT</term>：仅支持UB Memory通信。
+
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数约束：
@@ -335,9 +338,9 @@ $$
         - `moe_expert_num`：取值范围(0, 1024]。
         - `shared_expert_num`：取值支持[0, 4]。
         - `comm_alg`：当前版本仅支持""，"fullmesh_v1"，"fullmesh_v2"三种输入方式。
-            - ""：默认值，使能fullmesh_v1模板。
-            - "fullmesh_v1"：使能fullmesh_v1模板。
-            - "fullmesh_v2"：使能fullmesh_v2模板，其中`comm_alg`仅在`tp_world_size`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下使能。
+            - ""：默认值，开启fullmesh_v1模板。
+            - "fullmesh_v1"：开启fullmesh_v1模板。
+            - "fullmesh_v2"：开启fullmesh_v2模板，其中`comm_alg`仅在`tp_world_size`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下开启。
         - `ep_recv_count_out`：要求shape为 (`ep_world_size` * max(`tp_world_size`, 1) * `local_expert_num`, )。
         - `performance_Info_optional`：预留参数，当前版本不支持，传空指针即可。
         - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/npu_ops_transformer/ops/deep_ep.py)。

@@ -709,7 +709,7 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint32_t>& outputIdxLocal,
     for (uint16_t i = 0; i < inputLoopNum; ++i) {
         int64_t arValueNumPerLoop = AscendC::GetSpr<AscendC::SpecialPurposeReg::AR>();
         if (((arValueNumPerLoop - arValueNum) / sizeof(uint32_t)) < remainValueNum) {
-            // 调用一次查找等于k-value情况的过程
+            // 调用一次查找等于k-value情况的过程；64: 单次循环处理的元素块大小
             FindValueEQOutputVFImpl(outputValueBuf, inputBuf + i * 64, nkValueBuf);
         } else {
             break;
@@ -725,8 +725,8 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint32_t>& outputIdxLocal,
         int64_t arIdxNumPerLoop = AscendC::GetSpr<AscendC::SpecialPurposeReg::AR>();
         if (((arIdxNumPerLoop - arIdxNum) / sizeof(uint32_t)) < remainIdxNum) {
             // 调用一次查找等于k-value情况的过程
-            beginIdx = i * 64;
-            FindIdxEQOutputVFImpl(outputIdxBuf, inputBuf + i * 64, beginIdx, nkValueBuf);
+            beginIdx = i * 64; // 64: 块起始偏移量
+            FindIdxEQOutputVFImpl(outputIdxBuf, inputBuf + i * 64, beginIdx, nkValueBuf); // 64: 块起始偏移量
         } else {
             break;
         }

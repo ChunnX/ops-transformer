@@ -20,13 +20,16 @@
 #include "flash_attn_tiling.h"
 #include "flash_attn_tiling_common.h"
 #include "../op_kernel/arch35/flash_attn_template_tiling_key.h"
-#include "arch35/flash_attn_tiling_reg.h"
+#include "flash_attn_tiling_info_parser.h"
+#include "checkers/fa_checker.h"
+#include "../../common/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;
 using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
+using namespace flash_attn;
 
 static bool IsEmptyInput(gert::TilingContext *context)
 {
@@ -48,8 +51,18 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext *context)
         }
     }
 
-    return TilingFlashAttnReg(context);
-    // return TilingRegistryArch::GetInstance().DoTilingImpl(context);
+    FaTilingInfo faInfo;
+    FaInfoParser faInfoParser(context);
+    if (faInfoParser.Parse(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    FAChecker faChecker;
+    faChecker.Init(faInfo);
+    if (faChecker.Process(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return FiaTilingRegistry::GetInstance().DoTilingImpl(context, &faInfo);
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttn(gert::TilingParseContext *context)

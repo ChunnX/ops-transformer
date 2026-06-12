@@ -48,6 +48,11 @@ namespace optiling{
     END_TILING_DATA_DEF
     REGISTER_TILING_DATA_CLASS(splitNodeOp, splitNode)
 
+    BEGIN_TILING_DATA_DEF(StridesConstInfo)
+    TILING_DATA_FIELD_DEF(uint64_t, bnStride)
+    END_TILING_DATA_DEF
+    REGISTER_TILING_DATA_CLASS(StridesConstInfoOp, StridesConstInfo)
+
     BEGIN_TILING_DATA_DEF(FAInferTilingData)
     TILING_DATA_FIELD_DEF(uint32_t, numHeads)
     TILING_DATA_FIELD_DEF(uint32_t, embeddingSize)
@@ -83,6 +88,8 @@ namespace optiling{
     TILING_DATA_FIELD_DEF(uint32_t, tailStartBatch)
     TILING_DATA_FIELD_DEF(uint32_t, tailStartN2)
     TILING_DATA_FIELD_DEF(uint32_t, tailKvNBlockTile)
+    TILING_DATA_FIELD_DEF_STRUCT(StridesConstInfo, keyStrides)
+    TILING_DATA_FIELD_DEF_STRUCT(StridesConstInfo, valueStrides)
     TILING_DATA_FIELD_DEF_STRUCT(coreNode, coreInfo)
     TILING_DATA_FIELD_DEF_STRUCT(splitNode, splitInfo)
     END_TILING_DATA_DEF
@@ -152,7 +159,10 @@ namespace optiling{
         bool isTilingSink = false;
         bool flashDecodeFlag = false;
         bool decodingFlag = false;
+        bool kvcacheNzFlag = false;
         string layout;
+        uint64_t keyBnStride = 0;
+        uint64_t valueBnStride = 0;
     };
 
     class FAInferTiling {
@@ -248,6 +258,8 @@ namespace optiling{
         faTilingData.set_nextToken(static_cast<int64_t>(faInfo_.nextToken));
         faTilingData.set_pseQ(faInfo_.pseQ);
         faTilingData.set_pseKv(faInfo_.pseKv);
+        faTilingData.keyStrides.set_bnStride(faInfo_.keyBnStride);
+        faTilingData.valueStrides.set_bnStride(faInfo_.valueBnStride);
     }
 
     uint64_t FAInferTiling::GetTilingKey() 
@@ -257,6 +269,7 @@ namespace optiling{
         constexpr uint64_t COMP_CAUSAL_MASK_KEY = 3;
         constexpr uint64_t COMP_SWA_MASK_KEY = 5;
         constexpr uint64_t FULL_MASK_KEY = 6;
+        constexpr uint64_t KVCACHE_NZ_KEY = 10;
         constexpr uint64_t LAYOUTQ_TND_KEY = 200000;
         constexpr uint64_t DTYPE_FP16_KEY = 100;
         constexpr uint64_t DTYPE_BF16_KEY = 200;
@@ -279,6 +292,9 @@ namespace optiling{
         if (faInfo_.layout == "TND") {
             tilingKey += static_cast<uint64_t>(LAYOUTQ_TND_KEY);
         }
+        if (faInfo_.kvcacheNzFlag) {
+            tilingKey += static_cast<uint64_t>(KVCACHE_NZ_KEY);
+        }
         if (faInfo_.dataType == DataType::FP16) {
             tilingKey += static_cast<uint64_t>(DTYPE_FP16_KEY);
         } else if (faInfo_.dataType == DataType::BF16) {
@@ -293,7 +309,11 @@ namespace optiling{
         if (faInfo_.innerPrecise == 1) {
             tilingKey += static_cast<uint64_t>(INNER_LOW_PREC_KEY);
         }
-        if ((faInfo_.pagedCacheFlag) && !(faInfo_.maskType == MaskType::SWA_MASK) && !faInfo_.lseFlag && !faInfo_.learnableSinkFlag && !(faInfo_.innerPrecise == 1) && faInfo_.flashDecodeFlag) {
+        if ((faInfo_.pagedCacheFlag) &&
+            !(faInfo_.maskType == MaskType::SWA_MASK) &&
+            !faInfo_.learnableSinkFlag &&
+            !(faInfo_.innerPrecise == 1) &&
+            faInfo_.flashDecodeFlag) {
             tilingKey += static_cast<uint64_t>(FLASH_DECODE_KEY);
         } else if (faInfo_.decodingFlag) {
             tilingKey += static_cast<uint64_t>(DECODING_KEY);

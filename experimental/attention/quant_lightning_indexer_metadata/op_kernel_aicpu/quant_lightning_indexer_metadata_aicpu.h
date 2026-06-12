@@ -274,14 +274,9 @@ private:
     bool Prepare(CpuKernelContext &ctx);
     int32_t GetQueryBatchSize();
     int32_t GetKvBatchSize();
-    bool CheckSingleParam();
-    bool CheckExistence();
-    bool CheckConsistency();
-    bool CheckFeature();
-    bool ParamsCheck();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
-    bool GenMetaData(SplitResult &splitRes);
+    bool GenMetadata(SplitResult &splitRes);
     ValidSocVersion ProcessSocVersion();
 
   // util
@@ -327,7 +322,7 @@ private:
     Tensor *actSeqLenQ_ = nullptr;
     Tensor *actSeqLenKey_ = nullptr;
     // output
-    Tensor *metaData_ = nullptr;
+    Tensor *metadata_ = nullptr;
     // attributes
     std::string socVersion_ = "";
     bool supportFd_ = false;
@@ -357,6 +352,7 @@ private:
     uint32_t s2BaseSize_ = 0;
     bool isS1G_ = true;
     bool isActQBatchPlus = false;
+    uint32_t maxS2Size_ = 0;
     
 private:
     enum class ParamId : uint32_t {
@@ -364,7 +360,7 @@ private:
         actSeqLenQ = 0,
         actSeqLenKV = 1,
         // output
-        metaData = 0,
+        metadata = 0,
     };
 };
 } // namespace aicpu

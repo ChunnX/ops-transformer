@@ -17,9 +17,16 @@ if (BUILD_OPEN_PROJECT)  # custom
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
         OP_MC2_ENABLE ON 
         OPTYPE grouped_mat_mul_allto_allv grouped_mat_mul_allto_allv ACLNNTYPE aclnn aclnn_inner)
+
+    set(QUANT_TILING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../quant_grouped_mat_mul_allto_allv/op_host/op_tiling)
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+        ${QUANT_TILING_DIR}/arch35/quant_grouped_mat_mul_allto_allv_tiling_common.cpp
+        ${QUANT_TILING_DIR}/arch35/quant_grouped_mat_mul_allto_allv_tiling_adapter.cpp
+    )
+
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(grouped_mat_mul_allto_allv_depends mc2/common mc2/3rd mc2/allto_allv_grouped_mat_mul PARENT_SCOPE)
+    set(grouped_mat_mul_allto_allv_depends mc2/common mc2/3rd mc2/allto_allv_grouped_mat_mul mc2/quant_grouped_mat_mul_allto_allv mc2/allto_allv_quant_grouped_mat_mul PARENT_SCOPE)
 
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令

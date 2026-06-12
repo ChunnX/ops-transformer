@@ -7,8 +7,8 @@
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
 |<term>Ascend 950PR/Ascend 950DT</term>|     √      |
-|<term>Atlas A2 推理系列产品</term>   | √  |
-|<term>Atlas A3 推理系列产品</term>   | √  |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 
 ## 功能说明
 
@@ -286,7 +286,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>
           <ul>
                 <li>用户不特意指定时可传入默认值"BSND"。</li>
-                <li>支持传入TND、BSND和PA_BSND，其中PA_BSND在使能PageAttention时使用。</li>
+                <li>支持传入TND、BSND和PA_BSND，其中PA_BSND在开启PageAttention时使用。</li>
           </ul>
       </td>
       <td>STRING</td>
@@ -345,7 +345,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>用于表示是否返回softmax_max和softmax_sum。</td>
       <td>
           <ul>
-                <li>True表示返回，但图模式下不支持，False表示不返回；默认值为False。</li>
+                <li>True表示返回，False表示不返回；默认值为False。</li>
                 <li>该参数仅在训练且layout_kv不为PA_BSND场景支持。</li>
           </ul>
       </td>
@@ -499,7 +499,12 @@ aclnnStatus aclnnSparseFlashAttention(
 
 - 确定性计算：aclnnSparseFlashAttention默认确定性实现。
 - 该接口支持推理场景下使用。
-- N1支持1~64和128。
+- N1支持情况：
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - N1支持1~128。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - N1支持1/2/4/8/16/32/64/128。
+- N2仅支持1。
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
 - 参数query中的D和key、value的D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
 - 参数query、key、value的数据类型必须保持一致。

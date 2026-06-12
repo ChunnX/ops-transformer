@@ -181,7 +181,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
     <tr>
         <td>quantScale (aclTensor*)</td>
         <td>输入</td>
-        <td>即计算公式中的bias。</td>
+        <td>量化参数。</td>
         <td>当前仅支持传入空指针场景。</td>
         <td>FLOAT</td>
         <td>ND</td>
@@ -252,7 +252,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         <td>commMode (char*)</td>
         <td>输入</td>
         <td>通信模式。</td>
-        <td>-</td>
+        <td>支持输入空字符串""、 "ai_cpu"、 "ccu" 或 "aiv"</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -324,7 +324,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         - bias：如果x1的数据类型是FLOAT16、BFLOAT16，则bias的数据类型必须为FLOAT16、BFLOAT16。如果x1的数据类型是FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8时，在pertensor和mx量化场景下，bias的数据类型必须为FLOAT。在perblock场景下，仅支持输入为nullptr。
         - x1Scale：当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在pertensor场景下，shape为[1]。在perblock场景下，shape为[ceilDiv(m, 128), ceilDiv(k, 128)]。在pertensor和perblock场景下，数据类型支持FLOAT。在mx量化场景下，数据类型为FLOAT8_E8M0，shape为(m, ceilDiv(k, 64), 2)。
         - x2Scale：当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在pertensor场景下，shape为[1]。在perblock场景下，shape为[ceilDiv(k, 128), ceilDiv(n, 128)]。在pertensor和perblock场景下，数据类型支持FLOAT。在mx场景下，数据类型为FLOAT8_E8M0，shape为(n, ceilDiv(k, 64), 2)，仅支持转置场景。
-        - commMode：当前版本仅支持输入“ccu”。
+        - commMode：当前版本仅支持输入空字符串、“ai_cpu” 或 “ccu”。
         - output：如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。如果x1类型为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8，则数据类型支持FLOAT16、BFLOAT16、FLOAT。
         - gatherOut：数据类型支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8。
         - groupSize:
@@ -413,6 +413,10 @@ aclnnStatus aclnnAllGatherMatmulV2(
   - `aclnnAllGatherMatmulV2`默认确定性实现。
 - <term>Ascend 950PR/Ascend 950DT</term>：
     - 输入x1为2维，其维度为\(m, k\)。x2必须是2维，其维度为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
+    - x1/x2支持的空tensor场景，m和n可以为空，k不可为空，且需要满足以下条件：
+        - m为空，k不为空，n不为空；
+        - m不为空，k不为空，n为空；
+        - m为空，k不为空，n为空。
     - bias为1维，shape为\(n,\)。
     - 输出output为2维，其维度为\(m*rank\_size, n\)，rank\_size为卡数。
     - 输出gatherout为2维，其维度为\(m*rank\_size, k\)，rank\_size为卡数。

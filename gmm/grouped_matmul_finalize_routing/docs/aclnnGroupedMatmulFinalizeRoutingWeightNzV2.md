@@ -281,7 +281,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>out</td>
       <td>输出</td>
       <td>输出结果。</td>
-      <td>shape与self相同。</td>
+      <td>-</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>(batch, n)</td>
@@ -315,13 +315,14 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     - x1仅支持INT8。维度m的取值范围为[1,16\*1024\*8]，k支持2048。
     - x2支持INT8、INT4以及INT32。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168。只支持转置属性为false。
     - offsetOptional的shape支持三维，维度为(e, 1, n)，e、n和weight的e、n一致。
-    - scaleOptional支持INT64、FLOAT、BF16。
+    - scale支持INT64、FLOAT、BF16。
     - rowIndex支持INT64、INT32。
     - x1、x2、groupList是必选参数，scale、pertokenScaleOptional、logit、rowIndex、bias、sharedInput是可选参数。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - 上表数据类型列中的角标"2"代表该系列不支持的数据类型。
     - rowIndex在x1以及x2数据类型为INT8时，数据类型支持INT64、INT32；在x1以及x2数据类型为FLOAT8_E4M3FN、HIFLOAT8或MxA8W4量化模式时，数据类型仅支持INT64。
     - x1、x2、scale、groupList、logit、rowIndex是必选参数，pertokenScaleOptional、sharedInput、bias是可选参数。MxA8W4场景下pertokenScaleOptional为必选参数。目前暂不支持offsetOptional参数，必须为nullptr。
+    - out的第一维batch、sharedInputOffset必须大于等于0，且小于等于m。
 
 - **返回值**
 
@@ -406,7 +407,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
 - 确定性计算：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnGroupedMatmulFinalizeRoutingWeightNzV2默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-  - <term>Ascend 950PR/Ascend 950DT</term>：aclnnGroupedMatmulFinalizeRoutingWeightNzV2默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - <term>Ascend 950PR/Ascend 950DT</term>：aclnnGroupedMatmulFinalizeRoutingWeightNzV2默认非确定性实现，仅支持在输入x1和x2都是int8类型时，通过aclrtCtxSetSysParamOpt开启确定性。
 
 <details>
 <summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></summary>
@@ -781,7 +782,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-  - MxFP8数据流示例：
+  - Pertoken量化数据流示例：
 
   ```Cpp
   #include <iostream>
@@ -1026,7 +1027,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                     return ret);
       for (int64_t i = 0; i < size; i++) {
-          LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
+          LOG_PRINT("result[%lld] is: %f\n", static_cast<long long>(i), resultData[i]);
       }
 
       // 6. 释放aclTensor资源，需要根据具体API的接口定义修改

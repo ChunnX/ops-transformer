@@ -119,6 +119,8 @@ private:
     uint32_t vecCount = 0;
     uint32_t xRowSumCount = 0;
     uint32_t withOffset = 0;
+    int64_t isSingleTensor = 0;
+    GM_ADDR scaleTensorPtr;
     TPipe *pipe;
     const GMMBaseParams *tiling;
     const TCubeTiling* mmTilingData;
@@ -137,6 +139,8 @@ __aicore__ inline void GMMA8W4Compute<mmType>::Init(GM_ADDR x, GM_ADDR weight, G
     tiling = tilingData;
     xRowSumCount = tiling->m;
     withOffset = false;
+    isSingleTensor = tiling->isSingleTensor;
+    scaleTensorPtr = scale;
 
     xGm.SetGlobalBuffer(GetTensorAddr<DTYPE_X_DEV_A8W4>(0, x));
     weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(workspace));
@@ -255,7 +259,12 @@ __aicore__ inline void GMMA8W4Compute<mmType>::MMCompute(uint32_t groupIdx, MNCo
                 weightSlice.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
             }
             mm.SetTensorB(weightSlice);
-            mm.SetQuantVector(scaleGm[groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + tailN]);
+            if (isSingleTensor == 0) {
+                scaleGm.SetGlobalBuffer(GetTensorAddr<DTYPE_SCALE_DEV_A8W4>(groupIdx, scaleTensorPtr));
+                mm.SetQuantVector(scaleGm[loopK * tiling->n + tailN]);
+            } else {
+                mm.SetQuantVector(scaleGm[groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + tailN]);
+            }
             uint64_t worskspaceOffset = mnConfig.workSpaceOffset;
             mm.Iterate();
             mm.GetTensorC(mmOutGm[worskspaceOffset], loopK == 0 ? 0 : 1, true);

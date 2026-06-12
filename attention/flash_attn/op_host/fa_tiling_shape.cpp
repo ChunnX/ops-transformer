@@ -19,6 +19,7 @@
 #include "fa_tiling_shape.h"
 
 namespace optiling {
+namespace flash_attn {
 
 // ============================================================================
 // 静态常量定义
@@ -30,7 +31,7 @@ static const std::map<FaLayout, std::vector<FaAxis>> FA_LAYOUT_AXIS_MAP = {
     {FaLayout::TND, {FaAxis::T, FaAxis::N, FaAxis::D}},
     {FaLayout::PA_BBND, {FaAxis::Bn, FaAxis::Bs, FaAxis::N, FaAxis::D}},
     {FaLayout::PA_BNBD, {FaAxis::Bn, FaAxis::N, FaAxis::Bs, FaAxis::D}},
-    {FaLayout::PA_Nz, {FaAxis::Bn, FaAxis::N, FaAxis::D1, FaAxis::Bs, FaAxis::D0}},
+    {FaLayout::PA_NZ, {FaAxis::Bn, FaAxis::N, FaAxis::D1, FaAxis::Bs, FaAxis::D0}},
     {FaLayout::LSE_BNS, {FaAxis::B, FaAxis::N, FaAxis::S1}},
     {FaLayout::LSE_NT, {FaAxis::N, FaAxis::T}}};
 
@@ -208,7 +209,7 @@ ge::graphStatus FaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpecte
         case FaLayout::PA_BNBD:
             shapeExpected = gert::Shape({param.Bn, param.N, param.Bs, param.D});
             break;
-        case FaLayout::PA_Nz:
+        case FaLayout::PA_NZ:
             shapeExpected = gert::Shape({param.Bn, param.N, param.D / param.D0, param.Bs, param.D0});
             break;
         case FaLayout::LSE_BNS:
@@ -292,4 +293,5 @@ ge::graphStatus FaTilingShapeCompare::CompareShape(FaTilingShapeCompareParam &pa
     return ge::GRAPH_SUCCESS;
 }
 
+} // namespace flash_attn
 } // namespace optiling

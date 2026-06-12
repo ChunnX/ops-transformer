@@ -58,11 +58,27 @@ def test_compressor_process(filepath, device_id=0):
     rotary_mode = test_data['rotary_mode']
     cache_mode = test_data['cache_mode']
 
-    if cache_mode == 1:  # 连续buffer
-        state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
-        # state_cache = state_cache.to("npu:%s" % DEVICE_ID)
-        state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
-        state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+    is_contiguous_flag = True
+    if cache_mode == 1:  # 连续buffer(支持在第二维非连续)
+        if is_contiguous_flag:
+            state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
+            state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
+            state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+        else :
+            layer_stride = random.randint(1, 10)
+            print(f"layer_stride: {layer_stride}")
+            state_cache_pad = torch.zeros((kv_state.shape[0], (kv_state.shape[1] + layer_stride) * kv_state.shape[2] * 2))
+            print(f"state_cache_pad: shape {state_cache_pad.shape}")
+            # 使用 as_strided 创建非连续视图
+            state_cache = torch.as_strided(
+                state_cache_pad,
+                size=(kv_state.shape[0], kv_state.shape[1], kv_state.shape[2] * 2),
+                stride=((kv_state.shape[1] + layer_stride) * kv_state.shape[2] * 2, kv_state.shape[2] * 2, 1)
+            )
+            # 填充数据
+            state_cache[:, :, :kv_state.shape[2]] = kv_state.clone()
+            state_cache[:, :, kv_state.shape[2]:] = score_state.clone()
+            print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride: {state_cache.stride()}")  
     else:
         layer_num = random.randint(1, 50)
         layer_start_idx = random.randint(0, layer_num-1)

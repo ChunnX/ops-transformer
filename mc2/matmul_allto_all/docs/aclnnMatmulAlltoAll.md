@@ -119,7 +119,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     <td>输入</td>
     <td>标识列组的字符串，即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数。</td>
     <td>字符串长度要求(0, 128)。</td>
-    <td>STRING</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -129,7 +129,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     <td>输入</td>
     <td>标识左矩阵是否转置过。</td>
     <td>暂不支持配置为True。</td>
-    <td>bool</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -139,7 +139,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     <td>输入</td>
     <td>标识右矩阵是否转置过。</td>
     <td>配置为True时右矩阵Shape为(H2, H1)。</td>
-    <td>bool</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -159,7 +159,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
-    <td>UINT64</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -169,7 +169,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
     <td>-</td>
-    <td>aclOpExecutor*</td>
+    <td>-</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -271,7 +271,7 @@ aclnnStatus aclnnMatmulAlltoAll(
 
 ## 约束说明
 
-* 默认支持确定性计算。
+* aclnnMatmulAlltoAll默认支持确定性计算。
 * NPU卡数(rankSize)，根据设备型号有不同限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16卡。
@@ -281,7 +281,7 @@ aclnnStatus aclnnMatmulAlltoAll(
 * BS*rankSize和H2的值不得超过2147483647(INT32_MAX)，BS的值不得小于0，H2的值不得小于2。
 * 空tensor的支持度根据不同设备型号有不同的限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持任何空tensor。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持输入x1的第一维度（BS）为0的空tensor，其它空tensor均不支持。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持任何空tensor。
   - <term>Ascend 950PR/Ascend 950DT</term>：仅支持输入x1的第一维度（BS）为0的空tensor，其它空tensor均不支持。
 * 非连续tensor的支持度根据不同设备型号有不同的限制：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持任何非连续tensor。
@@ -296,8 +296,8 @@ aclnnStatus aclnnMatmulAlltoAll(
 * 不支持跨超节点通信，只支持超节点内。
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
-   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
+   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AI\_CPU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。由于CCU通信域存在限制，可能出现HCCL集合通信库自动降级使用AI\_CPU通信引擎从而导致报错的场景，如出现此种报错请使用aclnnMatmulAlltoAllV2接口，并指定commMode参数为ai\_cpu。
 
 ## 调用示例
 

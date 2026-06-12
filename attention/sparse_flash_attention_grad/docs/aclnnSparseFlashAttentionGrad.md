@@ -25,6 +25,12 @@
    selectedValue\text{ }=\text{ }Gather \left( value,topkIndices \left[ i \left]  \left) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
   $$
 
+  KV merge场景下，若value为空指针，则上述公式中的value按key处理，selectedValue等价于selectedKey。该场景的反向输出不单独返回dValue，dKeyOut表示合并后的梯度：
+
+  $$
+   dKeyOut = dK + dV
+  $$
+
 <div style="padding-left:40px;">
 
   阶段1：根据矩阵乘法导数规则，计算$dP$和$dV$:
@@ -145,7 +151,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             B：支持泛化；S1：支持泛化；N1：支持128、64、32、16、8、4、2、1；D：512；T1：B × S1<br>
             <term>Ascend 950PR/Ascend 950DT</term>的N1额外还支持48、24、12、6、3
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>key</td>
@@ -157,20 +163,20 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,S2,N2,D)、(T2,N2,D)<br>
             N2：1；T2：B × S2
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>value</td>
             <td>输入</td>
             <td>attention结构的输入v。</td>
             <td>
-            -
+            可选项。传入空指针时启用KV merge，内部按value=key处理；此时要求dValueOut也传入空指针，dKeyOut返回dK+dV的合并结果。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
             <td>(B,S2,N2,D)、(T2,N2,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>sparseIndices</td>
@@ -184,7 +190,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,S1,N2,K)、(T1,N2,K)<br>
             K：1024、2048、3072、4096、5120、6144、7168、8192
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>dOut</td>
@@ -197,7 +203,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>out</td>
@@ -210,7 +216,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>softmaxMax</td>
@@ -222,7 +228,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,N2,S1,G)、(N2,T1,G)<br>
             G：N1/N2
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>softmaxSum</td>
@@ -233,7 +239,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
   <tr>
             <td>actualSeqLengthsQueryOptional</td>
@@ -243,14 +249,14 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和与T1保持一致。</li>
+                <li>累加和与T1保持一致(EOD场景下累加和可以小于T1)。</li>
                 <li>取值须为非负数，传入负值可能触发芯片告警（alarm）。</li>
             </ul>
             </td>
             <td>INT32</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>actualSeqLengthskvOptional</td>
@@ -260,13 +266,13 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <ul>
                 <li>可选项：当layout为TND，该变量存在。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和与T2保持一致。</li>
+                <li>累加和与T2保持一致(EOD场景下累加和可以小于T2)。</li>
             </ul>
             </td>
             <td>INT32</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>queryRopeOptional</td>
@@ -280,7 +286,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,S1,N1,Dr)、(T1,N1,Dr)<br>
             Dr：64
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>keyRopeOptional</td>
@@ -293,7 +299,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S2,N2,Dr)、(T2,N2,Dr)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>scaleValue</td>
@@ -405,7 +411,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输出</td>
             <td>表示key的梯度。</td>
             <td>
-            -
+            KV merge场景下表示key和value的合并梯度，即dK+dV。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -418,7 +424,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输出</td>
             <td>表示value的梯度。</td>
             <td>
-            与输入value的Shape维度保持一致。
+            可选项。普通场景下与输入value的Shape维度保持一致；KV merge场景下需传入空指针，dValue不单独输出，其梯度合入dKey。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -477,7 +483,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>必选参数或者输出是空指针。</td>
+                <td>必选参数或者输出是空指针。KV merge场景下value和dValueOut允许为空指针。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
@@ -548,6 +554,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
     - 当前只支持value和key完全一致的场景。
+    - KV merge场景下，value和dValueOut需传入空指针，dKeyOut返回dK+dV，不再单独返回dValue。
 
 - Mask
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
@@ -870,7 +877,7 @@ int main() {
   ret = CreateAclTensor(dkRopeHostData, kRopeShape, &dkRopeDeviceAddr, aclDataType::ACL_FLOAT16, &dkRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   
-  double scaleValue = 0.088388;
+  double scaleValue = 0.044194;
   int64_t sparseBlockSize = 1;
   int64_t sparseMode = 0;
   int64_t preTokens = 2147483647;
@@ -945,6 +952,8 @@ int main() {
   aclrtFree(dvDeviceAddr);
   aclrtFree(dqRopeDeviceAddr);
   aclrtFree(dkRopeDeviceAddr);
+  aclrtFree(actSeqQLenDeviceAddr);
+  aclrtFree(actSeqKvLenDeviceAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }

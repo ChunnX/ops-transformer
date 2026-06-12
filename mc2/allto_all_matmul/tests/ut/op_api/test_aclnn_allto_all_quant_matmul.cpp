@@ -857,6 +857,10 @@ TEST_P(AclnnAlltoAllQuantMatmulTest, param)
     aclTensor* bias_opt = param.bias.GetViewDims().empty() ? nullptr : param.bias.ToAclTypeRawPtr();
     aclTensor* x1_scale_opt = param.x1Scale.GetViewDims().empty() ? nullptr : param.x1Scale.ToAclTypeRawPtr();
     aclTensor* allto_all_out_opt = param.alltoAllOut.GetViewDims().empty() ? nullptr : param.alltoAllOut.ToAclTypeRawPtr();
+    aclTensor* x1 = param.x1.GetViewDims().empty() ? nullptr : param.x1.ToAclTypeRawPtr();
+    aclTensor* x2 = param.x2.GetViewDims().empty() ? nullptr : param.x2.ToAclTypeRawPtr();
+    aclTensor* x2_scale = param.x2Scale.GetViewDims().empty() ? nullptr : param.x2Scale.ToAclTypeRawPtr();
+    aclTensor* output = param.output.GetViewDims().empty() ? nullptr : param.output.ToAclTypeRawPtr();
     aclTensor* comm_scale = nullptr;
     aclTensor* x1_offset = nullptr;
     aclTensor* x2_offset = nullptr;
@@ -864,11 +868,11 @@ TEST_P(AclnnAlltoAllQuantMatmulTest, param)
     int64_t comm_quant_dtype = -1;
     auto ut = OP_API_UT(
         aclnnAlltoAllQuantMatmul,
-        INPUT(param.x1, param.x2, bias_opt, x1_scale_opt, param.x2Scale, comm_scale,
+        INPUT(x1, x2, bias_opt, x1_scale_opt, x2_scale, comm_scale,
               x1_offset, x2_offset, param.group.c_str(), param.alltoAllAxes,
               param.x1QuantMode, param.x2QuantMode, comm_quant_mode, comm_quant_dtype, param.x1QuantDtype,
               param.groupSize, param.transposeX1, param.transposeX2),
-        OUTPUT(param.output, allto_all_out_opt)
+        OUTPUT(output, allto_all_out_opt)
     );
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;

@@ -14,6 +14,7 @@
  */
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
+#include "mc2_comm_utils.h"
 #include "kc_quant_matmul_allto_all_tiling_base.h"
 #include "matmul_allto_all_fit_balance_tiling.h"
 
@@ -75,19 +76,17 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::CheckKcTensorFormat(const gert:
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
-                    OP_LOGE(opName, "x1Scale tensor should not be null in kc quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(opName, "x1Scale"), return ge::GRAPH_FAILED);
     ge::Format x1ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleTensorDesc->GetStorageFormat()));
     OP_TILING_CHECK(x1ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE(opName, "x1Scale format should be ND, but actual value is %s.",
-                            Ops::Base::ToString(x1ScaleFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x1Scale", Ops::Base::ToString(x1ScaleFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
-                    OP_LOGE(opName, "x2Scale tensor should not be null in kc quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"), return ge::GRAPH_FAILED);
     ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleTensorDesc->GetStorageFormat()));
     OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE(opName, "x2Scale format should be ND, but actual value is %s.",
-                            Ops::Base::ToString(x2ScaleFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x2Scale", Ops::Base::ToString(x2ScaleFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -99,10 +98,10 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::CheckKcTensorFormat(const gert:
  */
 ge::graphStatus KcQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
 {
-    GE_ASSERT_GRAPH_SUCCESS(
+    MC2_CHECK_LOG_RET(opName_, 
         MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA));
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAlltoAllTilingUtil::SetKcDataTypeInfo(context_, opName_, contextInfo));
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
+    MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetKcDataTypeInfo(context_, opName_, contextInfo));
+    MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
     contextInfo.quantMode = QuantMode::KC_QUANT;
     return ge::GRAPH_SUCCESS;
 }
@@ -115,15 +114,15 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
 ge::graphStatus KcQuantMatmulAllToAllTilingBase::DoOpTiling()
 {
     // 输入参数的校验:Attrs,Dtype,Shape等
-    GE_ASSERT_GRAPH_SUCCESS(CheckOpInputInfo());
+    MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo());
     // 参数校验通过后赋值给全局上下文变量
-    GE_ASSERT_GRAPH_SUCCESS(InitTilingContextParameters());
+    MC2_CHECK_LOG_RET(opName_, InitTilingContextParameters());
     // 进行通算切分
-    GE_ASSERT_GRAPH_SUCCESS(TileCommAndCompute());
+    MC2_CHECK_LOG_RET(opName_, TileCommAndCompute());
     // 调用量化Matmul的tiling方法进行切分
-    GE_ASSERT_GRAPH_SUCCESS(DoKcQuantMMTiling());
+    MC2_CHECK_LOG_RET(opName_, DoKcQuantMMTiling());
     // hccl的tiling参数赋值处理
-    GE_ASSERT_GRAPH_SUCCESS(SetHcclTiling());
+    MC2_CHECK_LOG_RET(opName_, SetHcclTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -136,16 +135,25 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::SetHcclTiling()
 {
     OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType) ==
                         mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
+                    OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
                                                    static_cast<int32_t>(contextInfo.args_.geCType)),
                     return ge::GRAPH_FAILED;);
     Mc2CcTilingConfigBuilder allToAllBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
+
+    // 获取commMode
+    uint8_t commMode = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
+
     //reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.
         withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType, contextInfo.args_.geCType).
-        withCommEngine(0).build();
+        withCommEngine(engineType).build();
     if (!allToAllBuilder.isSuccess()) {
         OP_LOGE(opName_, "Build hccl tiling config failed: %s", allToAllBuilder.errorMsg().c_str());
         return ge::GRAPH_FAILED;
@@ -165,13 +173,13 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::DoKcQuantMMTiling()
     // 设置MM切前信息
     mmMvalueLen = inferredInfo.tileM;
     KcQuantMatmulAlltoAllHelper mmTile(*this, localTilingData_.mc2QuantBmmV3TileTilingData, mmMvalueLen);
-    GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
     if (inferredInfo.tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
     mmMvalueLen = inferredInfo.tailM;
     KcQuantMatmulAlltoAllHelper mmTail(*this, localTilingData_.mc2QuantBmmV3TailTilingData, mmMvalueLen);
-    GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -238,10 +246,10 @@ ge::graphStatus KcQuantMatmulAlltoAllHelper::GetShapeAttrsInfo()
     auto scaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     auto perTokenScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     OP_TILING_CHECK((scaleTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(tilingProcesser_.opName_, "the scale tensor is invalid"),
+                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "scale tensor"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((perTokenScaleTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(tilingProcesser_.opName_, "the perToken scale tensor is invalid"),
+                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "perToken scale tensor"),
                     return ge::GRAPH_FAILED);
     inputParams_.scaleDtype = scaleTensorDesc->GetDataType();
     inputParams_.perTokenScaleDtype = perTokenScaleTensorDesc->GetDataType();
@@ -253,7 +261,7 @@ ge::graphStatus KcQuantMatmulAlltoAllHelper::GetShapeAttrsInfo()
         inputParams_.groupSizeM = 1;
         inputParams_.groupSizeN = 1;
     }
-    GE_ASSERT_TRUE(AnalyzeInputs());
+    MC2_CHECK_TRUE_RET(tilingProcesser_.opName_, AnalyzeInputs());
     PrintTilingInputParam(inputParams_);
     return ge::GRAPH_SUCCESS;
 }
@@ -275,7 +283,7 @@ void KcQuantMatmulAlltoAllHelper::PrintTilingInputParam(Mc2QuantBatchMatmulInfo&
 
 ge::graphStatus KcQuantMatmulAlltoAllHelper::DoLibApiTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling());
+    MC2_CHECK_LOG_RET(tilingProcesser_.opName_, Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling());
     isBf16Opt_ = false;
     return ge::GRAPH_SUCCESS;
 }
@@ -473,9 +481,16 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
     uint32_t biasDType = DTYPE_BIAS_FP32;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(KC_QUANT_MODE, x2TransposeFlag, biasDType);
-    OP_LOGD(opName_, "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS: [%d,%d,%d], TilingKey is [%lu].", KC_QUANT_MODE,
-            x2TransposeFlag, biasDType, tilingKey);
+
+    uint8_t commMode = 0;
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(KC_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
+    OP_LOGD(opName_, "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", KC_QUANT_MODE,
+            x2TransposeFlag, biasDType, commMode, tilingKey);
     return tilingKey;
 }
 

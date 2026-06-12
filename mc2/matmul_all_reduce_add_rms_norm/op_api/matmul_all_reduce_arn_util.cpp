@@ -14,6 +14,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
+#include "log/log.h"
 #include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 
 using namespace op;
@@ -61,20 +62,18 @@ bool ArnCheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* re
         op::ToString(x1->GetViewShape()).GetString(), op::ToString(x2->GetViewShape()).GetString(),
         op::ToString(residual->GetViewShape()).GetString());
     if (x1_len < NUM_ONE || x2_len < NUM_ONE || residual_len < NUM_ONE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "dim of x1, x2 and residual should greater than 1.");
+        OP_LOGE_FOR_INVALID_SHAPEDIM("aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1/x2/residual", "1D or less", "at least 2D");
         return false;
     }
     if (x1->GetViewShape().GetDim(x1_len - 1) != x2->GetViewShape().GetDim(0)) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
+        OP_LOGE_FOR_INVALID_SHAPE(
+            "aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1/x2",
             op::ToString(x1->GetViewShape()).GetString(), op::ToString(x2->GetViewShape()).GetString());
         return false;
     }
     if (residual->GetViewShape().GetDim(residual_len - 1) != x2->GetViewShape().GetDim(x2_len - 1)) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected last dim of residual to be equal to last dim of x2, but got residual shape: %s, x2 shape: %s.",
+        OP_LOGE_FOR_INVALID_SHAPE(
+            "aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize", "residual/x2",
             op::ToString(residual->GetViewShape()).GetString(), op::ToString(x2->GetViewShape()).GetString());
         return false;
     }

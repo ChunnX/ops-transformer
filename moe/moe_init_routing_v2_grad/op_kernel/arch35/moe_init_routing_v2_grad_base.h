@@ -61,6 +61,19 @@ constexpr int64_t BINARY_ADD_COEF = 2;
 constexpr uint16_t BINARY_ADD_LOOP_COUNT = 4;
 
 constexpr int64_t UNROLL_COEF = 4;
+
+template <int64_t Mode>
+__aicore__ inline bool IsInvalidRowIdx(int32_t rowIdx, int64_t rowUpperBound, int64_t activeNum)
+{
+    if constexpr (Mode == ACTIVE_MODE) {
+        return rowIdx < 0 || rowIdx >= activeNum;
+    } else if constexpr (Mode == DROP_PAD_MODE) {
+        return rowIdx < 0;
+    } else {
+        return rowIdx < 0 || rowIdx >= rowUpperBound;
+    }
+}
+
 constexpr AscendC::MicroAPI::CastTrait castTraitB162B32 = {
     AscendC::MicroAPI::RegLayout::ZERO,
     AscendC::MicroAPI::SatMode::UNKNOWN,

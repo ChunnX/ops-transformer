@@ -51,6 +51,11 @@ constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 4;
 constexpr uint32_t FD_M_START_INDEX = 5;
 constexpr uint32_t FD_M_NUM_INDEX = 6;
 
+struct stridesParams {
+    uint64_t bnStride = 0;
+    uint64_t n2Stride = 0;
+};
+
 struct FiaBaseParams {
     uint32_t bSize = 0;
     uint32_t t1Size = 0;
@@ -65,12 +70,16 @@ struct FiaBaseParams {
     uint32_t actualSeqLengthsQSize = 0;
     uint32_t actualSeqLengthsKVSize = 0;
     float scaleValue = 0.0f;
-    uint8_t isActualSeqLengthsNull = 0;   // TODO，未使用，是否要删除？
-    uint8_t isActualSeqLengthsKVNull = 0; // TODO，未使用，是否要删除？
     uint8_t isKvContinuous = 0;
     uint8_t isSoftMaxLseEnable = 0;
     uint32_t coreNum = 0;
     uint32_t outputLayout = 0;
+    // 增加strides参数
+    stridesParams keyStrides;
+    stridesParams valueStrides;
+    stridesParams kRopeStrides;
+    stridesParams kScaleStrides;
+    stridesParams vScaleStrides;
 };
 
 struct FiaAttenMaskParams {

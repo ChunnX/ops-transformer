@@ -117,7 +117,7 @@ public:
     using BlockShape = Shape<int64_t, int64_t, int64_t, int64_t>;
     using BaseOffset = Coord<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = Coord<int64_t, int64_t, int64_t, int64_t>;
-    using ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
+    using ProblemShape = Shape<int64_t, int64_t, int64_t>;
 
 public:
     __aicore__ inline void Init(Params const& params, ProblemShape& problemShape);

@@ -143,14 +143,15 @@ template <typename mmType>
 __aicore__ inline void GMMA8W4MidProcess<mmType>::UpdateMnConfig(MNConfig &mnConfig)
 {
     if constexpr (bT::format == CubeFormat::NZ) {
-        mnConfig.wBaseOffset += AlignUp<16>(mnConfig.k) * AlignUp<32>(mnConfig.n); // 16: nz format last two dim size
+        mnConfig.wBaseOffset +=
+            static_cast<uint64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<32>(mnConfig.n); // 16: nz format last two dim size
     } else {
-        mnConfig.wBaseOffset += mnConfig.k * mnConfig.n;
+        mnConfig.wBaseOffset += static_cast<uint64_t>(mnConfig.k) * mnConfig.n;
     }
     mnConfig.nAxisBaseOffset += mnConfig.n;
     mnConfig.mAxisBaseOffset += mnConfig.m;
-    mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-    mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+    mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+    mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
 }
 
 template <typename mmType>

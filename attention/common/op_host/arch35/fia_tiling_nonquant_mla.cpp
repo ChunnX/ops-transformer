@@ -472,11 +472,9 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.dSizeRope = fiaInfo_->ropeHeadDim;
     tilingData_.baseTiling.fiaBaseParams.scaleValue = fiaInfo_->scaleValue;
     tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsQSize = fiaInfo_->actualLenQDims;
-    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenDims;
+    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenKvDims;
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
-    tilingData_.baseTiling.fiaBaseParams.isActualSeqLengthsNull = !actualSeqLenQFlag_;
-    tilingData_.baseTiling.fiaBaseParams.isActualSeqLengthsKVNull = !actualSeqLenKVFlag_;
 
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
@@ -542,8 +540,6 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "actualSeqLengthsQSize:%d", fiaBaseParams.actualSeqLengthsQSize);
     OP_LOGD(fiaInfo_->opName, "actualSeqLengthsKVSize:%d", fiaBaseParams.actualSeqLengthsKVSize);
     OP_LOGD(fiaInfo_->opName, "scaleValue:%f", fiaBaseParams.scaleValue);
-    OP_LOGD(fiaInfo_->opName, "isActualSeqLengthsNull:%d", fiaBaseParams.isActualSeqLengthsNull);
-    OP_LOGD(fiaInfo_->opName, "isActualSeqLengthsKVNull:%d", fiaBaseParams.isActualSeqLengthsKVNull);
     OP_LOGD(fiaInfo_->opName, "isKvContinuous:%d", fiaBaseParams.isKvContinuous);
     OP_LOGD(fiaInfo_->opName, "isSoftMaxLseEnable:%d", fiaBaseParams.isSoftMaxLseEnable);
 
@@ -582,7 +578,7 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "totalOutputSize:%d", fiaEmptyTensorParams.totalOutputSize);
     OP_LOGD(fiaInfo_->opName, "totalSoftMaxLseOutputSize:%d", fiaEmptyTensorParams.totalSoftMaxLseOutputSize);
 
-    for (int aicIdx = 0; aicIdx <= NPU_AIC_CORE_NUM; ++aicIdx) {
+    for (int aicIdx = 0; aicIdx < NPU_AIC_CORE_NUM; ++aicIdx) {
         OP_LOGD(fiaInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aicIdx, fiaMetaData.FAMetadata[aicIdx][0], fiaMetaData.FAMetadata[aicIdx][1],
                 fiaMetaData.FAMetadata[aicIdx][2], fiaMetaData.FAMetadata[aicIdx][3], fiaMetaData.FAMetadata[aicIdx][4],
@@ -590,7 +586,7 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
                 fiaMetaData.FAMetadata[aicIdx][7]);
     }
 
-    for (int aivIdx = 0; aivIdx <= NPU_AIV_CORE_NUM; ++aivIdx) {
+    for (int aivIdx = 0; aivIdx < NPU_AIV_CORE_NUM; ++aivIdx) {
         OP_LOGD(fiaInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aivIdx, fiaMetaData.FDMetadata[aivIdx][0], fiaMetaData.FDMetadata[aivIdx][1],
                 fiaMetaData.FDMetadata[aivIdx][2], fiaMetaData.FDMetadata[aivIdx][3], fiaMetaData.FDMetadata[aivIdx][4],

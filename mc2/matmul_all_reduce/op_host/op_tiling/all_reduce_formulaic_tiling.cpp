@@ -178,20 +178,8 @@ void MMPlusQuantAllReduce::UniformCutSetShort(const uint64_t totalLen, const uin
     }
 }
 
-void MMPlusQuantAllReduce::SelectTilingMethod()
+void MMPlusQuantAllReduce::SelectTilingScene(bool& longTileAlignUpFlag)
 {
-    tilingM_.cutRes.shortTileLen = tilingM_.GetMinLen();
-    tilingM_.cutRes.numShortTile = ONE;
-    tilingM_.SetBackTileRatio(SMALL_BACKTILE_RATIO); // 短块尽量短，给aiv留时间
-    // do not cut if mValue is too small
-    bool smallMPerRank = (clusterInfo_.mValue < tilingM_.cutRes.shortTileLen * 2);
-    if (smallMPerRank) {
-        tilingM_.NoCutTiling();
-        return;
-    }
-    bool longTileAlignUpFlag = (rankDim_ <= MIN_COMM_RANKDIM) && tilingM_.cutRes.shortTileAtBack &&
-                               (clusterInfo_.nValue < SMALL_SHAPE_BAR ||
-                                clusterInfo_.kValue < SMALL_SHAPE_BAR); // 2p，计算Bound，且N轴或者K轴很小
     bool moveUpFlag = clusterInfo_.mValue < SMALL_M;
     bool shortTileAtFrontBranch = !tilingM_.cutRes.shortTileAtBack || moveUpFlag;
     bool uniformCutBranch = ratioCalcComm_ <= static_cast<double>(TWO) || moveUpFlag;
@@ -218,6 +206,23 @@ void MMPlusQuantAllReduce::SelectTilingMethod()
         longTileAlignUpFlag = true;
         SmallShortCheck(clusterInfo_.mValue, tilingM_.cutRes.longTileLen, tilingM_.cutRes.shortTileLen);
     }
+}
+
+void MMPlusQuantAllReduce::SelectTilingMethod()
+{
+    tilingM_.cutRes.shortTileLen = tilingM_.GetMinLen();
+    tilingM_.cutRes.numShortTile = ONE;
+    tilingM_.SetBackTileRatio(SMALL_BACKTILE_RATIO); // 短块尽量短，给aiv留时间
+    // do not cut if mValue is too small
+    bool smallMPerRank = (clusterInfo_.mValue < tilingM_.cutRes.shortTileLen * 2);
+    if (smallMPerRank) {
+        tilingM_.NoCutTiling();
+        return;
+    }
+    bool longTileAlignUpFlag = (rankDim_ <= MIN_COMM_RANKDIM) && tilingM_.cutRes.shortTileAtBack &&
+                               (clusterInfo_.nValue < SMALL_SHAPE_BAR ||
+                                clusterInfo_.kValue < SMALL_SHAPE_BAR); // 2p，计算Bound，且N轴或者K轴很小
+    SelectTilingScene(longTileAlignUpFlag);
     // 生成切分
     tilingM_.GenerateInitialPartition(longTileAlignUpFlag);
     OP_LOGD(

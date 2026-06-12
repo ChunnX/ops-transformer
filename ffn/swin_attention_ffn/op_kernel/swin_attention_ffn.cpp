@@ -214,7 +214,7 @@ __aicore__ inline void KernelBatchMatmul<X1_TYPE, X2_TYPE, X3_TYPE, BIAS_TYPE, Y
         mm.SetBias(biasGlobal);
 
         mm.template Iterate<false>();
-        for (int i = 0; i < bmmTiling.singleCoreM / bmmTiling.baseM; i++) {
+        for (int j = 0; j < bmmTiling.singleCoreM / bmmTiling.baseM; j++) {
             cSpaceID = offsetBmm / tpSpaceSize;
             cBlockID = (offsetBmm - cSpaceID * tpSpaceSize) / tpBlockSize;
             cRowID = cBlockID % tpSpaceW;

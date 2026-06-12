@@ -276,7 +276,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
     <td>5. aclTensor shape不合法。</td>
     </tr>
     <tr>
-    <td>6. 使能可选输出场景非法——当需要y3OutOptional可选输出时，actType需不为0。</td>
+    <td>6. 开启可选输出场景非法——当需要y3OutOptional可选输出时，actType需不为0。</td>
     </tr>
     </tbody></table>
 
@@ -444,7 +444,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
         int64_t C = 2 * TP_WORLD_SIZE;
         int64_t H = 6 * TP_WORLD_SIZE;
         int64_t M = 6 * TP_WORLD_SIZE;
-        int64_t xShardType = 1; // 可切换为0，使能gather H 轴场景
+        int64_t xShardType = 1; // 可切换为0，开启gather H 轴场景
         int64_t actType = 1;
         
         std::vector<int64_t> xShape;

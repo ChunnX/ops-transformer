@@ -36,6 +36,7 @@ public:
     static HcclResult TryGetGroupTopoType(const char *group, uint32_t *topoType);
     static HcclResult CommGetCclBufferSizeByGroup(const char *group, uint64_t *cclBufferSize, HcclComm *hcclComm);
     static HcclResult CommGetGroupLocalWindowSize(const char *group, uint64_t* cclBufferSize);
+    static HcclResult CommGetHcclBufferByGroup(const char *group, void **buffer, uint64_t *size);
 
 private:
     static MC2HcomTopology &GetInstance();
@@ -50,31 +51,32 @@ private:
     HcclResult CallCommGetInstSizeByNetLayer(HcclComm comm, uint32_t netLayer, uint32_t *rankNum) const;
 #endif
     HcclResult CallCommGetCCLBufSizeCfg(HcclComm comm, uint64_t *cclBufferSize) const;
+    HcclResult CallCommGetHcclBuffer(HcclComm comm, void **buffer, uint64_t *size) const;
 
     void *handle_ = nullptr;
     bool isNewHcclLib = true;
 
     using FuncGetHandle = HcclResult (*)(const char *, HcclComm *);
 #ifdef BUILD_OPEN_PROJECT
-    using FuncGetRankSizeEx = HcclResult (*)(const char *group, uint32_t *rankSize, uint32_t flag);
-    using FuncGetL0TopoTypeEx = HcclResult (*)(const char *group, CommTopo *topoType, uint32_t flag);
+    using FuncGetRankSize = HcclResult (*)(HcclComm, uint32_t *);
+    using FuncGetTopoTypeByLayer = HcclResult (*)(HcclComm, uint32_t, CommTopo *);
 #else
     using FuncGetNetLayers = HcclResult (*)(HcclComm, uint32_t **, uint32_t *);
-    using FuncGetTopoType = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
+    using FuncGetTopoTypeByLayer = HcclResult (*)(HcclComm, uint32_t, CommTopo *);
     using FuncGetInstSize = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
 #endif
-    using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
+    using FuncGetHcclBuffer = HcclResult (*)(HcclComm, void **, uint64_t *);
     void *hcclHandle_ = nullptr;
     FuncGetHandle getCommHandle_ = nullptr;
 #ifdef BUILD_OPEN_PROJECT
-    FuncGetRankSizeEx getRankSizeEx_ = nullptr;
-    FuncGetL0TopoTypeEx getL0TopoTypeEx_ = nullptr;
+    FuncGetRankSize getRankSize_ = nullptr;
+    FuncGetTopoTypeByLayer getTopoTypeByLayer_ = nullptr;
 #else
     FuncGetNetLayers getNetLayers_ = nullptr;
-    FuncGetTopoType getTopoType_ = nullptr;
+    FuncGetTopoTypeByLayer getTopoTypeByLayer_ = nullptr;
     FuncGetInstSize getInstSize_ = nullptr;
 #endif
-    FuncGetCclBufferSize getCclBufferSize_ = nullptr;
+    FuncGetHcclBuffer getHcclBuffer_ = nullptr;
 };
 }  // namespace Mc2Hcom
 #endif

@@ -33,7 +33,8 @@ enum GmmA2AvInputTensorIndex : uint32_t {
     MM_WEIGHT_OPTIONAL_INDEX,
     MM_X_SCALE_OPTIONAL_INDEX,
     MM_WEIGHT_SCALE_OPTIONAL_INDEX,
-    COMM_QUANT_SCALE_OPTIONAL_INDEX
+    COMM_QUANT_SCALE_OPTIONAL_INDEX,
+    COMM_MODE_INDEX,
 };
 
 enum GmmA2AvOutputTensorIndex : uint32_t {
@@ -56,7 +57,8 @@ enum GmmA2AvAttrIndex : uint32_t {
     ATTR_GROUP_SIZE_OPTIONAL_INDEX,
     ATTR_Y_DTYPE,
     ATTR_MM_Y_DTYPE,
-    ATTR_COMM_QUANT_DTYPE_INDEX
+    ATTR_COMM_QUANT_DTYPE_INDEX,
+    ATTR_COMM_MODE_INDEX
 };
 
 enum QuantizationMode {
@@ -131,6 +133,8 @@ constexpr uint64_t MAX_K_VALUE = 8;
 constexpr uint32_t MAX_SHARED_H_SHAPE_SIZE = 12288;
 constexpr int64_t MAX_BSK_VALUE = 52428800;
 constexpr int64_t RECV_SEND_MIN = static_cast<int64_t>((2 * 1024 * 1024) / 2);         // 2M / sizeof(gmmX)
+inline constexpr int64_t RANK_DEFAULT_NUM = -1;
+inline const std::set<int64_t> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64, 128};
 
 class QuantGroupedMatmulAllToAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {

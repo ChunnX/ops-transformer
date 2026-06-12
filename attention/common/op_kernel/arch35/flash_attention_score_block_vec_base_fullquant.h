@@ -675,6 +675,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::MlaAttenMask
 {
     if constexpr (hasAtten && isMlaFullQuant) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
+        attenMaskInfo.attenMaskS1Offset = 0;    // 0: 默认值
         int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, isFd, hasRope, isInfer, dTemplateType>(runInfo, constInfo, attenMaskInfo);
         this->MlaBoolCopyInRegbase(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
             attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, runInfo);
@@ -1461,8 +1462,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::RowInvalid(L
     int64_t vec2S1Idx, RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, int64_t dSizeAligned64)
 {
     if constexpr (isInfer && hasAtten) {
-        if (!isMlaFullQuant && (!constInfo.isRowInvalid ||
-            attenMaskInfoPtr->compressMode != static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE))) {
+        if (!isMlaFullQuant && (!constInfo.isRowInvalid)) {
             return;
         }
         if (isMlaFullQuant && attenMaskInfoPtr->compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) {

@@ -10,7 +10,7 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnInner PRIVATE
         sparse_flash_attention_grad_def.cpp
     )
 endif()
@@ -41,17 +41,16 @@ else()
     )
     add_modules_sources(
         OPTYPE sparse_flash_attention_grad 
-        ACLNNTYPE aclnn
+        ACLNNTYPE aclnn_inner
     )
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ./arch32/sparse_flash_attention_grad_tiling_bs1_basic.cpp
-        ./arch32/sparse_flash_attention_grad_tiling_bs1_basic.h
+        ./arch22/sparse_flash_attention_grad_tiling_bs1_basic.cpp
+        ./arch22/sparse_flash_attention_grad_tiling_bs1_basic.h
         ./arch35/sparse_flash_attention_grad_tiling_bs1_regbase.cpp
         ./arch35/sparse_flash_attention_grad_tiling_bs1_regbase.h
     )
 endif()
-

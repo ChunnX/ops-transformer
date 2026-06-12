@@ -7,8 +7,8 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -277,6 +277,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
 
 - 确定性说明：aclnnGroupedMatmulAddV2默认确定性实现。
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
+- x和weight中每一组tensor的最后一维大小都应小于65536。$x$的最后一维指当x不转置时$x$的K轴或当x转置时$x$的M轴。$weight$的最后一维指当weight不转置时$weight$的N轴或当weight转置时$weight$的K轴。
 - 支持的输入类型组合为：
   - x为FLOAT16、weight为FLOAT16、y为FLOAT32。
   - x为BFLOAT16、weight为BFLOAT16、y为FLOAT32。

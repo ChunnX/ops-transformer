@@ -15,10 +15,10 @@
 #ifndef FLASH_ATTENTION_REGULAR_H
 #define FLASH_ATTENTION_REGULAR_H
 
-#include "kernel_common.hpp"
+#include "fia_kernel_common.hpp"
 
-using namespace NpuArch;
 using namespace KernelCommon;
+using namespace NpuArch;
 
 namespace SplitFuse {
     template <
@@ -35,13 +35,13 @@ namespace SplitFuse {
     class FAInferKernel {
     public:
         using ArchTag = typename BlockMmadQK::ArchTag;
-        using L1TileShape = typename BlockMmadQK::L1TileShape;
         using ElementQ = typename BlockMmadQK::ElementA;
         using LayoutQ = typename BlockMmadQK::LayoutA;
         using ElementK = typename BlockMmadQK::ElementB;
         using LayoutK = typename BlockMmadQK::LayoutB;
         using ElementS = typename BlockMmadQK::ElementC;
         using LayoutS = typename BlockMmadQK::LayoutC;
+        using L1TileShape = typename BlockMmadQK::L1TileShape;
 
         using ElementP = typename BlockMmadPV::ElementA;
         using LayoutP = typename BlockMmadPV::LayoutA;
@@ -52,9 +52,6 @@ namespace SplitFuse {
         using LayoutMask = typename EpilogueOnlineSoftmax::LayoutMask;
         using ElementSink = typename EpilogueOnlineSoftmax::ElementSink;
 
-        using ElementO = typename EpilogueRescaleO::ElementOutput;
-        using LayoutO = typename EpilogueRescaleO::LayoutOutput;
-
         using ElementOTmp = typename EpilogueRescaleO::ElementInput;
         using LayoutOTmp = typename EpilogueRescaleO::LayoutInput;
 
@@ -63,6 +60,9 @@ namespace SplitFuse {
 
         using ElementUpdate = typename EpilogueRescaleO::ElementUpdate;
         using LayoutUpdate = typename EpilogueRescaleO::LayoutUpdate;
+
+        using ElementO = typename EpilogueRescaleO::ElementOutput;
+        using LayoutO = typename EpilogueRescaleO::LayoutOutput;
 
         static constexpr Epilogue::LseMode LSE_MODE = EpilogueRescaleO::LSE_MODE;
         static constexpr Epilogue::SinkMode SINK_MODE = EpilogueOnlineSoftmax::SINK_MODE;
@@ -114,6 +114,8 @@ namespace SplitFuse {
             nextToken = fATilingData->nextToken;
             pseQ = fATilingData->pseQ;
             pseKv = fATilingData->pseKv;
+            keyBnStride = fATilingData->keyStrides.bnStride;
+            valueBnStride = fATilingData->valueStrides.bnStride;
             uint64_t Lsesize = 0;
             uint64_t Losize = 0;
             if constexpr (IS_FD) {
@@ -124,8 +126,8 @@ namespace SplitFuse {
             AscendC::GlobalTensor<ElementQ> gQ;
             gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
             AscendC::ListTensorDesc keyListTensorDescInit((__gm__ void*)params.k);
-            AscendC::ListTensorDesc valueListTensorDescInit((__gm__ void*)params.v);
             __gm__ uint8_t* currentKey = (__gm__ uint8_t*)keyListTensorDescInit.GetDataPtr<__gm__ uint8_t>(0);
+            AscendC::ListTensorDesc valueListTensorDescInit((__gm__ void*)params.v);
             __gm__ uint8_t* currentValue = (__gm__ uint8_t*)valueListTensorDescInit.GetDataPtr<__gm__ uint8_t>(0);
             AscendC::GlobalTensor<ElementK> gK;
             gK.SetGlobalBuffer((__gm__ ElementK *)currentKey);
@@ -133,11 +135,11 @@ namespace SplitFuse {
             gV.SetGlobalBuffer((__gm__ ElementK *)currentValue);
             AscendC::GlobalTensor<ElementQ> gPseShift;
             gPseShift.SetGlobalBuffer((__gm__ ElementQ *)params.pseShift);
+            AscendC::GlobalTensor<int64_t> gActualQseqlen;
             AscendC::GlobalTensor<ElementMask> gMask;
             gMask.SetGlobalBuffer((__gm__ ElementMask *)params.mask);
             AscendC::GlobalTensor<int32_t> gBlockTable;
             gBlockTable.SetGlobalBuffer((__gm__ int32_t *)(params.blockTables));
-            AscendC::GlobalTensor<int64_t> gActualQseqlen;
             gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
             AscendC::GlobalTensor<int64_t> gActualKvseqlen;
             gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
@@ -181,8 +183,6 @@ namespace SplitFuse {
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID5);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID6);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID7);
-            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
-            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
@@ -191,6 +191,8 @@ namespace SplitFuse {
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID5);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID6);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID7);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
             
             uint32_t kDynNum = NpuArch::Detail::Alignment::RoundUp(embed, NUM_128);
             kDynNum = kDynNum < NUM_256 ? NUM_256 : kDynNum;
@@ -380,9 +382,6 @@ namespace SplitFuse {
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID6);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID7);
 
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
-
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
@@ -391,6 +390,9 @@ namespace SplitFuse {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID5);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID6);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID7);
+
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
 #endif
 #ifdef __DAV_C220_VEC__
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
@@ -418,16 +420,17 @@ namespace SplitFuse {
                 CombineScale combineScale;
                 combineScale.init(resource);
                 combineScale(
-                    qHeads,                                         
-                    fATilingData->totalSplitNodeNum,                                  
-                    embedV,                                        
-                    &fATilingData->splitInfo,                       
-                    gLseFD,                                          
-                    gOFD,                                       
-                    gO,                                            
-                    gActualQseqlen,                                 
-                    true 
-                );
+                    qHeads,
+                    fATilingData->totalSplitNodeNum,
+                    embedV,
+                    &fATilingData->splitInfo,
+                    gLseFD,
+                    gOFD,
+                    gO,
+                    gActualQseqlen,
+                    true,
+                    (LSE_MODE == Epilogue::LseMode::OUT_ONLY),
+                    gLse);
 #endif
             }
         }
@@ -512,6 +515,12 @@ namespace SplitFuse {
             uint64_t gmOffsetO = oBOffset +
                 static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideO +
                 static_cast<uint64_t>(qNStartIdx * embedV);
+            if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
+                gmOffsetK = kBOffset + kvNIdx * embed * pagedBlockSize;
+            }
+            if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
+                gmOffsetV = vBOffset + kvNIdx * embedV * pagedBlockSize;
+            }
             uint64_t gmOffsetLse = lseBOffset +
                 static_cast<uint64_t>(lseTokenOffset + qNStartIdx);
             uint64_t gmOffsetSink = qNStartIdx;
@@ -618,6 +627,20 @@ namespace SplitFuse {
                 LayoutQ layoutQTemp(rowNum, embed);
                 LayoutK layoutKTemp(strideK, stackSeqTile);
                 LayoutV layoutVTemp(stackSeqTile, strideV);
+                uint32_t kRow = strideK;
+                uint32_t kCol = stackSeqTile;
+                uint32_t vRow = stackSeqTile;
+                uint32_t vCol = strideV;
+                if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
+                    kRow = blockStackNum * strideK;
+                    kCol = pagedBlockSize;
+                    layoutKTemp = LayoutK::template MakeLayout<ElementK>(kRow, kCol);
+                }
+                if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutV, layout::zN>) {
+                    vRow = pagedBlockSize;
+                    vCol = blockStackNum * strideV;
+                    layoutVTemp = LayoutV::template MakeLayout<ElementV>(vRow, vCol);
+                }
                 blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
                 blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
                 blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
@@ -650,7 +673,8 @@ namespace SplitFuse {
                                 kvSIdx, 
                                 kvSLoopNumTotal, 
                                 pagedBlockSize, 
-                                strideK);
+                                strideK,
+                                keyBnStride);
                         } else {
                             blockMmadQK(
                                 gQ[gmOffsetQ], 
@@ -664,7 +688,8 @@ namespace SplitFuse {
                                 kvSIdx, 
                                 kvSLoopNumTotal, 
                                 pagedBlockSize, 
-                                strideK);
+                                strideK,
+                                keyBnStride);
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
 #endif
@@ -925,7 +950,8 @@ namespace SplitFuse {
                             noSkipKvS, 
                             strideV, 
                             blockStackNum, 
-                            softmaxReady);
+                            softmaxReady,
+                            valueBnStride);
                         } else {
                             blockMmadPV(
                             gP[gmOffsetP], 
@@ -942,7 +968,8 @@ namespace SplitFuse {
                             noSkipKvS, 
                             strideV, 
                             blockStackNum, 
-                            softmaxReady);
+                            softmaxReady,
+                            valueBnStride);
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
 #endif
@@ -1039,6 +1066,8 @@ namespace SplitFuse {
         uint64_t strideO;
         uint64_t strideK;
         uint64_t strideV;
+        uint64_t keyBnStride;
+        uint64_t valueBnStride;
         uint32_t embedRound;
         uint32_t embedRoundV;
         uint32_t groupSize;
@@ -1050,9 +1079,9 @@ namespace SplitFuse {
 
         BlockMmadQK blockMmadQK;
         BlockMmadPV blockMmadPV;
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax;
         EpilogueRescaleO epilogueRescaleO;
         EpilogueInitOut epilogueInitOut;
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax;
     };
 }
 #endif

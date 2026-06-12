@@ -13,7 +13,7 @@
  */
 #pragma once
 #include "kernel_operator.h"
-#include "common_header.h"
+#include "nsa_selected_attention_grad_common_header.h"
 using namespace AscendC;
 
 namespace NSAG_BASIC {

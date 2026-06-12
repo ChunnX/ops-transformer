@@ -134,7 +134,7 @@ public:
         OP_TILING_CHECK(memset_s(
                             context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
                             context_->GetRawTilingData()->GetCapacity()) != EOK,
-                        VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to memset tiling data"), return;);
+                        OP_LOGE(opName_, "fail to memset tiling data"), return;);
     }
     MatmulAllReduceTilingBase(gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo)
         : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(tilingDataSelf_)
@@ -183,6 +183,7 @@ protected:
     virtual void PrintExtendMatmulTiling([[maybe_unused]] bool isTail){};
     // tiling
     void DoAllReduceTiling(bool useHcclApi = false);
+    void CalcAllReduceSendRecvParams();
     void DoRCSTiling();
     void SetMCutSocVersion(SocVersion& inputSocVersion);
     void DoSplitMTiling();
@@ -271,6 +272,9 @@ protected:
     MMRCtxInfo& mmrCtxInfo_;
     Mc2Tiling::MatmulAllReduceTilingData tilingDataSelf_{};
     Mc2Tiling::MatmulAllReduceTilingData& tilingData_;
+    ge::graphStatus GetAndConvertCommMode(uint8_t &commMode) const;
+    uint8_t GetCommMode() const;
+    ge::graphStatus CheckCommModeA2() const;
 };
 } // namespace optiling
 #endif // MC2_MM_ALLREDUCE_TILING_ARCH35_H

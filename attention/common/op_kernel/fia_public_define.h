@@ -56,7 +56,7 @@ enum class FIA_LAYOUT : uint32_t
 template <typename Q_T, typename KV_T, typename OUT_T, typename ORIGIN_T, const bool PAGE_ATTENTION = false,
           const bool FLASH_DECODE = false, FIA_LAYOUT LAYOUT_T = FIA_LAYOUT::BSH, const uint8_t ANTIQUANT_MODE = 0,
           const bool SHARED_PREFIX = false, FIA_LAYOUT KV_LAYOUT_T = FIA_LAYOUT::BSH,
-          const bool SOFTMAX_WITH_BRC = false, typename... Args>
+          const bool SOFTMAX_WITH_BRC = false, const bool ENABLE_TREE = false, typename... Args>
 struct FIAType {
     using queryType = Q_T;
     using kvType = KV_T;
@@ -69,6 +69,7 @@ struct FIAType {
     static constexpr bool sharedPrefix = SHARED_PREFIX;
     static constexpr FIA_LAYOUT kvLayout = KV_LAYOUT_T;
     static constexpr bool softmaxWithBrc = SOFTMAX_WITH_BRC;
+    static constexpr bool enableTree = ENABLE_TREE;
 };
 
 struct FDparams {
@@ -245,16 +246,6 @@ struct MSplitInfo {
     uint32_t nBufferDealM = 0U;
     uint32_t vecStartM = 0U;
     uint32_t vecDealM = 0U;
-};
-
-enum class TASK_DEAL_MODE : uint32_t
-{
-    DEAL_ZERO = 0,
-    SKIP = 1,
-    CREATE_TASK = 2,
-    SKIP_S1OUT = 3,
-    SKIP_ZERO = 4,
-    S2_END = 5,
 };
 
 template <FIA_LAYOUT LAYOUT_T>

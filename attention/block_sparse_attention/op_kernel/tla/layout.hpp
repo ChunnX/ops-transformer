@@ -11,11 +11,11 @@
 #ifndef TLA_LAYOUT_HPP
 #define TLA_LAYOUT_HPP
 
-#include "../attn_infra/base_defs.hpp"
+#include "../attn_infra/bsa_base_defs.hpp"
 #include "../tla/numeric/integral_constant.hpp"
 #include "../tla/tuple.hpp"
 #include "../tla/int_tuple.hpp"
-#include "../attn_infra/layout/layout.hpp"
+#include "../attn_infra/layout/bsa_layout.hpp"
 
 namespace tla {
 

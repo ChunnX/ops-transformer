@@ -4,7 +4,7 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
@@ -152,28 +152,28 @@
   <tr>
    <td>oriXOptional</td>
    <td>可选输入</td>
-   <td>表示未经过FFN（Feed-Forward Neural network）的token数据，在使能copyExpert或使能constExpert的场景下需要本输入数据。</td>
+   <td>表示未经过FFN（Feed-Forward Neural network）的token数据，在开启copyExpert或开启constExpert的场景下需要本输入数据。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>constExpertAlpha1Optional</td>
    <td>可选输入</td>
-   <td>在使能constExpert的场景下需要输入的计算系数。</td>
+   <td>在开启constExpert的场景下需要输入的计算系数。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>constExpertAlpha2Optional</td>
    <td>可选输入</td>
-   <td>在使能constExpert的场景下需要输入的计算系数。</td>
+   <td>在开启constExpert的场景下需要输入的计算系数。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>constExpertVOptional</td>
    <td>可选输入</td>
-   <td>在使能constExpert的场景下需要输入的计算系数。</td>
+   <td>在开启constExpert的场景下需要输入的计算系数。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
@@ -329,11 +329,11 @@
     
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     * 当`commAlg` = "hierarchy"，必须传入`expandScalesOptional`。
-    * commAlg 支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不使能fullmesh_v2模板；"fullmesh_v1"：不使能fullmesh_v2模板；"fullmesh_v2"：使能fullmesh_v2模板，该模板仅支持tpWorldSize为1场景；"hierarchy": 使能跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
+    * commAlg 支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板，该模板仅支持tpWorldSize为1场景；"hierarchy": 开启跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
     * epWorldSize 取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
     * moeExpertNum 取值范围(0, 1024]；当commAlg="hierarchy"场景时，取值范围为(0, 512]。
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950DT</term>：
     * 不支持`expandScalesOptional`。
     * 不支持`commAlg`。
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出为无效内容。
@@ -371,6 +371,9 @@
     - 一个模型中的`MoeDistributeCombineV2`和`MoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 一个模型中的`MoeDistributeCombineV2`和`MoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
 
+- 通信方式约束：
+    - <term>Ascend 950DT</term>：仅支持UB Memory通信。
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - `commAlg`：当前版本支持nullptr， ""， "fullmesh"， "hierarchy"四种输入方式，若配置"hierarchy"，建议搭配25.0.RC1.1及以上版本驱动使用。
         - nullptr和""：仅在此场景下，`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`配置生效。当`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0时，调用"hierarchy"算法，否则调用"fullmesh"算法。不推荐使用该方式。
@@ -379,15 +382,14 @@
     - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：不推荐使用该环境变量控制通信算法，原`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0场景，下文均通过`commAlg`="hierarchy"替代，默认场景使用`commAlg`="fullmesh"替代。
     - `commAlg` = "hierarchy"时，不支持`xActiveMaskOptional`、`oriXOptional`、`zeroExpertNum`、`copyExpertNum`。
     - 参数说明里shape格式说明：
-        - `H`：表示hidden size隐藏层大小，取值范围(0, 7168]，且保证是32的整数倍。
-            - `commAlg` = "hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍。
+        - `H`：表示hidden size隐藏层大小，取值范围(0, 10240]且为32的整数倍。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量。
             - `commAlg` = "fullmesh"：取值范围为[1, 256]。
             - `commAlg` = "hierarchy"：取值范围为[1, 512]。
-        - `performanceInfoOptional`：可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(ep\_world\_size,)，数据类型支持int64；数据格式要求为ND。
+        - `performanceInfoOptional`：可选择传入有效数据或填空指针，传入空指针时表示不开启记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(ep\_world\_size,)，数据类型支持int64；数据格式要求为ND。
     - 属性约束：
         - `epWorldSize`：依commAlg取值，"fullmesh"支持2、3、4、5、6、7、8、16、32、64、128、192、256、384；"hierarchy"支持16、32、64。
-        - `moeExpertNum`：取值范围(0, 512]。
+        - `moeExpertNum`：依commAlg取值，"fullmesh"支持(0, 1024]，"hierarchy"支持(0, 512]。
         - `commQuantMode`：2，开启通信int8量化，仅当`commAlg` = "hierarchy"且驱动版本不低于25.0.RC1.1时支持。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
         - `commAlg` = "fullmesh"：要求 >= (`BS` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * 4B + 4MB)。
@@ -405,17 +407,17 @@
         - `tpWorldSize`：取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
         - `tpRankId`：取值范围[0, 1]，同一个TP通信域中各卡的`tpRankId`不重复。无TP域通信时，传0即可。
         - `sharedExpertNum`：当前取值范围[0, 4]。
-        - `commQuantMode`：int8量化当且仅当`tpWorldSize` < 2时可使能。
+        - `commQuantMode`：int8量化当且仅当`tpWorldSize` < 2时可开启。
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
         - `commAlg`：当前支持""，"hierarchy"两种输入方式。
-            - ""：默认值，使能通信域不跨超模板。
-            - "hierarchy": 使能通信域跨超模板。
+            - ""：默认值，开启通信域不跨超模板。
+            - "hierarchy": 开启ROCE分层直驱能力，需要根据不同的逻辑超节点设置环境变量`HCCL_LOGIC_SUPERPOD_ID`，例如两机分别设为`export HCCL_LOGIC_SUPERPOD_ID=0`和`export HCCL_LOGIC_SUPERPOD_ID=1`。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBS` * `epWorldSize` * Align512(Align32(2 * `H`) + 64) + (`K` + `sharedExpertNum`) * `maxBS` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950DT</term>：
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
-        - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
+        - `BS`：表示batch sequence size，即本卡最终输出的token数量，依commAlg取值，"fullmesh_v2"和"hierarchy"取值范围为 (0 < BS ≤ 256), "fullmesh_v1"和""取值范围为 (0 < BS ≤ 512)。
     - 参数约束：
         - `epWorldSize`：取值支持[2, 768]。
         - `moeExpertNum`：取值范围(0, 1024]。

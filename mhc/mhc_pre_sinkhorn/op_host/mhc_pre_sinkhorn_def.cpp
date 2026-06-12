@@ -42,7 +42,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("hin")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("hPost")
@@ -89,6 +89,13 @@ public:
             
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+
+        OpAICoreConfig regbaseCfg;
+        regbaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .ExtendCfgInfo("opFile.value", "mhc_pre_sinkhorn_apt");
+        this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };
 

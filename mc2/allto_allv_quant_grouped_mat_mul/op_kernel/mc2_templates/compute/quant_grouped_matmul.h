@@ -35,8 +35,8 @@ template <typename TilingDataType, typename GmmTilingDataType, class xType, clas
 class QuantGroupedMatmul {
 public:
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR xScaleGM, GM_ADDR weightScaleGM, GM_ADDR yGM,
-        GM_ADDR workspaceGM, const TilingDataType *tilingData, const GmmTilingDataType *gmmTilingData,
-        TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
+        GM_ADDR workspaceGM, const TilingDataType *tilingData,
+        const GmmTilingDataType *gmmTilingData, TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
     {
         if ASCEND_IS_AIV {
             return ;
@@ -59,24 +59,19 @@ public:
         bs_ = tilingData_->taskTilingInfo.BS;
         a_ = tilingData_->taskTilingInfo.A;
 
-        uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * CeilDiv(h1_, PACK_FACTOR));
-        // 将 permuteOutSize 对齐到 512 字节
-        permuteOutSize = Mc2QuantUtils::Align(permuteOutSize, TENSOR_LIST_SIZE);
-        uint64_t permuteXScaleSize =
-            a_ * Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
-            Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
-        // permuteXScaleSize 对齐到512字节
-        permuteXScaleSize = Mc2QuantUtils::Align(permuteXScaleSize, TENSOR_LIST_SIZE);
-        uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_; // GMM计算所需的groupList GM空间大小
+        uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_;
         groupListGm_ = workspaceGM_;
-
         ptrTableBase_ = groupListGm_ + groupListSize;
         xGlobalBuffer_.SetGlobalBuffer((__gm__ xType *)this->xGM_);
         wGlobalBuffer_.SetGlobalBuffer((__gm__ wType *)this->wGM_);
         yGlobalBuffer_.SetGlobalBuffer((__gm__ yType *)this->yGM_);
         groupListGlobalBuffer_.SetGlobalBuffer((__gm__ int64_t *)groupListGm_);
-        xScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)xScaleGM);
-        wScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)weightScaleGM);
+        if (xScaleGM != nullptr) {
+            xScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)xScaleGM);
+        }
+        if (weightScaleGM != nullptr) {
+            wScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)weightScaleGM);
+        }
 
         const auto *opCnt = isA2avGmmFlag ? &tilingData_->taskTilingInfo.recvCnt[0] : &tilingData_->taskTilingInfo.sendCnt[0];
         for (uint32_t e = 0U; e < expertNumInOneRank_; e++) {
@@ -95,19 +90,17 @@ public:
             return ;
         }
         this->UpdateAddr(expertIdx);
-        // 3. 计算偏移后地址
         __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
         __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
         __gm__ uint8_t *wAddr = reinterpret_cast<__gm__ uint8_t *>(wGM_);
-        // 4. 构建 GetTensorAddr 指针表
         GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
         GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
-        // weightScaleGM_ → kernel scale (weight scale B), xScaleGM_ → kernel perTokenScale (activation scale A)
-        GM_ADDR scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
+        GM_ADDR scaleBPtr = (weightScaleGM_ != nullptr) ? BuildPtrTable(weightScaleGM_, 2) : nullptr;
         GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
 
         uint64_t groupListToken = isLocal ? bs_ : expertTokenNum_[expertIdx];
         groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
+        // flush groupList到GM确保Cube引擎读到最新数据（不能用SyncAll，AIV不会执行SyncAll会死锁）
         AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
         Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
