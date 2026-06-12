@@ -22,7 +22,10 @@ namespace NpuArch::Gemm::Tile {
 
 /// new add gemm
 template <class ArchTag, class Element>
-struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>> {
+struct CopyGmToL1<
+    ArchTag,
+    Gemm::GemmType<Element, layout::RowMajor>,
+    Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>> {
     using LayoutDst = layout::zN;
     using LayoutSrc = layout::RowMajor;
 
@@ -64,7 +67,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::Gemm
 };
 
 template <class ArchTag, class Element>
-struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::B1>> {
+struct CopyGmToL1<
+    ArchTag,
+    Gemm::GemmType<Element, layout::RowMajor>,
+    Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::B1>> {
     using LayoutDst = layout::zZ;
     using LayoutSrc = layout::RowMajor;
 
@@ -169,7 +175,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::Gemm
 };
 
 template <class ArchTag, class Element>
-struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::GemmType<Element, layout::nN, AscendC::TPosition::A1>> {
+struct CopyGmToL1<
+    ArchTag,
+    Gemm::GemmType<Element, layout::ColumnMajor>,
+    Gemm::GemmType<Element, layout::nN, AscendC::TPosition::A1>> {
     using LayoutDst = layout::nN;
     using LayoutSrc = layout::ColumnMajor;
 
@@ -274,7 +283,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
 };
 
 template <class ArchTag, class Element>
-struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::B1>> {
+struct CopyGmToL1<
+    ArchTag,
+    Gemm::GemmType<Element, layout::ColumnMajor>,
+    Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::B1>> {
     using LayoutDst = layout::nZ;
     using LayoutSrc = layout::ColumnMajor;
 
@@ -316,7 +328,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
 };
 
 template <class ArchTag, class Element>
-struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::A1>> {
+struct CopyGmToL1<
+    ArchTag,
+    Gemm::GemmType<Element, layout::ColumnMajor>,
+    Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::A1>> {
     using LayoutDst = layout::nZ;
     using LayoutSrc = layout::ColumnMajor;
 
@@ -362,7 +377,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
 ///////////////////////////////////////
 /// new add gemv, VectorLayout -> zN
 template <class ArchTag, class Element>
-struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>, Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>> {
+struct CopyGmToL1<
+    ArchTag,
+    Gemm::GemmType<Element, layout::VectorLayout>,
+    Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>> {
     using LayoutDst = layout::zN;
     using LayoutSrc = layout::VectorLayout;
 
@@ -396,7 +414,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>, Gemm::
 ///////////////////////////////////////
 /// new add gemv, ColumnMajor -> nN
 template <class ArchTag, class Element>
-struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::GemmType<Element, layout::nN, AscendC::TPosition::B1>> {
+struct CopyGmToL1<
+    ArchTag,
+    Gemm::GemmType<Element, layout::ColumnMajor>,
+    Gemm::GemmType<Element, layout::nN, AscendC::TPosition::B1>> {
     using LayoutDst = layout::nN;
     using LayoutSrc = layout::ColumnMajor;
 
@@ -501,7 +522,10 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::G
 };
 
 template <class ArchTag, class Element>
-struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::GemmType<Element, layout::zN, AscendC::TPosition::B1>> {
+struct CopyGmToL1<
+    ArchTag,
+    Gemm::GemmType<Element, layout::RowMajor>,
+    Gemm::GemmType<Element, layout::zN, AscendC::TPosition::B1>> {
     using LayoutDst = layout::zN;
     using LayoutSrc = layout::RowMajor;
 
