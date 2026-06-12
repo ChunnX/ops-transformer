@@ -60,7 +60,8 @@ public:
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
-    __aicore__ inline void ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx);
+    __aicore__ inline void ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx,
+                                                         GlobalTensor<OUT_T> &maskOutGm);
     __aicore__ inline void CopyMaskToOutput(uint32_t batchIdx, uint32_t headIdx,
                                              GlobalTensor<OUT_T> &maskOutGm);
 
@@ -104,12 +105,12 @@ private:
     __aicore__ inline void ComputeCumSumPrev(LocalTensor<int32_t>& resTensor, int32_t& cumSumValuePrev);
     __aicore__ inline void CopyOutCoreTopK(LocalTensor<int32_t>& resTensor, int32_t totalTileTopKInCore);
     __aicore__ inline void SubTopKAndWriteMaskGT(LocalTensor<half>& xLocal, half boundaryHalf,
-                                                  uint64_t curTileLen, uint64_t tileGmOffset,
-                                                  int32_t& curTileK);
+                                                  uint64_t curTileLen, uint64_t outputGmOffset,
+                                                  int32_t& curTileK, GlobalTensor<OUT_T> &maskOutGm);
     __aicore__ inline void SubTopKAndWriteMaskEQ(LocalTensor<half>& xLocal, half boundaryHalf,
-                                                  uint64_t curTileLen, uint64_t tileGmOffset,
-                                                  int32_t& curTileK);
-    __aicore__ inline void TileTopK(uint32_t batchIdx, uint32_t headIdx);
+                                                  uint64_t curTileLen, uint64_t outputGmOffset,
+                                                  int32_t& curTileK, GlobalTensor<OUT_T> &maskOutGm);
+    __aicore__ inline void TileTopK(uint32_t batchIdx, uint32_t headIdx, GlobalTensor<OUT_T> &maskOutGm);
     __aicore__ inline void VToSSync();
     __aicore__ inline void SToVSync();
     __aicore__ inline void MTE2ToMTE3Sync();
@@ -284,7 +285,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::FreeEventID()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx)
+__aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx,
+                                                                               GlobalTensor<OUT_T> &maskOutGm)
 {
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[TopK] v6.8: main flow assembled\n");
@@ -459,7 +461,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
     SyncAll();
 
     // 7. TileTopK (batched processing)
-    TileTopK(batchIdx, headIdx);
+    TileTopK(batchIdx, headIdx, maskOutGm);
 }
 
 template <typename BSAT>
@@ -1218,7 +1220,8 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     LocalTensor<half>& xLocal, half boundaryHalf,
-    uint64_t curTileLen, uint64_t tileGmOffset, int32_t& curTileK)
+    uint64_t curTileLen, uint64_t outputGmOffset, int32_t& curTileK,
+    GlobalTensor<OUT_T> &maskOutGm)
 {
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
@@ -1256,14 +1259,19 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     Cast<uint8_t, half>(maskU8, maskHalf, RoundMode::CAST_NONE, alignLen);
 
     VToMTE3Sync();
-    DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
+    GlobalTensor<uint8_t> maskOutGmU8;
+    maskOutGmU8.SetGlobalBuffer(
+        const_cast<__gm__ uint8_t*>(
+            reinterpret_cast<const __gm__ uint8_t*>(maskOutGm.GetPhyAddr())) +
+        outputGmOffset * sizeof(OUT_T));
+    DataCopyPad(maskOutGmU8, maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
     MTE3ToMTE2Sync();
 
     VToSSync();
 
     // === DUMP 730: rsvdCnt after GatherMask ===
-    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
+    if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0) {
         BSA_TOPK_PRINTF("[DUMP730] GT rsvdCnt=%lu curTileK=%d->%d\n",
             rsvdCnt, curTileK, curTileK - static_cast<int32_t>(rsvdCnt));
     }
@@ -1274,7 +1282,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     LocalTensor<half>& xLocal, half boundaryHalf,
-    uint64_t curTileLen, uint64_t tileGmOffset, int32_t& curTileK)
+    uint64_t curTileLen, uint64_t outputGmOffset, int32_t& curTileK,
+    GlobalTensor<OUT_T> &maskOutGm)
 {
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
@@ -1295,8 +1304,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
 
     uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
 
+    GlobalTensor<uint8_t> maskOutGmU8;
+    maskOutGmU8.SetGlobalBuffer(
+        const_cast<__gm__ uint8_t*>(
+            reinterpret_cast<const __gm__ uint8_t*>(maskOutGm.GetPhyAddr())) +
+        outputGmOffset * sizeof(OUT_T));
+
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
-    DataCopyPad(maskLocal, maskTmpGmLocal[tileGmOffset],
+    DataCopyPad(maskLocal, maskOutGmU8,
                 DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
                 DataCopyPadExtParams<uint8_t>(false, 0,
                     static_cast<uint8_t>(alignLen - curTileLen), 0));
@@ -1309,7 +1324,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     }
 
     SToMTE3Sync();
-    DataCopyPad(maskTmpGmLocal[tileGmOffset], maskLocal,
+    DataCopyPad(maskOutGmU8, maskLocal,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
     MTE3ToMTE2Sync();
 
@@ -1317,13 +1332,15 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, uint32_t headIdx)
+__aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, uint32_t headIdx,
+                                                           GlobalTensor<OUT_T> &maskOutGm)
 {
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[TopK] v6.6b: TileTopK implemented\n");
     }
 
     LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
+    uint64_t outputOffset = (static_cast<uint64_t>(batchIdx) * constInfo.numHeads + headIdx) * sortLen_;
 
     // Restore boundary value (twiddle inverse transform)
     int16_t boundaryInt16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
@@ -1366,6 +1383,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             uint64_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
             uint64_t tileGmOffset = blockOffset_ + tileId * tileLen_;
+            uint64_t outputGmOffset = outputOffset + tileGmOffset;
 
             TBuf<TPosition::VECIN>& curBuf = pingPongFlag ? xBufPing_ : xBufPong_;
             TBuf<TPosition::VECIN>& nextBuf = pingPongFlag ? xBufPong_ : xBufPing_;
@@ -1389,7 +1407,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
                     tileId, curTileK, curTileLen, tileGmOffset);
             }
 
-            SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
+            SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK, maskOutGm);
 
             // === DUMP 701: After GT phase ===
             if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {
@@ -1404,7 +1422,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
                     BSA_TOPK_PRINTF("[DUMP800] Before EQ: curTileK=%d\n", curTileK);
                 }
 
-                SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
+                SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK, maskOutGm);
 
                 // === DUMP 801: After EQ phase ===
                 if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileId == 0) {

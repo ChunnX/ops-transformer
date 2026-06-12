@@ -466,12 +466,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
             SyncAll<false>();
 
             if ASCEND_IS_AIV {
-                radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx);
-            }
-            SyncAll();
-
-            if ASCEND_IS_AIV {
-                radixTopKService.CopyMaskToOutput(batchIdx, headIdx, maskOutGm);
+                radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx, maskOutGm);
             }
             SyncAll();
         }
