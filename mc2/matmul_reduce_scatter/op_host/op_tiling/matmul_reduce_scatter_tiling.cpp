@@ -257,9 +257,10 @@ static ge::graphStatus ReduceScatterParamsCheck(const gert::TilingContext* conte
     OP_TILING_CHECK(valueOne == 0 || valueTwo == 0 || valueThree == 0 || valueFour == 0,
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "shape value"), return ge::GRAPH_FAILED);
 
+    // GetAttrs() 为空时必须提前返回，否则后续会对其结果解空指针
     if (context->GetAttrs() == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs");
-        return ge::GRAPH_FAILED;  // 修改：原代码没有 return，会继续走到下面解 GetAttrs() 空指针
+        return ge::GRAPH_FAILED;
     } else {
         auto reduce_op = context->GetAttrs()->GetAttrPointer<char>(1);
         OP_TILING_CHECK(reduce_op == nullptr,
@@ -519,10 +520,10 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::SetMatmulTilingMatmulReduceSc
     // 为通信而进行调整搬运
     if (args.cmdType == mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER) {
         if (args.rankDim <= 0 || static_cast<bool>(args.orgMValue % args.rankDim)) {
-            // 修改：裸 OP_LOGE 改为带原因的错误信息，明确 m 必须是 rank_size 的整数倍
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "m",
-                (std::to_string(args.orgMValue) + " (rank_size=" + std::to_string(args.rankDim) + ")").c_str(),
-                "The value of m must be an integer multiple of rank_size");
+                std::to_string(args.orgMValue).c_str(),
+                ("The value of m must be an integer multiple of rank_size(" +
+                    std::to_string(args.rankDim) + ")").c_str());
             return ge::GRAPH_FAILED;
         }
         args.mValue /= args.rankDim; // 必须能够整数切分, 并且不能切K
