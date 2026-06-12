@@ -197,7 +197,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
     - scalesOptional数据类型可以与expandedX不一致。
-  - <term>Atlas推理系列产品</term>：
+  - |<term>Atlas 推理系列产品</term>：
     - expandedX要求是一个2D的Tensor，数据类型支持FLOAT16、FLOAT32，shape要求尾轴H为32对齐。
     - x1Optional、x2Optional、biasOptional、expertIdxOptional仅支持传入nullptr
     - 仅支持dropPadMode传入2。
