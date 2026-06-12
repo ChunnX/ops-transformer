@@ -187,7 +187,6 @@ private:
     // 临时tbuf
     TBuf<TPosition::VECCALC> tmpBuff1;
     TBuf<TPosition::VECCALC> tmpBuff2;
-    TBuf<TPosition::VECCALC> resultBuf_;
     TBuf<TPosition::VECCALC> apeBuf;
     // in queue
     TQue<QuePosition::VECIN, 1> inputQue1;
@@ -246,7 +245,6 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(tmpBuff2, BUFFER_SIZE_BYTE_64K);
     pipe->InitBuffer(apeBuf, BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(outputQue1, 1, BUFFER_SIZE_BYTE_16K);
-    pipe->InitBuffer(resultBuf_, BUFFER_SIZE_BYTE_16K);
     apeUb = apeBuf.Get<T>();
     PipeBarrier<PIPE_V>();
 }
