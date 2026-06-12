@@ -255,3 +255,45 @@
 - 提高 `MAX_S2_SPLIT_NUM`：让长序列切更多 split，增大 cube 阶段并行度（量级更大的改动）。
 - 调 `SplitFD` 的 `averageLoad`：让每核 mNum 更大、用满 `DEAL_ROW_COUNT=16` 的 chunk 能力，减少 FD 启用核数与调度开销。
 
+## 2026-06-12：FD InitFDBuffers — 仿参考算子 Reset+重新分配
+
+### 修改内容
+
+仿照参考算子 `flash_attention_score_antiquant_block_vec.h` 的 `InitFDBuffers` 模式，将 QSMLA 的 FD 规约阶段内存准备从「复用 FA 阶段空闲 buffer」改为「先 Reset 释放再重新分配」。
+
+1. **新增 `InitFDBuffers` 函数**（`mixed_quant_sparse_flash_mla_scfa_block_vector.h`）：
+   - `tPipe->Reset()` 释放 FA 阶段所有 UB buffer（V0 KV 输入/输出、softmax、vec1/vec2 等）
+   - 重新分配 FD 专用 buffer：
+     | Buffer | 大小 | 用途 |
+     |--------|------|------|
+     | `fdAccumOutBuf` | `FD_MAX_ROW × dTemplateAlign64 × sizeof(T)` | FD 累加输出 |
+     | `fdBlockMaxBuf` | `MAX_S2_SPLIT_NUM × FD_MAX_ROW × BLOCK_ELEM × sizeof(float)` | max 读入 |
+     | `fdBlockSumBuf` | 同 max 大小 | sum 读入 |
+     | `fdLseExpBuf` | `FD_MAX_ROW × BLOCK_ELEM × sizeof(float)` | ComputeScaleValue 输出 |
+     | `fdPartialBuf` | `FD_MAX_ROW × dTemplateAlign64 × sizeof(T)` | partial O 读入 |
+   - `FD_MAX_ROW = 64`，满足每次规约最多读入 64 行的容量需求
+   - **不分配 `sinksBuf`**：sink 已在 vec1 阶段通过 `SinkSubExpAddGSFusedVF` 融入 `sumUb`/`maxUb`，FD 阶段 `learnableSinkFlag=false`，无需重新读取
+
+2. **ProcessFlashDecode 改用 FD 专用 buffer**：
+   - `accumulatedO`: `stage2OutBuf` → `fdAccumOutBuf`
+   - `lseExpUb`: `dequantScaleBuff` → `fdLseExpBuf`
+   - `blockMaxUb`: `stage0OutBuf[0]` → `fdBlockMaxBuf`
+   - `blockSumUb`: `stage0OutBuf[1]` → `fdBlockSumBuf`
+   - `sinkUb`: 改为空 tensor（`LocalTensor<T> sinkUb;`），`learnableSinkFlag=false` 保护不访问
+
+3. **InitLocalBuffer 移除 `fdPartialBuf`**：不再在 FA 阶段分配 FD 专用 buffer，FD 阶段有自己的独立分配。
+
+4. **`InitFDBuffers` 在 `ProcessFlashDecode` 开头调用**：FD 内存准备内聚到 vec 层，kernel 两处调用点保持直接调 `ProcessFlashDecode`。
+
+5. **新增成员变量**：`fdAccumOutBuf`, `fdBlockMaxBuf`, `fdBlockSumBuf`, `fdLseExpBuf`（4 个 `TBuf<>`）
+
+6. **Dummy 类同步**：`SCFABlockVecDummy` 新增空 `InitFDBuffers` 方法。
+
+### 涉及文件
+- `op_kernel/arch35/mixed_quant_sparse_flash_mla_scfa_block_vector.h`：`InitFDBuffers` 新增、`ProcessFlashDecode` buffer 替换、`InitLocalBuffer` 移除 fdPartialBuf、成员变量新增、Dummy 类更新
+- `op_kernel/arch35/mixed_quant_sparse_flash_mla_scfa_kernel.h`：两处 `InitFDBuffers` 调用插入
+
+### 优势
+- FA 与 FD 的 UB buffer 生命周期完全分离，不再存在「FA buffer 被 FD 误改」或「FD buffer 容量受 FA 阶段剩余空间限制」的风险
+- Reset 释放大量 FA 阶段不再需要的 buffer（V0 KV 输入/输出约 40KB、softmax 约 1.5KB、vec1 约 16KB 等），FD 专用 buffer 总量远小于 FA 阶段，UB 压力大幅降低
+

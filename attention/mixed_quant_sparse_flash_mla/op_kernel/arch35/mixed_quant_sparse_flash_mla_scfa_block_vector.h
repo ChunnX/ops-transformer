@@ -115,6 +115,7 @@ public:
 
     // 初始化LocalTensor
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
+    __aicore__ inline void InitFDBuffers(ConstInfo &constInfo);
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
@@ -212,6 +213,10 @@ private:
     TBuf<> stage0InBuf[2];
     TBuf<> stage0OutBuf[2];
     TBuf<> fdPartialBuf;
+    TBuf<> fdAccumOutBuf;
+    TBuf<> fdBlockMaxBuf;
+    TBuf<> fdBlockSumBuf;
+    TBuf<> fdLseExpBuf;
     uint32_t pingPongV0 = 0;
 
     T negativeFloatScalar;
@@ -1022,6 +1027,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     FdRunInfo &fdRunInfo, ConstInfo &constInfo,
     mm2ResPos &tempBuf)
 {
+    InitFDBuffers(constInfo);
     int64_t vec2CalcSize = fdRunInfo.mNum * dTemplateAlign64;
     int64_t seqOffset = 0;
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
@@ -1036,11 +1042,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     constexpr uint32_t BLOCK_ELEM = 8; // common VF按每行8 float块布局访问max/sum/lse
 
     // ========== 1. 内存准备：分配UB buffer、定位GM staging区域 ==========
-    LocalTensor<T> accumulatedO = this->stage2OutBuf.template Get<T>();
-    LocalTensor<float> lseExpUb = this->dequantScaleBuff.template Get<float>();
-    LocalTensor<float> blockMaxUb = this->stage0OutBuf[0].template Get<float>();
-    LocalTensor<float> blockSumUb = this->stage0OutBuf[1].template Get<float>();
-    LocalTensor<T> sinkUb = this->sinksBuf.template Get<T>();
+    LocalTensor<T> accumulatedO = this->fdAccumOutBuf.template Get<T>();
+    LocalTensor<float> lseExpUb = this->fdLseExpBuf.template Get<float>();
+    LocalTensor<float> blockMaxUb = this->fdBlockMaxBuf.template Get<float>();
+    LocalTensor<float> blockSumUb = this->fdBlockSumBuf.template Get<float>();
+    LocalTensor<T> sinkUb; // intentionally unbacked; learnableSinkFlag must remain false (sink already fused in vec1)
 
     constexpr uint32_t ATTEN_OUT_BYTES = regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
     constexpr uint32_t MAX_SUM_BYTES = regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES;
@@ -1084,7 +1090,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
         // ========== 3. 用 common flashdecode 的 VF 计算 scale 值 ==========
         // blockMaxUb 为输入 max；blockSumUb 输入 sum，且被原地写回归一化 scale（广播block布局）。
         // staging 数据已 broadcast（与参考一致：先 BroadcastMaxSum 再拷出 GM）。
-        // sinks 已在各 split softmax 中累加，且本算子 FD 不输出 LSE，故两个 flag 均为 false。
+        // softmaxLseFlag=false（本算子 FD 不输出 LSE）；learnableSinkFlag=false（sink 已在 vec1 融入 sumUb/maxUb）。
         ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
                                    dealRowCount, fdRunInfo.workspaceNum, false, false);
         PipeBarrier<PIPE_V>();
@@ -1263,9 +1269,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
-    tPipe->InitBuffer(fdPartialBuf, 16 * dTemplateAlign64 * sizeof(T));
-    // FD规约阶段临时buffer全部复用主计算阶段空闲buffer(stage0InBuf/stage0OutBuf/dequantScaleBuff),
-    // 避免新增UB导致总分配超过192KB物理上限
 
     mte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     vToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
@@ -1289,6 +1292,24 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
 }
 
 TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitFDBuffers(ConstInfo &constInfo)
+{
+    this->tPipe->Reset();
+    constexpr uint32_t FD_MAX_ROW = 64;
+    constexpr uint32_t BLOCK_ELEM = 8;
+    constexpr uint32_t MAX_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
+    uint32_t maxSumTotal = MAX_SPLIT_NUM * FD_MAX_ROW * BLOCK_ELEM * sizeof(float);
+    uint32_t lseExpSize = FD_MAX_ROW * BLOCK_ELEM * sizeof(float);
+    uint32_t accumOutSize = FD_MAX_ROW * dTemplateAlign64 * sizeof(T);
+    uint32_t partialOSize = FD_MAX_ROW * dTemplateAlign64 * sizeof(T);
+    this->tPipe->InitBuffer(fdAccumOutBuf, accumOutSize);
+    this->tPipe->InitBuffer(fdBlockMaxBuf, maxSumTotal);
+    this->tPipe->InitBuffer(fdBlockSumBuf, maxSumTotal);
+    this->tPipe->InitBuffer(fdLseExpBuf, lseExpSize);
+    this->tPipe->InitBuffer(fdPartialBuf, partialOSize);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetExtremeValue(
     T &negativeScalar)
 {
@@ -1309,6 +1330,7 @@ public:
         __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv,
         __gm__ uint8_t *cmpResidualKv) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
+    __aicore__ inline void InitFDBuffers(ConstInfo &constInfo) {}
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}

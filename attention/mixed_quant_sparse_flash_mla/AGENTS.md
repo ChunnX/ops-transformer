@@ -52,7 +52,7 @@ When porting fixes from the older checkout, inspect these current files first in
 At the start of a new conversation for this operator, read both progress files before making assumptions or continuing analysis:
 
 - `/home/panjie/workspace/aichat/mixed_quant_sparse_flash_mla/learning_progress.md`: accumulated knowledge points and confirmed technical understanding.
-- `/home/panjie/workspace/aichat/mixed_quant_sparse_flash_mla/work_progress.md`: generated documents, completed edits, and current follow-ups.
+- `work_progress.md` (in current directory): generated documents, completed edits, and current follow-ups.
 
 Keep these files updated when new durable knowledge is confirmed or documentation/work status changes.
 
