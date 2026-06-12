@@ -201,6 +201,8 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::InitParams(const ConstIn
 {
     this->constInfo_ = constInfo;
     this->tools_ = tools;
+    coff_ = static_cast<uint32_t>(COMP::coff);
+    cmpRatio_ = constInfo.cmpRatio;
 }
 
 template <typename COMP>
@@ -234,7 +236,6 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::Init(
     if (isExistStartPos) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     }
-    coff_ = static_cast<uint32_t>(COMP::coff);
 }
 
 template <typename COMP>
