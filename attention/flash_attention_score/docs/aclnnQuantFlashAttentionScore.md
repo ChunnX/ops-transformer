@@ -370,7 +370,7 @@ aclnnStatus aclnnQuantFlashAttentionScore(
   - B：batchsize必须相等。
   - D：Head-Dim必须满足(qD == kD && kD >= vD)。
   - inputLayout必须一致。
-- 关于数据shape的约束, 目前支持以下场景：
+- 关于数据shape的约束,目前支持以下场景：
     <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
     <col style="width: 150px">
     <col style="width: 300px">
@@ -482,7 +482,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;
@@ -602,7 +602,7 @@ int main() {
   ret = aclnnQuantFlashAttentionScore(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantFlashAttentionScore failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

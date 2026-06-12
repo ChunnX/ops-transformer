@@ -5,10 +5,10 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品</term>|      √     |
-|<term>Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
+|<term>Atlas A3训练系列产品</term>|      √     |
+|<term>Atlas A3推理系列产品</term>|      ×     |
+|<term>Atlas A2训练系列产品</term>|      √     |
+|<term>Atlas A2推理系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -172,8 +172,8 @@
   </tbody>
 </table>
 
-- <term>Atlas A2 训练系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8三种数据类型。
-- <term>Atlas A3 训练系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8三种数据类型。
+- <term>Atlas A2训练系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8三种数据类型。
+- <term>Atlas A3训练系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8三种数据类型。
 
 ## 约束说明
 
@@ -184,7 +184,7 @@
     - N：取值范围为1\~256。
     - S：取值范围为1\~1M。
     - D：取值范围为1\~768。输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时，D取值范围为1\~128。
-- 输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时, 不支持queryRopeOptional、keyRopeOptional、realShiftOptional、attenMaskOptional、dropMaskOptional、keepProb、pseType等相关可选参数。
+- 输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时,不支持queryRopeOptional、keyRopeOptional、realShiftOptional、attenMaskOptional、dropMaskOptional、keepProb、pseType等相关可选参数。
 - keepProb的取值范围为(0, 1]。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - pseType为2或3的时候，当前只支持Sq和Skv等长。

@@ -418,7 +418,7 @@ int main() {
     constexpr int64_t result_len = 512;
     constexpr int64_t block_num_per_batch = max_seq_len / page_block_size;
     constexpr int64_t blocks_num = block_num_per_batch * batch_size;
-    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化,参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

@@ -580,7 +580,7 @@ void PrintMetadataSummary(const optiling::detail::SasMetadata& meta)
 
 int main()
 {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context = nullptr;
@@ -606,7 +606,7 @@ int main()
   std::vector<int64_t> cuSeqLensQShape = {B + 1};
   std::vector<int64_t> seqUsedOriKvShape = {B};
   std::vector<int64_t> metadataShape = {optiling::SAS_META_SIZE};
-  // 对全部 5 个输入调用 Contiguous，optional 输入传 shape 为 {0} 的空 tensor。
+  // 对全部5个输入调用Contiguous，optional输入传shape为 {0} 的空tensor。
   std::vector<int64_t> emptyShape = {0};
   std::vector<int64_t> seqUsedQShape = emptyShape;
 
@@ -675,7 +675,7 @@ int main()
   ret = aclnnSparseFlashMlaMetadata(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaMetadata failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -687,7 +687,7 @@ int main()
   PrintMetadataSummary(result);
   CHECK_RET(result.faMetadata[0][optiling::FA_CORE_ENABLE_INDEX] == 1U,
             LOG_PRINT("metadata validation failed: core0 is not enabled\n"); return 1);
-  // 分核可能在 batch 内按行切分，此时 bn2_end 仍为 0，m_end 已推进。
+  // 分核可能在batch内按行切分，此时bn2_end仍为0，m_end已推进。
   CHECK_RET(result.faMetadata[0][optiling::FA_BN2_END_INDEX] > 0U ||
                 result.faMetadata[0][optiling::FA_M_END_INDEX] > 0U,
             LOG_PRINT("metadata validation failed: core0 has no assigned work\n"); return 1);

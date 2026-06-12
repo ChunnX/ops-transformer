@@ -25,21 +25,21 @@ aclnnStatus aclnnBlockSparseAttentionGetWorkspaceSize(
     const aclTensor   *blockSparseMaskOptional,     // 稀疏Mask
     const aclTensor   *attenMaskOptional,           // Attention mask (当前不支持)
     const aclIntArray *blockShapeOptional,          // 稀疏块形状数组
-    const aclIntArray *actualSeqLengthsOptional,    // 实际Q序列长度 (TND格式时必选)
-    const aclIntArray *actualSeqLengthsKvOptional,  // 实际KV序列长度 (TND格式时必选)
-    const aclTensor   *blockTableOptional,          // Block表 (用于PagedAttention，当前不支持)
-    char *qInputLayout,                             // Query的数据排布格式 (TND/BNSD)
-    char *kvInputLayout,                            // Key/Value的数据排布格式 (TND/BNSD)
+    const aclIntArray *actualSeqLengthsOptional,    // 实际Q序列长度(TND格式时必选)
+    const aclIntArray *actualSeqLengthsKvOptional,  // 实际KV序列长度(TND格式时必选)
+    const aclTensor   *blockTableOptional,          // Block表(用于PagedAttention，当前不支持)
+    char *qInputLayout,                             // Query的数据排布格式(TND/BNSD)
+    char *kvInputLayout,                            // Key/Value的数据排布格式(TND/BNSD)
     int64_t numKeyValueHeads,                       // KV头数
     int64_t maskType,                               // Mask类型
     double scaleValue,                              // 缩放因子
     int64_t innerPrecise,                           // Softmax计算采取的精度级别
-    int64_t blockSize,                              // Block大小 (用于PagedAttention，当前不支持)
-    int64_t preTokens,                              // 滑窗参数 (当前不支持)
-    int64_t nextTokens,                             // 滑窗参数 (当前不支持)
+    int64_t blockSize,                              // Block大小(用于PagedAttention，当前不支持)
+    int64_t preTokens,                              // 滑窗参数(当前不支持)
+    int64_t nextTokens,                             // 滑窗参数(当前不支持)
     int64_t softmaxLseFlag,                         // 是否输出LSE
     aclTensor *attentionOut,                        // 输出tensor
-    aclTensor *softmaxLseOptional,                  // Softmax LSE输出 (可选)
+    aclTensor *softmaxLseOptional,                  // Softmax LSE输出(可选)
     uint64_t *workspaceSize,                        // 返回workspace大小
     aclOpExecutor **executor);                      // 返回executor
 ```
@@ -80,7 +80,7 @@ aclnnStatus aclnnBlockSparseAttention(
 ### 输出参数
 
 - **attentionOut**: 注意力输出,shape与query相同
-- **softmaxLse**: Softmax log-sum-exp输出 (可选)
+- **softmaxLse**: Softmax log-sum-exp输出(可选)
 
 ## 使用示例
 

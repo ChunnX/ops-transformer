@@ -432,7 +432,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="4">161002</td>
-      <td>query，key，value 数据类型不在支持的范围之内。</td>
+      <td>query，key，value数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
       <td>qInputLayout或kvInputLayout不合法。</td>
@@ -675,7 +675,7 @@ void FreeResource(aclTensor *query, aclTensor *key, aclTensor *value, aclTensor 
 }
 
 int main() {
-    // 1. （固定写法）device/stream初始化
+    // 1.（固定写法）device/stream初始化
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
@@ -820,7 +820,7 @@ int main() {
                            actualSeqLengthsDeviceAddr, actualSeqLengthsKvDeviceAddr, workspaceAddr, deviceId, &stream);
               return ret);
 
-    // aclCreateIntArray 期望的是 host 侧的数据指针，而不是 device 侧的数据
+    // aclCreateIntArray期望的是host侧的数据指针，而不是device侧的数据
     actualSeqLengths = aclCreateIntArray(actualSeqLengthsHost.data(), batch);
     actualSeqLengthsKv = aclCreateIntArray(actualSeqLengthsKvHost.data(), batch);
     CHECK_RET(actualSeqLengths != nullptr && actualSeqLengthsKv != nullptr,

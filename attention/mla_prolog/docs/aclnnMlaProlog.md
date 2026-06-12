@@ -543,12 +543,12 @@ aclnnStatus aclnnMlaProlog(
         <tr>
           <td>ACLNN_ERR_PARAM_INVALID</td>
           <td>161002</td>
-          <td>输入参数的 shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。</td>
+          <td>输入参数的shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。</td>
         </tr>
         <tr>
           <td>ACLNN_ERR_RUNTIME_ERROR</td>
           <td>361001</td>
-          <td>API 内存调用 NPU Runtime 接口时发生异常（如 Runtime 服务未启动、内存申请失败等）。</td>
+          <td>API内存调用NPU Runtime接口时发生异常（如Runtime服务未启动、内存申请失败等）。</td>
         </tr>
         <tr>
           <td>ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -608,7 +608,7 @@ aclnnStatus aclnnMlaProlog(
   - aclnnMlaProlog默认确定性实现。
 
 <details>
-  <summary><a id="shapeDesc"></a>shape 格式字段含义说明</summary>
+  <summary><a id="shapeDesc"></a>shape格式字段含义说明</summary>
     &nbsp;&nbsp;<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
         <col style="width: 165px">
         <col style="width: 625px">
@@ -644,7 +644,7 @@ aclnnStatus aclnnMlaProlog(
     </tr>
     <tr>
       <td>Hcq</td>
-      <td>q 低秩矩阵维度</td>
+      <td>q低秩矩阵维度</td>
       <td>取值固定为：1536</td>
     </tr>
     <tr>
@@ -654,41 +654,41 @@ aclnnStatus aclnnMlaProlog(
     </tr>
     <tr>
       <td>Hckv</td>
-      <td>kv 低秩矩阵维度</td>
+      <td>kv低秩矩阵维度</td>
       <td>取值固定为：512</td>
     </tr>
     <tr>
       <td>D</td>
-      <td>qk 不含位置编码维度</td>
+      <td>qk不含位置编码维度</td>
       <td>取值固定为：128</td>
     </tr>
     <tr>
       <td>Dr</td>
-      <td>qk 位置编码维度</td>
+      <td>qk位置编码维度</td>
       <td>取值固定为：64</td>
     </tr>
     <tr>
       <td>Nkv</td>
-      <td>kv 的 head 数</td>
+      <td>kv的head数</td>
       <td>取值固定为：1</td>
     </tr>
     <tr>
       <td>BlockNum</td>
-      <td>PagedAttention 场景下的块数</td>
-      <td>取值为计算 B*Skv/BlockSize 的结果后向上取整 ⌈B*Skv/BlockSize⌉（Skv 表示 kv 的序列长度，允许取 0）</td>
+      <td>PagedAttention场景下的块数</td>
+      <td>取值为计算B*Skv/BlockSize的结果后向上取整 ⌈B*Skv/BlockSize⌉（Skv表示kv的序列长度，允许取0）</td>
     </tr>
     <tr>
       <td>BlockSize</td>
-      <td>PagedAttention 场景下的块大小</td>
+      <td>PagedAttention场景下的块大小</td>
       <td>取值范围：16~1024，且为16的倍数</td>
     </tr>
     <tr>
       <td>T</td>
-      <td>BS 合轴后的大小</td>
+      <td>BS合轴后的大小</td>
       <td>
         <ul>
           <li>取值范围：0~1048576</li>
-          <li>注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维</li>
+          <li>注：若采用BS合轴，此时tokenX、ropeSin、ropeCos均为2维，cacheIndex为1维，queryOut、queryRopeOut为3维</li>
         </ul>
       </td>
     </tr>
@@ -960,7 +960,7 @@ aclnnStatus aclnnMlaProlog(
   </div>
   </details>
 
-  <!-- 参数解释请参见**算子执行接口**。 -->
+  <!-- 参数解释请参见**算子执行接口**。-->
 
 ## 调用示例
 
@@ -1055,7 +1055,7 @@ aclnnStatus aclnnMlaProlog(
   }
   
   int main() {
-      // 1. 固定写法，device/stream初始化, 参考AscendCL对外接口列表
+      // 1. 固定写法，device/stream初始化,参考AscendCL对外接口列表
       // 根据实际device填写deviceId
       int32_t deviceId = 0;
       aclrtStream stream;
@@ -1220,7 +1220,7 @@ aclnnStatus aclnnMlaProlog(
       aclDestroyTensor(query);
       aclDestroyTensor(queryRope);
   
-      // 7. 释放device 资源
+      // 7. 释放device资源
       aclrtFree(tokenXDeviceAddr);
       aclrtFree(weightDqDeviceAddr);
       aclrtFree(weightUqQrDeviceAddr);
@@ -1236,7 +1236,7 @@ aclnnStatus aclnnMlaProlog(
       aclrtFree(queryDeviceAddr);
       aclrtFree(queryRopeDeviceAddr);
   
-      // 8. 释放host 资源
+      // 8. 释放host资源
       aclrtFree(tokenXHostAddr);
       aclrtFree(weightDqHostAddr);
       aclrtFree(weightUqQrHostAddr);

@@ -8,7 +8,7 @@
 
 ## 实现原理
 
-图1 计算流程图：
+图1计算流程图：
 
 ![MlaProlog计算流程图](../../../docs/zh/figures/MlaProlog计算流程.png)
 
@@ -47,7 +47,7 @@ MlaProlog算子有多个Matmul运算：
 MlaProlog融合算子包含了Vector计算和Cube计算，Vector侧和Cube侧的计算存在依赖关系，因此需要进行CV流水设计，
 否则C侧和V侧很有可能是串行流水的效果，不能达到并行计算的目的，无法使得融合算子性能达到最优：
 
-图2 流水控制图：
+图2流水控制图：
 
 ![MlaProlog流水控制图](../../../docs/zh/figures/MlaProlog流水控制.png)
 
@@ -61,7 +61,7 @@ MlaProlog融合算子包含了Vector计算和Cube计算，Vector侧和Cube侧的
 
 4、由于和RopeQr的分核策略不同，因此RopeQr计算前，也需要AIC和AIV之间的同步控制（SYNC_MMQCQR_ROPEQR）
 
-5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖于MatmulQcQr的输出 ,因此需要做cube的全核同步（SYNC_ALL_CUBE）
+5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖于MatmulQcQr的输出,因此需要做cube的全核同步（SYNC_ALL_CUBE）
 
 6、Vector核运算前，需要做vector的全核同步（SYNC_ALL_VECTOR），确保数据流水搬运
 
@@ -102,12 +102,12 @@ void Process() {
             CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMQCQR_ROPEQR_FLG);		//cube与vector同步
 
 
-            // 由于 MatmulQn 和 MatmulQcQr的分核策略不一样，MatmulQn又依赖MatmulQcQr的输出
+            // 由于MatmulQn和MatmulQcQr的分核策略不一样，MatmulQn又依赖MatmulQcQr的输出
             // 需要等所有cube核上的MatmulQcQr执行完后才能启动MatmulQn
             CrossCoreSetFlag<0x0, PIPE_FIX>(SYNC_ALL_CUBE_FLG);
             CrossCoreWaitFlag(SYNC_ALL_CUBE_FLG);
       
-            MatmulQn(qcOffset, weightUkOffset, qnResOffset, mmQnLoopTime);  // MatmulQn的结果直接输出到 queryOut, qnOffset需要按Batch轴偏移
+            MatmulQn(qcOffset, weightUkOffset, qnResOffset, mmQnLoopTime);  // MatmulQn的结果直接输出到queryOut, qnOffset需要按Batch轴偏移
 
       }
     
