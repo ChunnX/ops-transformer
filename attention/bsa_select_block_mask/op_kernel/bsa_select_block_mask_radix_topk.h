@@ -1318,6 +1318,19 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
         AscendC::CMPMODE::LT : AscendC::CMPMODE::GT;
     Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, cmpMode, alignLen);
     PipeBarrier<PIPE_V>();
+    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
+        BSA_TOPK_NZ_PRINTF("[NZDBG620] GT cmp key boundary=%f cmp idx0=%u idx255=%u idx256=%u idx511=%u idx512=%u idx767=%u idx768=%u idx1023=%u\n",
+            static_cast<float>(boundaryHalf),
+            static_cast<uint32_t>(cmpMask.GetValue(0)),
+            static_cast<uint32_t>(cmpMask.GetValue(255)),
+            static_cast<uint32_t>(cmpMask.GetValue(256)),
+            static_cast<uint32_t>(cmpMask.GetValue(511)),
+            static_cast<uint32_t>(cmpMask.GetValue(512)),
+            static_cast<uint32_t>(cmpMask.GetValue(767)),
+            static_cast<uint32_t>(cmpMask.GetValue(768)),
+            static_cast<uint32_t>(cmpMask.GetValue(1023)));
+        BSA_TOPK_NZ_DUMP_TENSOR(cmpMask, 9620, 1024);
+    }
 
     LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
     LocalTensor<half> onesHalf = outIndexBuf_.Get<half>();
@@ -1336,23 +1349,85 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
                     SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
     }
     PipeBarrier<PIPE_V>();
+    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
+        BSA_TOPK_NZ_PRINTF("[NZDBG621] GT maskHalf after Select idx0=%f idx255=%f idx256=%f idx511=%f idx512=%f idx767=%f idx768=%f idx1023=%f\n",
+            static_cast<float>(maskHalf.GetValue(0)),
+            static_cast<float>(maskHalf.GetValue(255)),
+            static_cast<float>(maskHalf.GetValue(256)),
+            static_cast<float>(maskHalf.GetValue(511)),
+            static_cast<float>(maskHalf.GetValue(512)),
+            static_cast<float>(maskHalf.GetValue(767)),
+            static_cast<float>(maskHalf.GetValue(768)),
+            static_cast<float>(maskHalf.GetValue(1023)));
+        BSA_TOPK_NZ_DUMP_TENSOR(maskHalf, 9621, 1024);
+    }
 
     LocalTensor<int32_t> maskInt32 = outIndexBuf_.Get<int32_t>();
     Cast<int32_t, half>(maskInt32, maskHalf, RoundMode::CAST_RINT, alignLen);
     PipeBarrier<PIPE_V>();
+    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
+        BSA_TOPK_NZ_PRINTF("[NZDBG622] GT maskInt32 after Cast idx0=%d idx255=%d idx256=%d idx511=%d idx512=%d idx767=%d idx768=%d idx1023=%d\n",
+            maskInt32.GetValue(0), maskInt32.GetValue(255),
+            maskInt32.GetValue(256), maskInt32.GetValue(511),
+            maskInt32.GetValue(512), maskInt32.GetValue(767),
+            maskInt32.GetValue(768), maskInt32.GetValue(1023));
+        BSA_TOPK_NZ_DUMP_TENSOR(maskInt32, 9622, 1024);
+    }
 
     LocalTensor<int16_t> maskInt16 = outValueBuf_.Get<int16_t>();
     Cast<int16_t, int32_t>(maskInt16, maskInt32, RoundMode::CAST_NONE, alignLen);
     PipeBarrier<PIPE_V>();
+    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
+        BSA_TOPK_NZ_PRINTF("[NZDBG623] GT maskInt16 after Cast idx0=%d idx255=%d idx256=%d idx511=%d idx512=%d idx767=%d idx768=%d idx1023=%d\n",
+            static_cast<int32_t>(maskInt16.GetValue(0)),
+            static_cast<int32_t>(maskInt16.GetValue(255)),
+            static_cast<int32_t>(maskInt16.GetValue(256)),
+            static_cast<int32_t>(maskInt16.GetValue(511)),
+            static_cast<int32_t>(maskInt16.GetValue(512)),
+            static_cast<int32_t>(maskInt16.GetValue(767)),
+            static_cast<int32_t>(maskInt16.GetValue(768)),
+            static_cast<int32_t>(maskInt16.GetValue(1023)));
+        BSA_TOPK_NZ_DUMP_TENSOR(maskInt16, 9623, 1024);
+    }
 
     LocalTensor<uint8_t> maskU8 = outIndexBuf_.Get<uint8_t>();
     Cast<uint8_t, int16_t>(maskU8, maskInt16, RoundMode::CAST_NONE, alignLen);
     PipeBarrier<PIPE_V>();
+    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
+        BSA_TOPK_NZ_PRINTF("[NZDBG624] GT maskU8 after Cast idx0=%u idx255=%u idx256=%u idx511=%u idx512=%u idx767=%u idx768=%u idx1023=%u\n",
+            static_cast<uint32_t>(maskU8.GetValue(0)),
+            static_cast<uint32_t>(maskU8.GetValue(255)),
+            static_cast<uint32_t>(maskU8.GetValue(256)),
+            static_cast<uint32_t>(maskU8.GetValue(511)),
+            static_cast<uint32_t>(maskU8.GetValue(512)),
+            static_cast<uint32_t>(maskU8.GetValue(767)),
+            static_cast<uint32_t>(maskU8.GetValue(768)),
+            static_cast<uint32_t>(maskU8.GetValue(1023)));
+        BSA_TOPK_NZ_DUMP_TENSOR(maskU8, 9624, 1024);
+    }
 
     VToMTE3Sync();
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
     MTE3ToMTE2Sync();
+    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
+        LocalTensor<uint8_t> maskReadBack = maskLocalBuf_.Get<uint8_t>();
+        DataCopyPad(maskReadBack, maskTmpGmLocal[tileGmOffset],
+            DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
+            DataCopyPadExtParams<uint8_t>(false, 0,
+                static_cast<uint8_t>(alignLen - curTileLen), 0));
+        MTE2ToSSync();
+        BSA_TOPK_NZ_PRINTF("[NZDBG625] GT maskTmp readback idx0=%u idx255=%u idx256=%u idx511=%u idx512=%u idx767=%u idx768=%u idx1023=%u\n",
+            static_cast<uint32_t>(maskReadBack.GetValue(0)),
+            static_cast<uint32_t>(maskReadBack.GetValue(255)),
+            static_cast<uint32_t>(maskReadBack.GetValue(256)),
+            static_cast<uint32_t>(maskReadBack.GetValue(511)),
+            static_cast<uint32_t>(maskReadBack.GetValue(512)),
+            static_cast<uint32_t>(maskReadBack.GetValue(767)),
+            static_cast<uint32_t>(maskReadBack.GetValue(768)),
+            static_cast<uint32_t>(maskReadBack.GetValue(1023)));
+        BSA_TOPK_NZ_DUMP_TENSOR(maskReadBack, 9625, 1024);
+    }
 
     LocalTensor<half> tempHalf = outIndexBuf_.Get<half>();
     uint64_t rsvdCnt = 0;
