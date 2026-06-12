@@ -19,10 +19,6 @@
 #define BSA_TOPK_PIPE_ALL_PROBE 1
 #endif
 
-#ifndef BSA_TOPK_NONZERO_DEBUG
-#define BSA_TOPK_NONZERO_DEBUG 1
-#endif
-
 #define BSA_TOPK_PRINTF(...) do { \
     if (BSA_TOPK_DEBUG) { \
         AscendC::printf(__VA_ARGS__); \
@@ -44,18 +40,6 @@
 #define BSA_TOPK_PIPE_ALL() do { \
     if (BSA_TOPK_PIPE_ALL_PROBE) { \
         PipeBarrier<PIPE_ALL>(); \
-    } \
-} while (0)
-
-#define BSA_TOPK_NZ_PRINTF(...) do { \
-    if (BSA_TOPK_NONZERO_DEBUG) { \
-        AscendC::printf(__VA_ARGS__); \
-    } \
-} while (0)
-
-#define BSA_TOPK_NZ_DUMP_TENSOR(...) do { \
-    if (BSA_TOPK_NONZERO_DEBUG) { \
-        AscendC::DumpTensor(__VA_ARGS__); \
     } \
 } while (0)
 
@@ -285,8 +269,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
     this->tileHistGm_.SetGlobalBuffer(
         (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) + totalTileNum_ * sizeof(int32_t) + tileHistOffset * sizeof(int32_t)));
 
-    AscendC::InitOutput(this->attnScoreGmLocal[512], 256, static_cast<IN_T>(6.0));
-    PipeBarrier<PIPE_ALL>();
 }
 
 template <typename BSAT>
@@ -307,11 +289,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
         BSA_TOPK_PRINTF("[TopK] v6.8: main flow assembled\n");
     }
-    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && batchIdx == 0 && headIdx == 0) {
-        BSA_TOPK_NZ_PRINTF("[NZDBG000] enter TopK sortLen=%lu kValue=%lu tileLen=%lu tileNum=%lu tailTileLen=%lu sparsityMode=%d\n",
-            sortLen_, kValue_, tileLen_, tileNum_, tailTileLen_, static_cast<int32_t>(constInfo.sparsityMode));
-    }
-
     // 1. Calculate blockOffset
     this->blockOffset_ = tileStartId_ * tileLen_;
 
@@ -385,21 +362,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                 // Wait current tile ready
                 WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
-                if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && batchIdx == 0 && headIdx == 0 &&
-                    roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
-                    LocalTensor<half> rawHalf = curBuf.template Get<half>()[tileLen_];
-                    BSA_TOPK_NZ_PRINTF("[NZDBG100] raw input before radix key: idx0=%f idx255=%f idx256=%f idx511=%f idx512=%f idx767=%f idx768=%f idx1023=%f\n",
-                        static_cast<float>(rawHalf.GetValue(0)),
-                        static_cast<float>(rawHalf.GetValue(255)),
-                        static_cast<float>(rawHalf.GetValue(256)),
-                        static_cast<float>(rawHalf.GetValue(511)),
-                        static_cast<float>(rawHalf.GetValue(512)),
-                        static_cast<float>(rawHalf.GetValue(767)),
-                        static_cast<float>(rawHalf.GetValue(768)),
-                        static_cast<float>(rawHalf.GetValue(1023)));
-                    BSA_TOPK_NZ_DUMP_TENSOR(rawHalf, 9100, 1024);
-                }
-
                 // Core processing
                 NegateDataForLargest(curBuf, curTileLen);
                 if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
@@ -429,18 +391,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                     }
                 }
                 CalcCumsumHistogram(curBuf, roundId, tileId - startTileId, curTileLen);
-                if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && batchIdx == 0 && headIdx == 0 &&
-                    tileId == 0 && (roundId == static_cast<int32_t>(round_) - 1 || roundId == 0)) {
-                    LocalTensor<int32_t> tileHistDbg = tileHistAndTopKBuf_.Get<int32_t>();
-                    LocalTensor<int32_t> globalHistDbg = globalHistBuf_.Get<int32_t>();
-                    BSA_TOPK_NZ_PRINTF("[NZDBG200] after CalcHist round=%d tileHist bin1=%d bin2=%d bin3=%d globalHist=%d,%d,%d,%d\n",
-                        roundId,
-                        tileHistDbg.GetValue(0),
-                        tileHistDbg.GetValue(MAX_TILE_NUM_IN_UB_BY3),
-                        tileHistDbg.GetValue(2 * MAX_TILE_NUM_IN_UB_BY3),
-                        globalHistDbg.GetValue(0), globalHistDbg.GetValue(1),
-                        globalHistDbg.GetValue(2), globalHistDbg.GetValue(3));
-                }
 
                 // === DUMP 400: tileHist after CalcCumsumHistogram (first round, first tile) ===
                 if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && roundId == static_cast<int32_t>(round_) - 1 && tileId == 0) {
@@ -469,13 +419,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
                     DataCopyPad(tileHistGm_[tileHistOffset],
                                tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3],
                                DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
-                    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && batchIdx == 0 && headIdx == 0 &&
-                        repeatId == 0 && (roundId == static_cast<int32_t>(round_) - 1 || roundId == 0)) {
-                        BSA_TOPK_NZ_PRINTF("[NZDBG210] write tileHist round=%d bin=%d wsOffset=%u value0=%d len=%d\n",
-                            roundId, binMask, tileHistOffset,
-                            tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3].GetValue(0),
-                            endTileId - startTileId);
-                    }
                 }
                 if (GetBlockIdx() == 0) {
                     BSA_TOPK_SYNC_PRINTF("[SYNC_PROBE] after tileHist ws write round=%d repeat=%d\n",
@@ -887,16 +830,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::AddTileHist2TileTopKInWs(uint6
         CopyTileHistWs2Ub(tileHist, tileHistOffset + i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
         CopyTileTopKWs2Ub(tileTopK, i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
         MTE2ToVSync();
-        if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && i == 0) {
-            BSA_TOPK_NZ_PRINTF("[NZDBG300] AddTileHist before add offset=%lu dataNum=%u tileHist0=%d tileTopK0=%d\n",
-                tileHistOffset, dataNum, tileHist.GetValue(0), tileTopK.GetValue(0));
-        }
         Add(tileTopK, tileTopK, tileHist, dataNum);
         VToMTE3Sync();
-        if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && i == 0) {
-            BSA_TOPK_NZ_PRINTF("[NZDBG301] AddTileHist after add offset=%lu tileTopK0=%d\n",
-                tileHistOffset, tileTopK.GetValue(0));
-        }
         CopyTileTopKUb2Ws(tileTopK, i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
         MTE3ToMTE2Sync();
     }
@@ -1155,10 +1090,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
     int32_t cumSumValuePrev = 0;
     ComputeCumSumPrev(resTensor, cumSumValuePrev);
     int32_t remainCoreBoundaryNum = static_cast<int32_t>(remainK_) - cumSumValuePrev;
-    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0) {
-        BSA_TOPK_NZ_PRINTF("[NZDBG500] LastRoundBoundary reduceSum=%u cumPrev=%d remainCoreBoundaryNum=%d remainK=%lu\n",
-            reduceSumValue, cumSumValuePrev, remainCoreBoundaryNum, remainK_);
-    }
 
     // === DUMP 550: HandleLastRoundBoundary key values ===
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
@@ -1183,13 +1114,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
                 boundaryBinPrev * static_cast<uint32_t>(tileNum_) + startTileId, dataNum);
             CopyTileTopKWs2Ub(tileTopK, startTileId, dataNum);
             MTE2ToSSync();
-            if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && i == 0) {
-                BSA_TOPK_NZ_PRINTF("[NZDBG510] boundary loop before scalar boundary=%d prev=%d histBoundary0=%d histPrev0=%d tileTopK0=%d\n",
-                    boundaryBin, boundaryBinPrev,
-                    tileHistBoundary.GetValue(0),
-                    tileHistBoundaryPrev.GetValue(0),
-                    tileTopK.GetValue(0));
-            }
 
             for (int32_t tileId = static_cast<int32_t>(startTileId);
                  tileId < static_cast<int32_t>(endTileId); tileId++) {
@@ -1219,10 +1143,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
                 }
             }
             SToMTE3Sync();
-            if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && i == 0) {
-                BSA_TOPK_NZ_PRINTF("[NZDBG511] boundary loop after scalar tileTopK0=%d remainCoreBoundaryNum=%d\n",
-                    tileTopK.GetValue(0), remainCoreBoundaryNum);
-            }
             CopyTileTopKUb2Ws(tileTopK, startTileId, dataNum);
             MTE3ToMTE2Sync();
         }
@@ -1277,21 +1197,10 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
     MTE2ToVSync();
     ReduceGlobalHist(globalHist);
     FindBoundaryBin(globalHist, roundId);
-    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0) {
-        BSA_TOPK_NZ_PRINTF("[NZDBG400] Update round=%d globalHist=%d,%d,%d,%d boundary=%d prev=%d remainK_before=%lu totalBefore=%lu\n",
-            roundId,
-            globalHist.GetValue(0), globalHist.GetValue(1),
-            globalHist.GetValue(2), globalHist.GetValue(3),
-            boundaryBin, boundaryBinPrev, remainK_, totalDefinitelyInTopK_);
-    }
 
     AddTileHistToTileTopK(globalHist);
 
     remainK_ = kValue_ - totalDefinitelyInTopK_;
-    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0) {
-        BSA_TOPK_NZ_PRINTF("[NZDBG401] Update round=%d remainK_after=%lu totalAfter=%lu\n",
-            roundId, remainK_, totalDefinitelyInTopK_);
-    }
     LocalTensor<float> tileHistFp32 = resTensor.ReinterpretCast<float>();
 
     if (roundId == 0 && remainK_ > 0) {
@@ -1318,19 +1227,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
         AscendC::CMPMODE::LT : AscendC::CMPMODE::GT;
     Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, cmpMode, alignLen);
     PipeBarrier<PIPE_V>();
-    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
-        BSA_TOPK_NZ_PRINTF("[NZDBG620] GT cmp key boundary=%f cmp idx0=%u idx255=%u idx256=%u idx511=%u idx512=%u idx767=%u idx768=%u idx1023=%u\n",
-            static_cast<float>(boundaryHalf),
-            static_cast<uint32_t>(cmpMask.GetValue(0)),
-            static_cast<uint32_t>(cmpMask.GetValue(255)),
-            static_cast<uint32_t>(cmpMask.GetValue(256)),
-            static_cast<uint32_t>(cmpMask.GetValue(511)),
-            static_cast<uint32_t>(cmpMask.GetValue(512)),
-            static_cast<uint32_t>(cmpMask.GetValue(767)),
-            static_cast<uint32_t>(cmpMask.GetValue(768)),
-            static_cast<uint32_t>(cmpMask.GetValue(1023)));
-        BSA_TOPK_NZ_DUMP_TENSOR(cmpMask, 9620, 1024);
-    }
 
     LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
     LocalTensor<half> onesHalf = outIndexBuf_.Get<half>();
@@ -1349,57 +1245,15 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
                     SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
     }
     PipeBarrier<PIPE_V>();
-    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
-        BSA_TOPK_NZ_PRINTF("[NZDBG621] GT maskHalf after Select idx0=%f idx255=%f idx256=%f idx511=%f idx512=%f idx767=%f idx768=%f idx1023=%f\n",
-            static_cast<float>(maskHalf.GetValue(0)),
-            static_cast<float>(maskHalf.GetValue(255)),
-            static_cast<float>(maskHalf.GetValue(256)),
-            static_cast<float>(maskHalf.GetValue(511)),
-            static_cast<float>(maskHalf.GetValue(512)),
-            static_cast<float>(maskHalf.GetValue(767)),
-            static_cast<float>(maskHalf.GetValue(768)),
-            static_cast<float>(maskHalf.GetValue(1023)));
-        BSA_TOPK_NZ_DUMP_TENSOR(maskHalf, 9621, 1024);
-    }
 
     LocalTensor<uint8_t> maskU8 = outIndexBuf_.Get<uint8_t>();
     Cast<uint8_t, half>(maskU8, maskHalf, RoundMode::CAST_NONE, alignLen);
     PipeBarrier<PIPE_V>();
-    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
-        BSA_TOPK_NZ_PRINTF("[NZDBG624] GT maskU8 after half->uint8 Cast idx0=%u idx255=%u idx256=%u idx511=%u idx512=%u idx767=%u idx768=%u idx1023=%u\n",
-            static_cast<uint32_t>(maskU8.GetValue(0)),
-            static_cast<uint32_t>(maskU8.GetValue(255)),
-            static_cast<uint32_t>(maskU8.GetValue(256)),
-            static_cast<uint32_t>(maskU8.GetValue(511)),
-            static_cast<uint32_t>(maskU8.GetValue(512)),
-            static_cast<uint32_t>(maskU8.GetValue(767)),
-            static_cast<uint32_t>(maskU8.GetValue(768)),
-            static_cast<uint32_t>(maskU8.GetValue(1023)));
-        BSA_TOPK_NZ_DUMP_TENSOR(maskU8, 9624, 1024);
-    }
 
     VToMTE3Sync();
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
     MTE3ToMTE2Sync();
-    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
-        LocalTensor<uint8_t> maskReadBack = maskLocalBuf_.Get<uint8_t>();
-        DataCopyPad(maskReadBack, maskTmpGmLocal[tileGmOffset],
-            DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
-            DataCopyPadExtParams<uint8_t>(false, 0,
-                static_cast<uint8_t>(alignLen - curTileLen), 0));
-        MTE2ToSSync();
-        BSA_TOPK_NZ_PRINTF("[NZDBG625] GT maskTmp readback idx0=%u idx255=%u idx256=%u idx511=%u idx512=%u idx767=%u idx768=%u idx1023=%u\n",
-            static_cast<uint32_t>(maskReadBack.GetValue(0)),
-            static_cast<uint32_t>(maskReadBack.GetValue(255)),
-            static_cast<uint32_t>(maskReadBack.GetValue(256)),
-            static_cast<uint32_t>(maskReadBack.GetValue(511)),
-            static_cast<uint32_t>(maskReadBack.GetValue(512)),
-            static_cast<uint32_t>(maskReadBack.GetValue(767)),
-            static_cast<uint32_t>(maskReadBack.GetValue(768)),
-            static_cast<uint32_t>(maskReadBack.GetValue(1023)));
-        BSA_TOPK_NZ_DUMP_TENSOR(maskReadBack, 9625, 1024);
-    }
 
     LocalTensor<half> tempHalf = outIndexBuf_.Get<half>();
     uint64_t rsvdCnt = 0;
@@ -1495,11 +1349,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
         CopyTileTopKWs2Ub(tileTopK, startTileId, dataNum);
         MTE2ToSSync();
-        if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && batchIdx == 0 && headIdx == 0 && repeatId == 0) {
-            BSA_TOPK_NZ_PRINTF("[NZDBG600] TileTopK read tileTopK0=%d boundaryHalf=%f boundaryInt16=0x%04x involved=0x%04x dataNum=%u\n",
-                tileTopK.GetValue(0), static_cast<float>(boundaryHalf),
-                static_cast<uint16_t>(boundaryInt16), static_cast<uint16_t>(involvedMask16_), dataNum);
-        }
 
         // Prefetch first tile
         uint32_t firstTileId = startTileId;
@@ -1562,25 +1411,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
                         curTileK, curTileKBeforeEQ, curTileKBeforeEQ - curTileK);
                 }
             }
-            if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && batchIdx == 0 && headIdx == 0 && tileId == 0) {
-                LocalTensor<uint8_t> maskDbg = maskLocalBuf_.Get<uint8_t>();
-                DataCopyPad(maskDbg, maskTmpGmLocal[tileGmOffset],
-                    DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
-                    DataCopyPadExtParams<uint8_t>(false, 0,
-                        static_cast<uint8_t>(BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE)) - curTileLen), 0));
-                MTE2ToSSync();
-                BSA_TOPK_NZ_PRINTF("[NZDBG610] mask tmp after GT/EQ: idx0=%u idx255=%u idx256=%u idx511=%u idx512=%u idx767=%u idx768=%u idx1023=%u curTileKFinal=%d\n",
-                    static_cast<uint32_t>(maskDbg.GetValue(0)),
-                    static_cast<uint32_t>(maskDbg.GetValue(255)),
-                    static_cast<uint32_t>(maskDbg.GetValue(256)),
-                    static_cast<uint32_t>(maskDbg.GetValue(511)),
-                    static_cast<uint32_t>(maskDbg.GetValue(512)),
-                    static_cast<uint32_t>(maskDbg.GetValue(767)),
-                    static_cast<uint32_t>(maskDbg.GetValue(768)),
-                    static_cast<uint32_t>(maskDbg.GetValue(1023)),
-                    curTileK);
-                BSA_TOPK_NZ_DUMP_TENSOR(maskDbg, 9610, 1024);
-            }
 
             if (i < dataNum - 1) {
                 SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
@@ -1614,19 +1444,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batc
                     DataCopyPadExtParams<uint8_t>(false, 0,
                         static_cast<uint8_t>(alignLen - curTileLen), 0));
         MTE2ToMTE3Sync();
-        if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && batchIdx == 0 && headIdx == 0 && tileIdx == 0) {
-            MTE2ToSSync();
-            BSA_TOPK_NZ_PRINTF("[NZDBG700] CopyMaskToOutput maskLocal: idx0=%u idx255=%u idx256=%u idx511=%u idx512=%u idx767=%u idx768=%u idx1023=%u outputOffset=%lu tileGmOffset=%lu\n",
-                static_cast<uint32_t>(maskLocal8.GetValue(0)),
-                static_cast<uint32_t>(maskLocal8.GetValue(255)),
-                static_cast<uint32_t>(maskLocal8.GetValue(256)),
-                static_cast<uint32_t>(maskLocal8.GetValue(511)),
-                static_cast<uint32_t>(maskLocal8.GetValue(512)),
-                static_cast<uint32_t>(maskLocal8.GetValue(767)),
-                static_cast<uint32_t>(maskLocal8.GetValue(768)),
-                static_cast<uint32_t>(maskLocal8.GetValue(1023)),
-                outputOffset, tileGmOffset);
-        }
 
         // Write to maskOutGm
         // Note: uint8_t and int8_t have identical memory layout (1 byte each)
@@ -1647,7 +1464,5 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batc
 #undef BSA_TOPK_SYNC_PRINTF
 #undef BSA_TOPK_DUMP_TENSOR
 #undef BSA_TOPK_PIPE_ALL
-#undef BSA_TOPK_NZ_PRINTF
-#undef BSA_TOPK_NZ_DUMP_TENSOR
 
 #endif // BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
