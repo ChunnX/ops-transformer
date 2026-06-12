@@ -7,8 +7,8 @@
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
 |<term>Ascend 950PR/Ascend 950DT</term>|     √      |
-|<term>Atlas A2 推理系列产品</term>   | √  |
-|<term>Atlas A3 推理系列产品</term>   | √  |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 
 ## 功能说明
 
@@ -499,7 +499,12 @@ aclnnStatus aclnnSparseFlashAttention(
 
 - 确定性计算：aclnnSparseFlashAttention默认确定性实现。
 - 该接口支持推理场景下使用。
-- N1支持1~64和128。
+- N1支持情况：
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - N1支持1~128。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - N1支持1/2/4/8/16/32/64/128。
+- N2仅支持1。
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
 - 参数query中的D和key、value的D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
 - 参数query、key、value的数据类型必须保持一致。

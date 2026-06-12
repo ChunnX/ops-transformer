@@ -115,21 +115,34 @@ struct FusedInferHostTensorParams {
 static graphStatus FiaFillTensorParams(const OpExecuteContext *host_api_ctx, FusedInferHostTensorParams &fiaTensors)
 {
     fiaTensors.query = host_api_ctx->GetInputTensor(QUERY_INDEX);
-    OP_CHECK_IF(fiaTensors.query == nullptr, OP_LOGE(host_api_ctx->GetNodeName(),
-               "query is null"), return GRAPH_FAILED);
-    
+    if (fiaTensors.query == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "query");
+        return GRAPH_FAILED;
+    }
+
     fiaTensors.key = host_api_ctx->GetDynamicInputTensor(KEY_INDEX, 0);
-    OP_CHECK_IF(fiaTensors.key == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "key is null"), return GRAPH_FAILED);
+    if (fiaTensors.key == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "key");
+        return GRAPH_FAILED;
+    }
     
     fiaTensors.value = host_api_ctx->GetDynamicInputTensor(VALUE_INDEX, 0);
-    OP_CHECK_IF(fiaTensors.value == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "value is null"), return GRAPH_FAILED);
+    if (fiaTensors.value == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "value");
+        return GRAPH_FAILED;
+    }
     
     fiaTensors.output = host_api_ctx->GetOutputTensor(ATTENTION_OUT_INDEX);
-    OP_CHECK_IF(fiaTensors.output == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "output is null"), return GRAPH_FAILED);
+    if (fiaTensors.output == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "output");
+        return GRAPH_FAILED;
+    }
     
     fiaTensors.softmaxLse = host_api_ctx->GetOutputTensor(SOFTMAX_LSE_INDEX);
-    OP_CHECK_IF(fiaTensors.softmaxLse == nullptr, OP_LOGE(host_api_ctx->GetNodeName(),
-               "softmaxLse is null"), return GRAPH_FAILED);
+    if (fiaTensors.softmaxLse == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "softmaxLse");
+        return GRAPH_FAILED;
+    }
 
     fiaTensors.pseShiftGe = host_api_ctx->GetOptionalInputTensor(PSE_SHIFT_INDEX);
     fiaTensors.attenMaskGe = host_api_ctx->GetOptionalInputTensor(ATTEN_MASK_INDEX);
@@ -292,7 +305,9 @@ static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
     GetFusedInferHostScalarParams(attrPointers, scalarParams);
 
     if (scalarParams.innerPrecise < 0 || scalarParams.innerPrecise > 3) { // innerPrecise=2,3 corresponds to rows with invalid high precision and high performance
-        OP_LOGE(host_api_ctx->GetNodeName(), "invalid innerPrecise(%ld). Only support 0~3 now.", scalarParams.innerPrecise);
+        std::string reason = "The value of inner_precise must be in 0, 1, 2, 3.";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(host_api_ctx->GetNodeName(), "inner_precise",
+            std::to_string(scalarParams.innerPrecise).c_str(), reason.c_str());
         return GRAPH_FAILED;
     }
     OP_LOGD(host_api_ctx->GetNodeName(), "FusedInferAttentionScore fallback begin, numHeads = %ld, dScaleValue = %lf",

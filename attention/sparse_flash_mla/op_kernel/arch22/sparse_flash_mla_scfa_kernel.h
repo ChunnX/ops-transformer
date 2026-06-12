@@ -341,7 +341,7 @@ __aicore__ inline int32_t SparseFlashMlaScfa<SMLAT>::GetActualSeqLenQ(uint32_t b
 template <typename SMLAT>
 __aicore__ inline int32_t SparseFlashMlaScfa<SMLAT>::GetActualSeqLenKV(uint32_t bIdx)
 {
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         tempLoopInfo.actualSeqKVPrefixSum = static_cast<uint64_t>(bIdx * constInfo.kvSeqSize);
         if (constInfo.actualLenDimsKV == 0) {
             return static_cast<int32_t>(constInfo.kvSeqSize);
@@ -410,9 +410,10 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::Init(
         InitActualSeqLen(cuSeqlensQ, cuSeqlensKV, cuSeqlensCmpKV);
     } else if (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         InitActualSeqLen(seqUsedQ, cuSeqlensKV, cuSeqlensCmpKV);
-    } else if ((KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD || KV_LAYOUT_T == SMLA_LAYOUT::BSND) && LAYOUT_T == SMLA_LAYOUT::TND) {
+    } else if ((KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND || KV_LAYOUT_T == SMLA_LAYOUT::BSND)
+                && LAYOUT_T == SMLA_LAYOUT::TND) {
         InitActualSeqLen(cuSeqlensQ, seqUsedKV);
-    } else if ((KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD || KV_LAYOUT_T == SMLA_LAYOUT::BSND)) {
+    } else if ((KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND || KV_LAYOUT_T == SMLA_LAYOUT::BSND)) {
         InitActualSeqLen(seqUsedQ, seqUsedKV);
     }
 

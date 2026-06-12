@@ -89,8 +89,8 @@ public:
             subTiling.subSeqLen = tilingData.BlocksNums;
             subTiling.subHeadDim = tiling.headDim;
             subTiling.subHeadNum = coreInfo.coreHeadNums;
-            subTiling.subKvSize = subTiling.subSeqLen * coreInfo.coreHeadNums * tiling.headDim;
-            subTiling.subCompressKvSize = coreInfo.coreHeadNums * tiling.headDim;
+            subTiling.subKvSize = static_cast<uint64_t>(subTiling.subSeqLen) * coreInfo.coreHeadNums * tiling.headDim;
+            subTiling.subCompressKvSize = static_cast<uint64_t>(coreInfo.coreHeadNums) * tiling.headDim;
         }
     }
 
@@ -347,11 +347,12 @@ __aicore__ inline void KernelNASCompress<T>::Init(__gm__ uint8_t *input, __gm__ 
 }
 
 
-template <typename T> 
+template <typename T>
 __aicore__ inline void KernelNASCompress<T>::CopyIn()
 {
-    uint32_t block_start =
-        coreInfo.coreSeqIdx * tiling.headNum * tiling.headDim + coreInfo.coreHeadIdx * tiling.headDim;
+    uint64_t block_start =
+        static_cast<uint64_t>(coreInfo.coreSeqIdx) * tiling.headNum * tiling.headDim +
+        static_cast<uint64_t>(coreInfo.coreHeadIdx) * tiling.headDim;
 
     AscendC::LocalTensor<T> kvCacheLocal = inQueueKvFp16.AllocTensor<T>();
 
@@ -499,8 +500,9 @@ __aicore__ inline void KernelNASCompress<T>::CopyOut()
     // 成功压缩一个compress token. 数据UB->GM
     AscendC::LocalTensor<T> compressKvCacheLocal = outQueCompressKv.DeQue<T>();
     if (coreInfo.coreCompressIdx < coreInfo.coreCompressNum) {
-        uint32_t compressOffset =
-            coreInfo.coreCompressOffset + coreInfo.coreCompressIdx * tiling.headNum * tiling.headDim;
+        uint64_t compressOffset =
+            coreInfo.coreCompressOffset +
+            static_cast<uint64_t>(coreInfo.coreCompressIdx) * tiling.headNum * tiling.headDim;
         AscendC::PipeBarrier<PIPE_ALL>();
         AscendC::DataCopy(compressKvGm[compressOffset], compressKvCacheLocal, coreInfo.coreCompressSize);
         AscendC::PipeBarrier<PIPE_ALL>();
