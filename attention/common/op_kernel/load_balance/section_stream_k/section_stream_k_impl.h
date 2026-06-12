@@ -757,7 +757,7 @@ inline bool SectionStreamKImpl::CheckChooseWithFd(const SectionStreamKImplResult
     }
 
     const int64_t full_block_cost = m_param.costFunc(m_param.mBaseSize, m_param.s2BaseSize);
-    int64_t fdTolerance = std::max(withFd.maxCost / 2, m_param.fdTolerance * full_block_cost);
+    int64_t fdTolerance = m_param.fdTolerance * full_block_cost;
     return noFd.maxCost - fdTolerance > withFd.maxCost;        // using minus in case overflow
 }
 
