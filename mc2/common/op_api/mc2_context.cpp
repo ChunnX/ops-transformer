@@ -253,7 +253,7 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
         return ret;
     }
 
-    auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
+    auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, mc2ContextStruct->hcommHandle_);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Acquire HCCL channel failed");
         return ACLNN_ERR_INNER;
@@ -285,7 +285,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
             hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
         } else {
             uint32_t idx = (i < rankId) ? i : (i - 1);
-            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, mc2ContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
         }
 
         if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
@@ -379,7 +379,7 @@ aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
 {
     bool isFoundUbMemProtocol = false;
     for (uint32_t j = 0; j < netLinkNum; ++j) {
-        if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+        if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UBC_CTP) {
             isFoundUbMemProtocol = true;
             break;
         }
@@ -450,7 +450,7 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
 
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
         OP_LOGI("HCCL communication layerNum is %u,so set protocol to UB_MEM", layerNum);
-        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         return ACLNN_SUCCESS;
     }
 
@@ -462,7 +462,7 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
     }
 
     OP_LOGD("CheckProtocolSupport success!");
-    protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+    protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
     return ACLNN_SUCCESS;
 }
 
