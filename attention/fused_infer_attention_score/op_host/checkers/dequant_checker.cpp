@@ -1027,7 +1027,6 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
 
     // 非pa场景 不支持kv kvscale不连续
     int32_t dimIndex = 0;  // 占位，非pa场景用不到
-    OP_LOGE(fiaInfo.opName, "check non-PA scenarios, kv kvscale contiguous.");
     OP_CHECK_IF((!fiaInfo.pageAttentionFlag && 
         ((CheckTensorContiguous(keyDimNum, keyInputShape, fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
         (CheckTensorContiguous(valueDimNum, valueInputShape, fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
