@@ -50,14 +50,14 @@ class GPUBackend(Backend):
         layout_kv = params.get("layout_kv", params.get("input_layout", "BNSD"))
         block_size = params.get("block_size", 256)
 
-        if layout_kv.startswith("PA_") and block_size % 256 != 0:
+        if layout_kv == "PA_NZ" or (layout_kv.startswith("PA_") and block_size % 256 != 0):
             from core.backends.cpu import _pa_to_bnsd
-            k_bnsd = _pa_to_bnsd(inputs["k"], layout_kv, params).to(self._device)
-            v_bnsd = _pa_to_bnsd(inputs["v"], layout_kv, params).to(self._device)
+            k_bnsd = _pa_to_bnsd(inputs["k"].cpu(), layout_kv, params).to(self._device)
+            v_bnsd = _pa_to_bnsd(inputs["v"].cpu(), layout_kv, params).to(self._device)
             non_pa_params = dict(params)
             non_pa_params["layout_kv"] = "BNSD"
             non_pa_params.pop("block_table", None)
-            print(f"  [gpu] block_size={block_size} 非256整数倍，PA→BNSD 降级")
+            print(f"  [gpu] {layout_kv} (block_size={block_size}) GPU不支持，PA→BNSD 降级")
             out_bnsd = flash_attn_gpu(
                 inputs["q"], k_bnsd, v_bnsd,
                 None, None, mask_gpu, **non_pa_params,
