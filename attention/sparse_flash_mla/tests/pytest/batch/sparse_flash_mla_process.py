@@ -72,7 +72,8 @@ def call_npu(input_data):
     layout_q = tensor_input['layout_q'] if type(tensor_input['layout_q']) == type('TND') else tensor_input['layout_q'][0]
     layout_kv = tensor_input['layout_kv']
     max_seqlen_q = metadata_input['max_seqlen_q']
-    ori_max_s2 = metadata_input['max_seqlen_kv']
+    max_seqlen_ori_kv = metadata_input['max_seqlen_ori_kv']
+    max_seqlen_cmp_kv = metadata_input['max_seqlen_cmp_kv']
     ori_sparse_indices = tensor_input['ori_sparse_indices']
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
     cmp_block_table = tensor_input['cmp_block_table']
@@ -105,10 +106,10 @@ def call_npu(input_data):
         cmp_topk_length=cmp_topk_length,
         batch_size=B,
         max_seqlen_q=max_seqlen_q,
-        # max_seqlen_ori_kv=max_seqlen_ori_kv,
-        # max_seqlen_cmp_kv=max_seqlen_cmp_kv,
-        # ori_topk=K,
-        cmp_topk=K,
+        max_seqlen_ori_kv=max_seqlen_ori_kv,
+        max_seqlen_cmp_kv=max_seqlen_cmp_kv,
+        ori_topk=K,
+        cmp_topk=K if cmp_sparse_indices is not None else 0,
         cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
         ori_mask_mode=ori_mask_mode,
         cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 3,
