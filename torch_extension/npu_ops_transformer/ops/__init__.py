@@ -32,3 +32,5 @@ from .graph_convert.graph_convert_lightning_indexer_v2 import convert_lightning_
 from .graph_convert.graph_convert_quant_lightning_indexer_v2 import (
     convert_quant_lightning_indexer_metadata
 )
+from .mhc_post import mhc_post
+from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
