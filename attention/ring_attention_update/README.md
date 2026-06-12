@@ -6,8 +6,8 @@
 | :----------------------------------------------------------- | :------: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Kirin X90 处理器系列产品</term> | √ |
-| <term>Kirin 9030 处理器系列产品</term> | √ |
+| <term>Kirin X90处理器系列产品</term> | √ |
+| <term>Kirin 9030处理器系列产品</term> | √ |
 
 ## 功能说明
 
@@ -124,13 +124,13 @@
     </tr>
   </tbody></table>
 
-- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
+- Kirin X90/Kirin 9030处理器系列产品: 不支持BFLOAT16。
 
 ## 约束说明
 
   - 当inputLayoutOptional为“TND”时，prevAttnOut的最后一个维度需要为64的倍数。
   - 当inputLayoutOptional为“TND”时，actualSeqQlenOptional为必填。
-  - 当inputLayoutOptional为“TND”时，请注意N*D的大小，限制为： (N \* D)向上对齐64的结果 \* (attention的输入数据类型的大小 \* 6 + 8) + (N \* 8)向上对齐64的结果 \* 56 <= 192 \* 1024，数据类型大小：FLOAT为4，FLOAT16和BFLOAT16为2。若大小超过限制，会有相应拦截信息出现。
+  - 当inputLayoutOptional为“TND”时，请注意N*D的大小，限制为：(N \* D)向上对齐64的结果 \* (attention的输入数据类型的大小 \* 6 + 8) + (N \* 8)向上对齐64的结果 \* 56 <= 192 \* 1024，数据类型大小：FLOAT为4，FLOAT16和BFLOAT16为2。若大小超过限制，会有相应拦截信息出现。
 
 ## 调用说明
 
