@@ -14,8 +14,8 @@
 #include <type_traits>
 #include <limits>
 #include "../../../attn_infra/fused_base_defs.hpp"
-#include "../../../attn_infra/arch/fused_cross_core_sync.hpp"
 #include "../../../attn_infra/arch/fused_resource.hpp"
+#include "../../../attn_infra/arch/fused_cross_core_sync.hpp"
 #include "../../../attn_infra/epilogue/fused_epilogue_dispatch_policy.hpp"
 #include "../../../attn_infra/epilogue/tile_common/fused_epilogue_tile_copy.hpp"
 #include "../../../attn_infra/fused_gemm_coord.hpp"
@@ -35,12 +35,12 @@ struct SinkLoopParam
     SinkLoopParam(
         uint32_t rowOffsetIoGm_,
         uint32_t rowNumCurLoop_,
-        uint32_t qSBlockSize_,
+        uint32_t qSeqBlockSize_,
         uint32_t rowOffsetThisSubBlock_
     ) :
         rowOffsetIoGm(rowOffsetIoGm_),
         rowNumCurLoop(rowNumCurLoop_),
-        qSBlockSize(qSBlockSize_),
+        qSBlockSize(qSeqBlockSize_),
         rowOffsetThisSubBlock(rowOffsetThisSubBlock_)
     {}
 };
@@ -65,16 +65,16 @@ class BlockEpilogue<
 public:
     using DispatchPolicy = EpilogueAtlasA2OnlineSoftmax<LSE_MODE_, SINK_MODE_, MASK_MODE_, float>;
     using ArchTag = typename DispatchPolicy::ArchTag;
-    using ElementOutput = typename OutputType_::Element;
     using ElementInput = typename InputType_::Element;
     using ElementMask = typename MaskType_::Element;
     using ElementSink = typename SinkType_::Element;
     using ElementFull = typename FullType_::Element;
+    using ElementOutput = typename OutputType_::Element;
 
-    using LayoutOutput = typename OutputType_::Layout;
     using LayoutInput = typename InputType_::Layout;
     using LayoutMask = typename MaskType_::Layout;
     using LayoutFull = typename FullType_::Layout;
+    using LayoutOutput = typename OutputType_::Layout;
 
     static constexpr LseMode LSE_MODE = DispatchPolicy::LSE_MODE;
     static constexpr SinkMode SINK_MODE = DispatchPolicy::SINK_MODE;
@@ -109,9 +109,9 @@ public:
         // Allocate UB space
         constexpr uint32_t LS_UB_TENSOR_OFFSET = 0;
         constexpr uint32_t LP_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t FULL32_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t MASK_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t MASK32_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
-        constexpr uint32_t FULL32_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t MASK_UB_PREMASK_TENSOR_OFFSET = 5 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t TV_UB_TENSOR_OFFSET = 10 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t LM_UB_TENSOR_OFFSET = 10 * UB_UINT8_BLOCK_SIZE + 8 * UB_UINT8_VECTOR_SIZE;
@@ -123,8 +123,8 @@ public:
         constexpr uint32_t DM_UB_TENSOR_OFFSET = 10 * UB_UINT8_BLOCK_SIZE + 13 * UB_UINT8_VECTOR_SIZE;
         constexpr uint32_t SEL_MASK_UB_TENSOR_OFFSET = LL_UB_TENSOR_OFFSET;
 
-        constexpr uint32_t MASK16_UB_TENSOR_OFFSET = 11 * UB_UINT8_BLOCK_SIZE;
         constexpr uint32_t FULL16_UB_TENSOR_OFFSET = 11 * UB_UINT8_BLOCK_SIZE;
+        constexpr uint32_t MASK16_UB_TENSOR_OFFSET = 11 * UB_UINT8_BLOCK_SIZE;
         scaleValue = scaleValue_;
         lsUbTensor = resource.ubBuf.template GetBufferByByte<float>(LS_UB_TENSOR_OFFSET);
         lpUbTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(LP_UB_TENSOR_OFFSET);
@@ -157,15 +157,15 @@ public:
     __aicore__ inline
     void SetVecMask(int32_t len)
     {
-        uint64_t mask = 0;
-        uint64_t one = 1;
         uint64_t temp = len % FLOAT_VECTOR_SIZE;
+        uint64_t one = 1;
+        uint64_t mask = 0;
         for (int64_t i = 0; i < temp; i++) {
             mask |= one << i;
         }
 
         if (len == VECTOR_SIZE || len == 0) {
-            AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
+            AscendC::SetVectorMask<int8_t>((uint64_t)(-1), (uint64_t)(-1));
         } else if (len >= FLOAT_VECTOR_SIZE) {
             AscendC::SetVectorMask<int8_t>(mask, (uint64_t)-1);
         } else {
@@ -214,27 +214,27 @@ public:
 
     __aicore__ inline
     void RowsumSPECTILE256(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowsumUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRoundTile256, uint32_t numElems,
         uint32_t numElemsAligned)
     {
         AscendC::BlockReduceSum<float, false>(
             tvUbTensor,
             srcUb,
-            numRowsRound * numElemsAligned / FLOAT_VECTOR_SIZE,
+            numRowsRoundTile256 * numElemsAligned / FLOAT_VECTOR_SIZE,
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         SetVecMask(ROW_OPS_SPEC_MASK_32);
         AscendC::BlockReduceSum<float, false>(
             tvUbTensor[REDUCE_UB_SIZE],
             tvUbTensor,
-            numRowsRound,
+            numRowsRoundTile256,
             0, 1, 1, 4);
         AscendC::PipeBarrier<PIPE_V>();
         SetBlockReduceMask(ROW_OPS_SPEC_MASK_4);
         AscendC::BlockReduceSum<float, false>(
             rowsumUb,
             tvUbTensor[REDUCE_UB_SIZE],
-            NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+            NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTile256 * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
@@ -322,52 +322,52 @@ public:
 
     __aicore__ inline
     void RowmaxSPECTILE512(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRoundTail512, uint32_t numElems,
         uint32_t numElemsAligned)
     {
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor,
             srcUb,
-            numRowsRound * numElemsAligned / FLOAT_VECTOR_SIZE,
+            numRowsRoundTail512 * numElemsAligned / FLOAT_VECTOR_SIZE,
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor[REDUCE_UB_SIZE],
             tvUbTensor,
-            numRowsRound * numElemsAligned / FLOAT_BLOCK_SIZE / FLOAT_VECTOR_SIZE,
+            numRowsRoundTail512 * numElemsAligned / FLOAT_BLOCK_SIZE / FLOAT_VECTOR_SIZE,
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::BlockReduceMax<float, false>(
             rowmaxUb,
             tvUbTensor[REDUCE_UB_SIZE],
-            numRowsRound * numElemsAligned / FLOAT_VECTOR_SIZE / FLOAT_VECTOR_SIZE,
+            numRowsRoundTail512 * numElemsAligned / FLOAT_VECTOR_SIZE / FLOAT_VECTOR_SIZE,
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
     __aicore__ inline
     void RowmaxSPECTILE256(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRoundTile256, uint32_t numElems,
         uint32_t numElemsAligned)
     {
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor,
             srcUb,
-            numRowsRound * numElemsAligned / FLOAT_VECTOR_SIZE,
+            numRowsRoundTile256 * numElemsAligned / FLOAT_VECTOR_SIZE,
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         SetVecMask(ROW_OPS_SPEC_MASK_32);
         AscendC::BlockReduceMax<float, false>(
             tvUbTensor[REDUCE_UB_SIZE],
             tvUbTensor,
-            numRowsRound,
+            numRowsRoundTile256,
             0, 1, 1, 4);
         AscendC::PipeBarrier<PIPE_V>();
         SetBlockReduceMask(ROW_OPS_SPEC_MASK_4);
         AscendC::BlockReduceMax<float, false>(
             rowmaxUb,
             tvUbTensor[REDUCE_UB_SIZE],
-            NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+            NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTile256 * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
             0, 1, 1, 8);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
@@ -375,36 +375,36 @@ public:
 
     __aicore__ inline
     void RowmaxTAILTILE(const AscendC::LocalTensor<float> &srcUb, const AscendC::LocalTensor<float> &rowmaxUb,
-        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRound, uint32_t numElems,
+        const AscendC::LocalTensor<float> &tvUbTensor, uint32_t numRowsRoundTailTile, uint32_t numElems,
         uint32_t numElemsAligned)
     {
         if (numElems >= FLOAT_VECTOR_SIZE) {
             AscendC::BlockReduceMax<float, false>(
                 tvUbTensor,
                 srcUb,
-                numRowsRound,
+                numRowsRoundTailTile,
                 0, 1, 1, numElemsAligned / FLOAT_BLOCK_SIZE);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::BlockReduceMax<float, false>(
                 rowmaxUb,
                 tvUbTensor,
-                NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+                NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTailTile * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
                 0, 1, 1, 8);
             AscendC::PipeBarrier<PIPE_V>();
             for (uint64_t rowmax_idx = 1; rowmax_idx < (uint64_t)numElems / FLOAT_VECTOR_SIZE; ++rowmax_idx) {
                 AscendC::BlockReduceMax<float, false>(
                     tvUbTensor,
                     srcUb[rowmax_idx * FLOAT_VECTOR_SIZE],
-                    numRowsRound,
+                    numRowsRoundTailTile,
                     0, 1, 1, numElemsAligned / FLOAT_BLOCK_SIZE);
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::BlockReduceMax<float, false>(
                     tvUbTensor[REDUCE_UB_SIZE],
                     tvUbTensor,
-                    NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+                    NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTailTile * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
                     0, 1, 1, 8);
                 AscendC::PipeBarrier<PIPE_V>();
-                SetVecMask(numRowsRound);
+                SetVecMask(numRowsRoundTailTile);
                 AscendC::Max<float, false>(rowmaxUb,
                     rowmaxUb,
                     tvUbTensor[REDUCE_UB_SIZE],
@@ -420,23 +420,23 @@ public:
             AscendC::BlockReduceMax<float, false>(
                 tvUbTensor,
                 srcUb[numElems / FLOAT_VECTOR_SIZE * FLOAT_VECTOR_SIZE],
-                numRowsRound,
+                numRowsRoundTailTile,
                 0, 1, 1, numElemsAligned / FLOAT_BLOCK_SIZE);
             AscendC::PipeBarrier<PIPE_V>();
             SetBlockReduceMask(NpuArch::Detail::Alignment::CeilDiv(numElems % FLOAT_VECTOR_SIZE, FLOAT_BLOCK_SIZE));
             if (numElems < FLOAT_VECTOR_SIZE) {
                 AscendC::BlockReduceMax<float, false>(rowmaxUb,
                     tvUbTensor,
-                    NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+                    NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTailTile * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
                     0, 1, 1, 8);
                 AscendC::PipeBarrier<PIPE_V>();
             } else {
                 AscendC::BlockReduceMax<float, false>(tvUbTensor[REDUCE_UB_SIZE],
                     tvUbTensor,
-                    NpuArch::Detail::Alignment::CeilDiv(numRowsRound * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
+                    NpuArch::Detail::Alignment::CeilDiv(numRowsRoundTailTile * FLOAT_BLOCK_SIZE, FLOAT_VECTOR_SIZE),
                     0, 1, 1, 8);
                 AscendC::PipeBarrier<PIPE_V>();
-                SetVecMask(numRowsRound);
+                SetVecMask(numRowsRoundTailTile);
                 AscendC::Max<float, false>(rowmaxUb,
                     rowmaxUb,
                     tvUbTensor[REDUCE_UB_SIZE],
@@ -453,16 +453,16 @@ public:
     void CopySGmToUb(
         AscendC::GlobalTensor<ElementInput> gInput,
         uint32_t sUbOffset,
-        uint32_t rowNumCurLoop,
-        uint32_t columnNumRound,
-        uint32_t columnNumPad)
+        uint32_t rowCurLoop,
+        uint32_t columnRound,
+        uint32_t columnPad)
     {
         AscendC::DataCopy(
             lsUbTensor[sUbOffset],
             gInput,
             AscendC::DataCopyParams(
-                rowNumCurLoop, columnNumRound / FLOAT_BLOCK_SIZE,
-                (columnNumPad - columnNumRound) / FLOAT_BLOCK_SIZE, 0));
+                rowCurLoop, columnRound / FLOAT_BLOCK_SIZE,
+                (columnPad - columnRound) / FLOAT_BLOCK_SIZE, 0));
     }
 
     __aicore__ inline void OperatePreMaskUb(uint32_t rowNumCurLoop, uint32_t columnNumRound)
@@ -658,8 +658,8 @@ public:
     {
         AscendC::Cast<ElementMaskDst, ElementMaskSrc, false>(
             maskUbTensorDst, maskUbTensorSrc, AscendC::RoundMode::CAST_NONE, (uint64_t)0,
-            NpuArch::Detail::Alignment::CeilDiv(
-                rowNumCurLoop * columnNumRound, (uint32_t)(REPEAT_SIZE_IN_BYTE / sizeof(ElementMaskDst))),
+            NpuArch::Detail::Alignment::CeilDiv(rowNumCurLoop * columnNumRound,
+                (uint32_t)(REPEAT_SIZE_IN_BYTE / sizeof(ElementMaskDst))),
             AscendC::UnaryRepeatParams(1, 1, 8, 4));
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -848,7 +848,7 @@ public:
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
         AscendC::PipeBarrier<PIPE_V>();
 
-        // *** gm = hm
+        // *** copy hm to gm
         AscendC::DataCopy(
             gmUbTensor[rowOffset],
             hmUbTensor[rowOffset],
@@ -938,7 +938,7 @@ public:
         uint32_t dmUbOffsetCurCycle, uint32_t rowOffset, uint32_t isFirstStackTile)
     {
         if (isFirstStackTile) {
-            // *** gl = ll
+            // *** copy ll to g1
             AscendC::DataCopy(
                 glUbTensor[rowOffset],
                 llUbTensor[rowOffset],
@@ -964,7 +964,7 @@ public:
                 1,
                 AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
+            AscendC::SetVectorMask<int8_t>((uint64_t)(-1), (uint64_t)(-1));
         }
     }
 
@@ -973,7 +973,7 @@ public:
         uint32_t dmUbOffsetCurCycle, uint32_t rowOffset, uint32_t isFirstStackTile, bool isLastStackTile, SinkLoopParam &curLoop)
     {
         if (isFirstStackTile) {
-            // *** gl = ll
+            // *** copy ll to g1
             AscendC::DataCopy(
                 glUbTensor[rowOffset],
                 llUbTensor[rowOffset],
@@ -982,7 +982,7 @@ public:
 
         } else {
             SetVecMask(rowNumCurLoop);
-            // *** gl = dm * gl
+            // *** gl *= dm
             AscendC::Mul<float, false>(
                 glUbTensor[rowOffset],
                 dmUbTensor[dmUbOffsetCurCycle],
@@ -992,7 +992,7 @@ public:
                 AscendC::BinaryRepeatParams(1, 1, 1, 8, 8, 8));
             AscendC::PipeBarrier<PIPE_V>();
 
-            // *** gl = ll + gl
+            // *** gl += ll
             AscendC::Add<float, false>(
                 glUbTensor[rowOffset],
                 glUbTensor[rowOffset],
@@ -1113,15 +1113,15 @@ public:
         uint32_t columnNumRound, uint32_t pingpongFlag,
         uint32_t curStackTileMod, SinkLoopParam& sinkLoopParam, bool isLastStackTile, bool isSplitKV, bool startsWithMaskThenNomaskFlag)
     {
+        uint32_t sUbOffset = pingpongFlag * MAX_UB_S_ELEM_NUM;
+        uint32_t dmUbOffsetCurCycle = curStackTileMod * MAX_ROW_NUM_SUB_CORE + rowOffset;
         uint32_t rowNumCurLoop = layoutOutput.shape(0);
         uint32_t rowNumCurLoopRound = NpuArch::Detail::Alignment::RoundUp(rowNumCurLoop, FLOAT_BLOCK_SIZE);
         uint32_t columnNum = layoutOutput.shape(1);
         uint32_t columnNumPad = layoutOutput.stride(0);
-        uint32_t sUbOffset = pingpongFlag * MAX_UB_S_ELEM_NUM;
-        uint32_t dmUbOffsetCurCycle = curStackTileMod * MAX_ROW_NUM_SUB_CORE + rowOffset;
 
         if constexpr (LSE_MODE_ == LseMode::OUT_ONLY) {
-            // In lse out-only mode, tv is used in the last stack tile to transport lse
+            // tv is used in the last stack tile to transport lse
             if (isFirstStackTile && isFirstRowLoop) {
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
             }
@@ -1406,7 +1406,7 @@ public:
         uint32_t rowSplitSubBlock = (qNBlockSize == 1) ?
             (qSBlockSize / 2) : (qSBlockSize * qNSplitSubBlock);
         uint32_t rowActualThisSubBlock = (subBlockIdx == 1) ? (rowNum - rowSplitSubBlock) : rowSplitSubBlock;
-        uint32_t rowOffsetThisSubBlock = subBlockIdx * rowSplitSubBlock;// 在整个块的起始偏移
+        uint32_t rowOffsetThisSubBlock = subBlockIdx * rowSplitSubBlock;
         uint32_t maxRowNumPerLoop = MAX_UB_S_ELEM_NUM / columnNumRound;
         uint32_t rowNumTile = NpuArch::Detail::Alignment::RoundDown(maxRowNumPerLoop, FLOAT_BLOCK_SIZE);
         rowNumTile = AscendC::Std::min(rowNumTile, FLOAT_VECTOR_SIZE);
@@ -1434,11 +1434,11 @@ public:
             }
             if (rowLoopIdx >= preLoad) {
                 uint32_t delayedRowLoopIdx = rowLoopIdx - preLoad;
-                uint32_t pingpongFlag = delayedRowLoopIdx % 2;
                 uint32_t rowOffsetCurLoop = delayedRowLoopIdx * rowNumTile;
                 uint32_t rowOffsetIoGm = rowOffsetCurLoop + rowOffsetThisSubBlock;
                 uint32_t rowNumCurLoop =
                     (delayedRowLoopIdx == rowLoopNum - 1) ? (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
+                uint32_t pingpongFlag = delayedRowLoopIdx % 2;
 
                 int64_t offsetOutput = layoutOutput.GetOffset(MatrixCoord(rowOffsetIoGm, 0));
                 auto gOutputCurLoop = gOutput[offsetOutput];
@@ -1589,10 +1589,10 @@ public:
                     uint32_t rowNumCurLoop =
                         (rowLoopIdx == rowLoopNum - 1) ? (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
                     // the token idx of the start token of the prologue part
-                    uint32_t proTokenIdx = rowOffsetCurLoop % tokenNumPerHeadThisSubBlock;
+                    uint32_t proTokenIndex = rowOffsetCurLoop % tokenNumPerHeadThisSubBlock;
                     // the token num of the prologue part
                     uint32_t proTokenNum =
-                        Min(rowNumCurLoop, (tokenNumPerHeadThisSubBlock - proTokenIdx)) % tokenNumPerHeadThisSubBlock;
+                        Min(rowNumCurLoop, (tokenNumPerHeadThisSubBlock - proTokenIndex)) % tokenNumPerHeadThisSubBlock;
                     // the number of integral heads within a cycle
                     uint32_t integralHeadNum = (rowNumCurLoop - proTokenNum) / tokenNumPerHeadThisSubBlock;
                     // the token num of the epilogue part
@@ -1602,7 +1602,7 @@ public:
                         gMaskThisSubBlock,
                         maskColumn, maskColumnRound, maskStride,
                         tokenNumPerHeadThisSubBlock,
-                        proTokenIdx, proTokenNum, integralHeadNum, epiTokenNum, false);
+                        proTokenIndex, proTokenNum, integralHeadNum, epiTokenNum, false);
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID2);
                 }
                 // online softmax vectorized compute
@@ -1647,18 +1647,18 @@ public:
         uint32_t columnNumRound = NpuArch::Detail::Alignment::RoundUp(columnNum, BLOCK_SIZE_IN_BYTE);
         uint32_t columnNumPad = layoutInput.stride(0);
         uint32_t maskStride = layoutMask.stride(0);
-        uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
         uint32_t subBlockNum = AscendC::GetSubBlockNum();
+        uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
 
         uint32_t qNSplitSubBlock = qNBlockSize / subBlockNum;
         uint32_t qNThisSubBlock = (qNBlockSize == 1) ?
             0 : (subBlockIdx == 1) ? (qNBlockSize - qNSplitSubBlock) : qNSplitSubBlock;
         uint32_t rowSplitSubBlock = (qNBlockSize == 1) ?
             (qSBlockSize / 2) : (qSBlockSize * qNSplitSubBlock);
+        uint32_t rowOffsetThisSubBlock = subBlockIdx * rowSplitSubBlock;
         uint32_t rowActualThisSubBlock = (subBlockIdx == 1) ?
             (rowNum - rowSplitSubBlock) : rowSplitSubBlock;
-        uint32_t rowOffsetThisSubBlock = subBlockIdx * rowSplitSubBlock;
-
+        
         uint32_t tokenNumPerHeadThisSubBlock = Min(qSBlockSize, rowActualThisSubBlock);
         uint32_t maskOffsetThisSubBlock = (qNBlockSize == 1) ?
             rowOffsetThisSubBlock : 0;
@@ -1707,20 +1707,20 @@ public:
         uint32_t rowNumTile = NpuArch::Detail::Alignment::RoundDown(maxRowNumPerLoop, FLOAT_BLOCK_SIZE);
         rowNumTile = AscendC::Std::min(rowNumTile, FLOAT_VECTOR_SIZE);
         uint32_t rowLoopNum = NpuArch::Detail::Alignment::CeilDiv(rowActualThisSubBlock, rowNumTile);
-        uint32_t preLoad = 1;
 
         if (rowActualThisSubBlock == 0) {
             Arch::CrossCoreWaitFlag(qkReady);
             return;
         }
 
+        uint32_t preLoad = 1;
         for (uint32_t rowLoopIdx = 0; rowLoopIdx < rowLoopNum + preLoad; rowLoopIdx++) {
             if (rowLoopIdx < rowLoopNum) {
-                uint32_t pingpongFlag = rowLoopIdx % 2;
                 uint32_t rowOffsetCurLoop = rowLoopIdx * rowNumTile;
                 uint32_t rowOffsetIoGm = rowOffsetCurLoop + rowOffsetThisSubBlock;
                 uint32_t rowNumCurLoop = (rowLoopIdx == rowLoopNum - 1) ?
                     (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
+                uint32_t pingpongFlag = rowLoopIdx % 2;
                 // loop 0 mask load before cross core sync
                 if (rowLoopIdx == 0) {
                     // the token idx of the start token of the prologue part
@@ -1755,8 +1755,8 @@ public:
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID2);
                     Arch::CrossCoreWaitFlag(qkReady);
                 }
-                int64_t offsetInput = layoutInput.GetOffset(MatrixCoord(rowOffsetIoGm, 0));
-                auto gInputCurLoop = gInput[offsetInput];
+                int64_t offsetInputTemp = layoutInput.GetOffset(MatrixCoord(rowOffsetIoGm, 0));
+                auto gInputCurLoop = gInput[offsetInputTemp];
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(pingpongFlag);
                 CopySGmToUb(
                     gInputCurLoop, (pingpongFlag * MAX_UB_S_ELEM_NUM), rowNumCurLoop, columnNumRound, columnNumPad);
@@ -1764,8 +1764,8 @@ public:
             }
             if (rowLoopIdx >= preLoad) {
                 uint32_t delayedRowLoopIdx = rowLoopIdx - preLoad;
-                uint32_t pingpongFlag = delayedRowLoopIdx % 2;
                 uint32_t rowOffsetCurLoop = delayedRowLoopIdx * rowNumTile;
+                uint32_t pingpongFlag = delayedRowLoopIdx % 2;
                 uint32_t rowNumCurLoop = (delayedRowLoopIdx == rowLoopNum - 1) ?
                     (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
 
@@ -1821,37 +1821,38 @@ public:
                 }
                 // next loop mask load
                 if (rowLoopIdx < rowLoopNum) {
-                    uint32_t rowOffsetCurLoop = rowLoopIdx * rowNumTile;
+                    uint32_t rowOffsetCurLoopTemp = rowLoopIdx * rowNumTile;
                     uint32_t rowNumCurLoop =
-                        (rowLoopIdx == rowLoopNum - 1) ? (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
+                        (rowLoopIdx == rowLoopNum - 1) ? (rowActualThisSubBlock - rowOffsetCurLoopTemp) : rowNumTile;
                     // the token idx of the start token of the prologue part
-                    uint32_t proTokenIdx = rowOffsetCurLoop % tokenNumPerHeadThisSubBlock;
+                    uint32_t proTokenIdx = rowOffsetCurLoopTemp % tokenNumPerHeadThisSubBlock;
                     // the token num of the prologue part
                     uint32_t proTokenNum =
                         Min(rowNumCurLoop, (tokenNumPerHeadThisSubBlock - proTokenIdx)) % tokenNumPerHeadThisSubBlock;
                     // the number of integral heads within a cycle
                     uint32_t integralHeadNum = (rowNumCurLoop - proTokenNum) / tokenNumPerHeadThisSubBlock;
                     // the token num of the epilogue part
-                    uint32_t epiTokenNum = rowNumCurLoop - proTokenNum - integralHeadNum * tokenNumPerHeadThisSubBlock;
+                    uint32_t epiTokenNumTemp = rowNumCurLoop - proTokenNum -
+                        integralHeadNum * tokenNumPerHeadThisSubBlock;
                     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                     if (doTriUPreMask && doTriUNextMask) {
                         CopyMaskGmToUb(
                             gMaskThisSubBlockPre,
                             maskColumnPre, columnNumRoundPre, maskStride,
                             tokenNumPerHeadThisSubBlock,
-                            proTokenIdx, proTokenNum, integralHeadNum, epiTokenNum, false);
+                            proTokenIdx, proTokenNum, integralHeadNum, epiTokenNumTemp, false);
                     } else if (doTriUPreMask){
                         CopyMaskGmToUb(
                             gMaskThisSubBlockPre,
                             maskColumnPre, columnNumRoundPre, maskStride,
                             tokenNumPerHeadThisSubBlock,
-                            proTokenIdx, proTokenNum, integralHeadNum, epiTokenNum, false);
+                            proTokenIdx, proTokenNum, integralHeadNum, epiTokenNumTemp, false);
                     } else if (doTriUNextMask) {
                         CopyMaskGmToUb(
                             gMaskThisSubBlockNext,
                             maskColumnNext, columnNumRoundNext, maskStride,
                             tokenNumPerHeadThisSubBlock,
-                            proTokenIdx, proTokenNum, integralHeadNum, epiTokenNum, true);
+                            proTokenIdx, proTokenNum, integralHeadNum, epiTokenNumTemp, true);
                     }
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID2);
                 }
@@ -1859,13 +1860,13 @@ public:
                 uint32_t rowOffsetIoGm = rowOffsetCurLoop + rowOffsetThisSubBlock;
                 // add sink
                 SinkLoopParam curSinkLoop(rowOffsetIoGm, rowNumCurLoop, qSBlockSize, rowOffsetThisSubBlock);
-                int64_t offsetOutput = layoutOutput.GetOffset(MatrixCoord(rowOffsetIoGm, 0));
-                auto gOutputCurLoop = gOutput[offsetOutput];
-                auto layoutOutputCurLoop = layoutOutput.GetTileLayout(MatrixCoord(rowNumCurLoop, columnNum));
+                int64_t offsetOutputSecond = layoutOutput.GetOffset(MatrixCoord(rowOffsetIoGm, 0));
+                auto gOutputCurLoop = gOutput[offsetOutputSecond];
+                auto layoutOutputCurLoopTemp = layoutOutput.GetTileLayout(MatrixCoord(rowNumCurLoop, columnNum));
                 SubCoreCompute<true>(
                     gOutputCurLoop,
                     gSink,
-                    layoutOutputCurLoop,
+                    layoutOutputCurLoopTemp,
                     rowOffsetCurLoop,
                     isFirstStackTile,
                     0,
@@ -1890,139 +1891,139 @@ public:
         uint32_t qNBlockSize, uint32_t curStackTileMod, Arch::CrossCoreFlag qkReady, uint32_t rowOffer, uint32_t kvSStartIdx,
         uint32_t kvSEndIdx, uint32_t qNStartIdx, uint32_t BIdx, uint32_t qHeads, int64_t pseQ, int64_t pseKv, bool isLastStackTile)
     {
-         uint32_t rowNum = actualBlockShape.m();   //当前fullmask块的总行数
-         uint32_t columnNum = actualBlockShape.n();  //fullmask块的总列数
-         uint32_t columnNumRound = NpuArch::Detail::Alignment::RoundUp(columnNum, BLOCK_SIZE_IN_BYTE);  //列数向上对齐到32B
-         uint32_t columnNumPad = layoutInput.stride(0);   //输入张量stride 
-         uint32_t maskStride = layoutMask.stride(0);     //掩码张量
-         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();  //当前向量核编号
-         uint32_t subBlockNum = AscendC::GetSubBlockNum();  //向量核总数
-         uint32_t qNSplitSubBlock = qNBlockSize / subBlockNum; // 1  每核分到的头数
-         uint32_t qNThisSubBlock = (qNBlockSize == 1) ?
-             0 : (subBlockIdx == 1) ? (qNBlockSize - qNSplitSubBlock) : qNSplitSubBlock; // 1  本核的头索引
-         uint32_t rowSplitSubBlock = (qNBlockSize == 1) ?
-             (qSBlockSize / 2) : (qSBlockSize * qNSplitSubBlock);  //每核分到的行数
-         uint32_t rowActualThisSubBlock = (subBlockIdx == 1) ?
-             (rowNum - rowSplitSubBlock) : rowSplitSubBlock;  //本核实际要处理的行数
-         uint32_t rowOffsetThisSubBlock = subBlockIdx * rowSplitSubBlock;  //本核子块在fullmask的行偏移
-         uint32_t tokenNumPerHeadThisSubBlock = Min(qSBlockSize, rowActualThisSubBlock);  //
-         uint32_t maskOffsetThisSubBlock = (qNBlockSize == 1) ? rowOffsetThisSubBlock : 0;  //
-         // calc qNstartIdx per vec core
-         uint32_t qNStartIdxVec =  (qNBlockSize == 1) ? qNStartIdx : (subBlockIdx == 1) ? (qNStartIdx + qNSplitSubBlock) : qNStartIdx;
-         // calc Full  shift in gm
-         int64_t offsetFull = 0;
-         CalcGmFullShift(offsetFull, layoutMask, rowOffer, kvSStartIdx, maskOffsetThisSubBlock);
-         uint32_t maxRowNumPerLoop = MAX_UB_S_ELEM_NUM / columnNumRound;
-         uint32_t rowNumTile = NpuArch::Detail::Alignment::RoundDown(maxRowNumPerLoop, FLOAT_BLOCK_SIZE);
-         rowNumTile = AscendC::Std::min(rowNumTile, FLOAT_VECTOR_SIZE);
-         uint32_t rowLoopNum = NpuArch::Detail::Alignment::CeilDiv(rowActualThisSubBlock, rowNumTile);
-         uint32_t preLoad = 1;
- 
-         if (rowActualThisSubBlock == 0) {
-             Arch::CrossCoreWaitFlag(qkReady);
-             return;
-         }
-         uint32_t proTokenIdx;
-         uint32_t proTokenNum;
-         uint32_t integralHeadNum;
-         uint32_t epiTokenNum;
-         for (uint32_t rowLoopIdx = 0; rowLoopIdx < rowLoopNum + preLoad; rowLoopIdx++) {
-             if (rowLoopIdx < rowLoopNum) {
-                uint32_t pingpongFlag = rowLoopIdx % 2;
-                uint32_t rowOffsetCurLoop = rowLoopIdx * rowNumTile;
-                uint32_t rowOffsetIoGm = rowOffsetCurLoop + rowOffsetThisSubBlock;
-                uint32_t rowNumCurLoop = (rowLoopIdx == rowLoopNum - 1) ?
-                    (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
-                // loop 0 mask load before cross core sync
-                if (rowLoopIdx == 0) {
-                    // the token idx of the start token of the prologue part
-                    proTokenIdx = rowOffsetCurLoop % tokenNumPerHeadThisSubBlock;
-                    // the token num of the prologue part
-                    proTokenNum =
-                    Min(rowNumCurLoop, (tokenNumPerHeadThisSubBlock - proTokenIdx)) % tokenNumPerHeadThisSubBlock;
-                    // the token num of the epilogue part
-                    integralHeadNum = (rowNumCurLoop - proTokenNum) / tokenNumPerHeadThisSubBlock;
-                    // the number of integral heads within a cycle
-                    epiTokenNum = rowNumCurLoop - proTokenNum - integralHeadNum * tokenNumPerHeadThisSubBlock;
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                    CopyFullGmToUb(
-                            gFull,
-                            columnNum, columnNumRound, maskStride,
-                            tokenNumPerHeadThisSubBlock, proTokenIdx, proTokenNum, integralHeadNum, epiTokenNum,
-                            qNStartIdxVec, qNThisSubBlock, rowNumCurLoop, BIdx, qHeads, offsetFull, pseQ, pseKv);
-                    Arch::CrossCoreWaitFlag(qkReady);
-                }
-                int64_t offsetInput = layoutInput.GetOffset(MatrixCoord(rowOffsetIoGm, 0));
-                auto gInputCurLoop = gInput[offsetInput];
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(pingpongFlag);
-                CopySGmToUb(
-                    gInputCurLoop, (pingpongFlag * MAX_UB_S_ELEM_NUM), rowNumCurLoop, columnNumRound, columnNumPad);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(pingpongFlag);
-             }
-             if (rowLoopIdx >= preLoad) {
-                uint32_t delayedRowLoopIdx = rowLoopIdx - preLoad;
-                uint32_t pingpongFlag = delayedRowLoopIdx % 2;
-                uint32_t rowOffsetCurLoop = delayedRowLoopIdx * rowNumTile;
-                uint32_t rowNumCurLoop = (delayedRowLoopIdx == rowLoopNum - 1) ?
+        uint32_t columnNum = actualBlockShape.n();  //fullmask块的总列数
+        uint32_t columnNumRound = NpuArch::Detail::Alignment::RoundUp(columnNum, BLOCK_SIZE_IN_BYTE);  //列数向上对齐到32B
+        uint32_t rowNum = actualBlockShape.m();   //当前fullmask块的总行数
+        uint32_t columnNumPad = layoutInput.stride(0);   //输入张量stride 
+        uint32_t maskStride = layoutMask.stride(0);     //掩码张量
+        uint32_t subBlockIdx = AscendC::GetSubBlockIdx();  //当前向量核编号
+        uint32_t subBlockNum = AscendC::GetSubBlockNum();  //向量核总数
+        uint32_t qNSplitSubBlock = qNBlockSize / subBlockNum; // 1  每核分到的头数
+        uint32_t qNThisSubBlock = (qNBlockSize == 1) ?
+            0 : (subBlockIdx == 1) ? (qNBlockSize - qNSplitSubBlock) : qNSplitSubBlock; // 1  本核的头索引
+        uint32_t rowSplitSubBlock = (qNBlockSize == 1) ?
+            (qSBlockSize / 2) : (qSBlockSize * qNSplitSubBlock);  //每核分到的行数
+        uint32_t rowActualThisSubBlock = (subBlockIdx == 1) ?
+            (rowNum - rowSplitSubBlock) : rowSplitSubBlock;  //本核实际要处理的行数
+        uint32_t rowOffsetThisSubBlock = subBlockIdx * rowSplitSubBlock;  //本核子块在fullmask的行偏移
+        uint32_t maskOffsetThisSubBlock = (qNBlockSize == 1) ? rowOffsetThisSubBlock : 0;
+        uint32_t tokenNumPerHeadThisSubBlock = Min(qSBlockSize, rowActualThisSubBlock);
+        // calc qNstartIdx per vec core
+        uint32_t qNStartIdxVec =  (qNBlockSize == 1) ? qNStartIdx : (subBlockIdx == 1) ? (qNStartIdx + qNSplitSubBlock) : qNStartIdx;
+        // calc Full  shift in gm
+        int64_t offsetFull = 0;
+        CalcGmFullShift(offsetFull, layoutMask, rowOffer, kvSStartIdx, maskOffsetThisSubBlock);
+        uint32_t maxRowNumPerLoop = MAX_UB_S_ELEM_NUM / columnNumRound;
+        uint32_t rowNumTile = NpuArch::Detail::Alignment::RoundDown(maxRowNumPerLoop, FLOAT_BLOCK_SIZE);
+        rowNumTile = AscendC::Std::min(rowNumTile, FLOAT_VECTOR_SIZE);
+        uint32_t rowLoopNum = NpuArch::Detail::Alignment::CeilDiv(rowActualThisSubBlock, rowNumTile);
+        uint32_t preLoad = 1;
+
+        if (rowActualThisSubBlock == 0) {
+            Arch::CrossCoreWaitFlag(qkReady);
+            return;
+        }
+        uint32_t proTokenIdx;
+        uint32_t proTokenNum;
+        uint32_t integralHeadNum;
+        uint32_t epiTokenNum;
+        for (uint32_t rowLoopIdx = 0; rowLoopIdx < rowLoopNum + preLoad; rowLoopIdx++) {
+            if (rowLoopIdx < rowLoopNum) {
+            uint32_t pingpongFlag = rowLoopIdx % 2;
+            uint32_t rowOffsetCurLoop = rowLoopIdx * rowNumTile;
+            uint32_t rowOffsetIoGm = rowOffsetCurLoop + rowOffsetThisSubBlock;
+            uint32_t rowNumCurLoop = (rowLoopIdx == rowLoopNum - 1) ?
                 (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
-
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(pingpongFlag);
-                ScaleS((pingpongFlag * MAX_UB_S_ELEM_NUM), rowNumCurLoop, columnNumRound);
-                Applyfull((pingpongFlag * MAX_UB_S_ELEM_NUM), rowNumCurLoop, columnNumRound);
-                    // next loop mask load
-                    // online softmax vectorized compute
-                
-                uint32_t rowOffsetIoGm = rowOffsetCurLoop + rowOffsetThisSubBlock;
-                SinkLoopParam curSinkLoop(rowOffsetIoGm, rowNumCurLoop, qSBlockSize, rowOffsetThisSubBlock);
-
-                int64_t offsetOutput = layoutOutput.GetOffset(MatrixCoord(rowOffsetIoGm, 0));
-                auto gOutputCurLoop = gOutput[offsetOutput];
-                auto layoutOutputCurLoop = layoutOutput.GetTileLayout(MatrixCoord(rowNumCurLoop, columnNum));
-                SubCoreCompute<true>(
-                    gOutputCurLoop,
-                    gSink,
-                    layoutOutputCurLoop,
-                    rowOffsetCurLoop,
-                    isFirstStackTile,
-                    0,
-                    delayedRowLoopIdx == 0,
-                    delayedRowLoopIdx == rowLoopNum - 1,
-                    columnNumRound,
-                    pingpongFlag,
-                    curStackTileMod,
-                    curSinkLoop,
-                    isLastStackTile,
-                    false,
-                    false);
-                if (rowLoopIdx < rowLoopNum) {
-                    uint32_t rowOffsetCurLoop = rowLoopIdx * rowNumTile;
-                    uint32_t rowNumCurLoop =
-                    (rowLoopIdx == rowLoopNum - 1) ? (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
-                    // the token idx of the start token of the prologue part
-                    proTokenIdx = rowOffsetCurLoop % tokenNumPerHeadThisSubBlock;
-                    // the token num of the prologue part
-                    proTokenNum =
-                    Min(rowNumCurLoop, (tokenNumPerHeadThisSubBlock - proTokenIdx)) % tokenNumPerHeadThisSubBlock;
-                    if ((qNThisSubBlock >= HEAD_NUM_2) && (proTokenIdx == 0) && proTokenNum > 0) {
-                        qNStartIdxVec++;
-                    }
-                    // the number of integral heads within a cycle
-                    integralHeadNum = (rowNumCurLoop - proTokenNum) / tokenNumPerHeadThisSubBlock;
-                    if ((qNThisSubBlock >= HEAD_NUM_2) && integralHeadNum > 0 && proTokenNum == 0) {
-                        qNStartIdxVec++;
-                    }
-                    // the token num of the epilogue part
-                    epiTokenNum = rowNumCurLoop - proTokenNum - integralHeadNum * tokenNumPerHeadThisSubBlock;
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                
-                    CopyFullGmToUb(
-                        gFull, 
+            // loop 0 mask load before cross core sync
+            if (rowLoopIdx == 0) {
+                // the token idx of the start token of the prologue part
+                proTokenIdx = rowOffsetCurLoop % tokenNumPerHeadThisSubBlock;
+                // the token num of the prologue part
+                proTokenNum =
+                Min(rowNumCurLoop, (tokenNumPerHeadThisSubBlock - proTokenIdx)) % tokenNumPerHeadThisSubBlock;
+                // the token num of the epilogue part
+                integralHeadNum = (rowNumCurLoop - proTokenNum) / tokenNumPerHeadThisSubBlock;
+                // the number of integral heads within a cycle
+                epiTokenNum = rowNumCurLoop - proTokenNum - integralHeadNum * tokenNumPerHeadThisSubBlock;
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+                CopyFullGmToUb(
+                        gFull,
                         columnNum, columnNumRound, maskStride,
                         tokenNumPerHeadThisSubBlock, proTokenIdx, proTokenNum, integralHeadNum, epiTokenNum,
-                        qNStartIdxVec, qNThisSubBlock, rowNumCurLoop, BIdx, qHeads, offsetFull, pseQ, pseKv);   // 当前循环要搬的行数 
-                }              
-             }
-         }
+                        qNStartIdxVec, qNThisSubBlock, rowNumCurLoop, BIdx, qHeads, offsetFull, pseQ, pseKv);
+                Arch::CrossCoreWaitFlag(qkReady);
+            }
+            int64_t offsetInput = layoutInput.GetOffset(MatrixCoord(rowOffsetIoGm, 0));
+            auto gInputCurLoop = gInput[offsetInput];
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(pingpongFlag);
+            CopySGmToUb(
+                gInputCurLoop, (pingpongFlag * MAX_UB_S_ELEM_NUM), rowNumCurLoop, columnNumRound, columnNumPad);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(pingpongFlag);
+            }
+            if (rowLoopIdx >= preLoad) {
+            uint32_t delayedRowLoopIdx = rowLoopIdx - preLoad;
+            uint32_t rowOffsetCurLoop = delayedRowLoopIdx * rowNumTile;
+            uint32_t rowNumCurLoop = (delayedRowLoopIdx == rowLoopNum - 1) ?
+            (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
+            uint32_t pingpongFlag = delayedRowLoopIdx % 2;
+
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(pingpongFlag);
+            ScaleS((pingpongFlag * MAX_UB_S_ELEM_NUM), rowNumCurLoop, columnNumRound);
+            Applyfull((pingpongFlag * MAX_UB_S_ELEM_NUM), rowNumCurLoop, columnNumRound);
+                // next loop mask load
+                // online softmax vectorized compute
+            
+            uint32_t rowOffsetIoGm = rowOffsetCurLoop + rowOffsetThisSubBlock;
+            SinkLoopParam curSinkLoop(rowOffsetIoGm, rowNumCurLoop, qSBlockSize, rowOffsetThisSubBlock);
+
+            int64_t offsetOutputThird = layoutOutput.GetOffset(MatrixCoord(rowOffsetIoGm, 0));
+            auto gOutputCurLoop = gOutput[offsetOutputThird];
+            auto layoutOutputCurLoop = layoutOutput.GetTileLayout(MatrixCoord(rowNumCurLoop, columnNum));
+            SubCoreCompute<true>(
+                gOutputCurLoop,
+                gSink,
+                layoutOutputCurLoop,
+                rowOffsetCurLoop,
+                isFirstStackTile,
+                0,
+                delayedRowLoopIdx == 0,
+                delayedRowLoopIdx == rowLoopNum - 1,
+                columnNumRound,
+                pingpongFlag,
+                curStackTileMod,
+                curSinkLoop,
+                isLastStackTile,
+                false,
+                false);
+            if (rowLoopIdx < rowLoopNum) {
+                uint32_t rowOffsetCurLoop = rowLoopIdx * rowNumTile;
+                uint32_t rowNumCurLoop =
+                (rowLoopIdx == rowLoopNum - 1) ? (rowActualThisSubBlock - rowOffsetCurLoop) : rowNumTile;
+                // the token idx of the start token of the prologue part
+                proTokenIdx = rowOffsetCurLoop % tokenNumPerHeadThisSubBlock;
+                // the token num of the prologue part
+                proTokenNum =
+                Min(rowNumCurLoop, (tokenNumPerHeadThisSubBlock - proTokenIdx)) % tokenNumPerHeadThisSubBlock;
+                if ((qNThisSubBlock >= HEAD_NUM_2) && (proTokenIdx == 0) && proTokenNum > 0) {
+                    qNStartIdxVec++;
+                }
+                // the number of integral heads within a cycle
+                integralHeadNum = (rowNumCurLoop - proTokenNum) / tokenNumPerHeadThisSubBlock;
+                if ((qNThisSubBlock >= HEAD_NUM_2) && integralHeadNum > 0 && proTokenNum == 0) {
+                    qNStartIdxVec++;
+                }
+                // the token num of the epilogue part
+                epiTokenNum = rowNumCurLoop - proTokenNum - integralHeadNum * tokenNumPerHeadThisSubBlock;
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            
+                CopyFullGmToUb(
+                    gFull, 
+                    columnNum, columnNumRound, maskStride,
+                    tokenNumPerHeadThisSubBlock, proTokenIdx, proTokenNum, integralHeadNum, epiTokenNum,
+                    qNStartIdxVec, qNThisSubBlock, rowNumCurLoop, BIdx, qHeads, offsetFull, pseQ, pseKv);   // 当前循环要搬的行数 
+            }              
+            }
+        }
      }
 
 private:

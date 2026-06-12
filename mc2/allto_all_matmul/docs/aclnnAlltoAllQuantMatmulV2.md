@@ -325,7 +325,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
     </tr>
     <tr>
     <td>output</td>
-    <td>输入</td>
+    <td>输出</td>
     <td>最终的计算结果。</td>
     <td>根据设备型号对数据类型有不同限制，详细参见<a href="#约束说明">约束说明</a>。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>

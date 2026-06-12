@@ -10,6 +10,7 @@
 
 #include <fstream>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -78,6 +79,117 @@ TensorDesc MakeTensorDesc(const vector<int64_t> &shape, aclDataType dtype, aclFo
     return ops::ut::MakeAclTensorDesc(shape, dtype, format, storageShape).ValueRange(-1, 1);
 }
 
+struct GroupedMatmulFinalizeRoutingV3RunParam {
+    TensorDesc &x1;
+    TensorDesc &x2;
+    TensorDesc &scale;
+    TensorDesc &offset;
+    TensorDesc &antiQuantScale;
+    TensorDesc &perTokenScale;
+    TensorDesc &groupList;
+    TensorDesc &sharedInput;
+    TensorDesc &logits;
+    TensorDesc &rowIndex;
+    TensorDesc &out;
+    aclIntArray *tuningConfig = nullptr;
+    int64_t dtype = 0;
+    float sharedInputWeight = 1.0F;
+    int64_t sharedInputOffset = 0;
+    bool transposeX = false;
+    bool transposeW = false;
+    int64_t groupListType = 1;
+    bool hasOffset = false;
+    bool hasAntiQuantScale = false;
+    bool hasLogits = false;
+    bool hasSharedInputTensor = false;
+};
+
+template <typename BiasInput>
+aclnnStatus GetGroupedMatmulFinalizeRoutingV3Workspace(const GroupedMatmulFinalizeRoutingV3RunParam &param,
+                                                       const BiasInput &biasInput, uint64_t *workspaceSize)
+{
+    if (!param.hasOffset) {
+        if (param.hasSharedInputTensor) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                                INPUT(param.x1, param.x2, param.scale, biasInput, nullptr, nullptr, nullptr,
+                                      param.perTokenScale, param.groupList, param.sharedInput, param.logits,
+                                      param.rowIndex, param.dtype, param.sharedInputWeight, param.sharedInputOffset,
+                                      param.transposeX, param.transposeW, param.groupListType, nullptr),
+                                OUTPUT(param.out));
+            return ut.TestGetWorkspaceSize(workspaceSize);
+        }
+
+        auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                            INPUT(param.x1, param.x2, param.scale, biasInput, nullptr, nullptr, nullptr,
+                                  param.perTokenScale, param.groupList, nullptr, param.logits, param.rowIndex,
+                                  param.dtype, param.sharedInputWeight, param.sharedInputOffset, param.transposeX,
+                                  param.transposeW, param.groupListType, nullptr),
+                            OUTPUT(param.out));
+        return ut.TestGetWorkspaceSize(workspaceSize);
+    }
+
+    if (!param.hasLogits) {
+        if (param.hasSharedInputTensor) {
+            auto ut =
+                OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                          INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, nullptr, nullptr,
+                                param.perTokenScale, param.groupList, param.sharedInput, nullptr, param.rowIndex,
+                                param.dtype, param.sharedInputWeight, param.sharedInputOffset, param.transposeX,
+                                param.transposeW, param.groupListType, param.tuningConfig),
+                          OUTPUT(param.out));
+            return ut.TestGetWorkspaceSize(workspaceSize);
+        }
+
+        auto ut =
+            OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                      INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, nullptr, nullptr,
+                            param.perTokenScale, param.groupList, nullptr, nullptr, param.rowIndex, param.dtype,
+                            param.sharedInputWeight, param.sharedInputOffset, param.transposeX, param.transposeW,
+                            param.groupListType, param.tuningConfig),
+                      OUTPUT(param.out));
+        return ut.TestGetWorkspaceSize(workspaceSize);
+    }
+
+    if (param.hasAntiQuantScale) {
+        if (param.hasSharedInputTensor) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                                INPUT(param.x1, param.x2, param.scale, biasInput, param.offset,
+                                      param.antiQuantScale, nullptr, param.perTokenScale, param.groupList,
+                                      param.sharedInput, param.logits, param.rowIndex, param.dtype,
+                                      param.sharedInputWeight, param.sharedInputOffset, param.transposeX,
+                                      param.transposeW, param.groupListType, param.tuningConfig),
+                                OUTPUT(param.out));
+            return ut.TestGetWorkspaceSize(workspaceSize);
+        }
+
+        auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                            INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, param.antiQuantScale,
+                                  nullptr, param.perTokenScale, param.groupList, nullptr, param.logits,
+                                  param.rowIndex, param.dtype, param.sharedInputWeight, param.sharedInputOffset,
+                                  param.transposeX, param.transposeW, param.groupListType, param.tuningConfig),
+                            OUTPUT(param.out));
+        return ut.TestGetWorkspaceSize(workspaceSize);
+    }
+
+    if (param.hasSharedInputTensor) {
+        auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                            INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, nullptr, nullptr,
+                                  param.perTokenScale, param.groupList, param.sharedInput, param.logits,
+                                  param.rowIndex, param.dtype, param.sharedInputWeight, param.sharedInputOffset,
+                                  param.transposeX, param.transposeW, param.groupListType, param.tuningConfig),
+                            OUTPUT(param.out));
+        return ut.TestGetWorkspaceSize(workspaceSize);
+    }
+
+    auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                        INPUT(param.x1, param.x2, param.scale, biasInput, param.offset, nullptr, nullptr,
+                              param.perTokenScale, param.groupList, nullptr, param.logits, param.rowIndex,
+                              param.dtype, param.sharedInputWeight, param.sharedInputOffset, param.transposeX,
+                              param.transposeW, param.groupListType, param.tuningConfig),
+                        OUTPUT(param.out));
+    return ut.TestGetWorkspaceSize(workspaceSize);
+}
+
 struct GroupedMatmulFinalizeRoutingV3Case {
     void Run() const
     {
@@ -100,13 +212,11 @@ struct GroupedMatmulFinalizeRoutingV3Case {
         TensorDesc x1 = MakeTensorDesc(x1Dims, ParseDtype(x1Dtype), ACL_FORMAT_ND, {});
         TensorDesc x2 = MakeTensorDesc(x2Dims, ParseDtype(x2Dtype), ParseFormat(x2Format), x2StorageDims);
         TensorDesc scale = MakeTensorDesc(scaleDims, ParseDtype(scaleDtype), ACL_FORMAT_ND, {}).ValueRange(0, 3);
-        TensorDesc bias = MakeTensorDesc(biasDims, ParseDtype(biasDtype), ACL_FORMAT_ND, {});
         TensorDesc offset = MakeTensorDesc(offsetDims, ParseDtype(offsetDtype), ParseFormat(offsetFormat), {});
         TensorDesc antiQuantScale =
             MakeTensorDesc(antiQuantScaleDims, ParseDtype(antiQuantScaleDtype), ACL_FORMAT_ND, {});
         TensorDesc perTokenScale =
-            MakeTensorDesc(perTokenScaleDims, ParseDtype(perTokenScaleDtype), ACL_FORMAT_ND, {})
-                .ValueRange(0, 3);
+            MakeTensorDesc(perTokenScaleDims, ParseDtype(perTokenScaleDtype), ACL_FORMAT_ND, {}).ValueRange(0, 3);
         TensorDesc groupList = MakeTensorDesc(groupListDims, ACL_INT64, ACL_FORMAT_ND, {}).ValueRange(-1, 1);
         const vector<int64_t> groupListVals = ParseI64List(groupListValues);
         if (!groupListVals.empty()) {
@@ -117,6 +227,10 @@ struct GroupedMatmulFinalizeRoutingV3Case {
         TensorDesc rowIndex = MakeTensorDesc(rowIndexDims, ParseDtype(rowIndexDtype), ACL_FORMAT_ND, {});
         TensorDesc out = MakeTensorDesc(outDims, ParseDtype(outDtype), ACL_FORMAT_ND, {});
         const bool hasSharedInputTensor = !sharedInputDims.empty();
+        optional<TensorDesc> bias;
+        if (!biasDims.empty()) {
+            bias.emplace(MakeTensorDesc(biasDims, ParseDtype(biasDtype), ACL_FORMAT_ND, {}));
+        }
 
         const vector<int64_t> tuningVals = ParseI64List(tuningConfig);
         aclIntArray *tuningConfigPtr = nullptr;
@@ -125,73 +239,17 @@ struct GroupedMatmulFinalizeRoutingV3Case {
         }
 
         uint64_t workspaceSize = 0;
-        aclnnStatus ret = ACLNN_SUCCESS;
+        const GroupedMatmulFinalizeRoutingV3RunParam runParam{
+            x1,    x2,          scale,      offset,            antiQuantScale,        perTokenScale,
+            groupList, sharedInput, logits, rowIndex,          out,                   tuningConfigPtr,
+            dtype,  sharedInputWeight,      sharedInputOffset, transposeX,            transposeW,
+            groupListType,                  ParseBool(hasOffset), ParseBool(hasAntiQuantScale),
+            ParseBool(hasLogits),           hasSharedInputTensor,
+        };
 
-        if (!ParseBool(hasOffset)) {
-            if (hasSharedInputTensor) {
-                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                    INPUT(x1, x2, scale, bias, nullptr, nullptr, nullptr, perTokenScale, groupList,
-                                          sharedInput, logits, rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                          transposeX, transposeW, groupListType, nullptr),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            } else {
-                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                    INPUT(x1, x2, scale, bias, nullptr, nullptr, nullptr, perTokenScale, groupList,
-                                          nullptr, logits, rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                          transposeX, transposeW, groupListType, nullptr),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            }
-        } else if (!ParseBool(hasLogits)) {
-            if (hasSharedInputTensor) {
-                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                    INPUT(x1, x2, scale, bias, offset, nullptr, nullptr, perTokenScale, groupList,
-                                          sharedInput, nullptr, rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                          transposeX, transposeW, groupListType, tuningConfigPtr),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            } else {
-                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                    INPUT(x1, x2, scale, bias, offset, nullptr, nullptr, perTokenScale, groupList,
-                                          nullptr, nullptr, rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                          transposeX, transposeW, groupListType, tuningConfigPtr),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            }
-        } else if (ParseBool(hasAntiQuantScale)) {
-            if (hasSharedInputTensor) {
-                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                    INPUT(x1, x2, scale, bias, offset, antiQuantScale, nullptr, perTokenScale,
-                                          groupList, sharedInput, logits, rowIndex, dtype, sharedInputWeight,
-                                          sharedInputOffset, transposeX, transposeW, groupListType, tuningConfigPtr),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            } else {
-                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                    INPUT(x1, x2, scale, bias, offset, antiQuantScale, nullptr, perTokenScale,
-                                          groupList, nullptr, logits, rowIndex, dtype, sharedInputWeight,
-                                          sharedInputOffset, transposeX, transposeW, groupListType, tuningConfigPtr),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            }
-        } else {
-            if (hasSharedInputTensor) {
-                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                    INPUT(x1, x2, scale, bias, offset, nullptr, nullptr, perTokenScale, groupList,
-                                          sharedInput, logits, rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                          transposeX, transposeW, groupListType, tuningConfigPtr),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            } else {
-                auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                    INPUT(x1, x2, scale, bias, offset, nullptr, nullptr, perTokenScale, groupList,
-                                          nullptr, logits, rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                          transposeX, transposeW, groupListType, tuningConfigPtr),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            }
-        }
+        const aclnnStatus ret = bias.has_value()
+                                    ? GetGroupedMatmulFinalizeRoutingV3Workspace(runParam, *bias, &workspaceSize)
+                                    : GetGroupedMatmulFinalizeRoutingV3Workspace(runParam, nullptr, &workspaceSize);
 
         if (ParseBool(checkRet)) {
             EXPECT_EQ(ret, ParseStatus(expectRet));

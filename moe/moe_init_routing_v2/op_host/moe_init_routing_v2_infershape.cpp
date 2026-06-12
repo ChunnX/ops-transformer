@@ -87,10 +87,8 @@ static ge::graphStatus CheckInputShape(const gert::InferShapeContext *context, c
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckParm(const gert::InferShapeContext *context, const gert::Shape *xShape,
-                                 const gert::Shape *expertIdxShape, const int64_t activeNum,
-                                 const int64_t expertCapacity, const int64_t expertNum, const int64_t dropPadMode,
-                                 const int64_t expertTokensCountOrCumsumFlag)
+static ge::graphStatus CheckInputShapes(const gert::InferShapeContext *context, const gert::Shape *xShape,
+                                        const gert::Shape *expertIdxShape)
 {
     if (xShape->GetDimNum() == 1U) {
         if (xShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
@@ -113,18 +111,25 @@ static ge::graphStatus CheckParm(const gert::InferShapeContext *context, const g
         }
     } else if (expertIdxShape->GetDimNum() != DIM_TWO) {
         std::string expertIdxDimNumStr = std::to_string(expertIdxShape->GetDimNum());
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "expertIdx", expertIdxDimNumStr.c_str(),
-                                     "2D or dynamic");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "expertIdx", expertIdxDimNumStr.c_str(), "2D or dynamic");
         return ge::GRAPH_FAILED;
     }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckAttrParams(const gert::InferShapeContext *context, const gert::Shape *xShape,
+                                       const int64_t activeNum, const int64_t expertCapacity, const int64_t expertNum,
+                                       const int64_t dropPadMode, const int64_t expertTokensCountOrCumsumFlag)
+{
     if (activeNum < 0) {
         OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "activeNum", std::to_string(activeNum).c_str(),
                                   "greater than or equal to 0");
         return ge::GRAPH_FAILED;
     }
     if (expertCapacity < 0) {
-        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "expertCapacity",
-                                  std::to_string(expertCapacity).c_str(), "greater than or equal to 0");
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "expertCapacity", std::to_string(expertCapacity).c_str(),
+                                  "greater than or equal to 0");
         return ge::GRAPH_FAILED;
     }
     if (expertNum < 0) {
@@ -133,15 +138,13 @@ static ge::graphStatus CheckParm(const gert::InferShapeContext *context, const g
         return ge::GRAPH_FAILED;
     }
     if (dropPadMode < 0 || dropPadMode > 1) {
-        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "dropPadMode", std::to_string(dropPadMode).c_str(),
-                                  "0 or 1");
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "dropPadMode", std::to_string(dropPadMode).c_str(), "0 or 1");
         return ge::GRAPH_FAILED;
     }
     if (dropPadMode > 0 && (expertCapacity < 1 || expertNum < 1)) {
-        std::string attrValue = "expertCapacity: " + std::to_string(expertCapacity) +
-                                ", expertNum: " + std::to_string(expertNum);
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "expertCapacity and expertNum",
-                                              attrValue.c_str(),
+        std::string attrValue =
+            "expertCapacity: " + std::to_string(expertCapacity) + ", expertNum: " + std::to_string(expertNum);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "expertCapacity and expertNum", attrValue.c_str(),
                                               "expertCapacity and expertNum should be greater than 0 when "
                                               "dropPadMode is 1");
         return ge::GRAPH_FAILED;
@@ -160,10 +163,30 @@ static ge::graphStatus CheckParm(const gert::InferShapeContext *context, const g
     if (dropPadMode > 0 && xShape->GetDim(0) > 0 && expertCapacity > xShape->GetDim(0)) {
         std::string shapeStr = Ops::Base::ToString(*xShape);
         std::string reasonMsg = "The first dim of x cannot be less than expertCapacity when dropPadMode is 1, "
-                                "but expertCapacity is " + std::to_string(expertCapacity);
+                                "but expertCapacity is " +
+                                std::to_string(expertCapacity);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckParm(const gert::InferShapeContext *context, const gert::Shape *xShape,
+                                 const gert::Shape *expertIdxShape, const int64_t activeNum,
+                                 const int64_t expertCapacity, const int64_t expertNum, const int64_t dropPadMode,
+                                 const int64_t expertTokensCountOrCumsumFlag)
+{
+    auto ret = CheckInputShapes(context, xShape, expertIdxShape);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+
+    ret = CheckAttrParams(context, xShape, activeNum, expertCapacity, expertNum, dropPadMode,
+                          expertTokensCountOrCumsumFlag);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 

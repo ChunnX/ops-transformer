@@ -418,6 +418,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/sparse_flash_mla/README.md">sparse_flash_mla</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>支持Sliding Window Attention（SWA）、Compressed Flash Attention（CFA）和Sparse Compressed Flash Attention（SCFA）。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/sparse_flash_mla_grad/README.md">sparse_flash_mla_grad</a></td>
     <td>✓</td>
     <td>✓</td>

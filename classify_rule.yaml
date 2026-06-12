@@ -324,7 +324,6 @@ transformer-5@ops-transformer:
                 - ops/ops-transformer/attention/common/op_kernel/memory_copy.h
                 - ops/ops-transformer/attention/common/op_kernel/CopyInL1.h
                 - ops/ops-transformer/attention/common/op_kernel/memcopy/
-                - ops/ops-transformer/attention/common/op_kernel/arch35/attenmask.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/attenmask_gs1.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/fia_block_cube_fullquant_mx.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/fia_block_vec_flashdecode_fullquant.h
@@ -748,11 +747,6 @@ mc2_infer@ops-transformer:
                 - ops/ops-transformer/mc2/quant_reduce_scatter/op_kernel/
                 - ops/ops-transformer/mc2/quant_reduce_scatter/CMakeLists.txt
                 - ops/ops-transformer/mc2/quant_reduce_scatter/README.md
-                - ops/ops-transformer/mc2/quant_reduce_scatter_v2/op_host/
-                - ops/ops-transformer/mc2/quant_reduce_scatter_v2/op_api/
-                - ops/ops-transformer/mc2/quant_reduce_scatter_v2/op_graph/
-                - ops/ops-transformer/mc2/quant_reduce_scatter_v2/op_kernel/
-                - ops/ops-transformer/mc2/quant_reduce_scatter_v2/CMakeLists.txt
                 - ops/ops-transformer/mc2/3rd/common/
                 - ops/ops-transformer/mc2/3rd/ops_legacy/
                 - ops/ops-transformer/mc2/3rd/CMakeLists.txt

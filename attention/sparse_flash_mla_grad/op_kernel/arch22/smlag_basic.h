@@ -222,7 +222,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         AllocEventID();
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
-            int32_t t1Index = (cubeBlockIdx + usedCoreNum * i) * s1BasicSize;
+            int64_t t1Index = (static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i) * s1BasicSize;
             GetTndSeqLen(t1Index, bIndex, s1Loop);
             int32_t s1BasicAccum = 0;
             for (int32_t j = 0; j < s1Loop; j++) {
@@ -261,7 +261,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         SyncAll();
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
-            int32_t t1Index = (cubeBlockIdx + usedCoreNum * i) * s1BasicSize;
+            int64_t t1Index = (static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i) * s1BasicSize;
             GetTndSeqLen(t1Index, bIndex, s1Loop);
             int32_t s1BasicAccum = 0;
             for (int32_t j = 0; j < s1Loop; j++) {
