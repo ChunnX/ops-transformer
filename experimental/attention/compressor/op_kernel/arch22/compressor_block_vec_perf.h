@@ -816,7 +816,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::CopyOutVec1ResToOutput(c
     uint64_t outGmOffset;
     if constexpr (COMP::xLayout == X_LAYOUT::BSH) {
         uint32_t bOutputScLen = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
-        uint32_t padScIdx = sliceInfo.bIdx * bOutputScLen + ((sliceInfo.sIdx + sliceInfo.bStartPos) / cmpRatio_) -
+        uint64_t padScIdx = sliceInfo.bIdx * bOutputScLen + ((sliceInfo.sIdx + sliceInfo.bStartPos) / cmpRatio_) -
                    (sliceInfo.bStartPos / cmpRatio_);
         outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
     } else {
@@ -918,6 +918,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::CalcGroupInfo(const Vec1
 {
     uint32_t aiCoreNum = constInfo_.usedCoreNum * 2;
     splitInfo.dBaseSize = constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, info.dealTcNum)));
+    // 结果输出到GM前必须转换成X_T，dBaseSize * sizeof(X_T)需32B对齐
     splitInfo.dBaseSize = max(splitInfo.dBaseSize, BlockElementNum<X_T>());
     splitInfo.vec1GroupSize = constInfo_.headDim / splitInfo.dBaseSize;
     splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), info.dealTcNum);

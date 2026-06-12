@@ -983,7 +983,7 @@ CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T>
     uint64_t outGmOffset;
     if constexpr (COMP::xLayout == X_LAYOUT::BSH) {
         uint32_t bOutputScLen = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
-        uint32_t padScIdx = sliceInfo.bIdx * bOutputScLen + ((sliceInfo.sIdx + sliceInfo.bStartPos) / cmpRatio_) -
+        uint64_t padScIdx = sliceInfo.bIdx * bOutputScLen + ((sliceInfo.sIdx + sliceInfo.bStartPos) / cmpRatio_) -
                    (sliceInfo.bStartPos / cmpRatio_);
         outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
     } else {
@@ -1037,6 +1037,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcGroupInfo(Vec1Sp
     if (constInfo_.kBaseNum > 1) {
         splitInfo.dBaseSize = max(splitInfo.dBaseSize, FP32_REPEAT_ELEMENT_NUM);
     }
+    // 结果输出到GM前必须转换成X_T，dBaseSize * sizeof(X_T)需32B对齐
+    splitInfo.dBaseSize = max(splitInfo.dBaseSize, BlockElementNum<X_T>());
     splitInfo.vec1GroupSize = constInfo_.headDim / splitInfo.dBaseSize;
     splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), constInfo_.batchSize);
 }
