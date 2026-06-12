@@ -12,14 +12,14 @@
 #define FUSED_BLOCK_MMAD_PV_HPP
 
 #include "../../../attn_infra/fused_base_defs.hpp"
-#include "../../../attn_infra/arch/fused_resource.hpp"
 #include "../../../attn_infra/fused_coord.hpp"
-#include "../../../attn_infra/arch/fused_cross_core_sync.hpp"
 #include "../../../attn_infra/gemm/fused_gemm_dispatch_policy.hpp"
 #include "../../../attn_infra/gemm/fused_helper.hpp"
 #include "../../../attn_infra/fused_gemm_coord.hpp"
 #include "../../../attn_infra/gemm/tile_common/fused_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/fused_tile_mmad.hpp"
+#include "../../../attn_infra/arch/fused_resource.hpp"
+#include "../../../attn_infra/arch/fused_cross_core_sync.hpp"
 ////////////////////////////////////////////////////////////////////
 
 namespace NpuArch::Gemm::Block {
@@ -50,8 +50,6 @@ public:
     // Type Aliases
     using DispatchPolicy = MmadAtlasA2FAIPV<PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
-    using L1TileShape = L1TileShape_;
-    using L0TileShape = L0TileShape_;
     using ElementA = typename AType_::Element;
     using LayoutA = typename AType_::Layout;
     using ElementB = typename BType_::Element;
@@ -59,6 +57,8 @@ public:
     using ElementC = typename CType_::Element;
     using LayoutC = typename CType_::Layout;
     using TileMmad = TileMmad_;
+    using L1TileShape = L1TileShape_;
+    using L0TileShape = L0TileShape_;
     using CopyGmToL1A = typename TileCopy_::CopyGmToL1A;
     using CopyGmToL1B = typename TileCopy_::CopyGmToL1B;
     using CopyL1ToL0A = typename TileCopy_::CopyL1ToL0A;
@@ -102,9 +102,11 @@ public:
     BlockMmad() {}
 
     __aicore__ inline
-    void init(Arch::Resource<ArchTag> &resource, uint32_t nDyn, uint32_t kDyn, uint32_t KVStackLen = 512, uint32_t l1BufAddrStart = 0)
+    void init(Arch::Resource<ArchTag> &resource,
+        uint32_t nDyn, uint32_t kDyn, uint32_t setMaxKVStackLen = 512,
+        uint32_t l1BufAddrStart = 0)
     {
-        maxKVStackLen = KVStackLen;
+        maxKVStackLen = setMaxKVStackLen;
         // Allocate L1 memory space
         l1BTensor = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart +
             L1TileShape::M * kDyn * sizeof(ElementA) * STAGES);
@@ -257,32 +259,32 @@ public:
                             (kL0Idx < kL0Loop - 1U) ? L0TileShape::K : (kL1Actual - kL0Idx * L0TileShape::K);
                         LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mL1Actual, kL0Actual);
                         MatrixCoord l1ATileCoord{0, kL0Idx * L0TileShape::K};
-                        auto l1ATile = l1ATensor[l1PPingPongFlag][layoutAInL1.GetOffset(l1ATileCoord)];
+                        auto l1ATileTensor = l1ATensor[l1PPingPongFlag][layoutAInL1.GetOffset(l1ATileCoord)];
 
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
                         if (kL0Idx == 0U) {
                             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1PPingPongFlag);
                         }
-                        copyL1ToL0A(l0ATensor[l0ABPingPongFlag], l1ATile, layoutAInL0, layoutAInL1);
+                        copyL1ToL0A(l0ATensor[l0ABPingPongFlag], l1ATileTensor, layoutAInL0, layoutAInL1);
                         if (kL0Idx == kL0Loop - 1U) {
                             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1PPingPongFlag);
                         }
 
                         LayoutBInL0 layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kL0Actual, nL1Actual);
                         MatrixCoord l1BTileCoord{kL1Idx * l1KDynamic + kL0Idx * L0TileShape::K, L0TileShape::N * nL1Idx};
-                        auto l1BTile = l1BTensor[layoutBInL1.GetOffset(l1BTileCoord)];
+                        auto l1BTileTensor = l1BTensor[layoutBInL1.GetOffset(l1BTileCoord)];
 
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2U);
-                        copyL1ToL0B(l0BTensor[l0ABPingPongFlag], l1BTile, layoutBInL0, layoutBInL1);
+                        copyL1ToL0B(l0BTensor[l0ABPingPongFlag], l1BTileTensor, layoutBInL0, layoutBInL1);
 
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
                         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
                         bool initMmad = (kL1Idx == 0U) && (kL0Idx == 0U);
-                        uint32_t mL0Align = (mL1Actual + BLOCK_SIZE - 1U) / BLOCK_SIZE * BLOCK_SIZE;
+                        uint32_t mL0AlignUp = (mL1Actual + BLOCK_SIZE - 1U) / BLOCK_SIZE * BLOCK_SIZE;
                         tileMmad(l0CTensor[l0CPingPongFlag],
                             l0ATensor[l0ABPingPongFlag],
                             l0BTensor[l0ABPingPongFlag],
-                            mL0Align,
+                            mL0AlignUp,
                             nL1Actual,
                             kL0Actual,
                             initMmad);
@@ -308,8 +310,8 @@ public:
 protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor[STAGES];
-    AscendC::LocalTensor<ElementB> l1BTensor;
     AscendC::LocalTensor<ElementA> l0ATensor[STAGES];
+    AscendC::LocalTensor<ElementB> l1BTensor;
     AscendC::LocalTensor<ElementB> l0BTensor[STAGES];
     AscendC::LocalTensor<ElementAccumulator> l0CTensor[STAGES];
 
