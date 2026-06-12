@@ -13,8 +13,8 @@ from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
-QSMLA_METADATA_SIZE = 1024
-QSMLA_METADATA_OP_NAME = "mixed_quant_sparse_flash_mla_metadata"
+MQSMLA_METADATA_SIZE = 1024
+MQSMLA_METADATA_OP_NAME = "mixed_quant_sparse_flash_mla_metadata"
 
 
 class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
@@ -62,7 +62,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
-        @torch.library.register_fake("npu_ops_transformer::" + QSMLA_METADATA_OP_NAME)
+        @torch.library.register_fake("npu_ops_transformer::" + MQSMLA_METADATA_OP_NAME)
         def mixed_quant_sparse_flash_mla_metadata_meta(
             num_heads_q: int, num_heads_kv: int, head_dim: int, quant_mode: int,
             cu_seqlens_q: Optional[torch.Tensor] = None, cu_seqlens_ori_kv: Optional[torch.Tensor] = None,
@@ -76,7 +76,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             cmp_mask_mode: Optional[int] = None, ori_win_left: Optional[int] = None,
             ori_win_right: Optional[int] = None, layout_q: Optional[str] = None, layout_kv: Optional[str] = None,
             has_ori_kv: Optional[bool] = None, has_cmp_kv: Optional[bool] = None):
-            return torch.empty((QSMLA_METADATA_SIZE), dtype=torch.int32, device="npu")
+            return torch.empty((MQSMLA_METADATA_SIZE), dtype=torch.int32, device="npu")
 
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_mixed_quant_sparse_flash_mla_meta(q,
@@ -120,7 +120,7 @@ npu_mixed_quant_sparse_flash_mla_op_builder = MixedQuantSparseFlashMlaOpBuilder(
 op_module = npu_mixed_quant_sparse_flash_mla_op_builder.load()  # Compiles/loads the .so file
 
 
-@impl(AS_LIBRARY, QSMLA_METADATA_OP_NAME, "PrivateUse1")
+@impl(AS_LIBRARY, MQSMLA_METADATA_OP_NAME, "PrivateUse1")
 def mixed_quant_sparse_flash_mla_metadata(
     num_heads_q: int, num_heads_kv: int, head_dim: int, quant_mode: int, cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_ori_kv: Optional[torch.Tensor] = None, cu_seqlens_cmp_kv: Optional[torch.Tensor] = None,
@@ -133,6 +133,10 @@ def mixed_quant_sparse_flash_mla_metadata(
     cmp_mask_mode: Optional[int] = None, ori_win_left: Optional[int] = None, ori_win_right: Optional[int] = None,
     layout_q: Optional[str] = None, layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None,
     has_cmp_kv: Optional[bool] = None):
+    """
+    Dispatcher implementation: NPU.
+    'PrivateUse1' is dispatch key for custom NPU backends.
+    """
     batch_size = 0 if batch_size is None else batch_size
     max_seqlen_q = 0 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_ori_kv = 0 if max_seqlen_ori_kv is None else max_seqlen_ori_kv
@@ -157,7 +161,7 @@ def mixed_quant_sparse_flash_mla_metadata(
         cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, has_ori_kv, has_cmp_kv)
 
 
-@torch.library.register_kernel("npu_ops_transformer::" + QSMLA_METADATA_OP_NAME, None)
+@torch.library.register_kernel("npu_ops_transformer::" + MQSMLA_METADATA_OP_NAME, None)
 def mixed_quant_sparse_flash_mla_metadata_fallback(
     num_heads_q: int, num_heads_kv: int, head_dim: int, quant_mode: int, cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_ori_kv: Optional[torch.Tensor] = None, cu_seqlens_cmp_kv: Optional[torch.Tensor] = None,
@@ -170,6 +174,8 @@ def mixed_quant_sparse_flash_mla_metadata_fallback(
     cmp_mask_mode: Optional[int] = None, ori_win_left: Optional[int] = None, ori_win_right: Optional[int] = None,
     layout_q: Optional[str] = None, layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None,
     has_cmp_kv: Optional[bool] = None):
+    # 处理所有 tensor 都为 None 的情况
+    # 调用 NPU 实现
     return mixed_quant_sparse_flash_mla_metadata(
         num_heads_q, num_heads_kv, head_dim, quant_mode, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, batch_size, max_seqlen_q,
