@@ -372,4 +372,62 @@ __aicore__ inline void RMSNormInvGradVf(
     }
 }
 
+// ========== VF ReduceSum (任意长度，循环累加) ==========
+template<typename T>
+__aicore__ inline void ReduceSumVf(
+    LocalTensor<T> dstLocal, LocalTensor<T> srcLocal, uint32_t totalElements)
+{
+    __local_mem__ T* dstPtr = (__local_mem__ T*) dstLocal.GetPhyAddr();
+    __local_mem__ T* srcPtr = (__local_mem__ T*) srcLocal.GetPhyAddr();
+    
+    __VEC_SCOPE__ {
+        RegTensor<T> srcReg, sumReg, tmpReg;
+        
+        MaskReg maskAll = MicroAPI::CreateMask<T, MaskPattern::ALL>();
+        
+        uint32_t loopCount = (totalElements + VL_FP32 - 1) / VL_FP32;
+        
+        MicroAPI::Duplicate<T>(sumReg, static_cast<T>(0.0), maskAll);
+        
+        for (uint16_t i = 0; i < loopCount; i++) {
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(srcReg, srcPtr + i * VL_FP32);
+            MicroAPI::ReduceSum<T>(tmpReg, srcReg, maskAll);
+            MicroAPI::Add<T>(sumReg, sumReg, tmpReg, maskAll);
+        }
+        
+        MicroAPI::DataCopy<T, StoreDist::DIST_FIRST_ELEMENT_B32>(dstPtr, sumReg, maskAll);
+    }
+}
+
+// ========== VF Mul+ReduceSum组合 (任意长度) ==========
+template<typename T>
+__aicore__ inline void MulReduceSumVf(
+    LocalTensor<T> dstLocal, LocalTensor<T> srcALocal, LocalTensor<T> srcBLocal,
+    uint32_t totalElements)
+{
+    __local_mem__ T* dstPtr = (__local_mem__ T*) dstLocal.GetPhyAddr();
+    __local_mem__ T* srcAPtr = (__local_mem__ T*) srcALocal.GetPhyAddr();
+    __local_mem__ T* srcBPtr = (__local_mem__ T*) srcBLocal.GetPhyAddr();
+    
+    __VEC_SCOPE__ {
+        RegTensor<T> srcAReg, srcBReg, mulReg, sumReg, tmpReg;
+        
+        MaskReg maskAll = MicroAPI::CreateMask<T, MaskPattern::ALL>();
+        
+        uint32_t loopCount = (totalElements + VL_FP32 - 1) / VL_FP32;
+        
+        MicroAPI::Duplicate<T>(sumReg, static_cast<T>(0.0), maskAll);
+        
+        for (uint16_t i = 0; i < loopCount; i++) {
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(srcAReg, srcAPtr + i * VL_FP32);
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(srcBReg, srcBPtr + i * VL_FP32);
+            MicroAPI::Mul<T>(mulReg, srcAReg, srcBReg, maskAll);
+            MicroAPI::ReduceSum<T>(tmpReg, mulReg, maskAll);
+            MicroAPI::Add<T>(sumReg, sumReg, tmpReg, maskAll);
+        }
+        
+        MicroAPI::DataCopy<T, StoreDist::DIST_FIRST_ELEMENT_B32>(dstPtr, sumReg, maskAll);
+    }
+}
+
 #endif // MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_VF_H
