@@ -43,7 +43,7 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
                 learnableSinkDesc->GetDataType() != ge::DT_BF16) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "learnable_sink",
                     ToString(learnableSinkDesc->GetDataType()).c_str(),
-                    "The dtype of learnable_sink must be BF16 or FLOAT16 when learnable sink is enabled.");
+                    "The dtype of learnable_sink must be BF16 or FLOAT16 when learnable sink is enabled");
                 return ge::GRAPH_FAILED;
             }
 
@@ -58,7 +58,7 @@ ge::graphStatus LearnableSinkChecker::CheckSinkDtypeSupport(const FiaTilingInfo 
             if (learnableSinkDesc->GetDataType() != ge::DT_BF16) {
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "learnable_sink",
                     ToString(learnableSinkDesc->GetDataType()).c_str(),
-                    "The dtype of learnable_sink must be BF16 when learnable sink is enabled.");
+                    "The dtype of learnable_sink must be BF16 when learnable sink is enabled");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -75,12 +75,12 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
     // sink 不支持左padding
     OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "leftPadding",
-            "leftPadding must be empty when learnable sink is enabled."),
+            "leftPadding must be empty when learnable sink is enabled"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.sysPrefixFlag,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when learnable sink is enabled."),
+            "prefix must be empty when learnable sink is enabled"),
         return ge::GRAPH_FAILED);
 
     if (fiaInfo.enableAlibiPse) {
@@ -92,12 +92,12 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
 
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-            "pseShift must be empty when learnable sink is enabled."),
+            "pseShift must be empty when learnable sink is enabled"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.isOutQuantEnable,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "quantScale2",
-            "quantScale2 must be empty when learnable sink is enabled."),
+            "quantScale2 must be empty when learnable sink is enabled"),
         return ge::GRAPH_FAILED);
 
     if (fiaInfo.innerPrecise != HIGH_PRECISION) {
@@ -111,7 +111,7 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
     // 仅支持GQA 非量化
     OP_CHECK_IF(!(enableNonQuant_ && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "learnableSink",
-            "learnableSink must be empty when not in the no-quantized GQA mode."),
+            "learnableSink must be empty when not in the no-quantized GQA mode"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

@@ -65,7 +65,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShapeSize(const FiaTilingI
         std::string shapeStr = ToString(blockTableShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             fiaInfo.opName, "blockTable", shapeStr.c_str(),
-            "When page attention enable, all axes of blockTable must be positive numbers.");
+            "When page attention enable, all axes of blockTable must be positive numbers");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -369,7 +369,7 @@ ge::graphStatus PagedAttentionChecker::CheckQDtypeSupport(const FiaTilingInfo &f
     OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 && fiaInfo.ropeMode != RopeMode::ROPE_SPLIT,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query", ToString(fiaInfo.inputQType).c_str(),
             "When the page attention function is enabled, the data type of the query operation cannot be INT8 in"
-            " the GQA scenario. INT8 is supported only in the full quantization scenario of MLA."),
+            " the GQA scenario. INT8 is supported only in the full quantization scenario of MLA"),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
