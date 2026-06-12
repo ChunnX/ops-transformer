@@ -31,6 +31,7 @@ Docs目录结构说明如下：
 ```
 
 ## 进阶教程
+
 ### 指南类文档
 
 | 文档                                                         | 说明                                                         |
@@ -49,9 +50,20 @@ Docs目录结构说明如下：
 | [aclnn列表](zh/op_api_list.md)                   | 介绍项目包含的所有算子aclnn API清单。为方便用户在Host侧调用算子，提供了C语言API，即aclnn前缀的API。 |
 
 ### 工具类文档
+
 | 文档        | 说明                  |
 | ----------------------- | ---------------------- |
 | [Simulator仿真工具](zh/debug/cann_sim.md) | 面向算子开发场景的SoC级仿真工具，用于分析运行在AI仿真器上AI任务在各阶段精度和性能数据。 |
+
+### 样例实践
+
+如需学习算子领域高性能实战案例，可参考[cann-samples Performance目录](https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/README.md)）。
+
+|  算子分类       |  样例算子       | 说明                  |
+| ----------------------- | ---------------------- | ---------------------- |
+|  attention  |   full_quant_fused_infer_attention_score_story    |  围绕FIA（Fused Infer Attention Score）算子提供per-block全量化实现示例，包含输入数据生成、算子执行与结果校验流程。|
+|  mc2        | moe_dispatch_and_combine_story |围绕moe dispatch/combine通信算子给出性能优化实践，包含构建运行命令、测试数据生成与精度校验流程。 |
+|  moe        | moe_init_routing_story | 介绍MoeInitRoutingV3算子的完整性能优化实践。包括多核并行、内存带宽优化、核内流水线排布、SIMT编程、硬件特性适配等优化策略，从理论分析到代码实践的端到端调优指南。|
 
 ### 更多文档
 

@@ -11,4 +11,5 @@
 add_modules_sources_with_soc(OPTYPE common ACLNNTYPE no_need_aclnn)
 target_sources(${OPHOST_NAME}_tiling_obj PRIVATE 
 split_core.cpp
+split_core_v2.cpp
 )

@@ -192,8 +192,18 @@ static bool IsGatherOut(const aclTensor *gatherOut)
 static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, const aclTensor *gatherOut,
     bool isTransA)
 {
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
+            (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1 must be 2D.");
+        return false;
+    }
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return false;
+    }
     // A矩阵不能转置
     if (isTransA) {
         OP_LOGE_FOR_INVALID_VALUE("aclnnAllGatherMatmulV2", "x1",
@@ -251,8 +261,18 @@ static aclnnStatus CheckParamsAndShapeForAIVMode(const aclTensor *x1, const aclT
 
     CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
 
-    OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
+    if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
+            (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x1 must be 2D.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // A矩阵不能转置
     if (isTransA) {
         OP_LOGE_FOR_INVALID_VALUE("aclnnAllGatherMatmulV2", "x1",
@@ -316,7 +336,12 @@ static aclnnStatus CheckScale(const aclTensor *x1Scale, const aclTensor *x2Scale
 
     // scale不为空指针为则scalar类型
     if (quantScale != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(quantScale, ONE_DIMS, return ACLNN_ERR_PARAM_INVALID);
+        if (quantScale->GetViewShape().GetDimNum() != ONE_DIMS) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "quantScale",
+                (std::to_string(quantScale->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of quantScale must be 1D.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
         auto scaleLen = quantScale->GetViewShape().GetDim(0);
         OP_LOGD("AllGatherMatmulV2, scaleLen is %ld.", scaleLen);
         if (scaleLen != SCALAR) {
@@ -352,7 +377,12 @@ static bool CheckAMaxOutVaild(const aclTensor *x1, const aclTensor *amaxOut)
         }
     }
     if (IsAMaxOut(amaxOut)) {
-        OP_CHECK_WRONG_DIMENSION(amaxOut, ONE_DIMS, return false);
+        if (amaxOut->GetViewShape().GetDimNum() != ONE_DIMS) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnAllGatherMatmulV2", "amaxOut",
+                (std::to_string(amaxOut->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of amaxOut must be 1D.");
+            return false;
+        }
         auto amaxOutLen = amaxOut->GetViewShape().GetDim(0);
         if (amaxOutLen != SCALAR) {
             return false;

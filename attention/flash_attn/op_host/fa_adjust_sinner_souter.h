@@ -65,17 +65,10 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t s1Size, int64_t s2
             sOuterFactor = SOUTER_32;
             sInnerFactor = SINNER_256;
         }
-    } else if (vHeadDim > DSIZE_128 && s1Size != 1) {
-        if (checkQueryAndValueS && vHeadDim <= DSIZE_256) {
-            sOuterFactor = SOUTER_32;
-            sInnerFactor = SINNER_256;
-        } else {
-            sOuterFactor = SOUTER_64;
-            sInnerFactor = SINNER_128;
-        }
-    } else if (s1Size == 1 && vHeadDim > DSIZE_128) {
-        sOuterFactor = SOUTER_64;
-        sInnerFactor = SINNER_128;
+    }
+    if (vHeadDim == DSIZE_256) {
+        sOuterFactor = SOUTER_32;
+        sInnerFactor = SINNER_256;
     }
 }
 

@@ -25,6 +25,7 @@
 #include "../template_linear_algebra_v2/detail/callback.hpp"
 
 #include "dispatch_policy_custom.hpp"
+#include "block_epilogue_pertoken_v2.hpp"
 #include "get_tensor_addr.hpp"
 #include "hccl_shmem.hpp"
 #include "layout3d.hpp"
@@ -255,7 +256,22 @@ public:
             auto gmTileD = gmRemotePeer[gmDstOffset];
             LayoutC layoutGM2{lenData, actualBlockShape.n(), params.n2};
             LayoutC layoutUB2{lenData, actualBlockShape.n(), n0};
-            copyUbToGmD(gmTileD, ubD[tileOffset * n0], layoutGM2, layoutUB2);
+            if constexpr (IS_A2) {
+                bool isCrossServer = (dstEpIdx / SERVER_RANK_SIZE_A2) != (params.rank / SERVER_RANK_SIZE_A2);
+                if (isCrossServer) {
+                    AscendC::GlobalTensor<ElementD> gmLocalWindowsOut;
+                    gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
+                        params.shmem.windowsOutAddr() + params.offsetD));
+                    MatrixCoord srcOffset{(uint32_t)(stData + preSrcExpertSum / 2), blockCoord.n()};
+                    int64_t gmSrcOffset = params.layoutC.GetOffset(srcOffset);
+                    auto gmTileLocal = gmLocalWindowsOut[gmSrcOffset];
+                    copyUbToGmD(gmTileLocal, ubD[tileOffset *  n0], layoutGM2, layoutUB2);
+                } else {
+                    copyUbToGmD(gmTileD, ubD[tileOffset * n0], layoutGM2, layoutUB2);
+                }
+            } else {
+                copyUbToGmD(gmTileD, ubD[tileOffset * n0], layoutGM2, layoutUB2);
+            }
             tileOffset += lenData;
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbTileDVMTE3List[ubListId]);

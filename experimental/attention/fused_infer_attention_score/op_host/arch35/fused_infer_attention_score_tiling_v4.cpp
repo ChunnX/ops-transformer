@@ -17,6 +17,7 @@
 #include "fused_infer_attention_score_tiling_impl.h"
 #include "../fused_infer_attention_score_tiling_info_parser.h"
 #include "../checkers/fia_checker.h"
+#include "../../../common/op_host/fia_tiling_templates_registry.h"
 
 #include "log/log.h"
 #include "log/error_code.h"
@@ -43,6 +44,12 @@ ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context) {
     // Check函数只做校验，不能修改fiaInfo中的信息
     if (fiaChecker.Process(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
+    }
+
+    if (FiaTilingRegistry::GetInstance().DoTilingImpl(context, &fiaInfo) == ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_SUCCESS;
+    } else {        // TODO，老的模板也注册，把else分支和下面的逻辑删掉
+        OP_LOGD(context, "reconstruct template do not support, routing to old template.");
     }
 
     if (fiav4.DoOpTiling(context, fiaInfo) != ge::GRAPH_SUCCESS) {

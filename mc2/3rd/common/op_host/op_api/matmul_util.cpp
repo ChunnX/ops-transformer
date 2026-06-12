@@ -27,6 +27,7 @@
 #include "opdev/format_utils.h"
 #include "opdev/platform.h"
 #include "opdev/op_log.h"
+#include "log/log.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/shape_utils.h"
 #include "op_api/op_api_def.h"
@@ -147,8 +148,18 @@ static bool CheckDtypeValid(
 
 static bool CheckShapeValid(const aclTensor* self, const aclTensor* mat2, bool transposeX2 = false)
 {
-    OP_CHECK_WRONG_DIMENSION(mat2, DIMS_TWO, return false);
-    OP_CHECK_WRONG_DIMENSION(self, DIMS_TWO, return false);
+    if (mat2->GetViewShape().GetDimNum() != DIMS_TWO) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("Matmul", "mat2",
+            (std::to_string(mat2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of mat2 must be 2D.");
+        return false;
+    }
+    if (self->GetViewShape().GetDimNum() != DIMS_TWO) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("Matmul", "self",
+            (std::to_string(self->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of self must be 2D.");
+        return false;
+    }
     op::Shape mat2Shape = mat2->GetViewShape();
     op::Shape selfShape = self->GetViewShape();
     int64_t mat2KDim = transposeX2 ? mat2Shape.GetDim(K_DIM_SELF_IDX) : mat2Shape.GetDim(M_DIM_SELF_IDX);

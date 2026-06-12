@@ -190,7 +190,7 @@ int main()
     const int64_t D   = 64;
 
     // Q/Out: BNSD (B, N, S, D)
-    // KV:    BSND (B, S, N, D) — layoutKv仅支持BSND/TND/PA_ND/PA_Nz
+    // KV:    BSND (B, S, N, D) — layoutKv仅支持BSND/TND/PA_ND/PA_NZ
     std::vector<int64_t> qShape   = {B, N_q,  S_q,  D};   // BNSD
     std::vector<int64_t> kShape   = {B, N_kv, S_kv, D};   // BNSD
     std::vector<int64_t> vShape   = {B, N_kv, S_kv, D};   // BNSD
@@ -266,7 +266,7 @@ int main()
     int64_t maxseqlenq          = 0;
     int64_t maxseqlenkv         = 0;
     const char *layoutQ      = "BNSD";
-    const char *layoutKv     = "BNSD";  // KV布局仅支持BSND/TND/PA_ND/PA_Nz
+    const char *layoutKv     = "BNSD";  // KV布局仅支持BSND/TND/PA_ND/PA_NZ
     const char *layoutOut    = "BNSD";
     int64_t returnSoftmaxLse = 0;      // 推理场景不输出softmax_lse
 

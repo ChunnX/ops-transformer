@@ -23,8 +23,8 @@ std::string LayoutToSerialString(FaLayout layout)
 {
     const std::map<FaLayout, std::string> layout2Str = {{FaLayout::BSND, "BSND"},       {FaLayout::BNSD, "BNSD"},
                                                         {FaLayout::TND, "TND"},         {FaLayout::PA_BBND, "PA_BBND"},
-                                                        {FaLayout::PA_BNBD, "PA_BNBD"}, {FaLayout::LSE_BNS, "LSE_BNS"},
-                                                        {FaLayout::LSE_NT, "LSE_NT"}};
+                                                        {FaLayout::PA_BNBD, "PA_BNBD"}, {FaLayout::PA_NZ, "PA_NZ"},
+                                                        {FaLayout::LSE_BNS, "LSE_BNS"}, {FaLayout::LSE_NT, "LSE_NT"}};
 
     if (layout2Str.find(layout) != layout2Str.end()) {
         return layout2Str.at(layout);
