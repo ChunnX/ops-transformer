@@ -368,13 +368,13 @@ static const aclTensor *TransX2Tensor(const aclTensor *x2)
 }
 
 aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor* x1, const aclTensor* x2,
-                                                            const aclTensor* bias, const aclTensor* x1Scale,
-                                                            const aclTensor* x2Scale, const aclTensor* quantScale,
-                                                            int64_t blockSize, const char* group, const char* reduceOp,
-                                                            int64_t commTurn, int64_t streamMode, int64_t groupSize,
-                                                            const char* commMode, aclTensor* output,
-                                                            aclTensor* amaxOutOptional, uint64_t* workspaceSize,
-                                                            aclOpExecutor** executor)
+                                                    const aclTensor* bias, const aclTensor* x1Scale,
+                                                    const aclTensor* x2Scale, const aclTensor* quantScale,
+                                                    int64_t blockSize, const char* group, const char* reduceOp,
+                                                    int64_t commTurn, int64_t streamMode, int64_t groupSize,
+                                                    const char* commMode, aclTensor* output,
+                                                    aclTensor* amaxOutOptional, uint64_t* workspaceSize,
+                                                    aclOpExecutor** executor)
 {
     OP_LOGD("aclnnmatmulReduceScatterV2GetWorkSpaceSizeA5 start, comm_mode is %s.", commMode);
     uint64_t timeStamp = NnopbaseMsprofSysTime();
@@ -525,14 +525,14 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor* x1, cons
             const char* effectiveCommMode = rankSize <= MAX_CCU_RANKSIZE ? "ccu" : "ai_cpu";
             OP_LOGD("[MatmulReduceScatterV2] Commmode is adaptively set to %s.", effectiveCommMode);
             ret = matmulReduceScatterV2GetWorkSpaceSizeA5(x1, x2, bias, x1Scale, x2Scale, quantScale,
-                                                                  blockSize, group, reduceOp, commTurn, streamMode,
-                                                                  groupSize, effectiveCommMode, output,
-                                                                  amaxOutOptional, workspaceSize, executor);
+                                                          blockSize, group, reduceOp, commTurn, streamMode,
+                                                          groupSize, effectiveCommMode, output,
+                                                          amaxOutOptional, workspaceSize, executor);
         } else {
             ret = matmulReduceScatterV2GetWorkSpaceSizeA5(x1, x2, bias, x1Scale, x2Scale, quantScale,
-                                                                  blockSize, group, reduceOp, commTurn, streamMode,
-                                                                  groupSize, commMode, output, amaxOutOptional,
-                                                                  workspaceSize, executor);
+                                                          blockSize, group, reduceOp, commTurn, streamMode,
+                                                          groupSize, commMode, output, amaxOutOptional,
+                                                          workspaceSize, executor);
         }
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         OP_LOGD("[MatmulReduceScatterV2] NpuArch is 2201, support aiv commmode only.");
