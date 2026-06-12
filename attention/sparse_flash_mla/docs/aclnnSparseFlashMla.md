@@ -173,7 +173,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BNBD时：(ori_block_num, ori_block_size, N2, D)</li>
+          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D)，兼容传入PA_BNBD</li>
           <li>layoutKv为BSND时：(B, S2, N2, D)</li>
           <li>layoutKv为TND时：(T2, N2, D)</li>
         </ul>
@@ -189,7 +189,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BNBD时：(cmp_block_num, cmp_block_size, N2, D)</li>
+          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D)，兼容传入PA_BNBD</li>
           <li>layoutKv为BSND时：(B, S3, N2, D)</li>
           <li>layoutKv为TND时：(T3, N2, D)</li>
         </ul>
@@ -218,7 +218,7 @@ aclnnStatus aclnnSparseFlashMla(
           <li>layoutQ为BSND时：(B, S1, N2, K)</li>
           <li>layoutQ为TND时：(T1, N2, K)</li>
         </ul>
-        其中K为TopK稀疏选择数，仅支持512。
+        其中K为TopK稀疏选择数，支持512或1024。
       </td>
       <td>√</td>
     </tr>
@@ -226,7 +226,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>oriBlockTable（aclTensor*）</td>
       <td>输入</td>
       <td>PageAttention中oriKvCache存储使用的block映射表。</td>
-      <td>layoutKv为PA_BNBD时必须传入。第二维长度不小于所有batch中最大的S2对应的block数量。</td>
+      <td>layoutKv为PA_BBND时必须传入。第二维长度不小于所有batch中最大的S2对应的block数量。兼容传入PA_BNBD。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B, ori_max_block_num_per_batch)</td>
@@ -236,7 +236,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpBlockTable（aclTensor*）</td>
       <td>输入</td>
       <td>PageAttention中cmpKvCache存储使用的block映射表。</td>
-      <td>CFA/SCFA模式且layoutKv为PA_BNBD时必须传入。</td>
+      <td>CFA/SCFA模式且layoutKv为PA_BBND时必须传入。兼容传入PA_BNBD。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B, cmp_max_block_num_per_batch)</td>
@@ -256,7 +256,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cuSeqLensOriKv（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中oriKv的有效token数（前缀和形式）。</td>
-      <td>layoutKv为TND时必须传入。当前layoutKv仅支持PA_BNBD，故设置此参数无效。</td>
+      <td>layoutKv为TND时必须传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B+1,)</td>
@@ -266,7 +266,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cuSeqLensCmpKv（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmpKv的有效token数（前缀和形式）。</td>
-      <td>layoutKv为TND且存在cmpKv时必须传入。当前layoutKv仅支持PA_BNBD，故设置此参数无效。</td>
+      <td>layoutKv为TND且存在cmpKv时必须传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B+1,)</td>
@@ -286,7 +286,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>seqUsedOriKv（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中oriKv实际参与运算的token数。</td>
-      <td>layoutKv为PA_BNBD时必须传入。</td>
+      <td>layoutKv为PA_BBND时必须传入。兼容传入PA_BNBD。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -295,21 +295,21 @@ aclnnStatus aclnnSparseFlashMla(
     <tr>
       <td>seqUsedCmpKv（aclTensor*）</td>
       <td>输入</td>
-      <td>占位输入，当前未使用。</td>
-      <td>当前暂不支持，必须传入nullptr。</td>
+      <td>表示不同Batch中cmpKv实际参与运算的token数。</td>
+      <td>可选输入。传入时shape必须为(B,)；未传时使用cmpKv或cuSeqLensCmpKv推导的长度。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>-</td>
+      <td>(B,)</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cmpResidualKv（aclTensor*）</td>
       <td>输入</td>
-      <td>占位输入，当前未使用。</td>
-      <td>当前暂不支持，必须传入nullptr。</td>
+      <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKv[b]恢复压缩前KV长度；未传时余数按0处理。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>-</td>
+      <td>(B,)</td>
       <td>√</td>
     </tr>
     <tr>
@@ -366,7 +366,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>对oriKv的压缩率。</td>
-      <td>仅支持4或128。SWA模式传入1。</td>
+      <td>取值范围为[0, 128]。0和1均表示SWA语义；CFA/SCFA模式支持4或128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -386,7 +386,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
       <td>q和cmpKv计算的mask模式。</td>
-      <td>仅支持3（RightDownCausal模式）。</td>
+      <td>CFA/SCFA模式仅支持3（RightDownCausal模式）。SWA模式下该参数不生效。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -446,7 +446,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>layoutKv（char*）</td>
       <td>输入</td>
       <td>标识输入oriKv和cmpKv的数据排布格式。</td>
-      <td>支持"PA_BNBD"、"BSND"和"TND"，默认值为"PA_BNBD"。</td>
+      <td>支持"PA_BBND"、"BSND"和"TND"，兼容传入"PA_BNBD"，默认值为"BSND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -456,7 +456,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>topkValueMode（int64_t）</td>
       <td>输入</td>
       <td>topk索引取值模式。</td>
-      <td>当前不支持。</td>
+      <td>当前支持1。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -486,7 +486,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>softmaxLse（aclTensor*）</td>
       <td>输出</td>
       <td>softmax的log-sum-exp结果。</td>
-      <td>当前为无效值。</td>
+      <td>returnSoftmaxLse为false时返回占位Tensor；returnSoftmaxLse为true时返回softmax的log-sum-exp结果。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>与q的shape一致（最后一维为1）</td>
@@ -545,7 +545,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>N1不为64。</td>
+      <td>N1不在[1,128]范围内，或N1/N2不是[1,128]范围内的2的幂。</td>
     </tr>
     <tr>
       <td>N2不为1。</td>
@@ -620,20 +620,20 @@ aclnnStatus aclnnSparseFlashMla(
   | N1            | 1到128           | Query头数，必须为2的幂次。                        |
   | N2            | 1            | KV头数仅支持1（共享KV + GQA）。                     |
   | D             | 512          | 每个注意力头的维度仅支持512。                        |
-  | cmpRatio     | 1 / 4 / 128   | 压缩率仅支持1、4或128。                                 |
+  | cmpRatio     | 0 / 1 / 4 / 128 | 0和1均表示SWA语义；CFA/SCFA模式支持4或128。               |
   | oriMaskMode | 4            | 原始KV掩码模式仅支持4（Band模式）。                   |
   | cmpMaskMode | 3            | 压缩KV掩码模式仅支持3（RightDownCausal模式）。        |
   | oriWinLeft  | 127          | 滑动窗口向左扩展仅支持127。                           |
   | oriWinRight | 0            | 滑动窗口向右扩展仅支持0。                             |
   | block_size    | 16的倍数，≤1024 | PageAttention的block_size取值范围。               |
-  | layout组合    | -           | 支持的范围：Q:TND/KV:PA_ND；Q:BSND/KV:PA_ND；Q:TND/KV:TND        |
+  | layout组合    | -           | Q支持BSND/TND；KV支持BSND/TND/PA_BBND，兼容PA_BNBD。        |
 
 - 使用约束
 
-  - 当前暂不支持返回`softmaxLse`，`returnSoftmaxLse`仅支持输入False。
   - 当前暂不支持对`oriKv`进行稀疏计算，设置`oriSparseIndices`无效。
   - 当前所有输入不支持传入空Tensor。
   - `metadata`参数必须传入，由`aclnnSparseFlashMlaMetadata`算子生成，shape固定为(1024,)。
+  - `cmpResidualKv`为主算子入参，不是`aclnnSparseFlashMlaMetadata`入参；传入后用于按`cmp_len * cmpRatio + residual`恢复cmp侧mask使用的压缩前长度。
 
 - 三种模板模式输入要求
 
@@ -646,8 +646,9 @@ aclnnStatus aclnnSparseFlashMla(
 - Layout约束
 
   - 当`layoutQ`为TND时，`cuSeqLensQ`必须传入。
-  - 当`layoutKv`为PA_BNBD时，`seqUsedOriKv`必须传入，`oriBlockTable`必须传入。
+  - 当`layoutKv`为PA_BBND时，`seqUsedOriKv`必须传入，`oriBlockTable`必须传入；传入PA_BNBD按兼容别名处理。
   - 当`layoutKv`为TND时，`cuSeqLensOriKv`必须传入。
+  - 当`layoutKv`为TND且存在`cmpKv`时，`cuSeqLensCmpKv`必须传入。
 
 ## 调用示例
 
@@ -942,7 +943,7 @@ int main()
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
-      seqUsedQ, seqUsedOriKv,
+      seqUsedQ, seqUsedOriKv, nullptr,
       N1, N2, D, B, S1, S2,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,

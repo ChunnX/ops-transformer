@@ -56,7 +56,7 @@ ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
 
     if (returnSoftmaxLse) {
         if (queryShape->GetDimNum() == DIM_NUM_3) {
-            if (inputLayoutOriKey == "PA_BBND") {
+            if (inputLayoutOriKey == "PA_BBND" || inputLayoutOriKey == "PA_BNBD") {
                 softmaxLseShape->SetDimNum(DIM_NUM_3);
                 softmaxLseShape->SetDim(DIM_INDEX_0, oriKvShape->GetDim(DIM_INDEX_2));
                 softmaxLseShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
