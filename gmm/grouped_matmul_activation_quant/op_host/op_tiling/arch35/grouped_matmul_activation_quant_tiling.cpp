@@ -28,9 +28,9 @@ namespace optiling {
 namespace {
 constexpr uint32_t X_INDEX = 0;
 constexpr uint32_t GROUP_LIST_INDEX = 1;
-constexpr uint32_t X_SCALE_INDEX = 2;
-constexpr uint32_t WEIGHT_INDEX = 3;
-constexpr uint32_t WEIGHT_SCALE_INDEX = 4;
+constexpr uint32_t WEIGHT_INDEX = 2;
+constexpr uint32_t WEIGHT_SCALE_INDEX = 3;
+constexpr uint32_t X_SCALE_INDEX = 5;
 constexpr uint32_t Y_INDEX = 0;
 constexpr uint32_t Y_SCALE_INDEX = 1;
 constexpr uint32_t ATTR_INDEX_ACTIVATION_TYPE = 0;
@@ -55,7 +55,6 @@ constexpr uint32_t WEIGHT_NZ_C0_DIM_INDEX = 3;
 constexpr uint32_t WEIGHT_NZ_LAST_DIM_INDEX = 4;
 constexpr uint32_t WEIGHT_NZ_LAST_DIM_FP8 = 32;
 constexpr uint32_t WEIGHT_NZ_C0_DIM = 16;
-constexpr uint32_t N_SIZE_ALIGN = 64;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
 constexpr uint32_t FP8_E5M2_VALUE = 35;
 constexpr uint8_t ROUND_MODE_RINT = 4;
@@ -251,10 +250,6 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
     OP_CHECK_IF(!SetGroupNum(GROUP_LIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
     OP_CHECK_IF(!SetMKN(xStorageShape->GetOriginShape(), wStorageShape->GetOriginShape()),
                 OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-    OP_CHECK_IF(inputParams_.nSize % N_SIZE_ALIGN != 0,
-                OP_LOGE(inputParams_.opName, "N must be a multiple of %u, actual is %u.", N_SIZE_ALIGN,
-                        static_cast<uint32_t>(inputParams_.nSize)),
-                return false);
     inputParams_.aQuantMode = optiling::QuantMode::MX_PERGROUP_MODE;
     inputParams_.bQuantMode = optiling::QuantMode::MX_PERGROUP_MODE;
     inputParams_.isSingleX = true;

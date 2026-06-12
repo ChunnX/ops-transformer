@@ -16,7 +16,7 @@ using namespace ge;
 namespace ops {
 namespace {
 constexpr int64_t X_INDEX = 0;
-constexpr int64_t WEIGHT_SCALE_INDEX = 4;
+constexpr int64_t WEIGHT_SCALE_INDEX = 3;
 constexpr int64_t M_DIM_INDEX = 0;
 constexpr int64_t WEIGHT_SCALE_TRANS_N_DIM_INDEX = 1;
 constexpr int64_t WEIGHT_SCALE_N_DIM_INDEX = 2;
