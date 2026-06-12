@@ -852,7 +852,6 @@ void BSATiling::CalcSplitCoreTilingParams950()
     CalcBaseTileTilingParams950();
     for (uint32_t bIdx = 0; bIdx < batch_; bIdx++) {
         int64_t curQSeqlen = useUniformQSeqlen_ ? maxQSeqlen_ : qSeqLenList_[bIdx];
-        int64_t curKvSeqlen = useUniformKvSeqlen_ ? maxKvSeqlen_ : kvSeqLenList_[bIdx];
         uint32_t curQSTileNum = GetCurQSTileNum950(curQSeqlen);
         uint32_t curBatchTaskNum = curQSTileNum * numHeads_;
         totalTaskNum_ += curBatchTaskNum;
