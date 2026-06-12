@@ -171,4 +171,4 @@ public:
 };
 
 } // namespace optiling
-#endif // SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_TILING_H
+#endif // SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_H

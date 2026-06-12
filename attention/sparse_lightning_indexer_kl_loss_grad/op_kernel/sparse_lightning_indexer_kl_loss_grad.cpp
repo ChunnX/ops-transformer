@@ -91,7 +91,7 @@ sparse_lightning_indexer_kl_loss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k,
 
 #else
 template<int TopKRange, int LayoutT_Q, int LayoutT_KT, int SparseMode, bool HasCuSeqlensQ, bool HasCuSeqlensK, bool HasSequsedQ, 
-         bool HasSequsedK, bool HasCmpResidualK, bool Deterministic>
+        bool HasSequsedK, bool HasCmpResidualK, bool Deterministic>
  __global__ __aicore__ void
 sparse_lightning_indexer_klloss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w, __gm__ uint8_t *sparseIndices, 
                               __gm__ uint8_t *attnSoftmaxL1, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,

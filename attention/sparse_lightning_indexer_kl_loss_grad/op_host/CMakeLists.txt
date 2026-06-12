@@ -17,7 +17,7 @@ endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    set(sparse_lightning_indexer_kl_loss_grad_depends attention/common CACHE INTERNAL "Dependencies for sparse_lightning_indexer_klloss_grad")
+    set(sparse_lightning_indexer_kl_loss_grad_depends attention/common CACHE INTERNAL "Dependencies for sparse_lightning_indexer_kl_loss_grad")
     add_ops_compile_options(
         OP_NAME SparseLightningIndexerKLLossGrad
         COMPUTE_UNIT Ascend950PR_9599
