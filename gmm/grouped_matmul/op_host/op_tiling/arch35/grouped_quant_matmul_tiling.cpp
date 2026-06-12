@@ -1130,8 +1130,15 @@ void GroupedQmmTiling::CalBasicBlock()
 
 bool GroupedQmmTiling::IsBiasInL1() const
 {
-    // 目前仅int8进bias int32需要进L1
-    return inputParams_.hasBias && inputParams_.biasDtype == ge::DT_INT32;
+    // Reserve L1 for bias cases consumed by quant tiling.
+    if (!inputParams_.hasBias) {
+        return false;
+    }
+    const bool isFp4Input =
+        inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2;
+    const bool isMxFp4Fp32Bias = inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE && isFp4Input &&
+                                 inputParams_.biasDtype == ge::DT_FLOAT;
+    return inputParams_.biasDtype == ge::DT_INT32 || isMxFp4Fp32Bias;
 }
 
 void GroupedQmmTiling::InitCommonL1TilingFields()
