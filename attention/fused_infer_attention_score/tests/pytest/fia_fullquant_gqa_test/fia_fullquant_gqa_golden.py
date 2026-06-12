@@ -361,7 +361,7 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
     # 当 out_max 等于 minValue (0xFF7FFFFF) 时，说明该位置被全 mask，输出 inf
     all_masked = (out_max <= minValue.item())  # 使用 <= 更稳健
     lse = torch.where(all_masked, 
-                      torch.full_like(out_max, float('inf')),
+                      torch.zeros_like(out_max),
                       out_max + torch.log(out_sum + EPSILON)).contiguous()
     result = torch.where(all_masked, torch.zeros_like(result), result)
     return result, lse
