@@ -12,10 +12,10 @@ import torch
 import torch.distributed as dist
 from dataclasses import dataclass
 from typing import Optional, Union, Tuple
-from .update_context_by_hccl_channel import update_context_by_hccl_channel
 from .moe_ep_dispatch import npu_moe_ep_dispatch, npu_moe_ep_dispatch_epilogue
 from .moe_ep_combine import npu_moe_ep_combine
-from .update_context import update_context
+from .comm_context import CommContextManager
+from .host_pinned_counter import HostPinnedCounter
 
 _op = torch.ops.npu_ops_transformer
 
@@ -56,16 +56,10 @@ class MoEElasticBuffer:
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
-        self.ccl_buffer_size = IntWrapper()
-        self.ep_world_size = IntWrapper()
-        context_struct_size = (2 + 1024)
-        context_tensor_size = ((context_struct_size * 8) + 3) // 4
-        self.context = torch.zeros(context_tensor_size, dtype=torch.int32).npu()
-        # update_context_by_hccl_channel(self.group_name, self.ep_world_size, self.ccl_buffer_size, self.context)
-
-        # A3打桩
-        self.ep_world_size.value = torch.distributed.get_world_size(group)
-        res = update_context(self.group_name, self.ep_world_size.value, self.ccl_buffer_size, self.context)
+        self.ep_world_size = torch.distributed.get_world_size(group)
+        self._ctx_manager = CommContextManager(self.group_name, self.ep_world_size, backend={"channel"})    #只支持950
+        self.context = self._ctx_manager.create_context()
+        self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
 
         per_slot_bytes = ((hidden * 2 + 511) // 512) * 512
         win_need = self.ep_world_size.value * num_max_tokens_per_rank * per_slot_bytes
@@ -109,7 +103,6 @@ class MoEElasticBuffer:
         hp_addr = 0
         if do_cpu_sync and not cached:
             if self._host_pinned_counter is None:
-                from npu_ops_transformer.ops.host_pinned_counter import HostPinnedCounter
                 self._host_pinned_counter = HostPinnedCounter()
             self._host_pinned_counter.reset()
             hp_addr = self._host_pinned_counter.device_ptr()

@@ -375,11 +375,12 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
 
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
         // 计算目标窗口地址:
-        GM_ADDR remoteStateAddr = (GM_ADDR)(GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + epRankId_ * UB_ALIGN);
+        GM_ADDR remoteStateAddr = (GM_ADDR)(GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + epRankId_ * counterSizeAlign_);
         if (likely(dstRankId != epRankId_)) {
             //printf("START WRITR TOKEN");
             hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteStateAddr,
                             scaleupCounterAddr_ + dstRankId * counterSizeAlign_, UB_ALIGN);
+            hcomm_.Drain(GetCommHandle(mc2Context_, epRankId_, dstRankId));
         } else {    // 本端
             LocalTensor<int32_t> counterLocalTensor = counterBuf_.GetWithOffset<int32_t>(UB_STRIDE, 0);
             DataCopy(counterLocalTensor, scaleupCounterGMTensor_[dstRankId * counterCnt_], UB_STRIDE);
