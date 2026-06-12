@@ -266,6 +266,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                 MoeV3FullLoadDynamicQuant<DTYPE_X> fullLoadOp;
                 fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx,
                                 expertTokensCountOrCumsum, expandedScale,
+                                topkWeight, expandedTopkWeight,
                                 userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
                 fullLoadPipe.Destroy();
@@ -277,6 +278,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                 MoeV3FullLoadDynamicQuant<DTYPE_X, int4b_t> fullLoadOp;
                 fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx,
                                 expertTokensCountOrCumsum, expandedScale,
+                                topkWeight, expandedTopkWeight,
                                 userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
                 fullLoadPipe.Destroy();
