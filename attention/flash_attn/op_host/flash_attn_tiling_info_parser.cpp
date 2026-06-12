@@ -308,7 +308,7 @@ ge::graphStatus FaInfoParser::GetS1Size()
     if (layoutQ_ == FaLayout::TND) {
         OP_CHECK_IF(opParamInfo_.maxSeqlenQ == nullptr,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "max_seqlen_q",
-                "max_seqlen_q cannot be empty when layout_q is TND."),
+                "max_seqlen_q cannot be empty when layout_q is TND"),
             return ge::GRAPH_FAILED);
         s1Size_ = *opParamInfo_.maxSeqlenQ;
     } else {
@@ -334,7 +334,7 @@ ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
     if (layoutKV_ == FaLayout::TND) {
         OP_CHECK_IF(opParamInfo_.maxSeqlenKV == nullptr,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "max_seqlen_kv",
-                "max_seqlen_kv cannot be empty when layout_kv is TND."),
+                "max_seqlen_kv cannot be empty when layout_kv is TND"),
             return ge::GRAPH_FAILED);
         s2Size_ = *opParamInfo_.maxSeqlenKV;
     } else {
@@ -478,7 +478,7 @@ ge::graphStatus FaInfoParser::GetGSize()
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
             ToString(opParamInfo_.key.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key.");
+            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;

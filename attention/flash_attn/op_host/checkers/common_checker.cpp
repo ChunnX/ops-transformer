@@ -48,7 +48,7 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
         supportedQLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q",
-            LayoutToSerialString(faInfo.qLayout).c_str(), "The value of layout_q must be in BNSD/BSND/TND.");
+            LayoutToSerialString(faInfo.qLayout).c_str(), "The value of layout_q must be in BNSD/BSND/TND");
         return ge::GRAPH_FAILED;
     }
 
@@ -62,7 +62,7 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
         supportedOutLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_out",
-            LayoutToSerialString(faInfo.outLayout).c_str(), "The value of layout_out must be in BNSD/BSND/TND.");
+            LayoutToSerialString(faInfo.outLayout).c_str(), "The value of layout_out must be in BNSD/BSND/TND");
         return ge::GRAPH_FAILED;
     }
 
@@ -167,7 +167,7 @@ ge::graphStatus CommonChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
         std::string shapeStr = ToString(faInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
             ToString(faInfo.opParamInfo.key.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(faInfo.opName, "query and key",
-            shapeStr.c_str(), "N of query and key must be greater than or equal to 0.");
+            shapeStr.c_str(), "N of query and key must be greater than or equal to 0");
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(faInfo.n1Size < faInfo.n2Size,
@@ -179,7 +179,7 @@ ge::graphStatus CommonChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
         std::string shapeStr = ToString(faInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
             ToString(faInfo.opParamInfo.key.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(faInfo.opName, "query and key",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key.");
+            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
         return ge::GRAPH_FAILED;
     }
 
@@ -203,31 +203,31 @@ ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
         OP_CHECK_IF(faInfo.qTSize <= 0,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
                 ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-                "T of query must be greater than 0."),
+                "T of query must be greater than 0"),
             return ge::GRAPH_FAILED);
     }
     if (faInfo.kvLayout == FaLayout::TND) {
         OP_CHECK_IF(faInfo.kTSize <= 0,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "key",
                 ToString(faInfo.opParamInfo.key.shape->GetStorageShape()).c_str(),
-                "T of key/value must be greater than 0."),
+                "T of key/value must be greater than 0"),
             return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(faInfo.n1Size <= 0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
             ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-            "N of query must be greater than 0."),
+            "N of query must be greater than 0"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.n2Size <= 0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "key",
             ToString(faInfo.opParamInfo.key.shape->GetStorageShape()).c_str(),
-            "N of key/value must be greater than 0."),
+            "N of key/value must be greater than 0"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.s1Size <= 0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "query",
             ToString(faInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-            "S of query must be greater than 0."),
+            "S of query must be greater than 0"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.s2Size <= 0,
                 OP_LOGE(faInfo.opName, "The axis KV_S must be greater than 0, the current is %ld.", faInfo.s2Size),

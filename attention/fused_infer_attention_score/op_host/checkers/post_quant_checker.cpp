@@ -326,7 +326,7 @@ ge::graphStatus PostQuantChecker::CheckMultiParaQuantOffset2(const FiaTilingInfo
             std::string shapeMsg = std::to_string(quantScale2ShapeSize) + ", " + std::to_string(quantOffset2ShapeSize);
             OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
                 fiaInfo.opName, "quant_scale2 and quant_offset2", shapeMsg.c_str(),
-                "The shape sizes of quant_scale2 and quant_offset2 must be the same.");
+                "The shape sizes of quant_scale2 and quant_offset2 must be the same");
             return ge::GRAPH_FAILED;
         }
     }
