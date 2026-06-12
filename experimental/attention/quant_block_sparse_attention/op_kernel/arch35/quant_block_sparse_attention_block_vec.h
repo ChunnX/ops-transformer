@@ -149,8 +149,8 @@ public:
     TBuf<> preLoopMaxBuf;
     TBuf<> preLoopSumBuf;
     TBuf<> firstLoopSumBuf;
-    TQue<QuePosition::VECIN, 1> qScaleInputQue[2];
-    TQue<QuePosition::VECIN, 1> kScaleInputQue[2];
+    TQue<QuePosition::VECIN, 1> qScaleInputQue;
+    TQue<QuePosition::VECIN, 1> kScaleInputQue;
     TBuf<> vselrIndexesBuf[4];
     TBuf<> mm2InBuf;
     TBuf<> mm2OutBuf;
@@ -348,14 +348,14 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
      
     float descaleQK = 1.0;
     int64_t deScaleQOffset = 0;
-    LocalTensor<float> qScaleUbTensor = qScaleInputQue[runInfo.taskIdMod2].template AllocTensor<float>();
-    LocalTensor<float> kScaleUbTensor = kScaleInputQue[runInfo.taskIdMod2].template AllocTensor<float>();
+    LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
+    LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
     copyQueryScaleGmToUb(qScaleUbTensor, deScaleQGm, runInfo, constInfo);
     copyKeyScaleGmToUb(kScaleUbTensor, deScaleKGm, blockTableGm, runInfo, constInfo);
-    qScaleInputQue[runInfo.taskIdMod2].template EnQue(qScaleUbTensor);
-    qScaleUbTensor = qScaleInputQue[runInfo.taskIdMod2].DeQue<float>();
-    kScaleInputQue[runInfo.taskIdMod2].template EnQue(kScaleUbTensor);
-    kScaleUbTensor = kScaleInputQue[runInfo.taskIdMod2].DeQue<float>();
+    qScaleInputQue.template EnQue(qScaleUbTensor);
+    qScaleUbTensor = qScaleInputQue.DeQue<float>();
+    kScaleInputQue.template EnQue(kScaleUbTensor);
+    kScaleUbTensor = kScaleInputQue.DeQue<float>();
  
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
@@ -676,6 +676,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
     tPipe->InitBuffer(preLoopMaxBuf, 256);
     tPipe->InitBuffer(preLoopSumBuf, 256);
     tPipe->InitBuffer(firstLoopSumBuf, 256);
+    tPipe->InitBuffer(qScaleInputQue, 1, 256);
+    tPipe->InitBuffer(kScaleInputQue, 1, 1024);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
