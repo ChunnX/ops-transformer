@@ -135,7 +135,7 @@ static bool CheckAttr(const char* reduceOp, int64_t streamMode, int64_t antiquan
     return true;
 }
 
-static size_t CeilDiv(size_t x, size_t y)
+static size_t CeilDivide(size_t x, size_t y)
 {
     if (y == 0) {
         return 0;
@@ -147,22 +147,22 @@ static size_t CeilDiv(size_t x, size_t y)
 static bool IsAntiquantScaleShapeValid(
     const aclTensor* scale, const aclTensor* x1, const aclTensor* output, int64_t antiquantGroupSize)
 {
-    const size_t scaleLen = scale->GetViewShape().GetDimNum();
+    const size_t scaleDimsNum = scale->GetViewShape().GetDimNum();
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     op::Shape outShape = output->GetViewShape();
     if (antiquantGroupSize == 0) {
-        if ((scaleLen == DIM_LEN_ONE && (scale->GetViewShape().GetDim(0) == NUM_ONE ||
+        if ((scaleDimsNum == DIM_LEN_ONE && (scale->GetViewShape().GetDim(0) == NUM_ONE ||
                                          scale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) ||
-            (scaleLen == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == NUM_ONE &&
+            (scaleDimsNum == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == NUM_ONE &&
              scale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
             return true;
         }
         return false;
     }
 
-    int64_t kValue = static_cast<int64_t>(CeilDiv(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize));
+    int64_t kValue = static_cast<int64_t>(CeilDivide(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize));
     if (antiquantGroupSize > 0) {
-        if ((scaleLen == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == kValue &&
+        if ((scaleDimsNum == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == kValue &&
              scale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
             return true;
         }
@@ -175,20 +175,20 @@ static bool CheckShape(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* scale, const aclTensor* offset,
     const aclTensor* x3, const aclTensor* output, int64_t antiquantGroupSize)
 {
-    bool isWeightNZ = MatmulAllReduceIsWeightNZFormat(x2);
+    bool isWeightNZFmt = MatmulAllReduceIsWeightNZFormat(x2);
     OP_CHECK_MIN_DIM(x1, TWO_DIMS, return false);
     OP_CHECK_MAX_DIM(x1, THREE_DIMS, return false);
-    OP_LOGD("MatmulAllReduce, CheckShape isWeightNZ is %d", isWeightNZ);
-    if (isWeightNZ) {
+    OP_LOGD("MatmulAllReduce, CheckShape isWeightNZFmt is %d", isWeightNZFmt);
+    if (isWeightNZFmt) {
         return true;
     }
-    uint64_t weightDim = TWO_DIMS;
-    OP_LOGD("MatmulAllReduce, CheckShape weightDim is %lu", weightDim);
+    uint64_t weightDimSize = TWO_DIMS;
+    OP_LOGD("MatmulAllReduce, CheckShape weightDimSize is %lu", weightDimSize);
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
-    if (x2->GetViewShape().GetDimNum() != weightDim) {
+    if (x2->GetViewShape().GetDimNum() != weightDimSize) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnWeightQuantMatmulAllReduceV2", "x2",
             (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
-            ("The shape of x2 must be " + std::to_string(weightDim) + "D.").c_str());
+            ("The shape of x2 must be " + std::to_string(weightDimSize) + "D.").c_str());
         return false;
     }
     uint64_t x2Dim0 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ?
@@ -257,7 +257,7 @@ static bool CheckShape(
                 op::ToString(scale->GetViewShape()).GetString());
         }
         if (antiquantGroupSize != 0) {
-            size_t kValueGroup = CeilDiv(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize);
+            size_t kValueGroup = CeilDivide(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize);
             OP_LOGE(
                 ACLNN_ERR_PARAM_INVALID,
                 "Expected shape of antiquantScale to be [%zu,%ld] for per-group calculation, but got scale shape: %s.",
@@ -272,16 +272,16 @@ static bool CheckShape(
 }
 
 namespace ContiguousCheckImpl {
-static bool IsAffineInconsistent(const aclTensor *affineTensor, bool transposeX2)
+static bool IsAffineMismatch(const aclTensor *affineTensor, bool transposeX2)
 {
     if (affineTensor == nullptr) {
         return false;
     }
-    const auto affineTensorShape = affineTensor->GetViewShape();
-    if (affineTensorShape.GetDimNum() != DIM_LEN_TWO) {
+    const auto affineShape = affineTensor->GetViewShape();
+    if (affineShape.GetDimNum() != DIM_LEN_TWO) {
         return false;
     }
-    if (affineTensorShape.GetDim(0) == 1 || affineTensorShape.GetDim(1) == 1) {
+    if (affineShape.GetDim(0) == 1 || affineShape.GetDim(1) == 1) {
         return false;
     }
     return (transposeX2 && IsContiguous(affineTensor)) || (!transposeX2 && !IsContiguous(affineTensor));
@@ -291,16 +291,16 @@ static bool CheckContiguous(const aclTensor *x2, const aclTensor *scale, const a
 {
     // check x2(weight) is transposed, scale and offset should also be transposed
     const bool transposeX2 = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
-    const bool isNpuArch3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
-    const bool isASCEND910B = (op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B);
-    if ((!isNpuArch3510) && (!isASCEND910B)) {
+    const bool isDav3510Arch = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
+    const bool isAscend910BSoc = (op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B);
+    if ((!isDav3510Arch) && (!isAscend910BSoc)) {
         return true;
     }
-    if (IsAffineInconsistent(scale, transposeX2)) {
+    if (IsAffineMismatch(scale, transposeX2)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When x2 is contiguous or transpose, scale should be consistent with it.");
         return false;
     }
-    if (IsAffineInconsistent(offset, transposeX2)) {
+    if (IsAffineMismatch(offset, transposeX2)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When x2 is contiguous or transpose, offset should be consistent with it.");
         return false;
     }
