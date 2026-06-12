@@ -144,6 +144,19 @@ inline std::string ToString(const std::vector<const gert::Shape *> &v)
     return oss.str();
 }
 
+inline std::string ToStringRaw(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    auto v = ToVector(shape);
+    if (v.size() > 0) {
+        for (size_t i = 0; i < v.size() - 1; ++i) {
+            oss << v[i] << ", ";
+        }
+        oss << v[v.size() - 1];
+    }
+    return oss.str();
+}
+
 inline std::string ToString(const gert::Shape &shape)
 {
     return ToString(ToVector(shape));
