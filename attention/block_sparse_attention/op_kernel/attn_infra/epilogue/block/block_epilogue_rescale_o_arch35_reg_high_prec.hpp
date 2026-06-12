@@ -251,8 +251,10 @@ public:
         uint32_t row, uint32_t colStride,
         uint32_t colTail, uint32_t vlElemNum)
     {
+        static_assert(dRegSplitStages == DRegSplitStages::ONE || dRegSplitStages == DRegSplitStages::TWO,
+                      "RescaleFunc only supports ONE Or TWO stages, please use the specialized versions.");
     }
-    
+
     template <>
     __simd_vf__ inline void RescaleFunc<DRegSplitStages::ONE>(
         __ubuf__ ElementOTmp *goUb, __ubuf__ ElementOTmp *loUb, __ubuf__ ElementOTmp *dmUb,
@@ -319,6 +321,8 @@ public:
         uint32_t row, uint32_t colStride,
         uint32_t colTail, uint32_t vlElemNum)
     {
+        static_assert(dRegSplitStages == DRegSplitStages::ONE || dRegSplitStages == DRegSplitStages::TWO,
+                      "RescaleFuncLastNotFirst only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
     template <>
@@ -402,6 +406,8 @@ public:
         uint32_t row, uint32_t colStride,
         uint32_t colTail, uint32_t vlElemNum)
     {
+        static_assert(dRegSplitStages == DRegSplitStages::ONE || dRegSplitStages == DRegSplitStages::TWO,
+                      "DivFuncLastAndFirst only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
     template <>

@@ -282,6 +282,13 @@ ge::graphStatus BSATiling::CheckQKVDimVal(
             "but got kHeads %u, vHeads %u, kvHeads(attr) %u.", kHeads, vHeads, kvHeads_);
         return ge::GRAPH_FAILED;
     }
+    if (numHeads_ % kvHeads_ != 0) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "The query's headNum must be a multiple of the key/value's headNum, but now the query's headNum is %u "
+                "and the key/value's headNum is %u.",
+                numHeads_, kvHeads_);
+        return ge::GRAPH_FAILED;
+    }
     // temporary regulations of D
     if ((embeddingSize_ != VALID_EMBEDDING_SIZE_128) && (embeddingSize_ != VALID_EMBEDDING_SIZE_64)) {
         OP_LOGE(bsaContext->GetNodeName(),
@@ -456,6 +463,10 @@ ge::graphStatus BSATiling::ParseSeqlensInTND(gert::TilingContext *bsaContext)
     }
     qSeqLenList_ = actualSeqLengths->GetData<int64_t>();
     kvSeqLenList_ = actualSeqLengthsKv->GetData<int64_t>();
+    for (uint32_t bIdx = 0; bIdx < batch_; bIdx++) {
+        maxQSeqlen_ = (qSeqLenList_[bIdx] > maxQSeqlen_) ? qSeqLenList_[bIdx] : maxQSeqlen_;
+        maxKvSeqlen_ = (kvSeqLenList_[bIdx] > maxKvSeqlen_) ? kvSeqLenList_[bIdx] : maxKvSeqlen_;
+    }
     useUniformQSeqlen_ = false;
     useUniformKvSeqlen_ = false;
     return ge::GRAPH_SUCCESS;
@@ -484,13 +495,13 @@ ge::graphStatus BSATiling::ParseSeqlensInNonTND(gert::TilingContext *bsaContext)
             if (qSeqLenList_[i] > maxQSeqlen_) {
                 OP_LOGE(bsaContext->GetNodeName(),
                         "The actualSeqLength of each batch must be less than or equal to the maxSeqLength. The "
-                        "maxSeqLength is %u, but the value at index %u of the actualSeqLengths is %ld",
+                        "maxSeqLength is %u, but the value at index %u of the actualSeqLengths is %ld.",
                         maxQSeqlen_, i, qSeqLenList_[i]);
             }
             if (kvSeqLenList_[i] > maxKvSeqlen_) {
                 OP_LOGE(bsaContext->GetNodeName(),
                         "The actualSeqLengthKv of each batch must be less or equal to than the maxSeqLengthKv. The "
-                        "maxSeqLengthKv is %u, but the value at index %u of the actualSeqLengthsKv is %ld",
+                        "maxSeqLengthKv is %u, but the value at index %u of the actualSeqLengthsKv is %ld.",
                         maxQSeqlen_, i, qSeqLenList_[i]);
             }
         }
@@ -536,20 +547,27 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
         OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have 4 dims.");
         return ge::GRAPH_FAILED;
     }
-    uint32_t bsmBatch = blockSparseMaskShape->GetStorageShape().GetDim(DIM_0);  // batch_size
-    uint32_t bsmNumHead = blockSparseMaskShape->GetStorageShape().GetDim(DIM_1);  // num_heads
-    maxQBlockNum_ = blockSparseMaskShape->GetStorageShape().GetDim(DIM_2);
-    maxKvBlockNum_ = blockSparseMaskShape->GetStorageShape().GetDim(DIM_3);
-    if (bsmBatch != batch_) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have consistent batch with context,"
-            "but got BlockSparseMask batch(dim0): %u, context batch: %u.", bsmBatch, batch_);
-        return ge::GRAPH_FAILED;        
+
+    uint32_t blockSparseMaskBatch = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_0));
+    uint32_t blockSparseMaskNumHeads = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_1));
+    uint32_t blockSparseMaskQBlockNum = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_2));
+    uint32_t blockSparseMaskKVBlockNum = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_3));
+
+    uint32_t maxQBlockNum = CeilDiv(maxQSeqlen_, blockShapeX_);
+    uint32_t maxKVBlockNum = CeilDiv(maxKVSeqlen_, blockShapeY_);
+    std::string shapeDescription = "(batch, numHeads, maxQBlockNum, maxKVBlockNum)";
+
+    if (blockSparseMaskBatch != batch_ || blockSparseMaskNumHeads != numHeads_ ||
+        blockSparseMaskQBlockNum != maxQBlockNum || blockSparseMaskKVBlockNum != maxKVBlockNum) {
+        OP_LOGE(
+            bsaContext->GetNodeName(),
+            "The shape of blockSparseMask must be consistent with %s. The expected shape is (%u, %u, %u, %u), but the "
+            "current shape is (%u, %u, %u, %u).",
+            shapeDescription.c_str(), batch_, numHeads_, maxQBlockNum, maxKVBlockNum, blockSparseMaskBatch,
+            blockSparseMaskNumHeads, blockSparseMaskQBlockNum, blockSparseMaskKVBlockNum);
+        return ge::GRAPH_FAILED;
     }
-    if (bsmNumHead != numHeads_) {
-        OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have consistent numHeads with context,"
-            "but got BlockSparseMask numHeads(dim1): %u, context numHeads: %u.", bsmNumHead, numHeads_);
-        return ge::GRAPH_FAILED; 
-    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -697,12 +715,12 @@ ge::graphStatus BSATiling::CheckBlockShapeQuantConstraint(gert::TilingContext *b
         constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128;
         constexpr int64_t SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y = 256;
         if (blockShapeX_ != SUPPORTED_BLOCK_SHAPE_X) {
-            OP_LOGE(bsaContext->GetNodeName(), "BlockShape element 0 must be consistent with %ld, but now it is %ld",
+            OP_LOGE(bsaContext->GetNodeName(), "BlockShape element 0 must be consistent with %ld, but now it is %ld.",
                     SUPPORTED_BLOCK_SHAPE_X, blockShapeX_);
             return ge::GRAPH_FAILED;
         }
         if (blockShapeY_ % SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y != 0) {
-            OP_LOGE(bsaContext->GetNodeName(), "BlockShape element 1 must be a multiple of %ld, but now it is %ld",
+            OP_LOGE(bsaContext->GetNodeName(), "BlockShape element 1 must be a multiple of %ld, but now it is %ld.",
                     SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y, blockShapeY_);
             return ge::GRAPH_FAILED;
         }
@@ -735,26 +753,20 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
 {
     auto attrs = bsaContext->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(bsaContext, attrs);
-    if (attrs->GetAttrPointer<uint32_t>(NUM_KEY_VALUE_HEADS_INDEX) == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "numKeyValueHeads is null");
+
+    // 获取numKeyValueHeads参数
+    kvHeads_ = static_cast<uint32_t>(*attrs->GetAttrPointer<int64_t>(NUM_KEY_VALUE_HEADS_INDEX));
+    if (kvHeads_ == 0) {
+        OP_LOGE(bsaContext->GetNodeName(), "Attr numKeyValueHeads must not be 0.");
         return ge::GRAPH_FAILED;
     }
-    kvHeads_ = *attrs->GetAttrPointer<uint32_t>(NUM_KEY_VALUE_HEADS_INDEX);
-    
-    if (attrs->GetAttrPointer<float>(SCALE_VALUE_INDEX) == nullptr) {
-        scaleValue_ = 1.0f / std::sqrt(static_cast<float>(embeddingSize_));
-    } else {
-        scaleValue_ = *attrs->GetAttrPointer<float>(SCALE_VALUE_INDEX);
-    }
-    
-    if (attrs->GetAttrPointer<uint32_t>(MASK_TYPE_INDEX) != nullptr) {
-        maskType_ = *attrs->GetAttrPointer<uint32_t>(MASK_TYPE_INDEX);
-    }
-    
+    // 获取scaleValue参数
+    scaleValue_ = *attrs->GetAttrPointer<float>(SCALE_VALUE_INDEX);
+    // 获取maskType参数
+    maskType_ = static_cast<uint32_t>(*attrs->GetAttrPointer<int64_t>(MASK_TYPE_INDEX));
     // 获取innerPrecise参数
-    if (attrs->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX) != nullptr) {
-        innerPrecise_ = *attrs->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX);
-    }
+    innerPrecise_ = static_cast<uint32_t>(*attrs->GetAttrPointer<int64_t>(INNER_PRECISE_INDEX));
+
     if (socVer_ == SOC_VER_950_CODE) {
         if (innerPrecise_ != BsaInnerCalcPrec::LOW_HIGH_MIXED) {
             OP_LOGE(bsaContext->GetNodeName(), "On chip 950, only innerPrec = 4 is supported, "
@@ -790,10 +802,7 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
     auto softmaxLsePtr = attrs->GetAttrPointer<int64_t>(SOFTMAX_LSE_FLAG_INDEX);
-    if (softmaxLsePtr == nullptr) {
-        OP_LOGE(bsaContext->GetNodeName(), "Attr softmaxLseFlag is nullptr.");
-        return ge::GRAPH_FAILED;
-    } else if (*softmaxLsePtr == LSE_OUT) {
+    if (*softmaxLsePtr == LSE_OUT) {
         softmaxLseFlag_ = true;
     } else if (*softmaxLsePtr == LSE_NO_OUT) {
         softmaxLseFlag_ = false;
@@ -801,7 +810,7 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "Attr softmaxLseFlag must be 0 or 1, but got: %ld.", *softmaxLsePtr);
         return ge::GRAPH_FAILED;
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -847,8 +856,6 @@ void BSATiling::CalcSplitCoreTilingParams950()
         if (bIdx == 0) {
             firstBatchTaskNum_ = curBatchTaskNum;
         }
-        maxQSeqlen_ = (curQSeqlen > maxQSeqlen_) ? curQSeqlen : maxQSeqlen_;
-        maxKvSeqlen_ = (curKvSeqlen > maxKvSeqlen_) ? curKvSeqlen : maxKvSeqlen_;
     }
     blockDim_ = aicNum_;
     // mask2idx split core
@@ -864,10 +871,6 @@ ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
     // 计算总的Q块数量和最大KV块数量
     totalQBlocks_ = 0;
 
-    if (kvHeads_ == 0) {
-        OP_LOGE(bsaContext->GetNodeName(), "kvHeads_ is 0, cannot calculate groupSize");
-        return ge::GRAPH_FAILED;
-    }
     if (batch_ == 0) {
         OP_LOGE(bsaContext->GetNodeName(), "batch_ is 0 in CalculateTaskSplit");
         return ge::GRAPH_FAILED;
@@ -1071,7 +1074,7 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
      * - FP16, TND, TND, NoCache, Float, NoMask = 9000000030000002
      */
     
-    uint64_t tilingKey = 9000000000000000ULL;  // RFA基础值（Operator Category = 900）
+    uint64_t tilingKey = 9000000000000000ULL;  // BSA基础值（Operator Category = 900）
     if (socVer_ == SOC_VER_950_CODE) {
         tilingKey = 9050000000000000ULL;
     }
