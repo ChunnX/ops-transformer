@@ -187,14 +187,17 @@ static ge::graphStatus GetValueD(bool isPageAttention, int64_t& valueD,
         } else if (valueShape->GetDimNum() == LAYOUT_PA_NZ_DIM_NUMS) {
             valueD = (*valueShape)[FIA_LAYOUT_DIM2] * (*valueShape)[FIA_LAYOUT_DIM4];
         } else {
-            OP_LOGE("FusedInferAttentionScore", "when Page Attention enabled, value's dim should be 3/4/5, but got %zu.",
-                valueShape->GetDimNum());
+            std::string valueDimStr = std::to_string(valueShape->GetDimNum()) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FusedInferAttentionScore", "value", valueDimStr.c_str(),
+                "When Page Attention enabled, the shape dim of value should be 3D, 4D or 5D");
             return ge::GRAPH_FAILED;
         }
     } else { // 非PA场景
         if (valueShape->GetDimNum() != queryShape->GetDimNum()) {
-            OP_LOGE("FusedInferAttentionScore", "when Page Attention not enabled, value'dim(%zu) should equal to query's dim(%zu)!",
-                valueShape->GetDimNum(), queryShape->GetDimNum());
+            std::string dimMsg = std::to_string(valueShape->GetDimNum()) + " and " +
+                std::to_string(queryShape->GetDimNum());
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("FusedInferAttentionScore", "value and query", dimMsg.c_str(),
+                "When Page Attention not enabled, the shape dim of value should be the same as query");
             return ge::GRAPH_FAILED;
         }
         if (queryLayout == "BSH") {

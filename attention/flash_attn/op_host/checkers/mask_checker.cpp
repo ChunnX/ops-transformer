@@ -37,10 +37,8 @@ ge::graphStatus MaskChecker::CheckSingleParaMaskMode(const FaTilingInfo &faInfo)
                                                static_cast<int64_t>(MaskMode::CAUSAL),
                                                static_cast<int64_t>(MaskMode::BAND)};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(static_cast<int64_t>(faInfo.maskMode), maskModeList),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "mask_mode",
-                    std::to_string(faInfo.maskMode).c_str(),
-                    "The value of mask_mode can only be 0/3/4"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "mask_mode", std::to_string(faInfo.maskMode).c_str(), "0 or 3"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -52,12 +50,12 @@ ge::graphStatus MaskChecker::CheckSingleParaAttnMask(const FaTilingInfo &faInfo)
     }
 
     const gert::CompileTimeTensorDesc *attnMaskDesc = faInfo.opParamInfo.attnMask.desc;
-    OP_CHECK_IF(attnMaskDesc == nullptr, OP_LOGE(faInfo.opName, "attn_mask desc is null pointer!"),
+    OP_CHECK_IF(attnMaskDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "TensorDesc of attn_mask"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(attnMaskDesc->GetDataType() != ge::DT_INT8,
-                OP_LOGE(faInfo.opName, "attn_mask dtype must be INT8, but got %s",
-                        DataTypeToSerialString(attnMaskDesc->GetDataType()).c_str()),
+                OP_LOGE_FOR_INVALID_DTYPE(faInfo.opName, "attn_mask",
+                                          Ops::Base::ToString(attnMaskDesc->GetDataType()).c_str(), "INT8"),
                 return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(attnMaskDesc, ATTN_MASK_NAME)) {
@@ -65,24 +63,29 @@ ge::graphStatus MaskChecker::CheckSingleParaAttnMask(const FaTilingInfo &faInfo)
     }
 
     uint32_t dimNum = attnMaskTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != 2, OP_LOGE(faInfo.opName, "attn_mask dim num must be 2, but got %u", dimNum),
+    OP_CHECK_IF(dimNum != 2,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "attn_mask", (std::to_string(dimNum) + "D").c_str(), "2D"),
                 return ge::GRAPH_FAILED);
 
     int64_t dim0 = attnMaskTensor->GetStorageShape().GetDim(0);
     int64_t dim1 = attnMaskTensor->GetStorageShape().GetDim(1);
-    OP_CHECK_IF(dim0 != SPARSE_OPTIMIZE_ATTENTION_SIZE || dim1 != SPARSE_OPTIMIZE_ATTENTION_SIZE,
-                OP_LOGE(faInfo.opName, "attn_mask shape must be (%u, %u), but got (%d, %d)",
-                        SPARSE_OPTIMIZE_ATTENTION_SIZE, SPARSE_OPTIMIZE_ATTENTION_SIZE, dim0, dim1),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        dim0 != SPARSE_OPTIMIZE_ATTENTION_SIZE || dim1 != SPARSE_OPTIMIZE_ATTENTION_SIZE,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "attn_mask",
+                                              ("[" + std::to_string(dim0) + ", " + std::to_string(dim1) + "]").c_str(),
+                                              "The shape of attn_mask must be [256, 256]"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MaskChecker::CheckSingleParaWindowParams(const FaTilingInfo &faInfo)
 {
-    OP_CHECK_IF(faInfo.winLeft < -1, OP_LOGE(faInfo.opName, "win_left(%ld) must be >= -1.", faInfo.winLeft),
+    OP_CHECK_IF(faInfo.winLeft < -1,
+                OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "win_left", std::to_string(faInfo.winLeft).c_str(), ">= -1"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(faInfo.winRight < -1, OP_LOGE(faInfo.opName, "win_right(%ld) must be >= -1.", faInfo.winRight),
+    OP_CHECK_IF(faInfo.winRight < -1,
+                OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "win_right", std::to_string(faInfo.winRight).c_str(), ">= -1"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -103,28 +106,34 @@ ge::graphStatus MaskChecker::CheckParaExistence(const FaTilingInfo &faInfo)
 
     if (faInfo.maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
         OP_CHECK_IF(attnMaskTensor != nullptr,
-                    OP_LOGE(faInfo.opName, "attn_mask is not supported when mask_mode=0 (no mask mode)."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "attn_mask", "not empty",
+                                                          "When mask_mode=0 (no mask mode), attn_mask must be empty"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            faInfo.winLeft != -1,
-            OP_LOGE(faInfo.opName, "win_left must be -1 when mask_mode=0 (no mask mode), but got %ld.", faInfo.winLeft),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(faInfo.winLeft != -1,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "win_left",
+                                                          std::to_string(faInfo.winLeft).c_str(),
+                                                          "When mask_mode=0 (no mask mode), win_left must be -1"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(faInfo.winRight != -1,
-                    OP_LOGE(faInfo.opName, "win_right must be -1 when mask_mode=0 (no mask mode), but got %ld.",
-                            faInfo.winRight),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "win_right",
+                                                          std::to_string(faInfo.winRight).c_str(),
+                                                          "When mask_mode=0 (no mask mode), win_right must be -1"),
                     return ge::GRAPH_FAILED);
     }
     if (faInfo.maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
         OP_CHECK_IF(attnMaskTensor == nullptr,
-                    OP_LOGE(faInfo.opName, "attn_mask must be provided when mask_mode=3 (causal mode)."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "attn_mask", "empty",
+                                                          "When mask_mode=3 (causal mode), attn_mask must be provided"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            faInfo.winLeft != -1,
-            OP_LOGE(faInfo.opName, "win_left must be -1 when mask_mode=3 (causal mode), but got %ld.", faInfo.winLeft),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(faInfo.winLeft != -1,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "win_left",
+                                                          std::to_string(faInfo.winLeft).c_str(),
+                                                          "When mask_mode=3 (causal mode), win_left must be -1"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(faInfo.winRight != -1,
-                    OP_LOGE(faInfo.opName, "win_right must be -1 when mask_mode=3 (causal mode), but got %ld.",
-                            faInfo.winRight),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "win_right",
+                                                          std::to_string(faInfo.winRight).c_str(),
+                                                          "When mask_mode=3 (causal mode), win_right must be -1"),
                     return ge::GRAPH_FAILED);
     }
     if (faInfo.maskMode == static_cast<int64_t>(MaskMode::BAND)) {
