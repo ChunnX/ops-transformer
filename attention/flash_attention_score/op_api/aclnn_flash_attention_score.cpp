@@ -1210,7 +1210,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
         return ACLNN_SUCCESS;
     }
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The value of input_layout must be TND");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1718,7 +1719,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
         return ACLNN_SUCCESS;
     }
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The value of input_layout must be TND");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1826,7 +1828,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
     }
 
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The value of input_layout must be TND");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1933,7 +1936,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
         return ACLNN_SUCCESS;
     }
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The value of input_layout must be TND");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
