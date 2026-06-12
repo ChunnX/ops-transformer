@@ -154,7 +154,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeFirst(uint64_
     LocalTensor<U> gradHPreLocal = gradHPreBuf_.Get<U>();
     LocalTensor<U> gradXFromHinLocal = gradXFromHinBuf_.Get<U>();
 
-    Duplicate(gradXFromHinLocal, float(0), bsLen * n_);
+    Duplicate(gradHPreLocal, float(0), bsLen * n_);
 
     uint64_t cLoopDataLen = cLoopDataLen_;
     uint64_t cLoopNum = ops::CeilDiv(c_, cLoopDataLen);
@@ -167,10 +167,8 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeFirst(uint64_
     uint64_t xOffset = bsOffset * n_ * c_;
     uint64_t gradHinOffset = bsOffset * c_;
 
-    CopyIn(hPreLocal, hPreGm_[hPreOffset], 1, bsLen * n_, 0, 0);
-    CopyIn(hcBeforeNormLocal, hcBeforeNormGm_[hcBeforeOffset], 1, bsLen * k_, 0, 0);
-    CopyIn(invRmsLocal, invRmsGm_[invRmsOffset], 1, bsLen, 0, 0);
-    CopyIn(gradHPostLocal, gradHPostGm_[gradHPostOffset], 1, bsLen * n_, 0, 0);
+    CopyIn(hPreLocal, hPreGm_[hPreOffset], bsLen, n_, 0, 0);
+
     uint32_t vfLen = V_REG_SIZE / sizeof(U);
 
     for (uint64_t cIdx = 0; cIdx < cLoopNum; cIdx++) {
@@ -179,7 +177,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeFirst(uint64_
         uint64_t gradHinStartOft = gradHinOffset + cIdx * cLoopDataLen;
         CopyIn(xLocal, xGm_[xStartOft], bsLen * n_, cLen, 0, (c_ - cLoopDataLen) * sizeof(X_T));
         CopyIn(gradHinLocal, gradHinGm_[gradHinStartOft], bsLen, cLen, 0, (c_ - cLoopDataLen) * sizeof(GRADHIN_T));
-        ComputeProcess1(xLocal, xFp32Local, hPreLocal, gradHPreLocal, gradXFromHinLocal, bsLen, cLen, n_);
+        ComputeProcess1(xLocal, xFp32Local, hPreLocal, gradHinLocal, gradHPreLocal, gradXFromHinLocal, bsLen, cLen, n_, c_);
+
+        CopyOut(xFp32Ws_[cIdx * cLoopDataLen], xFp32Local, bsLen * n_, cLen, 0, (c_ - cLoopDataLen) * sizeof(U));       //搬运x_f32到workspace
 /*      
         DataCopy(UB, x);
         DataCopy(UB, grad_h_in);
