@@ -72,7 +72,7 @@ std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
         // 不返回时tensor传空
         softmax_lse_size = {};
     }
-    softmax_lse = at::empty(softmax_lse_size, q.options().dtype(torch::kFloat32));
+    softmax_lse = npu_preparation::apply_tensor_without_format(softmax_lse_size, q.options().dtype(torch::kFloat32));
  
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
 }
