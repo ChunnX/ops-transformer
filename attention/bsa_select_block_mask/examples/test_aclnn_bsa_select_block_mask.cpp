@@ -109,7 +109,7 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     int32_t batch = 1;
-    int32_t numHeads = 8;
+    int32_t numHeads = 1;
     int32_t qSeqlen = 4096;
     int32_t kvSeqlen = 4096;
     int32_t headDim = 128;
