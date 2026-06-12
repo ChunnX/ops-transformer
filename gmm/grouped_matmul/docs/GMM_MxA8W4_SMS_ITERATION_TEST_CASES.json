@@ -1,0 +1,379 @@
+{
+  "precondition": "工具：ttk/Aclnn测试框架\n软件包：最新主线包+本迭代代码的patch包",
+  "test_item": "GMM MxA8W4 单多单场景支持",
+  "source": "GMM MxA8W4 单多单场景支持_SRS / STC",
+  "owner": "待定",
+  "execution_status": "未执行",
+  "cases": [
+    {
+      "id": "ST001",
+      "category": "ST-白盒",
+      "importance": "P0",
+      "input": "M=32, K=64, N=128, groupNum=2；特殊要求：无bias，groupListType=1，splitItem=3",
+      "steps": "1. 构造x单tensor、weight/antiquantScale各2个tensor、y单tensor；\n2. 使用ttk/Aclnn测试框架执行aclnn grouped_matmul；\n3. 检查输出与golden及TilingKey。",
+      "expected": "执行成功，输出与golden对齐，TilingKey中IS_SINGLE_MULTI_SINGLE为1。",
+      "remark": "覆盖单多单最小happy path。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证无bias单多单最小主路径"
+    },
+    {
+      "id": "ST002",
+      "category": "ST-白盒",
+      "importance": "P0",
+      "input": "M=64, K=64, N=128, groupNum=2；特殊要求：bias list size=2",
+      "steps": "1. 构造包含bias[0..1]的单多单输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查输出与含bias golden。",
+      "expected": "执行成功，每组bias生效，输出与golden对齐。",
+      "remark": "覆盖bias多tensor存在路径。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证bias多tensor单多单路径"
+    },
+    {
+      "id": "ST003",
+      "category": "ST-白盒",
+      "importance": "P1",
+      "input": "M=64, K=128, N=128, groupNum=2；特殊要求：splitItem=2",
+      "steps": "1. 构造splitItem=2且y为单tensor的输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查host识别和输出。",
+      "expected": "Host识别为单多单，执行成功，输出与golden对齐。",
+      "remark": "覆盖splitItem=2通路。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证splitItem=2下y单tensor通路"
+    },
+    {
+      "id": "ST004",
+      "category": "ST-白盒",
+      "importance": "P1",
+      "input": "M=96, K=128, N=128, groupNum=3；特殊要求：groupListType=0，groupList=[16,64,96]",
+      "steps": "1. 按累计offset构造groupList和输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查各group输出。",
+      "expected": "每组M大小按offset差值解析，输出与golden对齐。",
+      "remark": "覆盖累计offset语义。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证groupListType=0累计offset切分"
+    },
+    {
+      "id": "ST005",
+      "category": "ST-白盒",
+      "importance": "P0",
+      "input": "M=32, K=64, N=128, groupNum=2；特殊要求：检查TilingKey",
+      "steps": "1. 构造MxA8W4单多单合法输入；\n2. 运行tiling并查看日志或断点；\n3. 检查isSingleMultiSingle和模板参数。",
+      "expected": "tilingKeyConfigure.isSingleMultiSingle为true，IS_SINGLE_MULTI_SINGLE为1，模板组合合法。",
+      "remark": "覆盖TilingKey白盒检查。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证单多单TilingKey生成"
+    },
+    {
+      "id": "ST006",
+      "category": "ST-白盒",
+      "importance": "P0",
+      "input": "M=128, K=128, N=128, groupNum=4；特殊要求：无bias，weight[g]填不同模式",
+      "steps": "1. 构造4组可区分weight和antiquantScale；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查各group输出是否使用对应tensor。",
+      "expected": "执行成功，每组使用对应weight[g]/antiquantScale[g]，无串组。",
+      "remark": "覆盖kernel按tensor list切换地址。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证无bias多group地址切换"
+    },
+    {
+      "id": "ST007",
+      "category": "ST-白盒",
+      "importance": "P0",
+      "input": "M=128, K=128, N=128, groupNum=4；特殊要求：bias[g]填不同偏置",
+      "steps": "1. 构造4组可区分bias；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查每组bias贡献。",
+      "expected": "执行成功，每组使用对应bias[g]，输出与golden对齐。",
+      "remark": "覆盖bias地址按group切换。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证有bias多group地址切换"
+    },
+    {
+      "id": "ST008",
+      "category": "ST-白盒",
+      "importance": "P0",
+      "input": "M=48, K=64, N=128, groupNum=2；特殊要求：最后一组M较小",
+      "steps": "1. 构造最后一组M较小的单多单输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查执行日志、输出和内存访问。",
+      "expected": "最后一组后不访问nextGroupIdx，执行成功，输出正确。",
+      "remark": "覆盖末组不越界。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证最后一组地址更新不越界"
+    },
+    {
+      "id": "ST009",
+      "category": "ST-白盒",
+      "importance": "P1",
+      "input": "M=128, K=128, N=384, groupNum=2；特殊要求：N尾块resplit",
+      "steps": "1. 构造N尾块场景；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查尾块输出。",
+      "expected": "尾块输出正确，resplit参数合法。",
+      "remark": "覆盖N尾块resplit。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证N尾块resplit输出"
+    },
+    {
+      "id": "ST010",
+      "category": "ST-白盒",
+      "importance": "P1",
+      "input": "M=96, K=128, N=128, groupNum=3；特殊要求：各group M不同，perTokenScale分区可区分",
+      "steps": "1. 构造perTokenScale不同M区间值；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查每组perTokenScale使用区间。",
+      "expected": "perTokenScale按x的M方向切分使用，输出与golden对齐。",
+      "remark": "覆盖perTokenScale单tensor推进。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证perTokenScale单tensor推进"
+    },
+    {
+      "id": "STG001",
+      "category": "ST-泛化",
+      "importance": "P2",
+      "input": "M=256, K=128, N=128, groupNum=8",
+      "steps": "1. 构造8组weight/antiquantScale tensor；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查groupNum推导和输出。",
+      "expected": "执行成功，groupNum推导为8，输出与golden对齐。",
+      "remark": "覆盖groupNum泛化。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证groupNum=8泛化能力"
+    },
+    {
+      "id": "STG002",
+      "category": "ST-泛化",
+      "importance": "P2",
+      "input": "M=128, K=512, N=128, groupNum=4",
+      "steps": "1. 构造大K单多单输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查输出。",
+      "expected": "执行成功，输出与golden对齐。",
+      "remark": "覆盖大K场景。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证大K场景稳定性"
+    },
+    {
+      "id": "STG003",
+      "category": "ST-泛化",
+      "importance": "P2",
+      "input": "M=64, K=64, N=128, groupNum=2",
+      "steps": "1. 构造小K边界输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查输出。",
+      "expected": "最小合法MxA8W4 K分组执行成功，输出正确。",
+      "remark": "覆盖小K边界。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证小K边界场景"
+    },
+    {
+      "id": "STG004",
+      "category": "ST-泛化",
+      "importance": "P1",
+      "input": "M=96, K=128, N_list=[128,256,128], groupNum=3",
+      "steps": "1. 构造不同group N的输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查输出或约束日志。",
+      "expected": "支持时输出与golden对齐；若实现不支持不同Ng，则有明确checker约束日志。",
+      "remark": "覆盖不同group N风险点。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证不同group N处理行为"
+    },
+    {
+      "id": "STG005",
+      "category": "ST-泛化",
+      "importance": "P2",
+      "input": "M=256, K=128, N=128, groupNum=8；特殊要求：bias存在",
+      "steps": "1. 构造8组bias tensor；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查输出。",
+      "expected": "执行成功，输出与含bias golden对齐。",
+      "remark": "覆盖多group bias泛化。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证多group bias泛化"
+    },
+    {
+      "id": "STG006",
+      "category": "ST-泛化",
+      "importance": "P1",
+      "input": "M=128, K=128, N=128, groupNum=4；特殊要求：antiquantOffset存在且list size=weight size",
+      "steps": "1. 构造包含antiquantOffset的单多单输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查执行结果或明确返回。",
+      "expected": "执行成功；如既有MxA8W4不支持该组合，则返回明确checker日志。",
+      "remark": "覆盖可选antiquantOffset。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证antiquantOffset可选输入"
+    },
+    {
+      "id": "STG007",
+      "category": "ST-泛化",
+      "importance": "P2",
+      "input": "M=65, K=128, N=128, groupNum=3；特殊要求：groupList含0或极小M group",
+      "steps": "1. 构造含0 M或极小M的groupList；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查输出或checker日志。",
+      "expected": "不崩溃，合法部分输出正确；若不支持则checker明确拦截。",
+      "remark": "覆盖小M/空group边界。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证空/极小M group边界"
+    },
+    {
+      "id": "STG008",
+      "category": "ST-泛化",
+      "importance": "P0",
+      "input": "M=4096, K=128, N=128, groupNum接近框架支持上限",
+      "steps": "1. 构造接近上限的tensor list；\n2. 使用ttk/Aclnn测试框架执行tiling或冒烟；\n3. 检查host不越界。",
+      "expected": "Host不越界，合法时执行成功；资源不足时有明确资源或约束日志。",
+      "remark": "覆盖边界上界，资源较大可做tiling冒烟。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证接近tensor list上限边界"
+    },
+    {
+      "id": "ST-HIST001",
+      "category": "ST-历史用例回归",
+      "importance": "P0",
+      "input": "MxA8W4单单单；特殊要求：x/weight/y均单tensor",
+      "steps": "1. 复用既有MxA8W4单单单历史用例；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查结果和TilingKey。",
+      "expected": "IS_SINGLE_MULTI_SINGLE为0，输出结果与历史版本一致。",
+      "remark": "确认非单多单路径不受影响。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证MxA8W4单单单历史路径不受影响"
+    },
+    {
+      "id": "ST-HIST002",
+      "category": "ST-历史用例回归",
+      "importance": "P0",
+      "input": "MxA8W4多多多；特殊要求：x/weight/y均多tensor",
+      "steps": "1. 复用既有MxA8W4多多多历史用例；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查结果和路径。",
+      "expected": "不误入单多单路径，输出结果与历史版本一致。",
+      "remark": "确认多多多回归。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证MxA8W4多多多历史路径不受影响"
+    },
+    {
+      "id": "ST-HIST003",
+      "category": "ST-历史用例回归",
+      "importance": "P1",
+      "input": "S8S4 weight quant历史用例",
+      "steps": "1. 复用既有S8S4 weight quant用例；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查输出和TilingKey新参数。",
+      "expected": "TilingKey新增参数为0，结果与历史版本一致。",
+      "remark": "确认S8S4路径不受影响。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证S8S4历史路径不受影响"
+    },
+    {
+      "id": "ST-HIST004",
+      "category": "ST-历史用例回归",
+      "importance": "P1",
+      "input": "A16W4ND历史用例",
+      "steps": "1. 复用既有A16W4ND用例；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查checker和输出。",
+      "expected": "checker行为和输出结果与历史版本一致。",
+      "remark": "确认A16W4ND路径不受影响。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证A16W4ND历史路径不受影响"
+    },
+    {
+      "id": "NEG001",
+      "category": "异常-可选输入",
+      "importance": "P0",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：numX>1",
+      "steps": "1. 构造x不是单tensor的输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含single-multi-single下x size必须为1。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证x非单tensor长度检查"
+    },
+    {
+      "id": "NEG002",
+      "category": "异常-可选输入",
+      "importance": "P0",
+      "input": "M=32, K=64, N=128, groupNum=1；异常构造：numWeight=1",
+      "steps": "1. 构造weight不是多tensor的输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含weight must be greater than 1。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证weight非多tensor长度检查"
+    },
+    {
+      "id": "NEG003",
+      "category": "异常-可选输入",
+      "importance": "P0",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：antiquantScale list size != weight list size",
+      "steps": "1. 构造antiquantScaleOptional长度不匹配输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含antiquantScaleOptional size mismatch或does not match expected value。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证antiquantScale长度检查"
+    },
+    {
+      "id": "NEG004",
+      "category": "异常-可选输入",
+      "importance": "P0",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：bias list size != weight list size",
+      "steps": "1. 构造biasOptional长度不匹配输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含biasOptional size mismatch或does not match expected value。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证bias长度检查"
+    },
+    {
+      "id": "NEG005",
+      "category": "异常-shape",
+      "importance": "P0",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：groupList长度不等于groupNum",
+      "steps": "1. 构造groupList长度错误输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含groupList length must match groupNum。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证groupList长度检查"
+    },
+    {
+      "id": "NEG006",
+      "category": "异常-dtype",
+      "importance": "P1",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：x dtype=INT8或FLOAT16",
+      "steps": "1. 构造x dtype错误输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "不进入MxA8W4单多单合法路径，参数检查失败或按既有路径失败。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证x dtype异常检查"
+    },
+    {
+      "id": "NEG007",
+      "category": "异常-dtype",
+      "importance": "P1",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：weight dtype=INT4或BF16",
+      "steps": "1. 构造weight dtype错误输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "MxA8W4 dtype/dataflow校验失败。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证weight dtype异常检查"
+    },
+    {
+      "id": "NEG008",
+      "category": "异常-format",
+      "importance": "P1",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：weight format=ND",
+      "steps": "1. 构造weight format错误输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含weight format期望FRACTAL_NZ。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证weight format异常检查"
+    },
+    {
+      "id": "NEG009",
+      "category": "异常-shape",
+      "importance": "P1",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：weight[g] dim非4",
+      "steps": "1. 构造weight维度错误输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含weight dimension。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证weight dim异常检查"
+    },
+    {
+      "id": "NEG010",
+      "category": "异常-shape",
+      "importance": "P1",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：antiquantScale[g] dim非4",
+      "steps": "1. 构造antiquantScale维度错误输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含antiquantScale dimension。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证antiquantScale dim异常检查"
+    },
+    {
+      "id": "NEG011",
+      "category": "异常-shape",
+      "importance": "P1",
+      "input": "M=32, K=96, N=128, groupNum=2；异常构造：antiquantScale K分组不满足MX group size 32",
+      "steps": "1. 构造antiquantScale K分组错误输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含groupNum或groupSize。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证antiquantScale K分组异常检查"
+    },
+    {
+      "id": "NEG012",
+      "category": "异常-shape",
+      "importance": "P1",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：antiquantScale N轴与weight不一致",
+      "steps": "1. 构造antiquantScale N轴错误输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含NDim of antiquantScale must be equal。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证antiquantScale N轴异常检查"
+    },
+    {
+      "id": "NEG013",
+      "category": "异常-shape",
+      "importance": "P1",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：bias[g]非1维或长度不等于Ng",
+      "steps": "1. 构造bias shape错误输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含bias dimension或NDim。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证bias shape异常检查"
+    },
+    {
+      "id": "NEG014",
+      "category": "异常-属性",
+      "importance": "P1",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：transB=false",
+      "steps": "1. 构造transB=false的MxA8W4单多单输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
+      "expected": "参数检查失败，日志包含transposed and FRACTAL_NZ-format。",
+      "remark": "每条异常仅违反一个规则。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证transB属性异常检查"
+    },
+    {
+      "id": "NEG015",
+      "category": "异常-属性",
+      "importance": "P0",
+      "input": "A16W4ND或其他非MxA8W4数据流；异常构造：x单、weight多、y单",
+      "steps": "1. 构造非MxA8W4单多单组合；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志和TilingKey。",
+      "expected": "不启用IS_SINGLE_MULTI_SINGLE，checker按不支持组合失败。",
+      "remark": "覆盖范围外组合。",
+      "test_item": "GMM MxA8W4 单多单场景支持：验证非MxA8W4单多单组合拦截"
+    }
+  ]
+}
