@@ -275,7 +275,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR YOut, GM_ADDR expandIdxOut,
     GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, TPipe* pipe, const MoeDistributeDispatchSetupTilingData* tilingData)
 {
-    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     tpipe_ = pipe;
     workspaceGM_ = workspaceGM;
     aivId_ = GetBlockIdx();
