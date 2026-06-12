@@ -56,6 +56,24 @@ std::string ConvertContainerToString(const C &container, Func func = ElemToStrin
     return ss.str();
 }
 
+template <typename C, typename Func = std::string (*)(const typename C::value_type &)>
+std::string ConvertContainerToStringV3(const C &container, Func func = ElemToString<typename C::value_type>)
+{
+    if (container.empty() || func == nullptr) {
+        return "[]";
+    }
+    std::stringstream ss;
+    bool isFirst = true;
+    for (const auto &elem : container) {
+        if (!isFirst) {
+            ss << ", ";
+        }
+        ss << func(elem);
+        isFirst = false;
+    }
+    return ss.str();
+}
+
 std::string GetShapeStr(const gert::Shape &aShape)
 {
     std::string shapeStr = "[";
@@ -189,12 +207,12 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
     const std::set<uint32_t> supportedHeSize{1024U, 2048U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
     OP_CHECK_IF(supportedHeSize.find(baseShapeInfo_.heSize) == supportedHeSize.end(),
                 OP_LOGE_FOR_INVALID_VALUE(context_.opName, "He", std::to_string(baseShapeInfo_.heSize),
-                                          ConvertContainerToString(supportedHeSize)),
+                                          ConvertContainerToStringV3(supportedHeSize)),
                 return ge::GRAPH_FAILED);
     const std::set<uint32_t> supportedNSize{1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
     OP_CHECK_IF((supportedNSize.find(baseShapeInfo_.nSize) == supportedNSize.end()),
                 OP_LOGE_FOR_INVALID_VALUE(context_.opName, "N", std::to_string(baseShapeInfo_.nSize),
-                                          ConvertContainerToString(supportedNSize)),
+                                          ConvertContainerToStringV3(supportedNSize)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(baseShapeInfo_.hckvSize != HCKV_SIZE,
                 OP_LOGE_FOR_INVALID_VALUE(context_.opName, "Hckv", std::to_string(baseShapeInfo_.hckvSize),
@@ -253,7 +271,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckQuantMode() const
                         supportedQuantModes.end(),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         context_.opName, "quantMode", std::to_string(static_cast<uint32_t>(scenarioInfo_.quantMode_)),
-                        "On DAV3510, quantMode allows only " + ConvertContainerToString(supportedQuantModes)),
+                        "On DAV3510, quantMode allows only " + ConvertContainerToStringV3(supportedQuantModes)),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -265,7 +283,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckHcqSize() const
         const std::set<uint32_t> supportedHcqSize{1536U, 2048U};
         OP_CHECK_IF(supportedHcqSize.find(baseShapeInfo_.hcqSize) == supportedHcqSize.end(),
                     OP_LOGE_FOR_INVALID_VALUE(context_.opName, "Hcq", std::to_string(baseShapeInfo_.hcqSize),
-                                              ConvertContainerToString(supportedHcqSize)),
+                                              ConvertContainerToStringV3(supportedHcqSize)),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(baseShapeInfo_.hcqSize != HCQ_SIZE,
@@ -281,7 +299,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckDSize() const
         const std::set<uint32_t> supportedDSize{128U, 192U};
         OP_CHECK_IF(supportedDSize.find(baseShapeInfo_.dSize) == supportedDSize.end(),
                     OP_LOGE_FOR_INVALID_VALUE(context_.opName, "D", std::to_string(baseShapeInfo_.dSize),
-                                              ConvertContainerToString(supportedDSize)),
+                                              ConvertContainerToStringV3(supportedDSize)),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(baseShapeInfo_.dSize != D_SIZE,
@@ -925,8 +943,8 @@ ge::graphStatus MlaPrologTilingCheck::CheckParamByScenario()
                                            std::string(ge::GetFormatName(expectedParam.format)));
             }
             if (expectedParam.shape != it.second.shape) {
-                OP_LOGE_FOR_INVALID_SHAPE(context_.opName, it.first, ConvertContainerToString(it.second.shape),
-                                          ConvertContainerToString(expectedParam.shape));
+                OP_LOGE_FOR_INVALID_SHAPE(context_.opName, it.first, ConvertContainerToStringV3(it.second.shape),
+                                          ConvertContainerToStringV3(expectedParam.shape));
             }
         }
     }
@@ -1012,19 +1030,19 @@ bool MlaPrologTilingCheck::IsSingleParamValid(const BaseParaInfo &param, const s
     ge::DataType dtype = param.desc->GetDataType();
     OP_CHECK_IF((expectedDtype.find(dtype) == expectedDtype.end()),
                 OP_LOGE_FOR_INVALID_DTYPE(context_.opName, paramName, TypeUtils::DataTypeToSerialString(dtype),
-                                          ConvertContainerToString(expectedDtype, TypeUtils::DataTypeToSerialString)),
+                                          ConvertContainerToStringV3(expectedDtype, TypeUtils::DataTypeToSerialString)),
                 return false);
 
     ge::Format format = static_cast<ge::Format>(ge::GetPrimaryFormat(param.desc->GetStorageFormat()));
     OP_CHECK_IF((expectedFormat.find(format) == expectedFormat.end()),
                 OP_LOGE_FOR_INVALID_FORMAT(context_.opName, paramName, std::string(ge::GetFormatName(format)),
-                                           ConvertContainerToString(expectedFormat, FormatToString)),
+                                           ConvertContainerToStringV3(expectedFormat, FormatToString)),
                 return false);
 
     size_t dimNum = param.shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF((expectedDimNum.find(dimNum) == expectedDimNum.end()),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context_.opName, paramName, std::to_string(dimNum),
-                                             ConvertContainerToString(expectedDimNum)),
+                                             ConvertContainerToStringV3(expectedDimNum)),
                 return false);
     return true;
 }
