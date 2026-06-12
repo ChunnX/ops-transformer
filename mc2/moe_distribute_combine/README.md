@@ -5,10 +5,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -241,7 +241,7 @@
     * 当前不支持TP域通信，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpSendCounts`为无效内容。
     * 仅设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0时，必须传入`expandScales`。
 
-* <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+* <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     * 不支持`expandScales`。
 
 * <term>Ascend 950DT</term>：
@@ -281,16 +281,16 @@
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 256]。
         - `K`：表示选取topK个专家，需满足0 < `K` ≤ `moeExpertNum`，取值范围为[1, 16]。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= (`BS` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * 4B + 4MB)。
-    - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0可以减少跨机通信数据量，可能提升算子性能。 此时，要求`HCCL_BUFFSIZE` >= `moeExpertNum` * `BS` * (`H` * 2 + 16 * Align8(`K`))B + 104MB。并且，对于入参`moeExpertNum`，只要求`moeExpertNum` % `epWorldSize` = 0，不要求`moeExpertNum` / `epWorldSize` <= 24，其中Align8(x) = ((x + 8 - 1) / 8) * 8。
+    - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0可以减少跨机通信数据量，可能提升算子性能。此时，要求`HCCL_BUFFSIZE` >= `moeExpertNum` * `BS` * (`H` * 2 + 16 * Align8(`K`))B + 104MB。并且，对于入参`moeExpertNum`，只要求`moeExpertNum` % `epWorldSize` = 0，不要求`moeExpertNum` / `epWorldSize` <= 24，其中Align8(x) = ((x + 8 - 1) / 8) * 8。
     - 参数约束：
         - `epWorldSize`：取值支持16、32、64。
         - `moeExpertNum`：需满足`moeExpertNum` / `epWorldSize` <= 24。
             - 环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0时，无上述约束。
-        - `globalBS`：当每个rank的`BS`数一致时，`globalBS` = `BS` * `epWorldSize` 或 `globalBS` = 0；当每个rank的`BS`数不一致时，`globalBS` = `maxBS` * `epWorldSize`或者`globalBS` = 256 * `epWorldSize`，其中`maxBS`表示表示单rank `BS`最大值，建议按`maxBS` * `epWorldSize`传入，固定按256 * `epWorldSize`传入在后续版本BS支持大于256的场景下会无法支持。
+        - `globalBS`：当每个rank的`BS`数一致时，`globalBS` = `BS` * `epWorldSize`或`globalBS` = 0；当每个rank的`BS`数不一致时，`globalBS` = `maxBS` * `epWorldSize`或者`globalBS` = 256 * `epWorldSize`，其中`maxBS`表示表示单rank `BS`最大值，建议按`maxBS` * `epWorldSize`传入，固定按256 * `epWorldSize`传入在后续版本BS支持大于256的场景下会无法支持。
         - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化（2仅当HCCL_INTRA_PCIE_ENABLE=1、HCCL_INTRA_ROCE_ENABLE=0且驱动版本≥25.0.RC1.1时支持）。
     - 组网约束：多机场景仅支持交换机组网，不支持双机直连组网。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值为7168。
@@ -302,14 +302,14 @@
         - `tpWorldSize`：取值范围[0, 2]，0和1表示无tp域通信，有tp域通信时仅支持2。
         - `tpRankId`：取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复。无TP域通信时，传0即可。
         - `sharedExpertRankNum`：当前取值范围[0, `epWorldSize`)，不为0时需满足`epWorldSize` % `sharedExpertRankNum` = 0。
-        - `globalBS`：当每个rank的`BS`数一致时，`globalBS` = `BS` * `epWorldSize` 或 `globalBS` = 0；当每个rank的`BS`数不一致时，`globalBS` = `maxBS` * `epWorldSize`，其中`maxBS`表示单卡`BS`最大值。
+        - `globalBS`：当每个rank的`BS`数一致时，`globalBS` = `BS` * `epWorldSize`或`globalBS` = 0；当每个rank的`BS`数不一致时，`globalBS` = `maxBS` * `epWorldSize`，其中`maxBS`表示单卡`BS`最大值。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
 
 - <term>Ascend 950DT</term>：
     - 参数约束：
         - `epWorldSize`：取值支持2、4、8、16、32、64、128、144、256、288。
         - `sharedExpertRankNum`：当前取值范围[0, `epWorldSize`)，不为0时需满足`epWorldSize` % `sharedExpertRankNum` = 0。
-        - `globalBS`：当每个rank的`BS`数一致时，`globalBS` = `BS` * `epWorldSize` 或 `globalBS` = 0；当每个rank的`BS`数不一致时，`globalBS` = `maxBS` * `epWorldSize`，其中`maxBS`表示单卡`BS`最大值。
+        - `globalBS`：当每个rank的`BS`数一致时，`globalBS` = `BS` * `epWorldSize`或`globalBS` = 0；当每个rank的`BS`数不一致时，`globalBS` = `maxBS` * `epWorldSize`，其中`maxBS`表示单卡`BS`最大值。
         - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
 

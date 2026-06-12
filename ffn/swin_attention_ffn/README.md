@@ -17,31 +17,31 @@
     <td style="text-align: center;">×</td>
   </tr>
   <tr>
-    <td>Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
+    <td>Atlas A3训练系列产品/Atlas A3推理系列产品</td>
     <td style="text-align: center;">×</td>
   </tr>
   <tr>
-    <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
+    <td>Atlas A2训练系列产品/Atlas A2推理系列产品</td>
     <td style="text-align: center;">√</td>
   </tr>
   <tr>
-    <td>Atlas 200I/500 A2 推理产品</td>
+    <td>Atlas 200I/500 A2推理产品</td>
     <td style="text-align: center;">×</td>
   </tr>
   <tr>
-    <td>Atlas 推理系列加速卡产品</td>
+    <td>Atlas推理系列加速卡产品</td>
     <td style="text-align: center;">×</td>
   </tr>
   <tr>
-    <td>Atlas 训练系列产品</td>
+    <td>Atlas训练系列产品</td>
     <td style="text-align: center;">×</td>
   </tr>
   <tr>
-    <td>Kirin X90 处理器系列产品</td>
+    <td>Kirin X90处理器系列产品</td>
     <td style="text-align: center;">√</td>
   </tr>
   <tr>
-    <td>Kirin 9030 处理器系列产品</td>
+    <td>Kirin 9030处理器系列产品</td>
     <td style="text-align: center;">√</td>
   </tr>
 </tbody>
@@ -49,7 +49,7 @@
 
 ## 功能说明
 
-- 算子功能：swin transformer场景下的ffn算子，用于将输入 x1 与 x2 做矩阵乘法，加上 bias 偏置后与 x3 做残差加法，输出最终结果。仅支持 float16 数据类型。
+- 算子功能：swin transformer场景下的ffn算子，用于将输入x1与x2做矩阵乘法，加上bias偏置后与x3做残差加法，输出最终结果。仅支持float16数据类型。
 
 - 计算公式：
 

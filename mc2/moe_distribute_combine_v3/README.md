@@ -5,10 +5,10 @@
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
 | <term>Ascend 950DT</term>                             |    ×    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 推理系列产品</term>                               |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
 
 ## 功能说明
@@ -257,7 +257,7 @@
   <tr>
    <td>global_bs</td>
    <td>可选属性</td>
-   <td><li>EP域全局的batch size大小；各rank BS一致时，global_bs = BS * ep_world_size 或 0；各rank BS不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡Bs最大值）。</li><li>默认值为0。</li></td>
+   <td><li>EP域全局的batch size大小；各rank BS一致时，global_bs = BS * ep_world_size或0；各rank BS不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡Bs最大值）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -320,7 +320,7 @@
  </tbody>
 </table>
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     * 不支持`expand_scales_optional`。
     * 不支持`comm_alg`。
 
@@ -342,10 +342,10 @@
         - 对于MoE专家卡，`local_expert_num` = `moe_expert_num` / (`ep_world_size` - `shared_expert_num`)，`local_expert_num` > 1时，不支持TP域通信。
 
 - 参数约束：
-    - `zero_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是[`moe_expert_num`, `moe_expert_num` + `zero_expert_num`)。
-    - `copy_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的copy专家的ID的值是[`moe_expert_num` + `zero_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num`)。
-    - `const_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的常量专家的ID的值是[`moe_expert_num` + `zero_expert_num` + `copy_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`)。
-    - `ori_x_optional`：可选择传入有效数据或填空指针，当`copy_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为 (`BS`, `H`)，数据类型需与`expand_x`保持一致。
+    - `zero_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的零专家的ID的值是[`moe_expert_num`, `moe_expert_num` + `zero_expert_num`)。
+    - `copy_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的copy专家的ID的值是[`moe_expert_num` + `zero_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num`)。
+    - `const_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的常量专家的ID的值是[`moe_expert_num` + `zero_expert_num` + `copy_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`)。
+    - `ori_x_optional`：可选择传入有效数据或填空指针，当`copy_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`BS`, `H`)，数据类型需与`expand_x`保持一致。
     - `const_expert_alpha_1_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
     - `const_expert_alpha_2_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
     - `const_expert_v_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, `H`)，数据类型需与`expand_x`保持一致。
@@ -355,7 +355,7 @@
     - 一个模型中的`MoeDistributeCombineV3`和`MoeDistributeDispatchV3`仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 一个模型中的`MoeDistributeCombineV3`和`MoeDistributeDispatchV3`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。

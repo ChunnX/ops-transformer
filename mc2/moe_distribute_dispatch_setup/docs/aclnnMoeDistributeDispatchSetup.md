@@ -7,10 +7,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -22,7 +22,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnMoeDistributeDispatchSetupGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchSetup”接口执行计算。
+每个算子分为两段式接口，必须先调用“aclnnMoeDistributeDispatchSetupGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchSetup”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
@@ -208,7 +208,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
     <td>globalBs</td>
     <td>输入</td>
     <td>EP域全局的batch size大小。</td>
-    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize 或 0。</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
+    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize或0。</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -288,32 +288,32 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
     </table>
 
     - <term>Ascend 950DT</term>：
-        - scalesOptional 非量化场景传空指针，动态量化可选择传入有效数据或传入空指针。
-        - xActiveMaskOptional 可选择传入有效数据或传入空指针，传入空指针时表示所有token都会参与通信。
-        - groupEp 字符串长度范围为[1, 128)。
-        - epWorldSize 取值范围[2, 384]。当前仅支持2、8。
-        - epRankId 取值范围[0, epWorldSize)。同一个EP通信域中各卡的epRankId不能重复。
-        - moeExpertNum 取值范围(0, 512]。
-        - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
-        - sharedExpertNum 当前取值范围[0, 4]。
-        - sharedExpertRankNum 取值范围[0, epWorldSize / 2]。
-        - globalBs 当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize 或 globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。
-        - commType 当前仅支持2。
-        - commAlg 当前版本不支持，传空指针即可。
+        - scalesOptional非量化场景传空指针，动态量化可选择传入有效数据或传入空指针。
+        - xActiveMaskOptional可选择传入有效数据或传入空指针，传入空指针时表示所有token都会参与通信。
+        - groupEp字符串长度范围为[1, 128)。
+        - epWorldSize取值范围[2, 384]。当前仅支持2、8。
+        - epRankId取值范围[0, epWorldSize)。同一个EP通信域中各卡的epRankId不能重复。
+        - moeExpertNum取值范围(0, 512]。
+        - expertShardType当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
+        - sharedExpertNum当前取值范围[0, 4]。
+        - sharedExpertRankNum取值范围[0, epWorldSize / 2]。
+        - globalBs当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize或globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。
+        - commType当前仅支持2。
+        - commAlg当前版本不支持，传空指针即可。
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-        - scalesOptional 非量化场景传空指针，动态量化可选择传入有效数据或传入空指针。
-        - xActiveMaskOptional 可选择传入有效数据或传入空指针，传入空指针时表示所有token都会参与通信。
-        - groupEp 字符串长度范围为[1, 128)。
-        - epWorldSize 取值范围[2, 384]。当前仅支持2、8。
-        - epRankId 取值范围[0, epWorldSize)。同一个EP通信域中各卡的epRankId不能重复。
-        - moeExpertNum 取值范围(0, 512]。
-        - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
-        - sharedExpertNum 当前取值范围[0, 4]。
-        - sharedExpertRankNum 取值范围[0, epWorldSize / 2]。
-        - globalBs 当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize 或 globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。
-        - commType 当前仅支持0。
-        - commAlg 当前版本不支持，传空指针即可。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
+        - scalesOptional非量化场景传空指针，动态量化可选择传入有效数据或传入空指针。
+        - xActiveMaskOptional可选择传入有效数据或传入空指针，传入空指针时表示所有token都会参与通信。
+        - groupEp字符串长度范围为[1, 128)。
+        - epWorldSize取值范围[2, 384]。当前仅支持2、8。
+        - epRankId取值范围[0, epWorldSize)。同一个EP通信域中各卡的epRankId不能重复。
+        - moeExpertNum取值范围(0, 512]。
+        - expertShardType当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
+        - sharedExpertNum当前取值范围[0, 4]。
+        - sharedExpertRankNum取值范围[0, epWorldSize / 2]。
+        - globalBs当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize或globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。
+        - commType当前仅支持0。
+        - commAlg当前版本不支持，传空指针即可。
 
 - **返回值：**
   
@@ -407,7 +407,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
 
 3. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值所有卡需保持一致，`groupEp`、`epWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值在网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatchTeardown`，`aclnnMoeDistributeCombineSetup`，`aclnnMoeDistributeCombineTeardown`对应参数也保持一致。
 
-4. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
+4. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
 5. 参数说明里shape格式说明：
     * A：表示本卡可能接收的最大token数量，取值范围如下：
@@ -451,7 +451,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
 
     1. 开发者可以通过ranktable文件配置参与集合通信的NPU资源信息，详细配置请参考[《集合通信用户指南》](https://hiascend.com/document/redirect/CannCommercialHcclUg)中“通信功能开发>集群信息配置>ranktable文件配置资源信息”。
 
-    2. 使用`cat /etc/hccn.conf` 或者`for i in seq 0 7; do echo "===================> dev$i, NPU$((i+1))"; hccn_tool -i $i -ip -g; done`查询机器的device ip。然后参考集合通信文档填写json文件。
+    2. 使用`cat /etc/hccn.conf`或者`for i in seq 0 7; do echo "===================> dev$i, NPU$((i+1))"; hccn_tool -i $i -ip -g; done`查询机器的device ip。然后参考集合通信文档填写json文件。
 
     > 注意：两机16卡场景中，两机器的device_id都是0~7，其中一台机器的rank_id为0~7，另一台机器的rank_id为8~15。单机16卡场景中，device_id和rank_id都是0~15。
 
@@ -754,8 +754,8 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
         int total_size = g_bs * g_k;
 
         // 使用随机数引擎和分布
-        std::mt19937 gen(seed);                    // Mersenne Twister 引擎
-        std::uniform_int_distribution<> dis(0, 1); // 生成 0 或 1
+        std::mt19937 gen(seed);                    // Mersenne Twister引擎
+        std::uniform_int_distribution<> dis(0, 1); // 生成0或1
 
         // 创建并填充向量
         std::vector<int32_t> result;
