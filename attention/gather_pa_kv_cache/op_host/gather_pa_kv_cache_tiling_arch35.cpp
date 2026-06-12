@@ -152,12 +152,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
                     return ge::GRAPH_FAILED);
         // 2 is blockSize_ dim
         blockSize_ = kCacheShape_.GetDim(2);
-    } else {
-        OP_LOGE(context_, "[DEBUG] key_cache Norm mode, kCacheFormat(StorageFormat) = %d",
-                static_cast<int32_t>(kCacheFormat));
-        OP_CHECK_IF(kCacheFormat != ge::Format::FORMAT_ND && kCacheFormat != ge::Format::FORMAT_NCHW,
-                    OP_LOGE(context_, "key_cache format should be ND when cache_mode is Norm, please check."),
-                    return ge::GRAPH_FAILED);
     }
 
     // ===== 非连续支持: stride信息已在前面GetTensorInfo中获取 =====
@@ -240,10 +234,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
             vCacheFormat != ge::Format::FORMAT_FRACTAL_NZ,
             OP_LOGE(context_, "value_cache format should be FRACTAL_NZ when cache_mode is PA_NZ, please check."),
             return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(vCacheFormat != ge::Format::FORMAT_ND,
-                    OP_LOGE(context_, "value_cache format should be ND when cache_mode is Norm, please check."),
-                    return ge::GRAPH_FAILED);
     }
     // key_cache与value_cache的num_blocks(dim0)数值无需相等: kernel用同一blockId分别乘
     // 各自的stride索引, 不依赖dim0相等(与scatter Norm模式CheckNormal行为对齐)。
