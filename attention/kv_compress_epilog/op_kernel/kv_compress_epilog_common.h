@@ -120,10 +120,10 @@ template <typename T>
 __simd_callee__ inline void LoadInputData(RegTensor<float>& dst, __ubuf__ T* src, MaskReg pregLoop, uint32_t srcOffset)
 {
     if constexpr (IsSameType<T, float>::value) {
-        DataCopy(dst, src + srcOffset);
+        LoadAlign(dst, src + srcOffset);
     } else if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
         RegTensor<T> tmp;
-        DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(tmp, src + srcOffset);
+        LoadAlign<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(tmp, src + srcOffset);
         Cast<float, T, castTraitB162B32Even>(dst, tmp, pregLoop);
     }
 }
@@ -133,19 +133,19 @@ __simd_callee__ inline void StoreOutputData(
     __ubuf__ T* dst, RegTensor<float>& src, MaskReg pregLoop, uint32_t dstOffset)
 {
     if constexpr (IsSameType<T, float>::value) {
-        DataCopy(dst + dstOffset, src, pregLoop);
+        StoreAlign(dst + dstOffset, src, pregLoop);
     } else if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
         RegTensor<T> tmp;
         Cast<T, float, castTraitB322B16Even>(tmp, src, pregLoop);
-        DataCopy<T, AscendC::Reg::StoreDist::DIST_PACK_B32>(dst + dstOffset, tmp, pregLoop);
+        StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK_B32>(dst + dstOffset, tmp, pregLoop);
     } else if constexpr (IsSameType<T, fp8_e4m3fn_t>::value || IsSameType<T, fp8_e5m2_t>::value) {
         RegTensor<T> tmp;
         Cast<T, float, castTraitF32toFp8Even>(tmp, src, pregLoop);
-        DataCopy<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
+        StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
     } else if constexpr (IsSameType<T, hifloat8_t>::value) {
         RegTensor<T> tmp;
         Cast<T, float, castTraitF32toh8>(tmp, src, pregLoop);
-        DataCopy<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
+        StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
     }
 }
 
@@ -198,14 +198,14 @@ __simd_vf__ inline void VFProcessFP8PerGroupQuantVF(
 
             LoadUnAlignPre(ureg0, rowRopeXLocalAddr);
             LoadUnAlign(ropeReg, ureg0, rowRopeXLocalAddr, 64);
-            DataCopy(ropeYLocalAddr + i * dstCurColNumAlign / 2, ropeReg, pregRope);
+            StoreAlign(ropeYLocalAddr + i * dstCurColNumAlign / 2, ropeReg, pregRope);
             LocalMemBar<MemType::VEC_STORE, MemType::VEC_STORE>();
             uint32_t sreg = sregNum;
             for (uint16_t j = 0; j < loopCount; j++) {
                 pregLoop = UpdateMask<float>(sreg);
                 LoadInputData<T0>(x0, xLocalAddr, pregLoop, j * VL_FP32 + i * curColNumAlign);
                 Abs(x0Abs, x0, pregLoop);
-                ReduceMax(max0, x0Abs, pregLoop);
+                Reduce<AscendC::Reg::ReduceType::MAX>(max0, x0Abs, pregLoop);
                 Maxs(max2, max0, static_cast<float>(1e-4), pregMerge);
                 Muls(max2, max2, coeff, pregMerge);
                 if constexpr (roundScale) {
@@ -225,7 +225,7 @@ __simd_vf__ inline void VFProcessFP8PerGroupQuantVF(
                 {
                     RegTensor<fp8_e4m3fn_t> fp8Out;
                     Cast<fp8_e4m3fn_t, float, castTraitF32toFp8Even>(fp8Out, x0, pregLoop);
-                    DataCopy<T1, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
+                    StoreAlign<T1, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
                         yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign + ropeNum, (RegTensor<T1> &)fp8Out, pregLoop);
                 }
 
@@ -233,12 +233,12 @@ __simd_vf__ inline void VFProcessFP8PerGroupQuantVF(
                 ShiftRights(scaleTmp0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                 if constexpr (castBf16) {
                     Cast<uint16_t, uint32_t, castTraitU32toU16Even>(scaleTmp1Bf16, scaleTmp0, preg1);
-                    DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B16>(
+                    StoreAlign<bfloat16_t, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B16>(
                         scaleLocalBf16Addr + (((quantColNum + ropeNum + i * dstCurColNumAlign) >> 1) + j),
                         (RegTensor<bfloat16_t> &)scaleTmp1Bf16, preg1);
                 } else {
                     Cast<uint8_t, uint32_t, castTraitB322B8Even>(scaleTmp1, scaleTmp0, preg1);
-                    DataCopy<T1, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B8>(
+                    StoreAlign<T1, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B8>(
                         scaleLocalAddr + quantColNum + ropeNum + j + i * dstCurColNumAlign,
                         (RegTensor<T1>&)scaleTmp1, preg1);
                 }
@@ -308,7 +308,7 @@ __simd_vf__ inline void VFProcessHifp8QuantVF(
                 LoadInputData<T0>(xReg, xLocalAddr, pregLoop, j * VL_FP32 + i * curColNumAlign);
                 Muls(xReg, xReg, scales, pregLoop);
                 Cast<hifloat8_t, float, castTraitF32toh8>(tmp, xReg, pregLoop);
-                DataCopy<hifloat8_t, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
+                StoreAlign<hifloat8_t, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
                     yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign, tmp, pregLoop);
             }
         }

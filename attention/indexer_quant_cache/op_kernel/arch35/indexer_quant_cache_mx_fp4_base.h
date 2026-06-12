@@ -78,9 +78,9 @@ __simd_callee__ inline void FP16ConvertMXFP4(
         AscendC::Reg::Duplicate(specialValueTensor, specialValue);
         AscendC::Reg::Duplicate(newMantissa, NEW_MANTISSA_MAXFP4);
         AscendC::Reg::And(andResult, (AscendC::Reg::RegTensor<uint16_t>&)input, specialValueTensor, mask);
-        AscendC::Reg::CompareScalar<uint16_t, CMPMODE::GT>(nonzeroMask, andResult, 0, mask);
-        AscendC::Reg::CompareScalar<uint16_t, CMPMODE::LT>(specialMask, andResult, NEW_MANTISSA_MAXFP4, mask);
-        AscendC::Reg::MaskAnd(specialMask, specialMask, nonzeroMask, mask);
+        AscendC::Reg::Compares<uint16_t, CMPMODE::GT>(nonzeroMask, andResult, 0, mask);
+        AscendC::Reg::Compares<uint16_t, CMPMODE::LT>(specialMask, andResult, NEW_MANTISSA_MAXFP4, mask);
+        AscendC::Reg::And(specialMask, specialMask, nonzeroMask, mask);
         AscendC::Reg::Or(newValue, (AscendC::Reg::RegTensor<uint16_t>&)input, newMantissa, mask);
         AscendC::Reg::Select<uint16_t>(
             (AscendC::Reg::RegTensor<uint16_t>&)output, newValue, (AscendC::Reg::RegTensor<uint16_t>&)input,
@@ -118,7 +118,7 @@ __simd_vf__ inline void vfComputeMaxExpMXFP4(__ubuf__ T* srcAddr, __ubuf__ uint1
         for (uint16_t i = 0; i < loopNum; i++) {
             scaleMask1 = AscendC::Reg::UpdateMask<T>(totalCountInUB);
             scaleMask2 = AscendC::Reg::UpdateMask<T>(totalCountInUB);
-            AscendC::Reg::DataCopy<
+            AscendC::Reg::LoadAlign<
                 T, AscendC::Reg::PostLiteral::POST_MODE_UPDATE, AscendC::Reg::LoadDist::DIST_DINTLV_B16>(
                 vdExp0, vdExp1, srcAddr, vlForB16 * DIGIT_TWO_MAXFP4);
 
@@ -147,12 +147,12 @@ __simd_vf__ inline void vfComputeMaxExpMXFP4(__ubuf__ T* srcAddr, __ubuf__ uint1
             }
 
             AscendC::Reg::Max(vdMaxExp, vdExpExtract0, vdExpExtract1, scaleMask1);
-            AscendC::Reg::ReduceMaxWithDataBlock(vdMaxExp, vdMaxExp, scaleMask1);
+            AscendC::Reg::ReduceDataBlock<AscendC::Reg::ReduceType::MAX>(vdMaxExp, vdMaxExp, scaleMask1);
 
-            AscendC::Reg::DataCopyUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
+            AscendC::Reg::StoreUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
                 maxExpAddr, vdMaxExp, u1, numUbBlocksPerVReg);
         }
-        AscendC::Reg::DataCopyUnAlignPost(maxExpAddr, u1, 0);
+        AscendC::Reg::StoreUnAlignPost(maxExpAddr, u1, 0);
     }
     return;
 }
@@ -197,7 +197,7 @@ __simd_vf__ inline void vfComputeScaleMXFP4(__ubuf__ uint16_t* maxExpAddr, __ubu
         for (uint16_t i = 0; i < loopNumScale; i++) {
             preMaskScale = AscendC::Reg::UpdateMask<uint16_t>(validScaleInUB);
             packMaskScale = AscendC::Reg::UpdateMask<uint16_t>(packScaleInUB);
-            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
+            AscendC::Reg::LoadAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
                 vdMaxExp, maxExpAddr, vlForB16);
             AscendC::Reg::Compare<uint16_t, CMPMODE::NE>(cmpResult, vdMaxExp, expMask, preMaskScale); // INF/NAN
             AscendC::Reg::Compare<uint16_t, CMPMODE::NE>(zeroMask, vdMaxExp, zeroRegTensor, preMaskScale);
@@ -211,7 +211,7 @@ __simd_vf__ inline void vfComputeScaleMXFP4(__ubuf__ uint16_t* maxExpAddr, __ubu
             AscendC::Reg::Select<uint16_t>(scaleValue, scaleValue, fp8NanRegTensor, cmpResult);
             AscendC::Reg::Select<uint16_t>(scaleValue, scaleValue, zeroRegTensor, zeroMask);
 
-            AscendC::Reg::DataCopy<
+            AscendC::Reg::StoreAlign<
                 uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
                 AscendC::Reg::StoreDist::DIST_PACK_B16>(
                 mxScaleLocalAddr, scaleValue, vlForB16 / DIGIT_TWO_MAXFP4, packMaskScale);
@@ -222,7 +222,7 @@ __simd_vf__ inline void vfComputeScaleMXFP4(__ubuf__ uint16_t* maxExpAddr, __ubu
             AscendC::Reg::Select<uint16_t>(halfScale, halfScale, zeroRegTensor, zeroMask);
             AscendC::Reg::Select<uint16_t>(halfScale, specialExpRegTensor, halfScale, specialDataMask);
 
-            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
+            AscendC::Reg::StoreAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
                 halfScaleLocalAddr, halfScale, vlForB16, preMaskScale);
         }
     }
@@ -254,10 +254,10 @@ __simd_vf__ inline void vfComputeDataMXFP4(__ubuf__ T* srcAddr, __ubuf__ uint16_
             AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_TRUNC};
         for (uint16_t i = 0; i < loopNum; i++) {
             dataMask1 = AscendC::Reg::UpdateMask<T>(totalCountInUB);
-            AscendC::Reg::DataCopy<
+            AscendC::Reg::LoadAlign<
                 T, AscendC::Reg::PostLiteral::POST_MODE_UPDATE, AscendC::Reg::LoadDist::DIST_DINTLV_B16>(
                 vdExp0, vdExp1, srcAddr, vlForB16 * DIGIT_TWO_MAXFP4);
-            AscendC::Reg::DataCopy<
+            AscendC::Reg::LoadAlign<
                 uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE, AscendC::Reg::LoadDist::DIST_E2B_B16>(
                 halfScaleForMul, halfScaleLocalAddr, numUbBlocksPerVReg);
 
@@ -281,10 +281,10 @@ __simd_vf__ inline void vfComputeDataMXFP4(__ubuf__ T* srcAddr, __ubuf__ uint16_
                 AscendC::Reg::Cast<U, T, castTrait>(vdExp1FP4, vdExp1, dataMask1);
             }
 
-            AscendC::Reg::DataCopy<
+            AscendC::Reg::StoreAlign<
                 int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
                 outLocalAddr, (AscendC::Reg::RegTensor<int8_t>&)vdExp0FP4, OUT_ELE_NUM_ONE_BLK_MAXFP4, dataMask1);
-            AscendC::Reg::DataCopy<
+            AscendC::Reg::StoreAlign<
                 int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
                 outLocalAddr, (AscendC::Reg::RegTensor<int8_t>&)vdExp1FP4, OUT_ELE_NUM_ONE_BLK_MAXFP4, dataMask1);
         }
