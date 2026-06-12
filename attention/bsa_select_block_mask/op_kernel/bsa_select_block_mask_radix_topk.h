@@ -1362,39 +1362,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
         BSA_TOPK_NZ_DUMP_TENSOR(maskHalf, 9621, 1024);
     }
 
-    LocalTensor<int32_t> maskInt32 = outIndexBuf_.Get<int32_t>();
-    Cast<int32_t, half>(maskInt32, maskHalf, RoundMode::CAST_RINT, alignLen);
-    PipeBarrier<PIPE_V>();
-    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
-        BSA_TOPK_NZ_PRINTF("[NZDBG622] GT maskInt32 after Cast idx0=%d idx255=%d idx256=%d idx511=%d idx512=%d idx767=%d idx768=%d idx1023=%d\n",
-            maskInt32.GetValue(0), maskInt32.GetValue(255),
-            maskInt32.GetValue(256), maskInt32.GetValue(511),
-            maskInt32.GetValue(512), maskInt32.GetValue(767),
-            maskInt32.GetValue(768), maskInt32.GetValue(1023));
-        BSA_TOPK_NZ_DUMP_TENSOR(maskInt32, 9622, 1024);
-    }
-
-    LocalTensor<int16_t> maskInt16 = outValueBuf_.Get<int16_t>();
-    Cast<int16_t, int32_t>(maskInt16, maskInt32, RoundMode::CAST_NONE, alignLen);
-    PipeBarrier<PIPE_V>();
-    if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
-        BSA_TOPK_NZ_PRINTF("[NZDBG623] GT maskInt16 after Cast idx0=%d idx255=%d idx256=%d idx511=%d idx512=%d idx767=%d idx768=%d idx1023=%d\n",
-            static_cast<int32_t>(maskInt16.GetValue(0)),
-            static_cast<int32_t>(maskInt16.GetValue(255)),
-            static_cast<int32_t>(maskInt16.GetValue(256)),
-            static_cast<int32_t>(maskInt16.GetValue(511)),
-            static_cast<int32_t>(maskInt16.GetValue(512)),
-            static_cast<int32_t>(maskInt16.GetValue(767)),
-            static_cast<int32_t>(maskInt16.GetValue(768)),
-            static_cast<int32_t>(maskInt16.GetValue(1023)));
-        BSA_TOPK_NZ_DUMP_TENSOR(maskInt16, 9623, 1024);
-    }
-
     LocalTensor<uint8_t> maskU8 = outIndexBuf_.Get<uint8_t>();
-    Cast<uint8_t, int16_t>(maskU8, maskInt16, RoundMode::CAST_NONE, alignLen);
+    Cast<uint8_t, half>(maskU8, maskHalf, RoundMode::CAST_NONE, alignLen);
     PipeBarrier<PIPE_V>();
     if (BSA_TOPK_NONZERO_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
-        BSA_TOPK_NZ_PRINTF("[NZDBG624] GT maskU8 after Cast idx0=%u idx255=%u idx256=%u idx511=%u idx512=%u idx767=%u idx768=%u idx1023=%u\n",
+        BSA_TOPK_NZ_PRINTF("[NZDBG624] GT maskU8 after half->uint8 Cast idx0=%u idx255=%u idx256=%u idx511=%u idx512=%u idx767=%u idx768=%u idx1023=%u\n",
             static_cast<uint32_t>(maskU8.GetValue(0)),
             static_cast<uint32_t>(maskU8.GetValue(255)),
             static_cast<uint32_t>(maskU8.GetValue(256)),
