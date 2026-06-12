@@ -23,12 +23,12 @@
     * $\mathbb{Z_{32}} = \{ x \in \mathbb{Z} | -2147483648≤x≤2147483647 \}$
   - **输入**：
     
-    * $X∈\mathbb{Z_8}^{M \times K}$：输入矩阵（左矩阵），M是总token 数，K是特征维度。
+    * $X∈\mathbb{Z_8}^{M \times K}$：输入矩阵（左矩阵），M是总token数，K是特征维度。
     * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
     * $bias∈\mathbb{Z_{32}}^{E  \times N}$：矩阵乘计算的偏移值，E是专家个数，N是输出维度。
     * $offset∈\mathbb{R}^{E  \times N}$：per-channel非对称反量化的偏移，E是专家个数，N是输出维度。
     * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，N是输出维度。
-    * $x\_scale∈\mathbb{R}^{M}$：输入矩阵（左矩阵）的逐 token缩放因子，M是总token 数。
+    * $x\_scale∈\mathbb{R}^{M}$：输入矩阵（左矩阵）的逐token缩放因子，M是总token数。
     * $groupList∈\mathbb{N}^{E}$：前缀和的分组索引列表。
   - **输出**：
     
@@ -37,7 +37,7 @@
     * $Q\_offset∈\mathbb{R}^{M}$：量化偏移因子。
   - **计算过程**
     
-    - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$。
+    - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList)]$。
     
       >例子：假设groupList=[3,4,4,6]，从0开始计数。
       >
