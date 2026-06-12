@@ -26,19 +26,19 @@ constexpr uint32_t AIV_CORE_NUM = 72;
 constexpr uint32_t QBSA_METADATA_SIZE = 2048;
 using QBSA_METADATA_T = uint32_t;
 
-constexpr uint32_t METADATA_HEADER_SIZE = 8;
+// constexpr uint32_t METADATA_HEADER_SIZE = 8;
 constexpr uint32_t FA_METADATA_SIZE = 8;
 constexpr uint32_t FD_METADATA_SIZE = 8;
 
 // FA Metadata Index Definitions
-constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
-constexpr uint32_t FA_BN1_START_INDEX = 1;
-constexpr uint32_t FA_M_START_INDEX = 2;
-constexpr uint32_t FA_S2_START_INDEX = 3;
-constexpr uint32_t FA_BN1_END_INDEX = 4;
-constexpr uint32_t FA_M_END_INDEX = 5;
-constexpr uint32_t FA_S2_END_INDEX = 6;
-constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;
+constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;// 当前AIC核是否有负载需要计算
+constexpr uint32_t FA_BN1_START_INDEX = 1;// 当前AIC核的起始bn1Idx
+constexpr uint32_t FA_M_START_INDEX = 2;// 当前AIC核的起始s1Idx
+constexpr uint32_t FA_S2_START_INDEX = 3;// 当前AIC核的起始s2Idx
+constexpr uint32_t FA_BN1_END_INDEX = 4;// 当前AIC核的终止bn1Idx
+constexpr uint32_t FA_M_END_INDEX = 5;// 当前AIC核的终止s1Idx
+constexpr uint32_t FA_S2_END_INDEX = 6;// 当前AIC核的终止s2Idx
+constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;// 当前AIC核第一份规约任务在FD_DATA_WORKSPACE的idx
 
 #ifdef __CCE_AICORE__
 
@@ -46,9 +46,9 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t idx, uint32_t coreIdx,
                                             uint32_t metaIdx, uint32_t num, bool isAIV = false)
 {
     if (isAIV) {
-        return num * AIC_CORE_NUM * FA_METADATA_SIZE + FD_METADATA_SIZE * coreIdx + metaIdx + METADATA_HEADER_SIZE;
+        return num * AIC_CORE_NUM * FA_METADATA_SIZE + FD_METADATA_SIZE * coreIdx + metaIdx;
     } else {
-        return FA_METADATA_SIZE * coreIdx + metaIdx + METADATA_HEADER_SIZE;
+        return FA_METADATA_SIZE * coreIdx + metaIdx;
     }
 }
 #endif
@@ -58,10 +58,10 @@ struct FaMetaData {
     uint32_t *faMetadata; // [AIC_CORE_NUM][FA_METADATA_SIZE];
     uint32_t *fdMetadata; // [AIV_CORE_NUM][FD_METADATA_SIZE];
     FaMetaData(void *metadataPtr)
-        : faMetadata(static_cast<uint32_t*>(metadataPtr) + METADATA_HEADER_SIZE),
-          fdMetadata(static_cast<uint32_t*>(metadataPtr) + METADATA_HEADER_SIZE + AIC_CORE_NUM * FA_METADATA_SIZE)
+        : faMetadata(static_cast<uint32_t*>(metadataPtr) ),
+          fdMetadata(static_cast<uint32_t*>(metadataPtr)  + AIC_CORE_NUM * FA_METADATA_SIZE)
     {
-        static_cast<uint32_t*>(metadataPtr)[0] = 1;
+        // static_cast<uint32_t*>(metadataPtr)[0] = 1;
     }
     void setFaMetadata(uint32_t aicIdx, uint32_t metaIdx, uint32_t val)
     {
