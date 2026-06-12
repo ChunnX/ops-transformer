@@ -45,6 +45,7 @@ option(OP_KERNEL_AICPU_UT         "Enable aicpu kernel ut"          OFF)
 option(UT_TEST_ALL                "Enable all ut"                   OFF)
 option(ENABLE_OOM                 "Enable kernel oom"               OFF)
 option(UT_INFERSHAPE_FLAG         "Enable infershape ut"            OFF)
+option(DOWNLOAD_OPS_TEST_KIT      "Download ops-test-kit repository" OFF)
 
 set(ASCEND_COMPUTE_UNIT           "ascend910b"           CACHE   STRING   "soc that need to be compiled")
 set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING   "operators that need to be compiled")
@@ -131,6 +132,9 @@ set_directory_properties(PROPERTIES
 
 include(cmake/third_party/opbase.cmake)
 include(cmake/third_party/ops-tensor.cmake)
+if(DOWNLOAD_OPS_TEST_KIT)
+  include(cmake/third_party/ops_test_kit.cmake)
+endif()
 include(cmake/config.cmake)
 add_cann_third_party(json)
 
