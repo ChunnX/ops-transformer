@@ -7,10 +7,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term > |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
@@ -305,7 +305,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 ## 约束说明
 
 - 确定性计算：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnWeightQuantMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：`aclnnWeightQuantMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算
   - Ascend 950PR/Ascend 950DT：`aclnnWeightQuantMatmulAllReduce`默认确定性实现。
 - 增量场景不开启MC2，全量场景开启MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。
@@ -318,9 +318,9 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 - pergroup场景下，x2转置时，antiquantScale和antiquantOffset需要一起转置，保持连续性。
 - 在长序列场景，随着b/s或者m的增大，可能出现OOM或者计算超时。
 - 仅支持hccs链路all mesh组网。
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：支持1、2、4、8卡。
     - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
   - 一个模型中的通算融合MC2算子，仅支持相同通信域。
   - 输入x2的数据格式支持ND（当前版本仅支持二维输入）和`FRACTAL_NZ`格式（当前版本仅支持四维输入）。当x2的数据格式为`FRACTAL_NZ`时，配合aclnnCalculateMatmulWeightSizeV2和aclnnTransMatmulWeight完成输入ND到NZ的转换，非连续的tensor仅支持transpose场景。
 - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -330,7 +330,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 输入和输出支持以下数据类型组合：
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
 
   <table style="undefined;table-layout: fixed; width: 600px">
     <col style="width: 90px">
@@ -447,9 +447,9 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >、<term>Ascend 950PR/Ascend 950DT</term>：
 
   ```Cpp
   #include <iostream>
@@ -563,7 +563,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
       std::vector<op::fp16_t> antiquantOffsetHostData(antiquantOffsetShapeSize, 1);
       std::vector<op::fp16_t> x3HostData(x3ShapeSize, 1);
       std::vector<op::fp16_t> outHostData(outShapeSize, 0);
-      // 创建 tensor
+      // 创建tensor
       ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);

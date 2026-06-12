@@ -7,17 +7,17 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |     √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term > |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |     ×      |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
 ## 功能说明
 
-- **接口功能**：`aclnnQuantMatmulAllReduceV3`接口是对`aclnnQuantMatmulAllReduceV2`接口的功能扩展, 新增支持低比特通信：MatMul的计算结果依次进行AllToAll通信、ReduceSum计算、AllGather通信、dequant反量化，代替先dequant和pertoken计算、再AllReduce通信的原流程。支持pertensor、perchannel、pertoken[量化方式](../../../docs/zh/context/量化介绍.md)。
+- **接口功能**：`aclnnQuantMatmulAllReduceV3`接口是对`aclnnQuantMatmulAllReduceV2`接口的功能扩展,新增支持低比特通信：MatMul的计算结果依次进行AllToAll通信、ReduceSum计算、AllGather通信、dequant反量化，代替先dequant和pertoken计算、再AllReduce通信的原流程。支持pertensor、perchannel、pertoken[量化方式](../../../docs/zh/context/量化介绍.md)。
 
 - **计算公式**：
 
@@ -262,7 +262,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
       </tbody>
     </table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：
 
       - 输入x2的数据格式支持ND和`FRACTAL_NZ`格式。输入的shape规则如下：
         - 当x2的数据格式为`FRACTAL_NZ`时，当前版本仅支持四维输入，配合`aclnnCalculateMatmulWeightSizeV2`和`aclnnTransMatmulWeight`完成输入ND到NZ的转换，非连续的tensor仅支持transpose场景。
@@ -354,7 +354,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
 ## 约束说明
 
 - 确定性计算：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnQuantMatmulAllReduceV3`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：`aclnnQuantMatmulAllReduceV3`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
   - Ascend 950PR/Ascend 950DT：`aclnnQuantMatmulAllReduceV3`默认确定性实现。
 - 增量场景不开启MC2，全量场景开启MC2。
 - 输入x1可为2维或者3维，且不为空Tensor，其shape为(b, s, k)或者(m, k)。x2必须是2维，且不为空Tensor。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等。
@@ -365,9 +365,9 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
 - 传入的commQuantScale1与commQuantScale2需要同时为空指针或同时不为空指针，若传入的commQuantScale1与commQuantScale2同时不为空指针，两个量化参数shape需保持一致，类型需与算子输出类型保持一致，且每张卡输入保持一致。
 - x1的shape为(b, s, k)时，pertokenScaleOptional的shape为(b*s)；当x1的shape为(m, k)时，pertokenScaleOptional的shape为(m)。
 - 仅支持hccs链路all mesh组网。
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：支持1、2、4、8卡。
     - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >：一个模型中的通算融合MC2算子，仅支持相同通信域。
 - int8低bit通信仅在通信bound的情况下存在性能收益，计算bound的情况不建议开启int8低bit通信，即不建议输入commQuantScale1和commQuantScale2。
 - 空tensor支持度：
   - 不支持空tensor。
@@ -376,9 +376,9 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term >、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
     #include <iostream>
@@ -551,7 +551,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
         std::vector<op::fp16_t> commQuantScale2HostData(commQuantScale2ShapeSize, 1);
         std::vector<op::fp16_t> x3HostData(x3ShapeSize, 1);
         std::vector<op::fp16_t> outHostData(outShapeSize, 0);
-        // 创建 tensor
+        // 创建tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         if (args.format == "NZ") {
