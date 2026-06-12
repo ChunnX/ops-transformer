@@ -295,7 +295,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
       <tr>
         <td>kvStartIdxOptional</td>
         <td>输入</td>
-        <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
+        <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
         <td>ND</td>
@@ -761,7 +761,7 @@ int main() {
   std::vector<op::fp16_t> vHostData(kv_size, 1.0);
   std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);
   std::vector<float> sinkHostData(sink_size, 3.0);
-  std::vector<float> attentionOutHostData(q_size, 255);
+  std::vector<op::fp16_t> attentionOutHostData(q_size, 255.0);
   std::vector<float> softmaxMaxHostData(softmax_size, 3.0);
   std::vector<float> softmaxSumHostData(softmax_size, 3.0);
 
