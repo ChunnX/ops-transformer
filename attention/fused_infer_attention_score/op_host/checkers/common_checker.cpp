@@ -1386,8 +1386,8 @@ ge::graphStatus CommonChecker::CheckKVContiguous(const FiaTilingInfo &fiaInfo) c
     if (fiaInfo.isTensorV1) {
         return ge::GRAPH_SUCCESS;
     }
-    const gert::Shape &keyShape = fiaInfo.opParamInfo.key.tensor->GetStorageShape();
-    const gert::Shape &valueShape = fiaInfo.opParamInfo.value.tensor->GetStorageShape();
+    const gert::Shape &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
+    const gert::Shape &valueShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
     uint32_t keyDimNum = keyShape.GetDimNum();
     uint32_t valueDimNum = valueShape.GetDimNum();
     int32_t dimIndex = 0;
