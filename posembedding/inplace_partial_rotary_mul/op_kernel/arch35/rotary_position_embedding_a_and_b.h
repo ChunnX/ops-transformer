@@ -267,26 +267,26 @@ __aicore__ inline void RotaryPositionEmbeddingAAndB<T, IsBoardCast>::Compute(
     } else {
         if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::HALF)) {
             BatchHalfAlignVF<T, IsBoardCast>(
-                (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(),
-                (__local_mem__ T*)sin.GetPhyAddr(), (__local_mem__ T*)outUb.GetPhyAddr(), bLength, 1, 1,
+                (__ubuf__ T*)inUb.GetPhyAddr(), (__ubuf__ T*)cos.GetPhyAddr(),
+                (__ubuf__ T*)sin.GetPhyAddr(), (__ubuf__ T*)outUb.GetPhyAddr(), bLength, 1, 1,
                     tilingData_->sliceLength, dAlign_,
                 ubFactorB_, 1);
         } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::INTERLEAVE)) {
             BatchInterleaveModeVF<T, IsBoardCast>(
-                (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(),
-                (__local_mem__ T*)sin.GetPhyAddr(), (__local_mem__ T*)outUb.GetPhyAddr(), bLength, 1, 1,
+                (__ubuf__ T*)inUb.GetPhyAddr(), (__ubuf__ T*)cos.GetPhyAddr(),
+                (__ubuf__ T*)sin.GetPhyAddr(), (__ubuf__ T*)outUb.GetPhyAddr(), bLength, 1, 1,
                     tilingData_->sliceLength, dAlign_,
                 ubFactorB_, 1);
         } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
             BatchQuarterAlignVF<T, IsBoardCast>(
-                (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(),
-                (__local_mem__ T*)sin.GetPhyAddr(), (__local_mem__ T*)outUb.GetPhyAddr(), bLength, 1, 1,
+                (__ubuf__ T*)inUb.GetPhyAddr(), (__ubuf__ T*)cos.GetPhyAddr(),
+                (__ubuf__ T*)sin.GetPhyAddr(), (__ubuf__ T*)outUb.GetPhyAddr(), bLength, 1, 1,
                     tilingData_->sliceLength, dAlign_,
                 ubFactorB_, 1);
         } else {
             BatchDeepSeekInterleaveModeVF<T, IsBoardCast>(
-                (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(),
-                (__local_mem__ T*)sin.GetPhyAddr(), (__local_mem__ T*)outUb.GetPhyAddr(), bLength, 1, 1,
+                (__ubuf__ T*)inUb.GetPhyAddr(), (__ubuf__ T*)cos.GetPhyAddr(),
+                (__ubuf__ T*)sin.GetPhyAddr(), (__ubuf__ T*)outUb.GetPhyAddr(), bLength, 1, 1,
                     tilingData_->sliceLength, dAlign_,
                 ubFactorB_, 1);
         }

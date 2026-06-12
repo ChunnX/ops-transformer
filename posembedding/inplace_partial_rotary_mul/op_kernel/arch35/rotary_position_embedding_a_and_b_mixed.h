@@ -251,10 +251,10 @@ __aicore__ inline void RotaryPositionEmbeddingAAndBMixed<TX, IsBoardCast>::Compu
     if constexpr (IsBoardCast) {
         InterleaveModeVFMixed<TX>(inUb, cos, sin, outUb, tilingData_->sliceLength, 1, bLength);
     } else {
-        BatchInterleaveModeVFMixed<TX, IsBoardCast>((__local_mem__ TX *)inUb.GetPhyAddr(),
-            (__local_mem__ float *)cos.GetPhyAddr(),
-            (__local_mem__ float *)sin.GetPhyAddr(),
-            (__local_mem__ TX *)outUb.GetPhyAddr(),
+        BatchInterleaveModeVFMixed<TX, IsBoardCast>((__ubuf__ TX *)inUb.GetPhyAddr(),
+            (__ubuf__ float *)cos.GetPhyAddr(),
+            (__ubuf__ float *)sin.GetPhyAddr(),
+            (__ubuf__ TX *)outUb.GetPhyAddr(),
             bLength,
             1,
             1,

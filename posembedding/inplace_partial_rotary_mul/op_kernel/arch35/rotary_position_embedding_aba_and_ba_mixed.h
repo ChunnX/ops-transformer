@@ -342,10 +342,10 @@ __aicore__ inline void RotaryPositionEmbeddingABAAndBAMixed<TX, IsBBoardcast>::C
     LocalTensor<TX> outUb = this->qOutQueue_.template AllocTensor<TX>();
     int64_t totalLength = sLength * bLength * nLength * tilingData_->sliceLength;
 
-    BatchInterleaveModeVFMixed<TX, IsBBoardcast>((__local_mem__ TX *)inUb.GetPhyAddr(),
-        (__local_mem__ float *)cos.GetPhyAddr(),
-        (__local_mem__ float *)sin.GetPhyAddr(),
-        (__local_mem__ TX *)outUb.GetPhyAddr(),
+    BatchInterleaveModeVFMixed<TX, IsBBoardcast>((__ubuf__ TX *)inUb.GetPhyAddr(),
+        (__ubuf__ float *)cos.GetPhyAddr(),
+        (__ubuf__ float *)sin.GetPhyAddr(),
+        (__ubuf__ TX *)outUb.GetPhyAddr(),
         sLength,
         bLength,
         nLength,

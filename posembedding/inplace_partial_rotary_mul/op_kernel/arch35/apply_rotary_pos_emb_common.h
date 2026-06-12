@@ -56,29 +56,29 @@ __aicore__ inline void HalfAlignVF(const LocalTensor<T> &sinTensor, const LocalT
     const LocalTensor<T> &inTensor, const LocalTensor<T> &outTensor, uint32_t dLen, uint32_t dAlign, uint16_t currSNum,
     uint16_t currDNum)
 {
-    __local_mem__ T *sinUb = (__local_mem__ T *)sinTensor.GetPhyAddr();
-    __local_mem__ T *cosUb = (__local_mem__ T *)cosTensor.GetPhyAddr();
-    __local_mem__ T *inUb = (__local_mem__ T *)inTensor.GetPhyAddr();
-    __local_mem__ T *outUb = (__local_mem__ T *)outTensor.GetPhyAddr();
+    __ubuf__ T *sinUb = (__ubuf__ T *)sinTensor.GetPhyAddr();
+    __ubuf__ T *cosUb = (__ubuf__ T *)cosTensor.GetPhyAddr();
+    __ubuf__ T *inUb = (__ubuf__ T *)inTensor.GetPhyAddr();
+    __ubuf__ T *outUb = (__ubuf__ T *)outTensor.GetPhyAddr();
     uint32_t halfD = dLen / HALF_INTERLEAVE_COEF;
     uint32_t halfDAlign = ops::CeilAlign(halfD, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
     uint16_t repeatTimes = ops::CeilDiv(halfD, VL_FLOAT32_SIZE);
-    __local_mem__ T *currInUb;
-    __local_mem__ T *currOutUb;
-    __local_mem__ T *currSinUb;
-    __local_mem__ T *currCosUb;
+    __ubuf__ T *currInUb;
+    __ubuf__ T *currOutUb;
+    __ubuf__ T *currSinUb;
+    __ubuf__ T *currCosUb;
 
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<float> vregIn;
-        MicroAPI::RegTensor<float> vregHalfIn;
-        MicroAPI::RegTensor<float> vregSin;
-        MicroAPI::RegTensor<float> vregHalfSin;
-        MicroAPI::RegTensor<float> vregCos;
-        MicroAPI::RegTensor<float> vregHalfCos;
-        MicroAPI::RegTensor<float> vregOut;
-        MicroAPI::RegTensor<float> vregHalfOut;
-        MicroAPI::MaskReg preg;
+        Reg::RegTensor<float> vregIn;
+        Reg::RegTensor<float> vregHalfIn;
+        Reg::RegTensor<float> vregSin;
+        Reg::RegTensor<float> vregHalfSin;
+        Reg::RegTensor<float> vregCos;
+        Reg::RegTensor<float> vregHalfCos;
+        Reg::RegTensor<float> vregOut;
+        Reg::RegTensor<float> vregHalfOut;
+        Reg::MaskReg preg;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             currSinUb = sinUb + sIdx * dAlign;
             currCosUb = cosUb + sIdx * dAlign;
@@ -87,7 +87,7 @@ __aicore__ inline void HalfAlignVF(const LocalTensor<T> &sinTensor, const LocalT
                 currOutUb = outUb + (sIdx * currDNum + row) * dAlign;
                 uint32_t updateCnt = halfD;
                 for (uint16_t i = 0; i < repeatTimes; i++) {
-                    preg = MicroAPI::UpdateMask<float>(updateCnt);
+                    preg = Reg::UpdateMask<float>(updateCnt);
                     uint32_t offset = i * VL_FLOAT32_SIZE;
                     uint32_t halfOffset = offset + halfDAlign;
                     ops::LoadTwoTensorForDtypeT<T>(
@@ -123,37 +123,37 @@ __aicore__ inline void QuarterAlignVF(const LocalTensor<T> &sinTensor, const Loc
     const LocalTensor<T> &inTensor, const LocalTensor<T> &outTensor, uint32_t dLen, uint32_t dAlign, uint16_t currSNum,
     uint16_t currDNum)
 {
-    __local_mem__ T *sinUb = (__local_mem__ T *)sinTensor.GetPhyAddr();
-    __local_mem__ T *cosUb = (__local_mem__ T *)cosTensor.GetPhyAddr();
-    __local_mem__ T *inUb = (__local_mem__ T *)inTensor.GetPhyAddr();
-    __local_mem__ T *outUb = (__local_mem__ T *)outTensor.GetPhyAddr();
+    __ubuf__ T *sinUb = (__ubuf__ T *)sinTensor.GetPhyAddr();
+    __ubuf__ T *cosUb = (__ubuf__ T *)cosTensor.GetPhyAddr();
+    __ubuf__ T *inUb = (__ubuf__ T *)inTensor.GetPhyAddr();
+    __ubuf__ T *outUb = (__ubuf__ T *)outTensor.GetPhyAddr();
     uint32_t quarterD = dLen / QUARTER_MODE_COEF;
     uint32_t quarterDAlign = ops::CeilAlign(quarterD, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
     uint16_t repeatTimes = ops::CeilDiv(quarterD, VL_FLOAT32_SIZE);
-    __local_mem__ T *currInUb;
-    __local_mem__ T *currOutUb;
-    __local_mem__ T *currSinUb;
-    __local_mem__ T *currCosUb;
+    __ubuf__ T *currInUb;
+    __ubuf__ T *currOutUb;
+    __ubuf__ T *currSinUb;
+    __ubuf__ T *currCosUb;
 
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<float> vregIn;
-        MicroAPI::RegTensor<float> vregQ1In;
-        MicroAPI::RegTensor<float> vregQ2In;
-        MicroAPI::RegTensor<float> vregQ3In;
-        MicroAPI::RegTensor<float> vregSin;
-        MicroAPI::RegTensor<float> vregQ1Sin;
-        MicroAPI::RegTensor<float> vregQ2Sin;
-        MicroAPI::RegTensor<float> vregQ3Sin;
-        MicroAPI::RegTensor<float> vregCos;
-        MicroAPI::RegTensor<float> vregQ1Cos;
-        MicroAPI::RegTensor<float> vregQ2Cos;
-        MicroAPI::RegTensor<float> vregQ3Cos;
-        MicroAPI::RegTensor<float> vregOut;
-        MicroAPI::RegTensor<float> vregQ1Out;
-        MicroAPI::RegTensor<float> vregQ2Out;
-        MicroAPI::RegTensor<float> vregQ3Out;
-        MicroAPI::MaskReg preg;
+        Reg::RegTensor<float> vregIn;
+        Reg::RegTensor<float> vregQ1In;
+        Reg::RegTensor<float> vregQ2In;
+        Reg::RegTensor<float> vregQ3In;
+        Reg::RegTensor<float> vregSin;
+        Reg::RegTensor<float> vregQ1Sin;
+        Reg::RegTensor<float> vregQ2Sin;
+        Reg::RegTensor<float> vregQ3Sin;
+        Reg::RegTensor<float> vregCos;
+        Reg::RegTensor<float> vregQ1Cos;
+        Reg::RegTensor<float> vregQ2Cos;
+        Reg::RegTensor<float> vregQ3Cos;
+        Reg::RegTensor<float> vregOut;
+        Reg::RegTensor<float> vregQ1Out;
+        Reg::RegTensor<float> vregQ2Out;
+        Reg::RegTensor<float> vregQ3Out;
+        Reg::MaskReg preg;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             currSinUb = sinUb + sIdx * dAlign;
             currCosUb = cosUb + sIdx * dAlign;
@@ -162,7 +162,7 @@ __aicore__ inline void QuarterAlignVF(const LocalTensor<T> &sinTensor, const Loc
                 currOutUb = outUb + (sIdx * currDNum + row) * dAlign;
                 uint32_t updateCnt = quarterD;
                 for (uint16_t i = 0; i < repeatTimes; i++) {
-                    preg = MicroAPI::UpdateMask<float>(updateCnt);
+                    preg = Reg::UpdateMask<float>(updateCnt);
                     uint32_t offset = i * VL_FLOAT32_SIZE;
                     uint32_t q1Offset = offset + quarterDAlign;
                     uint32_t q2Offset = q1Offset + quarterDAlign;
@@ -207,10 +207,10 @@ __aicore__ inline void InterleaveModeVF(const LocalTensor<T> &sinTensor, const L
     const LocalTensor<T> &inTensor, const LocalTensor<T> &outTensor, uint32_t dLen, uint16_t currSNum,
     uint16_t currDNum)
 {
-    __local_mem__ T *sinUb = (__local_mem__ T *)sinTensor.GetPhyAddr();
-    __local_mem__ T *cosUb = (__local_mem__ T *)cosTensor.GetPhyAddr();
-    __local_mem__ T *inUb = (__local_mem__ T *)inTensor.GetPhyAddr();
-    __local_mem__ T *outUb = (__local_mem__ T *)outTensor.GetPhyAddr();
+    __ubuf__ T *sinUb = (__ubuf__ T *)sinTensor.GetPhyAddr();
+    __ubuf__ T *cosUb = (__ubuf__ T *)cosTensor.GetPhyAddr();
+    __ubuf__ T *inUb = (__ubuf__ T *)inTensor.GetPhyAddr();
+    __ubuf__ T *outUb = (__ubuf__ T *)outTensor.GetPhyAddr();
     uint16_t repeatTimes = dLen / VL_FLOAT32_SIZE;
     uint32_t dAlignLen = ops::CeilAlign(dLen, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
     uint16_t loopNum = repeatTimes / 2;
@@ -218,27 +218,27 @@ __aicore__ inline void InterleaveModeVF(const LocalTensor<T> &sinTensor, const L
     uint16_t tailTwoVL = tailNum / VL_FLOAT32_SIZE;
     uint16_t tailOneVL = (tailTwoVL == 1) ? 0 : 1;
     uint32_t tailLen = tailNum % VL_FLOAT32_SIZE;
-    __local_mem__ T *currInUb;
-    __local_mem__ T *currOutUb;
-    __local_mem__ T *currSinUb;
-    __local_mem__ T *currCosUb;
-    __local_mem__ T *tailSinUb;
-    __local_mem__ T *tailCosUb;
+    __ubuf__ T *currInUb;
+    __ubuf__ T *currOutUb;
+    __ubuf__ T *currSinUb;
+    __ubuf__ T *currCosUb;
+    __ubuf__ T *tailSinUb;
+    __ubuf__ T *tailCosUb;
 
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<float> vregFormerCos;
-        MicroAPI::RegTensor<float> vregLatterCos;
-        MicroAPI::RegTensor<float> vregFormerSin;
-        MicroAPI::RegTensor<float> vregLatterSin;
-        MicroAPI::RegTensor<float> vregFormerIn;
-        MicroAPI::RegTensor<float> vregLatterIn;
-        MicroAPI::RegTensor<float> vregOdd;
-        MicroAPI::RegTensor<float> vregEven;
-        MicroAPI::RegTensor<float> vregFormerOut;
-        MicroAPI::RegTensor<float> vregLatterOut;
-        MicroAPI::MaskReg pregLoop;
-        MicroAPI::MaskReg pregTail;
+        Reg::RegTensor<float> vregFormerCos;
+        Reg::RegTensor<float> vregLatterCos;
+        Reg::RegTensor<float> vregFormerSin;
+        Reg::RegTensor<float> vregLatterSin;
+        Reg::RegTensor<float> vregFormerIn;
+        Reg::RegTensor<float> vregLatterIn;
+        Reg::RegTensor<float> vregOdd;
+        Reg::RegTensor<float> vregEven;
+        Reg::RegTensor<float> vregFormerOut;
+        Reg::RegTensor<float> vregLatterOut;
+        Reg::MaskReg pregLoop;
+        Reg::MaskReg pregTail;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             currSinUb = sinUb + sIdx * dAlignLen;
             currCosUb = cosUb + sIdx * dAlignLen;
@@ -246,7 +246,7 @@ __aicore__ inline void InterleaveModeVF(const LocalTensor<T> &sinTensor, const L
                 uint32_t updateCnt = dLen;
                 currInUb = inUb + (sIdx * currDNum + idxD) * dAlignLen;
                 currOutUb = outUb + (sIdx * currDNum + idxD) * dAlignLen;
-                pregLoop = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+                pregLoop = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
                 for (uint16_t i = 0; i < loopNum; i++) {
                     uint32_t evenOffSet = (i * 2) * VL_FLOAT32_SIZE;
                     uint32_t oddOffset = evenOffSet + VL_FLOAT32_SIZE;
@@ -258,9 +258,9 @@ __aicore__ inline void InterleaveModeVF(const LocalTensor<T> &sinTensor, const L
                     ops::LoadOneTensorForDtypeT<T>(currSinUb, vregLatterSin, pregLoop, oddOffset);
                     Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
                     Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregLoop);
-                    MicroAPI::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
+                    Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
                     Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
-                    MicroAPI::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
+                    Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
                     Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
                     Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
                     Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregLoop);
@@ -276,7 +276,7 @@ __aicore__ inline void InterleaveModeVF(const LocalTensor<T> &sinTensor, const L
                 // 尾块大于VL时,读取一个VL，读取尾块
                 for (uint16_t i = 0; i < tailTwoVL; i++) {
                     uint32_t updateCnt = tailLen;
-                    pregTail = MicroAPI::UpdateMask<float>(updateCnt);
+                    pregTail = Reg::UpdateMask<float>(updateCnt);
                     ops::LoadOneTensorForDtypeT<T>(currInUb, vregFormerIn, pregLoop, 0);
                     ops::LoadOneTensorForDtypeT<T>(currInUb, vregLatterIn, pregTail, VL_FLOAT32_SIZE);
                     ops::LoadOneTensorForDtypeT<T>(tailCosUb, vregFormerCos, pregLoop, 0);
@@ -285,9 +285,9 @@ __aicore__ inline void InterleaveModeVF(const LocalTensor<T> &sinTensor, const L
                     ops::LoadOneTensorForDtypeT<T>(tailSinUb, vregLatterSin, pregTail, VL_FLOAT32_SIZE);
                     Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
                     Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregTail);
-                    MicroAPI::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
+                    Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
                     Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
-                    MicroAPI::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
+                    Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
                     Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
                     Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
                     Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregTail);
@@ -299,14 +299,14 @@ __aicore__ inline void InterleaveModeVF(const LocalTensor<T> &sinTensor, const L
                 // 尾块小于VL时,只读取VL
                 for (uint16_t i = 0; i < tailOneVL; i++) {
                     uint32_t updateCnt = tailLen;
-                    pregTail = MicroAPI::UpdateMask<float>(updateCnt);
+                    pregTail = Reg::UpdateMask<float>(updateCnt);
                     ops::LoadOneTensorForDtypeT<T>(currInUb, vregFormerIn, pregTail, 0);
                     ops::LoadOneTensorForDtypeT<T>(tailCosUb, vregFormerCos, pregTail, 0);
                     ops::LoadOneTensorForDtypeT<T>(tailSinUb, vregFormerSin, pregTail, 0);
                     Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregTail);
-                    MicroAPI::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
+                    Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
                     Muls(vregOdd, vregOdd, float(-1.0), pregTail);
-                    MicroAPI::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
+                    Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
                     Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregTail);
                     Add(vregFormerCos, vregFormerCos, vregFormerSin, pregTail);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregFormerCos, pregTail, 0);
@@ -321,10 +321,10 @@ __aicore__ inline void DeepSeekInterleaveModeVF(const LocalTensor<T> &sinTensor,
     const LocalTensor<T> &inTensor, const LocalTensor<T> &outTensor, uint32_t dLen, uint16_t currSNum,
     uint16_t currDNum)
 {
-    __local_mem__ T *sinUb = (__local_mem__ T *)sinTensor.GetPhyAddr();
-    __local_mem__ T *cosUb = (__local_mem__ T *)cosTensor.GetPhyAddr();
-    __local_mem__ T *inUb = (__local_mem__ T *)inTensor.GetPhyAddr();
-    __local_mem__ T *outUb = (__local_mem__ T *)outTensor.GetPhyAddr();
+    __ubuf__ T *sinUb = (__ubuf__ T *)sinTensor.GetPhyAddr();
+    __ubuf__ T *cosUb = (__ubuf__ T *)cosTensor.GetPhyAddr();
+    __ubuf__ T *inUb = (__ubuf__ T *)inTensor.GetPhyAddr();
+    __ubuf__ T *outUb = (__ubuf__ T *)outTensor.GetPhyAddr();
     uint32_t dAlign = ops::CeilAlign(dLen, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
     uint32_t halfD = dLen / HALF_INTERLEAVE_COEF;
     uint32_t halfDAlign = ops::CeilAlign(halfD, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(T)));
@@ -334,31 +334,31 @@ __aicore__ inline void DeepSeekInterleaveModeVF(const LocalTensor<T> &sinTensor,
     uint16_t tailOneVL = tailTwoNum > 0 ? (1 - tailTwoVL) : 0;
     uint32_t halfTailNum = tailTwoNum / HALF_INTERLEAVE_COEF;
     uint32_t tailNum = tailTwoNum - tailTwoVL * VL_FLOAT32_SIZE;
-    __local_mem__ T *currInUb;
-    __local_mem__ T *currOutUb;
-    __local_mem__ T *currSinUb;
-    __local_mem__ T *currCosUb;
+    __ubuf__ T *currInUb;
+    __ubuf__ T *currOutUb;
+    __ubuf__ T *currSinUb;
+    __ubuf__ T *currCosUb;
 
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<float> vregIn;
-        MicroAPI::RegTensor<float> vregHalfIn;
-        MicroAPI::RegTensor<float> vregSin;
-        MicroAPI::RegTensor<float> vregHalfSin;
-        MicroAPI::RegTensor<float> vregCos;
-        MicroAPI::RegTensor<float> vregHalfCos;
-        MicroAPI::RegTensor<float> vregOut;
-        MicroAPI::RegTensor<float> vregHalfOut;
-        MicroAPI::MaskReg pregTail;
-        MicroAPI::MaskReg pregHalfTail;
-        MicroAPI::MaskReg pregFull = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+        Reg::RegTensor<float> vregIn;
+        Reg::RegTensor<float> vregHalfIn;
+        Reg::RegTensor<float> vregSin;
+        Reg::RegTensor<float> vregHalfSin;
+        Reg::RegTensor<float> vregCos;
+        Reg::RegTensor<float> vregHalfCos;
+        Reg::RegTensor<float> vregOut;
+        Reg::RegTensor<float> vregHalfOut;
+        Reg::MaskReg pregTail;
+        Reg::MaskReg pregHalfTail;
+        Reg::MaskReg pregFull = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             currSinUb = sinUb + sIdx * halfDAlign * HALF_INTERLEAVE_COEF;
             currCosUb = cosUb + sIdx * halfDAlign * HALF_INTERLEAVE_COEF;
             uint32_t updateTailNum = tailNum;
             uint32_t updateHalfTailNum = halfTailNum;
-            pregTail = MicroAPI::UpdateMask<float>(updateTailNum);
-            pregHalfTail = MicroAPI::UpdateMask<float>(updateHalfTailNum);
+            pregTail = Reg::UpdateMask<float>(updateTailNum);
+            pregHalfTail = Reg::UpdateMask<float>(updateHalfTailNum);
             for (uint16_t row = 0; row < currDNum; row++) {
                 currInUb = inUb + (sIdx * currDNum + row) * dAlign;
                 currOutUb = outUb + (sIdx * currDNum + row) * halfDAlign * HALF_INTERLEAVE_COEF;
@@ -451,8 +451,8 @@ __aicore__ inline void DeepSeekInterleaveModeVF(const LocalTensor<T> &sinTensor,
 }
 
 template <typename T, bool IsBBoardcast>
-__aicore__ inline void BatchHalfAlignVF(__local_mem__ T *in, __local_mem__ T *cos, __local_mem__ T *sin,
-    __local_mem__ T *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign,
+__aicore__ inline void BatchHalfAlignVF(__ubuf__ T *in, __ubuf__ T *cos, __ubuf__ T *sin,
+    __ubuf__ T *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign,
     int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t dHalfSize = d / HALF_INTERLEAVE_COEF;
@@ -466,14 +466,14 @@ __aicore__ inline void BatchHalfAlignVF(__local_mem__ T *in, __local_mem__ T *co
     __VEC_SCOPE__
     {
         // 定义相关寄存器
-        MicroAPI::RegTensor<float> inPart1Reg;
-        MicroAPI::RegTensor<float> inPart2Reg;
-        MicroAPI::RegTensor<float> cosPart1Reg;
-        MicroAPI::RegTensor<float> cosPart2Reg;
-        MicroAPI::RegTensor<float> sinPart1Reg;
-        MicroAPI::RegTensor<float> sinPart2Reg;
-        MicroAPI::MaskReg pregLoop;
-        __local_mem__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
+        Reg::RegTensor<float> inPart1Reg;
+        Reg::RegTensor<float> inPart2Reg;
+        Reg::RegTensor<float> cosPart1Reg;
+        Reg::RegTensor<float> cosPart2Reg;
+        Reg::RegTensor<float> sinPart1Reg;
+        Reg::RegTensor<float> sinPart2Reg;
+        Reg::MaskReg pregLoop;
+        __ubuf__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
         for (uint16_t bIdx = 0; bIdx < bLength; bIdx++) {
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
@@ -488,7 +488,7 @@ __aicore__ inline void BatchHalfAlignVF(__local_mem__ T *in, __local_mem__ T *co
                         currSinUb = sin + bIdx * nStepUb + sIdx * dAlign;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
-                        pregLoop = MicroAPI::UpdateMask<float>(count);
+                        pregLoop = Reg::UpdateMask<float>(count);
                         // 拷贝到RegBase内
                         ops::LoadOneTensorForDtypeT<T>(currInUb, inPart1Reg, pregLoop, i * VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<T>(
@@ -518,8 +518,8 @@ __aicore__ inline void BatchHalfAlignVF(__local_mem__ T *in, __local_mem__ T *co
 }
 
 template <typename T, bool IsBBoardcast>
-__aicore__ inline void BatchQuarterAlignVF(__local_mem__ T *in, __local_mem__ T *cos, __local_mem__ T *sin,
-    __local_mem__ T *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign,
+__aicore__ inline void BatchQuarterAlignVF(__ubuf__ T *in, __ubuf__ T *cos, __ubuf__ T *sin,
+    __ubuf__ T *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign,
     int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t dQuarterSize = d / QUARTER_MODE_COEF;
@@ -535,20 +535,20 @@ __aicore__ inline void BatchQuarterAlignVF(__local_mem__ T *in, __local_mem__ T 
     __VEC_SCOPE__
     {
         // 定义相关寄存器
-        MicroAPI::RegTensor<float> inPart1Reg;
-        MicroAPI::RegTensor<float> inPart2Reg;
-        MicroAPI::RegTensor<float> inPart3Reg;
-        MicroAPI::RegTensor<float> inPart4Reg;
-        MicroAPI::RegTensor<float> cosPart1Reg;
-        MicroAPI::RegTensor<float> cosPart2Reg;
-        MicroAPI::RegTensor<float> cosPart3Reg;
-        MicroAPI::RegTensor<float> cosPart4Reg;
-        MicroAPI::RegTensor<float> sinPart1Reg;
-        MicroAPI::RegTensor<float> sinPart2Reg;
-        MicroAPI::RegTensor<float> sinPart3Reg;
-        MicroAPI::RegTensor<float> sinPart4Reg;
-        MicroAPI::MaskReg pregLoop;
-        __local_mem__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
+        Reg::RegTensor<float> inPart1Reg;
+        Reg::RegTensor<float> inPart2Reg;
+        Reg::RegTensor<float> inPart3Reg;
+        Reg::RegTensor<float> inPart4Reg;
+        Reg::RegTensor<float> cosPart1Reg;
+        Reg::RegTensor<float> cosPart2Reg;
+        Reg::RegTensor<float> cosPart3Reg;
+        Reg::RegTensor<float> cosPart4Reg;
+        Reg::RegTensor<float> sinPart1Reg;
+        Reg::RegTensor<float> sinPart2Reg;
+        Reg::RegTensor<float> sinPart3Reg;
+        Reg::RegTensor<float> sinPart4Reg;
+        Reg::MaskReg pregLoop;
+        __ubuf__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
         for (uint16_t bIdx = 0; bIdx < bLength; bIdx++) {
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
@@ -563,7 +563,7 @@ __aicore__ inline void BatchQuarterAlignVF(__local_mem__ T *in, __local_mem__ T 
                         currSinUb = sin + bIdx * nStepUb + sIdx * dAlign;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
-                        pregLoop = MicroAPI::UpdateMask<float>(count);
+                        pregLoop = Reg::UpdateMask<float>(count);
                         // 拷贝到RegBase内
                         ops::LoadTwoTensorForDtypeT<T>(currInUb,
                             currInUb,
@@ -642,8 +642,8 @@ __aicore__ inline void BatchQuarterAlignVF(__local_mem__ T *in, __local_mem__ T 
 }
 
 template <typename T, bool IsBBoardcast>
-__aicore__ inline void BatchInterleaveModeVF(__local_mem__ T *in, __local_mem__ T *cos, __local_mem__ T *sin,
-    __local_mem__ T *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign,
+__aicore__ inline void BatchInterleaveModeVF(__ubuf__ T *in, __ubuf__ T *cos, __ubuf__ T *sin,
+    __ubuf__ T *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign,
     int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t loopSize = 2 * VL_FLOAT32_SIZE;
@@ -668,16 +668,16 @@ __aicore__ inline void BatchInterleaveModeVF(__local_mem__ T *in, __local_mem__ 
     __VEC_SCOPE__
     {
         // 定义相关寄存器
-        MicroAPI::RegTensor<float> inPart1Reg;
-        MicroAPI::RegTensor<float> inPart2Reg;
-        MicroAPI::RegTensor<float> cosPart1Reg;
-        MicroAPI::RegTensor<float> cosPart2Reg;
-        MicroAPI::RegTensor<float> sinPart1Reg;
-        MicroAPI::RegTensor<float> sinPart2Reg;
-        MicroAPI::MaskReg pregLoop;
-        MicroAPI::MaskReg pregPart1;
-        MicroAPI::MaskReg pregPart2;
-        __local_mem__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
+        Reg::RegTensor<float> inPart1Reg;
+        Reg::RegTensor<float> inPart2Reg;
+        Reg::RegTensor<float> cosPart1Reg;
+        Reg::RegTensor<float> cosPart2Reg;
+        Reg::RegTensor<float> sinPart1Reg;
+        Reg::RegTensor<float> sinPart2Reg;
+        Reg::MaskReg pregLoop;
+        Reg::MaskReg pregPart1;
+        Reg::MaskReg pregPart2;
+        __ubuf__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
         for (uint16_t bIdx = 0; bIdx < bLength; bIdx++) {
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
@@ -694,9 +694,9 @@ __aicore__ inline void BatchInterleaveModeVF(__local_mem__ T *in, __local_mem__ 
                         currSinUb = sin + bIdx * nStepUb + sIdx * dAlign;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
-                        pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
-                        pregPart1 = MicroAPI::UpdateMask<float>(part1Cnt);
-                        pregPart2 = MicroAPI::UpdateMask<float>(part2Cnt);
+                        pregLoop = Reg::UpdateMask<float>(halfCnt);
+                        pregPart1 = Reg::UpdateMask<float>(part1Cnt);
+                        pregPart2 = Reg::UpdateMask<float>(part2Cnt);
                         ops::LoadOneTensorForDtypeT<T>(currInUb, inPart1Reg, pregPart1, i * loopSize);
                         ops::LoadOneTensorForDtypeT<T>(currInUb, inPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<T>(currCosUb, cosPart1Reg, pregPart1, i * loopSize);
@@ -707,9 +707,9 @@ __aicore__ inline void BatchInterleaveModeVF(__local_mem__ T *in, __local_mem__ 
                             currSinUb, sinPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
                         Mul(cosPart1Reg, cosPart1Reg, inPart1Reg, pregPart1);
                         Mul(cosPart2Reg, cosPart2Reg, inPart2Reg, pregPart2);
-                        MicroAPI::DeInterleave<float>(inPart1Reg, inPart2Reg, inPart1Reg, inPart2Reg);
+                        Reg::DeInterleave<float>(inPart1Reg, inPart2Reg, inPart1Reg, inPart2Reg);
                         Muls(inPart2Reg, inPart2Reg, float(-1.0), pregLoop);
-                        MicroAPI::Interleave<float>(inPart1Reg, inPart2Reg, inPart2Reg, inPart1Reg);
+                        Reg::Interleave<float>(inPart1Reg, inPart2Reg, inPart2Reg, inPart1Reg);
                         Mul(sinPart1Reg, sinPart1Reg, inPart1Reg, pregPart1);
                         Add(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregPart1);
                         Mul(sinPart2Reg, sinPart2Reg, inPart2Reg, pregPart2);
@@ -725,8 +725,8 @@ __aicore__ inline void BatchInterleaveModeVF(__local_mem__ T *in, __local_mem__ 
 }
 
 template <typename T, bool IsBBoardcast>
-__aicore__ inline void BatchDeepSeekInterleaveModeVF(__local_mem__ T *in, __local_mem__ T *cos, __local_mem__ T *sin,
-    __local_mem__ T *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign,
+__aicore__ inline void BatchDeepSeekInterleaveModeVF(__ubuf__ T *in, __ubuf__ T *cos, __ubuf__ T *sin,
+    __ubuf__ T *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t d, int64_t dAlign,
     int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t loopSize = 2 * VL_FLOAT32_SIZE;
@@ -752,16 +752,16 @@ __aicore__ inline void BatchDeepSeekInterleaveModeVF(__local_mem__ T *in, __loca
     __VEC_SCOPE__
     {
         // 定义相关寄存器
-        MicroAPI::RegTensor<float> inPart1Reg;
-        MicroAPI::RegTensor<float> inPart2Reg;
-        MicroAPI::RegTensor<float> cosPart1Reg;
-        MicroAPI::RegTensor<float> cosPart2Reg;
-        MicroAPI::RegTensor<float> sinPart1Reg;
-        MicroAPI::RegTensor<float> sinPart2Reg;
-        MicroAPI::MaskReg pregLoop;
-        MicroAPI::MaskReg pregPart1;
-        MicroAPI::MaskReg pregPart2;
-        __local_mem__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
+        Reg::RegTensor<float> inPart1Reg;
+        Reg::RegTensor<float> inPart2Reg;
+        Reg::RegTensor<float> cosPart1Reg;
+        Reg::RegTensor<float> cosPart2Reg;
+        Reg::RegTensor<float> sinPart1Reg;
+        Reg::RegTensor<float> sinPart2Reg;
+        Reg::MaskReg pregLoop;
+        Reg::MaskReg pregPart1;
+        Reg::MaskReg pregPart2;
+        __ubuf__ T *currInUb, *currOutUb, *currSinUb, *currCosUb;
         for (uint16_t bIdx = 0; bIdx < bLength; bIdx++) {
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
@@ -778,9 +778,9 @@ __aicore__ inline void BatchDeepSeekInterleaveModeVF(__local_mem__ T *in, __loca
                         currSinUb = sin + bIdx * nStepUb + sIdx * dAlign;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
-                        pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
-                        pregPart1 = MicroAPI::UpdateMask<float>(part1Cnt);
-                        pregPart2 = MicroAPI::UpdateMask<float>(part2Cnt);
+                        pregLoop = Reg::UpdateMask<float>(halfCnt);
+                        pregPart1 = Reg::UpdateMask<float>(part1Cnt);
+                        pregPart2 = Reg::UpdateMask<float>(part2Cnt);
                         ops::LoadOneTensorForDtypeT<T>(currInUb, inPart1Reg, pregPart1, i * loopSize);
                         ops::LoadOneTensorForDtypeT<T>(currInUb, inPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<T>(currCosUb, cosPart1Reg, pregLoop, i * VL_FLOAT32_SIZE);
@@ -789,7 +789,7 @@ __aicore__ inline void BatchDeepSeekInterleaveModeVF(__local_mem__ T *in, __loca
                         ops::LoadOneTensorForDtypeT<T>(currSinUb, sinPart1Reg, pregLoop, i * VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<T>(
                             currSinUb, sinPart2Reg, pregLoop, i * VL_FLOAT32_SIZE + dHalfOffset);
-                        MicroAPI::DeInterleave<float>(inPart1Reg, inPart2Reg, inPart1Reg, inPart2Reg);
+                        Reg::DeInterleave<float>(inPart1Reg, inPart2Reg, inPart1Reg, inPart2Reg);
                         Mul(cosPart1Reg, cosPart1Reg, inPart1Reg, pregLoop);
                         Mul(cosPart2Reg, cosPart2Reg, inPart2Reg, pregLoop);
                         Muls(inPart2Reg, inPart2Reg, float(-1.0), pregLoop);
@@ -813,10 +813,10 @@ __aicore__ inline void InterleaveModeVFMixed(const LocalTensor<TX> &inTensor, co
     const LocalTensor<float> &sinTensor, const LocalTensor<TX> &outTensor, uint32_t dLen, uint16_t currSNum,
     uint16_t currDNum)
 {
-    __local_mem__ TX *inUb = (__local_mem__ TX *)inTensor.GetPhyAddr();
-    __local_mem__ float *cosUb = (__local_mem__ float *)cosTensor.GetPhyAddr();
-    __local_mem__ float *sinUb = (__local_mem__ float *)sinTensor.GetPhyAddr();
-    __local_mem__ TX *outUb = (__local_mem__ TX *)outTensor.GetPhyAddr();
+    __ubuf__ TX *inUb = (__ubuf__ TX *)inTensor.GetPhyAddr();
+    __ubuf__ float *cosUb = (__ubuf__ float *)cosTensor.GetPhyAddr();
+    __ubuf__ float *sinUb = (__ubuf__ float *)sinTensor.GetPhyAddr();
+    __ubuf__ TX *outUb = (__ubuf__ TX *)outTensor.GetPhyAddr();
     uint16_t repeatTimes = dLen / VL_FLOAT32_SIZE;
     uint32_t dAlignLen = ops::CeilAlign(dLen, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(TX)));
     uint32_t dAlignLenFloat = ops::CeilAlign(dLen, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(float)));
@@ -825,30 +825,30 @@ __aicore__ inline void InterleaveModeVFMixed(const LocalTensor<TX> &inTensor, co
     uint16_t tailTwoVL = tailNum / VL_FLOAT32_SIZE;
     uint16_t tailOneVL = (tailTwoVL == 1) ? 0 : 1;
     uint32_t tailLen = tailNum % VL_FLOAT32_SIZE;
-    __local_mem__ TX *currInUb;
-    __local_mem__ TX *currOutUb;
-    __local_mem__ float *currSinUb;
-    __local_mem__ float *currCosUb;
+    __ubuf__ TX *currInUb;
+    __ubuf__ TX *currOutUb;
+    __ubuf__ float *currSinUb;
+    __ubuf__ float *currCosUb;
 
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<float> vregFormerCos;
-        MicroAPI::RegTensor<float> vregLatterCos;
-        MicroAPI::RegTensor<float> vregFormerSin;
-        MicroAPI::RegTensor<float> vregLatterSin;
-        MicroAPI::RegTensor<float> vregFormerIn;
-        MicroAPI::RegTensor<float> vregLatterIn;
-        MicroAPI::RegTensor<float> vregOdd;
-        MicroAPI::RegTensor<float> vregEven;
-        MicroAPI::MaskReg pregLoop;
-        MicroAPI::MaskReg pregTail;
+        Reg::RegTensor<float> vregFormerCos;
+        Reg::RegTensor<float> vregLatterCos;
+        Reg::RegTensor<float> vregFormerSin;
+        Reg::RegTensor<float> vregLatterSin;
+        Reg::RegTensor<float> vregFormerIn;
+        Reg::RegTensor<float> vregLatterIn;
+        Reg::RegTensor<float> vregOdd;
+        Reg::RegTensor<float> vregEven;
+        Reg::MaskReg pregLoop;
+        Reg::MaskReg pregTail;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             currSinUb = sinUb + sIdx * dAlignLenFloat;
             currCosUb = cosUb + sIdx * dAlignLenFloat;
             for (uint16_t idxD = 0; idxD < currDNum; idxD++) {
                 currInUb = inUb + (sIdx * currDNum + idxD) * dAlignLen;
                 currOutUb = outUb + (sIdx * currDNum + idxD) * dAlignLen;
-                pregLoop = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+                pregLoop = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
                 for (uint16_t i = 0; i < loopNum; i++) {
                     uint32_t evenOffSet = (i * 2) * VL_FLOAT32_SIZE;
                     uint32_t oddOffset = evenOffSet + VL_FLOAT32_SIZE;
@@ -860,9 +860,9 @@ __aicore__ inline void InterleaveModeVFMixed(const LocalTensor<TX> &inTensor, co
                     DataCopy(vregLatterSin, currSinUb + oddOffset);
                     Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
                     Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregLoop);
-                    MicroAPI::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
+                    Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
                     Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
-                    MicroAPI::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
+                    Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
                     Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
                     Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
                     Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregLoop);
@@ -873,11 +873,11 @@ __aicore__ inline void InterleaveModeVFMixed(const LocalTensor<TX> &inTensor, co
 
                 currInUb = inUb + (sIdx * currDNum + idxD) * dAlignLen + (loopNum * 2 * VL_FLOAT32_SIZE);
                 currOutUb = outUb + (sIdx * currDNum + idxD) * dAlignLen + (loopNum * 2 * VL_FLOAT32_SIZE);
-                __local_mem__ float *tailSinUb = currSinUb + loopNum * 2 * VL_FLOAT32_SIZE;
-                __local_mem__ float *tailCosUb = currCosUb + loopNum * 2 * VL_FLOAT32_SIZE;
+                __ubuf__ float *tailSinUb = currSinUb + loopNum * 2 * VL_FLOAT32_SIZE;
+                __ubuf__ float *tailCosUb = currCosUb + loopNum * 2 * VL_FLOAT32_SIZE;
                 for (uint16_t i = 0; i < tailTwoVL; i++) {
                     uint32_t updateCnt = tailLen;
-                    pregTail = MicroAPI::UpdateMask<float>(updateCnt);
+                    pregTail = Reg::UpdateMask<float>(updateCnt);
                     ops::LoadOneTensorForDtypeT<TX>(currInUb, vregFormerIn, pregLoop, 0);
                     ops::LoadOneTensorForDtypeT<TX>(currInUb, vregLatterIn, pregTail, VL_FLOAT32_SIZE);
                     DataCopy(vregFormerCos, tailCosUb);
@@ -886,9 +886,9 @@ __aicore__ inline void InterleaveModeVFMixed(const LocalTensor<TX> &inTensor, co
                     DataCopy(vregLatterSin, tailSinUb + VL_FLOAT32_SIZE);
                     Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
                     Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregTail);
-                    MicroAPI::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
+                    Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
                     Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
-                    MicroAPI::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
+                    Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
                     Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
                     Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
                     Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregTail);
@@ -899,14 +899,14 @@ __aicore__ inline void InterleaveModeVFMixed(const LocalTensor<TX> &inTensor, co
 
                 for (uint16_t i = 0; i < tailOneVL; i++) {
                     uint32_t updateCnt = tailLen;
-                    pregTail = MicroAPI::UpdateMask<float>(updateCnt);
+                    pregTail = Reg::UpdateMask<float>(updateCnt);
                     ops::LoadOneTensorForDtypeT<TX>(currInUb, vregFormerIn, pregTail, 0);
                     DataCopy(vregFormerCos, tailCosUb);
                     DataCopy(vregFormerSin, tailSinUb);
                     Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregTail);
-                    MicroAPI::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
+                    Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
                     Muls(vregOdd, vregOdd, float(-1.0), pregTail);
-                    MicroAPI::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
+                    Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
                     Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregTail);
                     Add(vregFormerCos, vregFormerCos, vregFormerSin, pregTail);
                     ops::StoreOneTensorForDtypeT<TX>(currOutUb, vregFormerCos, pregTail, 0);
@@ -918,8 +918,8 @@ __aicore__ inline void InterleaveModeVFMixed(const LocalTensor<TX> &inTensor, co
 
 // Mixed precision BatchInterleaveModeVF for ABA layout
 template <typename TX, bool IsBBoardcast>
-__aicore__ inline void BatchInterleaveModeVFMixed(__local_mem__ TX *in, __local_mem__ float *cos,
-    __local_mem__ float *sin, __local_mem__ TX *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t d,
+__aicore__ inline void BatchInterleaveModeVFMixed(__ubuf__ TX *in, __ubuf__ float *cos,
+    __ubuf__ float *sin, __ubuf__ TX *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t d,
     int64_t dAlign, int64_t dAlignFloat, int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t loopSize = 2 * VL_FLOAT32_SIZE;
@@ -943,17 +943,17 @@ __aicore__ inline void BatchInterleaveModeVFMixed(__local_mem__ TX *in, __local_
 
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<float> inPart1Reg;
-        MicroAPI::RegTensor<float> inPart2Reg;
-        MicroAPI::RegTensor<float> cosPart1Reg;
-        MicroAPI::RegTensor<float> cosPart2Reg;
-        MicroAPI::RegTensor<float> sinPart1Reg;
-        MicroAPI::RegTensor<float> sinPart2Reg;
-        MicroAPI::MaskReg pregLoop;
-        MicroAPI::MaskReg pregPart1;
-        MicroAPI::MaskReg pregPart2;
-        __local_mem__ TX *currInUb, *currOutUb;
-        __local_mem__ float *currSinUb, *currCosUb;
+        Reg::RegTensor<float> inPart1Reg;
+        Reg::RegTensor<float> inPart2Reg;
+        Reg::RegTensor<float> cosPart1Reg;
+        Reg::RegTensor<float> cosPart2Reg;
+        Reg::RegTensor<float> sinPart1Reg;
+        Reg::RegTensor<float> sinPart2Reg;
+        Reg::MaskReg pregLoop;
+        Reg::MaskReg pregPart1;
+        Reg::MaskReg pregPart2;
+        __ubuf__ TX *currInUb, *currOutUb;
+        __ubuf__ float *currSinUb, *currCosUb;
         for (uint16_t bIdx = 0; bIdx < bLength; bIdx++) {
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
@@ -970,9 +970,9 @@ __aicore__ inline void BatchInterleaveModeVFMixed(__local_mem__ TX *in, __local_
                         currSinUb = sin + bIdx * cosSinBStepUb + sIdx * cosSinSStepUb;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
-                        pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
-                        pregPart1 = MicroAPI::UpdateMask<float>(part1Cnt);
-                        pregPart2 = MicroAPI::UpdateMask<float>(part2Cnt);
+                        pregLoop = Reg::UpdateMask<float>(halfCnt);
+                        pregPart1 = Reg::UpdateMask<float>(part1Cnt);
+                        pregPart2 = Reg::UpdateMask<float>(part2Cnt);
                         // Load/Store的offset是TX元素偏移，需与cos/sin逻辑下标对齐，不能按dtype字节数换算。
                         ops::LoadOneTensorForDtypeT<TX>(currInUb, inPart1Reg, pregPart1, i * loopSize);
                         ops::LoadOneTensorForDtypeT<TX>(currInUb,
@@ -987,9 +987,9 @@ __aicore__ inline void BatchInterleaveModeVFMixed(__local_mem__ TX *in, __local_
                             currSinUb, sinPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
                         Mul(cosPart1Reg, cosPart1Reg, inPart1Reg, pregPart1);
                         Mul(cosPart2Reg, cosPart2Reg, inPart2Reg, pregPart2);
-                        MicroAPI::DeInterleave<float>(inPart1Reg, inPart2Reg, inPart1Reg, inPart2Reg);
+                        Reg::DeInterleave<float>(inPart1Reg, inPart2Reg, inPart1Reg, inPart2Reg);
                         Muls(inPart2Reg, inPart2Reg, float(-1.0), pregLoop);
-                        MicroAPI::Interleave<float>(inPart1Reg, inPart2Reg, inPart2Reg, inPart1Reg);
+                        Reg::Interleave<float>(inPart1Reg, inPart2Reg, inPart2Reg, inPart1Reg);
                         Mul(sinPart1Reg, sinPart1Reg, inPart1Reg, pregPart1);
                         Add(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregPart1);
                         Mul(sinPart2Reg, sinPart2Reg, inPart2Reg, pregPart2);
