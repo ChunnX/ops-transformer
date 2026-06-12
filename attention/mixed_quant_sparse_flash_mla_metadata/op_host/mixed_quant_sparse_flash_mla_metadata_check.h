@@ -93,7 +93,8 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
     }
     // num_heads_q [1, 128]
     if (numHeadsQ < MQSMLA_NUM_HEADS_Q_LOWER_BOUND || numHeadsQ > MQSMLA_NUM_HEADS_Q_UPPER_BOUND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should be [1, 128], but got %lld", numHeadsQ);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should be [%lld, %lld], but got %lld",
+            MQSMLA_NUM_HEADS_Q_LOWER_BOUND, MQSMLA_NUM_HEADS_Q_UPPER_BOUND, numHeadsQ);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // num_heads_kv: 1
@@ -101,9 +102,10 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_kv should only be 1, but got %lld", numHeadsKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // quant_mode: 1 or 2
+    // quant_mode
     if (quantMode < MQSMLA_QUANT_MODE_LOWER_BOUND || quantMode > MQSMLA_QUANT_MODE_UPPER_BOUND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "quant_mode should be 1 or 2, but got %lld", quantMode);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "quant_mode should be [%lld, %lld], but got %lld",
+            MQSMLA_QUANT_MODE_LOWER_BOUND, MQSMLA_QUANT_MODE_UPPER_BOUND, quantMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (hasOriKv) {
@@ -148,8 +150,8 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         }
         // cmp_ratio: 1~128
         if (cmpRatio < MQSMLA_CMP_RATIO_LOWER_BOUND || cmpRatio > MQSMLA_CMP_RATIO_UPPER_BOUND) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_ratio should be in [1, 128], but got %lld",
-                cmpRatio);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_ratio should be in [%lld, %lld], "
+                "but got %lld", MQSMLA_CMP_RATIO_LOWER_BOUND, MQSMLA_CMP_RATIO_UPPER_BOUND, cmpRatio);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
