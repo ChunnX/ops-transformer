@@ -106,6 +106,21 @@ __simd_vf__ inline void MergeBandDn(const uint64_t maskNextUb, const uint64_t ma
     }
 }
 
+__simd_vf__ inline void Flip(const uint64_t maskPreUb, const uint16_t loopCount)
+{
+    RegTensor<uint32_t> vreg_pre;
+    RegTensor<uint32_t> vreg_xor;
+    RegTensor<uint32_t> vreg_not;
+    MaskReg preg_all = CreateMask<uint32_t, MaskPattern::ALL>();
+    Duplicate(vreg_xor, 0x1010101);
+
+    for (uint16_t i = 0; i < loopCount; ++i) {
+        LoadAlign(vreg_pre, (__ubuf__ uint32_t *&)maskPreUb + i * 64);
+        Xor(vreg_not, vreg_pre, vreg_xor, preg_all);
+        StoreAlign((__ubuf__ uint32_t *&)maskPreUb + i * 64, vreg_not, preg_all);
+    }
+}
+
 template <typename T, uint32_t s2BaseSize>
 __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16_t midGLoop,
     uint16_t tailGLoop, uint16_t midS1Count)
@@ -536,6 +551,13 @@ __aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, Global
     event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(enQueEvtID);
     WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+
+    if (isPre) {
+        uint64_t maskPreUb = attenMaskUb.GetPhyAddr();
+        uint32_t maskSize = (info.gs1dealNum >> 1) * s2BaseSize; // 或info.s2dealNum
+        uint16_t loopCount = static_cast<uint16_t>(maskSize / regBytes);
+        Flip(maskPreUb, loopCount);
+    }
 }
 #endif
 
