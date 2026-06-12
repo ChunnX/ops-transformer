@@ -1,0 +1,225 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 720" font-family="Consolas, monospace" font-size="12">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#333"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#ea580c"/>
+    </marker>
+  </defs>
+
+  <!-- 标题 -->
+  <text x="550" y="24" text-anchor="middle" font-size="16" font-weight="bold" fill="#1a1a1a">GMM Weight Quant PerGroup — 数据流硬件架构图</text>
+  <text x="550" y="42" text-anchor="middle" font-size="11" fill="#666">A16W4 INT4 ND PerGroup 场景 · Ascend 950 (arch35) · AIC/AIV 双核协作</text>
+
+  <!-- ===== GM (Global Memory) ===== -->
+  <rect x="30" y="60" width="200" height="600" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+  <text x="130" y="82" text-anchor="middle" font-size="14" font-weight="bold" fill="#92400e">GM (Global Memory)</text>
+
+  <!-- GM 数据块 -->
+  <rect x="50" y="100" width="160" height="36" rx="4" fill="#fff" stroke="#d97706"/>
+  <text x="130" y="122" text-anchor="middle" fill="#92400e">x [M, K] FP16/BF16</text>
+
+  <rect x="50" y="148" width="160" height="36" rx="4" fill="#fff" stroke="#d97706"/>
+  <text x="130" y="170" text-anchor="middle" fill="#92400e">weight [N, K] INT4</text>
+
+  <rect x="50" y="196" width="160" height="36" rx="4" fill="#fff" stroke="#d97706"/>
+  <text x="130" y="212" text-anchor="middle" font-size="10" fill="#92400e">antiquantScale [K/gs, N]</text>
+  <text x="130" y="224" text-anchor="middle" font-size="9" fill="#b45309">FP16/BF16 (pergroup)</text>
+
+  <rect x="50" y="244" width="160" height="36" rx="4" fill="#fff" stroke="#d97706" stroke-dasharray="4,2"/>
+  <text x="130" y="260" text-anchor="middle" font-size="10" fill="#92400e">antiquantOffset [K/gs, N]</text>
+  <text x="130" y="272" text-anchor="middle" font-size="9" fill="#b45309">可选 (对称量化时null)</text>
+
+  <rect x="50" y="292" width="160" height="36" rx="4" fill="#fff" stroke="#d97706" stroke-dasharray="4,2"/>
+  <text x="130" y="314" text-anchor="middle" fill="#92400e">bias [N] (可选)</text>
+
+  <rect x="50" y="340" width="160" height="36" rx="4" fill="#fff" stroke="#d97706"/>
+  <text x="130" y="362" text-anchor="middle" fill="#92400e">groupList [E] INT64</text>
+
+  <rect x="50" y="580" width="160" height="36" rx="4" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="130" y="602" text-anchor="middle" font-weight="bold" fill="#166534">out [M, N] FP16/BF16</text>
+
+  <!-- GM 标注 -->
+  <text x="130" y="400" text-anchor="middle" font-size="10" fill="#92400e">tiling 参数:</text>
+  <text x="130" y="414" text-anchor="middle" font-size="9" fill="#b45309">groupSize, mList,</text>
+  <text x="130" y="426" text-anchor="middle" font-size="9" fill="#b45309">kList, nList, ...</text>
+
+  <!-- ===== UB (Unified Buffer) ===== -->
+  <rect x="340" y="60" width="220" height="340" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+  <text x="450" y="82" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e40af">UB (248KB)</text>
+  <text x="450" y="96" text-anchor="middle" font-size="10" fill="#3b82f6">AIV 核管理 · 反量化工作区</text>
+
+  <!-- UB 数据块 -->
+  <rect x="360" y="110" width="180" height="44" rx="4" fill="#fff" stroke="#2563eb"/>
+  <text x="450" y="130" text-anchor="middle" font-size="11" fill="#1e40af">weightInputLowBit</text>
+  <text x="450" y="144" text-anchor="middle" font-size="9" fill="#3b82f6">174KB · INT4 原始数据</text>
+
+  <rect x="360" y="164" width="180" height="44" rx="4" fill="#fff" stroke="#2563eb"/>
+  <text x="450" y="184" text-anchor="middle" font-size="11" fill="#1e40af">highBitData</text>
+  <text x="450" y="198" text-anchor="middle" font-size="9" fill="#3b82f6">66KB · 反量化后 FP16/BF16</text>
+
+  <rect x="360" y="218" width="180" height="44" rx="4" fill="#fff" stroke="#2563eb"/>
+  <text x="450" y="238" text-anchor="middle" font-size="11" fill="#1e40af">antiQuantScale</text>
+  <text x="450" y="252" text-anchor="middle" font-size="9" fill="#3b82f6">4KB+ · pergroup scale</text>
+
+  <rect x="360" y="272" width="180" height="44" rx="4" fill="#fff" stroke="#2563eb" stroke-dasharray="4,2"/>
+  <text x="450" y="292" text-anchor="middle" font-size="11" fill="#1e40af">antiQuantOffset</text>
+  <text x="450" y="306" text-anchor="middle" font-size="9" fill="#3b82f6">4KB+ · pergroup offset</text>
+
+  <!-- UB 内反量化公式 -->
+  <rect x="355" y="330" width="190" height="50" rx="4" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="450" y="348" text-anchor="middle" font-size="10" font-weight="bold" fill="#1e40af">VF 反量化计算</text>
+  <text x="450" y="362" text-anchor="middle" font-size="9" fill="#3b82f6">w_fp16 = (w_int4 + offset) × scale</text>
+  <text x="450" y="374" text-anchor="middle" font-size="8" fill="#60a5fa">scale[k/gs × N + n] pergroup 加载</text>
+
+  <!-- ===== L1 Buffer ===== -->
+  <rect x="340" y="420" width="220" height="240" rx="8" fill="#fce7f3" stroke="#db2777" stroke-width="2"/>
+  <text x="450" y="442" text-anchor="middle" font-size="14" font-weight="bold" fill="#9d174d">L1 (512KB)</text>
+  <text x="450" y="456" text-anchor="middle" font-size="10" fill="#ec4899">AIC + AIV 共享</text>
+
+  <!-- L1 数据块 -->
+  <rect x="360" y="470" width="85" height="70" rx="4" fill="#fff" stroke="#db2777"/>
+  <text x="402" y="495" text-anchor="middle" font-size="11" font-weight="bold" fill="#9d174d">AL1</text>
+  <text x="402" y="510" text-anchor="middle" font-size="9" fill="#be185d">128KB</text>
+  <text x="402" y="524" text-anchor="middle" font-size="8" fill="#ec4899">A 矩阵</text>
+  <text x="402" y="534" text-anchor="middle" font-size="8" fill="#ec4899">双缓冲</text>
+
+  <rect x="455" y="470" width="85" height="70" rx="4" fill="#fff" stroke="#db2777"/>
+  <text x="497" y="495" text-anchor="middle" font-size="11" font-weight="bold" fill="#9d174d">WeightL1</text>
+  <text x="497" y="510" text-anchor="middle" font-size="9" fill="#be185d">128KB</text>
+  <text x="497" y="524" text-anchor="middle" font-size="8" fill="#ec4899">反量化后 W</text>
+  <text x="497" y="534" text-anchor="middle" font-size="8" fill="#ec4899">双缓冲</text>
+
+  <rect x="360" y="550" width="85" height="40" rx="4" fill="#fff" stroke="#db2777" stroke-dasharray="4,2"/>
+  <text x="402" y="570" text-anchor="middle" font-size="10" fill="#9d174d">BiasL1</text>
+  <text x="402" y="582" text-anchor="middle" font-size="8" fill="#be185d">4KB (可选)</text>
+
+  <!-- L1 双缓冲标注 -->
+  <rect x="355" y="600" width="190" height="40" rx="4" fill="#fdf2f8" stroke="#f9a8d4"/>
+  <text x="450" y="616" text-anchor="middle" font-size="9" fill="#9d174d">双缓冲: P0/P1 交替</text>
+  <text x="450" y="630" text-anchor="middle" font-size="8" fill="#be185d">WeightL1_P0 | AL1_P0 || WeightL1_P1 | AL1_P1</text>
+
+  <!-- ===== AIC (Cube Core) ===== -->
+  <rect x="660" y="420" width="180" height="240" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="750" y="442" text-anchor="middle" font-size="14" font-weight="bold" fill="#166534">AIC (Cube 核)</text>
+  <text x="750" y="456" text-anchor="middle" font-size="10" fill="#22c55e">矩阵乘计算单元</text>
+
+  <rect x="680" y="470" width="140" height="100" rx="4" fill="#fff" stroke="#16a34a"/>
+  <text x="750" y="492" text-anchor="middle" font-size="11" font-weight="bold" fill="#166534">Matmul</text>
+  <text x="750" y="510" text-anchor="middle" font-size="10" fill="#15803d">C = A × W_dequant</text>
+  <text x="750" y="526" text-anchor="middle" font-size="9" fill="#22c55e">SetTensorA(AL1)</text>
+  <text x="750" y="540" text-anchor="middle" font-size="9" fill="#22c55e">SetTensorB(WeightL1)</text>
+  <text x="750" y="554" text-anchor="middle" font-size="9" fill="#22c55e">SetBias(BiasL1)</text>
+
+  <rect x="680" y="580" width="140" height="60" rx="4" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="750" y="600" text-anchor="middle" font-size="10" fill="#166534">K 轴迭代</text>
+  <text x="750" y="614" text-anchor="middle" font-size="9" fill="#15803d">kbL1Size = 256</text>
+  <text x="750" y="628" text-anchor="middle" font-size="9" fill="#15803d">累加模式 Iterate()</text>
+
+  <!-- ===== AIV (Vector Core) ===== -->
+  <rect x="660" y="60" width="180" height="340" rx="8" fill="#e0e7ff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="750" y="82" text-anchor="middle" font-size="14" font-weight="bold" fill="#3730a3">AIV (Vector 核)</text>
+  <text x="750" y="96" text-anchor="middle" font-size="10" fill="#6366f1">反量化计算单元</text>
+
+  <rect x="680" y="110" width="140" height="36" rx="4" fill="#fff" stroke="#4f46e5"/>
+  <text x="750" y="132" text-anchor="middle" font-size="10" fill="#3730a3">MTE2: GM → UB</text>
+
+  <rect x="680" y="156" width="140" height="36" rx="4" fill="#fff" stroke="#4f46e5"/>
+  <text x="750" y="178" text-anchor="middle" font-size="10" fill="#3730a3">CopyWeight + Scale</text>
+
+  <rect x="680" y="202" width="140" height="80" rx="4" fill="#fff" stroke="#4f46e5"/>
+  <text x="750" y="222" text-anchor="middle" font-size="11" font-weight="bold" fill="#3730a3">VF 反量化</text>
+  <text x="750" y="240" text-anchor="middle" font-size="9" fill="#4f46e5">INT4 unpack → FP16</text>
+  <text x="750" y="254" text-anchor="middle" font-size="9" fill="#4f46e5">+ offset (可选)</text>
+  <text x="750" y="268" text-anchor="middle" font-size="9" fill="#4f46e5">× scale (pergroup)</text>
+
+  <rect x="680" y="292" width="140" height="36" rx="4" fill="#fff" stroke="#4f46e5"/>
+  <text x="750" y="314" text-anchor="middle" font-size="10" fill="#3730a3">MTE3: UB → L1</text>
+
+  <rect x="680" y="340" width="140" height="44" rx="4" fill="#eef2ff" stroke="#a5b4fc"/>
+  <text x="750" y="358" text-anchor="middle" font-size="9" font-weight="bold" fill="#3730a3">VF 标准单元</text>
+  <text x="750" y="372" text-anchor="middle" font-size="8" fill="#6366f1">NK: (N=256, K=64)</text>
+  <text x="750" y="382" text-anchor="middle" font-size="8" fill="#6366f1">KN: (N=64, K=256)</text>
+
+  <!-- ===== Controller ===== -->
+  <rect x="910" y="200" width="160" height="260" rx="8" fill="#f5f5f4" stroke="#78716c" stroke-width="2"/>
+  <text x="990" y="222" text-anchor="middle" font-size="14" font-weight="bold" fill="#44403c">Controller</text>
+  <text x="990" y="238" text-anchor="middle" font-size="10" fill="#78716c">编排调度层</text>
+
+  <rect x="925" y="252" width="130" height="30" rx="4" fill="#fff" stroke="#78716c"/>
+  <text x="990" y="272" text-anchor="middle" font-size="10" fill="#44403c">Init()</text>
+
+  <rect x="925" y="290" width="130" height="44" rx="4" fill="#fff" stroke="#78716c"/>
+  <text x="990" y="308" text-anchor="middle" font-size="10" fill="#44403c">Process()</text>
+  <text x="990" y="322" text-anchor="middle" font-size="8" fill="#78716c">遍历 group → 分配块</text>
+
+  <rect x="925" y="342" width="130" height="30" rx="4" fill="#fff" stroke="#78716c"/>
+  <text x="990" y="362" text-anchor="middle" font-size="10" fill="#44403c">SetMKN()</text>
+
+  <rect x="925" y="380" width="130" height="44" rx="4" fill="#fff" stroke="#78716c"/>
+  <text x="990" y="398" text-anchor="middle" font-size="10" fill="#44403c">SetGmAddr()</text>
+  <text x="990" y="412" text-anchor="middle" font-size="8" fill="#78716c">地址偏移计算</text>
+
+  <rect x="925" y="432" width="130" height="20" rx="4" fill="#fef3c7" stroke="#d97706"/>
+  <text x="990" y="446" text-anchor="middle" font-size="9" font-weight="bold" fill="#92400e">★ pergroup 偏移</text>
+
+  <!-- ===== 数据流箭头 ===== -->
+
+  <!-- GM → UB: MTE2 搬运 weight + scale/offset -->
+  <line x1="230" y1="166" x2="338" y2="132" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+  <text x="275" y="138" font-size="9" fill="#2563eb" font-weight="bold">MTE2</text>
+
+  <line x1="230" y1="214" x2="338" y2="240" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)" stroke-dasharray="6,3"/>
+  <text x="275" y="236" font-size="8" fill="#2563eb">scale/offset</text>
+
+  <!-- GM → L1: MTE1 搬运 A + Bias -->
+  <path d="M 230,118 Q 290,118 290,490 Q 290,505 338,505" fill="none" stroke="#ea580c" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
+  <text x="268" y="310" font-size="9" fill="#ea580c" font-weight="bold">MTE1</text>
+  <text x="268" y="322" font-size="8" fill="#ea580c">A + Bias</text>
+
+  <!-- UB → L1: MTE3 搬运反量化后的 weight -->
+  <line x1="450" y1="400" x2="450" y2="418" stroke="#4f46e5" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="460" y="414" font-size="9" fill="#4f46e5" font-weight="bold">MTE3</text>
+
+  <!-- L1 → AIC: A 和 W_dequant 送入 Cube -->
+  <line x1="560" y1="505" x2="658" y2="505" stroke="#16a34a" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <text x="600" y="498" font-size="9" fill="#16a34a" font-weight="bold">A + W</text>
+
+  <!-- AIC → GM: C 写回 -->
+  <path d="M 750,660 Q 750,690 400,690 Q 230,690 230,616 L 212,616" fill="none" stroke="#16a34a" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <text x="490" y="706" font-size="10" fill="#16a34a" font-weight="bold">GetTensorC: C → GM</text>
+
+  <!-- Controller → AIV/AIC 调度箭头 -->
+  <line x1="910" y1="330" x2="842" y2="230" stroke="#78716c" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrow)"/>
+  <line x1="910" y1="380" x2="842" y2="520" stroke="#78716c" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrow)"/>
+
+  <!-- AIV → AIC 同步 -->
+  <line x1="750" y1="400" x2="750" y2="418" stroke="#dc2626" stroke-width="2" marker-end="url(#arrow-red)"/>
+  <text x="770" y="414" font-size="8" fill="#dc2626">Sync</text>
+
+  <!-- 图例 -->
+  <rect x="910" y="510" width="160" height="150" rx="6" fill="#fafaf9" stroke="#d6d3d1"/>
+  <text x="990" y="528" text-anchor="middle" font-size="11" font-weight="bold" fill="#44403c">图例</text>
+  <line x1="925" y1="544" x2="960" y2="544" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <text x="970" y="548" font-size="9" fill="#333">MTE2: GM → UB</text>
+  <line x1="925" y1="564" x2="960" y2="564" stroke="#ea580c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <text x="970" y="568" font-size="9" fill="#333">MTE1: GM → L1</text>
+  <line x1="925" y1="584" x2="960" y2="584" stroke="#4f46e5" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="970" y="588" font-size="9" fill="#333">MTE3: UB → L1</text>
+  <line x1="925" y1="604" x2="960" y2="604" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="970" y="608" font-size="9" fill="#333">Cube / 写回</text>
+  <line x1="925" y1="624" x2="960" y2="624" stroke="#dc2626" stroke-width="2" marker-end="url(#arrow-red)"/>
+  <text x="970" y="628" font-size="9" fill="#333">AIV↔AIC 同步</text>
+  <line x1="925" y1="644" x2="960" y2="644" stroke="#78716c" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrow)"/>
+  <text x="970" y="648" font-size="9" fill="#333">Controller 调度</text>
+</svg>

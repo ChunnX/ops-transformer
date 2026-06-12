@@ -74,9 +74,7 @@ GMM A16W4 pergroup ND 的实现将参照现有的 GMM A16W8 多多多实现。�
 
 ### 产出
 
-走读文档输出到 `.workflow/raw/docs/` 目录下，建议文件名：
-- `gmm_a16w8_tiling_walkthrough.md` — tiling 走读
-- `gmm_a16w8_kernel_walkthrough.md` — kernel 走读（含 Controller、BasicBlock、Cube/Vec 计算调度）
+走读文档输出到 `.workflow/raw/docs/` 目录下，建议分章节编写。
 
 ### 完成标准
 

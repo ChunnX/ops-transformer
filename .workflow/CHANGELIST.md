@@ -51,3 +51,37 @@
 
 #### 影响范围
 - 仅规划文档变更，不涉及代码
+
+---
+
+### 2026-06-12 | 完成 GMM A16W8 代码走读文档
+
+**类型**: 📝 文档
+**范围**: `.workflow/raw/docs/` 走读文档
+
+#### 变更内容
+- 新增 `gmm_a16w8_tiling_walkthrough.md`：Tiling 走读文档
+  - 覆盖 `GMMWeightQuantParam` 所有字段含义
+  - 覆盖 `SetTiling()` 完整流程（AnalyzeAttr → CalcResplitTiling → SetBaseTiling → SetMatMulTiling → SetTilingKey → SetCustomParam）
+  - 覆盖 `SetShapeList()` 单单单/多多多两条路径
+  - 覆盖 `SetAntiquantGroupSize()` groupSize 设置逻辑
+  - 覆盖 `IsA16W4ND()` 判断逻辑及其在各校验函数中的使用
+  - 明确标注 A16W4 pergroup 需要适配的代码点（6处修改 + 3处新增）
+- 新增 `gmm_a16w8_kernel_walkthrough.md`：Kernel 走读文档
+  - 覆盖 Controller 完整流程（Init → Process → SetMKN → SetGmAddr）
+  - 覆盖 SetGmAddr 地址偏移公式（含 perchannel vs pergroup 核心差异）
+  - 覆盖 L1/UB 空间划分方案（L1 512KB 分配、UB 248KB 分配）
+  - 覆盖 Cube 计算调度（LaunchMatmul、AIC 核循环）
+  - 覆盖 Vec 反量化调度流程（CopyGmToUb → CopyAntiQuantParamsGmToUb → WeightAntiQuantCompute → AntiQuantProcessNd → VF 函数）
+  - 覆盖 AIC/AIV 同步机制
+  - 明确标注 A16W4 pergroup 需要适配的代码点（Controller 1处、Config 2处、Vec 2处、VF 6处、Tiling 3处）
+  - 明确标注可复用代码（15+ 函数）和需要新增的代码（6项）
+
+#### 关键决策
+- 发现 `CopyAntiQuantParamsGmToUb()` 中 `PER_GROUP` 分支已存在（用于 S8S4 NZ 场景），但 ND 场景的 VF 函数（`basic_block_vf_nd.h`）中缺少 `PER_GROUP` 分支
+- 确认 A16W4 pergroup 的核心新增工作在 `basic_block_vf_nd.h` 中的 `NdNkLoadScaleOffset()` 和 `NdKnLoadScaleOffset()` 需要新增 PER_GROUP 分支
+- 确认 Controller 的 `SetGmAddr()` 中 `antiquantParamsBaseOffset` 更新公式需要区分 perchannel（`+= nSize`）和 pergroup（`+= (kSize/groupSize) * nSize`）
+
+#### 影响范围
+- 仅文档变更，不涉及代码
+- 为后续任务 3（走读 wqbmmv2 ND 反量化）和任务 4（SRS 实现方案）提供充分的代码理解基础

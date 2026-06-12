@@ -17,9 +17,13 @@
 
 ## 任务 2：走读 GMM A16W8 代码实现
 
-**任务状态**：待开始
+**任务状态**：✅ 已完成
 
 **简要说明**：走读 kernel Controller（`GMMWeightQuantBasicController`）、tiling（`grouped_weight_quant_batch_matmul_tiling`）、L1/UB 空间划分和 cube 计算实现，产出完整走读文档。反量化实现不在本任务范围内（参见任务 3）。
+
+**产出文件**：
+- `.workflow/raw/docs/gmm_a16w8_tiling_walkthrough.md` — Tiling 走读文档
+- `.workflow/raw/docs/gmm_a16w8_kernel_walkthrough.md` — Kernel 走读文档
 
 **任务详情**：[详细任务说明](reference/next_steps/2_walkthrough_gmm_a16w8.md)
 
