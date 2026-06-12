@@ -300,7 +300,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeDimLayout(
             t1Size = queryIndexShape.GetDim(0); // TND只有三个数值 T:0 N:1 D:2
             t2Size = keyIndexShape.GetDim(0);
             realT1Size = t1Size;
-            const gert::Shape &actSeqQLenShape = context_->GetOptionalInputTensor(CU_SEQLENS_Q_INPUT_INDEX)->GetStorageShape();
+            const gert::Shape &actSeqQLenShape = context_->GetOptionalInputTensor(CU_SEQLENS_QUERY_INPUT_INDEX)->GetStorageShape();
             bSize = actSeqQLenShape.GetDim(0) - 1;
             s1Size = t1Size;
             s2Size = t2Size;
@@ -1026,19 +1026,19 @@ uint64_t SparseLightningIndexerGradTilingBaseRegbase::GetTilingKey() const
     bool hasSequsedQ = true;
     bool hasSequsedK = true;
     bool hasCmpResidualK = true;
-    if (context_->GetOptionalInputTensor(CU_SEQLENS_Q_INPUT_INDEX) == nullptr) {
+    if (context_->GetOptionalInputTensor(CU_SEQLENS_QUERY_INPUT_INDEX) == nullptr) {
         hasCuSeqlensQ = false;
     }
-    if (context_->GetOptionalInputTensor(CU_SEQLENS_K_INPUT_INDEX) == nullptr) {
+    if (context_->GetOptionalInputTensor(CU_SEQLENS_KEY_INPUT_INDEX) == nullptr) {
         hasCuSeqlensK = false;
     }
-    if (context_->GetOptionalInputTensor(SEQUSED_Q_INPUT_INDEX) == nullptr) {
+    if (context_->GetOptionalInputTensor(SEQUSED_QUERY_INPUT_INDEX) == nullptr) {
         hasSequsedQ = false;
     }
-    if (context_->GetOptionalInputTensor(SEQUSED_K_INPUT_INDEX) == nullptr) {
+    if (context_->GetOptionalInputTensor(SEQUSED_KEY_INPUT_INDEX) == nullptr) {
         hasSequsedK = false;
     }
-    if (context_->GetOptionalInputTensor(CMP_RESIDUAL_K_INPUT_INDEX) == nullptr) {
+    if (context_->GetOptionalInputTensor(CMP_RESIDUAL_KEY_INPUT_INDEX) == nullptr) {
         hasCmpResidualK = false;
     }
     return GET_TPL_TILING_KEY(static_cast<uint8_t>(topKRange), static_cast<uint8_t>(tilingKeyLayout), 

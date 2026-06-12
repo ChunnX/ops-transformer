@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_klloss_grad_tiling_common.h
+ * \file sparse_lightning_indexer_kl_loss_grad_tiling_common.h
  * \brief
  */
 
-#ifndef SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_TILING_COMMON_H
-#define SPARSE_LIGHTNING_INDEXER_KLLOSS_GRAD_TILING_COMMON_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_COMMON_H
+#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_COMMON_H
 
 #include <cstdint>
 #include "err/ops_err.h"
@@ -35,11 +35,11 @@ constexpr uint32_t WEIGHT_INPUT_INDEX = 2;
 constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 3;
 constexpr uint32_t ATTN_SOFTMAX_L1_NORM_INPUT_INDEX = 4;
 // Optional Inputs Index
-constexpr uint32_t CU_SEQLENS_Q_INPUT_INDEX = 5;
-constexpr uint32_t CU_SEQLENS_K_INPUT_INDEX = 6;
-constexpr uint32_t SEQUSED_Q_INPUT_INDEX = 7;
-constexpr uint32_t SEQUSED_K_INPUT_INDEX = 8;
-constexpr uint32_t CMP_RESIDUAL_K_INPUT_INDEX = 9;
+constexpr uint32_t CU_SEQLENS_QUERY_INPUT_INDEX = 5;
+constexpr uint32_t CU_SEQLENS_KEY_INPUT_INDEX = 6;
+constexpr uint32_t SEQUSED_QUERY_INPUT_INDEX = 7;
+constexpr uint32_t SEQUSED_KEY_INPUT_INDEX = 8;
+constexpr uint32_t CMP_RESIDUAL_KEY_INPUT_INDEX = 9;
 constexpr uint32_t METADATA_INPUT_INDEX = 10;
 
 // Outputs Index
@@ -49,8 +49,8 @@ constexpr uint32_t D_WEIGHTS_OUTPUT_INDEX = 2;
 constexpr uint32_t SOFTMAX_OUT_OUTPUT_INDEX = 3;
 
 // Attributes Index
-constexpr uint32_t LAYOUT_QUERY_ATTR_INDEX = 0;
-constexpr uint32_t LAYOUT_KEY_ATTR_INDEX = 1;
+constexpr uint32_t LAYOUT_Q_ATTR_INDEX = 0;
+constexpr uint32_t LAYOUT_K_ATTR_INDEX = 1;
 constexpr uint32_t MASK_MODE_ATTR_INDEX = 2;
 constexpr uint32_t CMP_RATIO_ATTR_INDEX = 3;
 constexpr uint32_t DETERMINISTIC_ATTR_INDEX = 4;

@@ -20,6 +20,7 @@
 #include <algorithm>
 #include "../op_kernel/sparse_lightning_indexer_kl_loss_grad_template_tiling_key.h"
 #include "../op_kernel/arch22/sparse_lightning_indexer_kl_loss_grad_tiling.h"
+#include "sparse_lightning_indexer_kl_loss_grad_tiling_common.h"
 #include "err/ops_err.h"
 
 // tiling_base 需要
