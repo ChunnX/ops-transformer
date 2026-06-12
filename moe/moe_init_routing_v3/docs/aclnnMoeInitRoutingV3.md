@@ -16,7 +16,7 @@
 ## 功能说明
 
 - 接口功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化、静态量化和动态量化模式。本接口针对V2接口[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)做出如下功能变更，请根据实际情况选择合适的接口：<br>
-  <ol><li>增加动态与静态量化功能，支持输出expandX的 int8量化模式输出。</li><li>删除输出expertTokensBeforeCapacityOut，新增输出expertTokensCountOrCumsumOut。</li><li>兼容V2原有输出模式，并新增key_value输出格式支持：重新定义原有属性expertTokensBeforeCapacityFlag(bool)和expertTokensCountOrCumsumFlag(int)，分别为expertsTokensNumFlag(bool)和expertTokensNumType(int)。具体输出格式对应关系如下表：</li>
+  <ol><li>增加动态与静态量化功能，支持输出expandX的int8量化模式输出。</li><li>删除输出expertTokensBeforeCapacityOut，新增输出expertTokensCountOrCumsumOut。</li><li>兼容V2原有输出模式，并新增key_value输出格式支持：重新定义原有属性expertTokensBeforeCapacityFlag(bool)和expertTokensCountOrCumsumFlag(int)，分别为expertsTokensNumFlag(bool)和expertTokensNumType(int)。具体输出格式对应关系如下表：</li>
   <table align="center">
     <tr>
       <th>DropPadMode</th>
@@ -65,13 +65,13 @@
     $$
 
   2.以sortedRowIdx做位置映射得出expandedRowIdxOut：
-    - rowIdxType等于1时, 输出scatter索引
+    - rowIdxType等于1时,输出scatter索引
 
       $$
       expandedRowIdxOut[i]=sortedRowIdx[i]
       $$
 
-    - rowIdxType等于0时, 输出gather索引
+    - rowIdxType等于0时,输出gather索引
 
       $$
       expandedRowIdxOut[sortedRowIdx[i]]=i
@@ -83,7 +83,7 @@
     expertTokensCountOrCumsumOutOptional[i]=Histogram(sortedExpertIdx)
     $$
 
-  4.如果quantMode不等于-1, 计算quant结果：
+  4.如果quantMode不等于-1,计算quant结果：
      - 静态quant
 
      $$
@@ -148,7 +148,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeInitRoutingV3GetWorkspaceSize”接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV3”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeInitRoutingV3GetWorkspaceSize”接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV3”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(
@@ -234,7 +234,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>表示用于计算量化结果的参数</td>
       <td><ul>
         <li>如果不输入表示计算时不使用scale;</li>
-        <li>非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,)，类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果输入则要求3D的Tensor，shape为(NUM_ROWS, CeilDiv(H, 64), 2), 类型为FLOAT8_E8M0;</li>
+        <li>非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,)，类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果输入则要求3D的Tensor，shape为(NUM_ROWS, CeilDiv(H, 64), 2),类型为FLOAT8_E8M0;</li>
         <li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
         <li>quantMode为1的INT8动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；quantMode为13的INT4动态量化场景下为可选输入，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。</li>
         <li>MXFP8量化场景下（quantMode为2、3）不输入。</li>
@@ -309,9 +309,9 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>输入</td>
       <td>表示直方图的不同模式</td>
       <td>取值为0、1和2
-        <br>0：表示 comsum 模式；
-        <br>1：表示 count 模式；
-        <br>2：表示 key_value 模式；
+        <br>0：表示comsum模式；
+        <br>1：表示count模式；
+        <br>2：表示key_value模式；
       </td>
       <td>INT64</td>
       <td>-</td>
@@ -321,7 +321,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
     <tr>
       <td>expertTokensNumFlag（bool）</td>
       <td>输入</td>
-      <td>表示是否输出 expertTokensCountOrCumsumOut </td>
+      <td>表示是否输出expertTokensCountOrCumsumOut </td>
       <td>取值为false和true</td>
       <td>BOOL</td>
       <td>-</td>
@@ -333,8 +333,8 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>输入</td>
       <td>表示不同量化场景</td>
       <td>取值为0、1、-1、2、3、6、7、8、9、11、12、13（不同产品支持情况有差异，见表后描述）
-        <br>0：表示静态 quant 场景;
-        <br>1：表示动态 quant 场景，expandedXOut量化到INT8;
+        <br>0：表示静态quant场景;
+        <br>1：表示动态quant场景，expandedXOut量化到INT8;
         <br>-1：表示不量化场景;
         <br>2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2;
         <br>3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN;
@@ -392,7 +392,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>expandedRowIdxOut（aclTensor）</td>
       <td>输出</td>
       <td>expandedXOut和x的索引映射关系</td>
-      <td>输出shape为(NUM_ROWS*K, )， 前availableIdxNum个元素为有效数据，其余无效数据由rowIdxType决定：
+      <td>输出shape为(NUM_ROWS*K, )，前availableIdxNum个元素为有效数据，其余无效数据由rowIdxType决定：
         <ul><li>当rowIdxType为0时，无效数据由-1填充</li>
         <li>当rowIdxType为1时，无效数据未初始化</li></ul>
       </td>
@@ -575,10 +575,10 @@ aclnnStatus aclnnMoeInitRoutingV3(
       </tr>
       <tr>
         <td align="center">低时延性能模板</td>
-        <td>需要同时满足以下条件：<ul><li>x、expertIdx、scaleOptional 输入 Shape 要求分别为：(1, 7168)、(1, 8)、(256, 7168)。</li><li>x 数据类型要求：BFLOAT16.</li><li>属性要求：activeExpertRangeOptional=[0, 256]、 quantMode=1、expertTokensNumType=2、expertNum=256</li></ul></td>
+        <td>需要同时满足以下条件：<ul><li>x、expertIdx、scaleOptional输入Shape要求分别为：(1, 7168)、(1, 8)、(256, 7168)。</li><li>x数据类型要求：BFLOAT16.</li><li>属性要求：activeExpertRangeOptional=[0, 256]、 quantMode=1、expertTokensNumType=2、expertNum=256</li></ul></td>
       </tr>
       <tr>
-        <td align="center">大 batch 性能模板</td>
+        <td align="center">大batch性能模板</td>
         <td>需要同时满足以下条件：<ul><li>NUM_ROWS范围为[384, 8192]，K=8。</li><li>属性要求：expertNum=256，expertEnd-expertStart<=32，quantMode=-1，rowIdxType=1，expertTokensNumType=1</li></ul></td>
       </tr>
       <tr>
@@ -588,7 +588,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
     </table>
 
 - 空tensor处理：
-  - 当输入的x首个维度的值为0时，DropPadMode必须为0, 进入空tensor模板。expandedXOut、expandedRowIdxOut和expandedScaleOut的返回值为空tensor，expertTokensCountOrCumsumOut返回全0的tensor。
+  - 当输入的x首个维度的值为0时，DropPadMode必须为0,进入空tensor模板。expandedXOut、expandedRowIdxOut和expandedScaleOut的返回值为空tensor，expertTokensCountOrCumsumOut返回全0的tensor。
 
 ## 调用示例
 
@@ -659,7 +659,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 }
 int main()
 {
-    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化,参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

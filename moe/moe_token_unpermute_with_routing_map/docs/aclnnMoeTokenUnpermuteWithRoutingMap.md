@@ -22,7 +22,7 @@
   topK\_num= permutedTokens.size(0) // routingMapOptional.size(0)
   $$
 
-  其中 `topK_num` 表示每个token预留的最大专家槽位数。`paddedMode`为false时，每个token实际选择的专家数可以小于等于`topK_num`；未使用的槽位在`sortedIndices`中以`-1`表示，计算时跳过该槽位。
+  其中`topK_num`表示每个token预留的最大专家槽位数。`paddedMode`为false时，每个token实际选择的专家数可以小于等于`topK_num`；未使用的槽位在`sortedIndices`中以`-1`表示，计算时跳过该槽位。
 
   $$
   numExperts = probs.size(1)
@@ -422,7 +422,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化,参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
