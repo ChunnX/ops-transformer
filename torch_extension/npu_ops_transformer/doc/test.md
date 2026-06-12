@@ -92,12 +92,9 @@
             overflow-x: auto;
             animation: fadeIn 0.25s ease;
         }
-        /* 关键：使用通用兄弟选择器 ~ 控制显示哪个面板 */
-        /* 注意结构：所有 radio 和 .tables-container 是兄弟关系，且 .tables-container 内部的面板通过 radio:checked 来选择显示 */
-        /* 因为 radio 与 .tables-container 同级，所以选择器 #tab1:checked ~ .tables-container .panel-1 有效 */
-        #tab1:checked ~ .tables-container .panel-1,
-        #tab2:checked ~ .tables-container .panel-2,
-        #tab3:checked ~ .tables-container .panel-3 {
+        .product-comparator:has(#tab1:checked) .panel-1,
+        .product-comparator:has(#tab2:checked) .panel-2,
+        .product-comparator:has(#tab3:checked) .panel-3 {
             display: block;
         }
         @keyframes fadeIn {
@@ -181,7 +178,7 @@
 <div class="product-comparator">
     <div class="comparator-header">
         <h1>📊 产品参数对比</h1>
-        <p>点击下方选项按钮，即时切换查看不同产品的完整规格表（纯CSS实现，无JavaScript）</p>
+        <p>点击下方选项按钮，即时切换查看不同产品的完整规格表</p>
     </div>
     <!-- 
         注意：所有radio和表格容器必须为兄弟节点，且radio隐藏。 
@@ -245,7 +242,7 @@
         </div>
     </div>
     <div class="footer-note">
-        ⚡ 采用纯HTML + CSS 选项卡技术（radio + 兄弟选择器）| 点击按钮即时切换 | 无需任何 JavaScript | 完全兼容 VSCode 及主流 Markdown 环境
+        ⚡ 纯CSS选项卡技术（:has() 选择器）| 点击按钮即时切换 | 无需 JavaScript
     </div>
 </div>
 </body>
