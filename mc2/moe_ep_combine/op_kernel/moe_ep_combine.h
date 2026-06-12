@@ -27,7 +27,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-#include "../../common/op_kernel/mc2_moe_context.h"
+#include "moe_ep_combine_base.h"
 #include "moe_ep_combine_tiling.h"
 
 #ifndef ALIGN_UP
@@ -76,10 +76,10 @@ private:
     __aicore__ inline void SendPhaseExpertToToken();
     __aicore__ inline void RecvPhaseReduce();
 
-    __aicore__ inline GM_ADDR GetCommHandle(uint32_t rankId)
+    __aicore__ inline uint64_t GetCommHandle(uint32_t rankId)
     {
         uint32_t index = rankId > rankId_ ? rankId - 1 : rankId;
-        return (GM_ADDR)(hcommHandle_[index]);
+        return hcommHandle_[index];
     }
     __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId)
     {
@@ -153,8 +153,9 @@ private:
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
+
     GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
-    GM_ADDR hcommHandle_[HCCL_MAX_RANK_SIZE];
+    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
     GM_ADDR localUrmaWorkspace_{nullptr};      // 工作空间的GM地址
     uint32_t aivId_{0};
 };
@@ -276,7 +277,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendTok
     // 一个个写入token
     if (dstRankId != rankId_) {
         //printf("START WRITR TOKEN");
-        // hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWinAddr, localWorkspaceAddr, hAlignSize_);
+        hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWinAddr, localWorkspaceAddr, hAlignSize_);
     }
 }
 
@@ -298,8 +299,8 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStat
 
     if (dstRankId != rankId_) {
         //printf("START WRITR TOKEN");
-        // hcomm_.Drain(GetCommHandle(dstRankId));
-        // hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
+        hcomm_.Drain(GetCommHandle(dstRankId));
+        hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
     }
 }
 
