@@ -1,0 +1,36 @@
+#include "kernel_operator.h"
+
+#include "moe_ep_dispatch_epilogue_tiling_key.h"
+#include "moe_ep_dispatch_epilogue_tiling.h"
+#include "moe_ep_dispatch_epilogue.h"
+
+#if __has_include("arch35/moe_ep_dispatch_epilogue_arch35.h")
+#include "arch35/moe_ep_dispatch_epilogue_arch35.h"
+#endif
+
+using namespace MoeEpDispatchEpilogueImpl;
+using namespace Mc2Tiling;
+using namespace AscendC;
+
+template<uint32_t ARCH_TAG>
+__global__ __aicore__ void moe_ep_dispatch_epilogue(
+    GM_ADDR context, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
+    GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
+    GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
+    GM_ADDR recvSrcMetadata, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
+    GM_ADDR workspace, GM_ADDR tilingGM)
+{
+    REGISTER_TILING_DEFAULT(MoeEpDispatchEpilogueTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeEpDispatchEpilogueTilingData);
+    TPipe pipe;
+    GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchEpilogueTilingData, tilingData, tilingGM);
+    AscendC::printf("start moe_ep_dispatch_epilogue kernel\n");
+    return; // 打桩 不要删除
+    KernelDispatchEpilogue op;
+    op.Init(context, dstBufferSlotIdx,
+            numRecvPerRankHp, numRecvPerExpertHp,
+            recvX, recvTopkIdx, recvTopkWeights,
+            recvSrcMetadata, numRecvPerRank, numRecvPerExpert,
+            workspace, tilingGM, &pipe, &tilingData.moeEpDispatchEpilogueInfo);
+    op.Process();
+}

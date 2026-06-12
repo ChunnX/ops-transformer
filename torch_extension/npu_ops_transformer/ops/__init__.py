@@ -17,8 +17,11 @@ from .mega_moe import (
     npu_get_mega_moe_ccl_buffer_size
 )
 from .deep_ep import MoeDistributeBuffer
-from .graph_convert.graph_convert_moe_distribute_dispatch import converter_moe_distribute_dispatch
-from .graph_convert.graph_convert_moe_distribute_combine import convert_npu_moe_distribute_combine
+from .moe_ep_dispatch import npu_moe_ep_dispatch, npu_moe_ep_dispatch_epilogue
+from .moe_ep_combine import npu_moe_ep_combine
+from .elastic_buffer import MoEElasticBuffer, EPHandle
+from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
+from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
 from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
 from .flash_attn import npu_flash_attn
 from .graph_convert.graph_convert_flash_attn import convert_npu_flash_attn
@@ -35,3 +38,6 @@ from .npu_sparse_lightning_indexer_kl_loss_grad import npu_sparse_lightning_inde
 from .npu_sparse_lightning_indexer_kl_loss_grad_metadata import npu_sparse_lightning_indexer_kl_loss_grad_metadata
 from .lightning_indexer_v2 import npu_lightning_indexer_v2
 from .quant_lightning_indexer_v2 import npu_quant_lightning_indexer_v2
+from .moe_ep_dispatch import npu_moe_ep_dispatch, npu_moe_ep_dispatch_epilogue
+from .moe_ep_combine import npu_moe_ep_combine
+from .elastic_buffer import MoEElasticBuffer, EPHandle
