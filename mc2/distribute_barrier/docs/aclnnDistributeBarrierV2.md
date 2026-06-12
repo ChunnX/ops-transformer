@@ -113,7 +113,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     <td>worldSize</td>
     <td>输入</td>
     <td>通信域大小。</td>
-    <td>取值范围：[2,384]</td>
+    <td>取值范围：[2,1024]</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
