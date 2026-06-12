@@ -463,7 +463,9 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
                 fiaInfo.blockSize),
             return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::NO_MLA && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
+        OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::NO_MLA &&
+            fiaInfo.fullQuantMode != FiaFullQuantMode::QKV_MXFP8_FULL_QUANT &&
+            (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
             fiaInfo.blockSize < NUM_32 || fiaInfo.blockSize % NUM_32 != 0),
             OP_LOGE(fiaInfo.opName,
                 "In per-tensor quant scenario, when page attention enable, "
