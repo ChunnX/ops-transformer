@@ -15,7 +15,11 @@
 #ifndef BUFFER_MANAGER_H
 #define BUFFER_MANAGER_H
 
+#if (__NPU_ARCH__ == 5102)
+#include "buffer_mix_core.h"
+#else
 #include "buffer.h"
+#endif
 
 // L1  TPosition::A1
 // L0A TPosition::A2

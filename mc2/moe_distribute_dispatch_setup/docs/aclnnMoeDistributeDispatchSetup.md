@@ -6,7 +6,7 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
@@ -287,7 +287,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
     </tbody>
     </table>
 
-    - <term>Ascend 950PR/Ascend 950DT</term>：
+    - <term>Ascend 950DT</term>：
         - scalesOptional 非量化场景传空指针，动态量化可选择传入有效数据或传入空指针。
         - xActiveMaskOptional 可选择传入有效数据或传入空指针，传入空指针时表示所有token都会参与通信。
         - groupEp 字符串长度范围为[1, 128)。
@@ -434,6 +434,9 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
 7. 通信域使用约束：
     * 一个模型中的aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口，aclnnMoeDistributeCombineTeardown接口仅支持相同EP通信域，且该通信域中不允许有其他算子。
 
+8. 通信方式约束：
+  - <term>Ascend 950DT</term>：仅支持URMA通信。
+
 ## 调用示例
 
 - 文件准备：
@@ -471,7 +474,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
     ```
     单机16卡场景则无需修改。
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950DT</term>：
 
     - 环境变量配置：
     

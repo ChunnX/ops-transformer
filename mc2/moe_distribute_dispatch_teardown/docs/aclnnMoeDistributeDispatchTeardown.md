@@ -6,7 +6,7 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
@@ -310,7 +310,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
     </tbody>
     </table>
 
-    - <term>Ascend 950PR/Ascend 950DT</term>：
+    - <term>Ascend 950DT</term>：
         - groupEp 字符串长度范围为[1, 128)。
         - epWorldSize 取值范围[2, 384]。当前仅支持2、8。
         - epRankId 取值范围[0, epWorldSize)。同一个EP通信域中各卡的epRankId不能重复。
@@ -448,7 +448,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
     * 当前版本暂不支持共享专家。sharedExpertNum和sharedExpertRankNum当前仅支持0。
 
 5. HCCL_BUFFSIZE：
-    - <term>Ascend 950PR/Ascend 950DT</term>：
+    - <term>Ascend 950DT</term>：
       调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 4 * (`localExpertNum` * `maxBs` * `epWorldSize` * Align512(Align32(2 * H) + 44) + (`K` + `sharedExpertNum`) * `maxBs` * Align512(2 * `H`))，`localExpertNum`代表使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
     
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
@@ -457,6 +457,9 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
 6. 通信域使用约束：
     * 一个模型中的aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口，aclnnMoeDistributeCombineTeardown接口仅支持相同EP通信域，且该通信域中不允许有其他算子。
 
+7. 通信方式约束：
+  - <term>Ascend 950DT</term>：仅支持URMA通信。
+
 ## 调用示例
 
-- <term>Ascend 950PR/Ascend 950DT</term>：aclnnMoeDistributeDispatchTeardown必须在aclnnMoeDistributeDispatchSetup调用之后调用，请参考[aclnnMoeDistributeDispatchSetup](../../moe_distribute_dispatch_setup/docs/aclnnMoeDistributeDispatchSetup.md)中的调用示例。
+- <term>Ascend 950DT</term>：aclnnMoeDistributeDispatchTeardown必须在aclnnMoeDistributeDispatchSetup调用之后调用，请参考[aclnnMoeDistributeDispatchSetup](../../moe_distribute_dispatch_setup/docs/aclnnMoeDistributeDispatchSetup.md)中的调用示例。

@@ -355,6 +355,8 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Se
     }
 
     if (cfg.tailM) {
+        // reset preCoreNum_
+        preCoreNum_ = 0;
         if (debugMode_ == MC2_DEBUG_ONLY_CUBE) {
             DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams tileTilingData = tilingData_->quantBmmv3TailTiling;
             uint64_t tileM = tileTilingData.matmulTiling.M;

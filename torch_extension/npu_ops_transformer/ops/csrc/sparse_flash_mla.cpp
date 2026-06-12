@@ -1,7 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License"). Please refer to the License for details.
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #include <torch/extension.h>
@@ -13,6 +17,25 @@ constexpr int64_t DIM_0 = 0;
 constexpr int64_t DIM_1 = 1;
 constexpr int64_t DIM_2 = 2;
 constexpr int64_t DIM_3 = 3;
+constexpr int64_t DIM_4 = 4;
+
+void CheckQueryShape(const at::Tensor &q, const std::string &layoutQ)
+{
+    TORCH_CHECK(layoutQ == "BSND" || layoutQ == "TND",
+                "The layout of query only supports BSND and TND, but got ", layoutQ);
+    TORCH_CHECK(q.numel() > 0, "Tensor query is empty.");
+    for (int64_t i = 0; i < q.dim(); ++i) {
+        TORCH_CHECK(q.size(i) > 0, "All values within query's shape should be greater than 0, but shape[",
+                    i, "] is ", q.size(i));
+    }
+    if (layoutQ == "BSND") {
+        TORCH_CHECK(q.dim() == DIM_4,
+                    "When the layout of query is BSND, the query dimension must be 4, but got ", q.dim());
+    } else {
+        TORCH_CHECK(q.dim() == DIM_3,
+                    "When the layout of query is TND, the query dimension must be 3, but got ", q.dim());
+    }
+}
 
 int64_t GetKvHeadNum(const c10::optional<at::Tensor> &oriKv, const c10::optional<at::Tensor> &cmpKv,
                      const std::string &layoutKv)
@@ -20,10 +43,10 @@ int64_t GetKvHeadNum(const c10::optional<at::Tensor> &oriKv, const c10::optional
     TORCH_CHECK(oriKv.has_value() || cmpKv.has_value(),
                 "ori_kv or cmp_kv is required when return_softmax_lse is true.");
     const at::Tensor &kv = oriKv.has_value() ? oriKv.value() : cmpKv.value();
-    if (layoutKv == "BSND") {
-        return kv.size(DIM_2);
+    if (layoutKv == "TND") {
+        return kv.size(DIM_1);
     }
-    return kv.size(DIM_1);
+    return kv.size(DIM_2);
 }
 
 std::tuple<at::Tensor, at::Tensor> MakeSparseFlashMlaOutputs(const at::Tensor &q,
@@ -33,6 +56,7 @@ std::tuple<at::Tensor, at::Tensor> MakeSparseFlashMlaOutputs(const at::Tensor &q
                                                              const std::string &layoutKv,
                                                              bool returnSoftmaxLse)
 {
+    CheckQueryShape(q, layoutQ);
     at::Tensor attnOut = at::empty_like(q);
     at::Tensor softmaxLse;
     if (!returnSoftmaxLse) {
@@ -63,9 +87,12 @@ std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
     const c10::optional<at::Tensor> &cmp_topk_length, const c10::optional<at::Tensor> &sinks,
     const c10::optional<at::Tensor> &metadata, double softmax_scale, int64_t cmp_ratio, int64_t ori_mask_mode,
     int64_t cmp_mask_mode, int64_t ori_win_left, int64_t ori_win_right, c10::string_view layout_q,
-    c10::string_view layout_kv, int64_t topk_value_mode, bool return_softmax_lse)
+    c10::string_view layout_kv, int64_t topk_value_mode, bool return_softmax_lse,
+    c10::optional<int64_t> key_dtype, c10::optional<int64_t> value_dtype)
 {
-    TORCH_CHECK(q.numel() > 0, "Tensor q is empty.");
+    (void)key_dtype;
+    (void)value_dtype;
+
     std::string layoutQStr = std::string(layout_q);
     std::string layoutKvStr = std::string(layout_kv);
     char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());

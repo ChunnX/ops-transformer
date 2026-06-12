@@ -51,10 +51,13 @@ using namespace AscendC;
 #include "utilsA2/block_epilogue_pertoken_v2_bf16_a2.hpp"
 #include "utilsA2/block_epilogue_pertoken_swiglu_a2_int8.hpp"
 #include "utilsA2/block_epilogue_pertoken_swiglu_a2_bf16.hpp"
+#include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
 
+#include "utils/block_epilogue_pertoken_v2.hpp"
 // A2 kernel
 #include "mega_moe_kernel_a2_int8.hpp"
 #include "mega_moe_kernel_a2_bf16.hpp"
+#include "mega_moe_kernel_a2_bf16_w4a8.hpp"
 #include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
 
 namespace MegaMoeA2Impl {
@@ -137,7 +140,8 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(
     GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
     GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    constexpr bool kRoutingIsQuant = std::is_same_v<BType_, int8_t>;
+    constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> ||
+                                     std::is_same_v<BType_, int8_t>;
 
     contextGM_ = contextGM;
     xGM_ = xGM;
@@ -200,13 +204,14 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     using ArchTag = Arch::AtlasA2;
     constexpr bool enableUnitFlag = false;
     constexpr bool enableShuffleK = true;
-
+    constexpr bool isW4A8 = std::is_same_v<BType_, AscendC::int4b_t>;
     constexpr bool isInt8 = std::is_same_v<BType_, int8_t>;
 
-    using AElement = std::conditional_t<isInt8, int8_t, AType_>;
-    using BElement = BType_;
-    using CElement = std::conditional_t<isInt8, float16_t, CType_>;
-    using D1Element = std::conditional_t<isInt8, int8_t, CType_>;
+    using AElement = std::conditional_t<isW4A8, AscendC::int4b_t,
+                      std::conditional_t<isInt8, int8_t, AType_>>;
+    using BElement = std::conditional_t<isW4A8, AscendC::int4b_t, BType_>;
+    using CElement = std::conditional_t<isW4A8 || isInt8, float16_t, CType_>;
+    using D1Element = std::conditional_t<isW4A8 || isInt8, int8_t, CType_>;
 
     uint32_t k2 = n / 2;
     uint32_t n2 = k;
@@ -230,10 +235,16 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     LayoutB layoutB2 = LayoutBInitializer<LayoutB, BElement>::create(k2, n2);
     using LayoutC = layout::RowMajor;
 
-    using L1TileShape = std::conditional_t<isInt8,
-        GemmShape<128, 256, 512>, GemmShape<128, 256, 256>>;
-    using L0TileShape = std::conditional_t<isInt8,
-        GemmShape<128, 256, 128>, GemmShape<128, 256, 64>>;
+    using L1TileShape = std::conditional_t<
+        isW4A8,
+        GemmShape<128, 256, 1024>,
+        std::conditional_t<isInt8, GemmShape<128, 256, 512>, GemmShape<128, 256, 256>>
+    >;
+    using L0TileShape = std::conditional_t<
+        isW4A8,
+        GemmShape<128, 256, 256>,
+        std::conditional_t<isInt8, GemmShape<128, 256, 128>, GemmShape<128, 256, 64>>
+    >;
 
     constexpr uint32_t preloadStages = 1;
     constexpr uint32_t l1Stages = 2;
@@ -255,20 +266,30 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         Gemm::GemmType<CType_, layout::RowMajor>
     >;
 
-    using BlockMmad = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType, CType>;
+    using ScaleGranularity = Catlass::Gemm::Tile::ScaleGranularity;
+    using TileCopyMmad =
+        Gemm::Tile::QuantTileCopy<ArchTag, AType, BType, CType, void, ScaleGranularity::PER_CHANNEL>;
+
+    using BlockMmad = std::conditional_t<
+        isW4A8,
+        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType, CType, void, TileCopyMmad>,
+        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType, CType>
+    >;
 
     constexpr uint32_t ubStages = 2;
 
     using EpilogueDispatchPolicy1 = std::conditional_t<
-        isInt8,
-        Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<ubStages>,
-        Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantBF16<ubStages>
+        isW4A8,
+        Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
+        std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantInt8<ubStages>,
+            Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuantBF16<ubStages>>
     >;
 
     using EpilogueDispatchPolicy2 = std::conditional_t<
-        isInt8,
-        Epilogue::EpilogueAtlasA2PerTokenDequantV2Int8<ubStages>,
-        Epilogue::EpilogueAtlasA2PerTokenDequantV2BF16<ubStages>
+        isW4A8,
+        Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,
+        std::conditional_t<isInt8, Epilogue::EpilogueAtlasA2PerTokenDequantV2Int8<ubStages>,
+            Epilogue::EpilogueAtlasA2PerTokenDequantV2BF16<ubStages>>
     >;
 
     using ScaleType = Gemm::GemmType<uint64_t, layout::VectorLayout>;
@@ -281,8 +302,12 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         D1Type, TileElemWiseMuls, TileCopy1>;
 
     using TileCopy2 = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, D2Type>;
-    using BlockEpilogue2 = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType,
-        D2Type, TileCopy2>;
+    using IS_A2 = Epilogue::Block::IS_A2_T<IS_A2_>;
+    using BlockEpilogue2 = std::conditional_t<
+        isW4A8,
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>,
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2>
+    >;
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
@@ -297,7 +322,33 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
 
     uint32_t epilogueCoreNum;
     uint32_t epilogueGranularity;
-    if constexpr (isInt8) {
+
+    if constexpr(isW4A8) {
+        using MatmulKernel =
+            Gemm::Kernel::MegaMoeKernelA2Bf16W4A8<BlockMmad, BlockScheduler, ElementGroupList,
+                                                    BlockEpilogue1, BlockEpilogue2>;
+        epilogueCoreNum = static_cast<uint32_t>(aivNum);
+        epilogueGranularity = 0U;
+        typename MatmulKernel::Params params = typename MatmulKernel::Params{
+            problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
+            static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
+            static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
+            epilogueCoreNum,
+            contextGM_, xGM_, layoutA1, layoutA2,
+            weight1GM_, layoutB1, bias1GM_,
+            weight2GM_, layoutB2, bias2GM_,
+            weightScales1GM_, layoutScale1,
+            weightScales2GM_, layoutScale2,
+            yGM_, layoutD1, layoutD2,
+            topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
+            expertTokensBeforeCapacity, topkWeightsGM_,
+            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
+            moeInitRoutingQuantV2TilingData,
+            epilogueGranularity, activationClamp};
+        MatmulKernel kernel(params);
+        kernel(params);
+    }
+    else if constexpr (isInt8) {
         epilogueCoreNum = static_cast<uint32_t>(aivNum);
         epilogueGranularity = (expertPerRank > 4) ? static_cast<uint32_t>(expertPerRank - 3) :
                               (expertPerRank > 0) ? static_cast<uint32_t>(expertPerRank - 1) : 0U;
