@@ -692,13 +692,13 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
         if (args_.isStorageGather == false) {
             if (gatherIndex == 0U) { // A矩阵
                 if (CheckSupportDtype(args_.geAType, FP4_DTYPE_SUPPORT_LIST)) {
-                    gatherLen = mc2tiling::AlignUp(rcsCfg.rankM * rcsCfg.rankK / 2, alignAddrLen);
+                    gatherLen = mc2tiling::AlignUp(static_cast<uint64_t>(rcsCfg.rankM * rcsCfg.rankK) / 2U, alignAddrLen);
                 } else {
                     gatherLen = mc2tiling::AlignUp(rcsCfg.rankM * rcsCfg.rankK * args_.inputDtypeSize, alignAddrLen);
                 }
             } else {
                 if (CheckSupportDtype(args_.geAType, FP4_DTYPE_SUPPORT_LIST)) {
-                    gatherLen = mc2tiling::AlignUp(rcsCfg.rankK * rcsCfg.rankN / 2, alignAddrLen);
+                    gatherLen = mc2tiling::AlignUp(static_cast<uint64_t>(rcsCfg.rankK * rcsCfg.rankN) / 2U, alignAddrLen);
                 } else {
                     gatherLen = mc2tiling::AlignUp(rcsCfg.rankK * rcsCfg.rankN * args_.inputDtypeSize, alignAddrLen);
                 }
