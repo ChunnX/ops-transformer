@@ -1253,11 +1253,7 @@ void FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize4Deter(size_t &
 
 uint64_t FlashAttentionScoreGradTilingNormalRegbase::GetTilingKey() const
 {
-    auto attenMaskCfg =
-        (fBaseParams.attenMaskOptional == EMPTY_TENSOR ||
-         (!fBaseParams.isSparse && fBaseParams.sparseMode != static_cast<uint32_t>(SparseMode::ALL_MASK))) ?
-            OptionEnum::DISABLE :
-            OptionEnum::ENABLE;
+    auto attenMaskCfg = fBaseParams.attenMaskOptional == EMPTY_TENSOR ? OptionEnum::DISABLE : OptionEnum::ENABLE;
     auto dNoEqual = (fBaseParams.d1 != fBaseParams.d) || fBaseParams.hasRope;
     auto pseValue = fBaseParams.pseOptional == NORMAL_TENSOR ? OptionEnum::ENABLE : OptionEnum::DISABLE;
     auto dropValue = fBaseParams.keepProb < 1 ? OptionEnum::ENABLE : OptionEnum::DISABLE;
