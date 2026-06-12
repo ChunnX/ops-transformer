@@ -60,8 +60,8 @@
         },
         {
           "name": "round_scale",
-          "dtype": "int",
-          "value": 1
+          "dtype": "bool",
+          "value": true
         },
         {
           "name": "scale",
@@ -129,8 +129,8 @@
         },
         {
           "name": "round_scale",
-          "dtype": "int",
-          "value": 1
+          "dtype": "bool",
+          "value": true
         },
         {
           "name": "scale",

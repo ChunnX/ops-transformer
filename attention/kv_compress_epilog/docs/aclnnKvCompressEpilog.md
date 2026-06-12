@@ -25,7 +25,7 @@
     slot_mapping_shape:      [1024]
     quant_group_size = 128
     quant_mode = 1
-    round_scale = 1
+    round_scale = true
     scale = 1.0
     kv_compress_cache_out_shape: [2048, 384]   (原地更新)
   ```
@@ -41,7 +41,7 @@ aclnnStatus aclnnKvCompressEpilogGetWorkspaceSize(
   const aclTensor *slotMapping,
   int64_t          quantGroupSize,
   int64_t          quantMode,
-  int64_t          roundScale,
+  bool             roundScale,
   float            scale,
   uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
@@ -75,7 +75,7 @@ aclnnStatus aclnnKvCompressEpilog(
     - 1：group 量化（默认，scale 存储为 float8_e8m0）
     - 2：HiFloat8 量化
 
-  - roundScale(int64_t，计算输入)：Host侧的int，group 模式下是否对每组 scale 向上取到 2 的幂。默认值为 1。
+  - roundScale(bool，计算输入)：Host侧的bool，group 模式下是否对每组 scale 向上取到 2 的幂。默认值为 true。
 
   - scale(float，计算输入)：Host侧的float，HiFloat8 模式下的全局 scale 乘数。仅在 quantMode=2 时生效。默认值为 1.0。
 

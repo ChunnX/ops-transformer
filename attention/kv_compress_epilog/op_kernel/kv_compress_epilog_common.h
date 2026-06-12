@@ -20,10 +20,10 @@
 
 namespace KvCompressEpilogOps {
 using namespace AscendC;
-using namespace AscendC::MicroAPI;
-using AscendC::MicroAPI::MaskReg;
-using AscendC::MicroAPI::RegTensor;
-using AscendC::MicroAPI::UnalignReg;
+using namespace AscendC::Reg;
+using AscendC::Reg::MaskReg;
+using AscendC::Reg::RegTensor;
+using AscendC::Reg::UnalignReg;
 constexpr int32_t BLOCK_SIZE = 32;
 constexpr int32_t VL_FP32 = 64;
 constexpr int32_t PER_BLOCK_FP16 = 128;
@@ -67,118 +67,97 @@ __aicore__ inline int32_t RoundUp(int32_t num)
     return CeilAlign(num, elemNum);
 }
 
-constexpr AscendC::MicroAPI::CastTrait castTraitB162B32Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::UNKNOWN,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait castTraitB162B32Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::UNKNOWN,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN,
 };
 
-constexpr AscendC::MicroAPI::CastTrait castTraitB322B16Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait castTraitB322B16Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::NO_SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
 
-constexpr static AscendC::MicroAPI::CastTrait castTraitF32toFp8Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr static AscendC::Reg::CastTrait castTraitF32toFp8Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::NO_SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
 
-constexpr static AscendC::MicroAPI::CastTrait castTraitU32toU8Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr static AscendC::Reg::CastTrait castTraitU32toU8Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::NO_SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_NONE,
 };
 
-constexpr static AscendC::MicroAPI::CastTrait castTraitU32toU16Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr static AscendC::Reg::CastTrait castTraitU32toU16Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::NO_SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_NONE,
 };
 
-constexpr static AscendC::MicroAPI::CastTrait castTraitB322B8Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr static AscendC::Reg::CastTrait castTraitB322B8Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::NO_SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_NONE,
 };
 
-constexpr static AscendC::MicroAPI::CastTrait castTraitF32toh8 = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr static AscendC::Reg::CastTrait castTraitF32toh8 = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_ROUND
 };
 
 template <typename T>
-__aicore__ inline void LoadInputData(RegTensor<float>& dst, __local_mem__ T* src, MaskReg pregLoop, uint32_t srcOffset)
+__simd_callee__ inline void LoadInputData(RegTensor<float>& dst, __ubuf__ T* src, MaskReg pregLoop, uint32_t srcOffset)
 {
     if constexpr (IsSameType<T, float>::value) {
         DataCopy(dst, src + srcOffset);
     } else if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
         RegTensor<T> tmp;
-        DataCopy<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(tmp, src + srcOffset);
+        DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(tmp, src + srcOffset);
         Cast<float, T, castTraitB162B32Even>(dst, tmp, pregLoop);
     }
 }
 
 template <typename T>
-__aicore__ inline void StoreOutputData(
-    __local_mem__ T* dst, RegTensor<float>& src, MaskReg pregLoop, uint32_t dstOffset)
+__simd_callee__ inline void StoreOutputData(
+    __ubuf__ T* dst, RegTensor<float>& src, MaskReg pregLoop, uint32_t dstOffset)
 {
     if constexpr (IsSameType<T, float>::value) {
         DataCopy(dst + dstOffset, src, pregLoop);
     } else if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
         RegTensor<T> tmp;
         Cast<T, float, castTraitB322B16Even>(tmp, src, pregLoop);
-        DataCopy<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(dst + dstOffset, tmp, pregLoop);
+        DataCopy<T, AscendC::Reg::StoreDist::DIST_PACK_B32>(dst + dstOffset, tmp, pregLoop);
     } else if constexpr (IsSameType<T, fp8_e4m3fn_t>::value || IsSameType<T, fp8_e5m2_t>::value) {
         RegTensor<T> tmp;
         Cast<T, float, castTraitF32toFp8Even>(tmp, src, pregLoop);
-        DataCopy<T, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
+        DataCopy<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
     } else if constexpr (IsSameType<T, hifloat8_t>::value) {
         RegTensor<T> tmp;
         Cast<T, float, castTraitF32toh8>(tmp, src, pregLoop);
-        DataCopy<T, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
+        DataCopy<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
     }
 }
 
 template <typename T0, typename T1, bool roundScale = true, bool castBf16 = false>
-__aicore__ inline void VFProcessFP8PerGroupQuant(
-    const LocalTensor<T1>& yLocal, const LocalTensor<T0>& xLocal,
-    float coeff, float fp8Min, float fp8Max, const uint16_t curRowNum, const uint32_t curColNum,
-    const uint32_t concatColNum, const uint32_t padColNum)
+__simd_vf__ inline void VFProcessFP8PerGroupQuantVF(
+    __ubuf__ T1* yLocalAddr, __ubuf__ T0* xLocalAddr, __ubuf__ T1* scaleLocalAddr,
+    __ubuf__ T0* scaleLocalBf16Addr, __ubuf__ T0* ropeYLocalAddr,
+    float coeff, float fp8Min, float fp8Max, const uint16_t curRowNum, const uint32_t quantColNum,
+    const uint16_t ropeNum, const uint16_t loopCount, const uint32_t curColNumAlign,
+    const uint32_t dstCurColNumAlign, const uint32_t concatColNum, const uint32_t padColNum,
+    const uint32_t sregNum)
 {
-    __local_mem__ T1* yLocalAddr = (__local_mem__ T1*)yLocal.GetPhyAddr();
-    __local_mem__ T0* xLocalAddr = (__local_mem__ T0*)xLocal.GetPhyAddr();
-    __local_mem__ T1* scaleLocalAddr;
-    __local_mem__ T0* scaleLocalBf16Addr;
-    if constexpr (castBf16) {
-        LocalTensor<T0> scaleBf16Tensor = yLocal.template ReinterpretCast<T0>();
-        scaleLocalBf16Addr = (__local_mem__ T0*)scaleBf16Tensor.GetPhyAddr();
-    } else {
-        scaleLocalAddr = (__local_mem__ T1*)yLocal.GetPhyAddr();
-    }
-    __local_mem__ T0* ropeYLocalAddr = (__local_mem__ T0*)yLocal.GetPhyAddr();
-
-    uint32_t quantColNum = curColNum - 64;
-    uint16_t scaleColNum = CeilDiv(quantColNum, 128);
-    uint16_t ropeNum = 128;
-    uint16_t loopCount = CeilDiv(quantColNum, VL_FP32);
-    uint32_t curColNumAlign = RoundUp<T0>(curColNum);
-    uint32_t dstCurColNumAlign = RoundUp<T1>(concatColNum+padColNum);
-    uint16_t loopCountFoldTwo = loopCount / 2;
-    uint16_t loopCountReminder = loopCount % 2;
-    uint32_t tailReminder = quantColNum - (loopCount - 1) * VL_FP32;
-    uint32_t scaleColNumAlign = RoundUp<T0>(scaleColNum);
-    uint32_t sregNum = quantColNum;
-    __VEC_SCOPE__
     {
         RegTensor<float> x0;
         RegTensor<float> x0Abs;
@@ -205,17 +184,17 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
         UnalignRegForLoad ureg1;
         UnalignRegForStore ureg2;
         MaskReg pregLoop;
-        MaskReg preg1 = CreateMask<T0, AscendC::MicroAPI::MaskPattern::VL1>();
-        MaskReg pregMerge = CreateMask<float, AscendC::MicroAPI::MaskPattern::VL1>();
+        MaskReg preg1 = CreateMask<T0, AscendC::Reg::MaskPattern::VL1>();
+        MaskReg pregMerge = CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
         MaskReg pregMain = CreateMask<float>();
-        MaskReg pregRope = CreateMask<T0, AscendC::MicroAPI::MaskPattern::VL64>();
+        MaskReg pregRope = CreateMask<T0, AscendC::Reg::MaskPattern::VL64>();
         MaskReg cmpMask;
         Duplicate(tmp1, FAST_LOG_AND_VALUE2, pregMerge);
         Duplicate(zero, static_cast<uint32_t>(0), pregMerge);
         Duplicate(one, static_cast<uint32_t>(1), pregMerge);
         for (uint16_t i = 0; i < curRowNum; i++) {
             // cat rope
-            __local_mem__ T0* rowRopeXLocalAddr = xLocalAddr + i * curColNumAlign + quantColNum;
+            __ubuf__ T0* rowRopeXLocalAddr = xLocalAddr + i * curColNumAlign + quantColNum;
 
             LoadUnAlignPre(ureg0, rowRopeXLocalAddr);
             LoadUnAlign(ropeReg, ureg0, rowRopeXLocalAddr, 64);
@@ -246,7 +225,7 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
                 {
                     RegTensor<fp8_e4m3fn_t> fp8Out;
                     Cast<fp8_e4m3fn_t, float, castTraitF32toFp8Even>(fp8Out, x0, pregLoop);
-                    DataCopy<T1, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    DataCopy<T1, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
                         yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign + ropeNum, (RegTensor<T1> &)fp8Out, pregLoop);
                 }
 
@@ -254,12 +233,12 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
                 ShiftRights(scaleTmp0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                 if constexpr (castBf16) {
                     Cast<uint16_t, uint32_t, castTraitU32toU16Even>(scaleTmp1Bf16, scaleTmp0, preg1);
-                    DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B16>(
+                    DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B16>(
                         scaleLocalBf16Addr + (((quantColNum + ropeNum + i * dstCurColNumAlign) >> 1) + j),
                         (RegTensor<bfloat16_t> &)scaleTmp1Bf16, preg1);
                 } else {
                     Cast<uint8_t, uint32_t, castTraitB322B8Even>(scaleTmp1, scaleTmp0, preg1);
-                    DataCopy<T1, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B8>(
+                    DataCopy<T1, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B8>(
                         scaleLocalAddr + quantColNum + ropeNum + j + i * dstCurColNumAlign,
                         (RegTensor<T1>&)scaleTmp1, preg1);
                 }
@@ -267,28 +246,57 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
             LocalMemBar<MemType::VEC_STORE, MemType::VEC_STORE>();
 
             // pad zero
-            __local_mem__ T1* rowPadLocalAddr = yLocalAddr + i * dstCurColNumAlign + concatColNum;
+            __ubuf__ T1* rowPadLocalAddr = yLocalAddr + i * dstCurColNumAlign + concatColNum;
             StoreUnAlign(rowPadLocalAddr, (RegTensor<T1>&)zero, ureg1, padColNum);
             StoreUnAlignPost(rowPadLocalAddr, ureg1, 0);
         }
     }
 }
 
+template <typename T0, typename T1, bool roundScale = true, bool castBf16 = false>
+__aicore__ inline void VFProcessFP8PerGroupQuant(
+    const LocalTensor<T1>& yLocal, const LocalTensor<T0>& xLocal,
+    float coeff, float fp8Min, float fp8Max, const uint16_t curRowNum, const uint32_t curColNum,
+    const uint32_t concatColNum, const uint32_t padColNum)
+{
+    __ubuf__ T1* yLocalAddr = (__ubuf__ T1*)yLocal.GetPhyAddr();
+    __ubuf__ T0* xLocalAddr = (__ubuf__ T0*)xLocal.GetPhyAddr();
+    __ubuf__ T1* scaleLocalAddr;
+    __ubuf__ T0* scaleLocalBf16Addr;
+    if constexpr (castBf16) {
+        LocalTensor<T0> scaleBf16Tensor = yLocal.template ReinterpretCast<T0>();
+        scaleLocalBf16Addr = (__ubuf__ T0*)scaleBf16Tensor.GetPhyAddr();
+    } else {
+        scaleLocalAddr = (__ubuf__ T1*)yLocal.GetPhyAddr();
+    }
+    __ubuf__ T0* ropeYLocalAddr = (__ubuf__ T0*)yLocal.GetPhyAddr();
+
+    uint32_t quantColNum = curColNum - 64;
+    uint16_t scaleColNum = CeilDiv(quantColNum, 128);
+    uint16_t ropeNum = 128;
+    uint16_t loopCount = CeilDiv(quantColNum, VL_FP32);
+    uint32_t curColNumAlign = RoundUp<T0>(curColNum);
+    uint32_t dstCurColNumAlign = RoundUp<T1>(concatColNum+padColNum);
+    uint16_t loopCountFoldTwo = loopCount / 2;
+    uint16_t loopCountReminder = loopCount % 2;
+    uint32_t tailReminder = quantColNum - (loopCount - 1) * VL_FP32;
+    uint32_t scaleColNumAlign = RoundUp<T0>(scaleColNum);
+    uint32_t sregNum = quantColNum;
+    VFProcessFP8PerGroupQuantVF<T0, T1, roundScale, castBf16>(
+        yLocalAddr, xLocalAddr, scaleLocalAddr, scaleLocalBf16Addr, ropeYLocalAddr,
+        coeff, fp8Min, fp8Max, curRowNum, quantColNum, ropeNum, loopCount, curColNumAlign,
+        dstCurColNumAlign, concatColNum, padColNum, sregNum);
+}
+
 // quant_mode=2 (HiFloat8): whole-row quant (no rope/group/scale structure). Each x row is
 // scaled by the scale attr and cast to hifloat8 (1 byte/elem) -> cache row = d hifloat8 bytes.
 // Ported from cann-recipes-infer kv_compress_epilog VFProcessHifp8Quant.
 template <typename T0, typename T1>
-__aicore__ inline void VFProcessHifp8Quant(
-    const LocalTensor<T1>& yLocal, const LocalTensor<T0>& xLocal,
-    const uint16_t curRowNum, const uint32_t curColNum, const float scales)
+__simd_vf__ inline void VFProcessHifp8QuantVF(
+    __ubuf__ hifloat8_t* yLocalAddr, __ubuf__ T0* xLocalAddr, const uint16_t curRowNum,
+    const uint32_t curColNum, const float scales, const uint16_t loopCount,
+    const uint32_t curColNumAlign, const uint32_t dstCurColNumAlign)
 {
-    LocalTensor<hifloat8_t> outLocal = yLocal.template ReinterpretCast<hifloat8_t>();
-    __local_mem__ hifloat8_t* yLocalAddr = (__local_mem__ hifloat8_t*)outLocal.GetPhyAddr();
-    __local_mem__ T0* xLocalAddr = (__local_mem__ T0*)xLocal.GetPhyAddr();
-    uint16_t loopCount = CeilDiv(static_cast<int32_t>(curColNum), static_cast<int>(VL_FP32));
-    uint32_t curColNumAlign = RoundUp<T0>(curColNum);
-    uint32_t dstCurColNumAlign = RoundUp<T1>(curColNum);
-    __VEC_SCOPE__
     {
         RegTensor<float> xReg;
         RegTensor<hifloat8_t> tmp;
@@ -300,11 +308,26 @@ __aicore__ inline void VFProcessHifp8Quant(
                 LoadInputData<T0>(xReg, xLocalAddr, pregLoop, j * VL_FP32 + i * curColNumAlign);
                 Muls(xReg, xReg, scales, pregLoop);
                 Cast<hifloat8_t, float, castTraitF32toh8>(tmp, xReg, pregLoop);
-                DataCopy<hifloat8_t, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                DataCopy<hifloat8_t, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
                     yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign, tmp, pregLoop);
             }
         }
     }
+}
+
+template <typename T0, typename T1>
+__aicore__ inline void VFProcessHifp8Quant(
+    const LocalTensor<T1>& yLocal, const LocalTensor<T0>& xLocal,
+    const uint16_t curRowNum, const uint32_t curColNum, const float scales)
+{
+    LocalTensor<hifloat8_t> outLocal = yLocal.template ReinterpretCast<hifloat8_t>();
+    __ubuf__ hifloat8_t* yLocalAddr = (__ubuf__ hifloat8_t*)outLocal.GetPhyAddr();
+    __ubuf__ T0* xLocalAddr = (__ubuf__ T0*)xLocal.GetPhyAddr();
+    uint16_t loopCount = CeilDiv(static_cast<int32_t>(curColNum), static_cast<int>(VL_FP32));
+    uint32_t curColNumAlign = RoundUp<T0>(curColNum);
+    uint32_t dstCurColNumAlign = RoundUp<T1>(curColNum);
+    VFProcessHifp8QuantVF<T0, T1>(
+        yLocalAddr, xLocalAddr, curRowNum, curColNum, scales, loopCount, curColNumAlign, dstCurColNumAlign);
 }
 
 template <typename T>

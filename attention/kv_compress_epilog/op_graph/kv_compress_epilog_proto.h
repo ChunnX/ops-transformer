@@ -43,7 +43,7 @@ namespace ge {
  *   - 0: group quantization, scale stored as bfloat16
  *   - 1: group quantization, scale stored as float8_e8m0 (default)
  *   - 2: HiFloat8 quantization (whole-row, scale attribute applied)
- * @li round_scale: An optional int attribute. Whether to round the group scale value. Defaults to 1.
+ * @li round_scale: An optional bool attribute. Whether to round the group scale value. Defaults to true.
  * @li scale: An optional float attribute. Global scale multiplier for HiFloat8 mode. Defaults to 1.0.
 
  * @par Outputs:
@@ -64,7 +64,7 @@ REG_OP(KvCompressEpilog)
     .OUTPUT(kv_compress_cache, TensorType({DT_UINT8}))
     .ATTR(quant_group_size, Int, 128)
     .ATTR(quant_mode, Int, 1)
-    .ATTR(round_scale, Int, 1)
+    .ATTR(round_scale, Bool, true)
     .ATTR(scale, Float, 1.0)
 .OP_END_FACTORY_REG(KvCompressEpilog)
 }  // namespace ge

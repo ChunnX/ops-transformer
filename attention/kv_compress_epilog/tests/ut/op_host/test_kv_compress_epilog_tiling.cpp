@@ -42,7 +42,7 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_e8m0)
         {
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
             {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
         nullptr, "Ascend950"
@@ -64,7 +64,7 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_hifloat)
         {
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
             {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         },
         nullptr, "Ascend950"

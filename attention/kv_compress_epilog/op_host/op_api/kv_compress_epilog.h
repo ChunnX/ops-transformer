@@ -26,7 +26,7 @@ const aclTensor *KvCompressEpilog(
     const aclTensor *slotMapping,
     int64_t quantGroupSize,
     int64_t quantMode,
-    int64_t roundScale,
+    bool roundScale,
     float scale,
     aclOpExecutor *executor);
 

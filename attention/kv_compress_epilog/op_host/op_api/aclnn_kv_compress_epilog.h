@@ -27,7 +27,7 @@ extern "C" {
         const aclTensor *slotMapping,
         int64_t quantGroupSize,
         int64_t quantMode,
-        int64_t roundScale,
+        bool roundScale,
         float scale,
         uint64_t *workspaceSize,
         aclOpExecutor **executor);

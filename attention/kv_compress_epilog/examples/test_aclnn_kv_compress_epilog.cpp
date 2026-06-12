@@ -33,7 +33,7 @@ int main()
     // 2. 设置属性
     int64_t quantGroupSize = 128;
     int64_t quantMode = 1;   // group quantization, scale stored as float8_e8m0
-    int64_t roundScale = 1;
+    bool roundScale = true;
     float scale = 1.0f;
 
     // 3. 第一阶段：获取 workspace 大小和 executor

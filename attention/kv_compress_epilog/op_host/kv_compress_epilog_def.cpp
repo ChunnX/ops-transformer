@@ -44,7 +44,7 @@ public:
 
         this->Attr("quant_group_size").AttrType(OPTIONAL).Int(128);
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(1);
-        this->Attr("round_scale").AttrType(OPTIONAL).Int(1);
+        this->Attr("round_scale").AttrType(OPTIONAL).Bool(true);
         this->Attr("scale").AttrType(OPTIONAL).Float(1.0f);
 
         this->AICore().AddConfig("ascend950");

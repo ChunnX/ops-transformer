@@ -20,10 +20,10 @@
 
 namespace IndexerQuantCache {
 using namespace AscendC;
-using namespace AscendC::MicroAPI;
-using AscendC::MicroAPI::MaskReg;
-using AscendC::MicroAPI::RegTensor;
-using AscendC::MicroAPI::UnalignReg;
+using namespace AscendC::Reg;
+using AscendC::Reg::MaskReg;
+using AscendC::Reg::RegTensor;
+using AscendC::Reg::UnalignReg;
 constexpr int32_t BLOCK_SIZE = 32;
 constexpr int32_t VL_FP32 = 64;
 constexpr int32_t PER_BLOCK_FP16 = 128;
@@ -85,93 +85,93 @@ __aicore__ inline int32_t RoundUp(int32_t num, int32_t elemNum)
     return CeilAlign(num, elemNum);
 }
 
-constexpr AscendC::MicroAPI::CastTrait castTraitB162B32Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::UNKNOWN,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait castTraitB162B32Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::UNKNOWN,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN,
 };
 
-constexpr AscendC::MicroAPI::CastTrait castTraitB322B16Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait castTraitB322B16Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::NO_SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
 
-constexpr static AscendC::MicroAPI::CastTrait castTraitF32toFp8Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr static AscendC::Reg::CastTrait castTraitF32toFp8Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::NO_SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
 
-constexpr static AscendC::MicroAPI::CastTrait castTraitU32toU8Even = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr static AscendC::Reg::CastTrait castTraitU32toU8Even = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::NO_SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_NONE,
 };
 
 // B16->B32 拆偶/拆奇布局 (与 swiglu_group_quant 一致): Layout0 取偶数位元素, Layout1 取奇数位元素。
 // castTraitB162B32Even 即 Layout0 (RegLayout::ZERO), 此处补充 Layout1 (RegLayout::ONE)。
-constexpr AscendC::MicroAPI::CastTrait traitB16ToB32Layout1 = {
-    AscendC::MicroAPI::RegLayout::ONE,
-    AscendC::MicroAPI::SatMode::UNKNOWN,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr AscendC::Reg::CastTrait traitB16ToB32Layout1 = {
+    AscendC::Reg::RegLayout::ONE,
+    AscendC::Reg::SatMode::UNKNOWN,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN,
 };
 
-constexpr static AscendC::MicroAPI::CastTrait castTraitF32toh8 = {
-    AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::SAT,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+constexpr static AscendC::Reg::CastTrait castTraitF32toh8 = {
+    AscendC::Reg::RegLayout::ZERO,
+    AscendC::Reg::SatMode::SAT,
+    AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_ROUND
 };
 
 
 template <typename T>
-__aicore__ inline void LoadInputData(RegTensor<float>& dst, __local_mem__ T* src, MaskReg pregLoop, uint32_t srcOffset)
+__simd_callee__ inline void LoadInputData(RegTensor<float>& dst, __ubuf__ T* src, MaskReg pregLoop, uint32_t srcOffset)
 {
     if constexpr (IsSameType<T, float>::value) {
         DataCopy(dst, src + srcOffset);
     } else if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
         RegTensor<T> tmp;
-        DataCopy<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(tmp, src + srcOffset);
+        DataCopy<T, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(tmp, src + srcOffset);
         Cast<float, T, castTraitB162B32Even>(dst, tmp, pregLoop);
     }
 }
 
 template <typename T>
-__aicore__ inline void StoreOutputData(
-    __local_mem__ T* dst, RegTensor<float>& src, MaskReg pregLoop, uint32_t dstOffset)
+__simd_callee__ inline void StoreOutputData(
+    __ubuf__ T* dst, RegTensor<float>& src, MaskReg pregLoop, uint32_t dstOffset)
 {
     if constexpr (IsSameType<T, float>::value) {
         DataCopy(dst + dstOffset, src, pregLoop);
     } else if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
         RegTensor<T> tmp;
         Cast<T, float, castTraitB322B16Even>(tmp, src, pregLoop);
-        DataCopy<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(dst + dstOffset, tmp, pregLoop);
+        DataCopy<T, AscendC::Reg::StoreDist::DIST_PACK_B32>(dst + dstOffset, tmp, pregLoop);
     } else if constexpr (IsSameType<T, fp8_e4m3fn_t>::value || IsSameType<T, fp8_e5m2_t>::value) {
         RegTensor<T> tmp;
         Cast<T, float, castTraitF32toFp8Even>(tmp, src, pregLoop);
-        DataCopy<T, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
+        DataCopy<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
     } else if constexpr (IsSameType<T, hifloat8_t>::value) {
         RegTensor<T> tmp;
         Cast<T, float, castTraitF32toh8>(tmp, src, pregLoop);
-        DataCopy<T, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
+        DataCopy<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
     }
 }
 
 template <typename T>
-__aicore__ inline void StoreMxFp8Scale(
-    __local_mem__ T* dst, RegTensor<float>& src, MaskReg pregLoop, uint32_t dstOffset)
+__simd_callee__ inline void StoreMxFp8Scale(
+    __ubuf__ T* dst, RegTensor<float>& src, MaskReg pregLoop, uint32_t dstOffset)
 {
     RegTensor<uint32_t> tmp;
     RegTensor<uint8_t> tmp1;
     ShiftRights(tmp, (RegTensor<uint32_t> &)src, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), pregLoop);
     Cast<uint8_t, uint32_t, castTraitU32toU8Even>(tmp1, tmp, pregLoop);
-    DataCopy<T, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B8>(dst + dstOffset, (RegTensor<T> &)tmp1, pregLoop);
+    DataCopy<T, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B8>(dst + dstOffset, (RegTensor<T> &)tmp1, pregLoop);
 }
 
 
@@ -189,23 +189,12 @@ __aicore__ inline void StoreMxFp8Scale(
 //   写入本行 32B scratch padding, invScale 写入按 ceil(d/128)*16 预留的 buffer, 均由 Quant 端按 d 掩码读取。
 //   越界读规避: 128 宽读最多到 RoundUp(d,128), 故 x 输入 buffer 按 128 对齐 (见 mx_fp8 调用方/tiling)。
 template <typename TX, typename TS>
-__aicore__ inline void VFProcessMxFp8InvScale(
-    const LocalTensor<float>& yLocal, const LocalTensor<TS>& scaleLocal, const LocalTensor<float>& invScaleLocal,
-    const LocalTensor<TX>& xLocal, float coeff, const uint16_t curRowNum, const uint32_t curColNum)
+__simd_vf__ inline void VFProcessMxFp8InvScaleVF(
+    __ubuf__ float* yLocalAddr, __ubuf__ uint8_t* scaleOriginAddr, __ubuf__ float* invScaleLocalAddr,
+    __ubuf__ TX* xLocalAddr, float coeff, const uint16_t curRowNum, const uint32_t curColNum,
+    const uint32_t MXB, const uint16_t vlLen, const uint16_t loopCount, const uint32_t xRowAlign,
+    const uint32_t curColNumAlignFloat, const uint32_t scaleColNumAlign, const uint32_t invScaleColNumAlign)
 {
-    __local_mem__ float* yLocalAddr = (__local_mem__ float*)yLocal.GetPhyAddr();
-    __local_mem__ uint8_t* scaleOriginAddr = (__local_mem__ uint8_t*)scaleLocal.GetPhyAddr();
-    __local_mem__ float* invScaleLocalAddr = (__local_mem__ float*)invScaleLocal.GetPhyAddr();
-    __local_mem__ TX* xLocalAddr = (__local_mem__ TX*)xLocal.GetPhyAddr();
-    constexpr uint32_t MXB = 32;
-    uint16_t vlLen = REPEAT_SIZE / sizeof(TX);                 // 128 elements (B16) per chunk
-    uint16_t loopCount = CeilDiv(curColNum, vlLen);
-    uint32_t xRowAlign = RoundUp<TX>(curColNum, vlLen);        // x 输入 buffer 按 128 对齐
-    uint32_t curColNumAlignFloat = RoundUp<float>(curColNum);  // fp32 中间 buffer 每行跨步
-    uint32_t scaleCol = CeilDiv(curColNum, MXB);
-    uint32_t scaleColNumAlign = RoundUp<TS>(scaleCol);         // e8m0 scale 每行 32B 对齐跨步
-    uint32_t invScaleColNumAlign = static_cast<uint32_t>(loopCount) * 16;  // 每 128-chunk 固定 16 个 invScale
-    __VEC_SCOPE__
     {
         RegTensor<TX> raw;
         RegTensor<float> x0Layout0;
@@ -236,8 +225,8 @@ __aicore__ inline void VFProcessMxFp8InvScale(
         RegTensor<int32_t> c127Int;
         RegTensor<uint8_t> tmp5;
         UnalignReg uReg;
-        MaskReg pregMain0 = CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-        MaskReg pregMain1 = CreateMask<TX, AscendC::MicroAPI::MaskPattern::ALL>();
+        MaskReg pregMain0 = CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+        MaskReg pregMain1 = CreateMask<TX, AscendC::Reg::MaskPattern::ALL>();
         MaskReg compareMask0;
         // 固定 mask (循环体内不写运行期 if/ternary): 每 128-chunk 固定 4 个 MX 块 -> scale 4 lane,
         // invScale 广播 16 lane。尾块的越界 lane 由 Quant 端读取掩码丢弃。
@@ -252,7 +241,7 @@ __aicore__ inline void VFProcessMxFp8InvScale(
         Duplicate(c127, static_cast<uint32_t>(127), pregMain0);
         Duplicate(c127Int, static_cast<int32_t>(127), pregMain0);
         for (uint16_t i = 0; i < curRowNum; i++) {
-            __local_mem__ uint8_t* scaleRowAddr = scaleOriginAddr + i * scaleColNumAlign;  // 本行 32B 对齐基址
+            __ubuf__ uint8_t* scaleRowAddr = scaleOriginAddr + i * scaleColNumAlign;  // 本行 32B 对齐基址
             uint32_t eCnt = curColNum;   // y 存储尾块的 running counter (UpdateMask 饱和到 0)
             for (uint16_t j = 0; j < loopCount; j++) {
                 // 载入 128 个 B16, 拆偶/拆奇 -> 两路 fp32, Interleave 还原自然顺序写 fp32 中间 buffer
@@ -291,7 +280,7 @@ __aicore__ inline void VFProcessMxFp8InvScale(
                 Cast<uint8_t, int32_t, castTraitU32toU8Even>(tmp5, (RegTensor<int32_t>&)scale2, pregMerge);
                 Pack(scale7, (RegTensor<uint32_t>&)tmp5);
                 Pack(scale6, scale7);
-                DataCopyUnAlign<uint8_t, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                DataCopyUnAlign<uint8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
                     scaleRowAddr, scale6, uReg, MXB / 8);  // 4 bytes
                 // invScale 广播 (每 scale x4): 固定 16 lane (越界块被 Quant 掩码)
                 Interleave(invScale0, invScale1, invScale, invScale);
@@ -303,20 +292,34 @@ __aicore__ inline void VFProcessMxFp8InvScale(
     }
 }
 
-template <typename TY>
-__aicore__ inline void VFProcessMxFp8Quant(
-    const LocalTensor<TY>& yQuantLocal, const LocalTensor<float>& yLocal, const LocalTensor<float>& invScaleLocal,
-    const uint16_t curRowNum, const uint32_t curColNum)
+template <typename TX, typename TS>
+__aicore__ inline void VFProcessMxFp8InvScale(
+    const LocalTensor<float>& yLocal, const LocalTensor<TS>& scaleLocal, const LocalTensor<float>& invScaleLocal,
+    const LocalTensor<TX>& xLocal, float coeff, const uint16_t curRowNum, const uint32_t curColNum)
 {
-    __local_mem__ TY* yQuantLocalAddr = (__local_mem__ TY*)yQuantLocal.GetPhyAddr();
-    __local_mem__ float* yLocalAddr = (__local_mem__ float*)yLocal.GetPhyAddr();
-    __local_mem__ float* scaleLocalAddr = (__local_mem__ float*)invScaleLocal.GetPhyAddr();
-    uint16_t loopCount = CeilDiv(curColNum, VL_FP32);
-    uint32_t curColNumAlign = RoundUp<float>(curColNum);
-    uint32_t dstCurColNumAlign = RoundUp<TY>(curColNum);
-    // 与 InvScale 一致: 每 128-chunk 固定 16 个 invScale -> 每行跨步 ceil(d/128)*16
-    uint32_t invScaleColNumAlign = CeilDiv(curColNum, PER_BLOCK_FP16) * 16;
-    __VEC_SCOPE__
+    __ubuf__ float* yLocalAddr = (__ubuf__ float*)yLocal.GetPhyAddr();
+    __ubuf__ uint8_t* scaleOriginAddr = (__ubuf__ uint8_t*)scaleLocal.GetPhyAddr();
+    __ubuf__ float* invScaleLocalAddr = (__ubuf__ float*)invScaleLocal.GetPhyAddr();
+    __ubuf__ TX* xLocalAddr = (__ubuf__ TX*)xLocal.GetPhyAddr();
+    constexpr uint32_t MXB = 32;
+    uint16_t vlLen = REPEAT_SIZE / sizeof(TX);                 // 128 elements (B16) per chunk
+    uint16_t loopCount = CeilDiv(curColNum, vlLen);
+    uint32_t xRowAlign = RoundUp<TX>(curColNum, vlLen);        // x 输入 buffer 按 128 对齐
+    uint32_t curColNumAlignFloat = RoundUp<float>(curColNum);  // fp32 中间 buffer 每行跨步
+    uint32_t scaleCol = CeilDiv(curColNum, MXB);
+    uint32_t scaleColNumAlign = RoundUp<TS>(scaleCol);         // e8m0 scale 每行 32B 对齐跨步
+    uint32_t invScaleColNumAlign = static_cast<uint32_t>(loopCount) * 16;  // 每 128-chunk 固定 16 个 invScale
+    VFProcessMxFp8InvScaleVF<TX, TS>(
+        yLocalAddr, scaleOriginAddr, invScaleLocalAddr, xLocalAddr, coeff, curRowNum, curColNum,
+        MXB, vlLen, loopCount, xRowAlign, curColNumAlignFloat, scaleColNumAlign, invScaleColNumAlign);
+}
+
+template <typename TY>
+__simd_vf__ inline void VFProcessMxFp8QuantVF(
+    __ubuf__ TY* yQuantLocalAddr, __ubuf__ float* yLocalAddr, __ubuf__ float* scaleLocalAddr,
+    const uint16_t curRowNum, const uint32_t curColNum, const uint16_t loopCount,
+    const uint32_t curColNumAlign, const uint32_t dstCurColNumAlign, const uint32_t invScaleColNumAlign)
+{
     {
         RegTensor<float> y;
         RegTensor<float> invScale;
@@ -326,7 +329,7 @@ __aicore__ inline void VFProcessMxFp8Quant(
             for (uint16_t j = 0; j < loopCount; j++) {
                 pregMain = UpdateMask<float>(sreg);   // 尾块按剩余元素数掩码
                 LoadInputData<float>(y, yLocalAddr, pregMain, i * curColNumAlign + j * VL_FP32);
-                DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_E2B_B32>(
+                DataCopy<float, AscendC::Reg::LoadDist::DIST_E2B_B32>(
                     invScale, scaleLocalAddr + j * 8 + i * invScaleColNumAlign);
                 Mul(y, y, invScale, pregMain);
                 StoreOutputData<TY>(yQuantLocalAddr, y, pregMain, j * VL_FP32 + i * dstCurColNumAlign);
@@ -335,33 +338,34 @@ __aicore__ inline void VFProcessMxFp8Quant(
     }
 }
 
+template <typename TY>
+__aicore__ inline void VFProcessMxFp8Quant(
+    const LocalTensor<TY>& yQuantLocal, const LocalTensor<float>& yLocal, const LocalTensor<float>& invScaleLocal,
+    const uint16_t curRowNum, const uint32_t curColNum)
+{
+    __ubuf__ TY* yQuantLocalAddr = (__ubuf__ TY*)yQuantLocal.GetPhyAddr();
+    __ubuf__ float* yLocalAddr = (__ubuf__ float*)yLocal.GetPhyAddr();
+    __ubuf__ float* scaleLocalAddr = (__ubuf__ float*)invScaleLocal.GetPhyAddr();
+    uint16_t loopCount = CeilDiv(curColNum, VL_FP32);
+    uint32_t curColNumAlign = RoundUp<float>(curColNum);
+    uint32_t dstCurColNumAlign = RoundUp<TY>(curColNum);
+    // 与 InvScale 一致: 每 128-chunk 固定 16 个 invScale -> 每行跨步 ceil(d/128)*16
+    uint32_t invScaleColNumAlign = CeilDiv(curColNum, PER_BLOCK_FP16) * 16;
+    VFProcessMxFp8QuantVF<TY>(
+        yQuantLocalAddr, yLocalAddr, scaleLocalAddr, curRowNum, curColNum, loopCount,
+        curColNumAlign, dstCurColNumAlign, invScaleColNumAlign);
+}
+
 // Normal 动态量化, 整行一个 float32 scale (scale = rowmax / fp8max)。两遍处理:
 // 第一遍跨整行求 amax, 第二遍按该 scale 量化。NaN 安全 (排除 NaN 求 max, 结果 NaN 时保留原值)。
 // roundScale=true 时把 scale 向上取到最近的 2 的幂 (与 kv_compress_epilog 的 roundScale 一致)。
 template <typename T0, typename T1, bool roundScale = true>
-__aicore__ inline void VFProcessDynamicBlockQuant(
-    const LocalTensor<T0>& yLocal, const LocalTensor<float>& scaleLocal, const LocalTensor<T1>& xLocal,
-    float coeff, const uint16_t curRowNum, const uint32_t curColNum)
+__simd_vf__ inline void VFProcessDynamicBlockQuantVF(
+    __ubuf__ T0* yLocalAddr, __ubuf__ float* scaleLocalAddr, __ubuf__ T1* xLocalAddr,
+    const uint32_t maxValueInt, const uint16_t curRowNum, const uint32_t curColNum, const uint16_t loopCount,
+    const uint32_t curColNumAlign, const uint32_t dstCurColNumAlign, const uint32_t scaleRowAlign)
 {
-    (void)coeff;
-    __local_mem__ T0* yLocalAddr = (__local_mem__ T0*)yLocal.GetPhyAddr();
-    __local_mem__ float* scaleLocalAddr = (__local_mem__ float*)scaleLocal.GetPhyAddr();
-    __local_mem__ T1* xLocalAddr = (__local_mem__ T1*)xLocal.GetPhyAddr();
-    uint16_t loopCount = CeilDiv(curColNum, VL_FP32);
-    uint32_t curColNumAlign = RoundUp<T1>(curColNum);
-    uint32_t dstCurColNumAlign = RoundUp<T0>(curColNum);
-    uint32_t scaleRowAlign = RoundUp<float>(1);  // 整行一个 scale
-    static constexpr AscendC::MicroAPI::DivSpecificMode mode = {AscendC::MicroAPI::MaskMergeMode::ZEROING, false};
-    uint32_t maxValueInt = 0;
-    if constexpr (IsSameType<T0, fp8_e5m2_t>::value) {
-        maxValueInt = INV_FP8_E5M2_MAX_VALUE;
-    } else if constexpr (IsSameType<T0, fp8_e4m3fn_t>::value) {
-        maxValueInt = INV_FP8_E4M3_MAX_VALUE;
-    } else if constexpr (IsSameType<T0, hifloat8_t>::value) {
-        maxValueInt = INV_HIFP8_MAX_VALUE;
-    }
-
-    __VEC_SCOPE__
+    static constexpr AscendC::Reg::DivSpecificMode mode = {AscendC::Reg::MaskMergeMode::ZEROING, false};
     {
         RegTensor<float> x;
         RegTensor<float> xAbs;
@@ -385,7 +389,7 @@ __aicore__ inline void VFProcessDynamicBlockQuant(
         RegTensor<uint32_t> rs254;
         RegTensor<uint32_t> rsMantMask;
         MaskReg pregMain = CreateMask<float>();
-        MaskReg preg1 = CreateMask<float, AscendC::MicroAPI::MaskPattern::VL1>();
+        MaskReg preg1 = CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
         MaskReg pm;
         MaskReg cmpAbs;
         MaskReg cmpScalar;
@@ -436,7 +440,7 @@ __aicore__ inline void VFProcessDynamicBlockQuant(
                 ShiftLefts((RegTensor<int32_t>&)invScale, (RegTensor<int32_t>&)rsInvExp,
                     static_cast<int16_t>(23), preg1);
             }
-            DataCopy<float, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+            DataCopy<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(
                 scaleLocalAddr + i * scaleRowAlign, scale, preg1);
             // pass 2: 两条路径统一 Mul(x, invScale)。NaN 安全 (结果 NaN 时保留原值)。
             Duplicate(dupInvScale, invScale, pregMain);
@@ -454,19 +458,39 @@ __aicore__ inline void VFProcessDynamicBlockQuant(
     }
 }
 
-template <typename T0, typename T1>
-__aicore__ inline void VFProcessHifp8Quant(
+template <typename T0, typename T1, bool roundScale = true>
+__aicore__ inline void VFProcessDynamicBlockQuant(
     const LocalTensor<T0>& yLocal, const LocalTensor<float>& scaleLocal, const LocalTensor<T1>& xLocal,
-    float coeff, const uint16_t curRowNum, const uint32_t curColNum, const float scales)
+    float coeff, const uint16_t curRowNum, const uint32_t curColNum)
 {
-    LocalTensor<hifloat8_t> outLocal = yLocal.template ReinterpretCast<hifloat8_t>();
-    __local_mem__ hifloat8_t* yLocalAddr = (__local_mem__ hifloat8_t*)outLocal.GetPhyAddr();
-    __local_mem__ float* scaleLocalAddr = (__local_mem__ float*)scaleLocal.GetPhyAddr();
-    __local_mem__ T1* xLocalAddr = (__local_mem__ T1*)xLocal.GetPhyAddr();
+    (void)coeff;
+    __ubuf__ T0* yLocalAddr = (__ubuf__ T0*)yLocal.GetPhyAddr();
+    __ubuf__ float* scaleLocalAddr = (__ubuf__ float*)scaleLocal.GetPhyAddr();
+    __ubuf__ T1* xLocalAddr = (__ubuf__ T1*)xLocal.GetPhyAddr();
     uint16_t loopCount = CeilDiv(curColNum, VL_FP32);
     uint32_t curColNumAlign = RoundUp<T1>(curColNum);
     uint32_t dstCurColNumAlign = RoundUp<T0>(curColNum);
-    __VEC_SCOPE__
+    uint32_t scaleRowAlign = RoundUp<float>(1);  // 整行一个 scale
+    uint32_t maxValueInt = 0;
+    if constexpr (IsSameType<T0, fp8_e5m2_t>::value) {
+        maxValueInt = INV_FP8_E5M2_MAX_VALUE;
+    } else if constexpr (IsSameType<T0, fp8_e4m3fn_t>::value) {
+        maxValueInt = INV_FP8_E4M3_MAX_VALUE;
+    } else if constexpr (IsSameType<T0, hifloat8_t>::value) {
+        maxValueInt = INV_HIFP8_MAX_VALUE;
+    }
+
+    VFProcessDynamicBlockQuantVF<T0, T1, roundScale>(
+        yLocalAddr, scaleLocalAddr, xLocalAddr, maxValueInt, curRowNum, curColNum, loopCount,
+        curColNumAlign, dstCurColNumAlign, scaleRowAlign);
+}
+
+template <typename T0, typename T1>
+__simd_vf__ inline void VFProcessHifp8QuantVF(
+    __ubuf__ hifloat8_t* yLocalAddr, __ubuf__ T1* xLocalAddr, const uint16_t curRowNum,
+    const uint32_t curColNum, const float scales, const uint16_t loopCount,
+    const uint32_t curColNumAlign, const uint32_t dstCurColNumAlign)
+{
     {
         RegTensor<float> xReg;
         RegTensor<hifloat8_t> tmp;
@@ -478,11 +502,27 @@ __aicore__ inline void VFProcessHifp8Quant(
                 LoadInputData<T1>(xReg, xLocalAddr, pregLoop, j * VL_FP32 + i * curColNumAlign);
                 Muls(xReg, xReg, scales, pregLoop);
                 Cast<hifloat8_t, float, castTraitF32toh8>(tmp, xReg, pregLoop);
-                DataCopy<hifloat8_t, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                DataCopy<hifloat8_t, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
                     yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign, tmp, pregLoop);
             }
         }
     }
+}
+
+template <typename T0, typename T1>
+__aicore__ inline void VFProcessHifp8Quant(
+    const LocalTensor<T0>& yLocal, const LocalTensor<float>& scaleLocal, const LocalTensor<T1>& xLocal,
+    float coeff, const uint16_t curRowNum, const uint32_t curColNum, const float scales)
+{
+    LocalTensor<hifloat8_t> outLocal = yLocal.template ReinterpretCast<hifloat8_t>();
+    __ubuf__ hifloat8_t* yLocalAddr = (__ubuf__ hifloat8_t*)outLocal.GetPhyAddr();
+    __ubuf__ float* scaleLocalAddr = (__ubuf__ float*)scaleLocal.GetPhyAddr();
+    __ubuf__ T1* xLocalAddr = (__ubuf__ T1*)xLocal.GetPhyAddr();
+    uint16_t loopCount = CeilDiv(curColNum, VL_FP32);
+    uint32_t curColNumAlign = RoundUp<T1>(curColNum);
+    uint32_t dstCurColNumAlign = RoundUp<T0>(curColNum);
+    VFProcessHifp8QuantVF<T0, T1>(
+        yLocalAddr, xLocalAddr, curRowNum, curColNum, scales, loopCount, curColNumAlign, dstCurColNumAlign);
 }
 
 template <typename T>

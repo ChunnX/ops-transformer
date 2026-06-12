@@ -8,8 +8,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# if (UT_TEST_ALL OR OP_KERNEL_UT)
-#     set(indexer_quant_cache_tiling_files
-#         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/indexer_quant_cache_tiling.cpp)
-#     AddOpTestCase(indexer_quant_cache "ascend950" "-DDTYPE_X=half -DDTYPE_INDEXER_COMPRESS_CACHE=fp8_e4m3fn_t -DDTYPE_INDEXER_COMPRESS_CACHE_SCALE=float" "${indexer_quant_cache_tiling_files}")
-# endif()
+# indexer_quant_cache is an arch35 (ascend950) operator. The AddOpTestCase routing in
+# cmake/ut.cmake skips op_kernel-level test cases when ARCH_DIRECTORY contains arch35, so the
+# real kernel-run cases live under op_kernel/arch35/. Recurse into any arch sub-directory.
+file(GLOB CURRENT_SOURCE_DIRS LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/*)
+foreach(SUB_DIR ${CURRENT_SOURCE_DIRS})
+    if(EXISTS "${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()

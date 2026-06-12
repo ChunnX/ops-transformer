@@ -8,8 +8,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# if (UT_TEST_ALL OR OP_KERNEL_UT)
-#     set(kv_compress_epilog_tiling_files
-#         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/kv_compress_epilog_tiling_arch35.cpp)
-#     AddOpTestCase(kv_compress_epilog "ascend950" "-DDTYPE_X=bfloat16_t -DDTYPE_SLOT_MAPPING=int32_t -DDTYPE_KV_COMPRESS_CACHE=uint8_t" "${kv_compress_epilog_tiling_files}")
-# endif()
+# kv_compress_epilog is an arch35 (ascend950) operator. The AddOpTestCase routing in
+# cmake/ut.cmake skips op_kernel-level test cases when ARCH_DIRECTORY contains arch35, so the
+# real kernel-run cases live under op_kernel/arch35/. Recurse into any arch sub-directory.
+file(GLOB CURRENT_SOURCE_DIRS LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/*)
+foreach(SUB_DIR ${CURRENT_SOURCE_DIRS})
+    if(EXISTS "${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()

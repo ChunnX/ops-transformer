@@ -43,7 +43,7 @@ TEST_F(KvCompressEpilogProto, kv_compress_epilog_infershape_bf16)
         {
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
             {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         }
     );
@@ -64,7 +64,7 @@ TEST_F(KvCompressEpilogProto, kv_compress_epilog_infershape_dynamic)
         {
             {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
             {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
         }
     );

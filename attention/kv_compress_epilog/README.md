@@ -32,7 +32,7 @@ kv_compress_cache。支持 group(bf16-scale)、group(e8m0-scale)、HiFloat8 三�
 |------------------|-------|--------|--------------------------------------------------|
 | quant_group_size | int   | 128    | 量化分组大小                                       |
 | quant_mode       | int   | 1      | 量化模式：0=group(bf16 scale), 1=group(e8m0 scale), 2=HiFloat8 |
-| round_scale      | int   | 1      | group 模式下是否对每组 scale 向上取到 2 的幂          |
+| round_scale      | bool  | true   | group 模式下是否对每组 scale 向上取到 2 的幂          |
 | scale            | float | 1.0    | HiFloat8 模式下的全局 scale 乘数                    |
 
 ## 约束

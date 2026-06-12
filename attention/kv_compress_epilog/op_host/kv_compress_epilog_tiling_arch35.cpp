@@ -101,9 +101,11 @@ ge::graphStatus KvCompressEpilogTilingArch35::GetAttributes()
               OP_LOGE(context_->GetNodeName(), "quantMode should be 0, 1 or 2"),
               return ge::GRAPH_FAILED);
 
-    const int64_t* attrRoundScale = attrs->GetAttrPointer<int64_t>(ROUND_SCALE_ATTR_INDEX);
+    // round_scale is a bool attribute (true/false); the tilingData field stays integral (0/1)
+    // so the kernel's `tilingData->roundScale == 1` check is unchanged (true -> 1, false -> 0).
+    const bool* attrRoundScale = attrs->GetAttrPointer<bool>(ROUND_SCALE_ATTR_INDEX);
     if (attrRoundScale != nullptr) {
-        roundScale_ = *attrRoundScale;
+        roundScale_ = *attrRoundScale ? 1 : 0;
     }
 
     auto scaleAttr = attrs->GetAttrPointer<float>(SCALE_ATTR_INDEX);
