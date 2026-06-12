@@ -16,15 +16,6 @@
 #include "op_host/tiling_util.h"
 
 namespace optiling {
-const static int64_t TILING_KEY_DROPLESS_SORT_ONE_CORE = 10001;
-const static int64_t TILING_KEY_DROPLESS_SORT_MULTI_CORE = 10002;
-const static int64_t TILING_KEY_DROPLESS_HIST_REGBASE_SORT_ONE_CORE = 11001;
-const static int64_t TILING_KEY_DROPLESS_HIST_REGBASE_SORT_MULTI_CORE = 11002;
-const static int64_t TILING_KEY_DROP_PAD_MODE_SORT_ONE_CORE = 10011;
-const static int64_t TILING_KEY_DROP_PAD_MODE_SORT_MULTI_CORE = 10012;
-const static int64_t TILING_KEY_DROP_PAD_MODE_HIST_REGBASE_SORT_ONE_CORE = 11011;
-const static int64_t TILING_KEY_DROP_PAD_MODE_HIST_REGBASE_SORT_MULTI_CORE = 11012;
-const static int64_t TILING_KEY_HIGH_PERFORMANCE = 20000;
 const static int64_t HIST_REGBASE_MAX_EXPERT_NUM = 256;
 const static int64_t NUM_TWO = 2;
 const static int64_t NUM_THREE = 3;
@@ -32,6 +23,8 @@ const static int64_t NUM_FOUR = 4;
 const static int64_t MRG_LIST_NUM = 4;
 const static int64_t SORT32_ALIGN_ELEMENT = 32;
 const static int64_t ONE_BLOCK_BYTE = 32;
+const static size_t DROP_LESS = 0;
+const static size_t DROP_PAD = 1;
 const static size_t DIM_ONE = 1;
 const static size_t DIM_TWO = 2;
 const static size_t DIM_THREE = 3;
@@ -58,6 +51,15 @@ const static int64_t REGIONP_ROPOSA_BUFFER_NUM_310P = 2;
 const static int64_t SYNC_WORKSPACE = 8192;
 const static int64_t EXPERT_TOKENS_COUNT = 2;
 const static int64_t SIMT_UB_SIZE_BYTE = 40960;
+const static int64_t TILING_KEY_DROPLESS_SORT_ONE_CORE = 10001;
+const static int64_t TILING_KEY_DROPLESS_SORT_MULTI_CORE = 10002;
+const static int64_t TILING_KEY_DROPLESS_HIST_REGBASE_SORT_ONE_CORE = 11001;
+const static int64_t TILING_KEY_DROPLESS_HIST_REGBASE_SORT_MULTI_CORE = 11002;
+const static int64_t TILING_KEY_DROP_PAD_MODE_SORT_ONE_CORE = 10011;
+const static int64_t TILING_KEY_DROP_PAD_MODE_SORT_MULTI_CORE = 10012;
+const static int64_t TILING_KEY_DROP_PAD_MODE_HIST_REGBASE_SORT_ONE_CORE = 11011;
+const static int64_t TILING_KEY_DROP_PAD_MODE_HIST_REGBASE_SORT_MULTI_CORE = 11012;
+const static int64_t TILING_KEY_HIGH_PERFORMANCE = 20000;
 
 #define CHECK_FAIL(context, cond, ...)                                                                                 \
     do {                                                                                                               \
@@ -67,17 +69,17 @@ const static int64_t SIMT_UB_SIZE_BYTE = 40960;
         }                                                                                                              \
     } while (0)
 
-inline static int64_t CeilLog4(int64_t x)
-{
-    return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR)));
-}
-
 inline static int64_t GetPerOrLastValue(int64_t x, int64_t y)
 {
     if (y == 0) {
         return 0;
     }
     return x <= y ? x : x % y;
+}
+
+inline static int64_t CeilLog4(int64_t x)
+{
+    return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR)));
 }
 
 void MoeInitRoutingV2TilingBase::Reset()
@@ -222,13 +224,13 @@ ge::graphStatus MoeInitRoutingV2TilingBase::CheckOutShape(bool isRegbase)
                    context_->GetNodeName(), "expandedRowIdx", Ops::Base::ToString(expandedRowIdxShape).c_str(),
                    ("The first dim should be " + std::to_string(totalLength)).c_str()));
 
-    if (dropPadMode == 0 && expertTokensCountOrCumsumFlag != 0) {
+    if (dropPadMode == DROP_LESS && expertTokensCountOrCumsumFlag != 0) {
         if (CheckTokenCount(OUTOUT_EXPERT_TOKENS_COUNT_OR_CUMSUM, "expertTokensCountOrCumsum") == ge::GRAPH_FAILED) {
             return ge::GRAPH_FAILED;
         }
     }
 
-    if (dropPadMode == 1 && expertTokensBeforeCapacityFlag) {
+    if (dropPadMode == DROP_PAD && expertTokensBeforeCapacityFlag) {
         if (CheckTokenCount(OUTOUT_EXPERT_TOKENS_BEFORE_CAPACITY, "expertTokensBeforeCapacity") == ge::GRAPH_FAILED) {
             return ge::GRAPH_FAILED;
         }
@@ -591,14 +593,15 @@ uint64_t MoeInitRoutingV2TilingBase::GetTilingKey() const
     context_->SetScheduleMode(1);
 
     bool histWithRegBase = regBase && expertNum <= HIST_REGBASE_MAX_EXPERT_NUM;
-    if (dropPadMode == 0) {
+    if (dropPadMode == DROP_LESS) {
         if (totalLength <= sortLoopMaxElement) { // 排序只用到一个核排序
             return histWithRegBase ? TILING_KEY_DROPLESS_HIST_REGBASE_SORT_ONE_CORE : TILING_KEY_DROPLESS_SORT_ONE_CORE;
         } else {
             return histWithRegBase ? TILING_KEY_DROPLESS_HIST_REGBASE_SORT_MULTI_CORE :
                                      TILING_KEY_DROPLESS_SORT_MULTI_CORE;
         }
-    } else {
+    }
+    if (dropPadMode == DROP_PAD) {
         if (totalLength <= sortLoopMaxElement) {
             return histWithRegBase ? TILING_KEY_DROP_PAD_MODE_HIST_REGBASE_SORT_ONE_CORE :
                                      TILING_KEY_DROP_PAD_MODE_SORT_ONE_CORE;
@@ -796,8 +799,8 @@ void MoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
     int64_t lastCoreRows = totalLength - perCoreRows * (needCoreNum - 1);
     tilingData->set_lastCoreRows(lastCoreRows);
 
-    int64_t rowSize =
-        (perCoreRows * sizeof(int32_t) * 2 + ONE_BLOCK_BYTE + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+    int64_t rowSize = (perCoreRows * sizeof(int32_t) * NUM_TWO + ONE_BLOCK_BYTE + ONE_BLOCK_BYTE - 1) /
+                      ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
     int64_t colSize = (cols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
 
     if (rowSize + colSize < static_cast<int64_t>(aicoreParams_.ubSize)) {
@@ -807,9 +810,9 @@ void MoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
         tilingData->set_lastCoreLastLoopRows(lastCoreRows);
         tilingData->set_perCoreLoops(1);
         tilingData->set_lastCoreLoops(1);
+        tilingData->set_colLoops(1);
         tilingData->set_perLoopCols(cols);
         tilingData->set_lastLoopCols(cols);
-        tilingData->set_colLoops(1);
     } else {
         int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
         int64_t baseMaxColsSize =
@@ -823,9 +826,9 @@ void MoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
             baseMaxCols = (static_cast<int64_t>(aicoreParams_.ubSize) - rowSize) / inuptXDtypeSize_ / ONE_BLOCK_BYTE *
                           ONE_BLOCK_BYTE;
         }
+        tilingData->set_colLoops((cols + baseMaxCols - 1) / baseMaxCols);
         tilingData->set_perLoopCols(std::min(baseMaxCols, cols));
         tilingData->set_lastLoopCols(GetPerOrLastValue(cols, baseMaxCols));
-        tilingData->set_colLoops((cols + baseMaxCols - 1) / baseMaxCols);
 
         tilingData->set_perCorePerLoopRows(std::min(perCoreRows, basePerLoopMaxRows));
         tilingData->set_perCoreLastLoopRows(GetPerOrLastValue(perCoreRows, basePerLoopMaxRows));
