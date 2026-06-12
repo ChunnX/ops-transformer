@@ -16,8 +16,6 @@
 #ifndef POST_QUANT_CHECKER_H
 #define POST_QUANT_CHECKER_H
 
-#include <map>
-#include <numeric>
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 

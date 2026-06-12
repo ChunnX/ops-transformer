@@ -17,7 +17,6 @@
 #define MASK_CHECKER_H
 
 #include <map>
-#include <numeric>
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
