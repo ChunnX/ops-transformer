@@ -1020,7 +1020,7 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
     Shape kRopeShape = keyRope->GetViewShape();
     if (qRopeShape[DIM_NUM_2] > faShape.axes.d || kRopeShape[DIM_NUM_2] > faShape.axes.d) {
         std::string dMsg = std::to_string(qRopeShape[DIM_NUM_2]) + " and " + std::to_string(kRopeShape[DIM_NUM_2]);
-        std::string reason = "The value of D dim of input query_rope and key_rope must not be greater than "
+        std::string reason = "The value of D dim of input query_rope and key_rope cannot be greater than "
                              "the value of D dim of input query";
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScore", "query_rope and key_rope",
             dMsg.c_str(), reason.c_str());
