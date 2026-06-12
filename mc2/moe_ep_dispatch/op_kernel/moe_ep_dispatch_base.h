@@ -18,7 +18,7 @@
 
 using namespace AscendC;
 
-constexpr uint64_t HCCL_MAX_RANK_SIZE = 1024UL;
+constexpr uint64_t HCCL_MAX_RANK_SIZE = 1024;
 constexpr uint64_t A5_MTE_STATE_WIN_SIZE = 1024UL * 1024UL;
 constexpr uint64_t WIN_STATE_OFFSET = 384UL * 1024UL;
 
@@ -26,7 +26,7 @@ struct Mc2MoeContext {
     uint32_t epRankId;
     uint32_t epRankSize;
     uint64_t winSize;
-    uint64_t epHcclBuffer[1024];
+    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE]; // 支持ROCE或者URMA
 };
 
