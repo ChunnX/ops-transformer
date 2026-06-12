@@ -110,6 +110,76 @@ public:
         gmmASWKernel.Process();
     }
 
+    __aicore__ inline void ProcessCombined(uint32_t turnIdx, uint32_t realCombineSize, GM_ADDR combinedGroupListGm,
+        GM_ADDR yOffsetListGm)
+    {
+        if ASCEND_IS_AIV {
+            return ;
+        }
+        uint32_t startExpertIdx = turnIdx * tilingData_->taskTilingInfo.combineExpertSize;
+        const auto *recvCnt = &tilingData_->taskTilingInfo.recvCnt[0];
+
+        GlobalTensor<int64_t> combinedGroupListBuffer;
+        combinedGroupListBuffer.SetGlobalBuffer((__gm__ int64_t *)combinedGroupListGm);
+        uint32_t groupIdx = 0U;
+        for (uint32_t rankIdx = 0U; rankIdx < epWorldSize_; rankIdx++) {
+            for (uint32_t j = 0U; j < realCombineSize; j++) {
+                combinedGroupListBuffer.SetValue(groupIdx,
+                    static_cast<int64_t>(recvCnt[startExpertIdx + j + rankIdx * expertNumInOneRank_]));
+                groupIdx++;
+            }
+        }
+        AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(combinedGroupListBuffer);
+
+        GlobalTensor<int64_t> yOffsetListBuffer;
+        yOffsetListBuffer.SetGlobalBuffer((__gm__ int64_t *)yOffsetListGm);
+        uint64_t expertFirstOffset = 0UL;
+        for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
+            for (uint32_t rankIdx = 0U; rankIdx < epWorldSize_; rankIdx++) {
+                uint32_t rankFirstGroupIdx = rankIdx * realCombineSize + localIdx;
+                yOffsetListBuffer.SetValue(rankFirstGroupIdx, static_cast<int64_t>(expertFirstOffset));
+                expertFirstOffset += static_cast<uint64_t>(recvCnt[startExpertIdx + localIdx + rankIdx * expertNumInOneRank_]) * n1_;
+            }
+        }
+        AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(yOffsetListBuffer);
+
+        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(combinedTokenOffset_ * h1_);
+        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(startExpertIdx * h1_ * n1_);
+        yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(combinedTokenOffset_ * n1_);
+
+        if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
+            uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
+                Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
+            xScaleGM_ = (GM_ADDR)xScaleGlobalBuffer_.GetPhyAddr(combinedTokenOffset_ * scaleK);
+            weightScaleGM_ = (GM_ADDR)wScaleGlobalBuffer_.GetPhyAddr(startExpertIdx * n1_ * scaleK);
+        }
+
+        __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
+        __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
+        __gm__ uint8_t *wAddr = reinterpret_cast<__gm__ uint8_t *>(wGM_);
+        GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
+        GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
+        GM_ADDR scaleBPtr = (weightScaleGM_ != nullptr) ? BuildPtrTable(weightScaleGM_, 2) : nullptr;
+        GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
+
+        Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
+        tPipe_->Reset();
+        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, combinedGroupListGm, xScaleGM_, yPtr, workspaceGM_,
+            &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
+        gmmASWKernel.SetYOffsetListPtr(reinterpret_cast<__gm__ int64_t *>(yOffsetListGm));
+        gmmASWKernel.Process();
+
+        uint64_t turnTotalTokens = 0UL;
+        for (uint32_t rankIdx = 0U; rankIdx < epWorldSize_; rankIdx++) {
+            for (uint32_t j = 0U; j < realCombineSize; j++) {
+                turnTotalTokens += static_cast<uint64_t>(recvCnt[startExpertIdx + j + rankIdx * expertNumInOneRank_]);
+            }
+        }
+        combinedTokenOffset_ += turnTotalTokens;
+    }
+
     __aicore__ inline void End() {
         if ASCEND_IS_AIV {
             return ;
@@ -174,6 +244,7 @@ private:
     TPipe *tPipe_;
     uint64_t expertTokenNum_[32] = {0};
     uint64_t expertTokenOffset_ = 0;
+    uint64_t combinedTokenOffset_ = 0;
     uint64_t expertNumInOneRank_ = 0;
     uint64_t epWorldSize_ = 0;
     uint64_t h1_;

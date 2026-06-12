@@ -124,6 +124,7 @@ protected:
     const bool *transMmWeightPtr_;
     const bool *permuteOutFlagPtr_;
     const int64_t *gmmXQuantModePtr_;
+    int64_t gmmXQuantMode_ = -1;
     const int64_t *gmmWeightQuantModePtr_;
     const int64_t *mmXQuantModePtr_;
     const int64_t *mmWeightQuantModePtr_;

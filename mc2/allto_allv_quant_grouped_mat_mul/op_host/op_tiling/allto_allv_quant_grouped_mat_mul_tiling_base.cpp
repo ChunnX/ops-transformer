@@ -140,6 +140,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetAttrsInfo()
         permuteOutFlag_ = *permuteOutFlagPtr_;
     }
     gmmXQuantModePtr_ = attrs->GetAttrPointer<int64_t>(ATTR_GMM_X_QUANT_MODE_INDEX);
+    if (gmmXQuantModePtr_ != nullptr) {
+        gmmXQuantMode_ = *gmmXQuantModePtr_;
+    }
     gmmWeightQuantModePtr_ = attrs->GetAttrPointer<int64_t>(ATTR_GMM_WEIGHT_QUANT_MODE_INDEX);
     mmXQuantModePtr_ = attrs->GetAttrPointer<int64_t>(ATTR_MM_X_QUANT_MODE_INDEX);
     mmWeightQuantModePtr_ = attrs->GetAttrPointer<int64_t>(ATTR_MM_WEIGHT_QUANT_MODE_INDEX);

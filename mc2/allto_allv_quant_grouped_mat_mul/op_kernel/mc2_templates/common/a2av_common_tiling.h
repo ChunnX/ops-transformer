@@ -54,6 +54,10 @@ struct TaskTilingInfo {
     uint64_t epWorldSize;   // expert parallel world size (EP并行域大小)
     uint64_t e;             // 单卡上的专家数量
     
+    // 合并专家通信参数（combined expert mode）
+    uint32_t combineExpertSize; // 每轮次合并的专家数，e/commTurn
+    uint32_t commTurn;          // 通信轮次，满足 commTurn*2 <= 63(MX) 或 commTurn <= 63(非MX)
+    
     // 平台信息
     uint64_t ubSize;        // UB大小
 
