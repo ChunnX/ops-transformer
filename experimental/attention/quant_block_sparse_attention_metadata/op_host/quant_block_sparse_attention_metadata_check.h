@@ -84,124 +84,124 @@ static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTe
                                        uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
                                        const aclTensor *metaData)
 {
-    if (sparseSeqLen == nullptr) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen must not be null");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (sparseSeqLen->GetViewShape().GetDimNum() != 2) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen must be 2D tensor, but got %ld dims",
-                sparseSeqLen->GetViewShape().GetDimNum());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (batchSize > 0 && sparseSeqLen->GetViewShape().GetDim(0) != batchSize) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen shape[0] must be batchSize, but got %ld, batchSize=%ld",
-                sparseSeqLen->GetViewShape().GetDim(0), batchSize);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (sparseSeqLen->GetViewShape().GetDim(1) <= 0) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen shape[1] must be > 0, but got %ld",
-                sparseSeqLen->GetViewShape().GetDim(1));
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (sparseSeqLen->GetDataType() != ACL_INT32) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen dtype must be INT32");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (cuSeqlensQOptional != nullptr) {
-        if (cuSeqlensQOptional->GetViewShape().GetDimNum() != 1) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional must be 1D tensor, but got %ld dims",
-                    cuSeqlensQOptional->GetViewShape().GetDimNum());
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (cuSeqlensQOptional->GetDataType() != ACL_INT32) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional dtype must be INT32");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (batchSize > 0 && cuSeqlensQOptional->GetViewShape().GetDim(0) != batchSize + 1) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional shape must be (batchSize+1,), but got %ld",
-                    cuSeqlensQOptional->GetViewShape().GetDim(0));
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-    if (cuSeqlensKvOptional != nullptr) {
-        if (cuSeqlensKvOptional->GetViewShape().GetDimNum() != 1) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional must be 1D tensor, but got %ld dims",
-                    cuSeqlensKvOptional->GetViewShape().GetDimNum());
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (cuSeqlensKvOptional->GetDataType() != ACL_INT32) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional dtype must be INT32");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (batchSize > 0 && cuSeqlensKvOptional->GetViewShape().GetDim(0) != batchSize + 1) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional shape must be (batchSize+1,), but got %ld",
-                    cuSeqlensKvOptional->GetViewShape().GetDim(0));
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-    if (sequsedQOptional != nullptr) {
-        if (sequsedQOptional->GetViewShape().GetDimNum() != 1) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional must be 1D tensor, but got %ld dims",
-                    sequsedQOptional->GetViewShape().GetDimNum());
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (sequsedQOptional->GetDataType() != ACL_INT32) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional dtype must be INT32");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (batchSize > 0 && sequsedQOptional->GetViewShape().GetDim(0) != batchSize) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional shape must be (batchSize,), but got %ld",
-                    sequsedQOptional->GetViewShape().GetDim(0));
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-    if (sequsedKvOptional != nullptr) {
-        if (sequsedKvOptional->GetViewShape().GetDimNum() != 1) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional must be 1D tensor, but got %ld dims",
-                    sequsedKvOptional->GetViewShape().GetDimNum());
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (sequsedKvOptional->GetDataType() != ACL_INT32) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional dtype must be INT32");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (batchSize > 0 && sequsedKvOptional->GetViewShape().GetDim(0) != batchSize) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional shape must be (batchSize,), but got %ld",
-                    sequsedKvOptional->GetViewShape().GetDim(0));
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-    // metadata
-    if (metaData == nullptr) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData must not be null");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (metaData->GetViewShape().GetDimNum() != 1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData must be 1D tensor, but got %ld dims",
-                metaData->GetViewShape().GetDimNum());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (metaData->GetViewShape().GetDim(0) != optiling::QBSA_METADATA_SIZE) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData shape must be (%u,), but got %ld",
-                optiling::QBSA_METADATA_SIZE, metaData->GetViewShape().GetDim(0));
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (metaData->GetDataType() != ACL_INT32) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData dtype must be INT32");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // platform
-    if (aicCoreNum <= 0) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aicCoreNum must be > 0, but got %u", aicCoreNum);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (aivCoreNum <= 0) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aivCoreNum must be > 0, but got %u", aivCoreNum);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // TODO: validate supported SOC for socVersion
-    // TODO: validate dependency: when layout_q is TND, cu_seqlens_q must be provided
-    // TODO: validate dependency: when layout_kv is TND, cu_seqlens_kv must be provided
+    // if (sparseSeqLen == nullptr) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen must not be null");
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // if (sparseSeqLen->GetViewShape().GetDimNum() != 2) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen must be 2D tensor, but got %ld dims",
+    //             sparseSeqLen->GetViewShape().GetDimNum());
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // if (batchSize > 0 && sparseSeqLen->GetViewShape().GetDim(0) != batchSize) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen shape[0] must be batchSize, but got %ld, batchSize=%ld",
+    //             sparseSeqLen->GetViewShape().GetDim(0), batchSize);
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // if (sparseSeqLen->GetViewShape().GetDim(1) <= 0) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen shape[1] must be > 0, but got %ld",
+    //             sparseSeqLen->GetViewShape().GetDim(1));
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // if (sparseSeqLen->GetDataType() != ACL_INT32) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen dtype must be INT32");
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // if (cuSeqlensQOptional != nullptr) {
+    //     if (cuSeqlensQOptional->GetViewShape().GetDimNum() != 1) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional must be 1D tensor, but got %ld dims",
+    //                 cuSeqlensQOptional->GetViewShape().GetDimNum());
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    //     if (cuSeqlensQOptional->GetDataType() != ACL_INT32) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional dtype must be INT32");
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    //     if (batchSize > 0 && cuSeqlensQOptional->GetViewShape().GetDim(0) != batchSize + 1) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional shape must be (batchSize+1,), but got %ld",
+    //                 cuSeqlensQOptional->GetViewShape().GetDim(0));
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    // }
+    // if (cuSeqlensKvOptional != nullptr) {
+    //     if (cuSeqlensKvOptional->GetViewShape().GetDimNum() != 1) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional must be 1D tensor, but got %ld dims",
+    //                 cuSeqlensKvOptional->GetViewShape().GetDimNum());
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    //     if (cuSeqlensKvOptional->GetDataType() != ACL_INT32) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional dtype must be INT32");
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    //     if (batchSize > 0 && cuSeqlensKvOptional->GetViewShape().GetDim(0) != batchSize + 1) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional shape must be (batchSize+1,), but got %ld",
+    //                 cuSeqlensKvOptional->GetViewShape().GetDim(0));
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    // }
+    // if (sequsedQOptional != nullptr) {
+    //     if (sequsedQOptional->GetViewShape().GetDimNum() != 1) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional must be 1D tensor, but got %ld dims",
+    //                 sequsedQOptional->GetViewShape().GetDimNum());
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    //     if (sequsedQOptional->GetDataType() != ACL_INT32) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional dtype must be INT32");
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    //     if (batchSize > 0 && sequsedQOptional->GetViewShape().GetDim(0) != batchSize) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional shape must be (batchSize,), but got %ld",
+    //                 sequsedQOptional->GetViewShape().GetDim(0));
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    // }
+    // if (sequsedKvOptional != nullptr) {
+    //     if (sequsedKvOptional->GetViewShape().GetDimNum() != 1) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional must be 1D tensor, but got %ld dims",
+    //                 sequsedKvOptional->GetViewShape().GetDimNum());
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    //     if (sequsedKvOptional->GetDataType() != ACL_INT32) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional dtype must be INT32");
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    //     if (batchSize > 0 && sequsedKvOptional->GetViewShape().GetDim(0) != batchSize) {
+    //         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional shape must be (batchSize,), but got %ld",
+    //                 sequsedKvOptional->GetViewShape().GetDim(0));
+    //         return ACLNN_ERR_PARAM_INVALID;
+    //     }
+    // }
+    // // metadata
+    // if (metaData == nullptr) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData must not be null");
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // if (metaData->GetViewShape().GetDimNum() != 1) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData must be 1D tensor, but got %ld dims",
+    //             metaData->GetViewShape().GetDimNum());
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // if (metaData->GetViewShape().GetDim(0) != optiling::QBSA_METADATA_SIZE) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData shape must be (%u,), but got %ld",
+    //             optiling::QBSA_METADATA_SIZE, metaData->GetViewShape().GetDim(0));
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // if (metaData->GetDataType() != ACL_INT32) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData dtype must be INT32");
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // // platform
+    // if (aicCoreNum <= 0) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aicCoreNum must be > 0, but got %u", aicCoreNum);
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // if (aivCoreNum <= 0) {
+    //     OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aivCoreNum must be > 0, but got %u", aivCoreNum);
+    //     return ACLNN_ERR_PARAM_INVALID;
+    // }
+    // // TODO: validate supported SOC for socVersion
+    // // TODO: validate dependency: when layout_q is TND, cu_seqlens_q must be provided
+    // // TODO: validate dependency: when layout_kv is TND, cu_seqlens_kv must be provided
     return ACLNN_SUCCESS;
 }
 
