@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 # 配置区
 # ==============================================================================
-B = 1
-N_q = 2
-N_kv = 2
+B = 4
+N_q = 4
+N_kv = 4
 D = 128
 Q_SEQ = 4
 KV_SEQ = 512
@@ -191,43 +191,33 @@ def test_pa_noncontiguous():
         return
 
     # ==========================
-    # 非连续版本：物理6D tensor → as_strided 构造5D逻辑视图
+    # 非连续版本：物理6D tensor在NPU上 → as_strided 构造5D逻辑视图
     # 物理: [Bn, N_kv, L, 2, Bs, D]
     # 逻辑: [2, Bn, N_kv, Bs, D]
-    # 逻辑[0]对应k, 逻辑[1]对应v
-    # dim间stride因L层间插导致非连续
+    # as_strided是视图操作不拷贝，stride保留在NPU侧
     # ==========================
+    # 先在CPU构造物理tensor并填入数据，再一次性转NPU
     phys = torch.randn(total_blocks, N_kv, NUM_LAYERS, 2, BLOCK_SIZE, D, dtype=DTYPE)
-    # 将连续k/v数据填入phys[..., 0, :, :, :, :]
     phys[:, :, 0, 0] = k_cache_cpu
     phys[:, :, 0, 1] = v_cache_cpu
+    phys_npu = phys.npu()
 
-    logical = torch.as_strided(
-        phys,
+    # 在NPU上用as_strided创建非连续视图
+    logical_npu = torch.as_strided(
+        phys_npu,
         size=(2, total_blocks, N_kv, BLOCK_SIZE, D),
-        stride=(phys.stride(3),    # dim0: k/v之间stride = Bs*D
-                phys.stride(0),    # dim1: Bn之间stride = N_kv*L*2*Bs*D
-                phys.stride(1),    # dim2: N_kv之间stride = L*2*Bs*D
-                phys.stride(4),    # dim3: Bs之间stride = D
-                phys.stride(5))    # dim4: D之间stride = 1
+        stride=(phys_npu.stride(3),
+                phys_npu.stride(0),
+                phys_npu.stride(1),
+                phys_npu.stride(4),
+                phys_npu.stride(5))
     )
-    k_noncont_cpu = logical[0]
-    v_noncont_cpu = logical[1]
-
-    logger.info(f"[CPU] k is_contiguous: {k_noncont_cpu.is_contiguous()}")
-    logger.info(f"[CPU] v is_contiguous: {v_noncont_cpu.is_contiguous()}")
-    logger.info(f"[CPU] k shape: {k_noncont_cpu.shape}, stride: {k_noncont_cpu.stride()}")
-    logger.info(f"[CPU] v shape: {v_noncont_cpu.shape}, stride: {v_noncont_cpu.stride()}")
-
-    assert not k_noncont_cpu.is_contiguous(), "k should be non-contiguous on CPU!"
-    assert not v_noncont_cpu.is_contiguous(), "v should be non-contiguous on CPU!"
-
-    # 非连续CPU tensor转NPU，stride应被保留
-    k_noncont_npu = k_noncont_cpu.npu()
-    v_noncont_npu = v_noncont_cpu.npu()
+    k_noncont_npu = logical_npu[0]
+    v_noncont_npu = logical_npu[1]
 
     logger.info(f"[NPU] k is_contiguous: {k_noncont_npu.is_contiguous()}")
     logger.info(f"[NPU] v is_contiguous: {v_noncont_npu.is_contiguous()}")
+    logger.info(f"[NPU] k shape: {k_noncont_npu.shape}, stride: {k_noncont_npu.stride()}")
 
     npu_out_noncont = run_npu(query, k_noncont_npu, v_noncont_npu, block_table_npu,
                               act_seq_q, act_seq_kv, scale)
