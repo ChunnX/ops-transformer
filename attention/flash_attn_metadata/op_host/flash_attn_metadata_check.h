@@ -35,22 +35,22 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
     }
 
     if (winLeft < -1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "winLeft must be >= -1, but got %ld", winLeft);
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "winLeft must be -1 or >= 0, but got %ld", winLeft);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (winRight < -1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "winRight must be >= -1, but got %ld", winRight);
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "winRight must be -1 or >= 0, but got %ld", winRight);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (maxSeqlenQ < -1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenQ must be >= -1, but got %ld", maxSeqlenQ);
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenQ must be -1 or >= 0, but got %ld", maxSeqlenQ);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (maxSeqlenKv < -1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenKv must be >= -1, but got %ld", maxSeqlenKv);
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenKv must be -1 or >= 0, but got %ld", maxSeqlenKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -132,12 +132,10 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
 
     bool isQ_TND = (strcmp(layoutQ, "TND") == 0);
     if (isQ_TND) {
-        // layoutQ为TND时，cuSeqlensQOptional、maxSeqlenQ、sequsedQOptional至少传一个
-        bool hasQParam = (cuSeqlensQOptional != nullptr) || (maxSeqlenQ != -1) || (sequsedQOptional != nullptr);
-        if (!hasQParam) {
+        // layoutQ为TND时，必须传入cuSeqlensQOptional
+        if (cuSeqlensQOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                    "When layoutQ is TND, at least one of cuSeqlensQOptional, "
-                    "maxSeqlenQ, sequsedQOptional must be provided");
+                    "When layoutQ is TND, cuSeqlensQOptional should be provided, but got null");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
@@ -158,12 +156,10 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
 
     bool isKv_TND = (strcmp(layoutKv, "TND") == 0);
     if (isKv_TND) {
-        // layoutKv为TND时，cuSeqlensKvOptional、maxSeqlenKv、sequsedKvOptional至少传一个
-        bool hasKvParam = (cuSeqlensKvOptional != nullptr) || (maxSeqlenKv != -1) || (sequsedKvOptional != nullptr);
-        if (!hasKvParam) {
+        // layoutQ为TND时，必须传入cuSeqlensKvOptional
+        if (cuSeqlensKvOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                    "When layoutKv is TND, at least one of cuSeqlensKvOptional, "
-                    "maxSeqlenKv, sequsedKvOptional must be provided");
+                    "When layoutKv is TND, cuSeqlensKvOptional should be provided, but got null");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
