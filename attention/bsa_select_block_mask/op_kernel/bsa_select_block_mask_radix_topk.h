@@ -19,6 +19,10 @@
 #define BSA_TOPK_PIPE_ALL_PROBE 1
 #endif
 
+#ifndef BSA_TOPK_MTE3_V_RACE_PROBE
+#define BSA_TOPK_MTE3_V_RACE_PROBE 1
+#endif
+
 #define BSA_TOPK_PRINTF(...) do { \
     if (BSA_TOPK_DEBUG) { \
         AscendC::printf(__VA_ARGS__); \
@@ -40,6 +44,12 @@
 #define BSA_TOPK_PIPE_ALL() do { \
     if (BSA_TOPK_PIPE_ALL_PROBE) { \
         PipeBarrier<PIPE_ALL>(); \
+    } \
+} while (0)
+
+#define BSA_TOPK_MTE3_V_RACE_SYNC() do { \
+    if (BSA_TOPK_MTE3_V_RACE_PROBE) { \
+        MTE3ToVSync(); \
     } \
 } while (0)
 
@@ -1253,6 +1263,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     VToMTE3Sync();
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
+    BSA_TOPK_MTE3_V_RACE_SYNC();
     MTE3ToMTE2Sync();
 
     LocalTensor<half> tempHalf = outIndexBuf_.Get<half>();
@@ -1464,5 +1475,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batc
 #undef BSA_TOPK_SYNC_PRINTF
 #undef BSA_TOPK_DUMP_TENSOR
 #undef BSA_TOPK_PIPE_ALL
+#undef BSA_TOPK_MTE3_V_RACE_SYNC
 
 #endif // BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
