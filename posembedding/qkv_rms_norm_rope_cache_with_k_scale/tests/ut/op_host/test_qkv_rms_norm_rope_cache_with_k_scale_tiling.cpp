@@ -27,7 +27,7 @@
 #include "../../../op_host/qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
 
 namespace {
-using QkvTiling = optiling::QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleTiling;
+using QkvTiling = optiling::QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleBaseTiling;
 using ContractInput = optiling::QkvRmsNormRopeCacheWithKScale::ContractInput;
 using ContractTiling = optiling::QkvRmsNormRopeCacheWithKScale::ContractTiling;
 using TensorContractInfo = optiling::QkvRmsNormRopeCacheWithKScale::TensorContractInfo;
@@ -418,7 +418,7 @@ bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, bool success,
 
 } // namespace
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, BuildInputUsesNtdQkvShape)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, BuildInputUsesNtdQkvShape)
 {
     auto input = BuildInput(512, 64, 8, 8);
     EXPECT_EQ(input.qkv.shape.GetDimNum(), 3);
@@ -427,7 +427,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, BuildInputUsesNtdQkvShape)
     EXPECT_EQ(static_cast<uint64_t>(input.qkv.shape.GetDim(2)), input.headDim);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, TypicalHeadTableMatchesDesign)
 {
     struct Case {
         uint32_t numQHeads;
@@ -468,7 +468,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
     }
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, QkAlignedRowsOnlyLimitSideBySideL0c)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, QkAlignedRowsOnlyLimitSideBySideL0c)
 {
     ContractTiling tiling;
     auto input = BuildInput(128, 16, 2, 2);
@@ -485,7 +485,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, QkAlignedRowsOnlyLimitSideBySideL0c)
     EXPECT_LE(AlignUp(tiling.tokenTile * input.numKHeads, 16), QkvTiling::L0A_FULL_DIM_SEGMENT_ROWS);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, SelectsSingleTokenTileWhenOnlyMinimumFitsL0c)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, SelectsSingleTokenTileWhenOnlyMinimumFitsL0c)
 {
     ContractTiling tiling;
     auto input = BuildInput(128, 121, 7, 7);
@@ -499,7 +499,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, SelectsSingleTokenTileWhenOnlyMinimumF
         QkvTiling::L0C_MAX_ROWS);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsUnsupportedFastPath)
 {
     ContractTiling tiling;
     auto input = BuildInput(128, 16, 2, 4);
@@ -522,7 +522,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
     EXPECT_EQ(tiling.rowTileAligned, 144U);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMinimumTokenTileResourceBoundary)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsMinimumTokenTileResourceBoundary)
 {
     auto input = BuildInput(128, 121, 8, 8);
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
@@ -534,7 +534,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMinimumTokenTileResourceBoundar
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsNonPositiveHeadNumsAttr)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsNonPositiveHeadNumsAttr)
 {
     const ConcurrentTilingCase item = {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 4, 32};
     auto compileInfo = BuildCompileInfo(item);
@@ -550,7 +550,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsNonPositiveHeadNumsAttr)
     EXPECT_FALSE(ExecuteTiling(negativeHeadPara, tilingInfo));
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsNonTwoToOneAivAicRatioInPlatformInfo)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsNonTwoToOneAivAicRatioInPlatformInfo)
 {
     const ConcurrentTilingCase item = {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 4, 32};
     auto compileInfo = BuildCompileInfo(item);
@@ -569,7 +569,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsNonTwoToOneAivAicRatioInPlatfor
     EXPECT_FALSE(ExecuteTiling(moreAivPara, tilingInfo));
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsT512Q64K8V8Aic32)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, AcceptsT512Q64K8V8Aic32)
 {
     ContractTiling tiling;
     auto input = BuildInput(512, 64, 8, 8);
@@ -584,7 +584,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsT512Q64K8V8Aic32)
     EXPECT_EQ(tiling.coreGroupNum, 32U);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, SeparateResourceCapacitiesAreEnforced)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, SeparateResourceCapacitiesAreEnforced)
 {
     ContractTiling tiling;
     auto input = BuildInput(128, 120, 8, 8);
@@ -604,7 +604,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, SeparateResourceCapacitiesAreEnforced)
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, T1024Q16K2V2Aic32FitsSeparateResourceCapacities)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, T1024Q16K2V2Aic32FitsSeparateResourceCapacities)
 {
     ContractTiling tiling;
     auto input = BuildInput(1024, 16, 2, 2);
@@ -623,7 +623,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, T1024Q16K2V2Aic32FitsSeparateResourceC
     EXPECT_LE(tiling.tokenTilePerAiv * tiling.numVHeads, QkvTiling::V_OUTPUT_ROWS_PER_AIV);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, RealTilingIsStableAcrossThreads)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
 {
     constexpr uint32_t THREAD_COUNT = 8U;
     constexpr uint32_t ITERATIONS = 64U;
@@ -685,7 +685,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RealTilingIsStableAcrossThreads)
     }
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMissingOptionalButRequiredInputs)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsMissingOptionalButRequiredInputs)
 {
     auto input = BuildInput();
     input.qRotation.shapePresent = false;
@@ -700,7 +700,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMissingOptionalButRequiredInput
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsInvalidShapeAndDtype)
 {
     auto input = BuildInput();
     const uint64_t invalidQkvN = input.numQHeads + input.numKHeads + input.numVHeads + 1;
@@ -752,7 +752,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, ContiguousCacheStridesAreReported)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, ContiguousCacheStridesAreReported)
 {
     ContractTiling tiling;
     auto input = BuildInput();
@@ -765,7 +765,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, ContiguousCacheStridesAreReported)
     EXPECT_EQ(tiling.kScaleCacheStrideToken, 1U);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsPaddedCacheStrides)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, AcceptsPaddedCacheStrides)
 {
     ContractTiling tiling;
     auto input = BuildInput();
@@ -781,7 +781,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AcceptsPaddedCacheStrides)
     EXPECT_EQ(tiling.kScaleCacheStrideToken, 2U);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMismatchedKvCacheStrides)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsMismatchedKvCacheStrides)
 {
     auto input = BuildInput();
     input.kCache.stride = Stride({45000, 21000, 160, 1});
@@ -794,7 +794,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMismatchedKvCacheStrides)
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsInvalidCacheStrides)
 {
     auto input = BuildInput();
     input.kCache.stride.SetStride(3, 2);
@@ -817,7 +817,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidCacheStrides)
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, TailTileAndAivSlicesStayContiguous)
 {
     ContractTiling tiling;
     auto input = BuildInput(21, 16, 2, 2);
@@ -843,7 +843,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
     EXPECT_EQ(aiv1.rowSize, 0U);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, AivSlicesUseActualTailRows)
 {
     ContractTiling tiling;
     auto input = BuildInput(19, 16, 2, 2);
@@ -890,7 +890,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
     EXPECT_EQ(tailAiv0.rowSize + tailAiv1.rowSize, tailTile.rowSize);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseDisjointGlobalTokenBases)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, AivSlicesUseDisjointGlobalTokenBases)
 {
     ContractTiling tiling;
     auto input = BuildInput(29, 16, 2, 2);
@@ -909,7 +909,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseDisjointGlobalTokenBases)
     EXPECT_EQ(aiv0.tokenSize + aiv1.tokenSize, tile.tokenSize);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailAndEmptySlicesKeepFixedCrossCoreProtocol)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, TailAndEmptySlicesKeepFixedCrossCoreProtocol)
 {
     ContractTiling tiling;
     auto input = BuildInput(10, 16, 2, 2);
@@ -942,7 +942,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailAndEmptySlicesKeepFixedCrossCorePr
     }
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreTokenRangeUsesHostCeilTokenTile)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, CoreTokenRangeUsesHostCeilTokenTile)
 {
     ContractTiling tiling;
     auto input = BuildInput(65);
@@ -968,7 +968,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreTokenRangeUsesHostCeilTokenTile)
     EXPECT_EQ(first.end, 1U);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreLocalTilesFollowContiguousTokenRange)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, CoreLocalTilesFollowContiguousTokenRange)
 {
     ContractTiling tiling;
     auto input = BuildInput(68, 16, 2, 2);
@@ -1006,7 +1006,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreLocalTilesFollowContiguousTokenRan
     EXPECT_EQ(tile0.tokenSize + tile1.tokenSize, range.end - range.begin);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, T512Aic25CoreTilesFollowFourteenTokenTile)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, T512Aic25CoreTilesFollowFourteenTokenTile)
 {
     ContractTiling tiling;
     auto input = BuildInput(512, 16, 2, 2);
@@ -1058,7 +1058,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, T512Aic25CoreTilesFollowFourteenTokenT
     EXPECT_TRUE(HasPreprocessWorkForTest(tile1Aiv1));
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, TilingDataDefaultsAreStable)
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, TilingDataDefaultsAreStable)
 {
     optiling::QkvRmsNormRopeCacheWithKScaleTilingData tilingData;
     EXPECT_GT(sizeof(tilingData), 0U);

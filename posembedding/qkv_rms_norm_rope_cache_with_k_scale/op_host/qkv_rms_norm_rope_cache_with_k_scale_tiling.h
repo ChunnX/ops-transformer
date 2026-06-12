@@ -27,14 +27,6 @@ struct QkvRmsNormRopeCacheWithKScaleCompileInfo {
     uint64_t opWorkspaceSize = 0;
 };
 
-enum QkvRrcFlags : uint32_t {
-    QKV_RRC_FLAG_D128_FAST = 1U << 0,
-    QKV_RRC_FLAG_ROTATION_L1_RESIDENT = 1U << 1,
-    QKV_RRC_FLAG_V_CACHE_WRITE_AFTER_A_READY = 1U << 2,
-    QKV_RRC_FLAG_TOKEN_TILE_EVEN = 1U << 3,
-    QKV_RRC_FLAG_L0C_DOUBLE_BUFFER = 1U << 4
-};
-
 ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *context);
 ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseContext *context);
 

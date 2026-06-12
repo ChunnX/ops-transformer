@@ -43,14 +43,14 @@ constexpr int32_t TILING_TEMPLATE_PRIORITY = 1000;
 constexpr size_t WORKSPACE_COUNT = 1;
 constexpr size_t RESERVED_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
 
-uint64_t QkvRmsNormRopeCacheWithKScaleTiling::CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads,
-                                                                uint64_t numKHeads)
+uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads,
+                                                                    uint64_t numKHeads)
 {
     return Ops::Base::CeilAlign(tokenTile * numQHeads, 16UL) + Ops::Base::CeilAlign(tokenTile * numKHeads, 16UL);
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateHeadNums(const ContractInput &input,
-                                                                      const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateHeadNums(const ContractInput &input,
+                                                                          const std::string &opName)
 {
     OP_CHECK_IF(input.numQHeads == 0 || input.numKHeads == 0 || input.numVHeads == 0,
                 OP_LOGE(opName.c_str(),
@@ -65,8 +65,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateHeadNums(const Cont
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateScalarInputs(const ContractInput &input,
-                                                                          const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateScalarInputs(const ContractInput &input,
+                                                                              const std::string &opName)
 {
     OP_CHECK_IF(input.totalTokens == 0,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: totalTokens is 0."),
@@ -96,9 +96,10 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateScalarInputs(const 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateDtype(const std::string &opName, const char *tensorName,
-                                                                   const TensorContractInfo &tensor,
-                                                                   ge::DataType expected)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateDtype(const std::string &opName,
+                                                                       const char *tensorName,
+                                                                       const TensorContractInfo &tensor,
+                                                                       ge::DataType expected)
 {
     OP_CHECK_IF(tensor.dtype != expected,
                 OP_LOGE(opName.c_str(),
@@ -110,8 +111,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateDtype(const std::st
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateDtypes(const ContractInput &input,
-                                                                    const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateDtypes(const ContractInput &input,
+                                                                        const std::string &opName)
 {
     struct DtypeRule {
         const char *tensorName;
@@ -141,8 +142,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateDtypes(const Contra
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapeInputsForDerivedFields(const ContractInput &input,
-                                                                                         const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeInputsForDerivedFields(const ContractInput &input,
+                                                                                             const std::string &opName)
 {
     OP_CHECK_IF(!input.qkv.shapePresent || input.qkv.shape.GetDimNum() != 3,
                 OP_LOGE(opName.c_str(),
@@ -173,8 +174,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapeInputsForDeriv
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapeRanks(const ContractInput &input,
-                                                                        const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeRanks(const ContractInput &input,
+                                                                            const std::string &opName)
 {
     struct RankRule {
         const char *tensorName;
@@ -207,8 +208,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapeRanks(const Co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateNonCacheShapes(const ContractInput &input,
-                                                                            const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapes(const ContractInput &input,
+                                                                                const std::string &opName)
 {
     const uint64_t numQkHeads = input.numQHeads + input.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + input.numVHeads;
@@ -254,8 +255,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateNonCacheShapes(cons
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateCacheShapes(const ContractInput &input,
-                                                                         const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateCacheShapes(const ContractInput &input,
+                                                                             const std::string &opName)
 {
     OP_CHECK_IF(static_cast<uint64_t>(input.kCache.shape.GetDim(0)) != input.blockNum ||
                     static_cast<uint64_t>(input.kCache.shape.GetDim(1)) != input.numKHeads ||
@@ -289,8 +290,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateCacheShapes(const C
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapes(const ContractInput &input,
-                                                                    const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapes(const ContractInput &input,
+                                                                        const std::string &opName)
 {
     ge::graphStatus status = ValidateShapeRanks(input, opName);
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
@@ -309,8 +310,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateShapes(const Contra
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateStrides(const ContractInput &input,
-                                                                     const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides(const ContractInput &input,
+                                                                         const std::string &opName)
 {
     const auto strideDimOrZero = [](const gert::Stride &stride, size_t index) -> int64_t {
         return index < stride.GetDimNum() ? stride.GetStride(index) : 0;
@@ -361,8 +362,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateStrides(const Contr
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateMinimumTokenTileFeasible(const ContractInput &input,
-                                                                                      const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMinimumTokenTileFeasible(const ContractInput &input,
+                                                                                          const std::string &opName)
 {
     const uint64_t numQkHeads = input.numQHeads + input.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + input.numVHeads;
@@ -394,8 +395,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateMinimumTokenTileFea
     return ge::GRAPH_SUCCESS;
 }
 
-bool QkvRmsNormRopeCacheWithKScaleTiling::TrySelectTokenTile(const ContractTiling &tiling, uint64_t tokenTile,
-                                                             const std::string &opName, TokenTileSelection &selection)
+bool QkvRmsNormRopeCacheWithKScaleBaseTiling::TrySelectTokenTile(const ContractTiling &tiling, uint64_t tokenTile,
+                                                                 const std::string &opName,
+                                                                 TokenTileSelection &selection)
 {
     const uint64_t tokenTilePerAiv = Ops::Base::CeilDiv(tokenTile, AIV_PER_AIC);
     const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
@@ -421,9 +423,9 @@ bool QkvRmsNormRopeCacheWithKScaleTiling::TrySelectTokenTile(const ContractTilin
     return false;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::SelectTokenTile(const ContractTiling &tiling,
-                                                                     const std::string &opName,
-                                                                     TokenTileSelection &selection)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::SelectTokenTile(const ContractTiling &tiling,
+                                                                         const std::string &opName,
+                                                                         TokenTileSelection &selection)
 {
     const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + tiling.numVHeads;
@@ -452,9 +454,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::SelectTokenTile(const Contr
     return ge::GRAPH_SUCCESS;
 }
 
-void QkvRmsNormRopeCacheWithKScaleTiling::FillContractTiling(const ContractInput &input, uint64_t aicNum,
-                                                             const TokenTileSelection &selection,
-                                                             ContractTiling &tiling)
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillContractTiling(const ContractInput &input, uint64_t aicNum,
+                                                                 const TokenTileSelection &selection,
+                                                                 ContractTiling &tiling)
 {
     const uint64_t numQkHeads = tiling.numQHeads + tiling.numKHeads;
     tiling.coreTokenTile = Ops::Base::CeilDiv(input.totalTokens, aicNum);
@@ -472,8 +474,8 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillContractTiling(const ContractInput
     tiling.kScaleCacheStrideToken = static_cast<uint64_t>(input.kScaleCache.stride.GetStride(2));
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateContractInput(const ContractInput &input,
-                                                                           const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateContractInput(const ContractInput &input,
+                                                                               const std::string &opName)
 {
     OP_LOGD(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract validation start.");
     ge::graphStatus status = ValidateHeadNums(input, opName);
@@ -505,9 +507,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ValidateContractInput(const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::BuildContractTiling(const ContractInput &input, uint64_t aicNum,
-                                                                         ContractTiling &tiling,
-                                                                         const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractTiling(const ContractInput &input,
+                                                                             uint64_t aicNum, ContractTiling &tiling,
+                                                                             const std::string &opName)
 {
     tiling = {};
     tiling.numQHeads = input.numQHeads;
@@ -548,8 +550,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::BuildContractTiling(const C
     return ge::GRAPH_SUCCESS;
 }
 
-AivSlice QkvRmsNormRopeCacheWithKScaleTiling::MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile,
-                                                           uint64_t aivLocalId)
+AivSlice QkvRmsNormRopeCacheWithKScaleBaseTiling::MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile,
+                                                               uint64_t aivLocalId)
 {
     AivSlice slice;
     const uint64_t cubeHalfTokenSize = Ops::Base::CeilDiv(tile.tokenSize, AIV_PER_AIC);
@@ -562,9 +564,9 @@ AivSlice QkvRmsNormRopeCacheWithKScaleTiling::MakeAivSlice(const TileParam &tile
     return slice;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::MakeContiguousStrideInfo(const gert::Shape &shape,
-                                                                              const std::string &opName,
-                                                                              gert::Stride &strideInfo)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::MakeContiguousStrideInfo(const gert::Shape &shape,
+                                                                                  const std::string &opName,
+                                                                                  gert::Stride &strideInfo)
 {
     gert::Stride stride;
     stride.SetDimNum(shape.GetDimNum());
@@ -586,7 +588,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::MakeContiguousStrideInfo(co
     return ge::GRAPH_SUCCESS;
 }
 
-const char *QkvRmsNormRopeCacheWithKScaleTiling::DtypeName(ge::DataType dtype)
+const char *QkvRmsNormRopeCacheWithKScaleBaseTiling::DtypeName(ge::DataType dtype)
 {
     switch (dtype) {
         case ge::DT_BF16:
@@ -604,9 +606,9 @@ const char *QkvRmsNormRopeCacheWithKScaleTiling::DtypeName(ge::DataType dtype)
     }
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ToTensorInfo(gert::TilingContext *context,
-                                                                  const std::string &opName, const char *tensorName,
-                                                                  size_t index, TensorContractInfo &info)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ToTensorInfo(gert::TilingContext *context,
+                                                                      const std::string &opName, const char *tensorName,
+                                                                      size_t index, TensorContractInfo &info)
 {
     const auto desc = context->GetInputDesc(index);
     if (desc == nullptr) {
@@ -626,9 +628,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ToTensorInfo(gert::TilingCo
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ToCacheTensorInfo(gert::TilingContext *context,
-                                                                       const std::string &opName, size_t index,
-                                                                       TensorContractInfo &info)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ToCacheTensorInfo(gert::TilingContext *context,
+                                                                           const std::string &opName, size_t index,
+                                                                           TensorContractInfo &info)
 {
     const auto desc = context->GetInputDesc(index);
     if (desc == nullptr) {
@@ -693,7 +695,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ToCacheTensorInfo(gert::Til
     return ge::GRAPH_SUCCESS;
 }
 
-TensorContractInfo QkvRmsNormRopeCacheWithKScaleTiling::ToOptionalTensorInfo(gert::TilingContext *context, size_t index)
+TensorContractInfo QkvRmsNormRopeCacheWithKScaleBaseTiling::ToOptionalTensorInfo(gert::TilingContext *context,
+                                                                                 size_t index)
 {
     TensorContractInfo info;
     const auto desc = context->GetOptionalInputDesc(index);
@@ -710,8 +713,8 @@ TensorContractInfo QkvRmsNormRopeCacheWithKScaleTiling::ToOptionalTensorInfo(ger
     return info;
 }
 
-void QkvRmsNormRopeCacheWithKScaleTiling::LogTensorInfo(const std::string &opName, const char *tensorName,
-                                                        const TensorContractInfo &info)
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogTensorInfo(const std::string &opName, const char *tensorName,
+                                                            const TensorContractInfo &info)
 {
     const auto strideDimOrZero = [](const gert::Stride &stride, size_t index) -> int64_t {
         return index < stride.GetDimNum() ? stride.GetStride(index) : 0;
@@ -725,8 +728,8 @@ void QkvRmsNormRopeCacheWithKScaleTiling::LogTensorInfo(const std::string &opNam
             strideDimOrZero(info.stride, 1), strideDimOrZero(info.stride, 2), strideDimOrZero(info.stride, 3));
 }
 
-void QkvRmsNormRopeCacheWithKScaleTiling::LogContractInput(const std::string &opName, const ContractInput &input,
-                                                           uint64_t aicNum, float epsilon)
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogContractInput(const std::string &opName, const ContractInput &input,
+                                                               uint64_t aicNum, float epsilon)
 {
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale parsed attrs/input summary: head_nums={%lu,%lu,%lu} epsilon=%f "
@@ -748,9 +751,9 @@ void QkvRmsNormRopeCacheWithKScaleTiling::LogContractInput(const std::string &op
 }
 
 ge::graphStatus
-QkvRmsNormRopeCacheWithKScaleTiling::SetWorkspace(gert::TilingContext *context, const std::string &opName,
-                                                  const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
-                                                  size_t &workspaceSize)
+QkvRmsNormRopeCacheWithKScaleBaseTiling::SetWorkspace(gert::TilingContext *context, const std::string &opName,
+                                                      const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
+                                                      size_t &workspaceSize)
 {
     size_t *workspaces = context->GetWorkspaceSizes(WORKSPACE_COUNT);
     OP_CHECK_IF(workspaces == nullptr, OP_LOGE(opName.c_str(), "get workspace failed."), return ge::GRAPH_FAILED);
@@ -763,10 +766,10 @@ QkvRmsNormRopeCacheWithKScaleTiling::SetWorkspace(gert::TilingContext *context, 
     return ge::GRAPH_SUCCESS;
 }
 
-void QkvRmsNormRopeCacheWithKScaleTiling::LogTilingData(const std::string &opName,
-                                                        const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
-                                                        const ContractTiling &contractTiling, uint64_t tilingKey,
-                                                        uint64_t blockDim, size_t dataSize, size_t workspaceSize)
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogTilingData(const std::string &opName,
+                                                            const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
+                                                            const ContractTiling &contractTiling, uint64_t tilingKey,
+                                                            uint64_t blockDim, size_t dataSize, size_t workspaceSize)
 {
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale final tilingData: totalTokens=%lu batch=%lu Nq=%lu Nk=%lu Nv=%lu "
@@ -787,8 +790,9 @@ void QkvRmsNormRopeCacheWithKScaleTiling::LogTilingData(const std::string &opNam
         contractTiling.dimTile);
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ParseHeadNumsAttr(gert::TilingContext *context,
-                                                                       const std::string &opName, ContractInput &input)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseHeadNumsAttr(gert::TilingContext *context,
+                                                                           const std::string &opName,
+                                                                           ContractInput &input)
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -809,14 +813,14 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::ParseHeadNumsAttr(gert::Til
     return ge::GRAPH_SUCCESS;
 }
 
-float QkvRmsNormRopeCacheWithKScaleTiling::ParseEpsilonAttr(gert::TilingContext *context)
+float QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseEpsilonAttr(gert::TilingContext *context)
 {
     auto attrs = context->GetAttrs();
     const float *epsilonAttr = attrs == nullptr ? nullptr : attrs->GetFloat(EPSILON_ATTR_INDEX);
     return epsilonAttr == nullptr ? DEFAULT_EPSILON : *epsilonAttr;
 }
 
-void QkvRmsNormRopeCacheWithKScaleTiling::FillShapeDerivedFields(const std::string &opName, ContractInput &input)
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillShapeDerivedFields(const std::string &opName, ContractInput &input)
 {
     const auto &qkvShape = input.qkv.shape;
     const auto &cosSinShape = input.cosSin.shape;
@@ -834,9 +838,9 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillShapeDerivedFields(const std::stri
             input.totalTokens, input.batch, input.headDim, input.maxSeqLen, input.blockNum, input.blockSize);
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::FillRequiredTensorInputs(gert::TilingContext *context,
-                                                                              const std::string &opName,
-                                                                              ContractInput &input)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillRequiredTensorInputs(gert::TilingContext *context,
+                                                                                  const std::string &opName,
+                                                                                  ContractInput &input)
 {
     OP_CHECK_IF(ToTensorInfo(context, opName, "qkv", QKV_INDEX, input.qkv) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "failed to parse qkv tensor info."), return ge::GRAPH_FAILED);
@@ -860,16 +864,17 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::FillRequiredTensorInputs(ge
     return ge::GRAPH_SUCCESS;
 }
 
-void QkvRmsNormRopeCacheWithKScaleTiling::FillOptionalTensorInputs(gert::TilingContext *context, ContractInput &input)
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillOptionalTensorInputs(gert::TilingContext *context,
+                                                                       ContractInput &input)
 {
     input.qRotation = ToOptionalTensorInfo(context, Q_ROTATION_INDEX);
     input.kRotation = ToOptionalTensorInfo(context, K_ROTATION_INDEX);
     input.vScale = ToOptionalTensorInfo(context, V_SCALE_INDEX);
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::BuildContractInput(gert::TilingContext *context,
-                                                                        const std::string &opName, ContractInput &input,
-                                                                        float &epsilon)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractInput(gert::TilingContext *context,
+                                                                            const std::string &opName,
+                                                                            ContractInput &input, float &epsilon)
 {
     OP_CHECK_IF(ParseHeadNumsAttr(context, opName, input) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "failed to parse head_nums attr."), return ge::GRAPH_FAILED);
@@ -885,9 +890,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::BuildContractInput(gert::Ti
     return ge::GRAPH_SUCCESS;
 }
 
-void QkvRmsNormRopeCacheWithKScaleTiling::FillTilingData(const ContractInput &input,
-                                                         const ContractTiling &contractTiling, float epsilon,
-                                                         QkvRmsNormRopeCacheWithKScaleTilingData &tilingData)
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillTilingData(const ContractInput &input,
+                                                             const ContractTiling &contractTiling, float epsilon,
+                                                             QkvRmsNormRopeCacheWithKScaleTilingData &tilingData)
 {
     tilingData.totalTokens = input.totalTokens;
     tilingData.batch = input.batch;
@@ -908,9 +913,8 @@ void QkvRmsNormRopeCacheWithKScaleTiling::FillTilingData(const ContractInput &in
     tilingData.epsilon = epsilon;
 }
 
-ge::graphStatus
-QkvRmsNormRopeCacheWithKScaleTiling::ValidateCompileInfo(const std::string &opName,
-                                                         const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateCompileInfo(
+    const std::string &opName, const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo)
 {
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale compile info: aicNum=%u aivNum=%u ubSize=%lu l1Size=%lu l0cSize=%lu "
@@ -928,9 +932,9 @@ QkvRmsNormRopeCacheWithKScaleTiling::ValidateCompileInfo(const std::string &opNa
 }
 
 ge::graphStatus
-QkvRmsNormRopeCacheWithKScaleTiling::CopyRawTilingData(gert::TilingContext *context, const std::string &opName,
-                                                       const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
-                                                       size_t &tilingDataSize)
+QkvRmsNormRopeCacheWithKScaleBaseTiling::CopyRawTilingData(gert::TilingContext *context, const std::string &opName,
+                                                           const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
+                                                           size_t &tilingDataSize)
 {
     auto rawTilingData = context->GetRawTilingData();
     OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData);
@@ -952,13 +956,13 @@ QkvRmsNormRopeCacheWithKScaleTiling::CopyRawTilingData(gert::TilingContext *cont
     return ge::GRAPH_SUCCESS;
 }
 
-void QkvRmsNormRopeCacheWithKScaleTiling::Reset(gert::TilingContext *context)
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::Reset(gert::TilingContext *context)
 {
     TilingBaseClass::Reset(context);
     Reset();
 }
 
-void QkvRmsNormRopeCacheWithKScaleTiling::Reset()
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::Reset()
 {
     compileInfo_ = nullptr;
     input_ = {};
@@ -972,12 +976,12 @@ void QkvRmsNormRopeCacheWithKScaleTiling::Reset()
     tilingKey_ = 0;
 }
 
-bool QkvRmsNormRopeCacheWithKScaleTiling::IsCapable()
+bool QkvRmsNormRopeCacheWithKScaleBaseTiling::IsCapable()
 {
     return true;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::GetShapeAttrsInfo()
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetShapeAttrsInfo()
 {
     const std::string opName = context_->GetNodeName();
     OP_CHECK_IF(BuildContractInput(context_, opName, input_, epsilon_) != ge::GRAPH_SUCCESS,
@@ -989,7 +993,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::GetPlatformInfo()
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetPlatformInfo()
 {
     const std::string opName = context_->GetNodeName();
     compileInfo_ = context_->GetCompileInfo<QkvRmsNormRopeCacheWithKScaleCompileInfo>();
@@ -1002,7 +1006,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::DoOpTiling()
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::DoOpTiling()
 {
     const std::string opName = context_->GetNodeName();
     OP_CHECK_IF(BuildContractTiling(input_, aicNum_, contractTiling_, opName) != ge::GRAPH_SUCCESS,
@@ -1013,17 +1017,17 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::DoLibApiTiling()
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t QkvRmsNormRopeCacheWithKScaleTiling::GetTilingKey() const
+uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128);
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::GetWorkspaceSize()
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetWorkspaceSize()
 {
     OP_CHECK_NULL_WITH_CONTEXT(context_, compileInfo_);
     OP_CHECK_IF(SetWorkspace(context_, context_->GetNodeName(), *compileInfo_, workspaceSize_) != ge::GRAPH_SUCCESS,
@@ -1032,7 +1036,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::PostTiling()
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::PostTiling()
 {
     OP_CHECK_IF(CopyRawTilingData(context_, context_->GetNodeName(), tilingData_, tilingDataSize_) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "copy QkvRmsNormRopeCacheWithKScale raw tiling data failed."),
@@ -1041,13 +1045,13 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void QkvRmsNormRopeCacheWithKScaleTiling::DumpTilingInfo()
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::DumpTilingInfo()
 {
     LogTilingData(context_->GetNodeName(), tilingData_, contractTiling_, context_->GetTilingKey(), numBlocks_,
                   tilingDataSize_, workspaceSize_);
 }
 
-REGISTER_OPS_TILING_TEMPLATE(QkvRmsNormRopeCacheWithKScale, QkvRmsNormRopeCacheWithKScaleTiling,
+REGISTER_OPS_TILING_TEMPLATE(QkvRmsNormRopeCacheWithKScale, QkvRmsNormRopeCacheWithKScaleBaseTiling,
                              TILING_TEMPLATE_PRIORITY);
 
 } // namespace QkvRmsNormRopeCacheWithKScale

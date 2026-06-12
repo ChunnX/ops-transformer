@@ -7,7 +7,7 @@ Current state:
 
 1. T00 host op definition, infer shape, tiling class, and host UT sources are
    present. Host-side validation and tiling math are owned by
-   `QkvRmsNormRopeCacheWithKScaleTiling`; it is not device kernel code.
+   `QkvRmsNormRopeCacheWithKScaleBaseTiling`; it is not device kernel code.
 2. T01 kernel controller and basic block skeleton are present under
    `op_kernel`. The kernel entry file only selects the tiling key, unpacks
    tiling, and dispatches the controller directly.

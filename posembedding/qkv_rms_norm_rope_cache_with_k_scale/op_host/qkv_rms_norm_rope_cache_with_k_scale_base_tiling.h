@@ -97,8 +97,7 @@ struct TokenTileSelection {
     uint64_t tokenTilePerAiv = 0;
 };
 
-class __attribute__((visibility("default"))) QkvRmsNormRopeCacheWithKScaleTiling
-    : public Ops::Transformer::OpTiling::TilingBaseClass {
+class QkvRmsNormRopeCacheWithKScaleBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     static constexpr uint64_t HEAD_DIM_FAST = 128;
     static constexpr uint64_t MAX_TOKEN_TILE = 16;
@@ -111,15 +110,18 @@ public:
     static constexpr uint64_t AIV_PER_AIC = 2;
 
     static ge::graphStatus ValidateContractInput(const ContractInput &input,
-                                                 const std::string &opName = "QkvRmsNormRopeCacheWithKScale");
+                                                 const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
+        __attribute__((visibility("default")));
     static ge::graphStatus BuildContractTiling(const ContractInput &input, uint64_t aicNum, ContractTiling &tiling,
-                                               const std::string &opName = "QkvRmsNormRopeCacheWithKScale");
-    static AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLocalId);
+                                               const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
+        __attribute__((visibility("default")));
+    static AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLocalId)
+        __attribute__((visibility("default")));
 
-    explicit QkvRmsNormRopeCacheWithKScaleTiling(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit QkvRmsNormRopeCacheWithKScaleBaseTiling(gert::TilingContext *context) : TilingBaseClass(context)
     {
     }
-    ~QkvRmsNormRopeCacheWithKScaleTiling() override = default;
+    ~QkvRmsNormRopeCacheWithKScaleBaseTiling() override = default;
 
     void Reset(gert::TilingContext *context) override;
 
