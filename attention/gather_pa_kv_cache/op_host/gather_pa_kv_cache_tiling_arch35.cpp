@@ -146,10 +146,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
                     OP_LOGE(context_, "key_cache.shape[3](%ld) must align and equal to 32B, please check.",
                             kCacheShape_.GetDim(kCacheDimNum_ - 1)),
                     return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(kCacheFormat != ge::Format::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(context_, "key_cache format should be FRACTAL_NZ when cache_mode is PA_NZ, please check."),
-                    return ge::GRAPH_FAILED);
         // 2 is blockSize_ dim
         blockSize_ = kCacheShape_.GetDim(2);
     }
@@ -230,10 +226,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
         OP_CHECK_IF(vCacheShape_.GetDim(vCacheDimNum_ - 1) * valueByteSize_ != BLOCK_SIZE,
                     OP_LOGE(context_, "value_cache last dimension must align and equal to 32B, please check."),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            vCacheFormat != ge::Format::FORMAT_FRACTAL_NZ,
-            OP_LOGE(context_, "value_cache format should be FRACTAL_NZ when cache_mode is PA_NZ, please check."),
-            return ge::GRAPH_FAILED);
     }
     // key_cache与value_cache的num_blocks(dim0)数值无需相等: kernel用同一blockId分别乘
     // 各自的stride索引, 不依赖dim0相等(与scatter Norm模式CheckNormal行为对齐)。
