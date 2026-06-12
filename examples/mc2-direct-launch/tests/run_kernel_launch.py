@@ -47,8 +47,8 @@ def run(rank, ws, inputs, result_queue):
     en = eg._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
 
     tnp = os.path.dirname(os.path.abspath(torch_npu.__file__))
-    cann = os.environ.get('ASCEND_HOME_PATH', '/home/l00946875/Ascend/cann-9.1.0')
-    ext = '/home/l00946875/ops-transformer/torch_extension/npu_ops_transformer'
+    cann = os.environ['ASCEND_HOME_PATH']
+    ext = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../torch_extension/npu_ops_transformer'))
     ctx_m = jit_load(name='mc2_ctx_kl', sources=[f'{ext}/ops/csrc/comm_context.cpp'],
         extra_include_paths=[f'{tnp}/include', f'{tnp}/include/third_party/hccl/inc',
                             f'{tnp}/include/third_party/acl/inc', f'{cann}/include', f'{ext}/common/inc'],
@@ -57,7 +57,7 @@ def run(rank, ws, inputs, result_queue):
     mgr = ctx_m.CommContextManager(en, EP, "channel")
     ctx = mgr.create_context()
 
-    sys.path.insert(0, '/home/l00946875/ops-transformer/examples/mc2-direct-launch/build/csrc')
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'build', 'csrc'))
     import mc2_direct_launch as mc2
 
     # 从 inputs 读取（与 gen_cpu_golden.py 相同的数据）
@@ -104,8 +104,8 @@ if __name__ == "__main__":
 
     # 预编译
     tnp = os.path.dirname(os.path.abspath(torch_npu.__file__))
-    cann = os.environ.get('ASCEND_HOME_PATH', '/home/l00946875/Ascend/cann-9.1.0')
-    ext = '/home/l00946875/ops-transformer/torch_extension/npu_ops_transformer'
+    cann = os.environ['ASCEND_HOME_PATH']
+    ext = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../torch_extension/npu_ops_transformer'))
     jit_load(name='mc2_ctx_kl', sources=[f'{ext}/ops/csrc/comm_context.cpp'],
         extra_include_paths=[f'{tnp}/include', f'{tnp}/include/third_party/hccl/inc',
                             f'{tnp}/include/third_party/acl/inc', f'{cann}/include', f'{ext}/common/inc'],

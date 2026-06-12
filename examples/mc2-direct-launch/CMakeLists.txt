@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
 
 # 在 project() 之前设置 bisheng 编译器
-if(DEFINED ENV{ASCEND_HOME_PATH})
-    set(ASCEND_HOME_PRE "$ENV{ASCEND_HOME_PATH}")
-else()
-    set(ASCEND_HOME_PRE "/home/l00946875/Ascend/cann-9.1.0")
+# 编译前必须设置环境变量 ASCEND_HOME_PATH（指向 CANN 安装目录）
+if(NOT DEFINED ENV{ASCEND_HOME_PATH})
+    message(FATAL_ERROR "ASCEND_HOME_PATH environment variable is not set. Please source CANN set_env.sh first.")
 endif()
+set(ASCEND_HOME_PRE "$ENV{ASCEND_HOME_PATH}")
 execute_process(COMMAND uname -m OUTPUT_VARIABLE ARCH_PRE OUTPUT_STRIP_TRAILING_WHITESPACE)
 set(BISHENG_PRE "${ASCEND_HOME_PRE}/${ARCH_PRE}-linux/ccec_compiler/bin/bisheng")
 set(CMAKE_C_COMPILER ${BISHENG_PRE})

@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
 cd "$(dirname "$0")"
-source /home/l00946875/Ascend/cann/set_env.sh
-export PATH="/root/miniconda3/envs/zzx_py310/bin:$PATH"
+# 编译前需完成:
+#   1. source CANN 安装包中的 set_env.sh（如 source $ASCEND_HOME_PATH/set_env.sh）
+#   2. 激活 conda 环境（如 conda activate zzx_py310），确保 python3 可用
 
 TORCH_CMAKE=$(python3 -c "import torch;print(torch.utils.cmake_prefix_path)")
 

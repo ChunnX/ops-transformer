@@ -3,7 +3,7 @@
 证明 <<<>>> 的 tiling 和通信完全正确
 """
 import os, sys, time, ctypes, torch, torch.distributed as dist, torch_npu
-from torch.multiprocessing import Process
+from torch.multiprocessing import Process, Lock, Value
 from torch.utils.cpp_extension import load as jit_load
 
 BS, H, K = 55, 1038, 1
@@ -50,7 +50,7 @@ def make_tiling(rank):
     t.totalWinSizeEp = calc_total_win_size(); t.expertTokenNumsType = 1
     return torch.frombuffer(bytearray(bytes(t)), dtype=torch.uint8)
 
-def run(rank, ws):
+def run(rank, ws, barrier_counter, barrier_lock):
     os.environ["MASTER_ADDR"] = "127.0.0.1"; os.environ["MASTER_PORT"] = MASTER_PORT
     torch_npu.npu.set_device(rank % 2)
     dist.init_process_group(backend="hccl", rank=rank, world_size=ws,
@@ -60,8 +60,8 @@ def run(rank, ws):
 
     # Context
     tnp = os.path.dirname(os.path.abspath(torch_npu.__file__))
-    cann = os.environ.get('ASCEND_HOME_PATH', '/home/l00946875/Ascend/cann-9.1.0')
-    ext = '/home/l00946875/ops-transformer/torch_extension/npu_ops_transformer'
+    cann = os.environ['ASCEND_HOME_PATH']
+    ext = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../torch_extension/npu_ops_transformer'))
     ctx_mod = jit_load(name='mc2_ctx_cmp', sources=[f'{ext}/ops/csrc/comm_context.cpp'],
         extra_include_paths=[f'{tnp}/include', f'{tnp}/include/third_party/hccl/inc',
                             f'{tnp}/include/third_party/acl/inc', f'{cann}/include', f'{ext}/common/inc'],
@@ -134,14 +134,23 @@ def run(rank, ws):
     all_ok = expand_match and recv_match and assist_match
     print(f"[R{rank}] {'PASSED - outputs identical' if all_ok else 'DIFF'}", flush=True)
 
-    dist.barrier()
-    dist.destroy_process_group()
+    with barrier_lock:
+        barrier_counter.value += 1
+
+    # spin-wait until all ranks finished
+    while True:
+        with barrier_lock:
+            if barrier_counter.value == ws:
+                break
+        time.sleep(0.01)
+
+        dist.destroy_process_group()
 
 if __name__ == "__main__":
     print("=== Dispatch: <<<>>> vs aclnn comparison ===")
     tnp = os.path.dirname(os.path.abspath(torch_npu.__file__))
-    cann = os.environ.get('ASCEND_HOME_PATH', '/home/l00946875/Ascend/cann-9.1.0')
-    ext = '/home/l00946875/ops-transformer/torch_extension/npu_ops_transformer'
+    cann = os.environ['ASCEND_HOME_PATH']
+    ext = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../torch_extension/npu_ops_transformer'))
     jit_load(name='mc2_ctx_cmp', sources=[f'{ext}/ops/csrc/comm_context.cpp'],
         extra_include_paths=[f'{tnp}/include', f'{tnp}/include/third_party/hccl/inc',
                             f'{tnp}/include/third_party/acl/inc', f'{cann}/include', f'{ext}/common/inc'],
@@ -156,7 +165,9 @@ if __name__ == "__main__":
         extra_cflags=['-D_GLIBCXX_USE_CXX11_ABI=1'], verbose=False)
     print("Pre-compile done.")
     os.system("fuser -k /dev/npu* 2>/dev/null"); time.sleep(2)
-    procs = [Process(target=run, args=(r, EP_WORLD_SIZE)) for r in range(EP_WORLD_SIZE)]
+    barrier_counter = Value("i", 0)
+    barrier_lock = Lock()
+    procs = [Process(target=run, args=(r, EP_WORLD_SIZE, barrier_counter, barrier_lock)) for r in range(EP_WORLD_SIZE)]
     for p in procs: p.start()
     for p in procs: p.join(timeout=90)
     ok = all(p.exitcode == 0 for p in procs)

@@ -3,7 +3,7 @@ MC2 <<<>>> Combine 单独测试
 独立构造 combine 输入数据，不依赖 dispatch 输出
 """
 import os, sys, time, ctypes, torch, torch.distributed as dist, torch_npu
-from torch.multiprocessing import Process
+from torch.multiprocessing import Process, Lock, Value
 from torch.utils.cpp_extension import load as jit_load
 
 BS, H, K = 55, 1038, 1
@@ -96,7 +96,7 @@ def make_combine_inputs(rank):
     return expand_x, expert_ids, assist_info, ep_send_counts, expert_scales, self_send_cnt
 
 
-def run(rank, ws):
+def run(rank, ws, barrier_counter, barrier_lock):
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = MASTER_PORT
     torch_npu.npu.set_device(rank % 2)
@@ -108,8 +108,8 @@ def run(rank, ws):
 
     # Context
     tnp = os.path.dirname(os.path.abspath(torch_npu.__file__))
-    cann = os.environ.get('ASCEND_HOME_PATH', '/home/l00946875/Ascend/cann-9.1.0')
-    ext = '/home/l00946875/ops-transformer/torch_extension/npu_ops_transformer'
+    cann = os.environ['ASCEND_HOME_PATH']
+    ext = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../torch_extension/npu_ops_transformer'))
     ctx_m = jit_load(name='mc2_ctx_cb', sources=[f'{ext}/ops/csrc/comm_context.cpp'],
         extra_include_paths=[f'{tnp}/include', f'{tnp}/include/third_party/hccl/inc',
                             f'{tnp}/include/third_party/acl/inc', f'{cann}/include', f'{ext}/common/inc'],
@@ -140,8 +140,17 @@ def run(rank, ws):
     ok = (x_out.shape == (BS, H)) and (abs_sum > 0)
     print(f"[R{rank}] {'PASSED' if ok else 'FAILED'} abs_sum={abs_sum:.2f}", flush=True)
 
-    dist.barrier()
-    dist.destroy_process_group()
+    with barrier_lock:
+        barrier_counter.value += 1
+
+    # spin-wait until all ranks finished
+    while True:
+        with barrier_lock:
+            if barrier_counter.value == ws:
+                break
+        time.sleep(0.01)
+
+        dist.destroy_process_group()
 
 
 if __name__ == "__main__":
@@ -151,8 +160,8 @@ if __name__ == "__main__":
     print("=" * 50)
 
     tnp = os.path.dirname(os.path.abspath(torch_npu.__file__))
-    cann = os.environ.get('ASCEND_HOME_PATH', '/home/l00946875/Ascend/cann-9.1.0')
-    ext = '/home/l00946875/ops-transformer/torch_extension/npu_ops_transformer'
+    cann = os.environ['ASCEND_HOME_PATH']
+    ext = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../torch_extension/npu_ops_transformer'))
     print("Pre-compiling...", flush=True)
     jit_load(name='mc2_ctx_cb', sources=[f'{ext}/ops/csrc/comm_context.cpp'],
         extra_include_paths=[f'{tnp}/include', f'{tnp}/include/third_party/hccl/inc',
@@ -163,7 +172,9 @@ if __name__ == "__main__":
 
     os.system("fuser -k /dev/npu* 2>/dev/null")
     time.sleep(2)
-    ps = [Process(target=run, args=(r, EP_WORLD_SIZE)) for r in range(EP_WORLD_SIZE)]
+    barrier_counter = Value('i', 0)
+    barrier_lock = Lock()
+    ps = [Process(target=run, args=(r, EP_WORLD_SIZE, barrier_counter, barrier_lock)) for r in range(EP_WORLD_SIZE)]
     for p in ps:
         p.start()
     for p in ps:

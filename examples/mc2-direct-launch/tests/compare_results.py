@@ -4,7 +4,7 @@
 输入: tests/golden.pt, tests/npu_output.pt
 """
 import os, sys, torch
-sys.path.insert(0, '/home/l00946875/pta-moe-test')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'pta-moe-test'))
 from moe_operator_test_v3v4 import compare_output, ComparedOutput
 
 EP = 2

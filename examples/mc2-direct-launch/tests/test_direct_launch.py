@@ -2,10 +2,10 @@
 MC2 <<<>>> Dispatch 独立测试 + CPU golden 对比 + CSV 输出
 """
 import os, sys, time, ctypes, torch, torch.distributed as dist, torch_npu
-from torch.multiprocessing import Process, Manager
+from torch.multiprocessing import Process, Manager, Lock, Value
 from torch.utils.cpp_extension import load as jit_load
 
-sys.path.insert(0, '/home/l00946875/pta-moe-test')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'pta-moe-test'))
 from moe_operator_test_v3v4 import compare_output, ComparedOutput
 
 BS, H, K = 55, 1038, 1
@@ -56,7 +56,7 @@ def make_dispatch_tiling(rank):
     t.totalWinSizeEp = calc_total_win_size(); t.expertTokenNumsType = 1
     return torch.frombuffer(bytearray(bytes(t)), dtype=torch.uint8)
 
-def run_worker(rank, world_size, result_queue):
+def run_worker(rank, world_size, result_queue, barrier_counter, barrier_lock):
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = MASTER_PORT
     torch_npu.npu.set_device(rank % RANK_PER_DEV)
@@ -66,8 +66,8 @@ def run_worker(rank, world_size, result_queue):
     ep_name = ep_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
 
     torch_npu_path = os.path.dirname(os.path.abspath(torch_npu.__file__))
-    cann_path = os.environ.get('ASCEND_HOME_PATH', '/home/l00946875/Ascend/cann-9.1.0')
-    ext_root = '/home/l00946875/ops-transformer/torch_extension/npu_ops_transformer'
+    cann_path = os.environ['ASCEND_HOME_PATH']
+    ext_root = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../torch_extension/npu_ops_transformer'))
     ctx_mod = jit_load(name='mc2_ctx_dl', sources=[f'{ext_root}/ops/csrc/comm_context.cpp'],
         extra_include_paths=[f'{torch_npu_path}/include', f'{torch_npu_path}/include/third_party/hccl/inc',
                             f'{torch_npu_path}/include/third_party/acl/inc', f'{cann_path}/include',
@@ -105,8 +105,17 @@ def run_worker(rank, world_size, result_queue):
           f"ep_recv={ep_recv_counts.cpu().tolist()} tokens={expert_token_nums.cpu().tolist()}", flush=True)
 
     result_queue.put((rank, x.cpu(), expert_ids.cpu(), expand_x[:n_tokens].cpu(), ep_recv_counts.cpu()))
-    dist.barrier()
-    dist.destroy_process_group()
+    with barrier_lock:
+        barrier_counter.value += 1
+
+    # spin-wait until all ranks finished
+    while True:
+        with barrier_lock:
+            if barrier_counter.value == world_size:
+                break
+        time.sleep(0.01)
+
+        dist.destroy_process_group()
 
 
 if __name__ == "__main__":
@@ -116,8 +125,8 @@ if __name__ == "__main__":
     print("=" * 50)
 
     torch_npu_path = os.path.dirname(os.path.abspath(torch_npu.__file__))
-    cann_path = os.environ.get('ASCEND_HOME_PATH', '/home/l00946875/Ascend/cann-9.1.0')
-    ext_root = '/home/l00946875/ops-transformer/torch_extension/npu_ops_transformer'
+    cann_path = os.environ['ASCEND_HOME_PATH']
+    ext_root = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../torch_extension/npu_ops_transformer'))
     jit_load(name='mc2_ctx_dl', sources=[f'{ext_root}/ops/csrc/comm_context.cpp'],
         extra_include_paths=[f'{torch_npu_path}/include', f'{torch_npu_path}/include/third_party/hccl/inc',
                             f'{torch_npu_path}/include/third_party/acl/inc', f'{cann_path}/include',
@@ -131,7 +140,9 @@ if __name__ == "__main__":
 
     manager = Manager()
     result_queue = manager.Queue()
-    procs = [Process(target=run_worker, args=(r, EP_WORLD_SIZE, result_queue)) for r in range(EP_WORLD_SIZE)]
+    barrier_counter = Value('i', 0)
+    barrier_lock = Lock()
+    procs = [Process(target=run_worker, args=(r, EP_WORLD_SIZE, result_queue, barrier_counter, barrier_lock)) for r in range(EP_WORLD_SIZE)]
     for p in procs:
         p.start()
     for p in procs:

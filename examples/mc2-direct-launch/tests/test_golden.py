@@ -6,14 +6,13 @@ MC2 <<<>>> Golden 对比测试
 用法:
   python tests/test_golden.py --dispatch          # 单跑 dispatch
   python tests/test_golden.py --combine           # 单跑 combine
-  python tests/test_golden.py --cascade           # 级联 dispatch→combine
-  python tests/test_golden.py --all               # 全部
+   python tests/test_golden.py --cascade           # 级联 dispatch→combine
 """
 import os, sys, time, ctypes, argparse, torch, torch.distributed as dist, torch_npu
 from torch.multiprocessing import Process, Manager
 from torch.utils.cpp_extension import load as jit_load
 
-sys.path.insert(0, '/home/l00946875/pta-moe-test')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'pta-moe-test'))
 from moe_operator_test_v3v4 import compare_output, ComparedOutput
 
 # ==================== Config ====================
@@ -60,8 +59,8 @@ def run(rank, ws, mode, result_queue):
     en = eg._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
 
     tnp = os.path.dirname(os.path.abspath(torch_npu.__file__))
-    cann = os.environ.get('ASCEND_HOME_PATH', '/home/l00946875/Ascend/cann-9.1.0')
-    ext = '/home/l00946875/ops-transformer/torch_extension/npu_ops_transformer'
+    cann = os.environ['ASCEND_HOME_PATH']
+    ext = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../torch_extension/npu_ops_transformer'))
     ctx_m = jit_load(name='mc2_ctx_g', sources=[f'{ext}/ops/csrc/comm_context.cpp'],
         extra_include_paths=[f'{tnp}/include', f'{tnp}/include/third_party/hccl/inc',
                             f'{tnp}/include/third_party/acl/inc', f'{cann}/include', f'{ext}/common/inc'],
@@ -169,56 +168,47 @@ if __name__ == "__main__":
     parser.add_argument('--dispatch', action='store_true')
     parser.add_argument('--combine', action='store_true')
     parser.add_argument('--cascade', action='store_true')
-    parser.add_argument('--all', action='store_true')
     args = parser.parse_args()
-    if args.all:
-        args.dispatch = args.combine = args.cascade = True
     if not (args.dispatch or args.combine or args.cascade):
-        args.dispatch = args.combine = args.cascade = True  # 默认全跑
+        parser.error('请指定运行模式: --dispatch / --combine / --cascade')
+    if sum([args.dispatch, args.combine, args.cascade]) > 1:
+        parser.error('一次只能指定一个模式，不支持组合运行')
+
+    if args.dispatch: mode = 'dispatch'
+    elif args.combine: mode = 'combine'
+    else: mode = 'cascade'
 
     tnp = os.path.dirname(os.path.abspath(torch_npu.__file__))
-    cann = os.environ.get('ASCEND_HOME_PATH', '/home/l00946875/Ascend/cann-9.1.0')
-    ext = '/home/l00946875/ops-transformer/torch_extension/npu_ops_transformer'
+    cann = os.environ['ASCEND_HOME_PATH']
+    ext = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../torch_extension/npu_ops_transformer'))
     jit_load(name='mc2_ctx_g', sources=[f'{ext}/ops/csrc/comm_context.cpp'],
         extra_include_paths=[f'{tnp}/include', f'{tnp}/include/third_party/hccl/inc',
                             f'{tnp}/include/third_party/acl/inc', f'{cann}/include', f'{ext}/common/inc'],
         extra_ldflags=[f'-L{tnp}/lib', '-ltorch_npu'], extra_cflags=['-D_GLIBCXX_USE_CXX11_ABI=1'], verbose=False)
 
-    all_pass = True
-    modes = []
-    if args.dispatch: modes.append('dispatch')
-    if args.combine: modes.append('combine')
-    if args.cascade: modes.append('cascade')
+    print(f"\n{'='*60}\n  <<<>>> {mode} test (bs={BS} h={H} k={K} ep={EP} bf16)\n{'='*60}")
+    os.system("fuser -k /dev/npu* 2>/dev/null; rm -f /tmp/mc2_gc_* 2>/dev/null; rm -f /tmp/mc2_* 2>/dev/null")
+    time.sleep(10)
+    manager = Manager()
+    rq = manager.Queue()
+    ps = [Process(target=run, args=(r, EP, mode, rq)) for r in range(EP)]
+    for p in ps: p.start()
+    for p in ps: p.join(timeout=50)
+    os.system("rm -f /tmp/mc2_gc_*")
+    if not all(p.exitcode == 0 for p in ps):
+        print(f"  {mode}: TIMEOUT/ERROR"); sys.exit(1)
 
-    for mode in modes:
-        print(f"\n{'='*60}\n  <<<>>> {mode} test (bs={BS} h={H} k={K} ep={EP} bf16)\n{'='*60}")
-        os.system(f"fuser -k /dev/npu* 2>/dev/null; rm -f /tmp/mc2_gc_*")
-        time.sleep(3)
-        manager = Manager()
-        rq = manager.Queue()
-        ps = [Process(target=run, args=(r, EP, mode, rq)) for r in range(EP)]
-        for p in ps: p.start()
-        for p in ps: p.join(timeout=50)
-        os.system("rm -f /tmp/mc2_gc_*")
-        if not all(p.exitcode == 0 for p in ps):
-            print(f"  {mode}: TIMEOUT/ERROR"); all_pass = False; continue
+    results = {}
+    while not rq.empty():
+        r = rq.get(); results[r['rank']] = r
 
-        results = {}
-        while not rq.empty():
-            r = rq.get(); results[r['rank']] = r
+    if mode == 'dispatch':
+        ok = compare_dispatch(results)
+    elif mode == 'combine':
+        ok = compare_combine(results, 'combine')
+    else:
+        ok1 = compare_dispatch(results)
+        ok2 = compare_combine(results, 'cascade')
+        ok = ok1 and ok2
 
-        if mode == 'dispatch':
-            ok = compare_dispatch(results)
-        elif mode == 'combine':
-            ok = compare_combine(results, 'combine')
-        elif mode == 'cascade':
-            ok1 = compare_dispatch(results)
-            ok2 = compare_combine(results, 'cascade')
-            ok = ok1 and ok2
-
-        print(f"\n  {mode} test {'Success' if ok else 'Failed'}.")
-        if not ok: all_pass = False
-
-    print(f"\n{'='*60}")
-    print(f"  ALL {'PASSED' if all_pass else 'FAILED'}")
-    print(f"{'='*60}")
+    print(f"\n  {mode} test {'Success' if ok else 'Failed'}.")
