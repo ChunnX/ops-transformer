@@ -54,13 +54,16 @@ __aicore__ inline void ComputeForwardZVf(
             MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(normResReg, normOutPtr + 2 * n + i * VL_FP32);
             
             MicroAPI::Muls<T>(zPreReg, normPreReg, alphaPtr[0], mask);
-            MicroAPI::Add<T>(zPreReg, zPreReg, biasPtr, mask);
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(biasPreReg, biasPtr + i * VL_FP32);
+            MicroAPI::Add<T>(zPreReg, zPreReg, biasPreReg, mask);
             
             MicroAPI::Muls<T>(zPostReg, normPostReg, alphaPtr[1], mask);
-            MicroAPI::Add<T>(zPostReg, zPostReg, biasPtr + n, mask);
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(biasPostReg, biasPtr + n + i * VL_FP32);
+            MicroAPI::Add<T>(zPostReg, zPostReg, biasPostReg, mask);
             
             MicroAPI::Muls<T>(zResReg, normResReg, alphaPtr[2], mask);
-            MicroAPI::Add<T>(zResReg, zResReg, biasPtr + 2 * n, mask);
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(biasResReg, biasPtr + 2 * n + i * VL_FP32);
+            MicroAPI::Add<T>(zResReg, zResReg, biasResReg, mask);
             
             MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zPrePtr + i * VL_FP32, zPreReg, mask);
             MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zPostPtr + i * VL_FP32, zPostReg, mask);
@@ -280,13 +283,93 @@ __aicore__ inline void ReduceWorkspaceVf(
             MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(wsGradAlphaReg, workspacePtr + wsOffset + wsGradAlphaOffset);
             MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(wsGradBiasReg, workspacePtr + wsOffset + wsGradBiasOffset);
             
-            MicroAPI::Add<T>(gradAlphaReg, gradAlphaReg, wsGradAlphaReg, mask);
+MicroAPI::Add<T>(gradAlphaReg, gradAlphaReg, wsGradAlphaReg, mask);
             MicroAPI::Add<T>(gradBiasReg, gradBiasReg, wsGradBiasReg, mask);
         }
         
-MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(gradAlphaPtr, gradAlphaReg, mask);
-         MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(gradBiasPtr, gradBiasReg, mask);
-     }
+        MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(gradAlphaPtr, gradAlphaReg, mask);
+        MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(gradBiasPtr, gradBiasReg, mask);
+    }
+}
+ 
+template<typename T>
+__aicore__ inline void SigmoidGradArithmeticVf(
+    LocalTensor<T> gradZPreLocal, LocalTensor<T> gradZPostLocal,
+    LocalTensor<T> sigmaPreLocal, LocalTensor<T> sigmaPostLocal,
+    LocalTensor<T> gradHPreLocal, LocalTensor<T> gradHPostLocal,
+    uint32_t totalElements)
+{
+    __local_mem__ T* gradZPrePtr = (__local_mem__ T*) gradZPreLocal.GetPhyAddr();
+    __local_mem__ T* gradZPostPtr = (__local_mem__ T*) gradZPostLocal.GetPhyAddr();
+    __local_mem__ T* sigmaPrePtr = (__local_mem__ T*) sigmaPreLocal.GetPhyAddr();
+    __local_mem__ T* sigmaPostPtr = (__local_mem__ T*) sigmaPostLocal.GetPhyAddr();
+    __local_mem__ T* gradHPrePtr = (__local_mem__ T*) gradHPreLocal.GetPhyAddr();
+    __local_mem__ T* gradHPostPtr = (__local_mem__ T*) gradHPostLocal.GetPhyAddr();
+    
+    __VEC_SCOPE__ {
+        RegTensor<T> sigmaPreReg, sigmaPostReg;
+        RegTensor<T> gradHPreReg, gradHPostReg;
+        RegTensor<T> oneMinusSigmaPreReg, oneMinusSigmaPostReg;
+        RegTensor<T> gradZPreReg, gradZPostTmpReg, gradZPostReg;
+        RegTensor<T> onesReg;
+        
+        MaskReg mask = MicroAPI::CreateMask<T, MaskPattern::ALL>();
+        
+        uint32_t loopCount = (totalElements + VL_FP32 - 1) / VL_FP32;
+        
+        for (uint16_t i = 0; i < loopCount; i++) {
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(sigmaPreReg, sigmaPrePtr + i * VL_FP32);
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(sigmaPostReg, sigmaPostPtr + i * VL_FP32);
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(gradHPreReg, gradHPrePtr + i * VL_FP32);
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(gradHPostReg, gradHPostPtr + i * VL_FP32);
+            
+            MicroAPI::Muls<T>(oneMinusSigmaPreReg, sigmaPreReg, static_cast<T>(-1.0), mask);
+            MicroAPI::Adds<T>(oneMinusSigmaPreReg, oneMinusSigmaPreReg, static_cast<T>(1.0), mask);
+            MicroAPI::Mul<T>(gradZPreReg, gradHPreReg, oneMinusSigmaPreReg, mask);
+            MicroAPI::Mul<T>(gradZPreReg, gradZPreReg, sigmaPreReg, mask);
+            
+            MicroAPI::Muls<T>(oneMinusSigmaPostReg, sigmaPostReg, static_cast<T>(-1.0), mask);
+            MicroAPI::Adds<T>(oneMinusSigmaPostReg, oneMinusSigmaPostReg, static_cast<T>(1.0), mask);
+            MicroAPI::Mul<T>(gradZPostTmpReg, gradHPostReg, oneMinusSigmaPostReg, mask);
+            MicroAPI::Mul<T>(gradZPostTmpReg, gradZPostTmpReg, sigmaPostReg, mask);
+            MicroAPI::Muls<T>(gradZPostReg, gradZPostTmpReg, static_cast<T>(2.0), mask);
+            
+            MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(gradZPrePtr + i * VL_FP32, gradZPreReg, mask);
+            MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(gradZPostPtr + i * VL_FP32, gradZPostReg, mask);
+        }
+    }
+}
+
+template<typename T>
+__aicore__ inline void RMSNormInvGradVf(
+    LocalTensor<T> gradXFromRmsChunk, LocalTensor<T> xFp32Chunk,
+    LocalTensor<T> invRmsCubed, LocalTensor<T> gradInvRmsLocal,
+    float ncScalar, uint32_t cur_c, int64_t n)
+{
+    __local_mem__ T* gradXFromRmsPtr = (__local_mem__ T*) gradXFromRmsChunk.GetPhyAddr();
+    __local_mem__ T* xFp32Ptr = (__local_mem__ T*) xFp32Chunk.GetPhyAddr();
+    __local_mem__ T* invRmsCubedPtr = (__local_mem__ T*) invRmsCubed.GetPhyAddr();
+    __local_mem__ T* gradInvRmsPtr = (__local_mem__ T*) gradInvRmsLocal.GetPhyAddr();
+    
+    __VEC_SCOPE__ {
+        RegTensor<T> xFp32Reg, gradXFromRmsReg;
+        RegTensor<T> coeffReg;
+        
+        MaskReg mask = MicroAPI::CreateMask<T, MaskPattern::ALL>();
+        
+        uint32_t loopCount = (cur_c + VL_FP32 - 1) / VL_FP32;
+        
+        for (uint16_t i = 0; i < loopCount; i++) {
+            uint32_t calcSize = (i == loopCount - 1) ? 
+                (cur_c - i * VL_FP32) : VL_FP32;
+            
+            T coeff = static_cast<T>(invRmsCubedPtr[0] * gradInvRmsPtr[0] * static_cast<float>(-1.0) / ncScalar);
+            
+            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(xFp32Reg, xFp32Ptr + i * VL_FP32);
+            MicroAPI::Muls<T>(gradXFromRmsReg, xFp32Reg, coeff, mask);
+            MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(gradXFromRmsPtr + i * VL_FP32, gradXFromRmsReg, mask);
+        }
+    }
 }
 
 #endif // MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_VF_H
