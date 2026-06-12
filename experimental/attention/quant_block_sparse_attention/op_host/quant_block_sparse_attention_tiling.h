@@ -91,26 +91,6 @@ inline std::string BSAGetStringAttr(const gert::RuntimeAttrs *attrs, uint32_t in
     return attrPtr == nullptr ? std::string(defaultValue) : std::string(attrPtr);
 }
 
-BEGIN_TILING_DATA_DEF(QuantBlockSparseAttentionBaseParams)
-TILING_DATA_FIELD_DEF(uint32_t, bSize)
-TILING_DATA_FIELD_DEF(uint32_t, n1Size)
-TILING_DATA_FIELD_DEF(uint32_t, n2Size)
-TILING_DATA_FIELD_DEF(uint32_t, gSize)
-TILING_DATA_FIELD_DEF(uint32_t, s1Size)
-TILING_DATA_FIELD_DEF(uint32_t, s2Size)
-TILING_DATA_FIELD_DEF(uint32_t, dSize)
-TILING_DATA_FIELD_DEF(uint32_t, dSizeV)
-TILING_DATA_FIELD_DEF(uint32_t, qbMax)
-TILING_DATA_FIELD_DEF(uint32_t, kbMax)
-TILING_DATA_FIELD_DEF(uint32_t, sparseCount)
-TILING_DATA_FIELD_DEF(uint32_t, qBlockSize)
-TILING_DATA_FIELD_DEF(uint32_t, kvBlockSize)
-TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
-TILING_DATA_FIELD_DEF(uint32_t, paBlockStride)
-TILING_DATA_FIELD_DEF(float, softmaxScale)
-END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttentionBaseParamsOp, QuantBlockSparseAttentionBaseParams)
-
 BEGIN_TILING_DATA_DEF(QuantBlockSparseAttentionAttrParams)
 TILING_DATA_FIELD_DEF(uint32_t, layoutQ)
 TILING_DATA_FIELD_DEF(uint32_t, layoutKv)
@@ -205,6 +185,8 @@ TILING_DATA_FIELD_DEF(uint32_t, paBlockStride)
 TILING_DATA_FIELD_DEF(int32_t, attenMaskS1Size)
 TILING_DATA_FIELD_DEF(uint8_t, paLayoutType)
 TILING_DATA_FIELD_DEF(uint8_t, isRowInvalid)
+TILING_DATA_FIELD_DEF(uint32_t, qBlockSize)
+TILING_DATA_FIELD_DEF(uint32_t, kvBlockSize)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttentionInputParamsRegbaseOp, QuantBlockSparseAttentionInputParamsRegbase)
 
@@ -242,7 +224,6 @@ END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttentionInitOutputParamsOp, QuantBlockSparseAttentionInitOutputParams)
 
 BEGIN_TILING_DATA_DEF(QuantBlockSparseAttentionTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(QuantBlockSparseAttentionBaseParams, baseParams)
 TILING_DATA_FIELD_DEF_STRUCT(QuantBlockSparseAttentionAttrParams, attrParams)
 TILING_DATA_FIELD_DEF_STRUCT(QuantBlockSparseAttentionPaParams, paParams)
 TILING_DATA_FIELD_DEF_STRUCT(QuantBlockSparseAttentionSparseParams, sparseParams)
@@ -263,7 +244,6 @@ public:
     ge::graphStatus DoOpTiling(QuantBlockSparseAttentionTilingInfo *tilingInfo);
 
 private:
-    void FillBaseParams();
     void FillAttrParams();
     void FillPaParams();
     void FillSparseParams();

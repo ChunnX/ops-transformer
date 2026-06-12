@@ -56,28 +56,6 @@ QuantBlockSparseAttentionTiling::QuantBlockSparseAttentionTiling(gert::TilingCon
 {
 }
 
-void QuantBlockSparseAttentionTiling::FillBaseParams()
-{
-    const auto &info = *tilingInfo_;
-    auto &baseParams = tilingData_.baseParams;
-    baseParams.set_bSize(info.bSize);
-    baseParams.set_n1Size(info.n1Size);
-    baseParams.set_n2Size(info.n2Size);
-    baseParams.set_gSize(info.gSize);
-    baseParams.set_s1Size(info.s1Size);
-    baseParams.set_s2Size(info.s2Size);
-    baseParams.set_dSize(BSA_D_SIZE);
-    baseParams.set_dSizeV(BSA_D_SIZE);
-    baseParams.set_qbMax(info.qbMax);
-    baseParams.set_kbMax(info.kbMax);
-    baseParams.set_sparseCount(info.sparseCount);
-    baseParams.set_qBlockSize(info.qBlockSizeVal);
-    baseParams.set_kvBlockSize(info.kvBlockSizeVal);
-    baseParams.set_maxBlockNumPerBatch(info.maxBlockNumPerBatch);
-    baseParams.set_paBlockStride(info.paBlockStrideVal);
-    baseParams.set_softmaxScale(info.softmaxScaleVal);
-}
-
 void QuantBlockSparseAttentionTiling::FillAttrParams()
 {
     const auto &info = *tilingInfo_;
@@ -182,6 +160,8 @@ void QuantBlockSparseAttentionTiling::FillInputParams()
     inputParams.set_paLayoutType(BSA_PA_LAYOUT_TYPE_BNBD);
     inputParams.set_isRowInvalid(0);
     inputParams.set_paBlockStride(info.paBlockStrideVal);
+    inputParams.set_qBlockSize(info.qBlockSizeVal);
+    inputParams.set_kvBlockSize(info.kvBlockSizeVal);
 }
 
 void QuantBlockSparseAttentionTiling::FillMultiCoreParams()
@@ -248,24 +228,6 @@ void QuantBlockSparseAttentionTiling::CalcWorkspaceSize()
 
 void QuantBlockSparseAttentionTiling::PrintAllTilingData()
 {
-    auto &baseParams = tilingData_.baseParams;
-    OP_LOGD(kOpName, "===== BaseParams =====");
-    OP_LOGD(kOpName, "bSize:%u", baseParams.get_bSize());
-    OP_LOGD(kOpName, "n1Size:%u", baseParams.get_n1Size());
-    OP_LOGD(kOpName, "n2Size:%u", baseParams.get_n2Size());
-    OP_LOGD(kOpName, "gSize:%u", baseParams.get_gSize());
-    OP_LOGD(kOpName, "s1Size:%u", baseParams.get_s1Size());
-    OP_LOGD(kOpName, "s2Size:%u", baseParams.get_s2Size());
-    OP_LOGD(kOpName, "dSize:%u", baseParams.get_dSize());
-    OP_LOGD(kOpName, "dSizeV:%u", baseParams.get_dSizeV());
-    OP_LOGD(kOpName, "qbMax:%u", baseParams.get_qbMax());
-    OP_LOGD(kOpName, "kbMax:%u", baseParams.get_kbMax());
-    OP_LOGD(kOpName, "sparseCount:%u", baseParams.get_sparseCount());
-    OP_LOGD(kOpName, "qBlockSize:%u", baseParams.get_qBlockSize());
-    OP_LOGD(kOpName, "kvBlockSize:%u", baseParams.get_kvBlockSize());
-    OP_LOGD(kOpName, "maxBlockNumPerBatch:%u", baseParams.get_maxBlockNumPerBatch());
-    OP_LOGD(kOpName, "softmaxScale:%f", baseParams.get_softmaxScale());
-
     auto &attrParams = tilingData_.attrParams;
     OP_LOGD(kOpName, "===== AttrParams =====");
     OP_LOGD(kOpName, "layoutQ:%u", attrParams.get_layoutQ());
@@ -318,6 +280,8 @@ void QuantBlockSparseAttentionTiling::PrintAllTilingData()
     OP_LOGD(kOpName, "blockTableDim2:%d", inputParams.get_blockTableDim2());
     OP_LOGD(kOpName, "paBlockNumSum:%d", inputParams.get_paBlockNumSum());
     OP_LOGD(kOpName, "paLayoutType:%u", inputParams.get_paLayoutType());
+    OP_LOGD(kOpName, "qBlockSize:%u", inputParams.get_qBlockSize());
+    OP_LOGD(kOpName, "kvBlockSize:%u", inputParams.get_kvBlockSize());
 
     auto &multiCoreParams = tilingData_.multiCoreParamsRegbase;
     OP_LOGD(kOpName, "===== MultiCoreParams =====");
@@ -378,7 +342,6 @@ ge::graphStatus QuantBlockSparseAttentionTiling::DoOpTiling(QuantBlockSparseAtte
     const uint32_t maxAicCoreNum = GetAicCoreNum(context_);
     usedCoreNum_ = static_cast<uint32_t>(std::min<uint64_t>(static_cast<uint64_t>(maxAicCoreNum), totalTaskNum_));
 
-    FillBaseParams();
     FillAttrParams();
     FillPaParams();
     FillSparseParams();

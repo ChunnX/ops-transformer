@@ -59,7 +59,7 @@ private:
     __aicore__ inline void GetPaKScaleOffset(int32_t &byteOffset, const int64_t sparseBlkIdx, const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
     {
         int32_t physicalBlock = blockTableTensor.GetValue(runInfo.boIdx * constInfo.blockTableDim2 + sparseBlkIdx);
-        byteOffset = physicalBlock * constInfo.paBlockStride + runInfo.n2oIdx * constInfo.blockSize * constInfo.combineDim + constInfo.dSize + constInfo.dSizeV;
+        byteOffset = physicalBlock * constInfo.paBlockStride + runInfo.n2oIdx * constInfo.kvSparseBlockSize * constInfo.combineDim + constInfo.dSize + constInfo.dSizeV;
     }
 };
 

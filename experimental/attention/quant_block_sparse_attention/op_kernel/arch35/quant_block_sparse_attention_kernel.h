@@ -470,6 +470,7 @@ QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInf
     if constexpr (isPa) {
         this->constInfo.blockTableDim2 = this->sharedParams.blockTableDim2;
         this->constInfo.kvSparseBlockSize = this->sharedParams.kvSparseBlockSize;
+        this->constInfo.qSparseBlockSize = this->sharedParams.qSparseBlockSize;
         this->constInfo.paLayoutType = this->sharedParams.paLayoutType;
         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
         this->constInfo.paBlockStride = this->sharedParams.paBlockStride;
