@@ -69,6 +69,8 @@ const static int64_t OUTPUT_EXPANDED_X_INDEX = 0LL;
 const static int64_t OUTPUT_EXPANDED_ROW_IDX_INDEX = 1LL;
 const static int64_t OUTPUT_EXPERT_TOKENS_COUNT_INDEX = 2LL;
 const static int64_t OUTPUT_EXPANDED_SCALE_INDEX = 3LL;
+const static int64_t INPUT_TOPK_WEIGHT_INDEX = 4LL;
+const static int64_t OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX = 4LL;
 const static int64_t ATTR_ACTIVE_NUM_INDEX = 0LL;
 const static int64_t ATTR_EXPERT_CAPACITY_INDEX = 1LL;
 const static int64_t ATTR_EXPERT_NUM_INDEX = 2LL;
@@ -245,11 +247,14 @@ private:
     ge::graphStatus CheckInputScaleShape(const ScaleShapeCheckInfo &expected);
     ge::graphStatus CheckInputScaleDtype();
     ge::graphStatus CheckInputOffset();
+    ge::graphStatus CheckInputTopkWeight();
+    ge::graphStatus CheckTopkWeightConsistency();
     // CheckOutShape使用的子函数
     ge::graphStatus CheckOutputExpandedX();
     ge::graphStatus CheckOutputExpandedRowIdx();
     ge::graphStatus CheckOutputExpertTokensCountOrCumsum();
     ge::graphStatus CheckOutputExpandedScale();
+    ge::graphStatus CheckOutputExpandedTopkWeight();
     ge::graphStatus ValidateExpandedXShapeDropPad();
     ge::graphStatus ValidateExpandedXShapeDropless();
     ge::graphStatus ValidateExpandedXDtype();
@@ -395,6 +400,8 @@ private:
     int64_t inputScaleDTypeSize_ = 0LL;
     int64_t isInputScale_ = 0LL;
     int64_t isInputOffset_ = 0LL;
+    int64_t isInputTopkWeight_ = 0LL;
+    int64_t isOutputExpandedTopkWeight_ = 0LL;
     int64_t sortMode_ = 0LL;
 
     // full load flag
@@ -419,22 +426,26 @@ private:
     gert::Shape expertIdxShape_;
     gert::Shape scaleShape_;
     gert::Shape offsetShape_;
+    gert::Shape topkWeightShape_;
     // output tensors shape
     gert::Shape expandedXShape_;
     gert::Shape expandedRowIdxShape_;
     gert::Shape expertTokensCountOrCumsumShape_;
     gert::Shape expandedScaleShape_;
+    gert::Shape expandedTopkWeightShape_;
 
     // input tensors dtype
     ge::DataType xDtype_;
     ge::DataType expertIdxDtype_;
     ge::DataType scaleDtype_;
     ge::DataType offsetDtype_;
+    ge::DataType topkWeightDtype_;
     // output tensors dtype
     ge::DataType expandedXDtype_;
     ge::DataType expandedRowIdxDtype_;
     ge::DataType expertTokensCountOrCumsumDtype_;
     ge::DataType expandedScaleDtype_;
+    ge::DataType expandedTopkWeightDtype_;
 };
 
 ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetPlatformInfo()
@@ -504,6 +515,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     MIRV3_CHECK_GE_RET(CheckSetInputs());
     MIRV3_CHECK_GE_RET(CheckSetEmptyTensor());
     MIRV3_CHECK_GE_RET(CheckOutputs());
+    MIRV3_CHECK_GE_RET(CheckTopkWeightConsistency());
 
     // 空tensor快速返回，跳过后续tiling计算
     if (isEmptyTensor_) {
@@ -676,6 +688,10 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetInputTensorsInfo()
     // 可选输入offset
     MIRV3_CHECK_GE_RET(GetOptionalInputShapeDtype(offsetShape_, offsetDtype_, isInputOffset_, INPUT_OFFSET_INDEX));
     tilingDataPtr_->isInputOffset = isInputOffset_;
+    // 可选输入topk_weight
+    MIRV3_CHECK_GE_RET(GetOptionalInputShapeDtype(topkWeightShape_, topkWeightDtype_, isInputTopkWeight_, INPUT_TOPK_WEIGHT_INDEX));
+    tilingDataPtr_->isInputTopkWeight = isInputTopkWeight_;
+    OP_LOGD(context_, "Got optional input topk_weight: isInputTopkWeight = %ld.", isInputTopkWeight_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -691,6 +707,15 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetOutputTensorsInfo()
                                                   OUTPUT_EXPERT_TOKENS_COUNT_INDEX));
     MIRV3_CHECK_GE_RET(
         GetTensorShapeDtype<false>(expandedScaleShape_, expandedScaleDtype_, OUTPUT_EXPANDED_SCALE_INDEX));
+    // 可选输出expanded_topk_weight
+    if (context_->GetOutputShape(OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX) != nullptr) {
+        isOutputExpandedTopkWeight_ = 1;
+        MIRV3_CHECK_GE_RET(GetTensorShapeDtype<false>(expandedTopkWeightShape_, expandedTopkWeightDtype_,
+                                                       OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX));
+    } else {
+        isOutputExpandedTopkWeight_ = 0;
+    }
+    OP_LOGD(context_, "Got optional output expanded_topk_weight: isOutputExpandedTopkWeight = %ld.", isOutputExpandedTopkWeight_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1116,6 +1141,53 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputOffset()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputTopkWeight()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckInputTopkWeight()");
+
+    if (isInputTopkWeight_ == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    // rank校验：topk_weight必须为2D
+    auto rank = static_cast<int64_t>(topkWeightShape_.GetDimNum());
+    OP_CHECK_IF(rank != RANK_TWO,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "topk_weight", std::to_string(rank), "2"),
+                return ge::GRAPH_FAILED);
+    // dim[0] 与 x/expert_idx 的 dim[0] 一致
+    int64_t dim0 = topkWeightShape_.GetDim(0);
+    OP_CHECK_IF(dim0 != n_,
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "topk_weight dim[0]",
+                                          std::to_string(dim0), std::to_string(n_)),
+                return ge::GRAPH_FAILED);
+    // dim[1] 与 expert_idx 的 dim[1] 一致
+    int64_t dim1 = topkWeightShape_.GetDim(1);
+    OP_CHECK_IF(dim1 != k_,
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "topk_weight dim[1]",
+                                          std::to_string(dim1), std::to_string(k_)),
+                return ge::GRAPH_FAILED);
+    // dtype校验：topk_weight必须为DT_FLOAT
+    OP_CHECK_IF(topkWeightDtype_ != ge::DataType::DT_FLOAT,
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "topk_weight",
+                                          Ops::Base::ToString(topkWeightDtype_).c_str(), "DT_FLOAT"),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckTopkWeightConsistency()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckTopkWeightConsistency()");
+
+    // topk_weight和expanded_topk_weight必须同时传入或同时不传入
+    OP_CHECK_IF(isInputTopkWeight_ != isOutputExpandedTopkWeight_,
+                OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(),
+                    "topk_weight and expanded_topk_weight must be both present or both absent"),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()");
@@ -1124,6 +1196,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
     MIRV3_CHECK_GE_RET(CheckInputExpertIdx());
     MIRV3_CHECK_GE_RET(CheckInputScale());
     MIRV3_CHECK_GE_RET(CheckInputOffset());
+    MIRV3_CHECK_GE_RET(CheckInputTopkWeight());
 
     n_ = xShape_.GetDim(0);
     k_ = expertIdxShape_.GetDim(1);
@@ -1429,6 +1502,49 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
     return ValidateScaleShape(expectedRank, expectedDim0, expectedDim1, expectedDim2);
 }
 
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedTopkWeight()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedTopkWeight()");
+
+    if (isInputTopkWeight_ == 0) {
+        return ge::GRAPH_SUCCESS; // topk_weight不传入时，expanded_topk_weight也不传入，无需校验
+    }
+
+    // shape校验：expanded_topk_weight必须为2D
+    auto rank = static_cast<int64_t>(expandedTopkWeightShape_.GetDimNum());
+    OP_CHECK_IF(rank != RANK_TWO,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expanded_topk_weight",
+                                             std::to_string(rank), "2"),
+                return ge::GRAPH_FAILED);
+    // dim[0]校验：DropPad模式为expertNum*expertCapacity，DropLess模式为totalLength
+    int64_t dim0 = expandedTopkWeightShape_.GetDim(0);
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        OP_CHECK_IF(dim0 != expertNum_ * expertCapacity_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_topk_weight dim[0]",
+                                              std::to_string(dim0),
+                                              std::to_string(expertNum_ * expertCapacity_)),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(dim0 != totalLength_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_topk_weight dim[0]",
+                                              std::to_string(dim0), std::to_string(totalLength_)),
+                    return ge::GRAPH_FAILED);
+    }
+    // dim[1]校验：必须为1
+    int64_t dim1 = expandedTopkWeightShape_.GetDim(1);
+    OP_CHECK_IF(dim1 != DIM_ONE,
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_topk_weight dim[1]",
+                                          std::to_string(dim1), "1"),
+                return ge::GRAPH_FAILED);
+    // dtype校验：expanded_topk_weight必须为DT_FLOAT
+    OP_CHECK_IF(expandedTopkWeightDtype_ != ge::DataType::DT_FLOAT,
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expanded_topk_weight",
+                                          Ops::Base::ToString(expandedTopkWeightDtype_).c_str(), "DT_FLOAT"),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputs()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckOutputs()");
@@ -1437,6 +1553,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputs()
     MIRV3_CHECK_GE_RET(CheckOutputExpandedRowIdx());
     MIRV3_CHECK_GE_RET(CheckOutputExpertTokensCountOrCumsum());
     MIRV3_CHECK_GE_RET(CheckOutputExpandedScale());
+    MIRV3_CHECK_GE_RET(CheckOutputExpandedTopkWeight());
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1465,6 +1582,7 @@ void MoeInitRoutingV3Arch35TilingClass::LogBaseTilingData()
     ss << "activeNum = " << tilingDataPtr_->activeNum << "\n";
     ss << "dropPadMode = " << tilingDataPtr_->dropPadMode << "\n";
     ss << "smoothType = " << tilingDataPtr_->smoothType << "\n";
+    ss << "isInputTopkWeight = " << tilingDataPtr_->isInputTopkWeight << "\n";
     OP_LOGI(context_, "%s", ss.str().c_str());
 }
 
@@ -2053,6 +2171,11 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
                           UB_BLOCK_SIZE * NUM_THREE;
     int64_t gatherSpace = Ops::Base::CeilDiv(cols_ * inputXDtypeSize_, UB_BLOCK_SIZE) * UB_BLOCK_SIZE * perCoreTokens;
     int64_t remainUb = availUbSize_ - sortSpace - rowIdxSpace - expertSpace - LENGTH_1024;
+
+    // topk_weight buffer: 仅当isInputTopkWeight_时占用32 bytes
+    if (isInputTopkWeight_ == 1) {
+        remainUb -= AlignBytes(1, static_cast<int64_t>(sizeof(float))); // topkWeightBuf_: 32 bytes
+    }
 
     if (quantMode_ == QUANT_MODE_UNQUANT) {
         remainUb -= (gatherSpace + UB_BLOCK_SIZE);

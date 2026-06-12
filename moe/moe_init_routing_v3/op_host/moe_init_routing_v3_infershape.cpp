@@ -32,6 +32,7 @@ static constexpr int64_t MOE_INIT_ROUTING_V3_INPUT_X = 0;
 static constexpr int64_t MOE_INIT_ROUTING_V3_INPUT_EXPERT_IDX = 1;
 static constexpr int64_t MOE_INIT_ROUTING_V3_INPUT_SCALE = 2;
 static constexpr int64_t MOE_INIT_ROUTING_V3_INPUT_OFFSET = 3;
+static constexpr int64_t MOE_INIT_ROUTING_V3_INPUT_TOPK_WEIGHT = 4;
 static constexpr int64_t MOE_INIT_ROUTING_V3_ATTR_ACTIVE_NUM = 0;
 static constexpr int64_t MOE_INIT_ROUTING_V3_ATTR_EXPERT_CAPACITY = 1;
 static constexpr int64_t MOE_INIT_ROUTING_V3_ATTR_EXPERT_NUM = 2;
@@ -45,6 +46,7 @@ static constexpr int64_t MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_X = 0;
 static constexpr int64_t MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_ROW_IDX = 1;
 static constexpr int64_t MOE_INIT_ROUTING_V3_OUTPUT_EXPERT_TOKEN_CUMSUM_OR_COUNT = 2;
 static constexpr int64_t MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_SCALE = 3;
+static constexpr int64_t MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_TOPK_WEIGHT = 4;
 static constexpr int64_t MOE_INIT_ROUTING_V3_EXPERT_END_BOUND = 10240;
 static constexpr int64_t KEY_VALUE_MODE_DIM0_NUM = 2;
 static constexpr int64_t MX_QUANT_BLOCK_SIZE = 32LL;
@@ -814,6 +816,7 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
     OP_CHECK_NULL_WITH_CONTEXT(context, expertIdxShape);
     const gert::Shape *scaleShape = context->GetOptionalInputShape(MOE_INIT_ROUTING_V3_INPUT_SCALE);
     const gert::Shape *offsetShape = context->GetOptionalInputShape(MOE_INIT_ROUTING_V3_INPUT_OFFSET);
+    const gert::Shape *topkWeightShape = context->GetOptionalInputShape(MOE_INIT_ROUTING_V3_INPUT_TOPK_WEIGHT);
 
     int64_t experNum = -1;
     int64_t expertStart = -1;
@@ -861,6 +864,17 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
 
     SetExpandedScaleShape(expandedScaleShape, scaleShape, quantMode, dropPadMode, xOutNum, outNum,
                           experNum, expertCapacity, cols);
+
+    gert::Shape *expandedTopkWeightShape = context->GetOutputShape(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_TOPK_WEIGHT);
+    if (topkWeightShape != nullptr && expandedTopkWeightShape != nullptr) {
+        int64_t topkWeightOutNum = xOutNum;
+        if (dropPadMode == DropPadMode::DROP_PAD) {
+            topkWeightOutNum = experNum * expertCapacity;
+        }
+        expandedTopkWeightShape->SetDimNum(DIM_TWO);
+        expandedTopkWeightShape->SetDim(0U, topkWeightOutNum);
+        expandedTopkWeightShape->SetDim(DIM_ONE, DIM_ONE);
+    }
 
     ShowOutputShapeInfo(context, expandedXShape, expandedRowIdxShape, expertTokenCumsumOrCountShape,
                         expandedScaleShape);
@@ -974,6 +988,7 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_ROW_IDX, ge::DT_INT32);
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPERT_TOKEN_CUMSUM_OR_COUNT, ge::DT_INT64);
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_SCALE, expandedScaleDtype);
+    context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_TOPK_WEIGHT, ge::DT_FLOAT);
 
     OP_LOGD(context, "End to do MoeInitRoutingV3InferDataType.");
     return ge::GRAPH_SUCCESS;

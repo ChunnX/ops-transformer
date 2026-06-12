@@ -100,6 +100,9 @@ constexpr uint16_t NEW_MANTISSA = 0x0008;
 constexpr int64_t EXERPT_TOKENS_COUNT = 1;
 constexpr int64_t EXERPT_TOKENS_KEY_VALUE = 2;
 
+constexpr int64_t INPUT_TOPK_WEIGHT_INDEX = 4;
+constexpr int64_t OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX = 4;
+
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
     if (b == 0) {
