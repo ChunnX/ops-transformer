@@ -1,4 +1,4 @@
-"""GPU 后端实现 — 封装现有 flash_attn_gpu 调用。"""
+"""GPU 后端 — 三路径架构：paged / varlen / fixed。所有 layout 转换集中于此。"""
 
 import torch
 from typing import Any, Dict
@@ -6,8 +6,8 @@ from typing import Any, Dict
 from .base import Backend
 
 try:
-    from core.backends.gpu_impl import flash_attn_gpu
-    _HAS_GPU = True
+    from core.backends.gpu_impl import gpu_fixed_attn, gpu_varlen_attn, gpu_paged_attn, FLASH_ATTN_AVAILABLE
+    _HAS_GPU = FLASH_ATTN_AVAILABLE
 except ImportError:
     _HAS_GPU = False
 
@@ -33,66 +33,234 @@ class GPUBackend(Backend):
 
     def compute(self, inputs: Dict[str, torch.Tensor],
                 params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
-        """调用 flash_attn_gpu。"""
-
-        from utils.data import generate_npu_mask
-
-        b = params.get("B", 1)
-        s1 = params.get("S1", 1)
-        s2 = params.get("S2", s1)
-        mask_mode = params.get("mask_mode", 0)
-        wl = params.get("win_left", 2147483647)
-        wr = params.get("win_right", 2147483647)
-
-        atten_mask = generate_npu_mask(b, s1, s2, mask_mode, wl, wr)
-        mask_gpu = atten_mask.to(self._device) if atten_mask is not None else None
-
-        layout_kv = params.get("layout_kv", params.get("input_layout", "BNSD"))
+        layout_q = params.get("layout_q", params.get("input_layout", "BNSD"))
+        layout_kv = params.get("layout_kv", layout_q)
         block_size = params.get("block_size", 256)
+        mask_mode = params.get("mask_mode", 0)
+        d = params.get("D", inputs["q"].shape[-1])
+        softmax_scale = params.get("scale", d ** (-0.5))
+        causal = (int(mask_mode) == 3)
 
-        if layout_kv == "PA_NZ" or (layout_kv.startswith("PA_") and block_size % 256 != 0):
-            from core.backends.cpu import _pa_to_bnsd
-            k_bnsd = _pa_to_bnsd(inputs["k"].cpu(), layout_kv, params)
-            v_bnsd = _pa_to_bnsd(inputs["v"].cpu(), layout_kv, params)
-            non_pa_params = dict(params)
-            non_pa_params.pop("block_table", None)
-            layout_q = params.get("layout_q", params.get("input_layout", "BNSD"))
+        use_paged = (layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ") and block_size % 256 == 0)
+        use_varlen = (layout_q == "TND")
 
-            if layout_q == "TND":
-                seqused_kv = params.get("seqused_kv") or params.get("actual_seq_kvlen")
-                B_kv = k_bnsd.shape[0]
-                k_slices, v_slices = [], []
-                for i in range(B_kv):
-                    s = int(seqused_kv[i]) if seqused_kv else k_bnsd.shape[2]
-                    k_slices.append(k_bnsd[i, :, :s, :])
-                    v_slices.append(v_bnsd[i, :, :s, :])
-                k_tnd = torch.cat(k_slices, dim=1).unsqueeze(0).to(self._device)
-                v_tnd = torch.cat(v_slices, dim=1).unsqueeze(0).to(self._device)
-                if non_pa_params.get("cu_seqlens_kv") is None and seqused_kv is not None:
-                    cu_kv = [0]
-                    for s in seqused_kv:
-                        cu_kv.append(cu_kv[-1] + int(s))
-                    non_pa_params["cu_seqlens_kv"] = cu_kv
-                non_pa_params["layout_kv"] = "TND"
-                print(f"  [gpu] {layout_kv} TND+PA，KV→TND 走 varlen 路径")
-                out_bnsd = flash_attn_gpu(
-                    inputs["q"], k_tnd, v_tnd,
-                    None, None, mask_gpu, **non_pa_params,
-                )
-            else:
-                k_bnsd = k_bnsd.to(self._device)
-                v_bnsd = v_bnsd.to(self._device)
-                non_pa_params["layout_kv"] = "BNSD"
-                print(f"  [gpu] {layout_kv} (block_size={block_size}) GPU不支持，PA→BNSD 降级")
-                out_bnsd = flash_attn_gpu(
-                    inputs["q"], k_bnsd, v_bnsd,
-                    None, None, mask_gpu, **non_pa_params,
-                )
+        if use_paged:
+            out = self._compute_paged(inputs, params, softmax_scale, causal)
+        elif use_varlen:
+            out = self._compute_varlen(inputs, params, softmax_scale, causal)
         else:
-            out_bnsd = flash_attn_gpu(
-                inputs["q"], inputs["k"], inputs["v"],
-                None, None, mask_gpu, **params,
-            )
+            out = self._compute_fixed(inputs, params, softmax_scale, causal)
 
         torch.cuda.synchronize()
-        return {"out": out_bnsd}
+        return {"out": out}
+
+    # ─── 路径 A: flash_attn_with_kvcache ──────────────────────────────────────
+
+    def _compute_paged(self, inputs, params, softmax_scale, causal):
+        layout_q = params.get("layout_q", params.get("input_layout", "BNSD"))
+        layout_kv = params.get("layout_kv", layout_q)
+        block_table = params.get("block_table")
+
+        if isinstance(block_table, list):
+            if isinstance(block_table[0], list):
+                bt_tensor = torch.tensor(block_table, dtype=torch.int32, device=self._device)
+            else:
+                bt_tensor = torch.tensor([block_table], dtype=torch.int32, device=self._device)
+        else:
+            bt_tensor = block_table.to(device=self._device, dtype=torch.int32)
+
+        q = inputs["q"]
+        k = inputs["k"]
+        v = inputs["v"]
+
+        if layout_kv == "PA_BBND":
+            k_cache = k.contiguous().to(self._device)
+            v_cache = v.contiguous().to(self._device)
+        elif layout_kv == "PA_BNBD":
+            k_cache = k.permute(0, 2, 1, 3).contiguous().to(self._device)
+            v_cache = v.permute(0, 2, 1, 3).contiguous().to(self._device)
+        elif layout_kv == "PA_NZ":
+            k_cache = _pa_nz_to_bbnd(k, params).contiguous().to(self._device)
+            v_cache = _pa_nz_to_bbnd(v, params).contiguous().to(self._device)
+        else:
+            raise ValueError(f"_compute_paged 不支持 layout_kv={layout_kv}")
+
+        if layout_q == "TND":
+            cu_seqlens_q = params.get("cu_seqlens_q")
+            q = _unpack_tnd_to_bnsd(q, cu_seqlens_q).to(self._device)
+            q_bshd = q.permute(0, 2, 1, 3).contiguous()
+        elif layout_q == "BSND":
+            q_bshd = q.to(self._device).contiguous()
+        else:
+            q = q.to(self._device) if q.device != self._device else q
+            q_bshd = q.permute(0, 2, 1, 3).contiguous()
+
+        seqused_kv = params.get("seqused_kv") or params.get("actual_seq_kvlen")
+        B = q_bshd.shape[0]
+        if seqused_kv is None:
+            S_kv = k.shape[2] if layout_kv == "PA_BBND" else k.shape[1]
+            cache_seqlens = torch.full((B,), S_kv, dtype=torch.int32, device=self._device)
+        elif isinstance(seqused_kv, (list, tuple)):
+            cache_seqlens = torch.tensor(list(seqused_kv), dtype=torch.int32, device=self._device)
+        else:
+            cache_seqlens = seqused_kv.to(device=self._device, dtype=torch.int32)
+
+        out_bshd = gpu_paged_attn(q_bshd, k_cache, v_cache, bt_tensor, cache_seqlens,
+                                  softmax_scale, causal)
+        layout_out = params.get("layout_out", layout_q)
+        if layout_out == "BSND":
+            return out_bshd.contiguous()
+        elif layout_out == "TND":
+            cu_seqlens_q = params.get("cu_seqlens_q")
+            return _pack_bnsd_to_tnd(out_bshd.permute(0, 2, 1, 3), cu_seqlens_q).contiguous()
+        else:
+            return out_bshd.permute(0, 2, 1, 3).contiguous()
+
+    # ─── 路径 B: flash_attn_varlen_func ───────────────────────────────────────
+
+    def _compute_varlen(self, inputs, params, softmax_scale, causal):
+        layout_kv = params.get("layout_kv", params.get("input_layout", "BNSD"))
+
+        q = inputs["q"].to(self._device)
+        if q.dim() == 3:
+            q_tnd = q.contiguous()
+        else:
+            q_tnd = q.squeeze(0).permute(1, 0, 2).contiguous()
+
+        if layout_kv.startswith("PA_"):
+            k_bnsd, v_bnsd = self._pa_to_bnsd_pair(inputs, layout_kv, params)
+            k_tnd, v_tnd, cu_kv = self._bnsd_to_tnd_packed(k_bnsd, v_bnsd, params)
+            k_tnd = k_tnd.to(self._device)
+            v_tnd = v_tnd.to(self._device)
+        else:
+            k = inputs["k"].to(self._device)
+            v = inputs["v"].to(self._device)
+            if k.dim() == 3:
+                k_tnd = k.contiguous()
+                v_tnd = v.contiguous()
+            else:
+                k_tnd = k.squeeze(0).permute(1, 0, 2).contiguous()
+                v_tnd = v.squeeze(0).permute(1, 0, 2).contiguous()
+            cu_kv = params.get("cu_seqlens_kv")
+
+        cu_q = params.get("cu_seqlens_q")
+        if cu_q is None:
+            raise ValueError("TND layout 需要 cu_seqlens_q")
+        if cu_kv is None:
+            raise ValueError("TND layout 需要 cu_seqlens_kv")
+
+        seqlens_q = [int(cu_q[i+1]) - int(cu_q[i]) for i in range(len(cu_q)-1)]
+        seqlens_kv = [int(cu_kv[i+1]) - int(cu_kv[i]) for i in range(len(cu_kv)-1)]
+        max_sq = max(seqlens_q) if seqlens_q else 0
+        max_skv = max(seqlens_kv) if seqlens_kv else 0
+
+        out_tnd = gpu_varlen_attn(q_tnd, k_tnd, v_tnd, cu_q, cu_kv,
+                                  max_sq, max_skv, softmax_scale, causal, self._device)
+        layout_out = params.get("layout_out", "TND")
+        if layout_out == "TND":
+            return out_tnd.contiguous()
+        else:
+            return out_tnd.unsqueeze(0).permute(0, 2, 1, 3).contiguous()
+
+    # ─── 路径 C: flash_attn_func ──────────────────────────────────────────────
+
+    def _compute_fixed(self, inputs, params, softmax_scale, causal):
+        layout_kv = params.get("layout_kv", params.get("input_layout", "BNSD"))
+
+        q = inputs["q"].to(self._device)
+
+        if layout_kv.startswith("PA_"):
+            k_bnsd, v_bnsd = self._pa_to_bnsd_pair(inputs, layout_kv, params)
+            k = k_bnsd.to(self._device)
+            v = v_bnsd.to(self._device)
+        else:
+            k = inputs["k"].to(self._device)
+            v = inputs["v"].to(self._device)
+
+        q_bshd = q.permute(0, 2, 1, 3).contiguous()
+        k_bshd = k.permute(0, 2, 1, 3).contiguous()
+        v_bshd = v.permute(0, 2, 1, 3).contiguous()
+
+        out_bshd = gpu_fixed_attn(q_bshd, k_bshd, v_bshd, softmax_scale, causal)
+        layout_out = params.get("layout_out", layout_kv)
+        if layout_out == "BSND":
+            return out_bshd.contiguous()
+        else:
+            return out_bshd.permute(0, 2, 1, 3).contiguous()
+
+    # ─── 工具方法 ─────────────────────────────────────────────────────────────
+
+    def _pa_to_bnsd_pair(self, inputs, layout_kv, params):
+        from core.backends.cpu import _pa_to_bnsd
+        k_cpu = inputs["k"].cpu() if inputs["k"].device != torch.device("cpu") else inputs["k"]
+        v_cpu = inputs["v"].cpu() if inputs["v"].device != torch.device("cpu") else inputs["v"]
+        k_bnsd = _pa_to_bnsd(k_cpu, layout_kv, params)
+        v_bnsd = _pa_to_bnsd(v_cpu, layout_kv, params)
+        return k_bnsd, v_bnsd
+
+    def _bnsd_to_tnd_packed(self, k_bnsd, v_bnsd, params):
+        seqused_kv = params.get("seqused_kv") or params.get("actual_seq_kvlen")
+        B_kv = k_bnsd.shape[0]
+        k_slices, v_slices = [], []
+        for i in range(B_kv):
+            s = int(seqused_kv[i]) if seqused_kv else k_bnsd.shape[2]
+            k_slices.append(k_bnsd[i, :, :s, :])
+            v_slices.append(v_bnsd[i, :, :s, :])
+        k_tnd = torch.cat(k_slices, dim=1).permute(1, 0, 2).contiguous()
+        v_tnd = torch.cat(v_slices, dim=1).permute(1, 0, 2).contiguous()
+
+        cu_kv = params.get("cu_seqlens_kv")
+        if cu_kv is None and seqused_kv is not None:
+            cu_kv = [0]
+            for s in seqused_kv:
+                cu_kv.append(cu_kv[-1] + int(s))
+        return k_tnd, v_tnd, cu_kv
+
+
+def _pa_nz_to_bbnd(t, params):
+    """PA_NZ [num_blocks, N, D//blk_elem, block_size, blk_elem] → PA_BBND [num_blocks, block_size, N, D]"""
+    dtype_str = params.get("Dtype", "fp16")
+    blk_elem = 16 if dtype_str in ("fp16", "bf16") else 32
+    num_blocks, N, d_frac, bs, _ = t.shape
+    t_perm = t.permute(0, 1, 3, 2, 4).contiguous()
+    t_reshaped = t_perm.reshape(num_blocks, N, bs, d_frac * blk_elem)
+    return t_reshaped.permute(0, 2, 1, 3)
+
+
+def _unpack_tnd_to_bnsd(q_tnd, cu_seqlens_q):
+    """TND Q [T, N, D] 或 [1, N, T, D] → BNSD [B, N, max_sq, D]"""
+    if isinstance(cu_seqlens_q, torch.Tensor):
+        cu = cu_seqlens_q.cpu().tolist()
+    else:
+        cu = list(cu_seqlens_q)
+    B = len(cu) - 1
+
+    if q_tnd.dim() == 3:
+        T, N, D = q_tnd.shape
+        max_sq = max(int(cu[i + 1]) - int(cu[i]) for i in range(B))
+        out = torch.zeros(B, N, max_sq, D, dtype=q_tnd.dtype, device=q_tnd.device)
+        for i in range(B):
+            start, end = int(cu[i]), int(cu[i + 1])
+            out[i, :, :end - start, :] = q_tnd[start:end, :, :].permute(1, 0, 2)
+    else:
+        N, D = q_tnd.shape[1], q_tnd.shape[3]
+        max_sq = max(int(cu[i + 1]) - int(cu[i]) for i in range(B))
+        out = torch.zeros(B, N, max_sq, D, dtype=q_tnd.dtype, device=q_tnd.device)
+        for i in range(B):
+            start, end = int(cu[i]), int(cu[i + 1])
+            out[i, :, :end - start, :] = q_tnd[0, :, start:end, :]
+    return out
+
+
+def _pack_bnsd_to_tnd(out_bnsd, cu_seqlens_q):
+    """BNSD [B, N, max_sq, D] → TND [T, N, D]"""
+    if isinstance(cu_seqlens_q, torch.Tensor):
+        cu = cu_seqlens_q.cpu().tolist()
+    else:
+        cu = list(cu_seqlens_q)
+    B = len(cu) - 1
+    slices = []
+    for i in range(B):
+        seq_len = int(cu[i + 1]) - int(cu[i])
+        slices.append(out_bnsd[i, :, :seq_len, :].permute(1, 0, 2))
+    return torch.cat(slices, dim=0)
