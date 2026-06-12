@@ -46,7 +46,7 @@ protected:
     ge::graphStatus CheckValueSupport(const T value, const std::vector<T> &expectValList) const;
 
     // public funcs
-    std::string DataTypeToSerialString(ge::DataType type);
+    std::string DataTypeToSerialString(ge::DataType type) const;
 
 protected:
     bool enableNonQuant_ = false;
