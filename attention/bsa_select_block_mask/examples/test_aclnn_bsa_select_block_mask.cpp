@@ -173,7 +173,7 @@ int main() {
     std::vector<int8_t> resultData(maskOutSize, 0);
     int64_t selectedCount = 0;
     double actualSparsity = 0.0;
-    constexpr int32_t kernelRunTimes = 100;
+    constexpr int32_t kernelRunTimes = 1;
 
     LOG_PRINT("Calling aclnnBSASelectBlockMask %d times with reused tensors and fresh executor...\n", kernelRunTimes);
     for (int32_t runId = 0; runId < kernelRunTimes; ++runId) {
@@ -266,7 +266,7 @@ int main() {
     LOG_PRINT("Selected (non-zero): %ld\n", selectedCount);
     LOG_PRINT("Actual sparsity: %.4f (expected: %.4f)\n", actualSparsity, expectedSparsity);
     
-    uint64_t printNum = 20;
+    uint64_t printNum = 1024;
     LOG_PRINT("First %lu elements:\n", printNum);
     for (uint64_t i = 0; i < printNum && i < resultData.size(); i++) {
         LOG_PRINT("  index %lu: %d\n", i, static_cast<int>(resultData[i]));

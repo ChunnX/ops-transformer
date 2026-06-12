@@ -268,6 +268,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
         (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) + tileTopKOffset * sizeof(int32_t)));
     this->tileHistGm_.SetGlobalBuffer(
         (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) + totalTileNum_ * sizeof(int32_t) + tileHistOffset * sizeof(int32_t)));
+
+    AscendC::InitOutput(this->attnScoreGmLocal[512], 256, static_cast<IN_T>(6.0));
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <typename BSAT>
