@@ -826,12 +826,8 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::CopyOutVec1ResToOutput(c
     LocalTensor<X_T> outputUb = comperssoredUb.ReinterpretCast<X_T>();
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, totalElements);
     PipeBarrier<PIPE_V>();
-    DataCopyParams intriParams;
-    intriParams.blockCount = compressTcSize;
-    intriParams.blockLen = dDealSize / FP16_BLOCK_ELEMENT_NUM;
-    intriParams.dstGap = (constInfo_.headDim - dDealSize) / FP16_BLOCK_ELEMENT_NUM;
-    intriParams.srcGap = 0;
-    DataCopy(cmpKvOutGm_[outGmOffset], outputUb, intriParams);
+    DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize,
+                        int constInfo_.headDim);
 }
 
 template <typename COMP>
