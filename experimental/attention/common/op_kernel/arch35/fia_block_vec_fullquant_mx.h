@@ -1170,18 +1170,12 @@ public:
 
         if (!isSkipMaskForNext) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
+        } else if (!isSkipMaskForPre) {
+            AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo, true);
         } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(1U), maskSize);
         }
 
-        if (!isSkipMaskForPre) {
-            LocalTensor<uint8_t> attenMaskUbPre =
-                this->stage1OutQue[runInfo.loop % DB].template AllocTensor<uint8_t>();
-            AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
-                maskInfo, true);
-            MergeMaskDn(attenMaskUb, attenMaskUbPre, maskSize);
-            this->stage1OutQue[runInfo.loop % DB].template FreeTensor(attenMaskUbPre);
-        }
         if (constInfo.sparseMode == static_cast<uint32_t>(INIT_SWA) && runInfo.s2Idx == 0U && subLoop == 0U &&
             isSkipMaskForNext) {
             uint32_t globalKeepSize = AttentionCommon::Min(BAND_GLOBAL_WINDOW_SIZE, maskInfo.s2dealNum) *
