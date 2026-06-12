@@ -48,7 +48,7 @@ protected:
         const gert::Stride *Strides, int32_t &index) const;
 
     // public funcs
-    std::string DataTypeToSerialString(ge::DataType type);
+    std::string DataTypeToSerialString(ge::DataType type) const;
 
 protected:
     bool enableNonQuant_ = false;

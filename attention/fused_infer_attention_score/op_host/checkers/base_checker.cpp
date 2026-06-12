@@ -91,7 +91,7 @@ ge::graphStatus BaseChecker::CheckValueSupport(const T value, const std::vector<
     return ge::GRAPH_SUCCESS;
 }
 
-std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
+std::string BaseChecker::DataTypeToSerialString(ge::DataType type) const
 {
     const auto it = DATATYPE_TO_STRING_MAP.find(type);
     if (it != DATATYPE_TO_STRING_MAP.end()) {
