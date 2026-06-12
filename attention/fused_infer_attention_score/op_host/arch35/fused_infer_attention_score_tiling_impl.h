@@ -57,13 +57,13 @@ class FusedInferAttentionScoreTilingImpl : public FiaTilingBase {
 public:
     explicit FusedInferAttentionScoreTilingImpl(gert::TilingContext *context) : FiaTilingBase(context) {}
     ~FusedInferAttentionScoreTilingImpl() override = default;
-    void InitTilingInfo(TilingInfo *tilingInfo) {}
-    bool IsCapable() {}
-    ge::graphStatus DoOpTiling() {}
+    void InitTilingInfo(TilingInfo *tilingInfo) override {}
+    bool IsCapable() override {}
+    ge::graphStatus DoOpTiling() override {}
     ge::graphStatus DoOpTiling(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
 
 protected:
-    ge::graphStatus SetPlatMemoryInfo(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
+    ge::graphStatus SetPlatMemoryInfo(const gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetEmptyTensor(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SplitPolicy(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     bool CheckS1OutSplit(const FiaTilingInfo &fiaInfo);
@@ -98,7 +98,7 @@ protected:
     int64_t GetCalcBlockNumsOneHead(const FiaTilingInfo &fiaInfo, int64_t actualSeqLength, int64_t actualSeqLengthKV,
                                     uint32_t sOuterSize, uint32_t sInnerSize);
     int64_t GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums) const;
-    void ComputeSplitNBSeq(const FiaTilingInfo &fiaInfo, const size_t tilingElementArrayLen, uint32_t sOuterSize,
+    void ComputeSplitNBSeq(const FiaTilingInfo &fiaInfo, const size_t maxCoreNums, uint32_t sOuterSize,
                            uint32_t sInnerSize, double coreWeightTarget, uint32_t &curCore);
     void SplitNBSeq(const FiaTilingInfo &fiaInfo);
     void InitImplParam(const FiaTilingInfo &fiaInfo);
@@ -127,7 +127,7 @@ protected:
     void DequantCubeSplitBNSeq(const FiaTilingInfo &fiaInfo);
     int64_t GetActualInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums) const;
     void SplitDequant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus SetDequantMMTilingData(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
+    ge::graphStatus SetDequantMMTilingData(const gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     bool CheckTransposeLayout(const FiaTilingInfo &fiaInfo) const;
     void PrintAllTilingData(const FiaTilingInfo &fiaInfo);
 

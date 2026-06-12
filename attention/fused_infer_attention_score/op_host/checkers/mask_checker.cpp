@@ -17,7 +17,6 @@
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../fused_infer_attention_score_tiling_constants.h"
 #include "mask_checker.h"
