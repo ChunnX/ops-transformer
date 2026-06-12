@@ -997,4 +997,98 @@ TEST_F(AllGatherMatmulV2AclnnTest, TestSecondStageExecutorNull)
     EXPECT_EQ(aclRet, ACLNN_ERR_INNER_NULLPTR);
 }
 
+// ====== mxfp4 (DT_FLOAT4_E2M1) 用例 ======
+// 合法组合：x1=x2=FP4，x1Scale/x2Scale=E8M0(shape [1])，bias=FLOAT，
+// is_trans_b=1（gatherIndex=1 走右矩阵转置语义），K 为 32 倍数。覆盖 3 种 y dtype。
+TEST_F(AllGatherMatmulV2AclnnTest, TestMxfp4ValidYFp16)
+{
+    TensorDesc x1 = TensorDesc({8, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({128, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND); // is_trans_b=1: x2 形状为 {N, K}
+    TensorDesc x1Scale = TensorDesc({1}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({1}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({128}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 1, 8, 1, 0, "ai_cpu"),
+                        OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestMxfp4ValidYBf16)
+{
+    TensorDesc x1 = TensorDesc({8, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({128, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    TensorDesc x1Scale = TensorDesc({1}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({1}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({128}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 128}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 1, 8, 1, 0, "ai_cpu"),
+                        OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(AllGatherMatmulV2AclnnTest, TestMxfp4ValidYFloat)
+{
+    TensorDesc x1 = TensorDesc({8, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({128, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    TensorDesc x1Scale = TensorDesc({1}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({1}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({128}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 128}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 1, 8, 1, 0, "ai_cpu"),
+                        OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// 失败：x1=FP4 / x2=FP8（dtype 不一致）→ CheckDataTypeFp8Fp4Valid 触发 OP_CHECK_DTYPE_NOT_SAME
+TEST_F(AllGatherMatmulV2AclnnTest, TestMxfp4X2Fp8DtypeMismatchFail)
+{
+    TensorDesc x1 = TensorDesc({8, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({128, 64}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    TensorDesc x1Scale = TensorDesc({1}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({1}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({128}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, 0, "test_all_gather_group", 1, 8, 1, 0, "ai_cpu"),
+                        OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+// 失败：FP4 输入但 x1Scale=nullptr → CheckScale 返回 ACLNN_ERR_PARAM_INVALID
+TEST_F(AllGatherMatmulV2AclnnTest, TestMxfp4X1ScaleNullptrFail)
+{
+    TensorDesc x1 = TensorDesc({8, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    TensorDesc x2 = TensorDesc({128, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    TensorDesc x2Scale = TensorDesc({1}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({128}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc output = TensorDesc({8, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOut = TensorDesc({8, 64}, ACL_FLOAT4_E2M1, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmulV2,
+                        INPUT(x1, x2, bias, nullptr, x2Scale, nullptr, 0, "test_all_gather_group", 1, 8, 1, 0, "ai_cpu"),
+                        OUTPUT(output, gatherOut, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
 } // namespace
