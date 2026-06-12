@@ -731,6 +731,21 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
                 OP_LOGE(opName_, "When kv layout is PA_BBND, input sequsedOriKv must be provided");
                 return ge::GRAPH_FAILED;
         }
+    } else if (kvLayout_ == SMLALayout::BSND) {
+        if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
+            if (opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != bSize_) {
+                OP_LOGE(opName_, "seqused_ori_kv's dimension should be equal to %u, but got %ld.",
+                    bSize_, opParamInfo_.sequsedOriKv.tensor->GetShapeSize());
+                return ge::GRAPH_FAILED;
+            }
+            OP_CHECK_IF(opParamInfo_.sequsedOriKv.desc->GetDataType() != ge::DT_INT32,
+                        OP_LOGE(opName_, "seqused_ori_kv's dtype must be DT_INT32."),
+                        return ge::GRAPH_FAILED);
+            actualLenDimsKV_ = opParamInfo_.sequsedOriKv.tensor->GetShapeSize();
+            OP_CHECK_IF(actualLenDimsKV_ == 0,
+                        OP_LOGE(opName_, "seqused_ori_kv cannot be empty tensor."),
+                        return ge::GRAPH_FAILED);
+        }
     } else if (kvLayout_ == SMLALayout::TND) {
         if (opParamInfo_.cuSeqLensKv.tensor != nullptr) {
             if (qLayout_ == SMLALayout::BSND){

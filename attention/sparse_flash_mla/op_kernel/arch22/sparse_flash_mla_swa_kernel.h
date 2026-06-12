@@ -370,6 +370,10 @@ __aicore__ inline int32_t SparseFlashMlaSwa<SMLAT>::GetActualSeqLenKV(uint32_t b
         }
         return actualSeqLengthsKVGm.GetValue(bIdx);
     } else if constexpr(KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
+        tempLoopInfo.actualSeqKVPrefixSum = static_cast<uint64_t>(bIdx * constInfo.kvSeqSize);
+        if (constInfo.actualLenDimsKV != 0) {
+            return actualSeqLengthsKVGm.GetValue(bIdx);
+        }
         return static_cast<int32_t>(constInfo.kvSeqSize);
     } else if constexpr(KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         int32_t actualSeqKVPrefixSum = actualSeqLengthsKVGm.GetValue(bIdx);
@@ -398,6 +402,10 @@ __aicore__ inline int32_t SparseFlashMlaSwa<SMLAT>::GetActualSeqLenCmpKV(uint32_
         }
         return static_cast<int32_t>(constInfo.cmpSeqSize);
     } else {
+        tempLoopInfo.actualSeqCmpKVPrefixSum = static_cast<uint64_t>(bIdx * constInfo.cmpSeqSize);
+        if (constInfo.actualLenDimsCmpKV != 0) {
+            return actualSeqLengthsCmpKVGm.GetValue(bIdx);
+        }
         return (constInfo.cmpSeqSize != 0) ? static_cast<int32_t>(constInfo.cmpSeqSize) :
             actualOriS2Size / static_cast<int32_t>(constInfo.cmpRatio);
     }

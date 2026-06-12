@@ -545,7 +545,8 @@ __aicore__ inline int64_t SMLAVectorBlock<SMLAT>::GetKeyGmOffset(int64_t realS2I
                           blkTableOffset * static_cast<int64_t>(constInfo.kvHeadNum) * static_cast<int64_t>(constInfo.headDim);
 
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
-        realKeyGmOffset = runInfo.bIdx * constInfo.kvSeqSize / constInfo.cmpRatio * constInfo.kvHeadNum + realS2Idx * constInfo.kvHeadNum;
+        realKeyGmOffset = runInfo.bIdx * constInfo.cmpSeqSize * constInfo.kvHeadNum +
+            realS2Idx * constInfo.kvHeadNum;
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         realKeyGmOffset = (runInfo.tensorCmpBOffset + realS2Idx * constInfo.kvHeadNum * constInfo.headDim) /
                            constInfo.headDim;

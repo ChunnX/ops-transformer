@@ -539,7 +539,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                         DataCopy(bL1Tensor, oriKvGm[offset], nd2nzPara);
                     }
                     if (cmpSizeCur > 0) {
-                        uint32_t batchStride = constInfo.kvSeqSize / constInfo.cmpRatio * seqStride;
+                        uint32_t batchStride = constInfo.cmpSeqSize * seqStride;
                         uint32_t cmpMixsizeCur = N_SPLIT_SIZE - info.actualSingleProcessSInnerOriSize % N_SPLIT_SIZE;
                         uint32_t oriOnlyLoopTimes = info.actualSingleProcessSInnerOriSize / N_SPLIT_SIZE;
                         uint32_t cmpLoopTimes = nL1 - oriOnlyLoopTimes;
@@ -625,7 +625,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
 
                     uint32_t headStride  = constInfo.headDim;
                     uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
-                    uint32_t batchStride = constInfo.kvSeqSize / constInfo.cmpRatio * seqStride;
+                    uint32_t batchStride = constInfo.cmpSeqSize * seqStride;
 
                     uint64_t curS2 = static_cast<uint64_t>(info.relativeS2Idx) * constInfo.s2BaseSize + \
                         info.s2StartPoint + nL1 * N_SPLIT_SIZE;
@@ -972,7 +972,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
                         if (cmpSizeCur > 0) {
                             nd2nzPara.nValue = cmpSizeCur;
                             subvTensor = bL1Tensor[(kL1 - kOffset) * K_L0_SPLIT_SIZE * N_SPLIT_SIZE + oriSizeCur * 16];
-                            uint32_t batchStride = constInfo.kvSeqSize / constInfo.cmpRatio * seqStride;
+                            uint32_t batchStride = constInfo.cmpSeqSize * seqStride;
                             uint32_t cmpMixsizeCur = K_L0_SPLIT_SIZE - \
                                 info.actualSingleProcessSInnerOriSize % K_L0_SPLIT_SIZE;
                             uint32_t oriOnlyLoopTimes = info.actualSingleProcessSInnerOriSize / K_L0_SPLIT_SIZE;
@@ -1061,7 +1061,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
 
                         uint32_t headStride  = constInfo.headDim;
                         uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
-                        uint32_t batchStride = constInfo.kvSeqSize / constInfo.cmpRatio * seqStride;
+                        uint32_t batchStride = constInfo.cmpSeqSize * seqStride;
 
                         uint64_t curS2 = (uint64_t)info.relativeS2Idx * constInfo.s2BaseSize + info.s2StartPoint + \
                             K_L0_SPLIT_SIZE * kL1;
