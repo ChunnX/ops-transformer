@@ -42,6 +42,22 @@ def _bshd_to_bnsd(tensor: torch.Tensor) -> torch.Tensor:
     return tensor.permute(0, 2, 1, 3).contiguous()
 
 
+def _unpack_tnd_to_bnsd(q_tnd, cu_seqlens_q):
+    """TND 格式 Q [1, N, total_tokens, D] → BNSD [B, N, max_sq, D]（pad 对齐）"""
+    N, D = q_tnd.shape[1], q_tnd.shape[3]
+    if isinstance(cu_seqlens_q, torch.Tensor):
+        cu = cu_seqlens_q.cpu().tolist()
+    else:
+        cu = list(cu_seqlens_q)
+    B = len(cu) - 1
+    max_sq = max(int(cu[i + 1]) - int(cu[i]) for i in range(B))
+    out = torch.zeros(B, N, max_sq, D, dtype=q_tnd.dtype, device=q_tnd.device)
+    for i in range(B):
+        start, end = int(cu[i]), int(cu[i + 1])
+        out[i, :, :end - start, :] = q_tnd[0, :, start:end, :]
+    return out
+
+
 def flash_attn_gpu(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -114,7 +130,10 @@ def flash_attn_gpu(
         else:
             raise ValueError(f"不支持的 PA layout: {layout_kv}")
         
-        # Q 转换为 BSHD 格式
+        # Q 转换为 BSHD 格式（TND 时先拆包为 BNSD）
+        if input_layout == "TND":
+            cu_seqlens_q = kwargs.get("cu_seqlens_q") or kwargs.get("_npu_cu_q")
+            q = _unpack_tnd_to_bnsd(q, cu_seqlens_q)
         q_bshd = _bnsd_to_bshd(q)
         
         # 提取 seqused_kv 作为 cache_seqlens
@@ -147,7 +166,7 @@ def flash_attn_gpu(
     if input_layout == "TND":
         cu_seqlens_q = kwargs.get("cu_seqlens_q") or kwargs.get("_npu_cu_q")
         cu_seqlens_kv = kwargs.get("cu_seqlens_kv") or kwargs.get("_npu_cu_kv")
-        if not cu_seqlens_q or not cu_seqlens_kv:
+        if cu_seqlens_q is None or cu_seqlens_kv is None:
             raise ValueError("TND layout 需要提供 cu_seqlens_q 和 cu_seqlens_kv")
 
         # 将 BNSD (B=1, N, total_tokens, D) 转换为 TND: (total_tokens, N, D)

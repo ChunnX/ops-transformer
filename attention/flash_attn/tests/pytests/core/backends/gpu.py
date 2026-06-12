@@ -52,16 +52,42 @@ class GPUBackend(Backend):
 
         if layout_kv == "PA_NZ" or (layout_kv.startswith("PA_") and block_size % 256 != 0):
             from core.backends.cpu import _pa_to_bnsd
-            k_bnsd = _pa_to_bnsd(inputs["k"].cpu(), layout_kv, params).to(self._device)
-            v_bnsd = _pa_to_bnsd(inputs["v"].cpu(), layout_kv, params).to(self._device)
+            k_bnsd = _pa_to_bnsd(inputs["k"].cpu(), layout_kv, params)
+            v_bnsd = _pa_to_bnsd(inputs["v"].cpu(), layout_kv, params)
             non_pa_params = dict(params)
-            non_pa_params["layout_kv"] = "BNSD"
             non_pa_params.pop("block_table", None)
-            print(f"  [gpu] {layout_kv} (block_size={block_size}) GPU不支持，PA→BNSD 降级")
-            out_bnsd = flash_attn_gpu(
-                inputs["q"], k_bnsd, v_bnsd,
-                None, None, mask_gpu, **non_pa_params,
-            )
+            layout_q = params.get("layout_q", params.get("input_layout", "BNSD"))
+
+            if layout_q == "TND":
+                seqused_kv = params.get("seqused_kv") or params.get("actual_seq_kvlen")
+                B_kv = k_bnsd.shape[0]
+                k_slices, v_slices = [], []
+                for i in range(B_kv):
+                    s = int(seqused_kv[i]) if seqused_kv else k_bnsd.shape[2]
+                    k_slices.append(k_bnsd[i, :, :s, :])
+                    v_slices.append(v_bnsd[i, :, :s, :])
+                k_tnd = torch.cat(k_slices, dim=1).unsqueeze(0).to(self._device)
+                v_tnd = torch.cat(v_slices, dim=1).unsqueeze(0).to(self._device)
+                if non_pa_params.get("cu_seqlens_kv") is None and seqused_kv is not None:
+                    cu_kv = [0]
+                    for s in seqused_kv:
+                        cu_kv.append(cu_kv[-1] + int(s))
+                    non_pa_params["cu_seqlens_kv"] = cu_kv
+                non_pa_params["layout_kv"] = "TND"
+                print(f"  [gpu] {layout_kv} TND+PA，KV→TND 走 varlen 路径")
+                out_bnsd = flash_attn_gpu(
+                    inputs["q"], k_tnd, v_tnd,
+                    None, None, mask_gpu, **non_pa_params,
+                )
+            else:
+                k_bnsd = k_bnsd.to(self._device)
+                v_bnsd = v_bnsd.to(self._device)
+                non_pa_params["layout_kv"] = "BNSD"
+                print(f"  [gpu] {layout_kv} (block_size={block_size}) GPU不支持，PA→BNSD 降级")
+                out_bnsd = flash_attn_gpu(
+                    inputs["q"], k_bnsd, v_bnsd,
+                    None, None, mask_gpu, **non_pa_params,
+                )
         else:
             out_bnsd = flash_attn_gpu(
                 inputs["q"], inputs["k"], inputs["v"],
