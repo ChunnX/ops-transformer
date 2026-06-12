@@ -130,6 +130,9 @@ constexpr std::initializer_list<ge::DataType> FP8DTYPE_SUPPORT_LIST = {
 constexpr std::initializer_list<ge::DataType> MXFP8DTYPE_SUPPORT_LIST = { ge::DataType::DT_FLOAT8_E4M3FN,
     ge::DataType::DT_FLOAT8_E5M2 };
 
+constexpr std::initializer_list<ge::DataType> MXFP4DTYPE_SUPPORT_LIST = {
+    ge::DataType::DT_FLOAT4_E2M1 };
+
 matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName,
                                               ge::DataType type);
 ge::DataType ConvertMmTypeToGeType(const std::string &opName,
