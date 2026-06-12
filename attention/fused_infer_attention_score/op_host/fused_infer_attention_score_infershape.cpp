@@ -106,13 +106,18 @@ static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
         queryDim = it->second.qDim;
 
         if (queryShape->GetDimNum() != queryDim) {
-            OP_LOGE("FusedInferAttentionScore", "Layout %s, query's dim(%zu) must be %zu!",
-                queryLayout.c_str(), queryShape->GetDimNum(), queryDim);
+            std::string dimStr = std::to_string(queryShape->GetDimNum());
+            std::string reason = "The shape dim of query must be " + std::to_string(queryDim) +
+                " when layout is " + queryLayout + ".";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FusedInferAttentionScore", "query",
+                dimStr.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     } else {
-        OP_LOGE("FusedInferAttentionScore", "Only support layout BSH, BSND, BNSD, TND, NTD, BNSD_BSND, BSH_BNSD, "
-                "BSND_BNSD, NTD_TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, but got %s.", *inputLayoutPtr);
+        std::string reason = "The value of input_layout must be in BSH, BSND, BNSD, TND, NTD, BNSD_BSND, BSH_BNSD, "
+            "BSND_BNSD, NTD_TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD.";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FusedInferAttentionScore", "input_layout",
+            std::string(inputLayoutPtr).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -333,7 +338,8 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
 
     // KV_N除零保护, 当KV_N为零时KV_N = Q_N
     if (*numHeadsPtr == 0) {
-        OP_LOGE(context->GetNodeName(), "numHeads can not be 0!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "num_heads",
+            std::to_string(*numHeadsPtr).c_str(), "The value of num_heads cannot be 0.");
         return ge::GRAPH_FAILED;
     }
     int64_t numKeyValueHeads = (*numKeyValueHeadsPtr == 0) ? *numHeadsPtr : *numKeyValueHeadsPtr;
@@ -392,7 +398,9 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
         if (outTypePtr != nullptr) {
             auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
             if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()){
-                OP_LOGE("FusedInferAttentionScore", "Fia graph mode do not support post quant output data type: %s.", it->second.c_str());
+                std::string reason = "The dtype of output cannot be " + it->second + " when Fia graph mode is enabled.";
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FusedInferAttentionScore", "output",
+                    it->second.c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
             }
             auto iter = TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.find(*outTypePtr);
