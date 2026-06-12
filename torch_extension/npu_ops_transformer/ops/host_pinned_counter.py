@@ -17,8 +17,14 @@ class HostPinnedCounterOpBuilder(OpBuilder):
 
     def sources(self):
         return ['ops/csrc/host_pinned_counter.cpp']
+    
+    def schema(self):
+        return None
 
+    def register_meta(self):
+        pass
 
 host_pinned_counter_op_builder = HostPinnedCounterOpBuilder()
 op_module_host_pinned_counter = host_pinned_counter_op_builder.load()
+
 HostPinnedCounter = op_module_host_pinned_counter.HostPinnedCounter
