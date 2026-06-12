@@ -923,7 +923,6 @@ __aicore__ inline void BatchInterleaveModeVFMixed(__local_mem__ TX *in, __local_
     int64_t dAlign, int64_t dAlignFloat, int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t loopSize = 2 * VL_FLOAT32_SIZE;
-    uint32_t txLoopSize = loopSize * sizeof(float) / sizeof(TX);  // Convert to TX element units
     uint16_t dLoopCount = (d + loopSize - 1) / loopSize;
 
     uint32_t halfNum = d / 2;
@@ -974,11 +973,12 @@ __aicore__ inline void BatchInterleaveModeVFMixed(__local_mem__ TX *in, __local_
                         pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
                         pregPart1 = MicroAPI::UpdateMask<float>(part1Cnt);
                         pregPart2 = MicroAPI::UpdateMask<float>(part2Cnt);
-                        ops::LoadOneTensorForDtypeT<TX>(currInUb, inPart1Reg, pregPart1, i * txLoopSize);
+                        // Load/Store的offset是TX元素偏移，需与cos/sin逻辑下标对齐，不能按dtype字节数换算。
+                        ops::LoadOneTensorForDtypeT<TX>(currInUb, inPart1Reg, pregPart1, i * loopSize);
                         ops::LoadOneTensorForDtypeT<TX>(currInUb,
                             inPart2Reg,
                             pregPart2,
-                            i * txLoopSize + VL_FLOAT32_SIZE * sizeof(float) / sizeof(TX));
+                            i * loopSize + VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<float>(currCosUb, cosPart1Reg, pregPart1, i * loopSize);
                         ops::LoadOneTensorForDtypeT<float>(
                             currCosUb, cosPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
@@ -994,11 +994,11 @@ __aicore__ inline void BatchInterleaveModeVFMixed(__local_mem__ TX *in, __local_
                         Add(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregPart1);
                         Mul(sinPart2Reg, sinPart2Reg, inPart2Reg, pregPart2);
                         Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregPart2);
-                        ops::StoreOneTensorForDtypeT<TX>(currOutUb, cosPart1Reg, pregPart1, i * txLoopSize);
+                        ops::StoreOneTensorForDtypeT<TX>(currOutUb, cosPart1Reg, pregPart1, i * loopSize);
                         ops::StoreOneTensorForDtypeT<TX>(currOutUb,
                             cosPart2Reg,
                             pregPart2,
-                            i * txLoopSize + VL_FLOAT32_SIZE * sizeof(float) / sizeof(TX));
+                            i * loopSize + VL_FLOAT32_SIZE);
                     }
                 }
             }
