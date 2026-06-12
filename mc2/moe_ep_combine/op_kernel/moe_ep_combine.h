@@ -27,7 +27,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-#include "../../common/op_kernel/mc2_moe_context.h"
+#include "moe_ep_combine_base.h"
 #include "moe_ep_combine_tiling.h"
 
 #ifndef ALIGN_UP
@@ -40,57 +40,96 @@ using namespace AscendC;
 using Mc2Aclnn::HCCL_MAX_RANK_SIZE;
 using Mc2Aclnn::Mc2MoeContext;
 
-inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
+#define TemplateMoeEpCombineTypeClass uint32_t HAS_TOPK_WEIGHTS
+#define TemplateMoeEpCombineTypeFunc HAS_TOPK_WEIGHTS
+#define HCOMM_INIT_SIZE 512UL
+
+
 
 static constexpr uint32_t MAX_TOPK = 8;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
+constexpr uint64_t UB_ALIGN = 32UL;
+constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U;  // 本卡状态空间偏移地址，前面的地址给dispatch用
+constexpr uint32_t STATE_OFFSET = 32U; 
+constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 
-__aicore__ inline GM_ADDR GetBaseWinAddrByRankId(uint32_t rankId)
-{
-    return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE);
-}
-
-template <uint32_t HAS_TOPK_WEIGHTS>
+template <TemplateMoeEpCombineTypeClass>
 class KernelMoeEpCombine {
 public:
     __aicore__ inline KernelMoeEpCombine(){};
 
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadata,
-                                GM_ADDR numRecvPerRank, GM_ADDR topkWeights, GM_ADDR bias0, GM_ADDR bias1,
+                                GM_ADDR numRecvPerRank, GM_ADDR topkWeightsOptional, GM_ADDR bias0, GM_ADDR bias1,
                                 GM_ADDR combinedX, GM_ADDR combinedTopkWeightsOptional, GM_ADDR workspace,
                                 GM_ADDR tilingGM, TPipe *pipe, const MoeEpCombineInfo *tilingData);
 
     __aicore__ inline void Process();
 
 private:
-__aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
-                                    uint32_t &endTokenId);
+    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
+                                    uint32_t &endTokenId, uint32_t &tokenPerAivNum);
+    __aicore__ inline void SendToken(GM_ADDR localWorkspaceAddr, GM_ADDR remoteRankWinAddr, 
+                                    uint32_t tokenIndex, uint32_t dstRankId);
+    __aicore__ inline void SetStatus(GM_ADDR localRankStateAddr,  GM_ADDR remoteRankStateAddr, uint32_t tokenIndex, uint32_t dstRankId);
+    __aicore__ inline bool WaitDispatch(uint32_t tokenIndex, uint32_t copyCount, uint32_t beginIndex);
+    __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex, uint32_t processLen);
     __aicore__ inline void SendPhaseExpertToToken();
-    __aicore__ inline void RecvPhaseStashing();
     __aicore__ inline void RecvPhaseReduce();
 
+    __aicore__ inline uint64_t GetCommHandle(uint32_t rankId)
+    {
+        uint32_t index = rankId > rankId_ ? rankId - 1 : rankId;
+        return hcommHandle_[index];
+    }
+    __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId)
+    {
+        return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE + winDataSizeOffset_);
+    }
+    __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(uint32_t rankId)
+    {
+        // return (GM_ADDR)(winRankAddr_[rankId] + dataState_ * WIN_STATE_OFFSET);
+        return (GM_ADDR)(winRankAddr_[rankId]);
+    }
+
+    __aicore__ inline GM_ADDR GetLocalWinAddrByRankId(const int32_t rankId)
+    {
+        return (GM_ADDR)localUrmaWorkspace_ + Mc2Kernel::A5_MTE_STATE_WIN_SIZE + winDataSizeOffset_ + 
+                    totalWinSizeEp_ * rankId;
+    }
+    __aicore__ inline GM_ADDR GetLocalWindStateAddrByRankId(const int32_t rankId)
+    {
+        // return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + dataState_ * WIN_STATE_OFFSET;
+        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId ;
+    }
     TPipe *tpipe_{nullptr};
     const MoeEpCombineInfo *tilingData_{nullptr};
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
-    uint32_t rankId_{0};
 
+    uint64_t winDataSizeOffset_{0}; // 窗口数据区偏移
+    uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
     uint32_t numMaxTokensPerRank_{0};
     uint32_t numTokens_{0};
     uint32_t topK_{0};
-    uint32_t hidden_{0};
+    uint32_t axisH_{0};
+    uint32_t hAlignSize_{0};       // UB对齐后的hidden size
     uint32_t perSlotBytes_{0};
-    uint32_t actuallA{0};
+    uint32_t actualA{0};
     uint32_t aivNum_{0};
+    uint32_t totalWinSizeEp_{0};
+
     uint32_t tStart_{0};
     uint32_t tEnd_{0};
+    uint32_t tPerCore_{0};
     uint32_t ubXBytes_{0};
+    uint32_t stateOffset_{0};
     GlobalTensor<bfloat16_t> xGm_;
     GlobalTensor<int32_t> dstSlotIdxGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
     GlobalTensor<int32_t> numRecvPerRankGm_;
-    GlobalTensor<float> topkWeightsGm_;
+    GlobalTensor<float> topkWeightsOptionalGm_;
 
+    LocalTensor<bfloat16_t> xTmpTensor_;   
     GlobalTensor<bfloat16_t> combinedXGm_;
     GlobalTensor<float> combinedTopkWeightsGm_;
 
@@ -98,44 +137,62 @@ __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, u
     LocalTensor<float> ubAccFp32_;
     LocalTensor<float> ubTmpFp32_;
     LocalTensor<float> ubWeighted_;
+    LocalTensor<uint8_t> hcommTensor_;
+    LocalTensor<float> stateResetTensor_;
 
     TBuf<QuePosition::VECIN> ubXBuf_;
     TBuf<QuePosition::VECIN> ubAccFp32Buf_;
     TBuf<QuePosition::VECIN> ubTmpFp32Buf_;
     TBuf<QuePosition::VECIN> ubWeightedBuf_;
+    TBuf<> readStateBuf_;
+    TBuf<> tokenStatusBuf_;
+    TBuf<> stateBuf_;
+    TBuf<> stateSumBuf_;
+    TBuf<> stateResetBuf_;
+    TBuf<> hcommBuf_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
 
-    GM_ADDR workspace_{nullptr};
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
+
+    GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
+    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
+    GM_ADDR localUrmaWorkspace_{nullptr};      // 工作空间的GM地址
     uint32_t aivId_{0};
 };
 
-template <uint32_t HAS_TOPK_WEIGHTS>
-__aicore__ inline void KernelMoeEpCombine<HAS_TOPK_WEIGHTS>::Init(
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadata, GM_ADDR numRecvPerRank,
-    GM_ADDR topkWeights, GM_ADDR bias0, GM_ADDR bias1, GM_ADDR combinedX, GM_ADDR combinedTopkWeightsOptional,
+    GM_ADDR topkWeightsOptional, GM_ADDR bias0, GM_ADDR bias1, GM_ADDR combinedX, GM_ADDR combinedTopkWeightsOptional,
     GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe, const MoeEpCombineInfo *tilingData)
 {
     tpipe_ = pipe;
     tilingData_ = tilingData;
     aivId_ = GetBlockIdx();
-    workspace_ = workspace;
-    
+    localUrmaWorkspace_ = workspace;
     epWorldSize_ = tilingData_->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
     numTokens_ = tilingData_->cfg.numTokens;
     topK_ = tilingData_->cfg.topK;
-    hidden_ = tilingData_->cfg.hidden;
+    axisH_ = tilingData_->cfg.hidden;
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
     aivNum_ = tilingData_->aivNum;
+    totalWinSizeEp_ = tilingData->totalWinSizeEp;
+    hAlignSize_ = Ceil(axisH_ * sizeof(bfloat16_t), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
+    stateOffset_ = STATE_OFFSET;
 
-    SplitToCore(numTokens_, aivNum_, tStart_, tEnd_);
+    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
+    hcommTensor_ = hcommBuf_.Get<uint8_t>();
+    hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
+        hcommHandle_[i] = (GM_ADDR)mc2Context_->hcommHandle_[i];
     }
 
-    actuallA = epWorldSize_ * numMaxTokensPerRank_;
+    actualA = epWorldSize_ * numMaxTokensPerRank_ * topK_;
 
     xGm_.SetGlobalBuffer((__gm__ bfloat16_t *)x);
     dstSlotIdxGm_.SetGlobalBuffer((__gm__ int32_t *)dstBufferSlotIdx);
@@ -144,18 +201,19 @@ __aicore__ inline void KernelMoeEpCombine<HAS_TOPK_WEIGHTS>::Init(
     combinedXGm_.SetGlobalBuffer((__gm__ bfloat16_t *)combinedX);
 
     if constexpr (HAS_TOPK_WEIGHTS == 1) {
-        topkWeightsGm_.SetGlobalBuffer((__gm__ float *)topkWeights);
+        topkWeightsOptionalGm_.SetGlobalBuffer((__gm__ float *)topkWeightsOptional);
         combinedTopkWeightsGm_.SetGlobalBuffer((__gm__ float *)combinedTopkWeightsOptional);
     }
 
-    ubXBytes_ = ALIGN_UP(2 * hidden_ * sizeof(bfloat16_t), 32);
-    uint32_t ubAccBytes = hidden_ * sizeof(float);
-    uint32_t ubTmpBytes = hidden_ * sizeof(float);
-    uint32_t ubWeightBytes = hidden_ * sizeof(float);
+    ubXBytes_ = ALIGN_UP(2 * axisH_ * sizeof(bfloat16_t), 32);
+    uint32_t ubAccBytes = axisH_ * sizeof(float);
+    uint32_t ubTmpBytes = axisH_ * sizeof(float);
+    uint32_t ubWeightBytes = axisH_ * sizeof(float);
 
     tpipe_->InitBuffer(ubXBuf_, ubXBytes_);
     tpipe_->InitBuffer(ubAccFp32Buf_, ubAccBytes);
     tpipe_->InitBuffer(ubTmpFp32Buf_, ubTmpBytes);
+    tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);  // 32
     if constexpr (HAS_TOPK_WEIGHTS == 1) {
         tpipe_->InitBuffer(ubWeightedBuf_, ubWeightBytes);
     }
@@ -168,12 +226,12 @@ __aicore__ inline void KernelMoeEpCombine<HAS_TOPK_WEIGHTS>::Init(
     }
 }
 
-template <uint32_t HAS_TOPK_WEIGHTS>
-__aicore__ inline void KernelMoeEpCombine<HAS_TOPK_WEIGHTS>::SplitToCore(
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SplitToCore(
     uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
-    uint32_t &endTokenId)
+    uint32_t &endTokenId, uint32_t &sendTokenNum)
 {
-    uint32_t sendTokenNum = curSendCnt / curUseAivNum;                // 每个aiv需要发送的token数
+    sendTokenNum = curSendCnt / curUseAivNum;                // 每个aiv需要发送的token数
     uint32_t remainderTokenNum = curSendCnt % curUseAivNum;  // 余数
     uint32_t newAivId = aivId_;
 
@@ -187,154 +245,215 @@ __aicore__ inline void KernelMoeEpCombine<HAS_TOPK_WEIGHTS>::SplitToCore(
     endTokenId = startTokenId + sendTokenNum;
 }
 
-template <uint32_t HAS_TOPK_WEIGHTS>
-__aicore__ inline void KernelMoeEpCombine<HAS_TOPK_WEIGHTS>::SendPhaseExpertToToken()
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendToken(
+    GM_ADDR localWorkspaceAddr,  GM_ADDR remoteRankWinAddr, uint32_t tokenIndex, uint32_t dstRankId)
+{
+    // 处理单个token：
+    // 1. 从输入GM读取token数据到UB
+    // 2. 将token数据写入目标rank的窗口
+    GlobalTensor<bfloat16_t> outTokenGT;
+    outTokenGT.SetGlobalBuffer((__gm__ bfloat16_t*)localWorkspaceAddr);
+    if (dstRankId == rankId_) {
+        outTokenGT.SetGlobalBuffer((__gm__ bfloat16_t*)remoteRankWinAddr); // 目标rank是epRankId，直接写入remoteAddr
+    }
+    
+    DataCopyPadParams padParams = {false, 0, 0, 0};
+    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(bfloat16_t)), 0U, 0U};
+    DataCopyParams hCommuCopyOutParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
+
+    // 从GM读取token到UB
+    xTmpTensor_ = xQueue_.AllocTensor<bfloat16_t>();
+    DataCopyPad(xTmpTensor_, xGm_[tokenIndex * axisH_], xCopyParams, padParams);
+    xQueue_.EnQue(xTmpTensor_);
+    xTmpTensor_ = xQueue_.DeQue<bfloat16_t>();
+    // 写入目标rank的窗口
+    DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
+    xQueue_.FreeTensor<bfloat16_t>(xTmpTensor_);
+
+    PipeBarrier<PIPE_MTE3>(); // 是否需要这个流水
+    // cacheWriteThrough(reinterpret_cast<__gm__ uint8_t *>(outTokenGT), 
+    //                  axisH_ * sizeof(bfloat16_t));//每隔64B做一次DCCI
+    // 一个个写入token
+    if (dstRankId != rankId_) {
+        //printf("START WRITR TOKEN");
+        hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWinAddr, localWorkspaceAddr, hAlignSize_);
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(
+    GM_ADDR localRankStateAddr,  GM_ADDR remoteRankStateAddr, uint32_t tokenIndex, uint32_t dstRankId)
+{
+    // ============ 将状态写入目标rank的状态区 ============
+    // 写入位置: 目标rank状态区 + 当前rank的偏移
+    LocalTensor<float> statusTensor = readStateBuf_.Get<float>();
+    Duplicate<float>(statusTensor, (float)1, FLOAT_PER_UB_ALIGN);
+    GlobalTensor<float> outStateTensor;
+    outStateTensor.SetGlobalBuffer((__gm__ float*)localRankStateAddr);
+    if (dstRankId == rankId_) {
+        outStateTensor.SetGlobalBuffer((__gm__ float*)remoteRankStateAddr); // 目标rank是epRankId，直接写入remoteAddr
+    }
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopy<float>(outStateTensor, statusTensor, 8UL);
+
+    if (dstRankId != rankId_) {
+        //printf("START WRITR TOKEN");
+        hcomm_.Drain(GetCommHandle(dstRankId));
+        hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpertToToken()
 {   
-    // uint32_t aStart = aivId_ * actuallA / aivNum_;
-    // uint32_t aEnd = (aivId_ + 1) * actuallA / aivNum_;
-    uint32_t aStart = 0;
-    uint32_t aEnd = 0;
-    SplitToCore(actuallA, aivNum_, aStart, aEnd);
-    uint16_t copyLen = static_cast<uint16_t>(hidden_);
-    DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(copyLen), 0U, 0U, 0U};
-    DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
-    for (uint32_t a = aStart; a < aEnd; ++a) {
-        int32_t src_token_global = recvSrcMetadataGm_.GetValue(a * 3 + 0);
-        int32_t src_rank = recvSrcMetadataGm_.GetValue(a * 3 + 1);
-        int32_t src_slot = recvSrcMetadataGm_.GetValue(a * 3 + 2);
 
-        if (src_rank < 0)
-            continue;
-
-        GM_ADDR dstWinBase = GetBaseWinAddrByRankId(src_rank);
-        GM_ADDR slotAddr = dstWinBase + (rankId_ * numMaxTokensPerRank_ + src_slot) * perSlotBytes_;
-        //to do   疑问: 1.perSlotBytes_的值在tiling侧的赋值，该是多少，跟后面的weight_extra有关系么
-        //     info.cfg.perSlotBytes = static_cast<uint32_t>(
-        //     ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN 
-        //      + 80UL + 16UL);
-
-        DataCopyPad(ubX_, xGm_[a * hidden_], copyParams, copyPadParams);
-        // 疑问：2.这里是不是要考虑udma通信的方式由localRankGM →  remoteRankGM   
-        // 由 ubX_ 直接到 dstTokenTensor ，也就是 xGm_ 到 slotAddr
-        GlobalTensor<bfloat16_t> dstTokenTensor;
-        dstTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(slotAddr));
-        DataCopyPad(dstTokenTensor, ubX_, copyParams);
-        PipeBarrier<PIPE_ALL>();
-        if constexpr (HAS_TOPK_WEIGHTS == 1) {
-            //to do   Window[src_rank][src_slot].weight_extra = topk_weights[?]
-            //疑问：3.topk_weights的哪个值？topk_weights[src_token_global*top_k + top_k_idx]
-            //      4.Window[src_rank][src_slot].weight_extra 是哪个地址？slotAddr的后面要留4B么？
-        }
-        cacheWriteThrough(reinterpret_cast<__gm__ uint8_t *>(slotAddr), hidden_ * sizeof(bfloat16_t));
-        //没隔64B做一次DCCI
+    uint32_t startRankId, endRankId, sendRankNum;
+    SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
+    if (startRankId >= endRankId || sendRankNum == 0) { 
+        return; 
     }
-}
-
-template <uint32_t HAS_TOPK_WEIGHTS>
-__aicore__ inline void KernelMoeEpCombine<HAS_TOPK_WEIGHTS>::RecvPhaseStashing()
-{
-    GM_ADDR localWinBase = GetBaseWinAddrByRankId(rankId_);
-    GM_ADDR stashBase = workspace_;
-    uint16_t copyLen = static_cast<uint16_t>(hidden_);
-    DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(copyLen), 0U, 0U, 0U};
-    DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
-    for (uint32_t t = tStart_; t < tEnd_; ++t) {
-        for (uint32_t k = 0; k < topK_; ++k) {
-            int32_t slot = dstSlotIdxGm_.GetValue(t * topK_ + k);
-            // dstSlotIdxGm_ 是 dispatch 的输出
-            // dispatch时 sender 端为每个 (token, k) 预留的 receiver slot 索引
-            if (slot < 0)
+    for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
+        for (uint32_t tokenIndex = 0; tokenIndex < actualA; ++tokenIndex) {
+            int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 0);
+            int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 1);
+            int32_t src_topK_idx = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 2);
+            if (src_rank < 0 || src_rank!= rankId) { // 只处理当前rank负责的token
                 continue;
-
-            uint32_t numValidRanks = 0;
-            GM_ADDR slotAddr = nullptr;
-
-            for (uint32_t src_r = 0; src_r < epWorldSize_; ++src_r) {
-                int32_t cnt = numRecvPerRankGm_.GetValue(src_r);
-                // numRecvPerRankGm_ 是dispatch的输出
-                // 疑问：1.如果 numRecvPerRankGm_ 存储的是每个 rank 的计数，那么应该使用累积计数？？cnt是累加的？
-                // dispatch时 本 rank 从各 EP rank 接收 token 数
-                // 疑问：2.slot值是一个slot的索引？他的意义是什么？ 为什么要跟numRecvPerRankGm_作比较
-                if (slot < cnt) {
-                    slotAddr = localWinBase + src_r * numMaxTokensPerRank_ * perSlotBytes_ + slot * perSlotBytes_;
-                    // 疑问：3.怀疑此偏移的正确性 slot是rank内的offsetInRank？？
-                    break;
-                }
             }
+            // 计算目标窗口地址:
+            // 当前rank的workspaceGM地址（src_rank只是为了workspace内的以卡分区）
+            GM_ADDR localRankWorkSpaceAddr = GetLocalWinAddrByRankId(src_rank) + 
+                (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
+            // 当对端rank的win区地址(urma通信)
+            GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank) + 
+                (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
 
-            if (slotAddr == nullptr)
-                continue;
+            SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);  
+            if constexpr (HAS_TOPK_WEIGHTS == 1) {
+                //to do   Window[src_rank][src_slot].weight_extra = topk_weights[?]
+                //疑问：3.topk_weights的哪个值？topk_weights[src_token_global*top_k + top_k_idx]
+                //      4.Window[src_rank][src_slot].weight_extra 是哪个地址？slotAddr的后面要留4B么？
+            }
+            PipeBarrier<PIPE_MTE3>();
+            GM_ADDR localRankStateAddr = GetLocalWindStateAddrByRankId(src_rank) + 
+                (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
+            GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank) + 
+                (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
 
-            GlobalTensor<bfloat16_t> LocalRecvTokenTensor;
-            LocalRecvTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(slotAddr));
-            uint16_t Tokneindex = (k % 2 == 0)? 0 : ubXBytes_/sizeof(bfloat16_t);
-            DataCopyPad(ubX_[Tokneindex], LocalRecvTokenTensor, copyParams, copyPadParams);
-            // 疑问：4.所谓ubX_= ALIGN_UP(hidden × 2, 32)，是基于top_k遍历的时候交替拷贝么？
-            //         4.2双 slot pipeline：ubSlot × 2 双缓冲（RecvPhase / Combine 阶段 A）。
-            
-            SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-            GM_ADDR stashAddr = stashBase + ((t - tStart_) * topK_ + k) * hidden_ * sizeof(bfloat16_t);
-            GlobalTensor<bfloat16_t> dstTokenTensor;
-            dstTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(stashAddr));
-            DataCopyPad(dstTokenTensor, ubX_[Tokneindex], copyParams);
+            SetStatus(localRankStateAddr, remoteRankStateAddr, tokenIndex, src_rank);
         }
     }
 }
 
-template <uint32_t HAS_TOPK_WEIGHTS>
-__aicore__ inline void KernelMoeEpCombine<HAS_TOPK_WEIGHTS>::RecvPhaseReduce()
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline bool KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(uint32_t tokenIndex,
+     uint32_t copyCount, uint32_t beginIndex)
 {
+    uint32_t targetCount = copyCount;
+    float target = (float)1.0 * targetCount;
+    float minTarget = target - (float)0.5;
+    float maxTarget = target + (float)0.5;
+    // 计算地址偏移
+    GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_) + tokenIndex * topK_ * stateOffset_;
+    GlobalTensor<float> stateGMTensor;
+    stateGMTensor.SetGlobalBuffer((__gm__ float*)stateGM);
+    float localState = 0;
+    SumParams sumParams{1, copyCount, copyCount};
+    LocalTensor<float> stateTensor = stateBuf_.Get<float>();
+    LocalTensor<float> stateSumTensor = stateSumBuf_.Get<float>();
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
+    DataCopy<float>(stateTensor, stateGMTensor, copyCount);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
 
-    GM_ADDR stashBase = workspace_;
-    uint16_t copyLen = static_cast<uint16_t>(hidden_);
-    DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(copyLen), 0U, 0U, 0U};
-    DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
-    for (uint32_t t = tStart_; t < tEnd_; ++t) {
-        Duplicate<float>(ubAccFp32_, (float)0, hidden_);
+    Sum(stateSumTensor, stateTensor, sumParams);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    localState = stateSumTensor(0);
+    if (((minTarget < localState) && (localState < maxTarget))) {
+        // 计算地址偏移，清状态
+        DataCopy<float>(stateGMTensor, stateResetTensor_, copyCount);
+        return true;
+    }
+    return false;
+}
 
-        for (uint32_t k = 0; k < topK_; ++k) {
-            int32_t slot = dstSlotIdxGm_.GetValue(t * topK_ + k);
-            if (slot < 0)
-                continue;
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKToken(uint32_t tokenIndex, uint32_t processLen)
+{
+    // SyncFunc<AscendC::HardEvent::MTE3_V>(); 
+    Duplicate<float>(ubAccFp32_, (float)0, axisH_);
+    DataCopyPadParams padParams = {false, 0, 0, 0};
+    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_), 0U, 0U};
 
-            GM_ADDR stashAddr = stashBase + ((t - tStart_) * topK_ + k) * hidden_ * sizeof(bfloat16_t);
-            GlobalTensor<bfloat16_t> srcTokenTensor;
-            srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(stashAddr));
-            SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-            DataCopyPad(ubX_, srcTokenTensor, copyParams, copyPadParams);
-            SyncFunc<AscendC::HardEvent::MTE2_V>();
-            Cast(ubTmpFp32_, ubX_, AscendC::RoundMode::CAST_NONE, hidden_);
-            PipeBarrier<PIPE_V>();
-            if constexpr (HAS_TOPK_WEIGHTS == 0) {
-                Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, hidden_);
-            } else {
-                float w = topkWeightsGm_.GetValue(t * topK_ + k);
-                AscendC::Muls(ubWeighted_, ubTmpFp32_, w, hidden_);
-                PipeBarrier<PIPE_V>();
-                Add(ubAccFp32_, ubAccFp32_, ubWeighted_, hidden_);
-                combinedTopkWeightsGm_.SetValue(t * topK_ + k, w);
-                // combinedTopkWeightsGm_（dispatch 反向时承载 grad_topk_weights 的 reduce 结果）
-                // 疑问：1.combine的reduce   这个reduce指的是 
-                //        AtomicAdd(combined_topk_weights[t, k], weighted_w_reduce) ？
-            }
-        }
+    for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
+        // 读取expert_id
+        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
+        GlobalTensor<bfloat16_t> srcTokenTensor;
+        srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(wAddr));
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+        DataCopyPad(ubX_, srcTokenTensor, xCopyParams, padParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        Cast(ubTmpFp32_, ubX_, AscendC::RoundMode::CAST_NONE, axisH_);
         PipeBarrier<PIPE_V>();
-        LocalTensor<bfloat16_t> ubResultBf16 = ubX_;
-        Cast(ubResultBf16, ubAccFp32_, RoundMode::CAST_RINT, hidden_);
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyPad(combinedXGm_[t * hidden_], ubResultBf16, copyParams);
+        if constexpr (HAS_TOPK_WEIGHTS == 0) {
+            Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
+        } else {
+            // float w = topkWeightsOptionalGm_.GetValue(tokenIndex * topK_ + topkId);
+            // AscendC::Muls(ubWeighted_, ubTmpFp32_, w, axisH_);
+            // PipeBarrier<PIPE_V>();
+            // Add(ubAccFp32_, ubAccFp32_, ubWeighted_, axisH_);
+            // combinedTopkWeightsGm_.SetValue(tokenIndex * topK_ + topkId, w);
+            // DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(combinedTopkWeightsGm_[tokenIndex * topK_ + topkId]);
+            // combinedTopkWeightsGm_（dispatch 反向时承载 grad_topk_weights 的 reduce 结果）
+            // 疑问：1.combine的reduce   这个reduce指的是 
+            //        AtomicAdd(combined_topk_weights[tokenIndex, topkId], weighted_w_reduce) ？
+        }
     }
 }
 
-template <uint32_t HAS_TOPK_WEIGHTS>
-__aicore__ inline void KernelMoeEpCombine<HAS_TOPK_WEIGHTS>::Process()
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseReduce()
+{
+    SplitToCore(numTokens_, aivNum_, tStart_, tEnd_, tPerCore_);
+    DataCopyPadParams padParams = {false, 0, 0, 0};
+    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(bfloat16_t)), 0U, 0U};
+    tpipe_->InitBuffer(tokenStatusBuf_, Ceil(tPerCore_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
+    tpipe_->InitBuffer(stateBuf_, topK_ * STATE_OFFSET);
+    tpipe_->InitBuffer(stateSumBuf_, UB_ALIGN);
+    tpipe_->InitBuffer(stateResetBuf_, topK_ * STATE_OFFSET);      // 清理状态区
+    stateResetTensor_ = stateResetBuf_.Get<float>();
+    Duplicate<float>(stateResetTensor_, (float)0.0, static_cast<uint32_t>(topK_ * FLOAT_PER_UB_ALIGN));
+    LocalTensor<int32_t> tokenStatusTensor = tokenStatusBuf_.Get<int32_t>();
+    Duplicate<int32_t>(tokenStatusTensor, static_cast<int32_t>(0), tPerCore_);
+    uint32_t CompletedtokenNum = static_cast<uint32_t>(0);
+    while (CompletedtokenNum != tPerCore_) {
+        for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; ++tokenIdx) {
+            if (tokenStatusTensor(tokenIdx - tStart_) == 1) {
+                continue;
+            }
+            uint32_t copyCount = topK_ * FLOAT_PER_UB_ALIGN;
+            if (!WaitDispatch(tokenIdx, copyCount, tStart_)) {
+                continue;
+            }
+            CompletedtokenNum++;
+            tokenStatusTensor.SetValue(tokenIdx - tStart_, 1);
+
+            ProcessTopKToken(tokenIdx, axisH_);
+
+            PipeBarrier<PIPE_V>();
+            LocalTensor<bfloat16_t> ubResultBf16 = ubX_;
+            Cast(ubResultBf16, ubAccFp32_, RoundMode::CAST_RINT, axisH_);
+            SyncFunc<AscendC::HardEvent::V_MTE3>();
+            DataCopyPad(combinedXGm_[tokenIdx * axisH_], ubResultBf16, xCopyParams);
+        }
+    }
+}
+
+template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
     SendPhaseExpertToToken();
-    SyncAll<true>();
-    // HcclBarrier(); 
-    // 疑问：1.HcclBarrier中check状态设计？
-    RecvPhaseStashing();
-
+    // SyncAll<true>();
     RecvPhaseReduce();
     printf("moe_ep_combine End\r\n");
 }
