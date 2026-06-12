@@ -87,12 +87,8 @@ std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
     const c10::optional<at::Tensor> &cmp_topk_length, const c10::optional<at::Tensor> &sinks,
     const c10::optional<at::Tensor> &metadata, double softmax_scale, int64_t cmp_ratio, int64_t ori_mask_mode,
     int64_t cmp_mask_mode, int64_t ori_win_left, int64_t ori_win_right, c10::string_view layout_q,
-    c10::string_view layout_kv, int64_t topk_value_mode, bool return_softmax_lse,
-    c10::optional<int64_t> key_dtype, c10::optional<int64_t> value_dtype)
+    c10::string_view layout_kv, int64_t topk_value_mode, bool return_softmax_lse)
 {
-    (void)key_dtype;
-    (void)value_dtype;
-
     std::string layoutQStr = std::string(layout_q);
     std::string layoutKvStr = std::string(layout_kv);
     char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());

@@ -42,7 +42,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                "Tensor? sinks=None, Tensor? metadata=None, float softmax_scale=1.0, int cmp_ratio=1, " \
                "int ori_mask_mode=0, int cmp_mask_mode=0, int ori_win_left=-1, int ori_win_right=-1, " \
                "str layout_q=\"BSND\", str layout_kv=\"BSND\", int topk_value_mode=1, " \
-               "bool return_softmax_lse=False, int? key_dtype=None, int? value_dtype=None) -> (Tensor, Tensor)"
+               "bool return_softmax_lse=False) -> (Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -56,7 +56,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                                       sinks=None, metadata=None, softmax_scale=1.0, cmp_ratio=1,
                                       ori_mask_mode=0, cmp_mask_mode=0, ori_win_left=-1, ori_win_right=-1,
                                       layout_q="BSND", layout_kv="BSND", topk_value_mode=1,
-                                      return_softmax_lse=False, key_dtype=None, value_dtype=None):
+                                      return_softmax_lse=False):
             attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
             if not return_softmax_lse:
                 softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
@@ -88,10 +88,10 @@ def npu_sparse_flash_mla(q, *,
                          sinks=None, metadata=None, softmax_scale=1.0, cmp_ratio=1,
                          ori_mask_mode=0, cmp_mask_mode=0, ori_win_left=-1, ori_win_right=-1,
                          layout_q="BSND", layout_kv="BSND", topk_value_mode=1,
-                         return_softmax_lse=False, key_dtype=None, value_dtype=None):
+                         return_softmax_lse=False):
     return op_module.npu_sparse_flash_mla(
         q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices, ori_block_table, cmp_block_table,
         cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv,
         cmp_residual_kv, ori_topk_length, cmp_topk_length, sinks, metadata, softmax_scale, cmp_ratio,
         ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, topk_value_mode,
-        return_softmax_lse, key_dtype, value_dtype)
+        return_softmax_lse)
