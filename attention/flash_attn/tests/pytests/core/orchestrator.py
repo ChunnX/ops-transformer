@@ -159,19 +159,20 @@ def run_case(params: dict,
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
     out_layout = params.get("layout_out", layout)
 
-    inputs = spec.generate(params, device=primary.device, layout=layout,
-                           layout_kv=params.get("layout_kv", layout))
+    cpu_inputs = spec.generate(params, device=torch.device("cpu"), layout=layout,
+                               layout_kv=params.get("layout_kv", layout))
     if str(params.get("layout_kv", "")).startswith("PA_"):
-        inputs["block_table"] = params["block_table"].to(primary.device)
+        cpu_inputs["block_table"] = params["block_table"]
     elif "block_table" in params and params["block_table"] is not None:
-        inputs["block_table"] = params["block_table"].to(primary.device)
-
-    print(f"  [primary] {primary.name} 计算...")
-    primary_out = primary.compute(inputs, params)
+        cpu_inputs["block_table"] = params["block_table"]
 
     print(f"  [golden] CPU 参考计算...")
-    cpu_inputs = {k: v.cpu() for k, v in inputs.items()}
     golden_out = golden.compute(cpu_inputs, params)
+
+    print(f"  [primary] {primary.name} 计算...")
+    dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
+                  for k, v in cpu_inputs.items()}
+    primary_out = primary.compute(dev_inputs, params)
 
     cpu_raw = golden_out["out"]
     dev_raw = primary_out["out"].cpu() if primary_out["out"].is_cuda or str(primary_out["out"].device).startswith("npu") else primary_out["out"]
@@ -204,7 +205,7 @@ def run_case(params: dict,
                                           verbose_diff=verbose_diff)
 
     for comp in comparators:
-        comp_inputs = {k: v.to(comp.device) for k, v in inputs.items()}
+        comp_inputs = {k: v.to(comp.device) if isinstance(v, torch.Tensor) else v for k, v in cpu_inputs.items()}
         comp_out = comp.compute(comp_inputs, params)
         comp_cpu = comp_out["out"].cpu()
         print(f"  [compare] {primary.name} vs {comp.name}")
@@ -242,7 +243,7 @@ def run_case(params: dict,
             except Exception as e:
                 print(f"  [warn] visualize 异常: {e}")
 
-    del inputs, cpu_inputs, primary_out, golden_out
+    del cpu_inputs, dev_inputs, primary_out, golden_out
     del cpu_raw, dev_raw, cpu_out, dev_out
     gc.collect()
     primary.clear_cache()
