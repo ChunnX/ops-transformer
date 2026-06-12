@@ -53,11 +53,9 @@ bool BSASelectBlockMaskTilingBase::AnalyzeAttrs()
     OP_CHECK_IF(sparsity <= SPARSITY_MIN || sparsity >= SPARSITY_MAX,
         OP_LOGE(opName, "sparsity[%f] out of range (0, 1).", sparsity), return false);
 
-    if (sparsity <= 0.5f) {
-        sparsityMode = static_cast<uint8_t>(SparsityMode::TOP_K);
-    } else {
-        sparsityMode = static_cast<uint8_t>(SparsityMode::BOTTOM_K);
-    }
+    // TODO: Re-enable BottomK after fixing known correctness issues in that path.
+    // For now, always use TopK even when sparsity > 0.5.
+    sparsityMode = static_cast<uint8_t>(SparsityMode::TOP_K);
 
     auto blockShapeTensor = context_->GetOptionalInputTensor(BLOCK_SHAPE_INPUT_INDEX);
     if (blockShapeTensor != nullptr) {
