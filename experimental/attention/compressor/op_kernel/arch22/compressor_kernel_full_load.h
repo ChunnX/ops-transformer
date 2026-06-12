@@ -320,7 +320,6 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::CalcV1Params(Vec1RunInfo 
 {
     vec1Info.bStart = 0;
     vec1Info.sStart = 0;
-    vec1Info.resetResFlag = false;
     vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
     for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; ++bIdx) {
         uint64_t bSeqCnt = tools_.GetSeqLength(bIdx);

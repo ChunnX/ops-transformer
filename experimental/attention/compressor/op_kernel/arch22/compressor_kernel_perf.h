@@ -561,7 +561,6 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcC1V1Params(RunInfo &info,
 {
     vec1Info.bStart = batchInfo.bIdx;
     vec1Info.sStart = batchInfo.sIdx;
-    vec1Info.resetResFlag = (loopIdx & (constInfo.nSize - 1)) == 0;
     vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
     BasicBlockInfo basicBlockInfo = SkipOneLoop(batchInfo);
     info.cubeDbIdx = (cubeLoop++ & (constInfo.dbWorkspaceRatio - 1));

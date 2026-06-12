@@ -385,9 +385,9 @@ CompressorBlockVectorPerf<COMP>::AddSingleApeToScore(const LocalTensor<T> &score
         uint32_t curAddColCount = min(dDealSize - dOffset, FP32_REPEAT_ELEMENT_NUM);
         Add(scoreLocal[scoreOffset + dOffset], scoreLocal[scoreOffset + dOffset], apeUb[apeOffset + dOffset],
             curAddColCount, dealRowCount,
-            {1, 1, 1, static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM),
-             static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM),
-             static_cast<uint8_t>(SingleRowElemNum / FP32_BLOCK_ELEMENT_NUM)});
+            {1, 1, 1, static_cast<uint8_t>(SingleRowElemNum / BlockElementNum<T>()),
+             static_cast<uint8_t>(SingleRowElemNum / BlockElementNum<T>()),
+             static_cast<uint8_t>(SingleRowElemNum / BlockElementNum<T>())});
     }
 }
 
@@ -403,9 +403,9 @@ CompressorBlockVectorPerf<COMP>::DataCopyAlignUbToUb(const LocalTensor<O> dstLoc
     }
     DataCopyParams intriParams;
     intriParams.blockCount = copyRowCount;
-    intriParams.blockLen = copyColCount / FP32_BLOCK_ELEMENT_NUM;
-    intriParams.dstGap = (dstSingleRowCount - copyColCount) / FP32_BLOCK_ELEMENT_NUM;
-    intriParams.srcGap = (srcSingleRowCount - copyColCount) / FP32_BLOCK_ELEMENT_NUM;
+    intriParams.blockLen = copyColCount / BlockElementNum<O>();
+    intriParams.dstGap = (dstSingleRowCount - copyColCount) / BlockElementNum<O>();
+    intriParams.srcGap = (srcSingleRowCount - copyColCount) / BlockElementNum<O>();
     DataCopy(dstLocal, srcLocal, intriParams);
 }
 
@@ -421,9 +421,9 @@ CompressorBlockVectorPerf<COMP>::DataCopyAlignGmToUb(const LocalTensor<O> dstLoc
     }
     DataCopyParams intriParams;
     intriParams.blockCount = copyRowCount;
-    intriParams.blockLen = copyColCount / FP32_BLOCK_ELEMENT_NUM;
-    intriParams.dstGap = (dstSingleRowCount - copyColCount) / FP32_BLOCK_ELEMENT_NUM;
-    intriParams.srcGap = (srcSingleRowCount - copyColCount) / FP32_BLOCK_ELEMENT_NUM;
+    intriParams.blockLen = copyColCount / BlockElementNum<O>();
+    intriParams.dstGap = (dstSingleRowCount - copyColCount) / BlockElementNum<O>();
+    intriParams.srcGap = (srcSingleRowCount - copyColCount) / BlockElementNum<O>();
     DataCopy(dstLocal, srcGm, intriParams);
 }
 
@@ -439,9 +439,9 @@ CompressorBlockVectorPerf<COMP>::DataCopyAlignUbToGm(const GlobalTensor<O> dstGm
     }
     DataCopyParams intriParams;
     intriParams.blockCount = copyRowCount;
-    intriParams.blockLen = copyColCount / FP32_BLOCK_ELEMENT_NUM;
-    intriParams.dstGap = (dstSingleRowCount - copyColCount) / FP32_BLOCK_ELEMENT_NUM;
-    intriParams.srcGap = (srcSingleRowCount - copyColCount) / FP32_BLOCK_ELEMENT_NUM;
+    intriParams.blockLen = copyColCount / BlockElementNum<O>();
+    intriParams.dstGap = (dstSingleRowCount - copyColCount) / BlockElementNum<O>();
+    intriParams.srcGap = (srcSingleRowCount - copyColCount) / BlockElementNum<O>();
     DataCopy(dstGm, srcLocal, intriParams);
 }
 
@@ -923,7 +923,7 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::CalcGroupInfo(const Vec1
 {
     uint32_t aiCoreNum = constInfo_.usedCoreNum * 2;
     splitInfo.dBaseSize = constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, info.dealTcNum)));
-    splitInfo.dBaseSize = max(splitInfo.dBaseSize, FP32_BLOCK_ELEMENT_NUM);
+    splitInfo.dBaseSize = max(splitInfo.dBaseSize, BlockElementNum<X_T>());
     splitInfo.vec1GroupSize = constInfo_.headDim / splitInfo.dBaseSize;
     splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), info.dealTcNum);
 }
@@ -1026,9 +1026,6 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ComputeVec1(const Vec1Ru
 {
     if (info.dealTcNum == 0) {
         return;
-    }
-    if (info.resetResFlag) {
-        compressedCnt_ = 0;
     }
     uint32_t preCompressedCnt = compressedCnt_;
     Vec1SplitInfo splitInfo = SplitCoreV1(info);
