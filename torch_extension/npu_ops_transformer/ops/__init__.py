@@ -26,7 +26,6 @@ from .flash_attn_metadata import npu_flash_attn_metadata
 from .lightning_indexer_v2_metadata import npu_lightning_indexer_v2_metadata
 from .quant_lightning_indexer_v2_metadata import npu_quant_lightning_indexer_v2_metadata
 from .mixed_quant_sparse_flash_mla import npu_mixed_quant_sparse_flash_mla
-from .sparse_flash_mla import npu_sparse_flash_mla
 from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_npu_lightning_indexer_v2_metadata
 from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
     convert_npu_quant_lightning_indexer_v2_metadata
