@@ -33,8 +33,7 @@ public:
 
     __aicore__ inline SIMatmul(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
-                                               const GlobalTensor<Q_T> &queryGm);
+    __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<Q_T> &queryGm, const GlobalTensor<K_T> &keyGm);
     __aicore__ inline void InitParams(const ConstInfo &constInfo);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -139,12 +138,10 @@ __aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
 
 template <typename SIT>
 __aicore__ inline void
-SIMatmul<SIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
-                                   const GlobalTensor<Q_T> &queryGm)
+SIMatmul<SIT>::InitMm1GlobalTensor(const GlobalTensor<Q_T> &queryGm, const GlobalTensor<K_T> &keyGm)
 {
-    blkTableGm_ = blkTableGm;
-    keyGm_ = keyGm;
     queryGm_ = queryGm;
+    keyGm_ = keyGm;
 }
 
 template <typename SIT>

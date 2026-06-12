@@ -41,35 +41,22 @@ public:
     __aicore__ inline SIVector(){};
     __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);
     __aicore__ inline void ProcessTopK(const SICommon::RunInfo &info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop);
-    __aicore__ inline void ProcessDirectOutput(const SICommon::TempLoopInfo &tempLoopInfo, uint32_t gS1Idx);
-    __aicore__ inline void ProcessLD();
+    __aicore__ inline void ProcessDirectOutput(const SICommon::RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct SICommon::ConstInfo &constInfo,
-                                      const struct SICommon::LdSplitCoreInfo &ldInfo,
                                       const StemIndexerTilingData *__restrict tilingData);
-    __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
-                                                    GlobalTensor<SCORE_T> ldScoreGm,
-                                                    GlobalTensor<int32_t> ldIndexGm);
-    __aicore__ inline void InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
-                                              GlobalTensor<float> kScaleGm, GlobalTensor<int32_t> sparseIndicesGm,
-                                              GlobalTensor<int32_t> sparseSeqLenGm,
-                                              GlobalTensor<int32_t> blockTableGm);
+    __aicore__ inline void InitVecInputTensor(GlobalTensor<float> vbiasGm, GlobalTensor<int32_t> numPromptTokensGm,
+                                              GlobalTensor<int32_t> sparseIndicesGm, GlobalTensor<int32_t> sparseSeqLenGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void initS2LenToNeg(uint32_t actMBaseSize, uint64_t indiceOutOffset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void InitLDBuffers(TPipe *pipe, const struct SICommon::LdSplitCoreInfo &ldInfo);
 
 protected:
-    GlobalTensor<SCORE_T> scoreGm;
-    GlobalTensor<float> weightsGm;
-    GlobalTensor<SCORE_T> ldScoreGm;
-    GlobalTensor<int32_t> ldIndexGm;
-    GlobalTensor<float> qScaleGm;
-    GlobalTensor<float> kScaleGm;
+    GlobalTensor<float> vbiasGm;
+    GlobalTensor<int32_t> numPromptTokensGm;
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> sparseSeqLenGm;
-    GlobalTensor<int32_t> blockTableGm;
     // =================================常量区=================================
     static constexpr uint32_t VEC1_V_MTE2_EVENT = EVENT_ID0;
     static constexpr uint32_t VEC1_MTE2_V_EVENT = EVENT_ID1;
@@ -107,9 +94,6 @@ private:
     //tmp buff for out
     TBuf<TPosition::VECCALC> outBuf_;
     LocalTensor<SCORE_T> vec1OutUB_;
-    // tmp buff for LD
-    TBuf<TPosition::VECCALC> ldValueBuf_;
-    LocalTensor<uint32_t> ldValueLocal_;  // SCORE_T
 
     TBuf<TPosition::VECCALC> topkIndexBuf_;
     LocalTensor<uint32_t> topkIndexLocal_;
@@ -139,8 +123,6 @@ private:
     TBuf<TPosition::VECCALC> indiceLenBuf_;
     LocalTensor<uint32_t> indiceLenLocal_;
 
-    LocalTensor<uint32_t> ldIndexLocal_;
-
     int32_t blockId_ = -1;
     // para for vector
     int32_t groupInner_ = 0;
@@ -164,7 +146,6 @@ private:
     uint32_t initialBlocks_ = 4U;
     uint32_t windowSize_ = 4U;
     struct SICommon::ConstInfo constInfo_;
-    struct SICommon::LdSplitCoreInfo ldInfo_;
     topk::LITopk<SCORE_T> topkOp_;
 };
 
@@ -212,18 +193,10 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::InitLDBuffers(TPipe *pipe, const struct SICommon::LdSplitCoreInfo &ldInfo)
-{
-    ldIndexLocal_ = resMm1UB_.template ReinterpretCast<uint32_t>();
-}
-
-template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInfo &constInfo,
-                                                   const struct SICommon::LdSplitCoreInfo &ldInfo,
                                                    const StemIndexerTilingData *__restrict tilingData)
 {
     this->constInfo_ = constInfo;
-    this->ldInfo_ = ldInfo;
     blockS2StartIdx_ = 0;
     gSize_ = constInfo.gSize;
     kSeqSize_ = constInfo.kSeqSize;
@@ -249,28 +222,13 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
-                                                           GlobalTensor<float> kScaleGm,
-                                                           GlobalTensor<int32_t> sparseIndicesGm,
-                                                           GlobalTensor<int32_t> sparseSeqLenGm,
-                                                           GlobalTensor<int32_t> blockTableGm)
+__aicore__ inline void SIVector<SIT>::InitVecInputTensor(GlobalTensor<float> vbiasGm, GlobalTensor<int32_t> numPromptTokensGm,
+                                              GlobalTensor<int32_t> sparseIndicesGm, GlobalTensor<int32_t> sparseSeqLenGm)
 {
-    this->weightsGm = weightsGm;
-    this->qScaleGm = qScaleGm;
-    this->kScaleGm = kScaleGm;
+    this->vbiasGm = vbiasGm;
+    this->numPromptTokensGm = numPromptTokensGm;
     this->sparseIndicesGm = sparseIndicesGm;
     this->sparseSeqLenGm = sparseSeqLenGm;
-    this->blockTableGm = blockTableGm;
-}
-
-template <typename SIT>
-__aicore__ inline void SIVector<SIT>::InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
-                                                            GlobalTensor<SCORE_T> ldScoreGm,
-                                                            GlobalTensor<int32_t> ldIndexGm)
-{
-    this->scoreGm = scoreGm;//resucesum*k
-    this->ldScoreGm = ldScoreGm;
-    this->ldIndexGm = ldIndexGm;
 }
 
 template <typename SIT>
