@@ -672,6 +672,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
     uint64_t baseScaleBSize = GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) *
                                                       basicTiling_.baseN,
                                                   inputParams_.scaleDtype);
+    OP_CHECK_IF(baseScaleASize == 0 || baseScaleBSize == 0,
+                OP_LOGE(context_->GetNodeName(),
+                        "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, baseScaleASize(%lu) and "
+                        "baseScaleBSize(%lu) should not be equal to 0.",
+                        inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
+                        baseScaleASize, baseScaleBSize),
+                return ge::GRAPH_FAILED);
     uint64_t biasDtypeSize = ge::GetSizeByDataType(inputParams_.biasDtype);
     uint64_t baseBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
     uint64_t leftL1Size =
@@ -689,6 +696,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
         std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V120 / baseScaleASize), SCALER_FACTOR_MAX);
     uint32_t scaleFactorBMax =
         std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V120 / baseScaleBSize), SCALER_FACTOR_MAX);
+    OP_CHECK_IF(scaleFactorAMax == 0 || scaleFactorBMax == 0,
+                OP_LOGE(context_->GetNodeName(),
+                        "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactorAMax(%u) and "
+                        "scaleFactorBMax(%u) should not be equal to 0.",
+                        inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
+                        scaleFactorAMax, scaleFactorBMax),
+                return ge::GRAPH_FAILED);
     uint32_t scaleFactorA =
         static_cast<uint32_t>(GroupedMatmul::CeilDiv(inputParams_.kSize, basicTiling_.stepKa * basicTiling_.baseK));
     uint32_t scaleFactorB =
@@ -707,6 +721,14 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
             basicTiling_.scaleFactorB = scaleInit;
         }
     }
+    OP_CHECK_IF(basicTiling_.scaleFactorA < SCALER_FACTOR_MIN || basicTiling_.scaleFactorA > SCALER_FACTOR_MAX ||
+                    basicTiling_.scaleFactorB < SCALER_FACTOR_MIN || basicTiling_.scaleFactorB > SCALER_FACTOR_MAX,
+                OP_LOGE(context_->GetNodeName(),
+                        "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactorA(%u) and "
+                        "scaleFactorB(%u) should be in range [%u, %u].",
+                        inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum,
+                        basicTiling_.scaleFactorA, basicTiling_.scaleFactorB, SCALER_FACTOR_MIN, SCALER_FACTOR_MAX),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
