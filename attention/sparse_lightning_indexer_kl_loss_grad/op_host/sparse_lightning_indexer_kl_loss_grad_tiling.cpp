@@ -24,7 +24,7 @@
 #include "sparse_lightning_indexer_kl_loss_grad_tiling_general.h"
 #include "platform/platform_info.h"
 #include "op_host/tiling_templates_registry.h"
-#include "sparse_lightning_indexer_klloss_grad_tiling_common.h"
+#include "sparse_lightning_indexer_kl_loss_grad_tiling_common.h"
 
 using std::map;
 using std::string;
