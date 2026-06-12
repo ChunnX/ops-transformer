@@ -1232,7 +1232,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     uint64_t rsvdCnt = 0;
     GatherMask(tempHalf, tempHalf, cmpMask.template ReinterpretCast<uint16_t>(),
                true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
-    VToSSync();
+    PipeBarrier<PIPE_V>();
 
     LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
     LocalTensor<half> onesHalf = outIndexBuf_.Get<half>();
@@ -1254,12 +1254,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
 
     LocalTensor<uint8_t> maskU8 = outIndexBuf_.Get<uint8_t>();
     Cast<uint8_t, half>(maskU8, maskHalf, RoundMode::CAST_NONE, alignLen);
-    PipeBarrier<PIPE_V>();
 
     VToMTE3Sync();
     DataCopyPad(maskTmpGmLocal[tileGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
     MTE3ToMTE2Sync();
+
+    VToSSync();
 
     // === DUMP 730: rsvdCnt after GatherMask ===
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0 && tileGmOffset == 0) {
