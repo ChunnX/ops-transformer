@@ -1229,10 +1229,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     PipeBarrier<PIPE_V>();
 
     LocalTensor<uint8_t> maskU8 = maskLocalBuf_.Get<uint8_t>();
+    uint8_t defaultValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 0 : 1;
     uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
-    uint32_t defaultPattern = (constInfo.sparsityMode == BSASparseMode::TopK) ? 0U : 0x01010101U;
-    Duplicate<uint32_t>(maskU8.ReinterpretCast<uint32_t>(), defaultPattern,
-                        BSAAlignTo(alignLen, static_cast<uint64_t>(sizeof(uint32_t))) / sizeof(uint32_t));
+    Duplicate<uint8_t>(maskU8, defaultValue, alignLen);
     PipeBarrier<PIPE_V>();
 
     LocalTensor<int32_t> vecIndex = outIndexBuf_.Get<int32_t>();
