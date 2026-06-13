@@ -16,7 +16,6 @@
 
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
-#include "aclnn_kernels/transdata.h"
 #include "grouped_matmul_activation_quant.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
@@ -42,11 +41,15 @@ constexpr size_t WEIGHT_SCALE_DIM_NUM = 4UL;
 constexpr size_t GROUP_LIST_DIM_NUM = 1UL;
 constexpr size_t OUT_DIM_NUM = 2UL;
 constexpr size_t OUT_SCALE_DIM_NUM = 3UL;
+constexpr size_t WEIGHT_NZ_DIM_NUM = 5UL;
 constexpr int64_t DIM_0 = 0L;
 constexpr int64_t DIM_1 = 1L;
 constexpr int64_t DIM_2 = 2L;
 constexpr int64_t MX_GROUP_SIZE = 64L;
 constexpr int64_t MX_SCALE_PAIR = 2L;
+constexpr int64_t NZ_C0_DIM = 16L;
+constexpr int64_t NZ_LAST_DIM = 32L;
+constexpr int64_t MAX_GROUP_NUM = 1024L;
 constexpr int64_t DEFAULT_DEQUANT_DTYPE = static_cast<int64_t>(DataType::DT_FLOAT);
 constexpr int64_t FLOAT8_E5M2_VALUE = static_cast<int64_t>(DataType::DT_FLOAT8_E5M2);
 constexpr int64_t FLOAT8_E4M3FN_VALUE = static_cast<int64_t>(DataType::DT_FLOAT8_E4M3FN);
@@ -63,6 +66,11 @@ bool IsFp8(DataType dtype)
 bool IsFp8DtypeValue(int64_t dtype)
 {
     return dtype == FLOAT8_E4M3FN_VALUE || dtype == FLOAT8_E5M2_VALUE;
+}
+
+bool IsWeightDtype(DataType dtype)
+{
+    return dtype == DataType::DT_FLOAT8_E4M3FN;
 }
 
 bool IsNzFormat(const aclTensor *tensor)
@@ -83,16 +91,55 @@ aclnnStatus CheckTensorList(const aclTensorList *tensorList, const char *name)
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckOutputShape(const aclTensor *x, const aclTensor *weightScale, bool transposeWeightOptional,
-                             const aclTensor *y, const aclTensor *yScale)
+int64_t CeilDivInt64(int64_t dividend, int64_t divisor)
+{
+    return static_cast<int64_t>(Ops::Base::CeilDiv(dividend, divisor));
+}
+
+aclnnStatus CheckShapeValue(const aclTensor *x, const aclTensor *groupList, const aclTensor *xScaleOptional,
+                            const aclTensor *weight, const aclTensor *weightScale, bool transposeWeightOptional,
+                            const aclTensor *y, const aclTensor *yScale)
 {
     int64_t m = x->GetViewShape().GetDim(DIM_0);
+    int64_t k = x->GetViewShape().GetDim(DIM_1);
+    int64_t e = groupList->GetViewShape().GetDim(DIM_0);
     int64_t n = transposeWeightOptional ? weightScale->GetViewShape().GetDim(DIM_1) :
                                            weightScale->GetViewShape().GetDim(DIM_2);
+    CHECK_COND(e >= 1 && e <= MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], the first dim of groupList must be in range [1, 1024], but got %ld.", OP_NAME, e);
+    CHECK_COND(k > 0, ACLNN_ERR_PARAM_INVALID, "In op [%s], K must be greater than 0.", OP_NAME);
+    CHECK_COND(n % MX_GROUP_SIZE == 0, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], N must be divisible by 64, but got %ld.", OP_NAME, n);
+
+    const auto &weightShape = weight->GetStorageShape();
+    const auto &weightScaleShape = weightScale->GetViewShape();
+    CHECK_COND(weightShape.GetDim(DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], weight dim 0 must equal E, but got %ld and %ld.", OP_NAME,
+               weightShape.GetDim(DIM_0), e);
+    CHECK_COND(weightScaleShape.GetDim(DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], weightScale dim 0 must equal E, but got %ld and %ld.", OP_NAME,
+               weightScaleShape.GetDim(DIM_0), e);
+
+    op::Shape xScaleExpectShape = {m, CeilDivInt64(k, MX_GROUP_SIZE), MX_SCALE_PAIR};
     op::Shape yExpectShape = {m, n};
-    op::Shape yScaleExpectShape = {m, static_cast<int64_t>(Ops::Base::CeilDiv(n, MX_GROUP_SIZE)), MX_SCALE_PAIR};
+    op::Shape yScaleExpectShape = {m, CeilDivInt64(n, MX_GROUP_SIZE), MX_SCALE_PAIR};
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(xScaleOptional, xScaleExpectShape, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(y, yExpectShape, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(yScale, yScaleExpectShape, return ACLNN_ERR_PARAM_INVALID);
+
+    op::Shape weightExpectShape;
+    op::Shape weightScaleExpectShape;
+    if (transposeWeightOptional) {
+        weightExpectShape = {e, CeilDivInt64(k, NZ_LAST_DIM), CeilDivInt64(n, NZ_C0_DIM), NZ_C0_DIM, NZ_LAST_DIM};
+        weightScaleExpectShape = {e, n, CeilDivInt64(k, MX_GROUP_SIZE), MX_SCALE_PAIR};
+    } else {
+        weightExpectShape = {e, CeilDivInt64(n, NZ_LAST_DIM), CeilDivInt64(k, NZ_C0_DIM), NZ_C0_DIM, NZ_LAST_DIM};
+        weightScaleExpectShape = {e, CeilDivInt64(k, MX_GROUP_SIZE), n, MX_SCALE_PAIR};
+    }
+    CHECK_COND(weightShape == weightExpectShape, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], expected weight storage shape to be %s, but got %s.", OP_NAME,
+               op::ToString(weightExpectShape).GetString(), op::ToString(weightShape).GetString());
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(weightScale, weightScaleExpectShape, return ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -109,8 +156,10 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                OP_NAME);
     CHECK_COND(xScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
                "In op [%s], [xScaleOptional] must not be nullptr in gelu_tanh MX quant mode.", OP_NAME);
-    CHECK_RET(CheckTensorList(weight, "weight") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckTensorList(weightScale, "weightScale") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus checkTensorListRet = CheckTensorList(weight, "weight");
+    CHECK_RET(checkTensorListRet == ACLNN_SUCCESS, checkTensorListRet);
+    checkTensorListRet = CheckTensorList(weightScale, "weightScale");
+    CHECK_RET(checkTensorListRet == ACLNN_SUCCESS, checkTensorListRet);
     CHECK_COND(y != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [y] must not be nullptr.", OP_NAME);
     CHECK_COND(yScale != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [yScale] must not be nullptr.", OP_NAME);
     CHECK_COND(activationType != nullptr, ACLNN_ERR_PARAM_NULLPTR,
@@ -145,19 +194,24 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
     const aclTensor *wScale = (*weightScale)[FIRST_TENSOR_INDEX];
     OP_CHECK_WRONG_DIMENSION(x, X_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_WRONG_DIMENSION(xScaleOptional, SCALE_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_WRONG_DIMENSION(w, WEIGHT_NZ_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_WRONG_DIMENSION(wScale, WEIGHT_SCALE_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_WRONG_DIMENSION(groupList, GROUP_LIST_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_WRONG_DIMENSION(y, OUT_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_WRONG_DIMENSION(yScale, OUT_SCALE_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
+    CHECK_COND(w->GetStorageShape().GetDimNum() == WEIGHT_NZ_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], weight storage shape dim num must be 5.", OP_NAME);
 
     CHECK_COND(IsFp8(x->GetDataType()), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], x only supports FLOAT8_E4M3FN or FLOAT8_E5M2.", OP_NAME);
-    CHECK_COND(IsFp8(w->GetDataType()), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], weight only supports FLOAT8_E4M3FN or FLOAT8_E5M2.", OP_NAME);
+    CHECK_COND(IsWeightDtype(w->GetDataType()), ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], weight only supports FLOAT8_E4M3FN.", OP_NAME);
     CHECK_COND(xScaleOptional->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], xScaleOptional only supports FLOAT8_E8M0.", OP_NAME);
     CHECK_COND(wScale->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], weightScale only supports FLOAT8_E8M0.", OP_NAME);
+    CHECK_COND(groupList->GetDataType() == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], groupList only supports INT64.", OP_NAME);
     CHECK_COND(y->GetDataType() == static_cast<DataType>(quantDtypeOptional), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], y dtype must be the same as quantDtypeOptional.", OP_NAME);
     CHECK_COND(yScale->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
@@ -170,29 +224,11 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                    yScale->GetStorageFormat() == op::Format::FORMAT_ND,
                ACLNN_ERR_PARAM_INVALID,
                "In op [%s], x, xScaleOptional, groupList, weightScale, y and yScale only support ND.", OP_NAME);
-    CHECK_RET(CheckOutputShape(x, wScale, transposeWeightOptional, y, yScale) == ACLNN_SUCCESS,
+    CHECK_COND(IsNzFormat(w), ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], weight only supports FRACTAL_NZ format.", OP_NAME);
+    CHECK_RET(CheckShapeValue(x, groupList, xScaleOptional, w, wScale, transposeWeightOptional, y, yScale) ==
+                  ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    return ACLNN_SUCCESS;
-}
-
-aclnnStatus PrepareWeight(const aclTensorList *&weight, aclOpExecutor *executor)
-{
-    std::vector<const aclTensor *> weightVec;
-    weightVec.reserve(weight->Size());
-    for (size_t i = 0; i < weight->Size(); ++i) {
-        const aclTensor *w = (*weight)[i];
-        if (IsNzFormat(w)) {
-            weightVec.push_back(w);
-            continue;
-        }
-        const aclTensor *contiguousWeight = l0op::Contiguous(w, executor);
-        CHECK_RET(contiguousWeight != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        const aclTensor *nzWeight = l0op::TransData(contiguousWeight, op::Format::FORMAT_FRACTAL_NZ, 1, executor);
-        CHECK_RET(nzWeight != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        weightVec.push_back(nzWeight);
-    }
-    weight = executor->AllocTensorList(weightVec.data(), weightVec.size());
-    CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
@@ -248,7 +284,6 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     groupList = l0op::Contiguous(groupList, uniqueExecutor.get());
     CHECK_RET(groupList != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    CHECK_RET(PrepareWeight(weight, uniqueExecutor.get()) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(PrepareTensorListContiguous(weightScale, uniqueExecutor.get()) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
 
