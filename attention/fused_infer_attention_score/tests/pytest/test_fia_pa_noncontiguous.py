@@ -41,7 +41,7 @@ N_q = 4
 N_kv = 2
 D = 128
 Q_SEQ = 4
-KV_SEQ = 1024  # ceil(1024/512)=2, 满足 blockTable dim1 >= maxBlockNumPerSeq >= 2
+KV_SEQ = 2048  # ceil(2048/512)=4, 满足各PA格式 blockTable dim1 >= maxBlockNumPerSeq >= 4
 BLOCK_SIZE = 512
 DTYPE = torch.float16
 NZ_D0 = 16
