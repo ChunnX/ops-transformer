@@ -143,7 +143,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
                 if (fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape() !=
                     gert::Shape({numHeads, fiaInfo.vHeadDim})) {
                     std::string quantScale2ShapeStr =
-                        ToString(fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape());
+                        ToStringRaw(fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape());
                     std::string reasonMsg = "In post quant per-channel scenario, when layout is " + layoutString + ", "
                         "the shape of quantScale2/quantOffset2 should be [numHeads, vHeadDim]";
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "quant_scale2",
