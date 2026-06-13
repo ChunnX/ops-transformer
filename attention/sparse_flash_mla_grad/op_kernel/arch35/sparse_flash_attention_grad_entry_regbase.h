@@ -50,7 +50,7 @@
                 ori_topk_length, cmp_topk_length, softmax_lse, sinks, metadata, dq, dori_kv, dcmp_kv, dsinks,           \
                 ori_softmax_l1, cmp_softmax_l1, user, tilingData, &pipeBase);                                           \
         op.Process();                                                                                                  \
-        if (ORIG_DTYPE_Q != DT_FLOAT) {                                                                            \
+        if (ORIG_DTYPE_QUERY != DT_FLOAT) {                                                                            \
             op.SyncALLCores();                                                                                         \
             pipeBase.Destroy();                                                                                        \
             TPipe pipePost;                                                                                            \
@@ -65,11 +65,11 @@
 
 
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(...)                                                        \
-    if (ORIG_DTYPE_Q == DT_FLOAT16)                                                                                \
+    if (ORIG_DTYPE_QUERY == DT_FLOAT16)                                                                                \
     INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(__VA_ARGS__)
 
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_BF16(...)                                                        \
-    if (ORIG_DTYPE_Q == DT_BF16)                                                                                   \
+    if (ORIG_DTYPE_QUERY == DT_BF16)                                                                                   \
     INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(__VA_ARGS__)
 
 
@@ -94,13 +94,13 @@ RegbaseSFAG(__gm__ uint8_t *query, __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_k
     using fagTiling = optiling::smlag::SparseFlashMlaGradTilingDataRegbase;
     GET_TILING_DATA_WITH_STRUCT(fagTiling, tiling_data_in, tiling_data);
     const optiling::smlag::SparseFlashMlaGradTilingDataRegbase *__restrict tilingData = &tiling_data_in;
-    #if (ORIG_DTYPE_Q == DT_FLOAT16)
+    #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
         INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(
                     half, float, half, isTnd, S2TemplateType(s2TemplateType), DTemplateType(dTemplateType), isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, deterministic);
         return;
     #endif
 
-    #if (ORIG_DTYPE_Q == DT_BF16)
+    #if (ORIG_DTYPE_QUERY == DT_BF16)
         INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_BF16(
                     bfloat16_t, float, bfloat16_t, isTnd, S2TemplateType(s2TemplateType), DTemplateType(dTemplateType), isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, deterministic);
             return;

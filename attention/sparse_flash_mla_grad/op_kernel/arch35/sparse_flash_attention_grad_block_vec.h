@@ -834,21 +834,24 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec2(LocalTensor<CALC_
             constInfo, runInfo, *pseInfoPtr, *attenMaskInfoPtr, LseQue[runInfo.sTaskIdMod2],
             attenMaskOrYInQue, pseOrDyInQue, mm2ResTensor, mm2ResTensor, softmaxL1ResTensor, pseSlope, pScalar);
     }
-    softmaxL1OutQue.EnQue(softmaxL1ResTensor);
-    softmaxL1OutQue.DeQue<CALC_TYPE>();
 
-    DataCopyExtParams dataCopyGmParams;
-    dataCopyGmParams.blockCount = 1;
-    dataCopyGmParams.blockLen = runInfo.commonRunInfo.s2RealSize * sizeof(CALC_TYPE);
-    dataCopyGmParams.srcStride = 0;
-    dataCopyGmParams.dstStride = 0;
-    SetAtomicAdd<CALC_TYPE>();
-    if (runInfo.isOriKV && runInfo.isSparse) {
-        DataCopyPad(oriSoftmaxL1Gm[runInfo.t1Index * runInfo.selectedBlockCount + runInfo.blkCntOffset], softmaxL1ResTensor, dataCopyGmParams);	 
-    } else if (runInfo.isSparse) {
-        DataCopyPad(cmpSoftmaxL1Gm[runInfo.t1Index * runInfo.selectedBlockCount + runInfo.blkCntOffset], softmaxL1ResTensor, dataCopyGmParams);
+    if (runInfo.halfGRealSize != 0) {
+        softmaxL1OutQue.EnQue(softmaxL1ResTensor);
+        softmaxL1OutQue.DeQue<CALC_TYPE>();
+
+        DataCopyExtParams dataCopyGmParams;
+        dataCopyGmParams.blockCount = 1;
+        dataCopyGmParams.blockLen = runInfo.commonRunInfo.s2RealSize * sizeof(CALC_TYPE);
+        dataCopyGmParams.srcStride = 0;
+        dataCopyGmParams.dstStride = 0;
+        SetAtomicAdd<CALC_TYPE>();
+        if (runInfo.isOriKV && runInfo.isSparse) {
+            DataCopyPad(oriSoftmaxL1Gm[runInfo.t1Index * runInfo.selectedBlockCount + runInfo.blkCntOffset], softmaxL1ResTensor, dataCopyGmParams);	 
+        } else if (runInfo.isSparse) {
+            DataCopyPad(cmpSoftmaxL1Gm[runInfo.t1Index * runInfo.selectedBlockCount + runInfo.blkCntOffset], softmaxL1ResTensor, dataCopyGmParams);
+        }
+        SetAtomicNone();
     }
-    SetAtomicNone();	 
     softmaxL1OutQue.FreeTensor(softmaxL1ResTensor);
 }
  
