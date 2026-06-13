@@ -477,7 +477,12 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
 
     // 当前tpWin区划分为前后两半区，连续两次dispatch，切换半区, combine 数据区使用前面，
     // 即axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine, dispatch使用后面
+    // DataAsFlag场景每512B有效数据为480B
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    uint64_t hSizeAlignCombine = Ceil(axisH_ * COMBINE_IN_DATA_SIZE, 480) * WIN_ADDR_ALIGN;
+#else
     uint64_t hSizeAlignCombine = Ceil(axisH_ * COMBINE_IN_DATA_SIZE, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+#endif
     winDataSizeOffsetEp_ = dataState_ * (totalWinSizeEp_ / 2)
                          + axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine;
     winDataSizeOffsetTp_ = dataState_ * (totalWinSizeTp_ / 2)

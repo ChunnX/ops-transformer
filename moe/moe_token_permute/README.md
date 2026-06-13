@@ -99,7 +99,7 @@
 
 ## 约束说明
 
-- indices 要求元素个数小于`16777215`，值大于等于`0`小于`16777215`(单点支持int32或int64的最大或最小值，其余值不在范围内排序结果不正确)。
+- indices要求元素个数小于`16777215`，值大于等于`0`小于`16777215`(单点支持int32或int64的最大或最小值，其余值不在范围内排序结果不正确)。
 - 不支持paddedMode为`true`。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
 - <term>Ascend 950PR/Ascend 950DT</term>：

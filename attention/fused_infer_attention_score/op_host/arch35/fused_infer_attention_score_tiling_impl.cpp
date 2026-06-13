@@ -811,9 +811,10 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitS2(const FiaTilingInfo 
     while (((fiaInfo.s2Size / kvSplitPart) < kvSplitLimit) && (kvSplitPart > 1)) {
         kvSplitPart--;
     }
+    auto vHeadDimAlign = AlignUp(fiaInfo.vHeadDim, NUM_32);
 
     faRunTilingAdapter_.inputParamsRegbase.set_kvSplitPart(kvSplitPart);
-    faRunTilingAdapter_.inputParamsRegbase.set_accumOutSize(batchSize * headNumSize * kvSplitPart * headDimAlign_);
+    faRunTilingAdapter_.inputParamsRegbase.set_accumOutSize(batchSize * headNumSize * kvSplitPart * vHeadDimAlign);
     faRunTilingAdapter_.inputParamsRegbase.set_logSumExpSize(batchSize * headNumSize * kvSplitPart *
                                                              (BYTE_BLOCK / sizeof(float)));
 
@@ -1041,7 +1042,6 @@ void FusedInferAttentionScoreTilingImpl::GetActualSeqLength(const FiaTilingInfo 
                 actualSeqLengths = fiaInfo.s1Size * nNumOfQInOneGroup;
             }
         }
-
     }
 }
 
@@ -1465,12 +1465,8 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetWorkspaceNormal(const Fia
         accumOutSize = platformInfo_.aicNum * vHeadSize * sizeof(float);
         logSumExpSize = platformInfo_.aicNum * BYTE_BLOCK * CV_RATIO;
     } else if (flashDecodeFlag_) {
-        auto batchSize = fiaInfo.bSize;
-        auto headNumSize = nLoopTimes_;
-        auto vHeadSize = fiaInfo.vHeadDim;
-        uint32_t kvSplitPart = faRunTilingAdapter_.inputParamsRegbase.get_kvSplitPart();
-        accumOutSize = batchSize * fiaInfo.gSize * headNumSize * kvSplitPart * vHeadSize * sizeof(float);
-        logSumExpSize = batchSize * fiaInfo.gSize * headNumSize * kvSplitPart * BYTE_BLOCK * 2;
+        accumOutSize = faRunTilingAdapter_.inputParamsRegbase.get_accumOutSize() * sizeof(float);
+        logSumExpSize = faRunTilingAdapter_.inputParamsRegbase.get_logSumExpSize() * sizeof(float);
     }
 
     int64_t bmm2Bytes = 0;
@@ -1499,7 +1495,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetWorkspaceNormal(const Fia
         }
     }
     curWorkspaceSize = (bmm2Bytes + vec2Bytes) * 3 * platformInfo_.coreNum + // 3: perload 2次 需要2+1
-                        sysWorkspaceSize + accumOutSize + logSumExpSize;
+                        sysWorkspaceSize + accumOutSize + logSumExpSize * 2;
 
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         // 2 bmm, db, ensure alignment of each structure 64B, dcci cacheline needs
@@ -1562,7 +1558,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::GetWorkspace(gert::TilingCon
     } else if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
         OP_CHECK_IF(SetWorkspaceAntiQuant(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
                     OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
-
     } else {
         OP_CHECK_IF(SetWorkspaceNormal(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
                     OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
@@ -1854,7 +1849,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
         OP_LOGI(fiaInfo.opName,
                 "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, actualSharedPrefixLen is %ld, needInit is %u",
                 i, actualSeqLengthsQ_[i], i, actualSeqLengthsKV_[i], fiaInfo.systemPrefixLen, needInit_);
-
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -2061,7 +2055,6 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "antiquantPerHeadFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerHeadFlag());
     OP_LOGD(fiaInfo.opName, "antiquantParaSeqSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantParaSeqSize());
 
-
     OP_LOGD(fiaInfo.opName, "coreNum:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_coreNum());
     OP_LOGD(fiaInfo.opName, "totalSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_totalSize());
     OP_LOGD(fiaInfo.opName, "s1OuterSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_s1OuterSize());
@@ -2078,13 +2071,11 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "firstFullLoadS1OuterIdx:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_firstFullLoadS1OuterIdx());
     OP_LOGD(fiaInfo.opName, "splitCoreMode:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitCoreMode());
 
-
     OP_LOGD(fiaInfo.opName, "singleCoreSize:%d", faRunTilingAdapter_.initOutputParams.get_singleCoreSize());
     OP_LOGD(fiaInfo.opName, "needInit:%d", faRunTilingAdapter_.initOutputParams.get_needInit());
     OP_LOGD(fiaInfo.opName, "isOneN:%d", faRunTilingAdapter_.initOutputParams.get_isOneN());
     OP_LOGD(fiaInfo.opName, "totalOutputSize:%d", faRunTilingAdapter_.initOutputParams.get_totalOutputSize());
     OP_LOGD(fiaInfo.opName, "totalSoftMaxLseOutputSize:%d", faRunTilingAdapter_.initOutputParams.get_totalSoftMaxLseOutputSize());
-
 }
 ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingContext *context,
                                                                const FiaTilingInfo &fiaInfo)

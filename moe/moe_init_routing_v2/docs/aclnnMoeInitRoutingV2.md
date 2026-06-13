@@ -257,11 +257,11 @@ aclnnStatus aclnnMoeInitRoutingV2(
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]。
   - <term>Ascend 950PR/Ascend 950DT</term> ：输入expertIdx数据类型支持INT32、INT64，要求是一个2D的shape [numRows, k]或者1D的shape [numRows]，当shape为1D时表示k=1。
-  - <term>Atlas 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]，dropPadMode仅支持0。输入x的尾轴大小要求可以整除32。
+  - |<term>Atlas 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]，dropPadMode仅支持0。输入x的尾轴大小要求可以整除32。
 
 - **返回值：**
 
-  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn 返回码</a>。
+  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。
 
   一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed; width: 1180px"> 
@@ -294,7 +294,7 @@ aclnnStatus aclnnMoeInitRoutingV2(
         <td>expertTokensCountOrCumsumOut需要输出时，expertNum等于0。</td>
       </tr>
       <tr>
-        <td>x和expertIdx的shape维度不等于2，且第一维不相等。在<term>Atlas 推理系列产品</term>上输入x的尾轴大小不能整除32</td>
+        <td>x和expertIdx的shape维度不等于2，且第一维不相等。在|<term>Atlas 推理系列产品</term>上输入x的尾轴大小不能整除32</td>
       </tr>
       <tr>
         <td>activeNum、expertNum、expertCapacity的值小于0。</td>
@@ -412,7 +412,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化,参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
