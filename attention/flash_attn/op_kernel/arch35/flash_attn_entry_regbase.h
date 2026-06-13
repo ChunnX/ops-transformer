@@ -28,7 +28,11 @@
 
 #include "../utils/flash_attn_utils.h"
 #include "../utils/flash_attn_common_def.h"
-#include "flash_attn_kernel_base_gqa_template.h"
+#ifdef __DAV_C310_CUBE__
+#include "flash_attn_gqa_cube.h"
+#else
+#include "flash_attn_gqa_vec.h"
+#endif
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "flash_attn_tiling_data.h"
 
