@@ -132,6 +132,7 @@ private:
     __aicore__ inline void VToMTE3Sync();
     __aicore__ inline void MTE2ToVSync();
     __aicore__ inline void MTE2ToSSync();
+    __aicore__ inline void MTE3ToSSync();
     __aicore__ inline void SToMTE3Sync();
 
     BSAConstInfo constInfo;
@@ -681,6 +682,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::MTE2ToSSync()
     event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
     SetFlag<HardEvent::MTE2_S>(eventID);
     WaitFlag<HardEvent::MTE2_S>(eventID);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::MTE3ToSSync()
+{
+    event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S));
+    SetFlag<HardEvent::MTE3_S>(eventID);
+    WaitFlag<HardEvent::MTE3_S>(eventID);
 }
 
 template <typename BSAT>
@@ -1307,6 +1316,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     VToMTE3Sync();
     DataCopyPad(maskOutGmU8Local[outputGmOffset], maskU8,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
+    MTE3ToSSync();
     MTE3ToMTE2Sync();
 
     VToSSync();
