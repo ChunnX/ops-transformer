@@ -109,13 +109,13 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     int32_t batch = 1;
-    int32_t numHeads = 1;
+    int32_t numHeads = 8;
     int32_t qSeqlen = 4096;
     int32_t kvSeqlen = 4096;
     int32_t headDim = 128;
     int32_t blockShapeX = 128;
     int32_t blockShapeY = 128;
-    float sparsity = 0.5f;
+    float sparsity = 0.75f;
     double expectedSparsity = 1.0 - static_cast<double>(sparsity);
     
     int32_t xBlocks = (qSeqlen + blockShapeX - 1) / blockShapeX;
@@ -173,7 +173,7 @@ int main() {
     std::vector<int8_t> resultData(maskOutSize, 0);
     int64_t selectedCount = 0;
     double actualSparsity = 0.0;
-    constexpr int32_t kernelRunTimes = 1;
+    constexpr int32_t kernelRunTimes = 100;
 
     LOG_PRINT("Calling aclnnBSASelectBlockMask %d times with reused tensors and fresh executor...\n", kernelRunTimes);
     for (int32_t runId = 0; runId < kernelRunTimes; ++runId) {
@@ -266,7 +266,7 @@ int main() {
     LOG_PRINT("Selected (non-zero): %ld\n", selectedCount);
     LOG_PRINT("Actual sparsity: %.4f (expected: %.4f)\n", actualSparsity, expectedSparsity);
     
-    uint64_t printNum = 1024;
+    uint64_t printNum = 20;
     LOG_PRINT("First %lu elements:\n", printNum);
     for (uint64_t i = 0; i < printNum && i < resultData.size(); i++) {
         LOG_PRINT("  index %lu: %d\n", i, static_cast<int>(resultData[i]));
