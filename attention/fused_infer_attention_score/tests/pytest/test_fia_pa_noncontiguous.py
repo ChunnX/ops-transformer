@@ -82,13 +82,19 @@ NORMAL_CASES = [
 ]
 
 ERROR_CASES = [
+    # BBND 不支持 dim1 非连续（仅支持 dim0）
     {"id": "BnBsH_BNSD_dim01",  "pa": True,  "kv": "BnBsH",  "ql": "BNSD", "nc": "dim01",
      "kv_seq": 2048, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "BnBsH_BSND_dim01",  "pa": True,  "kv": "BnBsH",  "ql": "BSND", "nc": "dim01",
      "kv_seq": 2048, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
+    # 非PA 不支持任何非连续
     {"id": "NonPA_BNSD_dim0",   "pa": False, "kv": "none",   "ql": "BNSD", "nc": "dim0",
      "kv_seq": 1024, "bs": 0, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
+    {"id": "NonPA_BNSD_dim01",  "pa": False, "kv": "none",   "ql": "BNSD", "nc": "dim01",
+     "kv_seq": 1024, "bs": 0, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "NonPA_BSND_dim0",   "pa": False, "kv": "none",   "ql": "BSND", "nc": "dim0",
+     "kv_seq": 1024, "bs": 0, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
+    {"id": "NonPA_BSND_dim01",  "pa": False, "kv": "none",   "ql": "BSND", "nc": "dim01",
      "kv_seq": 1024, "bs": 0, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
 ]
 
