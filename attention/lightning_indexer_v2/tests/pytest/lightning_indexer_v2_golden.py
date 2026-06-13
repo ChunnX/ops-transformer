@@ -19,8 +19,8 @@ import numpy as np
 import math
 import ctypes
 import copy
-import npu_ops_transformer
-from npu_ops_transformer.ops import npu_lightning_indexer_v2
+import cann_ops_transformer
+from cann_ops_transformer.ops import lightning_indexer_v2
 
 class GeneralizedLIV2:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
@@ -606,7 +606,7 @@ def liv2_output_single(params):
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
     max_seqlen_q = actual_seq_lengths_query.max().item()
     max_seqlen_k = actual_seq_lengths_key.max().item()
-    # metadata = torch.ops.custom.npu_lightning_indexer_v2_metadata(
+    # metadata = torch.ops.custom.lightning_indexer_v2_metadata(
     #                                 num_heads_q = q_head_num,
     #                                 num_heads_k = k_head_num,
     #                                 head_dim = head_dim,
@@ -628,7 +628,7 @@ def liv2_output_single(params):
 
     # metadata = metadata.npu()
     metadata = None
-    npu_result, _ = npu_lightning_indexer_v2(query, key, weights,
+    npu_result, _ = lightning_indexer_v2(query, key, weights,
                                              cu_seqlens_q = cu_seqlens_q,
                                              cu_seqlens_k = cu_seqlens_k,
                                              seqused_q = seqused_q,
