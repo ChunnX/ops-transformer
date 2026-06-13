@@ -661,7 +661,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
     // 外层循环：按 S1 位置遍历（同一个 S1 位置下的 G 个行共享相同的 S2Len）
     uint32_t curAivS1Size = CeilDiv(curAivGS1ProcNum, gSize_);
     for (uint32_t s1Pos = 0; s1Pos < curAivS1Size; s1Pos++) {
-        uint32_t globalS1Pos = gS1Idx * s1BaseSize_ + s1Pos;
+        uint32_t globalS1Pos = curAivGS1Idx % actS1Size + s1Pos;
         
         if (constInfo_.attenMaskFlag) {
             int32_t curS1RealS2LenTmp = static_cast<int32_t>(actS2Size) - static_cast<int32_t>(actS1Size) +
