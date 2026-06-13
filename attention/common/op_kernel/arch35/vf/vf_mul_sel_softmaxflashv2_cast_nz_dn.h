@@ -1148,7 +1148,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(
             ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_dst0, preg_all_b8);
     }
-    
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
