@@ -20,7 +20,7 @@
 #endif
 
 #ifndef BSA_TOPK_MASK_CAST_DEBUG
-#define BSA_TOPK_MASK_CAST_DEBUG 0
+#define BSA_TOPK_MASK_CAST_DEBUG 1
 #endif
 
 #define BSA_TOPK_PRINTF(...) do { \
