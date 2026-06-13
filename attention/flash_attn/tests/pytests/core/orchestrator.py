@@ -394,6 +394,11 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
             except Exception as e:
                 print(f"  [warn] visualize 异常: {e}")
 
+    del inputs, golden_data, npu_out
+    del cpu_raw, dev_raw, cpu_out
+    primary.clear_cache()
+    gc.collect()
+
     return ret
 
 
