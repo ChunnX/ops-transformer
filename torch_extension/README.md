@@ -72,13 +72,13 @@ This file bridges PyTorch tensors to the ACLNN C-API.
 #include "aclnn_common.h"
 
 /**
- * @brief ACLNN Warpper for aclnnAbs
+ * @brief ACLNN Wrapper for aclnnAbs
  * @param x Input Tensor (on NPU)
  * @return Result Tensor
  */
 at::Tensor npu_abs(const at::Tensor &x)
 {
-    // 1. Manually allocate output tensor (standrad PyTorch practice)
+    // 1. Manually allocate output tensor (standard PyTorch practice)
     at::Tensor y = at::empty_like(x);
 
     // 2. Launch ACLNN kernel using the helper macro

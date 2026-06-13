@@ -17,15 +17,31 @@
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
 
+#if __has_include("../../common/op_kernel/buffers_policy.h")
+#include "../../common/op_kernel/buffers_policy.h"
+#else
+#include "../../common/buffers_policy.h"
+#endif
+#if __has_include("../../common/op_kernel/buffer_manager.h")
+#include "../../common/op_kernel/buffer_manager.h"
+#else
+#include "../../common/buffer_manager.h"
+#endif
+#if __has_include("../../common/op_kernel/buffer.h")
+#include "../../common/op_kernel/buffer.h"
+#else
+#include "../../common/buffer.h"
+#endif
+
 constexpr uint64_t BLOCK_BYTE = 32;
 constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
-
-constexpr uint32_t L0AB_SHARED_SIZE_64K = 65536; // 65536表示64*1024
-constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024
 
 constexpr uint32_t BUFFER_SIZE_16K = 16384; // 16384表示16 * 1024
 constexpr uint32_t BUFFER_SIZE_32K = 32768; // 32768表示32 * 1024
 constexpr uint32_t BUFFER_SIZE_128K = 131072; // 131072表示128 * 1024
+
+constexpr uint32_t L0AB_SHARED_SIZE_64K = 65536; // 65536表示64*1024
+constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024
 
 constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
@@ -69,13 +85,13 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data) {
 #define TEMPLATE_INTF_ARGS \
     Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G
 
-#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
+#define QSFA_CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(Q_T) \
     X(KV_T) \
     X(T) \
     X(OUTPUT_T) \
 
-#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
+#define QSFA_CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
     X(isFd, bool, false) \
     X(isPa, bool, true) \
     X(LAYOUT_T, QSFA_LAYOUT, QSFA_LAYOUT::BSND) \
@@ -89,20 +105,20 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data) {
 #define GEN_CONST_PARAM(name, type, default_val) type name = default_val,
 
 #define TEMPLATES_DEF \
-template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
+template <QSFA_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
+    QSFA_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
 
 /* 2. 生成不带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
 #define TEMPLATES_DEF_NO_DEFAULT \
-template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+template <QSFA_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
+    QSFA_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
 /* 3. 生成有默认值的Args */
 #define GEN_ARG_NAME(name, ...) name,
 #define TEMPLATE_ARGS \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
+    QSFA_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
+    QSFA_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 #endif //KV_QUANT_SPARSE_FLASH_ATTENTION_COMMON_ARCH35_H

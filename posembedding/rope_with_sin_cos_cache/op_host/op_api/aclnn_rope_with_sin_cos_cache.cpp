@@ -16,7 +16,7 @@
 #include "rope_with_sin_cos_cache.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
-#include "add.h"
+#include "level0/add.h"
 #include "rsqrt.h"
 #include "aclnn_kernels/cast.h"
 #include "aclnn_rope_with_sin_cos_cache.h"
@@ -56,23 +56,24 @@ static const std::initializer_list<op::DataType> positions_dtype_list = {op::Dat
 
 static const std::initializer_list<op::DataType> emptyDtypes = {};
 
-static const std::initializer_list<std::vector<int64_t>> mropeSupportList = {{16, 24, 24}, {8, 12, 12}, {24, 20, 20}, {16, 16, 16, 16}}; // 支持的mrope输入
+static const std::initializer_list<std::vector<int64_t>> mropeSupportList = {
+    {16, 24, 24}, {8, 12, 12}, {24, 20, 20}, {16, 16, 16, 16}}; // 支持的mrope输入
 
 static const std::initializer_list<int64_t> cacheModeSupportList = {0, 1};
 
-static const std::initializer_list<DataType>& GetSupportDtypeList()
+static const std::initializer_list<DataType> &GetSupportDtypeList()
 {
     auto socVersion = GetCurrentPlatformInfo().GetSocVersion();
-    if (socVersion == SocVersion::ASCEND910B || socVersion == SocVersion::ASCEND910_93 || Ops::Transformer::AclnnUtil::IsRegbase()) {
+    if (socVersion == SocVersion::ASCEND910B || socVersion == SocVersion::ASCEND910_93 ||
+        Ops::Transformer::AclnnUtil::IsRegbase()) {
         return ASCEND910B_DTYPE_SUPPORT_LIST;
     } else {
         return emptyDtypes;
     }
 }
 
-static bool CheckNotNull(
-    const aclTensor* positions, const aclTensor* queryIn, const aclTensor* keyIn, const aclTensor* cosSinCache,
-    const aclTensor* queryOut, const aclTensor* keyOut)
+static bool CheckNotNull(const aclTensor *positions, const aclTensor *queryIn, const aclTensor *keyIn,
+                         const aclTensor *cosSinCache, const aclTensor *queryOut, const aclTensor *keyOut)
 {
     OP_CHECK_NULL(positions, return false);
     OP_CHECK_NULL(queryIn, return false);
@@ -83,13 +84,12 @@ static bool CheckNotNull(
     return true;
 }
 
-static bool CheckDtypeValid(
-    const aclTensor* positions, const aclTensor* queryIn, const aclTensor* keyIn, const aclTensor* cosSinCache,
-    const aclTensor* queryOut, const aclTensor* keyOut)
+static bool CheckDtypeValid(const aclTensor *positions, const aclTensor *queryIn, const aclTensor *keyIn,
+                            const aclTensor *cosSinCache, const aclTensor *queryOut, const aclTensor *keyOut)
 {
     // 检查positions queryIn的数据类型是否在支持列表内
     auto socVersion = GetCurrentPlatformInfo().GetSocVersion();
-    const auto& supportList = GetSupportDtypeList();
+    const auto &supportList = GetSupportDtypeList();
     if (supportList.size() == 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "support for %s is not implemented", ToString(socVersion).GetString());
     }
@@ -109,32 +109,29 @@ static bool CheckShape(const aclTensor *positions, const aclTensor *queryIn, con
 {
     // 检查输入的所有shape是不是2维；
     if (queryIn->GetViewShape().GetDimNum() != DIM_NUM) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected queryIn to be a vector of size 2, "
-            "but got queryIn of shape %s.",
-            op::ToString(queryIn->GetViewShape()).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "Expected queryIn to be a vector of size 2, "
+                "but got queryIn of shape %s.",
+                op::ToString(queryIn->GetViewShape()).GetString());
         return false;
     }
 
     if (keyIn->GetViewShape().GetDimNum() != DIM_NUM) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected keyIn to be a vector of size 2, "
-            "but got keyIn of shape %s.",
-            op::ToString(keyIn->GetViewShape()).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "Expected keyIn to be a vector of size 2, "
+                "but got keyIn of shape %s.",
+                op::ToString(keyIn->GetViewShape()).GetString());
         return false;
     }
 
     if (cosSinCache->GetViewShape().GetDimNum() != DIM_NUM) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected cosSinCache to be a vector of size 2, "
-            "but got cosSinCache of shape %s.",
-            op::ToString(cosSinCache->GetViewShape()).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "Expected cosSinCache to be a vector of size 2, "
+                "but got cosSinCache of shape %s.",
+                op::ToString(cosSinCache->GetViewShape()).GetString());
         return false;
     }
-    
+
     // 检查是否有维度为0
     if (queryIn->IsEmpty() || keyIn->IsEmpty() || cosSinCache->IsEmpty() || positions->IsEmpty()) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "RopeWithSinCosCache not support to process empty tensor currently",
@@ -143,12 +140,10 @@ static bool CheckShape(const aclTensor *positions, const aclTensor *queryIn, con
     }
 
     // 检查keyIn的1维度是不是等于queryIn的一维
-    OP_CHECK(
-        keyIn->GetViewShape()[0] == queryIn->GetViewShape()[0],
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected keyIn.shape[0] == queryIn->GetViewShape()[0] to be true, but got false."),
-        return false);
+    OP_CHECK(keyIn->GetViewShape()[0] == queryIn->GetViewShape()[0],
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                     "Expected keyIn.shape[0] == queryIn->GetViewShape()[0] to be true, but got false."),
+             return false);
     // 检查输入和输出的shape 是否相同
     OP_CHECK_SHAPE_NOT_EQUAL(queryOut, queryIn, return false);
     OP_CHECK_SHAPE_NOT_EQUAL(keyOut, keyIn, return false);
@@ -168,7 +163,7 @@ static bool CheckMropeSection(const std::vector<int64_t> &target, const std::vec
 static bool CheckCacheMode(const int64_t target, const std::initializer_list<int64_t> support)
 {
     for (const auto &item : support) {
-        if (item == target){
+        if (item == target) {
             return true;
         }
     }
@@ -230,16 +225,18 @@ static aclnnStatus CheckParams(const aclTensor *positions, const aclTensor *quer
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnRopeWithSinCosCacheGetWorkspaceSizeCommon(
-    const aclTensor* positions, const aclTensor* queryIn, const aclTensor* keyIn, const aclTensor* cosSinCache,
-    const aclIntArray* mropeSection, int64_t headSize, bool isNeoxStyle, int64_t cacheMode, aclTensor* queryOut, aclTensor* keyOut,
-    uint64_t* workspaceSize, aclOpExecutor** executor)
+aclnnStatus aclnnRopeWithSinCosCacheGetWorkspaceSizeCommon(const aclTensor *positions, const aclTensor *queryIn,
+                                                           const aclTensor *keyIn, const aclTensor *cosSinCache,
+                                                           const aclIntArray *mropeSection, int64_t headSize,
+                                                           bool isNeoxStyle, int64_t cacheMode, aclTensor *queryOut,
+                                                           aclTensor *keyOut, uint64_t *workspaceSize,
+                                                           aclOpExecutor **executor)
 {
     // 固定写法，参数检查
     auto ret = CheckParams(positions, queryIn, keyIn, cosSinCache, mropeSection, queryOut, keyOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     CHECK_RET(headSize != 0, ACLNN_ERR_PARAM_INVALID);
-   
+
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -247,7 +244,7 @@ aclnnStatus aclnnRopeWithSinCosCacheGetWorkspaceSizeCommon(
     // 固定写法，将输入positions转换成连续的tensor
     auto positionsContiguous = l0op::Contiguous(positions, uniqueExecutor.get());
     CHECK_RET(positionsContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     // 固定写法，将输入cosSinCosCache转换成连续的tensor
     auto cosSinCacheContiguous = l0op::Contiguous(cosSinCache, uniqueExecutor.get());
     CHECK_RET(cosSinCacheContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -258,9 +255,9 @@ aclnnStatus aclnnRopeWithSinCosCacheGetWorkspaceSizeCommon(
     int64_t queryStride = queryIn->GetViewStrides()[0];
     int64_t keyStride = keyIn->GetViewStrides()[0];
 
-    std::tuple<aclTensor*, aclTensor*> result = l0op::RopeWithSinCosCache(
-        positionsContiguous, queryIn, keyIn, cosSinCacheContiguous, mropeSection, headSize, isNeoxStyle, queryStride, keyStride,
-        numQheads, numKheads, cacheMode, uniqueExecutor.get());
+    std::tuple<aclTensor *, aclTensor *> result = l0op::RopeWithSinCosCache(
+        positionsContiguous, queryIn, keyIn, cosSinCacheContiguous, mropeSection, headSize, isNeoxStyle, queryStride,
+        keyStride, numQheads, numKheads, cacheMode, uniqueExecutor.get());
     auto query = std::get<0>(result);
     CHECK_RET(query != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto key = std::get<1>(result);
@@ -278,16 +275,17 @@ aclnnStatus aclnnRopeWithSinCosCacheGetWorkspaceSizeCommon(
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnRopeWithSinCosCacheGetWorkspaceSize(
-    const aclTensor* positions, const aclTensor* queryIn, const aclTensor* keyIn, const aclTensor* cosSinCache,
-    const aclIntArray* mropeSection, int64_t headSize, bool isNeoxStyle, aclTensor* queryOut, aclTensor* keyOut,
-    uint64_t* workspaceSize, aclOpExecutor** executor)
+aclnnStatus aclnnRopeWithSinCosCacheGetWorkspaceSize(const aclTensor *positions, const aclTensor *queryIn,
+                                                     const aclTensor *keyIn, const aclTensor *cosSinCache,
+                                                     const aclIntArray *mropeSection, int64_t headSize,
+                                                     bool isNeoxStyle, aclTensor *queryOut, aclTensor *keyOut,
+                                                     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // V1版本只支持cacheMode为0
     int64_t cacheMode = 0;
-    L2_DFX_PHASE_1(
-        aclnnRopeWithSinCosCache, DFX_IN(positions, queryIn, keyIn, cosSinCache, mropeSection, headSize, isNeoxStyle, cacheMode),
-        DFX_OUT(queryOut, keyOut));
+    L2_DFX_PHASE_1(aclnnRopeWithSinCosCache,
+                   DFX_IN(positions, queryIn, keyIn, cosSinCache, mropeSection, headSize, isNeoxStyle, cacheMode),
+                   DFX_OUT(queryOut, keyOut));
 
     return aclnnRopeWithSinCosCacheGetWorkspaceSizeCommon(positions, queryIn, keyIn, cosSinCache, mropeSection,
                                                           headSize, isNeoxStyle, cacheMode, queryOut, keyOut,
@@ -295,24 +293,27 @@ aclnnStatus aclnnRopeWithSinCosCacheGetWorkspaceSize(
 }
 
 // 固定写法，获取计算过程中需要使用的workspace大小
-aclnnStatus aclnnRopeWithSinCosCache(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
+aclnnStatus aclnnRopeWithSinCosCache(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                     aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnRopeWithSinCosCache);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
-aclnnStatus aclnnRopeWithSinCosCacheV2GetWorkspaceSize(
-    const aclTensor* positions, const aclTensor* queryIn, const aclTensor* keyIn, const aclTensor* cosSinCache,
-    const aclIntArray* mropeSection, int64_t headSize, bool isNeoxStyle, int64_t cacheMode, aclTensor* queryOut, aclTensor* keyOut,
-    uint64_t* workspaceSize, aclOpExecutor** executor)
+aclnnStatus aclnnRopeWithSinCosCacheV2GetWorkspaceSize(const aclTensor *positions, const aclTensor *queryIn,
+                                                       const aclTensor *keyIn, const aclTensor *cosSinCache,
+                                                       const aclIntArray *mropeSection, int64_t headSize,
+                                                       bool isNeoxStyle, int64_t cacheMode, aclTensor *queryOut,
+                                                       aclTensor *keyOut, uint64_t *workspaceSize,
+                                                       aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(
-        aclnnRopeWithSinCosCacheV2, DFX_IN(positions, queryIn, keyIn, cosSinCache, mropeSection, headSize, isNeoxStyle, cacheMode),
-        DFX_OUT(queryOut, keyOut));
+    L2_DFX_PHASE_1(aclnnRopeWithSinCosCacheV2,
+                   DFX_IN(positions, queryIn, keyIn, cosSinCache, mropeSection, headSize, isNeoxStyle, cacheMode),
+                   DFX_OUT(queryOut, keyOut));
 
     OP_CHECK(CheckCacheMode(cacheMode, cacheModeSupportList),
-             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[aclnnRopeWithSinCosCache] cacheMode only support 0 or 1, but got %ld", cacheMode),
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[aclnnRopeWithSinCosCache] cacheMode only support 0 or 1, but got %ld",
+                     cacheMode),
              return ACLNN_ERR_PARAM_INVALID);
 
     return aclnnRopeWithSinCosCacheGetWorkspaceSizeCommon(positions, queryIn, keyIn, cosSinCache, mropeSection,
@@ -321,8 +322,8 @@ aclnnStatus aclnnRopeWithSinCosCacheV2GetWorkspaceSize(
 }
 
 // 固定写法，获取计算过程中需要使用的workspace大小
-aclnnStatus aclnnRopeWithSinCosCacheV2(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
+aclnnStatus aclnnRopeWithSinCosCacheV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                       aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnRopeWithSinCosCacheV2);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

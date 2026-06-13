@@ -497,7 +497,7 @@ public:
                                           RunInfoX &runInfo)
     {
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = Align(runInfo.actSingleLoopS2Size, 16U)};
+                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
 
         GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
                           .n2Idx = runInfo.n2Idx,

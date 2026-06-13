@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
- if(BUILD_OPEN_PROJECT)
+ if (BUILD_OPEN_PROJECT)
     #打桩文件
     file(GLOB MC2_DZ)
     if(MC2_DZ)

@@ -23,8 +23,8 @@ namespace optiling {
 ge::graphStatus ContextTransfer::AssembleMMRCtxInfoFromMRNCtx(const gert::TilingContext *const context,
                                                               MMRCtxInfo &mmrCtxInfo)
 {
-    GE_ASSERT_NOTNULL(context);
-    GE_ASSERT_NOTNULL(context->GetAttrs());
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), context);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), context->GetAttrs());
     // attr
     uint32_t index = 0U;
     mmrCtxInfo.group = context->GetAttrs()->GetAttrPointer<char>(index++);
@@ -38,9 +38,9 @@ ge::graphStatus ContextTransfer::AssembleMMRCtxInfoFromMRNCtx(const gert::Tiling
     // io tensordesc
     index = 0U;
     mmrCtxInfo.x1 = context->GetInputDesc(index++);
-    GE_ASSERT_NOTNULL(mmrCtxInfo.x1);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), mmrCtxInfo.x1);
     mmrCtxInfo.x2 = context->GetInputDesc(index++);
-    GE_ASSERT_NOTNULL(mmrCtxInfo.x2);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), mmrCtxInfo.x2);
     mmrCtxInfo.bias = context->GetOptionalInputDesc(index++);
     mmrCtxInfo.x3 = nullptr; // mrn当前不支持融合带有x3的mmr
     index++; // 跳过mrn中的arn的residual
@@ -53,9 +53,9 @@ ge::graphStatus ContextTransfer::AssembleMMRCtxInfoFromMRNCtx(const gert::Tiling
     // io shape
     index = 0U;
     mmrCtxInfo.x1_shape = context->GetInputShape(index++);
-    GE_ASSERT_NOTNULL(mmrCtxInfo.x1_shape);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), mmrCtxInfo.x1_shape);
     mmrCtxInfo.x2_shape = context->GetInputShape(index++);
-    GE_ASSERT_NOTNULL(mmrCtxInfo.x2_shape);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), mmrCtxInfo.x2_shape);
     mmrCtxInfo.bias_shape = context->GetOptionalInputShape(index++);
     mmrCtxInfo.x3_shape = nullptr; // mrn当前不支持融合带有x3的mmr
     index++; // 跳过mrn中的arn的residual
@@ -70,10 +70,10 @@ ge::graphStatus ContextTransfer::AssembleMMRCtxInfoFromMRNCtx(const gert::Tiling
 ge::graphStatus ContextTransfer::AssembleARNCtxInfoFromMRNCtx(const gert::TilingContext *const context,
                                                               ARNCtxInfo &arnCtxInfo)
 {
-    GE_ASSERT_NOTNULL(context);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), context);
 
     const auto attrs = context->GetAttrs();
-    GE_ASSERT_NOTNULL(attrs);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), attrs);
     // arn 和 matmulallreduce的属性排序不一致
     arnCtxInfo.epsilon = attrs->GetAttrPointer<float>(
         static_cast<size_t>(ops::MmAllReduceAddRmsNormAttrIdx::K_EPSILON));
@@ -91,21 +91,21 @@ ge::graphStatus ContextTransfer::AssembleARNCtxInfoFromMRNCtx(const gert::Tiling
     OP_LOGD(context->GetNodeName(), "Real input num %zu, total ir input num %zu, x2 input index %u.",
             real_in_total, ir_in_total, index);
     arnCtxInfo.x2 = context->GetInputDesc(index);
-    GE_ASSERT_NOTNULL(arnCtxInfo.x2);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), arnCtxInfo.x2);
     arnCtxInfo.x2_shape = context->GetInputShape(index);
-    GE_ASSERT_NOTNULL(arnCtxInfo.x2_shape);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), arnCtxInfo.x2_shape);
 
     ++index;
     arnCtxInfo.gamma = context->GetInputDesc(index);
-    GE_ASSERT_NOTNULL(arnCtxInfo.gamma);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), arnCtxInfo.gamma);
     arnCtxInfo.gamma_shape = context->GetInputShape(index);
-    GE_ASSERT_NOTNULL(arnCtxInfo.gamma_shape);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), arnCtxInfo.gamma_shape);
 
     index = 0U;
     arnCtxInfo.x = context->GetOutputDesc(index);
-    GE_ASSERT_NOTNULL(arnCtxInfo.x);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), arnCtxInfo.x);
     arnCtxInfo.x_shape = context->GetOutputShape(index);
-    GE_ASSERT_NOTNULL(arnCtxInfo.x_shape);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), arnCtxInfo.x_shape);
 
     // mrn当前不支持融合带有rstd的arn
     arnCtxInfo.rstd = nullptr;
@@ -113,9 +113,9 @@ ge::graphStatus ContextTransfer::AssembleARNCtxInfoFromMRNCtx(const gert::Tiling
 
     ++index;
     arnCtxInfo.y = context->GetOutputDesc(index);
-    GE_ASSERT_NOTNULL(arnCtxInfo.y);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), arnCtxInfo.y);
     arnCtxInfo.y_shape = context->GetOutputShape(index);
-    GE_ASSERT_NOTNULL(arnCtxInfo.y_shape);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), arnCtxInfo.y_shape);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -135,8 +135,8 @@ ge::graphStatus ContextTransfer::AssembleARNCtxInfoFromIMRNCtx(const gert::Tilin
 ge::graphStatus ContextTransfer::AssembleMRNCtxInfoFromMRNCtx(const gert::TilingContext *const context,
                                                               MRNCtxInfo &mrnCtxInfo)
 {
-    GE_ASSERT_GRAPH_SUCCESS(AssembleMMRCtxInfoFromMRNCtx(context, mrnCtxInfo.mmrCtxInfo));
-    GE_ASSERT_GRAPH_SUCCESS(AssembleARNCtxInfoFromMRNCtx(context, mrnCtxInfo.arnCtxInfo));
+    MC2_CHECK_LOG_RET(context->GetNodeName(), AssembleMMRCtxInfoFromMRNCtx(context, mrnCtxInfo.mmrCtxInfo));
+    MC2_CHECK_LOG_RET(context->GetNodeName(), AssembleARNCtxInfoFromMRNCtx(context, mrnCtxInfo.arnCtxInfo));
     mrnCtxInfo.mmrCtxInfo.y_shape = mrnCtxInfo.arnCtxInfo.x2_shape;
     mrnCtxInfo.mmrCtxInfo.y = mrnCtxInfo.arnCtxInfo.x2;
     return ge::GRAPH_SUCCESS;
@@ -149,34 +149,30 @@ ge::graphStatus ContextTransfer::CheckMRNCtxInfo(const gert::TilingContext *cont
     uint64_t x1DimNum = x1Shape->GetStorageShape().GetDimNum();
     OP_LOGD(context->GetNodeName(), "the dim of x1 is %lu.", x1DimNum);
     OP_TILING_CHECK(x1DimNum < DIM_ONE,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                    "Expect x1 dim to be more than 0, but got x1 dim [%lu].",
-                                                    x1DimNum),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x1",
+                        std::to_string(x1DimNum).c_str(), "more than 0"),
                     return ge::GRAPH_FAILED);
     int64_t x1MValue = x1Shape->GetStorageShape().GetDim(0);
     if (x1DimNum >= static_cast<int64_t>(DIM_THREE)) {
         x1MValue *= x1Shape->GetStorageShape().GetDim(1);
     }
     OP_TILING_CHECK(residualShape->GetStorageShape().GetDimNum() != DIM_THREE,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                    "Expect dim of residual from arn to be 3, but got"
-                                                    " residual_dim:[%lu].",
-                                                    residualShape->GetStorageShape().GetDimNum()),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "residual",
+                        (std::to_string(residualShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
                     return ge::GRAPH_FAILED);
     int64_t residualMValue = residualShape->GetStorageShape().GetDim(0) * residualShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(x1MValue != residualMValue,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                    "Expect b * s of x1 (when dim of x1 is 2, b = 1 as default) and"
-                                                    " residual to be same, but got x1_b*s:[%lu], residual_b*s:[%lu].",
-                                                    x1MValue, residualMValue),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1_b*s",
+                        std::to_string(x1MValue).c_str(),
+                        "The value of x1_b*s must be the same as that of residual_b*s"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 ge::graphStatus ContextTransfer::AssembleIMRNCtxInfoFromIMRNCtx(const gert::TilingContext *const context,
                                                                 IMRNCtxInfo &imrnCtxInfo)
 {
-    GE_ASSERT_GRAPH_SUCCESS(AssembleMMRCtxInfoFromIMRNCtx(context, imrnCtxInfo.mmrCtxInfo));
-    GE_ASSERT_GRAPH_SUCCESS(AssembleARNCtxInfoFromIMRNCtx(context, imrnCtxInfo.arnCtxInfo));
+    MC2_CHECK_LOG_RET(context->GetNodeName(), AssembleMMRCtxInfoFromIMRNCtx(context, imrnCtxInfo.mmrCtxInfo));
+    MC2_CHECK_LOG_RET(context->GetNodeName(), AssembleARNCtxInfoFromIMRNCtx(context, imrnCtxInfo.arnCtxInfo));
     imrnCtxInfo.mmrCtxInfo.y_shape = imrnCtxInfo.arnCtxInfo.x2_shape;
     imrnCtxInfo.mmrCtxInfo.y = imrnCtxInfo.arnCtxInfo.x2;
     return ge::GRAPH_SUCCESS;
@@ -184,8 +180,8 @@ ge::graphStatus ContextTransfer::AssembleIMRNCtxInfoFromIMRNCtx(const gert::Tili
 ge::graphStatus ContextTransfer::AssembleMMRCtxInfoFromMMRCtx(const gert::TilingContext *const context,
                                                               MMRCtxInfo &mmrCtxInfo)
 {
-    GE_ASSERT_NOTNULL(context);
-    GE_ASSERT_NOTNULL(context->GetAttrs());
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), context);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), context->GetAttrs());
     // attr
     uint32_t index = 0U;
     mmrCtxInfo.group = context->GetAttrs()->GetAttrPointer<char>(index++);
@@ -202,9 +198,9 @@ ge::graphStatus ContextTransfer::AssembleMMRCtxInfoFromMMRCtx(const gert::Tiling
     // io tensordesc
     index = 0U;
     mmrCtxInfo.x1 = context->GetInputDesc(index++);
-    GE_ASSERT_NOTNULL(mmrCtxInfo.x1);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), mmrCtxInfo.x1);
     mmrCtxInfo.x2 = context->GetInputDesc(index++);
-    GE_ASSERT_NOTNULL(mmrCtxInfo.x2);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), mmrCtxInfo.x2);
     mmrCtxInfo.bias = context->GetOptionalInputDesc(index++);
     mmrCtxInfo.x3 = context->GetOptionalInputDesc(index++);
     mmrCtxInfo.antiquant_scale = context->GetOptionalInputDesc(index++);
@@ -215,13 +211,13 @@ ge::graphStatus ContextTransfer::AssembleMMRCtxInfoFromMMRCtx(const gert::Tiling
     mmrCtxInfo.comm_quant_scale_2 = context->GetOptionalInputDesc(index++);
     index = 0U;
     mmrCtxInfo.y = context->GetOutputDesc(index++);
-    GE_ASSERT_NOTNULL(mmrCtxInfo.y);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), mmrCtxInfo.y);
     // io shape
     index = 0U;
     mmrCtxInfo.x1_shape = context->GetInputShape(index++);
-    GE_ASSERT_NOTNULL(mmrCtxInfo.x1_shape);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), mmrCtxInfo.x1_shape);
     mmrCtxInfo.x2_shape = context->GetInputShape(index++);
-    GE_ASSERT_NOTNULL(mmrCtxInfo.x2_shape);
+    MC2_CHECK_NOTNULL_RET(context->GetNodeName(), mmrCtxInfo.x2_shape);
     mmrCtxInfo.bias_shape = context->GetOptionalInputShape(index++);
     mmrCtxInfo.x3_shape = context->GetOptionalInputShape(index++);
     mmrCtxInfo.antiquant_scale_shape = context->GetOptionalInputShape(index++);

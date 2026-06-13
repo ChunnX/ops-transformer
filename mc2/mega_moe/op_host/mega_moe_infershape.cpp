@@ -39,7 +39,7 @@ static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_EP_WORLD_SIZE_INDEX = 1;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_CCL_BUFFER_SIZE_INDEX = 2;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_MAX_RECV_TOKEN_NUM_INDEX = 3;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_DISPATCH_QUANT_MODE_INDEX = 4;
-static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_DISPATCH_QUANT_OUT_TYPE_INDEX = 5;
+static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_DISPATCH_QUANT_OUT_DTYPE_INDEX = 5;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_COMBINE_QUANT_MODE_INDEX = 6;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_COMM_ALG_INDEX = 7;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_GLOBAL_BS_INDEX = 8;
@@ -69,8 +69,9 @@ static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
     const auto epWorldSize = attrs->GetAttrPointer<int64_t>(DISPATCH_FFN_COMBINE_ATTR_EP_WORLD_SIZE_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSize);
 
-    OP_CHECK_IF(*epWorldSize < 0, OP_LOGE(context->GetNodeName(), "epWorldSize must be greater than zero, but got"
-        " epWorldSize: %ld.", *epWorldSize), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*epWorldSize < 0, OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "ep_world_size",
+        std::to_string(*epWorldSize).c_str(), "greater than zero"),
+        return ge::GRAPH_FAILED);
 
     int64_t bs = xShape->GetDim(0);
     int64_t h = xShape->GetDim(1);

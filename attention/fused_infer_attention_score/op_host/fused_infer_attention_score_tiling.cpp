@@ -1421,7 +1421,10 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     faInfo.learnableSinkFlag = learnableSinkFlag;
     faInfo.innerPrecise = innerPrecise;
     if (faInfo.pagedCacheFlag) {
-        if (tempK->GetStorageShape().GetDimNum() == 5U && tempV->GetStorageShape().GetDimNum() == 5U) {
+        constexpr int64_t HEAD_SIZE_ALIGN_16 = 16;
+        bool isHeadSizeAligned = (tempQ->GetStorageShape().GetDim(DIM_2) % HEAD_SIZE_ALIGN_16 == 0);
+        if (tempK->GetStorageShape().GetDimNum() == 5U && tempV->GetStorageShape().GetDimNum() == 5U &&
+            isHeadSizeAligned) {
             faInfo.kvcacheNzFlag = true;
         }
         faInfo.maxNumBlocksPerBatch = blockTable->GetStorageShape().GetDim(DIM_1);
@@ -1452,7 +1455,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.isTilingSink = false;
         int64_t maxQSeqlen = 0;
         int64_t minQSeqlen = INT64_MAX;
-        int64_t minKVSeqlen = INT64_MAX;
+        int64_t maxKVSeqlen = 0;
         for (int32_t batchIdx = 0; batchIdx < batch; batchIdx++) {
             int64_t qSeqlen = *(actualSeqQTnd + batchIdx);
             int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
@@ -1472,17 +1475,20 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
             if (qSeqlen < minQSeqlen) {
                 minQSeqlen = qSeqlen;
             }
-            if (kvSeqlen < minKVSeqlen) {
-                minKVSeqlen = kvSeqlen;
+            if (kvSeqlen > maxKVSeqlen) {
+                maxKVSeqlen = kvSeqlen;
             }
         }
         uint32_t numTasks = faInfo.batch * faInfo.kvHeads;
-        bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (minKVSeqlen >= aicoreNum * 512);
-        bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (minKVSeqlen >= 1024);
-        if ((!faInfo.lseFlag) && (faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) && !(faInfo.maskType == MaskType::SWA_MASK) && (!faInfo.learnableSinkFlag) && !(faInfo.innerPrecise == 1) &&
+        bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (maxKVSeqlen >= aicoreNum * 512);
+        bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024);
+        if ((faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) &&
+            !(faInfo.maskType == MaskType::SWA_MASK) &&
+            (!faInfo.learnableSinkFlag) &&
+            !(faInfo.innerPrecise == 1) &&
             (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) &&
             (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) &&
-            (minKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) &&
+            (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) &&
             (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) &&
             (isLongSeq || isShortSeq)) {
             faInfo.flashDecodeFlag = true; 
@@ -1563,7 +1569,9 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
             int64_t blockSize = tempK->GetStorageShape().GetDim(DIM_3);
             bool isFAIDSize = (tempD <= 256U && tempKD <= 256 && tempVD <= 256) &&
                     (tempD == tempKD && tempD == tempVD) && (blockSize % BLOCK_SIZE_ALIGN_16 == 0);
-            bool blockSizeSupported = (blockSize == 128);
+            isFAIDSize = isFAIDSize && !(tempD == 64 || tempD == 128);
+            bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) &&
+                    (blockSize <= MAX_BLOCK_SIZE);
             if (isFAIDSize && blockSizeSupported) {
                 usingFAI = true;
             }

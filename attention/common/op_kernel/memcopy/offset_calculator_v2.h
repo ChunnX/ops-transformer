@@ -566,10 +566,14 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_BNBD, ACTLEN_T> {
     __aicore__ inline OffsetCalculatorImpl() = default;
 
     __aicore__ inline void Init(uint32_t n2, uint32_t blockSize, uint32_t d, GlobalTensor<int32_t> blockTableGm,
-                                uint32_t maxblockNumPerBatch)
+                                uint32_t maxblockNumPerBatch, uint64_t bn2Stride = 0, uint64_t n2Stride = 0)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
+#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+        gmLayout.MakeLayout(n2, blockSize, d, bn2Stride, n2Stride);
+#else
         gmLayout.MakeLayout(n2, blockSize, d);
+#endif
     }
 
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t s2Idx, uint32_t dIdx)
@@ -629,10 +633,15 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_NZ, ACTLEN_T> {
     __aicore__ inline OffsetCalculatorImpl() = default;
 
     __aicore__ inline void Init(uint32_t n2, uint32_t blockSize, uint32_t d1, uint32_t d0,
-                                GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch)
+                                GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch,
+                                uint64_t bn2Stride = 0, uint64_t n2Stride = 0)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
+#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+        gmLayout.MakeLayout(n2, blockSize, d1, d0, bn2Stride, n2Stride);
+#else
         gmLayout.MakeLayout(n2, blockSize, d1, d0);
+#endif
     }
 
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t s2Idx, uint32_t dIdx)
@@ -704,10 +713,15 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_K_SCALE_PA_NZ, ACTLEN_T> 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
     __aicore__ inline void Init(uint32_t n2, uint32_t blockSize, uint32_t d1, uint32_t d0,
-                                GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch)
+                                GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch,
+                                uint64_t bn2Stride = 0, uint64_t n2Stride = 0)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
+#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+        gmLayout.MakeLayout(n2, blockSize, d1, d0, bn2Stride, n2Stride);
+#else
         gmLayout.MakeLayout(n2, blockSize, d1, d0);
+#endif
     }
 
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t s2Idx, uint32_t dIdx)

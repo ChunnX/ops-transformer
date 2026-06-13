@@ -12,7 +12,6 @@
  * \file all_gather_fit_balance_tiling.cpp
  * \brief
  */
-#include <iostream>
 #include "mc2_log.h"
 #include "all_gather_fit_balance_tiling.h"
 

@@ -86,6 +86,104 @@ TEST_F(rotary_position_embedding_test, test_case_mode_1_pad_fp16_001)
     free(path_);
 }
 
+// [1, 64, 2, 64] "BNSD" float16 rotate half
+TEST_F(rotary_position_embedding_test, test_case_mode_0_rotate_half_fp16_001)
+{
+    size_t inputXByteSize = 1 * 64 * 2 * 64 * sizeof(half);
+    size_t inputCosByteSize = 1 * 64 * 1 * 64 * sizeof(half);
+    size_t inputSinByteSize = inputCosByteSize;
+    size_t outputYByteSize = inputXByteSize;
+    size_t tilingDataSize = sizeof(RotaryPositionEmbeddingTilingData);
+
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputXByteSize);
+    uint8_t *cos = (uint8_t *)AscendC::GmAlloc(inputCosByteSize);
+    uint8_t *sin = (uint8_t *)AscendC::GmAlloc(inputSinByteSize);
+
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputYByteSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
+    uint32_t blockDim = 40;
+
+    system(
+        "cp -r ../../../../../posembedding/rotary_position_embedding/tests/ut/op_kernel/rotary_position_embedding_data "
+        "./");
+    system("chmod -R 755 ./rotary_position_embedding_data/");
+    system("cd ./rotary_position_embedding_data/ && rm -rf ./*bin");
+    system("cd ./rotary_position_embedding_data/ && python3 gen_data.py 1 64 2 64 float16");
+    system("cd ./rotary_position_embedding_data/ && python3 gen_tiling.py case_rotate_half_fp16");
+
+    char *path_ = get_current_dir_name();
+    string path(path_);
+    RotaryPositionEmbeddingTilingData *tilingDatafromBin =
+        reinterpret_cast<RotaryPositionEmbeddingTilingData *>(tiling);
+
+    ReadFile(path + "/rotary_position_embedding_data/x.bin", inputXByteSize, x, inputXByteSize);
+    ReadFile(path + "/rotary_position_embedding_data/cos.bin", inputCosByteSize, cos, inputCosByteSize);
+    ReadFile(path + "/rotary_position_embedding_data/sin.bin", inputCosByteSize, sin, inputCosByteSize);
+    ReadFile(path + "/rotary_position_embedding_data/tiling.bin", tilingDataSize, tilingDatafromBin, tilingDataSize);
+
+    AscendC::SetKernelMode(KernelMode::AIV_MODE);
+    ICPU_SET_TILING_KEY(1032);
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace, (uint8_t *)(tilingDatafromBin));
+
+    AscendC::GmFree(x);
+    AscendC::GmFree(cos);
+    AscendC::GmFree(sin);
+    AscendC::GmFree(y);
+    AscendC::GmFree(workspace);
+    AscendC::GmFree(tiling);
+    free(path_);
+}
+
+// [1, 64, 2, 64] "BNSD" bfloat16 rotate half
+TEST_F(rotary_position_embedding_test, test_case_mode_0_rotate_half_bf16_001)
+{
+    size_t inputXByteSize = 1 * 64 * 2 * 64 * sizeof(half);
+    size_t inputCosByteSize = 1 * 64 * 1 * 64 * sizeof(half);
+    size_t inputSinByteSize = inputCosByteSize;
+    size_t outputYByteSize = inputXByteSize;
+    size_t tilingDataSize = sizeof(RotaryPositionEmbeddingTilingData);
+
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputXByteSize);
+    uint8_t *cos = (uint8_t *)AscendC::GmAlloc(inputCosByteSize);
+    uint8_t *sin = (uint8_t *)AscendC::GmAlloc(inputSinByteSize);
+
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputYByteSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
+    uint32_t blockDim = 40;
+
+    system(
+        "cp -r ../../../../../posembedding/rotary_position_embedding/tests/ut/op_kernel/rotary_position_embedding_data "
+        "./");
+    system("chmod -R 755 ./rotary_position_embedding_data/");
+    system("cd ./rotary_position_embedding_data/ && rm -rf ./*bin");
+    system("cd ./rotary_position_embedding_data/ && python3 gen_data.py 1 64 2 64 float16");
+    system("cd ./rotary_position_embedding_data/ && python3 gen_tiling.py case_rotate_half_bf16");
+
+    char *path_ = get_current_dir_name();
+    string path(path_);
+    RotaryPositionEmbeddingTilingData *tilingDatafromBin =
+        reinterpret_cast<RotaryPositionEmbeddingTilingData *>(tiling);
+
+    ReadFile(path + "/rotary_position_embedding_data/x.bin", inputXByteSize, x, inputXByteSize);
+    ReadFile(path + "/rotary_position_embedding_data/cos.bin", inputCosByteSize, cos, inputCosByteSize);
+    ReadFile(path + "/rotary_position_embedding_data/sin.bin", inputCosByteSize, sin, inputCosByteSize);
+    ReadFile(path + "/rotary_position_embedding_data/tiling.bin", tilingDataSize, tilingDatafromBin, tilingDataSize);
+
+    AscendC::SetKernelMode(KernelMode::AIV_MODE);
+    ICPU_SET_TILING_KEY(1033);
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace, (uint8_t *)(tilingDatafromBin));
+
+    AscendC::GmFree(x);
+    AscendC::GmFree(cos);
+    AscendC::GmFree(sin);
+    AscendC::GmFree(y);
+    AscendC::GmFree(workspace);
+    AscendC::GmFree(tiling);
+    free(path_);
+}
+
 // [3, 4, 46, 64] "BNSD" bfloat16
 TEST_F(rotary_position_embedding_test, test_case_mode_1_rotate_bf16_001)
 {

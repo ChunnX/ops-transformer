@@ -8,15 +8,15 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_GEMM_TILE_CAST_FP8_TO_FP16_HPP
-#define CATLASS_GEMM_TILE_CAST_FP8_TO_FP16_HPP
+#ifndef GMM_GEMM_TILE_CAST_FP8_TO_FP16_HPP
+#define GMM_GEMM_TILE_CAST_FP8_TO_FP16_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/arch/resource.hpp"
-#include "../../../gmm_infra/coord.hpp"
-#include "../../../gmm_infra/gemm_coord.hpp"
-#include "../../../gmm_infra/gemm/dispatch_policy.hpp"
-#include "../../../gmm_infra/gemm/helper.hpp"
+#include "../../../gmm_infra/arch/gmm_resource.hpp"
+#include "../../../gmm_infra/gmm_coord.hpp"
+#include "../../../gmm_infra/gmm_gemm_coord.hpp"
+#include "../../../gmm_infra/gemm/gmm_gemm_dispatch_policy.hpp"
+#include "../../../gmm_infra/gemm/gmm_helper.hpp"
 
 namespace Catlass::Gemm::Tile {
 
@@ -408,4 +408,4 @@ private:
 
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_CAST_FP8_TO_FP16_HPP
+#endif // GMM_GEMM_TILE_CAST_FP8_TO_FP16_HPP

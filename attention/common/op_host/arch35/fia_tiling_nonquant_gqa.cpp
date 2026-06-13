@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -48,8 +48,6 @@ bool FiaTilingNonQuantArch35::IsCapable()
         return false;
     }
 
-    ge::DataType qDataType = fiaInfo_->inputQType;
-    ge::DataType kDataType = fiaInfo_->inputKvType;
     // 仅支持非量化
     if (fiaInfo_->quantMode != FiaQuantMode::NO_QUANT) {
         return false;
@@ -68,12 +66,14 @@ bool FiaTilingNonQuantArch35::IsCapable()
         fiaInfo_->isOutQuantEnable ||  // 使能后量化
         fiaInfo_->learnableSinkFlag || // 使能sink
         fiaInfo_->isQKVDDifferent ||   // D<=128情况下，D不等长
-        (fiaInfo_->sparseMode == 1 || fiaInfo_->sparseMode == 2 || fiaInfo_->sparseMode == 4) || // sparse mode=1/2/4
-        (fiaInfo_->sparseMode == 0 && fiaInfo_->attenMaskFlag) || // sparse mode=0且传入mask
+        (fiaInfo_->sparseMode == SPARSE_MODE_ALL_MASK || fiaInfo_->sparseMode == SPARSE_MODE_LEFT_UP ||
+         fiaInfo_->sparseMode == SPARSE_MODE_BAND) ||                               // sparse mode=1/2/4
+        (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag) || // sparse mode=0且传入mask
         (fiaInfo_->qLayout != FiaLayout::BSH && fiaInfo_->qLayout != FiaLayout::BSND &&
          fiaInfo_->qLayout != FiaLayout::BNSD && fiaInfo_->qLayout != FiaLayout::TND) || // layout非 BSH/BSND/BNSD/TND
-        (fiaInfo_->qkHeadDim != 128 && fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) || // 非D=128 GQA，且非Prefill MLA
-        CheckS1OutSplit() // 使能S1外切场景
+        (fiaInfo_->qkHeadDim != 128 &&
+         fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) || // 非D=128 GQA，且非Prefill MLA
+        CheckS1OutSplit()                                    // 使能S1外切场景
     ) {
         return false;
     }
@@ -94,8 +94,8 @@ void FiaTilingNonQuantArch35::CalcMaxWorkspaceSize()
     workspaceSize_ += static_cast<uint64_t>(platformInfo_.coreNum) * 2 * 2 * 64;
 
     uint32_t faTmpAttenGmSize = platformInfo_.coreNum * 2 * mSize * dVSize; // 每个核最多有2次写到workspace
-    uint32_t fatmpResLseGmSize = platformInfo_.coreNum * 2 * mSize * 8;
-    workspaceSize_ += (faTmpAttenGmSize + 2 * fatmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
+    uint32_t faTmpResLseGmSize = platformInfo_.coreNum * 2 * mSize * 8;
+    workspaceSize_ += (faTmpAttenGmSize + 2 * faTmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
 }
 
 void FiaTilingNonQuantArch35::CalcScheduleMode()
@@ -116,7 +116,7 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
             fiaInfo_->softmaxLseFlag ? fiaInfo_->opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
         uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
         if (fiaInfo_->isOutQuantEnable) {
-            singleCoreSize = AlignUp(singleCoreSize, uint32_t(2));
+            singleCoreSize = AlignUp(singleCoreSize, 2U);
         }
         tilingData_.baseTiling.fiaEmptyTensorParams.singleCoreSize = singleCoreSize;
         tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
@@ -143,6 +143,7 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
     if (fiaInfo_->isMaxWorkspace) {
         // tiling下沉场景，无法获取到actual_seq，分核结果未知，workspace设置成最大
         CalcMaxWorkspaceSize();
+        GenTilingKey();
         CalcNumBlocks(platformInfo_.aicNum);
 
         if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
@@ -277,12 +278,12 @@ void FiaTilingNonQuantArch35::AdjustSinnerAndSouter()
         uint32_t sparseMode = fiaInfo_->sparseMode;
         int32_t preTokens = fiaInfo_->preToken;
         int32_t nextTokens = fiaInfo_->nextToken;
-        if (sparseMode == 0) {
+        if (sparseMode == SPARSE_MODE_NO_MASK) {
             preTokens = (preTokens > 0) ? 0 : preTokens;
-        } else if (sparseMode == 4) {
+        } else if (sparseMode == SPARSE_MODE_BAND) {
             nextTokens = (nextTokens > 0) ? 0 : nextTokens;
         }
-        bool checkSparseMode = (sparseMode != 2 && preTokens + nextTokens > 128);
+        bool checkSparseMode = (sparseMode != SPARSE_MODE_LEFT_UP && preTokens + nextTokens > 128);
         if (checkQueryAndValueS && checkSparseMode && fiaInfo_->mlaMode != MlaMode::ROPE_SPLIT_D128) {
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
@@ -304,7 +305,7 @@ void FiaTilingNonQuantArch35::AdjustSinnerAndSouter()
     OP_LOGI(fiaInfo_->opName, "Souter:%u SInner:%u", sOuterFactor_, sInnerFactor_);
 }
 
-void FiaTilingNonQuantArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength, int64_t actualSeqLengthKV,
+void FiaTilingNonQuantArch35::GetPreNextTokensLeftUp(int64_t actualSeqLengthQ, int64_t actualSeqLengthKV,
                                                      int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
 {
     if (fiaInfo_->sparseMode == SPARSE_MODE_RIGHT_DOWN) {
@@ -312,47 +313,47 @@ void FiaTilingNonQuantArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength, in
         if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT && fiaInfo_->vHeadDim == 512) {
             if (fiaInfo_->qLayout == FiaLayout::BSND || fiaInfo_->qLayout == FiaLayout::BSH ||
                 fiaInfo_->qLayout == FiaLayout::TND) {
-                nextTokensLeftUp = actualSeqLengthKV * fiaInfo_->gSize - actualSeqLength;
+                nextTokensLeftUp = actualSeqLengthKV * fiaInfo_->gSize - actualSeqLengthQ;
             } else { // BNSD场景下分核不做优化
                 nextTokensLeftUp = SPARSE_MODE_INT_MAX;
             }
         } else {
-            nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
+            nextTokensLeftUp = actualSeqLengthKV - actualSeqLengthQ;
         }
     } else if (fiaInfo_->sparseMode == SPARSE_MODE_BAND) {
-        preTokensLeftUp = fiaInfo_->preToken - actualSeqLengthKV + actualSeqLength;
-        nextTokensLeftUp = fiaInfo_->nextToken + actualSeqLengthKV - actualSeqLength;
+        preTokensLeftUp = fiaInfo_->preToken - actualSeqLengthKV + actualSeqLengthQ;
+        nextTokensLeftUp = fiaInfo_->nextToken + actualSeqLengthKV - actualSeqLengthQ;
     } else {
         preTokensLeftUp = fiaInfo_->preToken;
         nextTokensLeftUp = fiaInfo_->nextToken;
     }
 }
 
-void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV,
+void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLengthQ, int64_t actualSeqLengthKV,
                                                      int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
 {
     // 若出现行无效，需要重新计算nexttokens，pretokens，actualseqlen，以便正确计算分核核数
     int64_t nextTokensError = (nextTokensLeftUp < 0) ? -nextTokensLeftUp : 0;
-    nextTokensError = nextTokensError > actualSeqLength ? actualSeqLength : nextTokensError;
+    nextTokensError = nextTokensError > actualSeqLengthQ ? actualSeqLengthQ : nextTokensError;
     int64_t preTokensError = 0;
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512) {
-        preTokensError = (actualSeqLength > actualSeqLengthKV * fiaInfo_->gSize + preTokensLeftUp) ?
-                             (actualSeqLength - actualSeqLengthKV * fiaInfo_->gSize - preTokensLeftUp) :
+        preTokensError = (actualSeqLengthQ > actualSeqLengthKV * fiaInfo_->gSize + preTokensLeftUp) ?
+                             (actualSeqLengthQ - actualSeqLengthKV * fiaInfo_->gSize - preTokensLeftUp) :
                              0;
     } else {
-        preTokensError = (actualSeqLength > actualSeqLengthKV + preTokensLeftUp) ?
-                             (actualSeqLength - actualSeqLengthKV - preTokensLeftUp) :
+        preTokensError = (actualSeqLengthQ > actualSeqLengthKV + preTokensLeftUp) ?
+                             (actualSeqLengthQ - actualSeqLengthKV - preTokensLeftUp) :
                              0;
     }
-    preTokensError = preTokensError > actualSeqLength ? actualSeqLength : preTokensError;
+    preTokensError = preTokensError > actualSeqLengthQ ? actualSeqLengthQ : preTokensError;
 
     // 若出现上方行无效，需要重新计算nexttokens，pretokens，actualseqlen
     nextTokensLeftUp += nextTokensError;
     preTokensLeftUp -= nextTokensError;
-    actualSeqLength -= nextTokensError;
+    actualSeqLengthQ -= nextTokensError;
 
     // 若出现下方行无效，需要重新计算actualseqlen
-    actualSeqLength -= preTokensError;
+    actualSeqLengthQ -= preTokensError;
 }
 
 bool FiaTilingNonQuantArch35::CheckS1OutSplit()
@@ -360,21 +361,28 @@ bool FiaTilingNonQuantArch35::CheckS1OutSplit()
     if (fiaInfo_->isOutQuantEnable) {
         return false;
     }
- 
+
     if (fiaInfo_->sysPrefixFlag || fiaInfo_->kvPaddingSizeFlag || fiaInfo_->qPaddingSizeFlag || dnFlag_ ||
         fiaInfo_->learnableSinkFlag || fiaInfo_->enableAlibiPse) {
         return false;
     }
- 
+
     if (fiaInfo_->sparseMode == SPARSE_MODE_BAND ||
-       (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
+        (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
         return false;
     }
- 
+
     // 仅支持非量化，占用2B
     const int64_t dataTypeSize = 2U;
+    // isCapable阶段，platformInfo_中还没有l2Size和aicNum，额外获取一次
+    auto platformInfoPtr = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(fiaInfo_->opName, "The platformInfoPtr is null!"),
+                return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    platformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
     int64_t bnSize = std::min(fiaInfo_->bSize * fiaInfo_->n2Size, platformInfo_.aicNum);
- 
+
     // 当所需的L2cache资源的超过系统配置一半时，开启S1外切分核优化L2cache复用率，乘2是经验值，后续进行优化
     return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=
            platformInfo_.l2Size;
@@ -393,9 +401,9 @@ void FiaTilingNonQuantArch35::SplitOutSeq()
         }
         totalSize += outerBlockNums;
         OP_LOGD(fiaInfo_->opName,
-            "bIdx:%u, sOuterSize:%u, sactualSeqLengthsQ_[bIdx]:%lld, actualSeqLengthsKV_[bIdx]:%lld, "
-            "outerBlockNums:%lld, totalSize:%lld\n",
-            bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
+                "bIdx:%u, sOuterSize:%u, sactualSeqLengthsQ_[bIdx]:%lld, actualSeqLengthsKV_[bIdx]:%lld, "
+                "outerBlockNums:%lld, totalSize:%lld\n",
+                bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], outerBlockNums, totalSize);
     }
 
     int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(curCoreNum));
@@ -439,7 +447,7 @@ void FiaTilingNonQuantArch35::CreateSplitInput(split_core_v2::BaseInfo &baseInfo
     baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.s2Size = fiaInfo_->s2Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
-    baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
+    baseInfo.actualLenKvDims = fiaInfo_->actualLenKvDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
     baseInfo.isS1G = (fiaInfo_->qLayout == FiaLayout::BSH) || (fiaInfo_->qLayout == FiaLayout::BSND) ||
@@ -681,6 +689,7 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyConfig()
     } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128; // qkvd不等长
     } else {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
     }
 }
 
@@ -777,13 +786,13 @@ void FiaTilingNonQuantArch35::GenTilingKey()
             tilingKeyInfo_.isReconstructTemp);
 }
 
-void FiaTilingNonQuantArch35::CalcNumBlocks(uint32_t aicNum)
+void FiaTilingNonQuantArch35::CalcNumBlocks(uint32_t usedAicNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(fiaInfo_->platformInfo);
-    auto aivNum = aicNum * platformInfo_.cvRatio;
+    auto aivNum = usedAicNum * platformInfo_.cvRatio;
 
-    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
-    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
+    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, usedAicNum, aivNum);
+    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, usedAicNum);
 }
 
 void FiaTilingNonQuantArch35::CalcWorkspaceSize()
@@ -817,17 +826,17 @@ void FiaTilingNonQuantArch35::CalcWorkspaceSize()
             vec2Bytes = mSize * dVBasicBlock * sizeof(float);
         }
     }
-    workspaceSize_ += (bmm2Bytes + vec2Bytes) * 3 * numBlocks_; // 3: perload 2次 需要2+1
+    workspaceSize_ += (bmm2Bytes + vec2Bytes) * PRE_LOAD_NUM_GQA_ARCH35 * numBlocks_;
 
     if (flashDecodeFlag_) {
         uint32_t faTmpAttenGmSize = numBlocks_ * 2 * mSize * dSize; // 每个核最多有2次写到workspace
-        uint32_t fatmpResLseGmSize = numBlocks_ * 2 * mSize * 8;
-        workspaceSize_ += (faTmpAttenGmSize + 2 * fatmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
+        uint32_t faTmpResLseGmSize = numBlocks_ * 2 * mSize * 8;
+        workspaceSize_ += (faTmpAttenGmSize + 2 * faTmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
         tilingData_.baseTiling.fiaWorkspaceParams.accumOutSize = faTmpAttenGmSize;
-        tilingData_.baseTiling.fiaWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
+        tilingData_.baseTiling.fiaWorkspaceParams.logSumExpSize = faTmpResLseGmSize;
     }
 
-    OP_LOGI(fiaInfo_->opName, "Workspaces: %ld", workspaceSize_);
+    OP_LOGI(fiaInfo_->opName, "Workspaces: %lu", workspaceSize_);
 }
 
 void FiaTilingNonQuantArch35::FillTiling()
@@ -862,9 +871,6 @@ void FiaTilingNonQuantArch35::ComputeTilingData()
     }
     tilingData_.baseTiling.fiaAttenMaskParams.sparseMode = fiaInfo_->sparseMode;
 
-    /*
-     *  alibi 相关tiling data
-     */
     int64_t qStartIdx = 0;
     int64_t kvStartIdx = 0;
     auto qStartIdxTensor = fiaInfo_->opParamInfo.qStartIdx.tensor;
@@ -912,7 +918,7 @@ void FiaTilingNonQuantArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.dSizeRope = fiaInfo_->ropeHeadDim;
     tilingData_.baseTiling.fiaBaseParams.scaleValue = fiaInfo_->scaleValue;
     tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsQSize = fiaInfo_->actualLenQDims;
-    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenDims;
+    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenKvDims;
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
@@ -1032,7 +1038,7 @@ void FiaTilingNonQuantArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "totalOutputSize:%d", fiaEmptyTensorParams.totalOutputSize);
     OP_LOGD(fiaInfo_->opName, "totalSoftMaxLseOutputSize:%d", fiaEmptyTensorParams.totalSoftMaxLseOutputSize);
 
-    for (int aicIdx = 0; aicIdx <= NPU_AIC_CORE_NUM; ++aicIdx) {
+    for (int aicIdx = 0; aicIdx < NPU_AIC_CORE_NUM; ++aicIdx) {
         OP_LOGD(fiaInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aicIdx, fiaMetaData.FAMetadata[aicIdx][0], fiaMetaData.FAMetadata[aicIdx][1],
                 fiaMetaData.FAMetadata[aicIdx][2], fiaMetaData.FAMetadata[aicIdx][3], fiaMetaData.FAMetadata[aicIdx][4],
@@ -1040,7 +1046,7 @@ void FiaTilingNonQuantArch35::PrintAllTilingData()
                 fiaMetaData.FAMetadata[aicIdx][7]);
     }
 
-    for (int aivIdx = 0; aivIdx <= NPU_AIV_CORE_NUM; ++aivIdx) {
+    for (int aivIdx = 0; aivIdx < NPU_AIV_CORE_NUM; ++aivIdx) {
         OP_LOGD(fiaInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aivIdx, fiaMetaData.FDMetadata[aivIdx][0], fiaMetaData.FDMetadata[aivIdx][1],
                 fiaMetaData.FDMetadata[aivIdx][2], fiaMetaData.FDMetadata[aivIdx][3], fiaMetaData.FDMetadata[aivIdx][4],
@@ -1049,7 +1055,7 @@ void FiaTilingNonQuantArch35::PrintAllTilingData()
     }
 
     int64_t cap = context_->GetRawTilingData()->GetCapacity();
-    OP_LOGD(fiaInfo_->opName, "Tiling Data context_ GetCapacity: %lu.", cap);
+    OP_LOGD(fiaInfo_->opName, "Tiling Data context_ GetCapacity: %lld.", cap);
 }
 
 // 值越小表示优先级越高. 对于FIA, 使用3位数表示优先级, 优先级编码含义为:

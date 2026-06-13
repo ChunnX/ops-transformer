@@ -78,7 +78,8 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckEpWorldSize()
 
     OP_TILING_CHECK((!((*epWorldSizePtr == GROUP_EP_SIZE_2) || (*epWorldSizePtr == GROUP_EP_SIZE_4) ||
                        (*epWorldSizePtr == GROUP_EP_SIZE_8))),
-                    OP_LOGE(nodeName_, "epWorldSize should be in {2, 4, 8}, get %ld", *epWorldSizePtr),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "epWorldSize",
+                        std::to_string(*epWorldSizePtr).c_str(), "{2, 4, 8}"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -90,7 +91,8 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckMoeExpertNum()
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
 
     OP_TILING_CHECK(!(*moeExpertNumPtr == MOE_EXPERT_NUM_32),
-                    OP_LOGE(nodeName_, "moeExpertNum shoud be 32, get %lu", *moeExpertNumPtr), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "moeExpertNum",
+                        std::to_string(*moeExpertNumPtr).c_str(), "32"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -103,13 +105,16 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckSharedExpertAttr()
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
 
     OP_TILING_CHECK((*expertShardTypePtr != 0),
-                    OP_LOGE(nodeName_, "expertShardType only support 0, get %ld", *expertShardTypePtr),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "expertShardType",
+                        std::to_string(*expertShardTypePtr).c_str(), "0"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*sharedExpertNumPtr != 0),
-                    OP_LOGE(nodeName_, "sharedExpertNum shoud be 0, get %ld", *sharedExpertNumPtr),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "sharedExpertNum",
+                        std::to_string(*sharedExpertNumPtr).c_str(), "0"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*sharedExpertRankNumPtr != 0),
-                    OP_LOGE(nodeName_, "sharedExpertRankNum shoud be 0, get %ld.", *sharedExpertRankNumPtr),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "sharedExpertRankNum",
+                        std::to_string(*sharedExpertRankNumPtr).c_str(), "0"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -118,12 +123,17 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckSharedExpertAttr()
 ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckTensorShapeSize(int64_t h, int64_t bs, int64_t k)
 {
     OP_TILING_CHECK(((bs != BS_SIZE_8) && (bs != BS_SIZE_16) && (bs != BS_SIZE_256)),
-                    OP_LOGE(nodeName_, "Bs should be 8/16/256, get %ld", bs), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName_, "BS",
+                        std::to_string(bs).c_str(), "{8, 16, 256}"), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(((h != H_SIZE_4096) && (h != H_SIZE_7168)), OP_LOGE(nodeName_, "H should be 4096/7168, get %ld", h),
+    OP_TILING_CHECK(((h != H_SIZE_4096) && (h != H_SIZE_7168)),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName_, "H",
+                        std::to_string(h).c_str(), "{4096, 7168}"),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(((k != K_SIZE_6) && (k != K_SIZE_8)), OP_LOGE(nodeName_, "K should be 6/8, get %ld", k),
+    OP_TILING_CHECK(((k != K_SIZE_6) && (k != K_SIZE_8)),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName_, "K",
+                        std::to_string(k).c_str(), "{6, 8}"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

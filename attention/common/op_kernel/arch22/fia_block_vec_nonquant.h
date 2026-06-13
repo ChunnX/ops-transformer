@@ -617,14 +617,14 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
                     maskInfo.attenMaskBatchStride += qActSeqLensParser.GetActualSeqLength(i) * qActSeqLensParser.GetActualSeqLength(i);
                 }
             }
-            if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
+            if (!fa_base_vector::IsSkipAttentionmask<ENABLE_TREE>(maskInfo)) {
                 fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
                 AscendC::PipeBarrier<PIPE_V>();
                 fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
             }
             inputQue2.FreeTensor(maskUb);
         } else {
-            if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
+            if (!fa_base_vector::IsSkipAttentionmask<ENABLE_TREE>(maskInfo)) {
                 LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
                 LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
                 fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);

@@ -28,11 +28,10 @@ ge::graphStatus MatmulReduceScatterTilingV2Func(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     auto commModePtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMMMODE));
     OP_TILING_CHECK(commModePtr == nullptr,
-        OP_LOGE(context->GetNodeName(), "AivModeTiling commMode is nullPtr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "commMode"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(std::strcmp(commModePtr, "aiv") != 0,
-        OP_LOGE(context->GetNodeName(),
-                "AivModeTiling commMode is invalid. Expect commMode aiv, but cur commMode is %s",
-                commModePtr), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "commMode", commModePtr, "aiv"),
+        return ge::GRAPH_FAILED);
     return MatmulReduceScatterTilingV2AivModeFunc(context);
 }
 }  // namespace optiling

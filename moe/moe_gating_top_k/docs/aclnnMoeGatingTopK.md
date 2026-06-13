@@ -23,9 +23,11 @@
   根据 normType 对输入 x 做归一化：
 
   $$
-  normOut = \begin{cases}
-      SoftMax(x), & normType = 0 \\
-      Sigmoid(x), & normType = 1
+  normOut = 
+  \begin{cases}
+      SoftMax(x),      & normType = 0 \\
+      Sigmoid(x),      & normType = 1 \\
+      Softplus(x),     & normType = 2\ (仅<term>Ascend 950PR/Ascend 950DT</term>支持)
   \end{cases}
   $$
 
@@ -80,10 +82,10 @@
   gathered = normOut[\text{expertIdxOut}]
   $$
 
-  normType=1 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
+  normType=1 or normType=2 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
 
   $$
-  if\ (normType = 1)\ or\ (normType = 0\ and\ renorm = 1):
+  if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
   $$
 
   $$

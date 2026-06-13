@@ -110,6 +110,13 @@ private:
     uint32_t seqLenAccumSize_;
     bool isSmallShape;
 
+    // 非连续支持
+    uint32_t nonContiguousFlag_;
+    int64_t kCacheStride0_;
+    int64_t vCacheStride0_;
+    int64_t keyOutStride0_;
+    int64_t valueOutStride0_;
+
 private:
     __aicore__ inline void InitParams()
     {
@@ -126,6 +133,13 @@ private:
         numTokens_ = tl_->numTokens;
         numBlocks_ = tl_->numBlocks;
         seqLenAccumSize_ = tl_->seqLenAccumSize;
+
+        // 非连续支持
+        nonContiguousFlag_ = tl_->nonContiguousFlag;
+        kCacheStride0_ = tl_->kCacheStride0;
+        vCacheStride0_ = tl_->vCacheStride0;
+        keyOutStride0_ = tl_->keyOutStride0;
+        valueOutStride0_ = tl_->valueOutStride0;
 
         isSmallShape =
             (maxUbHiddenSizeK_ >= blockSize_ * hiddenSizeK_) && (maxUbHiddenSizeV_ >= blockSize_ * hiddenSizeV_);
@@ -185,7 +199,9 @@ public:
             uint32_t blockCount = CeilDivision(seqLen, blockSize_);
 
             // 搬运key
-            uint32_t keyOffset = batchOffset * hiddenSizeK_;
+            uint32_t keyOffset = (nonContiguousFlag_ & (1 << 2)) ?
+                (batchOffset * keyOutStride0_ * sizeof(DTYPE_KEY)) :
+                (batchOffset * hiddenSizeK_);
             for (int j = 0; j < blockCount; j++) {
                 uint32_t curLen = blockSize_; // 4
                 if (j == blockCount - 1) {
@@ -203,7 +219,9 @@ public:
                     isFulledWithZero = false;
                     blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + seqOffset + j);
                 }
-                keyCacheOffset = blockId * blockSize_ * hiddenSizeK_;
+                keyCacheOffset = (nonContiguousFlag_ & 1) ?
+                    (blockId * kCacheStride0_ * sizeof(DTYPE_KEY)) :
+                    (blockId * blockSize_ * hiddenSizeK_);
 
                 if (isSmallShape) {
                     DataCopyFromeCache(curLen, keyCacheOffset, keyOffset, isFulledWithZero, true);
@@ -212,11 +230,15 @@ public:
                                      isFulledWithZero);
                 }
 
-                keyOffset += curLen * hiddenSizeK_;
+                keyOffset += (nonContiguousFlag_ & (1 << 2)) ?
+                    (curLen * keyOutStride0_ * sizeof(DTYPE_KEY)) :
+                    (curLen * hiddenSizeK_);
             }
 
             // 搬运value
-            uint32_t valueOffset = batchOffset * hiddenSizeV_;
+            uint32_t valueOffset = (nonContiguousFlag_ & (1 << 3)) ?
+                (batchOffset * valueOutStride0_ * sizeof(DTYPE_VALUE)) :
+                (batchOffset * hiddenSizeV_);
 
             for (int j = 0; j < blockCount; j++) {
                 uint32_t curLen = blockSize_;
@@ -234,7 +256,9 @@ public:
                     isFulledWithZero = false;
                     blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + seqOffset + j);
                 }
-                valueCacheOffset = blockId * blockSize_ * hiddenSizeV_;
+                valueCacheOffset = (nonContiguousFlag_ & 2) ?
+                    (blockId * vCacheStride0_ * sizeof(DTYPE_VALUE)) :
+                    (blockId * blockSize_ * hiddenSizeV_);
                 
                 if (isSmallShape) {
                     DataCopyFromeCache(curLen, valueCacheOffset, valueOffset, isFulledWithZero, false);
@@ -243,7 +267,9 @@ public:
                                      isFulledWithZero);
                 }
 
-                valueOffset += curLen * hiddenSizeV_;
+                valueOffset += (nonContiguousFlag_ & (1 << 3)) ?
+                    (curLen * valueOutStride0_ * sizeof(DTYPE_VALUE)) :
+                    (curLen * hiddenSizeV_);
             }
         }
     }

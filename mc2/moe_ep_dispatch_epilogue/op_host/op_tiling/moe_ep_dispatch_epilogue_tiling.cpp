@@ -55,6 +55,9 @@ constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr int64_t MAX_EP_WORLD_SIZE = 768;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr uint32_t HIDDEN_ALIGN = 32U;
+constexpr uint64_t UB_ALIGN = 32UL;
+constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
+constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;   // sizeof(int32)=sizeof(float)=4
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogueInfo &info)
 {
@@ -173,8 +176,11 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
             HIDDEN_ALIGN, info.cfg.hidden),
         return ge::GRAPH_FAILED);
 
-    info.cfg.perSlotBytes = static_cast<uint32_t>(
-        ALIGN_UP(static_cast<uint64_t>(info.cfg.hidden) * 2UL, WIN_ADDR_ALIGN) + WIN_ADDR_ALIGN);
+    // info.cfg.perSlotBytes = static_cast<uint32_t>(
+    //     ALIGN_UP(static_cast<uint64_t>(info.cfg.hidden) * 2UL, WIN_ADDR_ALIGN) + WIN_ADDR_ALIGN);
+    uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    info.cfg.perSlotBytes = static_cast<uint32_t>((hAlign32 + kAlign32 * 2 + UB_ALIGN));
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();

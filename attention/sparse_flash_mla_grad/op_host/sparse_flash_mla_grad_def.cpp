@@ -27,20 +27,6 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
 
-        this->Input("ori_kv")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-
-        this->Input("cmp_kv")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-
         this->Input("d_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
@@ -58,6 +44,20 @@ public:
         this->Input("lse")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        
+        this->Input("ori_kv")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+
+        this->Input("cmp_kv")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
@@ -191,13 +191,12 @@ public:
 
         this->Attr("scale_value").AttrType(OPTIONAL).Float(1.0);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
-        this->Attr("ori_mask_mode").AttrType(OPTIONAL).Int(4);
-        this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(3);
-        this->Attr("ori_win_left").AttrType(OPTIONAL).Int(127);
-        this->Attr("ori_win_right").AttrType(OPTIONAL).Int(0);
+        this->Attr("ori_mask_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("ori_win_left").AttrType(OPTIONAL).Int(-1);
+        this->Attr("ori_win_right").AttrType(OPTIONAL).Int(-1);
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
-        this->Attr("deterministic").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

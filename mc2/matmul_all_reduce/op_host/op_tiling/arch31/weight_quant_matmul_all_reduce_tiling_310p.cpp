@@ -24,7 +24,7 @@ bool WeightQuantMatmulAllReduceTiling310P::IsCapable()
 {
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
     OP_TILING_CHECK(
-        weightTensor == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "weight tensor is invalid"),
+        weightTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"),
         return false);
     auto format = weightTensor->GetStorageFormat();
     if (npuArch_ != NpuArch::DAV_2002 || format == ge::Format::FORMAT_ND) {
@@ -65,7 +65,8 @@ void WeightQuantMatmulAllReduceTiling310P::UpdateCommOffset()
 
 ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoOpTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(CheckA16W8());
+    MC2_CHECK_LOG_RET(opName_, CheckA16W8());
+    MC2_CHECK_LOG_RET(opName_, CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     weightQuantMatmulAllReduceTilingData_.tilematmulTiling.cubeBlockDimM = 1;
@@ -77,7 +78,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoOpTiling()
         DoAllReduceTiling();
         return ge::GRAPH_SUCCESS;
     }
-    GE_ASSERT_GRAPH_SUCCESS(DoWeightQuantTiling());
+    MC2_CHECK_LOG_RET(opName_, DoWeightQuantTiling());
     DoAllReduceTiling();
     UpdateCommOffset();
     return ge::GRAPH_SUCCESS;
@@ -129,7 +130,7 @@ uint64_t WeightQuantMatmulAllReduceTiling310P::GetTilingKey() const
 
 ge::graphStatus WeightQuantMatmulAllReduceTiling310P::GetWorkspaceSize()
 {
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
     myWorkSpaceSize_ = myWorkSpaceSize_ + (workspaceSize_ - libApiWorkSpaceSize_);
     OP_LOGI(opName_, " set max workspace size %lu to context", myWorkSpaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
@@ -146,8 +147,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::PostTiling()
 
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", tilingDataSize),
         return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
@@ -180,7 +180,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::PostTiling()
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret); 
+    MC2_CHECK_LOG_RET(opName_, ret); 
     
     return ge::GRAPH_SUCCESS;
 }
@@ -217,7 +217,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoWeightQuantTiling()
         return res;
     } else {
         OP_LOGI(opName_, "DoWeightQuantTiling tailMValue_:%lu", tailMValue_);
-        GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         weightQuantMatmul310TPLParam_ = mmTile.GetWeightQuantMatmul310TPLParam();
         tileTilingKey_ = GET_TPL_TILING_KEY(
             static_cast<uint64_t>(ASCEND_310P),
@@ -249,23 +249,23 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoWeightQuantTiling()
 
 CutResult WeightQuantMatmulAllReduceTiling310P::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+    CutResult mCutAllreduceOut;
+    SocVersion socVersionInput = SocVersion::SOC910_B;
+    SetMCutSocVersion(socVersionInput);
+    const gert::StorageShape* commQuantScaleFirst = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleSecond = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQuantScaleFirst != nullptr) && (commQuantScaleSecond != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+        MMPlusQuantAllReduce quantAllReduceTilingObj(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, socVersionInput);
+        quantAllReduceTilingObj.GetTiling();
+        mCutAllreduceOut = quantAllReduceTilingObj.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce allReduceTilingObj(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersionInput, isPerBlock_);
+        allReduceTilingObj.GetTiling();
+        mCutAllreduceOut = allReduceTilingObj.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutAllreduceOut;
 }
 
 //注册Tiling类
