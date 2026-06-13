@@ -249,20 +249,11 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeAttrs()
     auto layoutKeyPtr = attrs->GetAttrPointer<char>(idx++);
     auto sparseModePtr = attrs->GetAttrPointer<int32_t>(idx++);
     auto cmpRatioPtr = attrs->GetAttrPointer<int32_t>(idx++);
-    auto deterministicPtr = attrs->GetAttrPointer<int32_t>(idx++);
     layoutQuery = layoutQueryPtr;
     layoutKey = layoutKeyPtr;
     sparseMode = *sparseModePtr;
     cmpRatio = *cmpRatioPtr;
-    deterMode = *deterministicPtr;
-    if (deterMode == 0){
-        deterministic = (context_->GetDeterministic() == 1);
-    } else if (deterMode == 1) {
-        deterministic = 0;
-    } else if (deterMode == 2){
-        deterministic = 1;
-    }
-
+    deterministic = (context_->GetDeterministic() == 1);
     OP_CHECK_IF(strcmp(layoutQuery, "TND") != 0 && strcmp(layoutQuery, "BSND") != 0,
                 OP_LOGE(opName, "Layout only support TND or BSND, now layout is %s.", layoutQuery),
                 return false); 
@@ -277,9 +268,6 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeAttrs()
                 return false);
     OP_CHECK_IF((cmpRatio < CMP_RATIO_1 || cmpRatio > CMP_RATIO_128),
                 OP_LOGE(opName, " The value of cmpRatio is [%ld], but currently only supports ranging from 1 to 128.", cmpRatio),
-                return false);
-    OP_CHECK_IF((deterMode < DETER_MODE_0 || deterMode > DETER_MODE_2),
-                OP_LOGE(opName, " The value of deterministic is [%ld], but currently only supports 0,1,2.", deterMode),
                 return false);
 
     OP_LOGD(context_, "attrs: layout_query[%s] layout_key[%s] sparse_mode[%ld] cmp_ratio[%ld].",
