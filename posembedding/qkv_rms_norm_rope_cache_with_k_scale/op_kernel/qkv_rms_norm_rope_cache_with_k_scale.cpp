@@ -12,8 +12,8 @@
  * \file qkv_rms_norm_rope_cache_with_k_scale.cpp
  * \brief Kernel entry for QkvRmsNormRopeCacheWithKScale.
  */
-#include "qkv_rms_norm_rope_cache_with_k_scale_controller.h"
-#include "qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
+#include "arch35/qkv_rms_norm_rope_cache_with_k_scale_controller.h"
+#include "arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
 
 using namespace AscendC;
 using QkvRmsNormRopeCacheWithKScale::GlobalTensors;

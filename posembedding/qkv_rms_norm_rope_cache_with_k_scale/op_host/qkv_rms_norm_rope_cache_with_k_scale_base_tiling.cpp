@@ -14,7 +14,7 @@
 #include <limits>
 #include <string>
 
-#include "../op_kernel/qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
+#include "../op_kernel/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
 #include "log/log.h"
 #include "op_common/op_host/util/math_util.h"
 #include "securec.h"
