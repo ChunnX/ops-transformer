@@ -80,6 +80,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/gmm/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/moe/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/posembedding/**/op_host/CMakeLists.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/experimental/math/**/op_host/CMakeLists.txt"
         )
         if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
                 ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
