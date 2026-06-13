@@ -249,6 +249,13 @@ __aicore__ inline void DataCopyGmToUb2D(const LocalTensor<T> &dst, const GlobalT
     DataCopyPad(dst, src, params, padParams);
 }
 
+template <typename T>
+__aicore__ inline void DataCopyUbToGm2D(const GlobalTensor<T> &dst, const LocalTensor<T> &src,
+                                        const DataCopyExtParams &params)
+{
+    DataCopyPad(dst, src, params);
+}
+
 template <const pipe_t pipe>
 __aicore__ inline void SetAivToAic(uint64_t syncFlag)
 {

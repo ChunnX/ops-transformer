@@ -454,7 +454,7 @@ private:
         for (uint64_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
             const uint64_t ubOffset = tokenIdx * tilingData_->headDim;
             const uint64_t gmOffset = tile.cacheBaseOffset[tokenIdx] + tile.vHeadOffset * tilingData_->kvCacheStrideHead;
-            DataCopyPad(vCacheOutGm_[gmOffset], vOut[ubOffset], copyParams);
+            DataCopyUbToGm2D(vCacheOutGm_[gmOffset], vOut[ubOffset], copyParams);
         }
     }
 
@@ -556,8 +556,8 @@ private:
             outputDbPoolUb_[activeOutputBufferId_ * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
         const LocalTensor<fp8_e4m3fn_t> qFp8Ntd = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
         const LocalTensor<float> qkScale = QkScaleStagingDbUb();
-        DataCopyPad(qOutGm_[slice.tokenOffset * tilingData_->headDim], qFp8Ntd, qCopyParams);
-        DataCopyPad(qScaleGm_[slice.tokenOffset], qkScale, qScaleCopyParams);
+        DataCopyUbToGm2D(qOutGm_[slice.tokenOffset * tilingData_->headDim], qFp8Ntd, qCopyParams);
+        DataCopyUbToGm2D(qScaleGm_[slice.tokenOffset], qkScale, qScaleCopyParams);
     }
 
     __aicore__ inline void ScatterKOutputs(const TileParam &tile, const AivSlice &slice)
@@ -589,9 +589,9 @@ private:
             const uint64_t kUbOffset = tokenIdx * tilingData_->headDim;
             const uint64_t kCacheOffset = tile.cacheBaseOffset[tokenIdx];
             const uint64_t kScaleOffset = tile.scaleCacheBaseOffset[tokenIdx];
-            DataCopyPad(kCacheOutGm_[kCacheOffset], kFp8Ntd[kUbOffset], kCopyParams);
-            DataCopyPad(kScaleCacheOutGm_[kScaleOffset], qkScale[KScaleStagingOffset(tokenIdx, 0U)],
-                        kScaleCopyParams);
+            DataCopyUbToGm2D(kCacheOutGm_[kCacheOffset], kFp8Ntd[kUbOffset], kCopyParams);
+            DataCopyUbToGm2D(kScaleCacheOutGm_[kScaleOffset], qkScale[KScaleStagingOffset(tokenIdx, 0U)],
+                             kScaleCopyParams);
         }
     }
 
