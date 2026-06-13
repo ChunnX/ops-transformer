@@ -24,8 +24,12 @@
 **详细任务说明**: [reference/next_steps/3_walkthrough_wqbmmv2.md](reference/next_steps/3_walkthrough_wqbmmv2.md)
 
 ### 任务 4：编写 SRS 算子开发实现方案
-**目标**: 基于走读结果，编写详细的 GMM A16W4 实现方案，包括 tiling data、tiling 计算方案、L1/UB 空间划分、kernel 实现方案、核心代码适配点
-**产出**: `.workflow/raw/design/gmm_a16w4_950_design.md`
+**目标**: 基于走读结果，编写详细的 GMM A16W4 实现方案，按模块分文档产出
+**产出**: `.workflow/raw/design/` 下的 4 个设计文档（按编号顺序阅读）：
+  - `01_deliverables.md` — 交付件清单（新增 tiling 模板、注册分发、def.cpp 适配、_apt.cpp 适配、kernel 实现）
+  - `02_platform_independent_design.md` — 与硬件无关的实现方案（地址偏移推导、兼容性、测试方案）
+  - `03_tiling_design.md` — Tiling 拦截校验与切分方案
+  - `04_kernel_design.md` — Kernel 实现方案（Controller/BasicBlock/VF/L1/UB）
 **详细任务说明**: [reference/next_steps/4_srs_design.md](reference/next_steps/4_srs_design.md)
 
 ## 阶段二：编码实现（待启动）

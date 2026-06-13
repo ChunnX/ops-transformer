@@ -42,6 +42,12 @@
 
 **任务状态**：待开始
 
-**简要说明**：基于走读结果，编写详细的 GMM A16W4 实现方案（tiling data、tiling 计算、L1/UB 空间划分、kernel 实现方案、核心代码适配点）。
+**简要说明**：基于走读结果，按模块分文档编写 GMM A16W4 实现方案，包括交付件清单、tiling 拦截校验与切分方案、kernel 实现方案、与硬件无关的实现方案。
+
+**产出文件**：
+- `01_deliverables.md` — 交付件清单
+- `02_platform_independent_design.md` — 与硬件无关的实现方案
+- `03_tiling_design.md` — Tiling 拦截校验与切分方案
+- `04_kernel_design.md` — Kernel 实现方案
 
 **任务详情**：[详细任务说明](reference/next_steps/4_srs_design.md)
