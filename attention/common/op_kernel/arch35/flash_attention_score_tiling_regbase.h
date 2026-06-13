@@ -58,7 +58,7 @@ public:
 };
 
 
-class stridesParams {
+class StridesParams {
 public:
     uint64_t bnStride = 0;
     uint64_t n2Stride = 0;
@@ -151,9 +151,9 @@ public:
     uint32_t antiquantParaSeqSize;
 
     // 增加strides参数
-    stridesParams keyStrides;
-    stridesParams valueStrides;
-    stridesParams kRopeStrides;
+    StridesParams keyStrides;
+    StridesParams valueStrides;
+    StridesParams kRopeStrides;
 
 
     int64_t get_bSize() const {return bSize;}
@@ -312,16 +312,16 @@ public:
     uint8_t get_tndSoftmaxOut() const {return tndSoftmaxOut;}
     void set_tndSoftmaxOut(uint8_t tndSoftmaxOutParam) {this->tndSoftmaxOut = tndSoftmaxOutParam;}
 
-    void set_keyStrides(stridesParams keyStrides) {this->keyStrides = keyStrides;}
-    stridesParams get_keyStrides() const {return keyStrides;}
+    void set_keyStrides(StridesParams keyStrides) {this->keyStrides = keyStrides;}
+    StridesParams get_keyStrides() const {return keyStrides;}
 
-    void set_valueStrides(stridesParams valueStrides) {this->valueStrides = valueStrides;}
+    void set_valueStrides(StridesParams valueStrides) {this->valueStrides = valueStrides;}
 
-    stridesParams get_valueStrides() const {return valueStrides;}
+    StridesParams get_valueStrides() const {return valueStrides;}
 
-    void set_kRopeStrides(stridesParams kRopeStrides) {this->kRopeStrides = kRopeStrides;}
+    void set_kRopeStrides(StridesParams kRopeStrides) {this->kRopeStrides = kRopeStrides;}
 
-    stridesParams get_kRopeStrides() const {return kRopeStrides;}
+    StridesParams get_kRopeStrides() const {return kRopeStrides;}
 
 };
 
