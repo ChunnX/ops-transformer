@@ -33,7 +33,7 @@ namespace optiling {
 using namespace arch35FIA;
 constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
 
-uint64_t GetAlignedD(uint64_t val, const std::vector<uint64_t> &candidates)
+uint64_t GetMlaAlignedD(uint64_t val, const std::vector<uint64_t> &candidates)
 {
     for (auto c : candidates) {
         if (val <= c) {
@@ -43,11 +43,11 @@ uint64_t GetAlignedD(uint64_t val, const std::vector<uint64_t> &candidates)
     return val;
 }
 
-using ConfigKey = std::tuple<uint64_t, uint64_t, uint64_t, uint64_t>;
+using ConfigMlaSplitKey = std::tuple<uint64_t, uint64_t, uint64_t, uint64_t>;
 
-const std::map<ConfigKey, uint64_t> &GetConfigMap()
+const std::map<ConfigMlaSplitKey, uint64_t> &GetMlaSplitConfigMap()
 {
-    static const std::map<ConfigKey, uint64_t> configMap = {
+    static const std::map<ConfigMlaSplitKey, uint64_t> configMap = {
         {std::make_tuple(SOUTER_64, SINNER_64, DSIZE_256, DSIZE_256),
          Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256},
         {std::make_tuple(SOUTER_64, SINNER_64, DSIZE_512, DSIZE_512),
@@ -745,10 +745,10 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyConfig()
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512) {
         dSize = fiaInfo_->qkHeadDim + fiaInfo_->ropeHeadDim;
     }
-    dSize = GetAlignedD(dSize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512, DSIZE_576});
-    dVsize = GetAlignedD(dVsize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512});
+    dSize = GetMlaAlignedD(dSize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512, DSIZE_576});
+    dVsize = GetMlaAlignedD(dVsize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512});
 
-    const auto &configMap = GetConfigMap();
+    const auto &configMap = GetMlaSplitConfigMap();
     auto it = configMap.find(std::make_tuple(sOuter, sInner, dSize, dVsize));
     if (it != configMap.end()) {
         tilingKeyInfo_.config = it->second;
