@@ -56,7 +56,8 @@ TEST_F(MoeEpDispatchArch35TilingTest, BasicNonCached)
          {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
          {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(200 * 1024 * 1024)},
          {"expert_alignment", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
+         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"hp_Counter_AddrPtr", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend950", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 1);
@@ -88,7 +89,8 @@ TEST_F(MoeEpDispatchArch35TilingTest, CachedMode)
          {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
          {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(200 * 1024 * 1024)},
          {"expert_alignment", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
+         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"hp_Counter_AddrPtr", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend950", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
@@ -123,10 +125,11 @@ TEST_F(MoeEpDispatchArch35TilingTest, HybridNetworkMode)
          {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(nmt)},
          {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(200 * 1024 * 1024)},
          {"expert_alignment", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
+         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"hp_Counter_AddrPtr", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend950", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 5);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 17);
 }
 
 // Invalid: epWorldSize too small
@@ -156,7 +159,8 @@ TEST_F(MoeEpDispatchArch35TilingTest, InvalidEpWorldSize)
          {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1024)},
          {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(200 * 1024 * 1024)},
          {"expert_alignment", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
+         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"hp_Counter_AddrPtr", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend950", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
@@ -189,7 +193,8 @@ TEST_F(MoeEpDispatchArch35TilingTest, InvalidNumExperts)
          {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1024)},
          {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(200 * 1024 * 1024)},
          {"expert_alignment", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
+         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"hp_Counter_AddrPtr", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend950", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
@@ -222,7 +227,8 @@ TEST_F(MoeEpDispatchArch35TilingTest, SmallHidden)
          {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
          {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(200 * 1024 * 1024)},
          {"expert_alignment", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
+         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"hp_Counter_AddrPtr", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
         &compileInfo, "Ascend950", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 1);

@@ -61,7 +61,7 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchBasic)
 
     auto ut = OP_API_UT(aclnnMoeEpDispatch,
                         INPUT(contextDesc, xDesc, topkIdxDesc, topkWeightsDesc, nullptr, epWorldSize, epRankId,
-                              numExperts, numMaxTokensPerRank, cclBufferSize, expertAlignment, true),
+                              numExperts, numMaxTokensPerRank, cclBufferSize, expertAlignment, true, 0),
                         OUTPUT(numRecvPerRankHpDesc, numRecvPerExpertHpDesc, dstSlotIdxDesc, recvSrcMetaInternalDesc));
 
     uint64_t workspaceSize = 0;
@@ -86,7 +86,7 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchNullTopk)
 
     auto ut = OP_API_UT(aclnnMoeEpDispatch,
                         INPUT(contextDesc, xDesc, nullptr, nullDesc, nullptr, epWorldSize, 0, numExperts,
-                              numMaxTokensPerRank, cclBufferSize, 1, true),
+                              numMaxTokensPerRank, cclBufferSize, 1, true, 0),
                         OUTPUT(TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND),
                                TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND),
                                TensorDesc({numTokens, 8}, ACL_INT32, ACL_FORMAT_ND),
@@ -111,7 +111,7 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchInvalidEpWorldSize)
 
     auto ut = OP_API_UT(aclnnMoeEpDispatch,
                         INPUT(contextDesc, xDesc, topkIdxDesc, TensorDesc({numTokens, topK}, ACL_FLOAT, ACL_FORMAT_ND),
-                              nullptr, 1, 0, 8, 2048, cclBufferSize, 1, true),
+                              nullptr, 1, 0, 8, 2048, cclBufferSize, 1, true, 0),
                         OUTPUT(TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND), TensorDesc({8}, ACL_INT64, ACL_FORMAT_ND),
                                TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND),
                                TensorDesc({2048, 3}, ACL_INT32, ACL_FORMAT_ND)));
