@@ -16,6 +16,10 @@
 #define FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
 
 #include "kernel_operator.h"
+#include "../../../common/op_kernel/arch35/util_regbase.h"
+#include "../../../common/op_kernel/const_def.h"
+using regbaseutil::regBytes;
+using AttentionCommon::Align;
 
 #include "../utils/attenmask_gs1.h"
 
@@ -48,6 +52,8 @@ public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
+    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t vec1S2CopyLenDn = s2BaseSize >> 1;
     static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
     static constexpr uint32_t vec1S2CopyCountDn = mBaseSize >> 5;
@@ -55,6 +61,15 @@ public:
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
+
+    static constexpr bool USE_DN = useDn;
+    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
+    static constexpr bool HAS_PREFIX = false;
+    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
+    static constexpr LayOutTypeEnum LAYOUT = layout;
+
+    using Q_T = INPUT_T;
+    using MM_T = T;
 
     static constexpr uint32_t DB = 2;
     // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误

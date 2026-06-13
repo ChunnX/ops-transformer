@@ -21,7 +21,6 @@
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
-#include "flash_attn_block_cube_noquant_gqa.h"
 #include "flash_attn_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "flash_attention_noquant_block_vec_flashdecode.h"
@@ -40,17 +39,17 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
-template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
+template <typename VecFaBlockType, typename VecFdBlockType>
 class FlashAttentionNoQuantGqaKernel {
 public:
-    static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
-    static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
-    static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
-    static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
+    static constexpr uint32_t mBaseSize = VecFaBlockType::mBaseSize;
+    static constexpr uint32_t s2BaseSize = VecFaBlockType::s2BaseSize;
+    static constexpr uint32_t dBaseSize = VecFaBlockType::dBaseSize;
+    static constexpr uint32_t dVBaseSize = VecFaBlockType::dVBaseSize;
 
-    static constexpr bool USE_DN = CubeBlockType::USE_DN;
-    static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
+    static constexpr bool USE_DN = VecFaBlockType::USE_DN;
+    static constexpr bool BMM2_TOUB = VecFaBlockType::BMM2_TOUB;
+    static constexpr bool HAS_PREFIX = VecFaBlockType::HAS_PREFIX;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
@@ -62,16 +61,16 @@ public:
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
 
-    static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
+    static constexpr bool PAGE_ATTENTION = VecFaBlockType::PAGE_ATTENTION;
 
-    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
-    static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
+    static constexpr LayOutTypeEnum LAYOUT_Q = VecFaBlockType::LAYOUT;
+    static constexpr LayOutTypeEnum LAYOUT_KV = VecFaBlockType::LAYOUT;
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
 
-    using INPUT_T = typename CubeBlockType::Q_T;
-    using T = typename CubeBlockType::MM_T;
-    using ConstInfoX = typename CubeBlockType::ConstInfoX;
+    using INPUT_T = typename VecFaBlockType::Q_T;
+    using T = typename VecFaBlockType::MM_T;
+    using ConstInfoX = typename VecFaBlockType::ConstInfoX;
 
     // ===== 核间共享 buffer slots =====
     LocalTensor<uint8_t> bmm1UbSlot[2];

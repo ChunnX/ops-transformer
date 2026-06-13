@@ -22,9 +22,7 @@
 #include "../utils/flash_attn_utils.h"
 
 #include "flash_attn_block_cube_noquant_gqa.h"
-#include "flash_attn_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
-#include "flash_attention_noquant_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -40,7 +38,7 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
-template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
+template <bool HasMask, typename CubeBlockType>
 class FlashAttentionNoQuantGqaKernel {
 public:
     static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
@@ -51,7 +49,7 @@ public:
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
     static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
-    static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
+    static constexpr bool HAS_MASK = HasMask;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
