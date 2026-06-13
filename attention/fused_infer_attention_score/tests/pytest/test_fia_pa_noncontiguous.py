@@ -10,18 +10,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 """
-非量化 PA/非PA 非连续 kvcache 测试
+非量化 PA/非PA 非连续 kvcache 测试 (含 rope)
 
 KV Cache 格式:
   BnNBsD = (blockNum, KV_N, blockSize, D)
   BnBsH  = (blockNum, blockSize, KV_N*D)
   NZ     = (blockNum, KV_N, D/16, blockSize, 16), D0=16
-
-规格:
-  BnNBsD: dim0 / dim0+dim1 非连续
-  BnBsH:  仅 dim0 非连续
-  NZ:     必须连续
-  非PA:   必须连续
 """
 
 import logging
@@ -39,66 +33,71 @@ DEVICE_ID = 0
 B = 2
 N_q = 4
 N_kv = 2
-D = 128
-DTYPE = torch.float16
 NZ_D0 = 16
+DTYPE = torch.float16
 
 
 # ==============================================================================
-# 用例定义: 每个 case 有独立的 kv_seq / block_size / Q_S
+# 用例: d=D, dr=rope dim, dv=V dim. scale = 1/sqrt(d+dr)
 # ==============================================================================
 NORMAL_CASES = [
-    # BnNBsD: dim0 / dim0+dim1
+    # === 无 rope, D=128 ===
     {"id": "BnNBsD_BNSD_dim0",  "pa": True,  "kv": "BnNBsD", "ql": "BNSD", "nc": "dim0",
-     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
+     "kv_seq": 1024, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "BnNBsD_BNSD_dim01", "pa": True,  "kv": "BnNBsD", "ql": "BNSD", "nc": "dim01",
-     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
+     "kv_seq": 1024, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "BnNBsD_BSND_dim0",  "pa": True,  "kv": "BnNBsD", "ql": "BSND", "nc": "dim0",
-     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
+     "kv_seq": 1024, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "BnNBsD_BSND_dim01", "pa": True,  "kv": "BnNBsD", "ql": "BSND", "nc": "dim01",
-     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
-    # BnBsH: 仅 dim0
+     "kv_seq": 1024, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "BnBsH_BNSD_dim0",   "pa": True,  "kv": "BnBsH",  "ql": "BNSD", "nc": "dim0",
-     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+     "kv_seq": 2048, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "BnBsH_BSND_dim0",   "pa": True,  "kv": "BnBsH",  "ql": "BSND", "nc": "dim0",
-     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
-    # NZ: 连续
+     "kv_seq": 2048, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "NZ_BNSD_contig",    "pa": True,  "kv": "NZ",     "ql": "BNSD", "nc": "none",
-     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+     "kv_seq": 2048, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "NZ_BSND_contig",    "pa": True,  "kv": "NZ",     "ql": "BSND", "nc": "none",
-     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
-    # 非PA: 连续
+     "kv_seq": 2048, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
+    # === 无 rope, 非PA ===
     {"id": "NonPA_BNSD_contig", "pa": False, "kv": "none",   "ql": "BNSD", "nc": "none",
-     "kv_seq": 1024, "block_size": 0, "q_seq": 4},
+     "kv_seq": 1024, "bs": 0, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "NonPA_BSND_contig", "pa": False, "kv": "none",   "ql": "BSND", "nc": "none",
-     "kv_seq": 1024, "block_size": 0, "q_seq": 4},
+     "kv_seq": 1024, "bs": 0, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
+    # === rope: D=128+rope64, V=128 ===
+    {"id": "BnNBsD_BNSD_dim0_rope",  "pa": True,  "kv": "BnNBsD", "ql": "BNSD", "nc": "dim0",
+     "kv_seq": 1024, "bs": 512, "q_seq": 4, "d": 128, "dr": 64, "dv": 128},
+    {"id": "BnNBsD_BNSD_dim01_rope", "pa": True,  "kv": "BnNBsD", "ql": "BNSD", "nc": "dim01",
+     "kv_seq": 1024, "bs": 512, "q_seq": 4, "d": 128, "dr": 64, "dv": 128},
+    # === D=192 (MLA prefill), V=128 ===
+    {"id": "BnNBsD_BNSD_dim0_d192",  "pa": True,  "kv": "BnNBsD", "ql": "BNSD", "nc": "dim0",
+     "kv_seq": 1024, "bs": 512, "q_seq": 4, "d": 192, "dr": 0, "dv": 128},
+    # === rope: D=512+rope64, V=512 ===
+    {"id": "BnNBsD_BNSD_dim0_d512r", "pa": True,  "kv": "BnNBsD", "ql": "BNSD", "nc": "dim0",
+     "kv_seq": 1024, "bs": 512, "q_seq": 4, "d": 512, "dr": 64, "dv": 512},
 ]
 
 ERROR_CASES = [
     {"id": "BnBsH_BNSD_dim01",  "pa": True,  "kv": "BnBsH",  "ql": "BNSD", "nc": "dim01",
-     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+     "kv_seq": 2048, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "BnBsH_BSND_dim01",  "pa": True,  "kv": "BnBsH",  "ql": "BSND", "nc": "dim01",
-     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+     "kv_seq": 2048, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "NZ_BNSD_dim0",      "pa": True,  "kv": "NZ",     "ql": "BNSD", "nc": "dim0",
-     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+     "kv_seq": 2048, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "NZ_BNSD_dim01",     "pa": True,  "kv": "NZ",     "ql": "BNSD", "nc": "dim01",
-     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+     "kv_seq": 2048, "bs": 512, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "NonPA_BNSD_dim0",   "pa": False, "kv": "none",   "ql": "BNSD", "nc": "dim0",
-     "kv_seq": 1024, "block_size": 0, "q_seq": 4},
+     "kv_seq": 1024, "bs": 0, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
     {"id": "NonPA_BSND_dim0",   "pa": False, "kv": "none",   "ql": "BSND", "nc": "dim0",
-     "kv_seq": 1024, "block_size": 0, "q_seq": 4},
+     "kv_seq": 1024, "bs": 0, "q_seq": 4, "d": 128, "dr": 0, "dv": 128},
 ]
 
 
 # ==============================================================================
-# 工具函数
+# 工具
 # ==============================================================================
 
 def _block_table(batch, seqs_kv, bs):
-    """blockTable shape = (batch, maxBlockNumPerSeq), dim1 >= maxBlockNumPerBatch
-    额外留 1 block 余量以保证 KV cache 容量 > actualSeqKv
-    """
-    vn = [math.ceil(s / bs) + 1 for s in seqs_kv]  # 每 batch 多 1 个 block
+    vn = [math.ceil(s / bs) + 1 for s in seqs_kv]
     total = sum(vn)
     mx = max(vn)
     ids = list(range(total))
@@ -111,7 +110,7 @@ def _block_table(batch, seqs_kv, bs):
     return tbl, total
 
 
-def _kv_shape(kv_layout, total_blocks, block_size, q_layout, kv_seq):
+def _kv_shape(kv_layout, total_blocks, block_size, kv_seq, q_layout):
     if kv_layout == "BnNBsD":
         return (total_blocks, N_kv, block_size, D)
     elif kv_layout == "BnBsH":
@@ -121,7 +120,7 @@ def _kv_shape(kv_layout, total_blocks, block_size, q_layout, kv_seq):
     elif kv_layout == "none":
         if q_layout in ("BSND", "BSH"):
             return (B, kv_seq, N_kv, D)
-        return (B, N_kv, kv_seq, D)  # BNSD / TND
+        return (B, N_kv, kv_seq, D)
     raise ValueError(kv_layout)
 
 
@@ -159,15 +158,6 @@ def _q_layout(q_bnsd, q_layout, act_q):
         return q_bnsd
     elif q_layout == "BSND":
         return q_bnsd.permute(0, 2, 1, 3).contiguous()
-    elif q_layout == "TND":
-        T = sum(act_q)
-        out = torch.zeros(T, N_q, D, dtype=DTYPE)
-        t = 0
-        for b in range(B):
-            s = act_q[b]
-            out[t:t + s] = q_bnsd[b, :, :s, :].transpose(0, 1)
-            t += s
-        return out
     raise ValueError(q_layout)
 
 
@@ -179,24 +169,33 @@ def _accum(seqs):
     return out
 
 
-def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, block_size, scale):
+def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, bs, scale,
+         q_rope_npu, k_rope_npu, d, dr, dv):
     torch_npu.npu.set_device(DEVICE_ID)
     torch.npu.synchronize()
-    if q_layout == "TND":
-        aq = torch.tensor(_accum(act_q), dtype=torch.int64)
-        akv = torch.tensor(_accum(act_kv), dtype=torch.int64)
+    aq = torch.tensor(act_q, dtype=torch.int64)
+    akv = torch.tensor(act_kv, dtype=torch.int64)
+
+    if dr > 0 or d != dv or d != 128:
+        r, _ = torch_npu.npu_fused_infer_attention_score_v2(
+            q_npu, k_npu, v_npu,
+            query_rope=q_rope_npu, key_rope=k_rope_npu,
+            actual_seq_qlen=aq, actual_seq_kvlen=akv,
+            num_query_heads=N_q, num_key_value_heads=N_kv,
+            input_layout=q_layout, softmax_scale=scale,
+            pre_tokens=65535, next_tokens=65535,
+            block_table=bt_npu if pa else None,
+            block_size=bs if pa else 0,
+            sparse_mode=3, out_dtype=DTYPE)
     else:
-        aq = torch.tensor(act_q, dtype=torch.int64)
-        akv = torch.tensor(act_kv, dtype=torch.int64)
-    r, _ = torch_npu.npu_fused_infer_attention_score(
-        q_npu, k_npu, v_npu,
-        actual_seq_lengths=aq, actual_seq_lengths_kv=akv,
-        num_heads=N_q, num_key_value_heads=N_kv,
-        input_layout=q_layout, scale=scale,
-        pre_tokens=65535, next_tokens=65535,
-        block_table=bt_npu if pa else None,
-        block_size=block_size if pa else 0,
-    )
+        r, _ = torch_npu.npu_fused_infer_attention_score(
+            q_npu, k_npu, v_npu,
+            actual_seq_lengths=aq, actual_seq_lengths_kv=akv,
+            num_heads=N_q, num_key_value_heads=N_kv,
+            input_layout=q_layout, scale=scale,
+            pre_tokens=65535, next_tokens=65535,
+            block_table=bt_npu if pa else None,
+            block_size=bs if pa else 0)
     torch.npu.synchronize()
     return r
 
@@ -221,12 +220,15 @@ def _run_one(cfg, expect_pass):
     q_layout = cfg["ql"]
     nc = cfg["nc"]
     kv_seq = cfg["kv_seq"]
-    bs = cfg["block_size"]
+    bs = cfg["bs"]
     q_seq = cfg["q_seq"]
+    d = cfg["d"]
+    dr = cfg["dr"]
+    dv = cfg["dv"]
 
     act_q = [q_seq] * B
     act_kv = [kv_seq] * B
-    scale = 1.0 / math.sqrt(D)
+    scale = 1.0 / math.sqrt(d + dr)
 
     bt, total_b = None, 0
     if pa:
@@ -236,13 +238,31 @@ def _run_one(cfg, expect_pass):
     bt_npu = bt.npu() if bt is not None else None
 
     torch.manual_seed(42)
-    q_bnsd = torch.randn(B, N_q, q_seq, D, dtype=DTYPE)
+    q_bnsd = torch.randn(B, N_q, q_seq, d, dtype=DTYPE)
     q_npu = _q_layout(q_bnsd, q_layout, act_q).npu()
 
-    kv_shape = _kv_shape(kv_layout, total_b, bs, q_layout, kv_seq)
+    q_rope_npu = None
+    k_rope_npu = None
+    if dr > 0:
+        torch.manual_seed(300)
+        qr_bnsd = torch.randn(B, N_q, q_seq, dr, dtype=DTYPE)
+        torch.manual_seed(400)
+        kr_bnsd = torch.randn(B, N_kv, kv_seq, dr, dtype=DTYPE)
+        q_rope_npu = _q_layout(qr_bnsd, q_layout, act_q).npu()
+        if pa:
+            # PA rope: need to be in same layout, using BNSD for simplicity
+            k_rope_npu = kr_bnsd.npu()
+        else:
+            if q_layout in ("BSND",):
+                k_rope_npu = kr_bnsd.transpose(1, 2).contiguous().npu()
+            else:
+                k_rope_npu = kr_bnsd.npu()
+
+    kv_shape = _kv_shape(kv_layout, total_b, bs, kv_seq, q_layout)
     k_ref, v_ref = _make_kv(kv_shape)
 
-    ref_out = _run(q_npu, k_ref.npu(), v_ref.npu(), pa, q_layout, act_q, act_kv, bt_npu, bs, scale)
+    ref_out = _run(q_npu, k_ref.npu(), v_ref.npu(), pa, q_layout, act_q, act_kv,
+                   bt_npu, bs, scale, q_rope_npu, k_rope_npu, d, dr, dv)
 
     k_nc = _make_nc_on_npu(k_ref.npu(), nc)
     v_nc = _make_nc_on_npu(v_ref.npu(), nc)
@@ -255,17 +275,15 @@ def _run_one(cfg, expect_pass):
 
     if not expect_pass:
         with pytest.raises(Exception):
-            _run(q_npu, k_nc, v_nc, pa, q_layout, act_q, act_kv, bt_npu, bs, scale)
+            _run(q_npu, k_nc, v_nc, pa, q_layout, act_q, act_kv,
+                 bt_npu, bs, scale, q_rope_npu, k_rope_npu, d, dr, dv)
         logger.info(f"  [{cfg['id']}] ERROR as expected")
         return
 
-    out = _run(q_npu, k_nc, v_nc, pa, q_layout, act_q, act_kv, bt_npu, bs, scale)
+    out = _run(q_npu, k_nc, v_nc, pa, q_layout, act_q, act_kv,
+               bt_npu, bs, scale, q_rope_npu, k_rope_npu, d, dr, dv)
     _check(ref_out, out, cfg["id"])
 
-
-# ==============================================================================
-# pytest
-# ==============================================================================
 
 @pytest.mark.parametrize("cfg", NORMAL_CASES, ids=[c["id"] for c in NORMAL_CASES])
 def test_normal(cfg):
