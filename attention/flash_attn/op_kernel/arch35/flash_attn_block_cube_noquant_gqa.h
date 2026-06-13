@@ -93,7 +93,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
           bool bmm2Write2Ub = true, bool splitD = false>
-class CubeBlockBase {
+class FANoQuantGqaBlockCube {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
@@ -111,45 +111,6 @@ public:
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
-    using ROPE_T = INPUT_T;
-    using Q_T = INPUT_T;
-    using KV_T = INPUT_T;
-    using MM_T = T;
-
-    using L0AType = typename L0ABuffSel<INPUT_T>::Type;
-    using L0BType = typename L0BBuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type;
-
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-
-    __aicore__ inline CubeBlockBase(ConstInfoX &constInfo){};
-};
-
-template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
-          DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
-          bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockCube : public CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType,
-                                                   dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD> {
-public:
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr uint32_t l1BaseD = 128;
-    static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
-    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
-    static constexpr bool USE_DN = useDn;
-    static constexpr bool SPLITD = splitD;
-    static constexpr bool HAS_PREFIX = false;
-
-    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
-    static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
-    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
-
-    using ROPE_T = INPUT_T;
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
     using MM_T = T;
@@ -165,7 +126,6 @@ public:
     static constexpr bool L1KV_IS_SINGLE = (s2BaseSize == 256 && dBaseSize > 128);
     static constexpr bool L0C_IS_4BUFF = (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
                                           mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4);
-    static constexpr uint32_t L0C_SLOT_COUNT = L0C_IS_4BUFF ? 4 : 2;
 
     // ====== 核间同步常量 ======
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
@@ -219,8 +179,6 @@ public:
     FaGmTensorQ queryGm;
     FaGmTensorKV keyGm;
     FaGmTensorKV valueGm;
-    FaGmTensorQ queryRopeGm;
-    FaGmTensorKV keyRopeGm;
     GlobalTensor<int32_t> blockTableGm;
 
     QSeqParserType *qSeqParserPtr = nullptr;
@@ -286,9 +244,7 @@ public:
 
     /*============================================================================== */
     __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo)
-        : CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType,
-                        useDn, bmm2Write2Ub, splitD>(constInfo),
-          constInfo(constInfo){};
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable,
@@ -313,7 +269,6 @@ public:
             // L1Q = Single (dBaseSize>256), L1KV: Single if s2==256&&d>128, else DB
             constexpr uint32_t mm1LeftSize  = mBaseSize * dBaseSize * sizeof(Q_T);
             constexpr uint32_t mm1RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
-            constexpr uint32_t mm2RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
             constexpr uint32_t l1QOff       = FA_L1_CUBE_BASE;
             constexpr uint32_t l1KOff       = l1QOff + mm1LeftSize;
 
@@ -323,14 +278,14 @@ public:
                 // Single + Single + Single
                 constexpr uint32_t l1VOff = l1KOff + mm1RightSize;
                 l1KSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1KOff, mm1RightSize);
-                l1VSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1VOff, mm2RightSize);
+                l1VSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1VOff, mm1RightSize);
             } else {
                 // Single + DB + DB
                 constexpr uint32_t l1VOff = l1KOff + 2U * mm1RightSize;
                 l1KSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1KOff, mm1RightSize);
                 l1KSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1KOff + mm1RightSize, mm1RightSize);
-                l1VSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1VOff, mm2RightSize);
-                l1VSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1VOff + mm2RightSize, mm2RightSize);
+                l1VSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1VOff, mm1RightSize);
+                l1VSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1VOff + mm1RightSize, mm1RightSize);
             }
         } else {
             // L1Q = DB (dBaseSize<=256), L1KV: Single if s2==256&&d>128, else DB
@@ -519,10 +474,8 @@ public:
     __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfoX &runInfo)
     {
-        uint32_t nopeDealSize = dRealSize;
-
         uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
-        if (nopeDealSize > 0) {
+        if (dRealSize > 0) {
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
             GmCoord gmCoord{.bIdx = runInfo.bIdx,
@@ -530,7 +483,7 @@ public:
                             .gS1Idx = runInfo.gS1Idx,
                             .dIdx = dOffset,
                             .gS1DealSize = runInfo.actMSize,
-                            .dDealSize = nopeDealSize};
+                            .dDealSize = dRealSize};
             copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
         }
     }
@@ -547,10 +500,7 @@ public:
     {
         uint32_t dstStride = (runInfo.actSingleLoopS2Size + 15) >> 4 << 4;
 
-        uint32_t nopeDealSize = dRealSize;
-        uint32_t ropeDealSize = 0;
-
-        if (nopeDealSize > 0) {
+        if (dRealSize > 0) {
             FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
             GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
@@ -558,7 +508,7 @@ public:
                               .s2Idx = runInfo.s2Idx,
                               .dIdx = dOffset,
                               .s2DealSize = runInfo.actSingleLoopS2Size,
-                              .dDealSize = nopeDealSize};
+                              .dDealSize = dRealSize};
             copyKvGmToL1(l1Tensor, keyGm, gmCoord);
         }
     }
@@ -1076,6 +1026,7 @@ public:
     }
 
 }; // FANoQuantGqaBlockCube
+
 } // namespace BaseApi
 
 #endif // FLASH_ATTENTION_NOQUANT_BLOCK_CUBE_H_
