@@ -22,7 +22,10 @@
 #endif
 
 namespace MC2Adump {
-constexpr uint64_t TOTAL_SIZE_PER_CORE = 1 * 1024 * 1024;
+
+using namespace AscendC;
+
+constexpr uint32_t ADUMP_GM_ALIGN_BYTES = 512;
 constexpr uint32_t RESERVE_SIZE = 20;
 
 enum OpType : uint32_t {
@@ -44,7 +47,10 @@ struct AdumpHeader {
 struct AdumpConfig {
     uint32_t opType;          // 算子类型
     uint32_t aivId;           // 核Id
+    uint32_t ubStartAddr;     // UB 起始地址
+    uint32_t ubSizeBytes;     // UB 大小（单位：字节）
     uint32_t sharedFieldSize; // 所有核共用字段大小，后续每个核的记录会从sharedFieldSize开始
+    uint32_t customFieldSize; // 每个核的自定义字段大小
     uint32_t stageNum;        // 算子记录总阶段数
     uint64_t timeOutCycles;   // 超时时间（单位：cycle数）
 };
@@ -54,18 +60,22 @@ public:
     __aicore__ inline MC2AdumpEngine() = default;
     __aicore__ inline ~MC2AdumpEngine() = default;
 
-    __aicore__ inline void Init(GM_ADDR dumpAddr, AdumpConfig& config) 
+    __aicore__ inline void Init(GM_ADDR adumpAddrBase, AdumpConfig& config) 
     {
         uint32_t aivId = config.aivId;
-        __gm__ uint8_t* base = (__gm__ uint8_t*)(dumpAddr);
 
-        // 内存布局：
+        // GM内存布局：
         // 1. AdumpHeader 算子记录头信息
         // 2. SharedField 各算子自定义，大小config.sharedFieldSize，例如存放关键的tiling字段
-        // 3. CustomField 每个核的自定义字段，大小TOTAL_SIZE_PER_CORE，例如存放算子记录的中间结果
-        adumpHeader_ = (__gm__ AdumpHeader*)(base);
-        adumpSharedFieldPtr_ = (__gm__ uint8_t*)(base + sizeof(AdumpHeader));
-        adumpCoreCustomFieldPtr_ = (__gm__ AdumpCoreHeader*)(base + sizeof(AdumpHeader) + config.sharedFieldSize + aivId * TOTAL_SIZE_PER_CORE);
+        // 3. CustomField 每个核的自定义字段，大小config.customFieldSize，例如存放算子记录的中间结果
+        uint32_t adumpHeaderSize = RoundUp(sizeof(AdumpHeader), ADUMP_GM_ALIGN_BYTES);
+        uint32_t sharedFieldSize = RoundUp(config.sharedFieldSize, ADUMP_GM_ALIGN_BYTES);
+        uint32_t customFieldSize = RoundUp(config.customFieldSize, ADUMP_GM_ALIGN_BYTES);
+        adumpHeader_ = (__gm__ AdumpHeader*)(adumpAddrBase);
+        adumpSharedFieldAddr_ = (GM_ADDR)(adumpAddrBase + adumpHeaderSize);
+        adumpCoreCustomFieldAddr_ = (GM_ADDR)(adumpAddrBase + adumpHeaderSize + sharedFieldSize + aivId * customFieldSize);
+
+        adumpU8LocalTensor_ = LocalTensor<uint8_t>{TPosition::LCM, config.ubStartAddr, config.ubSizeBytes};
 
         if (aivId == 0) {
             adumpHeader_->magic = 0x1234567890abcdef;
@@ -77,23 +87,32 @@ public:
         }
     }
 
-    __aicore__ inline __gm__ uint8_t* GetSharedFieldPtr()
+    __aicore__ inline GM_ADDR GetSharedFieldAddr()
     {
-        return adumpSharedFieldPtr_;
+        return adumpSharedFieldAddr_;
     }
 
-    template<typename T>
-    __aicore__ inline __gm__ T* GetCoreCustomFieldPtr()
+    __aicore__ inline GM_ADDR GetCoreCustomFieldAddr()
     {
-        static_assert(sizeof(T) <= TOTAL_SIZE_PER_CORE, "Custom data size exceeds limit");
-        return (__gm__ T*)(adumpCoreCustomFieldPtr_);
+        return adumpCoreCustomFieldAddr_;
+    }
+
+    __aicore__ inline LocalTensor<uint8_t> GetAdumpU8LocalTensor()
+    {
+        return adumpU8LocalTensor_;
+    }
+
+    __aicore__ inline uint32_t GetAdumpUbSizeBytes()
+    {
+        return adumpU8LocalTensor_.GetSize();
     }
 
 private:
     __gm__ AdumpHeader *adumpHeader_;
-    __gm__ uint8_t *adumpSharedFieldPtr_;
-    __gm__ uint8_t *adumpCoreCustomFieldPtr_;
+    GM_ADDR adumpSharedFieldAddr_;
+    GM_ADDR adumpCoreCustomFieldAddr_;
+    LocalTensor<uint8_t> adumpU8LocalTensor_;
 };
-}
+} // namespace MC2Adump
 
 #endif // MC2_ADUMP_ENGINE_H

@@ -28,6 +28,7 @@
 #include "../../../op_kernel/arch22/mega_moe_tiling_a2a3.h"
 #include "../../../op_kernel/arch22/mega_moe_tiling_key.h"
 #include "../../../op_kernel/arch22/moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
+#include "mc2_exception_dump.h"
 
 using namespace AscendC;
 using namespace ge;
