@@ -34,6 +34,9 @@ struct RopeGradRegbaseParams {
     int64_t ubTailFactorN;
     int64_t usedCoreNum;
     int64_t rotaryMode;
+    int64_t sliceStart;
+    int64_t sliceEnd;
+    int64_t sliceLength;
 };
 
 struct RopeGradRegbaseABParams {
@@ -53,6 +56,9 @@ struct RopeGradRegbaseABParams {
     int64_t ubFactorN;
     int64_t usedCoreNum;
     int64_t rotaryMode;
+    int64_t sliceStart;
+    int64_t sliceEnd;
+    int64_t sliceLength;
 };
 
 struct RotaryXParams {
@@ -61,10 +67,13 @@ struct RotaryXParams {
     int64_t d;
     int64_t n;
     int64_t usedCoreNum;
-    int64_t blockFactorN;     // 每个核处理多少个D
-    int64_t blockTailFactorN; // 尾核处理多少个D
-    int64_t ubFactorN;        // UB 一次处理多少个D
+    int64_t blockFactorN;
+    int64_t blockTailFactorN;
+    int64_t ubFactorN;
     int64_t rotaryMode;
+    int64_t sliceStart;
+    int64_t sliceEnd;
+    int64_t sliceLength;
 };
 struct RopeGradTilingData {
     Ops::Base::ReduceOpTilingData reduceTiling;
