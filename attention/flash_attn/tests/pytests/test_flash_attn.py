@@ -219,8 +219,10 @@ if __name__ == "__main__":
             reporter.set_csv(csv_path)
 
         for i, name in enumerate(run_cases):
+            case_params = normalize_params(all_cases[name]) if name in all_cases else {}
+            dtype = case_params.get("Dtype", "fp16")
             print(f"\n{'='*66}")
-            print(f"  [load] Case: {name}")
+            print(f"  [load] Case: {name}  dtype={dtype}")
             print(f"{'='*66}")
 
             try:
@@ -249,7 +251,7 @@ if __name__ == "__main__":
                                    "mean_abs": float('nan'), "fail_cnt": -1,
                                    "total": -1, "fail_ratio": float('nan')}}
 
-            reporter.record(name, result, error=err)
+            reporter.record(name, result, error=err, dtype=dtype)
 
             if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
                     and (i + 1) < len(run_cases):
