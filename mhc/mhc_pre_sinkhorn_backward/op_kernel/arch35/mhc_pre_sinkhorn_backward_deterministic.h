@@ -330,7 +330,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step1_InputAgg
     int64_t gmOffset = blkIdx_ * tile_;
     int64_t wsBase = blkIdx_ * wsPerCoreSize_;
     
-    // ===== Phase 0: h_pre一次搬入（整个tile生命周期驻留）=====
+    // ===== 准备数据: h_pre一次搬入（整个tile生命周期驻留）=====
     LocalTensor<T> hPreLocal = hPreQueue_.AllocTensor<T>();
     AscendC::DataCopyPad(hPreLocal, hPreGlobal_[gmOffset * n_], 
         {1, static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
@@ -346,65 +346,45 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step1_InputAgg
     LocalTensor<T> gradHPreLocal = gradHPreBuf_.Get<T>();
     AscendC::Duplicate(gradHPreLocal, static_cast<T>(0), n_);
     
-    // ===== Phase 1: x一次性Cast并搬workspace（前置到j循环之前）=====
-    // 对齐说明: DataCopyPad可处理非对齐cur_c，自动padding
-    //           workspace地址：wsXFp32Offset_ + j*c_*FP32_BYTE_SIZE + d_offset*FP32_BYTE_SIZE
-    //           c_和c0_按Tiling分配，可能非VL对齐，DataCopyPad自动处理
+    // ===== 计算: 两层循环（d_idx × j），借鉴pr_6646_new优化 =====
+    // 优化1: 删除Phase 1前置x Cast → 改为VF内部顺手用完
+    // 优化2: 删除Phase 2读回xFp32 → x在VF内部Load→Cast→立即用→写workspace
+    // 优化3: gradHin VL级加载（借鉴pr_6646_new的loopCnt切分）
+    
+    LocalTensor<U> gradHinInput = gradHinInputBuf_.Get<U>();
     LocalTensor<U> xInputChunk = xInputBuf_.Get<U>();
-    LocalTensor<T> xFp32Chunk = xFp32Buf_.Get<T>();
+    LocalTensor<T> gradXChunk = tmpBuf_.Get<T>();
     
     for (uint16_t d_idx = 0; d_idx < D_chunk_cnt; d_idx++) {
         uint32_t cur_c = (d_idx == D_chunk_cnt - 1) ? cTail_u : c0_u;
         uint32_t d_offset = d_idx * c0_u;
         
-        // 逐j循环：搬入x[j*D_chunk]，Cast并写workspace
+        // j循环：逐个计算gradHPre[j]（借鉴pr_6646_new的n循环）
         for (uint16_t j = 0; j < n_u; j++) {
-            // MTE2: 从GM搬x[j*D_chunk]到UB(U)
+            T hPreScalar = hPreLocal.GetValue(j);
+            
+            AscendC::DataCopyPad(gradHinInput, gradHinGlobal_[gmOffset * c_u + d_offset],
+                {1, static_cast<uint32_t>(cur_c * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
             AscendC::DataCopyPad(xInputChunk, xGlobal_[gmOffset * n_u * c_u + j * c_u + d_offset],
                 {1, static_cast<uint32_t>(cur_c * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
             AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
             AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
             
-            // V: Cast x(U→FP32)（MemBase，在UB完成）
-            AscendC::Cast(xFp32Chunk, xInputChunk, AscendC::RoundMode::CAST_NONE, cur_c);
+            LocalTensor<T> xFp32Chunk = xFp32Buf_.Get<T>();
+            InputAggregationVf_Optimized<T, U>(
+                gradXChunk, xFp32Chunk, gradHPreLocal, j,
+                gradHinInput, xInputChunk,
+                hPreScalar, cur_c);
             
-            // MTE3: 写workspace（wsXFp32Offset + j*c + d_offset）
+            AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+            AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+            
             int64_t wsXFp32Offset_j = wsBase + wsXFp32Offset_ + j * c_ * FP32_BYTE_SIZE + d_offset * FP32_BYTE_SIZE;
             AscendC::DataCopyPad(workspaceGlobal_[wsXFp32Offset_j / sizeof(T)], xFp32Chunk,
                 {1, static_cast<uint16_t>(cur_c * sizeof(T)), 0, 0});
             AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
             AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
-        }
-    }
-    
-    // ===== Phase 2: InputAggregationVf循环（从workspace读xFp32）=====
-    LocalTensor<U> gradHinInput = gradHinInputBuf_.Get<U>();
-    LocalTensor<T> xFp32Input = xFp32Buf_.Get<T>();  // 从workspace读回，用于VF输入
-    LocalTensor<T> gradXChunk = tmpBuf_.Get<T>();
-    
-    for (uint16_t j = 0; j < n_u; j++) {
-        T hPreScalar = hPreLocal.GetValue(j);  // 随路broadcast，h_pre只搬一次
-        
-        for (uint16_t d_idx = 0; d_idx < D_chunk_cnt; d_idx++) {
-            uint32_t cur_c = (d_idx == D_chunk_cnt - 1) ? cTail_u : c0_u;
-            uint32_t d_offset = d_idx * c0_u;
             
-            // MTE2: gradHin_chunk + xFp32_chunk(从workspace读回)
-            AscendC::DataCopyPad(gradHinInput, gradHinGlobal_[gmOffset * c_u + d_offset],
-                {1, static_cast<uint32_t>(cur_c * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
-            int64_t wsXFp32ReadOffset_j = wsBase + wsXFp32Offset_ + j * c_ * FP32_BYTE_SIZE + d_offset * FP32_BYTE_SIZE;
-            AscendC::DataCopyPad(xFp32Input, workspaceGlobal_[wsXFp32ReadOffset_j / sizeof(T)],
-                {1, static_cast<uint32_t>(cur_c * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-            AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
-            AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
-            
-            // VF: InputAggregationVf（已简化，只cast gradHin，xFp32已FP32）
-            InputAggregationVf<T, U>(gradXChunk, gradHPreLocal, j, gradHinInput, xFp32Input, hPreScalar, cur_c);
-            
-            AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
-            AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
-            
-            // MTE3: gradX写workspace
             int64_t wsGradXOffset_j = wsBase + wsGradXOffset_ + j * c_ * FP32_BYTE_SIZE + d_offset * FP32_BYTE_SIZE;
             AscendC::DataCopyPad(workspaceGlobal_[wsGradXOffset_j / sizeof(T)], gradXChunk,
                 {1, static_cast<uint16_t>(cur_c * sizeof(T)), 0, 0});
@@ -412,6 +392,8 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step1_InputAgg
             AscendC::WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(0));
         }
     }
+    
+    // ===== 搬出: hPre释放 =====
     hPreQueue_.FreeTensor(hPreLocal);
 }
 

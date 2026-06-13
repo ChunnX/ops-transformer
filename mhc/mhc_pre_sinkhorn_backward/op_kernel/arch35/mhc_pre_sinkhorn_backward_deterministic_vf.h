@@ -540,80 +540,73 @@ __aicore__ inline void MulVf(
 // 【调整说明】: x的Cast外置到VF调用前，VF输入为已Cast的xFp32
 // 【核心原则】: 按CopyIn→计算→CopyOut组织代码，动态Mask处理尾块
 template<typename T, typename U>
-__aicore__ inline void InputAggregationVf(
-    LocalTensor<T> gradXLocal,        // 输出: gradX (cur_c元素，FP32)
-    LocalTensor<T> gradHPreLocal,     // 累加器: gradHPre[j] += ReduceSum(gradHinFp32*xFp32)
-    uint32_t j,                        // gradHPre累加位置索引
-    LocalTensor<U> gradHinInputLocal,  // 输入: BF16/FP16 gradHin chunk
-    LocalTensor<T> xFp32InputLocal,    // 输入: FP32 x chunk (已在外部Cast完成，从workspace读回)
-    T hPreScalar,                     // 输入: hPre[j]标量（随路broadcast，只搬入一次）
-    uint32_t cur_c)                   // chunk大小（可能非VL整数倍）
+template<typename T, typename U>
+__aicore__ inline void InputAggregationVf_Optimized(
+    LocalTensor<T> gradXLocal,
+    LocalTensor<T> xFp32Local,
+    LocalTensor<T> gradHPreLocal,
+    uint32_t j,
+    LocalTensor<U> gradHinInputLocal,
+    LocalTensor<U> xInputLocal,
+    T hPreScalar,
+    uint32_t cur_c)
 {
     __local_mem__ T* gradXPtr = (__local_mem__ T*) gradXLocal.GetPhyAddr();
+    __local_mem__ T* xFp32Ptr = (__local_mem__ T*) xFp32Local.GetPhyAddr();
     __local_mem__ T* gradHPrePtr = (__local_mem__ T*) gradHPreLocal.GetPhyAddr();
     __local_mem__ U* gradHinInputPtr = (__local_mem__ U*) gradHinInputLocal.GetPhyAddr();
-    __local_mem__ T* xFp32InputPtr = (__local_mem__ T*) xFp32InputLocal.GetPhyAddr();
+    __local_mem__ U* xInputPtr = (__local_mem__ U*) xInputLocal.GetPhyAddr();
     
-    static constexpr MicroAPI::CastTrait castTrait =
+    static constexpr MicroAPI::CastTrait castTraitZeroing =
         {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-         MicroAPI::MaskMergeMode::MERGING, RoundMode::CAST_NONE};
+         MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_NONE};
     
     __VEC_SCOPE__ {
-        RegTensor<U> gradHinInputReg;
+        RegTensor<U> gradHinInputReg, xInputReg;
         RegTensor<T> gradHinFp32Reg, xFp32Reg, gradXReg;
         RegTensor<T> mulReg, sumReg, tmpReg, existingReg;
+        RegTensor<T> gradHPreRegSumReg;
         
         MaskReg maskAll = MicroAPI::CreateMask<T, MaskPattern::ALL>();
         MaskReg maskU = MicroAPI::CreateMask<U, MaskPattern::ALL>();
+        MicroAPI::MaskReg OneMaskReg = MicroAPI::CreateMask<T, MicroAPI::VL1>();
+        MicroAPI::UnalignRegForStore gradHPreSumUreg;
         
-        uint32_t loopCount = (cur_c + VL_FP32 - 1) / VL_FP32;
+        uint32_t vfLen = VL_FP32;
+        uint32_t loopCount = (cur_c + vfLen - 1) / vfLen;
+        uint32_t maskLen = static_cast<uint32_t>(cur_c);
         
-        // ===== CopyIn阶段: 从UB加载输入数据到寄存器 =====
-        // Load现有gradHPre[j]值（用于累加），对齐搬运1个VL（DIST_BLK）
-        //   注: gradHPreLocal是累加器，地址天然对齐（TBuf分配）
         MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(existingReg, gradHPrePtr + j);
-        MicroAPI::Duplicate<T>(sumReg, static_cast<T>(0.0), maskAll);  // 初始化归约累加器
+        MicroAPI::Duplicate<T>(sumReg, static_cast<T>(0.0), maskAll);
         
         for (uint16_t i = 0; i < loopCount; i++) {
-            // 动态Mask处理尾块（如果cur_c非VL整数倍）
-            //   注: 最后一个VL循环可能包含dummy数据，必须用Mask控制计算范围
+            MicroAPI::MaskReg valueMaskReg = MicroAPI::UpdateMask<T>(maskLen);
             uint32_t calcSize = (i == loopCount - 1) ? 
-                (cur_c - i * VL_FP32) : VL_FP32;
+                (cur_c - i * vfLen) : vfLen;
             MicroAPI::MaskReg maskCalc = MicroAPI::UpdateMask<T>(calcSize);
             
-            // CopyIn: Load gradHin(U)和xFp32(T)，对齐搬运VL_FP32个元素（DIST_BLK）
-            //   注: 输入由DataCopyPad从GM/workspace搬入，UB布局按cur_c连续排列
-            //   注: UB地址通过TBuf分配，天然32字节对齐，满足DIST_BLK要求
-            //   注: 尾块Load VL个元素包含超出部分(垃圾值)，但Mask控制计算范围
-            MicroAPI::DataCopy<U, LoadDist::DIST_BLK>(gradHinInputReg, gradHinInputPtr + i * VL_FP32);
-            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(xFp32Reg, xFp32InputPtr + i * VL_FP32);
+            MicroAPI::AddrReg gradHinAddrOfst = MicroAPI::CreateAddrReg<U>(i, vfLen);
+            MicroAPI::DataCopy<U, MicroAPI::LoadDist::DIST_UNPACK_B16>(gradHinInputReg, gradHinInputPtr, gradHinAddrOfst);
+            MicroAPI::Cast<T, U, castTraitZeroing>(gradHinFp32Reg, gradHinInputReg, valueMaskReg);
             
-            // ===== 计算阶段: 在寄存器内完成所有计算，中间结果不回写UB =====
-            // Cast: gradHin(U→T)，对齐VL_FP32个U元素，CastTrait MERGING
-            MicroAPI::Cast<T, U, castTrait>(gradHinFp32Reg, gradHinInputReg, maskU);
-            
-            // 随路broadcast: gradX = gradHinFp32 * hPreScalar (h_pre只搬一次)
-            //   注: hPreScalar是标量，Muls随路广播到VL个元素
             MicroAPI::Muls<T>(gradXReg, gradHinFp32Reg, hPreScalar, maskCalc);
             
-            // MulReduceSum: gradHPre累加 += ReduceSum(gradHinFp32 * xFp32)
-            //   注: xFp32从workspace读回（已在外部Cast完成），直接使用
-            //   注: maskCalc控制归约范围，避免尾块归约dummy值（关键！）
-            MicroAPI::Mul<T>(mulReg, gradHinFp32Reg, xFp32Reg, maskCalc);
-            MicroAPI::ReduceSum<T>(tmpReg, mulReg, maskCalc);  // 只归约calcSize个有效元素
-            MicroAPI::Add<T>(sumReg, sumReg, tmpReg, maskAll);  // 累加到sumReg
+            MicroAPI::AddrReg xAddrOfst = MicroAPI::CreateAddrReg<U>(i, vfLen);
+            MicroAPI::DataCopy<U, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInputReg, xInputPtr, xAddrOfst);
+            MicroAPI::Cast<T, U, castTraitZeroing>(xFp32Reg, xInputReg, valueMaskReg);
             
-            // ===== CopyOut阶段: 从寄存器存储最终结果到UB =====
-            // Store gradX，对齐搬运VL_FP32个FP32元素（DIST_NORM）
-            //   注: maskCalc控制写入范围，尾块只写calcSize个元素
-            //   注: gradX后续DataCopyPad→workspace (grad_x第一路)
-            MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(gradXPtr + i * VL_FP32, gradXReg, maskCalc);
+            MicroAPI::Mul<T>(mulReg, gradHinFp32Reg, xFp32Reg, maskCalc);
+            MicroAPI::Reduce<MicroAPI::ReduceType::SUM, T, T>(tmpReg, mulReg, maskCalc);
+            MicroAPI::Add<T>(sumReg, sumReg, tmpReg, maskAll);
+            
+            MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(gradXPtr + i * vfLen, gradXReg, maskCalc);
+            MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(xFp32Ptr + i * vfLen, xFp32Reg, maskCalc);
         }
         
-        // CopyOut: gradHPre[j] = 原值 + 新累加，DIST_FIRST_ELEMENT_B32存1个scalar
-        //   注: gradHPre是累加器，最终值存入gradHPreLocal[j]（UB地址对齐）
-        MicroAPI::Add<T>(sumReg, existingReg, sumReg, maskAll);
-        MicroAPI::DataCopy<T, StoreDist::DIST_FIRST_ELEMENT_B32>(gradHPrePtr + j, sumReg, maskAll);
+        MicroAPI::Adds(gradHPreRegSumReg, sumReg, existingReg, OneMaskReg);
+        auto gradHPreStart = gradHPrePtr + j;
+        MicroAPI::StoreUnAlign(gradHPreStart, gradHPreRegSumReg, gradHPreSumUreg, 1);
+        MicroAPI::StoreUnAlignPost(gradHPreStart, gradHPreSumUreg, 0);
     }
 }
 
