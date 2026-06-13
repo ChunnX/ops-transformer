@@ -31,6 +31,47 @@ namespace MoeDistributeV2Base {
 using namespace AscendC;
 using namespace Mc2Kernel;
 
+constexpr uint64_t SQ_WQE_DUMP_BYTES = 64UL * 2048UL;
+constexpr uint64_t SQ_WQE_DUMP_OFFSET = 800UL * 1024UL;
+constexpr uint32_t SQ_WQE_DUMP_COPY_U64_NUM = UB_ALIGN / sizeof(uint64_t);
+
+__aicore__ inline void DumpSQWqeToWin(GM_ADDR sqBaseAddr, uint32_t wqeSize, uint32_t depth,
+    LocalTensor<uint64_t>& ubLocalTensor, GlobalTensor<uint32_t>& selfDataStatusGMAiv)
+{
+    uint64_t sqDumpBytes = static_cast<uint64_t>(wqeSize) * static_cast<uint64_t>(depth);
+    if (sqDumpBytes > SQ_WQE_DUMP_BYTES) {
+        sqDumpBytes = SQ_WQE_DUMP_BYTES;
+    }
+    if (sqDumpBytes > STATE_SIZE - SQ_WQE_DUMP_OFFSET) {
+        sqDumpBytes = STATE_SIZE - SQ_WQE_DUMP_OFFSET;
+    }
+    sqDumpBytes = sqDumpBytes / UB_ALIGN * UB_ALIGN;
+    if (sqDumpBytes == 0) {
+        return;
+    }
+
+    uint32_t aivId = GetBlockIdx();
+    GM_ADDR statusDataSpaceGm = (GM_ADDR)selfDataStatusGMAiv.GetPhyAddr() - aivId * 64;
+    GlobalTensor<uint64_t> sqDumpSrc;
+    GlobalTensor<uint64_t> sqDumpDst;
+    sqDumpSrc.SetGlobalBuffer((__gm__ uint64_t*)sqBaseAddr);
+    sqDumpDst.SetGlobalBuffer((__gm__ uint64_t*)(statusDataSpaceGm + SQ_WQE_DUMP_OFFSET));
+
+    uint64_t sqDumpU64Num = sqDumpBytes / sizeof(uint64_t);
+    for (uint64_t offset = 0; offset < sqDumpU64Num; offset += SQ_WQE_DUMP_COPY_U64_NUM) {
+        DataCopy(ubLocalTensor, sqDumpSrc[offset], SQ_WQE_DUMP_COPY_U64_NUM);
+        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+        DataCopy(sqDumpDst[offset], ubLocalTensor, SQ_WQE_DUMP_COPY_U64_NUM);
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    }
+
+    GlobalTensor<uint32_t> selfDataStatusGMAiv2;
+    selfDataStatusGMAiv2.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm + aivId * 64 + 48 * 64));
+    selfDataStatusGMAiv2.SetValue(10, static_cast<uint32_t>(sqDumpBytes));
+    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv2);
+}
+
 __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMTensor, uint32_t epRankIdHccl, uint32_t epWorldSizeHccl, uint32_t epRankIdOriginal,
                                            uint32_t moeExpertNum, uint32_t epWorldSizeOriginal, uint32_t globalBS, TBuf<> dataStateBuf)
 {
@@ -98,6 +139,8 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     auto curHardwareTailAddr = qp_ctx_entry->tailAddr;
     cacheWriteThrough((__gm__ uint8_t*)curHardwareTailAddr, CACHEWRITESIZE);
     uint32_t curTail = *(__gm__ uint32_t*)(curHardwareTailAddr);
+    selfDataStatusGMAiv2.SetValue(6, static_cast<uint32_t>(doorBellInfo));
+    selfDataStatusGMAiv2.SetValue(7, static_cast<uint32_t>(doorBellInfo >> 32));
     selfDataStatusGMAiv2.SetValue(9, curTail);
     selfDataStatusGMAiv2.SetValue(12, doorBellCnt);
     selfDataStatusGMAiv2.SetValue(13, static_cast<uint32_t>((uint64_t)curHardwareHead));
@@ -265,6 +308,7 @@ __aicore__ inline void AIVRDMAPostRead(
     curHead++;
     AIVRDMAPostDoorBell(qp_ctx_entry, curHead, (__gm__ uint32_t*) curHardwareHead, ubLocalTensor, ubLocalHeadTensor,
         selfDataStatusGMAiv);
+    DumpSQWqeToWin((GM_ADDR)sqBaseAddr, wqeSize, QP_DEPTH, ubLocalTensor, selfDataStatusGMAiv);
 }
 
 }
