@@ -32,6 +32,7 @@ struct SIType {
     using outputType = OUT_T;
 
     static constexpr bool causalFlag = CAUSAL;
+    static constexpr bool pageAttention = false;
     static constexpr SI_LAYOUT layout = SI_LAYOUT::BNSD;
     static constexpr SI_LAYOUT keyLayout = SI_LAYOUT::BNSD;
 };
@@ -126,12 +127,11 @@ struct ConstInfo {
     uint64_t gSize = 0ULL;
     uint64_t qHeadNum = 0ULL;
     uint64_t kvHeadNum = 0ULL;
-    uint64_t kHeadNum;
-    uint64_t headDim;
+    uint64_t headDim = 0ULL;
     uint64_t maxQb = 0ULL;
     uint64_t maxKb = 0ULL;
     uint64_t flattenDim = 0ULL;
-    uint64_t sparseCount;              // topK选取大小
+    uint64_t sparseCount = 0ULL;       // topK选取大小
     uint64_t kSeqSize = 0ULL;          // kv最大S长度
     uint64_t qSeqSize = 1ULL;          // q最大S长度
     uint32_t usedCoreNum = 0U;
