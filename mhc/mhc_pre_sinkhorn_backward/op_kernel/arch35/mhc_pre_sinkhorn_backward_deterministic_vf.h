@@ -731,11 +731,21 @@ __aicore__ inline void AlphaBiasGradPrePostVf(
             MicroAPI::Add<T>(sumBiasPostReg, sumBiasPostReg, tmpReg, maskAll);
         }
         
-        // Store results to UB (scalar values via DIST_FIRST_ELEMENT_B32)
-        MicroAPI::DataCopy<T, StoreDist::DIST_FIRST_ELEMENT_B32>(gradAlphaPtr, sumAlphaPreReg, maskAll);
-        MicroAPI::DataCopy<T, StoreDist::DIST_FIRST_ELEMENT_B32>(gradAlphaPtr + 1, sumAlphaPostReg, maskAll);
-        MicroAPI::DataCopy<T, StoreDist::DIST_FIRST_ELEMENT_B32>(gradBiasPtr, sumBiasPreReg, maskAll);
-        MicroAPI::DataCopy<T, StoreDist::DIST_FIRST_ELEMENT_B32>(gradBiasPtr + n, sumBiasPostReg, maskAll);
+        // Store results to UB (scalar values via StoreUnAlign)
+        MicroAPI::UnalignRegForStore gradAlphaSumUreg, gradBiasSumUreg;
+        MicroAPI::MaskReg OneMaskReg = MicroAPI::CreateMask<T, MicroAPI::VL1>();
+        
+        MicroAPI::StoreUnAlign(gradAlphaPtr, sumAlphaPreReg, gradAlphaSumUreg, 1);
+        MicroAPI::StoreUnAlignPost(gradAlphaPtr, gradAlphaSumUreg, 0);
+        
+        MicroAPI::StoreUnAlign(gradAlphaPtr + 1, sumAlphaPostReg, gradAlphaSumUreg, 1);
+        MicroAPI::StoreUnAlignPost(gradAlphaPtr + 1, gradAlphaSumUreg, 0);
+        
+        MicroAPI::StoreUnAlign(gradBiasPtr, sumBiasPreReg, gradBiasSumUreg, 1);
+        MicroAPI::StoreUnAlignPost(gradBiasPtr, gradBiasSumUreg, 0);
+        
+        MicroAPI::StoreUnAlign(gradBiasPtr + n, sumBiasPostReg, gradBiasSumUreg, 1);
+        MicroAPI::StoreUnAlignPost(gradBiasPtr + n, gradBiasSumUreg, 0);
     }
 }
 
