@@ -74,7 +74,7 @@ private:
     GlobalTensor<int64_t> blockShapeGm;
     GlobalTensor<int64_t> actualSeqLensQGm, actualSeqLensKVGm;
     GlobalTensor<int64_t> actualBlockLenQGm, actualBlockLenKVGm;
-    GlobalTensor<OUT_T> maskOutGm;
+    GlobalTensor<uint8_t> maskOutGmU8;
 
     GlobalTensor<IN_T> qCmpGm, kCmpGm;
     GlobalTensor<IN_T> attnScoreGm;
@@ -399,7 +399,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
     } else {
         actualBlockLenKVGm.SetGlobalBuffer((__gm__ int64_t *)actualBlockLenKV, 0);
     }
-    maskOutGm.SetGlobalBuffer((__gm__ OUT_T *)maskOut);
+    maskOutGmU8.SetGlobalBuffer((__gm__ uint8_t *)maskOut);
 
     InitWorkspace(workspace);
 
@@ -410,7 +410,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
                              queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm);
         radixTopKService.InitParams(constInfo, tilingData);
         radixTopKService.InitBuffers(pipe);
-        radixTopKService.InitGM(attnScoreGm, topkWorkspaceGm, maskTmpGm);
+        radixTopKService.InitGM(attnScoreGm, topkWorkspaceGm, maskTmpGm, maskOutGmU8);
     } else if ASCEND_IS_AIC {
         matmulService.InitParams(constInfo);
         matmulService.InitBuffers(pipe);
@@ -466,7 +466,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
             SyncAll<false>();
 
             if ASCEND_IS_AIV {
-                radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx, maskOutGm);
+                radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx);
             }
             SyncAll();
         }
