@@ -168,15 +168,33 @@ def run_case(params: dict,
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
     out_layout = params.get("layout_out", layout)
 
-    cpu_inputs = spec.generate(params, device=torch.device("cpu"), layout=layout,
-                               layout_kv=params.get("layout_kv", layout))
-    if str(params.get("layout_kv", "")).startswith("PA_"):
-        cpu_inputs["block_table"] = params["block_table"]
-    elif "block_table" in params and params["block_table"] is not None:
-        cpu_inputs["block_table"] = params["block_table"]
+    if compare_dir and case_name:
+        safe_name = case_name.replace("/", "_")
+        case_dir = Path(compare_dir) / safe_name
+        if case_dir.exists():
+            print(f"  [load] 从 {case_dir} 加载 inputs 和 golden...")
+            raw = torch.load(case_dir / "inputs.pt", map_location="cpu", weights_only=False)
+            golden_out = torch.load(case_dir / "golden.pt", map_location="cpu", weights_only=False)
+            cpu_inputs = {}
+            for k, v in raw.items():
+                if isinstance(v, torch.Tensor):
+                    cpu_inputs[k] = v
+                else:
+                    params[k] = v
+        else:
+            print(f"  [warn] {case_dir} 不存在，退回重新生成")
+            compare_dir = None
 
-    print(f"  [golden] CPU 参考计算...")
-    golden_out = golden.compute(cpu_inputs, params)
+    if not (compare_dir and case_name):
+        cpu_inputs = spec.generate(params, device=torch.device("cpu"), layout=layout,
+                                   layout_kv=params.get("layout_kv", layout))
+        if str(params.get("layout_kv", "")).startswith("PA_"):
+            cpu_inputs["block_table"] = params["block_table"]
+        elif "block_table" in params and params["block_table"] is not None:
+            cpu_inputs["block_table"] = params["block_table"]
+
+        print(f"  [golden] CPU 参考计算...")
+        golden_out = golden.compute(cpu_inputs, params)
 
     print(f"  [primary] {primary.name} 计算...")
     dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
