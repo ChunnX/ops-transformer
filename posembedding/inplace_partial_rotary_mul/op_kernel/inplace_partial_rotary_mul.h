@@ -266,8 +266,8 @@ __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::Process()
     SetGatherSrcOffset(idsUb, count);
     LocalTensor<uint32_t> idsUbUint32 =  idsBuf_.Get<uint32_t>();
     // A分核分ub, 一次搬入x个 cout, x就是ubFactor_
-    int64_t ubLoopTimes = blockIdx_ == tiling_->usedCoreNum - 1 ? coreTUbLoopTime_ :coreBUbLoopTime_; //
-        b分核，每个核处理多少个b，b就是shape0
+    int64_t ubLoopTimes = blockIdx_ == tiling_->usedCoreNum - 1 ? coreTUbLoopTime_ :coreBUbLoopTime_; 
+    // b分核，每个核处理多少个b，b就是shape0
     int64_t ubLoopTailNum = blockIdx_ == tiling_->usedCoreNum - 1 ? coreTUbLoopTail_ :coreBUbLoopTail_;
     int64_t ysCount = numHead_ *allHeadDim_;
     for (int64_t i = 0; i< ubLoopTimes; i++) {
