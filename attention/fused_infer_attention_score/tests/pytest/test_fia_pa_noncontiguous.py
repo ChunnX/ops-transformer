@@ -12,10 +12,10 @@
 """
 非量化 PA/非PA 非连续 kvcache 测试
 
-KV Cache 格式（对应文档术语）:
-  - BnNBsD = (blockNum, KV_N, blockSize, D)
-  - BnBsH  = (blockNum, blockSize, H), H = KV_N * D
-  - NZ     = (blockNum, KV_N, D/16, blockSize, 16), 非量化 D0=16
+KV Cache 格式:
+  BnNBsD = (blockNum, KV_N, blockSize, D)
+  BnBsH  = (blockNum, blockSize, KV_N*D)
+  NZ     = (blockNum, KV_N, D/16, blockSize, 16), D0=16
 
 规格:
   BnNBsD: dim0 / dim0+dim1 非连续
@@ -40,41 +40,63 @@ B = 2
 N_q = 4
 N_kv = 2
 D = 128
-Q_SEQ = 4
-KV_SEQ = 2048  # ceil(2048/512)=4, 满足各PA格式 blockTable dim1 >= maxBlockNumPerSeq >= 4
-BLOCK_SIZE = 512
 DTYPE = torch.float16
 NZ_D0 = 16
 
 
 # ==============================================================================
-# 用例定义
+# 用例定义: 每个 case 有独立的 kv_seq / block_size / Q_S
 # ==============================================================================
 NORMAL_CASES = [
-    {"id": "BnNBsD_BNSD_dim0",  "pa": True,  "kv": "BnNBsD", "ql": "BNSD", "nc": "dim0"},
-    {"id": "BnNBsD_BNSD_dim01", "pa": True,  "kv": "BnNBsD", "ql": "BNSD", "nc": "dim01"},
-    {"id": "BnNBsD_BSND_dim0",  "pa": True,  "kv": "BnNBsD", "ql": "BSND", "nc": "dim0"},
-    {"id": "BnNBsD_BSND_dim01", "pa": True,  "kv": "BnNBsD", "ql": "BSND", "nc": "dim01"},
-    {"id": "BnNBsD_TND_dim0",   "pa": True,  "kv": "BnNBsD", "ql": "TND",  "nc": "dim0"},
-    {"id": "BnNBsD_TND_dim01",  "pa": True,  "kv": "BnNBsD", "ql": "TND",  "nc": "dim01"},
-    {"id": "BnBsH_BNSD_dim0",   "pa": True,  "kv": "BnBsH",  "ql": "BNSD", "nc": "dim0"},
-    {"id": "BnBsH_BSND_dim0",   "pa": True,  "kv": "BnBsH",  "ql": "BSND", "nc": "dim0"},
-    {"id": "BnBsH_TND_dim0",    "pa": True,  "kv": "BnBsH",  "ql": "TND",  "nc": "dim0"},
-    {"id": "NZ_BNSD_contig",    "pa": True,  "kv": "NZ",     "ql": "BNSD", "nc": "none"},
-    {"id": "NZ_BSND_contig",    "pa": True,  "kv": "NZ",     "ql": "BSND", "nc": "none"},
-    {"id": "NZ_TND_contig",     "pa": True,  "kv": "NZ",     "ql": "TND",  "nc": "none"},
-    {"id": "NonPA_BNSD_contig", "pa": False, "kv": "none",   "ql": "BNSD", "nc": "none"},
-    {"id": "NonPA_BSND_contig", "pa": False, "kv": "none",   "ql": "BSND", "nc": "none"},
-    {"id": "NonPA_TND_contig",  "pa": False, "kv": "none",   "ql": "TND",  "nc": "none"},
+    # BnNBsD: dim0 / dim0+dim1
+    {"id": "BnNBsD_BNSD_dim0",  "pa": True,  "kv": "BnNBsD", "ql": "BNSD", "nc": "dim0",
+     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
+    {"id": "BnNBsD_BNSD_dim01", "pa": True,  "kv": "BnNBsD", "ql": "BNSD", "nc": "dim01",
+     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
+    {"id": "BnNBsD_BSND_dim0",  "pa": True,  "kv": "BnNBsD", "ql": "BSND", "nc": "dim0",
+     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
+    {"id": "BnNBsD_BSND_dim01", "pa": True,  "kv": "BnNBsD", "ql": "BSND", "nc": "dim01",
+     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
+    {"id": "BnNBsD_TND_dim0",   "pa": True,  "kv": "BnNBsD", "ql": "TND",  "nc": "dim0",
+     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
+    {"id": "BnNBsD_TND_dim01",  "pa": True,  "kv": "BnNBsD", "ql": "TND",  "nc": "dim01",
+     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
+    # BnBsH: 仅 dim0
+    {"id": "BnBsH_BNSD_dim0",   "pa": True,  "kv": "BnBsH",  "ql": "BNSD", "nc": "dim0",
+     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+    {"id": "BnBsH_BSND_dim0",   "pa": True,  "kv": "BnBsH",  "ql": "BSND", "nc": "dim0",
+     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+    {"id": "BnBsH_TND_dim0",    "pa": True,  "kv": "BnBsH",  "ql": "TND",  "nc": "dim0",
+     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+    # NZ: 连续, block_size 128 对齐
+    {"id": "NZ_BNSD_contig",    "pa": True,  "kv": "NZ",     "ql": "BNSD", "nc": "none",
+     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+    {"id": "NZ_BSND_contig",    "pa": True,  "kv": "NZ",     "ql": "BSND", "nc": "none",
+     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+    {"id": "NZ_TND_contig",     "pa": True,  "kv": "NZ",     "ql": "TND",  "nc": "none",
+     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+    # 非PA: 连续
+    {"id": "NonPA_BNSD_contig", "pa": False, "kv": "none",   "ql": "BNSD", "nc": "none",
+     "kv_seq": 1024, "block_size": 0, "q_seq": 4},
+    {"id": "NonPA_BSND_contig", "pa": False, "kv": "none",   "ql": "BSND", "nc": "none",
+     "kv_seq": 1024, "block_size": 0, "q_seq": 4},
+    {"id": "NonPA_TND_contig",  "pa": False, "kv": "none",   "ql": "TND",  "nc": "none",
+     "kv_seq": 1024, "block_size": 0, "q_seq": 4},
 ]
 
 ERROR_CASES = [
-    {"id": "BnBsH_BNSD_dim01",  "pa": True,  "kv": "BnBsH",  "ql": "BNSD", "nc": "dim01"},
-    {"id": "BnBsH_BSND_dim01",  "pa": True,  "kv": "BnBsH",  "ql": "BSND", "nc": "dim01"},
-    {"id": "NZ_BNSD_dim0",      "pa": True,  "kv": "NZ",     "ql": "BNSD", "nc": "dim0"},
-    {"id": "NZ_BNSD_dim01",     "pa": True,  "kv": "NZ",     "ql": "BNSD", "nc": "dim01"},
-    {"id": "NonPA_BNSD_dim0",   "pa": False, "kv": "none",   "ql": "BNSD", "nc": "dim0"},
-    {"id": "NonPA_BSND_dim0",   "pa": False, "kv": "none",   "ql": "BSND", "nc": "dim0"},
+    {"id": "BnBsH_BNSD_dim01",  "pa": True,  "kv": "BnBsH",  "ql": "BNSD", "nc": "dim01",
+     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+    {"id": "BnBsH_BSND_dim01",  "pa": True,  "kv": "BnBsH",  "ql": "BSND", "nc": "dim01",
+     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+    {"id": "NZ_BNSD_dim0",      "pa": True,  "kv": "NZ",     "ql": "BNSD", "nc": "dim0",
+     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+    {"id": "NZ_BNSD_dim01",     "pa": True,  "kv": "NZ",     "ql": "BNSD", "nc": "dim01",
+     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
+    {"id": "NonPA_BNSD_dim0",   "pa": False, "kv": "none",   "ql": "BNSD", "nc": "dim0",
+     "kv_seq": 1024, "block_size": 0, "q_seq": 4},
+    {"id": "NonPA_BSND_dim0",   "pa": False, "kv": "none",   "ql": "BSND", "nc": "dim0",
+     "kv_seq": 1024, "block_size": 0, "q_seq": 4},
 ]
 
 
@@ -96,15 +118,16 @@ def _block_table(batch, seqs_kv, bs):
     return tbl, total
 
 
-def _kv_shape(kv_layout, total_blocks):
+def _kv_shape(kv_layout, total_blocks, block_size):
     if kv_layout == "BnNBsD":
-        return (total_blocks, N_kv, BLOCK_SIZE, D)
+        return (total_blocks, N_kv, block_size, D)
     elif kv_layout == "BnBsH":
-        return (total_blocks, BLOCK_SIZE, N_kv * D)
+        return (total_blocks, block_size, N_kv * D)
     elif kv_layout == "NZ":
-        return (total_blocks, N_kv, D // NZ_D0, BLOCK_SIZE, NZ_D0)
+        return (total_blocks, N_kv, D // NZ_D0, block_size, NZ_D0)
     elif kv_layout == "none":
-        return (B, N_kv, KV_SEQ, D)
+        # 非PA: 临时参数 kv_seq 仅在 _run_one 中通过 act_kv 体现
+        return None
     raise ValueError(kv_layout)
 
 
@@ -117,10 +140,6 @@ def _make_kv(shape):
 
 
 def _make_nc_on_npu(tensor, nc):
-    """padding+slice → NPU 非连续视图
-    nc="dim0":  pad dim1 → dim0 stride = (Bv+1)*rest
-    nc="dim01": pad dim2(for 4D)/dim3(for 5D) → dim0/dim1 stride 都偏大
-    """
     if nc == "none":
         return tensor
     pad_dim = 1 if nc == "dim0" else (2 if len(tensor.shape) == 4 else 3)
@@ -166,7 +185,7 @@ def _accum(seqs):
     return out
 
 
-def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, scale):
+def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, block_size, scale):
     torch_npu.npu.set_device(DEVICE_ID)
     torch.npu.synchronize()
     aq = _accum(act_q) if q_layout == "TND" else act_q
@@ -178,7 +197,7 @@ def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, scale):
         input_layout=q_layout, scale=scale,
         pre_tokens=65535, next_tokens=65535,
         block_table=bt_npu if pa else None,
-        block_size=BLOCK_SIZE if pa else 0,
+        block_size=block_size if pa else 0,
     )
     torch.npu.synchronize()
     return r
@@ -203,26 +222,32 @@ def _run_one(cfg, expect_pass):
     kv_layout = cfg["kv"]
     q_layout = cfg["ql"]
     nc = cfg["nc"]
+    kv_seq = cfg["kv_seq"]
+    bs = cfg["block_size"]
+    q_seq = cfg["q_seq"]
 
-    act_q = [Q_SEQ] * B
-    act_kv = [KV_SEQ] * B
+    act_q = [q_seq] * B
+    act_kv = [kv_seq] * B
     scale = 1.0 / math.sqrt(D)
 
     bt, total_b = None, 0
     if pa:
-        bt, total_b = _block_table(B, act_kv, BLOCK_SIZE)
+        bt, total_b = _block_table(B, act_kv, bs)
     else:
         total_b = B
     bt_npu = bt.npu() if bt is not None else None
 
     torch.manual_seed(42)
-    q_bnsd = torch.randn(B, N_q, Q_SEQ, D, dtype=DTYPE)
+    q_bnsd = torch.randn(B, N_q, q_seq, D, dtype=DTYPE)
     q_npu = _q_layout(q_bnsd, q_layout, act_q).npu()
 
-    kv_shape = _kv_shape(kv_layout, total_b)
+    if kv_layout == "none":
+        kv_shape = (B, N_kv, kv_seq, D)
+    else:
+        kv_shape = _kv_shape(kv_layout, total_b, bs)
     k_ref, v_ref = _make_kv(kv_shape)
 
-    ref_out = _run(q_npu, k_ref.npu(), v_ref.npu(), pa, q_layout, act_q, act_kv, bt_npu, scale)
+    ref_out = _run(q_npu, k_ref.npu(), v_ref.npu(), pa, q_layout, act_q, act_kv, bt_npu, bs, scale)
 
     k_nc = _make_nc_on_npu(k_ref.npu(), nc)
     v_nc = _make_nc_on_npu(v_ref.npu(), nc)
@@ -235,11 +260,11 @@ def _run_one(cfg, expect_pass):
 
     if not expect_pass:
         with pytest.raises(Exception):
-            _run(q_npu, k_nc, v_nc, pa, q_layout, act_q, act_kv, bt_npu, scale)
+            _run(q_npu, k_nc, v_nc, pa, q_layout, act_q, act_kv, bt_npu, bs, scale)
         logger.info(f"  [{cfg['id']}] ERROR as expected")
         return
 
-    out = _run(q_npu, k_nc, v_nc, pa, q_layout, act_q, act_kv, bt_npu, scale)
+    out = _run(q_npu, k_nc, v_nc, pa, q_layout, act_q, act_kv, bt_npu, bs, scale)
     _check(ref_out, out, cfg["id"])
 
 
