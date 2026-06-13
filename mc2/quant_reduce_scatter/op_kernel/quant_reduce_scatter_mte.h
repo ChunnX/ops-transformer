@@ -90,7 +90,7 @@ template <TemplateTypeClass>
 __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR scales,
     GM_ADDR output, TPipe *tPipe, const QuantReduceScatterTilingData *tilingData)
 {
-    mteComm_.InitMc2Context(mc2Context, tilingData);
+    mteComm_.InitMc2Context(mc2Context, tilingData->quantReduceScatterTilingInfo.isMc2Context);
     ParseTilingInfo(tilingData);
     tPipe->Reset();
     ComputeXPerBlock(tilingData, tPipe);
