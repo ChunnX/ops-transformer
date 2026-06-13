@@ -111,7 +111,7 @@ def _block_table(batch, seqs_kv, bs):
     return tbl, total
 
 
-def _kv_shape(kv_layout, total_blocks, block_size):
+def _kv_shape(kv_layout, total_blocks, block_size, q_layout, kv_seq):
     if kv_layout == "BnNBsD":
         return (total_blocks, N_kv, block_size, D)
     elif kv_layout == "BnBsH":
@@ -119,8 +119,9 @@ def _kv_shape(kv_layout, total_blocks, block_size):
     elif kv_layout == "NZ":
         return (total_blocks, N_kv, D // NZ_D0, block_size, NZ_D0)
     elif kv_layout == "none":
-        # 非PA: 临时参数 kv_seq 仅在 _run_one 中通过 act_kv 体现
-        return None
+        if q_layout in ("BSND", "BSH"):
+            return (B, kv_seq, N_kv, D)
+        return (B, N_kv, kv_seq, D)  # BNSD / TND
     raise ValueError(kv_layout)
 
 
@@ -238,10 +239,7 @@ def _run_one(cfg, expect_pass):
     q_bnsd = torch.randn(B, N_q, q_seq, D, dtype=DTYPE)
     q_npu = _q_layout(q_bnsd, q_layout, act_q).npu()
 
-    if kv_layout == "none":
-        kv_shape = (B, N_kv, kv_seq, D)
-    else:
-        kv_shape = _kv_shape(kv_layout, total_b, bs)
+    kv_shape = _kv_shape(kv_layout, total_b, bs, q_layout, kv_seq)
     k_ref, v_ref = _make_kv(kv_shape)
 
     ref_out = _run(q_npu, k_ref.npu(), v_ref.npu(), pa, q_layout, act_q, act_kv, bt_npu, bs, scale)
