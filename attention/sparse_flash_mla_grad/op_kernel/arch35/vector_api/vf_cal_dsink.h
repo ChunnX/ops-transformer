@@ -31,9 +31,10 @@ param [in] dpTensor input dp LocalTensor
 */
 
 template <typename T>
-__simd_vf__ inline void CalculateDsinkVF(uint64_t dstLocalInt, uint64_t pLocalInt,
-    uint64_t dpLocalInt, uint64_t softmaxSinkLocalInt, uint64_t pLocalIntTail, uint64_t dpLocalIntTail,
-                        uint16_t loopTimes, uint16_t fullExeSize, uint32_t realTailSize, uint64_t realM)
+__simd_vf__ inline void CalculateDsinkVF(uint64_t dstLocalInt, uint64_t pLocalInt, uint64_t dpLocalInt,
+                                         uint64_t softmaxSinkLocalInt, uint64_t pLocalIntTail, uint64_t dpLocalIntTail,
+                                         uint16_t loopTimes, uint16_t fullExeSize, uint32_t realTailSize,
+                                         uint64_t realM)
 {
     RegTensor<T> vregSrc;
     RegTensor<T> vregP;
@@ -79,17 +80,15 @@ __simd_vf__ inline void CalculateDsinkVF(uint64_t dstLocalInt, uint64_t pLocalIn
         Reduce<MicroAPI::ReduceType::SUM>(vregReduceSumTail, vregMulTail1, pregTailExe);
         Add(vregRes, vregRes, vregReduceSumTail, pregAccu);
         uint64_t dstOffset = dstLocalInt + 4 * m;
-        StoreUnAlign<T>(
-                ((__ubuf__ T *&)dstOffset), vregRes, uregRes, 1);
-        StoreUnAlignPost<T>(
-                ((__ubuf__ T *&)dstOffset), uregRes, 0);
+        StoreUnAlign<T>(((__ubuf__ T *&)dstOffset), vregRes, uregRes, 1);
+        StoreUnAlignPost<T>(((__ubuf__ T *&)dstOffset), uregRes, 0);
     }
 }
 
 template <typename T>
 __aicore__ inline void CalculateDsink(const LocalTensor<T> &dstTensor, const LocalTensor<T> &pTensor,
-                                       const LocalTensor<T> &dpTensor, const LocalTensor<T> &softmaxSinkTensor,
-                                       int64_t realN, uint64_t realM)
+                                      const LocalTensor<T> &dpTensor, const LocalTensor<T> &softmaxSinkTensor,
+                                      int64_t realN, uint64_t realM)
 {
     const uint16_t fullExeSize = 64;
     uint16_t loopTimes = CeilDivision(realN, fullExeSize) - 1;
@@ -103,13 +102,13 @@ __aicore__ inline void CalculateDsink(const LocalTensor<T> &dstTensor, const Loc
     uint64_t dpLocalIntTail = dpTensor.GetPhyAddr() + loopTimes * fullExeSize * sizeof(T);
 
     CalculateDsinkVF<T>(dstLocalInt, pLocalInt, dpLocalInt, softmaxSinkLocalInt, pLocalIntTail, dpLocalIntTail,
-        loopTimes, fullExeSize, realTailSize, realM);
+                        loopTimes, fullExeSize, realTailSize, realM);
 }
 #else
 template <typename T>
 __aicore__ inline void CalculateDsink(const LocalTensor<T> &dstTensor, const LocalTensor<T> &pTensor,
-                                       const LocalTensor<T> &dpTensor, const LocalTensor<T> &softmaxSinkTensor,
-                                       int64_t realN, uint64_t realM)
+                                      const LocalTensor<T> &dpTensor, const LocalTensor<T> &softmaxSinkTensor,
+                                      int64_t realN, uint64_t realM)
 {
 }
 #endif

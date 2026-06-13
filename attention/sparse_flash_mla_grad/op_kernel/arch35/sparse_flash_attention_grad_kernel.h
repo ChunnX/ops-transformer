@@ -15,15 +15,15 @@
 
 #ifndef SPARSE_FLASH_ATTENTION_GRAD_KERNEL_H
 #define SPARSE_FLASH_ATTENTION_GRAD_KERNEL_H
- 
+
 #include "sparse_flash_attention_grad_common.h"
 #include "sparse_flash_attention_grad_kernel_base.h"
 #include "sparse_flash_attention_grad_tiling_data_regbase.h"
- 
+
 namespace SfagBaseApi {
- 
+
 template <typename CubeBlockType, typename VecBlockType>
- 
+
 class FlashAttentionScoreGradKernel
     : public FlashAttentionScoreGradKernelBase<FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>,
                                                CubeBlockType, VecBlockType> {
@@ -42,34 +42,38 @@ private:
     __aicore__ inline void ProcessNotFirst(FagRunInfo &runInfo);
     __aicore__ inline void CopyLse(FagRunInfo &runInfo);
 };
- 
+
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
 {
 }
- 
+
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
 FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
 {
 }
- 
- template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessPreload(FagRunInfo &runInfo, int64_t taskId, bool &isFirstBlock) {
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessPreload(FagRunInfo &runInfo,
+                                                                                                  int64_t taskId,
+                                                                                                  bool &isFirstBlock)
+{
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
     }
     int32_t s2RealSize = this->vecBlock.GatherKV(this->selectedKWorkSpaceGm, this->constInfo, runInfo);
-    
+
     if ASCEND_IS_AIV {
         this->vecBlock.InitCubeVecSharedParams(runInfo, s2RealSize);
 
-        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]); // dqk must wait ds copy completely
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(
+            SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]); // dqk must wait ds copy completely
     } else {
         this->cubeBlock.GetCubeVecSharedParams(runInfo);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(16 + SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
-        
+
         // pipe_barrier(PIPE_ALL);
         // uint32_t array[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(512)};
         // AscendC::ShapeInfo shapeInfo(2, array);
@@ -96,18 +100,21 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         isFirstBlock = false;
     }
     runInfo.taskStep = TASK_C1C2;
- }
+}
 
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessNotFirst(FagRunInfo &runInfo) {
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessNotFirst(FagRunInfo &runInfo)
+{
     if (runInfo.taskStep != TASK_C1C2) {
         return;
     }
     this->vecBlock.ProcessVec1(this->constInfo, runInfo);
     if ASCEND_IS_AIV {
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[runInfo.commonRunInfo.taskIdMod2]); // dqk must wait ds copy completely
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C2_TO_V2_FLAG[runInfo.commonRunInfo.taskIdMod2]); // dqk must wait ds copy completely
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(
+            SYNC_C1_TO_V2_FLAG[runInfo.commonRunInfo.taskIdMod2]); // dqk must wait ds copy completely
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(
+            SYNC_C2_TO_V2_FLAG[runInfo.commonRunInfo.taskIdMod2]); // dqk must wait ds copy completely
     }
 
     LocalTensor<CALC_TYPE> mm1ResTensor = this->mm1ResBuf[runInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
@@ -140,7 +147,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
     Buffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
     this->vecBlock.ProcessVec3(dSL1Buffer, mm1ResTensor, mm2ResTensor, this->constInfo,
-                    runInfo); // v3: dropout + cast + nd2nz
+                               runInfo); // v3: dropout + cast + nd2nz
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V3_TO_C3_FLAG); // dqk must wait ds copy completely
     }
@@ -156,8 +163,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         //     int64_t offset0 = i * 128;
         //     this->selectedKWorkSpaceGm.SetValue(offset0 + i, static_cast<INPUT_TYPE>(1));
         // }
-        // AscendC::DataCacheCleanAndInvalid<INPUT_TYPE, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(this->selectedKWorkSpaceGm);
-        // pipe_barrier(PIPE_ALL);
+        // AscendC::DataCacheCleanAndInvalid<INPUT_TYPE, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        // AscendC::DcciDst::CACHELINE_OUT>(this->selectedKWorkSpaceGm); pipe_barrier(PIPE_ALL);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V4_TO_C5_FLAG); // dv must wait ds copy completely
     }
     if ASCEND_IS_AIC {
@@ -182,7 +189,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         }
-        
+
         // pipe_barrier(PIPE_ALL);
         // uint32_t array[] = {static_cast<uint32_t>(64), static_cast<uint32_t>(512)};
         // AscendC::ShapeInfo shapeInfo(2, array);
@@ -192,8 +199,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     }
 
     // compute dk
-    this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
-        this->mm4ResWorkSpaceGm, this->dSL1Buf, this->constInfo, runInfo); // c4
+    this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(this->mm4ResWorkSpaceGm, this->dSL1Buf,
+                                                                                this->constInfo, runInfo); // c4
     if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
@@ -212,8 +219,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V4_TO_C5_FLAG);
     }
     // compute dv
-    this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
-        this->mm5ResWorkSpaceGm, this->pL1Buf, this->constInfo, runInfo); // c5
+    this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(this->mm5ResWorkSpaceGm, this->pL1Buf,
+                                                                                this->constInfo, runInfo); // c5
     if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C5_TO_V4_FLAG);
@@ -237,15 +244,15 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         }
         GlobalTensor<CALC_TYPE> outWorkspace = runInfo.isOriKV ? this->dOriKVWorkSpaceGm : this->dCmpKVWorkSpaceGm;
         bool isSparse = runInfo.isOriKV ? IsOriKVSparse : IsCmpKVSparse;
-        
+
         if (isSparse) {
             this->vecBlock.template ScatterAdd<true>(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, outWorkspace,
-                                mm1ResTensor, mm2ResTensor, this->constInfo, runInfo);
+                                                     mm1ResTensor, mm2ResTensor, this->constInfo, runInfo);
         } else {
             this->vecBlock.template ScatterAdd<false>(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, outWorkspace,
-                                mm1ResTensor, mm2ResTensor, this->constInfo, runInfo);
+                                                      mm1ResTensor, mm2ResTensor, this->constInfo, runInfo);
         }
-        
+
         if ASCEND_IS_AIV {
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         }
@@ -262,7 +269,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         ProcessUnDeter();
     }
 }
- 	 
+
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessDeter()
 {
@@ -281,16 +288,21 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         this->GetTndSeqLen(this->usedT1Index, this->bIndex);
         for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
             this->GetActualSelCount(this->usedT1Index, this->n2Index, this->actualSelectedBlockCount);
-            if constexpr(IsOriKVExist) {
-                for (this->oriKvOffset = 0; this->oriKvOffset < this->maxOriSeqKV; this->oriKvOffset += PROCESS_KV_SIZE) {
+            if constexpr (IsOriKVExist) {
+                for (this->oriKvOffset = 0; this->oriKvOffset < this->maxOriSeqKV;
+                     this->oriKvOffset += PROCESS_KV_SIZE) {
                     int64_t blockSize = this->oriKvOffset;
-                    int64_t tailSize = this->actualOriSelectedBlockCount - this->oriKvOffset > PROCESS_KV_SIZE ? PROCESS_KV_SIZE : this->actualOriSelectedBlockCount - this->oriKvOffset;
+                    int64_t tailSize = this->actualOriSelectedBlockCount - this->oriKvOffset > PROCESS_KV_SIZE ?
+                                           PROCESS_KV_SIZE :
+                                           this->actualOriSelectedBlockCount - this->oriKvOffset;
                     tailSize = Max(tailSize, 0);
-                    for (this->blkCntOffset = blockSize; this->blkCntOffset < blockSize + tailSize; this->blkCntOffset += this->constInfo.selectedCountOffset) {
+                    for (this->blkCntOffset = blockSize; this->blkCntOffset < blockSize + tailSize;
+                         this->blkCntOffset += this->constInfo.selectedCountOffset) {
                         if (taskId >= 0) {
-                            this->template SetRunInfo<true>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, sTaskId, deterTaskId, this->oriKvOffset);
+                            this->template SetRunInfo<true>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId,
+                                                            sTaskId, deterTaskId, this->oriKvOffset);
                             ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
-                        } 
+                        }
                         int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
                         int64_t lastTaskS2RealSize = runInfos[(taskId + 1) & 1].commonRunInfo.s2RealSize;
                         if (taskId > 0) {
@@ -312,7 +324,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
                         }
                     }
-                    this->template SetDeterRunInfo<true>(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId, this->oriKvOffset);
+                    this->template SetDeterRunInfo<true>(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId,
+                                                         this->oriKvOffset);
                     if (deterTaskId > 0) {
                         if ASCEND_IS_AIC {
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
@@ -323,23 +336,29 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
                         } else {
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                            this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm,
-                                            this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+                            this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm,
+                                                           this->dOriKVWorkSpaceGm, this->dCmpKVWorkSpaceGm,
+                                                           this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
                             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
                         }
                     }
                     deterTaskId++;
                 }
             }
-    
-            if constexpr(IsCmpKVExist) {
-                for (this->cmpKvOffset = 0; this->cmpKvOffset < this->maxCmpSeqKV; this->cmpKvOffset += PROCESS_KV_SIZE) {
+
+            if constexpr (IsCmpKVExist) {
+                for (this->cmpKvOffset = 0; this->cmpKvOffset < this->maxCmpSeqKV;
+                     this->cmpKvOffset += PROCESS_KV_SIZE) {
                     int64_t blockSize = this->actualOriSelectedBlockCount + this->cmpKvOffset;
-                    int64_t tailSize = this->actualCmpSelectedBlockCount - this->cmpKvOffset > PROCESS_KV_SIZE ? PROCESS_KV_SIZE : this->actualCmpSelectedBlockCount - this->cmpKvOffset;
+                    int64_t tailSize = this->actualCmpSelectedBlockCount - this->cmpKvOffset > PROCESS_KV_SIZE ?
+                                           PROCESS_KV_SIZE :
+                                           this->actualCmpSelectedBlockCount - this->cmpKvOffset;
                     tailSize = Max(tailSize, 0);
-                    for (this->blkCntOffset = blockSize; this->blkCntOffset < blockSize + tailSize; this->blkCntOffset += this->constInfo.selectedCountOffset) {
+                    for (this->blkCntOffset = blockSize; this->blkCntOffset < blockSize + tailSize;
+                         this->blkCntOffset += this->constInfo.selectedCountOffset) {
                         if (taskId >= 0) {
-                            this->template SetRunInfo<false>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, sTaskId, deterTaskId, this->cmpKvOffset);
+                            this->template SetRunInfo<false>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId,
+                                                             sTaskId, deterTaskId, this->cmpKvOffset);
                             ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
                         }
                         int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
@@ -363,7 +382,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
                         }
                     }
-                    this->template SetDeterRunInfo<false>(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId, this->cmpKvOffset);
+                    this->template SetDeterRunInfo<false>(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId,
+                                                          this->cmpKvOffset);
                     if (deterTaskId > 0) {
                         if ASCEND_IS_AIC {
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
@@ -374,8 +394,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
                         } else {
                             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                            this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm,
-                                            this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+                            this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm,
+                                                           this->dOriKVWorkSpaceGm, this->dCmpKVWorkSpaceGm,
+                                                           this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
                             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
                         }
                     }
@@ -408,12 +429,13 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         } else {
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
             this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm,
-                            this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+                                           this->dCmpKVWorkSpaceGm, this->constInfo,
+                                           deterRunInfos[(deterTaskId + 1) & 1]);
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
         }
         deterTaskId++;
     }
-    
+
     if (this->processBS1ByCore == 0) {
         deterTaskId++;
     }
@@ -432,9 +454,11 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                     CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
                 } else {
                     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                    this->template SetDeterRunInfo<true>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId + 1, this->oriKvOffset);
-                    this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm, 
-                                    this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+                    this->template SetDeterRunInfo<true>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId + 1,
+                                                         this->oriKvOffset);
+                    this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm,
+                                                   this->dOriKVWorkSpaceGm, this->dCmpKVWorkSpaceGm, this->constInfo,
+                                                   deterRunInfos[(deterTaskId + 1) & 1]);
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
                 }
                 deterTaskId++;
@@ -453,9 +477,11 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                     CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
                 } else {
                     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                    this->template SetDeterRunInfo<false>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId + 1, this->cmpKvOffset);
-                    this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm, 
-                                    this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
+                    this->template SetDeterRunInfo<false>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId,
+                                                          deterTaskId + 1, this->cmpKvOffset);
+                    this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm,
+                                                   this->dOriKVWorkSpaceGm, this->dCmpKVWorkSpaceGm, this->constInfo,
+                                                   deterRunInfos[(deterTaskId + 1) & 1]);
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
                 }
                 deterTaskId++;
@@ -481,12 +507,14 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         this->GetTndSeqLen(this->usedT1Index, this->bIndex);
         for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
             this->GetActualSelCount(this->usedT1Index, this->n2Index, this->actualSelectedBlockCount);
-            if constexpr(IsOriKVExist) {
-                for (this->blkCntOffset = 0; this->blkCntOffset < this->actualOriSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
+            if constexpr (IsOriKVExist) {
+                for (this->blkCntOffset = 0; this->blkCntOffset < this->actualOriSelectedBlockCount;
+                     this->blkCntOffset += this->constInfo.selectedCountOffset) {
                     if (taskId >= 0) {
-                        this->template SetRunInfo<true>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, sTaskId, 0, 0);
+                        this->template SetRunInfo<true>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId,
+                                                        sTaskId, 0, 0);
                         ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
-                    } 
+                    }
                     int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
                     int64_t lastTaskS2RealSize = runInfos[(taskId + 1) & 1].commonRunInfo.s2RealSize;
                     if (taskId > 0) {
@@ -498,11 +526,14 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                     }
                 }
             }
-    
-            if constexpr(IsCmpKVExist) {
-                for (this->blkCntOffset = this->actualOriSelectedBlockCount; this->blkCntOffset < this->actualSelectedBlockCount; this->blkCntOffset += this->constInfo.selectedCountOffset) {
+
+            if constexpr (IsCmpKVExist) {
+                for (this->blkCntOffset = this->actualOriSelectedBlockCount;
+                     this->blkCntOffset < this->actualSelectedBlockCount;
+                     this->blkCntOffset += this->constInfo.selectedCountOffset) {
                     if (taskId >= 0) {
-                        this->template SetRunInfo<false>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, sTaskId, 0, 0);
+                        this->template SetRunInfo<false>(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId,
+                                                         sTaskId, 0, 0);
                         ProcessPreload(runInfos[taskId & 1], taskId, isFirstBlock);
                     }
                     int64_t curTaskS2RealSize = runInfos[taskId & 1].commonRunInfo.s2RealSize;
@@ -528,6 +559,6 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     this->FreeEventID();
 }
 } // namespace SfagBaseApi
- 
- 
+
+
 #endif

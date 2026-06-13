@@ -41,13 +41,13 @@ ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
     auto queryShapeDim = queryShape->GetStorageShape().GetDimNum();
     if (attentionInShapeDim != queryShapeDim) {
         OP_LOGE(context, "The dimnum of attentionIn %zu should be equal to query %zu", attentionInShapeDim,
-                  queryShapeDim);
+                queryShapeDim);
         return ge::GRAPH_FAILED;
     }
     for (size_t i = 0; i < queryShapeDim - 1; i++) {
         if (attentionInShape->GetStorageShape().GetDim(i) != queryShape->GetStorageShape().GetDim(i)) {
             OP_LOGE(context, "The dim %zu of attentionIn shape is invalid, got %ld, should be %ld", i,
-                      attentionInShape->GetStorageShape().GetDim(i), queryShape->GetStorageShape().GetDim(i));
+                    attentionInShape->GetStorageShape().GetDim(i), queryShape->GetStorageShape().GetDim(i));
             return ge::GRAPH_FAILED;
         }
     }
@@ -57,9 +57,9 @@ ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
     if (oriKVShape != nullptr) {
         auto oriKVShapeDim = oriKVShape->GetStorageShape().GetDimNum();
         if (attentionInShapeDim != oriKVShapeDim) {
-            OP_LOGE(context, "The dimnum of attentionIn %zu should be equal to ori_kv %zu", 
-                attentionInShapeDim, oriKVShapeDim);
-        return ge::GRAPH_FAILED;
+            OP_LOGE(context, "The dimnum of attentionIn %zu should be equal to ori_kv %zu", attentionInShapeDim,
+                    oriKVShapeDim);
+            return ge::GRAPH_FAILED;
         }
         // check head_dim, attention D == value D
         if (attentionInShape->GetStorageShape().GetDim(queryShapeDim - 1) !=
@@ -86,7 +86,7 @@ ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
             return ge::GRAPH_FAILED;
         }
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -95,19 +95,22 @@ ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context)
     auto query = context->GetInputDesc(static_cast<size_t>(InputIndex::QUERY));
     auto attentionIn = context->GetInputDesc(static_cast<size_t>(InputIndex::ATTENTION_OUT));
     OP_CHECK_IF(query == nullptr || attentionIn == nullptr,
-               OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "query or attentionIn is nullptr."), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "query or attentionIn is nullptr."),
+                return ge::GRAPH_FAILED);
 
     auto queryType = static_cast<uint32_t>(query->GetDataType());
     auto attentionInType = static_cast<uint32_t>(attentionIn->GetDataType());
 
     OP_CHECK_IF(queryType != attentionInType,
-               OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "invalid attentionIn dtype should be same with query's dtype"),
-               return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "invalid attentionIn dtype should be same with query's dtype"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d, int64_t d2, int64_t n2)
+ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d, int64_t d2,
+                                   int64_t n2)
 {
     if (context == nullptr) {
         OP_LOGE(context, "context is nullptr");
@@ -170,9 +173,9 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetShapeAttrsInfo()
     */
     opName = context_->GetNodeName();
     OP_CHECK_IF(context_ == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "context is nullptr."),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetAttrs() == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "GetAttrs is nullptr."),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
 
     auto status = GetBaseShapeInfo();
     if (status != ge::GRAPH_SUCCESS) {
@@ -180,9 +183,8 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetShapeAttrsInfo()
     }
 
     OP_LOGI(context_, "SparseFlashMlaGrad with shape b[%ld] n2[%ld] g[%ld] s1[%ld] s2[%ld] s3[%d] d[%ld] d1[%ld]!",
-              baseParams_->get_b(), baseParams_->get_n2(), baseParams_->get_g(),
-              baseParams_->get_s1(), baseParams_->get_s2(), baseParams_->get_s3(), 
-              baseParams_->get_d(), baseParams_->get_d1());
+            baseParams_->get_b(), baseParams_->get_n2(), baseParams_->get_g(), baseParams_->get_s1(),
+            baseParams_->get_s2(), baseParams_->get_s3(), baseParams_->get_d(), baseParams_->get_d1());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -193,7 +195,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetPlatformInfo()
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const SparseFlashMlaGradCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "compile_info is null."),
-                   return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
         aicoreParams_.numBlocks = compileInfoPtr->aivNum;
         aicoreParams_.aicNum = compileInfoPtr->aicNum;
         // aicoreParams_.numBlocks = 64;
@@ -219,12 +221,12 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetPlatformInfo()
     }
 
     OP_CHECK_IF((aicoreParams_.numBlocks == 0) || (aicoreParams_.aicNum == 0),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
-                                           aicoreParams_.numBlocks, aicoreParams_.aicNum),
-               return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
+                                            aicoreParams_.numBlocks, aicoreParams_.aicNum),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(aicoreParams_.ubSize <= 0 || l2CacheSize <= 0,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "ubSize or l2CacheSize is invalid."), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "ubSize or l2CacheSize is invalid."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -272,9 +274,9 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     // Tiling传递的内存大小、起始地址，统一为字节数，单位为B
     auto blockdim = CalcTschBlockDim(launchBlockDims, aicoreParams_.aicNum, aicoreParams_.numBlocks);
     OP_CHECK_IF(blockdim == 0,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "blockdim is 0, aicNum is %lu, aivNum is %lu.",
-                                           aicoreParams_.aicNum, aicoreParams_.numBlocks),
-               return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "blockdim is 0, aicNum is %lu, aivNum is %lu.",
+                                            aicoreParams_.aicNum, aicoreParams_.numBlocks),
+                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
 
     // 使用SyncAll，需要设置为batch mode模式，所有核同时启动，否则在多流方式下执行可能会卡死
@@ -285,7 +287,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
 
     // Gather/Scatter
     int64_t selectedKWorkspaceLen = 128 * tmpData.d * B16;
-    
+
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * 3;
     // selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
@@ -331,24 +333,30 @@ uint64_t SparseFlashMlaGradBs1Regbase::GetTilingKey() const
     int64_t isTnd = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? 1 : 0;
     uint64_t tilingKey = 0;
 
-    OP_LOGI(context_,
-              "SparseFlashMlaGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], DTemplateNum[%ld], IsOriKVExist[%d], IsCmpKVExist[%d], \
+    OP_LOGI(
+        context_,
+        "SparseFlashMlaGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], DTemplateNum[%ld], IsOriKVExist[%d], IsCmpKVExist[%d], \
               IsOriKVSparse[%d], IsCmpKVSparse[%d], HasUsedSeqQ[%d], HasUsedSeqOriKV[%d], HasUsedSeqCmpKV[%d], HasOriTopK[%d], HasCmpTopK[%d], IsSink[%d], Deterministic[%d]",
-              inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.oriKV), static_cast<uint8_t>(tmpData.cmpKV), 
-              static_cast<uint8_t>(tmpData.oriKVSparse), static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.usedSeqQ), static_cast<uint8_t>(tmpData.usedSeqOriKV), 
-              static_cast<uint8_t>(tmpData.usedSeqCmpKV), static_cast<uint8_t>(tmpData.oriTopK), static_cast<uint8_t>(tmpData.cmpTopK), static_cast<uint8_t>(tmpData.sinks), 
-              static_cast<uint8_t>(tmpData.deterministic));
-    // tmpData.singleM 为G方向上固定切分大小 tmpData.singleN为S2方向上固定切分大小 
-    tilingKey = GET_TPL_TILING_KEY(static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd), static_cast<uint16_t>(tmpData.singleM), 
-              static_cast<uint16_t>(tmpData.singleN), static_cast<uint16_t>(tmpData.d), static_cast<uint8_t>(tmpData.oriKV), static_cast<uint8_t>(tmpData.cmpKV), 
-              static_cast<uint8_t>(tmpData.oriKVSparse), static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.usedSeqQ), static_cast<uint8_t>(tmpData.usedSeqOriKV), 
-              static_cast<uint8_t>(tmpData.usedSeqCmpKV), static_cast<uint8_t>(tmpData.oriTopK), static_cast<uint8_t>(tmpData.cmpTopK), static_cast<uint8_t>(tmpData.sinks), 
-              static_cast<uint8_t>(tmpData.deterministic));
+        inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.oriKV),
+        static_cast<uint8_t>(tmpData.cmpKV), static_cast<uint8_t>(tmpData.oriKVSparse),
+        static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.usedSeqQ),
+        static_cast<uint8_t>(tmpData.usedSeqOriKV), static_cast<uint8_t>(tmpData.usedSeqCmpKV),
+        static_cast<uint8_t>(tmpData.oriTopK), static_cast<uint8_t>(tmpData.cmpTopK),
+        static_cast<uint8_t>(tmpData.sinks), static_cast<uint8_t>(tmpData.deterministic));
+    // tmpData.singleM 为G方向上固定切分大小 tmpData.singleN为S2方向上固定切分大小
+    tilingKey = GET_TPL_TILING_KEY(
+        static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd), static_cast<uint16_t>(tmpData.singleM),
+        static_cast<uint16_t>(tmpData.singleN), static_cast<uint16_t>(tmpData.d), static_cast<uint8_t>(tmpData.oriKV),
+        static_cast<uint8_t>(tmpData.cmpKV), static_cast<uint8_t>(tmpData.oriKVSparse),
+        static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.usedSeqQ),
+        static_cast<uint8_t>(tmpData.usedSeqOriKV), static_cast<uint8_t>(tmpData.usedSeqCmpKV),
+        static_cast<uint8_t>(tmpData.oriTopK), static_cast<uint8_t>(tmpData.cmpTopK),
+        static_cast<uint8_t>(tmpData.sinks), static_cast<uint8_t>(tmpData.deterministic));
 
     OP_LOGI(context_,
-              "SparseFlashMlaGrad DoTiling success, tilingkey is"
-              " %lu.",
-              tilingKey);
+            "SparseFlashMlaGrad DoTiling success, tilingkey is"
+            " %lu.",
+            tilingKey);
     return tilingKey;
 }
 
@@ -397,7 +405,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::PostTiling()
     OP_LOGI(context_, "baseParams_.mm4ResWorkSpaceOffset is: [%ld]", baseParams_->get_mm4ResWorkSpaceOffset());
     OP_LOGI(context_, "baseParams_.mm5ResWorkSpaceOffset is: [%ld]", baseParams_->get_mm5ResWorkSpaceOffset());
     OP_LOGI(context_, "baseParams_.dSinkWorkSpaceOffset is: [%ld]", baseParams_->get_dSinkWorkSpaceOffset());
-    
+
     OP_LOGI(context_, "preTilingData_.qPreBlockFactor is: [%ld]", preTilingData_->get_qPreBlockFactor());
     OP_LOGI(context_, "preTilingData_.qPreBlockTotal is: [%ld]", preTilingData_->get_qPreBlockTotal());
     OP_LOGI(context_, "preTilingData_.qPreBlockTail is: [%ld]", preTilingData_->get_qPreBlockTail());
@@ -410,12 +418,18 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::PostTiling()
     OP_LOGI(context_, "preTilingData_.dSinksPreBlockFactor is: [%ld]", preTilingData_->get_dSinksPreBlockFactor());
     OP_LOGI(context_, "preTilingData_.dSinksPreBlockTotal is: [%ld]", preTilingData_->get_dSinksPreBlockTotal());
     OP_LOGI(context_, "preTilingData_.dSinksPreBlockTail is: [%ld]", preTilingData_->get_dSinksPreBlockTail());
-    OP_LOGI(context_, "preTilingData_.oriSoftmaxL1PreBlockFactor is: [%ld]", preTilingData_->get_oriSoftmaxL1PreBlockFactor());
-    OP_LOGI(context_, "preTilingData_.oriSoftmaxL1PreBlockTotal is: [%ld]", preTilingData_->get_oriSoftmaxL1PreBlockTotal());
-    OP_LOGI(context_, "preTilingData_.oriSoftmaxL1PreBlockTail is: [%ld]", preTilingData_->get_oriSoftmaxL1PreBlockTail());
-    OP_LOGI(context_, "preTilingData_.cmpSoftmaxL1PreBlockFactor is: [%ld]", preTilingData_->get_cmpSoftmaxL1PreBlockFactor());
-    OP_LOGI(context_, "preTilingData_.cmpSoftmaxL1PreBlockTotal is: [%ld]", preTilingData_->get_cmpSoftmaxL1PreBlockTotal());
-    OP_LOGI(context_, "preTilingData_.cmpSoftmaxL1PreBlockTail is: [%ld]", preTilingData_->get_cmpSoftmaxL1PreBlockTail());
+    OP_LOGI(context_, "preTilingData_.oriSoftmaxL1PreBlockFactor is: [%ld]",
+            preTilingData_->get_oriSoftmaxL1PreBlockFactor());
+    OP_LOGI(context_, "preTilingData_.oriSoftmaxL1PreBlockTotal is: [%ld]",
+            preTilingData_->get_oriSoftmaxL1PreBlockTotal());
+    OP_LOGI(context_, "preTilingData_.oriSoftmaxL1PreBlockTail is: [%ld]",
+            preTilingData_->get_oriSoftmaxL1PreBlockTail());
+    OP_LOGI(context_, "preTilingData_.cmpSoftmaxL1PreBlockFactor is: [%ld]",
+            preTilingData_->get_cmpSoftmaxL1PreBlockFactor());
+    OP_LOGI(context_, "preTilingData_.cmpSoftmaxL1PreBlockTotal is: [%ld]",
+            preTilingData_->get_cmpSoftmaxL1PreBlockTotal());
+    OP_LOGI(context_, "preTilingData_.cmpSoftmaxL1PreBlockTail is: [%ld]",
+            preTilingData_->get_cmpSoftmaxL1PreBlockTail());
 
     OP_LOGI(context_, "postTilingData_.postUbBaseSize is: [%ld]", postTilingData_->get_postUbBaseSize());
     OP_LOGI(context_, "postTilingData_.qPostBlockFactor is: [%ld]", postTilingData_->get_qPostBlockFactor());
@@ -446,8 +460,8 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
     int64_t dAlign = (baseParams_->get_d() + 15) / 16 * 16;
     int64_t d1Align = (baseParams_->get_d1() + 15) / 16 * 16;
     // query
-    int64_t allNumQuery = baseParams_->get_b() * baseParams_->get_n2() * baseParams_->get_g() *
-                          baseParams_->get_s1() * dAlign;
+    int64_t allNumQuery =
+        baseParams_->get_b() * baseParams_->get_n2() * baseParams_->get_g() * baseParams_->get_s1() * dAlign;
     // TND时候要按照真实的query的num数计算
     if (baseParams_->get_layout() == static_cast<uint32_t>(InputLayout::TND)) {
         allNumQuery = tmpData.t1 * baseParams_->get_n2() * baseParams_->get_g() * dAlign;
@@ -467,7 +481,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
         allNumCmpKV = tmpData.t3 * baseParams_->get_n2() * 1 * baseParams_->get_d1();
     }
 
-    //sinks
+    // sinks
     int64_t allNumSinks = baseParams_->get_n2() * baseParams_->get_g();
     // TND时候要按照真实的sinks的num数计算
     if (baseParams_->get_layout() == static_cast<uint32_t>(InputLayout::TND)) {
@@ -475,14 +489,16 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
     }
 
     // ori_softmax_l1
-    int64_t allNumOriSoftmaxL1 = baseParams_->get_b() * baseParams_->get_n2() * baseParams_->get_s1() * tmpData.ori_selected_block_count;
+    int64_t allNumOriSoftmaxL1 =
+        baseParams_->get_b() * baseParams_->get_n2() * baseParams_->get_s1() * tmpData.ori_selected_block_count;
     // TND时候要按照真实的ori_softmax_l1的num数计算
     if (baseParams_->get_layout() == static_cast<uint32_t>(InputLayout::TND)) {
         allNumOriSoftmaxL1 = tmpData.t1 * baseParams_->get_n2() * 1 * tmpData.ori_selected_block_count;
     }
 
-    //cmp_softmax_l1
-    int64_t allNumCmpSoftmaxL1 = baseParams_->get_b() * baseParams_->get_n2() * baseParams_->get_s1() * tmpData.cmp_selected_block_count;
+    // cmp_softmax_l1
+    int64_t allNumCmpSoftmaxL1 =
+        baseParams_->get_b() * baseParams_->get_n2() * baseParams_->get_s1() * tmpData.cmp_selected_block_count;
     // TND时候要按照真实的cmp_softmax_l1的num数计算
     if (baseParams_->get_layout() == static_cast<uint32_t>(InputLayout::TND)) {
         allNumCmpSoftmaxL1 = tmpData.t1 * baseParams_->get_n2() * 1 * tmpData.cmp_selected_block_count;
@@ -507,14 +523,15 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
 
     OP_CHECK_IF(qPostBaseNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "qPostBaseNum is 0."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(usedCoreNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "castUsedCoreNum is 0."),
-               return ge::GRAPH_FAILED);
-    
+                return ge::GRAPH_FAILED);
+
     int64_t qPreBlockFactor = (allNumQuery + usedCoreNum - 1) / usedCoreNum;
     int64_t qPreBlockTotal = (allNumQuery + qPreBlockFactor - 1) / qPreBlockFactor;
     int64_t qPreBlockTailTmp = allNumQuery % qPreBlockFactor;
     int64_t qPreBlockTail = qPreBlockTailTmp == 0 ? qPreBlockFactor : qPreBlockTailTmp;
 
-    int64_t oriKVPreBlockFactor = (allNumOriKV + usedCoreNum - 1) / usedCoreNum;;
+    int64_t oriKVPreBlockFactor = (allNumOriKV + usedCoreNum - 1) / usedCoreNum;
+    ;
     int64_t oriKVPreBlockTotal = (allNumOriKV + oriKVPreBlockFactor - 1) / oriKVPreBlockFactor;
     int64_t oriKVPreBlockTailTmp = allNumOriKV % oriKVPreBlockFactor;
     int64_t oriKVPreBlockTail = oriKVPreBlockTailTmp == 0 ? oriKVPreBlockFactor : oriKVPreBlockTailTmp;
@@ -526,26 +543,30 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
         cmpKVPreBlockTailTmp = allNumCmpKV % cmpKVPreBlockFactor;
         cmpKVPreBlockTail = cmpKVPreBlockTailTmp == 0 ? cmpKVPreBlockFactor : cmpKVPreBlockTailTmp;
     }
-    
+
     // int64_t dSinksPreBlockFactor = (allNumSinks + usedCoreNum - 1) / usedCoreNum;
     // int64_t dSinksPreBlockTotal = (allNumSinks + dSinksPreBlockFactor - 1) / dSinksPreBlockFactor;
     // int64_t dSinksPreBlockTailTmp = allNumSinks % dSinksPreBlockFactor;
     // int64_t dSinksPreBlockTail = dSinksPreBlockTailTmp == 0 ? dSinksPreBlockFactor : dSinksPreBlockTailTmp;
 
-    int64_t oriSoftmaxL1PreBlockFactor{0}, oriSoftmaxL1PreBlockTotal{0}, oriSoftmaxL1PreBlockTailTmp{0}, oriSoftmaxL1PreBlockTail{0};
+    int64_t oriSoftmaxL1PreBlockFactor{0}, oriSoftmaxL1PreBlockTotal{0}, oriSoftmaxL1PreBlockTailTmp{0},
+        oriSoftmaxL1PreBlockTail{0};
     if (allNumOriSoftmaxL1 != 0) {
         oriSoftmaxL1PreBlockFactor = (allNumOriSoftmaxL1 + usedCoreNum - 1) / usedCoreNum;
         oriSoftmaxL1PreBlockTotal = (allNumOriSoftmaxL1 + oriSoftmaxL1PreBlockFactor - 1) / oriSoftmaxL1PreBlockFactor;
         oriSoftmaxL1PreBlockTailTmp = allNumOriSoftmaxL1 % oriSoftmaxL1PreBlockFactor;
-        oriSoftmaxL1PreBlockTail = oriSoftmaxL1PreBlockTailTmp == 0 ? oriSoftmaxL1PreBlockFactor : oriSoftmaxL1PreBlockTailTmp;
+        oriSoftmaxL1PreBlockTail =
+            oriSoftmaxL1PreBlockTailTmp == 0 ? oriSoftmaxL1PreBlockFactor : oriSoftmaxL1PreBlockTailTmp;
     }
 
-    int64_t cmpSoftmaxL1PreBlockFactor{0}, cmpSoftmaxL1PreBlockTotal{0}, cmpSoftmaxL1PreBlockTailTmp{0}, cmpSoftmaxL1PreBlockTail{0};
+    int64_t cmpSoftmaxL1PreBlockFactor{0}, cmpSoftmaxL1PreBlockTotal{0}, cmpSoftmaxL1PreBlockTailTmp{0},
+        cmpSoftmaxL1PreBlockTail{0};
     if (allNumCmpSoftmaxL1 != 0) {
         cmpSoftmaxL1PreBlockFactor = (allNumCmpSoftmaxL1 + usedCoreNum - 1) / usedCoreNum;
         cmpSoftmaxL1PreBlockTotal = (allNumCmpSoftmaxL1 + cmpSoftmaxL1PreBlockFactor - 1) / cmpSoftmaxL1PreBlockFactor;
         cmpSoftmaxL1PreBlockTailTmp = allNumCmpSoftmaxL1 % cmpSoftmaxL1PreBlockFactor;
-        cmpSoftmaxL1PreBlockTail = cmpSoftmaxL1PreBlockTailTmp == 0 ? cmpSoftmaxL1PreBlockFactor : cmpSoftmaxL1PreBlockTailTmp;
+        cmpSoftmaxL1PreBlockTail =
+            cmpSoftmaxL1PreBlockTailTmp == 0 ? cmpSoftmaxL1PreBlockFactor : cmpSoftmaxL1PreBlockTailTmp;
     }
 
     preTilingData_->set_qPreBlockFactor(qPreBlockFactor);
@@ -574,7 +595,8 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
     int64_t qPostBlockFactor = (qPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
 
     int64_t oriKVPostBaseNum = qPostBaseNum;
-    OP_CHECK_IF(oriKVPostBaseNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "oriKVPostBaseNum is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(oriKVPostBaseNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "oriKVPostBaseNum is 0."),
+                return ge::GRAPH_FAILED);
     int64_t oriKVPostBlockTotal = allNumOriKV / dAlign * (baseParams_->get_d());
     int64_t oriKVPostTailNumTmp = oriKVPostBlockTotal % oriKVPostBaseNum;
     int64_t oriKVPostTailNum = oriKVPostTailNumTmp == 0 ? oriKVPostBaseNum : oriKVPostTailNumTmp;
@@ -582,7 +604,8 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
     int64_t oriKVPostBlockFactor = (oriKVPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
 
     int64_t cmpKVPostBaseNum = qPostBaseNum;
-    OP_CHECK_IF(cmpKVPostBaseNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "cmpKVPostBaseNum is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(cmpKVPostBaseNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "cmpKVPostBaseNum is 0."),
+                return ge::GRAPH_FAILED);
     int64_t cmpKVPostBlockTotal = allNumCmpKV / d1Align * baseParams_->get_d1();
     int64_t cmpKVPostTailNumTmp = cmpKVPostBlockTotal % cmpKVPostBaseNum;
     int64_t cmpKVPostTailNum = cmpKVPostTailNumTmp == 0 ? cmpKVPostBaseNum : cmpKVPostTailNumTmp;
@@ -590,12 +613,11 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
     int64_t cmpKVPostBlockFactor = (cmpKVPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
 
     // int64_t sinkPostBaseNum = postUbBaseSize / typeSize / d1Align * baseParams_->get_d1();
-    // OP_CHECK_IF(sinkPostBaseNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "sinkPostBaseNum is 0."), return ge::GRAPH_FAILED);
-    // int64_t sinkPostBlockTotal = allNumSinks / d1Align * baseParams_->get_d1();
-    // int64_t sinkPostTailNumTmp = sinkPostBlockTotal % sinkPostBaseNum;
-    // int64_t sinkPostTailNum = sinkPostTailNumTmp == 0 ? sinkPostBaseNum : sinkPostTailNumTmp;
-    // int64_t sinkPostBlockOuterTotal = (sinkPostBlockTotal + sinkPostBaseNum - 1) / sinkPostBaseNum;
-    // int64_t sinkPostBlockFactor = (sinkPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
+    // OP_CHECK_IF(sinkPostBaseNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "sinkPostBaseNum is 0."), return
+    // ge::GRAPH_FAILED); int64_t sinkPostBlockTotal = allNumSinks / d1Align * baseParams_->get_d1(); int64_t
+    // sinkPostTailNumTmp = sinkPostBlockTotal % sinkPostBaseNum; int64_t sinkPostTailNum = sinkPostTailNumTmp == 0 ?
+    // sinkPostBaseNum : sinkPostTailNumTmp; int64_t sinkPostBlockOuterTotal = (sinkPostBlockTotal + sinkPostBaseNum -
+    // 1) / sinkPostBaseNum; int64_t sinkPostBlockFactor = (sinkPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
 
     postTilingData_->set_postUbBaseSize(postUbBaseSize);
 
@@ -625,25 +647,30 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName, 
-                                                                    const gert::Shape &outputshape, const char *inputLayout)
+ge::graphStatus SparseFlashMlaGradBs1Regbase::CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName,
+                                                                const gert::Shape &outputshape, const char *inputLayout)
 {
     if (strcmp(inputLayout, TND_STR) == 0) {
-        if (inputshape.GetDim(DIM_0) != outputshape.GetDim(DIM_0) || inputshape.GetDim(DIM_1) != outputshape.GetDim(DIM_1) 
-            || inputshape.GetDim(DIM_2) != outputshape.GetDim(DIM_2)) {
-            OP_LOGE(context_, "SparseFlashMlaGrad Input %s [%ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld]", 
-                inputName, inputshape.GetDim(DIM_0), inputshape.GetDim(DIM_1), inputshape.GetDim(DIM_2),
-                inputName, outputshape.GetDim(DIM_0), outputshape.GetDim(DIM_1), outputshape.GetDim(DIM_2));
+        if (inputshape.GetDim(DIM_0) != outputshape.GetDim(DIM_0) ||
+            inputshape.GetDim(DIM_1) != outputshape.GetDim(DIM_1) ||
+            inputshape.GetDim(DIM_2) != outputshape.GetDim(DIM_2)) {
+            OP_LOGE(context_, "SparseFlashMlaGrad Input %s [%ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld]",
+                    inputName, inputshape.GetDim(DIM_0), inputshape.GetDim(DIM_1), inputshape.GetDim(DIM_2), inputName,
+                    outputshape.GetDim(DIM_0), outputshape.GetDim(DIM_1), outputshape.GetDim(DIM_2));
             return ge::GRAPH_FAILED;
         }
     } else {
-        if (inputshape.GetDim(DIM_0) != outputshape.GetDim(DIM_0) || inputshape.GetDim(DIM_1) != outputshape.GetDim(DIM_1) 
-            || inputshape.GetDim(DIM_2) != outputshape.GetDim(DIM_2) || inputshape.GetDim(DIM_3) != outputshape.GetDim(DIM_3)){
-            OP_LOGE(context_, "SparseFlashMlaGrad Input %s [%ld, %ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld, %ld]", 
-                inputName, inputshape.GetDim(DIM_0), inputshape.GetDim(DIM_1), inputshape.GetDim(DIM_2), inputshape.GetDim(DIM_3),
-                inputName, outputshape.GetDim(DIM_0), outputshape.GetDim(DIM_1), outputshape.GetDim(DIM_2), outputshape.GetDim(DIM_3));
+        if (inputshape.GetDim(DIM_0) != outputshape.GetDim(DIM_0) ||
+            inputshape.GetDim(DIM_1) != outputshape.GetDim(DIM_1) ||
+            inputshape.GetDim(DIM_2) != outputshape.GetDim(DIM_2) ||
+            inputshape.GetDim(DIM_3) != outputshape.GetDim(DIM_3)) {
+            OP_LOGE(context_,
+                    "SparseFlashMlaGrad Input %s [%ld, %ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld, %ld]",
+                    inputName, inputshape.GetDim(DIM_0), inputshape.GetDim(DIM_1), inputshape.GetDim(DIM_2),
+                    inputshape.GetDim(DIM_3), inputName, outputshape.GetDim(DIM_0), outputshape.GetDim(DIM_1),
+                    outputshape.GetDim(DIM_2), outputshape.GetDim(DIM_3));
             return ge::GRAPH_FAILED;
-        }    
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -660,7 +687,10 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetOriWinToken(int64_t oriMaskMode
     oriWinLeft = oriWinLeft == -1 ? INT32_MAX : oriWinLeft;
     oriWinRight = oriWinRight == -1 ? INT32_MAX : oriWinRight;
     if (oriWinLeft < 0 || oriWinRight < 0) {
-        OP_LOGE(context_, "ori_win_left and ori_win_right should be greater than or equal to 0 or equal to -1, but got ori_win_left: [%ld], ori_win_right: [%ld].", oriWinLeft, oriWinRight);
+        OP_LOGE(context_,
+                "ori_win_left and ori_win_right should be greater than or equal to 0 or equal to -1, but got "
+                "ori_win_left: [%ld], ori_win_right: [%ld].",
+                oriWinLeft, oriWinRight);
         return ge::GRAPH_FAILED;
     }
     baseParams_->set_oriWinLeft(oriWinLeft);
@@ -671,8 +701,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetOriWinToken(int64_t oriMaskMode
 ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
 {
     OP_CHECK_IF((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of q is nullptr."),
-               return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of q is nullptr."), return ge::GRAPH_FAILED);
 
     // attrs
     const char *layoutQ = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_Q));
@@ -683,11 +712,16 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     // BSND: query [b, s1, n1, d]   ori_kv [b, s2, n2, d]  cmp_kv [b, s3, n2, d/d1]   d_out/out [b, s1, n1, d/d1]
     const gert::Shape &qShape = context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY))->GetStorageShape();
     const gert::Shape &dqueryShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
-    const gert::Shape &doriKVShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DORI_KV))->GetStorageShape();
-    const gert::Shape &dcmpKVShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DCMP_KV))->GetStorageShape();
-    const gert::Shape &dsinksShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DSINKS))->GetStorageShape();
-    const gert::Shape &oriSoftmaxL1Shape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::ORI_SOFTMAX_L1_NORM))->GetStorageShape();
-    const gert::Shape &cmpSoftmaxL1Shape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::CMP_SOFTMAX_L1_NORM))->GetStorageShape();
+    const gert::Shape &doriKVShape =
+        context_->GetOutputShape(static_cast<size_t>(OutputIndex::DORI_KV))->GetStorageShape();
+    const gert::Shape &dcmpKVShape =
+        context_->GetOutputShape(static_cast<size_t>(OutputIndex::DCMP_KV))->GetStorageShape();
+    const gert::Shape &dsinksShape =
+        context_->GetOutputShape(static_cast<size_t>(OutputIndex::DSINKS))->GetStorageShape();
+    const gert::Shape &oriSoftmaxL1Shape =
+        context_->GetOutputShape(static_cast<size_t>(OutputIndex::ORI_SOFTMAX_L1_NORM))->GetStorageShape();
+    const gert::Shape &cmpSoftmaxL1Shape =
+        context_->GetOutputShape(static_cast<size_t>(OutputIndex::CMP_SOFTMAX_L1_NORM))->GetStorageShape();
     uint32_t dimSize = qShape.GetDimNum();
     int64_t dimDq = qShape.GetDim(dimSize - 1);
 
@@ -695,7 +729,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     if (status == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    
+
     if (dimDq != D_SIZE) {
         OP_LOGE(context_, "head_dim of Query[%ld] should be equal to 512.", dimDq);
         return ge::GRAPH_FAILED;
@@ -776,7 +810,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     }
 
     auto cmpSparseIndices = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::CMP_SPARSE_INDICES));
-    if (cmpSparseIndices != nullptr){
+    if (cmpSparseIndices != nullptr) {
         tmpData.cmpKVSparse = true;
         const gert::Shape &cmpSparseIndicesShape = cmpSparseIndices->GetStorageShape();
         auto cmp_selected_block_count = cmpSparseIndicesShape.GetDim(dimSize - 1);
@@ -789,13 +823,13 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     }
 
     auto usedSeqQ = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_Q));
-    if (usedSeqQ != nullptr){
+    if (usedSeqQ != nullptr) {
         tmpData.usedSeqQ = true;
         const gert::Shape &usedSeqQShape = usedSeqQ->GetStorageShape();
     }
 
     auto usedSeqOriKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_ORI_KV));
-    if (usedSeqOriKV != nullptr){
+    if (usedSeqOriKV != nullptr) {
         tmpData.usedSeqOriKV = true;
         const gert::Shape &usedSeqOriKVShape = usedSeqOriKV->GetStorageShape();
     }
@@ -814,31 +848,31 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         return ge::GRAPH_FAILED;
     }
     auto usedSeqCmpKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_CMP_KV));
-    if (usedSeqCmpKV != nullptr){
+    if (usedSeqCmpKV != nullptr) {
         tmpData.usedSeqCmpKV = true;
         const gert::Shape &usedSeqCmpKVShape = usedSeqCmpKV->GetStorageShape();
     }
     auto cmpResidualKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::CMP_RESIDUAL_KV));
-    if (cmpMaskMode == 3 && cmpRatio != 1 && cmpResidualKV == nullptr){
+    if (cmpMaskMode == 3 && cmpRatio != 1 && cmpResidualKV == nullptr) {
         OP_LOGE(context_, "cmp_residual_kv is required when cmp_mask_mode is 3 with cmp_ratio not equal to 1!");
         return ge::GRAPH_FAILED;
     }
     auto oriTopkLength = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::ORI_TOPK_LENGTH));
-    if (oriSparseIndices != nullptr && oriMaskMode == 0 && oriTopkLength == nullptr){
+    if (oriSparseIndices != nullptr && oriMaskMode == 0 && oriTopkLength == nullptr) {
         OP_LOGE(context_, "ori_topk_length is required when ori_sparse_indices exist with ori_mask_mode equal to 0!");
         return ge::GRAPH_FAILED;
     }
-    if (oriTopkLength != nullptr){
+    if (oriTopkLength != nullptr) {
         tmpData.oriTopK = true;
         const gert::Shape &oriTopkLengthShape = oriTopkLength->GetStorageShape();
     }
 
     auto cmpTopkLength = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::CMP_TOPK_LENGTH));
-    if (cmpSparseIndices != nullptr && cmpMaskMode == 0 && cmpTopkLength == nullptr){
+    if (cmpSparseIndices != nullptr && cmpMaskMode == 0 && cmpTopkLength == nullptr) {
         OP_LOGE(context_, "cmp_topk_length is required when cmp_sparse_indices exist with cmp_mask_mode equal to 0!");
         return ge::GRAPH_FAILED;
     }
-    if (cmpTopkLength != nullptr){
+    if (cmpTopkLength != nullptr) {
         tmpData.cmpTopK = true;
         const gert::Shape &cmpTopkLengthShape = cmpTopkLength->GetStorageShape();
     }
@@ -850,33 +884,38 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     }
 
     auto sinks = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SINKS));
-    if (sinks != nullptr){
+    if (sinks != nullptr) {
         tmpData.sinks = true;
         const gert::Shape &sinksShape = sinks->GetStorageShape();
     }
 
     auto selected_block_size = SELECTED_BLOCK_SIZE;
     if (selected_block_size != 1) {
-        OP_LOGE(context_, "SparseFlashMlaGrad only support sparse_block_size [1] now, but got sparse_block_size=%ld.", selected_block_size);
+        OP_LOGE(context_, "SparseFlashMlaGrad only support sparse_block_size [1] now, but got sparse_block_size=%ld.",
+                selected_block_size);
         return ge::GRAPH_FAILED;
     }
 
     tmpData.deterministic = (context_->GetDeterministic() == 1);
 
-    if (strcmp(layoutQ, TND_STR) != 0 && strcmp(layoutQ, BSND_STR) != 0 && strcmp(layoutKV, TND_STR) != 0 && strcmp(layoutKV, BSND_STR) != 0 && strcmp(layoutQ, layoutKV) != 0) {
-        OP_LOGE(context_, "SparseFlashMlaGrad only support TND or BSND layout, and layoutQ must equal to layoutKV, but now layoutQ is %s and layoutKV is %s.", layoutQ, layoutKV);
+    if (strcmp(layoutQ, TND_STR) != 0 && strcmp(layoutQ, BSND_STR) != 0 && strcmp(layoutKV, TND_STR) != 0 &&
+        strcmp(layoutKV, BSND_STR) != 0 && strcmp(layoutQ, layoutKV) != 0) {
+        OP_LOGE(context_,
+                "SparseFlashMlaGrad only support TND or BSND layout, and layoutQ must equal to layoutKV, but now "
+                "layoutQ is %s and layoutKV is %s.",
+                layoutQ, layoutKV);
         return ge::GRAPH_FAILED;
     }
 
     if (static_cast<size_t>(dimSize) != strlen(layoutQ)) {
-        OP_LOGE(context_,
-                  "SparseFlashMlaGrad layout dims is not equal to the input's dim, now the query of dim is %u.",
-                  dimSize);
+        OP_LOGE(context_, "SparseFlashMlaGrad layout dims is not equal to the input's dim, now the query of dim is %u.",
+                dimSize);
         return ge::GRAPH_FAILED;
     }
 
     if (strcmp(layoutQ, TND_STR) == 0) {
-        const gert::Shape &actSeqQLenShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CU_SEQLENS_Q))->GetStorageShape();
+        const gert::Shape &actSeqQLenShape =
+            context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CU_SEQLENS_Q))->GetStorageShape();
         tmpData.b = actSeqQLenShape.GetDim(DIM_0) - 1;
         tmpData.t1 = qShape.GetDim(DIM_0);
         tmpData.s1 = tmpData.t1;
@@ -897,7 +936,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         OP_LOGE(context_, "g (N1 / N2) should be larger than 0, but got g=%ld.", tmpData.g);
         return ge::GRAPH_FAILED;
     }
-   
+
     int64_t n1 = tmpData.n2 * tmpData.g;
     if (tmpData.n2 != 1 && (n1 != 128 || n1 != 64)) {
         OP_LOGE(context_, "SparseFlashMlaGrad only support n2=1 and n1=64/128, but got n2=%ld n1=%ld.", tmpData.n2, n1);
@@ -924,7 +963,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     tmpData.queryType =
         static_cast<uint32_t>(context_->GetInputDesc(static_cast<size_t>(InputIndex::QUERY))->GetDataType());
     tmpData.selected_block_size = selected_block_size;
-    
+
     auto ret = CheckDtypeValid(context_);
     if (ret != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_, "SparseFlashMlaGrad the dtype of input is invalid.");
@@ -953,6 +992,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseFlashMlaGrad, SparseFlashMlaGradBs1Regbase, static_cast<int32_t>(NpuArch::DAV_3510), 1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseFlashMlaGrad, SparseFlashMlaGradBs1Regbase,
+                                   static_cast<int32_t>(NpuArch::DAV_3510), 1);
 } // namespace smlag
 } // namespace optiling

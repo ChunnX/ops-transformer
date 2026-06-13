@@ -92,8 +92,8 @@ protected:
     uint64_t GetTilingKey() const override;
 
 private:
-    ge::graphStatus CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName, 
-                    const gert::Shape &outputshape, const char *inputLayout);
+    ge::graphStatus CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName,
+                                      const gert::Shape &outputshape, const char *inputLayout);
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus GetOriWinToken(int64_t oriMaskMode);
     ge::graphStatus DoSftTiling();

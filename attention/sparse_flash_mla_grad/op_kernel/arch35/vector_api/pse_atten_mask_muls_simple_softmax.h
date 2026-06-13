@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 /*!
  * \file pse_atten_mask_muls_simple_softmax.h
  */
@@ -22,8 +22,8 @@
 using namespace commondef;
 
 template <typename T2, const uint32_t VECTOR_BASEM = 64>
-__aicore__ inline void CopyInSink(FagConstInfo &constInfo,
-                                TQue<QuePosition::VECIN, 1> &sinkQue, GlobalTensor<T2> &sinkGm)
+__aicore__ inline void CopyInSink(FagConstInfo &constInfo, TQue<QuePosition::VECIN, 1> &sinkQue,
+                                  GlobalTensor<T2> &sinkGm)
 {
     int64_t sinkGmOffset = 0;
     sinkGmOffset = constInfo.firstHalfGRealSize * GetSubBlockIdx();
@@ -36,8 +36,8 @@ __aicore__ inline void CopyInSink(FagConstInfo &constInfo,
 }
 
 template <typename T2, const uint32_t VECTOR_BASEM = 64>
-__aicore__ inline void CopyInLse(FagConstInfo &constInfo, FagRunInfo &runInfo,
-                                    TQue<QuePosition::VECIN, 1> &lseInQue, GlobalTensor<T2> &lseGm)
+__aicore__ inline void CopyInLse(FagConstInfo &constInfo, FagRunInfo &runInfo, TQue<QuePosition::VECIN, 1> &lseInQue,
+                                 GlobalTensor<T2> &lseGm)
 {
     if (runInfo.halfGRealSize == 0) {
         return;
@@ -45,8 +45,8 @@ __aicore__ inline void CopyInLse(FagConstInfo &constInfo, FagRunInfo &runInfo,
     int64_t lseGmOffset = 0;
     lseGmOffset = runInfo.t1Index * constInfo.commonConstInfo.gSize + runInfo.firstHalfGRealSize * GetSubBlockIdx();
     LocalTensor<T2> lseTensor = lseInQue.AllocTensor<T2>();
-    DataCopyPad(lseTensor, lseGm[lseGmOffset],
-                {1, static_cast<uint16_t>(runInfo.halfGRealSize * sizeof(T2)), 0, 0}, {false, 0, 0, 0});
+    DataCopyPad(lseTensor, lseGm[lseGmOffset], {1, static_cast<uint16_t>(runInfo.halfGRealSize * sizeof(T2)), 0, 0},
+                {false, 0, 0, 0});
     lseInQue.EnQue(lseTensor);
     lseInQue.DeQue<T2>();
     lseInQue.FreeTensor(lseTensor);
@@ -63,12 +63,14 @@ pseInQue：pse分配Que，入参
 dstTensor：返回计算结果，出参
 srcTensor：VF输入，入参
 *************************/
-template <typename T1, typename T2, const uint32_t IS_ATTEN_MASK = 0, const uint32_t IS_PSE = 0, const uint32_t IS_DETER_OLD = 0,
-          const uint32_t VECTOR_BASEM = 64, const uint32_t VECTOR_BASEN = 128, const uint32_t IsSparseIndicesExist = 0>
+template <typename T1, typename T2, const uint32_t IS_ATTEN_MASK = 0, const uint32_t IS_PSE = 0,
+          const uint32_t IS_DETER_OLD = 0, const uint32_t VECTOR_BASEM = 64, const uint32_t VECTOR_BASEN = 128,
+          const uint32_t IsSparseIndicesExist = 0>
 __aicore__ inline void
-CalculatePseMulsSelSimpleSoftMax(FagConstInfo &constInfo, FagRunInfo &runInfo, PseInfo& pseInfo, AttenMaskInfo &attenMaskInfo,
-                                 TQue<QuePosition::VECIN, 1> &lseInQue, TQue<QuePosition::VECIN, 1> &attenMaskInQue,
-                                 TQue<QuePosition::VECIN, 1> &pseInQue, LocalTensor<T2> &dstTensor, LocalTensor<T2> &srcTensor, 
+CalculatePseMulsSelSimpleSoftMax(FagConstInfo &constInfo, FagRunInfo &runInfo, PseInfo &pseInfo,
+                                 AttenMaskInfo &attenMaskInfo, TQue<QuePosition::VECIN, 1> &lseInQue,
+                                 TQue<QuePosition::VECIN, 1> &attenMaskInQue, TQue<QuePosition::VECIN, 1> &pseInQue,
+                                 LocalTensor<T2> &dstTensor, LocalTensor<T2> &srcTensor,
                                  LocalTensor<T2> &softmaxL1Tensor, __gm__ uint8_t *pseSlope, float pScalar)
 {
     if (runInfo.halfGRealSize == 0) {
@@ -83,14 +85,14 @@ CalculatePseMulsSelSimpleSoftMax(FagConstInfo &constInfo, FagRunInfo &runInfo, P
 
     if (runInfo.commonRunInfo.s2RealSize > 64) {
         AscendC::MulsSelSimpleSoftMax<T1, T2, 128, IS_ATTEN_MASK, IS_PSE, IS_DETER_OLD, IsSparseIndicesExist>(
-        dstTensor, lseTensor, lseTensor, srcTensor, softmaxL1Tensor, pseTensor, 
-        attenMaskTensor, constInfo.scaleValue, constInfo.attenMaskMinValue, runInfo.halfGRealSize,
-        runInfo.commonRunInfo.s2RealSize, pScalar);
+            dstTensor, lseTensor, lseTensor, srcTensor, softmaxL1Tensor, pseTensor, attenMaskTensor,
+            constInfo.scaleValue, constInfo.attenMaskMinValue, runInfo.halfGRealSize, runInfo.commonRunInfo.s2RealSize,
+            pScalar);
     } else {
         AscendC::MulsSelSimpleSoftMax<T1, T2, 64, IS_ATTEN_MASK, IS_PSE, IS_DETER_OLD, IsSparseIndicesExist>(
-        dstTensor, lseTensor, lseTensor, srcTensor, softmaxL1Tensor, pseTensor, 
-        attenMaskTensor, constInfo.scaleValue, constInfo.attenMaskMinValue, runInfo.halfGRealSize,
-        runInfo.commonRunInfo.s2RealSize, pScalar);
+            dstTensor, lseTensor, lseTensor, srcTensor, softmaxL1Tensor, pseTensor, attenMaskTensor,
+            constInfo.scaleValue, constInfo.attenMaskMinValue, runInfo.halfGRealSize, runInfo.commonRunInfo.s2RealSize,
+            pScalar);
     }
     lseInQue.FreeTensor(lseTensor);
 }

@@ -31,8 +31,8 @@ param [in] sinkTensor input sink LocalTensor
 */
 
 template <typename T>
-__simd_vf__ inline void CalculateSoftMaxSinkVF(uint64_t dstLocalInt, uint64_t lseLocalInt,
-                                            uint64_t sinkLocalInt, uint32_t realM)
+__simd_vf__ inline void CalculateSoftMaxSinkVF(uint64_t dstLocalInt, uint64_t lseLocalInt, uint64_t sinkLocalInt,
+                                               uint32_t realM)
 {
     RegTensor<T> vregLse;
     RegTensor<T> vregSink;
@@ -51,7 +51,8 @@ __simd_vf__ inline void CalculateSoftMaxSinkVF(uint64_t dstLocalInt, uint64_t ls
 }
 
 template <typename T>
-__aicore__ inline void CalculateSoftMaxSink(const LocalTensor<T> &dstTensor, const LocalTensor<T> &lseTensor, const LocalTensor<T> &sinkTensor, uint32_t realM)
+__aicore__ inline void CalculateSoftMaxSink(const LocalTensor<T> &dstTensor, const LocalTensor<T> &lseTensor,
+                                            const LocalTensor<T> &sinkTensor, uint32_t realM)
 {
     uint64_t dstLocalInt = dstTensor.GetPhyAddr();
     uint64_t lseLocalInt = lseTensor.GetPhyAddr();
@@ -61,7 +62,8 @@ __aicore__ inline void CalculateSoftMaxSink(const LocalTensor<T> &dstTensor, con
 }
 #else
 template <typename T>
-__aicore__ inline void CalculateSoftMaxSink(const LocalTensor<T> &dstTensor, const LocalTensor<T> &lseTensor, const LocalTensor<T> &sinkTensor, uint32_t realM)
+__aicore__ inline void CalculateSoftMaxSink(const LocalTensor<T> &dstTensor, const LocalTensor<T> &lseTensor,
+                                            const LocalTensor<T> &sinkTensor, uint32_t realM)
 {
 }
 #endif
