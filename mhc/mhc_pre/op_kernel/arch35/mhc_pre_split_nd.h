@@ -49,7 +49,7 @@ static constexpr uint64_t SYNC_V0toC = 0x2;
 static constexpr uint64_t SYNC_CtoC = 0x3;
 static constexpr uint64_t SYNC_CtoV1 = 0x4;
 
-template <class T, class P, int8_t HAS_RES>
+template <class T, class P, int8_t HAS_RESI>
 class MhcPreKernelSplitND : public MhcPreKernelBase<T, P> {
 public:
     using Base = MhcPreKernelBase<T, P>;
@@ -115,9 +115,9 @@ public:
     using Base::kSingleBufferCount;
     using Base::kSupportedN4;
     using Base::kSupportedN6;
-    using Base::hasRes_;
+    using Base::hasResi_;
 
-    static constexpr int8_t kHasRes = HAS_RES;
+    static constexpr int8_t kHasResi = HAS_RESI;
 
     __aicore__ inline MhcPreKernelSplitND(MT &matmul) : Base(matmul) {}
     __aicore__ inline void Init(InitParams initParams);
@@ -158,8 +158,8 @@ private:
     uint32_t V0_BASE_T = kDefaultV0BaseT;
 };
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::Init(InitParams initParams)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::Init(InitParams initParams)
 {
     xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.x));
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.phi));
@@ -221,8 +221,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::Init(InitParams initP
 }
 
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::InitLocalBuffers()
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::InitLocalBuffers()
 {
     pipe_->InitBuffer(xInQueue_, kDoubleBufferCount, kXInQueueBufferBytes);
     pipe_->InitBuffer(outQueue_, kDoubleBufferCount, kOutQueueBufferBytes);
@@ -247,7 +247,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::InitLocalBuffers()
     buffOffset += N_ * V1_BASE_T * sizeof(uint32_t);
     buffOffset = Ceil(buffOffset, 32) * 32;
 
-    if constexpr (HAS_RES == MHC_PRE_HAS_RES) {
+    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
         resOffsetBuf_ = tmpBuff_.template GetWithOffset<uint32_t>(uint32_t(N_ * N_ * V1_BASE_T), buffOffset);
         buffOffset += N_ * N_ * V1_BASE_T * sizeof(uint32_t);
         buffOffset = Ceil(buffOffset, 32) * 32;
@@ -261,13 +261,13 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::InitLocalBuffers()
     buffOffset += V1_BASE_T * N_ * sizeof(P);
     buffOffset = Ceil(buffOffset, 32) * 32;
 
-    if constexpr (HAS_RES == MHC_PRE_HAS_RES) {
+    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
         hResBuff_ = tmpBuff_.template GetWithOffset<P>(uint32_t(V1_BASE_T * N_ * N_), buffOffset);
     }
 }
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::Process()
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::Process()
 {
     if ASCEND_IS_AIV {
         coreIdx_ = GetBlockIdx() / kDoubleBufferCount;
@@ -298,8 +298,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::Process()
     }
 }
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIVPreLoad()
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIVPreLoad()
 {
     invRmsUb_ = invRmsOutQueue_.template AllocTensor<P>();
     AIV1GetHSliceOffset();
@@ -310,7 +310,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIVPreLoad()
         alphaInUb_.SetValue(i, alphaPre);
         alphaInUb_.SetValue(i + N_, alphaPost);
     }
-    if constexpr (HAS_RES == MHC_PRE_HAS_RES) {
+    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
         float alphaComb = alphaGm_.GetValue(kAlphaCombIndex);
         for (uint64_t i = 0; i < N_; ++i) {
             for (uint64_t j = 0; j < N_; ++j) {
@@ -322,8 +322,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIVPreLoad()
     biasInUb_ = biasInQue_.template DeQue<P>();
 }
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIV1GetHSliceOffset()
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1GetHSliceOffset()
 {
     uint32_t offset1 = 0;
     uint32_t offset2 = 0;
@@ -338,7 +338,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIV1GetHSliceOffset()
             postOffsetBuf_.SetValue(offset2++, curOffset * sizeof(P));
             curOffset++;
         }
-        if constexpr (HAS_RES == MHC_PRE_HAS_RES) {
+        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
             uint32_t nSquare = N_ * N_;
             for (uint32_t j = 0; j < nSquare; j++) {
                 resOffsetBuf_.SetValue(offset3++, curOffset * sizeof(P));
@@ -348,8 +348,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIV1GetHSliceOffset()
     }
 }
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AICProcess()
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AICProcess()
 {
     AscendC::CrossCoreWaitFlag(SYNC_V0toC);
     
@@ -370,8 +370,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AICProcess()
     AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_CtoV1);
 }
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::VectorComputeOffset()
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::VectorComputeOffset()
 {
     uint64_t alignSingleM = Ceil(curSingleM_, 2);
     vectorOffset_.singleCoreM = alignSingleM <  curSingleM_ ? alignSingleM : curSingleM_;
@@ -385,8 +385,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::VectorComputeOffset()
     }
 }
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::DataCopyOutToWorkSpace(LocalTensor<P> &x, uint32_t curMLen,
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::DataCopyOutToWorkSpace(LocalTensor<P> &x, uint32_t curMLen,
                                                                           uint32_t curNdLen, uint32_t offsetM,
                                                                           uint32_t offsetNd)
 {
@@ -400,8 +400,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::DataCopyOutToWorkSpac
     DataCopyPad(xFloatGm_[offset], x, copyParams);
 }
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::V0Prologue(uint64_t curBlock, uint64_t tBlockNum)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::V0Prologue(uint64_t curBlock, uint64_t tBlockNum)
 {
     curSingleM_ = chunkTSize_;
     if (curBlock == tBlockNum - 1) {
@@ -470,8 +470,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::V0Prologue(uint64_t c
     this->DataCopyOutInvRmsUb(vectorOffset_.singleCoreM, vectorOffset_.offsetMStart);
 }
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIV1Process(uint64_t curBlock, uint64_t tBlockNum)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Process(uint64_t curBlock, uint64_t tBlockNum)
 {
     curSingleM_ = chunkTSize_;
     if (curBlock == tBlockNum - 1) {
@@ -499,8 +499,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIV1Process(uint64_t 
     }
 }
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIV1Prologue(uint64_t offsetT, uint64_t lenT, uint64_t singleCoreOffset)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Prologue(uint64_t offsetT, uint64_t lenT, uint64_t singleCoreOffset)
 {
     uint64_t offset = globalOffsetM_ + offsetT;
     uint64_t HMixOffset = 0;
@@ -514,7 +514,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIV1Prologue(uint64_t
 
     matmulRes_ = xInQueue_.template DeQue<P>(); 
     LocalTensor<P> hResOutLocal;
-    if constexpr (HAS_RES == MHC_PRE_HAS_RES) {
+    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
         hResOutLocal = outQueue_.template AllocTensor<P>();
     }
 
@@ -562,7 +562,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIV1Prologue(uint64_t
 
     Gather(hPreBuff_, matmulRes_, preOffsetBuf_, uint32_t(0), lenT * N_);
     Gather(hPostBuff_, matmulRes_, postOffsetBuf_, uint32_t(0), lenT * N_);
-    if constexpr (HAS_RES == MHC_PRE_HAS_RES) {
+    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
         Gather(hResOutLocal, matmulRes_, resOffsetBuf_, uint32_t(0), lenT * N_ * N_);
         PipeBarrier<PIPE_V>();
         outQueue_.EnQue(hResOutLocal);
@@ -580,8 +580,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::AIV1Prologue(uint64_t
     xInQueue_.FreeTensor(matmulRes_);
 }
 
-template <class T, class P, int8_t HAS_RES>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RES>::HMixProcess(uint64_t offsetT, uint64_t lenT)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::HMixProcess(uint64_t offsetT, uint64_t lenT)
 {
     uint32_t mmResGmBlockNum = Ceil(matrixInfo_.nD, chunNDSize_);
     uint32_t computeLen = lenT * mnConfig_.n;

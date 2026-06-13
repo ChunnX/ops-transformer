@@ -106,17 +106,17 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
                 OP_LOGE(context->GetNodeName(), "Alpha dim[0] must be 2 or 3, got %ld", alphaDimSize),
                 return GRAPH_FAILED);
 
-    bool hasRes = (alphaDimSize == 3);
+    bool hasResi = (alphaDimSize == 3);
 
     gert::Shape *outShapes[6] = {context->GetOutputShape(OUT_H_IN_INDEX),   context->GetOutputShape(OUT_H_POST_INDEX),
                                  context->GetOutputShape(OUT_H_RES_INDEX),  context->GetOutputShape(OUT_INV_RMS_INDEX),
                                  context->GetOutputShape(OUT_MM_RES_INDEX), context->GetOutputShape(OUT_H_PRE_INDEX)};
     if (xDim == BSND_DIM_NUM) {
         uint64_t b = xShape->GetDim(0), s = xShape->GetDim(1), n = xShape->GetDim(2), d = xShape->GetDim(3);
-        uint64_t matK = hasRes ? (n * n + 2 * n) : (2 * n);
+        uint64_t matK = hasResi ? (n * n + 2 * n) : (2 * n);
         SetShape3D(outShapes[0], b, s, d);
         SetShape3D(outShapes[1], b, s, n);
-        if (hasRes) {
+        if (hasResi) {
             SetShape4D(outShapes[2], b, s, n, n);
         } else {
             SetShape1D(outShapes[2], 0);
@@ -126,10 +126,10 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
         SetShape3D(outShapes[5], b, s, n);
     } else {
         uint64_t t = xShape->GetDim(0), n = xShape->GetDim(1), d = xShape->GetDim(2);
-        uint64_t matK = hasRes ? (n * n + 2 * n) : (2 * n);
+        uint64_t matK = hasResi ? (n * n + 2 * n) : (2 * n);
         SetShape2D(outShapes[0], t, d);
         SetShape2D(outShapes[1], t, n);
-        if (hasRes) {
+        if (hasResi) {
             SetShape3D(outShapes[2], t, n, n);
         } else {
             SetShape1D(outShapes[2], 0);
