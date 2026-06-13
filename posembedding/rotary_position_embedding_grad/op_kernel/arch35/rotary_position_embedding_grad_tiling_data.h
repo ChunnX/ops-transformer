@@ -64,7 +64,6 @@ struct RotaryXParams {
     int64_t blockFactorN;     // 每个核处理多少个D
     int64_t blockTailFactorN; // 尾核处理多少个D
     int64_t ubFactorN;        // UB 一次处理多少个D
-    int64_t rotaryMode;
 };
 struct RopeGradTilingData {
     Ops::Base::ReduceOpTilingData reduceTiling;
