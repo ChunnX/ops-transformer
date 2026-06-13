@@ -15,13 +15,13 @@
 
 ## 功能说明
 
-- 接口功能：融合GroupedMatmul、activation和quant，详细解释见计算公式。此接口为WeightNz特化版本，weight参数在该场景下强制视为FRACTAL_NZ格式。当前版本仅支持gelu_tanh激活函数与MX量化的组合。
+- 接口功能：融合GroupedMatmul、activation和quant，详细解释见计算公式。此接口为WeightNz特化版本，weight参数在该场景下强制视为FRACTAL_NZ格式。当前版本仅支持MX量化场景，激活函数仅支持gelu_tanh。
 
 - 计算公式：
   - <term>Ascend 950PR/Ascend 950DT</term>：
     <details>
-    <summary>gelu_tanh + MX量化场景：</summary>
-    <a id="gelu_tanh+MX量化场景"></a>
+    <summary>MX量化场景：</summary>
+    <a id="MX量化场景"></a>
 
       - **定义**：
 
@@ -262,7 +262,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>xScaleOptional</td>
         <td rowspan="1">可选输入</td>
         <td>表示左矩阵的量化因子，对应公式中的xScale。</td>
-        <td>当前gelu_tanh+MX量化场景下需要传入。</td>
+        <td>当前MX量化场景下需要传入。</td>
         <td>FLOAT8_E8M0</td>
         <td>ND</td>
         <td>3</td>
@@ -342,7 +342,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>scaleAlgOptional</td>
         <td>可选输入</td>
         <td>表示量化因子计算算法。</td>
-        <td>可选属性，默认值为0。当前gelu_tanh+MX量化场景下支持0或1。</td>
+        <td>可选属性，默认值为0。当前MX量化场景下支持0或1。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -400,6 +400,22 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
     </tbody>
     </table>
+
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+      - <strong>weight强制视为FRACTAL_NZ格式。</strong>
+      - 其他输入输出Tensor格式仅支持ND。
+      - x仅支持非转置输入，weight支持非转置和转置输入，不支持x转置输入。
+      - weightScale转置属性需要与weight保持一致。
+      - 空Tensor处理规则：
+        - weight和weightScale作为必选输入，不支持空tensorlist，tensorlist中的元素不能为nullptr。
+        - 支持M为0或N为0的空Tensor场景：x和xScaleOptional支持M为0，weight和weightScale支持N为0；该场景下第一段接口返回ACLNN_SUCCESS，workspaceSize为0。
+        - 不支持K为0。
+      - roundModeOptional仅支持"rint"。
+      - scaleAlgOptional仅支持0或1。
+      - weight、weightScale、biasOptional均为dynamic tensorlist形式。
+      - 当前weight和weightScale仅支持tensorlist长度为1。
+      - MXFP8场景下biasOptional必须为空，支持nullptr或空tensorlist。
+      - tuningConfigOptional和dstTypeMaxOptional为预留参数，当前暂不使用。
 
 - **返回值**
 
@@ -482,12 +498,12 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
   - 确定性计算：
       - aclnnGroupedMatmulActivationQuantWeightNz默认为确定性实现。
   - <term>Ascend 950PR/Ascend 950DT</term>：
-    - groupList第1维最大支持1024，即最多支持1024个group。
-    - E取值范围为1-1024。
-    - 当前仅支持gelu_tanh激活函数与MXFP8量化的组合。
-    - gelu_tanh+MXFP8量化场景下需满足以下约束条件：
+    - groupList第1维最小为1，最大支持1024，即支持1~1024个group。
+    - 当前仅支持MXFP8量化场景，激活函数仅支持gelu_tanh。
+    - MXFP8量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
           <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+          <col style="width: 130px">
           <col style="width: 130px">
           <col style="width: 180px">
           <col style="width: 160px">
@@ -499,6 +515,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           <thead>
             <tr>
               <th>MX量化场景</th>
+              <th>激活函数</th>
               <th>x</th>
               <th>weight</th>
               <th>weightScale</th>
@@ -509,6 +526,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           <tbody>
             <tr>
               <td>MXFP8</td>
+              <td>gelu_tanh</td>
               <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
               <td>FLOAT8_E4M3FN</td>
               <td>FLOAT8_E8M0</td>
@@ -523,6 +541,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 130px">
           <col style="width: 130px">
+          <col style="width: 130px">
           <col style="width: 280px">
           <col style="width: 320px">
           <col style="width: 180px">
@@ -532,6 +551,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           <thead>
             <tr>
               <th>MX量化场景</th>
+              <th>激活函数</th>
               <th>x</th>
               <th>weight</th>
               <th>weightScale</th>
@@ -542,6 +562,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           <tbody>
             <tr>
               <td>MXFP8</td>
+              <td>gelu_tanh</td>
               <td>(M, K)</td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(N / 32), ceil(K / 16), 16, 32)}</li>
@@ -558,13 +579,6 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 
         - activationType仅支持"gelu_tanh"。
         - N必须为64整数倍。
-        - weight仅支持FRACTAL_NZ格式，其他输入输出Tensor格式仅支持ND。
-        - x仅支持非转置输入，weight支持非转置和转置输入，不支持x转置输入。
-        - weightScale转置属性需要与weight保持一致。
-        - roundModeOptional仅支持"rint"。
-        - scaleAlgOptional仅支持0或1。
-        - weight、weightScale、biasOptional均为dynamic tensorlist形式；当前weight和weightScale仅支持长度为1的tensorlist，MXFP8场景下biasOptional必须为空，支持nullptr或空tensorlist。
-        - tuningConfigOptional和dstTypeMaxOptional为预留参数，当前暂不使用。
 
 ## 调用示例
 
