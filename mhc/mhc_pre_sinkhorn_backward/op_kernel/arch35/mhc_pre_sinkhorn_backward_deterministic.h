@@ -21,6 +21,8 @@
 #include "lib/matmul_intf.h"
 #include "mhc_pre_sinkhorn_backward_deterministic_simd_vf.h"
 
+constexpr int64_t AIV_AIC_RATE = 2;
+
 template<typename X_T, typename GRADHIN_T, typename U>
 class MhcPreSinkhornBackwardDeterministic {
 public:
@@ -79,6 +81,8 @@ private:
     TQue<QuePosition::VECOUT, DOUBLE_BUFFER> xFp32Que_;
     TQue<QuePosition::VECOUT, DOUBLE_BUFFER> gradXFromHinQue_;
     TBuf<TPosition::VECCALC> gradHPreBuf_;
+    TBuf<TPosition::VECCALC> gradCalcBuf1_;
+    TBuf<TPosition::VECCALC> gradCalcBuf2_;
 
     int64_t batchSize_ = 0;
     int64_t seqLength_ = 0;
@@ -102,8 +106,25 @@ private:
     int64_t cLenAlignFp32_;
     int64_t cLenAlignFp16_;
     U alphaPre_, alphaPost_, alphaRes_;
-    constexpr static uint32_t V_REG_SIZE = platform::GetVRegSize();
+    int64_t avcNum_ = 0;
+    int64_t bsTaskCount_ = 0;
+    int64_t totalAicTasks_ = 0;
+    int64_t calcBSPerTask_ = 0;
+    int64_t totalAicTasksAligned_ = 0;
 
+    // vector中计算RMSNormGrad的循环
+    int64_t cLoopsPerBS_ = 0;
+    int64_t cCountPerBS_ = 0;
+    int64_t cTailPerBS_ = 0;
+
+    // vector中最后计算gradX的循环
+    int64_t cBlockLoops_ = 0;
+    int64_t cBlockTailLoops_ = 0;
+    int64_t cBlockCount_ = 0;
+    int64_t cBlockTailCount_ = 0;
+    int64_t cBlockTailTailCount_ = 0;
+
+    constexpr static uint32_t V_REG_SIZE = platform::GetVRegSize();
 };
 
 template<typename X_T, typename GRADHIN_T, typename U>
@@ -123,10 +144,19 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::Init(GM_ADDR x, GM_A
     k_ = n_ * n_ + 2 * n_;
     blockIdx_ = GetBlockIdx();
     blockSize_ = Ops::Base::GetUbBlockSize();
+    bsTaskCount_ = tilingData->tailBsTaskCount_;
     curCoreProcessbsTask_ = (blockIdx_ == tilingData->aivNum - 1) ? tilingData->tailBsTaskCount_ : tilingData->bsTaskCount;
     nAlignFp32_ = ops::CeilAlign(n_ * sizeof(U), blockSize_) / sizeof(U);
     cAlignFp32_ = ops::CeilAlign(cLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
     cAlignFp16_ = ops::CeilAlign(cLoopDataLen_ * sizeof(X_T), blockSize_) / sizeof(X_T);
+    // 每个BS中nc循环
+    cLoopsPerBS_ = tilingData->cLoopsPerBS;
+    cCountPerBS_ = tilingData->cCountPerBS;
+    cTailPerBS_ = tilingData->cTailPerBS;
+    // BSNC每核循环
+    cBlockLoops_ = (blockIdx_ == tilingData->aivNum - 1) ? tilingData->cBlockTailLoops ? tilingData->cBlockLoops;
+    cBlockCount_ = tilingData->cBlockCount;
+    cBlockTailCount_ = (blockIdx_ == tilingData->aivNum - 1) ? tilingData->cBlockTailTailCount ? tilingData->cBlockTailCount;
 
     gradPhiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ GRADHIN_T*>(gradPhi));
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(phi));
@@ -154,10 +184,21 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::Init(GM_ADDR x, GM_A
         pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, cLenAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
         pipe_->InitBuffer(gradXFromHinQue_, DOUBLE_BUFFER, cLenAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
         pipe_->InitBuffer(gradXFromHinQue_, nAlignFp32_ * bsLoopDataLen_ * sizeof(U));
+        pipe_->InitBuffer(gradCalcBuf1_, std::Max(k_, cLenAlignFp32_) * sizeof(U));
+        pipe_->InitBuffer(gradCalcBuf2_, std::Max(k_, cLenAlignFp32_) * sizeof(U));
     }
 
     if ASCEND_IS_AIV {
-
+        avcNum_ = tilingData->aivNum / AIV_AIC_RATE;
+        calcBSPerTask_ = tilingData->bsTaskCount * AIV_AIC_RATE;
+        totalAicTasks_ = batchSize_ * seqLength_;
+        totalAicTasksAligned_ = ops::CeilAlign(totalAicTasks_, avcNum_ * calcBSPerTask_);
+        mm1K_ = n_ * n_ + 2 * n_;
+        mm1M_ = calcBSPerTask_;
+        mm1N_ = n_ * c_;
+        mm2K_ = batchSize_ * seqLength_;
+        mm2M_ = 1;
+        mm2N_ = n_ * c_;
     }
 }
 
@@ -243,7 +284,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeFirst(uint64_
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeProcess1 (LocalTensor<U>& hPreLocal,
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeProcess1(LocalTensor<U>& hPreLocal,
     LocalTensor<U>& gradHPreLocal, const Process1Info& info)
 {
     LocalTensor<X_T> xFp32Local = xFp32Que_.AllocTensor<U>();
@@ -315,6 +356,61 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeProcess1 (Loc
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic::ProcessGradXFromRms(int64_t bsIdx)
+{
+    auto curBsIdx = bsIdx + blockIdx_ * bsTaskCount_;
+    auto curBsKOffset = curBsIdx * k_;
+    auto curBsNCOffset = curBsIdx * n_ * c_;
+    U curGradInvRms = 0;
+    U curInvRms = invRmsGm_(curBsIdx);
+    curInvRms = curInvRms * curInvRms * curInvRms;
+    LocalTensor<U> gradNormOutLocal = gradCalcBuf1_.Get<U>();
+    LocalTensor<U> hcBeforeNormLocal = gradCalcBuf2_.Get<U>();
+    CopyIn(gradNormOutLocal, gradNormOutWs_[curBsKOffset], 0, k_, 0, 0);
+    CopyIn(hcBeforeNormLocal, hcBeforeNormGm_[curBsKOffset], 0, k_, 0, 0);
+    ComputeGradInvRms(gradNormOutLocal, hcBeforeNormLocal, k_, curGradInvRms);
+
+    for (int64_t cLoop = 0; cLoop < cLoopsPerBS_: cLoop++) { // 切k
+        auto calcCount= cLoop == cLoopsPerBS_ - 1 ? cTailPerBS_ : cCountPerBS_;
+        auto calcOffset = curBsNCOffset + calcCount * cLoop;
+        LocalTensor<U> xTmpLocal = xQue_.AllocTensor<U>();
+        CopyIn(xTmpLocal, xFp32Ws_[offset],  0, calcCount, 0, 0);
+        ComputeGradXFromRms(xTmpLocal, curInvRms, curGradInvRms, calcCount);
+        CopyOut(xFp32Ws_[offset], xTmpLocal, 0, calcCount, 0, 0);
+        xFp32Que_.FreeTensor(xTmpLocal);
+    }
+}
+
+template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeFinal()
+{
+    pipe_.reset();
+    pipe_->InitBuffer(hPreQue_, DOUBLE_BUFFER, blockUBCount_ * sizeof(U));
+    pipe_->InitBuffer(xQue_, DOUBLE_BUFFER, blockUBCount_ * sizeof(X_T));
+    pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, blockUBCount_ * sizeof(GRADHIN_T));
+    pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, blockUBCount_ * sizeof(U));
+    int64_t finalTailCount = blockIdx_ == GetBlockNum() - 1 ? blockTailTailCount_ : blockTailCount_;
+    for (int64_t dataLoop = 0: dataLoop < dataLoops_: dataLoop++) { // 切c
+        int64_t calcCount = dataLoop == dataLoops_ - 1 ? finalTailCount : blockUBCount_;
+        int64_t calcOffset = blockIdx_ * finalBlockNum + dataLoop * blockUBCount_;
+        LocalTensor<U> xFp32Local = xFp32Que_.AllocTensor<U>();
+        LocalTensor<U> xLocal = xQue_.AllocTensor<U>();
+        LocalTensor<U> gradXFromHinLocal = gradHinQue_.AllocTensor<U>();
+        LocalTensor<U> gradXFromMatMulLocal = hPreQue_.AllocTensor<U>();
+        CopyIn(xLocal, xFp32Ws_[calcOffset], 0, calcCount, 0, 0);
+        CopyIn(gradXFromHinLocal, gradXFromHinWs_[calcOffset], 0, calcCount, 0, 0);
+        CopyIn(gradXFromMatMulLocal, gradXGm_[calcOffset], 0, calcCount, 0, 0);
+        ComputeGradXFinal<U, X_T>(xFp32Local, xLocal, gradXFromHinLocal, gradXFromMatMulLocal, calcCount);
+        LocalTensor<X_T> xOutLocal = xFp32Que_.DeQue<X_T>();
+        CopyOut(xGm_[calcOffset], xOutLocal, 0, calcCount, 0, 0);
+        xFp32Que_.FreeTensor(xOutLocal);
+        xQue_.FreeTensor(xLocal);
+        gradHinQue_.FreeTensor(gradXFromHinLocal);
+        hPreQue_.FreeTensor(gradXFromMatMulLocal);
+    }
+}
+
+template<typename X_T, typename GRADHIN_T, typename U>
 void MhcPreSinkhornBackwardDeterministic::Process(void)
 {
     if ASCEND_IS_AIV {
@@ -324,16 +420,73 @@ void MhcPreSinkhornBackwardDeterministic::Process(void)
         for (uint64_t bsIdx = 0; bsIdx < bsLoopNum; bsIdx++) {
             auto bsLen = bsIdx == bsLoopNum - 1 ? bsTailDataLen : bsLoopDataLen;
             ComputeFirst(bsIdx, bsLen);
-
-
-
         }
+        // 计算GradXFromRms
+        CrossCoreSetFlag<0x2>(0); // GradHcBeforeNorm计算完成，可以进行matmul计算
+        syncAll(); // GradNormOut需全部存储完毕再进行RMSNormGrad的计算
+        for (uint64_t bsIdx = 0; bsIdx < bsLoopNum; bsIdx++) {
+            ProcessGradXFromRms(bsIdx);
+        }
+        
+        // 计算GradX,需添加等待matmul完成
+        CrossCoreWaitFlag<0x2>(1); // gradX matmul计算完成可以执行进行最后的计算
+        syncAll();
+        ComputeFinal();
     }
 
     if ASCEND_IS_AIC {
-
+        CrossCoreWaitFlag<0x2>(0);
+        syncAll();
+        for (int32_t taskOffset = blockIdx_ * calcBSPerTask_;
+            taskOffset < totalAicTasksAligned_; taskOffset += avcNum_ * calcBSPerTask_) {
+            int32_t tileTaskCount = min(calcBSPerTask_, totalAicTasks_ - taskOffset);
+            if (tileTaskCount > 0) {
+                ComputeGradXMatmul(taskOffset, tileTaskCount);
+            }
+        }
+        CrossCoreSetFlag<0x2>(1); // grad_x matmul计算完成，需要aiv继续计算
+        // 计算grad_phi 需要切K
+        for (int32_t taskOffset = blockIdx_;
+            taskOffset < n_ * (n_ + 2); taskOffset += avcNum_) {
+            ComputeGradPhiMatmul(taskOffset, 1);
+        }
     }
 }
 
+// mm1K_ = n_ * n_ + 2 * n_;
+// mm1M_ = calcBSPerTask_;
+// mm1N_ = n_ * c_;
+
+template<typename X_T, typename GRADHIN_T, typename U>
+void MhcPreSinkhornBackwardDeterministic::ComputeGradXMatmul(const int32_t taskOffset, const int32_t mm1M)
+{
+    if (mm1M <= 0)
+        return;
+
+    mm1_.SetTensorA(gradHcWs_[taskOffset * mm1K_]);
+    mm1_.SetTensorB(phiGM_);
+    mm1_.SetHF32(true, 1);
+    mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
+    mm1_.template IterateAll<false> (gradXGm_[taskOffset * (n_ * c_)], 1);
+    mm1_.End();
+}
+
+// mm2K_ = B * S;
+// mm2M_ = calcKPerTask_;
+// mm2N_ = n_ * c_;
+
+template<typename X_T, typename GRADHIN_T, typename U>
+void MhcPreSinkhornBackwardDeterministic::ComputeGradPhiMatmul(const int32_t taskOffset, const int32_t mm2M)
+{
+    if (mm2M <= 0)
+        return;
+
+    mm2_.SetTensorA(gradNormOutWs_[taskOffset], true);
+    mm2_.SetTensorB(xFp32Ws_);
+    mm2_.SetHF32(true, 1);
+    mm2_.SetSingleShape(mm2M_, mm2N_, mm2K_);
+    mm2_.template IterateAll<false> (gradPhiGm_[taskOffset * (n_ * c_)], 1);
+    mm2_.End();
+}
 
 #endif  //  MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_H

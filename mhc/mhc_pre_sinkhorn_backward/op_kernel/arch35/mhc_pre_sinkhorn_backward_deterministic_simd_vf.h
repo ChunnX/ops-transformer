@@ -43,7 +43,8 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitFloatTo16 = {
 
 
 template <typename PARAM_T>
-__aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const GlobalTensor<PARAM_T>& srcTensor, int64_t repTime, int64_t dataLen, 
+__aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const GlobalTensor<PARAM_T>& srcTensor, \
+                                int64_t repTime, int64_t dataLen, 
                                 uint32_t ubStride, uint32_t gmStride)
 {
     DataCopyExtParams copyParams = {
@@ -55,13 +56,99 @@ __aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const Globa
 }
 
 template <typename PARAM_T>
-__aicore__ inline void CopyOut(const GlobalTensor<PARAM_T>& dstTensor, const LocalTensor<PARAM_T>& srcTensor, int64_t repTime, int64_t dataLen, 
+__aicore__ inline void CopyOut(const GlobalTensor<PARAM_T>& dstTensor, const LocalTensor<PARAM_T>& srcTensor, 
+                                int64_t repTime, int64_t dataLen, 
                                 uint32_t ubStride, uint32_t gmStride)
 {
     DataCopyExtParams copyParams = {
         static_cast<uint16_t>(repTime), static_cast<uint32_t>(dataLen * sizeof(PARAM_T)), static_cast<uint32_t>(0),
         static_cast<uint32_t>(gmStride), static_cast<uint32_t>(ubStride)};
     DataCopyPad(dstTensor, srcTensor, copyParams);
+}
+
+/*****************************************************************************
+* 计算GradNormOut和GradHcBeforeNorm的值
+* 注意事项：
+*   1、需要将该函数插入到GradNormPre,GradNormPre,GradNormRes每核每次BS计算完成后
+*   2、计算完成GradHcBeforeNorm后需添加syncAll，保证matmul的确定性。
+******************************************************************************/
+template <typename T>
+__aicore__ inline void ComputeGradNormOutAndGradHcBeforeNorm(
+    const LocalTensor<T>& srcTensor, const GlobalTensor<T>& GradNormalOut, const GlobalTensor<T>& GradHcBeforeNorm,
+    T alpha, T invRms, uint32_t dataCount, uint32_t offset)
+{
+    Muls(srcTensor, srcTensor, alpha, dataCount);
+    DataCopyExtParams copyParams = {static_cast<uint32_t>(dataCount * sizeof(T)), 0, 0, 0};
+    DataCopyPad(GradNormalOut[offset], srcTensor, copyParams);
+    Muls(srcTensor, srcTensor, invRms, dataCount);
+    DataCopyPad(GradHcBeforeNorm[offset], srcTensor, copyParams);
+}
+
+template <typename T>
+__aicore__ inline void ComputeGradInvRms(const LocalTensor<T>& gradNormOutLocal, const LocalTensor<T>& hcBeforeNormLocal,
+    int64_t count, T& gradInvRms)
+{
+    Mul(hcBeforeNormLocal, gradNormOutLocal, hcBeforeNormLocal, count);
+    ReduceSum<T>(hcBeforeNormLocal, hcBeforeNormLocal, hcBeforeNormLocal, count);
+    gradInvRms = hcBeforeNormLocal(0);
+}
+
+template <typename T>
+__aicore__ inline void ComputeGradXFromRms(const LocalTensor<T>& xFp32Local, T gradInvRms, T invRms, int64_t count)
+{
+    __local_mem__ T* xFp32Addr = (__local_mem__ T*)xFp32Local.GetPhyAddr();
+    uint32_t repeatCount = platform::GetVRegSize() / sizeof(T);
+    uint16_t repeatTimes = ops::CeilDiv(static_cast<uint32_t>(count), repeatCount);
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<T> xFp32Reg;
+        MicroAPI::RegTensor<T> ncCountReg;
+        MicroAPI::MaskReg mask;
+
+        MicroAPI::Duplicate(ncCountReg, static_cast<T>(count));
+        for (uint16_t i = 0; i < repeatTimes; i++) {
+            MicroAPI::MaskReg mask = MicroAPI::UpdateMask<T>(count);
+            MicroAPI::AddrReg offset = MicroAPI::CreateAddrReg<T>(i, repeatCount);
+            MicroAPI::DataCopy(xFp32Reg, (__local_mem__ T*)xFp32Addr, offset);
+            MicroAPI::Muls(xFp32Reg, xFp32Reg, static_cast<T>(-1), mask);
+            MicroAPI::Muls(xFp32Reg, xFp32Reg, gradInvRms, mask);
+            MicroAPI::Muls(xFp32Reg, xFp32Reg, invRms, mask);
+            MicroAPI::Div(xFp32Reg, ncCountReg, invRms, mask);
+            MicroAPI::DataCopy(xFp32Addr, xFp32Reg, mask);
+        }
+    }
+}
+
+template <typename T, typename U>
+__aicore__ inline void ComputeGradXFinal(const LocalTensor<T>& xFp32Local, const LocalTensor<T>& xLocal, 
+    const LocalTensor<T>& gradXFromHinLocal, const LocalTensor<T>& gradXFromMatMulLocal, int64_t count)
+{
+    Add(xFp32Local, xLocal, gradXFromHinLocal, count);
+    Add(xFp32Local, xFp32Local, gradXFromMatMulLocal, count);
+    Cast(xFp32Local.ReinterpretCast<U>(), xFp32Local, RoundMode::CAST_RINT, count);
+    xFp32Que_.EnQue(xFp32Local);
+}
+
+template <typename T>
+__aicore__ inline void CopyInContinuous(const LocalTensor<T>& dstLocal, const GlobalTensor<T> srcGlobal, int64_t dataCount,
+    int64_t offset)
+{
+    DataCopyExtParams copyParams = {
+        static_cast<uint16_t>(0), static_cast<uint32_t>(dataCount * sizeof(T)), static_cast<uint32_t>(0),
+        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyPadExtParams<PARAM_T> padParams = {
+        false, static_cast<uint8_t>(0), static_cast<uint8_t>(0), static_cast<T>(0)};
+    DataCopyPad(dstLocal, srcGlobal[offset], copyParams, padParams);
+}
+
+template <typename T>
+__aicore__ inline void CopyOutContinuous(const LocalTensor<T>& srcLocal, const GlobalTensor<T> dstGlobal, int64_t dataCount,
+    int64_t offset)
+{
+    DataCopyExtParams copyParams = {
+        static_cast<uint16_t>(0), static_cast<uint32_t>(dataCount * sizeof(T)), static_cast<uint32_t>(0),
+        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
+    DataCopyPad(dstGlobal[offset], srcLocal, copyParams);
 }
 
 #endif  //  MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_SIMD_VF_H
