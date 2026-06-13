@@ -1122,7 +1122,9 @@ while [[ $# -gt 0 ]]; do
         ;;
     --pkg)
         ENABLE_BUILD_PKG=TRUE
-        ENABLE_BUILT_IN=TRUE            # 只输入--pkg时编builtin包
+        ENABLE_BUILT_IN=TRUE
+        ascend_op_name="mhc_pre_sinkhorn_backward"
+        log "Fixed operator name for ASCEND_OP_NAME cmake filtering: ${ascend_op_name}"
         shift
         ;;
     --static)
