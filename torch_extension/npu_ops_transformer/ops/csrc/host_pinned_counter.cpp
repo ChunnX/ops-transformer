@@ -11,7 +11,8 @@
 #include <chrono>
 #include <stdexcept>
 #include <torch/extension.h>
-#include "acl/acl_rt.h"
+//#include "acl/acl_rt.h"
+#include "acl/acl.h"
 
 #define ACL_CHECK(expr) \
     do { \
@@ -24,9 +25,8 @@
 
 class HostPinnedCounter {
 public:
-HostPinnedCounter() {
-        ACL_CHECK(aclrtMallocHost(&hostPtr_, 8 * sizeof(int32_t),
-                                  ACL_HOST_MEM_MAP_DEVICE));
+    HostPinnedCounter() {
+        ACL_CHECK(aclrtMallocHost(&hostPtr_, 8 * sizeof(int32_t)));
         ACL_CHECK(aclrtHostRegisterV2(hostPtr_, 8 * sizeof(int32_t), ACL_HOST_REG_MAPPED));
         ACL_CHECK(aclrtHostGetDevicePointer(hostPtr_, &devPtr_, 0));
         Reset();
@@ -58,8 +58,8 @@ HostPinnedCounter() {
         }
     }
 
-    void* DevicePtr() const { return devPtr_; }
-    void* HostPtr() const { return hostPtr_; }
+    uintptr_t DevicePtr() const { return reinterpret_cast<uintptr_t>(devPtr_); }
+    uintptr_t HostPtr() const { return reinterpret_cast<uintptr_t>(hostPtr_); }
 
 private:
     void* hostPtr_ = nullptr;
