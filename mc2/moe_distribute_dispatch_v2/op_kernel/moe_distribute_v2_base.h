@@ -308,6 +308,7 @@ __aicore__ inline void AIVRDMAPostRead(
     curHead++;
     AIVRDMAPostDoorBell(qp_ctx_entry, curHead, (__gm__ uint32_t*) curHardwareHead, ubLocalTensor, ubLocalHeadTensor,
         selfDataStatusGMAiv);
+    PipeBarrier<PIPE_ALL>();
     DumpSQWqeToWin((GM_ADDR)sqBaseAddr, wqeSize, QP_DEPTH, ubLocalTensor, selfDataStatusGMAiv);
 }
 
