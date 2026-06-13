@@ -32,6 +32,14 @@
   - `04_kernel_design.md` — Kernel 实现方案（Controller/BasicBlock/VF/L1/UB）
 **详细任务说明**: [reference/next_steps/4_srs_design.md](reference/next_steps/4_srs_design.md)
 
+### 任务 5：设计 GMM A16W4 PerGroup ND 测试用例
+**目标**: 基于算子约束说明和 01/02/03/04 设计文档，设计具体的测试用例（tiling 异常拦截、精度、功能、性能、泛化、kernel 打桩验证），给出具体参数设置，产出用例设计文档和输入 Excel 表格
+**产出**: `.workflow/raw/design/` 下的用例设计文档和 Excel 表格：
+  - `05_test_case_design.md` — 用例设计文档
+  - `test_cases_*.xlsx` — 用例输入 Excel 表格（6 个 sheet）
+  - `generate_test_cases.py` — 用例生成脚本
+**详细任务说明**: [reference/next_steps/5_test_case_design.md](reference/next_steps/5_test_case_design.md)
+
 ## 阶段二：编码实现（待启动）
 
 > 在阶段一方案确认后启动编码。
@@ -63,6 +71,7 @@
   - [x] 任务 2：走读 GMM A16W8 代码实现 ✅
   - [x] 任务 3：走读 ops-nn wqbmmv2 ND 反量化实现 ✅
   - [x] 任务 4：SRS 算子开发实现方案 ✅
+  - [ ] 任务 5：设计测试用例（tiling 异常拦截、精度、功能、性能、泛化）
 - [ ] 阶段二：编码实现
 - [ ] 阶段三：验证
 
