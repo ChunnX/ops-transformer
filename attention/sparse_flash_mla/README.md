@@ -163,7 +163,7 @@
     <tr>
       <td>metadata</td>
       <td>可选输入</td>
-      <td>aicpu算子（npu_sparse_flash_mla_metadata）的分核结果。</td>
+      <td>aicpu算子（sparse_flash_mla_metadata）的分核结果。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
