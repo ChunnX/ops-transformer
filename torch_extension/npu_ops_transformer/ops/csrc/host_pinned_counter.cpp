@@ -11,7 +11,6 @@
 #include <chrono>
 #include <stdexcept>
 #include <torch/extension.h>
-//#include "acl/acl_rt.h"
 #include "acl/acl.h"
 
 #define ACL_CHECK(expr) \
