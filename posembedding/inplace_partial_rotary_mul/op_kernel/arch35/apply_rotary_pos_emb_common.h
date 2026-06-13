@@ -97,12 +97,12 @@ __aicore__ inline void HalfAlignVF(const LocalTensor<T> &sinTensor, const LocalT
                     ops::LoadTwoTensorForDtypeT<T>(
                         currCosUb, currCosUb, vregCos, vregHalfCos, preg, preg, offset, halfOffset);
 
-                    Mul(vregSin, vregSin, vregHalfIn, preg);
-                    Mul(vregHalfOut, vregHalfSin, vregIn, preg);
-                    Mul(vregCos, vregCos, vregIn, preg);
-                    Sub(vregOut, vregCos, vregSin, preg);
-                    Mul(vregHalfCos, vregHalfCos, vregHalfIn, preg);
-                    Add(vregHalfOut, vregHalfOut, vregHalfCos, preg);
+                    Reg::Mul(vregSin, vregSin, vregHalfIn, preg);
+                    Reg::Mul(vregHalfOut, vregHalfSin, vregIn, preg);
+                    Reg::Mul(vregCos, vregCos, vregIn, preg);
+                    Reg::Sub(vregOut, vregCos, vregSin, preg);
+                    Reg::Mul(vregHalfCos, vregHalfCos, vregHalfIn, preg);
+                    Reg::Add(vregHalfOut, vregHalfOut, vregHalfCos, preg);
 
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregOut, preg, offset);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregHalfOut, preg, halfOffset);
@@ -179,18 +179,18 @@ __aicore__ inline void QuarterAlignVF(const LocalTensor<T> &sinTensor, const Loc
                     ops::LoadTwoTensorForDtypeT<T>(
                         currCosUb, currCosUb, vregQ2Cos, vregQ3Cos, preg, preg, q2Offset, q3Offset);
 
-                    Mul(vregSin, vregSin, vregQ1In, preg);
-                    Mul(vregQ1Out, vregQ1Sin, vregIn, preg);
-                    Mul(vregQ2Sin, vregQ2Sin, vregQ3In, preg);
-                    Mul(vregQ3Out, vregQ3Sin, vregQ2In, preg);
-                    Mul(vregCos, vregCos, vregIn, preg);
-                    Sub(vregOut, vregCos, vregSin, preg);
-                    Mul(vregQ1Cos, vregQ1Cos, vregQ1In, preg);
-                    Add(vregQ1Out, vregQ1Out, vregQ1Cos, preg);
-                    Mul(vregQ2Cos, vregQ2Cos, vregQ2In, preg);
-                    Sub(vregQ2Out, vregQ2Cos, vregQ2Sin, preg);
-                    Mul(vregQ3Cos, vregQ3Cos, vregQ3In, preg);
-                    Add(vregQ3Out, vregQ3Out, vregQ3Cos, preg);
+                    Reg::Mul(vregSin, vregSin, vregQ1In, preg);
+                    Reg::Mul(vregQ1Out, vregQ1Sin, vregIn, preg);
+                    Reg::Mul(vregQ2Sin, vregQ2Sin, vregQ3In, preg);
+                    Reg::Mul(vregQ3Out, vregQ3Sin, vregQ2In, preg);
+                    Reg::Mul(vregCos, vregCos, vregIn, preg);
+                    Reg::Sub(vregOut, vregCos, vregSin, preg);
+                    Reg::Mul(vregQ1Cos, vregQ1Cos, vregQ1In, preg);
+                    Reg::Add(vregQ1Out, vregQ1Out, vregQ1Cos, preg);
+                    Reg::Mul(vregQ2Cos, vregQ2Cos, vregQ2In, preg);
+                    Reg::Sub(vregQ2Out, vregQ2Cos, vregQ2Sin, preg);
+                    Reg::Mul(vregQ3Cos, vregQ3Cos, vregQ3In, preg);
+                    Reg::Add(vregQ3Out, vregQ3Out, vregQ3Cos, preg);
 
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregOut, preg, offset);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregQ1Out, preg, q1Offset);
@@ -256,15 +256,15 @@ __aicore__ inline void InterleaveModeVF(const LocalTensor<T> &sinTensor, const L
                     ops::LoadOneTensorForDtypeT<T>(currCosUb, vregLatterCos, pregLoop, oddOffset);
                     ops::LoadOneTensorForDtypeT<T>(currSinUb, vregFormerSin, pregLoop, evenOffSet);
                     ops::LoadOneTensorForDtypeT<T>(currSinUb, vregLatterSin, pregLoop, oddOffset);
-                    Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
-                    Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregLoop);
+                    Reg::Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
+                    Reg::Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregLoop);
                     Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
-                    Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
+                    Reg::Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
                     Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
-                    Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
-                    Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
-                    Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregLoop);
-                    Add(vregLatterCos, vregLatterCos, vregLatterSin, pregLoop);
+                    Reg::Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
+                    Reg::Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
+                    Reg::Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregLoop);
+                    Reg::Add(vregLatterCos, vregLatterCos, vregLatterSin, pregLoop);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregFormerCos, pregLoop, evenOffSet);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregLatterCos, pregLoop, oddOffset);
                 }
@@ -283,15 +283,15 @@ __aicore__ inline void InterleaveModeVF(const LocalTensor<T> &sinTensor, const L
                     ops::LoadOneTensorForDtypeT<T>(tailCosUb, vregLatterCos, pregTail, VL_FLOAT32_SIZE);
                     ops::LoadOneTensorForDtypeT<T>(tailSinUb, vregFormerSin, pregLoop, 0);
                     ops::LoadOneTensorForDtypeT<T>(tailSinUb, vregLatterSin, pregTail, VL_FLOAT32_SIZE);
-                    Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
-                    Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregTail);
+                    Reg::Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
+                    Reg::Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregTail);
                     Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
-                    Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
+                    Reg::Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
                     Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
-                    Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
-                    Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
-                    Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregTail);
-                    Add(vregLatterCos, vregLatterCos, vregLatterSin, pregTail);
+                    Reg::Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
+                    Reg::Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
+                    Reg::Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregTail);
+                    Reg::Add(vregLatterCos, vregLatterCos, vregLatterSin, pregTail);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregFormerCos, pregLoop, 0);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregLatterCos, pregTail, VL_FLOAT32_SIZE);
                 }
@@ -303,12 +303,12 @@ __aicore__ inline void InterleaveModeVF(const LocalTensor<T> &sinTensor, const L
                     ops::LoadOneTensorForDtypeT<T>(currInUb, vregFormerIn, pregTail, 0);
                     ops::LoadOneTensorForDtypeT<T>(tailCosUb, vregFormerCos, pregTail, 0);
                     ops::LoadOneTensorForDtypeT<T>(tailSinUb, vregFormerSin, pregTail, 0);
-                    Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregTail);
+                    Reg::Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregTail);
                     Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
-                    Muls(vregOdd, vregOdd, float(-1.0), pregTail);
+                    Reg::Muls(vregOdd, vregOdd, float(-1.0), pregTail);
                     Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
-                    Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregTail);
-                    Add(vregFormerCos, vregFormerCos, vregFormerSin, pregTail);
+                    Reg::Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregTail);
+                    Reg::Add(vregFormerCos, vregFormerCos, vregFormerSin, pregTail);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregFormerCos, pregTail, 0);
                 }
             }
@@ -379,15 +379,15 @@ __aicore__ inline void DeepSeekInterleaveModeVF(const LocalTensor<T> &sinTensor,
                     ops::LoadTwoTensorForDtypeT<T>(
                         currCosUb, currCosUb, vregCos, vregHalfCos, pregFull, pregFull, offset, halfOffset);
 
-                    DeInterleave<float>(vregIn, vregHalfIn, vregIn, vregHalfIn);
+                    Reg::DeInterleave<float>(vregIn, vregHalfIn, vregIn, vregHalfIn);
 
-                    Mul(vregOut, vregCos, vregIn, pregFull);
-                    Mul(vregHalfOut, vregHalfCos, vregHalfIn, pregFull);
-                    Muls(vregHalfIn, vregHalfIn, float(-1.0), pregFull);
-                    Mul(vregSin, vregSin, vregHalfIn, pregFull);
-                    Add(vregOut, vregOut, vregSin, pregFull);
-                    Mul(vregHalfSin, vregHalfSin, vregIn, pregFull);
-                    Add(vregHalfOut, vregHalfOut, vregHalfSin, pregFull);
+                    Reg::Mul(vregOut, vregCos, vregIn, pregFull);
+                    Reg::Mul(vregHalfOut, vregHalfCos, vregHalfIn, pregFull);
+                    Reg::Muls(vregHalfIn, vregHalfIn, float(-1.0), pregFull);
+                    Reg::Mul(vregSin, vregSin, vregHalfIn, pregFull);
+                    Reg::Add(vregOut, vregOut, vregSin, pregFull);
+                    Reg::Mul(vregHalfSin, vregHalfSin, vregIn, pregFull);
+                    Reg::Add(vregHalfOut, vregHalfOut, vregHalfSin, pregFull);
 
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregOut, pregFull, offset);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregHalfOut, pregFull, halfOffset);
@@ -410,15 +410,15 @@ __aicore__ inline void DeepSeekInterleaveModeVF(const LocalTensor<T> &sinTensor,
                     ops::LoadTwoTensorForDtypeT<T>(
                         currCosUb, currCosUb, vregCos, vregHalfCos, pregHalfTail, pregHalfTail, offset, halfOffset);
 
-                    DeInterleave<float>(vregIn, vregHalfIn, vregIn, vregHalfIn);
+                    Reg::DeInterleave<float>(vregIn, vregHalfIn, vregIn, vregHalfIn);
 
-                    Mul(vregOut, vregCos, vregIn, pregHalfTail);
-                    Mul(vregHalfOut, vregHalfCos, vregHalfIn, pregHalfTail);
-                    Muls(vregHalfIn, vregHalfIn, float(-1.0), pregHalfTail);
-                    Mul(vregSin, vregSin, vregHalfIn, pregHalfTail);
-                    Add(vregOut, vregOut, vregSin, pregHalfTail);
-                    Mul(vregHalfSin, vregHalfSin, vregIn, pregHalfTail);
-                    Add(vregHalfOut, vregHalfOut, vregHalfSin, pregHalfTail);
+                    Reg::Mul(vregOut, vregCos, vregIn, pregHalfTail);
+                    Reg::Mul(vregHalfOut, vregHalfCos, vregHalfIn, pregHalfTail);
+                    Reg::Muls(vregHalfIn, vregHalfIn, float(-1.0), pregHalfTail);
+                    Reg::Mul(vregSin, vregSin, vregHalfIn, pregHalfTail);
+                    Reg::Add(vregOut, vregOut, vregSin, pregHalfTail);
+                    Reg::Mul(vregHalfSin, vregHalfSin, vregIn, pregHalfTail);
+                    Reg::Add(vregHalfOut, vregHalfOut, vregHalfSin, pregHalfTail);
 
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregOut, pregHalfTail, offset);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregHalfOut, pregHalfTail, halfOffset);
@@ -434,14 +434,14 @@ __aicore__ inline void DeepSeekInterleaveModeVF(const LocalTensor<T> &sinTensor,
                     ops::LoadTwoTensorForDtypeT<T>(
                         currCosUb, currCosUb, vregCos, vregHalfCos, pregHalfTail, pregHalfTail, offset, halfOffset);
 
-                    DeInterleave<float>(vregIn, vregHalfIn, vregIn, vregHalfIn);
-                    Mul(vregOut, vregCos, vregIn, pregHalfTail);
-                    Mul(vregHalfOut, vregHalfCos, vregHalfIn, pregHalfTail);
-                    Muls(vregHalfIn, vregHalfIn, float(-1.0), pregHalfTail);
-                    Mul(vregSin, vregSin, vregHalfIn, pregHalfTail);
-                    Add(vregOut, vregOut, vregSin, pregHalfTail);
-                    Mul(vregHalfSin, vregHalfSin, vregIn, pregHalfTail);
-                    Add(vregHalfOut, vregHalfOut, vregHalfSin, pregHalfTail);
+                    Reg::DeInterleave<float>(vregIn, vregHalfIn, vregIn, vregHalfIn);
+                    Reg::Mul(vregOut, vregCos, vregIn, pregHalfTail);
+                    Reg::Mul(vregHalfOut, vregHalfCos, vregHalfIn, pregHalfTail);
+                    Reg::Muls(vregHalfIn, vregHalfIn, float(-1.0), pregHalfTail);
+                    Reg::Mul(vregSin, vregSin, vregHalfIn, pregHalfTail);
+                    Reg::Add(vregOut, vregOut, vregSin, pregHalfTail);
+                    Reg::Mul(vregHalfSin, vregHalfSin, vregIn, pregHalfTail);
+                    Reg::Add(vregHalfOut, vregHalfOut, vregHalfSin, pregHalfTail);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregOut, pregHalfTail, offset);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregHalfOut, pregHalfTail, halfOffset);
                 }
@@ -500,12 +500,12 @@ __aicore__ inline void BatchHalfAlignVF(__ubuf__ T *in, __ubuf__ T *cos, __ubuf_
                         ops::LoadOneTensorForDtypeT<T>(
                             currSinUb, sinPart2Reg, pregLoop, i * VL_FLOAT32_SIZE + dHalfOffset);
                         // 计算
-                        Mul(cosPart1Reg, inPart1Reg, cosPart1Reg, pregLoop);
-                        Mul(sinPart1Reg, inPart2Reg, sinPart1Reg, pregLoop);
-                        Sub(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregLoop);
-                        Mul(cosPart2Reg, inPart2Reg, cosPart2Reg, pregLoop);
-                        Mul(sinPart2Reg, sinPart2Reg, inPart1Reg, pregLoop);
-                        Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregLoop);
+                        Reg::Mul(cosPart1Reg, inPart1Reg, cosPart1Reg, pregLoop);
+                        Reg::Mul(sinPart1Reg, inPart2Reg, sinPart1Reg, pregLoop);
+                        Reg::Sub(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregLoop);
+                        Reg::Mul(cosPart2Reg, inPart2Reg, cosPart2Reg, pregLoop);
+                        Reg::Mul(sinPart2Reg, sinPart2Reg, inPart1Reg, pregLoop);
+                        Reg::Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregLoop);
                         // 拷贝回UB
                         ops::StoreOneTensorForDtypeT<T>(currOutUb, cosPart1Reg, pregLoop, i * VL_FLOAT32_SIZE);
                         ops::StoreOneTensorForDtypeT<T>(
@@ -614,18 +614,18 @@ __aicore__ inline void BatchQuarterAlignVF(__ubuf__ T *in, __ubuf__ T *cos, __ub
                             i * VL_FLOAT32_SIZE + dHalfOffset,
                             i * VL_FLOAT32_SIZE + dThreeQuarterOffset);
                         // 计算
-                        Mul(cosPart1Reg, inPart1Reg, cosPart1Reg, pregLoop);
-                        Mul(sinPart1Reg, inPart2Reg, sinPart1Reg, pregLoop);
-                        Sub(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregLoop);
-                        Mul(cosPart2Reg, inPart2Reg, cosPart2Reg, pregLoop);
-                        Mul(sinPart2Reg, sinPart2Reg, inPart1Reg, pregLoop);
-                        Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregLoop);
-                        Mul(cosPart3Reg, inPart3Reg, cosPart3Reg, pregLoop);
-                        Mul(sinPart3Reg, inPart4Reg, sinPart3Reg, pregLoop);
-                        Sub(cosPart3Reg, cosPart3Reg, sinPart3Reg, pregLoop);
-                        Mul(cosPart4Reg, inPart4Reg, cosPart4Reg, pregLoop);
-                        Mul(sinPart4Reg, sinPart4Reg, inPart3Reg, pregLoop);
-                        Add(cosPart4Reg, cosPart4Reg, sinPart4Reg, pregLoop);
+                        Reg::Mul(cosPart1Reg, inPart1Reg, cosPart1Reg, pregLoop);
+                        Reg::Mul(sinPart1Reg, inPart2Reg, sinPart1Reg, pregLoop);
+                        Reg::Sub(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregLoop);
+                        Reg::Mul(cosPart2Reg, inPart2Reg, cosPart2Reg, pregLoop);
+                        Reg::Mul(sinPart2Reg, sinPart2Reg, inPart1Reg, pregLoop);
+                        Reg::Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregLoop);
+                        Reg::Mul(cosPart3Reg, inPart3Reg, cosPart3Reg, pregLoop);
+                        Reg::Mul(sinPart3Reg, inPart4Reg, sinPart3Reg, pregLoop);
+                        Reg::Sub(cosPart3Reg, cosPart3Reg, sinPart3Reg, pregLoop);
+                        Reg::Mul(cosPart4Reg, inPart4Reg, cosPart4Reg, pregLoop);
+                        Reg::Mul(sinPart4Reg, sinPart4Reg, inPart3Reg, pregLoop);
+                        Reg::Add(cosPart4Reg, cosPart4Reg, sinPart4Reg, pregLoop);
                         // 拷贝回UB
                         ops::StoreOneTensorForDtypeT<T>(currOutUb, cosPart1Reg, pregLoop, i * VL_FLOAT32_SIZE);
                         ops::StoreOneTensorForDtypeT<T>(
@@ -705,15 +705,15 @@ __aicore__ inline void BatchInterleaveModeVF(__ubuf__ T *in, __ubuf__ T *cos, __
                         ops::LoadOneTensorForDtypeT<T>(currSinUb, sinPart1Reg, pregPart1, i * loopSize);
                         ops::LoadOneTensorForDtypeT<T>(
                             currSinUb, sinPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
-                        Mul(cosPart1Reg, cosPart1Reg, inPart1Reg, pregPart1);
-                        Mul(cosPart2Reg, cosPart2Reg, inPart2Reg, pregPart2);
+                        Reg::Mul(cosPart1Reg, cosPart1Reg, inPart1Reg, pregPart1);
+                        Reg::Mul(cosPart2Reg, cosPart2Reg, inPart2Reg, pregPart2);
                         Reg::DeInterleave<float>(inPart1Reg, inPart2Reg, inPart1Reg, inPart2Reg);
-                        Muls(inPart2Reg, inPart2Reg, float(-1.0), pregLoop);
+                        Reg::Muls(inPart2Reg, inPart2Reg, float(-1.0), pregLoop);
                         Reg::Interleave<float>(inPart1Reg, inPart2Reg, inPart2Reg, inPart1Reg);
-                        Mul(sinPart1Reg, sinPart1Reg, inPart1Reg, pregPart1);
-                        Add(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregPart1);
-                        Mul(sinPart2Reg, sinPart2Reg, inPart2Reg, pregPart2);
-                        Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregPart2);
+                        Reg::Mul(sinPart1Reg, sinPart1Reg, inPart1Reg, pregPart1);
+                        Reg::Add(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregPart1);
+                        Reg::Mul(sinPart2Reg, sinPart2Reg, inPart2Reg, pregPart2);
+                        Reg::Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregPart2);
                         ops::StoreOneTensorForDtypeT<T>(currOutUb, cosPart1Reg, pregPart1, i * loopSize);
                         ops::StoreOneTensorForDtypeT<T>(
                             currOutUb, cosPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
@@ -790,13 +790,13 @@ __aicore__ inline void BatchDeepSeekInterleaveModeVF(__ubuf__ T *in, __ubuf__ T 
                         ops::LoadOneTensorForDtypeT<T>(
                             currSinUb, sinPart2Reg, pregLoop, i * VL_FLOAT32_SIZE + dHalfOffset);
                         Reg::DeInterleave<float>(inPart1Reg, inPart2Reg, inPart1Reg, inPart2Reg);
-                        Mul(cosPart1Reg, cosPart1Reg, inPart1Reg, pregLoop);
-                        Mul(cosPart2Reg, cosPart2Reg, inPart2Reg, pregLoop);
-                        Muls(inPart2Reg, inPart2Reg, float(-1.0), pregLoop);
-                        Mul(sinPart1Reg, sinPart1Reg, inPart2Reg, pregLoop);
-                        Add(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregLoop);
-                        Mul(sinPart2Reg, sinPart2Reg, inPart1Reg, pregLoop);
-                        Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregLoop);
+                        Reg::Mul(cosPart1Reg, cosPart1Reg, inPart1Reg, pregLoop);
+                        Reg::Mul(cosPart2Reg, cosPart2Reg, inPart2Reg, pregLoop);
+                        Reg::Muls(inPart2Reg, inPart2Reg, float(-1.0), pregLoop);
+                        Reg::Mul(sinPart1Reg, sinPart1Reg, inPart2Reg, pregLoop);
+                        Reg::Add(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregLoop);
+                        Reg::Mul(sinPart2Reg, sinPart2Reg, inPart1Reg, pregLoop);
+                        Reg::Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregLoop);
                         ops::StoreOneTensorForDtypeT<T>(currOutUb, cosPart1Reg, pregLoop, i * VL_FLOAT32_SIZE);
                         ops::StoreOneTensorForDtypeT<T>(
                             currOutUb, cosPart2Reg, pregLoop, i * VL_FLOAT32_SIZE + dHalfOffset);
@@ -854,19 +854,19 @@ __aicore__ inline void InterleaveModeVFMixed(const LocalTensor<TX> &inTensor, co
                     uint32_t oddOffset = evenOffSet + VL_FLOAT32_SIZE;
                     ops::LoadOneTensorForDtypeT<TX>(currInUb, vregFormerIn, pregLoop, evenOffSet);
                     ops::LoadOneTensorForDtypeT<TX>(currInUb, vregLatterIn, pregLoop, oddOffset);
-                    DataCopy(vregFormerCos, currCosUb + evenOffSet);
-                    DataCopy(vregLatterCos, currCosUb + oddOffset);
-                    DataCopy(vregFormerSin, currSinUb + evenOffSet);
-                    DataCopy(vregLatterSin, currSinUb + oddOffset);
-                    Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
-                    Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregLoop);
+                    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregFormerCos, currCosUb + evenOffSet);
+                    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregLatterCos, currCosUb + oddOffset);
+                    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregFormerSin, currSinUb + evenOffSet);
+                    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregLatterSin, currSinUb + oddOffset);
+                    Reg::Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
+                    Reg::Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregLoop);
                     Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
-                    Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
+                    Reg::Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
                     Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
-                    Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
-                    Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
-                    Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregLoop);
-                    Add(vregLatterCos, vregLatterCos, vregLatterSin, pregLoop);
+                    Reg::Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
+                    Reg::Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
+                    Reg::Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregLoop);
+                    Reg::Add(vregLatterCos, vregLatterCos, vregLatterSin, pregLoop);
                     ops::StoreOneTensorForDtypeT<TX>(currOutUb, vregFormerCos, pregLoop, evenOffSet);
                     ops::StoreOneTensorForDtypeT<TX>(currOutUb, vregLatterCos, pregLoop, oddOffset);
                 }
@@ -880,19 +880,19 @@ __aicore__ inline void InterleaveModeVFMixed(const LocalTensor<TX> &inTensor, co
                     pregTail = Reg::UpdateMask<float>(updateCnt);
                     ops::LoadOneTensorForDtypeT<TX>(currInUb, vregFormerIn, pregLoop, 0);
                     ops::LoadOneTensorForDtypeT<TX>(currInUb, vregLatterIn, pregTail, VL_FLOAT32_SIZE);
-                    DataCopy(vregFormerCos, tailCosUb);
-                    DataCopy(vregLatterCos, tailCosUb + VL_FLOAT32_SIZE);
-                    DataCopy(vregFormerSin, tailSinUb);
-                    DataCopy(vregLatterSin, tailSinUb + VL_FLOAT32_SIZE);
-                    Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
-                    Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregTail);
+                    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregFormerCos, tailCosUb);
+                    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregLatterCos, tailCosUb + VL_FLOAT32_SIZE);
+                    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregFormerSin, tailSinUb);
+                    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregLatterSin, tailSinUb + VL_FLOAT32_SIZE);
+                    Reg::Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregLoop);
+                    Reg::Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregTail);
                     Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
-                    Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
+                    Reg::Muls(vregOdd, vregOdd, float(-1.0), pregLoop);
                     Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
-                    Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
-                    Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
-                    Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregTail);
-                    Add(vregLatterCos, vregLatterCos, vregLatterSin, pregTail);
+                    Reg::Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregLoop);
+                    Reg::Add(vregFormerCos, vregFormerCos, vregFormerSin, pregLoop);
+                    Reg::Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregTail);
+                    Reg::Add(vregLatterCos, vregLatterCos, vregLatterSin, pregTail);
                     ops::StoreOneTensorForDtypeT<TX>(currOutUb, vregFormerCos, pregLoop, 0);
                     ops::StoreOneTensorForDtypeT<TX>(currOutUb, vregLatterCos, pregTail, VL_FLOAT32_SIZE);
                 }
@@ -901,14 +901,14 @@ __aicore__ inline void InterleaveModeVFMixed(const LocalTensor<TX> &inTensor, co
                     uint32_t updateCnt = tailLen;
                     pregTail = Reg::UpdateMask<float>(updateCnt);
                     ops::LoadOneTensorForDtypeT<TX>(currInUb, vregFormerIn, pregTail, 0);
-                    DataCopy(vregFormerCos, tailCosUb);
-                    DataCopy(vregFormerSin, tailSinUb);
-                    Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregTail);
+                    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregFormerCos, tailCosUb);
+                    Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(vregFormerSin, tailSinUb);
+                    Reg::Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregTail);
                     Reg::DeInterleave<float>(vregEven, vregOdd, vregFormerIn, vregLatterIn);
-                    Muls(vregOdd, vregOdd, float(-1.0), pregTail);
+                    Reg::Muls(vregOdd, vregOdd, float(-1.0), pregTail);
                     Reg::Interleave<float>(vregFormerIn, vregLatterIn, vregOdd, vregEven);
-                    Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregTail);
-                    Add(vregFormerCos, vregFormerCos, vregFormerSin, pregTail);
+                    Reg::Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregTail);
+                    Reg::Add(vregFormerCos, vregFormerCos, vregFormerSin, pregTail);
                     ops::StoreOneTensorForDtypeT<TX>(currOutUb, vregFormerCos, pregTail, 0);
                 }
             }
@@ -985,15 +985,15 @@ __aicore__ inline void BatchInterleaveModeVFMixed(__ubuf__ TX *in, __ubuf__ floa
                         ops::LoadOneTensorForDtypeT<float>(currSinUb, sinPart1Reg, pregPart1, i * loopSize);
                         ops::LoadOneTensorForDtypeT<float>(
                             currSinUb, sinPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
-                        Mul(cosPart1Reg, cosPart1Reg, inPart1Reg, pregPart1);
-                        Mul(cosPart2Reg, cosPart2Reg, inPart2Reg, pregPart2);
+                        Reg::Mul(cosPart1Reg, cosPart1Reg, inPart1Reg, pregPart1);
+                        Reg::Mul(cosPart2Reg, cosPart2Reg, inPart2Reg, pregPart2);
                         Reg::DeInterleave<float>(inPart1Reg, inPart2Reg, inPart1Reg, inPart2Reg);
-                        Muls(inPart2Reg, inPart2Reg, float(-1.0), pregLoop);
+                        Reg::Muls(inPart2Reg, inPart2Reg, float(-1.0), pregLoop);
                         Reg::Interleave<float>(inPart1Reg, inPart2Reg, inPart2Reg, inPart1Reg);
-                        Mul(sinPart1Reg, sinPart1Reg, inPart1Reg, pregPart1);
-                        Add(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregPart1);
-                        Mul(sinPart2Reg, sinPart2Reg, inPart2Reg, pregPart2);
-                        Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregPart2);
+                        Reg::Mul(sinPart1Reg, sinPart1Reg, inPart1Reg, pregPart1);
+                        Reg::Add(cosPart1Reg, cosPart1Reg, sinPart1Reg, pregPart1);
+                        Reg::Mul(sinPart2Reg, sinPart2Reg, inPart2Reg, pregPart2);
+                        Reg::Add(cosPart2Reg, cosPart2Reg, sinPart2Reg, pregPart2);
                         ops::StoreOneTensorForDtypeT<TX>(currOutUb, cosPart1Reg, pregPart1, i * loopSize);
                         ops::StoreOneTensorForDtypeT<TX>(currOutUb,
                             cosPart2Reg,
