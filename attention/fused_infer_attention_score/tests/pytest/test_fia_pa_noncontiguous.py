@@ -110,17 +110,17 @@ def _block_table(batch, seqs_kv, bs):
     return tbl, total
 
 
-def _kv_shape(kv_layout, total_blocks, block_size, kv_seq, q_layout):
+def _kv_shape(kv_layout, total_blocks, block_size, kv_seq, q_layout, d):
     if kv_layout == "BnNBsD":
-        return (total_blocks, N_kv, block_size, D)
+        return (total_blocks, N_kv, block_size, d)
     elif kv_layout == "BnBsH":
-        return (total_blocks, block_size, N_kv * D)
+        return (total_blocks, block_size, N_kv * d)
     elif kv_layout == "NZ":
-        return (total_blocks, N_kv, D // NZ_D0, block_size, NZ_D0)
+        return (total_blocks, N_kv, d // NZ_D0, block_size, NZ_D0)
     elif kv_layout == "none":
         if q_layout in ("BSND", "BSH"):
-            return (B, kv_seq, N_kv, D)
-        return (B, N_kv, kv_seq, D)
+            return (B, kv_seq, N_kv, d)
+        return (B, N_kv, kv_seq, d)
     raise ValueError(kv_layout)
 
 
@@ -258,7 +258,7 @@ def _run_one(cfg, expect_pass):
             else:
                 k_rope_npu = kr_bnsd.npu()
 
-    kv_shape = _kv_shape(kv_layout, total_b, bs, kv_seq, q_layout)
+    kv_shape = _kv_shape(kv_layout, total_b, bs, kv_seq, q_layout, d)
     k_ref, v_ref = _make_kv(kv_shape)
 
     ref_out = _run(q_npu, k_ref.npu(), v_ref.npu(), pa, q_layout, act_q, act_kv,
