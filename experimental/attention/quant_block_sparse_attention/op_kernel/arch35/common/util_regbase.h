@@ -326,6 +326,7 @@ struct ConstInfo{
     INFER_CONST_INFO;
     int64_t n2GS1o;
     int64_t gS1o;
+    uint32_t maxBlockNumPerBatch;
 };
 
 /* only support b32 or b64 */
