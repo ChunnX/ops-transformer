@@ -37,6 +37,15 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode
 
+// GMM1 dispatch(sb1)->matmul(AIC) 反压: aic↔aiv1 信用额度(credit)flag。
+//   循环前 AIC 预发 GMM1_DISPATCH_CREDITS 个信用; sb1 每专家开头 WaitFlag 消费 1 个再 SendInfoCal;
+//   AIC 每处理完一专家 SetFlag 归还 1 个。⇒ sb1 领先 AIC 恒 ≤ 信用数, 故 flag2 与本 ack 两个计数器都恒
+//   ≤ 信用数 < 15, 与 epr 解耦(epr=1024 也不会触顶溢出)。取 8, 远离 15 上限, 又够 sb1 提前 8 个专家做
+//   dispatch 保流水。aiv1↔aic 约定: aiv1 用通道 N(0-10), aic 用 N+16; 本 ack 为 aic->aiv1, 故 aic 侧
+//   SetFlag(GMM1_CREDIT_FLAG+16), sb1 侧 WaitFlag(GMM1_CREDIT_FLAG)。
+constexpr int32_t GMM1_CREDIT_FLAG = 8;
+constexpr int32_t GMM1_DISPATCH_CREDITS = 8;
+
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
 public:
@@ -637,6 +646,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendInfoCal(int32_t loc
     DataCopy<int32_t>(expertRevNumsGloablTensor_[localExpertId * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_],
         expertTokenCntTensor_, INT32_PER_256B);
     PipeBarrier<PIPE_ALL>();
+    // M 就绪通知 AIC(flag2)。sb1 的领先量由 Process 循环里的信用反压(GMM1_CREDIT_FLAG)钉在 ≤信用数,
+    // 故 flag2 单通道在途恒 <15, 不会溢出。
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(2);
 }
 
@@ -923,6 +934,8 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
                 expertRevNumsGloablTensor_[offsetInCnt]);
             Get<M_VALUE>(problemShape_) = expertRevNumsGloablTensor_.GetValue(offsetInCnt);
             CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_S>(3);
+            // 处理完本专家, 归还 1 个 dispatch 信用给 sb1(aic->aiv1 反压, 见 GMM1_CREDIT_FLAG 注释)。
+            CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_S>(GMM1_CREDIT_FLAG + 16);
         }
         if constexpr (g_coreType == AscendC::AIV) {
             if (subBlockIdx_ == 0) {
@@ -1135,9 +1148,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 3. dispatch & GroupMatmulSwigluQuant
     FirstBuffInit();
     GMMAddrInfo gmmAddrInfo;
+    // dispatch 反压预发信用: AIC 先放 GMM1_DISPATCH_CREDITS 个信用, 允许 sb1 提前这么多个专家做 dispatch;
+    // 之后每处理完一专家归还 1 个(UpdateGroupParams 里), sb1 每专家消费 1 个 → sb1 领先 AIC 恒 ≤ 信用数,
+    // flag2/credit 两个计数器都恒 <15, 与 epr 无关(epr=1024 也不溢出)。
+    if constexpr (g_coreType == AscendC::AIC) {
+        for (int c = 0; c < GMM1_DISPATCH_CREDITS; c++) {
+            CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_S>(GMM1_CREDIT_FLAG + 16);
+        }
+    }
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
+                CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(GMM1_CREDIT_FLAG);  // 消费 1 信用: 领先 AIC ≤ 信用数
                 SendInfoCal(localExpertId);
             }
         }

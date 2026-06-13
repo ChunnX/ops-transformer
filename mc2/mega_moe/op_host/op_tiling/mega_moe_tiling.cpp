@@ -51,7 +51,7 @@ namespace {
     const static int64_t MIN_TOPK = 1LL;
     const static int64_t MAX_TOPK = 32LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
-    const static int64_t MAX_EXPERT_PER_RANK = 16LL;
+    const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
     const static int64_t H_BASE = 1024LL;
     const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
