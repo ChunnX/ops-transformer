@@ -65,7 +65,7 @@ struct MhcParamsBase {
     aclTensor *invRmsOptional = nullptr;
     aclTensor *hMixOptional = nullptr;
     aclTensor *hPreOptional = nullptr;
-    bool hasRes = true;
+    bool hasResi = true;
 
     const aclTensor *xContiguous = nullptr;
     const aclTensor *phiContiguous = nullptr;
@@ -488,7 +488,7 @@ static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *exe
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     int64_t alphaSize = params.alphaContiguous->GetViewShape().GetDim(0);
-    params.hasRes = (alphaSize == ALPHA_DIM_SIZE_3);
+    params.hasResi = (alphaSize == ALPHA_DIM_SIZE_3);
 
     int64_t outFlag =
         (params.invRmsOptional != nullptr && params.hMixOptional != nullptr && params.hPreOptional != nullptr) ? 1 : 0;
@@ -505,7 +505,7 @@ static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *exe
     auto ret1 = l0op::ViewCopy(out1, params.hPost, executor);
     CHECK_RET(ret1 != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    if (params.hasRes && params.hRes != nullptr) {
+    if (params.hasResi && params.hRes != nullptr) {
         auto out2 = std::get<2>(outParams);
         auto ret2 = l0op::ViewCopy(out2, params.hRes, executor);
         CHECK_RET(ret2 != nullptr, ACLNN_ERR_INNER_NULLPTR);

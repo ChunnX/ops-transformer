@@ -150,7 +150,7 @@ public:
         chunkTSize_ = tiling_->chunkTSize;
         v1ChunkDSize_ = tiling_->v1ChunkDSize;
         hasGamma_ = (tiling_->hasGamma != 0);
-        hasRes_ = (tiling_->hasRes != 0);
+        hasResi_ = (tiling_->hasResi != 0);
         eleNumPerVf_ = MhcPreUtils::GetVRegSize() / sizeof(P);
     }
 
@@ -183,7 +183,7 @@ public:
                 postOffsetBuf_.SetValue(offset2++, curOffset * sizeof(P));
                 curOffset++;
             }
-            if (hasRes_) {
+            if (hasResi_) {
                 uint32_t nSquare = N_ * N_;
                 for (uint32_t j = 0; j < nSquare; j++) {
                     resOffsetBuf_.SetValue(offset3++, curOffset * sizeof(P));
@@ -384,7 +384,7 @@ public:
         }
 
   
-        if (hasRes_) {
+        if (hasResi_) {
             float alphaComb = alphaGm_.GetValue(kAlphaCombIndex);
             for (uint64_t i = 0; i < N_; ++i) {
                 for (uint64_t j = 0; j < N_; ++j) {
@@ -654,7 +654,7 @@ protected:
     uint64_t D_;
     bool outFlag_;
     bool hasGamma_;
-    bool hasRes_ = true;
+    bool hasResi_ = true;
 
     GlobalTensor<T> xGm_;
     GlobalTensor<P> phiGm_;
