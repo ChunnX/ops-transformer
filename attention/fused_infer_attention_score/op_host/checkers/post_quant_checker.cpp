@@ -123,7 +123,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
             if (static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel || !isSupportedLayout) {
                 if ((static_cast<uint64_t>(quantScale2ShapeSize) != 1U)) {
                     std::string reasonMsg =
-                        "For post quant per-tensor, the shape size of quant scale/offset should be equal to [1].";
+                        "For post quant per-tensor, the shape size of quant scale/offset should be equal to [1]";
                     OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(fiaInfo.opName, "quant_scale2",
                         std::to_string(quantScale2ShapeSize).c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
