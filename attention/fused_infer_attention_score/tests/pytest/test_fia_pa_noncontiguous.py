@@ -188,8 +188,12 @@ def _accum(seqs):
 def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, block_size, scale):
     torch_npu.npu.set_device(DEVICE_ID)
     torch.npu.synchronize()
-    aq = _accum(act_q) if q_layout == "TND" else act_q
-    akv = _accum(act_kv) if q_layout == "TND" else act_kv
+    if q_layout == "TND":
+        aq = torch.tensor(_accum(act_q), dtype=torch.int64)
+        akv = torch.tensor(_accum(act_kv), dtype=torch.int64)
+    else:
+        aq = torch.tensor(act_q, dtype=torch.int64)
+        akv = torch.tensor(act_kv, dtype=torch.int64)
     r, _ = torch_npu.npu_fused_infer_attention_score(
         q_npu, k_npu, v_npu,
         actual_seq_lengths=aq, actual_seq_lengths_kv=akv,
