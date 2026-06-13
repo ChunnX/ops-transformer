@@ -12,8 +12,8 @@
  * \file common.h
  * \brief
  */
-#ifndef MOE_GATING_TOP_K_COMMON_H_V35
-#define MOE_GATING_TOP_K_COMMON_H_V35
+#ifndef INPLACE_PARTIAL_ROTARY_MUL_COMMON_H_V35
+#define INPLACE_PARTIAL_ROTARY_MUL_COMMON_H_V35
 
 #include "kernel_operator.h"
 
@@ -216,4 +216,4 @@ __aicore__ inline void StoreOneTensorForDtypeT(__ubuf__ T *output, Reg::RegTenso
 }
 
 } // namespace ops
-#endif // MOE_GATING_TOP_K_COMMON_H_V35
+#endif // INPLACE_PARTIAL_ROTARY_MUL_COMMON_H_V35

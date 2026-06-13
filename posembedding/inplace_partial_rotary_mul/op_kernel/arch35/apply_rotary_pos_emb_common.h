@@ -15,7 +15,7 @@
 #ifndef APPLY_ROTARY_POS_EMB_COMMON_H
 #define APPLY_ROTARY_POS_EMB_COMMON_H
 
-#include "../inplace_partial_rotary_mul_common.h"
+#include "inplace_partial_rotary_mul_common.h"
 
 using namespace AscendC;
 
