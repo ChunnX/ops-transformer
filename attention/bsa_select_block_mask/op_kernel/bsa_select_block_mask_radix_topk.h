@@ -1271,7 +1271,9 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
 
     LocalTensor<uint8_t> maskU8 = outIndexBuf_.Get<uint8_t>();
     if (BSA_TOPK_MASK_CAST_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0 && curTileLen > 1023) {
-        Duplicate<uint8_t>(maskU8, static_cast<uint8_t>(0x7f), alignLen);
+        LocalTensor<int32_t> maskU8Fill = outIndexBuf_.Get<int32_t>();
+        Duplicate<int32_t>(maskU8Fill, static_cast<int32_t>(0x7f7f7f7f),
+                           BSAAlignTo(alignLen, static_cast<uint64_t>(sizeof(int32_t))) / sizeof(int32_t));
         PipeBarrier<PIPE_V>();
         BSA_TOPK_MASK_CAST_PRINTF("[MASK_CAST_DBG] GT before cast: curTileLen=%lu alignLen=%lu curTileK=%d\n",
             curTileLen, alignLen, curTileK);
