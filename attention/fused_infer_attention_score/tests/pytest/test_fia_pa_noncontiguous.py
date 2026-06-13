@@ -95,8 +95,10 @@ ERROR_CASES = [
 # ==============================================================================
 
 def _block_table(batch, seqs_kv, bs):
-    """blockTable shape = (batch, maxBlockNumPerSeq), dim1 >= maxBlockNumPerBatch"""
-    vn = [math.ceil(s / bs) for s in seqs_kv]
+    """blockTable shape = (batch, maxBlockNumPerSeq), dim1 >= maxBlockNumPerBatch
+    额外留 1 block 余量以保证 KV cache 容量 > actualSeqKv
+    """
+    vn = [math.ceil(s / bs) + 1 for s in seqs_kv]  # 每 batch 多 1 个 block
     total = sum(vn)
     mx = max(vn)
     ids = list(range(total))
