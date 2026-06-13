@@ -32,6 +32,7 @@ namespace QuantAllReduceImpl {
 using namespace QuantMTECommImpl;
 using namespace VectorComputeImpl;
 using namespace AscendC;
+using namespace Mc2Aclnn;
 
 // 常量定义
 constexpr static uint32_t MX_SIZE = 32U;            // MX量化时，32个x数据共有一个scale
@@ -44,7 +45,7 @@ template<TemplateTypeClass>
 class QuantAllReduceMteOneShot {
 public:
     __aicore__ inline QuantAllReduceMteOneShot() {};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR scales, GM_ADDR output,
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR scales, GM_ADDR output,
                                 TPipe *pipe, const QuantAllReduceTilingData *tilingData);
     __aicore__ inline void Process();
 private:
@@ -86,10 +87,11 @@ private:
 };
 
 template <TemplateTypeClass>
-__aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, GM_ADDR scales,
-    GM_ADDR output, TPipe *tPipe, const QuantAllReduceTilingData *tilingData)
+__aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR scales,
+                                                                    GM_ADDR output, TPipe *tPipe,
+                                                                    const QuantAllReduceTilingData *tilingData)
 {
-    mteComm_.InitHcclContext();
+    mteComm_.InitMc2Context(mc2Context, tilingData->quantAllReduceTilingInfo.isMc2Context);
     ParseTilingInfo(tilingData);
     tPipe->Reset();
     ComputeXPerBlock(tilingData, tPipe);
@@ -118,8 +120,8 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
     uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +      // scaleQueue_
                                   UB_ALIGN_BYTES +                  // winFlagsBuf_
                                   UB_ALIGN_BYTES +                  // writeStateBuf_
-                                  mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES +  // readStateBuf_
-                                  mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES;   // stateResetBuf_
+                                  mteComm_.rankDimHccl_ * UB_ALIGN_BYTES +  // readStateBuf_
+                                  mteComm_.rankDimHccl_ * UB_ALIGN_BYTES;   // stateResetBuf_
 
     // 动态开销：每增加 1 个 x 需要的 UB 字节（整数部分，分数部分见下方比例校正）
     uint64_t baseDynamic = BUFFER_NUM * sizeof(OutputType) +  // xOutQueue_
@@ -268,9 +270,9 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
         ClearSumTensor();
 
         // 遍历每张卡，读取其Win区的数据
-        uint32_t startRankId = mteComm_.hcclContext_->rankId;
-        for (uint32_t i = 0; i < mteComm_.hcclContext_->rankDim; ++i) {
-            uint32_t remoteRankId = (startRankId + i) % mteComm_.hcclContext_->rankDim;
+        uint32_t startRankId = mteComm_.rankIdHccl_;
+        for (uint32_t i = 0; i < mteComm_.rankDimHccl_; ++i) {
+            uint32_t remoteRankId = (startRankId + i) % mteComm_.rankDimHccl_;
 
             // 获取对端Win区中数据区相关的地址
             GM_ADDR remoteDataSpaceGm = mteComm_.GetWinDataAddrGm(remoteRankId, mteComm_.winBufferFlags_);

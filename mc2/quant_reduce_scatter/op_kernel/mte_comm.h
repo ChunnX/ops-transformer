@@ -41,6 +41,7 @@ template<TemplateTypeClass>
 class MTECommunication {
 public:
     __aicore__ inline MTECommunication() {};
+    __aicore__ inline void InitMc2Context(GM_ADDR mc2Context, bool isMc2Context);
     __aicore__ inline void InitHcclContext();
     __aicore__ inline void InitParams();
     __aicore__ inline void InitGMTensor(GM_ADDR x, GM_ADDR scales, GM_ADDR output, uint64_t alignedXSize, uint64_t dataSpaceGmSize);
@@ -94,6 +95,21 @@ private:
     TBuf<> readStateBuf_;
     TBuf<> stateResetBuf_;
 };
+
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::InitMc2Context(GM_ADDR mc2Context, bool isMc2Context)
+{
+    isMc2Context_ = isMc2Context;
+    if (isMc2Context_) {
+        mc2Context_ = (__gm__ Mc2QuantReduceScatterContext*)mc2Context;
+        rankIdHccl_ = mc2Context_->rankId;
+        rankDimHccl_ = mc2Context_->rankDim;
+    } else {
+        hcclContext_ = (__gm__ Mc2Kernel::HcclOpParam*)GetHcclContext<HCCL_GROUP_ID_0>();
+        rankIdHccl_ = Mc2Kernel::GetRankId(hcclContext_);
+        rankDimHccl_ = Mc2Kernel::GetRankDim(hcclContext_);
+    }
+}
 
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitHcclContext()
