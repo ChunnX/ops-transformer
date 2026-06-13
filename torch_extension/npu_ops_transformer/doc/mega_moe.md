@@ -15,86 +15,143 @@
 
     需与[get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明)配套使用，该算子将 `MoE（Mixture of Experts）`以及 `FFN（Feed-Forward Network）`的完整计算流程融合为单个算子，实现 `Dispatch + Linear1 + SwiGLU + Linear2 + Combine` 的端到端融合计算。
 
--   基础计算公式如下（详细公式请参见计算公式）：
-    ### 输入与维度约定
+-   计算公式：
+    - 定义：
+        - $⋅$ 表示矩阵乘法，$⊙$ 表示逐元素乘法。
+        - $\left \lfloor x\right \rceil$ 表示将x四舍五入到最近的整数。
+        - $\mathbb{Z_8} = \{ x \in \mathbb{Z} | −128≤x≤127 \}$
+        - $\mathbb{Z_{32}} = \{ x \in \mathbb{Z} | -2147483648≤x≤2147483647 \}$
+    - 输入：
+        - $\mathbf{x} \in \mathbb{R}^{num\_tokens \times hidden}$：激活矩阵，num\_tokens是总token数，hidden是隐藏层维度。
+        - $topk\_idx \in \mathbb{Z}^{num\_tokens \times num\_topk}$：token选择的专家编号，num\_topk是每个token选择的专家数量
+        - $topk\_weights \in \mathbb{R}^{num\_tokens \times num\_topk}$：token选择的专家的门控权重
+        - $l1\_weights \in \mathbb{R}^{num\_experts \times hidden \times (2\times intermediate\_hidden)}$：Linear1的权重矩阵，num\_experts是专家数量，intermediate\_hidden是中间层维度
+        - $l2\_weights \in \mathbb{R}^{num\_experts \times intermediate\_hidden \times hidden}$：Linear2的权重矩阵
+    - 输出：
+        - $y$：
+        - $expert\_token\_nums$：
+    - 计算过程
+        <details>
+        <summary>非量化场景A16W16（A和W分别表示Linear计算时的激活矩阵和权重矩阵，16指BFLOAT16数据类型）</summary>
 
-    - $\mathbf{x} \in \mathbb{R}^{\text{num\_tokens} \times \text{hidden}}$
-    - $\text{topk\_idx} \in \mathbb{Z}^{\text{num\_tokens} \times \text{num\_topk}}$
-    - $\text{topk\_weights} \in \mathbb{R}^{\text{num\_tokens} \times \text{num\_topk}}$
-    - $\text{l1\_weights} \in \mathbb{R}^{\text{num\_experts} \times \text{hidden} \times 2\cdot\text{intermediate\_hidden}}$
-    - $\text{l2\_weights} \in \mathbb{R}^{\text{num\_experts} \times \text{intermediate\_hidden} \times \text{hidden}}$
+        -  EP Dispatch  
+            令  
+            - $I = \{1,2,\dots,N\}$ 为 token 索引集合，$N = \text{num\_tokens}$；  
+            - $d = \text{hidden}$ 为特征维度；  
+            - 每个 token $i \in I$ 的特征向量 $\mathbf{x}_i \in \mathbb{R}^{1 \times d}$（行向量），且 $\mathbf{x}_i = \mathbf{x}[i,:]$；  
+            - $K = \text{num\_topk}$ 为每个 token 选择的专家数；  
+            - $E$ 为专家总数。  
+
+            对于每个 $i \in I$，定义  
+            $$e_{i,k} = \text{topk\_idx}[i,k],\quad k = 1,\dots,num\_topk$$  
+            其中 $e_{i,k} \in \{1,\dots,num\_experts\}$。
+            
+            在Dispatch的过程中，每个 token $i$ 将其特征向量 $\mathbf{x}_i$ 同时发送给专家 $e_{i,1}, e_{i,2}, \dots, e_{i,num\_topk}$。即对于每个 $k$，专家 $e_{i,k}$ 接收一份 $\mathbf{x}_i$。
+
+            令 $S_e = \{\, i \mid \exists k,\ \text{topk\_idx}[i,k]=e \,\}$，$N_e = |S_e|$。  
+            $$\mathbf{X}_e \in \mathbb{R}^{N_e \times d}$$  
+            是由所有满足 $i \in S_e$ 的特征向量 $\mathbf{x}_i$ **按任意固定顺序行堆叠** 而成的矩阵。
+
+            **行索引映射**：  
+            对于每个 token $i$ 及其被分配到的某个专家 $e_{i,k}$，存在唯一的行索引  
+            $$\text{idx}_{e_{i,k}}(i) \in \{1,\dots,N_{e_{i,k}}\}$$  
+            使得  
+            $$\mathbf{X}_{e_{i,k}}[\text{idx}_{e_{i,k}}(i), :] = \mathbf{x}_i.$$  
+            该映射记录了 $\mathbf{x}_i$ 在专家 $e_{i,k}$ 的输入矩阵 $\mathbf{X}_{e_{i,k}}$ 中的位置。
+
+        - **Expert Compute**  
+            **Linear1 投影（gate + up）**
+
+            $$
+            \mathbf{H}_e = \mathbf{X}_e \cdot \text{l1\_weights}[e]
+            \quad\bigl(\in \mathbb{R}^{N_e \times 2\cdot\text{intermediate\_hidden}}\bigr)
+            $$
+
+            **拆分 gate 与 up**
+
+            $$
+            \mathbf{H}_{\text{gate}} = \mathbf{H}_e\bigl[:,\;\text{:intermediate\_hidden}\bigr], \qquad
+            \mathbf{H}_{\text{up}} = \mathbf{H}_e\bigl[:,\;\text{intermediate\_hidden:}\bigr]
+            $$
+
+            **SwiGLU 激活**
+
+            $$
+            \mathbf{A}_e = \text{SiLU}\bigl(\mathbf{H}_{\text{gate}}\bigr) \;\odot\; \mathbf{H}_{\text{up}}
+            \quad\bigl(\in \mathbb{R}^{N_e \times \text{intermediate\_hidden}}\bigr)
+            $$
+
+            其中 $\text{SiLU}(z)=z\cdot\sigma(z)$，$\odot$ 为逐元素乘法。
+
+            **Linear2 投影（down projection）**
+
+            $$
+            \mathbf{Y}_e = \mathbf{A}_e \cdot \text{l2\_weights}[e]
+            \quad\bigl(\in \mathbb{R}^{N_e \times \text{hidden}}\bigr)
+            $$
+
+            经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 token $i$，它在专家 $e_k$ 中的输出行即为 $\mathbf{Y}_{e_k}\bigl[\text{idx}_{e_k}(i),\,:\bigr]$。
+        </details>
+    ---
 
     ---
 
-    ### 对 token $i\;(0 \le i < \text{num\_tokens})$
+    ### Step 2 – 专家计算
 
-    记它选择的专家编号与路由权重为  
-
-    $$
-    e_k = \text{topk\_idx}[i,k],\qquad
-    w_k = \text{topk\_weights}[i,k],\qquad k = 1,\dots,\text{num\_topk}
-    $$
-
-    ---
-
-    #### 🔹 Dispatch（分发）
-
-    Token $i$ 的特征向量 $\mathbf{x}_i \in \mathbb{R}^{\text{hidden}}$ 被**复制**给 $\text{num\_topk}$ 个专家 $e_k$，每个专家关联一个权重 $w_k$。
-
-    ---
-
-    #### 🔹 专家 $e_k$ 的内部计算（针对该单一 token）
+    此步骤以专家 $e$ 的批次 $\mathbf{X}_e$ 为单位，对每个专家独立进行。
 
     **Linear1 投影（gate + up）**
 
     $$
-    \mathbf{h}^{(k)} = \mathbf{x}_i \cdot \text{l1\_weights}[e_k]
-    \quad\bigl(\in \mathbb{R}^{2\cdot\text{intermediate\_hidden}}\bigr)
+    \mathbf{H}_e = \mathbf{X}_e \cdot \text{l1\_weights}[e]
+    \quad\bigl(\in \mathbb{R}^{N_e \times 2\cdot\text{intermediate\_hidden}}\bigr)
     $$
 
     **拆分 gate 与 up**
 
     $$
-    \mathbf{h}_{\text{gate}}^{(k)} = \mathbf{h}^{(k)}\bigl[:\text{intermediate\_hidden}\bigr],\qquad
-    \mathbf{h}_{\text{up}}^{(k)} = \mathbf{h}^{(k)}\bigl[\text{intermediate\_hidden}:\bigr]
+    \mathbf{H}_{\text{gate}} = \mathbf{H}_e\bigl[:,\;\text{:intermediate\_hidden}\bigr], \qquad
+    \mathbf{H}_{\text{up}} = \mathbf{H}_e\bigl[:,\;\text{intermediate\_hidden:}\bigr]
     $$
 
     **SwiGLU 激活**
 
     $$
-    \mathbf{a}^{(k)} = \text{SiLU}\bigl(\mathbf{h}_{\text{gate}}^{(k)}\bigr) \;\odot\; \mathbf{h}_{\text{up}}^{(k)}
-    \quad\bigl(\in \mathbb{R}^{\text{intermediate\_hidden}}\bigr)
+    \mathbf{A}_e = \text{SiLU}\bigl(\mathbf{H}_{\text{gate}}\bigr) \;\odot\; \mathbf{H}_{\text{up}}
+    \quad\bigl(\in \mathbb{R}^{N_e \times \text{intermediate\_hidden}}\bigr)
     $$
 
-    其中 $\text{SiLU}(z) = z \cdot \sigma(z)$，$\odot$ 为逐元素乘法。
+    其中 $\text{SiLU}(z)=z\cdot\sigma(z)$，$\odot$ 为逐元素乘法。
 
     **Linear2 投影（down projection）**
 
     $$
-    \mathbf{y}^{(k)} = \mathbf{a}^{(k)} \cdot \text{l2\_weights}[e_k]
-    \quad\bigl(\in \mathbb{R}^{\text{hidden}}\bigr)
+    \mathbf{Y}_e = \mathbf{A}_e \cdot \text{l2\_weights}[e]
+    \quad\bigl(\in \mathbb{R}^{N_e \times \text{hidden}}\bigr)
     $$
+
+    经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 token $i$，它在专家 $e_k$ 中的输出行即为 $\mathbf{Y}_{e_k}\bigl[\text{idx}_{e_k}(i),\,:\bigr]$。
 
     ---
 
-    #### 🔹 Combine（聚合）
+    ### Step 3 – Combine（Token‑i 视角）
 
-    Token $i$ 将所有专家的输出按其门控权重加权求和：
+    回到 token $i$ 的视角：它需要将分布在各专家中的输出聚合起来。
+
+    利用之前记录的位置索引 $\text{idx}_{e_k}(i)$，从专家 $e_k$ 的输出矩阵中取出属于 token $i$ 的行，并与 token 侧保存的门控权重 $w_k$ 相乘后求和：
 
     $$
-    \mathbf{y}_i = \sum_{k=1}^{\text{num\_topk}} w_k \;\cdot\; \mathbf{y}^{(k)}
+    \mathbf{y}_i = \sum_{k=1}^{\text{num\_topk}} w_k \;\cdot\;
+    \mathbf{Y}_{e_k}\!\bigl[\,\text{idx}_{e_k}(i),\,:\,\bigr]
     \qquad\bigl(\in \mathbb{R}^{\text{hidden}}\bigr)
     $$
 
-    所有 token 的结果堆叠为最终输出 $\mathbf{Y} \in \mathbb{R}^{\text{num\_tokens} \times \text{hidden}}$。
+    其中 $w_k = \text{topk\_weights}[i,k]$ 就是 token $i$ 对专家 $e_k$ 的门控权重。
 
-    ---
+    所有 token 的输出堆叠为最终序列输出 $\mathbf{Y} \in \mathbb{R}^{\text{num\_tokens} \times \text{hidden}}$。
 
-    ### 流程说明
 
-    - **Dispatch**：同一个 $\mathbf{x}_i$ 被同时送入 $\text{num\_topk}$ 个专家，展开多条独立计算流。
-    - **专家计算**：每个专家依次执行 Linear1（合并 gate/up）、SwiGLU 激活、Linear2（down projection）。
-    - **Combine**：各专家的输出 $\mathbf{y}^{(k)}$ 通过门控权重 $w_k$ 加权累加，恢复为 token $i$ 的最终表示。
+
     $$y = (\text{SwiGLU}(x \cdot l1\_weights)) \cdot l2\_weights$$
 
     MegaMoe 是一个多阶段融合的 MoE 算子，在专家并行场景下依次完成 Token 路由分发与量化、分组矩阵乘法 + SwiGLU 激活、二次分组矩阵乘法与跨 Rank 聚合、以及加权求和，完整计算流程可以分解为以下四个阶段。
