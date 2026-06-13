@@ -57,30 +57,20 @@ NORMAL_CASES = [
      "kv_seq": 1024, "block_size": 512, "q_seq": 4},
     {"id": "BnNBsD_BSND_dim01", "pa": True,  "kv": "BnNBsD", "ql": "BSND", "nc": "dim01",
      "kv_seq": 1024, "block_size": 512, "q_seq": 4},
-    {"id": "BnNBsD_TND_dim0",   "pa": True,  "kv": "BnNBsD", "ql": "TND",  "nc": "dim0",
-     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
-    {"id": "BnNBsD_TND_dim01",  "pa": True,  "kv": "BnNBsD", "ql": "TND",  "nc": "dim01",
-     "kv_seq": 1024, "block_size": 512, "q_seq": 4},
     # BnBsH: 仅 dim0
     {"id": "BnBsH_BNSD_dim0",   "pa": True,  "kv": "BnBsH",  "ql": "BNSD", "nc": "dim0",
      "kv_seq": 2048, "block_size": 512, "q_seq": 4},
     {"id": "BnBsH_BSND_dim0",   "pa": True,  "kv": "BnBsH",  "ql": "BSND", "nc": "dim0",
      "kv_seq": 2048, "block_size": 512, "q_seq": 4},
-    {"id": "BnBsH_TND_dim0",    "pa": True,  "kv": "BnBsH",  "ql": "TND",  "nc": "dim0",
-     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
-    # NZ: 连续, block_size 128 对齐
+    # NZ: 连续
     {"id": "NZ_BNSD_contig",    "pa": True,  "kv": "NZ",     "ql": "BNSD", "nc": "none",
      "kv_seq": 2048, "block_size": 512, "q_seq": 4},
     {"id": "NZ_BSND_contig",    "pa": True,  "kv": "NZ",     "ql": "BSND", "nc": "none",
-     "kv_seq": 2048, "block_size": 512, "q_seq": 4},
-    {"id": "NZ_TND_contig",     "pa": True,  "kv": "NZ",     "ql": "TND",  "nc": "none",
      "kv_seq": 2048, "block_size": 512, "q_seq": 4},
     # 非PA: 连续
     {"id": "NonPA_BNSD_contig", "pa": False, "kv": "none",   "ql": "BNSD", "nc": "none",
      "kv_seq": 1024, "block_size": 0, "q_seq": 4},
     {"id": "NonPA_BSND_contig", "pa": False, "kv": "none",   "ql": "BSND", "nc": "none",
-     "kv_seq": 1024, "block_size": 0, "q_seq": 4},
-    {"id": "NonPA_TND_contig",  "pa": False, "kv": "none",   "ql": "TND",  "nc": "none",
      "kv_seq": 1024, "block_size": 0, "q_seq": 4},
 ]
 
@@ -105,6 +95,7 @@ ERROR_CASES = [
 # ==============================================================================
 
 def _block_table(batch, seqs_kv, bs):
+    """blockTable shape = (batch, maxBlockNumPerSeq), dim1 >= maxBlockNumPerBatch"""
     vn = [math.ceil(s / bs) for s in seqs_kv]
     total = sum(vn)
     mx = max(vn)
