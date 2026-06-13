@@ -32,7 +32,7 @@ TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
 TILING_DATA_FIELD_DEF(uint32_t, coreNum);
 TILING_DATA_FIELD_DEF(uint32_t, outFlag);
 TILING_DATA_FIELD_DEF(uint32_t, hasGamma);
-TILING_DATA_FIELD_DEF(uint32_t, hasRes);
+TILING_DATA_FIELD_DEF(uint32_t, hasResi);
 TILING_DATA_FIELD_DEF(uint32_t, chunkTSize);
 TILING_DATA_FIELD_DEF(uint32_t, v1ChunkDSize);
 TILING_DATA_FIELD_DEF(uint64_t, totalLength);
@@ -137,7 +137,7 @@ private:
     uint32_t chunkTSize_ = 0;
     uint32_t v1ChunkDSize_ = 0;
     TilingMode tilingMode_ = TilingMode::SPLIT_BS;
-    uint32_t hasRes_ = 1;
+    uint32_t hasResi_ = 1;
 
 protected:
     matmul_tiling::MultiCoreMatmulTiling mm_;
