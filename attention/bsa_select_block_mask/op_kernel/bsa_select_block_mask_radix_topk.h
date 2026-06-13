@@ -19,6 +19,10 @@
 #define BSA_TOPK_PIPE_ALL_PROBE 1
 #endif
 
+#ifndef BSA_TOPK_MASK_CAST_DEBUG
+#define BSA_TOPK_MASK_CAST_DEBUG 0
+#endif
+
 #define BSA_TOPK_PRINTF(...) do { \
     if (BSA_TOPK_DEBUG) { \
         AscendC::printf(__VA_ARGS__); \
@@ -33,6 +37,18 @@
 
 #define BSA_TOPK_DUMP_TENSOR(...) do { \
     if (BSA_TOPK_DEBUG) { \
+        AscendC::DumpTensor(__VA_ARGS__); \
+    } \
+} while (0)
+
+#define BSA_TOPK_MASK_CAST_PRINTF(...) do { \
+    if (BSA_TOPK_MASK_CAST_DEBUG) { \
+        AscendC::printf(__VA_ARGS__); \
+    } \
+} while (0)
+
+#define BSA_TOPK_MASK_CAST_DUMP_TENSOR(...) do { \
+    if (BSA_TOPK_MASK_CAST_DEBUG) { \
         AscendC::DumpTensor(__VA_ARGS__); \
     } \
 } while (0)
@@ -1254,7 +1270,37 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     PipeBarrier<PIPE_V>();
 
     LocalTensor<uint8_t> maskU8 = outIndexBuf_.Get<uint8_t>();
+    if (BSA_TOPK_MASK_CAST_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0 && curTileLen > 1023) {
+        Duplicate<uint8_t>(maskU8, static_cast<uint8_t>(0x7f), alignLen);
+        PipeBarrier<PIPE_V>();
+        BSA_TOPK_MASK_CAST_PRINTF("[MASK_CAST_DBG] GT before cast: curTileLen=%lu alignLen=%lu curTileK=%d\n",
+            curTileLen, alignLen, curTileK);
+        BSA_TOPK_MASK_CAST_PRINTF(
+            "[MASK_CAST_DBG] maskHalf key before cast: h0=%f h127=%f h128=%f h511=%f h512=%f h1023=%f\n",
+            static_cast<float>(maskHalf.GetValue(0)),
+            static_cast<float>(maskHalf.GetValue(127)),
+            static_cast<float>(maskHalf.GetValue(128)),
+            static_cast<float>(maskHalf.GetValue(511)),
+            static_cast<float>(maskHalf.GetValue(512)),
+            static_cast<float>(maskHalf.GetValue(1023)));
+        BSA_TOPK_MASK_CAST_DUMP_TENSOR(maskHalf[480], 910, 96);
+        BSA_TOPK_MASK_CAST_DUMP_TENSOR(maskU8[480], 911, 96);
+    }
     Cast<uint8_t, half>(maskU8, maskHalf, RoundMode::CAST_NONE, alignLen);
+    PipeBarrier<PIPE_V>();
+    if (BSA_TOPK_MASK_CAST_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0 && curTileLen > 1023) {
+        BSA_TOPK_MASK_CAST_PRINTF(
+            "[MASK_CAST_DBG] maskU8 key after cast: u0=%u u127=%u u128=%u u511=%u u512=%u u516=%u u520=%u u1023=%u\n",
+            static_cast<uint32_t>(maskU8.GetValue(0)),
+            static_cast<uint32_t>(maskU8.GetValue(127)),
+            static_cast<uint32_t>(maskU8.GetValue(128)),
+            static_cast<uint32_t>(maskU8.GetValue(511)),
+            static_cast<uint32_t>(maskU8.GetValue(512)),
+            static_cast<uint32_t>(maskU8.GetValue(516)),
+            static_cast<uint32_t>(maskU8.GetValue(520)),
+            static_cast<uint32_t>(maskU8.GetValue(1023)));
+        BSA_TOPK_MASK_CAST_DUMP_TENSOR(maskU8[480], 912, 96);
+    }
 
     VToMTE3Sync();
     DataCopyPad(maskOutGmU8Local[outputGmOffset], maskU8,
@@ -1427,6 +1473,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 #undef BSA_TOPK_PRINTF
 #undef BSA_TOPK_SYNC_PRINTF
 #undef BSA_TOPK_DUMP_TENSOR
+#undef BSA_TOPK_MASK_CAST_PRINTF
+#undef BSA_TOPK_MASK_CAST_DUMP_TENSOR
 #undef BSA_TOPK_PIPE_ALL
 
 #endif // BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
