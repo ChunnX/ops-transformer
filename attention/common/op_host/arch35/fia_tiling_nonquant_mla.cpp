@@ -33,7 +33,7 @@ namespace optiling {
 using namespace arch35FIA;
 constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
 
-uint64_t AlignToPredefinedSize(uint64_t val, const std::vector<uint64_t> &candidates)
+uint64_t GetAlignedD(uint64_t val, const std::vector<uint64_t> &candidates)
 {
     for (auto c : candidates) {
         if (val <= c) {
@@ -745,8 +745,8 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyConfig()
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512) {
         dSize = fiaInfo_->qkHeadDim + fiaInfo_->ropeHeadDim;
     }
-    dSize = AlignToPredefinedSize(dSize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512, DSIZE_576});
-    dVsize = AlignToPredefinedSize(dVsize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512});
+    dSize = GetAlignedD(dSize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512, DSIZE_576});
+    dVsize = GetAlignedD(dVsize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512});
 
     const auto &configMap = GetConfigMap();
     auto it = configMap.find(std::make_tuple(sOuter, sInner, dSize, dVsize));
