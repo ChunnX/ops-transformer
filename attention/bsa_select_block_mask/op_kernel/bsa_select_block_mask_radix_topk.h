@@ -1342,14 +1342,47 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
                true, curTileLen, {1, 1, 0, 0}, eqRsvdCnt);
     VToSSync();
 
+    if (BSA_TOPK_MASK_CAST_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0 && curTileLen > 1023) {
+        BSA_TOPK_MASK_CAST_PRINTF(
+            "[MASK_CAST_DBG] EQ after gather: curTileK=%d eqRsvdCnt=%lu idx0=%d idx127=%d idx128=%d idx511=%d idx512=%d idx767=%d\n",
+            curTileK, eqRsvdCnt,
+            vecIndex.GetValue(0),
+            vecIndex.GetValue(127),
+            vecIndex.GetValue(128),
+            vecIndex.GetValue(511),
+            vecIndex.GetValue(512),
+            vecIndex.GetValue(767));
+        BSA_TOPK_MASK_CAST_DUMP_TENSOR(vecIndex[120], 920, 80);
+    }
+
     uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
 
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
+    if (BSA_TOPK_MASK_CAST_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0 && curTileLen > 1023) {
+        LocalTensor<int32_t> maskLocalFill = maskLocalBuf_.Get<int32_t>();
+        Duplicate<int32_t>(maskLocalFill, static_cast<int32_t>(0x7f7f7f7f),
+                           BSAAlignTo(alignLen, static_cast<uint64_t>(sizeof(int32_t))) / sizeof(int32_t));
+        PipeBarrier<PIPE_V>();
+    }
     DataCopyPad(maskLocal, maskOutGmU8Local[outputGmOffset],
                 DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
                 DataCopyPadExtParams<uint8_t>(false, 0,
                     static_cast<uint8_t>(alignLen - curTileLen), 0));
     MTE2ToSSync();
+
+    if (BSA_TOPK_MASK_CAST_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0 && curTileLen > 1023) {
+        BSA_TOPK_MASK_CAST_PRINTF(
+            "[MASK_CAST_DBG] EQ after gm read: writeCnt=%u m0=%u m511=%u m512=%u m516=%u m520=%u m767=%u m768=%u\n",
+            writeCnt,
+            static_cast<uint32_t>(maskLocal.GetValue(0)),
+            static_cast<uint32_t>(maskLocal.GetValue(511)),
+            static_cast<uint32_t>(maskLocal.GetValue(512)),
+            static_cast<uint32_t>(maskLocal.GetValue(516)),
+            static_cast<uint32_t>(maskLocal.GetValue(520)),
+            static_cast<uint32_t>(maskLocal.GetValue(767)),
+            static_cast<uint32_t>(maskLocal.GetValue(768)));
+        BSA_TOPK_MASK_CAST_DUMP_TENSOR(maskLocal[480], 921, 320);
+    }
 
     uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
     for (uint32_t i = 0; i < writeCnt; i++) {
@@ -1357,10 +1390,43 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
         maskLocal.SetValue(idx, writeValue);
     }
 
+    if (BSA_TOPK_MASK_CAST_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0 && curTileLen > 1023) {
+        BSA_TOPK_MASK_CAST_PRINTF(
+            "[MASK_CAST_DBG] EQ before gm write: m0=%u m511=%u m512=%u m516=%u m520=%u m767=%u m768=%u m1023=%u\n",
+            static_cast<uint32_t>(maskLocal.GetValue(0)),
+            static_cast<uint32_t>(maskLocal.GetValue(511)),
+            static_cast<uint32_t>(maskLocal.GetValue(512)),
+            static_cast<uint32_t>(maskLocal.GetValue(516)),
+            static_cast<uint32_t>(maskLocal.GetValue(520)),
+            static_cast<uint32_t>(maskLocal.GetValue(767)),
+            static_cast<uint32_t>(maskLocal.GetValue(768)),
+            static_cast<uint32_t>(maskLocal.GetValue(1023)));
+        BSA_TOPK_MASK_CAST_DUMP_TENSOR(maskLocal[480], 922, 320);
+    }
+
     SToMTE3Sync();
     DataCopyPad(maskOutGmU8Local[outputGmOffset], maskLocal,
                 DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
     MTE3ToMTE2Sync();
+
+    if (BSA_TOPK_MASK_CAST_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0 && curTileLen > 1023) {
+        DataCopyPad(maskLocal, maskOutGmU8Local[outputGmOffset],
+                    DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
+                    DataCopyPadExtParams<uint8_t>(false, 0,
+                        static_cast<uint8_t>(alignLen - curTileLen), 0));
+        MTE2ToSSync();
+        BSA_TOPK_MASK_CAST_PRINTF(
+            "[MASK_CAST_DBG] EQ after gm write/readback: m0=%u m511=%u m512=%u m516=%u m520=%u m767=%u m768=%u m1023=%u\n",
+            static_cast<uint32_t>(maskLocal.GetValue(0)),
+            static_cast<uint32_t>(maskLocal.GetValue(511)),
+            static_cast<uint32_t>(maskLocal.GetValue(512)),
+            static_cast<uint32_t>(maskLocal.GetValue(516)),
+            static_cast<uint32_t>(maskLocal.GetValue(520)),
+            static_cast<uint32_t>(maskLocal.GetValue(767)),
+            static_cast<uint32_t>(maskLocal.GetValue(768)),
+            static_cast<uint32_t>(maskLocal.GetValue(1023)));
+        BSA_TOPK_MASK_CAST_DUMP_TENSOR(maskLocal[480], 923, 320);
+    }
 
     curTileK -= static_cast<int32_t>(writeCnt);
 }
