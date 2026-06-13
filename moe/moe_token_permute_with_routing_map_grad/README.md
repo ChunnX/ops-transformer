@@ -132,7 +132,7 @@ $$
 
 ## 约束说明
 
- - 非dropPaddedMode 场景topK_num <= 512。
+ - 非dropPaddedMode场景topK_num <= 512。
  - 不支持混合精度输入，即permutedTokenOutputGrad、permutedProbsOutputGradOptional、tokensGradOut、probsGradOutOptional需要保持相同的数据类型。
 
 ## 调用说明

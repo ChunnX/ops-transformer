@@ -32,7 +32,7 @@ using namespace arch35FIA;
 constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
 
 // CheckSingle
-ge::graphStatus PostQuantChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PostQuantChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo) const
 {
     // QuantScale2 and quantOffset2 only support bf16/fp32 data type.
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.quantScale2.desc, QUANT_SCALE2_NAME)) {
@@ -91,7 +91,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureAttenOut(const FiaTilingInfo &fiaI
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PostQuantChecker::CheckFeatureQueryDType(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PostQuantChecker::CheckFeatureQueryDType(const FiaTilingInfo &fiaInfo) const
 {
     // Post-quantization scale dtype must be FP32. BF16 is allowed only if the query is BF16
     if (fiaInfo.isOutQuantEnable) {
@@ -326,7 +326,7 @@ ge::graphStatus PostQuantChecker::CheckMultiParaQuantOffset2(const FiaTilingInfo
             std::string shapeMsg = std::to_string(quantScale2ShapeSize) + ", " + std::to_string(quantOffset2ShapeSize);
             OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
                 fiaInfo.opName, "quant_scale2 and quant_offset2", shapeMsg.c_str(),
-                "The shape sizes of quant_scale2 and quant_offset2 must be the same.");
+                "The shape sizes of quant_scale2 and quant_offset2 must be the same");
             return ge::GRAPH_FAILED;
         }
     }

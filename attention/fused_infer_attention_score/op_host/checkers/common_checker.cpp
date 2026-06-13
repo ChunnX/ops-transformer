@@ -105,7 +105,7 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
     if (keyDimNum != valueDimNum) {
         std::string dimMsg = std::to_string(keyDimNum) + " and " + std::to_string(valueDimNum);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "key and value",
-            dimMsg.c_str(), "The shape dim of key must be equal to that of value.");
+            dimMsg.c_str(), "The shape dim of key must be equal to that of value");
         return ge::GRAPH_FAILED;
     }
 
@@ -483,11 +483,11 @@ ge::graphStatus CommonChecker::CheckTensorList(const FiaTilingInfo &fiaInfo)
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     OP_CHECK_IF((fiaInfo.opParamInfo.blockTable.tensor != nullptr),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "blockTable",
-            "blockTable must be empty in the tensorlist scenario."),
+            "blockTable must be empty in the tensorlist scenario"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((layoutStr == "TND" || layoutStr == "NTD" || layoutStr == "NTD_TND" || layoutStr == "TND_NTD"),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "input_layout",
-            "input_layout TND/NTD/TND_NTD/NTD_TND is not supported in the tensorlist scenario."),
+            "input_layout TND/NTD/TND_NTD/NTD_TND is not supported in the tensorlist scenario"),
         return ge::GRAPH_FAILED);
     if (fiaInfo.bSize > B_LIMIT) {
         std::string reason = "B of query must be less than or equal to " + std::to_string(B_LIMIT) +
@@ -521,28 +521,28 @@ ge::graphStatus CommonChecker::CheckMultiDtype(const FiaTilingInfo &fiaInfo)
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query",
             ToString(fiaInfo.opParamInfo.query.desc->GetDataType()).c_str(),
             "The dtype of query must be within the range of FLOAT16 or BF16 "
-            "when D of query and key is not equal to D of value."),
+            "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent &&
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.attenOut.desc, "attentionOut", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
             ToString(fiaInfo.opParamInfo.attenOut.desc->GetDataType()).c_str(),
             "The dtype of attention_out must be within the range of FLOAT16 or BF16 "
-            "when D of query and key is not equal to D of value."),
+            "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent &&
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.key.desc, "key", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key",
             ToString(fiaInfo.opParamInfo.key.desc->GetDataType()).c_str(),
             "The dtype of key must be within the range of FLOAT16 or BF16 "
-            "when D of query and key is not equal to D of value."),
+            "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent &&
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.value.desc, "value", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value",
  	        ToString(fiaInfo.opParamInfo.value.desc->GetDataType()).c_str(),
  	        "The dtype of value must be within the range of FLOAT16 or BF16 "
-            "when D of query and key is not equal to D of value."),
+            "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -582,13 +582,13 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.isQKVDDifferent && (fiaInfo.qkHeadDim > 128)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
             ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-            "D of query must be <= 128 when D of query and key is not equal to D of value.");
+            "D of query must be <= 128 when D of query and key is not equal to D of value");
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo.isQKVDDifferent && (fiaInfo.vHeadDim > 128)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value",
             ToString(fiaInfo.opParamInfo.value.shape->GetStorageShape()).c_str(),
-            "D of value must be <= 128 when D of query and key is not equal to D of value.");
+            "D of value must be <= 128 when D of query and key is not equal to D of value");
         return ge::GRAPH_FAILED;
     }
     if ((fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.qTSize < 0) {
@@ -607,7 +607,7 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
         if (fiaInfo.s1Size < 1) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
                 ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-                "S of query must be >=1 in the Decode MLA scenario.");
+                "S of query must be >=1 in the Decode MLA scenario");
             return ge::GRAPH_FAILED;
         }
         static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
@@ -615,7 +615,7 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
                 std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
                 "The value of axis G must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
-                "in the Decode MLA scenario.");
+                "in the Decode MLA scenario");
             return ge::GRAPH_FAILED;
         }
     }
@@ -687,7 +687,7 @@ ge::graphStatus CommonChecker::CheckQueryOutConsistency(const FiaTilingInfo &fia
     if (dimNumQ != dimNumOut && !isLayoutShapeSupport) {
         std::string dimsMsg = std::to_string(dimNumQ) + " and " + std::to_string(dimNumOut);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "query and attention_out",
-            dimsMsg.c_str(), "The shape dim of query must be equal to that of attention_out.");
+            dimsMsg.c_str(), "The shape dim of query must be equal to that of attention_out");
         return ge::GRAPH_FAILED;
     }
     if (dimNumQ < INPUT_Q_SHAPE_MIN_DIMS || dimNumQ > INPUT_Q_SHAPE_MAX_DIMS) {
@@ -741,13 +741,13 @@ ge::graphStatus CommonChecker::CheckKeyValueConsistency(const FiaTilingInfo &fia
     if (keyDataType != valueDataType) {
         std::string dtypeMsg = ToString(keyDataType) + " and " + ToString(valueDataType);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
-            dtypeMsg.c_str(), "The dtypes of key and value must be the same.");
+            dtypeMsg.c_str(), "The dtypes of key and value must be the same");
         return ge::GRAPH_FAILED;
     }
     if (keyDimNum != valueDimNum) {
         std::string dimMsg = std::to_string(keyDimNum) + " and " + std::to_string(valueDimNum);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "key and value",
-            dimMsg.c_str(), "The shape dim of key must be equal to that of value.");
+            dimMsg.c_str(), "The shape dim of key must be equal to that of value");
         return ge::GRAPH_FAILED;
     }
 
@@ -950,7 +950,7 @@ ge::graphStatus CommonChecker::CheckQueryKeyConsistency(const FiaTilingInfo &fia
         if (queryDataType != keyDataType) {
             std::string dtypeMsg = ToString(queryDataType) + " and " + ToString(keyDataType);
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and key",
-                dtypeMsg.c_str(), "The dtypes of query and key must be the same.");
+                dtypeMsg.c_str(), "The dtypes of query and key must be the same");
             return ge::GRAPH_FAILED;
         }
     }
@@ -974,16 +974,16 @@ ge::graphStatus CommonChecker::CheckMultiAttr(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.npuArch == NpuArch::DAV_3510) {
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION && fiaInfo.isQKVDDifferent,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "blockTable",
-                "blockTable must be empty when D of query and key is not equal to D of value."),
+                "blockTable must be empty when D of query and key is not equal to D of value"),
             return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(fiaInfo.pseShiftFlag && fiaInfo.isQKVDDifferent,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-            "pseShift must be empty when D of query and key is not equal to D of value."),
+            "pseShift must be empty when D of query and key is not equal to D of value"),
         return false);
     OP_CHECK_IF(fiaInfo.enableAlibiPse && fiaInfo.isQKVDDifferent,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-            "pseShift must be empty when D of query and key is not equal to D of value."),
+            "pseShift must be empty when D of query and key is not equal to D of value"),
         return false);
 
     if (fiaInfo.inputQType != ge::DT_FLOAT16) {
@@ -993,7 +993,7 @@ ge::graphStatus CommonChecker::CheckMultiAttr(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.qLayout == FiaLayout::TND) {
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "tensorList",
-                        "When layout is TND, tensorlist is not supported."),
+                        "When layout is TND, tensorlist is not supported"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1070,7 +1070,7 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
     if ((fiaInfo.n1Size < 0) || (fiaInfo.n2Size < 0)) {
         std::string valMsg = std::to_string(fiaInfo.n1Size) + " and " + std::to_string(fiaInfo.n2Size);
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "num_heads and num_key_value_heads",
-            valMsg.c_str(), "The value of num_heads and num_key_value_heads cannot be negative.");
+            valMsg.c_str(), "The value of num_heads and num_key_value_heads cannot be negative");
         return ge::GRAPH_FAILED;
     }
 
@@ -1080,7 +1080,7 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
                 std::to_string(fiaInfo.n1Size).c_str(),
                 "The value of num_heads must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
-                "in the Decode MLA scenario.");
+                "in the Decode MLA scenario");
             return ge::GRAPH_FAILED;
         }
         if (fiaInfo.n2Size != 1U) {
@@ -1108,7 +1108,7 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", inputLayout.c_str(),
                     "The value of input_layout must be in BSH, BSND, BNSD, TND, NTD, BSND_BNSD, "
-                    "BSH_BNSD, NTD_TND, BNSD_BSND in the GQA scenario.");
+                    "BSH_BNSD, NTD_TND, BNSD_BSND in the GQA scenario");
                 return ge::GRAPH_FAILED;
             }
         } else {
@@ -1190,7 +1190,7 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
         if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
                 inputLayout.c_str(), "The value of input_layout must be in BSH, BSND, "
-                "BNSD, TND ,BNSD_BSND, BSND_NBSD, BSH_NBSD, TND_NTD in the Decode MLA scenario.");
+                "BNSD, TND ,BNSD_BSND, BSND_NBSD, BSH_NBSD, TND_NTD in the Decode MLA scenario");
             return ge::GRAPH_FAILED;
         }
     } else { // prefill mla
@@ -1243,18 +1243,18 @@ bool CommonChecker::CheckTNDLayoutCrossover(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && layoutStr == "TND_NTD") { // Decode MLA
         OP_CHECK_IF(fiaInfo.isOutQuantEnable,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "quantScale2",
-                "quantScale2 must be empty in Decode MLA scenario, when layout is TND_NTD."),
+                "quantScale2 must be empty in Decode MLA scenario, when layout is TND_NTD"),
             return false);
     }
     
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "tensorList",
-            "When layout is TND, tensorlist is not supported."),
+            "When layout is TND, tensorlist is not supported"),
         return false);
 
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-            "pseShift must be empty when layout is TND."),
+            "pseShift must be empty when layout is TND"),
         return false);
 
     return true;
@@ -1280,18 +1280,18 @@ bool CommonChecker::CheckNTDLayoutCrossover(const FiaTilingInfo &fiaInfo)
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
                 layoutStr.c_str(), "The value of input_layout cannot be " + layoutStr +
-                " in the GQA scenario, when D of query and key is not equal to D of value."),
+                " in the GQA scenario, when D of query and key is not equal to D of value"),
             return false);
     }
     
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "tensorList",
-            ("When layout is " + layoutStr + ", tensorlist is not supported.").c_str()),
+            ("When layout is " + layoutStr + ", tensorlist is not supported").c_str()),
         return false);
 
     OP_CHECK_IF(fiaInfo.pseShiftFlag,
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-            ("pseShift must be empty when layout is " + layoutStr + ".").c_str()),
+            ("pseShift must be empty when layout is " + layoutStr + "").c_str()),
         return false);
 
     return true;
@@ -1309,7 +1309,7 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
                 layoutStr.c_str(), "The value of input_layout cannot be " + layoutStr +
-                " in the GQA scenario, when D of query and key is not equal to D of value."),
+                " in the GQA scenario, when D of query and key is not equal to D of value"),
             return false);
     }
     if (layoutStr == "BSH_BNSD" || layoutStr == "BSND_BNSD") {
@@ -1325,12 +1325,12 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
         
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "tensorList",
-                ("When layout is " + layoutStr + ", tensorlist is not supported.").c_str()),
+                ("When layout is " + layoutStr + ", tensorlist is not supported").c_str()),
             return false);
 
         OP_CHECK_IF(fiaInfo.pseShiftFlag,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pseShift",
-                ("pseShift must be empty when layout is " + layoutStr + ".").c_str()),
+                ("pseShift must be empty when layout is " + layoutStr + "").c_str()),
             return false);
     } else if (layoutStr == "BNSD_BSND") {
         if (isGqa) { // GQA
@@ -1407,7 +1407,7 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
         if (queryDataType != attenOutDataType) {
             std::string dtypeMsg = ToString(queryDataType) + " and " + ToString(attenOutDataType);
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
-                dtypeMsg.c_str(), "The dtypes of query and attention_out must be the same.");
+                dtypeMsg.c_str(), "The dtypes of query and attention_out must be the same");
             return ge::GRAPH_FAILED;
         }
     }

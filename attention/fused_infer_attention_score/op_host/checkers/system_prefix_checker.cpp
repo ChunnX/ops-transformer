@@ -46,7 +46,7 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDim(const FiaTilingInfo &f
             " and " + std::to_string(keyDimNum);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "key_shared_prefix, value_shared_prefix and key",
             dimsStr.c_str(),
-            "The shape dims of key_shared_prefix, value_shared_prefix and key/value must be the same.");
+            "The shape dims of key_shared_prefix, value_shared_prefix and key/value must be the same");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -64,13 +64,13 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDataType(const FiaTilingIn
         if (keySharedPrefixType != fiaInfo.inputKvType) {
             std::string dtypeMsg = ToString(keySharedPrefixType) + " and " + ToString(fiaInfo.inputKvType);
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and key/value",
-                dtypeMsg.c_str(), "The dtypes of key_shared_prefix and key/value must be the same.");
+                dtypeMsg.c_str(), "The dtypes of key_shared_prefix and key/value must be the same");
             return ge::GRAPH_FAILED;
         }
         if (keySharedPrefixType != valueSharedPrefixType) {
             std::string dtypeMsg = ToString(keySharedPrefixType) + " and " + ToString(valueSharedPrefixType);
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
-                dtypeMsg.c_str(), "The dtypes of key_shared_prefix and value_shared_prefix must be the same.");
+                dtypeMsg.c_str(), "The dtypes of key_shared_prefix and value_shared_prefix must be the same");
             return ge::GRAPH_FAILED;
         }
     }
@@ -89,12 +89,12 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
         // 第一维batch必须为1
         if (keySharedPrefixShape.GetDim(DIM_NUM_0) != 1) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_shared_prefix",
-                ToString(keySharedPrefixShape).c_str(), "The 1st axis of key_shared_prefix must be equal to 1.");
+                ToString(keySharedPrefixShape).c_str(), "The 1st axis of key_shared_prefix must be equal to 1");
             return ge::GRAPH_FAILED;
         }
         if (valueSharedPrefixShape.GetDim(DIM_NUM_0) != 1) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_shared_prefix",
-                ToString(valueSharedPrefixShape).c_str(), "The 1st axis of value_shared_prefix must be equal to 1.");
+                ToString(valueSharedPrefixShape).c_str(), "The 1st axis of value_shared_prefix must be equal to 1");
             return ge::GRAPH_FAILED;
         }
         // layout为BNSD和BSND情况下，N、D轴与key一致
@@ -143,7 +143,7 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
             if (keySharedPrefixS != valueSharedPrefixS) {
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
                     (ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape)).c_str(),
-                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix.");
+                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -192,7 +192,7 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
             if (keySharedPrefixS != valueSharedPrefixS) {
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
                     (ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape)).c_str(),
-                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix.");
+                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -223,7 +223,7 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
             if (keySharedPrefixS != valueSharedPrefixS) {
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
                     (ToString(keySharedPrefixShape) + " and " + ToString(valueSharedPrefixShape)).c_str(),
-                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix.");
+                    "S of key_shared_prefix must be equal to the same axis of value_shared_prefix");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -287,7 +287,7 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
     if (actualSharedPrefixLenData < 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "actual_shared_prefix_len",
             std::to_string(actualSharedPrefixLenData).c_str(),
-            "The value of actual_shared_prefix_len cannot be less than 0.");
+            "The value of actual_shared_prefix_len cannot be less than 0");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -302,12 +302,12 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixExistence(const FiaTilingI
     // 两者要么都为空，要么都不为空
     OP_CHECK_IF((keySharedPrefixTensor != nullptr && valueSharedPrefixTensor == nullptr),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "valueSharedPrefix",
-            "valueSharedPrefix cannot be empty when keySharedPrefix is not empty."),
+            "valueSharedPrefix cannot be empty when keySharedPrefix is not empty"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((keySharedPrefixTensor == nullptr && valueSharedPrefixTensor != nullptr),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keySharedPrefix",
-            "keySharedPrefix cannot be empty when valueSharedPrefix is not empty."),
+            "keySharedPrefix cannot be empty when valueSharedPrefix is not empty"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -327,25 +327,25 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
     // 不支持page attention场景
     OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when page attention is enabled."),
+            "prefix must be empty when page attention is enabled"),
         return ge::GRAPH_FAILED);
     // 不支持tensorlist
     if ((fiaInfo.s1Size > 1U && fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) ||
         fiaInfo.npuArch == NpuArch::DAV_3510) {
         OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST),
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-                "prefix must be empty when tensorlist is enabled."),
+                "prefix must be empty when tensorlist is enabled"),
             return ge::GRAPH_FAILED);
     }
     // 不支持左padding场景
     OP_CHECK_IF((fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when left padding is enabled."),
+            "prefix must be empty when left padding is enabled"),
         return ge::GRAPH_FAILED);
     // 不支持alibi场景
     OP_CHECK_IF((fiaInfo.enableAlibiPse),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when pseType is 2 or 3."),
+            "prefix must be empty when pseType is 2 or 3"),
         return ge::GRAPH_FAILED);
      OP_CHECK_IF(layoutStr == "BSH_BNSD" ||
                     layoutStr == "BSND_BNSD" ||
@@ -354,36 +354,36 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
                     layoutStr == "NTD_TND" ||
                     layoutStr == "TND_NTD",
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/TND_NTD/NTD_TND."),
+            "prefix must be empty when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/TND_NTD/NTD_TND"),
         return ge::GRAPH_FAILED);
     // 不支持PFA MLA场景
     OP_CHECK_IF((enablePFAMLA || enablePFARope),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty in PFA MLA scenario."),
+            "prefix must be empty in PFA MLA scenario"),
         return ge::GRAPH_FAILED);
     // 不支持IFA MLA场景
     OP_CHECK_IF((enableIFAMLA),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty in IFA MLA scenario."),
+            "prefix must be empty in IFA MLA scenario"),
         return ge::GRAPH_FAILED);
     // 不支持qkv全部为INT8/FP8/HiF8(per-block/per-tensor全量化)的情况
     OP_CHECK_IF((fiaInfo.inputQType == ge::DT_INT8 && fiaInfo.inputKvType == ge::DT_INT8),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when the dtype of query and key/value is INT8."),
+            "prefix must be empty when the dtype of query and key/value is INT8"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN && fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when the dtype of query and key/value is FP8."),
+            "prefix must be empty when the dtype of query and key/value is FP8"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.inputQType == ge::DT_HIFLOAT8 && fiaInfo.inputKvType == ge::DT_HIFLOAT8),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when the dtype of query and key/value is HiF8."),
+            "prefix must be empty when the dtype of query and key/value is HiF8"),
         return ge::GRAPH_FAILED);
     // 后量化仅支持INT8
     if (fiaInfo.isOutQuantEnable) {
         if (fiaInfo.outputType != ge::DT_INT8) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "output", ToString(fiaInfo.outputType).c_str(),
-                "The dtype of output must be INT8 when prefix is enabled.");
+                "The dtype of output must be INT8 when prefix is enabled");
             return ge::GRAPH_FAILED;
         }
     }

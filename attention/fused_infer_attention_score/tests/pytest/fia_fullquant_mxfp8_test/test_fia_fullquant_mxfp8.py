@@ -66,7 +66,8 @@ def _execute_test(params):
 
     lse_result = None
     if golden.ENABLE_LSE:
-        lse_result = result_compare_method.check_result(cpu_lse, lse_out)
+        lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.ACTUAL_SEQ_Q, compare_layout)
+        lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
     return atten_result, lse_result
 
