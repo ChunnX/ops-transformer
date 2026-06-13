@@ -237,6 +237,8 @@ def _run_one(cfg, expect_pass):
     q_bnsd = torch.randn(B, N_q, q_seq, d, dtype=DTYPE)
     q_npu = _q_layout(q_bnsd, q_layout, act_q).npu()
 
+    kv_shape = _kv_shape(kv_layout, total_b, bs, kv_seq, q_layout, d)
+
     q_rope_npu = None
     k_rope_npu = None
     if dr > 0:
@@ -244,7 +246,7 @@ def _run_one(cfg, expect_pass):
         qr_bnsd = torch.randn(B, N_q, q_seq, dr, dtype=DTYPE)
         torch.manual_seed(400)
         if pa:
-            kr_pa_shape = kv_shape[:-1] + (dr,)  # match PA key shape but D=64
+            kr_pa_shape = kv_shape[:-1] + (dr,)
             kr_pa = torch.randn(*kr_pa_shape, dtype=DTYPE)
         else:
             kr_bnsd = torch.randn(B, N_kv, kv_seq, dr, dtype=DTYPE)
@@ -254,7 +256,6 @@ def _run_one(cfg, expect_pass):
         else:
             k_rope_npu = _q_layout(kr_bnsd, q_layout, act_kv).npu()
 
-    kv_shape = _kv_shape(kv_layout, total_b, bs, kv_seq, q_layout, d)
     k_ref, v_ref = _make_kv(kv_shape)
 
     ref_out = _run(q_npu, k_ref.npu(), v_ref.npu(), pa, q_layout, act_q, act_kv,
