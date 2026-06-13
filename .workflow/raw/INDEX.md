@@ -45,7 +45,7 @@ raw/
 
 | 文件 | 内容 | 何时读 |
 |------|------|--------|
-| （待产出：`01_deliverables.md`） | 交付件清单：新增 tiling 模板、注册分发、def.cpp 适配、_apt.cpp 适配、kernel 实现 | 需要了解完整交付件范围时 |
-| （待产出：`02_platform_independent_design.md`） | 与硬件无关的实现方案：地址偏移推导、兼容性策略、测试方案 | 需要了解总体设计和跨平台参考时 |
-| （待产出：`03_tiling_design.md`） | Tiling 拦截校验与切分方案：tiling data、校验逻辑、shape list 切分、tiling key 注册 | 需要了解 tiling 实现方案时 |
-| （待产出：`04_kernel_design.md`） | Kernel 实现方案：Controller 适配、BasicBlock 适配、VF 反量化函数、L1/UB 空间划分 | 需要了解 kernel 实现方案时 |
+| [design/01_deliverables.md](design/01_deliverables.md) | 交付件清单：11 个需修改文件、8 个 tiling key 组合、4 个 WqmmConfig 实例、2 个 VF 函数 | 需要了解完整交付件范围时 |
+| [design/02_platform_independent_design.md](design/02_platform_independent_design.md) | 与硬件无关的实现方案：地址偏移公式推导（含 bias 偏移分离）、兼容性策略、测试方案（11+8+6 UT 用例） | 需要了解总体设计和跨平台参考时 |
+| [design/03_tiling_design.md](design/03_tiling_design.md) | Tiling 拦截校验与切分方案：GMMWeightQuantParam 结构、IsA16W4NDPergroup 判断、8 个 tiling key 组合注册 | 需要了解 tiling 实现方案时 |
+| [design/04_kernel_design.md](design/04_kernel_design.md) | Kernel 实现方案：SetGmAddr pergroup 偏移、WqmmConfig 新增、GetNdPerGroupBufferInfo、VF 函数签名和伪代码 | 需要了解 kernel 实现方案时 |

@@ -40,14 +40,14 @@
 
 ## 任务 4：编写 SRS 算子开发实现方案
 
-**任务状态**：待开始
+**任务状态**：✅ 已完成
 
 **简要说明**：基于走读结果，按模块分文档编写 GMM A16W4 实现方案，包括交付件清单、tiling 拦截校验与切分方案、kernel 实现方案、与硬件无关的实现方案。
 
 **产出文件**：
-- `01_deliverables.md` — 交付件清单
-- `02_platform_independent_design.md` — 与硬件无关的实现方案
-- `03_tiling_design.md` — Tiling 拦截校验与切分方案
-- `04_kernel_design.md` — Kernel 实现方案
+- `.workflow/raw/design/01_deliverables.md` — 交付件清单（270 行）
+- `.workflow/raw/design/02_platform_independent_design.md` — 与硬件无关的实现方案（313 行）
+- `.workflow/raw/design/03_tiling_design.md` — Tiling 拦截校验与切分方案（455 行）
+- `.workflow/raw/design/04_kernel_design.md` — Kernel 实现方案（642 行）
 
 **任务详情**：[详细任务说明](reference/next_steps/4_srs_design.md)

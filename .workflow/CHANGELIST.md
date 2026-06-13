@@ -114,3 +114,47 @@
 #### 影响范围
 - 仅文档变更，不涉及代码
 - 为后续任务 4（SRS 实现方案）提供 wqbmmv2 反量化实现的完整参考和迁移方案
+
+---
+
+### 2026-06-13 | 完成 SRS 算子开发实现方案（任务 4）
+
+**类型**: 📝 文档
+**范围**: `.workflow/raw/design/` 设计文档
+
+#### 变更内容
+- 新增 `01_deliverables.md`（交付件清单）：
+  - 明确 11 个需修改文件 + 2 个无需修改文件
+  - 明确 8 个新增 tiling key 组合（pergroup × offset/bias × 转置/非转置）
+  - 明确 config950 需新增 INT4 ND dtype 组合
+  - 明确 grouped_matmul_apt.cpp 需新增 8 个 if constexpr 分支
+- 新增 `02_platform_independent_design.md`（与硬件无关方案）：
+  - 完成 pergroup 地址偏移公式推导（含数值验证）
+  - 发现 bias 偏移需与 antiquantScale 偏移分离（关键设计发现）
+  - 明确兼容性策略（编译期 if constexpr 隔离）
+  - 设计 tiling UT 19 个用例 + kernel UT 15 个用例 + 兼容性验证 5 项
+- 新增 `03_tiling_design.md`（Tiling 方案）：
+  - 确认 GMMWeightQuantParam 无需新增字段（groupSize 已有）
+  - 设计 IsA16W4NDPergroup() 判断函数
+  - 设计 CheckGroupSize() 新增 32/64/128/256 校验
+  - 设计多多多场景 antiquantScale 2 维 pergroup 判断逻辑
+  - 确认 baseM/baseN/baseK 复用 A16W8 默认值（256/256/64）
+  - 设计 8 个 ASCENDC_TPL_ARGS_SEL 新增组合
+- 新增 `04_kernel_design.md`（Kernel 方案）：
+  - 设计 SetGmAddr() pergroup 偏移公式 + bias 偏移分离方案
+  - 新增 4 个 WqmmConfig 实例（A16W4_NDKN_PG/A16W4_NDNK_PG 各含有/无 offset）
+  - 设计 GetNdPerGroupBufferInfo()（scale UB 从 4KB 增大到 8KB）
+  - 设计 AntiQuantInt4NdNkPerGroup/AntiQuantInt4NdKnPerGroup VF 函数接口
+  - 确认 Cube 计算完全复用 A16W8（无需修改）
+  - 汇总 14 个修改点 + 7 个新增项 + 20+ 个可复用项
+
+#### 关键决策
+- **bias 偏移分离**：发现现有代码中 bias 与 antiquantScale 共用偏移变量，pergroup 场景下两者偏移量不同，需新增独立 biasBaseOffset
+- **UB buffer 调整**：pergroup scale UB 从 4KB 增大到 8KB（highBitData 从 66KB 缩减到 62KB），总量不变
+- **tiling key 组合数**：8 个（4 种 offset/bias 组合 × 2 种转置状态），全部使用 N_FIRST_BASIC_BLOCK
+- **VF 函数策略**：NK 排布按 groupSize 运行时分支（与 wqbmmv2 一致），KN 排布统一处理
+- **config950 适配**：需新增 weight=INT4 + FORMAT_ND 的 dtype/format 组合条目
+
+#### 影响范围
+- 仅文档变更，不涉及代码
+- 4 个设计文档作为后续编码实现（任务 5/6）的直接依据
