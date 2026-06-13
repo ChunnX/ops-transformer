@@ -123,7 +123,7 @@ void QuantBlockSparseAttentionTiling::FillInputParams()
     inputParams.set_pseEncodeType(0);
     inputParams.set_tndSoftmaxOut(0);
     inputParams.set_remain(0);
-    inputParams.set_attenMaskS2Size(info.s2Size);
+    inputParams.set_attenMaskS2Size(2048);
     inputParams.set_pseType(0);
     inputParams.set_rsv1(0);
     inputParams.set_qStartIdx(0);

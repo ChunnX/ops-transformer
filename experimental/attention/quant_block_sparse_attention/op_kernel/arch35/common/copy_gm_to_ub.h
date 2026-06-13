@@ -20,47 +20,56 @@
 // GM->UB
 //antiquant
 // ----------------------------------------------CopyAntiquantGmToUb--------------------------------
-template <typename T, BSALayout GM_FORMAT>
+struct AntiqGmCoord {
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t firstS2Idx = 0;
+    uint32_t nextS2Idx = 0;
+
+    uint32_t firstS2DealSize = 0;
+    uint32_t nextS2DealSize = 0;
+};
+
+template <typename OUT_T>
+struct FaUbTensor {
+    LocalTensor<OUT_T> tensor;
+    uint32_t rowCount;
+    uint32_t colCount;
+};
+
+template <typename T, GmFormat GM_FORMAT>
 class CopyAntiquantGmToUb {
 public:
-    __aicore__ inline void operator()(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor, const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
+    __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
+                                      AntiqGmCoord &antiqGmCoord, ConstInfo &constInfo)
     {
-        //per per_head + per_token + PA
-        ProcessPA(dstTensor, srcTensor, blockTableTensor, runInfo, constInfo);
+        ProcessAntiqPA(dstTensor, srcTensor, antiqGmCoord, constInfo);
     }
 
 private:
-    __aicore__ inline void ProcessPA(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor, const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
+    __aicore__ inline void ProcessAntiqPA(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
+                                          AntiqGmCoord &antiqGmCoord, ConstInfo &constInfo)
     {
-        int32_t byteOffset1 = 0;
-        int32_t byteOffset2 = 0;
-        GetPaKScaleOffset(byteOffset1, runInfo.sparseBlkIdx1, blockTableTensor, runInfo, constInfo);
-        GetPaKScaleOffset(byteOffset2, runInfo.sparseBlkIdx2, blockTableTensor, runInfo, constInfo);
-        if (GM_FORMAT == BSALayout::PA_BNSD) {
-            DataCopyExtParams dataCopyParams;
-            dataCopyParams.blockCount = 128;
-            dataCopyParams.blockLen = sizeof(float);
-            dataCopyParams.srcStride = constInfo.combineDim - sizeof(float);
-            dataCopyParams.dstStride = 0;
-            DataCopyPadExtParams<T> dataCopyPadParams;
-            DataCopyPad(dstTensor, srcTensor[byteOffset1], dataCopyParams, dataCopyPadParams);
-            DataCopyPad(dstTensor[128], srcTensor[byteOffset2], dataCopyParams, dataCopyPadParams);
-        } else if (GM_FORMAT == BSALayout::PA_BSND) {
-            DataCopyExtParams dataCopyParams;
-            dataCopyParams.blockCount = 128;
-            dataCopyParams.blockLen = sizeof(float);
-            dataCopyParams.srcStride = ((constInfo.n2Size - 1) * constInfo.combineDim) * sizeof(float);
-            dataCopyParams.dstStride = 0;
-            DataCopyPadExtParams<T> dataCopyPadParams;
-            DataCopyPad(dstTensor, srcTensor[byteOffset1], dataCopyParams, dataCopyPadParams);
-            DataCopyPad(dstTensor[128], srcTensor[byteOffset2], dataCopyParams, dataCopyPadParams);
-        }
-    }
-    __aicore__ inline void GetPaKScaleOffset(int32_t &byteOffset, const int64_t sparseBlkIdx, const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
-    {
-        int32_t physicalBlock = blockTableTensor.GetValue(runInfo.boIdx * constInfo.blockTableDim2 + sparseBlkIdx);
-        byteOffset = physicalBlock * (constInfo.paBlockStride / sizeof(float)) +
-            runInfo.n2oIdx * constInfo.kvSparseBlockSize * (constInfo.combineDim / sizeof(float));
+        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+
+        uint64_t dstOffset = 0;
+        uint32_t curS2Idx = antiqGmCoord.firstS2Idx;
+        uint64_t srcOffset = offsetCalculator.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, curS2Idx, constInfo.dSize);
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = antiqGmCoord.firstS2DealSize;
+        dataCopyParams.blockLen = sizeof(float);
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+        DataCopyPadExtParams<T> dataCopyPadParams;
+        DataCopyPad(dstTensor.tensor[dstOffset], srcTensor.gmTensor[srcOffset / sizeof(float)], dataCopyParams, dataCopyPadParams);
+
+        curS2Idx = antiqGmCoord.nextS2Idx;
+        srcOffset = offsetCalculator.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, curS2Idx, constInfo.dSize);
+        dataCopyParams.blockCount = antiqGmCoord.nextS2DealSize;
+        dataCopyParams.blockLen = sizeof(float);
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+        DataCopyPad(dstTensor.tensor[dstOffset + antiqGmCoord.firstS2DealSize], srcTensor.gmTensor[srcOffset / sizeof(float)], dataCopyParams, dataCopyPadParams);
     }
 };
 
@@ -80,18 +89,15 @@ private:
             DataCopyExtParams dataCopyParams;
             dataCopyParams.blockCount = 64;
             dataCopyParams.blockLen = sizeof(float);
-            dataCopyParams.srcStride = (constInfo.n1Size - 1) * sizeof(float);
+            dataCopyParams.srcStride = (constInfo.n2Size * constInfo.gSize - 1) * sizeof(float);
             dataCopyParams.dstStride = 0;
             DataCopyPadExtParams<T> dataCopyPadParams;
-            int64_t n1Idx = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx;
-            int64_t qScaleOffset = runInfo.qBScalarOffset + runInfo.sOuterOffset * constInfo.n1Size + n1Idx;
-            DataCopyPad(dstTensor, srcTensor[qScaleOffset], dataCopyParams, dataCopyPadParams);
+            DataCopyPad(dstTensor, srcTensor[runInfo.qBScalarOffset], dataCopyParams, dataCopyPadParams);
         } else if (GM_FORMAT == BSALayout::BSND) {
 
         } else if (GM_FORMAT == BSALayout::BNSD) {
 
         }
-        
     }
 };
 #endif
