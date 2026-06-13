@@ -42,7 +42,9 @@ class GPUBackend(Backend):
         causal = (int(mask_mode) == 3)
 
         use_paged = (layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ") and block_size % 256 == 0)
-        use_varlen = (layout_q == "TND")
+        has_seqused = (params.get("seqused_kv") is not None or params.get("seqused_q") is not None
+                       or params.get("cu_seqlens_kv") is not None)
+        use_varlen = (layout_q == "TND") or (has_seqused and not use_paged)
 
         if use_paged:
             out = self._compute_paged(inputs, params, softmax_scale, causal)
@@ -119,13 +121,21 @@ class GPUBackend(Backend):
     # ─── 路径 B: flash_attn_varlen_func ───────────────────────────────────────
 
     def _compute_varlen(self, inputs, params, softmax_scale, causal):
-        layout_kv = params.get("layout_kv", params.get("input_layout", "BNSD"))
+        layout_q = params.get("layout_q", params.get("input_layout", "BNSD"))
+        layout_kv = params.get("layout_kv", layout_q)
 
         q = inputs["q"].to(self._device)
         if q.dim() == 3:
             q_tnd = q.contiguous()
-        else:
+        elif layout_q == "TND":
             q_tnd = q.squeeze(0).permute(1, 0, 2).contiguous()
+        else:
+            q_bnsd = q if layout_q == "BNSD" else q.permute(0, 2, 1, 3)
+            q_tnd, cu_q_from_pack = self._bnsd_to_tnd_pack_q(q_bnsd, params)
+            q_tnd = q_tnd.contiguous()
+            if params.get("cu_seqlens_q") is None:
+                params = dict(params)
+                params["cu_seqlens_q"] = cu_q_from_pack
 
         if layout_kv.startswith("PA_"):
             k_bnsd, v_bnsd = self._pa_to_bnsd_pair(inputs, layout_kv, params)
@@ -156,16 +166,30 @@ class GPUBackend(Backend):
 
         out_tnd = gpu_varlen_attn(q_tnd, k_tnd, v_tnd, cu_q, cu_kv,
                                   max_sq, max_skv, softmax_scale, causal, self._device)
-        layout_out = params.get("layout_out", "TND")
-        if layout_out == "TND":
+        layout_out = params.get("layout_out", layout_q)
+        if layout_out == "TND" or (layout_q == "TND" and layout_out == "TND"):
             return out_tnd.contiguous()
+        elif layout_out in ("BNSD", "BSND"):
+            cu = cu_q if isinstance(cu_q, list) else (cu_q.cpu().tolist() if isinstance(cu_q, torch.Tensor) else list(cu_q))
+            B = len(cu) - 1
+            N = out_tnd.shape[1]
+            D = out_tnd.shape[2]
+            max_s = max(int(cu[i+1]) - int(cu[i]) for i in range(B))
+            out_bnsd = torch.zeros(B, N, max_s, D, dtype=out_tnd.dtype, device=out_tnd.device)
+            for i in range(B):
+                start, end = int(cu[i]), int(cu[i+1])
+                out_bnsd[i, :, :end-start, :] = out_tnd[start:end, :, :].permute(1, 0, 2)
+            if layout_out == "BSND":
+                return out_bnsd.permute(0, 2, 1, 3).contiguous()
+            return out_bnsd.contiguous()
         else:
-            return out_tnd.unsqueeze(0).permute(0, 2, 1, 3).contiguous()
+            return out_tnd.contiguous()
 
     # ─── 路径 C: flash_attn_func ──────────────────────────────────────────────
 
     def _compute_fixed(self, inputs, params, softmax_scale, causal):
-        layout_kv = params.get("layout_kv", params.get("input_layout", "BNSD"))
+        layout_q = params.get("layout_q", params.get("input_layout", "BNSD"))
+        layout_kv = params.get("layout_kv", layout_q)
 
         q = inputs["q"].to(self._device)
 
@@ -177,9 +201,18 @@ class GPUBackend(Backend):
             k = inputs["k"].to(self._device)
             v = inputs["v"].to(self._device)
 
-        q_bshd = q.permute(0, 2, 1, 3).contiguous()
-        k_bshd = k.permute(0, 2, 1, 3).contiguous()
-        v_bshd = v.permute(0, 2, 1, 3).contiguous()
+        if layout_q == "BSND":
+            q_bshd = q.contiguous()
+        else:
+            q_bshd = q.permute(0, 2, 1, 3).contiguous()
+
+        kv_layout = "BNSD" if layout_kv.startswith("PA_") else layout_kv
+        if kv_layout == "BSND":
+            k_bshd = k.contiguous()
+            v_bshd = v.contiguous()
+        else:
+            k_bshd = k.permute(0, 2, 1, 3).contiguous()
+            v_bshd = v.permute(0, 2, 1, 3).contiguous()
 
         out_bshd = gpu_fixed_attn(q_bshd, k_bshd, v_bshd, softmax_scale, causal)
         layout_out = params.get("layout_out", layout_kv)
@@ -189,6 +222,19 @@ class GPUBackend(Backend):
             return out_bshd.permute(0, 2, 1, 3).contiguous()
 
     # ─── 工具方法 ─────────────────────────────────────────────────────────────
+
+    def _bnsd_to_tnd_pack_q(self, q_bnsd, params):
+        """BNSD Q [B, N, S, D] → TND [total_q, N, D] + cu_seqlens_q"""
+        B, N, S, D = q_bnsd.shape
+        seqused_q = params.get("seqused_q") or params.get("actual_seq_qlen")
+        slices = []
+        cu_q = [0]
+        for i in range(B):
+            s = int(seqused_q[i]) if seqused_q else S
+            slices.append(q_bnsd[i, :, :s, :].permute(1, 0, 2))
+            cu_q.append(cu_q[-1] + s)
+        q_tnd = torch.cat(slices, dim=0)
+        return q_tnd, cu_q
 
     def _pa_to_bnsd_pair(self, inputs, layout_kv, params):
         from core.backends.cpu import _pa_to_bnsd
