@@ -121,7 +121,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     info.cfg.numTokens = static_cast<uint32_t>(xDim0);
     info.cfg.hidden = static_cast<uint32_t>(xDim1);
 
-    bool cached = (context->GetInputShape(CACHED_SLOT_IDX_INDEX) != nullptr);
+    bool cached = (context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX) != nullptr);
 
     if (!cached) {
         const gert::StorageShape *topkIdxStorageShape = context->GetInputShape(TOPK_IDX_INDEX);
@@ -219,7 +219,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     info.cfg.numMaxTokensPerRank = static_cast<uint32_t>(*nmtPtr);
     info.cfg.expertAlignment = static_cast<uint32_t>(*expertAlignmentPtr);
 
-    bool cached = (context->GetInputDesc(CACHED_SLOT_IDX_INDEX) != nullptr);
+    bool cached = (context->GetOptionalInputDesc(CACHED_SLOT_IDX_INDEX) != nullptr);
     bool doCpuSync = *doCpuSyncPtr;
     info.doCpuSync = (doCpuSync && !cached) ? 1 : 0;
     info.isCached = cached ? 1 : 0;
