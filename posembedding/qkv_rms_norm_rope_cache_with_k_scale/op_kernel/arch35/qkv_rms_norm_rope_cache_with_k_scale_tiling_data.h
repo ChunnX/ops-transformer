@@ -23,9 +23,8 @@ namespace QkvRmsNormRopeCacheWithKScaleKernelTiling {
 struct QkvRmsNormRopeCacheWithKScaleTilingData {
     uint64_t totalTokens = 0;
     uint64_t batch = 0;
-    uint64_t numQHeads = 0;
-    uint64_t numKHeads = 0;
-    uint64_t numVHeads = 0;
+    uint64_t qHeadNum = 0;
+    uint64_t kvHeadNum = 0;
     uint64_t headDim = 0;
     uint64_t blockSize = 0;
     uint64_t coreTokenTile = 0;

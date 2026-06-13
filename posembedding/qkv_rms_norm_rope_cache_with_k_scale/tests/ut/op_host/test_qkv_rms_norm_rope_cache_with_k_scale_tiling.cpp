@@ -409,8 +409,8 @@ bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, bool success,
         reinterpret_cast<const optiling::QkvRmsNormRopeCacheWithKScaleTilingData *>(tilingInfo.tilingData.get());
     const int64_t expectedWorkspace = static_cast<int64_t>(RESERVED_WORKSPACE_SIZE + TEST_OP_WORKSPACE_SIZE);
     return tilingInfo.blockNum == item.coreGroupNum && tilingInfo.workspaceSizes[0] == expectedWorkspace &&
-           tilingData->totalTokens == item.totalTokens && tilingData->numQHeads == item.numQHeads &&
-           tilingData->numKHeads == item.numKHeads && tilingData->numVHeads == item.numVHeads &&
+           tilingData->totalTokens == item.totalTokens && tilingData->qHeadNum == item.numQHeads &&
+           tilingData->kvHeadNum == item.numKHeads &&
            tilingData->headDim == item.headDim && tilingData->blockSize == TEST_BLOCK_SIZE &&
            tilingData->tokenTile == item.tokenTile && tilingData->coreTokenTile == item.coreTokenTile &&
            tilingData->coreGroupNum == item.coreGroupNum;
@@ -1070,14 +1070,14 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, TilingDataDefaultsAreStable)
     EXPECT_EQ(tilingData.kScaleCacheStrideBlock, 0U);
 
     tilingData.totalTokens = 128;
-    tilingData.numQHeads = 16;
+    tilingData.qHeadNum = 16;
     tilingData.coreTokenTile = 4;
     tilingData.coreGroupNum = 32;
     tilingData.kvCacheStrideToken = 128;
     tilingData.kScaleCacheStrideToken = 1;
     tilingData.tokenTile = 14;
     EXPECT_EQ(tilingData.totalTokens, 128U);
-    EXPECT_EQ(tilingData.numQHeads, 16U);
+    EXPECT_EQ(tilingData.qHeadNum, 16U);
     EXPECT_EQ(tilingData.coreTokenTile, 4U);
     EXPECT_EQ(tilingData.coreGroupNum, 32U);
     EXPECT_EQ(tilingData.kvCacheStrideToken, 128U);

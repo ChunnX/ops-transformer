@@ -79,14 +79,14 @@ private:
         const uint64_t qkHeadTile = QkHeadTile(tilingData);
         tile.qkHeadSize = qkHeadTile;
         tile.vHeadOffset = 0U;
-        tile.vHeadSize = tilingData->numVHeads;
+        tile.vHeadSize = tilingData->kvHeadNum;
         tile.rowOffset = 0U;
         tile.rowSize = tile.tokenSize * qkHeadTile;
     }
 
     __aicore__ inline uint64_t QkHeadTile(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData) const
     {
-        return tilingData->numQHeads + tilingData->numKHeads;
+        return tilingData->qHeadNum + tilingData->kvHeadNum;
     }
 
     __aicore__ inline void ForEachTileAic(QkvRmsNormRopeCacheWithKScaleBasicBlock &basicBlock,

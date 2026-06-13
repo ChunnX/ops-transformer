@@ -772,9 +772,9 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogTilingData(const std::string &o
                                                             uint64_t blockDim, size_t dataSize, size_t workspaceSize)
 {
     OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale final tilingData: totalTokens=%lu batch=%lu Nq=%lu Nk=%lu Nv=%lu "
+            "QkvRmsNormRopeCacheWithKScale final tilingData: totalTokens=%lu batch=%lu qHeadNum=%lu kvHeadNum=%lu "
             "headDim=%lu blockSize=%lu coreTokenTile=%lu coreGroupNum=%lu tokenTile=%lu epsilon=%f.",
-            tilingData.totalTokens, tilingData.batch, tilingData.numQHeads, tilingData.numKHeads, tilingData.numVHeads,
+            tilingData.totalTokens, tilingData.batch, tilingData.qHeadNum, tilingData.kvHeadNum,
             tilingData.headDim, tilingData.blockSize, tilingData.coreTokenTile, tilingData.coreGroupNum,
             tilingData.tokenTile, tilingData.epsilon);
     OP_LOGD(opName.c_str(),
@@ -896,9 +896,8 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillTilingData(const ContractInput
 {
     tilingData.totalTokens = input.totalTokens;
     tilingData.batch = input.batch;
-    tilingData.numQHeads = contractTiling.numQHeads;
-    tilingData.numKHeads = contractTiling.numKHeads;
-    tilingData.numVHeads = contractTiling.numVHeads;
+    tilingData.qHeadNum = contractTiling.numQHeads;
+    tilingData.kvHeadNum = contractTiling.numKHeads;
     tilingData.headDim = input.headDim;
     tilingData.blockSize = input.blockSize;
     tilingData.coreTokenTile = contractTiling.coreTokenTile;

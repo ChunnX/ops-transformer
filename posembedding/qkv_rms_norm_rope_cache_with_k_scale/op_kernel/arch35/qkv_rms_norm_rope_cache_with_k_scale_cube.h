@@ -62,8 +62,8 @@ public:
         LocalTensor<bfloat16_t> aRotL1Nz = aRotL1Pool_[dataBufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         LocalTensor<float> qkAfterCubeUb = QkAfterCubeUb(outputBufferId);
         const uint64_t cubeTokenSize = MakeCubeTokenSize(tile);
-        const uint64_t qRows = cubeTokenSize * tilingData_->numQHeads;
-        const uint64_t kRows = cubeTokenSize * tilingData_->numKHeads;
+        const uint64_t qRows = cubeTokenSize * tilingData_->qHeadNum;
+        const uint64_t kRows = cubeTokenSize * tilingData_->kvHeadNum;
         const uint64_t qL0cOffset = 0U;
         const uint64_t kL0cOffset = AlignUp(qRows, QKV_RRC_NZ_C0) * QKV_RRC_HEAD_DIM_D128;
         ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, dataBufferId, qL0cOffset, kL0cOffset);
@@ -250,7 +250,7 @@ private:
             return;
         }
 
-        const uint64_t qRowsPerAiv = MakeCubeHalfTokenSize(tile) * tilingData_->numQHeads;
+        const uint64_t qRowsPerAiv = MakeCubeHalfTokenSize(tile) * tilingData_->qHeadNum;
         const uint64_t dstBaseRow = isQSegment ? 0U : qRowsPerAiv;
         FixpipeSegmentToAivUb(segmentRows, dstBaseRow, bufferId, l0cBaseOffset, qkAfterCubeUb);
     }

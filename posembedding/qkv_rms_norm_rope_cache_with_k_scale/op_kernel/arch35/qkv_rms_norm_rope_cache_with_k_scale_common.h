@@ -164,6 +164,13 @@ struct DataCopy2DParams {
     uint64_t srcStride;
 };
 
+struct DataCopyUbToGm2DParams {
+    uint64_t rowCount;
+    uint64_t colCount;
+    uint64_t srcStride;
+    uint64_t dstStride;
+};
+
 __aicore__ inline uint64_t CeilDiv(uint64_t value, uint64_t factor)
 {
     if (factor == 0U) {
@@ -251,8 +258,20 @@ __aicore__ inline void DataCopyGmToUb2D(const LocalTensor<T> &dst, const GlobalT
 
 template <typename T>
 __aicore__ inline void DataCopyUbToGm2D(const GlobalTensor<T> &dst, const LocalTensor<T> &src,
-                                        const DataCopyExtParams &params)
+                                        const DataCopyUbToGm2DParams &params2d)
 {
+    if (params2d.rowCount == 0U || params2d.colCount == 0U) {
+        return;
+    }
+
+    DataCopyExtParams params;
+    params.blockCount = static_cast<uint16_t>(params2d.rowCount);
+    params.blockLen = static_cast<uint32_t>(params2d.colCount * sizeof(T));
+    params.srcStride =
+        static_cast<decltype(params.srcStride)>((params2d.srcStride - params2d.colCount) * sizeof(T) /
+                                                QKV_RRC_BLOCK_BYTES);
+    params.dstStride = static_cast<decltype(params.dstStride)>((params2d.dstStride - params2d.colCount) * sizeof(T));
+    params.rsv = 0U;
     DataCopyPad(dst, src, params);
 }
 
