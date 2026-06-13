@@ -134,9 +134,14 @@ def _make_kv(shape):
 
 
 def _make_nc_on_npu(tensor, nc):
+    """padding+slice → NPU 非连续视图
+    nc="dim0":  pad dim1 → dim0 stride 偏大
+    nc="dim01": pad dim2 → dim0/dim1 stride 偏大
+    pad_dim 统一用 dim1/dim2，与 rank 无关，保证首个非连续维在 checker 允许范围
+    """
     if nc == "none":
         return tensor
-    pad_dim = 1 if nc == "dim0" else (2 if len(tensor.shape) == 4 else 3)
+    pad_dim = 1 if nc == "dim0" else 2
     Bv = tensor.shape[pad_dim]
     new_shape = list(tensor.shape)
     new_shape[pad_dim] = Bv + 1
