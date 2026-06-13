@@ -122,7 +122,7 @@ public:
     static constexpr bool NEED_MID = TWO_CAST || DST_BOOL || HAS64 || HASBF;
     static constexpr bool NEED_DEQ = (X == DT_INT32 && (NEED_MID || Y == DT_FLOAT16)) ||
                                      false;
-    // mid buffers: phase1 paths need one f16 lane; 64bit/bf16 paths need two 4-byte stages
+    // mid buffers: phase1 paths need one f16 lane; 64bit/bf16 paths need two 4-byte stages.
     static constexpr int MID_BYTES = (HAS64 || HASBF) ? 4 : 2;
 
 public:
@@ -181,7 +181,7 @@ private:
         inQue_.EnQue(inLocal);
     }
 
-    // i64 (u32 pairs) -> i32: scalar low-lane extraction avoids GatherMask UB OOB on 910B large tiles.
+    // i64 (u32 pairs) -> i32: scalar low-lane extraction avoids GatherMask UB OOB on large tiles.
     __aicore__ inline void Narrow64(const AscendC::LocalTensor<uint32_t>& src,
                                     const AscendC::LocalTensor<int32_t>& dst, int64_t count)
     {
@@ -196,6 +196,7 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::S_V>(evt);
         AscendC::WaitFlag<AscendC::HardEvent::S_V>(evt);
     }
+
 
     // i32 -> i64 (u32 pairs): scalar even-lane write + sign extension (phase2 baseline, vectorize in phase3)
     __aicore__ inline void Widen64(const AscendC::LocalTensor<int32_t>& src,
@@ -228,7 +229,6 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(e);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(e);
         }
-
         if constexpr (SCALAR_I16_F32) {
             for (int64_t i = 0; i < count; ++i) {
                 outLocal.SetValue(i, static_cast<float>(inLocal.GetValue(i)));

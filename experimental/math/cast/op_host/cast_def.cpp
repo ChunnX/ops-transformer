@@ -78,7 +78,6 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false")
             .ExtendCfgInfo("opFile.value", "cast");
         this->AICore().AddConfig("ascend310p", aicoreConfig);
-        this->AICore().AddConfig("ascend910b", aicoreConfig);
     }
 };
 

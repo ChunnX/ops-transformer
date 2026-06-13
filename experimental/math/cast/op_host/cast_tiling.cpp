@@ -127,8 +127,8 @@ static ge::graphStatus TilingForCast(gert::TilingContext* context)
     int64_t bytesPerElem = BUFFER_NUM * (inBytes + outBytes) + midBytes;
     int64_t ubFormer = (ubSize - UB_RESERVE_BYTES) / bytesPerElem / UB_ELEM_ALIGN * UB_ELEM_ALIGN;
     if (xDtype == ge::DT_INT64) {
-        // Diagnostic and production-safe cap for int64 software paths. 910B showed
-        // vector UB faults when large per-core tiles were emitted for i64 input.
+        // Diagnostic and production-safe cap for int64 software paths.
+        // Large per-core tiles can fault in the i64 software path.
         constexpr int64_t maxInt64TileElems = 1024;
         if (ubFormer > maxInt64TileElems) {
             ubFormer = maxInt64TileElems;
