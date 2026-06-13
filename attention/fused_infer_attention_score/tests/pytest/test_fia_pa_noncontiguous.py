@@ -282,10 +282,10 @@ def _run_one(cfg, expect_pass):
         logger.info(f"  k contig={k_nc.is_contiguous()} stride={k_nc.stride()}")
 
     if not expect_pass:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception) as exc_info:
             _run(q_npu, k_nc, v_nc, pa, q_layout, act_q, act_kv,
                  bt_npu, bs, scale, q_rope_npu, k_rope_npu, d, dr, dv)
-        logger.info(f"  [{cfg['id']}] ERROR as expected")
+        logger.info(f"  [{cfg['id']}] ERROR as expected: {exc_info.value}")
         return
 
     out = _run(q_npu, k_nc, v_nc, pa, q_layout, act_q, act_kv,
