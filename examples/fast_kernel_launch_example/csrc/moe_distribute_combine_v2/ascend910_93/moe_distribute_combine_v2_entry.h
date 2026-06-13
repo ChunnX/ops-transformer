@@ -13,7 +13,6 @@
 #include "op_kernel/moe_distribute_combine_v2_tiling.h"
 
 struct MoeDistributeCombineV2SkArgs {
-    int32_t tilingKey;
     GM_ADDR expandX;
     GM_ADDR expertIds;
     GM_ADDR expandIdx;

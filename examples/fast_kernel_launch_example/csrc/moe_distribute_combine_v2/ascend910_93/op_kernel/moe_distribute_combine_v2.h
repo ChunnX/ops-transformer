@@ -27,13 +27,16 @@
 #include "../../../common/inc/kernel/mc2_moe_context.h"
 #include "../../../moe_distribute_dispatch_v2/ascend910_93/op_kernel/moe_distribute_v2_constant.h"
 #include "../../../moe_distribute_dispatch_v2/ascend910_93/op_kernel/moe_distribute_v2_base.h"
+#include "../../../moe_distribute_dispatch_v2/ascend910_93/aot_framework.h"
+#include "../aot_tiling_config.h"
 
 namespace MoeDistributeCombineV2Impl {
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
+using namespace AOT;
 
-#define CombineMC2TypeClass typename ExpandXType, bool IsInt8Quant
-#define CombineMC2TypeFunc ExpandXType, IsInt8Quant
+#define CombineMC2TypeClass typename ExpandXType, bool IsInt8Quant, typename TH
+#define CombineMC2TypeFunc ExpandXType, IsInt8Quant, TH
 
 using namespace AscendC;
 template <CombineMC2TypeClass>
@@ -51,8 +54,8 @@ private:
                                               GM_ADDR sharedExpertX, GM_ADDR oriX,
                                               GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
                                               GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut);
-    __aicore__ inline void InitAttrs(GM_ADDR mc2Context, const MoeDistributeCombineV2Info tilingData);
-    __aicore__ inline void InitTilingAttrs(const MoeDistributeCombineV2Info tilingData);
+    __aicore__ inline void InitAttrs(GM_ADDR mc2Context, const MoeDistributeCombineV2Info *tilingData);
+    __aicore__ inline void InitTilingAttrs(const MoeDistributeCombineV2Info *tilingData);
     __aicore__ inline void AlltoAllBuffInitAndMaskCal();
     __aicore__ inline void TokenMaskCalCnt();
     __aicore__ inline void ExpertMaskCalCnt();
@@ -324,36 +327,34 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitInputAndO
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitTilingAttrs(const MoeDistributeCombineV2Info tilingData)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitTilingAttrs(const MoeDistributeCombineV2Info *tilingData)
 {
-    axisBS_ = tilingData.bs;
-    axisH_ = tilingData.h;
-    axisK_ = tilingData.k;
-    aivNum_ = tilingData.aivNum;
-    ubSize_ = tilingData.totalUbSize;
-    globalBS_ = tilingData.globalBs;
-    isPerformanceFlag_ = tilingData.isPerformance;
-    epWorldSizeOriginal_ = tilingData.epWorldSize;
-    epRankId_ = tilingData.epRankId;
-    epRankIdOriginal_ = tilingData.epRankId;
-    epWorldSize_ = tilingData.epWorldSize;
-    moeExpertPerRankNum_ = tilingData.moeExpertPerRankNum;
-    totalWinSizeEp_ = tilingData.totalWinSizeEp;
-    isInputTokenMaskFlag_ = tilingData.isTokenMask;
-    isInputExpertMaskFlag_ = tilingData.isExpertMask;
-    hasSharedExpertX_ = tilingData.hasSharedExpertX;
-    bufferNum_ = tilingData.bufferNum;
-    zeroExpertNum_ = tilingData.zeroExpertNum;
-    copyExpertNum_ = tilingData.copyExpertNum;
-    constExpertNum_ = tilingData.constExpertNum;
-    moeExpertNum_ = tilingData.moeExpertNum;
-    moeExpertOriginalNum_ = tilingData.moeExpertNum;
-    sharedExpertRankNum_ = tilingData.sharedExpertRankNum;
+    axisBS_ = tilingData->bs;
+    axisH_ = tilingData->h;
+    axisK_ = tilingData->k;
+    aivNum_ = tilingData->aivNum;
+    ubSize_ = tilingData->totalUbSize;
+    globalBS_ = tilingData->globalBs;
+    isPerformanceFlag_ = tilingData->isPerformance;
+    epWorldSizeOriginal_ = tilingData->epWorldSize;
+    epWorldSize_ = tilingData->epWorldSize;
+    moeExpertPerRankNum_ = tilingData->moeExpertPerRankNum;
+    totalWinSizeEp_ = tilingData->totalWinSizeEp;
+    isInputTokenMaskFlag_ = tilingData->isTokenMask;
+    isInputExpertMaskFlag_ = tilingData->isExpertMask;
+    hasSharedExpertX_ = tilingData->hasSharedExpertX;
+    bufferNum_ = tilingData->bufferNum;
+    zeroExpertNum_ = tilingData->zeroExpertNum;
+    copyExpertNum_ = tilingData->copyExpertNum;
+    constExpertNum_ = tilingData->constExpertNum;
+    moeExpertNum_ = tilingData->moeExpertNum;
+    moeExpertOriginalNum_ = tilingData->moeExpertNum;
+    sharedExpertRankNum_ = tilingData->sharedExpertRankNum;
     enableSpecialExpert_ = (constExpertNum_ + zeroExpertNum_ + copyExpertNum_ > 0U);
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_ADDR mc2Context, const MoeDistributeCombineV2Info tilingData)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_ADDR mc2Context, const MoeDistributeCombineV2Info *tilingData)
 {
     InitTilingAttrs(tilingData);
     uint32_t epRankIdHccl{0};
@@ -361,14 +362,16 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_
     //Using Mc2Context instead of hccl context
     mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
     epRankIdHccl = mc2Context_->epRankId;
-    epWorldSizeHccl = tilingData.epWorldSize;
+    epWorldSizeHccl = tilingData->epWorldSize;
+    epRankId_ = mc2Context_->epRankId;
+    epRankIdOriginal_ = mc2Context_->epRankId;
     statusDataSpaceGm_ = (GM_ADDR)(mc2Context_->epHcclBuffer[epRankIdHccl]);
     selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm_ + COMBINE_STATE_WIN_OFFSET + coreIdx_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
 
-    sharedExpertNum_ = tilingData.sharedExpertNum;
+    sharedExpertNum_ = tilingData->sharedExpertNum;
     moeSendNum_ = epWorldSize_ * moeExpertPerRankNum_;
     if (epRankId_ < sharedExpertRankNum_) {
         isShareExpertRankFlag_ = true;
@@ -399,6 +402,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
 
     coreIdx_ = GetBlockIdx();
 
+    const MoeDistributeCombineV2Info *tiling = GetTiling<MoeDistributeCombineV2Info, TH>(&tilingData);
+
     maskCalcWorkspaceGM_ = workspaceGM + coreIdx_ * MASK_CALC_NEED_WORKSPACE;
 
     InitInputAndOutput(
@@ -408,7 +413,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     // 检查hcclwinsize是否越界
     mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
 
-    InitAttrs(mc2Context, tilingData);
+    InitAttrs(mc2Context, tiling);
 
     if constexpr (IsInt8Quant) {
         quantInst_.SetQuantInitParams(axisH_);
@@ -418,7 +423,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     PipeBarrier<PIPE_ALL>();
 
     // 当前win区划分为前后两半区，连续两次dispatch，切换半区
-    winDataSizeOffsetEp_ = static_cast<uint64_t>(dataState_) * (tilingData.totalWinSizeEp / 2UL);
+    winDataSizeOffsetEp_ = static_cast<uint64_t>(dataState_) * (tiling->totalWinSizeEp / 2UL);
     winStatusOffset_ = COMBINE_STATE_OFFSET + dataState_ * WIN_STATE_OFFSET; // 前面的预留给dispatch使用
     epWindowGM_ = GetWinAddrByRankId(epRankIdOriginal_, EP_DOMAIN);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
