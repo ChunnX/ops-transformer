@@ -131,7 +131,8 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
 
                 if (fiaInfo.attenMaskFlag) {
                     const gert::Tensor *maskTensor = fiaInfo.opParamInfo.attenMask.tensor;
-                    std::string shapeStr = (maskTensor != nullptr) ? ToString(maskTensor->GetStorageShape()) : "null";
+                    std::string shapeStr =
+                        (maskTensor != nullptr) ? ToStringRaw(maskTensor->GetStorageShape()) : "null";
                     std::string reasonMsg = "In MLA FullQuant Scenario, attenMask must be empty, when the datatype of "
                         "query is INT8, inputLayout is not TND or TND_NTD and the S axis of query = 1";
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask",
@@ -150,7 +151,8 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
 
                 if (!fiaInfo.attenMaskFlag) {
                     const gert::Tensor *maskTensor = fiaInfo.opParamInfo.attenMask.tensor;
-                    std::string shapeStr = (maskTensor != nullptr) ? ToString(maskTensor->GetStorageShape()) : "null";
+                    std::string shapeStr =
+                        (maskTensor != nullptr) ? ToStringRaw(maskTensor->GetStorageShape()) : "null";
 
                     std::string reasonMsg = "In MLA FullQuant Scenario, attenMask cannot be empty, when "
                         "the datatype of query is INT8, inputLayout is not TND or TND_NTD and the S axis of query > 1";
@@ -208,23 +210,23 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName,
-                "query_padding_size and kv_padding_size", "not empty",
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
+                "query_padding_size and kv_padding_size",
                 ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
                     + " scenario, when sparse_mode is " + std::to_string(sparseMode)
                     + ", query_padding_size and kv_padding_size must be empty").c_str()),
             return ge::GRAPH_FAILED);
         // 不支持PSE
         OP_CHECK_IF(fiaInfo.pseShiftFlag,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", "not empty",
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pse_shift",
                 ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
                     + " scenario, when sparse_mode is " + std::to_string(sparseMode)
                     + ", pse_shift must be empty").c_str()),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.sysPrefixFlag,
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
-                "not empty", ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
+                ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
                     + " scenario, when sparse_mode is " + std::to_string(sparseMode)
                     + ", key_shared_prefix and value_shared_prefix must be empty").c_str()),
             return ge::GRAPH_FAILED);
@@ -329,7 +331,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
                     maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1) < fiaInfo.s1Size ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_2) < minAttenMaskSize)) {
-            std::string shapeStr = ToString(maskShape->GetStorageShape());
+            std::string shapeStr = ToStringRaw(maskShape->GetStorageShape());
             std::string reasonMsg = "The shape of atten_mask must be [B or 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -342,7 +344,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1) != 1 ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_2) < fiaInfo.s1Size ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize)) {
-            std::string shapeStr = ToString(maskShape->GetStorageShape());
+            std::string shapeStr = ToStringRaw(maskShape->GetStorageShape());
             std::string reasonMsg = "The shape of atten_mask must be [B or 1, 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -497,7 +499,7 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) {
         if (!checkMask) {
             const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
-            std::string shapeStr = ToString(maskShape->GetStorageShape());
+            std::string shapeStr = ToStringRaw(maskShape->GetStorageShape());
             std::string reasonMsg = "The shape of atten_mask must be [B(" + std::to_string(fiaInfo.bSize) +
                                     ") or 1, >=Q_S(" + std::to_string(fiaInfo.s1Size) + "), >=KV_S(" +
                                     std::to_string(fiaInfo.s2Size) + ") + systemPrefixLen(" +
@@ -510,7 +512,7 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
          (fiaInfo.sparseMode == SPARSE_MODE_BAND)) &&
         !checkMask) {
         const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
-        std::string shapeStr = ToString(maskShape->GetStorageShape());
+        std::string shapeStr = ToStringRaw(maskShape->GetStorageShape());
         std::string reasonMsg = "The shape of atten_mask must be [2048, 2048], [1, 2048, 2048] or [1, 1, 2048, "
                                 "2048] when the sparse_mode is " +
                                 std::to_string(fiaInfo.sparseMode);
