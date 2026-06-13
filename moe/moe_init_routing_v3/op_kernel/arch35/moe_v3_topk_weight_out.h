@@ -29,7 +29,7 @@ public:
 
 private:
     TPipe *pipe_;
-    TQue<QuePosition::VECIN, 1> topkWeightCopyInQueue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> topkWeightCopyInQueue_;
 
     GlobalTensor<float> topkWeightGm_;
     GlobalTensor<float> expandedTopkWeightGm_;
@@ -87,12 +87,12 @@ __aicore__ inline void MoeV3TopkWeightOut::Init(GM_ADDR topkWeight, GM_ADDR expa
     expandedTopkWeightGm_.SetGlobalBuffer((__gm__ float *)expandedTopkWeight, outputRows_);
 
     if (dropPadMode_ != DROP_PAD_MODE) {
-        expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
-            Align(totalLength_, sizeof(int32_t)), Align(totalLength_, sizeof(int32_t)));
-    }
-
-    if (rowIdxType_ == SCATTER && dropPadMode_ != DROP_PAD_MODE) {
-        sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace, Align(totalLength_, sizeof(int32_t)));
+        if (rowIdxType_ == SCATTER) {
+            expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, totalLength_);
+        } else {
+            expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
+                Align(totalLength_, sizeof(int32_t)), Align(totalLength_, sizeof(int32_t)));
+        }
     }
 
     if (dropPadMode_ == DROP_PAD_MODE) {
@@ -102,8 +102,6 @@ __aicore__ inline void MoeV3TopkWeightOut::Init(GM_ADDR topkWeight, GM_ADDR expa
     int64_t splitBase;
     if (dropPadMode_ == DROP_PAD_MODE) {
         splitBase = totalLength_;
-    } else if (rowIdxType_ == SCATTER) {
-        splitBase = activeNum_;
     } else {
         splitBase = expertTotalCount_;
     }
@@ -160,32 +158,15 @@ __aicore__ inline void MoeV3TopkWeightOut::Process()
 
     if (blockIdx_ >= needCoreNum_) return;
 
-    if (rowIdxType_ == SCATTER) {
-        int64_t endIdx = Min(startIdx + coreElements_, activeNum_);
-        for (int64_t i = startIdx; i < endIdx; i++) {
-            int32_t curExpertId = sortedExpertIdxGm_.GetValue(i);
-            if (curExpertId < expertStart_ || curExpertId >= expertEnd_) {
-                break;
-            }
-            int64_t originalPos = expandDstToSrcRowGm_.GetValue(i);
-            LocalTensor<float> topkWeightLocal = topkWeightCopyInQueue_.AllocTensor<float>();
-            DataCopyPad(topkWeightLocal, topkWeightGm_[originalPos], copyParams, padParams);
-            topkWeightCopyInQueue_.EnQue(topkWeightLocal);
-            topkWeightLocal = topkWeightCopyInQueue_.DeQue<float>();
-            DataCopyPad(expandedTopkWeightGm_[i], topkWeightLocal, copyParams);
-            topkWeightCopyInQueue_.FreeTensor(topkWeightLocal);
-        }
-    } else {
-        int64_t endIdx = startIdx + coreElements_;
-        for (int64_t curIndex = startIdx; curIndex < endIdx; curIndex++) {
-            int64_t originalPos = expandDstToSrcRowGm_.GetValue(curIndex);
-            LocalTensor<float> topkWeightLocal = topkWeightCopyInQueue_.AllocTensor<float>();
-            DataCopyPad(topkWeightLocal, topkWeightGm_[originalPos], copyParams, padParams);
-            topkWeightCopyInQueue_.EnQue(topkWeightLocal);
-            topkWeightLocal = topkWeightCopyInQueue_.DeQue<float>();
-            DataCopyPad(expandedTopkWeightGm_[curIndex], topkWeightLocal, copyParams);
-            topkWeightCopyInQueue_.FreeTensor(topkWeightLocal);
-        }
+    int64_t endIdx = startIdx + coreElements_;
+    for (int64_t curIndex = startIdx; curIndex < endIdx; curIndex++) {
+        int64_t originalPos = expandDstToSrcRowGm_.GetValue(curIndex);
+        LocalTensor<float> topkWeightLocal = topkWeightCopyInQueue_.AllocTensor<float>();
+        DataCopyPad(topkWeightLocal, topkWeightGm_[originalPos], copyParams, padParams);
+        topkWeightCopyInQueue_.EnQue(topkWeightLocal);
+        topkWeightLocal = topkWeightCopyInQueue_.DeQue<float>();
+        DataCopyPad(expandedTopkWeightGm_[curIndex], topkWeightLocal, copyParams);
+        topkWeightCopyInQueue_.FreeTensor(topkWeightLocal);
     }
 }
 
