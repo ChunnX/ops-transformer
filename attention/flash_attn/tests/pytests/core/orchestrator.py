@@ -181,9 +181,13 @@ def run_case(params: dict,
     print(f"  [primary] {primary.name} 计算...")
     dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
                   for k, v in cpu_inputs.items()}
-    primary_out = primary.compute(dev_inputs, params)
+    primary_out_raw = primary.compute(dev_inputs, params)
+    primary_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
+                   for k, v in primary_out_raw.items()}
+    del dev_inputs, primary_out_raw
+    primary.clear_cache()
 
-    dev_raw = primary_out["out"].cpu() if primary_out["out"].is_cuda or str(primary_out["out"].device).startswith("npu") else primary_out["out"]
+    dev_raw = primary_out["out"]
     dev_out = dev_raw
 
     cpu_raw = golden_out["out"]
@@ -300,10 +304,9 @@ def run_case(params: dict,
             except Exception as e:
                 print(f"  [warn] visualize 异常: {e}")
 
-    del cpu_inputs, dev_inputs, primary_out, golden_out
-    del cpu_raw, dev_raw, cpu_out, dev_out
+    del cpu_inputs, primary_out, golden_out
+    del dev_raw, cpu_out, dev_out
     gc.collect()
-    primary.clear_cache()
 
     return ret
 
