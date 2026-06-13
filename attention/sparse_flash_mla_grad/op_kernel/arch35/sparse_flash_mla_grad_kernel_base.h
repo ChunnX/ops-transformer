@@ -13,10 +13,10 @@
  * \brief
  */
 
-#ifndef SPARSE_FLASH_ATTENTION_GRAD_KERNEL_BASE_H
-#define SPARSE_FLASH_ATTENTION_GRAD_KERNEL_BASE_H
+#ifndef SPARSE_FLASH_MLA_GRAD_KERNEL_BASE_H
+#define SPARSE_FLASH_MLA_GRAD_KERNEL_BASE_H
 
-#include "sparse_flash_attention_grad_common.h"
+#include "sparse_flash_mla_grad_common.h"
 
 namespace SfagBaseApi {
 

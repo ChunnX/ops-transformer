@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_flash_attention_grad_pre_regbase.h
+ * \file sparse_flash_mla_grad_pre_regbase.h
  * \brief
  */
-#ifndef SPARSE_FLASH_ATTENTION_GRAD_PRE_KERNEL_REGBASE_H_
-#define SPARSE_FLASH_ATTENTION_GRAD_PRE_KERNEL_REGBASE_H_
+#ifndef SPARSE_FLASH_MLA_GRAD_PRE_KERNEL_REGBASE_H_
+#define SPARSE_FLASH_MLA_GRAD_PRE_KERNEL_REGBASE_H_
 #include "kernel_operator.h"
 
 using namespace AscendC;
@@ -182,4 +182,4 @@ __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, isOriKVExist
 {
     SyncAll<false>();
 }
-#endif // _SPARSE_FLASH_ATTENTION_GRAD_PRE_KERNEL_REGBASE_H_
+#endif // _SPARSE_FLASH_MLA_GRAD_PRE_KERNEL_REGBASE_H_

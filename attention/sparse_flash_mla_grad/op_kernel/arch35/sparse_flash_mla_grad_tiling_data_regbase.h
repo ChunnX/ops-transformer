@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file sparse_flash_attention_grad_tiling_data_regbase.h
+ * \file sparse_flash_mla_grad_tiling_data_regbase.h
  * \brief
  */
 
-#ifndef SPARSE_FLASH_ATTENTION_GRAD_TILING_DATA_REGBASE_H_
-#define SPARSE_FLASH_ATTENTION_GRAD_TILING_DATA_REGBASE_H_
+#ifndef SPARSE_FLASH_MLA_GRAD_TILING_DATA_REGBASE_H_
+#define SPARSE_FLASH_MLA_GRAD_TILING_DATA_REGBASE_H_
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"

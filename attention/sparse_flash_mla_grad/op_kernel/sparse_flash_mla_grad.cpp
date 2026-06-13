@@ -14,9 +14,9 @@
  */
 
 #if __CCE_AICORE__ == 310
-#include "arch35/sparse_flash_attention_grad_template_tiling_key.h"
-#include "arch35/sparse_flash_attention_grad_tiling_data_regbase.h"
-#include "arch35/sparse_flash_attention_grad_entry_regbase.h"
+#include "arch35/sparse_flash_mla_grad_template_tiling_key.h"
+#include "arch35/sparse_flash_mla_grad_tiling_data_regbase.h"
+#include "arch35/sparse_flash_mla_grad_entry_regbase.h"
 #else
 #include "lib/matmul_intf.h"
 #include "sparse_flash_mla_grad_template_tiling_key.h"

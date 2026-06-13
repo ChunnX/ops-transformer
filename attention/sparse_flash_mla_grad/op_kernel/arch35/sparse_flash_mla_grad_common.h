@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file sparse_flash_attention_grad_common.h
+ * \file sparse_flash_mla_grad_common.h
  * \brief
  */
 
-#ifndef SPARSE_FLASH_ATTENTION_GRAD_COMMON_H
-#define SPARSE_FLASH_ATTENTION_GRAD_COMMON_H
+#ifndef SPARSE_FLASH_MLA_GRAD_COMMON_H
+#define SPARSE_FLASH_MLA_GRAD_COMMON_H
 
 #include "common.h"
-#include "../../../../../../attention/common/op_kernel/buffers_policy.h"
+#include "../../../common/op_kernel/buffers_policy.h"
 using namespace fa_base_matmul;
 
 constexpr int32_t PROCESS_KV_SIZE = 4096;
@@ -110,4 +110,4 @@ struct DqkvResPos {
     ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 
-#endif // SPARSE_FLASH_ATTENTION_GRAD_COMMON_H
+#endif // SPARSE_FLASH_MLA_GRAD_COMMON_H

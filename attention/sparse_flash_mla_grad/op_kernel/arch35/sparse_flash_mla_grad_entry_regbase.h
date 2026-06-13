@@ -9,22 +9,22 @@
  */
 
 /*!
- * \file sparse_flash_attention_grad_entry_regbase.h
+ * \file sparse_flash_mla_grad_entry_regbase.h
  * \brief
  */
 
-#ifndef SPARSE_FLASH_ATTENTION_GRAD_ENTRY_REGBASE_H_
-#define SPARSE_FLASH_ATTENTION_GRAD_ENTRY_REGBASE_H_
+#ifndef SPARSE_FLASH_MLA_GRAD_ENTRY_REGBASE_H_
+#define SPARSE_FLASH_MLA_GRAD_ENTRY_REGBASE_H_
 
 #include "common.h"
 
-#include "sparse_flash_attention_grad_post_regbase.h"
-#include "sparse_flash_attention_grad_pre_regbase.h"
+#include "sparse_flash_mla_grad_post_regbase.h"
+#include "sparse_flash_mla_grad_pre_regbase.h"
 #include "kernel_operator.h"
 
-#include "sparse_flash_attention_grad_block_vec.h"
-#include "sparse_flash_attention_grad_block_cube.h"
-#include "sparse_flash_attention_grad_kernel.h"
+#include "sparse_flash_mla_grad_block_vec.h"
+#include "sparse_flash_mla_grad_block_cube.h"
+#include "sparse_flash_mla_grad_kernel.h"
 
 
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(                                                                 \
@@ -126,4 +126,4 @@ RegbaseSFAG(__gm__ uint8_t *query, __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_k
     return;
 #endif
 }
-#endif // _SPARSE_FLASH_ATTENTION_GRAD_ENTRY_REGBASE_H_
+#endif // _SPARSE_FLASH_MLA_GRAD_ENTRY_REGBASE_H_

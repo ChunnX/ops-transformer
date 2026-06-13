@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file sparse_flash_attention_grad_block_cube.h
+ * \file sparse_flash_mla_grad_block_cube.h
  * \brief
  */
 
-#ifndef SPARSE_FLASH_ATTENTION_GRAD_BLOCK_CUBE_H
-#define SPARSE_FLASH_ATTENTION_GRAD_BLOCK_CUBE_H
+#ifndef SPARSE_FLASH_MLA_GRAD_BLOCK_CUBE_H
+#define SPARSE_FLASH_MLA_GRAD_BLOCK_CUBE_H
 
-#include "../../../../../../attention/common/op_kernel/matmul.h"
-#include "../../../../../../attention/common/op_kernel/FixpipeOut.h"
-#include "../../../../../../attention/common/op_kernel/arch35/util_regbase.h"
+#include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/FixpipeOut.h"
+#include "../../../common/op_kernel/arch35/util_regbase.h"
 
 namespace SfagBaseApi {
 

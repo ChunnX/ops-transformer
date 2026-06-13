@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_flash_attention_grad_post_regbase.h
+ * \file sparse_flash_mla_grad_post_regbase.h
  * \brief
  */
-#ifndef SPARSE_FLASH_ATTENTION_GRAD_POST_KERNEL_REGBASE_H_
-#define SPARSE_FLASH_ATTENTION_GRAD_POST_KERNEL_REGBASE_H_
+#ifndef SPARSE_FLASH_MLA_GRAD_POST_KERNEL_REGBASE_H_
+#define SPARSE_FLASH_MLA_GRAD_POST_KERNEL_REGBASE_H_
 #include "kernel_operator.h"
 #include "common.h"
 
@@ -239,4 +239,4 @@ SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCm
         ProcessSink();
     }
 }
-#endif // SPARSE_FLASH_ATTENTION_GRAD_POST_KERNEL_REGBASE_H_
+#endif // SPARSE_FLASH_MLA_GRAD_POST_KERNEL_REGBASE_H_

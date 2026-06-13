@@ -9,14 +9,14 @@
  */
 
 /*!
- * \file sparse_flash_attention_grad_block_vec.h
+ * \file sparse_flash_mla_grad_block_vec.h
  * \brief
  */
 
-#ifndef SPARSE_FLASH_ATTENTION_GRAD_BLOCK_VEC_H
-#define SPARSE_FLASH_ATTENTION_GRAD_BLOCK_VEC_H
+#ifndef SPARSE_FLASH_MLA_GRAD_BLOCK_VEC_H
+#define SPARSE_FLASH_MLA_GRAD_BLOCK_VEC_H
 
-#include "sparse_flash_attention_grad_common.h"
+#include "sparse_flash_mla_grad_common.h"
 #include "vector_api/cast_softmax_grad.h"
 #include "vector_api/pse_atten_mask_muls_simple_softmax.h"
 #include "vector_api/vf_broadcast_sub_mul.h"
