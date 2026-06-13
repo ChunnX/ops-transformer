@@ -405,7 +405,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     // Layout枚举很多，kernel和tiling用同一个枚举，
     auto itQ = layoutMap.find(opParamInfo_.layoutQ);
     if (itQ == layoutMap.end()) {
-        std::string reason = "layout_q: " + std::string(opParamInfo_.layoutQ) + " is not supported.";
+        std::string reason = "layout_q: " + std::string(opParamInfo_.layoutQ) + " is not supported";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
             opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
@@ -414,7 +414,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
 
     auto itKV = layoutMap.find(opParamInfo_.layoutKV);
     if (itKV == layoutMap.end()) {
-        std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported.";
+        std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
             opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
@@ -423,7 +423,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
 
     auto itOut = layoutMap.find(opParamInfo_.layoutOut);
     if (itOut == layoutMap.end()) {
-        std::string reason = "layout_out: " + std::string(opParamInfo_.layoutOut) + " is not supported.";
+        std::string reason = "layout_out: " + std::string(opParamInfo_.layoutOut) + " is not supported";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out",
             opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
