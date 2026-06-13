@@ -37,64 +37,13 @@ using namespace regbaseutil;
 using namespace AttentionCommon;
 
 namespace BaseApi {
-
 template <
     typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
     LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
     S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
     DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
     uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class VecBlockBase {
-public:
-    /* =================编译期常量的基本块信息================= */
-    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
-    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t vec1S2CopyLenDn = s2BaseSize >> 1;
-    static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
-    static constexpr uint32_t vec1S2CopyCountDn = mBaseSize >> 5;
-    static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
-    static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
-    static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
-    static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
-
-    static constexpr uint32_t DB = 2;
-    // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误
-    static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
-    static constexpr bool HAS_MASK = hasAtten;
-
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
-
-    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
-    static constexpr LAYOUT_Q MASK_LAYOUT =
-        (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
-         layout == LayOutTypeEnum::LAYOUT_SBH) ?
-            LAYOUT_Q::SG :
-            LAYOUT_Q::GS;
-
-    static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
-    uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
-
-    using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
-
-    using vec2ResGmType = typename std::conditional<splitD, GlobalTensor<float>, int8_t>::type;
-
-    using flashdecodeGmType = GlobalTensor<float>;
-
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-
-    __aicore__ inline VecBlockBase(ConstInfoX &constInfo){};
-};
-
-template <
-    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
-    DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
-    uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockVec
-    : public VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
-                          dVTemplateType, hasAtten, hasDrop, KvLayoutType, useDn, bmm2Write2Ub, splitD> {
+class FANoQuantGqaBlockVec {
 public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -207,9 +156,7 @@ public:
 
     // ==================== Functions ======================
     __aicore__ inline FANoQuantGqaBlockVec(ConstInfoX &constInfo)
-        : VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
-                       dVTemplateType, hasAtten, hasDrop, KvLayoutType, useDn, bmm2Write2Ub, splitD>(constInfo),
-          constInfo(constInfo){};
+        : constInfo(constInfo){};
 
     __aicore__ inline void InitVecBlock(__gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *attenMask,
