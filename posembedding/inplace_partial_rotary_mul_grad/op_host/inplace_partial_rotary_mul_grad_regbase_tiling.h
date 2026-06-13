@@ -1,0 +1,130 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file inplace_partial_rotary_mul_grad_regbase_tiling.h
+ * \brief
+ */
+#ifndef OPS_BUILD_IN_OP_TILING_RUNTIME_INPLACE_PARTIAL_ROTARY_MUL_GRAD_H
+#define OPS_BUILD_IN_OP_TILING_RUNTIME_INPLACE_PARTIAL_ROTARY_MUL_GRAD_H
+
+#include "register/tilingdata_base.h"
+#include "register/op_def_registry.h"
+#include "op_host/tiling_templates_registry.h"
+#include "tiling/tiling_api.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_util.h"
+#include "../op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_data.h"
+#include "platform/platform_info.h"
+#include "util/math_util.h"
+
+namespace optiling {
+struct InplacePartialRotaryMulGradCompileInfo {};
+
+enum class InplacePartialRotaryMulGradLayout : int64_t {
+    NO_BROADCAST = 1,
+    BROADCAST_BSN = 2,
+    BSND = 3,
+    SBND = 4,
+    BNSD = 5
+};
+
+enum class InplacePartialRotaryMulGradMode : int64_t {
+    HALF = 0,
+    INTERLEAVE = 1,
+    QUARTER = 2,
+    DEEPSEEK_INTERLEAVE = 3
+};
+
+class InplacePartialRotaryMulGradRegbaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+public:
+    explicit InplacePartialRotaryMulGradRegbaseTiling(gert::TilingContext *context) : TilingBaseClass(context)
+    {
+    }
+
+    void Reset(gert::TilingContext *context) override
+    {
+        TilingBaseClass::Reset(context);
+    }
+
+protected:
+    ge::graphStatus GetPlatformInfo() override;
+    ge::graphStatus GetShapeAttrsInfo() override;
+    ge::graphStatus GetWorkspaceSize() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    ge::graphStatus DoLibApiTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    ge::graphStatus DoOpTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    uint64_t GetTilingKey() const override;
+
+    ge::graphStatus PostTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    bool IsCapable() override
+    {
+        return true;
+    }
+    const static int64_t MAX_COPY_BLOCK_COUNT = 4095;
+    int64_t b_{0};
+    int64_t s_{0};
+    int64_t n_{0};
+    int64_t d_{0};
+    int64_t cosb_{0};
+    int64_t usedCoreNum_{0};
+    ge::DataType dtype_;
+    ge::DataType cosDtype_;
+    InplacePartialRotaryMulGradLayout layout_;
+    InplacePartialRotaryMulGradMode rotaryMode_;
+    InplacePartialRotaryMulGradTilingData *tilingData_{nullptr};
+
+    gert::Shape dyShape_;
+    gert::Shape cosShape_;
+    uint64_t tilingKey_{0};
+    int64_t blockSize_;
+    int64_t dSplitCoef_;
+    int64_t sliceStart_{0};
+    int64_t sliceEnd_{0};
+    int64_t sliceLength_{0};
+    bool is1snd_ = false;
+
+private:
+    bool IsInplacePartialRotaryMulGradMode(const int32_t mode) const;
+    ge::graphStatus CheckNullptr();
+    ge::graphStatus CheckShape();
+    ge::graphStatus CheckDtype();
+    ge::graphStatus CheckDtypeDyGroup();
+    ge::graphStatus CheckDtypeCosGroup();
+    ge::graphStatus CheckAttr();
+    ge::graphStatus CheckParam();
+    ge::graphStatus CheckShapeLimit();
+    ge::graphStatus CheckOptionalInput() const;
+    ge::graphStatus CheckShapeDim() const;
+    ge::graphStatus JudgeLayoutByShape(const gert::Shape &xShape, const gert::Shape &cosShape);
+    ge::graphStatus CheckRotaryModeShapeRelation(const int64_t sliceLen);
+    ge::graphStatus CheckInPutShapeAllPositive(const int64_t idx) const;
+    ge::graphStatus CheckOutPutShapeAllPositive(const int64_t idx) const;
+
+    ge::graphStatus CheckShapeAllPositive() const;
+};
+
+} // namespace optiling
+#endif // OPS_BUILD_IN_OP_TILING_RUNTIME_INPLACE_PARTIAL_ROTARY_MUL_GRAD_H
