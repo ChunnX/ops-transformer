@@ -31,7 +31,7 @@ raw/
 |------|------|--------|
 | [docs/gmm_a16w8_tiling_walkthrough.md](docs/gmm_a16w8_tiling_walkthrough.md) | GMM A16W8 Tiling 走读文档：GMMWeightQuantParam 字段、tiling 计算流程、groupSize 设置、A16W4 适配点 | 需要了解 A16W8 tiling 实现或 A16W4 tiling 适配方案时 |
 | [docs/gmm_a16w8_kernel_walkthrough.md](docs/gmm_a16w8_kernel_walkthrough.md) | GMM A16W8 Kernel 走读文档：Controller 流程、SetGmAddr 地址偏移、L1/UB 空间划分、Cube/Vec 调度、A16W4 适配点 | 需要了解 A16W8 kernel 实现或 A16W4 kernel 适配方案时 |
-| （待产出：wqbmmv2 ND 反量化走读文档） | | 需要了解 ND int4 pergroup 反量化实现时 |
+| [docs/wqbmmv2_nd_antiquant_walkthrough.md](docs/wqbmmv2_nd_antiquant_walkthrough.md) | WQBMMv2 ND INT4 PerGroup 反量化走读文档：NK/KN 排布实现、VF 函数、迁移适配方案 | 需要了解 ND int4 pergroup 反量化实现或 GMM 迁移方案时 |
 
 ## development/ — 开发辅助文档
 

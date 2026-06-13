@@ -29,9 +29,12 @@
 
 ## 任务 3：走读 ops-nn wqbmmv2 ND 反量化实现
 
-**任务状态**：待开始
+**任务状态**：✅ 已完成
 
 **简要说明**：走读 ops-nn 仓库中 weight ND int4 的反量化方法（`AntiquantComputeW4NKPerGroup`/`AntiquantComputeKNPerGroup`），了解如何迁移到 GMM。
+
+**产出文件**：
+- `.workflow/raw/docs/wqbmmv2_nd_antiquant_walkthrough.md` — WQBMMv2 ND 反量化走读文档
 
 **任务详情**：[详细任务说明](reference/next_steps/3_walkthrough_wqbmmv2.md)
 

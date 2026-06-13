@@ -85,3 +85,32 @@
 #### 影响范围
 - 仅文档变更，不涉及代码
 - 为后续任务 3（走读 wqbmmv2 ND 反量化）和任务 4（SRS 实现方案）提供充分的代码理解基础
+
+---
+
+### 2026-06-12 | 完成 WQBMMv2 ND 反量化走读文档
+
+**类型**: 📝 文档
+**范围**: `.workflow/raw/docs/wqbmmv2_nd_antiquant_walkthrough.md`
+
+#### 变更内容
+- 新增 `wqbmmv2_nd_antiquant_walkthrough.md`（939 行）：WQBMMv2 ND INT4 PerGroup 反量化走读文档
+  - 覆盖 `AntiquantComputeW4NKPerGroup` 完整实现（按 groupSize 分 6+ 个专用 VF 函数分支）
+  - 覆盖 `AntiquantComputeKNPerGroup` 完整实现（统一 VF 函数 + groupTail 处理）
+  - 覆盖 VF 底层函数实现详解（MicroAPI 调用序列、数据搬运、计算流程）
+  - 覆盖 NK vs KN 排布差异对比表（12 维度对比）
+  - 覆盖 NZ 格式 pergroup 对比参照
+  - 覆盖 GMM `basic_block_vf_nd.h` 已有接口分析
+  - 覆盖迁移适配方案（可复用部分 + 5 项需适配部分 + 步骤建议）
+  - 覆盖与 GMM 接口对齐方式（新增函数签名建议 + 与已有接口一致性对比）
+  - 每个核心函数均有伪代码 + ASCII 数据流图
+
+#### 关键决策
+- **NK 排布复杂度高**：按 groupSize 分 6+ 个专用 VF 函数（gs=32/64/128/256/odd/gt128），scale 用广播加载
+- **KN 排布统一简洁**：单一 VF 函数 `AntiquantPerGroupKN`，K 方向逐行步进，scale 用直接加载
+- **GMM 迁移建议**：保持 GMM 的 `__local_mem__` 指针传递风格，复用 wqbmmv2 的 VF 核心逻辑，groupSize 通过运行时参数传入
+- **参数传递方案**：推荐方案 A（函数参数传递，灵活性高），而非方案 B（扩展 WqmmConfig 编译期固定）
+
+#### 影响范围
+- 仅文档变更，不涉及代码
+- 为后续任务 4（SRS 实现方案）提供 wqbmmv2 反量化实现的完整参考和迁移方案
