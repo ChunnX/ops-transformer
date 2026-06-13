@@ -12,8 +12,8 @@
  * \file inplace_partial_rotary_mul_aba.h
  * \brief
  */
-#ifndef INPLACE_PARITAL_ROTARY_MUL_H
-#define INPLACE_PARITAL_ROTARY_MUL_H
+#ifndef INPLACE_PARTIAL_ROTARY_MUL_H
+#define INPLACE_PARTIAL_ROTARY_MUL_H
 
 #include "kernel_operator.h"
 
