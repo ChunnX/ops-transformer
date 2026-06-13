@@ -263,6 +263,8 @@ def _run_one(cfg, expect_pass):
 
     k_nc = _make_nc_on_npu(k_ref.npu(), nc)
     v_nc = _make_nc_on_npu(v_ref.npu(), nc)
+    if nc != "none" and dr > 0:
+        k_rope_npu = _make_nc_on_npu(k_rope_npu, nc)
     if nc != "none":
         cstrides = _contiguous_strides(k_nc.shape)
         assert k_nc.stride(0) != cstrides[0], f"{cfg['id']}: dim0 not non-contiguous"
