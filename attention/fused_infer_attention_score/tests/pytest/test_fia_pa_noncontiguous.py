@@ -182,7 +182,7 @@ def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, bs, scale,
             pre_tokens=65535, next_tokens=65535,
             block_table=bt_npu if pa else None,
             block_size=bs if pa else 0,
-            sparse_mode=3, out_dtype=DTYPE)
+            out_dtype=DTYPE)
     else:
         r, _ = torch_npu.npu_fused_infer_attention_score(
             q_npu, k_npu, v_npu,
