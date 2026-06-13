@@ -53,6 +53,7 @@ operator_group_4:
   - apply_rotary_pos_emb
   - rotary_position_embedding
   - rotary_position_embedding_grad
+  - inplace_partial_rotary_mul_grad
   - ring_attention_update
   - sparse_flash_attention_grad
   - sparse_flash_mla_grad
