@@ -151,9 +151,6 @@ private:
     int64_t rowIdxType_ = 0;
 
     float fp8MaxValue_;
-
-    const uint32_t ubBlockSize_ = Ops::Base::GetUbBlockSize();
-    const uint32_t numElemPerUbBlock_ = ubBlockSize_ / sizeof(T);
 };
 
 template <typename T, typename U>
@@ -306,16 +303,6 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyIn(int64_t srcIdx
 
     DataCopyExtParams copyParams = {1, static_cast<uint32_t>(loopCols * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
-
-    int64_t loopColsTail = loopCols % FP8_PERBLOCK_BLOCK_SIZE;
-    if (loopColsTail != 0) {
-        padParams.isPad = true;
-        if (loopColsTail > numElemPerUbBlock_) {
-            padParams.rightPadding = numElemPerUbBlock_ - (loopColsTail - numElemPerUbBlock_);
-        } else {
-            padParams.rightPadding = numElemPerUbBlock_;
-        }
-    }
 
     DataCopyPad<T, PaddingMode::Compact>(inLocal, xInGm_[srcIdx * cols_ + colIdx * perLoopCols_], copyParams,
                                          padParams);
