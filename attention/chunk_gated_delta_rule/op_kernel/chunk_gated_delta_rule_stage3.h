@@ -202,6 +202,8 @@ public:
                           subValidRows_, curChunkSize_);
             Sub(tmpBuffer1_, tmpBuffer1_, tmpBuffer2_, subValidRows_ * chunkSize_);
             PipeBarrier<PIPE_V>();
+            Mul(tmpBuffer1_, tmpBuffer1_, maskBuffer_, subValidRows_ * chunkSize_);
+            PipeBarrier<PIPE_V>();
             Exp<float, 0, true>(tmpBuffer1_, tmpBuffer1_, subValidRows_ * chunkSize_);
             PipeBarrier<PIPE_V>();
         } else {
