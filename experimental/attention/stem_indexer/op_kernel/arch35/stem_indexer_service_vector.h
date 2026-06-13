@@ -124,7 +124,6 @@ private:
     int64_t blockS2StartIdx_ = 0;
     int32_t gSize_ = 0;
     int32_t kSeqSize_ = 0;
-    int32_t kHeadNum_ = 0;
     int32_t qHeadNum_ = 0;
     int32_t s1BaseSize_ = 0;
     int32_t s2BaseSize_ = 0;
@@ -189,8 +188,6 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
     blockS2StartIdx_ = 0;
     gSize_ = constInfo.gSize;
     kSeqSize_ = constInfo.kSeqSize;
-    // define N2 para
-    kHeadNum_ = constInfo.kHeadNum;
     qHeadNum_ = constInfo.qHeadNum;
     // define MMBase para
     s1BaseSize_ = constInfo.s1BaseSize;  // 4

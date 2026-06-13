@@ -339,7 +339,7 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
             // 此时需要使用bIdx获取实际Actal S2来计算出 s2End
             splitCoreInfo.gS1End = splitCoreInfo.gS1End - 1;
             // 需要获取当前的Actaul S2
-            uint32_t bIdx = splitCoreInfo.bN2End / constInfo.kHeadNum;
+            uint32_t bIdx = splitCoreInfo.bN2End / constInfo.kvHeadNum;
             uint32_t actS1Size, actS2Size;
             GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size);
             // s2的切块数量
@@ -351,7 +351,7 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
             splitCoreInfo.bN2End = splitCoreInfo.bN2End - 1;
 
             // 需要获取当前的Actaul S1 S2
-            uint32_t bIdx = splitCoreInfo.bN2End / constInfo.kHeadNum;
+            uint32_t bIdx = splitCoreInfo.bN2End / constInfo.kvHeadNum;
             uint32_t actS1Size, actS2Size;
             GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size);
 
@@ -381,10 +381,10 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
             for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
                 for (uint32_t gIdx = 0; gIdx < constInfo.gSize; gIdx++) {
                     uint64_t indiceOutOffset =
-                        (((tBase + s1Idx) * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx) *
+                        (((tBase + s1Idx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx) *
                         constInfo.sparseCount;
                     uint64_t indiceLenOffset =
-                        ((tBase + s1Idx) * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx;
+                        ((tBase + s1Idx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx;
                     GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
                     GlobalTensor<int32_t> indiceLen = sparseSeqLenGm[indiceLenOffset];
                     AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
@@ -396,11 +396,11 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
                 for (uint32_t gIdx = 0; gIdx < constInfo.gSize; gIdx++) {
                     uint64_t indiceOutOffset =
-                        (((bIdx * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize +
+                        (((bIdx * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize +
                          s1Idx) *
                         constInfo.sparseCount;
                     uint64_t indiceLenOffset =
-                        ((bIdx * constInfo.kHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize + s1Idx;
+                        ((bIdx * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize + s1Idx;
                     GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
                     GlobalTensor<int32_t> indiceLen = sparseSeqLenGm[indiceLenOffset];
                     AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
@@ -430,6 +430,7 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
 
     InitTilingData(tiling);
     InitActualSeqLen(qSeqLens, kvSeqLens);
+    numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens, constInfo.batchSize);
     
     // 获取 AICPU metadata 算好的分核信息。
     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
@@ -439,7 +440,6 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
 
     if ASCEND_IS_AIV {
         vbiasGm.SetGlobalBuffer((__gm__ float *)vbias);
-        numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens);
         sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
         vectorService.InitParams(constInfo, tiling);
@@ -474,8 +474,8 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::GetBN2Idx(uint32_t bN2Idx)
 {
     tempLoopInfo.bN2Idx = bN2Idx;
-    tempLoopInfo.bIdx = bN2Idx / constInfo.kHeadNum;
-    tempLoopInfo.n2Idx = bN2Idx % constInfo.kHeadNum;
+    tempLoopInfo.bIdx = bN2Idx / constInfo.kvHeadNum;
+    tempLoopInfo.n2Idx = bN2Idx % constInfo.kvHeadNum;
 }
 
 template <typename SIT>
@@ -577,8 +577,8 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         // qflat: B,N1,Qb,D. gS1Idx is a Qb tile index; M = QbTile * G.
         queryCoreOffset = (qBatchOffset + qHeadOffset + qBlockOffset) *
                           constInfo.headDim;
-        // sparse_indices: B,N2,G,S1,S2
-        indiceOutCoreOffset = (qBatchOffset + qHeadOffset) * tempLoopInfo.actS2Size;
+        // sparse_indices: B,N2,G,S1,maxKb. Use the storage stride, not the actual valid S2 length.
+        indiceOutCoreOffset = (qBatchOffset + qHeadOffset) * constInfo.sparseCount;
         // sparse_seq_len: B,N2,G,S1
         indiceLenCoreOffset = qBatchOffset + qHeadOffset;
     }
@@ -590,13 +590,14 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
     }
     runInfo.numPromptTokens = GetPromptTokenLen(runInfo.bIdx);
-    uint64_t kBatchOffset = actualSeqKPrefixSum * constInfo.kHeadNum;
+    uint64_t kBatchOffset = actualSeqKPrefixSum * constInfo.kvHeadNum;
     uint64_t kHeadOffset = runInfo.n2Idx * constInfo.kSeqSize;
     keyCoreOffset =
         (kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.headDim;
     keyScaleCoreOffset = kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize;
     weightsCoreOffset = kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize;
-    vBiasCoreOffset = (runInfo.bIdx * constInfo.kHeadNum * runInfo.actS2Size) + (runInfo.n2Idx * runInfo.actS2Size);
+    // vbias: B,N2,maxKb. Keep the same maxKb stride as kflat.
+    vBiasCoreOffset = kBatchOffset + kHeadOffset;
     runInfo.tensorQueryOffset = queryCoreOffset;
     runInfo.tensorKeyOffset = keyCoreOffset;
     runInfo.tensorKeyScaleOffset = keyScaleCoreOffset;
@@ -677,7 +678,9 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
             // 短路分支：s2ValidSize <= constInfo.initialBlocks时直接输出连续索引
             if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks + constInfo.windowSize) {
-                vectorService.ProcessDirectOutput(tempLoopInfo, gS1LoopIdx);
+                if ASCEND_IS_AIV {
+                    vectorService.ProcessDirectOutput(tempLoopInfo, gS1LoopIdx);
+                }
                 splitCoreInfo.s2Start = 0;
                 continue;
             }
