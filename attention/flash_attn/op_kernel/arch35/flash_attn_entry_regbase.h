@@ -82,10 +82,9 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
 
     // 4. AIC/AIV分别编译：CUBE 用自身 Block + HasMask 参数，VEC 用自身 Block 常量，无交叉依赖
 #ifdef __DAV_C310_CUBE__
-    using CubeBlock =
-        BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
-                                       dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
-    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<hasAttenMask, CubeBlock>;
+    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<INPUT_T, float, inputLayoutType, s1TemplateType,
+                                                           s2TemplateType, dTemplateType, dVTemplateType,
+                                                           KvLayoutType, useDn, bmm2Write2Ub, splitD, hasAttenMask>;
 #else
     using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,

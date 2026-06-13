@@ -104,9 +104,11 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
-          bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockCube {
+          DTemplateType dVTemplateType = DTemplateType::Aligned128,
+          uint8_t KvLayoutType = 0, bool useDn = false,
+          bool bmm2Write2Ub = true, bool splitD = false,
+          bool HasMask = false>
+class FlashAttentionNoQuantGqaKernel {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
@@ -119,6 +121,18 @@ public:
     static constexpr bool USE_DN = useDn;
     static constexpr bool SPLITD = splitD;
     static constexpr bool HAS_PREFIX = false;
+    static constexpr bool HAS_MASK = HasMask;
+
+    static constexpr uint32_t PRELOAD_N = 2;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
+    static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1,
+                  "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
+    static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
+                  "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
+
+    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<layout, PAGE_ATTENTION>();
 
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
@@ -128,7 +142,6 @@ public:
     using KV_T = INPUT_T;
     using MM_T = T;
 
-    // L0A/L0B类型保留给matmul使用
     using L0AType = typename L0ABuffSel<INPUT_T>::Type;
     using L0BType = typename L0BBuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type;
 
@@ -181,9 +194,8 @@ public:
         typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true>,
                                   ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t>>::type;
 
-    static constexpr ActualSeqLensMode KV_PARSER_MODE = GetKvActSeqMode<LAYOUT, PAGE_ATTENTION>();
-    using KvSeqParserType = typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<KV_PARSER_MODE, int32_t, true>,
-                                                      ActualSeqLensParser<KV_PARSER_MODE, int32_t>>::type;
+    using KvSeqParserType = typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<KV_MODE, int32_t, true>,
+                                                      ActualSeqLensParser<KV_MODE, int32_t>>::type;
 
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
     using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_NEEDS_WZH>;
@@ -253,31 +265,10 @@ public:
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
 
-    const ConstInfoX &constInfo;
-
-    /*============================================================================== */
-    __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo)
-        : constInfo(constInfo){};
-
-    __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable,
-                                         QSeqParserType &qParser, KvSeqParserType &kvParser)
-    {
-        this->qSeqParserPtr = &qParser;
-        this->kvSeqParserPtr = &kvParser;
-        InitCubeInput(query, key, value, blockTable);
-    }
+    ConstInfoX constInfo;
 
     __aicore__ inline void InitBuffers()
     {
-        // ─────────────────────────────────────────────────────────────────────────
-        // 与 VEC 侧保持一致：InitBuffers 仅负责缓冲区地址初始化，不插入任何同步原语。
-        // 流水预置 SetFlag 统一由 AllocEventID() 完成。
-        //
-        // L1 内存布局（从 offset=0 起）:
-        //   [0 .. 3*mBaseSize*s2BaseSize*sizeof(Q_T)) : l1PBuffers (3buff, InitMMResBuf 分配)
-        //   [FA_L1_CUBE_BASE ...) : l1QBuffers / l1KBuffers / l1VBuffers
-        // ─────────────────────────────────────────────────────────────────────────
         if constexpr (dBaseSize > 256) {
             // L1Q = Single (dBaseSize>256), L1KV: Single if s2==256&&d>128, else DB
             constexpr uint32_t mm1LeftSize  = mBaseSize * dBaseSize * sizeof(Q_T);
@@ -1038,50 +1029,13 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0 + AIV0_AIV1_OFFSET);
     }
 
-}; // FANoQuantGqaBlockCube
-
-template <bool HasMask, typename CubeBlockType>
-class FlashAttentionNoQuantGqaKernel {
-public:
-    static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
-    static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
-    static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
-    static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
-
-    static constexpr bool USE_DN = CubeBlockType::USE_DN;
-    static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
-    static constexpr bool HAS_MASK = HasMask;
-
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
-    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
-    static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1,
-                  "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
-    static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
-                  "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
-
-
-    static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
-
-    static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
-    static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
-    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
-    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
-
-    using INPUT_T = typename CubeBlockType::Q_T;
-    using T = typename CubeBlockType::MM_T;
-    using ConstInfoX = typename CubeBlockType::ConstInfoX;
-
     // ===== 核间共享 buffer slots =====
     LocalTensor<uint8_t> bmm1UbSlot[2];
     LocalTensor<uint8_t> bmm2UbSlot[2];
     LocalTensor<uint8_t> l1PSlot[3];
-    GlobalTensor<T>      bmm2GmSlot[3];
+    GlobalTensor<MM_T>   bmm2GmSlot[3];
 
     // ===== 静态 cross-core 事件 ID =====
-    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
-    static constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
     static constexpr uint32_t CC_BMM1_0 = 0U;
     static constexpr uint32_t CC_BMM1_1 = 1U;
     static constexpr uint32_t CC_BMM2_0 = 2U;
@@ -1096,13 +1050,8 @@ public:
     GlobalTensor<int32_t> seqUsedGmQ;
     GlobalTensor<int32_t> seqUsedGmKv;
     GlobalTensor<uint32_t> faMetaDataGm;
-    __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
-
-    ConstInfoX constInfo;
 
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
-    CubeBlockType cubeBlock;
 
     uint32_t coreGS1Loops = 0U;
     uint32_t frontGS1Count = 0U;
@@ -1128,7 +1077,6 @@ public:
     uint32_t dealZerosMSize = 0;
 
     uint32_t sectionNum_;
-    // fa metadata
     uint32_t bN2Start_;
     uint32_t bN2End_;
     uint32_t gS1OStart_;
@@ -1137,20 +1085,18 @@ public:
     uint32_t s2OEnd_;
     uint32_t coreFirstTmpOutWsPos_;
 
-    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
+    typename std::conditional<(LAYOUT == LayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE>>::type
         qCuSeqLensParser;
 
-    typename std::conditional<(LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND),
+    typename std::conditional<(LAYOUT == LayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE>>::type
         kvCuSeqLensParser;
 
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> qSeqUsedParser;
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser;
 
-    // ==============================Functions============================================
-    __aicore__ inline FlashAttentionNoQuantGqaKernel()
-        : cubeBlock(constInfo){};
+    __aicore__ inline FlashAttentionNoQuantGqaKernel() {};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
@@ -1165,13 +1111,13 @@ public:
         keyPtr = key;
         valuePtr = value;
 
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfo.cuSeqLensQSize + 1);
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfo.seqUsedQSize);
         } else {
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfo.seqUsedQSize);
         }
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, constInfo.cuSeqLensKVSize + 1);
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
         } else {
@@ -1185,15 +1131,16 @@ public:
         InitQCuSeqLensParser();
         InitKvCuSeqLensParser();
 
-        InitMMResBuf(workspace);
-
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            cubeBlock.InitCubeBlock(query, key, value, blockTable, qCuSeqLensParser,
-                                    kvCuSeqLensParser);
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+            qSeqParserPtr = &qCuSeqLensParser;
+            kvSeqParserPtr = &kvCuSeqLensParser;
         } else {
-            cubeBlock.InitCubeBlock(query, key, value, blockTable, qSeqUsedParser,
-                                    kvSeqUsedParser);
+            qSeqParserPtr = &qSeqUsedParser;
+            kvSeqParserPtr = &kvSeqUsedParser;
         }
+
+        InitMMResBuf(workspace);
+        InitCubeInput(query, key, value, blockTable);
     }
 
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
@@ -1227,7 +1174,7 @@ public:
 
     __aicore__ inline void InitQCuSeqLensParser()
     {
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             qCuSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ, constInfo.cuSeqLensQSize, constInfo.seqUsedQSize);
         } else {
             qSeqUsedParser.Init(seqUsedGmQ, constInfo.seqUsedQSize, constInfo.s1Size);
@@ -1236,7 +1183,7 @@ public:
 
     __aicore__ inline void InitKvCuSeqLensParser()
     {
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv, constInfo.cuSeqLensKVSize, constInfo.seqUsedKvSize);
         } else {
             kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
@@ -1367,15 +1314,15 @@ public:
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
             if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
-                actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
+                actSeqLensKv = SeqLenFromTensorList<LAYOUT>(keyPtr, bIdx);
             } else {
-                if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+                if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
                     actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
                 } else {
                     actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
                 }
             }
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+            if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
                 actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
             } else {
                 actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
@@ -1462,7 +1409,7 @@ public:
                                1;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
-        if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
+        if constexpr (GetOutUbFormat<LAYOUT>() == UbFormat::S1G) {
             s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
             s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
         } else {
@@ -1523,7 +1470,7 @@ public:
     {
         uint32_t slotIdx = runInfo.loop % 2U;
         auto bmm1Tensor = bmm1UbSlot[slotIdx].template ReinterpretCast<T>();
-        cubeBlock.IterateBmm1(bmm1Tensor, CC_BMM1_0 + slotIdx, CC_BMM1_0 + slotIdx, runInfo);
+        IterateBmm1(bmm1Tensor, CC_BMM1_0 + slotIdx, CC_BMM1_0 + slotIdx, runInfo);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
@@ -1534,10 +1481,10 @@ public:
         auto l1PTensor   = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
         if constexpr (BMM2_TOUB) {
             auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
-            cubeBlock.IterateBmm2(bmm2Tensor, CC_BMM2_0 + outSlot, CC_BMM2_0 + outSlot,
+            IterateBmm2(bmm2Tensor, CC_BMM2_0 + outSlot, CC_BMM2_0 + outSlot,
                                   l1PTensor, l1PCcId, runInfo);
         } else {
-            cubeBlock.IterateBmm2(bmm2GmSlot[runInfo.loop % 3U],
+            IterateBmm2(bmm2GmSlot[runInfo.loop % 3U],
                                   CC_BMM2_0 + (runInfo.loop % 3U), 0U,
                                   l1PTensor, l1PCcId, runInfo);
         }
@@ -1558,8 +1505,8 @@ public:
         info.bIdx = bN2Cur / constInfo.n2Size;
         info.n2Idx = bN2Cur % constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_SBH ||
+                      LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             info.s1Idx = info.gS1Idx / constInfo.gSize;
         } else {
             info.s1Idx = info.gS1Idx % actSeqLensQ;
@@ -1666,8 +1613,8 @@ public:
     __aicore__ inline void Process()
     {
         if (constInfo.aicIdx < constInfo.coreNum) {
-            cubeBlock.InitBuffers();
-            cubeBlock.AllocEventID();
+            InitBuffers();
+            AllocEventID();
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo.aicIdx < constInfo.coreNum) {
@@ -1676,7 +1623,7 @@ public:
         }
 
         if (constInfo.aicIdx < constInfo.coreNum) {
-            cubeBlock.FreeEventID();
+            FreeEventID();
             CrossCoreBufferUnInit();
         }
     }
