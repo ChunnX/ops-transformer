@@ -319,12 +319,14 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Process() {
 
 // ========== Step 1: 输入聚合（golden_v2.py 117-118行）==========
 // 【责任人: llh】
+// 【验证范围】当前验证步骤1-5，后续步骤见标记
 // 【设计原则】:
 //   - x的Cast前置到j循环之前（用户要求），一次性Cast并搬workspace
 //   - h_pre一次搬入，随路broadcast使用（Muls替代Dup+Mul）
 //   - grad_hin逐D_chunk搬入，VF内Cast
 //   - grad_x写入workspace，x_fp32写入workspace供Step14使用
 //   - grad_h_pre逐D_chunk累加ReduceSum
+// 【调试信息】AscendC::printf在__aicore__内，不在__VEC_SCOPE__内打印前8个值
 template<typename T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step1_InputAggregation() {
     int64_t gmOffset = blkIdx_ * tile_;
@@ -395,6 +397,20 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step1_InputAgg
     
     // ===== 搬出: hPre释放 =====
     hPreQueue_.FreeTensor(hPreLocal);
+    
+    // ===== 调试打印（对照golden_v2.py行295-306）=====
+    // AscendC::printf在__aicore__内，不在__VEC_SCOPE__内
+    // 打印grad_h_pre前8个值（golden: grad_h_pre = (grad_hin*x).sum(-1)）
+    AscendC::printf("[Step1] grad_h_pre (first 8 values):\n");
+    for (int i = 0; i < 8 && i < n_; i++) {
+        AscendC::printf("  grad_h_pre[%d] = %f\n", i, gradHPreLocal.GetValue(i));
+    }
+    
+    // 打印h_pre前8个值（golden: h_pre input）
+    AscendC::printf("[Step1] h_pre (first 8 values):\n");
+    for (int i = 0; i < 8 && i < n_; i++) {
+        AscendC::printf("  h_pre[%d] = %f\n", i, hPreLocal.GetValue(i));
+    }
 }
 
 // ========== Step 2: 计算前向z（golden_v2.py 123-130行）==========
@@ -445,6 +461,22 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step2_ComputeF
     
     hcBeforeNormQueue_.FreeTensor(hcBeforeNormLocal);
     invRmsQueue_.FreeTensor(invRmsLocal);
+    
+    // ===== 调试打印（对照golden_v2.py行317-331）=====
+    // 打印norm_out_forward前8个值（golden: norm_out = hc_before_norm*inv_rms）
+    AscendC::printf("[Step2] norm_out_forward (first 8 values):\n");
+    for (int i = 0; i < 8 && i < tile_ * (n_ * n_ + 2 * n_); i++) {
+        AscendC::printf("  norm_out[%d] = %f\n", i, normOutForwardLocal.GetValue(i));
+    }
+    
+    // 打印z_pre前8个值（golden: z_pre = norm_out[:n]*alpha[0]+bias[:n]）
+    AscendC::printf("[Step2] z_pre (first 8 values):\n");
+    for (int i = 0; i < 8 && i < tile_ * n_; i++) {
+        AscendC::printf("  z_pre[%d] = %f\n", i, zPreLocal.GetValue(i));
+    }
+    
+    // 打印alpha和bias（golden: alpha[3], bias[n²+2n]）
+    AscendC::printf("[Step2] alpha = [%f, %f, %f]\n", alphaLocal.GetValue(0), alphaLocal.GetValue(1), alphaLocal.GetValue(2));
 }
 
 // ========== Step 3: Sigmoid梯度（golden_v2.py 135-136行）==========
@@ -479,6 +511,19 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step3_SigmoidG
     
     LocalTensor<T> gradHPreLocal = gradHPreBuf_.Get<T>();
     SigmoidGradArithmeticVf<T>(gradZPreLocal, gradZPostLocal, sigmaPreLocal, sigmaPostLocal, gradHPreLocal, gradHPostLocal, tile_ * n_, static_cast<T>(HC_EPS));
+    
+    // ===== 调试打印（对照golden_v2.py行347-357）=====
+    // 打印grad_z_pre前8个值（golden: grad_z_pre = SigmoidGrad(z_pre, grad_h_pre)）
+    AscendC::printf("[Step3] grad_z_pre (first 8 values):\n");
+    for (int i = 0; i < 8 && i < tile_ * n_; i++) {
+        AscendC::printf("  grad_z_pre[%d] = %f\n", i, gradZPreLocal.GetValue(i));
+    }
+    
+    // 打印grad_z_post前8个值（golden: grad_z_post = 2*SigmoidGrad(z_post, grad_h_post)）
+    AscendC::printf("[Step3] grad_z_post (first 8 values):\n");
+    for (int i = 0; i < 8 && i < tile_ * n_; i++) {
+        AscendC::printf("  grad_z_post[%d] = %f\n", i, gradZPostLocal.GetValue(i));
+    }
 }
 
 // ========== Step 4-5: alpha/bias梯度（pre/post）（golden_v2.py 141-148行）==========
@@ -522,14 +567,31 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step45_AlphaBi
     AscendC::Add(wsGradBiasLocal, wsGradBiasLocal, gradBiasLocal, 2 * n_);
     
     // ===== 搬出阶段：并行写回workspace =====
-    AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
     AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
-    AscendC::DataCopyPad(wsGradAlpha, wsGradAlphaLocal,
-        {1, static_cast<uint16_t>(3 * sizeof(T)), 0, 0});
     AscendC::DataCopyPad(wsGradBias, wsGradBiasLocal,
         {1, static_cast<uint16_t>((2 * n_) * sizeof(T)), 0, 0});
+    
+    // ===== 调试打印（对照golden_v2.py行369-381）=====
+    // 打印grad_alpha（scalar，golden: grad_alpha_pre/post scalar）
+    AscendC::printf("[Step45] grad_alpha (scalar values):\n");
+    AscendC::printf("  grad_alpha_pre = %f\n", gradAlphaLocal.GetValue(0));
+    AscendC::printf("  grad_alpha_post = %f\n", gradAlphaLocal.GetValue(1));
+    
+    // 打印grad_bias前8个值（golden: grad_bias_part1/2）
+    AscendC::printf("[Step45] grad_bias (first 8 values):\n");
+    for (int i = 0; i < 8 && i < 2 * n_; i++) {
+        AscendC::printf("  grad_bias[%d] = %f\n", i, gradBiasLocal.GetValue(i));
+    }
 }
 
+// ========== 后续步骤入口标记（Step6-15，非验证范围）==========
+// 【说明】以下步骤不在当前验证范围内（Step1-5验证）
+// 【Step678】行541-662：Sinkhorn + Exp梯度（hbj负责）
+// 【Step911】行672-682：Linear梯度拼接（lhp负责）
+// 【Step12】行686-701：RMSNorm梯度（lhp负责）
+// 【Step14】行707-764：RMSNorm倒数梯度（lhp负责）
+// 【Step15】行770-780：Matmul梯度（lhp负责）
 // ========== Step 6-8: Sinkhorn + Exp梯度（golden_v2.py 155-166行）==========
 // 【责任人: hbj】
 // 【计算过程】:
