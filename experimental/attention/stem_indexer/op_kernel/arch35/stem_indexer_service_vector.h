@@ -405,23 +405,15 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     uint16_t zero = 0;
     int32_t neg = -1;
 
+    int64_t curAivGSize = gSize_ / 2;
     // 当前核处理的 S1 轴大小
-    uint32_t curAivS1Size = CeilDiv(curAivGS1ProcNum, gSize_); // 48 / 32 向上取整 = 2
+    uint32_t curAivS1Size = CeilDiv(curAivGS1ProcNum, curAivGSize); // 48 / 32 向上取整 = 2
     uint32_t curS1RealS2Len = static_cast<uint32_t>(firstS2Len);
     // 外层循环：按 S1 位置遍历（同一个 S1 位置下的 G 个行共享相同的 s2Len和topkCount）
     for (uint32_t s1Pos = 0; s1Pos < curAivS1Size; s1Pos++) {
 
-        uint32_t globalS1Pos = curAivGS1Idx % info.actS1Size + s1Pos;
+        uint32_t globalS1Pos = curAivGS1Idx % actS1Size + gS1Idx * s1BaseSize_ + s1Pos;
 
-        // 如果mBaseSize 无法整除 g，后一部分g处理的s1Num比前一部分g少一个，所以这里搬出g的数量需要根据s1位置变化
-        int32_t curGsize = gSize_;
-        if (curAivGS1ProcNum % gSize_ != 0) {
-            if (blockId_ % 2 == 0) {
-                curGsize = (s1Pos == curAivS1Size - 1) ? curAivGS1ProcNum % gSize_ : gSize_;
-            } else {
-                curGsize = (s1Pos == 0) ? (gSize_ - curAivGS1ProcNum % gSize_) : gSize_;
-            }
-        }
         // causal 场景：基于 S1 位置索引更新
         if (constInfo_.attenMaskFlag) {
             int32_t curS1RealS2LenTmp = firstS2Len + static_cast<int32_t>(s1Pos);
@@ -434,10 +426,10 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
             // 搬出indiceLen到gm
-            Duplicate(indiceLenLocal_, curS1RealS2Len, curGsize);
+            Duplicate(indiceLenLocal_, curS1RealS2Len, curAivGSize);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            indiceLenCopyParams.blockCount = curGsize;
+            indiceLenCopyParams.blockCount = curAivGSize;
             indiceLenCopyParams.blockLen = (uint16_t)(sizeof(uint32_t));
             indiceLenCopyParams.srcStride = 0;
             indiceLenCopyParams.dstStride = (constInfo_.qSeqSize - 1) * sizeof(uint32_t);
@@ -449,7 +441,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                                     0, curS1RealS2Len);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            copyOutParams.blockCount = curGsize;
+            copyOutParams.blockCount = curAivGSize;
             copyOutParams.blockLen = (uint16_t)(curS1RealS2Len * sizeof(int32_t));
             copyOutParams.srcStride = 0;
             copyOutParams.dstStride = (uint16_t)((constInfo_.qSeqSize * constInfo_.kSeqSize - curS1RealS2Len) * sizeof(int32_t));
@@ -473,11 +465,11 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
             // 搬出indiceLen到gm
-            Duplicate(indiceLenLocal_, totalOutput, curGsize);
+            Duplicate(indiceLenLocal_, totalOutput, curAivGSize);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            indiceLenCopyParams.blockCount = curAivGSize;
             indiceLenCopyParams.blockLen = (uint16_t)(sizeof(uint32_t));
-            indiceLenCopyParams.blockCount = curGsize;
             indiceLenCopyParams.srcStride = 0;
             indiceLenCopyParams.dstStride = (constInfo_.qSeqSize - 1) * sizeof(uint32_t);
             AscendC::DataCopyPad(sparseSeqLenGm[info.indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
@@ -490,7 +482,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)0, (uint32_t)curS1RealS2Len);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            copyOutParams.blockCount = curGsize;
+            copyOutParams.blockCount = curAivGSize;
             copyOutParams.blockLen = (uint16_t)((uint32_t)curS1RealS2Len * sizeof(int32_t));
             copyOutParams.srcStride = 0;
             copyOutParams.dstStride = (uint16_t)((fullStride - (uint32_t)curS1RealS2Len) * sizeof(int32_t));
@@ -501,7 +493,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)topkSelectNum, (uint32_t)windowSize_);
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                copyOutParams.blockCount = curGsize;
+                copyOutParams.blockCount = curAivGSize;
                 copyOutParams.blockLen = (uint16_t)((uint32_t)windowSize_ * sizeof(int32_t));
                 copyOutParams.srcStride = 0;
                 copyOutParams.dstStride = (uint16_t)((fullStride - (uint32_t)windowSize_) * sizeof(int32_t));
@@ -522,11 +514,11 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
 
         // 正常 TopK 流程
         // 正常topk的indiceLen搬出
-        Duplicate(indiceLenLocal_, totalOutput, curGsize);
+        Duplicate(indiceLenLocal_, totalOutput, curAivGSize);
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        indiceLenCopyParams.blockCount = curAivGSize;
         indiceLenCopyParams.blockLen = (uint16_t)(sizeof(uint32_t));
-        indiceLenCopyParams.blockCount = curGsize;
         indiceLenCopyParams.srcStride = 0;
         indiceLenCopyParams.dstStride = (constInfo_.qSeqSize - 1) * sizeof(uint32_t);
         AscendC::DataCopyPad(sparseSeqLenGm[info.indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
@@ -536,9 +528,10 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         uint8_t copyRepeat = (copyCount + 63) / 64;
         AscendC::CopyRepeatParams copyRepeatParams{1, 1, 8, 8};
         // 内层循环：遍历同一 S1 位置下的 G 个行
-        for (uint32_t gIdx = 0; gIdx < curGsize; gIdx++) {
+        for (uint32_t gIdx = 0; gIdx < curAivGSize; gIdx++) {
 
             uint32_t mInnerIdx = gIdx * s1BaseSize_ + s1Pos;
+            
             uint32_t mInnerOffset = mInnerIdx * (MAX_TOPK_COUNT + trunkLen_);
 
             // todo:确认这个同步的必要性
@@ -643,14 +636,14 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
     initS2LenToNeg(actMBaseSize, indiceOutOffset);
 
     // 当前处理的gS1行起始索引（全局位置）
-    int64_t curGS1Idx = gS1Idx * mBaseSize_;
+    int64_t curGS1Idx = gS1Idx * mBaseSize_; 
     // 当前gS1行需要处理的数量（可能小于mBaseSize_，处理尾块）
     int64_t curGS1ProcNum = actMBaseSize;
     // 当前AIV核处理的gS1起始索引（双核分工）
     int64_t curAivGS1Idx = curGS1Idx + (blockId_ % 2) * CeilDiv(curGS1ProcNum, 2);
     // 当前AIV核需要处理的gS1行数量
     int64_t curAivGS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curGS1ProcNum, 2) : curGS1ProcNum / 2;
-    
+
     // 输出搬运参数
     AscendC::DataCopyParams copyOutParams;
     copyOutParams.blockCount = 1;
@@ -658,33 +651,25 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
     copyOutParams.dstStride = 0;
     
     uint32_t curS1RealS2Len = actS2Size;
+    int64_t curAivGSize = gSize_ / 2;
     // 外层循环：按 S1 位置遍历（同一个 S1 位置下的 G 个行共享相同的 S2Len）
-    uint32_t curAivS1Size = CeilDiv(curAivGS1ProcNum, gSize_);
+    uint32_t curAivS1Size = CeilDiv(curAivGS1ProcNum, curAivGSize);
+    
+
     for (uint32_t s1Pos = 0; s1Pos < curAivS1Size; s1Pos++) {
-        uint32_t globalS1Pos = curAivGS1Idx % actS1Size + s1Pos;
-        
+        uint32_t globalS1Pos = curAivGS1Idx % actS1Size + gS1Idx * s1BaseSize_ + s1Pos;
         if (constInfo_.attenMaskFlag) {
             int32_t curS1RealS2LenTmp = static_cast<int32_t>(actS2Size) - static_cast<int32_t>(actS1Size) +
-                                        static_cast<int32_t>(curAivGS1Idx % actS1Size) +
-                                        static_cast<int32_t>(s1Pos) + 1;
+                                        static_cast<int32_t>(globalS1Pos) + 1;
             curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);
         }
-        // 如果mBaseSize 无法整除 g，后一部分g处理的s1Num比前一部分g少一个，所以这里搬出g的数量需要根据s1位置变化
-        int32_t curGsize = gSize_;
-        if (curAivGS1ProcNum % gSize_ != 0) {
-            if (blockId_ % 2 == 0) {
-                curGsize = s1Pos == curAivS1Size - 1 ? curAivGS1ProcNum % gSize_ : gSize_;
-            } else {
-                curGsize = s1Pos == 0 ? (gSize_ - curAivGS1ProcNum % gSize_) : gSize_;
-            }
-        }
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-        Duplicate(indiceLenLocal_, curS1RealS2Len, curGsize);
+        Duplicate(indiceLenLocal_, curS1RealS2Len, curAivGSize);
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         AscendC::DataCopyParams indiceLenCopyParams;
+        indiceLenCopyParams.blockCount = curAivGSize;
         indiceLenCopyParams.blockLen = (uint16_t)(sizeof(uint32_t));
-        indiceLenCopyParams.blockCount = curGsize;
         indiceLenCopyParams.srcStride = 0;
         indiceLenCopyParams.dstStride = (constInfo_.qSeqSize - 1) * sizeof(uint32_t);
         AscendC::DataCopyPad(sparseSeqLenGm[indiceLenOffset + globalS1Pos], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
@@ -697,7 +682,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
             // 有效数据：一次搬出 curGsize 个块
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            copyOutParams.blockCount = curGsize;
+            copyOutParams.blockCount = curAivGSize;
             copyOutParams.blockLen = (uint16_t)(curS1RealS2Len * sizeof(int32_t));
             copyOutParams.srcStride = 0;
             copyOutParams.dstStride = (uint16_t)((fullStride - curS1RealS2Len) * sizeof(int32_t));
