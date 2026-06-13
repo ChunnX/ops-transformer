@@ -86,10 +86,19 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline int64_t VbsPerCoreElements() const { return vbsRecalced ? blockFactor : vbsTilingData->perCoreElements; }
-    __aicore__ inline int64_t VbsLastCoreElements() const { return vbsRecalced ? rLastCoreElements : vbsTilingData->lastCoreElements; }
+    __aicore__ inline int64_t VbsPerCoreElements() const
+    {
+        return vbsRecalced ? blockFactor : vbsTilingData->perCoreElements;
+    }
+    __aicore__ inline int64_t VbsLastCoreElements() const
+    {
+        return vbsRecalced ? rLastCoreElements : vbsTilingData->lastCoreElements;
+    }
     __aicore__ inline int64_t VbsNeedCoreNum() const { return vbsRecalced ? rNeedCoreNum : vbsTilingData->needCoreNum; }
-    __aicore__ inline int64_t VmsNeedCoreNum() const { return vbsRecalced ? rVmsNeedCoreNum : vmsTilingData->needCoreNum; }
+    __aicore__ inline int64_t VmsNeedCoreNum() const
+    {
+        return vbsRecalced ? rVmsNeedCoreNum : vmsTilingData->needCoreNum;
+    }
     __aicore__ inline int64_t SortOutOneLoopMaxElements() const { return sortOutTilingData->oneLoopMaxElements; }
     __aicore__ inline void VBSProcess();
     __aicore__ inline void UBSortProcess(int64_t progress, int64_t size, int64_t sortNum);
