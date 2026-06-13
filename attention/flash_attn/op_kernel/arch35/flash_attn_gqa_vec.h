@@ -61,12 +61,13 @@ using namespace optiling;
 
 namespace BaseApi {
 template <
-    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+    typename INPUT_T, typename T, typename OUTPUT_T, typename VecFdBlockType,
+    LayOutTypeEnum layout = LayOutTypeEnum::None,
     LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
     S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
     DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
     uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockVec {
+class FlashAttentionNoQuantGqaKernel {
 public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -116,12 +117,12 @@ public:
     static constexpr uint32_t FA_ATTEN_MASK_V_MTE2_0 = 0U;
 
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
-    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
-    static constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
     // 注：跨核 barrier 沿用 AscendC 内置 SyncAll() 硬同步接口（占用 flagId [11-14]），
     // 与上面的 mode 4 flagId [0-9] 完全不冲突，是 Mix 算子的标准做法。
+    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<layout, PAGE_ATTENTION>();
     static constexpr LAYOUT_Q MASK_LAYOUT =
         (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
          layout == LayOutTypeEnum::LAYOUT_SBH) ?
@@ -141,7 +142,6 @@ public:
 
     // gm
     GlobalTensor<OUTPUT_T> attentionOutGm;
-    GlobalTensor<float> softmaxLseGm;
 
     GlobalTensor<int32_t> actualSeqLengthsGmQ;
     using QSeqParserType =
@@ -158,7 +158,6 @@ public:
     attenMaskGmType attenMaskGmInt;
 
     vec2ResGmType vec2ResGm[3];
-    GlobalTensor<INPUT_T> sinkGm;
 
     flashdecodeGmType accumOutGm;
     flashdecodeGmType softmaxFDSumGm;
@@ -182,15 +181,11 @@ public:
     LocalTensor<float> lseBuf;
     LocalTensor<INPUT_T> sinkBuf;
 
-    const ConstInfoX &constInfo;
     T negativeFloatScalar;
     int64_t bmm2SubBlockOffset = 0;
     int64_t vec2SubBlockOffset = 0;
-    bool isFd = false;
 
     // ==================== Functions ======================
-    __aicore__ inline FANoQuantGqaBlockVec(ConstInfoX &constInfo)
-        : constInfo(constInfo){};
 
     __aicore__ inline void InitVecBlock(__gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *attenMask,
@@ -209,7 +204,7 @@ public:
                                         __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                         __gm__ uint8_t *workspace)
     {
-        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
+        attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
 
         if (constInfo.isSoftmaxLseEnable) {
             softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
@@ -1312,40 +1307,13 @@ public:
             DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         }
     }
-};
 
-template <typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionNoQuantGqaKernel {
-public:
-    static constexpr uint32_t mBaseSize = VecFaBlockType::mBaseSize;
-    static constexpr uint32_t s2BaseSize = VecFaBlockType::s2BaseSize;
-    static constexpr uint32_t dBaseSize = VecFaBlockType::dBaseSize;
-    static constexpr uint32_t dVBaseSize = VecFaBlockType::dVBaseSize;
-
-    static constexpr bool USE_DN = VecFaBlockType::USE_DN;
-    static constexpr bool BMM2_TOUB = VecFaBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = VecFaBlockType::HAS_PREFIX;
-    static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
-
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
     static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
     static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1,
                   "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
-                  "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
-
-
-    static constexpr bool PAGE_ATTENTION = VecFaBlockType::PAGE_ATTENTION;
-
-    static constexpr LayOutTypeEnum LAYOUT_Q = VecFaBlockType::LAYOUT;
-    static constexpr LayOutTypeEnum LAYOUT_KV = VecFaBlockType::LAYOUT;
-    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
-    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>();
-
-    using INPUT_T = typename VecFaBlockType::Q_T;
-    using T = typename VecFaBlockType::MM_T;
-    using ConstInfoX = typename VecFaBlockType::ConstInfoX;
+                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
     // ===== 核间共享 buffer slots =====
     LocalTensor<uint8_t> bmm1UbSlot[2];
@@ -1354,8 +1322,6 @@ public:
     GlobalTensor<T>      bmm2GmSlot[3];
 
     // ===== 静态 cross-core 事件 ID =====
-    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
-    static constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
     static constexpr uint32_t CC_BMM1_0 = 0U;
     static constexpr uint32_t CC_BMM1_1 = 1U;
     static constexpr uint32_t CC_BMM2_0 = 2U;
@@ -1378,7 +1344,6 @@ public:
     ConstInfoX constInfo;
 
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
-    VecFaBlockType vecFaBlock;
     VecFdBlockType vecFdBlock;
 
     uint32_t coreGS1Loops = 0U;
@@ -1417,11 +1382,11 @@ public:
     // fd metadata
     FDparamsX fdParams_;
 
-    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
+    typename std::conditional<(LAYOUT == LayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE>>::type
         qCuSeqLensParser;
 
-    typename std::conditional<(LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND),
+    typename std::conditional<(LAYOUT == LayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE>>::type
         kvCuSeqLensParser;
 
@@ -1430,7 +1395,7 @@ public:
 
     // ==============================Functions============================================
     __aicore__ inline FlashAttentionNoQuantGqaKernel()
-        : vecFaBlock(constInfo), vecFdBlock(constInfo){};
+        : vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
@@ -1444,13 +1409,13 @@ public:
 
         keyPtr = key;
 
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfo.cuSeqLensQSize + 1);
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfo.seqUsedQSize);
         } else {
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfo.seqUsedQSize);
         }
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, constInfo.cuSeqLensKVSize + 1);
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
         } else {
@@ -1472,22 +1437,21 @@ public:
 
         InitMMResBuf(workspace);
 
-        vecFaBlock.isFd = isFd;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            vecFaBlock.InitVecBlock(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+            InitVecBlock(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
                                     attentionOut, workspace);
-            vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
+            SetCuSeqLensParser(qCuSeqLensParser);
         } else {
-            vecFaBlock.InitVecBlock(seqUsedQ, seqUsedKv, attenMask, learnableSink, softmaxLse, attentionOut,
+            InitVecBlock(seqUsedQ, seqUsedKv, attenMask, learnableSink, softmaxLse, attentionOut,
                                     workspace);
-            vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
+            SetCuSeqLensParser(qSeqUsedParser);
         }
-        vecFaBlock.ClearOutput();
+        ClearOutput();
 
         if (isFd) {
             vecFdBlock.InitParams();
-            vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
-                                        this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm, keyPtr);
+            vecFdBlock.InitGlobalTensor(softmaxFDMaxGm, softmaxFDSumGm,
+                                        accumOutGm, attentionOutGm, keyPtr);
             if (learnableSink != nullptr) {
                 sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
                 constInfo.learnableSinkFlag = true;
@@ -1497,7 +1461,7 @@ public:
                 softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
                 vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
             }
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+            if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
                 vecFdBlock.SetCuSeqLensParsers(qCuSeqLensParser, kvCuSeqLensParser);
             } else {
                 vecFdBlock.SetCuSeqLensParsers(qSeqUsedParser, kvSeqUsedParser);
@@ -1536,7 +1500,7 @@ public:
 
     __aicore__ inline void InitQCuSeqLensParser()
     {
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             qCuSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ, constInfo.cuSeqLensQSize, constInfo.seqUsedQSize);
         } else {
             qSeqUsedParser.Init(seqUsedGmQ, constInfo.seqUsedQSize, constInfo.s1Size);
@@ -1545,7 +1509,7 @@ public:
 
     __aicore__ inline void InitKvCuSeqLensParser()
     {
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             kvCuSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv, constInfo.cuSeqLensKVSize, constInfo.seqUsedKvSize);
         } else {
             kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
@@ -1650,7 +1614,7 @@ public:
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                    vecFaBlock.DealZeroActSeqLen(bN2Cur);
+                    DealZeroActSeqLen(bN2Cur);
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                     continue;
                 } else {
@@ -1680,15 +1644,15 @@ public:
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
             if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
-                actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
+                actSeqLensKv = SeqLenFromTensorList<LAYOUT>(keyPtr, bIdx);
             } else {
-                if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+                if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
                     actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
                 } else {
                     actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
                 }
             }
-            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+            if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
                 actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
             } else {
                 actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
@@ -1775,7 +1739,7 @@ public:
                                1;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
-        if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
+        if constexpr (GetOutUbFormat<LAYOUT>() == UbFormat::S1G) {
             s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
             s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
         } else {
@@ -1839,7 +1803,7 @@ public:
         uint32_t l1PCcId  = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
         auto l1PTensor    = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
         auto bmm1Tensor   = bmm1UbSlot[bmm1Slot].template ReinterpretCast<T>();
-        vecFaBlock.ProcessVec1(l1PTensor, l1PCcId, bmm1Tensor, CC_BMM1_0 + bmm1Slot, runInfo);
+        ProcessVec1(l1PTensor, l1PCcId, bmm1Tensor, CC_BMM1_0 + bmm1Slot, runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
@@ -1847,9 +1811,9 @@ public:
         uint32_t outSlot = runInfo.loop % 2U;
         if constexpr (BMM2_TOUB) {
             auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
-            vecFaBlock.ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot, runInfo);
+            ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot, runInfo);
         } else {
-            vecFaBlock.ProcessVec2(bmm2GmSlot[runInfo.loop % 3U],
+            ProcessVec2(bmm2GmSlot[runInfo.loop % 3U],
                                    CC_BMM2_0 + (runInfo.loop % 3U), runInfo);
         }
     }
@@ -1869,8 +1833,8 @@ public:
         info.bIdx = bN2Cur / constInfo.n2Size;
         info.n2Idx = bN2Cur % constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_SBH ||
+                      LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             info.s1Idx = info.gS1Idx / constInfo.gSize;
         } else {
             info.s1Idx = info.gS1Idx % actSeqLensQ;
@@ -1973,8 +1937,8 @@ public:
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
         if (constInfo.aicIdx < constInfo.coreNum) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-            SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(FA_MTE3_TO_V_0);
+            SetFlag<AscendC::HardEvent::MTE3_V>(FA_MTE3_TO_V_0);
             AscendC::PipeBarrier<PIPE_MTE3>();
             AscendC::PipeBarrier<PIPE_V>();
         }
@@ -2017,8 +1981,8 @@ public:
     {
         if (constInfo.aicIdx < constInfo.coreNum) {
             CrossCoreBufferInit();
-            vecFaBlock.InitBuffers();
-            vecFaBlock.AllocEventID();
+            InitBuffers();
+            AllocEventID();
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo.aicIdx < constInfo.coreNum) {
@@ -2028,7 +1992,7 @@ public:
         }
 
         if (constInfo.aicIdx < constInfo.coreNum) {
-            vecFaBlock.FreeEventID();
+            FreeEventID();
         }
     }
 }; // FlashAttentionNoQuantGqaKernel
