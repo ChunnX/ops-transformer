@@ -1271,4 +1271,36 @@ ge::graphStatus TilingParseForMegaMoeA2A3(gert::TilingParseContext *context)
 IMPL_OP_OPTILING(MegaMoe)
     .Tiling(MegaMoeA2A3TilingFunc)
     .TilingParse<MegaMoeA2A3CompileInfo>(TilingParseForMegaMoeA2A3);
+
+#if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+    // Register exception func
+    inline void MegaMoeExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+    {
+        Mc2Exception::Mc2ExceptionImpl(args, userdata, "MegaMoe");
+    }
+    
+    __attribute__((constructor)) void RegisterMegaMoeExceptionFunc()
+    {
+        int32_t runtimeVersionNum = 0;
+        int32_t metadefVersionNum = 0;
+        if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
+            OP_LOGW("MegaMoe", "Get runtime version failed when register exception func.");
+            return;
+        }
+        if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
+            OP_LOGW("MegaMoe", "Get metadef version failed when register exception func.");
+            return;
+        }
+    
+        if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
+            OP_LOGW("MegaMoe",
+                "The runtime(%d) or metadata(%d) version is lower than the version(%d) supporting exception func.",
+                runtimeVersionNum, metadefVersionNum, EXCEPTION_DUMP_SUPPORT_VERSION);
+            return;
+        }
+    
+        IMPL_OP(MegaMoe)
+            .ExceptionDumpParseFunc(MegaMoeExceptionImplWrapper);
+    }
+#endif
 } // namespace MegaMoeA2A3Tiling
