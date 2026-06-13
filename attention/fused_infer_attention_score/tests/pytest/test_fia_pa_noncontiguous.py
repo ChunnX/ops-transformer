@@ -10,234 +10,265 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 """
-非量化 PA 非连续 kvcache 测试
+非量化 PA/非PA 非连续 kvcache 测试
 
-验证 fused_infer_attention_score 算子对传入非连续 KV Cache 时的 stride 传递正确性。
-构造方式：stack k/v 在 Bn 维上拼接后 slice 出非连续 tensor，与连续 tensor 的 NPU 结果做对比。
+规格：
+  BNBD: dim0 / dim0+dim1 非连续
+  BBND: 仅 dim0 非连续
+  NZ:   必须连续
+  非PA: 必须连续
 """
 
 import logging
 import math
 import random
 
+import pytest
 import torch
 import torch_npu
 
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
 
-# ==============================================================================
-# 配置区
-# ==============================================================================
-B = 4
+DEVICE_ID = 0
+B = 2
 N_q = 4
-N_kv = 4
+N_kv = 2
 D = 128
 Q_SEQ = 4
 KV_SEQ = 512
 BLOCK_SIZE = 512
-NUM_LAYERS = 2              # 物理内存中的层数，用于构造非连续stride
-IN_LAYOUT = "BNSD"
-CACHE_LAYOUT = "BNBD"       # [BlockNum, N_kv, BlockSize, D]
 DTYPE = torch.float16
-IS_CONTIGUOUS = False       # False: 构造非连续kvcache做验证
-DEVICE_ID = 0
 
 
-def create_random_block_table(batch_size, act_seq_len_kv, block_size):
-    max_kv_seq = max(act_seq_len_kv)
-    valid_block_nums = [math.ceil(s / block_size) for s in act_seq_len_kv]
-    total_blocks = sum(valid_block_nums)
-    max_blocks = max(valid_block_nums)
+# ==============================================================================
+# 正例
+# ==============================================================================
+NORMAL_CASES = [
+    {"name": "BNBD_BNSD_dim0",  "pa": True,  "kv_l": "BNBD", "q_l": "BNSD", "nc": "dim0"},
+    {"name": "BNBD_BNSD_dim01", "pa": True,  "kv_l": "BNBD", "q_l": "BNSD", "nc": "dim01"},
+    {"name": "BNBD_BSND_dim0",  "pa": True,  "kv_l": "BNBD", "q_l": "BSND", "nc": "dim0"},
+    {"name": "BNBD_BSND_dim01", "pa": True,  "kv_l": "BNBD", "q_l": "BSND", "nc": "dim01"},
+    {"name": "BNBD_TND_dim0",   "pa": True,  "kv_l": "BNBD", "q_l": "TND",  "nc": "dim0"},
+    {"name": "BNBD_TND_dim01",  "pa": True,  "kv_l": "BNBD", "q_l": "TND",  "nc": "dim01"},
+    {"name": "BBND_BNSD_dim0",  "pa": True,  "kv_l": "BBND", "q_l": "BNSD", "nc": "dim0"},
+    {"name": "BBND_BSND_dim0",  "pa": True,  "kv_l": "BBND", "q_l": "BSND", "nc": "dim0"},
+    {"name": "BBND_TND_dim0",   "pa": True,  "kv_l": "BBND", "q_l": "TND",  "nc": "dim0"},
+    {"name": "NZ_BNSD_contig",  "pa": True,  "kv_l": "NZ",   "q_l": "BNSD", "nc": "none"},
+    {"name": "NZ_BSND_contig",  "pa": True,  "kv_l": "NZ",   "q_l": "BSND", "nc": "none"},
+    {"name": "NZ_TND_contig",   "pa": True,  "kv_l": "NZ",   "q_l": "TND",  "nc": "none"},
+    {"name": "NonPA_BNSD_contig","pa": False,"kv_l": "none", "q_l": "BNSD", "nc": "none"},
+    {"name": "NonPA_BSND_contig","pa": False,"kv_l": "none", "q_l": "BSND", "nc": "none"},
+    {"name": "NonPA_TND_contig", "pa": False,"kv_l": "none", "q_l": "TND",  "nc": "none"},
+]
 
-    block_idx_list = list(range(total_blocks))
-    random.shuffle(block_idx_list)
-    block_table = -torch.ones(batch_size, max_blocks, dtype=torch.int32)
-    idx = 0
-    for b in range(batch_size):
-        for j in range(valid_block_nums[b]):
-            block_table[b, j] = block_idx_list[idx]
-            idx += 1
-    return block_table, total_blocks
+# ==============================================================================
+# 异常用例（规格外非连续 → 应报错）
+# ==============================================================================
+ERROR_CASES = [
+    {"name": "BBND_BNSD_dim01",  "pa": True,  "kv_l": "BBND", "q_l": "BNSD", "nc": "dim01"},
+    {"name": "BBND_BSND_dim01",  "pa": True,  "kv_l": "BBND", "q_l": "BSND", "nc": "dim01"},
+    {"name": "NZ_BNSD_dim0",     "pa": True,  "kv_l": "NZ",   "q_l": "BNSD", "nc": "dim0"},
+    {"name": "NZ_BNSD_dim01",    "pa": True,  "kv_l": "NZ",   "q_l": "BNSD", "nc": "dim01"},
+    {"name": "NonPA_BNSD_dim0",  "pa": False, "kv_l": "none", "q_l": "BNSD", "nc": "dim0"},
+    {"name": "NonPA_BSND_dim0",  "pa": False, "kv_l": "none", "q_l": "BSND", "nc": "dim0"},
+]
 
 
-def cpu_pa_golden(query, k_cache, v_cache, block_table, act_seq_q, act_seq_kv, scale):
+# ==============================================================================
+# 工具
+# ==============================================================================
+
+def _block_table(batch, seqs, bs):
+    vn = [math.ceil(s / bs) for s in seqs]
+    total = sum(vn)
+    mx = max(vn)
+    ids = list(range(total))
+    random.shuffle(ids)
+    t = -torch.ones(batch, mx, dtype=torch.int32)
+    off = 0
+    for b in range(batch):
+        t[b, :vn[b]] = torch.tensor(ids[off:off+vn[b]], dtype=torch.int32)
+        off += vn[b]
+    return t, total
+
+
+def _make_noncontiguous(tensor, nc):
+    """对 4D tensor [A,B,C,D] 构造非连续视图
+    nc="dim0": pad dim1 再 slice → dim0 stride 偏大
+    nc="dim01": pad dim2 再 slice → dim0/dim1 stride 偏大
+    nc="none": 返回原 tensor
     """
-    CPU PA golden: 按 block_table 从 KV Cache 取 block，逐 token 计算 attention.
-    K/V Cache: [total_blocks, N_kv, block_size, D] (BNBD)
-    Q:         [B, N_q, Sq, D] (BNSD)
-    """
-    group_size = N_q // N_kv
-    Sq = query.shape[2]
-    D_val = v_cache.shape[-1]
-
-    out = torch.zeros(B, N_q, Sq, D_val, dtype=torch.float32)
-
-    for b in range(B):
-        q_len = act_seq_q[b]
-        kv_len = act_seq_kv[b]
-        bt = block_table[b]
-        valid_blocks = bt[bt != -1]
-
-        for q_head in range(N_q):
-            kv_head = q_head // group_size
-
-            # 收集当前 sample 所有有效 block 的 k/v
-            all_keys = []
-            all_vals = []
-            for blk_id in valid_blocks:
-                all_keys.append(k_cache[int(blk_id), kv_head])  # [block_size, D]
-                all_vals.append(v_cache[int(blk_id), kv_head])  # [block_size, D]
-
-            big_k = torch.cat(all_keys, dim=0)[:kv_len]  # [kv_len, D]
-            big_v = torch.cat(all_vals, dim=0)[:kv_len]  # [kv_len, D]
-
-            for t in range(q_len):
-                q_vec = query[b, q_head, t]  # [D]
-                scores = torch.matmul(q_vec.float(), big_k.float().T) * scale
-                attn = torch.softmax(scores, dim=-1)
-                out[b, q_head, t] = torch.matmul(attn, big_v.float())
-
-    return out.to(DTYPE)
+    if nc == "none":
+        return tensor
+    A, Bv, Cv, Dv = tensor.shape
+    if nc == "dim0":
+        p = torch.empty(A, Bv + 1, Cv, Dv, dtype=tensor.dtype, device=tensor.device)
+        p[:, :Bv] = tensor
+        return p[:, :Bv, :, :]
+    elif nc == "dim01":
+        p = torch.empty(A, Bv, Cv + 1, Dv, dtype=tensor.dtype, device=tensor.device)
+        p[:, :, :Cv] = tensor
+        return p[:, :, :Cv, :]
+    else:
+        raise ValueError(f"Unknown nc: {nc}")
 
 
-def run_npu(query, k_cache, v_cache, block_table, act_seq_q, act_seq_kv, scale):
-    """调用 NPU 算子"""
+def _kv_shape(cache_layout, total_blocks):
+    if cache_layout == "BNBD":
+        return (total_blocks, N_kv, BLOCK_SIZE, D)
+    elif cache_layout == "BBND":
+        return (total_blocks, BLOCK_SIZE, N_kv * D)
+    elif cache_layout == "NZ":
+        return (total_blocks, N_kv, D // 32, BLOCK_SIZE, 32)
+    elif cache_layout == "none":
+        return (B, N_kv, KV_SEQ, D)
+    else:
+        raise ValueError(f"Unknown cache_layout: {cache_layout}")
+
+
+def _make_kv_cache(shape, seed):
+    torch.manual_seed(seed)
+    return torch.randn(*shape, dtype=DTYPE)
+
+
+def _q_layout_tensor(q_bnsd, q_layout, act_seq_q):
+    if q_layout == "BNSD":
+        return q_bnsd
+    elif q_layout == "BSND":
+        return q_bnsd.permute(0, 2, 1, 3).contiguous()
+    elif q_layout == "TND":
+        T = sum(act_seq_q)
+        out = torch.zeros(T, N_q, D, dtype=DTYPE)
+        t = 0
+        for b in range(B):
+            s = act_seq_q[b]
+            out[t:t + s] = q_bnsd[b, :, :s, :].transpose(0, 1)
+            t += s
+        return out
+    raise ValueError(f"q_layout: {q_layout}")
+
+
+def _accum_seq(seqs):
+    out, acc = [], 0
+    for s in seqs:
+        acc += s
+        out.append(acc)
+    return out
+
+
+def _run_npu(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, scale):
     torch_npu.npu.set_device(DEVICE_ID)
     torch.npu.synchronize()
-    result, _ = torch_npu.npu_fused_infer_attention_score(
-        query, k_cache, v_cache,
-        actual_seq_lengths=act_seq_q,
-        actual_seq_lengths_kv=act_seq_kv,
-        num_heads=N_q,
-        num_key_value_heads=N_kv,
-        input_layout=IN_LAYOUT,
-        scale=scale,
-        pre_tokens=65535,
-        next_tokens=65535,
-        block_table=block_table,
-        block_size=BLOCK_SIZE,
+    aq = _accum_seq(act_q) if q_layout == "TND" else act_q
+    akv = _accum_seq(act_kv) if q_layout == "TND" else act_kv
+    r, _ = torch_npu.npu_fused_infer_attention_score(
+        q_npu, k_npu, v_npu,
+        actual_seq_lengths=aq, actual_seq_lengths_kv=akv,
+        num_heads=N_q, num_key_value_heads=N_kv,
+        input_layout=q_layout, scale=scale,
+        pre_tokens=65535, next_tokens=65535,
+        block_table=bt_npu if pa else None,
+        block_size=BLOCK_SIZE if pa else 0,
     )
     torch.npu.synchronize()
-    return result
+    return r
 
 
-def check_result(expect, result, tag=""):
-    diff = (result.cpu().float() - expect.cpu().float()).abs()
-    max_diff = diff.max().item()
-    mean_diff = diff.mean().item()
-    thres = 0.05
-    pass_count = (diff <= thres).sum().item()
-    total = diff.numel()
-    logger.info(f"[{tag}] max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}, "
-                f"pass={pass_count}/{total}, ratio={pass_count/total:.4f}")
-    assert torch.allclose(result.cpu().float(), expect.cpu().float(), rtol=0.05, atol=0.05), \
-        f"[{tag}] FAILED: max_diff={max_diff}"
+def _check(ref, out, tag):
+    d = (out.cpu().float() - ref.cpu().float()).abs()
+    mx, mn = d.max().item(), d.mean().item()
+    ok = (d <= 0.05).sum().item()
+    t = d.numel()
+    logger.info(f"  [{tag}] max={mx:.6f} mean={mn:.6f} pass={ok}/{t} {ok/t:.4f}")
+    assert torch.allclose(out.cpu().float(), ref.cpu().float(), rtol=0.05, atol=0.05), \
+        f"[{tag}] FAIL max={mx}"
 
 
-def test_pa_contiguous():
-    """基线：连续 KV Cache"""
-    act_seq_q = [Q_SEQ] * B
-    act_seq_kv = [KV_SEQ] * B
+# ==============================================================================
+# 执行单个用例
+# ==============================================================================
 
-    block_table_torch, total_blocks = create_random_block_table(B, act_seq_kv, BLOCK_SIZE)
-    block_table_npu = block_table_torch.npu()
+def _run_one(cfg, expect_pass):
+    pa = cfg["pa"]
+    kv_layout = cfg["kv_l"]
+    q_layout = cfg["q_l"]
+    nc = cfg["nc"]
 
+    act_q = [Q_SEQ] * B
+    act_kv = [KV_SEQ] * B
     scale = 1.0 / math.sqrt(D)
 
+    bt, total_b = None, 0
+    if pa:
+        bt, total_b = _block_table(B, act_kv, BLOCK_SIZE)
+    else:
+        total_b = B
+    bt_npu = bt.npu() if bt is not None else None
+
+    # Q
     torch.manual_seed(42)
-    query = torch.randn(B, N_q, Q_SEQ, D, dtype=DTYPE).npu()
+    q_bnsd = torch.randn(B, N_q, Q_SEQ, D, dtype=DTYPE)
+    q_npu = _q_layout_tensor(q_bnsd, q_layout, act_q).npu()
 
-    k_cache = torch.randn(total_blocks, N_kv, BLOCK_SIZE, D, dtype=DTYPE).npu()
-    v_cache = torch.randn(total_blocks, N_kv, BLOCK_SIZE, D, dtype=DTYPE).npu()
+    # K/V — 在目标 cache_layout 下生成数据
+    kv_shape = _kv_shape(kv_layout, total_b)
+    k_ref = _make_kv_cache(kv_shape, 100)
+    v_ref = _make_kv_cache(kv_shape, 200)
 
-    cpu_out = cpu_pa_golden(
-        query.cpu(), k_cache.cpu(), v_cache.cpu(), block_table_torch,
-        act_seq_q, act_seq_kv, scale
-    )
+    # 连续基准
+    ref_out = _run_npu(q_npu, k_ref.npu(), v_ref.npu(), pa, q_layout, act_q, act_kv, bt_npu, scale)
 
-    npu_out = run_npu(query, k_cache, v_cache, block_table_npu, act_seq_q, act_seq_kv, scale)
+    # 非连续 K/V
+    k_nc = _make_noncontiguous(k_ref, nc)
+    v_nc = _make_noncontiguous(v_ref, nc)
+    if nc != "none":
+        assert not k_nc.is_contiguous(), f"{cfg['name']}: k not non-contiguous"
+        logger.info(f"  k contig={k_nc.is_contiguous()} stride={k_nc.stride()}")
+    k_npu = k_nc.npu() if nc == "none" else k_nc.npu()
+    v_npu = v_nc.npu() if nc == "none" else v_nc.npu()
 
-    check_result(cpu_out, npu_out, "PA-contiguous")
-
-
-def test_pa_noncontiguous():
-    """验证：非连续 KV Cache（stack k/v 后 slice）"""
-    if not IS_CONTIGUOUS:
-        logger.info("IS_CONTIGUOUS=False, 构造非连续 kvcache")
-    act_seq_q = [Q_SEQ] * B
-    act_seq_kv = [KV_SEQ] * B
-
-    block_table_torch, total_blocks = create_random_block_table(B, act_seq_kv, BLOCK_SIZE)
-    block_table_npu = block_table_torch.npu()
-
-    scale = 1.0 / math.sqrt(D)
-
-    torch.manual_seed(42)
-    query = torch.randn(B, N_q, Q_SEQ, D, dtype=DTYPE).npu()
-
-    # ==========================
-    # 连续版本：直接创建连续tensor转NPU
-    # ==========================
-    k_cache_cpu = torch.randn(total_blocks, N_kv, BLOCK_SIZE, D, dtype=DTYPE)
-    v_cache_cpu = torch.randn(total_blocks, N_kv, BLOCK_SIZE, D, dtype=DTYPE)
-
-    k_cont_npu = k_cache_cpu.npu()
-    v_cont_npu = v_cache_cpu.npu()
-    npu_out_cont = run_npu(query, k_cont_npu, v_cont_npu, block_table_npu, act_seq_q, act_seq_kv, scale)
-
-    if IS_CONTIGUOUS:
-        logger.info("[INFO] IS_CONTIGUOUS=True, skip non-contiguous test")
+    if not expect_pass:
+        with pytest.raises(Exception):
+            _run_npu(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, scale)
+        logger.info(f"  [{cfg['name']}] ERROR as expected")
         return
 
-    # ==========================
-    # 非连续版本：物理6D tensor在NPU上 → as_strided 构造5D逻辑视图
-    # 物理: [Bn, N_kv, L, 2, Bs, D]
-    # 逻辑: [2, Bn, N_kv, Bs, D]
-    # as_strided是视图操作不拷贝，stride保留在NPU侧
-    # ==========================
-    # 先在CPU构造物理tensor并填入数据，再一次性转NPU
-    phys = torch.randn(total_blocks, N_kv, NUM_LAYERS, 2, BLOCK_SIZE, D, dtype=DTYPE)
-    phys[:, :, 0, 0] = k_cache_cpu
-    phys[:, :, 0, 1] = v_cache_cpu
-    phys_npu = phys.npu()
+    out = _run_npu(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, scale)
+    _check(ref_out, out, cfg["name"])
 
-    # 在NPU上用as_strided创建非连续视图
-    logical_npu = torch.as_strided(
-        phys_npu,
-        size=(2, total_blocks, N_kv, BLOCK_SIZE, D),
-        stride=(phys_npu.stride(3),
-                phys_npu.stride(0),
-                phys_npu.stride(1),
-                phys_npu.stride(4),
-                phys_npu.stride(5))
-    )
-    k_noncont_npu = logical_npu[0]
-    v_noncont_npu = logical_npu[1]
 
-    logger.info(f"[NPU] k is_contiguous: {k_noncont_npu.is_contiguous()}")
-    logger.info(f"[NPU] v is_contiguous: {v_noncont_npu.is_contiguous()}")
-    logger.info(f"[NPU] k shape: {k_noncont_npu.shape}, stride: {k_noncont_npu.stride()}")
+# ==============================================================================
+# pytest
+# ==============================================================================
 
-    npu_out_noncont = run_npu(query, k_noncont_npu, v_noncont_npu, block_table_npu,
-                              act_seq_q, act_seq_kv, scale)
+@pytest.mark.parametrize("cfg", NORMAL_CASES, ids=[c["name"] for c in NORMAL_CASES])
+def test_normal(cfg):
+    logger.info(f"\n[NORMAL] {cfg['name']}")
+    _run_one(cfg, expect_pass=True)
 
-    # 非连续版本与连续版本结果应一致（物理数据相同，仅stride不同）
-    check_result(npu_out_cont, npu_out_noncont, "PA-noncontiguous-vs-contiguous")
+
+@pytest.mark.parametrize("cfg", ERROR_CASES, ids=[c["name"] for c in ERROR_CASES])
+def test_error(cfg):
+    logger.info(f"\n[ERROR]  {cfg['name']}")
+    _run_one(cfg, expect_pass=False)
 
 
 if __name__ == '__main__':
-    logger.info("=" * 60)
-    logger.info("非量化 PA KVCache 非连续测试")
-    logger.info(f"B={B}, N_q={N_q}, N_kv={N_kv}, D={D}, QS={Q_SEQ}, KVS={KV_SEQ}")
-    logger.info(f"LAYOUT={IN_LAYOUT}, CACHE={CACHE_LAYOUT}, BLOCK_SIZE={BLOCK_SIZE}")
-    logger.info(f"IS_CONTIGUOUS={IS_CONTIGUOUS}")
-    logger.info("=" * 60)
-
-    logger.info("\n[Test 1] PA 连续 — 基线")
-    test_pa_contiguous()
-
-    logger.info("\n[Test 2] PA 非连续 — stride 传递验证")
-    test_pa_noncontiguous()
-
-    logger.info("\n全部测试通过!")
+    logger.info(f"正例={len(NORMAL_CASES)} 异常={len(ERROR_CASES)}")
+    ok = True
+    for c in NORMAL_CASES:
+        try:
+            _run_one(c, True)
+            logger.info(f"  PASS")
+        except Exception as e:
+            logger.info(f"  FAIL: {e}")
+            ok = False
+    for c in ERROR_CASES:
+        try:
+            _run_one(c, False)
+            logger.info(f"  PASS")
+        except Exception as e:
+            logger.info(f"  FAIL: {e}")
+            ok = False
+    logger.info("\n全部通过!" if ok else "\n存在失败!")
