@@ -189,7 +189,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     rankId_ = mc2Context_->epRankId;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
-        hcommHandle_[i] = (GM_ADDR)mc2Context_->hcommHandle_[i];
+        hcommHandle_[i] = mc2Context_->hcommHandle_[i];
     }
 
     actualA = epWorldSize_ * numMaxTokensPerRank_ * topK_;
