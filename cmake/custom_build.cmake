@@ -126,6 +126,7 @@ if (BUILD_OPEN_PROJECT)
             exe_graph
             graph
             graph_base
+            ops_base
             register
             ops_base
             ascendalog

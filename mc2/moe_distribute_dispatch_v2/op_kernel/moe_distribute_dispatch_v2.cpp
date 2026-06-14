@@ -50,6 +50,7 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(
     GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut, 
     GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+AscendC::PRINTF("===========================================moe_distribute_dispatch_v2===========================================\n");
 REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
