@@ -37,7 +37,8 @@ if (BUILD_OPEN_PROJECT)  # custom
         add_ops_compile_options(
             OP_NAME MoeDistributeDispatchV3
             OPTIONS --cce-enable-print
-            
+            OPTIONS -lruntime
+            OPTIONS -lascendcl
         )
     endif()
 else() # 回黄host
