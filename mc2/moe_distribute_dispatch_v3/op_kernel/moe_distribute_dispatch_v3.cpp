@@ -23,16 +23,19 @@
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_full_mesh.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling_key.h"
+#include "../moe_distribute_dispatch_v2/arch35/moe_distribute_dispatch_v2_host_kfc.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_full_mesh.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
+#include "../../moe_distribute_dispatch_v2/arch35/moe_distribute_dispatch_v2_host_kfc.h"
 #endif
 
 using namespace MoeDistributeDispatchV2Impl;
 using namespace Mc2Kernel;
 using namespace MoeDistributeDispatchV2FullMeshImpl;
+using namespace MoeDistributeDispatchV2HostKfcImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
@@ -45,9 +48,6 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
                            GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     AscendC::PRINTF("moe_distribute_dispatch_v3\n");
-    cce::printf("moe_distribute_dispatch_v3 cce\n");
-    return ;
-
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
@@ -74,7 +74,13 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
                         workspaceGM, &pipe, &tilingData);
                 op.Process();
             }
-        }
+        }else if (CommMode == TILINGKEY_TPL_ROCE) {
+            AscendC::PRINTF("moe_distribute_dispatch_v3 ROCE\n");
+            MoeDistributeDispatchV2HostKfc<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, false, false> op;
+            op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                    expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
+            op.Process();
+ 	    }
     }
 #elif ((ORIG_DTYPE_X == DT_FLOAT8_E5M2) && (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2)) ||               \
     ((ORIG_DTYPE_X == DT_FLOAT8_E4M3FN) && (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E4M3FN)) ||             \
@@ -98,7 +104,12 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
                         workspaceGM, &pipe, &tilingData);
                 op.Process();
             }
-        }
+        }else if (CommMode == TILINGKEY_TPL_ROCE) {
+            MoeDistributeDispatchV2HostKfc<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, true, false> op;
+            op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                    expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
+            op.Process();
+ 	    } 
     }
 #elif ((ORIG_DTYPE_EXPAND_X == DT_INT8) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2) ||                \
        (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT4_E2M1) ||       \
@@ -120,6 +131,11 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
 
                     op.Process();
                 }
+            }else if (CommMode == TILINGKEY_TPL_ROCE) {
+                MoeDistributeDispatchV2HostKfc<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
+                op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                    expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
+                op.Process();
             }
         }
     }
@@ -140,7 +156,12 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
                         workspaceGM, &pipe, &tilingData);
                 op.Process();
             }
-        }
+        }else if (CommMode == TILINGKEY_TPL_ROCE) {
+            MoeDistributeDispatchV2HostKfc<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
+            op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                    expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
+            op.Process();
+ 	    }
     }
 #endif
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
