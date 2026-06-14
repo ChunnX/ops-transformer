@@ -1757,8 +1757,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                             expertPerSizeOnWin_ * srcRankIndex + hCommuSize_ * curExpertCnt);
         ProcessToken(rankGM, tokenIndex, axisK_ + shareIndex, shareIndex, srcRankIndex, expertScale);
     }
-     tokenInQueue_.FreeTensor<XInType>(recvTmpTensor);
-     xInQueue_.FreeTensor<XInType>(tokenData);
+    PipeBarrier<PIPE_ALL>();
+    tokenInQueue_.FreeTensor<XInType>(recvTmpTensor);
+    xInQueue_.FreeTensor<XInType>(tokenData);
     //PipeBarrier<PIPE_ALL>();
     //todo:先用PipeBarrier<PIPE_V>()同步
 }
