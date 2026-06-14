@@ -1726,7 +1726,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t tokenIndex = xInTensor(sendXTypeElemAlign_ + 1);
     LOG_INFO("[SendToExpert][moe] srcRankIndex",srcRankIndex);
     LOG_INFO("[SendToExpert][moe] tokenIndex",tokenIndex);
-    float expertScale = float(1.0);
+    float expertScale = float(9.0);
     for (int32_t topKIndex = 0; topKIndex < axisK_; topKIndex++) {                      // 发moe专家
         uint32_t dstExpertId = xInTensor(moeListAlign_ + topKIndex);                    // 取出专家id
         uint32_t dstRankId = dstExpertId / moeExpertNumPerRank_ + sharedExpertRankNum_; // 发往的卡号
