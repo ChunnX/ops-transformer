@@ -2360,10 +2360,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 //DataCopyPad(cleanGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(int32_t)], cleanTensor, cleanUoParams); //todo:需要重写
                 finishNum++;
             }
-            PipeBarrier<PIPE_ALL>();
+            
         } else {
             index = (index + 1) % validNum;
         }
+        PipeBarrier<PIPE_ALL>();
         if (validNum == finishNum) {
             break;
         }
