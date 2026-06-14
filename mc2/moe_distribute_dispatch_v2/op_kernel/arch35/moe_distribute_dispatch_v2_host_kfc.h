@@ -67,7 +67,7 @@ constexpr uint8_t EP_WORLD_SIZE_IDX = 1;
 constexpr uint8_t SHARE_RANK_NUM_IDX = 2;
 constexpr uint8_t MOE_NUM_IDX = 3;
 constexpr int32_t BITS_PER_BYTE = 8;
-constexpr uint32_t MAX_UB_SIZE = 240U * 1024U;
+constexpr uint32_t MAX_UB_SIZE = 248U * 1024U;
 constexpr uint32_t BW_ITEM_SIZE = 32; // batchWriteItemSize
 constexpr uint32_t B64_PER_BLOCK = 4;
 constexpr uint64_t SERVER_STATE_ALIGN = 512UL;
@@ -1454,6 +1454,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitGatherTokenBuffer()
 {
+    PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
     InitQuantBuffer<CommMode::INTER_NODE>();
     uint32_t flagMaxRecvBuf = blockCntPerToken_ * UB_ALIGN;
@@ -1757,7 +1758,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                             expertPerSizeOnWin_ * srcRankIndex + hCommuSize_ * curExpertCnt);
         ProcessToken(rankGM, tokenIndex, axisK_ + shareIndex, shareIndex, srcRankIndex, expertScale);
     }
-    PipeBarrier<PIPE_ALL>();
+    // PipeBarrier<PIPE_ALL>();
     tokenInQueue_.FreeTensor<XInType>(recvTmpTensor);
     xInQueue_.FreeTensor<XInType>(tokenData);
     //PipeBarrier<PIPE_ALL>();
@@ -1854,6 +1855,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCalCumSumBuffer()
 {
+    PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
     uint32_t waitStatusBufSize = Ceil((recStatusNumPerCore_ * UB_ALIGN), SIZE_ALIGN_256) * SIZE_ALIGN_256;
     tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize);
@@ -2335,6 +2337,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         bool isArrived = WaitFlag<false>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, flagNum);
         // LOG_INFO("[WaitAndFormatOutput] end");
         // LOG_INFO("WaitAndFormatOutput index:", index);
+        PipeBarrier<PIPE_ALL>();
         if (isArrived) {
             //LOG_INFO("WaitAndFormatOutput index:", index);
             //LOG_INFO("arriveCount:", arriveCount);
@@ -2370,6 +2373,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitLocalCopyBuffer(uint32_t processNum)
 {
+    PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
     TBuf<> cumSumBuf, statusWaitBuf, statusCleanBuf, expertMapBuf, expertFinishBuf, expertLeftBuf, flagMaskBuf;
     uint32_t rscvNumAlign = Ceil(rscvStatusNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN; // todo:注意UB越界
@@ -2411,7 +2415,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t startProcessId, endProcessId, processNum;
     uint32_t validNum = 0;
     SplitToCore(rscvStatusNum_, 0, aivNum_, startProcessId, endProcessId, processNum);
-    if (processNum == 0) {
+    if (processNum == 0 || startProcessId >= endProcessId) {
         return;
     }
     InitLocalCopyBuffer(processNum);
@@ -2563,7 +2567,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             }
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
-        PipeBarrier<PIPE_ALL>();
         LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
