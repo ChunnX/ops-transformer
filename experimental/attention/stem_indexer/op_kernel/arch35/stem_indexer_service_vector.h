@@ -387,15 +387,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     copyOutParams.dstStride = 0;
     // indiceLen搬出参数
     AscendC::DataCopyParams indiceLenCopyParams;
-
-    // 计算当前S2方向的有效长度（基于第一个S1位置）
-    int32_t firstS2Len = static_cast<int32_t>(info.actS2Size);
-    if (constInfo_.attenMaskFlag) {
-        // causal 场景：当前AIV核处理的第一个S1位置对应的s2合法长度
-        firstS2Len = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size) +
-                     static_cast<int32_t>(curAivGS1Idx % info.actS1Size) + 1;
-    }
-    firstS2Len = firstS2Len > 0 ? firstS2Len : 0;
     
     // 计算动态 topkCount 所需的块级常量（使用原始 actS2Size）
     int32_t kbOffset = (int32_t)info.actS2Size - (int32_t)info.actS1Size;
@@ -411,7 +402,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     // 当mBaseSize大于等于actS1Size时， curAivS1Size为info.actS1Size
     uint32_t curAivS1Size = Min(info.actS1Size, (uint32_t)curAivGS1ProcNum);
     
-    uint32_t curS1RealS2Len = static_cast<uint32_t>(firstS2Len);
+    uint32_t curS1RealS2Len = static_cast<uint32_t>(info.actS2Size);
     // 外层循环：按 S1 位置遍历（同一个 S1 位置下的 G 个行共享相同的 s2Len和topkCount）
     for (uint32_t s1Pos = 0; s1Pos < curAivS1Size; s1Pos++) {
 
@@ -422,7 +413,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         int64_t baseOutOffset = info.indiceOutOffset + ((int64_t)globalGIdx * constInfo_.qSeqSize + globalS1Idx) * constInfo_.kSeqSize;
         // causal 场景：基于 S1 位置索引更新
         if (constInfo_.attenMaskFlag) {
-            int32_t curS1RealS2LenTmp = firstS2Len + static_cast<int32_t>(s1Pos);
+            int32_t curS1RealS2LenTmp = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size) +
+                                        static_cast<int32_t>(globalS1Idx) + 1;
             curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);
         }
 
