@@ -45,7 +45,7 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
                            GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     AscendC::PRINTF("moe_distribute_dispatch_v3\n");
-    cce::printf("moe_distribute_dispatch_v3 cce\n");
+    //cce::printf("moe_distribute_dispatch_v3 cce\n");
     return ;
 
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
