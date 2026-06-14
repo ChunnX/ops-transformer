@@ -207,11 +207,6 @@ private:
     __aicore__ inline uint32_t CheckDataArriveWithFlagInServer(uint32_t srcExpDataIdx, int32_t beginIdx, int32_t copyCnt);
     __aicore__ inline void CopyOut(LocalTensor<int32_t> xOutInt32Tensor, GM_ADDR wAddr, uint32_t index, uint32_t dstPosition, uint32_t arriveCount);
     __aicore__ inline void WaitAndFormatOutput(uint32_t validNum);
-    // __aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
-    //                                                   const int32_t curRankId);
-    // __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam *addr, const int32_t serverId,
-    //                                                        const int32_t curRankId);
-
     __aicore__ inline GM_ADDR GetSendAddrBetweenServer(const int32_t serverId)
     {
         return gmTemp + 20 * 1024 * 1024 + serverId * 4UL * 1024 * 1024;
