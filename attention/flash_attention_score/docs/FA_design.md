@@ -1,6 +1,6 @@
 # Ascend FlashAttention @ arch35 (A5) 方案设计书
 
-> 状态:梳理版 v1.2 —— 在 v1.1 的白皮书指标量化基础上,补一轮代码导读细节:(1) §13 新增"四段式读码框架",把 host tiling、entry dispatch、base init、process pipeline 串起来;(2) FA 前向补 host→entry→稳态流水→buffer/sync 的分阶段表,并把 BMM2 写 UB/GM 的源码边界提前整理出来;(3) FAG 反向补 pre/main/post、MM1~5、Vec1~6、splitAxis/workspace 的代码流程表;(4) 新增 §13.12,把当前还没完全吃透、需要后续讨论或 profile 的点单独标出来。结论分级沿用 §0.3。
+> 状态:梳理版 v1.3 —— 含 v1.2 的代码导读细化(§13 四段式读码框架 + FA/FAG 分阶段表 + §13.12 待吃透清单 + 2-Die/L2 亲和提为 §4.3.7),本轮再补 L2 微架构:(1) 新增 §2.6「L2 微架构:Bank / Sector / 交织 / hint / CMO」,把多 Bank 分布式、512B Line + 128B Sector、低位/高位/高位异或交织(含 bank conflict 取舍)、L2 hint(allocate/non-allocate/victim)、CMO(Prefetch/Writeback/Invalid/Flush)写成正式一节,并和 §2.5(3) 的 L2 复用、§4.3 splitCoreMode、§4.3.7 的 2-Die 亲和接上;(2) §2.4 增 L2 hint/CMO 旋钮行;(3) §14 新增 Track B7(L2 bank conflict / Sector / hint profiling),§13.11/§13.12 加 L2 行为观测与 hint/CMO 待查项。结论分级沿用 §0.3。
 > 图例约定:Mermaid 画数据流/握手关系,ASCII 时间线画流水排布,表格收约束与对比。
 
 ---
@@ -34,7 +34,7 @@
 | 看懂 FA 多核调度 | §4.3 | §13.4,§13.11-A | `splitCoreMode` 的门/形/路径展开 |
 | 看懂 FAG 反向代码主线 | §13.5~§13.7 | §10 | pre/main/post、MM1~5、Vec1~6、splitAxis |
 | 判断哪些结论还不能信死 | §13.10 + §14 | §8/§9 | profile/汇编/实测 TODO |
-| 想引用白皮书硬件信息 | `ascend_950_whitepaper_hardware_notes.md` | §2.2/§2.4/§2.5 | 带页码的硬件依据 |
+| 想引用白皮书硬件信息 | `ascend_950_whitepaper_hardware_notes.md` | §2.2/§2.4/§2.5/§2.6 | 带页码的硬件依据 |
 
 ### 0.3 结论分级
 
@@ -150,6 +150,7 @@ flowchart LR
 | mask/tail 走 `vf/*`·`vector_api/*` 分支(硬件具备 SIMT,VF 映射待证) | 白皮书确认 SIMD/SIMT 混合编程,VF 可选 SIMD/SIMT;不规则控制流、gather/scatter 是 SIMT 目标场景。当前代码中哪些 VF 落到 SIMT 需汇编/profile | 取消不规整税(待证 §14-B) | §8 |
 | NDDMA/多维搬运可降低 layout 税 | 白皮书确认 NDDMA 可做最多 5 维重排,并把细粒度读聚合为 128B 读(与 L2 的 128B Sector 对齐);当前 FA/FAG 代码仍需定位具体 DataCopy/NDDMA lowering | 搬运+排布转换开销 | §11 §14-B |
 | BufferID 同步是硬件新能力 | 白皮书确认 BufferID 同步比 set/wait flag 更内聚;当前 FA/FAG 源码仍以 CrossCore flag 与 BufferPolicy 为主 | 同步复杂度 | §7 §14-B |
+| L2 hint / CMO 是"留位/预取"旋钮 | 白皮书确认 L2 hint(allocate/non-allocate/victim)与 CMO(Prefetch/Writeback/Invalid/Flush);可把 K/V 标 allocate 留 L2、一次性输出标 non-allocate 不污染 L2,在 splitCoreMode 之上再细调 K/V 复用 | L2 复用质量(§4.3 之上一层) | §2.6 §14-B7 |
 
 一句话串起来:**§2.2 列硬件常量 → §2.3 说这些常量松了哪些约束 → §2.4 把每个设计选择钉回某条常量/约束 → §2.5 把能算的钉成数 → §4~§13 是这些选择的代码展开。** 任何一处看不懂"为什么这么写",顺着"详见"回到对应小节,再回到本表确认它贴的硬件属性。
 
@@ -186,6 +187,61 @@ T_vec(半 tile, 含 exp) ≤ T_cube(tile) / 2     ← 因 1 AIC 喂 2 AIV,各吃
 raw op 数上 Cube MAC(4.2M)比 Vector op(~64K)多 ~65×,即使 Vector 矩阵吞吐只有 Cube 的 1/8、且 exp 是多周期特殊函数,2 个 AIV 仍**大概率**有裕度藏住 softmax——**除非 exp/特殊函数吞吐成为瓶颈**。而 Vector 的 exp/特殊函数有效吞吐白皮书没给(只给了矩阵类峰值),所以这条判别式缺的就一个常量,它正是 §14-B5 的 profile 目标:测出 Vector softmax tile 实际周期,代入即可判定 2 AIV 是裕度还是刚好卡住。
 
 > 把 (1)~(5) 连起来:**A5 为 FA 做的每一件事(1C:2V + softmax 微架构、CV 直连通路、128MB L2、低精度阶梯)都在围绕同一目标——在"长 S 才 compute-bound"这个前提下,既把 Cube 喂满(L2 复用保 AI、低精度提吞吐),又把 Vector 藏住(2 AIV + RegFile + 双发)。** §4 起的所有代码细节都是这句话的展开。
+
+### 2.6 L2 微架构:Bank / Sector / 交织 / hint / CMO
+
+> 白皮书确认。§2.5(3)/§4.3 把 L2 当成"K/V 中间数据的复用缓冲"来用,但只用了它的**容量**(128MB)。这一节补 L2 的**微架构**,因为 Bank/Sector/交织/hint/CMO 决定了"复用窗口落进 L2 之后,带宽能不能真吃满、会不会被病态访问拍死",是 §4.3 strided 复用与 §14-B profiling 的下一层细节。
+
+**定位:中间数据复用缓冲,不是首读缓存。** L2 缓存的是 AIC/AIV 会**重复使用**的输入/输出/中间数据,省掉反复回片上内存(HBM)的大开销。这正是 splitCoreMode 想吃的东西:K/V 被多个 Q 块重复消费,钉在 L2 里一次取多次用。
+
+**(A) 多 Bank 分布式 + 512B Line + 128B Sector。**
+
+| 机制 | 含义 | 对 FA 的意义 |
+|---|---|---|
+| 多 Bank 分布式,每 Bank 可同时读写 | 128MB 切成很多独立 Bank,多核访存打到不同 Bank 上并行;总带宽 ≈ 单 Bank 带宽 × Bank 数(理想) | L2 并行度的来源;若多核访问挤到同一 Bank 就排队(bank conflict),并行归零 |
+| Cache Line 512B | L2 管理/替换的基本单位,一整条 512B 进出与做替换决策 | 大块连续 Q/K/V/O 搬运天然按 512B 走,利用率高 |
+| 128B Sector Cache(512B Line 内分 4×128B 扇区) | 一条 Line 内可**按 128B 扇区**搬运/管理有效性,128B/256B 访问更高效 | 与 NDDMA"细粒度读聚合为 128B"(§2.4)正好对齐:尾块/非对齐/ND-NZ 这类不满 512B 的访问不必拉满整条 Line,省带宽 |
+
+**(B) Bank 交织:低位 vs 高位 vs 高位异或(这是 A5 L2 的关键设计)。**
+
+"用地址的哪几位选 Bank"决定连续/跨步访问会不会撞同一个 Bank。地址里**低位变化快、高位变化慢**:
+
+- **低位交织**:用低位选 Bank,地址按交织粒度递增就轮换 Bank(发牌式)。对**连续顺序访问(stream)**极友好——一段连续读均匀铺满所有 Bank,带宽拉满。弱点:对**固定大跨步**敏感,若 stride 恰好 = `Bank数 × 交织粒度` 的倍数,每次访问落同一 Bank → 严重冲突(经典:二维数组按列扫,行跨步踩中 Bank 周期)。
+- **高位交织**:用高位选 Bank,一整块连续地址属于同一 Bank。适合把不同数据结构隔离到不同 Bank;但对连续访问极差——顺序扫一大段长时间待在一个 Bank,其它 Bank 全闲,并行度丢失。
+- **谁更容易冲突,取决于访问模式**,不能一概而论:
+
+| | 连续顺序访问(stream) | 固定大跨步访问(strided) |
+|---|---|---|
+| 低位交织 | 几乎不冲突(均匀铺满)✓ | 跨步踩中周期时严重冲突 ✗ |
+| 高位交织 | 全程挤一个 Bank,等于不并行 ✗ | 反而可能错开(看具体跨步) |
+
+对 NPU 这种以**大块连续张量搬运**为主的负载,**低位交织是默认**(stream 友好),代价是要处理"病态 stride"。
+
+**白皮书"512B 低位交织 + 高位异或交织"的真正含义 = 低位打底 + 高位 XOR 扰动**:基础是 512B 粒度低位交织(保 stream 带宽);但纯低位交织会被病态 stride 周期性拍死,于是选 Bank 时把低位**异或上若干高位**:
+
+```
+bank = low_bits XOR (some_high_bits)
+```
+
+病态 stride 冲突的根因是"低位 bank 字段周期性重复";高位在跨步时是变化的,异或进来等于给 Bank 号加一个随步长变化的扰动,把原本共振到同一 Bank 的访问重新散开,同时几乎不损害顺序访问的均匀性(顺序访问时高位变化慢,扰动小,仍均匀铺满)。所以"交织算法升级"= **低位拿满连续带宽,高位 XOR 补掉病态 stride 冲突**,两头都要。
+
+落到 FA:大块连续的 Q/K/V/O 搬运吃低位交织的 stream 带宽;那些 stride 固定、可能踩雷的访问(某些 mask/index/transpose)靠高位 XOR 避开 Bank 冲突。真实冲突率仍需 profile per-bank 带宽均衡度才能定。
+
+**(C) L2 hint:allocate / non-allocate / victim —— 给复用数据"留位"的抓手。**
+程序员给数据打 hint 告诉硬件"以后还用不用":下一 Task 还要用的(如 Task0 输出 = Task1 输入)标 **allocate**,留在 L2;短期不用的一次性输出标 **non-allocate**,直接写回 Global Memory、**不 allocate 进 L2**,从而不把别人短期要用的数据挤出去(victim)。对 FA 这是 §4.3"保住 K/V 局部性"之外更细的旋钮:把 K/V 标"要复用、留 L2",把一次性中间输出标 non-allocate,主动保护 L2 里值钱的复用数据(白皮书 Cache Hint / 按 Way 驻留即此)。
+
+**(D) CMO(走 SDMA):Prefetch / Writeback / Invalid / Flush。**
+对 L2 的主动管理动作,时机与作用范围可调:Prefetch 提前把要用的数据拉进 L2(藏延迟);Writeback 提前写回脏数据(腾空间/降后续写压力);Invalid 标 Line 失效;Flush 强制写回并清。这给了一条**手动 prefetch K/V、手动管 L2 占用**的路子,是后续调优 splitCoreMode 时能动的旋钮。
+
+**(E) 2-Die UMA 一致性 + 局部亲和(与 §4.3.7 接口)。**
+跨 Die 可访问 L2、硬件维护 2 Die 一致性(软件不感知),但 L2 有**局部亲和**:本 Die 访问比跨 Die 走 D2D 快。所以 §4.3.7 的结论是——源码的 strided 重排已把逻辑窗口整理成 L2 友好,但这窗口能否落成**本地 Die 内** L2 复用,取决于物理落核/STARS Die Group 调度。
+
+**这一节给 §14-B 的 profiling 增量(并入 B1/B6 一起看):**
+
+- per-bank 带宽均衡度 / bank conflict 率 → 判断是不是某些 stride 踩中交织周期(高位 XOR 是否真的把它散开了)。
+- 128B Sector 命中 vs 512B Line 命中 → 判断尾块/非对齐访问是否吃到了 Sector Cache 的省带宽。
+- L2 hit 按 allocate/non-allocate 拆分(若算子用了 hint)→ 判断 K/V 是否真留在了 L2、一次性输出是否真没污染 L2。
+- L2 hit 按 Die/核拆分(= B6)→ 判断复用窗口是否被跨 Die 拆开。
 
 ---
 
@@ -555,7 +611,7 @@ logical aic 8..15  -> 同一 (B,N2=1) 的 8 个 S1o,读同一份 K/V1
 
 如果物理映射是 `0..31` 在 Die0、`32..63` 在 Die1,那每个 K/V 复用组完整落在一个 Die 内,本地 L2 亲和最好;如果物理映射是奇偶交错到两个 Die,则 `aic0..7` 这个 K/V0 组会被拆开,本来一份本地 L2 热数据会变成跨 Die 或双 Die 各自填充。源码无法告诉我们实际是哪一种,只能通过 profile/调度信息验证。
 
-所以这条注的准确表述是:FA 源码的 `splitCoreMode` 已经把逻辑任务顺序整理成 L2 友好的 K/V 滑动窗口;2-Die 亲和决定这个逻辑窗口能不能落成本地 Die 内的 L2 复用。后续若要闭环,需要在一个大 coreNum shape 上同时记录 `(aicIdx, realCoreInnerIdx, bo,n2o,go,s1o)` 和 profiler 的 per-Die/per-core L2 hit、MTE/HBM 流量(§14-B6)。
+所以这条注的准确表述是:FA 源码的 `splitCoreMode` 已经把逻辑任务顺序整理成 L2 友好的 K/V 滑动窗口;2-Die 亲和决定这个逻辑窗口能不能落成本地 Die 内的 L2 复用。后续若要闭环,需要在一个大 coreNum shape 上同时记录 `(aicIdx, realCoreInnerIdx, bo,n2o,go,s1o)` 和 profiler 的 per-Die/per-core L2 hit、MTE/HBM 流量(§14-B6)。L2 本身的 Bank/Sector/交织/hint/CMO 机制见 §2.6。
 
 #### 4.3.8 与 arch22 / FAG 的关系
 
@@ -759,7 +815,7 @@ arch35 的 FA/FAG 都可以先按四段读,不要被模板参数和 optional 分
 |---|---|---|
 | 每 AI Core 1 Cube + 2 Vector | `KERNEL_TYPE_MIX_AIC_1_2`,`CV_RATIO/CV_CORE_RATIO=2`,`aivIdx >> 1`,`subBlockIdx` | 为什么 FA/FAG 都按 half-S1 给两个 AIV 分活,且 blockDim 通常按 `coreNum*2` 算 |
 | UB=512KB,L1=512KB,L0A/B=64KB,L0C=256KB | `InitMMResBuf`,`GetC2Position`,`IS_DKV_RESIDENT_L0C`,各类 `BufferSelector` | 解释 N-buffer、P 走 L1、BMM2 写 UB/GM、FAG DKV L0C resident |
-| L2 up to 128MB + 片上内存带宽 | FA host `CalcThresholdForS2Size`/`SetSplitCoreModeParam` | 解释为什么大 S2 时宁愿重排多核遍历,去换 K/V 的 L2 复用 |
+| L2 up to 128MB + 片上内存带宽 | FA host `CalcThresholdForS2Size`/`SetSplitCoreModeParam` | 解释为什么大 S2 时宁愿重排多核遍历,去换 K/V 的 L2 复用(L2 微架构见 §2.6) |
 | Register-Based SIMD、SIMD/SIMT、双发射 | FA `vf/*`,FAG `vector_api/*`,`__simd_vf__`,`MicroAPI::MaskReg` | 解释 mask/dropout/tail 可能的硬件落点,但 C++ 层不能闭环 lowering |
 | NDDMA/BufferID/STARS2.0 | `DataCopy`,跨核 buffer flag,workspace 读写 | 白皮书能解释能力边界,当前代码是否触发具体硬件路径仍需编译产物/profile |
 
@@ -1059,6 +1115,7 @@ workspace 读法:
 - atomic:搜 `needAtomic`、`SetAtomicAdd`、`AtomicAdd` → 画 §13.10 的输出冲突图。
 - L0C 驻留:搜 `IS_DKV_RESIDENT_L0C`、`isDkvL0CResidentForD192Dv128` → 核对 §13.7 的 256K 容量式。
 - SIMT 线索:搜 `__simd_vf__`、`MicroAPI::MaskReg`、`UpdateMask`、`CreateMask` → 标记 §8 的待证点。
+- L2 行为:profile 时按 §2.6 末的清单看 L2 hit、per-bank 带宽均衡、Sector 命中,定位是 stride 共振还是跨 Die 折损。
 
 **操作 C — 把一条数据路径"贴回硬件"(验证 §2.4 的某一行)。**
 任取 §2.4 一行,例如"P 经 L1 回传":在 §13.3 数据路径图上标出它经过的物理层级(L0C→UB→cast→L1→BMM2 读),数一数 CV 同步次数和占用的 buffer;再设想"若走 UB 回传"会多几次同步——这就把"为什么贴 L1"从文字变成可核对的层级账。每核对一行,在 §2.4 对应行后面加一个 ✔(已贴实)或保留待 profile 标记。
@@ -1078,8 +1135,7 @@ workspace 读法:
 | `enablePreSfmg` 的收益边界 | base 侧 D>128 且 tiling 开关才真正启用,pre kernel 会预处理 softmax grad | host 为什么在具体 shape 上打开、预处理节省多少主流水时间还没量化 | 用 D=128/192/256 三组 shape 对比 timeline |
 | NDDMA 是否参与关键搬运 | 白皮书支持最多 5 维重排和细粒度读聚合;源码大量 `DataCopy`/ND2NZ | 当前 FA/FAG 哪些 `DataCopy` lower 到 NDDMA 看不到 | 编译产物或 profiler 的 DMA 指标 |
 | D=192/Dv=128 FAG 特判 | 代码里有独立 L0C resident special,容量直觉与 L0C=256KB 对得上 | 还没把精确容量式和各 MM 临时大小写成表 | Track A4:按 dtype/模板列容量账 |
-
----
+| L2 hint/CMO 是否被算子用上 | 白皮书给了 allocate/non-allocate/victim 和 Prefetch/Writeback/Invalid/Flush(§2.6) | 当前 FA/FAG C++ 是否对 K/V 标 allocate、对一次性输出标 non-allocate 还没定位 | 搜 cache hint/CMO 相关 API;否则归 profile 调优旋钮 |
 
 ## 14. 待办总账(按动作分类)
 
@@ -1107,6 +1163,7 @@ workspace 读法:
 | B4 | 双发射槽位是否真并发、同/异类型组合限制 | 反汇编看发射对;profile 看 IPC | §9 |
 | B5 | 稳态流水是否真无 Cube 空泡 + 2 AIV 是否够藏 softmax(§6.1 时间线 / §2.5(5) tile 周期预算是否成立) | profile timeline 看 Cube 占空比;单独测一个 128×128 tile 的 Vector softmax 实际周期(含 exp),代回 §2.5(5) 判别式 | §6.1 / §2.5 / §5.2 |
 | B6 | splitCoreMode 在满芯片(2-Die)下 strided 复用是否被跨 Die L2 折损 | 大 coreNum case 的 L2 hit 按 Die 拆分;看同一 K/V 的消费核是否跨 Die | §4.3.6 / §2.5(3) |
+| B7 | L2 微架构是否拖后腿:bank conflict / Sector 命中 / hint 是否生效 | per-bank 带宽均衡度、128B Sector vs 512B Line 命中、按 allocate/non-allocate 拆 L2 hit(清单见 §2.6 末) | §2.6 / §4.3.3 |
 
 ### Track C — 硬件资料 / 白皮书(已补项与剩余缺口)
 
