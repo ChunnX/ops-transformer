@@ -37,7 +37,9 @@ raw/
 
 | 文件 | 内容 | 何时读 |
 |------|------|--------|
-| [development/gmm_a16w4_pergroup_nd_mindmap.md](development/gmm_a16w4_pergroup_nd_mindmap.md) | GMM A16W4 PerGroup ND 脑图（输入/输出/UT/ST） | 需要快速了解算子全貌、测试用例设计时 |
+| [development/gmm_a16w4_pergroup_nd_mindmap.md](development/gmm_a16w4_pergroup_nd_mindmap.md) | GMM A16W4 PerGroup ND 脑图（输入/输出/UT/ST 总览，含用例分类和条数） | 需要快速了解算子全貌、测试用例分类时 |
+| （待产出：`gmm_a16w4_pergroup_nd_stc.md`） | STC 用例设计方案文档：测试策略、用例设计方法论、数量统计（162 个） | 需要了解用例设计方案时 |
+| （待产出：`gmm_a16w4_pergroup_nd_srs.md`） | SRS 算子实现方案文档：tiling 切分 SVG、buffer 分配 SVG、软件算法到硬件映射 SVG、计算流程伪代码、关键修改点 | 需要向他人介绍算子实现方案时 |
 
 ## design/ — 设计文档
 
@@ -49,3 +51,6 @@ raw/
 | [design/02_platform_independent_design.md](design/02_platform_independent_design.md) | 与硬件无关的实现方案：地址偏移公式推导（含 bias 偏移分离）、兼容性策略、测试方案（11+8+6 UT 用例） | 需要了解总体设计和跨平台参考时 |
 | [design/03_tiling_design.md](design/03_tiling_design.md) | Tiling 拦截校验与切分方案：GMMWeightQuantParam 结构、IsA16W4NDPergroup 判断、8 个 tiling key 组合注册 | 需要了解 tiling 实现方案时 |
 | [design/04_kernel_design.md](design/04_kernel_design.md) | Kernel 实现方案：SetGmAddr pergroup 偏移、WqmmConfig 新增、GetNdPerGroupBufferInfo、VF 函数签名和伪代码 | 需要了解 kernel 实现方案时 |
+| [design/05_test_case_design.md](design/05_test_case_design.md) | 测试用例设计文档：162 个用例（8 种类型），含 tiling 异常拦截/精度/功能/性能/泛化/打桩/tiling白盒/kernel白盒 | 需要了解具体测试用例设计时 |
+| [design/test_cases_gmm_a16w4_pergroup_nd.xlsx](design/test_cases_gmm_a16w4_pergroup_nd.xlsx) | 测试用例 Excel 表格（8 个 sheet，162 个用例） | 需要查看/导入测试用例参数时 |
+| [design/generate_test_cases.py](design/generate_test_cases.py) | 测试用例生成脚本（pandas + openpyxl） | 需要重新生成或修改 Excel 时 |

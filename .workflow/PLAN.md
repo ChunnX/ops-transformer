@@ -40,15 +40,23 @@
   - `generate_test_cases.py` — 用例生成脚本
 **详细任务说明**: [reference/next_steps/5_test_case_design.md](reference/next_steps/5_test_case_design.md)
 
+### 任务 6：总结归纳设计文档
+**目标**: 对方案设计文档、用例文档和脑图进行总结归纳，形成留档查看的设计文档。包括更新脑图、创建 STC 用例设计方案文档、创建 SRS 算子实现方案文档（含 SVG 图、软件算法映射到硬件的计算流程、关键修改点）
+**产出**: `.workflow/raw/development/` 下的 3 个文档：
+  - `gmm_a16w4_pergroup_nd_mindmap.md` — 更新后的脑图（对齐用例设计）
+  - `gmm_a16w4_pergroup_nd_stc.md` — STC 用例设计方案文档
+  - `gmm_a16w4_pergroup_nd_srs.md` — SRS 算子实现方案文档
+**详细任务说明**: [reference/next_steps/6_summary_docs.md](reference/next_steps/6_summary_docs.md)
+
 ## 阶段二：编码实现（待启动）
 
 > 在阶段一方案确认后启动编码。
 
-### 任务 5：Tiling 实现
+### 任务 7：Tiling 实现
 **目标**: 在 arch35 tiling 中为 A16W4 pergroup ND 场景生成正确的 tiling 参数
 **目标文件**: `gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp`
 
-### 任务 6：Kernel 适配
+### 任务 8：Kernel 适配
 **目标**: 在 `weight_quant_basic_block` 体系中适配 A16W4 pergroup ND 计算逻辑
 **目标文件**:
 - `grouped_matmul_weight_quant_basic_controller.h` — Controller 适配
@@ -58,10 +66,10 @@
 
 ## 阶段三：验证（待启动）
 
-### 任务 7：单元测试
+### 任务 9：单元测试
 **目标**: 覆盖 tiling 和 kernel 的正确性
 
-### 任务 8：兼容性回归
+### 任务 10：兼容性回归
 **目标**: 确保已有 950 测试不受影响
 
 ## 当前进度
@@ -71,7 +79,8 @@
   - [x] 任务 2：走读 GMM A16W8 代码实现 ✅
   - [x] 任务 3：走读 ops-nn wqbmmv2 ND 反量化实现 ✅
   - [x] 任务 4：SRS 算子开发实现方案 ✅
-  - [x] 任务 5：设计测试用例（tiling 异常拦截、精度、功能、性能、泛化、kernel 打桩验证、tiling 白盒、kernel 白盒） ✅
+  - [x] 任务 5：设计测试用例（162 个用例，8 种类型） ✅
+  - [ ] 任务 6：总结归纳设计文档（脑图更新 + STC 文档 + 实现方案说明）
 - [ ] 阶段二：编码实现
 - [ ] 阶段三：验证
 

@@ -64,3 +64,16 @@
 - `.workflow/raw/design/generate_test_cases.py` — 用例生成脚本
 
 **任务详情**：[详细任务说明](reference/next_steps/5_test_case_design.md)
+
+## 任务 6：总结归纳设计文档
+
+**任务状态**：待开始
+
+**简要说明**：对方案设计文档、用例文档和脑图进行总结归纳，形成留档查看的设计文档。包括：更新脑图（对齐用例设计文档）、创建 STC 用例设计方案文档、创建 SRS 算子实现方案文档（含 tiling 切分 SVG、buffer 分配 SVG、软件算法映射到硬件的计算流程 SVG、关键修改点）。
+
+**产出文件**（均在 `.workflow/raw/development/` 下）：
+- `gmm_a16w4_pergroup_nd_mindmap.md` — 更新后的脑图（对齐用例设计）
+- `gmm_a16w4_pergroup_nd_stc.md` — STC 用例设计方案文档
+- `gmm_a16w4_pergroup_nd_srs.md` — SRS 算子实现方案文档
+
+**任务详情**：[详细任务说明](reference/next_steps/6_summary_docs.md)
