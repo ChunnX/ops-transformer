@@ -1660,7 +1660,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillTriple(LocalTen
     xOutTint32(tokenQuantAlign_ + 2) = k;
     xOutTfloat(expertScaleAlign_) = expertScale;
     SyncFunc<AscendC::HardEvent::S_V>();
-    // SyncFunc<AscendC::HardEvent::S_MTE3>();
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
 }
 
 template <TemplateDispatchKFCTypeClass>
