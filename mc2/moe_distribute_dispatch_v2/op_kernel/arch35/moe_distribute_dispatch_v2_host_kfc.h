@@ -1344,6 +1344,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             ProcessToken(rankGM, tokenIndex, axisK_ + shareIndex, shareIndex, epRankId_, expertScale);
         }
     }
+    PipeBarrier<PIPE_ALL>();
     xInQueue_.FreeTensor<XInType>(tokenData_);
     LOG_INFO("[SendTokenToLocalServer] end");
 }
