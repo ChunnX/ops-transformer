@@ -1,6 +1,6 @@
 # Ascend FlashAttention @ arch35 (A5) 方案设计书
 
-> 状态:梳理版 v0.8 —— 在 v0.6/v0.7 基础上做"设计↔硬件亲和"对齐与待办收口:(1) 新增 §2.4「设计决策 ↔ 硬件亲和 对照」,把每个设计选择显式 match 到驱动它的 A5 硬件属性和它在治的 bound;(2) 新增 §13.11「动手导读操作」,给单 shape 全链路走读 + 定向 grep/trace 配方;(3) 新增 §14「待办总账」,把全文散落的待办统一成 精读 / Profile·汇编 / 硬件资料 / 实测 四轨,每条标明在哪做、做完回填到哪;(4) 并入 codex v0.6 的 §2.2 fake-hardware 提醒、§8 `__simd_vf__` 线索、§13.9 定位与 §13.10 问题分层表;(5) 保留 §4.1↔§4.3.4 的"理想配对 vs 同余类镜像"caveat。硬件数值类 `【待补:…】` 仍待 §14 Track C/D 回填。
+> 状态:梳理版 v1.1 —— 在 v1.0 把白皮书事实编织进文档之后,做一轮"把硬件数算成比值"的量化完善:(1) 新增 §2.5「硬件数 → 关键比值」,用白皮书的 Cube/Vector 峰值、L2=128MB、片上内存带宽,算出 FA 的 roofline 交叉点、L2 阈值的数量级、Cube↔Vector 的 tile 周期预算骨架,把 §2.4 的定性亲和升级成可核对的数;(2) §2.4 补低精度算力阶梯行并锐化 1C:2V 行(softmax 微架构 + RegFile 才是 softmax 能藏的硬件根因);(3) §4.3 补 2-Die UMA / L2 Die 亲和对 splitCoreMode 满芯片扩展的影响,并给 §4.3.1 阈值一个实算锚;(4) §14 收口新冒出的两个 profile/硬件缺口(Vector 特殊函数吞吐、跨 Die L2 复用)。结论分级沿用 §0.3。
 > 图例约定:Mermaid 画数据流/握手关系,ASCII 时间线画流水排布,表格收约束与对比。
 
 ---
@@ -9,7 +9,7 @@
 
 - 目的:梳理 FA(forward)与 FAG(backward)在 arch35 上的实现方案,作为代码阅读的"地图"。
 - 范围:FA/FAG 核心计算流;tiling 与多核切分;核内流水与 N-Buffer;CV 交互与基本块;SIMT 的引入位置;双发射利用;循环序选择。
-- 不展开:框架接入(aclnn/aclgraph)、host tiling 下发细节(后续单独成章)。
+- 不展开:框架接入(aclnn/aclgraph)、完整性能数据、汇编级 VF lowering、真实 shape profile 结论。
 
 ### 0.1 阅读代码问题清单(随读随勾)
 
@@ -17,11 +17,36 @@
 - [x] L0C 出口路径:MM 结果经 `Fixpipe` 出 L0C;FA 的 BMM1 固定到 UB 给 Vector,Vector 将 P 写 L1 给 BMM2;BMM2 按模板选择 UB 或 GM workspace。FAG 的 MM1/MM2 到 UB,MM3/4/5 可写 UB 或 GM。
 - [x] CV 同步原语:使用 `CrossCoreSetFlag/WaitFlag` 与跨核 Buffer;FA 额外用 `__ssbuf__`+flag 15 传 `CVSharedParams`;事件 FIFO 深度仍需硬件资料确认。
 - [x] 基本块实际尺寸与对齐:FA 常规 128x128,特化 128x256/128x512/64x128;FAG 常规 128x128,FP8 64x256,HIFLOAT8 512x512,D 模板 64/128/192/256/768。
-- [~] SIMT 出现位置:当前 arch35 FA/FAG 源码未直接暴露 `SIMT` 命名;可确认 mask/sparse/tail 的分支在 Vector API 与 runInfo 中完成,底层 MicroAPI 是否映射 SIMT 待继续追 `vector_api/*` 或硬件资料。
-- [ ] 双发射的指令对组合:当前 C++ 层未显式描述双发射配对,暂按编译器/微码优化处理,后续需看汇编或 profile。
+- [~] SIMT 出现位置:白皮书确认 A5 支持 SIMD/SIMT 混合编程,VF 可选择 SIMD 或 SIMT;当前 arch35 FA/FAG 源码未直接暴露 `SIMT` 命名,需继续追 `vf/*`、`vector_api/*` 的编译产物/profile。
+- [~] 双发射的指令对组合:白皮书确认 Vector Core 是双发射 Register-Based SIMD 并具备乱序执行能力;当前 C++ 层未显式描述槽位组合,仍需汇编/profile。
 - [x] FAG 外/内循环轴:dQ/dK/dV 不是单一路径,由 host 选 `BN2GS1S2`/`BN2`/`BN2S2`;main kernel 串起 MM1/2、Vec1~4、MM3/4/5,并通过 UB/GM workspace 与 post kernel 完成归约/转 dtype。
 - [x] workspace 布局:FA 主要是 BMM2/Vec2 的 3-buffer GM workspace、dropmask workspace、16MB reserve;FAG 有 64KB reserve、dq/dk/dv FP32 workspace、dropmask bool、pre-SFMG、sink、deterministic workspace 等。
-- [x] 分核 L2 阈值判据:FA 前向 `splitCoreMode` 由 `CalcThresholdForS2Size`/`IsUseSplitCoreMode` 按 L2 阈值开关,判据、触发方向、PREFIX 归属与无上界回退结论已回填到 §4.3。
+- [x] 分核 L2 阈值判据:FA 前向 `splitCoreMode` 由 `CalcThresholdForS2Size`/`IsUseSplitCoreMode` 按 L2 阈值开关,判据、触发方向、PREFIX 归属与无上界回退结论已回填到 §4.3;实算锚见 §2.5。
+
+### 0.2 一页式阅读路线
+
+本文现在按四层组织,建议不要从头线性精读;先按目标选路径:
+
+| 你想解决什么 | 先读 | 再读 | 产出 |
+|---|---|---|---|
+| 快速知道 A5 为什么适合 FA | §2.2 硬件变量表 + §2.4 设计亲和表 + §2.5 量化 | `ascend_950_whitepaper_hardware_notes.md` §0~§7 | 硬件事实、设计选择、关键比值的对应 |
+| 看懂 FA 前向代码主线 | §13.1~§13.4 | §5~§7 | BMM1/Vec1/BMM2/Vec2 数据路径和 buffer 图 |
+| 看懂 FA 多核调度 | §4.3 | §13.4,§13.11-A | `splitCoreMode` 的门/形/路径展开 |
+| 看懂 FAG 反向代码主线 | §13.5~§13.7 | §10 | pre/main/post、MM1~5、Vec1~6、splitAxis |
+| 判断哪些结论还不能信死 | §13.10 + §14 | §8/§9 | profile/汇编/实测 TODO |
+| 想引用白皮书硬件信息 | `ascend_950_whitepaper_hardware_notes.md` | §2.2/§2.4/§2.5 | 带页码的硬件依据 |
+
+### 0.3 结论分级
+
+为了防止把白皮书事实、源码事实和性能推断混在一起,本文默认采用三档:
+
+| 标记 | 含义 | 例子 |
+|---|---|---|
+| 白皮书确认 | 硬件能力、容量、规格可由白皮书直接支撑 | 1C:2V、UB/L1/L0 容量、SIMD/SIMT、双发、NDDMA |
+| 源码确认 | C++/tiling/kernel 中已定位实现方式 | `KERNEL_TYPE_MIX_AIC_1_2`,P 写 L1,`GetC2Position`,`splitAxis` |
+| 待 profile/汇编 | 白皮书和源码都不能给出最终执行形态或数值 | VF 是否落 SIMT、双发槽位组合、CrossCore event FIFO、单核有效带宽 |
+
+后文若写"待证",通常指第三档,不是硬件不存在。§2.5 的量化结论属于"白皮书数 + 一阶模型推导",落在前两档与第三档之间:输入数是白皮书确认的,但要落到真实 MFU 仍需 profile 校准。
 
 ---
 
@@ -78,19 +103,21 @@ flowchart LR
 
 ### 2.1 概览
 
-A5(arch35/DAV_3510)对 FA 设计的影响集中在三件事:CV 物理形态(1C:2V mix 核)、L0C 出口与缓存层级、以及 Vector/发射模型。下表把"决定设计的变量"与已读码确认值/待补值并列,后续小节(§4–§9)都在这张表的约束下展开。
+A5(arch35/DAV_3510)对 FA 设计的影响集中在三件事:CV 物理形态(1C:2V mix 核)、L0C 出口与缓存层级、以及 Vector/发射模型。下表把"白皮书硬件事实"和"源码使用方式"并列,后续小节(§4–§9)都在这张表的约束下展开。白皮书页码索引见 `ascend_950_whitepaper_hardware_notes.md`。
 
 ### 2.2 决定设计的硬件变量表
 
 | 变量 | A2/A3 参考 | A5 | 影响 |
 |---|---|---|---|
-| CV 形态/配比 | 1C:2V 分离 | 代码确认 `KERNEL_TYPE_MIX_AIC_1_2`,AIC:AIV=1:2 | 同步成本、基本块 |
-| Cube:Vector 算力比 | 【填】 | 【待补】 | Vector 可隐藏性 |
-| UB / L1 / L0A/B/C | 192K/512K/64K/64K/256K | host 从 platform/compileInfo 读取;UT/fake hardware 里存在不同 L1/L0C/L2 配置,本文不把某个测试值当成 A5 定论(真实值见 §14 Track C) | tiling、N 上限 |
-| L0C 出口 | →UB 随路 cast | `FixpipeParamsC310`/`Fixpipe`;FA BMM1→UB,BMM2→UB/GM;FAG MM3/4/5→UB/GM | P/dS/DQKV 倒手开销 |
-| Vector 模型 | 纯 SIMD | C++ 层主要是 Vector API/MicroAPI;SIMT 映射待补 | §8 |
-| 发射 | 单发射 | 双发射能力待从汇编/profile 确认 | §9 |
-| HBM 带宽/核 | 【填】 | 【待补】 | MTE2 瓶颈位 |
+| CV 形态/配比 | 1C:2V 分离 | 白皮书:每个 AI 子系统=1 Cube Core + 2 Vector Core;完整规格 36 个 AI 子系统。代码:`KERNEL_TYPE_MIX_AIC_1_2`,AIC:AIV=1:2 | 同步成本、基本块 |
+| Cube:Vector 算力比 | 旧架构待对照 | 白皮书峰值表:BF16/FP16 维度 Cube:Vector 约 8:1;注意这是峰值 FLOPS 比,不能直接等同 softmax/mask/dropout 耗时比(见 §2.5) | Vector 可隐藏性 |
+| UB / L1 / L0A/B/C | 192K/512K/64K/64K/256K | 白皮书:UB 512KB,L1 512KB,L0A/B 64KB,L0C 256KB per AI Core;host 仍从 platform/compileInfo 读取 | tiling、N 上限 |
+| L2 / Cache | 旧架构待对照 | 白皮书:L2 up to 128MB,512B Cache Line,4*128B Sector,支持 Cache Hint/CMO/按 Way 驻留;2 Die UMA 但 L2 有局部亲和性 | splitCoreMode、K/V 复用 |
+| L0C 出口 | →UB 随路 cast | 白皮书:L0C→UB 支持随路量化和排布转换;代码:`FixpipeParamsC310`/`Fixpipe`,FA BMM1→UB,BMM2→UB/GM,FAG MM3/4/5→UB/GM | P/dS/DQKV 倒手开销 |
+| Vector 模型 | 纯 SIMD | 白皮书:以 SIMD 为主、SIMT 为辅;VF 可选择 SIMD/SIMT 并快速切换;针对 Softmax/GELU 优化微架构,UB↔ALU 间引入 RegFile;源码映射需看编译产物 | §8 |
+| 发射 | 单发射 | 白皮书:双发射 Register-Based SIMD + 乱序执行;具体槽位组合仍需汇编/profile | §9 |
+| 片上内存带宽 | 旧架构待对照 | 白皮书:950PR 最高 128GB/1.6TB/s;950DT 最高 144GB/4TB/s;单核有效带宽仍需 profile | MTE2 瓶颈位 |
+| 调度/同步 | set/wait flag 为主 | 白皮书:BufferID 同步、STARS2.0、128K 单比特同步标志、ns 级 HSCB 调度、Group/Die 亲和调度;当前 FA/FAG 代码仍主要用 CrossCore flag/BufferPolicy | 流水复杂度、任务发射 |
 
 ### 2.3 约束瓦解图
 
@@ -104,24 +131,61 @@ flowchart LR
 
 ### 2.4 设计决策 ↔ 硬件亲和 对照(本书主索引)
 
-这张表是全书的"为什么"主索引:每个设计选择都钉到**驱动它的那条 A5 硬件属性**,以及它在治哪个 bound。读后续章节时遇到一个具体写法,先回这张表问一句"它贴的是哪条硬件特性"。读法:左→右 = 现象→机制→根因。
+这张表是全书的"为什么"主索引:每个设计选择都钉到**驱动它的那条 A5 硬件属性**,以及它在治哪个 bound。读后续章节时遇到一个具体写法,先回这张表问一句"它贴的是哪条硬件特性"。读法:左→右 = 现象→机制→根因;能算成数的在 §2.5。
 
 | 设计选择 | 贴的 A5 硬件亲和(为什么必须这样) | 在治的 bound | 详见 |
 |---|---|---|---|
-| 1C:2V mix 核 + 单 AIV 吃 S1 半块(`CV_RATIO=2`) | AIV 单核吞吐≈AIC 一半,2 个 AIV 才追平 1 个 AIC 的 S 产出速率;半块粒度让 Vector 周期≈Cube 周期 | Vector 隐藏(藏进 Cube 影子) | §5.2 §13.3 |
-| P 经 **L1** 回传 BMM2,不走 UB 回传 | L1 容量/带宽够驻留 P 且 BMM2 的左/右矩阵本就从 L1/L0 取;走 UB 回传要多一次 CV 同步 + 占 UB | CV 同步次数 + UB 容量 | §5.2 §13.3 |
+| 1C:2V mix 核 + 单 AIV 吃 S1 半块(`CV_RATIO=2`) | 白皮书确认物理形态就是 1C+2V,且 Vector 微架构**专为 Softmax/GELU 优化、UB↔ALU 间加 RegFile 减依赖气泡**——softmax 能藏进 Cube 影子,既靠 2 个 AIV 分担,也靠这条微架构。峰值 8:1 是矩阵 FLOPS 比,不含 exp 等特殊函数吞吐(§2.5) | Vector 隐藏(藏进 Cube 影子) | §2.5 §5.2 §13.3 |
+| P 经 **L1** 回传 BMM2,不走 UB 回传 | 白皮书:支持 Cube L1 Buffer 与 Vector UB 的直接 CV 通路,且明确说这条通路**就是为 FlashAttention 的带宽瓶颈而加**;代码中 P 落 `l1PBuffers` 供 BMM2 读 | CV 同步次数 + UB/L1 容量 | §5.2 §13.3 |
 | BMM1 出 L0C→UB;BMM2 出 L0C→**UB/GM 自适应**(`GetC2Position`) | L0C 仅 256K,大 D/FP32 时一次放不下整块 O,必须落 GM 3-buffer 流式读回;小 D 留 UB 省一次 GM 往返 | L0C 容量 ↔ GM 带宽 | §5.2 §13.3 |
 | 基本块 128×128(及 128×256/512、64×128 特化) | L0A/L0B/L0C 容量 + 16×16/16×32 分形对齐;128 是 MMAD 利用率与 L0 容量的平衡点,长 S2/低 D 才放大到 256/512 | L0 容量 + MMAD 利用率 | §4.2 §13.4 |
 | L1 P 3-buffer、各 TQue N-buffer(`PING_PONG_VALUE=3`) | 用 L1/UB 余量换流水深度,吸收 HBM 拥塞/对角半空块的时延抖动(Little's Law) | 容量 ↔ 时延比 | §7 |
-| splitCoreMode **strided 轮转** | L2 跨核共享:strided 让多核同一时刻聚在滑动窗口的 K/V 上,L2 取一次喂 coreNum 核;否则连续分核把 K/V 工作集铺满 L2 → 回 HBM | bound① HBM/核 带宽 | §4.3.3 |
+| splitCoreMode **strided 轮转** | 白皮书确认 L2 up to 128MB、服务 AIC/AIV、支持局部亲和与 Cache Hint;strided 让多核同一时刻聚在滑动窗口的 K/V 上,避免连续分核把 K/V 工作集铺满 L2 → 回片上内存(定量见 §2.5) | bound① Memory 带宽 | §2.5 §4.3.3 |
 | Symmetric 镜像核号 / Cyclic 折返 | 多核并行 wall-clock=最慢核;causal 三角、varlen 不规则各造一种长尾 | bound② 并行长尾 | §4.3.4 §4.3.5 |
-| splitCoreMode 由 **L2 阈值**门控(`CalcThresholdForS2Size`) | 只有默认 ~2·coreNum 份 K/V 撑爆 L2 时,重排减少活跃份数才有收益;没压力就别扰动局部性 | bound① 触发条件 | §4.3.1 |
+| splitCoreMode 由 **L2 阈值**门控(`CalcThresholdForS2Size`) | 只有默认 ~2·coreNum 份 K/V 撑爆 L2 时,重排减少活跃份数才有收益;没压力就别扰动局部性。阈值数量级 ≈ 几千 S2(§2.5 实算) | bound① 触发条件 | §2.5 §4.3.1 |
 | FAG 外 KV 内 Q + host 选 `splitAxis` | atomic 流量(dQ 一份 vs dKV 两份)、DKV workspace 容量、长 S2 局部性三者权衡;不同 shape 走不同轴 | atomic 带宽 + workspace 容量 | §10 §13.6 |
 | FAG `IS_DKV_RESIDENT_L0C` 把 DK/DV 钉 L0C 累加 | L0C 256K 够放"最大临时 MM 结果 + DK + DV"时,免 DK/DV 反复 GM 往返 | L0C 容量 ↔ GM 带宽 | §13.7 |
-| Fixpipe 随路 cast/scale(出 L0C 顺手转 dtype) | Fixpipe 单元在 L0C→下游路径上自带 cast/quant 能力,省一整段 Vector elementwise | 利用 fixpipe 随路 → 省 Vector | §11 §5.2 |
-| mask/tail 走 `vf/*`·`vector_api/*` 分支(疑似 SIMT) | 若 Vector 具 SIMT 形态,组合 mask/ragged 尾块可零物化、免 pad;A2/A3 纯 SIMD 只能物化 mask | 取消不规整税(待证 §14-B) | §8 |
+| 低精度模板阶梯(FP8/HiF8/MXFP8 块、HIFLOAT8 512×512) | 白皮书:Cube 原生 HiF8/MXFP8/FP8(=2× FP16 算力)、MXFP4(=4×);更高算力要求更大基本块喂满 Cube,故 dtype 决定 block size。但低精度主要买吞吐,不改 memory-bound 交叉点(§2.5) | Cube 吞吐 + L0 喂数 | §2.5 §4.2 §13.7 |
+| Fixpipe 随路 cast/scale(出 L0C 顺手转 dtype) | 白皮书:L0C→UB 支持随路量化(FP32/INT32→BF16/FP16/FP8/INT8)与 NZ→ND/DN 排布转换;省一整段 Vector elementwise | 利用 fixpipe 随路 → 省 Vector | §11 §5.2 |
+| mask/tail 走 `vf/*`·`vector_api/*` 分支(硬件具备 SIMT,VF 映射待证) | 白皮书确认 SIMD/SIMT 混合编程,VF 可选 SIMD/SIMT;不规则控制流、gather/scatter 是 SIMT 目标场景。当前代码中哪些 VF 落到 SIMT 需汇编/profile | 取消不规整税(待证 §14-B) | §8 |
+| NDDMA/多维搬运可降低 layout 税 | 白皮书确认 NDDMA 可做最多 5 维重排,并把细粒度读聚合为 128B 读(与 L2 的 128B Sector 对齐);当前 FA/FAG 代码仍需定位具体 DataCopy/NDDMA lowering | 搬运+排布转换开销 | §11 §14-B |
+| BufferID 同步是硬件新能力 | 白皮书确认 BufferID 同步比 set/wait flag 更内聚;当前 FA/FAG 源码仍以 CrossCore flag 与 BufferPolicy 为主 | 同步复杂度 | §7 §14-B |
 
-一句话串起来:**§2.2 列硬件常量 → §2.3 说这些常量松了哪些约束 → §2.4 把每个设计选择钉回某条常量/约束 → §4~§13 是这些选择的代码展开。** 任何一处看不懂"为什么这么写",顺着"详见"回到对应小节,再回到本表确认它贴的硬件属性。
+一句话串起来:**§2.2 列硬件常量 → §2.3 说这些常量松了哪些约束 → §2.4 把每个设计选择钉回某条常量/约束 → §2.5 把能算的钉成数 → §4~§13 是这些选择的代码展开。** 任何一处看不懂"为什么这么写",顺着"详见"回到对应小节,再回到本表确认它贴的硬件属性。
+
+### 2.5 硬件数 → 关键比值(把亲和算成数)
+
+> 数据口径:950PR BF16,取白皮书数(Cube 432 TFLOPS、Vector 54 TFLOPS、片上内存 1.6TB/s、L2 128MB、L0C 256KB,见 `whitepaper_notes` §3.2/§6;DT 把算力/带宽各放大,交叉点结论不变)。下面是**一阶模型**:输入数是白皮书确认的,绝对值要落到真实 MFU 仍需 profile 校准(§14-B);但比值和量级足以解释 §2.4 的几条设计为什么必然。
+
+**(1) FA 前向的 roofline 交叉点 ≈ S>540。** 单个 (B,N) head:计算量 ≈ 4·S²·D FLOPs(QKᵀ + PV 两个 matmul),HBM 一遍字节 ≈ 4·S·D·`dtype`(读 Q/K/V + 写 O)。算术强度
+
+```
+AI = 4·S²·D / (4·S·D·dtypeBytes) = S / dtypeBytes      (FLOP/byte)
+```
+
+ridge = 峰值算力 / 带宽。BF16:432e12 / 1.6e12 ≈ **270 FLOP/byte**。compute-bound 条件 `AI > ridge` ⇒ `S/2 > 270` ⇒ **S > 540**。也就是说:**短序列(S≲540)FA 前向是 memory-bound,长序列才 compute-bound**——这正是 arch35 把所有重火力(splitCoreMode、L2 复用、低精度)都压在长 S/长 S2 上的根因。
+
+**(2) 为什么低精度不挪动这个交叉点(只买吞吐)。** 设 `dtypeBytes = d`,则峰值算力 ∝ 1/d(白皮书:FP8=2× FP16、MXFP4=4×,正好对应 d 从 2→1→0.5),ridge = (432·2/d)/1.6 = 540/d;而 AI = S/d。compute-bound 条件 `S/d > 540/d` ⇒ **S > 540,与 d 无关**。结论:**FP8/MXFP4 让你算得快,但 memory-bound 的边界仍在 S≈540**——短 S 即便换 FP8 也还是 memory-bound。所以 §2.4 的低精度模板行,本质是"长 S 下提吞吐",不是"把短 S 救出 memory-bound"。
+
+**(3) 多核重取如何威胁 roofline → splitCoreMode 的定量根。** 上面 (1) 假设 K/V 从 HBM 只读一遍。但默认连续分核下,~`n2Num`(≈2·coreNum)个核各自从 HBM 取自己那份 K/V,K/V 的 HBM 字节最坏放大 ~`n2Num`×,有效 AI 同比例下掉,足以把工作点从 compute-bound 一侧拖回 memory-bound。`splitCoreMode` 的 strided 轮转让多核同一时刻聚在一个滑动窗口的 K/V 上 → 这份 K/V 在 128MB L2 里取一次喂多核 → HBM 只见 K/V ~一遍 → AI 保住。**这就是 §4.3 那条张力轴的量化根:不是"分核更均衡"那么模糊,而是"保住 roofline 的 compute-bound 一侧"。**
+
+**(4) L2 阈值的实算锚 ≈ 几千 S2。** §4.3.1 的 `thresholdS2Size = l2Remain / (n2Num·(D+Dv)·dtypeBytes)`,代入 L2≈128MB(扣 Q/mask 后取 l2Remain~100MB 量级)、n2Num≈64(2·32 AIC)、D+Dv=256、BF16:
+
+```
+thresholdS2 ≈ 100e6 / (64 · 256 · 2) ≈ 3.0e3 tokens
+```
+
+即 **S2 要到几千量级,默认 K/V 工作集才撑爆 L2、splitCoreMode 才开**;S2=8192 时默认工作集 ≈ 64·8192·256·2 ≈ 268MB > 128MB,确实放不下,需要重排。这把 §4.3.1 的"长 S2 才开"从定性变成一个可对账的数(精确值随 B·N2、mask 扣减变化,数量级稳定)。
+
+**(5) Cube↔Vector tile 周期预算(2 AIV 够不够藏 softmax)。** 一个 128×128 前向 tile:Cube ≈ 2 个 128³ matmul ≈ **4.2M MAC**;Vector softmax ≈ 16K 个 exp + ~48K 简单 elementwise(rowmax/rowsum/校正)。藏 softmax 的判别式是
+
+```
+T_vec(半 tile, 含 exp) ≤ T_cube(tile) / 2     ← 因 1 AIC 喂 2 AIV,各吃半 tile
+```
+
+raw op 数上 Cube MAC(4.2M)比 Vector op(~64K)多 ~65×,即使 Vector 矩阵吞吐只有 Cube 的 1/8、且 exp 是多周期特殊函数,2 个 AIV 仍**大概率**有裕度藏住 softmax——**除非 exp/特殊函数吞吐成为瓶颈**。而 Vector 的 exp/特殊函数有效吞吐白皮书没给(只给了矩阵类峰值),所以这条判别式缺的就一个常量,它正是 §14-B5 的 profile 目标:测出 Vector softmax tile 实际周期,代入即可判定 2 AIV 是裕度还是刚好卡住。
+
+> 把 (1)~(5) 连起来:**A5 为 FA 做的每一件事(1C:2V + softmax 微架构、CV 直连通路、128MB L2、低精度阶梯)都在围绕同一目标——在"长 S 才 compute-bound"这个前提下,既把 Cube 喂满(L2 复用保 AI、低精度提吞吐),又把 Vector 藏住(2 AIV + RegFile + 双发)。** §4 起的所有代码细节都是这句话的展开。
 
 ---
 
@@ -238,7 +302,7 @@ l2Remain -= n1Num * D * S1 * dtypeSize      // Q 占用
 thresholdS2Size = l2Remain / (n2Num * (D + Dv) * dtypeSize)
 ```
 
-注意触发方向:代码不是 “S2 小才打开”,而是当代码选定的 effective S2 达到或超过阈值时打开,因为这表示默认多核并发下的 K/V 工作集已经有较强 L2 压力,需要通过任务重排减少同一时刻活跃的 K/V 份数。
+注意触发方向:代码不是 “S2 小才打开”,而是当代码选定的 effective S2 达到或超过阈值时打开,因为这表示默认多核并发下的 K/V 工作集已经有较强 L2 压力,需要通过任务重排减少同一时刻活跃的 K/V 份数。代入白皮书 L2=128MB 的实算锚见 §2.5(4):阈值数量级 ≈ 几千 S2,即 S2 要到几千 token 默认工作集才撑爆 128MB L2。
 
 非 TND 的实际开关:
 
@@ -460,6 +524,8 @@ phase 1: core0->t(2*coreNum-1), core1->t(2*coreNum-2), ..., core(coreNum-1)->t(c
 
 代码层能确定的是调度形态和触发条件;“Cyclic 丢多少 L2 局部性、换回多少均衡” 不是源码能推出的数值结论,需要 profile 的 L2 hit、MTE/HBM、AIC/AIV 利用率来量化。
 
+> 满芯片扩展注(白皮书引入的新维度):昇腾950是 2-Die UMA,L2 跨 Die 可访问但**有局部亲和性**,STARS 还支持按 Die 亲和的 Group 调度(最多 8 Group)。这意味着 §2.5(3) 的"strided 让多核聚在同一份 K/V"在满芯片下要再细一层:同一 Die 内的核共享本 Die L2 亲和区,跨 Die 复用同一份 K/V 可能要走代价更高的远端 L2/UMA。当前 kernel C++ 不显式区分 Die,但若 profile 看到 splitCoreMode 在大 coreNum 下收益打折,**第一个要查的就是任务重排是否把同一 K/V 的消费核打散到了两个 Die**(对照 C9 / B6)。
+
 #### 4.3.7 与 arch22 / FAG 的关系
 
 arch22 常规 FA 分核更接近:
@@ -526,7 +592,7 @@ Vector 校正  │ corr(i-2) │ corr(i-1)  │ corr(i)    │   与 QKᵀ 无�
 MTE3         │           │            │ 末块后写 O │
 ```
 
-排布原则:① 预取一拍;② 关键路径只剩 Cube;③ O 校正与下一块 QKᵀ 解耦(A5 上交给编译器/微码调度,双发射待验证 §9);④ AscendC 落地 = TPipe+TQue/BufferPolicy,队列深度即 §7 的 N。事件 FIFO 是否允许更深抢跑仍需硬件资料或 profile 验证。
+排布原则:① 预取一拍;② 关键路径只剩 Cube;③ O 校正与下一块 QKᵀ 解耦(A5 白皮书确认 Vector 侧具备双发射 Register-Based SIMD,但具体源码是否触发双发仍需汇编/profile §9);④ AscendC 落地 = TPipe+TQue/BufferPolicy,队列深度即 §7 的 N。白皮书确认 STARS 有大量同步标志位、并新增 BufferID 同步机制,但 AI Core 内部 CrossCore 事件 FIFO 深度仍未给出。
 
 ---
 
@@ -554,15 +620,19 @@ C  █A█B█A█B█A█                C  █A...█B█A...█        ←消
 
 当前已确认的 N-buffer:
 
+- 白皮书容量上界:UB=512KB,L1=512KB,L0A=64KB,L0B=64KB,L0C=256KB per AI Core;因此本文中 UB/L1/L0C buffer 策略可按这些真实容量理解,不再借 UT fake hardware 值。
+
 - FA:`bmm1Buffers` 为 UB DB;`l1PBuffers` 为 L1 3-buffer;`bmm2Buffers` 为 UB DB/Single;若 BMM2 写 GM 则 `bmm2ResGmBuffers` 为 3-buffer;D split 时 Vec2 也有 GM 3-buffer。
 - FAG:`mm1ResBuf/mm2ResBuf` 为 UB pingpong;`dSL1Buf/pL1Buf` 是 L1 单块跨阶段复用;Cube 侧 Q/K/DY/V L1 根据 `IS_L1_REUSE/IS_L1_PRELOAD` 选 Single/DB/3-buffer;L0C 在 DKV resident 时可 3-buffer/DB/Single,否则 common L0C DB/Single。
 - host workspace 也按 3-buffer/pingpong 思路分配:FA 用 `PING_PONG_VALUE=3`,FAG 对 splitAxis、deterministic、pre-SFMG 分别预留。
+- 仍不能由白皮书闭环的点:CrossCore event FIFO 深度、BufferID 是否被当前 FA/FAG lowering 使用、不同 queue 深度下的实际空泡,都需要编译产物或 profile(§14 Track B/C)。
 
 ---
 
 ## 8. SIMT:新场景与 FA 中的落点
 
-> 代码阅读结论:当前 arch35 C++ 层没有直接出现 `SIMT` 字样,能定位到的是 sparse/mask/tail 逻辑在 host tiling、kernel runInfo、FA forward 的 `attention/common/op_kernel/arch35/vf/*`、FAG 的 `attention/flash_attention_score_grad/op_kernel/arch35/vector_api/*` 中被参数化,并大量使用 `__simd_vf__`、`MicroAPI::MaskReg`、`UpdateMask/CreateMask`。下面表格保留为继续追 MicroAPI/汇编时的检查点,不能直接当作源码已确认的硬件 SIMT 事实(下钻动作见 §14 Track B)。
+> 白皮书结论:A5 硬件明确支持 SIMD/SIMT 混合编程,以 SIMD 为主、SIMT 为辅;SIMT 面向离散访问、复杂分支等不规则场景;Vector Function(VF) 可选择 SIMD 或 SIMT 实现并快速切换。
+> 代码阅读结论:当前 arch35 C++ 层没有直接出现 `SIMT` 字样,能定位到的是 sparse/mask/tail 逻辑在 host tiling、kernel runInfo、FA forward 的 `attention/common/op_kernel/arch35/vf/*`、FAG 的 `attention/flash_attention_score_grad/op_kernel/arch35/vector_api/*` 中被参数化,并大量使用 `__simd_vf__`、`MicroAPI::MaskReg`、`UpdateMask/CreateMask`。下面表格保留为继续追 MicroAPI/汇编时的检查点:硬件能力已确认,具体 VF 是否落到 SIMT 仍待证(下钻动作见 §14 Track B)。
 
 ### 8.1 FA 计算流分工表(确定度递减)
 
@@ -587,6 +657,7 @@ TPL 对角块内:   FULL 半区 → SIMD 整列扫
 
 ## 9. 双发射利用
 
+> 白皮书结论:Vector Core 是双发射 Register-Based SIMD 架构,SIMD 侧具备双发 ALU 指令与乱序执行能力。
 > 代码阅读结论:当前 AscendC 源码未手写双发射指令对,更多是通过软件流水、buffer 深度和 Vector API/MicroAPI 交给编译器/微码调度。下面仍作为 profile/汇编阶段的验证清单。
 
 ```
@@ -594,7 +665,7 @@ TPL 对角块内:   FULL 半区 → SIMD 整列扫
 槽1(独立流)│ rowmax(i+1) │ O校正(i-1) │ MTE2地址(i+2)│  ← 互不依赖即可同拍
 ```
 
-候选指令对:exp‖rowmax(跨块)、O 校正‖标量地址计算、SIMD 主干‖SIMT mask 补丁、softmax‖dQ atomic 写出(BWD)。实现 = 软件流水(prologue/steady/epilogue);双发射的隐藏能力可换 N 降一档。【待补:同/异类型槽位组合限制】
+候选指令对:exp‖rowmax(跨块)、O 校正‖标量地址计算、SIMD 主干‖SIMT mask 补丁、softmax‖dQ atomic 写出(BWD)。实现 = 软件流水(prologue/steady/epilogue);双发射的隐藏能力可换 N 降一档。【待补:具体槽位类型/组合限制、当前 VF 是否被编译成双发】
 
 ---
 
@@ -760,7 +831,7 @@ workspace 读法:
 
 > 本节是分散的"还想看"清单;按动作分类的统一总账见 §14,本节仅保留代码定位线索。
 
-- 从白皮书或 profile 补 A5 UB 容量、Cube/Vector 算力比、同步事件 FIFO、双发射槽位限制。
+- 白皮书已补 A5 UB/L1/L0/L2 容量、Cube/Vector 峰值算力比、SIMD/SIMT 和双发射硬件能力;剩余是 CrossCore event FIFO 深度、双发具体槽位组合、VF lowering 与 profile 量化。
 - 跟进 FA forward 的 `vf/*` 与 FAG 的 `vector_api/*` 中 mask/dropout/softmax 是否有硬件 SIMT 映射,以及尾块 ragged 是否真实免 pad。
 - 对 `GetC2Position` 各条件做 case 表,列出 BMM2 写 UB/GM 的边界;公式已定位到 `UbOutCondition`/`GetC2Position`。
 - 对 FAG 的 `needAtomic` 条件和 deterministic workspace 画一张输出冲突/归并图;`needAtomic` 主条件已能由 `flash_attention_score_grad_block_cube.h` 继续闭环。
@@ -778,10 +849,10 @@ workspace 读法:
 | BMM2 写 UB 还是 GM | 代码可完全闭环:`UbOutCondition`+`GetC2Position` 已给出 D、optional、FP8/INT8/RoPE、S1/S2 模板、MLA/Dn 边界 | 整理 case 表即可,不需硬件资料 |
 | FAG `splitAxis` 三路选择 | 代码可完全闭环:`SetSplitAxis` 已给出 BN2、BN2 multi、BN2S2、BN2GS1S2 的 dtype/layout/sparse/shape/deterministic 条件 | 补伪代码和典型 shape 对照 |
 | FAG `needAtomic` | 代码可继续闭环:DQ/DK/DV 的 `needAtomic` 主条件在 block cube;取决于 `SPLIT_AXIS`、BN2 multi、DKV 是否 L0C resident、S2 是否连续命中同一输出 | 画输出冲突/归并图;deterministic workspace 再读 deter/post |
-| FA/FAG mask/dropout/tail 底层形态 | C++ 能定位 `__simd_vf__`、`MicroAPI::MaskReg`、`UpdateMask/CreateMask` 与 unaligned/tail 分支 | 是否真硬件 SIMT、是否免 pad,需编译产物或 profile |
-| 双发射槽位组合 | C++ 只看到软件流水、buffer 深度和独立计算流,无手写双发射配对 | 需汇编、profile 或硬件资料 |
-| 同步事件 FIFO 深度 | C++ 可确认 `CrossCoreSetFlag/WaitFlag`、`__ssbuf__` flag 15、部分 flag id 约定;推不出 FIFO 深度 | 需硬件资料或压力测试 |
-| A5 UB/L1/L0/L2 容量与带宽 | host 从 platform/compileInfo 读取;UT fake hardware 有多组配置,源码只能确认读取路径与 tiling 如何消费 | 真实容量/带宽以目标平台、白皮书或 profile 为准 |
+| FA/FAG mask/dropout/tail 底层形态 | 白皮书确认硬件支持 SIMD/SIMT,VF 可选 SIMD/SIMT;C++ 能定位 `__simd_vf__`、`MicroAPI::MaskReg`、`UpdateMask/CreateMask` 与 unaligned/tail 分支 | 当前 VF 是否真落 SIMT、是否免 pad,需编译产物或 profile |
+| 双发射槽位组合 | 白皮书确认双发射 Register-Based SIMD + 乱序执行;C++ 只看到软件流水、buffer 深度和独立计算流,无手写双发射配对 | 需汇编/profile 看具体槽位组合和是否触发 |
+| 同步事件 FIFO 深度 | 白皮书确认 BufferID 同步、STARS 同步标志规模;C++ 可确认 `CrossCoreSetFlag/WaitFlag`、`__ssbuf__` flag 15、部分 flag id 约定;仍推不出 AI Core 内部事件 FIFO 深度 | 需更细硬件资料或压力测试 |
+| A5 UB/L1/L0/L2 容量与带宽 | 白皮书已确认 UB=512KB,L1=512KB,L0A/B=64KB,L0C=256KB,L2 up to 128MB,片上内存 PR 1.6TB/s、DT 4TB/s;源码从 platform/compileInfo 读取并消费这些值 | 单核/单算子有效带宽、L2 hit 收益仍需 profile |
 | 真实 shape 的 tiling key/blockDim/workspace offset | 源码能解释字段含义,具体落点依赖输入 layout/dtype/optional/sparse 与平台 compileInfo | 跑 2~3 个 shape 或读 UT 日志回填 |
 
 ### 13.11 动手导读操作(怎么把设计↔代码↔硬件接起来)
@@ -832,17 +903,22 @@ workspace 读法:
 | B2 | Cyclic 丢多少 L2 局部性、换回多少均衡 | TND case 的 L2 hit + 各核 wall-clock 离散度 | §4.3.5 / §4.3.6 |
 | B3 | `vf/*`·`vector_api/*` 的 mask/dropout/tail 是否真映射硬件 SIMT、尾块是否真免 pad | 反汇编 kernel,看 mask/分支指令;或 profile 看 pad 开销 | §8 / §2.4 末行 |
 | B4 | 双发射槽位是否真并发、同/异类型组合限制 | 反汇编看发射对;profile 看 IPC | §9 |
-| B5 | 稳态流水是否真无 Cube 空泡(§6.1 时间线是否成立) | profile timeline,看 Cube 占空比 | §6.1 |
+| B5 | 稳态流水是否真无 Cube 空泡 + 2 AIV 是否够藏 softmax(§6.1 时间线 / §2.5(5) tile 周期预算是否成立) | profile timeline 看 Cube 占空比;单独测一个 128×128 tile 的 Vector softmax 实际周期(含 exp),代回 §2.5(5) 判别式 | §6.1 / §2.5 / §5.2 |
+| B6 | splitCoreMode 在满芯片(2-Die)下 strided 复用是否被跨 Die L2 折损 | 大 coreNum case 的 L2 hit 按 Die 拆分;看同一 K/V 的消费核是否跨 Die | §4.3.6 / §2.5(3) |
 
-### Track C — 必须硬件资料 / 白皮书(外部输入)
+### Track C — 硬件资料 / 白皮书(已补项与剩余缺口)
 
-| # | 缺的数 | 影响哪节 |
+| # | 状态 | 影响哪节 |
 |---|---|---|
-| C1 | Cube : Vector 算力比 | §2.2 / §2.4(1C:2V 为何=2)/ §5.2 |
-| C2 | A5 真实 UB / L1 / L0A/B/C / L2 容量与带宽(别用 UT fake hardware 值) | §2.2 / §4.2(块大小)/ §7(N) |
-| C3 | 同步事件 FIFO 深度 | §6.1 / §7.2(N≤FIFO)|
-| C4 | HBM 带宽/核 | §2.2 / §4.3(L2↔HBM 权衡)|
-| C5 | 双发射槽位类型/组合硬约束(若汇编看不全) | §9 |
+| C1 | 已由白皮书补:Cube:Vector 峰值算力约 8:1(BF16/FP16 口径);注意不能直接等同 FA 耗时比,tile 周期预算见 §2.5(5) | §2.2 / §2.4 / §2.5 / §5.2 |
+| C2 | 已由白皮书补容量:UB 512KB,L1 512KB,L0A/B 64KB,L0C 256KB,L2 up to 128MB;带宽层面只补到单芯片片上内存 PR 1.6TB/s、DT 4TB/s | §2.2 / §2.5 / §4.2 / §7 |
+| C3 | 仍缺:AI Core 内部 CrossCore event FIFO 深度。白皮书只补了 BufferID 与 STARS 同步标志规模,不能替代 FIFO 深度 | §6.1 / §7.2(N≤FIFO) |
+| C4 | 部分补:单芯片片上内存带宽已知;单核/单算子有效 HBM 或 MTE 带宽需 profile(§2.5 的 roofline 绝对值依赖它) | §2.2 / §2.5 / §4.3 |
+| C5 | 部分补:白皮书确认双发射 Register-Based SIMD + 乱序执行;具体槽位类型/组合硬约束仍需汇编/profile 或更细资料 | §9 |
+| C6 | 已由白皮书补:SIMD/SIMT 混合编程、VF 可选 SIMD/SIMT 并快速切换;源码 VF lowering 仍在 Track B | §8 |
+| C7 | 已由白皮书补:NDDMA 最多 5 维重排、细粒度读聚合到 128B 读(对齐 L2 128B Sector);当前 FA/FAG 具体 lowering 仍在 Track B/A | §11 / §14-B |
+| C8 | 仍缺:Vector 的 exp/特殊函数有效吞吐(白皮书只给矩阵类峰值)。这是 §2.5(5) tile 周期预算唯一缺的常量,缺它就判不定 2 AIV 是裕度还是刚好卡住 | §2.5 / §5.2 → 实测在 §14-B5 |
+| C9 | 仍缺:2-Die UMA 下跨 Die L2 访问的相对代价 / Die 亲和性强度。决定 splitCoreMode 满芯片扩展时 strided 复用收益是否被跨 Die 折损 | §4.3 / §14-B6 |
 
 ### Track D — 实测索引(跑 2~3 个真实 shape,作为调试锚)
 
