@@ -285,3 +285,65 @@
 #### 影响范围
 - 仅规划文档变更，不涉及代码
 - 阶段二任务编号从 5/6 改为 7/8，阶段三从 7/8 改为 9/10
+
+---
+
+### 2026-06-14 | 任务 6 完成：总结归纳设计文档
+
+**类型**: 📝 文档
+**范围**: `.workflow/raw/development/` 下 3 个文档
+
+#### 变更内容
+- 更新 `gmm_a16w4_pergroup_nd_mindmap.md`：UT/ST 部分对齐 05_test_case_design.md，标注黑盒/白盒和用例条数（162 个用例总览）
+- 新增 `gmm_a16w4_pergroup_nd_stc.md`：STC 用例设计方案文档，记录测试策略、设计方法论、数量统计（8 类 162 个用例），泛化用例预留
+- 新增 `gmm_a16w4_pergroup_nd_srs.md`：SRS 算子实现方案文档，包含：
+  - Tiling 切分策略 SVG（M/N/K 三维切分 + 多 Core 分配）
+  - Buffer 空间分配 SVG（L1 512KB + UB 248KB）
+  - 软件算法到硬件映射 SVG（核心，展示数据流在 Ascend 950 上的执行过程）
+  - 计算流程伪代码
+  - 地址偏移对比表（perchannel vs pergroup）
+  - A2/A3 → Ascend 950 关键修改点汇总表
+
+#### 关键决策
+- SRS 文档命名为 `_srs.md`（标准名称），而非 `_design_summary.md`
+- 核心 SVG 为"软件算法到硬件映射图"，放在计算流程伪代码之后，将软件算法功能与 Ascend 950 硬件架构做对应
+- STC 文档仅记录方法论和数量统计，不列出具体用例
+- 脑图作为用例总览图，不展开全部用例细节
+
+#### 影响范围
+- 阶段一全部 6 个任务完成
+- 3 个总结文档作为留档查看的参考资料
+
+---
+
+### 2026-06-14 | 修正 SRS tiling 切分和 buffer 分配章节
+
+**类型**: 🔧 修改
+**范围**: `raw/design/03_tiling_design.md` + `raw/development/gmm_a16w4_pergroup_nd_srs.md` + SVG 图
+
+#### 变更内容
+- **代码走读**：走读 `GroupedWeightQuantBatchMatmulTiling` 和 `GMMWeightQuantBasicController` 代码，获取实际切分策略和 buffer 分配方案
+- **更新 `03_tiling_design.md`**：
+  - 新增 §3.0 SetTiling() 6 步主流程
+  - 新增 §3.1.1 Kernel 侧 Basic Controller 分核算法（动态 baseM/baseN 调整 + round-robin 伪代码）
+  - 新增 §3.4 尾块重切分（使能条件 + 三分支逻辑）
+  - 新增 §3.5 A16W4 PerGroup 适配点（当前代码 vs 用户确认策略的差异对比）
+  - 新增 §4.2.1 单单单 vs 多多多 M/K/N 来源差异表
+- **重写 `gmm_a16w4_pergroup_nd_srs.md` §2**：
+  - 重写为 8 个子节（2.1~2.8）：切分常量 → Host 侧流程 → Kernel 侧分核算法 → 尾块重切分 → 单单单 vs 多多多 → A16W4 适配点 → Tiling Key → groupSize 传递
+- **重写 `gmm_a16w4_pergroup_nd_srs.md` §3**：
+  - 重写为 5 个子节（3.1~3.5）：L1 分配 → UB 分配 → Buffer 与基本块关系 → PerChannel vs PerGroup 差异 → A16W4 适配
+- **新建 SVG 图**：
+  - `svg/tiling_split_strategy.svg`：M/N 二维切分 + 8 核 round-robin 分配 + K 方向不切分 + 多多多 vs 单单单对比
+  - `svg/buffer_allocation.svg`：L1（512KB）有/无 bias 两种布局 + UB（248KB）4 buffer 布局 + 数据流箭头 + PerGroup 适配分析
+
+#### 关键发现
+- **当前 A16W8 代码**：M 和 N 方向都会切分，round-robin 分核
+- **用户确认的 A16W4 策略**：多多多仅按 expert 分核（不切分），单单单仅 M 方向切分
+- **尾块重切分**：仅 NZ 或 B 转置时使能，ND 非转置不使能
+- **Buffer 精确数值**：WeightL1=32KB×2, AL1=220KB×2(有bias)/224KB×2(无bias), UB 固定 248KB
+- **GetNdPerGroupBufferInfo() 不存在**：需要新建，pergroup 的 antiQuantScale 在 groupSize=32 + NdNk 场景下 4KB 不够
+
+#### 影响范围
+- 修正了 SRS 文档中 tiling 和 buffer 章节的不准确描述
+- 为后续编码实现提供了准确的参考依据

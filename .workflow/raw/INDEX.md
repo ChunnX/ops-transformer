@@ -37,9 +37,9 @@ raw/
 
 | 文件 | 内容 | 何时读 |
 |------|------|--------|
-| [development/gmm_a16w4_pergroup_nd_mindmap.md](development/gmm_a16w4_pergroup_nd_mindmap.md) | GMM A16W4 PerGroup ND 脑图（输入/输出/UT/ST 总览，含用例分类和条数） | 需要快速了解算子全貌、测试用例分类时 |
-| （待产出：`gmm_a16w4_pergroup_nd_stc.md`） | STC 用例设计方案文档：测试策略、用例设计方法论、数量统计（162 个） | 需要了解用例设计方案时 |
-| （待产出：`gmm_a16w4_pergroup_nd_srs.md`） | SRS 算子实现方案文档：tiling 切分 SVG、buffer 分配 SVG、软件算法到硬件映射 SVG、计算流程伪代码、关键修改点 | 需要向他人介绍算子实现方案时 |
+| [development/gmm_a16w4_pergroup_nd_mindmap.md](development/gmm_a16w4_pergroup_nd_mindmap.md) | GMM A16W4 PerGroup ND 脑图（输入/输出/UT/ST 总览，162 个用例分类和条数） | 需要快速了解算子全貌、测试用例分类时 |
+| [development/gmm_a16w4_pergroup_nd_stc.md](development/gmm_a16w4_pergroup_nd_stc.md) | STC 用例设计方案文档：测试策略、用例设计方法论、数量统计（162 个） | 需要了解用例设计方案时 |
+| [development/gmm_a16w4_pergroup_nd_srs.md](development/gmm_a16w4_pergroup_nd_srs.md) | SRS 算子实现方案文档：tiling 切分 SVG、buffer 分配 SVG、软件算法到硬件映射 SVG、计算流程伪代码、关键修改点 | 需要向他人介绍算子实现方案时 |
 
 ## design/ — 设计文档
 

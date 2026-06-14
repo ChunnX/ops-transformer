@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" font-family="monospace" font-size="11">
+  <text x="450" y="20" text-anchor="middle" font-size="14" font-weight="bold">GMM A16W4 PerGroup ND — 软件算法到硬件映射（Ascend 950）</text>
+
+  <!-- GM (Global Memory) -->
+  <rect x="20" y="40" width="860" height="60" fill="#e0e0e0" stroke="#424242" stroke-width="2" rx="5"/>
+  <text x="450" y="60" text-anchor="middle" font-size="13" font-weight="bold">GM（Global Memory）</text>
+  <text x="100" y="82" text-anchor="middle" font-size="10">x (FP16/BF16)</text>
+  <text x="250" y="82" text-anchor="middle" font-size="10">weight (INT4)</text>
+  <text x="400" y="82" text-anchor="middle" font-size="10">scale (FP16, 2D)</text>
+  <text x="550" y="82" text-anchor="middle" font-size="10">offset (FP16, 2D)</text>
+  <text x="680" y="82" text-anchor="middle" font-size="10">bias (FP16/BF16)</text>
+  <text x="810" y="82" text-anchor="middle" font-size="10">out (FP16/BF16)</text>
+
+  <!-- MTE arrows from GM -->
+  <text x="100" y="118" text-anchor="middle" font-size="10" fill="#1565c0" font-weight="bold">MTE1 ⑦</text>
+  <line x1="100" y1="100" x2="100" y2="170" stroke="#1565c0" stroke-width="2" marker-end="url(#arrowBlue)"/>
+
+  <text x="250" y="118" text-anchor="middle" font-size="10" fill="#e65100" font-weight="bold">MTE2 ④</text>
+  <line x1="250" y1="100" x2="450" y2="170" stroke="#e65100" stroke-width="2" marker-end="url(#arrowOrange)"/>
+
+  <text x="400" y="118" text-anchor="middle" font-size="10" fill="#e65100" font-weight="bold">MTE2 ④</text>
+  <line x1="400" y1="100" x2="520" y2="170" stroke="#e65100" stroke-width="2" marker-end="url(#arrowOrange)"/>
+
+  <text x="550" y="118" text-anchor="middle" font-size="10" fill="#e65100" font-weight="bold">MTE2 ④</text>
+  <line x1="550" y1="100" x2="580" y2="170" stroke="#e65100" stroke-width="2" marker-end="url(#arrowOrange)"/>
+
+  <text x="680" y="118" text-anchor="middle" font-size="10" fill="#1565c0" font-weight="bold">MTE1 ⑦</text>
+  <line x1="680" y1="100" x2="200" y2="170" stroke="#1565c0" stroke-width="2" marker-end="url(#arrowBlue)"/>
+
+  <!-- AI Core box -->
+  <rect x="20" y="140" width="860" height="400" fill="none" stroke="#333" stroke-width="2" stroke-dasharray="8" rx="8"/>
+  <text x="40" y="158" font-size="12" font-weight="bold">AI Core（×32，每个 Core 含 1 Cube + 2 Vector）</text>
+
+  <!-- Vector Core section -->
+  <rect x="350" y="170" width="300" height="200" fill="#fff8e1" stroke="#f57f17" stroke-width="1.5" rx="5"/>
+  <text x="500" y="190" text-anchor="middle" font-size="12" font-weight="bold" fill="#e65100">Vector Core（AIV）</text>
+
+  <!-- UB -->
+  <rect x="370" y="200" width="260" height="80" fill="#fff59d" stroke="#f57f17" stroke-width="1"/>
+  <text x="500" y="218" text-anchor="middle" font-size="11" font-weight="bold">UB（248KB 可用）</text>
+  <text x="420" y="238" text-anchor="middle" font-size="9">weightInputLowBit</text>
+  <text x="420" y="250" text-anchor="middle" font-size="9">174KB (INT4)</text>
+  <text x="540" y="238" text-anchor="middle" font-size="9">highBitData 62KB</text>
+  <text x="540" y="250" text-anchor="middle" font-size="9">(反量化后 FP16)</text>
+  <text x="610" y="238" text-anchor="middle" font-size="9">scale 8KB</text>
+  <text x="610" y="250" text-anchor="middle" font-size="9">offset 8KB</text>
+
+  <!-- VF computation -->
+  <rect x="380" y="295" width="240" height="60" fill="#ffcc80" stroke="#e65100" stroke-width="1.5" rx="3"/>
+  <text x="500" y="315" text-anchor="middle" font-size="11" font-weight="bold">⑤ VF 反量化</text>
+  <text x="500" y="332" text-anchor="middle" font-size="10">INT4 unpack → FP16</text>
+  <text x="500" y="345" text-anchor="middle" font-size="10">× scale (+ offset)</text>
+
+  <!-- Arrow UB → VF -->
+  <line x1="500" y1="280" x2="500" y2="293" stroke="#e65100" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+
+  <!-- Cube Core section -->
+  <rect x="40" y="170" width="290" height="350" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.5" rx="5"/>
+  <text x="185" y="190" text-anchor="middle" font-size="12" font-weight="bold" fill="#1565c0">Cube Core（AIC）</text>
+
+  <!-- L1 -->
+  <rect x="60" y="200" width="250" height="70" fill="#90caf9" stroke="#1565c0" stroke-width="1"/>
+  <text x="185" y="218" text-anchor="middle" font-size="11" font-weight="bold">L1（512KB）</text>
+  <text x="120" y="238" text-anchor="middle" font-size="9">WeightL1 128KB</text>
+  <text x="120" y="250" text-anchor="middle" font-size="9">(反量化后 FP16)</text>
+  <text x="240" y="238" text-anchor="middle" font-size="9">AL1 128KB</text>
+  <text x="240" y="250" text-anchor="middle" font-size="9">(x 矩阵 FP16)</text>
+  <text x="185" y="264" text-anchor="middle" font-size="9">+ BiasTable 4KB + P1 双缓冲</text>
+
+  <!-- L0A/L0B/L0C -->
+  <rect x="60" y="290" width="80" height="40" fill="#bbdefb" stroke="#1565c0" stroke-width="1"/>
+  <text x="100" y="310" text-anchor="middle" font-size="10">L0A</text>
+  <text x="100" y="323" text-anchor="middle" font-size="8">(x 片段)</text>
+
+  <rect x="150" y="290" width="80" height="40" fill="#bbdefb" stroke="#1565c0" stroke-width="1"/>
+  <text x="190" y="310" text-anchor="middle" font-size="10">L0B</text>
+  <text x="190" y="323" text-anchor="middle" font-size="8">(W 片段)</text>
+
+  <rect x="240" y="290" width="80" height="40" fill="#c8e6c9" stroke="#2e7d32" stroke-width="1"/>
+  <text x="280" y="310" text-anchor="middle" font-size="10">L0C</text>
+  <text x="280" y="323" text-anchor="middle" font-size="8">(结果片段)</text>
+
+  <!-- Matmul -->
+  <rect x="80" y="350" width="210" height="45" fill="#a5d6a7" stroke="#2e7d32" stroke-width="1.5" rx="3"/>
+  <text x="185" y="370" text-anchor="middle" font-size="11" font-weight="bold">⑧ Matmul</text>
+  <text x="185" y="385" text-anchor="middle" font-size="10">L0A × L0B → L0C</text>
+
+  <!-- Arrows L1 → L0A/L0B -->
+  <line x1="120" y1="270" x2="100" y2="288" stroke="#1565c0" stroke-width="1" marker-end="url(#arrowBlue)"/>
+  <line x1="240" y1="270" x2="190" y2="288" stroke="#1565c0" stroke-width="1" marker-end="url(#arrowBlue)"/>
+
+  <!-- Arrows L0A/L0B → Matmul -->
+  <line x1="100" y1="330" x2="140" y2="348" stroke="#2e7d32" stroke-width="1" marker-end="url(#arrowGreen)"/>
+  <line x1="190" y1="330" x2="200" y2="348" stroke="#2e7d32" stroke-width="1" marker-end="url(#arrowGreen)"/>
+
+  <!-- BiasAdd / Fixpipe -->
+  <rect x="80" y="410" width="210" height="35" fill="#ef9a9a" stroke="#c62828" stroke-width="1.5" rx="3"/>
+  <text x="185" y="430" text-anchor="middle" font-size="11" font-weight="bold">BiasAdd (Fixpipe)</text>
+  <text x="185" y="442" text-anchor="middle" font-size="9">L0C + BiasTable → L1</text>
+
+  <!-- Arrow Matmul → BiasAdd -->
+  <line x1="185" y1="395" x2="185" y2="408" stroke="#c62828" stroke-width="1" marker-end="url(#arrowRed)"/>
+
+  <!-- GetTensorC -->
+  <rect x="80" y="460" width="210" height="35" fill="#e0e0e0" stroke="#424242" stroke-width="1.5" rx="3"/>
+  <text x="185" y="480" text-anchor="middle" font-size="11" font-weight="bold">⑨ GetTensorC: L1 → GM</text>
+
+  <!-- Arrow BiasAdd → GetTensorC -->
+  <line x1="185" y1="445" x2="185" y2="458" stroke="#424242" stroke-width="1" marker-end="url(#arrowGray)"/>
+
+  <!-- MTE3: UB → L1 (Vector → Cube) -->
+  <text x="340" y="310" text-anchor="middle" font-size="10" fill="#2e7d32" font-weight="bold">MTE3 ⑤</text>
+  <line x1="378" y1="325" x2="312" y2="250" stroke="#2e7d32" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <!-- Sync arrow AIV → AIC -->
+  <text x="340" y="395" text-anchor="middle" font-size="9" fill="#666">⑥ SetAivToAic</text>
+  <line x1="378" y1="380" x2="292" y2="380" stroke="#666" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arrowGray)"/>
+
+  <!-- Output arrow to GM -->
+  <line x1="185" y1="495" x2="810" y2="100" stroke="#424242" stroke-width="2" stroke-dasharray="6" marker-end="url(#arrowGray)"/>
+  <text x="550" y="510" text-anchor="middle" font-size="10" fill="#424242">MTE1 写回 out</text>
+
+  <!-- Multi-core note -->
+  <rect x="370" y="400" width="280" height="120" fill="#f3e5f5" stroke="#6a1b9a" stroke-width="1" rx="5"/>
+  <text x="510" y="420" text-anchor="middle" font-size="11" font-weight="bold">多 Core 并行</text>
+  <text x="510" y="440" text-anchor="middle" font-size="10">Core 0: N[0:256]</text>
+  <text x="510" y="455" text-anchor="middle" font-size="10">Core 1: N[256:512]</text>
+  <text x="510" y="470" text-anchor="middle" font-size="10">...</text>
+  <text x="510" y="485" text-anchor="middle" font-size="10">Core 31: N[尾块]</text>
+  <text x="510" y="505" text-anchor="middle" font-size="9">每个 Core 独立处理 N 方向分片</text>
+
+  <!-- Step numbers legend -->
+  <rect x="670" y="170" width="200" height="200" fill="#fafafa" stroke="#999" stroke-width="1" rx="3"/>
+  <text x="770" y="188" text-anchor="middle" font-size="11" font-weight="bold">步骤编号说明</text>
+  <text x="680" y="208" font-size="9">④ MTE2: GM→UB 搬运</text>
+  <text x="680" y="225" font-size="9">⑤ VF: 反量化 + MTE3: UB→L1</text>
+  <text x="680" y="242" font-size="9">⑥ AIV→AIC 同步</text>
+  <text x="680" y="259" font-size="9">⑦ MTE1: A/Bias GM→L1</text>
+  <text x="680" y="276" font-size="9">⑧ Matmul: L0A×L0B→L0C</text>
+  <text x="680" y="293" font-size="9">⑨ BiasAdd + GetTensorC→GM</text>
+  <text x="680" y="318" font-size="9" fill="#e65100">橙色 = Vector Core 操作</text>
+  <text x="680" y="335" font-size="9" fill="#1565c0">蓝色 = Cube Core 操作</text>
+  <text x="680" y="352" font-size="9" fill="#2e7d32">绿色 = 跨核数据搬运</text>
+
+  <defs>
+    <marker id="arrowBlue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#1565c0"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#e65100"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#2e7d32"/>
+    </marker>
+    <marker id="arrowRed" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#c62828"/>
+    </marker>
+    <marker id="arrowGray" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#424242"/>
+    </marker>
+  </defs>
+</svg>

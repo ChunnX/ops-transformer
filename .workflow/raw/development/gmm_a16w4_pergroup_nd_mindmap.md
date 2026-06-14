@@ -98,138 +98,61 @@
 - activationFeatureOutOptional: null
 - dynQuantScaleOutOptional: null
 
-## UT（Tiling 异常拦截）
+## UT（Tiling 异常拦截 + 白盒验证）
 
-### dtype 校验
+### 黑盒用例（44 个）
+- dtype 校验（7 个）：T-01 ~ T-07
+- shape 校验（19 个）：T-08 ~ T-26
+  - 维度校验（8 个）：T-08 ~ T-15
+  - 数值约束（6 个）：T-16 ~ T-21
+  - shape 匹配（5 个）：T-22 ~ T-26
+- format 校验（5 个）：T-27 ~ T-31
+- 属性校验（6 个）：T-32 ~ T-37
+- 场景校验（7 个）：T-38 ~ T-44
 
-- x dtype 非法（非 FLOAT16/BFLOAT16）
-- weight dtype 非法（非 INT4）
-- bias dtype 与 x 不匹配
-  - x=FLOAT16 时 bias 传入 BFLOAT16/FLOAT32
-  - x=BFLOAT16 时 bias 传入 FLOAT16
-- antiquantScale dtype 与 x 不一致
-- antiquantOffset dtype 与 x 不一致
-- groupList dtype 非法（非 INT64）
+### 白盒用例 — Tiling 端到端（20 个）
+- IsA16W4NDPergroup 判断路径（3 个）：TW-01 ~ TW-03
+- SetAntiquantGroupSize 路径（4 个）：TW-04 ~ TW-07
+- SetTilingKey 路径（4 个）：TW-08 ~ TW-11
+- SetShapeList 路径（3 个）：TW-12 ~ TW-14
+- baseM/baseN/baseK 计算路径（2 个）：TW-15 ~ TW-16
+- CalcResplitTiling 路径（2 个）：TW-17 ~ TW-18
+- GMMWeightQuantParam 字段完整性（2 个）：TW-19 ~ TW-20
 
-### shape 校验
+### 白盒用例 — Kernel 打桩验证（22 个）
+- MTE 搬运验证（7 个）：KS-01 ~ KS-07
+- VF 计算验证（7 个）：KS-08 ~ KS-14
+- 地址偏移验证（3 个）：KS-15 ~ KS-17
+- Tiling 参数传递验证（3 个）：KS-18 ~ KS-20
+- Matmul 计算验证（2 个）：KS-21 ~ KS-22
 
-- 维度校验
-  - x 维度不为 2
-  - weight 维度错误
-    - 多多多时不为 2 维
-    - 单单单时不为 3 维
-  - bias 维度错误
-    - 多多多时不为 1 维
-    - 单单单时不为 2 维
-  - antiquantScale 维度错误
-    - 多多多时不为 2 维 (G_i, N_i)
-    - 单单单时不为 3 维 (E, G, N)
-  - groupList 维度不为 1
-- 数值约束
-  - K % group_size != 0
-  - group_size 不在 {32, 64, 128, 256}
-  - weight 最后一维非偶数
-  - pergroup 数 G_i 不整除 k_i
-  - 多多多时 pergroup 长度 s_i 不一致
-  - pergroup 转置时 s_i 非偶数
-- shape 匹配
-  - x.k 与 weight.k 不匹配（非转置）
-  - x.k 与 weight.n 不匹配（转置时 weight shape 为 (k,n)）
-  - antiquantScale 的 N 与 weight 的 N 不匹配
-  - antiquantScale 的 G 与 K/gs 不匹配
-  - bias 的 N 与 weight 的 N 不匹配
-  - groupList 长度与 E 不匹配（单单单）
-  - groupList 值超出 x 第一维
-
-### format 校验
-
-- x format 非 ND
-- weight format 非 ND
-- bias format 非 ND
-- antiquantScale format 非 ND
-- antiquantOffset format 非 ND
-
-### 属性校验
-
-- groupType 非法（非 -1/0）
-- groupListType 非法（非 0/1）
-- actType 非法（非 0）
-- splitItem 非法
-  - 多多多时不在 {0, 1}
-  - 单单单时不在 {2, 3}
-- tuningConfigOptional 传入非空（950 不支持）
-
-### 场景校验（组合参数）
-
-- groupType=0 但 groupList 为空
-- groupType=-1 但 groupList 非空
-- groupType=0 且 groupListType=0 但数列非单调非递减
-- groupType=0 且 groupListType=1 但数值为负
-- groupType=0 且 groupListType=0 但最后一个值 > x 第一维
-- groupType=0 且 groupListType=1 但数值总和 > x 第一维
-- splitItem 与 groupType 不匹配
-  - groupType=-1 但 splitItem ∈ {2, 3}
-  - groupType=0 但 splitItem ∈ {0, 1}
-- 多多多时 weight tensorList 转置状态不统一
-- 非对称量化（antiquantOffset 非 null）+ pergroup（不支持）
+### 白盒用例 — Kernel 端到端（22 个）
+- if constexpr 分支覆盖（6 个）：KW-01 ~ KW-06
+- ComputeBasicBlock 分发路径（2 个）：KW-07 ~ KW-08
+- GetBufferConfig 分支覆盖（2 个）：KW-09 ~ KW-10
+- VF groupSize 运行时分支（4 个）：KW-11 ~ KW-14
+- CopyAntiQuantParamsGmToUb PER_GROUP（2 个）：KW-15 ~ KW-16
+- SetGmAddr pergroup 偏移（2 个）：KW-17 ~ KW-18
+- AIC/AIV 协作路径（4 个）：KW-19 ~ KW-22
 
 ## ST
 
-### 精度
+### 精度（黑盒，9 个）
+- x=FLOAT16（4 个）：P-01 ~ P-04
+- x=BFLOAT16（5 个）：P-05 ~ P-09
 
-- x=FLOAT16, weight=INT4
-  - 有 bias（FLOAT16）
-  - 无 bias（null）
-  - 有 antiquantOffset（FLOAT16）
-  - 无 antiquantOffset（null，对称量化）
-- x=BFLOAT16, weight=INT4
-  - 有 bias（BFLOAT16）
-  - 有 bias（FLOAT32）
-  - 无 bias（null）
-  - 有 antiquantOffset（BFLOAT16）
-  - 无 antiquantOffset（null，对称量化）
+### 功能（黑盒，27 个）
+- 单单单 groupType=0（12 个）：F-01 ~ F-12
+- 多多多 groupType=-1（15 个）：F-13 ~ F-27
 
-### 功能
+### 性能（黑盒，6 个）
+- 典型场景（3 个）：PERF-01 ~ PERF-03
+- 大/小 shape 场景（3 个）：PERF-04 ~ PERF-06
 
-- 单单单（groupType=0）
-  - 非转置: x(M,K), weight(E,N,K), out(M,N)
-  - 转置: x(M,K), weight(E,K,N), out(M,N)
-  - group_size = 32
-  - group_size = 64
-  - group_size = 128
-  - group_size = 256
-  - groupListType = 0（cumsum）
-  - groupListType = 1（count）
-  - shape 边界
-    - M = 1（极小 M）
-    - K = group_size（最小 K）
-    - N = 1（极小 N）
-    - E = 1（单 expert）
-    - E = 1024（最大 expert）
-- 多多多（groupType=-1）
-  - 非转置: x(m_i,k_i), weight(n_i,k_i), out(m_i,n_i)
-  - 转置: x(m_i,k_i), weight(k_i,n_i), out(m_i,n_i)
-  - group_size = 32
-  - group_size = 64
-  - group_size = 128
-  - group_size = 256
-  - groupListType = 0（cumsum）
-  - groupListType = 1（count）
-  - shape 边界
-    - m_i = 1（极小 M）
-    - k_i = group_size（最小 K）
-    - n_i = 1（极小 N）
-    - 多 expert 数量（2/8/64/128）
-    - 各 expert 的 m_i 不同
+### 泛化（黑盒，12 个）
+- group_size 边界（4 个）：G-01 ~ G-04
+- shape 边界（4 个）：G-05 ~ G-08
+- 特殊组合（4 个）：G-09 ~ G-12
+- （待补充：泛化用例覆盖度不足，后续补充）
 
-### 性能
-
-- （待补充）
-
-### 泛化
-
-- （待补充）
-
-### 兼容性
-
-- （待补充）
+### 兼容性（待补充）

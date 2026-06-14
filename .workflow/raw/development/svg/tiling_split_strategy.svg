@@ -1,0 +1,253 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 700" font-family="'Microsoft YaHei','SimHei',sans-serif">
+  <defs>
+    <style>
+      .title { font-size: 18px; font-weight: bold; fill: #222; }
+      .subtitle { font-size: 14px; font-weight: bold; fill: #333; }
+      .label { font-size: 12px; fill: #333; }
+      .small { font-size: 11px; fill: #555; }
+      .dim { font-size: 11px; fill: #666; font-style: italic; }
+      .block-label { font-size: 10px; fill: #fff; font-weight: bold; text-anchor: middle; }
+      .note { font-size: 11px; fill: #444; }
+      .highlight { font-size: 11px; fill: #c00; font-weight: bold; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="940" height="700" fill="#fafafa" rx="8"/>
+
+  <!-- Title -->
+  <text x="470" y="32" text-anchor="middle" class="title">Tiling 切分策略示意图 — GMM A16W4 PerGroup ND</text>
+
+  <!-- ==================== Section 1: M/N 2D Split ==================== -->
+  <text x="60" y="62" class="subtitle">① M/N 二维切分 + Round-Robin 分核</text>
+  <text x="60" y="78" class="dim">示例: M=640, N=640, coreNum=8, baseM=256, baseN=256</text>
+
+  <!-- M axis label -->
+  <text x="68" y="210" class="label" transform="rotate(-90,68,210)" text-anchor="middle">M 方向</text>
+
+  <!-- N axis label -->
+  <text x="290" y="385" class="label" text-anchor="middle">N 方向</text>
+
+  <!-- Matrix blocks: origin at (110, 95) -->
+  <!-- Row 0: y=95, h=95 -->
+  <!-- Row 1: y=190, h=95 -->
+  <!-- Row 2 (tail): y=285, h=55 -->
+  <!-- Col 0: x=110, w=145 -->
+  <!-- Col 1: x=255, w=145 -->
+  <!-- Col 2 (tail): x=400, w=75 -->
+
+  <!-- Block (0,0) Core0 -->
+  <rect x="110" y="95" width="145" height="95" fill="#4A90D9" stroke="#fff" stroke-width="2" rx="3"/>
+  <text x="182" y="148" class="block-label">Core 0</text>
+
+  <!-- Block (0,1) Core1 -->
+  <rect x="255" y="95" width="145" height="95" fill="#E8744F" stroke="#fff" stroke-width="2" rx="3"/>
+  <text x="327" y="148" class="block-label">Core 1</text>
+
+  <!-- Block (0,2) Core2 - tail N -->
+  <rect x="400" y="95" width="75" height="95" fill="#5CB85C" stroke="#fff" stroke-width="2" rx="3"/>
+  <text x="437" y="148" class="block-label">Core 2</text>
+
+  <!-- Block (1,0) Core3 -->
+  <rect x="110" y="190" width="145" height="95" fill="#D9534F" stroke="#fff" stroke-width="2" rx="3"/>
+  <text x="182" y="243" class="block-label">Core 3</text>
+
+  <!-- Block (1,1) Core4 -->
+  <rect x="255" y="190" width="145" height="95" fill="#9B59B6" stroke="#fff" stroke-width="2" rx="3"/>
+  <text x="327" y="243" class="block-label">Core 4</text>
+
+  <!-- Block (1,2) Core5 - tail N -->
+  <rect x="400" y="190" width="75" height="95" fill="#F0AD4E" stroke="#fff" stroke-width="2" rx="3"/>
+  <text x="437" y="243" class="block-label">Core 5</text>
+
+  <!-- Block (2,0) Core6 - tail M -->
+  <rect x="110" y="285" width="145" height="55" fill="#5BC0DE" stroke="#fff" stroke-width="2" rx="3"/>
+  <text x="182" y="318" class="block-label">Core 6</text>
+
+  <!-- Block (2,1) Core7 - tail M -->
+  <rect x="255" y="285" width="145" height="55" fill="#8B6914" stroke="#fff" stroke-width="2" rx="3"/>
+  <text x="327" y="318" class="block-label">Core 7</text>
+
+  <!-- Block (2,2) Core0 - tail M+N -->
+  <rect x="400" y="285" width="75" height="55" fill="#4A90D9" stroke="#fff" stroke-width="2" rx="3" opacity="0.7"/>
+  <text x="437" y="318" class="block-label">Core 0</text>
+
+  <!-- Dimension annotations -->
+  <!-- baseM bracket -->
+  <line x1="95" y1="95" x2="95" y2="190" stroke="#333" stroke-width="1.5"/>
+  <line x1="90" y1="95" x2="100" y2="95" stroke="#333" stroke-width="1.5"/>
+  <line x1="90" y1="190" x2="100" y2="190" stroke="#333" stroke-width="1.5"/>
+  <text x="85" y="148" class="small" text-anchor="end">baseM=256</text>
+
+  <!-- tail M bracket -->
+  <line x1="95" y1="285" x2="95" y2="340" stroke="#c00" stroke-width="1.5"/>
+  <line x1="90" y1="285" x2="100" y2="285" stroke="#c00" stroke-width="1.5"/>
+  <line x1="90" y1="340" x2="100" y2="340" stroke="#c00" stroke-width="1.5"/>
+  <text x="85" y="318" class="highlight" text-anchor="end">尾块128</text>
+
+  <!-- baseN bracket -->
+  <line x1="110" y1="350" x2="255" y2="350" stroke="#333" stroke-width="1.5"/>
+  <line x1="110" y1="345" x2="110" y2="355" stroke="#333" stroke-width="1.5"/>
+  <line x1="255" y1="345" x2="255" y2="355" stroke="#333" stroke-width="1.5"/>
+  <text x="182" y="367" class="small" text-anchor="middle">baseN=256</text>
+
+  <!-- tail N bracket -->
+  <line x1="400" y1="350" x2="475" y2="350" stroke="#c00" stroke-width="1.5"/>
+  <line x1="400" y1="345" x2="400" y2="355" stroke="#c00" stroke-width="1.5"/>
+  <line x1="475" y1="345" x2="475" y2="355" stroke="#c00" stroke-width="1.5"/>
+  <text x="437" y="367" class="highlight" text-anchor="middle">尾块128</text>
+
+  <!-- M total -->
+  <text x="85" y="88" class="dim" text-anchor="end">M=640</text>
+  <!-- N total -->
+  <text x="490" y="367" class="dim">N=640</text>
+
+  <!-- ==================== Section 2: Core Legend ==================== -->
+  <text x="540" y="62" class="subtitle">② 分核颜色图例</text>
+
+  <!-- Core 0 -->
+  <rect x="540" y="78" width="24" height="18" fill="#4A90D9" rx="2"/>
+  <text x="570" y="92" class="small">Core 0 (2块)</text>
+
+  <!-- Core 1 -->
+  <rect x="540" y="102" width="24" height="18" fill="#E8744F" rx="2"/>
+  <text x="570" y="116" class="small">Core 1</text>
+
+  <!-- Core 2 -->
+  <rect x="540" y="126" width="24" height="18" fill="#5CB85C" rx="2"/>
+  <text x="570" y="140" class="small">Core 2</text>
+
+  <!-- Core 3 -->
+  <rect x="540" y="150" width="24" height="18" fill="#D9534F" rx="2"/>
+  <text x="570" y="164" class="small">Core 3</text>
+
+  <!-- Core 4 -->
+  <rect x="700" y="78" width="24" height="18" fill="#9B59B6" rx="2"/>
+  <text x="730" y="92" class="small">Core 4</text>
+
+  <!-- Core 5 -->
+  <rect x="700" y="102" width="24" height="18" fill="#F0AD4E" rx="2"/>
+  <text x="730" y="116" class="small">Core 5</text>
+
+  <!-- Core 6 -->
+  <rect x="700" y="126" width="24" height="18" fill="#5BC0DE" rx="2"/>
+  <text x="730" y="140" class="small">Core 6</text>
+
+  <!-- Core 7 -->
+  <rect x="700" y="150" width="24" height="18" fill="#8B6914" rx="2"/>
+  <text x="730" y="164" class="small">Core 7</text>
+
+  <!-- Round-robin explanation -->
+  <rect x="540" y="185" width="370" height="80" fill="#f0f4f8" stroke="#ccc" rx="4"/>
+  <text x="550" y="203" class="note">Round-Robin 分配（blockIdx → coreIdx）:</text>
+  <text x="550" y="220" class="small">Block0→C0, Block1→C1, ..., Block7→C7</text>
+  <text x="550" y="236" class="small">Block8→C0 (第二轮，C0 多领一块)</text>
+  <text x="550" y="252" class="small">步长 = coreNum，保证各核负载均衡</text>
+
+  <!-- ==================== Section 3: K Direction ==================== -->
+  <text x="60" y="415" class="subtitle">③ K 方向不切分</text>
+
+  <rect x="60" y="430" width="420" height="100" fill="#f8f8f0" stroke="#ccc" rx="4"/>
+
+  <!-- K direction diagram -->
+  <!-- A single block showing K stepping -->
+  <rect x="80" y="450" width="200" height="60" fill="#e8e8e8" stroke="#999" rx="3"/>
+  <text x="180" y="445" class="small" text-anchor="middle">BasicBlock (baseM × N)</text>
+
+  <!-- K steps inside block -->
+  <rect x="85" y="455" width="38" height="50" fill="#4A90D9" opacity="0.6" rx="2"/>
+  <rect x="127" y="455" width="38" height="50" fill="#4A90D9" opacity="0.6" rx="2"/>
+  <rect x="169" y="455" width="38" height="50" fill="#4A90D9" opacity="0.6" rx="2"/>
+  <rect x="211" y="455" width="38" height="50" fill="#4A90D9" opacity="0.6" rx="2"/>
+  <rect x="253" y="455" width="22" height="50" fill="#4A90D9" opacity="0.4" rx="2"/>
+
+  <text x="104" y="484" class="block-label" font-size="9">kbL1</text>
+  <text x="146" y="484" class="block-label" font-size="9">kbL1</text>
+  <text x="188" y="484" class="block-label" font-size="9">kbL1</text>
+  <text x="230" y="484" class="block-label" font-size="9">kbL1</text>
+
+  <!-- Arrow -->
+  <line x1="85" y1="518" x2="275" y2="518" stroke="#666" stroke-width="1" marker-end="url(#arrowK)"/>
+  <text x="180" y="528" class="dim" text-anchor="middle">K 方向步进 (kbL1Size)</text>
+
+  <defs>
+    <marker id="arrowK" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#666"/>
+    </marker>
+  </defs>
+
+  <!-- K direction text -->
+  <text x="300" y="460" class="note">K 方向不在核间切分</text>
+  <text x="300" y="478" class="note">每个 BasicBlock 内部</text>
+  <text x="300" y="496" class="note">按 kbL1Size 步进遍历 K 轴</text>
+  <text x="300" y="514" class="note">baseK = 64</text>
+
+  <!-- ==================== Section 4: Multi vs Single ==================== -->
+  <text x="540" y="295" class="subtitle">④ 多多多 vs 单单单</text>
+
+  <rect x="540" y="310" width="370" height="220" fill="#f5f5ff" stroke="#ccc" rx="4"/>
+
+  <!-- Table header -->
+  <rect x="545" y="315" width="360" height="22" fill="#e0e0f0" rx="2"/>
+  <text x="600" y="330" class="small" font-weight="bold">维度</text>
+  <text x="700" y="330" class="small" font-weight="bold">单单单</text>
+  <text x="820" y="330" class="small" font-weight="bold">多多多</text>
+
+  <!-- Row 1 -->
+  <text x="555" y="355" class="small">tensor</text>
+  <text x="700" y="355" class="small">各 1 个</text>
+  <text x="820" y="355" class="small">各多个</text>
+
+  <!-- Row 2 -->
+  <text x="555" y="378" class="small">M 来源</text>
+  <text x="700" y="378" class="small">groupList 差值</text>
+  <text x="820" y="378" class="small">mList[i]</text>
+
+  <!-- Row 3 -->
+  <text x="555" y="401" class="small">K 来源</text>
+  <text x="700" y="401" class="small">kList[0] 共享</text>
+  <text x="820" y="401" class="small">kList[i] 独立</text>
+
+  <!-- Row 4 -->
+  <text x="555" y="424" class="small">N 来源</text>
+  <text x="700" y="424" class="small">nList[0] 共享</text>
+  <text x="820" y="424" class="small">nList[i] 独立</text>
+
+  <!-- Row 5 -->
+  <text x="555" y="447" class="small">groupNum</text>
+  <text x="700" y="447" class="small">weight.shape[0]</text>
+  <text x="820" y="447" class="small">tensor 个数</text>
+
+  <!-- Row 6 -->
+  <text x="555" y="470" class="small">尾块重切分</text>
+  <text x="700" y="470" class="small">可使能</text>
+  <text x="820" y="470" class="small">不使能</text>
+
+  <!-- Separator lines -->
+  <line x1="545" y1="337" x2="905" y2="337" stroke="#ddd" stroke-width="0.5"/>
+  <line x1="545" y1="362" x2="905" y2="362" stroke="#ddd" stroke-width="0.5"/>
+  <line x1="545" y1="385" x2="905" y2="385" stroke="#ddd" stroke-width="0.5"/>
+  <line x1="545" y1="408" x2="905" y2="408" stroke="#ddd" stroke-width="0.5"/>
+  <line x1="545" y1="431" x2="905" y2="431" stroke="#ddd" stroke-width="0.5"/>
+  <line x1="545" y1="454" x2="905" y2="454" stroke="#ddd" stroke-width="0.5"/>
+  <line x1="545" y1="477" x2="905" y2="477" stroke="#ddd" stroke-width="0.5"/>
+  <line x1="685" y1="315" x2="685" y2="530" stroke="#ddd" stroke-width="0.5"/>
+  <line x1="805" y1="315" x2="805" y2="530" stroke="#ddd" stroke-width="0.5"/>
+
+  <!-- Multi-group diagram -->
+  <text x="555" y="500" class="note">多多多: 每个 group 有独立 M/K/N</text>
+  <text x="555" y="518" class="note">单单单: 所有 group 共享 K/N</text>
+
+  <!-- ==================== Section 5: Adaptation Note ==================== -->
+  <text x="60" y="565" class="subtitle">⑤ A16W4 PerGroup 适配说明</text>
+
+  <rect x="60" y="580" width="850" height="100" fill="#fff8f0" stroke="#e0c080" rx="4"/>
+
+  <text x="75" y="600" class="note">用户确认策略: x 和 weight 按 256×256 切分</text>
+  <text x="75" y="618" class="note">• 多多多: 每个核分配一个完整 expert，不需要 tiling 切分</text>
+  <text x="75" y="636" class="note">• 单单单: K 和 N 方向不切分，M 方向切分成多个块</text>
+  <text x="75" y="658" class="highlight">⚠ 当前 A16W8 代码 M 和 N 方向都会切分 — A16W4 pergroup 可能需修改 Controller 分核逻辑</text>
+
+  <!-- Footer -->
+  <text x="470" y="695" text-anchor="middle" class="dim">GMM A16W4 PerGroup ND — Tiling Split Strategy</text>
+</svg>

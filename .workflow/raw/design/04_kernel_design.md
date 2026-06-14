@@ -241,11 +241,13 @@ void ComputeBasicBlock(const BasicBlockOffsetParam &offsetParam, ...)
 A16W4 pergroup 的 L1 划分与 A16W8 **完全一致**，无需修改：
 
 ```
-无 bias 时:
+无 bias 时（kL1=256）:
 | WeightL1_P0 (128KB) | AL1_P0 (128KB) | AL1_P1 (128KB) | WeightL1_P1 (128KB) |
+总计 = 128 + 128 + 128 + 128 = 512KB ✅
 
-有 bias 时:
+有 bias 时（kL1=256）:
 | WeightL1_P0 (128KB) | Bias_P0 (4KB) | AL1_P0 (124KB) | AL1_P1 (124KB) | Bias_P1 (4KB) | WeightL1_P1 (128KB) |
+总计 = 128 + 4 + 124 + 124 + 4 + 128 = 512KB ⚠️ AL1 不够（见下方遗留问题）
 ```
 
 **WeightL1 大小**：
@@ -254,6 +256,17 @@ weightL1Space = baseN * stepKb * baseK;  // 256 * 4 * 64 = 65536 元素 = 128KB 
 ```
 
 **说明**：L1 存储的是反量化后的 weight（FP16/BF16），与反量化类型（perchannel/pergroup）无关。
+
+**⚠️ 遗留问题：有 bias 场景 L1 空间不足**
+
+当 kL1=256, nL1=256, mL1=256 时：
+- WeightL1 双缓冲 = 128KB × 2 = 256KB
+- AL1 双缓冲（无 bias）= 128KB × 2 = 256KB
+- 总计 = 512KB，恰好满载
+
+有 bias 时需要额外 4KB × 2 = 8KB 给 BiasL1，导致 AL1 每缓冲缩减到 124KB，但 A 矩阵（NZ 格式）需要 128KB，**差 4KB**。
+
+这是 L1 物理空间 512KB 的硬限制，暂记为遗留问题，后续评估解决方案（如减小有 bias 时的 kL1、调整 BIAS_L1_SIZE、或 A 矩阵采用单缓冲等）。
 
 ### 3.2 UB Buffer 划分
 
@@ -560,6 +573,32 @@ __aicore__ inline void AntiQuantInt4NdKnPerGroup(...) {
     }
 }
 ```
+
+### 4.7 A16W4 VF 反量化架构与 A16W8 的关键差异
+
+A16W4 的 VF 反量化实现参考 wqbmmv2（`weight_quant_batch_matmul_v2_reg_base_common.h`），而非 A16W8 的 `weight_quant_vec_compute.h`。两者的架构差异如下：
+
+| 维度 | A16W8（当前 GMM 实现） | A16W4（参考 wqbmmv2） |
+|------|----------------------|---------------------|
+| 参考代码 | `weight_quant_vec_compute.h` | `weight_quant_batch_matmul_v2_reg_base_common.h` |
+| 反量化函数 | 内嵌在 GMM 的 VF 框架中 | `AntiquantComputeKNPerGroup` / `AntiquantComputeW4NKPerGroup` |
+| 处理方式 | 先按 vfNStandardLen×vfKStandardLen 切分，再对每个子块反量化 | 一次处理整个 bubKLen×bubNLen 数据块 |
+| VF_CALL 次数 | 每个 bubble 多次 | 每个 bubble 仅 1 次 |
+| 切分责任 | 调用者 + VF 函数内部双重切分 | 仅调用者按 bubble 切分 |
+
+**迁移策略**：保留 GMM 的 VF 分批框架（vfNStandardLen × vfKStandardLen 循环），在循环体内替换为 wqbmmv2 的 pergroup 反量化函数。每次 VF_CALL 处理一个 vfNStandardLen × vfKStandardLen 的子块。
+
+**wqbmmv2 反量化函数内部循环结构**：
+- **KN 排布**（`AntiquantPerGroupKN`）：nLoop → groupNum → groupSize（N→group→K 三层循环）
+- **NK 排布**（`AntiquantComputeW4NKPerGroup`）：按 groupSize 分支，gs=128 时为 groupNum → bubNLen（group→N 两层循环）
+
+### 4.8 ⚠️ 已知问题：Pergroup scale 搬运代码在 nL1=256 时存在 bug
+
+当前代码中 `VEC_MAX_ELEM_B16 = 128`，但 nL1=256 > 128，导致 `DataCopyPad2D` 的 `dstStride` 为负值。
+
+**问题根因**：pergroup 场景下 scale 的 `dstInnerLength` 使用了 `VEC_MAX_ELEM_B16`（128 元素 = 256 字节），当 nL1=256 时，单次搬运无法覆盖完整的 N 维度，`dstStride` 计算出现负值溢出。
+
+**修复方案**：需要将 pergroup 的 `dstInnerLength` 从 `VEC_MAX_ELEM_B16` 改为 `CeilAlign(ubMte2NSize, VECTOR_REG_WIDTH)`，与 perchannel 保持一致。
 
 ---
 

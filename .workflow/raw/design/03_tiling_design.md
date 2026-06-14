@@ -240,6 +240,22 @@ if (IsA16W4NDPergroup()) {
 
 ## 3. Tiling 计算方案
 
+### 3.0 SetTiling() 主流程（6 步）
+
+Host 侧 tiling 入口 `SetTiling()` 按固定 6 步顺序执行：
+
+```
+SetTiling(context):
+  ① AnalyzeAttr(context)       // 解析属性、校验输入、设置 shapeList
+  ② CalcResplitTiling(context) // 计算尾块重切分参数（详见 §3.4）
+  ③ SetBaseTiling()            // 填充 GMMWeightQuantParam 结构
+  ④ SetMatMulTiling()          // 填充 TCubeTiling 结构（baseM/N/K 等）
+  ⑤ SetTilingKey(context)      // 生成 tiling key → 选择 kernel 模板
+  ⑥ SetCustomParam(context)    // 设置 blockDim=coreNum，拷贝 tiling 数据到 GM
+```
+
+各步骤职责独立，①② 依赖 context 中的算子属性，③④ 填充 tiling 数据结构，⑤ 选择编译期模板，⑥ 将数据下发到 device。
+
 ### 3.1 baseM/baseN/baseK 计算方式
 
 **参照 A16W8 多多多策略**（来自需求文档）：
@@ -268,6 +284,65 @@ uint64_t baseM = (mSize <= baseM || mSize >= baseM*4) ? baseM
                : (mSize <= baseM*2) ? CeilDiv(mSize, 2) : CeilDiv(mSize, 4);
 uint64_t baseN = (nSize >= baseN * coreNum) ? baseN : (baseN >> 1);
 ```
+
+### 3.1.1 Kernel 侧 Basic Controller 分核算法
+
+Controller `Process()` 在每个 AI Core 上执行，采用 **round-robin** 方式分配 (mBlock, nBlock) 任务：
+
+```
+Process():
+  cubeBlockIdx = GetBlockIdx()
+  if IS_AIV: cubeBlockIdx >>= 1    // AIV 核号 = blockIdx / 2
+
+  for each group (groupIdx = 0..groupNum-1):
+    SetMKN(groupIdx) → mSize, kSize, nSize
+
+    // ① 动态调整 baseM（根据 M 大小选择二分/四分/不切）
+    if mSize <= baseM || mSize >= baseM * 4:
+        actualBaseM = baseM           // 256（不调整）
+    elif mSize <= baseM * 2:
+        actualBaseM = ceil(mSize / 2) // 二分时每块 ≈ M/2
+    else:
+        actualBaseM = ceil(mSize / 4) // 四分时每块 ≈ M/4
+
+    // ② 动态调整 baseN（根据 N 是否够分满核决定）
+    if nSize >= baseN * coreNum:
+        actualBaseN = baseN           // 256（N 足够大）
+    else:
+        actualBaseN = baseN / 2       // 128（N 较小，缩小块以分满核）
+
+    // ③ 计算 M/N 方向块数
+    mBlockNum = ceil(mSize / actualBaseM)
+    nBlockNum = ceil(nSize / actualBaseN)
+    totalBlocks = mBlockNum * nBlockNum
+
+    // ④ Round-robin 分核：每个核按步长 coreNum 领取任务
+    curBlock = cubeBlockIdx (adjusted for cross-group remainder)
+    while curBlock < count + totalBlocks:
+        mOffset = ((curBlock - count) / nBlockNum) * actualBaseM
+        nOffset = ((curBlock - count) % nBlockNum) * actualBaseN
+        ComputeBasicBlock(offsetParam)   // K 方向在内部按 kbL1Size 步进
+        curBlock += coreNum
+```
+
+**关键结论**：
+- **M 和 N 方向都会切分**，形成二维块网格
+- **K 方向不切分**（K 方向在 BasicBlock 内部按 `kbL1Size` 步进遍历）
+- 各核以 round-robin 方式领取 `(mBlock, nBlock)` 任务，保证负载均衡
+- AIV/AIC 通过 `cubeBlockIdx >>= 1` 实现协同（每对 AIV+AIC 共享一个核号）
+
+### 3.1.2 kL1=256 的选择原因
+
+kL1（即 kbL1Size，L1 层 K 方向 tile 大小）选择 256 的原因是 group_size 需要支持 32/64/128/256，kL1=256 可以保证在这几种 group_size 下，每个 tile 的 K 方向都不会跨越 group 边界，从而简化代码实现。具体来说：
+
+| group_size | 一个 tile 包含的完整 group 数 | 计算 |
+|:----------:|:---------------------------:|:----:|
+| 32 | 8 | 256 / 32 = 8 |
+| 64 | 4 | 256 / 64 = 4 |
+| 128 | 2 | 256 / 128 = 2 |
+| 256 | 1 | 256 / 256 = 1 |
+
+kL1 = baseK × stepKb × depth = 64 × 4 / depth × depth = 256（其中 baseK=64, stepKb=4）。每个 L1 tile 的 K 方向恰好包含整数个 group，避免了反量化时跨 group 边界的复杂处理逻辑（如部分 group 的 scale 加载、尾 group 的特殊处理等）。
 
 ### 3.2 SetAntiquantGroupSize() 中 groupSize 推导逻辑
 
@@ -305,6 +380,69 @@ tilingKeyConfig_.transposeSituation = (transA << 1) | transB;
 tilingKeyConfig_.weightFormat = ND;
 tilingKeyConfig_.templateCustom = MTE2_INNER_SIZE_256_BUF_NUM_4;
 ```
+
+### 3.4 尾块重切分（CalcResplitTiling）
+
+#### 3.4.1 使能条件
+
+```
+EnableTailResplit():
+  if 多多多（groupType == -1）: return false
+  if weight 是 ND 格式 且 B 不转置: return false
+  return true
+```
+
+**即使能条件**：单单单 + (weight 是 NZ 格式 或 B 转置)。
+
+**A16W4 ND 非转置场景**：不使能尾块重切分，走 Basic Controller 路径。
+
+#### 3.4.2 使能时的三分支逻辑
+
+当尾块重切分使能时，根据 N 与 coreNum 的关系分三种情况：
+
+| 分支 | 条件 | 策略 |
+|------|------|------|
+| 分支 1 | `N % (coreNum × 256) == 0` | mainBlockSize=256, mainBlockCount = N/(coreNum×256) |
+| 分支 2 | `N > coreNum × 128` | CalcFullNumBlocksResplitTiling — 可分满核 |
+| 分支 3 | `N ≤ coreNum × 128` | CalcNoFullNumBlocksResplitTiling — 可能无法分满核 |
+
+分支 1 是理想情况（N 可被整除），直接使用固定 256 块大小。分支 2/3 处理 N 不能被整除的场景，通过调整 mainBlockSize 和 tailBlockSize 来减少尾块浪费。
+
+### 3.5 A16W4 PerGroup 适配点
+
+#### 3.5.1 当前代码行为 vs 用户确认策略
+
+| 维度 | 当前 A16W8 代码行为 | 用户确认的 A16W4 pergroup 策略 |
+|------|:-------------------:|:-----------------------------:|
+| M 方向 | 动态切分（二分/四分/不切） | 切分成多个块 |
+| N 方向 | 动态切分（256 或 128） | **不切分**（K 和 N 方向不做切分） |
+| K 方向 | BasicBlock 内部步进 | 不切分（一致） |
+| 多多多 | 每核领取 (mBlock, nBlock) | **每个核分配一个完整的 expert** |
+
+**⚠️ 差异说明**：用户确认的策略是"K 和 N 方向不做切分，M 方向切分成多个块"，但当前 A16W8 代码中 M 和 N 方向都会切分。A16W4 pergroup 可能需要修改 Controller 的分核逻辑来实现用户描述的策略。
+
+#### 3.5.2 需要评估的适配方案
+
+1. **N 方向不切分**：修改 `actualBaseN` 逻辑，固定为 `nSize`（不切 N）
+2. **多多多每核一个 expert**：修改 group 循环逻辑，每个核只处理一个 group
+3. **尾块重切分**：A16W4 ND 非转置场景不使能（与 A16W8 一致），无需额外适配
+
+### 3.5.3 ⚠️ 遗留问题：有 bias 场景 L1 空间不足
+
+当 kL1=256, nL1=256, mL1=256 时：
+
+| 区域 | 单缓冲大小 | 双缓冲总计 |
+|------|:---------:|:---------:|
+| WeightL1 | 128KB（nL1 × stepKb × baseK = 256 × 4 × 64 = 65536 half） | 256KB |
+| AL1（无 bias） | 128KB | 256KB |
+| **无 bias 总计** | | **512KB ✅** |
+| BiasL1（有 bias） | 4KB | 8KB |
+| AL1（有 bias） | 124KB | 248KB |
+| **有 bias 总计** | | **512KB ⚠️** |
+
+有 bias 时需要额外 4KB × 2 = 8KB 给 BiasL1，导致 AL1 每缓冲缩减到 124KB，但 A 矩阵（NZ 格式）需要 128KB，**差 4KB**。
+
+这是 L1 物理空间 512KB 的硬限制，暂记为遗留问题，后续评估解决方案（如减小有 bias 时的 kL1、调整 BIAS_L1_SIZE、或 A 矩阵采用单缓冲等）。
 
 ---
 
@@ -359,6 +497,30 @@ for (i = 0; i < MAX_TENSOR_CONT; i++) {
 
 - **单单单**：仅填充 `kList[0]` 和 `nList[0]`，`mList[0] = -1`（M 从 groupList 取值）
 - **多多多**：逐 tensor 填充 `mList[i]`、`kList[i]`、`nList[i]`
+
+#### 4.2.1 单单单 vs 多多多 M/K/N 来源差异
+
+| 维度 | 单单单（groupType=0） | 多多多（groupType=-1） |
+|------|:---------------------:|:---------------------:|
+| tensor 数量 | x/weight/y 各 1 个 | x/weight/y 各多个 |
+| M 来源 | groupList 差值（`m_i = groupList[i+1] - groupList[i]`） | `mList[i]`（每个 tensor 独立 M） |
+| K 来源 | `kList[0]`（所有 group 共享同一个 K） | `kList[i]`（每个 tensor 独立 K） |
+| N 来源 | `nList[0]`（所有 group 共享同一个 N） | `nList[i]`（每个 tensor 独立 N） |
+| groupNum | `weight.shape[0]`（weight 第 0 维 = E） | tensor 个数 |
+| 尾块重切分 | 可使能（NZ/转置时） | 不使能 |
+
+**Kernel 侧 SetMKN() 取值逻辑**：
+```cpp
+// 单单单
+mSize = groupList[groupIdx + 1] - groupList[groupIdx];  // 从 groupList 差值取 M
+kSize = kList[0];
+nSize = nList[0];
+
+// 多多多
+mSize = mList[groupIdx];
+kSize = kList[groupIdx];
+nSize = nList[groupIdx];
+```
 
 ### 4.3 CalcResplitTiling() 尾块重切分适用性
 
