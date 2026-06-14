@@ -12,7 +12,7 @@
  * \file mc2_log_compat.h
  * \brief Forward compatibility: provides OP_LOGE_LIBOPAPI_REPORT and OP_LOGE_FOR_*
  *        macros (EZ0008-EZ0034) when using an older log.h that only defines EZ0001-EZ0007.
- *        Include this file AFTER including "log/log.h" for correct behavior.
+ *        Includes log/log.h internally; include this file as the sole log header.
  */
 
 #ifndef MC2_LOG_COMPAT_H
@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 #include <cinttypes>
+#include "log/log.h"
 
 // ============================================================================
 // OP_LOGE_LIBOPAPI_REPORT fallback

@@ -15,7 +15,6 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_batch_mat_mul_reduce_scatter_allto_all.h"
-#include "log/log.h"
 #include "mc2_log_compat.h"
 using namespace op;
 
