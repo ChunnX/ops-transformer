@@ -105,7 +105,7 @@ struct HierarchicalAlgInfo {
     uint64_t hierarchicalAlgOptionVec;    // hierarchicalAlgOptionVec数组指针
 };
 
-enum class rtFloatOverflowMode_t {
+enum class rtFloatOverflowMode_test {
     RT_OVERFLOW_MODE_SATURATION = 0,
     RT_OVERFLOW_MODE_INFNAN,
     RT_OVERFLOW_MODE_UNDEF,
@@ -154,7 +154,7 @@ struct HcclOpConfig {
     uint32_t retryHoldTime;
     uint32_t retryIntervalTime;
     bool interHccsDisable = false; //使能rdma开关
-    rtFloatOverflowMode_t floatOverflowMode = rtFloatOverflowMode_t::RT_OVERFLOW_MODE_UNDEF;
+    rtFloatOverflowMode_test floatOverflowMode = rtFloatOverflowMode_test::RT_OVERFLOW_MODE_UNDEF;
     uint32_t multiQpThreshold = 512;  // 多QP每个QP分担数据量最小阈值
 };
 
