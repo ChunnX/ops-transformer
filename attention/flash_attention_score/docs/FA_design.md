@@ -1,6 +1,6 @@
 # Ascend FlashAttention @ arch35 (A5) 方案设计书
 
-> 状态:梳理版 v1.1 —— 在 v1.0 把白皮书事实编织进文档之后,做一轮"把硬件数算成比值"的量化完善:(1) 新增 §2.5「硬件数 → 关键比值」,用白皮书的 Cube/Vector 峰值、L2=128MB、片上内存带宽,算出 FA 的 roofline 交叉点、L2 阈值的数量级、Cube↔Vector 的 tile 周期预算骨架,把 §2.4 的定性亲和升级成可核对的数;(2) §2.4 补低精度算力阶梯行并锐化 1C:2V 行(softmax 微架构 + RegFile 才是 softmax 能藏的硬件根因);(3) §4.3 补 2-Die UMA / L2 Die 亲和对 splitCoreMode 满芯片扩展的影响,并给 §4.3.1 阈值一个实算锚;(4) §14 收口新冒出的两个 profile/硬件缺口(Vector 特殊函数吞吐、跨 Die L2 复用)。结论分级沿用 §0.3。
+> 状态:梳理版 v1.2 —— 在 v1.1 的白皮书指标量化基础上,补一轮代码导读细节:(1) §13 新增"四段式读码框架",把 host tiling、entry dispatch、base init、process pipeline 串起来;(2) FA 前向补 host→entry→稳态流水→buffer/sync 的分阶段表,并把 BMM2 写 UB/GM 的源码边界提前整理出来;(3) FAG 反向补 pre/main/post、MM1~5、Vec1~6、splitAxis/workspace 的代码流程表;(4) 新增 §13.12,把当前还没完全吃透、需要后续讨论或 profile 的点单独标出来。结论分级沿用 §0.3。
 > 图例约定:Mermaid 画数据流/握手关系,ASCII 时间线画流水排布,表格收约束与对比。
 
 ---
@@ -711,6 +711,27 @@ A2/A3 = 同步贵+纯 SIMD → 用规整换效率;A5 三特性逐项瓦解约束
 
 这一节按"先找入口,再看流水,最后看特化"的顺序组织。建议阅读时不要一开始钻进 `vector_api` 或 `deter.h`;先把 host 选了哪个模板、kernel 每一拍在干什么弄清楚,细节再回填。
 
+### 13.0 四段式读码框架
+
+arch35 的 FA/FAG 都可以先按四段读,不要被模板参数和 optional 分支带偏:
+
+| 阶段 | 代码回答的问题 | 先看哪些符号 | 读完应得到什么 |
+|---|---|---|---|
+| Host tiling | 这个 shape 用多大的 S1/S2/D 基本块、多少 core、哪条 split 路径、需要多少 workspace | FA:`CalcS1S2BasicBlock`,`SetSplitCoreModeParam`,`SetSparseStartIdx`;FAG:`SetSplitAxis`,`GetS1S2TemplateType`,`GetWorkspaceSize` | tiling key、blockDim、blockStarts/blockEnds、workspace offset |
+| Entry dispatch | AIC/AIV 各实例化哪个 kernel block,走 noquant/quant/deter 哪个模板 | `*_entry_regbase.h`,`KERNEL_TYPE_MIX_AIC_1_2` | 1 个 AIC 配 2 个 AIV 的执行拓扑,以及 dtype/optional 对模板的影响 |
+| Base init | GM/UB/L1/L0C buffer 怎么分配,CV 参数怎么传,shared params 怎么落到各核 | `InitBaseAPI`,`InitMMResBuf`,`InitCubeVecSharedParams`,`__ssbuf__` | `ConstInfo/RunInfo/CVSharedParams` 的来源,buffer 深度与同步方向 |
+| Process pipeline | 每一拍 Cube/Vector 分别在做什么,哪些 stage 需要 drain 或 post | FA:`FlashAttentionScoreKernelTrain::Process`;FAG:`FlashAttentionScoreGradKernel::Process` | BMM/Vec 的稳态时间线、sync flag、UB/L1/GM 数据路径 |
+
+把白皮书指标贴到代码时,优先看这几个入口:
+
+| 白皮书事实 | 代码落点 | 读码意义 |
+|---|---|---|
+| 每 AI Core 1 Cube + 2 Vector | `KERNEL_TYPE_MIX_AIC_1_2`,`CV_RATIO/CV_CORE_RATIO=2`,`aivIdx >> 1`,`subBlockIdx` | 为什么 FA/FAG 都按 half-S1 给两个 AIV 分活,且 blockDim 通常按 `coreNum*2` 算 |
+| UB=512KB,L1=512KB,L0A/B=64KB,L0C=256KB | `InitMMResBuf`,`GetC2Position`,`IS_DKV_RESIDENT_L0C`,各类 `BufferSelector` | 解释 N-buffer、P 走 L1、BMM2 写 UB/GM、FAG DKV L0C resident |
+| L2 up to 128MB + 片上内存带宽 | FA host `CalcThresholdForS2Size`/`SetSplitCoreModeParam` | 解释为什么大 S2 时宁愿重排多核遍历,去换 K/V 的 L2 复用 |
+| Register-Based SIMD、SIMD/SIMT、双发射 | FA `vf/*`,FAG `vector_api/*`,`__simd_vf__`,`MicroAPI::MaskReg` | 解释 mask/dropout/tail 可能的硬件落点,但 C++ 层不能闭环 lowering |
+| NDDMA/BufferID/STARS2.0 | `DataCopy`,跨核 buffer flag,workspace 读写 | 白皮书能解释能力边界,当前代码是否触发具体硬件路径仍需编译产物/profile |
+
 ### 13.1 文件地图
 
 | 模块 | 文件 | 先看什么 |
@@ -729,12 +750,53 @@ A2/A3 = 同步贵+纯 SIMD → 用规整换效率;A5 三特性逐项瓦解约束
 
 ### 13.2 FA 前向:入口到稳态流水
 
-1. 入口 `flash_attention_score_regbase` 设置 `KERNEL_TYPE_MIX_AIC_1_2`。AIC 实例化 `FANoQuantBlockCube`,AIV 实例化 `FANoQuantBlockVecTrain`;另一侧都是 dummy。
-2. AIV 在 `InitCubeVecSharedParams` 中从 tiling 填 `CVSharedParams`,subBlock0 通过 `__ssbuf__` 写给对应 AIC 并 set flag 15;AIC 在 `InitBaseAPI` wait flag 15 后读参数。
-3. 主循环在 `FlashAttentionScoreKernelTrain::Process`。代码维护 4 份 `RunInfo`,用 `taskId` 做流水相位,实际 steady state 是:
-   `BMM1(QK) -> Vec1(softmax/P) -> BMM2(PV) -> Vec2(O update)`。
-4. 循环尾部加 3 个 pseudo loops,分别 drain `Vec1/BMM2/Vec2`,避免专门写 epilogue 分支。
-5. `GetS2LoopRange` 按 sparse mode 裁剪每个 S1 外块的有效 S2 范围;支持 causal/right-down causal/band/prefix 等,并处理 drop/fp8 对齐。
+**Host 侧先决定"这个 kernel 怎么跑":**
+
+```text
+FlashAttentionScoreTilingRegbase
+  -> AnalyzeDtype/Layout/Optional/Sparse
+  -> CalcS1S2BasicBlock / CalcDBasicBlock / CalcDVBasicBlock
+  -> CalcTotalSize / SetMultiCoreParamsRegbase
+  -> SetSplitCoreModeParam 或 SetSparseStartIdx
+  -> GetTilingKey / GetWorkspaceSize / PostTiling
+  -> tilingData + workspace + blockDim
+```
+
+这一步输出的是 kernel 的"剧本":S1/S2/D 模板、`splitCoreMode`、`multiCoreInnerOffset/Limit` 或 `blockStarts/blockEnds`、dropmask/GM pingpong workspace、以及 `CalcTschBlockDim(coreNum*2,aicNum,aivNum)` 这种 1C:2V blockDim。
+
+**Entry/Base 侧把剧本分发给 AIC/AIV:**
+
+```text
+flash_attention_score_regbase
+  -> KERNEL_TYPE_MIX_AIC_1_2
+  -> AIC: FANoQuantBlockCube / quant cube / dummy vec
+  -> AIV: FANoQuantBlockVecTrain / quant vec / dummy cube
+  -> InitBaseAPI
+       AIV subBlock0: InitCubeVecSharedParams -> __ssbuf__ -> flag 15
+       AIC: wait flag 15 -> read CVSharedParams
+       both: init ConstInfo, GM tensors, UB/L1/GM buffers
+```
+
+这里最容易漏的是 `__ssbuf__` 传参:很多 `sharedParams` 不是 AIC 自己从 tilingData 重新算,而是 AIV subBlock0 填好后发给配对 AIC。读到 AIC 侧 `sharedParams` 字段时,要反查 `InitCubeVecSharedParams`。
+
+**Process 稳态流水在 `FlashAttentionScoreKernelTrain::Process`:**
+
+| 相位 | 条件 | AIC 动作 | AIV 动作 | 对应数据 |
+|---|---|---|---|---|
+| 当前 task | `notLastThreeLoop` | `SetRunInfo` 后 `IterateBmm1` | 无 | Q/K -> S,写 `bmm1Buffers` |
+| task-1 | `taskId>0 && notLastTwoLoop` | 无 | `ProcessVec1` | S -> mask/PSE/dropout/softmax -> P,写 `l1PBuffers` |
+| task-2 | `taskId>1 && notLast` | `IterateBmm2` | 无 | P/V -> O partial,写 `bmm2Buffers` 或 `bmm2ResGmBuffers` |
+| task-3 | `taskId>2` | 无 | `ProcessVec2` | O online update/div/cast,写 GM output |
+| 伪循环 | 末尾额外 3 次 | 不再产生新 BMM1 | 依次 drain Vec1/BMM2/Vec2 | 避免单独 epilogue 分支 |
+
+代码用 4 份 `RunInfo` 做环形索引:`runInfo[taskId & 3]` 是新 BMM1,`runInfo[(taskId+3)&3]` 给 Vec1,`runInfo[(taskId+2)&3]` 给 BMM2,`runInfo[(taskId+1)&3]` 给 Vec2。这个索引关系读顺了,整个前向主循环就不绕了。
+
+**S2 内循环与 sparse 裁剪:**
+
+- 外层 `multiCoreInnerIdx` 先映射到真实 `(B,N2,G,S1o)`。`splitCoreMode==1` 时还有 Sequential/Symmetric/Cyclic 三种 `realCoreInnerIdx` 映射;否则直接用 host 给的连续区间。
+- `GetS2LoopRange` 再为这个 S1 外块裁剪 `s2LineStartIdx/s2LineEndIdx`,支持 causal/right-down causal/band/prefix 等 sparse mode。
+- `s2LoopLimit = ceil((end-start)/s2BaseSize)-1`;若得到 `-1`,说明这个 S1 块没有有效 S2 基本块,主流水跳过。
+- FP8 会把 `s2LineStartIdx` 向 128 对齐,invalid-line high precision 场景会保底一个 128 范围,这类边角最好最后再看。
 
 ### 13.3 FA 前向:关键数据路径
 
@@ -751,6 +813,29 @@ AIC: wait L1 P + load V -> BMM2 -> L0C --Fixpipe--> UB bmm2Buffers 或 GM bmm2Re
 AIV: online update/correction/div/cast -> GM attentionOut
 ```
 
+**前向 buffer/sync 速查:**
+
+| Buffer | 物理层级/深度 | 生产者 -> 消费者 | 里面是什么 | 为什么这么放 |
+|---|---|---|---|---|
+| `bmm1Buffers` | UB DB,`CROSS_CORE_SYNC_BOTH` | AIC BMM1 -> AIV Vec1 | S=QK^T 的 half-S1 结果 | S 是 C->V 的主跨界张量,UB 容量足够承接 128x128/half-S1 |
+| `l1PBuffers` | L1 3-buffer,`CROSS_CORE_SYNC_FORWARD` | AIV Vec1 -> AIC BMM2 | softmax 后的 P/Ptilde | P 马上被 BMM2 当矩阵输入消费,L1 更贴 Cube 读路径,3-buffer 吸收时延抖动 |
+| `bmm2Buffers` | UB DB 或 Single | AIC BMM2 -> AIV Vec2 | O partial | D/Dv 小且模板允许时省 GM 往返 |
+| `bmm2ResGmBuffers` | GM 3-buffer workspace | AIC BMM2 -> AIV Vec2 | O partial 分块 | 大 D/FP32/optional 导致 UB 不够或路径复杂时,用 GM pingpong 解耦 |
+| `__ssbuf__` + flag 15 | 特殊共享区 | AIV subBlock0 -> AIC | `CVSharedParams` | AIC 读到的 shared params 很多来自 AIV 预处理,不是自己独立算 |
+
+**BMM2 写 UB/GM 的源码边界已经能初步整理:**
+
+| 条件 | `GetC2Position` 结果 | 含义 |
+|---|---|---|
+| `optionalDn` 或 `isMlaNoQuant` | UB/VECCALC | 这些路径强制让 Vector 侧直接处理 |
+| `dTemplateType<=Aligned128` | UB/VECCALC | D 小,UB 承载 O partial 成本可控 |
+| `ubOutCondition && dTemplateType<=Aligned192` | UB/VECCALC | D=192 只有在下方 `UbOutCondition` 返回 true 时走 UB |
+| `ubOutCondition && isMlaFullQuant` | UB/VECCALC | MLA fullquant 特化 |
+| `isNdS2Size256` | UB/VECCALC | ND + S2=256 特化 |
+| 其他 | GM | 走 `bmm2ResGmBuffers`,Vec2 分块读回 |
+
+`UbOutCondition` 的主逻辑是:FP8/INT8+RoPE、FP8/INT8 只带 attenMask、无 optional 且非 S2Base64 或 FP32 时返回 true。这个表已经够做第一版导读,但还没覆盖所有量化/MLA/Dn 组合的典型 shape,后面 Track A1 再补 case 表。
+
 这里最重要的优化点:
 
 - **1C:2V 拆 S1 半块**:`CV_RATIO=2`,单个 AIV 处理 `s1BaseSize/2` 行,所以 MM 结果 buffer 以 half-S1 为单位给 Vector。
@@ -765,6 +850,15 @@ AIV: online update/correction/div/cast -> GM attentionOut
 
 host 侧先解析 layout/dtype/optional/sparse,再给 kernel 生成模板 key 与任务表(概念层的"为什么"见 §4.3):
 
+| Host 产物 | 主要来源 | Kernel 消费点 | 读码提示 |
+|---|---|---|---|
+| `s1BaseSize/s2BaseSize` | `CalcS1S2BasicBlock` | `Process` 的 S1/S2 外内循环、`GetS2LoopRange` | 先确认模板尺寸,否则后面所有 offset 都看不懂 |
+| `dTemplateType/dVTemplateType` | `CalcDBasicBlock/CalcDVBasicBlock` | Cube BMM selector、Vector D split、`GetC2Position` | D>256 会跳到 768 模板,通常触发更复杂的 GM/分块路径 |
+| `splitCoreMode/firstFullLoadS1OuterIdx` | `SetSplitCoreModeParam` | `Process` 中 `CalcRealCoreIdx` 三种 dispatch | 这是 L2 复用策略的开关,不是普通 sparse start idx |
+| `multiCoreInnerOffset/Limit` 或 sparse start | `SetSparseStartIdx`/multi-core params | `Process` 外层 `multiCoreInnerIdx` | `splitCoreMode==0` 时使用,控制每个 core 的连续有效块 |
+| workspace offset | `GetWorkspaceSize`/`PostTiling` | base init 的 GM tensor 切分 | BMM2 GM 3-buffer、dropmask adapter、reserve 都从这里来 |
+| `blockDim` | `PostTiling` | kernel launch | 常规按 1C:2V 算,dropmask adapter 有 AIV-only 例外 |
+
 - `CalcS1S2BasicBlock`:决定 S1/S2 模板。常规 `128x128`;长 S2 简洁路径可 `128x256`;HIFLOAT8 可 `128x512`;D>256 降 S2 到 128,FP32 还会降 S1 到 64。
 - `CalcDBasicBlock/CalcDVBasicBlock`:D/Dv 向 64/128/192/256/768 桶对齐,D>256 统一落到 768 模板。
 - `SetSplitCoreModeParam`:非 TND 大 S、causal/band/all-mask/no-mask 等场景会按 L2/mask/dropmask 阈值决定是否打开 `splitCoreMode==1`(对应 §4.3 的 Sequential/Symmetric/Cyclic 三种 dispatch)。**这是 `splitCoreMode==1` 路径**。
@@ -774,28 +868,88 @@ host 侧先解析 layout/dtype/optional/sparse,再给 kernel 生成模板 key �
 
 ### 13.5 FAG 反向:三阶段与主流水
 
-FAG 入口同样是 `KERNEL_TYPE_MIX_AIC_1_2`,但执行阶段更多:
+FAG 的 host 侧比 FA 更关键,因为它决定主循环是哪一种输出冲突模型:
 
-1. **pre**:`FlashAttentionScoreGradS1S2BNGS1S2PreRegbase` 清/准备 DQDKDV workspace 或处理 dropmask/sink;若 `enablePreSfmg`,走 `FlashAttentionScoreGradPresfmgRegbase` 预计算 softmax grad 相关数据。HIFLOAT8/FP8 强制走 quant pre。
-2. **main**:`FlashAttentionScoreGradKernel` 或 deterministic/quant 变体。普通 main 的 steady state 是:
-   `MM1(dY*V) + MM2(Q*K) -> Vec1/Vec2/Vec3/Vec4 -> MM3(dS*K), MM4(dS*Q), MM5(P*dY) -> Vec5/6 cast/muls`。
-3. **post**:非 FP32 输出或 sink/rope 等路径会把 FP32 workspace cast/归并到最终 `dq/dk/dv/dqRope/dkRope/dsink`。
+```text
+FlashAttentionScoreGradTilingNormalRegbase
+  -> Analyze shape/layout/dtype/optional/sparse/deterministic
+  -> SetSplitAxis(BN2 / BN2S2 / BN2GS1S2,附带 isBn2MultiBlk)
+  -> GetS1S2TemplateType / GetDTemplateType / GetWorkspaceSize
+  -> 判断 enablePreSfmg、dropmask workspace、sink/RoPE/deterministic workspace
+  -> tilingData + blockStarts/blockEnds + workspace offset
+```
+
+Entry 同样使用 `KERNEL_TYPE_MIX_AIC_1_2`,但有 pre/main/post 三段:
+
+| 阶段 | 入口分支 | 作用 | 什么时候重点看 |
+|---|---|---|---|
+| pre | `FlashAttentionScoreGradS1S2BNGS1S2PreRegbase` / `FlashAttentionScoreGradPresfmgRegbase` / quant pre | 清 workspace、准备 dropmask/sink,或预计算 softmax grad 相关数据 | 非 FP32 输出、dropmask 非 8 对齐、sink、`enablePreSfmg`、FP8/HIFLOAT8 |
+| main | `FlashAttentionScoreGradKernel` / `FlashAttentionScoreGradKernelDeter` / quant main | 反向主体流水:重算 QK/P,生成 dS,计算 DQ/DK/DV | 先读普通 main,再看 deter/quant 如何复用或替换 |
+| post | `FlashAttentionScoreGradS1S2BNGS1S2PostRegbase` / quant post | FP32 workspace cast/归并到最终输出,处理 RoPE/sink/deterministic 结果 | 输出 dtype 非 FP32 或有额外输出冲突时 |
+
+普通 main 的核心在 `FlashAttentionScoreGradKernel::Process`,可以按下面这张表读:
+
+| 阶段 | 触发条件/相位 | AIC 动作 | AIV 动作 | 中间结果 |
+|---|---|---|---|---|
+| MM1 | 当前 block | `IterateMmDyV` | 无 | `dY * V` -> `mm1ResBuf` |
+| MM2 | 当前 block | `IterateMmQK` | 无 | `Q * K` -> `mm2ResBuf` |
+| Vec1 | `taskId>0 && !enablePreSfmg` | 无 | `ProcessVec1` | softmax grad 前半;若 `enablePreSfmg` 则由 pre/main workspace 代替 |
+| CopyMaxSum | 当前 block | 无 | `CopyMaxSum` | 读 max/sum double buffer,为 softmax 重算准备 |
+| Vec2 | `taskId>0`,等待 MM1/MM2 | 无 | `ProcessVec2` | PSE/attenMask/simpleSoftmax,重构 P/softmax 相关量 |
+| Vec3 | Vec2 后 | 无 | `ProcessVec3` | dropout/cast/ND2NZ,生成 dS 并写 `dSL1Buf` |
+| Vec4 | Vec2 后 | 无 | `ProcessVec4` | 生成 P 并写 `pL1Buf` |
+| MM3 | 等 `dSL1Buf` | `IterateMmDsK` | 可接 `ProcessMulsAndCast<DQ>` | `dS * K` -> DQ 或 DQ workspace |
+| MM4 | 等 `dSL1Buf` | `IterateMmDsQ` | 可接 `ProcessMulsAndCast<DK>` | `dS^T * Q` -> DK 或 DK workspace |
+| MM5 | 等 `pL1Buf` | `IterateMmPDy` | 可接 `ProcessMulsAndCast<DV>` | `P^T * dY` -> DV 或 DV workspace |
+
+这张表只是主干。真正读代码时要同时看 `SPLIT_AXIS`:
+
+- `BN2 && !IS_BN2_MULTIBLK`:DQ/DK/DV 更容易走 UB 结果后立刻 `ProcessMulsAndCast`,workspace 小,分支最多。
+- `BN2 && IS_BN2_MULTIBLK`:同一 DK/DV 输出可能被多个 S1/S2 基本块连续命中,代码用 `isNextS2IdxNoChange/isLastS1Outer` 决定何时累加、何时写回。
+- `BN2S2`:长 S2 优化路径,DK/DV 有 L0C/UB 驻留机会,但同步条件更细。
+- `BN2GS1S2`:通用兜底,更多依赖 FP32 GM workspace + post。
 
 主循环关键同步在 `flash_attention_score_grad_common.h`:
 
-- `SYNC_C1_TO_V2_FLAG[2]` / `SYNC_C2_TO_V2_FLAG[2]`:MM1/MM2 结果给 Vec2。
-- `SYNC_V3_TO_C3_FLAG` / `SYNC_V4_TO_C5_FLAG`:dS/P 从 UB 写 L1 后,MM3/MM5 才能读。
-- `SYNC_C3_TO_V5_FLAG`, `SYNC_C4_TO_V6_FLAG`, `SYNC_C4_TO_V3_FLAG`, `SYNC_C5_TO_V4_FLAG`:DQ/DK/DV 的 MM 结果与 Vector cast/muls 之间同步。
-- `SYNC_DETER_FIX_FLAG` 等:UB 写回/确定性路径的防踩踏同步。
+| Sync flag | 方向 | 保护什么 |
+|---|---|---|
+| `SYNC_C1_TO_V2_FLAG[2]` / `SYNC_C2_TO_V2_FLAG[2]` | AIC -> AIV | MM1/MM2 结果给 Vec2 |
+| `SYNC_V3_TO_C3_FLAG` | AIV -> AIC | dS 从 UB 写 L1 完成后,MM3 才读 |
+| `SYNC_V4_TO_C5_FLAG` | AIV -> AIC | P 从 UB 写 L1 完成后,MM5 才读 |
+| `SYNC_C3_TO_V5_FLAG` | AIC -> AIV | DQ MM 结果给 Vector scale/cast |
+| `SYNC_C4_TO_V6_FLAG` | AIC -> AIV | DK MM 结果给 Vector scale/cast |
+| `SYNC_C4_TO_V3_FLAG` / `SYNC_C5_TO_V4_FLAG` | AIC -> AIV | 复用 UB/L1 buffer 前防止 Vec3/Vec4 踩写 |
+| `SYNC_DETER_FIX_FLAG` 等 | 双向/特化 | deterministic 或 UB fixpipe 写回路径的防踩踏 |
 
 ### 13.6 FAG splitAxis 与 workspace
 
 `SetSplitAxis` 是读 FAG 的入口之一,它决定后面代码形态:
 
+| 路径 | 近似命中条件(以源码为准) | 主要收益 | 主要排除项 |
+|---|---|---|---|
+| `BN2` | `s1/s2<=BN2_MAX_S`,`n1==n2`,`d==d1<=256`,非 FP32/FP8/HIFLOAT8,无 RoPE,tail 清爽 | 中间结果更容易留 UB,少写 GM workspace | TND 且 D>128、dropout 非 8 对齐会退回;multi-block 条件命中时仍归 `BN2` 大类 |
+| `BN2` multi-block | BN 规模足够大,S1/S2 超出普通 BN2 但不超过 multi-block 上限,仍满足 `n1==n2,d<=256,非 FP32/FP8/HIFLOAT8,无 RoPE` | 扩大 BN2 覆盖范围,按多个 S1/S2 基本块累加 DK/DV | TND、PREFIX/PREFIX_COMPRESS、dropout 非 8 对齐、RoPE |
+| `BN2S2` | TND,或 all-same 且非 deter,或非 TND 中 `s1<s2` 且 `s2-s1>=BN2_MAX_S` 且非 sparse/deter;同时要求 D<=上限、`n1==n2`、非 FP32/FP8/HIFLOAT8、无 RoPE | 长 S2 下减少 DKV workspace/写回压力 | FP32/FP8/HIFLOAT8、RoPE、`n1!=n2`;非 TND 长 S2 还排 sparse/deter |
+| `BN2GS1S2` | 兜底 | optional/dtype/layout 覆盖最广 | workspace 和 post 压力最大 |
+
+可以把 `SetSplitAxis` 简化成下面的读码顺序:
+
+```text
+isBn2 = small S + n1==n2 + d==d1<=256 + non-fp32/fp8/hifloat8 + no rope + clean tail
+isBn2MultiBlk = bn/sparse limits + larger S within multi-block bound + same dtype/layout constraints
+isBn2 = isBn2 || isBn2MultiBlk
+if BN2 path hits but TND D>128 or dropout tail bad: drop BN2 and restore deterministic flag
+bn2S2RouteLimit = no rope + d<=256 + n1==n2 + non-fp32/fp8/hifloat8
+                   + (TND or (all-same && !deter) or long-S2-not-TND-without-sparse/deter)
+splitAxis = BN2 if isBn2 else BN2S2 if bn2S2RouteLimit else BN2GS1S2
+```
+
 - `BN2`:S1/S2 都不大、`n1==n2`、D/Dv 相等且 `d<=256`、非 FP32/FP8/HIFLOAT8、无 RoPE、tail 清爽时命中。优点是 DQ/DK 中间结果更容易留在 UB,workspace 小。
 - `BN2` multi-block:BN 规模较大、S1/S2 在限制内且仍满足 BN2 条件时命中。多 S1/S2 基本块会让 DK/DV 在同一输出上累加,代码用 `isNextS2IdxNoChange/isLastS1Outer` 控制何时 cast/write。
-- `BN2S2`:TND/all-same 或 S2 比 S1 大很多的路径,且非 sparse/deterministic/FP32/FP8/RoPE。重点优化长 S2 下 DKV 的局部性。
+- `BN2S2`:TND、all-same 非 deterministic、或非 TND 长 S2 非 sparse/deterministic 的路径。重点优化长 S2 下 DKV 的局部性。
 - `BN2GS1S2`:兜底通用路径,workspace 最大,但覆盖 optional/sparse/dtype 更广。
+
+与白皮书指标的关系:这些分支本质是在 UB/L1/L0C 512K/512K/256K 的容量约束内,尽量把 DQ/DK/DV 的临时累加留在片上;一旦 dtype、D、sparse、RoPE 或 deterministic 让输出冲突/容量变复杂,就退到 GM workspace + post。
 
 workspace 读法:
 
@@ -826,6 +980,7 @@ workspace 读法:
 5. 反向先读普通 `FlashAttentionScoreGradKernel::Process`,把 MM1~5 和 Vec1~6 对齐到 §13.5。
 6. 回 host 看 `SetSplitAxis` 与 workspace,分别挑 BN2、BN2S2、BN2GS1S2 case 对照主循环分支。
 7. 最后读 deterministic 与 quant:它们复用了大量普通 block,先抓额外 workspace/flag/scale,再看坐标或量化细节。
+8. 读到不确定处先放进 §13.12,不要在主线里硬下结论;能靠代码闭环的再移到 §14 Track A。
 
 ### 13.9 后续深挖 TODO
 
@@ -847,7 +1002,7 @@ workspace 读法:
 | S2 太大是否回退 | 源码已确认:无上界回退,命中下界后保持 `splitCoreMode==1`;`NO_MASK+HIFLOAT8` 有直接打开特例 | profile 看收益是否衰减 |
 | `PREFIX/PREFIX_COMPRESS` 是否进新分核 | 源码已确认:不进 `SetSplitCoreModeParam` 三种 dispatch,走 sparse parse/`SetSparseStartIdx`/`GetS2LoopRange` | 若讲 prefix 性能,单独读 sparse start idx 分配 |
 | BMM2 写 UB 还是 GM | 代码可完全闭环:`UbOutCondition`+`GetC2Position` 已给出 D、optional、FP8/INT8/RoPE、S1/S2 模板、MLA/Dn 边界 | 整理 case 表即可,不需硬件资料 |
-| FAG `splitAxis` 三路选择 | 代码可完全闭环:`SetSplitAxis` 已给出 BN2、BN2 multi、BN2S2、BN2GS1S2 的 dtype/layout/sparse/shape/deterministic 条件 | 补伪代码和典型 shape 对照 |
+| FAG `splitAxis` 四路选择 | 代码可完全闭环:`SetSplitAxis` 已给出 BN2、BN2 multi、BN2S2、BN2GS1S2 的 dtype/layout/sparse/shape/deterministic 条件 | 补伪代码和典型 shape 对照 |
 | FAG `needAtomic` | 代码可继续闭环:DQ/DK/DV 的 `needAtomic` 主条件在 block cube;取决于 `SPLIT_AXIS`、BN2 multi、DKV 是否 L0C resident、S2 是否连续命中同一输出 | 画输出冲突/归并图;deterministic workspace 再读 deter/post |
 | FA/FAG mask/dropout/tail 底层形态 | 白皮书确认硬件支持 SIMD/SIMT,VF 可选 SIMD/SIMT;C++ 能定位 `__simd_vf__`、`MicroAPI::MaskReg`、`UpdateMask/CreateMask` 与 unaligned/tail 分支 | 当前 VF 是否真落 SIMT、是否免 pad,需编译产物或 profile |
 | 双发射槽位组合 | 白皮书确认双发射 Register-Based SIMD + 乱序执行;C++ 只看到软件流水、buffer 深度和独立计算流,无手写双发射配对 | 需汇编/profile 看具体槽位组合和是否触发 |
@@ -876,6 +1031,22 @@ workspace 读法:
 
 **操作 C — 把一条数据路径"贴回硬件"(验证 §2.4 的某一行)。**
 任取 §2.4 一行,例如"P 经 L1 回传":在 §13.3 数据路径图上标出它经过的物理层级(L0C→UB→cast→L1→BMM2 读),数一数 CV 同步次数和占用的 buffer;再设想"若走 UB 回传"会多几次同步——这就把"为什么贴 L1"从文字变成可核对的层级账。每核对一行,在 §2.4 对应行后面加一个 ✔(已贴实)或保留待 profile 标记。
+
+### 13.12 当前还没完全吃透/建议讨论
+
+下面这些不是阻塞读码主线的问题,但不建议在文档里过早写死。后续可以按"能读代码闭环"和"必须 profile/汇编"拆开推进。
+
+| 点 | 当前理解 | 不确定处 | 建议下一步 |
+|---|---|---|---|
+| `GetC2Position` 完整 case 表 | 主干条件已经能整理:小 D/部分 D192/ND S2=256/MLA/Dn 走 UB,否则 GM | 量化、MLA、Dn、optional 组合很多,还没有按真实 shape 展开 | Track A1:把每个 constexpr 分支整理成 shape 表 |
+| FA `splitCoreMode` 的满芯片收益 | 源码实现了下界触发和三种 dispatch,白皮书 L2=128MB 支撑"复用 K/V"的方向 | 2-Die UMA 下同一 K/V 是否跨 Die 被多个 core 消费,源码看不到 | Track B6:profile L2 hit 按 Die/核拆分 |
+| Vector VF 是否真落 SIMT | 白皮书确认 VF 可 SIMD/SIMT 快速切换,源码能看到 `__simd_vf__`/mask API | C++ 层看不到最终 lowering,不能证明尾块/稀疏是真 ragged 免 pad | Track B3:反汇编或 profile tail/mask case |
+| 双发射利用 | 白皮书确认 Register-Based SIMD 双发和乱序执行;代码有足够独立流与软件流水 | 具体槽位组合、特殊函数 exp 吞吐、是否真双发都未知 | Track B4/B5:看汇编 IPC 和 tile timeline |
+| CrossCore event FIFO 深度 | 代码有大量 `CrossCoreSetFlag/WaitFlag`;白皮书给了 BufferID/STARS 能力 | FIFO 深度、flag 压力与 N-buffer 最优值无法从源码/白皮书读出 | 硬件资料或压力 microbench |
+| FAG `needAtomic` 与 deterministic | 能定位到普通/deter/post 路径,也能看出 splitAxis 影响输出冲突 | 还没画出 DQ/DK/DV 每个 splitAxis 下谁会多核写同一输出 | Track A3/A7:先画输出冲突图,再读 deter workspace |
+| `enablePreSfmg` 的收益边界 | base 侧 D>128 且 tiling 开关才真正启用,pre kernel 会预处理 softmax grad | host 为什么在具体 shape 上打开、预处理节省多少主流水时间还没量化 | 用 D=128/192/256 三组 shape 对比 timeline |
+| NDDMA 是否参与关键搬运 | 白皮书支持最多 5 维重排和细粒度读聚合;源码大量 `DataCopy`/ND2NZ | 当前 FA/FAG 哪些 `DataCopy` lower 到 NDDMA 看不到 | 编译产物或 profiler 的 DMA 指标 |
+| D=192/Dv=128 FAG 特判 | 代码里有独立 L0C resident special,容量直觉与 L0C=256KB 对得上 | 还没把精确容量式和各 MM 临时大小写成表 | Track A4:按 dtype/模板列容量账 |
 
 ---
 
