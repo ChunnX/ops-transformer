@@ -524,9 +524,40 @@ phase 1: core0->t(2*coreNum-1), core1->t(2*coreNum-2), ..., core(coreNum-1)->t(c
 
 代码层能确定的是调度形态和触发条件;“Cyclic 丢多少 L2 局部性、换回多少均衡” 不是源码能推出的数值结论,需要 profile 的 L2 hit、MTE/HBM、AIC/AIV 利用率来量化。
 
-> 满芯片扩展注(白皮书引入的新维度):昇腾950是 2-Die UMA,L2 跨 Die 可访问但**有局部亲和性**,STARS 还支持按 Die 亲和的 Group 调度(最多 8 Group)。这意味着 §2.5(3) 的"strided 让多核聚在同一份 K/V"在满芯片下要再细一层:同一 Die 内的核共享本 Die L2 亲和区,跨 Die 复用同一份 K/V 可能要走代价更高的远端 L2/UMA。当前 kernel C++ 不显式区分 Die,但若 profile 看到 splitCoreMode 在大 coreNum 下收益打折,**第一个要查的就是任务重排是否把同一 K/V 的消费核打散到了两个 Die**(对照 C9 / B6)。
+#### 4.3.7 2-Die/L2 亲和:源码能证到哪一层
 
-#### 4.3.7 与 arch22 / FAG 的关系
+白皮书说 "2-Die UMA,但 L2 有局部亲和性" 之后,`splitCoreMode` 要拆成两层看:
+
+```text
+算子源码能控制:  逻辑 aicIdx -> realCoreInnerIdx -> (B,N2,G,S1o) 的顺序
+调度/硬件决定:  逻辑 aicIdx -> 物理 AI Core -> 所属 AI Die / 本地 L2 亲和区
+```
+
+源码**已经证实**第一层:它在制造 K/V 的 L2 时间局部性。
+
+- host 的 `CalcThresholdForS2Size` 直接拿 platform `l2CacheSize` 做容量账,先扣 attenMask/dropMask,再扣 Q,最后用 `thresholdS2Size = l2Remain / (n2Num * (D + Dv) * dtypeSize)` 算 K/V 能容纳的 S2 上限。这里 `n1Num/n2Num = min(2*actualUsedCoreNum, ...)`,注释也写了"假设所有核计算的 N 都不同"和"判断是否能同时存下不同 N 的两轮计算的数据量"。也就是说,host 估的是**默认并发会同时拉进多少份 Q/K/V 工作集**。
+- kernel 的 `CalcRealCoreIdx` 用 `linear = times * coreNum + relativePos`,让同一拍的相邻 logical AIC 处理相邻的一维 task;`ComputeAxisIdx` 再把这个一维 task 解成 non-TND 的 `(bo,n2o,go,s1o)`,且顺序是 `s1o` 最快、`G` 次之、`N2` 再次之、`B` 最慢。因此 full 段里相邻 logical AIC 优先覆盖同一 `(B,N2,G)` 下不同 `S1o`;若跨到相邻 `G`,在 GQA/MQA 场景里仍可能共享同一 `(B,N2)` 的 K/V。
+- TND 走 `CalcRealCoreIdxVarlen`:一个周期内先正序 `aicIdx`,再倒序 `2*coreNum-aicIdx-1`,目的也是把不规则 varlen task 的访问窗口限制在局部折返区间,而不是让每个 core 长时间钉在远端连续区间。
+
+源码**没有证实**第二层:它没有显式按 Die 建 Group。
+
+- `PostTiling` 只调用 `CalcTschBlockDim(coreNum*2,aicNum,aivNum)` 来发出 1C:2V 所需 block 数;kernel base 里 AIC 用 `GetBlockIdx()` 得到 `aicIdx`,AIV 用 `GetBlockIdx() >> 1` 映射回配对 AIC。这些都是 logical block/core id。
+- 当前 FA kernel C++ 中没有 `dieId/groupId/STARS group` 之类字段,也没有"把一组复用同一 K/V 的 logical aicIdx 固定放在同一 Die"的显式代码。`multiCoreIdxMod3` 是流水/buffer 的 modulo-3 标记,不是 Die 亲和标记。
+- 因此,白皮书里的 STARS Die Group 亲和更像是**运行时/调度层能提供的能力**:如果 TSCH/STARS 把连续 logical AIC 区间映射到同一 Die,那么上面的 strided 复用窗口就会自然落在本地 L2;如果物理落核把同一个 K/V 复用窗口拆到两个 Die,同一份 K/V 可能在两个 Die 的 L2 各自填充,或者经远端 L2/UMA/D2D 访问,收益就会打折。
+
+一个小例子能说明这个边界。假设 full 段 `coreNum=64, s1OuterSize=8, G=1`,同一拍:
+
+```text
+logical aic 0..7   -> 同一 (B,N2=0) 的 8 个 S1o,读同一份 K/V0
+logical aic 8..15  -> 同一 (B,N2=1) 的 8 个 S1o,读同一份 K/V1
+...
+```
+
+如果物理映射是 `0..31` 在 Die0、`32..63` 在 Die1,那每个 K/V 复用组完整落在一个 Die 内,本地 L2 亲和最好;如果物理映射是奇偶交错到两个 Die,则 `aic0..7` 这个 K/V0 组会被拆开,本来一份本地 L2 热数据会变成跨 Die 或双 Die 各自填充。源码无法告诉我们实际是哪一种,只能通过 profile/调度信息验证。
+
+所以这条注的准确表述是:FA 源码的 `splitCoreMode` 已经把逻辑任务顺序整理成 L2 友好的 K/V 滑动窗口;2-Die 亲和决定这个逻辑窗口能不能落成本地 Die 内的 L2 复用。后续若要闭环,需要在一个大 coreNum shape 上同时记录 `(aicIdx, realCoreInnerIdx, bo,n2o,go,s1o)` 和 profiler 的 per-Die/per-core L2 hit、MTE/HBM 流量(§14-B6)。
+
+#### 4.3.8 与 arch22 / FAG 的关系
 
 arch22 常规 FA 分核更接近:
 
