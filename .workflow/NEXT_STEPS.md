@@ -54,13 +54,13 @@
 
 ## 任务 5：设计 GMM A16W4 PerGroup ND 测试用例
 
-**任务状态**：待开始
+**任务状态**：✅ 已完成
 
-**简要说明**：基于算子约束说明和 01/02/03/04 设计文档，设计具体的测试用例，给出具体参数设置。包括 tiling 异常拦截、精度用例、功能用例、性能用例、泛化用例和 kernel 打桩验证用例（兼容性用例暂不考虑）。产出用例设计文档和输入 Excel 表格（每个 sheet 对应一种类型），相关脚本和用例结果均放在 `.workflow/raw/design/` 目录下。
+**简要说明**：基于算子约束说明和 01/02/03/04 设计文档，设计具体的测试用例，给出具体参数设置。包括 tiling 异常拦截（黑盒）、精度（黑盒）、功能（黑盒）、性能（黑盒）、泛化（黑盒）、kernel 打桩验证（白盒插桩级）、tiling 白盒（端到端级）、kernel 白盒（端到端级）。产出用例设计文档和输入 Excel 表格（8 个 sheet），相关脚本和用例结果均放在 `.workflow/raw/design/` 目录下。
 
 **产出文件**：
-- `.workflow/raw/design/05_test_case_design.md` — 用例设计文档
-- `.workflow/raw/design/test_cases_*.xlsx` — 用例输入 Excel 表格（6 个 sheet）
+- `.workflow/raw/design/05_test_case_design.md` — 用例设计文档（162 个用例）
+- `.workflow/raw/design/test_cases_gmm_a16w4_pergroup_nd.xlsx` — 用例输入 Excel 表格（8 个 sheet）
 - `.workflow/raw/design/generate_test_cases.py` — 用例生成脚本
 
 **任务详情**：[详细任务说明](reference/next_steps/5_test_case_design.md)

@@ -9,14 +9,22 @@
 ## 任务目标
 
 设计 GMM A16W4 PerGroup ND 数据流的具体测试用例，给出每个用例的完整参数设置，包括：
-- **Tiling 异常拦截用例**：验证 tiling 阶段的参数校验和错误拦截
-- **精度用例**：验证计算结果的正确性（与 CPU 参考实现对比）
-- **功能用例**：验证各种参数组合下的功能正确性
-- **性能用例**：验证关键场景下的性能表现
-- **泛化用例**：验证边界值和特殊场景
-- **Kernel 打桩验证用例**：通过打桩调试逐步确认 kernel 中每个搬运和计算逻辑的正确性
+- **Tiling 异常拦截用例**：验证 tiling 阶段的参数校验和错误拦截（黑盒，基于规格约束设计）
+- **精度用例**：验证计算结果的正确性（与 CPU 参考实现对比）（黑盒，基于 dtype 组合设计）
+- **功能用例**：验证各种参数组合下的功能正确性（黑盒，基于参数组合设计）
+- **性能用例**：验证关键场景下的性能表现（黑盒）
+- **泛化用例**：验证边界值和特殊场景（黑盒，基于规格边界值设计）
+- **Kernel 打桩验证用例**：通过打桩调试逐步确认 kernel 中每个搬运和计算逻辑的正确性（白盒，插桩级）
+- **Tiling 白盒用例**：基于 tiling 代码路径设计，端到端验证 tiling 计算中间结果的正确性（白盒，端到端级）
+- **Kernel 白盒用例**：基于 kernel 代码路径设计，端到端验证各分支/分发逻辑的正确性（白盒，端到端级）
 
 **注意**：兼容性用例暂不考虑（由后续回归测试覆盖）。
+
+**白盒用例设计原则**：
+- 白盒用例的设计依据是**代码内部路径**，而非规格文档的约束条件
+- 每个白盒用例必须明确标注**覆盖的代码路径**（函数名 + 分支条件）
+- 白盒用例可以是端到端执行（不需要插桩），但设计时必须明确"这个用例是为了覆盖哪条代码路径"
+- 白盒用例与黑盒用例可能有重叠（同一个输入既覆盖规格组合又覆盖代码路径），但设计出发点不同
 
 ## 必须读取的输入文档
 
@@ -378,6 +386,286 @@
 - 给出用例编号（KS-XX）和简要描述
 - 标注验证阶段（MTE/VF/Address/Tiling/Matmul）
 
+### 7. Tiling 白盒用例
+
+**目标**：基于 tiling 代码路径设计端到端用例，验证 tiling 计算过程中各分支/函数的中间结果正确性。不需要插桩，通过检查 tiling 输出结构体（`GMMWeightQuantParam`）的字段值来验证。
+
+**设计依据**：
+- 03_tiling_design.md §1（Tiling Data 设计）
+- 03_tiling_design.md §2（Tiling 拦截校验）
+- 03_tiling_design.md §3（Tiling 计算方案）
+- 03_tiling_design.md §4（Shape List 切分）
+- gmm_a16w8_tiling_walkthrough.md（SetTiling 完整流程）
+
+**用例分类**：
+
+#### 7.1 IsA16W4NDPergroup 判断路径
+
+- **TW-01**: pergroup 场景正确识别
+  - 输入：antiquantScale shape = (E, G, N) = (4, 4, 256)，3 维
+  - 覆盖路径：`IsA16W4NDPergroup()` → `groupSize_ > 0` 为 true
+  - 验证：tiling 输出中 `groupSize = 128`（K=512, G=4 → gs=128）
+  
+- **TW-02**: perchannel 场景不误判为 pergroup
+  - 输入：antiquantScale shape = (E, N) = (4, 256)，2 维
+  - 覆盖路径：`IsA16W4NDPergroup()` → `groupSize_ == 0` 为 true
+  - 验证：tiling 输出中 `groupSize = 0`
+
+- **TW-03**: 多多多 pergroup 2 维 scale 正确识别
+  - 输入：多多多，antiquantScale shape = (G_i, N_i) = (4, 256)，2 维，K=512
+  - 覆盖路径：`SetAntiquantGroupSize()` 中 `antiquantScaleDimNum == 2 && IsA16W4ND()` 分支
+  - 验证：`groupSize = 128`（K/G = 512/4 = 128）
+
+#### 7.2 SetAntiquantGroupSize 路径
+
+- **TW-04**: 单单单 3 维 scale groupSize 推导
+  - 输入：单单单，scale shape = (4, 8, 256)，K=1024
+  - 覆盖路径：`SetAntiquantGroupSize()` 中 `antiquantScaleDimNum == 3` 分支
+  - 验证：`groupSize = 128`（K/G = 1024/8 = 128）
+
+- **TW-05**: group_size=32 场景
+  - 输入：K=256，scale shape = (4, 8, 256)（G=8 → gs=32）
+  - 覆盖路径：`CheckGroupSize()` 中 `groupSize_ == 32` 分支
+  - 验证：`groupSize = 32`，校验通过
+
+- **TW-06**: group_size=64 场景
+  - 输入：K=256，scale shape = (4, 4, 256)（G=4 → gs=64）
+  - 覆盖路径：`CheckGroupSize()` 中 `groupSize_ == 64` 分支
+  - 验证：`groupSize = 64`
+
+- **TW-07**: group_size=256 场景
+  - 输入：K=256，scale shape = (4, 1, 256)（G=1 → gs=256）
+  - 覆盖路径：`CheckGroupSize()` 中 `groupSize_ == 256` 分支
+  - 验证：`groupSize = 256`
+
+#### 7.3 SetTilingKey 路径
+
+- **TW-08**: pergroup antiquantType 设置
+  - 输入：pergroup 场景（groupSize > 0）
+  - 覆盖路径：`SetTilingKey()` 中 `IsA16W4NDPergroup()` → `antiquantType = PER_GROUP`
+  - 验证：tiling key 中 `W_QUANT_TYPE = WQGMM_PER_GROUP`
+
+- **TW-09**: perchannel antiquantType 设置（对比）
+  - 输入：perchannel 场景（groupSize == 0）
+  - 覆盖路径：`SetTilingKey()` 中 else 分支 → `antiquantType = PER_CHANNEL`
+  - 验证：tiling key 中 `W_QUANT_TYPE = WQGMM_PER_CHANNEL`
+
+- **TW-10**: 转置场景 tiling key
+  - 输入：pergroup + 转置
+  - 覆盖路径：`SetTilingKey()` 中 `transB_ == true` → `WQ_B_TRANS = WQGMM_TRANS`
+  - 验证：tiling key 中 `WQ_B_TRANS = 1`
+
+- **TW-11**: 非转置场景 tiling key
+  - 输入：pergroup + 非转置
+  - 覆盖路径：`SetTilingKey()` 中 `transB_ == false` → `WQ_B_TRANS = WQGMM_NO_TRANS`
+  - 验证：tiling key 中 `WQ_B_TRANS = 0`
+
+#### 7.4 SetShapeList 路径
+
+- **TW-12**: 单单单 shape list 填充
+  - 输入：单单单，x(256,512), weight(4,256,512), E=4
+  - 覆盖路径：`SetShapeListSplitMSingleXSingleWeightSingleY()`
+  - 验证：`groupNum=4, mSize=256, kSize=512, nSize=256, kList[0]=512, nList[0]=256, mList[0]=-1`
+
+- **TW-13**: 多多多 shape list 填充
+  - 输入：多多多，E=4，各 expert 的 m/k/n 不同
+  - 覆盖路径：`SetShapeListMultiXMultiWeightMultiY()`
+  - 验证：`mList[i]`、`kList[i]`、`nList[i]` 逐 tensor 正确填充
+
+- **TW-14**: INT4 weight nSize 扩展
+  - 输入：单单单，非转置，weight shape = (4, 32, 512)（INT4 存储，N 实际 = 32*8 = 256）
+  - 覆盖路径：`SetShapeListSplitMSingleXSingleWeightSingleY()` 中 `weightDtype_ == DT_INT4 && !transB_` → `nSize_ = 8 * nSize_`
+  - 验证：`nSize = 256`
+
+#### 7.5 baseM/baseN/baseK 计算路径
+
+- **TW-15**: 默认 base 值（无 bias）
+  - 输入：pergroup，无 bias，M=512, N=512
+  - 覆盖路径：`SetBaseTiling()` 中默认值设置
+  - 验证：`baseM=256, baseN=256, baseK=64`
+
+- **TW-16**: 有 bias 时 baseM 调整
+  - 输入：pergroup，有 bias，M=512, N=512
+  - 覆盖路径：`SetBaseTiling()` 中 `hasBias` 分支 → `baseM=240`
+  - 验证：`baseM=240`
+
+#### 7.6 CalcResplitTiling 路径
+
+- **TW-17**: 多多多 ND 不使能尾块重切分
+  - 输入：多多多 + ND
+  - 覆盖路径：`EnableTailResplit()` → 多多多 → 不使能
+  - 验证：`mainBlockSize = 0`（不使能标志）
+
+- **TW-18**: 单单单 ND 非转置不使能尾块重切分
+  - 输入：单单单 + ND + 非转置
+  - 覆盖路径：`EnableTailResplit()` → 单单单 + ND + B非转置 → 不使能
+  - 验证：`mainBlockSize = 0`
+
+#### 7.7 GMMWeightQuantParam 字段完整性
+
+- **TW-19**: 完整参数传递验证（单单单）
+  - 输入：单单单，E=4, M=256, K=512, N=256, gs=128, 有 bias, 非转置
+  - 覆盖路径：`SetTiling()` 完整流程
+  - 验证：`groupNum=4, coreNum>0, kSize=512, nSize=256, singleX=1, singleWeight=1, singleY=1, groupType=0, groupListType=0, hasBias=1, groupSize=128`
+
+- **TW-20**: 完整参数传递验证（多多多）
+  - 输入：多多多，E=4, 各 expert m_i/k_i/n_i 不同, gs=128, 无 bias, 非转置
+  - 覆盖路径：`SetTiling()` 完整流程
+  - 验证：`singleX=0, singleWeight=0, singleY=0, groupType=-1, hasBias=0, groupSize=128`
+
+**参数设置要求**：
+- 给出完整的 shape 设置（M/K/N/E/group_size）
+- 给出 groupType（单单单/多多多）和转置状态
+- 明确标注**覆盖的代码路径**（函数名 + 分支条件）
+- 给出 tiling 输出结构体中的预期字段值
+- 给出用例编号（TW-XX）和简要描述
+
+### 8. Kernel 白盒用例
+
+**目标**：基于 kernel 代码路径设计端到端用例，验证各分支/分发逻辑的正确性。不需要插桩，通过端到端执行并检查最终输出来间接验证特定代码路径被正确执行。
+
+**设计依据**：
+- 04_kernel_design.md §1（Controller 层适配）
+- 04_kernel_design.md §2（BasicBlock 层适配）
+- 04_kernel_design.md §3（L1/UB 空间划分方案）
+- 04_kernel_design.md §4（Vec 反量化函数实现）
+- 01_deliverables.md §4（grouped_matmul_apt.cpp kernel 入口适配）
+- gmm_a16w8_kernel_walkthrough.md（Controller 完整流程）
+
+**用例分类**：
+
+#### 8.1 grouped_matmul_apt.cpp if constexpr 分支覆盖
+
+- **KW-01**: pergroup 无offset无bias 非转置分支
+  - 输入：pergroup, 无 offset, 无 bias, 非转置
+  - 覆盖路径：`V310_GMM_ANTI_QUANT` → `W_TYPE==WQGMM_ND && OFFSET_OR_BIAS_EXIT==NOT_EXIST_BIAS_NOT_EXIST && W_QUANT_TYPE==WQGMM_PER_GROUP && WQ_B_TRANS==WQGMM_NO_TRANS`
+  - 验证：端到端计算正确，确认使用了 `A16W4_NDKN_PG` 配置
+  
+- **KW-02**: pergroup 无offset有bias 非转置分支
+  - 输入：pergroup, 无 offset, 有 bias, 非转置
+  - 覆盖路径：`OFFSET_OR_BIAS_EXIT==NOT_EXIST_BIAS_EXIST`
+  - 验证：端到端计算正确
+
+- **KW-03**: pergroup 有offset无bias 非转置分支
+  - 输入：pergroup, 有 offset, 无 bias, 非转置
+  - 覆盖路径：`OFFSET_OR_BIAS_EXIT==EXIST_BIAS_NOT_EXIST`
+  - 验证：端到端计算正确
+
+- **KW-04**: pergroup 有offset有bias 非转置分支
+  - 输入：pergroup, 有 offset, 有 bias, 非转置
+  - 覆盖路径：`OFFSET_OR_BIAS_EXIT==EXIST_BIAS_EXIST`
+  - 验证：端到端计算正确
+
+- **KW-05**: pergroup 无offset无bias 转置分支
+  - 输入：pergroup, 无 offset, 无 bias, 转置
+  - 覆盖路径：`WQ_B_TRANS==WQGMM_TRANS` → 使用 `A16W4_NDNK_PG` 配置
+  - 验证：端到端计算正确
+
+- **KW-06**: pergroup 有offset有bias 转置分支
+  - 输入：pergroup, 有 offset, 有 bias, 转置
+  - 覆盖路径：`WQ_B_TRANS==WQGMM_TRANS && OFFSET_OR_BIAS_EXIT==EXIST_BIAS_EXIST`
+  - 验证：端到端计算正确
+
+#### 8.2 ComputeBasicBlock 分发路径
+
+- **KW-07**: ND 非转置 → NdKn 路径
+  - 输入：pergroup, ND, 非转置
+  - 覆盖路径：`ComputeBasicBlock()` → `(ND && !bTrans)` → `ComputeBasicBlockAivNdKnNzNk()`
+  - 验证：端到端计算正确（K 为内轴路径）
+
+- **KW-08**: ND 转置 → NdNk 路径
+  - 输入：pergroup, ND, 转置
+  - 覆盖路径：`ComputeBasicBlock()` → else → `ComputeBasicBlockAivNdNkNzKn()`
+  - 验证：端到端计算正确（N 为内轴路径）
+
+#### 8.3 GetBufferConfig 分支覆盖
+
+- **KW-09**: pergroup ND buffer 配置
+  - 输入：pergroup, ND
+  - 覆盖路径：`GetBufferConfig()` → `weightFormat==ND && antiQuantType==PER_GROUP` → `GetNdPerGroupBufferInfo()`
+  - 验证：端到端计算正确（scale UB = 8KB 配置被使用）
+
+- **KW-10**: perchannel ND buffer 配置（对比，确保不影响）
+  - 输入：perchannel, ND
+  - 覆盖路径：`GetBufferConfig()` → `weightFormat==ND && antiQuantType!=PER_GROUP` → `GetNdBufferInfo()`
+  - 验证：端到端计算正确（原有 perchannel 路径不受影响）
+
+#### 8.4 VF 函数 groupSize 运行时分支覆盖
+
+- **KW-11**: groupSize=32 VF 分支
+  - 输入：pergroup, gs=32, K=256
+  - 覆盖路径：`AntiQuantInt4NdNkPerGroup()` → `groupSize == 32` 分支
+  - 验证：端到端计算正确
+
+- **KW-12**: groupSize=64 VF 分支
+  - 输入：pergroup, gs=64, K=256
+  - 覆盖路径：`AntiQuantInt4NdNkPerGroup()` → `groupSize == 64` 分支
+  - 验证：端到端计算正确
+
+- **KW-13**: groupSize=128 VF 分支
+  - 输入：pergroup, gs=128, K=512
+  - 覆盖路径：`AntiQuantInt4NdNkPerGroup()` → `groupSize == 128` 分支
+  - 验证：端到端计算正确
+
+- **KW-14**: groupSize=256 VF 分支
+  - 输入：pergroup, gs=256, K=512
+  - 覆盖路径：`AntiQuantInt4NdNkPerGroup()` → `groupSize == 256` 分支
+  - 验证：端到端计算正确
+
+#### 8.5 CopyAntiQuantParamsGmToUb PER_GROUP 分支
+
+- **KW-15**: pergroup scale 2D copy（多多多）
+  - 输入：多多多, pergroup, scale shape = (G_i, N_i)
+  - 覆盖路径：`CopyAntiQuantParamsGmToUb()` → `PER_GROUP` 分支 → 2D copy
+  - 验证：端到端计算正确（scale 正确加载到 UB）
+
+- **KW-16**: pergroup scale 2D copy（单单单）
+  - 输入：单单单, pergroup, scale shape = (E, G, N)
+  - 覆盖路径：`CopyAntiQuantParamsGmToUb()` → `PER_GROUP` 分支 → 2D copy（单单单偏移）
+  - 验证：端到端计算正确
+
+#### 8.6 SetGmAddr pergroup 偏移路径
+
+- **KW-17**: pergroup 单单单多 group 偏移序列
+  - 输入：单单单, E=8, K=512, N=256, gs=128
+  - 覆盖路径：`SetGmAddr()` → `if constexpr (PER_GROUP)` → `antiquantParamsBaseOffset += (kSize/gs) * nSize`
+  - 验证：端到端计算正确（8 个 group 的 scale 偏移序列正确）
+
+- **KW-18**: pergroup bias 偏移分离
+  - 输入：单单单, E=4, K=512, N=256, gs=128, 有 bias
+  - 覆盖路径：`SetGmAddr()` → `biasBaseOffset += nSize`（独立于 antiquantParamsBaseOffset）
+  - 验证：端到端计算正确（bias 和 scale 偏移独立）
+
+#### 8.7 AIC/AIV 协作路径
+
+- **KW-19**: 多 BasicBlock 迭代（M > baseM）
+  - 输入：多多多, M=1024, N=256, K=512, gs=128
+  - 覆盖路径：`Process()` 中 baseM 动态调整 → 多个 BasicBlock 迭代
+  - 验证：端到端计算正确（多块拼接正确）
+
+- **KW-20**: 多 BasicBlock 迭代（N > baseN）
+  - 输入：多多多, M=256, N=1024, K=512, gs=128
+  - 覆盖路径：`Process()` 中 baseN 动态调整 → N 方向多块
+  - 验证：端到端计算正确
+
+- **KW-21**: K 方向多 kBlock 迭代
+  - 输入：多多多, M=256, N=256, K=2048, gs=128
+  - 覆盖路径：`WeightAntiQuantCompute()` 中 K 方向多 kBlock 循环
+  - 验证：端到端计算正确（K 方向累加正确）
+
+- **KW-22**: 单 BasicBlock（M ≤ baseM, N ≤ baseN）
+  - 输入：多多多, M=64, N=64, K=128, gs=128
+  - 覆盖路径：`Process()` 中单块直接计算，无迭代
+  - 验证：端到端计算正确
+
+**参数设置要求**：
+- 给出完整的 shape 设置（M/K/N/E/group_size）
+- 给出 groupType（单单单/多多多）和转置状态
+- 明确标注**覆盖的代码路径**（函数名 + 分支条件）
+- 给出预期结果（端到端计算正确，与 CPU 参考实现对比）
+- 给出用例编号（KW-XX）和简要描述
+- 标注精度容差（rtol/atol）
+
 ## 产出要求
 
 ### 1. 用例设计文档
@@ -395,12 +683,14 @@
 **文件路径**：`.workflow/raw/design/test_cases_gmm_a16w4_pergroup_nd.xlsx`
 
 **Sheet 结构**：
-- Sheet 1: `tiling_exception` — Tiling 异常拦截用例
-- Sheet 2: `precision` — 精度用例
-- Sheet 3: `functional` — 功能用例
-- Sheet 4: `performance` — 性能用例
-- Sheet 5: `generalization` — 泛化用例
-- Sheet 6: `kernel_stub` — Kernel 打桩验证用例
+- Sheet 1: `tiling_exception` — Tiling 异常拦截用例（黑盒）
+- Sheet 2: `precision` — 精度用例（黑盒）
+- Sheet 3: `functional` — 功能用例（黑盒）
+- Sheet 4: `performance` — 性能用例（黑盒）
+- Sheet 5: `generalization` — 泛化用例（黑盒）
+- Sheet 6: `kernel_stub` — Kernel 打桩验证用例（白盒，插桩级）
+- Sheet 7: `tiling_whitebox` — Tiling 白盒用例（白盒，端到端级）
+- Sheet 8: `kernel_whitebox` — Kernel 白盒用例（白盒，端到端级）
 
 **每个 Sheet 的列定义**：
 
@@ -442,6 +732,49 @@
 - `transpose_weight`: 是否转置（0/1）
 - `group_type`: groupType（-1/0）
 - `expected_output`: 预期输出值或验证方法
+- `priority`: 优先级（P0/P1/P2）
+- `remarks`: 备注
+
+**Sheet 7 (tiling_whitebox) 专用列**：
+- `case_id`: 用例编号（TW-XX）
+- `description`: 用例描述
+- `code_path`: 覆盖的代码路径（函数名 + 分支条件）
+- `group_type`: groupType（-1/0）
+- `x_dtype`: x 的 dtype
+- `weight_dtype`: weight 的 dtype
+- `bias_dtype`: bias 的 dtype（可为 null）
+- `antiquant_scale_dtype`: antiquantScale 的 dtype
+- `antiquant_offset_dtype`: antiquantOffset 的 dtype（可为 null）
+- `x_shape`: x 的 shape
+- `weight_shape`: weight 的 shape
+- `antiquant_scale_shape`: antiquantScale 的 shape
+- `antiquant_offset_shape`: antiquantOffset 的 shape（可为空）
+- `group_size`: group_size 值
+- `transpose_weight`: 是否转置（0/1）
+- `group_list_type`: groupListType（0/1）
+- `expected_tiling_fields`: 预期 tiling 输出字段值（如 "groupSize=128, groupNum=4"）
+- `priority`: 优先级（P0/P1/P2）
+- `remarks`: 备注
+
+**Sheet 8 (kernel_whitebox) 专用列**：
+- `case_id`: 用例编号（KW-XX）
+- `description`: 用例描述
+- `code_path`: 覆盖的代码路径（函数名 + 分支条件）
+- `group_type`: groupType（-1/0）
+- `x_dtype`: x 的 dtype
+- `weight_dtype`: weight 的 dtype
+- `bias_dtype`: bias 的 dtype（可为 null）
+- `antiquant_scale_dtype`: antiquantScale 的 dtype
+- `antiquant_offset_dtype`: antiquantOffset 的 dtype（可为 null）
+- `x_shape`: x 的 shape
+- `weight_shape`: weight 的 shape
+- `antiquant_scale_shape`: antiquantScale 的 shape
+- `antiquant_offset_shape`: antiquantOffset 的 shape（可为空）
+- `group_size`: group_size 值
+- `transpose_weight`: 是否转置（0/1）
+- `expected_result`: 预期结果（如 "PASS"）
+- `rtol`: 相对精度容差
+- `atol`: 绝对精度容差
 - `priority`: 优先级（P0/P1/P2）
 - `remarks`: 备注
 
@@ -501,6 +834,18 @@ def generate_kernel_stub_cases():
     # ... 添加用例（KS-01 到 KS-22）
     return cases
 
+def generate_tiling_whitebox_cases():
+    """生成 tiling 白盒用例"""
+    cases = []
+    # ... 添加用例（TW-01 到 TW-20）
+    return cases
+
+def generate_kernel_whitebox_cases():
+    """生成 kernel 白盒用例"""
+    cases = []
+    # ... 添加用例（KW-01 到 KW-22）
+    return cases
+
 def main():
     output_path = "test_cases_gmm_a16w4_pergroup_nd.xlsx"
     
@@ -522,6 +867,12 @@ def main():
         
         kernel_stub_cases = generate_kernel_stub_cases()
         pd.DataFrame(kernel_stub_cases).to_excel(writer, sheet_name='kernel_stub', index=False)
+        
+        tiling_whitebox_cases = generate_tiling_whitebox_cases()
+        pd.DataFrame(tiling_whitebox_cases).to_excel(writer, sheet_name='tiling_whitebox', index=False)
+        
+        kernel_whitebox_cases = generate_kernel_whitebox_cases()
+        pd.DataFrame(kernel_whitebox_cases).to_excel(writer, sheet_name='kernel_whitebox', index=False)
     
     print(f"Generated {output_path}")
 
@@ -531,7 +882,7 @@ if __name__ == "__main__":
 
 ## 完成标准
 
-- [ ] 用例设计文档覆盖所有 6 种用例类型
+- [ ] 用例设计文档覆盖所有 8 种用例类型（5 黑盒 + 1 插桩白盒 + 2 端到端白盒）
 - [ ] 每个用例有完整的参数设置（dtype/format/shape/group_size 等）
 - [ ] Tiling 异常拦截用例覆盖算子规格文档中的所有约束条件
 - [ ] 精度用例覆盖所有 dtype 组合（FLOAT16/BFLOAT16 × bias/offset 有无）
@@ -539,7 +890,10 @@ if __name__ == "__main__":
 - [ ] 性能用例覆盖典型 MoE 场景和大/小 shape 场景
 - [ ] 泛化用例覆盖边界值和特殊组合
 - [ ] Kernel 打桩验证用例覆盖 MTE 搬运、VF 计算、地址偏移、tiling 参数传递、matmul 计算等关键阶段
-- [ ] Excel 文件包含 6 个 sheet，每个 sheet 列定义完整
+- [ ] Tiling 白盒用例覆盖 IsA16W4NDPergroup、SetAntiquantGroupSize、SetTilingKey、SetShapeList、baseM/baseN/baseK、CalcResplitTiling 等代码路径
+- [ ] Kernel 白盒用例覆盖 if constexpr 分支、ComputeBasicBlock 分发、GetBufferConfig 分支、VF groupSize 分支、CopyAntiQuantParamsGmToUb PER_GROUP 分支、SetGmAddr pergroup 偏移、AIC/AIV 协作等代码路径
+- [ ] 每个白盒用例明确标注覆盖的代码路径（函数名 + 分支条件）
+- [ ] Excel 文件包含 8 个 sheet，每个 sheet 列定义完整
 - [ ] Python 脚本可执行，生成的 Excel 文件与文档一致
 - [ ] 用例编号规范，描述清晰，优先级标注合理
 
@@ -552,10 +906,12 @@ if __name__ == "__main__":
 5. **设计性能用例**，覆盖典型场景
 6. **设计泛化用例**，覆盖边界值
 7. **设计 Kernel 打桩验证用例**，覆盖 MTE 搬运、VF 计算、地址偏移、tiling 参数传递、matmul 计算等关键阶段
-8. **编写用例设计文档**（05_test_case_design.md）
-9. **编写 Python 脚本**（generate_test_cases.py）
-10. **执行脚本生成 Excel 文件**（test_cases_gmm_a16w4_pergroup_nd.xlsx）
-11. **检查文档和 Excel 的一致性**
+8. **设计 Tiling 白盒用例**，基于 tiling 代码路径设计端到端用例（IsA16W4NDPergroup、SetAntiquantGroupSize、SetTilingKey、SetShapeList、baseM/baseN/baseK、CalcResplitTiling）
+9. **设计 Kernel 白盒用例**，基于 kernel 代码路径设计端到端用例（if constexpr 分支、ComputeBasicBlock 分发、GetBufferConfig 分支、VF groupSize 分支、CopyAntiQuantParamsGmToUb PER_GROUP 分支、SetGmAddr pergroup 偏移、AIC/AIV 协作）
+10. **编写用例设计文档**（05_test_case_design.md）
+11. **编写 Python 脚本**（generate_test_cases.py）
+12. **执行脚本生成 Excel 文件**（test_cases_gmm_a16w4_pergroup_nd.xlsx）
+13. **检查文档和 Excel 的一致性**
 
 ## 注意事项
 

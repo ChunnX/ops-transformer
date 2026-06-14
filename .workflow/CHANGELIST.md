@@ -180,3 +180,79 @@
 #### 影响范围
 - 仅规划文档变更，不涉及代码
 - 任务 5 产出将作为后续编码验证的直接依据
+
+---
+
+### 2026-06-13 | 任务 5 完成：GMM A16W4 PerGroup ND 测试用例设计
+
+**类型**: 📝 文档
+**范围**: 测试用例设计文档 + Excel 表格 + 生成脚本
+
+#### 变更内容
+- 新增 `raw/design/05_test_case_design.md`：完整测试用例设计文档（120 个用例）
+- 新增 `raw/design/test_cases_gmm_a16w4_pergroup_nd.xlsx`：6 sheet Excel 表格
+- 新增 `raw/design/generate_test_cases.py`：Python 生成脚本（pandas + openpyxl）
+
+#### 用例统计
+| 类型 | 数量 | 编号范围 |
+|------|------|----------|
+| Tiling 异常拦截 | 44 | T-01 ~ T-44 |
+| 精度验证 | 9 | P-01 ~ P-09 |
+| 功能验证 | 27 | F-01 ~ F-27 |
+| 性能验证 | 6 | PERF-01 ~ PERF-06 |
+| 泛化验证 | 12 | G-01 ~ G-12 |
+| Kernel 打桩验证 | 22 | KS-01 ~ KS-22 |
+| **总计** | **120** | |
+
+#### 关键决策
+- **Kernel 打桩验证用例**：新增 KS-01~KS-22，覆盖 MTE 搬运、VF 计算、地址偏移、tiling 参数传递、matmul 计算 5 个关键阶段
+- **N=1 约束**：因 weight 最后一维必须为偶数，极小 N 用例使用 N=2 替代 N=1
+- **精度容差**：FP16 使用 rtol=1e-3/atol=1e-3，BF16 使用 rtol=1e-2/atol=1e-2
+- **bias 偏移分离**：KS-16 专门验证 bias 独立偏移（pergroup 场景下 bias 与 scale 偏移不同）
+
+#### 影响范围
+- 为后续编码实现提供明确的验证目标
+- Excel 文件可直接用于测试框架的参数化驱动
+
+---
+
+### 2026-06-14 | 补充 Tiling/Kernel 白盒用例
+
+**类型**: 📝 文档
+**范围**: 测试用例设计文档 + Excel 表格 + 生成脚本
+
+#### 变更内容
+- 更新 `raw/design/05_test_case_design.md`：新增 §8 Tiling 白盒用例（TW-01~TW-20）和 §9 Kernel 白盒用例（KW-01~KW-22）
+- 更新 `raw/design/generate_test_cases.py`：新增 `generate_tiling_whitebox_cases()` 和 `generate_kernel_whitebox_cases()` 函数
+- 重新生成 `raw/design/test_cases_gmm_a16w4_pergroup_nd.xlsx`：8 个 sheet，162 个用例
+
+#### 新增用例统计
+| 类型 | 数量 | 编号范围 | 测试方法 |
+|------|------|----------|----------|
+| Tiling 白盒 | 20 | TW-01 ~ TW-20 | 白盒（端到端级） |
+| Kernel 白盒 | 22 | KW-01 ~ KW-22 | 白盒（端到端级） |
+| **新增小计** | **42** | | |
+
+#### 累计用例统计
+| 类型 | 数量 | 测试方法 |
+|------|------|----------|
+| Tiling 异常拦截 | 44 | 黑盒 |
+| 精度验证 | 9 | 黑盒 |
+| 功能验证 | 27 | 黑盒 |
+| 性能验证 | 6 | 黑盒 |
+| 泛化验证 | 12 | 黑盒 |
+| Kernel 打桩验证 | 22 | 白盒（插桩级） |
+| Tiling 白盒 | 20 | 白盒（端到端级） |
+| Kernel 白盒 | 22 | 白盒（端到端级） |
+| **总计** | **162** | |
+
+#### 关键决策
+- **白盒用例设计原则**：设计依据是代码内部路径（函数名 + 分支条件），而非规格约束
+- **Tiling 白盒覆盖路径**：IsA16W4NDPergroup 判断、SetAntiquantGroupSize、SetTilingKey、SetShapeList、baseM/baseN/baseK 计算、CalcResplitTiling、GMMWeightQuantParam 字段完整性
+- **Kernel 白盒覆盖路径**：if constexpr 分支、ComputeBasicBlock 分发、GetBufferConfig 分支、VF groupSize 运行时分支、CopyAntiQuantParamsGmToUb PER_GROUP 分支、SetGmAddr pergroup 偏移、AIC/AIV 协作
+- **端到端执行**：白盒用例不需要插桩，通过检查最终输出或 tiling 结构体字段值来验证
+
+#### 影响范围
+- 测试用例总数从 120 增加到 162
+- Excel 文件从 6 个 sheet 增加到 8 个 sheet
+- 为编码阶段提供更完整的代码路径覆盖验证目标
