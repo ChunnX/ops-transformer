@@ -33,6 +33,11 @@ if (BUILD_OPEN_PROJECT)  # custom
             OP_NAME MoeDistributeDispatchV3
             OPTIONS --cce-auto-sync=off
         )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend950")
+        add_ops_compile_options(
+            OP_NAME MoeDistributeDispatchV3
+            OPTIONS -D_DEBUG --cce-enable-print
+        )
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE moe_distribute_dispatch_v3 ACLNNTYPE aclnn_inner)
