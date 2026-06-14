@@ -1156,18 +1156,18 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitScatterBuffer(uint32_t serverId)
 {
-    if (serverId == serverId_) {
-        InitQuantBuffer<CommMode::INTRA_NODE>(); // 初始化量化参数
-        tpipe_->InitBuffer(xInQueue_, 1, hAlignSize_); // 17.5K 
-        tpipe_->InitBuffer(xOutQueue_, 1, hOutAlignUbSize_); //16.03K
-        tpipe_->InitBuffer(expertScalesBuf_, axisK_ * sizeof(float)); //16 * 4
-        tpipe_->InitBuffer(xTempQueue_, 1, hCommuSize_); // 17.5KB
-        tokenData_ = xInQueue_.AllocTensor<XInType>();
-        insertFlagTensor_ = xTempQueue_.AllocTensor<XOutType>();
-        expertScalesTensor_ = expertScalesBuf_.Get<float>();
-    } else {
+    // if (serverId == serverId_) {
+    //     InitQuantBuffer<CommMode::INTRA_NODE>(); // 初始化量化参数
+    //     tpipe_->InitBuffer(xInQueue_, 1, hAlignSize_); // 17.5K 
+    //     tpipe_->InitBuffer(xOutQueue_, 1, hOutAlignUbSize_); //16.03K
+    //     tpipe_->InitBuffer(expertScalesBuf_, axisK_ * sizeof(float)); //16 * 4
+    //     tpipe_->InitBuffer(xTempQueue_, 1, hCommuSize_); // 17.5KB
+    //     tokenData_ = xInQueue_.AllocTensor<XInType>();
+    //     insertFlagTensor_ = xTempQueue_.AllocTensor<XOutType>();
+    //     expertScalesTensor_ = expertScalesBuf_.Get<float>();
+    // } else {
         tpipe_->InitBuffer(xSendBuf_,sendTokenLength_); //17K
-    }
+    // }
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1476,7 +1476,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->InitBuffer(xTempQueue_, BUFFER_NUM, hCommuSize_); // 17.5KB
 
     commFlagTensor_ = flagBuf_.Get<uint32_t>();
-    tokenData_ = xInQueue_.AllocTensor<XInType>();
     insertFlagTensor_ = xTempQueue_.AllocTensor<XOutType>();
     tokenRcvStatus_ = tokenRcvStatusBuf.Get<uint32_t>();
     flagRecvTensor_ = tokenFlagBuf.Get<float32_t>();
@@ -1546,7 +1545,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         WaitToken(sendTokenNum, serverIndex, startTokenId);
         CleanTokenFlag(serverIndex, startTokenId, sendTokenNum);
     }
-    xInQueue_.FreeTensor<XInType>(tokenData_);
     //LOG_INFO("[GatherTokenFrRemote] end");
 }
 
@@ -1675,17 +1673,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             uint32_t tokenIndex, uint32_t topKIndex, uint32_t expertIndex,
             uint32_t srcRankIndex, float expertScale)
 {
-    xInQueue_.EnQue(tokenData_);
-    tokenData_ = xInQueue_.DeQue<XInType>();
+    LocalTensor<XInType> tokenData = xInQueue_.DeQue<XInType>();
     xTempQueue_.EnQue(insertFlagTensor_);
     insertFlagTensor_ = xTempQueue_.DeQue<XOutType>();
     if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
         xOutTensor_ = xOutQueue_.AllocTensor<XOutType>();
         if constexpr (QuantMode > UNQUANT) {
-            quantInst_.QuantProcess(xOutTensor_, tokenData_, expertIndex, scalesCount_, scalesGMTensor_); // 量化
+            quantInst_.QuantProcess(xOutTensor_, tokenData, expertIndex, scalesCount_, scalesGMTensor_); // 量化
         }
         else { // 非量化直转hifp8
-            Cast(floatLocalTemp_, tokenData_, RoundMode::CAST_NONE, axisH_);  
+            Cast(floatLocalTemp_, tokenData, RoundMode::CAST_NONE, axisH_);  
             Cast(xOutTensor_, floatLocalTemp_, RoundMode::CAST_ROUND, axisH_);
         }
         xOutQueue_.EnQue(xOutTensor_);
@@ -1695,7 +1692,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         xOutQueue_.FreeTensor<XOutType>(xOutTensor_);
     } else {
         xOutTensor_ = xOutQueue_.AllocTensor<XOutType>();
-        DataCopy(xOutTensor_, tokenData_, hAlignSize_ / sizeof(XOutType));
+        DataCopy(xOutTensor_, tokenData, hAlignSize_ / sizeof(XOutType));
         if constexpr (IsSmoothScaleExist) {
             DataCopyPadParams padParams = {true, 0, 0, 0};
             DataCopyParams scaleInParams = {1U, static_cast<uint16_t>(scaleInBytes_), 0U, 0U};
@@ -1718,9 +1715,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     //LOG_INFO("[SendToExpert][moe] rcvCnt",rcvCnt);
     QuantCleanTensor();
     LocalTensor<XInType> recvTmpTensor = tokenInQueue_.DeQue<XInType>();
-    xInQueue_.EnQue(tokenData_);
-    tokenData_ = xInQueue_.DeQue<XInType>();
-    DataCopy(tokenData_, recvTmpTensor, hAlignSize_ / sizeof(XInType));
+    LocalTensor<XInType> tokenData = xInQueue_.AllocTensor<XInType>();
+    DataCopy(tokenData, recvTmpTensor, hAlignSize_ / sizeof(XInType));
+    xInQueue_.EnQue(tokenData);
     LocalTensor<int16_t> xInTensorInt16 = recvTmpTensor.template ReinterpretCast<int16_t>();
     LocalTensor<uint32_t> xInTensor = recvTmpTensor.template ReinterpretCast<uint32_t>();
     LocalTensor<float> xInToFloatTensor = recvTmpTensor.template ReinterpretCast<float>();
@@ -1761,6 +1758,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         ProcessToken(rankGM, tokenIndex, axisK_ + shareIndex, shareIndex, srcRankIndex, expertScale);
     }
      tokenInQueue_.FreeTensor<XInType>(recvTmpTensor);
+     xInQueue_.FreeTensor<XInType>(tokenData);
     //PipeBarrier<PIPE_ALL>();
     //todo:先用PipeBarrier<PIPE_V>()同步
 }
