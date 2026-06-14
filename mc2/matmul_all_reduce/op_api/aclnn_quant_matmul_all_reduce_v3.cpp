@@ -390,8 +390,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
             uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
             if (commMode == Mc2Comm::COMM_MODE_AICPU) {
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+                OP_LOGD("QuantMatmulAllReduce", "A5 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
             } else {
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+                OP_LOGD("QuantMatmulAllReduce", "A5 platform, use CCU mode");
             }
         }
     }
