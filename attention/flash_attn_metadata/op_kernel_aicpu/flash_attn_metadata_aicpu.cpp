@@ -164,7 +164,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
         baseInfo.actualQuerySeqSize.resize(batchSize_, baseInfo.querySeqSize);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = cuSeqlensQ[i + 1];
-            baseInfo.querySeqSize = 
+            baseInfo.querySeqSize =
                 std::max(static_cast<int64_t>(baseInfo.querySeqSize), cuSeqlensQ[i + 1] - cuSeqlensQ[i]);
         }
     }
@@ -177,7 +177,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
             if (baseInfo.isCumulativeQuerySeq && (i > 0)) {
                 baseInfo.actualQuerySeqSize[i] += baseInfo.actualQuerySeqSize[i - 1];
             }
-            baseInfo.querySeqSize = 
+            baseInfo.querySeqSize =
                 std::max(static_cast<int64_t>(baseInfo.querySeqSize), sequsedQ[i]);
         }
     }
@@ -187,7 +187,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
         baseInfo.actualKvSeqSize.resize(batchSize_, baseInfo.kvSeqSize);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualKvSeqSize[i] = cuSeqlensKv[i + 1];
-            baseInfo.kvSeqSize = 
+            baseInfo.kvSeqSize =
                 std::max(static_cast<int64_t>(baseInfo.kvSeqSize), cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
         }
     }
@@ -200,7 +200,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
             if (baseInfo.isCumulativeKvSeq && (i > 0)) {
                 baseInfo.actualKvSeqSize[i] += baseInfo.actualKvSeqSize[i - 1];
             }
-            baseInfo.kvSeqSize = 
+            baseInfo.kvSeqSize =
                 std::max(static_cast<int64_t>(baseInfo.kvSeqSize), sequsedKv[i]);
         }
     }
