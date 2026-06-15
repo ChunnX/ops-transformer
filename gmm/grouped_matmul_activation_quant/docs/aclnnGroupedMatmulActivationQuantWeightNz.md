@@ -63,7 +63,7 @@
 
       - **输出**：
 
-        * $Y \in \mathbb{F8}^{M \times N}$：激活并量化后的输出矩阵，数据类型由quantDtypeOptional指定，当前支持FLOAT8_E4M3FN、FLOAT8_E5M2。
+        * $Y \in \mathbb{F8}^{M \times N}$：激活并量化后的输出矩阵，数据类型由yDtypeOptional指定，当前支持FLOAT8_E4M3FN、FLOAT8_E5M2。
         * $YScale \in \mathbb{E8M0}^{M \times ceil(N / 64) \times 2}$：输出量化因子，shape必须为3维。
 
       - **计算过程**
@@ -80,7 +80,7 @@
 
           注：当前kernel底层实现使用gelu_sigmoid函数近似计算gelu_tanh，`GeluTanh(x) = x / (1 + exp(-1.595769121 * (x + 0.044715 * x^3)))`。
 
-        - 4. 对激活结果进行MX量化，目标数据类型DType由quantDtypeOptional指定：
+        - 4. 对激活结果进行MX量化，目标数据类型DType由yDtypeOptional指定：
 
           - 场景1，当scaleAlgOptional为0时，将激活结果$S_i$在N轴按$k=blocksize$分组，一组$k$个数$\{V_j\}_{j=1}^{k}$动态量化为$\{YScale, \{P_j\}_{j=1}^{k}\}$。
 
@@ -164,7 +164,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     bool                 transposeWeightOptional,
     int64_t              groupListTypeOptional,
     const aclIntArray   *tuningConfigOptional,
-    int64_t              quantDtypeOptional,
+    const char          *quantModeOptional,
+    int64_t              yDtypeOptional,
     const char          *roundModeOptional,
     int64_t              scaleAlgOptional,
     double               dstTypeMaxOptional,
@@ -319,7 +320,17 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>-</td>
       </tr>
       <tr>
-        <td>quantDtypeOptional</td>
+        <td>quantModeOptional</td>
+        <td>可选输入</td>
+        <td>表示量化模式。</td>
+        <td>可选属性，默认值为"MX"，当前仅支持"MX"。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>yDtypeOptional</td>
         <td>可选输入</td>
         <td>表示输出y的数据类型。</td>
         <td>可选属性，默认值为36，表示FLOAT8_E4M3FN。</td>
@@ -578,6 +589,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           </table>
 
         - activationType仅支持"gelu_tanh"。
+        - quantModeOptional仅支持"MX"。
         - N必须为64整数倍。
 
 ## 调用示例
@@ -812,7 +824,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         int64_t dequantDtypeOptional = 0;
         bool transposeWeightOptional = false;
         int64_t groupListTypeOptional = 1;
-        int64_t quantDtypeOptional = 36;
+        const char *quantModeOptional = "MX";
+        int64_t yDtypeOptional = 36;
         const char *roundModeOptional = "rint";
         int64_t scaleAlgOptional = 0;
         double dstTypeMaxOptional = 0.0;
@@ -823,7 +836,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 
         ret = aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
             x, groupList, weight, weightScale, biasOptional, xScaleOptional, activationType, dequantDtypeOptional,
-            transposeWeightOptional, groupListTypeOptional, tuningConfigOptional, quantDtypeOptional,
+            transposeWeightOptional, groupListTypeOptional, tuningConfigOptional, quantModeOptional, yDtypeOptional,
             roundModeOptional, scaleAlgOptional, dstTypeMaxOptional, y, yScale, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                   LOG_PRINT("aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret);

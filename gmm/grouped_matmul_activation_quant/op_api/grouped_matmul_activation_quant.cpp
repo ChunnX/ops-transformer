@@ -18,7 +18,7 @@
 using namespace op;
 
 namespace l0op {
-OP_TYPE_REGISTER(GroupedMatmulGeluTanhQuant);
+OP_TYPE_REGISTER(GroupedMatmulActivationQuant);
 
 namespace {
 constexpr int64_t X_M_DIM_INDEX = 0L;
@@ -30,13 +30,14 @@ constexpr size_t FIRST_TENSOR_INDEX = 0UL;
 } // namespace
 
 const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const aclTensor *x,
-    const aclTensor *xScale, const aclTensor *groupList, const aclTensorList *weight,
-    const aclTensorList *weightScale, int64_t dequantDtype, int64_t quantDtype,
-    const char *roundMode, int64_t scaleAlg, float dstTypeMax, bool transposeWeight,
-    int64_t groupListType, const aclIntArray *tuningConfigOptional, aclOpExecutor *executor)
+    const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
+    const aclTensorList *bias, const aclTensor *xScale, const char *activationType, int64_t dequantDtype,
+    bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, const char *quantMode,
+    int64_t yDtype, const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclOpExecutor *executor)
 {
-    L0_DFX(GroupedMatmulActivationQuant, x, xScale, groupList, weight, weightScale, dequantDtype, quantDtype,
-           roundMode, scaleAlg, dstTypeMax, transposeWeight, groupListType, tuningConfigOptional);
+    L0_DFX(GroupedMatmulActivationQuant, x, groupList, weight, weightScale, bias, xScale, activationType,
+           dequantDtype, transposeWeight, groupListType, tuningConfigOptional, quantMode, yDtype, roundMode,
+           scaleAlg, dstTypeMax);
     if (x == nullptr || weightScale == nullptr || weightScale->Size() == 0 || (*weightScale)[FIRST_TENSOR_INDEX] == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x and weightScale must not be nullptr.");
         return std::tuple(nullptr, nullptr);
@@ -48,22 +49,22 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
                                   weightScaleShape.GetDim(WEIGHT_SCALE_N_DIM_INDEX);
     gert::Shape outShape({m, n});
     gert::Shape scaleOutShape({m, static_cast<int64_t>(Ops::Base::CeilDiv(n, MX_GROUP_SIZE)), MX_SCALE_PAIR});
-    auto out = executor->AllocTensor(outShape, static_cast<ge::DataType>(quantDtype), ge::FORMAT_ND);
+    auto out = executor->AllocTensor(outShape, static_cast<ge::DataType>(yDtype), ge::FORMAT_ND);
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT8_E8M0, ge::FORMAT_ND);
 
-    auto ret = INFER_SHAPE(GroupedMatmulGeluTanhQuant,
-        OP_INPUT(x, xScale, groupList, weight, weightScale), OP_OUTPUT(out, scaleOut),
-        OP_ATTR(dequantDtype, quantDtype, roundMode, scaleAlg, dstTypeMax, transposeWeight, groupListType,
-                tuningConfigOptional));
+    auto ret = INFER_SHAPE(GroupedMatmulActivationQuant,
+        OP_INPUT(x, groupList, weight, weightScale, bias, xScale), OP_OUTPUT(out, scaleOut),
+        OP_ATTR(activationType, dequantDtype, transposeWeight, groupListType, tuningConfigOptional, quantMode, yDtype,
+                roundMode, scaleAlg, dstTypeMax));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
         return std::tuple(nullptr, nullptr);
     }
 
-    ret = ADD_TO_LAUNCHER_LIST_AICORE(GroupedMatmulGeluTanhQuant,
-        OP_INPUT(x, xScale, groupList, weight, weightScale), OP_OUTPUT(out, scaleOut),
-        OP_ATTR(dequantDtype, quantDtype, roundMode, scaleAlg, dstTypeMax, transposeWeight, groupListType,
-                tuningConfigOptional));
+    ret = ADD_TO_LAUNCHER_LIST_AICORE(GroupedMatmulActivationQuant,
+        OP_INPUT(x, groupList, weight, weightScale, bias, xScale), OP_OUTPUT(out, scaleOut),
+        OP_ATTR(activationType, dequantDtype, transposeWeight, groupListType, tuningConfigOptional, quantMode, yDtype,
+                roundMode, scaleAlg, dstTypeMax));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return std::tuple(nullptr, nullptr);
