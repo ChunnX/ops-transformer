@@ -14,11 +14,15 @@
 #include <exe_graph/runtime/tiling_context.h>
 #include <graph/utils/type_utils.h>
 #include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.h"
-#include "../../../op_kernel/arch35/grouped_matmul_activation_quant_tiling_data.h"
+#include "../../../../grouped_matmul/op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 
 namespace optiling {
+// BlockMmadMx consumes compact low-level BasicAPI tiling fields directly.
+// TCubeTiling is only needed when the kernel uses the high-level matmul tiling adapter path.
+using QuantBasicApiMMTiling = GroupedMatmulTilingData::QuantBasicApiMMTiling;
+
 BEGIN_TILING_DATA_DEF(GMMActivationQuantParams)
 TILING_DATA_FIELD_DEF(uint32_t, groupNum);
 TILING_DATA_FIELD_DEF(uint8_t, groupListType);
@@ -27,34 +31,15 @@ TILING_DATA_FIELD_DEF(uint8_t, quantDtype);
 TILING_DATA_FIELD_DEF(uint8_t, roundMode);
 TILING_DATA_FIELD_DEF(uint8_t, dequantDtype);
 TILING_DATA_FIELD_DEF(uint8_t, scaleAlg);
-TILING_DATA_FIELD_DEF(uint16_t, reserved);
 TILING_DATA_FIELD_DEF(uint32_t, rowLen);
 TILING_DATA_FIELD_DEF(uint32_t, ubAvail);
 TILING_DATA_FIELD_DEF(float, dstTypeMax);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMActivationQuantParamsOp, GMMActivationQuantParams)
 
-BEGIN_TILING_DATA_DEF(GMMActivationQuantMMTiling)
-TILING_DATA_FIELD_DEF(uint32_t, m);
-TILING_DATA_FIELD_DEF(uint32_t, n);
-TILING_DATA_FIELD_DEF(uint32_t, k);
-TILING_DATA_FIELD_DEF(uint32_t, baseM);
-TILING_DATA_FIELD_DEF(uint32_t, baseN);
-TILING_DATA_FIELD_DEF(uint32_t, baseK);
-TILING_DATA_FIELD_DEF(uint32_t, kAL1);
-TILING_DATA_FIELD_DEF(uint32_t, kBL1);
-TILING_DATA_FIELD_DEF(uint32_t, scaleKAL1);
-TILING_DATA_FIELD_DEF(uint32_t, scaleKBL1);
-TILING_DATA_FIELD_DEF(uint8_t, isBias);
-TILING_DATA_FIELD_DEF(uint8_t, dbL0C);
-TILING_DATA_FIELD_DEF(uint16_t, reserved1);
-TILING_DATA_FIELD_DEF(uint32_t, reserved2);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(GMMActivationQuantMMTilingOp, GMMActivationQuantMMTiling)
-
 BEGIN_TILING_DATA_DEF(GMMActivationQuantTilingDataParams)
 TILING_DATA_FIELD_DEF_STRUCT(GMMActivationQuantParams, gmmActivationQuantParams);
-TILING_DATA_FIELD_DEF_STRUCT(GMMActivationQuantMMTiling, mmTilingData);
+TILING_DATA_FIELD_DEF_STRUCT(QuantBasicApiMMTiling, mmTilingData);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(GroupedMatmulActivationQuant_0, GMMActivationQuantTilingDataParams)
@@ -98,12 +83,12 @@ private:
     bool CheckWeightNzShape(const gert::Shape &wStorageShape) const;
     bool IsFp8(ge::DataType dtype) const;
 
-    GroupedMatmulActivationQuant::GMMActivationQuantTilingDataParams tilingData_;
+    GMMActivationQuantTilingDataParams tilingData_;
     uint8_t roundMode_ = DEFAULT_ROUND_MODE_RINT;
     uint8_t scaleAlg_ = DEFAULT_SCALE_ALG_OCP;
     uint8_t activationType_ = DEFAULT_ACTIVATION_TYPE_GELU_TANH;
     float dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
-    ge::DataType yDtype_ = ge::DT_FLOAT8_E4M3FN;
+    ge::DataType quantDtype_ = ge::DT_FLOAT8_E4M3FN;
 };
 } // namespace optiling
 
