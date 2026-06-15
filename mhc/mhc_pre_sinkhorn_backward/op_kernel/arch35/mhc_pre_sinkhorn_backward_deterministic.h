@@ -513,31 +513,52 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step2_ComputeF
     LocalTensor<T> zPostLocal = zPostBuf_.Get<T>();
     LocalTensor<T> zResLocal = zResBuf_.Get<T>();
     
-    // ===== 调试打印：ComputeForwardZFullVf参数（第一个核）=====
+    // ===== 调试打印：ComputeForwardZFullVf输入参数（第一个核）=====
     if (blkIdx_ == 0) {
-        AscendC::printf("[Step2-Debug] ComputeForwardZFullVf params:\n");
-        AscendC::printf("  n=%d, totalElements=%d (tile*(n*n+2n))\n", n_, tile_ * (n_ * n_ + 2 * n_));
-        AscendC::printf("  hcBeforeNormLocal size=%d, invRmsLocal size=%d\n", 
-            tile_ * (n_ * n_ + 2 * n_), tile_);
-        AscendC::printf("  alphaLocal size=3, biasLocal size=%d\n", n_ * n_ + 2 * n_);
-        AscendC::printf("  normOutForwardLocal size=%d\n", tile_ * (n_ * n_ + 2 * n_));
-        AscendC::printf("  zPreLocal size=%d, zPostLocal size=%d, zResLocal size=%d\n",
+        AscendC::printf("\n[Step2-PreCall] ===== ComputeForwardZFullVf Input Params =====\n");
+        AscendC::printf("  n=%lld, tile=%u, batchSize=%lld (n*n+2n)\n", n_, tile_, n_ * n_ + 2 * n_);
+        
+        // hcBeforeNormLocal: size = tile * (n*n+2n)
+        int64_t hcBeforeNormSize = tile_ * (n_ * n_ + 2 * n_);
+        int64_t hcBeforeNormPrintCount = (hcBeforeNormSize > 8) ? 8 : hcBeforeNormSize;
+        AscendC::printf("  hcBeforeNormLocal[%lld]: ", hcBeforeNormSize);
+        for (int64_t i = 0; i < hcBeforeNormPrintCount; i++) {
+            AscendC::printf("%f ", hcBeforeNormLocal.GetValue(i));
+        }
+        if (hcBeforeNormSize > 8) AscendC::printf("... (total %lld)", hcBeforeNormSize);
+        AscendC::printf("\n");
+        
+        // invRmsLocal: size = tile
+        int64_t invRmsSize = tile_;
+        int64_t invRmsPrintCount = (invRmsSize > 8) ? 8 : invRmsSize;
+        AscendC::printf("  invRmsLocal[%lld]: ", invRmsSize);
+        for (int64_t i = 0; i < invRmsPrintCount; i++) {
+            AscendC::printf("%f ", invRmsLocal.GetValue(i));
+        }
+        if (invRmsSize > 8) AscendC::printf("... (total %lld)", invRmsSize);
+        AscendC::printf("\n");
+        
+        // alphaLocal: size = 3
+        AscendC::printf("  alphaLocal[3]: %f %f %f\n", 
+            alphaLocal.GetValue(0), alphaLocal.GetValue(1), alphaLocal.GetValue(2));
+        
+        // biasLocal: size = n*n+2n
+        int64_t biasSize = n_ * n_ + 2 * n_;
+        int64_t biasPrintCount = (biasSize > 8) ? 8 : biasSize;
+        AscendC::printf("  biasLocal[%lld]: ", biasSize);
+        for (int64_t i = 0; i < biasPrintCount; i++) {
+            AscendC::printf("%f ", biasLocal.GetValue(i));
+        }
+        if (biasSize > 8) AscendC::printf("... (total %lld)", biasSize);
+        AscendC::printf("\n");
+        
+        // 输出buffer sizes
+        AscendC::printf("  Output buffers:\n");
+        AscendC::printf("    normOutForwardLocal[%lld]\n", tile_ * (n_ * n_ + 2 * n_));
+        AscendC::printf("    zPreLocal[%lld], zPostLocal[%lld], zResLocal[%lld]\n",
             tile_ * n_, tile_ * n_, tile_ * n_ * n_);
-        AscendC::printf("  Addresses:\n");
-        AscendC::printf("    hcBeforeNormLocal=%p, invRmsLocal=%p\n", 
-            hcBeforeNormLocal.GetPhyAddr(), invRmsLocal.GetPhyAddr());
-        AscendC::printf("    alphaLocal=%p, biasLocal=%p\n",
-            alphaLocal.GetPhyAddr(), biasLocal.GetPhyAddr());
-        AscendC::printf("    normOutForwardLocal=%p\n", normOutForwardLocal.GetPhyAddr());
-        AscendC::printf("    zPreLocal=%p, zPostLocal=%p, zResLocal=%p\n",
-            zPreLocal.GetPhyAddr(), zPostLocal.GetPhyAddr(), zResLocal.GetPhyAddr());
-        AscendC::printf("  VF loopCount = %d (totalElements/VL_FP32)\n",
-            (tile_ * (n_ * n_ + 2 * n_) + 64 - 1) / 64);
-        AscendC::printf("  WARNING: biasPtr offset in VF may cause overflow!\n");
-        AscendC::printf("    biasPre offset range: [0, %d) but VF uses [0, %d)\n",
-            n_, tile_ * (n_ * n_ + 2 * n_));
-        AscendC::printf("    biasPost offset range: [%d, %d) but VF uses [%d, %d)\n",
-            n_, 2 * n_, n_, n_ + tile_ * (n_ * n_ + 2 * n_));
+        
+        AscendC::printf("[Step2-PreCall] ===== End Input Params =====\n\n");
     }
     
     ComputeForwardZFullVf<T>(zPreLocal, zPostLocal, zResLocal, normOutForwardLocal, hcBeforeNormLocal, invRmsLocal, alphaLocal, biasLocal, n_, tile_);
