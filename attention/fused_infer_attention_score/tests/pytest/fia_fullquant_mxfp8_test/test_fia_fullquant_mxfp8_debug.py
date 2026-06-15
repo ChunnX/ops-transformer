@@ -13,12 +13,11 @@
 import concurrent.futures
 
 import pytest
-import torch
-import torch_npu
 
-import fia_fullquant_mxfp8_golden as golden
-import fia_fullquant_mxfp8_paramset as paramset
-import result_compare_method
+from common import fia_fullquant_mxfp8_golden as golden
+from common import golden_cache
+from common import result_compare_method
+import fia_fullquant_mxfp8_paramset_debug as paramset
 
 CASES = paramset.CASES
 CASE_IDS = [case["name"] for case in CASES]
@@ -37,27 +36,59 @@ def _apply_params(params):
     golden.SPARSE_MODE = params["sparse_mode"]
     golden.Q_SCALE_LAYOUT = params["q_scale_layout"]
     golden.P_SCALE = params["p_scale"]
+    golden.DATA_RANGE_Q = params["data_range_q"]
+    golden.DATA_RANGE_K = params["data_range_k"]
+    golden.DATA_RANGE_V = params["data_range_v"]
+    golden.D_rope = params["D_rope"]
+    golden.GRAPH_PATH = params["graph_path"]
+    golden.DEVICE_ID = params["device_id"]
+    golden.IS_CONTIGUOUS = params["is_contiguous"]
 
 
-def _execute_test(params):
+def _execute_test(params, mode, cdir=None):
     _apply_params(params)
+    case_name = params["name"]
 
-    data = golden.generate_data()
-    q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale, qr_bf16, kr_bf16, block_table_torch = data
+    if "gen" in mode:
+        data = golden.generate_data()
+        q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale, qr_bf16, kr_bf16, block_table_torch = data
+        golden_cache.save_input(case_name, golden_cache.build_input_dict(
+            q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale, qr_bf16, kr_bf16, block_table_torch
+        ), cache_dir=cdir)
+    else:
+        q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale, qr_bf16, kr_bf16, block_table_torch = \
+            golden_cache.load_input(case_name, cache_dir=cdir)
 
-    cpu_out, cpu_lse = golden.cpu_mxfp8_golden(
-        q_fp8, k_fp8, v_fp8,
-        deq_q, deq_k, deq_v, p_scale,
-        golden.ACTUAL_SEQ_Q, golden.ACTUAL_SEQ_KV,
-        qr_bf16, kr_bf16,
-    )
+    if "gen" in mode and "cpu" not in mode and "npu" not in mode and "compare" not in mode:
+        return None, None
 
-    npu_out, lse_out = golden.npu_mxfp8_fa(
-        q_fp8, k_fp8, v_fp8,
-        deq_q, deq_k, deq_v, p_scale,
-        golden.ACTUAL_SEQ_Q, golden.ACTUAL_SEQ_KV,
-        block_table_torch, qr_bf16, kr_bf16,
-    )
+    if "cpu" in mode:
+        cpu_out, cpu_lse = golden.cpu_mxfp8_golden(
+            q_fp8, k_fp8, v_fp8,
+            deq_q, deq_k, deq_v, p_scale,
+            golden.ACTUAL_SEQ_Q, golden.ACTUAL_SEQ_KV,
+            qr_bf16, kr_bf16,
+        )
+        golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
+    else:
+        cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cdir)
+
+    if "cpu" in mode and "npu" not in mode and "compare" not in mode:
+        return None, None
+
+    if "npu" in mode:
+        npu_out, lse_out = golden.npu_mxfp8_fa(
+            q_fp8, k_fp8, v_fp8,
+            deq_q, deq_k, deq_v, p_scale,
+            golden.ACTUAL_SEQ_Q, golden.ACTUAL_SEQ_KV,
+            block_table_torch, qr_bf16, kr_bf16,
+        )
+        golden_cache.save_npu_output(case_name, npu_out, lse_out, cache_dir=cdir)
+    else:
+        npu_out, lse_out = golden_cache.load_npu_output(case_name, cache_dir=cdir)
+
+    if "npu" in mode and "compare" not in mode:
+        return None, None
 
     compare_layout = "TND" if golden.ENABLE_PA else golden.INPUT_LAYOUT
     cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.ACTUAL_SEQ_Q, compare_layout)
@@ -72,12 +103,15 @@ def _execute_test(params):
     return atten_result, lse_result
 
 
-@pytest.mark.ci
+@pytest.mark.debug
 @pytest.mark.parametrize("params", CASES, ids=CASE_IDS)
-def test_fia_fullquant_mxfp8(params):
+def test_fia_fullquant_mxfp8(params, golden_mode, cache_dir):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_execute_test, params)
+        future = executor.submit(_execute_test, params, golden_mode, cache_dir)
         atten_result, lse_result = future.result()
+
+    if atten_result is None:
+        return
 
     atten_status = atten_result[0] if isinstance(atten_result, tuple) else atten_result
     if atten_status != "Pass":
