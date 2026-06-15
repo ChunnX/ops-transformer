@@ -262,7 +262,7 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Calc
         }
         LocalTensor<TIndex> expertTokenTensor = idxOutQue_.AllocTensor<TIndex>();
         Duplicate<TIndex>(expertTokenTensor, res, 1);
-        idxOutQue_.EnQue(expertTokenTensor);
+        idxOutQue_.EnQue<QuePosition::VECOUT, QuePosition::GM>(expertTokenTensor);
         expertTokenTensor = idxOutQue_.DeQue<TIndex>();
         DataCopyExtParams copyParams(1, sizeof(TIndex), 0, 0, 0);
         DataCopyPad(dstExpertTokenGm_[eIdx], expertTokenTensor, copyParams);
@@ -327,7 +327,7 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Copy
         }
         LocalTensor indexLocal = idxOutQue_.AllocTensor<int32_t>();
         CreateVecIndex(indexLocal, static_cast<int32_t>(head + loopIdx * INDEX_UB_SIZE), subRows);
-        idxOutQue_.EnQue(indexLocal);
+        idxOutQue_.EnQue<QuePosition::VECOUT, QuePosition::GM>(indexLocal);
         indexLocal = idxOutQue_.DeQue<int32_t>();
         DataCopyExtParams copyParams(1, subRows * sizeof(int32_t), 0, 0, 0);
         DataCopyPad(tokenIdxGm_[offset + loopIdx * INDEX_UB_SIZE], indexLocal, copyParams);
