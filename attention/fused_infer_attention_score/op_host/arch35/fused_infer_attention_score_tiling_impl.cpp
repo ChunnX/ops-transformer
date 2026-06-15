@@ -17,7 +17,6 @@
 #include "../fused_infer_attention_score_tiling_info_parser.h"
 
 #include "log/log.h"
-#include "log/error_code.h"
 #include "err/ops_err.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
@@ -28,7 +27,7 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 using namespace arch35FIA;
-ge::graphStatus FusedInferAttentionScoreTilingImpl::SetPlatMemoryInfo(gert::TilingContext *context,
+ge::graphStatus FusedInferAttentionScoreTilingImpl::SetPlatMemoryInfo(const gert::TilingContext *context,
                                                                       const FiaTilingInfo &fiaInfo)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
@@ -80,7 +79,8 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetEmptyTensor(gert::TilingC
     return ge::GRAPH_SUCCESS;
 }
 
-bool FusedInferAttentionScoreTilingImpl::CheckTransposeLayout(const FiaTilingInfo &fiaInfo){
+bool FusedInferAttentionScoreTilingImpl::CheckTransposeLayout(const FiaTilingInfo &fiaInfo) const
+{
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     if(layoutStr == "BNSD_BSND" || layoutStr == "BSND_BNSD" || layoutStr == "BSH_BNSD" ||
         layoutStr == "NTD" || layoutStr == "NTD_TND" || layoutStr == "TND_NTD"){
@@ -328,11 +328,11 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
 }
 void FusedInferAttentionScoreTilingImpl::GetPreNextTokensLeftUp(const FiaTilingInfo &fiaInfo, int64_t actualSeqLength,
                                                                 int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                                                int64_t &nextTokensLeftUp)
+                                                                int64_t &nextTokensLeftUp) const
 {
     if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
         preTokensLeftUp = SPARSE_MODE_INT_MAX;
-        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == 512) {
+        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == DSIZE_512) {
             if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
                 fiaInfo.qLayout == FiaLayout::TND) {
                 nextTokensLeftUp = actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
@@ -343,7 +343,7 @@ void FusedInferAttentionScoreTilingImpl::GetPreNextTokensLeftUp(const FiaTilingI
             nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
         }
     } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
-        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == 512) {
+        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == DSIZE_512) {
             if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
                 fiaInfo.qLayout == FiaLayout::TND) {
                 preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize - actualSeqLengthKV * fiaInfo.gSize + actualSeqLength;
@@ -357,7 +357,7 @@ void FusedInferAttentionScoreTilingImpl::GetPreNextTokensLeftUp(const FiaTilingI
             nextTokensLeftUp = fiaInfo.nextToken + actualSeqLengthKV - actualSeqLength;
         }
     } else {
-        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == 512) {
+        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == DSIZE_512) {
             if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
                 fiaInfo.qLayout == FiaLayout::TND) {
                 preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize;
@@ -403,7 +403,7 @@ void FusedInferAttentionScoreTilingImpl::FixParamWithRowInvalid(const FiaTilingI
     actualSeqLength -= preTokensError;
 }
 
-int64_t FusedInferAttentionScoreTilingImpl::SumOfArithmeticSeries(int64_t an, int64_t d)
+int64_t FusedInferAttentionScoreTilingImpl::SumOfArithmeticSeries(int64_t an, int64_t d) const
 {
     // 等差数列求和，an：等差数列第n项，d：等差数列公差
     if (d == 0) {
@@ -493,7 +493,7 @@ int64_t FusedInferAttentionScoreTilingImpl::GetCalcBlockNumsOneHead(const FiaTil
 }
 
 int64_t FusedInferAttentionScoreTilingImpl::GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd,
-                                                               int64_t innerBlockNums)
+                                                               int64_t innerBlockNums) const
 {
     int64_t sInnerBlockNums = 0;
     if (sInnerIndexEnd < 0) {
@@ -859,7 +859,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::CalcInnerSize(const FiaTilin
 }
 
 int64_t FusedInferAttentionScoreTilingImpl::GetActualInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd,
-                                                                    int64_t innerBlockNums)
+                                                                    int64_t innerBlockNums) const
 {
     int64_t sInnerBlockNums = 0;
     if (sInnerIndexEnd < 0) {
@@ -879,7 +879,7 @@ void FusedInferAttentionScoreTilingImpl::GetAntiQuantPreNextTokensLeftUp(const F
                                                                          int64_t actualSeqLength,
                                                                          int64_t actualSeqLengthKV,
                                                                          int64_t &preTokensLeftUp,
-                                                                         int64_t &nextTokensLeftUp)
+                                                                         int64_t &nextTokensLeftUp) const
 {
     preTokensLeftUp = fiaInfo.preToken;
     nextTokensLeftUp = fiaInfo.nextToken;
@@ -1137,7 +1137,7 @@ void FusedInferAttentionScoreTilingImpl::SplitDequant(const FiaTilingInfo &fiaIn
     }
 }
 
-bool FusedInferAttentionScoreTilingImpl::CheckEnableDN(const FiaTilingInfo &fiaInfo)
+bool FusedInferAttentionScoreTilingImpl::CheckEnableDN(const FiaTilingInfo &fiaInfo) const
 {
     constexpr uint32_t dLimitDN = DSIZE_128;
     constexpr uint32_t sOuterLimitDN = SOUTER_64;
@@ -1597,7 +1597,7 @@ bool FusedInferAttentionScoreTilingImpl::EnableMTE2BmmPipe(const FiaTilingInfo &
     return res;
 }
 
-ge::graphStatus FusedInferAttentionScoreTilingImpl::SetDequantMMTilingData(gert::TilingContext *context,
+ge::graphStatus FusedInferAttentionScoreTilingImpl::SetDequantMMTilingData(const gert::TilingContext *context,
                                                                            const FiaTilingInfo &fiaInfo)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
@@ -1908,7 +1908,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     }
     inputParams.set_blockTableDim2(blockTableDim2);
     inputParams.set_paBlockNumSum(fiaInfo.totalBlockNum);
-    inputParams.set_isRowInvalid(((fiaInfo.innerPrecise >> 1) & 1) || isRowInvalid_);
+    inputParams.set_isRowInvalid(((static_cast<uint32_t>(fiaInfo.innerPrecise) >> 1) & 1) || isRowInvalid_);
     inputParams.set_isPostQuantPerChnl(fiaInfo.isOutQuantPerChnOut);
     inputParams.set_isPostQuantBF16(fiaInfo.isOutQuantTypeBf16);
     inputParams.set_antiquantParaSeqSize(fiaInfo.antiqSeqSize);
