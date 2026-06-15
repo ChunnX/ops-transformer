@@ -216,6 +216,13 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
     const gert::StorageShape *x2Shape = context_->GetInputShape(INPUT_X2);
     uint64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0);
     uint64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK((scaleInv1Shape->GetStorageShape().GetDimNum() != DIM_NUM_IS_THREE) ||
+        (scaleInv2Shape->GetStorageShape().GetDimNum() != DIM_NUM_IS_THREE),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Scale and x2Scale",
+        (std::to_string(scaleInv1Shape->GetStorageShape().GetDimNum()) + "D and " +
+        std::to_string(scaleInv2Shape->GetStorageShape().GetDimNum()) + "D").c_str(),
+        "The shape dims of x1Scale and x2Scale must be 3D in mxfp scene"),
+        return ge::GRAPH_FAILED);
     uint64_t scale1FirstDim = scaleInv1Shape->GetStorageShape().GetDim(0);
     uint64_t scale1SecondDim = scaleInv1Shape->GetStorageShape().GetDim(1);
     uint64_t scale1ThirdDim = scaleInv1Shape->GetStorageShape().GetDim(2);
