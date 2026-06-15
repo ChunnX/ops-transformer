@@ -164,7 +164,7 @@ public:
         adumpU32GlobalTensor.SetGlobalBuffer((__gm__ uint32_t*)adumpCoreCustomFieldAddr);
 
         PipeBarrier<PIPE_ALL>();
-        DataCopyPad(adumpU32GlobalTensor[MegaMoeAdumpCoreBasicInfoPos::CURRENT_STAGEID_POS], adumpU32LocalTensor, {1, sizeof(uint32_t), 0, 0, 0});
+        DataCopyPad(adumpU32GlobalTensor[MegaMoeAdumpCoreBasicInfoPos::CURRENT_STAGEID_POS], adumpU32LocalTensor[1], {1, sizeof(uint32_t), 0, 0, 0});
         PipeBarrier<PIPE_ALL>();
     }
   
