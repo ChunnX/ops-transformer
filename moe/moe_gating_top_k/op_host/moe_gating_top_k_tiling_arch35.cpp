@@ -21,8 +21,14 @@
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
 
+#include <string>
+
 namespace optiling {
 const static uint64_t MOE_GATING_TOP_K_REGBASE_TILING_KEY = 10000;
+const static int64_t TILINGKEY_INT32_INT64_SUFFIX = 1;
+const static int64_t TILINGKEY_INT32_INT32_SUFFIX = 2;
+const static int64_t TILINGKEY_INT64_INT64_SUFFIX = 3;
+const static int64_t TILINGKEY_INT64_INT32_SUFFIX = 4;
 
 const static int64_t GROUP_SELECT_MODE_MAX = 0;
 const static int64_t GROUP_SELECT_MODE_SUM = 1;
@@ -39,9 +45,12 @@ const static size_t Y_OUTPUT_DIMS = 2;
 const static size_t EXPERT_IDX_OUTPUY_DIMS = 2;
 const static size_t OUT_OUTPUT_DIMS = 2;
 const static int64_t MAX_EXPERT_COUNT = 2048;
+const static int64_t MAX_K_FOR_HASH = 64;
 
 const static int64_t X_INPUT_INDEX = 0;
 const static int64_t BIAS_INPUT_INDEX = 1;
+const static int64_t INPUT_IDS_INPUT_INDEX = 2;
+const static int64_t TID_TO_EID_INPUT_INDEX = 3;
 const static int64_t Y_OUTPUT_INDEX = 0;
 const static int64_t EXPERT_IDX_OUTPUT_INDEX = 1;
 const static int64_t OUT_OUTPUT_INDEX = 2;
@@ -110,19 +119,27 @@ private:
     ge::graphStatus GetBasicAttrs();
     ge::graphStatus GetModeAttrs();
     ge::graphStatus GetOtherAttrs();
+    ge::graphStatus CheckInputShape4Hash();
+    ge::graphStatus CheckDtype4Hash();
     void CalTmpBufUbSize();
     void SplitRows();
     void Tiling4GatherOutComputeSplitK();
 
     const gert::Shape *xShape_ = nullptr;
     const gert::Shape *biasShape_ = nullptr;
+    const gert::Shape *inputIdsShape_ = nullptr;
+    const gert::Shape *tid2eidShape_ = nullptr;
     const gert::Shape *yShape_ = nullptr;
     const gert::Shape *expertIdxShape_ = nullptr;
     const gert::Shape *outShape_ = nullptr;
 
+    ge::DataType inputIdsDtype_;
+    ge::DataType tid2eidDtype_;
+
     int64_t rows_;
     int64_t expertCount_;
     int64_t addBias_ = 0;
+    bool hashFlag_ = false;
 
     int64_t k_;
     int64_t kGroup_ = 1;
@@ -139,6 +156,25 @@ private:
     MoeGatingTopKRegbaseTilingData moeGatingTopKTilingData_;
     platform_ascendc::SocVersion socVersion;
 };
+
+ge::graphStatus MoeGatingTopKTilingRegbase::CheckInputShape4Hash()
+{
+    OP_CHECK_IF(k_ > MAX_K_FOR_HASH,
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "k", std::to_string(k_),
+                                          "less than or equal to 64 for hash mode"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(tid2eidShape_->GetDim(1) != k_,
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "tid2eid dim[1]",
+                                          std::to_string(tid2eidShape_->GetDim(1)), std::to_string(k_)),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(inputIdsShape_->GetDim(0) != rows_,
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "inputIds dim[0]",
+                                          std::to_string(inputIdsShape_->GetDim(0)), std::to_string(rows_)),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus MoeGatingTopKTilingRegbase::CheckInputShape()
 {
@@ -180,6 +216,11 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckInputShape()
         OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "k", std::to_string(k_),
                                   "less than or equal to expert num"),
         return ge::GRAPH_FAILED);
+
+    if (hashFlag_ && CheckInputShape4Hash() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    moeGatingTopKTilingData_.set_hashFlag(hashFlag_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -214,7 +255,13 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrBasic()
 
 ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrExpert()
 {
-    if (kGroup_ == groupCount_ || groupCount_ == expertCount_) {
+    bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
+    OP_CHECK_IF(hashFlag_ && !isSimplifiedPath, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+                "hash mode", "hash mode only supports simplified path",
+                "k_group must equal group_count or group_count must equal expert_count"),
+                return ge::GRAPH_FAILED);
+
+    if (isSimplifiedPath) {
         kGroup_ = 1;
         groupCount_ = 1;
     }
@@ -288,14 +335,20 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttr()
 
 ge::graphStatus MoeGatingTopKTilingRegbase::GetInputOutputShape()
 {
-    // 获取输入shape信息
     auto xShapePtr = context_->GetInputShape(X_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
     xShape_ = &xShapePtr->GetStorageShape();
     auto biasShapePtr = context_->GetOptionalInputShape(BIAS_INPUT_INDEX);
     biasShape_ = biasShapePtr == nullptr ? nullptr : &biasShapePtr->GetStorageShape();
 
-    // 获取输出shape
+    auto inputIdsShapePtr = context_->GetOptionalInputShape(INPUT_IDS_INPUT_INDEX);
+    inputIdsShape_ = inputIdsShapePtr == nullptr ? nullptr : &inputIdsShapePtr->GetStorageShape();
+    auto tid2eidShapePtr = context_->GetOptionalInputShape(TID_TO_EID_INPUT_INDEX);
+    tid2eidShape_ = tid2eidShapePtr == nullptr ? nullptr : &tid2eidShapePtr->GetStorageShape();
+    if (inputIdsShape_ != nullptr && tid2eidShape_ != nullptr) {
+        hashFlag_ = true;
+    }
+
     auto yShapePtr = context_->GetOutputShape(Y_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, yShapePtr);
     yShape_ = &yShapePtr->GetStorageShape();
@@ -306,6 +359,26 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetInputOutputShape()
     if (outPtr != nullptr) {
         outShape_ = &outPtr->GetStorageShape();
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeGatingTopKTilingRegbase::CheckDtype4Hash()
+{
+    auto inputIdsDesc = context_->GetOptionalInputDesc(INPUT_IDS_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, inputIdsDesc);
+    inputIdsDtype_ = inputIdsDesc->GetDataType();
+    OP_CHECK_IF((inputIdsDtype_ != ge::DataType::DT_INT32 && inputIdsDtype_ != ge::DataType::DT_INT64),
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "inputIds",
+                                          Ops::Base::ToString(inputIdsDtype_).c_str(), "int32, int64"),
+                return ge::GRAPH_FAILED);
+
+    auto tid2eidDesc = context_->GetOptionalInputDesc(TID_TO_EID_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, tid2eidDesc);
+    tid2eidDtype_ = tid2eidDesc->GetDataType();
+    OP_CHECK_IF((tid2eidDtype_ != ge::DataType::DT_INT32 && tid2eidDtype_ != ge::DataType::DT_INT64),
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "tid2eid",
+                                          Ops::Base::ToString(tid2eidDtype_).c_str(), "int32, int64"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -353,6 +426,10 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckDtypes()
                     OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "outDtype",
                                               Ops::Base::ToString(outDtype).c_str(), "float32"),
                     return ge::GRAPH_FAILED);
+    }
+
+    if (hashFlag_ && CheckDtype4Hash() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
 
     inputDtypeSize_ = static_cast<int64_t>(ge::GetSizeByDataType(context_->GetInputDesc(0)->GetDataType()));
@@ -632,7 +709,22 @@ ge::graphStatus MoeGatingTopKTilingRegbase::PostTiling()
 
 uint64_t MoeGatingTopKTilingRegbase::GetTilingKey() const
 {
-    return MOE_GATING_TOP_K_REGBASE_TILING_KEY;
+    if (!hashFlag_) {
+        return MOE_GATING_TOP_K_REGBASE_TILING_KEY;
+    }
+
+    bool isInputIdsInt32 = (inputIdsDtype_ == ge::DataType::DT_INT32);
+    bool isTid2eidInt32 = (tid2eidDtype_ == ge::DataType::DT_INT32);
+
+    if (isInputIdsInt32 && !isTid2eidInt32) {
+        return MOE_GATING_TOP_K_REGBASE_TILING_KEY + TILINGKEY_INT32_INT64_SUFFIX;
+    } else if (isInputIdsInt32 && isTid2eidInt32) {
+        return MOE_GATING_TOP_K_REGBASE_TILING_KEY + TILINGKEY_INT32_INT32_SUFFIX;
+    } else if (!isInputIdsInt32 && !isTid2eidInt32) {
+        return MOE_GATING_TOP_K_REGBASE_TILING_KEY + TILINGKEY_INT64_INT64_SUFFIX;
+    } else {
+        return MOE_GATING_TOP_K_REGBASE_TILING_KEY + TILINGKEY_INT64_INT32_SUFFIX;
+    }
 }
 
 void MoeGatingTopKTilingRegbase::Reset()
