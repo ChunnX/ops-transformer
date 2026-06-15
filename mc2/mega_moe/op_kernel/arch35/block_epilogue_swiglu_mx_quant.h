@@ -109,6 +109,7 @@ public:
         GM_ADDR biasGmAddr{nullptr};
         uint32_t baseM;
         uint32_t baseN;
+        float clampLimit{0.0f};
         Arguments() = default;
     };
 
@@ -196,6 +197,10 @@ private:
     uint16_t fpEmax_ = 0;
 
     BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
+    float clampLimit_{0.0f};
+    AscendC::MicroAPI::RegTensor<float> clampPos_;
+    AscendC::MicroAPI::RegTensor<float> clampNeg_;
+    bool enableClamp_{false};
 };
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -206,6 +211,12 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Param
         return;
     }
     params_ = &params;
+    clampLimit_ = params.clampLimit;
+    enableClamp_ = (clampLimit_ > 0.0f);
+    if (enableClamp_) {
+        AscendC::MicroAPI::Duplicate(clampPos_, clampLimit_);
+        AscendC::MicroAPI::Duplicate(clampNeg_, -clampLimit_);
+    }
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
@@ -587,6 +598,17 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(swishData1, swishInput1, mask);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(gateData0, gateInput0, mask);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(gateData1, gateInput1, mask);
+                // clamp
+                if (enableClamp_) {
+                    // x0 = min(x0, clampLimit)
+                    AscendC::MicroAPI::Min(swishData0, swishData0, clampPos_, mask);
+                    AscendC::MicroAPI::Min(swishData1, swishData1, clampPos_, mask);
+                    // x1 = clamp(x1, -clampLimit, clampLimit)
+                    AscendC::MicroAPI::Min(gateData0, gateData0, clampPos_, mask);
+                    AscendC::MicroAPI::Max(gateData0, gateData0, clampNeg_, mask);
+                    AscendC::MicroAPI::Min(gateData1, gateData1, clampPos_, mask);
+                    AscendC::MicroAPI::Max(gateData1, gateData1, clampNeg_, mask);
+                }
                 // 计算
                 uint16_t calBlockNum = sizeof(float) / sizeof(DataTypeIn); // 2
                 uint16_t calBlockSize = sizePerRepeat / calBlockNum; // 128/2 = 64
