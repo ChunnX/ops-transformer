@@ -421,9 +421,62 @@
 - 原 §4.4 Cube 复用重编号为 §4.5
 
 #### 关键决策
-- 所有 VF 函数描述中 `hasAntiQuantOffset` 固定为 `false`，省略 offset 相关操作
+- 所有 VF 函数描述中 `hasAntiQuantOffset` 通过 `WqmmConfig` 做编译期分支，offset 相关操作在 `hasAntiQuantOffset=false` 时由编译器消除
 - `useVag` 参数建议初始实现设为 `false`（直接地址计算），后续可优化
 - 输出 NZ 格式与 GMM 现有 MTE3 流程一致，无需修改
 
 #### 影响范围
 - 仅 SRS 文档更新，为后续编码实现提供完整的 VF 反量化参考
+
+---
+
+### 2026-06-15 | 恢复 antiquantOffset 为可选参数（pergroup 支持非对称量化）
+
+**类型**: 🔧 修改
+**范围**: `raw/spec/gmm_a16w4nd_op.md` + `raw/design/03_tiling_design.md` + `raw/design/04_kernel_design.md` + `raw/development/gmm_a16w4_pergroup_nd_srs.md` + SVG 图
+
+#### 变更内容
+- **原因**：A2/A3 文档描述错误，pergroup 实际支持非对称量化，antiquantOffset 是可选参数
+- **`gmm_a16w4nd_op.md`**：
+  - antiquantOffsetOptional 恢复为"可选"，dtype FLOAT16/BFLOAT16/null
+  - 恢复完整计算公式（含 offset 和不含 offset 两种）
+  - 恢复 antiquantOffset shape 约束表
+  - 量化模式约束改为"支持对称和非对称量化"
+- **`03_tiling_design.md`**：
+  - 恢复 antiquantOffset shape 描述（单单单 3D、多多多 2D）
+  - 恢复 shape 校验（antiquantOffset shape == antiquantScale shape）
+  - tiling key 组合从 4 个恢复为 8 个（2 transB × 2 offset × 2 bias）
+  - OFFSET_OR_BIAS_EXIT 恢复为 0~3（4 种组合）
+  - UB buffer 结论恢复 offset 引用
+- **`04_kernel_design.md`**：
+  - kernel 入口分支从 4 个恢复为 8 个
+  - WqmmConfig 从 2 个恢复为 4 个（新增 _OFF 变体）
+  - SetGmAddr 恢复 pergroup scale/offset 偏移
+  - VF 反量化步骤恢复 offset 加法
+  - hasAntiQuantOffset 恢复为编译期分支（非固定 false）
+  - scale/offset UB 布局恢复
+  - 兼容性保护恢复"有/无 offset"条目
+- **`gmm_a16w4_pergroup_nd_srs.md`**：
+  - 数据流描述恢复 offset
+  - 计算公式恢复 offset
+  - pergroup 反量化模型恢复 offset
+  - tiling key 组合从 4 个恢复为 8 个
+  - Controller 地址偏移表恢复 offset 行
+  - VF 反量化步骤恢复 offset
+  - VF 详细代码实现方案恢复 offset 加载和加法操作
+  - hasAntiQuantOffset 恢复为编译期分支
+  - 修改点汇总恢复 8 个分支和 scale/offset 引用
+  - 兼容性恢复"有/无 offset"条目
+- **SVG 图**：
+  - `dataflow.svg`：GM 区域恢复 offset 数据和 MTE2 箭头，VF 公式恢复 "(+ offset)"
+  - `buffer_allocation.svg`：antiQuantOffset buffer 恢复正常显示（非半透明），适配说明恢复 scale/offset
+
+#### 关键决策
+- pergroup 支持非对称量化（有 offset）和对称量化（无 offset），通过 `hasAntiQuantOffset` 编译期分支控制
+- tiling key 组合为 2×2×2=8（transB × offset × bias）
+- WqmmConfig 需要 4 个实例（非转置/转置 × 有/无 offset）
+- UB 空间分配逻辑不变，antiQuantOffset 4KB 保留
+
+#### 影响范围
+- 所有设计文档和 SVG 图均已更新
+- 后续编码实现需要处理 offset 相关逻辑（编译期分支）

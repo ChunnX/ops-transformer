@@ -14,10 +14,9 @@
 x:      FP16/BF16, ND
 weight: INT4, ND
 scale:  FP16/BF16, pergroup, dtype 与 x 一致
+offset: FP16/BF16, pergroup, 可选
 out:    FP16/BF16, ND
 ```
-
-**本场景不支持 antiquant_offset 输入。**
 
 支持：
 - 单单单：`groupType=0`，x/weight/out 各 1 个 tensor。
@@ -26,6 +25,12 @@ out:    FP16/BF16, ND
 - `groupSize in {32, 64, 128, 256}`，且每个 `K_i % groupSize == 0`。
 
 ### 1.2 计算公式
+
+```text
+y = x * ((weight_int4 + offset) * scale) + bias
+```
+
+当 `antiquantOffset` 为空时：
 
 ```text
 y = x * (weight_int4 * scale) + bias
@@ -42,14 +47,14 @@ scale[i] shape:
 
 ### 1.3 PerGroup 反量化模型
 
-K 轴按 `groupSize` 分段，每段内的 weight 元素共享同一个 scale：
+K 轴按 `groupSize` 分段，每段内的 weight 元素共享同一个 scale（和 offset）：
 
 ```
 K 轴: |← gs →|← gs →|← gs →|...|← gs →|
         group0  group1  group2      group_{G-1}
 
 scale shape: (G, N)  其中 G = K / gs
-weight_dequant[k, n] = weight_int4[k, n] × scale[k/gs, n]
+weight_dequant[k, n] = (weight_int4[k, n] + offset[k/gs, n]) × scale[k/gs, n]
 ```
 
 ### 1.4 与 A2/A3 已有场景的关系
@@ -147,10 +152,10 @@ A16W4 pergroup ND 固定进入 basic controller：
 | `ALGORITHM_SUB_CATEGORY` | `WQGMM_N_FIRST_BASIC_BLOCK` |
 | `ALGORITHM_CATEGORY` | `WQGMM_VECTOR_ANTIQUANT` |
 
-共 4 个组合：
+共 8 个组合：
 
 ```text
-2 个 transB × 2 个 bias 状态
+2 个 transB × 2 个 offset 状态 × 2 个 bias 状态
 ```
 
 ---
@@ -201,16 +206,16 @@ UB 使用 A16W8 ND 的 `GetNdBufferInfo()`，不新增 pergroup buffer 配置。
 | `weightInputLowBit` | 174KB | 4 | 43.5KB | INT4 packed weight |
 | `highBitData` | 66KB | 2 | 33KB | 反量化后 FP16/BF16 weight |
 | `antiQuantScale` | 4KB | 4 | 1KB | 当前 VF tile 的 scale |
-| `antiQuantOffset` | 4KB | 4 | 1KB | 保留空间，A16W4 pergroup 不使用 |
+| `antiQuantOffset` | 4KB | 4 | 1KB | 当前 VF tile 的 offset |
 
-VF tile 最大 scale 需求：
+VF tile 最大 scale/offset 需求：
 
 ```text
 bTrans=false: ceil(64/32) * 256 * 2B = 1KB
 bTrans=true:  ceil(256/32) * 64 * 2B = 1KB
 ```
 
-**UB 空间分配逻辑不变**：复用 `GetNdBufferInfo()`，`antiQuantOffset` 的 4KB 保留。A16W4 pergroup 运行时不使用 offset buffer，但不修改分配代码。scale 以 VF tile 粒度组织到 UB，而不是按完整 L1 tile 一次性展开。
+**UB 空间分配逻辑不变**：复用 `GetNdBufferInfo()`，`antiQuantOffset` 的 4KB 保留。scale/offset 以 VF tile 粒度组织到 UB，而不是按完整 L1 tile 一次性展开。
 
 ---
 
@@ -230,7 +235,7 @@ Controller.Process()
     for each BasicBlock:
       AIV:
         GM weight(INT4) -> UB
-        GM scale -> UB
+        GM scale/offset -> UB
         VF: INT4 pergroup antiquant -> xType
         UB highBitData -> L1 WeightL1
         SetAivToAic()
@@ -254,8 +259,9 @@ pergroup 的核心地址差异：
 | y | `m_i * n_i` | 相同 |
 | bias | `n_i` | `n_i`，独立偏移变量 |
 | scale | `n_i` | `(k_i/groupSize) * n_i` |
+| offset | `n_i` | `(k_i/groupSize) * n_i` |
 
-需要在 `SetGmAddr()` 中新增 `biasBaseOffset`，避免 bias 继续共用 scale 偏移。
+需要在 `SetGmAddr()` 中新增 `biasBaseOffset`，避免 bias 继续共用 scale/offset 偏移。
 
 ### 4.3 VF 反量化差异
 
@@ -277,8 +283,9 @@ A16W4 的 VF 反量化参考 ops-nn：
 1. load INT4 packed weight from UB
 2. unpack INT4
 3. cast INT4 -> xType
-4. multiply scale
-5. store xType weight to highBitData
+4. if hasOffset: add offset
+5. multiply scale
+6. store xType weight to highBitData
 ```
 
 KN 路径使用统一 `AntiquantPerGroupKN` 风格；NK 路径按 groupSize=32/64/128/256 分派专用 VF 风格。
@@ -287,11 +294,11 @@ KN 路径使用统一 `AntiquantPerGroupKN` 风格；NK 路径按 groupSize=32/6
 
 > 参考源码：`ops-nn/matmul/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_vf.h`
 
-本场景 `hasAntiQuantOffset` 固定为 `false`，以下描述均省略 offset 相关操作。
+`hasAntiQuantOffset` 通过 `WqmmConfig.hasAntiQuantOffset` 做编译期分支。以下描述中 offset 相关操作在 `hasAntiQuantOffset=false` 时由编译器消除。
 
 #### 4.4.1 KN 路径（`bTrans=false`）：统一 VF 函数
 
-调用入口：`AntiquantComputeKNPerGroup(bubNLen, bubKLen)` → `VF_CALL<AntiquantPerGroupKN<xType, wType, false>>`
+调用入口：`AntiquantComputeKNPerGroup(bubNLen, bubKLen)` → `VF_CALL<AntiquantPerGroupKN<xType, wType, hasAntiQuantOffset>>`
 
 **参数构造**（`ParamsKN<xType>`）：
 
@@ -321,6 +328,10 @@ for nIdx = 0 to nLoop-1:                          // N 方向外层循环
     addrRegScale = CreateAddrReg(nIdx, 128, gIdx, nBubXTypeAlign)
     scale ← DataCopy<DIST_NORM>(scaleBaseAddr, addrRegScale)
 
+    // 若 hasAntiQuantOffset: 加载 offset
+    if hasAntiQuantOffset:
+      offset ← DataCopy<DIST_NORM>(offsetBaseAddr, addrRegScale)
+
     for kIdx = 0 to groupSize-1:                   // group 内逐 K 行处理
       // 2. 加载 INT4 weight（DIST_UNPACK4_B8：从 UB 加载并 unpack）
       addrRegWeight = CreateAddrReg(nIdx, wNStride, gIdx, wGroupStride, kIdx, wKStride)
@@ -329,7 +340,11 @@ for nIdx = 0 to nLoop-1:                          // N 方向外层循环
       // 3. Cast INT4 → FP16/BF16
       weightB16 ← Cast<xType, int4x2_t>(weightB4, maskWeight)
 
-      // 4. 乘以 scale
+      // 4. 若 hasAntiQuantOffset: 加 offset
+      if hasAntiQuantOffset:
+        weightB16 ← Add(weightB16, offset, maskWeight)
+
+      // 5. 乘以 scale
       weightB16 ← Mul(weightB16, scale, maskWeight)
 
       // 5. 写入 UB highBitData（NZ 格式，DATA_BLOCK_COPY + POST_MODE_UPDATE）
@@ -573,7 +588,7 @@ for innerIdx = 0 to innerExtend-1:                 // K 方向按 256 元素分�
    - `weightOutUbAddr_` → GMM 的 `ubHighBitTotalBuffer_` 偏移
    - `scaleBaseAddr1_` → GMM 的 `ubAntiQuantScaleTotalBuffer_` 偏移
 
-3. **`hasAntiQuantOffset` 固定为 `false`**：所有 VF 函数模板参数中该位始终为 `false`，编译器会消除 offset 相关的条件分支代码。
+3. **`hasAntiQuantOffset` 编译期分支**：通过 `WqmmConfig.hasAntiQuantOffset` 控制，编译器会消除不需要的 offset 条件分支代码。
 
 4. **`useVag` 参数**：控制是否使用地址寄存器（AddrReg）优化。建议初始实现设为 `false`（直接地址计算），后续可优化为 `true`。
 
@@ -612,11 +627,11 @@ Cube 侧只看到 L1 中的 `xType` weight：
 | 文件 | 修改内容 |
 |------|----------|
 | `grouped_weight_quant_batch_matmul_tiling.cpp` | A16W4 pergroup shape/groupSize 校验、tiling key 生成 |
-| `weight_quant_tiling_key.h` | 新增 4 个 PER_GROUP ND basic key |
-| `grouped_matmul_apt.cpp` | 新增 4 个 basic-controller 分支 |
-| `grouped_matmul_weight_quant_basic_controller.h` | pergroup scale 偏移和 bias 独立偏移 |
+| `weight_quant_tiling_key.h` | 新增 8 个 PER_GROUP ND basic key |
+| `grouped_matmul_apt.cpp` | 新增 8 个 basic-controller 分支 |
+| `grouped_matmul_weight_quant_basic_controller.h` | pergroup scale/offset 偏移和 bias 独立偏移 |
 | `basic_block_config.h` | A16W4 ND pergroup `WqmmConfig` |
-| `weight_quant_vec_compute.h` | A16W4 pergroup VF 分发与 scale tile 布局 |
+| `weight_quant_vec_compute.h` | A16W4 pergroup VF 分发与 scale/offset tile 布局 |
 | `basic_block_vf_nd.h` | 新增 KN/NK INT4 pergroup VF |
 | `grouped_matmul_def.cpp` | config950 增加 INT4 ND 组合 |
 
@@ -635,6 +650,7 @@ Cube 侧只看到 L1 中的 `xType` weight：
 | 兼容点 | 方案 |
 |--------|------|
 | A16W8 perchannel | 新增 `PER_GROUP` tiling key，不改 `PER_CHANNEL` 路径 |
+| 有/无 offset | `WqmmConfig.hasAntiQuantOffset` 编译期分支 |
 | 有/无 bias | tiling key + runtime `hasBias` |
 | A2/A3 | 修改限定在 arch35 |
 

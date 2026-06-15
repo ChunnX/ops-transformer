@@ -50,6 +50,7 @@ struct GMMWeightQuantParam {
 ```text
 weight:           [E, *, *]
 antiquantScale:   [E, G, N]
+antiquantOffset:  [E, G, N]  // 可选
 groupSize = K / G
 ```
 
@@ -58,6 +59,7 @@ groupSize = K / G
 ```text
 weight[i]:          [*, *]
 antiquantScale[i]:  [G_i, N_i]
+antiquantOffset[i]: [G_i, N_i]  // 可选
 groupSize_i = K_i / G_i
 ```
 
@@ -182,6 +184,7 @@ bool IsA16W4NDPergroup() const
 | weight | 3D | `[E, *, *]`，N/K 由 `transB` 解释 |
 | y | 2D | `[M, N]` |
 | antiquantScale | 3D | `[E, G, N]` |
+| antiquantOffset | 3D | `[E, G, N]`，可选 |
 | bias | 2D | `[E, N]`，可选 |
 
 多多多：
@@ -192,13 +195,13 @@ bool IsA16W4NDPergroup() const
 | weight[i] | 2D | `[* , *]`，N/K 由 `transB` 解释 |
 | y[i] | 2D | `[M_i, N_i]` |
 | antiquantScale[i] | 2D | `[G_i, N_i]` |
+| antiquantOffset[i] | 2D | `[G_i, N_i]`，可选 |
 | bias[i] | 1D | `[N_i]`，可选 |
 
 需要在现有 A16W8 校验基础上调整：
-- 多多多 A16W4 pergroup 的 `antiquantScale` 从 A16W8 perchannel 的 1D 扩展为 2D。
-- 单单单 A16W4 pergroup 的 `antiquantScale` 从 A16W8 perchannel 的 2D 扩展为 3D。
+- 多多多 A16W4 pergroup 的 `antiquantScale/Offset` 从 A16W8 perchannel 的 1D 扩展为 2D。
+- 单单单 A16W4 pergroup 的 `antiquantScale/Offset` 从 A16W8 perchannel 的 2D 扩展为 3D。
 - bias 仍保持 `[E,N]` 或 `[N_i]`，不跟随 pergroup 的 G 维扩展。
-- **本场景不支持 antiquantOffset 输入。**
 
 ### 2.4 Shape 关系校验
 
@@ -214,6 +217,7 @@ K_i % G_i == 0
 groupSize_i = K_i / G_i
 groupSize_i in {32, 64, 128, 256}
 antiquantScale 的 N 轴 == N_i
+antiquantOffset 的 shape == antiquantScale 的 shape
 bias 的 N 轴 == N_i
 ```
 
@@ -321,7 +325,7 @@ for each block in round-robin by coreNum:
 | 128 | 2 |
 | 256 | 1 |
 
-这保证每个 L1 K tile 覆盖整数个 pergroup 段，VF 反量化时不需要处理跨 group 的 scale 边界。
+这保证每个 L1 K tile 覆盖整数个 pergroup 段，VF 反量化时不需要处理跨 group 的 scale/offset 边界。
 
 ### 3.5 Tail Resplit 策略
 
@@ -453,7 +457,7 @@ if (IsA16W4NDPergroup()) {
 | `algorithm` | `VECTOR_ANTIQUANT + N_FIRST_BASIC_BLOCK` |
 | `transposeSituation` | 由 `transA/transB` 生成，`transA=false` |
 | `quantType` | `NONE` |
-| `optionInputSituation` | bias 是否存在 |
+| `optionInputSituation` | offset/bias 是否存在 |
 | `weightFormat` | `ND` |
 | `templateCustom` | `MTE2_INNER_SIZE_256_BUF_NUM_4` |
 
@@ -464,7 +468,7 @@ if (IsA16W4NDPergroup()) {
 #### 5.2.1 非转置场景（WQ_B_TRANS = WQGMM_NO_TRANS）
 
 ```cpp
-// 组合 1: 无bias 非转置
+// 组合 1: 无offset无bias 非转置
 ASCENDC_TPL_ARGS_SEL(
     ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
     ASCENDC_TPL_UINT_SEL(W_TYPE, ASCENDC_TPL_UI_LIST, WQGMM_ND),
@@ -477,18 +481,26 @@ ASCENDC_TPL_ARGS_SEL(
     ASCENDC_TPL_UINT_SEL(ALGORITHM_SUB_CATEGORY, ASCENDC_TPL_UI_LIST, WQGMM_N_FIRST_BASIC_BLOCK),
     ASCENDC_TPL_UINT_SEL(ALGORITHM_CATEGORY, ASCENDC_TPL_UI_LIST, WQGMM_VECTOR_ANTIQUANT)),
 
-// 组合 2: 有bias 非转置
+// 组合 2: 无offset有bias 非转置
 ASCENDC_TPL_ARGS_SEL(
     ..., WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_EXIST, ..., WQGMM_PER_GROUP, WQGMM_NO_TRANS, ...),
+
+// 组合 3: 有offset无bias 非转置
+ASCENDC_TPL_ARGS_SEL(
+    ..., WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST, ..., WQGMM_PER_GROUP, WQGMM_NO_TRANS, ...),
+
+// 组合 4: 有offset有bias 非转置
+ASCENDC_TPL_ARGS_SEL(
+    ..., WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_EXIST, ..., WQGMM_PER_GROUP, WQGMM_NO_TRANS, ...),
 ```
 
 #### 5.2.2 转置场景（WQ_B_TRANS = WQGMM_TRANS）
 
 ```cpp
-// 组合 3~4: 同上，仅 WQ_B_TRANS 改为 WQGMM_TRANS
+// 组合 5~8: 同上，仅 WQ_B_TRANS 改为 WQGMM_TRANS
 ASCENDC_TPL_ARGS_SEL(
     ..., WQGMM_PER_GROUP, WQGMM_TRANS, ...),
-// ... 共 2 个转置组合
+// ... 共 4 个转置组合
 ```
 
 ### 5.3 新增组合的模板参数值汇总
@@ -496,7 +508,7 @@ ASCENDC_TPL_ARGS_SEL(
 | 参数 | 值 | 说明 |
 |------|-----|------|
 | W_TYPE | WQGMM_ND (0) | weight ND 格式 |
-| OFFSET_OR_BIAS_EXIT | 0~1 | 2 种 bias 组合（本场景不支持 offset） |
+| OFFSET_OR_BIAS_EXIT | 0~3 | 4 种 offset/bias 组合 |
 | C_QUANT_TYPE | WQGMM_NONE (0) | 无 C 量化 |
 | W_QUANT_TYPE | **WQGMM_PER_GROUP (3)** | ★ weight pergroup 量化 |
 | WQ_B_TRANS | WQGMM_NO_TRANS (0) / WQGMM_TRANS (1) | 转置/非转置 |
@@ -514,7 +526,7 @@ ASCENDC_TPL_ARGS_SEL(
 | AIV 分发路径 | `ComputeBasicBlockAivNdKnNzNk` | `ComputeBasicBlockAivNdNkNzKn` |
 | VF 函数 | `AntiquantComputeKNPerGroup`（K 为内轴） | `AntiquantComputeW4NKPerGroup`（N 为内轴） |
 | VfConfig | `{vfN=256, vfK=64}` | `{vfN=64, vfK=256}` |
-| tiling key 数量 | 2 个 | 2 个 |
+| tiling key 数量 | 8 个 | 8 个 |
 
 ### 5.5 与 kernel 入口 if constexpr 的匹配
 
@@ -531,7 +543,7 @@ Tiling 不新增 buffer 字段，也不为 A16W4 pergroup 生成新的 buffer �
 | 层级 | 结论 |
 |------|------|
 | L1 | `WeightL1` 单缓冲 128KB；无 bias 时 `AL1` 单缓冲 128KB；有 bias 时 host 将 `baseM` 调整为 240，`AL1` 单缓冲 124KB 可容纳 A tile |
-| UB | 复用 `GetNdBufferInfo()`：weight input 174KB、high-bit output 66KB、scale 4KB |
-| VF tile | A16W4 pergroup 的 scale 按 VF tile 消费，最小 `gs=32` 时单次最大 1KB，匹配 A16W8 ND 的 scale 单 buffer |
+| UB | 复用 `GetNdBufferInfo()`：weight input 174KB、high-bit output 66KB、scale 4KB、offset 4KB |
+| VF tile | A16W4 pergroup 的 scale/offset 按 VF tile 消费，最小 `gs=32` 时单次最大 1KB，匹配 A16W8 ND 的 scale/offset 单 buffer |
 
 因此 tiling 侧固定使用 A16W8 ND 的 `baseM/baseN/baseK/stepKb/templateCustom`，不引入额外切分策略。

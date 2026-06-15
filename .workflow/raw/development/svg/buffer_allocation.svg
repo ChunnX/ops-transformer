@@ -130,16 +130,16 @@
   <rect x="680" y="518" width="140" height="18" fill="#ce93d8" stroke="#6a1b9a" stroke-width="1.5" opacity="0.75"/>
   <text x="830" y="531" text-anchor="start" font-size="9" fill="#555">antiQuantScale[1:0] 2KB</text>
 
-  <!-- antiQuantOffset[1] (2KB) - 保留空间，A16W4 pergroup 不使用 -->
-  <rect x="680" y="536" width="140" height="18" fill="#ef9a9a" stroke="#c62828" stroke-width="1.5" opacity="0.4"/>
-  <text x="830" y="549" text-anchor="start" font-size="9" fill="#999">antiQuantOffset[3:2] 2KB (保留)</text>
+  <!-- antiQuantOffset[1] (2KB) -->
+  <rect x="680" y="536" width="140" height="18" fill="#ef9a9a" stroke="#c62828" stroke-width="1.5"/>
+  <text x="830" y="549" text-anchor="start" font-size="9" fill="#555">antiQuantOffset[3:2] 2KB</text>
 
-  <!-- antiQuantOffset[0] (2KB) - 保留空间，A16W4 pergroup 不使用 -->
-  <rect x="680" y="554" width="140" height="18" fill="#ef9a9a" stroke="#c62828" stroke-width="1.5" opacity="0.3"/>
-  <text x="830" y="567" text-anchor="start" font-size="9" fill="#999">antiQuantOffset[1:0] 2KB (保留)</text>
+  <!-- antiQuantOffset[0] (2KB) -->
+  <rect x="680" y="554" width="140" height="18" fill="#ef9a9a" stroke="#c62828" stroke-width="1.5" opacity="0.75"/>
+  <text x="830" y="567" text-anchor="start" font-size="9" fill="#555">antiQuantOffset[1:0] 2KB</text>
 
   <!-- UB 总计 -->
-  <text x="750" y="590" text-anchor="middle" font-size="9" fill="#333">总计: 248KB（UB 可用空间，offset 保留但不使用）</text>
+  <text x="750" y="590" text-anchor="middle" font-size="9" fill="#333">总计: 248KB（UB 可用空间）</text>
 
   <!-- UB 双缓冲标注 -->
   <line x1="665" y1="110" x2="665" y2="390" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
@@ -221,7 +221,7 @@
   <text x="550" y="767" font-size="9" fill="#2e7d32">✓</text>
 
   <text x="60" y="792" font-size="10" fill="#333">结论：按 VF tile 搬运/消费 scale，gs=32 最大单次需求为 1KB。</text>
-  <text x="60" y="806" font-size="10" fill="#2e7d32">A16W4 pergroup 复用 A16W8 ND UB 分配：scale 4KB，offset 4KB 保留但不使用。</text>
+  <text x="60" y="806" font-size="10" fill="#2e7d32">A16W4 pergroup 复用 A16W8 ND UB 分配：scale/offset 总大小均为 4KB。</text>
 
   <!-- 右侧：L1 空间分析 -->
   <text x="620" y="670" font-size="11" font-weight="bold" fill="#6a1b9a">▎L1 空间分析（kL1=256）</text>
@@ -258,5 +258,5 @@
   <rect x="965" y="916" width="16" height="12" fill="#ce93d8" stroke="#6a1b9a" stroke-width="1"/>
   <text x="990" y="926" font-size="9">antiQuantScale</text>
   <rect x="965" y="933" width="16" height="12" fill="#ef9a9a" stroke="#c62828" stroke-width="1" opacity="0.4"/>
-  <text x="990" y="943" font-size="9">antiQuantOffset (保留)</text>
+  <text x="990" y="943" font-size="9">antiQuantOffset</text>
 </svg>

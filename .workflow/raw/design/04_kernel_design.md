@@ -7,10 +7,10 @@
 
 ## 1. Kernel 入口与模板分发
 
-入口位于 `gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp` 的 `V310_GMM_ANTI_QUANT` 分支，A16W4 pergroup ND 新增 4 个 basic-controller 分支：
+入口位于 `gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp` 的 `V310_GMM_ANTI_QUANT` 分支，A16W4 pergroup ND 新增 8 个 basic-controller 分支：
 
 ```text
-2 个 transB 状态 × 2 个 bias 状态 = 4
+2 个 transB 状态 × 2 个 antiquantOffset 状态 × 2 个 bias 状态 = 8
 ```
 
 分支共同特征：
@@ -54,7 +54,7 @@ static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_3 = {4, 256};
 | `Init()` | 复用，`groupSize` 已通过 `wqmmBasicBlock_.Init(gmmBaseTiling_->groupSize, ...)` 传入 |
 | `Process()` | 复用 A16W8 M/N 二维分块和 round-robin 分核 |
 | `SetMKN()` | 复用，M/K/N 获取逻辑与 pergroup 无关 |
-| `SetGmAddr()` | 需要区分 pergroup scale 偏移，并将 bias 偏移独立出来 |
+| `SetGmAddr()` | 需要区分 pergroup scale/offset 偏移，并将 bias 偏移独立出来 |
 | `GetSplitValueFromGroupList()` | 复用 |
 
 ### 2.2 SetGmAddr 偏移
@@ -81,7 +81,7 @@ pergroup scale:   [G, N]    每 group 占 (K/groupSize) * N 个元素
 
 ### 2.3 Bias 偏移独立
 
-单单单场景下，bias shape 为 `[E,N]`，scale shape 为 `[E,G,N]`。因此 bias 不能继续复用 `antiquantParamsBaseOffset`。
+单单单场景下，bias shape 为 `[E,N]`，scale/offset shape 为 `[E,G,N]`。因此 bias 不能继续复用 `antiquantParamsBaseOffset`。
 
 设计：
 
@@ -129,16 +129,22 @@ yBaseOffset += offsetParam.mSize * offsetParam.nSize;
 
 ### 3.1 WqmmConfig
 
-A16W4 pergroup ND 需要覆盖转置/非转置。本场景不支持 antiquantOffset，因此 `hasAntiQuantOffset` 固定为 `false`。可以新增命名常量，也可以在 `grouped_matmul_apt.cpp` 分支内局部定义 `static constexpr WqmmConfig`。
+A16W4 pergroup ND 需要覆盖转置/非转置和有无 offset。可以新增命名常量，也可以在 `grouped_matmul_apt.cpp` 分支内局部定义 `static constexpr WqmmConfig`。
 
 ```cpp
 // B 非转置
 static constexpr WqmmConfig A16W4_ND_PG = {
     false, false, QuantType::PER_GROUP, false, QuantType::NONE, CubeFormat::ND};
 
+static constexpr WqmmConfig A16W4_ND_PG_OFF = {
+    false, false, QuantType::PER_GROUP, true, QuantType::NONE, CubeFormat::ND};
+
 // B 转置
 static constexpr WqmmConfig A16W4_ND_TRANS_PG = {
     false, true, QuantType::PER_GROUP, false, QuantType::NONE, CubeFormat::ND};
+
+static constexpr WqmmConfig A16W4_ND_TRANS_PG_OFF = {
+    false, true, QuantType::PER_GROUP, true, QuantType::NONE, CubeFormat::ND};
 ```
 
 ### 3.2 BasicBlock 分发
@@ -299,7 +305,7 @@ AntiquantComputeKNPerGroup(int32_t bubNLen, int32_t bubKLen)
 该函数构造 `ParamsKN` 后调用：
 
 ```cpp
-AscendC::VF_CALL<AntiquantPerGroupKN<xType, wType, false>>(param);
+AscendC::VF_CALL<AntiquantPerGroupKN<xType, wType, hasAntiQuantOffset>>(param);
 ```
 
 核心循环：
@@ -307,10 +313,11 @@ AscendC::VF_CALL<AntiquantPerGroupKN<xType, wType, false>>(param);
 ```text
 for nLoop:
   for group:
-    load scale for N vector
+    load scale/offset for N vector
     for k in group:
       load int4 weight
       unpack/cast to xType
+      add offset if enabled
       multiply scale
       store high-bit weight
 ```
@@ -362,16 +369,17 @@ if (groupSize == 32) {
 1. 从 UB 读取 INT4 packed weight
 2. unpack INT4
 3. cast INT4 -> xType(FP16/BF16)
-4. weight *= scale
-5. 将 xType weight 写入 UB highBitData
-6. 由现有 MTE3 流程搬到 L1 WeightL1
+4. 若 hasAntiQuantOffset: weight += offset
+5. weight *= scale
+6. 将 xType weight 写入 UB highBitData
+7. 由现有 MTE3 流程搬到 L1 WeightL1
 ```
 
-本场景 `hasAntiQuantOffset` 固定为 `false`，VF 函数模板参数中该位始终为 `false`。
+`hasAntiQuantOffset` 通过 `WqmmConfig.hasAntiQuantOffset` 做编译期分支。
 
-### 5.5 scale UB 布局
+### 5.5 scale/offset UB 布局
 
-VF 看到的 scale shape 统一为当前 tile 的 `[G_tile, N_tile]`：
+VF 看到的 scale/offset shape 统一为当前 tile 的 `[G_tile, N_tile]`：
 
 ```text
 G_tile = vfKRealLen / groupSize    // K % groupSize == 0
@@ -408,12 +416,12 @@ Cube 侧完全复用 A16W8：
 
 | 文件 | 修改内容 |
 |------|----------|
-| `grouped_matmul_apt.cpp` | 新增 A16W4 pergroup ND 的 4 个 basic-controller 分支 |
+| `grouped_matmul_apt.cpp` | 新增 A16W4 pergroup ND 的 8 个 basic-controller 分支 |
 | `weight_quant_tiling_key.h` | 新增对应 tiling key 组合 |
 | `grouped_weight_quant_batch_matmul_tiling.cpp` | A16W4 pergroup shape/groupSize/tiling key 校验与生成 |
-| `grouped_matmul_weight_quant_basic_controller.h` | `SetGmAddr` 中 pergroup scale 偏移和 bias 独立偏移 |
+| `grouped_matmul_weight_quant_basic_controller.h` | `SetGmAddr` 中 pergroup scale/offset 偏移和 bias 独立偏移 |
 | `basic_block_config.h` | 新增或局部定义 A16W4 ND pergroup `WqmmConfig` |
-| `weight_quant_vec_compute.h` | 在 ND + PER_GROUP + INT4 下分发到 A16W4 pergroup VF，并让 scale UB 布局与 VF tile 对齐 |
+| `weight_quant_vec_compute.h` | 在 ND + PER_GROUP + INT4 下分发到 A16W4 pergroup VF，并让 scale/offset UB 布局与 VF tile 对齐 |
 | `basic_block_vf_nd.h` | 新增 KN/NK A16W4 pergroup VF 实现 |
 | `grouped_matmul_def.cpp` | config950 补充 INT4 ND 组合 |
 
@@ -433,5 +441,6 @@ Cube 侧完全复用 A16W8：
 |--------|------|
 | A16W8 perchannel | `WqmmConfig.antiQuantType == PER_CHANNEL` 原路径不变 |
 | A16W4 pergroup | 新 tiling key + `PER_GROUP` 编译期分支隔离 |
+| 有/无 offset | `hasAntiQuantOffset` 编译期分支 |
 | 有/无 bias | tiling key 选择 + runtime `hasBias` 传入 BasicBlock |
 | A2/A3 | 仅 arch35 路径适配，不触碰 arch30 |
