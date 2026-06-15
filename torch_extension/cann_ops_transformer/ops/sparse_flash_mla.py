@@ -77,7 +77,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             else:
                 attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
                 if return_softmax_lse:
-                    softmax_lse = torch.empty([ori_kv.shape[1], q.shape[0], q.shape[2] / ori_kv.shape[2]],
+                    softmax_lse = torch.empty([ori_kv.shape[1], q.shape[0], q.shape[1] / ori_kv.shape[1]],
                                               dtype=torch.float32, device="meta")
                 else:
                     # 给一个空的合法张量，不能是 nullptr
@@ -107,7 +107,7 @@ def npu_sparse_flash_mla(q,
                                     topk_value_mode=1, return_softmax_lse=False,
                                     key_dtype=None, value_dtype=None):
     """
-    dispatcher implementation for NPU.zhe
+    dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     return op_module.npu_sparse_flash_mla(q,
