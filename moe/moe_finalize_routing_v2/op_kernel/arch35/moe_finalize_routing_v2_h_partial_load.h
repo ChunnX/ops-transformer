@@ -151,19 +151,8 @@ __aicore__ inline void ProcessYWithInput(int64_t rowOuterIdx, int64_t hIdx, int6
             expertIdx = expertIdxGm.GetValue(expertIdxOffset);
         }
         if (hasX && hasExpertIdx) {
-            if (expertIdx >= tilingData->zeroExpertStart && expertIdx < tilingData->zeroExpertEnd) {
+            if (!LoadExpandedXByExpertType(rowOuterIdx, hIdx, hFactor, expertIdx, expandedRowIdxGmValue)) {
                 return;
-            }
-            expandedXLocal = expandedXQue.AllocTensor<T>();
-            if (expertIdx >= tilingData->copyExpertStart && expertIdx < tilingData->copyExpertEnd) {
-                CopyCopyExpert(rowOuterIdx, hIdx, hFactor);
-            } else if (hasConstExpert && expertIdx >= tilingData->constantExpertStart &&
-                expertIdx < tilingData->constantExpertEnd) {
-                CopyConstantExpert(rowOuterIdx, hIdx, hFactor, expertIdx);
-            } else {
-                CopyIn(
-                    expandedXGm[expandedRowIdxGmValue * tilingData->h + hIdx * tilingData->hFactor],
-                    expandedXLocal, 1, hFactor);
             }
         } else {
             expandedXLocal = expandedXQue.AllocTensor<T>();
@@ -193,6 +182,26 @@ __aicore__ inline void ProcessYWithInput(int64_t rowOuterIdx, int64_t hIdx, int6
         if (hasBiasAndExpertIdx) {
             biasQue.FreeTensor(biasLocal);
         }
+    }
+
+    __aicore__ inline bool LoadExpandedXByExpertType(int64_t rowOuterIdx, int64_t hIdx, int64_t hFactor,
+                                                      int64_t expertIdx, int64_t expandedRowIdxGmValue)
+    {
+        if (expertIdx >= tilingData->zeroExpertStart && expertIdx < tilingData->zeroExpertEnd) {
+            return false;
+        }
+        expandedXLocal = expandedXQue.AllocTensor<T>();
+        if (expertIdx >= tilingData->copyExpertStart && expertIdx < tilingData->copyExpertEnd) {
+            CopyCopyExpert(rowOuterIdx, hIdx, hFactor);
+        } else if (hasConstExpert && expertIdx >= tilingData->constantExpertStart &&
+            expertIdx < tilingData->constantExpertEnd) {
+            CopyConstantExpert(rowOuterIdx, hIdx, hFactor, expertIdx);
+        } else {
+            CopyIn(
+                expandedXGm[expandedRowIdxGmValue * tilingData->h + hIdx * tilingData->hFactor],
+                expandedXLocal, 1, hFactor);
+        }
+        return true;
     }
 
     __aicore__ inline void CopyCopyExpert(int64_t rowOuterIdx, int64_t hIdx, int64_t hFactor)
