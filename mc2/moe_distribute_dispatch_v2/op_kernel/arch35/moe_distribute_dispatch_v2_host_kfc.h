@@ -443,7 +443,7 @@ private:
     DataCopyExtParams hCommuCopyOutParams_;
     DataCopyParams doWindowCopyOutParams_;
 
-    MoeDistributeDispatchV2Quant<XInType, ExpandXOutType,
+    MoeDistributeDispatchV2Quant<XType, ExpandXOutType,
                 ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather> quantInst_;
 
     MoeDispatchLog_NEW::Log logger;
