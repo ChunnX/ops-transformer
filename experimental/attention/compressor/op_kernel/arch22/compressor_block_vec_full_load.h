@@ -911,10 +911,10 @@ CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T>
                                                             const Vec1SliceInfo &sliceInfo, uint32_t compressTcSize,
                                                             uint32_t dStartIdx, uint32_t dDealSize)
 {
-    LocalTensor<X_T> outputUb = outputQue2.AllocTensor<X_T>();
+    LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, compressTcSize * dDealSize);
-    outputQue2.EnQue(outputUb);
-    outputQue2.DeQue<X_T>();
+    outputQue1.EnQue(outputUb);
+    outputQue1.DeQue<X_T>();
     if constexpr (COMP::xLayout == X_LAYOUT::BSH) {
         uint32_t bOutputScLen = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
         uint32_t bIdx = sliceInfo.bIdx;
@@ -941,7 +941,7 @@ CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T>
         DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize,
                             constInfo_.headDim);
     }
-    outputQue2.FreeTensor(outputUb);
+    outputQue1.FreeTensor(outputUb);
 }
 
 template <typename COMP>
