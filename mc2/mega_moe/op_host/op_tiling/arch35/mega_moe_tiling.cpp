@@ -47,14 +47,16 @@ namespace {
     const static int64_t TWO_DIMS = 2LL;
     const static int64_t ONE_DIM = 1LL;
     const static int64_t MIN_BS = 1LL;
-    const static int64_t MAX_BS = 512LL;
+    const static int64_t MAX_BS = 512000LL;
+    const static int64_t MIN_TOPK = 1LL;
+    const static int64_t MAX_TOPK = 32LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
-    const static int64_t MAX_EXPERT_PER_RANK = 16LL;
+    const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
     const static int64_t H_BASE = 1024LL;
     const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
     const static int64_t MAX_EP_WORLD_SIZE = 768LL;
-    const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
+    const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
@@ -250,11 +252,18 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
-    // leastCclBufferSize = PEERMEM_DATA_OFFSET + tokenPerExpert + quantTokenScale + combineOut
+    // leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecv + quantTokenScale + combineOut。
+    // 与 kernel PeermemInfo(mega_moe_base.h)逐项一致, 否则拦截失真:
+    //   maskRecv: 每 (localExpert, srcRank) 槽 = align32(align256(bs*topK*4)/4/8) mask + 32B count;
+    //   quantTokenScale: bs 个 align32(align256(h) data + h/32 scale) token;
+    //   combineOut: bs*topK 行 h*yDtype(GMM2 回送全量驻留 win, 大 bs*topK 的主限制, 见设计文档遗留项)。
+    int64_t maskSlotBytes = ops::CeilAlign(ops::CeilAlign(bs * topK * (int64_t)sizeof(int32_t), ALIGN_256) /
+        (int64_t)sizeof(int32_t) / 8, UB_BLOCK_SIZE) + UB_BLOCK_SIZE;
+    int64_t quantTokenBytes = ops::CeilAlign(ops::CeilAlign(h, ALIGN_256) + h / MXFP_SCALE_GROUP_NUM, UB_BLOCK_SIZE);
     int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET +
-        (epWorldSize * ops::CeilAlign(epWorldSize * expertPerRank, ALIGN_128) * sizeof(int32_t)) + // tokenPerExpert
-        (ops::CeilAlign(bs * topK * (h + h / MXFP_SCALE_GROUP_NUM), ALIGN_512) * sizeof(int8_t)) + // quantTokenScale
-        (ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512)); // combineOut
+        ops::CeilAlign(expertPerRank * epWorldSize * maskSlotBytes, ALIGN_512) + // maskRecv
+        ops::CeilAlign(bs * quantTokenBytes, ALIGN_512) +                        // quantTokenScale
+        ops::CeilAlign(bs * topK * h * yDtypeSize, ALIGN_512);                   // combineOut
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize",
             std::to_string(cclBufferSize).c_str(),
@@ -861,9 +870,10 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(topkIdsDim1 != 6LL && topkIdsDim1 != 8LL,
+    OP_TILING_CHECK(topkIdsDim1 < MIN_TOPK || topkIdsDim1 > MAX_TOPK,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(),
-            "only support 6/8"),
+            (std::string("should in [") + std::to_string(MIN_TOPK) + ", " +
+             std::to_string(MAX_TOPK) + "]").c_str()),
         return ge::GRAPH_FAILED);
 
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);

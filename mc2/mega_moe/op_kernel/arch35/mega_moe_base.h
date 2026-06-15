@@ -21,6 +21,18 @@
 #include "op_kernel/math_util.h"
 #include "mega_moe_workspace_info.h"
 
+// 分块流式 dispatch 的 token 分批粒度 chunkLen_ 不再是编译期常量: 在 mega_moe.h 的 Init 里按两个时段
+// 各自 UB 余量动态算上限(取 min), 再 cap 到对齐后的 ST。CHUNK 越大 ⇒ 大 bs 时分片越少 ⇒ 源 mask 跨卡
+// 推送次数 & 接收端 chunk 迭代越少; 中小 bs 时 chunkLen_=ST ⇒ 单块跑, 零分块开销。chunkLen_ 恒为 256 倍数。
+// tripleTensor_ 每批最多这么多行(每行 32B = INT32_PER_256B 个 int32), 与 chunkLen_ 解耦, 保证 UB 不爆。
+// 2048 行 * 32B = 64KB, 计入段 B 固定布局(Init 的 fixedB 已含此预留)。
+constexpr int32_t DISPATCH_TRIPLE_TILE = 2048;
+
+// groupFlagList 清零的分批粒度(int32 个数): resetTensor_ 封顶到这么大, ResetFlagList 按此分批循环推 GM,
+// 使 reset UB 占用与 flag 总数(∝ maxOutputSize ∝ bs)解耦 —— 支持任意大 bs 泛化(见设计文档 §6.7)。
+// 本核份额 ≤ 此值时单批推送, 完全退化为改前的一次 DataCopyPad, 零额外开销。2048*4 = 8KB, 256B 对齐。
+constexpr int32_t DISPATCH_RESET_BATCH = 2048;
+
 struct Mc2MoeContext {
     uint32_t epRankId;
     uint32_t epRankSize;
@@ -49,8 +61,9 @@ struct PeermemInfo {
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
         // 每张卡为自己的 expertPerRank 个专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
-        // 槽位 = bit-packed mask (CeilAlign(compareCount/8,32)) + 32B count(源卡 SendMaskCal 同步算好),
-        // 与 mega_moe.h FirstBuffInit 的 maskSlotSize_ 一致; 接收端直接读 count, 不再 GatherMask 计数。
+        // 槽位 = bit-packed mask (CeilAlign(compareCount/8,32)) + 32B count(源卡 SendMaskCal 算好), 接收端直接读 count。
+        // 分块流式不改变槽位大小: 源按 chunk 分片填同一 mask 区(末片 clamp 到 maskAlignSize, 不越界 count),
+        // 故 win 布局/host CCL buffer 大小完全不变。须与 mega_moe.h Init 的 maskAlignSize_/maskSlotSize_ 一致。
         int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
         int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
             (int64_t)sizeof(int32_t);
