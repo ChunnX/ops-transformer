@@ -232,6 +232,9 @@ OLD_ERROR = [
      "kv_seq":640,"bs":0,"q_seq":3,"d":64},
     {"id":"OLD-NonPA-dim01-ERR","B":2,"N_q":6,"N_kv":2,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim01",
      "kv_seq":512,"bs":0,"q_seq":6,"d":128},
+    # 非PA + rope: krope 非连续应拦截
+    {"id":"OLD-NonPA-rope-dim0-ERR","B":1,"N_q":2,"N_kv":1,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim0",
+     "kv_seq":512,"bs":0,"q_seq":4,"d":128,"dr":64,"dv":128},
 ]
 
 
