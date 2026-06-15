@@ -333,6 +333,13 @@ uint64_t SparseFlashMlaGradTilingBs1Regbase::GetTilingKey() const
     int64_t isTnd = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? 1 : 0;
     uint64_t tilingKey = 0;
 
+    baseParams_->set_hasUsedSeqQ(tmpData.usedSeqQ);
+    baseParams_->set_hasUsedSeqOriKV(tmpData.usedSeqOriKV);
+    baseParams_->set_hasUsedSeqCmpKV(tmpData.usedSeqCmpKV);
+    baseParams_->set_hasOriTopK(tmpData.oriTopK);
+    baseParams_->set_hasCmpTopK(tmpData.cmpTopK);
+    baseParams_->set_isSink(tmpData.sinks);
+
     OP_LOGI(
         context_,
         "SparseFlashMlaGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], \
@@ -350,10 +357,7 @@ uint64_t SparseFlashMlaGradTilingBs1Regbase::GetTilingKey() const
         static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd), static_cast<uint16_t>(tmpData.singleM),
         static_cast<uint16_t>(tmpData.singleN), static_cast<uint16_t>(tmpData.d), static_cast<uint8_t>(tmpData.oriKV),
         static_cast<uint8_t>(tmpData.cmpKV), static_cast<uint8_t>(tmpData.oriKVSparse),
-        static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.usedSeqQ),
-        static_cast<uint8_t>(tmpData.usedSeqOriKV), static_cast<uint8_t>(tmpData.usedSeqCmpKV),
-        static_cast<uint8_t>(tmpData.oriTopK), static_cast<uint8_t>(tmpData.cmpTopK),
-        static_cast<uint8_t>(tmpData.sinks), static_cast<uint8_t>(tmpData.deterministic));
+        static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.deterministic));
 
     OP_LOGI(context_,
             "SparseFlashMlaGrad DoTiling success, tilingkey is"

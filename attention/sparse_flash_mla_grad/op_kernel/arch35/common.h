@@ -182,6 +182,12 @@ struct FagConstInfo {
     /** \brief metadata分核信息 */
     uint32_t totalNum;
     int32_t usedCoreNum;
+    bool hasUsedSeqQ;
+    bool hasUsedSeqOriKV;
+    bool hasUsedSeqCmpKV;
+    bool hasOriTopK;
+    bool hasCmpTopK;
+    bool isSink;
 };
 
 // fp8反量化因子

@@ -51,6 +51,14 @@ public:
     int64_t mm5ResWorkSpaceOffset;
     int64_t dSinkWorkSpaceOffset;
     int32_t cmpRatio;
+    bool hasUsedSeqQ;
+    bool hasUsedSeqOriKV;
+    bool hasUsedSeqCmpKV;
+    bool hasOriTopK;
+    bool hasCmpTopK;
+    bool isSink;
+    bool tmp1;
+    bool tmp2;
 
     int64_t get_b() const
     {
@@ -156,6 +164,30 @@ public:
     {
         return cmpRatio;
     }
+    bool get_hasUsedSeqQ() const
+    {
+        return hasUsedSeqQ;
+    }
+    bool get_hasUsedSeqOriKV() const
+    {
+        return hasUsedSeqOriKV;
+    }
+    bool get_hasUsedSeqCmpKV() const
+    {
+        return hasUsedSeqCmpKV;
+    }
+    bool get_hasOriTopK() const
+    {
+        return hasOriTopK;
+    }
+    bool get_hasCmpTopK() const
+    {
+        return hasCmpTopK;
+    }
+    bool get_isSink() const
+    {
+        return isSink;
+    }
 
     void set_b(int64_t bParam)
     {
@@ -260,6 +292,30 @@ public:
     void set_cmpRatio(int32_t cmpRatio)
     {
         this->cmpRatio = cmpRatio;
+    }
+    void set_hasUsedSeqQ(bool hasUsedSeqQ)
+    {
+        this->hasUsedSeqQ = hasUsedSeqQ;
+    }
+    void set_hasUsedSeqOriKV(bool hasUsedSeqOriKV)
+    {
+        this->hasUsedSeqOriKV = hasUsedSeqOriKV;
+    }
+    void set_hasUsedSeqCmpKV(bool hasUsedSeqCmpKV)
+    {
+        this->hasUsedSeqCmpKV = hasUsedSeqCmpKV;
+    }
+    void set_hasOriTopK(bool hasOriTopK)
+    {
+        this->hasOriTopK = hasOriTopK;
+    }
+    void set_hasCmpTopK(bool hasCmpTopK)
+    {
+        this->hasCmpTopK = hasCmpTopK;
+    }
+    void set_isSink(bool isSink)
+    {
+        this->isSink = isSink;
     }
 };
 

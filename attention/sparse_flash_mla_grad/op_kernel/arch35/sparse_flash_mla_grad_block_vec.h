@@ -224,7 +224,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmax_lse);
     oritopkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)ori_sparse_indices);
     cmptopkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cmp_sparse_indices);
-    if (IsSink) { // todo is_sink
+    if (constInfo.isSink) { // todo is_sink
         sinkGm.SetGlobalBuffer((__gm__ float *)sink);
         dsinkGm.SetGlobalBuffer((__gm__ float *)dsink);
         dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
@@ -457,7 +457,7 @@ FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int6
     int64_t t1Offset = 0;
     int64_t t2Offset = 0;
     int64_t t3Offset = 0;
-    int64_t bIndex = HasUsedSeqQ ? -1 : 0;
+    int64_t bIndex = constInfo.hasUsedSeqQ ? -1 : 0;
     int64_t s1Index = 0;
     int64_t nextUsedT1Offset = 0;
     int64_t usedT1Offset = 0;
@@ -477,7 +477,7 @@ FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int6
     if (usedT1Index >= constInfo.totalNum) {
         return false;
     }
-    if constexpr (!HasUsedSeqQ) {
+    if (!constInfo.hasUsedSeqQ) {
         if constexpr (IS_TND) {
             curT1 = ((__gm__ int32_t *)actualSeqQlenAddr)[bIndex];
             while (usedT1Index >= curT1) {
@@ -534,17 +534,17 @@ FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int6
         t3Offset = bIndex * curS3;
     }
 
-    if constexpr (HasUsedSeqQ) {
+    if (constInfo.hasUsedSeqQ) {
         usedS1 = ((__gm__ int32_t *)usedSeqQlenAddr)[bIndex];
     } else {
         usedS1 = curS1;
     }
-    if constexpr (HasUsedSeqOriKV) {
+    if (constInfo.hasUsedSeqOriKV) {
         usedS2 = ((__gm__ int32_t *)usedOriSeqKvlenAddr)[bIndex];
     } else {
         usedS2 = curS2;
     }
-    if constexpr (HasUsedSeqCmpKV) {
+    if (constInfo.hasUsedSeqCmpKV) {
         usedS3 = ((__gm__ int32_t *)usedCmpSeqKvlenAddr)[bIndex];
     } else {
         usedS3 = curS3;
@@ -565,17 +565,17 @@ FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int6
         usedS3 = Max((oriUsedS3 - usedS1 + s1Index + 1) / constInfo.cmpRatio, 0);
     }
 
-    if constexpr (HasOriTopK) {
+    if (constInfo.hasOriTopK) {
         oriTopkLength = ((__gm__ int32_t *)oriTopkLengthAddr)[bS1Index];
-    } else if constexpr (IsOriKVSparse) {
+    } else if (IsOriKVSparse) {
         oriTopkLength = constInfo.oriSelectedBlockCount;
     } else {
         oriTopkLength = curS2;
     }
 
-    if constexpr (HasCmpTopK) {
+    if (constInfo.hasCmpTopK) {
         cmpTopkLength = ((__gm__ int32_t *)cmpTopkLengthAddr)[bS1Index];
-    } else if constexpr (IsCmpKVSparse) {
+    } else if (IsCmpKVSparse) {
         cmpTopkLength = constInfo.cmpSelectedBlockCount;
     } else {
         cmpTopkLength = curS3;

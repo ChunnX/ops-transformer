@@ -55,18 +55,6 @@ ASCENDC_TPL_ARGS_DECL(SparseFlashMlaGrad, // 算子唯一标识，可以opType�
     // bit: 35
     ASCENDC_TPL_BOOL_DECL(IsCmpKVSparse, 0, 1),
     // bit: 36
-    ASCENDC_TPL_BOOL_DECL(HasUsedSeqQ, 0, 1),
-    // bit: 37
-    ASCENDC_TPL_BOOL_DECL(HasUsedSeqOriKV, 0, 1),
-    // bit: 38
-    ASCENDC_TPL_BOOL_DECL(HasUsedSeqCmpKV, 0, 1),
-    // bit: 39
-    ASCENDC_TPL_BOOL_DECL(HasOriTopK, 0, 1),
-    // bit: 40
-    ASCENDC_TPL_BOOL_DECL(HasCmpTopK, 0, 1),
-    // bit: 41
-    ASCENDC_TPL_BOOL_DECL(IsSink, 0, 1),
-    // bit: 42
     ASCENDC_TPL_BOOL_DECL(Deterministic, 0, 1)
 );
 
@@ -82,12 +70,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 0),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 0),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqQ, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqOriKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqCmpKV, 0),
-        ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),
@@ -101,12 +83,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 0),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqQ, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqOriKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqCmpKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),
@@ -120,12 +96,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqQ, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqOriKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqCmpKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),
@@ -139,12 +109,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 0),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 1),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 0),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqQ, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqOriKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqCmpKV, 0),
-        ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),
@@ -158,12 +122,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 1),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqQ, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqOriKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqCmpKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),
@@ -179,12 +137,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 0),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 0),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqQ, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqOriKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqCmpKV, 0),
-        ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),
@@ -198,12 +150,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 0),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqQ, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqOriKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqCmpKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),
@@ -217,12 +163,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 0),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqQ, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqOriKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqCmpKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),
@@ -236,12 +176,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 0),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 1),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 0),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqQ, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqOriKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqCmpKV, 0),
-        ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0),
-        ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),
@@ -255,12 +189,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsCmpKVExist, 1),
         ASCENDC_TPL_BOOL_SEL(IsOriKVSparse, 1),
         ASCENDC_TPL_BOOL_SEL(IsCmpKVSparse, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqQ, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqOriKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasUsedSeqCmpKV, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasOriTopK, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(HasCmpTopK, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(IsSink, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfmgTilingWithTemplate)
     ),

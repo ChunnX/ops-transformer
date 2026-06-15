@@ -28,8 +28,7 @@ using namespace AscendC;
 
 #if __CCE_AICORE__ == 310
 template <uint8_t inputDType, bool isTnd, uint16_t gTemplateType, uint16_t s2TemplateType, uint16_t dTemplateType,
-          bool isOriKVExist, bool isCmpKVExist, bool isOriKVSparse, bool isCmpKVSparse, bool hasUsedSeqQ,
-          bool hasUsedSeqOriKV, bool hasUsedSeqCmpKV, bool hasOriTopK, bool hasCmpTopK, bool isSink, bool deterministic>
+          bool isOriKVExist, bool isCmpKVExist, bool isOriKVSparse, bool isCmpKVSparse, bool deterministic>
 __global__ __aicore__ void
 sparse_flash_mla_grad(__gm__ uint8_t *query, __gm__ uint8_t *d_out, __gm__ uint8_t *out, __gm__ uint8_t *lse,
                       __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_kv, __gm__ uint8_t *ori_sparse_indices,
@@ -43,12 +42,11 @@ sparse_flash_mla_grad(__gm__ uint8_t *query, __gm__ uint8_t *d_out, __gm__ uint8
 {
     REGISTER_TILING_DEFAULT(optiling::smlag::SparseFlashMlaGradTilingDataRegbase);
     RegbaseSFAG<inputDType, isTnd, gTemplateType, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist,
-                isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK,
-                isSink, deterministic>(query, ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices,
-                                       cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv,
-                                       seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, lse, sinks,
-                                       metadata, d_query, d_ori_kv, d_cmp_kv, d_sinks, ori_softmax_l1_norm,
-                                       cmp_softmax_l1_norm, workspace, tiling_data);
+                isOriKVSparse, isCmpKVSparse, deterministic>(
+        query, ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices, cu_seqlens_q, cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length,
+        lse, sinks, metadata, d_query, d_ori_kv, d_cmp_kv, d_sinks, ori_softmax_l1_norm, cmp_softmax_l1_norm, workspace,
+        tiling_data);
 }
 
 #else

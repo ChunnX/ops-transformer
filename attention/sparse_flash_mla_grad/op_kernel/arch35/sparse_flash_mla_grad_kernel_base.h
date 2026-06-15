@@ -149,7 +149,7 @@ protected:
 
     int64_t usedT1Offset = 0;
     int64_t nextUsedT1Offset = 0;
-    int64_t bIndex = HasUsedSeqQ ? -1 : 0;
+    int64_t bIndex = 0;
     int64_t s1Index = 0;
     int64_t formerCoreProcessS1Num;
     SFagTilingType tilingData;
@@ -340,14 +340,18 @@ __aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, V
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetConstInfo()
 {
-    // constInfo.sparseMode = tilingData->baseParams.sparseMode;
+    constInfo.hasUsedSeqQ = tilingData->baseParams.hasUsedSeqQ;
+    constInfo.hasUsedSeqOriKV = tilingData->baseParams.hasUsedSeqOriKV;
+    constInfo.hasUsedSeqCmpKV = tilingData->baseParams.hasUsedSeqCmpKV;
+    constInfo.hasOriTopK = tilingData->baseParams.hasOriTopK;
+    constInfo.hasCmpTopK = tilingData->baseParams.hasCmpTopK;
+    constInfo.isSink = tilingData->baseParams.isSink;
+    bIndex = constInfo.hasUsedSeqQ ? -1 : 0;
     constInfo.bSize = tilingData->baseParams.b;
     constInfo.n2Size = tilingData->baseParams.n2;
     constInfo.oriSelectedBlockCount = tilingData->baseParams.oriselectedBlockCount;
     constInfo.cmpSelectedBlockCount = tilingData->baseParams.cmpselectedBlockCount;
     constInfo.selectedBlockCount = constInfo.oriSelectedBlockCount + constInfo.cmpSelectedBlockCount;
-    // printf("oriSelectedBlockCount: %d, cmpSelectedBlockCount: %d, selectedBlockCount: %d\n",
-    // constInfo.oriSelectedBlockCount, constInfo.cmpSelectedBlockCount, constInfo.selectedBlockCount);
     constInfo.commonConstInfo.gSize = tilingData->baseParams.g;
     constInfo.halfGRealSize = (constInfo.commonConstInfo.gSize + 1) >> 1;
     constInfo.firstHalfGRealSize = constInfo.halfGRealSize;
@@ -632,14 +636,14 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetActualSelCount(
     const int64_t t1Idx, const int64_t n2Idx, int64_t &actSelBlkCount)
 {
-    if constexpr (HasOriTopK) {
+    if (constInfo.hasOriTopK) {
         oriTopkLength = ((__gm__ int32_t *)oriTopkLengthAddr)[t1Index];
     } else if (IsOriKVSparse) {
         oriTopkLength = constInfo.oriSelectedBlockCount;
     } else {
         oriTopkLength = curS2;
     }
-    if constexpr (HasCmpTopK) {
+    if (constInfo.hasCmpTopK) {
         cmpTopkLength = ((__gm__ int32_t *)cmpTopkLengthAddr)[t1Index];
     } else if (IsCmpKVSparse) {
         cmpTopkLength = constInfo.cmpSelectedBlockCount;
@@ -660,7 +664,7 @@ SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetTndSeq
     int64_t t2Offset = 0;
     int64_t t3Offset = 0;
 
-    if constexpr (!HasUsedSeqQ) {
+    if (!constInfo.hasUsedSeqQ) {
         if constexpr (IS_TND) {
             int64_t curT1 = ((__gm__ int32_t *)actualSeqQlenAddr)[bIndex];
             while (usedT1Index >= curT1) {
@@ -719,17 +723,17 @@ SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetTndSeq
         t3Offset = bIndex * curS3;
     }
 
-    if constexpr (HasUsedSeqQ) {
+    if (constInfo.hasUsedSeqQ) {
         usedS1 = ((__gm__ int32_t *)usedSeqQlenAddr)[bIndex];
     } else {
         usedS1 = curS1;
     }
-    if constexpr (HasUsedSeqOriKV) {
+    if (constInfo.hasUsedSeqOriKV) {
         usedS2 = ((__gm__ int32_t *)usedSeqOriKvlenAddr)[bIndex];
     } else {
         usedS2 = curS2;
     }
-    if constexpr (HasUsedSeqCmpKV) {
+    if (constInfo.hasUsedSeqCmpKV) {
         usedS3 = ((__gm__ int32_t *)usedSeqCmpKvlenAddr)[bIndex];
     } else {
         usedS3 = curS3;

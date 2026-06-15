@@ -22,52 +22,6 @@
 
 namespace SfagBaseApi {
 
-constexpr static uint32_t L0_SINGLE_BUFFER_SIZE = 32 * 1024;
-
-/* ============确定Query的L1类型============= */
-template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD>
-struct QL1BuffSelector {
-    using TYPE = std::conditional_t<
-        IS_L1_REUSE,
-        std::conditional_t<IS_L1_PRELOAD, BuffersPolicy3buff<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>,
-        BuffersPolicySingleBuffer<BufferType::L1>>;
-};
-
-/* ============确定Key的L1类型============= */
-template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD>
-struct KL1BuffSelector {
-    using TYPE = std::conditional_t<
-        IS_L1_REUSE,
-        std::conditional_t<IS_L1_PRELOAD, BuffersPolicyDB<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>,
-        BuffersPolicySingleBuffer<BufferType::L1>>;
-};
-
-/* ============确定Dy的L1类型============= */
-template <uint8_t IS_L1_REUSE, uint8_t IS_L1_PRELOAD>
-struct DyL1BuffSelector {
-    using TYPE = std::conditional_t<
-        IS_L1_REUSE,
-        std::conditional_t<IS_L1_PRELOAD, BuffersPolicy3buff<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>,
-        BuffersPolicySingleBuffer<BufferType::L1>>;
-};
-
-/* ============确定mm1 mm2 mm3共用几块L0C buffer============= */
-template <uint32_t HEAD_DIM_ALIGN>
-struct mm1Mm2Mm3L0CBuffSelector {
-    using TYPE =
-        std::conditional_t<HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned128),
-                           std::conditional_t<HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned64),
-                                              BuffersPolicy3buff<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>,
-                           BuffersPolicySingleBuffer<BufferType::L0C>>;
-};
-
-/* ============DKV不驻留L0C场景下开几块L0C buffer============= */
-template <uint32_t HEAD_DIM_ALIGN>
-struct CommonL0CBufSelector {
-    using TYPE = std::conditional_t<HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned256),
-                                    BuffersPolicyDB<BufferType::L0C>, BuffersPolicySingleBuffer<BufferType::L0C>>;
-};
-
 TEMPLATES_DEF
 class FAGBlockCube {
 public:

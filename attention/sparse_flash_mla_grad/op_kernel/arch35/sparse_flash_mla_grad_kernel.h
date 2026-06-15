@@ -94,7 +94,7 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
     }
     if (isFirstBlock) {
         this->vecBlock.CopyLse(this->constInfo, runInfo); // copy in lse double buffer
-        if constexpr (IsSink) {
+        if (constInfo.isSink) {
             this->vecBlock.ProcessSoftmaxSink(this->constInfo, runInfo);
         }
         isFirstBlock = false;
@@ -138,7 +138,7 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
     //     // p
     //     AscendC::DumpTensor(mm2ResTensor, 113, 32 * 128, shapeInfo);
     // }
-    if constexpr (IsSink) {
+    if (constInfo.isSink) {
         this->vecBlock.ProcessVecSink(mm1ResTensor, mm2ResTensor, this->constInfo, runInfo);
     }
     if ASCEND_IS_AIV {
@@ -274,7 +274,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessDeter()
 {
     this->AllocEventID();
-    if constexpr (IsSink) {
+    if (constInfo.isSink) {
         this->vecBlock.CopySink(this->constInfo);
     }
     int64_t taskId = 0;
@@ -495,7 +495,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessUnDeter()
 {
     this->AllocEventID();
-    if constexpr (IsSink) {
+    if (constInfo.isSink) {
         this->vecBlock.CopySink(this->constInfo);
     }
     int64_t taskId = 0;

@@ -20,7 +20,7 @@
 using namespace AscendC;
 
 template <typename T1, typename T2, typename OUTDTYPE = T1, const bool IS_TND = 0, const bool isOriKVExist = 0,
-          const bool isCmpKVExist = 0, const bool isSink = 0>
+          const bool isCmpKVExist = 0>
 class SparseFlashMlaGradPostRegbase {
 public:
     __aicore__ inline SparseFlashMlaGradPostRegbase(){};
@@ -55,9 +55,9 @@ public:
 };
 
 template <typename T1, typename T2, typename OUTDTYPE, const bool IS_TND, const bool isOriKVExist,
-          const bool isCmpKVExist, const bool isSink>
+          const bool isCmpKVExist>
 __aicore__ inline void
-SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::Init(
+SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist>::Init(
     __gm__ uint8_t *dq, __gm__ uint8_t *dori_kv, __gm__ uint8_t *dcmp_kv, __gm__ uint8_t *dsinks,
     __gm__ uint8_t *workspace, const optiling::smlag::SparseFlashMlaGradTilingDataRegbase *__restrict ordTilingData,
     TPipe *pipe_in)
@@ -88,7 +88,7 @@ SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExi
     inputTotalSize = tilingData->postTilingData.qPostBlockTotal;
     qPostTailNum = tilingData->postTilingData.qPostTailNum;
 
-    if (unlikely(isSink)) { // todo
+    if (unlikely(tilingData->baseParams.isSink)) { // todo
         dsinkWorkspace.SetGlobalBuffer((__gm__ float *)workspace +
                                        tilingData->baseParams.dSinkWorkSpaceOffset / sizeof(float));
         dsinkGm.SetGlobalBuffer((__gm__ float *)dsinks);
@@ -102,9 +102,9 @@ SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExi
 }
 
 template <typename T1, typename T2, typename OUTDTYPE, const bool IS_TND, const bool isOriKVExist,
-          const bool isCmpKVExist, const bool isSink>
+          const bool isCmpKVExist>
 __aicore__ inline void
-SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::ProcessSink()
+SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist>::ProcessSink()
 {
     if (vBlockIdx != 0) {
         return;
@@ -147,9 +147,9 @@ SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExi
     GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(eventIDMte3ToMte2);
 }
 template <typename T1, typename T2, typename OUTDTYPE, const bool IS_TND, const bool isOriKVExist,
-          const bool isCmpKVExist, const bool isSink>
+          const bool isCmpKVExist>
 __aicore__ inline void
-SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::ProcessDqkv()
+SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist>::ProcessDqkv()
 {
     for (int qkvIdx = 0; qkvIdx < 3; qkvIdx++) {
         if constexpr (!isOriKVExist) {
@@ -227,15 +227,15 @@ SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExi
     }
 }
 template <typename T1, typename T2, typename OUTDTYPE, const bool IS_TND, const bool isOriKVExist,
-          const bool isCmpKVExist, const bool isSink>
+          const bool isCmpKVExist>
 __aicore__ inline void
-SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::Process()
+SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist>::Process()
 {
     if (g_coreType != AIV) {
         return;
     }
     ProcessDqkv();
-    if (unlikely(isSink)) {
+    if (unlikely(tilingData->baseParams.isSink)) {
         ProcessSink();
     }
 }

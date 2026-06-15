@@ -67,12 +67,6 @@ struct DqkvResPos {
     X(IsCmpKVExist, bool, false)                                                                                       \
     X(IsOriKVSparse, bool, false)                                                                                      \
     X(IsCmpKVSparse, bool, false)                                                                                      \
-    X(HasUsedSeqQ, bool, false)                                                                                        \
-    X(HasUsedSeqOriKV, bool, false)                                                                                    \
-    X(HasUsedSeqCmpKV, bool, false)                                                                                    \
-    X(HasOriTopK, bool, false)                                                                                         \
-    X(HasCmpTopK, bool, false)                                                                                         \
-    X(IsSink, bool, false)                                                                                             \
     X(IsDETER, bool, false)
 
 /* 1. 生成带默认值的模版Template */

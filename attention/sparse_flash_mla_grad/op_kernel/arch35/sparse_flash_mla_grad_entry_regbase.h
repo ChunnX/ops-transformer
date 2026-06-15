@@ -29,9 +29,9 @@
 
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(                                                                 \
     INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, \
-    isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, isDeter)             \
+    isCmpKVSparse, isDeter)                                                                                            \
     do {                                                                                                               \
-        SparseFlashMlaGradPreRegbase<INPUT_TYPE, float, IS_TND, isOriKVExist, isCmpKVExist, isSink, isOriKVSparse,     \
+        SparseFlashMlaGradPreRegbase<INPUT_TYPE, float, IS_TND, isOriKVExist, isCmpKVExist, isOriKVSparse,             \
                                      isCmpKVSparse>                                                                    \
             opPre;                                                                                                     \
         opPre.Init(user, dsinks, ori_softmax_l1, cmp_softmax_l1, tilingData, &pipeIn);                                 \
@@ -42,23 +42,19 @@
         using CubeBlockType = typename std::conditional<                                                               \
             g_coreType == AscendC::AIC,                                                                                \
             SfagBaseApi::FAGBlockCube<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType,          \
-                                      isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ,           \
-                                      hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, isDeter>,      \
+                                      isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, isDeter>,              \
             SfagBaseApi::FAGBlockCubeDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType,     \
-                                           isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ,      \
-                                           hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink,           \
+                                           isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse,                   \
                                            isDeter>>::type;                                                            \
         using VecBlockType = typename std::conditional<                                                                \
             g_coreType == AscendC::AIC,                                                                                \
             SfagBaseApi::FAGBlockVecDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType,      \
-                                          isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ,       \
-                                          hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, isDeter>,  \
+                                          isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, isDeter>,          \
             SfagBaseApi::FAGBlockVec<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType,           \
-                                     isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ,            \
-                                     hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink,                 \
+                                     isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse,                         \
                                      isDeter>>::type;                                                                  \
                                                                                                                        \
-        SfagBaseApi::SparseFlashMlaGradKernel<CubeBlockType, VecBlockType> op;                                    \
+        SfagBaseApi::SparseFlashMlaGradKernel<CubeBlockType, VecBlockType> op;                                         \
         op.Init(query, ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices, cu_seqlens_q,               \
                 cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,      \
                 ori_topk_length, cmp_topk_length, softmax_lse, sinks, metadata, dq, dori_kv, dcmp_kv, dsinks,          \
@@ -68,8 +64,7 @@
             op.SyncALLCores();                                                                                         \
             pipeBase.Destroy();                                                                                        \
             TPipe pipePost;                                                                                            \
-            SparseFlashMlaGradPostRegbase<INPUT_TYPE, float, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist,       \
-                                                isSink>                                                                \
+            SparseFlashMlaGradPostRegbase<INPUT_TYPE, float, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist>             \
                 opPost;                                                                                                \
             opPost.Init(dq, dori_kv, dcmp_kv, dsinks, user, tilingData, &pipePost);                                    \
             opPost.Process();                                                                                          \
@@ -90,8 +85,7 @@
 
 // implementation of kernel function
 template <uint8_t inputDType, bool isTnd, uint16_t gTemplateType, uint16_t s2TemplateType, uint16_t dTemplateType,
-          bool isOriKVExist, bool isCmpKVExist, bool isOriKVSparse, bool isCmpKVSparse, bool hasUsedSeqQ,
-          bool hasUsedSeqOriKV, bool hasUsedSeqCmpKV, bool hasOriTopK, bool hasCmpTopK, bool isSink, bool deterministic>
+          bool isOriKVExist, bool isCmpKVExist, bool isOriKVSparse, bool isCmpKVSparse, bool deterministic>
 inline __aicore__ void
 RegbaseSFAG(__gm__ uint8_t *query, __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_kv, __gm__ uint8_t *d_out,
             __gm__ uint8_t *out, __gm__ uint8_t *ori_sparse_indices, __gm__ uint8_t *cmp_sparse_indices,
@@ -113,16 +107,14 @@ RegbaseSFAG(__gm__ uint8_t *query, __gm__ uint8_t *ori_kv, __gm__ uint8_t *cmp_k
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
     INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(half, float, half, isTnd, S2TemplateType(s2TemplateType),
                                                        DTemplateType(dTemplateType), isOriKVExist, isCmpKVExist,
-                                                       isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV,
-                                                       hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, deterministic);
+                                                       isOriKVSparse, isCmpKVSparse, deterministic);
     return;
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16)
     INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_BF16(
         bfloat16_t, float, bfloat16_t, isTnd, S2TemplateType(s2TemplateType), DTemplateType(dTemplateType),
-        isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV,
-        hasOriTopK, hasCmpTopK, isSink, deterministic);
+        isOriKVExist, isCmpKVExist, isOriKVSparse, isCmpKVSparse, deterministic);
     return;
 #endif
 }
