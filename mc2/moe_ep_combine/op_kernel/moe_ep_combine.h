@@ -57,8 +57,8 @@ class KernelMoeEpCombine {
 public:
     __aicore__ inline KernelMoeEpCombine(){};
 
-    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadata,
-                                GM_ADDR numRecvPerRank, GM_ADDR topkWeightsOptional, GM_ADDR bias0, GM_ADDR bias1,
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
+                                GM_ADDR numRecvPerExpert, GM_ADDR topkWeightsOptional, GM_ADDR bias0, GM_ADDR bias1,
                                 GM_ADDR combinedX, GM_ADDR combinedTopkWeightsOptional, GM_ADDR workspace,
                                 GM_ADDR tilingGM, TPipe *pipe, const MoeEpCombineInfo *tilingData);
 
@@ -115,6 +115,7 @@ private:
     uint32_t perSlotBytes_{0};
     uint32_t actualA{0};
     uint32_t aivNum_{0};
+    uint32_t localmoeNum_{0};
     uint32_t totalWinSizeEp_{0};
 
     uint32_t tStart_{0};
@@ -123,9 +124,9 @@ private:
     uint32_t ubXBytes_{0};
     uint32_t stateOffset_{0};
     GlobalTensor<bfloat16_t> xGm_;
-    GlobalTensor<int32_t> dstSlotIdxGm_;
+    GlobalTensor<int32_t> topkIdxGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
-    GlobalTensor<int32_t> numRecvPerRankGm_;
+    GlobalTensor<int32_t> numRecvPerExpertGm_;
     GlobalTensor<float> topkWeightsOptionalGm_;
 
     LocalTensor<bfloat16_t> xTmpTensor_;   
@@ -161,7 +162,7 @@ private:
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
-    GM_ADDR context, GM_ADDR x, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadata, GM_ADDR numRecvPerRank,
+    GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata, GM_ADDR numRecvPerExpert,
     GM_ADDR topkWeightsOptional, GM_ADDR bias0, GM_ADDR bias1, GM_ADDR combinedX, GM_ADDR combinedTopkWeightsOptional,
     GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe, const MoeEpCombineInfo *tilingData)
 {
@@ -176,6 +177,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     axisH_ = tilingData_->cfg.hidden;
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
     aivNum_ = tilingData_->aivNum;
+    localmoeNum_ = tilingData_->localmoeNum;
     totalWinSizeEp_ = tilingData->totalWinSizeEp;
     hAlignSize_ = Ceil(axisH_ * sizeof(bfloat16_t), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     stateOffset_ = STATE_OFFSET;
@@ -192,17 +194,17 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     }
 
     xGm_.SetGlobalBuffer((__gm__ bfloat16_t *)x);
-    dstSlotIdxGm_.SetGlobalBuffer((__gm__ int32_t *)dstBufferSlotIdx);
+    topkIdxGm_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
-    numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t *)numRecvPerRank);
+    numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int32_t *)numRecvPerExpert);
     combinedXGm_.SetGlobalBuffer((__gm__ bfloat16_t *)combinedX);
 
     // 计算ActualA的大小
-    for(int i = 0; i < epWorldSize_; i++){
+    for(int i = 0; i < localmoeNum_; i++){
         if (i % (DCCI_OFFSET / sizeof(int32_t)) == 0) {
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvPerRankGm_[i]);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvPerExpertGm_[i]);
         }
-        actualA += numRecvPerRankGm_(i);
+        actualA += numRecvPerExpertGm_(i);
     }
 
     if constexpr (HAS_TOPK_WEIGHTS == 1) {

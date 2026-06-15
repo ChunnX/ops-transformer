@@ -37,9 +37,9 @@ namespace optiling {
 
 constexpr uint32_t CONTEXT_INDEX = 0U;
 constexpr uint32_t RECVX_INDEX = 1U;
-constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 2U;
+constexpr uint32_t TOPK_IDX_INDEX = 2U;
 constexpr uint32_t RECV_SRC_METADATA_INDEX = 3U;
-constexpr uint32_t NUM_RECV_PER_RANK_INDEX = 4U;
+constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 4U;
 constexpr uint32_t TOPK_WEIGHTS_INDEX = 5U;
 constexpr uint32_t BIAS_0_INDEX = 6U;
 constexpr uint32_t BIAS_1_INDEX = 7U;
@@ -94,23 +94,26 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         return ge::GRAPH_FAILED);
     info.cfg.hidden = static_cast<uint32_t>(recvxDim1);
 
-    const gert::StorageShape *dstBufferSlotIdxShape = context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, dstBufferSlotIdxShape);
-    OP_TILING_CHECK(dstBufferSlotIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "dstBufferSlotIdxShape dims must be 2."), return ge::GRAPH_FAILED);
+    const gert::StorageShape *topkIdxShape = context->GetInputShape(TOPK_IDX_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, topkIdxShape);
+    OP_TILING_CHECK(topkIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "topkIdxShape dims must be 2."), return ge::GRAPH_FAILED);
         
-    info.cfg.numTokens = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(0));
-    info.cfg.topK = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(1));
+    info.cfg.numTokens = static_cast<uint32_t>(topkIdxShape->GetStorageShape().GetDim(0));
+    info.cfg.topK = static_cast<uint32_t>(topkIdxShape->GetStorageShape().GetDim(1));
 
     const gert::StorageShape *recvSrcMetadataShape = context->GetInputShape(RECV_SRC_METADATA_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetadataShape);
     OP_TILING_CHECK(recvSrcMetadataShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE(nodeName, "recvSrcMetadataShape dims must be 2."), return ge::GRAPH_FAILED);
 
-    const gert::StorageShape *numRecvPerRankShape = context->GetInputShape(NUM_RECV_PER_RANK_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerRankShape);
-    OP_TILING_CHECK(numRecvPerRankShape->GetStorageShape().GetDimNum() != 1,
-        OP_LOGE(nodeName, "numRecvPerRankShape dims must be 1."), return ge::GRAPH_FAILED);
+    const gert::StorageShape *numRecvPerExpertShape = context->GetInputShape(NUM_RECV_PER_EXPERT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertShape);
+    OP_TILING_CHECK(numRecvPerExpertShape->GetStorageShape().GetDimNum() != 1,
+        OP_LOGE(nodeName, "numRecvPerExpertShape dims must be 1."), return ge::GRAPH_FAILED);
+
+    info.localmoeNum = static_cast<uint32_t>(numRecvPerExpertShape->GetStorageShape().GetDim(0));
+
 
     bool hasTopkWeights = (context->GetInputDesc(TOPK_WEIGHTS_INDEX) != nullptr);
     if (hasTopkWeights) {

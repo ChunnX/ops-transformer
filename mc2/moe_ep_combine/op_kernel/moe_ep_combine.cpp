@@ -17,8 +17,8 @@ using namespace Mc2Tiling;
 using namespace AscendC;
 
 template <uint32_t HAS_TOPK_WEIGHTS, uint32_t ARCH_TAG>
-__global__ __aicore__ void moe_ep_combine(GM_ADDR context, GM_ADDR x, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadata,
-                                          GM_ADDR numRecvPerRank, GM_ADDR topkWeights, GM_ADDR bias0, GM_ADDR bias1,
+__global__ __aicore__ void moe_ep_combine(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
+                                          GM_ADDR numRecvPerExpert, GM_ADDR topkWeights, GM_ADDR bias0, GM_ADDR bias1,
                                           GM_ADDR combinedX, GM_ADDR combinedTopkWeightsOptional, GM_ADDR workspace,
                                           GM_ADDR tilingGM)
 {
@@ -27,7 +27,7 @@ __global__ __aicore__ void moe_ep_combine(GM_ADDR context, GM_ADDR x, GM_ADDR ds
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpCombineTilingData, tilingData, tilingGM);
     KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc> op;
-    op.Init(context, x, dstBufferSlotIdx, recvSrcMetadata, numRecvPerRank, topkWeights, bias0, bias1, combinedX,
+    op.Init(context, x, topkIdx, recvSrcMetadata, numRecvPerExpert, topkWeights, bias0, bias1, combinedX,
             combinedTopkWeightsOptional, workspace, tilingGM, &pipe, &tilingData.moeEpCombineInfo);
     op.Process();
 }
