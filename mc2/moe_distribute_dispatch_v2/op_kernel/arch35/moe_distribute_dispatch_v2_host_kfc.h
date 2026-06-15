@@ -1134,18 +1134,18 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitScatterBuffer(uint32_t serverId)
 {
-    if (serverId == serverId_) {
-        InitQuantBuffer<CommMode::INTRA_NODE>(); // 初始化量化参数
-        tpipe_->InitBuffer(xInQueue_, 1, hAlignSize_); // 17.5K 
-        tpipe_->InitBuffer(xOutQueue_, 1, hOutAlignUbSize_); //16.03K
-        tpipe_->InitBuffer(expertScalesBuf_, axisK_ * sizeof(float)); //16 * 4
-        tpipe_->InitBuffer(xTempQueue_, 1, hCommuSize_); // 17.5KB
-        tokenData_ = xInQueue_.AllocTensor<XType>();
-        insertFlagTensor_ = xTempQueue_.AllocTensor<ExpandXOutType>();
-        expertScalesTensor_ = expertScalesBuf_.Get<float>();
-    } else {
+    // if (serverId == serverId_) {
+    //     // InitQuantBuffer<CommMode::INTRA_NODE>(); // 初始化量化参数
+    //     // tpipe_->InitBuffer(xInQueue_, 1, hAlignSize_); // 17.5K 
+    //     // tpipe_->InitBuffer(xOutQueue_, 1, hOutAlignUbSize_); //16.03K
+    //     // tpipe_->InitBuffer(expertScalesBuf_, axisK_ * sizeof(float)); //16 * 4
+    //     // tpipe_->InitBuffer(xTempQueue_, 1, hCommuSize_); // 17.5KB
+    //     // tokenData_ = xInQueue_.AllocTensor<XType>();
+    //     // insertFlagTensor_ = xTempQueue_.AllocTensor<ExpandXOutType>();
+    //     // expertScalesTensor_ = expertScalesBuf_.Get<float>();
+    // } else {
         tpipe_->InitBuffer(xSendBuf_,sendTokenLength_); //17K
-    }
+    // }
 }
 
 template <TemplateDispatchKFCTypeClass>
