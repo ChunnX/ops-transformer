@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,15 +6,15 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
-/*!
+/* !
  * \file sparse_lightning_indexer_kl_loss_grad_vector_block.h
  * \brief
  */
 
 #ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_VECTOR_BLOCK_H
-#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_VECTOR_BLOCK_H 
+#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_VECTOR_BLOCK_H
 #include "sparse_lightning_indexer_kl_loss_grad_regbase_common.h"
 #include "vf/vf_process_vec0.h"
 #include "vf/vf_process_vec1.h"
@@ -26,26 +26,34 @@
 #include "vf/vf_reduce_sum.h"
 
 namespace Slig {
-
 TEMPLATES_DEF
 class SligBlockVec {
 public:
     __aicore__ inline SligBlockVec(){};
-    __aicore__ inline void InitParams(const SLIGradConstInfo &vecConstInfo, const optiling::SparseLightningIndexerGradRegBaseTilingData *tiling);
+    __aicore__ inline void InitParams(const SLIGradConstInfo &vecConstInfo,
+        const optiling::SparseLightningIndexerGradRegBaseTilingData *tiling);
     __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR attnSoftmaxL1,
         GM_ADDR dKey, GM_ADDR dWeight, GM_ADDR softmaxOut, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
-        GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes, GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3Res,
-        GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK, GM_ADDR sequsedQ, GM_ADDR sequsedK, GM_ADDR cmpResidualK);
+        GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes, GlobalTensor<T> &scatterAddResPong,
+        GlobalTensor<T> &bmm3Res, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK, GM_ADDR sequsedQ, GM_ADDR sequsedK,
+        GM_ADDR cmpResidualK);
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void ProcessVector0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
+    __aicore__ inline void ProcessVector0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+        SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
     __aicore__ inline void CopyInWeight(SLIGradRunInfo &runInfo);
-    __aicore__ inline void ProcessVector1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
-    __aicore__ inline void ProcessVector2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradRunInfo &runInfo);
-    __aicore__ inline void ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
-    __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
-    __aicore__ inline void DeterScatterAdd(int32_t vRealKSize, GlobalTensor<T> &srcGm, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf, 
-                                         int64_t coreKOffset, SLIGradRunInfo &runInfo, int32_t idx, GlobalTensor<T> &scatterAddGm);
-    __aicore__ inline void ProcessVector7Deter(SLIGradRunInfo &runInfo, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf);
+    __aicore__ inline void ProcessVector1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+        SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
+    __aicore__ inline void ProcessVector2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+        SLIGradRunInfo &runInfo);
+    __aicore__ inline void ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+        SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
+    __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf,
+        SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
+    __aicore__ inline void DeterScatterAdd(int32_t vRealKSize, GlobalTensor<T> &srcGm,
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf, int64_t coreKOffset, SLIGradRunInfo &runInfo,
+        int32_t idx, GlobalTensor<T> &scatterAddGm);
+    __aicore__ inline void ProcessVector7Deter(SLIGradRunInfo &runInfo,
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf);
     __aicore__ inline void ReInitBuffers(TPipe *pipe);
     __aicore__ inline void ProcessVector8();
 
@@ -82,27 +90,25 @@ private:
     static constexpr event_t EVENT_ID2 = (event_t)7;
 
     __aicore__ inline void CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx1,
-        int64_t realS2Idx2, const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo,
-        GlobalTensor<INPUT_T> srcTensor);
+        int64_t realS2Idx2, const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo, GlobalTensor<INPUT_T> srcTensor);
     __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-        int64_t keyBNBOffset,int64_t s2IdLimit, const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo,
+        int64_t keyBNBOffset, int64_t s2IdLimit, const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo,
         GlobalTensor<INPUT_T> srcTensor);
     __aicore__ inline int64_t GetKeyGmOffset(int64_t realS2Idx, const SLIGradRunInfo &runInfo, int64_t s2IdLimit);
     template <event_t IdStart, bool syGmEn>
     __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2GmStartOffset,
-                             int64_t mergeMte3Idx, const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
-    __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx,
-                        const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
+        int64_t mergeMte3Idx, const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo);
+    __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx, const SLIGradRunInfo &runInfo,
+        SLIGradKRunInfo &kRunInfo);
     template <event_t IdStart, bool syGmEn>
     __aicore__ inline void MergeKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo,
-                                GlobalTensor<INPUT_T> srcTensor);
+        const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo, GlobalTensor<INPUT_T> srcTensor);
     __aicore__ inline bool GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx, int64_t &bS1Index,
-                                        int64_t &accumS1Len, int64_t &accumS2Len, int32_t &actualSeqLensQ,
-                                         int32_t &actualSeqLensK, int64_t taskId);
-    __aicore__ inline void GetRunInfo(int64_t taskId,  int64_t bIdx, int64_t s1Idx, SLIGradRunInfo &runInfo,
-                            int64_t accumS1Len, int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK);
-    __aicore__ inline int32_t GetS2SparseLen(int32_t bIdx, int32_t s1Idx, int32_t actualSeqLensQ, int32_t actualSeqLensK);
+        int64_t &accumS1Len, int64_t &accumS2Len, int32_t &actualSeqLensQ, int32_t &actualSeqLensK, int64_t taskId);
+    __aicore__ inline void GetRunInfo(int64_t taskId, int64_t bIdx, int64_t s1Idx, SLIGradRunInfo &runInfo,
+        int64_t accumS1Len, int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK);
+    __aicore__ inline int32_t GetS2SparseLen(int32_t bIdx, int32_t s1Idx, int32_t actualSeqLensQ,
+        int32_t actualSeqLensK);
     SLIGradConstInfo constInfo;
     TBuf<> gatherTbuf;
     TQue<QuePosition::VECOUT, 1> reduceSumOutQue;
@@ -133,25 +139,25 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitParams(
-    const SLIGradConstInfo &vecConstInfo, const optiling::SparseLightningIndexerGradRegBaseTilingData *tiling)
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitParams(const SLIGradConstInfo &vecConstInfo,
+    const optiling::SparseLightningIndexerGradRegBaseTilingData *tiling)
 {
     this->constInfo = vecConstInfo;
     tilingData = tiling;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
-    GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR attnSoftmaxL1, GM_ADDR dKey, 
-    GM_ADDR dWeight, GM_ADDR softmaxOut, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu, 
-    GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes, GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3Res,
-    GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK, GM_ADDR sequsedQ, GM_ADDR sequsedK, GM_ADDR cmpResidualK)
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices,
+    GM_ADDR attnSoftmaxL1, GM_ADDR dKey, GM_ADDR dWeight, GM_ADDR softmaxOut, GlobalTensor<INPUT_T> &gatherSYRes,
+    GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
+    GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3Res, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK,
+    GM_ADDR sequsedQ, GM_ADDR sequsedK, GM_ADDR cmpResidualK)
 {
     keyIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)key);
     weightGm.SetGlobalBuffer((__gm__ T *)weight);
     topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     attnSoftmaxL1Gm.SetGlobalBuffer((__gm__ T *)attnSoftmaxL1);
-    
+
     dKeyIndexGm.SetGlobalBuffer((__gm__ OUT_T *)dKey);
     dWeightGm.SetGlobalBuffer((__gm__ T *)dWeight);
     softmaxOutGm.SetGlobalBuffer((__gm__ T *)softmaxOut);
@@ -159,7 +165,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     this->gatherSYResGm = gatherSYRes;
     this->reluGm = relu;
     this->reduceSumResGm = reduceSumRes;
-    this->scatterAddResGm= scatterAddRes;
+    this->scatterAddResGm = scatterAddRes;
 
     actualSeqQlenAddr = cuSeqlensQ;
     actualSeqKvlenAddr = cuSeqlensK;
@@ -180,11 +186,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(this->gatherOutQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_9K * 2);
     pipe->InitBuffer(this->reduceSumOutQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(this->weightInQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_64 * 2);
-    // pipe->InitBuffer(this->maxInQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_256);
-    // pipe->InitBuffer(this->sumInQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_256);
     pipe->InitBuffer(this->lseInQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_256);
     pipe->InitBuffer(this->mulsResQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_512);
-    // pipe->InitBuffer(this->mulsInQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_512);
     pipe->InitBuffer(this->reluQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(this->reluGradQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_16K);
     pipe->InitBuffer(this->dwQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_128);
@@ -199,7 +202,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector0(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradRunInfo &runInfo,
+    SLIGradKRunInfo &kRunInfo)
 {
     CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[kRunInfo.kTaskIdMod2]);
     this->mm1AL1Tensor = outputBuf.GetTensor<INPUT_T>();
@@ -215,10 +219,9 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector0(
 
 TEMPLATES_DEF_NO_DEFAULT
 // template <bool gatherRope>
-__aicore__ inline void
-SligBlockVec<TEMPLATE_ARGS>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-    int64_t keyBNBOffset, int64_t s2IdLimit, const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo,
-    GlobalTensor<INPUT_T> srcTensor)
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size,
+    int64_t mergeMte3Idx, int64_t realS2Idx, int64_t keyBNBOffset, int64_t s2IdLimit, const SLIGradRunInfo &runInfo,
+    SLIGradKRunInfo &kRunInfo, GlobalTensor<INPUT_T> srcTensor)
 {
     if (keyBNBOffset < 0) {
         return;
@@ -232,13 +235,13 @@ SligBlockVec<TEMPLATE_ARGS>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size,
     intriParams.srcStride = 0;
     DataCopyPadExtParams<INPUT_T> padParams;
     DataCopyPad(kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * kRunInfo.dValue + (mte2Size - mte3Size) * kRunInfo.dValue],
-                srcTensor[keyBNBOffset * kRunInfo.dValue], intriParams, padParams);
+        srcTensor[keyBNBOffset * kRunInfo.dValue], intriParams, padParams);
     mte2Size += validS2Count;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int64_t SligBlockVec<TEMPLATE_ARGS>::GetKeyGmOffset(int64_t realS2Idx,
-    const SLIGradRunInfo &runInfo, int64_t s2IdLimit)
+__aicore__ inline int64_t SligBlockVec<TEMPLATE_ARGS>::GetKeyGmOffset(int64_t realS2Idx, const SLIGradRunInfo &runInfo,
+    int64_t s2IdLimit)
 {
     if (realS2Idx < 0 || realS2Idx >= s2IdLimit) {
         return -1;
@@ -261,20 +264,21 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyInKv(int64_t &mte2Size, 
 
     int64_t keySrcStride = 0;
     int64_t keyRopeSrcStride = 0;
-    keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                    (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * kRunInfo.dValue * sizeof(INPUT_T);
+    keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) : (keyOffset2 - keyOffset1)) -
+        constInfo.sparseBlockSize) *
+        kRunInfo.dValue * sizeof(INPUT_T);
 
     bool key1LessThankey2 = (realS2Idx1 > realS2Idx2);
     bool strideInvalid = ((keySrcStride >= INT32_MAX) || (keySrcStride < 0));
-    bool copyOutOfRange = (realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
-        realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit);
+    bool copyOutOfRange =
+        (realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit || realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit);
 
     if (key1LessThankey2 || strideInvalid || copyOutOfRange) {
         // stride溢出、stride为负数、s2超长、topK降序等场景，还原成2条搬运指令
-        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx1, keyOffset1,
-            s2IdLimit, runInfo, kRunInfo, srcTensor);
-        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx2, keyOffset2,
-            s2IdLimit, runInfo, kRunInfo, srcTensor);
+        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx1, keyOffset1, s2IdLimit, runInfo, kRunInfo,
+            srcTensor);
+        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx2, keyOffset2, s2IdLimit, runInfo, kRunInfo,
+            srcTensor);
     } else {
         DataCopyExtParams intriParams;
         intriParams.blockLen = constInfo.sparseBlockSize * kRunInfo.dValue * sizeof(INPUT_T);
@@ -288,7 +292,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyInKv(int64_t &mte2Size, 
             startGmOffset = keyOffset2;
         }
         DataCopyPad(kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * kRunInfo.dValue + (mte2Size - mte3Size) * kRunInfo.dValue],
-                    srcTensor[startGmOffset * kRunInfo.dValue], intriParams, padParams);
+            srcTensor[startGmOffset * kRunInfo.dValue], intriParams, padParams);
         mte2Size += ((keyOffset1 > -1) + (keyOffset2 > -1));
     }
 }
@@ -309,13 +313,13 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyOutMrgeResult(int64_t mt
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     LocalTensor<INPUT_T> kvMergUbCp_ = this->gatherOutQue.template AllocTensor<INPUT_T>();
     Ub2UbNd2Nz<INPUT_T>(kvMergUbCp_[mergeMte3Idx * UB_ROW_SIZE * kRunInfo.dValue],
-                        kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * kRunInfo.dValue], UB_ROW_SIZE, kRunInfo.dValue);
+        kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * kRunInfo.dValue], UB_ROW_SIZE, kRunInfo.dValue);
     this->gatherOutQue.template EnQue(kvMergUbCp_);
     this->gatherOutQue.template DeQue<INPUT_T>();
     uint16_t valid_row = (mte2Size % UB_ROW_SIZE == 0) ? UB_ROW_SIZE : (mte2Size % UB_ROW_SIZE);
     DataCopy(mm1AL1Tensor[(s2GmStartOffset + mte3Size) << 4], kvMergUbCp_[mergeMte3Idx * UB_ROW_SIZE * kRunInfo.dValue],
-             {static_cast<uint16_t>(kRunInfo.dValue >> 4), valid_row, static_cast<uint16_t>(UB_ROW_SIZE - valid_row),
-              static_cast<uint16_t>(dstNzC0Stride - valid_row)});
+        { static_cast<uint16_t>(kRunInfo.dValue >> 4), valid_row, static_cast<uint16_t>(UB_ROW_SIZE - valid_row),
+        static_cast<uint16_t>(dstNzC0Stride - valid_row) });
     this->gatherOutQue.template FreeTensor(kvMergUbCp_);
     if constexpr (syGmEn) {
         DataCopyExtParams dataCopyParams;
@@ -325,7 +329,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyOutMrgeResult(int64_t mt
         dataCopyParams.dstStride = 0;
         int64_t gmStartOffset = kRunInfo.s2Idx * runInfo.s2BaseSize * kRunInfo.dValue;
         DataCopyPad(gatherSYResGm[gmStartOffset + (s2GmStartOffset + mte3Size) * kRunInfo.dValue],
-                kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * kRunInfo.dValue], dataCopyParams);
+            kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * kRunInfo.dValue], dataCopyParams);
     }
 }
 
@@ -339,8 +343,9 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::GetRealS2Idx(int64_t s2GmOff
 
 TEMPLATES_DEF_NO_DEFAULT
 template <event_t IdStart, bool syGmEn>
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::MergeKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    const SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo, GlobalTensor<INPUT_T> srcTensor)
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::MergeKv(
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, const SLIGradRunInfo &runInfo,
+    SLIGradKRunInfo &kRunInfo, GlobalTensor<INPUT_T> srcTensor)
 {
     int64_t s2ProcessSize = kRunInfo.s2RealBaseSize;
     int64_t s2Pair = CeilDiv(s2ProcessSize, 2L);
@@ -351,7 +356,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::MergeKv(Buffer<BufferType::L
     int64_t s2IdxArray1 = -1;
     bool needWaitMte3ToMte2 = true;
     int64_t s2GmStartOffset = GetSubBlockIdx() == 0 ? 0 : CeilDiv(s2Pair, 2L) * 2;
-    int64_t s2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2: s2ProcessSize;
+    int64_t s2GmLimit = GetSubBlockIdx() == 0 ? CeilDiv(s2Pair, 2L) * 2 : s2ProcessSize;
     if (s2GmLimit > s2ProcessSize) {
         s2GmLimit = s2ProcessSize;
     }
@@ -369,8 +374,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::MergeKv(Buffer<BufferType::L
         }
         GetRealS2Idx(s2GmOffsetArray + constInfo.sparseBlockSize, s2IdxArray1, runInfo, kRunInfo);
         CopyInKv(mte2Size, mte3Size, mergeMte3Idx, s2IdxArray0, s2IdxArray1, runInfo, kRunInfo, srcTensor);
-        if ((mte2Size - mte3Size + 2 > UB_ROW_SIZE) ||
-            s2GmOffsetArray + 2 >= s2GmLimit) {
+        if ((mte2Size - mte3Size + 2 > UB_ROW_SIZE) || s2GmOffsetArray + 2 >= s2GmLimit) {
             CopyOutMrgeResult<IdStart, syGmEn>(mte2Size, mte3Size, s2GmStartOffset, mergeMte3Idx, runInfo, kRunInfo);
             mte3Size = mte2Size;
             SetFlag<HardEvent::MTE3_MTE2>(mergeMte3Idx + IdStart);
@@ -382,8 +386,9 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::MergeKv(Buffer<BufferType::L
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool SligBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx, int64_t &bS1Index,
-                                                         int64_t &accumS1Len, int64_t &accumS2Len, int32_t &actualSeqLensQ, int32_t &actualSeqLensK, int64_t taskId)
+__aicore__ inline bool SligBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx,
+    int64_t &bS1Index, int64_t &accumS1Len, int64_t &accumS2Len, int32_t &actualSeqLensQ, int32_t &actualSeqLensK,
+    int64_t taskId)
 {
     int64_t t1Offset = 0;
     int64_t t2Offset = 0;
@@ -397,7 +402,7 @@ __aicore__ inline bool SligBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1In
     int64_t curS2 = constInfo.s2Size;
     int64_t usedS1 = 0;
     int64_t usedS2 = 0;
-    if (usedT1Index >= constInfo.totalNum){
+    if (usedT1Index >= constInfo.totalNum) {
         return false;
     }
     if constexpr (!HasSequsedQ) {
@@ -442,12 +447,12 @@ __aicore__ inline bool SligBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1In
         t2Offset = bIndex * constInfo.s2Size;
     }
 
-    if constexpr(HasSequsedQ) {
+    if constexpr (HasSequsedQ) {
         usedS1 = ((__gm__ int32_t *)usedSeqQlenAddr)[bIndex];
     } else {
         usedS1 = curS1;
     }
-    if constexpr(HasSequsedK) {
+    if constexpr (HasSequsedK) {
         usedS2 = ((__gm__ int32_t *)usedSeqKvlenAddr)[bIndex];
     } else {
         usedS2 = curS2;
@@ -462,9 +467,8 @@ __aicore__ inline bool SligBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1In
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t taskId,  int64_t bIdx, int64_t s1Idx,
-    SLIGradRunInfo &runInfo, int64_t accumS1Len, int64_t accumS2Len,
-    int32_t actualSeqLensQ, int32_t actualSeqLensK)
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t taskId, int64_t bIdx, int64_t s1Idx,
+    SLIGradRunInfo &runInfo, int64_t accumS1Len, int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK)
 {
     runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
@@ -484,17 +488,20 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t taskId,  
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int32_t SligBlockVec<TEMPLATE_ARGS>::GetS2SparseLen(int32_t bIdx, int32_t s1Idx, int32_t actualSeqLensQ, int32_t actualSeqLensK)
+__aicore__ inline int32_t SligBlockVec<TEMPLATE_ARGS>::GetS2SparseLen(int32_t bIdx, int32_t s1Idx,
+    int32_t actualSeqLensQ, int32_t actualSeqLensK)
 {
     if (constInfo.sparseMode == SLISparseMode::RightDown) {
         if (constInfo.cmpRatio == 1) {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
         }
         int32_t cmpResidualK = 0;
-        if constexpr(HasCmpResidualK) {
+        if constexpr (HasCmpResidualK) {
             cmpResidualK = ((__gm__ uint32_t *)cmpResidualKAddr)[bIdx];
         }
-        return Max(((actualSeqLensK * constInfo.cmpRatio + cmpResidualK) - actualSeqLensQ + s1Idx + 1) / constInfo.cmpRatio, 0);
+        return Max(((actualSeqLensK * constInfo.cmpRatio + cmpResidualK) - actualSeqLensQ + s1Idx + 1) /
+            constInfo.cmpRatio,
+            0);
     } else if (constInfo.sparseMode == SLISparseMode::DefaultMask) {
         return actualSeqLensK;
     } else {
@@ -519,7 +526,9 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::CopyInWeight(SLIGradRunInfo 
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo)
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector1(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradRunInfo &runInfo,
+    SLIGradKRunInfo &kRunInfo)
 {
     if (kRunInfo.s2SingleIdx == 0) {
         CrossCoreWaitFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[kRunInfo.kTaskIdMod2]);
@@ -528,7 +537,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector1(Buffer<Buffer
     auto reduceSumTensor = this->reduceSumOutQue.template AllocTensor<T>();
 
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
-    ProcessVec1Vf<T, float>(reduceSumTensor[runInfo.s2CurSize], mmRes[kRunInfo.s2SingleCurSize], weightInUb, runInfo.nIndexSize, constInfo.syKBaseSize);
+    ProcessVec1Vf<T, float>(reduceSumTensor[runInfo.s2CurSize], mmRes[kRunInfo.s2SingleCurSize], weightInUb,
+        runInfo.nIndexSize, constInfo.syKBaseSize);
     if (kRunInfo.s2SingleIdx >= kRunInfo.s2SingleLoopTimes - 1) {
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[kRunInfo.kTaskIdMod2]);
     }
@@ -548,7 +558,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector1(Buffer<Buffer
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradRunInfo &runInfo)
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector2(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradRunInfo &runInfo)
 {
     auto reduceSumTensor = this->reduceSumOutQue.template AllocTensor<T>();
     LocalTensor<T> reduceOtherSumTensor = bmm1ResBuf.template GetTensor<T>();
@@ -559,7 +570,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector2(Buffer<Buffer
     dataCopyParams.dstStride = 0;
     DataCopyPadExtParams<T> padParams;
     CrossCoreWaitFlag<1, PIPE_MTE2>(EVENT_ID2);
-    DataCopyPad(reduceOtherSumTensor, reduceSumResGm[(1 - constInfo.subBlockIdx) * constInfo.kSizeAlign128], dataCopyParams, padParams);
+    DataCopyPad(reduceOtherSumTensor, reduceSumResGm[(1 - constInfo.subBlockIdx) * constInfo.kSizeAlign128],
+        dataCopyParams, padParams);
     event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
@@ -577,7 +589,9 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector2(Buffer<Buffer
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo)
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradRunInfo &runInfo,
+    SLIGradKRunInfo &kRunInfo)
 {
     if (kRunInfo.s2SingleIdx == 0) {
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
@@ -610,16 +624,20 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<Buffer
     dataCopyParams.blockLen = VEC_P_BASESIZE * sizeof(T);
     dataCopyParams.srcStride = (constInfo.kSizeAlign128 - VEC_P_BASESIZE) * sizeof(T);
     dataCopyParams.dstStride = 0;
-    DataCopyPad(reluUb, reluGm[runInfo.s2CurSize + runInfo.firstNIndexSize * constInfo.subBlockIdx * constInfo.kSizeAlign128], dataCopyParams, padParams);
+    DataCopyPad(reluUb,
+        reluGm[runInfo.s2CurSize + runInfo.firstNIndexSize * constInfo.subBlockIdx * constInfo.kSizeAlign128],
+        dataCopyParams, padParams);
     this->reluQue.template EnQue(reluUb);
     this->reluQue.template DeQue<T>();
 
     if (kRunInfo.isAlign64) {
-        ProcessVec6Vf<T, INPUT_T, true>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor, softmaxTensor[runInfo.s2CurSize], softmaxReduceSumTensor,
-            weightInUb, reduceSumTensor[runInfo.s2CurSize], reluUb, kRunInfo.s2RealBaseSize, runInfo.nIndexSize, VEC_P_BASESIZE);
+        ProcessVec6Vf<T, INPUT_T, true>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor,
+            softmaxTensor[runInfo.s2CurSize], softmaxReduceSumTensor, weightInUb, reduceSumTensor[runInfo.s2CurSize],
+            reluUb, kRunInfo.s2RealBaseSize, runInfo.nIndexSize, VEC_P_BASESIZE);
     } else {
-        ProcessVec6Vf<T, INPUT_T, false>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor, softmaxTensor[runInfo.s2CurSize], softmaxReduceSumTensor, weightInUb,
-            reduceSumTensor[runInfo.s2CurSize], reluUb, kRunInfo.s2RealBaseSize, runInfo.nIndexSize, VEC_P_BASESIZE);
+        ProcessVec6Vf<T, INPUT_T, false>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor,
+            softmaxTensor[runInfo.s2CurSize], softmaxReduceSumTensor, weightInUb, reduceSumTensor[runInfo.s2CurSize],
+            reluUb, kRunInfo.s2RealBaseSize, runInfo.nIndexSize, VEC_P_BASESIZE);
     }
     if (kRunInfo.s2SingleIdx >= kRunInfo.s2SingleLoopTimes - 1) {
         this->reluGradQue.template EnQue(reluGradUb);
@@ -627,12 +645,13 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<Buffer
         LocalTensor<INPUT_T> mm3AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         uint32_t gRealSizeAlignTo16 = (constInfo.gSizeQueryIndex + 15) / 16 * 16;
         DataCopy(mm3AL1Tensor[constInfo.subBlockIdx * runInfo.firstNIndexSize * BLOCK_SINGLE_LEN], reluGradUb,
-            {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN),  static_cast<uint16_t>(runInfo.nIndexSize), 0, static_cast<uint16_t>(gRealSizeAlignTo16 - runInfo.nIndexSize)});
+            { static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN), static_cast<uint16_t>(runInfo.nIndexSize),
+            0, static_cast<uint16_t>(gRealSizeAlignTo16 - runInfo.nIndexSize) });
         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
     }
     if (kRunInfo.isS2end) {
         this->dwQue.template EnQue(dwTensor);
-        this->dwQue.template DeQue<T>(); 
+        this->dwQue.template DeQue<T>();
         LocalTensor<T> dwOutTensor = dwOutQue.template AllocTensor<T>();
         CastDupVf<T, T>(dwOutTensor, dwTensor, runInfo.nIndexSize);
         this->dwOutQue.template EnQue(dwOutTensor);
@@ -654,7 +673,9 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<Buffer
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo)
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradRunInfo &runInfo,
+    SLIGradKRunInfo &kRunInfo)
 {
     CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[kRunInfo.kTaskIdMod2]);
     int32_t vRealKSize;
@@ -697,8 +718,9 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7(Buffer<Buffer
         }
 
         int64_t keySrcStride = 0;
-        keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                        (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * constInfo.dSizeQueryIndex * sizeof(T);
+        keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) : (keyOffset2 - keyOffset1)) -
+            constInfo.sparseBlockSize) *
+            constInfo.dSizeQueryIndex * sizeof(T);
 
         bool strideInvalid = (keySrcStride >= INT32_MAX) || (keySrcStride < 0);
         bool copyOutOfRange = (realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
@@ -728,7 +750,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7(Buffer<Buffer
             int64_t keyStartOffset = (keyOffset1 >= 0) ? keyOffset1 : keyOffset2;
             int64_t ubStartOffset = (keyOffset1 >= 0) ? ub1Offset : ub2Offset;
             LocalTensor<T> srcTmpUb = scatterAddTmpUb.template ReinterpretCast<T>();
-            DataCopyPad(scatterAddResGm[keyStartOffset * constInfo.dSizeQueryIndex], srcTmpUb[ubStartOffset], dataCopyParams);
+            DataCopyPad(scatterAddResGm[keyStartOffset * constInfo.dSizeQueryIndex], srcTmpUb[ubStartOffset],
+                dataCopyParams);
         }
     }
     SetAtomicNone();
@@ -736,7 +759,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7(Buffer<Buffer
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(SLIGradRunInfo &runInfo, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf)
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(SLIGradRunInfo &runInfo,
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf)
 {
     CrossCoreWaitFlag<MODE_NUM_2, PIPE_MTE2>(SYNC_C3_TO_V7_FLAG[runInfo.taskIdMod2]);
     CrossCoreSetFlag<0, PIPE_MTE2>(SYNC_C3_TO_V7_DETER_MTE2_FLAG[runInfo.taskIdMod2]);
@@ -757,7 +781,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(SLIGradR
     int64_t bS1IndexEnd = tilingData->multiCoreParams.totalSize - 1;
     if constexpr (HasSequsedQ) {
         if constexpr (Layout_Q == SLILayout::TND) {
-            bS1IndexEnd = ((__gm__ int32_t *)actualSeqQlenAddr)[constInfo.bSize - 1] + ((__gm__ int32_t *)usedSeqQlenAddr)[constInfo.bSize - 1] - 1;
+            bS1IndexEnd = ((__gm__ int32_t *)actualSeqQlenAddr)[constInfo.bSize - 1] +
+                ((__gm__ int32_t *)usedSeqQlenAddr)[constInfo.bSize - 1] - 1;
         } else {
             bS1IndexEnd = bS1IndexEnd - constInfo.s1Size + ((__gm__ int32_t *)usedSeqQlenAddr)[constInfo.bSize - 1];
         }
@@ -765,7 +790,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(SLIGradR
     for (int32_t idx = 0; idx < coreNum; idx++) {
         usedBS1Index = runInfo.taskId * coreNum + idx;
         // 重新获取b和S1的值
-        if (!GetBS1Index(usedBS1Index, bIdx, s1Idx, bS1Index, accumS1Len, accumS2Len, actualSeqLensQ, actualSeqLensK, runInfo.taskId)) {
+        if (!GetBS1Index(usedBS1Index, bIdx, s1Idx, bS1Index, accumS1Len, accumS2Len, actualSeqLensQ, actualSeqLensK,
+            runInfo.taskId)) {
             continue;
         }
 
@@ -813,8 +839,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(SLIGradR
         }
 
         int64_t mm3GmBaseOffset = idx * constInfo.kSize * constInfo.dSizeQueryIndex * MODE_NUM_2;
-        GlobalTensor<T> srcGm = mm3DeterResGm[
-            mm3GmBaseOffset + (runInfo.taskIdMod2 * constInfo.kSize + vCoreKOffset) * constInfo.dSizeQueryIndex];
+        GlobalTensor<T> srcGm = mm3DeterResGm[mm3GmBaseOffset +
+            (runInfo.taskIdMod2 * constInfo.kSize + vCoreKOffset) * constInfo.dSizeQueryIndex];
         DeterScatterAdd(vRealKSize, srcGm, tmpBuf, vCoreKOffset, runInfo, idx, scatterAddGm[idx % MODE_NUM_2]);
         if (idx % MODE_NUM_2 == 1 || bS1Index == bS1IndexEnd) {
             CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
@@ -824,16 +850,14 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(SLIGradR
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRealKSize,
-    GlobalTensor<T> &srcGm, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf,
-    int64_t coreKOffset, SLIGradRunInfo &runInfo,
+__aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRealKSize, GlobalTensor<T> &srcGm,
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf, int64_t coreKOffset, SLIGradRunInfo &runInfo,
     int32_t idx, GlobalTensor<T> &scatterAddGm)
 {
     constexpr int32_t topKSplitSize = MODE_NUM_2;
     LocalTensor<T> scatterAddTmpUb = tmpBuf.template GetTensor<T>();
     int32_t scatterAddPingpong = 0;
-    int32_t kSplitSize = SLIGradConstInfo::BUFFER_SIZE_BYTE_32K /
-        (MODE_NUM_2 * sizeof(T) * constInfo.dSizeQueryIndex);
+    int32_t kSplitSize = SLIGradConstInfo::BUFFER_SIZE_BYTE_32K / (MODE_NUM_2 * sizeof(T) * constInfo.dSizeQueryIndex);
     int32_t tailSize = vRealKSize % kSplitSize;
     int32_t kTailSize = (!tailSize) ? kSplitSize : tailSize;
     int32_t kProcessSize = kSplitSize;
@@ -842,7 +866,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRea
     int64_t realS2Idx2;
     int64_t s2GmOffset;
     event_t eventIdPing = static_cast<event_t>(GetTPipePtr()->AllocEventID<AscendC::HardEvent::MTE3_MTE2>());
-    event_t eventIdPong = static_cast<event_t>(GetTPipePtr()->AllocEventID<AscendC::HardEvent::MTE3_MTE2>());    
+    event_t eventIdPong = static_cast<event_t>(GetTPipePtr()->AllocEventID<AscendC::HardEvent::MTE3_MTE2>());
     event_t eventIdArr[MODE_NUM_2] = {eventIdPing, eventIdPong};
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdPing);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdPong);
@@ -858,11 +882,11 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRea
         int32_t tailSize = kProcessSize % topKSplitSize;
         int32_t topKTailSize = (!tailSize) ? topKSplitSize : tailSize;
         int32_t topKProcessSize = topKSplitSize;
-        int32_t topKLoopTimes = CeilDiv(kProcessSize, topKSplitSize); // (32 + 1) // 2 = 16
+        int32_t topKLoopTimes = CeilDiv(kProcessSize, topKSplitSize);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdArr[scatterAddPingpong]);
         LocalTensor<T> scatterUb = scatterAddTmpUb[scatterAddPingpong * kSplitSize * constInfo.dSizeQueryIndex];
-        DataCopy(scatterUb,
-            srcGm[kLoopIdx * kSplitSize * constInfo.dSizeQueryIndex], kProcessSize * constInfo.dSizeQueryIndex);
+        DataCopy(scatterUb, srcGm[kLoopIdx * kSplitSize * constInfo.dSizeQueryIndex],
+            kProcessSize * constInfo.dSizeQueryIndex);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventIdArr[scatterAddPingpong]);
         WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventIdArr[scatterAddPingpong]);
         for (int32_t topKIdx = 0; topKIdx < topKLoopTimes; ++topKIdx) {
@@ -886,9 +910,9 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRea
             }
 
             int64_t keySrcStride = 0;
-            keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                            (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) *
-                            constInfo.dSizeQueryIndex * sizeof(T);
+            keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) : (keyOffset2 - keyOffset1)) -
+                constInfo.sparseBlockSize) *
+                constInfo.dSizeQueryIndex * sizeof(T);
 
             bool strideInvalid = (keySrcStride >= INT32_MAX) || (keySrcStride < 0);
             bool copyOutOfRange = (realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
@@ -919,8 +943,8 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRea
                 int64_t keyStartOffset = keyOffset1Pass ? keyOffset1 : keyOffset2;
                 int64_t ubStartOffset = keyOffset1Pass ? ub1Offset : ub2Offset;
                 LocalTensor<T> srcTmpUb = scatterUb.template ReinterpretCast<T>();
-                DataCopyPad(scatterAddGm[keyStartOffset * constInfo.dSizeQueryIndex],
-                    srcTmpUb[ubStartOffset], dataCopyParams);
+                DataCopyPad(scatterAddGm[keyStartOffset * constInfo.dSizeQueryIndex], srcTmpUb[ubStartOffset],
+                    dataCopyParams);
             }
         }
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdArr[scatterAddPingpong]);
@@ -929,7 +953,7 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRea
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdPing);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdPong);
     GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(eventIdPing);
-    GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(eventIdPong);    
+    GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(eventIdPong);
     SetAtomicNone();
 }
 
@@ -966,10 +990,10 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector8()
         if constexpr (Deterministic) {
             copyInUb = this->scatterAddInQue[pingPongIdx].template AllocTensor<T>();
             copyInUbPong = this->scatterAddInQue2[pingPongIdx].template AllocTensor<T>();
-            DataCopy(copyInUb,
-                scatterAddResGm[t2Idx * constInfo.dSizeQueryIndex], t2ProcessSize * constInfo.dSizeQueryIndex);
-            DataCopy(copyInUbPong,
-                scatterAddResGmPong[t2Idx * constInfo.dSizeQueryIndex], t2ProcessSize * constInfo.dSizeQueryIndex);
+            DataCopy(copyInUb, scatterAddResGm[t2Idx * constInfo.dSizeQueryIndex],
+                t2ProcessSize * constInfo.dSizeQueryIndex);
+            DataCopy(copyInUbPong, scatterAddResGmPong[t2Idx * constInfo.dSizeQueryIndex],
+                t2ProcessSize * constInfo.dSizeQueryIndex);
             this->scatterAddInQue[pingPongIdx].template EnQue(copyInUb);
             this->scatterAddInQue[pingPongIdx].template DeQue<T>();
             this->scatterAddInQue2[pingPongIdx].template EnQue(copyInUbPong);
@@ -978,11 +1002,11 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector8()
             this->scatterAddInQue2[pingPongIdx].template FreeTensor(copyInUbPong);
         } else {
             copyInUb = this->scatterAddInQue[pingPongIdx].template AllocTensor<T>();
-            DataCopy(copyInUb,
-                scatterAddResGm[t2Idx * constInfo.dSizeQueryIndex], t2ProcessSize * constInfo.dSizeQueryIndex);
+            DataCopy(copyInUb, scatterAddResGm[t2Idx * constInfo.dSizeQueryIndex],
+                t2ProcessSize * constInfo.dSizeQueryIndex);
             this->scatterAddInQue[pingPongIdx].template EnQue(copyInUb);
             this->scatterAddInQue[pingPongIdx].template DeQue<T>();
-        }        
+        }
         copyOutUb = this->dKeyOutQue[pingPongIdx].template AllocTensor<OUT_T>();
         Cast(copyOutUb, copyInUb, RoundMode::CAST_ROUND, t2ProcessSize * constInfo.dSizeQueryIndex);
         this->dKeyOutQue[pingPongIdx].template EnQue(copyOutUb);
@@ -997,20 +1021,28 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector8()
 TEMPLATES_DEF
 class SligBlockVecDummy {
 public:
-    __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR attnSoftmaxL1, GM_ADDR dKey,
-        GM_ADDR dWeight, GM_ADDR softmaxOut, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
-        GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes, GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3Res,
-        GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK, GM_ADDR sequsedQ, GM_ADDR sequsedK, GM_ADDR cmpResidualK){};
+    __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR attnSoftmaxL1,
+        GM_ADDR dKey, GM_ADDR dWeight, GM_ADDR softmaxOut, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
+        GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes, GlobalTensor<T> &scatterAddResPong,
+        GlobalTensor<T> &bmm3Res, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK, GM_ADDR sequsedQ, GM_ADDR sequsedK,
+        GM_ADDR cmpResidualK){};
     __aicore__ inline void InitBuffers(TPipe *pipe){};
-    __aicore__ inline void ProcessVector0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo){};
+    __aicore__ inline void ProcessVector0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+        SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo){};
     __aicore__ inline void CopyInWeight(SLIGradRunInfo &runInfo){};
-    __aicore__ inline void ProcessVector1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo){};
-    __aicore__ inline void ProcessVector2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradRunInfo &runInfo){};
-    __aicore__ inline void ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo){};
-    __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo){};
-    __aicore__ inline void DeterScatterAdd(int32_t vRealKSize, GlobalTensor<T> &srcGm, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf, 
-                                         int64_t coreKOffset, SLIGradRunInfo &runInfo, int32_t idx, GlobalTensor<T> &scatterAddGm){};
-    __aicore__ inline void ProcessVector7Deter(SLIGradRunInfo &runInfo, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf){};
+    __aicore__ inline void ProcessVector1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+        SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo){};
+    __aicore__ inline void ProcessVector2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+        SLIGradRunInfo &runInfo){};
+    __aicore__ inline void ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+        SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo){};
+    __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf,
+        SLIGradRunInfo &runInfo, SLIGradKRunInfo &kRunInfo){};
+    __aicore__ inline void DeterScatterAdd(int32_t vRealKSize, GlobalTensor<T> &srcGm,
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf, int64_t coreKOffset, SLIGradRunInfo &runInfo,
+        int32_t idx, GlobalTensor<T> &scatterAddGm){};
+    __aicore__ inline void ProcessVector7Deter(SLIGradRunInfo &runInfo,
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf){};
     __aicore__ inline void ReInitBuffers(TPipe *pipe){};
     __aicore__ inline void ProcessVector8(){};
 };

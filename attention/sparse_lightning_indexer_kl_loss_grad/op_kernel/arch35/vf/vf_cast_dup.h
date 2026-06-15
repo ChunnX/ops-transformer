@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,9 +6,9 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
-/*!
+/* !
  * \file vf_cast_dup.h
  * \brief
  */
@@ -19,7 +19,7 @@
 
 namespace AscendC {
 template <typename T, typename OUT_T>
-__simd_vf__ inline void CastDupBasicVF(__ubuf__ OUT_T * dstUb, __ubuf__ T * srcUb, uint32_t m, uint32_t maskScaler)
+__simd_vf__ inline void CastDupBasicVF(__ubuf__ OUT_T *dstUb, __ubuf__ T *srcUb, uint32_t m, uint32_t maskScaler)
 {
     RegTensor<float> vreg_input;
     RegTensor<float> vreg_input_new;
@@ -56,11 +56,10 @@ __simd_vf__ inline void CastDupBasicVF(__ubuf__ OUT_T * dstUb, __ubuf__ T * srcU
 }
 
 template <typename T, typename OUT_T>
-__aicore__ inline void CastDupVf(const LocalTensor<OUT_T>& dstTensor, const LocalTensor<T>& srcTensor,
-    const uint32_t m)
+__aicore__ inline void CastDupVf(const LocalTensor<OUT_T> &dstTensor, const LocalTensor<T> &srcTensor, const uint32_t m)
 {
-    __ubuf__ OUT_T * dstUb = (__ubuf__ OUT_T*)dstTensor.GetPhyAddr();
-    __ubuf__ T * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ OUT_T *dstUb = (__ubuf__ OUT_T *)dstTensor.GetPhyAddr();
+    __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
     uint32_t maskScaler = m;
 
     CastDupBasicVF<T, OUT_T>(dstUb, srcUb, m, maskScaler);

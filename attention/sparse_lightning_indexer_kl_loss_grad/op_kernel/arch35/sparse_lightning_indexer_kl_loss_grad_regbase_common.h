@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,9 +6,9 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
-/*!
+/* !
  * \file sparse_lightning_indexer_kl_loss_grad_regbase_common.h
  * \brief
  */
@@ -20,16 +20,10 @@
 using namespace fa_base_matmul;
 
 static constexpr uint32_t VEC_SY_BASESIZE = 256;
-static constexpr uint32_t VEC_P_BASESIZE = 128; 
-enum class SLILayout {
-    BSND = 0,
-    TND = 1
-};
+static constexpr uint32_t VEC_P_BASESIZE = 128;
+enum class SLILayout { BSND = 0, TND = 1 };
 
-enum class SLISparseMode {
-    DefaultMask = 0,
-    RightDown = 3
-};
+enum class SLISparseMode { DefaultMask = 0, RightDown = 3 };
 
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
@@ -44,14 +38,14 @@ struct GatherParams {
     int32_t s2ProcessSize;
     int32_t dValue;
     int32_t dRopeValue;
-    // topkIndex two line idx 
+    // topkIndex two line idx
     int64_t realS2Idx1;
     int64_t realS2Idx2;
     bool needGatherRope;
 };
 
-/** @name 核内数据结构定义
- *  @{
+/* * @name 核内数据结构定义
+ * @{
  */
 struct SLIGradConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_32 = 32;
@@ -69,29 +63,29 @@ struct SLIGradConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32 * 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_33K = 33 * 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 64 * 1024;
-    /** \brief 核信息 */
+    /* * \brief 核信息 */
     uint32_t aicIdx;
     uint32_t aivIdx;
     uint32_t subBlockIdx;
-    /** \brief metadata分核信息 */
+    /* * \brief metadata分核信息 */
     uint32_t totalNum;
     uint32_t formerCoreProcessNNum;
     uint32_t remainCoreProcessNNum;
     uint32_t remainCoreNum;
     uint32_t usedCoreNum;
 
-    /** \brief TilingData中的信息 */
-	uint32_t bSize;
+    /* * \brief TilingData中的信息 */
+    uint32_t bSize;
     uint32_t totalSize;
-	uint32_t n2Size; // 现阶段n2Size默认等于1
-    uint32_t gSizeQuery; // 128或者64
-    uint32_t gSizeQueryIndex; // 64或者32
-    uint32_t s1Size; // 支持泛化
-    uint32_t s2Size; // 支持泛化
-    uint32_t dSizeQuery; // 默认不带Rope，固定等于512
-    uint32_t dSizeQueryIndex; // 默认不带Rope，固定等于128
+    uint32_t n2Size;              // 现阶段n2Size默认等于1
+    uint32_t gSizeQuery;          // 128或者64
+    uint32_t gSizeQueryIndex;     // 64或者32
+    uint32_t s1Size;              // 支持泛化
+    uint32_t s2Size;              // 支持泛化
+    uint32_t dSizeQuery;          // 默认不带Rope，固定等于512
+    uint32_t dSizeQueryIndex;     // 默认不带Rope，固定等于128
     uint32_t dSizeQueryRope = 64; // Rope，固定等于64
-    uint32_t kSize; // 现阶段只支持2048
+    uint32_t kSize;               // 现阶段只支持2048
     uint32_t kSizeAlign128;
     uint32_t cmpRatio;
     int64_t totalCost;
@@ -117,22 +111,22 @@ struct SLIGradConstInfo {
 struct SLIGradRunInfo {
     uint32_t taskId;
     uint32_t taskIdMod2;
-	uint32_t bIdx;
+    uint32_t bIdx;
     uint32_t s1Idx;
     uint32_t t1Index;
     uint32_t t2Index;
     uint32_t kIdx;
-    int64_t accumS1Idx; // 当前循环累加的T1
-    int64_t accumS2Idx; // 当前循环累加的T2
-    uint32_t actS1Size; // 当前batch的S1Size
-    uint32_t actS2Size; // 当前batch的S2Size
+    int64_t accumS1Idx;    // 当前循环累加的T1
+    int64_t accumS2Idx;    // 当前循环累加的T2
+    uint32_t actS1Size;    // 当前batch的S1Size
+    uint32_t actS2Size;    // 当前batch的S2Size
     uint32_t cmpResidualK; // 当前s2方向压缩的残差
-    uint32_t kBaseSize; // k方向切分的基本块大小，在P和阶段
-    uint32_t kRealSize; // k切分之后的实际大小，在P和阶段
-    uint32_t kTailSize; // k切分之后的尾块大小，在P和阶段
+    uint32_t kBaseSize;    // k方向切分的基本块大小，在P和阶段
+    uint32_t kRealSize;    // k切分之后的实际大小，在P和阶段
+    uint32_t kTailSize;    // k切分之后的尾块大小，在P和阶段
     uint32_t kRealSizeAlign8;
     uint32_t kLoopTimes; // k方向的循环次数，在P和阶段
-    
+
     uint32_t nBaseSizeP;
     uint32_t nRealSizeP;
     uint32_t nBaseSizeSY;
@@ -140,7 +134,7 @@ struct SLIGradRunInfo {
     uint32_t nIdxP;
     uint32_t nIdxSY;
     uint32_t nVecSize;
-    
+
     // 存放一些offset，减少重复计算
     int32_t s2SparseLen;
     int32_t s2RealSize;
@@ -182,10 +176,10 @@ struct SLIGradSYRunInfo {
     int32_t kIdx;
 };
 struct SLIGradPRunInfo {
-    int32_t kRealBaseSize; // 
+    int32_t kRealBaseSize; //
     int32_t kIdx;
 };
-/// @}
+// / @}
 
 constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
 constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
@@ -201,20 +195,17 @@ constexpr uint8_t SYNC_RELU_TO_V6_FLAG = 2;
 constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG[2] = {5, 6};
 constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 15;
 
-template <typename T>
-__aicore__ inline T SLIGAlign(T num, T rnd)
+template <typename T> __aicore__ inline T SLIGAlign(T num, T rnd)
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
-template <typename T>
-__aicore__ inline T CeilDiv(T num, T rnd)
+template <typename T> __aicore__ inline T CeilDiv(T num, T rnd)
 {
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
 
-template <typename T>
-__aicore__ inline T AlignTo(const T n, const T alignSize)
+template <typename T> __aicore__ inline T AlignTo(const T n, const T alignSize)
 {
     if (alignSize == 0) {
         return 0;
@@ -222,55 +213,55 @@ __aicore__ inline T AlignTo(const T n, const T alignSize)
     return (n + alignSize - 1) & (~(alignSize - 1));
 }
 
-#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X)                                                                               \
-    X(INPUT_T)                                                                                                            \
-    X(OUT_T)                                                                                                            \
+#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
+    X(INPUT_T)                           \
+    X(OUT_T)                             \
     X(T)
 
-#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                                                                              \
-    X(Layout_Q, SLILayout, SLILayout::TND)                                                                            \
-    X(Layout_KT, SLILayout, SLILayout::TND)                                                                           \
-    X(SparseMode, SLISparseMode, SLISparseMode::RightDown)                                                             \
-    X(HasCuSeqlensQ, bool, false)                                                                                      \
-    X(HasCuSeqlensK, bool, false)                                                                                      \
-    X(HasSequsedQ, bool, false)                                                                                        \
-    X(HasSequsedK, bool, false)                                                                                        \
-    X(HasCmpResidualK, bool, false )                                                                                   \
+#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                  \
+    X(Layout_Q, SLILayout, SLILayout::TND)                 \
+    X(Layout_KT, SLILayout, SLILayout::TND)                \
+    X(SparseMode, SLISparseMode, SLISparseMode::RightDown) \
+    X(HasCuSeqlensQ, bool, false)                          \
+    X(HasCuSeqlensK, bool, false)                          \
+    X(HasSequsedQ, bool, false)                            \
+    X(HasSequsedK, bool, false)                            \
+    X(HasCmpResidualK, bool, false)                        \
     X(Deterministic, bool, false)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,
 #define GEN_CONST_PARAM(name, type, default_val) type(name) = (default_val),
-#define TEMPLATES_DEF                                                                                                  \
-    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = \
+#define TEMPLATES_DEF                                                                                                 \
+    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM)CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = \
                   true>
 
 /* 2. 生成不带带默认值的模版Template */
 #define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
-#define TEMPLATES_DEF_NO_DEFAULT                                                                                       \
-    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF)                                                   \
+#define TEMPLATES_DEF_NO_DEFAULT                                     \
+    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
                   CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
 /* 3. 生成有默认值, 不带ChildClass的Args */
 #define GEN_ARG_NAME(name, ...) name,
-#define TEMPLATE_ARGS                                                                                                  \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME)                                                                        \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
+#define TEMPLATE_ARGS                           \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
+    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME)end
 
-/* 4. 生成BASE的有默认值的Template, BASE带ChildClass*/
-#define TEMPLATES_DEF_BASE                                                                                             \
-    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM)                                       \
-                                       CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
+/* 4. 生成BASE的有默认值的Template, BASE带ChildClass */
+#define TEMPLATES_DEF_BASE         \
+    template <typename ChildClass, \
+        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM)CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
 
 /* 5. 生成BASE的没有默认值的Template, BASE带ChildClass */
-#define TEMPLATES_DEF_BASE_NO_DEFAULT                                                                                  \
-    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF)                              \
+#define TEMPLATES_DEF_BASE_NO_DEFAULT                                                     \
+    template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
                                        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
 /* 6. 生成BASE的BaseArgs, BASE带ChildClass */
-#define TEMPLATE_BASE_ARGS                                                                                             \
-    ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
+#define TEMPLATE_BASE_ARGS \
+    ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME)CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME)end
 
 template <typename T1, typename T2> __aicore__ inline T1 Max(T1 a, T2 b)
 {

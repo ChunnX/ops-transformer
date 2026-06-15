@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,9 +6,9 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
-/*!
+/* !
  * \file sparse_lightning_indexer_kl_loss_grad_tiling_general_regbase.h
  * \brief
  */
@@ -29,7 +29,6 @@ using namespace ge;
 using namespace AscendC;
 
 namespace optiling {
-
 class SparseLightningIndexerGradTilingBaseRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit SparseLightningIndexerGradTilingBaseRegbase(gert::TilingContext *context) : TilingBaseClass(context)
@@ -45,7 +44,8 @@ public:
     }
 
 protected:
-    void Reset() {
+    void Reset()
+    {
         bSize = 0;
         t1Size = 0;
         t2Size = 0;
@@ -95,16 +95,18 @@ protected:
     ge::graphStatus CheckContext();
     bool AnalyzeAttrs();
     bool CrossShapeVerify();
-    bool AnalyzeDimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape, const gert::Shape &weightsShape, const gert::Shape &topKShape, size_t layoutLen);
+    bool AnalyzeDimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape, const gert::Shape &weightsShape,
+        const gert::Shape &topKShape, size_t layoutLen);
     bool AnalyzeDtype();
     bool AnalyzeLayout();
     int64_t GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size, int32_t s1Idx);
     bool InitSparseValidArray(std::vector<int64_t> &sparseValidArray);
     inline bool InitLoadValue(const std::vector<int64_t> &sparseValidArray, int64_t validAicNum, int64_t totalSize,
-                            const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);
-    bool BalanceLoad(const std::vector<int64_t> &sparseValidArray,
-                     std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx);
-    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray, const int64_t balanceNum);
+        const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);
+    bool BalanceLoad(const std::vector<int64_t> &sparseValidArray, std::vector<int64_t> &localValue,
+        std::vector<int64_t> &sparseStartIdx);
+    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray,
+        const int64_t balanceNum);
     bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, int64_t maxCoreNum);
     void SetSparseParamsRegbase(int64_t maxCoreNum);
     int64_t CalcTotalSize();
@@ -132,7 +134,7 @@ protected:
     float scaleValue;
 
     const char *templateName = "slikbase";
-    
+
     // TilingKey
     LayoutTypeRegbase tilingKeyLayout;
     TopKRangeRegbase topKRange;
@@ -152,17 +154,17 @@ protected:
     int64_t softmaxOutWorkspaceLen;
 
     platform_ascendc::SocVersion socVersion;
-    bool deterministic= false;
+    bool deterministic = false;
 
     const char *opName;
     const char *inputLayout;
     const char *layoutQuery;
     const char *layoutKey;
 
-    SparseLightningIndexerGradRegBaseTilingData *tilingData = context_->GetTilingData<SparseLightningIndexerGradRegBaseTilingData>();
+    SparseLightningIndexerGradRegBaseTilingData *tilingData =
+        context_->GetTilingData<SparseLightningIndexerGradRegBaseTilingData>();
     SLIGradBaseParamsRegbase *sliGradBaseParams_ = &tilingData->baseParams;
     SLIGradMultiCoreParamsRegbase *sliGradMultiCoreParams_ = &tilingData->multiCoreParams;
 };
-
 } // optiling
 #endif
