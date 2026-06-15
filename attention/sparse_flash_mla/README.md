@@ -8,7 +8,7 @@
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | √  |
 |<term>Atlas 200I/500 A2推理系列产品</term>                    | ×  |
 |<term>Atlas 推理系列产品</term>                                | ×  |
-|<term>Atlas 训练系列产品</term>                                | ×  |
+|<term>Atlas训练系列产品</term>                                | ×  |
 
 ## 功能说明
 - 算子功能：`SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。

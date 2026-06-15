@@ -11,7 +11,7 @@
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 
 ## 功能说明
@@ -112,7 +112,7 @@
     - RMS归一化梯度计算
         - 正向公式：
             $$
-            inv\_rms = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}x_i^2 + eps}}, \quad 其中\ n = N * D
+            inv\_rms = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}x_i^2 + eps}}, \quad其中\ n = N * D
             $$
         - 反向计算：
             $$

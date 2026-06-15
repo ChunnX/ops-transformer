@@ -9,7 +9,7 @@
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -280,7 +280,7 @@
               <td>sendCounts</td>
               <td>输入</td>
               <td>AlltoAllv使用的send count。表示其他Rank向当前rank上各expert发送的token数量。</td>
-              <td>支持的维度为e * ep。按<code>sendCounts[fromRank][expertId]</code>一维展开,例如e=3时顺序为<code>e0,e1,e2,e0,e1,e2, ...</code></td>
+              <td>支持的维度为e * ep。按<code>sendCounts[fromRank][expertId]</code>一维展开，例如e=3时顺序为<code>e0,e1,e2,e0,e1,e2, ...</code></td>
               <td>aclIntArray*（元素类型INT64）</td>
               <td>ND</td>
               <td>-</td>
@@ -291,7 +291,7 @@
               <td>recvCounts</td>
               <td>输入</td>
               <td>AlltoAllv使用的recv count。表示AlltoAllv后本卡需要接收到的token数量。</td>
-              <td>支持的维度为e * ep。按<code>recvCounts[fromRank][expertId]</code>一维展开,例如e=3时顺序为<code>e0,e1,e2,e0,e1,e2, ...</code></td>
+              <td>支持的维度为e * ep。按<code>recvCounts[fromRank][expertId]</code>一维展开，例如e=3时顺序为<code>e0,e1,e2,e0,e1,e2, ...</code></td>
               <td>aclIntArray*（元素类型INT64）</td>
               <td>ND</td>
               <td>-</td>

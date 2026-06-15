@@ -7,11 +7,11 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列加速卡产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas推理系列加速卡产品</term>|      ×     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
-- API功能：`KvQuantSparseAttnSharedkvMetadata`算子旨在生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及 Q 和 K 的分块的索引，供后续`KvQuantSparseAttnSharedkv`算子使用。
+- API功能：`KvQuantSparseAttnSharedkvMetadata`算子旨在生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`KvQuantSparseAttnSharedkv`算子使用。
 
 ## 参数说明
 | 参数名           |输入/输出/属性|    描述    | 数据类型    |数据格式|
@@ -42,7 +42,7 @@
 |has_ori_kv|可选属性|用于标识是否含有ori_kv，默认值为true。|BOOL|-|
 |has_cmp_kv|可选属性|用于标识是否含有cmp_kv，默认值为true。|BOOL|-|
 |device|可选属性|用于获取设备信息，默认值为None。|STRING|-|
-|metadata|输出|包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及 Q 和 K 的分块的索引的列表，shape固定为1024。|INT32|-|
+|metadata|输出|包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引的列表，shape固定为1024。|INT32|-|
 
 ## 约束说明
 

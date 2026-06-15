@@ -11,7 +11,7 @@
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
 | <term>Atlas 推理系列产品</term>                                                   |    ×    |
-| <term>Atlas 训练系列产品</term>                                                 |    ×    |
+| <term>Atlas训练系列产品</term>                                                 |    ×    |
 
 ## 功能说明
 
@@ -253,7 +253,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
           <td>commQuantScale1Optional</td>
           <td>输入</td>
           <td>MatMul+Add计算后的perchannel量化系数，即计算公式中的commQuantScale1Optional。</td>
-          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时, shape可为(n)或者(1,n)</li></ul></td>
+          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时， shape可为(n)或者(1,n)</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>1-2</td>
@@ -263,7 +263,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
           <td>commQuantScale2Optional</td>
           <td>输入</td>
           <td>AllGather计算后的perchannel量化系数，即计算公式中的commQuantScale2Optional。</td>
-          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时, shape可为(n)或者(1,n)</li></ul></td>
+          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时， shape可为(n)或者(1,n)</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>1-2</td>

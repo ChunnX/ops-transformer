@@ -10,8 +10,8 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列加速卡产品</term>|      √     |
-|<term> Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas推理系列加速卡产品</term>|      √     |
+|<term> Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -120,14 +120,14 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16、INT8</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
+  <li><term>Atlas推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
   </td> 
   <td>ND</td> 
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持输入的维度最少是2维[M, K1]，最多是8维。</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：支持输入的维度是2维[M, K1]。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：支持输入的维度是2维[M, K1]。</li>
   </ul>
   </td> 
   <td>√</td> 
@@ -140,14 +140,14 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16、INT8、INT4</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
+  <li><term>Atlas推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
   </td> 
   <td>ND</td> 
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：有专家[E, K1, N1]；无专家[K1, N1]</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：[K1, N1]</li>
+  <li><term>Atlas推理系列加速卡产品</term>：[K1, N1]</li>
   </ul>
   </td> 
   <td>√</td> 
@@ -160,14 +160,14 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16、INT8、INT4</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
+  <li><term>Atlas推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
   </td> 
   <td>ND</td> 
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：有专家[E, K2, N2]；无专家[K2, N2]</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：[K2, N2]</li>
+  <li><term>Atlas推理系列加速卡产品</term>：[K2, N2]</li>
   </ul>
   </td> 
   <td>√</td> 
@@ -182,7 +182,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：若不为空时可支持的最大长度为256个。</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
   </td> 
   <td>-</td> 
@@ -191,18 +191,18 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>bias1（aclTensor*）</td> 
   <td>可选输入</td> 
   <td>权重数据修正值，公式中的b1。</td> 
-  <td><term>Atlas 推理系列加速卡产品</term>：支持输入的维度是1维。</td> 
+  <td><term>Atlas推理系列加速卡产品</term>：支持输入的维度是1维。</td> 
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、FLOAT32、INT32</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
+  <li><term>Atlas推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
   </td> 
   <td>ND</td> 
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：有专家[E, N1]；无专家[N1]</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：[N1]</li>
+  <li><term>Atlas推理系列加速卡产品</term>：[N1]</li>
   </ul>
   </td> 
   <td>-</td> 
@@ -211,18 +211,18 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>bias2（aclTensor*）</td> 
   <td>可选输入</td> 
   <td>权重数据修正值，公式中的b2。</td> 
-  <td><term>Atlas 推理系列加速卡产品</term>：支持输入的维度是1维。</td> 
+  <td><term>Atlas推理系列加速卡产品</term>：支持输入的维度是1维。</td> 
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、FLOAT32、INT32</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
+  <li><term>Atlas推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
   </td> 
   <td>ND</td> 
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：有专家[E, N2]；无专家[N2]</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：[N2]</li>
+  <li><term>Atlas推理系列加速卡产品</term>：[N2]</li>
   </ul>
   </td> 
   <td>-</td> 
@@ -235,7 +235,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT32</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
   </td> 
   <td>ND</td> 
@@ -252,7 +252,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一维向量，输入元素个数在有/无专家时分别为[E]/[1]</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
   </td> 
   <td>-</td> 
@@ -265,7 +265,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：UINT64、INT64、FLOAT32、BFLOAT16</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
   </td> 
   <td>ND</td> 
@@ -280,7 +280,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：UINT64、INT64、FLOAT32、BFLOAT16</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
   </td> 
   <td>ND</td> 
@@ -295,7 +295,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
   </td> 
   <td>ND</td> 
@@ -313,7 +313,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：per-channel下输入在有/无专家时分别为[E, N2]/[N2]，per-group下输入在有/无专家时分别为[E, G, N2]/[G, N2]</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
   </td> 
   <td>√</td> 
@@ -326,7 +326,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
   </td> 
   <td>ND</td> 
@@ -343,7 +343,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
   </td> 
   <td>ND</td> 
@@ -357,7 +357,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：当前支持fastgelu/gelu/relu/silu以及geglu/swiglu/reglu。</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：当前支持fastgelu/gelu/relu/silu。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：当前支持fastgelu/gelu/relu/silu。</li>
   </ul>
   </td> 
   <td>-</td> 
@@ -374,7 +374,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <li>innerPrecise为0时，代表开启高精度模式，非量化场景下必选参数都为FLOAT16时，算子内部激活层输入输出都采用FLOAT32数据类型计算。</li>
   <li>innerPrecise为1时，代表高性能模式。</li>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该参数仅在非量化场景下必选参数都为FLOAT16时生效，其余场景不区分高精度和高性能。</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：只支持传1。</li>
+  <li><term>Atlas推理系列加速卡产品</term>：只支持传1。</li>
   </ul>
   </td> 
   <td>INT64</td> 
@@ -405,7 +405,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16</li>
-  <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
+  <li><term>Atlas推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
   </td> 
   <td>ND</td> 
@@ -535,7 +535,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   - innerPrecise参数在BFLOAT16非量化场景，只能配置为0；FLOAT16非量化场景，可以配置为0或者1；量化或者伪量化场景，0和1都可配置，但是配置后不生效。
   - tokensIndexFlag为true且有专家（expertTokens不为空）时，expertTokens中的数值必须满足：如果i和j都是expertTokens中有效的数组索引，且j大于i，那么expertTokens中第j个元素的数值大于或者等于expertTokens中第i个元素的数值。
 
-- <term>Atlas 推理系列加速卡产品</term>：
+- <term>Atlas推理系列加速卡产品</term>：
   - 只支持无专家场景。
   - 需满足N1=K2。
 

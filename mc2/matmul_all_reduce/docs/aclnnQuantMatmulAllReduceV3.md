@@ -11,13 +11,13 @@
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |     ×      |
+| <term>Atlas训练系列产品</term>                              |     ×      |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
 ## 功能说明
 
-- **接口功能**：`aclnnQuantMatmulAllReduceV3`接口是对`aclnnQuantMatmulAllReduceV2`接口的功能扩展,新增支持低比特通信：MatMul的计算结果依次进行AllToAll通信、ReduceSum计算、AllGather通信、dequant反量化，代替先dequant和pertoken计算、再AllReduce通信的原流程。支持pertensor、perchannel、pertoken[量化方式](../../../docs/zh/context/量化介绍.md)。
+- **接口功能**：`aclnnQuantMatmulAllReduceV3`接口是对`aclnnQuantMatmulAllReduceV2`接口的功能扩展，新增支持低比特通信：MatMul的计算结果依次进行AllToAll通信、ReduceSum计算、AllGather通信、dequant反量化，代替先dequant和pertoken计算、再AllReduce通信的原流程。支持pertensor、perchannel、pertoken[量化方式](../../../docs/zh/context/量化介绍.md)。
 
 - **计算公式**：
 
@@ -173,7 +173,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
           <td>commQuantScale1Optional</td>
           <td>输入</td>
           <td>matmulAdd计算后的perchannel量化系数，即计算公式中的commQuantScale1Optional。</td>
-          <td>x2为(k, n)时, shape可为(n)或者(1,n)</td>
+          <td>x2为(k, n)时， shape可为(n)或者(1,n)</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>2</td>
@@ -183,7 +183,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
           <td>commQuantScale2Optional</td>
           <td>输入</td>
           <td>allGather计算后的perchannel量化系数，即计算公式中的commQuantScale2Optional。</td>
-          <td>x2为(k, n)时, shape可为(n)或者(1,n)</td>
+          <td>x2为(k, n)时， shape可为(n)或者(1,n)</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>2</td>

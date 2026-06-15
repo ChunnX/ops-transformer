@@ -9,7 +9,7 @@
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -168,9 +168,9 @@ sumOut的shape记为(2*sk_iter_count,B,S,N)
 x的shape记为(B,S,N,C)
 gradHRes的shape记为(B,S,N*N)或(B,S,N,N)
 phi和gradPhi的shape记为(2N+N^2, N*C)
-- `sk_iter_count` 当前仅支持 `20`。
-- `N` 当前仅支持 `4`。
-- `C` 大于0 小于 100000 且可以被128整除。
+- `sk_iter_count`当前仅支持`20`。
+- `N`当前仅支持`4`。
+- `C`大于0 小于100000 且可以被128整除。
 
 ## 调用说明
 

@@ -12,7 +12,7 @@
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -152,7 +152,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <ul>
             <li>参数key、value中对应tensor的shape需要完全一致。</li>
             <li>非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
-            <li>由于tensorlist限制,非连续场景下B不能大于256。</li>
+            <li>由于tensorlist限制，非连续场景下B不能大于256。</li>
             <li>key仅支持首轴非连续。</li>
         </ul>
         </td>
@@ -169,7 +169,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <ul>
             <li>参数key、value中对应tensor的shape需要完全一致。</li>
             <li>非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。</li>
-            <li>由于tensorlist限制,非连续场景下B不能大于256。</li></ul>
+            <li>由于tensorlist限制，非连续场景下B不能大于256。</li></ul>
             <li>value仅支持首轴非连续。</li>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、INT4(INT32)</td>
@@ -783,7 +783,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         </td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>一般情况下,shape必须为[B,N,Q_S,1],当inputLayout为TND/NTD_TND时,shape必须为[T,N,1]。</td>
+        <td>一般情况下，shape必须为[B,N,Q_S,1],当inputLayout为TND/NTD_TND时,shape必须为[T,N,1]。</td>
         <td>-</td>
     </tr>
     <tr>

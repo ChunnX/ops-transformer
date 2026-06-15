@@ -11,7 +11,7 @@
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    √     |
-| <term>Atlas 训练系列产品</term>                              |    x     |
+| <term>Atlas训练系列产品</term>                              |    x     |
 
 ## 功能说明
 
@@ -464,7 +464,7 @@ int main() {
     aclDestroyTensor(cos);
     aclDestroyTensor(sin);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(queryDeviceAddr);
     aclrtFree(keyDeviceAddr);
     aclrtFree(cosDeviceAddr);

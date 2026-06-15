@@ -11,7 +11,7 @@
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    √     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -196,7 +196,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
   <tr>
     <td>dropPadMode</td>
     <td>输入</td>
-    <td>表示是否支持丢弃模式,expandedRowIdx的排列方式。</td>
+    <td>表示是否支持丢弃模式，expandedRowIdx的排列方式。</td>
     <td>取值范围为[0, 3]。</td>
     <td>-</td>
     <td>-</td>
@@ -445,7 +445,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1.（固定写法）device/stream初始化,参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;

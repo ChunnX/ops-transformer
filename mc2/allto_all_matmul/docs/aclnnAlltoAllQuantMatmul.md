@@ -9,7 +9,7 @@
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -177,7 +177,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     <tr>
     <td>commScaleOptional</td>
     <td>输入</td>
-    <td>可选输入,低比特通信的量化系数。</td>
+    <td>可选输入，低比特通信的量化系数。</td>
     <td>预留参数，暂不支持低比特通信。</td>
     <td>-</td>
     <td>-</td>

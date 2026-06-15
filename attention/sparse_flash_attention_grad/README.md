@@ -9,7 +9,7 @@
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -198,14 +198,14 @@
     <tr>
     <td>preTokens</td>
         <td>属性</td>
-        <td>Attention算子里,对S矩阵的滑窗起始位置。</td>
+        <td>Attention算子里，对S矩阵的滑窗起始位置。</td>
         <td>INT64</td>
         <td>-</td>
     </tr>
     <tr>
     <td>nextTokens</td>
         <td>属性</td>
-        <td>Attention算子里,对S矩阵的滑窗终止位置。</td>
+        <td>Attention算子里，对S矩阵的滑窗终止位置。</td>
         <td>INT64</td>
         <td>-</td>
     </tr>

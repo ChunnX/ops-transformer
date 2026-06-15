@@ -612,7 +612,7 @@ int main() {
     aclDestroyTensor(cos);
     aclDestroyTensor(sin);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(queryDeviceAddr);
     aclrtFree(keyDeviceAddr);
     aclrtFree(cosDeviceAddr);

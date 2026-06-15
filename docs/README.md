@@ -48,7 +48,7 @@ Docs目录结构说明如下：
 | 文档        | 说明                  |
 | ----------------------- | ---------------------- |
 | [算子列表](zh/op_list.md)                        | 介绍项目内置标准算子清单。 |
-| [aclnn API列表](zh/op_api_list.md)               | 介绍项目提供的aclnn API清单，通过将所有算子封装为以 `aclnn` 为前缀的C语言API，旨在方便用户在Host侧直接调用。 |
+| [aclnn API列表](zh/op_api_list.md)               | 介绍项目提供的aclnn API清单，通过将所有算子封装为以`aclnn`为前缀的C语言API，旨在方便用户在Host侧直接调用。 |
 | [PyTorch API列表](zh/torch_api_list.md) | 介绍项目提供的torch_extension API清单，通过JIT编译桥接PyTorch与aclnn API，并通过GE Converter支持TorchAir图模式。 |
 
 ### 工具类文档
