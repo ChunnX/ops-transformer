@@ -205,7 +205,7 @@
       - 正向公式：
         
         $$
-        \mathbf{invRms} = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}\mathbf{x}_i^2 + \mathbf{eps}}}, \quad 其中\ n = N \times C
+        \mathbf{invRms} = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}\mathbf{x}_i^2 + \mathbf{eps}}}, \quad其中\ n = N \times C
         $$
         
         其中 $\mathbf{eps}$ 为RMS归一化的数值稳定性参数。
@@ -335,7 +335,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N*N) 或 (B,S,N,N)</td>
+        <td>(B,S,N*N)或(B,S,N,N)</td>
         <td>√</td>
     </tr>
     <tr>
