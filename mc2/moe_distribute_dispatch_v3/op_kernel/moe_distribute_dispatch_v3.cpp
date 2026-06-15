@@ -102,12 +102,13 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
                         workspaceGM, &pipe, &tilingData);
                 op.Process();
             }
-        }else if (CommMode == TILINGKEY_TPL_ROCE) {
-            MoeDistributeDispatchV2HostKfc<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, true, false> op;
-            op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, expandXOut, dynamicScalesOut, assistInfoOut,
-                    expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
-            op.Process();
- 	    } 
+        }
+        // }else if (CommMode == TILINGKEY_TPL_ROCE) {
+        //     MoeDistributeDispatchV2HostKfc<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, true, false> op;
+        //     op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+        //             expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
+        //     op.Process();
+ 	    // } 
     }
 #elif ((ORIG_DTYPE_EXPAND_X == DT_INT8) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E5M2) ||                \
        (ORIG_DTYPE_EXPAND_X == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT4_E2M1) ||       \
@@ -129,12 +130,13 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
 
                     op.Process();
                 }
-            }else if (CommMode == TILINGKEY_TPL_ROCE) {
-                MoeDistributeDispatchV2HostKfc<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
-                op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, expandXOut, dynamicScalesOut, assistInfoOut,
-                    expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
-                op.Process();
             }
+            // }else if (CommMode == TILINGKEY_TPL_ROCE) {
+            //     MoeDistributeDispatchV2HostKfc<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
+            //     op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+            //         expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
+            //     op.Process();
+            // }
         }
     }
 #elif ((ORIG_DTYPE_X == DT_BF16) && (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8)) ||                         \
@@ -154,12 +156,13 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
                         workspaceGM, &pipe, &tilingData);
                 op.Process();
             }
-        }else if (CommMode == TILINGKEY_TPL_ROCE) {
-            MoeDistributeDispatchV2HostKfc<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
-            op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, expandXOut, dynamicScalesOut, assistInfoOut,
-                    expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
-            op.Process();
- 	    }
+        }
+        // }else if (CommMode == TILINGKEY_TPL_ROCE) {
+        //     MoeDistributeDispatchV2HostKfc<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
+        //     op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+        //             expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, expandScalesOut, workspaceGM, &pipe, &tilingData);
+        //     op.Process();
+ 	    // }
     }
 #endif
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
