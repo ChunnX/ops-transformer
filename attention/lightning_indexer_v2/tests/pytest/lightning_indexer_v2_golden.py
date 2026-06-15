@@ -500,12 +500,12 @@ class GeneralizedLIV2:
 
         if layout_key == "TND":
             self.cu_seqlens_k = self.trans_tnd_actseq(cu_seqlens_k[1:])
-            actualSeqlengths_k = self.cu_seqlens_k
+            actualSeqLengths_k = self.cu_seqlens_k
             k_shape = self.k_shape
             if seqused_k is not None:
                 self.seqused_k = seqused_k
                 self.has_seqused_k = True
-                actualSeqlengths_k = self.seqused_k
+                actualSeqLengths_k = self.seqused_k
         elif layout_key == "BSND":
             if seqused_k is not None:
                 self.seqused_k = seqused_k
@@ -513,13 +513,13 @@ class GeneralizedLIV2:
                 self.has_seqused_k = True
             else:
                 actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size).to(torch.int32))
-            actualSeqlengths_k = actual_seq_lengths_key
+            actualSeqLengths_k = actual_seq_lengths_key
             k_shape = self.k_shape
 
         elif layout_key == "PA_BSND":
             self.actual_seq_lengths_key = seqused_k
-            actualSeqlengths_k = self.actual_seq_lengths_key
-            k_max_s2 = math.floor(max(actualSeqlengths_k))
+            actualSeqLengths_k = self.actual_seq_lengths_key
+            k_max_s2 = math.floor(max(actualSeqLengths_k))
             k_shape = [batch_size, k_head_num, k_max_s2, head_dim]
         query = query.cpu()
         key = key.cpu()
@@ -540,7 +540,7 @@ class GeneralizedLIV2:
                                                             k_head_num, self.cu_seqlens_k)
         else:
             k_bnsd_tensor, k_bnsd_shape = self.trans_shape_to_bnsd(key, k_shape, layout_key,
-                                                            k_head_num, actualSeqlengths_k)
+                                                            k_head_num, actualSeqLengths_k)
 
         ## BSN1 -> BNS1   TN1 -> BNS1
         is_weights = True
