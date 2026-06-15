@@ -168,47 +168,45 @@ def _run_one(cfg, expect_pass):
 # 用例 — 每个用例独立 B/N_q/N_kv/kv_seq/block_size/q_seq/d
 # ==============================================================================
 NORMAL_CASES = [
-    # === BnNBsD: dim0 / dim01 ===
+    # === BnNBsD: D=128, bs=512, kv_seq=2048 ===
     {"id": "BnNBsD-GQA-contig",  "B":1, "N_q":4, "N_kv":2, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"none",
      "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
-    {"id": "BnNBsD-GQA-dim0",    "B":1, "N_q":4, "N_kv":2, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim0",
+    {"id": "BnNBsD-GQA-dim0",    "B":2, "N_q":2, "N_kv":1, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim0",
+     "kv_seq":1536, "bs":256, "q_seq":6, "d":128},
+    {"id": "BnNBsD-GQA-dim01",   "B":1, "N_q":8, "N_kv":4, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim01",
+     "kv_seq":1024, "bs":128, "q_seq":8, "d":256},
+    # === BnBsH: D=128, bs=512, kv_seq=2048 ===
+    {"id": "BnBsH-GQA-contig",   "B":2, "N_q":4, "N_kv":2, "pa":True,  "fmt":"BnBsH",  "ql":"BNSD", "nc":"none",
      "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
-    {"id": "BnNBsD-GQA-dim01",   "B":1, "N_q":4, "N_kv":2, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim01",
-     "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
-    # === BnBsH: dim0 only ===
-    {"id": "BnBsH-GQA-contig",   "B":2, "N_q":8, "N_kv":2, "pa":True,  "fmt":"BnBsH",  "ql":"BNSD", "nc":"none",
-     "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
-    {"id": "BnBsH-GQA-dim0",     "B":2, "N_q":8, "N_kv":2, "pa":True,  "fmt":"BnBsH",  "ql":"BNSD", "nc":"dim0",
-     "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
-    # === NZ: dim0 / dim01 ===
-    {"id": "NZ-GQA-contig",      "B":1, "N_q":1, "N_kv":1, "pa":True,  "fmt":"NZ",     "ql":"BNSD", "nc":"none",
-     "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
-    {"id": "NZ-GQA-dim0",        "B":1, "N_q":1, "N_kv":1, "pa":True,  "fmt":"NZ",     "ql":"BNSD", "nc":"dim0",
-     "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
+    {"id": "BnBsH-GQA-dim0",     "B":3, "N_q":6, "N_kv":2, "pa":True,  "fmt":"BnBsH",  "ql":"BNSD", "nc":"dim0",
+     "kv_seq":2304, "bs":384, "q_seq":4, "d":128},
+    # === NZ: D=128, bs=512 ===
+    {"id": "NZ-GQA-contig",      "B":1, "N_q":2, "N_kv":1, "pa":True,  "fmt":"NZ",     "ql":"BNSD", "nc":"none",
+     "kv_seq":2560, "bs":512, "q_seq":4, "d":128},
+    {"id": "NZ-GQA-dim0",        "B":2, "N_q":4, "N_kv":4, "pa":True,  "fmt":"NZ",     "ql":"BNSD", "nc":"dim0",
+     "kv_seq":1536, "bs":256, "q_seq":3, "d":128},
     {"id": "NZ-GQA-dim01",       "B":1, "N_q":1, "N_kv":1, "pa":True,  "fmt":"NZ",     "ql":"BNSD", "nc":"dim01",
-     "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
-    # === 非PA: 连续 ===
-    {"id": "NonPA-GQA-contig",   "B":3, "N_q":6, "N_kv":3, "pa":False, "fmt":"none",   "ql":"BNSD", "nc":"none",
-     "kv_seq":1024, "bs":0, "q_seq":8, "d":128},
+     "kv_seq":1024, "bs":128, "q_seq":5, "d":128},
+    # === 非PA ===
+    {"id": "NonPA-GQA-contig",   "B":3, "N_q":3, "N_kv":1, "pa":False, "fmt":"none",   "ql":"BNSD", "nc":"none",
+     "kv_seq":800, "bs":0, "q_seq":7, "d":64},
     # === rope_split: D=128+rope64, V=128 ===
-    {"id": "BnNBsD-ROPE-dim0",   "B":1, "N_q":4, "N_kv":2, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim0",
-     "kv_seq":1024, "bs":512, "q_seq":4, "d":128, "dr":64, "dv":128},
-    {"id": "BnNBsD-ROPE-dim01",  "B":1, "N_q":4, "N_kv":2, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim01",
-     "kv_seq":1024, "bs":512, "q_seq":4, "d":128, "dr":64, "dv":128},
+    {"id": "BnNBsD-ROPE-dim0",   "B":1, "N_q":4, "N_kv":1, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim0",
+     "kv_seq":2048, "bs":512, "q_seq":4, "d":128, "dr":64, "dv":128},
+    {"id": "BnNBsD-ROPE-dim01",  "B":2, "N_q":8, "N_kv":4, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim01",
+     "kv_seq":1024, "bs":256, "q_seq":6, "d":128, "dr":64, "dv":128},
     # === rope_combine: D=192, V=128 ===
     {"id": "BnNBsD-d192-dim0",   "B":1, "N_q":2, "N_kv":1, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim0",
-     "kv_seq":1024, "bs":512, "q_seq":4, "d":192, "dv":128},
+     "kv_seq":1536, "bs":384, "q_seq":4, "d":192, "dv":128},
 ]
 
 ERROR_CASES = [
-    # BBND 不支持 dim1 非连续
-    {"id": "BnBsH-GQA-dim01-ERR", "B":2, "N_q":8, "N_kv":2, "pa":True,  "fmt":"BnBsH",  "ql":"BNSD", "nc":"dim01",
-     "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
-    # 非PA 不支持非连续
-    {"id": "NonPA-dim0-ERR",      "B":3, "N_q":6, "N_kv":3, "pa":False, "fmt":"none",   "ql":"BNSD", "nc":"dim0",
-     "kv_seq":1024, "bs":0, "q_seq":8, "d":128},
-    {"id": "NonPA-dim01-ERR",     "B":3, "N_q":6, "N_kv":3, "pa":False, "fmt":"none",   "ql":"BNSD", "nc":"dim01",
-     "kv_seq":1024, "bs":0, "q_seq":8, "d":128},
+    {"id": "BnBsH-GQA-dim01-ERR", "B":2, "N_q":2, "N_kv":1, "pa":True,  "fmt":"BnBsH",  "ql":"BNSD", "nc":"dim01",
+     "kv_seq":1024, "bs":256, "q_seq":5, "d":128},
+    {"id": "NonPA-dim0-ERR",      "B":4, "N_q":4, "N_kv":2, "pa":False, "fmt":"none",   "ql":"BNSD", "nc":"dim0",
+     "kv_seq":640, "bs":0, "q_seq":3, "d":64},
+    {"id": "NonPA-dim01-ERR",     "B":2, "N_q":6, "N_kv":2, "pa":False, "fmt":"none",   "ql":"BNSD", "nc":"dim01",
+     "kv_seq":512, "bs":0, "q_seq":6, "d":128},
 ]
 
 
