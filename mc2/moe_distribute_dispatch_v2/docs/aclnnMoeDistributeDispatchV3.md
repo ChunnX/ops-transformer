@@ -482,7 +482,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     - commAlg支持""、"fullmesh_v1"、"fullmesh_v2"三种输入方式。""：默认值，开启fullmesh_v1模板；"fullmesh_v1"：开启fullmesh_v1模板；"fullmesh_v2"：开启fullmesh_v2模板，其中commAlg仅支持tpWorldSize为1场景。
     - xActiveMaskOptional要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
     - expertScalesOptional当前版本不支持，传空指针即可。
-    - epWorldSize取值范围[2, 768]。
+    - epWorldSize取值范围[2, 1024]。
     - moeExpertNum取值范围(0, 1024]。
     - groupTp字符串长度范围为[0, 128)，不能和groupEp相同，仅在无TP域通信时支持传空。
     - tpWorldSize取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
