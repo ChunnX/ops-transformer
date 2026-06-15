@@ -34,7 +34,7 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "../../../op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 using namespace Mc2Tiling;
 using namespace AscendC;
 using namespace ge;

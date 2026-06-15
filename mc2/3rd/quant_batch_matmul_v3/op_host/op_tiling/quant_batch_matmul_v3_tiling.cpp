@@ -21,7 +21,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
 #include "graph/utils/type_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "register/op_impl_registry.h"
 #include "arch35/adaptive_sliding_window_tiling.h"
 #include "mc2_log.h"

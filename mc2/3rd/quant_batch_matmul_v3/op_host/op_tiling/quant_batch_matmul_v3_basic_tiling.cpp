@@ -21,7 +21,7 @@
 #include <tuple>
 #include "common/op_host/op_tiling/hash.h"
 #include "graph/utils/type_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "quant_batch_matmul_v3_tiling_cache.h"
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_templates_registry.h"
