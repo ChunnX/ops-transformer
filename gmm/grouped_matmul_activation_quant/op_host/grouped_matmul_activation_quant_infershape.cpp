@@ -9,6 +9,7 @@
  */
 
 #include "graph/utils/type_utils.h"
+#include "log/log.h"
 #include "register/op_impl_registry.h"
 
 using namespace ge;
@@ -67,7 +68,7 @@ static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeC
         OP_CHECK_IF(n % MX_GROUP_SIZE != 0,
                     OP_LOGE(context->GetNodeName(), "N must be a multiple of %ld, actual is %ld.", MX_GROUP_SIZE, n),
                     return GRAPH_FAILED);
-        outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, n / MX_GROUP_SIZE);
+        outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, (n + MX_GROUP_SIZE - 1) / MX_GROUP_SIZE);
     }
     outScaleShape->SetDim(OUT_SCALE_PAIR_DIM_INDEX, MX_SCALE_PAIR);
     return GRAPH_SUCCESS;
