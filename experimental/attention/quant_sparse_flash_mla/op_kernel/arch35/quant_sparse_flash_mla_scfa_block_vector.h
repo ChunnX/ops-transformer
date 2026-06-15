@@ -398,7 +398,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(
     int64_t v0ProcessBase = 32;
     int64_t v0ProcessSize = v0ProcessBase;
     int64_t loopTimes = (processSize + v0ProcessBase -1) / v0ProcessBase;
-    for (uint32_t i = 0; i < s2V0LoopTimes; i++) {
+    for (uint32_t i = 0; i < loopTimes; i++) {
         int64_t s2StartIdx = processS2Start + i * v0ProcessBase;
         if (i == loopTimes  - 1) {
             v0ProcessSize = processSize - i * v0ProcessBase;
@@ -581,7 +581,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
         // 1、copy kv in, gm ->ub
         WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
         LocalTensor<KV_T> kvInUb = stage0InBuf[pingPongV0].Get<KV_T>();
-        while (dealRow < Min(32, sparseCalSize) && s2 < processS2End) { // 拷贝满32行或者遇到-1
+        while (dealRow < Min(32, processSize) && s2 < processS2End) { // 拷贝满32行或者遇到-1
             int32_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1}; // 拷贝进入的8个token的index
             GetRealCmpS2Idx(tokenData, s2, runInfo, constInfo);
             s2 += 8; // 每次搬运8行
