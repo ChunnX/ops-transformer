@@ -664,16 +664,16 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::GetShapeAt
     sliGradBaseParams_->set_cmpRatio(cmpRatio);
 
     OP_LOGW(context_,
-        "INPUTPARAM bsize:[%ld], n2Size:[%ld], gSizeQueryIndex:[%ld], 
-        s1Size:[%ld], s2Size:[%ld], dSizeQueryIndex:[%ld], 
+        "INPUTPARAM bsize:[%ld], n2Size:[%ld], gSizeQueryIndex:[%ld],
+        s1Size:[%ld], s2Size:[%ld], dSizeQueryIndex:[%ld],
         kSize:[%ld], sparseMode:[%ld], cmpRatio:[%ld].",
         bSize, n2Size, gSizeQueryIndex, s1Size, s2Size, dSizeQueryIndex, kSize, sparseMode, cmpRatio);
 
     return ge::GRAPH_SUCCESS;
 }
 
-int64_t SparseLightningIndexerGradKLLossTilingGeneralRegbase::GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size,
-    int32_t s1Idx)
+int64_t SparseLightningIndexerGradKLLossTilingGeneralRegbase::GetS2RealSize(int32_t sparseMode,
+                                                    int32_t s1Size, int32_t s2Size, int32_t s1Idx)
 {
     int64_t s2RealSize = 0;
     // sparsemode = 3 的情形
@@ -709,9 +709,11 @@ bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::InitSparseValidArray(
     return true;
 }
 
-inline bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::InitLoadValue(const std::vector<int64_t> &sparseValidArray,
-    int64_t validAicNum, int64_t totalSize, const std::vector<int64_t> &sparseStartIdx,
-    std::vector<int64_t> &localValue)
+inline bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::InitLoadValue(
+                                                    const std::vector<int64_t> &sparseValidArray,
+                                                    int64_t validAicNum, int64_t totalSize,
+                                                    const std::vector<int64_t> &sparseStartIdx,
+                                                    std::vector<int64_t> &localValue)
 {
     for (int64_t idx = 0; idx < validAicNum; ++idx) {
         int64_t start = sparseStartIdx[idx];
@@ -811,8 +813,8 @@ bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::Balance4DLoad(std::ve
 }
 
 // 负载均衡
-bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
-    int64_t maxCoreNum)
+bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::SetSparseStartIdx(
+                                    const std::vector<int64_t> &sparseValidArray, int64_t maxCoreNum)
 {
     // to avoid buffer overflow, or maybe sometimes we want to only verify single core
     int64_t validAicNum = static_cast<int64_t>(sliGradMultiCoreParams_->get_coreNum());
@@ -1103,6 +1105,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::GetWorkspa
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseLightningIndexerKLLossGrad, SparseLightningIndexerGradKLLossTilingGeneralRegbase,
-    static_cast<int32_t>(NpuArch::DAV_3510), 1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseLightningIndexerKLLossGrad,
+                SparseLightningIndexerGradKLLossTilingGeneralRegbase,
+                static_cast<int32_t>(NpuArch::DAV_3510), 1);
 } // namespace optiling
