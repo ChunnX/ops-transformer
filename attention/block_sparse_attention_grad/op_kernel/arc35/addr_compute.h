@@ -56,12 +56,12 @@ public:
         this->runTimeInfoBak_.kv_ping_pong_idx = runTimeInfo.kv_ping_pong_idx;
     }
 
-    __aicore__ inline bool IsVaild(const ConstInfo &const_info, __gm__ uint8_t *sparse_mask, uint32_t &cur_s1_idx,
-                                   uint32_t &cur_s1_len)
+    __aicore__ inline bool IsVaild(const ConstInfo &const_info, __gm__ uint8_t *sparse_mask, int32_t &cur_s1_idx,
+                                   int32_t &cur_s1_len)
     {
         this->Update(cur_s1_idx, cur_s1_len);
-        uint32_t q_block_idx = cur_s1_idx / const_info.block_x;
-        uint32_t kv_block_idx = this->runTimeInfoBak_.s2Idx / const_info.block_y;
+        int32_t q_block_idx = cur_s1_idx / const_info.block_x;
+        int32_t kv_block_idx = this->runTimeInfoBak_.s2Idx / const_info.block_y;
 
         if (IsValidBlock(const_info, this->runTimeInfoBak_.bIdx, this->runTimeInfoBak_.n1Idx, q_block_idx, kv_block_idx,
                          sparse_mask)) {
