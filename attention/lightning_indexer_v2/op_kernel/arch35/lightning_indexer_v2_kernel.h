@@ -244,8 +244,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitActualSeqLen(__gm__ ui
         hasSequsedK = true;
     }
     if (cmpResidualK != nullptr) {
-        cmpResidualK.SetGlobalBuffer((__gm__ uint32_t *)cmpResidualK);
-        hasResidualK = true;
+        cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)cmpResidualK);
+        hasCmpResidualK = true;
     }
 }
 
@@ -692,8 +692,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(uint32_t loop,
             if (hasSequsedQ) {
                 uint32_t curSequsedQ = sequsedQGm.GetValue(runInfo.bIdx);
                 uint32_t nextPrefixSum = cuSeqlensQGm.GetValue(runInfo.bIdx + 1);
-                uint32_t curCuLenQ = nextPrefixSum - actualSeqQPrefixSum;
-                if (curSequsedQ < curCuLenQ) {
+                uint32_t curCuLensQ = nextPrefixSum - actualSeqQPrefixSum;
+                if (curSequsedQ < curCuLensQ) {
                     runInfo.needTndPadding = true;
                     runInfo.curCuSeqlensQ = curCuLensQ;
                     runInfo.curSequsedQ = curSequsedQ;
