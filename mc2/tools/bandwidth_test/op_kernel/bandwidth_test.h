@@ -356,19 +356,19 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
 
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
-        uint32_t todDstRankId = dstRankIdsTensor_(tokenIndex);
+        uint32_t toDstRankId = dstRankIdsTensor_(tokenIndex);
         int32_t curExpertCnt = 0;
 
         if (tokenIndex > 0) {
             SyncFunc<AscendC::HardEvent::S_V>();
-            CalTokenSendExpertCnt(todDstRankId, tokenIndex, curExpertCnt);
+            CalTokenSendExpertCnt(toDstRankId, tokenIndex, curExpertCnt);
         }
 
         SyncFunc<AscendC::HardEvent::S_V>();
         
         // 计算目标窗口地址:
         // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
-        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(todDstRankId) +
+        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(toDstRankId) +
                                            epRankId_ * expertPerSizeOnWin_ +
                                            curExpertCnt * hAlignWinSize_);
         dstWinGMTensor.SetGlobalBuffer((__gm__ XType*)rankGM);

@@ -62,7 +62,7 @@ server_num = 1
 is_cloud = 0
 
 if not is_cloud:
-    server_index = 0 if server_num > 1 else 0                        # 多机每个脚本保持一致并递增index值
+    server_index = 0                     # 多机每个脚本保持一致并递增index值
     master_ip = '71.20.45.123' if server_num > 1 else '127.0.0.1'    # 如果通信不通，查看一下master_ip是否设对
 else:
     server_index = int(os.environ.get("VC_TASK_INDEX"))
@@ -127,6 +127,7 @@ else:
 x_dtype = 'fp16'
 random_seed = 90
 input_dtype = torch.bfloat16 if x_dtype == "bf16" else torch.float16
+dtype_bytes = torch.empty(0, dtype=x_dtype).element_size()
 # endregion
 
 # region 算子模式配置
@@ -261,7 +262,7 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
     logger.info(f"Total data per iteration: {total_data_bytes / 1e6:.2f} MB")
     logger.info(f"World size: {num_world_size}")
     logger.info(f"BS per rank: {test_bs}")
-    logger.info(f"Data size (H): {data_size_bytes // 2}")
+    logger.info(f"Data size (H): {data_size_bytes // dtype_bytes}")
     logger.info("-" * 60)
     logger.info(f"Mean execution time: {mean_time_us:.2f} us")
     logger.info(f"Min execution time:  {min_time_us:.2f} us")
@@ -278,7 +279,7 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
         'max_bandwidth_gbps': max_bandwidth_gbps,
         'total_data_bytes': total_data_bytes,
         'single_rank_data_kb': single_rank_data_kb,
-        'data_size': data_size_bytes // 2,
+        'data_size': data_size_bytes // dtype_bytes,
         'bs': test_bs
     }
 
@@ -603,26 +604,6 @@ def run_bandwidth_test_npu(
     queue.put([rank, [y.cpu(), receive_cnt.cpu()]])
 
 
-def _run_bandwidth_test_with_profiling(kwargs: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
-    """带性能分析的带宽测试执行"""
-    stress_tensor = torch.ones(10000, 10000).to(torch.float16).npu()
-    
-    def _profiling_iteration(prof):
-        """单个性能分析迭代"""
-        y, receive_cnt = None, None
-        for i in range(loop):
-            torch.npu.synchronize()
-            y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(**kwargs)
-            if i == 1:
-                for _ in range(100):
-                    torch.exp(stress_tensor)
-            prof.step()
-        return y, receive_cnt
-    
-    with get_profiling(loop, repeat, warmup, profiling_path) as prof:
-        return _profiling_iteration(prof)
-
-
 def run_bandwidth_test_npu_bandwidth(queue, rank, x, dstrank_id, test_max_bs, test_mode, test_world_size):
     """专门用于带宽测试的执行函数"""
     run_bandwidth_test_npu(
@@ -826,7 +807,7 @@ def run_bandwidth_test(
             logger.error(f"[ERROR] Rank {rank} 带宽测试执行失败")
             return None
     
-    data_size_bytes = test_data_size * 2
+    data_size_bytes = test_data_size * dtype_bytes
     perf_result = get_bandwidth_performance(profiling_path, data_size_bytes, world_size, len(x_per_rank[0]))
     
     return perf_result
@@ -878,7 +859,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     for i, cfg in enumerate(test_configs):
         test_data_size = cfg['data_size']
         test_bs = cfg['bs']
-        data_size_bytes = test_data_size * 2
+        data_size_bytes = test_data_size * dtype_bytes
         config_index = i + 1
         
         config_profiling_path = f'{profiling_path}_config_{config_index}'
