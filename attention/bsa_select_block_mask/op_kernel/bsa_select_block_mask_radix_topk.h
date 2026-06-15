@@ -309,7 +309,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitAttnScoreGmForRobustness(u
         return;
     }
 
-    uint64_t baseOffset = (static_cast<uint64_t>(batchIdx) * constInfo.numHeads + headIdx) * sortLen_;
+    (void)batchIdx;
+    (void)headIdx;
+    // attnScoreGmLocal is a per batch/head scratch buffer reused by the outer loop.
+    uint64_t baseOffset = 0;
     for (uint64_t tileId = 0; tileId < tileNum_; ++tileId) {
         uint64_t globalTileId = tileStartId_ + tileId;
         uint64_t curTileLen = (tileId + 1 == tileNum_) ? tailTileLen_ : tileLen_;
