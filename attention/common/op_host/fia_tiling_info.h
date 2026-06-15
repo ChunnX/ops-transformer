@@ -134,6 +134,7 @@ enum class FiaFullQuantMode : uint32_t {
     QKV_PER_BLOCK_FULL_QUANT = 2,
     QKV_MXFP8_FULL_QUANT = 3,
     Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT = 4,
+    QK_PER_TOKEN_HEAD_V_PER_HEAD = 5,
 };
 
 std::string QuantModeToSerialString(FiaQuantMode fiaQuantMode);
