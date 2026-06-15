@@ -529,8 +529,11 @@ struct CVSharedParams<true, true> {
     uint32_t paLayoutType;
 
     uint64_t keyBnStride;
+    uint64_t keyN2Stride;
     uint64_t valueBnStride;
+    uint64_t valueN2Stride;
     uint64_t keyRopeBnStride;
+    uint64_t keyRopeN2Stride;
 
     // prefix
     bool isActualSharedPrefixLenNull;
