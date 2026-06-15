@@ -190,7 +190,7 @@ private:
     TQue<QuePosition::VECIN, 1> inputQue2;
     TQue<QuePosition::VECIN, 1> inputQueApe;
     // out queue
-    TQue<QuePosition::VECOUT, 1> ;
+    TQue<QuePosition::VECOUT, 1> outputQue1;
 };
 
 template <typename COMP>
