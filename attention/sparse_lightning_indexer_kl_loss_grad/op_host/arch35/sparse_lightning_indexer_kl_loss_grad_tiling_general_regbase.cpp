@@ -327,12 +327,12 @@ bool SparseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDimLayout(cons
             s2Size = keyIndexShape.GetDim(1);
             n1Size = queryIndexShape.GetDim(2);
             n2Size = keyIndexShape.GetDim(2);
-            OP_CHECK_IF(bSize < SIZE_1 || bSize > SIZE_128,
-                OP_LOGE(opName, "Inputshape B Size should be range in 1~128, but got %ld.", bSize), return false);
-            OP_CHECK_IF(s1Size < SIZE_1 || s1Size > BUFFER_SIZE_BYTE_8K,
-                OP_LOGE(opName, "Query s1Size should be range in 1~8K, but got %ld.", s1Size), return false);
-            OP_CHECK_IF(s2Size < SIZE_1 || s2Size > BUFFER_SIZE_BYTE_128K,
-                OP_LOGE(opName, "Query s2Size should be range in 1~128K, but got %ld.", s2Size), return false);
+            OP_CHECK_IF(bSize < SIZE_1,
+                OP_LOGE(opName, "Inputshape B Size should be greater than 0, but got %ld.", bSize), return false);
+            OP_CHECK_IF(s1Size < SIZE_1,
+                OP_LOGE(opName, "Query s1Size should be greater than 0, but got %ld.", s1Size), return false);
+            OP_CHECK_IF(s2Size < SIZE_1,
+                OP_LOGE(opName, "Query s2Size should be greater than 0, but got %ld.", s2Size), return false);
             OP_CHECK_IF(n1Size < 1 || n1Size > 64,
                 OP_LOGE(opName, "Inputshape N Size of Query should be range in 1~64, but got %ld.", n1Size),
                 return false);
