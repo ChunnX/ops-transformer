@@ -28,7 +28,6 @@
 #include "../epilogue/block_epilogue_activation_mx_quant.h"
 #include "../utils/common_utils.h"
 #include "../utils/coord_utils.h"
-#include "../utils/fill_utils.h"
 #include "../utils/grouped_matmul_constant.h"
 #include "../utils/layout_utils.h"
 #include "../utils/status_utils.h"
@@ -119,8 +118,7 @@ public:
     uint64_t preOffset_ = 0;
     BlockMmad mmadOp_;
     BlockEpilogue epilogueOp_;
-    AscendC::LocalTensor<CType> l0cOutUb_;
-    AscendC::LocalTensor<int8_t> initScaleLocal_;
+    AscendC::LocalTensor<CType> l0cOutUbFirst_;
     bool isVecSetSyncCom_ = false;
 
     struct GMMTiling {
@@ -300,20 +298,6 @@ public:
         groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(params.mmadParams.groupListGmAddr));
     }
 
-    __aicore__ inline void InitYScaleOutput(const Params &params)
-    {
-        if ASCEND_IS_AIV {
-            AscendC::GlobalTensor<int8_t> yScaleInitGlobal;
-            yScaleInitGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(params.epilogueParams.yScaleGmAddr));
-            uint64_t yScaleSize = static_cast<uint64_t>(params.gmmParams.m) *
-                                  CeilDiv(static_cast<uint64_t>(params.gmmParams.n),
-                                          static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
-                                  MXFP_MULTI_BASE_SIZE;
-            bool isYScaleInit = false;
-            InitOutputWithZero(yScaleInitGlobal, initScaleLocal_, yScaleSize, AscendC::GetBlockNum(), isYScaleInit);
-        }
-    }
-
     __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)
     {
         (void)groupIdx;
@@ -331,9 +315,9 @@ public:
             if (Get<M_VALUE>(singleShape) <= 0 || Get<N_VALUE>(singleShape) <= 0) {
                 return;
             }
-            auto quantOffset = coord.template GetQuantOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE, c0Size>(
+            auto quantOffset = coord.template GetQuantOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE>(
                 Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx),
-                Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape), Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
+                Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape), Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape), c0Size);
             Get<IDX_A_OFFSET>(blockOffset_) = Get<IDX_A_OFFSET>(quantOffset);
             Get<IDX_B_OFFSET>(blockOffset_) = Get<IDX_B_OFFSET>(quantOffset);
             Get<IDX_X1SCALE_OFFSET>(blockOffset_) = Get<IDX_X1SCALE_OFFSET>(quantOffset);
@@ -358,7 +342,7 @@ public:
                 mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
                         x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
                         x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)],
-                        biasGlobal_[Get<IDX_BIAS_OFFSET>(blockOffset_)], l0cOutUb_, mmSingleShape);
+                        biasGlobal_[Get<IDX_BIAS_OFFSET>(blockOffset_)], l0cOutUbFirst_, mmSingleShape);
                 NotifyVector();
             }
             isVecSetSyncCom_ = true;
@@ -392,12 +376,6 @@ public:
                          params.gmmParams.dbL0C == DOUBLE_BUFFER_COUNT);
         }
         epilogueOp_.Init(params.epilogueParams);
-        if ASCEND_IS_AIV {
-            constexpr uint32_t initSize = AscendC::MAX_REPEAT_TIMES * AscendC::ONE_BLK_SIZE;
-            initScaleLocal_ = AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECCALC,
-                                                           AscendC::GetUBSizeInBytes() - initSize, initSize);
-            InitYScaleOutput(params);
-        }
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
@@ -406,7 +384,7 @@ public:
                 bs.SetTailAlign(1, c0Size);
             }
         }
-        l0cOutUb_ = epilogueOp_.GetL0c2UbTensor();
+        l0cOutUbFirst_ = epilogueOp_.GetFirstL0c2UbTensor();
         for (uint32_t groupIdx = 0; groupIdx < params.gmmParams.groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;

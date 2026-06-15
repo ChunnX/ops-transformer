@@ -9,14 +9,13 @@
  */
 
 #include "graph/utils/type_utils.h"
-#include "log/log.h"
 #include "register/op_impl_registry.h"
 
 using namespace ge;
 namespace ops {
 namespace {
 constexpr int64_t X_INDEX = 0;
-constexpr int64_t WEIGHT_SCALE_INDEX = 3;
+constexpr int64_t WEIGHT_SCALE_INDEX = 4;
 constexpr int64_t M_DIM_INDEX = 0;
 constexpr int64_t WEIGHT_SCALE_TRANS_N_DIM_INDEX = 1;
 constexpr int64_t WEIGHT_SCALE_N_DIM_INDEX = 2;
@@ -32,7 +31,7 @@ constexpr int64_t OUT_SCALE_DIM_NUM = 3;
 constexpr int64_t MX_GROUP_SIZE = 64;
 constexpr int64_t MX_SCALE_PAIR = 2;
 constexpr size_t ATTR_INDEX_TRANSPOSE_WEIGHT = 2;
-constexpr size_t ATTR_INDEX_Y_DTYPE = 6;
+constexpr size_t ATTR_INDEX_QUANT_DTYPE = 5;
 constexpr int64_t DYNAMIC_DIM = -1;
 } // namespace
 
@@ -68,7 +67,7 @@ static ge::graphStatus InferShape4GroupedMatmulActivationQuant(gert::InferShapeC
         OP_CHECK_IF(n % MX_GROUP_SIZE != 0,
                     OP_LOGE(context->GetNodeName(), "N must be a multiple of %ld, actual is %ld.", MX_GROUP_SIZE, n),
                     return GRAPH_FAILED);
-        outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, (n + MX_GROUP_SIZE - 1) / MX_GROUP_SIZE);
+        outScaleShape->SetDim(OUT_SCALE_N_BLOCK_DIM_INDEX, n / MX_GROUP_SIZE);
     }
     outScaleShape->SetDim(OUT_SCALE_PAIR_DIM_INDEX, MX_SCALE_PAIR);
     return GRAPH_SUCCESS;
@@ -79,9 +78,9 @@ static graphStatus InferDataType4GroupedMatmulActivationQuant(gert::InferDataTyp
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t *yDtype = attrs->GetInt(ATTR_INDEX_Y_DTYPE);
-    OP_CHECK_NULL_WITH_CONTEXT(context, yDtype);
-    context->SetOutputDataType(OUT_Y_INDEX, static_cast<ge::DataType>(*yDtype));
+    const int64_t *quantDtype = attrs->GetInt(ATTR_INDEX_QUANT_DTYPE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, quantDtype);
+    context->SetOutputDataType(OUT_Y_INDEX, static_cast<ge::DataType>(*quantDtype));
     context->SetOutputDataType(OUT_Y_SCALE_INDEX, ge::DT_FLOAT8_E8M0);
     return GRAPH_SUCCESS;
 }
