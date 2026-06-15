@@ -48,13 +48,35 @@
   - `gmm_a16w4_pergroup_nd_srs.md` — SRS 算子实现方案文档
 **详细任务说明**: [reference/next_steps/6_summary_docs.md](reference/next_steps/6_summary_docs.md)
 
-## 阶段二：编码实现（待启动）
+## 阶段二：编码实现（当前阶段）
 
-> 在阶段一方案确认后启动编码。
+> 在阶段一方案确认后启动编码。采用 TDD 方式：先写测试，再实现代码，最后验证。
 
-### 任务 7：Tiling 实现
-**目标**: 在 arch35 tiling 中为 A16W4 pergroup ND 场景生成正确的 tiling 参数
-**目标文件**: `gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp`
+### 任务 7：Tiling 实现 + UT 验证
+**目标**: 在 arch35 tiling 中为 A16W4 pergroup ND 场景生成正确的 tiling 参数，并通过 UT 验证
+**详细任务说明**: [reference/next_steps/7_tiling_impl.md](reference/next_steps/7_tiling_impl.md)
+
+#### 7.1 UT 测试框架搭建 + 用例编写（先写测试）
+**目标**: 建立完整的测试基线，确保后续 tiling 实现可立即验证
+**产出**:
+- `gmm/grouped_matmul/tests/ut/op_host/test_grouped_weight_quant_arch35_pergroup_tiling.csv` — CSV 用例数据
+- `gmm/grouped_matmul/tests/ut/op_host/test_grouped_weight_quant_arch35_pergroup_tiling.cpp` — CSV 驱动测试代码
+**用例覆盖**: ~60 个用例（正常通过 ~30 + 异常拦截 ~20 + tiling 白盒 ~10）
+**验证**: 编译通过，新增用例预期 FAIL（tiling 代码未修改）
+
+#### 7.2 Tiling 代码实现
+**目标**: 在现有 tiling 模板中新增 A16W4 PerGroup ND 分支
+**修改文件**:
+- `grouped_weight_quant_batch_matmul_tiling.h` — 新增 `IsA16W4NDPergroup()` 声明
+- `grouped_weight_quant_batch_matmul_tiling.cpp` — pergroup 校验/计算分支（6 个修改点）
+- `weight_quant_tiling_key.h` — 新增 8 个 `ASCENDC_TPL_ARGS_SEL` 组合
+**验证**: 编译通过
+
+#### 7.3 UT 验证 + 迭代
+**目标**: 运行 UT，验证所有用例通过，回归验证原有用例不受影响
+**验证命令**:
+- 编译: `bash build.sh -u --ophost --soc=ascend950 --ops=grouped_matmul -j8 --noexec`
+- UT: `ASCEND_SLOG_PRINT_TO_STDOUT=0 ASCEND_GLOBAL_LOG_LEVEL=0 BUILD_PATH=$(pwd)/build ./build/tests/ut/framework_normal/op_host/transformer_op_host_ut`
 
 ### 任务 8：Kernel 适配
 **目标**: 在 `weight_quant_basic_block` 体系中适配 A16W4 pergroup ND 计算逻辑
@@ -74,14 +96,19 @@
 
 ## 当前进度
 
-- [ ] 阶段一：规划与设计
+- [x] 阶段一：规划与设计 ✅
   - [x] 任务 1：算子原型描述文档 ✅
   - [x] 任务 2：走读 GMM A16W8 代码实现 ✅
   - [x] 任务 3：走读 ops-nn wqbmmv2 ND 反量化实现 ✅
   - [x] 任务 4：SRS 算子开发实现方案 ✅
   - [x] 任务 5：设计测试用例（162 个用例，8 种类型） ✅
   - [x] 任务 6：总结归纳设计文档（脑图更新 + STC 文档 + SRS 实现方案） ✅
-- [ ] 阶段二：编码实现
+- [ ] 阶段二：编码实现（当前阶段）
+  - [ ] 任务 7：Tiling 实现 + UT 验证
+    - [ ] 7.1 UT 测试框架搭建 + 用例编写
+    - [ ] 7.2 Tiling 代码实现
+    - [ ] 7.3 UT 验证 + 迭代
+  - [ ] 任务 8：Kernel 适配
 - [ ] 阶段三：验证
 
 ## 风险与应对

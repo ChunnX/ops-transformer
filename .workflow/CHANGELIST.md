@@ -504,3 +504,36 @@
 #### 影响范围
 - 仅文档和检查清单更新，不涉及代码
 - 后续编码需重点修改 `weight_quant_vec_compute.h` 与 `basic_block_vf_nd.h` 的 A16W4 pergroup ND 路径
+
+---
+
+### 2026-06-16 | Task 7 Tiling 实现规划完成
+
+**类型**: 📝 文档
+**范围**: `PLAN.md` + `NEXT_STEPS.md` + `reference/next_steps/7_tiling_impl.md`
+
+#### 变更内容
+- **`PLAN.md`**：
+  - 阶段一标记为完成 ✅
+  - 阶段二标记为当前阶段
+  - 任务 7 拆分为 3 个子阶段（7.1 UT 框架搭建、7.2 Tiling 代码实现、7.3 UT 验证迭代）
+  - 当前进度更新
+- **`NEXT_STEPS.md`**：
+  - 新增任务 7 条目，包含参考文档、目标文件、编译/UT 命令、链接到详细任务说明
+- **`reference/next_steps/7_tiling_impl.md`**（新建）：
+  - 完整的任务目标、参考文档、现有代码结构分析
+  - 3 阶段执行计划：
+    - 7.1 CSV 文件（26 列格式定义）+ CSV 驱动测试代码 + ~60 个用例覆盖
+    - 7.2 tiling 代码 9 个修改点（含关键代码片段）
+    - 7.3 验证步骤和迭代策略
+  - 风险与应对、交付件清单、验收标准
+
+#### 关键决策
+- 采用 TDD 方式：先写测试（阶段 7.1），再实现代码（阶段 7.2），最后验证（阶段 7.3）
+- 新建独立 CSV 文件和测试类（`test_grouped_weight_quant_arch35_pergroup_tiling.*`），不影响现有测试
+- CSV 格式在现有 24 列基础上扩展 2 列（hasAntiquantOffset、groupSize）
+- 所有 tiling 修改通过 `IsA16W4NDPergroup()` 隔离，确保 A16W8 perchannel 回归安全
+
+#### 影响范围
+- 仅工作流文档更新，不涉及代码
+- 下一步按 7.1 → 7.2 → 7.3 顺序执行编码
