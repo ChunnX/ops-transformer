@@ -502,8 +502,8 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(
     const aclTensor *x2Scale, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
     const aclTensor *x2OffsetOptional, const char *group, const char *commMode, const aclIntArray *alltoAllAxesOptional,
     int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype,
-    int64_t groupSize, bool transposeX1, bool transposeX2, const aclTensor *output, const aclTensor *all2AllOutOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t groupSize, bool transposeX1, bool transposeX2, const aclTensor *timerBuffer, const aclTensor *output,
+    const aclTensor *all2AllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // Inner接口部分入参类型和aclnn接口不一致，需要重新包装，同时Inner接口额外需要部分参数，按算子原型模板和实际业务逻辑生成
     char *str_group = const_cast<char *>(group);
@@ -524,9 +524,9 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(
     OP_LOGD("AlltoAllQuantMatmul commmode is . %s", str_commMode);
     aclnnStatus ret = aclnnInnerAlltoAllMatmulGetWorkspaceSize(
         x1, x2, biasOptional, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
-        str_group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype,
-        commQuantDtype, transposeX1, transposeX2, groupSize, str_commMode, all2AllOutFlag, output, all2AllOutOptional,
-        workspaceSize, executor);
+        nullptr, str_group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode,
+        x1QuantDtype, commQuantDtype, transposeX1, transposeX2, groupSize, str_commMode, all2AllOutFlag, output,
+        all2AllOutOptional, workspaceSize, executor);
     OP_LOGD("AlltoAllQuantMatmul, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
@@ -547,7 +547,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
     const aclTensor *x2Scale, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
     const aclTensor *x2OffsetOptional, const char *group, const char *commMode, const aclIntArray *alltoAllAxesOptional,
     int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype,
-    int64_t groupSize, bool transposeX1, bool transposeX2, const aclTensor *output,
+    int64_t groupSize, bool transposeX1, bool transposeX2, const aclTensor *timerBuffer, const aclTensor *output,
     const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
@@ -597,7 +597,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
     aclnnStatus ret = InnerAlltoAllQuantMatmulGetWorkspaceSize(
         x1, transX2, biasOptional, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
         group, commMode, alltoAllAxesOptional, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype,
-        groupSize, transposeX1, transposeX2, output, alltoAllOutOptional, workspaceSize, executor);
+        groupSize, transposeX1, transposeX2, timerBuffer, output, alltoAllOutOptional, workspaceSize, executor);
     return ret;
 }
 

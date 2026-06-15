@@ -66,8 +66,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllQuantMatmulGetWo
     const aclTensor *x2Scale, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
     const aclTensor *x2OffsetOptional, const char *group, const aclIntArray *alltoAllAxesOptional, int64_t x1QuantMode,
     int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype, int64_t groupSize,
-    bool transposeX1, bool transposeX2, const aclTensor *output, const aclTensor *alltoAllOutOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    bool transposeX1, bool transposeX2, const aclTensor *timerBuffer, const aclTensor *output,
+    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnAlltoAllQuantMatMul的第二段接口，用于执行计算。

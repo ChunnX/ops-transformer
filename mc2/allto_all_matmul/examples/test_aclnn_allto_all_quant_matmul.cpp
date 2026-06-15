@@ -17,10 +17,16 @@
 #include <string>
 #include <cstring>
 #include <vector>
+#include <sys/stat.h>
+#include <errno.h>
+#include <unistd.h>
+#include <limits.h>
 #include <acl/acl.h>
 #include <hccl/hccl.h>
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_allto_all_quant_matmul.h"
+
+#include "../../tools/coc_timer/coc_timer_host.hpp"
 
 int ndev = 2;
 
@@ -65,6 +71,29 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
+void ExportTimeCsv(int rankId, void* timerBufferDeviceAddr) {
+    std::string outDir = "output_timer_quant";
+    std::cout << "Trying to create: " << outDir << std::endl;
+    int ret = mkdir(outDir.c_str(), 0777);
+    if (ret != 0 && errno != EEXIST) {
+        LOG_PRINT("[ERROR] mkdir failed. ret: %d, errno: %d, %s\n", ret, errno, strerror(errno));
+        return;
+    }
+    std::string csvFilePath = outDir + "/timer_rank_" + std::to_string(rankId) + ".csv";
+    auto timeResult = CocTimerHost::GetTimeResult(timerBufferDeviceAddr);
+    std::string dataDir = outDir + "/data";
+    ret = mkdir(dataDir.c_str(), 0777);
+    if (ret != 0 && errno != EEXIST) {
+        LOG_PRINT("[ERROR] mkdir failed. ret: %d, errno: %d, %s\n", ret, errno, strerror(errno));
+        return;
+    }
+    std::string rawCsvFilePath = dataDir + "/timer_rank_" + std::to_string(rankId) + "_timeline.csv";
+    std::string durCsvFilePath = outDir + "/timer_rank_" + std::to_string(rankId) + ".csv";
+    CocTimerHost::WriteAllTimerResults(rawCsvFilePath, durCsvFilePath, timeResult);
+    std::cerr << "[Timer] Raw CSV:" << rawCsvFilePath << std::endl;
+    std::cerr << "[Timer] Duration CSV:" << durCsvFilePath << std::endl;
+}
+
 struct Args {
     uint32_t rankId;
     HcclComm hcclComm;
@@ -106,6 +135,12 @@ int launchOneThreadAlltoAllQuantMatmul(Args &args)
     aclTensor *out = nullptr;
     aclTensor *allToAllOut = nullptr;
 
+    void *timerBufferDeviceAddr = nullptr;
+    aclTensor *timerBuffer = nullptr;
+    long long timerBufferSize = CocTimerHost::GetTotalTimerBufferSize();
+    std::vector<int64_t> timerBufferShape = {timerBufferSize, 1};
+    std::vector<int64_t> timerBufferHostData(timerBufferSize, 0);
+
     int64_t a2aAxes[2] = {-2, -1};
     aclIntArray* alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
     uint64_t workspaceSize = 0;
@@ -144,11 +179,14 @@ int launchOneThreadAlltoAllQuantMatmul(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(allToAllOutHostData, allToAllOutShape, &allToAllOutDeviceAddr, aclDataType::ACL_FLOAT16, &allToAllOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(timerBufferHostData, timerBufferShape, &timerBufferDeviceAddr,
+                          aclDataType::ACL_INT64, &timerBuffer);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 调用第一段接口
     ret = aclnnAlltoAllQuantMatmulGetWorkspaceSize(x1, x2, bias, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
                                             hcom_name, alltoAllAxesOptional, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype,
                                             groupSize, false, true,
-                                            out, allToAllOut, &workspaceSize, &executor);
+                                            timerBuffer, out, allToAllOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnAlltoAllQuantMatmulGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
@@ -163,6 +201,7 @@ int launchOneThreadAlltoAllQuantMatmul(Args &args)
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     LOG_PRINT("device%d aclnnAlltoAllQuantMatmul execute success \n", args.rankId);
+    ExportTimeCsv(args.rankId, timerBufferDeviceAddr);
     // 释放device资源，需要根据具体API的接口定义修改
     if (x1 != nullptr) {
         aclDestroyTensor(x1);
@@ -193,6 +232,12 @@ int launchOneThreadAlltoAllQuantMatmul(Args &args)
     }
     if (outDeviceAddr != nullptr) {
         aclrtFree(outDeviceAddr);
+    }
+    if (timerBuffer != nullptr) {
+        aclDestroyTensor(timerBuffer);
+    }
+    if (timerBufferDeviceAddr != nullptr) {
+        aclrtFree(timerBufferDeviceAddr);
     }
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);

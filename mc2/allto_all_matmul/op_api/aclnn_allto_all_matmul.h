@@ -41,7 +41,7 @@ extern "C" {
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(
     const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclIntArray *alltoAllAxesOptional,
-    const char *group, bool transposeX1, bool transposeX2, const aclTensor *output,
+    const char *group, bool transposeX1, bool transposeX2, const aclTensor *timerBuffer, const aclTensor *output,
     const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
