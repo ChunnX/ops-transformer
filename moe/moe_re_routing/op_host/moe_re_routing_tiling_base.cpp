@@ -350,8 +350,8 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
     expertNum_ = std::get<1>(expertShapeTuple);
     tokenDtype_ = context_->GetInputDesc(IN_TOKEN_INDEX)->GetDataType();
     expertDtype_ = context_->GetInputDesc(IN_EXPERT_TOKEN_NUM_PER_RANK_INDEX)->GetDataType();
-    auto scaleShapePtr = context_->GetInputShape(IN_TOKEN_SCALE_INDEX);
-    if (scaleShapePtr != nullptr) {
+    auto scalePtr = context_->GetOptionalInputDesc(IN_TOKEN_SCALE_INDEX);
+    if (scalePtr != nullptr) {
         auto &scaleShape = context_->GetInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape();
         auto scaleDimNum = scaleShape.GetDimNum();
         if (scaleDimNum == DIM_1) {
@@ -396,8 +396,6 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
                 context_->GetNodeName(), "per_token_scales", std::to_string(scaleDimNum).c_str(), "1, 2 or 3");
             return ge::GRAPH_FAILED;
         }
-        auto scalePtr = context_->GetOptionalInputDesc(IN_TOKEN_SCALE_INDEX);
-        OP_CHECK_NULL_WITH_CONTEXT(context_, scalePtr);
         scaleDtype_ = scalePtr->GetDataType();
         hasScale_ = true;
     }
