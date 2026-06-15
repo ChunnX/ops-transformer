@@ -139,7 +139,7 @@ Tiling一共需要三个交付件：```${op_name}_tiling.cpp``` ```${op_name}_ti
 
 > 1. `${op_name}_tiling.cpp`放在`${op_name}/op_host`目录下；
 > 2. `${op_name}_tiling_key.h`和`${op_name}_tiling_data.h`放在`${op_name}/op_kernel`目录下；
-> 3. 如果`${op_name}_tiling.cpp`中需要引用`${op_name}_tiling_data.h`，请使用相对路径的方式，例如：`#incldue "../op_kernel/${op_name}_tiling_data.h"`。
+> 3. 如果`${op_name}_tiling.cpp`中需要引用`${op_name}_tiling_data.h`，请使用相对路径的方式，例如：`#include "../op_kernel/${op_name}_tiling_data.h"`。
 
 **交付件1：${op_name}_tiling.cpp**
 
@@ -166,7 +166,7 @@ static ge::graphStatus TilingParse(gert::TilingParseContext* context)
     // auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     // // 1.2获取可用核数
     // compileInfo->totalCoreNum = ascendcPlatform.GetCoreNumAiv();
-    // // 1,3获取UB大小
+    // // 1.3获取UB大小
     // uint64_t ubSizePlatForm;
     // ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     // compileInfo->ubSize = static_cast<int64_t>(ubSizePlatForm);
@@ -610,7 +610,7 @@ TEST_F(${OpName}TilingTest, test_case_xxx)
         },
         &compileInfo,
         64,     // tiling阶段获取的核数
-        262144, // tiling阶段湖区的ub大小，但实际获取的值比指定值少256字节
+        262144, // tiling阶段获取的ub大小，但实际获取的值比指定值少256字节
         4096    // 指定tiling阶段中tiling data的最大值
     );
     // 2. 设定预期结果
