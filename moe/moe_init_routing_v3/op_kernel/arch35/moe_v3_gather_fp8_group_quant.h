@@ -49,10 +49,11 @@ __simd_callee__ inline void LoadFp8GroupInput(RegTensor<float> &dst, __local_mem
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, __ubuf__ U *yAddr,
-                                               uint32_t groupElemNum, float fp8MaxValue)
+                                            uint32_t groupElemNum, float fp8MaxValue)
 {
-    static constexpr DivSpecificMode divMode = {MaskMergeMode::ZEROING, false};
     const uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / sizeof(float);
+
+    static constexpr DivSpecificMode divMode = {MaskMergeMode::ZEROING, false};
 
     __VEC_SCOPE__
     {
@@ -63,12 +64,13 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         RegTensor<float> maxReg;
         RegTensor<float> maxRightReg;
         RegTensor<float> fp8MaxReg;
+        RegTensor<float> rawScaleReg;
         RegTensor<float> roundScaleReg;
-        RegTensor<float> invScaleReg;
         RegTensor<float> quantLeftReg;
         RegTensor<float> quantRightReg;
         RegTensor<U> outLeftReg;
         RegTensor<U> outRightReg;
+
         RegTensor<uint32_t> expBitsReg;
         RegTensor<uint32_t> mantBitsReg;
         RegTensor<uint32_t> expMaskReg;
@@ -80,20 +82,21 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
 
         MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
         MaskReg maskAllUint = CreateMask<uint32_t, MaskPattern::ALL>();
+        MaskReg maskLoop;
+        MaskReg maskRight;
         MaskReg maskScalar = CreateMask<float, MaskPattern::VL1>();
         MaskReg maskMantNonZero;
-        MaskReg maskRight;
 
-        Duplicate(fp8MaxReg, fp8MaxValue, maskAll);
         Duplicate(maxReg, 0.0f, maskAll);
+        Duplicate(fp8MaxReg, fp8MaxValue, maskAll);
         Duplicate(expMaskReg, FP32_EXPONENT_MASK, maskAllUint);
         Duplicate(mantMaskReg, FP32_MANTISSA_MASK, maskAllUint);
         Duplicate(oneIntReg, 1U, maskAllUint);
         Duplicate(zeroIntReg, 0U, maskAllUint);
 
         if (groupElemNum > vfLen) {
-            uint32_t maskRightNum = groupElemNum - vfLen;
-            maskRight = UpdateMask<float>(maskRightNum);
+            uint32_t rightElemNum = groupElemNum - vfLen;
+            maskRight = UpdateMask<float>(rightElemNum);
             LoadFp8GroupInput<T>(xLeftReg, xAddr, maskAll, 0);
             LoadFp8GroupInput<T>(xRightReg, xAddr, maskRight, vfLen);
             Abs(absLeftReg, xLeftReg, maskAll);
@@ -102,7 +105,8 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
             ReduceMax(maxRightReg, absRightReg, maskRight);
             Max(maxReg, maxReg, maxRightReg, maskScalar);
         } else if (groupElemNum > 0) {
-            MaskReg maskLoop = UpdateMask<float>(groupElemNum);
+            uint32_t loopElemNum = groupElemNum;
+            maskLoop = UpdateMask<float>(loopElemNum);
             LoadFp8GroupInput<T>(xLeftReg, xAddr, maskLoop, 0);
             Abs(absLeftReg, xLeftReg, maskLoop);
             ReduceMax(maxReg, absLeftReg, maskLoop);
@@ -112,30 +116,31 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
             Maxs(maxReg, maxReg, 0.0001f, maskAll);
         }
 
-        Div<float, &divMode>(roundScaleReg, maxReg, fp8MaxReg, maskAll);
-        ShiftRights(expBitsReg, (RegTensor<uint32_t> &)roundScaleReg, FP32_EXPONENT_SHIFT, maskAllUint);
+        Div<float, &divMode>(rawScaleReg, maxReg, fp8MaxReg, maskAll);
+        ShiftRights(expBitsReg, (RegTensor<uint32_t> &)rawScaleReg, FP32_EXPONENT_SHIFT, maskAllUint);
         And(expBitsReg, expBitsReg, expMaskReg, maskAllUint);
-        And(mantBitsReg, (RegTensor<uint32_t> &)roundScaleReg, mantMaskReg, maskAllUint);
+        And(mantBitsReg, (RegTensor<uint32_t> &)rawScaleReg, mantMaskReg, maskAllUint);
         Compare<uint32_t, CMPMODE::NE>(maskMantNonZero, mantBitsReg, zeroIntReg, maskAllUint);
         Select(mantAddReg, oneIntReg, zeroIntReg, maskMantNonZero);
         Add(roundedExpBitsReg, expBitsReg, mantAddReg, maskAllUint);
-        ShiftLefts((RegTensor<float> &)roundScaleReg, roundedExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
+        ShiftLefts((RegTensor<uint32_t> &)roundScaleReg, roundedExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
+
         DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr, roundScaleReg, maskAll);
 
-        Duplicate(oneIntReg, 1U, maskAllUint);
-        ShiftLefts((RegTensor<uint32_t> &)fp8MaxReg, oneIntReg, FP32_EXPONENT_SHIFT, maskAllUint);
-        Div<float, &divMode>(invScaleReg, fp8MaxReg, roundScaleReg, maskAll);
-
         if (groupElemNum > vfLen) {
-            Muls(quantLeftReg, xLeftReg, invScaleReg, maskAll);
-            Muls(quantRightReg, xRightReg, invScaleReg, maskRight);
+            LoadFp8GroupInput<T>(xLeftReg, xAddr, maskAll, 0);
+            LoadFp8GroupInput<T>(xRightReg, xAddr, maskRight, vfLen);
+            Div<float, &divMode>(quantLeftReg, xLeftReg, roundScaleReg, maskAll);
+            Div<float, &divMode>(quantRightReg, xRightReg, roundScaleReg, maskRight);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskAll);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outRightReg, quantRightReg, maskRight);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr, outLeftReg, maskAll);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + vfLen, outRightReg, maskRight);
         } else if (groupElemNum > 0) {
-            MaskReg maskLoop = UpdateMask<float>(groupElemNum);
-            Muls(quantLeftReg, xLeftReg, invScaleReg, maskLoop);
+            uint32_t loopElemNum = groupElemNum;
+            maskLoop = UpdateMask<float>(loopElemNum);
+            LoadFp8GroupInput<T>(xLeftReg, xAddr, maskLoop, 0);
+            Div<float, &divMode>(quantLeftReg, xLeftReg, roundScaleReg, maskLoop);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskLoop);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr, outLeftReg, maskLoop);
         }
