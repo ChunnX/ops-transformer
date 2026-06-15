@@ -106,7 +106,7 @@ class GeneralizedLIV2:
             for b_idx in range(batch_size):
                 padding_len = cu_seqlens_q[b_idx] - seqused_q[b_idx]
                 if padding_len > 0:
-                    output_idx_offset[prefix + seqused_q[b_idx] : prefix + seqused[b_idx] + padding_len] = 0
+                    output_idx_offset[prefix + seqused_q[b_idx] : prefix + seqused_q[b_idx] + padding_len] = 0
                 prefix += cu_seqlens_q[b_idx]
         if self.layout_query == "BSND":
             output_idx_offset = torch.broadcast_to(output_idx_offset.unsqueeze(-1), (batch_size, self.q_seq, 1, self.topk))
