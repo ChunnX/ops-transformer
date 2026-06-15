@@ -834,7 +834,7 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortCutOriginTiling(
     // Phase C: compute colsLoops/perLoopCols based on remaining UB space
     // When actualExpertNum is large (up to 10240), persistentSize grows significantly,
     // so compute maxPerLoopCols from actual Phase C budget rather than fixed constant
-    int64_t phaseCBudget = static_cast<int64_t>(aicoreParams_.ubSize) - persistentSize;
+    int64_t phaseCBudget = static_cast<int64_t>(aicoreParams_.ubSize) - persistentSize - ONE_BLOCK_BYTE;
 
     // Fixed Phase C overhead (independent of perLoopCols)
     int64_t phaseCFixedOverhead =
@@ -882,7 +882,8 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortCutOriginTiling(
     phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * inuptXDtypeSize_, ONE_BLOCK_BYTE) * NUM_TWO;
     if (quantMode_ == STATIC_QUANT) {
         phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
-        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_INT8, ONE_BLOCK_BYTE);
+        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_INT8, ONE_BLOCK_BYTE) * NUM_TWO;
+        phaseCSize += ONE_BLOCK_BYTE;
     } else if (quantMode_ == DYNAMIC_QUANT) {
         phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
         phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_INT8, ONE_BLOCK_BYTE);
