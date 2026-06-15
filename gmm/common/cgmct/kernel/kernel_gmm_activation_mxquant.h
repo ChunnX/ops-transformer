@@ -118,7 +118,7 @@ public:
     uint64_t preOffset_ = 0;
     BlockMmad mmadOp_;
     BlockEpilogue epilogueOp_;
-    AscendC::LocalTensor<CType> l0cOutUbFirst_;
+    AscendC::LocalTensor<CType> l0cOutUb_;
     bool isVecSetSyncCom_ = false;
 
     struct GMMTiling {
@@ -315,9 +315,9 @@ public:
             if (Get<M_VALUE>(singleShape) <= 0 || Get<N_VALUE>(singleShape) <= 0) {
                 return;
             }
-            auto quantOffset = coord.template GetQuantOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE>(
+            auto quantOffset = coord.template GetQuantOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE, c0Size>(
                 Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx),
-                Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape), Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape), c0Size);
+                Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape), Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
             Get<IDX_A_OFFSET>(blockOffset_) = Get<IDX_A_OFFSET>(quantOffset);
             Get<IDX_B_OFFSET>(blockOffset_) = Get<IDX_B_OFFSET>(quantOffset);
             Get<IDX_X1SCALE_OFFSET>(blockOffset_) = Get<IDX_X1SCALE_OFFSET>(quantOffset);
@@ -342,7 +342,7 @@ public:
                 mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
                         x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
                         x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)],
-                        biasGlobal_[Get<IDX_BIAS_OFFSET>(blockOffset_)], l0cOutUbFirst_, mmSingleShape);
+                        biasGlobal_[Get<IDX_BIAS_OFFSET>(blockOffset_)], l0cOutUb_, mmSingleShape);
                 NotifyVector();
             }
             isVecSetSyncCom_ = true;
@@ -384,7 +384,7 @@ public:
                 bs.SetTailAlign(1, c0Size);
             }
         }
-        l0cOutUbFirst_ = epilogueOp_.GetFirstL0c2UbTensor();
+        l0cOutUb_ = epilogueOp_.GetL0c2UbTensor();
         for (uint32_t groupIdx = 0; groupIdx < params.gmmParams.groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;

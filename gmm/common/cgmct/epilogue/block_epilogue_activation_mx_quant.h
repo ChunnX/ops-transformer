@@ -77,6 +77,7 @@ constexpr float GELU_TANH_NEG_SQRT_EIGHT_OVER_PI = -1.595769121f * 0.044715f;
 constexpr float GELU_TANH_APPROX_FACTOR = 1.0f / 0.044715f;
 constexpr uint32_t INTERLEAVED_REG_FACTOR = 2;
 constexpr uint32_t HALF_REG_FACTOR = 2;
+constexpr uint32_t AIC_AIV_TASK_RATIO = 2;
 constexpr uint32_t SCALE_ALG_OCP = 0;
 constexpr float SCALAR_ONE = 1.0f;
 } // namespace
@@ -132,7 +133,7 @@ public:
 
 public:
     __aicore__ inline void Init(Params const &params);
-    __aicore__ inline auto GetFirstL0c2UbTensor();
+    __aicore__ inline auto GetL0c2UbTensor();
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord);
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
@@ -165,14 +166,17 @@ private:
                                                         uint16_t loopNum);
 
     __aicore__ inline void CopyOutputFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
-
+    __aicore__ inline void CopyOutputCompactFromUb2Gm(uint64_t blockCount, uint64_t offset,
+                                                      AscendC::LocalTensor<int8_t> &src);
     __aicore__ inline void CopyScaleFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
+    __aicore__ inline void CopyScaleCompactFromUb2Gm(uint64_t blockCount, uint64_t offset,
+                                                     AscendC::LocalTensor<int8_t> &src);
     // GM ADDR
     AscendC::GlobalTensor<int8_t> quantOutputGlobal_;
     AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
 
     // UB ADDR
-    AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
+    AscendC::LocalTensor<DataTypeIn> l0cOutUb_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
     AscendC::LocalTensor<int8_t> quantOutput_;
     AscendC::LocalTensor<int8_t> quantScaleOutput_;
     AscendC::LocalTensor<int8_t> quantScaleBlockOutput_;
@@ -182,6 +186,7 @@ private:
 
     const Params *params_;
 
+    int64_t m_;
     int64_t n_;
     int64_t scaleN_;
     int64_t scaleBlockN_;
@@ -236,9 +241,10 @@ BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init
                                                 MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE);
     constexpr uint32_t realScaleBlockOffset =
         afterIOAndGluExp + MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
+    auto mPerVec = CeilDiv(static_cast<uint64_t>(params_->baseM), static_cast<uint64_t>(AIC_AIV_TASK_RATIO));
     quantScaleBlockOutput_ =
         AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECOUT, realScaleBlockOffset,
-                                     params_->baseM / AscendC::GetTaskRation() * AscendC::ONE_BLK_SIZE);
+                                     mPerVec * AscendC::ONE_BLK_SIZE);
 }
 
 QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
@@ -255,6 +261,7 @@ QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateNextProblem(
     const ProblemShape &problemShape)
 {
+    m_ = Get<MNK_M>(problemShape);
     n_ = Get<MNK_N>(problemShape);
     scaleN_ = CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 }
@@ -271,6 +278,14 @@ __aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_F
 }
 
 QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void
+BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyOutputCompactFromUb2Gm(
+    uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
+{
+    AscendC::DataCopy(quantOutputGlobal_[offset], src, blockCount * singleN_);
+}
+
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleFromUb2Gm(
     uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
 {
@@ -281,6 +296,14 @@ __aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_F
     ub2GmParams.blockCount = blockCount;
     ub2GmParams.dstStride = (scaleN_ - blockScaleN) * sizeof(int8_t);
     AscendC::DataCopyPad(quantScaleGlobal_[offset], src, ub2GmParams);
+}
+
+QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void
+BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleCompactFromUb2Gm(
+    uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
+{
+    AscendC::DataCopy(quantScaleGlobal_[offset], src, blockCount * scaleBlockN_);
 }
 
 QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
@@ -453,8 +476,8 @@ __aicore__ inline void BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_F
         AscendC::MicroAPI::MaskReg p0;
         AscendC::MicroAPI::MaskReg p1;
         AscendC::MicroAPI::MaskReg p2;
-        AscendC::MicroAPI::MaskReg dataMaskB16Half =
-            AscendC::MicroAPI::UpdateMask<uint16_t>(vlForHalfNumber_ / HALF_REG_FACTOR);
+        uint32_t halfMaskElemNum = vlForHalfNumber_ / HALF_REG_FACTOR;
+        AscendC::MicroAPI::MaskReg dataMaskB16Half = AscendC::MicroAPI::UpdateMask<uint16_t>(halfMaskElemNum);
         AscendC::MicroAPI::MaskReg maskFloat = AscendC::MicroAPI::CreateMask<uint32_t>();
 
         static constexpr AscendC::MicroAPI::CastTrait castTraitBf162Float = {
@@ -658,9 +681,9 @@ BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDo
 {
     __ubuf__ int8_t *quantOutputInUbAddr = (__ubuf__ int8_t *)quantOutput_.GetPhyAddr();
     __ubuf__ uint16_t *quantScaleOutputInUbAddr = (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr();
-    __ubuf__ DataTypeIn *l0cOutUbFirstAddr = (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr();
+    __ubuf__ DataTypeIn *l0cOutUbAddr = (__ubuf__ DataTypeIn *)l0cOutUb_.GetPhyAddr();
     VFDoActivationAndQuantForMX<Gmmsg::QuantMode::MX_PERGROUP_MODE>(quantOutputInUbAddr, quantScaleOutputInUbAddr,
-                                                                   l0cOutUbFirstAddr, mSize, singleN_);
+                                                                   l0cOutUbAddr, mSize, singleN_);
 }
 
 QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
@@ -687,9 +710,9 @@ BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Tran
 }
 
 QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline auto BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetFirstL0c2UbTensor()
+__aicore__ inline auto BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::GetL0c2UbTensor()
 {
-    return l0cOutUbFirst_;
+    return l0cOutUb_;
 }
 
 QMM_BLOCK_EPILOGUE_ACTIVATION_QUANT_CLASS_LOCAL_PARAMS
@@ -702,25 +725,36 @@ BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::oper
     scaleBlockN_ =
         CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     blockCoord_ = blockCoord;
-    auto halfSingleM = CeilDiv(static_cast<uint64_t>(singleM_), static_cast<uint64_t>(AscendC::GetTaskRation()));
-    uint64_t singleMInVec = subBlockIdx_ == 1 ? singleM_ - halfSingleM : halfSingleM;
-    if (singleMInVec == 0) {
+    auto taskRatio = static_cast<uint64_t>(AIC_AIV_TASK_RATIO);
+    auto singleMPerVec = CeilDiv(static_cast<uint64_t>(singleM_), taskRatio);
+    uint64_t mOffset = subBlockIdx_ * singleMPerVec;
+    if (mOffset >= singleM_) {
         return;
     }
-    uint64_t mOffset = subBlockIdx_ * halfSingleM;
+    uint64_t singleMInVec = Min(static_cast<uint64_t>(singleM_) - mOffset, singleMPerVec);
+    uint64_t blockMOffset = n_ == 0 ? 0 : Get<Y_IDX>(blockCoord) / n_;
+    if (blockMOffset + mOffset >= static_cast<uint64_t>(m_)) {
+        return;
+    }
+    singleMInVec = Min(singleMInVec, static_cast<uint64_t>(m_) - blockMOffset - mOffset);
 
     vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t);
     UBBlockSize_ = BLOCK_SIZE;
     elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;
 
     VFDoActivationForMX(singleMInVec);
-    uint64_t yOffset = Get<Y_IDX>(blockCoord) + subBlockIdx_ * halfSingleM * n_;
-    uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord) + subBlockIdx_ * halfSingleM * scaleN_;
-    TransMxScaleLayout(singleMInVec, scaleBlockN_);
+    uint64_t yOffset = Get<Y_IDX>(blockCoord) + mOffset * n_;
+    uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord) + mOffset * scaleN_;
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-    CopyOutputFromUb2Gm(singleMInVec, yOffset, quantOutput_);
-    CopyScaleFromUb2Gm(singleMInVec, yScaleOffset, quantScaleBlockOutput_);
+    if (singleN_ == n_) {
+        CopyOutputCompactFromUb2Gm(singleMInVec, yOffset, quantOutput_);
+        CopyScaleCompactFromUb2Gm(singleMInVec, yScaleOffset, quantScaleOutput_);
+    } else {
+        TransMxScaleLayout(singleMInVec, scaleBlockN_);
+        CopyOutputFromUb2Gm(singleMInVec, yOffset, quantOutput_);
+        CopyScaleFromUb2Gm(singleMInVec, yScaleOffset, quantScaleBlockOutput_);
+    }
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     return;
