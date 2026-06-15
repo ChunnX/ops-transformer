@@ -22,8 +22,8 @@ ACLNN_API aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
     const aclTensorList *biasOptional, const aclTensor *xScaleOptional, const char *activationType,
     int64_t dequantDtypeOptional, bool transposeWeightOptional, int64_t groupListTypeOptional,
-    const aclIntArray *tuningConfigOptional, int64_t quantDtypeOptional, const char *roundModeOptional,
-    int64_t scaleAlgOptional, double dstTypeMaxOptional, aclTensor *y, aclTensor *yScale,
+    const aclIntArray *tuningConfigOptional, const char *quantModeOptional, int64_t yDtypeOptional,
+    const char *roundModeOptional, int64_t scaleAlgOptional, double dstTypeMaxOptional, aclTensor *y, aclTensor *yScale,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 ACLNN_API aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(void *workspace,

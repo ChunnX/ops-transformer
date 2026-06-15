@@ -32,6 +32,7 @@ using namespace op;
 namespace {
 constexpr char OP_NAME[] = "aclnnGroupedMatmulActivationQuantWeightNz";
 constexpr char GELU_TANH[] = "gelu_tanh";
+constexpr char QUANT_MODE_MX[] = "MX";
 constexpr char ROUND_MODE_RINT[] = "rint";
 constexpr size_t SINGLE_TENSOR_SIZE = 1UL;
 constexpr size_t FIRST_TENSOR_INDEX = 0UL;
@@ -147,7 +148,7 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                         const aclTensorList *weightScale, const aclTensorList *biasOptional,
                         const aclTensor *xScaleOptional, const char *activationType,
                         int64_t dequantDtypeOptional, bool transposeWeightOptional,
-                        int64_t groupListTypeOptional, int64_t quantDtypeOptional,
+                        int64_t groupListTypeOptional, const char *quantModeOptional, int64_t yDtypeOptional,
                         const char *roundModeOptional, int64_t scaleAlgOptional,
                         double dstTypeMaxOptional, const aclTensor *y, const aclTensor *yScale)
 {
@@ -166,6 +167,10 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                "In op [%s], [activationType] must not be nullptr.", OP_NAME);
     CHECK_COND(std::strcmp(activationType, GELU_TANH) == 0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], activationType only supports gelu_tanh, but got %s.", OP_NAME, activationType);
+    CHECK_COND(quantModeOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
+               "In op [%s], [quantModeOptional] must not be nullptr.", OP_NAME);
+    CHECK_COND(std::strcmp(quantModeOptional, QUANT_MODE_MX) == 0, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], quantModeOptional only supports MX, but got %s.", OP_NAME, quantModeOptional);
     CHECK_COND(roundModeOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
                "In op [%s], [roundModeOptional] must not be nullptr.",
                OP_NAME);
@@ -175,9 +180,9 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
     CHECK_COND(dequantDtypeOptional == DEFAULT_DEQUANT_DTYPE, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], dequantDtypeOptional must be FLOAT in MX quant mode, but got %ld.",
                OP_NAME, dequantDtypeOptional);
-    CHECK_COND(IsFp8DtypeValue(quantDtypeOptional), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], quantDtypeOptional only supports FLOAT8_E4M3FN or FLOAT8_E5M2, but got %ld.",
-               OP_NAME, quantDtypeOptional);
+    CHECK_COND(IsFp8DtypeValue(yDtypeOptional), ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], yDtypeOptional only supports FLOAT8_E4M3FN or FLOAT8_E5M2, but got %ld.",
+               OP_NAME, yDtypeOptional);
     CHECK_COND(groupListTypeOptional == 0 || groupListTypeOptional == 1, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], groupListTypeOptional only supports 0 or 1, but got %ld.",
                OP_NAME, groupListTypeOptional);
@@ -212,8 +217,8 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                "In op [%s], weightScale only supports FLOAT8_E8M0.", OP_NAME);
     CHECK_COND(groupList->GetDataType() == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], groupList only supports INT64.", OP_NAME);
-    CHECK_COND(y->GetDataType() == static_cast<DataType>(quantDtypeOptional), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], y dtype must be the same as quantDtypeOptional.", OP_NAME);
+    CHECK_COND(y->GetDataType() == static_cast<DataType>(yDtypeOptional), ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], y dtype must be the same as yDtypeOptional.", OP_NAME);
     CHECK_COND(yScale->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], yScale only supports FLOAT8_E8M0.", OP_NAME);
     CHECK_COND(x->GetStorageFormat() == op::Format::FORMAT_ND &&
@@ -255,8 +260,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
     const aclTensorList *biasOptional, const aclTensor *xScaleOptional, const char *activationType,
     int64_t dequantDtypeOptional, bool transposeWeightOptional, int64_t groupListTypeOptional,
-    const aclIntArray *tuningConfigOptional, int64_t quantDtypeOptional, const char *roundModeOptional,
-    int64_t scaleAlgOptional, double dstTypeMaxOptional, aclTensor *y, aclTensor *yScale,
+    const aclIntArray *tuningConfigOptional, const char *quantModeOptional, int64_t yDtypeOptional,
+    const char *roundModeOptional, int64_t scaleAlgOptional, double dstTypeMaxOptional, aclTensor *y, aclTensor *yScale,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
@@ -267,7 +272,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     CHECK_RET(CheckParams(x, groupList, weight, weightScale, biasOptional, xScaleOptional, activationType,
-                          dequantDtypeOptional, transposeWeightOptional, groupListTypeOptional, quantDtypeOptional,
+                          dequantDtypeOptional, transposeWeightOptional, groupListTypeOptional, quantModeOptional,
+                          yDtypeOptional,
                           roundModeOptional, scaleAlgOptional, dstTypeMaxOptional, y, yScale) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
 
@@ -286,10 +292,14 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
 
     CHECK_RET(PrepareTensorListContiguous(weightScale, uniqueExecutor.get()) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
+    if (biasOptional == nullptr) {
+        biasOptional = uniqueExecutor->AllocTensorList(nullptr, 0);
+        CHECK_RET(biasOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
-    auto result = l0op::GroupedMatmulActivationQuant(x, xScaleOptional, groupList, weight, weightScale,
-        dequantDtypeOptional, quantDtypeOptional, roundModeOptional, scaleAlgOptional,
-        static_cast<float>(dstTypeMaxOptional), transposeWeightOptional, groupListTypeOptional, tuningConfigOptional,
+    auto result = l0op::GroupedMatmulActivationQuant(x, groupList, weight, weightScale, biasOptional, xScaleOptional,
+        activationType, dequantDtypeOptional, transposeWeightOptional, groupListTypeOptional, tuningConfigOptional,
+        quantModeOptional, yDtypeOptional, roundModeOptional, scaleAlgOptional, static_cast<float>(dstTypeMaxOptional),
         uniqueExecutor.get());
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
     auto yResult = l0op::ViewCopy(std::get<0>(result), y, uniqueExecutor.get());
