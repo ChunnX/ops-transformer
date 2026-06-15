@@ -112,12 +112,12 @@ int launchOneThreadAlltoAllQuantMatmul(Args &args)
     LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream,
             args.context);
 
-    std::vector<int64_t> x1Shape = {32, 64};
-    std::vector<int64_t> x2Shape = {64 * ndev, 128};
-    std::vector<int64_t> biasShape = {128};
-    std::vector<int64_t> x2ScaleShape = {128};
-    std::vector<int64_t> outShape = {32 / ndev, 128};
-    std::vector<int64_t> allToAllOutShape = {32 / ndev, 64 * ndev};
+    std::vector<int64_t> x1Shape = {200000, 4096};
+    std::vector<int64_t> x2Shape = {4096 * ndev, 8192};
+    std::vector<int64_t> biasShape = {8192};
+    std::vector<int64_t> x2ScaleShape = {8192};
+    std::vector<int64_t> outShape = {200000 / ndev, 8192};
+    std::vector<int64_t> allToAllOutShape = {200000 / ndev, 4096 * ndev};
     void *x1DeviceAddr = nullptr;
     void *x2DeviceAddr = nullptr;
     void *biasDeviceAddr = nullptr;
@@ -197,6 +197,18 @@ int launchOneThreadAlltoAllQuantMatmul(Args &args)
     // 调用第二段接口
     ret = aclnnAlltoAllQuantMatmul(workspaceAddr, workspaceSize, executor, args.stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAlltoAllQuantMatmul failed. ERROR: %d\n", ret); return ret);
+    
+    // for (int i = 0; i < 30; i++) {
+    //     ret = aclnnAlltoAllQuantMatmulGetWorkspaceSize(x1, x2, bias, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
+    //                                             hcom_name, alltoAllAxesOptional, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype,
+    //                                             groupSize, false, true,
+    //                                             timerBuffer, out, allToAllOut, &workspaceSize, &executor);
+    //     CHECK_RET(ret == ACL_SUCCESS,
+    //             LOG_PRINT("aclnnAlltoAllMatmulGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    //     ret = aclnnAlltoAllQuantMatmul(workspaceAddr, workspaceSize, executor, args.stream);
+    //     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAlltoAllQuantMatmul failed. ERROR: %d\n", ret); return ret);
+    // }
+    
     //（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);

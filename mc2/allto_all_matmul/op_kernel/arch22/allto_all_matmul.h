@@ -285,7 +285,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmul()
                                                  3,
                                                  0,
                                                  static_cast<int32_t>(rankSize),
-                                                 MAX_BLOCK_COUNT};
+                                                 MAX_BLOCK_COUNT,
+                                                 &timerDevice_};
             matmul_op(params);
         } else {
             using L1TileShape = GemmShape<256, 128, L1TileShapeK>;
@@ -307,7 +308,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmul()
                                                  3,
                                                  0,
                                                  static_cast<int32_t>(rankSize),
-                                                 MAX_BLOCK_COUNT};
+                                                 MAX_BLOCK_COUNT,
+                                                 &timerDevice_};
             matmul_op(params);
         }
     }

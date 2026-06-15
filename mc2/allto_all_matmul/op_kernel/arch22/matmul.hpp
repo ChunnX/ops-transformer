@@ -25,6 +25,8 @@
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
+#include "../../tools/coc_timer/coc_timer.hpp"
+#include "../../tools/coc_timer/coc_timer_device.hpp"
 
 namespace Catlass::Gemm::Kernel {
 template <class PrologueA, class PrologueB, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, bool HasBias>
@@ -82,6 +84,7 @@ public:
         int32_t swizzlDirect;
         int32_t rankSize; // 待分析是否删除
         int32_t pipeDepth;
+        CocTimerDevice *timerDevice;
 
         // Methods
         CATLASS_HOST_DEVICE
@@ -92,10 +95,10 @@ public:
         CATLASS_HOST_DEVICE
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrBias_, GM_ADDR ptrC_, LayoutC layoutC_, int32_t pValue_, int32_t swizzlCount_,
-               int32_t swizzlDirect_, int32_t rankSize_, int32_t pipeDepth_)
+               int32_t swizzlDirect_, int32_t rankSize_, int32_t pipeDepth_, CocTimerDevice *timerDevice_)
             : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
               ptrBias(ptrBias_), ptrC(ptrC_), layoutC(layoutC_), pValue(pValue_), swizzlCount(swizzlCount_),
-              swizzlDirect(swizzlDirect_), rankSize(rankSize_), pipeDepth(pipeDepth_)
+              swizzlDirect(swizzlDirect_), rankSize(rankSize_), pipeDepth(pipeDepth_), timerDevice(timerDevice_)
         {
         }
     };
@@ -210,7 +213,7 @@ public:
             }
 
             WaitEvent(flagIdx);
-
+            params.timerDevice->Tik(CocTimer::AIC);
             int32_t actualLoopNum = actualPValue * nLoops;
 
             for (int32_t loopOffset = 0; loopOffset < actualLoopNum; loopOffset++) {
@@ -264,6 +267,7 @@ public:
             }
             AscendC::PipeBarrier<PIPE_ALL>();
             AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(flagIdx);
+            params.timerDevice->template Tok<Overwrite>(CocTimer::AIC);
         }
     }
 
