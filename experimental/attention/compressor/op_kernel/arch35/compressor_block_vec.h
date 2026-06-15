@@ -1022,9 +1022,9 @@ __aicore__ inline void CompressorBlockVector<COMP>::DealVec1BaseBlock(const Vec1
         SoftmaxDN(scoreLocal, statisticInfo.compressorScCnt, dDealSize);
         LocalTensor<T> comperssoredUb = scoreLocal; 
         PipeBarrier<PIPE_V>();
-        KvMulReduceScore(kvLocal, scoreLocal, scoreLocal, statisticInfo.compressorScCnt, dDealSize);
+        KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
-        CopyOutVec1ResToOutput(scoreLocal, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx, dDealSize);
+        CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx, dDealSize);
     }
     compressedCnt_ += statisticInfo.compressorScCnt;
 }
