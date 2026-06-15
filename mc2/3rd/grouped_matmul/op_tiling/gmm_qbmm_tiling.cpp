@@ -15,7 +15,7 @@
 #include <alog_pub.h>
 #include "gmm_qbmm_tiling.h"
 
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "log/error_code.h"
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
