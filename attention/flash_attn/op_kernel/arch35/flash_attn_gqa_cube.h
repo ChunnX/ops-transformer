@@ -207,8 +207,8 @@ public:
     FaGmTensorKV valueGm;
     GlobalTensor<int32_t> blockTableGm;
 
-    QSeqParserType *qSeqParserPtr = nullptr;
-    KvSeqParserType *kvSeqParserPtr = nullptr;
+    QSeqParserType qSeqLensParser;
+    KvSeqParserType kvSeqLensParser;
 
     CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
@@ -375,9 +375,9 @@ public:
     {
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
         if constexpr (Q_NEEDS_WZH) {
-            qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, *this->qSeqParserPtr);
+            qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, qSeqLensParser);
         } else {
-            qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, *this->qSeqParserPtr);
+            qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, qSeqLensParser);
         }
     }
 
@@ -397,9 +397,9 @@ public:
                                              constInfoXCube.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr);
+            kvGmTensor.offsetCalculator.Init(kvSeqLensParser);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
-            kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr);
+            kvGmTensor.offsetCalculator.Init(n2Size, headDim, kvSeqLensParser);
         }
     }
 
@@ -1086,16 +1086,7 @@ public:
     uint32_t s2OEnd_;
     uint32_t coreFirstTmpOutWsPos_;
 
-    typename std::conditional<(LAYOUT == LayOutTypeEnum::LAYOUT_TND),
-                              ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE>>::type
-        qCuSeqLensParser;
 
-    typename std::conditional<(LAYOUT == LayOutTypeEnum::LAYOUT_TND),
-                              ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE>>::type
-        kvCuSeqLensParser;
-
-    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> qSeqUsedParser;
-    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser;
 
     __aicore__ inline FlashAttentionNoQuantGqaKernel() {};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -1129,16 +1120,8 @@ public:
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
                                      FA_AIC_CORE_NUM * 16U * sectionNum_);
 
-        InitQCuSeqLensParser();
-        InitKvCuSeqLensParser();
-
-        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-            qSeqParserPtr = &qCuSeqLensParser;
-            kvSeqParserPtr = &kvCuSeqLensParser;
-        } else {
-            qSeqParserPtr = &qSeqUsedParser;
-            kvSeqParserPtr = &kvSeqUsedParser;
-        }
+        InitQSeqLensParser();
+        InitKvSeqLensParser();
 
         InitMMResBuf(workspace);
         InitCubeInput(query, key, value, blockTable);
@@ -1173,21 +1156,21 @@ public:
         }
     }
 
-    __aicore__ inline void InitQCuSeqLensParser()
+    __aicore__ inline void InitQSeqLensParser()
     {
         if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-            qCuSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ, constInfoXCube.cuSeqLensQSize, constInfoXCube.seqUsedQSize);
+            qSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ, constInfoXCube.cuSeqLensQSize, constInfoXCube.seqUsedQSize);
         } else {
-            qSeqUsedParser.Init(seqUsedGmQ, constInfoXCube.seqUsedQSize, constInfoXCube.s1Size);
+            qSeqLensParser.Init(seqUsedGmQ, constInfoXCube.seqUsedQSize, constInfoXCube.s1Size);
         }
     }
 
-    __aicore__ inline void InitKvCuSeqLensParser()
+    __aicore__ inline void InitKvSeqLensParser()
     {
         if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-            kvCuSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv, constInfoXCube.cuSeqLensKVSize, constInfoXCube.seqUsedKvSize);
+            kvSeqLensParser.Init(cuSeqLensGmKv, seqUsedGmKv, constInfoXCube.cuSeqLensKVSize, constInfoXCube.seqUsedKvSize);
         } else {
-            kvSeqUsedParser.Init(seqUsedGmKv, constInfoXCube.seqUsedKvSize, constInfoXCube.s2Size);
+            kvSeqLensParser.Init(seqUsedGmKv, constInfoXCube.seqUsedKvSize, constInfoXCube.s2Size);
         }
     }
 
@@ -1303,17 +1286,9 @@ public:
             if (constInfoXCube.cuSeqLensKVSize == 0 && constInfoXCube.seqUsedKvSize == 0 && !constInfoXCube.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT>(keyPtr, bIdx);
             } else {
-                if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-                    actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
-                } else {
-                    actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
-                }
+                actSeqLensKv = kvSeqLensParser.GetActualSeqLength(bIdx);
             }
-            if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-                actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
-            } else {
-                actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
-            }
+            actSeqLensQ = qSeqLensParser.GetActualSeqLength(bIdx);
         }
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfoXCube.gSize;
