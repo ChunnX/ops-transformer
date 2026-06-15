@@ -45,24 +45,18 @@ constexpr uint32_t WEIGHT_KV_INPUT_INDEX = 1;
 constexpr uint32_t WEIGHT_WGATE_INPUT_INDEX = 2;
 constexpr uint32_t STATE_CACHE_INPUT_INDEX = 3;
 constexpr uint32_t APE_INPUT_INDEX = 4;
-constexpr uint32_t NORM_WEIGHT_INPUT_INDEX = 5;
-constexpr uint32_t ROPE_SIN_INPUT_INDEX = 6;
-constexpr uint32_t ROPE_COS_INPUT_INDEX = 7;
 
 // INPUT(OPTION)
-constexpr uint32_t STATE_BLOCK_TABLE_INPUT_INDEX = 8;
-constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 9;
-constexpr uint32_t SEQ_USED_INPUT_INDEX = 10;
-constexpr uint32_t START_POS_INPUT_INDEX = 11;
+constexpr uint32_t STATE_BLOCK_TABLE_INPUT_INDEX = 5;
+constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 6;
+constexpr uint32_t SEQ_USED_INPUT_INDEX = 7;
+constexpr uint32_t START_POS_INPUT_INDEX = 8;
 
 // ATTR
-constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 0;
-constexpr uint32_t CMP_RATIO_ATTR_INDEX = 1;
-constexpr uint32_t COFF_ATTR_INDEX = 2;
-constexpr uint32_t NORM_EPS_ATTR_INDEX = 3;
-constexpr uint32_t ROTARY_MODE_ATTR_INDEX = 4;
-constexpr uint32_t CACHE_MODE_ATTR_INDEX = 5;
-constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 6;
+constexpr uint32_t CMP_RATIO_ATTR_INDEX = 0;
+constexpr uint32_t COFF_ATTR_INDEX = 1;
+constexpr uint32_t CACHE_MODE_ATTR_INDEX = 2;
+constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 3;
 
 // OUTPUT
 constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;
@@ -89,18 +83,12 @@ static const std::string WKV_NAME = "wkv";
 static const std::string WGATE_NAME = "wgate";
 static const std::string STATE_CACHE_NAME = "state_cache";
 static const std::string APE_NAME = "ape";
-static const std::string NORM_WEIGHT_NAME = "norm_weight";
-static const std::string ROPE_SIN_NAME = "rope_sin";
-static const std::string ROPE_COS_NAME = "rope_cos";
 static const std::string STATE_BLOCK_TABLE_NAME = "state_block_table";
 static const std::string CU_SEQLENS_NAME = "cu_seqlens";
 static const std::string SEQUSED_NAME = "seq_used";
 static const std::string START_POS_NAME = "start_pos";
-static const std::string ROPE_HEAD_DIM_NAME = "rope_head_dim";
 static const std::string CMP_RATIO_NAME = "cmp_ratio";
 static const std::string COFF_NAME = "coff";
-static const std::string NORM_EPS_NAME = "nrom_eps";
-static const std::string ROTARY_MODE_NAME = "rotary_mode";
 static const std::string CACHE_MODE_NAME = "cache_mode";
 static const std::string CMP_KV_NAME = "cmp_kv";
 
@@ -112,9 +100,6 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {WGATE_NAME,              {ge::DT_BF16, ge::DT_FLOAT16}},
     {STATE_CACHE_NAME,        {ge::DT_FLOAT}},
     {APE_NAME,                {ge::DT_FLOAT}},
-    {NORM_WEIGHT_NAME,        {ge::DT_FLOAT}},
-    {ROPE_SIN_NAME,           {ge::DT_FLOAT}},
-    {ROPE_COS_NAME,           {ge::DT_FLOAT}},
     {STATE_BLOCK_TABLE_NAME,  {ge::DT_INT32}},
     {CU_SEQLENS_NAME,         {ge::DT_INT32}},
     {SEQUSED_NAME,            {ge::DT_INT32}},
@@ -128,9 +113,6 @@ const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
     {WGATE_NAME,              {COMPRESSOR_DIM_NUM_2}},
     {STATE_CACHE_NAME,        {COMPRESSOR_DIM_NUM_3}},
     {APE_NAME,                {COMPRESSOR_DIM_NUM_2}},
-    {NORM_WEIGHT_NAME,        {COMPRESSOR_DIM_NUM_1}},
-    {ROPE_SIN_NAME,           {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
-    {ROPE_COS_NAME,           {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
     {STATE_BLOCK_TABLE_NAME,  {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_1}},
     {CU_SEQLENS_NAME,         {COMPRESSOR_DIM_NUM_1}},
     {SEQUSED_NAME,            {COMPRESSOR_DIM_NUM_1}},
@@ -216,26 +198,17 @@ struct CompressorBaseShapeInfo {
     uint32_t coffSize = 0; // Coff: 1 or 2
     uint32_t csSize = 0; // Compress sequence len
     uint32_t rSize = 0; // Compress ratio
-    uint32_t cgSize = 0; // Compress group size
     uint32_t drSize = 0; // Dr
 };
 
-const std::vector<int> ROPE_HEAD_DIM {64};
 const std::vector<int> COFF {1, 2};
 #ifdef DAY0_SCOPE
 const std::vector<int> CMP_RATIO {4, 128};
-const std::vector<int> ROTARY_MODE {2};
 #else
 const std::vector<int> CMP_RATIO {2, 4, 8, 16, 32, 64, 128};
-const std::vector<int> ROTARY_MODE {1, 2};
 #endif
 const std::vector<uint32_t> HEAD_DIM {128, 512};
 const std::vector<int> CACHE_MODE {1};
-
-enum class ROTARY_MODE:uint8_t {
-    HALF = 1,
-    INTERLEAVE = 2
-};
 
 enum class CACHE_MODE:uint8_t {
     CONTINUOUS = 1,
@@ -252,20 +225,14 @@ struct CompressorContext {
     RequiredParaInfo wgate;
     RequiredParaInfo stateCache;
     RequiredParaInfo ape;
-    RequiredParaInfo normWeight;
-    RequiredParaInfo ropeSin;
-    RequiredParaInfo ropeCos;
     OptionalParaInfo stateBlockTable;
     OptionalParaInfo cuSeqlens;
     OptionalParaInfo seqUsed;
     OptionalParaInfo startPos;
     RequiredParaInfo cmpKv;
 
-    const int *ropeHeadDim;
     const int *coff;
     const int *cmpRatio;
-    const float *normEps;
-    const int *rotaryMode;
     const int *cacheMode;
     const int *stateCacheStrideDim0;
     TemplateId templateId;
@@ -323,26 +290,19 @@ private:
     ge::graphStatus CheckSingleParaWgate() const;
     ge::graphStatus CheckSingleParaStateCache() const;
     ge::graphStatus CheckSingleParaApe() const;
-    ge::graphStatus CheckSingleParaNormWeight() const;
-    ge::graphStatus CheckSingleParaRopeSin() const;
-    ge::graphStatus CheckSingleParaRopeCos() const;
     ge::graphStatus CheckSingleParaStateBlockTable() const;
     ge::graphStatus CheckSingleParaCuSeqlens() const;
     ge::graphStatus CheckSingleParaSeqused() const;
     ge::graphStatus CheckSingleParaStartPos() const;
     ge::graphStatus CheckSingleParaCmpKv() const;
-    ge::graphStatus CheckSingleParaRopeHeadDim() const;
     ge::graphStatus CheckSingleParaCmpRatio() const;
     ge::graphStatus CheckSingleParaCoff() const;
-    ge::graphStatus CheckSingleParaNormEps() const;
-    ge::graphStatus CheckSingleParaRotaryMode() const;
     ge::graphStatus CheckSingleParaCacheMode() const;
     ge::graphStatus CheckRequiredParaExistence() const;
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckFeature() const;
     ge::graphStatus CheckShapeConsistency() const;
-    ge::graphStatus CheckShapeConsistencyRope() const;
     ge::graphStatus CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
     ge::graphStatus CheckDtypeConsistency() const;
     ge::graphStatus CheckMultiParaConsistency() const;

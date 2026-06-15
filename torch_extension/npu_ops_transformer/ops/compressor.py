@@ -25,11 +25,11 @@ class CompressorOpBuilder(OpBuilder):
     def schema(self):
         """PyTorch operator signature."""
         return "npu_compressor(Tensor x, Tensor wkv, Tensor wgate, Tensor(a!) state_cache, " \
-               "Tensor ape, Tensor norm_weight, Tensor rope_sin, Tensor rope_cos, " \
-               "int rope_head_dim=64, int cmp_ratio=4, " \
+               "Tensor ape, " \
+               "int cmp_ratio=4, " \
                "Tensor? state_block_table=None, Tensor? cu_seqlens=None, " \
                "Tensor? seqused=None, Tensor? start_pos=None, " \
-               "int coff=1, float norm_eps=1e-6, int rotary_mode=1, int cache_mode=1) -> Tensor"
+               "int coff=1, int cache_mode=1) -> Tensor"
 
     def register_meta(self):
         """
@@ -38,11 +38,10 @@ class CompressorOpBuilder(OpBuilder):
         """
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_compressor_meta(x, wkv, wgate, state_cache, 
-                                ape, norm_weight, rope_sin, rope_cos,
-                                rope_head_dim=64, cmp_ratio=4,
+                                ape, cmp_ratio=4,
                                 state_block_table=None, cu_seqlens=None,
                                 seqused=None, start_pos=None,
-                                coff=1, norm_eps=1e-6, rotary_mode=1, cache_mode=1):
+                                coff=1, cache_mode=1):
             if x.dim() == 3:
                 b = x.size(0)
                 s = x.size(1)
@@ -64,18 +63,16 @@ op_module = compressor_op_builder.load()
 
 @impl(AS_LIBRARY, compressor_op_builder.name, "PrivateUse1")
 def npu_compressor(x, wkv, wgate, state_cache, 
-                   ape, norm_weight, rope_sin, rope_cos,
-                   rope_head_dim=64, cmp_ratio=4,
+                   ape, cmp_ratio=4,
                    state_block_table=None, cu_seqlens=None,
                    seqused=None, start_pos=None,
-                   coff=1, norm_eps=1e-6, rotary_mode=1, cache_mode=1):
+                   coff=1, cache_mode=1):
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     return op_module.npu_compressor(x, wkv, wgate, state_cache,
-                                    ape, norm_weight, rope_sin, rope_cos,
-                                    rope_head_dim, cmp_ratio,
+                                    ape, cmp_ratio,
                                     state_block_table, cu_seqlens,
                                     seqused, start_pos,
-                                    coff, norm_eps, rotary_mode, cache_mode)
+                                    coff, cache_mode)
