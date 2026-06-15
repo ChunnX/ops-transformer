@@ -1016,7 +1016,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         count++;
         if(count > 1000000){
             PRINTF("error WaitFlag,error count\n");
-            break;
+            // break;
         }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyParams, flagPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -1548,7 +1548,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if(count >10000000) {
             LOG_INFO("WaitStatusFlag error count");
 
-            break;
+            // break;
         }
         DataCopy(statusFlagTensor, statusCntGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(uint32_t)],
                  (SERVER_STATE_ALIGN - SPLIT_BLOCK_DATA_SIZE) / sizeof(uint32_t)); // 搬运后续的8个数据
@@ -1597,7 +1597,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
         count++;
         if (count == 1000000) {
             PRINTF("[BATCHWRITE][WaitToken] error count.\n");
-            break;
+            // break;
         }
         if (tokenRcvStatus_(rcvStatusIndex) == 1) {
             rcvStatusIndex = (rcvStatusIndex + 1) % tokenCnt; // 轮询查询每个有效的index
@@ -1990,7 +1990,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         count ++;
         if(count == 10000000) {
             PRINTF("waitDispatch error count\n");
-            break;
+            // break;
         }
     }
     // 清状态
@@ -2194,7 +2194,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         count++;
         if(count == 1000000) {
             PRINTF("WaitCumSumFlag error count \n");
-            break;
+            // break;
         }
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
