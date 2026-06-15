@@ -1198,6 +1198,16 @@
   </tr>
   <tr>
     <td>posembedding</td>
+    <td><a href="../../posembedding/inplace_partial_rotary_mul/README.md">inplace_partial_rotary_mul</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>执行单路旋转位置编码的Inplace计算，直接修改输入张量，不产生新的输出张量。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
     <td><a href="../../posembedding/qkv_rms_norm_rope_cache/README.md">qkv_rms_norm_rope_cache</a></td>
     <td>✓</td>
     <td>✓</td>
