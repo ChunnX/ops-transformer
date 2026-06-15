@@ -144,10 +144,10 @@ std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
         softmax_lse_size = {};
     }
     softmax_lse = at::empty(softmax_lse_size, q.options().dtype(torch::kFloat32));
- 
+
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
 }
- 
+
 std::tuple<at::Tensor, at::Tensor> sparse_flash_mla(
     const at::Tensor &q,
     const c10::optional<at::Tensor> &ori_kv, const c10::optional<at::Tensor> &cmp_kv,
@@ -163,11 +163,10 @@ std::tuple<at::Tensor, at::Tensor> sparse_flash_mla(
     int64_t ori_mask_mode, int64_t cmp_mask_mode,
     int64_t ori_win_left, int64_t ori_win_right,
     c10::string_view layout_q, c10::string_view layout_kv,
-    int64_t topk_value_mode, bool return_softmax_lse,
-    c10::optional<int64_t> key_dtype, c10::optional<int64_t> value_dtype)
+    int64_t topk_value_mode, bool return_softmax_lse)
 {
     TORCH_CHECK(q.numel() > 0, "Tensor query is empty.")
- 
+
     std::string layout_q_str = std::string(layout_q);
     std::string layout_kv_str = std::string(layout_kv);
     const at::Tensor& ori_kv_val = *ori_kv;
