@@ -125,11 +125,19 @@ std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
             };
         } else {
             // 对齐 Python: [ori_kv.shape[1], q.shape[0], q.shape[2] // ori_kv.shape[2]]
-            softmax_lse_size = {
-                ori_kv.size(DIM_1),
-                q.size(DIM_0),
-                q.size(DIM_1) / ori_kv.size(DIM_1)
-            };
+            if (layout_kv_str == "PA_BBND") {
+                softmax_lse_size = {
+                    ori_kv.size(DIM_2),
+                    q.size(DIM_0),
+                    q.size(DIM_1) / ori_kv.size(DIM_2)
+                };
+            } else {
+                softmax_lse_size = {
+                    ori_kv.size(DIM_1),
+                    q.size(DIM_0),
+                    q.size(DIM_1) / ori_kv.size(DIM_1)
+                };
+            }
         }
     } else {
         // 不返回时tensor传空
