@@ -12,8 +12,8 @@
 * \file flash_attention_regular.cpp
 * \brief
 */
-#ifndef FLASH_ATTENTION_REGULAR_H
-#define FLASH_ATTENTION_REGULAR_H
+#ifndef FLASH_ATTENTION_REGULAR_CPP
+#define FLASH_ATTENTION_REGULAR_CPP
 
 #include "fia_kernel_common.hpp"
 
