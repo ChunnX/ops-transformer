@@ -57,6 +57,16 @@ scale shape: (G, N)  其中 G = K / gs
 weight_dequant[k, n] = (weight_int4[k, n] + offset[k/gs, n]) × scale[k/gs, n]
 ```
 
+**关键布局约束**：`antiquantScale` 和 `antiquantOffset` 的 GM 输入布局不随 weight 转置变化，始终按非转置权重语义组织：
+
+```text
+单单单: [E, G, N]
+多多多: [G_i, N_i]
+scale(g, n) / offset(g, n) 的 GM 地址 = g * N_i + n
+```
+
+因此，weight 为 NK（`bTrans=true`，GM weight shape 为 `[N,K]`）时，weight 的 GM 内轴是 K，但 scale/offset 仍是 `[G,N]`，不能按 ops-nn NK 实现中常见的 `[N,G]` UB 布局直接索引。
+
 ### 1.4 与 A2/A3 已有场景的关系
 
 本场景是对 A2/A3 已有 A16W4 伪量化数据流的**兼容性扩展**：
@@ -216,6 +226,8 @@ bTrans=true:  ceil(256/32) * 64 * 2B = 1KB
 ```
 
 **UB 空间分配逻辑不变**：复用 `GetNdBufferInfo()`，`antiQuantOffset` 的 4KB 保留。scale/offset 以 VF tile 粒度组织到 UB，而不是按完整 L1 tile 一次性展开。
+
+这里的 1KB 上限是**单个 VF tile** 的 scale 或 offset 上限，不是单个 MTE2 weight tile 的上限。编码时不能直接复用现有 `CopyAntiQuantParamsGmToUb(ubMte2NSize, ubMte2KSize, ...)` 的大块 pergroup 搬运方式；否则在 `groupSize=32` 时，一个 MTE2 tile 的 scale 可能达到 2KB，超过 `antiQuantScale` 单缓冲。A16W4 pergroup 需要新增/改造为 VF tile 粒度的 scale/offset 搬运 helper。
 
 ---
 
@@ -388,17 +400,32 @@ UB highBitData 中的 NZ 存储（K 为内轴，N 为外轴）：
 
 调用入口：`AntiquantComputeW4NKPerGroup(bubNLen, bubKLen)` → 按 `tiling->groupSize` 分派
 
+**不能原样迁移 ops-nn scale/offset 索引**：
+
+- ops-nn `AntiquantComputeW4NKPerGroup` 的 NK VF 假设 scale/offset 在 UB 中按近似 `[N_tile, G_aligned]` 布局访问，典型地址为 `base + groupIdx + nBubIdx * outerStrideScale`。
+- 本算子规格要求 GM 输入固定为 `[G, N]`，直接按 VF tile 从 GM 搬入 UB 后自然布局为 `[G_tile, N_tile_aligned]`。
+- 因此 NK 路径只能复用 ops-nn 的 weight unpack、cast、输出 NZ 组织和 groupSize 分派结构；scale/offset 加载必须改为 GMM 专用地址公式：
+
+```text
+scale_addr(gLocal, nLocal)  = scaleBase  + gLocal * nTileAlign + nLocal
+offset_addr(gLocal, nLocal) = offsetBase + gLocal * nTileAlign + nLocal
+
+nTileAlign = CeilAlign(nRealLen, BLOCK_CUBE)
+```
+
+VF 中对每个 `scale(g,n)` / `offset(g,n)` 使用 `DIST_BRC_B16` 广播到向量寄存器；当一个 128 元素 K 向量覆盖多个 group 时，再用 `Select` 按 K 分段拼接出正确的 scale/offset 寄存器。
+
 **分派逻辑**：
 
 ```text
 if groupSize == 32:
-  VF_CALL<AntiquantW4Pergroup32NK<xType, wType, false, useVag>>
+  VF_CALL<AntiquantW4Pergroup32NK<xType, wType, hasAntiQuantOffset, useVag>>
 elif groupSize == 64:
-  VF_CALL<AntiquantW4Pergroup64NK<xType, wType, false, useVag>>
+  VF_CALL<AntiquantW4Pergroup64NK<xType, wType, hasAntiQuantOffset, useVag>>
 elif groupSize == 128:
-  VF_CALL<AntiquantW4Pergroup128NK<xType, wType, false, useVag>>
+  VF_CALL<AntiquantW4Pergroup128NK<xType, wType, hasAntiQuantOffset, useVag>>
 elif groupSize == 256:
-  VF_CALL<AntiquantW4Pergroup256NK<xType, wType, false, useVag>>
+  VF_CALL<AntiquantW4Pergroup256NK<xType, wType, hasAntiQuantOffset, useVag>>
 ```
 
 本数据流仅支持 32/64/128/256，不需要 odd 或 gt128 泛化分支。
@@ -415,7 +442,7 @@ elif groupSize == 256:
 | `bubNLen` | `bubNLen` | N 方向实际长度 |
 | `innerStrideWeight` | `64` | K 方向 weight 步长（128 INT4 = 64 字节） |
 | `outerStrideWeight` | `CeilAlign(bubKLen, 32) >> 1` | N 方向 weight 步长（字节） |
-| `outerStrideScale` | `CeilAlign(groupNumBub, 128)` | N 方向 scale 步长（元素数） |
+| `nTileAlign` | `CeilAlign(bubNLen, BLOCK_CUBE)` | GMM `[G_tile,N_tile_aligned]` 的 N 方向步长 |
 | `dataBlockStride` | `CeilAlign(bubNLen, 128) + 1` | 输出 NZ block 间距 |
 | `maskWeight` | `bubKLen` | weight mask（尾块处理） |
 
@@ -425,8 +452,10 @@ elif groupSize == 256:
 for groupIdx = 0 to groupNum-1:                    // 按 group 遍历 K 方向
   for nBubIdx = 0 to bubNLen-1:                    // N 方向逐行
 
-    // 1. 加载 scale（DIST_BRC_B16：广播加载，1 个 scale 值广播到 128 个元素）
-    scale ← DataCopy<DIST_BRC_B16>(scaleBaseAddr + groupIdx + nBubIdx * outerStrideScale)
+    // 1. GMM 专用 scale/offset 地址：[G_tile, N_tile_aligned]
+    scale ← DataCopy<DIST_BRC_B16>(scaleBaseAddr + groupIdx * nTileAlign + nBubIdx)
+    if hasAntiQuantOffset:
+      offset ← DataCopy<DIST_BRC_B16>(offsetBaseAddr + groupIdx * nTileAlign + nBubIdx)
 
     // 2. 加载 INT4 weight（DIST_UNPACK4_B8）
     weightB4 ← DataCopy<DIST_UNPACK4_B8>(weightInBaseAddr +
@@ -436,10 +465,14 @@ for groupIdx = 0 to groupNum-1:                    // 按 group 遍历 K 方向
     // 3. Cast INT4 → FP16/BF16
     weightB16 ← Cast<xType, int4x2_t>(weightB16, weightB4, maskAll)
 
-    // 4. 乘以 scale
+    // 4. 若 hasAntiQuantOffset: 加 offset
+    if hasAntiQuantOffset:
+      weightB16 ← Add(weightB16, offset, maskAll)
+
+    // 5. 乘以 scale
     weightB16 ← Mul(weightB16, weightB16, scale, maskAll)
 
-    // 5. 写入 UB highBitData（NZ 格式）
+    // 6. 写入 UB highBitData（NZ 格式）
     DataCopy<DATA_BLOCK_COPY, POST_MODE_UPDATE>(weightOutBaseAddr, weightB16,
                                                  dataBlockStride, repeatStride, maskWeight)
 
@@ -466,7 +499,9 @@ for groupIdx = 0 to groupNum-1:                    // 按 group 遍历 K 方向
 ```text
 for groupIdx = 0 to groupNum-1:
   for nBubIdx = 0 to bubNLen-1:
-    scale ← DataCopy<DIST_BRC_B16>(scaleBaseAddr + groupIdx + nBubIdx * outerStrideScale)
+    scale ← DataCopy<DIST_BRC_B16>(scaleBaseAddr + groupIdx * nTileAlign + nBubIdx)
+    if hasAntiQuantOffset:
+      offset ← DataCopy<DIST_BRC_B16>(offsetBaseAddr + groupIdx * nTileAlign + nBubIdx)
 
     // 加载 2 个 128 元素的 INT4 weight
     weightB4  ← DataCopy<DIST_UNPACK4_B8>(weightInBaseAddr + ...)
@@ -474,6 +509,10 @@ for groupIdx = 0 to groupNum-1:
 
     weightB16  ← Cast(weightB4)
     weight1B16 ← Cast(weight1B4)
+
+    if hasAntiQuantOffset:
+      weightB16  ← Add(weightB16, offset)
+      weight1B16 ← Add(weight1B16, offset)
 
     weightB16  ← Mul(weightB16, scale)
     weight1B16 ← Mul(weight1B16, scale)
@@ -493,7 +532,7 @@ for groupIdx = 0 to groupNum-1:
 |------|----------|------|
 | `innerExtend` | `CeilDiv(bubKLen, 128)` | K 方向按 128 元素分块 |
 | `outerExtend` | `bubNLen` | N 方向逐行 |
-| `outerStrideScale` | `CeilAlign(groupNumBub, 128)` | scale N 方向步长 |
+| `nTileAlign` | `CeilAlign(bubNLen, BLOCK_CUBE)` | GMM `[G_tile,N_tile_aligned]` 的 N 方向步长 |
 | `outerStrideWeight` | `CeilAlign(bubKLen, 32) >> 1` | weight N 方向步长（字节） |
 
 **循环结构**：
@@ -502,17 +541,20 @@ for groupIdx = 0 to groupNum-1:
 for innerIdx = 0 to innerExtend-1:                 // K 方向按 128 元素分块
   for outerIdx = 0 to outerExtend-1:               // N 方向逐行
 
-    // 1. 加载 2 个相邻 group 的 scale，用 Select 拼接
+    // 1. 从 [G_tile, N_tile_aligned] 加载 2 个相邻 group 的 scale，用 Select 拼接
     //    group[2*innerIdx] 和 group[2*innerIdx+1] 各 64 个 K 元素
-    oriScale00 ← DataCopy<DIST_BRC_B16>(scaleBaseAddr00 + innerIdx*2 + ...)
-    oriScale01 ← DataCopy<DIST_BRC_B16>(scaleBaseAddr01 + innerIdx*2 + ...)
+    oriScale00 ← DataCopy<DIST_BRC_B16>(scaleBaseAddr + (innerIdx*2)     * nTileAlign + outerIdx)
+    oriScale01 ← DataCopy<DIST_BRC_B16>(scaleBaseAddr + (innerIdx*2 + 1) * nTileAlign + outerIdx)
     scale0 ← Select(oriScale00, oriScale01, maskH)  // 前半=00, 后半=01
+    // offset 同理构造
 
     // 2. 加载 128 个 INT4 weight（覆盖 2 个 group × 64 K）
     weightB4 ← DataCopy<DIST_UNPACK4_B8>(weightInBaseAddr + innerIdx*64 + ...)
 
-    // 3. Cast + Mul
+    // 3. Cast + Add(offset) + Mul
     weightB16 ← Cast(weightB4)
+    if hasAntiQuantOffset:
+      weightB16 ← Add(weightB16, offset0)
     weightB16 ← Mul(weightB16, scale0)
 
     // 4. 写入 UB
@@ -523,7 +565,7 @@ for innerIdx = 0 to innerExtend-1:                 // K 方向按 128 元素分�
 
 ##### gs=32：`AntiquantW4Pergroup32NK`
 
-每个 group 有 32 个 K 元素 = 1/4 向量寄存器宽度，需要 `DIST_E2B_B16` + `Interleave` 扩展 scale。
+每个 group 有 32 个 K 元素 = 1/4 向量寄存器宽度。ops-nn 在 `[N,G]` 布局下可用 `DIST_E2B_B16` 一次加载 8 个连续 group scale；GMM 的 scale/offset 固定为 `[G,N]`，同一个 N 下的 8 个 group 在 UB 中相隔 `nTileAlign`，因此不能直接使用 `DIST_E2B_B16` 原样实现。
 
 **参数**（`ParamsGroupSize32`）：
 
@@ -531,7 +573,7 @@ for innerIdx = 0 to innerExtend-1:                 // K 方向按 128 元素分�
 |------|----------|------|
 | `innerExtend` | `CeilDiv(bubKLen, 256)` | K 方向按 256 元素分块（8 groups × 32） |
 | `outerExtend` | `bubNLen` | N 方向逐行 |
-| `outerStrideScale` | `CeilAlign(groupNumBub, 128)` | scale N 方向步长 |
+| `nTileAlign` | `CeilAlign(bubNLen, BLOCK_CUBE)` | GMM `[G_tile,N_tile_aligned]` 的 N 方向步长 |
 | `outerStrideWeight` | `CeilAlign(bubKLen, 32) >> 1` | weight N 方向步长（字节） |
 
 **循环结构**：
@@ -540,26 +582,32 @@ for innerIdx = 0 to innerExtend-1:                 // K 方向按 128 元素分�
 for innerIdx = 0 to innerExtend-1:                 // K 方向按 256 元素分块
   for outerIdx = 0 to outerExtend-1:               // N 方向逐行
 
-    // 1. 加载 8 个 group 的 scale（DIST_E2B_B16：每个 scale 值扩展为 16 个副本）
-    //    SRC: s0 s1 s2 s3 s4 s5 s6 s7
-    //    DST: s0×16 s1×16 s2×16 s3×16 s4×16 s5×16 s6×16 s7×16
-    scale0 ← DataCopy<DIST_E2B_B16>(scaleBaseAddr + innerIdx*8 + ...)
-    // Interleave 拆分为两个寄存器：
-    //   scale0: s0×16 s1×16 s2×16 s3×16 (前 4 groups)
-    //   scale1: s4×16 s5×16 s6×16 s7×16 (后 4 groups)
-    Interleave(scale0, scale1, scale0, scale0)
+    // 1. 分别广播 8 个 group 的 scale
+    s0 ← DataCopy<DIST_BRC_B16>(scaleBaseAddr + (innerIdx*8 + 0) * nTileAlign + outerIdx)
+    s1 ← DataCopy<DIST_BRC_B16>(scaleBaseAddr + (innerIdx*8 + 1) * nTileAlign + outerIdx)
+    ...
+    s7 ← DataCopy<DIST_BRC_B16>(scaleBaseAddr + (innerIdx*8 + 7) * nTileAlign + outerIdx)
 
-    // 2. 加载 256 个 INT4 weight（分 2 次 × 128 元素）
+    // 2. 用 Select 按 32-lane 分段拼接两个 128 元素 scale 寄存器
+    //    scale0 对应 groups 0..3，scale1 对应 groups 4..7
+    scale0 ← SelectByQuarter(s0, s1, s2, s3)
+    scale1 ← SelectByQuarter(s4, s5, s6, s7)
+    // offset 同理构造；hasAntiQuantOffset=false 时编译期消除
+
+    // 3. 加载 256 个 INT4 weight（分 2 次 × 128 元素）
     weightB4Vl0 ← DataCopy<DIST_UNPACK4_B8>(weightInBaseAddr + innerIdx*128 + ...)
     weightB4Vl1 ← DataCopy<DIST_UNPACK4_B8>(weightInBaseAddr + 64 + innerIdx*128 + ...)
 
-    // 3. Cast + Mul
+    // 4. Cast + Add(offset) + Mul
     weightB16Vl0 ← Cast(weightB4Vl0)
     weightB16Vl1 ← Cast(weightB4Vl1)
+    if hasAntiQuantOffset:
+      weightB16Vl0 ← Add(weightB16Vl0, offset0)
+      weightB16Vl1 ← Add(weightB16Vl1, offset1)
     weightB16Vl0 ← Mul(weightB16Vl0, scale0)
     weightB16Vl1 ← Mul(weightB16Vl1, scale1)
 
-    // 4. 分别写入两个输出位置
+    // 5. 分别写入两个输出位置
     DataCopy<DATA_BLOCK_COPY>(weightOutBaseAddr0, weightB16Vl0, ...)
     DataCopy<DATA_BLOCK_COPY>(weightOutBaseAddr1, weightB16Vl1, ...)
 
@@ -573,7 +621,7 @@ for innerIdx = 0 to innerExtend-1:                 // K 方向按 256 元素分�
 |------|--------------------------|--------------------------|
 | VF 函数数量 | 1 个统一函数 | 4 个专用函数（按 gs 分派） |
 | 循环结构 | nLoop → group → k（三层） | group → N 或 inner → outer（两层） |
-| scale 加载方式 | `DIST_NORM`（直接加载 128 元素） | `DIST_BRC_B16`（广播）/ `DIST_E2B_B16`（扩展） |
+| scale 加载方式 | `DIST_NORM`（直接加载 N 向量） | `DIST_BRC_B16` 广播；gs=64/32 用 `Select` 拼接 |
 | K 方向处理 | 逐 K 行（groupSize 次迭代） | 按 group 整体处理（gs 个 K 共享 1 个 scale） |
 | weight 加载 | 每次 128 个 INT4（1 个寄存器） | gs=128: 1 次; gs=256: 2 次; gs=64/32: 按 innerExtend 分块 |
 | 输出格式 | NZ（K 为内轴，`dataBlockStride = CeilAlign(K,16)+1`） | NZ（N 为内轴，`dataBlockStride = CeilAlign(N,128)+1`） |
@@ -583,16 +631,36 @@ for innerIdx = 0 to innerExtend-1:                 // K 方向按 256 元素分�
 
 1. **函数签名适配**：GMM 的 VF 函数需要接收 GMM 风格的参数（`offsetParam`、`localAddressParam`），而非 wqbmmv2 的 `ParamsKN` / `ParamsGroupSize*`。需要在 `weight_quant_vec_compute.h` 中构造参数后调用。
 
-2. **UB 地址映射**：
+2. **scale/offset 必须按 VF tile 搬运**：新增 helper，例如 `CopyAntiQuantParamsGmToUbForVf(nRealLen, kRealLen, globalNOffset, globalKOffset, offsetParam)`。源地址和搬运形状：
+
+   ```text
+   gBase = globalKOffset / groupSize
+   gTile = CeilDiv((globalKOffset % groupSize) + kRealLen, groupSize)
+   nTileAlign = CeilAlign(nRealLen, BLOCK_CUBE)
+
+   GM src = antiquantScale[gBase * N + globalNOffset]
+   UB dst layout = [gTile, nTileAlign]
+
+   DataCopyPad2D(scaleUb,  scaleGm[src],  gTile, nRealLen, nTileAlign, N)
+   if hasAntiQuantOffset:
+     DataCopyPad2D(offsetUb, offsetGm[src], gTile, nRealLen, nTileAlign, N)
+   ```
+
+   该 helper 在 `WeightAntiQuantCompute()` 的每个 VF tile 计算前调用，而不是在 `CopyGmToUb()` 中按完整 MTE2 weight tile 调用。
+
+3. **UB 地址映射**：
    - `weightInUbBaseAddr_` → GMM 的 `ubWeightInputLowBitTotalBuffer_` 偏移
    - `weightOutUbAddr_` → GMM 的 `ubHighBitTotalBuffer_` 偏移
-   - `scaleBaseAddr1_` → GMM 的 `ubAntiQuantScaleTotalBuffer_` 偏移
+   - `scaleBaseAddr1_` → GMM 的 `ubAntiQuantScaleTotalBuffer_` 当前 VF tile 偏移
+   - `offsetBaseAddr1_` → GMM 的 `ubAntiQuantOffsetTotalBuffer_` 当前 VF tile 偏移
 
-3. **`hasAntiQuantOffset` 编译期分支**：通过 `WqmmConfig.hasAntiQuantOffset` 控制，编译器会消除不需要的 offset 条件分支代码。
+4. **`hasAntiQuantOffset` 编译期分支**：通过 `WqmmConfig.hasAntiQuantOffset` 控制，编译器会消除不需要的 offset 条件分支代码。`PER_GROUP` 路径必须和 `PER_CHANNEL` 一样，在 `hasAntiQuantOffset=true` 时把 offset 从 GM 搬到 `ubAntiQuantOffsetTotalBuffer_`。
 
-4. **`useVag` 参数**：控制是否使用地址寄存器（AddrReg）优化。建议初始实现设为 `false`（直接地址计算），后续可优化为 `true`。
+5. **NK scale/offset 地址公式独立于 ops-nn**：NK 路径中，scale/offset 地址使用 `gLocal * nTileAlign + nLocal`。不要使用 ops-nn 的 `nLocal * outerStrideScale + gLocal`，否则在本算子固定 `[G,N]` 输入下会把不同 N/group 的参数读错。
 
-5. **输出 NZ 格式**：VF 输出到 UB 的 highBitData 使用 NZ 格式（`DATA_BLOCK_COPY + POST_MODE_UPDATE`），后续 MTE3 从 UB 搬到 L1 时需要按 NZ 格式解析。这与 GMM 现有的 MTE3 流程一致，无需修改。
+6. **`useVag` 参数**：控制是否使用地址寄存器（AddrReg）优化。建议初始实现设为 `false`（直接地址计算），待正确性验证后再考虑把 GMM 专用地址公式改写为 AddrReg。
+
+7. **输出 NZ 格式**：VF 输出到 UB 的 highBitData 使用 NZ 格式（`DATA_BLOCK_COPY + POST_MODE_UPDATE`），后续 MTE3 从 UB 搬到 L1 时需要按 NZ 格式解析。这与 GMM 现有的 MTE3 流程一致，无需修改。
 
 ### 4.5 Cube 复用
 
@@ -631,8 +699,8 @@ Cube 侧只看到 L1 中的 `xType` weight：
 | `grouped_matmul_apt.cpp` | 新增 8 个 basic-controller 分支 |
 | `grouped_matmul_weight_quant_basic_controller.h` | pergroup scale/offset 偏移和 bias 独立偏移 |
 | `basic_block_config.h` | A16W4 ND pergroup `WqmmConfig` |
-| `weight_quant_vec_compute.h` | A16W4 pergroup VF 分发与 scale/offset tile 布局 |
-| `basic_block_vf_nd.h` | 新增 KN/NK INT4 pergroup VF |
+| `weight_quant_vec_compute.h` | A16W4 pergroup VF 分发；scale/offset 按 VF tile 搬运；PER_GROUP offset 搬运 |
+| `basic_block_vf_nd.h` | 新增 KN/NK INT4 pergroup VF；NK 按固定 `[G,N]` scale/offset 输入构造广播与 Select |
 | `grouped_matmul_def.cpp` | config950 增加 INT4 ND 组合 |
 
 ### 6.2 复用不修改
@@ -664,4 +732,4 @@ A16W4 pergroup ND 的 tiling 和 kernel 应按 A16W8 ND basic-controller 扩展�
 - L1/UB buffer 大小复用 A16W8 ND。
 - Controller 只增加 pergroup scale 偏移和 bias 独立偏移。
 - Cube 完全复用。
-- 核心新增代码是 INT4 pergroup ND VF 反量化，参考 ops-nn 的 `AntiquantComputeKNPerGroup` 和 `AntiquantComputeW4NKPerGroup`。
+- 核心新增代码是 INT4 pergroup ND VF 反量化。KN 路径可按 ops-nn `AntiquantComputeKNPerGroup` 思路迁移；NK 路径不能原样复用 ops-nn scale/offset 索引，必须按本算子固定 `[G,N]` 输入使用广播和 Select 构造正确的 scale/offset。

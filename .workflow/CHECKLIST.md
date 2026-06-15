@@ -51,6 +51,10 @@
 
 ### BasicBlock/VecCompute 适配
 - [ ] pergroup 反量化计算正确
+- [ ] scale/offset 按 VF tile 粒度搬运，单缓冲不超过 1KB
+- [ ] `bTrans=true` 时 scale/offset 固定按 `[G,N]` 输入处理，NK VF 使用 `g*nTileAlign+n` 地址公式
+- [ ] `groupSize=32/64` 的 NK VF 使用 broadcast + select 构造跨 group 的 scale/offset
+- [ ] `hasAntiQuantOffset=true` 时 PER_GROUP 路径正确搬运 offset 到 UB
 - [ ] INT4 weight unpack 和 cast 正确
 - [ ] 各 group_size (32/64/128/256) 计算正确
 - [ ] WqmmConfig 配置正确

@@ -480,3 +480,27 @@
 #### 影响范围
 - 所有设计文档和 SVG 图均已更新
 - 后续编码实现需要处理 offset 相关逻辑（编译期分支）
+
+---
+
+### 2026-06-16 | 修正 SRS 中 NK 反量化 scale/offset 布局方案
+
+**类型**: 📝 文档
+**范围**: `raw/development/gmm_a16w4_pergroup_nd_srs.md` + `CHECKLIST.md`
+
+#### 变更内容
+- 在 SRS 中明确 `antiquantScale`/`antiquantOffset` 的 GM 输入布局不随 weight 转置变化，始终为 `[G,N]`（单单单为 `[E,G,N]`）
+- 修正 NK（`bTrans=true`）VF 方案：不能原样使用 ops-nn 的 `[N,G]` scale/offset 索引，需要按 GMM 固定 `[G,N]` 输入使用 `gLocal*nTileAlign+nLocal` 地址公式
+- 明确 NK 路径中 scale/offset 通过 `DIST_BRC_B16` 广播，并在 `groupSize=32/64` 时使用 `Select` 拼接跨 group 的寄存器
+- 明确 scale/offset 必须按 VF tile 粒度搬运，不能按完整 MTE2 weight tile 大块搬运，否则 `groupSize=32` 时可能超过 1KB 单缓冲
+- 明确 `PER_GROUP` 且 `hasAntiQuantOffset=true` 时需要和 scale 一样搬运 offset 到 UB
+- 在 `CHECKLIST.md` 增加 VF tile 搬运、NK `[G,N]` 地址公式、broadcast/select、PER_GROUP offset 搬运检查项
+
+#### 关键决策
+- KN 路径可继续按 ops-nn `AntiquantComputeKNPerGroup` 思路迁移
+- NK 路径只复用 ops-nn 的 weight unpack/cast/output NZ 和 groupSize 分派结构；scale/offset 加载采用 GMM 专用实现
+- 不在 UB 中预转置 scale/offset，优先在 VF 内通过广播和 Select 构造正确寄存器，减少额外 buffer 和搬运复杂度
+
+#### 影响范围
+- 仅文档和检查清单更新，不涉及代码
+- 后续编码需重点修改 `weight_quant_vec_compute.h` 与 `basic_block_vf_nd.h` 的 A16W4 pergroup ND 路径
