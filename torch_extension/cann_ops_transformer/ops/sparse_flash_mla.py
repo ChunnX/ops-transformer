@@ -12,8 +12,8 @@ from typing import Optional
 import torch
 import torch_npu
 from torch.library import impl
-from npu_ops_transformer.op_builder.builder import OpBuilder
-from npu_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 SMLA_METADATA_SIZE = 1024
 SMLA_METADATA_OP_NAME = "sparse_flash_mla_metadata"
@@ -21,7 +21,7 @@ SMLA_METADATA_OP_NAME = "sparse_flash_mla_metadata"
 
 class SparseFlashMlaOpBuilder(OpBuilder):
     def __init__(self):
-        super(SparseFlashMlaOpBuilder, self).__init__("npu_sparse_flash_mla")
+        super(SparseFlashMlaOpBuilder, self).__init__("sparse_flash_mla")
 
     def sources(self):
         """Path to C++ source code."""
@@ -78,7 +78,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
 
 
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_sparse_flash_mla_meta(q,
+        def sparse_flash_mla_meta(q,
                                                 ori_kv=None, cmp_kv=None,
                                                 ori_sparse_indices=None, cmp_sparse_indices=None,
                                                 ori_block_table=None, cmp_block_table=None,
@@ -92,8 +92,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                                                 ori_mask_mode=4, cmp_mask_mode=3,
                                                 ori_win_left=127, ori_win_right=0,
                                                 layout_q='BSND', layout_kv='PA_BBND',
-                                                topk_value_mode=1, return_softmax_lse=False,
-                                                key_dtype=None, value_dtype=None):
+                                                topk_value_mode=1, return_softmax_lse=False):
             key_headnum = ori_kv.shape[1] if layout_kv == "TND" else ori_kv.shape[2]
             if layout_q == "BSND":
                 ## 添加softmax_lse
@@ -115,8 +114,8 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             return (attn_out, softmax_lse)
 
 # Instantiate the builder
-npu_sparse_flash_mla_op_builder = SparseFlashMlaOpBuilder()
-op_module = npu_sparse_flash_mla_op_builder.load()  # Compiles/loads the .so file
+sparse_flash_mla_op_builder = SparseFlashMlaOpBuilder()
+op_module = sparse_flash_mla_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, SMLA_METADATA_OP_NAME, "PrivateUse1")
@@ -196,13 +195,12 @@ def sparse_flash_mla(q,
                                     ori_mask_mode=4, cmp_mask_mode=3,
                                     ori_win_left=127, ori_win_right=0,
                                     layout_q='BSND', layout_kv='PA_BBND',
-                                    topk_value_mode=1, return_softmax_lse=False,
-                                    key_dtype=None, value_dtype=None):
+                                    topk_value_mode=1, return_softmax_lse=False):
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.npu_sparse_flash_mla(q,
+    return op_module.sparse_flash_mla(q,
                                                 ori_kv, cmp_kv,
                                                 ori_sparse_indices, cmp_sparse_indices,
                                                 ori_block_table, cmp_block_table,
@@ -216,5 +214,4 @@ def sparse_flash_mla(q,
                                                 ori_mask_mode, cmp_mask_mode,
                                                 ori_win_left, ori_win_right,
                                                 layout_q, layout_kv,
-                                                topk_value_mode, return_softmax_lse,
-                                                key_dtype, value_dtype)
+                                                topk_value_mode, return_softmax_lse)
