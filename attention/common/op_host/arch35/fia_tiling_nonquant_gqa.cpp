@@ -165,7 +165,6 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
     OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo_->opName, "Set plat memory info fail."),
                 return ge::GRAPH_FAILED);
 
-    // TODO，增加空tensor、路径6 STC验证用例
     if (fiaInfo_->emptyTensorFlag) {
         int64_t outSize = fiaInfo_->opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
         int64_t lseSize =
@@ -751,7 +750,6 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyInfo()
         tilingKeyInfo_.hasAttenMask = fiaInfo_->attenMaskFlag;
         UpdateTilingKeyHasRope();
 
-        // tilingKeyInfo_.isPa = fiaInfo_->pageAttentionFlag;
         tilingKeyInfo_.kvLayoutType = tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType;
 
         if (fiaInfo_->pageAttentionFlag) {
@@ -768,7 +766,6 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyInfo()
 
         tilingKeyInfo_.emptyTensor = fiaInfo_->emptyTensorFlag;
         tilingKeyInfo_.enableKvPrefix = fiaInfo_->sysPrefixFlag;
-        // tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
         tilingKeyInfo_.isReconstructTemp = true;
     }
 }
@@ -820,7 +817,6 @@ void FiaTilingNonQuantArch35::CalcWorkspaceSize()
 
     workspaceSize_ = sysWorkspaceSize;
 
-    // TODO，确认这段workspace分配逻辑
     int64_t bmm2Bytes = 0;
     int64_t vec2Bytes = 0;
     int64_t bmm2ResBlockSize = dVBasicBlock;
@@ -929,7 +925,7 @@ void FiaTilingNonQuantArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
-    tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout); // TODO 后续整改
+    tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout);
 
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
@@ -1071,5 +1067,5 @@ void FiaTilingNonQuantArch35::PrintAllTilingData()
 // 3. 个位代表特化模板到泛化模板的优先级排序
 REGISTER_TILING_TEMPLATE_FIA(
     FusedInferAttentionScore, FiaTilingNonQuantArch35, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}),
-    28); // TODO，29改28，注册时未区分npu arch，会存在多重定义，是否要修改fia_tiling_templates_registry.h？
+    28); // 29改28，注册时未区分npu arch，会存在多重定义
 } // namespace optiling
