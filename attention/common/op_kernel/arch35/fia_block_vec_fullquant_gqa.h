@@ -1259,6 +1259,34 @@ public:
                                       constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::NGTD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             }
+            if (constInfo.isSoftmaxLseEnable) {
+                if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
+                    OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
+                    offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
+                                          1, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                    DealLseActSeqLenIsInf<GmFormat::BSNGD>(bIdx, n2Idx, offsetCalculator, softmaxLseGm);
+                } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
+                    OffsetCalculator<GmFormat::BNGSD> offsetCalculator;
+                    offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
+                                          1, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                    DealLseActSeqLenIsInf<GmFormat::BNGSD>(bIdx, n2Idx, offsetCalculator, softmaxLseGm);
+                } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
+                    OffsetCalculator<GmFormat::NGBSD> offsetCalculator;
+                    offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
+                                          1, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                    DealLseActSeqLenIsInf<GmFormat::NGBSD>(bIdx, n2Idx, offsetCalculator, softmaxLseGm);
+                } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
+                    OffsetCalculator<GmFormat::TNGD> offsetCalculator;
+                    offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, 1, actualSeqLengthsGmQ,
+                                          constInfo.actualSeqLenSize);
+                    DealLseActSeqLenIsInf<GmFormat::TNGD>(bIdx, n2Idx, offsetCalculator, softmaxLseGm);
+                } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
+                    OffsetCalculator<GmFormat::NGTD> offsetCalculator;
+                    offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, 1, actualSeqLengthsGmQ,
+                                          constInfo.actualSeqLenSize);
+                    DealLseActSeqLenIsInf<GmFormat::NGTD>(bIdx, n2Idx, offsetCalculator, softmaxLseGm);
+                }
+            }
         }
     }
 };
