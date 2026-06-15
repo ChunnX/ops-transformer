@@ -30,7 +30,7 @@ Notes
   block-aligned (`make_block_mask_per_head` expands each kept block to all
   of its 128×128 token positions), so both kernel and reference compute
   the same attention at the priority workloads. Hence strict tolerance
-  (`rtol=0.01, atol=0.001`) is achievable here.
+  (`rtol=0.005, atol=0.001`) is achievable here.
 """
 
 import os

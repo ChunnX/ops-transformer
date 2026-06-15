@@ -67,6 +67,12 @@ BLOCK_SIZE_Q = 128
 BLOCK_SIZE_KV = 128
 BLOCK_MASK_SEED = 1234
 
+# Padding sentinel for the per-row kept-column lists once packed into the uint16
+# `sabi` tensor. Stored explicitly as 65535 (not -1) so packing never relies on
+# negative→unsigned wraparound, whose behaviour is not guaranteed across torch
+# versions. Consumers detect padding by comparing against this value.
+SABI_PAD = 0xFFFF  # 65535 — must stay > any valid kv-block index (uint16 range)
+
 # A "frame" forces a fixed set of blocks to always be kept regardless of the
 # random sparse selection — the left/right border columns are kept in every
 # row, and the top/bottom border rows are kept dense. The forced blocks still
@@ -90,12 +96,12 @@ FRAME = FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1)
 # Print tensors for manual comparisons
 PRINT_OUTPUTS = False
 PRINT_MASK = False
-# For printing tensor differneces in blocks
+# For printing tensor differences in blocks
 PRINT_BLOCK_EQUALITY = False
 PRINT_HEIGHT = 128
 PRINT_WIDTH = 8
 
-RUN_REFERENCE = False  # True <--> enables accuracy compariston
+RUN_REFERENCE = False  # True <--> enables accuracy comparison
 # Which reference kernel to compare/benchmark against. One of:
 #   "custom"                          - our pythonic ref_attention_fp32
 #   "npu_fusion_attention"            - torch_npu's npu_fusion_attention (PFA)
@@ -190,13 +196,14 @@ def ref_attention_launcher(
 
 def generate_sparse_blocks_by_row(
         grid: BlockGrid, sparsity: float, seed: int,
-        frame: FrameWidths, pad_value: int = -1) -> list[list[int]]:
+        frame: FrameWidths, pad_value: int = SABI_PAD) -> list[list[int]]:
     """Per-row block selection for one head: frame-forced cols/rows + random picks
     chosen to hit the target sparsity. See FRAME comment above for the sink+text
     motivation. Frame-forced and random blocks both count toward the sparsity budget.
 
     Returns `[n_rows][n_cols]`; each row is the kept cols (sorted ascending)
-    padded with `pad_value`.
+    padded with `pad_value` (default `SABI_PAD` = 0xFFFF, the uint16 padding
+    sentinel; `make_block_mask` rejects it via its `0 <= c < n_block_cols` guard).
     """
     sparsity = max(0.0, min(1.0, float(sparsity)))
     n_rows = math.ceil(grid.s_q / grid.block_size_q)
@@ -316,7 +323,7 @@ def block_allclose_map(out: torch.Tensor, ref: torch.Tensor,
             for by in range(nby):
                 row = " ".join(str(int(v)) for v in grid[by].tolist())
                 logger.info(row)
-            logger.info()  # blank line between heads
+            logger.info("")  # blank line between heads
 
     return block_ok
 
@@ -408,11 +415,21 @@ def create_attention_mask(shape: WorkloadShape, sparsity: float, frame: FrameWid
     return pfa_atten_mask, sabi, scale
 
 
-def _run_timed(kernel_fn: Callable, input_sets: List, n_warmup: int, n_repeat: int):
+def _run_timed(kernel_fn: Callable, input_sets: List, n_warmup: int):
     """
     Utility function to run a kernel multiple times on the provided inputs
-    and report the average latency in microseconds. Warmup is appplied first (not timed).
+    and report the average latency in microseconds. Warmup is applied first (not timed).
+
+    The average is taken over the iterations actually timed
+    (`len(input_sets) - n_warmup`), so the result is correct regardless of how the
+    caller sized `input_sets` — it does not depend on a separately-passed repeat count.
     """
+    n_timed = len(input_sets) - n_warmup
+    if n_timed <= 0:
+        raise ValueError(
+            f"input_sets has {len(input_sets)} entries but n_warmup={n_warmup}; "
+            "need at least one timed iteration after warmup"
+        )
     for args in input_sets[:n_warmup]:
         kernel_fn(*args)
     torch.npu.synchronize()
@@ -425,7 +442,7 @@ def _run_timed(kernel_fn: Callable, input_sets: List, n_warmup: int, n_repeat: i
     end.record()
     torch.npu.synchronize()
 
-    return start.elapsed_time(end) / n_repeat * 1000.0  # ms -> μs
+    return start.elapsed_time(end) / n_timed * 1000.0  # ms -> μs
 
 
 def _check_correctness(our_fn: Callable, ref_fn: Callable, shape: WorkloadShape,
@@ -436,9 +453,9 @@ def _check_correctness(our_fn: Callable, ref_fn: Callable, shape: WorkloadShape,
     out_ref = ref_fn(q, k, v, seq, seqkv).cpu()
 
     if PRINT_OUTPUTS:
-        logger.info("OURS: ", out_our.shape)
+        logger.info(f"OURS: {out_our.shape}")
         logger.info(out_our)
-        logger.info("REF:  ", out_ref.shape)
+        logger.info(f"REF:  {out_ref.shape}")
         logger.info(out_ref)
 
     equal = torch.allclose(out_our, out_ref, rtol=0.02, atol=0.02)
@@ -471,7 +488,7 @@ def sabi_to_block_sparse_mask(sabi: torch.Tensor, mask_shape: tuple,
     # NPU's aclnnNeScalar / scatter don't support uint16 directly. Cast to
     # int32 first; the operation set on int32 is fully supported.
     sabi_i32 = sabi.to(torch.int32)
-    valid = (sabi_i32 != 0xFFFF)
+    valid = (sabi_i32 != SABI_PAD)
     sabi_long = sabi_i32.long()
     # For padding entries set the index to 0; src=0 there so scatter_add is a no-op.
     # Use torch.zeros (not zeros_like) so torch_npu doesn't try to inherit the

@@ -61,15 +61,15 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
             "int[] actual_seq_lengths_kv, "
             "int num_heads, "
             "int num_key_value_heads, "
-            "str q_input_layout, "
-            "str kv_input_layout, "
-            "int mask_type, "
-            "float scale_value, "
-            "int inner_precise, "
-            "int block_size, "
-            "int pre_tokens, "
-            "int next_tokens, "
-            "bool softmax_lse_flag, "
+            "str q_input_layout=\"BNSD\", "
+            "str kv_input_layout=\"BNSD\", "
+            "int mask_type=0, "
+            "float scale_value=1.0, "
+            "int inner_precise=0, "
+            "int block_size=0, "
+            "int pre_tokens=2147483647, "
+            "int next_tokens=2147483647, "
+            "bool softmax_lse_flag=False, "
             "Tensor? q_dequant_scale=None, "
             "Tensor? k_dequant_scale=None, "
             "Tensor? v_dequant_scale=None"
@@ -86,10 +86,38 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
                   pre_tokens, next_tokens, softmax_lse_flag,
                   q_dequant_scale=None, k_dequant_scale=None,
                   v_dequant_scale=None):
+            # Mirror the C++ wrapper's input constraints (block_sparse_attention.cpp)
+            # so graph / FakeTensor tracing fails at the same boundary as real
+            # execution instead of only erroring deep inside the kernel at run time.
+            torch._check(
+                block_size == 0,
+                lambda: "block_size must be 0 — paged KV cache is not yet supported by the kernel",
+            )
+            torch._check(
+                mask_type == 0,
+                lambda: "mask_type must be 0 — fine-grained attention masks are not yet supported by the kernel",
+            )
+            # FP8 dequant is all-or-none: the kernel needs q, k and v scales together.
+            n_dequant = sum(
+                t is not None
+                for t in (q_dequant_scale, k_dequant_scale, v_dequant_scale)
+            )
+            torch._check(
+                n_dequant == 0 or n_dequant == 3,
+                lambda: "q_dequant_scale, k_dequant_scale and v_dequant_scale must be "
+                        "provided all together (FP8 dequant path) or all omitted "
+                        "(FP16/BF16 path)",
+            )
             attn = torch.empty_like(query)
             if softmax_lse_flag:
+                # Mirror the C++ wrapper's constraint (block_sparse_attention.cpp:108)
+                # so the meta / FakeTensor path fails the same way as real execution
+                # instead of silently inferring a wrong LSE shape under TND.
+                torch._check(
+                    q_input_layout == "BNSD",
+                    lambda: "softmax_lse_flag=True only supported for BNSD Q layout",
+                )
                 # LSE_DIM_D=1 in the kernel's infershape → [b, n, s, 1] float32.
-                # Assumes BNSD layout (validated by the C++ wrapper).
                 b = query.size(0)
                 n = num_heads
                 s = query.size(2)

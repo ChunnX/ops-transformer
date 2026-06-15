@@ -191,10 +191,10 @@ def benchmark_block_sparse_attention():
 
         inputs = [gen_pfa_inputs(shape, device=DEVICE, dtype=DTYPE)
                   for _ in range(n_warmup + n_repeat)]
-        our_duration = _run_timed(our_fn, inputs, n_warmup, n_repeat)
+        our_duration = _run_timed(our_fn, inputs, n_warmup)
         ref_duration = None
         if run_ref or run_ref_sparsity_0:
-            ref_duration = _run_timed(ref_fn, inputs, n_warmup, n_repeat)
+            ref_duration = _run_timed(ref_fn, inputs, n_warmup)
 
         _print_row(shape, sparsity, are_equal_ref, ref_duration, our_duration)
 

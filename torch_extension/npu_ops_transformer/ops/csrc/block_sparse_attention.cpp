@@ -80,12 +80,29 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
                 "q_input_layout must be 'BNSD' or 'TND'");
     TORCH_CHECK(kv_input_layout == "BNSD" || kv_input_layout == "TND",
                 "kv_input_layout must be 'BNSD' or 'TND'");
+    TORCH_CHECK(block_size == 0,
+                "block_size must be 0 — paged KV cache is not yet supported by the kernel");
+    TORCH_CHECK(mask_type == 0,
+                "mask_type must be 0 — fine-grained attention masks are not yet supported by the kernel");
 
     // FP8-only dequant scales (aclnnBlockSparseAttentionV2). Absent on the
     // FP16/BF16 path → passed through as nullptr. When present, the kernel
     // validates the full FP8 shape rules; here we only check the basics.
-    auto check_dequant = [](const c10::optional<at::Tensor> &t, const char *name) {
-        if (t.has_value() && t->defined()) {
+    auto is_present = [](const c10::optional<at::Tensor> &t) {
+        return t.has_value() && t->defined();
+    };
+    // All-or-none contract: the FP8 dequant path needs q, k and v scales
+    // together. Reject a partial set here rather than failing obscurely
+    // deep inside the kernel.
+    const bool q_present = is_present(q_dequant_scale);
+    const bool k_present = is_present(k_dequant_scale);
+    const bool v_present = is_present(v_dequant_scale);
+    TORCH_CHECK(q_present == k_present && k_present == v_present,
+                "q_dequant_scale, k_dequant_scale and v_dequant_scale must be provided "
+                "all together (FP8 dequant path) or all omitted (FP16/BF16 path); got "
+                "q=", q_present, ", k=", k_present, ", v=", v_present);
+    auto check_dequant = [&is_present](const c10::optional<at::Tensor> &t, const char *name) {
+        if (is_present(t)) {
             TORCH_CHECK(t->scalar_type() == at::kFloat, name, " must be float32 when provided");
             TORCH_CHECK(t->is_contiguous(),             name, " must be contiguous when provided");
         }
@@ -96,7 +113,7 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
 
     // Pre-allocate outputs. Use at::empty with explicit sizes+options instead
     // of empty_like so torch_npu doesn't attempt to inherit `query`'s memory
-    // format and warn under allow_internel_format=False.
+    // format and warn under allow_internal_format=False.
     at::Tensor attention_out = at::empty(query.sizes(), query.options());
 
     // LSE shape: [B, N, S, 1] float32 when enabled (kernel's infershape hardcodes

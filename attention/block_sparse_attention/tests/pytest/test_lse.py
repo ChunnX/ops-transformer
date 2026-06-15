@@ -45,14 +45,17 @@ import torch_npu
 import npu_ops_transformer
 
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")))
-from util import create_attention_mask, FrameWidths, WorkloadShape  # noqa: E402
+from util import (  # noqa: E402
+    create_attention_mask, FrameWidths, WorkloadShape,
+    sabi_to_block_sparse_mask, SABI_PAD,
+)
 
 SEED = 42
 DEVICE = "npu:0"
 INPUT_LAYOUT = "BNSD"
 BLOCK_SIZE_Q = 128
 BLOCK_SIZE_KV = 128
-_SABI_PAD = 65535  # 0xFFFF — padding sentinel in uint16 sabi tensors
+_SABI_PAD = SABI_PAD  # 0xFFFF padding sentinel — single source of truth in util
 torch.npu.set_device(DEVICE)
 
 
@@ -141,20 +144,14 @@ def _build_sparse_masks(B, H, S, sparsity, frame):
 
 
 def _sabi_to_int8_mask(sabi, B, H, S):
-    """Inline sabi → int8 [B, H, q_blocks, kv_blocks] mask. Lifted from util.py
-    but specialized to the test workloads (small enough to do on-NPU)."""
+    """Thin wrapper over util.sabi_to_block_sparse_mask: derive the (square) test
+    block grid from S and delegate to the shared converter, so the sabi → int8
+    logic lives in exactly one place."""
     q_blocks = (S + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
     kv_blocks = (S + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
-    sabi_i32 = sabi.to(torch.int32)
-    valid = (sabi_i32 != _SABI_PAD)
-    sabi_long = sabi_i32.long()
-    # Use torch.zeros (not zeros_like) so torch_npu doesn't try to inherit the
-    # source's internal memory format and warn under allow_internel_format=False.
-    zeros = torch.zeros(sabi_long.shape, dtype=sabi_long.dtype, device=sabi_long.device)
-    sabi_safe = torch.where(valid, sabi_long, zeros)
-    m = torch.zeros(B, H, q_blocks, kv_blocks, dtype=torch.int32, device=sabi.device)
-    m.scatter_add_(3, sabi_safe, valid.to(torch.int32))
-    return (m > 0).to(torch.int8).contiguous()
+    return sabi_to_block_sparse_mask(
+        sabi, (B, H, q_blocks, kv_blocks), device=str(sabi.device)
+    )
 
 
 # ── Python float32 reference LSE ──────────────────────────────────────────────
