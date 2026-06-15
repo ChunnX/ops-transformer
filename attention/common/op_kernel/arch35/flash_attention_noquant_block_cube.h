@@ -616,6 +616,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm
                 shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
             }
             shape.pageStride = constInfo.valueBnStride;
+            shape.n2Stride = constInfo.valueN2Stride;
             GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
             GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
         } else {
@@ -742,6 +743,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                     shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
                 }
                 shape.pageStride = constInfo.valueBnStride;
+            shape.n2Stride = constInfo.valueN2Stride;
                 GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
                 GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
             } else {
@@ -1018,12 +1020,14 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
             shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         }
         shape.pageStride = constInfo.keyBnStride;
+        shape.n2Stride = constInfo.keyN2Stride;
         GlobalTensor<INPUT_T> mm1BGmTensor = this->keyGm.gmTensor;
         if constexpr (hasRope) {
             PAShape ropeShape = shape;
             ropeShape.headDim = constInfo.dSizeRope;
             ropeShape.actHeadDim = constInfo.dSizeRope;
             ropeShape.pageStride = constInfo.keyRopeBnStride;
+            ropeShape.n2Stride = constInfo.keyRopeN2Stride;
             uint32_t dstNzC0Stride = shape.copyRowNumAlign;
             LocalTensor<INPUT_T> mm1BRopeTensor = mm1BTensor[dstNzC0Stride * constInfo.dSize];
             GlobalTensor<INPUT_T> mm1BRopeGmTensor = this->keyRopeGm.gmTensor;
@@ -1214,6 +1218,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
         shape.copyRowNum = runInfo.s2RealSize;
         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         shape.pageStride = constInfo.keyBnStride;
+        shape.n2Stride = constInfo.keyN2Stride;
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, shape, startPos);
     } else {
@@ -1609,6 +1614,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
             shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         }
         shape.pageStride = constInfo.keyBnStride;
+        shape.n2Stride = constInfo.keyN2Stride;
         GlobalTensor<INPUT_T> mm1BGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shape, startPos);
     } else {
@@ -1797,6 +1803,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
             shape.copyRowNum = runInfo.s2RealSize;
             shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
             shape.pageStride = constInfo.keyBnStride;
+        shape.n2Stride = constInfo.keyN2Stride;
             GlobalTensor<INPUT_T> mm1BGmTensor = this->keyGm.gmTensor;
             GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shape, startPos);
         } else {
@@ -1947,6 +1954,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         shape.copyRowNum = runInfo.s2RealSize;
         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         shape.pageStride = constInfo.keyBnStride;
+        shape.n2Stride = constInfo.keyN2Stride;
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, shape, startPos);
     } else {
@@ -2065,12 +2073,14 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1MLAFullQuan
         nopeShape.copyRowNum = runInfo.s2RealSize;
         nopeShape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5; // 31, 5: nope为Fp8，需要对齐到32
         nopeShape.pageStride = constInfo.keyBnStride;
+        nopeShape.n2Stride = constInfo.keyN2Stride;
         GlobalTensor<INPUT_T> mm1BGmTensor = this->keyGm.gmTensor;
         PAShape ropeShape = nopeShape; //配置KRope的PA搬运参数
         ropeShape.headDim = constInfo.dSizeRope;
         ropeShape.actHeadDim = constInfo.dSizeRope;
         ropeShape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4; // 15, 4: rope为Bf16，需要对齐到16
         ropeShape.pageStride = constInfo.keyRopeBnStride;
+        ropeShape.n2Stride = constInfo.keyRopeN2Stride;
         GlobalTensor<bfloat16_t> mm1BRopeGmTensor = this->keyRopeGm.gmTensor;
         //先搬运KNope,再搬运Rope
         GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, nopeShape, startPos);
