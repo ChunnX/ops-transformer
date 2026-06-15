@@ -95,7 +95,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
 {
     uint32_t s1OuterSize = CeilDiv(runParam.actualS1Size, constInfo.s1BaseSize);
     runParam.s1LoopStart = firstBN ? s1StartIdx : 0;
-    runParam.s1LoopEnd = lastBN ? s1EndIdx : s1OuterSize;
+    runParam.s1LoopEnd = lastBN ? (s1EndIdx == 0 ? s1OuterSize : s1EndIdx) : s1OuterSize;
 
     if constexpr (hasAtten) {
         if (runParam.nextTokensPerBatch < 0) {

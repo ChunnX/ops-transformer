@@ -636,11 +636,9 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(
     int64_t attenOutOffset = constInfo.dSizeV;
     if constexpr (layout == BSALayout::TND) {
         attenOutOffset = constInfo.n2GDv;
-        if (constInfo.isPfaGS1Merge) {
-            attenOutOffset = 0;
-            dataCopyParams.blockLen *= constInfo.gSize;
-            dataCopyParams.blockCount /= constInfo.gSize;
-        } else if (constInfo.isGqa) {
+        // BSA: 每核独立计算一个 (n2,g) head，输出 TND [T, N1, Dv]，按 head 直写；
+        // 不走 FIA 的 GS1 合轴输出（否则会把单 head 结果按 G 合并散写到错误位置，导致输出全 0）。
+        if (constInfo.isGqa) {
             attenOutOffset = constInfo.dSizeV;
         }
     }

@@ -38,8 +38,8 @@ def _case(**kwargs):
 
 
 TEST_PARAMS = {
-    "bsnd_dense_equiv": _case(
-        layout_q=["BSND"],
+    "tnd_dense_equiv": _case(
+        layout_q=["TND"],
         B=[1],
         S1=[128],
         S2=[256],
@@ -138,5 +138,5 @@ TEST_PARAMS = {
     ),
 }
 
-ENABLED_PARAMS = [TEST_PARAMS["bsnd_dense_equiv"]]
+ENABLED_PARAMS = [TEST_PARAMS["tnd_dense_equiv"]]
 # ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
