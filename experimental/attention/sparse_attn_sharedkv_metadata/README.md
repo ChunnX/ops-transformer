@@ -8,7 +8,7 @@
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | ×  |
 |<term>Atlas 200I/500 A2 推理系列产品</term>                    | ×  |
 |<term>Atlas 推理系列产品</term>                                | ×  |
-|<term>Atlas训练系列产品</term>                                | ×  |
+|<term>Atlas 训练系列产品</term>                                | ×  |
 
 ## 功能说明
 - API功能：`SparseAttnSharedkvMetadata`算子旨在生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`SparseAttnSharedkv`算子使用。

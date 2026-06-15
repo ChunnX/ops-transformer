@@ -9,7 +9,7 @@
 | <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term> | √ |
 | <term>Atlas 200I/500 A2 推理产品</term> | × |
 | <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas训练系列产品</term> | × |
+| <term>Atlas 训练系列产品</term> | × |
 | <term>Atlas 200/300/500 推理产品</term> | × |
 
 产品形态详细说明请参见[昇腾产品形态说明](https://www.hiascend.com/document/redirect/CannCommunityProductForm)。
