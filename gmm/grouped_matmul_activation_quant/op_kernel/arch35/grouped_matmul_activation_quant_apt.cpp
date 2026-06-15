@@ -27,8 +27,8 @@ using namespace AscendC;
 using namespace matmul;
 
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS>
-__global__ __aicore__ void grouped_matmul_activation_quant(GM_ADDR x, GM_ADDR groupList, GM_ADDR xScale,
-                                                          GM_ADDR weight, GM_ADDR weightScale, GM_ADDR bias,
+__global__ __aicore__ void grouped_matmul_activation_quant(GM_ADDR x, GM_ADDR groupList, GM_ADDR weight,
+                                                          GM_ADDR weightScale, GM_ADDR bias, GM_ADDR xScale,
                                                           GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace,
                                                           GM_ADDR tiling)
 {
