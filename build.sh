@@ -711,11 +711,36 @@ function build_torch_extension_whl() {
             return 0
         fi
 
+        # 备份原始 ops/__init__.py
+        local ops_init_file="${torch_ext_dir}/npu_ops_transformer/ops/__init__.py"
+        local ops_init_backup="${torch_ext_dir}/npu_ops_transformer/ops/__init__.py.bak"
+        if [ -f "${ops_init_file}" ]; then
+            cp "${ops_init_file}" "${ops_init_backup}"
+        fi
+
+        # 传递模块参数给 setup.py
+        if [ -n "${ascend_module_name}" ]; then
+            export ASCEND_MODULE_NAME="${ascend_module_name}"
+            log "[INFO] Building torch_extension whl with modules: ${ascend_module_name}"
+        fi
+
         python3 -m build --wheel -n 2>&1 || {
             log "[ERROR] Failed to build torch_extension whl package"
+            # 恢复原始文件
+            if [ -f "${ops_init_backup}" ]; then
+                mv "${ops_init_backup}" "${ops_init_file}"
+            fi
+            unset ASCEND_MODULE_NAME
             cd "${original_dir}"
             return 1
         }
+
+        # 清除环境变量并恢复原始 __init__.py
+        unset ASCEND_MODULE_NAME
+        if [ -f "${ops_init_backup}" ]; then
+            mv "${ops_init_backup}" "${ops_init_file}"
+        fi
+
         cd "${original_dir}"
         log "[INFO] torch_extension whl package built successfully"
     fi
