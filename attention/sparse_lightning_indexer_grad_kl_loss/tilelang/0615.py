@@ -248,7 +248,7 @@ def tilelang_grad_kl_loss_single_kernel(
             with T.Scope("V"):
                 T.wait_cross_flag(1)
 
-                bmm1_ub = T.alloc_ub((N1, n_block), calc_dtype)
+                # bmm1_ub moved to loop-local (saves 64KB scope-level UB)
                 bmm2_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
                 weight_ub = T.alloc_ub(vector_baseg, calc_dtype)
                 weight_half_ub = T.alloc_ub(vector_baseg, input_dtype)
@@ -275,6 +275,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(eps_sm_ub, 1e-8)
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
                     T.barrier_all()
+
+                    # bmm1_ub allocated per s1_id iteration (only used in Part 1)
+                    bmm1_ub = T.alloc_ub((N1, n_block), calc_dtype)
 
                     # P_reduced for MY K block
                     T.copy(bmm1Res[bz, s1_id, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm1_ub)
@@ -465,16 +468,16 @@ def tilelang_grad_kl_loss_single_kernel(
             with T.Scope("V"):
                 T.wait_cross_flag(3)
 
-                dq_fp32_ub = T.alloc_ub((1, BLOCK_K), calc_dtype)
-                dq_fp16_ub = T.alloc_ub((1, BLOCK_K), input_dtype)
+                dq_fp32_ub = T.alloc_ub((vector_baseg, BLOCK_K), calc_dtype)
+                dq_fp16_ub = T.alloc_ub((vector_baseg, BLOCK_K), input_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    for row_id in T.serial(Nidx1):
+                    for g_id in T.serial(g_num):
                         for d_idx in T.serial(d_num_query_index):
-                            T.copy(dQueryIndex_ws[bz, s1_row, row_id, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
-                            T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", BLOCK_K)
+                            T.copy(dQueryIndex_ws[bz, s1_row, g_id * vector_baseg:(g_id + 1) * vector_baseg, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
+                            T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", vector_baseg * BLOCK_K)
                             T.barrier_all()
-                            T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, row_id, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                            T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * vector_baseg:(g_id + 1) * vector_baseg, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
 
     return main
 
