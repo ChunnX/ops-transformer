@@ -1204,7 +1204,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>执行单路旋转位置编码的 Inplace 计算，直接修改输入张量，不产生新的输出张量。</td>
+    <td>执行单路旋转位置编码的Inplace计算，直接修改输入张量，不产生新的输出张量。</td>
   </tr>
   <tr>
     <td>posembedding</td>
