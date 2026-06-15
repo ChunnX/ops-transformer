@@ -271,6 +271,7 @@ public:
     {
         MC2MegaMoeAdump::MegaMoeAdumpSharedField sharedField = CreateAdumpSharedField(params);
         adumpAdapter.FillSharedField(sharedField);
+        adumpAdapter.FillCoreBaseInfo();
         DispatchAndCombine(params);
     }
 
@@ -1181,6 +1182,7 @@ private:
         }
 
         AscendC::SyncAll<true>();
+        adumpAdapter.UpdateAdumpCurrentStateId(MC2MegaMoeAdumpState::StageA3::STAGE_APPLY_XACTIVATE_MASK);
 
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 
