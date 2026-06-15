@@ -27,12 +27,14 @@ cd attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test
 ```
 fia_fullquant_mxfp8_test/
 ├── pytest.ini                                  # pytest 配置（自定义 marker）
-├── conftest.py                                 # pytest 命令行选项（--golden-mode, --cache-dir）
+├── conftest.py                                 # pytest 命令行选项（--golden-mode, --cache-dir, --msprof, --parse-prof, --perf-baseline）
 ├── common/
 │   ├── __init__.py
 │   ├── fia_fullquant_mxfp8_golden.py           # CPU golden 参考实现 + NPU 算子调用
 │   ├── golden_cache.py                         # .pt 缓存工具模块
-│   └── result_compare_method.py                # 精度对比工具
+│   ├── result_compare_method.py                # 精度对比工具
+│   ├── perf_parser.py                          # msprof op_summary.csv 解析 + baseline 比较
+│   └── test_runner.py                          # 共享测试执行逻辑（apply_params / execute_test / check_results）
 ├── fia_fullquant_mxfp8_paramset_common.py      # 参数展开公共逻辑 + 默认值
 ├── fia_fullquant_mxfp8_paramset_debug.py       # debug 参数集（少量用例，快速验证）
 ├── fia_fullquant_mxfp8_paramset_func_rdv.py    # 功能正确性参数集（~150 条）
@@ -362,3 +364,118 @@ SKIP_CASES = {
 | `No module named 'torch_npu'` | 未安装 torch-npu | `bash install_torch_npu.sh` |
 | `No cached input: xxx_input.pt` | 缓存模式下缺少输入数据 | 先运行 `--golden-mode=gen` 生成数据 |
 | `No cached CPU output` | npu/compare 模式下缺少 CPU 缓存 | 先运行 `--golden-mode=cpu` 生成 CPU 输出 |
+
+---
+
+## 12. 性能 Profiling（--msprof / --parse-prof / --perf-baseline）
+
+### 12.1 概述
+
+通过 `msprof` 工具包裹 pytest 运行，自动收集 `FusedInferAttentionScore` 算子的 profiling 数据（Duration、AI Core 时间、Cube 利用率），并支持与基线 log 进行性能回归比较。
+
+### 12.2 一键运行 + Profiling + 报告
+
+```bash
+# 运行测试并自动收集 profiling，结束后输出报告
+pytest --msprof -v -m debug
+
+# 运行 perf_rdv 用例并收集 profiling
+pytest --msprof -v -m perf_rdv
+```
+
+`--msprof` 的工作流程：
+1. 快照当前目录已有的 `PROF_*` 目录
+2. 用 `msprof python -m pytest ...` 包裹运行内层测试
+3. 测试完成后找到新生成的 `PROF_*` 目录
+4. 解析 `op_summary_*.csv`，提取 `FusedInferAttentionScore` 条目
+5. 输出性能报告并归档到 `perf_output/` 目录
+
+### 12.3 事后解析已有 PROF 目录
+
+```bash
+# 解析指定的 PROF 目录
+pytest --parse-prof=./PROF_000001_20260615113759304_xxx
+```
+
+### 12.4 性能基线比较
+
+```bash
+# 运行 + profiling + 与 baseline 比较（默认 8% 阈值）
+pytest --msprof --perf-baseline=./perf_baseline/perf_report_20260615113640.log -v -m debug
+
+# 自定义阈值（5%）
+pytest --msprof --perf-baseline=./perf_baseline/perf_report_xxx.log --perf-threshold=5.0 -v -m debug
+
+# 事后解析 + 比较
+pytest --parse-prof=./PROF_xxx --perf-baseline=./perf_baseline/perf_report_xxx.log
+```
+
+### 12.5 命令行选项
+
+| 选项 | 作用 |
+|------|------|
+| `--msprof` | 自动用 msprof 包裹 pytest 运行，测试完成后解析 PROF 并输出报告 |
+| `--parse-prof=PROF_DIR` | 解析指定的 PROF 目录（事后分析） |
+| `--perf-baseline=LOG_FILE` | 性能基线 log 文件路径，与当前结果比较 Duration |
+| `--perf-threshold=PERCENT` | 性能劣化阈值百分比（默认 8.0） |
+
+### 12.6 报告输出格式
+
+```
+========================================================================================================================
+  #    Duration    AI Core   Cube%  Input Shapes
+------------------------------------------------------------------------------------------------------------------------
+  1      21.3us     20.5us   22.4%  Q=[4, 64, 128]  K=[2, 8, 4, 512, 32]  V=[2, 8, 4, 512, 32]
+  2      27.8us     27.2us   92.4%  Q=[128, 64, 128]  K=[2, 8, 512, 128]  V=[2, 8, 512, 128]
+========================================================================================================================
+
+Total: 2 entries
+```
+
+### 12.7 Baseline 比较报告
+
+```
+============================================================================================================================================
+  #     Current   Baseline     Diff   Status  Input Shapes
+--------------------------------------------------------------------------------------------------------------------------------------------
+  1      21.3us     21.7us    -1.9%     PASS  Q=[4, 64, 128]  K=[2, 8, 4, 512, 32]  V=[2, 8, 4, 512, 32]
+  2      27.8us     27.2us    +2.2%     PASS  Q=[128, 64, 128]  K=[2, 8, 512, 128]  V=[2, 8, 512, 128]
+============================================================================================================================================
+
+Total: 2 entries | PASS: 2 | FAILED: 0 | IMPROVED: 0 | NEW: 0
+Threshold: 8.0%
+```
+
+| Status | 含义 |
+|--------|------|
+| `PASS` | Duration 变化在阈值内 |
+| `FAILED` | Duration 劣化超过阈值 → pytest 退出码 1 |
+| `IMPROVED` | Duration 提升超过阈值 |
+| `NEW` | 当前 case 在 baseline 中不存在 |
+
+匹配方式：按 Input Shapes（Q/K/V 的 shape 字符串）精确匹配。
+
+### 12.8 文件归档
+
+每次运行后，报告 log 和原始 CSV 自动归档到 `perf_output/` 目录，时间戳保持一致：
+
+```
+perf_output/
+├── perf_report_20260615113640.log    # 格式化报告
+└── op_summary_20260615113640.csv     # 原始 profiling 数据
+```
+
+### 12.9 建立 Baseline
+
+1. 运行一次 profiling 生成报告：
+   ```bash
+   pytest --msprof -v -m debug
+   ```
+2. 将生成的报告拷贝到 `perf_baseline/` 目录作为基线：
+   ```bash
+   cp perf_output/perf_report_*.log perf_baseline/
+   ```
+3. 后续运行时指定该基线进行比较：
+   ```bash
+   pytest --msprof --perf-baseline=./perf_baseline/perf_report_20260615113640.log -v -m debug
+   ```
