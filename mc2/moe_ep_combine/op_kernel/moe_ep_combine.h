@@ -51,6 +51,8 @@ constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U;  // 本卡状态空间偏
 constexpr uint32_t STATE_OFFSET = 32U; 
 constexpr uint32_t DCCI_OFFSET = 64U; 
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
+constexpr uint64_t STATE_WIN_SIZE = Mc2Kernel::A5_MTE_STATE_WIN_SIZE;
+constexpr uint64_t WEIGHT_DATA_SIZE = Mc2Kernel::A5_MTE_STATE_WIN_SIZE / (UB_ALIGN / sizeof(float));
 
 template <TemplateMoeEpCombineTypeClass>
 class KernelMoeEpCombine {
@@ -69,6 +71,8 @@ private:
                                     uint32_t &endTokenId, uint32_t &tokenPerAivNum);
     __aicore__ inline void SendToken(GM_ADDR localWorkspaceAddr, GM_ADDR remoteRankWinAddr, 
                                     uint32_t tokenIndex, uint32_t dstRankId);
+    __aicore__ inline void SendWeightData(GM_ADDR localRankWeightAddr,  GM_ADDR remoteRankWeightAddr, 
+                                    uint32_t tokenIndex, uint32_t dstRankId, uint32_t topkId);
     __aicore__ inline void SetStatus(GM_ADDR localRankStateAddr,  GM_ADDR remoteRankStateAddr, uint32_t tokenIndex, uint32_t dstRankId);
     __aicore__ inline bool WaitDispatch(uint32_t tokenIndex, uint32_t copyCount, uint32_t beginIndex);
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex, uint32_t processLen);
@@ -80,24 +84,22 @@ private:
         uint32_t index = rankId > rankId_ ? rankId - 1 : rankId;
         return hcommHandle_[index];
     }
-    __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId)
+    __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId, uint64_t offset)
     {
-        return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE + winDataSizeOffset_);
+        return (GM_ADDR)(winRankAddr_[rankId] + offset + winDataSizeOffset_);
     }
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(uint32_t rankId)
     {
         // return (GM_ADDR)(winRankAddr_[rankId] + dataState_ * WIN_STATE_OFFSET);
-        return (GM_ADDR)(winRankAddr_[rankId]);
+        return (GM_ADDR)(winRankAddr_[rankId]) + winDataSizeOffset_;
     }
 
-    __aicore__ inline GM_ADDR GetLocalWinAddrByRankId(const int32_t rankId)
+    __aicore__ inline GM_ADDR GetLocalWinAddrByRankId(const int32_t rankId, uint64_t offset)
     {
-        return (GM_ADDR)localUrmaWorkspace_ + Mc2Kernel::A5_MTE_STATE_WIN_SIZE + winDataSizeOffset_ + 
-                    totalWinSizeEp_ * rankId;
+        return (GM_ADDR)localUrmaWorkspace_ + offset + totalWinSizeEp_ * rankId;
     }
     __aicore__ inline GM_ADDR GetLocalWindStateAddrByRankId(const int32_t rankId)
     {
-        // return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId + dataState_ * WIN_STATE_OFFSET;
         return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId ;
     }
     TPipe *tpipe_{nullptr};
@@ -130,6 +132,7 @@ private:
     GlobalTensor<float> topkWeightsOptionalGm_;
 
     LocalTensor<bfloat16_t> xTmpTensor_;   
+    LocalTensor<float> weightTmpTensor_;  
     GlobalTensor<bfloat16_t> combinedXGm_;
     GlobalTensor<float> combinedTopkWeightsGm_;
 
@@ -151,6 +154,7 @@ private:
     TBuf<> stateResetBuf_;
     TBuf<> hcommBuf_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> weightQueue_; // 数据队列
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
 
@@ -289,6 +293,39 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendTok
 }
 
 template <TemplateMoeEpCombineTypeClass>
+__aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendWeightData(
+    GM_ADDR localRankWeightAddr,  GM_ADDR remoteRankWeightAddr, uint32_t tokenIndex, uint32_t dstRankId, uint32_t topkId)
+{
+    // 处理单个token：
+    // 1. 从输入GM读取token数据到UB
+    // 2. 将token数据写入目标rank的窗口
+    GlobalTensor<float> outWeigthGT;
+    outWeigthGT.SetGlobalBuffer((__gm__ float*)localRankWeightAddr);
+    if (dstRankId == rankId_) {
+        outWeigthGT.SetGlobalBuffer((__gm__ float*)remoteRankWeightAddr); // 目标rank是epRankId，直接写入remoteAddr
+    }
+    
+    DataCopyPadParams padParams = {false, 0, 0, 0};
+    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
+    DataCopyParams weightCommuOutParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
+
+    // 从GM读取token到UB
+    weightTmpTensor_ = weightQueue_.AllocTensor<float>();
+    DataCopyPad(weightTmpTensor_, topkWeightsOptionalGm_[tokenIndex * topK_ + topkId], xCopyParams, padParams);
+    weightQueue_.EnQue(weightTmpTensor_);
+    weightTmpTensor_ = weightQueue_.DeQue<float>();
+    // 写入目标rank的窗口
+    DataCopyPad(outWeigthGT, weightTmpTensor_, weightCommuOutParams);
+    weightQueue_.FreeTensor<float>(weightTmpTensor_);
+
+    PipeBarrier<PIPE_MTE3>(); // 是否需要这个流水
+
+    if (dstRankId != rankId_) {
+        //printf("START WRITR TOKEN");
+        hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWeightAddr, localRankWeightAddr, sizeof(float));
+    }
+}
+template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(
     GM_ADDR localRankStateAddr,  GM_ADDR remoteRankStateAddr, uint32_t tokenIndex, uint32_t dstRankId)
 {
@@ -330,18 +367,22 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPha
             }
             // 计算目标窗口地址:
             // 当前rank的workspaceGM地址（src_rank只是为了workspace内的以卡分区）
-            GM_ADDR localRankWorkSpaceAddr = GetLocalWinAddrByRankId(src_rank) + 
+            GM_ADDR localRankWorkSpaceAddr = GetLocalWinAddrByRankId(src_rank, STATE_WIN_SIZE) + 
                 (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
-            // 当对端rank的win区地址(urma通信)
-            GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank) + 
+            GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, STATE_WIN_SIZE) + 
                 (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
-
-            SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);  
             if constexpr (HAS_TOPK_WEIGHTS == 1) {
-                //to do   Window[src_rank][src_slot].weight_extra = topk_weights[?]
-                //疑问：3.topk_weights的哪个值？topk_weights[src_token_global*top_k + top_k_idx]
-                //      4.Window[src_rank][src_slot].weight_extra 是哪个地址？slotAddr的后面要留4B么？
+                GM_ADDR localRankWorkSpaceAddr = GetLocalWinAddrByRankId(src_rank, STATE_WIN_SIZE + WEIGHT_DATA_SIZE) + 
+                    (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
+                GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, STATE_WIN_SIZE + WEIGHT_DATA_SIZE) + 
+                    (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
+                GM_ADDR localRankWeightAddr = GetLocalWinAddrByRankId(src_rank, STATE_WIN_SIZE) + 
+                    (src_token_idx * topK_ + src_topK_idx) * sizeof(float);
+                GM_ADDR remoteRankWeightAddr = GetUrmaWinAddrByRankId(src_rank, STATE_WIN_SIZE) + 
+                    (src_token_idx * topK_ + src_topK_idx) * sizeof(float);
+                SendWeightData(localRankWeightAddr, remoteRankWeightAddr, tokenIndex, src_rank, src_topK_idx);  
             }
+            SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);  
             PipeBarrier<PIPE_MTE3>();
             GM_ADDR localRankStateAddr = GetLocalWindStateAddrByRankId(src_rank) + 
                 (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
@@ -394,27 +435,21 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process
 
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
         // 读取expert_id
-        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
+        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, STATE_WIN_SIZE ) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
+        if constexpr (HAS_TOPK_WEIGHTS == 1) {
+            GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, STATE_WIN_SIZE + WEIGHT_DATA_SIZE) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
+            GM_ADDR weightAddr = GetUrmaWinAddrByRankId(rankId_, STATE_WIN_SIZE) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
+            GlobalTensor<bfloat16_t> srcWeightTensor;
+            srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(weightAddr));
+        }
         GlobalTensor<bfloat16_t> srcTokenTensor;
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(wAddr));
-        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+        // SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         DataCopyPad(ubX_, srcTokenTensor, xCopyParams, padParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Cast(ubTmpFp32_, ubX_, AscendC::RoundMode::CAST_NONE, axisH_);
         PipeBarrier<PIPE_V>();
-        if constexpr (HAS_TOPK_WEIGHTS == 0) {
-            Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
-        } else {
-            // float w = topkWeightsOptionalGm_.GetValue(tokenIndex * topK_ + topkId);
-            // AscendC::Muls(ubWeighted_, ubTmpFp32_, w, axisH_);
-            // PipeBarrier<PIPE_V>();
-            // Add(ubAccFp32_, ubAccFp32_, ubWeighted_, axisH_);
-            // combinedTopkWeightsGm_.SetValue(tokenIndex * topK_ + topkId, w);
-            // DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(combinedTopkWeightsGm_[tokenIndex * topK_ + topkId]);
-            // combinedTopkWeightsGm_（dispatch 反向时承载 grad_topk_weights 的 reduce 结果）
-            // 疑问：1.combine的reduce   这个reduce指的是 
-            //        AtomicAdd(combined_topk_weights[tokenIndex, topkId], weighted_w_reduce) ？
-        }
+        Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
     }
 }
 
