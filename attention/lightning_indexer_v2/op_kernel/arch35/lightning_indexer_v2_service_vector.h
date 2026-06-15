@@ -255,7 +255,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-        Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), (uint32_t)0, constInfo_.topk);
+        Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), constInfo_.NEG_INF_FLOAT, constInfo_.topk);
 
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
