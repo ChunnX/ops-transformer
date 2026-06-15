@@ -13,8 +13,8 @@
 * \brief
 */
 
-#include "flash_attention_regular.h"
-#include "flash_attention_regular_decode.h"
+#include "flash_attention_regular.cpp"
+#include "flash_attention_regular_decode.cpp"
 #include <type_traits>
 using namespace NpuArch;
 
