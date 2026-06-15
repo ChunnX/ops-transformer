@@ -128,14 +128,14 @@
     <tr>
       <td>seqused_cmp_kv</td>
       <td>可选输入</td>
-      <td>占位输入，当前未使用。</td>
+      <td>表示不同Batch中`cmp_kv`实际参与运算的token数。未传时使用`cmp_kv`或`cu_seqlens_cmp_kv`推导的长度。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_residual_kv</td>
       <td>可选输入</td>
-      <td>占位输入，当前未使用。</td>
+      <td>压缩KV余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -177,7 +177,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对`ori_kv`的压缩率，仅支持输入4或128，默认值为None。</td>
+      <td>表示对`ori_kv`的压缩率。0和1均表示SWA语义，CFA/SCFA模式支持4或128。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -219,7 +219,7 @@
     <tr>
       <td>layout_kv</td>
       <td>可选属性</td>
-      <td>用于标识输入`ori_kv`和`cmp_kv`的数据排布格式，支持输入"PA_BNBD"和"BSND"。</td>
+      <td>用于标识输入`ori_kv`和`cmp_kv`的数据排布格式，支持输入"BSND"、"TND"和"PA_BBND"，兼容传入"PA_BNBD"。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
@@ -253,27 +253,29 @@
 - 该接口当前支持三种计算场景：场景一，仅传入`ori_kv`时为Sliding Window Attention计算；场景二，传入`ori_kv`及`cmp_kv`时为Sliding Window Attention + Compressed Attention计算；场景三，传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`时为Sliding Window Attention + Sparse Compressed Attention计算。
 
 - 当`layout_q`为TND时，功能使用限制如下：
-  - `q`的shape需要为[T1,N1,D]，其中N1仅支持64。
-  - `ori_sparse_indices`的shape需要为[Q\_T, KV\_N, K1]，其中K1为对`ori_kv`一次离散选取的token数，K1仅支持512。
-  - `cmp_sparse_indices`的shape需要为[Q\_T, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2仅支持512。
+  - `q`的shape需要为[T1,N1,D]，其中N1取值范围为[1,128]，且N1/N2必须为[1,128]范围内的2的幂。
+  - `ori_sparse_indices`当前暂不支持。
+  - `cmp_sparse_indices`的shape需要为[Q\_T, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2支持512或1024。
   - `cu_seqlens_q`必须传入，输入维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须>=前一个元素的值。
 
 - 当`layout_q`为BSND时，功能使用限制如下：
-  - `q`的shape需要为[B, Q\_S,N1,D]，其中N1仅支持64。
-  - `ori_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K1]，其中K1为对`ori_kv`一次离散选取的token数，K1仅支持512。
-  - `cmp_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2仅支持512。
+  - `q`的shape需要为[B, Q\_S, N1, D]，其中N1取值范围为[1,128]，且N1/N2必须为[1,128]范围内的2的幂。
+  - `ori_sparse_indices`当前暂不支持。
+  - `cmp_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2支持512或1024。
 
 - PageAttention场景下，功能使用限制如下：
   - `ori_kv`和`cmp_kv`的shape分别为[ori\_block\_num, ori\_block\_size, KV\_N, D]和[cmp\_block\_num, cmp\_block\_size, KV\_N, D]，其中ori\_block\_num和cmp\_block\_num为PageAttention时block总数，ori\_block\_size和cmp\_block\_size为一个block的token数，ori\_block\_size和cmp\_block\_size取值为16的倍数，最大支持1024，KV_N仅支持1。
   - `ori_block_table`和`cmp_block_table`的shape为2维，其中第一维长度为B，第二维长度不小于所有batch中最大的S2和S3对应的block数量，即S2\_max / block\_size和S3\_max / block\_size向上取整。
 - `metadata`为算子实际需要使用的分核结果，目前该参数必传，shape大小固定为[1024]。
-- `layout_kv`仅支持输入"PA_BNBD"和"BSND"。
-  - 当输入为PA_BNBD时，设置`cu_seqlens_ori_kv`和`cu_seqlens_cmp_kv`无效。
+- `layout_kv`支持输入"BSND"、"TND"和"PA_BBND"，兼容传入"PA_BNBD"。
+  - 当输入为PA_BBND或PA_BNBD时，`seqused_ori_kv`和`ori_block_table`必须传入。
   - 当输入为BSND时，`ori_kv`和`cmp_kv`的layout都必须为BSND，ori_kv的shape为[B, S2, N2,D]，cmp_kv的shape为[B, S3, N2,D]。
-- 目前暂不支持返回`softmax_lse`，`return_softmax_lse`仅支持输入False，返回值`softmax_lse`为无效值。
+  - 当输入为TND时，`cu_seqlens_ori_kv`必须传入；若存在`cmp_kv`，`cu_seqlens_cmp_kv`也必须传入。
+- `return_softmax_lse`为False时返回占位Tensor；为True时返回softmax的log-sum-exp结果。
 - 目前暂不支持指定`q`中参与运算的token数，因此设置`seqused_q`无效。
 - 目前暂不支持对`ori_kv`进行稀疏计算，因此设置`ori_sparse_indices`无效。
 - 目前所有输入不支持传入空tensor。
+- `cmp_residual_kv`为主算子入参，不是metadata算子的入参；传入后仅用于恢复cmp侧mask使用的压缩前KV长度。
 - `q`、`ori_kv`、`cmp_kv`数据排布格式支持从多种维度解读，B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 - Q\_S和S1表示q shape中的S，S2表示ori_kv shape中的S，S3表示cmp_kv shape中的S；Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori_kv\_heads和num\_cmp_kv\_heads；Q\_T和T1表示q shape中的输入样本序列长度的累加和。
 
@@ -282,3 +284,4 @@
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn接口 | [test_aclnnSparseFlashMla](./examples/test_aclnn_sparse_flash_mla.cpp) | 通过[aclnnSparseFlashMla](./docs/aclnnSparseFlashMla.md)调用SparseFlashMla算子 |
+| torch_npu扩展接口 | [npu_sparse_flash_mla](../../torch_extension/npu_ops_transformer/doc/npu_sparse_flash_mla.md) | 通过`npu_ops_transformer.ops.npu_sparse_flash_mla`调用SparseFlashMla算子 |
