@@ -13,7 +13,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from importlib import import_module
-mod = import_module("0612_parallel_v2")
+mod = import_module("0612_parallel_simple")
 sparse_lightning_indexer_grad_kl_loss = mod.sparse_lightning_indexer_grad_kl_loss
 
 WARMUP_ITERS = 3
