@@ -465,15 +465,15 @@ def tilelang_grad_kl_loss_single_kernel(
             with T.Scope("V"):
                 T.wait_cross_flag(3)
 
-                dq_fp32_ub = T.alloc_ub((1, BLOCK_K), calc_dtype)
-                dq_fp16_ub = T.alloc_ub((1, BLOCK_K), input_dtype)
+                dq_fp32_ub = T.alloc_ub((4, BLOCK_K), calc_dtype)
+                dq_fp16_ub = T.alloc_ub((4, BLOCK_K), input_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    for row_id in T.serial(Nidx1):
+                    for g_id in T.serial(Nidx1 // 4):
                         for d_idx in T.serial(d_num_query_index):
-                            T.copy(dQueryIndex_ws[bz, s1_row, row_id, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
-                            T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", BLOCK_K)
-                            T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, row_id, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                            T.copy(dQueryIndex_ws[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
+                            T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
+                            T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
 
     return main
 

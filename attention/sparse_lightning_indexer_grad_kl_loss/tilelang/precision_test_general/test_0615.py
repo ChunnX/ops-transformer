@@ -143,13 +143,13 @@ def bench(fn, warmup=WARMUP_ITERS, iters=BENCH_ITERS):
 
 def main():
     print("=" * 60)
-    print("Case 0 - 0612.py NPU多核并行版本测试")
+    print("Case 0 - 0615.py NPU多核并行版本测试")
     print("=" * 60)
 
     inputs = gen_inputs()
 
     # TileLang
-    print("\n[1] TileLang (0612 多核版)...")
+    print("\n[1] TileLang (0615 多核版)...")
     torch.npu.synchronize()
     try:
         d_qi_tl, d_ki_tl, dw_tl, loss_tl = call_tl(inputs)
