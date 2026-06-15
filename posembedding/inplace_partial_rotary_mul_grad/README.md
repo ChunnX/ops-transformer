@@ -240,7 +240,7 @@
 - 该算子仅支持Ascend 950 AI Processor。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
 
-- 输入张量dy支持BNSD、BSND、SBND排布。各参数的shape约束可以描述如下：
+- 输入张量dy支持BSND排布以及其B/S/N维度的广播变体（如111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
   - 输入张量dy和xOptional的最后一维大小D必须相同，且D ≤ 1024。输出张量dyOut的shape与dy完全相同（inplace操作，指向同一内存）。
   - 输入张量cos、sin及输出张量dcosOut、dsinOut的最后一维大小必须等于切片长度(end - start)。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dy满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dy的B、S、N。
