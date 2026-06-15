@@ -101,6 +101,7 @@ function help_info() {
                 echo "    --soc=soc_version      Compile for specified Ascend SoC (comma-separated for multiple)"
                 echo "    --vendor_name=name     Specify custom operator package vendor name"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
+                echo "    --module=module1,...   Compile specified modules (comma-separated, supported: mc2,attention,moe,ffn,mhc,posembedding,gmm)"
                 echo "    -j[n]                  Compile thread nums, default is 8, eg: -j8"
                 echo "    -O[n]                  Compile optimization options, support [O0 O1 O2 O3], eg:-O3"
                 echo "    --experimental         Build experimental version"
@@ -323,6 +324,7 @@ function help_info() {
     echo "    --asan Enable asan on the host side"
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
+    echo "    --module Compile specified module, like: --module=mc2,attention, use ',' to separate different modules (supported: mc2,attention,moe,ffn,mhc,posembedding,gmm)"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
     echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62], A3(--soc=ascend910_93)"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
@@ -1077,6 +1079,28 @@ set_example_opt() {
   fi
 }
 
+build_module_package() {
+    local ascend_module_name="$1"
+    echo "Building module package: ${ascend_module_name}"
+    MODULE_DIR="${CURRENT_DIR}/${ascend_module_name}"
+    echo "Building module dir: ${MODULE_DIR}"
+
+    MODULE_OPS=()
+    for op_dir in ${MODULE_DIR}/*/; do
+        op_name=$(basename ${op_dir})
+        [[ "$op_name" == "3rd" || "$op_name" == "common" || "$op_name" == "tools" ]] && continue
+        
+        if ls ${op_dir}/op_host/*.cpp 1>/dev/null 2>&1; then
+            SUPPORTED_OPS+=("$op_name")
+        fi
+    done
+    
+    echo "find ${#SUPPORTED_OPS[@]} ops of module ${ascend_module_name}"
+    for op in "${SUPPORTED_OPS[@]}"; do echo "  - ${op}"; done
+    ascend_op_name=$(IFS=,; echo "${SUPPORTED_OPS[*]}")
+    echo "Now build a custom package as ops equals to ${ascend_op_name}"
+}
+
 ########################################################################################################################
 # 参数解析处理
 ########################################################################################################################
@@ -1145,6 +1169,14 @@ while [[ $# -gt 0 ]]; do
     --ops=*)
         OPTARG=$1
         ascend_op_name=${OPTARG#*=}
+        ENABLE_BUILT_CUSTOM=TRUE
+        ENABLE_BUILT_IN=FALSE
+        shift
+        ;;
+    --module=*)
+        OPTARG=$1
+        ascend_module_name=${OPTARG#*=}
+        vendor_name="${ascend_module_name}"
         ENABLE_BUILT_CUSTOM=TRUE
         ENABLE_BUILT_IN=FALSE
         shift
@@ -1482,6 +1514,10 @@ fi
 
 if [ -n "${ascend_compute_unit}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_COMPUTE_UNIT=${ascend_compute_unit}"
+fi
+
+if [ -n "${ascend_module_name}" ];then
+    build_module_package "${ascend_module_name}"
 fi
 
 if [ -n "${ascend_op_name}" ];then
