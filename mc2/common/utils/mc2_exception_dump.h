@@ -368,7 +368,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     uint64_t argsAddr = 0;
     uint64_t argsOffset = 0;
     // 由于dispatchv3中包含syncacll，推断为mix算子，其args的首地址是ffts，第二个地址才是hcclcontext
-    if ((std::strstr(socName, "Ascend910_93") != nullptr) && (std::strstr(op, "MoeDistributeDispatchV3") != nullptr)) {
+    if ((std::strstr(socName, "Ascend910_93") != nullptr)) {
         argsOffset = sizeof(uint64_t);
     }
     ret = aclrtMemcpy(&argsAddr, sizeof(uint64_t), devArgsPtr + argsOffset, sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST);
