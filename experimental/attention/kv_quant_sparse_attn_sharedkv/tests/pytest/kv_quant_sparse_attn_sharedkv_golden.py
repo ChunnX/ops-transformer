@@ -694,7 +694,7 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
         quant_range_left = quant_param_range_left
         quant_range_right = quant_param_range_right
     ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
-        (B, N2, ori_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
+        (B, N2, ori_max_s2, quant_scale_head_dim))).to(q_type)
     ori_kv_quant_param_tensor = ori_kv_quant_param_tensor_npu.to(q_type)
 
     # 分别生成bf16类型的nope合rope矩阵，为了模拟量化的过程，得到准确的量化参数
@@ -782,7 +782,7 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
         quant_range_left = quant_param_range_left
         quant_range_right = quant_param_range_right
     cmp_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
-        (B, N2, cmp_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
+        (B, N2, cmp_max_s2, quant_scale_head_dim))).to(q_type)
     cmp_kv_quant_param_tensor = cmp_kv_quant_param_tensor_npu.to(q_type)
 
     if kv_quant_mode == 10:
@@ -927,10 +927,10 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     # 计算kv每个区域D轴长度
     nope_head_dim = D - rope_head_dim
     quant_scale_head_dim = (nope_head_dim + tile_size - 1) // tile_size
-    d_aligned_128 = (nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim + 127) // 128 * 128
+    d_aligned_128 = (nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim * 2 + 127) // 128 * 128
     d_combined = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim
     print(f"d_aligned_128={d_aligned_128}, nope_head_dim={nope_head_dim}, rope_head_dim={rope_head_dim}, quant_scale_head_dim={quant_scale_head_dim}")
-    pad_d = d_aligned_128 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim
+    pad_d = d_aligned_128 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim * 2
     block_num = block_num1 if block_num1 >= block_num2 else block_num2
     # 根据输入的data range，计算scale范围，生成scale tensor，取倒数保存为bin
     quant_param_range_left = DATA_RANGE_LEFT / FP8_DATA_RANGE_LEFT
