@@ -4,6 +4,8 @@
 
 - 2026-06-08：已按要求清空旧版 `work_progress.md`，后续工作进展从本文件重新维护。
 - 2026-06-08：最终目标是为 QSMLA 算子实现 flash decode 功能。
+- 2026-06-15：按新约定，工作进展和学习进展均维护在当前算子目录。
+- 2026-06-15：实现 FD N=128 staging 适配：split-G 下 staging 逻辑 M 行数改为 128，FA 写 staging 时后 64 head 增加 64 行偏移，staging logical slot 数按 cube pair 减半以保持 workspace 总量不增加；FD 阶段不引入前/后 64 head 判断，仅按 metadata 读取逻辑 M 行。
 
 ## Flash Decode Progress
 
@@ -296,4 +298,3 @@
 ### 优势
 - FA 与 FD 的 UB buffer 生命周期完全分离，不再存在「FA buffer 被 FD 误改」或「FD buffer 容量受 FA 阶段剩余空间限制」的风险
 - Reset 释放大量 FA 阶段不再需要的 buffer（V0 KV 输入/输出约 40KB、softmax 约 1.5KB、vec1 约 16KB 等），FD 专用 buffer 总量远小于 FA 阶段，UB 压力大幅降低
-

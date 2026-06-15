@@ -24,8 +24,12 @@ using AscendC::QuePosition;
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
 constexpr uint32_t MAX_S2_SPLIT_NUM = 2;
-constexpr uint32_t S2_SPLIT_STAGING_ATTEN_OUT_BYTES = 64 * 512 * 4; // 64行 × 512(dTemplateAlign64) × 4字节(fp32)，每个split的partial attention output暂存大小
-constexpr uint32_t S2_SPLIT_STAGING_MAX_SUM_BYTES = 64 * 8 * 4; // 64行 × 8(广播份数) × 4字节(float)，每个split的max或sum暂存大小（已广播为8-float/行块布局）
+constexpr uint32_t S2_SPLIT_STAGING_M_SIZE = 64;
+constexpr uint32_t S2_SPLIT_STAGING_M_SIZE_SPLIT_G = 128;
+constexpr uint32_t S2_SPLIT_STAGING_ATTEN_OUT_BYTES = S2_SPLIT_STAGING_M_SIZE * 512 * 4; // 64行 × 512(dTemplateAlign64) × 4字节(fp32)，每个split的partial attention output暂存大小
+constexpr uint32_t S2_SPLIT_STAGING_MAX_SUM_BYTES = S2_SPLIT_STAGING_M_SIZE * 8 * 4; // 64行 × 8(广播份数) × 4字节(float)，每个split的max或sum暂存大小（已广播为8-float/行块布局）
+constexpr uint32_t S2_SPLIT_STAGING_ATTEN_OUT_BYTES_SPLIT_G = S2_SPLIT_STAGING_M_SIZE_SPLIT_G * 512 * 4;
+constexpr uint32_t S2_SPLIT_STAGING_MAX_SUM_BYTES_SPLIT_G = S2_SPLIT_STAGING_M_SIZE_SPLIT_G * 8 * 4;
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \

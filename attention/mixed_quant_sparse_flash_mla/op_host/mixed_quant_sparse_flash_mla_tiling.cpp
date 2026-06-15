@@ -589,6 +589,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     // -------------set workspacesize-----------------
     constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
     constexpr uint32_t M_BASE_SIZE = 64;             // m轴基本块大小
+    constexpr uint32_t M_BASE_SIZE_SPLIT_G = 128;    // N1=128时FD staging按配对cube的128行逻辑M布局
     constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
     constexpr uint32_t D_SIZE = 512;
     constexpr uint32_t VEC_RES_ELEM_SIZE = 4;        // 4: fp32 (FD staging直接用fp32)
@@ -600,9 +601,11 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     if (tilingInfo->gSize > 64) {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * 2 * TRIPLE_BUFFER_NUM * (aicNum >> 1)); // v0区域仍用bf16
     }
-    uint32_t s2SplitStagingPerCore = M_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * MAX_S2_SPLIT_NUM
-        + M_BASE_SIZE * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM * 2;
-    workspaceSize += s2SplitStagingPerCore * aicNum;
+    uint32_t fdStagingMSize = (tilingInfo->gSize > 64) ? M_BASE_SIZE_SPLIT_G : M_BASE_SIZE;
+    uint32_t fdStagingSlotNum = (tilingInfo->gSize > 64) ? (aicNum >> 1) : aicNum;
+    uint32_t s2SplitStagingPerSlot = fdStagingMSize * D_SIZE * VEC_RES_ELEM_SIZE * MAX_S2_SPLIT_NUM
+        + fdStagingMSize * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM * 2;
+    workspaceSize += s2SplitStagingPerSlot * fdStagingSlotNum;
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 

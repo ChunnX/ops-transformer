@@ -10,7 +10,7 @@ This directory contains the `mixed_quant_sparse_flash_mla` Ascend C operator imp
 - `tests/pytest/batch/`: Excel-to-PT batch case generation and PT replay helpers.
 - `docs/`: local design and API learning notes for this operator.
 - `README.md`: user-facing operator API, constraints, and parameter documentation.
-- `/home/panjie/workspace/aichat/mixed_quant_sparse_flash_mla/`: required location for durable documentation-style outputs for this operator. Do not add new investigation logs, design reports, or spreadsheets under a repository-local `aichat/` directory.
+- `/home/panjie/workspace/aichat/mixed_quant_sparse_flash_mla/`: required location for durable documentation-style outputs for this operator, except the progress files listed below. Do not add new investigation logs, design reports, or spreadsheets under a repository-local `aichat/` directory.
 
 The source migration baseline was `/home/panjie/workspace/codes/ops-transformer_qsmla/attention/mixed_quant_sparse_flash_mla/AGENTS.md`, but this repository is newer. Prefer current files over assumptions from that older checkout.
 
@@ -51,10 +51,10 @@ When porting fixes from the older checkout, inspect these current files first in
 
 At the start of a new conversation for this operator, read both progress files before making assumptions or continuing analysis:
 
-- `/home/panjie/workspace/aichat/mixed_quant_sparse_flash_mla/learning_progress.md`: accumulated knowledge points and confirmed technical understanding.
+- `learning_progress.md` (in current directory): accumulated knowledge points and confirmed technical understanding.
 - `work_progress.md` (in current directory): generated documents, completed edits, and current follow-ups.
 
-Keep these files updated when new durable knowledge is confirmed or documentation/work status changes.
+Keep both progress files in the current directory updated when new durable knowledge is confirmed or documentation/work status changes.
 
 ## User Workflow Preferences
 

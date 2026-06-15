@@ -4,7 +4,7 @@
 
 - 当前目录是小组实现的 `mixed_quant_sparse_flash_mla` 算子代码，主要归属文件是 `op_host/`、`op_kernel/`、`tests/pytest/`。
 - `attention/common/` 是大组通用公共基础设施。当前算子可能通过条件 include 使用其中公共实现，但分析时要区分公共代码和本算子私有实现。
-- 所有文档类输出统一放到 `/home/panjie/workspace/aichat/mixed_quant_sparse_flash_mla/`。
+- 文档类输出统一放到 `/home/panjie/workspace/aichat/mixed_quant_sparse_flash_mla/`；但 `learning_progress.md` 和 `work_progress.md` 始终在当前算子目录维护。
 
 ## Tiling And Block Size
 
@@ -19,7 +19,11 @@
 - 当前 `n2Size = 1`，Q 侧 head 数主要体现为 `gSize`。
 - `n=64` 时 `IS_SPLIT_G=false`，单个 AIC 覆盖完整 64 个 head；两个 AIV/subBlock 在 Vec1/Vec2 中按 M 维拆半。
 - `n=128` 时 `IS_SPLIT_G=true`，相邻 AIC 按 G 轴拆成两个 64-head 分片：偶数 `aicIdx` 处理 `goIdx=0`，奇数 `aicIdx` 处理 `goIdx=64`。
+- `n=128` 的 cube 配对关系是 `(AIC 2k, AIC 2k+1)`：两者处理同一个 `(B,N2,S1)` 任务，分别覆盖前后 64 个 Q head；它们共享同一组 Vec0 反量化 KV 的 GM 三缓冲 workspace，workspace 索引用 `(aicIdx >> 1)`。
+- `n=128` 下不是两个 cube 合并做一个 128-head matmul，而是每个 cube 独立完成自己 64-head 分片的 BMM1、Vec1 softmax、BMM2、Vec2 写回；共享点主要是 KV 准备结果和配对 workspace。
 - Vec0 稀疏 KV 处理中，`n=64` 下两个 subBlock 将 `s2RealSize=128` 分成 `[0,63]` 和 `[64,127]`；`n=128` 下两个 AIC 的四个 subBlock 近似切成四段。
+- FD staging 在 `n=128` 下按逻辑 `M=128` 布局：FA 阶段前 64 head 写 `[0,63]`，后 64 head 写 `[64,127]`；FD 阶段不感知 cube 配对，只按 metadata 的 `workspaceIdx/mStartIdx/mNum` 读取逻辑 M 行。
+- `n=128` FD staging 不额外增加总 workspace：每个 logical slot 的行数从 64 翻倍到 128，同时 logical slot 数按 cube pair 减半。
 
 ## MatmulK Understanding
 

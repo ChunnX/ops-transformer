@@ -137,6 +137,55 @@ public:
         ConstInfo &constInfo);
 
 private:
+    static constexpr uint32_t StagingAttenOutBytes()
+    {
+        return IS_SPLIT_G ? regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES_SPLIT_G :
+            regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
+    }
+
+    static constexpr uint32_t StagingMaxSumBytes()
+    {
+        return IS_SPLIT_G ? regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES_SPLIT_G :
+            regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES;
+    }
+
+    static constexpr uint32_t StagingMSize()
+    {
+        return IS_SPLIT_G ? regbaseutil::S2_SPLIT_STAGING_M_SIZE_SPLIT_G :
+            regbaseutil::S2_SPLIT_STAGING_M_SIZE;
+    }
+
+    __aicore__ inline uint32_t GetStagingSlotNum() const
+    {
+        constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
+        if constexpr (IS_SPLIT_G) {
+            return MAX_S2_SPLIT_NUM * (GetBlockNum() >> 2U);
+        } else {
+            return MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
+        }
+    }
+
+    __aicore__ inline uint32_t GetFaStagingWorkspaceIdx(const RunInfo &runInfo) const
+    {
+        uint32_t workspaceIdx = static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx);
+        if constexpr (IS_SPLIT_G) {
+            workspaceIdx >>= 1U;
+        }
+        return workspaceIdx;
+    }
+
+    __aicore__ inline uint32_t GetFaStagingMOffset(const RunInfo &runInfo, const ConstInfo &constInfo) const
+    {
+        uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
+            static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
+        if constexpr (IS_SPLIT_G) {
+            if (runInfo.goIdx == regbaseutil::S2_SPLIT_STAGING_M_SIZE) {
+                stagingMOffset += regbaseutil::S2_SPLIT_STAGING_M_SIZE;
+            }
+        }
+        return stagingMOffset;
+    }
+
     __aicore__ inline void CopyMaxSumToStaging(RunInfo &runInfo, ConstInfo &constInfo,
         LocalTensor<float> &sumUb, LocalTensor<float> &maxUb);
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
@@ -904,11 +953,10 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyMaxSumToStaging(
     RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
 {
-    constexpr uint32_t ATTEN_OUT_BYTES = regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
-    constexpr uint32_t MAX_SUM_BYTES = regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES;
-    constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
+    constexpr uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes();
+    constexpr uint32_t MAX_SUM_BYTES = StagingMaxSumBytes();
     constexpr uint32_t FD_BLOCK_ELEM = 8;
-    uint32_t stagingSlotNum = MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
+    uint32_t stagingSlotNum = GetStagingSlotNum();
     __gm__ uint8_t *basePtr = s2SplitStagingBase;
     __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * ATTEN_OUT_BYTES;
     __gm__ uint8_t *sumRegion = maxRegion + stagingSlotNum * MAX_SUM_BYTES;
@@ -917,9 +965,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyMaxSumToStaging(
     GlobalTensor<float> sumGm;
     sumGm.SetGlobalBuffer((__gm__ float *)sumRegion);
 
-    uint32_t workspaceIdx = static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx);
-    uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
-        static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
+    uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
+    uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
 
     // 广播暂存复用dequantScaleBuff(vec1阶段空闲, 8192B足够放max+sum各一份)
     LocalTensor<float> tmpMaxBlockUb = this->dequantScaleBuff.template Get<float>();
@@ -993,15 +1040,13 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
             }
-            constexpr uint32_t ATTEN_OUT_BYTES = regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
+            constexpr uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes();
             __gm__ uint8_t *basePtr = s2SplitStagingBase;
 
             GlobalTensor<float> stagingOut;
-            uint32_t baseWorkspaceIdx = static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx);
-            uint32_t workspaceIdx = static_cast<uint32_t>(baseWorkspaceIdx + runInfo.s2SplitIdx);
+            uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
             stagingOut.SetGlobalBuffer((__gm__ float *)(basePtr + workspaceIdx * ATTEN_OUT_BYTES));
-            uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
-                static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
+            uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
             SetFlag<HardEvent::V_MTE3>(vToMte3Id);
             WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
             DataCopyExtParams outParams;
@@ -1035,8 +1080,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     } else {
         seqOffset = fdRunInfo.bn2Idx * constInfo.s1Size;
     }
+    constexpr uint32_t FD_M_BASE_SIZE = StagingMSize();
     int64_t attentionOutOffset = seqOffset * constInfo.n2GDv + // batch维度起始偏移（token数 × 每token所有head的V元素数）
-        fdRunInfo.mIdx * constInfo.s1BaseSize * constInfo.n2GDv + // 当前M轴基本块之前的所有块的偏移
+        fdRunInfo.mIdx * FD_M_BASE_SIZE * constInfo.n2GDv + // 当前M轴基本块之前的所有块的偏移
         fdRunInfo.mStartIdx * constInfo.dSizeV; // 当前核负责的M轴token起始偏移
     constexpr uint32_t DEAL_ROW_COUNT = 16;
     constexpr uint32_t BLOCK_ELEM = 8; // common VF按每行8 float块布局访问max/sum/lse
@@ -1048,10 +1094,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     LocalTensor<float> blockSumUb = this->fdBlockSumBuf.template Get<float>();
     LocalTensor<T> sinkUb; // intentionally unbacked; learnableSinkFlag must remain false (sink already fused in vec1)
 
-    constexpr uint32_t ATTEN_OUT_BYTES = regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
-    constexpr uint32_t MAX_SUM_BYTES = regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES;
-    constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
-    uint32_t stagingSlotNum = MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
+    constexpr uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes();
+    constexpr uint32_t MAX_SUM_BYTES = StagingMaxSumBytes();
+    uint32_t stagingSlotNum = GetStagingSlotNum();
     __gm__ uint8_t *basePtr = s2SplitStagingBase;
     __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * ATTEN_OUT_BYTES;
     __gm__ uint8_t *sumRegion = maxRegion + stagingSlotNum * MAX_SUM_BYTES;
