@@ -62,7 +62,7 @@ public:
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 32;
 
     static constexpr uint64_t FP8_BLOCK_CUBE = 32;
-    static constexpr FixpipeConfig QLI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};   // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
+    static constexpr FixpipeConfig SI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};   // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
 
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK * D_BASIC_BLOCK;
     static constexpr uint64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK * D_BASIC_BLOCK;
@@ -316,7 +316,7 @@ __aicore__ inline void SIMatmul<SIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOf
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
-    Fixpipe<QK_T, float, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[0], //UB偏移地址
+    Fixpipe<QK_T, float, SI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize], //UB偏移地址
                                                     cL0_[(l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams); // 将matmul结果从L0C搬运到UB
 }
 
