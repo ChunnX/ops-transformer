@@ -21,21 +21,18 @@ using namespace QuantCompressor;
 #define INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(templateClass, ...)                                                          \
     do {                                                                                                               \
         templateClass<COMPType<__VA_ARGS__>> op(&pipe, tilingData);                                                    \
-        op.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos,            \
+        op.Init(x, wKv, wGate, stateCache, ape,            \
                 xDescale, wKvDescale, wGateDescale, stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut, workspace);                                   \
         op.Process();                                                                                                  \
     } while (0)
 
-template<uint8_t XLayout, uint8_t XDType, uint8_t Coff, uint8_t RotaryMode, uint8_t CacheMode, uint8_t QuantMode, uint8_t TemplateId>
+template<uint8_t XLayout, uint8_t XDType, uint8_t Coff, uint8_t CacheMode, uint8_t QuantMode, uint8_t TemplateId>
 __global__ __aicore__ void quant_compressor(
     __gm__ uint8_t *x,
     __gm__ uint8_t *wKv,
     __gm__ uint8_t *wGate,
     __gm__ uint8_t *stateCache,
     __gm__ uint8_t *ape,
-    __gm__ uint8_t *normWeight,
-    __gm__ uint8_t *ropeSin,
-    __gm__ uint8_t *ropeCos,
     __gm__ uint8_t *xDescale,
     __gm__ uint8_t *wKvDescale,
     __gm__ uint8_t *wGateDescale,
@@ -58,12 +55,11 @@ __global__ __aicore__ void quant_compressor(
     constexpr auto xLayout = static_cast<X_LAYOUT>(XLayout);
     constexpr auto xDtype = static_cast<X_DTYPE>(XDType);
     constexpr auto coff = static_cast<COFF>(Coff);
-    constexpr auto rotaryMode = static_cast<ROTARY_MODE>(RotaryMode);
     constexpr auto cacheMode = static_cast<CACHE_MODE>(CacheMode);
     constexpr auto quantMode = static_cast<QUANT_MODE>(QuantMode);
     if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
-        INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(QuantCompressorKernelFullLoad, xLayout, xDtype, coff, rotaryMode, cacheMode, quantMode);
+        INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(QuantCompressorKernelFullLoad, xLayout, xDtype, coff, cacheMode, quantMode);
     } else {
-        INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(QuantCompressorKernel, xLayout, xDtype, coff, rotaryMode, cacheMode, quantMode);
+        INVOKE_QUANT_COMPRESSOR_GENERAL_OP_IMPL(QuantCompressorKernel, xLayout, xDtype, coff, cacheMode, quantMode);
     }
 }
