@@ -172,6 +172,7 @@ def tilelang_grad_kl_loss_single_kernel(
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
 
+    v3_chunks = Nidx1 // 4
     @T.prim_func
     def main(
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
@@ -469,7 +470,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 dq_fp16_ub = T.alloc_ub((4, BLOCK_K), input_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    for g_id in T.serial(Nidx1 // 4):
+                    for g_id in T.serial(v3_chunks):
                         for d_idx in T.serial(d_num_query_index):
                             T.copy(dQueryIndex_ws[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
                             T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
