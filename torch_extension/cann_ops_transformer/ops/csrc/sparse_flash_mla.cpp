@@ -11,14 +11,14 @@
  * \file sparse_flash_mla.cpp
  * \brief
  */
- 
+
 #include <torch/extension.h>
 #include "aclnn_common.h"
- 
+
 namespace op_api {
 using namespace at_npu::native;
 using npu_preparation = at_npu::native::OpPreparation;
- 
+
 // npu tensor max size
 const int SIZE = 8;
 const int DIM_0 = 0;
@@ -26,7 +26,7 @@ const int DIM_1 = 1;
 const int DIM_2 = 2;
 const int DIM_3 = 3;
 const int DIM_4 = 4;
- 
+
 std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
     const at::Tensor& q, const at::Tensor& ori_kv, std::string layout_q_str,
     std::string layout_kv_str, const uint64_t &rope_head_dim, bool return_softmax_lse)
@@ -50,7 +50,7 @@ std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
     }
     at::Tensor atten_out = at::empty(atten_out_size, q.options().dtype(q.dtype()));
     at::Tensor softmax_lse;
- 
+
     if (return_softmax_lse) {
         if (layout_q_str == "BSND") {
             // 对齐 Python: [q.shape[0], ori_kv.shape[2], q.shape[1], q.shape[2] // ori_kv.shape[2]]
@@ -65,7 +65,7 @@ std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
             softmax_lse_size = {
                 ori_kv.size(DIM_1),
                 q.size(DIM_0),
-                q.size(DIM_2) / ori_kv.size(DIM_2)
+                q.size(DIM_1) / ori_kv.size(DIM_1)
             };
         }
     } else {
@@ -77,7 +77,7 @@ std::tuple<at::Tensor, at::Tensor> construct_sparse_flash_mla_atten_out_tensor(
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
 }
  
-std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
+std::tuple<at::Tensor, at::Tensor> sparse_flash_mla(
     const at::Tensor &q,
     const c10::optional<at::Tensor> &ori_kv, const c10::optional<at::Tensor> &cmp_kv,
     const c10::optional<at::Tensor> &ori_sparse_indices, const c10::optional<at::Tensor> &cmp_sparse_indices,
@@ -109,7 +109,7 @@ std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
         q, ori_kv_val, layout_q_str, layout_kv_str, 64, return_softmax_lse);
     at::Tensor atten_out = std::get<0>(sparse_flash_mla_atten_out);
     at::Tensor softmax_lse = std::get<1>(sparse_flash_mla_atten_out);
- 
+
     ACLNN_CMD(aclnnSparseFlashMla, q,
               ori_kv, cmp_kv,
               ori_sparse_indices, cmp_sparse_indices,
@@ -128,7 +128,7 @@ std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
               atten_out, softmax_lse);
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
 }
- 
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("npu_sparse_flash_mla", &npu_sparse_flash_mla, "npu_sparse_flash_mla");
