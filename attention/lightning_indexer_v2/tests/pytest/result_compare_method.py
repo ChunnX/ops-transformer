@@ -493,11 +493,8 @@ def check_result_return_value(expect, result, params):
         npu_pass_t = True
         max_re_t = 0
         valid_len = valid_lens[t_id]
-        npu_pass_t, max_re_t = compare_return_value(cpu_reshape[t_id, :valid_len], npu_reshape[t_id, :valid_len],
-                                                    topk_value, bsn, diff_npu, diff_cpu,
-                                                    cur_npu_output_value,
-                                                    cur_cpu_output_value, thres,
-                                                    return_value, output_idx_offset_bns, layout_query)
+        npu_pass_t, max_re_t = compare_return_value(cur_npu_output_value,
+                                                    cur_cpu_output_value)
         if not npu_pass_t:
             npu_pass = False
     end_time = time()
