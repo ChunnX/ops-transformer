@@ -148,6 +148,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/indexer_quant_cache/README.md">indexer_quant_cache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>在Indexer注意力机制的Epilog阶段对KV Cache进行原地逐块动态量化压缩更新，支持MX-FP8、Normal、HiFloat8、MX-FP4四种量化模式。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/inplace_fused_causal_conv1d/README.md">inplace_fused_causal_conv1d</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -155,6 +165,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/kv_compress_epilog/README.md">kv_compress_epilog</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>在KV Cache的Epilog阶段对缓存进行原地逐组动态量化压缩更新，将bfloat16激活值压缩为FP8格式并按slotMapping散写。</td>
   </tr>
   <tr>
     <td>attention</td>
