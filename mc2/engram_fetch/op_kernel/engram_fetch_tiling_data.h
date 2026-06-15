@@ -3,14 +3,6 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
-struct EngramFetchInfo {
-    uint32_t numTokens;
-    uint32_t numEntriesPerRank;
-    uint32_t hiddenDim;
-    uint32_t hiddenBytes;
-    uint32_t aivNum;
-};
-
 struct EngramFetchTilingData {
     uint32_t numTokens;
     uint32_t numEntriesPerRank;
