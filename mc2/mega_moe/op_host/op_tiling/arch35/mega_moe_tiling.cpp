@@ -155,20 +155,10 @@ static int64_t GetCombineQuantModeByAttr(const gert::TilingContext *context, Meg
 {
     auto attrs = context->GetAttrs();
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
-    int64_t combineQuantOutType = static_cast<int64_t>(*combineQuantModePtr);
-
-    int64_t combineQuantMode;
-    if (combineQuantOutType == COMBINE_QUANT_OUT_TYPE_NO_QUANT) {
-        combineQuantMode = COMBINE_QUANT_OUT_TYPE_NO_QUANT;
-    } else if (combineQuantOutType == COMBINE_QUANT_OUT_TYPE_E5M2) {
-        combineQuantMode = COMBINE_QUANT_OUT_TYPE_E5M2;
-    } else if (combineQuantOutType == COMBINE_QUANT_OUT_TYPE_E4M3FN) {
-        combineQuantMode = COMBINE_QUANT_OUT_TYPE_E4M3FN;
-    } else {
-        combineQuantMode = COMBINE_QUANT_OUT_TYPE_E5M2;
+    if (combineQuantModePtr == nullptr) {
+        return COMBINE_QUANT_OUT_TYPE_NO_QUANT;
     }
-
-    return combineQuantMode;
+    return static_cast<int64_t>(*combineQuantModePtr);
 }
 
 static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &config,
