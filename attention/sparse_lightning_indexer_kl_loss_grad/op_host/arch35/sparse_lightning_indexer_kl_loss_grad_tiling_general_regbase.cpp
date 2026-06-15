@@ -436,9 +436,9 @@ bool SparseLightningIndexerKLLossGradTilingGeneralRegbase::CrossShapeVerify()
         // 验证T1
         OP_CHECK_IF(weightsShape[0] != t1Len || sparseIndicesShape[0] != t1Len || attnSoftmaxL1Shape[0] != t1Len,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify T1 is failed, the value of query_index[0],
-            weights[0], sparse_indices[0] and attn_softmax_l1_norm[0]
-            are respectively (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
+            "CrossShapeVerify T1 is failed, the value of query_index[0],"
+            "weights[0], sparse_indices[0] and attn_softmax_l1_norm[0]"
+            "are respectively (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
             queryIndexShape[0], weightsShape[0], sparseIndicesShape[0], attnSoftmaxL1Shape[0]),
             return false);
         // 验证N Query数字是否正确
@@ -513,9 +513,9 @@ bool SparseLightningIndexerKLLossGradTilingGeneralRegbase::CrossShapeVerify()
         OP_CHECK_IF(keyIndexShape[0] != bLen || weightsShape[0] != bLen || sparseIndicesShape[0] != bLen ||
             attnSoftmaxL1Shape[0] != bLen,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify shape B is failed, the value of query_index[0],
-            key_index[0], weights[0], sparse_indices[0] and attn_softmax_l1_norm[0]
-            are respectively (%ld), (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
+            "CrossShapeVerify shape B is failed, the value of query_index[0],"
+            "key_index[0], weights[0], sparse_indices[0] and attn_softmax_l1_norm[0]"
+            "are respectively (%ld), (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
             bLen, keyIndexShape[0], weightsShape[0], sparseIndicesShape[0], attnSoftmaxL1Shape[0]),
             return false);
         // 验证s1
@@ -523,9 +523,9 @@ bool SparseLightningIndexerKLLossGradTilingGeneralRegbase::CrossShapeVerify()
             sparseIndicesShape[1] != s1Len ||
             attnSoftmaxL1Shape[1] != s1Len,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify S1 is failed, the value of query_index[1], weights[1],
-            sparse_indices[1] and attn_softmax_l1_norm[1] are respectively (%ld), (%ld), (%ld), (%ld).
-            Their values should be equal.",
+            "CrossShapeVerify S1 is failed, the value of query_index[1], weights[1],"
+            "sparse_indices[1] and attn_softmax_l1_norm[1] are respectively (%ld), (%ld), (%ld), (%ld)."
+            "Their values should be equal.",
             s1Len, weightsShape[1], sparseIndicesShape[1], attnSoftmaxL1Shape[1]),
             return false);
         // 验证N Query数字是否正确
@@ -664,9 +664,9 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingGeneralRegbase::GetShapeAt
     sliGradBaseParams_->set_cmpRatio(cmpRatio);
 
     OP_LOGW(context_,
-        "INPUTPARAM bsize:[%ld], n2Size:[%ld], gSizeQueryIndex:[%ld],
-        s1Size:[%ld], s2Size:[%ld], dSizeQueryIndex:[%ld],
-        kSize:[%ld], sparseMode:[%ld], cmpRatio:[%ld].",
+        "INPUTPARAM bsize:[%ld], n2Size:[%ld], gSizeQueryIndex:[%ld],"
+        "s1Size:[%ld], s2Size:[%ld], dSizeQueryIndex:[%ld],"
+        "kSize:[%ld], sparseMode:[%ld], cmpRatio:[%ld].",
         bSize, n2Size, gSizeQueryIndex, s1Size, s2Size, dSizeQueryIndex, kSize, sparseMode, cmpRatio);
 
     return ge::GRAPH_SUCCESS;
