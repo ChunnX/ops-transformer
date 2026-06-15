@@ -425,20 +425,12 @@ public:
 
     __aicore__ inline void SoftmaxDataCopyOut(RunInfoXVec runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
-        if (this->isFd) {
-            if (runInfo.isS2SplitCore) {
-                ComputeLogSumExpAndCopyToGm(runInfo, sumUb, maxUb);
-            }
+        if (this->isFd && runInfo.isS2SplitCore) {
+            ComputeLogSumExpAndCopyToGm(runInfo, sumUb, maxUb);
         }
 
-        if (this->isFd) {
-            if (!runInfo.isS2SplitCore && constInfoXVec.isSoftmaxLseEnable) {
-                SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
-            }
-        } else {
-            if (constInfoXVec.isSoftmaxLseEnable) {
-                SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
-            }
+        if (constInfoXVec.isSoftmaxLseEnable && (!this->isFd || !runInfo.isS2SplitCore)) {
+            SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
         }
 
         if (constInfoXVec.learnableSinkFlag) {
@@ -526,7 +518,7 @@ public:
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
-        if constexpr (hasAtten == true) {
+        if constexpr (hasAtten) {
             // 替代 attenMaskInQue.AllocTensor：等上一轮 V 读完同一 ping/pong 槽后再 MTE2 写入
             PipeBarrier<PIPE_ALL>();
             attenMaskUb = this->attenMaskBuf[runInfo.loop & (DB - 1)];
@@ -844,12 +836,8 @@ public:
     __aicore__ inline void CopyOutAttentionOut(RunInfoXVec runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
-        if (this->isFd) {
-            if (runInfo.isS2SplitCore) {
-                Bmm2ResForFDCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize);
-            } else {
-                Bmm2ResCastAndCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize);
-            }
+        if (this->isFd && runInfo.isS2SplitCore) {
+            Bmm2ResForFDCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize);
         } else {
             Bmm2ResCastAndCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize);
         }
@@ -1381,13 +1369,10 @@ public:
         if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfoXVec.cuSeqLensQSize + 1);
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfoXVec.seqUsedQSize);
-        } else {
-            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfoXVec.seqUsedQSize);
-        }
-        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, constInfoXVec.cuSeqLensKVSize + 1);
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfoXVec.seqUsedKvSize);
         } else {
+            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfoXVec.seqUsedQSize);
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfoXVec.seqUsedKvSize);
         }
         sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
@@ -1420,7 +1405,6 @@ public:
             vecFdBlock.InitGlobalTensor(softmaxFDMaxGm, softmaxFDSumGm,
                                         accumOutGm, attentionOutGm, keyPtr);
             if (learnableSink != nullptr) {
-                sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
                 constInfoXVec.learnableSinkFlag = true;
                 vecFdBlock.InitLearnableSinkGm(sinkGm);
             }
@@ -1648,12 +1632,9 @@ public:
 
         if (constInfoXVec.sparseMode == fa_base_vector::BAND) {
             preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
-        }
-
-        if (constInfoXVec.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
-            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-        } else if (constInfoXVec.sparseMode == fa_base_vector::BAND) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
+        } else if (constInfoXVec.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
+            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
         }
     }
 

@@ -1092,13 +1092,10 @@ public:
         if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfoXCube.cuSeqLensQSize + 1);
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfoXCube.seqUsedQSize);
-        } else {
-            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfoXCube.seqUsedQSize);
-        }
-        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv, constInfoXCube.cuSeqLensKVSize + 1);
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfoXCube.seqUsedKvSize);
         } else {
+            seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ, constInfoXCube.seqUsedQSize);
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfoXCube.seqUsedKvSize);
         }
         sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
@@ -1209,10 +1206,6 @@ public:
     }
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
     {
-        if (constInfoXCube.aicIdx >= constInfoXCube.coreNum) {
-            return;
-        }
-
         GetFASectionInfo(sectionIdx);
         RunInfoXCube taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
 
@@ -1235,12 +1228,9 @@ public:
                     CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
                     createdTaskCount++;
                     validTaskCount++;
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                    continue;
-                } else {
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
+                }
+                UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
+                if (taskDealMode != TASK_DEAL_MODE::CREATE_TASK) {
                     continue;
                 }
             }
@@ -1314,12 +1304,9 @@ public:
 
         if (constInfoXCube.sparseMode == fa_base_vector::BAND) {
             preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
-        }
-
-        if (constInfoXCube.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
-            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-        } else if (constInfoXCube.sparseMode == fa_base_vector::BAND) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
+        } else if (constInfoXCube.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
+            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
         }
     }
 
@@ -1455,12 +1442,10 @@ public:
         }
         if (constInfoXCube.isKvContinuous) {
             info.isChangeBatch = false;
+        } else if (loop == 0) {
+            info.isChangeBatch = true;
         } else {
-            if (loop == 0) {
-                info.isChangeBatch = true;
-            } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
-            }
+            info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
         }
 
         int64_t preTokensLeftUp = 0;
@@ -1471,7 +1456,7 @@ public:
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
     }
 
-    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
+    __aicore__ inline void UpdateAxisInfo(uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
@@ -1512,14 +1497,9 @@ public:
         if (constInfoXCube.aicIdx < constInfoXCube.coreNum) {
             InitBuffers();
             AllocEventID();
-        }
-        for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
-            if (constInfoXCube.aicIdx < constInfoXCube.coreNum) {
+            for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
                 FlashAttention(sectionIdx);
             }
-        }
-
-        if (constInfoXCube.aicIdx < constInfoXCube.coreNum) {
             FreeEventID();
             CrossCoreBufferUnInit();
         }
