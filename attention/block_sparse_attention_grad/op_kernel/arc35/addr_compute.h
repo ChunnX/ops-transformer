@@ -72,8 +72,8 @@ public:
     }
 
     template <uint32_t INPUT_LAYOUT>
-    __aicore__ inline void UpdateRunTimeInfo(const ConstInfo &const_info, RunTimeInfo &runTimeInfo,
-                                             uint32_t &cur_s1_idx, uint32_t &cur_s1_len)
+    __aicore__ inline void UpdateRunTimeInfo(const ConstInfo &const_info, RunTimeInfo &runTimeInfo, int32_t &cur_s1_idx,
+                                             int32_t &cur_s1_len)
     {
         runTimeInfo.bIdx = this->runTimeInfoBak_.bIdx;
         runTimeInfo.last_q_seq_sum = this->runTimeInfoBak_.last_q_seq_sum;
@@ -223,7 +223,7 @@ public:
     __aicore__ inline void GetRunTimeInfo(RunTimeInfo &runTimeInfo)
     {
         runTimeInfo.need_compute = 0;
-        uint32_t cur_s1_idx, cur_s1_len;
+        int32_t cur_s1_idx, cur_s1_len;
 
         while (!single_block_.IsFinish()) {
             // 如果singleBlock未计算完，先计算singleBlock内的内容
