@@ -1384,6 +1384,37 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
 {
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
+    if (sortLen_ <= 64) {
+        LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
+        DataCopyPad(maskLocal, maskOutGmU8Local[outputGmOffset],
+                    DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(uint8_t)), 0, 0, 0),
+                    DataCopyPadExtParams<uint8_t>(false, 0,
+                        static_cast<uint8_t>(alignLen - curTileLen), 0));
+        MTE2ToSSync();
+
+        uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
+        uint32_t writeCnt = 0;
+        for (uint32_t idx = 0; idx < static_cast<uint32_t>(curTileLen) && writeCnt < static_cast<uint32_t>(curTileK);
+             ++idx) {
+            if (static_cast<float>(xLocal.GetValue(idx)) == static_cast<float>(boundaryHalf)) {
+                maskLocal.SetValue(idx, writeValue);
+                ++writeCnt;
+            }
+        }
+
+        if (BSA_TOPK_SMALL_SORT_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0) {
+            AscendC::printf("[SDBG805] scalar EQ writeCnt=%u curTileKBefore=%d\n", writeCnt, curTileK);
+        }
+
+        SToMTE3Sync();
+        DataCopyPad(maskOutGmU8Local[outputGmOffset], maskLocal,
+                    DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
+        MTE3ToMTE2Sync();
+
+        curTileK -= static_cast<int32_t>(writeCnt);
+        return;
+    }
+
     LocalTensor<uint8_t> cmpMask = tempBuf_.Get<uint8_t>();
     Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, AscendC::CMPMODE::EQ, alignLen);
     PipeBarrier<PIPE_V>();
