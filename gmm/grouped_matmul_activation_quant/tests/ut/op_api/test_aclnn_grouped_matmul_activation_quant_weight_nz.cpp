@@ -38,13 +38,14 @@ using ops::ut::ParseDimsList;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
 
-constexpr size_t kCsvColumnCount = 49U;
+constexpr size_t kCsvColumnCount = 50U;
 constexpr int64_t kDefaultDequantDtype = 0L;
-constexpr int64_t kDefaultQuantDtype = 36L;
+constexpr int64_t kDefaultYDtype = 36L;
 constexpr int64_t kDefaultGroupListType = 0L;
 constexpr int64_t kDefaultScaleAlg = 0L;
 constexpr double kDefaultDstTypeMax = 0.0;
 constexpr const char *kActivationType = "gelu_tanh";
+constexpr const char *kQuantMode = "MX";
 constexpr const char *kRoundMode = "rint";
 
 TensorDesc MakeTensorDesc(const string &shape, const string &dtype, const string &format,
@@ -93,7 +94,8 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
             auto ut = OP_API_UT(aclnnGroupedMatmulActivationQuantWeightNz,
                                 INPUT(xDesc, groupListDesc, weightDesc, weightScaleDesc, nullptr, nullptr,
                                       activationTypePtr, dequantDtype, transposeWeight, groupListType,
-                                      tuningConfigArr, quantDtype, roundModePtr, scaleAlg, dstTypeMax),
+                                      tuningConfigArr, quantMode.c_str(), attrYDtype, roundModePtr, scaleAlg,
+                                      dstTypeMax),
                                 OUTPUT(yDesc, yScaleDesc));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (biasNull) {
@@ -101,7 +103,8 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
             auto ut = OP_API_UT(aclnnGroupedMatmulActivationQuantWeightNz,
                                 INPUT(xDesc, groupListDesc, weightDesc, weightScaleDesc, nullptr, xScaleDesc,
                                       activationTypePtr, dequantDtype, transposeWeight, groupListType,
-                                      tuningConfigArr, quantDtype, roundModePtr, scaleAlg, dstTypeMax),
+                                      tuningConfigArr, quantMode.c_str(), attrYDtype, roundModePtr, scaleAlg,
+                                      dstTypeMax),
                                 OUTPUT(yDesc, yScaleDesc));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else if (xScaleNull) {
@@ -109,7 +112,8 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
             auto ut = OP_API_UT(aclnnGroupedMatmulActivationQuantWeightNz,
                                 INPUT(xDesc, groupListDesc, weightDesc, weightScaleDesc, biasDesc, nullptr,
                                       activationTypePtr, dequantDtype, transposeWeight, groupListType,
-                                      tuningConfigArr, quantDtype, roundModePtr, scaleAlg, dstTypeMax),
+                                      tuningConfigArr, quantMode.c_str(), attrYDtype, roundModePtr, scaleAlg,
+                                      dstTypeMax),
                                 OUTPUT(yDesc, yScaleDesc));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         } else {
@@ -118,7 +122,8 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
             auto ut = OP_API_UT(aclnnGroupedMatmulActivationQuantWeightNz,
                                 INPUT(xDesc, groupListDesc, weightDesc, weightScaleDesc, biasDesc, xScaleDesc,
                                       activationTypePtr, dequantDtype, transposeWeight, groupListType,
-                                      tuningConfigArr, quantDtype, roundModePtr, scaleAlg, dstTypeMax),
+                                      tuningConfigArr, quantMode.c_str(), attrYDtype, roundModePtr, scaleAlg,
+                                      dstTypeMax),
                                 OUTPUT(yDesc, yScaleDesc));
             ret = ut.TestGetWorkspaceSize(&workspaceSize);
         }
@@ -172,7 +177,8 @@ struct GroupedMatmulActivationQuantWeightNzOpApiCase {
     bool transposeWeight = false;
     int64_t groupListType = kDefaultGroupListType;
     string tuningConfig;
-    int64_t quantDtype = kDefaultQuantDtype;
+    string quantMode;
+    int64_t attrYDtype = kDefaultYDtype;
     bool roundModeNull = false;
     string roundMode;
     int64_t scaleAlg = kDefaultScaleAlg;
@@ -250,7 +256,8 @@ vector<GroupedMatmulActivationQuantWeightNzOpApiCase> LoadCases(const string &cs
             c.transposeWeight = ParseBool(Trim(cols[i++]));
             c.groupListType = stoll(Trim(cols[i++]));
             c.tuningConfig = Trim(cols[i++]);
-            c.quantDtype = stoll(Trim(cols[i++]));
+            c.quantMode = Trim(cols[i++]);
+            c.attrYDtype = stoll(Trim(cols[i++]));
             c.roundModeNull = ParseBool(Trim(cols[i++]));
             c.roundMode = Trim(cols[i++]);
             c.scaleAlg = stoll(Trim(cols[i++]));
@@ -295,7 +302,7 @@ TEST(grouped_matmul_activation_quant_weight_nz_opapi_direct_test, workspace_outp
 {
     EXPECT_NE(aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
                   nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, kActivationType, kDefaultDequantDtype,
-                  false, kDefaultGroupListType, nullptr, kDefaultQuantDtype, kRoundMode, kDefaultScaleAlg,
+                  false, kDefaultGroupListType, nullptr, kQuantMode, kDefaultYDtype, kRoundMode, kDefaultScaleAlg,
                   kDefaultDstTypeMax, nullptr, nullptr, nullptr, nullptr),
               ACLNN_SUCCESS);
 }
@@ -317,7 +324,7 @@ TEST(grouped_matmul_activation_quant_weight_nz_opapi_direct_test, required_tenso
     aclOpExecutor *executor = nullptr;
     EXPECT_NE(aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
                   x.get(), groupList.get(), nullptr, nullptr, nullptr, xScale.get(), kActivationType,
-                  kDefaultDequantDtype, false, kDefaultGroupListType, nullptr, kDefaultQuantDtype, kRoundMode,
+                  kDefaultDequantDtype, false, kDefaultGroupListType, nullptr, kQuantMode, kDefaultYDtype, kRoundMode,
                   kDefaultScaleAlg, kDefaultDstTypeMax, y.get(), yScale.get(), &workspaceSize, &executor),
               ACLNN_SUCCESS);
     if (executor != nullptr) {
@@ -344,7 +351,7 @@ TEST(grouped_matmul_activation_quant_weight_nz_opapi_direct_test, empty_tensorli
     aclOpExecutor *executor = nullptr;
     EXPECT_NE(aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
                   x.get(), groupList.get(), emptyList.get(), emptyList.get(), nullptr, xScale.get(), kActivationType,
-                  kDefaultDequantDtype, false, kDefaultGroupListType, nullptr, kDefaultQuantDtype, kRoundMode,
+                  kDefaultDequantDtype, false, kDefaultGroupListType, nullptr, kQuantMode, kDefaultYDtype, kRoundMode,
                   kDefaultScaleAlg, kDefaultDstTypeMax, y.get(), yScale.get(), &workspaceSize, &executor),
               ACLNN_SUCCESS);
     if (executor != nullptr) {
@@ -373,8 +380,9 @@ TEST(grouped_matmul_activation_quant_weight_nz_opapi_direct_test, tensorlist_ele
     aclOpExecutor *executor = nullptr;
     EXPECT_NE(aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
                   x.get(), groupList.get(), weightList, weightScaleList.get(), nullptr, xScale.get(),
-                  kActivationType, kDefaultDequantDtype, false, kDefaultGroupListType, nullptr, kDefaultQuantDtype,
-                  kRoundMode, kDefaultScaleAlg, kDefaultDstTypeMax, y.get(), yScale.get(), &workspaceSize, &executor),
+                  kActivationType, kDefaultDequantDtype, false, kDefaultGroupListType, nullptr, kQuantMode,
+                  kDefaultYDtype, kRoundMode, kDefaultScaleAlg, kDefaultDstTypeMax, y.get(), yScale.get(),
+                  &workspaceSize, &executor),
               ACLNN_SUCCESS);
     if (executor != nullptr) {
         delete executor;
@@ -404,8 +412,9 @@ TEST(grouped_matmul_activation_quant_weight_nz_opapi_direct_test, empty_bias_ten
     aclOpExecutor *executor = nullptr;
     EXPECT_EQ(aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
                   x.get(), groupList.get(), weight.get(), weightScale.get(), emptyBias.get(), xScale.get(),
-                  kActivationType, kDefaultDequantDtype, false, kDefaultGroupListType, nullptr, kDefaultQuantDtype,
-                  kRoundMode, kDefaultScaleAlg, kDefaultDstTypeMax, y.get(), yScale.get(), &workspaceSize, &executor),
+                  kActivationType, kDefaultDequantDtype, false, kDefaultGroupListType, nullptr, kQuantMode,
+                  kDefaultYDtype, kRoundMode, kDefaultScaleAlg, kDefaultDstTypeMax, y.get(), yScale.get(),
+                  &workspaceSize, &executor),
               ACLNN_SUCCESS);
     EXPECT_EQ(workspaceSize, 0U);
     if (executor != nullptr) {
@@ -432,7 +441,7 @@ TEST(grouped_matmul_activation_quant_weight_nz_opapi_direct_test, output_tensor_
     aclOpExecutor *executor = nullptr;
     EXPECT_NE(aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
                   x.get(), groupList.get(), weight.get(), weightScale.get(), nullptr, xScale.get(), kActivationType,
-                  kDefaultDequantDtype, false, kDefaultGroupListType, nullptr, kDefaultQuantDtype, kRoundMode,
+                  kDefaultDequantDtype, false, kDefaultGroupListType, nullptr, kQuantMode, kDefaultYDtype, kRoundMode,
                   kDefaultScaleAlg, kDefaultDstTypeMax, nullptr, yScale.get(), &workspaceSize, &executor),
               ACLNN_SUCCESS);
     if (executor != nullptr) {
