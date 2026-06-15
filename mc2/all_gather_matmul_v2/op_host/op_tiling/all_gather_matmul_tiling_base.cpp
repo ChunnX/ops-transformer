@@ -413,7 +413,8 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rc
  */
 ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 {
-    OP_LOGD(opName_, "[tzydebug]geAType[%d],GetSizeByDataType[%d]", args_.geAType, ge::GetSizeByDataType(args_.geAType));
+    OP_LOGD(opName_, "[tzydebug]geAType[%d],GetSizeByDataType[%d]", args_.geAType,
+            ge::GetSizeByDataType(args_.geAType));
     uint64_t sizeOfSingleM = 0;
     if (ge::GetSizeByDataType(args_.geAType) < 1000) { // TODO 注意ge::GetSizeByDataType
         sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
@@ -692,13 +693,15 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
         if (args_.isStorageGather == false) {
             if (gatherIndex == 0U) { // A矩阵
                 if (CheckSupportDtype(args_.geAType, FP4_DTYPE_SUPPORT_LIST)) {
-                    gatherLen = mc2tiling::AlignUp(static_cast<uint64_t>(rcsCfg.rankM * rcsCfg.rankK) / 2U, alignAddrLen);
+                    gatherLen = mc2tiling::AlignUp(
+                        static_cast<uint64_t>(rcsCfg.rankM) * static_cast<uint64_t>(rcsCfg.rankK) / 2U, alignAddrLen);
                 } else {
                     gatherLen = mc2tiling::AlignUp(rcsCfg.rankM * rcsCfg.rankK * args_.inputDtypeSize, alignAddrLen);
                 }
             } else {
                 if (CheckSupportDtype(args_.geAType, FP4_DTYPE_SUPPORT_LIST)) {
-                    gatherLen = mc2tiling::AlignUp(static_cast<uint64_t>(rcsCfg.rankK * rcsCfg.rankN) / 2U, alignAddrLen);
+                    gatherLen = mc2tiling::AlignUp(
+                        static_cast<uint64_t>(rcsCfg.rankK) * static_cast<uint64_t>(rcsCfg.rankN) / 2U, alignAddrLen);
                 } else {
                     gatherLen = mc2tiling::AlignUp(rcsCfg.rankK * rcsCfg.rankN * args_.inputDtypeSize, alignAddrLen);
                 }
