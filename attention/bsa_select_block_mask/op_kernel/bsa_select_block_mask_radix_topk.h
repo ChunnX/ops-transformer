@@ -1321,6 +1321,39 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
 {
     uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
+    if (sortLen_ <= 64) {
+        LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
+        uint8_t defaultValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 0 : 1;
+        uint8_t writeValue = (constInfo.sparsityMode == BSASparseMode::TopK) ? 1 : 0;
+        uint32_t writeCnt = 0;
+        for (uint32_t idx = 0; idx < static_cast<uint32_t>(curTileLen); ++idx) {
+            maskLocal.SetValue(idx, defaultValue);
+        }
+        for (uint32_t idx = 0; idx < static_cast<uint32_t>(curTileLen) && writeCnt < static_cast<uint32_t>(curTileK);
+             ++idx) {
+            float value = static_cast<float>(xLocal.GetValue(idx));
+            float boundary = static_cast<float>(boundaryHalf);
+            bool selected = (constInfo.sparsityMode == BSASparseMode::BottomK) ? (value < boundary) : (value > boundary);
+            if (selected) {
+                maskLocal.SetValue(idx, writeValue);
+                ++writeCnt;
+            }
+        }
+
+        if (BSA_TOPK_SMALL_SORT_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0) {
+            AscendC::printf("[SDBG705] scalar GT writeCnt=%u curTileKBefore=%d boundary=%f\n",
+                writeCnt, curTileK, static_cast<float>(boundaryHalf));
+        }
+
+        SToMTE3Sync();
+        DataCopyPad(maskOutGmU8Local[outputGmOffset], maskLocal,
+                    DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
+        MTE3ToMTE2Sync();
+
+        curTileK -= static_cast<int32_t>(writeCnt);
+        return;
+    }
+
     LocalTensor<uint8_t> cmpMask = tempBuf_.Get<uint8_t>();
     AscendC::CMPMODE cmpMode = (constInfo.sparsityMode == BSASparseMode::BottomK) ?
         AscendC::CMPMODE::LT : AscendC::CMPMODE::GT;
