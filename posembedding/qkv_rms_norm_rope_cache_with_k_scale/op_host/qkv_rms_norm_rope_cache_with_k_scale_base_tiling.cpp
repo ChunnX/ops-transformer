@@ -550,20 +550,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractTiling(con
     return ge::GRAPH_SUCCESS;
 }
 
-AivSlice QkvRmsNormRopeCacheWithKScaleBaseTiling::MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile,
-                                                               uint64_t aivLocalId)
-{
-    AivSlice slice;
-    const uint64_t cubeHalfTokenSize = Ops::Base::CeilDiv(tile.tokenSize, AIV_PER_AIC);
-    const uint64_t tokenPrefix = aivLocalId == 0 ? 0 : cubeHalfTokenSize;
-    const uint64_t tokenSize = aivLocalId == 0 ? cubeHalfTokenSize : tile.tokenSize - cubeHalfTokenSize;
-    slice.tokenOffset = tile.tokenOffset + tokenPrefix;
-    slice.tokenSize = tokenSize;
-    slice.rowOffset = tokenPrefix * qkHeadTile;
-    slice.rowSize = tokenSize * qkHeadTile;
-    return slice;
-}
-
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::MakeContiguousStrideInfo(const gert::Shape &shape,
                                                                                   const std::string &opName,
                                                                                   gert::Stride &strideInfo)

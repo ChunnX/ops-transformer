@@ -74,20 +74,12 @@ struct ContractTiling {
 
 struct TileParam {
     uint64_t tileId = 0;
-    uint64_t bufferId = 0;
     uint64_t tokenOffset = 0;
     uint64_t tokenSize = 0;
     uint64_t qkHeadOffset = 0;
     uint64_t qkHeadSize = 0;
     uint64_t vHeadOffset = 0;
     uint64_t vHeadSize = 0;
-    uint64_t rowOffset = 0;
-    uint64_t rowSize = 0;
-};
-
-struct AivSlice {
-    uint64_t tokenOffset = 0;
-    uint64_t tokenSize = 0;
     uint64_t rowOffset = 0;
     uint64_t rowSize = 0;
 };
@@ -115,9 +107,6 @@ public:
     static ge::graphStatus BuildContractTiling(const ContractInput &input, uint64_t aicNum, ContractTiling &tiling,
                                                const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
         __attribute__((visibility("default")));
-    static AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLocalId)
-        __attribute__((visibility("default")));
-
     explicit QkvRmsNormRopeCacheWithKScaleBaseTiling(gert::TilingContext *context) : TilingBaseClass(context)
     {
     }

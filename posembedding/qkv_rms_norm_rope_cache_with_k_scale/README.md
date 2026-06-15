@@ -21,19 +21,23 @@ Current state:
    token-size tiles, and derives per-tile tail parameters before calling the
    D=128 fast-path basic block.
 4. T03 adds static GM/L1/UB tensor binding. `qRotationL1Nz_` and
-   `kRotationL1Nz_` are AIC-only resident rotation slots, `a_rot_l1_nz` is the
-   Cube AL1 data slot shared by the AIV->AIC protocol, and
-   `bufferId = tileId & 1` only selects data buffers. The raw `GlobalTensors`
-   bundle is only an entry argument; Cube and Vec bind their own typed GM
-   tensors and neither controller nor basic block retains a shared bound-GM
-   bundle. The host/API and kernel entry expose `q_rotation` and `k_rotation`;
-   Cube binds both tensors, keeps separate resident L1/L0B views, and selects
-   `q_rotation` for Q rows and `k_rotation` for K rows.
+   `kRotationL1Nz_` are AIC-only resident rotation slots, and `a_rot_l1_nz` is
+   the Cube AL1 data slot shared by the AIV->AIC protocol. `BasicBlock`
+   coordinates the shared `a_rot_l1_nz` pingpong use id so AIV writes and AIC
+   reads stay on the same slot; local-only UB/L0C buffer pools maintain their
+   own counters rather than carrying a tile-level `bufferId`. The raw
+   `outputDbPoolUb_` slots are fixed by purpose: slot 0 is the AIV preprocess
+   staging buffer and slot 1 is the AIC FIXPIPE Q/K output buffer. The raw
+   `GlobalTensors` bundle is only an entry argument; Cube and Vec bind their own
+   typed GM tensors and neither controller nor basic block retains a shared
+   bound-GM bundle. The host/API and kernel entry expose `q_rotation` and
+   `k_rotation`; Cube binds both tensors, keeps separate resident L1/L0B views,
+   and selects `q_rotation` for Q rows and `k_rotation` for K rows.
 5. T04/T11 add fixed CrossCore flag ids and wrappers for `A_READY`,
    `A_CONSUMED`, `C_READY`, and `C_CONSUMED`. `A_CONSUMED` is the A-side
    double-buffer reuse credit; T13 completed the final static protocol audit.
    CrossCore flag ids are semantic constants and are not derived from pingpong
-   `bufferId` or loop generation.
+   buffer ids or loop generation.
 6. T05 adds fixed intra-core event constants and Init/End pairing for reusable
    AIV/AIC buffers. Active event ids stay within `0..5`; `a_rot_l1_nz` remains
    CrossCore-protected AL1 and does not consume AIV intra-core event ids.

@@ -19,28 +19,23 @@ namespace QkvRmsNormRopeCacheWithKScale {
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
     __aicore__ inline void InitAic(const GlobalTensors &tensors,
-                                   const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t cubeIndex)
+                                   const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
-        aivTileCount_ = 0U;
-        outBufferUseId_ = 0U;
-        pendingQkOutHead_ = 0U;
-        pendingQkOutCount_ = 0U;
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            pendingQkOutBufferIds_[i] = 0U;
-            aivQkOutUseIds_[i] = 0U;
-        }
-        cube_.Init(cubeIndex, tilingData, tensors);
+        tileCount_ = 0U;
+        aRotL1BufferUseId_ = 0U;
+        aRotL1Pool_ =
+            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
+        cube_.Init(tilingData, tensors);
         cube_.InitIntraCoreEvents();
     }
 
     __aicore__ inline void InitAiv(const GlobalTensors &tensors,
                                    const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t aivLocalId)
     {
-        aivTileCount_ = 0U;
-        outBufferUseId_ = 0U;
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            aivQkOutUseIds_[i] = 0U;
-        }
+        tileCount_ = 0U;
+        aRotL1BufferUseId_ = 0U;
+        aRotL1Pool_ =
+            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
         vec_.Init(tilingData, aivLocalId, tensors);
         vec_.InitIntraCoreEvents();
         SetInitialAivMte3ToAicFixCConsumedCredits();
@@ -48,14 +43,19 @@ public:
 
     __aicore__ inline void ComputeTileAic(const TileParam &tile)
     {
-        ReservePreprocessOutUseId();
-        const uint64_t qkOutUseId = ReserveQkOutUseId();
-        WaitUntilQkOutBufferReusable(qkOutUseId);
+        const uint64_t aRotL1BufferUseId = ReserveARotL1BufferUseId();
+        const uint32_t aRotL1BufferId =
+            static_cast<uint32_t>(aRotL1BufferUseId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+        const LocalTensor<bfloat16_t> aRotL1Nz =
+            aRotL1Pool_[aRotL1BufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
+        if (tileCount_ > 0U) {
+            WaitAivMte3ToAicFixCConsumed();
+        }
         WaitAivMte3ToAicMte1AReady();
-        cube_.ComputeTile(tile, qkOutUseId);
+        cube_.ComputeTile(tile, aRotL1Nz, QKV_RRC_OUTPUT_QK_BUFFER_ID);
         SetAicMte1ToAivMte3AConsumed();
         SetAicFixToAivVCReady();
-        PushPendingQkOutBuffer(qkOutUseId);
+        ++tileCount_;
     }
 
     __aicore__ inline void PrepareBeforeLoopAic()
@@ -66,58 +66,56 @@ public:
 
     __aicore__ inline void ComputeTileAiv(TileParam &tile, const TileParam &lastTile)
     {
-        const uint64_t preprocessOutUseId = ReservePreprocessOutUseId();
-        aivQkOutUseIds_[MakeDataBufferId(tile.bufferId)] = ReserveQkOutUseId();
+        const uint64_t aRotL1BufferUseId = ReserveARotL1BufferUseId();
+        const uint32_t aRotL1BufferId =
+            static_cast<uint32_t>(aRotL1BufferUseId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+        const LocalTensor<bfloat16_t> aRotL1Nz =
+            aRotL1Pool_[aRotL1BufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         WaitAicMte1ToAivMte3AConsumed();
-        vec_.WaitVToMte2InputBufferReusable(tile);
-        // Empty tail slices still reserve this credit so dual-dst FIXPIPE sees one address sequence.
-        vec_.WaitMte3ToVQkOutBufferReusable(preprocessOutUseId);
-        vec_.ComputeTile(tile, preprocessOutUseId);
-        vec_.SetMte3ToVQkOutBufferReusable(preprocessOutUseId);
+        vec_.WaitVToMte2InputBufferReusable();
+        vec_.WaitMte3ToVQkOutBufferReusable(QKV_RRC_OUTPUT_PREPROCESS_BUFFER_ID);
+        vec_.ComputeTile(tile, aRotL1Nz, QKV_RRC_OUTPUT_PREPROCESS_BUFFER_ID);
+        vec_.SetMte3ToVQkOutBufferReusable(QKV_RRC_OUTPUT_PREPROCESS_BUFFER_ID);
         SetAivMte3ToAicMte1AReady();
         vec_.PostprocessV(tile);
-        vec_.SetVToMte2InputBufferReusable(tile);
-        if (aivTileCount_ > 0U) {
-            const uint64_t lastQkOutUseId = aivQkOutUseIds_[MakeDataBufferId(lastTile.bufferId)];
-            vec_.WaitMte3ToVQkOutBufferReusable(lastQkOutUseId);
+        vec_.SetVToMte2InputBufferReusable();
+        if (tileCount_ > 0U) {
+            vec_.WaitMte3ToVQkOutBufferReusable(QKV_RRC_OUTPUT_QK_BUFFER_ID);
             WaitAicFixToAivVCReady();
-            vec_.PostprocessQk(lastTile, lastQkOutUseId);
-            vec_.SetMte3ToVQkOutBufferReusable(lastQkOutUseId);
+            vec_.PostprocessQk(lastTile, QKV_RRC_OUTPUT_QK_BUFFER_ID);
+            vec_.SetMte3ToVQkOutBufferReusable(QKV_RRC_OUTPUT_QK_BUFFER_ID);
             SetAivMte3ToAicFixCConsumed();
         }
-        ++aivTileCount_;
+        ++tileCount_;
     }
 
     __aicore__ inline void EndAic()
     {
-        DrainPendingCConsumed();
+        if (tileCount_ > 0U) {
+            WaitAivMte3ToAicFixCConsumed();
+            tileCount_ = 0U;
+        }
         cube_.EndIntraCoreEvents();
     }
 
     __aicore__ inline void EndAiv(const TileParam &lastTile)
     {
-        if (aivTileCount_ > 0U) {
-            const uint64_t lastQkOutUseId = aivQkOutUseIds_[MakeDataBufferId(lastTile.bufferId)];
-            vec_.WaitMte3ToVQkOutBufferReusable(lastQkOutUseId);
+        if (tileCount_ > 0U) {
+            vec_.WaitMte3ToVQkOutBufferReusable(QKV_RRC_OUTPUT_QK_BUFFER_ID);
             WaitAicFixToAivVCReady();
-            vec_.PostprocessQk(lastTile, lastQkOutUseId);
-            vec_.SetMte3ToVQkOutBufferReusable(lastQkOutUseId);
+            vec_.PostprocessQk(lastTile, QKV_RRC_OUTPUT_QK_BUFFER_ID);
+            vec_.SetMte3ToVQkOutBufferReusable(QKV_RRC_OUTPUT_QK_BUFFER_ID);
             SetAivMte3ToAicFixCConsumed();
-            aivTileCount_ = 0U;
+            tileCount_ = 0U;
         }
         DrainAicMte1ToAivMte3AConsumedCredits();
         vec_.EndIntraCoreEvents();
     }
 
 private:
-    __aicore__ inline uint64_t ReservePreprocessOutUseId()
+    __aicore__ inline uint64_t ReserveARotL1BufferUseId()
     {
-        return outBufferUseId_++;
-    }
-
-    __aicore__ inline uint64_t ReserveQkOutUseId()
-    {
-        return outBufferUseId_++;
+        return aRotL1BufferUseId_++;
     }
 
     __aicore__ inline void SetInitialAicMte1ToAivMte3AConsumedCredits()
@@ -135,50 +133,6 @@ private:
     {
         for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
             WaitAicMte1ToAivMte3AConsumed();
-        }
-    }
-
-    __aicore__ inline bool IsQkOutBufferPending(uint32_t outBufferId) const
-    {
-        for (uint32_t i = 0U; i < pendingQkOutCount_; ++i) {
-            const uint32_t index = (pendingQkOutHead_ + i) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
-            if (pendingQkOutBufferIds_[index] == outBufferId) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    __aicore__ inline void WaitAndPopOldestPendingQkOutBuffer()
-    {
-        if (pendingQkOutCount_ == 0U) {
-            return;
-        }
-        WaitAivMte3ToAicFixCConsumed();
-        pendingQkOutHead_ = (pendingQkOutHead_ + 1U) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
-        --pendingQkOutCount_;
-    }
-
-    __aicore__ inline void WaitUntilQkOutBufferReusable(uint64_t outBufferUseId)
-    {
-        const uint32_t outBufferId = MakeOutputBufferId(outBufferUseId);
-        while (IsQkOutBufferPending(outBufferId)) {
-            WaitAndPopOldestPendingQkOutBuffer();
-        }
-    }
-
-    __aicore__ inline void PushPendingQkOutBuffer(uint64_t outBufferUseId)
-    {
-        const uint32_t outBufferId = MakeOutputBufferId(outBufferUseId);
-        const uint32_t index = (pendingQkOutHead_ + pendingQkOutCount_) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
-        pendingQkOutBufferIds_[index] = outBufferId;
-        ++pendingQkOutCount_;
-    }
-
-    __aicore__ inline void DrainPendingCConsumed()
-    {
-        while (pendingQkOutCount_ > 0U) {
-            WaitAndPopOldestPendingQkOutBuffer();
         }
     }
 
@@ -222,12 +176,9 @@ private:
         WaitAivToAic<PIPE_FIX>(SYNC_C_CONSUMED);
     }
 
-    uint64_t aivTileCount_;
-    uint64_t outBufferUseId_;
-    uint32_t pendingQkOutHead_;
-    uint32_t pendingQkOutCount_;
-    uint32_t pendingQkOutBufferIds_[QKV_RRC_DOUBLE_BUFFER_NUM];
-    uint64_t aivQkOutUseIds_[QKV_RRC_DOUBLE_BUFFER_NUM];
+    uint64_t tileCount_;
+    uint64_t aRotL1BufferUseId_;
+    LocalTensor<bfloat16_t> aRotL1Pool_;
     QkvRmsNormRopeCacheWithKScaleCube cube_;
     QkvRmsNormRopeCacheWithKScaleVec vec_;
 };

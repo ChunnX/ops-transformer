@@ -45,10 +45,17 @@ constexpr uint32_t QKV_RRC_INPUT_ONE_BUFFER_BYTES = 40U * QKV_RRC_KIB;
 constexpr uint32_t QKV_RRC_OUTPUT_ONE_BUFFER_BYTES = 64U * QKV_RRC_KIB;
 constexpr uint32_t QKV_RRC_INPUT_DB_POOL_BYTES = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_INPUT_ONE_BUFFER_BYTES;
 constexpr uint32_t QKV_RRC_OUTPUT_DB_POOL_BYTES = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_OUTPUT_ONE_BUFFER_BYTES;
+constexpr uint32_t QKV_RRC_OUTPUT_PREPROCESS_BUFFER_ID = 0U;
+constexpr uint32_t QKV_RRC_OUTPUT_QK_BUFFER_ID = 1U;
 constexpr uint32_t QKV_RRC_INPUT_ONE_BUFFER_ELEMENTS = QKV_RRC_INPUT_ONE_BUFFER_BYTES / sizeof(bfloat16_t);
 constexpr uint32_t QKV_RRC_INPUT_DB_POOL_ELEMENTS = QKV_RRC_INPUT_DB_POOL_BYTES / sizeof(bfloat16_t);
 constexpr uint32_t QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS = QKV_RRC_OUTPUT_ONE_BUFFER_BYTES / sizeof(float);
 constexpr uint32_t QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS = QKV_RRC_OUTPUT_DB_POOL_BYTES / sizeof(float);
+
+static_assert(QKV_RRC_OUTPUT_PREPROCESS_BUFFER_ID < QKV_RRC_DOUBLE_BUFFER_NUM &&
+                  QKV_RRC_OUTPUT_QK_BUFFER_ID < QKV_RRC_DOUBLE_BUFFER_NUM &&
+                  QKV_RRC_OUTPUT_PREPROCESS_BUFFER_ID != QKV_RRC_OUTPUT_QK_BUFFER_ID,
+              "QkvRmsNormRopeCacheWithKScale output UB slots must be distinct double-buffer ids.");
 
 constexpr uint32_t QKV_RRC_ROTATION_ONE_L1_BYTES = QKV_RRC_HEAD_DIM_D128 * QKV_RRC_HEAD_DIM_D128 * sizeof(bfloat16_t);
 constexpr uint32_t QKV_RRC_A_ROT_L1_ONE_BUFFER_BYTES = 64U * QKV_RRC_KIB;
@@ -112,7 +119,6 @@ static_assert(QKV_RRC_UB_USED_BYTES <= 248U * QKV_RRC_KIB,
 
 struct TileParam {
     uint64_t tileId;
-    uint64_t bufferId;
     uint64_t tokenOffset;
     uint64_t tokenSize;
     uint64_t qkHeadOffset;
@@ -128,13 +134,6 @@ struct TileParam {
 struct TokenRange {
     uint64_t begin;
     uint64_t end;
-};
-
-struct AivSlice {
-    uint64_t tokenOffset;
-    uint64_t tokenSize;
-    uint64_t rowOffset;
-    uint64_t rowSize;
 };
 
 struct GlobalTensors {
@@ -210,16 +209,6 @@ __aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount)
 __aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount, uint64_t colCount)
 {
     return CeilDiv(colCount, QKV_RRC_NZ_C0) * NzRowAligned(rowCount) * QKV_RRC_NZ_C0;
-}
-
-__aicore__ inline uint32_t MakeDataBufferId(uint64_t tileBufferId)
-{
-    return static_cast<uint32_t>(tileBufferId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-}
-
-__aicore__ inline uint32_t MakeOutputBufferId(uint64_t outBufferUseId)
-{
-    return static_cast<uint32_t>(outBufferUseId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
 }
 
 __aicore__ inline uint64_t MakeCubeTokenSize(const TileParam &tile)
@@ -317,20 +306,6 @@ __aicore__ inline uint32_t GetAicCubeIndex()
 __aicore__ inline uint32_t GetAivCubeIndex()
 {
     return GetBlockIdx() / QKV_RRC_MIX_AIV_PER_AIC;
-}
-
-__aicore__ inline AivSlice MakeAivSlice(const TileParam &tile, uint64_t qkHeadTile, uint64_t aivLocalId)
-{
-    AivSlice slice = {0U, 0U, 0U, 0U};
-    const uint64_t cubeHalfTokenSize = MakeCubeHalfTokenSize(tile);
-    const uint64_t tokenPrefix = aivLocalId == 0U ? 0U : cubeHalfTokenSize;
-    const uint64_t tokenSize = aivLocalId == 0U ? cubeHalfTokenSize : tile.tokenSize - cubeHalfTokenSize;
-
-    slice.tokenOffset = tile.tokenOffset + tokenPrefix;
-    slice.tokenSize = tokenSize;
-    slice.rowOffset = tokenPrefix * qkHeadTile;
-    slice.rowSize = tokenSize * qkHeadTile;
-    return slice;
 }
 
 } // namespace QkvRmsNormRopeCacheWithKScale

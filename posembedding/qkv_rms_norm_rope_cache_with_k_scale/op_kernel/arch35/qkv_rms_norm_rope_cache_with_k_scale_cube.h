@@ -20,11 +20,11 @@ constexpr uint8_t QKV_RRC_FIXPIPE_DUAL_DST_SPLIT_M = 1;
 
 class QkvRmsNormRopeCacheWithKScaleCube {
 public:
-    __aicore__ inline void Init(uint32_t cubeIndex, const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
+    __aicore__ inline void Init(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
                                 const GlobalTensors &tensors)
     {
-        cubeIndex_ = cubeIndex;
         tilingData_ = tilingData;
+        l0cBufferUseId_ = 0U;
         BindLocalTensors();
         BindGlobalTensors(tensors);
     }
@@ -49,28 +49,26 @@ public:
         CopyRotationGmToL1Nz(kRotationL1Nz_, kRotationGm_);
         SetMte2ToMte1RotationReady();
         WaitMte2ToMte1RotationReady();
-        LoadRotationToL0(qRotationL0b(), qRotationL1Nz_);
-        LoadRotationToL0(kRotationL0b(), kRotationL1Nz_);
+        LoadRotationToL0(l0b_, qRotationL1Nz_);
+        LoadRotationToL0(l0b_[AIC_L0B_ONE_BUFFER_ELEMENTS], kRotationL1Nz_);
         SetMte1ToMmadRotationReady();
         WaitMte1ToMmadRotationReady();
     }
 
-    __aicore__ inline void ComputeTile(const TileParam &tile, uint64_t outBufferUseId)
+    __aicore__ inline void ComputeTile(const TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
+                                       uint32_t outputBufferId)
     {
-        const uint32_t dataBufferId = MakeDataBufferId(tile.bufferId);
-        const uint32_t outputBufferId = MakeOutputBufferId(outBufferUseId);
-        LocalTensor<bfloat16_t> aRotL1Nz = aRotL1Pool_[dataBufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
+        const uint32_t l0cBufferId =
+            static_cast<uint32_t>((l0cBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         LocalTensor<float> qkAfterCubeUb = QkAfterCubeUb(outputBufferId);
         const uint64_t cubeTokenSize = MakeCubeTokenSize(tile);
         const uint64_t qRows = cubeTokenSize * tilingData_->qHeadNum;
         const uint64_t kRows = cubeTokenSize * tilingData_->kvHeadNum;
         const uint64_t qL0cOffset = 0U;
         const uint64_t kL0cOffset = AlignUp(qRows, QKV_RRC_NZ_C0) * QKV_RRC_HEAD_DIM_D128;
-        ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, dataBufferId, qL0cOffset, kL0cOffset);
-        FixpipePreprocessedSegmentToAivUb(tile, qRows, true, dataBufferId, qL0cOffset, qkAfterCubeUb);
-        FixpipePreprocessedSegmentToAivUb(tile, kRows, false, dataBufferId, kL0cOffset, qkAfterCubeUb);
-        (void)workspaceGm_;
-        (void)cubeIndex_;
+        ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, l0cBufferId, qL0cOffset, kL0cOffset);
+        FixpipePreprocessedSegmentToAivUb(tile, qRows, true, l0cBufferId, qL0cOffset, qkAfterCubeUb);
+        FixpipePreprocessedSegmentToAivUb(tile, kRows, false, l0cBufferId, kL0cOffset, qkAfterCubeUb);
     }
 
 private:
@@ -206,8 +204,8 @@ private:
 
         const LocalTensor<bfloat16_t> kSegmentL1Nz = aRotL1Nz[NzMatrixElements(qRows)];
         uint32_t l0aDbIter = 0U;
-        ComputeSegmentToL0C(qRows, aRotL1Nz, qRotationL0b(), bufferId, qL0cOffset, l0aDbIter);
-        ComputeSegmentToL0C(kRows, kSegmentL1Nz, kRotationL0b(), bufferId, kL0cOffset, l0aDbIter);
+        ComputeSegmentToL0C(qRows, aRotL1Nz, l0b_, bufferId, qL0cOffset, l0aDbIter);
+        ComputeSegmentToL0C(kRows, kSegmentL1Nz, l0b_[AIC_L0B_ONE_BUFFER_ELEMENTS], bufferId, kL0cOffset, l0aDbIter);
     }
 
     __aicore__ inline void ComputeSegmentToL0C(uint64_t segmentRows, const LocalTensor<bfloat16_t> &segmentL1Nz,
@@ -329,23 +327,11 @@ private:
             LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_Q_ROTATION_L1_OFFSET, QKV_RRC_ROTATION_ONE_L1_ELEMENTS);
         kRotationL1Nz_ =
             LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_K_ROTATION_L1_OFFSET, QKV_RRC_ROTATION_ONE_L1_ELEMENTS);
-        aRotL1Pool_ =
-            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
         l0a_ = LocalTensor<bfloat16_t>(TPosition::A2, 0, AIC_L0A_BUFFER_ELEMENTS);
         l0b_ = LocalTensor<bfloat16_t>(TPosition::B2, 0, AIC_L0B_BUFFER_ELEMENTS);
         l0c_ = LocalTensor<float>(TPosition::CO1, 0, AIC_L0C_BUFFER_ELEMENTS);
         outputDbPoolUb_ =
             LocalTensor<float>(TPosition::LCM, QKV_RRC_OUTPUT_DB_POOL_OFFSET, QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
-    }
-
-    __aicore__ inline LocalTensor<bfloat16_t> qRotationL0b()
-    {
-        return l0b_;
-    }
-
-    __aicore__ inline LocalTensor<bfloat16_t> kRotationL0b()
-    {
-        return l0b_[AIC_L0B_ONE_BUFFER_ELEMENTS];
     }
 
     __aicore__ inline LocalTensor<float> QkAfterCubeUb(uint32_t bufferId)
@@ -357,17 +343,14 @@ private:
     {
         qRotationGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.qRotation);
         kRotationGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.kRotation);
-        workspaceGm_.SetGlobalBuffer((__gm__ uint8_t *)tensors.workspace);
     }
 
-    uint32_t cubeIndex_;
+    uint64_t l0cBufferUseId_;
     const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData_;
     GlobalTensor<bfloat16_t> qRotationGm_;
     GlobalTensor<bfloat16_t> kRotationGm_;
-    GlobalTensor<uint8_t> workspaceGm_;
     LocalTensor<bfloat16_t> qRotationL1Nz_;
     LocalTensor<bfloat16_t> kRotationL1Nz_;
-    LocalTensor<bfloat16_t> aRotL1Pool_;
     LocalTensor<bfloat16_t> l0a_;
     LocalTensor<bfloat16_t> l0b_;
     LocalTensor<float> l0c_;

@@ -52,7 +52,6 @@ private:
     __aicore__ inline void ResetTileParam(TileParam &tile) const
     {
         tile.tileId = 0U;
-        tile.bufferId = 0U;
         tile.tokenOffset = 0U;
         tile.tokenSize = 0U;
         tile.qkHeadOffset = 0U;
@@ -68,7 +67,6 @@ private:
     {
         ResetTileParam(tile);
         tile.tileId = tileId;
-        tile.bufferId = tileId & 1U;
         tile.tokenOffset = tokenOffset;
         if (tile.tokenOffset >= tilingData->totalTokens || tokenSize == 0U) {
             return;
@@ -76,17 +74,12 @@ private:
 
         tile.tokenSize = MinU64(MinU64(tokenSize, tilingData->tokenTile), tilingData->totalTokens - tile.tokenOffset);
         tile.qkHeadOffset = 0U;
-        const uint64_t qkHeadTile = QkHeadTile(tilingData);
+        const uint64_t qkHeadTile = tilingData->qHeadNum + tilingData->kvHeadNum;
         tile.qkHeadSize = qkHeadTile;
         tile.vHeadOffset = 0U;
         tile.vHeadSize = tilingData->kvHeadNum;
         tile.rowOffset = 0U;
         tile.rowSize = tile.tokenSize * qkHeadTile;
-    }
-
-    __aicore__ inline uint64_t QkHeadTile(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData) const
-    {
-        return tilingData->qHeadNum + tilingData->kvHeadNum;
     }
 
     __aicore__ inline void ForEachTileAic(QkvRmsNormRopeCacheWithKScaleBasicBlock &basicBlock,
@@ -137,7 +130,7 @@ private:
         const uint32_t cubeIndex = GetAicCubeIndex();
         const TokenRange tokenRange = MakeCoreTokenRange(tilingData, cubeIndex);
         QkvRmsNormRopeCacheWithKScaleBasicBlock basicBlock;
-        basicBlock.InitAic(tensors, tilingData, cubeIndex);
+        basicBlock.InitAic(tensors, tilingData);
         basicBlock.PrepareBeforeLoopAic();
         ForEachTileAic(basicBlock, tilingData, tokenRange);
         basicBlock.EndAic();
