@@ -16,8 +16,8 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
-#include "grouped_matmul_activation_quant_mxquant.h"
-#include "grouped_matmul_activation_quant_tiling_key.h"
+#include "arch35/grouped_matmul_activation_quant_mxquant.h"
+#include "arch35/grouped_matmul_activation_quant_tiling_key.h"
 
 namespace {
 constexpr uint32_t FLOAT_OVERFLOW_MODE_CTRL = 60U;
