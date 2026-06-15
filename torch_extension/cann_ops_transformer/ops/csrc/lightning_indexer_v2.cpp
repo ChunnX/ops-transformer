@@ -26,6 +26,46 @@ const int DIM_1 = 1;
 const int DIM_2 = 2;
 const int DIM_3 = 3;
 
+constexpr int64_t LI_V2_METADATA_SIZE = 1024;
+
+at::Tensor lightning_indexer_metadata(
+    int64_t num_heads_q, int64_t num_heads_k, int64_t head_dim, int64_t topk,
+    const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_k,
+    const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_k,
+    const c10::optional<at::Tensor> &cmp_residual_k, int64_t batch_size, int64_t max_seqlen_q, int64_t max_seqlen_k,
+    c10::string_view layout_q, c10::string_view layout_k, int64_t mask_mode, int64_t cmp_ratio)
+{
+    at::Device output_device = at::Device(std::string("npu"));
+    if (cu_seqlens_q.has_value()) {
+        output_device = cu_seqlens_q.value().device();
+    } else if (cu_seqlens_k.has_value()) {
+        output_device = cu_seqlens_k.value().device();
+    } else if (seqused_q.has_value()) {
+        output_device = seqused_q.value().device();
+    } else if (seqused_k.has_value()) {
+        output_device = seqused_k.value().device();
+    } else if (cmp_residual_k.has_value()) {
+        output_device = cmp_residual_k.value().device();
+    }
+
+    at::Tensor output = torch::empty({LI_V2_METADATA_SIZE}, torch::dtype(torch::kInt32).device(output_device));
+    auto cu_seqlens_q_val = get_valid_tensor(cu_seqlens_q, output_device);
+    auto cu_seqlens_k_val = get_valid_tensor(cu_seqlens_k, output_device);
+    auto seqused_q_val = get_valid_tensor(seqused_q, output_device);
+    auto seqused_k_val = get_valid_tensor(seqused_k, output_device);
+    auto cmp_residual_k_val = get_valid_tensor(cmp_residual_k, output_device);
+
+    std::string layout_q_str = std::string(layout_q);
+    std::string layout_k_str = std::string(layout_k);
+    char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
+    char *layout_k_ptr = const_cast<char *>(layout_k_str.c_str());
+
+    ACLNN_CMD(aclnnLightningIndexerV2Metadata, cu_seqlens_q_val, cu_seqlens_k_val, seqused_q_val, seqused_k_val,
+              cmp_residual_k_val, num_heads_q, num_heads_k, head_dim, topk, batch_size, max_seqlen_q, max_seqlen_k,
+              layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio, output);
+    return output;
+}
+
 // 工具函数，推导输出shape
 std::tuple<at::Tensor, at::Tensor> construct_lightning_indexer_v2_output_tensor(const at::Tensor& query,
                                                                                 const at::Tensor& key,
@@ -102,6 +142,7 @@ std::tuple<at::Tensor, at::Tensor> lightning_indexer_v2(
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
+    m.def("lightning_indexer_metadata", &lightning_indexer_metadata, "lightning_indexer_metadata");
     m.def("lightning_indexer_v2", &lightning_indexer_v2, "lightning_indexer_v2");
 }
 } // namespace op_api
