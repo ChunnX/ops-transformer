@@ -2,7 +2,7 @@
 
 ## 1. 环境准备
 
-### 1.1安装CANN / PyTorch + torch-npu
+### 1.1 安装CANN / PyTorch + torch-npu
 
 参考根目录README.md，或使用项目根目录下的安装脚本：
 
@@ -11,7 +11,7 @@ bash install_cann_950.sh    # 安装CANN 9.1.0 + 950 ops
 bash install_torch_npu.sh   # 安装PyTorch + torch-npu
 ```
 
-### 1.2每次执行前加载环境
+### 1.2 每次执行前加载环境
 
 ```bash
 source /home/user/Ascend/cann/set_env.sh
@@ -24,13 +24,13 @@ cd /home/user/code/ops-transformer/attention/fused_infer_attention_score/tests/p
 
 ## 2. 执行测试
 
-### 2.1运行全部用例
+### 2.1 运行全部用例
 
 ```bash
 pytest test_fia_fullquant_mxfp8.py -v
 ```
 
-### 2.2运行指定用例（-k关键字过滤）
+### 2.2 运行指定用例（-k关键字过滤）
 
 ```bash
 # 精确指定单个用例
@@ -51,7 +51,7 @@ pytest test_fia_fullquant_mxfp8.py -v -k "PA_NZ and Prefill"
 pytest test_fia_fullquant_mxfp8.py -v -k "not Decode"
 ```
 
-### 2.3常用选项
+### 2.3 常用选项
 
 | 选项 | 作用 |
 |------|------|

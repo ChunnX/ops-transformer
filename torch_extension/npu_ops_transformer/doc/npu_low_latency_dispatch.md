@@ -78,13 +78,13 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
     - "fullmesh_v1"：开启fullmesh_v1模板；
     - "fullmesh_v2"：开启fullmesh_v2模板；
 -   **x\_smooth\_scales** (`Tensor`)：可选参数，表示每个专家的权重，非量化场景不传，动态量化场景可传可不传。若传值要求为2维张量，如果有共享专家，shape为(shared\_expert\_num+num\_experts, H)，如果没有共享专家，shape为(num\_experts, H)，数据类型支持`float`，数据格式为$ND$，不支持非连续的Tensor。
--   **x\_active\_mask** (`Tensor`)：可选参数，表示token是否参与通信，要求是一个1维或者2维张量。当输入为1维时，shape为(BS, ); 当输入为2维时，shape为(BS, K)。数据类型支持`bool`，数据格式要求为$ND$，支持非连续的Tensor。当输入为1维时，参数为true表示对应的token参与通信，true必须排到false之前，例：{true, false, true} 为非法输入；当输入为2D时，参数为true表示当前token对应的`topk_idx`参与通信，若当前token对应的K个`bool`值全为false，表示当前token不会参与通信。默认所有token都会参与通信。当每张卡的BS数量不一致时，所有token必须全部有效。
+-   **x\_active\_mask** (`Tensor`)：可选参数，表示token是否参与通信，要求是一个1维或者2维张量。当输入为1维时，shape为(BS, );当输入为2维时，shape为(BS, K)。数据类型支持`bool`，数据格式要求为$ND$，支持非连续的Tensor。当输入为1维时，参数为true表示对应的token参与通信，true必须排到false之前，例：{true, false, true} 为非法输入；当输入为2D时，参数为true表示当前token对应的`topk_idx`参与通信，若当前token对应的K个`bool`值全为false，表示当前token不会参与通信。默认所有token都会参与通信。当每张卡的BS数量不一致时，所有token必须全部有效。
 -   **topk\_weights** (`Tensor`)：暂不支持该参数，使用默认值即可。
 -   **zero\_expert\_num** (`int`)：可选参数，表示零专家的数量，取值范围[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，合法的零专家的ID值是[num\_experts, num\_experts+zero\_expert\_num)。
 
 -   **copy\_expert\_num** (`int`)：可选参数，表示拷贝专家的数量，取值范围[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，合法的拷贝专家的ID值是[num\_experts+zero\_expert\_num, num\_experts+zero\_expert\_num+copy\_expert\_num)。
 
--   **const\_expert\_num** (`int`)：可选参数，表示常量专家的数量, 取值范围[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，合法的常量专家的ID值是[moe\_expert\_num+zero\_expert\_num+copy\_expert\_num, moe\_expert\_num+zero\_expert\_num+copy\_expert\_num+const\_expert\_num)。
+-   **const\_expert\_num** (`int`)：可选参数，表示常量专家的数量，取值范围[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，合法的常量专家的ID值是[moe\_expert\_num+zero\_expert\_num+copy\_expert\_num, moe\_expert\_num+zero\_expert\_num+copy\_expert\_num+const\_expert\_num)。
 -   **elastic\_info** (`Tensor`)：预留参数，当前版本不支持，传默认值None即可。
 
 -   **expert\_shard\_type** (`int`)：可选参数，表示共享专家卡排布类型。当前仅支持0，表示共享专家卡排在MoE专家卡前面。
@@ -135,7 +135,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
     -   该场景仅支持通过环境变量HCCL\_BUFFSIZE配置，该环境变量按通信域粒度管理，每个通信域独占一组“2*HCCL\_BUFFSIZE”大小的内存。
     -   ep通信域内，comm\_alg配置为"fullmesh_v1"或"": 设置大小要求 \>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* Align512\(Align32\(2 \* H\) + 64\) + \(K + shared\_expert\_num\) \* max\_bs \* Align512\(2 \* H\)\)。
     -   ep通信域内，comm\_alg配置为"fullmesh_v2": 设置大小要求 \>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* 480Align512\(Align32\(2 \* H\) + 64\) + \(K + shared\_expert\_num\) \* max\_bs \* Align512\(2 \* H\)\)。
-    -   其中 480Align512(x) = ((x+480-1)/480)\*512,Align512(x) = ((x+512-1)/512)\*512,Align32(x) = ((x+32-1)/32)\*32。
+    -   其中480Align512(x) = ((x+480-1)/480)\*512,Align512(x) = ((x+512-1)/512)\*512,Align32(x) = ((x+32-1)/32)\*32。
     -   通信域开设大小可通过调用MoeDistributeBuffer.get_low_latency_ccl_buffer_size接口计算。
 
 -   本文公式中的“/”表示整除。
@@ -150,7 +150,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 -   版本配套约束：
 
-     静态图模式下，从Ascend Extension for PyTorch 8.0.0版本开始，Ascend Extension for PyTorch框架会对静态图中最后一个节点输出结果做Meta推导与inferShape推导的结果强校验。当图中只有一个Dispatch算子，若CANN版本落后于Ascend Extension for PyTorch版本，会出现Shape不匹配报错，建议用户升级CANN版本，详细的版本配套关系参见《[Ascend Extension for PyTorch 版本说明](https://gitcode.com/Ascend/pytorch/blob/v2.7.1-7.3.0/docs/zh/release_notes/release_notes.md)》中“相关产品版本配套说明”。
+     静态图模式下，从Ascend Extension for PyTorch 8.0.0版本开始，Ascend Extension for PyTorch框架会对静态图中最后一个节点输出结果做Meta推导与inferShape推导的结果强校验。当图中只有一个Dispatch算子，若CANN版本落后于Ascend Extension for PyTorch版本，会出现Shape不匹配报错，建议用户升级CANN版本，详细的版本配套关系参见《[Ascend Extension for PyTorch版本说明](https://gitcode.com/Ascend/pytorch/blob/v2.7.1-7.3.0/docs/zh/release_notes/release_notes.md)》中“相关产品版本配套说明”。
 
 ## 调用示例<a name="zh-cn_topic_0000002203575833_section14459801435"></a>
 
@@ -335,13 +335,13 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
             print("unSupported tp = 2 and local moe > 1")
             exit(0)
         if shared_expert_rank_num > ep_world_size:
-            print("shared_expert_rank_num 不能大于 ep_world_size")
+            print("shared_expert_rank_num不能大于ep_world_size")
             exit(0)
         if shared_expert_rank_num > 0 and ep_world_size % shared_expert_rank_num != 0:
-            print("ep_world_size 必须是 shared_expert_rank_num的整数倍")
+            print("ep_world_size必须是shared_expert_rank_num的整数倍")
             exit(0)
         if num_experts % moe_rank_num != 0:
-            print("num_experts 必须是 moe_rank_num 的整数倍")
+            print("num_experts必须是moe_rank_num的整数倍")
             exit(0)
         p_list = []
         for rank in range(rank_per_dev):
@@ -579,15 +579,15 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
             exit(0)
 
         if shared_expert_rank_num > ep_world_size:
-            print("shared_expert_rank_num 不能大于 ep_world_size")
+            print("shared_expert_rank_num不能大于ep_world_size")
             exit(0)
 
         if shared_expert_rank_num > 0 and ep_world_size % shared_expert_rank_num != 0:
-            print("ep_world_size 必须是 shared_expert_rank_num的整数倍")
+            print("ep_world_size必须是shared_expert_rank_num的整数倍")
             exit(0)
 
         if num_experts % moe_rank_num != 0:
-            print("num_experts 必须是 moe_rank_num 的整数倍")
+            print("num_experts必须是moe_rank_num的整数倍")
             exit(0)
 
         p_list = []

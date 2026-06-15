@@ -265,7 +265,7 @@ graph LR
     H([核函数定义]) -->A([定义Kernel类])
     A -->B([初始化函数<br>Init])
     B -->C([主处理函数<br>Process])
-    subgraph C [主处理函数 Process]
+    subgraph C [主处理函数Process]
         D([数据搬入<br>CopyIn]) -->E([计算<br>Compute]) -->F([数据搬出<br>CopyOut])
     end
     F -->G([Kernel执行完成])
@@ -343,7 +343,7 @@ private:
     TQue<QuePosition::VECIN, BUFFER_NUM> inputQueueX_;
     // 输入队列Y，从GM拷贝到LM，BUFFER_NUM表示buffer数量，开启double buff达到流水并行，为2
     TQue<QuePosition::VECIN, BUFFER_NUM> inputQueueY_;
-    // 输出队列Z，从LM拷贝到GM，BUFFER_NUM表示 buffer数量，这里开启double buff达到流水并行，为2
+    // 输出队列Z，从LM拷贝到GM，BUFFER_NUM表示buffer数量，这里开启double buff达到流水并行，为2
     TQue<QuePosition::VECOUT, BUFFER_NUM> outputQueueZ_;
 
     // 输入X的GM地址
@@ -394,7 +394,7 @@ __aicore__ inline void AddExample<T>::Process()
 
 ## aclnn适配
 
-通常算子开发和编译完成后，会自动生成aclnn接口（一套基于C 的API），可直接在应用程序中调用aclnn接口实现调用算子。
+通常算子开发和编译完成后，会自动生成aclnn接口（一套基于C的API），可直接在应用程序中调用aclnn接口实现调用算子。
 
 为实现该调用方式，需提前生成算子对应的二进制包，本项目无需手动配置，通过${op_name}_def.cpp已自动生成算子二进制包，支持开发者直接使用。
 

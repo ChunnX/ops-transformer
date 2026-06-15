@@ -226,7 +226,7 @@ int aclnnAddExampleTest(int32_t deviceId, aclrtStream& stream)
     ret = aclnnAddExample(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAddExample failed. ERROR: %d\n", ret); return ret);
 
-    // 6. （固定写法）同步等待任务执行结束
+    // 6.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -398,7 +398,7 @@ int main()
    bash run.sh
    ```
 
-    默认在当前执行路径 `/build/bin`下生成可执行文件${test_aclnn_op_name}。运行结果以test_aclnn_add_example为例：
+    默认在当前执行路径`/build/bin`下生成可执行文件${test_aclnn_op_name}。运行结果以test_aclnn_add_example为例：
 
    ```
    mean result[2046] is 2.000000
@@ -548,7 +548,7 @@ int main()
     bash run.sh
     ```
    
-    默认在当前执行路径 `/build/bin`下生成可执行文件${test_geir_op_name}，运行结果如下：
+    默认在当前执行路径`/build/bin`下生成可执行文件${test_geir_op_name}，运行结果如下：
    
     ```
     INFO - [XIR]: Finalize ir graph session success

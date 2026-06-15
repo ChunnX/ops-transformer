@@ -141,7 +141,7 @@ Note that for short sequence lengths, the speedups are negligible because overhe
 
 The runtime `block_shape` attr lets the same kernel run at every combination of
 `(BLOCK_SIZE_Q, BLOCK_SIZE_KV)` with each dimension in `{128, 256, 512, 1024}`
-— **16 granularities** sharing one kernel binary. Finer sabi (smaller block
+—**16 granularities** sharing one kernel binary. Finer sabi (smaller block
 sizes) buys more sparsity-pattern resolution per Q-row at the cost of more
 sabi-tensor HBM traffic + more sub-block plumbing per cube tile; coarser sabi
 buys cheaper per-row metadata at the cost of resolution. The sweep below
@@ -400,7 +400,7 @@ emits every sparsity in `SPARSITY_VALS` for every pair in `BLOCK_SHAPES`. The
 `frame(L,R,T,B)` column is `-` at sparsity 0 because the mask is dense, so
 the frame has no effect on the kept blocks.
 
-#### Speedup vs `npu_fusion_attention` (dense) — full 4 × 4 grid
+#### Speedup vs `npu_fusion_attention` (dense)— full 4 × 4 grid
 
 Each cell is `Ref_Latency(sparsity=0) / Our_Latency(sparsity=p)`. Values
 **< 1.0** mean BSA is slower than PFA dense; **> 1.0** mean BSA is faster.
@@ -429,7 +429,7 @@ Each cell is `Ref_Latency(sparsity=0) / Our_Latency(sparsity=p)`. Values
   This is because a wider sabi entry means less sabi-tensor HBM traffic per
   kept block. Note however that KV=1024 is not always the strict winner at
   sparsity 0.9: for Q=128 and Q=512, KV=512 narrowly beats KV=1024 (9.00× vs
-  8.94×, 9.27× vs 9.11×) — at the coarsest KV the forced-frame footprint
+  8.94×, 9.27× vs 9.11×)— at the coarsest KV the forced-frame footprint
   starts to eat into the kept-block budget.
 * **BLOCK_SIZE_Q has a much smaller effect.** Q-tile re-parameterisation does
   not change the cube tile width (`basicSInnerSize = 512` for D=128 BF16) or
@@ -442,7 +442,7 @@ Each cell is `Ref_Latency(sparsity=0) / Our_Latency(sparsity=p)`. Values
   bandwidth at sparsity 0 in this configuration.
 * **128×128 remains the most expensive baseline.** Finest sabi resolution but
   the most metadata-per-kept-block.
-* **The fastest cell at high sparsity is KV=1024 at Q∈{256, 1024}** — both
+* **The fastest cell at high sparsity is KV=1024 at Q∈{256, 1024}**— both
   reach 9.77× over PFA dense at sparsity 0.9. KV=512 also lands within ~5 %
   of the top (9.00×–9.68×). Picking a granularity is therefore an
   application-level trade-off between pattern-fidelity and end-to-end
@@ -467,7 +467,7 @@ Every test case is exercised at all **16 default block shapes**
 below (~1600 instances total). A handful of cases at small S or high sparsity
 are auto-skipped because the test parameterisation becomes inherently
 unsatisfiable (forced-frame density exceeds `1 − sparsity`, or the row's
-expected kept-KV-block count drops below 1) — see the `pytest.skip` rules in
+expected kept-KV-block count drops below 1)— see the `pytest.skip` rules in
 the file.
 
 #### What is tested per block shape (B=1 only)
