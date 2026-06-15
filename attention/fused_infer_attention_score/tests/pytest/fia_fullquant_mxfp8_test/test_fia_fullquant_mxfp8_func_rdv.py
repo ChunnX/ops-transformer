@@ -38,6 +38,8 @@ def _apply_params(params):
     golden.DATA_RANGE_Q = params["data_range_q"]
     golden.DATA_RANGE_K = params["data_range_k"]
     golden.DATA_RANGE_V = params["data_range_v"]
+    golden.ENABLE_LSE = params["enable_lse"]
+    golden.ENABLE_ROPE = params["enable_rope"]
 
 
 def _execute_test(params):
