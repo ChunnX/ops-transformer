@@ -392,7 +392,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    int64_t s2ProcessBaseSize = 32;
+    int64_t s2ProcessBaseSize = 64;
     int64_t s2ProcessSize = s2ProcessBaseSize;
     int64_t s2V0LoopTimes = (runInfo.s2RealSize + s2ProcessBaseSize - 1) / s2ProcessBaseSize;
     int64_t s2Tail = runInfo.s2RealSize - (s2V0LoopTimes - 1) * s2ProcessBaseSize;
@@ -909,11 +909,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     tPipe->InitBuffer(commonTBuf, 512); // commonTBuf内存申请512B
     tPipe->InitBuffer(sinksBuf, 512); // sinksBuf内存申请512B
 
-    tPipe->InitBuffer(stage0InBuf[0], dVTemplateTypeInput * 16 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
-    tPipe->InitBuffer(stage0InBuf[1], dVTemplateTypeInput * 16 * sizeof(KV_T));
+    tPipe->InitBuffer(stage0InBuf[0], dVTemplateTypeInput * 32 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
+    tPipe->InitBuffer(stage0InBuf[1], dVTemplateTypeInput * 32 * sizeof(KV_T));
     // kv输入D轴512, V0阶段每次处理16个seq, 开2 buffer
-    tPipe->InitBuffer(stage0OutBuf[0], dVTemplateTypeInput * (16 + 1) * sizeof(Q_T));
-    tPipe->InitBuffer(stage0OutBuf[1], dVTemplateTypeInput * (16 + 1) * sizeof(Q_T));
+    tPipe->InitBuffer(stage0OutBuf[0], dVTemplateTypeInput * (32 + 1) * sizeof(Q_T));
+    tPipe->InitBuffer(stage0OutBuf[1], dVTemplateTypeInput * (32 + 1) * sizeof(Q_T));
 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
