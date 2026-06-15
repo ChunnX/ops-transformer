@@ -16,7 +16,7 @@ class SingleBlock {
 public:
     __aicore__ inline void Reset(int32_t s1_start_idx, int32_t s1_len, int32_t &cur_s1_idx, int32_t &cur_s1_len)
     {
-        this->is_finish = false;
+        this->is_finish_ = false;
         this->s1_start_idx_ = s1_start_idx;
         this->s1_end_idx_ = s1_start_idx + s1_len;
         this->Update(cur_s1_idx, cur_s1_len);
@@ -34,7 +34,7 @@ public:
 
         this->s1_start_idx_ += cur_s1_len;
         if (this->s1_start_idx_ >= this->s1_end_idx_) {
-            this->is_finish = true;
+            this->is_finish_ = true;
         }
     }
 
@@ -102,13 +102,13 @@ public:
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
         runTimeInfo.need_copy_kv = 0;
-        runTimeInfo.is_singlekv_last = is_finish;
+        runTimeInfo.is_singlekv_last = is_finish_;
         runTimeInfo.kv_ping_pong_idx = this->runTimeInfoBak_.kv_ping_pong_idx;
     }
 
     __aicore__ inline bool IsFinish()
     {
-        return is_finish;
+        return is_finish_;
     }
     __aicore__ inline void SetBaseBlock(uint32_t s1_base_size)
     {
@@ -117,9 +117,9 @@ public:
 
 private:
     int32_t s1_start_idx_{0};
-    int32_t s1_end_idx{0};
+    int32_t s1_end_idx_{0};
     int32_t s1_base_size_{0};
-    bool is_finish{true};
+    bool is_finish_{true};
     RunTimeInfo runTimeInfoBak_;
 };
 
