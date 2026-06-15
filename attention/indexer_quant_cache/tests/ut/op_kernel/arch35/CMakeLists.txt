@@ -11,7 +11,7 @@
 if (UT_TEST_ALL OR OP_KERNEL_UT)
     # 算子自己的tiling文件路径
     set(indexer_quant_cache_tiling_files
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_host/indexer_quant_cache_tiling.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../op_host/indexer_quant_cache_tiling_arch35.cpp)
     # param1: 算子名 (kernel 命名) param2: soc (与设备/ tikicpulib 一致) param3: 编译宏 param4: tiling 源码
     AddOpTestCase(indexer_quant_cache "Ascend950PR_9599" "-DDTYPE_X=half -DDTYPE_CACHE=fp8_e4m3fn_t -DDTYPE_CACHE_SCALE=float" "${indexer_quant_cache_tiling_files}")
 endif()

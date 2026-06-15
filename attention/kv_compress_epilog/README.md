@@ -1,68 +1,58 @@
 # KvCompressEpilog
 
-## 概述
+## 产品支持情况
 
-在 KV Cache 的 Epilog 阶段对缓存进行压缩更新。该算子使用逐组动态量化（Group-wise Dynamic Quantization），
-将 bfloat16 的激活值压缩为 FP8（UINT8 打包）格式，并按 slot_mapping 将量化结果原地散写（scatter）到
-cache。支持 group(bf16-scale)、group(e8m0-scale)、HiFloat8 三种量化模式。
+| 产品                                                         | 是否支持 |
+| :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                              |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
-## 支持的硬件
+## 功能说明
 
-- Ascend950PR/Ascend950DT
+- 算子功能：在KV Cache的Epilog阶段对缓存进行原地压缩更新。算子按逐组动态量化（Group-wise Dynamic Quantization）将`bfloat16`激活值`x`压缩为FP8（以`uint8`打包），并按`slot_mapping`将量化结果散写（scatter）到`cache`，`slot_mapping`中值为 -1的token跳过不处理。支持group(bf16 scale)、group(e8m0 scale)、HiFloat8三种量化模式。
 
-## 算子规格
+- 计算公式：
 
-### 输入
+  对`x`的最后一维（d轴）按每64个元素一组进行量化，记第g组为$x_g$：
 
-| 参数名             | 数据类型        | 格式 | 说明                                  |
-|-------------------|----------------|------|--------------------------------------|
-| cache | uint8          | ND   | 当前 KV Cache（输入/输出原地更新），每行包含 rope/fp8/scale/pad 各区段 |
-| x                 | bfloat16       | ND   | 待量化的激活输入（末轴含 rope 段）        |
-| slot_mapping      | int32, int64   | ND   | Token 到 Cache Slot 的索引映射，-1 表示跳过 |
+  $$
+  scale_g = \frac{\max(|x_g|)}{FP8\_MAX}, \quad q_i = \mathrm{round}\left(\frac{x_i}{scale_g}\right)
+  $$
 
-### 输出
+  其中`quant_mode=0/1`为group量化，`scale`分别以`bfloat16` / `float8_e8m0`存储（`round_scale=true`时`scale`向上取到2的幂）；`quant_mode=2`为HiFloat8量化，输出为$x \times x\_scale$后的hifloat8。
 
-| 参数名             | 说明                    |
-|-------------------|------------------------|
-| cache | 原地更新后的 KV Cache     |
+## 参数说明
 
-### 属性
+| 参数名           | 输入/输出/属性 | 描述                                                                                   | 数据类型      | 数据格式 |
+| ---------------- | -------------- | -------------------------------------------------------------------------------------- | ------------- | -------- |
+| cache            | 输入/输出      | 当前层的KV Cache向量缓存，原地更新，每行包含rope/fp8/scale/pad各区段，即公式中的量化目标。 | UINT8         | ND       |
+| x                | 输入           | 待量化的激活输入，即公式中`x`。shape为[bs, d]。                                       | BFLOAT16      | ND       |
+| slot_mapping     | 输入           | token到cache slot的索引映射，值为 -1表示跳过该token。shape为[bs]。                | INT32、INT64  | ND       |
+| cache            | 输出           | 原地更新后的KV Cache，与输入`cache`为同一tensor。                                     | UINT8         | ND       |
+| quant_group_size | 可选属性       | 量化分组大小。默认值为128。                                                             | INT           | -        |
+| quant_mode       | 可选属性       | 量化模式：0=group(bf16 scale)，1=group(e8m0 scale)，2=HiFloat8。默认值为1。              | INT           | -        |
+| round_scale      | 可选属性       | group模式下是否对每组scale向上取到2的幂。默认值为true。                             | BOOL          | -        |
+| x_scale          | 可选属性       | HiFloat8模式（quant_mode=2）下的全局scale乘数。默认值为1.0。                          | FLOAT         | -        |
 
-| 属性名            | 类型  | 默认值 | 说明                                              |
-|------------------|-------|--------|--------------------------------------------------|
-| quant_group_size | int   | 128    | 量化分组大小                                       |
-| quant_mode       | int   | 1      | 量化模式：0=group(bf16 scale), 1=group(e8m0 scale), 2=HiFloat8 |
-| round_scale      | bool  | true   | group 模式下是否对每组 scale 向上取到 2 的幂          |
-| x_scale          | float | 1.0    | HiFloat8 模式下的全局 scale 乘数                    |
+## 约束说明
 
-## 约束
+- 仅支持Ascend 950PR/Ascend 950DT平台。
+- `cache`既是输入也是输出（原地操作，in-place）。
+- `slot_mapping`的维度应等于`x`的维度减1，即`slot_mapping`为`x`除最后一维外的所有维度展平。
+- `x`的最后一维（d轴）需满足`d % 64 == 0`且`d > 64`，按每64个元素一组进行逐组量化。
+- `slot_mapping`中值为 -1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
 
-- slot_mapping 的维度应等于 x 的维度减 1
-- x 的最后一维（d 轴）需满足 d % 64 == 0 且 d > 64
-- group 模式下每 64 个元素一组量化出一个 scale
-- 仅支持 Ascend 950 平台
-- 输入输出为原地操作（in-place）
+## 调用说明
 
-## 调用示例
+| 调用方式  | 样例代码                                                                       | 说明                                                                        |
+| --------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| aclnn接口 | [test_aclnn_kv_compress_epilog](./examples/test_aclnn_kv_compress_epilog.cpp)   | 通过[aclnnKvCompressEpilog](./docs/aclnnKvCompressEpilog.md)调用KvCompressEpilog算子。 |
+| 图模式    | -                                                                              | 通过[算子IR](./op_graph/kv_compress_epilog_proto.h)接入GE图模式调用KvCompressEpilog算子，测试用例待补充。 |
 
-```cpp
-#include "aclnn_kv_compress_epilog.h"
+## 参考资源
 
-// ... 创建 tensor，设置 shape 和 dtype ...
-
-uint64_t workspaceSize = 0;
-aclOpExecutor *executor = nullptr;
-
-// 第一阶段：计算 workspace 大小
-aclnnKvCompressEpilogGetWorkspaceSize(
-    cache, x, slotMapping,
-    128, 1, 1, 1.0f,
-    &workspaceSize, &executor);
-
-// 分配 workspace
-void *workspace = nullptr;
-aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_NORMAL_ONLY);
-
-// 第二阶段：执行算子
-aclnnKvCompressEpilog(workspace, workspaceSize, executor, stream);
-```
+- [aclnnKvCompressEpilog API文档](docs/aclnnKvCompressEpilog.md)

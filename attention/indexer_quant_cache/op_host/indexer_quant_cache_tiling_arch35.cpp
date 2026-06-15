@@ -9,14 +9,14 @@
  */
 
 /*!
- * \file indexer_quant_cache_tiling.cpp
+ * \file indexer_quant_cache_tiling_arch35.cpp
  * \brief
  */
 
 #include <sstream>
 #include "log/log.h"
 #include "err/ops_err.h"
-#include "indexer_quant_cache_tiling.h"
+#include "indexer_quant_cache_tiling_arch35.h"
 
 using namespace ge;
 namespace optiling {

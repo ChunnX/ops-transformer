@@ -22,13 +22,13 @@ namespace ge {
 
 /**
  * @brief Compresses cached key/value data in the Indexer attention epilog stage
- *        by applying block-wise dynamic quantization (FP8/INT8) with scale factors. \n
- *        Supports per-block quantization on the last dimension with optional MX-FP8 scale format. \n
+ *        by applying block-wise dynamic quantization (FP8/INT8/MX-FP4) with scale factors. \n
+ *        Supports per-block quantization on the last dimension with optional MX-FP8/MX-FP4 scale format. \n
 
  * @par Inputs:
  * Inputs including:
  * @li cache: The existing key/value cache tensor to be updated in-place. \n
- *   - Data types: float8_e4m3fn, float8_e5m2, uint8.
+ *   - Data types: float8_e4m3fn, float8_e5m2, uint8, float4_e2m1, float4_e1m2.
  *   - format: ND
  * @li cache_scale: Scale factors for per-block quantization.
  *   - Data types: float32, float8_e8m0.
@@ -43,8 +43,9 @@ namespace ge {
  * @par Attributes:
  * @li quant_mode: An optional int attribute. Quantization mode.
  *   - 0: MX-FP8 quantization (scale stored as float8_e8m0)
- *   - 1: Normal block-wise quantization (default)
- *   - 2: HiFloat8 quantization
+ *   - 1: Normal block-wise quantization (default, scale stored as float32)
+ *   - 2: HiFloat8 quantization (scale attribute applied)
+ *   - 3: MX-FP4 quantization (cache packed as uint8, scale stored as float8_e8m0)
  * @li round_scale: An optional bool attribute. Whether to round the MX-FP8 scale value. Defaults to true.
  * @li x_scale: An optional float attribute. Global scale multiplier for HiFloat8 mode. Defaults to 1.0.
 
@@ -56,7 +57,8 @@ namespace ge {
  * @code{.c}
  *  - cache and cache_scale are both input and output (in-place update).
  *  - slot_mapping dimensions should equal x dimensions minus 1.
- *  - The last dimension (d) of x must be 32-aligned (d % 32 == 0).
+ *  - The last dimension (d) of x is quantized per 128 elements per block;
+ *    MX-FP4 (quant_mode=3) quantizes per 32 elements (standard MX block).
  *  - Ascend950PR/Ascend950DT.
  * @endcode
  */
@@ -71,7 +73,7 @@ REG_OP(IndexerQuantCache)
     .ATTR(round_scale, Bool, true)
     .ATTR(x_scale, Float, 1.0)
     .DATATYPE(T0, TensorType({DT_FLOAT16, DT_BF16}))
-    .DATATYPE(T1, TensorType({DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_UINT8}))
+    .DATATYPE(T1, TensorType({DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_UINT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
     .DATATYPE(T2, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
 .OP_END_FACTORY_REG(IndexerQuantCache)
 } // namespace ge

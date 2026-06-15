@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file indexer_quant_cache_tiling.h
+ * \file indexer_quant_cache_tiling_arch35.h
  * \brief
  */
 
-#ifndef INDEXER_QUANT_CACHE_TILING_H
-#define INDEXER_QUANT_CACHE_TILING_H
+#ifndef INDEXER_QUANT_CACHE_TILING_ARCH35_H
+#define INDEXER_QUANT_CACHE_TILING_ARCH35_H
 
 
 #include <vector>
@@ -117,4 +117,4 @@ private:
 };
 
 }  // namespace optiling
-#endif  // INDEXER_QUANT_CACHE_TILING_H
+#endif  // INDEXER_QUANT_CACHE_TILING_ARCH35_H
