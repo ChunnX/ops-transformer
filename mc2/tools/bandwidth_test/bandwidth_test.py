@@ -143,7 +143,7 @@ else:
     mode = 1
 # endregion
 
-comm_alg = "urma"
+comm_alg = "mte"
 
 # region 其他配置
 is_save_tensor_to_bin = False
@@ -291,27 +291,6 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
         'data_size': data_size_bytes // dtype_bytes,
         'bs': test_bs
     }
-
-
-def _extract_bandwidth_execution_times(prof_result_path: str) -> List[float]:
-    """从 profiling 结果中提取 BandwidthTest 的执行时间"""
-    execution_times = []
-    
-    for dirpath, _, filenames in os.walk(prof_result_path):
-        for filename in filenames:
-            if not filename.startswith("op_summary"):
-                continue
-            
-            op_summary = pd.read_csv(os.path.join(dirpath, filename))
-            bandwidth_test_info = op_summary[op_summary['OP Type'] == 'BandwidthTest']
-            
-            if bandwidth_test_info.empty:
-                continue
-            
-            op_execute_time_series = bandwidth_test_info['Task Duration(us)'].tail(50)
-            execution_times.extend(op_execute_time_series.tolist())
-    
-    return execution_times
 
 # endregion
 
