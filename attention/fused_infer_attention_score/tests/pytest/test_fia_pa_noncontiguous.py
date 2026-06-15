@@ -144,7 +144,6 @@ def _run_one(cfg, expect_pass):
     k_nc=_make_nc(k_ref.npu(),nc); v_nc=_make_nc(v_ref.npu(),nc)
     k_rope_nc=_make_nc(k_rope,nc) if dr>0 and nc!="none" else k_rope
     if nc!="none":
-    if nc!="none":
         cs=_cstrides(k_nc.shape)
         assert k_nc.stride(0)!=cs[0],f"{cfg['id']}:dim0"
         if nc=="dim01": assert k_nc.stride(1)!=cs[1],f"{cfg['id']}:dim1"
