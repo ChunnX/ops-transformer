@@ -178,7 +178,7 @@ def bnsd_to_v_cache(tensor_bnsd, seq_lens, block_size, block_table):
 def generate_data():
     """CPU: 生成 BNSD FP16 Q/K/V 并做 FP8 量化"""
     max_sq = max(ACTUAL_SEQ_Q)
-    max_skv = max(ACTUAL_SEQ_KV)
+    max_skv = max(ACTUAL_SEQ_KV) if max(ACTUAL_SEQ_KV) > 0 else 1
     print(f"[INFO] max_sq={max_sq}, max_skv={max_skv}")
 
     # 使用随机数据
@@ -207,31 +207,34 @@ def generate_data():
         ).astype(np.float16)
     )
 
-    # 确保数据在CPU上且连续
     q_fp16 = q_fp16.cpu().contiguous()
     k_fp16 = k_fp16.cpu().contiguous()
     v_fp16 = v_fp16.cpu().contiguous()
 
-    # 计算量化 scale
+    # 计算量化scale
     quant_scale_q = get_fp8_per_token_head_quant_scale(q_fp16)
     quant_scale_k = get_fp8_per_token_head_quant_scale(k_fp16)
     quant_scale_v = get_fp8_per_head_quant_scale(v_fp16)
     
-    # 反量化 scale
+    # 反量化scale
     dequant_scale_q = (1.0 / quant_scale_q).contiguous()
     dequant_scale_k = (1.0 / quant_scale_k).contiguous()
     dequant_scale_v = (1.0 / quant_scale_v).contiguous()
 
-    # 量化到 FP8
+    # 量化到fp8
     q_fp8 = quant_fp16_to_fp8(q_fp16, quant_scale_q)
     k_fp8 = quant_fp16_to_fp8(k_fp16, quant_scale_k)
     v_fp8 = quant_fp16_to_fp8(v_fp16, quant_scale_v)
+
+    if max(ACTUAL_SEQ_KV) == 0:
+        real_skv = max(ACTUAL_SEQ_KV)
+        k_fp8 = k_fp8[:, :, :real_skv, :].contiguous()
+        v_fp8 = v_fp8[:, :, :real_skv, :].contiguous()
 
     print(f"[INFO] q_fp8 shape: {q_fp8.shape}, dtype: {q_fp8.dtype}")
     print(f"[INFO] k_fp8 shape: {k_fp8.shape}, dtype: {k_fp8.dtype}")
     print(f"[INFO] v_fp8 shape: {v_fp8.shape}, dtype: {v_fp8.dtype}")
 
-    # p_scale 使用 float32
     p_scale = torch.tensor([P_SCALE], dtype=torch.float32).cpu().contiguous()
 
     return (q_fp8, k_fp8, v_fp8, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale)
@@ -255,8 +258,14 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
                             actual_seq_q, actual_seq_kv):
     softmax_scale = get_softmax_scale(SCALE_VALUE, D)
     """CPU golden reference - 所有操作在CPU上执行"""
-    # 确保所有输入都在CPU上且连续
     q_tensor = q_fp8.cpu().to(torch.float32).contiguous()
+    batch, heads, q_seq, d_dim = q_tensor.shape
+
+    if max(actual_seq_kv) == 0:
+        result = torch.zeros((batch, heads, q_seq, d_dim), dtype=torch.float32).contiguous()
+        lse = torch.zeros((batch, heads, q_seq, 1), dtype=torch.float32).contiguous()
+        return result, lse
+
     k_tensor = k_fp8.cpu().to(torch.float32).contiguous()
     v_tensor = v_fp8.cpu().to(torch.float32).contiguous()
     deq_q = deq_q.cpu().float().contiguous()
@@ -359,10 +368,14 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
     lse = out_max + torch.log(out_sum + EPSILON).contiguous()
 
     # 当 out_max 等于 minValue (0xFF7FFFFF) 时，说明该位置被全 mask，输出 inf
-    all_masked = (out_max <= minValue.item())  # 使用 <= 更稳健
+    all_masked = (out_max <= minValue.item())
     lse = torch.where(all_masked, 
-                      torch.zeros_like(out_max),
+                      torch.full_like(out_max, float('inf')),
                       out_max + torch.log(out_sum + EPSILON)).contiguous()
+    for b in range(batch):
+        if actual_seq_kv[b] == 0:
+            sq = actual_seq_q[b]
+            lse[b, :, :sq, :] = 0.0
     result = torch.where(all_masked, torch.zeros_like(result), result)
     return result, lse
 
