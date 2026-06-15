@@ -1146,7 +1146,16 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                 WaitFlag<HardEvent::MTE3_V>(evCurInt8Free);
                 SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
 
-                if constexpr (!IsSameType<T, float>::value) {
+                if constexpr (IsSameType<T, float>::value) {
+                    StaticQuantCompute(curXBuf, curInt8, quantBufElements);
+                    SetFlag<HardEvent::V_MTE2>(evCurXFree);
+                    if (nextValid >= 0) {
+                        WaitFlag<HardEvent::V_MTE2>(evNextXFree);
+                        SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
+                        DataCopyPad(nextXBuf,
+                            xGm_[static_cast<int64_t>(srcRowArr[nextValid]) * cols_], xCp, xPadParams);
+                    }
+                } else if constexpr (!IsSameType<T, int8_t>::value){
                     Cast(quantFloatLocal, curXBuf, RoundMode::CAST_NONE,
                          static_cast<int32_t>(quantBufElements));
                     PipeBarrier<PIPE_V>();
@@ -1156,19 +1165,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                         DataCopyPad(nextXBuf,
                             xGm_[static_cast<int64_t>(srcRowArr[nextValid]) * cols_], xCp, xPadParams);
                     }
-                }
-
-                if constexpr (!IsSameType<T, float>::value) {
                     StaticQuantCompute(quantFloatLocal, curInt8, quantBufElements);
-                } else {
-                    StaticQuantCompute(curXBuf, curInt8, quantBufElements);
-                    SetFlag<HardEvent::V_MTE2>(evCurXFree);
-                    if (nextValid >= 0) {
-                        WaitFlag<HardEvent::V_MTE2>(evNextXFree);
-                        SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
-                        DataCopyPad(nextXBuf,
-                            xGm_[static_cast<int64_t>(srcRowArr[nextValid]) * cols_], xCp, xPadParams);
-                    }
                 }
 
                 // // Ensure any prior MTE3 read of curIdxBuf (from skipped rows) is complete
