@@ -230,54 +230,42 @@ public:
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
 
     /* =====================LocalBuffer变量====================*/
-    // L1 裸 LocalTensor 数组 + 旋转状态（替代 BuffersPolicy）
-    LocalTensor<uint8_t> l1QSlot[2];   // [0]=ping/single, [1]=pong
-    LocalTensor<uint8_t> l1KSlot[2];
-    LocalTensor<uint8_t> l1VSlot[2];
-    uint32_t l1QFlag = 0;
-    uint32_t l1KFlag = 0;
-    uint32_t l1VFlag = 0;
-
-    // L0C 裸 LocalTensor 数组 + 旋转状态
-    LocalTensor<uint8_t> l0CSlot[4];   // max 4 slots (4buff or DB)
-    uint32_t l0CHead = 0;              // for 4buff: 0,1,2,3,0,...
-    uint32_t l0CFlag = 0;              // for DB: XOR toggle
+    // 单个 LocalTensor 覆盖整片 ping/pong 区域；使用处通过 [bufId * SLOT_BYTES] 偏移获取，
+    // 参考 quant_flash_attn 中 qL1Tensor / kvL1Tensor / pL1Tensor / qkL0CTensor 的写法。
+    LocalTensor<uint8_t> l1QTensor;
+    LocalTensor<uint8_t> l1KTensor;
+    LocalTensor<uint8_t> l1VTensor;
+    LocalTensor<uint8_t> l0CTensor;
 
     // L0A/L0B 保留给matmul API
     L0AType mmL0ABuffers;
     L0BType mmL0BBuffers;
 
-    // ====== L1 slot 旋转辅助方法 ======
-    __aicore__ inline uint32_t L1QGet() {
-        if constexpr (L1Q_IS_SINGLE) { return 0; }
-        uint32_t idx = l1QFlag ^ 1; l1QFlag ^= 1; return idx;
-    }
-    __aicore__ inline uint32_t L1QGetPre() {
-        if constexpr (L1Q_IS_SINGLE) { return 0; }
-        return l1QFlag;
-    }
-    __aicore__ inline uint32_t L1KGet() {
-        if constexpr (L1KV_IS_SINGLE) { return 0; }
-        uint32_t idx = l1KFlag ^ 1; l1KFlag ^= 1; return idx;
-    }
-    __aicore__ inline uint32_t L1VGet() {
-        if constexpr (L1KV_IS_SINGLE) { return 0; }
-        uint32_t idx = l1VFlag ^ 1; l1VFlag ^= 1; return idx;
-    }
-    __aicore__ inline uint32_t L0CGet() {
-        if constexpr (L0C_IS_4BUFF) {
-            uint32_t idx = l0CHead % 4;
-            l0CHead++;
-            return idx;
-        } else {
-            uint32_t idx = l0CFlag ^ 1; l0CFlag ^= 1; return idx;
-        }
-    }
-    // 事件ID查询
-    __aicore__ inline TEventID L1QEvt(uint32_t idx) { return (idx == 0) ? FA_L1_Q_C2P_0 : FA_L1_Q_C2P_1; }
-    __aicore__ inline TEventID L1KEvt(uint32_t idx) { return (idx == 0) ? FA_L1_K_C2P_0 : FA_L1_K_C2P_1; }
-    __aicore__ inline TEventID L1VEvt(uint32_t idx) { return (idx == 0) ? FA_L1_V_C2P_0 : FA_L1_V_C2P_1; }
-    __aicore__ inline TEventID L0CEvt(uint32_t idx) { return static_cast<TEventID>(idx); }
+    // ====== Buffer 数与单个 slot 字节数（全部编译期常量，方便偏移计算）======
+    static constexpr uint32_t L1_Q_BUFCNT  = L1Q_IS_SINGLE  ? 1U : 2U;
+    static constexpr uint32_t L1_KV_BUFCNT = L1KV_IS_SINGLE ? 1U : 2U;
+    static constexpr uint32_t L0C_BUFCNT   = L0C_SLOT_COUNT;  // 2 或 4
+
+    // Q slot 字节数：mBaseSize * dBaseSize（Q_T）
+    static constexpr uint32_t L1_Q_SLOT_BYTES = mBaseSize * dBaseSize * sizeof(Q_T);
+    // K slot 字节数：dBaseSize > 256 时 L1 切 K 仅加载 l1BaseD 列；否则一次性加载 dBaseSize 列
+    static constexpr uint32_t L1_K_SLOT_BYTES =
+        (dBaseSize > 256) ? (s2BaseSize * l1BaseD * sizeof(KV_T))
+                          : (dBaseSize * s2BaseSize * sizeof(KV_T));
+    // V slot 字节数：dBaseSize > 256 时按 l1BaseD 切 N；否则按 dVTemplateType
+    static constexpr uint32_t L1_V_SLOT_BYTES =
+        (dBaseSize > 256) ? (s2BaseSize * l1BaseD * sizeof(KV_T))
+                          : ((uint32_t)dVTemplateType * s2BaseSize * sizeof(KV_T));
+    // L0C slot 字节数：4buff 时 L0C/4，否则 L0C/2
+    static constexpr uint32_t L0C_SLOT_BYTES =
+        L0C_IS_4BUFF ? ((uint32_t)L0C_SIZE * (uint32_t)KB_TO_BYTES / NUM_4)
+                     : ((uint32_t)L0C_SIZE * (uint32_t)KB_TO_BYTES / NUM_2);
+
+    // Buffer ID 简单计数器（参考 quant_flash_attn qBufId / kvBufId / qkL0cBufId 风格）
+    uint32_t qBufId = 0;
+    uint32_t kBufId = 0;
+    uint32_t vBufId = 0;
+    uint32_t cBufId = 0;
 
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
@@ -306,57 +294,20 @@ public:
         // 流水预置 SetFlag 统一由 AllocEventID() 完成。
         //
         // L1 内存布局（从 offset=0 起）:
-        //   [0 .. 3*mBaseSize*s2BaseSize*sizeof(Q_T)) : l1PBuffers (3buff, InitMMResBuf 分配)
-        //   [FA_L1_CUBE_BASE ...) : l1QBuffers / l1KBuffers / l1VBuffers
+        //   [0 .. 3*mBaseSize*s2BaseSize*sizeof(Q_T))   : l1PBuffers (3buff, InitMMResBuf 分配)
+        //   [FA_L1_CUBE_BASE  + 0)                      : l1QTensor (BUFCNT * L1_Q_SLOT_BYTES)
+        //   接续                                          l1KTensor (BUFCNT * L1_K_SLOT_BYTES)
+        //   接续                                          l1VTensor (BUFCNT * L1_V_SLOT_BYTES)
+        // 参考 quant_flash_attn：每条 Buffer 都用单个 LocalTensor 覆盖整片 ping/pong 区域。
         // ─────────────────────────────────────────────────────────────────────────
-        if constexpr (dBaseSize > 256) {
-            // L1Q = Single (dBaseSize>256), L1KV: Single if s2==256&&d>128, else DB
-            constexpr uint32_t mm1LeftSize  = mBaseSize * dBaseSize * sizeof(Q_T);
-            constexpr uint32_t mm1RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
-            constexpr uint32_t mm2RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
-            constexpr uint32_t l1QOff       = FA_L1_CUBE_BASE;
-            constexpr uint32_t l1KOff       = l1QOff + mm1LeftSize;
+        uint32_t addrL1 = FA_L1_CUBE_BASE;
+        l1QTensor = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_Q_BUFCNT * L1_Q_SLOT_BYTES);
 
-            l1QSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1QOff, mm1LeftSize);
+        addrL1 += L1_Q_BUFCNT * L1_Q_SLOT_BYTES;
+        l1KTensor = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_KV_BUFCNT * L1_K_SLOT_BYTES);
 
-            if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
-                // Single + Single + Single
-                constexpr uint32_t l1VOff = l1KOff + mm1RightSize;
-                l1KSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1KOff, mm1RightSize);
-                l1VSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1VOff, mm2RightSize);
-            } else {
-                // Single + DB + DB
-                constexpr uint32_t l1VOff = l1KOff + 2U * mm1RightSize;
-                l1KSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1KOff, mm1RightSize);
-                l1KSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1KOff + mm1RightSize, mm1RightSize);
-                l1VSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1VOff, mm2RightSize);
-                l1VSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1VOff + mm2RightSize, mm2RightSize);
-            }
-        } else {
-            // L1Q = DB (dBaseSize<=256), L1KV: Single if s2==256&&d>128, else DB
-            constexpr uint32_t mm1LeftSize  = mBaseSize * dBaseSize * sizeof(Q_T);
-            constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(KV_T);
-            constexpr uint32_t mm2RightSize = (uint32_t)dVTemplateType * s2BaseSize * sizeof(KV_T);
-            constexpr uint32_t l1QOff       = FA_L1_CUBE_BASE;
-            constexpr uint32_t l1KOff       = l1QOff + 2U * mm1LeftSize;  // DB: ping+pong
-
-            l1QSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1QOff, mm1LeftSize);
-            l1QSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1QOff + mm1LeftSize, mm1LeftSize);
-
-            if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
-                // DB + Single + Single
-                constexpr uint32_t l1VOff = l1KOff + mm1RightSize;
-                l1KSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1KOff, mm1RightSize);
-                l1VSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1VOff, mm2RightSize);
-            } else {
-                // DB + DB + DB
-                constexpr uint32_t l1VOff = l1KOff + 2U * mm1RightSize;
-                l1KSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1KOff, mm1RightSize);
-                l1KSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1KOff + mm1RightSize, mm1RightSize);
-                l1VSlot[0] = LocalTensor<uint8_t>(TPosition::A1, l1VOff, mm2RightSize);
-                l1VSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1VOff + mm2RightSize, mm2RightSize);
-            }
-        }
+        addrL1 += L1_KV_BUFCNT * L1_K_SLOT_BYTES;
+        l1VTensor = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_KV_BUFCNT * L1_V_SLOT_BYTES);
 
         // L0A：始终为 DB，ping=offset 0，pong=offset 32KB
         constexpr uint32_t FA_L0_BUF_SIZE = 32U * 1024U;
@@ -373,21 +324,11 @@ public:
                                           FA_L0B_C2P_1, FA_L0B_C2P_1);
         }
 
-        // L0C：4buff (各64KB) 或 DB (各128KB) —— 裸 LocalTensor 构造
-        // 注意 L0C 的 TPosition 标准是 CO1（对应 common/op_kernel/buffer.h::BufferInfo<L0C>::Position），
-        // 不是 C1 — 之前用 C1 会让 LocalTensor 指向错误的物理区域，导致 fixpipe 读到的 L0C 数据有缺失，
-        // 表现为部分 m-block(尤其是 m=0 和 S2-split 的尾 m)精度异常。
-        if constexpr (L0C_IS_4BUFF) {
-            constexpr uint32_t l0cSlotSize = (uint32_t)(L0C_SIZE / NUM_4) * (uint32_t)KB_TO_BYTES;
-            l0CSlot[0] = LocalTensor<uint8_t>(TPosition::CO1, 0U, l0cSlotSize);
-            l0CSlot[1] = LocalTensor<uint8_t>(TPosition::CO1, l0cSlotSize, l0cSlotSize);
-            l0CSlot[2] = LocalTensor<uint8_t>(TPosition::CO1, 2U * l0cSlotSize, l0cSlotSize);
-            l0CSlot[3] = LocalTensor<uint8_t>(TPosition::CO1, 3U * l0cSlotSize, l0cSlotSize);
-        } else {
-            constexpr uint32_t l0cSlotSize = (uint32_t)(L0C_SIZE / NUM_2) * (uint32_t)KB_TO_BYTES;
-            l0CSlot[0] = LocalTensor<uint8_t>(TPosition::CO1, 0U, l0cSlotSize);
-            l0CSlot[1] = LocalTensor<uint8_t>(TPosition::CO1, l0cSlotSize, l0cSlotSize);
-        }
+        // L0C：单个 LocalTensor 覆盖整片 ping/pong/...（4buff 各 64KB 或 DB 各 128KB）
+        // 注意 L0C 的 TPosition 标准是 CO1（对应 BufferInfo<L0C>::Position），不是 C1 —
+        // 之前用 C1 会让 LocalTensor 指向错误的物理区域，fixpipe 读到的 L0C 数据有缺失，
+        // 表现为部分 m-block（尤其是 m=0 和 S2-split 的尾 m）精度异常。
+        l0CTensor = LocalTensor<uint8_t>(TPosition::CO1, 0U, L0C_BUFCNT * L0C_SLOT_BYTES);
     }
 
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -653,48 +594,63 @@ public:
     template<typename OutTensorT>
     __aicore__ inline void IterateBmm1NdL0Split(OutTensorT &outputTensor, uint32_t ccId0, uint32_t ccId1, RunInfoX &runInfo)
     {
-        uint32_t qIdx;
+        // ============ L1 Q 载入：仅 isFirstS2Loop 真正搬运；后续 S2 内层复用同 slot 数据 ============
+        // qBufId 在 isLastS2Loop SetFlag<MTE1_MTE2> 后推进，整个 S2 内层保持不变
+        LocalTensor<Q_T> mm1ATensor =
+            l1QTensor[qBufId * L1_Q_SLOT_BYTES].template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
-            qIdx = L1QGet();
-            WaitFlag<HardEvent::MTE1_MTE2>(L1QEvt(qIdx));
-            CopyQueryTile(l1QSlot[qIdx].template ReinterpretCast<Q_T>(), runInfo);
-            SetFlag<HardEvent::MTE2_MTE1>(L1QEvt(qIdx));
+            WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0 + qBufId);
+            {
+                CopyQueryTile(mm1ATensor, runInfo);
+            }
+            SetFlag<HardEvent::MTE2_MTE1>(FA_L1_Q_C2P_0 + qBufId);
         } else {
-            qIdx = L1QGetPre();
-            SetFlag<HardEvent::MTE2_MTE1>(L1QEvt(qIdx));
+            // 数据已在 L1，仅补一次 MTE2_MTE1 信号与下面的 Wait 配对
+            SetFlag<HardEvent::MTE2_MTE1>(FA_L1_Q_C2P_0 + qBufId);
         }
 
-        uint32_t kIdx = L1KGet();
-        WaitFlag<HardEvent::MTE1_MTE2>(L1KEvt(kIdx));
-        LocalTensor<KV_T> mm1BTensor = l1KSlot[kIdx].template ReinterpretCast<KV_T>();
-        CopyKeyTile(mm1BTensor, runInfo);
-        SetFlag<HardEvent::MTE2_MTE1>(L1KEvt(kIdx));
-        WaitFlag<HardEvent::MTE2_MTE1>(L1QEvt(qIdx));
-        WaitFlag<HardEvent::MTE2_MTE1>(L1KEvt(kIdx));
+        // ============ L1 K 载入：每轮 S2 内层都需重新载入 ============
+        LocalTensor<KV_T> mm1BTensor =
+            l1KTensor[kBufId * L1_K_SLOT_BYTES].template ReinterpretCast<KV_T>();
+        WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0 + kBufId);
+        {
+            CopyKeyTile(mm1BTensor, runInfo);
+        }
+        SetFlag<HardEvent::MTE2_MTE1>(FA_L1_K_C2P_0 + kBufId);
 
-        uint32_t cIdx = L0CGet();
-        WaitFlag<HardEvent::FIX_M>(L0CEvt(cIdx));
-        LocalTensor<T> l0CTensor = l0CSlot[cIdx].template ReinterpretCast<T>();
+        // ============ MatMul Q × K → L0C ============
+        WaitFlag<HardEvent::MTE2_MTE1>(FA_L1_Q_C2P_0 + qBufId);
+        WaitFlag<HardEvent::MTE2_MTE1>(FA_L1_K_C2P_0 + kBufId);
+        WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_0 + cBufId);
+        {
+            LocalTensor<T> l0CSubTensor =
+                l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<T>();
+            MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
+                                        (uint32_t)(constInfo.dSize), false, true);
+            MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
+                mm1ATensor, mm1BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
 
-        MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                    (uint32_t)(constInfo.dSize), false, true);
-        LocalTensor<Q_T> mm1ATensor = l1QSlot[qIdx].template ReinterpretCast<Q_T>();
-        MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-            mm1ATensor, mm1BTensor, mmL0ABuffers, mmL0BBuffers, l0CTensor, param);
+            SetFlag<HardEvent::M_FIX>(FA_L0C_C2P_0 + cBufId);   // M → FIX 正向：mmad 完成
+            WaitFlag<HardEvent::M_FIX>(FA_L0C_C2P_0 + cBufId);
 
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1 + AIV0_AIV1_OFFSET);
+
+            FixpipeMm1(outputTensor, l0CSubTensor, runInfo);
+        }
+        // 释放 K：每轮 S2 内层都推进 kBufId
+        SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0 + kBufId);
+        kBufId = (kBufId + 1) % L1_KV_BUFCNT;
+
+        // 仅在 isLastS2Loop 释放 Q 并推进 qBufId
         if (unlikely(runInfo.isLastS2Loop)) {
-            SetFlag<HardEvent::MTE1_MTE2>(L1QEvt(qIdx));
+            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0 + qBufId);
+            qBufId = (qBufId + 1) % L1_Q_BUFCNT;
         }
-        SetFlag<HardEvent::MTE1_MTE2>(L1KEvt(kIdx));   // 释放L1B
-        SetFlag<HardEvent::M_FIX>(L0CEvt(cIdx));       // 通知
-        WaitFlag<HardEvent::M_FIX>(L0CEvt(cIdx));      // 等待L0C
 
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId1 + AIV0_AIV1_OFFSET);
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0 + cBufId); // FIX → M 反向：释放 L0C slot
+        cBufId = (cBufId + 1) % L0C_BUFCNT;
 
-        FixpipeMm1(outputTensor, l0CTensor, runInfo);
-
-        SetFlag<HardEvent::FIX_M>(L0CEvt(cIdx));
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(ccId0 + AIV0_AIV1_OFFSET);
     }
@@ -747,43 +703,54 @@ public:
         // 否则会在 AIV1 写完前读取 L1 下半部分，导致行 64-127 读到脏数据。
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
-        uint32_t vIdx = L1VGet();
-        WaitFlag<HardEvent::MTE1_MTE2>(L1VEvt(vIdx)); // 占用L1B
-        LocalTensor<KV_T> mm2BTensor = l1VSlot[vIdx].template ReinterpretCast<KV_T>();
-        CopyValueTile(mm2BTensor, runInfo);
-        SetFlag<HardEvent::MTE2_MTE1>(L1VEvt(vIdx)); // 通知
 
-        uint32_t cIdx = L0CGet();
-        WaitFlag<HardEvent::FIX_M>(L0CEvt(cIdx)); // 占用
-        LocalTensor<T> l0CTensor = l0CSlot[cIdx].template ReinterpretCast<T>();
-        MMParam param = {
-            (uint32_t)mBaseSize,                   // singleM 128
-            (uint32_t)constInfo.dSizeV,            // singleN 128
-            (uint32_t)runInfo.actSingleLoopS2Size, // singleK
-            false,                                 // isLeftTranspose
-            false                                  // isRightTranspose
-        };
-        param.realM = (uint32_t)runInfo.actMSize;
-        WaitFlag<HardEvent::MTE2_MTE1>(L1VEvt(vIdx)); // 等待
-
-        if constexpr (s2BaseSize == 128) {
-            MatmulFull<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-                l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CTensor, param);
-        } else {
-            MatmulBase<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-                l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CTensor, param);
+        // ============ L1 V 载入（每轮 S2 内层都需要载入新 V） ============
+        LocalTensor<KV_T> mm2BTensor =
+            l1VTensor[vBufId * L1_V_SLOT_BYTES].template ReinterpretCast<KV_T>();
+        WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0 + vBufId); // 占用L1B
+        {
+            CopyValueTile(mm2BTensor, runInfo);
         }
+        SetFlag<HardEvent::MTE2_MTE1>(FA_L1_V_C2P_0 + vBufId);  // 通知
 
-        SetFlag<HardEvent::MTE1_MTE2>(L1VEvt(vIdx));   // 释放L1B
-        SetFlag<HardEvent::M_FIX>(L0CEvt(cIdx));       // 通知
-        WaitFlag<HardEvent::M_FIX>(L0CEvt(cIdx));      // 等待
+        // ============ MatMul P × V → L0C ============
+        WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_0 + cBufId);      // 占用 L0C slot
+        WaitFlag<HardEvent::MTE2_MTE1>(FA_L1_V_C2P_0 + vBufId); // 等待 L1B 载入
+        {
+            LocalTensor<T> l0CSubTensor =
+                l0CTensor[cBufId * L0C_SLOT_BYTES].template ReinterpretCast<T>();
+            MMParam param = {
+                (uint32_t)mBaseSize,                   // singleM 128
+                (uint32_t)constInfo.dSizeV,            // singleN 128
+                (uint32_t)runInfo.actSingleLoopS2Size, // singleK
+                false,                                 // isLeftTranspose
+                false                                  // isRightTranspose
+            };
+            param.realM = (uint32_t)runInfo.actMSize;
 
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
+            if constexpr (s2BaseSize == 128) {
+                MatmulFull<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                    l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
+            } else {
+                MatmulBase<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                    l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
+            }
 
-        FixpipeMm2PartialN(outputTensor, l0CTensor, constInfo.dSizeV, runInfo);
+            SetFlag<HardEvent::M_FIX>(FA_L0C_C2P_0 + cBufId);   // M → FIX 正向：mmad 完成
+            WaitFlag<HardEvent::M_FIX>(FA_L0C_C2P_0 + cBufId);
 
-        SetFlag<HardEvent::FIX_M>(L0CEvt(cIdx)); // 释放
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
+
+            FixpipeMm2PartialN(outputTensor, l0CSubTensor, constInfo.dSizeV, runInfo);
+        }
+        // 释放 V 并推进 vBufId
+        SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0 + vBufId);
+        vBufId = (vBufId + 1) % L1_KV_BUFCNT;
+
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0 + cBufId); // FIX → M 反向：释放 L0C slot
+        cBufId = (cBufId + 1) % L0C_BUFCNT;
+
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId0 + AIV0_AIV1_OFFSET);
     }
