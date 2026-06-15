@@ -143,7 +143,6 @@ public:
     // gm
     GlobalTensor<OUTPUT_T> attentionOutGm;
 
-    GlobalTensor<int32_t> actualSeqLengthsGmQ;
     using QSeqParserType =
         typename std::conditional<(LAYOUT == LayOutTypeEnum::LAYOUT_TND),
                                   ActualSeqLensParser<Q_MODE, int32_t, true>,
@@ -214,10 +213,6 @@ public:
         if (constInfoXVec.isSoftmaxLseEnable) {
             softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         }
-
-        uint64_t actualLenQSize =
-            (layout == LayOutTypeEnum::LAYOUT_TND) ? constInfoXVec.cuSeqLensQSize : constInfoXVec.seqUsedQSize;
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ int32_t *)actualSeqQlenAddr, actualLenQSize);
 
         if constexpr (hasAtten) {
             attenMaskGmInt.SetGlobalBuffer((__gm__ uint8_t *)attenMask);
@@ -1345,18 +1340,11 @@ public:
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
     VecFdBlockType vecFdBlock;
 
-    uint32_t coreGS1Loops = 0U;
-    uint32_t frontGS1Count = 0U;
-    uint32_t invalidGS1Size = 0U;
     uint32_t accGS1Loops = 0U;
-    uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
-    uint32_t varlenCalcTimes = 0U;
-    bool enableS1OutSplit = false;
 
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
-    int32_t s1SizeCurrBatch = 0;
     uint32_t curS2Start;
     uint32_t curS2End = 0;
     uint32_t prevBIdx;
@@ -1365,8 +1353,6 @@ public:
     uint32_t mloop = 0;
     bool headS2Split = false;
     bool tailS2Split = false;
-    bool emptyBatch = false;
-    uint32_t dealZerosMSize = 0;
 
     uint32_t sectionNum_;
     bool isFd;
