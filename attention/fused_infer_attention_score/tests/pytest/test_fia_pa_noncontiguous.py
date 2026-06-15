@@ -117,7 +117,7 @@ def _run_one(cfg, expect_pass):
     bt,total_b=None,0
     if pa: bt,total_b=_block_table(B,act_kv,bs)
     else: total_b=B
-    bt_npu=bt.npu() if bt else None
+    bt_npu=bt.npu() if bt is not None else None
 
     torch.manual_seed(42)
     q_bnsd=torch.randn(B,N_q,q_seq,d,dtype=DTYPE)
