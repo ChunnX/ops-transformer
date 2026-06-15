@@ -60,9 +60,8 @@ using namespace Mc2Kernel;
 template <bool ALLTO_ALL_MM_HAS_BIAS, bool ALLTO_ALL_MM_TRANSPOSE_X2, int ALLTO_ALL_MM_QUANT_TYPE,
           int ALLTO_ALL_MM_QUANT_BIAS_DTYPE, int ALLTO_ALL_MM_SOC_VERSION>
 __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x1_scale, GM_ADDR x2_scale,
-                                            GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
-                                            GM_ADDR all2all_out, GM_ADDR timerBuffer, GM_ADDR workspaceGM,
-                                            GM_ADDR tilingGM)
+                                            GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR timerBuffer,
+                                            GM_ADDR y, GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2); // A2、A3的kernel task都采用1:2模式
 

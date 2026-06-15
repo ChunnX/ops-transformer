@@ -1,22 +1,15 @@
-[2026-06-15 09:31:43] [2026-06-15 09:31:43] Start to run example,name:allto_all_matmul mode:eager
-[2026-06-15 09:31:43] Start compile and run example file: ../mc2/allto_all_matmul/examples/test_aclnn_allto_all_matmul.cpp
-[2026-06-15 09:31:43] pkg_mode:cust vendor_name:custom
-[2026-06-15 09:32:05] [INFO] rank 0 hcom: 172.17.0.2%eth0_60000_0_1781487124025029 stream: 0xaaaaf1c108f0, context : 0xaaaaf0390c10
+[2026-06-15 10:24:01] [2026-06-15 10:24:01] Start to run example,name:allto_all_matmul mode:eager
+[2026-06-15 10:24:01] Start compile and run example file: ../mc2/allto_all_matmul/examples/test_aclnn_allto_all_matmul.cpp
+[2026-06-15 10:24:01] pkg_mode:cust vendor_name:custom
+[2026-06-15 10:24:07] [INFO] rank 0 hcom: 172.17.0.2%eth0_60000_0_1781490246048043 stream: 0xaaaae3efc520, context : 0xaaaae267cc20
 [Timer] Raw CSV:output_timer/data/timer_rank_0_timeline.csv
-[Timer] Duration CSV:output_timer/timer_rank_0.csv[Timer] Raw CSV:output_timer/data/timer_rank_1_timeline.csv
+[Timer] Raw CSV:output_timer/data/timer_rank_1_timeline.csv
 [Timer] Duration CSV:output_timer/timer_rank_1.csv
-
-[2026-06-15 09:32:05] [INFO] rank 1 hcom: 172.17.0.2%eth0_60000_0_1781487124025029 stream: 0xaaaaf20f1130, context : 0xaaaaf1c0f3e0
-[2026-06-15 09:32:05] device1 aclnnAlltoAllMatmul execute success 
-[2026-06-15 09:32:05] device0 aclnnAlltoAllMatmul execute success 
-[2026-06-15 09:32:05] Trying to create: Trying to create: output_timeroutput_timer
-[2026-06-15 09:32:05] 
-[2026-06-15 09:32:13] run test_aclnn_allto_all_matmul, execute samples success
-[2026-06-15 09:32:13] Start compile and run example file: ../mc2/allto_all_matmul/examples/test_aclnn_allto_all_quant_matmul.cpp
-[2026-06-15 09:32:13] pkg_mode:cust vendor_name:custom
-[2026-06-15 09:32:24] [INFO] rank 0 hcom: 172.17.0.2%eth0_60000_0_1781487137683216 stream: 0xaaab01f58820, context : 0xaaab006d8e00
-[2026-06-15 09:32:24] [INFO] rank 1 hcom: 172.17.0.2%eth0_60000_0_1781487137683216 stream: 0xaaab02439060, context : 0xaaab01f57310
-[2026-06-15 09:32:24] aclrtSynchronizeStream failed. ERROR: 507057
-[2026-06-15 09:32:24] aclrtSynchronizeStream failed. ERROR: 507057
-[2026-06-15 09:32:24] run test_aclnn_allto_all_matmul, execute samples success
-[2026-06-15 09:32:24] Example completed successfully
+[Timer] Duration CSV:output_timer/timer_rank_0.csv
+[2026-06-15 10:24:07] [INFO] rank 1 hcom: 172.17.0.2%eth0_60000_0_1781490246048043 stream: 0xaaaae43dcd60, context : 0xaaaae3efb010
+[2026-06-15 10:24:07] device0 aclnnAlltoAllMatmul execute success 
+[2026-06-15 10:24:07] device1 aclnnAlltoAllMatmul execute success 
+[2026-06-15 10:24:07] Trying to create: output_timerTrying to create: output_timer
+[2026-06-15 10:24:07] 
+[2026-06-15 10:24:15] run test_aclnn_allto_all_matmul, execute samples success
+[2026-06-15 10:24:15] Example completed successfully

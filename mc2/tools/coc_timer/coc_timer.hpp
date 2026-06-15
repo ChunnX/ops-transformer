@@ -44,8 +44,6 @@ enum FixedTiming
 //     X(AIV_RS)  → kernel 中 timer.Tik(AIV_RS) / timer.Tok(AIV_RS)，CSV 列名 AIV_RS_0, ...
 #define COC_TIMER_DYNAMIC_LIST \
     X(AIC)    \
-    X(AIV_AG)    \
-    X(AIV_GO) \
     X(AIV_DQ) \
     X(AIV_AAO) \
     X(AIV_AA) \
