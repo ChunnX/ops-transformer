@@ -45,9 +45,11 @@ static const std::set<ge::DataType> TOKENS_DTYPE = {ge::DT_INT8,          ge::DT
 static const std::set<ge::DataType> EXPERT_TOKEN_NUM_DTYPE = {ge::DT_INT32, ge::DT_INT64};
 static const std::set<ge::DataType> SCALE_DTYPE = {ge::DT_FLOAT, ge::DT_FLOAT8_E8M0};
 
-static std::tuple<int64_t, int64_t> GetShapeTuple(const gert::TilingContext *context, const int64_t index = 0)
+static std::tuple<int64_t, int64_t> GetShapeTuple(const gert::TilingContext *context, const int64_t index = 0,
+                                                 const bool isOptional = false)
 {
-    const gert::StorageShape *shapePtr = context->GetInputShape(index);
+    const gert::StorageShape *shapePtr = isOptional ? context->GetOptionalInputShape(index) :
+                                                      context->GetInputShape(index);
     OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context->GetNodeName(), "Shape is nullptr."),
                 return std::make_tuple(0, 0));
     // check shape length is DIM_SIZE_TWO
@@ -58,9 +60,11 @@ static std::tuple<int64_t, int64_t> GetShapeTuple(const gert::TilingContext *con
     return std::make_tuple(shapePtr->GetStorageShape().GetDim(0), shapePtr->GetStorageShape().GetDim(1));
 }
 
-static std::tuple<int64_t, int64_t, int64_t> GetShapeTupleN(const gert::TilingContext *context, const int64_t index = 0)
+static std::tuple<int64_t, int64_t, int64_t> GetShapeTupleN(const gert::TilingContext *context, const int64_t index = 0,
+                                                           const bool isOptional = false)
 {
-    const gert::StorageShape *shapePtr = context->GetInputShape(index);
+    const gert::StorageShape *shapePtr = isOptional ? context->GetOptionalInputShape(index) :
+                                                      context->GetInputShape(index);
     OP_CHECK_IF(
         shapePtr == nullptr, OP_LOGE(context->GetNodeName(), "Shape is nullptr."),
         return std::make_tuple(0, 0, 0));
@@ -109,7 +113,7 @@ ge::graphStatus MoeReRoutingTilingBase::CheckNullptr() const
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputDesc(OUT_PERMUTE_TOKEN_IDX_IDNEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputDesc(OUTPUT_EXPERT_TOKEN_NUM_INDEX));
     if (hasTopkWeight_) {
-        OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(IN_EXPERT_TOPK_WEIGHT_INDEX));
+        OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOptionalInputShape(IN_EXPERT_TOPK_WEIGHT_INDEX));
         OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(IN_EXPERT_TOPK_WEIGHT_INDEX));
         OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputDesc(OUT_PERMUTE_TOPK_WEIGHT_INDEX));
     }
@@ -204,7 +208,7 @@ ge::graphStatus MoeReRoutingTilingBase::CheckOutputShape() const
         OP_CHECK_IF(outScaleShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "outScaleShapePtr is nullptr."),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(outScaleShapePtr->GetStorageShape() !=
-                        context_->GetInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape(),
+                        context_->GetOptionalInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape(),
                     OP_LOGE(context_->GetNodeName(), "per_tokens_scale shape must same with permute_per_token_scales."),
                     return ge::GRAPH_FAILED);
     }
@@ -237,7 +241,7 @@ ge::graphStatus MoeReRoutingTilingBase::CheckOutputShape() const
         OP_CHECK_IF(outTopkWeightShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "outTopkWeightShapePtr is nullptr."),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(outTopkWeightShapePtr->GetStorageShape() !=
-                        context_->GetInputShape(IN_EXPERT_TOPK_WEIGHT_INDEX)->GetStorageShape(),
+                        context_->GetOptionalInputShape(IN_EXPERT_TOPK_WEIGHT_INDEX)->GetStorageShape(),
                     OP_LOGE(context_->GetNodeName(), "expert_topk_weight shape must same with permute_topk_weight."),
                     return ge::GRAPH_FAILED);
     }
@@ -279,12 +283,12 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
     expertDtype_ = context_->GetInputDesc(IN_EXPERT_TOKEN_NUM_PER_RANK_INDEX)->GetDataType();
     auto scalePtr = context_->GetOptionalInputDesc(IN_TOKEN_SCALE_INDEX);
     if (scalePtr != nullptr) {
-        auto &scaleShape = context_->GetInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape();
+        auto &scaleShape = context_->GetOptionalInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape();
         auto scaleDimNum = scaleShape.GetDimNum();
         if (scaleDimNum == DIM_1) {
             scaleSize_ = 1;
         } else if (scaleDimNum == DIM_2) {
-            auto scaleShapeTuple = GetShapeTuple(context_, IN_TOKEN_SCALE_INDEX);
+            auto scaleShapeTuple = GetShapeTuple(context_, IN_TOKEN_SCALE_INDEX, true);
             scaleSize_ = std::get<1>(scaleShapeTuple);
             auto scaleSum = std::get<0>(scaleShapeTuple);
             OP_CHECK_IF(scaleSum != tokenSum_,
@@ -298,7 +302,7 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
                     ge::TypeUtils::DataTypeToSerialString(tokenDtype_).c_str());
                 return ge::GRAPH_FAILED;
             }
-            auto scaleShapeTuple3D = GetShapeTupleN(context_, IN_TOKEN_SCALE_INDEX);
+            auto scaleShapeTuple3D = GetShapeTupleN(context_, IN_TOKEN_SCALE_INDEX, true);
             auto scaleSum0 = std::get<DIM_INDEX_0>(scaleShapeTuple3D);
             auto scaleDim1 = std::get<DIM_INDEX_1>(scaleShapeTuple3D);
             auto scaleDim2 = std::get<DIM_INDEX_2>(scaleShapeTuple3D);
@@ -328,7 +332,7 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
                             ge::TypeUtils::DataTypeToSerialString(topkWeightDtype_).c_str()),
                     return ge::GRAPH_FAILED);
         hasTopkWeight_ = true;
-        auto topkWeightShapeTuple = GetShapeTuple(context_, IN_EXPERT_TOPK_WEIGHT_INDEX);
+        auto topkWeightShapeTuple = GetShapeTuple(context_, IN_EXPERT_TOPK_WEIGHT_INDEX, true);
         auto topkWeightSum = std::get<0>(topkWeightShapeTuple);
         auto topkWeightDim1 = std::get<1>(topkWeightShapeTuple);
         OP_CHECK_IF(topkWeightSum != tokenSum_,
