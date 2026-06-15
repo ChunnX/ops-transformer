@@ -319,7 +319,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitAttnScoreGmForRobustness(u
             for (uint64_t i = 0; i < 4; ++i) {
                 uint64_t pos = setStart + jitter + i * stride;
                 if (pos < curTileLen) {
-                    attnScoreGmLocal.SetValue(offset + pos, static_cast<IN_T>(2.0f));
+                    IN_T targetValue = (i % 2 == 0) ? static_cast<IN_T>(2.0f) : static_cast<IN_T>(-2.0f);
+                    attnScoreGmLocal.SetValue(offset + pos, targetValue);
                 }
             }
         }
