@@ -288,7 +288,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
     - B * S（Batchsize * SeqLength）：取值范围为1~512K。
     - H（hiddenSize）：取值范围384~24576，且是64的整数倍。
     - W：W当前只支持3。
-- 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16） 下，数值均不会超出该类型值域范围。
+- 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16）下，数值均不会超出该类型值域范围。
 - 算子输入不支持有±inf和nan的情况。
 
 ## 调用示例
@@ -374,7 +374,7 @@ int CreateAclTensor(
 
 int main()
 {
-    // 1. 固定写法，device/stream初始化, 参考acl API
+    // 1. 固定写法，device/stream初始化,参考acl API
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -464,7 +464,7 @@ int main()
     aclDestroyTensor(gradX);
     aclDestroyTensor(gradWeight);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(gradYDeviceAddr);
     aclrtFree(xDeviceAddr);
     aclrtFree(weightDeviceAddr);

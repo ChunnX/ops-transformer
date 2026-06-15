@@ -5,11 +5,11 @@
 | 产品                                        | 是否支持 |
 | :------------------------------------------ | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>    |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>  |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                   |    ×     |
-| <term>Atlas 推理系列产品</term>                           |    ×     |
-| <term>Atlas 训练系列产品</term>                           |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                            |    ×     |
 
 ## 功能说明
 
@@ -503,7 +503,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(
   - BS：batch sequence size。
   - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡收到的token数，是recvCounts参数累加之和。
-  - ep通信域内所有卡的 A 参数的累加和等于所有卡上的 BSK 参数的累加和。
+  - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
   - mx量化且gmmX与gmmWeight为FLOAT4_E2M1时，H1和H2必须为偶数且不能为2，同时transGmmWeight和transMmWeight为false情况下，N1和N2必须为偶数。
   - gmmWeight和gmmWeightScale的转置状态必须保持一致：同时转置或同时不转置。mmWeight和mmWeightScale同样需要保持转置状态一致。
   - groupSize: 
@@ -538,7 +538,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-注意：由于量化接口仅支持<term>Ascend 950PR/Ascend 950DT</term>，以下示例基于该系列实现。本示例代码以2卡为例，请根据实际环境卡数修改 `EP_WORLD_SIZE`。
+注意：由于量化接口仅支持<term>Ascend 950PR/Ascend 950DT</term>，以下示例基于该系列实现。本示例代码以2卡为例，请根据实际环境卡数修改`EP_WORLD_SIZE`。
 
 ```cpp
 #include <thread>
@@ -602,7 +602,7 @@ struct Args {
     aclrtContext context;
 };
 
-// shape 基本信息
+// shape基本信息
 constexpr int64_t EP_WORLD_SIZE = 2;
 constexpr int64_t BS = 4096;
 constexpr int64_t K = 2;
@@ -669,18 +669,18 @@ int LaunchOneThreadAlltoAllvQuantGroupedMatMul(Args &args)
     long long mmWShapeSize = GetShapeSize(mmWShape);
     long long mmYShapeSize = GetShapeSize(mmYShape);
 
-    // HIFLOAT8数据 (使用uint8_t模拟)
+    // HIFLOAT8数据(使用uint8_t模拟)
     std::vector<uint8_t> gmmXHostData(gmmXShapeSize, (args.rankId + 1) * 10);
     std::vector<uint8_t> gmmWHostData(gmmWShapeSize, (args.rankId + 1) * 5);
     std::vector<uint8_t> mmXHostData(mmXShapeSize, (args.rankId + 1) * 10);
     std::vector<uint8_t> mmWHostData(mmWShapeSize, (args.rankId + 1) * 5);
     
-    // 输出数据 (FLOAT16/BFLOAT16)
+    // 输出数据(FLOAT16/BFLOAT16)
     std::vector<uint16_t> gmmYHostData(gmmYShapeSize, 65535);
     std::vector<uint16_t> mmYHostData(mmYShapeSize, 0);
     std::vector<uint8_t> permuteHostData(permuteShapeSize, 255);
     
-    // 缩放因子数据 (FLOAT32)
+    // 缩放因子数据(FLOAT32)
     std::vector<float> gmmXScaleHostData(1, 1.0f);
     std::vector<float> gmmWScaleHostData(1, 1.0f);
     std::vector<float> mmXScaleHostData(1, 1.0f);

@@ -10,8 +10,8 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      √     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas推理系列产品</term>|      √     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -511,7 +511,7 @@ aclnnStatus aclnnGroupedMatmulV5(
     - 当weight[数据格式](../../../docs/zh/context/数据格式.md)为FRACTAL_NZ格式时，要求weight的Shape满足FRACTAL_NZ格式要求。
     - perTokenScaleOptional：一般情况下，只支持1维且长度与x的M相同。仅支持x、weight、out均为单tensor（TensorList长度为1）场景。
     - groupListOptional：当输出中TensorList的长度为1时，groupListOptional约束了输出数据的有效部分，groupListOptional中未指定的部分将不会参与更新。
-    - groupListType为0时要求groupListOptional中数值为非负单调非递减数列，表示分组轴大小的cumsum结果（累积和），groupListType为1时要求groupListOptional中数值为非负数列，表示分组轴上每组大小，groupListType为2时要求 groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，详见[groupListOptional配置示例](#grouplistoptional配置示例)。
+    - groupListType为0时要求groupListOptional中数值为非负单调非递减数列，表示分组轴大小的cumsum结果（累积和），groupListType为1时要求groupListOptional中数值为非负数列，表示分组轴上每组大小，groupListType为2时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，详见[groupListOptional配置示例](#grouplistoptional配置示例)。
     - groupType代表需要分组的轴，如矩阵乘为C[m,n]=A[m,k]xB[k,n]，则groupType取值-1：不分组，0：m轴分组，2：k轴分组。详细参考<a href="#groupType-constraints">groupType支持场景</a>约束。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型。取值范围为0-5，支持的枚举值如下：
       * 0：GMMActType::GMM_ACT_TYPE_NONE；
@@ -547,16 +547,16 @@ aclnnStatus aclnnGroupedMatmulV5(
       - 如果需要启用定轴算法以优化性能，需同时满足以下输入形状与参数配置条件：
         * 输入形状条件（满足任意一组即可）
 
-          x 的 shape 为 (M, 7168)，weight 的 shape 为 (7168, 4096)。
+          x的shape为(M, 7168)，weight的shape为(7168, 4096)。
 
-          x 的 shape 为 (M, 2048)，weight 的 shape 为 (2048, 7168)。
+          x的shape为(M, 2048)，weight的shape为(2048, 7168)。
         * 参数配置条件
 
-          tuningConfigOptional 的第一个元素：设为大于 128 且小于 512。
+          tuningConfigOptional的第一个元素：设为大于128 且小于512。
 
-          tuningConfigOptional 的第二个元素：设为 0。
+          tuningConfigOptional的第二个元素：设为0。
 
-          tuningConfigOptional 的第三个元素：设为 -1，或设为大于等于 M × N × 4 的数值。
+          tuningConfigOptional的第三个元素：设为 -1，或设为大于等于M × N × 4 的数值。
 
     </details>
 
@@ -714,7 +714,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       | 0 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）当groupListType为0时，最后一个值应小于等于x中tensor的第一维；当groupListType为1时，数值的总和应小于等于x中tensor的第一维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第一维；<br> 3）groupListOptional第1维最大支持1024，即最多支持1024个group |1）x不支持转置；<br> 2）支持weight转置，A8W4与A4W4场景不支持weight转置 |weight中tensor需为3维，x，y中tensor需为2维|
       | 0 | 单个|多个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）当groupListType为0时，最后一个值应小于等于x中tensor的第一维；当groupListType为1时，数值的总和应小于等于x中tensor的第一维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第一维；<br> 3）groupListOptional第1维最大支持128，即最多支持128个group|1）x不支持转置；<br> 2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一 |1）x，weight，y中tensor需为2维；<br> 2）weight中每个tensor的N轴必须相等 |
       | 0 | 多个|多个|单个 | 2/3 | 1）groupListOptional可选；<br> 2）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应；当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应；当groupListType为2时，groupListOptional第二列的数值需与x中tensor的第一维一一对应；<br> 3）groupListOptional第1维最大支持128，即最多支持128个group |1）x不支持转置；<br> 2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一|1）x，weight，y中tensor需为2维；<br> 2）weight中每个tensor的N轴必须相等 |
-      | 2 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）当groupListType为0时，最后一个值应小于等于x中tensor的第二维；当groupListType为1时，数值的总和应小于等于x中tensor的第二维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第二维；<br> 3）groupListOptional第1维最大支持1024， 即最多支持1024个group | 1）x必须转置；<br> 2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维；<br> 2）bias必须传空|
+      | 2 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）当groupListType为0时，最后一个值应小于等于x中tensor的第二维；当groupListType为1时，数值的总和应小于等于x中tensor的第二维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第二维；<br> 3）groupListOptional第1维最大支持1024，即最多支持1024个group | 1）x必须转置；<br> 2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维；<br> 2）bias必须传空|
       | 2 | 单个|多个|多个 | 0/1 | groupListOptional必须传空 | 1）x必须转置；<br> 2）weight不能转置| 1）x，weight，y中tensor需为2维。<br> 2）weight长度最大支持128，即最多支持128个group；<br> 3）原始shape中weight每个tensor的第一维之和不应超过x第一维；<br> 4）bias必须传空 |
 
     </details>
@@ -780,7 +780,7 @@ aclnnStatus aclnnGroupedMatmulV5(
     - groupListType：支持取值0、1、2。
       - 当groupListType为0时，groupListOptional必须为非负单调非递减数列；
       - 当groupListType为1时，groupListOptional必须为非负数列。
-      - 仅全量化且groupType为0场景下支持groupListType为2，此时要求 groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
+      - 仅全量化且groupType为0场景下支持groupListType为2，此时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
     - tuningConfigOptional：不支持此参数。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
       - 在伪量化和非量化场景下，actType仅支持0。
@@ -807,7 +807,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
       |groupType| 使用场景 | shape限制 |
       |:---------:|:---------:| :------ |
-      |0/2|weight单tensor|perchannel场景：每个tensor 2维， shape为（g, N）；  pertensor场景：每个tensor 2维或1维，shape为 （g, 1）或（g,），输出为INT8时不支持pertensor场景|
+      |0/2|weight单tensor|perchannel场景：每个tensor 2维， shape为（g, N）；  pertensor场景：每个tensor 2维或1维，shape为（g, 1）或（g,），输出为INT8时不支持pertensor场景|
 
     </details>
 
@@ -835,8 +835,8 @@ aclnnStatus aclnnGroupedMatmulV5(
 
           | groupType | 使用场景 | shape限制 |
           |:---------:|:---------:| :------ |
-          |0|x单tensor|pertoken场景：每个tensor 1维，shape为（M,）；pertensor场景：每个tensor 2维或1维，shape为（g, 1）或  （g,），输入为INT8时不支持pertensor场景|
-          |2|x单tensor|pertoken场景：每个tensor 2维，shape为（g, M）；pertensor场景：每个tensor 2维或1维，shape为（g, 1）  或（g,）|
+          |0|x单tensor|pertoken场景：每个tensor 1维，shape为（M,）；pertensor场景：每个tensor 2维或1维，shape为（g, 1）或（g,），输入为INT8时不支持pertensor场景|
+          |2|x单tensor|pertoken场景：每个tensor 2维，shape为（g, M）；pertensor场景：每个tensor 2维或1维，shape为（g, 1）或（g,）|
 
     </details>
 
@@ -853,21 +853,21 @@ aclnnStatus aclnnGroupedMatmulV5(
         |0/2|FLOAT8_E5M2/FLOAT8_E4M3FN  |FLOAT8_E5M2/FLOAT8_E4M3FN| null|   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
         |0|FLOAT4_E2M1 |FLOAT4_E2M1| FLOAT32/null |   FLOAT8_E8M0    | FLOAT8_E8M0    |   BFLOAT16/FLOAT16/FLOAT32 |
 
-    - scaleOptional要满足下表（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开  始））：
+    - scaleOptional要满足下表（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开始））：
 
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 4维，当weight转置时，shape为(g, N, ceil(K / 64), 2)；当weight不转置时，shape为(g, ceil(K / 64), N, 2)|
-        |2|weight单tensor|每个tensor 3维，shape为((K / 64) + g, N, 2)，scale\_i起始地 址偏移为((K\_0 + K\_1 + ...+ K\_ {i-1})/ 64 + g\_i) * N * 2，即scale_0的起始地 址偏移为0，scale_1的起始地址偏移为（K\_0 / 64 + 1）* N * 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) * N * 2, 依此类推|
+        |2|weight单tensor|每个tensor 3维，shape为((K / 64) + g, N, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_ {i-1})/ 64 + g\_i) * N * 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为（K\_0 / 64 + 1）* N * 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) * N * 2,依此类推|
 
     - perTokenScaleOptional要满足下表：
 
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|x单tensor|每个tensor 3维，shape为（M, ceil(K / 64), 2）|
-        |2|x单tensor|每个tensor 3维，shape为((K / 64) + g, M, 2), 起始地址偏移与scale 同理|
+        |2|x单tensor|每个tensor 3维，shape为((K / 64) + g, M, 2),起始地址偏移与scale同理|
 
-    - 对于mx量化中输入x为FLOAT4_E2M1时，需要满足K为偶数且K不为2。当weight 非转置时还需满足N为偶数。
+    - 对于mx量化中输入x为FLOAT4_E2M1时，需要满足K为偶数且K不为2。当weight非转置时还需满足N为偶数。
     </details>
 
     <details>
@@ -883,27 +883,27 @@ aclnnStatus aclnnGroupedMatmulV5(
         |0/2|HIFLOAT8  |HIFLOAT8| FLOAT32    | FLOAT32    | BFLOAT16/FLOAT16/ FLOAT32 |
         |0/2|FLOAT8_E5M2/FLOAT8_E4M3FN  |FLOAT8_E5M2/FLOAT8_E4M3FN| FLOAT32    |  FLOAT32    | BFLOAT16/FLOAT16/FLOAT32 |
 
-    - scaleOptional要满足下表（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开  始））：
+    - scaleOptional要满足下表（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开始））：
 
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 3维，weight转置时shape为（g, ceil(N / gsN), ceil (K / gsK)），weight非转置时shape为（g, ceil(K / gsK), ceil(N / gsN)）|
-        |2|weight单tensor|每个tensor 2维，shape为（K / gsK + g, ceil(N / gsN)），scale\_i地址偏移为（(K\_0 + K\_1 + ...+   K\_{i-1})/ gsK + g\_i）* ceil(N /  gsN)，即scale\_0的起始地址偏移为0，scale\_1的起始地址偏移为（K\_0 / gsK + 1）* ceil(N / gsN)， scale_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * ceil(N / gsN), 依此类推|
+        |2|weight单tensor|每个tensor 2维，shape为（K / gsK + g, ceil(N / gsN)），scale\_i地址偏移为（(K\_0 + K\_1 + ...+   K\_{i-1})/ gsK + g\_i）* ceil(N /  gsN)，即scale\_0的起始地址偏移为0，scale\_1的起始地址偏移为（K\_0 / gsK + 1）* ceil(N / gsN)， scale_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * ceil(N / gsN),依此类推|
 
     - perTokenScaleOptional要满足下表：
 
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|x单tensor|每个tensor 2维，shape为（M, ceil(K / gsK)）|
-        |2|x单tensor|每个tensor 2维，shape为（K / gsK + g, M），per\_token\_scale\_i地址偏移为（(K\_0 + K\_1 + ...+ K\_{i-1}) / gsK + g\_i）\* M，即  per\_token\_scale\_0的起始地址偏移为0，per\_token\_scale\_1的起始地址偏移为（K\_0 / gsK + 1）\* M， per\_token\_scale\_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * M, 依此类推|
+        |2|x单tensor|每个tensor 2维，shape为（K / gsK + g, M），per\_token\_scale\_i地址偏移为（(K\_0 + K\_1 + ...+ K\_{i-1}) / gsK + g\_i）\* M，即per\_token\_scale\_0的起始地址偏移为0，per\_token\_scale\_1的起始地址偏移为（K\_0 / gsK + 1）\* M， per\_token\_scale\_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * M,依此类推|
 
     - 动态量化特殊场景处理：
-      - 在动态量化场景M分组或K分组情况下，当N等于1且scaleOptional的shape为（g, 1）时，weight既可以pertensor量化也可以perchannel量化时, 优先选择pertensor量化模式。
-      - 在动态量化场景M分组情况下，当g = M且perTokenScaleOptional的shape为（g,）时，x选择pertoken量化模式；当g = M，K <= 128且perTokenScaleOptional的shape 为（g, 1）时，根据weight的量化模式选择x的量化模式（weight如果是perchannel或者pertensor量化，x选择pertensor量化；weight如果是perblock量化，x选择pergroup量化）。
+      - 在动态量化场景M分组或K分组情况下，当N等于1且scaleOptional的shape为（g, 1）时，weight既可以pertensor量化也可以perchannel量化时,优先选择pertensor量化模式。
+      - 在动态量化场景M分组情况下，当g = M且perTokenScaleOptional的shape为（g,）时，x选择pertoken量化模式；当g = M，K <= 128且perTokenScaleOptional的shape为（g, 1）时，根据weight的量化模式选择x的量化模式（weight如果是perchannel或者pertensor量化，x选择pertensor量化；weight如果是perblock量化，x选择pergroup量化）。
       - 在动态量化场景K分组情况下，K小于128，N小于等于128且scaleOptional的shape为（g, 1）时，按照现有量化模式区分规则，既可以为非pergroup量化，又可以为G-B量化，此种场景现一律按照G-B量化处理。
-      - 在动态量化场景K分组情况下，当M等于1且perTokenScaleOptional的shape为（g, 1）时，x既可以pertoken量化也可以pertensor量化时, 优先选择pertensor量化模式。
-      - 在动态量化场景K分组情况下，K小于128, M等于1且perTokenScaleOptional的shape为（g, 1）时，如果N小于等于128，x则选择pergroup量化；如果N大于128，根据weight的量化模式选择x的量化模式（weight如果是perchannel或者pertensor量化，x选择 pertensor量化；weight  如果是perblock量化，x选择pergroup量化）。
-      - 在动态量化场景K分组情况下，K小于128, M不等于1时，如果N小于等于128，x则选择pergroup量化；如果N大于128，根据weight的量化模式选择x的量化模式（weight如果是 perchannel或者pertensor量化，x选择pertoken量化；weight如果是perblock量化，x选择pergroup量化）。
+      - 在动态量化场景K分组情况下，当M等于1且perTokenScaleOptional的shape为（g, 1）时，x既可以pertoken量化也可以pertensor量化时,优先选择pertensor量化模式。
+      - 在动态量化场景K分组情况下，K小于128, M等于1且perTokenScaleOptional的shape为（g, 1）时，如果N小于等于128，x则选择pergroup量化；如果N大于128，根据weight的量化模式选择x的量化模式（weight如果是perchannel或者pertensor量化，x选择pertensor量化；weight如果是perblock量化，x选择pergroup量化）。
+      - 在动态量化场景K分组情况下，K小于128, M不等于1时，如果N小于等于128，x则选择pergroup量化；如果N大于128，根据weight的量化模式选择x的量化模式（weight如果是perchannel或者pertensor量化，x选择pertoken量化；weight如果是perblock量化，x选择pergroup量化）。
     </details>
 
   - 非量化场景支持的数据类型为：
@@ -1063,7 +1063,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 
   int main() {
-      // 1. （固定写法）device/stream初始化，参考acl API手册
+      // 1.（固定写法）device/stream初始化，参考acl API手册
       // 根据自己的实际device填写deviceId
       int32_t deviceId = 0;
       aclrtStream stream;
@@ -1140,7 +1140,7 @@ aclnnStatus aclnnGroupedMatmulV5(
       ret = aclnnGroupedMatmulV5(workspaceAddr, workspaceSize, executor, stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5 failed. ERROR: %d\n", ret); return ret);
 
-      // 4. （固定写法）同步等待任务执行结束
+      // 4.（固定写法）同步等待任务执行结束
       ret = aclrtSynchronizeStream(stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

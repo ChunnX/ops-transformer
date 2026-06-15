@@ -115,7 +115,7 @@
   - probsOptional输入等同于aclnnMoeFinalizeRoutingV2接口的scalesOptional输入。
   - paddedMode输入等同于aclnnMoeFinalizeRoutingV2接口的dropPadMode输入。
   - out输出等同于aclnnMoeFinalizeRoutingV2接口的out输出。
-- <term>Atlas 推理系列产品</term>：
+- |<term>Atlas 推理系列产品</term>：
   - permutedTokens与probsOptional支持的数据类型为FLOAT16、FLOAT32。 
   - topK_num <= 512。
   - hiddensize是128的倍数且小于10240。

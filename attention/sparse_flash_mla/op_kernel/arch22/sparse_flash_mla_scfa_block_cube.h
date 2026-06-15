@@ -363,7 +363,7 @@ __aicore__ inline void SMLACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, con
             bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
             uint32_t curSeqIdx = info.s2BatchOffset + nL1 * N_SPLIT_SIZE;
             if (info.isOriOnly) {
-                if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+                if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                     uint32_t curS2Offset = info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
                     uint32_t copyFinishRowCnt = 0;
                     LocalTensor<KV_T> kTensor;
@@ -628,7 +628,7 @@ __aicore__ inline void SMLACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, con
 
                 uint32_t curSeqIdx = info.s2BatchOffset + (kL1 - kOffset) * 128 + k1 * 256;
                 if (info.isOriOnly) {
-                    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+                    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                         uint32_t copyFinishRowCnt = 0;
                         uint32_t curS2Offset = info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
                         while (copyFinishRowCnt < kL0Size) {

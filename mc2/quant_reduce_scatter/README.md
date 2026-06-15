@@ -5,10 +5,10 @@
 | 产品                                                                            | 是否支持 |
 | :------------------------------------------------------------------------------ | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                                                | √       | 
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                        | ×       |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                          | ×       |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | ×       |
 | <term>Atlas 200I/500 A2 推理产品</term>                                         | ×       |
-| <term>Atlas 推理系列产品</term>                                                | ×       |
+| <term>Atlas 推理系列产品</term>                                                  | ×       |
 | <term>Atlas 训练系列产品</term>                                                 | ×       |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
@@ -101,7 +101,7 @@
         <td>output</td>
         <td>输出</td>
         <td>公式中的输出output。</td>
-        <td><ul><li>不支持空Tensor。</li><li>当x的shape是(BS,H)的时候，output的shape必须为(BS/rankNum,H); 当x的shape是(B,S,H)的时候，output的shape必须为(B*S/rankNum,H)。rankNum表示通信域大小。</li></ul></td>
+        <td><ul><li>不支持空Tensor。</li><li>当x的shape是(BS,H)的时候，output的shape必须为(BS/rankNum,H);当x的shape是(B,S,H)的时候，output的shape必须为(B*S/rankNum,H)。rankNum表示通信域大小。</li></ul></td>
         <td>FLOAT、FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>2</td>

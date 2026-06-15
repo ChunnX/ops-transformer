@@ -187,7 +187,12 @@ bool MatmulAllReduceCheckShape(
     bool isWeightNZ = MatmulAllReduceIsWeightNZFormat(x2);
     uint64_t weightDim = isWeightNZ ? FOUR_DIMS : TWO_DIMS;
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
-    OP_CHECK_WRONG_DIMENSION(x2, weightDim, return false);
+    if (x2->GetViewShape().GetDimNum() != weightDim) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("MatmulAllReduce", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            ("The shape of x2 must be " + std::to_string(weightDim) + "D.").c_str());
+        return false;
+    }
     OP_CHECK_MIN_DIM(x1, TWO_DIMS, return false);
     OP_CHECK_MAX_DIM(x1, THREE_DIMS, return false);
     if (isWeightNZ) {
@@ -214,7 +219,12 @@ bool MatmulAllReduceCheckShape(
 
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(bias, ONE_DIM, return false);
+        if (bias->GetViewShape().GetDimNum() != ONE_DIM) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("MatmulAllReduce", "bias",
+                (std::to_string(bias->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of bias must be 1D.");
+            return false;
+        }
         op::Shape biasShape;
         biasShape.AppendDim(output->GetViewShape().GetDim(x1_len - 1));
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShape, return false);
@@ -386,7 +396,12 @@ bool QuantMatmulAllReduceCheckShape(
         return true;
     }
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("MatmulAllReduce", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return false;
+    }
     uint64_t x2Dim0 =
         QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     uint64_t x2Dim1 =
@@ -418,7 +433,12 @@ bool QuantMatmulAllReduceCheckShape(
     
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(bias, ONE_DIM, return false);
+        if (bias->GetViewShape().GetDimNum() != ONE_DIM) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("MatmulAllReduce", "bias",
+                (std::to_string(bias->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of bias must be 1D.");
+            return false;
+        }
         op::Shape biasShape;
         biasShape.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShape, return false);

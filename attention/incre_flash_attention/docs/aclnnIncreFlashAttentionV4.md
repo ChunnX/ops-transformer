@@ -125,7 +125,7 @@ aclnnStatus aclnnIncreFlashAttentionV4(
         <td>key</td>
         <td>输入</td>
         <td>公式中的输入K。</td>
-        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>key、value中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16、INT8</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -135,7 +135,7 @@ aclnnStatus aclnnIncreFlashAttentionV4(
         <td>value</td>
         <td>输入</td>
         <td>公式中的输入V。</td>
-        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>key、value中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16、INT8</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -457,19 +457,19 @@ aclnnStatus aclnnIncreFlashAttentionV4(
 - antiquantScale和antiquantOffset参数约束：
   - per-channel模式：两个参数的shape可支持(2, N, 1, D)，(2, N, D)，(2, H)，N为numKeyValueHeads。参数数据类型和query数据类型相同。
   - per-tensor模式：两个参数的shape均为(2)，数据类型和query数据类型相同。
-- 入参 quantScale2 和 quantOffset2 支持 per-tensor/per-channel 两种格式和 FLOAT32/BFLOAT16 两种数据类型。若传入 quantOffset2 ，需保证其类型和shape信息与 quantScale2 一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32 。per-channel 格式，当输出layout为BSH时，要求 quantScale2 所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。
+- 入参quantScale2和quantOffset2支持per-tensor/per-channel两种格式和FLOAT32/BFLOAT16两种数据类型。若传入quantOffset2 ，需保证其类型和shape信息与quantScale2一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32 。per-channel格式，当输出layout为BSH时，要求quantScale2所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。
 - page attention场景:
   - page attention的开启必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。
-  - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在开启page attention场景下，blockSize需要传入非0值, 且blockSize最大不超过512。key、value输入类型为FLOAT16/BFLOAT16时需要16对齐，key、value 输入类型为INT8时需要32对齐，推荐使用128。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+  - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在开启page attention场景下，blockSize需要传入非0值,且blockSize最大不超过512。key、value输入类型为FLOAT16/BFLOAT16时需要16对齐，key、value输入类型为INT8时需要32对齐，推荐使用128。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
   - page attention场景下，当query的inputLayout为BNSD时，kv cache排布支持（blocknum, blocksize, H）和（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持（blocknum, blocksize, H）一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
   - page attention场景下，kv cache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kv cache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
-  - page attention开启场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 numKvHeads）或调整kv cache排布格式为（blocknum, numKvHeads, blocksize, D）解决。
+  - page attention开启场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且numKvHeads * headDim超过64k时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小numKvHeads）或调整kv cache排布格式为（blocknum, numKvHeads, blocksize, D）解决。
   - page attention场景下，必须传入输入actualSeqLengths。
   - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
   - page attention开启场景下，以下场景输入S需要大于等于maxBlockNumPerSeq * blockSize。
-  - 开启 Attention mask，例如 mask shape为 (B, 1, 1, S)。
-  - 开启 pseShift，例如 pseShift shape为(B, N, 1, S)。
-  - 开启 kvPaddingSize，例如 kvPaddingSize shape为(1), 并且要求 S 大于等于 kvPaddingSize 加 每个Batch中最大actualSeqLengthsKv的和。
+  - 开启Attention mask，例如mask shape为(B, 1, 1, S)。
+  - 开启pseShift，例如pseShift shape为(B, N, 1, S)。
+  - 开启kvPaddingSize，例如kvPaddingSize shape为(1),并且要求S大于等于kvPaddingSize加每个Batch中最大actualSeqLengthsKv的和。
 
 ## 调用示例
 

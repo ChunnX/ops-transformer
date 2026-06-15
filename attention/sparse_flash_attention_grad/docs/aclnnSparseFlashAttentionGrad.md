@@ -354,7 +354,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
         <td>preTokens</td>
             <td>输入</td>
-            <td>Attention算子里, 对S矩阵的滑窗起始位置。</td>
+            <td>Attention算子里,对S矩阵的滑窗起始位置。</td>
             <td>
             <ul>
                 <li>sparseMode=4时，pre_tokens生效。</li>
@@ -369,7 +369,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
         <td>nextTokens</td>
             <td>输入</td>
-            <td>Attention算子里, 对S矩阵的滑窗终止位置。</td>
+            <td>Attention算子里,对S矩阵的滑窗终止位置。</td>
             <td>
             <ul>
                 <li>sparseMode=4时，next_tokens生效。</li>
@@ -765,7 +765,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;
@@ -877,7 +877,7 @@ int main() {
   ret = CreateAclTensor(dkRopeHostData, kRopeShape, &dkRopeDeviceAddr, aclDataType::ACL_FLOAT16, &dkRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   
-  double scaleValue = 0.088388;
+  double scaleValue = 0.044194;
   int64_t sparseBlockSize = 1;
   int64_t sparseMode = 0;
   int64_t preTokens = 2147483647;
@@ -906,7 +906,7 @@ int main() {
   ret = aclnnSparseFlashAttentionGrad(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashAttentionGrad failed. ERROR: %d\n", ret); return ret);
   
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
   
@@ -952,6 +952,8 @@ int main() {
   aclrtFree(dvDeviceAddr);
   aclrtFree(dqRopeDeviceAddr);
   aclrtFree(dkRopeDeviceAddr);
+  aclrtFree(actSeqQLenDeviceAddr);
+  aclrtFree(actSeqKvLenDeviceAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }

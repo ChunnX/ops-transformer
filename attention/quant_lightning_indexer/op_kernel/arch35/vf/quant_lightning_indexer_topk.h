@@ -150,8 +150,8 @@ public:
                 topK, loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256), s2SeqLen); // 256: 硬件对齐粒度
             if (loopIdx == s2LoopNum - 1) {
                 PipeBarrier<PIPE_V>();
-                if ((loopIdx + 1) % 2 == 1) {
-                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
+                if ((loopIdx + 1) % 2 == 1) { // 1: 直接访问 Bank 1; 2: 双缓冲总数
+                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], // 1: 直接访问 Bank 1; 2: 双缓冲总数
                         QLICommon::Align(topK, (uint32_t)256)); // 256: 硬件对齐粒度; 2: 双缓冲的Bank
                 }
             }

@@ -5,8 +5,8 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
+|<term>Atlas A2训练系列产品</term>|      √     |
+|<term>Atlas A2推理系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -48,7 +48,7 @@
 - 输入query、key、value的inputLayout必须一致。
 - sparseMode目前支持0和2。
 - selectedBlockSize支持<=128且满足16的整数倍。
-- selectBlockCount：支持[1~128]。 总计选择的大小`selectBlockCount * selectBlockSize` < 128*64(8K)
+- selectBlockCount：支持[1~128]。总计选择的大小`selectBlockCount * selectBlockSize` < 128*64(8K)
 - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectBlockCount * selectBlockSize`
 - inputLayout目前仅支持TND。
 - 支持输入query的N和key / value的N不相等，但必须成比例关系，即N_q / N_kv必须是非0整数，称为G(group)，且需满足`G <= 32`。

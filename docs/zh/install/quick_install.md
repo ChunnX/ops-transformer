@@ -96,7 +96,7 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
     2. **安装CANN包**
 
-        请单击[下载链接](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master/)，选择最新时间版本，并根据产品型号和环境架构下载对应包。安装命令如下，更多指导参考《[CANN快速安装](https://www.hiascend.com/cann/download)》。
+        请单击[下载链接](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master/)，选择最新时间版本，并根据产品型号和环境架构下载对应包。
 
         - 安装CANN toolkit包
 

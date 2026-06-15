@@ -193,7 +193,7 @@ private:
     SMLALayout cmpSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout oriSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout outLayout_ = SMLALayout::TND;
-    SMLALayout kvLayout_ = SMLALayout::PA_BNBD;
+    SMLALayout kvLayout_ = SMLALayout::PA_BBND;
 
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
@@ -305,7 +305,7 @@ public:
     SMLALayout cmpSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout oriSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout outLayout_ = SMLALayout::BSND;
-    SMLALayout kvLayout_ = SMLALayout::PA_BNBD;
+    SMLALayout kvLayout_ = SMLALayout::PA_BBND;
 
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;

@@ -7,8 +7,8 @@
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
 |<term>Ascend 950PR/Ascend 950DT</term>|     √      |
-|<term>Atlas A2 推理系列产品</term>   | √  |
-|<term>Atlas A3 推理系列产品</term>   | √  |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 
 ## 功能说明
 
@@ -20,7 +20,7 @@ $$
 \text{softmax}(\frac{Q@\tilde{K}^T}{\sqrt{d_k}})@\tilde{V}
 $$
 
-其中$\tilde{K},\tilde{V}$为基于某种选择算法（如`lightning_indexer`）得到的重要性较高的Key和Value，一般具有稀疏或分块稀疏的特征，$d_k$为$Q,\tilde{K}$每一个头的维度。KV merge场景下，若value为空指针，则$\tilde{V}$按$\tilde{K}$处理。
+其中$\tilde{K},\tilde{V}$为基于某种选择算法（如`lightning_indexer`）得到的重要性较高的Key和Value，一般具有稀疏或分块稀疏的特征，$d_k$为$Q,\tilde{K}$每一个头的维度。
 
 ## 函数原型
 
@@ -132,7 +132,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>value（aclTensor）</td>
       <td>输入</td>
       <td>attention结构的Value输入。</td>
-      <td>可选项。传入空指针时启用KV merge，内部按value=key处理。</td>
+      <td>不支持空tensor。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>shape与key的shape一致。</td>
@@ -387,7 +387,7 @@ aclnnStatus aclnnSparseFlashAttention(
    <tr>
       <td>softmaxSumOut（aclTensor）</td>
       <td>输出</td>
-      <td>Attention算法query乘key的结果减去softmax_max, 再取exp，接着求sum，得到softmax_sum。</td>
+      <td>Attention算法query乘key的结果减去softmax_max,再取exp，接着求sum，得到softmax_sum。</td>
       <td>不支持空tensor。</td>
       <td>FLOAT</td>
       <td>ND</td>
@@ -499,10 +499,15 @@ aclnnStatus aclnnSparseFlashAttention(
 
 - 确定性计算：aclnnSparseFlashAttention默认确定性实现。
 - 该接口支持推理场景下使用。
-- N1支持1~64和128。
+- N1支持情况：
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - N1支持1~128。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - N1支持1/2/4/8/16/32/64/128。
+- N2仅支持1。
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
 - 参数query中的D和key、value的D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
-- 参数query、key、value的数据类型必须保持一致。KV merge场景下value可为空指针，此时按key的数据类型处理。
+- 参数query、key、value的数据类型必须保持一致。
 - 支持sparse_block_size整除block_size。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - 只支持sparse_block_size为1。

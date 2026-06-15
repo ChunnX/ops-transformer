@@ -1,17 +1,17 @@
-# FIA FullQuant MXFP8 测试用例执行指南
+# FIA FullQuant MXFP8测试用例执行指南
 
 ## 1. 环境准备
 
-### 1.1 安装 CANN / PyTorch + torch-npu
+### 1.1安装CANN / PyTorch + torch-npu
 
-参考根目录 README.md，或使用项目根目录下的安装脚本：
+参考根目录README.md，或使用项目根目录下的安装脚本：
 
 ```bash
-bash install_cann_950.sh    # 安装 CANN 9.1.0 + 950 ops
-bash install_torch_npu.sh   # 安装 PyTorch + torch-npu
+bash install_cann_950.sh    # 安装CANN 9.1.0 + 950 ops
+bash install_torch_npu.sh   # 安装PyTorch + torch-npu
 ```
 
-### 1.2 每次执行前加载环境
+### 1.2每次执行前加载环境
 
 ```bash
 source /home/user/Ascend/cann/set_env.sh
@@ -24,23 +24,23 @@ cd /home/user/code/ops-transformer/attention/fused_infer_attention_score/tests/p
 
 ## 2. 执行测试
 
-### 2.1 运行全部用例
+### 2.1运行全部用例
 
 ```bash
 pytest test_fia_fullquant_mxfp8.py -v
 ```
 
-### 2.2 运行指定用例（-k 关键字过滤）
+### 2.2运行指定用例（-k关键字过滤）
 
 ```bash
 # 精确指定单个用例
 pytest test_fia_fullquant_mxfp8.py -v -k "PA_NZ_QS1_KVS512_Nq1_Nkv1_D128_SP3_Decode"
 
-# 按 Prefill / Decode 模式
+# 按Prefill / Decode模式
 pytest test_fia_fullquant_mxfp8.py -v -k "Prefill"
 pytest test_fia_fullquant_mxfp8.py -v -k "Decode"
 
-# 按 layout 类型
+# 按layout类型
 pytest test_fia_fullquant_mxfp8.py -v -k "PA_NZ"
 pytest test_fia_fullquant_mxfp8.py -v -k "PA_BNBD"
 
@@ -51,15 +51,15 @@ pytest test_fia_fullquant_mxfp8.py -v -k "PA_NZ and Prefill"
 pytest test_fia_fullquant_mxfp8.py -v -k "not Decode"
 ```
 
-### 2.3 常用选项
+### 2.3常用选项
 
 | 选项 | 作用 |
 |------|------|
 | `-v` | 详细输出，显示每个用例名 |
-| `-s` | 不截断 stdout/stderr |
+| `-s` | 不截断stdout/stderr |
 | `-x` | 遇到失败立即停止 |
 | `--tb=long` | 失败时显示完整堆栈 |
-| `-m ci` | 只运行 CI 标记的用例 |
+| `-m ci` | 只运行CI标记的用例 |
 
 ---
 
@@ -71,21 +71,21 @@ pytest test_fia_fullquant_mxfp8.py -v -k "not Decode"
 |------|------|------|
 | `PA_NZ` | kv_cache_layout = PA_NZ | `PA_NZ_QS64_KVS64_...` |
 | `PA_BNBD` | kv_cache_layout = BnNBsD | `PA_BNBD_QS48_KVS64_...` |
-| `QS` | Q 序列长度 (actual_seq_q) | `QS128` = Q 长 128 |
-| `KVS` | KV 序列长度 (actual_seq_kv) | `KVS512` = KV 长 512 |
-| `Nq` | Q 头数 | `Nq80` |
-| `Nkv` | KV 头数 | `Nkv8` |
-| `D` | Head 维度 | `D128` |
+| `QS` | Q序列长度(actual_seq_q) | `QS128` = Q长128 |
+| `KVS` | KV序列长度(actual_seq_kv) | `KVS512` = KV长512 |
+| `Nq` | Q头数 | `Nq80` |
+| `Nkv` | KV头数 | `Nkv8` |
+| `D` | Head维度 | `D128` |
 | `SP3` | sparse_mode = 3 | |
-| `Prefill` | q_scale_layout = TND | 长序列 prefill 阶段 |
-| `Decode` | q_scale_layout = N2TGD | 短序列 decode 阶段 |
+| `Prefill` | q_scale_layout = TND | 长序列prefill阶段 |
+| `Decode` | q_scale_layout = N2TGD | 短序列decode阶段 |
 | (无后缀) | q_scale_layout = AUTO | 自动选择 |
 
 ---
 
 ## 4. 新增用例
 
-在 `fia_fullquant_mxfp8_paramset.py` 的 `TEST_PARAMS` 字典中添加新条目：
+在`fia_fullquant_mxfp8_paramset.py`的`TEST_PARAMS`字典中添加新条目：
 
 ```python
 "PA_NZ_QS256_KVS512_Nq4_Nkv1_D128_SP3_Prefill": {
@@ -109,25 +109,25 @@ pytest test_fia_fullquant_mxfp8.py -v -k "not Decode"
 | 参数 | 可选值 | 说明 |
 |------|--------|------|
 | `B` | 正整数 | batch size |
-| `N_q` | 正整数 | Q 头数 |
-| `N_kv` | 正整数 | KV 头数（N_q 需能被 N_kv 整除） |
-| `D` | 128 | Head 维度 |
-| `actual_seq_q` | 列表的列表 | Q 序列长度 |
-| `actual_seq_kv` | 列表的列表 | KV 序列长度 |
-| `enable_pa` | True / False | 是否启用 PageAttention |
-| `kv_cache_layout` | `"PA_NZ"` / `"BnNBsD"` | KV cache 内存布局 |
-| `block_size` | 512 | PageAttention block 大小 |
+| `N_q` | 正整数 | Q头数 |
+| `N_kv` | 正整数 | KV头数（N_q需能被N_kv整除） |
+| `D` | 128 | Head维度 |
+| `actual_seq_q` | 列表的列表 | Q序列长度 |
+| `actual_seq_kv` | 列表的列表 | KV序列长度 |
+| `enable_pa` | True / False | 是否启用PageAttention |
+| `kv_cache_layout` | `"PA_NZ"` / `"BnNBsD"` | KV cache内存布局 |
+| `block_size` | 512 | PageAttention block大小 |
 | `sparse_mode` | 3 | 稀疏模式 |
-| `q_scale_layout` | `"AUTO"` / `"TND"` / `"N2TGD"` | Q scale 布局 |
-| `p_scale` | 1.0 | P scale 因子 |
+| `q_scale_layout` | `"AUTO"` / `"TND"` / `"N2TGD"` | Q scale布局 |
+| `p_scale` | 1.0 | P scale因子 |
 
-### q_scale_layout 选择
+### q_scale_layout选择
 
 | 场景 | 值 | 用例名后缀 |
 |------|-----|-----------|
 | 自动选择 | `"AUTO"` | 无 |
-| Prefill 阶段 | `"TND"` | `Prefill` |
-| Decode 阶段 | `"N2TGD"` | `Decode` |
+| Prefill阶段 | `"TND"` | `Prefill` |
+| Decode阶段 | `"N2TGD"` | `Decode` |
 
 ---
 
@@ -135,11 +135,11 @@ pytest test_fia_fullquant_mxfp8.py -v -k "not Decode"
 
 ```
 fia_fullquant_mxfp8_test/
-├── pytest.ini                       # pytest 配置（自定义标记）
+├── pytest.ini                       # pytest配置（自定义标记）
 ├── fia_fullquant_mxfp8_paramset.py  # 参数定义（唯一入口）
-├── fia_fullquant_mxfp8_golden.py    # CPU golden + NPU 调用
+├── fia_fullquant_mxfp8_golden.py    # CPU golden + NPU调用
 ├── result_compare_method.py         # 精度对比
-└── test_fia_fullquant_mxfp8.py      # pytest 测试入口
+└── test_fia_fullquant_mxfp8.py      # pytest测试入口
 ```
 
 ---
@@ -148,6 +148,6 @@ fia_fullquant_mxfp8_test/
 
 | 报错 | 原因 | 解决 |
 |------|------|------|
-| `Unsupported Q scale layout` | q_scale_layout 值不合法 | 只支持 `"AUTO"` / `"TND"` / `"N2TGD"` |
-| `libhccl.so not found` | 未 source CANN 环境变量 | `source /home/user/Ascend/cann/set_env.sh` |
-| `No module named 'torch_npu'` | 未安装 torch-npu | `bash install_torch_npu.sh` |
+| `Unsupported Q scale layout` | q_scale_layout值不合法 | 只支持`"AUTO"` / `"TND"` / `"N2TGD"` |
+| `libhccl.so not found` | 未source CANN环境变量 | `source /home/user/Ascend/cann/set_env.sh` |
+| `No module named 'torch_npu'` | 未安装torch-npu | `bash install_torch_npu.sh` |
