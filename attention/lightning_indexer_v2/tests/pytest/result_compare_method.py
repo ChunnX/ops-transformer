@@ -480,7 +480,7 @@ def check_result_return_value(expect, result, params):
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
 
-    for t_id in total_rows:
+    for t_id in range(total_rows):
         bsn = np.unravel_index(t_id, sp)
         if layout_query == "TND":
             if seqused_q is not None:
