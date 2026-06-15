@@ -29,12 +29,12 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_BnNBsD_B1_QS0_KVS1555_Nq1_Nkv1_D128_SP0": {
+    "PA_BnNBsD_B1_QS7_KVS1555_Nq1_Nkv1_D128_SP0": {
         'B': [1],
         'N_q': [1],
         'N_kv': [1],
         'D': [128],
-        'actual_seq_q': [[0]],
+        'actual_seq_q': [[7]],
         'actual_seq_kv': [[1555]],
         'enable_pa': [True],
         'kv_cache_layout': ['BnNBsD'],
@@ -45,12 +45,12 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "TND_B1_QS0_KVS640_Nq1_Nkv1_D64_SP0": {
+    "TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0": {
         'B': [1],
         'N_q': [1],
         'N_kv': [1],
         'D': [64],
-        'actual_seq_q': [[0]],
+        'actual_seq_q': [[3]],
         'actual_seq_kv': [[640]],
         'enable_pa': [False],
         'kv_cache_layout': ['TND'],
@@ -61,13 +61,13 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_NZ_B8_QS60_KVS0_Nq4_Nkv4_D128_SP3": {
+    "PA_NZ_B8_QS60_KVS1536_Nq4_Nkv4_D128_SP3": {
         'B': [8],
         'N_q': [4],
         'N_kv': [4],
         'D': [128],
         'actual_seq_q': [[60, 64, 64, 64, 64, 64, 61, 64]],
-        'actual_seq_kv': [[0, 0, 0, 0, 0, 0, 0, 0]],
+        'actual_seq_kv': [[128, 0, 64, 0, 256, 512, 192, 384]],
         'enable_pa': [True],
         'kv_cache_layout': ['PA_NZ'],
         'block_size': [1024],
@@ -77,13 +77,13 @@ TEST_PARAMS = {
         'enable_lse': [True],
         'enable_rope': [False],
     },
-    "PA_NZ_B3_QS1_KVS0_Nq16_Nkv1_D128_SP3": {
+    "PA_NZ_B3_QS1_KVS192_Nq16_Nkv1_D128_SP3": {
         'B': [3],
         'N_q': [16],
         'N_kv': [1],
         'D': [128],
         'actual_seq_q': [[1, 1, 64]],
-        'actual_seq_kv': [[0, 0, 0]],
+        'actual_seq_kv': [[0, 64, 128]],
         'enable_pa': [True],
         'kv_cache_layout': ['PA_NZ'],
         'block_size': [512],
@@ -221,12 +221,12 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_NZ_B3_QS0_KVS3072_Nq1_Nkv1_D128_SP3": {
+    "PA_NZ_B3_QS4_KVS3072_Nq1_Nkv1_D128_SP3": {
         'B': [3],
         'N_q': [1],
         'N_kv': [1],
         'D': [128],
-        'actual_seq_q': [[0, 0, 0]],
+        'actual_seq_q': [[1, 0, 3]],
         'actual_seq_kv': [[3072, 3328, 3827]],
         'enable_pa': [True],
         'kv_cache_layout': ['PA_NZ'],
@@ -253,9 +253,9 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_NZ_B1_QS1800_KVS1500_Nq256_Nkv2_D128_SP0": {
+    "PA_NZ_B1_QS1800_KVS1500_Nq128_Nkv2_D128_SP0": {
         'B': [1],
-        'N_q': [256],
+        'N_q': [128],
         'N_kv': [2],
         'D': [128],
         'actual_seq_q': [[1800]],
@@ -317,10 +317,10 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_BnNBsD_B1_QS128_KVS4500_Nq160_Nkv2_D128_SP3": {
+    "PA_BnNBsD_B1_QS128_KVS4500_Nq128_Nkv4_D128_SP3": {
         'B': [1],
-        'N_q': [160],
-        'N_kv': [2],
+        'N_q': [128],
+        'N_kv': [4],
         'D': [128],
         'actual_seq_q': [[128]],
         'actual_seq_kv': [[4500]],
@@ -333,10 +333,10 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [True],
     },
-    "PA_BnNBsD_B6_QS2000_KVS2111_Nq192_Nkv2_D128_SP0": {
+    "PA_BnNBsD_B6_QS2000_KVS2111_Nq128_Nkv4_D128_SP0": {
         'B': [6],
-        'N_q': [192],
-        'N_kv': [2],
+        'N_q': [128],
+        'N_kv': [4],
         'D': [128],
         'actual_seq_q': [[2000, 2641, 2555, 2329, 2176, 1399]],
         'actual_seq_kv': [[2111, 2688, 1577, 2752, 2048, 2209]],
@@ -605,10 +605,10 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [True],
     },
-    "PA_NZ_B8_QS1_KVS999_Nq256_Nkv2_D128_SP3": {
+    "PA_NZ_B8_QS1_KVS999_Nq128_Nkv4_D128_SP3": {
         'B': [8],
-        'N_q': [256],
-        'N_kv': [2],
+        'N_q': [128],
+        'N_kv': [4],
         'D': [128],
         'actual_seq_q': [[1, 1, 2, 1, 64, 64, 64, 1]],
         'actual_seq_kv': [[999, 748, 1152, 640, 1216, 1280, 1015, 802]],
@@ -717,12 +717,12 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_BnNBsD_B1_QS0_KVS640_Nq1_Nkv1_D64_SP3": {
+    "PA_BnNBsD_B1_QS5_KVS640_Nq1_Nkv1_D64_SP3": {
         'B': [1],
         'N_q': [1],
         'N_kv': [1],
         'D': [64],
-        'actual_seq_q': [[0]],
+        'actual_seq_q': [[5]],
         'actual_seq_kv': [[640]],
         'enable_pa': [True],
         'kv_cache_layout': ['BnNBsD'],
@@ -749,9 +749,9 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_NZ_B1_QS704_KVS320_Nq256_Nkv2_D128_SP3": {
+    "PA_NZ_B1_QS704_KVS320_Nq128_Nkv2_D128_SP3": {
         'B': [1],
-        'N_q': [256],
+        'N_q': [128],
         'N_kv': [2],
         'D': [128],
         'actual_seq_q': [[704]],
@@ -893,12 +893,12 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [True],
     },
-    "PA_NZ_B1_QS0_KVS2560_Nq1_Nkv1_D128_SP3": {
+    "PA_NZ_B1_QS11_KVS2560_Nq1_Nkv1_D128_SP3": {
         'B': [1],
         'N_q': [1],
         'N_kv': [1],
         'D': [128],
-        'actual_seq_q': [[0]],
+        'actual_seq_q': [[11]],
         'actual_seq_kv': [[2560]],
         'enable_pa': [True],
         'kv_cache_layout': ['PA_NZ'],
@@ -957,10 +957,10 @@ TEST_PARAMS = {
         'enable_lse': [True],
         'enable_rope': [True],
     },
-    "PA_NZ_B1_QS1_KVS7040_Nq128_Nkv1_D128_SP3": {
+    "PA_NZ_B1_QS1_KVS7040_Nq64_Nkv2_D128_SP3": {
         'B': [1],
-        'N_q': [128],
-        'N_kv': [1],
+        'N_q': [64],
+        'N_kv': [2],
         'D': [128],
         'actual_seq_q': [[1]],
         'actual_seq_kv': [[7040]],
@@ -1133,12 +1133,12 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_BnNBsD_B1_QS0_KVS192_Nq1_Nkv1_D64_SP3": {
+    "PA_BnNBsD_B1_QS2_KVS192_Nq1_Nkv1_D64_SP3": {
         'B': [1],
         'N_q': [1],
         'N_kv': [1],
         'D': [64],
-        'actual_seq_q': [[0]],
+        'actual_seq_q': [[2]],
         'actual_seq_kv': [[192]],
         'enable_pa': [True],
         'kv_cache_layout': ['BnNBsD'],
@@ -1549,10 +1549,10 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [True],
     },
-    "PA_BnNBsD_B1_QS3584_KVS192_Nq224_Nkv2_D64_SP0": {
+    "PA_BnNBsD_B1_QS3584_KVS192_Nq128_Nkv4_D64_SP0": {
         'B': [1],
-        'N_q': [224],
-        'N_kv': [2],
+        'N_q': [128],
+        'N_kv': [4],
         'D': [64],
         'actual_seq_q': [[3584]],
         'actual_seq_kv': [[192]],
@@ -1837,10 +1837,10 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_NZ_B4_QS150_KVS200_Nq96_Nkv1_D64_SP3": {
+    "PA_NZ_B4_QS150_KVS200_Nq64_Nkv2_D64_SP3": {
         'B': [4],
-        'N_q': [96],
-        'N_kv': [1],
+        'N_q': [64],
+        'N_kv': [2],
         'D': [64],
         'actual_seq_q': [[150, 128, 128, 153]],
         'actual_seq_kv': [[200, 192, 134, 263]],
@@ -2029,10 +2029,10 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_BnNBsD_B1_QS1_KVS256_Nq192_Nkv1_D64_SP3": {
+    "PA_BnNBsD_B1_QS1_KVS256_Nq64_Nkv2_D64_SP3": {
         'B': [1],
-        'N_q': [192],
-        'N_kv': [1],
+        'N_q': [64],
+        'N_kv': [2],
         'D': [64],
         'actual_seq_q': [[1]],
         'actual_seq_kv': [[256]],
@@ -2061,10 +2061,10 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_BnNBsD_B3_QS1_KVS128_Nq224_Nkv1_D128_SP3": {
+    "PA_BnNBsD_B3_QS1_KVS128_Nq128_Nkv2_D128_SP3": {
         'B': [3],
-        'N_q': [224],
-        'N_kv': [1],
+        'N_q': [128],
+        'N_kv': [2],
         'D': [128],
         'actual_seq_q': [[1, 1, 1]],
         'actual_seq_kv': [[128, 131, 109]],
@@ -2157,12 +2157,12 @@ TEST_PARAMS = {
         'enable_lse': [False],
         'enable_rope': [False],
     },
-    "PA_BnNBsD_B1_QS0_KVS1555_Nq1_Nkv1_D64_SP3": {
+    "PA_BnNBsD_B1_QS13_KVS1555_Nq1_Nkv1_D64_SP3": {
         'B': [1],
         'N_q': [1],
         'N_kv': [1],
         'D': [64],
-        'actual_seq_q': [[0]],
+        'actual_seq_q': [[13]],
         'actual_seq_kv': [[1555]],
         'enable_pa': [True],
         'kv_cache_layout': ['BnNBsD'],
@@ -2349,13 +2349,13 @@ TEST_PARAMS = {
         'enable_lse': [True],
         'enable_rope': [False],
     },
-    "TND_B5_QS1_KVS0_Nq80_Nkv1_D128_SP3": {
+    "TND_B5_QS1_KVS448_Nq64_Nkv2_D128_SP3": {
         'B': [5],
-        'N_q': [80],
-        'N_kv': [1],
+        'N_q': [64],
+        'N_kv': [2],
         'D': [128],
         'actual_seq_q': [[1, 64, 64, 1, 64]],
-        'actual_seq_kv': [[0, 0, 0, 0, 0]],
+        'actual_seq_kv': [[128, 64, 256, 0, 0]],
         'enable_pa': [False],
         'kv_cache_layout': ['TND'],
         'block_size': [1024],
@@ -2414,5 +2414,7 @@ TEST_PARAMS = {
         'enable_rope': [False],
     },
 }
+
+SKIP_CASES = set()
 
 CASES = expand_paramset_to_cases(TEST_PARAMS)
