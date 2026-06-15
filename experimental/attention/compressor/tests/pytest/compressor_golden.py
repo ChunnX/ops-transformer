@@ -786,17 +786,20 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     # 结果精度对比
     check_succeed = True
     data_type = str(npu_out.dtype)
+    results = {}
     print("--------------------------------------------------------------check result-------------------------------------------------------------")
-    check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
+    _, results['cmp_kv'] = check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
     print("--------------------------------------------------------------check kv state update-------------------------------------------------------------")
-    check_result(cpu_kv_state[update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[update_kv].to(torch.float32), data_type)
+    _, results['kv_state_update'] = check_result(cpu_kv_state[update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[update_kv].to(torch.float32), data_type)
     print("--------------------------------------------------------------check score state update-------------------------------------------------------------")
-    check_result(cpu_score_state[update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[update_score].to(torch.float32), data_type)
+    _, results['score_state_update'] = check_result(cpu_score_state[update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[update_score].to(torch.float32), data_type)
     print("--------------------------------------------------------------check kv state origin-------------------------------------------------------------")
-    check_result(cpu_kv_state[~update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[~update_kv].to(torch.float32), data_type, 0.0)
+    _, results['kv_state_origin'] = check_result(cpu_kv_state[~update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[~update_kv].to(torch.float32), data_type, 0.0)
     print("--------------------------------------------------------------check score state origin-------------------------------------------------------------")
-    check_result(cpu_score_state[~update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[~update_score].to(torch.float32), data_type, 0.0)
-
+    _, results['score_state_origin'] = check_result(cpu_score_state[~update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[~update_score].to(torch.float32), data_type, 0.0)
+    print("\n============================== SUMMARY ==============================")
+    failed = [k for k, v in results.items() if v != "Pass"]
+    assert len(failed) == 0, f"FAILED checks: {failed}"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

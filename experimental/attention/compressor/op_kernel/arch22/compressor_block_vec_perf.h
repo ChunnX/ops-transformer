@@ -77,7 +77,6 @@ private:
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
     __aicore__ inline uint32_t GetStartPos(uint32_t bIdx);
     __aicore__ inline uint32_t GetSeqLength(uint32_t bIdx);
-    __aicore__ inline uint32_t GetBsLength(uint32_t index);
     __aicore__ inline void DealVec1BaseBlock(const Vec1RunInfo &info, CompressorVec1SliceIterator<COMP> &sliceIterator,
                                              const LoopInfo &loopInfo, uint32_t dStartIdx, uint32_t dDealSize,
                                              uint32_t dBaseSize);
@@ -297,22 +296,10 @@ __aicore__ inline uint32_t CompressorBlockVectorPerf<COMP>::GetStartPos(uint32_t
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockVectorPerf<COMP>::GetSeqLength(uint32_t bIdx)
 {
-    if (isExistSeqUsed) {
-        return sequsedGm_.GetValue(bIdx);
-    } else if (COMP::xLayout == X_LAYOUT::TH) {
+    if (COMP::xLayout == X_LAYOUT::TH) {
         return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
     } else {
         return constInfo_.sSize;
-    }
-}
-
-template <typename COMP>
-__aicore__ inline uint32_t CompressorBlockVectorPerf<COMP>::GetBsLength(uint32_t index)
-{
-    if (COMP::xLayout == X_LAYOUT::TH) {
-        return cuSeqlensGm_.GetValue(index);
-    } else {
-        return index * constInfo_.sSize;
     }
 }
 
@@ -812,20 +799,40 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::CopyOutVec1ResToOutput(c
                                                                                uint32_t compressTcSize,
                                                                                uint32_t dStartIdx, uint32_t dDealSize)
 {
-    uint64_t outGmOffset;
     if constexpr (COMP::xLayout == X_LAYOUT::BSH) {
         uint32_t bOutputScLen = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
-        uint64_t padScIdx = sliceInfo.bIdx * bOutputScLen + ((sliceInfo.sIdx + sliceInfo.bStartPos) / cmpRatio_) -
-                   (sliceInfo.bStartPos / cmpRatio_);
-        outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
+        uint32_t totalElements = compressTcSize * dDealSize;
+        LocalTensor<X_T> outputUb = comperssoredUb.ReinterpretCast<X_T>();
+        Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, totalElements);
+        PipeBarrier<PIPE_V>();
+        uint32_t bIdx = sliceInfo.bIdx;
+        uint32_t sIdx = sliceInfo.sIdx;
+        uint64_t ubOffset = 0;
+        while (compressTcSize > 0) {
+            uint32_t bStartPos = GetStartPos(bIdx);
+            uint32_t preScSize = (sIdx + bStartPos) / cmpRatio_;
+            uint32_t totalScSize = (GetSeqUsed(bIdx) + bStartPos) / cmpRatio_;
+            if (preScSize < totalScSize) {
+                uint32_t curScSize = min(compressTcSize, (totalScSize - preScSize));
+                uint64_t padScIdx = bIdx * bOutputScLen + preScSize - (bStartPos / cmpRatio_);
+                uint64_t outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
+                DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb[ubOffset], curCompressTcSize, dDealSize,
+                                    dDealSize, constInfo_.headDim);
+                compressTcSize -= curScSize;
+                ubOffset += curScSize * dDealSize;
+            }
+            bIdx++;
+            sIdx = 0;
+        }
     } else {
-        outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
+        uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
+        uint32_t totalElements = compressTcSize * dDealSize;
+        LocalTensor<X_T> outputUb = comperssoredUb.ReinterpretCast<X_T>();
+        Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, totalElements);
+        PipeBarrier<PIPE_V>();
+        DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize,
+                            constInfo_.headDim);
     }
-    uint32_t totalElements = compressTcSize * dDealSize;
-    LocalTensor<X_T> outputUb = comperssoredUb.ReinterpretCast<X_T>();
-    Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, totalElements);
-    PipeBarrier<PIPE_V>();
-    DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize, constInfo_.headDim);
 }
 
 template <typename COMP>
