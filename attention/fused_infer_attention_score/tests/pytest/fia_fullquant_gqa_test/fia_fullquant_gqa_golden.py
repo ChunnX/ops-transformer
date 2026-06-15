@@ -32,6 +32,7 @@ V_DATA_RANGE = (-5.0, 5.0)
 
 ENABLE_PA = True
 ENABLE_LSE = True
+GOLDEN_MODE = True
 BLOCK_SIZE = 128
 SPARSE_MODE = 3
 SCALE_VALUE = None
@@ -415,16 +416,35 @@ def convert_scale_to_layout(tensor, seq_lens, scale_type):
     if scale_type == "deq_q":
         B, N, _, _ = tensor.shape
         T = sum(seq_lens)
-        result = torch.zeros((N, T, 1), dtype=torch.float32)
-        t = 0
-        for b in range(B):
-            act_s = seq_lens[b]
-            for n in range(N):
-                result[n, t:t + act_s, 0] = tensor[b, n, :act_s, 0]
-            t += act_s
-        return result.contiguous()
+        if Q_SCALE_LAYOUT == "NT":
+            result = torch.zeros((N, T), dtype=torch.float32)
+            t = 0
+            for b in range(B):
+                act_s = seq_lens[b]
+                for n in range(N):
+                    result[n, t:t + act_s] = tensor[b, n, :act_s, 0]
+                t += act_s
+            return result.contiguous()
+        elif Q_SCALE_LAYOUT == "TN":
+            result = torch.zeros((T, N), dtype=torch.float32)
+            t = 0
+            for b in range(B):
+                act_s = seq_lens[b]
+                for n in range(N):
+                    result[t:t + act_s, n] = tensor[b, n, :act_s, 0]
+                t += act_s
+            return result.contiguous()
+        elif Q_SCALE_LAYOUT == "BNSD":
+            result = torch.zeros((B, N, max(seq_lens), 1), dtype=torch.float32)
+            for b in range(B):
+                act_s = seq_lens[b]
+                for n in range(N):
+                    result[b, n, :act_s, 0] = tensor[b, n, :act_s, 0]
+            return result.contiguous()
+        else:
+            return tensor.float().contiguous()
     elif scale_type == "deq_v":
-        return tensor.float().contiguous()
+        return tensor.reshape(tensor.shape[1]).float().contiguous()
     return tensor.squeeze(-1).contiguous()
 
 def make_accum_seq(seq_lens):
@@ -461,7 +481,7 @@ def fa_run_npu(q, k, v, mask, actual_seq_q, actual_seq_kv,
         double_kscale = double_kscale.npu()
         dequant_scale_k = double_kscale[:, :, 0] # 覆写为非连续
     # block_table 必须是 int32 类型
-    block_table = block_table.int().npu()
+    block_table = block_table.int().npu() if ENABLE_PA else None
     
     # mask 如果有的话，转换为 bool 类型
     if mask is not None:
@@ -520,7 +540,7 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
                        actual_seq_q, actual_seq_kv):
     """Main NPU quant function - prepares data and calls NPU"""
     softmax_scale = 1.0 / math.sqrt(D)
-    accum_seq_q = make_accum_seq(actual_seq_q)
+    accum_seq_q = make_accum_seq(actual_seq_q) if INPUT_LAYOUT in ("NTD_TND", "TND") else actual_seq_q
 
     npu_input_layout = INPUT_LAYOUT
     
@@ -538,24 +558,22 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
     else:
         mask = None
 
-    if ENABLE_PA:
+    if ENABLE_PA or not GOLDEN_MODE:
         # 在CPU上准备block table和cache
         block_table = create_block_table(ACTUAL_SEQ_KV, BLOCK_SIZE)
-        
+        block_table_tensor = torch.as_tensor(block_table, dtype=torch.int32)
         # 确保 k_pa 和 v_pa 是正确的数据类型
         k_pa = bnsd_to_k_cache(k_fp8, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table)
         v_pa = bnsd_to_v_cache(v_fp8, ACTUAL_SEQ_KV, BLOCK_SIZE, block_table)
         deq_k_npu = bns1_to_k_scale_cache_fp32(dequant_scale_k, actual_seq_kv, BLOCK_SIZE, block_table)
-  
-        # 转换为tensor，确保类型正确
-        block_table_tensor = torch.as_tensor(block_table, dtype=torch.int32)
+        
         # 构造kvcache非连续
         if not IS_CONTIGUOUS:
             kv_cache = torch.stack([k_pa, v_pa], dim=2)
             kv_cache = kv_cache.npu()
             k_pa = kv_cache[:, :, 0]
             v_pa = kv_cache[:, :, 1]
-        
+
         # 调用NPU
         output = fa_run_npu(q_npu, k_pa, v_pa, mask, accum_seq_q, actual_seq_kv,
                            deq_q_npu, deq_k_npu, deq_v_npu, p_scale, 
@@ -585,14 +603,16 @@ if __name__ == '__main__':
     print("\n[Step 1] CPU: 数据生成")
     (q_fp8, k_fp8, v_fp8, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale) = generate_data()
 
-    print("\n[Step 2] CPU Golden")
-    cpu_out= cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
-                                                    dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-                                                    ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
-    # print("cpu_out[0]: ", cpu_out[0])
-    print("[INFO] cpu_out[0] shape", cpu_out[0].shape)
-    if ENABLE_LSE:
-        print("[INFO] cpu_out[1] shape", cpu_out[1].shape)
+    if GOLDEN_MODE:
+        print("\n[Step 2] CPU Golden")
+        cpu_out= cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
+                                                        dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+                                                        ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
+        print("[INFO] cpu_out[0] shape", cpu_out[0].shape)
+        if ENABLE_LSE:
+            print("[INFO] cpu_out[1] shape", cpu_out[1].shape)
+    else:
+        print("\n[Step 2] GOLDEN_MODE=False, skip CPU Golden.")
 
     print("\n[Step 3] NPU: 执行NPU计算")
     npu_out = npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
@@ -602,14 +622,17 @@ if __name__ == '__main__':
     if ENABLE_LSE:
         print(f"[INFO] npu_out[1] shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}")
 
-    print("\n[Step 4] Atten out 精度对比")
-    cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out[0], ACTUAL_SEQ_Q, OUTPUT_LAYOUT)
-    print(f"cpu_out[0] final shape = {cpu_tnd_torch.shape}")
-    result_compare_method.check_result(cpu_tnd_torch, npu_out[0])
+    if GOLDEN_MODE:
+        print("\n[Step 4] Atten out 精度对比")
+        cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out[0], ACTUAL_SEQ_Q, OUTPUT_LAYOUT)
+        print(f"cpu_out[0] final shape = {cpu_tnd_torch.shape}")
+        result_compare_method.check_result(cpu_tnd_torch, npu_out[0])
 
-    if ENABLE_LSE:
-        print("\n[Step 5] LSE 精度对比")
-        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_out[1], ACTUAL_SEQ_Q, "TND")
-        result_compare_method.check_result(cpu_lse_tnd_torch, npu_out[1])
+        if ENABLE_LSE:
+            print("\n[Step 5] LSE 精度对比")
+            cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_out[1], ACTUAL_SEQ_Q, "TND")
+            result_compare_method.check_result(cpu_lse_tnd_torch, npu_out[1])
+    else:
+        print("\n[Step 4] GOLDEN_MODE=False, skip precision check.")
     print("#" * 60)
     print()

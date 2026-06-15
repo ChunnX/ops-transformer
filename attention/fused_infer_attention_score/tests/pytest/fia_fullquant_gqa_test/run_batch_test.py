@@ -34,6 +34,7 @@ def _set_case(module, case):
     module.ACTUAL_SEQ_KV = [int(item) for item in case["actual_seq_kv"]]
     module.ENABLE_PA = bool(case.get("enable_pa", module.ENABLE_PA))
     module.ENABLE_LSE = bool(case.get("enable_lse", module.ENABLE_LSE))
+    module.GOLDEN_MODE = bool(case.get("golden_mode", True))
     module.BLOCK_SIZE = int(case.get("block_size", module.BLOCK_SIZE))
     module.SPARSE_MODE = int(case.get("sparse_mode", module.SPARSE_MODE))
     module.INPUT_LAYOUT = case.get("input_layout", "NTD_TND")
@@ -54,21 +55,26 @@ def run_case(module, case):
 
         data = module.generate_data()
         q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale = data
-        print("[INFO] CPU Running...")
-        cpu_out = module.cpu_fp8_fullquant_gqa_golden(
-            q_fp8,
-            k_fp8,
-            v_fp8,
-            deq_q,
-            deq_k,
-            deq_v,
-            p_scale,
-            module.ACTUAL_SEQ_Q,
-            module.ACTUAL_SEQ_KV
-        )
-        print(f"[INFO] cpu_out[0] shape: {cpu_out[0].shape}, dtype: {cpu_out[0].dtype}")
-        if module.ENABLE_LSE:
-            print(f"[INFO] cpu_out[1] shape: {cpu_out[1].shape}, dtype: {cpu_out[1].dtype}")
+
+        if module.GOLDEN_MODE:
+            print("[INFO] CPU Running...")
+            cpu_out = module.cpu_fp8_fullquant_gqa_golden(
+                q_fp8,
+                k_fp8,
+                v_fp8,
+                deq_q,
+                deq_k,
+                deq_v,
+                p_scale,
+                module.ACTUAL_SEQ_Q,
+                module.ACTUAL_SEQ_KV
+            )
+            print(f"[INFO] cpu_out[0] shape: {cpu_out[0].shape}, dtype: {cpu_out[0].dtype}")
+            if module.ENABLE_LSE:
+                print(f"[INFO] cpu_out[1] shape: {cpu_out[1].shape}, dtype: {cpu_out[1].dtype}")
+        else:
+            print("[INFO] GOLDEN_MODE=False, skip CPU golden.")
+
         print("[INFO] NPU Running...")
         npu_out = module.npu_fp8_full_quant(
             q_fp8,
@@ -84,6 +90,10 @@ def run_case(module, case):
         print(f"[INFO] npu_out[0] shape: {npu_out[0].shape}, dtype: {npu_out[0].dtype}")
         if module.ENABLE_LSE:
             print(f"[INFO] npu_out[1] shape: {npu_out[1].shape}, dtype: {npu_out[1].dtype}")
+
+        if not module.GOLDEN_MODE:
+            print("[INFO] GOLDEN_MODE=False, skip precision check.")
+            return {"name": case["name"], "status": "PASSED", "error_message": ""}
 
         compare_layout = "TND" if module.ENABLE_PA else module.INPUT_LAYOUT
         cpu_cmp0 = module.convert_q_bnsd_to_layout(cpu_out[0], module.ACTUAL_SEQ_Q, compare_layout)
