@@ -21,15 +21,17 @@
 #include "op_kernel/math_util.h"
 #include "mega_moe_workspace_info.h"
 
-// 分块流式 dispatch 的 token 分批粒度(见 mega_moe.h)。CHUNK 越大 ⇒ 大 bs 时分片数越少 ⇒
-// 源 mask 推送的跨卡 MTE 搬运(DataCopyPad 直写对端 win)次数 & 接收端 chunk 迭代越少。
-// 取 8192(=32*256): CHUNK/8=1024B 切片 32B 对齐;
-// 段 A/B UB 峰值仍安全(triple 用 DISPATCH_TRIPLE_TILE 解耦, 不随 CHUNK 增长)。不改 win 槽位大小。
-constexpr int32_t DISPATCH_TOKEN_CHUNK = 8192;
-constexpr int32_t DISPATCH_MASK_SLICE_BYTES = DISPATCH_TOKEN_CHUNK / 8;  // 1024B / chunk
-// tripleTensor_ 每批最多这么多行(每行 32B = INT32_PER_256B 个 int32), 与 CHUNK 解耦, 使 CHUNK 可调大而 UB 不爆。
-// 2048 行 * 32B = 64KB, 叠加段 B 固定布局(~116KB)后 ≤ 256KB UB。
+// 分块流式 dispatch 的 token 分批粒度 chunkLen_ 不再是编译期常量: 在 mega_moe.h 的 Init 里按两个时段
+// 各自 UB 余量动态算上限(取 min), 再 cap 到对齐后的 ST。CHUNK 越大 ⇒ 大 bs 时分片越少 ⇒ 源 mask 跨卡
+// 推送次数 & 接收端 chunk 迭代越少; 中小 bs 时 chunkLen_=ST ⇒ 单块跑, 零分块开销。chunkLen_ 恒为 256 倍数。
+// tripleTensor_ 每批最多这么多行(每行 32B = INT32_PER_256B 个 int32), 与 chunkLen_ 解耦, 保证 UB 不爆。
+// 2048 行 * 32B = 64KB, 计入段 B 固定布局(Init 的 fixedB 已含此预留)。
 constexpr int32_t DISPATCH_TRIPLE_TILE = 2048;
+
+// groupFlagList 清零的分批粒度(int32 个数): resetTensor_ 封顶到这么大, ResetFlagList 按此分批循环推 GM,
+// 使 reset UB 占用与 flag 总数(∝ maxOutputSize ∝ bs)解耦 —— 支持任意大 bs 泛化(见设计文档 §6.7)。
+// 本核份额 ≤ 此值时单批推送, 完全退化为改前的一次 DataCopyPad, 零额外开销。2048*4 = 8KB, 256B 对齐。
+constexpr int32_t DISPATCH_RESET_BATCH = 2048;
 
 struct Mc2MoeContext {
     uint32_t epRankId;

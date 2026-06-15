@@ -67,14 +67,14 @@
 > 本文中"写对端 / 推送 / 搬运 / 跨卡写"均指这种 AIV 直驱 MTE 访存；
 > 性能上关心的是**跨卡 MTE 搬运的次数**（指令/描述符数）与**跨卡访存延迟**，而非 RDMA。
 
-- 分批粒度常量（定义于 `mega_moe_base.h`，源/接收两侧共享）：
+- 分批粒度：`CK = chunkLen_`（成员）**在 `Init` 运行时按 UB 余量动态算**，不再是编译期常量（见 §6.3）。
+  `mega_moe_base.h` 仅保留 `DISPATCH_TRIPLE_TILE = 2048`（TT: `tripleTensor_` 每批最多行数，每行 32B）。
   ```cpp
-  constexpr int32_t DISPATCH_TOKEN_CHUNK     = 8192;            // CK: 每批 token 数
-  constexpr int32_t DISPATCH_MASK_SLICE_BYTES = CK / 8;          // 1024B: 每批 bit-packed mask 切片
-  constexpr int32_t DISPATCH_TRIPLE_TILE     = 2048;            // TT: tripleTensor 每批最多行数(每行 32B)
+  // Init 内: CK = min(ckMaxA, ckMaxB, CeilAlign(ST,256)), 向下取整到 256 倍数
+  // mask 切片字节 = CK/8（CK 为 256 倍数 ⇒ 天然 32B 对齐）
+  constexpr int32_t DISPATCH_TRIPLE_TILE = 2048;
   ```
-- `CK` 取 8192（=32·256）：`CK/8=1024B` 的 mask 切片天然 32B/256B 对齐；`CK` 越大 ⇒ 大 bs 时
-  分片数越少 ⇒ 源跨卡 MTE 搬运次数 & 接收端迭代越少（见 §6）。
+- `CK` 越大 ⇒ 大 bs 时分片数越少 ⇒ 源跨卡 MTE 搬运次数 & 接收端迭代越少；`CK=ST` 时单块跑（见 §6.3）。
 
 ### 3.1 整体调用骨架（修改前后**不变**）+ 数据流
 
@@ -369,7 +369,8 @@ sendToCurExpTokenCnt = cumsumInfoTensor_[le·ws + dstRank] - cumsumInfoTensor_[l
 
 | 改动 | 说明 / 为什么 |
 |---|---|
-| **新增 3 个常量** `DISPATCH_TOKEN_CHUNK`(8192) / `DISPATCH_MASK_SLICE_BYTES`(1024) / `DISPATCH_TRIPLE_TILE`(2048) | 源 / 接收两侧共享分批粒度。放在 base.h 因为 `PeermemInfo`（device）和 kernel 都要用。 |
+| **保留 `DISPATCH_TRIPLE_TILE`(2048)** | `CK` 改为 `Init` 运行时算的 `chunkLen_`（§6.3），原 `DISPATCH_TOKEN_CHUNK`/`DISPATCH_MASK_SLICE_BYTES` 两个常量已删除。 |
+| **新增 `DISPATCH_RESET_BATCH`(2048 int32=8KB)** | `resetTensor_` 清零分批粒度（§6.7），使 reset UB 与 bs 解耦。 |
 | **`PeermemInfo` 的 `maskAlignSize` 公式** | **数值与改前一致**（`align32(compareCount/8)`），仅更新注释说明"分块不改槽位大小，末块 clamp"。→ win 布局 / host 分配零变化（§4.1）。 |
 
 ### 5.2 `mega_moe.h` — 成员与常量
@@ -378,6 +379,7 @@ sendToCurExpTokenCnt = cumsumInfoTensor_[le·ws + dstRank] - cumsumInfoTensor_[l
 |---|---|
 | 删 `int32_t compareCount_` 成员 | 分块后不再需要常驻；`maskAlignSize_` 在 `Init` 用局部变量算。 |
 | 新增 `int32_t numChunks_` | `= ceil(ST/CK)`，整条流水的分批数。 |
+| 新增 `int32_t resetBatchLen_` | `= min(每核 flag 份额, DISPATCH_RESET_BATCH)`，`resetTensor_` 封顶份额 & `ResetFlagList` 分批步进（§6.7）。 |
 | 删 `topkTensors_[6]`（早先 #1） | 旧版 SendInfoCal 跨卡读 topk 用，mask 前移源卡后已死代码，省 `6·4·cc`。 |
 | 删 `gatherMaskTensor_` / `gatherMaskInt32Tensor_`（`ws·slot`） | 分块后 mask 不再常驻，接收端按 (dstRank,chunk) 现读现用。 |
 | `topkIdsTensor_` → 重命名 `topkChunk_`（`4·CK`） | 语义从"全 ST topk"变为"当前 chunk 的 topk"。 |
@@ -393,7 +395,9 @@ sendToCurExpTokenCnt = cumsumInfoTensor_[le·ws + dstRank] - cumsumInfoTensor_[l
 所有 `O(ST)` 缓冲降为 `O(CK)`：
 - `topkChunk_` `4·CK`；`sendMaskTensor_[2]` 每个 `CK/8 + 32B`（多留 32B 给 §6.1 的 count 折叠）；
   `sendGatherOutTensor_` `4·CK`；新增 `sendCntAcc_`（`O(ws·epr/核)`，与 bs 无关）。
-- `resetTensor_` / `mxTempTensor_` / `xOut*` / `xIn*`（量化缓冲，`O(flag)/O(H)`）不变。
+- `mxTempTensor_` / `xOut*` / `xIn*`（量化缓冲，`O(H)`）不变。
+- `resetTensor_` 封顶到 `DISPATCH_RESET_BATCH`(8KB)，`ResetFlagList` 改为分批清零（§6.7）——
+  原先 `O(flag)∝bs` 的整核份额降为恒 ≤8KB。
 
 ### 5.5 `FirstBuffInit`（时段 B，dispatch+GMM1，覆盖时段 A 同片 UB）
 - **删** `gatherMask` 的 `ws·slot` 大块；**加** `sendCntTensor_`(`ws·32B`) + `maskChunk_`/`maskChunkU32_`(`CK/8`)。
@@ -485,9 +489,23 @@ for c in [0, numChunks_) while matchedSoFar < coreHi:
   `INT32_PER_256B = 8`（256 **bit** = 32B 内的 int32 数，命名易误读为 256 Byte）。
   即每行 32B，分配 `n*INT32_PER_256B` 个 int32 = n·32B，TT=2048 ⇒ 上限 64KB。
 
-### 6.3 调大 CHUNK（2048 → 8192）
-- `numChunks` 减为 1/4 ⇒ 源 mask 写对端的跨卡 MTE 搬运次数、接收端 chunk 迭代/leading 扫描各 **~4×** 减少。
-- UB 仍安全：时段 A ≈ 118KB、时段 B ≈ 179KB（@ `CK=8192, TT=2048, H=7168`），均 < 256KB。
+### 6.3 动态 CHUNK（`chunkLen_` 随 UB 余量运行时算，取代固定常量）
+- **动机**：固定 `CK` 会把本可单块装下的中小 bs 也强行切块（如 bs=2048/topK=8、ST=16384 在 CK=8192 下切成
+  2 块），白付每块固定开销（同步屏障、`CreateVecIndex`/`GatherMask` 重发、跨卡 push 的 RDMA setup、
+  高 `aivIdxInGroup` 核扫前导块）。这些开销 ∝ `numChunks`。
+- **做法**：`Init` 里按两个时段各自 UB 余量算 `CK` 上限，取 min，再 cap 到 `CeilAlign(ST,256)`：
+  - 随 `CK` 线性增长的字节系数：段 A `8.25·CK`（topkChunk 4CK + sendMask CK/4 + sendGatherOut 4CK）、
+    段 B `8.125·CK`（maskChunk CK/8 + validTopkIndex 4CK + topkIndex 4CK）；
+  - 固定占用（段 A：reset(封顶≤8KB,§6.7)+mxTemp+2·xOut+2·xIn+sendCntAcc；段 B：cumsum+sendCnt+copyTmp48KB+
+    expertTokenNumsOut + 尾部预留 `TT·32B`）与 `BuffInit`/`FirstBuffInit` 分配**逐项字节对应**；
+  - `ckMaxA=(预算-fixedA)·4/33`、`ckMaxB=(预算-fixedB)·8/65`，`CK=min` 后向下取整到 256 倍数
+    （⇒ `CK/8` 天然 32B 对齐），预算 `=256KB-4KB安全余量`。
+- **效果**：
+  - **中小 bs（`ST ≤ CK上限`）单块跑**（`numChunks=1`）= 完全回到原始无分块、零 chunk 开销；
+  - 仅超上限的大 bs 才分块，且块数最少（如 bs=7168/topK=8 从固定 8192 的 7 块降到 ~4 块）；
+  - `CK` 上限随 `H`/`ws`/`epr` 自适应（`H` 越大固定占用越多 ⇒ `CK` 自动变小），不再依赖手调常量。
+- **正确性**：固定项是分配的字节精确镜像，仅 `CK`-线性项因 `CeilAlign` 上取整被低估 ≤568B(A)/≤62B(B)，
+  由 4KB 安全余量吸收；两段峰值都 `< 256KB`。**改 `BuffInit`/`FirstBuffInit` 布局时必须同步 `Init` 的 fixedA/fixedB**。
 
 ### 6.4 主动放弃的优化（per-chunk count 向量跳前导扫描）
 - 可让接收端读"每块命中数向量"前缀和后直接跳到自己的首个重叠块，省掉 leading 扫描。
@@ -511,6 +529,28 @@ for c in [0, numChunks_) while matchedSoFar < coreHi:
   `combine_send.h:42`（写远端 win）、`mega_moe.h` Unpermute 读/写（:1076/:1097）、QuantProcessInRank（:573）、`impl.h:369`（tripleGm）。
 - host `CheckAttrParams` 的 `leastCclBufferSize` 公式重写：mask 区改 `epr·ws·(align32(ST/8)+32)` 与
   `PeermemInfo` 逐项一致；quant 区去掉错误的 `×topK`。放不下直接拦截。workspace 全 int64 公式，超 HBM 由 GE 分配失败拦截。
+
+### 6.7 `resetTensor_` 分批清零（reset UB 与 bs 解耦，支持任意大 bs 泛化）
+- **动机**：`ResetFlagList` 把 workspace 的 `groupFlagList` 清零，flag 总数
+  `= epr·(INT_CACHELINE + dispatchFlagSlotsPerExpert_)`，而 `dispatchFlagSlotsPerExpert_ =
+  CeilAlign(CeilDiv(maxOutputSize,256),16)`、`maxOutputSize = bs·ws·min(topK,epr)`，所以 flag 总数 **∝ bs**。
+  改前 `resetTensor_` 按**每核全量份额** `CeilDiv(flagTotal, blockAivNum)` 一次性开 UB 并 `Duplicate` 清零，
+  再用**单次** `DataCopyPad` 推 GM —— 这块占用随 bs 线性膨胀。在 `ws·epr=2048`（专家总数上限）下最坏代入
+  `bs=8192、min(topK,epr)=32`，per-core ≈ `8·bs = 65536 int32 = 256KB`（32 核时）/ `~171KB`（48 核时），
+  成为段 A 最大的固定项，且核数偏少时会把整片 UB 占满 → 段 A OOM。它本质是 §6.3 动态 CHUNK 无法覆盖的
+  **固定项**（不随 CK 变），CK 收到下限也救不了。
+- **做法**：把 `resetTensor_` 封顶到 `resetBatchLen_ = min(每核 flag 份额, DISPATCH_RESET_BATCH=2048 int32=8KB)`
+  （`Init` 算，`mega_moe_base.h` 定常量）。`Duplicate` 仍只清这块封顶零 UB 一次；`ResetFlagList` 把本核
+  份额 `coreLen` 按 `resetBatchLen_` **分批循环** `DataCopyPad`，每批从**同一片零 UB**(只读)推一段到
+  `groupFlagList[coreOffset + off]`。零 UB 批间不被改写 ⇒ 循环前一次 `V→MTE3` 同步即覆盖所有批，无写后读冒险；
+  每批 `off` 按 8KB（32B 对齐）步进，保持 `coreOffset` 原有对齐特性，`DataCopyPad` 自处理尾批不足长度。
+- **效果**：
+  - **本核份额 ≤ 8KB（中小 bs / 小 epr）单批跑** = 完全退化为改前的一次 `DataCopyPad`，零额外开销、零额外同步；
+  - 仅大 bs（flag 份额超封顶）才多批，最坏 256KB/8KB = 32 批，纯 init 期一次性 GM 写，相对整条 dispatch 可忽略；
+  - 段 A 固定项里 reset 从"∝ bs 的 ~171~256KB"降到"恒 ≤8KB"，**reset 占用与 bs/maxOutputSize 彻底解耦** ⇒
+    `bs=8192·topK=32` 等极端配置在任意核数下都装得下，且为后续更大 bs 泛化留足裕量。
+- **正确性**：写到 GM 的总字节、落点 `[coreOffset, coreOffset+coreLen)` 与改前逐字节一致（只是拆成多次推、
+  源都是零），清零语义不变；`Init` 的 `fixedA` 同步用封顶后的 `resetBytes`，与 `BuffInit` 分配逐项对应。
 
 ---
 
@@ -559,14 +599,15 @@ for c in [0, numChunks_) while matchedSoFar < coreHi:
 
 ## 9. 附录：最终 UB 布局（256KB / AIV，时段间整块复用）
 
-记 `CK=8192, TT=2048, ST=bs·topK, H=k_, ws/epr=worldSize/expertPerRank`。三个 `BuffInit` 都从地址 0
-铺平，时段间有 `PipeBarrier/SyncAll` 隔离，跨时段同址重叠是**有意复用**。
+记 `CK=chunkLen_`（`Init` 动态算，§6.3）`, TT=2048, ST=bs·topK, H=k_, ws/epr=worldSize/expertPerRank`。
+三个 `BuffInit` 都从地址 0 铺平，时段间有 `PipeBarrier/SyncAll` 隔离，跨时段同址重叠是**有意复用**。
+A/B 两段的 `CK` 系数（8.25 / 8.125）正是 `Init` 反解 `CK` 上限的依据：`fixed + 系数·CK ≤ 256KB-4KB`。
 
 **时段 A（`BuffInit`：SendMaskCal / ResetFlagList / QuantProcessInRank）**
 ```
-topkChunk_(4·CK) | resetTensor_ | mxTemp(2KB) | xOut1/2(~2(align256(H)+H/32)) |
+topkChunk_(4·CK) | resetTensor_(≤8KB封顶,§6.7) | mxTemp(2KB) | xOut1/2(~2(align256(H)+H/32)) |
 xIn1/2(~2·align128(H)·sizeof(X)) | sendMaskTensor_[2](2·(CK/8+32)) | sendGatherOut(4·CK) | sendCntAcc_
-合计 ≈ 8.25·CK + 2KB + ~6.5·H + flag ≈ 118KB —— 与 bs 无关
+合计 ≈ 8.25·CK + fixedA(2KB+~6.5·H+reset≤8KB+sendCntAcc)；CK=ckMaxA 时恰好填满预算 —— 与 bs 无关
 ```
 
 **时段 B（`FirstBuffInit`：dispatch + GMM1）**
@@ -574,7 +615,7 @@ xIn1/2(~2·align128(H)·sizeof(X)) | sendMaskTensor_[2](2·(CK/8+32)) | sendGath
 expertTokenCnt(32) | cumsumInfo(align32(ws·epr·4),驻留) | sendCnt(ws·4) |
 maskChunk_/U32_(CK/8,别名) | validTopkIndex(4·CK) | topkIndex(4·CK) | copyTmp[6](48KB) |
 expertTokenNumsOut(epr·4) | [ubBufferUsedAddr_) tripleTensor_(动态,≤TT·32B,triple-tile)
-合计 ≈ 8·CK + 48KB + TT·32 + 小项 ≈ 179KB —— 与 bs 无关
+合计 ≈ 8.125·CK + fixedB(48KB+TT·32+小项)；CK=ckMaxB 时恰好填满预算 —— 与 bs 无关
 ```
 
 **时段 C（`SecondBuffInit`：Unpermute）**：`dataRes(3H·2)` / `dataResFp32(3H·4)` /
@@ -587,8 +628,8 @@ expertTokenNumsOut(epr·4) | [ubBufferUsedAddr_) tripleTensor_(动态,≤TT·32B
 
 | 文件 | 改动 |
 |---|---|
-| `mc2/mega_moe/op_kernel/arch35/mega_moe.h` | 成员增删；`Init`/`BuffInit`/`FirstBuffInit`/`SendMaskCal`/`SendInfoCal`/`TripleInfoCalAndDispatch` 分块重写；count 折叠；triple-tile。 |
-| `mc2/mega_moe/op_kernel/arch35/mega_moe_base.h` | 新增 3 个分批常量；`PeermemInfo` 槽位公式**数值不变**（仅注释）。 |
+| `mc2/mega_moe/op_kernel/arch35/mega_moe.h` | 成员增删；`Init`/`BuffInit`/`FirstBuffInit`/`SendMaskCal`/`SendInfoCal`/`TripleInfoCalAndDispatch` 分块重写；count 折叠；triple-tile；`ResetFlagList` 分批清零（§6.7）。 |
+| `mc2/mega_moe/op_kernel/arch35/mega_moe_base.h` | 保留 `DISPATCH_TRIPLE_TILE`、新增 `DISPATCH_RESET_BATCH`（§6.7）；`PeermemInfo` 槽位公式**数值不变**（仅注释）。 |
 | `mc2/mega_moe/op_kernel/arch35/mega_moe_combine_send.h` | combine 写远端 win 偏移 uint64 cast（§6.6）。 |
 | `mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h` | tripleGm 偏移 uint64 cast（§6.6）。 |
 | `mc2/mega_moe/op_host/op_tiling/mega_moe_tiling.cpp` | `leastCclBufferSize` 对齐 PeermemInfo 真实公式（§6.6）。 |
