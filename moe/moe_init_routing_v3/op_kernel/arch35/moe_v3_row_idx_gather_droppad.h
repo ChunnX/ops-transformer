@@ -74,6 +74,7 @@ private:
     int64_t colLoops_;
     int64_t isInputScale_;
     int64_t quantMode_;
+    int64_t outputRows_;
 
     int64_t tokenCount_ = 0;
     int32_t lastExpertId_ = -1;
@@ -150,10 +151,17 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
     }
     for (int64_t idx = 0; idx < currentLoopRows_; idx++) {
         int32_t expertIdx = inLocal[length].GetValue(idx);
+        if (expertIdx < 0 || expertIdx >= this->expertNum_) {
+            continue;
+        }
         int32_t index = 0;
         while (this->lastExpertId_ < expertIdx) {
             while (this->tokenCount_ < this->expertCapacity_) {
                 index = this->lastExpertId_ * this->expertCapacity_ + this->tokenCount_;
+                if (index < 0 || index >= this->outputRows_) {
+                    this->tokenCount_++;
+                    continue;
+                }
                 int64_t col = this->perLoopCols_;
                 for (int64_t i = 0; i < this->colLoops_; i++) {
                     if (i == this->colLoops_ - 1) {
@@ -179,9 +187,11 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
         if (this->tokenCount_ < this->expertCapacity_) {
             int32_t outOffset = inLocal.GetValue(idx);
             index = expertIdx * this->expertCapacity_ + this->tokenCount_;
-            outLocal.SetValue(0, index);
-            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-            DataCopyPad(expandedRowIdxGm_[outOffset], outLocal, copyParams);
+            if (outOffset >= 0 && outOffset < this->totalLength_ && index >= 0 && index < this->outputRows_) {
+                outLocal.SetValue(0, index);
+                SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+                DataCopyPad(expandedRowIdxGm_[outOffset], outLocal, copyParams);
+            }
             this->tokenCount_++;
         }
     }
@@ -203,9 +213,17 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOutRemain()
         }
         return;
     }
+    if (this->lastExpertId_ < 0) {
+        this->lastExpertId_ = 0;
+        this->tokenCount_ = 0;
+    }
     while (this->lastExpertId_ < this->expertNum_) {
         while (this->tokenCount_ < this->expertCapacity_) {
             int32_t index = this->lastExpertId_ * this->expertCapacity_ + this->tokenCount_;
+            if (index < 0 || index >= this->outputRows_) {
+                this->tokenCount_++;
+                continue;
+            }
             int64_t col = this->perLoopCols_;
             for (int64_t i = 0; i < this->colLoops_; i++) {
                 if (i == this->colLoops_ - 1) {
@@ -260,6 +278,7 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::InitBasicParams(const MoeIni
     this->srcToDstTilingData_ = &(tilingData->srcToDstDropPadParamsOp);
     this->expertNum_ = tilingData->expertNum;
     this->expertCapacity_ = tilingData->expertCapacity;
+    this->outputRows_ = this->expertNum_ * this->expertCapacity_;
     this->cols_ = tilingData->cols;
     this->quantMode_ = tilingData->quantMode;
     this->isInputScale_ = tilingData->isInputScale;
