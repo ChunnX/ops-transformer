@@ -12,16 +12,13 @@
 """
 非量化 kvcache 非连续 stride 传递测试
 
-KV Cache 格式:
-  BnNBsD = (blockNum, KV_N, blockSize, D)
-  BnBsH  = (blockNum, blockSize, KV_N*D)
-  NZ     = (blockNum, KV_N, D/16, blockSize, 16)
+模板分发 (IsCapable → isReconstructTemp):
+  新模板 (FiaTilingNonQuantArch35):
+    D=128 且无 pse/sink/padding/prefix/后量化, sparseMode=0/3
+    支持 ROPE_COMBINE (D=192)
+  老模板 (兼容): 其余场景 (D≠128 非MLA, 非PA等)
 
-非连续规格:
-  BnNBsD: dim0 / dim01
-  BnBsH:  dim0 only
-  NZ:     dim0 / dim01
-  非PA:   不允许非连续
+非连续规格: BnNBsD/NZ: dim0/dim01; BnBsH: dim0; 非PA: 不允许
 """
 
 import logging, math, random
@@ -46,9 +43,9 @@ def _block_table(batch, seqs_kv, bs):
 
 
 def _kv_shape(fmt, total_blocks, bs, d, N_kv, B, kv_seq):
-    if fmt == "BnNBsD":  return (total_blocks,  N_kv, bs, d)
-    if fmt == "BnBsH":   return (total_blocks,  bs, N_kv * d)
-    if fmt == "NZ":      return (total_blocks,  N_kv, d // 16, bs, 16)
+    if fmt == "BnNBsD":  return (total_blocks, N_kv, bs, d)
+    if fmt == "BnBsH":   return (total_blocks, bs, N_kv * d)
+    if fmt == "NZ":      return (total_blocks, N_kv, d // 16, bs, 16)
     if fmt == "none":    return (B, N_kv, kv_seq, d)
     raise ValueError(fmt)
 
@@ -83,8 +80,7 @@ def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, bs, scale,
     akv = torch.tensor(act_kv, dtype=torch.int64)
     if dr > 0:
         r, _ = torch_npu.npu_fused_infer_attention_score_v2(
-            q_npu, k_npu, v_npu,
-            query_rope=q_rope_npu, key_rope=k_rope_npu,
+            q_npu, k_npu, v_npu, query_rope=q_rope_npu, key_rope=k_rope_npu,
             actual_seq_qlen=aq, actual_seq_kvlen=akv,
             num_query_heads=q_n, num_key_value_heads=kv_n,
             input_layout=q_layout, softmax_scale=scale,
@@ -113,122 +109,144 @@ def _check(ref, out, tag):
 
 
 def _run_one(cfg, expect_pass):
-    B = cfg["B"]; N_q = cfg["N_q"]; N_kv = cfg["N_kv"]
-    pa = cfg["pa"]; fmt = cfg["fmt"]; ql = cfg["ql"]; nc = cfg["nc"]
-    kv_seq = cfg["kv_seq"]; bs = cfg["bs"]; q_seq = cfg["q_seq"]
-    d = cfg["d"]; dr = cfg.get("dr", 0); dv = cfg.get("dv", d)
+    B=cfg["B"]; N_q=cfg["N_q"]; N_kv=cfg["N_kv"]; pa=cfg["pa"]; fmt=cfg["fmt"]
+    ql=cfg["ql"]; nc=cfg["nc"]; kv_seq=cfg["kv_seq"]; bs=cfg["bs"]; q_seq=cfg["q_seq"]
+    d=cfg["d"]; dr=cfg.get("dr",0); dv=cfg.get("dv",d)
 
-    act_q = [q_seq] * B; act_kv = [kv_seq] * B
-    scale = 1.0 / math.sqrt(d + dr)
-
-    bt, total_b = None, 0
-    if pa: bt, total_b = _block_table(B, act_kv, bs)
-    else:   total_b = B
-    bt_npu = bt.npu() if bt is not None else None
+    act_q=[q_seq]*B; act_kv=[kv_seq]*B; scale=1.0/math.sqrt(d+dr)
+    bt,total_b=None,0
+    if pa: bt,total_b=_block_table(B,act_kv,bs)
+    else: total_b=B
+    bt_npu=bt.npu() if bt else None
 
     torch.manual_seed(42)
-    q_bnsd = torch.randn(B, N_q, q_seq, d, dtype=DTYPE)
-    if ql == "BSND": q_bnsd = q_bnsd.permute(0, 2, 1, 3).contiguous()
-    q_npu = q_bnsd.npu()
+    q_bnsd=torch.randn(B,N_q,q_seq,d,dtype=DTYPE)
+    if ql=="BSND": q_bnsd=q_bnsd.permute(0,2,1,3).contiguous()
+    q_npu=q_bnsd.npu()
 
-    q_rope, k_rope = None, None
-    if dr > 0:
-        torch.manual_seed(300); qr = torch.randn(B, N_q, q_seq, dr, dtype=DTYPE)
-        torch.manual_seed(400); kr = torch.randn(B, N_kv, kv_seq, dr, dtype=DTYPE)
-        if ql == "BSND": qr = qr.permute(0, 2, 1, 3).contiguous()
-        q_rope = qr.npu(); k_rope = kr.npu()
+    q_rope,k_rope=None,None
+    if dr>0:
+        torch.manual_seed(300); qr=torch.randn(B,N_q,q_seq,dr,dtype=DTYPE)
+        torch.manual_seed(400); kr=torch.randn(B,N_kv,kv_seq,dr,dtype=DTYPE)
+        if ql=="BSND": qr=qr.permute(0,2,1,3).contiguous()
+        q_rope=qr.npu(); k_rope=kr.npu()
 
-    kv_shape = _kv_shape(fmt, total_b, bs, d, N_kv, B, kv_seq) if pa else _kv_shape("none", total_b, bs, d, N_kv, B, kv_seq)
-    k_ref, v_ref = _make_kv(kv_shape)
+    kv_shape=_kv_shape(fmt,total_b,bs,d,N_kv,B,kv_seq) if pa else _kv_shape("none",total_b,bs,d,N_kv,B,kv_seq)
+    k_ref,v_ref=_make_kv(kv_shape)
+    ref_out=_run(q_npu,k_ref.npu(),v_ref.npu(),pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope,d,dr)
 
-    ref_out = _run(q_npu, k_ref.npu(), v_ref.npu(), pa, ql, act_q, act_kv,
-                   bt_npu, bs, scale, N_q, N_kv, q_rope, k_rope, d, dr)
-
-    k_nc = _make_nc(k_ref.npu(), nc); v_nc = _make_nc(v_ref.npu(), nc)
-    k_rope_nc = _make_nc(k_rope, nc) if dr > 0 and nc != "none" else k_rope
-    if nc != "none":
-        cs = _cstrides(k_nc.shape)
-        assert k_nc.stride(0) != cs[0], f"{cfg['id']}: dim0 not non-contiguous"
-        if nc == "dim01": assert k_nc.stride(1) != cs[1], f"{cfg['id']}: dim1 not non-contiguous"
+    k_nc=_make_nc(k_ref.npu(),nc); v_nc=_make_nc(v_ref.npu(),nc)
+    k_rope_nc=_make_nc(k_rope,nc) if dr>0 and nc!="none" else k_rope
+    if nc!="none":
+        cs=_cstrides(k_nc.shape)
+        assert k_nc.stride(0)!=cs[0],f"{cfg['id']}:dim0"
+        if nc=="dim01": assert k_nc.stride(1)!=cs[1],f"{cfg['id']}:dim1"
         logger.info(f"  k contig={k_nc.is_contiguous()} stride={k_nc.stride()}")
 
     if not expect_pass:
         with pytest.raises(Exception) as ei:
-            _run(q_npu, k_nc, v_nc, pa, ql, act_q, act_kv, bt_npu, bs, scale,
-                 N_q, N_kv, k_rope_nc, k_rope, d, dr)
+            _run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,k_rope_nc,k_rope,d,dr)
         logger.info(f"  [{cfg['id']}] ERROR: {ei.value}")
         return
-
-    out = _run(q_npu, k_nc, v_nc, pa, ql, act_q, act_kv, bt_npu, bs, scale,
-               N_q, N_kv, k_rope_nc, k_rope, d, dr)
-    _check(ref_out, out, cfg["id"])
+    out=_run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,k_rope_nc,k_rope,d,dr)
+    _check(ref_out,out,cfg["id"])
 
 
 # ==============================================================================
-# 用例 — 每个用例独立 B/N_q/N_kv/kv_seq/block_size/q_seq/d
+# 新模板 (isReconstructTemp=true): D=128 GQA / D=192 ROPE_COMBINE, sparse=0/3,
+#   无 pse/sink/padding/prefix/后量化, layout BSH/BSND/BNSD/TND
 # ==============================================================================
-NORMAL_CASES = [
-    # === BnNBsD: D=128, bs=512, kv_seq=2048 ===
-    {"id": "BnNBsD-GQA-contig",  "B":1, "N_q":4, "N_kv":2, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"none",
-     "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
-    {"id": "BnNBsD-GQA-dim0",    "B":2, "N_q":2, "N_kv":1, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim0",
-     "kv_seq":1536, "bs":256, "q_seq":6, "d":128},
-    {"id": "BnNBsD-GQA-dim01",   "B":1, "N_q":8, "N_kv":4, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim01",
-     "kv_seq":1024, "bs":128, "q_seq":8, "d":256},
-    # === BnBsH: D=128, bs=512, kv_seq=2048 ===
-    {"id": "BnBsH-GQA-contig",   "B":2, "N_q":4, "N_kv":2, "pa":True,  "fmt":"BnBsH",  "ql":"BNSD", "nc":"none",
-     "kv_seq":2048, "bs":512, "q_seq":4, "d":128},
-    {"id": "BnBsH-GQA-dim0",     "B":3, "N_q":6, "N_kv":2, "pa":True,  "fmt":"BnBsH",  "ql":"BNSD", "nc":"dim0",
-     "kv_seq":2304, "bs":384, "q_seq":4, "d":128},
-    # === NZ: D=128, bs=512 ===
-    {"id": "NZ-GQA-contig",      "B":1, "N_q":2, "N_kv":1, "pa":True,  "fmt":"NZ",     "ql":"BNSD", "nc":"none",
-     "kv_seq":2560, "bs":512, "q_seq":4, "d":128},
-    {"id": "NZ-GQA-dim0",        "B":2, "N_q":4, "N_kv":4, "pa":True,  "fmt":"NZ",     "ql":"BNSD", "nc":"dim0",
-     "kv_seq":1536, "bs":256, "q_seq":3, "d":128},
-    {"id": "NZ-GQA-dim01",       "B":1, "N_q":1, "N_kv":1, "pa":True,  "fmt":"NZ",     "ql":"BNSD", "nc":"dim01",
-     "kv_seq":1024, "bs":128, "q_seq":5, "d":128},
-    # === 非PA ===
-    {"id": "NonPA-GQA-contig",   "B":3, "N_q":3, "N_kv":1, "pa":False, "fmt":"none",   "ql":"BNSD", "nc":"none",
-     "kv_seq":800, "bs":0, "q_seq":7, "d":64},
-    # === rope_split: D=128+rope64, V=128 ===
-    {"id": "BnNBsD-ROPE-dim0",   "B":1, "N_q":4, "N_kv":1, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim0",
-     "kv_seq":2048, "bs":512, "q_seq":4, "d":128, "dr":64, "dv":128},
-    {"id": "BnNBsD-ROPE-dim01",  "B":2, "N_q":8, "N_kv":4, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim01",
-     "kv_seq":1024, "bs":256, "q_seq":6, "d":128, "dr":64, "dv":128},
-    # === rope_combine: D=192, V=128 ===
-    {"id": "BnNBsD-d192-dim0",   "B":1, "N_q":2, "N_kv":1, "pa":True,  "fmt":"BnNBsD", "ql":"BNSD", "nc":"dim0",
-     "kv_seq":1536, "bs":384, "q_seq":4, "d":192, "dv":128},
+NEW_NORMAL = [
+    # BnNBsD
+    {"id":"NEW-BnNBsD-contig", "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"none",
+     "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
+    {"id":"NEW-BnNBsD-dim0",   "B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim0",
+     "kv_seq":1536,"bs":256,"q_seq":6,"d":128},
+    {"id":"NEW-BnNBsD-dim01",  "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim01",
+     "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
+    # BnBsH
+    {"id":"NEW-BnBsH-contig",  "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"none",
+     "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
+    {"id":"NEW-BnBsH-dim0",    "B":3,"N_q":6,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim0",
+     "kv_seq":2304,"bs":384,"q_seq":4,"d":128},
+    # NZ
+    {"id":"NEW-NZ-contig",     "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"none",
+     "kv_seq":2560,"bs":512,"q_seq":4,"d":128},
+    {"id":"NEW-NZ-dim0",       "B":2,"N_q":4,"N_kv":4,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"dim0",
+     "kv_seq":1536,"bs":256,"q_seq":3,"d":128},
+    {"id":"NEW-NZ-dim01",      "B":1,"N_q":1,"N_kv":1,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"dim01",
+     "kv_seq":1024,"bs":128,"q_seq":5,"d":128},
+    # ROPE_COMBINE: D=192, V=128
+    {"id":"NEW-d192-dim0",     "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim0",
+     "kv_seq":1536,"bs":384,"q_seq":4,"d":192,"dv":128},
 ]
 
-ERROR_CASES = [
-    {"id": "BnBsH-GQA-dim01-ERR", "B":2, "N_q":2, "N_kv":1, "pa":True,  "fmt":"BnBsH",  "ql":"BNSD", "nc":"dim01",
-     "kv_seq":1024, "bs":256, "q_seq":5, "d":128},
-    {"id": "NonPA-dim0-ERR",      "B":4, "N_q":4, "N_kv":2, "pa":False, "fmt":"none",   "ql":"BNSD", "nc":"dim0",
-     "kv_seq":640, "bs":0, "q_seq":3, "d":64},
-    {"id": "NonPA-dim01-ERR",     "B":2, "N_q":6, "N_kv":2, "pa":False, "fmt":"none",   "ql":"BNSD", "nc":"dim01",
-     "kv_seq":512, "bs":0, "q_seq":6, "d":128},
+NEW_ERROR = [
+    {"id":"NEW-BnBsH-dim01-ERR","B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim01",
+     "kv_seq":1024,"bs":256,"q_seq":5,"d":128},
+]
+
+# ==============================================================================
+# 老模板 (isReconstructTemp=false): 非PA, ROPE_SPLIT, D≠128, 等
+# ==============================================================================
+OLD_NORMAL = [
+    # ROPE_SPLIT: D=128+rope64, V=128
+    {"id":"OLD-ROPE-dim0",     "B":1,"N_q":4,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim0",
+     "kv_seq":2048,"bs":512,"q_seq":4,"d":128,"dr":64,"dv":128},
+    {"id":"OLD-ROPE-dim01",    "B":2,"N_q":8,"N_kv":4,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim01",
+     "kv_seq":1024,"bs":256,"q_seq":6,"d":128,"dr":64,"dv":128},
+    # D=256 (D≠128 且非 ROPE_COMBINE, 路由至老模板)
+    {"id":"OLD-d256-contig",    "B":1,"N_q":8,"N_kv":4,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"none",
+     "kv_seq":1024,"bs":128,"q_seq":8,"d":256},
+    {"id":"OLD-d256-dim0",      "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim0",
+     "kv_seq":1024,"bs":128,"q_seq":8,"d":256},
+    {"id":"OLD-d256-dim01",     "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim01",
+     "kv_seq":1024,"bs":128,"q_seq":8,"d":256},
+    # BnBsH + D=64
+    {"id":"OLD-d64BnBsH-contig","B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"none",
+     "kv_seq":1536,"bs":256,"q_seq":4,"d":64},
+    {"id":"OLD-d64BnBsH-dim0",  "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim0",
+     "kv_seq":1536,"bs":256,"q_seq":4,"d":64},
+    # 非PA
+    {"id":"OLD-NonPA-contig",  "B":3,"N_q":3,"N_kv":1,"pa":False,"fmt":"none","ql":"BNSD","nc":"none",
+     "kv_seq":800,"bs":0,"q_seq":7,"d":64},
+]
+
+OLD_ERROR = [
+    {"id":"OLD-BnBsH-dim01-ERR","B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim01",
+     "kv_seq":1024,"bs":128,"q_seq":4,"d":256},
+    {"id":"OLD-NonPA-dim0-ERR", "B":4,"N_q":4,"N_kv":2,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim0",
+     "kv_seq":640,"bs":0,"q_seq":3,"d":64},
+    {"id":"OLD-NonPA-dim01-ERR","B":2,"N_q":6,"N_kv":2,"pa":False,"fmt":"none","ql":"BNSD","nc":"dim01",
+     "kv_seq":512,"bs":0,"q_seq":6,"d":128},
 ]
 
 
-@pytest.mark.parametrize("cfg", NORMAL_CASES, ids=[c["id"] for c in NORMAL_CASES])
+# ==============================================================================
+# pytest
+# ==============================================================================
+ALL_NORMAL = NEW_NORMAL + OLD_NORMAL
+ALL_ERROR  = NEW_ERROR  + OLD_ERROR
+
+@pytest.mark.parametrize("cfg", ALL_NORMAL, ids=[c["id"] for c in ALL_NORMAL])
 def test_normal(cfg):
     logger.info(f"\n[NORMAL] {cfg['id']}")
     _run_one(cfg, expect_pass=True)
 
-
-@pytest.mark.parametrize("cfg", ERROR_CASES, ids=[c["id"] for c in ERROR_CASES])
+@pytest.mark.parametrize("cfg", ALL_ERROR, ids=[c["id"] for c in ALL_ERROR])
 def test_error(cfg):
     logger.info(f"\n[ERROR]  {cfg['id']}")
     _run_one(cfg, expect_pass=False)
 
 
 if __name__ == '__main__':
-    logger.info(f"正例={len(NORMAL_CASES)} 异常={len(ERROR_CASES)}")
+    logger.info(f"新模板正例={len(NEW_NORMAL)} 异常={len(NEW_ERROR)}")
+    logger.info(f"老模板正例={len(OLD_NORMAL)} 异常={len(OLD_ERROR)}")
     ok = True
-    for c in NORMAL_CASES:
+    for c in ALL_NORMAL:
         try: _run_one(c, True); logger.info(f"  PASS")
         except Exception as e: logger.info(f"  FAIL: {e}"); ok = False
-    for c in ERROR_CASES:
+    for c in ALL_ERROR:
         try: _run_one(c, False); logger.info(f"  PASS")
         except Exception as e: logger.info(f"  FAIL: {e}"); ok = False
     logger.info("\n全部通过!" if ok else "\n存在失败!")
