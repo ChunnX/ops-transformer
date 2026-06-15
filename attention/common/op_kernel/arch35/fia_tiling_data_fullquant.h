@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file fia_tiling_data_fullquant_mx.h
+ * \file fia_tiling_data_fullquant.h
  * \brief
  */
 
-#ifndef FIA_TILING_DATA_FULLQUANT_MX_H_
-#define FIA_TILING_DATA_FULLQUANT_MX_H_
+#ifndef FIA_TILING_DATA_FULLQUANT_H_
+#define FIA_TILING_DATA_FULLQUANT_H_
 
 #include "../fia_tiling_data_public.h"
 
