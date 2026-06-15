@@ -560,6 +560,16 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
                 "In MXFP8 fullquant scenario, when page attention is enabled, block_size must be 512 or 1024");
             return ge::GRAPH_FAILED;
         }
+
+        // fp8 gqa 仅支持blocksize等于128
+        OP_CHECK_IF(
+            fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD &&
+            fiaInfo.blockSize != NUM_128,
+            OP_LOGE(fiaInfo.opName,
+                    "In FP8 GQA fullquant scenario, when page attention enable, "
+                    "blockSize(%d) should be %u.",
+                    fiaInfo.blockSize, NUM_128),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -575,6 +585,10 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
         OP_CHECK_IF(dimNum == 3, OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key", "3D(BnBsH)",
             "In MXFP8 fullquant scenario, when Page Attention is enabled, the layout of key cannot be BnBsH"),
             return ge::GRAPH_FAILED);
+    } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) {
+        OP_CHECK_IF(dimNum != DIM_NUM_4, OP_LOGE(fiaInfo.opName,
+                    "In FP8 GQA fullquant scenario, KV cache layout must be BnNBsD, PA BnBsH and NZ are not supported."),
+                    return ge::GRAPH_FAILED); 
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         if (dimNum == 4) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "inputLayout", inputLayout.c_str(),
