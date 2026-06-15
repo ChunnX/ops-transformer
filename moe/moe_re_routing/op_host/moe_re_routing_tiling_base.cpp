@@ -21,10 +21,12 @@ namespace optiling {
 constexpr int64_t IN_TOKEN_INDEX = 0;
 constexpr int64_t IN_EXPERT_TOKEN_NUM_PER_RANK_INDEX = 1;
 constexpr int64_t IN_TOKEN_SCALE_INDEX = 2;
+constexpr int64_t IN_EXPERT_TOPK_WEIGHT_INDEX = 3;
 constexpr int64_t OUTPUT_PERMUTE_TOKENS_INDEX = 0;
 constexpr int64_t OUT_SCALE_INDEX = 1;
 constexpr int64_t OUT_PERMUTE_TOKEN_IDX_IDNEX = 2;
 constexpr int64_t OUTPUT_EXPERT_TOKEN_NUM_INDEX = 3;
+constexpr int64_t OUT_PERMUTE_TOPK_WEIGHT_INDEX = 4;
 constexpr int64_t ATTR_EXPERT_TOKEN_NUM_TYPE_INDEX = 0;
 constexpr int64_t ATTR_IDX_TYPE_INDEX = 1;
 constexpr int64_t DIM_SIZE_TWO = 2;
@@ -106,6 +108,11 @@ ge::graphStatus MoeReRoutingTilingBase::CheckNullptr() const
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputDesc(OUTPUT_PERMUTE_TOKENS_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputDesc(OUT_PERMUTE_TOKEN_IDX_IDNEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputDesc(OUTPUT_EXPERT_TOKEN_NUM_INDEX));
+    if (hasTopkWeight_) {
+        OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(IN_EXPERT_TOPK_WEIGHT_INDEX));
+        OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(IN_EXPERT_TOPK_WEIGHT_INDEX));
+        OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputDesc(OUT_PERMUTE_TOPK_WEIGHT_INDEX));
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -174,6 +181,13 @@ ge::graphStatus MoeReRoutingTilingBase::CheckDtypeAndAttr() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((idxType_ != 0 && idxType_ != 1), OP_LOGE(context_->GetNodeName(), "idxType should be 0 or 1."),
                 return ge::GRAPH_FAILED);
+    if (hasTopkWeight_) {
+        auto outputTopkWeightType = context_->GetOutputDesc(OUT_PERMUTE_TOPK_WEIGHT_INDEX)->GetDataType();
+        OP_CHECK_IF(outputTopkWeightType != ge::DT_FLOAT,
+                    OP_LOGE(context_->GetNodeName(), "permute_topk_weight should be DT_FLOAT, actual %s.",
+                            ge::TypeUtils::DataTypeToSerialString(outputTopkWeightType).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -218,6 +232,15 @@ ge::graphStatus MoeReRoutingTilingBase::CheckOutputShape() const
                 OP_LOGE(context_->GetNodeName(), "permute_token_Num should equal expertNum %ld, actual %ld.",
                         expertNum_, tokenNumShape.GetDim(0)),
                 return ge::GRAPH_FAILED);
+    if (hasTopkWeight_) {
+        const gert::StorageShape *outTopkWeightShapePtr = context_->GetOutputShape(OUT_PERMUTE_TOPK_WEIGHT_INDEX);
+        OP_CHECK_IF(outTopkWeightShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "outTopkWeightShapePtr is nullptr."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(outTopkWeightShapePtr->GetStorageShape() !=
+                        context_->GetInputShape(IN_EXPERT_TOPK_WEIGHT_INDEX)->GetStorageShape(),
+                    OP_LOGE(context_->GetNodeName(), "expert_topk_weight shape must same with permute_topk_weight."),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -297,6 +320,26 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
         OP_CHECK_NULL_WITH_CONTEXT(context_, scalePtr);
         scaleDtype_ = scalePtr->GetDataType();
         hasScale_ = true;
+    }
+
+    auto topkWeightPtr = context_->GetOptionalInputDesc(IN_EXPERT_TOPK_WEIGHT_INDEX);
+    if (topkWeightPtr != nullptr) {
+        topkWeightDtype_ = topkWeightPtr->GetDataType();
+        OP_CHECK_IF(topkWeightDtype_ != ge::DT_FLOAT,
+                    OP_LOGE(context_->GetNodeName(), "expert_topk_weight only supports DT_FLOAT, actual %s.",
+                            ge::TypeUtils::DataTypeToSerialString(topkWeightDtype_).c_str()),
+                    return ge::GRAPH_FAILED);
+        hasTopkWeight_ = true;
+        auto topkWeightShapeTuple = GetShapeTuple(context_, IN_EXPERT_TOPK_WEIGHT_INDEX);
+        auto topkWeightSum = std::get<0>(topkWeightShapeTuple);
+        auto topkWeightDim1 = std::get<1>(topkWeightShapeTuple);
+        OP_CHECK_IF(topkWeightSum != tokenSum_,
+                    OP_LOGE(context_->GetNodeName(), "expert_topk_weight dim0: %ld should equal tokenSum: %ld.",
+                            topkWeightSum, tokenSum_),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(topkWeightDim1 != 1,
+                    OP_LOGE(context_->GetNodeName(), "expert_topk_weight dim1 must be 1, actual %ld.", topkWeightDim1),
+                    return ge::GRAPH_FAILED);
     }
 
     auto attrs = context_->GetAttrs();
