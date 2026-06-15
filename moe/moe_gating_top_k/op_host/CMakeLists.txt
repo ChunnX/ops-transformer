@@ -37,5 +37,5 @@ endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     message(STATUS "=== Debug: BUILD is NOT BUILD_OPS_RTY_KERNEL")
-    add_modules_sources(OPTYPE moe_gating_top_k ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE moe_gating_top_k ACLNNTYPE aclnn_exclude)
 endif()
