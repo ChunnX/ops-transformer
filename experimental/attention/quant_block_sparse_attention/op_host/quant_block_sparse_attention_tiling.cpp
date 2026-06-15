@@ -33,7 +33,7 @@ constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 1U;
 constexpr uint32_t BSA_LAYOUT_KV_PA_BNSD_VALUE = 1U;
 constexpr uint32_t BSA_LAYOUT_SPARSE_B_N_QB_KB_VALUE = 0U;
 constexpr uint8_t BSA_LAYOUT_TYPE_BSH = 1U;
-constexpr uint8_t BSA_LAYOUT_TYPE_TND = 4U;
+constexpr uint8_t BSA_LAYOUT_TYPE_TND = 2U;
 constexpr uint8_t BSA_PA_LAYOUT_TYPE_BNBD = 0U;
 constexpr uint8_t BSA_COMPAT_MASK_NONE = 0U;
 constexpr uint8_t BSA_COMPAT_MASK_LEFT_UP_CAUSAL = 1U;
@@ -330,10 +330,10 @@ ge::graphStatus QuantBlockSparseAttentionTiling::DoOpTiling(QuantBlockSparseAtte
     }
     tilingInfo_ = tilingInfo;
 
-    const uint32_t bnCount = tilingInfo_->bSize * tilingInfo_->n2Size;
+    const uint32_t bnCount = tilingInfo_->bSize * tilingInfo_->n1Size;
     totalTaskNum_ = static_cast<uint64_t>(bnCount) * tilingInfo_->gS1OuterSize;
     if (totalTaskNum_ == 0U || totalTaskNum_ > std::numeric_limits<uint32_t>::max()) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "bSize * n2Size * gS1OuterSize", std::to_string(totalTaskNum_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "bSize * n1Size * gS1OuterSize", std::to_string(totalTaskNum_),
                                               "total task num must be in range [1, " +
                                                   std::to_string(std::numeric_limits<uint32_t>::max()) + "]");
         return ge::GRAPH_FAILED;

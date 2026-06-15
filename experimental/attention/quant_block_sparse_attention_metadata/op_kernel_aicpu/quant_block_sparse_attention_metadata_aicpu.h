@@ -74,7 +74,7 @@ private:
     bool ParamsInit();
     bool ScheduleSection(SplitResult &splitRes);
     bool GenMetadata(const SplitResult &splitRes);
-    uint32_t GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const;
+    uint32_t GetRowBlockNum(uint32_t bn1Idx, uint32_t s1Idx) const;
     uint64_t CalcBlockNum() const;
     bool AdvanceToValidRow(AssignContext &assignContext) const;
     void ScheduleFa(uint64_t blockNum, SplitResult &result);
@@ -109,6 +109,7 @@ private:
     int32_t aivCoreNum_ = 72;
 
     // SplitParams
+    uint32_t sparseSeqLenDimNum_ = 0;
     uint32_t Qbmax_ = 0;
     uint32_t mBaseSize_ = NUM_128;
     uint32_t s2BaseSize_ = NUM_128;

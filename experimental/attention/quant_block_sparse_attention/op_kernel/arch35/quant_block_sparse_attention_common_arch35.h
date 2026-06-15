@@ -142,15 +142,15 @@ template <\
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 // metadata获取
-constexpr uint32_t BSA_FA_METADATA_SIZE = 7;
+constexpr uint32_t BSA_FA_METADATA_SIZE = 8U;
 
-constexpr uint32_t BSA_FA_CORE_ENABLE_INDEX = 0;
-constexpr uint32_t BSA_FA_BN1_START_INDEX   = 1;
-constexpr uint32_t BSA_FA_BN1_END_INDEX     = 2;
-constexpr uint32_t BSA_FA_S1_START_INDEX    = 3;
-constexpr uint32_t BSA_FA_S1_END_INDEX      = 4;
-constexpr uint32_t BSA_FA_S2_START_INDEX    = 5;
-constexpr uint32_t BSA_FA_S2_END_INDEX      = 6;
+constexpr uint32_t BSA_FA_CORE_ENABLE_INDEX = 0U;
+constexpr uint32_t BSA_FA_BN1_START_INDEX = 1U;
+constexpr uint32_t BSA_FA_S1_START_INDEX = 2U;
+constexpr uint32_t BSA_FA_S2_START_INDEX = 3U;
+constexpr uint32_t BSA_FA_BN1_END_INDEX = 4U;
+constexpr uint32_t BSA_FA_S1_END_INDEX = 5U;
+constexpr uint32_t BSA_FA_S2_END_INDEX = 6U;
 
 __aicore__ inline uint32_t GetBsaAttrMetadata(GlobalTensor<int32_t>& metadataGm, uint32_t coreIdx, uint32_t metaIdx)
 {

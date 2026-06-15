@@ -133,9 +133,6 @@ public:
 
     CubeBlockType cubeBlock;
     VecBlockType vecBlock;
-
-private:
-    __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t s1Index, RunParamStr &runParam);
 };
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -152,12 +149,14 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 {
     fa_base_matmul::idCounterNum = 0;
     constInfo.subBlockIdx = GetSubBlockIdx();
+    // tilingData 必须在 AIC/AIV 两侧都设置：InitVecBlock 与 ComputeConstexpr 在两核均会解引用
+    // this->tilingData，若仅 AIV 赋值，AIC 将解引用未初始化指针导致访存异常（507015）。
+    this->tilingData = tiling;
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
     } else {
         constInfo.aivIdx = GetBlockIdx();
         this->aicIdx = constInfo.aivIdx >> 1;
-        this->tilingData = tiling;
     }
     this->pipe = tPipe;
     vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, 
@@ -267,13 +266,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::AnalysisSparseIndices(){
-    ListTensorDesc sparseIndicesListTensorDesc((__gm__ void *)sparseIndicesGm.GetPhyAddr());
-    AscendC::TensorDesc<__gm__ uint8_t> sparseIndicesTensorDesc;
-    uint64_t dimInfo[4];
-    sparseIndicesTensorDesc.SetShapeAddr(&dimInfo[0]);
-    sparseIndicesListTensorDesc.GetDesc(sparseIndicesTensorDesc, 0);
-    constInfo.maxQb = sparseIndicesTensorDesc.GetShape(2);
-    constInfo.maxKb = sparseIndicesTensorDesc.GetShape(3);
+    constInfo.maxQb = this->tilingData->sparseParams.sparseSeqLenStride;
+    constInfo.maxKb = this->tilingData->sparseParams.sparseIndicesStride;
 }
 
     
@@ -327,12 +321,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         constInfo.mm2Kb = constInfo.n2Dv;
 
         if ASCEND_IS_AIV {
+            // BSA: 输出 TND [T, N1, Dv]，同一 head 相邻 token 间隔 (n2G-1)*Dv 个元素（跳过其余 head）。
+            // 每核独立计算一个 head，不做 FIA GS1 合轴/连续 GQA 输出，固定使用 per-head stride。
             constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
-            if (sharedParams.isPfaGS1Merge == 1) {
-                constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
-            } else if (sharedParams.isGqa == 1) {
-                constInfo.attentionOutStride = 0;
-            }
         }
     }
 
@@ -386,7 +377,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         runInfo.s2SparseBlk2RealAlignedSize = Align(runInfo.s2SparseBlk2RealSize);
     } else {
         runInfo.s2SparseBlk2RealSize = constInfo.kvSparseBlockSize;
-        runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk2RealSize;
+        runInfo.s2SparseBlk2RealAlignedSize = runInfo.s2SparseBlk2RealSize;
     }
 
     // 判断当前sparse块是否需要计算
@@ -503,6 +494,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     uint32_t bn1EndIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_BN1_END_INDEX);
     uint32_t s1StartIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_S1_START_INDEX);
     uint32_t s1EndIdx = GetBsaAttrMetadata(metadataGm, this->aicIdx, BSA_FA_S1_END_INDEX);
+    if (s1EndIdx != 0U) {
+        bn1EndIdx++;
+    }
 
     int64_t s2LoopLimit;
     int64_t taskId = 0;
@@ -529,7 +523,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
                 UpdateLoopFlagsBasedOnS1Index(s1Index - runParam.s1LoopEnd, notLast, notLastTwoLoop, notLastThreeLoop);
             }
             if (notLastThreeLoop) {
-                this->ComputeAxisIdxByBnAndGs1(s1Index, runParam);
+                runParam.s1oIdx = s1Index;
                 ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, s1Index, this->actualSeqQlenAddr);
                 bool s2NoNeedCalc = ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, sparseSeqLenGm, s1Index);
                 if (s2NoNeedCalc) {
@@ -590,13 +584,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         SyncAll<false>();
     }
     ProcessMainLoop();
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::ComputeAxisIdxByBnAndGs1(
-    int64_t s1Index, RunParamStr &runParam)
-{
-    runParam.s1oIdx = s1Index;
 }
 }
 #endif

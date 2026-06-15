@@ -76,21 +76,26 @@ def _load_python_package(root):
 
 
 def _load_converter(root):
-    converter_file = root / "custom_ops" / "converter" / "npu_quant_block_sparse_attention.py"
-    if not converter_file.exists():
-        return
-    try:
-        spec = importlib.util.spec_from_file_location(
-            "_bsa_quant_block_sparse_attention_converter",
-            converter_file,
-        )
-        if spec is None or spec.loader is None:
-            return
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = module
-        spec.loader.exec_module(module)
-    except Exception as error:  # pragma: no cover - depends on local extension environment
-        _LOAD_ERRORS.append(f"{converter_file}: {error}")
+    converter_names = [
+        "npu_quant_block_sparse_attention.py",
+        "npu_quant_block_sparse_attention_metadata.py",
+    ]
+    for converter_name in converter_names:
+        converter_file = root / "custom_ops" / "converter" / converter_name
+        if not converter_file.exists():
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(
+                f"_bsa_{converter_file.stem}_converter",
+                converter_file,
+            )
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+        except Exception as error:  # pragma: no cover - depends on local extension environment
+            _LOAD_ERRORS.append(f"{converter_file}: {error}")
 
 
 def _load_custom_ops():
@@ -99,7 +104,7 @@ def _load_custom_ops():
         Path("/workspace/vendors/custom_transformer/op_api/lib"),
     ]
     _prepend_env_path("LD_LIBRARY_PATH", [path for path in lib_paths if path.exists()])
-    if has_quant_block_sparse_attention_op():
+    if has_quant_block_sparse_attention_op() and has_quant_block_sparse_attention_metadata_op():
         for root in _candidate_roots():
             if root.exists():
                 _load_converter(root)
@@ -109,17 +114,25 @@ def _load_custom_ops():
         if not root.exists():
             continue
         _load_shared_libraries(root)
-        if has_quant_block_sparse_attention_op():
+        if has_quant_block_sparse_attention_op() and has_quant_block_sparse_attention_metadata_op():
             _load_converter(root)
             return
         _load_python_package(root)
-        if has_quant_block_sparse_attention_op():
+        if has_quant_block_sparse_attention_op() and has_quant_block_sparse_attention_metadata_op():
             return
 
 
 def has_quant_block_sparse_attention_op():
     try:
         getattr(torch.ops.custom, "npu_quant_block_sparse_attention")
+    except AttributeError:
+        return False
+    return True
+
+
+def has_quant_block_sparse_attention_metadata_op():
+    try:
+        getattr(torch.ops.custom, "npu_quant_block_sparse_attention_metadata")
     except AttributeError:
         return False
     return True
