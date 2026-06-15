@@ -315,13 +315,13 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
     return dealRow;
 }
 
-__simd_vf__ void CastB8Nd2NzVFImpl(__ubuf__ int8_t* ubDstAddr, __ubuf__ int8_t* ubSrcAddr, uint32_t dealRowCount)
+__simd_vf__ void CastB8Nd2NzVFImpl(__ubuf__ int8_t* ubDstAddr, __ubuf__ int8_t* ubSrcAddr, const uint32_t dealRowCount,
+                                  const uint32_t blockStride)
 {
     MicroAPI::RegTensor<int8_t> kvData0;
     MicroAPI::RegTensor<int8_t> kvData1;
 
     MicroAPI::MaskReg b8MaskAll = MicroAPI::CreateMask<int8_t, MicroAPI::MaskPattern::ALL>();
-    const uint32_t blockStride = 17; // +1 to solve bank confict
     const uint32_t repeatStride = 1;
     const uint32_t combineDim = 512; // nope(448) + rope(64) 
     const uint32_t elementNumPerVL = 256;
@@ -352,8 +352,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CastNd2Nz(LocalTensor<Q_T> d
 {
     __ubuf__ int8_t* ubDstAddr = (__ubuf__ int8_t*)(dstTensor.GetPhyAddr());
     __ubuf__ int8_t* ubSrcAddr = (__ubuf__ int8_t*)(srcTensor.GetPhyAddr());
-
-    CastB8Nd2NzVFImpl(ubDstAddr, ubSrcAddr, dealRow);
+    const uint32_t blockStride = dealRow | 0x1; // odd row num to avoid bank confict
+    CastB8Nd2NzVFImpl(ubDstAddr, ubSrcAddr, dealRow, blockStride);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -367,7 +367,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2L1(
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = constInfo.dSize / blockElementNum;
     dataCopyParams.blockLen = dealRow;
-    dataCopyParams.srcGap = 16 - dealRow + 1;
+    dataCopyParams.srcGap = (dealRow | 0x1) - dealRow;
     dataCopyParams.dstGap = ((runInfo.s2RealSize + 31) >> 5 << 5) - dealRow;
     DataCopy(dst[s2StartIdx * blockElementNum], kvOutUb, dataCopyParams);
 }
@@ -382,7 +382,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = constInfo.dSize / blockElementNum;
     dataCopyParams.blockLen = dealRow;
-    dataCopyParams.srcGap = 16 - dealRow + 1;
+    dataCopyParams.srcGap = (dealRow | 0x1) - dealRow;
     dataCopyParams.dstGap = ((runInfo.s2RealSize + 31) >> 5 << 5) - dealRow;
     DataCopy(v0ResGmTensor[s2StartIdx * blockElementNum], kvOutUb, dataCopyParams);
 }
@@ -576,7 +576,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
         return;
     }
 
-    int64_t s2ProcessBaseSize = 32;
     bool meetEnd = false;
     int64_t s2Start = sparseS2Start;
     int64_t s2 = sparseS2Start;
@@ -586,7 +585,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
         // 1、copy kv in, gm ->ub
         WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
         LocalTensor<KV_T> kvInUb = stage0InBuf[pingPongV0].Get<KV_T>();
-        while (dealRow < Min(16, sparseCalSize) && s2 < sparseS2End) { // 拷贝满16行或者遇到-1
+        while (dealRow < Min(32, sparseCalSize) && s2 < sparseS2End) { // 拷贝满16行或者遇到-1
             int32_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1}; // 拷贝进入的8个token的index
             GetRealCmpS2Idx(tokenData, s2, runInfo, constInfo);
             s2 += 8; // 每次搬运8行
