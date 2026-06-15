@@ -18,10 +18,24 @@ rank_id = int(sys.argv[4])
 tool_path = sys.argv[5]
 
 
-# 将解析出来的字段，写入csv文件，文件路径为csv_file_path，文件格式，列为字段名
-def write_field_to_csv(field_name, field_value, csv_file_path = "adump_parse.csv"):
-    with open(csv_file_path, "a") as f:
-        f.write(f"{field_name},{field_value}\n")
+_csv_fields = []
+def write_field_to_csv(field_name, field_value, csv_file_path="adump_parse.csv"):
+    global _csv_fields
+    _csv_fields.append((field_name, field_value, csv_file_path))
+
+
+def flush_csv():
+    global _csv_fields
+    csv_groups = {}
+    for field_name, field_value, csv_file_path in _csv_fields:
+        csv_groups.setdefault(csv_file_path, []).append((field_name, field_value))
+    for csv_file_path, fields in csv_groups.items():
+        header = ",".join(str(name) for name, _ in fields)
+        values = ",".join(str(val) for _, val in fields)
+        with open(csv_file_path, "w") as f:
+            f.write(header + "\n")
+            f.write(values + "\n")
+    _csv_fields = []
 
 
 # dump文件解析流程
@@ -72,14 +86,6 @@ def parse_adump_header(data_u32):
             self.reserve = data_u32[9:17]
     # 解析AdumpHeader
     adump_header = AdumpHeader(data_u32)
-    logging.info("="*50)
-    logging.info("magic: %d", adump_header.magic)
-    logging.info("execTimes: %d", adump_header.execTimes)
-    logging.info("version: %d", adump_header.version)
-    logging.info("opType: %d", adump_header.opType)
-    logging.info("stage_num: %d", adump_header.stage_num)
-    logging.info("timeOutCycles: %d", adump_header.timeOutCycles)
-    logging.info("reserve: %s", adump_header.reserve)
     # 将AdumpHeader写入csv文件中
     write_field_to_csv("magic", adump_header.magic)
     write_field_to_csv("execTimes", adump_header.execTimes)
@@ -138,28 +144,6 @@ def parse_adump_shared_field(data_u32):
             self.activationClamp = data_u32[ACTIVATION_CLAMP_POS]
 
     adump_shared_field = MegaMoeAdumpSharedField(data_u32[128:])
-    logging.info("="*50)
-    logging.info("cclBufferSize: %d", adump_shared_field.cclBufferSize)
-    logging.info("worldSize: %d", adump_shared_field.worldSize)
-    logging.info("rankId: %d", adump_shared_field.rankId)
-    logging.info("aivNum: %d", adump_shared_field.aivNum)
-    logging.info("m: %d", adump_shared_field.m)
-    logging.info("k: %d", adump_shared_field.k)
-    logging.info("n: %d", adump_shared_field.n)
-    logging.info("isTransposeW1: %d", adump_shared_field.isTransposeW1)
-    logging.info("isTransposeW2: %d", adump_shared_field.isTransposeW2)
-    logging.info("hasBias1: %d", adump_shared_field.hasBias1)
-    logging.info("hasBias2: %d", adump_shared_field.hasBias2)
-    logging.info("expertNumPerRank: %d", adump_shared_field.expertNumPerRank)
-    logging.info("topK: %d", adump_shared_field.topK)
-    logging.info("maxRecvTokenNum: %d", adump_shared_field.maxRecvTokenNum)
-    logging.info("dispatchQuantMode: %d", adump_shared_field.dispatchQuantMode)
-    logging.info("dispatchQuantOutDtype: %d", adump_shared_field.dispatchQuantOutDtype)
-    logging.info("combineQuantMode: %d", adump_shared_field.combineQuantMode)
-    logging.info("commAlgCode: %d", adump_shared_field.commAlgCode)
-    logging.info("numMaxTokensPerRank: %d", adump_shared_field.numMaxTokensPerRank)
-    logging.info("activationCode: %d", adump_shared_field.activationCode)
-    logging.info("activationClamp: %d", adump_shared_field.activationClamp)
     # 将shared field写入csv文件中
     write_field_to_csv("cclBufferSize", adump_shared_field.cclBufferSize)
     write_field_to_csv("worldSize", adump_shared_field.worldSize)
@@ -222,3 +206,5 @@ def parse_mc2_from_adump_file(dump_folder_path):
 parse_input_from_dump_file(dump_folder_path)
 # 调用parse_mc2_from_adump_file函数解析adump文件
 parse_mc2_from_adump_file(dump_folder_path)
+# 将收集的字段写入csv文件
+flush_csv()
