@@ -18,6 +18,7 @@
 #include "./block_scheduler_utils.h"
 #include "./block_scheduler_policy.h"
 #include "../utils/status_utils.h"
+#include "../utils/tuple_utils.h"
 
 namespace Cgmct {
 namespace Gemm {
@@ -194,6 +195,10 @@ public:
         } else {
             index -= startBlockIdx_;
         }
+        if (index < 0 || index >= totalCnt_) {
+            roundIdx_ = round_;
+            return false;
+        }
         int64_t rowIdx = index / nCnt_ / mainMWindow_;
         if (rowIdx < mainRow_) {
             Get<MNK_M>(blockCoord) = rowIdx * mainMWindow_ + index % mainMWindow_;
@@ -230,6 +235,10 @@ public:
             index -= (tailBlockBase_ + ((startBlockIdx_ - tailBlockBase_) / tailCnt_) * tailCnt_) / tailCnt_;
         } else {
             index -= startBlockIdx_;
+        }
+        if (index < 0 || index >= totalCnt_) {
+            roundIdx_ = round_;
+            return false;
         }
 
         int64_t rowIdx = index / (nCnt_ * mainMWindow_);
