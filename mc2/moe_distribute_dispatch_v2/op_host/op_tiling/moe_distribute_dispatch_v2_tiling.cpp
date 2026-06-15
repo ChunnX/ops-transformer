@@ -2052,12 +2052,9 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncImplPublicV2(
              static_cast<uint32_t>(moe_dispatch_defs::MAX_EP_WORLD_SIZE),
          true},
         {config.attrExpertTokenNumsTypeIndex, "expertTokenNumsType", 0, 1, true},
-        {config.attrZeroExpertNumIndex, "zeroExpertNum", 0,
-         static_cast<uint32_t>(moe_dispatch_defs::MAX_MOE_EXPERT_NUM_V2), true},
-        {config.attrCopyExpertNumIndex, "copyExpertNum", 0,
-         static_cast<uint32_t>(moe_dispatch_defs::MAX_MOE_EXPERT_NUM_V2), true},
-        {config.attrConstExpertNumIndex, "constExpertNum", 0,
-         static_cast<uint32_t>(moe_dispatch_defs::MAX_MOE_EXPERT_NUM_V2), true},
+        {config.attrZeroExpertNumIndex, "zeroExpertNum", 0, static_cast<uint32_t>(INT32_MAX), true},
+        {config.attrCopyExpertNumIndex, "copyExpertNum", 0, static_cast<uint32_t>(INT32_MAX), true},
+        {config.attrConstExpertNumIndex, "constExpertNum", 0, static_cast<uint32_t>(INT32_MAX), true},
     };
     OP_TILING_CHECK(moe_dispatch_utils::CheckAttrRules(context, attrRules, sizeof(attrRules) / sizeof(attrRules[0])) !=
                         ge::GRAPH_SUCCESS,
