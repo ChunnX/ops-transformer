@@ -39,8 +39,9 @@ struct AdumpHeader {
     uint32_t version;          // 算子记录版本号
     uint32_t opType;           // 算子类型
     uint32_t stageNum;         // 算子记录总阶段数
+    uint32_t reserve1;         // 保留字段1
     uint64_t timeOutCycles;    // 超时时间（单位：cycle数）
-    uint64_t reserve[RESERVE_SIZE];
+    uint64_t reserve2[RESERVE_SIZE];
 };
 
 // 算子记录配置信息
