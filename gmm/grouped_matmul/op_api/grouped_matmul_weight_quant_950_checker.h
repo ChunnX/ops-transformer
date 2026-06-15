@@ -33,16 +33,16 @@ private:
     aclnnStatus CheckBiasDtype();
 
     aclnnStatus CheckTensorListSize() const;
-    aclnnStatus CheckTensorNotNull(size_t idx) const;
+    aclnnStatus CheckTensorNotNull(size_t xIdx, size_t yIdx, size_t wIdx) const;
     aclnnStatus CheckTensorNotNullPtr(const aclTensorList *tensorList, size_t idx, const std::string &tensorType) const;
     aclnnStatus CheckTensorDtype(const aclTensorList *tensorList, const DataType &tensorDtype, size_t idx,
                                  const std::string &tensorType) const;
     aclnnStatus CheckTensorShape(const aclTensorList *tensorList, size_t idx, const std::string &tensorType) const;
 
     aclnnStatus CheckWeightInnerAxisEven(size_t idx) const;
-    aclnnStatus CheckDimNumAndFormat(size_t idx) const;
+    aclnnStatus CheckDimNumAndFormat(size_t xIdx, size_t yIdx, size_t wIdx) const;
     aclnnStatus CheckTransposeStatus() const;
-    aclnnStatus CheckDimValue(size_t idx) const;
+    aclnnStatus CheckDimValue(size_t xIdx, size_t yIdx, size_t wIdx) const;
     aclnnStatus CheckV1GroupList(size_t idx) const;
 
     aclnnStatus CheckAntiQuantDtype(size_t idx) const;
@@ -56,9 +56,13 @@ private:
     bool IsA16F8ND() const;
     bool IsS8S4NZ() const;
     bool IsA16W4() const;
+    bool IsMultiTensorWeight() const;
     
     std::string GetDataFlowString() const;
     const char* GetAclnnName() const;
+
+    static constexpr size_t MX_A8W4_MULTI_WEIGHT_DIM = 2UL;
+    static constexpr size_t MX_A8W4_MULTI_WEIGHT_NZ_DIM = 4UL;
 
 private:
     GroupedMatmulParams gmmParams_;
