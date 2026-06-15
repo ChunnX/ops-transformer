@@ -277,6 +277,18 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const 
     uint64_t indicePaddingDealSize = paddingLen * constInfo_.kHeadNum * constInfo_.topk;
     GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[indiceOutPaddingOffset];
     AscendC::InitGlobalMemory(indiceOutPaddingStart, indicePaddingDealSize, constInfo_.INVALID_IDX);
+
+    if (constInfo.returnValueFlag) {
+        event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        
+        GlobalTensor<uint32_t> valueOutGmTmp;
+        valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
+        GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
+
+        AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_FLOAT);
+    }
 }
 
 template <typename LIT>
