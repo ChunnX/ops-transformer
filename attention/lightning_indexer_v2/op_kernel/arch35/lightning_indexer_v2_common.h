@@ -53,6 +53,10 @@ struct RunInfo {
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
+    uint32_t curCuSeqlensQ = 0;
+    uint32_t curCuSeqlensK = 0;
+    uint32_t curSequsedQ = 0;
+    uint32_t curSequsedK = 0;
 
     uint64_t tensorQueryOffset;
     uint64_t tensorKeyOffset;
@@ -66,6 +70,7 @@ struct RunInfo {
     bool isLastS2InnerLoop;
     bool isAllLoopEnd = false;
     bool isValid = false;
+    bool needTndPadding = false;
 };
 
 struct ConstInfo {

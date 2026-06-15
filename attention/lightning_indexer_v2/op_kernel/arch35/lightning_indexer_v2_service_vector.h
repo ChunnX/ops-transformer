@@ -58,6 +58,7 @@ public:
                                               GlobalTensor<float> valueOutGm, GlobalTensor<int32_t> blockTableGm,
                                               GlobalTensor<int32_t> outputIdxOffsetGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
+    __aicore__ inline void DoTndPadding(const LIV2Common::RunInfo &runInfo);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -266,6 +267,16 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
         copyOutValueParams.dstStride = 0;
         AscendC::DataCopyPad(valueOutGm[invalidS1Offset], valueOutLocal_, copyOutValueParams);
     }
+}
+
+template <typename LIT>
+__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const LIV2Common::RunInfo &runInfo)
+{
+    uint32_t paddingLen = runInfo.curCuSeqlensQ - runInfo.curSequsedQ;
+    uint64_t indiceOutPaddingOffset = runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.topk;
+    uint64_t indicePaddingDealSize = paddingLen * constInfo_.kHeadNum * constInfo_.topk;
+    GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[indiceOutPaddingOffset];
+    AscendC::InitGlobalMemory(indiceOutPaddingStart, indicePaddingDealSize, constInfo_.INVALID_IDX);
 }
 
 template <typename LIT>
@@ -555,6 +566,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
         
         // 是否返回Value值
         if (returnValueFlag) {
+            WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             liV2Vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
             // 无效值刷0
             if (validS2Len < topkCount_) {
@@ -570,6 +582,10 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
                 Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64], zeroUInt32,
                           topkCount_ - (validS2Len / 16 * 16 + 64));
             }
+            SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
+            SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+
             AscendC::DataCopyParams copyOutValueParams;
             copyOutValueParams.blockCount = 1;
             copyOutValueParams.blockLen = topkCount_ * sizeof(float); // bytes
