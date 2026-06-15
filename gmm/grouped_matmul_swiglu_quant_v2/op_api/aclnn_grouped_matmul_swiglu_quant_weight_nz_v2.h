@@ -38,7 +38,7 @@ extern "C" {
  * @param [in] quantMode: 表示量化计算类型，用于确定swiglu结果的量化模式。
  * @param [in] groupListType: 表示指定分组的解释方式，用于确定groupList的语义。
  * @param [in] tuningConfig: 用于算子预估m/e的大小，走不同的算子模板，以适配不不同场景性能要求。
- * @param [out] quantOutput: 表示公式中的out，数据类型支持INT8、FLOAT8_E4M3FN数据类型，数据格式支持ND。
+ * @param [out] quantOutput: 表示公式中的out，数据类型支持INT8、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2数据类型，数据格式支持ND。
  * @param [out] quantScaleOutput: 表示公式中的outQuantScale，数据类型支持FLOAT32、FLOAT8_E8M0数据类型。
  * @param [out] workspaceSize: 返回用户需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含算子计算流程。

@@ -1,4 +1,4 @@
-## 1计算过程
+## 1 计算过程
 
 图1训练计算流程图
 
@@ -13,7 +13,7 @@
 5. 计算dk，$dk = Matmul(ds^T, query) * scale$，本计算将转置后的ds结果与query做matmul计算，并将结果与scale相乘得到结果dk。
 6. 计算dv，$dv = Matmul(DropOut(p)^T, dy)$；本计算p的结果做drop计算，转置后与dy做matmul计算。
 
-## 2每个计算阶段的入口
+## 2 每个计算阶段的入口
 
 以sameAB模板为例
 
@@ -71,7 +71,7 @@ Bmm((S2_i,S1_i)*(S1_i,D));  // dkv，最终结果输出到workspace
 
 上述示例中，通过两个拷贝指令fixp_l0c_to_ub和copy_ub_to_l1分别将cube侧计算的数据和vector侧计算的数据copy到vector侧和cube侧，这两个拷贝都是核内高速通道。
 
-## 4流水设计
+## 4 流水设计
 
 为了追求极致性能，必须充分利用硬件资源，通常需要进行不同pipeline的流水设计。流水设计的宗旨是尽量使某一条pipeline达成bound效果，使硬件的某一个单元一直在工作，达到性能上限。
 
@@ -108,7 +108,7 @@ FAG融合算子V侧计算过程较多，情况也比较复杂，通常简单的d
 
 C侧连续发射两块Cube计算，这样可以保证V侧计算完上一轮时，可以立马启动当前轮的计算，而不用等待Cube1的数据。这样可以使V侧一直在工作，达成Vector bound。
 
-## 5多模板设计
+## 5 多模板设计
 
 为了使不同的输入可以复用相同的tiling和流水，采用了模板的方式来实现融合算子，但是不同的输入全部使用同一套模板时又无法达到性能最优和功能泛化，因此需要根据输入shape的特征区分不同的模板来实现。
 FAG（FlashAttentionScoreGrad，简称FAG）融合算子的多模板设计思路主要为：
@@ -244,7 +244,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
 
   为了充分发挥硬件优势，通常融合算子都需要进行流水设计，以提高融合算子性能，不同的流水设计对代码的架构影响非常大，为了提升代码的可维可测可读性，需要根据不同的计算流水进行模板特化，达到特定场景的极致性能。
 
-### 5.1多模板详细设计
+### 5.1 多模板详细设计
 
 - **基本概念：**
 
@@ -254,7 +254,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
 
   如果CV基本块过大，Cube和Vector核内会将CV基本块进一步的切分，切分成适合核内L0A、L0B、L0C、UB等大小的基本块，这个就叫**核内基本块**；对于Cube侧，核内基本块一般在32KB（单位Bytes），这样可以让L0A、L0B的DoubleBuffer能力展开，同时算力和带宽也能尽可能用满；在Vector侧一般基本块大小是32KB（单位Bytes）。
 
-  **xxx.i:** 表示经过切分后，CV基本块中的某根轴的大小,一般基本块都是2维的，xxx.i表示其中一个维度的大小。xxx可以是B、N2、G、S1、S2;
+  **xxx.i:** 表示经过切分后，CV基本块中的某根轴的大小，一般基本块都是2维的，xxx.i表示其中一个维度的大小。xxx可以是B、N2、G、S1、S2;
   例如，S1 = 512, S2 = 1024， S1.i = 64, S2.i = 128,表示把[S1, S2]切分成大小是[64, 128]的基本块，S1轴的基本块大小是64，S2轴的基本块大小是128。
 
   **xxx.o**: 表示经过基本块切分后某根轴的分数，xxx可以是B、N2、G、S1、S2;
@@ -291,7 +291,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
     >
     > 
     >
-    > 3. 核间切分B、N2.o轴，核内切分N2.i、G、S1、S2轴,该模板是为了优化G * S1 * S2都比较小的场景时的性能，把N2轴切分到核内，并且在核内也切分N2.i轴，用于加速Vector计算。相比于模板2,模板3会更复杂一些，模板3在核内计算中也切分了N2.i轴，让每次的计算量更大。
+    > 3. 核间切分B、N2.o轴，核内切分N2.i、G、S1、S2轴，该模板是为了优化G * S1 * S2都比较小的场景时的性能，把N2轴切分到核内，并且在核内也切分N2.i轴，用于加速Vector计算。相比于模板2,模板3会更复杂一些，模板3在核内计算中也切分了N2.i轴，让每次的计算量更大。
     >
     >    tiling代码文件：ops-transformer-dev/attention/flash_attention_score_grad/op_host/flash_attention_score_grad_tiling_ngs1s2_bn.cpp
     >
@@ -366,7 +366,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
 
 ## 
 
-## 6编程视角
+## 6 编程视角
 
 ### 6.1 AscendC高阶API
 
