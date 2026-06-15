@@ -201,7 +201,6 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
     }
 
     GlobalTensor<INPUT_TYPE> kvGlobalTensor = this->GetKVGlobalTensor(runInfo, selectedVWorkSpaceGm);
-    // GlobalTensor<INPUT_TYPE> kvGlobalTensor = selectedVWorkSpaceGm;
     Nd2NzParams nd2NzParams;
     if (!runInfo.isS1IdxNoChange) {
         dyL1Buffer.Wait<HardEvent::MTE1_MTE2>(); // 反向同步
@@ -296,7 +295,6 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
     }
 
     GlobalTensor<INPUT_TYPE> kvGlobalTensor = this->GetKVGlobalTensor(runInfo, selectedKWorkSpaceGm);
-    // GlobalTensor<INPUT_TYPE> kvGlobalTensor = selectedKWorkSpaceGm;
     Nd2NzParams nd2NzParams;
 
     // copy current, when IS_L1_PRELOAD=true, only first loop copy current
@@ -396,19 +394,11 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKNormal(
     typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor, const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm,
     BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buf, FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
-    // pipe_barrier(PIPE_ALL);
-    // uint32_t array[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(512)};
-    // AscendC::ShapeInfo shapeInfo(2, array);
-    // // dq
-    // AscendC::DumpTensor(selectedKWorkSpaceGm[runInfo.kSelectedWsAddr], 901, 128 * 512, shapeInfo);
-    // pipe_barrier(PIPE_ALL);
-
     if (runInfo.commonRunInfo.s2RealSize == 0) {
         return;
     }
     Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = dSL1Buf.Get();
     GlobalTensor<INPUT_TYPE> kvGlobalTensor = this->GetKVGlobalTensor(runInfo, selectedKWorkSpaceGm);
-    // GlobalTensor<INPUT_TYPE> kvGlobalTensor = selectedKWorkSpaceGm;
     constexpr uint32_t baseN = CUBE_BASEN;
     uint32_t realN = baseN;
     uint32_t nLoops = ((uint32_t)constInfo.dTotalSize + baseN - 1) / baseN; // 尾块处理
@@ -522,13 +512,8 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
             nd2NzParams.dstNzMatrixStride = 0;
 
             GlobalTensor<INPUT_TYPE> queryGmTmp;
-            // if (IS_ROPE && n == nLoops - 1) {
-            // nd2NzParams.srcDValue = ROPE_D_64;
-            // queryGmTmp = this->queryRopeGm[runInfo.commonRunInfo.qRopeOffset];
-            // } else {
             nd2NzParams.srcDValue = constInfo.mm2Ka;
             queryGmTmp = this->queryGm[runInfo.commonRunInfo.queryOffset + gmNOffset];
-            // }
             DataCopy(qL1Tensor, queryGmTmp, nd2NzParams);
             qL1Buffer.Set<HardEvent::MTE2_MTE1>();
             qL1Buffer.Wait<HardEvent::MTE2_MTE1>();

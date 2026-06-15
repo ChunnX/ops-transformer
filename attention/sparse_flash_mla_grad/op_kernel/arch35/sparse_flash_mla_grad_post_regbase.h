@@ -44,7 +44,6 @@ public:
     TQue<QuePosition::VECOUT, 1> outQueuePong;
     TBuf<> dsinkResBuf;
     GlobalTensor<OUTDTYPE> dqkv[3];
-    // GlobalTensor<OUTDTYPE> dqkRope[2];
     GlobalTensor<float> dqkvWorkspace[3];
     GlobalTensor<float> dsinkWorkspace;
     GlobalTensor<float> dsinkGm;
@@ -80,15 +79,11 @@ SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExi
                                          tilingData->postTilingData.dCmpKVWorkSpaceOffset / sizeof(T2));
     }
 
-
-    // dqkRope[0].SetGlobalBuffer((__gm__ OUTDTYPE *)dqRope);
-    // dqkRope[1].SetGlobalBuffer((__gm__ OUTDTYPE *)dkRope);
-
     loop = tilingData->postTilingData.qPostBlockFactor;
     inputTotalSize = tilingData->postTilingData.qPostBlockTotal;
     qPostTailNum = tilingData->postTilingData.qPostTailNum;
 
-    if (unlikely(tilingData->baseParams.isSink)) { // todo
+    if (unlikely(tilingData->baseParams.isSink)) {
         dsinkWorkspace.SetGlobalBuffer((__gm__ float *)workspace +
                                        tilingData->baseParams.dSinkWorkSpaceOffset / sizeof(float));
         dsinkGm.SetGlobalBuffer((__gm__ float *)dsinks);

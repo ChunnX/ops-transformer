@@ -73,11 +73,6 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
         this->cubeBlock.GetCubeVecSharedParams(runInfo);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(16 + SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
-
-        // pipe_barrier(PIPE_ALL);
-        // uint32_t array[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(512)};
-        // AscendC::ShapeInfo shapeInfo(2, array);
-        // AscendC::DumpTensor(this->selectedKWorkSpaceGm[runInfo.kSelectedWsAddr], 110, 128 * 512, shapeInfo);
     }
     LocalTensor<CALC_TYPE> mm1ResTensor = this->mm1ResBuf[runInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
     this->cubeBlock.IterateMmDyV(mm1ResTensor, this->selectedKWorkSpaceGm, this->constInfo, runInfo);
@@ -120,24 +115,7 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
     LocalTensor<CALC_TYPE> mm1ResTensor = this->mm1ResBuf[runInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
     LocalTensor<CALC_TYPE> mm2ResTensor = this->mm2ResBuf[runInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
 
-    // if ASCEND_IS_AIV {
-    //     pipe_barrier(PIPE_ALL);
-    //     uint32_t array[] = {static_cast<uint32_t>(32), static_cast<uint32_t>(128)};
-    //     AscendC::ShapeInfo shapeInfo(2, array);
-    //     // dy @ v
-    //     // AscendC::DumpTensor(mm1ResTensor, 111, 32 * 128, shapeInfo);
-    //     // q @ k
-    //     AscendC::DumpTensor(mm2ResTensor, 112, 32 * 128, shapeInfo);
-    // }
-
     this->vecBlock.ProcessVec2(mm2ResTensor, this->constInfo, runInfo); // v2: pse + attenMask + simpleSoftmax
-    // if ASCEND_IS_AIV {
-    //     pipe_barrier(PIPE_ALL);
-    //     uint32_t array[] = {static_cast<uint32_t>(32), static_cast<uint32_t>(128)};
-    //     AscendC::ShapeInfo shapeInfo(2, array);
-    //     // p
-    //     AscendC::DumpTensor(mm2ResTensor, 113, 32 * 128, shapeInfo);
-    // }
     if (this->constInfo.isSink) {
         this->vecBlock.ProcessVecSink(mm1ResTensor, mm2ResTensor, this->constInfo, runInfo);
     }
@@ -157,27 +135,12 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
     }
     this->vecBlock.ProcessVec4(pL1Buffer, mm2ResTensor, this->constInfo, runInfo); // v4: cast + nd2nz
     if ASCEND_IS_AIV {
-        // pipe_barrier(PIPE_ALL);
-        // InitOutput<INPUT_TYPE>(this->selectedKWorkSpaceGm, 16384, 0);
-        // for (int i=0;i<128;i++) {
-        //     int64_t offset0 = i * 128;
-        //     this->selectedKWorkSpaceGm.SetValue(offset0 + i, static_cast<INPUT_TYPE>(1));
-        // }
-        // AscendC::DataCacheCleanAndInvalid<INPUT_TYPE, AscendC::CacheLine::SINGLE_CACHE_LINE,
-        // AscendC::DcciDst::CACHELINE_OUT>(this->selectedKWorkSpaceGm); pipe_barrier(PIPE_ALL);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V4_TO_C5_FLAG); // dv must wait ds copy completely
     }
     if ASCEND_IS_AIC {
         // wait ds in ub copy to l1
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V3_TO_C3_FLAG);
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V3_TO_C3_FLAG);
-
-        // pipe_barrier(PIPE_ALL);
-        // uint32_t array[] = {static_cast<uint32_t>(2), static_cast<uint32_t>(512)};
-        // AscendC::ShapeInfo shapeInfo(2, array);
-        // // dq
-        // AscendC::DumpTensor(this->dqWorkSpaceGm, 114, 2 * 512, shapeInfo);
-        // pipe_barrier(PIPE_ALL);
     }
     // compute dq
     this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
@@ -189,13 +152,6 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         }
-
-        // pipe_barrier(PIPE_ALL);
-        // uint32_t array[] = {static_cast<uint32_t>(64), static_cast<uint32_t>(512)};
-        // AscendC::ShapeInfo shapeInfo(2, array);
-        // // dq
-        // AscendC::DumpTensor(this->dqWorkSpaceGm, 115, 64 * 512, shapeInfo);
-        // pipe_barrier(PIPE_ALL);
     }
 
     // compute dk
@@ -204,13 +160,6 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
     if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
-
-        // pipe_barrier(PIPE_ALL);
-        // uint32_t array[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(512)};
-        // AscendC::ShapeInfo shapeInfo(2, array);
-        // // dk
-        // AscendC::DumpTensor(this->mm4ResWorkSpaceGm[runInfo.mm4ResWsAddr], 116, 128 * 512, shapeInfo);
-        // pipe_barrier(PIPE_ALL);
     }
 
     if ASCEND_IS_AIC {
@@ -228,13 +177,6 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C5_TO_V5_FLAG);
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C5_TO_V5_FLAG);
         }
-
-        // pipe_barrier(PIPE_ALL);
-        // uint32_t array[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(512)};
-        // AscendC::ShapeInfo shapeInfo(2, array);
-        // // dv
-        // AscendC::DumpTensor(this->mm5ResWorkSpaceGm[runInfo.mm5ResWsAddr], 117, 128 * 512, shapeInfo);
-        // pipe_barrier(PIPE_ALL);
     }
     runInfo.taskStep = TASK_C3C4C5;
     if constexpr (!IsDETER) {
@@ -404,14 +346,6 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
                 }
             }
         }
-        // if (sTaskId == 0) {
-        //     if ASCEND_IS_AIC {
-        //         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-        //         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-        //     } else {
-        //         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-        //     }
-        // }
         sTaskId++;
     }
 
@@ -439,8 +373,6 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
     if (this->processBS1ByCore == 0) {
         deterTaskId++;
     }
-
-    // 分核不均匀时部分核会少一个C核的全核同步
 
     if constexpr (IsOriKVExist) {
         if (this->processBS1ByCore < this->formerCoreProcessS1Num) {

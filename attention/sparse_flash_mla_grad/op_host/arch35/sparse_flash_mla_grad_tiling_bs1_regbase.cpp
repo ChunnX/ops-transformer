@@ -198,8 +198,6 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetPlatformInfo()
                     return ge::GRAPH_FAILED);
         aicoreParams_.numBlocks = compileInfoPtr->aivNum;
         aicoreParams_.aicNum = compileInfoPtr->aicNum;
-        // aicoreParams_.numBlocks = 64;
-        // aicoreParams_.aicNum = 32;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         aicoreParams_.l1Size = compileInfoPtr->l1Size;
         aicoreParams_.l0aSize = compileInfoPtr->l0aSize;
@@ -210,8 +208,6 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetPlatformInfo()
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
         aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
         aicoreParams_.aicNum = ascendcPlatform.GetCoreNumAic();
-        // aicoreParams_.numBlocks = 64;
-        // aicoreParams_.aicNum = 32;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, aicoreParams_.ubSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, aicoreParams_.l1Size);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize);
@@ -289,7 +285,6 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetWorkspaceSize()
     int64_t selectedKWorkspaceLen = 128 * tmpData.d * B16;
 
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * 3;
-    // selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
     int64_t selectBlockCount = 4096;
 

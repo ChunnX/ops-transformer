@@ -259,8 +259,6 @@ __aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, V
     oriTopkLengthAddr = ori_topk_length;
     cmpTopkLengthAddr = cmp_topk_length;
     cmpResidualKVAddr = cmp_residual_kv;
-    // constInfo.seqS1_addr = actualSeqQlen;
-    // constInfo.seqS2_addr = actualSeqKvlen;
 
     InitCVCommonGlobalBuffer(workspace);
     InitCVCommonBuffer();
@@ -525,18 +523,6 @@ __aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, V
     runInfo.commonRunInfo.valueOffset = runInfo.commonRunInfo.keyOffset;
     runInfo.sparseIndicesOffset = runInfo.t1Index * (constInfo.n2Size * runInfo.selectedBlockCount) +
                                   runInfo.n2Index * runInfo.selectedBlockCount + runInfo.blkCntOffset;
-
-    // runInfo.queryOffsetWithRope = runInfo.commonRunInfo.queryOffset;
-    // runInfo.keyOffsetWithRope = runInfo.commonRunInfo.keyOffset;
-    // // Rope场景后面三个mm的GM offset不能和前面两个mm共用，因此需要重新计算
-    // if constexpr (IS_ROPE) {
-    //     runInfo.queryOffsetWithRope = GetQueryOffset<false>(runInfo);
-    //     runInfo.keyOffsetWithRope = GetKeyOffset<false>(runInfo);
-    //     runInfo.queryOffsetWithRopeForMm12 = GetQueryOffset<true>(runInfo);
-    //     runInfo.keyOffsetWithRopeForMm12 = GetKeyOffset<true>(runInfo);
-    //     runInfo.commonRunInfo.qRopeOffset = GetQueryRopeOffset(runInfo);
-    //     runInfo.commonRunInfo.kRopeOffset = GetKeyRopeOffset(runInfo);
-    // }
     if constexpr (IS_ORI_KV) {
         if constexpr (IsOriKVSparse) {
             runInfo.kSelectedWsAddr = (taskId % 2) * CUBE_BASEN * constInfo.dTotalSize;
@@ -580,11 +566,7 @@ template <bool IS_MM1_MM2>
 __aicore__ inline int64_t
 SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetQueryOffset(FagRunInfo &runInfo)
 {
-    // if constexpr (IS_MM1_MM2) {
     return runInfo.t1Index * constInfo.n2Size * constInfo.commonConstInfo.gSize * constInfo.commonConstInfo.dSize;
-    // } else {
-    //     return runInfo.t1Index * constInfo.n2Size * constInfo.commonConstInfo.gSize * constInfo.dTotalSize;
-    // }
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
@@ -606,11 +588,6 @@ template <const bool IS_ORI_KV>
 __aicore__ inline int64_t
 SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetKeyOffset(FagRunInfo &runInfo)
 {
-    // if constexpr (IS_MM1_MM2) {
-    //     return runInfo.t2Index * constInfo.n2Size * constInfo.commonConstInfo.dSize;
-    // } else {
-    //     return runInfo.t2Index * constInfo.n2Size * constInfo.dTotalSize;
-    // }
     if constexpr (IS_ORI_KV) {
         return runInfo.t2Index * constInfo.n2Size * constInfo.commonConstInfo.dSize;
     } else {
