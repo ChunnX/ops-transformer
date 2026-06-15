@@ -247,7 +247,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
         return ge::GRAPH_FAILED);
     bool isTransB = *context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
     bool nIsOne = (isTransB) ? (x2Dim0 == 1) : (x2Dim1 == 1);
-    if (!nIsOne) {
+    if (!nIsOne) { // TODO nIsOne为什么要特殊处理
         if (isTransB) {
             OP_TILING_CHECK((scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) ||
                 (scale2ThirdDim != EVEN_ALIGN),
@@ -286,7 +286,6 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFP4Input()
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(args_.kValue).c_str(),
                                                           "The value of K must be even in mxfp4 scene"),
                     return ge::GRAPH_FAILED);
-    // TODO ceil(kValue/32)需要为偶数
     OP_TILING_CHECK(args_.kValue % MX_SCALE_K_VALUE_ALIGN != 0,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(args_.kValue).c_str(),
                                                           "The value of K must be multiple of 32 in mxfp4 scene"),

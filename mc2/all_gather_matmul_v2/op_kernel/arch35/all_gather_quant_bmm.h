@@ -331,10 +331,10 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
     // 只做本卡计算时，aGM_从本地获取；计算远端卡数据时，aGM_为gather来的数据
     if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
         aGM_ = gatherOut_;
-        // MXFP4: 半字节，地址偏移除2 (存疑)
-        if constexpr (IsMxFp4) {
-            aGM_ = aGM_ / PF4_DATA_NUM_PER_BYTE;
-        }
+        // // MXFP4: 半字节，地址偏移除2 (存疑)
+        // if constexpr (IsMxFp4) {
+        //     aGM_ = aGM_ / PF4_DATA_NUM_PER_BYTE;
+        // }
         if constexpr (DequantBmm::IsMxType<X2ScaleType>()) {
             // 计算其他片数据前先wait scale1
             hcclAllgather_.Wait(handleList_[SCALE1_HANDLE_IDX]);
