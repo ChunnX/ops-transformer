@@ -1,0 +1,1926 @@
+diff --git a/attention/flash_attention_score_grad/op_host/arch35/flash_attention_score_grad_tiling_common_regbase.cpp b/attention/flash_attention_score_grad/op_host/arch35/flash_attention_score_grad_tiling_common_regbase.cpp
+index 2dc581f9b..2bc4a9f19 100644
+--- a/attention/flash_attention_score_grad/op_host/arch35/flash_attention_score_grad_tiling_common_regbase.cpp
++++ b/attention/flash_attention_score_grad/op_host/arch35/flash_attention_score_grad_tiling_common_regbase.cpp
+@@ -1712,9 +1712,7 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
+                         (fBaseParams.n1 == fBaseParams.n2) &&
+                         (fBaseParams.d <= BN2_MAX_D) &&
+                         (fBaseParams.queryType != ge::DT_FLOAT) &&
+-                        (fBaseParams.d == fBaseParams.d1) &&
+                         !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN || fBaseParams.queryType == ge::DT_HIFLOAT8) &&
+-                        !fBaseParams.hasRope &&
+                         (fBaseParams.tailZeroCount == 0);
+ 
+     bool bnLimit = ((fBaseParams.b * fBaseParams.n1) >= BN2_MULTIBLK_BN_256) ||
+@@ -1729,21 +1727,20 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
+                                 (fBaseParams.n1 == fBaseParams.n2) &&
+                                 fBaseParams.d <= BN2_MAX_D &&
+                                 (fBaseParams.queryType != ge::DT_FLOAT) &&
+-                                (fBaseParams.d == fBaseParams.d1) &&
+-                                !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN || fBaseParams.queryType == ge::DT_HIFLOAT8) &&
+-                                !fBaseParams.hasRope;
++                                !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 ||
++                                fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
++                                fBaseParams.queryType == ge::DT_HIFLOAT8);
+     fBaseParams.isBn2 = fBaseParams.isBn2MultiBlk ? true : fBaseParams.isBn2; // 多基本块场景是原始bn2的子集
+     if (fBaseParams.isBn2 && !fBaseParams.isBn2MultiBlk) {
+         fBaseParams.isDeterministic = false;
+-        if ((fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.d > ALIGN128)
+-            || fBaseParams.dropoutIsDivisibleBy8 == 0) {
++        if (fBaseParams.dropMaskOuter) {
+             fBaseParams.isBn2 = false;
+             fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
+         }
+     }
+     if (fBaseParams.isBn2MultiBlk) {
+         fBaseParams.isDeterministic = false;
+-        if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
++        if (fBaseParams.dropMaskOuter) {
+             fBaseParams.isBn2 = false;
+             fBaseParams.isBn2MultiBlk = false;
+             fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
+diff --git a/attention/flash_attention_score_grad/op_host/arch35/flash_attention_score_grad_tiling_normal_regbase.cpp b/attention/flash_attention_score_grad/op_host/arch35/flash_attention_score_grad_tiling_normal_regbase.cpp
+index 41f12941f..b91bcbb89 100644
+--- a/attention/flash_attention_score_grad/op_host/arch35/flash_attention_score_grad_tiling_normal_regbase.cpp
++++ b/attention/flash_attention_score_grad/op_host/arch35/flash_attention_score_grad_tiling_normal_regbase.cpp
+@@ -1061,7 +1061,6 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
+     preTilingData_->set_vPreBlockTotal(vPreBlockTotal);
+     preTilingData_->set_vPreBlockTail(vPreTailNum);
+     preTilingData_->set_dropoutIsDivisibleBy8(fBaseParams.dropoutIsDivisibleBy8);
+-    preTilingData_->set_maskPreBlockTotal(maskPreBlockTotal);
+     preTilingData_->set_sValueZeroUnderTND(fBaseParams.sValueZeroUnderTND);
+     preTilingData_->set_hasInvalidCol(fBaseParams.isInvalidCol);
+ }
+@@ -1108,7 +1107,6 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
+         postTilingData_->set_sinkPostTailNum(sinkPostTailNum);
+     }
+ 
+-    postTilingData_->set_postUbBaseSize(postUbBaseSize);
+     postTilingData_->set_qPostBlockFactor(qPostBlockFactor);
+     postTilingData_->set_qPostBlockTotal(qPostBlockTotal);
+     postTilingData_->set_qPostBaseNum(qPostBaseNum);
+@@ -1207,7 +1205,6 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
+         // fp8 vScaleDs
+         if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
+             fBaseParams.queryType == ge::DT_HIFLOAT8) {
+-            postTilingData_->set_vScaleDsWorkSpaceOffset(workspaceSize);
+             workspaceSize =
+                 (workspaceSize + fBaseParams.coreNum * ALIGN128 * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+         }
+@@ -1247,10 +1244,10 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
+ void FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize4Deter(size_t &workspaceSize)
+ {
+     if (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_OLD)) {
+-        postTilingData_->set_deterGmOffset(workspaceSize);
++        baseDeterParam_->set_deterGmOffset(workspaceSize);
+         workspaceSize += (fBaseParams.s1Inner * S1CV_RATIO_DEFAULT + NUM_TWO * fBaseParams.s2Inner) *
+                          fBaseParams.sfmgdInner * fBaseParams.aicNum * FP32_BYTES * NUM_TWO;
+-        postTilingData_->set_deterWorkSpaceOffset(workspaceSize);
++        baseDeterParam_->set_deterWorkSpaceOffset(workspaceSize);
+         // NUM_THREE: querGmOffset, keyGmOffset and valueGmOffset
+         workspaceSize += fBaseParams.maxValidBBLen * fBaseParams.aicNum * INT64_BLOCK_NUM * NUM_THREE * INT64_BYTES;
+     }
+@@ -1258,7 +1255,7 @@ void FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize4Deter(size_t &
+     if (fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
+         (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) ||
+          fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE))) {
+-        postTilingData_->set_deterGmOffset(workspaceSize);
++        baseDeterParam_->set_deterGmOffset(workspaceSize);
+         workspaceSize += (fBaseParams.s2Inner * fBaseParams.sfmgdInner * CORE_LIST_NUM * FP32_BYTES + GM_ALIGN) /
+                          GM_ALIGN * GM_ALIGN * NUM_TWO;
+     }
+@@ -1585,7 +1582,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
+ {
+     bool isTnd = (fBaseParams.layoutType == INPUT_FORMAT_TND);
+     if (IsNewDeter(fBaseParams) && tndBaseInfo.isTndSwizzle) {
+-        FagTilingWithTemplateTTT *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTTT>();
++        FagTilingWithTemplateTTTT *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTTTT>();
+         if (tilingData == nullptr) {
+             OP_LOGE("InitTilingData", "InitTilingData failed.");
+             return ge::GRAPH_FAILED;
+@@ -1597,8 +1594,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
+         postTilingData_ = &tilingData->postTilingData;
+         deterParam = &tilingData->deterParam;
+         tndSwizzleParam_ = &tilingData->tndSwizzleParam;
++        baseDeterParam_ = &tilingData->baseDeterParam;
+     } else if (IsNewDeter(fBaseParams)) {
+-        FagTilingWithTemplateTTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTTF>();
++        FagTilingWithTemplateTTTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTTTF>();
+         if (tilingData == nullptr) {
+             OP_LOGE("InitTilingData", "InitTilingData failed.");
+             return ge::GRAPH_FAILED;
+@@ -1609,8 +1607,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
+         preTilingData_ = &tilingData->preTilingData;
+         postTilingData_ = &tilingData->postTilingData;
+         deterParam = &tilingData->deterParam;
++        baseDeterParam_ = &tilingData->baseDeterParam;
+     } else if (tndBaseInfo.isTndSwizzle) {
+-        FagTilingWithTemplateFTT *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFTT>();
++        FagTilingWithTemplateFFTT *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFTT>();
+         if (tilingData == nullptr) {
+             OP_LOGE("InitTilingData", "InitTilingData failed.");
+             return ge::GRAPH_FAILED;
+@@ -1622,28 +1621,23 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
+         postTilingData_ = &tilingData->postTilingData;
+         tndSwizzleParam_ = &tilingData->tndSwizzleParam;
+     } else if (isTnd) {
+-        FagTilingWithTemplateFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFTF>();
+-        if (tilingData == nullptr) {
+-            OP_LOGE("InitTilingData", "InitTilingData failed.");
+-            return ge::GRAPH_FAILED;
++        if (fBaseParams.isDeterministic) {
++            FagTilingWithTemplateTFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTFTF>();
++            TND_TILING_DATA_COMMON_ASSIGN(tilingData);
++            baseDeterParam_ = &tilingData->baseDeterParam;
++        } else {
++            FagTilingWithTemplateFFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFTF>();
++            TND_TILING_DATA_COMMON_ASSIGN(tilingData);
+         }
+-        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;
+-        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;
+-        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;
+-        preTilingData_ = &tilingData->preTilingData;
+-        postTilingData_ = &tilingData->postTilingData;
+-        tndParam_ = &tilingData->tndParam;
+     } else {
+-        FagTilingWithTemplateFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFF>();
+-        if (tilingData == nullptr) {
+-            OP_LOGE("InitTilingData", "InitTilingData failed.");
+-            return ge::GRAPH_FAILED;
++        if (fBaseParams.isDeterministic) {
++            FagTilingWithTemplateTFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTFFF>();
++            BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
++            baseDeterParam_ = &tilingData->baseDeterParam;
++        } else {
++            FagTilingWithTemplateFFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFFF>();
++            BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
+         }
+-        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;
+-        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;
+-        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;
+-        preTilingData_ = &tilingData->preTilingData;
+-        postTilingData_ = &tilingData->postTilingData;
+     }
+     if (s1s2BNGS1S2BaseParams_ == nullptr || s1s2BNGS1S2SplitCoreParams_ == nullptr ||
+         s1s2BNGS1S2BlockNumList_ == nullptr || preTilingData_ == nullptr || postTilingData_ == nullptr) {
+@@ -1664,14 +1658,11 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
+     s1s2BNGS1S2BaseParams_->set_d(fBaseParams.d);
+     s1s2BNGS1S2BaseParams_->set_d1(fBaseParams.d1);
+     s1s2BNGS1S2BaseParams_->set_s2(fBaseParams.s2);
+-    s1s2BNGS1S2BaseParams_->set_pseOptional(fBaseParams.pseOptional);
+     s1s2BNGS1S2BaseParams_->set_pseType(fBaseParams.pseType);
+     s1s2BNGS1S2BaseParams_->set_pseShapeType(fBaseParams.pseShapeType);
+     s1s2BNGS1S2BaseParams_->set_pseLayoutType(fBaseParams.pseLayoutType);
+     s1s2BNGS1S2BaseParams_->set_pseDtype(fBaseParams.pseDtype);
+-    s1s2BNGS1S2BaseParams_->set_attenMaskOptional(fBaseParams.attenMaskOptional);
+     s1s2BNGS1S2BaseParams_->set_attenMaskShapeType(fBaseParams.attenMaskShapeType);
+-    s1s2BNGS1S2BaseParams_->set_attenMaskDtype(fBaseParams.attenMaskDtype);
+     s1s2BNGS1S2BaseParams_->set_layout(fBaseParams.layoutType);
+     s1s2BNGS1S2BaseParams_->set_tndMaxSumLayout(fBaseParams.tndMaxSumLayout);
+     s1s2BNGS1S2BaseParams_->set_scaleValue(fBaseParams.scaleValue);
+@@ -1730,16 +1721,18 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
+     s1s2BNGS1S2BlockNumList_->set_blockEnds(fBaseParams.blockEnds);
+     s1s2BNGS1S2SplitCoreParams_->set_blockOuter(fBaseParams.blockOuter);
+     s1s2BNGS1S2SplitCoreParams_->set_maxValidBBLen(fBaseParams.maxValidBBLen);
+-    s1s2BNGS1S2SplitCoreParams_->set_noNeedDeter(fBaseParams.noNeedDeter);
+-    s1s2BNGS1S2SplitCoreParams_->set_deterMaxRound(fBaseParams.deterMaxRound);
+-    if ((fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) ||
+-         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
+-        fBaseParams.layoutType == INPUT_FORMAT_TND) {
+-        s1s2BNGS1S2SplitCoreParams_->set_dqIsNeedDeter(fBaseParams.startNeedSyncRound);
+-        s1s2BNGS1S2SplitCoreParams_->set_dkDvIsNeedDeter(fBaseParams.endNeedSyncRound);
+-    } else {
+-        s1s2BNGS1S2SplitCoreParams_->set_dqIsNeedDeter(fBaseParams.dqIsNeedDeter);
+-        s1s2BNGS1S2SplitCoreParams_->set_dkDvIsNeedDeter(fBaseParams.dkDvIsNeedDeter);
++    if (fBaseParams.isDeterministic) {
++        baseDeterParam_->set_noNeedDeter(fBaseParams.noNeedDeter);
++        baseDeterParam_->set_deterMaxRound(fBaseParams.deterMaxRound);
++        if ((fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) ||
++            fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
++            fBaseParams.layoutType == INPUT_FORMAT_TND) {
++            baseDeterParam_->set_dqIsNeedDeter(fBaseParams.startNeedSyncRound);
++            baseDeterParam_->set_dkDvIsNeedDeter(fBaseParams.endNeedSyncRound);
++        } else {
++            baseDeterParam_->set_dqIsNeedDeter(fBaseParams.dqIsNeedDeter);
++            baseDeterParam_->set_dkDvIsNeedDeter(fBaseParams.dkDvIsNeedDeter);
++        }
+     }
+     if (IsNewDeter(fBaseParams) && deterParam != nullptr) {
+         deterParam->set_coreDivide(fBaseParams.coreDivide);
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/deter.h b/attention/flash_attention_score_grad/op_kernel/arch35/deter.h
+index 2ed207b21..14e8aaa6b 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/deter.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/deter.h
+@@ -1311,7 +1311,7 @@ __aicore__ inline void CalBandIndex(const BandInfo &bandInfo, int64_t j, int64_t
+ template <bool isAlign = false>
+ __aicore__ inline int64_t GetPrefixByBidx(const __gm__ uint8_t *actualSeqQlenAddr,
+                                           const __gm__ uint8_t *actualSeqKvlenAddr,
+-                                          const int64_t (&prefix)[DETER_PREFIX_NUM], int64_t bIdx, int64_t step)
++                                          const __gm__ int64_t *prefix, int64_t bIdx, int64_t step)
+ {
+     int64_t w = bIdx / step;
+ 
+@@ -1442,7 +1442,7 @@ __aicore__ inline void UpdateMNPQ(int64_t actualCalcS1Token, int64_t actualCalcS
+ template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
+ __aicore__ inline void
+ CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
+-                        const uint64_t (&tndS2BlockPrefixSum)[129], int64_t b, int64_t n2, int64_t g, int64_t j,
++                        const __gm__ uint64_t *tndS2BlockPrefixSum, int64_t b, int64_t n2, int64_t g, int64_t j,
+                         int64_t k, int64_t r, int64_t &deltaCnt, CoordinateInfo &coordinateInfo)
+ {
+     j -= 1;
+@@ -1486,7 +1486,7 @@ CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ ui
+ template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN, const uint8_t DETER_SPARSE_TYPE = DETER_DENSE, const bool IS_N_EQUAL = true>
+ __aicore__ inline void
+ CalTNDDenseIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
+-                 const int64_t (&prefix)[DETER_PREFIX_NUM], int64_t deterMaxRound, int64_t b, int64_t n2, int64_t g, int64_t j,
++                 const __gm__ int64_t *prefix, int64_t deterMaxRound, int64_t b, int64_t n2, int64_t g, int64_t j,
+                  int64_t r, uint8_t flag, int64_t step, CoordinateInfo &coordinateInfo)
+ {
+     coordinateInfo.batchId = -1;
+@@ -1675,8 +1675,8 @@ __aicore__ inline void UpdataCausalMN(CoordinateInfo &coordinateInfo, int64_t &m
+ template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
+ __aicore__ inline void
+ CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
+-                  const int64_t (&prefix0)[DETER_PREFIX_NUM], const int64_t (&prefix1)[DETER_PREFIX_NUM],
+-                  const int64_t (&prefix2)[DETER_PREFIX_NUM], int64_t b, int64_t N1, int64_t k, int64_t j, int64_t r,
++                  const __gm__ int64_t *prefix0, const __gm__ int64_t *prefix1,
++                  const __gm__ int64_t *prefix2, int64_t b, int64_t N1, int64_t k, int64_t j, int64_t r,
+                   int64_t step, CoordinateInfo &coordinateInfo)
+ {
+     int64_t maxRoundIndex = b > DETER_PREFIX_THRESHOLD ? Ceil<int64_t>(b + 1, step) : b + 1;
+@@ -1802,8 +1802,8 @@ CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t
+ template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
+ __aicore__ inline void
+ CalTNDGQACausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
+-                     const int64_t (&prefix0)[DETER_PREFIX_NUM], const int64_t (&prefix1)[DETER_PREFIX_NUM],
+-                     const int64_t (&prefix2)[DETER_PREFIX_NUM], int64_t b, int64_t g, int64_t N2, int64_t k, int64_t j, int64_t r,
++                     const __gm__ int64_t *prefix0, const __gm__ int64_t *prefix1,
++                     const __gm__ int64_t *prefix2, int64_t b, int64_t g, int64_t N2, int64_t k, int64_t j, int64_t r,
+                      int64_t step, bool coreDivide, CoordinateInfo &coordinateInfo)
+ {
+     int64_t maxRoundIndex = b > DETER_PREFIX_THRESHOLD ? Ceil<int64_t>(b + 1, step) : b + 1;
+@@ -1888,7 +1888,7 @@ CalTNDGQACausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8
+     }
+ }
+ 
+-__aicore__ inline int64_t BinarySearch(const int64_t (&prefix)[DETER_PREFIX_NUM], int64_t b, int64_t rThreshold,
++__aicore__ inline int64_t BinarySearch(const __gm__ int64_t *prefix, int64_t b, int64_t rThreshold,
+                                        int64_t step)
+ {
+     int64_t w = 0;
+@@ -2026,7 +2026,7 @@ __aicore__ inline void CalPosWholeBatch(int64_t m, int64_t n, int64_t p, int64_t
+ template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
+ __aicore__ inline void
+ CalTNDBandIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
+-                const int64_t (&prefix0)[DETER_PREFIX_NUM], const int64_t (&prefix1)[DETER_PREFIX_NUM], int64_t b,
++                const __gm__ int64_t *prefix0, const __gm__ int64_t *prefix1, int64_t b,
+                 int64_t N1, int64_t k, int64_t j, int64_t r, int64_t step, CoordinateInfo &coordinateInfo)
+ {
+     int64_t maxRoundIndex = b > DETER_PREFIX_THRESHOLD ? Ceil<int64_t>(b + 1, step) : b + 1;
+@@ -2136,7 +2136,7 @@ CalTNDBandIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *a
+ template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
+ __aicore__ inline void
+ CalTNDGQABandIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
+-                   const int64_t (&prefix0)[DETER_PREFIX_NUM], const int64_t (&prefix1)[DETER_PREFIX_NUM], int64_t b,
++                   const __gm__ int64_t *prefix0, const __gm__ int64_t *prefix1, int64_t b,
+                    int64_t g, int64_t N2, int64_t k, int64_t j, int64_t r, int64_t step, CoordinateInfo &coordinateInfo)
+ {
+     int64_t maxRoundIndex = b > DETER_PREFIX_THRESHOLD ? Ceil<int64_t>(b + 1, step) : b + 1;
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_block_cube.h b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_block_cube.h
+index dc1a6d238..80cc562c5 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_block_cube.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_block_cube.h
+@@ -799,7 +799,11 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKFixpout(typename DqkvResPos<T, IS_WRITE
+                 SetAtomicAdd<CALC_TYPE>();
+             }
+             if constexpr (IS_ROPE) {
+-                Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[runInfo.queryOffsetWithRope],
++                int64_t offset = runInfo.queryOffsetWithRope;
++                if constexpr (SPLIT_AXIS == BN2) {
++                    offset = GetBlockIdx() * CUBE_BASEM * HEAD_DIM_ALIGN;
++                }
++                Fixpipe<T, CALC_TYPE, DQ_FIXPIPE_CONFIG>(outTensor[offset],
+                                                         mm3L0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+             } else {
+                 int64_t offset = SPLIT_AXIS == BN2 ? GetBlockIdx() * CUBE_BASEM * HEAD_DIM_ALIGN : runInfo.commonRunInfo.queryOffset;
+@@ -1129,7 +1133,11 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQFixpout(typename DqkvResPos<T, IS_WRITE
+                     SetAtomicAdd<CALC_TYPE>();
+                 }
+                 if constexpr (IS_ROPE) {
+-                    Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[runInfo.keyOffsetWithRope],
++                    int64_t offset = runInfo.keyOffsetWithRope;
++                    if constexpr (SPLIT_AXIS == BN2) {
++                        offset = GetBlockIdx() * CUBE_BASEN * HEAD_DIM_ALIGN;
++                    }
++                    Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[offset],
+                                                             dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
+                 } else {
+                     int64_t offset = 0;
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_block_vec.h b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_block_vec.h
+index 23b415a91..965c8a1a7 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_block_vec.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_block_vec.h
+@@ -52,7 +52,8 @@ public:
+     __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR pseShift, GM_ADDR dropMask,
+                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
+                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
+-                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR sink, GM_ADDR dsink,
++                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope,
++                                            GM_ADDR sink, GM_ADDR dsink,
+                                             GM_ADDR workspace);
+     __aicore__ inline void SetOldDeterFp32Param(FagConstInfo &constInfo);
+     __aicore__ inline void InitUbBuffer();
+@@ -131,6 +132,7 @@ public:
+     GM_ADDR pseSlope;
+     GlobalTensor<uint8_t> dropMaskWorkspaceGm;
+     GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm;
++    GlobalTensor<OUTDTYPE> dqRopeGm, dkRopeGm;
+     GlobalTensor<float> sinkGm, dsinkGm, dsinkWorkSpaceGm;
+  
+     // ub buffer
+@@ -235,7 +237,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
+                                                                     GM_ADDR softmaxMax, GM_ADDR softmaxSum,
+                                                                     GM_ADDR deqScaleQ, GM_ADDR deqScaleK,
+                                                                     GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR dq,
+-                                                                    GM_ADDR dk, GM_ADDR dv, GM_ADDR sink, GM_ADDR dsink,
++                                                                    GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope,
++                                                                    GM_ADDR dkRope, GM_ADDR sink, GM_ADDR dsink,
+                                                                     GM_ADDR workspace)
+ {
+     valueGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)value);
+@@ -251,6 +254,10 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
+     dqGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dq);
+     dkGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
+     dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
++    if constexpr (IS_ROPE) {
++        dqRopeGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dqRope);
++        dkRopeGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dkRope);
++    }
+     if constexpr (IS_DROP) {
+         if (tilingData->preTilingData.dropoutIsDivisibleBy8 == 0) {
+             dropMaskWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace + tilingData->postTilingData.dropMaskGmOffset);
+@@ -266,8 +273,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
+         dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dsinkWorkSpaceOffset / sizeof(float));
+     }
+     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
+-        deterGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.deterGmOffset / sizeof(CALC_TYPE));
+-        deterOffsetGm.SetGlobalBuffer((__gm__ int64_t *)workspace + tilingData->postTilingData.deterWorkSpaceOffset / sizeof(int64_t));
++        deterGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->baseDeterParam.deterGmOffset / sizeof(CALC_TYPE));
++        deterOffsetGm.SetGlobalBuffer((__gm__ int64_t *)workspace + tilingData->baseDeterParam.deterWorkSpaceOffset / sizeof(int64_t));
+         if constexpr (!IS_FP32_INPUT) {
+             dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
+             dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
+@@ -732,6 +739,38 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DqkvMulsAndCastFromGM(FagCons
+     uint64_t dqkvGmOffset = (MM_IDX == DQ_IDX) ?    
+                                runInfo.commonRunInfo.queryOffset :
+                                (MM_IDX == DK_IDX ? runInfo.commonRunInfo.keyOffset : runInfo.commonRunInfo.valueOffset);
++    uint64_t ropeGmOffset;
++    GlobalTensor<OUTDTYPE> dqkRopeGmTensor;
++    uint16_t ropeDstStride;
++    if constexpr (IS_ROPE) {
++        dSize = constInfo.commonConstInfo.dSizeV;
++        dqkvGmOffset = (MM_IDX == DQ_IDX) ?
++                            runInfo.queryOffsetWithRopeForMm12 :
++                            (MM_IDX == DK_IDX ? runInfo.keyOffsetWithRopeForMm12 :
++                            runInfo.commonRunInfo.valueOffset);
++        ropeGmOffset = MM_IDX == DQ_IDX ? runInfo.commonRunInfo.qRopeOffset :
++            runInfo.commonRunInfo.kRopeOffset;
++        dqkRopeGmTensor = MM_IDX == DQ_IDX ? dqRopeGm : dkRopeGm;
++        if constexpr (IS_TND) {
++            ropeDstStride = static_cast<uint32_t>((constInfo.commonConstInfo.n2G - 1) *
++                constInfo.dRopeSize * sizeof(OUTDTYPE));
++            ropeGmOffset += vSubBlockIdx * firsthalfSRealSize * constInfo.commonConstInfo.n2GDr;
++        } else {
++            if (constInfo.commonConstInfo.layoutType == BNGSD) {
++                ropeDstStride = 0;
++                ropeGmOffset += vSubBlockIdx * firsthalfSRealSize * constInfo.dRopeSize;
++            } else if (constInfo.commonConstInfo.layoutType == SBNGD) {
++                ropeDstStride = static_cast<uint32_t>((constInfo.bSize * constInfo.commonConstInfo.n2G - 1) *
++                    constInfo.dRopeSize * sizeof(OUTDTYPE));
++                ropeGmOffset += vSubBlockIdx * firsthalfSRealSize * constInfo.commonConstInfo.bN2GDr;
++            } else if (constInfo.commonConstInfo.layoutType == BSNGD) {
++                ropeDstStride = static_cast<uint32_t>((constInfo.commonConstInfo.n2G - 1) *
++                    constInfo.dRopeSize * sizeof(OUTDTYPE));
++                ropeGmOffset += vSubBlockIdx * firsthalfSRealSize * constInfo.commonConstInfo.n2GDr;
++            }
++        }
++    }
++
+     if constexpr (IS_TND) {
+         intriParamsOut.dstStride = static_cast<uint32_t>((constInfo.commonConstInfo.n2G - 1) * dSize * sizeof(OUTDTYPE));
+         dqkvGmOffset += vSubBlockIdx * firsthalfSRealSize * dSize * constInfo.commonConstInfo.n2G;
+@@ -778,10 +817,32 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DqkvMulsAndCastFromGM(FagCons
+         outQue.EnQue(dqkvCastTensor);
+         outQue.template DeQue<OUTDTYPE>();
+  
+-        intriParamsOut.blockCount = curLoopSize;
+-        intriParamsOut.blockLen = dSize * sizeof(OUTDTYPE);
+- 
+-        DataCopyPad(dqkvGmTensor[dqkvGmOffset], dqkvCastTensor, intriParamsOut);
++        if constexpr (IS_ROPE) {
++            DataCopyParams dataCopyParams;
++            dataCopyParams.blockCount = curLoopSize;
++            if (MM_IDX != DV_IDX) {
++                uint16_t dBlockLen = NUM_FOUR * sizeof(OUTDTYPE);
++                uint16_t dRopeBlockLen = NUM_TWO * sizeof(OUTDTYPE);
++                dataCopyParams.blockLen = dBlockLen;
++                dataCopyParams.srcStride = dRopeBlockLen;
++                dataCopyParams.dstStride = static_cast<uint16_t>(intriParamsOut.dstStride >> OFFSET_BITS_5);
++                DataCopy(dqkvGmTensor[dqkvGmOffset], dqkvCastTensor, dataCopyParams);
++                dataCopyParams.blockLen = dRopeBlockLen;
++                dataCopyParams.srcStride = dBlockLen;
++                dataCopyParams.dstStride = ropeDstStride >> OFFSET_BITS_5;
++                DataCopy(dqkRopeGmTensor[ropeGmOffset], dqkvCastTensor[dSize], dataCopyParams);
++            } else {
++                // 128 * sizeof(OUTDTYPE) / 32B
++                dataCopyParams.blockLen = NUM_FOUR * sizeof(OUTDTYPE);
++                dataCopyParams.srcStride = 0;
++                dataCopyParams.dstStride = 0;
++                DataCopy(dqkvGmTensor[dqkvGmOffset], dqkvCastTensor, dataCopyParams);
++            }
++        } else {
++            intriParamsOut.blockCount = curLoopSize;
++            intriParamsOut.blockLen = dSize * sizeof(OUTDTYPE);
++            DataCopyPad(dqkvGmTensor[dqkvGmOffset], dqkvCastTensor, intriParamsOut);
++        }
+         outQue.FreeTensor(dqkvCastTensor);
+  
+         if constexpr (IS_TND) {
+@@ -795,6 +856,20 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DqkvMulsAndCastFromGM(FagCons
+                 dqkvGmOffset += loopSize * constInfo.commonConstInfo.n2G * dSize;
+             }
+         }
++
++        if constexpr (IS_ROPE) {
++            if constexpr (IS_TND) {
++                ropeGmOffset += loopSize * constInfo.commonConstInfo.n2GDr; // use g axis because of bn2 limit: nq = nkv
++            } else {
++                if (constInfo.commonConstInfo.layoutType == BNGSD) {
++                    ropeGmOffset += loopSize * constInfo.dRopeSize;
++                } else if (constInfo.commonConstInfo.layoutType == SBNGD) {
++                    ropeGmOffset += loopSize * constInfo.commonConstInfo.bN2GDr;
++                } else if (constInfo.commonConstInfo.layoutType == BSNGD) {
++                    ropeGmOffset += loopSize * constInfo.commonConstInfo.n2GDr;
++                }
++            }
++        }
+     }
+ }
+ 
+@@ -1339,7 +1414,8 @@ public:
+     __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR pseShift, GM_ADDR dropMask,
+                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
+                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
+-                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR sink, GM_ADDR dsink,
++                                            GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope,
++                                            GM_ADDR sink, GM_ADDR dsink,
+                                             GM_ADDR workspace){};
+     __aicore__ inline void SetVecBlockParams(TPipe *pipe, FagTilingType tilingData, uint32_t vBlockIdx,
+                                              uint32_t cBlockIdx, uint32_t vSubBlockIdx, AttenMaskInfo &attenMaskInfo,
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_common.h b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_common.h
+index f79c22af5..7a77ffe9a 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_common.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_common.h
+@@ -220,6 +220,11 @@ __aicore__ constexpr bool NEED_DETER_PREFIX(const uint8_t deterSparseType, bool
+     return isTnd && IS_DETER_NEW(deterSparseType);
+ }
+ 
++__aicore__ constexpr bool NEED_DETER(const uint8_t deterSparseType)
++{
++    return deterSparseType != NO_DETER;
++}
++
+ template <typename T, bool IS_WRITE_UB>
+ struct DqkvResPos {
+     using PosType = typename std::conditional<IS_WRITE_UB, LocalTensor<T> &, GlobalTensor<T> &>::type;
+@@ -328,12 +333,12 @@ __aicore__ constexpr bool GET_IS_NZ_OUT(const uint8_t SPLIT_AXIS, const uint32_t
+     ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
+ 
+ #define FagOldTilingType                                                                                               \
+-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, \
+-                                                                 false> *__restrict
++    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE), \
++        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, false> *__restrict
+ 
+ #define FagTilingType                                                                                                  \
+-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, \
+-                                                                 IS_TND_SWIZZLE> *__restrict
++    const __gm__ FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE), \
++        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, IS_TND_SWIZZLE> *__restrict
+ 
+ struct LoopInfo {
+     int64_t bIdx{0};
+@@ -358,10 +363,6 @@ struct DeterConstInfo {
+     uint32_t dqEachVectorSize;
+     uint32_t dkvEachVectorSize;
+     // 确定性计算MTE3的stride
+-    int64_t deterBStride;
+-    int64_t deterN2Stride;
+-    int64_t deterGStride;
+-    int64_t deterS1oStride;
+     uint32_t deterDqkSrcStride;
+     uint32_t deterDvSrcStride;
+     uint32_t deterDqDstStride;
+@@ -412,7 +413,6 @@ struct FagConstInfo {
+     int64_t s1Outer;
+     int64_t s2Outer;
+     int64_t s1CvTail;
+-    int64_t s1Tail;
+     int64_t s2Tail;
+     uint32_t sfmgMaxLoopSize;
+     uint32_t dAlignToBlock;
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_entry_regbase.h b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_entry_regbase.h
+index 8752d838b..b36b4a0f8 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_entry_regbase.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_entry_regbase.h
+@@ -271,9 +271,12 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
+     SetSysWorkspace(workspace);
+     __gm__ uint8_t *user = GetUserWorkspace(workspace);
+     constexpr static bool needDeterPrefix = NEED_DETER_PREFIX(deterType, isTnd);
+-    using fagTiling = FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<needDeterPrefix, isTnd, isTndSwizzle>;
+-    GET_TILING_DATA_WITH_STRUCT(fagTiling, tiling_data_in, tiling_data);
+-    const fagTiling *__restrict tilingData = &tiling_data_in;
++    using fagTiling = FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(deterType),
++        needDeterPrefix, isTnd, isTndSwizzle>;
++    // GET_TILING_DATA_WITH_STRUCT(fagTiling, tiling_data_in, tiling_data);
++    size_t offset = (size_t)(&((fagTiling *)0)->s1s2BNGS1S2BaseParams);
++
++    const __gm__ fagTiling *__restrict tilingData = (const __gm__ fagTiling *__restrict)(tiling_data + offset);
+ #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
+     if constexpr (splitAxis == BN2GS1S2) {
+         INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel.h b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel.h
+index 51e0c6fab..d4dcbf203 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel.h
+@@ -31,22 +31,9 @@ public:
+     ARGS_TRAITS;
+     using BaseClass = FlashAttentionScoreGradKernelBase<FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>,
+                                                         CubeBlockType, VecBlockType>;
+-    __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
+-    __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
+     __aicore__ inline void Process();
+ };
+  
+-template <typename CubeBlockType, typename VecBlockType>
+-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
+-{
+-}
+- 
+-template <typename CubeBlockType, typename VecBlockType>
+-__aicore__ inline void
+-FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
+-{
+-}
+- 
+ template <typename CubeBlockType, typename VecBlockType>
+ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::Process()
+ {
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_base.h b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_base.h
+index 4b5127133..ca8f52942 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_base.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_base.h
+@@ -107,6 +107,9 @@ public:
+         (CUBE_BASEM == CUBE_BASEN ? 0 : (CUBE_BASEM > CUBE_BASEN ? 2 : 1));
+     constexpr static uint32_t DETER_CUBE_BASEM = CUBE_BASEM < CUBE_BASEN ? CUBE_BASEN : CUBE_BASEM;
+     constexpr static uint32_t DETER_CUBE_BASEN = CUBE_BASEM > CUBE_BASEN ? CUBE_BASEM : CUBE_BASEN;
++    constexpr static uint32_t IS_NORMAL_SWIZZLE = !IS_TND && CUBE_BASEM == CUBE_BASEN && SPLIT_AXIS == BN2GS1S2 &&
++                                                  DETER_SPARSE_TYPE == NO_DETER;
++
+ protected:
+     TPipe *pipe;
+  
+@@ -136,16 +139,15 @@ protected:
+     int64_t s2CvEnd = 0;
+     int64_t actualCalcS1Token = 0; // 转换后实际计算使用的S1Token
+     int64_t actualCalcS2Token = 0;
+-    uint32_t sinkOptional = 0;
+  
+     // BN2S2模板判断是否有无效S2列
+     int64_t curS2oIdx = -1;
+     int64_t curS2InvalidTotalNum = 0;
+ 
+     // BN2扩展模板判断S1轴有效始终位置
+-    bool isLastS1Outer[2] = {0};
+-    bool isFirstS1Outer[2] = {0};
+-    Bn2MultiBlkInfo multiBlkInfo;
++    typename std::conditional<IS_BN2_MULTIBLK, bool[2], std::nullptr_t>::type isLastS1Outer;
++    typename std::conditional<IS_BN2_MULTIBLK, bool[2], std::nullptr_t>::type isFirstS1Outer;
++    typename std::conditional<IS_BN2_MULTIBLK, Bn2MultiBlkInfo, std::nullptr_t>::type multiBlkInfo;
+  
+     FagTilingType tilingData;
+     FagConstInfo constInfo;
+@@ -219,7 +221,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+                                dropInfo);
+     vecBlock.InitUbBuffer();
+     vecBlock.InitGlobalBuffer(value, dy, y, pseShift, dropMask, attenMask, softmaxMax, softmaxSum, deqScaleQ, deqScaleK,
+-                              deqScaleV, deqScaleDy, dq, dk, dv, sink, dsink, workspace);
++                              deqScaleV, deqScaleDy, dq, dk, dv, dqRope, dkRope, sink, dsink, workspace);
+     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT) {
+         vecBlock.SetOldDeterFp32Param(constInfo);
+     }
+@@ -315,16 +317,18 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+     }
+ 
+     if constexpr (IS_ATTEN_MASK) {
+-        attenMaskInfo.attenMaskShapeType = tilingData->s1s2BNGS1S2BaseParams.attenMaskShapeType;
+-        attenMaskInfo.compressMode = tilingData->s1s2BNGS1S2BaseParams.attenMaskCompressMode;
+-        attenMaskInfo.attenMaskS2Size = tilingData->s1s2BNGS1S2BaseParams.attenMaskS2Size;
+         attenMaskInfo.preTokens = tilingData->s1s2BNGS1S2BaseParams.s1Token;
+         attenMaskInfo.nextTokens = tilingData->s1s2BNGS1S2BaseParams.s2Token;
+-        attenMaskInfo.prefixNAddr = prefixNAddr;
+         attenMaskInfo.bandIndex = tilingData->s1s2BNGS1S2SplitCoreParams.bandIdx;
+     }
+- 
++
+     if ASCEND_IS_AIV {
++        if constexpr (IS_ATTEN_MASK) {
++            attenMaskInfo.attenMaskShapeType = tilingData->s1s2BNGS1S2BaseParams.attenMaskShapeType;
++            attenMaskInfo.compressMode = tilingData->s1s2BNGS1S2BaseParams.attenMaskCompressMode;
++            attenMaskInfo.attenMaskS2Size = tilingData->s1s2BNGS1S2BaseParams.attenMaskS2Size;
++            attenMaskInfo.prefixNAddr = prefixNAddr;
++        }
+         if constexpr (IS_PSE) {
+             uint32_t pseShapeType = tilingData->s1s2BNGS1S2BaseParams.pseShapeType;
+             pseInfo.pseBSize =
+@@ -338,7 +342,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+             pseInfo.qStartIdx = tilingData->s1s2BNGS1S2BaseParams.qStartIdx;
+             pseInfo.kvStartIdx = tilingData->s1s2BNGS1S2BaseParams.kvStartIdx;
+         }
+-    
+         if constexpr (IS_DROP) {
+             dropInfo.seed = tilingData->s1s2BNGS1S2BaseParams.seed;
+             dropInfo.offset = tilingData->s1s2BNGS1S2BaseParams.offset;
+@@ -352,7 +355,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetSwizzleConstInfo()
+ {
+-    if constexpr (!IS_TND && DETER_SPARSE_TYPE == NO_DETER) {
++    if constexpr (IS_NORMAL_SWIZZLE) {
+         if (!tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) {
+             return;
+         }
+@@ -483,18 +486,12 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetConstInfo()
+ {
+-    constInfo.s1Token = tilingData->s1s2BNGS1S2BaseParams.s1Token;
+-    constInfo.s2Token = tilingData->s1s2BNGS1S2BaseParams.s2Token;
+-    constInfo.sparseMode = tilingData->s1s2BNGS1S2BaseParams.sparseMode;
+     // split info
+     constInfo.s1Outer = tilingData->s1s2BNGS1S2SplitCoreParams.s1Outer;
+     constInfo.s1CvTail = tilingData->s1s2BNGS1S2SplitCoreParams.s1CvTail;
+-    constInfo.s1Tail = tilingData->s1s2BNGS1S2SplitCoreParams.s1Tail;
+     constInfo.s2Tail = tilingData->s1s2BNGS1S2SplitCoreParams.s2Tail;
+     constInfo.s2Outer = tilingData->s1s2BNGS1S2SplitCoreParams.s2Outer;
+- 
+-    constInfo.commonConstInfo.s1BaseSize = CUBE_BASEM;
+-    constInfo.commonConstInfo.s2BaseSize = CUBE_BASEN;
++
+     constInfo.bSize = tilingData->s1s2BNGS1S2BaseParams.b;
+     constInfo.n2Size = tilingData->s1s2BNGS1S2BaseParams.n2;
+     constInfo.commonConstInfo.gSize = tilingData->s1s2BNGS1S2BaseParams.g;
+@@ -503,7 +500,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+     constInfo.commonConstInfo.dSize = tilingData->s1s2BNGS1S2BaseParams.d;
+     constInfo.commonConstInfo.dSizeV = tilingData->s1s2BNGS1S2BaseParams.d1;
+     constInfo.commonConstInfo.layoutType = tilingData->s1s2BNGS1S2BaseParams.layout;
+- 
+     constInfo.commonConstInfo.s1D = constInfo.commonConstInfo.s1Size * constInfo.commonConstInfo.dSize;
+     constInfo.commonConstInfo.gS1D = constInfo.commonConstInfo.gSize * constInfo.commonConstInfo.s1D;
+     constInfo.commonConstInfo.n2GS1D = constInfo.n2Size * constInfo.commonConstInfo.gS1D;
+@@ -554,19 +550,16 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+         constInfo.commonConstInfo.n2GDv = constInfo.commonConstInfo.n2GD;
+         constInfo.commonConstInfo.bN2GDv = constInfo.commonConstInfo.bN2GD;
+     }
+- 
+-    constInfo.scaleValue = tilingData->s1s2BNGS1S2BaseParams.scaleValue;
++    if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sinkOptional)) {
++        constInfo.isSink = tilingData->s1s2BNGS1S2BaseParams.sinkOptional;
++        constInfo.s1SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s1SinkOuter;
++        constInfo.s2SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s2SinkOuter;
++    }
+     constInfo.n2GS1oS2o = constInfo.commonConstInfo.n2G * constInfo.s1Outer * constInfo.s2Outer;
+     constInfo.gS1oS2o = constInfo.commonConstInfo.gSize * constInfo.s1Outer * constInfo.s2Outer;
+     constInfo.s1oS2o = constInfo.s1Outer * constInfo.s2Outer;
+-
+-    // sink
+-    sinkOptional = tilingData->s1s2BNGS1S2BaseParams.sinkOptional;
+-    constInfo.isSink = sinkOptional;
+-    constInfo.s1SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s1SinkOuter;
+-    constInfo.s2SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s2SinkOuter;
+     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
+-        constInfo.deterConstInfo.noNeedDeter = static_cast<bool>(tilingData->s1s2BNGS1S2SplitCoreParams.noNeedDeter);
++        constInfo.deterConstInfo.noNeedDeter = static_cast<bool>(tilingData->baseDeterParam.noNeedDeter);
+         constInfo.deterConstInfo.usedCubeCoreNum =
+             static_cast<uint8_t>(tilingData->s1s2BNGS1S2SplitCoreParams.blockOuter);
+         // 确定性计算中会用满V核
+@@ -592,37 +585,22 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+             constInfo.commonConstInfo.mm1Kb = constInfo.commonConstInfo.n2Dv;
+             constInfo.mm2Ka = constInfo.commonConstInfo.n2GD;
+             constInfo.mm2Kb = constInfo.commonConstInfo.n2D;
+-            constInfo.deterConstInfo.deterN2Stride = constInfo.commonConstInfo.gD;
+-            constInfo.deterConstInfo.deterGStride = constInfo.commonConstInfo.dSize;
+-            constInfo.deterConstInfo.deterS1oStride = constInfo.commonConstInfo.n2GD;
+         } else {
+             if (constInfo.commonConstInfo.layoutType == BNGSD) {
+                 constInfo.commonConstInfo.mm1Ka = constInfo.commonConstInfo.dSizeV;
+                 constInfo.commonConstInfo.mm1Kb = constInfo.commonConstInfo.dSizeV;
+                 constInfo.mm2Ka = constInfo.commonConstInfo.dSize;
+                 constInfo.mm2Kb = constInfo.commonConstInfo.dSize;
+-                constInfo.deterConstInfo.deterBStride = constInfo.commonConstInfo.n2GS1D;
+-                constInfo.deterConstInfo.deterN2Stride = constInfo.commonConstInfo.gS1D;
+-                constInfo.deterConstInfo.deterGStride = constInfo.commonConstInfo.s1D;
+-                constInfo.deterConstInfo.deterS1oStride = constInfo.commonConstInfo.dSize;
+             } else if (constInfo.commonConstInfo.layoutType == SBNGD) {
+                 constInfo.commonConstInfo.mm1Ka = constInfo.commonConstInfo.bN2GDv;
+                 constInfo.commonConstInfo.mm1Kb = constInfo.commonConstInfo.bN2Dv;
+                 constInfo.mm2Ka = constInfo.commonConstInfo.bN2GD;
+                 constInfo.mm2Kb = constInfo.commonConstInfo.bN2D;
+-                constInfo.deterConstInfo.deterBStride = constInfo.commonConstInfo.n2GD;
+-                constInfo.deterConstInfo.deterN2Stride = constInfo.commonConstInfo.gD;
+-                constInfo.deterConstInfo.deterGStride = constInfo.commonConstInfo.dSize;
+-                constInfo.deterConstInfo.deterS1oStride = constInfo.commonConstInfo.bN2GD;
+             } else if (constInfo.commonConstInfo.layoutType == BSNGD) {
+                 constInfo.commonConstInfo.mm1Ka = constInfo.commonConstInfo.n2GDv;
+                 constInfo.commonConstInfo.mm1Kb = constInfo.commonConstInfo.n2Dv;
+                 constInfo.mm2Ka = constInfo.commonConstInfo.n2GD;
+                 constInfo.mm2Kb = constInfo.commonConstInfo.n2D;
+-                constInfo.deterConstInfo.deterBStride = constInfo.commonConstInfo.n2GS1D;
+-                constInfo.deterConstInfo.deterN2Stride = constInfo.commonConstInfo.gD;
+-                constInfo.deterConstInfo.deterGStride = constInfo.commonConstInfo.dSize;
+-                constInfo.deterConstInfo.deterS1oStride = constInfo.commonConstInfo.n2GD;
+             }
+         }
+         constInfo.deterConstInfo.deterDqkSrcStride =
+@@ -692,13 +670,21 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+             } 
+         }
+     }
++    if constexpr (IS_ATTEN_MASK) {
++        constInfo.s1Token = tilingData->s1s2BNGS1S2BaseParams.s1Token;
++        constInfo.s2Token = tilingData->s1s2BNGS1S2BaseParams.s2Token;
++        constInfo.sparseMode = tilingData->s1s2BNGS1S2BaseParams.sparseMode;
++    }
+     constInfo.commonConstInfo.subBlockIdx = vSubBlockIdx;
++    constInfo.scaleValue = tilingData->s1s2BNGS1S2BaseParams.scaleValue;
+     constInfo.aicCoreNum = tilingData->s1s2BNGS1S2BaseParams.coreNum >> 1;
+     constInfo.enablePreSfmg = ((uint32_t)dTemplateType > 64) && tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg;
+     constInfo.dAlign16 = AlignTo16(constInfo.commonConstInfo.dSize);
+     constInfo.dvAlign16 = AlignTo16(constInfo.commonConstInfo.dSizeV);
+     uint32_t tmp = 0xFF7FFFFF;
+     if ASCEND_IS_AIV {
++        constInfo.commonConstInfo.s1BaseSize = CUBE_BASEM;
++        constInfo.commonConstInfo.s2BaseSize = CUBE_BASEN;
+         constInfo.attenMaskMinValue = *((float *)&tmp);
+         constInfo.commonConstInfo.keepProb = tilingData->s1s2BNGS1S2BaseParams.keepProb;
+         constInfo.sfmgMaxLoopSize = VECTOR_BASEM * VECTOR_BASEN / HEAD_DIM_ALIGN; // softmaxGrad每次最大能处理的m轴大小
+@@ -706,7 +692,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+         constInfo.tndMaxSumLayout = tilingData->s1s2BNGS1S2BaseParams.tndMaxSumLayout;
+     }
+     SetSwizzleConstInfo();
+-    GetDerived()->SetUniqueConstInfo(constInfo);
+ }
+  
+ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+@@ -1058,8 +1043,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+     }
+ 
+     // BN2扩展模板专用
+-    runInfo.isLastS1Outer = isLastS1Outer[taskId & 1];
+-    runInfo.isFirstS1Outer = isFirstS1Outer[taskId & 1];
++    if constexpr (IS_BN2_MULTIBLK) {
++        runInfo.isLastS1Outer = isLastS1Outer[taskId & 1];
++        runInfo.isFirstS1Outer = isFirstS1Outer[taskId & 1];
++    }
+ 
+     runInfo.isS2IdxNoChange = (lastS2oCvDimIdx == runInfo.s2oIdx && lastBdimIdx == runInfo.commonRunInfo.boIdx &&
+                                lastN2dimIdx == runInfo.commonRunInfo.n2oIdx);
+@@ -1068,7 +1055,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+         lastBdimIdx = runInfo.commonRunInfo.boIdx;
+         lastN2dimIdx = runInfo.commonRunInfo.n2oIdx;
+     }
+-    if (unlikely(sinkOptional)) {
++    if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sinkOptional)) {
+         runInfo.sinkN1Idx = runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize
+             + runInfo.commonRunInfo.goIdx;
+         uint64_t s1oIdxSink = vSubBlockIdx == 1 ?
+@@ -1078,7 +1065,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+             runInfo.commonRunInfo.boIdx * constInfo.s1SinkOuter * constInfo.s2SinkOuter +
+             s1oIdxSink * constInfo.s2SinkOuter + runInfo.s2oIdx;
+     }
+-    GetDerived()->SetUniqueRunInfo(runInfo);
+ 
+     // preload next query and dy offset for l1 preload
+     if (taskId == 0) {
+@@ -1131,6 +1117,13 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
+                 runInfo.commonRunInfo.qRopeOffset = GetQueryRopeOffset(runInfo);
+                 runInfo.commonRunInfo.kRopeOffset = GetKeyRopeOffset(runInfo);
+             }
++        } else {
++            if constexpr (SPLIT_AXIS == BN2 && IS_ROPE) {
++                runInfo.queryOffsetWithRopeForMm12 = GetQueryOffset<true>(runInfo);
++                runInfo.keyOffsetWithRopeForMm12 = GetKeyOffset<true>(runInfo);
++                runInfo.commonRunInfo.qRopeOffset = GetQueryRopeOffset(runInfo);
++                runInfo.commonRunInfo.kRopeOffset = GetKeyRopeOffset(runInfo);
++            }
+         }
+     }
+ }
+@@ -1381,7 +1374,24 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelBase<ChildClass, CubeBloc
+         }
+     } else {
+         int64_t nextValidBlockInnerIdx = 0;
+-        if (!tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) {
++        if constexpr (IS_NORMAL_SWIZZLE) {
++            if (tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) {
++                nextValidBlockInnerIdx = GetNextValidIdxForSwizzle(runInfo, curLoopIdx);
++                return nextValidBlockInnerIdx;
++            } else {
++                nextValidBlockInnerIdx = blockInnerIdx;
++                while (!IsValid(runInfo, taskId, nextValidBlockInnerIdx)) {
++                    if (nextValidBlockInnerIdx >= tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx]) {
++                        return -1;
++                    }
++                    nextValidBlockInnerIdx++;
++                }
++                if (nextValidBlockInnerIdx >= tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx]) {
++                    return -1;
++                }
++                return nextValidBlockInnerIdx;
++            }
++        } else {
+             nextValidBlockInnerIdx = blockInnerIdx;
+             while (!IsValid(runInfo, taskId, nextValidBlockInnerIdx)) {
+                 if (nextValidBlockInnerIdx >= tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx]) {
+@@ -1393,13 +1403,6 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelBase<ChildClass, CubeBloc
+                 return -1;
+             }
+             return nextValidBlockInnerIdx;
+-        } else {
+-            if constexpr (!IS_TND && DETER_SPARSE_TYPE == NO_DETER) {
+-                nextValidBlockInnerIdx = GetNextValidIdxForSwizzle(runInfo, curLoopIdx);
+-                return nextValidBlockInnerIdx;
+-            } else {
+-                return -1;
+-            }
+         }
+     }
+ }
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_deter.h b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_deter.h
+index 61d52d72f..80a268140 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_deter.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_deter.h
+@@ -39,8 +39,6 @@ public:
+             GM_ADDR keyRope, GM_ADDR sink, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope,
+             GM_ADDR dkRope, GM_ADDR dsink, GM_ADDR workspace,
+             FagTilingType ordTilingData, TPipe *pipeIn);
+-    __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
+-    __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
+     __aicore__ inline void SetRunInfoDeterForTND(FagRunInfo &runInfo, int64_t taskId, int64_t index, CoordinateInfo &coordinateInfo,int64_t nextIndex);
+     __aicore__ inline int64_t CalDeterMaxLoopNum();
+     __aicore__ inline void CalDeterIndex(uint32_t roundId, uint32_t maxLoopNum, int64_t &nextValidRoundId, int64_t &nextValidIndex, int64_t taskId,
+@@ -94,20 +92,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
+     dAlign16 = AlignTo16(this->constInfo.commonConstInfo.dSize);
+     dvAlign16 = AlignTo16(this->constInfo.commonConstInfo.dSizeV);
+  
+-    deterGm.SetGlobalBuffer((__gm__ float *)workspace + this->tilingData->postTilingData.deterGmOffset / sizeof(CALC_TYPE));
++    deterGm.SetGlobalBuffer((__gm__ float *)workspace + this->tilingData->baseDeterParam.deterGmOffset / sizeof(CALC_TYPE));
+     deterGmOffset = this->cBlockIdx * this->CUBE_BASEN * this->HEAD_DIM_ALIGN * NUM_TWO; 
+ }
+-
+-template <typename CubeBlockType, typename VecBlockType>
+-__aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
+-{
+-}
+- 
+-template <typename CubeBlockType, typename VecBlockType>
+-__aicore__ inline void
+-FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
+-{
+-}
+  
+ template <typename CubeBlockType, typename VecBlockType>
+ __aicore__ inline void
+@@ -295,7 +282,6 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetRunInfoDeter
+     }
+  
+ //----------------------------------------------PART
+-    this->GetDerived()->SetUniqueRunInfo(runInfo);
+     // preload next query and dy offset for l1 preload
+     if (unlikely(taskId == 0)) {
+         runInfo.commonRunInfo.queryOffset = this->GetQueryOffset(runInfo);
+@@ -450,7 +436,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDenseDeterIn
+             CalTNDDenseIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN, BaseClass::DETER_SPARSE_TYPE,
+                              BaseClass::IS_N_EQUAL>(
+                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
+-                this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound, this->constInfo.bSize,
++                this->tilingData->baseDeterParam.deterMaxRound, this->constInfo.bSize,
+                 this->constInfo.n2Size, this->constInfo.commonConstInfo.gSize, j, r, 0,
+                 this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+         }
+@@ -580,7 +566,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
+         if constexpr (IS_TND_SWIZZLE) {
+             return this->tilingData->tndSwizzleParam.tndS2BlockPrefixSum[this->constInfo.bSize];
+         } else {
+-            return this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound;
++            return this->tilingData->baseDeterParam.deterMaxRound;
+         }
+     }
+ 
+@@ -590,7 +576,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
+         if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+             return Max(this->constInfo.s1Outer * Ceil<int64_t>((n + 1) * (b >> 1), k), n + 1);
+         }
+-        return this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound;
++        return this->tilingData->baseDeterParam.deterMaxRound;
+     }
+  
+     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_DENSE) {
+@@ -666,8 +652,8 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
+         if constexpr(BaseClass::IS_N_EQUAL) {
+             GenBandInfo(k, actualM, actualN, actualP, actualQ, b, this->bandInfo);
+             int64_t convertedMaxRound = BaseClass::DETER_TILING_SPLIT_MODE ?
+-                this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound / NUM_TWO :
+-                this->tilingData->s1s2BNGS1S2SplitCoreParams.deterMaxRound;
++                this->tilingData->baseDeterParam.deterMaxRound / NUM_TWO :
++                this->tilingData->baseDeterParam.deterMaxRound;
+             deterLoopMax = Max(convertedMaxRound, this->bandInfo.rm2);
+         } else {
+             k = Min(Min(k, b * this->constInfo.commonConstInfo.gSize * m), b * n);
+@@ -738,11 +724,11 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::DeterSync(int64
+  
+     // 此处复用dqIsNeedDeter和dkDvIsNeedDeter装载需要同步的轮次范围
+     for (int8_t i = 0; i < MAX_CUBE_CORE_NUM; i++) {
+-        if (this->tilingData->s1s2BNGS1S2SplitCoreParams.dkDvIsNeedDeter[i] == 0) {
++        if (this->tilingData->baseDeterParam.dkDvIsNeedDeter[i] == 0) {
+             return;
+         }
+-        if (static_cast<uint64_t>(loopIdx) >= this->tilingData->s1s2BNGS1S2SplitCoreParams.dqIsNeedDeter[i] && 
+-            static_cast<uint64_t>(loopIdx) <= this->tilingData->s1s2BNGS1S2SplitCoreParams.dkDvIsNeedDeter[i]) {
++        if (static_cast<uint64_t>(loopIdx) >= this->tilingData->baseDeterParam.dqIsNeedDeter[i] && 
++            static_cast<uint64_t>(loopIdx) <= this->tilingData->baseDeterParam.dkDvIsNeedDeter[i]) {
+             CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
+             CrossCoreWaitFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
+             return;
+@@ -1287,8 +1273,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
+         int64_t arrayIndex = computeLoopIdx / this->BITS_EACH_UINT64;
+         int64_t bitShift = computeLoopIdx % this->BITS_EACH_UINT64;
+         uint64_t mask = 1ULL << bitShift;
+-        dqIsNeedDeter[computeLoopIdx & 1] = (this->tilingData->s1s2BNGS1S2SplitCoreParams.dqIsNeedDeter[arrayIndex] & mask) != 0;
+-        dkDvIsNeedDeter[computeLoopIdx & 1] = (this->tilingData->s1s2BNGS1S2SplitCoreParams.dkDvIsNeedDeter[arrayIndex] & mask) != 0;
++        dqIsNeedDeter[computeLoopIdx & 1] = (this->tilingData->baseDeterParam.dqIsNeedDeter[arrayIndex] & mask) != 0;
++        dkDvIsNeedDeter[computeLoopIdx & 1] = (this->tilingData->baseDeterParam.dkDvIsNeedDeter[arrayIndex] & mask) != 0;
+     }
+ }
+  
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_quant.h b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_quant.h
+index 25337d904..9b669c75c 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_quant.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_kernel_quant.h
+@@ -54,8 +54,6 @@ public:
+             GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR workspace,
+             FagTilingType ordTilingData, TPipe *pipeIn);
+     __aicore__ inline void InitBuffer();
+-    __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
+-    __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
+     __aicore__ inline void SetConstInfo();
+     __aicore__ inline void InitCVCommonBuffer();
+     __aicore__ inline void InitCVCommonGlobalBuffer(GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR deqScaleQ, GM_ADDR deqScaleK,
+@@ -149,7 +147,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBloc
+     // split info
+     this->constInfo.s1Outer = tilingData->s1s2BNGS1S2SplitCoreParams.s1Outer;
+     this->constInfo.s1CvTail = tilingData->s1s2BNGS1S2SplitCoreParams.s1CvTail;
+-    this->constInfo.s1Tail = tilingData->s1s2BNGS1S2SplitCoreParams.s1Tail;
+     this->constInfo.s2Tail = tilingData->s1s2BNGS1S2SplitCoreParams.s2Tail;
+     this->constInfo.s2Outer = tilingData->s1s2BNGS1S2SplitCoreParams.s2Outer;
+  
+@@ -283,17 +280,6 @@ FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBlockType>::InitCVCommonGlo
+     dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                     tilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
+ }
+-
+-template <typename CubeBlockType, typename VecBlockType>
+-__aicore__ inline void FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
+-{
+-}
+- 
+-template <typename CubeBlockType, typename VecBlockType>
+-__aicore__ inline void
+-FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
+-{
+-}
+  
+ template <typename CubeBlockType, typename VecBlockType>
+ __aicore__ inline int64_t
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h
+index 9967e1a6a..1c4abf0f9 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h
+@@ -29,16 +29,21 @@
+  #define ASCENDC_TPL_10_BW 10
+  #define ASCENDC_TPL_12_BW 12
+ 
+-using FagTilingWithTemplateFFF =
+-    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, false, false>;
+-using FagTilingWithTemplateFTT =
+-    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, true, true>;
+-using FagTilingWithTemplateFTF =
+-    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, true, false>;
+-using FagTilingWithTemplateTTF =
+-    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, true, false>;
+-using FagTilingWithTemplateTTT =
+-    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, true, true>;
++using FagTilingWithTemplateFFFF =
++    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, false, false, false>;
++using FagTilingWithTemplateFFTT =
++    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, false, true, true>;
++using FagTilingWithTemplateFFTF =
++    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, false, true, false>;
++
++using FagTilingWithTemplateTFFF =
++    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, false, false, false>;
++using FagTilingWithTemplateTFTF =
++    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, false, true, false>;
++using FagTilingWithTemplateTTTF =
++    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, true, true, false>;
++using FagTilingWithTemplateTTTT =
++    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, true, true, true>;
+ 
+  // 可表示的tilingkey范围为64bit，注意不能超过限制
+  ASCENDC_TPL_ARGS_DECL(FlashAttentionScoreGrad, // 算子唯一标识，可以opType保持一致
+@@ -143,7 +148,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -165,7 +170,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -187,7 +192,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -209,7 +214,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -231,7 +236,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -253,7 +258,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -275,7 +280,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -297,7 +302,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -319,7 +324,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -341,7 +346,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -363,7 +368,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -385,7 +390,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -407,7 +412,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -429,7 +434,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -451,7 +456,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -473,7 +478,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -495,7 +500,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -517,7 +522,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -539,7 +544,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -561,7 +566,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -578,12 +583,12 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
+              ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0, 1),
+-             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
++             ASCENDC_TPL_BOOL_SEL(IsRope, 0, 1),
+              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -600,12 +605,12 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
+              ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0, 1),
+-             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
++             ASCENDC_TPL_BOOL_SEL(IsRope, 0, 1),
+              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -627,7 +632,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -649,7 +654,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -671,7 +676,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTT)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTT)
+          ),
+      #endif
+      #if (ORIG_DTYPE_QUERY == -1) || (ORIG_DTYPE_QUERY == DT_BF16) 
+@@ -696,7 +701,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -718,7 +723,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -740,7 +745,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -762,7 +767,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -784,7 +789,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -806,7 +811,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -828,7 +833,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -850,7 +855,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -872,7 +877,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -894,7 +899,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -916,7 +921,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -938,7 +943,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -960,7 +965,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -982,7 +987,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1004,7 +1009,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1026,7 +1031,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1048,7 +1053,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1070,7 +1075,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1092,7 +1097,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1114,7 +1119,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1131,12 +1136,12 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
+              ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0, 1),
+-             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
++             ASCENDC_TPL_BOOL_SEL(IsRope, 0, 1),
+              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1153,12 +1158,12 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
+              ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0, 1),
+              ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0, 1),
+-             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
++             ASCENDC_TPL_BOOL_SEL(IsRope, 0, 1),
+              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1180,7 +1185,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1202,7 +1207,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1224,7 +1229,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTT)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTT)
+          ),
+      #endif
+  
+@@ -1250,7 +1255,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1272,7 +1277,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1294,7 +1299,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1316,7 +1321,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1338,7 +1343,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1360,7 +1365,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1382,7 +1387,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1404,7 +1409,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1426,7 +1431,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1448,7 +1453,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-            ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ), 
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1470,7 +1475,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-            ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1492,7 +1497,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1514,7 +1519,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+          ),
+          ASCENDC_TPL_ARGS_SEL(
+              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+@@ -1536,7 +1541,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
+          ),
+      #endif
+ 
+@@ -1562,7 +1567,7 @@ using FagTilingWithTemplateTTT =
+              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
+          ),
+      #endif
+   
+@@ -1587,7 +1592,7 @@ using FagTilingWithTemplateTTT =
+          ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+          ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+          ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+-         ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
++         ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+      ),
+  );
+  #endif
+\ No newline at end of file
+diff --git a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h
+index caa0d3638..8dd10ca23 100644
+--- a/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h
++++ b/attention/flash_attention_score_grad/op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h
+@@ -103,15 +103,12 @@ public:
+     int64_t totalPerBatchNum;
+     uint32_t layout;
+     uint32_t tndMaxSumLayout;
+-    uint32_t pseOptional;
+     uint32_t pseType;
+     uint32_t pseShapeType;
+     uint32_t pseLayoutType;
+     uint32_t pseDtype;
+     uint32_t qStartIdx;
+     uint32_t kvStartIdx;
+-    uint32_t attenMaskOptional;
+-    uint32_t attenMaskDtype;
+     uint32_t attenMaskShapeType;
+     uint32_t sparseMode;
+     uint32_t attenMaskCompressMode;
+@@ -138,12 +135,9 @@ public:
+     uint8_t get_dropMaskOuter() const {return dropMaskOuter;}
+     uint32_t get_layout() const {return layout;}
+     uint32_t get_tndMaxSumLayout() const {return tndMaxSumLayout;}
+-    uint32_t get_pseOptional() const {return pseOptional;}
+     uint32_t get_pseType() const {return pseType;}
+     uint32_t get_qStartIdx() const {return qStartIdx;}
+     uint32_t get_kvStartIdx() const {return kvStartIdx;}
+-    uint32_t get_attenMaskOptional() const {return attenMaskOptional;}
+-    uint32_t get_attenMaskDtype() const {return attenMaskDtype;}
+     uint32_t get_attenMaskShapeType() const {return attenMaskShapeType;}
+     int64_t get_s1Token() const {return s1Token;}
+     int64_t get_s2Token() const {return s2Token;}
+@@ -174,15 +168,12 @@ public:
+     void set_dropMaskOuter(uint8_t dropMaskOuterParam) { this->dropMaskOuter = dropMaskOuterParam; }
+     void set_layout(uint32_t layoutParam) { this->layout = layoutParam; }
+     void set_tndMaxSumLayout(uint32_t tndMaxSumLayoutParam) { this->tndMaxSumLayout = tndMaxSumLayoutParam; }
+-    void set_pseOptional(uint32_t pseOptionalParam) { this->pseOptional = pseOptionalParam; }
+     void set_pseType(uint32_t pseTypeParam) { this->pseType = pseTypeParam; }
+     void set_pseShapeType(uint32_t pseShapeTypeParam) { this->pseShapeType = pseShapeTypeParam; }
+     void set_pseLayoutType(uint32_t pseLayoutTypeParam) { this->pseLayoutType = pseLayoutTypeParam; }
+     void set_pseDtype(uint32_t pseDtypeParam) { this->pseDtype = pseDtypeParam; }
+     void set_qStartIdx(uint32_t qStartIdxParam) { this->qStartIdx = qStartIdxParam; }
+     void set_kvStartIdx(uint32_t kvStartIdxParam) { this->kvStartIdx = kvStartIdxParam; }
+-    void set_attenMaskOptional(uint32_t attenMaskOptionalParam) { this->attenMaskOptional = attenMaskOptionalParam; }
+-    void set_attenMaskDtype(uint32_t attenMaskDtypeParam) { this->attenMaskDtype = attenMaskDtypeParam; }
+     void set_attenMaskShapeType(uint32_t attenMaskShapeTypeParam) { this->attenMaskShapeType = attenMaskShapeTypeParam; }
+     void set_s1Token(int64_t s1TokenParam) { this->s1Token = s1TokenParam; }
+     void set_s2Token(int64_t s2TokenParam) { this->s2Token = s2TokenParam; }
+@@ -212,12 +203,7 @@ public:
+     uint32_t s2Tail;
+     uint32_t blockOuter;
+     uint32_t maxValidBBLen;
+-    uint32_t noNeedDeter;
+-    uint32_t reserved;
+     int64_t bandIdx;
+-    int64_t deterMaxRound;
+-    uint64_t dqIsNeedDeter[MAX_CORE_NUM];
+-    uint64_t dkDvIsNeedDeter[MAX_CORE_NUM];
+ 
+     int64_t get_s1Outer() const { return s1Outer; }
+     uint32_t get_s1Inner() const { return s1Inner; }
+@@ -229,13 +215,8 @@ public:
+     uint32_t get_s2Tail() const { return s2Tail; }
+     uint32_t get_blockOuter() const { return blockOuter; }
+     uint32_t get_maxValidBBLen() const { return maxValidBBLen; }
+-    uint32_t get_noNeedDeter() const { return noNeedDeter; }
+     int64_t get_bandIdx() const { return bandIdx; }
+-    int64_t get_deterMaxRound() const { return deterMaxRound; }
+-    const uint64_t* get_dqIsNeedDeter() const { return dqIsNeedDeter; }
+-    uint64_t get_dqIsNeedDeter(int index) const { return dqIsNeedDeter[index]; }
+-    const uint64_t* get_dkDvIsNeedDeter() const { return dkDvIsNeedDeter; }
+-    uint64_t get_dkDvIsNeedDeter(int index) const { return dkDvIsNeedDeter[index]; }
++
+ 
+     void set_s1Outer(int64_t val) { s1Outer = val; }
+     void set_s1Inner(uint32_t val) { s1Inner = val; }
+@@ -247,21 +228,7 @@ public:
+     void set_s2Tail(uint32_t val) { s2Tail = val; }
+     void set_blockOuter(uint32_t val) { blockOuter = val; }
+     void set_maxValidBBLen(uint32_t val) { maxValidBBLen = val; }
+-    void set_noNeedDeter(uint32_t val) { noNeedDeter = val; }
+     void set_bandIdx(int64_t val) { bandIdx = val; }
+-    void set_deterMaxRound(int64_t value) { deterMaxRound = value; }
+-    void set_dqIsNeedDeter(const uint64_t* val) { 
+-        for (uint i = 0; i < MAX_CORE_NUM; ++i) {
+-            dqIsNeedDeter[i] = val[i];
+-        }
+-    }
+-    void set_dqIsNeedDeter(int index, uint64_t val) { dqIsNeedDeter[index] = val; }
+-    void set_dkDvIsNeedDeter(const uint64_t* val) { 
+-        for (uint i = 0; i < MAX_CORE_NUM; ++i) {
+-            dkDvIsNeedDeter[i] = val[i];
+-        }
+-    }
+-    void set_dkDvIsNeedDeter(int index, uint64_t val) { dkDvIsNeedDeter[index] = val; }
+ };
+ 
+ class BlockNumListParamsRegbase {
+@@ -289,7 +256,6 @@ public:
+ 
+ class PreParamsRegbase {
+ public:
+-    uint64_t maskPreBlockTotal;
+     uint64_t maskSingleCoreNum;
+     uint64_t qPreBlockFactor;
+     uint64_t qPreBlockTotal;
+@@ -332,7 +298,6 @@ public:
+     int64_t tailCoreNBurstNums;
+     int64_t normalAxisSize;
+ 
+-    uint64_t get_maskPreBlockTotal() const { return maskPreBlockTotal; }
+     uint64_t get_maskSingleCoreNum() const { return maskSingleCoreNum; }
+     uint64_t get_qPreBlockFactor() const { return qPreBlockFactor; }
+     uint64_t get_qPreBlockTotal() const { return qPreBlockTotal; }
+@@ -371,7 +336,6 @@ public:
+     int64_t get_tailCoreNBurstNums() const {return tailCoreNBurstNums;}
+     int64_t get_normalAxisSize() const {return normalAxisSize;}
+ 
+-    void set_maskPreBlockTotal(uint64_t val) { maskPreBlockTotal = val; }
+     void set_maskSingleCoreNum(uint64_t val) { maskSingleCoreNum = val; }
+     void set_qPreBlockFactor(uint64_t val) { qPreBlockFactor = val; }
+     void set_qPreBlockTotal(uint64_t val) { qPreBlockTotal = val; }
+@@ -413,7 +377,6 @@ public:
+ 
+ class PostParamsRegbase {
+ public:
+-    uint64_t postUbBaseSize;
+     uint64_t qPostBlockFactor;
+     uint64_t qPostBlockTotal;
+     uint64_t qPostBaseNum;
+@@ -429,10 +392,7 @@ public:
+     uint64_t dqWorkSpaceOffset;
+     uint64_t dkWorkSpaceOffset;
+     uint64_t dvWorkSpaceOffset;
+-    uint64_t vScaleDsWorkSpaceOffset;
+     uint64_t dropMaskGmOffset;
+-    uint64_t deterGmOffset;
+-    uint64_t deterWorkSpaceOffset;
+     uint64_t sfmgWorkSpaceOffset;
+     uint64_t dsinkWorkSpaceOffset;
+     uint64_t sinkReduceAxis;
+@@ -440,7 +400,6 @@ public:
+     uint64_t sinkPostBlockFactor;
+     uint64_t sinkPostTailNum;
+ 
+-    uint64_t get_postUbBaseSize() const { return postUbBaseSize; }
+     uint64_t get_qPostBlockFactor() const { return qPostBlockFactor; }
+     uint64_t get_qPostBlockTotal() const { return qPostBlockTotal; }
+     uint64_t get_qPostBaseNum() const { return qPostBaseNum; }
+@@ -456,10 +415,7 @@ public:
+     uint64_t get_dqWorkSpaceOffset() const { return dqWorkSpaceOffset; }
+     uint64_t get_dkWorkSpaceOffset() const { return dkWorkSpaceOffset; }
+     uint64_t get_dvWorkSpaceOffset() const { return dvWorkSpaceOffset; }
+-    uint64_t get_vScaleDsWorkSpaceOffset() const { return vScaleDsWorkSpaceOffset; }
+     uint64_t get_dropMaskGmOffset() const { return dropMaskGmOffset; }
+-    uint64_t get_deterGmOffset() const { return deterGmOffset; }
+-    uint64_t get_deterWorkSpaceOffset() const { return deterWorkSpaceOffset; }
+     uint64_t get_sfmgWorkSpaceOffset() const {return sfmgWorkSpaceOffset;}
+     uint64_t get_dsinkWorkSpaceOffset() const {return dsinkWorkSpaceOffset;}
+     uint64_t get_sinkReduceAxis() const { return sinkReduceAxis; }
+@@ -467,7 +423,6 @@ public:
+     uint64_t get_sinkPostBlockFactor() const { return sinkPostBlockFactor; }
+     uint64_t get_sinkPostTailNum() const {return sinkPostTailNum;}
+ 
+-    void set_postUbBaseSize(uint64_t value) { postUbBaseSize = value; }
+     void set_qPostBlockFactor(uint64_t value) { qPostBlockFactor = value; }
+     void set_qPostBlockTotal(uint64_t value) { qPostBlockTotal = value; }
+     void set_qPostBaseNum(uint64_t value) { qPostBaseNum = value; }
+@@ -483,10 +438,7 @@ public:
+     void set_dqWorkSpaceOffset(uint64_t value) { dqWorkSpaceOffset = value; }
+     void set_dkWorkSpaceOffset(uint64_t value) { dkWorkSpaceOffset = value; }
+     void set_dvWorkSpaceOffset(uint64_t value) { dvWorkSpaceOffset = value; }
+-    void set_vScaleDsWorkSpaceOffset(uint64_t value) { vScaleDsWorkSpaceOffset = value; }
+     void set_dropMaskGmOffset(uint64_t value) { dropMaskGmOffset = value; }
+-    void set_deterGmOffset(uint64_t value) { deterGmOffset = value; }
+-    void set_deterWorkSpaceOffset(uint64_t value) { deterWorkSpaceOffset = value; }
+     void set_sfmgWorkSpaceOffset(uint64_t value) { sfmgWorkSpaceOffset = value; }
+     void set_dsinkWorkSpaceOffset(uint64_t value) { dsinkWorkSpaceOffset = value; }
+     void set_sinkReduceAxis(uint64_t value) { sinkReduceAxis = value; }
+@@ -495,6 +447,43 @@ public:
+     void set_sinkPostTailNum(uint64_t value) { sinkPostTailNum = value; }
+ };
+ 
++class BaseDeterParamRegbase {
++public:
++    uint32_t noNeedDeter;
++    uint32_t reserved1; // tilingData需要8字节对齐
++    int64_t deterMaxRound;
++    uint64_t deterGmOffset;
++    uint64_t deterWorkSpaceOffset;
++    uint64_t dqIsNeedDeter[MAX_CORE_NUM];
++    uint64_t dkDvIsNeedDeter[MAX_CORE_NUM];
++
++    uint32_t get_noNeedDeter() const { return noNeedDeter; }
++    int64_t get_deterMaxRound() const { return deterMaxRound; }
++    uint64_t get_deterGmOffset() const { return deterGmOffset; }
++    uint64_t get_deterWorkSpaceOffset() const { return deterWorkSpaceOffset; }
++    uint64_t get_dqIsNeedDeter(int index) const { return dqIsNeedDeter[index]; }
++    const uint64_t* get_dqIsNeedDeter() const { return dqIsNeedDeter; }
++    const uint64_t* get_dkDvIsNeedDeter() const { return dkDvIsNeedDeter; }
++    uint64_t get_dkDvIsNeedDeter(int index) const { return dkDvIsNeedDeter[index]; }
++
++    void set_noNeedDeter(uint32_t val) { noNeedDeter = val; }
++    void set_deterMaxRound(int64_t value) { deterMaxRound = value; }
++    void set_deterGmOffset(uint64_t value) { deterGmOffset = value; }
++    void set_deterWorkSpaceOffset(uint64_t value) { deterWorkSpaceOffset = value; }
++    void set_dqIsNeedDeter(const uint64_t* val) { 
++        for (uint i = 0; i < MAX_CORE_NUM; ++i) {
++            dqIsNeedDeter[i] = val[i];
++        }
++    }
++    void set_dqIsNeedDeter(int index, uint64_t val) { dqIsNeedDeter[index] = val; }
++    void set_dkDvIsNeedDeter(const uint64_t* val) { 
++        for (uint i = 0; i < MAX_CORE_NUM; ++i) {
++            dkDvIsNeedDeter[i] = val[i];
++        }
++    }
++    void set_dkDvIsNeedDeter(int index, uint64_t val) { dkDvIsNeedDeter[index] = val; }
++};
++
+ class DeterParamRegbase {
+ public:
+     constexpr static int64_t DETER_PREFIX_NUM = 132;
+@@ -615,7 +604,8 @@ public:
+     }
+ };
+ 
+-template<const bool isNewDeter = false, const bool isTnd = false, const bool isTndSwizzle = false>
++template<const bool isDeter = false, const bool isNewDeter = false,
++    const bool isTnd = false, const bool isTndSwizzle = false>
+ class FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase {
+ public:
+     FlashAttentionScoreGradS1S2BNGS1S2BaseParamsRegbase s1s2BNGS1S2BaseParams;
+@@ -623,6 +613,7 @@ public:
+     BlockNumListParamsRegbase s1s2BNGS1S2BlockNumList;
+     PreParamsRegbase preTilingData;
+     PostParamsRegbase postTilingData;
++    typename std::conditional<isDeter, BaseDeterParamRegbase, std::nullptr_t>::type baseDeterParam;
+     typename std::conditional<isNewDeter, DeterParamRegbase, std::nullptr_t>::type deterParam;
+     typename std::conditional<!isNewDeter && isTnd, TndParamRegbase, std::nullptr_t>::type tndParam;
+     typename std::conditional<isTndSwizzle, TndSwizzleParamRegbase, std::nullptr_t>::type tndSwizzleParam;
+diff --git a/attention/flash_attention_score_grad/op_kernel/flash_attention_score_grad_apt.cpp b/attention/flash_attention_score_grad/op_kernel/flash_attention_score_grad_apt.cpp
+index b25737a09..8f0f90755 100644
+--- a/attention/flash_attention_score_grad/op_kernel/flash_attention_score_grad_apt.cpp
++++ b/attention/flash_attention_score_grad/op_kernel/flash_attention_score_grad_apt.cpp
+@@ -49,7 +49,8 @@ __global__ __aicore__ void flash_attention_score_grad(
+ 
+ {
+     constexpr bool needDeterPrefix = NEED_DETER_PREFIX(DeterType, IsTnd);
+-    using fagTiling = optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<needDeterPrefix, IsTnd, IsTndSwizzle>;
++    using fagTiling = optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DeterType),
++        needDeterPrefix, IsTnd, IsTndSwizzle>;
+     REGISTER_TILING_DEFAULT(fagTiling);
+     if constexpr (IsEmptyTensor) {
+         TPipe tPipe;
