@@ -130,8 +130,9 @@ bool MhcPostRegbaseTilingBase::IsCapable()
     }
 
     const int64_t D_MIN = 32;
-    const int64_t N_MIN = 8;
-    int64_t ubMin = 8 * n * N_MIN + 8 * N_MIN + 4 * D_MIN + 8 * n * D_MIN + 4 * N_MIN * D_MIN;
+    const int64_t N_MIN = 4;
+    const int64_t N_MIN_BUF = ((N_MIN + 7) / 8) * 8;
+    int64_t ubMin = 8 * n * N_MIN_BUF + 8 * N_MIN_BUF + 4 * D_MIN + 4 * n * D_MIN + 8 * N_MIN * D_MIN;
     if (ubMin >= UB_SIZE) {
         return false;
     }
@@ -447,14 +448,16 @@ void MhcPostRegbaseTilingBase::ComputeTiling()
     const int64_t UB_SIZE = static_cast<int64_t>(aicoreParams_.ubSize);
     const int64_t D_ALIGN = static_cast<int64_t>(BF16_FP16_ALIGN_SIZE);
     const int64_t D_MIN = 32;
-    const int64_t N_ALIGN = 8;
-    const int64_t N_MIN = 8;
+    const int64_t N_ALIGN = 4;
+    const int64_t N_MIN = 4;
+    const int64_t N_BUF_ALIGN = 8;
 
     for (int64_t dOuter = 1; ; dOuter++) {
         int64_t dInnerMin = Ops::Base::CeilDiv(d_, dOuter);
         dInner_ = Ops::Base::CeilAlign(dInnerMin, D_ALIGN);
         dInner_ = (dInner_ < D_MIN) ? D_MIN : dInner_;
-        int64_t ubWithMinN = 8 * n_ * N_MIN + 8 * N_MIN + 4 * dInner_ + 8 * n_ * dInner_ + 4 * N_MIN * dInner_;
+        int64_t nMinBuf = ((N_MIN + N_BUF_ALIGN - 1) / N_BUF_ALIGN) * N_BUF_ALIGN;
+        int64_t ubWithMinN = 8 * n_ * nMinBuf + 8 * nMinBuf + 4 * dInner_ + 4 * n_ * dInner_ + 8 * N_MIN * dInner_;
         if (ubWithMinN < UB_SIZE) {
             dOuter_ = dOuter;
             break;
@@ -466,7 +469,8 @@ void MhcPostRegbaseTilingBase::ComputeTiling()
         int64_t nInnerMin = Ops::Base::CeilDiv(n_, nOuter);
         nInner_ = Ops::Base::CeilAlign(nInnerMin, N_ALIGN);
         nInner_ = (nInner_ < N_MIN) ? N_MIN : nInner_;
-        int64_t ub = 8 * n_ * nInner_ + 8 * nInner_ + 4 * dInner_ + 8 * n_ * dInner_ + 4 * nInner_ * dInner_;
+        int64_t nInnerBuf = ((nInner_ + N_BUF_ALIGN - 1) / N_BUF_ALIGN) * N_BUF_ALIGN;
+        int64_t ub = 8 * n_ * nInnerBuf + 8 * nInnerBuf + 4 * dInner_ + 4 * n_ * dInner_ + 8 * nInner_ * dInner_;
         if (ub < UB_SIZE) {
             nOuter_ = nOuter;
             break;
