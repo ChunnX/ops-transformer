@@ -265,11 +265,17 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
             return ge::GRAPH_FAILED;
         }
 
-        if (tempBlockSize != fiaInfo.blockSize) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When page attention is enabled, blockSize of kvCache must be " +
-                    std::to_string(fiaInfo.blockSize)).c_str());
-            return ge::GRAPH_FAILED;
+        if (fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) {
+            OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize + 4,
+            OP_LOGE(fiaInfo.opName, "When page attention enable, if full quant mode is query per-token-head, value per-head, "
+                    "blocksize(%u) of kvCache should be %u",
+                tempBlockSize, fiaInfo.blockSize),
+            return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
+            OP_LOGE(fiaInfo.opName, "When page attention enable, blocksize(%u) of kvCache should be %u",
+                tempBlockSize, fiaInfo.blockSize),
+            return ge::GRAPH_FAILED);
         }
         
         if (tempD != compareD) {

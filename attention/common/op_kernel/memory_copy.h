@@ -355,4 +355,44 @@ __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, Offset
         }
     } 
 }
+
+// ---------------------------------------Set LSE Gm To Inf--------------------------------
+template <GmFormat FORMAT, typename OffsetCalcType>
+__aicore__ inline void DealActSeqLenIsZeroLse(uint32_t bIdx, uint32_t n2Idx, OffsetCalcType &offsetCalculator,
+                                              GlobalTensor<float>& softmaxLseGm)
+{
+    constexpr float lseInf = 3e+99;
+    if constexpr (FORMAT == GmFormat::TNGD) {
+        uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetTBase(bIdx + 1) -
+            offsetCalculator.actualSeqLensQParser.GetTBase(bIdx);
+        for (int s1Idx = 0; s1Idx < s1Count; s1Idx++) {
+            for (int gIdx = 0; gIdx < offsetCalculator.GetDimG(); gIdx++) {
+                uint64_t lseOffset = offsetCalculator.GetOffset(bIdx, n2Idx, gIdx, s1Idx, 0);
+                matmul::InitOutput<float>(softmaxLseGm[lseOffset], 1, lseInf);
+            }
+        }
+    } else if constexpr (FORMAT == GmFormat::NGTD) {
+        uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetTBase(bIdx + 1) -
+            offsetCalculator.actualSeqLensQParser.GetTBase(bIdx);
+        for (int gIdx = 0; gIdx < offsetCalculator.GetDimG(); gIdx++) {
+            uint64_t lseOffset = offsetCalculator.GetOffset(bIdx, n2Idx, gIdx, 0, 0);
+            matmul::InitOutput<float>(softmaxLseGm[lseOffset], s1Count, lseInf);
+        }
+    } else if constexpr (FORMAT == GmFormat::BNGSD) {
+        uint64_t lseOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, 0, 0);
+        matmul::InitOutput<float>(softmaxLseGm[lseOffset], offsetCalculator.GetDimG() * offsetCalculator.GetDimS1(), lseInf);
+    } else if constexpr (FORMAT == GmFormat::BSNGD) {
+        uint32_t s1Size = offsetCalculator.GetDimS1();
+        for (int s1Idx = 0; s1Idx < s1Size; s1Idx++) {
+            uint64_t lseOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, s1Idx, 0);
+            matmul::InitOutput<float>(softmaxLseGm[lseOffset], offsetCalculator.GetDimG(), lseInf);
+        }
+    } else if constexpr (FORMAT == GmFormat::NGBSD) {
+        uint32_t gSize = offsetCalculator.GetDimG();
+        for (int gIdx = 0; gIdx < gSize; gIdx++) {
+            uint64_t lseOffset = offsetCalculator.GetOffset(bIdx, n2Idx, gIdx, 0, 0);
+            matmul::InitOutput<float>(softmaxLseGm[lseOffset], offsetCalculator.GetDimS1(), lseInf);
+        }
+    }
+}
 #endif

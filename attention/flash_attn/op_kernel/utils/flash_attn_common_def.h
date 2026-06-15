@@ -143,6 +143,7 @@ static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] = {
 #define InOutLayoutType_TND 2
 #define InOutLayoutType_BNSD_BSND 3
 #define InOutLayoutType_NTD_NTD 4
+#define InOutLayoutType_NTD_TND 5
 // backward compat
 #define InOutLayoutType_BSH_BSH InOutLayoutType_BSND
 
