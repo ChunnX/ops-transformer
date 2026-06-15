@@ -29,24 +29,6 @@ class SparseFlashMlaOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-<<<<<<< HEAD
-        return "npu_sparse_flash_mla(Tensor q, *," \
-                                            "Tensor? ori_kv=None, Tensor? cmp_kv=None, " \
-                                            "Tensor? ori_sparse_indices=None, Tensor? cmp_sparse_indices=None, " \
-                                            "Tensor? ori_block_table=None, Tensor? cmp_block_table=None, " \
-                                            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, " \
-                                            "Tensor? cu_seqlens_cmp_kv=None, Tensor? seqused_q=None, " \
-                                            "Tensor? seqused_ori_kv=None, Tensor? seqused_cmp_kv=None, " \
-                                            "Tensor? cmp_residual_kv=None, " \
-                                            "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, " \
-                                            "Tensor? sinks=None, Tensor? metadata=None, " \
-                                            "float softmax_scale=1.0, int cmp_ratio=1, " \
-                                            "int ori_mask_mode=4, int cmp_mask_mode=3, " \
-                                            "int ori_win_left=127, int ori_win_right=0, " \
-                                            "str layout_q=\"BSND\", str layout_kv=\"PA_BBND\", " \
-                                            "int topk_value_mode=1, bool return_softmax_lse=False, " \
-                                            "int? key_dtype=None, int? value_dtype=None) -> (Tensor, Tensor)"
-=======
         return [
             "sparse_flash_mla_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, Tensor? cu_seqlens_cmp_kv=None, "
@@ -73,7 +55,6 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             "str layout_q=\"BSND\", str layout_kv=\"PA_BBND\", "
             "int topk_value_mode=1, bool return_softmax_lse=False) -> (Tensor, Tensor)"
         ]
->>>>>>> 209b5d103... metadata整改
  
     def register_meta(self):
         """
