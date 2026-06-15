@@ -28,8 +28,7 @@
         ├── docs
             ├── torch_extension_guidelines.md           # 本开发规范
             ├── zh
-                ├── op_api
-                    ├── ${op_api}.md                    # 算子 api 的中文文档
+                ├── ${op_api}.md                        # 算子 api 的中文文档
 ```
 
 新增一个算子api的标准动作清单（以`flash_attn`为例）：
@@ -39,7 +38,7 @@
 3. 在`ops/graph_convert/graph_convert_flash_attn.py`中编写图模式Converter（若需支持图模式）；
 4. 在`ops/__init__.py`中导出新增的对外接口；
 5. 在包根`cann_ops_transformer/__init__.py`中import导出对外接口，使用户可直接从包根访问；
-6. 在`docs/zh/op_api/flash_attn.md`中补充算子文档。
+6. 在`docs/zh/flash_attn.md`中补充算子文档。
 
 >新增文件请放在`cann_ops_transformer`包下，import路径统一以`cann_ops_transformer`为根。
 
@@ -77,7 +76,7 @@
   - Python前端：`ops/${op_api}.py`，如`flash_attn.py`；
   - C++后端：`ops/csrc/${op_api}.cpp`，主名与Python前端一致，如`flash_attn.cpp`；
   - 图模式：`ops/graph_convert/graph_convert_${op_api}.py`，统一加`graph_convert_`前缀，如`graph_convert_flash_attn.py`；
-  - 文档：`docs/zh/op_api/${op_api}.md`，如`flash_attn.md`。
+  - 文档：`docs/zh/${op_api}.md`，如`flash_attn.md`。
 - 文件主名应与该文件主要导出的算子语义对应；带版本的算子文件名需带版本后缀（如`flash_attn_v2.cpp`）。
 - 公共头文件放在`common/inc/`下，按能力域命名（如`aclnn_common.h`、`hccl_common.h`）。
 
@@ -202,7 +201,7 @@
    ```
 3. **PrivateUse1 dispatcher**：用`@impl(AS_LIBRARY, builder.name, "PrivateUse1")`注册NPU后端实现，函数体透传到编译产物`_op_module.<算子名>(...)`（如`_op_module.flash_attn(...)`）。`PrivateUse1`是PyTorch为自定义NPU后端预留的dispatch key。
 4. **对外接口**：提供面向用户的函数`flash_attn(...)`，负责参数整理、默认值处理等，最终调用dispatcher实现。
-5. **对外api必须书写注释（docstring）**：每个对外导出的接口都要有docstring，至少覆盖「功能说明、各参数含义/shape/dtype/取值范围、返回值说明」，必要时给出简短调用示例。docstring内容应与`docs/zh/op_api/${op_api}.md`保持一致，便于IDE提示与`help()`查看。例如：
+5. **对外api必须书写注释（docstring）**：每个对外导出的接口都要有docstring，至少覆盖「功能说明、各参数含义/shape/dtype/取值范围、返回值说明」，必要时给出简短调用示例。docstring内容应与`docs/zh/${op_api}.md`保持一致，便于IDE提示与`help()`查看。例如：
    ```python
    def flash_attn(
        query: torch.Tensor,
@@ -261,7 +260,7 @@
 
 完成两级导出后，用户既可`from cann_ops_transformer import flash_attn`，也可`cann_ops_transformer.ops.flash_attn(...)`调用；导入主包即完成schema/meta/converter注册。
 
-## 4. 文档规范（`docs/zh/op_api/${op_api}.md`）
+## 4. 文档规范（`docs/zh/${op_api}.md`）
 
 每个对外算子api需配套一份中文文档，建议章节顺序与已有算子文档（如`flash_attn.md`）对齐：
 
