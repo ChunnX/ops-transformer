@@ -752,18 +752,12 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             wgate,
             state_cache,
             ape,
-            norm_weight, 
-            rope_sin,
-            rope_cos,
-            rope_head_dim = rope_head_dim,
             cmp_ratio = cmp_ratio,
             state_block_table = block_table,
             cu_seqlens = cu_seqlens,
             seqused = seqused,
             start_pos = start_pos if exist_start_pos else None,
             coff = coff,
-            norm_eps = norm_eps,
-            rotary_mode = rotary_mode,
             cache_mode = cache_mode
         )
     )
@@ -836,10 +830,7 @@ if __name__ == "__main__":
             args.seqused,
             args.cu_seqlens,
             args.block_size,
-            args.rotary_mode,
             data_type,
             args.hidden_size,
-            args.rope_head_dim,
-            args.norm_eps,
             args.save_state_seqlens,
             args.cache_mode)
