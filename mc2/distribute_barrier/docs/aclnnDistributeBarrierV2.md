@@ -86,7 +86,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     <td>可选择传入有效数据或填空指针。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td>0-1</td>
+    <td>1</td>
     <td>√</td>
     </tr>
     <tr>
@@ -96,7 +96,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     <td>可选择传入有效数据或填空指针，传入空指针时表示不开启动态缩容功能。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td>0-1</td>
+    <td>1</td>
     <td>√</td>
     </tr>
     <tr>
