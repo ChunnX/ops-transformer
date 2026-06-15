@@ -964,6 +964,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WriteDataToWinOut(L
     GlobalTensor<T> dataDstWinGMTensor;
     dataDstWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(rankGM));
     DataCopy(dataDstWinGMTensor, xTempTensor, copyCount);
+    PipeBarrier<PIPE_MTE3>();
 }
 
 template <TemplateDispatchKFCTypeClass>
