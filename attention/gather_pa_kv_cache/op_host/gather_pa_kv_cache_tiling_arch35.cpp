@@ -111,7 +111,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
     auto kCacheDesc = context_->GetInputDesc(INDEX_INPUT_KEY_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kCacheDesc);
     ge::DataType kCacheDType = kCacheDesc->GetDataType();
-    ge::Format kCacheFormat = kCacheDesc->GetFormat().GetStorageFormat();
 
     // 校验数据类型是否合法
     OP_CHECK_IF((KV_SUPPORT_DTYPE.find(kCacheDType) == KV_SUPPORT_DTYPE.end()),
@@ -201,7 +200,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
     auto vCacheDesc = context_->GetInputDesc(INDEX_INPUT_VALUE_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context_, vCacheDesc);
     ge::DataType vCacheDType = vCacheDesc->GetDataType();
-    ge::Format vCacheFormat = vCacheDesc->GetFormat().GetStorageFormat();
 
     // 校验数据类型是否合法
     OP_CHECK_IF((KV_SUPPORT_DTYPE.find(vCacheDType) == KV_SUPPORT_DTYPE.end()),
