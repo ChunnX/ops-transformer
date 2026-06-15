@@ -15,7 +15,7 @@ def depth_connection(self, branch_output, residuals, *, beta):
     # beta就是h_post, shape [num_streams]
     
     # Step 1: einsum广播乘法
-    # "b ... d, s -> b ... s d含义:
+    # "b ... d, s -> b ... s d"的含义:
     #   - 输入1 branch_output: [batch, seq, dim]
     #   - 输入2 beta: [streams]
     #   - 输出: [batch, seq, streams, dim]
@@ -23,7 +23,7 @@ def depth_connection(self, branch_output, residuals, *, beta):
     output = einsum(branch_output, beta, "b ... d, s -> b ... s d")
     
     # Step 2: reshape合并batch和stream维度
-    # "b ... s d -> (b s) ... d含义:
+    # "b ... s d -> (b s) ... d"的含义:
     #   - 输入: [batch, seq, streams, dim]
     #   - 输出: [batch*streams, seq, dim]
     #   - 计算: out[b*s+i, seq, d] = in[b, seq, i, d]
@@ -54,7 +54,7 @@ void mhc_post_cpu(
             float weight = h_post[s];
             
             // 计算输出的batch索引: b*num_streams + s
-            // 这对应rearrange "b s -> (b s)语义
+            // 这对应rearrange "b s -> (b s)"的语义
             int64_t out_batch_idx = b * num_streams + s;
             
             // 遍历每个序列位置和维度
@@ -98,7 +98,7 @@ public:
         int64_t block_idx = GetBlockIdx();
         
         // 解析batch索引和stream索引
-        // 这对应"(b s)" -> "b, s反向操作
+        // 这对应"(b s)" -> "b, s"的反向操作
         this->batch_idx = block_idx / num_streams;
         this->stream_idx = block_idx % num_streams;
         

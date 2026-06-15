@@ -21,7 +21,7 @@
 - torch>=2.7.1
 - cann 9.0.0+
 
-该算子支持的平台为ascend910_93，默认构建环境为ascend910b，在ascend910_93构建环境下构建，请先执行命令：
+该算子支持的平台为ascend910_93，默认构建环境为ascend910b，在ascend910_93 构建环境下构建，请先执行命令：
 ```sh
 export NPU_ARCH=ascend910_93    
 ```
@@ -35,7 +35,7 @@ Python层(MoeDistributeBuffer)
     │
     ├── 初始化时调用updateContext获取通信上下文
     │
-    └── 调用npu_moe_distribute_dispatch_v2方法
+    └── 调用npu_moe_distribute_dispatch_v2 方法
             │
             ↓
         torch.ops.ascend_ops.MoeDistributeDispatchV2
@@ -114,7 +114,7 @@ get_ccl_buffer_size静态方法根据配置参数计算所需的最小HCCL Buffe
 
 #### Dispatch调用逻辑
 
-npu_moe_distribute_dispatch_v2方法将用户参数与缓存的上下文信息合并，调用torch.ops.ascend_ops.MoeDistributeDispatchV2：
+npu_moe_distribute_dispatch_v2 方法将用户参数与缓存的上下文信息合并，调用torch.ops.ascend_ops.MoeDistributeDispatchV2：
 
 - **传入缓存的上下文**：mc2_context、group_name、world_size、rank_id、ccl_buffer_size
 - **传入用户参数**：x、expert_ids、moe_expert_num、quant_mode、comm_alg等
@@ -128,7 +128,7 @@ npu_moe_distribute_dispatch_v2方法将用户参数与缓存的上下文信息�
 
 #### 主函数
 
-主函数npu_moe_distribute_dispatch_v2执行以下流程：
+主函数npu_moe_distribute_dispatch_v2 执行以下流程：
 
 **阶段1：输入校验**
 
@@ -158,7 +158,7 @@ npu_moe_distribute_dispatch_v2方法将用户参数与缓存的上下文信息�
 
 **阶段5：获取Stream并异步调用**
 
-获取当前NPU Stream，构造lambda函数调用moe_distribute_dispatch_v2_api，通过OpCommand::RunOpApiV2异步执行。
+获取当前NPU Stream，构造lambda函数调用moe_distribute_dispatch_v2_api，通过OpCommand::RunOpApiV2 异步执行。
 
 #### 输入校验流程
 
@@ -208,7 +208,7 @@ Profiling用于记录算子执行的详细信息，便于性能分析和调试�
 
 **记录的信息**：
 - **算子标识**：opName（算子名称字符串转换为ID）、opType（算子类型字符串转换为ID）
-- **执行配置**：blockDim（AIV核数）、kernelType（kernel类型，如MIX_AIV=5表示混合AIV kernel）、stream（执行流）
+- **执行配置**：blockDim（AIV核数）、kernelType（kernel类型，如MIX_AIV=5 表示混合AIV kernel）、stream（执行流）
 - **Tensor信息**：每个输入/输出tensor的type（输入0/输出1）、format（数据格式）、dataType（数据类型）、shape（维度信息）
 - **算子性能**：算子每一次执行所需时间，包括vector、scalar、mte等细分项所耗时间
 
@@ -227,7 +227,7 @@ SK（Super Kernel）是Ascend C提供的一种算子融合机制，通过将同�
 
 **SK模式说明**：
 - `__sk__`标记的函数为SK kernel，支持算子融合
-- `split_num`模板参数表示分割模式，支持0-3四种模式，对应不同的核间任务分配策略
+- `split_num`模板参数表示分割模式，支持0-3 四种模式，对应不同的核间任务分配策略
 - `SK_BIND`宏将SK kernel的不同分割模式绑定到主kernel，由底层调度器自动选择最优模式
 
 **参数封装**：`MoeDistributeDispatchV2SkArgs`结构体将所有kernel参数打包，便于SK调用时传递。结构体包含tilingKey、所有输入输出tensor地址、workspace、mc2Context、tilingData等字段。
@@ -240,7 +240,7 @@ SK（Super Kernel）是Ascend C提供的一种算子融合机制，通过将同�
 
 Kernel入口moe_dispatch_switch通过switch语句根据TilingKey选择对应的模板实例化：
 
-- **10000系列**：调用moe_distribute_dispatch_v2模板（fullmesh_v1通信算法）
+- **10000系列**：调用moe_distribute_dispatch_v2 模板（fullmesh_v1通信算法）
 - **11000系列**：调用moe_distribute_dispatch_v2_full_mesh模板（fullmesh_v2通信算法）
 
 模板参数（输入类型、输出类型、量化模式、smoothScale存在与否）由TilingKey的各位值隐含确定。
@@ -255,13 +255,13 @@ moe_distribute_dispatch_v2_generic Kernel基于HCCL Window机制实现MoE分发�
 
 ### 为什么需要Context
 
-传统HCCL通信方式下，Kernel通过`GetHcclContextHCCL API`等HCCL API获取各rank的Window地址。这种方式依赖HCCL通过框架创建的HcclOpParam，在<<<>>>直调场景下，通过torch接口直调kernel，HCCL不会通过调用框架创建HcclOpParam。所以需要将dispatch、combine所需的通信上下文直接作为参数传入kernel。
+传统HCCL通信方式下，Kernel通过`GetHcclContext`等HCCL API获取各rank的Window地址。这种方式依赖HCCL通过框架创建的HcclOpParam，在<<<>>>直调场景下，通过torch接口直调kernel，HCCL不会通过调用框架创建HcclOpParam。所以需要将dispatch、combine所需的通信上下文直接作为参数传入kernel。
 
 ### Context创建流程
 
 详见 [update_context.md](../../update_context/update_context.md)。核心流程分为两阶段：
 
-1. **CreateHcclContext**：建立HCCL通信框架，通过`HcclCommGetHandleWithName`获取通信句柄，通过`HcclCreateOpResCtx建操作资源上下文
+1. **CreateHcclContext**：建立HCCL通信框架，通过`HcclCommGetHandleWithName`获取通信句柄，通过`HcclCreateOpResCtx`创建操作资源上下文
 
 2. **CreatMc2Context**：填充IPC buffer地址，遍历所有rank，通过`HcclGetHcclBuffer`（本地）和`HcclGetRemoteIpcHcclBuf`（远程）获取各rank的IPC buffer地址，存入`epHcclBuffer`数组
 
@@ -298,8 +298,8 @@ moe_distribute_dispatch_v2_generic Kernel基于HCCL Window机制实现MoE分发�
 
 1. 初始化分布式环境，创建EP通信域
 2. 创建MoeDistributeBuffer实例
-3. 调用npu_moe_distribute_dispatch_v2执行分发
-4. 调用npu_moe_distribute_combine_v2执行组合（使用Dispatch输出）
+3. 调用npu_moe_distribute_dispatch_v2 执行分发
+4. 调用npu_moe_distribute_combine_v2 执行组合（使用Dispatch输出）
 
 ## 构建说明
 

@@ -141,7 +141,7 @@ Note that for short sequence lengths, the speedups are negligible because overhe
 
 The runtime `block_shape` attr lets the same kernel run at every combination of
 `(BLOCK_SIZE_Q, BLOCK_SIZE_KV)` with each dimension in `{128, 256, 512, 1024}`
-— **16 granularities** sharing one kernel binary. Finer sabi (smaller block
+—**16 granularities** sharing one kernel binary. Finer sabi (smaller block
 sizes) buys more sparsity-pattern resolution per Q-row at the cost of more
 sabi-tensor HBM traffic + more sub-block plumbing per cube tile; coarser sabi
 buys cheaper per-row metadata at the cost of resolution. The sweep below

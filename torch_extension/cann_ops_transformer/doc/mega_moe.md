@@ -60,7 +60,7 @@
  	   局部变量说明：
  	   - $\mathcal{T}_e$：被路由到专家 $e$ 的Token索引集合，由`topkIds`排序后确定。
  	   - $\hat{X}_e,\ S_{X,e}$：专家 $e$ 的量化输入及其MX缩放因子，第一阶段中间结果。
- 	   - $W_{1,e}^{(x)}$、$W_{1,e}^{(y)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由`weight1SwiGLU`按拆分推导。
+ 	   - $W_{1,e}^{(x)}$、$W_{1,e}^{(y)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由`weight1`按SwiGLU拆分推导。
  	   - $S_{1,e}^{(x)}$、$S_{1,e}^{(y)}$：$W_{1,e}^{(x)}$ 和 $W_{1,e}^{(y)}$ 对应的MX缩放因子，从`weightScales1`按维度截取。
  	   - $S_{2,e}$：$W_{2,e}$ 对应的MX缩放因子，来自参数`weightScales2`。
  	   - $Z_e^{(x)},\ Z_e^{(y)}$：GMM1的两路矩阵乘法输出（Swish分支和门控分支），中间结果。
@@ -181,7 +181,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
     import torch.distributed as dist
     from torch.distributed import ReduceOp
     import torch.multiprocessing as mp
-    from cann_ops_transformer.ops import get_symm_buffer_for_mega_moe, mega_moe
+    from npu_ops_transformer.ops import get_symm_buffer_for_mega_moe, mega_moe
     import torchair
 
     E = 4

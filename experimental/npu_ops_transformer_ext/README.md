@@ -20,9 +20,9 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
 
 ## 核心交付件 | Core Deliverables
 
-1. `experimental/xxx/算子目录/算子名_torch.cpp子Kernel实现
-2. `experimental/xxx/算子目录/CMakeLists.txt子cmake配置
-3. `experimental/npu_ops_transformer_ext/npu_ops_transformer_ext/npu_ops_def.cpp册算子接口
+1. `experimental/xxx/算子目录/算子名_torch.cpp`算子Kernel实现
+2. `experimental/xxx/算子目录/CMakeLists.txt`算子cmake配置
+3. `experimental/npu_ops_transformer_ext/npu_ops_transformer_ext/npu_ops_def.cpp`注册算子接口
 - 其中xxx为attention/ffn/gmm/mc2/moe/posembedding
 
 ## 环境要求 | Prerequisites
@@ -63,7 +63,7 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
     ```  
 3. **安装torch与torch_npu包**
    
-   根据实际环境，下载对应torch包并安装: `torch-${torch_version}+cpu-${python_version}-linux_${arch}.whl载链接为:[官网地址](http://download.pytorch.org/whl/torch)
+   根据实际环境，下载对应torch包并安装: `torch-${torch_version}+cpu-${python_version}-linux_${arch}.whl`下载链接为:[官网地址](http://download.pytorch.org/whl/torch)
 
    安装命令如下：
 
@@ -127,7 +127,7 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
 
 1. 编写算子调用文件，以在experimental/posembedding下添加算子my_ops为例
    
-    在`experimental/posembedding录下添加新的算子目录`my_ops`，在`my_ops录下添加新的算子调用文件`my_ops_torch.cpp`
+    在`experimental/posembedding`目录下添加新的算子目录`my_ops`，在`my_ops`目录下添加新的算子调用文件`my_ops_torch.cpp`
 
     ```c++
     __global__ __aicore__ void mykernel(GM_ADDR input, GM_ADDR output, int64_t num_element) {

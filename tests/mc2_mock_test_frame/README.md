@@ -14,11 +14,11 @@ Device (kernel)                      CCU (HCCL Server)
   │  1. 填sendMsgs[slot]              │
   │  2. 写commitTurnCnt[slot]         │
   │  ──────── workspace ──────────→    │
-  │                                    │  3. 读commitTurnCnt，发现有效
-  │                                    │  4. 读sendMsgs，执行集合通信
+  │                                    │  3. 读commitTurnCnt,发现有效
+  │                                    │  4. 读sendMsgs,执行集合通信
   │                                    │  5. 写finishedTurnCnt[slot]
   │  ←──────── workspace ─────────     │
-  │  6. 轮询finishedTurnCnt，继续       │
+  │  6. 轮询finishedTurnCnt,继续     │
   │                                    │
 ```
 
@@ -98,7 +98,7 @@ kernel:
   2. 写commitTurnCnt[slot].valid = COMMIT_VALID_MASK
 
 server (MockHcclServer):
-  3. 轮询commitTurnCnt，发现valid → 读sendMsgs[slot]
+  3. 轮询commitTurnCnt,发现valid → 读sendMsgs[slot]
   4. 根据commType执行操作(单卡: D2D memcpy sendBuf → recvBuf)
   5. 写finishedTurnCnt[slot].cnt = commitCnt
   6. 清除commitTurnCnt[slot].valid

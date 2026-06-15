@@ -156,4 +156,3 @@
 
 - **数据搬出（CopyOut）**
   - 将out_add (half)和out_lyn_quant (int8_t)搬回GM对应行。
-  

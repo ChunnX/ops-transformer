@@ -514,7 +514,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>Swin Transformer网络模型完成Q、K、V的计算。</td>
+    <td>Swin Transformer网络模型 完成Q、K、V的计算。</td>
   </tr>
   <tr>
     <td>gmm</td>
