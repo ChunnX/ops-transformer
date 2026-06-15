@@ -10,7 +10,7 @@
 
 /*!
  * \file inplace_partial_rotary_mul_grad.h
- * \brief RegBase kernel class for InplacePartialRotaryMulGrad (arch35 / ascend950).
+ * \brief RegBase kernel class for InplacePartialRotaryMulGradRef (arch35 / ascend950).
  *
  * Only the x == nullptr scenario is supported: dy is rotated in place into dx over the partial slice
  * [partialStart, partialStart + sliceLen) of its last dim. Only BSND layout and B/S/N broadcast of
@@ -35,16 +35,16 @@ using namespace AscendC;
 namespace InplacePartialRotaryMulGrad {
 
 template <typename Tdy, typename Tcs>
-class InplacePartialRotaryMulGrad {
+class InplacePartialRotaryMulGradRef {
 public:
-    __aicore__ inline InplacePartialRotaryMulGrad() {}
+    __aicore__ inline InplacePartialRotaryMulGradRef() {}
     __aicore__ inline void Init(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dyOut,
         const InplacePartialRotaryMulGradTilingData* tiling, TPipe* pipe);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void CopyInDy(LocalTensor<Tdy>& dyTensor, int64_t m0, uint16_t tileRows);
-    __aicore__ inline void CopyOutDy(const LocalTensor<Tdy>& outTensor, int64_t m0, uint16_t tileRows);
+    __aicore__ inline void CopyOutDy(LocalTensor<Tdy>& outTensor, int64_t m0, uint16_t tileRows);
     __aicore__ inline void CopyInCosSin(LocalTensor<Tcs>& csTensor, GlobalTensor<Tcs>& csGm, int64_t m0,
         uint16_t tileRows);
     __aicore__ inline void Compute(const LocalTensor<Tdy>& dyTensor, const LocalTensor<Tcs>& cosTensor,
@@ -83,7 +83,7 @@ private:
 };
 
 template <typename Tdy, typename Tcs>
-__aicore__ inline int64_t InplacePartialRotaryMulGrad<Tdy, Tcs>::CosRowIdx(int64_t m) const
+__aicore__ inline int64_t InplacePartialRotaryMulGradRef<Tdy, Tcs>::CosRowIdx(int64_t m) const
 {
     int64_t sn = s_ * n_;
     int64_t b = m / sn;
@@ -94,7 +94,7 @@ __aicore__ inline int64_t InplacePartialRotaryMulGrad<Tdy, Tcs>::CosRowIdx(int64
 }
 
 template <typename Tdy, typename Tcs>
-__aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::Init(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin,
+__aicore__ inline void InplacePartialRotaryMulGradRef<Tdy, Tcs>::Init(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin,
     GM_ADDR dyOut, const InplacePartialRotaryMulGradTilingData* tiling, TPipe* pipe)
 {
     pipe_ = pipe;
@@ -109,13 +109,7 @@ __aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::Init(GM_ADDR dy, G
     rotaryMode_ = tiling->rotaryMode;
     ubFactorM_ = tiling->ubFactorM;
 
-    if (rotaryMode_ == 0 || rotaryMode_ == 3) { // half / interleave-half: input split in halves
-        dSplitCoef_ = HALF_INTERLEAVE_COEF;
-    } else if (rotaryMode_ == 2) { // quarter
-        dSplitCoef_ = QUARTER_MODE_COEF;
-    } else { // interleave
-        dSplitCoef_ = 1;
-    }
+    dSplitCoef_ = tiling->dSplitCoef;
     uint32_t blockElemsDy = BLOCK_TYPE_SIZE / sizeof(Tdy);
     uint32_t blockElemsCs = BLOCK_TYPE_SIZE / sizeof(Tcs);
     dAlignDy_ = Ops::Base::CeilAlign(sliceLen_ / dSplitCoef_, static_cast<int64_t>(blockElemsDy)) * dSplitCoef_;
@@ -154,7 +148,7 @@ __aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::Init(GM_ADDR dy, G
 }
 
 template <typename Tdy, typename Tcs>
-__aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::CopyInDy(
+__aicore__ inline void InplacePartialRotaryMulGradRef<Tdy, Tcs>::CopyInDy(
     LocalTensor<Tdy>& dyTensor, int64_t m0, uint16_t tileRows)
 {
     int64_t offset = m0 * d_ + sliceStart_;
@@ -169,8 +163,8 @@ __aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::CopyInDy(
 }
 
 template <typename Tdy, typename Tcs>
-__aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::CopyOutDy(
-    const LocalTensor<Tdy>& outTensor, int64_t m0, uint16_t tileRows)
+__aicore__ inline void InplacePartialRotaryMulGradRef<Tdy, Tcs>::CopyOutDy(
+    LocalTensor<Tdy>& outTensor, int64_t m0, uint16_t tileRows)
 {
     int64_t offset = m0 * d_ + sliceStart_;
     uint32_t blockLen = static_cast<uint32_t>(sliceLen_ / dSplitCoef_ * sizeof(Tdy));
@@ -189,7 +183,7 @@ __aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::CopyOutDy(
 }
 
 template <typename Tdy, typename Tcs>
-__aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::CopyInCosSin(
+__aicore__ inline void InplacePartialRotaryMulGradRef<Tdy, Tcs>::CopyInCosSin(
     LocalTensor<Tcs>& csTensor, GlobalTensor<Tcs>& csGm, int64_t m0, uint16_t tileRows)
 {
     uint32_t blockLen = static_cast<uint32_t>(sliceLen_ / dSplitCoef_ * sizeof(Tcs));
@@ -229,7 +223,7 @@ __aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::CopyInCosSin(
 }
 
 template <typename Tdy, typename Tcs>
-__aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::Compute(const LocalTensor<Tdy>& dyTensor,
+__aicore__ inline void InplacePartialRotaryMulGradRef<Tdy, Tcs>::Compute(const LocalTensor<Tdy>& dyTensor,
     const LocalTensor<Tcs>& cosTensor, const LocalTensor<Tcs>& sinTensor, LocalTensor<Tdy>& outTensor,
     uint16_t tileRows)
 {
@@ -254,7 +248,7 @@ __aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::Compute(const Loca
 }
 
 template <typename Tdy, typename Tcs>
-__aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::Process()
+__aicore__ inline void InplacePartialRotaryMulGradRef<Tdy, Tcs>::Process()
 {
     if (coreRows_ <= 0 || sliceLen_ <= 0) {
         return;
