@@ -21,13 +21,18 @@ import numpy as np
 N_ALIGN_SIZE = 64
 
 
-def grouped_matmul_activation_quant_inputs(x, group_list, x_scale, weight, weight_scale, bias=None, *,
+def grouped_matmul_activation_quant_inputs(x, group_list, weight, weight_scale, bias=None, x_scale=None, *,
                                            activation_type: str = "gelu_tanh", dequant_dtype: int = 0,
                                            transpose_weight: bool = False, group_list_type: int = 0,
-                                           tuning_config=None, quant_dtype: int = 36, round_mode: str = "rint",
+                                           tuning_config=None, quant_mode: str = "MX", y_dtype: int = 36,
+                                           round_mode: str = "rint",
                                            scale_alg: int = 0, dst_type_max: float = 0.0, **kwargs):
-    del activation_type, dequant_dtype, tuning_config, quant_dtype
+    del activation_type, dequant_dtype, tuning_config, y_dtype
     del round_mode, scale_alg, dst_type_max
+    if quant_mode != "MX":
+        raise ValueError("quant_mode only supports MX.")
+    if x_scale is None:
+        raise ValueError("x_scale is required for MX quant mode.")
 
     group_list_dtype = group_list.dtype
     if "group_list_expect" in kwargs:
@@ -45,7 +50,7 @@ def grouped_matmul_activation_quant_inputs(x, group_list, x_scale, weight, weigh
     if n % N_ALIGN_SIZE != 0:
         raise ValueError("N must be a multiple of {}, actual is {}".format(N_ALIGN_SIZE, n))
 
-    return x, group_list_new, x_scale, weight, weight_scale, bias
+    return x, group_list_new, weight, weight_scale, bias, x_scale
 
 
 def _first_tensor(x):
