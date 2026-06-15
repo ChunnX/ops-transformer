@@ -69,7 +69,12 @@ constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
 
 void GroupedMatmulActivationQuantTiling950::Reset()
 {
-    tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
+    tilingData_ = {};
+    roundMode_ = DEFAULT_ROUND_MODE_RINT;
+    scaleAlg_ = DEFAULT_SCALE_ALG_OCP;
+    activationType_ = DEFAULT_ACTIVATION_TYPE_GELU_TANH;
+    dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
+    quantDtype_ = ge::DT_FLOAT8_E4M3FN;
 }
 
 ge::graphStatus GroupedMatmulActivationQuantTiling950::GetShapeAttrsInfo()
@@ -162,6 +167,12 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeDtype()
     OP_CHECK_IF(xDesc == nullptr || wDesc == nullptr || xScaleDesc == nullptr || wScaleDesc == nullptr ||
                     yDesc == nullptr || yScaleDesc == nullptr,
                 OP_LOGE(context_->GetNodeName(), "input or output desc is nullptr."), return false);
+    auto attrs = context_->GetAttrs();
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
+    const int64_t *quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
+    OP_CHECK_IF(quantDtypePtr == nullptr, OP_LOGE(context_->GetNodeName(), "quant_dtype must not be nullptr."),
+                return false);
+    quantDtype_ = static_cast<ge::DataType>(*quantDtypePtr);
     inputParams_.aDtype = xDesc->GetDataType();
     inputParams_.bDtype = wDesc->GetDataType();
     inputParams_.scaleDtype = wScaleDesc->GetDataType();
@@ -259,15 +270,15 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
 
 ge::graphStatus GroupedMatmulActivationQuantTiling950::DoOpTiling()
 {
-    tilingData_.gmmActivationQuantParams.set_groupNum(static_cast<uint32_t>(inputParams_.groupNum));
-    tilingData_.gmmActivationQuantParams.set_groupListType(static_cast<uint8_t>(inputParams_.groupListType));
-    tilingData_.gmmActivationQuantParams.set_activationType(activationType_);
-    tilingData_.gmmActivationQuantParams.set_quantDtype(
-        inputParams_.outDataDtype == ge::DT_FLOAT8_E5M2 ? FP8_E5M2_VALUE : FP8_E4M3FN_VALUE);
-    tilingData_.gmmActivationQuantParams.set_roundMode(roundMode_);
-    tilingData_.gmmActivationQuantParams.set_dequantDtype(static_cast<uint8_t>(ge::DT_FLOAT));
-    tilingData_.gmmActivationQuantParams.set_scaleAlg(scaleAlg_);
-    tilingData_.gmmActivationQuantParams.set_dstTypeMax(dstTypeMax_);
+    tilingData_.gmmActivationQuantParams.groupNum = static_cast<uint32_t>(inputParams_.groupNum);
+    tilingData_.gmmActivationQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
+    tilingData_.gmmActivationQuantParams.activationType = activationType_;
+    tilingData_.gmmActivationQuantParams.quantDtype =
+        inputParams_.outDataDtype == ge::DT_FLOAT8_E5M2 ? FP8_E5M2_VALUE : FP8_E4M3FN_VALUE;
+    tilingData_.gmmActivationQuantParams.roundMode = roundMode_;
+    tilingData_.gmmActivationQuantParams.dequantDtype = static_cast<uint8_t>(ge::DT_FLOAT);
+    tilingData_.gmmActivationQuantParams.scaleAlg = scaleAlg_;
+    tilingData_.gmmActivationQuantParams.dstTypeMax = dstTypeMax_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -289,12 +300,13 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     tilingData_.mmTilingData.baseK = basicTiling_.baseK;
     tilingData_.mmTilingData.kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
     tilingData_.mmTilingData.kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
-    tilingData_.mmTilingData.scaleKAL1 = std::min(
+    uint32_t scaleKL1 = std::min(
         std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa,
                  basicTiling_.scaleFactorB * basicTiling_.stepKb) *
             basicTiling_.baseK,
         inputParams_.kSize);
-    tilingData_.mmTilingData.scaleKBL1 = tilingData_.mmTilingData.scaleKAL1;
+    tilingData_.mmTilingData.scaleKAL1 = scaleKL1;
+    tilingData_.mmTilingData.scaleKBL1 = scaleKL1;
     tilingData_.mmTilingData.isBias = 0;
     tilingData_.mmTilingData.dbL0C = basicTiling_.dbL0c;
     return ge::GRAPH_SUCCESS;
