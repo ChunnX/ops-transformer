@@ -205,7 +205,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>preTokens</td>
       <td>输入</td>
-      <td>用于稀疏计算 ，表示slides window的左边界。</td>
+      <td>用于稀疏计算，表示slides window的左边界。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -215,7 +215,7 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td>nextTokens</td>
       <td>输入</td>
-      <td>用于稀疏计算 ，表示slides window的右边界。</td>
+      <td>用于稀疏计算，表示slides window的右边界。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -543,7 +543,7 @@ void FreeResource(aclTensor *q, aclTensor *k, aclTensor *dy, aclTensor *sparseIn
 
 int main()
 {
-    // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtContext context;
@@ -689,7 +689,7 @@ int main()
                   deviceId, &context, &stream);
               return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
               FreeResource(q, k, dy, sparseIndices, weights, dQuery, dKey, dWeights, qDeviceAddr, kDeviceAddr, dyDeviceAddr,
@@ -702,7 +702,7 @@ int main()
     PrintOutResult<aclFloat16>(dKeyShape, &dKeyAddr);
     PrintOutResult<aclFloat16>(dWeightsShape, &dWeightsAddr);
 
-    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改; 释放device资源
+    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改;释放device资源
     FreeResource(q, k, dy, sparseIndices, weights, dQuery, dKey, dWeights, qDeviceAddr, kDeviceAddr, dyDeviceAddr,
                   sparseIndicesDeviceAddr, weightsDeviceAddr, dQueryAddr, dKeyAddr, dWeightsAddr, workspaceSize, workspaceAddr,
                   deviceId, &context, &stream);

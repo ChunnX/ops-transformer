@@ -16,7 +16,7 @@
 #include "debug_tiling.h"
 #include <sstream>
 #include "graph/utils/type_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 namespace Ops {
 namespace Transformer {

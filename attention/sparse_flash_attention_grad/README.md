@@ -198,14 +198,14 @@
     <tr>
     <td>preTokens</td>
         <td>属性</td>
-        <td>Attention算子里, 对S矩阵的滑窗起始位置。</td>
+        <td>Attention算子里,对S矩阵的滑窗起始位置。</td>
         <td>INT64</td>
         <td>-</td>
     </tr>
     <tr>
     <td>nextTokens</td>
         <td>属性</td>
-        <td>Attention算子里, 对S矩阵的滑窗终止位置。</td>
+        <td>Attention算子里,对S矩阵的滑窗终止位置。</td>
         <td>INT64</td>
         <td>-</td>
     </tr>

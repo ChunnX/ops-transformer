@@ -33,7 +33,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeInitRoutingQuantGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingQuant”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeInitRoutingQuantGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingQuant”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeInitRoutingQuantGetWorkspaceSize(
@@ -108,7 +108,7 @@ aclnnStatus aclnnMoeInitRoutingQuant(
       <td>expertIdx</td>
       <td>输入</td>
       <td>每一行特征对应的K个处理专家。</td>
-      <td><ul><li>支持空tensor。</li><li>要求是一个2D的shape为 (NUM_ROWS, K)。</li></ul></td>
+      <td><ul><li>支持空tensor。</li><li>要求是一个2D的shape为(NUM_ROWS, K)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>2</td>
@@ -352,7 +352,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化,参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
