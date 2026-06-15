@@ -257,11 +257,11 @@ template <typename T> __aicore__ inline T AlignTo(const T n, const T alignSize)
 /* 5. 生成BASE的没有默认值的Template, BASE带ChildClass */
 #define TEMPLATES_DEF_BASE_NO_DEFAULT                                                     \
     template <typename ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
-                                       CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
 /* 6. 生成BASE的BaseArgs, BASE带ChildClass */
 #define TEMPLATE_BASE_ARGS \
-    ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME)CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME)end
+    ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME)CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 template <typename T1, typename T2> __aicore__ inline T1 Max(T1 a, T2 b)
 {

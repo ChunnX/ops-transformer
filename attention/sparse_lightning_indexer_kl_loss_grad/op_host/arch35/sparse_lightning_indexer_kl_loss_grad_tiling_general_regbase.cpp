@@ -436,8 +436,9 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
         // 验证T1
         OP_CHECK_IF(weightsShape[0] != t1Len || sparseIndicesShape[0] != t1Len || attnSoftmaxL1Shape[0] != t1Len,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify T1 is failed, the value of query_index[0], weights[0], sparse_indices[0] and attn_softmax_l1_norm[0] \
-                    are respectively (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
+            "CrossShapeVerify T1 is failed, the value of query_index[0],
+            weights[0], sparse_indices[0] and attn_softmax_l1_norm[0]
+            are respectively (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
             queryIndexShape[0], weightsShape[0], sparseIndicesShape[0], attnSoftmaxL1Shape[0]),
             return false);
         // 验证N Query数字是否正确
@@ -512,21 +513,25 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
         OP_CHECK_IF(keyIndexShape[0] != bLen || weightsShape[0] != bLen || sparseIndicesShape[0] != bLen ||
             attnSoftmaxL1Shape[0] != bLen,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify shape B is failed, the value of query_index[0], key_index[0], weights[0], sparse_indices[0] and attn_softmax_l1_norm[0] are respectively (%ld), (%ld), (%ld), (%ld), (%ld).\
-                    Their values should be equal.",
+            "CrossShapeVerify shape B is failed, the value of query_index[0],
+            key_index[0], weights[0], sparse_indices[0] and attn_softmax_l1_norm[0]
+            are respectively (%ld), (%ld), (%ld), (%ld), (%ld). Their values should be equal.",
             bLen, keyIndexShape[0], weightsShape[0], sparseIndicesShape[0], attnSoftmaxL1Shape[0]),
             return false);
         // 验证s1
-        OP_CHECK_IF(weightsShape[1] != s1Len || sparseIndicesShape[1] != s1Len || attnSoftmaxL1Shape[1] != s1Len,
+        OP_CHECK_IF(weightsShape[1] != s1Len || 
+            sparseIndicesShape[1] != s1Len || 
+            attnSoftmaxL1Shape[1] != s1Len,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify S1 is failed, the value of query_index[1], weights[1], sparse_indices[1] and attn_softmax_l1_norm[1] are respectively (%ld), (%ld), (%ld), (%ld).\
-                    Their values should be equal.",
+            "CrossShapeVerify S1 is failed, the value of query_index[1], weights[1],
+            sparse_indices[1] and attn_softmax_l1_norm[1] are respectively (%ld), (%ld), (%ld), (%ld).
+            Their values should be equal.",
             s1Len, weightsShape[1], sparseIndicesShape[1], attnSoftmaxL1Shape[1]),
             return false);
         // 验证N Query数字是否正确
         OP_CHECK_IF(n1Len < NQUERYINDEX_SIZE_1 && n1Len > NQUERYINDEX_SIZE_64,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, shape N of query_index must be >= 1 and <= 64, but the value of query_index[2] "
+            "CrossShapeVerify failed, shape N of query_index must be >= 1 and <= 64, but the value of query_index[2]"
             "is (%ld)",
             n1Len),
             return false);
@@ -580,8 +585,8 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
         // 验证K
         OP_CHECK_IF(sparseIndicesShape[3] != attnSoftmaxL1Shape[3],
             OPS_REPORT_VECTOR_INNER_ERR(opName,
-            "CrossShapeVerify failed, shape K of sparse_indices and attn_softmax_l1_norm must be equal, but the value "
-            "of sparse_indices[2] and attn_softmax_l1_norm[2] are respectively (%ld), (%ld).",
+            "CrossShapeVerify failed, shape K of sparse_indices and attn_softmax_l1_norm must be equal, but the "
+            "value of sparse_indices[2] and attn_softmax_l1_norm[2] are respectively (%ld), (%ld).",
             sparseIndicesShape[3], attnSoftmaxL1Shape[3]),
             return false);
     }
@@ -941,7 +946,10 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::DoCastTiling()
     int64_t qPreBlockTailTmp = allNumQuery % qPreBlockFactor;
     int64_t qPreBlockTail = qPreBlockTailTmp == 0 ? qPreBlockFactor : qPreBlockTailTmp;
 
-    int64_t weightPreBlockFactor{ 0 }, weightPreBlockTotal{ 0 }, weightPreBlockTailTmp{ 0 }, weightPreBlockTail{ 0 };
+    int64_t weightPreBlockFactor = 0;
+    int64_t weightPreBlockTotal = 0;
+    int64_t weightPreBlockTailTmp = 0;
+    int64_t weightPreBlockTail = 0;
     if (allNumWeight != 0) {
         weightPreBlockFactor = (allNumWeight + usedCoreNum - 1) / usedCoreNum;
         weightPreBlockTotal = (allNumWeight + weightPreBlockFactor - 1) / weightPreBlockFactor;
@@ -949,8 +957,10 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::DoCastTiling()
         weightPreBlockTail = weightPreBlockTailTmp == 0 ? weightPreBlockFactor : weightPreBlockTailTmp;
     }
 
-    int64_t softmaxOutPreBlockFactor{ 0 }, softmaxOutPreBlockTotal{ 0 }, softmaxOutPreBlockTailTmp{ 0 },
-        softmaxOutPreBlockTail{ 0 };
+    int64_t softmaxOutPreBlockFactor = 0;
+    int64_t softmaxOutPreBlockTotal = 0;
+    int64_t softmaxOutPreBlockTailTmp = 0;
+    int64_t softmaxOutPreBlockTail = 0;
     if (allNumSoftmaxOut != 0) {
         softmaxOutPreBlockFactor = (allNumSoftmaxOut + usedCoreNum - 1) / usedCoreNum;
         softmaxOutPreBlockTotal = (allNumSoftmaxOut + softmaxOutPreBlockFactor - 1) / softmaxOutPreBlockFactor;
