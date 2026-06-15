@@ -2004,13 +2004,12 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
 void MoeInitRoutingV3Arch35TilingClass::SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows)
 {
     auto *tilingData = &tilingDataPtr_->srcToDstDropPadParamsOp;
-    int64_t effectiveDtypeSize = (inputXDtypeSize_ == sizeof(int8_t)) ? sizeof(int16_t) : inputXDtypeSize_;
-    int64_t colSize = AlignBytes(cols_ * effectiveDtypeSize, UB_BLOCK_SIZE);
+    int64_t colSize = AlignBytes(cols_, inputXDtypeSize_);
     int64_t theoreticalMaxPerLoopRows = (availUbSize_ - colSize - UB_BLOCK_SIZE) / sizeof(int32_t) / NUM_TWO;
     theoreticalMaxPerLoopRows = Align(theoreticalMaxPerLoopRows, sizeof(int32_t));
 
     int64_t perLoopRowsEstimate = std::min(perCoreRows, theoreticalMaxPerLoopRows);
-    int64_t rowSize = AlignBytes(perLoopRowsEstimate * sizeof(int32_t), UB_BLOCK_SIZE) * NUM_TWO;
+    int64_t rowSize = AlignBytes(perLoopRowsEstimate, sizeof(int32_t)) * NUM_TWO;
     int64_t fixedOverhead = UB_BLOCK_SIZE * NUM_TWO + UB_BLOCK_SIZE;
 
     if (rowSize + colSize + fixedOverhead < availUbSize_) {
@@ -2025,7 +2024,7 @@ void MoeInitRoutingV3Arch35TilingClass::SetLoopParams4SrcToDstDropPad(int64_t pe
         tilingData->colLoops = 1;
     } else {
         int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
-        int64_t baseMaxColsSize = AlignBytes(baseMaxCols, effectiveDtypeSize);
+        int64_t baseMaxColsSize = AlignBytes(baseMaxCols, inputXDtypeSize_);
         int64_t basePerLoopMaxRows = (availUbSize_ - baseMaxColsSize - fixedOverhead) / sizeof(int32_t) / NUM_TWO;
         basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
 
@@ -2033,8 +2032,8 @@ void MoeInitRoutingV3Arch35TilingClass::SetLoopParams4SrcToDstDropPad(int64_t pe
             basePerLoopMaxRows = (availUbSize_ - colSize - fixedOverhead) / sizeof(int32_t) / NUM_TWO;
             basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
         } else if (perCoreRows < basePerLoopMaxRows) {
-            baseMaxCols = (availUbSize_ - rowSize - fixedOverhead) / effectiveDtypeSize;
-            baseMaxCols = Align(baseMaxCols, effectiveDtypeSize);
+            baseMaxCols = (availUbSize_ - rowSize - fixedOverhead) / inputXDtypeSize_;
+            baseMaxCols = Align(baseMaxCols, inputXDtypeSize_);
         }
 
         tilingData->perLoopCols = std::min(baseMaxCols, cols_);

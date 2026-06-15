@@ -75,6 +75,7 @@ private:
 
     int64_t actualExpertNum_;
     int64_t expertTotalCount_;
+    int64_t outputRows_ = 0;
 
     int64_t rowIdxType_ = 0;
     int64_t isInputScale_ = 0;
@@ -104,6 +105,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::InitBaseData(GM_ADDR workspace,
     lastLoopCols_ = tilingData->gatherOutComputeParamsOp.lastLoopCols;
 
     actualExpertNum_ = tilingData->actualExpertNum;
+    outputRows_ = tilingData->expertNum * tilingData->expertCapacity;
     // expertTotalCountGm用于读取专家处理的token总数（动态值）
     // 地址：workspace + Align(n*k)*2 + Align(actualExpertNum)
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
@@ -265,7 +267,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
             for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
                 int64_t outPosition = subRowIdxLocal.GetValue(indicesIndex);
-                if (outPosition == -1) {
+                if (outPosition < 0 || outPosition >= outputRows_) {
                     continue;
                 }
                 int64_t globalSortIdx = globalReadOffset + indicesIndex;
