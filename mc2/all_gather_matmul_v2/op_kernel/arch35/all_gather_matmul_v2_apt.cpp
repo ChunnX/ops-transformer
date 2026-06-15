@@ -21,9 +21,9 @@
 #include "all_gather_matmul_fp16_bf16.h"
 #endif
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
-     ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                     \
+     (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                     \
          ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) ||                                \
-            ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
+            ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)))
 #include "all_gather_quant_bmm.h"
 #include "all_gather_quant_bmm_perblock.h"
 #endif
@@ -84,17 +84,17 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
     __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
 
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
-     ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                     \
+     (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                     \
          ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) ||                                \
-            ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
+            ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)))
 // MX
 #if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
     if constexpr (SCALETYPE == SCALE_TYPE_IS_MX && !INPUT_IS_BF16FP16 && QUANTMMMODE == TPL_DEFAULT_MODE) {
-        if ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2) &&
-            (ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)) {
-                INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, true, HCCL_COMM_MODE, false, TRANS_B);
+        if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&
+            ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) {
+                INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, false, HCCL_COMM_MODE, false, TRANS_B);
         } else if ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)) {
-            INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, false, HCCL_COMM_MODE, false, TRANS_B);
+            INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, true, HCCL_COMM_MODE, false, TRANS_B);
         }
     }
 #endif
