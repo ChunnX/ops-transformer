@@ -22,6 +22,14 @@
 #include "matmul_reduce_scatter_fp16_bf16.h" // 旧实现：原生 ReduceScatter
 using namespace Mc2Tiling;
 #endif
+#if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_HIFLOAT8))) || \
+     (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
+      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) || \
+     ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)))
+#include "quant_bmm_a2a_vec_reduce_fp8_hif8.h" // 新实现：All2All + Vec Reduce
+#include "quant_bmm_reduce_scatter_fp8_hif8.h" // 旧实现：原生 ReduceScatter
+using namespace Mc2Tiling;
+#endif
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
       ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))))
@@ -109,9 +117,20 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
     }
 #elif (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_HIFLOAT8))) || \
        (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                  \
-        ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))))
-// float8/hif8
-#if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
+        ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) || \
+       ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)))
+// float8/hif8/float4
+#if (ORIG_DTYPE_X1 != DT_HIFLOAT8 && ORIG_DTYPE_X1 != DT_FLOAT4_E2M1)
+    if constexpr (TPL_SCALETYPE == TPL_X1_X2_DTYPE_IS_FP8E8M0) {
+        if constexpr (TPL_COMMALG == TPL_CCU_ALL2ALL_VEC_REDUCE) {
+            INVOKE_QUANT_BATCHMM_PERTENSOR_MXFP8_REDUCE_SCATTER_OP_IMPL(QuantBmmA2AVecReduceFP8HiF8, false, TPL_TRANSB);
+        } else {
+            INVOKE_QUANT_BATCHMM_PERTENSOR_MXFP8_REDUCE_SCATTER_OP_IMPL(QuantBMMReduceScatter, false, TPL_TRANSB);
+        }
+    }
+#endif
+#if (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)
+    // MXFP4场景：使用与MXFP8相同的实现路径（详细设计书4.2节）
     if constexpr (TPL_SCALETYPE == TPL_X1_X2_DTYPE_IS_FP8E8M0) {
         if constexpr (TPL_COMMALG == TPL_CCU_ALL2ALL_VEC_REDUCE) {
             INVOKE_QUANT_BATCHMM_PERTENSOR_MXFP8_REDUCE_SCATTER_OP_IMPL(QuantBmmA2AVecReduceFP8HiF8, false, TPL_TRANSB);

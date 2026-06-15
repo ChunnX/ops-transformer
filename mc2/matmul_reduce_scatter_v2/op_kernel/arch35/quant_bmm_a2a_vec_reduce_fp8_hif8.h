@@ -34,6 +34,21 @@ namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
 using namespace AiVReduceSumCastFp32Impl;
 
+// ============================================================================
+// 类型特征：定义打包因子（MXFP4场景适配）
+// FP4: 2个fp4打包成1个元素，packFactor=2
+// FP8: 每个元素独立存储，packFactor=1
+// ============================================================================
+template <typename T>
+struct PackFactor {
+    static constexpr uint64_t value = 1UL; // 默认：每个元素包含1个标量（如fp8）
+};
+
+template <>
+struct PackFactor<fp4x2_e2m1_t> {
+    static constexpr uint64_t value = 2UL; // fp4x2：2个fp4打包成1个元素
+};
+
 static constexpr uint16_t SYNC_AIC_ONLY_ALL_DET_FLAG = 4; // 用于 AIC 核间同步的 flagId
 static constexpr uint16_t SYNC_AIC_AIV_DET_FLAG = 8; // 用于 AIC 与 AIV 核间同步的 flagId
 static constexpr uint64_t SYNC_MODE0 = 0; // 核间同步模式 0
@@ -282,10 +297,12 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::InnerP
         }
 
         // PerBlock 连续场景
-        auto aGMTail = aGM_ + aSize * sizeof(AType) * static_cast<uint64_t>(cfg.tileCnt);
+        // MXFP4场景适配：A矩阵地址偏移需除以packFactor（fp4为2，fp8为1）
+        auto aGMTail = aGM_ + aSize * sizeof(AType) / PackFactor<AType>::value * static_cast<uint64_t>(cfg.tileCnt);
         tileOffset_ = static_cast<uint64_t>(cfg.tileCnt) * cSize * sizeof(CType) * cfg.rankDim; // 连续场景, 故乘rankDim
         auto sendGMTail = sendBuf_ + tileOffset_;
         auto recvGMTail = recvBuf_ + tileOffset_;
+        // Scale矩阵地址偏移保持不变（fp8_e8m0 packFactor=1）
         auto x1ScaleTail = x1ScaleGM_ + static_cast<uint64_t>(tiling.M) / BLOCK_SIZE *
                                             CeilDiv(static_cast<uint64_t>(tiling.Ka), BLOCK_SIZE) * sizeof(ScaleType) *
                                             static_cast<uint64_t>(cfg.tileCnt);
@@ -485,9 +502,9 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerb
 
     // 单次通信的元素数量 (M * N)
     const uint64_t recvCount = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.N);
-    // A 矩阵单个 Tile 的字节偏移 (M * Ka * sizeof(AType))
-    const uint64_t aTileBytes = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.Ka) * sizeof(AType);
-    // Scale 矩阵单个 Tile 的字节偏移
+    // MXFP4场景适配：A矩阵单个Tile的字节偏移需除以packFactor（fp4为2，fp8为1）
+    const uint64_t aTileBytes = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.Ka) * sizeof(AType) / PackFactor<AType>::value;
+    // Scale 矩阵单个 Tile 的字节偏移（保持不变，fp8_e8m0 packFactor=1）
     const uint64_t scaleBlockM = static_cast<uint64_t>(tiling.M / BLOCK_SIZE);
     const uint64_t scaleBlockK = CeilDiv(static_cast<uint64_t>(tiling.Ka), BLOCK_SIZE);
     const uint64_t scaleTileBytes = scaleBlockM * scaleBlockK * sizeof(ScaleType);

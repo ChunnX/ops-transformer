@@ -32,6 +32,21 @@
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
 
+// ============================================================================
+// 类型特征：定义打包因子（MXFP4场景适配）
+// FP4: 2个fp4打包成1个元素，packFactor=2
+// FP8: 每个元素独立存储，packFactor=1
+// ============================================================================
+template <typename T>
+struct PackFactor {
+    static constexpr uint64_t value = 1UL; // 默认：每个元素包含1个标量（如fp8）
+};
+
+template <>
+struct PackFactor<fp4x2_e2m1_t> {
+    static constexpr uint64_t value = 2UL; // fp4x2：2个fp4打包成1个元素
+};
+
 TEMPLATE_CLASS_PARAMS
 class QuantBMMReduceScatter {
 public:
@@ -189,10 +204,12 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::InnerProcess
             return;
         }
 
-        auto aGMTail = aGM_ + aSize * sizeof(AType) * static_cast<uint64_t>(cfg.tileCnt);
+        // MXFP4场景适配：A矩阵地址偏移需除以packFactor（fp4为2，fp8为1）
+        auto aGMTail = aGM_ + aSize * sizeof(AType) / PackFactor<AType>::value * static_cast<uint64_t>(cfg.tileCnt);
         auto cGMTail = cGM_ + cSize * sizeof(CType) * static_cast<uint64_t>(cfg.tileCnt);
         auto gmToFloatTail = gmToFloat_ +
             static_cast<uint64_t>(cfg.tileCnt) * static_cast<uint64_t>(cfg.rankDim) * cSize * sizeof(CType);
+        // Scale矩阵地址偏移保持不变（fp8_e8m0 packFactor=1）
         auto x1ScaleTail = x1ScaleGM_ + static_cast<uint64_t>(tiling.M) / BLOCK_SIZE *
                                             CeilDiv(static_cast<uint64_t>(tiling.Ka), BLOCK_SIZE) * sizeof(ScaleType) *
                                             static_cast<uint64_t>(cfg.tileCnt);
@@ -264,8 +281,10 @@ QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerblock(
     auto&& cfg = tilingData_->param;
     auto&& tiling = qBMmtiling.matmulTiling;
     auto recvCount = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.N);
-    auto aOffset = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.Ka) * sizeof(AType);
+    // MXFP4场景适配：A矩阵偏移需除以packFactor（fp4为2，fp8为1）
+    auto aOffset = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.Ka) * sizeof(AType) / PackFactor<AType>::value;
     auto cOffset = recvCount * sizeof(CType);
+    // raOffset当前未使用，保持原计算方式
     auto raOffset = static_cast<uint64_t>(cfg.rankM) * static_cast<uint64_t>(cfg.rankK) / cfg.rankDim * sizeof(AType);
     // 归一化Matmul计算类，负责MC2的Matmul计算
 
