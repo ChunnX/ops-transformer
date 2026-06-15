@@ -749,7 +749,8 @@ BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::oper
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
     if (singleN_ == n_) {
         CopyOutputCompactFromUb2Gm(singleMInVec, yOffset, quantOutput_);
-        CopyScaleCompactFromUb2Gm(singleMInVec, yScaleOffset, quantScaleOutput_);
+        TransMxScaleLayout(singleMInVec, scaleBlockN_);
+        CopyScaleFromUb2Gm(singleMInVec, yScaleOffset, quantScaleBlockOutput_);
     } else {
         TransMxScaleLayout(singleMInVec, scaleBlockN_);
         CopyOutputFromUb2Gm(singleMInVec, yOffset, quantOutput_);
