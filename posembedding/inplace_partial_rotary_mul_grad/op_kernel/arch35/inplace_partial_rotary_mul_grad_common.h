@@ -221,7 +221,6 @@ __aicore__ inline void GradInterleaveHalfVF(__local_mem__ Tcs* sinUb, __local_me
     uint32_t halfDAlignDy = dAlignDy / HALF_INTERLEAVE_COEF;
     uint32_t halfDAlignCs = dAlignCs / HALF_INTERLEAVE_COEF;
     uint16_t repeatTimes = Ops::Base::CeilDiv(halfD, VL_FLOAT32_SIZE);
-    uint32_t loopSize = 2 * VL_FLOAT32_SIZE;
     uint32_t part1Num = (repeatTimes - 1) * VL_FLOAT32_SIZE;
     uint32_t part2Num = part1Num;
     uint32_t tailNum = dLen - part1Num - part2Num;
@@ -266,7 +265,6 @@ __aicore__ inline void GradInterleaveHalfVF(__local_mem__ Tcs* sinUb, __local_me
             }
         }
     }
-    (void)loopSize;
 }
 
 } // namespace InplacePartialRotaryMulGrad
