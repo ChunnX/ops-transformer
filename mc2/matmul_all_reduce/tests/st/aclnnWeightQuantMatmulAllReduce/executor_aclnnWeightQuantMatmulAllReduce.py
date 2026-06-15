@@ -109,22 +109,22 @@ class DistFunctionApi(BaseApi):
                     weight_chunk = torch.add(weight_chunk, antiquant_offset)
                 weight_chunk = torch.mul(weight_chunk, antiquant_scale)
             output = torch.matmul(input_chunk, weight_chunk)
-            if bias_chunk != None:
+            if bias_chunk is not None:
                 bias_chunk = bias_chunk.cpu()
                 output = torch.add(output, bias_chunk)
-            if x3_chunk != None:
+            if x3_chunk is not None:
                 x3_chunk = x3_chunk.to(torch.float32).cpu()
                 output = torch.add(output, x3_chunk)
             # 通信部分
             dist.all_reduce(output, op=dist.ReduceOp.SUM)
             return output
         if self.dist_task_info.is_bm:
-            if bias_chunk != None and bias_chunk.dtype == torch.bfloat16:
+            if bias_chunk is not None and bias_chunk.dtype == torch.bfloat16:
                 bias_chunk = bias_chunk.to(torch.float32)
             output = torch_npu.npu_weight_quant_batchmatmul(x=input_golden, weight=weight_chunk, bias=bias_chunk,
                                                     antiquant_scale=antiquant_scale_chunk, antiquant_offset=antiquant_offset_chunk,
                                                     antiquant_group_size=antiquantGroupSize)
-            if x3_chunk != None:
+            if x3_chunk is not None:
                 output = output.reshape(x3_chunk.shape)
                 output = torch.add(output, x3_chunk)
             dist.all_reduce(output, op=ReduceOp.SUM)

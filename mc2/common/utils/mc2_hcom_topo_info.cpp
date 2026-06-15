@@ -89,22 +89,17 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
 #ifdef BUILD_OPEN_PROJECT
     if (getCommHandle_ == nullptr || getRankSizeEx_ == nullptr || getL0TopoTypeEx_ == nullptr ||
         getCclBufferSize_ == nullptr) {
+        dlclose(handle_); // Release dlopen handle to prevent resource leak
+        handle_ = nullptr;
         OP_LOGE("", "Lib load new topo functions failed.");
-        getCommHandle_ = nullptr;
-        getCclBufferSize_ = nullptr;
-        getRankSizeEx_ = nullptr;
-        getL0TopoTypeEx_ = nullptr;
         return;
     }
 #else
     if (getCommHandle_ == nullptr || getNetLayers_ == nullptr || getTopoType_ == nullptr || getInstSize_ == nullptr ||
         getCclBufferSize_ == nullptr) {
+        dlclose(handle_); // Release dlopen handle to prevent resource leak
+        handle_ = nullptr;
         OP_LOGE("", "Lib load new topo functions failed.");
-        getCommHandle_ = nullptr;
-        getNetLayers_ = nullptr;
-        getTopoType_ = nullptr;
-        getInstSize_ = nullptr;
-        getCclBufferSize_ = nullptr;
         return;
     }
 #endif

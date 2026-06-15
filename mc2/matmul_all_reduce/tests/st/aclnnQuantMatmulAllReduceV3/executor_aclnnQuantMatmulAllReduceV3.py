@@ -140,10 +140,10 @@ class DistFunctionApi(BaseApi):
             input_chunk = input_chunk.to(torch.int32).cpu()
             weight_chunk = weight_chunk.to(torch.int32).cpu().contiguous()
             output = torch.matmul(input_chunk, weight_chunk)
-            if bias_chunk != None:
+            if bias_chunk is not None:
                 bias_chunk = bias_chunk.cpu()
                 output = torch.add(output, bias_chunk)
-            if pertoken_scale_chunk != None:
+            if pertoken_scale_chunk is not None:
                 output_origial_shape = output.shape
                 if len(output_origial_shape) == 3:
                     output = output.reshape(-1, output.shape[-1])
@@ -151,7 +151,7 @@ class DistFunctionApi(BaseApi):
                 output = (output * pertoekn_scale).reshape(output_origial_shape)
             dequant_scale_cpu = dequant_scale_chunk.to(torch.float32).cpu()
             output = torch.mul(output, dequant_scale_cpu)
-            if x3_chunk != None:
+            if x3_chunk is not None:
                 output = output.reshape(x3_chunk.shape)
                 x3_chunk = x3_chunk.to(torch.float32).cpu()
                 output = torch.add(output, x3_chunk)
@@ -172,7 +172,7 @@ class DistFunctionApi(BaseApi):
             output = torch_npu.npu_quant_matmul(x1=input_golden, x2=weight_chunk, scale=dequant_scale_golden,
                                                     bias=bias_chunk, pertoken_scale=pertoken_scale_chunk,
                                                     output_dtype=output_dtype)
-            if x3_chunk != None:
+            if x3_chunk is not None:
                 output = output.reshape(x3_chunk.shape)
                 output = torch.add(output, x3_chunk)
             if not is_commquant:

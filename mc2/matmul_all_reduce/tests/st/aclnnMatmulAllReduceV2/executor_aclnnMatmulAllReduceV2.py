@@ -59,19 +59,19 @@ class DistFunctionApi(BaseApi):
             input_chunk = input_chunk.cpu().to(torch.float32)
             weight_chunk = weight_chunk.cpu().to(torch.float32).contiguous()
             output = torch.matmul(input_chunk, weight_chunk)
-            if bias_chunk != None:
+            if bias_chunk is not None:
                 bias_chunk = bias_chunk.to(torch.float32).cpu()
                 output = torch.add(output, bias_chunk)
-            if x3_chunk != None:
+            if x3_chunk is not None:
                 x3_chunk = x3_chunk.to(torch.float32).cpu()
                 output = torch.add(output, x3_chunk)
             dist.all_reduce(output, op=dist.ReduceOp.SUM)
             return output
         if self.dist_task_info.is_bm:
             output = torch.matmul(input_chunk, weight_chunk)
-            if bias_chunk != None:
+            if bias_chunk is not None:
                 output = torch.add(output, bias_chunk)
-            if x3_chunk != None:
+            if x3_chunk is not None:
                 output = torch.add(output, x3_chunk)
             dist.all_reduce(output, op=ReduceOp.SUM)
             return output
