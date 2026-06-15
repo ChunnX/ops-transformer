@@ -21,16 +21,18 @@ import numpy as np
 N_ALIGN_SIZE = 64
 
 
-def grouped_matmul_activation_quant_inputs(x, group_list, weight, weight_scale, bias=None, x_scale=None, *,
-                                           activation_type: str = "gelu_tanh", dequant_dtype: int = 0,
-                                           transpose_weight: bool = False, group_list_type: int = 0,
-                                           tuning_config=None, quant_mode: str = "MX", y_dtype: int = 36,
+def grouped_matmul_activation_quant_inputs(x, group_list, weight, weight_scale, bias, activation_type: str, *,
+                                           x_scale=None, transpose_weight: bool = False,
+                                           group_list_type: int = 0, tuning_config=None, quant_mode: str = "",
+                                           y_dtype: int = 36,
                                            round_mode: str = "rint",
                                            scale_alg: int = 0, dst_type_max: float = 0.0, **kwargs):
-    del activation_type, dequant_dtype, tuning_config, y_dtype
+    del activation_type, tuning_config, y_dtype
     del round_mode, scale_alg, dst_type_max
+    if quant_mode in (None, ""):
+        quant_mode = "MX"
     if quant_mode != "MX":
-        raise ValueError("quant_mode only supports MX.")
+        raise ValueError("当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX")
     if x_scale is None:
         raise ValueError("x_scale is required for MX quant mode.")
 
