@@ -31,6 +31,8 @@ const int64_t DIM_LEN = 2;
 const int64_t SPLIT_RATIO = 2;
 const int64_t OUT_DIM_LEN = 3;
 const int64_t N_SPLIT_RATIO = 128;
+constexpr int64_t WEIGHTSCALE_DIM_MULTI_MXA8W4 = 3;
+constexpr int64_t NZ_N_ALIGN_INFERSHAPE = 64;
 constexpr size_t GMMSQ_INDEX_ATTR_QUANT_DTYPE = 3UL;
 constexpr size_t GMMSQ_INDEX_ATTR_QUANT_MODE = 2UL;
 constexpr size_t QUANT_MODE_MX_TYPE = 2;
@@ -87,8 +89,41 @@ static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeCon
         outScaleShape->SetDim(1, n);
         outScaleShape->SetDim(2, SPLIT_RATIO); // 设置outScaleShape的第2维度
     } else {
-        outScaleShape->SetDimNum(1);
-        outScaleShape->SetDim(0, m);
+        auto attrs = context->GetAttrs();
+        OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+        const int64_t *quantModePtr = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_MODE);
+        const int64_t quantModeVal = (quantModePtr != nullptr ? *quantModePtr : -1);
+        bool isMxA8W4MultiWeight = (quantModeVal == static_cast<int64_t>(QUANT_MODE_MX_TYPE)) &&
+                                   (weightScaleShape->GetDimNum() == WEIGHTSCALE_DIM_MULTI_MXA8W4);
+        if (isMxA8W4MultiWeight) {
+            auto wsDimNum = weightScaleShape->GetDimNum();
+            const bool *transposeWeightPtr = attrs->GetBool(WEIGHTSCALE_INDEX);
+            const bool transposeWeight = (transposeWeightPtr != nullptr ? *transposeWeightPtr : false);
+            nDimIndex = transposeWeight ? 0 : static_cast<int64_t>(wsDimNum - 2);
+            int64_t dimValue = static_cast<int64_t>(weightScaleShape->GetDim(nDimIndex));
+            int64_t nScale = 0;
+            int64_t nOut = 0;
+            if (dimValue == DYNAMIC_GRAPH_FIRST_INFERSHAPE_DIM_VALUE) {
+                nScale = dimValue;
+                nOut = dimValue;
+            } else {
+                nScale = static_cast<int64_t>(Ops::Base::CeilDiv(dimValue, N_SPLIT_RATIO));
+                nOut = static_cast<int64_t>(dimValue / SPLIT_RATIO);
+            }
+            outScaleShape->SetDimNum(OUT_DIM_LEN);
+            outScaleShape->SetDim(0, m);
+            outScaleShape->SetDim(1, nScale);
+            outScaleShape->SetDim(2, SPLIT_RATIO);
+            auto outShape = context->GetOutputShape(0);
+            OP_CHECK_NULL_WITH_CONTEXT(context, outShape);
+            outShape->SetDimNum(DIM_LEN);
+            outShape->SetDim(0, m);
+            outShape->SetDim(1, nOut);
+            return GRAPH_SUCCESS;
+        } else {
+            outScaleShape->SetDimNum(1);
+            outScaleShape->SetDim(0, m);
+        }
     }
 
     int64_t dimValue = static_cast<int64_t>(weightScaleShape->GetDim(nDimIndex));
