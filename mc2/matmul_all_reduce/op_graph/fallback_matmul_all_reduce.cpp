@@ -122,8 +122,9 @@ struct CommParas {
     const char* comm_mode;
 };
 
-inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
+inline ge::graphStatus GetCommParaBase(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
 {
+    OP_LOGD(kInnerDebug, "Enter myGetCommPara.");
     const auto attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
 
@@ -189,7 +190,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 
     CommParas comm_para;
     OPS_CHECK(
-        GetCommPara(host_api_ctx, comm_para) != ge::SUCCESS,
+        GetCommParaBase(host_api_ctx, comm_para) != ge::SUCCESS,
         OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get comm paras."), return ge::GRAPH_FAILED);
 
     AllReduceParas all_reduce_para;
