@@ -44,18 +44,23 @@ GELU_TANH_NEG_SQRT_EIGHT_OVER_PI = -1.595769121 * 0.044715
 GELU_TANH_APPROX_FACTOR = 1.0 / 0.044715
 
 
-def grouped_matmul_activation_quant_golden(x, group_list, x_scale, weight, weight_scale, bias=None, *,
+def grouped_matmul_activation_quant_golden(x, group_list, weight, weight_scale, bias=None, x_scale=None, *,
                                            activation_type: str = "gelu_tanh", dequant_dtype: int = 0,
                                            transpose_weight: bool = False, group_list_type: int = 0,
-                                           tuning_config=None, quant_dtype: int = QUANT_DTYPE_E4M3FN,
+                                           tuning_config=None, quant_mode: str = "MX",
+                                           y_dtype: int = QUANT_DTYPE_E4M3FN,
                                            round_mode: str = "rint", scale_alg: int = 0,
                                            dst_type_max: float = 0.0, **kwargs):
     del bias, dequant_dtype, tuning_config, round_mode, dst_type_max
     if activation_type != "gelu_tanh":
         raise ValueError("activation_type only supports gelu_tanh.")
+    if quant_mode != "MX":
+        raise ValueError("quant_mode only supports MX.")
+    if x_scale is None:
+        raise ValueError("x_scale is required for MX quant mode.")
 
     output_dtypes = kwargs.get("output_dtypes", [])
-    y_dtype = output_dtypes[0] if output_dtypes else _quant_dtype_to_name(quant_dtype)
+    y_dtype = output_dtypes[0] if output_dtypes else _ge_dtype_to_name(y_dtype)
     y_scale_dtype = output_dtypes[1] if len(output_dtypes) > 1 else "float8_e8m0"
     y_dtype = _normalize_dtype_name(y_dtype)
     y_scale_dtype = _normalize_dtype_name(y_scale_dtype)
@@ -197,7 +202,10 @@ def _dynamic_quant_fp8(x, y_dtype):
             col_end = col_start + MXFP_SCALE_ELEMENT_NUM
             block = x[row_idx, col_start:col_end]
             max_abs = np.max(np.abs(block)) if block.size > 0 else 0.0
-            scale = 1.0 if max_abs == 0.0 else max_abs / fp8_max
+            if max_abs == 0.0:
+                y_scale[row_idx, scale_idx] = _e8m0_byte_to_float(0)
+                continue
+            scale = max_abs / fp8_max
             scale = _ceil_power_of_two(scale)
             y_scale[row_idx, scale_idx] = scale
             y[row_idx, col_start:col_end] = block / scale
@@ -271,8 +279,8 @@ def _ceil_power_of_two(value):
     return float(np.exp2(np.ceil(np.log2(value))))
 
 
-def _quant_dtype_to_name(quant_dtype):
-    return "float8_e5m2" if quant_dtype == QUANT_DTYPE_E5M2 else "float8_e4m3fn"
+def _ge_dtype_to_name(dtype):
+    return "float8_e5m2" if dtype == QUANT_DTYPE_E5M2 else "float8_e4m3fn"
 
 
 def _cast_fp8(x, dtype_name):
