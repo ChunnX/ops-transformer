@@ -2114,6 +2114,7 @@ private:
         }
         if (copyRows < chunkSize_ || tileCols < chunkSize_) {
             ZeroHalfL1(rhsL1.template ReinterpretCast<half>(), chunkSize_ * chunkSize_);
+            SyncMToMte2();
         }
         LoadGmBf16BlockToPackedBf16L1WithStrideNoWait(rhsGm, rhsL1, 0, 0, copyRows, tileCols,
                                                       rhsStride, chunkSize_);
@@ -2999,6 +3000,13 @@ private:
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::MTE2_M));
         SetFlag<HardEvent::MTE2_M>(eventID);
         WaitFlag<HardEvent::MTE2_M>(eventID);
+    }
+
+    __aicore__ inline void SyncMToMte2()
+    {
+        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::M_MTE2));
+        SetFlag<HardEvent::M_MTE2>(eventID);
+        WaitFlag<HardEvent::M_MTE2>(eventID);
     }
 
     __aicore__ inline void SyncMte1ToMte2()
