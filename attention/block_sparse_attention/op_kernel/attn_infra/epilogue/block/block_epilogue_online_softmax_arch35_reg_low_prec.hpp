@@ -128,7 +128,7 @@ public:
         }
         repeatParams.blockCount = blockCount;
         repeatParams.blockLen = m;
-        repeatParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / elementNumPerC0 - m;
+        repeatParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / elementNumPerC0 - m + 1;
         repeatParams.dstStride = tla::get<1, 1>(dstTensor.stride()) / elementNumPerC0 - m;
 
         auto dstOffset = dstTensor.layout()(dstTensor.coord());
@@ -176,7 +176,7 @@ public:
         uint32_t n = actualBlockShape.n();
         uint16_t mRound = RoundUp(m, C0_NUM_PER_FRACTAL);
         uint16_t nRound = RoundUp(n, ELE_NUM_PER_C0);
-        uint32_t blockStride = mRound;
+        uint32_t blockStride = mRound + 1;
         constexpr int16_t vlSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(ElementInput));
         int16_t nLoops = AscendC::CeilDivision(n, vlSize) - 1;
         uint32_t tailN = (n - 1) % vlSize + 1;
