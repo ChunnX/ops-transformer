@@ -288,7 +288,8 @@ namespace SplitFuse {
                         int32_t enS1IdxNow = (BIdx == endBIdx && n1Idx == enN1IdxNow) ? endS1Idx : curQSBlockNumTmp - 1;
 
                         for (int32_t s1Idx = stS1IdxNow; s1Idx <= enS1IdxNow; s1Idx++) {
-                            int32_t stS2IdxNow = (BIdx == startBIdx && n1Idx == stN1IdxNow && s1Idx == stS1IdxNow) ? startS2Idx : 0;
+                            int32_t stS2IdxNow = (BIdx == startBIdx && n1Idx == stN1IdxNow && s1Idx == stS1IdxNow) ?
+                                startS2Idx : 0;
                             int32_t enS2IdxNow = (BIdx == endBIdx && n1Idx == enN1IdxNow && s1Idx == enS1IdxNow) ?
                                 endS2Idx :
                                 curKSBlockNumTmp;
@@ -568,7 +569,7 @@ namespace SplitFuse {
                     int32_t leftPointNextToken = 0;
                     if (preToken < 0 && preToken * (-1) >= qSeqlen) {
                         startIdx = kvSeqlen / MAX_KV_STACK_LEN + 1;
- 	  	            } else if (preToken != SPARSE_MODE_INT_MAX) {
+                    } else if (preToken != SPARSE_MODE_INT_MAX) {
                         leftPointPreToken = kvSeqlen - qSeqlen - preToken;
                         preTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointPreToken;
                         preTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointPreToken;
@@ -580,7 +581,7 @@ namespace SplitFuse {
                     }
                     if (nextToken < 0 && nextToken * (-1) >= kvSeqlen) {
                         kvSLoopNumTotal = 0;
- 	  	            } else if (nextToken != SPARSE_MODE_INT_MAX) {
+                    } else if (nextToken != SPARSE_MODE_INT_MAX) {
                         leftPointNextToken = kvSeqlen - qSeqlen + nextToken;
                         nextTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointNextToken;
                         nextTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointNextToken;
