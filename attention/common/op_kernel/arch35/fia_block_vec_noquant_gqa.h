@@ -394,11 +394,7 @@ public:
         }
 
         if (constInfo.learnableSinkFlag) {
-            // if (constInfo.isGqa) {
             this->Vec1SinkComputeGSFused(runInfo, sumUb, maxUb);
-            // } else {
-            //     this->Vec1SinkCompute(runInfo, sumUb, maxUb);
-            // }
         }
     }
 
@@ -486,45 +482,6 @@ public:
         DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], sinkCopyParams, sinkCopyPadParams);
         sinkQue.EnQue(sinkUbBf16);
     }
-
-    // __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar,
-    //                                                SoftMaxShapeInfo &softmaxShapeInfo)
-    // {
-    //     event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    //     SetFlag<HardEvent::V_S>(eventIdVToS);
-    //     WaitFlag<HardEvent::V_S>(eventIdVToS);
-    //     bool isUpdateNeedCheck = false;
-    //     SetMaskCount();
-    //     SetVectorMask<float, MaskMode::COUNTER>(0, softmaxShapeInfo.srcK);
-    //     for (uint32_t i = 0; i < softmaxShapeInfo.srcM; i++) {
-    //         T maxValue = maxUb.GetValue(i);
-    //         uint32_t checkValue = *reinterpret_cast<uint32_t *>(&maxValue);
-    //         if (checkValue == negativeIntScalar) {
-    //             isUpdateNeedCheck = true;
-    //             break;
-    //         }
-    //     }
-    //     SetMaskNorm();
-    //     ResetMask();
-    //     return isUpdateNeedCheck;
-    // }
-
-    // __aicore__ inline void InvalidLineProcess(RunInfoX runInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb)
-    // {
-    //     if (constInfo.softMaxCheckRes) {
-    //         SoftMaxShapeInfo softmaxShapeInfo{static_cast<uint32_t>(runInfo.actVecMSize), static_cast<uint32_t>(1),
-    //                                           static_cast<uint32_t>(runInfo.actVecMSize), static_cast<uint32_t>(1)};
-    //         bool res = SoftmaxInvalidLineCheck(maxUb, NEGATIVE_MIN_VALUE_FP32, softmaxShapeInfo);
-    //         if (!res) {
-    //             // constInfo.softMaxCheckRes = false;
-    //         } else {
-    //             if (unlikely(runInfo.isLastS2Loop)) {
-    //                 SoftmaxSumUpdate<T>(sumUb, maxUb, runInfo.actVecMSize, this->negativeFloatScalar,
-    //                                     this->positiveFloatScalar);
-    //             }
-    //         }
-    //     }
-    // }
 
     __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
@@ -777,37 +734,7 @@ public:
                                             GlobalTensor<POSTQUANT_PARAMS_T> postQuantScaleGm,
                                             GlobalTensor<POSTQUANT_PARAMS_T> postQuantOffsetGm)
     {
-#if 0
-        DataCopyExtParams copyInParams;
-        DataCopyPadExtParams<POSTQUANT_PARAMS_T> copyInPadParams;
-        copyInParams.blockCount = gSplitSize;
-        copyInParams.blockLen = constInfo.dSizeV * sizeof(POSTQUANT_PARAMS_T);
-        copyInParams.srcStride = 0;
-        copyInParams.dstStride =
-            (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T)); // 32: datablock size
 
-        LocalTensor<POSTQUANT_PARAMS_T> postQuantScaleUb =
-            this->postQuantScaleQue.template AllocTensor<POSTQUANT_PARAMS_T>();
-        DataCopyPad(postQuantScaleUb, postQuantScaleGm[perChannelQuantOffset], copyInParams, copyInPadParams);
-        this->postQuantScaleQue.template EnQue(postQuantScaleUb);
-        this->postQuantScaleQue.template DeQue<POSTQUANT_PARAMS_T>();
-        if (constInfo.isPostQuantOffsetExist) {
-            LocalTensor<POSTQUANT_PARAMS_T> postQuantOffsetUb =
-                this->postQuantOffsetQue.template AllocTensor<POSTQUANT_PARAMS_T>();
-            DataCopyPad(postQuantOffsetUb, postQuantOffsetGm[perChannelQuantOffset], copyInParams, copyInPadParams);
-            this->postQuantOffsetQue.template EnQue(postQuantOffsetUb);
-            this->postQuantOffsetQue.template DeQue<POSTQUANT_PARAMS_T>();
-            PostQuantPerChnlImpl<T, OUTPUT_T, POSTQUANT_PARAMS_T>(attenOut[splitOffset], vec2ResUb[splitOffset],
-                                                                  postQuantScaleUb, postQuantOffsetUb, gSplitSize,
-                                                                  s1RowCount, constInfo.dSizeV, dSizeAligned64);
-            this->postQuantOffsetQue.FreeTensor(postQuantOffsetUb);
-        } else {
-            PostQuantPerChnlImpl<T, OUTPUT_T, POSTQUANT_PARAMS_T>(attenOut[splitOffset], vec2ResUb[splitOffset],
-                                                                  postQuantScaleUb, gSplitSize, s1RowCount,
-                                                                  constInfo.dSizeV, dSizeAligned64);
-        }
-        this->postQuantScaleQue.FreeTensor(postQuantScaleUb);
-#endif
     }
 
     __aicore__ inline void ProcessVec2DSplit(GlobalTensor<T> &mmRes, const RunInfoX &runInfo)
@@ -1388,33 +1315,6 @@ public:
 
     __aicore__ void PseCopyIn(LocalTensor<pseShiftType> pseUb, RunInfoX &runInfo)
     {
-#if 0 // TODO
-        FaUbTensor<PSE_T> pseShiftUbTensor {
-            .tensor = pseUb,
-            .rowCount = dealRowCount;
-            .colCount = columnCount   // 对齐后的值
-        };
-        GmPseCoord pseCoord = {
-            .bIdx = constInfo.pseShiftByBatch ? info.bIdx : 0,
-            .n2Idx = info.n2Idx,
-            .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow,
-            .s2Idx = info.s2Idx,
-            .gS1DealSize = dealRowCount,
-            .s2DealSize = actualColumnCount,
-            .s1LeftPaddingSize = info.qPaddingBeginOffset,
-            .s2LeftPaddingSize = info.kvPaddingBeginOffset,
-            .actualBIdx = info.bIdx
-        };
-        bool qsEqualOne = (constInfo.s1Size == 1);
-
-        FaGmTensor<PSE_T, GmFormat::BN2GS1S2> pseShiftGmTensor;
-        pseShiftGmTensor.gmTensor = pseGm;
-        pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
-                                                constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
-                                                this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-
-        copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
-#endif
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
@@ -1453,100 +1353,6 @@ public:
             }
         }
     }
-
-    // template <GmFormat GM_FORMAT, typename OUT_T>
-    // __aicore__ inline void UpdateAttenOutZero(FaGmTensor<OUT_T, GM_FORMAT> &dstTensor, GmCoord &gmCoord)
-    // {
-    //     if constexpr ((GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
-    //         ProcessS1G(dstTensor, gmCoord);
-    //     } else if constexpr (GM_FORMAT == GmFormat::BNGSD || GM_FORMAT == GmFormat::NGTD) {
-    //         ProcessContinuous(dstTensor, gmCoord);
-    //     }
-    // }
-
-    // template <GmFormat GM_FORMAT, typename OUT_T>
-    // __aicore__ inline void ProcessS1G(FaGmTensor<OUT_T, GM_FORMAT> &dstTensor, GmCoord &gmCoord)
-    // {
-    //     OffsetCalculator<GM_FORMAT> &offsetCalculator = dstTensor.offsetCalculator;
-    //     int32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
-    //     int32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
-    //     int32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();
-    //     int32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % offsetCalculator.GetDimG();
-
-    //     uint64_t offset =
-    //         offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, s1IdxStart, gmCoord.dIdx);
-
-    //     if (offsetCalculator.GetDimG() == 1) {
-    //         DataCopyAttenOutZero(dstTensor.gmTensor[offset], gmCoord.gS1DealSize, gmCoord.dDealSize);
-    //         return;
-    //     }
-
-    //     // 处理第一个S
-    //     int32_t headSize = 0;
-    //     if (s1IdxStart == s1IdxEnd) {
-    //         headSize = gIdxEnd - gIdxStart;
-    //     } else {
-    //         headSize = offsetCalculator.GetDimG() - gIdxStart;
-    //     }
-
-    //     DataCopyAttenOutZero(dstTensor.gmTensor[offset], headSize, gmCoord.dDealSize);
-    //     offset += headSize * gmCoord.dDealSize;
-
-    //     if (s1IdxEnd - s1IdxStart >= 1) {
-    //         // 处理中间块
-    //         int32_t tailSize = gIdxEnd;
-    //         int32_t gDealSize = offsetCalculator.GetDimG();
-    //         for (int32_t sIdx = s1IdxStart + 1; sIdx <= s1IdxEnd; ++sIdx) {
-    //              if (sIdx == s1IdxEnd) {
-    //                 gDealSize = tailSize;
-    //              }
-    //             DataCopyAttenOutZero(dstTensor.gmTensor[offset], gDealSize, gmCoord.dDealSize);
-    //             offset += offsetCalculator.GetStrideS1();
-    //         }
-    //     }
-    // }
-
-    // template <GmFormat GM_FORMAT, typename OUT_T>
-    // __aicore__ inline void ProcessContinuous(
-    //     FaGmTensor<OUT_T, GM_FORMAT> &dstTensor, GmCoord &gmCoord)
-    // {
-    //     OffsetCalculator<GM_FORMAT> &offsetCalculator = dstTensor.offsetCalculator;
-    //     uint32_t gIdxStart, s1IdxStart;
-    //     if constexpr (GM_FORMAT == GmFormat::BNGSD) {
-    //         gIdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimS1();
-    //         s1IdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimS1();
-    //     } else {
-    //         uint32_t s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-    //         gIdxStart = gmCoord.gS1Idx / s1Size;
-    //         s1IdxStart = gmCoord.gS1Idx % s1Size;
-    //     }
-
-    //     uint64_t offset =
-    //         offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, s1IdxStart, gmCoord.dIdx);
-
-    //     DataCopyAttenOutZero(dstTensor.gmTensor[offset], gmCoord.gS1DealSize, gmCoord.dDealSize);
-    // }
-
-    // __aicore__ inline void DataCopyAttenOutZero(const GlobalTensor<OUT_T>& dstTensor, int64_t mDealSize, int32_t
-    // dDealSize)
-    // {
-    //     int32_t mDealBaseSize = dealZeroUb.GetSize() / dDealSize;
-    //     int32_t mLoopNum = CeilDiv(mDealSize, mDealBaseSize);
-    //     int32_t mTailSize = (mDealSize % mDealBaseSize == 0) ? mDealBaseSize : (mDealSize % mDealBaseSize);
-    //     int32_t mSingleDealSize = mDealBaseSize;
-
-    //     for (int32_t mOIdx = 0; mOIdx < mLoopNum; ++mOIdx) {
-    //         if (mOIdx == mLoopNum - 1) {
-    //             mSingleDealSize = mTailSize;
-    //         }
-    //         DataCopyExtParams dataCopyParams;
-    //         dataCopyParams.blockCount = mSingleDealSize;
-    //         dataCopyParams.blockLen = dDealSize * sizeof(OUT_T);
-    //         dataCopyParams.srcStride = 0;
-    //         dataCopyParams.dstStride = 0;
-    //         DataCopyPad(dstTensor[mOIdx * mDealBaseSize * dDealSize], dealZeroUb, dataCopyParams);
-    //     }
-    // }
 };
 
 

@@ -109,7 +109,6 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
     OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo_->opName, "Set plat memory info fail."),
                 return ge::GRAPH_FAILED);
 
-    // TODO，增加空tensor、路径6 STC验证用例
     if (fiaInfo_->emptyTensorFlag) {
         int64_t outSize = fiaInfo_->opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
         int64_t lseSize =
@@ -744,7 +743,6 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyInfo()
         tilingKeyInfo_.hasAttenMask = fiaInfo_->attenMaskFlag;
         UpdateTilingKeyHasRope();
 
-        // tilingKeyInfo_.isPa = fiaInfo_->pageAttentionFlag;
         tilingKeyInfo_.kvLayoutType = tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType;
 
         if (fiaInfo_->pageAttentionFlag) {
@@ -761,7 +759,6 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyInfo()
 
         tilingKeyInfo_.emptyTensor = fiaInfo_->emptyTensorFlag;
         tilingKeyInfo_.enableKvPrefix = fiaInfo_->sysPrefixFlag;
-        // tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
         tilingKeyInfo_.isReconstructTemp = true;
     }
 }
