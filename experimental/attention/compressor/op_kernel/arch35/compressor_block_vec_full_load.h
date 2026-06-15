@@ -1030,10 +1030,11 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
                    dBaseSize, dealSeqStartIdx, needDealTcSize);
     if (statisticInfo.compressorScCnt > 0) {
         SoftmaxDN(scoreLocal, statisticInfo.compressorScCnt, dDealSize);
+        LocalTensor<T> comperssoredUb = scoreLocal; 
         PipeBarrier<PIPE_V>();
-        KvMulReduceScore(kvLocal, scoreLocal, scoreLocal, statisticInfo.compressorScCnt, dDealSize);
+        KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
-        CopyOutVec1ResToOutput(scoreLocal, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx + dBaseOffset,
+        CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx + dBaseOffset,
                                dDealSize);
     }
     compressedCnt_ += statisticInfo.compressorScCnt;
