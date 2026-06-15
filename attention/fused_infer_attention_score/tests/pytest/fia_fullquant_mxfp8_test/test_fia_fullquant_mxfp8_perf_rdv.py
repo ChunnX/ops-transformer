@@ -19,7 +19,18 @@ from common import result_compare_method
 import fia_fullquant_mxfp8_paramset_perf_rdv as paramset
 
 CASES = paramset.CASES
+SKIP_CASES = getattr(paramset, "SKIP_CASES", set())
 CASE_IDS = [case["name"] for case in CASES]
+
+
+def _build_parametrize_args():
+    args = []
+    for case in CASES:
+        if case["name"] in SKIP_CASES:
+            args.append(pytest.param(case, marks=pytest.mark.skip(reason="execution time too long")))
+        else:
+            args.append(case)
+    return args
 
 
 def _apply_params(params):
@@ -38,6 +49,8 @@ def _apply_params(params):
     golden.DATA_RANGE_Q = params["data_range_q"]
     golden.DATA_RANGE_K = params["data_range_k"]
     golden.DATA_RANGE_V = params["data_range_v"]
+    golden.ENABLE_LSE = params["enable_lse"]
+    golden.ENABLE_ROPE = params["enable_rope"]
 
 
 def _execute_test(params):
@@ -74,7 +87,7 @@ def _execute_test(params):
 
 
 @pytest.mark.perf_rdv
-@pytest.mark.parametrize("params", CASES, ids=CASE_IDS)
+@pytest.mark.parametrize("params", _build_parametrize_args(), ids=CASE_IDS)
 def test_fia_fullquant_mxfp8(params):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_execute_test, params)
