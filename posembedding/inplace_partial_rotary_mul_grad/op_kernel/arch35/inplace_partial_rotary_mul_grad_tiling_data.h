@@ -36,6 +36,7 @@ struct InplacePartialRotaryMulGradTilingData {
     int64_t partialStart;   // slice start on D
     int64_t sliceLen;       // slice length (end - start), i.e. cos/sin last dim
     int64_t rotaryMode;     // 0=half, 1=interleave, 2=quarter, 3=interleave-half
+    int64_t dSplitCoef;     // rotary split coefficient: 1 (interleave), 2 (half/interleave-half), 4 (quarter)
     int64_t dyDtypeCode;    // dtype code of dy (and dx output)
     int64_t cosDtypeCode;   // dtype code of cos/sin
     // broadcast strides of cos/sin over the (B,S,N) grid, in units of sliceLen-element rows.

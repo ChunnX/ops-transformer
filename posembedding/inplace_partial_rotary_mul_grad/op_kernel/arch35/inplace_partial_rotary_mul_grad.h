@@ -109,13 +109,7 @@ __aicore__ inline void InplacePartialRotaryMulGrad<Tdy, Tcs>::Init(GM_ADDR dy, G
     rotaryMode_ = tiling->rotaryMode;
     ubFactorM_ = tiling->ubFactorM;
 
-    if (rotaryMode_ == 0 || rotaryMode_ == 3) { // half / interleave-half: input split in halves
-        dSplitCoef_ = HALF_INTERLEAVE_COEF;
-    } else if (rotaryMode_ == 2) { // quarter
-        dSplitCoef_ = QUARTER_MODE_COEF;
-    } else { // interleave
-        dSplitCoef_ = 1;
-    }
+    dSplitCoef_ = tiling->dSplitCoef;
     uint32_t blockElemsDy = BLOCK_TYPE_SIZE / sizeof(Tdy);
     uint32_t blockElemsCs = BLOCK_TYPE_SIZE / sizeof(Tcs);
     dAlignDy_ = Ops::Base::CeilAlign(sliceLen_ / dSplitCoef_, static_cast<int64_t>(blockElemsDy)) * dSplitCoef_;
