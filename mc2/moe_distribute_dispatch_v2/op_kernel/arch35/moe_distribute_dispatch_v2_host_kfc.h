@@ -1720,6 +1720,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<XInType> tokenData = xInQueue_.AllocTensor<XInType>();
     DataCopy(tokenData, recvTmpTensor, hAlignSize_ / sizeof(XInType));
     xInQueue_.EnQue(tokenData);
+    SyncFunc<AscendC::HardEvent::MTE2_S>(); // recvTmpTensor由MTE2写入，GetValue(S流水)读取需MTE2→S同步
     LocalTensor<int16_t> xInTensorInt16 = recvTmpTensor.template ReinterpretCast<int16_t>();
     LocalTensor<uint32_t> xInTensor = recvTmpTensor.template ReinterpretCast<uint32_t>();
     LocalTensor<float> xInToFloatTensor = recvTmpTensor.template ReinterpretCast<float>();
@@ -1727,7 +1728,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     uint32_t tokenIndex = xInTensor(sendXTypeElemAlign_ + 1);
     LOG_INFO("[SendToExpert][moe] srcRankIndex",srcRankIndex);
     LOG_INFO("[SendToExpert][moe] tokenIndex",tokenIndex);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
     float expertScale = float(9.0);
     for (int32_t topKIndex = 0; topKIndex < axisK_; topKIndex++) {                      // 发moe专家
         uint32_t dstExpertId = xInTensor(moeListAlign_ + topKIndex);                    // 取出专家id
