@@ -56,7 +56,7 @@ public:
         this->runTimeInfoBak_.kv_ping_pong_idx = runTimeInfo.kv_ping_pong_idx;
     }
 
-    __aicore__ inline bool IsVaild(const constInfo &const_info, __gm__ uint8_t *sparse_mask, uint32_t &cur_s1_idx,
+    __aicore__ inline bool IsVaild(const ConstInfo &const_info, __gm__ uint8_t *sparse_mask, uint32_t &cur_s1_idx,
                                    uint32_t &cur_s1_len)
     {
         this->Update(cur_s1_idx, cur_s1_len);
@@ -72,7 +72,7 @@ public:
     }
 
     template <uint32_t INPUT_LAYOUT>
-    __aicore__ inline void UpdateRunTimeInfo(const constInfo &const_info, RunTimeInfo &runTimeInfo,
+    __aicore__ inline void UpdateRunTimeInfo(const ConstInfo &const_info, RunTimeInfo &runTimeInfo,
                                              uint32_t &cur_s1_idx, uint32_t &cur_s1_len)
     {
         runTimeInfo.bIdx = this->runTimeInfoBak_.bIdx;
