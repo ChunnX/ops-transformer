@@ -161,15 +161,15 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         invRmsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(invRms));
         sumOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(sumOut));
         normOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(normOut));
-        phiOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(phiOut));
-        gradHinGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(gradHin));
+        phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(phi));
+        gradHinGm_.SetGlobalBuffer(reinterpret_cast<__gm__ GRADHIN_T*>(gradHin));
 
         // Init UB
         pipe->InitBuffer(hPreQue_, DOUBLE_BUF, nAlignFp32_ * bsLoopDataLen_ * sizeof(U));
-        pipe->InitBuffer(xQue_, DOUBLE_BUF, cLenAlignFp16_ * n_ * bsLoopDataLen_ * sizeof(X_T));
-        pipe->InitBuffer(gradHinQue_, DOUBLE_BUF, cLenAlignFp16_ * bsLoopDataLen_ * sizeof(GRADHIN_T));
-        pipe->InitBuffer(xFp32Que_, DOUBLE_BUF, cLenAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
-        pipe->InitBuffer(gradXFromHinQue_, DOUBLE_BUF, cLenAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
+        pipe->InitBuffer(xQue_, DOUBLE_BUF, cAlignFp16_ * n_ * bsLoopDataLen_ * sizeof(X_T));
+        pipe->InitBuffer(gradHinQue_, DOUBLE_BUF, cAlignFp16_ * bsLoopDataLen_ * sizeof(GRADHIN_T));
+        pipe->InitBuffer(xFp32Que_, DOUBLE_BUF, cAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
+        pipe->InitBuffer(gradXFromHinQue_, DOUBLE_BUF, cAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
         pipe->InitBuffer(gradHPreBuf_, nAlignFp32_ * bsLoopDataLen_ * sizeof(U));
         pipe->InitBuffer(biasBuf_, (n_ * n_ + 2 * n_) * sizeof(U));
     }
@@ -221,16 +221,16 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 
     Process1Info info;
     info.bsLen = bsLen;
-    info.n = n;
-    info.cLen = cLen;
+    info.n = n_;
+    info.cLen = cTailDataLen;
     info.vRegSize = V_REG_SIZE;
     info.vfLen = V_REG_SIZE / sizeof(U);
     uint32_t vfLen = V_REG_SIZE / sizeof(U);
     for (uint64_t cIdx = 0; cIdx < cLoopNum; cIdx++) {
         auto cLen = cIdx == cLoopNum - 1 ? cTailDataLen : cLoopDataLen;
-        int64_t cLenXTAlign = ops::CeilAlign(cLen * sizeof(X_T), blockSize_) / sizeof(X_T);
-        int64_t cLenUAlign = ops::CeilAlign(cLen * sizeof(U), blockSize_) / sizeof(U);
-        int64_t cLenGRADHINTAlign = ops::CeilAlign(cLen * sizeof(GRADHIN_T), blockSize_) / sizeof(GRADHIN_T);
+        int64_t cLenXTAlign = CeilAlign(cLen * sizeof(X_T), blockSize_) / sizeof(X_T);
+        int64_t cLenUAlign = CeilAlign(cLen * sizeof(U), blockSize_) / sizeof(U);
+        int64_t cLenGRADHINTAlign = CeilAlign(cLen * sizeof(GRADHIN_T), blockSize_) / sizeof(GRADHIN_T);
         info.cLen = cLen;
         info.cLenXTAlign = cLenXTAlign;
         info.cLenUAlign = cLenUAlign;
@@ -254,8 +254,8 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     LocalTensor<U> gradAlphaLocal = gradAlphaQue_.DeQue<U>();
     LocalTensor<U> gradBiasLocal = gradBiasQue_.DeQue<U>();
     SetAtomicAdd<U>();
-    CopyOut(gradAlphaPreWs_[blockIdx], gradAlphaLocal, 1, 1, 0, 0);
-    CopyOut(gradBiasPreGm_[blockIdx * n_], gradBiasLocal, 1, n_, 0, 0);
+    CopyOut(gradAlphaPreGm_[GetBlockIdx()], gradAlphaLocal, 1, 1, 0, 0);
+    CopyOut(gradBiasPreGm_[static_cast<uint64_t>(GetBlockIdx()) * n_], gradBiasLocal, 1, n_, 0, 0);
     SetAtomicNone();
     gradAlphaQue_.FreeTensor(gradAlphaLocal);
     gradBiasQue_.FreeTensor(gradBiasLocal);
@@ -357,7 +357,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     __local_mem__ U* gradAlphaPreAddr = (__ubuf__ U*)gradAlphaLocal.GetPhyAddr();
 
     ComputeGradAlpha<U>(normOutForwardPart1Addr, gradZPreAddr, gradAlphaPreAddr, bsLen, colLen);
-    ComputeGradBias<U>(gradBiasLocal, gradZPreAddr, bsLen, colLen);
+    ComputeGradBias<U>((__local_mem__ U*)gradBiasLocal.GetPhyAddr(), gradZPreAddr, bsLen, colLen);
     gradAlphaQue_.EnQue<U>(gradAlphaLocal);
     gradBiasQue_.EnQue<U>(gradBiasLocal);
 }
@@ -370,7 +370,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::G
     alphaPost_ = alphaGm_.GetValue(1);
     alphaRes_ = alphaGm_.GetValue(2);
     DataCopyPad(biasLocal_, biasGm_, {static_cast<uint16_t>(1),
-        static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
+        static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>

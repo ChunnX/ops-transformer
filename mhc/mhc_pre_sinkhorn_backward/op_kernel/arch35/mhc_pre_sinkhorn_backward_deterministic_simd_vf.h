@@ -21,6 +21,8 @@
 
 using namespace AscendC;
 
+constexpr static int32_t V_REG_SIZE = 256;  // Vector register size for Ascend C
+
 struct Process1Info {
     int64_t bsLen = 0;
     int64_t cLen = 0; 
@@ -67,7 +69,7 @@ template<typename U, bool ISPRE>
 __aicore__ inline void SigmoidGrad(__local_mem__ U* gradHAddr, __local_mem__ U* zAddr, __local_mem__ U* gradZAddr, 
                                     uint64_t bsLen, uint64_t n, uint64_t vRegSize, float hcEps)
 {
-    uint32_t vfLen = vRegSize / sizeof(U);
+    uint32_t vfLen = V_REG_SIZE / sizeof(U);
     uint16_t loopCnt = (bsLen * n + vfLen - 1) / vfLen;
     float hcEpsNeg = hcEps * (-1);
     __VEC_SCOPE__
@@ -82,6 +84,7 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U* gradHAddr, __local_mem__ U* 
         AscendC::MicroAPI::MaskReg maskReg;
 
         for (uint16_t i = 0; i < loopCnt; i++) {
+            uint32_t maskLen = (bsLen * n) - i * vfLen;
             maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             MicroAPI::Duplicate(onesReg, U(1), maskReg);
             AscendC::MicroAPI::AddrReg zOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
@@ -101,7 +104,7 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U* gradHAddr, __local_mem__ U* 
             AscendC::MicroAPI::Mul(dysigmaReg, sigmaReg, gradHReg, maskReg);
             AscendC::MicroAPI::Mul(dysigma2Reg, sigmaReg, dysigmaReg, maskReg);
             AscendC::MicroAPI::Sub(gradZReg, dysigmaReg, dysigma2Reg, maskReg);
-            AscendC::MicroAPI::DataCopy(gradZAddr, gradZReg, zPreOfst, maskReg);
+            AscendC::MicroAPI::DataCopy(gradZAddr, gradZReg, gradZOfst, maskReg);
         }
     }    
 }
@@ -110,7 +113,7 @@ template<typename U>
 __aicore__ inline void ComputeGradBias(__local_mem__ U* gradBiasAddr, __local_mem__ U* gradZAddr,
                                         uint64_t bsLen, uint64_t colLen) 
 {
-    uint32_t vfLen = vRegSize / sizeof(U);
+    uint32_t vfLen = V_REG_SIZE / sizeof(U);
     uint16_t loopCnt = (colLen + vfLen - 1) / vfLen;
     
     __VEC_SCOPE__
@@ -118,18 +121,21 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U* gradBiasAddr, __local_me
         AscendC::MicroAPI::RegTensor<U> gradZReg;
         AscendC::MicroAPI::RegTensor<U> gradZSumReg;
         AscendC::MicroAPI::MaskReg maskReg;
-        AscendC::MicroAPI::MaskReg allMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::::MaskPattern::ALL>();
-        for (int i = 0; i < loopCnt; i++) {
+        AscendC::MicroAPI::MaskReg allMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::ALL>();
+        __local_mem__ U* gradBiasStart = nullptr;
+        AscendC::MicroAPI::AddrReg gradZOfst;
+        for (uint16_t i = 0; i < loopCnt; i++) {
             auto gradZAddrStart = gradZAddr + i * vfLen;
-            maskReg = AscendC::MicroAPI::UpdateMask<U>(bsLen * colLen);
-            MicroAPI::Duplicate(gradZPreSumReg, U(0), allMaskReg);
-            for (int j = 0; j < bsLen; j++) {
-                auto gradBiasStart = gradBiasZAddr + j * colLen;
-                AscendC::MicroAPI::AddrReg gradZOfst = AscendC::MicroAPI::CreateAddrReg<X_T>(i, vfLen);
+            uint32_t maskLen = colLen;
+            maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
+            MicroAPI::Duplicate(gradZSumReg, U(0), allMaskReg);
+            for (uint16_t j = 0; j < bsLen; j++) {
+                gradBiasStart = gradBiasAddr + j * colLen;
+                gradZOfst = AscendC::MicroAPI::CreateAddrReg<U>(0, vfLen);
                 AscendC::MicroAPI::DataCopy(gradZReg, gradZAddrStart, gradZOfst);
-                AscendC::MicroAPI::Add(gradZSumReg, gradZSumReg, gradZReg)
+                AscendC::MicroAPI::Add(gradZSumReg, gradZSumReg, gradZReg, maskReg);
             }
-            AscendC::MicroAPI::DataCopy(gradBiasStart, gradZSumReg, gradZOfst);
+            AscendC::MicroAPI::DataCopy(gradBiasStart, gradZSumReg, gradZOfst, maskReg);
         }
     }
 }
@@ -138,7 +144,7 @@ template<typename U>
 __aicore__ inline void ComputeGradAlpha(__local_mem__ U* normOutForwardPartAddr, __local_mem__ U* gradZAddr, __local_mem__ U* gradAlphaAddr, 
                                                                             uint64_t bsLen, uint64_t colLen) 
 {
-    uint32_t vfLen = vRegSize / sizeof(U);
+    uint32_t vfLen = V_REG_SIZE / sizeof(U);
     uint16_t loopCnt = (bsLen * colLen + vfLen - 1) / vfLen;
 
     __VEC_SCOPE__
@@ -149,10 +155,11 @@ __aicore__ inline void ComputeGradAlpha(__local_mem__ U* normOutForwardPartAddr,
         AscendC::MicroAPI::RegTensor<U> gradAlphaLoopSumReg;
         AscendC::MicroAPI::RegTensor<U> gradAlphaSumReg;
         AscendC::MicroAPI::MaskReg maskReg;
-        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::::MaskPattern::VL1>();
+        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
         MicroAPI::Duplicate(gradAlphaSumReg, U(0), OneMaskReg);
         for (uint16_t i = 0; i < loopCnt; i++) {
-            maskReg = AscendC::MicroAPI::UpdateMask<U>(bsLen * colLen);
+            uint32_t maskLen = bsLen * colLen;
+            maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             AscendC::MicroAPI::AddrReg normOutForwardPartOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
             AscendC::MicroAPI::AddrReg gradZOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
             AscendC::MicroAPI::DataCopy(normOutForwardPartReg, normOutForwardPartAddr, normOutForwardPartOfst);
