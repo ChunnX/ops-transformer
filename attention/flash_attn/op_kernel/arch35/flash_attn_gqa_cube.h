@@ -1054,28 +1054,23 @@ public:
 
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
 
-    uint32_t accGS1Loops = 0U;
     uint32_t createdTaskCount = 0U;
 
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
-    uint32_t curS2Start;
+    uint32_t curS2Start = 0;
     uint32_t curS2End = 0;
-    uint32_t prevBIdx;
-    uint32_t prevBN2Idx;
-    uint32_t prevGS1Idx;
-    uint32_t mloop = 0;
-    bool headS2Split = false;
-    bool tailS2Split = false;
+    uint32_t prevBIdx = 0;
+    uint32_t prevBN2Idx = 0;
+    uint32_t prevGS1Idx = 0;
 
-    uint32_t sectionNum_;
-    uint32_t bN2Start_;
-    uint32_t bN2End_;
-    uint32_t gS1OStart_;
-    uint32_t gS1OEnd_;
-    uint32_t s2OStart_;
-    uint32_t s2OEnd_;
-    uint32_t coreFirstTmpOutWsPos_;
+    uint32_t sectionNum_ = 0;
+    uint32_t bN2Start_ = 0;
+    uint32_t bN2End_ = 0;
+    uint32_t gS1OStart_ = 0;
+    uint32_t gS1OEnd_ = 0;
+    uint32_t s2OStart_ = 0;
+    uint32_t s2OEnd_ = 0;
 
 
 
@@ -1223,10 +1218,6 @@ public:
 
         createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
-        mloop = 0;
-        accGS1Loops = 0;
-        headS2Split = false;
-        tailS2Split = false;
 
         uint32_t bN2Cur = bN2Start_;
         uint32_t gS1Cur = gS1OStart_;
@@ -1308,9 +1299,7 @@ public:
             return TASK_DEAL_MODE::SKIP;
         }
 
-        if (s2Cur == curS2Start) {
-            mloop++;
-        }
+
 
         return TASK_DEAL_MODE::CREATE_TASK;
     }
@@ -1340,12 +1329,10 @@ public:
         curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
 
         if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
-            headS2Split = s2OStart_ != 0U;
             curS2Start = s2OStart_;
         }
 
         if ((bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-            tailS2Split = s2OEnd_ != 0U;
             curS2End = s2OEnd_;
         }
     }
@@ -1394,11 +1381,9 @@ public:
         curS2End = s2EndWithSparse;
 
         if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) {
-            headS2Split = s2OStart_ > s2StartWithSparse ? true : false;
             curS2Start = AttentionCommon::Max(s2StartWithSparse, s2OStart_);
         }
         if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) {
-            tailS2Split = s2OEnd_ > 0U ? true : false;
             curS2End = s2OEnd_ > 0U ? AttentionCommon::Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
         }
         return;
@@ -1498,10 +1483,7 @@ public:
             return;
         }
 
-        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
-            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
-            accGS1Loops++;
-        }
+
 
         s2Cur = 0;
         if (gS1Cur + 1 < gS1LoopTimes) {
@@ -1509,9 +1491,7 @@ public:
             return;
         }
 
-        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
-            accGS1Loops++;
-        }
+
 
         gS1Cur = 0;
         bN2Cur++;
@@ -1525,8 +1505,6 @@ public:
         bN2End_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfoXCube.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
         gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfoXCube.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfoXCube.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
-        coreFirstTmpOutWsPos_ = faMetaDataGm.GetValue(
-            GetFAMetaDataIndex(constInfoXCube.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
     }
 
     __aicore__ inline void Process()

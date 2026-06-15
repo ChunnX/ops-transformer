@@ -130,8 +130,6 @@ public:
             LAYOUT_Q::SG :
             LAYOUT_Q::GS;
 
-    uint32_t negativeIntScalar;
-
     using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
 
     using vec2ResGmType = typename std::conditional<splitD, GlobalTensor<float>, int8_t>::type;
@@ -182,7 +180,6 @@ public:
     LocalTensor<float> lseBuf;
     LocalTensor<INPUT_T> sinkBuf;
 
-    T negativeFloatScalar;
     int64_t bmm2SubBlockOffset = 0;
     int64_t vec2SubBlockOffset = 0;
 
@@ -193,12 +190,6 @@ public:
                                         __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
-        const uint32_t negMinBits = NEGATIVE_MIN_VALUE_FP32;
-        this->negativeFloatScalar = *((T *)&negMinBits);
-
-        const T boolMaskScalar = static_cast<T>(-1000000000000.0);
-        this->negativeIntScalar = *((uint32_t *)&boolMaskScalar);
-
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, attenMask, learnableSink, softmaxLse, attentionOut,
                      workspace);
     }
@@ -372,6 +363,7 @@ public:
                                           LocalTensor<T> &bmm1UbTensor, uint32_t bmm1CcId,
                                           RunInfoXVec runInfo)
     {
+        const T negativeFloatScalar = -3.4028235e38F;
         LocalTensor<uint8_t> attenMaskUb;
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)][0];
@@ -529,6 +521,7 @@ public:
                                           LocalTensor<T> &bmm1UbTensor, uint32_t bmm1CcId,
                                           RunInfoXVec runInfo)
     {
+        const T negativeFloatScalar = -3.4028235e38F;
         LocalTensor<uint8_t> dropMaskUb;
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
         LocalTensor<uint8_t> attenMaskUb;
@@ -1231,7 +1224,7 @@ public:
         maskInfo.attenMaskBatchStride = constInfoXVec.attenMaskS1Size * constInfoXVec.attenMaskS2Size;
         maskInfo.attenMaskS1Stride = constInfoXVec.attenMaskS2Size;
         maskInfo.attenMaskDstStride = (s2BaseSize - AttentionCommon::Align(maskInfo.s2dealNum, 32U)) / 32;
-        maskInfo.maskValue = negativeIntScalar;
+        maskInfo.maskValue = NEGATIVE_MIN_VALUE_FP32;
         maskInfo.s1LeftPaddingSize = 0;
         maskInfo.s2LeftPaddingSize = 0;
         maskInfo.layout = MASK_LAYOUT;
