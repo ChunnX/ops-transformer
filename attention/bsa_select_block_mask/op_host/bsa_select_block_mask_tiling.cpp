@@ -156,6 +156,10 @@ bool BSASelectBlockMaskTilingBase::AnalyzeLayout()
     yBlocks = BSACeilDivision(maxKvSeqlen, static_cast<uint32_t>(blockShapeY));
 
     uint64_t totalXY = static_cast<uint64_t>(xBlocks) * yBlocks;
+    OP_CHECK_IF(totalXY <= 1,
+        OP_LOGE(opName, "xBlocks[%u] * yBlocks[%u] must be greater than 1 for TopK selection.",
+                xBlocks, yBlocks), return false);
+
     if (sparsityMode == static_cast<uint8_t>(SparsityMode::TOP_K)) {
         topKValue = static_cast<uint64_t>(std::round(sparsity * totalXY));
     } else {
@@ -219,7 +223,7 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
     uint64_t softmaxTmpSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
 
     uint64_t sortLen = static_cast<uint64_t>(xBlocks) * yBlocks;
-    uint64_t tileLen = std::min(static_cast<uint64_t>(7168), sortLen);
+    uint64_t tileLen = std::min(static_cast<uint64_t>(7168), std::max(static_cast<uint64_t>(128), sortLen));
     uint64_t totalTileNum = (sortLen + tileLen - 1) / tileLen;
     uint64_t topkHeaderSize = static_cast<uint64_t>(RADIX_NUM_BINS * aivNum + aivNum + aivNum) * sizeof(int32_t);
     uint64_t topkTileDataSize = static_cast<uint64_t>(totalTileNum) * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
