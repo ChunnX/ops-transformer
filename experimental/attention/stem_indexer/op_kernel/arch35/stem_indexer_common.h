@@ -49,13 +49,13 @@ struct TempLoopInfo {
     uint32_t actQTokenLen = 0ULL;
     uint32_t actKVTokenLen = 0ULL;
     uint32_t promptTokenLen = 0ULL;
+    uint32_t promptLen = 0ULL;
     uint32_t s2ValidSize = 0ULL;
     bool curActSeqLenIsZero = false;
     bool needDealActS1LessThanS1 = false;  // S1的实际长度小于shape的S1长度时，是否需要清理输出
     uint32_t actMBaseSize = 0U;            // m轴(gS1)方向实际大小
     uint32_t mBasicSizeTail = 0U;          // gS1方向循环的尾基本块大小
     uint32_t s2BasicSizeTail = 0U;         // S2方向循环的尾基本块大小
-    bool isDecode = false;
     bool isNeedLD = false;     // 该基本块是否需要LD
 };
 struct RunInfo {
