@@ -550,8 +550,8 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
 
     uint32_t blockSparseMaskBatch = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_0));
     uint32_t blockSparseMaskNumHeads = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_1));
-    uint32_t blockSparseMaskQBlockNum = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_2));
-    uint32_t blockSparseMaskKVBlockNum = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_3));
+    maxQBlockNum_ = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_2));
+    maxKvBlockNum_ = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_3));
 
     uint32_t maxQBlockNum = CeilDiv(maxQSeqlen_, blockShapeX_);
     uint32_t maxKVBlockNum = CeilDiv(maxKvSeqlen_, blockShapeY_);
