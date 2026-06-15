@@ -37,7 +37,7 @@ class CompressorOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_compressor_meta(x, wkv, wgate, state_cache, 
+        def npu_compressor_meta(x, wkv, wgate, state_cache,
                                 ape, cmp_ratio=4,
                                 state_block_table=None, cu_seqlens=None,
                                 seqused=None, start_pos=None,

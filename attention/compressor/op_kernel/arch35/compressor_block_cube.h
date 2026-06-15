@@ -318,7 +318,8 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyOutMm1Res(const RunInfo &i
     uint64_t dbOffset = info.cubeDbIdx * constInfo_.dbSize;
     uint64_t gmOffset = constInfo_.dIdx * constInfo_.dBaseSize + coffId * constInfo_.headDim + mStart * fixParams.dstStride + dbOffset;
     uint32_t kvOffset = Align(mDealSize, NZ_FRACTAL_DIM) * nStart;
-    uint32_t scoreOffset = Align(mDealSize, NZ_FRACTAL_DIM) * ((nStart + constInfo_.dBaseSize) % (WEIGHT_MATRIX_NUM * constInfo_.dBaseSize));
+    uint32_t scoreOffset = Align(mDealSize, NZ_FRACTAL_DIM) *
+        ((nStart + constInfo_.dBaseSize) % (WEIGHT_MATRIX_NUM * constInfo_.dBaseSize));
     if (nStart < constInfo_.dBaseSize) {
         fixParams.nSize = min(constInfo_.dBaseSize - nStart, nDealSize);
         Fixpipe(kvMm1ResGm[gmOffset], cL0Tensor[kvOffset], fixParams);
@@ -379,7 +380,8 @@ __aicore__ inline void CompressorBlockCube<COMP>::ComputeMm1(const RunInfo &info
                 if (mL0 + M_L0_BASE > mSize) {
                     actMDealSize = mSize - mL0;
                 }
-                uint32_t nDealSize = WEIGHT_MATRIX_NUM * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
+                uint32_t nDealSize =
+                    WEIGHT_MATRIX_NUM * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
                 uint32_t actNDealSize = N_L0_BASE;
                 for (uint32_t nL0 = 0; nL0 < nDealSize; nL0 += N_L0_BASE) {
                     if (nL0 + N_L0_BASE > nDealSize) {

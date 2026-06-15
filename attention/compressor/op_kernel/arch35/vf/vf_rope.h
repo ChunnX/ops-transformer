@@ -129,7 +129,8 @@ __simd_vf__ void InterleaveModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ub
         MicroAPI::Cast<ROPET, T, castTraitB322B16>(vregOutBf16, vregOut, mask);
         MicroAPI::StoreAlign<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + baseAddr, vregOutBf16, mask);
         for (uint64_t dOffset = 0; dOffset < baseAddr; dOffset += Compressor::FP32_REPEAT_ELEMENT_NUM) {
-            uint32_t castMaskValue = min(baseAddr - dOffset, static_cast<uint64_t>(Compressor::FP32_REPEAT_ELEMENT_NUM));
+            uint32_t castMaskValue =
+                min(baseAddr - dOffset, static_cast<uint64_t>(Compressor::FP32_REPEAT_ELEMENT_NUM));
             MicroAPI::MaskReg castMask = MicroAPI::UpdateMask<T>(castMaskValue);
             MicroAPI::LoadAlign(vregCastIn, curInUb + dOffset);
             MicroAPI::Cast<ROPET, T, castTraitB322B16>(vregCastOut, vregCastIn, castMask);

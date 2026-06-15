@@ -73,14 +73,14 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
     OP_CHECK_NULL_WITH_CONTEXT(context, wkvShape);
     auto wgateShape = context->GetRequiredInputShape(WEIGHT_WGATE_INPUT_INDEX);  // (coff * D, H)
     OP_CHECK_NULL_WITH_CONTEXT(context, wgateShape);
-
-    auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);    // (block_num, block_size, 2 * coff * D) | (B, token_size, 2 * coff * D)
+    // (block_num, block_size, 2 * coff * D) | (B, token_size, 2 * coff * D)
+    auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, stateCacheShape);
 
     auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);    // (r, coff * D)
     OP_CHECK_NULL_WITH_CONTEXT(context, apeShape);
-
-    auto stateBlockTableShape = context->GetRequiredInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);    // (B, sMax/block_size) | (B, )
+    // (B, sMax/block_size) | (B, )
+    auto stateBlockTableShape = context->GetRequiredInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, stateBlockTableShape);
 
     auto cuSeqlensShape = context->GetRequiredInputShape(CU_SEQ_LEN_INPUT_INDEX);    // (B+1,)
@@ -106,7 +106,8 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
         shapeParam.T = shapeParam.B * shapeParam.S;
     } else {                                                    // T
         shapeParam.isBsMerge = true;
-        shapeParam.Sr = std::min(xShape->GetDim(DIM_INDEX_0), xShape->GetDim(DIM_INDEX_0) / cmpRatio+ cuSeqlensShape->GetDim(DIM_INDEX_0) - 1);
+        shapeParam.Sr = std::min(xShape->GetDim(DIM_INDEX_0),
+            xShape->GetDim(DIM_INDEX_0) / cmpRatio+ cuSeqlensShape->GetDim(DIM_INDEX_0) - 1);
         shapeParam.T = xShape->GetDim(DIM_INDEX_0);
         shapeParam.H = xShape->GetDim(DIM_INDEX_1);
     }
@@ -118,7 +119,8 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
 
 ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapeParam, gert::InferShapeContext* context)
 {
-    auto cmpKvShape = context->GetOutputShape(CMP_KV_OUTPUT_INDEX);                 // query: (B, S, N, Hckv) | (T, N, Hckv)
+    // query: (B, S, N, Hckv) | (T, N, Hckv)
+    auto cmpKvShape = context->GetOutputShape(CMP_KV_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, cmpKvShape);
     auto attr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);

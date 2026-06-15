@@ -214,7 +214,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::InitParams(const Con
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::Init(
     __gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache,
-    __gm__ uint8_t *ape, __gm__ uint8_t *stateBlockTable,__gm__ uint8_t *cuSeqlens, 
+    __gm__ uint8_t *ape, __gm__ uint8_t *stateBlockTable,__gm__ uint8_t *cuSeqlens,
     __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
 {
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
@@ -642,7 +642,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::WriteToCacheState(co
             // copyRowCount *= coff_;
             if (idInBlockTable != 0) { // 32
                 uint64_t stateOffset =
-                    idInBlockTable * constInfo_.stateCacheStrideDim0 + remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
+                    idInBlockTable * constInfo_.stateCacheStrideDim0 +
+                    remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                     stateIdx * coff_ * constInfo_.headDim;
                 uint64_t ubOffset = copyFinishRowCnt * coff_ * dBaseSize;
                 DataCopyWithOutputQue(state[stateOffset], input[ubOffset], copyRowCount, dDealSize, coff_ * dBaseSize,
