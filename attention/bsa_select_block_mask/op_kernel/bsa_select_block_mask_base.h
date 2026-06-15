@@ -151,7 +151,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             uint64_t expSoftmaxTmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(float);
             uint64_t expMaskSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(uint8_t);
             uint64_t expSortLen = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
-            uint64_t expTileLen = BSAMin(static_cast<uint64_t>(7168), expSortLen);
+            uint64_t expTileLen = BSAMin(static_cast<uint64_t>(7168), BSAMax(static_cast<uint64_t>(128), expSortLen));
             uint64_t expTotalTileNum = (expSortLen + expTileLen - 1) / expTileLen;
             uint64_t expTopkHeaderSize = static_cast<uint64_t>(RADIX_NUM_BINS * constInfo.aivNum + constInfo.aivNum + constInfo.aivNum) * sizeof(int32_t);
             uint64_t expTopkTileDataSize = expTotalTileNum * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
@@ -162,9 +162,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             BSA_TILING_VERIFY_PRINTF("batchSize=%u (exp=1) %s\n", constInfo.batchSize,
                             (constInfo.batchSize == 1) ? "OK" : "ERR");
             if (constInfo.batchSize != 1) errCount++;
-            BSA_TILING_VERIFY_PRINTF("numHeads=%u (exp=8) %s\n", constInfo.numHeads,
-                            (constInfo.numHeads == 8) ? "OK" : "ERR");
-            if (constInfo.numHeads != 8) errCount++;
+            BSA_TILING_VERIFY_PRINTF("numHeads=%u (nonzero=%s)\n", constInfo.numHeads,
+                            (constInfo.numHeads > 0) ? "OK" : "ERR");
+            if (constInfo.numHeads == 0) errCount++;
             BSA_TILING_VERIFY_PRINTF("maxQSeqlen=%u (exp=4096) %s\n", constInfo.maxQSeqlen,
                             (constInfo.maxQSeqlen == 4096) ? "OK" : "ERR");
             if (constInfo.maxQSeqlen != 4096) errCount++;

@@ -124,7 +124,7 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     int32_t batch = 1;
-    int32_t numHeads = 1;
+    int32_t numHeads = GetEnvInt32("BSA_NUM_HEADS", 1);
     int32_t qSeqlen = GetEnvInt32("BSA_Q_SEQLEN", 65536);
     int32_t kvSeqlen = GetEnvInt32("BSA_KV_SEQLEN", 65536);
     int32_t headDim = 128;

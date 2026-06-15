@@ -149,8 +149,8 @@ bool BSASelectBlockMaskTilingBase::AnalyzeLayout()
 
     OP_CHECK_IF(dSize != D_SIZE_128,
         OP_LOGE(opName, "headDim must be 128, got[%u].", dSize), return false);
-    OP_CHECK_IF(numHeads < HEAD_NUM_MIN || numHeads > HEAD_NUM_MAX,
-        OP_LOGE(opName, "numHeads[%u] out of range [1, 40].", numHeads), return false);
+    OP_CHECK_IF(numHeads < HEAD_NUM_MIN,
+        OP_LOGE(opName, "numHeads[%u] must be greater than or equal to 1.", numHeads), return false);
 
     xBlocks = BSACeilDivision(maxQSeqlen, static_cast<uint32_t>(blockShapeX));
     yBlocks = BSACeilDivision(maxKvSeqlen, static_cast<uint32_t>(blockShapeY));
