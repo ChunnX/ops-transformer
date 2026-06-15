@@ -167,7 +167,7 @@ class GeneralizedLIV2:
                 else:
                     y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += output_idx_offset.permute(0, 2, 1, 3)[0, :, :curr_actualSeq_q, :actual_selected_count]
 
-                y_value_np[b_idx:(b_idx + 1), :, curr_actualSeq_q, :actual_selected_count] = -np.sort(-y_value.numpy())[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count]
+                y_value_np[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] = -np.sort(-y_value.numpy())[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count]
             else:
                 pass
             if self.layout_query == "TND":
