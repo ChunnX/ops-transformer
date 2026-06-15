@@ -1404,6 +1404,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     if (BSA_TOPK_SMALL_SORT_DEBUG && sortLen_ <= 64 && GetBlockIdx() == 0 && outputGmOffset == 0) {
         AscendC::printf("[SDBG800] EQ boundary=%f eqRsvdCnt=%lu writeCnt=%u curTileKBefore=%d\n",
             static_cast<float>(boundaryHalf), eqRsvdCnt, writeCnt, curTileK);
+        uint32_t printCnt = BSAMin(writeCnt, static_cast<uint32_t>(12));
+        for (uint32_t i = 0; i < printCnt; i++) {
+            AscendC::printf("[SDBG801] eqIdx[%u]=%d\n", i, vecIndex.GetValue(i));
+        }
     }
 
     LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
