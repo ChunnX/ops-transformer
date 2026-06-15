@@ -112,7 +112,7 @@ protected:
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
     // ================================Split Core================================
     __aicore__ inline void SplitCoreByAICPU(uint32_t cubeCoreIdx, uint32_t vecCoreIdx, GlobalTensor<uint32_t> &metadataGm);
-    __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size, uint32_t actS2Size);
+    __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
     __aicore__ inline uint32_t CalcS2ValidSize(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
     // ================================Process functions================================
     __aicore__ inline void ProcessMain();
@@ -227,10 +227,10 @@ __aicore__ inline void SIPreload<SIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32
 }
 
 template <typename SIT>
-__aicore__ inline uint32_t SIPreload<SIT>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
-                                                                     uint32_t actS2Size)
+__aicore__ inline uint32_t SIPreload<SIT>::GetS2BaseBlockNumOnMask(uint32_t gS1Idx, uint32_t actS1Size,
+                                                                    uint32_t actS2Size)
 {
-    uint32_t s2ValidSize = CalcS2ValidSize(s1gIdx, actS1Size, actS2Size);
+    uint32_t s2ValidSize = CalcS2ValidSize(gS1Idx, actS1Size, actS2Size);
     if (s2ValidSize == 0U) {
         return 0;
     }
@@ -241,24 +241,36 @@ template <typename SIT>
 __aicore__ inline uint32_t SIPreload<SIT>::CalcS2ValidSize(uint32_t gS1Idx, uint32_t actS1Size,
                                                             uint32_t actS2Size)
 {
+    uint32_t validS2SizeWithWindow = 0U;
     if (actS2Size == 0U) {
         return 0U;
     }
     if (!constInfo.attenMaskFlag) {
-        return actS2Size;
+        validS2SizeWithWindow = actS2Size;
+    } else {
+        if (actS1Size == 0U || constInfo.gSize == 0U) {
+            return 0U;
+        }
+
+        uint64_t totalMSize = static_cast<uint64_t>(actS1Size) * constInfo.gSize;
+        uint64_t mBlockStart = static_cast<uint64_t>(gS1Idx) * constInfo.mBaseSize;
+        if (mBlockStart >= totalMSize) {
+            return 0U;
+        }
+        uint64_t mBlockEnd = Min(mBlockStart + constInfo.mBaseSize, totalMSize);
+        uint64_t mBlockLen = mBlockEnd - mBlockStart;
+        uint32_t firstS1Idx = static_cast<uint32_t>(mBlockStart % actS1Size);
+        uint32_t lastS1Idx = static_cast<uint32_t>((mBlockEnd - 1U) % actS1Size);
+        uint32_t maxS1Idx = (mBlockLen >= actS1Size || lastS1Idx < firstS1Idx) ? (actS1Size - 1U) : lastS1Idx;
+        uint32_t qBlockEnd = maxS1Idx + 1U;
+
+        // For causal mode, KV may contain prefix/cache blocks before the current Q range.
+        // Shift qBlockEnd by the KV-Q block offset to get the visible K block count.
+        int64_t validS2Size = static_cast<int64_t>(actS2Size) - static_cast<int64_t>(actS1Size) +
+                              static_cast<int64_t>(qBlockEnd);
+        validS2SizeWithWindow = static_cast<uint32_t>(Max(validS2Size, static_cast<int64_t>(0)));
     }
-    uint32_t qBlockStart = gS1Idx * constInfo.s1BaseSize;
-    if (qBlockStart >= actS1Size) {
-        return 0U;
-    }
-    uint32_t qBlockEnd = Min(qBlockStart + constInfo.s1BaseSize, actS1Size);
-    // For causal mode, KV may contain prefix/cache blocks before the current Q range.
-    // Shift qBlockEnd by the KV-Q block offset to get the visible K block count.
-    int32_t validS2Size = static_cast<int32_t>(actS2Size) - static_cast<int32_t>(actS1Size) +
-                          static_cast<int32_t>(qBlockEnd);
-    validS2Size = Min(validS2Size, static_cast<int32_t>(actS2Size));
-    validS2Size = Max(validS2Size, static_cast<int32_t>(0));
-    return static_cast<uint32_t>(validS2Size);
+    return (validS2SizeWithWindow > constInfo.windowSize) ? (validS2SizeWithWindow - constInfo.windowSize) : 0U;
 }
 
 template <typename SIT>
@@ -315,9 +327,10 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
             uint32_t actS1Size, actS2Size;
             GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size);
 
-            // s1的切块数量
-            uint32_t s1GBaseNum = CeilDiv(actS1Size, constInfo.s1BaseSize);
-            splitCoreInfo.gS1End = s1GBaseNum - 1;
+            // m轴(gS1)方向的切块数量
+            uint32_t gS1BaseNum = static_cast<uint32_t>(
+                CeilDiv(static_cast<uint64_t>(actS1Size) * constInfo.gSize, static_cast<uint64_t>(constInfo.mBaseSize)));
+            splitCoreInfo.gS1End = (gS1BaseNum == 0U) ? 0U : gS1BaseNum - 1U;
 
             // s2的切块数量
             uint32_t s2BaseNum = GetS2BaseBlockNumOnMask(splitCoreInfo.gS1End, actS1Size, actS2Size);
@@ -447,8 +460,7 @@ __aicore__ inline void SIPreload<SIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, uin
     if (remainedGS1Size <= constInfo.mBaseSize && remainedGS1Size > 0) {
         tempLoopInfo.actMBaseSize = tempLoopInfo.mBasicSizeTail;
     }
-    tempLoopInfo.s2ValidSize =
-        CalcS2ValidSize(gS1LoopIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size);
+    tempLoopInfo.s2ValidSize = CalcS2ValidSize(gS1LoopIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size);
     tempLoopInfo.s2BasicSizeTail = tempLoopInfo.s2ValidSize % constInfo.s2BaseSize;
     tempLoopInfo.s2BasicSizeTail =
         (tempLoopInfo.s2BasicSizeTail == 0) ? constInfo.s2BaseSize : tempLoopInfo.s2BasicSizeTail;
@@ -460,7 +472,7 @@ __aicore__ inline void SIPreload<SIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, uin
         return;
     }
     uint32_t tileS2LoopEnd = s2BlockNum - 1U;
-    tempLoopInfo.s2LoopEnd = isEnd ? Min(splitCoreInfo.s2End, tileS2LoopEnd) : tileS2LoopEnd;
+    tempLoopInfo.s2LoopEnd = isEnd ? splitCoreInfo.s2End : tileS2LoopEnd;
 
 }
 
@@ -536,8 +548,8 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         }
         uint64_t qBatchOffset = actualSeqQPrefixSum * constInfo.qHeadNum;
         uint64_t qHeadOffset = runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-        uint64_t qBlockOffset = runInfo.gS1Idx * constInfo.s1BaseSize;
-        // qflat: B,N1,Qb,D. gS1Idx is a Qb tile index; M = QbTile * G.
+        uint64_t qBlockOffset = static_cast<uint64_t>(runInfo.gS1Idx) * constInfo.mBaseSize;
+        // qflat: B,N1,Qb,D. gS1Idx is an M tile index over flattened G*S1.
         queryCoreOffset = (qBatchOffset + qHeadOffset + qBlockOffset) *
                           constInfo.headDim;
         // sparse_indices: B,N2,G,S1,maxKb. Use the storage stride, not the actual valid S2 length.
@@ -639,9 +651,11 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
 
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
-            // 短路分支：s2ValidSize <= constInfo.initialBlocks时直接输出连续索引
-            if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks + constInfo.windowSize) {
-                vectorService.ProcessDirectOutput(tempLoopInfo, gS1LoopIdx);
+            // s2ValidSize excludes windowSize, so initial blocks covering it can use direct output.
+            if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks) {
+                if ASCEND_IS_AIV {
+                    vectorService.ProcessDirectOutput(tempLoopInfo, gS1LoopIdx);
+                }
                 splitCoreInfo.s2Start = 0;
                 continue;
             }
