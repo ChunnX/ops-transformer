@@ -84,7 +84,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>-</td>
       <td>INT8</td>
       <td>ND</td>
-      <td>shape支持2维，维度为(m, k)， 数据类型支持INT8，维度m的取值范围为[1,16\*1024\*8]；k支持256、512、1024、1408、2048。</td>
+      <td>shape支持2维，维度为(m, k)，数据类型支持INT8，维度m的取值范围为[1,16\*1024\*8]；k支持256、512、1024、1408、2048。</td>
       <td>-</td>
     </tr>
     <tr>
@@ -614,7 +614,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       ret = aclnnGroupedMatmulFinalizeRoutingWeightNz(workspaceAddr, workspaceSize, executor, stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNz failed. ERROR: %d\n", ret); return ret);
 
-      // 4. （固定写法）同步等待任务执行结束
+      // 4.（固定写法）同步等待任务执行结束
       ret = aclrtSynchronizeStream(stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

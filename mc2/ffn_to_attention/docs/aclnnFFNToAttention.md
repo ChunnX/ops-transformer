@@ -5,10 +5,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -17,7 +17,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnFFNToAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNToAttention”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFFNToAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNToAttention”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(
@@ -290,16 +290,16 @@ aclnnStatus aclnnFFNToAttention(
   - 所有卡的`group`、`worldSize`、`tokenInfoTableShape`、`tokenDataShape`参数及`HCCL_BUFFSIZE`取值需保持一致。
 
 - **产品特定约束**：
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明中的“本卡”均表示单DIE。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明中的“本卡”均表示单DIE。
 
 - **Shape变量约束**：
 
   | 变量         | 定义与取值范围                                                                           |
   | :----------- | :------------------------------------------------------------------------------------- |
   | Y            | 表示本卡需要分发的最大token数量。|
-  | Bs           | 表示各Attention节点上的发送token数。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>0 < Bs ≤ 512 </code>。</li></ul> |
-  | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1024 ≤  H ≤ 8192 </code>。</li></ul> |
-  | HS（hidden and scale size） | 表示hidden与scale 隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1152 ≤  HS ≤ 8320 </code>。</li></ul>|
+  | Bs           | 表示各Attention节点上的发送token数。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：<code>0 < Bs ≤ 512 </code>。</li></ul> |
+  | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：<code>1024 ≤  H ≤ 8192 </code>。</li></ul> |
+  | HS（hidden and scale size） | 表示hidden与scale隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：<code>1152 ≤  HS ≤ 8320 </code>。</li></ul>|
   | MicroBatchNum    | 表示microBatch的大小，目前仅支持<code>MicroBatchNum = 1</code>。 |  
   | ExpertNumPerToken    | 表示每个Token对应的发送的Expert数量，<code>ExpertNumPerToken = K + sharedExpertNum</code>。 |  
   | K    | 表示选取topK个专家，取值范围为<code>0 < K ≤ 16 </code>。 |  
@@ -515,7 +515,7 @@ aclnnStatus aclnnFFNToAttention(
         ret = aclnnFFNToAttention(FFN2AttentionWorkspaceAddr, FFN2AttentionWorkspaceSize, FFN2AttentionExecutor, args.FFN2AttentionStream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnFFNToAttention failed. ret = %d \n", ret);
             return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         if (args.rankId >= ATTN_NUM) {
             ret = aclrtSynchronizeStreamWithTimeout(args.FFN2AttentionStream, 10000);
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);

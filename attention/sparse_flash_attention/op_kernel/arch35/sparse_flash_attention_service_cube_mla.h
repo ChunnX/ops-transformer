@@ -21,7 +21,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "sparse_flash_attention_common_arch35.h"
-#include "util_regbase.h"
+#include "./common/util_regbase.h"
 
 #if __has_include("../../common/op_kernel/offset_calculator.h")
 #include "../../common/op_kernel/offset_calculator.h"

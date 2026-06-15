@@ -18,12 +18,10 @@
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
-#include "moe_init_routing_v3/moe_init_routing_v3_arch35_tiling_def.h"
 
 using namespace AscendC;
 
 struct MegaMoeTilingData {
-    MoeInitRoutingV3Arch35TilingData moeInitRoutingTilingData;
     uint32_t expertPerRank;
     uint32_t bs;
     uint32_t h;
@@ -33,6 +31,7 @@ struct MegaMoeTilingData {
     uint32_t maxOutputSize;
     uint32_t rankId;
     uint32_t topK;
+    uint32_t aicNum;
     int32_t dispatchRows;
     uint8_t groupListType;
     bool transX;

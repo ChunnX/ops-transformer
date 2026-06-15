@@ -44,6 +44,8 @@ protected:
     ge::graphStatus CheckFormatSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
     template <typename T>
     ge::graphStatus CheckValueSupport(const T value, const std::vector<T> &expectValList) const;
+    ge::graphStatus CheckTensorContiguous(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
+        const gert::Stride *Strides, int32_t &index) const;
 
     // public funcs
     std::string DataTypeToSerialString(ge::DataType type);

@@ -48,9 +48,18 @@ def _to_tforward(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
     if layout.startswith("PA_"):
         bnsd = _pa_to_bnsd(t, layout, params)
         if params.get("layout_q", "") == "TND":
-            # TND+PA: BNSD(B,N,S,D) → TND(1,N,B*S,D)
+            # TND+PA: PA→BNSD后按 seqused_kv 紧密拼接，与纯 TND+TND 一致
+            # result[0, n, cum_kv[b]+s, :] = bnsd[b, n, s, :]  (s < seqused_kv[b])
             B, N2, S2, D = bnsd.shape
-            return bnsd.reshape(1, N2, B * S2, D).clone().float()
+            seq_kv = params["seqused_kv"]
+            total_kv = sum(seq_kv[:B])
+            result = torch.zeros(1, N2, total_kv, D, dtype=torch.float32)
+            offset = 0
+            for b in range(B):
+                slen = seq_kv[b] if b < len(seq_kv) else seq_kv[0]
+                result[0, :, offset:offset + slen, :] = bnsd[b, :, :slen, :]
+                offset += slen
+            return result
         return bnsd.float()
     return t.clone().float()
 
@@ -98,6 +107,27 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
                 cnt = end - start
                 if cnt > 0:
                     result[bi, :, start:end, :] = t[blk_id, :, :cnt, :].float()
+
+    elif layout == "PA_NZ":
+        dtype_str = params.get("Dtype", "fp16")
+        blk_elem = 16 if dtype_str in ("fp16", "bf16") else 32
+        d_actual = t.shape[2] * t.shape[4]
+        result = torch.zeros(b, n2, s2, d_actual, dtype=torch.float32)
+        for bi in range(b):
+            slen = seq_kv[bi] if bi < len(seq_kv) else seq_kv[0]
+            nblk = (slen + bs - 1) // bs
+            for bj in range(nblk):
+                blk_id = bt[bi][bj] if bi < len(bt) and bj < len(bt[bi]) else bj
+                if blk_id < 0 or blk_id >= t.shape[0]:
+                    continue
+                start = bj * bs
+                end = min(start + bs, slen)
+                cnt = end - start
+                if cnt > 0:
+                    block_data = t[blk_id, :, :, :cnt, :]
+                    block_data = block_data.permute(0, 2, 1, 3).reshape(
+                        block_data.shape[0], cnt, -1)
+                    result[bi, :, start:end, :] = block_data.float()
 
     else:
         return t.clone().float()

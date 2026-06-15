@@ -10,7 +10,7 @@
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     | ×        |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √        |
 | <term>Atlas 200I/500 A2 推理产品</term>                      | ×        |
-| <term>Atlas 推理系列加速卡产品</term>                        | √        |
+| <term>Atlas推理系列加速卡产品</term>                        | √        |
 | <term>Atlas 训练系列产品</term>                              | ×        |
 
 ## 功能说明
@@ -123,7 +123,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
         <td>key</td>
         <td>输入</td>
         <td>公式中的输入K。</td>
-        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>key、value中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16、INT8</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -133,7 +133,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
         <td>value</td>
         <td>输入</td>
         <td>公式中的输入V。</td>
-        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>key、value中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16、INT8</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -430,7 +430,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
   - dequantScale1、dequantScale2数据类型支持UINT64、FLOAT32。
   - quantScale1、quantScale2和quantOffset2数据类型支持FLOAT32
   - numKeyValueHeads数据类型支持INT64。
-- <term>Atlas 推理系列加速卡产品</term>：
+- <term>Atlas推理系列加速卡产品</term>：
   - 支持B轴小于等于256，N轴小于等于256，D轴小于等于512。
   - 支持key、value的S轴小于等于65536。
   - query、key、value和attentionOut数据类型仅支持FLOAT16。
@@ -447,19 +447,19 @@ aclnnStatus aclnnIncreFlashAttentionV3(
   - per-channel模式：两个参数的shape可支持(2, N, 1, D)，(2, N, D)，(2, H)，N为numKeyValueHeads。参数数据类型和query数据类型相同。
   - per-tensor模式：两个参数的shape均为(2)，数据类型和query数据类型相同。
 
-- 入参 quantScale2 和 quantOffset2 支持 per-tensor/per-channel 两种格式和 FLOAT32/BFLOAT16 两种数据类型。若传入 quantOffset2 ，需保证其类型和shape信息与 quantScale2 一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32 。per-channel 格式，当输出layout为BSH时，要求 quantScale2 所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。
+- 入参quantScale2和quantOffset2支持per-tensor/per-channel两种格式和FLOAT32/BFLOAT16两种数据类型。若传入quantOffset2 ，需保证其类型和shape信息与quantScale2一致。当输入为BFLOAT16时，同时支持FLOAT32和BFLOAT16，否则仅支持FLOAT32 。per-channel格式，当输出layout为BSH时，要求quantScale2所有维度的乘积等于H；其他layout要求乘积等于N*D。（建议输出layout为BSH时，quantScale2 shape传入[1,1,H]或[H]；输出为BNSD时，建议传入[1,N,1,D]或[N,D]；输出为BSND时，建议传入[1,1,N,D]或[N,D]）。
 
 - page attention场景:
   - page attention的开启必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。
-  - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在开启page attention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。key、value输入类型为FLOAT16/BFLOAT16时需要16对齐，key、value 输入类型为INT8时需要32对齐，推荐使用128。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+  - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在开启page attention场景下，blockSize需要传入非0值,且blocksize最大不超过512。key、value输入类型为FLOAT16/BFLOAT16时需要16对齐，key、value输入类型为INT8时需要32对齐，推荐使用128。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
   - page attention场景下，当query的inputLayout为BNSD时，kv cache排布支持（blocknum, blocksize, H）和（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持（blocknum, blocksize, H）一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
   - page attention场景下，kv cache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kv cache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
-  - page attention开启场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 numKeyValueHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 numKeyValueHeads）或调整kv cache排布格式为（blocknum, numKeyValueHeads, blocksize, D）解决。
+  - page attention开启场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且numKeyValueHeads * headDim超过64k时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小numKeyValueHeads）或调整kv cache排布格式为（blocknum, numKeyValueHeads, blocksize, D）解决。
   - page attention场景下，必须传入输入actualSeqLengths。
   - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
   - page attention开启场景下，以下场景输入S需要大于等于maxBlockNumPerSeq * blockSize。
-  - 开启 Attention mask，例如 mask shape为 (B, 1, 1, S)。
-  - 开启 pseShift，例如 pseShift shape为(B, N, 1, S)。
+  - 开启Attention mask，例如mask shape为(B, 1, 1, S)。
+  - 开启pseShift，例如pseShift shape为(B, N, 1, S)。
 
 ## 调用示例
 
@@ -531,7 +531,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -615,7 +615,7 @@ int main() {
   ret = aclnnIncreFlashAttentionV3(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnIncreFlashAttentionV3 failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

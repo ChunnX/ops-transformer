@@ -23,6 +23,7 @@ struct StaticParams {
     uint32_t singleN = 0;
     uint32_t sftBaseM = 0;
     uint32_t sftBaseN = 0;
+    int64_t maxGatherSize = 0;
 };
 
 template <typename SMLAGT>
@@ -125,7 +126,6 @@ protected:
     constexpr static const int32_t MSK_LEN = 64;
     constexpr static const uint32_t ATTEN_MASK_SCALE = 0xFF7FFFFF;
     constexpr static const int64_t MAX_ADD_NUM = 64;
-    constexpr static const int64_t MAX_GATHER_SIZE = 94;
 
     const TILING_CLASS *__restrict tilingData;
     // Shape
@@ -242,6 +242,7 @@ __aicore__ inline void VecOp<SMLAGT>::InitParams(const TILING_CLASS *__restrict 
     params.singleN = tilingData->splitCoreParams.singleN;
     params.sftBaseM = tilingData->splitCoreParams.sftBaseM;
     params.sftBaseN = tilingData->splitCoreParams.sftBaseN;
+    params.maxGatherSize = tilingData->splitCoreParams.maxGatherSize;
 
     selectedS2 = selectedBlockCount * selectedBlockSize;
     selectedCountOffset = tilingData->splitCoreParams.singleN;
@@ -267,7 +268,7 @@ __aicore__ inline void VecOp<SMLAGT>::InitParams(const TILING_CLASS *__restrict 
     intriParamsKey.dstStride = 0;
     intriParamsKey.blockCount = 2;
 
-    outParamK.blockCount = MAX_GATHER_SIZE;
+    outParamK.blockCount = params.maxGatherSize;
     outParamK.blockLen = dimDqk * sizeof(T1);
     outParamK.srcStride = 0;
     outParamK.dstStride = dimRope * sizeof(T1);
@@ -340,6 +341,10 @@ __aicore__ inline void VecOp<SMLAGT>::InitUB(TPipe *pipe)
 
     pipe->InitBuffer(vecQue, totalUbSpace);
 
+    int32_t sftBaseNAlign = AlignUp(params.sftBaseN, BLOCK_FP32);
+    cmpL1NormTensor = vecQue.GetWithOffset<float>(sftBaseNAlign, ubOffset);
+    ubOffset += sftBaseNAlign * sizeof(float);
+
     dSinkTensor = vecQue.GetWithOffset<float>(dimG * BLOCK_FP32, ubOffset);
     ubOffset += dimG * BLOCK_FP32 * sizeof(float);
     uint32_t dSinksUbOffset = ubOffset;
@@ -386,20 +391,16 @@ __aicore__ inline void VecOp<SMLAGT>::InitUB(TPipe *pipe)
     dSinkSumTensor = vecQue.GetWithOffset<float>(sftDataSize, ubOffset);
     ubOffset += sftDataSize * sizeof(float);
 
-    int32_t sftBaseNAlign = AlignUp(params.sftBaseN, BLOCK_FP32);
-    cmpL1NormTensor = vecQue.GetWithOffset<float>(sftBaseNAlign, ubOffset);
-    ubOffset += sftBaseNAlign * sizeof(float);
-
     scatterAddTensorK = vecQue.GetWithOffset<float>(16 * dimDAlign * 2, rowsumUbOffset);
     rowsumUbOffset += 16 * dimDAlign * 2 * sizeof(float);
     scatterAddTensorV = vecQue.GetWithOffset<float>(16 * dimD2Align * 2, rowsumUbOffset);
     rowsumUbOffset += 16 * dimD2Align * 2 * sizeof(float);
 
     maxSelCnt = 2;
-    gatherTensorPing = vecQue.GetWithOffset<T1>(MAX_GATHER_SIZE * dimDqk, dSinksUbOffset);
-    dSinksUbOffset += MAX_GATHER_SIZE * dimDqk * sizeof(T1);
-    gatherTensorPong = vecQue.GetWithOffset<T1>(MAX_GATHER_SIZE * dimDqk, dSinksUbOffset);
-    dSinksUbOffset += MAX_GATHER_SIZE * dimDqk * sizeof(T1);
+    gatherTensorPing = vecQue.GetWithOffset<T1>(params.maxGatherSize * dimDqk, dSinksUbOffset);
+    dSinksUbOffset += params.maxGatherSize * dimDqk * sizeof(T1);
+    gatherTensorPong = vecQue.GetWithOffset<T1>(params.maxGatherSize * dimDqk, dSinksUbOffset);
+    dSinksUbOffset += params.maxGatherSize * dimDqk * sizeof(T1);
 
     uint32_t attentionShape[2] = {params.sftBaseM, static_cast<uint32_t>(dimDv)};
     uint32_t softmaxGradShape[2] = {params.sftBaseM, BLOCK_FP32};
@@ -786,7 +787,7 @@ __aicore__ inline void VecOp<SMLAGT>::GatherKV(const int64_t n2Index, uint64_t c
 
         curGatherCount += maxSelCnt;
 
-        if (curGatherCount == MAX_GATHER_SIZE) {
+        if (curGatherCount == params.maxGatherSize) {
             SET_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
             WAIT_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
 
