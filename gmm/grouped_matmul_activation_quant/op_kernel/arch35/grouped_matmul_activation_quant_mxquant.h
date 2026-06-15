@@ -20,6 +20,7 @@
 #include "cgmct/block/block_mmad_mx.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
 #include "cgmct/policy/dispatch_policy.h"
+#include "grouped_matmul_activation_quant_tiling_data.h"
 
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
@@ -28,14 +29,15 @@ namespace {
 constexpr int64_t DEFAULT_PROBLEM_SHAPE_VALUE = 1;
 } // namespace
 
+namespace GroupedMatmulActivationQuant {
 template <typename layoutA, typename layoutB>
 __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
                                           GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace,
                                           GM_ADDR tiling)
 {
-    GET_TILING_DATA_MEMBER(GMMActivationQuantTilingDataParams, gmmActivationQuantParams,
-                           gmmActivationQuantParams_, tiling);
-    GET_TILING_DATA_MEMBER(GMMActivationQuantTilingDataParams, mmTilingData, mmTilingData_, tiling);
+    GET_TILING_DATA_WITH_STRUCT(GMMActivationQuantTilingDataParams, tilingData, tiling);
+    const auto &gmmActivationQuantParams_ = tilingData.gmmActivationQuantParams;
+    const auto &mmTilingData_ = tilingData.mmTilingData;
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;
     using AType = DTYPE_X;
@@ -77,7 +79,7 @@ __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR w
     Params params = {
         {DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE,
          DEFAULT_PROBLEM_SHAPE_VALUE},
-        {x, weight, weightScale, xScale, y, nullptr, groupList},
+        {x, weight, weightScale, xScale, nullptr, nullptr, groupList},
         {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
          static_cast<uint32_t>(mmTilingData_.baseN), static_cast<uint32_t>(gmmActivationQuantParams_.roundMode),
          static_cast<uint32_t>(gmmActivationQuantParams_.scaleAlg), gmmActivationQuantParams_.dstTypeMax,
@@ -86,5 +88,6 @@ __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR w
     QGmmKernel op;
     op(params);
 }
+} // namespace GroupedMatmulActivationQuant
 
 #endif
