@@ -31,6 +31,10 @@ using namespace AscendC;
 #define REGBASE_TEMPLATE_DECLARE template <typename T>
 #define REGBASE_TEMPLATE_ARGS T
 
+// Register-level alignment constants (in elements)
+constexpr uint16_t REG_ALIGN_N = 8;   // N-axis: 8-element register alignment
+constexpr uint16_t REG_ALIGN_D = 16;  // D-axis: 16-element register alignment
+
 REGBASE_TEMPLATE_DECLARE
 class MhcPostRegbaseKernel {
 public:
@@ -47,6 +51,7 @@ private:
     __aicore__ inline void CopyInHPost(int64_t bsIdx, int64_t nIdx, int64_t nNum);
     __aicore__ inline void CopyInHRes(int64_t bsIdx, int64_t nIdx, int64_t nNum);
     __aicore__ inline void DoMulAndAdd(LocalTensor<float> hPostUb, LocalTensor<float> hResUb, int64_t nNum, int64_t dNum);
+    __aicore__ inline void DoMulAndAdd_N4(LocalTensor<float> hPostUb, LocalTensor<float> hResUb, int64_t nNum, int64_t dNum);
     __aicore__ inline void CopyOutY(int64_t bsIdx, int64_t nIdx, int64_t nNum, int64_t dIdx, int64_t dNum);
     __aicore__ inline uint16_t CeilDiv(uint32_t a, uint16_t b);
 
@@ -82,8 +87,9 @@ private:
 };
 
 REGBASE_TEMPLATE_DECLARE
-__aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::Init(GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,
-                                                          GM_ADDR output, GM_ADDR workspace)
+__aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::Init(
+    GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,
+    GM_ADDR output, GM_ADDR workspace)
 {
     blockIdx_ = GetBlockIdx();
     if (blockIdx_ >= tilingData_->usedCoreNum) {
@@ -104,27 +110,33 @@ __aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::Init(GM_ADDR
     hPostGm_.SetGlobalBuffer((__gm__ float *)hPost);
     outputGm_.SetGlobalBuffer((__gm__ T *)output);
 
+    // Initialize output queues - Double Buffer with depth=DOUBLE_BUFFER_DEPTH
+    pipe_->InitBuffer(yTileBuf_, tilingData_->nInner * tilingData_->dInner * sizeof(float));
+    pipe_->InitBuffer(yTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->nInner * tilingData_->dInner * sizeof(T));
+
     // Initialize input queues - Double Buffer with depth=DOUBLE_BUFFER_DEPTH for data tiles
-    pipe_->InitBuffer(hResTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->n * tilingData_->nInner * sizeof(float));
-    pipe_->InitBuffer(hPostTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->nInner * sizeof(float));
+    int64_t nInnerBuf = ((tilingData_->nInner + REG_ALIGN_N - 1) / REG_ALIGN_N) * REG_ALIGN_N;
+    pipe_->InitBuffer(hResTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->n * nInnerBuf * sizeof(float));
+    pipe_->InitBuffer(hPostTileQueue_, DOUBLE_BUFFER_DEPTH, nInnerBuf * sizeof(float));
 
     pipe_->InitBuffer(hOutTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->dInner * sizeof(T));
     pipe_->InitBuffer(xTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->n * tilingData_->dInner * sizeof(T));
-
-
-    // Initialize output queues - Double Buffer with depth=DOUBLE_BUFFER_DEPTH
-    pipe_->InitBuffer(yTileBuf_, tilingData_->nInner * tilingData_->dInner * sizeof(float));
-    pipe_->InitBuffer(yTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->n * tilingData_->dInner * sizeof(T));
 }
 
 REGBASE_TEMPLATE_DECLARE
-__aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd(LocalTensor<float> hPostUb, LocalTensor<float> hResUb, int64_t nNum, int64_t dNum)
+__aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd(
+    LocalTensor<float> hPostUb, LocalTensor<float> hResUb, int64_t nNum, int64_t dNum)
 {
+    if (nNum == 4) {
+        DoMulAndAdd_N4(hPostUb, hResUb, nNum, dNum);
+        return;
+    }
+
     uint16_t nTimes = static_cast<uint16_t>(nNum);
     uint16_t nTotal = static_cast<uint16_t>(tilingData_->n);
     uint16_t dRepeatTimes = CeilDiv(dNum, VL_FP32);
-    uint16_t dAlign = static_cast<uint16_t>(CeilDiv(dNum, 16) * 16);
-    uint16_t nAlign = static_cast<uint16_t>(CeilDiv(nNum, 8) * 8);
+    uint16_t dAlign = static_cast<uint16_t>(CeilDiv(dNum, REG_ALIGN_D) * REG_ALIGN_D);
+    uint16_t nAlign = static_cast<uint16_t>(CeilDiv(nNum, REG_ALIGN_N) * REG_ALIGN_N);
     LocalTensor<T> xUb = xTileQueue_.DeQue<T>();
     LocalTensor<T> hOutUb = hOutTileQueue_.DeQue<T>();
     
@@ -171,6 +183,92 @@ __aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd(
     AscendC::Cast(yTileLocal, yTileBuf, AscendC::RoundMode::CAST_RINT, nTimes * dAlign);
     yTileQueue_.EnQue(yTileLocal);
 
+}
+
+REGBASE_TEMPLATE_DECLARE
+__aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd_N4(
+    LocalTensor<float> hPostUb, LocalTensor<float> hResUb, int64_t nNum, int64_t dNum)
+{
+    uint16_t nTimes = static_cast<uint16_t>(nNum);
+    uint16_t dAlign = static_cast<uint16_t>(CeilDiv(dNum, REG_ALIGN_D) * REG_ALIGN_D);
+    uint16_t nAlign = static_cast<uint16_t>(CeilDiv(nNum, REG_ALIGN_N) * REG_ALIGN_N);
+    uint16_t repeatTimes = CeilDiv(dNum, VL_FP32);
+
+    LocalTensor<T> xUb = xTileQueue_.DeQue<T>();
+    LocalTensor<T> hOutUb = hOutTileQueue_.DeQue<T>();
+    LocalTensor<float> yTileBuf = yTileBuf_.Get<float>();
+
+    auto xAddr = (__ubuf__ T*)xUb.GetPhyAddr();
+    auto hResAddr = (__ubuf__ float*)hResUb.GetPhyAddr();
+    auto hPostAddr = (__ubuf__ float*)hPostUb.GetPhyAddr();
+    auto hOutAddr = (__ubuf__ T*)hOutUb.GetPhyAddr();
+    auto yAddr = (__ubuf__ float*)yTileBuf.GetPhyAddr();
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<T> xReg0, xReg1, xReg2, xReg3;
+        AscendC::MicroAPI::RegTensor<float> xRegFloat0, xRegFloat1, xRegFloat2, xRegFloat3;
+        AscendC::MicroAPI::RegTensor<float> hResReg0, hResReg1, hResReg2, hResReg3;
+        AscendC::MicroAPI::RegTensor<T> hOutReg;
+        AscendC::MicroAPI::RegTensor<float> hOutRegFloat;
+        AscendC::MicroAPI::RegTensor<float> hPostReg;
+        AscendC::MicroAPI::RegTensor<float> outRegFloat;
+        AscendC::MicroAPI::MaskReg pMask;
+
+        for (uint16_t nIndex = 0; nIndex < nTimes; nIndex++) {
+            uint32_t dNumU32 = static_cast<uint32_t>(dAlign);
+
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                hResReg0, hResAddr + 0 * nAlign + nIndex);
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                hResReg1, hResAddr + 1 * nAlign + nIndex);
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                hResReg2, hResAddr + 2 * nAlign + nIndex);
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                hResReg3, hResAddr + 3 * nAlign + nIndex);
+            AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
+                hPostReg, hPostAddr + nIndex);
+
+            for (uint16_t j = 0; j < repeatTimes; j++) {
+                pMask = AscendC::MicroAPI::UpdateMask<float>(dNumU32);
+
+                AscendC::MicroAPI::DataCopy<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    hOutReg, hOutAddr + j * VL_FP32);
+                AscendC::MicroAPI::Cast<float, T, castB16ToB32>(hOutRegFloat, hOutReg, pMask);
+
+                AscendC::MicroAPI::DataCopy<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    xReg0, xAddr + 0 * dAlign + j * VL_FP32);
+                AscendC::MicroAPI::DataCopy<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    xReg1, xAddr + 1 * dAlign + j * VL_FP32);
+                AscendC::MicroAPI::DataCopy<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    xReg2, xAddr + 2 * dAlign + j * VL_FP32);
+                AscendC::MicroAPI::DataCopy<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    xReg3, xAddr + 3 * dAlign + j * VL_FP32);
+
+                AscendC::MicroAPI::Cast<float, T, castB16ToB32>(xRegFloat0, xReg0, pMask);
+                AscendC::MicroAPI::Cast<float, T, castB16ToB32>(xRegFloat1, xReg1, pMask);
+                AscendC::MicroAPI::Cast<float, T, castB16ToB32>(xRegFloat2, xReg2, pMask);
+                AscendC::MicroAPI::Cast<float, T, castB16ToB32>(xRegFloat3, xReg3, pMask);
+
+                AscendC::MicroAPI::Mul(outRegFloat, xRegFloat0, hResReg0, pMask);
+                AscendC::MicroAPI::MulAddDst(outRegFloat, xRegFloat1, hResReg1, pMask);
+                AscendC::MicroAPI::MulAddDst(outRegFloat, xRegFloat2, hResReg2, pMask);
+                AscendC::MicroAPI::MulAddDst(outRegFloat, xRegFloat3, hResReg3, pMask);
+                AscendC::MicroAPI::MulAddDst(outRegFloat, hOutRegFloat, hPostReg, pMask);
+
+                AscendC::MicroAPI::DataCopy(yAddr + nIndex * dAlign + j * VL_FP32, outRegFloat, pMask);
+            }
+
+
+        }
+    }
+
+    hOutTileQueue_.FreeTensor(hOutUb);
+    xTileQueue_.FreeTensor(xUb);
+
+    LocalTensor<T> yTileLocal = yTileQueue_.AllocTensor<T>();
+    AscendC::Cast(yTileLocal, yTileBuf, AscendC::RoundMode::CAST_RINT, nTimes * dAlign);
+    yTileQueue_.EnQue(yTileLocal);
 }
 
 REGBASE_TEMPLATE_DECLARE
@@ -257,7 +355,8 @@ __aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::CopyInX(int6
 }
 
 REGBASE_TEMPLATE_DECLARE
-__aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::CopyOutY(int64_t bsIdx, int64_t nIdx, int64_t nNum, int64_t dIdx, int64_t dNum)
+__aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::CopyOutY(
+    int64_t bsIdx, int64_t nIdx, int64_t nNum, int64_t dIdx, int64_t dNum)
 {
     int64_t dStart = dIdx * tilingData_->dInner;
     int64_t nStart = nIdx * tilingData_->nInner * tilingData_->d;

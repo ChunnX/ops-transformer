@@ -10,11 +10,14 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../op_host/mhc_post_tiling.h"
+#include "../../../op_host/op_tiling/mhc_post_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
 using namespace std;
+using namespace optiling;
+
+constexpr char kSocVersion950[] = "Ascend950";
 
 class MhcPostTiling : public testing::Test {
 protected:
@@ -27,11 +30,6 @@ protected:
     {
         std::cout << "MhcPostTiling TearDown" << std::endl;
     }
-};
-
-struct MhcPostCompileInfo {
-    uint32_t aicNum;
-    uint32_t aivNum;
 };
 
 static string TilingData2Str(const gert::TilingData *tiling_data)
@@ -63,7 +61,8 @@ TEST_F(MhcPostTiling, test_mhc_post_3d_fp16_success)
                                               {
                                                   // attr
                                               },
-                                              &compileInfo);
+                                              &compileInfo,
+                                              kSocVersion950);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "4 5120 64 16 16 1 1024 1 5120 1 5120 5120 ";
     std::vector<size_t> expectWorkspaces = {16777216};
@@ -89,7 +88,8 @@ TEST_F(MhcPostTiling, test_mhc_post_4d_fp16_success)
         {
             // attr
         },
-        &compileInfo);
+        &compileInfo,
+        kSocVersion950);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "4 5120 64 16 16 1 1024 1 5120 1 5120 5120 ";
     std::vector<size_t> expectWorkspaces = {16777216};
@@ -114,7 +114,8 @@ TEST_F(MhcPostTiling, test_mhc_post_3d_n6_success)
                                               {
                                                   // attr
                                               },
-                                              &compileInfo);
+                                              &compileInfo,
+                                              kSocVersion950);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "6 2048 64 8 8 1 512 1 2048 1 2048 2048 ";
     std::vector<size_t> expectWorkspaces = {16777216};
@@ -139,7 +140,8 @@ TEST_F(MhcPostTiling, test_mhc_post_invalid_n)
                                               {
                                                   // attr
                                               },
-                                              &compileInfo);
+                                              &compileInfo,
+                                              kSocVersion950);
     uint64_t expectTilingKey = 1;
     string expectTilingDataStr = "7 2048 64 8 8 1 512 1 2048 1 2048 2048 ";
     std::vector<size_t> expectWorkspaces = {16777216};
@@ -164,7 +166,8 @@ TEST_F(MhcPostTiling, test_mhc_post_invalid_d)
                                               {
                                                   // attr
                                               },
-                                              &compileInfo);
+                                              &compileInfo,
+                                              kSocVersion950);
     uint64_t expectTilingKey = 0;
     string expectTilingDataStr = "4 30000 64 32 32 1 512 1 7504 4 7488 7488 ";
     std::vector<size_t> expectWorkspaces = {16777216};

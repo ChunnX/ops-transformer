@@ -13,7 +13,6 @@
  * \brief MhcPost tiling implementation
  */
 
-#include <cmath>
 #include <algorithm>
 #include <vector>
 #include "register/op_def_registry.h"
@@ -22,21 +21,19 @@
 #include "platform/platform_info.h"
 #include "log/log.h"
 #include "util/math_util.h"
-#include "mhc_post_tiling.h"
+#include "../mhc_post_tiling.h"
+#include "../../../op_kernel/arch35/mhc_post_tiling_data.h"
+#include "../../../op_kernel/arch35/mhc_post_tiling_key.h"
+#include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 
 // Memory alignment constants (in elements)
 constexpr uint32_t BF16_FP16_ALIGN_SIZE = 16;  // 16 elements = 32 bytes for bf16/fp16
-constexpr uint32_t FLOAT32_ALIGN_SIZE = 8;     // 8 elements = 32 bytes for float32
-constexpr uint32_t ALIGN_SIZE_512B = 256;      // 256 elements = 512 bytes for bf16/fp16
 
-constexpr uint32_t SIZE_OF_16BIT = 2;
-constexpr uint32_t SIZE_OF_32BIT = 4;
-
-// Double Buffer configuration
-constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;  // Double Buffer depth for data tiles
-constexpr uint32_t SINGLE_BUFFER_DEPTH = 1;  // Single Buffer depth for weights
+// Double Buffer bytes per element: DB depth(2) * sizeof(type)
+constexpr int64_t DB_BYTES_F32 = 8;  // DOUBLE_BUFFER_DEPTH * sizeof(float) = 2 * 4
+constexpr int64_t DB_BYTES_F16 = 4;  // DOUBLE_BUFFER_DEPTH * sizeof(T) = 2 * 2 (bf16/fp16)
 
 // Input indices
 const static int64_t X_INPUT_INDEX = 0;       // x (B, S, n, D)
@@ -56,9 +53,10 @@ static const int64_t DIM_NUM_2 = 2;
 static const int64_t DIM_NUM_3 = 3;
 static const int64_t DIM_NUM_4 = 4;
 
-class MhcPostTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class MhcPostRegbaseTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MhcPostTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {}
+    explicit MhcPostRegbaseTilingBase(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {}
 
 protected:
     bool IsCapable() override;
@@ -82,6 +80,7 @@ private:
     ge::graphStatus CheckParam();
 
     void ComputeTiling();
+
     const gert::Shape *xShape_ = nullptr;
 
     int64_t b_ = 0;
@@ -90,29 +89,67 @@ private:
     int64_t d_ = 0;
     int64_t totalItems_ = 0;
     int64_t usedCoreNum_ = 0;
-    int64_t normalCoreProcessNum_ = 0;
-    int64_t tailCoreProcessNum_ = 0;
     int64_t bsInner_ = 0;
     int64_t bsOuter_ = 0;
     int64_t bsTail_ = 0;
     int64_t dInner_ = 0;
     int64_t dOuter_ = 0;
     int64_t dTail_ = 0;
-    int64_t dTailAlign_ = 0;
+    int64_t nInner_ = 0;
+    int64_t nOuter_ = 0;
+    int64_t nTail_ = 0;
 
-    uint16_t usePermanentX_ = 0;
-
-    ge::DataType dtype_ = ge::DT_UNDEFINED;
-
-    MhcPostTilingData *tilingData_ = context_->GetTilingData<MhcPostTilingData>();
+    MhcPostRegbaseTilingData *tilingData_ = context_->GetTilingData<MhcPostRegbaseTilingData>();
 };
 
-bool MhcPostTilingBase::IsCapable()
+bool MhcPostRegbaseTilingBase::IsCapable()
 {
+    auto platformInfo = context_->GetPlatformInfo();
+    if (platformInfo == nullptr) {
+        return false;
+    }
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint64_t ubSize;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    const int64_t UB_SIZE = static_cast<int64_t>(ubSize);
+
+    auto xShapePtr = context_->GetInputShape(X_INPUT_INDEX);
+    if (xShapePtr == nullptr) {
+        return false;
+    }
+    const gert::Shape& xShape = xShapePtr->GetStorageShape();
+    uint32_t dimNum = xShape.GetDimNum();
+
+    int64_t tt, n;
+    if (dimNum == DIM_NUM_4) {
+        tt = xShape.GetDim(DIM_0) * xShape.GetDim(DIM_1);
+        n = xShape.GetDim(DIM_2);
+    } else if (dimNum == DIM_NUM_3) {
+        tt = xShape.GetDim(DIM_0);
+        n = xShape.GetDim(DIM_1);
+    } else {
+        return false;
+    }
+
+    if (tt < 16) {
+        return false;
+    }
+
+    const int64_t D_MIN = 32;
+    const int64_t N_MIN = 4;
+    const int64_t N_BUF_ALIGN = 8;
+    const int64_t N_MIN_BUF = ((N_MIN + N_BUF_ALIGN - 1) / N_BUF_ALIGN) * N_BUF_ALIGN;
+    int64_t ubMin = DB_BYTES_F32 * n * N_MIN_BUF + DB_BYTES_F32 * N_MIN_BUF
+                  + DB_BYTES_F16 * D_MIN + DB_BYTES_F16 * n * D_MIN
+                  + DB_BYTES_F32 * N_MIN * D_MIN;
+    if (ubMin >= UB_SIZE) {
+        return false;
+    }
+
     return true;
 }
 
-ge::graphStatus MhcPostTilingBase::GetPlatformInfo()
+ge::graphStatus MhcPostRegbaseTilingBase::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -129,7 +166,7 @@ ge::graphStatus MhcPostTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::GetShapeAttrsInfo()
+ge::graphStatus MhcPostRegbaseTilingBase::GetShapeAttrsInfo()
 {
     auto xShapePtr = context_->GetInputShape(X_INPUT_INDEX);
     OP_CHECK_IF(xShapePtr == nullptr, OP_LOGE(context_, "x shape is null"), return ge::GRAPH_FAILED);
@@ -141,7 +178,7 @@ ge::graphStatus MhcPostTilingBase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckNullptr()
+ge::graphStatus MhcPostRegbaseTilingBase::CheckNullptr()
 {
     // Check all input desc and shape
     for (int64_t i = X_INPUT_INDEX; i <= H_POST_INPUT_INDEX; i++) {
@@ -160,7 +197,7 @@ ge::graphStatus MhcPostTilingBase::CheckNullptr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckInputShapePositive(int64_t idx) const
+ge::graphStatus MhcPostRegbaseTilingBase::CheckInputShapePositive(int64_t idx) const
 {
     auto shape = context_->GetInputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
@@ -171,7 +208,7 @@ ge::graphStatus MhcPostTilingBase::CheckInputShapePositive(int64_t idx) const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckShapeAllPositive()
+ge::graphStatus MhcPostRegbaseTilingBase::CheckShapeAllPositive()
 {
     // Check all inputs
     for (int64_t i = X_INPUT_INDEX; i <= H_POST_INPUT_INDEX; i++) {
@@ -190,10 +227,9 @@ ge::graphStatus MhcPostTilingBase::CheckShapeAllPositive()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckDataType()
+ge::graphStatus MhcPostRegbaseTilingBase::CheckDataType()
 {
-    // Get x dtype as reference
-    dtype_ = context_->GetInputDesc(X_INPUT_INDEX)->GetDataType();
+    auto dtype_ = context_->GetInputDesc(X_INPUT_INDEX)->GetDataType();
 
     // Check supported dtype
     const std::vector<ge::DataType> supportedDtype = {ge::DT_BF16, ge::DT_FLOAT16};
@@ -234,7 +270,7 @@ ge::graphStatus MhcPostTilingBase::CheckDataType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckShape3D()
+ge::graphStatus MhcPostRegbaseTilingBase::CheckShape3D()
 {
     uint32_t dimNum = xShape_->GetDimNum();
 
@@ -295,7 +331,7 @@ ge::graphStatus MhcPostTilingBase::CheckShape3D()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckShape4D()
+ge::graphStatus MhcPostRegbaseTilingBase::CheckShape4D()
 {
     uint32_t dimNum = xShape_->GetDimNum();
     // BSND format validation
@@ -309,7 +345,8 @@ ge::graphStatus MhcPostTilingBase::CheckShape4D()
     OP_CHECK_IF(hResShape->GetDim(DIM_0) != b_ || hResShape->GetDim(DIM_1) != s_ ||
                 hResShape->GetDim(DIM_2) != n_ || hResShape->GetDim(DIM_3) != n_,
                 OP_LOGE(context_, "h_res shape (%ld,%ld,%ld,%ld) != expected (%ld,%ld,%ld,%ld)",
-                        hResShape->GetDim(DIM_0), hResShape->GetDim(DIM_1), hResShape->GetDim(DIM_2), hResShape->GetDim(DIM_3),
+                        hResShape->GetDim(DIM_0), hResShape->GetDim(DIM_1),
+                        hResShape->GetDim(DIM_2), hResShape->GetDim(DIM_3),
                         b_, s_, n_, n_),
                 return ge::GRAPH_FAILED);
 
@@ -349,14 +386,15 @@ ge::graphStatus MhcPostTilingBase::CheckShape4D()
     OP_CHECK_IF(outputShape->GetDim(DIM_0) != b_ || outputShape->GetDim(DIM_1) != s_ ||
                 outputShape->GetDim(DIM_2) != n_ || outputShape->GetDim(DIM_3) != d_,
                 OP_LOGE(context_, "output shape (%ld,%ld,%ld,%ld) != expected (%ld,%ld,%ld,%ld)",
-                        outputShape->GetDim(DIM_0), outputShape->GetDim(DIM_1), outputShape->GetDim(DIM_2), outputShape->GetDim(DIM_3),
+                        outputShape->GetDim(DIM_0), outputShape->GetDim(DIM_1),
+                        outputShape->GetDim(DIM_2), outputShape->GetDim(DIM_3),
                         b_, s_, n_, d_),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckShapeConsistency()
+ge::graphStatus MhcPostRegbaseTilingBase::CheckShapeConsistency()
 {
     // Support both BSND (4D) and TND (3D) formats
     // BSND: (B, S, n, D) -> totalItems = B * S
@@ -391,7 +429,7 @@ ge::graphStatus MhcPostTilingBase::CheckShapeConsistency()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckParam()
+ge::graphStatus MhcPostRegbaseTilingBase::CheckParam()
 {
     OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckNullptr failed"),
                 return ge::GRAPH_FAILED);
@@ -408,62 +446,66 @@ ge::graphStatus MhcPostTilingBase::CheckParam()
     return ge::GRAPH_SUCCESS;
 }
 
-void MhcPostTilingBase::ComputeTiling()
+void MhcPostRegbaseTilingBase::ComputeTiling()
 {
     // Core Partitioning - handle remainder properly
     uint32_t coreNum = static_cast<uint32_t>(aicoreParams_.numBlocks);
-    uint32_t halfCoreNum = coreNum / 2;
-    bsOuter_ = totalItems_;
-    bsInner_ = 1;
-    bsTail_ = 1;
+    usedCoreNum_ = (totalItems_ < coreNum) ? totalItems_ : coreNum;
+    bsInner_ = Ops::Base::CeilDiv(totalItems_, usedCoreNum_);
+    usedCoreNum_ = Ops::Base::CeilDiv(totalItems_, bsInner_);
+    bsOuter_ = usedCoreNum_;
+    bsTail_ = totalItems_ - (usedCoreNum_ - 1) * bsInner_;
 
-    const uint32_t UB_SIZE = static_cast<uint32_t>(aicoreParams_.ubSize);
+    const int64_t UB_SIZE = static_cast<int64_t>(aicoreParams_.ubSize);
+    const int64_t D_ALIGN = static_cast<int64_t>(BF16_FP16_ALIGN_SIZE);
+    const int64_t D_MIN = 32;
+    const int64_t N_ALIGN = 4;
+    const int64_t N_MIN = 4;
+    const int64_t N_BUF_ALIGN = 8;
 
-    // Calculate bytes per tileD element
-    // TQue bf16: 3 * 2 bytes (hOut:1, x:1, output:1)
-    // TBuf f32:  3 * 4 bytes (hOutF32:1, xF32:1, outF32:1)
-    uint32_t bytesPerTileD = 3 * (DOUBLE_BUFFER_DEPTH * SIZE_OF_16BIT + SINGLE_BUFFER_DEPTH * SIZE_OF_32BIT);
-    uint32_t maxTileD = UB_SIZE / bytesPerTileD;
-    dOuter_ = 1;
-    dInner_ = d_;
-    dTail_ = d_;
-
-    while (bsOuter_ * dOuter_ <= halfCoreNum || dInner_ >= maxTileD) {
-        if (dInner_ <= ALIGN_SIZE_512B) {
+    for (int64_t dOuter = 1; ; dOuter++) {
+        int64_t dInnerMin = Ops::Base::CeilDiv(d_, dOuter);
+        dInner_ = Ops::Base::CeilAlign(dInnerMin, D_ALIGN);
+        dInner_ = (dInner_ < D_MIN) ? D_MIN : dInner_;
+        int64_t nMinBuf = ((N_MIN + N_BUF_ALIGN - 1) / N_BUF_ALIGN) * N_BUF_ALIGN;
+        int64_t ubWithMinN = DB_BYTES_F32 * n_ * nMinBuf + DB_BYTES_F32 * nMinBuf
+                           + DB_BYTES_F16 * dInner_ + DB_BYTES_F16 * n_ * dInner_
+                           + DB_BYTES_F32 * N_MIN * dInner_;
+        if (ubWithMinN < UB_SIZE) {
+            dOuter_ = dOuter;
             break;
         }
-        dOuter_ = dOuter_ * 2;
-        dInner_ = d_ / dOuter_;
     }
-    dInner_ = Ops::Base::CeilAlign(dInner_, static_cast<int64_t>(BF16_FP16_ALIGN_SIZE));
-    dOuter_ = Ops::Base::CeilDiv(d_, dInner_);
     dTail_ = d_ - (dOuter_ - 1) * dInner_;
-    dTailAlign_ = Ops::Base::CeilAlign(dTail_, static_cast<int64_t>(BF16_FP16_ALIGN_SIZE));
 
-    int64_t totalCount = bsOuter_ * dOuter_;
-    usedCoreNum_ = (totalCount < coreNum) ? totalCount : coreNum;
-    normalCoreProcessNum_ = Ops::Base::CeilDiv(totalCount, usedCoreNum_);
-    usedCoreNum_ = Ops::Base::CeilDiv(totalCount, normalCoreProcessNum_);
-    tailCoreProcessNum_ = totalCount - (usedCoreNum_ - 1) * normalCoreProcessNum_;
-
-    uint64_t fullyBytesPerTileD = (n_ + 2) * (DOUBLE_BUFFER_DEPTH * SIZE_OF_16BIT + SIZE_OF_32BIT);
-    if (fullyBytesPerTileD * dInner_ <= UB_SIZE) {
-        usePermanentX_ = 1;
+    for (int64_t nOuter = 1; ; nOuter++) {
+        int64_t nInnerMin = Ops::Base::CeilDiv(n_, nOuter);
+        nInner_ = Ops::Base::CeilAlign(nInnerMin, N_ALIGN);
+        nInner_ = (nInner_ < N_MIN) ? N_MIN : nInner_;
+        int64_t nInnerBuf = ((nInner_ + N_BUF_ALIGN - 1) / N_BUF_ALIGN) * N_BUF_ALIGN;
+        int64_t ub = DB_BYTES_F32 * n_ * nInnerBuf + DB_BYTES_F32 * nInnerBuf
+                   + DB_BYTES_F16 * dInner_ + DB_BYTES_F16 * n_ * dInner_
+                   + DB_BYTES_F32 * nInner_ * dInner_;
+        if (ub < UB_SIZE) {
+            nOuter_ = nOuter;
+            break;
+        }
     }
+    nTail_ = n_ - (nOuter_ - 1) * nInner_;
 }
 
-ge::graphStatus MhcPostTilingBase::DoOpTiling()
+ge::graphStatus MhcPostRegbaseTilingBase::DoOpTiling()
 {
     ComputeTiling();
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::DoLibApiTiling()
+ge::graphStatus MhcPostRegbaseTilingBase::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::GetWorkspaceSize()
+ge::graphStatus MhcPostRegbaseTilingBase::GetWorkspaceSize()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -479,20 +521,20 @@ ge::graphStatus MhcPostTilingBase::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::PostTiling()
+ge::graphStatus MhcPostRegbaseTilingBase::PostTiling()
 {
     tilingData_->n = n_;
     tilingData_->d = d_;
     tilingData_->usedCoreNum = usedCoreNum_;
-    tilingData_->normalCoreProcessNum = normalCoreProcessNum_;
-    tilingData_->tailCoreProcessNum = tailCoreProcessNum_;
     tilingData_->bsInner = bsInner_;
     tilingData_->bsOuter = bsOuter_;
     tilingData_->bsTail = bsTail_;
+    tilingData_->nInner = nInner_;
+    tilingData_->nOuter = nOuter_;
+    tilingData_->nTail = nTail_;
     tilingData_->dInner = dInner_;
     tilingData_->dOuter = dOuter_;
     tilingData_->dTail = dTail_;
-    tilingData_->dTailAlign = dTailAlign_;
 
     context_->SetBlockDim(usedCoreNum_);
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
@@ -500,11 +542,10 @@ ge::graphStatus MhcPostTilingBase::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t MhcPostTilingBase::GetTilingKey() const
+uint64_t MhcPostRegbaseTilingBase::GetTilingKey() const
 {
-    OP_LOGI(context_, "Tiling: usePermanentX_=%u", usePermanentX_);
-    return GET_TPL_TILING_KEY(usePermanentX_, 0);
+    return GET_TPL_TILING_KEY(0, 1);
 }
 
-REGISTER_OPS_TILING_TEMPLATE(MhcPost, MhcPostTilingBase, 20);
+REGISTER_OPS_TILING_TEMPLATE(MhcPost, MhcPostRegbaseTilingBase, 10);
 }  // namespace optiling
