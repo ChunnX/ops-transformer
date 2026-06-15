@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,9 +6,9 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
-/*!
+/* !
  * \file sparse_lightning_indexer_kl_loss_grad_tiling_common.h
  * \brief
  */
@@ -26,7 +26,6 @@
 using namespace ge;
 
 namespace optiling {
-
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
@@ -74,7 +73,7 @@ struct InnerSplitParams {
 
 enum class SparseMode : uint32_t {
     DEFAULT_MASK = 0,      // 默认，全计算
-    RIGHT_DOWN_CAUSAL = 3,  // 右下角点划分的下三角部分
+    RIGHT_DOWN_CAUSAL = 3, // 右下角点划分的下三角部分
     // BAND = 4
 };
 
@@ -100,7 +99,6 @@ struct SparseLightningIndexerGradCompileInfo {
     platform_ascendc::SocVersion socVersion;
     NpuArch npuArch;
 };
-
 } // namespace optiling
 
 #endif
