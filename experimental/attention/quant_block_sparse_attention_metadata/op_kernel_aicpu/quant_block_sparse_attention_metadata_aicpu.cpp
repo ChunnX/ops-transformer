@@ -1,0 +1,320 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file quant_block_sparse_attention_metadata_aicpu.cpp
+ * \brief
+ */
+
+#include "log.h"
+#include "status.h"
+#include <cstdio>
+#include <cmath>
+#include <algorithm>
+#include "quant_block_sparse_attention_metadata_aicpu.h"
+
+#define KERNEL_STATUS_OK 0
+#define KERNEL_STATUS_PARAM_INVALID 1
+
+namespace aicpu {
+uint32_t QuantBlockSparseAttentionMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+{
+    bool success = Prepare(ctx);
+    if (!success) {
+        return KERNEL_STATUS_PARAM_INVALID;
+    }
+    SplitResult splitRes(static_cast<uint32_t>(aicCoreNum_));
+    success = ScheduleSection(splitRes) && GenMetadata(splitRes);
+    return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
+}
+
+bool QuantBlockSparseAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+{
+    context_ = &ctx;
+    // input
+    sparseSeqLen_ = ctx.Input(static_cast<uint32_t>(ParamId::sparseSeqLen));
+    cuSeqlensQ_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensQ));
+    cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
+    sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
+    sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
+    // output
+    metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
+
+    bool requiredAttrs =
+        GetAttrValue(ctx, "soc_version", socVersion_) &&
+        GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+        GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
+    if (!requiredAttrs) {
+        return false;
+    }
+    // attributes optional
+    GetAttrValueOpt(ctx, "batch_size", batchSize_);
+    GetAttrValueOpt(ctx, "num_heads_q", numHeadsQ_);
+    GetAttrValueOpt(ctx, "num_heads_kv", numHeadsKv_);
+    GetAttrValueOpt(ctx, "head_dim", headDim_);
+    GetAttrValueOpt(ctx, "sparse_block_size_q", sparseBlockSizeQ_);
+    GetAttrValueOpt(ctx, "sparse_block_size_kv", sparseBlockSizeKv_);
+    GetAttrValueOpt(ctx, "quant_mode", quantMode_);
+    GetAttrValueOpt(ctx, "mask_mode", maskMode_);
+    GetAttrValueOpt(ctx, "layout_q", layoutQ_);
+    GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
+    GetAttrValueOpt(ctx, "layout_sparse_indices", layoutSparseIndices_);
+    return (ParamsCheck() && ParamsInit());
+}
+
+bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsCheck()
+{
+    return CheckTensorData();
+}
+
+bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
+{
+    // REQUIRED_INPUT tensor check
+    // if (sparseSeqLen_ == nullptr) {
+    //     KERNEL_LOG_ERROR("sparseSeqLen is nullptr");
+    //     return false;
+    // }
+    // if (sparseSeqLen_->GetTensorShape() == nullptr || sparseSeqLen_->GetTensorShape()->GetDims() != 2) {
+    //     KERNEL_LOG_ERROR("sparseSeqLen must be 2D tensor");
+    //     return false;
+    // }
+    // if (sparseSeqLen_->GetTensorShape()->GetDims() > 0 && sparseSeqLen_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("sparseSeqLen data is nullptr");
+    //     return false;
+    // }
+    // // OPTIONAL_INPUT tensor check
+    // if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetTensorShape()->GetDims() > 0 &&
+    //     cuSeqlensQ_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("cuSeqlensQ data is nullptr");
+    //     return false;
+    // }
+    // if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetTensorShape()->GetDims() > 0 &&
+    //     cuSeqlensKv_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("cuSeqlensKv data is nullptr");
+    //     return false;
+    // }
+    // if (sequsedQ_ != nullptr && sequsedQ_->GetTensorShape()->GetDims() > 0 && sequsedQ_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("sequsedQ data is nullptr");
+    //     return false;
+    // }
+    // if (sequsedKv_ != nullptr && sequsedKv_->GetTensorShape()->GetDims() > 0 && sequsedKv_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("sequsedKv data is nullptr");
+    //     return false;
+    // }
+    // // OUTPUT tensor check
+    // if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
+    //     KERNEL_LOG_ERROR("metaData is empty");
+    //     return false;
+    // }
+    return true;
+}
+
+bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
+{
+    int64_t sparseSeqLenBatchSize = sparseSeqLen_->GetTensorShape()->GetDimSize(0);
+    if (batchSize_ <= 0) {
+        KERNEL_LOG_ERROR("invalid batch size, batchSize=%d", batchSize_);
+        return false;
+    }
+    if (sparseSeqLenBatchSize != static_cast<int64_t>(batchSize_)) {
+        KERNEL_LOG_ERROR("sparseSeqLen shape[0] must be batchSize, got shape[0]=%ld, batchSize=%d",
+                         sparseSeqLenBatchSize, batchSize_);
+        return false;
+    }
+    mBaseSize_ = static_cast<uint32_t>(std::max(sparseBlockSizeQ_, 1));
+    s2BaseSize_ = static_cast<uint32_t>(std::max(sparseBlockSizeKv_, 1));
+    Qbmax_ = static_cast<uint32_t>(sparseSeqLen_->GetTensorShape()->GetDimSize(1));
+    if (numHeadsQ_ <= 0 || aicCoreNum_ <= 0 || Qbmax_ == 0U) {
+        KERNEL_LOG_ERROR("invalid split params, batchSize=%d, numHeadsQ=%d, numHeadsKv=%d, aicCoreNum=%d, Qbmax=%u",
+                         batchSize_, numHeadsQ_, numHeadsKv_, aicCoreNum_, Qbmax_);
+        return false;
+    }
+    if (numHeadsKv_ == 0) {
+        numHeadsKv_ = numHeadsQ_;
+    }
+    if (numHeadsKv_ <= 0 || numHeadsQ_ % numHeadsKv_ != 0) {
+        KERNEL_LOG_ERROR("numHeadsQ must be divisible by numHeadsKv, numHeadsQ=%d, numHeadsKv=%d",
+                         numHeadsQ_, numHeadsKv_);
+        return false;
+    }
+    return true;
+}
+
+uint32_t QuantBlockSparseAttentionMetadataCpuKernel::GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const
+{
+    if (bIdx >= static_cast<uint32_t>(batchSize_) || s1Idx >= Qbmax_ || sparseSeqLen_ == nullptr ||
+        sparseSeqLen_->GetData() == nullptr) {
+        return 0U;
+    }
+    const int32_t *sparseSeqLenData = static_cast<const int32_t *>(sparseSeqLen_->GetData());
+    uint32_t idx = bIdx * Qbmax_ + s1Idx;
+    return sparseSeqLenData[idx] > 0 ? static_cast<uint32_t>(sparseSeqLenData[idx]) : 0U;
+}
+
+uint64_t QuantBlockSparseAttentionMetadataCpuKernel::CalcBlockNum() const
+{
+    uint64_t blockNumPerHead = 0U;
+    for (uint32_t bIdx = 0U; bIdx < static_cast<uint32_t>(batchSize_); ++bIdx) {
+        for (uint32_t s1Idx = 0U; s1Idx < Qbmax_; ++s1Idx) {
+            blockNumPerHead += GetRowBlockNum(bIdx, s1Idx);
+        }
+    }
+    return blockNumPerHead * static_cast<uint32_t>(numHeadsQ_);
+}
+
+bool QuantBlockSparseAttentionMetadataCpuKernel::AdvanceToValidRow(AssignContext &assignContext) const
+{
+    if (assignContext.isFinished) {
+        return false;
+    }
+
+    uint32_t totalBN1 = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
+    while (assignContext.curBN1Idx < totalBN1) {
+        assignContext.curBIdx = assignContext.curBN1Idx / static_cast<uint32_t>(numHeadsQ_);
+        while (assignContext.curS1Idx < Qbmax_ &&
+               GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx) == 0U) {
+            assignContext.curS1Idx++;
+        }
+        if (assignContext.curS1Idx < Qbmax_) {
+            return true;
+        }
+        assignContext.curBN1Idx++;
+        assignContext.curS1Idx = 0U;
+        assignContext.curS2Idx = 0U;
+    }
+    assignContext.isFinished = true;
+    return false;
+}
+
+void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, SplitResult &result)
+{
+    AssignContext assignContext {};
+    assignContext.unassignedBlock = blockNum;
+    assignContext.curBIdx = 0U;
+    assignContext.curBN1Idx = 0U;
+    assignContext.curS1Idx = 0U;
+    assignContext.curS2Idx = 0U;
+
+    for (uint32_t i = 0; i < static_cast<uint32_t>(aicCoreNum_); i++) {
+        if (assignContext.isFinished || assignContext.unassignedBlock == 0U) {
+            break;
+        }
+        if (!AdvanceToValidRow(assignContext)) {
+            break;
+        }
+        assignContext.curCoreIdx = i;
+
+        assignContext.coreCache = {};
+        uint32_t remainingCore = static_cast<uint32_t>(aicCoreNum_) - i;
+        // 根据剩余基本块数和剩余核数，动态重新计算当前核负载上限。
+        assignContext.coreCache.blockLimit =
+            (assignContext.unassignedBlock + remainingCore - 1U) / remainingCore;
+        uint32_t curRowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx);
+        assignContext.coreCache.blockLimit =
+            std::max(assignContext.coreCache.blockLimit, static_cast<uint64_t>(curRowBlock));
+
+        while (!assignContext.isFinished) {
+            if (!AdvanceToValidRow(assignContext)) {
+                break;
+            }
+            uint32_t rowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx);
+            if (rowBlock == 0U) {
+                assignContext.curS1Idx++;
+                continue;
+            }
+            // 当前方案不切S2，一个S1行是最小分配粒度；当前核未分到行时，整行放入以避免空核。
+            if (assignContext.coreCache.block > 0U &&
+                assignContext.coreCache.block + rowBlock > assignContext.coreCache.blockLimit) {
+                break;
+            }
+            assignContext.coreCache.block += rowBlock;
+            assignContext.curS1Idx++;
+        }
+
+        result.bN1End[i] = assignContext.curBN1Idx;
+        result.s1End[i] = assignContext.curS1Idx;
+        result.s2End[i] = 0U;
+        result.firstFdDataWorkspaceIdx[i] = 0U;
+        result.maxBlock = std::max(result.maxBlock, assignContext.coreCache.block);
+        if (assignContext.unassignedBlock > assignContext.coreCache.block) {
+            assignContext.unassignedBlock -= assignContext.coreCache.block;
+        } else {
+            assignContext.unassignedBlock = 0U;
+        }
+        result.usedCoreNum = i + 1U;
+    }
+    result.usedCoreNum = std::max(result.usedCoreNum, 1U);
+}
+
+bool QuantBlockSparseAttentionMetadataCpuKernel::ScheduleSection(SplitResult &splitRes)
+{
+    uint64_t blockNum = CalcBlockNum();
+    if (blockNum == 0U) {
+        splitRes.usedCoreNum = 1U;
+        splitRes.bN1End[0] = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
+        splitRes.s1End[0] = 0U;
+        splitRes.s2End[0] = 0U;
+        splitRes.firstFdDataWorkspaceIdx[0] = 0U;
+        return true;
+    }
+    ScheduleFa(blockNum, splitRes);
+    return true;
+}
+
+bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetadata(const SplitResult &splitRes)
+{
+    if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("metadata is empty");
+        return false;
+    }
+    optiling::detail::FaMetaData faMetadata(metaData_->GetData());
+    // uint32_t *ptr = static_cast<uint32_t *>(metaData_->GetData());
+    // ptr[1] = 0U;
+    // ptr[2] = mBaseSize_;
+    // ptr[3] = s2BaseSize_;
+    for (uint32_t i = 0; i < optiling::AIC_CORE_NUM; i++) {
+        faMetadata.setFaMetadata(i, optiling::FA_CORE_ENABLE_INDEX, 0U);
+        faMetadata.setFaMetadata(i, optiling::FA_BN1_START_INDEX, 0U);
+        faMetadata.setFaMetadata(i, optiling::FA_M_START_INDEX, 0U);
+        faMetadata.setFaMetadata(i, optiling::FA_S2_START_INDEX, 0U);
+        faMetadata.setFaMetadata(i, optiling::FA_BN1_END_INDEX, 0U);
+        faMetadata.setFaMetadata(i, optiling::FA_M_END_INDEX, 0U);
+        faMetadata.setFaMetadata(i, optiling::FA_S2_END_INDEX, 0U);
+        faMetadata.setFaMetadata(i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
+    }
+    for (uint32_t i = 0; i < optiling::AIV_CORE_NUM; i++) {
+        for (uint32_t j = 0; j < optiling::FD_METADATA_SIZE; j++) {
+            faMetadata.fdMetadata[i * optiling::FD_METADATA_SIZE + j] = 0U;
+        }
+    }
+    for (uint32_t i = 0; i < splitRes.usedCoreNum; i++) {
+        faMetadata.setFaMetadata(i, optiling::FA_CORE_ENABLE_INDEX, 1U);
+        uint32_t bn1Start = (i == 0) ? 0U : splitRes.bN1End[i - 1];
+        uint32_t bn1End = splitRes.bN1End[i];
+        if (i > 0) {
+            faMetadata.setFaMetadata(i, optiling::FA_M_START_INDEX, splitRes.s1End[i - 1]);
+            faMetadata.setFaMetadata(i, optiling::FA_S2_START_INDEX, splitRes.s2End[i - 1]);
+        }
+        faMetadata.setFaMetadata(i, optiling::FA_BN1_START_INDEX, bn1Start);
+        faMetadata.setFaMetadata(i, optiling::FA_BN1_END_INDEX, bn1End);
+        faMetadata.setFaMetadata(i, optiling::FA_M_END_INDEX, splitRes.s1End[i]);
+        faMetadata.setFaMetadata(i, optiling::FA_S2_END_INDEX, splitRes.s2End[i]);
+        faMetadata.setFaMetadata(i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
+                                 splitRes.firstFdDataWorkspaceIdx[i]);
+    }
+    return true;
+}
+
+namespace {
+static const char *kernelType = "QuantBlockSparseAttentionMetadata";
+REGISTER_CPU_KERNEL(kernelType, QuantBlockSparseAttentionMetadataCpuKernel);
+} // namespace
+
+} // namespace aicpu
