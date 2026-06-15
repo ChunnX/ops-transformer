@@ -3,6 +3,7 @@
 #include <cstring>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include "acl/acl.h"
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_bsa_select_block_mask.h"
@@ -27,6 +28,20 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
         shapeSize *= i;
     }
     return shapeSize;
+}
+
+int32_t GetEnvInt32(const char* name, int32_t defaultValue) {
+    const char* value = std::getenv(name);
+    if (value == nullptr || value[0] == '\0') {
+        return defaultValue;
+    }
+    char* end = nullptr;
+    long parsed = std::strtol(value, &end, 10);
+    if (end == value || *end != '\0' || parsed <= 0 || parsed > INT32_MAX) {
+        LOG_PRINT("Invalid %s=%s, use default %d\n", name, value, defaultValue);
+        return defaultValue;
+    }
+    return static_cast<int32_t>(parsed);
 }
 
 int Init(int32_t deviceId, aclrtStream* stream) {
@@ -110,8 +125,8 @@ int main() {
 
     int32_t batch = 1;
     int32_t numHeads = 1;
-    int32_t qSeqlen = 65536;
-    int32_t kvSeqlen = 65536;
+    int32_t qSeqlen = GetEnvInt32("BSA_Q_SEQLEN", 65536);
+    int32_t kvSeqlen = GetEnvInt32("BSA_KV_SEQLEN", 65536);
     int32_t headDim = 128;
     int32_t blockShapeX = 128;
     int32_t blockShapeY = 128;
@@ -173,7 +188,7 @@ int main() {
     std::vector<int8_t> resultData(maskOutSize, 0);
     int64_t selectedCount = 0;
     double actualSparsity = 0.0;
-    constexpr int32_t kernelRunTimes = 1;
+    int32_t kernelRunTimes = GetEnvInt32("BSA_KERNEL_RUN_TIMES", 1);
 
     LOG_PRINT("Calling aclnnBSASelectBlockMask %d times with reused tensors and fresh executor...\n", kernelRunTimes);
     for (int32_t runId = 0; runId < kernelRunTimes; ++runId) {
