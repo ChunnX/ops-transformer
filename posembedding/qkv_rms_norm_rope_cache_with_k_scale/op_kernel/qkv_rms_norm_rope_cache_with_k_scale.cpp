@@ -30,6 +30,10 @@ qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gam
                                      GM_ADDR k_scale_cache_out, GM_ADDR workspace, GM_ADDR tiling)
 {
     static_assert(HEAD_DIM == QKV_RRC_HEAD_DIM_D128, "QkvRmsNormRopeCacheWithKScale only supports D128 kernel.");
+    AscendC::InitSocState();
+    int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
+    // enable overflow mode to avoid nan/inf value
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     REGISTER_TILING_DEFAULT(QkvRmsNormRopeCacheWithKScaleTilingData);
@@ -44,4 +48,5 @@ qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gam
 
     QkvRmsNormRopeCacheWithKScaleController controller;
     controller.Process(tensors, tilingData);
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
