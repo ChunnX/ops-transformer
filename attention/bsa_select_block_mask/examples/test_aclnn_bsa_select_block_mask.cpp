@@ -44,6 +44,20 @@ int32_t GetEnvInt32(const char* name, int32_t defaultValue) {
     return static_cast<int32_t>(parsed);
 }
 
+float GetEnvFloat(const char* name, float defaultValue) {
+    const char* value = std::getenv(name);
+    if (value == nullptr || value[0] == '\0') {
+        return defaultValue;
+    }
+    char* end = nullptr;
+    float parsed = std::strtof(value, &end);
+    if (end == value || *end != '\0' || parsed <= 0.0f || parsed >= 1.0f) {
+        LOG_PRINT("Invalid %s=%s, use default %.2f\n", name, value, defaultValue);
+        return defaultValue;
+    }
+    return parsed;
+}
+
 int Init(int32_t deviceId, aclrtStream* stream) {
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
@@ -123,14 +137,14 @@ int main() {
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    int32_t batch = 1;
+    int32_t batch = GetEnvInt32("BSA_BATCH", 1);
     int32_t numHeads = GetEnvInt32("BSA_NUM_HEADS", 1);
     int32_t qSeqlen = GetEnvInt32("BSA_Q_SEQLEN", 65536);
     int32_t kvSeqlen = GetEnvInt32("BSA_KV_SEQLEN", 65536);
     int32_t headDim = 128;
-    int32_t blockShapeX = 128;
-    int32_t blockShapeY = 128;
-    float sparsity = 0.50f;
+    int32_t blockShapeX = GetEnvInt32("BSA_BLOCK_SHAPE_X", 128);
+    int32_t blockShapeY = GetEnvInt32("BSA_BLOCK_SHAPE_Y", 128);
+    float sparsity = GetEnvFloat("BSA_SPARSITY", 0.50f);
     double expectedSparsity = 1.0 - static_cast<double>(sparsity);
     
     int32_t xBlocks = (qSeqlen + blockShapeX - 1) / blockShapeX;
@@ -151,21 +165,21 @@ int main() {
     void *workspaceAddr = nullptr;
 
     std::vector<int64_t> queryShape = {batch, numHeads, qSeqlen, headDim};
-    std::vector<op::fp16_t> queryHostData(batch * numHeads * qSeqlen * headDim, 1.0f);
+    std::vector<op::fp16_t> queryHostData(GetShapeSize(queryShape), 1.0f);
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create query tensor\n");
               FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
                            maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
 
     std::vector<int64_t> keyShape = {batch, numHeads, kvSeqlen, headDim};
-    std::vector<op::fp16_t> keyHostData(batch * numHeads * kvSeqlen * headDim, 1.0f);
+    std::vector<op::fp16_t> keyHostData(GetShapeSize(keyShape), 1.0f);
     ret = CreateAclTensor(keyHostData, keyShape, &keyDeviceAddr, aclDataType::ACL_FLOAT16, &keyTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create key tensor\n");
               FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
                            maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
 
     std::vector<int64_t> maskOutShape = {batch, numHeads, xBlocks, yBlocks};
-    int64_t maskOutSize = batch * numHeads * xBlocks * yBlocks;
+    int64_t maskOutSize = GetShapeSize(maskOutShape);
     std::vector<int8_t> maskOutHostData(maskOutSize, 0);
     ret = CreateAclTensor(maskOutHostData, maskOutShape, &maskOutDeviceAddr, aclDataType::ACL_INT8, &maskOutTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create maskOut tensor\n");
