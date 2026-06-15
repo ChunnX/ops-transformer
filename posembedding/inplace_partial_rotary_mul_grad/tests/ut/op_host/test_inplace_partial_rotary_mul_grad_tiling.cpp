@@ -115,7 +115,7 @@ TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp32_mode2_quarter)
                                               },
                                               &compileInfo);
     uint64_t expectTilingKey = 10012;
-    string expectTilingData = "2 64 4 64 0 64 2 4 0 0 1 0 0 16 32 4 0";
+    string expectTilingData = "2 64 4 64 0 64 2 4 0 0 1 0 0 47 11 11 0";
     std::vector<size_t> expectWorkspaces = {};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -140,7 +140,7 @@ TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp32_mode3_interleave_half)
                                               },
                                               &compileInfo);
     uint64_t expectTilingKey = 10012;
-    string expectTilingData = "1 32 2 64 0 64 3 2 0 0 0 1 0 2 32 2 0";
+    string expectTilingData = "1 32 2 64 0 64 3 2 0 0 0 1 0 32 2 2 0";
     std::vector<size_t> expectWorkspaces = {};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -165,7 +165,7 @@ TEST_F(InplacePartialRotaryMulGradTiling, tiling_mixed_dtype_fp16_dy_fp32_cos)
                                               },
                                               &compileInfo);
     uint64_t expectTilingKey = 10012;
-    string expectTilingData = "2 8 4 128 0 128 0 2 1 0 0 1 0 2 32 2 0";
+    string expectTilingData = "2 8 4 128 0 128 0 2 1 0 0 1 0 32 2 2 0";
     std::vector<size_t> expectWorkspaces = {};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
