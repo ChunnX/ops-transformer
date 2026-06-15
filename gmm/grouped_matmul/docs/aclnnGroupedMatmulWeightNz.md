@@ -10,8 +10,8 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas推理系列产品</term>|      √     |
-|<term>Atlas训练系列产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      √     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -628,7 +628,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - 当x为INT8， weight为INT4/INT32的场景， groupSize只支持128、192、256、512。
       - 当x的shape固定为（M, K）, out的shape固定为（M, N）。
       - mx伪量化和K-CG伪量化场景，weight的K轴和N轴均要求32B对齐。
-      - 当x和weight的类型分别为BFLOAT16/FLOAT16和FLOAT4_E2M1/FLOAT32时，或为INT8和INT4/INT32时，仅支持x、weight均不转置,为FLOAT8_E4M3FN和FLOAT4_E2M1/FLOAT32时仅支持x不转置且weight转置。
+      - 当x和weight的类型分别为BFLOAT16/FLOAT16和FLOAT4_E2M1/FLOAT32时，或为INT8和INT4/INT32时，仅支持x、weight均不转置，为FLOAT8_E4M3FN和FLOAT4_E2M1/FLOAT32时仅支持x不转置且weight转置。
       - antiquantScale的转置与否和weight保持一致。
 
   - 静态量化场景支持的输入类型与shape为：

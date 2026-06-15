@@ -58,7 +58,7 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
 
 -   **comm\_quant\_mode** (`int`)：可选参数，表示通信量化类型。支持取0和2。0表示通信时不量化，2表示通信时进行`int8`量化。
 
--   **x\_active\_mask** (`Tensor`)：可选参数，表示token是否参与通信。要求为一个1维或2维张量。当输入为1维时，shape为\(BS, \); 当输入为2维时，shape为\(BS, K\)。数据类型支持`bool`，数据格式要求为$ND$，支持非连续的Tensor。当输入为1维时，参数为true表示对应的token参与通信，true必须排到false之前，例：{true, false, true} 为非法输入；当输入为2维时，参数为true表示当前token对应的`topk_idx`参与通信，若当前token对应的K个`bool`值全为false，表示当前token不会参与通信。默认所有token都会参与通信。当每张卡的BS数量不一致时，所有token必须全部有效。
+-   **x\_active\_mask** (`Tensor`)：可选参数，表示token是否参与通信。要求为一个1维或2维张量。当输入为1维时，shape为\(BS, \);当输入为2维时，shape为\(BS, K\)。数据类型支持`bool`，数据格式要求为$ND$，支持非连续的Tensor。当输入为1维时，参数为true表示对应的token参与通信，true必须排到false之前，例：{true, false, true} 为非法输入；当输入为2维时，参数为true表示当前token对应的`topk_idx`参与通信，若当前token对应的K个`bool`值全为false，表示当前token不会参与通信。默认所有token都会参与通信。当每张卡的BS数量不一致时，所有token必须全部有效。
 
 -   **expand\_scales** (`Tensor`)：可选参数，对应[npu\_low\_latency\_dispatch](npu_low_latency_dispatch.md)的`expand_scales`输出。暂不支持该参数，使用默认值即可。
 
@@ -122,7 +122,7 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
     调用本接口前需检查通信域缓存区大小取值是否合理，单位MB，不配置时默认为200MB。
     -   该场景仅支持通过环境变量HCCL\_BUFFSIZE配置，该环境变量按通信域粒度管理，每个通信域独占一组“2*HCCL\_BUFFSIZE”大小的内存。
     -   ep通信域内：设置大小要求 \>= 2且满足\>= 2 \* \(local\_expert\_num \* max\_bs \* ep\_world\_size \* Align512\(Align32\(2 \* h\) + 64\) + \(k + shared\_expert\_num\) \* max\_bs\* Align512\(2 \* h\)\)。
-    -   其中 480Align512(x) = ((x+480-1)/480)\*512,Align512(x) = ((x+512-1)/512)\*512,Align32(x) = ((x+32-1)/32)\*32。
+    -   其中480Align512(x) = ((x+480-1)/480)\*512,Align512(x) = ((x+512-1)/512)\*512,Align32(x) = ((x+32-1)/32)\*32。
     -   通信域内开设大小可通过调用MoeDistributeBuffer.get_low_latency_ccl_buffer_size接口计算。
 
 -   本文公式中的“/”表示整除。
@@ -318,13 +318,13 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
             print("unSupported tp = 2 and local moe > 1")
             exit(0)
         if shared_expert_rank_num > ep_world_size:
-            print("shared_expert_rank_num 不能大于 ep_world_size")
+            print("shared_expert_rank_num不能大于ep_world_size")
             exit(0)
         if shared_expert_rank_num > 0 and ep_world_size % shared_expert_rank_num != 0:
-            print("ep_world_size 必须是 shared_expert_rank_num的整数倍")
+            print("ep_world_size必须是shared_expert_rank_num的整数倍")
             exit(0)
         if num_experts % moe_rank_num != 0:
-            print("num_experts 必须是 moe_rank_num 的整数倍")
+            print("num_experts必须是moe_rank_num的整数倍")
             exit(0)
         p_list = []
         for rank in range(rank_per_dev):
@@ -562,15 +562,15 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
             exit(0)
 
         if shared_expert_rank_num > ep_world_size:
-            print("shared_expert_rank_num 不能大于 ep_world_size")
+            print("shared_expert_rank_num不能大于ep_world_size")
             exit(0)
 
         if shared_expert_rank_num > 0 and ep_world_size % shared_expert_rank_num != 0:
-            print("ep_world_size 必须是 shared_expert_rank_num的整数倍")
+            print("ep_world_size必须是shared_expert_rank_num的整数倍")
             exit(0)
 
         if num_experts % moe_rank_num != 0:
-            print("num_experts 必须是 moe_rank_num 的整数倍")
+            print("num_experts必须是moe_rank_num的整数倍")
             exit(0)
 
         p_list = []

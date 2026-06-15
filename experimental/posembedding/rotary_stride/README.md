@@ -44,28 +44,28 @@
 	<tr>
       <td>in</td>
       <td>输入</td>
-      <td>公式中的输入张量x，shape为 (B, S, N, stride)</td>
+      <td>公式中的输入张量x，shape为(B, S, N, stride)</td>
       <td>BFLOAT16/HALF</td>
       <td>ND</td>
     </tr>
 	<tr>
       <td>sin</td>
       <td>输入</td>
-      <td>公式中的输入张量sin，shape为 (MaxS, D)，MaxS指最大序列长度</td>
+      <td>公式中的输入张量sin，shape为(MaxS, D)，MaxS指最大序列长度</td>
       <td>FLOAT</td>
       <td>ND</td>
     </tr>
 	<tr>
       <td>cos</td>
       <td>输入</td>
-      <td>公式中的输入张量x，shape为 (MaxS, D)，MaxS指最大序列长度</td>
+      <td>公式中的输入张量x，shape为(MaxS, D)，MaxS指最大序列长度</td>
       <td>FLOAT</td>
       <td>ND</td>
     </tr>
 	<tr>
       <td>out</td>
       <td>输入</td>
-      <td>公式中的输出张量y，shape为 (B, S, N, stride)</td>
+      <td>公式中的输出张量y，shape为(B, S, N, stride)</td>
       <td>BFLOAT16/HALF</td>
       <td>ND</td>
     </tr>
@@ -80,7 +80,7 @@
 
 ## 约束说明
 
-- x/y 仅支持BFLOAT16/HAFL类型。
+- x/y仅支持BFLOAT16/HAFL类型。
 - stride >= head_dim。
 
 ## 调用说明

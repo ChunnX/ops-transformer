@@ -8,7 +8,7 @@
 
 ## 功能说明
 
-- 算子功能：初始化路由，将输入token 按 expert 分组并连续排列。
+- 算子功能：初始化路由，将输入token按expert分组并连续排列。
 
 ## 参数说明
 
@@ -45,7 +45,7 @@
 	<tr>
       <td>in</td>
       <td>输入</td>
-      <td>公式中的输入张量x，shape为 (token_num, hidden_size)</td>
+      <td>公式中的输入张量x，shape为(token_num, hidden_size)</td>
       <td>BFLOAT16</td>
       <td>ND</td>
     </tr>
@@ -87,8 +87,8 @@
   </tbody></table>
 
 ## 约束说明
-- token_list 最后一个元素的值为总token数
-- copy_byte 按64bytes对齐
+- token_list最后一个元素的值为总token数
+- copy_byte按64bytes对齐
 
 ## 调用说明
 torch.ops.npu_ops_transformer_ext.init_routing(block_dim, input, token_table,token_list, output)

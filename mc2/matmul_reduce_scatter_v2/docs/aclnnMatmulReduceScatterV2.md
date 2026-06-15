@@ -16,7 +16,7 @@
 ## 功能说明
 
 - 接口功能:
-    aclnnMatmulReduceScatterV2接口是对aclnnMatmulReduceScatter接口的功能扩展，在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上,
+    aclnnMatmulReduceScatterV2接口是对aclnnMatmulReduceScatter接口的功能扩展，在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上，
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - 新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../../docs/zh/context/量化介绍.md)。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -35,13 +35,13 @@
         output=ReduceScatter((x1Scale*x2Scale)*(x1@x2 + bias_{optional}))
         $$
 
-    - 情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(k, n)时, x1Scale的shape为(ceildiv(m, 128), ceildiv(k, 128))、x2Scale的shape为(ceildiv(k, 128), ceildiv(n, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
+    - 情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(k, n)时， x1Scale的shape为(ceildiv(m, 128), ceildiv(k, 128))、x2Scale的shape为(ceildiv(k, 128), ceildiv(n, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
 
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=128} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
         $$
 
-    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(n, k)时, x1Scale的shape为(m, ceildiv(k, 64), 2)、x2Scale的shape为(n, ceildiv(k, 64), 2)时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。mx量化仅支持x2、x2Scale转置场景。
+    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(n, k)时， x1Scale的shape为(m, ceildiv(k, 64), 2)、x2Scale的shape为(n, ceildiv(k, 64), 2)时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。mx量化仅支持x2、x2Scale转置场景。
 
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
@@ -119,7 +119,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>x2(aclTensor*)</td>
         <td>输入</td>
         <td>MM右矩阵，即计算公式中的x2。</td>
-        <td><ul><li>当前版本仅支持二维输入, shape为[k, n]，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的非连续Tensor，其他场景的<a href="../../../docs/zh/context/非连续的Tensor.md">[非连续的Tensor]</a>不支持。</li></ul></td>
+        <td><ul><li>当前版本仅支持二维输入， shape为[k, n]，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的非连续Tensor，其他场景的<a href="../../../docs/zh/context/非连续的Tensor.md">[非连续的Tensor]</a>不支持。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、INT8</td>
         <td>ND、FRACTAL_NZ</td>
         <td>2</td>

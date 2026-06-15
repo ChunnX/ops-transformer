@@ -17,7 +17,7 @@
 
 ## 功能说明
 
-- **接口功能**：`aclnnQuantMatmulAllReduceV3`接口是对`aclnnQuantMatmulAllReduceV2`接口的功能扩展,新增支持低比特通信：MatMul的计算结果依次进行AllToAll通信、ReduceSum计算、AllGather通信、dequant反量化，代替先dequant和pertoken计算、再AllReduce通信的原流程。支持pertensor、perchannel、pertoken[量化方式](../../../docs/zh/context/量化介绍.md)。
+- **接口功能**：`aclnnQuantMatmulAllReduceV3`接口是对`aclnnQuantMatmulAllReduceV2`接口的功能扩展，新增支持低比特通信：MatMul的计算结果依次进行AllToAll通信、ReduceSum计算、AllGather通信、dequant反量化，代替先dequant和pertoken计算、再AllReduce通信的原流程。支持pertensor、perchannel、pertoken[量化方式](../../../docs/zh/context/量化介绍.md)。
 
 - **计算公式**：
 
@@ -173,7 +173,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
           <td>commQuantScale1Optional</td>
           <td>输入</td>
           <td>matmulAdd计算后的perchannel量化系数，即计算公式中的commQuantScale1Optional。</td>
-          <td>x2为(k, n)时, shape可为(n)或者(1,n)</td>
+          <td>x2为(k, n)时， shape可为(n)或者(1,n)</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>2</td>
@@ -183,7 +183,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
           <td>commQuantScale2Optional</td>
           <td>输入</td>
           <td>allGather计算后的perchannel量化系数，即计算公式中的commQuantScale2Optional。</td>
-          <td>x2为(k, n)时, shape可为(n)或者(1,n)</td>
+          <td>x2为(k, n)时， shape可为(n)或者(1,n)</td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>2</td>

@@ -65,13 +65,13 @@
     $$
 
   2.以sortedRowIdx做位置映射得出expandedRowIdxOut：
-    - rowIdxType等于1时,输出scatter索引
+    - rowIdxType等于1时，输出scatter索引
 
       $$
       expandedRowIdxOut[i]=sortedRowIdx[i]
       $$
 
-    - rowIdxType等于0时,输出gather索引
+    - rowIdxType等于0时，输出gather索引
 
       $$
       expandedRowIdxOut[sortedRowIdx[i]]=i
@@ -659,7 +659,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 }
 int main()
 {
-    // 1. 固定写法，device/stream初始化,参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化，参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

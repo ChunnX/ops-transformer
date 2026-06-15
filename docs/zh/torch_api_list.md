@@ -6,7 +6,7 @@
 
 - **软件包说明**
 
-  `torch_extension` 接口定义于 `cann_ops_transformer` 包中。更多接口说明及使用示例正在完善中，敬请期待。如有疑问或建议，欢迎通过Issue反馈。
+  `torch_extension`接口定义于`cann_ops_transformer`包中。更多接口说明及使用示例正在完善中，敬请期待。如有疑问或建议，欢迎通过Issue反馈。
 
 - **V版本演进说明**
 

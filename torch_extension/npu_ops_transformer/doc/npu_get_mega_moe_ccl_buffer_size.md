@@ -45,8 +45,8 @@ npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_ma
 -   **ep\_world\_size** (`int`)：必选参数，表示通信域的大小。取值范围[2, 768]。
 -   **moe\_expert\_num** (`int`)：必选参数，MoE专家数量，取值范围[1, 1024]。
 -   **num\_max\_dispatch\_tokens\_per\_rank** (`int`)：必选参数，表示每张卡上的token数量。当每个rank的BS不同时，最大的BS大小。
--   **num\_topk** (`int`)：必选参数，表示选取topK个专家，目前仅支持 6 或 8 。
--   **hidden** (`int`)：必选参数，表示hidden size隐藏层大小。目前仅支持 4096、5120、7168。
+-   **num\_topk** (`int`)：必选参数，表示选取topK个专家，目前仅支持6或8 。
+-   **hidden** (`int`)：必选参数，表示hidden size隐藏层大小。目前仅支持4096、5120、7168。
 -   **dispatch\_quant\_mode** (`int`)：可选参数，dispatch通信时量化模式，目前仅支持4（MX模式）。
 -   **dispatch\_quant\_out\_type** (`int`)：可选参数，dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。
 -   **comm\_alg** (`string`)：暂不支持该参数，使用默认值即可。

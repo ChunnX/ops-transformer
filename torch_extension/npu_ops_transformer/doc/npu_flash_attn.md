@@ -158,7 +158,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     <tr>
         <td>cu_seqlens_q</td>
         <td>可选输入</td>
-        <td>累积序列长度,用于处理变长序列</td>
+        <td>累积序列长度，用于处理变长序列</td>
         <td>INT32</td>
         <td>ND</td>
         <td>(B+1,)</td>
@@ -167,7 +167,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     <tr>
         <td>cu_seqlens_kv</td>
         <td>可选输入</td>
-        <td>累积序列长度,用于处理变长序列</td>
+        <td>累积序列长度，用于处理变长序列</td>
         <td>INT32</td>
         <td>ND</td>
         <td>(B+1,)</td>
@@ -369,12 +369,12 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 **说明**
 -   attn_out：Tensor类型，公式中的输出，数据类型支持float16、bfloat16。数据格式支持ND。限制：该输出参数的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致。
--   softmax_lse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse 为1时，一般情况下，输出shape为(B, Q_N, Q_S)的Tensor，当input_q为TND时，输出shape为(Q_N, Q_T)的Tensor；return_softmax_lse为0时，则输出shape为[1]的值为0的Tensor。
+-   softmax_lse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse为1时，一般情况下，输出shape为(B, Q_N, Q_S)的Tensor，当input_q为TND时，输出shape为(Q_N, Q_T)的Tensor；return_softmax_lse为0时，则输出shape为[1]的值为0的Tensor。
 
 ## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
 
 - 声明
-  - 参数 cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、block_table 及 attn_mask 属于tensor。由于算子在 Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
+  - 参数cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、block_table及attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 
 ### 特性参数组
 
@@ -409,7 +409,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 |    命名    |                            含义                            |
 | :---------: | :---------------------------------------------------------: |
-|      B      |                Batch, 表示输入样本批量大小                |
+|      B      |                Batch,表示输入样本批量大小                |
 |     Q_N     |        输入q tensor的头数，对应q shape中的N        |
 |    KV_N    |    输入k/v tensor的头数，对应k/v shape中的N    |
 |     Q_S     |      输入q tensor的序列长度，对应q shape中的S      |
@@ -422,7 +422,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 #### 公共参数组
 - 入参为空的场景处理：
-    - 空Tensor指必选输入和输出的shape size为0, 即有任意轴为0。
+    - 空Tensor指必选输入和输出的shape size为0,即有任意轴为0。
     - 触发空tensor的用例将全部拦截报错。
 - q、k、v、attn_out校验
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
@@ -473,7 +473,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>Q_S > 0</li>
                 <li>KV_S > 0</li>
                 <li>D = 128</li>
-                <li>Q_N % KV_N == 0 且 Q_N / KV_N > 0</li>
+                <li>Q_N % KV_N == 0且Q_N / KV_N > 0</li>
             </ul>
         </td>
     </tr>
@@ -593,7 +593,7 @@ mask_mode参数解释
         <td>
             <ul>
                 <li>data_type支持INT</li>
-                <li>支持输入范围仅为 0、3，默认值为 0</li>
+                <li>支持输入范围仅为0、3，默认值为0</li>
             </ul>
         </td>
         <td>
@@ -689,7 +689,7 @@ mask_mode参数解释
                 <li>tensor_type支持INT32</li>
                 <li>tensor_shape为(B+1,)</li>
                 <li>值仅支持非负整数</li>
-                <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于 Q_T</li>
+                <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于Q_T</li>
             </ul>
         </td>
         <td>
@@ -706,7 +706,7 @@ mask_mode参数解释
                 <li>tensor_type支持INT32</li>
                 <li>tensor_shape为(B+1,)</li>
                 <li>值仅支持非负整数</li>
-                <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于 KV_T</li>
+                <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于KV_T</li>
             </ul>
         </td>
         <td>
@@ -773,8 +773,8 @@ mask_mode参数解释
         </td>
         <td>
             <ul>
-                <li>PagedAttention 开启情况下，必须传入 seqused_kv</li>
-                <li>PagedAttention 开启情况下，block_table必须不为空</li>
+                <li>PagedAttention开启情况下，必须传入seqused_kv</li>
+                <li>PagedAttention开启情况下，block_table必须不为空</li>
             </ul>
         </td>
     </tr>

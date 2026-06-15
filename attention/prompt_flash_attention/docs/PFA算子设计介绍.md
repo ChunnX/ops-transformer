@@ -2,28 +2,28 @@
 
 # PromptFlashAttention算子设计介绍
 
-为不断优化提升增量推理性能,提出支持全量推理的PromptFlashAttention融合算子需求。
+为不断优化提升增量推理性能，提出支持全量推理的PromptFlashAttention融合算子需求。
 
-## 1实现原理
+## 1 实现原理
 
-按照flashAttention正向计算流程实现,整体计算流程如下：
+按照flashAttention正向计算流程实现，整体计算流程如下：
 
-1. query与转置后的key做matmul计算后得到最初步的attention_score,然后与位置编码pse相加后再乘以缩放系数scale_value。此时的结果通过atten_mask进行select操作,将atten_mask中为true的位置进行遮蔽,得到结果masked_attention_score,即atten_mask中为true的位置在select后结果为负的极小值,经过softmax计算之后变成0从而达到遮蔽效果。
+1. query与转置后的key做matmul计算后得到最初步的attention_score,然后与位置编码pse相加后再乘以缩放系数scale_value。此时的结果通过atten_mask进行select操作，将atten_mask中为true的位置进行遮蔽,得到结果masked_attention_score,即atten_mask中为true的位置在select后结果为负的极小值,经过softmax计算之后变成0从而达到遮蔽效果。
 
-2. 为了实现FlashAttention加速算法,使用FlashSoftmax操作对masked_attention_score进行运算,用以代替原公式中的softmax运算,而后将结果与value做matmul运算。由于FlashSoftmax操作对masked_attention_score的Skv(输入key、value的sequence length)方向进行了切分,故实现过程中存在一个刷新流程,具体如下：
+2. 为了实现FlashAttention加速算法，使用FlashSoftmax操作对masked_attention_score进行运算,用以代替原公式中的softmax运算,而后将结果与value做matmul运算。由于FlashSoftmax操作对masked_attention_score的Skv(输入key、value的sequence length)方向进行了切分,故实现过程中存在一个刷新流程,具体如下：
 
-   1. 每次FlashSoftmax计算只对切分后的一个SkvSplit（SkvSplit是针对Skv轴进行切分之后的序列长度的简称）进行操作,并从第二次循环开始记录exp,其中i表示Skv切分后的循环变量,针对exp的i是从1开始, exp的计算公式如下：
+   1. 每次FlashSoftmax计算只对切分后的一个SkvSplit（SkvSplit是针对Skv轴进行切分之后的序列长度的简称）进行操作，并从第二次循环开始记录exp,其中i表示Skv切分后的循环变量,针对exp的i是从1开始, exp的计算公式如下：
       $$
       exp[i] = e^{max_{i - 1} - max_{i}}
       $$
 
-   2. 从i = 1开始,需要增加Mul和Add操作,即将上一次的MM[PV]的结果和当前exp相乘,相乘完的结果和本次MM[PV]的结果相加得到的结果保存到GM中。以此类推,遍历Skv计算完成。
+   2. 从i = 1开始，需要增加Mul和Add操作,即将上一次的MM[PV]的结果和当前exp相乘,相乘完的结果和本次MM[PV]的结果相加得到的结果保存到GM中。以此类推,遍历Skv计算完成。
 
-   3. 由于FlashSoftmax计算中的除sum被后移到输出attention_out之前,因此最后需要将ub中的attention_out按行除以softmax_sum并将最终完整的结果保存到输出内存attention_out(Final)上。
+   3. 由于FlashSoftmax计算中的除sum被后移到输出attention_out之前，因此最后需要将ub中的attention_out按行除以softmax_sum并将最终完整的结果保存到输出内存attention_out(Final)上。
 
-## 2模板化设计
+## 2 模板化设计
 
-### 2.1模板类型
+### 2.1 模板类型
 
 为了使不同的输入可以复用相同的tiling和流水，采用了模板的方式来实现融合算子，但是不同的输入全部使用同一套模板时又无法达到性能最优和功能泛化，因此需要根据输入shape的特征区分不同的模板来实现。融合算子的多模板设计思路主要为：
 
@@ -36,7 +36,7 @@
 （2）在A2/A3环境，针对独立接口，图模式且D非32对齐场景，支持特殊模板实现。
 （3）对于输入的key/value/attentionOut矩阵某一轴维度为0，提供空Tensor模板。
 
-### 2.2数据切分
+### 2.2 数据切分
 
   由于硬件buffer大小是有限的，而计算的数据量又是巨大的，无法一次计算完，那么就需要进行tiling切分，shape不同会导致算子的切分轴不同，而算子的切分轴，会影响模板的功能及性能。往往需要根据切分轴进行模板拆分，模板拆分时为了达到性能最优，需要考虑如下几个点：
 
@@ -88,7 +88,7 @@ PFA算子tilingkey设计如下：
 
 **其余特化场景，可以依次在后面定义自己的位域和值。**
 
-## 3流水设计
+## 3 流水设计
 
 为了追求极致性能，必须充分利用硬件资源，通常需要进行不同pipeline的流水设计。流水设计的宗旨是尽量使某一条pipeline达成bound效果，使硬件的某一个单元一直在工作，达到性能上限。
 

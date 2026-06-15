@@ -54,7 +54,7 @@
 | x | 输入 | 公式中的$X$，表示原始不经压缩的数据。 | FLOAT16、BFLOAT16 | ND         |
 | wkv | 输入 | 公式中的$W^{KV}$，表示kv压缩权重。  | FLOAT16、BFLOAT16 | ND |
 | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重。 | FLOAT16、BFLOAT16 | ND |
-| state_cache | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 | FLOAT32     | ND         |
+| state_cache | 输入 | 公式中的$\left[kv\_state, score\_state\right]$,表示kv\_state和score\_state的历史数据。 | FLOAT32     | ND         |
 | ape | 输入 | 公式中的$Ape$，表示positional biases。 | FLOAT32       | ND         |
 | norm\_weight | 输入 | 表示计算RmsNorm时的权重系数。 | FLOAT32       | ND         |
 | rope\_sin | 输入 | 表示Rope计算时sin的权重系数。 | FLOAT32       | ND         |

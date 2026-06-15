@@ -234,7 +234,7 @@ int main() {
     // ... 初始化代码 ...
 
     // === ① 修改selfX的输入 ===
-    // 修改前：shape = {32, 4, 4, 4}, 数值全为1
+    // 修改前：shape = {32, 4, 4, 4},数值全为1
     // 修改后：将输入shape改为 {8, 8, 8, 8}，并填充不同的测试数据
     std::vector<int64_t> selfXShape = {8, 8, 8, 8};
     std::vector<float> selfXHostData(4096); // 4096 = 8 * 8 * 8 *8

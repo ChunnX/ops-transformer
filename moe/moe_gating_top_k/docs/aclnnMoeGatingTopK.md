@@ -423,7 +423,7 @@ aclnnStatus aclnnMoeGatingTopK(
     * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
     * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
 * 其他限制：
-    * groupSelectMode取值0和1，0表示使用最大值对group进行排序, 1表示使用topk2的sum值对group进行排序。
+    * groupSelectMode取值0和1，0表示使用最大值对group进行排序， 1表示使用topk2的sum值对group进行排序。
     * normType取值0和1，0表示使用Softmax函数，1表示使用Sigmoid函数。
     * normType取值为1时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
     * outFlag取值true和false，true表示输出，false表示不输出。
@@ -503,7 +503,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1.（固定写法）device/stream初始化,参考AscendCL对外接口列表
+  // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;

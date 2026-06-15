@@ -1055,7 +1055,7 @@ aclnnStatus aclnnMlaProlog(
   }
   
   int main() {
-      // 1. 固定写法，device/stream初始化,参考AscendCL对外接口列表
+      // 1. 固定写法，device/stream初始化，参考AscendCL对外接口列表
       // 根据实际device填写deviceId
       int32_t deviceId = 0;
       aclrtStream stream;
