@@ -773,11 +773,6 @@ inline void Release(aclTensorList *p)
     aclDestroyTensorList(p);
 }
 
-inline const c10::optional<at::Tensor> get_valid_tensor(const c10::optional<at::Tensor> &tensor_opt, at::Device device)
-{
-    return tensor_opt.has_value() ? tensor_opt : torch::empty({0}, torch::dtype(torch::kInt32).device(device));
-};
-
 template <typename T>
 void Release(T value)
 {
