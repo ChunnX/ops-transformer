@@ -113,6 +113,6 @@ for _, params in enumerate(ENABLED_PARAMS):
         print("result", fulfill_percent)
 
         if return_value:
-            result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value)
+            result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, test_data)
             print(f"result_return_value: {result_return_value}")
             print(f"result_return_value: {fulfill_precent_return_value}")
