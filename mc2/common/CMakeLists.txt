@@ -17,7 +17,6 @@ if (BUILD_OPEN_PROJECT)
         op_host/op_tiling/matmul_formulaic_tiling.cpp
         op_host/op_tiling/matmul_performance.cpp
         op_host/op_tiling/mc2_fit_based_balance_tiling.cpp
-        op_host/mc2_common_infershape.cpp
         utils/mc2_hcom_topo_info.cpp
         utils/mc2_log.cpp
         op_host/op_tiling/mc2_matmul_tiling_cfg.cpp
@@ -44,6 +43,13 @@ if (BUILD_OPEN_PROJECT)
         if(UT_TEST_ALL OR OP_HOST_UT)
             target_link_directories(${OPHOST_NAME}_tiling_obj PRIVATE mc2_tiling_ut_stub)
         endif()
+    endif()
+    set(MC2_INFER_SRCS
+        op_host/mc2_common_infershape.cpp
+    )
+    if(MC2_INFER_SRCS)
+        add_infer_modules()
+        target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${MC2_INFER_SRCS})
     endif()
     file(GLOB COMMON_UTILS_SRCS
         utils/mc2_platform_info.cpp
