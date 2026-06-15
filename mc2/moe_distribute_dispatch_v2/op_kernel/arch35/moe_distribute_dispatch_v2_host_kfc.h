@@ -96,11 +96,9 @@ enum class CommMode
 
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
-using namespace MoeDispatchLog;
+using namespace MoeDispatchLog_NEW;
 using namespace Mc2Aclnn;
 
-
-using namespace MoeDispatchLog_NEW;
 #define LOG_INFO(...) //this->logger.LogInfo(__LINE__,__VA_ARGS__)
 #define LOG_INIT(...) //this->logger.Init(__VA_ARGS__)
 
