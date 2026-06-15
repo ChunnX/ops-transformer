@@ -693,6 +693,7 @@ BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Tran
 {
     __ubuf__ int8_t *quantScaleOutputInUbAddr = (__ubuf__ int8_t *)quantScaleOutput_.GetPhyAddr();
     __ubuf__ int8_t *quantScaleBlockOutputInUbAddr = (__ubuf__ int8_t *)quantScaleBlockOutput_.GetPhyAddr();
+    AscendC::Duplicate<int8_t>(quantScaleBlockOutput_, 0, mSize * AscendC::ONE_BLK_SIZE);
     __VEC_SCOPE__
     {
         for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
@@ -745,17 +746,15 @@ BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::oper
     VFDoActivationForMX(singleMInVec);
     uint64_t yOffset = Get<Y_IDX>(blockCoord) + mOffset * n_;
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord) + mOffset * scaleN_;
+    TransMxScaleLayout(singleMInVec, scaleBlockN_);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
     if (singleN_ == n_) {
         CopyOutputCompactFromUb2Gm(singleMInVec, yOffset, quantOutput_);
-        TransMxScaleLayout(singleMInVec, scaleBlockN_);
-        CopyScaleFromUb2Gm(singleMInVec, yScaleOffset, quantScaleBlockOutput_);
     } else {
-        TransMxScaleLayout(singleMInVec, scaleBlockN_);
         CopyOutputFromUb2Gm(singleMInVec, yOffset, quantOutput_);
-        CopyScaleFromUb2Gm(singleMInVec, yScaleOffset, quantScaleBlockOutput_);
     }
+    CopyScaleFromUb2Gm(singleMInVec, yScaleOffset, quantScaleBlockOutput_);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     return;
