@@ -544,23 +544,15 @@ def run_bandwidth_test_npu(
     
     x_npu = x.to(input_dtype).npu()
     dstrank_id_npu = dstrank_id.to(torch.int32).npu()
-    
-    bandwidth_test_kwargs = {
-        'x': x_npu,
-        'dstrank_id': dstrank_id_npu,
-        'group': hcomm_info,
-        'world_size': test_world_size,
-        'max_bs': test_max_bs,
-        'mode': test_mode,
-        'comm_alg': comm_alg,
-        'aiv_num': aiv_num,
-    }
-
     torch.npu.synchronize()
     logger.debug(f"[DEBUG] device_%s 开始调用算子", rank)
 
     # 根据模式执行
     if graph_type == 0:
+        bandwidth_test_kwargs = {
+        'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'world_size': test_world_size,
+        'max_bs': test_max_bs, 'mode': test_mode, 'comm_alg': comm_alg, 'aiv_num': aiv_num, }
+
         if not is_perf_mode:
             y, receive_cnt = npu_ops_transformer.ops.npu_bandwidth_test(**bandwidth_test_kwargs)
         else:
@@ -574,6 +566,10 @@ def run_bandwidth_test_npu(
                             torch.exp(tensor)
                     prof.step()
     else:
+        bandwidth_test_kwargs = {
+        'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'test_world_size': test_world_size,
+        'test_max_bs': test_max_bs, 'test_mode': test_mode, 'test_comm_alg': comm_alg,
+        'test_aiv_num': aiv_num, }
         if not is_perf_mode:
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
             y, receive_cnt = model(**bandwidth_test_kwargs)
@@ -667,11 +663,6 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         
         x_npu = x.to(input_dtype).npu()
         dstrank_id_npu = dstrank_id.to(torch.int32).npu()
-        
-        bandwidth_test_kwargs = {
-            'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'world_size': test_world_size,
-            'max_bs': test_max_bs, 'mode': mode, 'comm_alg': comm_alg, 'aiv_num': aiv_num,
-        }
 
         torch.npu.synchronize()
         logger.debug(f"[DEBUG] device_%s 开始调用算子", rank)
@@ -680,6 +671,9 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         config_profiling_path = f'{profiling_path}_config_{config_index}'
         
         if graph_type == 0:
+            bandwidth_test_kwargs = {
+            'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'world_size': test_world_size,
+            'max_bs': test_max_bs, 'mode': mode, 'comm_alg': comm_alg, 'aiv_num': aiv_num, }
             tensor = torch.ones(10000, 10000).to(torch.float16).npu()
             with get_profiling(loop, repeat, warmup, config_profiling_path) as prof:
                 for j in range(loop):
@@ -690,6 +684,10 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                             torch.exp(tensor)
                     prof.step()
         else:
+            bandwidth_test_kwargs = {
+            'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'test_world_size': test_world_size,
+            'test_max_bs': test_max_bs, 'test_mode': mode, 'test_comm_alg': comm_alg,
+            'test_aiv_num': aiv_num, }
             torch._dynamo.reset()
             tensor = torch.ones(10000, 10000).to(torch.float16).npu()
             model = compile_model(BANDWIDTH_TEST_GRAPH_Model())
