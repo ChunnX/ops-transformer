@@ -377,11 +377,17 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::CopyFromWindowByExpert(
 
                 int32_t rawBits = ubMeta_.GetValue(metaBase + topK_ + topkIdx);
                 recvTopkWeightsGm_.SetValue(globalRow, *reinterpret_cast<float*>(&rawBits));
+                // SetValue 走 scalar cache，需 DCCI 把 cache line 刷回 GM，保证 host / 其他 core 可见
+                AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                    AscendC::DcciDst::CACHELINE_OUT>(recvTopkWeightsGm_[globalRow]);
 
                 if constexpr (!IsCached) {
                     recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 0, src_token_idx);
                     recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 1, src_rank_id);
                     recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 2, static_cast<int32_t>(topkIdx));
+                    // 同上：3 个 int32（12B）落在同一 cache line 内，单条 DCCI 即可
+                    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                        AscendC::DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_[globalRow * RECV_META_FIELDS]);
                 }
             }
 
