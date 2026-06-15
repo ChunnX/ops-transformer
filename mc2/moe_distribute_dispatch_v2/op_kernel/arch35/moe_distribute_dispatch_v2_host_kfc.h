@@ -1433,6 +1433,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitGatherTokenBuffer()
 {
+    PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
     InitQuantBuffer<CommMode::INTER_NODE>();
     uint32_t flagMaxRecvBuf = blockCntPerToken_ * UB_ALIGN;
@@ -1833,6 +1834,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCalCumSumBuffer()
 {
+    PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
     uint32_t waitStatusBufSize = Ceil((recStatusNumPerCore_ * UB_ALIGN), SIZE_ALIGN_256) * SIZE_ALIGN_256;
     tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize);
@@ -2349,6 +2351,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitLocalCopyBuffer(uint32_t processNum)
 {
+    PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
     TBuf<> cumSumBuf, statusWaitBuf, statusCleanBuf, expertMapBuf, expertFinishBuf, expertLeftBuf, flagMaskBuf;
     uint32_t rscvNumAlign = Ceil(rscvStatusNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN; // todo:注意UB越界
