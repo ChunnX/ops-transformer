@@ -232,7 +232,7 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
         return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, false, hcclServerType);
-    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMTYPE is: [%d,%d,%d,0,%d], and tilingKey is [%lu].",
+    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE is: [%d,%d,%d,0,%d], and tilingKey is [%lu].",
             NON_QUANT_MODE, x2TransposeFlag, biasDType, hcclServerType, tilingKey);
     return tilingKey;
 }
