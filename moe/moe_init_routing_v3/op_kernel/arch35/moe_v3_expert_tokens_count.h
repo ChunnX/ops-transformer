@@ -235,9 +235,11 @@ __aicore__ inline void ExpertTokensCount::CopyOut()
 
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>((actualExpertNum_) * sizeof(int32_t)),
                                  0, 0, 0};
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
     SetAtomicAdd<int32_t>();
     DataCopyPad(expertCountTempGm_, expertCountOutLocal, copyParams);
     SetAtomicNone();
+    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
     expertCountOutToTempQueue_.FreeTensor(expertCountOutLocal);
 }
 
