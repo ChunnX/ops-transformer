@@ -525,6 +525,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateDataForLargest(
         } else {
             Muls(xLocal[ubOffset], xLocal[ubOffset], (IN_T)-1, alignLen);
         }
+        PipeBarrier<PIPE_V>();
     }
 }
 
@@ -848,6 +849,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTileHistWs2Ub(
     DataCopyPad(srcTensor[MAX_TILE_NUM_IN_UB_BY2], tileHistGm_[srcOffset1], params, padParams);
     MTE2ToVSync();
     Sub(dstTensor, srcTensor, srcTensor[MAX_TILE_NUM_IN_UB_BY2], dataNum);
+    PipeBarrier<PIPE_V>();
 }
 
 template <typename BSAT>
