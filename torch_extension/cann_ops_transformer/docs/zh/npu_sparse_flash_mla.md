@@ -123,8 +123,8 @@ npu_sparse_flash_mla_metadata(
 | cu_seqlens_cmp_kv | 可选输入 | TND场景下cmp_kv的前缀和序列长度。 | `int32` | `[B + 1]`。 |
 | seqused_q | 可选输入 | BSND场景下每个batch实际参与计算的q长度。 | `int32` | `[B]`。 |
 | seqused_ori_kv | 可选输入 | PA场景下每个batch实际参与计算的ori_kv长度。 | `int32` | `[B]`。 |
-| seqused_cmp_kv | 可选输入 | 每个batch实际参与计算的cmp_kv长度。未传时使用`cmp_kv`或`cu_seqlens_cmp_kv`推导的长度。 | `int32` | `[B]`。 |
-| cmp_residual_kv | 可选输入 | 每个batch的压缩余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前长度。仅主算子使用，metadata不传。 | `int32` | `[B]`。 |
+| seqused_cmp_kv | 可选输入 | 每个batch实际参与计算的cmp_kv长度。仅在`layout_kv="BSND"`且存在cmp段时作为每个batch的cmp有效长度生效；`layout_kv="TND"`使用`cu_seqlens_cmp_kv`推导，`layout_kv="PA_BBND"`（兼容`PA_BNBD`）使用block table和实际KV长度语义。未传时使用`cmp_kv`或`cu_seqlens_cmp_kv`推导的长度。 | `int32` | `[B]`。 |
+| cmp_residual_kv | 可选输入 | 每个batch的压缩余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前长度。仅主算子使用，metadata不传；在`cmp_ratio > 1`且存在cmp段的CFA/SCFA场景生效，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BBND"`（兼容`PA_BNBD`）均可使用。 | `int32` | `[B]`。 |
 | ori_topk_length | 可选输入 | 原始KV TopK长度。当前主流程不支持，建议传`None`。 | `int32` | - |
 | cmp_topk_length | 可选输入 | 每行cmp侧有效TopK长度。SCFA模式建议与`cmp_sparse_indices`同时传入，避免无效`-1`位置参与计算。 | `int32` | `layout_q="BSND"`时为`[B, S1, 1]`；`layout_q="TND"`时为`[T1, 1]`。 |
 | sinks | 可选输入 | 每个Query head的sink值，作为online softmax初始项。 | `float32` | `[N1]`。 |

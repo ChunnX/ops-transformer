@@ -294,7 +294,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>seqUsedCmpKv（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmpKv实际参与运算的token数。</td>
-      <td>可选输入。传入时shape必须为(B,)；未传时使用cmpKv或cuSeqLensCmpKv推导的长度。</td>
+      <td>可选输入。传入时shape必须为(B,)；仅在layoutKv为BSND且存在cmp段时作为每个batch的cmp有效长度生效。layoutKv为TND时使用cuSeqLensCmpKv推导；layoutKv为PA_BBND时使用block table和实际KV长度语义，兼容传入PA_BNBD。未传时使用cmpKv或cuSeqLensCmpKv推导的长度。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -304,7 +304,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpResidualKv（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKv[b]恢复压缩前KV长度；未传时余数按0处理。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKv[b]恢复压缩前KV长度；未传时余数按0处理。该参数是主算子入参，不传入SparseFlashMlaMetadata；在cmpRatio大于1且存在cmp段的CFA/SCFA场景生效，layoutKv为BSND、TND、PA_BBND时均可使用，兼容传入PA_BNBD。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
