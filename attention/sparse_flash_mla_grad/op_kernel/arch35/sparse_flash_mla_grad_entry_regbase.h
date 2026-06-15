@@ -31,7 +31,7 @@
     INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_TND, s2TemplateType, dTemplateType, isOriKVExist, isCmpKVExist, isOriKVSparse, \
     isCmpKVSparse, hasUsedSeqQ, hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink, isDeter)             \
     do {                                                                                                               \
-        FlashAttentionGradPreRegbase<INPUT_TYPE, float, IS_TND, isOriKVExist, isCmpKVExist, isSink, isOriKVSparse,     \
+        SparseFlashMlaGradPreRegbase<INPUT_TYPE, float, IS_TND, isOriKVExist, isCmpKVExist, isSink, isOriKVSparse,     \
                                      isCmpKVSparse>                                                                    \
             opPre;                                                                                                     \
         opPre.Init(user, dsinks, ori_softmax_l1, cmp_softmax_l1, tilingData, &pipeIn);                                 \
@@ -58,7 +58,7 @@
                                      hasUsedSeqOriKV, hasUsedSeqCmpKV, hasOriTopK, hasCmpTopK, isSink,                 \
                                      isDeter>>::type;                                                                  \
                                                                                                                        \
-        SfagBaseApi::FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType> op;                                    \
+        SfagBaseApi::SparseFlashMlaGradKernel<CubeBlockType, VecBlockType> op;                                    \
         op.Init(query, ori_kv, cmp_kv, d_out, out, ori_sparse_indices, cmp_sparse_indices, cu_seqlens_q,               \
                 cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,      \
                 ori_topk_length, cmp_topk_length, softmax_lse, sinks, metadata, dq, dori_kv, dcmp_kv, dsinks,          \
@@ -68,7 +68,7 @@
             op.SyncALLCores();                                                                                         \
             pipeBase.Destroy();                                                                                        \
             TPipe pipePost;                                                                                            \
-            SparseFlashAttentionGradPostRegbase<INPUT_TYPE, float, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist,       \
+            SparseFlashMlaGradPostRegbase<INPUT_TYPE, float, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist,       \
                                                 isSink>                                                                \
                 opPost;                                                                                                \
             opPost.Init(dq, dori_kv, dcmp_kv, dsinks, user, tilingData, &pipePost);                                    \

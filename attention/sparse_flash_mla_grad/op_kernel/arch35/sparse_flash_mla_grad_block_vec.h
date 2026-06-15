@@ -31,18 +31,6 @@ constexpr uint16_t SRCM = 128;
 
 TEMPLATES_DEF
 class FAGBlockVec {
-private:
-    __aicore__ inline bool GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx, int64_t &bS1Index,
-                                       int64_t &accumS1Len, int64_t &accumS2Len, int64_t &accumS3Len,
-                                       int64_t &actualSeqLensQ, int64_t &actualSeqOriLensK, int64_t &actualSeqCmpLensK,
-                                       int64_t &actualOriSelectedBlockCount, int64_t &actualCmpSelectedBlockCount,
-                                       int64_t &winStart, int64_t taskId, FagConstInfo &constInfo);
-    __aicore__ inline void GetRunInfo(int64_t bIdx, int64_t s1Idx, FagRunInfo &runInfo, FagConstInfo &constInfo,
-                                      int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensOriK,
-                                      int32_t actualSeqLensCmpK);
-    __aicore__ inline int32_t GetActualSeqLens(int64_t bIdx, GlobalTensor<int32_t> &actualSeqLensGm, int64_t &accumLen,
-                                               FagConstInfo constInfo);
-
 public:
     __aicore__ inline FAGBlockVec(){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, SFagTilingType tilingData, uint32_t vBlockIdx,
@@ -167,6 +155,18 @@ public:
     DataCopyPadExtParams<INPUT_TYPE> padParams;
     DataCopyExtParams intriParamsKey;
     DataCopyExtParams outParamK;
+
+private:
+    __aicore__ inline bool GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx, int64_t &bS1Index,
+                                       int64_t &accumS1Len, int64_t &accumS2Len, int64_t &accumS3Len,
+                                       int64_t &actualSeqLensQ, int64_t &actualSeqOriLensK, int64_t &actualSeqCmpLensK,
+                                       int64_t &actualOriSelectedBlockCount, int64_t &actualCmpSelectedBlockCount,
+                                       int64_t &winStart, int64_t taskId, FagConstInfo &constInfo);
+    __aicore__ inline void GetRunInfo(int64_t bIdx, int64_t s1Idx, FagRunInfo &runInfo, FagConstInfo &constInfo,
+                                      int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensOriK,
+                                      int32_t actualSeqLensCmpK);
+    __aicore__ inline int32_t GetActualSeqLens(int64_t bIdx, GlobalTensor<int32_t> &actualSeqLensGm, int64_t &accumLen,
+                                               FagConstInfo constInfo);
 };
 
 TEMPLATES_DEF_NO_DEFAULT

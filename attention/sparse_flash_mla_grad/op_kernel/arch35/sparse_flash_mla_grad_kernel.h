@@ -24,12 +24,12 @@ namespace SfagBaseApi {
 
 template <typename CubeBlockType, typename VecBlockType>
 
-class FlashAttentionScoreGradKernel
-    : public FlashAttentionScoreGradKernelBase<FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>,
+class SparseFlashMlaGradKernel
+    : public SparseFlashMlaGradKernelBase<SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>,
                                                CubeBlockType, VecBlockType> {
 public:
     ARGS_TRAITS;
-    using BaseClass = FlashAttentionScoreGradKernelBase<FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>,
+    using BaseClass = SparseFlashMlaGradKernelBase<SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>,
                                                         CubeBlockType, VecBlockType>;
     __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
     __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
@@ -44,18 +44,18 @@ private:
 };
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
 {
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
+SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
 {
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessPreload(FagRunInfo &runInfo,
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessPreload(FagRunInfo &runInfo,
                                                                                                   int64_t taskId,
                                                                                                   bool &isFirstBlock)
 {
@@ -104,7 +104,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessNotFirst(FagRunInfo &runInfo)
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessNotFirst(FagRunInfo &runInfo)
 {
     if (runInfo.taskStep != TASK_C1C2) {
         return;
@@ -261,7 +261,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::Process()
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Process()
 {
     if constexpr (IsDETER) {
         ProcessDeter();
@@ -271,7 +271,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessDeter()
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessDeter()
 {
     this->AllocEventID();
     if constexpr (IsSink) {
@@ -492,7 +492,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessUnDeter()
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessUnDeter()
 {
     this->AllocEventID();
     if constexpr (IsSink) {

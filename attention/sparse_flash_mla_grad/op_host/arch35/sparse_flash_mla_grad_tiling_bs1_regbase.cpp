@@ -166,7 +166,7 @@ bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bSh
     return true;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::GetShapeAttrsInfo()
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetShapeAttrsInfo()
 {
     /*
     Get all shape info and attr
@@ -188,7 +188,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::GetPlatformInfo()
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetPlatformInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
     uint64_t l2CacheSize;
@@ -232,13 +232,13 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetPlatformInfo()
 }
 
 
-bool SparseFlashMlaGradBs1Regbase::IsCapable()
+bool SparseFlashMlaGradTilingBs1Regbase::IsCapable()
 {
     OP_LOGI(context_, "SparseFlashMlaGrad basic template hit.");
     return true;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::DoOpTiling()
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::DoOpTiling()
 {
     OP_LOGI(context_, "SparseFlashMlaGrad DoTiling start");
 
@@ -259,12 +259,12 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::DoLibApiTiling()
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetWorkspaceSize()
 {
     int64_t coreNum = aicoreParams_.aicNum;
     int64_t launchBlockDims = aicoreParams_.numBlocks;
@@ -327,7 +327,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t SparseFlashMlaGradBs1Regbase::GetTilingKey() const
+uint64_t SparseFlashMlaGradTilingBs1Regbase::GetTilingKey() const
 {
     int64_t inputDtypeSize = tmpData.queryType == ge::DT_FLOAT16 ? 0 : 1;
     int64_t isTnd = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? 1 : 0;
@@ -335,8 +335,10 @@ uint64_t SparseFlashMlaGradBs1Regbase::GetTilingKey() const
 
     OP_LOGI(
         context_,
-        "SparseFlashMlaGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], DTemplateNum[%ld], IsOriKVExist[%d], IsCmpKVExist[%d], \
-              IsOriKVSparse[%d], IsCmpKVSparse[%d], HasUsedSeqQ[%d], HasUsedSeqOriKV[%d], HasUsedSeqCmpKV[%d], HasOriTopK[%d], HasCmpTopK[%d], IsSink[%d], Deterministic[%d]",
+        "SparseFlashMlaGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], \
+        DTemplateNum[%ld], IsOriKVExist[%d], IsCmpKVExist[%d], IsOriKVSparse[%d], IsCmpKVSparse[%d], \
+        HasUsedSeqQ[%d], HasUsedSeqOriKV[%d], HasUsedSeqCmpKV[%d], HasOriTopK[%d], HasCmpTopK[%d], IsSink[%d], \
+        Deterministic[%d]",
         inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.oriKV),
         static_cast<uint8_t>(tmpData.cmpKV), static_cast<uint8_t>(tmpData.oriKVSparse),
         static_cast<uint8_t>(tmpData.cmpKVSparse), static_cast<uint8_t>(tmpData.usedSeqQ),
@@ -360,7 +362,7 @@ uint64_t SparseFlashMlaGradBs1Regbase::GetTilingKey() const
     return tilingKey;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::DoBlockTiling()
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::DoBlockTiling()
 {
     /*
      * 分核策略
@@ -379,7 +381,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoBlockTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::PostTiling()
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::PostTiling()
 {
     OP_LOGI(context_, "baseParams_.b is: [%ld]", baseParams_->get_b());
     OP_LOGI(context_, "baseParams_.n2 is: [%ld]", baseParams_->get_n2());
@@ -455,7 +457,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::DoCastTiling()
 {
     int64_t dAlign = (baseParams_->get_d() + 15) / 16 * 16;
     int64_t d1Align = (baseParams_->get_d1() + 15) / 16 * 16;
@@ -531,12 +533,14 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
     int64_t qPreBlockTail = qPreBlockTailTmp == 0 ? qPreBlockFactor : qPreBlockTailTmp;
 
     int64_t oriKVPreBlockFactor = (allNumOriKV + usedCoreNum - 1) / usedCoreNum;
-    ;
     int64_t oriKVPreBlockTotal = (allNumOriKV + oriKVPreBlockFactor - 1) / oriKVPreBlockFactor;
     int64_t oriKVPreBlockTailTmp = allNumOriKV % oriKVPreBlockFactor;
     int64_t oriKVPreBlockTail = oriKVPreBlockTailTmp == 0 ? oriKVPreBlockFactor : oriKVPreBlockTailTmp;
 
-    int64_t cmpKVPreBlockFactor{0}, cmpKVPreBlockTotal{0}, cmpKVPreBlockTailTmp{0}, cmpKVPreBlockTail{0};
+    int64_t cmpKVPreBlockFactor = 0;
+    int64_t cmpKVPreBlockTotal = 0;
+    int64_t cmpKVPreBlockTailTmp = 0;
+    int64_t cmpKVPreBlockTail = 0;
     if (allNumCmpKV != 0) {
         cmpKVPreBlockFactor = (allNumCmpKV + usedCoreNum - 1) / usedCoreNum;
         cmpKVPreBlockTotal = (allNumCmpKV + cmpKVPreBlockFactor - 1) / cmpKVPreBlockFactor;
@@ -544,12 +548,9 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
         cmpKVPreBlockTail = cmpKVPreBlockTailTmp == 0 ? cmpKVPreBlockFactor : cmpKVPreBlockTailTmp;
     }
 
-    // int64_t dSinksPreBlockFactor = (allNumSinks + usedCoreNum - 1) / usedCoreNum;
-    // int64_t dSinksPreBlockTotal = (allNumSinks + dSinksPreBlockFactor - 1) / dSinksPreBlockFactor;
-    // int64_t dSinksPreBlockTailTmp = allNumSinks % dSinksPreBlockFactor;
-    // int64_t dSinksPreBlockTail = dSinksPreBlockTailTmp == 0 ? dSinksPreBlockFactor : dSinksPreBlockTailTmp;
-
-    int64_t oriSoftmaxL1PreBlockFactor{0}, oriSoftmaxL1PreBlockTotal{0}, oriSoftmaxL1PreBlockTailTmp{0},
+    int64_t oriSoftmaxL1PreBlockFactor = 0;
+    int64_t oriSoftmaxL1PreBlockTotal = 0;
+    int64_t oriSoftmaxL1PreBlockTailTmp = 0,
         oriSoftmaxL1PreBlockTail{0};
     if (allNumOriSoftmaxL1 != 0) {
         oriSoftmaxL1PreBlockFactor = (allNumOriSoftmaxL1 + usedCoreNum - 1) / usedCoreNum;
@@ -559,8 +560,10 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
             oriSoftmaxL1PreBlockTailTmp == 0 ? oriSoftmaxL1PreBlockFactor : oriSoftmaxL1PreBlockTailTmp;
     }
 
-    int64_t cmpSoftmaxL1PreBlockFactor{0}, cmpSoftmaxL1PreBlockTotal{0}, cmpSoftmaxL1PreBlockTailTmp{0},
-        cmpSoftmaxL1PreBlockTail{0};
+    int64_t cmpSoftmaxL1PreBlockFactor = 0;
+    int64_t cmpSoftmaxL1PreBlockTotal = 0;
+    int64_t cmpSoftmaxL1PreBlockTailTmp = 0;
+    int64_t cmpSoftmaxL1PreBlockTail = 0;
     if (allNumCmpSoftmaxL1 != 0) {
         cmpSoftmaxL1PreBlockFactor = (allNumCmpSoftmaxL1 + usedCoreNum - 1) / usedCoreNum;
         cmpSoftmaxL1PreBlockTotal = (allNumCmpSoftmaxL1 + cmpSoftmaxL1PreBlockFactor - 1) / cmpSoftmaxL1PreBlockFactor;
@@ -578,9 +581,6 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
     preTilingData_->set_cmpKVPreBlockFactor(cmpKVPreBlockFactor);
     preTilingData_->set_cmpKVPreBlockTotal(cmpKVPreBlockTotal);
     preTilingData_->set_cmpKVPreBlockTail(cmpKVPreBlockTail);
-    // preTilingData_->set_dSinksPreBlockFactor(dSinksPreBlockFactor);
-    // preTilingData_->set_dSinksPreBlockTotal(dSinksPreBlockTotal);
-    // preTilingData_->set_dSinksPreBlockTail(dSinksPreBlockTail);
     preTilingData_->set_oriSoftmaxL1PreBlockFactor(oriSoftmaxL1PreBlockFactor);
     preTilingData_->set_oriSoftmaxL1PreBlockTotal(oriSoftmaxL1PreBlockTotal);
     preTilingData_->set_oriSoftmaxL1PreBlockTail(oriSoftmaxL1PreBlockTail);
@@ -612,13 +612,6 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
     int64_t cmpKVPostBlockOuterTotal = (cmpKVPostBlockTotal + cmpKVPostBaseNum - 1) / cmpKVPostBaseNum;
     int64_t cmpKVPostBlockFactor = (cmpKVPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
 
-    // int64_t sinkPostBaseNum = postUbBaseSize / typeSize / d1Align * baseParams_->get_d1();
-    // OP_CHECK_IF(sinkPostBaseNum == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "sinkPostBaseNum is 0."), return
-    // ge::GRAPH_FAILED); int64_t sinkPostBlockTotal = allNumSinks / d1Align * baseParams_->get_d1(); int64_t
-    // sinkPostTailNumTmp = sinkPostBlockTotal % sinkPostBaseNum; int64_t sinkPostTailNum = sinkPostTailNumTmp == 0 ?
-    // sinkPostBaseNum : sinkPostTailNumTmp; int64_t sinkPostBlockOuterTotal = (sinkPostBlockTotal + sinkPostBaseNum -
-    // 1) / sinkPostBaseNum; int64_t sinkPostBlockFactor = (sinkPostBlockOuterTotal + usedCoreNum - 1) / usedCoreNum;
-
     postTilingData_->set_postUbBaseSize(postUbBaseSize);
 
     postTilingData_->set_qPostBlockFactor(qPostBlockFactor);
@@ -636,18 +629,13 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::DoCastTiling()
     postTilingData_->set_cmpKVPostBaseNum(cmpKVPostBaseNum);
     postTilingData_->set_cmpKVPostTailNum(cmpKVPostTailNum);
 
-    // postTilingData_->set_sinkPostBlockFactor(sinkPostBlockFactor);
-    // postTilingData_->set_sinkPostBlockTotal(sinkPostBlockTotal);
-    // postTilingData_->set_sinkPostTailNum(sinkPostTailNum);
-    // postTilingData_->set_sinkReduceAxis(0);
-
     tmpData.dqWorkspaceLen = (allNumQuery * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
     tmpData.doriKVWorkspaceLen = (allNumOriKV * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
     tmpData.dcmpKVWorkspaceLen = (allNumCmpKV * B32 + GM_ALIGN - 1) / GM_ALIGN * GM_ALIGN;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName,
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName,
                                                                 const gert::Shape &outputshape, const char *inputLayout)
 {
     if (strcmp(inputLayout, TND_STR) == 0) {
@@ -676,7 +664,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::CheckOutShapeInfo(const gert::Shap
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::GetOriWinToken(int64_t oriMaskMode)
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetOriWinToken(int64_t oriMaskMode)
 {
     if (oriMaskMode != 4) {
         return ge::GRAPH_SUCCESS;
@@ -698,7 +686,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetOriWinToken(int64_t oriMaskMode
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetBaseShapeInfo()
 {
     OP_CHECK_IF((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr),
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of q is nullptr."), return ge::GRAPH_FAILED);
@@ -708,8 +696,6 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     const char *layoutKV = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_KV));
 
     // input
-    // TND: query [t1, n1, d]   ori_kv [t2, n2, d]  cmp_kv [t2, n2, d/d1]   d_out/out [t1, n1, d/d1]
-    // BSND: query [b, s1, n1, d]   ori_kv [b, s2, n2, d]  cmp_kv [b, s3, n2, d/d1]   d_out/out [b, s1, n1, d/d1]
     const gert::Shape &qShape = context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY))->GetStorageShape();
     const gert::Shape &dqueryShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
     const gert::Shape &doriKVShape =
@@ -992,7 +978,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseFlashMlaGrad, SparseFlashMlaGradBs1Regbase,
+REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseFlashMlaGrad, SparseFlashMlaGradTilingBs1Regbase,
                                    static_cast<int32_t>(NpuArch::DAV_3510), 1);
 } // namespace smlag
 } // namespace optiling

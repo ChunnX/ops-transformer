@@ -21,7 +21,7 @@
 namespace SfagBaseApi {
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-class FlashAttentionScoreGradKernelBase {
+class SparseFlashMlaGradKernelBase {
 public:
     ARGS_TRAITS;
     __aicore__ inline void Init(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR d_out, GM_ADDR out,
@@ -182,7 +182,7 @@ protected:
 };
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::AllocEventID()
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::AllocEventID()
 {
     if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
@@ -204,7 +204,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::FreeEventID()
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::FreeEventID()
 {
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C4_TO_V3_FLAG);
@@ -224,7 +224,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init(
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init(
     GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR d_out, GM_ADDR out, GM_ADDR ori_sparse_indices,
     GM_ADDR cmp_sparse_indices, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv,
     GM_ADDR seqused_q, GM_ADDR seqused_ori_kv, GM_ADDR seqused_cmp_kv, GM_ADDR cmp_residual_kv, GM_ADDR ori_topk_length,
@@ -283,14 +283,14 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Process()
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Process()
 {
     GetDerived()->Process();
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitCVCommonGlobalBuffer(GM_ADDR workspace)
+SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitCVCommonGlobalBuffer(GM_ADDR workspace)
 {
     // init workspace address
     dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
@@ -319,7 +319,7 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitCVCommonBuffer()
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitCVCommonBuffer()
 {
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
     dSL1Buf.Init(l1BufferManager, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
@@ -332,13 +332,13 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetOptionalInfo()
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetOptionalInfo()
 {
 }
 
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetConstInfo()
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetConstInfo()
 {
     // constInfo.sparseMode = tilingData->baseParams.sparseMode;
     constInfo.bSize = tilingData->baseParams.b;
@@ -447,7 +447,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBidx(
+SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBidx(
     int64_t bIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvlen)
 {
     if (unlikely(bIdx == 0)) {
@@ -463,7 +463,7 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetS
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 template <const bool IS_ORI_KV>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
     FagRunInfo &runInfo, FagRunInfo &preRunInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId, int64_t kvOffset)
 {
     runInfo.t1Index = t1Index;
@@ -559,7 +559,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 template <const bool IS_ORI_KV>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetDeterRunInfo(
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetDeterRunInfo(
     FagRunInfo &runInfo, int64_t sTaskId, int64_t deterTaskId, int64_t kvSeqOffset)
 {
     runInfo.sTaskId = sTaskId;
@@ -574,7 +574,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 template <bool IS_MM1_MM2>
 __aicore__ inline int64_t
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetQueryOffset(FagRunInfo &runInfo)
+SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetQueryOffset(FagRunInfo &runInfo)
 {
     // if constexpr (IS_MM1_MM2) {
     return runInfo.t1Index * constInfo.n2Size * constInfo.commonConstInfo.gSize * constInfo.commonConstInfo.dSize;
@@ -585,14 +585,14 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetQ
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetQueryRopeOffset(FagRunInfo &runInfo)
+SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetQueryRopeOffset(FagRunInfo &runInfo)
 {
     return runInfo.t1Index * constInfo.n2Size * constInfo.commonConstInfo.gSize * constInfo.dRopeSize;
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetDxOffset(FagRunInfo &runInfo)
+SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetDxOffset(FagRunInfo &runInfo)
 {
     return runInfo.t1Index * constInfo.n2Size * constInfo.commonConstInfo.gSize * constInfo.commonConstInfo.dSizeV;
 }
@@ -600,7 +600,7 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetD
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 template <const bool IS_ORI_KV>
 __aicore__ inline int64_t
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetKeyOffset(FagRunInfo &runInfo)
+SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetKeyOffset(FagRunInfo &runInfo)
 {
     // if constexpr (IS_MM1_MM2) {
     //     return runInfo.t2Index * constInfo.n2Size * constInfo.commonConstInfo.dSize;
@@ -616,20 +616,20 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetK
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetKeyRopeOffset(FagRunInfo &runInfo)
+SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetKeyRopeOffset(FagRunInfo &runInfo)
 {
     return runInfo.t2Index * constInfo.n2Size * constInfo.dRopeSize;
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetValueOffset(FagRunInfo &runInfo)
+SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetValueOffset(FagRunInfo &runInfo)
 {
     return runInfo.t2Index * constInfo.n2Size * constInfo.commonConstInfo.dSizeV;
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetActualSelCount(
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetActualSelCount(
     const int64_t t1Idx, const int64_t n2Idx, int64_t &actSelBlkCount)
 {
     if constexpr (HasOriTopK) {
@@ -653,7 +653,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetTndSeqLen(const int64_t t1Idx,
+SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetTndSeqLen(const int64_t t1Idx,
                                                                                          int64_t &bIdx)
 {
     int64_t t1Offset = 0;
@@ -755,7 +755,7 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetT
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SyncALLCores()
+__aicore__ inline void SparseFlashMlaGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SyncALLCores()
 {
     SyncAll<false>();
 }

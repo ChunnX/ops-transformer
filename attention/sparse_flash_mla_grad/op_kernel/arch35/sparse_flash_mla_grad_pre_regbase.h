@@ -20,9 +20,9 @@ using namespace AscendC;
 
 template <typename T1, typename T2, const uint32_t IS_TND = 0, const bool isOriKVExist = 0, const bool isCmpKVExist = 0,
           const bool isSink = 0, const bool IsOriKVSparse = 0, const bool IsCmpKVSparse = 0>
-class FlashAttentionGradPreRegbase {
+class SparseFlashMlaGradPreRegbase {
 public:
-    __aicore__ inline FlashAttentionGradPreRegbase(){};
+    __aicore__ inline SparseFlashMlaGradPreRegbase(){};
     __aicore__ inline void Init(__gm__ uint8_t *workspace, __gm__ uint8_t *dsinks, __gm__ uint8_t *ori_softmax_l1,
                                 __gm__ uint8_t *cmp_softmax_l1,
                                 const optiling::smlag::SparseFlashMlaGradTilingDataRegbase *ordTilingData,
@@ -80,7 +80,7 @@ public:
 template <typename T1, typename T2, const uint32_t IS_TND, const bool isOriKVExist, const bool isCmpKVExist,
           const bool isSink, const bool IsOriKVSparse, const bool IsCmpKVSparse>
 __aicore__ inline void
-FlashAttentionGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, isSink, IsOriKVSparse, IsCmpKVSparse>::Init(
+SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, isSink, IsOriKVSparse, IsCmpKVSparse>::Init(
     __gm__ uint8_t *workspace, __gm__ uint8_t *dsinks, __gm__ uint8_t *ori_softmax_l1, __gm__ uint8_t *cmp_softmax_l1,
     const optiling::smlag::SparseFlashMlaGradTilingDataRegbase *orgTilingData, TPipe *pipe_in)
 {
@@ -149,7 +149,7 @@ FlashAttentionGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, isSink,
 
 template <typename T1, typename T2, const uint32_t IS_TND, const bool isOriKVExist, const bool isCmpKVExist,
           const bool isSink, const bool IsOriKVSparse, const bool IsCmpKVSparse>
-__aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, isSink, IsOriKVSparse,
+__aicore__ inline void SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, isSink, IsOriKVSparse,
                                                     IsCmpKVSparse>::Process()
 {
     // process
@@ -177,7 +177,7 @@ __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, isOriKVExist
 
 template <typename T1, typename T2, const uint32_t IS_TND, const bool isOriKVExist, const bool isCmpKVExist,
           const bool isSink, const bool IsOriKVSparse, const bool IsCmpKVSparse>
-__aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, isSink, IsOriKVSparse,
+__aicore__ inline void SparseFlashMlaGradPreRegbase<T1, T2, IS_TND, isOriKVExist, isCmpKVExist, isSink, IsOriKVSparse,
                                                     IsCmpKVSparse>::SyncALLCores()
 {
     SyncAll<false>();

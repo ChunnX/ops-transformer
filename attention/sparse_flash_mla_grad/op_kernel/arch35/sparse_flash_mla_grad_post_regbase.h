@@ -21,9 +21,9 @@ using namespace AscendC;
 
 template <typename T1, typename T2, typename OUTDTYPE = T1, const bool IS_TND = 0, const bool isOriKVExist = 0,
           const bool isCmpKVExist = 0, const bool isSink = 0>
-class SparseFlashAttentionGradPostRegbase {
+class SparseFlashMlaGradPostRegbase {
 public:
-    __aicore__ inline SparseFlashAttentionGradPostRegbase(){};
+    __aicore__ inline SparseFlashMlaGradPostRegbase(){};
     __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dori_kv, __gm__ uint8_t *dcmp_kv,
                                 __gm__ uint8_t *dsinks, __gm__ uint8_t *workspace,
                                 const optiling::smlag::SparseFlashMlaGradTilingDataRegbase *__restrict ordTilingData,
@@ -57,7 +57,7 @@ public:
 template <typename T1, typename T2, typename OUTDTYPE, const bool IS_TND, const bool isOriKVExist,
           const bool isCmpKVExist, const bool isSink>
 __aicore__ inline void
-SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::Init(
+SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::Init(
     __gm__ uint8_t *dq, __gm__ uint8_t *dori_kv, __gm__ uint8_t *dcmp_kv, __gm__ uint8_t *dsinks,
     __gm__ uint8_t *workspace, const optiling::smlag::SparseFlashMlaGradTilingDataRegbase *__restrict ordTilingData,
     TPipe *pipe_in)
@@ -104,7 +104,7 @@ SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCm
 template <typename T1, typename T2, typename OUTDTYPE, const bool IS_TND, const bool isOriKVExist,
           const bool isCmpKVExist, const bool isSink>
 __aicore__ inline void
-SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::ProcessSink()
+SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::ProcessSink()
 {
     if (vBlockIdx != 0) {
         return;
@@ -149,7 +149,7 @@ SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCm
 template <typename T1, typename T2, typename OUTDTYPE, const bool IS_TND, const bool isOriKVExist,
           const bool isCmpKVExist, const bool isSink>
 __aicore__ inline void
-SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::ProcessDqkv()
+SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::ProcessDqkv()
 {
     for (int qkvIdx = 0; qkvIdx < 3; qkvIdx++) {
         if constexpr (!isOriKVExist) {
@@ -229,7 +229,7 @@ SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCm
 template <typename T1, typename T2, typename OUTDTYPE, const bool IS_TND, const bool isOriKVExist,
           const bool isCmpKVExist, const bool isSink>
 __aicore__ inline void
-SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::Process()
+SparseFlashMlaGradPostRegbase<T1, T2, OUTDTYPE, IS_TND, isOriKVExist, isCmpKVExist, isSink>::Process()
 {
     if (g_coreType != AIV) {
         return;
