@@ -28,6 +28,7 @@
 #include "../epilogue/block_epilogue_activation_mx_quant.h"
 #include "../utils/common_utils.h"
 #include "../utils/coord_utils.h"
+#include "../utils/fill_utils.h"
 #include "../utils/grouped_matmul_constant.h"
 #include "../utils/layout_utils.h"
 #include "../utils/status_utils.h"
@@ -119,6 +120,7 @@ public:
     BlockMmad mmadOp_;
     BlockEpilogue epilogueOp_;
     AscendC::LocalTensor<CType> l0cOutUb_;
+    AscendC::LocalTensor<int8_t> initScaleLocal_;
     bool isVecSetSyncCom_ = false;
 
     struct GMMTiling {
@@ -298,6 +300,20 @@ public:
         groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(params.mmadParams.groupListGmAddr));
     }
 
+    __aicore__ inline void InitYScaleOutput(const Params &params)
+    {
+        if ASCEND_IS_AIV {
+            AscendC::GlobalTensor<int8_t> yScaleInitGlobal;
+            yScaleInitGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(params.epilogueParams.yScaleGmAddr));
+            uint64_t yScaleSize = static_cast<uint64_t>(params.gmmParams.m) *
+                                  CeilDiv(static_cast<uint64_t>(params.gmmParams.n),
+                                          static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
+                                  MXFP_MULTI_BASE_SIZE;
+            bool isYScaleInit = false;
+            InitOutputWithZero(yScaleInitGlobal, initScaleLocal_, yScaleSize, AscendC::GetBlockNum(), isYScaleInit);
+        }
+    }
+
     __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)
     {
         (void)groupIdx;
@@ -376,6 +392,12 @@ public:
                          params.gmmParams.dbL0C == DOUBLE_BUFFER_COUNT);
         }
         epilogueOp_.Init(params.epilogueParams);
+        if ASCEND_IS_AIV {
+            constexpr uint32_t initSize = AscendC::MAX_REPEAT_TIMES * AscendC::ONE_BLK_SIZE;
+            initScaleLocal_ = AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECCALC,
+                                                           AscendC::GetUBSizeInBytes() - initSize, initSize);
+            InitYScaleOutput(params);
+        }
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
