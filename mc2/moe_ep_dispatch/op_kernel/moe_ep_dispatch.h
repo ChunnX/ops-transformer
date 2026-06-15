@@ -417,20 +417,23 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetTokenRec
                                         static_cast<uint16_t>(counterSizeAlign_ - sizeof(int32_t))};
     DataCopyParams recvCntCopyParams = {static_cast<uint16_t>(epWorldSize_), static_cast<uint16_t>(UB_ALIGN),
                                         static_cast<uint16_t>(counterSizeAlign_ - UB_ALIGN), 0U};
-    while(sumOfFlag != epWorldSize_) {  //状态位check
-        DataCopy(recvCounterTensor, recvCounterGMTensor_, recvCntCopyParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        // ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(numRecvTensor, recvCounterTensor, shape);
-        ReduceSum(numRecvTensorFp32, recvCounterTensorFp32, tempTensorFp32, maskState, epWorldSize_, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = numRecvTensor.GetValue(0);
-    }
+    // while(sumOfFlag != epWorldSize_) {  //状态位check
+    //     DataCopy(recvCounterTensor, recvCounterGMTensor_, recvCntCopyParams);
+    //     SyncFunc<AscendC::HardEvent::MTE2_V>();
+    //     // ReduceSum<float, AscendC::Pattern::Reduce::RA, true>(numRecvTensor, recvCounterTensor, shape);
+    //     ReduceSum(numRecvTensorFp32, recvCounterTensorFp32, tempTensorFp32, maskState, epWorldSize_, 1);
+    //     SyncFunc<AscendC::HardEvent::V_S>();
+    //     sumOfFlag = numRecvTensor.GetValue(0);
+    // }
 
     // 本端接收actualA计算  写入host pin
-    ReduceSum(numRecvTensorFp32, recvCounterTensorFp32, tempTensorFp32, maskCnt, epWorldSize_, 1);
-    SyncFunc<AscendC::HardEvent::V_S>();
+    // ReduceSum(numRecvTensorFp32, recvCounterTensorFp32, tempTensorFp32, maskCnt, epWorldSize_, 1);
+    // SyncFunc<AscendC::HardEvent::V_S>();
+    numRecvTensor.SetValue(0, 100);
     actualACnt_ = numRecvTensor.GetValue(0);
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
     WriteActualAToHostPinned(numRecvTensor);
+    return;
 
     // 计数器复位
     Duplicate<int32_t>(recvCounterTensor, 0, epWorldSizeAlign_ * UB_STRIDE);
@@ -673,21 +676,21 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteActual
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessDirect()
 {
-    ResetCounters();
-    SyncAll<true>();
+    // ResetCounters();
+    // SyncAll<true>();
     if constexpr (DoCpuSync) {
-        CalSendCnt();
-        SyncAll<true>();
-        Communication();
+        // CalSendCnt();
+        // SyncAll<true>();
+        // Communication();
         SetTokenRecvNumAndClear();
-        SyncAll<true>();
-        PipeBarrier<PIPE_ALL>();
-        tpipe_->Reset();
+        // SyncAll<true>();
+        // PipeBarrier<PIPE_ALL>();
+        // tpipe_->Reset();
     }
-    SendPhase();
-    SyncAll<true>();
-    WriteToRemoteWindow();
-    RecvPhase();
+    // SendPhase();
+    // SyncAll<true>();
+    // WriteToRemoteWindow();
+    // RecvPhase();
 }
 
 template <TemplateMoeEpDispatchTypeClass>
