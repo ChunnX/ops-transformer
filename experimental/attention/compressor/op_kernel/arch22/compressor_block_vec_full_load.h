@@ -190,7 +190,7 @@ private:
     TQue<QuePosition::VECIN, 1> inputQue2;
     TQue<QuePosition::VECIN, 1> inputQueApe;
     // out queue
-    TQue<QuePosition::VECOUT, 1> outputQue1;
+    TQue<QuePosition::VECOUT, 1> ;
 };
 
 template <typename COMP>
@@ -966,7 +966,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
         PipeBarrier<PIPE_V>();
         KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, tmpUb, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
-        CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx, dDealSize);
+        CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx + dBaseOffset,
+                               dDealSize);
     }
     compressedCnt_ += statisticInfo.compressorScCnt;
 }
