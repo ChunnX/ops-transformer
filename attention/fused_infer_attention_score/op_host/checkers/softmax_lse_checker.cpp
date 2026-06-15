@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "register/op_def_registry.h"
