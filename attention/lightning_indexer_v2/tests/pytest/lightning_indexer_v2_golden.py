@@ -513,13 +513,13 @@ class GeneralizedLIV2:
                 self.has_seqused_k = True
             else:
                 actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size).to(torch.int32))
-            actualSeqLengths_k = actual_seq_lengths_key
+            actualSeqlengths_k = actual_seq_lengths_key
             k_shape = self.k_shape
 
         elif layout_key == "PA_BSND":
             self.actual_seq_lengths_key = seqused_k
-            actualSeqLengths_k = self.actual_seq_lengths_key
-            k_max_s2 = math.floor(max(actualSeqLengths_k))
+            actualSeqlengths_k = self.actual_seq_lengths_key
+            k_max_s2 = math.floor(max(actualSeqlengths_k))
             k_shape = [batch_size, k_head_num, k_max_s2, head_dim]
         query = query.cpu()
         key = key.cpu()
