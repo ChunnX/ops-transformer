@@ -898,7 +898,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmmAddrInfo, gmm2State);
         uint32_t m_expert = Get<M_VALUE>(gmm2State.problemShape);
-        uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M_256);
+        uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M_128);
 
         uint32_t myGroup, myIdxInGrp, myGrpSize;
         MegaMoeImpl::ComputeCoreGrouping(aivCoreIdx_, rowGroupsThisExpert, blockAivNum_,
