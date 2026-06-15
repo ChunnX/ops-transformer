@@ -138,37 +138,35 @@ TEST(AllGatherHcclUtilsTest, AdjustCutResultForHCCLNoOp)
 
 // mxfp4 走 UINT8 通信（每字节 2 个 fp4），tiling 侧 GetTilingResult 对 FP4 调用
 // AdjustCutResultForHCCL(result, m, kValue/2, 1, rank, opName)。本用例验证：
-// 传 (K/2, dtypeSize=1) 与等价的 (K, dtypeSize=2) 产生完全相同的切分结果。
-// 选 m=5000, K=8192, rank=8（参照 AdjustCutResultForHCCLFullPath 的会触发实际调整的场景）。
+// 传 (K/2, dtypeSize=1) 与字节量等价的 (K/4, dtypeSize=2) 产生完全相同的切分结果。
+// 使用 K=32768 使两条路径均触发实际切分调整（非 NoOp），保证断言有意义。
 TEST(AllGatherHcclUtilsTest, AdjustCutResultForHCCLMxfp4Equivalence)
 {
     const uint64_t mValue = 5000U;
-    const uint64_t kValue = 8192U;   // 偶数且为 32 倍数（满足 mxfp4 约束）
+    const uint64_t kValue = 32768U;
     const uint64_t rankDim = 8U;
 
-    // FP4 路径：每行字节量 = (K/2) * 1
+    // FP4 路径：每行字节量 = (K/2) * 1 = K/2
     auto cutFp4 = MakeCutResult(4096);
     AdjustCutResultForHCCL(cutFp4, mValue, kValue / 2, 1, rankDim, "ut_fp4");
 
-    // 等价对照路径：每行字节量 = K * 2（与 FP4 相同）
+    // 等价对照路径：每行字节量 = (K/4) * 2 = K/2（与 FP4 路径相同）
     auto cutRef = MakeCutResult(4096);
-    AdjustCutResultForHCCL(cutRef, mValue, kValue, 2, rankDim, "ut_ref");
+    AdjustCutResultForHCCL(cutRef, mValue, kValue / 4, 2, rankDim, "ut_ref");
 
     EXPECT_EQ(cutFp4.longTileLen, cutRef.longTileLen);
     EXPECT_EQ(cutFp4.numLongTile, cutRef.numLongTile);
     EXPECT_EQ(cutFp4.shortTileLen, cutRef.shortTileLen);
     EXPECT_EQ(cutFp4.numShortTile, cutRef.numShortTile);
     EXPECT_EQ(cutFp4.shortTileAtBack, cutRef.shortTileAtBack);
-    // 同时确认确实发生了实际调整（非 NoOp），保证等价性断言有意义
     EXPECT_NE(cutFp4.longTileLen, 4096U);
     EXPECT_GT(cutFp4.numLongTile, 0U);
 }
 
-// 可选：验证 ApplyTileSplit 在 FP4 字节量等价对下也产生相同结果。
 TEST(AllGatherHcclUtilsTest, ApplyTileSplitMxfp4Equivalence)
 {
     const uint64_t mValue = 1200U;
-    const uint64_t kValue = 8192U;
+    const uint64_t kValue = 32768U;
     const uint64_t rankDim = 8U;
     const uint64_t tileM = 256U;
 
@@ -176,7 +174,7 @@ TEST(AllGatherHcclUtilsTest, ApplyTileSplitMxfp4Equivalence)
     ApplyTileSplit(cutFp4, mValue, tileM, kValue / 2, 1, rankDim, "ut_fp4");
 
     auto cutRef = MakeCutResult(4096);
-    ApplyTileSplit(cutRef, mValue, tileM, kValue, 2, rankDim, "ut_ref");
+    ApplyTileSplit(cutRef, mValue, tileM, kValue / 4, 2, rankDim, "ut_ref");
 
     EXPECT_EQ(cutFp4.longTileLen, cutRef.longTileLen);
     EXPECT_EQ(cutFp4.numLongTile, cutRef.numLongTile);
