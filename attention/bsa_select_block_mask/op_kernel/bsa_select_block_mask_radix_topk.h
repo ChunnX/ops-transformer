@@ -201,7 +201,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
     this->numValue_ = RADIX_NUM_BINS;
     this->round_ = RADIX_ROUNDS_FP16;
 
-    this->tileLen_ = BSAMin(static_cast<uint64_t>(7168), sortLen_);
+    this->tileLen_ = BSAMin(static_cast<uint64_t>(7168), BSAMax(static_cast<uint64_t>(128), sortLen_));
     this->totalTileNum_ = (sortLen_ + tileLen_ - 1) / tileLen_;
     this->tileNum_ = totalTileNum_;
     this->tileNumAlign_ = BSACeilDiv(tileNum_, static_cast<uint64_t>(8)) * 8;
