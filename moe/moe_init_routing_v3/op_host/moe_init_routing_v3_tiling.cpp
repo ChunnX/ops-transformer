@@ -849,7 +849,7 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortCutOriginTiling(
     // 2 xBuf slots (double buffer) + quant buffers per mode
     int64_t colBytesPerElement = NUM_TWO * inuptXDtypeSize_;
     if (quantMode_ == STATIC_QUANT) {
-        colBytesPerElement += SIZE_FP32 + SIZE_INT8; // quantFloat + quantInt8
+        colBytesPerElement += SIZE_FP32 + SIZE_INT8 * NUM_TWO; // quantFloat + quantInt8
     } else if (quantMode_ == DYNAMIC_QUANT) {
         colBytesPerElement += NUM_TWO * SIZE_FP32 + SIZE_INT8; // quantFloat + quantTemp + quantInt8
         if (smoothType_ != 0) {
