@@ -144,6 +144,7 @@ def _run_one(cfg, expect_pass):
     k_nc=_make_nc(k_ref.npu(),nc); v_nc=_make_nc(v_ref.npu(),nc)
     k_rope_nc=_make_nc(k_rope,nc) if dr>0 and nc!="none" else k_rope
     if nc!="none":
+    if nc!="none":
         cs=_cstrides(k_nc.shape)
         assert k_nc.stride(0)!=cs[0],f"{cfg['id']}:dim0"
         if nc=="dim01": assert k_nc.stride(1)!=cs[1],f"{cfg['id']}:dim1"
@@ -151,10 +152,10 @@ def _run_one(cfg, expect_pass):
 
     if not expect_pass:
         with pytest.raises(Exception) as ei:
-            _run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,k_rope_nc,k_rope,d,dr)
+            _run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope_nc,d,dr)
         logger.info(f"  [{cfg['id']}] ERROR: {ei.value}")
         return
-    out=_run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,k_rope_nc,k_rope,d,dr)
+    out=_run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope_nc,d,dr)
     _check(ref_out,out,cfg["id"])
 
 
