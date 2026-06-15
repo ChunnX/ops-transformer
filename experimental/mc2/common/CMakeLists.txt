@@ -15,7 +15,6 @@
     op_graph/matmul_all_reduce_gen_task_ops_utils.cpp
     op_host/op_tiling/matmul_formulaic_tiling.cpp
     op_host/op_tiling/matmul_performance.cpp
-    op_host/mc2_common_infershape.cpp
     op_graph/mc2_gen_task_ops_utils.cpp
     utils/mc2_hcom_topo_info.cpp
     utils/mc2_log.cpp
@@ -43,6 +42,13 @@
     if(UT_TEST_ALL OR OP_HOST_UT)
      target_link_directories(${OPHOST_NAME}_tiling_obj PRIVATE mc2_tiling_ut_stub)
     endif()
+  endif()
+  set(MC2_INFER_SRCS
+    op_host/mc2_common_infershape.cpp
+  )
+  if(MC2_INFER_SRCS)
+    add_infer_modules()
+    target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${MC2_INFER_SRCS})
   endif()
   if(NOT ENABLE_TEST)
    file(GLOB OPPROTO_SRCS)
