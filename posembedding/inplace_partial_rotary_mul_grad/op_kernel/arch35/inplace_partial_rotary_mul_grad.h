@@ -214,7 +214,8 @@ __aicore__ inline void InplacePartialRotaryMulGradRef<Tdy, Tcs>::CopyInCosSin(
         if (rotaryMode_ == 0 || rotaryMode_ == 3) {
             CopyInHalfMode<Tcs>(runTensor, csGm, offset, runLen, blockLen, csPad_, sliceLen_, sliceLen_, dSplitCoef_);
         } else if (rotaryMode_ == 2) {
-            CopyInQuarterMode<Tcs>(runTensor, csGm, offset, runLen, blockLen, csPad_, sliceLen_, sliceLen_, dSplitCoef_);
+            CopyInQuarterMode<Tcs>(runTensor, csGm, offset, runLen, blockLen,
+                       csPad_, sliceLen_, sliceLen_, dSplitCoef_);
         } else {
             CopyInInterleaveMode<Tcs>(runTensor, csGm, offset, runLen, blockLen, csPad_, sliceLen_, sliceLen_);
         }

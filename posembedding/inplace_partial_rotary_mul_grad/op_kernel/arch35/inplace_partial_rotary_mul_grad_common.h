@@ -69,9 +69,12 @@ __aicore__ inline void GradHalfVF(__local_mem__ Tcs* sinUb, __local_mem__ Tcs* c
             for (uint16_t i = 0; i < repeatTimes; i++) {
                 preg = MicroAPI::UpdateMask<float>(cnt);
                 uint32_t off = i * VL_FLOAT32_SIZE;
-                ops::LoadTwoTensorForDtypeT<Tdy>(curDy, curDy, vregDy1, vregDy2, preg, preg, off, off + halfDAlignDy);
-                ops::LoadTwoTensorForDtypeT<Tcs>(curCos, curCos, vregCos1, vregCos2, preg, preg, off, off + halfDAlignCs);
-                ops::LoadTwoTensorForDtypeT<Tcs>(curSin, curSin, vregSin1, vregSin2, preg, preg, off, off + halfDAlignCs);
+                ops::LoadTwoTensorForDtypeT<Tdy>(curDy, curDy, vregDy1, vregDy2, preg, preg,
+                    off, off + halfDAlignDy);
+                ops::LoadTwoTensorForDtypeT<Tcs>(curCos, curCos, vregCos1, vregCos2, preg, preg,
+                    off, off + halfDAlignCs);
+                ops::LoadTwoTensorForDtypeT<Tcs>(curSin, curSin, vregSin1, vregSin2, preg, preg,
+                    off, off + halfDAlignCs);
                 // dx1 = cos1*dy1 + sin2*dy2
                 Mul(vregOut1, vregCos1, vregDy1, preg);
                 Mul(vregSin2, vregSin2, vregDy2, preg);
@@ -119,12 +122,18 @@ __aicore__ inline void GradQuarterVF(__local_mem__ Tcs* sinUb, __local_mem__ Tcs
             for (uint16_t i = 0; i < repeatTimes; i++) {
                 preg = MicroAPI::UpdateMask<float>(cnt);
                 uint32_t off = i * VL_FLOAT32_SIZE;
-                ops::LoadTwoTensorForDtypeT<Tdy>(curDy, curDy, vDy1, vDy2, preg, preg, off, off + quarterDAlignDy);
-                ops::LoadTwoTensorForDtypeT<Tdy>(curDy, curDy, vDy3, vDy4, preg, preg, off + halfDAlignDy, off + threeQDAlignDy);
-                ops::LoadTwoTensorForDtypeT<Tcs>(curCos, curCos, vCos1, vCos2, preg, preg, off, off + quarterDAlignCs);
-                ops::LoadTwoTensorForDtypeT<Tcs>(curCos, curCos, vCos3, vCos4, preg, preg, off + halfDAlignCs, off + threeQDAlignCs);
-                ops::LoadTwoTensorForDtypeT<Tcs>(curSin, curSin, vSin1, vSin2, preg, preg, off, off + quarterDAlignCs);
-                ops::LoadTwoTensorForDtypeT<Tcs>(curSin, curSin, vSin3, vSin4, preg, preg, off + halfDAlignCs, off + threeQDAlignCs);
+                ops::LoadTwoTensorForDtypeT<Tdy>(curDy, curDy, vDy1, vDy2, preg, preg,
+                    off, off + quarterDAlignDy);
+                ops::LoadTwoTensorForDtypeT<Tdy>(curDy, curDy, vDy3, vDy4, preg, preg,
+                    off + halfDAlignDy, off + threeQDAlignDy);
+                ops::LoadTwoTensorForDtypeT<Tcs>(curCos, curCos, vCos1, vCos2, preg, preg,
+                    off, off + quarterDAlignCs);
+                ops::LoadTwoTensorForDtypeT<Tcs>(curCos, curCos, vCos3, vCos4, preg, preg,
+                    off + halfDAlignCs, off + threeQDAlignCs);
+                ops::LoadTwoTensorForDtypeT<Tcs>(curSin, curSin, vSin1, vSin2, preg, preg,
+                    off, off + quarterDAlignCs);
+                ops::LoadTwoTensorForDtypeT<Tcs>(curSin, curSin, vSin3, vSin4, preg, preg,
+                    off + halfDAlignCs, off + threeQDAlignCs);
                 Mul(vOut1, vCos1, vDy1, preg);
                 Mul(vSin2, vSin2, vDy2, preg);
                 Add(vOut1, vOut1, vSin2, preg);

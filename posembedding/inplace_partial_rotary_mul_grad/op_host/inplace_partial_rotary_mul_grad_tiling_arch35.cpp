@@ -159,6 +159,10 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::CheckParam()
     s_ = dyShape.GetDim(1);
     n_ = dyShape.GetDim(2);
     d_ = dyShape.GetDim(3);
+    if (b_ <= 0 || s_ <= 0 || n_ <= 0 || d_ <= 0) {
+        OP_LOGE(context_->GetNodeName(), "B/S/N/D must be positive, got [%ld,%ld,%ld,%ld].", b_, s_, n_, d_);
+        return ge::GRAPH_FAILED;
+    }
     if (d_ > D_LIMIT) {
         OP_LOGE(context_->GetNodeName(), "D must be <= %ld.", D_LIMIT);
         return ge::GRAPH_FAILED;
@@ -310,6 +314,10 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::DoOpTiling()
             static_cast<int64_t>(ge::GetSizeByDataType(context_->GetInputDesc(INPUT_DY_INDEX)->GetDataType()));
         int64_t szCs =
             static_cast<int64_t>(ge::GetSizeByDataType(context_->GetInputDesc(INPUT_COS_INDEX)->GetDataType()));
+        if (szDy <= 0 || szCs <= 0) {
+            OP_LOGE(context_->GetNodeName(), "invalid dtype size: szDy=%ld, szCs=%ld.", szDy, szCs);
+            return ge::GRAPH_FAILED;
+        }
         int64_t blockElemsDy = BLOCK_SIZE_BYTES / szDy;
         int64_t blockElemsCs = BLOCK_SIZE_BYTES / szCs;
         int64_t dAlignDy = CeilAlign(sliceLen_ / coef, blockElemsDy) * coef;
