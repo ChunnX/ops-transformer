@@ -128,14 +128,14 @@
     <tr>
       <td>seqused_cmp_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中`cmp_kv`实际参与运算的token数。未传时使用`cmp_kv`或`cu_seqlens_cmp_kv`推导的长度。</td>
+      <td>表示不同Batch中`cmp_kv`实际参与运算的token数。仅在`layout_kv="BSND"`且存在cmp段时作为每个batch的cmp有效长度生效；`layout_kv="TND"`使用`cu_seqlens_cmp_kv`推导，`layout_kv="PA_BBND"`（兼容`PA_BNBD`）使用block table和实际KV长度语义，未传时使用`cmp_kv`或`cu_seqlens_cmp_kv`推导的长度。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_residual_kv</td>
       <td>可选输入</td>
-      <td>压缩KV余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度。</td>
+      <td>压缩KV余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度。该参数是主算子入参，不传入metadata；在`cmp_ratio > 1`且存在cmp段的CFA/SCFA场景生效，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BBND"`（兼容`PA_BNBD`）均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
