@@ -203,10 +203,7 @@ def _dynamic_quant_fp8(x, y_dtype):
             col_end = col_start + MXFP_SCALE_ELEMENT_NUM
             block = x[row_idx, col_start:col_end]
             max_abs = np.max(np.abs(block)) if block.size > 0 else 0.0
-            if max_abs == 0.0:
-                y_scale[row_idx, scale_idx] = _e8m0_byte_to_float(0)
-                continue
-            scale = max_abs / fp8_max
+            scale = 1.0 if max_abs == 0.0 else max_abs / fp8_max
             scale = _ceil_power_of_two(scale)
             y_scale[row_idx, scale_idx] = scale
             y[row_idx, col_start:col_end] = block / scale
