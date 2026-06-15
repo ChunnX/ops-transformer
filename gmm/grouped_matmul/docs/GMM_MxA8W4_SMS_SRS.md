@@ -68,7 +68,7 @@ yGm_ += mSize * nSize;
   - MxA8W4 调用宏透传 `IS_SINGLE_MULTI_SINGLE`；
   - `GMMWeightQuantResplitController` 新增 `isSingleMultiSingle` 模板参数；
   - `UpdateGmAddr` 支持单多单场景下 `weight`、`weightScale/antiquantScale`、`bias` tensor list 取址；
-  - host tiling 校验 `antiquantScaleOptional`、`biasOptional` 与 `weight` 等长。
+  - host tiling 校验 `antiquantScaleOptional`、`biasOptional` 与 `weight` 等长，并校验 `antiquantOffsetOptional` 为空。
 - **不包含**：
   - 非 MxA8W4 数据流；
   - 非 arch35 或非 resplit 路径；
@@ -78,12 +78,12 @@ yGm_ += mSize * nSize;
 
 ## 3. 方案简述
 
-| 层次      | 要点                                                                                                                                                                       |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Host      | MxA8W4 单多单时识别 `singleX && !singleWeight && singleY`，并要求 `antiquantScaleOptional`、`biasOptional` 与 `weight` tensor list 等长                            |
-| Tiling    | TilingKey 增加 `IS_SINGLE_MULTI_SINGLE` 编译期 bool 参数，MxA8W4 单多单场景传入 1，其他路径传入 0                                                                        |
-| Kernel    | MxA8W4 调用宏将 `IS_SINGLE_MULTI_SINGLE` 传给 `GMMWeightQuantResplitController`；controller 在 `UpdateGmAddr` 中使用 `if constexpr` 区分单多单和原连续 offset 路径 |
-| 测试/交付 | 覆盖 MxA8W4 单多单 path、非单多单回归、weightScale/bias list size 非法路径                                                                                                 |
+| 层次 | 要点 |
+| --- | --- |
+| Host | MxA8W4 单多单时识别 `singleX && !singleWeight && singleY`，要求 `antiquantScaleOptional`、`biasOptional` 与 `weight` tensor list 等长，并要求 `antiquantOffsetOptional` 为空 |
+| Tiling | TilingKey 增加 `IS_SINGLE_MULTI_SINGLE` 编译期 bool 参数，MxA8W4 单多单场景传入 1，其他路径传入 0 |
+| Kernel | MxA8W4 调用宏将 `IS_SINGLE_MULTI_SINGLE` 传给 `GMMWeightQuantResplitController`；controller 在 `UpdateGmAddr` 中使用 `if constexpr` 区分单多单和原连续 offset 路径 |
+| 测试/交付 | 覆盖 MxA8W4 单多单 path、非单多单回归、weightScale/bias list size 非法路径、antiquantOffset 非空非法路径 |
 
 ---
 
@@ -113,14 +113,15 @@ Y_g = Matmul(X_g, Weight_g, WeightScale_g) + Bias_g
 
 #### 5.A.1 输入 — 张量参数
 
-| 参数名                                   | 必选/可选 | dtype                      | format     | shape / 存储语义                                                                            | 说明                                            |
-| ---------------------------------------- | --------- | -------------------------- | ---------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `x`                                    | 必选      | FLOAT8_E4M3FN              | ND         | 单 tensor，view/storage shape `[M, K]`                                                    | M 方向按 groupList 切分                         |
-| `weight`                               | 必选      | FLOAT4_E2M1                | FRACTAL_NZ | 多 tensor，`weight[g]` view shape `[Ng, K]`；NZ storage shape `[K/32, Ng/16, 16, 32]` | 单多单场景要求 tensor list 长度为 `groupNum`  |
-| `antiquantScaleOptional` / weightScale | 必选      | FLOAT8_E8M0                | ND         | 多 tensor，`antiquantScale[g]` shape `[Ng, K/64, 2, 2]`                                 | tensor list 长度必须等于 `weight` 长度        |
-| `biasOptional`                         | 可选      | 与现有 MxA8W4 支持保持一致 | ND         | 多 tensor，`bias[g]` shape `[Ng]`                                                       | 存在时 tensor list 长度必须等于 `weight` 长度 |
-| `perTokenScaleOptional`                | 必选      | FLOAT8_E8M0                | ND         | 单 tensor，shape `[M, K/64, 2]`                                                           | 仍按单 tensor 内部 offset 推进                  |
-| `groupList`                            | 必选      | INT64                      | ND         | `[groupNum]`                                                                              | 表示 M 方向 group 切分                          |
+| 参数名 | 必选/可选 | dtype | format | shape / 存储语义 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `x` | 必选 | FLOAT8_E4M3FN | ND | 单 tensor，view/storage shape `[M, K]` | M 方向按 groupList 切分 |
+| `weight` | 必选 | FLOAT4_E2M1 | FRACTAL_NZ | 多 tensor，view shape `[[Ng, K], [Ng, K], ..., [Ng, K]]`；NZ storage shape `[[K/32, Ng/16, 16, 32], [K/32, Ng/16, 16, 32], ..., [K/32, Ng/16, 16, 32]]` | 单多单场景要求 tensor list 长度为 `groupNum` |
+| `antiquantScaleOptional` / weightScale | 必选 | FLOAT8_E8M0 | ND | 多 tensor，shape `[[Ng, K/64, 2], [Ng, K/64, 2], ..., [Ng, K/64, 2]]` | tensor list 长度必须等于 `weight` 长度 |
+| `antiquantOffsetOptional` | 可选 | 与现有 MxA8W4 支持保持一致 | ND | 空值 | 单多单场景允许为空；若不为空，host checker 直接报错 |
+| `biasOptional` | 可选 | 与现有 MxA8W4 支持保持一致 | ND | 多 tensor，shape `[[Ng], [Ng], ..., [Ng]]` | 存在时 tensor list 长度必须等于 `weight` 长度 |
+| `perTokenScaleOptional` | 必选 | FLOAT8_E8M0 | ND | 单 tensor，shape `[M, K/64, 2]` | 仍按单 tensor 内部 offset 推进 |
+| `groupList` | 必选 | INT64 | ND | `[groupNum]` | 表示 M 方向 group 切分 |
 
 #### 5.A.2 输入 — 标量 / 属性
 
@@ -148,15 +149,16 @@ Y_g = Matmul(X_g, Weight_g, WeightScale_g) + Bias_g
 
 ## 6. 约束条件
 
-| 约束项             | 条件                                                       | 说明 / 校验失败表现                                        |
-| ------------------ | ---------------------------------------------------------- | ---------------------------------------------------------- |
-| 场景约束           | 仅 MxA8W4 数据流                                           | 非 MxA8W4 不启用 `IS_SINGLE_MULTI_SINGLE`                |
-| tensor 组合        | `x` 单、`weight` 多、`y` 单                          | 对应 `singleX == 1 && singleWeight == 0 && singleY == 1` |
-| weightScale 长度   | `antiquantScaleOptional->Size() == weight->Size()`       | 不满足时 host tiling / checker 应报 list size 错误         |
-| bias 长度          | 若存在 bias，`biasOptional->Size() == weight->Size()`    | 不满足时 host tiling / checker 应报 list size 错误         |
-| perTokenScale 长度 | `perTokenScaleOptional` 与 `x` 对应                    | 单多单下仍为单 tensor                                      |
-| TilingKey          | 新增 `IS_SINGLE_MULTI_SINGLE`                            | 参数顺序必须与 kernel 模板参数一致                         |
-| 地址更新           | 单多单时 `weight/weightScale/bias` 使用 tensor list 取址 | 非单多单时保持连续 offset 推进                             |
+| 约束项 | 条件 | 说明 / 校验失败表现 |
+| --- | --- | --- |
+| 场景约束 | 仅 MxA8W4 数据流 | 非 MxA8W4 不启用 `IS_SINGLE_MULTI_SINGLE` |
+| tensor 组合 | `x` 单、`weight` 多、`y` 单 | 对应 `singleX == 1 && singleWeight == 0 && singleY == 1` |
+| weightScale 长度 | `antiquantScaleOptional->Size() == weight->Size()` | 不满足时 host tiling / checker 应报 list size 错误 |
+| antiquantOffset | `antiquantOffsetOptional` 为空 | 若不为空，host checker 直接报错 |
+| bias 长度 | 若存在 bias，`biasOptional->Size() == weight->Size()` | 不满足时 host tiling / checker 应报 list size 错误 |
+| perTokenScale 长度 | `perTokenScaleOptional` 与 `x` 对应 | 单多单下仍为单 tensor |
+| TilingKey | 新增 `IS_SINGLE_MULTI_SINGLE` | 参数顺序必须与 kernel 模板参数一致 |
+| 地址更新 | 单多单时 `weight/weightScale/bias` 使用 tensor list 取址 | 非单多单时保持连续 offset 推进 |
 
 ---
 
@@ -190,7 +192,7 @@ aclnn grouped_matmul
 
 ### 8.2 Tiling
 
-- **输入约束**：MxA8W4 单多单时 `x` 单 tensor、`weight` 多 tensor、`y` 单 tensor；`antiquantScaleOptional` 和 `biasOptional`（若存在）与 `weight` 等长。
+- **输入约束**：MxA8W4 单多单时 `x` 单 tensor、`weight` 多 tensor、`y` 单 tensor；`antiquantScaleOptional` 和 `biasOptional`（若存在）与 `weight` 等长；`antiquantOffsetOptional` 允许为空，若不为空则 host checker 直接报错。
 - **tiling key**：
 
   - 新增模板参数：`IS_SINGLE_MULTI_SINGLE`；
@@ -340,7 +342,7 @@ bool GroupedWeightQuantBatchMatmulTiling:: SetShapeList(const gert::TilingContex
 }
 ```
 
-`CheckTensorListSize` 中单多单场景允许 `x` 单 tensor、`weight` 多 tensor，并要求 `antiquantScaleOptional`、`biasOptional` 与 `weight` 等长：
+`CheckTensorListSize` 中单多单场景允许 `x` 单 tensor、`weight` 多 tensor，并要求 `antiquantScaleOptional`、`biasOptional` 与 `weight` 等长；`antiquantOffsetOptional` 允许为空，若不为空则直接返回错误：
 
 ```cpp
 bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize(const gert::TilingContext *context) const
@@ -358,10 +360,10 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize(const gert::Tiling
                     return false);
     } else if (isSingleMultiSingle) {
         // 修改点7：单多单场景允许 weight 为 tensor list，同时要求 x 仍为单 tensor。
-        OP_CHECK_IF(numX_ != 1 || numWeight_ <= 1,
+        OP_CHECK_IF(numX_ != 1 || numWeight_ < 1,
                     OP_LOGE_FOR_INVALID_LISTSIZE(
                         OP_NAME, "x, weight", std::to_string(numX_) + ", " + std::to_string(numWeight_),
-                        "In MxA8W4 single-multi-single mode, the size of x must be 1 and weight must be greater than 1"),
+                        "In MxA8W4 single-multi-single mode, the size of x must be 1 and weight must be greater than or equal to 1"),
                     return false);
     } else {
         OP_CHECK_IF(numX_ != 1 || numWeight_ != 1,
@@ -377,8 +379,23 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize(const gert::Tiling
                 std::to_string(numAntiquantScale_),
                     "The size of antiquantScaleOptional does not match the expected value"),
                 return false);
+    if (hasAntiquantOffset_) {
+        // 修改点9：MxA8W4 单多单场景 antiquantOffsetOptional 允许为空；若不为空，直接返回错误。
+        OP_CHECK_IF(
+            isSingleMultiSingle,
+            OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "antiquantOffsetOptional",
+                                         std::to_string(numAntiquantOffset_),
+                                         "In MxA8W4 single-multi-single mode, antiquantOffsetOptional must be empty"),
+            return false);
+        OP_CHECK_IF(
+            numAntiquantOffset_ != expectedParamNum,
+            OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "antiquantOffsetOptional",
+                                         std::to_string(numAntiquantOffset_),
+                                         "antiquantOffsetOptional size does not match the expected value"),
+            return false);
+    }
     if (hasBias_) {
-        // 修改点9：bias 存在时也按多 tensor 处理，长度必须与 weight list 对齐。
+        // 修改点10：bias 存在时也按多 tensor 处理，长度必须与 weight list 对齐。
         OP_CHECK_IF(numBias_ != expectedParamNum,
                     OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "biasOptional",
                                                  std::to_string(numBias_),
@@ -506,20 +523,10 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckAntiquantScaleSingleXMultiWeightS
 bool GroupedWeightQuantBatchMatmulTiling::CheckAntiquantOffsetSingleXMultiWeightSingleY(
     const gert::TilingContext *context) const
 {
-    if (!hasAntiquantOffset_) {
-        return true;
-    }
-    for (size_t i = 0; i < numAntiquantOffset_; ++i) {
-        OP_CHECK_IF(!CheckNotNullPtr(context, ANTIQUANT_OFFSET_IDX, i),
-                    OP_LOGE(context->GetNodeName(), "antiquantOffset's tensor or Desc is nullptr."), return false);
-        OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_OFFSET_IDX, i, 2, "antiquantOffset"),
-                    OP_LOGE(context->GetNodeName(), "Invalid antiquantOffset dimension."), return false);
-        OP_CHECK_IF(!CheckTensorDtypeSingleXMultiWeightSingleY(context, ANTIQUANT_OFFSET_IDX, i, antiquantOffsetDtype_,
-                                                               "antiquantOffset"),
-                    OP_LOGE(context->GetNodeName(), "Check Tensor antiquantOffset Dtype failed"), return false);
-        OP_CHECK_IF(!CheckTensorShapeSingleXMultiWeightSingleY(context, ANTIQUANT_OFFSET_IDX, i, "antiquantOffset"),
-                    OP_LOGE(context->GetNodeName(), "Check antiquantOffset tensor shape failed"), return false);
-    }
+    OP_CHECK_IF(hasAntiquantOffset_,
+                OP_LOGE(context->GetNodeName(),
+                        "In MxA8W4 single-multi-single mode, antiquantOffsetOptional must be empty."),
+                return false);
     return true;
 }
 
@@ -810,12 +817,12 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t gr
 
 ### 9.1 模块职责
 
-| 模块   | 说明                                                              |
-| ------ | ----------------------------------------------------------------- |
-| Host   | 校验 MxA8W4 单多单 tensor list 长度，设置 `isSingleMultiSingle` |
-| Tiling | 生成包含 `IS_SINGLE_MULTI_SINGLE` 的 TilingKey                  |
-| Kernel | 根据编译期参数选择 tensor list 取址或连续 offset 更新             |
-| 测试   | 覆盖单多单、多 weightScale、多 bias、非单多单回归                 |
+| 模块 | 说明 |
+| --- | --- |
+| Host | 校验 MxA8W4 单多单 tensor list 长度，设置 `isSingleMultiSingle` |
+| Tiling | 生成包含 `IS_SINGLE_MULTI_SINGLE` 的 TilingKey |
+| Kernel | 根据编译期参数选择 tensor list 取址或连续 offset 更新 |
+| 测试 | 覆盖单多单、多 weightScale、多 bias、antiquantOffset 非空非法路径、非单多单回归 |
 
 ### 9.2 接口列表（与实现对齐）
 
@@ -844,7 +851,7 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t gr
 
 1. 单多单 MxA8W4 场景是否需要补充专门 STC 用例路径。
 2. bias 不存在、bias 多 tensor 存在两种场景是否均纳入测试矩阵。
-3. 是否需要在对外 API 文档中同步说明 `antiquantScaleOptional` / `biasOptional` 与 `weight` 等长要求。
+3. 是否需要在对外 API 文档中同步说明 `antiquantScaleOptional` / `biasOptional` 与 `weight` 等长要求，以及 `antiquantOffsetOptional` 空值要求。
 
 ---
 
@@ -863,5 +870,6 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t gr
 - [ ] bias 不存在：不访问 bias tensor list。
 - [ ] 非法 list size：weightScale 长度与 weight 不一致。
 - [ ] 非法 list size：bias 长度与 weight 不一致。
+- [ ] 非法可选输入：antiquantOffsetOptional 非空。
 - [ ] 非单多单 MxA8W4 回归：`IS_SINGLE_MULTI_SINGLE == 0` 路径行为不变。
 - [ ] TilingKey 白盒检查：MxA8W4 单多单场景生成 `IS_SINGLE_MULTI_SINGLE == 1`。
