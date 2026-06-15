@@ -263,8 +263,8 @@ protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor[STAGES];
     AscendC::LocalTensor<ElementA> l0ATensor[STAGES];
-    AscendC::LocalTensor<ElementB> l1BTensor;
     AscendC::LocalTensor<ElementB> l0BTensor[STAGES];
+    AscendC::LocalTensor<ElementB> l1BTensor;
     AscendC::LocalTensor<ElementAccumulator> l0CTensor[STAGES];
 
     TileMmad tileMmad;
