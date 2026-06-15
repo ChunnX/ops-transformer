@@ -97,14 +97,12 @@ std::tuple<at::Tensor, at::Tensor> npu_sparse_flash_mla(
     auto outputs = MakeSparseFlashMlaOutputs(q, ori_kv, cmp_kv, layoutQStr, layoutKvStr, return_softmax_lse);
     at::Tensor attnOut = std::get<0>(outputs);
     at::Tensor softmaxLse = std::get<1>(outputs);
-    int64_t oriKvStride = 0;
-    int64_t cmpKvStride = 0;
 
     ACLNN_CMD(aclnnSparseFlashMla, q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices, ori_block_table,
               cmp_block_table, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv,
               seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, sinks, metadata, softmax_scale,
               cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layoutQPtr, layoutKvPtr,
-              topk_value_mode, oriKvStride, cmpKvStride, return_softmax_lse, attnOut, softmaxLse);
+              topk_value_mode, return_softmax_lse, attnOut, softmaxLse);
     return {attnOut, softmaxLse};
 }
 

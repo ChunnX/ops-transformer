@@ -504,7 +504,9 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::ProcessVec1SingleBuf(const RunInf
     uint32_t loopCount = (mSplitInfo.vecDealM + mSplitSize - 1) / mSplitSize;
     uint32_t tailSplitSize = mSplitInfo.vecDealM - (loopCount - 1) * mSplitSize;
 
-    SliceAndContactSinksValue((mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) % constInfo.qHeadNum,
+    uint32_t sinkHeadIdx = (info.n2IdxReal * constInfo.gSize + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) %
+                           constInfo.qHeadNum;
+    SliceAndContactSinksValue(sinkHeadIdx,
                               mSplitInfo.vecDealM);
 
     for (uint32_t i = 0, dealSize = mSplitSize; i < loopCount; i++) {

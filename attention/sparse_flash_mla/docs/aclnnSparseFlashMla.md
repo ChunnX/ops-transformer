@@ -106,8 +106,6 @@ aclnnStatus aclnnSparseFlashMlaGetWorkspaceSize(
     char            *layoutQ,
     char            *layoutKv,
     int64_t          topkValueMode,
-    int64_t          oriKvStride,
-    int64_t          cmpKvStride,
     bool             returnSoftmaxLse,
     const aclTensor *attnOut,
     const aclTensor *softmaxLse,
@@ -387,26 +385,6 @@ aclnnStatus aclnnSparseFlashMla(
       <td>输入</td>
       <td>q和cmpKv计算的mask模式。</td>
       <td>CFA/SCFA模式仅支持3（RightDownCausal模式）。SWA模式下该参数不生效。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>oriKvStride（int64_t）</td>
-      <td>输入</td>
-      <td>oriKv block在元素级别的步长。</td>
-      <td>默认值为0。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>cmpKvStride（int64_t）</td>
-      <td>输入</td>
-      <td>cmpKv block在元素级别的步长。</td>
-      <td>默认值为0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -983,7 +961,7 @@ int main()
       oriMaskMode, cmpMaskMode,
       oriWinLeft, oriWinRight,
       layoutQ, layoutKv,
-      1, 0, 0,
+      1,
       false,
       attnOut, softmaxLse,
       &workspaceSize, &executor);
