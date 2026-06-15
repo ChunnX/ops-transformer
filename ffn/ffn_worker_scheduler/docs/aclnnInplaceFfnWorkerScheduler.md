@@ -26,11 +26,11 @@
         %% 输入缓冲区
         A[token_info_buf输入]
 
-        %% Session 层级结构
+        %% Session层级结构
         A --> Session0
         A --> Session1
 
-        %% Session 0 内部结构
+        %% Session 0内部结构
         subgraph Session0[session 0]
             direction TB
             S0_M1[micro batch id 0]:::micro
@@ -39,7 +39,7 @@
             S0_E1[expert ids 0]:::expert
         end
 
-        %% Session 1 内部结构
+        %% Session 1内部结构
         subgraph Session1[session 1]
             direction TB
             S1_M1[micro batch id 0]:::micro
@@ -171,7 +171,7 @@ aclnnStatus aclnnInplaceFfnWorkerScheduler(
       <td>executeMode（int32_t）</td>
       <td>输入</td>
       <td>执行模式。</td>
-      <td>只支持模式0， 表示执行完一次退出。</td>
+      <td>只支持模式0，表示执行完一次退出。</td>
       <td>INT32</td>
       <td>-</td>
       <td>-</td>
@@ -579,7 +579,7 @@ uint32_t UninitFfn(ScheduleContext& schedule_context)
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化, 参考acl API手册
+  // 1.（固定写法）device/stream初始化,参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -628,7 +628,7 @@ int main() {
   // 调用aclnnInplaceFfnWorkerScheduler第二段接口
   ret = aclnnInplaceFfnWorkerScheduler(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnInplaceFfnWorkerScheduler failed. ERROR: %d\n", ret); return ret);
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
@@ -645,7 +645,7 @@ int main() {
   LOG_PRINT("micro_batch_ids_buf_size = %lu.\n", out_schedule_context->ffn.micro_batch_ids_buf_size);
   LOG_PRINT("expert_ids_buf_size = %lu.\n", out_schedule_context->ffn.expert_ids_buf_size);
 
-  // 打印 layer_ids 信息
+  // 打印layer_ids信息
   std::vector<int32_t> layer_ids_buf(out_schedule_context->ffn.layer_ids_buf_size / sizeof(int32_t), 0);
   ret = aclrtMemcpy(layer_ids_buf.data(), out_schedule_context->ffn.layer_ids_buf_size, reinterpret_cast<void *>(
     static_cast<uintptr_t>(out_schedule_context->ffn.layer_ids_buf)), out_schedule_context->ffn.layer_ids_buf_size,
@@ -655,7 +655,7 @@ int main() {
     LOG_PRINT("layer_ids[%d] is: %d\n", i, layer_ids_buf[i]);
   }
 
-  // 打印 session_ids 信息
+  // 打印session_ids信息
   std::vector<int32_t> session_ids_buf(out_schedule_context->ffn.session_ids_buf_size / sizeof(int32_t), 0);
   ret = aclrtMemcpy(session_ids_buf.data(), out_schedule_context->ffn.session_ids_buf_size, reinterpret_cast<void *>(
     static_cast<uintptr_t>(out_schedule_context->ffn.session_ids_buf)), out_schedule_context->ffn.session_ids_buf_size,
@@ -665,7 +665,7 @@ int main() {
     LOG_PRINT("session_ids[%d] is: %d\n", i, session_ids_buf[i]);
   }
 
-  // 打印 micro_batch_ids 信息
+  // 打印micro_batch_ids信息
   std::vector<int32_t> micro_batch_ids_buf(out_schedule_context->ffn.micro_batch_ids_buf_size / sizeof(int32_t), 0);
   ret = aclrtMemcpy(micro_batch_ids_buf.data(), out_schedule_context->ffn.micro_batch_ids_buf_size, reinterpret_cast<void *>(
     static_cast<uintptr_t>(out_schedule_context->ffn.micro_batch_ids_buf)), out_schedule_context->ffn.micro_batch_ids_buf_size,
@@ -675,7 +675,7 @@ int main() {
     LOG_PRINT("micro_batch_ids[%d] is: %d\n", i, micro_batch_ids_buf[i]);
   }
 
-  // 打印 expert_ids 信息
+  // 打印expert_ids信息
   std::vector<int32_t> expert_ids_buf(out_schedule_context->ffn.expert_ids_buf_size / sizeof(int32_t), 0);
   ret = aclrtMemcpy(expert_ids_buf.data(), out_schedule_context->ffn.expert_ids_buf_size, reinterpret_cast<void *>(
     static_cast<uintptr_t>(out_schedule_context->ffn.expert_ids_buf)), out_schedule_context->ffn.expert_ids_buf_size,

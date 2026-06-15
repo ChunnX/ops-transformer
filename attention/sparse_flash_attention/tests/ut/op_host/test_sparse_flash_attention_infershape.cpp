@@ -39,8 +39,8 @@ TEST_F(SparseFlashAttentionProto, SparseFlashAttention_infershape_0)
         {
             {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
             {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // key              input1
-            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},              // sparse_indices   input2
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // value            input3
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // value            input2
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},              // sparse_indices   input3
             {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                      // block_table      input4
             {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
             {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_kv 
@@ -83,8 +83,8 @@ TEST_F(SparseFlashAttentionProto, SparseFlashAttention_infershape_1)
         {
             {{{2, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // query            input0
             {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // key              input1
-            {{{2, 1, 206}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},            // sparse_indices   input2
-            {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // value            input3
+            {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // value            input2
+            {{{2, 1, 206}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},            // sparse_indices   input3
             {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                  // block_table      input4
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},      // actual_seq_lengths_query
             {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},     // actual_seq_lengths_kv 
@@ -127,8 +127,8 @@ TEST_F(SparseFlashAttentionProto, SparseFlashAttention_infershape_2)
         {
             {{{3, 13754, 8, 512}, {3, 13754, 8, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},        // query            input0
             {{{3, 13754, 1, 512}, {3, 13754, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},        // key              input1
-            {{{3, 13754, 1, 32}, {3, 13754, 1, 32}}, ge::DT_INT32, ge::FORMAT_ND},            // sparse_indices   input2
-            {{{3, 13754, 1, 512}, {3, 13754, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},        // value            input3
+            {{{3, 13754, 1, 512}, {3, 13754, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},        // value            input2
+            {{{3, 13754, 1, 32}, {3, 13754, 1, 32}}, ge::DT_INT32, ge::FORMAT_ND},            // sparse_indices   input3
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                  // block_table      input4
             {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},      // actual_seq_lengths_query
             {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},     // actual_seq_lengths_kv 
@@ -160,48 +160,6 @@ TEST_F(SparseFlashAttentionProto, SparseFlashAttention_infershape_2)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);   // 比对成功返回SUCCESS
 }
 
-
-// BSND, value optional omitted
-TEST_F(SparseFlashAttentionProto, SparseFlashAttention_infershape_value_optional_null)
-{
-    gert::InfershapeContextPara infershapeContextPara(
-        "SparseFlashAttention",
-        {
-            {{{1, 64, 8, 128}, {1, 64, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},   // query            input0
-            {{{1, 128, 1, 128}, {1, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key              input1
-            {{{1, 64, 1, 4}, {1, 64, 1, 4}}, ge::DT_INT32, ge::FORMAT_ND},         // sparse_indices   input2
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // value            input3 optional
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                               // block_table      input4
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                               // actual_seq_lengths_query
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                               // actual_seq_lengths_kv
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // query_rope       input7
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}                              // key_rope         input8
-        },
-        {
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
-        },
-        {
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0883883476f)},
-            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
-        });
-
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {1, 64, 8, 128},
-        {0},
-        {0}
-    };
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
-}
-
 // infer dataType
 TEST_F(SparseFlashAttentionProto, SparseFlashAttention_inferdtype)
 {
@@ -221,7 +179,7 @@ TEST_F(SparseFlashAttentionProto, SparseFlashAttention_inferdtype)
                 .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                 .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
                 .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-                .InputDataTypes({&input_ref1, &input_ref1, &input_ref2, &input_ref1, &input_ref2, &input_ref2, &input_ref2, &input_ref1, &input_ref1})
+                .InputDataTypes({&input_ref1, &input_ref1, &input_ref1, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref1, &input_ref1})
                 .NodeAttrs({   
                     {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666)},
                     {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},

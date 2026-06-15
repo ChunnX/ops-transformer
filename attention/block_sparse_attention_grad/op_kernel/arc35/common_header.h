@@ -17,29 +17,42 @@ static constexpr uint32_t BSND = 0;
 static constexpr uint32_t BNSD = 1;
 static constexpr uint32_t TND = 2;
 
+static constexpr uint32_t QK = 10;
+static constexpr uint32_t DYV = 11;
+static constexpr uint32_t DQ = 12;
+static constexpr uint32_t DK = 13;
+static constexpr uint32_t DV = 14;
+
 static constexpr uint32_t C0_SIZE = 16;
-static constexpr uint32_t FLAG_C1_V1 = 0;      // cube(qk) -> vec(softmax)
-static constexpr uint32_t FLAG_C2_V2 = 1;      // cube(dyV) -> vec(softmaxGrad)
-static constexpr uint32_t FLAG_V1_C3 = 2;      // vec(softmax) -> cube(dv)
-static constexpr uint32_t FLAG_V2_C45 = 3;     // vec(softmaxGrad) -> cube(dq\dk)
-static constexpr uint32_t FLAG_CUBE_POST = 4;   // vec(softmaxGrad) -> cube(dq\dk)
+static constexpr uint32_t FLAG_C1_V1 = 0;     // cube(qk) -> vec(softmax)
+static constexpr uint32_t FLAG_C2_V2 = 1;     // cube(dyV) -> vec(softmaxGrad)
+static constexpr uint32_t FLAG_V1_C3 = 2;     // vec(softmax) -> cube(dv)
+static constexpr uint32_t FLAG_V2_C45 = 3;    // vec(softmaxGrad) -> cube(dq\dk)
+static constexpr uint32_t FLAG_CUBE_POST = 4; // vec(softmaxGrad) -> cube(dq\dk)
 
 struct RunTimeInfo {
     int32_t taskId{0};
-    int32_t bIdx{0};           // 当前计算的batch的idx
-    int32_t n1Idx{0};          // 当前计算的q_head的idx
-    int32_t n2Idx{0};          // 当前计算的kv_head的idx
-    int32_t s1Idx{0};          // 当前计算的q_seq的起始idx
-    int32_t s2Idx{0};          // 当前计算的kv_seq的起始idx
-    int32_t s1Len{0};          // 当前计算的q_seq的长度
-    int32_t s2Len{0};          // 当前计算的kv_seq的长度
-    int32_t s1LenAlign{0};     // 当前计算的q_seq的16对齐的长度
-    int32_t s2LenAlign{0};     // 当前计算的kv_seq的16对齐的长度
+    int32_t bIdx{0};       // 当前计算的batch的idx
+    int32_t n1Idx{0};      // 当前计算的q_head的idx
+    int32_t n2Idx{0};      // 当前计算的kv_head的idx
+    int32_t s1Idx{0};      // 当前计算的q_seq的起始idx
+    int32_t s2Idx{0};      // 当前计算的kv_seq的起始idx
+    int32_t s1Len{0};      // 当前计算的q_seq的长度
+    int32_t s2Len{0};      // 当前计算的kv_seq的长度
+    int32_t s1LenAlign{0}; // 当前计算的q_seq的16对齐的长度
+    int32_t s2LenAlign{0}; // 当前计算的kv_seq的16对齐的长度
+    int32_t last_q_seq_sum{0};
+    int32_t last_kv_seq_sum{0};
+    int32_t cur_q_seq_len{0};
+    int32_t cur_kv_seq_len{0};
+    int32_t need_compute{0};     // 是否存在任务需要计算
+    int32_t need_copy_kv{0};     // 是否需要copy kv
+    int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
+    int32_t is_singlekv_last{0};
     uint64_t queryGmOffset{0}; // query gm offset
     uint64_t keyGmOffset{0};   // key gm offset
     uint64_t lseGmOffset{0};   // lse gm offset
     uint64_t sftgGmOffset{0};  // softmaxGradFront gm offset
-    int32_t need_compute{0};   // 是否存在任务需要计算
 };
 
 

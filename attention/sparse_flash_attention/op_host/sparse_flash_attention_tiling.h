@@ -28,8 +28,8 @@ namespace optiling {
 // Inputs Index
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t KEY_INPUT_INDEX = 1;
-constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 2;
-constexpr uint32_t VALUE_INPUT_INDEX = 3;
+constexpr uint32_t VALUE_INPUT_INDEX = 2;
+constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 3;
 constexpr uint32_t BLOCK_TABLE_INPUT_INDEX = 4;
 constexpr uint32_t ACT_SEQ_LEN_Q_INPUT_INDEX = 5;
 constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 6;
@@ -140,7 +140,6 @@ struct SFAParaInfo {
     const int64_t *nextTokens = nullptr;
     const int64_t *attentionMode = nullptr;
     const bool *returnSoftmaxLse = nullptr;
-    bool kvMerge = false;
 };
 
 struct InnerSplitParams {
@@ -169,7 +168,6 @@ TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
-TILING_DATA_FIELD_DEF(uint32_t, kvMerge)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionBaseParamsMlaOp, SparseFlashAttentionBaseParamsMla)
 
@@ -265,7 +263,6 @@ struct SFATilingInfo {
     int64_t nextTokens = INT64_MAX;
     uint32_t attentionMode = 0;
     bool returnSoftmaxLse = false;
-    bool kvMerge = false;
 
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKvType = ge::DT_FLOAT16;

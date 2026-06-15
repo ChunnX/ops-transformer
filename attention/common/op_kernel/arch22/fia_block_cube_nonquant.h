@@ -79,11 +79,6 @@ public:
     __aicore__ inline void ComputeMm2(const RunInfo &info);
 
 protected:
-    template <typename T> __aicore__ inline T Align(T num, T rnd)
-    {
-        return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
-    }
-
     template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
     {
         if constexpr (IsSameType<T, int4b_t>::value) {
@@ -492,7 +487,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::CopyKeyToL1(const RunInfo &in
     if (nopeDealSize > 0) {
         FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
             .tensor = kvL1Tensor[l1Offset],
-            .rowCount = Align(nDealSize, 16U)
+            .rowCount = AttentionCommon::Align(nDealSize, 16U)
         };
         GmKvCoord gmCoord {
             .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
@@ -507,8 +502,8 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::CopyKeyToL1(const RunInfo &in
     if (ropeDealSize > 0) {
         // nopeDealSize需要按照32B对齐, 否则这里取偏移的方式错误, 并且当前分段拷贝存在问题
         FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
-            .tensor = kvL1Tensor[l1Offset + Align(nopeDealSize, 16U) * Align(nDealSize, 16U)],
-            .rowCount = Align(nDealSize, 16U)
+            .tensor = kvL1Tensor[l1Offset + AttentionCommon::Align(nopeDealSize, 16U) * AttentionCommon::Align(nDealSize, 16U)],
+            .rowCount = AttentionCommon::Align(nDealSize, 16U)
         };
         GmKvCoord gmCoord {
             .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
@@ -528,7 +523,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::CopyValueToL1(const RunInfo &
 {
     FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
         .tensor = kvL1Tensor[l1Offset],
-        .rowCount = Align(kDealSize, 16U)
+        .rowCount = AttentionCommon::Align(kDealSize, 16U)
     };
     GmKvCoord gmCoord {
         .bIdx = constInfo.batchContinuous ? info.bIdx : 0U,
@@ -549,7 +544,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::CopyPrefixAndKeyToL1(const Ru
 {
     FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
         .tensor = kvL1Tensor[l1Offset],
-        .rowCount = Align(nDealSize, 16U)
+        .rowCount = AttentionCommon::Align(nDealSize, 16U)
     };
     // 得出前缀和后缀的处理长度
     uint32_t s2StartIdx = info.s2Idx * constInfo.s2BaseSize + nStart;
@@ -594,7 +589,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::CopyPrefixAndValueToL1(const 
 {
     FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
         .tensor = kvL1Tensor[l1Offset],
-        .rowCount = Align(kDealSize, 16U)
+        .rowCount = AttentionCommon::Align(kDealSize, 16U)
     };
     uint32_t s2StartIdx = info.s2Idx * constInfo.s2BaseSize + kStart;
     uint32_t prefixDealSize = s2StartIdx > constInfo.systemPrefixLen ? 0U : (constInfo.systemPrefixLen - s2StartIdx);
@@ -656,7 +651,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::CopyQGmToL1(uint32_t nopeDeal
     if(nopeDealSize > 0) {
         CopyQDealSizeToL1(nopeDealSize, queryL1BaseOffset, mActSizeAlign, bIdx, n2Idx, gS1Idx, kStart, mActSize, queryGmTensor);
     }
-    uint64_t queryRopeL1Offset = queryL1BaseOffset + Align(nopeDealSize, 16U) * mActSizeAlign;
+    uint64_t queryRopeL1Offset = queryL1BaseOffset + AttentionCommon::Align(nopeDealSize, 16U) * mActSizeAlign;
     if(ropeDealSize > 0) {
         uint32_t ropeKStart = kStart + nopeDealSize - static_cast<uint32_t>(constInfo.headDim);
         CopyQDealSizeToL1(ropeDealSize, queryRopeL1Offset, mActSizeAlign, bIdx, n2Idx, gS1Idx, ropeKStart, mActSize, queryRopeGmTensor);
@@ -689,7 +684,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm1SingleMKN(const RunInf
         if (m + M_BASE > mDealSize) {
             mActSize = mDealSize - m;
         }
-        uint32_t mActSizeAlign = Align(mActSize, 16U);
+        uint32_t mActSizeAlign = AttentionCommon::Align(mActSize, 16U);
         // QK 首次S2循环拷贝Q
         if (nStart == 0) {
             WaitFlag<HardEvent::MTE1_MTE2>(QP_EVENT0 + qpBufId % 2);
@@ -708,13 +703,13 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm1SingleMKN(const RunInf
         // matmul k
         WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId % 2);
         LocalTensor<T> cL0Tensor = cL0TensorPingPong[(l0cBufId % 2) * (L0C_PP_SIZE / sizeof(MM_OUT_T))];
-        uint32_t kDealSizeAlign = Align(nopeDealSize, 16U) + Align(ropeDealSize, 16U);
+        uint32_t kDealSizeAlign = AttentionCommon::Align(nopeDealSize, 16U) + AttentionCommon::Align(ropeDealSize, 16U);
         for (uint32_t k = 0; k < kDealSizeAlign; k += K_BASE) {
             uint32_t kActSize = K_BASE;
             if (k + K_BASE > kDealSizeAlign) {
                 kActSize = kDealSizeAlign - k;
             }
-            uint32_t kActSizeAlign = Align(kActSize, 16U);
+            uint32_t kActSizeAlign = AttentionCommon::Align(kActSize, 16U);
             WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + l0abBufId % 2);
             LocalTensor<Q_T> aL0Tensor = aL0TensorPingPong[(l0abBufId % 2) * (L0A_PP_SIZE / sizeof(Q_T))];
             LocalTensor<KV_T> bL0Tensor = bL0TensorPingPong[(l0abBufId % 2) * (L0B_PP_SIZE / sizeof(KV_T))];
@@ -734,10 +729,10 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm1SingleMKN(const RunInf
             }
             // LoadBToL0
             {
-                uint64_t kL1Offset = (kvBufId % 2) * (L1_KV_SIZE / sizeof(KV_T)) + k * Align(nDealSize, 16U);
+                uint64_t kL1Offset = (kvBufId % 2) * (L1_KV_SIZE / sizeof(KV_T)) + k * AttentionCommon::Align(nDealSize, 16U);
                 LoadData2DParams loadData2DParams;
                 loadData2DParams.startIndex = 0;
-                loadData2DParams.repeatTimes = (kActSizeAlign / 16) * (Align(nDealSize, 16U) / 16);
+                loadData2DParams.repeatTimes = (kActSizeAlign / 16) * (AttentionCommon::Align(nDealSize, 16U) / 16);
                 loadData2DParams.srcStride = 1;
                 loadData2DParams.dstGap = 0;
                 loadData2DParams.ifTranspose = false;
@@ -821,7 +816,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm2SingleMKN(const RunInf
         if (m + M_BASE > mDealSize) {
             mActSize = mDealSize - m;
         }
-        uint32_t mActSizeAlign = Align(mActSize, 16U);
+        uint32_t mActSizeAlign = AttentionCommon::Align(mActSize, 16U);
         if (nStart == 0) {
             WaitFlag<HardEvent::MTE1_MTE2>(QP_EVENT0 + qpBufId % 2);
             // CopySoftmaxResGmToL1
@@ -859,7 +854,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm2SingleMKN(const RunInf
             }
 
             WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + l0abBufId % 2);
-            uint32_t kActSizeAlign = Align(kActSize, 16U);
+            uint32_t kActSizeAlign = AttentionCommon::Align(kActSize, 16U);
             LocalTensor<Q_T> aL0Tensor = aL0TensorPingPong[(l0abBufId % 2) * (L0A_PP_SIZE / sizeof(Q_T))];
             LocalTensor<KV_T> bL0Tensor = bL0TensorPingPong[(l0abBufId % 2) * (L0B_PP_SIZE / sizeof(KV_T))];
             // LoadAToL0
@@ -883,11 +878,11 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm2SingleMKN(const RunInf
                 for (uint32_t i = 0; i < kLoop; i++) {
                     LoadData2DParams loadData2DParams;
                     loadData2DParams.startIndex = i;
-                    loadData2DParams.repeatTimes = Align(nDealSize, 16U) / 16;
-                    loadData2DParams.srcStride = Align(kDealSize, 16U) / 16;
+                    loadData2DParams.repeatTimes = AttentionCommon::Align(nDealSize, 16U) / 16;
+                    loadData2DParams.srcStride = AttentionCommon::Align(kDealSize, 16U) / 16;
                     loadData2DParams.dstGap = 0;
                     loadData2DParams.ifTranspose = true;
-                    LoadData(bL0Tensor[16 * i * Align(nDealSize, 16U)], kvL1Tensor[kL1Offset], loadData2DParams);
+                    LoadData(bL0Tensor[16 * i * AttentionCommon::Align(nDealSize, 16U)], kvL1Tensor[kL1Offset], loadData2DParams);
                 }
             }
             SetFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + l0abBufId % 2);
@@ -960,7 +955,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::ComputeMm1(const RunInfo &inf
     uint32_t nSize = info.actualSingleProcessSInnerSize;
 
     if (constInfo.ropeSplitMode) {
-        kSize = Align(constInfo.headDim, 16UL) + constInfo.headDimRope;
+        kSize = AttentionCommon::Align(constInfo.headDim, 16UL) + constInfo.headDimRope;
     }
     for (uint32_t kStart = 0; kStart < kSize; kStart += K_SPLIT_SIZE) {
         uint32_t kDealSize = K_SPLIT_SIZE;
@@ -974,8 +969,8 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::ComputeMm1(const RunInfo &inf
         if (constInfo.ropeSplitMode) {
             if ((kStart < constInfo.headDim) && (kStart + kDealSize > constInfo.headDim)) {
                 nopeDealSize = constInfo.headDim - kStart;
-                // kDealSize -= Align(constInfo.headDim, 16UL) - constInfo.headDim;
-                ropeDealSize = kStart + kDealSize - Align(constInfo.headDim, 16UL);
+                // kDealSize -= AttentionCommon::Align(constInfo.headDim, 16UL) - constInfo.headDim;
+                ropeDealSize = kStart + kDealSize - AttentionCommon::Align(constInfo.headDim, 16UL);
             } else if (kStart >= constInfo.headDim) {
                 nopeDealSize = 0;
                 ropeDealSize = kDealSize;

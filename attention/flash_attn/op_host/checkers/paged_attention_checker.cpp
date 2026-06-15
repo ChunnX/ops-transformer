@@ -38,25 +38,27 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
     }
 
     OP_CHECK_IF(faInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || faInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16,
-                OP_LOGE(faInfo.opName, "block_size only support [16, 1024], the current is %d.", faInfo.blockSize),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
+            "The value of block_size must be within the range [16, 1024]"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(faInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
-                OP_LOGE(faInfo.opName, "block_size must be 16 aligned, the current is %d.", faInfo.blockSize),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size", std::to_string(faInfo.blockSize).c_str(),
+            "The value of block_size must be 16-aligned"),
                 return ge::GRAPH_FAILED);
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     // 这里和存在性校验冲突了，但是为了在单参数校验校验dtype需要先判空
-    OP_CHECK_IF(blockTableTensor == nullptr, OP_LOGE(faInfo.opName, "block_table tensor is null pointer!"),
+    OP_CHECK_IF(blockTableTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "block_table"),
                 return ge::GRAPH_FAILED);
 
     const gert::CompileTimeTensorDesc *blockTableDesc = faInfo.opParamInfo.blockTable.desc;
-    OP_CHECK_IF(blockTableDesc == nullptr, OP_LOGE(faInfo.opName, "block_table desc is null pointer!"),
+    OP_CHECK_IF(blockTableDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(faInfo.opName, "TensorDesc of block_table"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(blockTableDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "block_table dtype must be INT32, but got %s",
-                        DataTypeToSerialString(blockTableDesc->GetDataType()).c_str()),
+                OP_LOGE_FOR_INVALID_DTYPE(faInfo.opName, "block_table",
+                        Ops::Base::ToString(blockTableDesc->GetDataType()).c_str(), "INT32"),
                 return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(blockTableDesc, BLOCK_TABLE_NAME)) {
@@ -64,8 +66,9 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
     }
 
     uint32_t dimNum = blockTableTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != 2, OP_LOGE(faInfo.opName, "block_table dim num must be 2, but got %u", dimNum),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dimNum != 2,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(faInfo.opName, "block_table", (std::to_string(dimNum) + "D").c_str(), "2D"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -78,7 +81,8 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const FaTilingInfo &fa
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     OP_CHECK_IF(blockTableTensor == nullptr,
-                OP_LOGE(faInfo.opName, "block_table must be provided when PagedAttention is enabled."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_table", "empty",
+            "When PagedAttention is enabled, block_table cannot be empty"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -92,11 +96,12 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     int64_t dim0 = blockTableTensor->GetStorageShape().GetDim(0);
-
-    OP_CHECK_IF(
-        dim0 != faInfo.bSize,
-        OP_LOGE(faInfo.opName, "block_table first dim(%ld) must be equal to batch size(%ld).", dim0, faInfo.bSize),
-        return ge::GRAPH_FAILED);
+    if (dim0 != faInfo.bSize) {
+        std::string shapeStr = Ops::Base::ToString(blockTableTensor->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "block_table", shapeStr.c_str(),
+            ("The first dim of block_table must be equal to the batch size " + std::to_string(faInfo.bSize)).c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

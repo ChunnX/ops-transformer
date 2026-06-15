@@ -20,12 +20,12 @@ RainFusionAttention是一个基于CATLASS模板库实现的高性能稀疏注意
 ```cpp
 aclnnStatus aclnnRainFusionAttentionGetWorkspaceSize(
     const aclTensor *query,                    // Query输入 [B, S, H] or [T, N, D] or [B, N, S, D]
-    const aclTensor *key,                      // Key输入 (TND or BNSD格式)
-    const aclTensor *value,                    // Value输入 (TND or BNSD格式)
+    const aclTensor *key,                      // Key输入(TND or BNSD格式)
+    const aclTensor *value,                    // Value输入(TND or BNSD格式)
     const aclTensor *attenMask,                // Attention mask (可选)
-    const aclIntArray *actualSeqLengths,       // 实际Q序列长度 (可选)
-    const aclIntArray *actualSeqLengthsKv,     // 实际KV序列长度 (可选)
-    const aclTensor *blockTable,               // Block表 (可选,用于PagedAttention)
+    const aclIntArray *actualSeqLengths,       // 实际Q序列长度(可选)
+    const aclIntArray *actualSeqLengthsKv,     // 实际KV序列长度(可选)
+    const aclTensor *blockTable,               // Block表(可选,用于PagedAttention)
     const aclTensor *selectIdx,                // 稀疏块索引 [T, headNum, maxKvBlockNum]
     const aclTensor *selectNumIdx,             // 每个Q块的KV块数量 [T, headNum]
     const char *qInputLayout,                  // Q输入布局: "BSH", "TND", "BNSD"
@@ -35,7 +35,7 @@ aclnnStatus aclnnRainFusionAttentionGetWorkspaceSize(
     double scaleValue,                         // 缩放因子
     const aclIntArray *blockShape,             // 块形状 [blockShapeX, blockShapeY]
     const aclTensor *attentionOut,             // 输出tensor
-    const aclTensor *softmaxLse,               // Softmax LSE输出 (可选)
+    const aclTensor *softmaxLse,               // Softmax LSE输出(可选)
     uint64_t *workspaceSize,                   // 返回workspace大小
     aclOpExecutor **executor);                 // 返回executor
 ```
@@ -78,7 +78,7 @@ aclnnStatus aclnnRainFusionAttention(
 ### 输出参数
 
 - **attentionOut**: 注意力输出,shape与query相同
-- **softmaxLse**: Softmax log-sum-exp输出 (可选)
+- **softmaxLse**: Softmax log-sum-exp输出(可选)
 
 ## 使用示例
 
@@ -133,7 +133,7 @@ if (ret == ACLNN_SUCCESS) {
 
 - BNSD格式暂未实现，计划在未来版本中支持
 - 如需使用BNSD格式的KV cache，请先转换为TND格式
-- 转换方法：将BNSD [B, N, S, D] reshape为 TND [B*S, N, D]
+- 转换方法：将BNSD [B, N, S, D] reshape为TND [B*S, N, D]
 
 ## 稀疏模式说明
 

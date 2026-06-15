@@ -537,7 +537,7 @@ __aicore__ inline int64_t SMLAVectorBlock<SMLAT>::GetKeyGmOffset(int64_t realS2I
         return -1;
     }
     int64_t realKeyGmOffset = 0;
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         int64_t blkTableIdx = realS2Idx / constInfo.paCmpBlockSize;
         int64_t blkTableOffset = realS2Idx % constInfo.paCmpBlockSize;
         realKeyGmOffset = cmpBlockTableGm_.GetValue(runInfo.bIdx * constInfo.cmpMaxBlockNumPerBatch + blkTableIdx) *
@@ -569,7 +569,7 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::CopyInSingleKv(int64_t &mte2Size,
     intriParams.dstStride = 0;
     intriParams.srcStride = 0;
     DataCopyPadExtParams<KV_T> padParams;
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         DataCopyPad(
             kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * constInfo.headDim],
             cmpKvGm_[keyBNBOffset], intriParams, padParams);
@@ -594,7 +594,7 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::CopyInKv(int64_t &mte2Size, int64
     }
 
     int64_t keySrcStride = 0;
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         int64_t blkTableSrcStride =
         ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
         (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize * constInfo.headDim);
@@ -625,7 +625,7 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::CopyInKv(int64_t &mte2Size, int64
         if (keyOffset2 > -1 && keyOffset2 < keyOffset1) {
             startGmOffset = keyOffset2;
         }
-        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
             DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) +
                               (mte2Size - mte3Size) * constInfo.headDim],
                     cmpKvGm_[startGmOffset], intriParams, padParams);

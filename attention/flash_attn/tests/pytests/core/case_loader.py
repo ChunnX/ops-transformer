@@ -58,6 +58,13 @@ def normalize_params(raw: dict) -> dict:
         if "seqused_kv" not in c:
             c["seqused_kv"] = [c.get("S2", c.get("S1"))] * c.get("B", 1)
 
+        if layout_kv_val == "PA_NZ":
+            dtype_str = c.get("Dtype", "fp16")
+            nz_blk_elem = 16 if dtype_str in ("fp16", "bf16") else 32
+            c["nz_blk_elem"] = nz_blk_elem
+            c["D_nz_sub"] = c["D"] // nz_blk_elem
+            c["DV_nz_sub"] = c.get("DV", c["D"]) // nz_blk_elem
+
         # 用例提供了 block_table 直接用，不重新生成
         if c.get("block_table") is not None and isinstance(c.get("block_table"), list):
             bt_raw = c["block_table"]

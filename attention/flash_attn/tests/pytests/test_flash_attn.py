@@ -11,6 +11,7 @@
 
 import sys
 import os
+import gc
 import argparse
 import torch
 from pathlib import Path
@@ -50,7 +51,7 @@ if __name__ == "__main__":
     parser.add_argument("--perf_cold_thr", type=int, default=16)
     parser.add_argument("--perf_output", type=str,  default="./perf_output")
     parser.add_argument("--skip_accuracy", action="store_true")
-    parser.add_argument("--result_csv", type=str, default="result.csv", help="精度结果 CSV 输出路径")
+    parser.add_argument("--result_csv", type=str, default="attention/flash_attn/tests/pytests/result.csv", help="精度结果 CSV 输出路径")
     parser.add_argument("--one_by_one", action="store_true", help="逐个 case 执行，每个完成后暂停")
     args = parser.parse_args()
 
@@ -186,30 +187,20 @@ if __name__ == "__main__":
     else:
         try:
             from core.backends.npu import NPUBackend
-            primary = NPUBackend(args.device_id)
+            primary = NPUBackend(args.device_id, meta_only=args.meta_only)
         except ImportError:
             print("[ERROR] NPU backend 不可用"); sys.exit(1)
 
     from core.backends.cpu import CPUBackend
     golden = CPUBackend()
     comparators = []
-    if args.compare_mode and args.use_gpu:
-        try:
-            from core.backends.npu import NPUBackend
-            comparators = [NPUBackend(args.device_id)]
-        except ImportError:
-            pass
-    elif args.compare_mode and not args.use_gpu:
-        try:
-            from core.backends.gpu import GPUBackend
-            comparators = [GPUBackend(args.gpu_device)]
-        except ImportError:
-            pass
 
     # ── 逐 case 执行 ──
     reporter = Reporter()
     if args.result_csv:
-        reporter.set_csv(Path(args.result_csv))
+        csv_path = Path(args.result_csv)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        reporter.set_csv(csv_path)
     for i, name in enumerate(run_cases):
         params = normalize_params(all_cases[name])
         layout = params.get("input_layout", "BNSD")
@@ -274,6 +265,12 @@ if __name__ == "__main__":
                                "total": -1, "fail_ratio": float('nan')}}
 
         reporter.record(name, result, error=err, dtype=dtype)
+
+        del result, params
+        gc.collect()
+        if torch.npu.is_available():
+            torch.npu.empty_cache()
+
         if args.report_interval > 0 and (i + 1) % args.report_interval == 0 \
                 and (i + 1) < len(run_cases):
             reporter.print_interim(len(run_cases))

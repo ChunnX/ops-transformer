@@ -54,7 +54,7 @@ bash test_run.sh single
 | 命令 | 功能 |
 |------|------|
 | `batch_save` | 从excel读取用例 → golden计算 → 保存pt文件 |
-| `batch_exec` | 读取pt文件 → NPU测试（需先 `batch_save`） |
+| `batch_exec` | 读取pt文件 → NPU测试（需先`batch_save`） |
 | `batch` | 全流程：`batch_save` + `batch_exec`，默认完成后清理pt文件 |
 
 ##### 选项参数
@@ -64,7 +64,7 @@ bash test_run.sh single
 | `--excel <路径>` | 指定excel文件路径 | `./excel/example.xlsx` | batch_save / batch_exec / batch |
 | `--sheet <名称>` | 指定excel sheet名 | `decode` | batch_save / batch |
 | `--pt-dir <目录>` | 指定pt文件保存/读取目录 | `qsmla_testcase` | batch_save / batch_exec / batch |
-| `--keep-pt` | 执行完成后保留pt文件 | 默认清理 | 仅 batch |
+| `--keep-pt` | 执行完成后保留pt文件 | 默认清理 | 仅batch |
 
 ##### 使用示例
 ``` bash

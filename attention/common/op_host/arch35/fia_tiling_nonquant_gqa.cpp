@@ -16,6 +16,7 @@
 #include "fia_tiling_nonquant_gqa.h"
 #include <map>
 #include <vector>
+#include <tuple>
 #include <numeric>
 #include <algorithm>
 #include <graph/utils/type_utils.h>
@@ -31,6 +32,61 @@ using namespace AscendC;
 namespace optiling {
 using namespace arch35FIA;
 constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
+
+uint64_t GetGqaAlignedD(uint64_t val, const std::vector<uint64_t> &candidates)
+{
+    for (auto c : candidates) {
+        if (val <= c) {
+            return c;
+        }
+    }
+    return val;
+}
+
+using ConfigGqaSplitKey = std::tuple<uint64_t, uint64_t, uint64_t, uint64_t>;
+
+const std::map<ConfigGqaSplitKey, uint64_t> &GetGqaSplitConfigMap()
+{
+    static const std::map<ConfigGqaSplitKey, uint64_t> configMap = {
+        {std::make_tuple(SOUTER_64, SINNER_64, DSIZE_256, DSIZE_256),
+         Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256},
+        {std::make_tuple(SOUTER_64, SINNER_64, DSIZE_512, DSIZE_512),
+         Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_64, DSIZE_64),
+         Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_128, DSIZE_128),
+         Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_64, DSIZE_64),
+         Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_128, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_192, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_256, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_256, DSIZE_256),
+         Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_512, DSIZE_512),
+         Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512},
+        {std::make_tuple(SOUTER_128, SINNER_256, DSIZE_64, DSIZE_64),
+         Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64},
+        {std::make_tuple(SOUTER_64, SINNER_128, DSIZE_576, DSIZE_512),
+         Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_256, DSIZE_256),
+         Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256},
+        {std::make_tuple(SOUTER_128, SINNER_256, DSIZE_128, DSIZE_128),
+         Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_128, DSIZE_64),
+         Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_64, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_128, DSIZE_64),
+         Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_64, DSIZE_128),
+         Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128},
+    };
+    return configMap;
+}
 
 void FiaTilingNonQuantArch35::InitTilingInfo(TilingInfo *tilingInfo)
 {
@@ -628,66 +684,17 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyConfig()
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512) {
         dSize = fiaInfo_->qkHeadDim + fiaInfo_->ropeHeadDim;
     }
-    if (dSize <= DSIZE_64)
-        dSize = DSIZE_64;
-    else if (dSize <= DSIZE_128)
-        dSize = DSIZE_128;
-    else if (dSize <= DSIZE_256)
-        dSize = DSIZE_256;
-    else if (dSize <= DSIZE_512)
-        dSize = DSIZE_512;
-    else if (dSize <= DSIZE_576)
-        dSize = DSIZE_576;
+    dSize = GetGqaAlignedD(dSize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512, DSIZE_576});
+    dVsize = GetGqaAlignedD(dVsize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512});
 
-    if (dVsize <= DSIZE_64)
-        dVsize = DSIZE_64;
-    else if (dVsize <= DSIZE_128)
-        dVsize = DSIZE_128;
-    else if (dVsize <= DSIZE_256)
-        dVsize = DSIZE_256;
-    else if (dVsize <= DSIZE_512)
-        dVsize = DSIZE_512;
-
-    if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-        if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT) {
+    const auto &configMap = GetGqaSplitConfigMap();
+    auto it = configMap.find(std::make_tuple(sOuter, sInner, dSize, dVsize));
+    if (it != configMap.end()) {
+        tilingKeyInfo_.config = it->second;
+        if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_128 &&
+            fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT) {
             tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128;
-        } else {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128;
         }
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_192 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_128 && dSize == DSIZE_576 && dVsize == DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64; // qkvd不等长
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128; // qkvd不等长
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64; // qkvd不等长
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128; // qkvd不等长
     } else {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
     }

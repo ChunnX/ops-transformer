@@ -13,8 +13,8 @@
 
 ## 功能说明
 
-- **算子功能**：`MhcPreBackward` 是 `MhcPre` 的反向算子，用于计算 mHC（Manifold-Constrained Hyper-Connections）结构中的反向梯度。
-- **主要输出**：`gradX`、`gradPhi`、`gradAlpha`、`gradBias`，以及在 `gamma != nullptr` 时输出 `gradGamma`。
+- **算子功能**：`MhcPreBackward`是`MhcPre`的反向算子，用于计算mHC（Manifold-Constrained Hyper-Connections）结构中的反向梯度。
+- **主要输出**：`gradX`、`gradPhi`、`gradAlpha`、`gradBias`，以及在`gamma != nullptr`时输出`gradGamma`。
 - **前向缓存依赖**：`invRms`、`hMix`、`hPre`、`hPost`。
 - **可选输入**：`gamma`、`gradXPostOptional`。
 - **计算公式**：
@@ -172,11 +172,11 @@
 
 ## 约束说明
 
-- `N` 当前仅支持 `4`、`6`、`8` 三种取值。
-- `D` 支持 `1~16384`，且需满足 `64` 元素对齐。
+- `N`当前仅支持`4`、`6`、`8`三种取值。
+- `D`支持`1~16384`，且需满足`64`元素对齐。
 
 ## 调用说明
 
 | 调用方式 | 调用样例 | 说明 |
 | :--- | :--- | :--- |
-| aclnn调用 | [test_aclnn_mhc_pre_backward.cpp](examples/test_aclnn_mhc_pre_backward.cpp) | 通过[aclnnMhcPreBackward](docs/aclnnMhcPreBackward.md) 接口方式调用MhcPreBackward算子。 |
+| aclnn调用 | [test_aclnn_mhc_pre_backward.cpp](examples/test_aclnn_mhc_pre_backward.cpp) | 通过[aclnnMhcPreBackward](docs/aclnnMhcPreBackward.md)接口方式调用MhcPreBackward算子。 |
