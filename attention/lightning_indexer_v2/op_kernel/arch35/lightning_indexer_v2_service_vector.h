@@ -273,10 +273,10 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const LIV2Common::RunInfo &runInfo)
 {
     uint32_t paddingLen = runInfo.curCuSeqlensQ - runInfo.curSequsedQ;
-    uint64_t indiceOutPaddingOffset = runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.topk;
-    uint64_t indicePaddingDealSize = paddingLen * constInfo_.kHeadNum * constInfo_.topk;
-    GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[indiceOutPaddingOffset];
-    AscendC::InitGlobalMemory(indiceOutPaddingStart, indicePaddingDealSize, constInfo_.INVALID_IDX);
+    uint64_t paddingOffset = runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.topk;
+    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.topk;
+    GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
+    AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
 
     if (constInfo.returnValueFlag) {
         event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
@@ -285,7 +285,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const 
         
         GlobalTensor<uint32_t> valueOutGmTmp;
         valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
-        GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
+        GlobalTensor<uint32_t> valueOut = valueOutGmTmp[paddingOffset];
 
         AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_FLOAT);
     }
