@@ -37,8 +37,6 @@
 namespace MoeEpCombineImpl {
 
 using namespace AscendC;
-using Mc2Aclnn::HCCL_MAX_RANK_SIZE;
-using Mc2Aclnn::Mc2MoeContext;
 
 #define TemplateMoeEpCombineTypeClass uint32_t HAS_TOPK_WEIGHTS
 #define TemplateMoeEpCombineTypeFunc HAS_TOPK_WEIGHTS
@@ -180,6 +178,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     totalWinSizeEp_ = tilingData->totalWinSizeEp;
     hAlignSize_ = Ceil(axisH_ * sizeof(bfloat16_t), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     stateOffset_ = STATE_OFFSET;
+    actualA = tilingData_->actualA;
 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
@@ -191,8 +190,6 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
         hcommHandle_[i] = mc2Context_->hcommHandle_[i];
     }
-
-    actualA = epWorldSize_ * numMaxTokensPerRank_ * topK_;
 
     xGm_.SetGlobalBuffer((__gm__ bfloat16_t *)x);
     dstSlotIdxGm_.SetGlobalBuffer((__gm__ int32_t *)dstBufferSlotIdx);

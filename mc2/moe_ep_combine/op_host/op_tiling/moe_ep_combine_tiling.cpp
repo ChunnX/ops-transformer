@@ -36,7 +36,7 @@ using namespace Mc2Tiling;
 namespace optiling {
 
 constexpr uint32_t CONTEXT_INDEX = 0U;
-constexpr uint32_t X_INDEX = 1U;
+constexpr uint32_t RECVX_INDEX = 1U;
 constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 2U;
 constexpr uint32_t RECV_SRC_METADATA_INDEX = 3U;
 constexpr uint32_t NUM_RECV_PER_RANK_INDEX = 4U;
@@ -81,24 +81,27 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         OP_LOGE(nodeName, "contextShape dims must be 1."),
         return ge::GRAPH_FAILED);
 
-    const gert::StorageShape *xShape = context->GetInputShape(X_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
-    OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "xShape dims must be 2."),
+    const gert::StorageShape *recvxShape = context->GetInputShape(RECVX_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, recvxShape);
+    OP_TILING_CHECK(recvxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "recvxShape dims must be 2."),
         return ge::GRAPH_FAILED);
-    const int64_t xDim0 = xShape->GetStorageShape().GetDim(0);
-    const int64_t xDim1 = xShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK((xDim1 < H_MIN) || (xDim1 > H_MAX),
-        OP_LOGE(nodeName, "xDim1(hidden) is invalid, should be in [%ld, %ld], got %ld.",
-            H_MIN, H_MAX, xDim1),
+    const int64_t recvxDim0 = recvxShape->GetStorageShape().GetDim(0);
+    const int64_t recvxDim1 = recvxShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK((recvxDim1 < H_MIN) || (recvxDim1 > H_MAX),
+        OP_LOGE(nodeName, "recvxDim1(hidden) is invalid, should be in [%ld, %ld], got %ld.",
+            H_MIN, H_MAX, recvxDim1),
         return ge::GRAPH_FAILED);
-    info.cfg.numTokens = static_cast<uint32_t>(xDim0);
-    info.cfg.hidden = static_cast<uint32_t>(xDim1);
+
+    info.actualA = static_cast<uint32_t>(recvxDim0);
+    info.cfg.hidden = static_cast<uint32_t>(recvxDim1);
 
     const gert::StorageShape *dstBufferSlotIdxShape = context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstBufferSlotIdxShape);
     OP_TILING_CHECK(dstBufferSlotIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE(nodeName, "dstBufferSlotIdxShape dims must be 2."), return ge::GRAPH_FAILED);
+        
+    info.cfg.numTokens = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(0));
     info.cfg.topK = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(1));
 
     const gert::StorageShape *recvSrcMetadataShape = context->GetInputShape(RECV_SRC_METADATA_INDEX);
@@ -223,9 +226,10 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     OP_TILING_CHECK(CheckInputTensorShape(context, nodeName, info) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
+
     uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    info.cfg.perSlotBytes = static_cast<uint32_t>((hAlign32 + kAlign32 + UB_ALIGN));
+    info.cfg.perSlotBytes = static_cast<uint32_t>((hAlign32 + kAlign32 * 2 + UB_ALIGN));
 
     OP_TILING_CHECK(CheckWinSize(context, info, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check window size failed."), return ge::GRAPH_FAILED);
