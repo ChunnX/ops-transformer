@@ -38,7 +38,7 @@ struct ConstInfo {
     int32_t head_dim{0};
     int32_t q_block_num{0};
     int32_t kv_block_num{0};
-}
+};
 
 struct RunTimeInfo {
     int32_t taskId{0};
