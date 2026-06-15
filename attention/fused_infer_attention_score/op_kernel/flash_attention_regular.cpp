@@ -9,7 +9,7 @@
  */
 
 /*!
-* \file flash_attention_regular.h
+* \file flash_attention_regular.cpp
 * \brief
 */
 #ifndef FLASH_ATTENTION_REGULAR_H

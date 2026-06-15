@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file flash_attention_regular_decode.h
+ * \file flash_attention_regular_decode.cpp
  * \brief
  */
-#ifndef FLASH_ATTENTION_REGULAR_DECODE_H
-#define FLASH_ATTENTION_REGULAR_DECODE_H
+#ifndef FLASH_ATTENTION_REGULAR_DECODE_CPP
+#define FLASH_ATTENTION_REGULAR_DECODE_CPP
 
 #include "fia_kernel_common.hpp"
 
