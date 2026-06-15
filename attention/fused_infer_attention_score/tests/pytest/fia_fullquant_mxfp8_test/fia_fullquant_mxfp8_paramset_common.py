@@ -18,6 +18,7 @@ PARAM_NAMES = [
     "enable_pa", "kv_cache_layout", "block_size",
     "sparse_mode", "q_scale_layout", "p_scale",
     "data_range_q", "data_range_k", "data_range_v",
+    "enable_lse", "enable_rope",
 ]
 
 TEST_PARAMS_DEFAULTS = {
