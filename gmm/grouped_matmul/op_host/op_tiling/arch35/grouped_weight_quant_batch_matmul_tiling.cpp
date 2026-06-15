@@ -105,10 +105,10 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize() const
                         "When groupType is -1 (no split), the sizes of x and weight must be all the same"),
                     return false);
     } else if (isSingleMultiSingle) {
-        OP_CHECK_IF(numX_ != 1 || numWeight_ <= 1,
+        OP_CHECK_IF(numX_ != 1 || numWeight_ < 1,
                     OP_LOGE_FOR_INVALID_LISTSIZE(
                         OP_NAME, "x, weight", std::to_string(numX_) + ", " + std::to_string(numWeight_),
-                        "In MxA8W4 single-multi-single mode, the size of x must be 1 and weight must be greater than 1"),
+                        "In MxA8W4 single-multi-single mode, the size of x must be 1 and weight must be greater than or equal to 1"),
                     return false);
     } else {
         OP_CHECK_IF(numX_ != 1 || numWeight_ != 1,
@@ -124,6 +124,12 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize() const
                     "The size of antiquantScaleOptional does not match the expected value"),
                 return false);
     if (hasAntiquantOffset_) {
+        OP_CHECK_IF(
+            isSingleMultiSingle,
+            OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "antiquantOffsetOptional",
+                                         std::to_string(numAntiquantOffset_),
+                                         "In MxA8W4 single-multi-single mode, antiquantOffsetOptional must be empty"),
+            return false);
         OP_CHECK_IF(
             numAntiquantOffset_ != expectedParamNum,
             OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "antiquantOffsetOptional",
@@ -547,20 +553,10 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckAntiquantScaleSingleXMultiWeightS
 bool GroupedWeightQuantBatchMatmulTiling::CheckAntiquantOffsetSingleXMultiWeightSingleY(
     const gert::TilingContext *context) const
 {
-    if (!hasAntiquantOffset_) {
-        return true;
-    }
-    for (size_t i = 0; i < numAntiquantOffset_; ++i) {
-        OP_CHECK_IF(!CheckNotNullPtr(context, ANTIQUANT_OFFSET_IDX, i),
-                    OP_LOGE(context->GetNodeName(), "antiquantOffset's tensor or Desc is nullptr."), return false);
-        OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_OFFSET_IDX, i, 2, "antiquantOffset"),
-                    OP_LOGE(context->GetNodeName(), "Invalid antiquantOffset dimension."), return false);
-        OP_CHECK_IF(!CheckTensorDtypeSingleXMultiWeightSingleY(context, ANTIQUANT_OFFSET_IDX, i, antiquantOffsetDtype_,
-                                                               "antiquantOffset"),
-                    OP_LOGE(context->GetNodeName(), "Check Tensor antiquantOffset Dtype failed"), return false);
-        OP_CHECK_IF(!CheckTensorShapeSingleXMultiWeightSingleY(context, ANTIQUANT_OFFSET_IDX, i, "antiquantOffset"),
-                    OP_LOGE(context->GetNodeName(), "Check antiquantOffset tensor shape failed"), return false);
-    }
+    OP_CHECK_IF(hasAntiquantOffset_,
+                OP_LOGE(context->GetNodeName(),
+                        "In MxA8W4 single-multi-single mode, antiquantOffsetOptional must be empty."),
+                return false);
     return true;
 }
 
