@@ -162,7 +162,7 @@ private:
     int32_t single_m_{0};
     int32_t kv_ping_pong_idx_{0};
     SingleBlock single_block_;
-    constInfo const_info_;
+    ConstInfo const_info_;
 
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
@@ -242,7 +242,7 @@ public:
 
             if (IsValidSingleBlock(vaild_s1_idx, vaild_s1_len)) {
                 // 如果singleBlock内全是无效内容，则不记录
-                RunTimeInfoRecord(runTimeInfo, vaild_s1_idx, s2_idx_, vaild_s1_len, s2_len);
+                RunTimeInfoRecord(runTimeInfo, vaild_s1_idx, s2Idx_, vaild_s1_len, s2_len);
             }
 
             if (current_cube_idx_ && current_cube_idx_ % cube_core_num_ == 0) {
@@ -350,6 +350,7 @@ private:
         int32_t base_s1_idx;
         int32_t base_s1_len;
         single_block_.Reset(vaild_s1_idx, vaild_s1_len, base_s1_idx, base_s1_len);
+        int32_t n2Idx = n1Idx_ / q_group_;
 
         runTimeInfo.bIdx = bIdx_;
         runTimeInfo.last_q_seq_sum = last_q_seq_sum_;
