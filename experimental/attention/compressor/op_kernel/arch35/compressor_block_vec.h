@@ -1020,7 +1020,7 @@ __aicore__ inline void CompressorBlockVector<COMP>::DealVec1BaseBlock(const Vec1
 
     if (statisticInfo.compressorScCnt > 0) {
         SoftmaxDN(scoreLocal, statisticInfo.compressorScCnt, dDealSize);
-        LocalTensor<T> comperssoredUb = compressBuf.Get<T>(); 
+        LocalTensor<T> comperssoredUb = scoreLocal; 
         PipeBarrier<PIPE_V>();
         KvMulReduceScore(kvLocal, scoreLocal, scoreLocal, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
