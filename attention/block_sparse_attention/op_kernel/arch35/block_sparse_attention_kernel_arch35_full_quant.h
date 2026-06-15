@@ -368,12 +368,12 @@ public:
                     float kDequantScaleValue = gKDequantScale.GetValue(kvDequantScaleOffset);
                     float combinedDeqScalar = qDequantScaleValue * kDequantScaleValue;
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&combinedDeqScalar));
-                    blockMmadQK(gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapeQK,
-                                gatheredKvSTileIdx, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                                prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag, deqScalar);
-                    if (gatheredKvSTileIdx == kvSLoopNum - 1) {
-                        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
-                    }
+                    // blockMmadQK(gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapeQK,
+                    //             gatheredKvSTileIdx, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                    //             prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag, deqScalar);
+                    // if (gatheredKvSTileIdx == kvSLoopNum - 1) {
+                    //     AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
+                    // }
 #endif
                     // SM
                     uint32_t l1PBufId = gatheredKvSTileIdx % pL1BufNum_;
@@ -426,20 +426,20 @@ public:
                     curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndexDe;
                     float vDequantScaleValue = gVDequantScale.GetValue(kvDequantScaleOffsetDe);
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&vDequantScaleValue));
-                    blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
-                                gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                                prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, deqScalar);
+                    // blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
+                    //             gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                    //             prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, deqScalar);
 #endif
 #ifdef __DAV_VEC__
                     // rescale O
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
                     uint32_t curTileMod = gatheredKvSTileIdxDe % (PRE_LAUNCH + 1);
-                    epilogueRescaleO(
-                        gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
-                        curTileMod, gatheredKvSTileIdxDe,
-                        (gatheredKvSTileIdxDe == 0),
-                        (gatheredKvSTileIdxDe == kvSLoopNum - 1),
-                        mm2ToReFlag);
+                    // epilogueRescaleO(
+                    //     gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
+                    //     curTileMod, gatheredKvSTileIdxDe,
+                    //     (gatheredKvSTileIdxDe == 0),
+                    //     (gatheredKvSTileIdxDe == kvSLoopNum - 1),
+                    //     mm2ToReFlag);
 #endif
                 }
             }

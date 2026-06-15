@@ -351,15 +351,15 @@ public:
                         gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
-                    blockMmadQK(
-                        gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx],
-                        actualBlockShapeQK,
-                        gatheredKvSTileIdx, kvSeqlen,
-                        kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                        prefixSumL0AStages, prefixSumL0BStages,
-                        mm1ToSmFlag);
-                    if (gatheredKvSTileIdx == kvSLoopNum - 1)
-                    AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
+                    // blockMmadQK(
+                    //     gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx],
+                    //     actualBlockShapeQK,
+                    //     gatheredKvSTileIdx, kvSeqlen,
+                    //     kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                    //     prefixSumL0AStages, prefixSumL0BStages,
+                    //     mm1ToSmFlag);
+                    // if (gatheredKvSTileIdx == kvSLoopNum - 1)
+                    // AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
 #endif
                     // SM
                     uint32_t l1PBufId = gatheredKvSTileIdx % pL1BufNum_;
@@ -404,24 +404,24 @@ public:
                         gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
-                    blockMmadPV(
-                        gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
-                        actualBlockShapePV,
-                        gatheredKvSTileIdxDe, kvSeqlen,
-                        kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                        prefixSumL0AStages, prefixSumL0BStages,
-                        smToMm2Flag, mm2ToReFlag);
+                    // blockMmadPV(
+                    //     gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
+                    //     actualBlockShapePV,
+                    //     gatheredKvSTileIdxDe, kvSeqlen,
+                    //     kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                    //     prefixSumL0AStages, prefixSumL0BStages,
+                    //     smToMm2Flag, mm2ToReFlag);
 #endif
 #ifdef __DAV_VEC__
                     // rescale O
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
                     uint32_t curTileMod = gatheredKvSTileIdxDe % (PRE_LAUNCH + 1);
-                    epilogueRescaleO(
-                        gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
-                        curTileMod, gatheredKvSTileIdxDe,
-                        (gatheredKvSTileIdxDe == 0),
-                        (gatheredKvSTileIdxDe == kvSLoopNum - 1),
-                        mm2ToReFlag);
+                    // epilogueRescaleO(
+                    //     gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
+                    //     curTileMod, gatheredKvSTileIdxDe,
+                    //     (gatheredKvSTileIdxDe == 0),
+                    //     (gatheredKvSTileIdxDe == kvSLoopNum - 1),
+                    //     mm2ToReFlag);
 #endif
                 }
             }
