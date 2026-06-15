@@ -255,8 +255,6 @@ ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
-    opParamInfo_.oriKvStride0 = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_KV_STRIDE_INDEX);
-    opParamInfo_.cmpKvStride0 = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_KV_STRIDE_INDEX);
     opParamInfo_.oriWinLeft = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_LEFT_INDEX);
     opParamInfo_.oriWinRight = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_RIGHT_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
@@ -806,6 +804,20 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+uint64_t SMLAInfoParser::GetOptionalInputStride0(uint32_t inputIndex) const
+{
+    const gert::Stride *inputStride = context_->GetOptionalInputStride(inputIndex);
+    if (inputStride == nullptr || inputStride->GetDimNum() == 0) {
+        return 0ULL;
+    }
+
+    int64_t stride0 = inputStride->GetStride(0);
+    if (stride0 <= 0) {
+        return 0ULL;
+    }
+    return static_cast<uint64_t>(stride0);
+}
+
 void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
 {
     smlaInfo.opName = opName_;
@@ -856,8 +868,8 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.cmpRatio = (*opParamInfo_.cmpRatio == 0) ? 1 : *opParamInfo_.cmpRatio;
     smlaInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     smlaInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
-    smlaInfo.oriKvStride0 = *opParamInfo_.oriKvStride0;
-    smlaInfo.cmpKvStride0 = *opParamInfo_.cmpKvStride0;
+    smlaInfo.oriKvStride0 = GetOptionalInputStride0(ORI_KV_INDEX);
+    smlaInfo.cmpKvStride0 = GetOptionalInputStride0(CMP_KV_INDEX);
     smlaInfo.oriWinLeft = *opParamInfo_.oriWinLeft;
     smlaInfo.oriWinRight = *opParamInfo_.oriWinRight;
 
@@ -1370,8 +1382,8 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                 OP_LOGE(opName_, "q_head_num should be in range [1, 128], but got %u", n1Size_),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(n2Size_ == 0 || n2Size_ > 128,
-                OP_LOGE(opName_, "kv_head_num should be in range [1, 128], but got %u", n2Size_),
+    OP_CHECK_IF(n2Size_ != 1,
+                OP_LOGE(opName_, "kv_head_num should be 1, but got %u", n2Size_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n1Size_ % n2Size_ != 0,
@@ -1582,8 +1594,9 @@ void SparseFlashMlaTilingArch22::CalcUbBmm(SMLATilingInfo *tilingInfo)
 void SparseFlashMlaTilingArch22::SplitBalanced(SMLATilingInfo *tilingInfo)
 {
     sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK); // 元素个数按照基本块大小对齐
-    mBaseSize_ = tilingInfo->perfMode == SMLATemplateMode::SCFA_TEMPLATE_MODE ? \
-        tilingInfo->gSize : (256 / tilingInfo->gSize) * tilingInfo->gSize;
+    bool oneKvHeadGroupPerTile = tilingInfo->perfMode == SMLATemplateMode::SCFA_TEMPLATE_MODE ||
+        tilingInfo->n2Size > 1;
+    mBaseSize_ = oneKvHeadGroupPerTile ? tilingInfo->gSize : (256 / tilingInfo->gSize) * tilingInfo->gSize;
     headDimAlign_ = Align(tilingInfo->qHeadDim, BYTE_BLOCK);
     CalcUbBmm(tilingInfo);
 

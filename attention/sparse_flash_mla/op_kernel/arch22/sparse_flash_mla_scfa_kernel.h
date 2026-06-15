@@ -609,7 +609,9 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::CalcParams(uint32_t loop, uint
     uint64_t tndBIdxOffsetForCmpKV = tempLoopInfo.actualSeqCmpKVPrefixSum * constInfo.kvHeadNum * constInfo.headDim;
 
     if (info.isFirstSInnerLoop) {
-        tensorACoreOffset = tndBIdxOffsetForQ + info.gS1Idx * constInfo.headDim;
+        uint64_t s1HeadOffset = (info.gS1Idx / constInfo.gSize) * constInfo.qHeadNum;
+        uint64_t qHeadOffset = info.n2Idx * constInfo.gSize + info.gS1Idx % constInfo.gSize;
+        tensorACoreOffset = tndBIdxOffsetForQ + (s1HeadOffset + qHeadOffset) * constInfo.headDim;
         tensorBCoreOffset = tndBIdxOffsetForKV + info.n2Idx * constInfo.headDim; // 当前为PA场景，该变量失效
         tensorCmpBCoreOffset = tndBIdxOffsetForCmpKV + info.n2Idx * constInfo.headDim;
         if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {                            // B,S1,N2 K

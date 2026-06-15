@@ -293,6 +293,20 @@ ge::graphStatus SMLAInfoParser::GetOpParaInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+uint64_t SMLAInfoParser::GetOptionalInputStride0(uint32_t inputIndex) const
+{
+    const gert::Stride *inputStride = context_->GetOptionalInputStride(inputIndex);
+    if (inputStride == nullptr || inputStride->GetDimNum() == 0) {
+        return 0ULL;
+    }
+
+    int64_t stride0 = inputStride->GetStride(0);
+    if (stride0 <= 0) {
+        return 0ULL;
+    }
+    return static_cast<uint64_t>(stride0);
+}
+
 ge::graphStatus SMLAInfoParser::GetInOutDataType()
 {
     qType_ = opParamInfo_.q.desc->GetDataType();
@@ -761,6 +775,8 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.cmpRatio = (*opParamInfo_.cmpRatio == 0) ? 1 : *opParamInfo_.cmpRatio;
     smlaInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     smlaInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
+    smlaInfo.oriKvStride0 = GetOptionalInputStride0(ORI_KV_INDEX);
+    smlaInfo.cmpKvStride0 = GetOptionalInputStride0(CMP_KV_INDEX);
     smlaInfo.oriWinLeft = *opParamInfo_.oriWinLeft;
     smlaInfo.oriWinRight = *opParamInfo_.oriWinRight;
 
@@ -1564,6 +1580,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_softmaxScale(tilingInfo->softmaxScale);
     tilingData_.baseParams.set_outputLayout(static_cast<uint32_t>(tilingInfo->outLayout));
     tilingData_.baseParams.set_oriMaskMode(tilingInfo->oriMaskMode);
+    tilingData_.baseParams.set_oriKvStride0(tilingInfo->oriKvStride0);
     tilingData_.baseParams.set_oriWinLeft(tilingInfo->oriWinLeft);
     tilingData_.baseParams.set_oriWinRight(tilingInfo->oriWinRight);
     tilingData_.baseParams.set_sparseBlockSize(tilingInfo->sparseBlockSize);
@@ -1576,6 +1593,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.cmpParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
     tilingData_.cmpParams.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.cmpParams.set_cmpMaskMode(tilingInfo->cmpMaskMode);
+    tilingData_.cmpParams.set_cmpKvStride0(tilingInfo->cmpKvStride0);
 
     tilingData_.baseParams.set_actualLenDimsOriKV(tilingInfo->actualLenDimsOriKV);
     tilingData_.baseParams.set_actualLenDimsCmpKV(tilingInfo->actualLenDimsCmpKV);

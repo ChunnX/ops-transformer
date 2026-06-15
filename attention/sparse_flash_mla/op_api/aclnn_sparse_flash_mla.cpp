@@ -29,8 +29,8 @@ extern aclnnStatus aclnnInnerSparseFlashMlaGetWorkspaceSize(
     const aclTensor *cmpResidualKv, const aclTensor *oriTopkLength, const aclTensor *cmpTopkLength,
     const aclTensor *sinks, const aclTensor *metadata, double softmaxScale, int64_t cmpRatio,
     int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, char *layoutQ,
-    char *layoutKv, int64_t topkValueMode, int64_t oriKvStride, int64_t cmpKvStride, bool returnSoftmaxLse,
-    const aclTensor *attnOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
+    char *layoutKv, int64_t topkValueMode, bool returnSoftmaxLse, const aclTensor *attnOut,
+    const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerSparseFlashMla(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                             const aclrtStream stream);
@@ -60,14 +60,6 @@ public:
 private:
     const aclTensor *inner_;
 };
-
-int64_t GetKvStride0(const aclTensor *tensor, int64_t attrStride)
-{
-    if (attrStride != 0 || tensor == nullptr || tensor->GetViewShape().GetDimNum() == 0) {
-        return attrStride;
-    }
-    return tensor->GetViewStrides()[0];
-}
 
 aclnnStatus CheckSparseFlashMlaRequired(const aclTensor *q, bool returnSoftmaxLse, const aclTensor *attnOut,
                                         const aclTensor *softmaxLse, const char *layoutQ, const char *layoutKv,
@@ -106,32 +98,29 @@ aclnnStatus aclnnSparseFlashMlaGetWorkspaceSize(
     const aclTensor *cmpResidualKv, const aclTensor *oriTopkLength, const aclTensor *cmpTopkLength,
     const aclTensor *sinks, const aclTensor *metadata, double softmaxScale, int64_t cmpRatio,
     int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, char *layoutQ,
-    char *layoutKv, int64_t topkValueMode, int64_t oriKvStride, int64_t cmpKvStride, bool returnSoftmaxLse,
-    const aclTensor *attnOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
+    char *layoutKv, int64_t topkValueMode, bool returnSoftmaxLse, const aclTensor *attnOut,
+    const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnSparseFlashMla,
                    DFX_IN(q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable,
                           cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv, seqUsedQ, seqUsedOriKv, seqUsedCmpKv,
                           cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata, softmaxScale, cmpRatio,
                           oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQ, layoutKv, topkValueMode,
-                          oriKvStride, cmpKvStride, returnSoftmaxLse),
+                          returnSoftmaxLse),
                    DFX_OUT(attnOut, softmaxLse));
 
     auto ret = CheckSparseFlashMlaRequired(q, returnSoftmaxLse, attnOut, softmaxLse, layoutQ, layoutKv, cmpRatio);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     int64_t effectiveCmpRatio = (cmpRatio == 0) ? 1 : cmpRatio;
-    int64_t effectiveOriKvStride = GetKvStride0(oriKv, oriKvStride);
-    int64_t effectiveCmpKvStride = GetKvStride0(cmpKv, cmpKvStride);
-
     TensorHolder softmaxLseHolder(softmaxLse, aclDataType::ACL_FLOAT);
 
     return aclnnInnerSparseFlashMlaGetWorkspaceSize(
         q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqLensQ,
         cuSeqLensOriKv, cuSeqLensCmpKv, seqUsedQ, seqUsedOriKv, seqUsedCmpKv, cmpResidualKv, oriTopkLength,
         cmpTopkLength, sinks, metadata, softmaxScale, effectiveCmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft,
-        oriWinRight, layoutQ, layoutKv, topkValueMode, effectiveOriKvStride, effectiveCmpKvStride,
-        returnSoftmaxLse, attnOut, softmaxLse, workspaceSize, executor);
+        oriWinRight, layoutQ, layoutKv, topkValueMode, returnSoftmaxLse, attnOut, softmaxLse, workspaceSize,
+        executor);
 }
 
 aclnnStatus aclnnSparseFlashMla(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
