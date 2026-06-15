@@ -866,7 +866,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetRowGroupCompleteFl
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
+    GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State)
 {
     int64_t maxRowGroupsStride = MegaMoeImpl::ComputeMaxTokensStride(maxOutputSize_, blockAivNum_, expertPerRank_);
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
@@ -975,7 +976,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit()
             static_cast<uint32_t>(scaleNum * sizeof(bfloat16_t) * 4), static_cast<uint32_t>(ALIGN_32));
         uint32_t fp32ScaleBufAlign = Ops::Base::CeilAlign(
             static_cast<uint32_t>(scaleNum * sizeof(float) * 4), static_cast<uint32_t>(ALIGN_32));
-        bf16ScaleTensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
+        bf16ScaleTensor_ = LocalTensor<bfloat16_t>(
+            TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
         tempAddr += bf16ScaleBufAlign;
         fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
         tempAddr += fp32ScaleBufAlign;
