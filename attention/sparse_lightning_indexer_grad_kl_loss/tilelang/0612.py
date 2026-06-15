@@ -192,7 +192,7 @@ def tilelang_grad_kl_loss_single_kernel(
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
-        LossOut: T.Tensor((B, S1, n_num), calc_dtype),
+        LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),
         dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
@@ -438,12 +438,12 @@ def tilelang_grad_kl_loss_single_kernel(
                     for i in range(16):
                         T.tile.mul(loss_2d_ub[i, :], loss_val_ub, 1.0)
                     T.barrier_all()
-                    loss_sum_scalar_ub = T.alloc_ub(1, calc_dtype)
-                    T.reduce_sum(loss_2d_ub, loss_sum_scalar_ub, 0)
+                    loss_sum_ub = T.alloc_ub(16, calc_dtype)
+                    T.reduce_sum(loss_2d_ub, loss_sum_ub, 1)
                     T.barrier_all()
 
-                    # Write partial Loss for MY K block only
-                    T.copy(loss_sum_scalar_ub[0:1], LossOut[bz, s1_id, n_idx_k: n_idx_k + 1])
+                    # Write partial Loss for MY K block only (first element)
+                    T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k * 16:(n_idx_k + 1) * 16])
 
                 T.set_cross_flag("V", 12)
 
@@ -726,7 +726,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
             d_weight_partial_out = torch.zeros(B, S1, n_num_ws, Nidx1, dtype=input_dtype, device=query.device)
             relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
-            loss_out = torch.zeros(B, S1, n_num_ws, dtype=torch.float32, device=query.device)
+            loss_out = torch.zeros(B, S1, n_num_ws * 16, dtype=torch.float32, device=query.device)
             _workspace_cache[ws_key] = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
                                         d_query_index_ws, d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out)
 
@@ -758,8 +758,9 @@ def sparse_lightning_indexer_grad_kl_loss(
         else:
             d_weight = d_weight.to(input_dtype)
 
-        # Accumulate partial Loss across K blocks
-        kl_loss = loss_out.sum()
+        # Accumulate partial Loss across K blocks (take first element from each 16-block)
+        loss_values = loss_out[:, :, 0:n_num_ws * 16].reshape(B, S1, n_num_ws, 16)[:, :, :, 0]
+        kl_loss = loss_values.sum()
 
         if _PROFILE:
             _t_scatter_start = torch.npu.Event(enable_timing=True)
