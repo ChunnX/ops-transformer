@@ -103,7 +103,7 @@ private:
     uint8_t scaleAlg_ = DEFAULT_SCALE_ALG_OCP;
     uint8_t activationType_ = DEFAULT_ACTIVATION_TYPE_GELU_TANH;
     float dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
-    ge::DataType quantDtype_ = ge::DT_FLOAT8_E4M3FN;
+    ge::DataType yDtype_ = ge::DT_FLOAT8_E4M3FN;
 };
 } // namespace optiling
 
