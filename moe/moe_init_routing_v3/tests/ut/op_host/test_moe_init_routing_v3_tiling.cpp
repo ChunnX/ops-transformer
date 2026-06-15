@@ -445,18 +445,18 @@ void RunNormalCaseDynamicQuantDroppad(int64_t N, int64_t H, int64_t K, int64_t C
 // 单核 + not quant + active + gather + scale not None float32  1000000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_01)
 {   
-    string expectTilingData = "40 1859 2880 1 0 256 256 -1 0 1 0 256 1 0 0 0 859 0 0 0 0 1 1859 1 1859 1859 1859 1 1859 1859 1984 0 1504 40 47 26 1 47 47 1 26 26 40 47 26 1 47 47 1 26 26 1 2880 2880 0 40 47 47 47 26 26 26 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 47 47 47 26 26 26 1 1 ";
-    std::vector<size_t> expectWorkspaces = {16832884};
-    RunNormalCaseNoQuant(1859, 2880, 1, 0, 859, 0, 1, false, QUANT_MODE_NONE, 1, ge::DT_FLOAT, {0, 256}, ROW_IDX_TYPE_DROPPAD,
+    string expectTilingData = "40 200 2880 1 0 256 256 -1 0 1 0 256 1 0 0 0 100 0 0 0 0 1 200 1 200 200 200 1 200 200 1984 0 1504 40 5 5 1 5 5 1 5 5 40 5 5 1 5 5 1 5 5 1 2880 2880 0 40 5 5 5 5 5 5 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 5 5 5 5 5 5 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16786432};
+    RunNormalCaseNoQuant(200, 2880, 1, 0, 100, 0, 1, false, QUANT_MODE_NONE, 1, ge::DT_FLOAT, {0, 256}, ROW_IDX_TYPE_DROPPAD,
                   ge::GRAPH_SUCCESS, 1000000, expectTilingData, expectWorkspaces);
 }
 
 // 单核 + not quant + dropless + scatter + consum + scale None bfloat16  1001000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_02)
 {
-    string expectTilingData = "40 1811 2880 1 63 158 95 -1 1 0 0 256 0 1 0 1 1811 0 0 0 0 1 1811 1 1811 1811 1811 1 1811 1811 1984 0 1504 40 46 17 1 46 46 1 17 17 40 46 17 1 46 46 1 17 17 1 2880 2880 0 40 46 46 46 17 17 17 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 46 46 46 17 17 17 1 1 ";
-    std::vector<size_t> expectWorkspaces = {16830896};
-    RunNormalCaseDropless(1811, 2880, 1, 0, 0, 0, 0, true, QUANT_MODE_NONE, 0, ge::DT_BF16, {63, 158}, ROW_IDX_TYPE_DROPLESS,
+    string expectTilingData = "40 255 3584 1 0 256 256 -1 1 0 0 256 0 1 0 0 255 0 0 0 0 1 255 1 255 255 255 1 255 255 1984 0 1504 37 7 3 1 7 7 1 3 3 37 7 3 1 7 7 1 3 3 1 3584 3584 0 37 7 7 7 3 3 3 1 1 3584 3584 1 0 0 0 0 0 0 0 0 0 0 0 0 37 7 7 7 3 3 3 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16787972};
+    RunNormalCaseDropless(255, 3584, 1, 0, 0, 0, 0, true, QUANT_MODE_NONE, 0, ge::DT_BF16, {0, 256}, ROW_IDX_TYPE_DROPLESS,
                   ge::GRAPH_SUCCESS, 1001000, expectTilingData, expectWorkspaces);
 }
 
@@ -490,45 +490,45 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_05)
 // 多核 + not quant + droppad + gather + count + scale not None int8  1100100
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_06)
 {
-    string expectTilingData = "40 926 2880 8 0 256 256 -1 0 1 0 256 1 1 0 0 7408 1 0 0 78 4 1856 1 1856 1856 1840 1 1856 1840 1984 0 1504 40 186 154 1 186 186 1 154 154 40 186 154 1 186 186 1 154 154 1 2880 2880 0 40 186 186 186 154 154 154 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 186 186 186 154 154 154 1 1 ";
-    std::vector<size_t> expectWorkspaces = {16988576};
-    RunNormalCaseNoQuantDroppad(926, 2880, 8, 78, 7408, 1, 1, true, QUANT_MODE_NONE, 1, ge::DT_INT8, {0, 256}, ROW_IDX_TYPE_DROPPAD,
+    string expectTilingData = "40 250 2880 8 0 256 256 -1 0 1 0 256 1 1 0 0 2000 1 0 0 78 4 512 1 512 512 464 1 480 464 1984 0 1504 40 50 50 1 50 50 1 50 50 40 50 50 1 50 50 1 50 50 1 2880 2880 0 40 50 50 50 50 50 50 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 50 50 50 50 50 50 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16837152};
+    RunNormalCaseNoQuantDroppad(250, 2880, 8, 78, 7408, 1, 1, true, QUANT_MODE_NONE, 1, ge::DT_INT8, {0, 256}, ROW_IDX_TYPE_DROPPAD,
                   ge::GRAPH_SUCCESS, 1100100, expectTilingData, expectWorkspaces);
 }
 
 // 单核 + static quant + active + gather float32  1010000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_07)
 {
-    string expectTilingData = "40 1859 2880 1 0 256 256 0 0 1 1 256 1 0 0 0 633 0 0 0 0 1 1859 1 1859 1859 1859 1 1859 1859 1984 0 1504 40 47 26 1 47 47 1 26 26 40 47 26 1 47 47 1 26 26 1 2880 2880 0 40 47 47 47 26 26 26 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 47 47 47 26 26 26 1 1 ";
-    std::vector<size_t> expectWorkspaces = {16832884};
-    RunNormalCaseStaticQuant(1859, 2880, 1, 0, 633, 0, 1, false, QUANT_MODE_STATIC, 1, ge::DT_FLOAT, {0, 256}, ROW_IDX_TYPE_DROPPAD,
+    string expectTilingData = "40 200 2880 1 0 256 256 0 0 1 1 256 1 0 0 0 100 0 0 0 0 1 200 1 200 200 200 1 200 200 1984 0 1504 40 5 5 1 5 5 1 5 5 40 5 5 1 5 5 1 5 5 1 2880 2880 0 40 5 5 5 5 5 5 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 5 5 5 5 5 5 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16786432};
+    RunNormalCaseStaticQuant(200, 2880, 1, 0, 100, 0, 1, false, QUANT_MODE_STATIC, 1, ge::DT_FLOAT, {0, 256}, ROW_IDX_TYPE_DROPPAD,
                   ge::GRAPH_SUCCESS, 1010000, expectTilingData, expectWorkspaces);
 }
 
 // 单核 + static quant + active + scatter + count float16  1011000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_08)
 {
-    string expectTilingData = "40 1859 2880 1 180 192 12 0 1 1 1 256 1 1 1 1 633 0 0 0 0 1 1859 1 1859 1859 1859 1 1859 1859 1984 0 1504 40 47 26 1 47 47 1 26 26 40 47 26 1 47 47 1 26 26 1 2880 2880 0 40 47 47 47 26 26 26 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 47 47 47 26 26 26 1 1 ";
-    std::vector<size_t> expectWorkspaces = {16831908};
-    RunNormalCaseStaticQuant(1859, 2880, 1, 0, 633, 0, 1, true, QUANT_MODE_STATIC, 1, ge::DT_FLOAT16, {180, 192}, ROW_IDX_TYPE_DROPLESS,
+    string expectTilingData = "40 255 4096 1 180 192 12 0 1 1 1 256 1 1 1 1 255 0 0 0 0 1 255 1 255 255 255 1 255 255 1984 0 1504 37 7 3 1 7 7 1 3 3 37 7 3 1 7 7 1 3 3 1 4096 4096 0 37 7 7 7 3 3 3 1 1 4096 4096 1 0 0 0 0 0 0 0 0 0 0 0 0 37 7 7 7 3 3 3 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16786996};
+    RunNormalCaseStaticQuant(255, 4096, 1, 0, 500, 0, 1, true, QUANT_MODE_STATIC, 1, ge::DT_FLOAT16, {180, 192}, ROW_IDX_TYPE_DROPLESS,
                   ge::GRAPH_SUCCESS, 1011000, expectTilingData, expectWorkspaces);
 }
 
 // 多核 + static quant + dropless + gather + consum bfloat16  1110000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_09)
 {
-    string expectTilingData = "40 479 2880 5 0 256 256 0 0 1 1 256 0 1 0 0 2395 0 0 0 0 4 608 1 608 608 571 1 576 571 1984 0 1504 40 60 55 1 60 60 1 55 55 40 60 55 1 60 60 1 55 55 1 2880 2880 0 40 60 60 60 55 55 55 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 60 60 60 55 55 55 1 1 ";
-    std::vector<size_t> expectWorkspaces = {16847892};
-    RunNormalCaseStaticQuant(479, 2880, 5, 0, 2395, 0, 0, true, QUANT_MODE_STATIC, 1, ge::DT_BF16, {0, 256}, ROW_IDX_TYPE_DROPPAD,
+    string expectTilingData = "40 250 2880 8 0 256 256 0 0 1 1 256 0 1 0 0 2000 0 0 0 0 4 512 1 512 512 464 1 480 464 1984 0 1504 40 50 50 1 50 50 1 50 50 40 50 50 1 50 50 1 50 50 1 2880 2880 0 40 50 50 50 50 50 50 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 50 50 50 50 50 50 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16836832};
+    RunNormalCaseStaticQuant(250, 2880, 8, 0, 2000, 0, 0, true, QUANT_MODE_STATIC, 1, ge::DT_BF16, {0, 256}, ROW_IDX_TYPE_DROPPAD,
                   ge::GRAPH_SUCCESS, 1110000, expectTilingData, expectWorkspaces);
 }
 
 // 多核 + static quant + active + scatter + count float32  1111000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_10)
 {
-    string expectTilingData = "40 479 2880 5 180 192 12 0 1 1 1 256 1 1 0 1 2395 0 0 0 0 4 608 1 608 608 571 1 576 571 1984 0 1504 40 60 55 1 60 60 1 55 55 40 60 55 1 60 60 1 55 55 1 2880 2880 0 40 60 60 60 55 55 55 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 60 60 60 55 55 55 1 1 ";
-    std::vector<size_t> expectWorkspaces = {16846916};
-    RunNormalCaseStaticQuant(479, 2880, 5, 0, 2395, 0, 1, true, QUANT_MODE_STATIC, 1, ge::DT_FLOAT, {180, 192}, ROW_IDX_TYPE_DROPLESS,
+    string expectTilingData = "40 250 2880 8 180 192 12 0 1 1 1 256 1 1 0 1 2000 0 0 0 0 4 512 1 512 512 464 1 480 464 1984 0 1504 40 50 50 1 50 50 1 50 50 40 50 50 1 50 50 1 50 50 1 2880 2880 0 40 50 50 50 50 50 50 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 50 50 50 50 50 50 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16835856};
+    RunNormalCaseStaticQuant(250, 2880, 8, 0, 2000, 0, 1, true, QUANT_MODE_STATIC, 1, ge::DT_FLOAT, {180, 192}, ROW_IDX_TYPE_DROPLESS,
                   ge::GRAPH_SUCCESS, 1111000, expectTilingData, expectWorkspaces);
 }
 
@@ -544,45 +544,45 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_11)
 // 多核 + static quant + droppad + gather + bfloat16 1110100
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_12)
 {
-    string expectTilingData = "40 771 2880 8 0 256 256 0 0 1 1 256 1 1 0 0 6168 1 0 0 28 4 1536 1 1536 1536 1560 1 1568 1560 1984 0 1504 40 155 123 1 155 155 1 123 123 40 155 123 1 155 155 1 123 123 1 2880 2880 0 40 155 155 155 123 123 123 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 155 155 155 123 123 123 1 1 ";
-    std::vector<size_t> expectWorkspaces = {16953856};
-    RunNormalCaseStaticQuantDroppad(771, 2880, 8, 28, 6168, 1, 1, true, QUANT_MODE_STATIC, 1, ge::DT_FLOAT, {0, 256}, ROW_IDX_TYPE_DROPPAD,
+    string expectTilingData = "40 250 2880 8 0 256 256 0 0 1 1 256 1 1 0 0 2000 1 0 0 28 4 512 1 512 512 464 1 480 464 1984 0 1504 40 50 50 1 50 50 1 50 50 40 50 50 1 50 50 1 50 50 1 2880 2880 0 40 50 50 50 50 50 50 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 50 50 50 50 50 50 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16837152};
+    RunNormalCaseStaticQuantDroppad(250, 2880, 8, 28, 6168, 1, 1, true, QUANT_MODE_STATIC, 1, ge::DT_FLOAT, {0, 256}, ROW_IDX_TYPE_DROPPAD,
                   ge::GRAPH_SUCCESS, 1110100, expectTilingData, expectWorkspaces);
 }
 
 // 单核 + dynamci quant + active + gather + count + scale not None 1H float32  1020000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_13)
 {
-    string expectTilingData = "40 1859 2880 1 0 256 256 1 0 1 0 256 1 1 0 0 633 0 1 0 0 1 1859 1 1859 1859 1859 1 1859 1859 1984 0 1504 40 47 26 1 47 47 1 26 26 40 47 26 1 47 47 1 26 26 1 2880 2880 0 40 47 47 47 26 26 26 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 47 47 47 26 26 26 1 1 ";
-    std::vector<size_t> expectWorkspaces = {17293684};
-    RunNormalCaseDynamicQuant1H(1859, 2880, 1, 0, 633, 0, 1, true, QUANT_MODE_DYNAMIC, 1, ge::DT_FLOAT, {0, 256}, ROW_IDX_TYPE_DROPPAD,
+    string expectTilingData = "40 255 4096 1 0 256 256 1 0 1 0 256 1 1 0 0 255 0 1 0 0 1 255 1 255 255 255 1 255 255 1984 0 1504 37 7 3 1 7 7 1 3 3 37 7 3 1 7 7 1 3 3 2 2048 2048 0 37 7 7 7 3 3 3 1 1 4096 4096 1 0 0 0 0 0 0 0 0 0 0 0 0 37 7 7 7 3 3 3 1 1 ";
+    std::vector<size_t> expectWorkspaces = {17443332};
+    RunNormalCaseDynamicQuant1H(255, 4096, 1, 0, 500, 0, 1, true, QUANT_MODE_DYNAMIC, 1, ge::DT_FLOAT, {0, 256}, ROW_IDX_TYPE_DROPPAD,
                   ge::GRAPH_SUCCESS, 1020000, expectTilingData, expectWorkspaces);
 }
 
 // 单核 + dynamci quant + active + gather + scale None bfloat16  1020000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_14)
 {
-    string expectTilingData = "40 1859 2880 1 180 192 12 1 0 0 0 256 1 0 1 1 633 0 0 0 0 1 1859 1 1859 1859 1859 1 1859 1859 1984 0 1504 40 47 26 1 47 47 1 26 26 40 47 26 1 47 47 1 26 26 1 2880 2880 0 40 47 47 47 26 26 26 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 47 47 47 26 26 26 1 1 ";
-    std::vector<size_t> expectWorkspaces = {17292708};
-    RunNormalCase(1859, 2880, 1, 0, 633, 0, 1, false, QUANT_MODE_DYNAMIC, 0, ge::DT_BF16, {180, 192}, ROW_IDX_TYPE_DROPPAD,
+    string expectTilingData = "40 255 4096 1 180 192 12 1 0 0 0 256 1 0 1 1 255 0 0 0 0 1 255 1 255 255 255 1 255 255 1984 0 1504 37 7 3 1 7 7 1 3 3 37 7 3 1 7 7 1 3 3 2 2048 2048 0 37 7 7 7 3 3 3 1 1 4096 4096 1 0 0 0 0 0 0 0 0 0 0 0 0 37 7 7 7 3 3 3 1 1 ";
+    std::vector<size_t> expectWorkspaces = {17442356};
+    RunNormalCase(255, 4096, 1, 0, 500, 0, 1, false, QUANT_MODE_DYNAMIC, 0, ge::DT_BF16, {180, 192}, ROW_IDX_TYPE_DROPPAD,
                   ge::GRAPH_SUCCESS, 1020000, expectTilingData, expectWorkspaces);
 }
 
 // 单核 + dynamci quant + active + scatter + cosum + scale not None EH  1021000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_15)
 {
-    string expectTilingData = "40 1859 2880 1 0 100 100 1 1 1 0 256 0 1 0 1 633 0 2 0 0 1 1859 1 1859 1859 1859 1 1859 1859 1984 0 1504 40 47 26 1 47 47 1 26 26 40 47 26 1 47 47 1 26 26 1 2880 2880 0 40 47 47 47 26 26 26 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 47 47 47 26 26 26 1 1 ";
-    std::vector<size_t> expectWorkspaces = {17293060};
-    RunNormalCaseDynamicQuantEH(1859, 2880, 1, 0, 633, 0, 0, true, QUANT_MODE_DYNAMIC, 1, ge::DT_FLOAT, {0, 100}, ROW_IDX_TYPE_DROPLESS,
+    string expectTilingData = "40 255 4096 1 0 100 100 1 1 1 0 256 0 1 0 1 255 0 2 0 0 1 255 1 255 255 255 1 255 255 1984 0 1504 37 7 3 1 7 7 1 3 3 37 7 3 1 7 7 1 3 3 2 2048 2048 0 37 7 7 7 3 3 3 1 1 4096 4096 1 0 0 0 0 0 0 0 0 0 0 0 0 37 7 7 7 3 3 3 1 1 ";
+    std::vector<size_t> expectWorkspaces = {17442708};
+    RunNormalCaseDynamicQuantEH(255, 4096, 1, 0, 500, 0, 0, true, QUANT_MODE_DYNAMIC, 1, ge::DT_FLOAT, {0, 100}, ROW_IDX_TYPE_DROPLESS,
                   ge::GRAPH_SUCCESS, 1021000, expectTilingData, expectWorkspaces);
 }
 
 // 单核 + dynamci quant + dropless + scatter + count + scale None float16  1021000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_16)
 {
-    string expectTilingData = "40 1859 2880 1 0 100 100 1 1 0 0 256 1 1 0 1 1859 0 0 0 0 1 1859 1 1859 1859 1859 1 1859 1859 1984 0 1504 40 47 26 1 47 47 1 26 26 40 47 26 1 47 47 1 26 26 1 2880 2880 0 40 47 47 47 26 26 26 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 47 47 47 26 26 26 1 1 ";
-    std::vector<size_t> expectWorkspaces = {17293060};
-    RunNormalCaseDropless(1859, 2880, 1, 0, 0, 0, 1, true, QUANT_MODE_DYNAMIC, 0, ge::DT_FLOAT16, {0, 100}, ROW_IDX_TYPE_DROPLESS,
+    string expectTilingData = "40 255 4096 1 0 100 100 1 1 0 0 256 1 1 0 1 255 0 0 0 0 1 255 1 255 255 255 1 255 255 1984 0 1504 37 7 3 1 7 7 1 3 3 37 7 3 1 7 7 1 3 3 2 2048 2048 0 37 7 7 7 3 3 3 1 1 4096 4096 1 0 0 0 0 0 0 0 0 0 0 0 0 37 7 7 7 3 3 3 1 1 ";
+    std::vector<size_t> expectWorkspaces = {17442708};
+    RunNormalCaseDropless(255, 4096, 1, 0, 0, 0, 1, true, QUANT_MODE_DYNAMIC, 0, ge::DT_FLOAT16, {0, 100}, ROW_IDX_TYPE_DROPLESS,
                   ge::GRAPH_SUCCESS, 1021000, expectTilingData, expectWorkspaces);
 }
 
@@ -652,9 +652,9 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_23)
 // 多核 + dynamci quant + droppad + gather + count + scale None float16  1120100
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_24)
 {
-    string expectTilingData = "40 766 880 8 0 256 256 1 0 1 0 256 1 1 0 0 6128 1 2 0 191 4 1536 1 1536 1536 1520 1 1536 1520 1984 0 1504 40 154 122 1 154 154 1 122 122 40 154 122 1 154 154 1 122 122 1 880 880 0 0 0 0 0 0 0 0 0 0 0 0 0 40 154 154 154 122 122 122 1 1 880 880 1 40 154 154 154 122 122 122 1 1 ";
-    std::vector<size_t> expectWorkspaces = {17093536};
-    RunNormalCaseDynamicQuantDroppad(766, 880, 8, 191, 6128, 1, 1, true, QUANT_MODE_DYNAMIC, 1, ge::DT_FLOAT16, {0, 256}, ROW_IDX_TYPE_DROPPAD,
+    string expectTilingData = "40 250 880 8 0 256 256 1 0 1 0 256 1 1 0 0 2000 1 2 0 191 4 512 1 512 512 464 1 480 464 1984 0 1504 40 50 50 1 50 50 1 50 50 40 50 50 1 50 50 1 50 50 1 880 880 0 0 0 0 0 0 0 0 0 0 0 0 0 40 50 50 50 50 50 50 1 1 880 880 1 40 50 50 50 50 50 50 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16977952};
+    RunNormalCaseDynamicQuantDroppad(250, 880, 8, 191, 6128, 1, 1, true, QUANT_MODE_DYNAMIC, 1, ge::DT_FLOAT16, {0, 256}, ROW_IDX_TYPE_DROPPAD,
                   ge::GRAPH_SUCCESS, 1120100, expectTilingData, expectWorkspaces);
 }
 
@@ -670,16 +670,16 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_25)
 // performance 单核gather
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_26)
 {
-    string expectTilingData = "40 1920 7168 8 0 8 8 -1 1 0 0 256 1 1 0 1 15360 0 0 0 0 16 960 1 960 960 960 1 960 960 1984 4 1504 40 384 384 1 384 384 1 384 384 40 384 384 1 384 384 1 384 384 1 7168 7168 0 40 384 384 384 384 384 384 1 1 7168 7168 1 0 0 0 0 0 0 0 0 0 0 0 0 40 384 384 384 384 384 384 1 1 ";
-    std::vector<size_t> expectWorkspaces = {17209920};
-    RunNormalCase(1920, 7168, 8, 0, 15360, 0, 1, true, QUANT_MODE_NONE, 1, ge::DT_FLOAT, {0, 8}, ROW_IDX_TYPE_DROPLESS,
+    string expectTilingData = "40 384 7168 8 0 8 8 -1 1 0 0 256 1 1 0 1 3072 0 0 0 0 4 768 1 768 768 768 1 768 768 1984 0 1504 40 77 69 1 77 77 1 69 69 40 77 69 1 77 77 1 69 69 1 7168 7168 0 40 77 77 77 69 69 69 1 1 7168 7168 1 0 0 0 0 0 0 0 0 0 0 0 0 40 77 77 77 69 69 69 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16865856};
+    RunNormalCase(384, 7168, 8, 0, 3072, 0, 1, true, QUANT_MODE_NONE, 1, ge::DT_FLOAT, {0, 8}, ROW_IDX_TYPE_DROPLESS,
                   ge::GRAPH_SUCCESS, 1201000, expectTilingData, expectWorkspaces);
 }
 
 // performance 多核gather
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_27)
 {
-    string expectTilingData = "40 4608 7168 8 0 8 8 -1 1 0 0 256 1 1 0 1 36864 0 0 0 0 40 928 1 928 928 672 1 672 672 1984 10 1504 40 922 906 1 922 922 1 906 906 40 922 906 1 922 922 1 906 906 1 7168 7168 0 40 922 922 922 906 906 906 1 1 7168 7168 1 0 0 0 0 0 0 0 0 0 0 0 0 40 922 922 922 906 906 906 1 1 ";
+    string expectTilingData = "40 4608 7168 8 0 8 8 -1 1 0 0 256 1 1 0 1 36864 0 0 0 0 40 928 1 928 928 672 1 672 672 1984 10 1504 40 922 906 1 922 922 1 906 906 40 116 906 1 922 922 1 906 906 3 2936 1296 0 40 922 922 922 906 906 906 1 1 7168 7168 1 0 0 0 0 0 0 0 0 0 0 0 0 40 922 922 922 906 906 906 1 1 ";
     std::vector<size_t> expectWorkspaces = {17812032};
     RunNormalCase(4608, 7168, 8, 0, 36864, 0, 1, true, QUANT_MODE_NONE, 1, ge::DT_FLOAT, {0, 8}, ROW_IDX_TYPE_DROPLESS,
                   ge::GRAPH_SUCCESS, 1301000, expectTilingData, expectWorkspaces);
@@ -688,9 +688,9 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_27)
 // 多核排序
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_28)
 {
-    string expectTilingData = "40 4608 7168 10 0 8 8 -1 1 0 0 256 1 1 0 1 46080 0 0 0 0 40 1152 1 1152 1152 1152 1 1152 1152 1984 10 1504 40 1152 1152 1 1152 1152 1 1152 1152 40 1152 1152 2 1016 136 2 1016 136 1 7168 7168 0 40 1152 1152 1152 1152 1152 1152 1 1 7168 7168 1 0 0 0 0 0 0 0 0 0 0 0 0 40 1152 1152 1152 1152 1152 1152 1 1 ";
-    std::vector<size_t> expectWorkspaces = {18070080};
-    RunNormalCase(4608, 7168, 10, 0, 46080, 0, 1, true, QUANT_MODE_NONE, 1, ge::DT_FLOAT, {0, 8}, ROW_IDX_TYPE_DROPLESS,
+    string expectTilingData = "40 250 7168 10 0 8 8 -1 1 0 0 256 1 1 0 1 2500 0 0 0 0 4 640 1 640 640 580 1 608 580 1984 0 1504 40 63 43 1 63 63 1 43 43 40 63 43 1 63 63 1 43 43 1 7168 7168 0 40 63 63 63 43 43 43 1 1 7168 7168 1 0 0 0 0 0 0 0 0 0 0 0 0 40 63 63 63 43 43 43 1 1 ";
+    std::vector<size_t> expectWorkspaces = {16849840};
+    RunNormalCase(250, 7168, 10, 0, 2500, 0, 1, true, QUANT_MODE_NONE, 1, ge::DT_FLOAT, {0, 8}, ROW_IDX_TYPE_DROPLESS,
                   ge::GRAPH_SUCCESS, 1101000, expectTilingData, expectWorkspaces);
 }
 
