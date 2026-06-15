@@ -78,10 +78,10 @@ public:
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
     static constexpr bool USE_DN = useDn;
     static constexpr bool SPLITD = splitD;
-
+    static constexpr uint8_t KV_LAYOUT = 4; // 4: K与K_Scale在同一物理内存中交叉排列
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, BMM2_TOUB};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
-    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, 4, PAGE_ATTENTION>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KV_LAYOUT, PAGE_ATTENTION>();
     static constexpr GmFormat Q_SCALE_FORMAT = GetQueryScaleGmFormat<layout, USE_DN>();
     static constexpr GmFormat K_SCALE_FORMAT = GetKeyScaleGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
     static constexpr GmFormat V_SCALE_FORMAT = GetValueScaleGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
@@ -300,7 +300,7 @@ public:
                                              false, 0);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, actualSeqLenGmKv, actualLenDims);
-        } else if (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_FP8_BnNBsD_K) {
+        } else if (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_BnNBsD_KS) {
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
                                              constInfo.maxBlockNumPerBatch, bnStrides, n2Strides);
         }

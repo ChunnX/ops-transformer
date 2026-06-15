@@ -78,7 +78,6 @@ __aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
         return GmFormat::BNGSD;
     } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
         if constexpr (isPerTokenHead) {
-            // return GmFormat::TNG;
             return GmFormat::NGT;
         } 
         if constexpr (!useDn) {
@@ -111,7 +110,7 @@ __aicore__ inline constexpr GmFormat GetKeyScaleGmFormat()
     } else if constexpr (kvLayoutType == 2) { // KvLayoutType_PA_BNBD
         return GmFormat::PA_BnNBsD;
     } else if constexpr (kvLayoutType == 4) { // KvLayoutType_PA_BNB1
-        return GmFormat::FP8_BnNBs_K_SCLAE;
+        return GmFormat::PA_BnNBs_KS;
     } else {
         return GmFormat::PA_NZ_K_SCALE;
     }
@@ -161,15 +160,12 @@ __aicore__ inline constexpr GmFormat GetOutGmFormat()
     }
 }
 
-template <LayOutTypeEnum LAYOUT, bool isNoGS1 = false>
+template <LayOutTypeEnum LAYOUT>
 __aicore__ inline constexpr UbFormat GetOutUbFormat()
 {
     static_assert((LAYOUT == LayOutTypeEnum::LAYOUT_BSH) || (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) ||
                       (LAYOUT == LayOutTypeEnum::LAYOUT_TND) || (LAYOUT == LayOutTypeEnum::LAYOUT_NTD),
                   "Get OutAttention UB GmFormat fail, LAYOUT is incorrect");
-    if constexpr (isNoGS1) {
- 	    return UbFormat::NO_S1G;
- 	}
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
         return UbFormat::S1G;
     } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {

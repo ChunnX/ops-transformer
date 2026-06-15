@@ -64,7 +64,7 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat() {
     } else if constexpr (KvLayoutType == 3){ // KvLayoutType_PA_NZ
         return GmFormat::PA_NZ;
     } else {
-        return GmFormat::FP8_BnNBsD_K;
+        return GmFormat::PA_BnNBsD_KS;
     }
 }
 
