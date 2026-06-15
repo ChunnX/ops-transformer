@@ -13,7 +13,8 @@
  * \brief FlashAttn arch35 kernel类型推导与实例化（非量化场景）
  *
  * 4字段 tiling key → 模板参数: inOutLayoutType, KvLayoutType, hasAttenMask, config
- * 其余参数硬编码: pseMode=NONE, quantMode=NoQuant, hasRope=false, isFd=true, ...
+ * 其余参数硬编码: pseMode=NONE, quantMode=NoQuant, hasRope=false, useDn=false,
+ *   bmm2Write2Ub=true, splitD=false( D=128 ), 非FD
  */
 
 #ifndef FLASH_ATTN_ENTRY_REGBASE_H_
@@ -64,17 +65,10 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     constexpr bool enableKVPrefixConst = false;
     constexpr bool enableS1OutSplitConst = false;
 
-    // 2. 推导编译期常量
-    constexpr TPosition bmm2OutPos =
-        BaseApi::GetC2Position(dVTemplateType,
-                               BaseApi::UbOutCondition<INPUT_T>(false, PseTypeEnum::PSE_NONE_TYPE, hasAttenMask, false,
-                                                                false, (uint32_t)s1TemplateType == 64),
-                               ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
-    constexpr bool useDn =
-        BaseApi::IsDn(false, false, PseTypeEnum::PSE_NONE_TYPE, hasAttenMask, false, (uint32_t)s1TemplateType == 64,
-                      dTemplateType, hasRopeConst, enableKVPrefixConst, true, IsSameType<INPUT_T, hifloat8_t>::value);
-    constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
-    constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
+    // 2. 仅保留 D=128 + 非DN + bmm2写UB + 非FD 场景
+    constexpr bool useDn = false;
+    constexpr bool bmm2Write2Ub = true;
+    constexpr bool splitD = false;
 
     // 3. Block 类型别名
     using CubeBlock =
@@ -84,9 +78,6 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
         BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
                                       s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType,
                                       useDn, bmm2Write2Ub, splitD>;
-    using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                       s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                       hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
     // 4. AIC/AIV分别编译：用Dummy Block避免交叉编译不需要的代码
     using VecBlockDummy =
         BaseApi::VecBlockBase<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType, s2TemplateType,
@@ -97,9 +88,9 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                                dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
 
 #ifdef __DAV_C310_CUBE__
-    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubeBlock, VecBlockDummy, VecBlockDummy>;
+    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubeBlock, VecBlockDummy>;
 #else
-    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubeBlockDummy, VecFaBlock, VecFdBlock>;
+    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubeBlockDummy, VecFaBlock>;
 #endif
 
     // 5. Tiling 解析、实例化并执行
