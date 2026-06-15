@@ -2527,7 +2527,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     if ASCEND_IS_AIV { //todo:最开始清理server cnt flag
         CalTokenMask();
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
-            //CalCumSum();
+            CalCumSum();
         } else {
             // CalTokenSendExpertOffset();
             // if(aivId_ < aivUsedCumSum_ + aivUsedRemotComm_ + aivUsedScatter_) {
