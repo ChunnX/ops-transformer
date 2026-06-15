@@ -132,9 +132,9 @@
 | --- | ---: | --- |
 | ST-白盒 | 10 | 单多单 happy path、bias、groupListType、shape 推导、TilingKey、地址切换、尾块 |
 | ST-泛化 | 8 | groupNum、M/N/K、不同 Ng、空/小 group、边界 group 数 |
-| ST-回归 | 4 | 非单多单 MxA8W4、S8S4/A16W4ND/多多多路径 |
+| ST-回归 | 3 | MxA8W4 单单单、S8S4/A16W4ND 路径 |
 | NEG-异常 | 15 | list size、dtype、format、dim、shape、groupList、转置、范围外组合 |
-| 合计 | 37 | 正向 22，负向 15 |
+| 合计 | 36 | 正向 21，负向 15 |
 
 ## 6. 用例命名规范
 
@@ -157,7 +157,7 @@
 | C07 | `weight` FRACTAL_NZ 且 `transB=true` | ST001 | NEG008、NEG014 |
 | C08 | `antiquantScale` dim 为 4 且 N/K 分组满足 MX 约束 | ST001、STG003 | NEG009、NEG010、NEG011 |
 | C09 | `bias` dim 为 1 且 N 轴与 weight 对齐 | ST002 | NEG012、NEG013 |
-| C10 | 非单多单路径 `IS_SINGLE_MULTI_SINGLE == 0` | HIST001、HIST002 | NEG015 |
+| C10 | 非单多单路径 `IS_SINGLE_MULTI_SINGLE == 0` | HIST001 | NEG015 |
 
 ## 8. 数据文件契约
 
@@ -185,7 +185,7 @@
 2. 正向用例生成 golden：按 group 计算 `Y_g = Matmul(X_g, Weight_g, WeightScale_g) + Bias_g`，再拼接到单 tensor `y`。
 3. 异常用例只改变一个非法条件，检查 host checker 返回失败并匹配日志关键字。
 4. 白盒 TilingKey 用例通过日志或断点检查 `tilingKeyConfigure.isSingleMultiSingle` 和实际 TilingKey 组合。
-5. 回归用例复用既有 MxA8W4 单单单、多多多和其他 weight quant 用例，确认新增模板参数未改变原路径。
+5. 回归用例复用既有 MxA8W4 单单单和其他 weight quant 用例，确认新增 `IS_SINGLE_MULTI_SINGLE` 取值覆盖后未改变原路径。
 
 本次用户未提供 Excel 模板，因此不生成迭代测试用例 Excel；如后续提供模板，可按本 STC 的用例表生成 JSON 后填充 Excel。
 
@@ -195,9 +195,9 @@
 | --- | --- | --- |
 | Host checker | list size、dtype、format、shape、groupList、属性组合 | ST001、NEG001~NEG015 |
 | Host tiling | `groupNum/kList/nList` 推导，`SetBaseTiling` 写入 | ST001、STG001、STG004 |
-| TilingKey | `IS_SINGLE_MULTI_SINGLE` 取 1/0 的组合合法性 | ST005、HIST001 |
+| TilingKey | 新增 `IS_SINGLE_MULTI_SINGLE` 后，`WQGMM_MX + WQGMM_TRANS` 模板组合中 1/0 取值的合法性 | ST005、HIST001 |
 | Kernel | resplit controller 执行多 group，输出与 golden 对齐 | ST001、ST002、ST006、STG002 |
-| 回归 | 非单多单路径行为不变 | HIST001~HIST004 |
+| 回归 | 非单多单路径行为不变 | HIST001~HIST003 |
 
 ## 11. 实现/Tiling 对照
 
@@ -208,7 +208,7 @@
 | 单多单逐 tensor 校验入口 | `CheckEveryTensorSingleXMultiWeightSingleY` | NEG006~NEG013 |
 | groupList 长度按 weight list size 校验 | `CheckGroupList` | NEG005 |
 | TilingKey 单多单 bool | `TilingKeyConfigure::isSingleMultiSingle`、`GenTilingKey` | ST005、HIST001 |
-| 模板参数合法组合 | `weight_quant_tiling_key.h` | ST005、NEG015 |
+| 模板参数合法组合 | `weight_quant_tiling_key.h` 中新增 `IS_SINGLE_MULTI_SINGLE` 取值覆盖的 `W_QUANT_TYPE=WQGMM_MX`、`WQ_B_TRANS=WQGMM_TRANS` 组合 | ST005、NEG015 |
 | Kernel 入口透传 | `grouped_matmul_apt.cpp` | ST006 |
 | resplit 地址更新 | `GMMWeightQuantResplitController::UpdateGmAddr` | ST006、ST007 |
 
@@ -230,8 +230,8 @@
 | bias 不存在：不访问 bias tensor list | ST001、ST006 |
 | weightScale 长度与 weight 不一致 | NEG003 |
 | bias 长度与 weight 不一致 | NEG004 |
-| 非单多单 MxA8W4 回归 | HIST001、HIST002 |
-| TilingKey 白盒检查 `IS_SINGLE_MULTI_SINGLE == 1` | ST005 |
+| 非单多单 MxA8W4 回归 | HIST001 |
+| TilingKey 白盒检查：新增单多单取值后，在 `WQGMM_MX + WQGMM_TRANS` 组合中生成 `IS_SINGLE_MULTI_SINGLE == 1` | ST005 |
 
 ## 附录 B：用例清单
 
@@ -268,9 +268,8 @@
 | 编号 | 用例名称 | 输入要点 | 操作步骤 | 预期结果 |
 | --- | --- | --- | --- | --- |
 | HIST001 | MxA8W4 单单单回归 | x/weight/y 均单 tensor，weight 内含 group 维 | 运行既有 MxA8W4 单单单用例 | `IS_SINGLE_MULTI_SINGLE == 0`，结果不变 |
-| HIST002 | MxA8W4 多多多回归 | x/weight/y 均多 tensor | 运行既有多多多用例 | 不误入单多单路径，结果不变 |
-| HIST003 | S8S4 weight quant 回归 | int8/int4 路径 | 运行既有 S8S4 用例 | TilingKey 新参数为 0，结果不变 |
-| HIST004 | A16W4ND 回归 | bf16/fp16 + int4 ND 路径 | 运行既有 A16W4ND 用例 | checker 与结果不变 |
+| HIST002 | S8S4 weight quant 回归 | int8/int4 路径 | 运行既有 S8S4 用例 | TilingKey 新参数为 0，结果不变 |
+| HIST003 | A16W4ND 回归 | bf16/fp16 + int4 ND 路径 | 运行既有 A16W4ND 用例 | checker 与结果不变 |
 
 ### NEG-异常用例
 
