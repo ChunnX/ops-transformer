@@ -12,9 +12,12 @@
  * \file inplace_partial_rotary_mul_grad_apt.cpp
  * \brief InplacePartialRotaryMulGrad AscendC (RegBase) kernel entry for arch35 / ascend950.
  *
- * Only the x == nullptr scenario is supported (dcos / dsin are not computed). The kernel dispatches on the
- * (dy, cos) dtype combination; rotary_mode is selected at runtime inside the kernel class.
+ * Only the x == nullptr scenario is supported (dcos / dsin are not computed).
+ * The (dy, cos) dtype combination is selected at compile time via DTYPE_DY / DTYPE_COS macros
+ * injected by the build system from the JSON binary config entries.
  */
+
+#define INPLACE_PARTIAL_ROTARY_MUL_GRAD_TILING_KEY 1002
 
 #include "kernel_operator.h"
 #include "arch35/inplace_partial_rotary_mul_grad_tiling_data.h"
@@ -23,21 +26,18 @@
 using namespace AscendC;
 using namespace InplacePartialRotaryMulGrad;
 
-extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(
-    GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR x,
-    GM_ADDR dyOut, GM_ADDR dcos, GM_ADDR dsin,
-    GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR x,
+                                                                      GM_ADDR dyOut, GM_ADDR dcos, GM_ADDR dsin,
+                                                                      GM_ADDR workspace, GM_ADDR tiling)
 {
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     (void)x;
     (void)dcos;
     (void)dsin;
     (void)workspace;
-    if (g_coreType == AIC) {
-        return;
-    }
 
     GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, tilingDataIn, tiling);
-    const InplacePartialRotaryMulGradTilingData* __restrict tilingData = &tilingDataIn;
+    const InplacePartialRotaryMulGradTilingData *__restrict tilingData = &tilingDataIn;
 
     // start == end: nothing to compute.
     if (tilingData->sliceLen <= 0) {
@@ -48,40 +48,9 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(
     }
 
     AscendC::TPipe pipe;
-    int64_t dyDtype = tilingData->dyDtypeCode;
-    int64_t csDtype = tilingData->cosDtypeCode;
-
-#define DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD(TDY, TCS)                                          \
-    do {                                                                                            \
-        InplacePartialRotaryMulGrad<TDY, TCS> op;                                                   \
-        op.Init(dy, cos, sin, dyOut, tilingData, &pipe);                                           \
-        op.Process();                                                                              \
-    } while (0)
-
-    if (dyDtype == INPLACE_PARTIAL_ROTARY_DTYPE_FP32) {
-        if (csDtype == INPLACE_PARTIAL_ROTARY_DTYPE_FP32) {
-            DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD(float, float);
-        } else if (csDtype == INPLACE_PARTIAL_ROTARY_DTYPE_FP16) {
-            DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD(float, half);
-        } else {
-            DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD(float, bfloat16_t);
-        }
-    } else if (dyDtype == INPLACE_PARTIAL_ROTARY_DTYPE_FP16) {
-        if (csDtype == INPLACE_PARTIAL_ROTARY_DTYPE_FP32) {
-            DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD(half, float);
-        } else if (csDtype == INPLACE_PARTIAL_ROTARY_DTYPE_FP16) {
-            DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD(half, half);
-        } else {
-            DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD(half, bfloat16_t);
-        }
-    } else {
-        if (csDtype == INPLACE_PARTIAL_ROTARY_DTYPE_FP32) {
-            DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD(bfloat16_t, float);
-        } else if (csDtype == INPLACE_PARTIAL_ROTARY_DTYPE_FP16) {
-            DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD(bfloat16_t, half);
-        } else {
-            DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD(bfloat16_t, bfloat16_t);
-        }
+    if (TILING_KEY_IS(INPLACE_PARTIAL_ROTARY_MUL_GRAD_TILING_KEY)) {
+        InplacePartialRotaryMulGrad<DTYPE_DY, DTYPE_COS> op;
+        op.Init(dy, cos, sin, dyOut, tilingData, &pipe);
+        op.Process();
     }
-#undef DISPATCH_INPLACE_PARTIAL_ROTARY_MUL_GRAD
 }
