@@ -1596,7 +1596,7 @@ ge::graphStatus DequantChecker::CheckN2SizeFullquant(const FiaTilingInfo &fiaInf
         OP_CHECK_IF((fiaInfo.n2Size > N2_LIMIT || fiaInfo.n2Size < NUM1),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_key_value_heads",
                 std::to_string(fiaInfo.n2Size).c_str(),
-                "In GQA fullquant scenario, num_key_value_heads must be within the range [1, 64]"),
+                "In GQA fullquant scenario, num_key_value_heads must be within the range [1, 256]"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
