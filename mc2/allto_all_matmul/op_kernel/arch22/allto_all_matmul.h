@@ -44,6 +44,7 @@
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_copy.hpp"
 
 #include "matmul.hpp"
+#include "../../tools/coc_timer/coc_timer_device.hpp"
 
 using namespace AscendC;
 using namespace Catlass;
@@ -63,7 +64,8 @@ class AlltoAllMatmul : public CommBase {
 public:
     __aicore__ inline AlltoAllMatmul(){};
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR scaleGM,
-                                GM_ADDR cGM, GM_ADDR allToAllResult, GM_ADDR workspaceGM, GM_ADDR tilingGM);
+                                GM_ADDR cGM, GM_ADDR allToAllResult, GM_ADDR timerBufferGM, GM_ADDR workspaceGM,
+                                GM_ADDR tilingGM);
     __aicore__ inline void Process();
 
 private:
@@ -113,6 +115,9 @@ private:
     __gm__ int32_t *dequantCGM_;
     GM_ADDR quantScaleGM_;
 
+    GM_ADDR timerBufferGM_;
+    CocTimerDevice timerDevice_;
+
     Catlass::Arch::Resource<Catlass::Arch::AtlasA2> resource;
 };
 
@@ -120,7 +125,8 @@ private:
 template <TemplateA2AMMClass>
 __aicore__ inline void
 AlltoAllMatmul<TemplateA2AMMFunc>::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR scaleGM,
-                                        GM_ADDR cGM, GM_ADDR allToAllResultGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                        GM_ADDR cGM, GM_ADDR allToAllResultGM, GM_ADDR timerBufferGM,
+                                        GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(AlltoAllMatmulTilingData);
     auto tiling = (__gm__ AlltoAllMatmulTilingData *)tilingGM;
@@ -139,6 +145,10 @@ AlltoAllMatmul<TemplateA2AMMFunc>::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM
     scaleGM_ = scaleGM;
     allToAllResultGM_ = allToAllResultGM;
     workspaceGM_ = GetUserWorkspace(workspaceGM);
+
+    timerBufferGM_ = timerBufferGM;
+    timerDevice_.Init(timerBufferGM_);
+    timerDevice_.Tik();
 
     CommBase::SetArgs<AType>(rank, rankSize, tilingData);
     this->ub_offset = Catlass::BytesToBits(UB_OFFSET) / Catlass::SizeOfBits<int8_t>::value;
@@ -275,7 +285,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmul()
                                                  3,
                                                  0,
                                                  static_cast<int32_t>(rankSize),
-                                                 MAX_BLOCK_COUNT};
+                                                 MAX_BLOCK_COUNT,
+                                                 &timerDevice_};
             matmul_op(params);
         } else {
             using L1TileShape = GemmShape<256, 128, L1TileShapeK>;
@@ -297,7 +308,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmul()
                                                  3,
                                                  0,
                                                  static_cast<int32_t>(rankSize),
-                                                 MAX_BLOCK_COUNT};
+                                                 MAX_BLOCK_COUNT,
+                                                 &timerDevice_};
             matmul_op(params);
         }
     }
@@ -830,9 +842,11 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::AlltoAll()
                 uint32_t copyBytes = Catlass::BitsToBytes(dataLen * Catlass::SizeOfBits<AType>::value);
 
                 if (dataLen > 0) {
+                    timerDevice_.Tik(CocTimer::AIV_AA);
                     CopyTokensFromGMToGM(reinterpret_cast<__gm__ int8_t *>(aGM_) + ElemNumToBytes<AType>(dataSrc),
                                          (__gm__ int8_t *)buff[dstRank] + ElemNumToBytes<AType>(dataDst), copyBytes,
                                          kBytes, tokenBytes);
+                    timerDevice_.Tok<Overwrite>(CocTimer::AIV_AA);
                 }
                 src_offset += allToAllSizePerRankPerLoop;
             } else if (isAlltoallOut && aivIdx == 1 && commIdx > 0 && aicIdx >= allToAllSendCoreNum &&
@@ -845,10 +859,12 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::AlltoAll()
                 uint64_t srcSt = blockDst + mSt * tokenSize;
                 uint64_t dstSt = (static_cast<uint64_t>(commIdx - 1) * mPerLoop + mSt) * tokenSize;
                 if (mThisCoreThisLoop > 0) {
+                    timerDevice_.Tik(CocTimer::AIV_AAO);
                     CopyTokensFromGMToGM((__gm__ int8_t *)buff[rank] + ElemNumToBytes<AType>(srcSt),
                                          reinterpret_cast<__gm__ int8_t *>(allToAllResultGM_) +
                                              ElemNumToBytes<AType>(dstSt),
                                          mThisCoreThisLoop * tokenBytes, tokenBytes, tokenBytes);
+                    timerDevice_.Tok<Overwrite>(CocTimer::AIV_AAO);
                 }
             }
 
@@ -857,7 +873,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::AlltoAll()
                 CrossRankSyncV1(FLAG_ONE_IDX, commIdx + 1);
             }
             SetAndWaitAivSync(flagIdx);
-
+            
+            
             if constexpr (QuantType == MC2_DYNAMIC_QUANT) { // 动态量化场景，拷贝完成后，对左矩阵进行quant
                 if (commIdx < commCount) {
                     Quant(flagIdx, commIdx);
@@ -876,8 +893,10 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::AlltoAll()
         }
 
         if constexpr (QuantType != MC2_NON_QUANT) {
+            timerDevice_.Tik(CocTimer::AIV_DQ);
             SetAndWaitAivSync(FLAG_ONE_IDX);
             Dequant();
+            timerDevice_.Tok<Overwrite>(CocTimer::AIV_DQ);
         }
 
         PipeBarrier<PIPE_ALL>();
@@ -891,6 +910,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Process()
     AlltoAll();
     CatlassMatmul();
     SyncAll<false>();
+    timerDevice_.Tok<Overwrite>(CocTimer::KERNEL_TIMING_IDX);
 }
 
 } // namespace Mc2Kernel

@@ -17,10 +17,16 @@
 #include <string>
 #include <cstring>
 #include <vector>
+#include <sys/stat.h>
+#include <errno.h>
+#include <unistd.h>
+#include <limits.h>
 #include <acl/acl.h>
 #include <hccl/hccl.h>
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_allto_all_matmul.h"
+
+#include "../../tools/coc_timer/coc_timer_host.hpp"
 
 int ndev = 2;
 
@@ -65,6 +71,29 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
+void ExportTimeCsv(int rankId, void* timerBufferDeviceAddr) {
+    std::string outDir = "output_timer";
+    std::cout << "Trying to create: " << outDir << std::endl;
+    int ret = mkdir(outDir.c_str(), 0777);
+    if (ret != 0 && errno != EEXIST) {
+        LOG_PRINT("[ERROR] mkdir failed. ret: %d, errno: %d, %s\n", ret, errno, strerror(errno));
+        return;
+    }
+    std::string csvFilePath = outDir + "/timer_rank_" + std::to_string(rankId) + ".csv";
+    auto timeResult = CocTimerHost::GetTimeResult(timerBufferDeviceAddr);
+    std::string dataDir = outDir + "/data";
+    ret = mkdir(dataDir.c_str(), 0777);
+    if (ret != 0 && errno != EEXIST) {
+        LOG_PRINT("[ERROR] mkdir failed. ret: %d, errno: %d, %s\n", ret, errno, strerror(errno));
+        return;
+    }
+    std::string rawCsvFilePath = dataDir + "/timer_rank_" + std::to_string(rankId) + "_timeline.csv";
+    std::string durCsvFilePath = outDir + "/timer_rank_" + std::to_string(rankId) + ".csv";
+    CocTimerHost::WriteAllTimerResults(rawCsvFilePath, durCsvFilePath, timeResult);
+    std::cerr << "[Timer] Raw CSV:" << rawCsvFilePath << std::endl;
+    std::cerr << "[Timer] Duration CSV:" << durCsvFilePath << std::endl;
+}
+
 struct Args {
     uint32_t rankId;
     HcclComm hcclComm;
@@ -83,11 +112,11 @@ int launchOneThreadAlltoAllMatmul(Args &args)
     LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream,
             args.context);
 
-    std::vector<int64_t> x1Shape = {32, 64};
-    std::vector<int64_t> x2Shape = {64 * ndev, 128};
-    std::vector<int64_t> biasShape = {128};
-    std::vector<int64_t> outShape = {32 / ndev, 128};
-    std::vector<int64_t> alltoalloutShape = {32 / ndev, 64 * ndev};
+    std::vector<int64_t> x1Shape = {200000, 4096};
+    std::vector<int64_t> x2Shape = {4096 * ndev, 8192};
+    std::vector<int64_t> biasShape = {8192};
+    std::vector<int64_t> outShape = {200000 / ndev, 8192};
+    std::vector<int64_t> alltoalloutShape = {200000 / ndev, 4096 * ndev};
     void *x1DeviceAddr = nullptr;
     void *x2DeviceAddr = nullptr;
     void *biasDeviceAddr = nullptr;
@@ -98,6 +127,12 @@ int launchOneThreadAlltoAllMatmul(Args &args)
     aclTensor *bias = nullptr;
     aclTensor *out = nullptr;
     aclTensor *alltoallout = nullptr;
+
+    void *timerBufferDeviceAddr = nullptr;
+    aclTensor *timerBuffer = nullptr;
+    long long timerBufferSize = CocTimerHost::GetTotalTimerBufferSize();
+    std::vector<int64_t> timerBufferShape = {timerBufferSize, 1};
+    std::vector<int64_t> timerBufferHostData(timerBufferSize, 0);
 
     int64_t a2aAxes[2] = {-2, -1};
     aclIntArray* alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
@@ -126,9 +161,12 @@ int launchOneThreadAlltoAllMatmul(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(alltoalloutHostData, alltoalloutShape, &alltoalloutDeviceAddr, aclDataType::ACL_FLOAT16, &alltoallout);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(timerBufferHostData, timerBufferShape, &timerBufferDeviceAddr,
+                          aclDataType::ACL_INT64, &timerBuffer);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 调用第一段接口
     ret = aclnnAlltoAllMatmulGetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, false, false,
-                                            out, alltoallout, &workspaceSize, &executor);
+                                            timerBuffer, out, alltoallout, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnAlltoAllMatmulGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
@@ -136,13 +174,23 @@ int launchOneThreadAlltoAllMatmul(Args &args)
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
-    // 调用第二段接口
     ret = aclnnAlltoAllMatmul(workspaceAddr, workspaceSize, executor, args.stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAlltoAllMatmul failed. ERROR: %d\n", ret); return ret);
+
+    for (int i = 0; i < 30; i++) {
+        ret = aclnnAlltoAllMatmulGetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, false, false,
+                                            timerBuffer, out, alltoallout, &workspaceSize, &executor);
+        CHECK_RET(ret == ACL_SUCCESS,
+                LOG_PRINT("aclnnAlltoAllMatmulGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+        ret = aclnnAlltoAllMatmul(workspaceAddr, workspaceSize, executor, args.stream);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAlltoAllMatmul failed. ERROR: %d\n", ret); return ret);
+        
+    }
     //（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     LOG_PRINT("device%d aclnnAlltoAllMatmul execute success \n", args.rankId);
+    ExportTimeCsv(args.rankId, timerBufferDeviceAddr);
     // 释放device资源，需要根据具体API的接口定义修改
     if (x1 != nullptr) {
         aclDestroyTensor(x1);
@@ -173,6 +221,12 @@ int launchOneThreadAlltoAllMatmul(Args &args)
     }
     if (alltoalloutDeviceAddr != nullptr) {
         aclrtFree(alltoalloutDeviceAddr);
+    }
+    if (timerBuffer != nullptr) {
+        aclDestroyTensor(timerBuffer);
+    }
+    if (timerBufferDeviceAddr != nullptr) {
+        aclrtFree(timerBufferDeviceAddr);
     }
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);

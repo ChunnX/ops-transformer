@@ -88,6 +88,8 @@ export LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer/op_api
 
 ```bash
 bash build.sh --run_example add_example eager cust --vendor_name=custom
+
+bash build.sh --run_example allto_all_matmul eager cust --vendor_name=custom
 ```
 
 预期输出：打印算子`AddExample`的加法计算结果，表明算子已成功部署并正确执行。
