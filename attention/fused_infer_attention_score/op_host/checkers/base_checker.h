@@ -16,6 +16,8 @@
 #ifndef BASE_CHECKER_H
 #define BASE_CHECKER_H
 
+ #include <numeric>
+
 namespace optiling {
 class BaseChecker {
 public:
