@@ -303,6 +303,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitAttnScoreGmForRobustness(u
         uint64_t curTileLen = (tileId + 1 == tileNum_) ? tailTileLen_ : tileLen_;
         uint64_t offset = baseOffset + globalTileId * tileLen_;
         AscendC::InitOutput(attnScoreGmLocal[offset], curTileLen, static_cast<IN_T>(0.0f));
+        PipeBarrier<PIPE_ALL>();
 
         uint64_t oneLen = curTileLen >= 64 ? 8 : (curTileLen >= 16 ? 4 : 1);
         uint64_t oneStart = curTileLen / 2;
