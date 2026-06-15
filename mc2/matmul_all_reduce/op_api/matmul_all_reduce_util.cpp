@@ -17,7 +17,7 @@
 #include "opdev/platform.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "mc2_comm_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 
