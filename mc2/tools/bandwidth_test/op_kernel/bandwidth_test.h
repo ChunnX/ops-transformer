@@ -1,11 +1,11 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -24,9 +24,15 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "bandwidth_test_tiling.h"
 #include "adv_api/hccl/hccl.h"
+#if __has_include("../common/op_kernel/moe_distribute_base.h")
+#include "../common/op_kernel/moe_distribute_base.h"
+#include "../common/op_kernel/mc2_kernel_utils.h"
+#include "../common/op_kernel/mc2_moe_context.h"
+#else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#include "../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
+#endif
 
 #if __has_include("../moe_distribute_dispatch_v2/moe_distribute_v2_base.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
@@ -153,16 +159,16 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     aivId_ = GetBlockIdx();          // 获取当前核ID
 
     // ============ HCCL窗口初始化 ============
-    totalWinSizeEp_ = tilingData->total_win_size;
+    totalWinSizeEp_ = tilingData->totalWinSize;
     context_ = (__gm__ Mc2MoeContext *)context;
 
     // ============ 从tiling获取配置参数 ============
-    totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
-    axisBS_ = tilingData->max_bs;           // token数量
-    axisH_ = tilingData->data_size;     // hidden size
-    epWorldSize_ = tilingData->world_size;
-    globalBS_ = tilingData->max_bs * epWorldSize_;
-    aivNum_ = tilingData->aiv_num;
+    totalUbSize_ = static_cast<uint32_t>(tilingData->totalUbSize);
+    axisBS_ = tilingData->maxBs;           // token数量
+    axisH_ = tilingData->dataSize;     // hidden size
+    epWorldSize_ = tilingData->worldSize;
+    globalBS_ = tilingData->maxBs * epWorldSize_;
+    aivNum_ = tilingData->aivNum;
     mode_ = tilingData->mode;
 
     // ============ 初始化窗口状态 ============
@@ -198,7 +204,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 
     // 每个rank在窗口中的空间大小 = global_bs/world_size * 对齐后的hidden size
     uint32_t axisMaxBS = globalBS_ / epWorldSize_;
-    expertPerSizeOnWin_ = axisMaxBS * hAlignWinSize_;
+    expertPerSizeOnWin_ = static_cast<uint64_t>(axisMaxBS) * hAlignWinSize_;
 
     // ============ 计算状态等待的任务分发 ============
     // 将 world_size 个 rank 的状态等待任务分发到各 AIV 核
@@ -350,19 +356,19 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
 
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
-        uint32_t todDstRankId = dstRankIdsTensor_(tokenIndex);
+        uint32_t toDstRankId = dstRankIdsTensor_(tokenIndex);
         int32_t curExpertCnt = 0;
 
         if (tokenIndex > 0) {
             SyncFunc<AscendC::HardEvent::S_V>();
-            CalTokenSendExpertCnt(todDstRankId, tokenIndex, curExpertCnt);
+            CalTokenSendExpertCnt(toDstRankId, tokenIndex, curExpertCnt);
         }
 
         SyncFunc<AscendC::HardEvent::S_V>();
         
         // 计算目标窗口地址:
         // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
-        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(todDstRankId) +
+        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(toDstRankId) +
                                            epRankId_ * expertPerSizeOnWin_ +
                                            curExpertCnt * hAlignWinSize_);
         dstWinGMTensor.SetGlobalBuffer((__gm__ XType*)rankGM);
@@ -417,10 +423,12 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::BufferInit(
     uint32_t waitStatusBufSize = (((recStatusNumPerCore_ * UB_ALIGN) > 256) ? (recStatusNumPerCore_ * UB_ALIGN) : 256);
     tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize);
     totalUsedUB_ += waitStatusBufSize;
-
+    uint64_t recvWinBlockNumSpace = epWorldSize_ * sizeof(float);
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(gatherMaskOutBuf_, recStatusNumPerCoreSpace);
-    totalUsedUB_ += recStatusNumPerCoreSpace;
+    uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ?
+                                  recStatusNumPerCoreSpace : recvWinBlockNumSpace;
+    tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize);
+    totalUsedUB_ += gatherMaskOutSize;
 
     tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 2);
     totalUsedUB_ += UB_ALIGN * 2;

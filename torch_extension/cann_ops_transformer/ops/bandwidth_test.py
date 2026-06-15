@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -7,56 +7,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from dataclasses import dataclass
 import torch
 import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
-
-
-@dataclass(frozen=True)
-class BandwidthTestConfig:
-    """带宽测试配置参数
-    
-    Args:
-        group: 通信组名称
-        world_size: 全局进程数，必须大于0
-        max_bs: 最大批量大小，必须大于0
-        mode: 测试模式，0:单测, 1:压力测试等
-        comm_alg: 通信算法，如 "ring", "mesh" 等
-        aiv_num: AI核心数量，必须大于0
-    """
-    group: str
-    world_size: int
-    max_bs: int
-    mode: int
-    comm_alg: str
-    aiv_num: int
-    
-    def __post_init__(self):
-        """参数验证，确保参数有效性"""
-        if self.world_size <= 0:
-            raise ValueError(
-                f"world_size should be > 0, got {self.world_size=}. "
-                f"{ops_error(ErrCode.VALUE)}"
-            )
-        if self.max_bs <= 0:
-            raise ValueError(
-                f"max_bs should be > 0, got {self.max_bs=}. "
-                f"{ops_error(ErrCode.VALUE)}"
-            )
-        if self.mode < 0:
-            raise ValueError(
-                f"mode should be >= 0, got {self.mode=}. "
-                f"{ops_error(ErrCode.VALUE)}"
-            )
-        if not self.group:
-            raise ValueError(
-                f"group should not be empty. "
-                f"{ops_error(ErrCode.VALUE)}"
-            )
 
 
 class BandwidthTestOpBuilder(OpBuilder):
@@ -68,8 +24,10 @@ class BandwidthTestOpBuilder(OpBuilder):
         return ['ops/csrc/bandwidth_test.cpp']
 
     def schema(self) -> str:
-        """PyTorch operator signature with config object."""
-        return "npu_bandwidth_test(Tensor x, Tensor dstrank_id, __config__ Config) -> (Tensor, Tensor)"
+        """PyTorch operator signature."""
+        return "npu_bandwidth_test(Tensor x, Tensor dstrank_id, " \
+            "str group, int world_size, int max_bs, int mode, str comm_alg, int aiv_num) " \
+            "-> (Tensor, Tensor)"
 
     def register_meta(self):
         """
@@ -77,23 +35,22 @@ class BandwidthTestOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_bandwidth_test_meta(x, dstrank_id, config: BandwidthTestConfig):
-            """Meta implementation using config object
-            
-            Args:
-                x: Input tensor
-                dstrank_id: Destination rank IDs tensor
-                config: Bandwidth test configuration
-            """
-            # Parameter validation is already handled in config.__post_init__
-            
+        def npu_bandwidth_test_meta(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
+            torch._check(
+                world_size > 0,
+                lambda: (
+                    f"world_size should be > 0, "
+                    f"but got {world_size=}."
+                    f"{ops_error(ErrCode.VALUE)}."
+                ),
+            )
+
             bs = x.size(0)
             h = x.size(1)
 
-            max_recv_cnt = config.max_bs * config.world_size
+            max_recv_cnt = max_bs * world_size
             y = x.new_empty((max_recv_cnt, h), dtype=x.dtype)
-            receive_cnt = x.new_empty((config.world_size,), dtype=torch.int32)
-            
+            receive_cnt = x.new_empty((world_size,), dtype=torch.int32)
             return (y, receive_cnt)
 
 
@@ -103,45 +60,15 @@ op_module = bandwidth_test_op_builder.load()
 
 
 @impl(AS_LIBRARY, bandwidth_test_op_builder.name, "PrivateUse1")
-def npu_bandwidth_test(x, dstrank_id, config: BandwidthTestConfig):
+def _npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
     """
-    Implementation for NPU with config object.
+    Implementation for NPU.
     'PrivateUse1' is the key for custom NPU backends.
     """
-    return op_module.npu_bandwidth_test(x, dstrank_id, config)
+    return op_module.npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num)
 
 
-# GE Converter for Graph Mode
-try:
-    import torchair
-    from torchair._ge_concrete_graph import ge_apis as ge
-    from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
-    from torchair._ge_concrete_graph.supported_declaration import Support
-    _TORCHAIR_AVAILABLE = True
-except ImportError:
-    _TORCHAIR_AVAILABLE = False
+def npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
 
-if _TORCHAIR_AVAILABLE:
-    @declare_supported([
-        Support(torch.float16, (8, 128)),
-        Support(torch.bfloat16, (8, 128)),
-        Support(torch.float32, (8, 128)),
-    ])
-    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_bandwidth_test.default)
-    def converter_bandwidth_test(
-        x: Tensor,
-        dstrank_id: Tensor,
-        config: BandwidthTestConfig,
-        *,
-        meta_outputs: TensorSpec = None):
-        return ge.BandwidthTest(
-            x,
-            dstrank_id,
-            group=config.group,
-            world_size=config.world_size,
-            max_bs=config.max_bs,
-            mode=config.mode,
-            comm_alg=config.comm_alg,
-            aiv_num=config.aiv_num
-        )
+    return torch.ops.npu_ops_transformer.npu_bandwidth_test(
+        x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num)
