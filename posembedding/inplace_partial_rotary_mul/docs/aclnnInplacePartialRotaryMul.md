@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：执行单路旋转位置编码的 Inplace 计算，直接修改输入张量xRef，不产生新的输出张量。
+- 接口功能：执行单路旋转位置编码的Inplace计算，直接修改输入张量xRef，不产生新的输出张量。
 - 计算公式：
 
     （1）interleave模式（rotary_mode等于1）：
@@ -36,7 +36,7 @@
     x = x * cos + x\_rotate * sin
     $$
 
-- partial_slice 参数说明：支持对输入张量的最后一维进行部分旋转位置编码计算。通过 `partial_slice` 指定 [start, end) 范围，仅对该范围内的数据进行旋转位置编码。
+- partial_slice参数说明：支持对输入张量的最后一维进行部分旋转位置编码计算。通过`partial_slice`指定[start, end)范围，仅对该范围内的数据进行旋转位置编码。
 
 ## 函数原型
 
@@ -44,21 +44,21 @@
 
 ```c++
 aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(
-    const aclTensor *xRef,
-    const aclTensor *cos,
-    const aclTensor *sin,
-    int64_t          rotary_mode,
-    const aclIntArray *partialSlice,
-    uint64_t        *workspaceSize,
-    aclOpExecutor   **executor)
+  const aclTensor   *xRef,
+  const aclTensor   *cos,
+  const aclTensor   *sin,
+  int64_t           rotary_mode,
+  const aclIntArray *partialSlice,
+  uint64_t          *workspaceSize,
+  aclOpExecutor     **executor)
 ```
 
 ```c++
 aclnnStatus aclnnInplacePartialRotaryMul(
-    void          *workspace,
-    uint64_t       workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream    stream)
+  void          *workspace,
+  uint64_t      workspaceSize,
+  aclOpExecutor *executor,
+  aclrtStream   stream)
 ```
 
 ## aclnnInplacePartialRotaryMulGetWorkspaceSize
@@ -121,8 +121,8 @@ aclnnStatus aclnnInplacePartialRotaryMul(
     <tr>
       <td>rotary_mode</td>
       <td>输入</td>
-      <td>旋转模式，当前仅支持interleave模式。</td>
-      <td>-</td>
+      <td>旋转模式</td>
+      <td>0为half模式，1为interleave模式，当前仅支持interleave模式。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -131,8 +131,8 @@ aclnnStatus aclnnInplacePartialRotaryMul(
     <tr>
       <td>partialSlice</td>
       <td>输入</td>
-      <td>部分旋转的切片范围 [start, end)，作用于最后一维。</td>
-      <td>默认值为 [0, 0]。</td>
+      <td>部分旋转的切片范围[start, end)，作用于最后一维。</td>
+      <td>不传值则默认整D轴做旋转编码，start和end相等时则不做旋转编码。</td>
       <td>INT64数组</td>
       <td>-</td>
       <td>-</td>
@@ -161,11 +161,31 @@ aclnnStatus aclnnInplacePartialRotaryMul(
   </tbody>
   </table>
 
-  - 参数rotary_mode约束：仅支持interleave模式（rotary_mode = 1）。
-
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  第一段接口完成入参校验，出现以下场景时报错：
+  <table>
+  <tr>
+  <td align="center" style="width:169px;">返回值</td>
+  <td align="center" style="width:125px;">错误码</td>
+  <td align="center" style="width:855px;">描述</td>
+  </tr>
+  <tr>
+  <td align="left">ACLNN_ERR_PARAM_NULLPTR</td>
+  <td align="left">161001</td>
+  <td align="left">传入的xRef、cos或sin是空指针。</td>
+  </tr>
+  <tr>
+  <td rowspan="4" align="left">ACLNN_ERR_PARAM_INVALID</td>
+  <td rowspan="4" align="left">161002</td>
+  <td align="left">传入的xRef、cos、sin的数据类型不在支持范围内，或cos与sin的数据类型不一致，或精度组合不满足要求。</td>
+  </tr>
+  <tr><td align="left">传入的rotary_mode不为1（仅支持interleave模式）。</td></tr>
+  <tr><td align="left">传入的partialSlice长度不为2，或取值范围不合法。</td></tr>
+  <tr><td align="left">传入的xRef、cos、sin的形状不满足约束（维度不为4，或cos与sin形状不一致，或xRef最后一维大小超过1024，或不是2的倍数）。</td></tr>
+  </table>
 
 ## aclnnInplacePartialRotaryMul
 
@@ -235,10 +255,10 @@ aclnnStatus aclnnInplacePartialRotaryMul(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```Cpp
-#include "acl/acl.h"
-#include "aclnnop/aclnn_inplace_partial_rotary_mul.h"
 #include <iostream>
 #include <vector>
+#include "acl/acl.h"
+#include "aclnnop/aclnn_inplace_partial_rotary_mul.h"
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -290,11 +310,13 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
+    // 1. 固定写法，device/stream初始化，参考acl API手册
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
+    // 2. 构造输入，需要根据API的接口定义构造
     std::vector<int64_t> xShape = {96, 1, 1, 512};
     std::vector<int64_t> cosShape = {96, 1, 1, 64};
     std::vector<int64_t> sinShape = {96, 1, 1, 64};
@@ -322,8 +344,10 @@ int main() {
 
     aclIntArray* partialSliceArray = aclCreateIntArray(partialSlice.data(), partialSlice.size());
 
+    // 3. 调用CANN算子库API
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
+    // 调用aclnnInplacePartialRotaryMul第一段接口
     ret = aclnnInplacePartialRotaryMulGetWorkspaceSize(x, cos, sin, rotary_mode, partialSliceArray,
                                                         &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
@@ -334,9 +358,11 @@ int main() {
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret;);
     }
 
+    // 调用aclnnInplacePartialRotaryMul第二段接口
     ret = aclnnInplacePartialRotaryMul(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("InplacePartialRotaryMul failed. ERROR: %d\n", ret); return ret);
 
+    // 4. 固定写法，同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
