@@ -187,6 +187,9 @@ int main() {
 
     std::vector<int8_t> resultData(maskOutSize, 0);
     int64_t selectedCount = 0;
+    int64_t selectedFirstHalf = 0;
+    int64_t selectedSecondHalf = 0;
+    int64_t firstSelectedSecondHalf = -1;
     double actualSparsity = 0.0;
     int32_t kernelRunTimes = GetEnvInt32("BSA_KERNEL_RUN_TIMES", 1);
 
@@ -264,9 +267,20 @@ int main() {
                                maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
 
         selectedCount = 0;
+        selectedFirstHalf = 0;
+        selectedSecondHalf = 0;
+        firstSelectedSecondHalf = -1;
         for (int64_t i = 0; i < maskOutSize; i++) {
             if (resultData[i] != 0) {
                 selectedCount++;
+                if (i < maskOutSize / 2) {
+                    selectedFirstHalf++;
+                } else {
+                    selectedSecondHalf++;
+                    if (firstSelectedSecondHalf < 0) {
+                        firstSelectedSecondHalf = i;
+                    }
+                }
             }
         }
 
@@ -279,12 +293,51 @@ int main() {
     LOG_PRINT("maskOut shape: [%d, %d, %d, %d]\n", batch, numHeads, xBlocks, yBlocks);
     LOG_PRINT("Total elements: %ld\n", maskOutSize);
     LOG_PRINT("Selected (non-zero): %ld\n", selectedCount);
+    LOG_PRINT("Selected first half: %ld, second half: %ld, first second-half index: %ld\n",
+              selectedFirstHalf, selectedSecondHalf, firstSelectedSecondHalf);
     LOG_PRINT("Actual sparsity: %.4f (expected: %.4f)\n", actualSparsity, expectedSparsity);
     
     uint64_t printNum = 20;
     LOG_PRINT("First %lu elements:\n", printNum);
     for (uint64_t i = 0; i < printNum && i < resultData.size(); i++) {
         LOG_PRINT("  index %lu: %d\n", i, static_cast<int>(resultData[i]));
+    }
+
+    uint64_t probeTileLen = maskOutSize < 7168 ? static_cast<uint64_t>(maskOutSize) : 7168;
+    if (probeTileLen > 0) {
+        uint64_t probeTotalTiles = (static_cast<uint64_t>(maskOutSize) + probeTileLen - 1) / probeTileLen;
+        uint64_t sampleTiles[3] = {0, probeTotalTiles / 2, probeTotalTiles - 1};
+        LOG_PRINT("Robustness probe sample positions:\n");
+        for (uint64_t sampleId = 0; sampleId < 3; sampleId++) {
+            uint64_t tileId = sampleTiles[sampleId];
+            uint64_t tileBase = tileId * probeTileLen;
+            uint64_t curTileLen = (tileId + 1 == probeTotalTiles)
+                ? static_cast<uint64_t>(maskOutSize) - tileBase : probeTileLen;
+            uint64_t oneLen = curTileLen >= 64 ? 8 : (curTileLen >= 16 ? 4 : 1);
+            uint64_t oneStart = curTileLen / 2;
+            if (oneStart + oneLen > curTileLen) {
+                oneStart = curTileLen > oneLen ? curTileLen - oneLen : 0;
+            }
+            uint64_t oneIndex = tileBase + oneStart;
+            LOG_PRINT("  tile %lu one[%lu..%lu]: %d",
+                      tileId, oneIndex, oneIndex + oneLen - 1,
+                      static_cast<int>(resultData[oneIndex]));
+
+            uint64_t gap = curTileLen >= 64 ? 16 : 4;
+            uint64_t setStart = oneStart + oneLen + gap;
+            if (setStart < curTileLen) {
+                uint64_t stride = curTileLen >= 64 ? 7 : 3;
+                uint64_t jitter = tileId % stride;
+                for (uint64_t i = 0; i < 4; i++) {
+                    uint64_t pos = setStart + jitter + i * stride;
+                    if (pos < curTileLen) {
+                        uint64_t index = tileBase + pos;
+                        LOG_PRINT(", set[%lu]: %d", index, static_cast<int>(resultData[index]));
+                    }
+                }
+            }
+            LOG_PRINT("\n");
+        }
     }
 
     aclDestroyIntArray(blockShape);
