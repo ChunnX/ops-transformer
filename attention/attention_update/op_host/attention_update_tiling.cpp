@@ -281,8 +281,8 @@ ge::graphStatus AttentionUpdateTiling::GetShapeAttrsInfo()
     goDtypeSize_ = GetSizeByDataType(goType_);
     if (goDtypeSize_ == 0) {
         std::string dtypeStr = Ops::Base::ToString(goType_);
-        OP_LOGE(context_->GetNodeName(), "UpdateAttention get go dtype[%s] size is 0.",
-                dtypeStr.c_str());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "go",
+            dtypeStr.c_str(), "The dtype size of input go cannot be 0");
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(CheckInputParams() != ge::GRAPH_SUCCESS,
