@@ -20,7 +20,9 @@
 #include "log/log.h"
 
 using namespace AscendC;
-namespace optiling {
+namespace Ops {
+namespace Transformer {
+namespace OpTiling {
 
 constexpr uint8_t GRAD_HIN_IDX = 0;
 constexpr uint8_t GRAD_H_POST_IDX = 1;
@@ -503,13 +505,14 @@ void MhcPreSinkhornBackwardArch35Tiling::DumpTilingInfo()
     info << "mm2M: " << mm2M_ << std::endl;
     info << "mm2N: " << mm2N_ << std::endl;
 
-    OP_LOGI(opName, "Tiling info is: %s", info.str().c_str());    
+OP_LOGI(opName, "Tiling info is: %s", info.str().c_str());
 }
 
-ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
+} //namespace OpTiling
+} //namespace Transformer
+} //namespace Ops
+
+using namespace Ops::Transformer::OpTiling;
+REGISTER_OPS_TILING_TEMPLATE(MhcPreSinkhornBackward, MhcPreSinkhornBackwardArch35Tiling, 1);
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPreSinkhornBackward, MhcPreSinkhornBackwardArch35Tiling, 10);
-}

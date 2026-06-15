@@ -20,6 +20,10 @@
 #include "arch32/mhc_pre_sinkhorn_backward_arch32_tiling.h"
 #include "mhc_pre_sinkhorn_backward_tiling.h"
 #include "log/log.h"
+#include "op_host/tiling_templates_registry.h"
+
+using Ops::Transformer::OpTiling::TilingRegistry;
+using Ops::Transformer::OpTiling::TilingRegistryArch;
 
 namespace optiling {
 

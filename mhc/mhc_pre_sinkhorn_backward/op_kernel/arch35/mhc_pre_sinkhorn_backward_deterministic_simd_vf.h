@@ -17,7 +17,6 @@
 #define MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_SIMD_VF_H
 
 #include "kernel_operator.h"
-#include "../inc/platform.h"
 #include "kernel_tiling/kernel_tiling.h"
 
 using namespace AscendC;
@@ -31,6 +30,7 @@ struct Process1Info {
     int64_t cLenUAlign = 0;
     int64_t cLenGRADHINTAlign = 0;
     int64_t vRegSize = 0;
+    uint32_t vfLen = 0;
 };
 
 constexpr static AscendC::MicroAPI::CastTrait castTrait16ToFloat = {

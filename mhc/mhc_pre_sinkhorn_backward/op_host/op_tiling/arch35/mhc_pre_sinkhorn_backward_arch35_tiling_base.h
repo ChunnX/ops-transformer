@@ -24,8 +24,9 @@
 #include "err/ops_err.h"
 #include "op_host/tiling_templates_registry.h"
 
-namespace optiling {
-using namespace Ops::Transformer::OpTiling;
+namespace Ops {
+namespace Transformer {
+namespace OpTiling {
 
 class MhcPreSinkhornBackwardArch35Tiling : public TilingBaseClass {
 public:
@@ -75,5 +76,7 @@ private:
     const char* opName = "MhcPreSinkhornBackward";
 };
 
-} //namespace optiling
+} //namespace OpTiling
+} //namespace Transformer
+} //namespace Ops
 #endif  // MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_

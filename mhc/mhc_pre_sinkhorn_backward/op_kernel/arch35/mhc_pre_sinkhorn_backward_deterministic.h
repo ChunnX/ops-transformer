@@ -20,16 +20,19 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "mhc_pre_sinkhorn_backward_deterministic_simd_vf.h"
+#include "op_kernel/platform_util.h"
 
 template<typename X_T, typename GRADHIN_T, typename U>
 class MhcPreSinkhornBackwardDeterministic {
+private:
+    static constexpr int32_t DOUBLE_BUF = 2;
 public:
     __aicore__ inline MhcPreSinkhornBackwardDeterministic() = default;
-    __aicore__ inline void Process(void);
+    __aicore__ inline void Process();
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR phi, GM_ADDR hPre, GM_ADDR gradHin, GM_ADDR gradHPost,
         GM_ADDR gradHRes, GM_ADDR alpha, GM_ADDR bias, GM_ADDR hcBeforeNorm, GM_ADDR invRms, GM_ADDR sumOut,
         GM_ADDR normOut, GM_ADDR gradX, GM_ADDR gradPhi, GM_ADDR gradAlpha, GM_ADDR gradBias,
-        GM_ADDR workspace, const MhcPreSinkhornBackwardArch35TilingData* tilingData, TPipe* pipe);
+        GM_ADDR workspace, const MhcPreSinkhornBackwardArch35DeterminiticTilingData* tilingData, TPipe* pipe);
 
 private:
     __aicore__ inline void ComputeFirst(uint64_t bsIdx, uint64_t bsLen);
@@ -40,11 +43,11 @@ private:
 private:
 
 
-    using A0Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
-    using A1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, true>;
-    using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
+    using A0Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, X_T>;
+    using A1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, X_T, true>;
+    using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, X_T>;
     using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
-    using C2Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
+    using C2Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, X_T>;
 
     matmul::MatmulImpl<A0Type, BType, C1Type, C1Type, MHC_PRE_GRAD_MM1_CFG> mm1_;
     matmul::MatmulImpl<A1Type, BType, C2Type, C2Type, MHC_PRE_GRAD_MM2_CFG> mm2_;
@@ -69,15 +72,15 @@ private:
     GlobalTensor<U>  gradXFromHinWs_;
 
     GlobalTensor<X_T>  gradXGm_;            //输出
-    GlobalTensor<U>  gradPhiGm_;
+    GlobalTensor<GRADHIN_T>  gradPhiGm_;
     GlobalTensor<U>  gradAlphaGm_;
     GlobalTensor<U>  gradBiasGm_;
 
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> hPreQue_;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> xQue_;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> gradHinQue_;
-    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> xFp32Que_;
-    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> gradXFromHinQue_;
+    TQue<QuePosition::VECIN, DOUBLE_BUF> hPreQue_;
+    TQue<QuePosition::VECIN, DOUBLE_BUF> xQue_;
+    TQue<QuePosition::VECIN, DOUBLE_BUF> gradHinQue_;
+    TQue<QuePosition::VECOUT, DOUBLE_BUF> xFp32Que_;
+    TQue<QuePosition::VECOUT, DOUBLE_BUF> gradXFromHinQue_;
     TBuf<TPosition::VECCALC> gradHPreBuf_;
 
     int64_t batchSize_ = 0;
@@ -88,9 +91,6 @@ private:
     int64_t bsLoopDataLen_ = 0;
     int64_t cLoopDataLen_ = 0;
     int64_t skIterCount_ = 0;
-    float eps_ = 0;
-    int64_t k_ = 0;
-    int64_t blockIdx_ = 0;
     int64_t mm1K_ = 0;
     int64_t mm1M_ = 0;
     int64_t mm1N_ = 0;
@@ -98,19 +98,22 @@ private:
     int64_t mm2M_ = 0;
     int64_t mm2N_ = 0;
     int64_t blockSize_ = 0;
-    int64_t nAlignFp32_;
-    int64_t cLenAlignFp32_;
-    int64_t cLenAlignFp16_;
+    int64_t blockIdx_ = 0;
+    int64_t k_ = 0;
+    int64_t nAlignFp32_ = 0;
+int64_t cAlignFp32_ = 0;
+    int64_t cAlignFp16_ = 0;
+    float eps_ = 0;
     U alphaPre_, alphaPost_, alphaRes_;
-    constexpr static uint32_t V_REG_SIZE = platform::GetVRegSize();
+    constexpr static uint32_t V_REG_SIZE = Ops::Base::GetVRegSize();
 
 };
 
 template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic::Init(GM_ADDR x, GM_ADDR phi, GM_ADDR hPre, GM_ADDR gradHin, GM_ADDR gradHPost,
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::Init(GM_ADDR x, GM_ADDR phi, GM_ADDR hPre, GM_ADDR gradHin, GM_ADDR gradHPost,
         GM_ADDR gradHRes, GM_ADDR alpha, GM_ADDR bias, GM_ADDR hcBeforeNorm, GM_ADDR invRms, GM_ADDR sumOut,
         GM_ADDR normOut, GM_ADDR gradX, GM_ADDR gradPhi, GM_ADDR gradAlpha, GM_ADDR gradBias,
-        GM_ADDR workspace, const MhcPreSinkhornBackwardArch35TilingData* tilingData, TPipe* pipe)
+        GM_ADDR workspace, const MhcPreSinkhornBackwardArch35DeterminiticTilingData* tilingData, TPipe* pipe)
 {
     batchSize_ = tilingData->batchSize;
     seqLength_ = tilingData->seqLength;
@@ -123,10 +126,10 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::Init(GM_ADDR x, GM_A
     k_ = n_ * n_ + 2 * n_;
     blockIdx_ = GetBlockIdx();
     blockSize_ = Ops::Base::GetUbBlockSize();
-    curCoreProcessbsTask_ = (blockIdx_ == tilingData->aivNum - 1) ? tilingData->tailBsTaskCount_ : tilingData->bsTaskCount;
-    nAlignFp32_ = ops::CeilAlign(n_ * sizeof(U), blockSize_) / sizeof(U);
-    cAlignFp32_ = ops::CeilAlign(cLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
-    cAlignFp16_ = ops::CeilAlign(cLoopDataLen_ * sizeof(X_T), blockSize_) / sizeof(X_T);
+    curCoreProcessbsTask_ = (blockIdx_ == tilingData->aivNum - 1) ? tilingData->tailBsTaskCount : tilingData->bsTaskCount;
+    nAlignFp32_ = CeilAlign(n_ * sizeof(U), blockSize_) / sizeof(U);
+    cAlignFp32_ = CeilAlign(cLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
+    cAlignFp16_ = CeilAlign(cLoopDataLen_ * sizeof(X_T), blockSize_) / sizeof(X_T);
 
     gradPhiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ GRADHIN_T*>(gradPhi));
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(phi));
@@ -148,12 +151,12 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::Init(GM_ADDR x, GM_A
         normOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(gradPhi));
 
         // Init UB
-        pipe_->InitBuffer(hPreQue_, DOUBLE_BUFFER, nAlignFp32_ * bsLoopDataLen_ * sizeof(U));
-        pipe_->InitBuffer(xQue_, DOUBLE_BUFFER, cLenAlignFp16_ * n_ * bsLoopDataLen_ * sizeof(X_T));
-        pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cLenAlignFp16_ * bsLoopDataLen_ * sizeof(GRADHIN_T));
-        pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, cLenAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
-        pipe_->InitBuffer(gradXFromHinQue_, DOUBLE_BUFFER, cLenAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
-        pipe_->InitBuffer(gradXFromHinQue_, nAlignFp32_ * bsLoopDataLen_ * sizeof(U));
+        pipe->InitBuffer(hPreQue_, DOUBLE_BUF, nAlignFp32_ * bsLoopDataLen_ * sizeof(U));
+        pipe->InitBuffer(xQue_, DOUBLE_BUF, cAlignFp16_ * n_ * bsLoopDataLen_ * sizeof(X_T));
+        pipe->InitBuffer(gradHinQue_, DOUBLE_BUF, cAlignFp16_ * bsLoopDataLen_ * sizeof(GRADHIN_T));
+        pipe->InitBuffer(xFp32Que_, DOUBLE_BUF, cAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
+        pipe->InitBuffer(gradXFromHinQue_, DOUBLE_BUF, cAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
+        pipe->InitBuffer(gradXFromHinQue_, DOUBLE_BUF, nAlignFp32_ * bsLoopDataLen_ * sizeof(U));
     }
 
     if ASCEND_IS_AIV {
@@ -161,37 +164,39 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::Init(GM_ADDR x, GM_A
     }
 }
 
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic::CopyInXandGradHin(uint64_t xGmOffset, uint64_t gradHinGmOffset, 
+template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::CopyInXandGradHin(uint64_t xGmOffset, uint64_t gradHinGmOffset, 
                                                                                 uint64_t bsLen, uint64_t cLen)
 {
     LocalTensor<X_T> xLocal = xQue_.AllocTensor<X_T>();             //in
     LocalTensor<GRADHIN_T> gradHinLocal = gradHinQue_.AllocTensor<GRADHIN_T>();
-
-    CopyIn(xLocal, xGm_[xGmOffset], bsLen * n_, cLen, 0, (c_ - cLoopDataLen) * sizeof(X_T));
-    CopyIn(gradHinLocal, gradHinGm_[gradHinGmOffset], bsLen, cLen, 0, (c_ - cLoopDataLen) * sizeof(GRADHIN_T));
+    
+    CopyIn<X_T>(xLocal, xGm_[xGmOffset], bsLen * n_, cLen, 0, (c_ - cLoopDataLen_) * sizeof(X_T));
+    CopyIn<GRADHIN_T>(gradHinLocal, gradHinGm_[gradHinGmOffset], bsLen, cLen, 0, (c_ - cLoopDataLen_) * sizeof(GRADHIN_T));
 
     xQue_.EnQue(xLocal);
     gradHinQue_.EnQue(gradHinLocal);
 }
 
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic::CopyInHpre(uint64_t hPreGmOffset, uint64_t bsLen)
+template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::CopyInHpre(uint64_t hPreGmOffset, uint64_t bsLen)
 {
     LocalTensor<U> hPreLocal = hPreQue_.AllocTensor<U>();
 
     CopyIn(hPreLocal, hPreGm_[hPreGmOffset], bsLen, n_, 0, 0);
 
-    hPreQue_.EnQue(hPreLocal)
+    hPreQue_.EnQue(hPreLocal);
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeFirst(uint64_t bsIdx, uint64_t bsLen)
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeFirst(uint64_t bsIdx, uint64_t bsLen)
 {
     LocalTensor<U> gradHPreLocal = gradHPreBuf_.Get<U>();   //buf 中间结果
     
     Duplicate(gradHPreLocal, float(0), bsLen * n_);
 
     uint64_t cLoopDataLen = cLoopDataLen_;
-    uint64_t cLoopNum = ops::CeilDiv(c_, cLoopDataLen);
+    uint64_t cLoopNum = CeilDiv(c_, cLoopDataLen);
     uint64_t cTailDataLen = c_ - cLoopDataLen * (cLoopNum - 1);
     uint64_t bsOffset = blockIdx_ * curCoreProcessbsTask_ + bsIdx * bsLoopDataLen_;
     uint64_t hPreOffset = bsOffset * n_;
@@ -202,16 +207,17 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeFirst(uint64_
     LocalTensor<U> hPreLocal = hPreQue_.DeQue<U>();
     Process1Info info;
     info.bsLen = bsLen;
-    info.cLen = cLen;
-    info.n = n;
-    info.n = c;
+    info.cLen = cTailDataLen;
+    info.n = n_;
+    info.c = c_;
     info.vRegSize = V_REG_SIZE;
+    info.vfLen = V_REG_SIZE / sizeof(U);
     uint32_t vfLen = V_REG_SIZE / sizeof(U);
     for (uint64_t cIdx = 0; cIdx < cLoopNum; cIdx++) {
         auto cLen = cIdx == cLoopNum - 1 ? cTailDataLen : cLoopDataLen;
-        int64_t cLenXTAlign = ops::CeilAlign(cLen * sizeof(X_T), blockSize_) / sizeof(X_T);
-        int64_t cLenUAlign = ops::CeilAlign(cLen * sizeof(U), blockSize_) / sizeof(U);
-        int64_t cLenGRADHINTAlign = ops::CeilAlign(cLen * sizeof(GRADHIN_T), blockSize_) / sizeof(GRADHIN_T);
+int64_t cLenXTAlign = CeilAlign(cLen * sizeof(X_T), blockSize_) / sizeof(X_T);
+    int64_t cLenUAlign = CeilAlign(cLen * sizeof(U), blockSize_) / sizeof(U);
+    int64_t cLenGRADHINTAlign = CeilAlign(cLen * sizeof(GRADHIN_T), blockSize_) / sizeof(GRADHIN_T);
         info.cLenXTAlign = cLenXTAlign;
         info.cLenUAlign = cLenUAlign;
         info.cLenGRADHINTAlign = cLenGRADHINTAlign;
@@ -243,7 +249,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeFirst(uint64_
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeProcess1 (LocalTensor<U>& hPreLocal,
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeProcess1 (LocalTensor<U>& hPreLocal,
     LocalTensor<U>& gradHPreLocal, const Process1Info& info)
 {
     LocalTensor<X_T> xFp32Local = xFp32Que_.AllocTensor<U>();
@@ -270,7 +276,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeProcess1 (Loc
         AscendC::MicroAPI::RegTensor<U> gradXFromHinReg;
         AscendC::MicroAPI::RegTensor<U> gradHPreRegSumReg;
         AscendC::MicroAPI::MaskReg valueMaskReg;
-        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::VL1>();
+        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U>();
         AscendC::MicroAPI::UnalignRegForStore gradHPreSumUreg;
         uint32_t maskLen = static_cast<uint32_t>(info.cLen);
 
@@ -281,7 +287,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeProcess1 (Loc
                 AscendC::MicroAPI::AddrReg gradHInAddrOfst = AscendC::MicroAPI::CreateAddrReg<GRADHIN_T>(j, vfLen);
                 AscendC::MicroAPI::DataCopy<GRADHIN_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(gradHInReg, gradHInStart, gradHInAddrOfst);
                 AscendC::MicroAPI::Cast<U, GRADHIN_T, castTrait16ToFloat>(gradHInCastReg, gradHInReg, valueMaskReg);
-                auto gradHPreStart = gradHPreAddr + i * n;
+                auto gradHPreStart = gradHPreAddr + i * n_;
                 for (uint16_t k = 0; k < info.n; k++) {
                     U hPre = *(hPreAddr + i * info.n + k);
                     U gradHPre = *(gradHPreStart + k);
@@ -315,11 +321,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic::ComputeProcess1 (Loc
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
-void MhcPreSinkhornBackwardDeterministic::Process(void)
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::Process()
 {
     if ASCEND_IS_AIV {
         uint64_t bsLoopDataLen = bsLoopDataLen_;
-        uint64_t bsLoopNum = ops::CeilDiv(curCoreProcessbsTask_, bsLoopDataLen);
+        uint64_t bsLoopNum = CeilDiv(curCoreProcessbsTask_, bsLoopDataLen_);
         uint64_t bsTailDataLen = curCoreProcessbsTask_ - bsLoopDataLen * (bsLoopNum - 1);
         for (uint64_t bsIdx = 0; bsIdx < bsLoopNum; bsIdx++) {
             auto bsLen = bsIdx == bsLoopNum - 1 ? bsTailDataLen : bsLoopDataLen;

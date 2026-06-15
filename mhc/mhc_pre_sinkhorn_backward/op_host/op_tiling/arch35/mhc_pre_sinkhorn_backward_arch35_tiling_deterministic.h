@@ -9,27 +9,29 @@
  */
 
 /* !
- * \file mhc_pre_sinkhorn_backward_arch35_tiling_base.h
+ * \file mhc_pre_sinkhorn_backward_arch35_tiling_deterministic.h
  * \brief
  */
 
-#ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_
-#define MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_
+#ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_DETERMINISTIC_H_
+#define MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_DETERMINISTIC_H_
 
 #include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch35/mhc_pre_sinkhorn_backward_data_arch35.h"
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch35/mhc_pre_sinkhorn_backward_key_arch35.h"
+#include "mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
 #include "err/ops_err.h"
 #include "op_host/tiling_templates_registry.h"
 
-namespace optiling {
-using namespace Ops::Transformer::OpTiling;
+namespace Ops {
+namespace Transformer {
+namespace OpTiling {
 
 class MhcPreSinkhornBackwardArch35DeterminiticTiling : public MhcPreSinkhornBackwardArch35Tiling {
 public:
-    explicit MhcPreSinkhornBackwardArch35DeterminiticTiling(gert::TilingContext* context) : TilingBaseClass(context) {
+    explicit MhcPreSinkhornBackwardArch35DeterminiticTiling(gert::TilingContext* context) : MhcPreSinkhornBackwardArch35Tiling(context) {
     }
 
 protected:
@@ -43,11 +45,10 @@ protected:
     ge::graphStatus DoLibApiTiling() override;
 
 private:
-    ge::graphStatus CheckShape(int64_t batchSize, int64_t seqLength, int64_t n, int64_t c);
     ge::graphStatus SetTilingData();
     void DoUbTiling();
 
-private:
+protected:
     uint64_t coreNumAic_{0};
     uint64_t coreNumAiv_{0};
     uint64_t ubSize_{0};
@@ -64,6 +65,11 @@ private:
     int64_t skIterCount_{0};
     float hcEps_{0};
 
+    int64_t bsTaskCount_{0};
+    int64_t tailBsTaskCount_{0};
+    int64_t bsLoopDataLen_{0};
+    int64_t cLoopDataLen_{0};
+
     int64_t mm1K_{0};
     int64_t mm1M_{0};
     int64_t mm1N_{0};
@@ -71,8 +77,10 @@ private:
     int64_t mm2M_{0};
     int64_t mm2N_{0};
 
-    const char* opName = "MhcPreSinkhornBackward";
+const char* opName = "MhcPreSinkhornBackward";
 };
 
-} //namespace optiling
-#endif  // MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_
+} //namespace OpTiling
+} //namespace Transformer
+} //namespace Ops
+#endif  // MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_DETERMINISTIC_H_
