@@ -345,8 +345,8 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
     } else {
         auto sliceData = static_cast<const int64_t *>(sliceListAttr->GetData());
         OP_CHECK_IF(sliceListAttr->GetSize() != 2,
-            OP_LOGE(context_->GetNodeName(), "slice_attr must have exactly 2 elements, got %zu", sliceListAttr->GetSize()),
-            return ge::GRAPH_FAILED);
+            OP_LOGE(context_->GetNodeName(), "slice_attr must have exactly 2 elements, got %zu", 
+            sliceListAttr->GetSize()), return ge::GRAPH_FAILED);
         start_ = sliceData[0];
         end_ = sliceData[1];
     }
