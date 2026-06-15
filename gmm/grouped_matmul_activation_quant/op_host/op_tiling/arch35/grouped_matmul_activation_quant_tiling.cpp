@@ -28,17 +28,16 @@ namespace optiling {
 namespace {
 constexpr uint32_t X_INDEX = 0;
 constexpr uint32_t GROUP_LIST_INDEX = 1;
-constexpr uint32_t WEIGHT_INDEX = 2;
-constexpr uint32_t WEIGHT_SCALE_INDEX = 3;
-constexpr uint32_t X_SCALE_INDEX = 5;
+constexpr uint32_t X_SCALE_INDEX = 2;
+constexpr uint32_t WEIGHT_INDEX = 3;
+constexpr uint32_t WEIGHT_SCALE_INDEX = 4;
 constexpr uint32_t Y_INDEX = 0;
 constexpr uint32_t Y_SCALE_INDEX = 1;
 constexpr uint32_t ATTR_INDEX_ACTIVATION_TYPE = 0;
-constexpr uint32_t ATTR_INDEX_TRANS_W = 1;
-constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 2;
-constexpr uint32_t ATTR_INDEX_TUNING_CONFIG = 3;
-constexpr uint32_t ATTR_INDEX_QUANT_MODE = 4;
-constexpr uint32_t ATTR_INDEX_Y_DTYPE = 5;
+constexpr uint32_t ATTR_INDEX_DEQUANT_DTYPE = 1;
+constexpr uint32_t ATTR_INDEX_TRANS_W = 2;
+constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 3;
+constexpr uint32_t ATTR_INDEX_QUANT_DTYPE = 5;
 constexpr uint32_t ATTR_INDEX_ROUND_MODE = 6;
 constexpr uint32_t ATTR_INDEX_SCALE_ALG = 7;
 constexpr uint32_t ATTR_INDEX_DST_TYPE_MAX = 8;
@@ -59,7 +58,6 @@ constexpr uint32_t WEIGHT_NZ_C0_DIM = 16;
 constexpr uint32_t N_SIZE_ALIGN = 64;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
 constexpr uint32_t FP8_E5M2_VALUE = 35;
-constexpr uint32_t FP8_E5M2_PROTO_VALUE = 34;
 constexpr uint8_t ROUND_MODE_RINT = 4;
 constexpr uint32_t SCALE_ALG_OCP = 0;
 constexpr uint32_t SCALE_ALG_CUBLAS = 1;
@@ -71,12 +69,7 @@ constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
 
 void GroupedMatmulActivationQuantTiling950::Reset()
 {
-    tilingData_ = {};
-    roundMode_ = DEFAULT_ROUND_MODE_RINT;
-    scaleAlg_ = DEFAULT_SCALE_ALG_OCP;
-    activationType_ = DEFAULT_ACTIVATION_TYPE_GELU_TANH;
-    dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
-    yDtype_ = ge::DT_FLOAT8_E4M3FN;
+    tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
 }
 
 ge::graphStatus GroupedMatmulActivationQuantTiling950::GetShapeAttrsInfo()
@@ -89,16 +82,6 @@ bool GroupedMatmulActivationQuantTiling950::IsFp8(ge::DataType dtype) const
 {
     return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2;
 }
-
-namespace {
-bool IsFp8OutputDtype(ge::DataType dtype)
-{
-    auto dtypeValue = static_cast<uint32_t>(dtype);
-    return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2 ||
-           dtypeValue == FP8_E5M2_PROTO_VALUE;
-}
-
-} // namespace
 
 bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
 {
@@ -114,21 +97,21 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
                         inputParams_.groupListType),
                 return false);
 
-    const char *quantModePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_QUANT_MODE);
-    const int64_t *yDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_Y_DTYPE);
+    const int64_t *dequantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
+    const int64_t *quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
     const char *roundModePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ROUND_MODE);
     const int64_t *scaleAlgPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SCALE_ALG);
+    const float *dstTypeMaxPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_DST_TYPE_MAX);
     const char *activationTypePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ACTIVATION_TYPE);
-    OP_CHECK_IF(yDtypePtr == nullptr || roundModePtr == nullptr || scaleAlgPtr == nullptr ||
-                    activationTypePtr == nullptr,
+    OP_CHECK_IF(dequantDtypePtr == nullptr || quantDtypePtr == nullptr || roundModePtr == nullptr ||
+                    scaleAlgPtr == nullptr || dstTypeMaxPtr == nullptr || activationTypePtr == nullptr,
                 OP_LOGE(context_->GetNodeName(), "quant attrs must not be nullptr."), return false);
-    auto yDtype = static_cast<ge::DataType>(*yDtypePtr);
-    std::string quantMode = (quantModePtr == nullptr || quantModePtr[0] == '\0') ? "MX" : quantModePtr;
-    OP_CHECK_IF(quantMode != "MX",
-                OP_LOGE(context_->GetNodeName(), "当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX"),
-                return false);
-    OP_CHECK_IF(!IsFp8(yDtype),
-                OP_LOGE(context_->GetNodeName(), "y_dtype must be FLOAT8_E4M3FN or FLOAT8_E5M2."),
+    auto dequantDtype = static_cast<ge::DataType>(*dequantDtypePtr);
+    auto quantDtype = static_cast<ge::DataType>(*quantDtypePtr);
+    OP_CHECK_IF(dequantDtype != ge::DT_FLOAT,
+                OP_LOGE(context_->GetNodeName(), "dequant_dtype must be FLOAT in MX mode."), return false);
+    OP_CHECK_IF(!IsFp8(quantDtype),
+                OP_LOGE(context_->GetNodeName(), "quant_dtype must be FLOAT8_E4M3FN or FLOAT8_E5M2."),
                 return false);
     std::string roundMode(roundModePtr);
     OP_CHECK_IF(roundMode != "rint",
@@ -142,7 +125,7 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
     scaleAlg_ = static_cast<uint8_t>(*scaleAlgPtr);
     activationType_ = ACTIVATION_TYPE_GELU_TANH;
     dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
-    yDtype_ = yDtype;
+    quantDtype_ = quantDtype;
     inputParams_.groupType = GroupedMatmul::SPLIT_M;
     return true;
 }
@@ -159,8 +142,10 @@ bool GroupedMatmulActivationQuantTiling950::CheckDtype() const
                     inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE(context_->GetNodeName(), "x_scale and weight_scale must be FLOAT8_E8M0."),
                 return false);
-    OP_CHECK_IF(!IsFp8OutputDtype(inputParams_.outDataDtype),
+    OP_CHECK_IF(!IsFp8(inputParams_.outDataDtype),
                 OP_LOGE(context_->GetNodeName(), "y must be FLOAT8_E4M3FN or FLOAT8_E5M2."), return false);
+    OP_CHECK_IF(inputParams_.outDataDtype != quantDtype_,
+                OP_LOGE(context_->GetNodeName(), "y dtype and quant_dtype must be the same."), return false);
     OP_CHECK_IF(inputParams_.outScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE(context_->GetNodeName(), "y_scale must be FLOAT8_E8M0."), return false);
     return true;
@@ -177,12 +162,6 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeDtype()
     OP_CHECK_IF(xDesc == nullptr || wDesc == nullptr || xScaleDesc == nullptr || wScaleDesc == nullptr ||
                     yDesc == nullptr || yScaleDesc == nullptr,
                 OP_LOGE(context_->GetNodeName(), "input or output desc is nullptr."), return false);
-    auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
-    const int64_t *yDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_Y_DTYPE);
-    OP_CHECK_IF(yDtypePtr == nullptr, OP_LOGE(context_->GetNodeName(), "y_dtype must not be nullptr."),
-                return false);
-    yDtype_ = static_cast<ge::DataType>(*yDtypePtr);
     inputParams_.aDtype = xDesc->GetDataType();
     inputParams_.bDtype = wDesc->GetDataType();
     inputParams_.scaleDtype = wScaleDesc->GetDataType();
@@ -280,15 +259,15 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
 
 ge::graphStatus GroupedMatmulActivationQuantTiling950::DoOpTiling()
 {
-    tilingData_.gmmActivationQuantParams.groupNum = static_cast<uint32_t>(inputParams_.groupNum);
-    tilingData_.gmmActivationQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
-    tilingData_.gmmActivationQuantParams.activationType = activationType_;
-    tilingData_.gmmActivationQuantParams.quantDtype =
-        yDtype_ == ge::DT_FLOAT8_E5M2 ? FP8_E5M2_VALUE : FP8_E4M3FN_VALUE;
-    tilingData_.gmmActivationQuantParams.roundMode = roundMode_;
-    tilingData_.gmmActivationQuantParams.dequantDtype = static_cast<uint8_t>(ge::DT_FLOAT);
-    tilingData_.gmmActivationQuantParams.scaleAlg = scaleAlg_;
-    tilingData_.gmmActivationQuantParams.dstTypeMax = dstTypeMax_;
+    tilingData_.gmmActivationQuantParams.set_groupNum(static_cast<uint32_t>(inputParams_.groupNum));
+    tilingData_.gmmActivationQuantParams.set_groupListType(static_cast<uint8_t>(inputParams_.groupListType));
+    tilingData_.gmmActivationQuantParams.set_activationType(activationType_);
+    tilingData_.gmmActivationQuantParams.set_quantDtype(
+        inputParams_.outDataDtype == ge::DT_FLOAT8_E5M2 ? FP8_E5M2_VALUE : FP8_E4M3FN_VALUE);
+    tilingData_.gmmActivationQuantParams.set_roundMode(roundMode_);
+    tilingData_.gmmActivationQuantParams.set_dequantDtype(static_cast<uint8_t>(ge::DT_FLOAT));
+    tilingData_.gmmActivationQuantParams.set_scaleAlg(scaleAlg_);
+    tilingData_.gmmActivationQuantParams.set_dstTypeMax(dstTypeMax_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -310,13 +289,12 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     tilingData_.mmTilingData.baseK = basicTiling_.baseK;
     tilingData_.mmTilingData.kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
     tilingData_.mmTilingData.kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
-    uint32_t scaleKL1 = std::min(
+    tilingData_.mmTilingData.scaleKAL1 = std::min(
         std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa,
                  basicTiling_.scaleFactorB * basicTiling_.stepKb) *
             basicTiling_.baseK,
         inputParams_.kSize);
-    tilingData_.mmTilingData.scaleKAL1 = scaleKL1;
-    tilingData_.mmTilingData.scaleKBL1 = scaleKL1;
+    tilingData_.mmTilingData.scaleKBL1 = tilingData_.mmTilingData.scaleKAL1;
     tilingData_.mmTilingData.isBias = 0;
     tilingData_.mmTilingData.dbL0C = basicTiling_.dbL0c;
     return ge::GRAPH_SUCCESS;
