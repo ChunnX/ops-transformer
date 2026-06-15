@@ -18,13 +18,18 @@ PARAM_NAMES = [
     "enable_pa", "kv_cache_layout", "block_size",
     "sparse_mode", "q_scale_layout", "p_scale",
     "data_range_q", "data_range_k", "data_range_v",
-    "enable_lse", "enable_rope",
+    "enable_lse", "enable_rope", "D_rope",
+    "graph_path", "device_id", "is_contiguous",
 ]
 
 TEST_PARAMS_DEFAULTS = {
     "data_range_q": [1.0],
     "data_range_k": [1.0],
     "data_range_v": [1.0],
+    "D_rope": [64],
+    "graph_path": [0],
+    "device_id": [0],
+    "is_contiguous": [True],
 }
 
 
