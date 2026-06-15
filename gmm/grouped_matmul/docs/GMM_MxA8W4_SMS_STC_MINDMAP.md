@@ -126,19 +126,21 @@
 ## ST用例
 
 ### ST 正常用例设计原则
+
 - 正向用例需覆盖 `x` 单、`weight` 多、`antiquantScale` 多、`y` 单的主路径
 - bias 不存在和 bias 多 tensor 存在都需要覆盖
 - `groupListType=0` 和 `groupListType=1` 都需要覆盖
-- 至少一个用例检查 TilingKey 中 `IS_SINGLE_MULTI_SINGLE == 1`
+- 至少一个用例检查新增 TilingKey 参数在 `WQGMM_MX + WQGMM_TRANS` 模板组合中生成 `IS_SINGLE_MULTI_SINGLE == 1`
 - 至少一个用例通过可区分的 `weight[g]` / `bias[g]` 数据验证 kernel 按 tensor list 下标切换
-- 回归用例需确认非单多单路径 `IS_SINGLE_MULTI_SINGLE == 0`
+- 回归用例需确认新增 TilingKey 参数在非单多单路径生成 `IS_SINGLE_MULTI_SINGLE == 0`
 
 ### 白盒 ST 用例
+
 - ST001：单多单最小 happy path 无 bias；M=32, K=64, N_list=[128,128], groupNum=2；期望输出与 golden 对齐
 - ST002：单多单存在 bias；bias list size=2；期望每组 bias 生效且输出正确
 - ST003：`splitItem=2` 的 y 单 tensor 场景；期望 host 识别单多单并执行成功
 - ST004：`groupListType=0` 累计 offset；groupList=[16,64,96]；期望每组 M 按 offset 差值解析
-- ST005：TilingKey 白盒检查；期望 `isSingleMultiSingle=true` 且 `IS_SINGLE_MULTI_SINGLE == 1`
+- ST005：TilingKey 白盒检查；期望新增 `IS_SINGLE_MULTI_SINGLE` 取值后，`WQGMM_MX + WQGMM_TRANS` 组合生成 `IS_SINGLE_MULTI_SINGLE == 1`
 - ST006：Kernel 多 group 地址切换无 bias；不同 `weight[g]` 填不同模式；期望无串组
 - ST007：Kernel 多 group 地址切换有 bias；不同 `bias[g]` 填不同偏置；期望每组使用对应 bias
 - ST008：最后一组不越界访问；groupNum=2 且最后一组 M 较小；期望执行成功且无 nextGroupIdx 越界
@@ -146,12 +148,13 @@
 - ST010：perTokenScale 单 tensor 推进；groupNum=3 且各组 M 不同；期望 perTokenScale 按 M 方向切分使用
 
 ### 历史用例回归
-- HIST001：MxA8W4 单单单回归；x/weight/y 均单 tensor；期望 `IS_SINGLE_MULTI_SINGLE == 0`，结果不变
-- HIST002：MxA8W4 多多多回归；x/weight/y 均多 tensor；期望不误入单多单路径，结果不变
-- HIST003：S8S4 weight quant 回归；期望 TilingKey 新参数为 0，结果不变
-- HIST004：A16W4ND 回归；期望 checker 与结果不变
+
+- HIST001：MxA8W4 单单单回归；x/weight/y 均单 tensor；期望新增 `IS_SINGLE_MULTI_SINGLE` 参数取 0，结果不变
+- HIST002：S8S4 weight quant 回归；期望 TilingKey 新参数为 0，结果不变
+- HIST003：A16W4ND 回归；期望 checker 与结果不变
 
 ### 泛化 ST 用例
+
 - STG001：groupNum=8 泛化；构造 8 个 weight/antiquantScale tensor；期望执行成功
 - STG002：大 K 场景；K=512；期望输出与 golden 对齐
 - STG003：小 K 边界；K=64；期望最小合法 MxA8W4 K 分组执行成功
