@@ -228,7 +228,6 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
     return npu_pass, max_re
 
 def compare_return_value(cur_npu_output_value=None, cur_cpu_output_value=None):
-    b_idx, s1_idx, n2_idx = bsn
     max_re = 0.0
     npu_pass = True
     npu_pass = judge_value_by_isclose(cur_npu_output_value, cur_cpu_output_value)
