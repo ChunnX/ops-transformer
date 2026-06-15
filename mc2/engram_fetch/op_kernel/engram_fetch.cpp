@@ -5,6 +5,7 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "engram_fetch_tiling_data.h"
+#include "arch35/engram_fetch_arch35.h"
 
 using namespace AscendC;
 
@@ -17,9 +18,9 @@ __global__ __aicore__ void engram_fetch(GM_ADDR bufferHandle, GM_ADDR indices, G
     printf("enter kernel\n");
     if (TILING_KEY_IS(0)) {
         printf("EngramFetch Tiling A5.\n");
-        // TPipe pipe;
-        // EngramFetchArch35 op;
-        // op.Init(bufferHandle, indices, fetched, workspaceGM, &pipe, &tilingData);
-        // op.Process();
+        TPipe pipe;
+        EngramFetchImpl::EngramFetchArch35 op;
+        op.Init(bufferHandle, indices, fetched, workspaceGM, &pipe, &tilingData);
+        op.Process();
     }
 }
