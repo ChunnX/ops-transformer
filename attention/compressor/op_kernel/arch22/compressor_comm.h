@@ -96,7 +96,7 @@ enum class TEMPLATE_ID : uint8_t {
     PERF = 2
 };
 
-template <X_LAYOUT X_L, X_DTYPE X_T, COFF C , typename... Args>
+template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, typename... Args>
 struct COMPType {
     static constexpr X_LAYOUT xLayout = X_L;
     static constexpr X_DTYPE xDtype = X_T;

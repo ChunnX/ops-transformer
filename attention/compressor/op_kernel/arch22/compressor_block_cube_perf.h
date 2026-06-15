@@ -232,7 +232,8 @@ __aicore__ inline void CompressorBlockCubePerf<COMP>::CopyWeightGmToL1(LocalTens
     uint32_t hIdx, uint32_t kBase, uint32_t coffId)
 {
     // coffId=0, 搬运左矩阵的数据; coffId=1, 搬运右矩阵的数据
-    uint64_t gmOffset = (uint64_t)coffId * constInfo_.headDim * constInfo_.hSize + constInfo_.dIdx * constInfo_.hSize + hIdx;
+    uint64_t gmOffset = (uint64_t)coffId * constInfo_.headDim * constInfo_.hSize +
+        constInfo_.dIdx * constInfo_.hSize + hIdx;
     uint32_t wkvL1Offset = 0;
     uint32_t wgateL1Offset = constInfo_.dBaseSize * BlockElementNum<X_T>();
     uint32_t nValue = constInfo_.dBaseSize;

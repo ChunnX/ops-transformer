@@ -669,9 +669,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::ReadFromCacheState(
         if (copyFinishRowCnt + copyRowCount > seqCnt) {
             copyRowCount = seqCnt - copyFinishRowCnt;
         }
-        uint64_t stateOffset = idInBlockTable * constInfo_.blockSize * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
-                                remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
-                                stateIdx * coff_ * constInfo_.headDim + dStartIdx;
+        uint64_t stateOffset = 
+            idInBlockTable * constInfo_.blockSize * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
+            remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
+            stateIdx * coff_ * constInfo_.headDim + dStartIdx;
 
         DataCopyAlignGmToUb(output[copyFinishRowCnt * coff_ * dDealSize], state[stateOffset], copyRowCount,
                                 dDealSize, STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim, coff_ * dDealSize);
@@ -698,9 +699,10 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::WriteToCacheState(
             copyRowCount = seqCnt - copyFinishRowCnt;
         }
         if (idInBlockTable != 0) { // 32
-            uint64_t stateOffset = idInBlockTable * constInfo_.blockSize * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
-                                    remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
-                                    stateIdx * coff_ * constInfo_.headDim + dStartIdx;
+            uint64_t stateOffset = 
+                idInBlockTable * constInfo_.blockSize * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
+                remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
+                stateIdx * coff_ * constInfo_.headDim + dStartIdx;
             DataCopyWithOutputQue(state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize], copyRowCount,
                                     dDealSize, coff_ * dDealSize, STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim);
         }

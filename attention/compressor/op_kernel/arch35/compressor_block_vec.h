@@ -761,8 +761,10 @@ CompressorBlockVector<COMP>::WriteToCacheState(const GlobalTensor<T> &state, con
                 uint64_t stateOffset = idInBlockTable * constInfo_.stateCacheStrideDim0 +
                                        remainRowCnt * STATE_INTERLEAVE_FACTOR * coff_ * constInfo_.headDim +
                                        stateIdx * coff_ * constInfo_.headDim + dStartIdx;
-                DataCopyWithOutputQue(state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize], copyRowCount,
-                                      dDealSize, coff_ * dDealSize, coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR);
+                DataCopyWithOutputQue(
+                    state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize],
+                    copyRowCount, dDealSize, coff_ * dDealSize, 
+                    coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR);
             }
 
             copyFinishRowCnt += copyRowCount;
@@ -880,8 +882,8 @@ CompressorBlockVector<COMP>::ReadState(const LocalTensor<T> &dstLocal, const Glo
                                        0 :
                                        Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, (uint64_t)cmpRatio_) - cmpRatio_;
             uint32_t endSeqIdx =
-                min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, (uint64_t)cmpRatio_) - cmpRatio_,
-                    sliceInfo.bStartPos);
+                min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, (uint64_t)cmpRatio_) -
+                cmpRatio_, sliceInfo.bStartPos);
             uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * cmpRatio_ * coff_ * dDealSize;
             if (isFirst) {
                 dstBaseOffset += cmpRatio_ * coff_ * dDealSize;

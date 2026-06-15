@@ -161,7 +161,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Init(
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
         blockVec_.InitParams(constInfo, tools_);
-        blockVec_.Init(x, wKv, wGate, stateCache, ape, stateBlockTable, 
+        blockVec_.Init(x, wKv, wGate, stateCache, ape, stateBlockTable,
                         cuSeqlens, seqUsed, startPos, cmpKvOut);
         blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm);
@@ -218,8 +218,10 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::SkipInvalidBatch(BatchInf
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
         batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
-        batchInfo.tcNum = (uint32_t)((batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio);
-        batchInfo.compressedTcNum = (uint32_t)((batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio);
+        batchInfo.tcNum = (uint32_t)((batchInfo.bStartPos + batchInfo.seqCnt + constInfo.cmpRatio - 1) /
+            constInfo.cmpRatio - batchInfo.bStartPos /  constInfo.cmpRatio);
+        batchInfo.compressedTcNum = (uint32_t)((batchInfo.bStartPos + batchInfo.seqUsedCnt) / constInfo.cmpRatio -
+            batchInfo.bStartPos /  constInfo.cmpRatio);
     }
 }
 
@@ -251,14 +253,16 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::InitWorkspace(__gm__ uint
     mm1KvResGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + offset +
                              (uint64_t)constInfo.curGroupIdx * constInfo.mm1KvResSize * sizeof(MM1_OUT_T)));
-    offset += (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1KvResSize * sizeof(MM1_OUT_T);
+    offset +=
+        (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1KvResSize * sizeof(MM1_OUT_T);
 
     uint64_t mm1ScoreResStartOffset = offset;
     // mm1ScoreResGm
     mm1ScoreResGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + offset +
                              (uint64_t)constInfo.curGroupIdx * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T)));
-    offset += (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T);
+    offset +=
+        (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T);
 
     Vec1InputKvGm.SetGlobalBuffer(
         (__gm__ MM1_OUT_T *)(workspace + mm1KvResStartOffset));

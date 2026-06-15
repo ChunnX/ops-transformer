@@ -713,7 +713,7 @@ ge::graphStatus CompressorTiling::CheckRequiredInOutExistence() const
                     OP_LOGE(context_->opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->cuSeqlens.shape != nullptr,
-                    OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens must be nullptr"),
+                    OP_LOGE(context_->opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

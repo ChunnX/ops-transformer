@@ -45,7 +45,8 @@ std::vector<bool> is_contiguous_axes(const at::Tensor &tensor)
 }
 
 at::Tensor construct_compressor_output_tensor(const at::Tensor &x, const at::Tensor &wkv,
-                                              const c10::optional<at::Tensor> &cu_seqlens, int64_t cmp_ratio, int64_t coff)
+                                              const c10::optional<at::Tensor> &cu_seqlens,
+                                              int64_t cmp_ratio, int64_t coff)
 {
     auto x_dim = x.dim();
     at::SmallVector<int64_t, MAX_DIM_SIZE> cmp_kv_size;
@@ -78,7 +79,7 @@ at::Tensor npu_compressor(const at::Tensor &x, const at::Tensor &wkv, const at::
 
     TORCH_CHECK(cmp_ratio > VALUE_0, "cmp_ratio should be greater than 0");
 
-    at::Tensor cmp_kv = construct_compressor_output_tensor(x ,wkv, cu_seqlens, cmp_ratio, coff);
+    at::Tensor cmp_kv = construct_compressor_output_tensor(x, wkv, cu_seqlens, cmp_ratio, coff);
 
     auto state_cache_dim = state_cache.dim();
     TORCH_CHECK(state_cache_dim == DIM_THREE, "state_cache dim num[", state_cache_dim, "] should be 3");
