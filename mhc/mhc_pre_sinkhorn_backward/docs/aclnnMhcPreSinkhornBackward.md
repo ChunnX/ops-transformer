@@ -312,7 +312,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>gradHin(aclTensor *)</td>
         <td>输入</td>
         <td>输出h_in的梯度。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(B,S,C)</td>
