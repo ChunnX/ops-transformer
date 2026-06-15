@@ -124,14 +124,20 @@ def _run_one(cfg, expect_pass):
     if ql=="BSND": q_bnsd=q_bnsd.permute(0,2,1,3).contiguous()
     q_npu=q_bnsd.npu()
 
+    kv_shape=_kv_shape(fmt,total_b,bs,d,N_kv,B,kv_seq) if pa else _kv_shape("none",total_b,bs,d,N_kv,B,kv_seq)
+
     q_rope,k_rope=None,None
     if dr>0:
         torch.manual_seed(300); qr=torch.randn(B,N_q,q_seq,dr,dtype=DTYPE)
-        torch.manual_seed(400); kr=torch.randn(B,N_kv,kv_seq,dr,dtype=DTYPE)
         if ql=="BSND": qr=qr.permute(0,2,1,3).contiguous()
-        q_rope=qr.npu(); k_rope=kr.npu()
+        q_rope=qr.npu()
+        torch.manual_seed(400)
+        if pa:
+            kr_shape=kv_shape[:-1]+(dr,)  # PA: keyRope 与 key 同格式, 仅 D=64
+            k_rope=torch.randn(*kr_shape,dtype=DTYPE).npu()
+        else:
+            k_rope=torch.randn(B,N_kv,kv_seq,dr,dtype=DTYPE).npu()
 
-    kv_shape=_kv_shape(fmt,total_b,bs,d,N_kv,B,kv_seq) if pa else _kv_shape("none",total_b,bs,d,N_kv,B,kv_seq)
     k_ref,v_ref=_make_kv(kv_shape)
     ref_out=_run(q_npu,k_ref.npu(),v_ref.npu(),pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope,d,dr)
 
