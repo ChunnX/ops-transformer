@@ -22,8 +22,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMlaGetWorkspa
     const aclTensor *cmpResidualKv, const aclTensor *oriTopkLength, const aclTensor *cmpTopkLength,
     const aclTensor *sinks, const aclTensor *metadata, double softmaxScale, int64_t cmpRatio,
     int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, char *layoutQ,
-    char *layoutKv, int64_t topkValueMode, int64_t oriKvStride, int64_t cmpKvStride, bool returnSoftmaxLse,
-    const aclTensor *attnOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
+    char *layoutKv, int64_t topkValueMode, bool returnSoftmaxLse, const aclTensor *attnOut,
+    const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMla(void *workspace, uint64_t workspaceSize,
                                                                         aclOpExecutor *executor,

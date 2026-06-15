@@ -59,8 +59,6 @@ using optiling::ATTR_ORI_WIN_RIGHT_INDEX;
 using optiling::ATTR_LAYOUT_Q_INDEX;
 using optiling::ATTR_LAYOUT_KV_INDEX;
 using optiling::ATTR_TOPK_VALUE_MODE_INDEX;
-using optiling::ATTR_ORI_KV_STRIDE_INDEX;
-using optiling::ATTR_CMP_KV_STRIDE_INDEX;
 using optiling::ATTR_RETURN_SOFTMAX_LSE_INDEX;
 using optiling::DIM_IDX_ONE;
 using optiling::DIM_IDX_TWO;
@@ -260,6 +258,7 @@ public:
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
     ge::graphStatus GetSinks();
+    uint64_t GetOptionalInputStride0(uint32_t inputIndex) const;
     void GenerateInfo(SMLATilingInfo &smlaInfo);
     ge::graphStatus Parse(SMLATilingInfo &smlaInfo);
 

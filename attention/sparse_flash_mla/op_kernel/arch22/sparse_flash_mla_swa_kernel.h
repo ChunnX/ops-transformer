@@ -304,10 +304,19 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::InitAllZeroOutput(uint32_t bIdx
                                   n2Idx * constInfo.gSize * constInfo.headDim; // N2轴偏移
         uint64_t lseOffset = (tBase + inValidRowS1StartIdx) * constInfo.gSize  + // T轴、s1轴偏移
                                 n2Idx * constInfo.qSeqSize * constInfo.gSize; // N2轴偏移
-        matmul::InitOutput<OUT_T>(
-            attentionOutGm[attenOutOffset], inValidRowCount * constInfo.gSize * constInfo.headDim, 0);
+        if (constInfo.kvHeadNum == 1 || inValidRowCount <= 1) {
+            matmul::InitOutput<OUT_T>(
+                attentionOutGm[attenOutOffset], inValidRowCount * constInfo.gSize * constInfo.headDim, 0);
+        } else {
+            uint64_t attenOutRowStride = constInfo.qHeadNum * constInfo.headDim;
+            for (int32_t rowIdx = 0; rowIdx < inValidRowCount; ++rowIdx) {
+                matmul::InitOutput<OUT_T>(
+                    attentionOutGm[attenOutOffset + static_cast<uint64_t>(rowIdx) * attenOutRowStride],
+                    constInfo.gSize * constInfo.headDim, 0);
+            }
+        }
         if (constInfo.returnSoftmaxLse) {
-            matmul::InitOutput<T>(softmaxLseGm[lseOffset], constInfo.gSize, 0);
+            matmul::InitOutput<T>(softmaxLseGm[lseOffset], inValidRowCount * constInfo.gSize, 0);
         }
     } else if (constInfo.outputLayout == SMLA_LAYOUT::BSND) {
         uint64_t attenOutOffset = bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.gSize *
@@ -318,10 +327,19 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::InitAllZeroOutput(uint32_t bIdx
         uint64_t lseOffset = bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.gSize  + // B轴偏移
                     n2Idx  * constInfo.qSeqSize * constInfo.gSize + // N2轴偏移
                     inValidRowS1StartIdx * constInfo.gSize; // S1轴偏移
-        matmul::InitOutput<OUT_T>(
-            attentionOutGm[attenOutOffset], inValidRowCount * constInfo.gSize * constInfo.headDim, 0);
+        if (constInfo.kvHeadNum == 1 || inValidRowCount <= 1) {
+            matmul::InitOutput<OUT_T>(
+                attentionOutGm[attenOutOffset], inValidRowCount * constInfo.gSize * constInfo.headDim, 0);
+        } else {
+            uint64_t attenOutRowStride = constInfo.qHeadNum * constInfo.headDim;
+            for (int32_t rowIdx = 0; rowIdx < inValidRowCount; ++rowIdx) {
+                matmul::InitOutput<OUT_T>(
+                    attentionOutGm[attenOutOffset + static_cast<uint64_t>(rowIdx) * attenOutRowStride],
+                    constInfo.gSize * constInfo.headDim, 0);
+            }
+        }
         if (constInfo.returnSoftmaxLse) {
-            matmul::InitOutput<T>(softmaxLseGm[lseOffset], constInfo.gSize, 0);
+            matmul::InitOutput<T>(softmaxLseGm[lseOffset], inValidRowCount * constInfo.gSize, 0);
         }
     }
 }
@@ -625,7 +643,9 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::CalcParams(uint32_t loop, uint3
     uint64_t tndBIdxOffsetForCmpKV = tempLoopInfo.actualSeqCmpKVPrefixSum * constInfo.kvHeadNum * constInfo.headDim;
 
     if (info.isFirstSInnerLoop) {
-        tensorACoreOffset = tndBIdxOffsetForQ + info.gS1Idx * constInfo.headDim;
+        uint64_t s1HeadOffset = (info.gS1Idx / constInfo.gSize) * constInfo.qHeadNum;
+        uint64_t qHeadOffset = info.n2Idx * constInfo.gSize + info.gS1Idx % constInfo.gSize;
+        tensorACoreOffset = tndBIdxOffsetForQ + (s1HeadOffset + qHeadOffset) * constInfo.headDim;
         tensorBCoreOffset = tndBIdxOffsetForKV + info.n2Idx * constInfo.headDim;
         tensorCmpBCoreOffset = tndBIdxOffsetForCmpKV + info.n2Idx * constInfo.headDim;
     }
