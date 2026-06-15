@@ -271,6 +271,7 @@ public:
     {
         MC2MegaMoeAdump::MegaMoeAdumpSharedField sharedField = CreateAdumpSharedField(params);
         adumpAdapter.FillSharedField(sharedField);
+        adumpAdapter.FillCoreBaseInfo();
         DispatchAndCombine(params);
     }
 
@@ -289,7 +290,7 @@ private:
         sharedField.cclBufferSize = shmem.SegmentSize();
         sharedField.worldSize = shmem.RankSize();
         sharedField.rankId = shmem.Rank();
-        sharedField.aivNum = AscendC::GetBlockNum(); // TODO
+        sharedField.aivNum = AscendC::GetBlockNum() * AscendC::GetSubBlockNum();
         sharedField.expertNumPerRank = params.expertPerRank;
         return sharedField;
     }
@@ -1181,6 +1182,7 @@ private:
         }
 
         AscendC::SyncAll<true>();
+        adumpAdapter.UpdateAdumpCurrentStateId(MC2MegaMoeAdump::StageA3::STAGE_APPLY_XACTIVATE_MASK);
 
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 

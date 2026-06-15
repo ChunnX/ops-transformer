@@ -124,12 +124,13 @@ public:
             .timeOutCycles = 10 * 50 * 1000 * 1000,
         };
         adumpEngine_.Init(dumpBase, config);
+        InitCoreBasicInfo(aivId);
     }
 
     __aicore__ inline void FillSharedField(MegaMoeAdumpSharedField& sharedField)
     {
         // 仅0核完成共享区域初始化
-        uint32_t aivId = AscendC::GetBlockIdx();
+        uint32_t aivId = AscendC::GetBlockIdx(); 
         if (aivId == 0) {
             InitAdumpSharedField(sharedField);
         }
@@ -137,7 +138,7 @@ public:
 
     __aicore__ inline void FillCoreBaseInfo()
     {
-        InitCoreBasicInfo();
+        
     }
 
     __aicore__ inline uint32_t GetAdumpTotalGmSizeBytes()
@@ -145,7 +146,7 @@ public:
         uint32_t headerSize = RoundUp(sizeof(MC2Adump::AdumpHeader), MC2Adump::ADUMP_GM_ALIGN_BYTES);
         uint32_t sharedFieldSize = RoundUp(sizeof(MegaMoeAdumpSharedField), MC2Adump::ADUMP_GM_ALIGN_BYTES);
         uint32_t customFieldSize = RoundUp(sizeof(MegaMoeAdumpCoreCustomInfoA3), MC2Adump::ADUMP_GM_ALIGN_BYTES);
-        return headerSize + sharedFieldSize + customFieldSize * AscendC::GetBlockNum();
+        return headerSize + sharedFieldSize + customFieldSize * AscendC::GetBlockNum() * AscendC::GetSubBlockNum();
     }
 
     __aicore__ inline uint32_t GetAdumpTotalUbSizeBytes()
@@ -164,7 +165,7 @@ public:
         adumpU32GlobalTensor.SetGlobalBuffer((__gm__ uint32_t*)adumpCoreCustomFieldAddr);
 
         PipeBarrier<PIPE_ALL>();
-        DataCopyPad(adumpU32GlobalTensor[MegaMoeAdumpCoreBasicInfoPos::CURRENT_STAGEID_POS], adumpU32LocalTensor, {1, sizeof(uint32_t), 0, 0, 0});
+        DataCopyPad(adumpU32GlobalTensor[MegaMoeAdumpCoreBasicInfoPos::CURRENT_STAGEID_POS], adumpU32LocalTensor[1], {1, sizeof(uint32_t), 0, 0, 0});
         PipeBarrier<PIPE_ALL>();
     }
   
@@ -204,9 +205,8 @@ private:
         PipeBarrier<PIPE_ALL>();
     }
 
-    __aicore__ inline void InitCoreBasicInfo()
+    __aicore__ inline void InitCoreBasicInfo(uint32_t aivId)
     {
-        uint32_t aivId = AscendC::GetBlockIdx();
         uint32_t currentStageId = 0;
         uint64_t startTimeStamp = AscendC::GetSystemCycle();
 
