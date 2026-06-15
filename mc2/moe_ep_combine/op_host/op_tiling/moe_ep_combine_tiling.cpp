@@ -92,8 +92,6 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         OP_LOGE(nodeName, "recvxDim1(hidden) is invalid, should be in [%ld, %ld], got %ld.",
             H_MIN, H_MAX, recvxDim1),
         return ge::GRAPH_FAILED);
-
-    info.actualA = static_cast<uint32_t>(recvxDim0);
     info.cfg.hidden = static_cast<uint32_t>(recvxDim1);
 
     const gert::StorageShape *dstBufferSlotIdxShape = context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX);

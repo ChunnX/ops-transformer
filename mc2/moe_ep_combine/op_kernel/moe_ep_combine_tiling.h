@@ -6,7 +6,6 @@
 
 struct MoeEpCombineInfo {
     MoeEpCommonTilingData cfg;
-    uint64_t actualA            = 0;
     uint32_t hasTopkWeights     = 0;
     uint32_t aivNum             = 0;
     uint64_t totalWinSizeEp     = 0;

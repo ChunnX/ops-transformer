@@ -49,6 +49,7 @@ static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U;  // 本卡状态空间偏移地址，前面的地址给dispatch用
 constexpr uint32_t STATE_OFFSET = 32U; 
+constexpr uint32_t DCCI_OFFSET = 64U; 
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 
 template <TemplateMoeEpCombineTypeClass>
@@ -178,7 +179,6 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     totalWinSizeEp_ = tilingData->totalWinSizeEp;
     hAlignSize_ = Ceil(axisH_ * sizeof(bfloat16_t), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     stateOffset_ = STATE_OFFSET;
-    actualA = tilingData_->actualA;
 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
@@ -196,6 +196,14 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
     numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t *)numRecvPerRank);
     combinedXGm_.SetGlobalBuffer((__gm__ bfloat16_t *)combinedX);
+
+    // 计算ActualA的大小
+    for(int i = 0; i < epWorldSize_; i++){
+        if (i % (DCCI_OFFSET / sizeof(int32_t)) == 0) {
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvPerRankGm_[i]);
+        }
+        actualA += numRecvPerRankGm_(i);
+    }
 
     if constexpr (HAS_TOPK_WEIGHTS == 1) {
         topkWeightsOptionalGm_.SetGlobalBuffer((__gm__ float *)topkWeightsOptional);
