@@ -42,6 +42,7 @@ private:
     ge::graphStatus CheckDequantScaleDtypeGQAPerblock(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleDtypeGQAPertensor(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleDtypeMXFP8Fullquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDequantScaleDtypeFP8GQAFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleDtypeFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantModeMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantModeGQAPerblock(const FiaTilingInfo &fiaInfo) const;
@@ -57,6 +58,7 @@ private:
     ge::graphStatus CheckExistenceMLAFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckExistencePerblockFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckExistenceMXFP8Fullquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckExistenceFP8GQAFullquant(const FiaTilingInfo &fiaInfo);
 
     ge::graphStatus CheckFeaturePertensorFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeaturePerblockFullquant(const FiaTilingInfo &fiaInfo) const;
@@ -128,6 +130,7 @@ private:
     bool enableQKVPertensorQuant_ = false;
     bool enableQPerTokenHeadKVPerTensor_ = false;
     bool enableQKVMxfp8FullQuant_ = false;
+    bool enableQKPerTokenHeadVPerHead_ = false;
 };
 
 } // namespace optiling

@@ -182,6 +182,24 @@ ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MaskChecker::CheckFP8GQAFullQuant(const FiaTilingInfo &fiaInfo)
+{
+    enableFP8GQAFullQuant = (*fiaInfo.opParamInfo.queryQuantMode == PER_TOKEN_HEAD_MODE &&
+                             *fiaInfo.opParamInfo.keyAntiquantMode == PER_TOKEN_HEAD_MODE &&
+                             *fiaInfo.opParamInfo.valueAntiquantMode == PER_TENSOR_HEAD_MODE);
+    if (!enableFP8GQAFullQuant) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) ||
+                ((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag))),
+                    OP_LOGE(fiaInfo.opName,
+                            "Only support sparse 0 without mask or sparse 3 with mask in FP8 GQA fullquant scenario, "
+                            "now input sparse mode is %d and there has%smask",
+                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MaskChecker::CheckQKVDDifferent(const FiaTilingInfo &fiaInfo) const
 {
     // Only support sparse mode 0/2/3 when query and key headdim is not equal to value headdim.
@@ -554,6 +572,9 @@ ge::graphStatus MaskChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
             return ge::GRAPH_FAILED;
         }
         if (ge::GRAPH_SUCCESS != CheckMXFP8FullQuant(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+        if (ge::GRAPH_SUCCESS != CheckFP8GQAFullQuant(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     } else if (enableAntiQuant_) {
