@@ -208,8 +208,8 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             oriBlockSize_), return ge::GRAPH_FAILED);
     }
 
-    OP_CHECK_IF(dSizeOriKvInput_ != 608,
-        OP_LOGE(opName_, "Dimension of OriKv only support 608, but got %u", dSizeOriKvInput_),
+    OP_CHECK_IF(dSizeOriKvInput_ != KV_INPUT_DIM_LIMIT,
+        OP_LOGE(opName_, "Dimension of OriKv only support %u, but got %u", KV_INPUT_DIM_LIMIT, dSizeOriKvInput_),
         return ge::GRAPH_FAILED);
 
     if (opParamInfo_.cmpKv.tensor != nullptr) {
@@ -226,8 +226,8 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             return ge::GRAPH_FAILED;
         }
 
-        OP_CHECK_IF(dSizeCmpKvInput_ != 608,
-            OP_LOGE(opName_, "Dimension of CmpKv only support 608, but got %u", dSizeCmpKvInput_),
+        OP_CHECK_IF(dSizeCmpKvInput_ != KV_INPUT_DIM_LIMIT,
+            OP_LOGE(opName_, "Dimension of CmpKv only support %u, but got %u", KV_INPUT_DIM_LIMIT, dSizeCmpKvInput_),
             return ge::GRAPH_FAILED);
 
         uint32_t cmpKvN2Size_ = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), QSMLAAxis::N, kvLayout_);
@@ -265,8 +265,8 @@ ge::graphStatus QSMLATilingCheck::CheckLayoutSupport(const QSMLALayout &actualLa
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaNumHeads() const
 {
-    OP_CHECK_IF(n1Size_ != 64 && n1Size_ != 128,
-        OP_LOGE(opName_, "n1Size_ only support 64 and 128 now, but got %u.", n1Size_),
+    OP_CHECK_IF(n1Size_ < 1 || n1Size_ > 128,
+        OP_LOGE(opName_, "n1Size_ only should be in range [1, 128], but got %u.", n1Size_),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

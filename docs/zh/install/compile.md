@@ -275,7 +275,7 @@ Global Environment TearDown
 
 ## FAQ
 
-### 本地编译报错 "ERROR: No matching distribution found for setuptools>=40.8.0"
+### 本地编译报错"ERROR: No matching distribution found for setuptools>=40.8.0"
 
 ```
 Could not fetch URL XXX (Caused by SSLError(SSLCertVerificationError))
@@ -284,6 +284,6 @@ ERROR: No matching distribution found for setuptools>=40.8.0
 ```
 1、检查[环境部署](./quick_install.md)中根目录requirements.txt中python三方库依赖是否齐全
 
-2、检查环境~/.pip/pip.conf或~/.config/pip/pip.conf 指定的pip源是否可用
+2、检查环境~/.pip/pip.conf或~/.config/pip/pip.conf指定的pip源是否可用
 
 

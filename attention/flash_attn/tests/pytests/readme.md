@@ -125,7 +125,7 @@ python -c "import torch, einops, numpy; print('CPU OK')"
 
 ## 四、运行方式
 
-### 4.1精度测试(默认)
+### 4.1 精度测试(默认)
 
 ```bash
 # 运行所有case (NPU模式)
@@ -169,7 +169,7 @@ python test_flash_attn.py --case_id TND_05 --meta_only
   ...
 ```
 
-### 4.3性能测试
+### 4.3 性能测试
 
 ```bash
 # 批量性能采集
@@ -179,7 +179,7 @@ python test_flash_attn.py --case_files performance_redline_train --perf_mode --p
 python test_flash_attn.py --perf_mode --one_by_one
 ```
 
-### 4.4三方对比
+### 4.4 三方对比
 
 ```bash
 # CPU vs GPU vs NPU实时对比
@@ -250,7 +250,7 @@ python test_flash_attn.py --case_id BASE_01 --compare_mode \
 
 用例定义在`test_cases/*.py`的`TestCases`字典中。每个字段是列表，框架自动做笛卡尔积展开。
 
-### 6.1字段说明
+### 6.1 字段说明
 
 ```python
 TestCases = {
@@ -318,7 +318,7 @@ TestCases = {
 
 ## 七、执行流程详解
 
-### 7.1用例加载
+### 7.1 用例加载
 
 ```
 test_cases/functional_stc.py::TestCases
@@ -332,7 +332,7 @@ test_cases/functional_stc.py::TestCases
   --case_id TND_05 → 匹配所有包含"/TND_05"的case
 ```
 
-### 7.2参数规范化
+### 7.2 参数规范化
 
 `normalize_params()`补全逻辑：
 
@@ -345,7 +345,7 @@ test_cases/functional_stc.py::TestCases
 | TND + 缺少`cu_seqlens_kv` | 复制`cu_seqlens_q` |
 | PA + 缺少`block_table` | 从`seqused_kv` + `block_size`自动生成 |
 
-### 7.3张量生成
+### 7.3 张量生成
 
 `InputSpec`声明式定义Q/K/V的shape、dtype、生成方法：
 
@@ -360,7 +360,7 @@ flash_attn_inputs = (
 
 特殊token：`total_s1` = `cu_seqlens_q[-1]`，`total_s2` = `cu_seqlens_kv[-1]`。
 
-### 7.4参数组构造
+### 7.4 参数组构造
 
 `build_flash_attn_params()`返回`(meta_kwargs, kernel_kwargs, out_layout)`：
 
@@ -369,7 +369,7 @@ flash_attn_inputs = (
 - **kernel_kwargs** → 传给`npu_flash_attn()`
   - `softmax_scale`, `cu_seqlens_q/kv`, `seqused_q/kv`, `max_seqlen_q/kv` (TND时传实际值，否则 -1), `mask_mode`, `layout_*`
 
-### 7.5精度对比
+### 7.5 精度对比
 
 `check_result()`判定标准：
 

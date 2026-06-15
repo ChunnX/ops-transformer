@@ -123,7 +123,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
             if (static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel || !isSupportedLayout) {
                 if ((static_cast<uint64_t>(quantScale2ShapeSize) != 1U)) {
                     std::string reasonMsg =
-                        "For post quant per-tensor, the shape size of quant scale/offset should be equal to [1].";
+                        "For post quant per-tensor, the shape size of quant scale/offset should be equal to [1]";
                     OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(fiaInfo.opName, "quant_scale2",
                         std::to_string(quantScale2ShapeSize).c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
@@ -143,7 +143,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
                 if (fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape() !=
                     gert::Shape({numHeads, fiaInfo.vHeadDim})) {
                     std::string quantScale2ShapeStr =
-                        ToString(fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape());
+                        ToStringRaw(fiaInfo.opParamInfo.quantScale2.tensor->GetStorageShape());
                     std::string reasonMsg = "In post quant per-channel scenario, when layout is " + layoutString + ", "
                         "the shape of quantScale2/quantOffset2 should be [numHeads, vHeadDim]";
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "quant_scale2",
