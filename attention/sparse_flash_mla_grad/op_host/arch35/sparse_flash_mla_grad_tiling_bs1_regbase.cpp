@@ -550,8 +550,8 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::DoCastTiling()
 
     int64_t oriSoftmaxL1PreBlockFactor = 0;
     int64_t oriSoftmaxL1PreBlockTotal = 0;
-    int64_t oriSoftmaxL1PreBlockTailTmp = 0,
-        oriSoftmaxL1PreBlockTail{0};
+    int64_t oriSoftmaxL1PreBlockTailTmp = 0;
+    int64_t oriSoftmaxL1PreBlockTail = 0;
     if (allNumOriSoftmaxL1 != 0) {
         oriSoftmaxL1PreBlockFactor = (allNumOriSoftmaxL1 + usedCoreNum - 1) / usedCoreNum;
         oriSoftmaxL1PreBlockTotal = (allNumOriSoftmaxL1 + oriSoftmaxL1PreBlockFactor - 1) / oriSoftmaxL1PreBlockFactor;
@@ -635,8 +635,10 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::DoCastTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName,
-                                                                const gert::Shape &outputshape, const char *inputLayout)
+ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::CheckOutShapeInfo(const gert::Shape &inputshape,
+                                                                      const char *inputName,
+                                                                      const gert::Shape &outputshape,
+                                                                      const char *inputLayout)
 {
     if (strcmp(inputLayout, TND_STR) == 0) {
         if (inputshape.GetDim(DIM_0) != outputshape.GetDim(DIM_0) ||
