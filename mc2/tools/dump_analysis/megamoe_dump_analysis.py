@@ -19,25 +19,32 @@ tool_path = sys.argv[5]
 
 # 判断路径下输入、输出、workspace是否已经解析完成，如果未解析，利用$TOOL_PATH/tools/msaicerr/msaicerr.py工具先解析
 dump_filename_prefix = "exception_info"
-for file_name in os.listdir(folder_path):
-    # 检查文件名中是否包含'exception_info.*.bin'
-    if file_name.startswith(dump_filename_prefix) and file_name.endswith(".bin"):
-        file_path = os.path.join(folder_path, file_name)
-        logging.info("路径下发现解析后的%s文件, 跳过解析流程", file_path) 
-    elif:
-        # 查找解析工具$TOOL_PATH/tools/msaicerr/msaicerr.py是否存在
+
+# 检查tool_path路径下是否存在exception_info开头且.bin结尾的文件
+has_parsed_file = False
+for file in os.listdir(tool_path):
+    if file.startswith(dump_filename_prefix) and file.endswith(".bin"):
+        has_parsed_file = True
+        break
+
+# 如果不存在已解析的.bin文件，检查是否有未解析的exception_info开头文件
+if not has_parsed_file:
+    unparse_file_path = None
+    for file in os.listdir(tool_path):
+        if file.startswith(dump_filename_prefix):
+            unparse_file_path = os.path.join(tool_path, file)   
+            break
+    if not unparse_file_path:
+        logging.warning("tool_path路径下未发现exception_info相关文件")
+    else:
+        # 利用$TOOL_PATH/tools/msaicerr/msaicerr.py工具解析
         msaicerr_path = os.path.join(tool_path, "tools/msaicerr/msaicerr.py")
         if not os.path.exists(msaicerr_path):
             logging.error("未发现$TOOL_PATH/tools/msaicerr/msaicerr.py解析工具, 请检查环境变量设置")
             sys.exit(1)
-
-        # 查找路径下是否由未解析的dump文件
-        if file_name.startswith(dump_filename_prefix):
-            logging.info("路径下发现未解析的%s文件, 准备解析", file_path) 
-            os.system(f"python3 {msaicerr_path} -d {file_path}")
-            logging.info("解析完成, 退出解析流程, 进行后续分析") 
-        break
-        
+        logging.info("路径下发现未解析的%s文件, 准备解析", unparse_file_path) 
+        os.system(f"python3 {msaicerr_path} -d {unparse_file_path}")
+        logging.info("解析完成, 退出解析流程, 进行后续分析") 
 
 adump_filename_prefix = "mc2_exception_info_MegaMoe"
 
