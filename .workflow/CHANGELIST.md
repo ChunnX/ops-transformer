@@ -347,3 +347,83 @@
 #### 影响范围
 - 修正了 SRS 文档中 tiling 和 buffer 章节的不准确描述
 - 为后续编码实现提供了准确的参考依据
+
+---
+
+### 2026-06-15 | 移除 antiquantOffset 支持（A16W4 pergroup ND 不支持 offset 输入）
+
+**类型**: 🔧 修改
+**范围**: `raw/spec/gmm_a16w4nd_op.md` + `raw/development/gmm_a16w4_pergroup_nd_srs.md` + `raw/design/03_tiling_design.md` + `raw/design/04_kernel_design.md` + SVG 图
+
+#### 变更内容
+- **`gmm_a16w4nd_op.md`**：
+  - 移除 antiquantOffset 作为可选输入，改为"不使用"
+  - 简化计算公式为 `y = x × weight × scale + bias`
+  - 移除 antiquantOffset shape 约束
+  - 更新量化模式约束为"仅 pergroup，不支持 antiquant_offset"
+- **`gmm_a16w4_pergroup_nd_srs.md`**：
+  - 移除 offset 数据流描述和计算公式
+  - tiling key 组合从 8 个减少到 4 个（移除 2 个 offset 状态）
+  - UB buffer 表移除 antiQuantOffset 行
+  - Controller 地址偏移表移除 offset 行
+  - VF 反量化步骤移除 "add offset" 步骤
+  - 修改点汇总移除 offset 相关文件和兼容性条目
+- **`03_tiling_design.md`**：
+  - 移除 antiquantOffset shape 描述和校验
+  - tiling key 组合从 8 个减少到 4 个
+  - Buffer 结论移除 offset 引用
+- **`04_kernel_design.md`**：
+  - kernel 入口分支从 8 个减少到 4 个
+  - WqmmConfig 从 4 个减少到 2 个（移除 _OFF 变体）
+  - UB buffer 配置移除 antiQuantOffset
+  - VF 函数模板参数 hasAntiQuantOffset 固定为 false
+  - 反量化步骤移除 offset 加法
+  - 修改点汇总和兼容性保护移除 offset 条目
+- **`svg/buffer_allocation.svg`**：
+  - 移除 antiQuantOffset buffer 块
+  - UB 总计从 248KB 改为 244KB（剩余 4KB）
+  - 数据流箭头和适配说明移除 offset 引用
+  - 图例移除 antiQuantOffset 条目
+- **`svg/dataflow.svg`**：
+  - GM 区域移除 offset 数据
+  - UB 区域移除 offset buffer
+  - VF 反量化公式移除 "(+ offset)"
+  - MTE2 箭头移除 offset 搬运
+
+#### 关键决策
+- A16W4 pergroup ND 数据流**不支持 antiquantOffset 输入**，仅支持对称量化（scale only）
+- tiling key 组合从 2×2×2=8 减少到 2×2=4（transB × bias）
+- WqmmConfig.hasAntiQuantOffset 固定为 false
+- **UB 空间分配逻辑不变**：`antiQuantOffset` 的 4KB 保留（复用 `GetNdBufferInfo()`），运行时不使用但不修改分配代码
+
+#### 影响范围
+- 所有设计文档和 SVG 图均已更新
+- 后续编码实现不需要处理 offset 相关逻辑
+- UB buffer 分配代码无需修改
+
+---
+
+### 2026-06-15 | SRS 文档新增 VF 反量化详细代码实现方案
+
+**类型**: 📝 文档
+**范围**: `raw/development/gmm_a16w4_pergroup_nd_srs.md`
+
+#### 变更内容
+- **新增 §4.4 VF 反量化详细代码实现方案**（约 200 行），基于 ops-nn wqbmmv2 源码走读：
+  - §4.4.1 KN 路径（`bTrans=false`）：统一 VF 函数 `AntiquantPerGroupKN` 的完整参数构造、三层循环结构（nLoop → group → k）、关键指令说明（DIST_UNPACK4_B8 / DIST_NORM / Cast / Mul / DATA_BLOCK_COPY）、输出 NZ 格式布局
+  - §4.4.2 NK 路径（`bTrans=true`）：按 groupSize 分派 4 个专用 VF 函数的详细实现：
+    - gs=128：`AntiquantW4Pergroup128NK`（最简单，DIST_BRC_B16 广播 scale）
+    - gs=256：`AntiquantW4Pergroup256NK`（2 次 weight 加载）
+    - gs=64：`AntiquantW4Pergroup64NK`（Select 拼接相邻 group scale）
+    - gs=32：`AntiquantW4Pergroup32NK`（DIST_E2B_B16 + Interleave 扩展 scale）
+  - §4.4.3 KN vs NK 路径对比表（7 个维度）
+  - §4.4.4 迁移到 GMM 的 5 个适配要点（函数签名、UB 地址映射、hasAntiQuantOffset=false、useVag 参数、输出 NZ 格式）
+- 原 §4.4 Cube 复用重编号为 §4.5
+
+#### 关键决策
+- 所有 VF 函数描述中 `hasAntiQuantOffset` 固定为 `false`，省略 offset 相关操作
+- `useVag` 参数建议初始实现设为 `false`（直接地址计算），后续可优化
+- 输出 NZ 格式与 GMM 现有 MTE3 流程一致，无需修改
+
+#### 影响范围
+- 仅 SRS 文档更新，为后续编码实现提供完整的 VF 反量化参考

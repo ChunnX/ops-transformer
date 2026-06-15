@@ -243,10 +243,10 @@
 
   <rect x="60" y="580" width="850" height="100" fill="#fff8f0" stroke="#e0c080" rx="4"/>
 
-  <text x="75" y="600" class="note">用户确认策略: x 和 weight 按 256×256 切分</text>
-  <text x="75" y="618" class="note">• 多多多: 每个核分配一个完整 expert，不需要 tiling 切分</text>
-  <text x="75" y="636" class="note">• 单单单: K 和 N 方向不切分，M 方向切分成多个块</text>
-  <text x="75" y="658" class="highlight">⚠ 当前 A16W8 代码 M 和 N 方向都会切分 — A16W4 pergroup 可能需修改 Controller 分核逻辑</text>
+  <text x="75" y="600" class="note">设计结论: 复用 A16W8 basic-controller 的 M/N 二维切分</text>
+  <text x="75" y="618" class="note">• 多多多: 每个 expert 内继续切成 (mBlock, nBlock)，各 core round-robin 领取任务</text>
+  <text x="75" y="636" class="note">• 单单单: M 来自 groupList，K/N 来自共享 weight，仍按 M/N 基本块执行</text>
+  <text x="75" y="658" class="note">• K 不在核间切分，在 BasicBlock 内按 kbL1Size=256 步进遍历</text>
 
   <!-- Footer -->
   <text x="470" y="695" text-anchor="middle" class="dim">GMM A16W4 PerGroup ND — Tiling Split Strategy</text>

@@ -4,23 +4,17 @@
 
 本数据流是 GMM 算子 aclnnGroupedMatmulV5 接口的 A16W4(INT4) weight ND pergroup 伪量化场景，面向 Ascend 950PR/Ascend 950DT 平台。该场景是对 A2/A3 已有 A16W4 伪量化数据流的兼容性扩展，在 Ascend 950 上新增 pergroup 量化模式支持，同时保持与 A2/A3 场景的输入兼容。
 
-激活（x）为 FLOAT16 或 BFLOAT16 类型，权重（weight）为 INT4 类型，通过 antiquant_scale 和可选的 antiquant_offset 进行反量化后参与矩阵乘计算。weight 数据格式为 ND（非 NZ），支持转置和非转置。
+激活（x）为 FLOAT16 或 BFLOAT16 类型，权重（weight）为 INT4 类型，通过 antiquant_scale 进行反量化后参与矩阵乘计算。weight 数据格式为 ND（非 NZ），支持转置和非转置。
 
 计算公式：
 
 - 伪量化反量化 + 矩阵乘：
 
   $$
-  y_i = x_i \times (weight_i + antiquant\_offset_i) \times antiquant\_scale_i + bias_i
-  $$
-
-  其中 $x_i$ 为 FLOAT16/BFLOAT16 类型激活，$weight_i$ 为 INT4 类型权重，$antiquant\_scale_i$ 为伪量化缩放因子，$antiquant\_offset_i$ 为伪量化偏移量（可选），$bias_i$ 为偏置（可选）。
-
-  当 antiquant_offset 为空时（对称量化），公式退化为：
-
-  $$
   y_i = x_i \times weight_i \times antiquant\_scale_i + bias_i
   $$
+
+  其中 $x_i$ 为 FLOAT16/BFLOAT16 类型激活，$weight_i$ 为 INT4 类型权重，$antiquant\_scale_i$ 为伪量化缩放因子，$bias_i$ 为偏置（可选）。
 
 支持两种 tensor 模式：
 
@@ -37,7 +31,7 @@
 | weight | DYNAMIC | 必选 | INT4 | ND | 多多多(groupType=-1): 2维, $(n_i, k_i)$ 或 $(k_i, n_i)$（转置）</br>单单单(groupType=0): 3维, $(E, N, K)$ 或 $(E, K, N)$（转置） | 右矩阵（权重），支持转置和非转置 |
 | biasOptional | DYNAMIC | 可选 | FLOAT16/BFLOAT16/FLOAT32/null | ND | 多多多(groupType=-1): 1维, $(n_i)$</br>单单单(groupType=0): 2维, $(E, N)$ | 偏置。FLOAT16 x 时 bias 为 FLOAT16/null；BFLOAT16 x 时 bias 为 BFLOAT16/FLOAT32/null |
 | antiquantScaleOptional | DYNAMIC | 必选 | FLOAT16/BFLOAT16 | ND | 见下表 | 伪量化缩放因子（pergroup），dtype 与 x 一致 |
-| antiquantOffsetOptional | DYNAMIC | 可选 | FLOAT16/BFLOAT16/null | ND | 见下表 | 伪量化偏移量（pergroup），dtype 与 x 一致。对称量化时为 null |
+| antiquantOffsetOptional | DYNAMIC | 不使用 | - | - | - | 本场景不支持 antiquant_offset 输入 |
 | groupListOptional | OPTIONAL | 条件必选 | INT64 | ND | 1维, $(E,)$ | 分组列表。groupType=0 时必选，groupType=-1 时必须传空 |
 | scaleOptional | DYNAMIC | 不使用 | - | - | - | 本场景为 null |
 | offsetOptional | DYNAMIC | 不使用 | - | - | - | 本场景为 null |
@@ -46,7 +40,7 @@
 | activationQuantScaleOptional | - | 不使用 | - | - | - | 本场景为 null |
 | activationQuantOffsetOptional | - | 不使用 | - | - | - | 本场景为 null |
 
-**antiquantScaleOptional / antiquantOffsetOptional shape 约束**（pergroup 场景，其中 $E$ 为 matmul 组数即分组数，$G$ 为 pergroup 数，$G_i$ 为第 $i$ 个 tensor 的 pergroup 数，$gs$ 为 group_size）：
+**antiquantScaleOptional shape 约束**（pergroup 场景，其中 $E$ 为 matmul 组数即分组数，$G$ 为 pergroup 数，$G_i$ 为第 $i$ 个 tensor 的 pergroup 数，$gs$ 为 group_size）：
 
 | 子场景 | shape 限制 |
 |:------:|:-----------|
@@ -80,7 +74,7 @@
 | x 不转置 | x 固定不转置 | 所有 groupType 下 x 均不支持转置 |
 | weight 转置统一 | 多多多时 weight tensorList 中每个 tensor 转置状态需保持统一 | 不允许部分 tensor 转置、部分不转置 |
 | ND 进 ND 出 | x、weight、out 均为 ND 格式 | 仅支持 ND 进 ND 出，不支持 NZ 格式 |
-| 对称量化模式 | pergroup | 对称量化（antiquantOffset 为 null）支持 pergroup 模式 |
+| 量化模式 | 仅 pergroup | 本场景仅支持 pergroup 量化模式，不支持 antiquant_offset 输入 |
 | groupList 约束 | groupType=0 时必传，groupType=-1 时传空 | groupType=0 时 groupListOptional 第 1 维最大支持 1024，即 E 最大 1024 |
 | groupListType=0 约束 | 非负单调非递减数列 | 最后一个值不大于 x 中 tensor 的第一维 |
 | groupListType=1 约束 | 非负数列 | 数值的总和不大于 x 中 tensor 的第一维 |

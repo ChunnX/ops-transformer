@@ -1,15 +1,15 @@
 # 03 Tiling 拦截校验与切分方案 — GMM A16W4 PerGroup ND
 
-> 本文档设计 A16W4 pergroup ND 场景的 tiling 参数校验、拦截逻辑和切分策略。
+> 本文档描述 A16W4 INT4 weight ND pergroup 数据流的 host tiling 设计。切分策略按现有 A16W8 ND basic-controller 方案扩展，新增内容集中在 pergroup shape 校验、`groupSize` 推导和 tiling key 分发。
 > 相关文档：[01 交付件清单](./01_deliverables.md)、[02 与硬件无关方案](./02_platform_independent_design.md)、[04 Kernel 方案](./04_kernel_design.md)
 
 ---
 
 ## 1. Tiling Data 设计
 
-### 1.1 GMMWeightQuantParam 结构 — 无需新增字段
+### 1.1 GMMWeightQuantParam 结构复用
 
-现有 `GMMWeightQuantParam` 结构（定义于 `grouped_matmul_tiling_data_apt.h`）已包含 pergroup 所需的全部字段：
+`GMMWeightQuantParam` 已包含 A16W4 pergroup 所需字段，无需新增 tiling data 字段。
 
 ```cpp
 struct GMMWeightQuantParam {
@@ -35,13 +35,43 @@ struct GMMWeightQuantParam {
 };
 ```
 
-**关键字段**：
-- `groupSize`：pergroup 场景设为 32/64/128/256，perchannel 场景保持 0
-- 其余字段复用现有逻辑
+关键字段：
+- `groupSize`：A16W4 pergroup 写入 32/64/128/256。
+- `groupNum`：单单单为 expert 数 `E`，多多多为 tensorList 长度。
+- `singleX/singleWeight/singleY`、`groupType/groupListType`：沿用 A16W8 controller 的分支逻辑。
+- `mList/kList/nList`：单单单仅使用 `kList[0]`、`nList[0]`，多多多逐 tensor 填充。
 
-### 1.2 groupSize 字段设置方式
+### 1.2 groupSize 推导
 
-`groupSize` 在 `SetAntiquantGroupSize()` 中根据 `antiquantScale` 的 shape 推导：
+本数据流固定为 pergroup，`groupSize` 必须由 `antiquantScale` 的 K-group 维度推导，不能保留为 0。
+
+单单单（`groupType=0`）：
+
+```text
+weight:           [E, *, *]
+antiquantScale:   [E, G, N]
+groupSize = K / G
+```
+
+多多多（`groupType=-1`）：
+
+```text
+weight[i]:          [*, *]
+antiquantScale[i]:  [G_i, N_i]
+groupSize_i = K_i / G_i
+```
+
+多多多所有 tensor 的 `groupSize_i` 必须一致，最终写入 `GMMWeightQuantParam.groupSize`。实现上建议先用第一个 scale 推导 `groupSize_`，随后遍历每个 tensor 做一致性校验。
+
+```cpp
+// 单单单
+G = antiquantScaleShape.GetDim(1);
+groupSize_ = kSize_ / G;
+
+// 多多多
+G_i = antiquantScaleShape[i].GetDim(0);
+groupSize_i = kList_[i] / G_i;
+```
 
 ```cpp
 // antiquantScale shape 维度判断
@@ -78,7 +108,7 @@ if (antiquantScaleDimNum == 2 && IsA16W4ND()) {
 }
 ```
 
-### 1.3 GMMWeightQuantTilingData 完整结构
+### 1.3 GMMWeightQuantTilingData 结构
 
 ```cpp
 struct GMMWeightQuantTilingData {
@@ -88,7 +118,8 @@ struct GMMWeightQuantTilingData {
 };
 ```
 
-其中 `GMMArray`：
+`GMMArray` 保持现状：
+
 ```cpp
 struct GMMArray {
     int32_t mList[128] = {0};
@@ -97,27 +128,28 @@ struct GMMArray {
 };
 ```
 
-**无需修改**。
-
 ---
 
 ## 2. Tiling 拦截校验
 
-### 2.1 IsA16W4ND() 判断逻辑
+### 2.1 场景识别
 
-现有判断函数：
+A16W4 ND 场景沿用现有 `IsA16W4ND()` 判断：
+
 ```cpp
-bool IsA16W4ND() const {
-    return ge::GetSizeByDataType(xDType_) == 2 &&  // x 为 16bit
-           (weightDtype_ == DT_INT4 || weightDtype_ == DT_INT32) &&
-           !weightNzFlag_;  // ND 格式
+bool IsA16W4ND() const
+{
+    return ge::GetSizeByDataType(xDType_) == B16_DATA_SIZE &&
+           (weightDtype_ == ge::DT_INT4 || weightDtype_ == ge::DT_INT32) &&
+           !weightNzFlag_;
 }
 ```
 
-**新增 IsA16W4NDPergroup() 判断函数**：
+本数据流额外要求 `groupSize_ > 0`，建议增加辅助判断：
 
 ```cpp
-bool IsA16W4NDPergroup() const {
+bool IsA16W4NDPergroup() const
+{
     return IsA16W4ND() && groupSize_ > 0;
 }
 ```
@@ -126,125 +158,80 @@ bool IsA16W4NDPergroup() const {
 - perchannel：`groupSize_ == 0`（antiquantScale 为 2 维且 $G_i = 1$）
 - pergroup：`groupSize_ > 0`（antiquantScale 为 3 维或 2 维但 $G_i > 1$）
 
-### 2.2 CheckGroupSize() 校验逻辑
+### 2.2 基础约束
 
-**现有校验**（仅 S8S4 场景）：
-```cpp
-// 当前仅校验 S8S4 场景的 groupSize（128/192/256/512）
-if (xDType_ == DT_INT8 && weightDtype_ == DT_INT4) {
-    // S8S4 groupSize 校验
-}
+| 项目 | 约束 |
+|------|------|
+| x dtype | `FLOAT16` 或 `BFLOAT16` |
+| weight dtype | `INT4`，兼容 host 侧 `INT32` 打包描述 |
+| x/weight/out format | ND，weight 不走 NZ |
+| x transpose | 不支持，`transA=false` |
+| weight transpose | 支持 `transB=false/true` |
+| 输入模式 | 仅支持单单单 `groupType=0` 和多多多 `groupType=-1` |
+| group_size | 仅支持 32/64/128/256 |
+| K 轴 | 每个 tensor 的 `K_i % groupSize == 0` |
+| INT4 最后一维 | weight 最后一维必须为偶数 |
+
+### 2.3 维度校验
+
+单单单：
+
+| Tensor | 维度 | shape |
+|--------|------|-------|
+| x | 2D | `[M, K]` |
+| weight | 3D | `[E, *, *]`，N/K 由 `transB` 解释 |
+| y | 2D | `[M, N]` |
+| antiquantScale | 3D | `[E, G, N]` |
+| bias | 2D | `[E, N]`，可选 |
+
+多多多：
+
+| Tensor | 维度 | shape |
+|--------|------|-------|
+| x[i] | 2D | `[M_i, K_i]` |
+| weight[i] | 2D | `[* , *]`，N/K 由 `transB` 解释 |
+| y[i] | 2D | `[M_i, N_i]` |
+| antiquantScale[i] | 2D | `[G_i, N_i]` |
+| bias[i] | 1D | `[N_i]`，可选 |
+
+需要在现有 A16W8 校验基础上调整：
+- 多多多 A16W4 pergroup 的 `antiquantScale` 从 A16W8 perchannel 的 1D 扩展为 2D。
+- 单单单 A16W4 pergroup 的 `antiquantScale` 从 A16W8 perchannel 的 2D 扩展为 3D。
+- bias 仍保持 `[E,N]` 或 `[N_i]`，不跟随 pergroup 的 G 维扩展。
+- **本场景不支持 antiquantOffset 输入。**
+
+### 2.4 Shape 关系校验
+
+对每个 group/tensor 校验：
+
+```text
+G_i = antiquantScale 的 K-group 维度
+N_i = weight 的 N 轴
+K_i = weight 的 K 轴 = x 的 K 轴
+
+G_i > 0
+K_i % G_i == 0
+groupSize_i = K_i / G_i
+groupSize_i in {32, 64, 128, 256}
+antiquantScale 的 N 轴 == N_i
+bias 的 N 轴 == N_i
 ```
 
-**新增 A16W4 pergroup 校验**：
+多多多还需校验：
 
-```cpp
-if (IsA16W4ND() && groupSize_ > 0) {
-    // A16W4 pergroup groupSize 校验
-    if (groupSize_ != 32 && groupSize_ != 64 &&
-        groupSize_ != 128 && groupSize_ != 256) {
-        // 报错：groupSize 不在 {32, 64, 128, 256}
-        return ERR_INVALID_GROUP_SIZE;
-    }
-    // K % groupSize == 0 校验
-    if (kSize_ % groupSize_ != 0) {
-        // 报错：K 不是 groupSize 的整数倍
-        return ERR_K_NOT_ALIGNED;
-    }
-}
-```
-
-### 2.3 CheckTensorDim*() 校验适配
-
-#### 2.3.1 多多多场景：CheckTensorDimMultiXMultiWeightMultiY()
-
-**antiquantScale 维度校验**：
-- perchannel：shape 为 $(n_i)$，1 维
-- pergroup：shape 为 $(G_i, N_i)$，2 维
-
-**适配方案**：
-```cpp
-if (IsA16W4ND()) {
-    // A16W4 ND: antiquantScale 允许 1 维（perchannel）或 2 维（pergroup）
-    if (antiquantScaleDimNum != 1 && antiquantScaleDimNum != 2) {
-        return ERR_INVALID_DIM;
-    }
-}
-```
-
-#### 2.3.2 单单单场景：CheckTensorDimSingleXSingleWeightSingleY()
-
-**antiquantScale 维度校验**：
-- perchannel：shape 为 $(E, N)$，2 维
-- pergroup：shape 为 $(E, G, N)$，3 维
-
-**适配方案**：
-```cpp
-if (IsA16W4ND()) {
-    // A16W4 ND: antiquantScale 允许 2 维（perchannel）或 3 维（pergroup）
-    if (antiquantScaleDimNum != 2 && antiquantScaleDimNum != 3) {
-        return ERR_INVALID_DIM;
-    }
-}
-```
-
-### 2.4 CheckTensorShape() 校验适配
-
-**新增 pergroup shape 校验**：
-
-```cpp
-if (IsA16W4NDPergroup()) {
-    // 1. K % groupSize == 0
-    if (kSize_ % groupSize_ != 0) {
-        return ERR_K_NOT_ALIGNED;
-    }
-
-    // 2. antiquantScale N 轴校验
-    if (isSingleWeight_) {
-        // 单单单: scale shape = (E, G, N)
-        // G = K / gs, N 应与 weight 的 N 一致
-        uint64_t expectedG = kSize_ / groupSize_;
-        if (antiquantScaleShape.GetDim(1) != expectedG) {
-            return ERR_SCALE_SHAPE_MISMATCH;
-        }
-    } else {
-        // 多多多: scale shape = (G_i, N_i)
-        // G_i = k_i / gs, N_i 应与 weight 的 N_i 一致
-        uint64_t expectedG = kSize_ / groupSize_;
-        if (antiquantScaleShape.GetDim(0) != expectedG) {
-            return ERR_SCALE_SHAPE_MISMATCH;
-        }
-    }
-
-    // 3. 多多多 pergroup 长度一致性校验
-    if (!isSingleWeight_) {
-        // 所有 tensor 的 s_i = k_i / G_i 必须相等
-        uint64_t s = groupSize_;  // s_i = k_i / G_i = groupSize
-        for (each tensor) {
-            if (k_i / G_i != s) {
-                return ERR_PERGROUP_LENGTH_INCONSISTENT;
-            }
-        }
-    }
-
-    // 4. pergroup 转置偶数校验
-    if (transB_ && !isSingleWeight_) {
-        if (groupSize_ % 2 != 0) {
-            return ERR_PERGROUP_TRANSPOSE_ODD;
-        }
-    }
-}
+```text
+groupSize_0 == groupSize_1 == ... == groupSize_{E-1}
 ```
 
 ---
 
 ## 3. Tiling 计算方案
 
-### 3.0 SetTiling() 主流程（6 步）
+### 3.1 SetTiling 主流程
 
-Host 侧 tiling 入口 `SetTiling()` 按固定 6 步顺序执行：
+Host 侧入口保持现有 6 步：
 
-```
+```text
 SetTiling(context):
   ① AnalyzeAttr(context)       // 解析属性、校验输入、设置 shapeList
   ② CalcResplitTiling(context) // 计算尾块重切分参数（详见 §3.4）
@@ -256,203 +243,102 @@ SetTiling(context):
 
 各步骤职责独立，①② 依赖 context 中的算子属性，③④ 填充 tiling 数据结构，⑤ 选择编译期模板，⑥ 将数据下发到 device。
 
-### 3.1 baseM/baseN/baseK 计算方式
+### 3.2 baseM/baseN/baseK
 
-**参照 A16W8 多多多策略**（来自需求文档）：
+Host tiling 复用 A16W8 ND basic-controller 的 `TCubeTiling` 参数：
 
 | 参数 | 值 | 说明 |
-|------|-----|------|
-| baseM | 256 | 有 bias 时调整为 240 |
-| baseN | 256 | — |
-| baseK | 64 | — |
-| singleCoreM | 256 | 有 bias 时 240 |
-| singleCoreN | 256 | — |
-| singleCoreK | kSize_ | — |
-| stepKa | 4 | — |
-| stepKb | 4 | — |
-| depthA1 | 8 | — |
-| depthB1 | 8 | — |
-| dbL0A | 2 | 双缓冲 |
-| dbL0B | 2 | 双缓冲 |
-| dbL0C | 1 | — |
+|------|:--:|------|
+| `baseM` | 256 | 有 bias 时 host 改为 240 |
+| `baseN` | 256 | N 方向标准块 |
+| `baseK` | 64 | L0 K 基本块 |
+| `stepKa` | 4 | A 的 L1 K 步进 |
+| `stepKb` | 4 | B 的 L1 K 步进 |
+| `depthA1/depthB1` | 8 | 复用 A16W8 |
+| `dbL0A/dbL0B/dbL0C` | 2/2/1 | 复用 A16W8 |
 
-**A16W4 pergroup 场景**：baseM/baseN/baseK 可完全复用 A16W8 默认值。
+`kbL1Size` 和 `kaL1Size` 在 kernel controller 中计算：
 
-**动态调整逻辑**（在 Controller `Process()` 中执行）：
 ```cpp
-uint64_t baseM = (mSize <= baseM || mSize >= baseM*4) ? baseM
-               : (mSize <= baseM*2) ? CeilDiv(mSize, 2) : CeilDiv(mSize, 4);
-uint64_t baseN = (nSize >= baseN * coreNum) ? baseN : (baseN >> 1);
+offsetParam.kbL1Size = mmTiling_->baseK * mmTiling_->stepKb; // 64 * 4 = 256
+offsetParam.kaL1Size = offsetParam.kbL1Size;
 ```
 
-### 3.1.1 Kernel 侧 Basic Controller 分核算法
+因此：
+- L0 基本块为 `baseM/baseN/baseK`。
+- L1 K 方向基本块为 `kbL1Size=256`。
+- A16W4 pergroup 不改变这些大小。
 
-Controller `Process()` 在每个 AI Core 上执行，采用 **round-robin** 方式分配 (mBlock, nBlock) 任务：
+### 3.3 Kernel 侧 M/N 分块
 
-```
-Process():
-  cubeBlockIdx = GetBlockIdx()
-  if IS_AIV: cubeBlockIdx >>= 1    // AIV 核号 = blockIdx / 2
+`GMMWeightQuantBasicController::Process()` 复用 A16W8 的 M/N 二维切分和 round-robin 分核。
 
-  for each group (groupIdx = 0..groupNum-1):
-    SetMKN(groupIdx) → mSize, kSize, nSize
+动态 `baseM`：
 
-    // ① 动态调整 baseM（根据 M 大小选择二分/四分/不切）
-    if mSize <= baseM || mSize >= baseM * 4:
-        actualBaseM = baseM           // 256（不调整）
-    elif mSize <= baseM * 2:
-        actualBaseM = ceil(mSize / 2) // 二分时每块 ≈ M/2
-    else:
-        actualBaseM = ceil(mSize / 4) // 四分时每块 ≈ M/4
-
-    // ② 动态调整 baseN（根据 N 是否够分满核决定）
-    if nSize >= baseN * coreNum:
-        actualBaseN = baseN           // 256（N 足够大）
-    else:
-        actualBaseN = baseN / 2       // 128（N 较小，缩小块以分满核）
-
-    // ③ 计算 M/N 方向块数
-    mBlockNum = ceil(mSize / actualBaseM)
-    nBlockNum = ceil(nSize / actualBaseN)
-    totalBlocks = mBlockNum * nBlockNum
-
-    // ④ Round-robin 分核：每个核按步长 coreNum 领取任务
-    curBlock = cubeBlockIdx (adjusted for cross-group remainder)
-    while curBlock < count + totalBlocks:
-        mOffset = ((curBlock - count) / nBlockNum) * actualBaseM
-        nOffset = ((curBlock - count) % nBlockNum) * actualBaseN
-        ComputeBasicBlock(offsetParam)   // K 方向在内部按 kbL1Size 步进
-        curBlock += coreNum
-```
-
-**关键结论**：
-- **M 和 N 方向都会切分**，形成二维块网格
-- **K 方向不切分**（K 方向在 BasicBlock 内部按 `kbL1Size` 步进遍历）
-- 各核以 round-robin 方式领取 `(mBlock, nBlock)` 任务，保证负载均衡
-- AIV/AIC 通过 `cubeBlockIdx >>= 1` 实现协同（每对 AIV+AIC 共享一个核号）
-
-### 3.1.2 kL1=256 的选择原因
-
-kL1（即 kbL1Size，L1 层 K 方向 tile 大小）选择 256 的原因是 group_size 需要支持 32/64/128/256，kL1=256 可以保证在这几种 group_size 下，每个 tile 的 K 方向都不会跨越 group 边界，从而简化代码实现。具体来说：
-
-| group_size | 一个 tile 包含的完整 group 数 | 计算 |
-|:----------:|:---------------------------:|:----:|
-| 32 | 8 | 256 / 32 = 8 |
-| 64 | 4 | 256 / 64 = 4 |
-| 128 | 2 | 256 / 128 = 2 |
-| 256 | 1 | 256 / 256 = 1 |
-
-kL1 = baseK × stepKb × depth = 64 × 4 / depth × depth = 256（其中 baseK=64, stepKb=4）。每个 L1 tile 的 K 方向恰好包含整数个 group，避免了反量化时跨 group 边界的复杂处理逻辑（如部分 group 的 scale 加载、尾 group 的特殊处理等）。
-
-### 3.2 SetAntiquantGroupSize() 中 groupSize 推导逻辑
-
-详见 §1.2。核心公式：
-
-$$
-groupSize = \frac{kSize}{G}
-$$
-
-其中 $G$ 为 antiquantScale 的 K 方向维度：
-- 单单单：$G$ = antiquantScale shape 的第 1 维（3 维时 `(E, G, N)`）
-- 多多多：$G$ = antiquantScale shape 的第 0 维（2 维时 `(G_i, N_i)`）
-
-### 3.3 SetTilingKey() 中 antiquantType 设置
-
-**现有代码**：
 ```cpp
-tilingKeyConfig_.antiquantType = PER_CHANNEL;  // A16W8 固定
-```
-
-**适配方案**：
-```cpp
-if (IsA16W4NDPergroup()) {
-    tilingKeyConfig_.antiquantType = PER_GROUP;
+if (mSize <= baseM || mSize >= baseM * 4) {
+    actualBaseM = baseM;
+} else if (mSize <= baseM * 2) {
+    actualBaseM = CeilDiv(mSize, 2);
 } else {
-    tilingKeyConfig_.antiquantType = PER_CHANNEL;
+    actualBaseM = CeilDiv(mSize, 4);
 }
 ```
 
-**其他 tiling key 参数**：
+动态 `baseN`：
+
 ```cpp
-tilingKeyConfig_.socVersionType = SUPPORT_L1_TO_BT_BF16 * 10;  // Ascend 950
-tilingKeyConfig_.algorithm = VECTOR_ANTIQUANT * 10 + N_FIRST_BASIC_BLOCK;
-tilingKeyConfig_.transposeSituation = (transA << 1) | transB;
-tilingKeyConfig_.weightFormat = ND;
-tilingKeyConfig_.templateCustom = MTE2_INNER_SIZE_256_BUF_NUM_4;
+actualBaseN = (nSize >= baseN * coreNum) ? baseN : (baseN >> 1);
 ```
 
-### 3.4 尾块重切分（CalcResplitTiling）
+分块和分核：
 
-#### 3.4.1 使能条件
+```cpp
+mBlockNum = CeilDiv(mSize, actualBaseM);
+nBlockNum = CeilDiv(nSize, actualBaseN);
 
+for each block in round-robin by coreNum:
+    mOffset = (block / nBlockNum) * actualBaseM;
+    nOffset = (block % nBlockNum) * actualBaseN;
+    mL1Size = min(actualBaseM, mSize - mOffset);
+    nL1Size = min(actualBaseN, nSize - nOffset);
+    ComputeBasicBlock(offsetParam);
 ```
-EnableTailResplit():
-  if 多多多（groupType == -1）: return false
-  if weight 是 ND 格式 且 B 不转置: return false
-  return true
-```
 
-**即使能条件**：单单单 + (weight 是 NZ 格式 或 B 转置)。
+结论：
+- M 和 N 都按 A16W8 basic 方案切分。
+- 多多多不是“每核一个完整 expert”，而是每个 expert 内继续按 `(mBlock,nBlock)` 形成任务块，各核 round-robin 领取。
+- K 不在核间切分，在 BasicBlock 内部按 `kbL1Size=256` 遍历。
 
-**A16W4 ND 非转置场景**：不使能尾块重切分，走 Basic Controller 路径。
+### 3.4 kL1=256 与 group_size
 
-#### 3.4.2 使能时的三分支逻辑
+`kbL1Size=256` 与支持的 group_size 完全整除：
 
-当尾块重切分使能时，根据 N 与 coreNum 的关系分三种情况：
+| group_size | 每个 kL1 tile 包含 group 数 |
+|:----------:|:--------------------------:|
+| 32 | 8 |
+| 64 | 4 |
+| 128 | 2 |
+| 256 | 1 |
 
-| 分支 | 条件 | 策略 |
-|------|------|------|
-| 分支 1 | `N % (coreNum × 256) == 0` | mainBlockSize=256, mainBlockCount = N/(coreNum×256) |
-| 分支 2 | `N > coreNum × 128` | CalcFullNumBlocksResplitTiling — 可分满核 |
-| 分支 3 | `N ≤ coreNum × 128` | CalcNoFullNumBlocksResplitTiling — 可能无法分满核 |
+这保证每个 L1 K tile 覆盖整数个 pergroup 段，VF 反量化时不需要处理跨 group 的 scale 边界。
 
-分支 1 是理想情况（N 可被整除），直接使用固定 256 块大小。分支 2/3 处理 N 不能被整除的场景，通过调整 mainBlockSize 和 tailBlockSize 来减少尾块浪费。
+### 3.5 Tail Resplit 策略
 
-### 3.5 A16W4 PerGroup 适配点
+本 A16W4 pergroup ND 设计固定选择 `N_FIRST_BASIC_BLOCK`，进入 `GMMWeightQuantBasicController`。也就是说：
+- 多多多：basic controller。
+- 单单单：basic controller。
+- `transB=false/true`：均注册 basic-controller tiling key。
 
-#### 3.5.1 当前代码行为 vs 用户确认策略
-
-| 维度 | 当前 A16W8 代码行为 | 用户确认的 A16W4 pergroup 策略 |
-|------|:-------------------:|:-----------------------------:|
-| M 方向 | 动态切分（二分/四分/不切） | 切分成多个块 |
-| N 方向 | 动态切分（256 或 128） | **不切分**（K 和 N 方向不做切分） |
-| K 方向 | BasicBlock 内部步进 | 不切分（一致） |
-| 多多多 | 每核领取 (mBlock, nBlock) | **每个核分配一个完整的 expert** |
-
-**⚠️ 差异说明**：用户确认的策略是"K 和 N 方向不做切分，M 方向切分成多个块"，但当前 A16W8 代码中 M 和 N 方向都会切分。A16W4 pergroup 可能需要修改 Controller 的分核逻辑来实现用户描述的策略。
-
-#### 3.5.2 需要评估的适配方案
-
-1. **N 方向不切分**：修改 `actualBaseN` 逻辑，固定为 `nSize`（不切 N）
-2. **多多多每核一个 expert**：修改 group 循环逻辑，每个核只处理一个 group
-3. **尾块重切分**：A16W4 ND 非转置场景不使能（与 A16W8 一致），无需额外适配
-
-### 3.5.3 ⚠️ 遗留问题：有 bias 场景 L1 空间不足
-
-当 kL1=256, nL1=256, mL1=256 时：
-
-| 区域 | 单缓冲大小 | 双缓冲总计 |
-|------|:---------:|:---------:|
-| WeightL1 | 128KB（nL1 × stepKb × baseK = 256 × 4 × 64 = 65536 half） | 256KB |
-| AL1（无 bias） | 128KB | 256KB |
-| **无 bias 总计** | | **512KB ✅** |
-| BiasL1（有 bias） | 4KB | 8KB |
-| AL1（有 bias） | 124KB | 248KB |
-| **有 bias 总计** | | **512KB ⚠️** |
-
-有 bias 时需要额外 4KB × 2 = 8KB 给 BiasL1，导致 AL1 每缓冲缩减到 124KB，但 A 矩阵（NZ 格式）需要 128KB，**差 4KB**。
-
-这是 L1 物理空间 512KB 的硬限制，暂记为遗留问题，后续评估解决方案（如减小有 bias 时的 kL1、调整 BIAS_L1_SIZE、或 A 矩阵采用单缓冲等）。
+`GMMWeightQuantParam` 中的 tail-resplit 字段保持结构兼容；A16W4 pergroup basic 路径不依赖 resplit controller。
 
 ---
 
 ## 4. Shape List 切分
 
-### 4.1 SetShapeList() 适配
+### 4.1 单单单
 
-#### 4.1.1 单单单路径：SetShapeListSplitMSingleXSingleWeightSingleY()
-
-**现有逻辑完全可复用**：
+`SetShapeListSplitMSingleXSingleWeightSingleY()` 复用现有 M/K/N 解析逻辑：
 
 ```cpp
 groupNum_ = wShape.GetDim(0);  // weight 第0维 = E
@@ -468,14 +354,16 @@ if (weightDtype_ == DT_FLOAT || weightDtype_ == DT_INT32) {
 
 kList_[0] = kSize_;
 nList_[0] = nSizeOri_;
-mList_[0] = -1;
+mList_[0] = -1;                    // M 从 groupList 获取
 ```
 
-**pergroup 无需修改**：MKN 取值逻辑与 perchannel 一致。
+`groupList` 决定每个 expert 的 `mSize`：
+- `groupListType=0`：前缀和，当前 expert M 为相邻差值。
+- `groupListType=1`：count 数组，当前元素即当前 expert M。
 
-#### 4.1.2 多多多路径：SetShapeListMultiXMultiWeightMultiY()
+### 4.2 多多多
 
-**现有逻辑完全可复用**：
+`SetShapeListMultiXMultiWeightMultiY()` 逐 tensor 填充：
 
 ```cpp
 for (i = 0; i < MAX_TENSOR_CONT; i++) {
@@ -491,9 +379,9 @@ for (i = 0; i < MAX_TENSOR_CONT; i++) {
 }
 ```
 
-**pergroup 无需修改**。
+多多多每个 tensor 可以有不同 `M_i/K_i/N_i`，但 A16W4 pergroup 要求由 scale 推导出的 `groupSize_i` 一致。
 
-### 4.2 mList/kList/nList 填充逻辑
+总结：
 
 - **单单单**：仅填充 `kList[0]` 和 `nList[0]`，`mList[0] = -1`（M 从 groupList 取值）
 - **多多多**：逐 tensor 填充 `mList[i]`、`kList[i]`、`nList[i]`
@@ -543,14 +431,40 @@ EnableTailResplit():
 
 ## 5. Tiling Key 注册
 
-### 5.1 新增 ASCENDC_TPL_ARGS_SEL 组合
+### 5.1 SetTilingKey
+
+A16W4 pergroup ND 需要将 antiquant type 置为 `PER_GROUP`：
+
+```cpp
+if (IsA16W4NDPergroup()) {
+    tilingKeyConfig_.antiquantType = static_cast<uint8_t>(QuantType::PER_GROUP);
+} else if (antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
+    tilingKeyConfig_.antiquantType = static_cast<uint8_t>(QuantType::MX);
+} else {
+    tilingKeyConfig_.antiquantType = static_cast<uint8_t>(QuantType::PER_CHANNEL);
+}
+```
+
+其他关键字段：
+
+| 字段 | A16W4 pergroup 取值 |
+|------|--------------------|
+| `socVersionType` | `SUPPORT_L1_TO_BT_BF16` |
+| `algorithm` | `VECTOR_ANTIQUANT + N_FIRST_BASIC_BLOCK` |
+| `transposeSituation` | 由 `transA/transB` 生成，`transA=false` |
+| `quantType` | `NONE` |
+| `optionInputSituation` | bias 是否存在 |
+| `weightFormat` | `ND` |
+| `templateCustom` | `MTE2_INNER_SIZE_256_BUF_NUM_4` |
+
+### 5.2 新增 ASCENDC_TPL_ARGS_SEL 组合
 
 在 `weight_quant_tiling_key.h` 的 `ASCENDC_TPL_SEL` 中新增以下组合：
 
-#### 5.1.1 非转置场景（WQ_B_TRANS = WQGMM_NO_TRANS）
+#### 5.2.1 非转置场景（WQ_B_TRANS = WQGMM_NO_TRANS）
 
 ```cpp
-// 组合 1: 无offset无bias 非转置
+// 组合 1: 无bias 非转置
 ASCENDC_TPL_ARGS_SEL(
     ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
     ASCENDC_TPL_UINT_SEL(W_TYPE, ASCENDC_TPL_UI_LIST, WQGMM_ND),
@@ -563,34 +477,26 @@ ASCENDC_TPL_ARGS_SEL(
     ASCENDC_TPL_UINT_SEL(ALGORITHM_SUB_CATEGORY, ASCENDC_TPL_UI_LIST, WQGMM_N_FIRST_BASIC_BLOCK),
     ASCENDC_TPL_UINT_SEL(ALGORITHM_CATEGORY, ASCENDC_TPL_UI_LIST, WQGMM_VECTOR_ANTIQUANT)),
 
-// 组合 2: 无offset有bias 非转置
+// 组合 2: 有bias 非转置
 ASCENDC_TPL_ARGS_SEL(
     ..., WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_EXIST, ..., WQGMM_PER_GROUP, WQGMM_NO_TRANS, ...),
-
-// 组合 3: 有offset无bias 非转置
-ASCENDC_TPL_ARGS_SEL(
-    ..., WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_NOT_EXIST, ..., WQGMM_PER_GROUP, WQGMM_NO_TRANS, ...),
-
-// 组合 4: 有offset有bias 非转置
-ASCENDC_TPL_ARGS_SEL(
-    ..., WQGMM_ANTIQUANT_OFFSET_EXIST_BIAS_EXIST, ..., WQGMM_PER_GROUP, WQGMM_NO_TRANS, ...),
 ```
 
-#### 5.1.2 转置场景（WQ_B_TRANS = WQGMM_TRANS）
+#### 5.2.2 转置场景（WQ_B_TRANS = WQGMM_TRANS）
 
 ```cpp
-// 组合 5~8: 同上，仅 WQ_B_TRANS 改为 WQGMM_TRANS
+// 组合 3~4: 同上，仅 WQ_B_TRANS 改为 WQGMM_TRANS
 ASCENDC_TPL_ARGS_SEL(
     ..., WQGMM_PER_GROUP, WQGMM_TRANS, ...),
-// ... 共 4 个转置组合
+// ... 共 2 个转置组合
 ```
 
-### 5.2 新增组合的模板参数值汇总
+### 5.3 新增组合的模板参数值汇总
 
 | 参数 | 值 | 说明 |
 |------|-----|------|
 | W_TYPE | WQGMM_ND (0) | weight ND 格式 |
-| OFFSET_OR_BIAS_EXIT | 0~3 | 4 种 offset/bias 组合 |
+| OFFSET_OR_BIAS_EXIT | 0~1 | 2 种 bias 组合（本场景不支持 offset） |
 | C_QUANT_TYPE | WQGMM_NONE (0) | 无 C 量化 |
 | W_QUANT_TYPE | **WQGMM_PER_GROUP (3)** | ★ weight pergroup 量化 |
 | WQ_B_TRANS | WQGMM_NO_TRANS (0) / WQGMM_TRANS (1) | 转置/非转置 |
@@ -599,19 +505,33 @@ ASCENDC_TPL_ARGS_SEL(
 | ALGORITHM_SUB_CATEGORY | WQGMM_N_FIRST_BASIC_BLOCK (3) | 基本块模式 |
 | ALGORITHM_CATEGORY | WQGMM_VECTOR_ANTIQUANT (0) | 向量反量化 |
 
-### 5.3 转置/非转置场景差异
+### 5.4 转置/非转置场景差异
 
 | 维度 | 非转置（B_TRANS=NO_TRANS） | 转置（B_TRANS=TRANS） |
 |------|:-------------------------:|:---------------------:|
 | weight shape（多多多） | $(n_i, k_i)$ | $(k_i, n_i)$ |
 | weight shape（单单单） | $(E, N, K)$ | $(E, K, N)$ |
 | AIV 分发路径 | `ComputeBasicBlockAivNdKnNzNk` | `ComputeBasicBlockAivNdNkNzKn` |
-| VF 函数 | `AntiQuantInt4NdKn`（K 为内轴） | `AntiQuantInt4NdNk`（N 为内轴） |
+| VF 函数 | `AntiquantComputeKNPerGroup`（K 为内轴） | `AntiquantComputeW4NKPerGroup`（N 为内轴） |
 | VfConfig | `{vfN=256, vfK=64}` | `{vfN=64, vfK=256}` |
-| tiling key 数量 | 4 个 | 4 个 |
+| tiling key 数量 | 2 个 | 2 个 |
 
-### 5.4 与 kernel 入口 if constexpr 的匹配
+### 5.5 与 kernel 入口 if constexpr 的匹配
 
 每个 tiling key 组合对应 `grouped_matmul_apt.cpp` 中的一个 `if constexpr` 分支。详见 [01 交付件清单 §4](./01_deliverables.md#4-grouped_matmul_aptcpp-kernel-入口适配)。
 
 **匹配规则**：tiling key 的模板参数值与 `if constexpr` 的条件一一对应，编译器根据 tiling key 自动选择匹配的分支。
+
+---
+
+## 6. Buffer 结论
+
+Tiling 不新增 buffer 字段，也不为 A16W4 pergroup 生成新的 buffer 配置。buffer 大小由 kernel 侧复用 A16W8 ND 配置：
+
+| 层级 | 结论 |
+|------|------|
+| L1 | `WeightL1` 单缓冲 128KB；无 bias 时 `AL1` 单缓冲 128KB；有 bias 时 host 将 `baseM` 调整为 240，`AL1` 单缓冲 124KB 可容纳 A tile |
+| UB | 复用 `GetNdBufferInfo()`：weight input 174KB、high-bit output 66KB、scale 4KB |
+| VF tile | A16W4 pergroup 的 scale 按 VF tile 消费，最小 `gs=32` 时单次最大 1KB，匹配 A16W8 ND 的 scale 单 buffer |
+
+因此 tiling 侧固定使用 A16W8 ND 的 `baseM/baseN/baseK/stepKb/templateCustom`，不引入额外切分策略。
