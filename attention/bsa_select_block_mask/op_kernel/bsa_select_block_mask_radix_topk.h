@@ -1094,11 +1094,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
                 dataNum);
             MTE2ToVSync();
             Cast(tileHistFp32, resTensor, RoundMode::CAST_NONE, dataNum);
+            PipeBarrier<PIPE_V>();
         } else {
             CopyTileHistWs2Ub(resTensor,
                 boundaryBin * static_cast<uint32_t>(tileNum_) + i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
             MTE2ToVSync();
             Cast(tileHistFp32, resTensor, RoundMode::CAST_NONE, dataNum);
+            PipeBarrier<PIPE_V>();
         }
 
         int32_t int32Align = UB_BLOCK_SIZE / sizeof(int32_t);
@@ -1231,6 +1233,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(
             int32_t curSegLen = BSAMin(segSize, static_cast<int32_t>(dataNum) - segOff);
             SToVSync();
             Cast(tileHistFp32, tileTopK[segOff], RoundMode::CAST_NONE, curSegLen);
+            PipeBarrier<PIPE_V>();
             ReduceSum(tileHistFp32, tileHistFp32, tileHistFp32, curSegLen);
             VToSSync();
             totalTileTopKInCore += static_cast<int32_t>(tileHistFp32.GetValue(0));
