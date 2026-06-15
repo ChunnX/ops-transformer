@@ -42,9 +42,10 @@ __global__ __aicore__ void quant_lightning_indexer(__gm__ uint8_t *query, __gm__
                                                    __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
                                                    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
+    printf("s00892993 \n");
+
     TPipe tPipe;
-    __gm__ uint8_t *user = GetUserWorkspace(workspace); 
-    // s00892993
+    __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     #if (__CCE_AICORE__ == 310)
         if (ORIG_DTYPE_QUERY == DT_HIFLOAT8) {
