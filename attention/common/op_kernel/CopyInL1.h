@@ -38,6 +38,7 @@ struct PAShape{
     uint32_t copyRowNum;
     uint32_t copyRowNumAlign;
     uint32_t pageStride;
+    uint32_t n2Stride;
 };
 
 struct Position{
@@ -354,8 +355,9 @@ __aicore__ inline void GmScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor, G
         }
         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim;
         if (kvLayout == KVLAYOUT::NZ) {
-            offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
- 
+            uint32_t headStride = (shape.n2Stride > 0) ? shape.n2Stride : (shape.blockSize * shape.headDim);
+            offset += static_cast<uint64_t>(startPos.n2Idx * headStride) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+            
             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
             DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
@@ -365,7 +367,8 @@ __aicore__ inline void GmScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor, G
                 offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
                 dStride = shape.headDim * shape.headNum;
             } else {
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
+                uint32_t headStride = (shape.n2Stride > 0) ? shape.n2Stride : (shape.headDim * shape.blockSize);
+                offset += static_cast<uint64_t>(startPos.n2Idx * headStride) + remainRowCnt * shape.headDim + startPos.dIdx;
             }
  
             uint32_t dValue = shape.actHeadDim;
