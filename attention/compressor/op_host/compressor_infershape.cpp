@@ -24,25 +24,19 @@ namespace ops {
     constexpr uint32_t STATE_CACHE_INPUT_INDEX = 3;
 
     constexpr uint32_t APE_INPUT_INDEX = 4;
-    constexpr uint32_t NORM_WEIGHT_INPUT_INDEX = 5;
-    constexpr uint32_t ROPE_SIN_INPUT_INDEX = 6;
-    constexpr uint32_t ROPE_COS_INPUT_INDEX = 7;
 
     // INPUT(OPTION)
-    constexpr uint32_t STATE_BLOCK_TABLE_INPUT_INDEX = 8;
+    constexpr uint32_t STATE_BLOCK_TABLE_INPUT_INDEX = 5;
 
-    constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 9;
-    constexpr uint32_t SEQ_USED_INPUT_INDEX = 10;
-    constexpr uint32_t START_POS_INPUT_INDEX = 11;
+    constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 6;
+    constexpr uint32_t SEQ_USED_INPUT_INDEX = 7;
+    constexpr uint32_t START_POS_INPUT_INDEX = 8;
 
     // ATTR
-    constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 0;
-    constexpr uint32_t CMP_RATIO_ATTR_INDEX = 1;
-    constexpr uint32_t COFF_ATTR_INDEX = 2;
-    constexpr uint32_t NORM_EPS_ATTR_INDEX = 3;
-    constexpr uint32_t ROTARY_MODE_ATTR_INDEX = 4;
-    constexpr uint32_t CACHE_MODE_ATTR_INDEX = 5;
-    constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 6;
+    constexpr uint32_t CMP_RATIO_ATTR_INDEX = 0;
+    constexpr uint32_t COFF_ATTR_INDEX = 1;
+    constexpr uint32_t CACHE_MODE_ATTR_INDEX = 2;
+    constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 3;
 
     // OUTPUT
     constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;
@@ -85,12 +79,6 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
 
     auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);    // (r, coff * D)
     OP_CHECK_NULL_WITH_CONTEXT(context, apeShape);
-    auto normWeightShape = context->GetRequiredInputShape(NORM_WEIGHT_INPUT_INDEX);    // (D)
-    OP_CHECK_NULL_WITH_CONTEXT(context, normWeightShape);
-    auto ropeSinShape = context->GetRequiredInputShape(ROPE_SIN_INPUT_INDEX);    // (B, ceil(S / r), rD) | (min(T, T/r + B), rD)
-    OP_CHECK_NULL_WITH_CONTEXT(context, ropeSinShape);
-    auto ropeCosShape = context->GetRequiredInputShape(ROPE_COS_INPUT_INDEX);    // (B, ceil(S / r), rD) | (min(T, T/r + B), rD)
-    OP_CHECK_NULL_WITH_CONTEXT(context, ropeCosShape);
 
     auto stateBlockTableShape = context->GetRequiredInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);    // (B, sMax/block_size) | (B, )
     OP_CHECK_NULL_WITH_CONTEXT(context, stateBlockTableShape);
@@ -102,20 +90,28 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
     auto startPosShape = context->GetRequiredInputShape(START_POS_INPUT_INDEX);    // (B,)
     OP_CHECK_NULL_WITH_CONTEXT(context, startPosShape);
 
+    auto attr = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attr);
+    const int64_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
+    int64_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
+    const int64_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
+    int64_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
+
     if (xShape->GetDimNum() == DIM_NUM_3) {                // BS
         shapeParam.isBsMerge = false;
         shapeParam.B = xShape->GetDim(DIM_INDEX_0);
         shapeParam.S = xShape->GetDim(DIM_INDEX_1);
+        shapeParam.Sr = (xShape->GetDim(DIM_INDEX_1) + cmpRatio - 1) / cmpRatio;
         shapeParam.H = xShape->GetDim(DIM_INDEX_2);
         shapeParam.T = shapeParam.B * shapeParam.S;
     } else {                                                    // T
         shapeParam.isBsMerge = true;
+        shapeParam.Sr = std::min(xShape->GetDim(DIM_INDEX_0), xShape->GetDim(DIM_INDEX_0) / cmpRatio+ cuSeqlensShape->GetDim(DIM_INDEX_0) - 1);
         shapeParam.T = xShape->GetDim(DIM_INDEX_0);
         shapeParam.H = xShape->GetDim(DIM_INDEX_1);
     }
 
-    shapeParam.D = normWeightShape->GetDim(DIM_INDEX_0);
-    shapeParam.Sr = ropeSinShape->GetDim(DIM_INDEX_1);
+    shapeParam.D = wkvShape->GetDim(DIM_INDEX_0) / coff;
 
     return GRAPH_SUCCESS;
 }

@@ -34,26 +34,20 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor(
-        [False, False, False, False, False, False, False, False, True, True, True, True],
-        [False, False, False, False, False, False, False, False, False, False, False, False])
+        [False, False, False, False, False, True, True, True, True],
+        [False, False, False, False, False, False, False, False, False])
     def Compressor(
         x: Tensor,
         wkv: Tensor,
         wgate: Tensor,
         state_cache: Tensor,
         ape: Tensor,
-        norm_weight: Tensor,
-        rope_sin: Tensor,
-        rope_cos: Tensor,
         state_block_table: Optional[Tensor],
         cu_seqlens: Optional[Tensor],
         seqused: Optional[Tensor],
         start_pos: Optional[Tensor],
-        rope_head_dim: int = 64,
         cmp_ratio: int = 4,
         coff: int = 1,
-        norm_eps: float = 1e-6,
-        rotary_mode: int = 1,
         cache_mode: int = 1,
         state_cache_stride_dim0: int = 0):
         
@@ -67,18 +61,12 @@ if _TORCHAIR_AVAILABLE:
         wgate: Tensor,
         state_cache: Tensor,
         ape: Tensor,
-        norm_weight: Tensor,
-        rope_sin: Tensor,
-        rope_cos: Tensor,
         state_block_table: Tensor = None,
         cu_seqlens: Tensor = None,
         seqused: Tensor = None,
         start_pos: Tensor = None,
-        rope_head_dim: int = 64,
         cmp_ratio: int = 4,
         coff: int = 1,
-        norm_eps: float = 1e-6,
-        rotary_mode: int = 1,
         cache_mode: int = 1,
         state_cache_stride_dim0: int = 0):
 
