@@ -82,7 +82,9 @@ public:
     __aicore__ inline
     BlockEpilogue() {}
 
-    #include "fused_block_epilogue_rescale_o/fused_block_epilogue_rescale_o_helper.inc.hpp"
+    #include "fused_block_epilogue_rescale_o/fused_block_epilogue_rescale_o_util.inc.hpp"
+    #include "fused_block_epilogue_rescale_o/fused_block_epilogue_rescale_o_subcore.inc.hpp"
+    #include "fused_block_epilogue_rescale_o/fused_block_epilogue_rescale_o_subcore_ext.inc.hpp"
 
     __aicore__ inline
     void operator()(
@@ -144,7 +146,7 @@ public:
         uint32_t outLseColOffsetThisSubBlock = (kvNBlockSize == 1U) ?
             ((qNBlockSize == 1U) ? 0 : (subBlockIdx * qNSplitSubBlock)) :
             (subBlockIdx * kvNSplitSubBlock * qNBlockSize);
-            
+
         int64_t offsetLse =
             layoutLse.GetOffset(MatrixCoord(outLseRowOffsetThisSubBlock, outLseColOffsetThisSubBlock));
 
@@ -252,7 +254,7 @@ public:
 
         int64_t gmlooutOffsetSubBlock = 0;
         if (splitParams.isSplitkv) {
-            gmlooutOffsetSubBlock = 
+            gmlooutOffsetSubBlock =
                 splitParams.layoutgmLo->GetOffset(MatrixCoord(outRowOffsetThisSubBlock, outColOffsetThisSubBlock));
         }
 
@@ -268,7 +270,7 @@ public:
 
         int64_t gmLseoffsetLse = 0;
         if (splitParams.isSplitkv) {
-            gmLseoffsetLse = 
+            gmLseoffsetLse =
                 splitParams.layoutgmLse->GetOffset(MatrixCoord(outLseRowOffsetThisSubBlock, outLseColOffsetThisSubBlock));
         }
 
@@ -300,7 +302,7 @@ public:
 
                 int64_t gmloffset = 0;
                 if (splitParams.isSplitkv) {
-                    gmloffset = 
+                    gmloffset =
                         static_cast<int64_t>(rowLoopIdx * rowNumTile / qSThisSubBlock * embedV) + gmlooutOffsetSubBlock;
                     blockParams.gCombineo = splitParams.gCombineo[gmloffset];
                 }
@@ -370,4 +372,3 @@ private:
 }
 
 #endif // EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_O_HPP
-
