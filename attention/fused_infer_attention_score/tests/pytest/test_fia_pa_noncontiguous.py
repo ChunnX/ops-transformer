@@ -216,6 +216,13 @@ OLD_NORMAL = [
     # 非PA
     {"id":"OLD-NonPA-contig",  "B":3,"N_q":3,"N_kv":1,"pa":False,"fmt":"none","ql":"BNSD","nc":"none",
      "kv_seq":800,"bs":0,"q_seq":7,"d":64},
+    # NZ + D=64 (D≠128 路由至老模板)
+    {"id":"OLD-NZ-d64-contig",  "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"none",
+     "kv_seq":1024,"bs":128,"q_seq":4,"d":64},
+    {"id":"OLD-NZ-d64-dim0",    "B":2,"N_q":2,"N_kv":2,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"dim0",
+     "kv_seq":1024,"bs":128,"q_seq":3,"d":64},
+    {"id":"OLD-NZ-d64-dim01",   "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"dim01",
+     "kv_seq":1024,"bs":128,"q_seq":5,"d":64},
 ]
 
 OLD_ERROR = [
