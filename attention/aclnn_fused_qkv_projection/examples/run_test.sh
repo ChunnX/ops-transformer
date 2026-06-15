@@ -4,7 +4,7 @@
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ASCEND_PATH="${ASCEND_PATH:-/ddhome/qkv_xpb/Ascend/cann-8.5.0}"
+ASCEND_PATH="${ASCEND_PATH:-/ddhome/qkv_xpb/Ascend/cann-9.1.0-beta.1}"
 VENDOR_NAME="${VENDOR_NAME:-custom}"
 VENDOR_DIR="${ASCEND_PATH}/opp/vendors/${VENDOR_NAME}_transformer"
 TEST_BIN="/tmp/test_fused_qkv"

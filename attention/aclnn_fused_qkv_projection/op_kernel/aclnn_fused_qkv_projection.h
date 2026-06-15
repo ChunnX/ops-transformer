@@ -22,6 +22,11 @@ private:
     using cType = MatmulType<TPosition::LCM, CubeFormat::ND, float>;
     using biasType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 
+    // ---- CopyOut ----
+    __aicore__ inline void CopyQkvOutputs(const LocalTensor<float>& cOut,
+                                          int32_t computedRows, int32_t tileRows,
+                                          int32_t matmulStride);
+
     TPipe pipe;
     Matmul<aType, bType, cType, biasType> mm; 
 
@@ -69,8 +74,34 @@ __aicore__ inline void KernelFusedQkvProjection::Init(
 
     pipe.InitBuffer(tileBuf_, td_->baseM * td_->cubeTiling.N * sizeof(float));
 
-    
     pipe.InitBuffer(localWsBuf_, 100 * 1024);
+}
+
+
+__aicore__ inline void KernelFusedQkvProjection::CopyQkvOutputs(
+    const LocalTensor<float>& cOut, int32_t computedRows,
+    int32_t tileRows, int32_t matmulStride)
+{
+    for (int32_t r = 0; r < tileRows; r++) {
+        int32_t gr = computedRows + r;
+        int32_t srcOff = r * matmulStride;
+
+        if (qDim_ % 8 == 0 && kDim_ % 8 == 0 && vDim_ % 8 == 0) {
+            DataCopy(qGm_[gr * qDim_], cOut[srcOff], qDim_);
+            DataCopy(kGm_[gr * kDim_], cOut[srcOff + qDim_], kDim_);
+            DataCopy(vGm_[gr * vDim_], cOut[srcOff + qDim_ + kDim_], vDim_);
+        } else {
+            for (int32_t i = 0; i < qDim_; i++) {
+                qGm_.SetValue(gr * qDim_ + i, cOut.GetValue(srcOff + i));
+            }
+            for (int32_t i = 0; i < kDim_; i++) {
+                kGm_.SetValue(gr * kDim_ + i, cOut.GetValue(srcOff + qDim_ + i));
+            }
+            for (int32_t i = 0; i < vDim_; i++) {
+                vGm_.SetValue(gr * vDim_ + i, cOut.GetValue(srcOff + qDim_ + kDim_ + i));
+            }
+        }
+    }
 }
 
 __aicore__ inline void KernelFusedQkvProjection::Process()
@@ -79,9 +110,7 @@ __aicore__ inline void KernelFusedQkvProjection::Process()
     if (blockIdx >= td_->blockDim || realCoreM_ == 0) return;
 
     REGIST_MATMUL_OBJ(&pipe, GetSysWorkSpacePtr(), mm, &td_->cubeTiling);
-    
     mm.SetOrgShape(td_->M, td_->N, td_->K);
-
     mm.SetLocalWorkspace(localWsBuf_.Get<uint8_t>());
     mm.SetTensorA(hsGm_);
     mm.SetTensorB(wtGm_);
@@ -90,31 +119,19 @@ __aicore__ inline void KernelFusedQkvProjection::Process()
     }
 
     int32_t computedRows = 0;
-    int32_t matmulStride = td_->cubeTiling.N; // 必须使用对齐后的物理宽度（Padding Width）
+    int32_t matmulStride = td_->cubeTiling.N;
 
     while (computedRows < realCoreM_ && mm.template Iterate<true>()) {
         int32_t tileRows = td_->baseM;
-        if (computedRows + tileRows > realCoreM_) tileRows = realCoreM_ - computedRows;
+        if (computedRows + tileRows > realCoreM_) {
+            tileRows = realCoreM_ - computedRows;
+        }
 
         LocalTensor<float> cOut = tileBuf_.Get<float>();
         mm.template GetTensorC<true>(cOut, false, true);
-        
-        for (int32_t r = 0; r < tileRows; r++) {
-            int32_t gr = computedRows + r; 
-            int32_t srcOff = r * matmulStride;
 
-            // 尺寸完美的正常搬运 vs 畸形尺寸的标量安全保底
-            if (qDim_ % 8 == 0 && kDim_ % 8 == 0 && vDim_ % 8 == 0) {
-                DataCopy(qGm_[gr * qDim_], cOut[srcOff], qDim_);
-                DataCopy(kGm_[gr * kDim_], cOut[srcOff + qDim_], kDim_);
-                DataCopy(vGm_[gr * vDim_], cOut[srcOff + qDim_ + kDim_], vDim_);
-            } else {
-                for (int32_t i = 0; i < qDim_; i++) qGm_.SetValue(gr * qDim_ + i, cOut.GetValue(srcOff + i));
-                for (int32_t i = 0; i < kDim_; i++) kGm_.SetValue(gr * kDim_ + i, cOut.GetValue(srcOff + qDim_ + i));
-                for (int32_t i = 0; i < vDim_; i++) vGm_.SetValue(gr * vDim_ + i, cOut.GetValue(srcOff + qDim_ + kDim_ + i));
-            }
-        }
-        
+        CopyQkvOutputs(cOut, computedRows, tileRows, matmulStride);
+
         AscendC::PipeBarrier<PIPE_ALL>();
         computedRows += tileRows;
     }

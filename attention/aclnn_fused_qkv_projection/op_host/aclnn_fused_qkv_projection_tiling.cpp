@@ -28,88 +28,132 @@ static ge::graphStatus GetPlatformInfo(gert::TilingContext* ctx, uint64_t& ubSiz
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingFunc(gert::TilingContext* context)
-{
-    uint64_t ubSize; int64_t coreNum;
-    OP_CHECK_IF(GetPlatformInfo(context, ubSize, coreNum) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context, "GetPlatformInfo error"), return ge::GRAPH_FAILED);
+struct TilingInput {
+    int64_t M, N, K;
+    int64_t qDim, kDim, vDim;
+    bool hasBias;
+};
 
+static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInput* in)
+{
     auto hsShape = EnsureNotScalar(context->GetInputShape(0)->GetStorageShape());
-    int64_t batch = hsShape.GetDim(0), seqLen = hsShape.GetDim(1), hiddenSize = hsShape.GetDim(2);
+    int64_t batch = hsShape.GetDim(0);
+    int64_t seqLen = hsShape.GetDim(1);
+    int64_t hiddenSize = hsShape.GetDim(2);
 
     auto wtShape = EnsureNotScalar(context->GetInputShape(1)->GetStorageShape());
     int64_t fusedDim = wtShape.GetDim(1);
 
     auto* attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    int64_t qDim = *attrs->GetAttrPointer<int64_t>(0);
-    int64_t kDim = *attrs->GetAttrPointer<int64_t>(1);
-    int64_t vDim = *attrs->GetAttrPointer<int64_t>(2);
-    bool hasBias = (context->GetInputShape(2) != nullptr);
 
-    int64_t M = batch * seqLen;
-    int64_t K = hiddenSize;
-    int64_t N = fusedDim;
+    in->qDim = *attrs->GetAttrPointer<int64_t>(0);
+    in->kDim = *attrs->GetAttrPointer<int64_t>(1);
+    in->vDim = *attrs->GetAttrPointer<int64_t>(2);
+    in->hasBias = (context->GetInputShape(2) != nullptr);
+    in->M = batch * seqLen;
+    in->K = hiddenSize;
+    in->N = fusedDim;
 
-    auto plat = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    matmul_tiling::MultiCoreMatmulTiling cubeTiling(plat); 
-    
-    cubeTiling.SetAType(TPosition::GM, CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
-    cubeTiling.SetBType(TPosition::GM, CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
-    cubeTiling.SetCType(TPosition::LCM, CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
-    cubeTiling.SetBiasType(TPosition::GM, CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);  
-    
-    int64_t alignedM = CeilDiv(M, 16) * 16;
-    int64_t alignedN = CeilDiv(N, 16) * 16;
+    return ge::GRAPH_SUCCESS;
+}
 
-    cubeTiling.SetShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(K));
-    cubeTiling.SetOrgShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(K));
-    cubeTiling.SetBias(hasBias);
-    cubeTiling.SetBufferSpace(-1, -1, -1);
+static void ConfigCubeTiling(
+    matmul_tiling::MultiCoreMatmulTiling* ct, const TilingInput& in)
+{
+    ct->SetAType(TPosition::GM, CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
+    ct->SetBType(TPosition::GM, CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
+    ct->SetCType(TPosition::LCM, CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
+    ct->SetBiasType(TPosition::GM, CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
 
-    cubeTiling.SetShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(K));
-    cubeTiling.SetOrgShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(K));
-    cubeTiling.SetBias(hasBias);
-    cubeTiling.SetBufferSpace(-1, -1, -1);
+    int64_t alignedM = CeilDiv(in.M, 16) * 16;
+    int64_t alignedN = CeilDiv(in.N, 16) * 16;
 
-    cubeTiling.SetDim(1);
+    ct->SetShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
+    ct->SetOrgShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
+    ct->SetBias(in.hasBias);
+    ct->SetBufferSpace(-1, -1, -1);
 
-    auto* td = context->GetTilingData<AclnnFusedQkvProjectionTilingData>();
+    ct->SetShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
+    ct->SetOrgShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
+    ct->SetBias(in.hasBias);
+    ct->SetBufferSpace(-1, -1, -1);
+
+    ct->SetDim(1);
+}
+
+static ge::graphStatus DoCubeTiling(
+    gert::TilingContext* context,
+    matmul_tiling::MultiCoreMatmulTiling* ct,
+    AclnnFusedQkvProjectionTilingData* td,
+    int32_t N)
+{
     memset_s(td, sizeof(AclnnFusedQkvProjectionTilingData), 0, sizeof(AclnnFusedQkvProjectionTilingData));
-    if (cubeTiling.GetTiling(td->cubeTiling) != 0) {
+
+    if (ct->GetTiling(td->cubeTiling) != 0) {
         OP_LOGE(context, "GetTiling failed");
         return ge::GRAPH_FAILED;
     }
 
     // 如果 baseN < N，GetTensorC fullC=true 会截断列。尝试用 SetFixSplit 强制单 N-tile
-    if (td->cubeTiling.baseN < static_cast<int32_t>(N)) {
-        cubeTiling.SetFixSplit(static_cast<int32_t>(1), static_cast<int32_t>(1));
-        if (cubeTiling.GetTiling(td->cubeTiling) != 0) {
+    if (td->cubeTiling.baseN < N) {
+        ct->SetFixSplit(static_cast<int32_t>(1), static_cast<int32_t>(1));
+        if (ct->GetTiling(td->cubeTiling) != 0) {
             OP_LOGE(context, "GetTiling(fixsplit) failed");
             return ge::GRAPH_FAILED;
         }
     }
+    return ge::GRAPH_SUCCESS;
+}
 
+static void FillTilingOutputs(
+    gert::TilingContext* context,
+    AclnnFusedQkvProjectionTilingData* td,
+    const TilingInput& in,
+    platform_ascendc::PlatformAscendC& plat)
+{
     constexpr uint32_t BLOCK_DIM = 1;
 
     size_t* ws = context->GetWorkspaceSizes(1);
     ws[0] = plat.GetLibApiWorkSpaceSize();
 
-    td->M = static_cast<int32_t>(M);
-    td->N = static_cast<int32_t>(N);
-    td->K = static_cast<int32_t>(K);
+    td->M = static_cast<int32_t>(in.M);
+    td->N = static_cast<int32_t>(in.N);
+    td->K = static_cast<int32_t>(in.K);
     td->singleCoreM = td->cubeTiling.singleCoreM;
-    td->singleCoreN = td->cubeTiling.singleCoreN; 
+    td->singleCoreN = td->cubeTiling.singleCoreN;
     td->baseM = td->cubeTiling.baseM;
     td->baseN = td->cubeTiling.baseN;
     td->baseK = td->cubeTiling.baseK;
-    td->qDim = static_cast<int32_t>(qDim);
-    td->kDim = static_cast<int32_t>(kDim);
-    td->vDim = static_cast<int32_t>(vDim);
-    td->hasBias = hasBias;
+    td->qDim = static_cast<int32_t>(in.qDim);
+    td->kDim = static_cast<int32_t>(in.kDim);
+    td->vDim = static_cast<int32_t>(in.vDim);
+    td->hasBias = in.hasBias;
     td->blockDim = BLOCK_DIM;
+
     context->SetBlockDim(BLOCK_DIM);
     context->SetTilingKey(GET_TPL_TILING_KEY(ELEMENTWISE_TPL_SCH_MODE_0));
+}
+
+static ge::graphStatus TilingFunc(gert::TilingContext* context)
+{
+    uint64_t ubSize; int64_t coreNum;
+    OP_CHECK_IF(GetPlatformInfo(context, ubSize, coreNum) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "GetPlatformInfo error"), return ge::GRAPH_FAILED);
+
+    TilingInput in;
+    OP_CHECK_IF(ParseTilingInputs(context, &in) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "ParseTilingInputs error"), return ge::GRAPH_FAILED);
+
+    auto plat = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    matmul_tiling::MultiCoreMatmulTiling cubeTiling(plat);
+    ConfigCubeTiling(&cubeTiling, in);
+
+    auto* td = context->GetTilingData<AclnnFusedQkvProjectionTilingData>();
+    OP_CHECK_IF(DoCubeTiling(context, &cubeTiling, td, static_cast<int32_t>(in.N)) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "DoCubeTiling error"), return ge::GRAPH_FAILED);
+
+    FillTilingOutputs(context, td, in, plat);
 
     return ge::GRAPH_SUCCESS;
 }
