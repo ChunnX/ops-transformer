@@ -278,7 +278,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const 
     GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
     AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
 
-    if (constInfo.returnValueFlag) {
+    if (constInfo_.returnValueFlag) {
         event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
         SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
         WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
@@ -287,7 +287,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const 
         valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
         GlobalTensor<uint32_t> valueOut = valueOutGmTmp[paddingOffset];
 
-        AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_FLOAT);
+        AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_FLOAT);
     }
 }
 
@@ -586,12 +586,12 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
                 mask[0] = ~0;
                 mask[0] = mask[0] << (validS2Len % 16);
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16], zeroUInt32, mask, 1, 1, 0);
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16], constInfo_.NEG_INF_FLOAT, mask, 1, 1, 0);
             }
         
             if (validS2Len / 16 * 16 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64], zeroUInt32,
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64], constInfo_.NEG_INF_FLOAT,
                           topkCount_ - (validS2Len / 16 * 16 + 64));
             }
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
