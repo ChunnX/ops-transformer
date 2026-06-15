@@ -18,7 +18,6 @@
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kv_quant_sparse_flash_attention_common_arch35.h"
-#include "util_regbase.h"
 
 using namespace matmul;
 using namespace regbaseutil;

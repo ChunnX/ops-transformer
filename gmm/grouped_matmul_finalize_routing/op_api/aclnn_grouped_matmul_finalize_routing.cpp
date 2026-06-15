@@ -327,8 +327,9 @@ static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams& params, bool 
                     params.offset->GetViewShape().GetDim(ONE_DIM_NUM), params.offset->GetViewShape().GetDim(TWO_DIM_NUM));
             return false;
             }
-        if (!(params.bias->GetViewShape().GetDim(0) == params.x2EDim
-            && params.bias->GetViewShape().GetDim(ONE_DIM_NUM) == params.x2NDim)) {
+        if (params.bias != nullptr &&
+            !(params.bias->GetViewShape().GetDim(0) == params.x2EDim
+              && params.bias->GetViewShape().GetDim(ONE_DIM_NUM) == params.x2NDim)) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "w4a8 bias's dim value should be (e, n),"
                     " which is (%lld, %lld)",
                     params.bias->GetViewShape().GetDim(0), params.bias->GetViewShape().GetDim(ONE_DIM_NUM));

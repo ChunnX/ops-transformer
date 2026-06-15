@@ -150,7 +150,7 @@
          <tr>
            <td>pre_token</td>
            <td>可选属性</td>
-           <td>用于稀疏计算，表示attention需要和前几个Token计算关联,仅支持默认值2^63-1。</td>
+           <td>用于稀疏计算，表示attention需要和前几个Token计算关联，仅支持默认值2^63-1。</td>
            <td>INT64</td>
            <td>-</td>
          </tr>

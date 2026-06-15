@@ -108,6 +108,45 @@ struct EpilogueAtlasA2PerTokenDequantV2 {
 };
 
 template <uint32_t UB_STAGES_>
+struct EpilogueAtlasA2PerTokenDequantInt8 {
+    using ArchTag = Arch::AtlasA2;
+    static constexpr uint32_t UB_STAGES = UB_STAGES_;
+};
+
+template <uint32_t UB_STAGES_>
+struct EpilogueAtlasA2PerTokenDequantBF16 {
+    using ArchTag = Arch::AtlasA2;
+    static constexpr uint32_t UB_STAGES = UB_STAGES_;
+};
+
+template <uint32_t UB_STAGES_>
+struct EpilogueAtlasA2PerTokenDequantSwigluQuantInt8 {
+    using ArchTag = Arch::AtlasA2;
+    static constexpr uint32_t UB_STAGES = UB_STAGES_;
+};
+
+// A2-specific BF16 SwiGLU (non-quantized). Uses a distinct tag so the
+// A2 epilogue specialization does not conflict with the generic
+// EpilogueAtlasA2PerTokenDequantSwigluQuant specialization.
+template <uint32_t UB_STAGES_>
+struct EpilogueAtlasA2PerTokenDequantSwigluQuantBF16 {
+    using ArchTag = Arch::AtlasA2;
+    static constexpr uint32_t UB_STAGES = UB_STAGES_;
+};
+
+template <uint32_t UB_STAGES_>
+struct EpilogueAtlasA2PerTokenDequantV2Int8 {
+    using ArchTag = Arch::AtlasA2;
+    static constexpr uint32_t UB_STAGES = UB_STAGES_;
+};
+
+template <uint32_t UB_STAGES_>
+struct EpilogueAtlasA2PerTokenDequantV2BF16 {
+    using ArchTag = Arch::AtlasA2;
+    static constexpr uint32_t UB_STAGES = UB_STAGES_;
+};
+
+template <uint32_t UB_STAGES_>
 struct EpilogueAtlasA2W4A8PostPerTokenDequantV2 {
     using ArchTag = Arch::AtlasA2;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;

@@ -114,7 +114,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>ND</td>
       <td>
       • 非dropAndPad模式:（tokens_num * topK_num, hidden_size）<br>
-      • dropAndPad模式: （experts_num * capacity, hidden_size）</td>
+      • dropAndPad模式:（experts_num * capacity, hidden_size）</td>
       <td>√</td>
   </tr>
   <tr>
@@ -129,7 +129,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>ND</td>
       <td>
       • 非dropAndPad模式:（tokens_num * topK_num）<br>
-      • dropAndPad模式: （experts_num * capacity）</td>
+      • dropAndPad模式:（experts_num * capacity）</td>
       <td>√</td>
   </tr>
   <tr>
@@ -140,15 +140,15 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>INT32</td>
       <td>ND</td>
       <td>
-      • 非dropAndPad模式:（tokens_num * topK_num, ）<br>
-      • dropAndPad模式: （experts_num * capacity）</td>
+      • 非dropAndPad模式:（tokens_num * topK_num,）<br>
+      • dropAndPad模式:（experts_num * capacity）</td>
       <td>√</td>
   </tr>
   <tr>
       <td>routingMapOptional</td>
       <td>可选输入</td>
       <td>代表token到expert的映射关系。</td>
-      <td>要求shape为一个2D的tensor，非dropAndPad模式要求每行中包含不超过topK个true 或 1。</td>
+      <td>要求shape为一个2D的tensor，非dropAndPad模式要求每行中包含不超过topK个true或1。</td>
       <td>INT8、bool(当数据类型为INT8，取值支持0、1，当数据类型为bool，取值支持true、false)</td>
       <td>ND</td>
       <td>（tokens_num, experts_num）</td>
@@ -309,7 +309,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
 - 确定性计算：
   - aclnnMoeTokenPermuteWithRoutingMapGrad默认确定性实现。
 
-- 非dropPaddedMode 场景topK_num <= 512
+- 非dropPaddedMode场景topK_num <= 512
 
 ## 调用示例
 
@@ -420,7 +420,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 int main()
 {
 
-    // 1. （固定写法）device/stream初始化，参考acl API手册
+    // 1.（固定写法）device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -508,7 +508,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteWithRoutingMapGrad failed. ERROR: %d\n", ret);
               return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

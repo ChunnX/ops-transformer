@@ -33,24 +33,55 @@
 
 using namespace AscendC;
 using namespace MoeTokenPermute;
-#define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...)                                                   \
+
+#define MASKSELECT_ONLY_IMPL()                                                                                         \
     do {                                                                                                               \
         TPipe sortPipe;                                                                                                \
         KernelMaskedSelectV3<DTYPE_PERMUTE_PROBS> opMS;                                                                \
         auto maskedSelectTilingData = &(t->maskedSelectParamsOp);                                                      \
         opMS.Init(probs, routingMap, permuteProbs, sortedIndices, userWS, maskedSelectTilingData, hasProb, &sortPipe); \
-        opMS.Process(permuteProbs, sortedIndices);                                                                     \
+        opMS.Process(permuteProbs, sortedIndices, actualOutTokens);                                                    \
         sortPipe.Destroy();                                                                                            \
         AscendC::SyncAll();                                                                                            \
-        TPipe sortPipe2;                                                                                               \
-        sortClass2<int32_t> op2;                                                                                       \
-        op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                                                 \
-        op2.Process();                                                                                                 \
-        sortPipe2.Destroy();                                                                                           \
-        TPipe MoeindexCopyPipe;                                                                                        \
-        indexCopyClass<__VA_ARGS__> indexCopyOp;                                                                       \
-        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe);                                  \
-        indexCopyOp.Process();                                                                                         \
+    } while (0)
+
+#define SORT_COPY_IMPL(sortClass2, indexCopyClass, tokenDtype, ifNumOutTokens)          \
+    do {                                                                               \
+        TPipe sortPipe2;                                                               \
+        sortClass2<int32_t> op2;                                                       \
+        op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                 \
+        op2.Process();                                                                 \
+        sortPipe2.Destroy();                                                           \
+        TPipe MoeindexCopyPipe;                                                        \
+        indexCopyClass<tokenDtype, false> indexCopyOp;                        \
+        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe);  \
+        indexCopyOp.Process();                                                         \
+    } while (0)
+
+#define NONALIGNED_SORT_COPY_IMPL(indexCopyClass, tokenDtype)                          \
+    do {                                                                               \
+        TPipe sortPipe2;                                                               \
+        MoeSortMultiCore<int32_t> op2;                                                 \
+        op2.RecalcVBSMultiCoreParams(sortedIndices, actualOutTokens, GetBlockNum(), t);  \
+        op2.SetNeedPad(true, t->topK, t->n);                                           \
+        op2.InitAfterRecalc(sortedIndices, userWS, t, &sortPipe2);                     \
+        op2.Process();                                                                 \
+        sortPipe2.Destroy();                                                           \
+        TPipe MoeindexCopyPipe;                                                        \
+        indexCopyClass<tokenDtype, true> indexCopyOp;                                  \
+        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe);  \
+        indexCopyOp.Process();                                                         \
+    } while (0)
+
+#define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, tokenDtype, ifNumOutTokens) \
+    do {                                                                               \
+        int32_t actualOutTokens = 0;                                                   \
+        MASKSELECT_ONLY_IMPL();                                                        \
+        if (actualOutTokens != t->n * t->topK) {                                       \
+            NONALIGNED_SORT_COPY_IMPL(indexCopyClass, tokenDtype);                     \
+        } else {                                                                       \
+            SORT_COPY_IMPL(sortClass2, indexCopyClass, tokenDtype, ifNumOutTokens);    \
+        }                                                                              \
     } while (0)
 
 #define GENERAL_PAD_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...)         \

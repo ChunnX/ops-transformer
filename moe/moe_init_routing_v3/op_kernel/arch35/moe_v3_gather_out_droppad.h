@@ -99,9 +99,9 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::InitBaseData(GM_ADDR workspace,
     dropPadMode_ = tilingData->dropPadMode;
     activeNum_ = tilingData->activeNum;
 
-    colsLoops_ = tilingData->gatherOutDropPadParamsOp.colsLoops;
-    perLoopCols_ = tilingData->gatherOutDropPadParamsOp.perLoopCols;
-    lastLoopCols_ = tilingData->gatherOutDropPadParamsOp.lastLoopCols;
+    colsLoops_ = tilingData->gatherOutComputeParamsOp.colsLoops;
+    perLoopCols_ = tilingData->gatherOutComputeParamsOp.perLoopCols;
+    lastLoopCols_ = tilingData->gatherOutComputeParamsOp.lastLoopCols;
 
     actualExpertNum_ = tilingData->actualExpertNum;
     // expertTotalCountGm用于读取专家处理的token总数（动态值）
@@ -113,25 +113,25 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::InitBaseData(GM_ADDR workspace,
         expertTotalCountGm_);
     expertTotalCount_ = expertTotalCountGm_.GetValue(0);
 
-    // DropPad模式下，从gatherOutDropPadParamsOp读取完整Tiling参数
+    // DropPad模式下，从gatherOutComputeParamsOp读取完整Tiling参数
     // 数据分割基于totalLength (n*k)，与expert_tokens_count、row_idx_gather一致
-    needCoreNum_ = tilingData->gatherOutDropPadParamsOp.needCoreNum;
-    perCoreIndicesElements_ = tilingData->gatherOutDropPadParamsOp.perCoreIndicesElements;
-    lastCoreIndicesElements_ = tilingData->gatherOutDropPadParamsOp.lastCoreIndicesElements;
-    perCorePerLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.perCorePerLoopIndicesElements;
-    lastCorePerLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.lastCorePerLoopIndicesElements;
+    needCoreNum_ = tilingData->gatherOutComputeParamsOp.needCoreNum;
+    perCoreIndicesElements_ = tilingData->gatherOutComputeParamsOp.perCoreIndicesElements;
+    lastCoreIndicesElements_ = tilingData->gatherOutComputeParamsOp.lastCoreIndicesElements;
+    perCorePerLoopIndicesElements_ = tilingData->gatherOutComputeParamsOp.perCorePerLoopIndicesElements;
+    lastCorePerLoopIndicesElements_ = tilingData->gatherOutComputeParamsOp.lastCorePerLoopIndicesElements;
 
-    // 从gatherOutDropPadParamsOp读取循环参数
+    // 从gatherOutComputeParamsOp读取循环参数
     if (blockIdx_ == needCoreNum_ - 1) {
         curCoreIndicesElements_ = lastCoreIndicesElements_;
-        indicesLoops_ = tilingData->gatherOutDropPadParamsOp.lastCoreIndicesLoops;
-        curCorePerLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.lastCorePerLoopIndicesElements;
-        curCoreLastLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.lastCoreLastLoopIndicesElements;
+        indicesLoops_ = tilingData->gatherOutComputeParamsOp.lastCoreIndicesLoops;
+        curCorePerLoopIndicesElements_ = tilingData->gatherOutComputeParamsOp.lastCorePerLoopIndicesElements;
+        curCoreLastLoopIndicesElements_ = tilingData->gatherOutComputeParamsOp.lastCoreLastLoopIndicesElements;
     } else {
         curCoreIndicesElements_ = perCoreIndicesElements_;
-        indicesLoops_ = tilingData->gatherOutDropPadParamsOp.perCoreIndicesLoops;
-        curCorePerLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.perCorePerLoopIndicesElements;
-        curCoreLastLoopIndicesElements_ = tilingData->gatherOutDropPadParamsOp.perCoreLastLoopIndicesElements;
+        indicesLoops_ = tilingData->gatherOutComputeParamsOp.perCoreIndicesLoops;
+        curCorePerLoopIndicesElements_ = tilingData->gatherOutComputeParamsOp.perCorePerLoopIndicesElements;
+        curCoreLastLoopIndicesElements_ = tilingData->gatherOutComputeParamsOp.perCoreLastLoopIndicesElements;
     }
 }
 
@@ -161,7 +161,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Init(GM_ADDR x, GM_ADDR scale, 
 
     pipe_->InitBuffer(expandedRowIdxCopyInQueue_, GATHER_OUT_BUFFER_NUM,
                       AlignBytes(curCorePerLoopIndicesElements_, sizeof(int32_t)));
-    int64_t xCopyInQueueBufferNum = max(tilingData->gatherOutDropPadParamsOp.xCopyInQueueBufferNum,
+    int64_t xCopyInQueueBufferNum = max(tilingData->gatherOutComputeParamsOp.xCopyInQueueBufferNum,
                                         GATHER_OUT_BUFFER_NUM);
     pipe_->InitBuffer(xCopyInQueue_, xCopyInQueueBufferNum, AlignBytes(perLoopCols_, sizeof(T)));
     if (isInputScale_ == 1) {

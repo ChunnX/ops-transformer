@@ -31,8 +31,16 @@ extern "C" {
 #endif
 
 // 将int4打包为int32输入的Tensor还原回int4
-aclTensorList* ConvertTensorListToInt4(const aclTensorList* input, aclOpExecutor* executor)
+aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor *executor)
 {
+    if (input == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "ConvertTensorListToInt4: input is null.");
+        return nullptr;
+    }
+    if (executor == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "ConvertTensorListToInt4: executor is null.");
+        return nullptr;
+    }
     constexpr int64_t INT4_NUMS_IN_INT32 = 8; // 每个int32包含8个int4
     std::vector<aclTensor *> tensors;
     for (int i = 0; i < input->Size(); i++) {
@@ -41,9 +49,19 @@ aclTensorList* ConvertTensorListToInt4(const aclTensorList* input, aclOpExecutor
         viewShape[viewShape.GetDimNum() - 1] = viewShape[viewShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
         auto inputTemp = executor->CreateView(tensor, viewShape, tensor->GetViewOffset());
         inputTemp->SetDataType(DataType::DT_INT4);
+        inputTemp->SetStorageFormat(Format::FORMAT_FRACTAL_NZ);
+        inputTemp->SetViewFormat(Format::FORMAT_FRACTAL_NZ);
+        if (inputTemp == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER, "ConvertTensorListToInt4: CreateView failed at index %d.", i);
+            return nullptr;
+        }
         tensors.push_back(inputTemp);
     }
     aclTensorList *newInput = executor->AllocTensorList(tensors.data(), tensors.size());
+    if (newInput == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER, "ConvertTensorListToInt4: AllocTensorList failed.");
+        return nullptr;
+    }
     OP_LOGD("The conversion from int32 to int4 is completed.");
     return newInput;
 }
@@ -61,13 +79,13 @@ static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList
 }
 
 aclnnStatus aclnnMegaMoeGetWorkspaceSize(
-    const aclTensor* context, const aclTensor* x, const aclTensor* topkIds, const aclTensor* topkWeights,
-    const aclTensorList* weight1, const aclTensorList* weight2, const aclTensorList* weightScales1Optional,
-    const aclTensorList* weightScales2Optional, const aclTensor* xActiveMaskOptional,
-    const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
-    int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType, int64_t combineQuantMode,
-    const char* commAlg, int64_t globalBs, aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
+    const aclTensorList *weight1, const aclTensorList *weight2, const aclTensorList *weightScales1Optional,
+    const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
+    const aclTensor *xActiveMaskOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
+    int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
+    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, aclTensor *yOut,
+    aclTensor *expertTokenNumsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -80,14 +98,19 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     OP_CHECK_NULL(yOut, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(expertTokenNumsOut, return ACLNN_ERR_PARAM_NULLPTR);
 
+    CHECK_COND(moeExpertNum > 0, ACLNN_ERR_PARAM_INVALID,
+        "moeExpertNum must be > 0, got %ld.", moeExpertNum);
+    CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID,
+        "epWorldSize must be > 0, got %ld.", epWorldSize);
+    CHECK_COND(maxRecvTokenNum > 0, ACLNN_ERR_PARAM_INVALID,
+        "maxRecvTokenNum must be > 0, got %ld.", maxRecvTokenNum);
+
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {
         auto uniqueExec = CREATE_EXECUTOR();
         uniqueExec.ReleaseTo(executor);
     }
 
-    const aclTensorList* bias1Optional = nullptr;
-    const aclTensorList* bias2Optional = nullptr;
     // 可选 DYNAMIC 参数为 nullptr 时创建带 dtype 的 dummy tensor list 满足支持列表校验
     aclTensorList *tmpBiasList = nullptr;
     aclTensorList *tmpScaleList = nullptr;
@@ -109,16 +132,15 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
-        xActiveMaskOptional, scalesOptional,
-        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutType,
-        combineQuantMode, const_cast<char*>(commAlg), 0, "swiglu",
-        std::numeric_limits<float>::max(), ge::DT_UNDEFINED, false, false, 0,
-        yOut, expertTokenNumsOut, workspaceSize, executor);
+        xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
+        dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
+        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, yOut, expertTokenNumsOut,
+        workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }
 
-aclnnStatus aclnnMegaMoe(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnMegaMoe(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     OP_LOGD("aclnn_mega_moe start");
     return aclnnInnerMegaMoe(workspace, workspaceSize, executor, stream);

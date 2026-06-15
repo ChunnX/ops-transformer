@@ -31,6 +31,7 @@ template <
     class ElementO_,
     class ElementOTmp_,
     class ElementS_,
+    class ElementKV_,
     class TileCopy_,
     class OTmpSrcPos_, // the src TPosition of pv res, viable configurations: GM/L0C
     LseMode LSE_MODE_,
@@ -40,6 +41,7 @@ class BlockEpilogue<
     ElementO_,
     ElementOTmp_,
     ElementS_,
+    ElementKV_,
     TileCopy_,
     OTmpSrcPos_>
 {
@@ -50,6 +52,7 @@ public:
     using ElementOTmp = ElementOTmp_;
     using ElementLse = float;
     using SMDtype = ElementS_;
+    using ElementKV = ElementKV_;
     using TileCopy = TileCopy_;
     using OTmpSrcPos = OTmpSrcPos_;
 
@@ -61,7 +64,8 @@ public:
     static constexpr uint32_t RESCALE_ROW_MAX_ELEM_NUM = 64;
     static constexpr uint32_t RESCALE_COL_MAX_ELEM_NUM = 128;
     static constexpr uint32_t RESCALE_VREG_SIZE = 256 / sizeof(ElementOTmp);
-
+    static constexpr float MAX_VALUE_RECIPROCAL_FP8 = 1.0f / 448.0f;
+    static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementKV, fp8_e4m3fn_t>::value;
     __aicore__ inline
     BlockEpilogue(Arch::Resource<ArchTag> &resource)
     {
@@ -142,8 +146,7 @@ public:
                         bool isFirstKvSTile,
                         bool isLastKvSTile,
                         uint32_t colStrideCurSubCore,
-                        Arch::CrossCoreFlag mm2ToReFlag,
-                        bool isFullQuantFp8)
+                        Arch::CrossCoreFlag mm2ToReFlag)
     {
         uint32_t rowNumCurSubCore = tla::get<0>(gOTensorTlaTile.shape());
         uint32_t colNumCurSubCore = tla::get<1>(gOTensorTlaTile.shape());
@@ -218,16 +221,7 @@ public:
                 CopyUbToGmLse(gLseTensorTlaTile, ubLseTensorTla);
             }
             AscendC::PipeBarrier<PIPE_V>();
-            if (isFullQuantFp8) {
-                if (dStages == 1) {
-                    deQuantScaleO<DRegSplitStages::ONE>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail,
-                                                        vlElemNum);
-                } else if (dStages == 2) {
-                    deQuantScaleO<DRegSplitStages::TWO>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail,
-                                                        vlElemNum);
-                }
-                AscendC::PipeBarrier<PIPE_V>();
-            }
+
             if (std::is_same<ElementO, bfloat16_t>::value) {
                 AscendC::Cast(
                     goUbTensor16, goUbTensor32,
@@ -351,6 +345,9 @@ public:
             Mul(mulVreg, goPreVreg, dmVreg, pregTail);
             Add(goCurVreg, mulVreg, loVreg, pregTail);
             Div(divVreg, goCurVreg, glVreg, pregTail);
+            if constexpr (FULL_QUANT_FP8) {
+                Muls(divVreg, divVreg, MAX_VALUE_RECIPROCAL_FP8, pregTail);
+            }
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, divVreg, pregTail);
         }
     }
@@ -390,6 +387,10 @@ public:
             Add(goCurVreg1, mulVreg1, loVreg1, pregTail);
             Div(divVreg0, goCurVreg0, glVreg, pregFull);
             Div(divVreg1, goCurVreg1, glVreg, pregTail);
+            if constexpr (FULL_QUANT_FP8) {
+                Muls(divVreg0, divVreg0, MAX_VALUE_RECIPROCAL_FP8, pregFull);
+                Muls(divVreg1, divVreg1, MAX_VALUE_RECIPROCAL_FP8, pregTail);
+            }
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, divVreg0, pregFull);
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride + vlElemNum, divVreg1, pregTail);
         }
@@ -418,6 +419,9 @@ public:
             LoadAlign<ElementOTmp, LoadDist::DIST_BRC_B32>(glVreg, glUb + i);
             LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(goCurVreg, loUb + i * colStride);
             Div(divVreg, goCurVreg, glVreg, pregTail);
+            if constexpr (FULL_QUANT_FP8) {
+                Muls(divVreg, divVreg, MAX_VALUE_RECIPROCAL_FP8, pregTail);
+            }
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, divVreg, pregTail);
         }
     }
@@ -442,53 +446,12 @@ public:
             LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(goCurVreg1, loUb + i * colStride + vlElemNum);
             Div(divVreg0, goCurVreg0, glVreg, pregFull);
             Div(divVreg1, goCurVreg1, glVreg, pregTail);
+            if constexpr (FULL_QUANT_FP8) {
+                Muls(divVreg0, divVreg0, MAX_VALUE_RECIPROCAL_FP8, pregFull);
+                Muls(divVreg1, divVreg1, MAX_VALUE_RECIPROCAL_FP8, pregTail);
+            }
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, divVreg0, pregFull);
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride + vlElemNum, divVreg1, pregTail);
-        }
-    }
-
-    template <DRegSplitStages dRegSplitStages>
-    __simd_vf__ inline void deQuantScaleO(__ubuf__ ElementOTmp *goUb, uint32_t row, uint32_t colStride,
-                                          uint32_t colTail, uint32_t vlElemNum)
-    {
-    }
-
-    template <>
-    __simd_vf__ inline void deQuantScaleO<DRegSplitStages::ONE>(__ubuf__ ElementOTmp *goUb, uint32_t row,
-                                                                uint32_t colStride, uint32_t colTail,
-                                                                uint32_t vlElemNum)
-    {
-        using namespace AscendC::MicroAPI;
-        RegTensor<ElementOTmp> oVreg;
-        MaskReg pregTail = UpdateMask<float>(colTail);
-
-        for (uint16_t i = 0; i < row; ++i) {
-            LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg, goUb + i * colStride);
-            constexpr float maxValueReciprocal = 1.0f / 448.0f;
-            Muls(oVreg, oVreg, maxValueReciprocal, pregTail);
-            StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, oVreg, pregTail);
-        }
-    }
-
-    template <>
-    __simd_vf__ inline void deQuantScaleO<DRegSplitStages::TWO>(__ubuf__ ElementOTmp *goUb, uint32_t row,
-                                                                uint32_t colStride, uint32_t colTail,
-                                                                uint32_t vlElemNum)
-    {
-        using namespace AscendC::MicroAPI;
-        RegTensor<ElementOTmp> oVreg0;
-        RegTensor<ElementOTmp> oVreg1;
-        MaskReg pregAll = CreateMask<float, MaskPattern::ALL>();
-        MaskReg pregTail = UpdateMask<float>(colTail);
-
-        for (uint16_t i = 0; i < row; ++i) {
-            LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg0, goUb + i * colStride);
-            LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg1, goUb + i * colStride + vlElemNum);
-            constexpr float maxValueReciprocal = 1.0f / 448.0f;
-            Muls(oVreg0, oVreg0, maxValueReciprocal, pregAll);
-            Muls(oVreg1, oVreg1, maxValueReciprocal, pregTail);
-            StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, oVreg0, pregAll);
-            StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride + vlElemNum, oVreg1, pregTail);
         }
     }
 
@@ -561,8 +524,7 @@ public:
                     uint32_t gatheredKvSTileIdx,
                     bool isFirstKvSTile,
                     bool isLastKvSTile,
-                    Arch::CrossCoreFlag mm2ToReFlag,
-                    bool isFullQuantFp8 = false)
+                    Arch::CrossCoreFlag mm2ToReFlag)
     {
         uint32_t rowNumOri = actualOriShape[0];
         uint32_t colNumOri = actualOriShape[1];
@@ -594,8 +556,7 @@ public:
                 isFirstKvSTile,
                 isLastKvSTile,
                 colStrideCurSubCore,
-                mm2ToReFlag,
-                isFullQuantFp8);
+                mm2ToReFlag);
         } else {
             Arch::CrossCoreWaitFlag<4, PIPE_V>(mm2ToReFlag);
             Arch::CrossCoreSetFlag<4, PIPE_V>(mm2ToReFlag);
@@ -614,7 +575,6 @@ private:
     AscendC::LocalTensor<float> lseUbTensor32;
 
     CopyUbToGmO copyUbToGmO;
-
 };
 }
 #endif

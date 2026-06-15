@@ -513,7 +513,7 @@ aclnnStatus aclnnRopeWithSinCosCacheV2(
 - rotaryDim：始终小于等于headSize；数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数;mrope模式下应满足mropeSection所有元素累加和为rotaryDim值的一半。
 - 输入tensor positions的取值应小于cosSinCache的0维maxSeqLen。
 - mrope模式下，mropeSection：取值当前仅支持[16, 24, 24]、[24, 20, 20]、[8, 12, 12]和[16, 16, 16, 16]。
-- mrope模式下，cacheMode仅支持0和1, 当mropeSection为[16, 16, 16, 16]时，仅支持0。
+- mrope模式下，cacheMode仅支持0和1,当mropeSection为[16, 16, 16, 16]时，仅支持0。
 
 ## 调用示例
 
@@ -608,7 +608,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -708,7 +708,7 @@ int main() {
             LOG_PRINT("aclnnRopeWithSinCosCacheV2 failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);

@@ -94,19 +94,31 @@ private:
 template <typename T, bool ifNumOutTokens>
 __aicore__ inline void MoeindexCopySplitDOp<T, ifNumOutTokens>::CopyInAndOut(int64_t Offset, int64_t progress)
 {
+    int64_t indicesOffset = progress * topK;
+    if constexpr (ifNumOutTokens == true) {
+        if (indicesLocal.GetValue(indicesOffset) == -1) {
+            return;
+        }
+    }
     for (int64_t inner = 0; inner < oneTokenMoveTimes - 1; inner++) {
         LocalTensor<T> inLocal = copyInQueue.AllocTensor<T>();
         DataCopyPadCustom(inLocal, srcGm[Offset + inner * oneTokenOnceMove], tokenCopyParams, padParams);
         copyInQueue.EnQue<T>(inLocal);
         copyInQueue.DeQue<T>();
-        int64_t indicesOffset = progress * topK;
-        for (int64_t topKId = 0; topKId < topK; topKId++) {
-            auto indicesValue = indicesLocal.GetValue(indicesOffset + topKId);
-            if constexpr (ifNumOutTokens == true) {
-                if (indicesValue < numOutTokens) {
-                    DataCopyPadCustom(dstGm[indicesValue * cols + inner * oneTokenOnceMove], inLocal, tokenCopyParams);
+        if constexpr (ifNumOutTokens == true) {
+            for (int64_t topKId = 0; topKId < topK; topKId++) {
+                auto indicesValue = indicesLocal.GetValue(indicesOffset + topKId);
+                if (indicesValue == -1) {
+                    continue;
                 }
-            } else {
+                if (indicesValue < numOutTokens) {
+                    DataCopyPadCustom(
+                        dstGm[indicesValue * cols + inner * oneTokenOnceMove], inLocal, tokenCopyParams);
+                }
+            }
+        } else {
+            for (int64_t topKId = 0; topKId < topK; topKId++) {
+                auto indicesValue = indicesLocal.GetValue(indicesOffset + topKId);
                 DataCopyPadCustom(dstGm[indicesValue * cols + inner * oneTokenOnceMove], inLocal, tokenCopyParams);
             }
         }
@@ -117,21 +129,28 @@ __aicore__ inline void MoeindexCopySplitDOp<T, ifNumOutTokens>::CopyInAndOut(int
         inLocal, srcGm[Offset + (oneTokenMoveTimes - 1) * oneTokenOnceMove], tokenCopyLastParams, padParams);
     copyInQueue.EnQue<T>(inLocal);
     copyInQueue.DeQue<T>();
-    int64_t indicesOffset = progress * topK;
-    for (int64_t topKId = 0; topKId < topK; topKId++) {
+    if constexpr (ifNumOutTokens == true) {
+        for (int64_t topKId = 0; topKId < topK; topKId++) {
 #ifndef __CCE_KT_TEST__
-        auto indicesValue = indicesLocal.GetValue(indicesOffset + topKId);
-        if constexpr (ifNumOutTokens == true) {
+            auto indicesValue = indicesLocal.GetValue(indicesOffset + topKId);
+            if (indicesValue == -1) {
+                continue;
+            }
             if (indicesValue < numOutTokens) {
                 DataCopyPadCustom(
                     dstGm[indicesValue * cols + (oneTokenMoveTimes - 1) * oneTokenOnceMove], inLocal,
                     tokenCopyLastParams);
             }
-        } else {
+#endif
+        }
+    } else {
+        for (int64_t topKId = 0; topKId < topK; topKId++) {
+#ifndef __CCE_KT_TEST__
+            auto indicesValue = indicesLocal.GetValue(indicesOffset + topKId);
             DataCopyPadCustom(
                 dstGm[indicesValue * cols + (oneTokenMoveTimes - 1) * oneTokenOnceMove], inLocal, tokenCopyLastParams);
-        }
 #endif
+        }
     }
     copyInQueue.FreeTensor(inLocal);
 }
