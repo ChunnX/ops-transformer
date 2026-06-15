@@ -559,12 +559,11 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
 
     if (blockSparseMaskBatch != batch_ || blockSparseMaskNumHeads != numHeads_ ||
         maxQBlockNum_ != expectedMaxQBlockNum || maxKvBlockNum_ != expectedMaxKVBlockNum) {
-        OP_LOGE(
-            bsaContext->GetNodeName(),
-            "The shape of blockSparseMask must be consistent with %s. The expected shape is (%u, %u, %u, %u), but the "
-            "current shape is (%u, %u, %u, %u).",
-            shapeDescription.c_str(), batch_, numHeads_, maxQBlockNum, maxKVBlockNum, blockSparseMaskBatch,
-            blockSparseMaskNumHeads, blockSparseMaskQBlockNum, blockSparseMaskKVBlockNum);
+        OP_LOGE(bsaContext->GetNodeName(),
+                "The shape of blockSparseMask must be consistent with %s. The expected shape is (%u, %u, %u, %u), but "
+                "the current shape is (%u, %u, %u, %u).",
+                shapeDescription.c_str(), batch_, numHeads_, expectedMaxQBlockNum, expectedMaxKVBlockNum,
+                blockSparseMaskBatch, blockSparseMaskNumHeads, maxQBlockNum_, maxKvBlockNum_);
         return ge::GRAPH_FAILED;
     }
 
