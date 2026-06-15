@@ -14,8 +14,32 @@ folder_path = sys.argv[1]
 rank_size = int(sys.argv[2])
 soc_version = sys.argv[3]
 rank_id = int(sys.argv[4])
+tool_path = sys.argv[5]
 
-filename_prefix = "mc2_exception_info_MegaMoe"
+
+# 判断路径下输入、输出、workspace是否已经解析完成，如果未解析，利用$TOOL_PATH/tools/msaicerr/msaicerr.py工具先解析
+dump_filename_prefix = "exception_info"
+for file_name in os.listdir(folder_path):
+    # 检查文件名中是否包含'exception_info.*.bin'
+    if file_name.startswith(dump_filename_prefix) and file_name.endswith(".bin"):
+        file_path = os.path.join(folder_path, file_name)
+        logging.info("路径下发现解析后的%s文件, 跳过解析流程", file_path) 
+    elif:
+        # 查找解析工具$TOOL_PATH/tools/msaicerr/msaicerr.py是否存在
+        msaicerr_path = os.path.join(tool_path, "tools/msaicerr/msaicerr.py")
+        if not os.path.exists(msaicerr_path):
+            logging.error("未发现$TOOL_PATH/tools/msaicerr/msaicerr.py解析工具, 请检查环境变量设置")
+            sys.exit(1)
+
+        # 查找路径下是否由未解析的dump文件
+        if file_name.startswith(dump_filename_prefix):
+            logging.info("路径下发现未解析的%s文件, 准备解析", file_path) 
+            os.system(f"python3 {msaicerr_path} -d {file_path}")
+            logging.info("解析完成, 退出解析流程, 进行后续分析") 
+        break
+        
+
+adump_filename_prefix = "mc2_exception_info_MegaMoe"
 
 CCL_BUFFER_SIZE_POS = 0
 WORLD_SIZE_POS = 1
@@ -76,12 +100,12 @@ class MegaMoeAdumpSharedField:
         self.numMaxTokensPerRank = data_u32[NUM_MAX_TOKENS_PER_RANK_POS]
         self.activationCode = data_u32[ACTIVATION_CODE_POS]
         self.activationClamp = data_u32[ACTIVATION_CLAMP_POS]
-        
+  
 
 # 遍历文件夹中的所有文件
 for file_name in os.listdir(folder_path):
     # 检查文件名是否以指定前缀开头
-    if file_name.startswith(filename_prefix):
+    if file_name.startswith(adump_filename_prefix):
         file_path = os.path.join(folder_path, file_name)
         logging.info("处理文件: %s", file_path)
         with open(file_path, "rb") as f:
