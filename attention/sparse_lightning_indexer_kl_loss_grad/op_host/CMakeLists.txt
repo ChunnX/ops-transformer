@@ -15,6 +15,16 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+if("${CONDITION_UNIT}" STREQUAL "ascend950")
+    set(sparse_lightning_indexer_kl_loss_grad_depends attention/common CACHE INTERNAL "Dependencies for sparse_lightning_indexer_kl_loss_grad")
+    add_ops_compile_options(
+        OP_NAME SparseLightningIndexerKLLossGrad
+        COMPUTE_UNIT Ascend950PR_9599
+        OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
+    )
+endif()
+
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
             OP_NAME SparseLightningIndexerKLLossGrad
@@ -35,3 +45,10 @@ else()
     )
 endif()
 
+if(NOT BUILD_OPS_RTY_KERNEL)
+    add_tiling_modules()
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+        ./arch35/sparse_lightning_indexer_kl_loss_grad_tiling_general_regbase.cpp
+        ./arch35/sparse_lightning_indexer_kl_loss_grad_tiling_general_regbase.h
+    )
+endif()
