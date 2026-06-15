@@ -240,12 +240,14 @@
 - 该算子仅支持Ascend 950 AI Processor。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
 
-- 输入张量dy支持BNSD、BSND、SBND排布。各参数的shape约束可以描述如下：
+- 输入张量dy支持BSND排布以及其B/S/N维度的广播变体（如111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
   - 输入张量dy和xOptional的最后一维大小D必须相同，且D ≤ 1024。输出张量dyOut的shape与dy完全相同（inplace操作，指向同一内存）。
   - 输入张量cos、sin及输出张量dcosOut、dsinOut的最后一维大小必须等于切片长度(end - start)。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dy满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dy的B、S、N。
   - half、interleave和interleave-half模式下，切片长度(end - start)必须能被2整除。
   - quarter模式下，切片长度(end - start)必须能被4整除。
+  - interleave模式（rotary_mode=1）下，切片长度(end - start)必须能被dy和cos/sin数据类型的block大小同时整除（即32字节中包含的元素个数：float16/bf16为16，float32为8。若dy和cos/sin类型不同，取两者的最小公倍数）。
+  - interleave-half模式（rotary_mode=3）下，切片长度(end - start)必须能被dy数据类型的block大小整除（即32字节中包含的dy元素个数：float16/bf16为16，float32为8）。
   - 当start等于end时，算子不执行有效计算，直接返回。
   - 输入张量cos和sin的数据类型必须相同。
   - 输入张量xOptional与dy的数据类型必须相同。
