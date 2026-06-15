@@ -110,8 +110,8 @@ int main() {
 
     int32_t batch = 1;
     int32_t numHeads = 1;
-    int32_t qSeqlen = 32768;
-    int32_t kvSeqlen = 32768;
+    int32_t qSeqlen = 65536;
+    int32_t kvSeqlen = 65536;
     int32_t headDim = 128;
     int32_t blockShapeX = 128;
     int32_t blockShapeY = 128;
