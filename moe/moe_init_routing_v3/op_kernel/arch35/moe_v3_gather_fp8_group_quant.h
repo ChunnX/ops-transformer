@@ -66,6 +66,7 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         RegTensor<float> fp8MaxReg;
         RegTensor<float> rawScaleReg;
         RegTensor<float> roundScaleReg;
+        RegTensor<float> invScaleReg;
         RegTensor<float> quantLeftReg;
         RegTensor<float> quantRightReg;
         RegTensor<U> outLeftReg;
@@ -126,12 +127,12 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         ShiftLefts((RegTensor<uint32_t> &)roundScaleReg, roundedExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
 
         DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr, roundScaleReg, maskAll);
+        Duplicate(fp8MaxReg, 1.0f, maskAll);
+        Div<float, &divMode>(invScaleReg, fp8MaxReg, roundScaleReg, maskAll);
 
         if (groupElemNum > vfLen) {
-            LoadFp8GroupInput<T>(xLeftReg, xAddr, maskAll, 0);
-            LoadFp8GroupInput<T>(xRightReg, xAddr, maskRight, vfLen);
-            Div<float, &divMode>(quantLeftReg, xLeftReg, roundScaleReg, maskAll);
-            Div<float, &divMode>(quantRightReg, xRightReg, roundScaleReg, maskRight);
+            Mul(quantLeftReg, xLeftReg, invScaleReg, maskAll);
+            Mul(quantRightReg, xRightReg, invScaleReg, maskRight);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskAll);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outRightReg, quantRightReg, maskRight);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr, outLeftReg, maskAll);
@@ -139,8 +140,7 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         } else if (groupElemNum > 0) {
             uint32_t loopElemNum = groupElemNum;
             maskLoop = UpdateMask<float>(loopElemNum);
-            LoadFp8GroupInput<T>(xLeftReg, xAddr, maskLoop, 0);
-            Div<float, &divMode>(quantLeftReg, xLeftReg, roundScaleReg, maskLoop);
+            Mul(quantLeftReg, xLeftReg, invScaleReg, maskLoop);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskLoop);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr, outLeftReg, maskLoop);
         }
