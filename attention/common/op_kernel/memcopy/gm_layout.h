@@ -48,10 +48,9 @@ enum class GmFormat {
     NTGD = 21,
     TND2 = 22, // VSCALE, 尾轴2
     PA_NZ_K_SCALE = 23,
-    FP8_BnNBsD_K = 24,
-    // TNG = 25,
-    NGT = 25,
-    FP8_BnNBs_K_SCLAE = 26,
+    PA_BnNBsD_KS = 24, // K和K_Scale在同一物理内存中按固定步长交叉排列
+    PA_BnNBs_KS = 25,
+    NGT = 26,
 };
 
 template <GmFormat FORMAT>
@@ -276,7 +275,7 @@ struct GmLayout<GmFormat::PA_BnNBsD> {
 };
 
 template <>
-struct GmLayout<GmFormat::FP8_BnNBsD_K> {
+struct GmLayout<GmFormat::PA_BnNBsD_KS> {
     AscendC::Shape<uint32_t, uint32_t, uint32_t> shape;
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
@@ -286,7 +285,7 @@ struct GmLayout<GmFormat::FP8_BnNBsD_K> {
         shape = AscendC::MakeShape(n, blockSize, d);
         uint64_t dStride = 1;
         uint64_t bsStride = dStride * d;
-        uint64_t nStride = bsStride * (blockSize + 4);
+        uint64_t nStride = bsStride * (blockSize + 4); // 4: 两个K间隔一个K_Scale
         uint64_t bnStride = nStride * n;
         if (bnStrides != 0 && n2Strides != 0) {
             bnStride = bnStrides;
@@ -432,22 +431,6 @@ struct GmLayout<GmFormat::PA_BnNBs> {
     }
 };
 
-// template <>
-// struct GmLayout<GmFormat::TNG> {
-//     AscendC::Shape<uint32_t, uint32_t, uint32_t> shape;
-//     AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
-
-//     __aicore__ inline GmLayout() = default;
-//     __aicore__ inline void MakeLayout(uint32_t t, uint32_t n, uint32_t g) {
-//         shape = AscendC::MakeShape(t, n, g);
-
-//         uint64_t gStride = 1;
-//         uint64_t nStride = gStride * g;
-//         uint64_t tStride = nStride * n;
-//         stride = AscendC::MakeStride(tStride, nStride, gStride);
-//     }
-// };
-
 template <>
 struct GmLayout<GmFormat::NGT> {
     AscendC::Shape<uint32_t, uint32_t, uint32_t> shape;
@@ -464,7 +447,7 @@ struct GmLayout<GmFormat::NGT> {
 };
 
 template <>
-struct GmLayout<GmFormat::FP8_BnNBs_K_SCLAE> {
+struct GmLayout<GmFormat::PA_BnNBs_KS> {
     AscendC::Shape<uint32_t, uint32_t> shape;
     AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
 
@@ -473,7 +456,7 @@ struct GmLayout<GmFormat::FP8_BnNBs_K_SCLAE> {
         shape = AscendC::MakeShape(n, blockSize);
 
         uint64_t bsStride = 1;
-        uint64_t nStride = bsStride * (blockSize + blockSize * 32);
+        uint64_t nStride = bsStride * (blockSize + blockSize * 32); // 32: 两个K_Scale间隔一个K
         uint64_t bnStride = nStride * n; //blockSize * kvHeadNum
         if (bn2Stride != 0 && n2Stride != 0) {
             bnStride = bn2Stride;

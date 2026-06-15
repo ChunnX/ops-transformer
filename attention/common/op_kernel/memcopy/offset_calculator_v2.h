@@ -37,10 +37,9 @@ enum class FormatCategory {
     GM_PSE_BN2GS1S2 = 12, // PSE
     GM_V_SCALE_TND = 13,
     GM_K_SCALE_PA_NZ = 14,
-    GM_FP8_BnNBsD_K = 15,
-    // GM_ANTIQ_TN = 16,
-    GM_ANTIQ_NT = 16,
-    GM_FP8_BnNBs_K_SCLAE = 17,
+    GM_BnNBsD_KS = 15, // K和K_Scale在同一物理内存中按固定步长交叉排列
+    GM_BnNBs_KS = 16,
+    GM_ANTIQ_NT = 17,
 };
 
 template <GmFormat FORMAT>
@@ -113,8 +112,8 @@ struct GmLayoutParams<GmFormat::PA_BnNBsD> {
 };
 
 template <>
-struct GmLayoutParams<GmFormat::FP8_BnNBsD_K> {
-    static constexpr FormatCategory CATEGORY = FormatCategory::GM_FP8_BnNBsD_K;
+struct GmLayoutParams<GmFormat::PA_BnNBsD_KS> {
+    static constexpr FormatCategory CATEGORY = FormatCategory::GM_BnNBsD_KS;
 };
  
 template <>
@@ -165,19 +164,14 @@ struct GmLayoutParams<GmFormat::PA_BnNBs> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_ANTIQ_BnNBs;
 };
 
-// template <>
-// struct GmLayoutParams<GmFormat::TNG> {
-//     static constexpr FormatCategory CATEGORY = FormatCategory::GM_ANTIQ_TN;
-// };
-
 template <>
 struct GmLayoutParams<GmFormat::NGT> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_ANTIQ_NT;
 };
 
 template <>
-struct GmLayoutParams<GmFormat::FP8_BnNBs_K_SCLAE> {
-    static constexpr FormatCategory CATEGORY = FormatCategory::GM_FP8_BnNBs_K_SCLAE;
+struct GmLayoutParams<GmFormat::PA_BnNBs_KS> {
+    static constexpr FormatCategory CATEGORY = FormatCategory::GM_BnNBs_KS;
 };
 
 // pse
@@ -650,7 +644,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_BNBD, ACTLEN_T> {
 };
 
 template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_FP8_BnNBsD_K, ACTLEN_T> {
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_BnNBsD_KS, ACTLEN_T> {
     GmLayout<FORMAT> gmLayout;
     BlockTableParser blockTableParser;
  
@@ -1222,7 +1216,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_NT, ACTLEN_T, WITH_
 };
 
 template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_FP8_BnNBs_K_SCLAE, ACTLEN_T> {
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_BnNBs_KS, ACTLEN_T> {
     GmLayout<FORMAT> gmLayout;
     BlockTableParser blockTableParser;
 

@@ -28,7 +28,6 @@ enum class UbFormat
 {
     GS1 = 0,
     S1G = 1,
-    NO_S1G = 2,
 };
 
 template <typename OUT_T, bool ROW_PAD = true>
