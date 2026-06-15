@@ -1011,20 +1011,37 @@ QuantCompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTens
                                                                  const Vec1SliceInfo &sliceInfo, uint32_t compressTcSize,
                                                                  uint32_t dStartIdx, uint32_t dDealSize)
 {
-    uint64_t outGmOffset;
+    LocalTensor<O_T> outputUb = outputQue1.AllocTensor<O_T>();
+    Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, compressTcSize * dDealSize);
+    outputQue1.EnQue(outputUb);
+    outputQue1.DeQue<O_T>();
     if constexpr (COMP::xLayout == X_LAYOUT::BSH) {
         uint32_t bOutputScLen = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
-        uint64_t padScIdx = sliceInfo.bIdx * bOutputScLen + ((sliceInfo.sIdx + sliceInfo.bStartPos) / cmpRatio_) -
-                   (sliceInfo.bStartPos / cmpRatio_);
-        outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
+        uint32_t bIdx = sliceInfo.bIdx;
+        uint32_t sIdx = sliceInfo.sIdx;
+        uint64_t ubOffset = 0;
+        while (compressTcSize > 0) {
+            uint32_t bStartPos = GetStartPos(bIdx);
+            uint32_t preScSize = (sIdx + bStartPos) / cmpRatio_;
+            uint32_t totalScSize = (GetSeqUsed(bIdx) + bStartPos) / cmpRatio_;
+            if (preScSize < totalScSize) {
+                uint32_t curScSize = min(compressTcSize, (totalScSize - preScSize));
+                uint64_t padScIdx = bIdx * bOutputScLen + preScSize - (bStartPos / cmpRatio_);
+                uint64_t outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
+                DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb[ubOffset], curScSize, dDealSize,
+                                    dDealSize, constInfo_.headDim);
+                compressTcSize -= curScSize;
+                ubOffset += curScSize * dDealSize;
+            }
+            bIdx++;
+            sIdx = 0;
+        }
     } else {
-        outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
+        uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
+        DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize,
+                            constInfo_.headDim);
     }
-    uint32_t totalElements = compressTcSize * dDealSize;
-    LocalTensor<O_T> outputUb = comperssoredUb.ReinterpretCast<O_T>();
-    Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, totalElements);
-    PipeBarrier<PIPE_V>();
-    DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize, constInfo_.headDim);
+    outputQue1.FreeTensor(outputUb);
 }
 
 
@@ -1045,15 +1062,12 @@ __aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlo
                    dBaseSize, dealSeqStartIdx, needDealTcSize);
     if (statisticInfo.compressorScCnt > 0) {
         SoftmaxDN(scoreLocal, statisticInfo.compressorScCnt, dDealSize);
-        LocalTensor<T> comperssoredUb = outputQue1.AllocTensor<T>();
+        LocalTensor<T> comperssoredUb = scoreLocal;
         PipeBarrier<PIPE_V>();
         KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
-        outputQue1.EnQue(comperssoredUb);
-        outputQue1.DeQue<T>();
         CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx + dBaseOffset,
                                dDealSize);
-        outputQue1.FreeTensor(comperssoredUb);
     }
     compressedCnt_ += statisticInfo.compressorScCnt;
 }
