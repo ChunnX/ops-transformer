@@ -18,6 +18,12 @@ rank_id = int(sys.argv[4])
 tool_path = sys.argv[5]
 
 
+# 将解析出来的字段，写入csv文件，文件路径为csv_file_path，文件格式，列为字段名
+def write_field_to_csv(field_name, field_value, csv_file_path = "adump_parse.csv"):
+    with open(csv_file_path, "a") as f:
+        f.write(f"{field_name},{field_value}\n")
+
+
 # dump文件解析流程
 def parse_input_from_dump_file(dump_folder_path):
     # 判断路径下输入、输出、workspace是否已经解析完成，如果未解析，利用$TOOL_PATH/tools/msaicerr/msaicerr.py工具先解析
@@ -28,7 +34,7 @@ def parse_input_from_dump_file(dump_folder_path):
     for file in os.listdir(dump_folder_path):
         if file.startswith(dump_filename_prefix) and file.endswith(".bin"):
             has_parsed_file = True
-            logging.info("路径下发现解析后的%s文件, 跳过解析流程", os.path.join(dump_folder_path, file))
+            logging.info("路径下发现解析后的文件, 跳过解析流程, 文件：%s", os.path.join(dump_folder_path, file))
             return
 
     # 如果不存在已解析的.bin文件，检查是否有未解析的exception_info开头文件
@@ -47,7 +53,7 @@ def parse_input_from_dump_file(dump_folder_path):
             if not os.path.exists(msaicerr_path):
                 logging.error("未发现$TOOL_PATH/tools/msaicerr/msaicerr.py解析工具, 请检查环境变量设置")
                 sys.exit(1)
-            logging.info("路径下发现未解析的%s文件, 准备解析", unparse_file_path) 
+            logging.info("路径下发现未解析的文件, 准备解析, 文件：%s", unparse_file_path) 
             os.system(f"python3 {msaicerr_path} -d {unparse_file_path}")
             logging.info("解析完成, 退出解析流程, 进行后续分析") 
             return
@@ -66,6 +72,7 @@ def parse_adump_header(data_u32):
             self.reserve = data_u32[9:17]
     # 解析AdumpHeader
     adump_header = AdumpHeader(data_u32)
+    logging.info("="*50)
     logging.info("magic: %d", adump_header.magic)
     logging.info("execTimes: %d", adump_header.execTimes)
     logging.info("version: %d", adump_header.version)
@@ -73,6 +80,14 @@ def parse_adump_header(data_u32):
     logging.info("stage_num: %d", adump_header.stage_num)
     logging.info("timeOutCycles: %d", adump_header.timeOutCycles)
     logging.info("reserve: %s", adump_header.reserve)
+    # 将AdumpHeader写入csv文件中
+    write_field_to_csv("magic", adump_header.magic)
+    write_field_to_csv("execTimes", adump_header.execTimes)
+    write_field_to_csv("version", adump_header.version)
+    write_field_to_csv("opType", adump_header.opType)
+    write_field_to_csv("stage_num", adump_header.stage_num)
+    write_field_to_csv("timeOutCycles", adump_header.timeOutCycles)
+    write_field_to_csv("reserve", adump_header.reserve)
 
 
 def parse_adump_shared_field(data_u32):
@@ -123,6 +138,7 @@ def parse_adump_shared_field(data_u32):
             self.activationClamp = data_u32[ACTIVATION_CLAMP_POS]
 
     adump_shared_field = MegaMoeAdumpSharedField(data_u32[128:])
+    logging.info("="*50)
     logging.info("cclBufferSize: %d", adump_shared_field.cclBufferSize)
     logging.info("worldSize: %d", adump_shared_field.worldSize)
     logging.info("rankId: %d", adump_shared_field.rankId)
@@ -144,6 +160,38 @@ def parse_adump_shared_field(data_u32):
     logging.info("numMaxTokensPerRank: %d", adump_shared_field.numMaxTokensPerRank)
     logging.info("activationCode: %d", adump_shared_field.activationCode)
     logging.info("activationClamp: %d", adump_shared_field.activationClamp)
+    # 将shared field写入csv文件中
+    write_field_to_csv("cclBufferSize", adump_shared_field.cclBufferSize)
+    write_field_to_csv("worldSize", adump_shared_field.worldSize)
+    write_field_to_csv("rankId", adump_shared_field.rankId)
+    write_field_to_csv("aivNum", adump_shared_field.aivNum)
+    write_field_to_csv("m", adump_shared_field.m)
+    write_field_to_csv("k", adump_shared_field.k)
+    write_field_to_csv("n", adump_shared_field.n)
+    write_field_to_csv("isTransposeW1", adump_shared_field.isTransposeW1)
+    write_field_to_csv("isTransposeW2", adump_shared_field.isTransposeW2)
+    write_field_to_csv("hasBias1", adump_shared_field.hasBias1)
+    write_field_to_csv("hasBias2", adump_shared_field.hasBias2)
+    write_field_to_csv("expertNumPerRank", adump_shared_field.expertNumPerRank)
+    write_field_to_csv("topK", adump_shared_field.topK)
+    write_field_to_csv("maxRecvTokenNum", adump_shared_field.maxRecvTokenNum)
+    write_field_to_csv("dispatchQuantMode", adump_shared_field.dispatchQuantMode)
+    write_field_to_csv("dispatchQuantOutDtype", adump_shared_field.dispatchQuantOutDtype)
+    write_field_to_csv("combineQuantMode", adump_shared_field.combineQuantMode)
+    write_field_to_csv("commAlgCode", adump_shared_field.commAlgCode)
+    write_field_to_csv("numMaxTokensPerRank", adump_shared_field.numMaxTokensPerRank)
+    write_field_to_csv("activationCode", adump_shared_field.activationCode)
+    write_field_to_csv("activationClamp", adump_shared_field.activationClamp)
+    
+
+# 解析adump中custom字段
+def parse_adump_custom_field(data_u32):
+    class MegaMoeAdumpCustomField:
+        def __init__(self, data_u32):
+            self.customField = data_u32[256:]
+    adump_custom_field = MegaMoeAdumpCustomField(data_u32)
+    logging.info("="*50)
+    logging.info("customField: %s", adump_custom_field.customField)
 
 
 # 解析mc2自定义adump文件
@@ -154,7 +202,7 @@ def parse_mc2_from_adump_file(dump_folder_path):
     for file in os.listdir(dump_folder_path):
         if file.startswith(adump_filename_prefix):
             mc2_adump_file = os.path.join(dump_folder_path, file)
-            logging.info("路径下发现adump文件", mc2_adump_file)
+            logging.info("路径下发现adump文件, 开始解析: %s", mc2_adump_file)
             break
     if not mc2_adump_file:
         logging.error("路径下未发现adump相关文件, 请检查路径是否正确")
