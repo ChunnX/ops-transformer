@@ -727,15 +727,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
     //     ProcessHybrid();
     // }
     if ASCEND_IS_AIV { // 全aiv处理
-        // ProcessDirect();
-        if (aivId_ == 0) {
-            tpipe_->InitBuffer(numRecvBuf_, UB_ALIGN);
-            LocalTensor<int32_t> numRecvTensor = numRecvBuf_.Get<int32_t>();
-            numRecvTensor.SetValue(0, 10);
-            WriteActualAToHostPinned(numRecvTensor);
-        }
-        AscendC::printf("End MoeEpDispatch kernel Process\n");
+        ProcessDirect();
     }
+    AscendC::printf("End MoeEpDispatch kernel Process\n");
 }
 
 }  // namespace MoeEpDispatchImpl
