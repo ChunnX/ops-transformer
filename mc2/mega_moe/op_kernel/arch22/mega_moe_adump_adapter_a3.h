@@ -124,6 +124,7 @@ public:
             .timeOutCycles = 10 * 50 * 1000 * 1000,
         };
         adumpEngine_.Init(dumpBase, config);
+        InitCoreBasicInfo();
     }
 
     __aicore__ inline void FillSharedField(MegaMoeAdumpSharedField& sharedField)
@@ -137,7 +138,7 @@ public:
 
     __aicore__ inline void FillCoreBaseInfo()
     {
-        InitCoreBasicInfo();
+        
     }
 
     __aicore__ inline uint32_t GetAdumpTotalGmSizeBytes()
@@ -164,7 +165,7 @@ public:
         adumpU32GlobalTensor.SetGlobalBuffer((__gm__ uint32_t*)adumpCoreCustomFieldAddr);
 
         PipeBarrier<PIPE_ALL>();
-        DataCopyPad(adumpU32GlobalTensor[MegaMoeAdumpCoreBasicInfoPos::CURRENT_STAGEID_POS], adumpU32LocalTensor, {1, sizeof(uint32_t), 0, 0, 0});
+        DataCopyPad(adumpU32GlobalTensor[MegaMoeAdumpCoreBasicInfoPos::CURRENT_STAGEID_POS], adumpU32LocalTensor[1], {1, sizeof(uint32_t), 0, 0, 0});
         PipeBarrier<PIPE_ALL>();
     }
   
