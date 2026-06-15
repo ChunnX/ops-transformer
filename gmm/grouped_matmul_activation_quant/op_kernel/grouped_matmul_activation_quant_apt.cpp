@@ -16,8 +16,8 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
-#include "grouped_matmul_activation_quant_mxquant.h"
-#include "grouped_matmul_activation_quant_tiling_key.h"
+#include "arch35/grouped_matmul_activation_quant_mxquant.h"
+#include "arch35/grouped_matmul_activation_quant_tiling_key.h"
 
 namespace {
 constexpr uint32_t FLOAT_OVERFLOW_MODE_CTRL = 60U;
@@ -32,17 +32,19 @@ __global__ __aicore__ void grouped_matmul_activation_quant(GM_ADDR x, GM_ADDR gr
                                                           GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace,
                                                           GM_ADDR tiling)
 {
+    REGISTER_NONE_TILING;
     (void)bias;
     TPipe tPipe;
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     if (QUANT_B_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS &&
         QUANT_A_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS) {
-        GmmActivationMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
+        GroupedMatmulActivationQuant::GmmActivationMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
             x, weight, weightScale, xScale, groupList, y, yScale, workspace, tiling);
     } else if (QUANT_B_TRANS == GMM_ACTIVATION_QUANT_TRANS &&
                QUANT_A_TRANS == GMM_ACTIVATION_QUANT_NO_TRANS) {
-        GmmActivationMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
+        GroupedMatmulActivationQuant::GmmActivationMxQuant<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
             x, weight, weightScale, xScale, groupList, y, yScale, workspace, tiling);
     }
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
