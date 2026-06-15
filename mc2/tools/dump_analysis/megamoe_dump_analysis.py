@@ -40,6 +40,18 @@ ACTIVATION_CODE_POS = 19
 ACTIVATION_CLAMP_POS = 20
 
 
+# 按照AdumpHeader的格式解析数据
+class AdumpHeader:
+    def __init__(self, data_u32):
+        self.magic = data_u32[0] << 32 | data_u32[1]
+        self.execTimes = data_u32[2] << 32 | data_u32[3]
+        self.version = data_u32[4]
+        self.opType = data_u32[5]
+        self.stage_num = data_u32[6]
+        self.timeOutCycles = data_u32[7] << 32 | data_u32[8]
+        self.reserve = data_u32[9:17]
+
+
 # 按照MegaMoeAdumpSharedField的格式解析数据
 class MegaMoeAdumpSharedField:
     def __init__(self, data_u32):
@@ -76,7 +88,15 @@ for file_name in os.listdir(folder_path):
             arr = np.frombuffer(f.read(), dtype=np.int8)
         
         data_u32 = arr.view(np.uint32)
-        dump_shared_field = MegaMoeAdumpSharedField(data_u32)
+        dump_header = AdumpHeader(data_u32)
+        logging.info("magic: %d", dump_header.magic)
+        logging.info("execTimes: %d", dump_header.execTimes)
+        logging.info("version: %d", dump_header.version)
+        logging.info("opType: %d", dump_header.opType)
+        logging.info("stage_num: %d", dump_header.stage_num)
+        logging.info("timeOutCycles: %d", dump_header.timeOutCycles)
+        logging.info("reserve: %s", dump_header.reserve)
+        dump_shared_field = MegaMoeAdumpSharedField(data_u32[128:])
         logging.info("cclBufferSize: %d", dump_shared_field.cclBufferSize)
         logging.info("worldSize: %d", dump_shared_field.worldSize)
         logging.info("rankId: %d", dump_shared_field.rankId)
