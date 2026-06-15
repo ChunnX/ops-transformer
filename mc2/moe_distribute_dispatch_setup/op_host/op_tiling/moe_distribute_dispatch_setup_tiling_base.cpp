@@ -17,23 +17,30 @@
 #include "moe_distribute_dispatch_setup_tiling_base.h"
 
 namespace {
+//-----------------------------aclnnInner接口参数列表-----------------------------//
+constexpr uint32_t CONTEXT_INDEX = 0;
 constexpr uint32_t X_INDEX = 1;
 constexpr uint32_t EXPERT_IDS_INDEX = 2;
 constexpr uint32_t SCALES_INDEX = 3;
 constexpr uint32_t X_ACTIVE_MASK_INDEX = 4;
-constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 5;
-constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 6;
-constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 7;
-constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 9;
-constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 10;
-constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 11;
-constexpr uint32_t ATTR_QUANT_MODE_INDEX = 12;
-constexpr uint32_t ATTR_GLOBAL_BS_INDEX = 13;
-constexpr uint32_t ATTR_COMM_TYPE_INDEX = 14;
-constexpr uint32_t ATTR_COMM_ALG_INDEX = 15;
-constexpr uint32_t OUTPUT_Y_INDEX = 17;
-constexpr uint32_t OUTPUT_EXPAND_IDX_INDEX = 18;
-constexpr uint32_t OUTPUT_COMM_CMD_INFO_INDEX = 19;
+
+constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
+constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
+constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 2;
+constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 3;
+constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 4;
+constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 5;
+constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 6;
+constexpr uint32_t ATTR_QUANT_MODE_INDEX = 7;
+constexpr uint32_t ATTR_GLOBAL_BS_INDEX = 8;
+constexpr uint32_t ATTR_COMM_TYPE_INDEX = 9;
+constexpr uint32_t ATTR_COMM_ALG_INDEX = 10;
+constexpr uint32_t ATTR_Y_DTYPE_INDEX = 11;
+
+constexpr uint32_t OUTPUT_Y_INDEX = 0;
+constexpr uint32_t OUTPUT_EXPAND_IDX_INDEX = 1;
+constexpr uint32_t OUTPUT_COMM_CMD_INFO_INDEX = 2;
+//-----------------------------aclnnInner接口参数列表-----------------------------//
 
 constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
