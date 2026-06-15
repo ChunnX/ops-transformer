@@ -463,11 +463,11 @@ private:
     uint32_t n1Size_ = 0;
     uint32_t n2Size_ = 0;
     uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
-    int64_t s2Size_ = 0;
     uint32_t qkHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
     uint32_t ropeHeadDim_ = 0;
+    uint32_t s1Size_ = 0;
+    int64_t s2Size_ = 0;
     uint32_t qTSize_ = 0; // 仅TND时生效
     uint32_t kvTSize_ = 0; // 仅TND时生效
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
