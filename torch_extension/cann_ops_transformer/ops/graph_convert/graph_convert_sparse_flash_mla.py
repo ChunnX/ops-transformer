@@ -33,13 +33,17 @@ except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.lightning_indexer_v2_metadata.default)
-    def convert_lightning_indexer_v2_metadata(
-        num_heads_q: int, num_heads_kv: int, head_dim: int, topk: int, *,
-        cu_seqlens_q: Optional[Tensor] = None, cu_seqlens_k: Optional[Tensor] = None,
-        seqused_q: Optional[Tensor] = None, seqused_k: Optional[Tensor] = None, cmp_residual_k: Optional[Tensor] = None,
-        batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None,
-        layout_q: Optional[str] = None, layout_k: Optional[str] = None, mask_mode: Optional[int] = None,
-        cmp_ratio: Optional[int] = None,
+    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.sparse_flash_mla_metadata.default)
+    def convert_sparse_flash_mla_metadata(
+        num_heads_q: int, num_heads_kv: int, head_dim: int, *, cu_seqlens_q: Optional[Tensor] = None,
+        cu_seqlens_ori_kv: Optional[Tensor] = None, cu_seqlens_cmp_kv: Optional[Tensor] = None,
+        seqused_q: Optional[Tensor] = None, seqused_ori_kv: Optional[Tensor] = None,
+        seqused_cmp_kv: Optional[Tensor] = None, cmp_residual_kv: Optional[Tensor] = None,
+        ori_topk_length: Optional[Tensor] = None, cmp_topk_length: Optional[Tensor] = None,
+        batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_ori_kv: Optional[int] = None,
+        max_seqlen_cmp_kv: Optional[int] = None, ori_topk: Optional[int] = None, cmp_topk: Optional[int] = None,
+        cmp_ratio: Optional[int] = None, ori_mask_mode: Optional[int] = None, cmp_mask_mode: Optional[int] = None,
+        ori_win_left: Optional[int] = None, ori_win_right: Optional[int] = None, layout_q: Optional[str] = None,
+        layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None, has_cmp_kv: Optional[bool] = None,
         meta_outputs: TensorSpec = None):
-        raise RuntimeError("GE converter doesn't support op: 'lightning_indexer_v2_metadata'")
+        raise RuntimeError("GE converter doesn't support op: 'sparse_flash_mla_metadata'")
