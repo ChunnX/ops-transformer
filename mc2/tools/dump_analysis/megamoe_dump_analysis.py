@@ -3,6 +3,12 @@ import numpy as np
 import os
 import logging
 
+logging.basicConfig(
+    level=logging.NOTSET,
+    format="[%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()]
+    )
+
 # 从参数中获取文件夹路径、rank_size和soc_version等参数
 folder_path = sys.argv[1]
 rank_size = int(sys.argv[2])
@@ -71,6 +77,25 @@ for file_name in os.listdir(folder_path):
         
         data_u32 = arr.view(np.uint32)
         dump_shared_field = MegaMoeAdumpSharedField(data_u32)
-        logging.info("dump_shared_field: %d", dump_shared_field)
-
+        logging.info("cclBufferSize: %d", dump_shared_field.cclBufferSize)
+        logging.info("worldSize: %d", dump_shared_field.worldSize)
+        logging.info("rankId: %d", dump_shared_field.rankId)
+        logging.info("aivNum: %d", dump_shared_field.aivNum)
+        logging.info("m: %d", dump_shared_field.m)
+        logging.info("k: %d", dump_shared_field.k)
+        logging.info("n: %d", dump_shared_field.n)
+        logging.info("isTransposeW1: %d", dump_shared_field.isTransposeW1)
+        logging.info("isTransposeW2: %d", dump_shared_field.isTransposeW2)
+        logging.info("hasBias1: %d", dump_shared_field.hasBias1)
+        logging.info("hasBias2: %d", dump_shared_field.hasBias2)
+        logging.info("expertNumPerRank: %d", dump_shared_field.expertNumPerRank)
+        logging.info("topK: %d", dump_shared_field.topK)
+        logging.info("maxRecvTokenNum: %d", dump_shared_field.maxRecvTokenNum)
+        logging.info("dispatchQuantMode: %d", dump_shared_field.dispatchQuantMode)
+        logging.info("dispatchQuantOutDtype: %d", dump_shared_field.dispatchQuantOutDtype)
+        logging.info("combineQuantMode: %d", dump_shared_field.combineQuantMode)
+        logging.info("commAlgCode: %d", dump_shared_field.commAlgCode)
+        logging.info("numMaxTokensPerRank: %d", dump_shared_field.numMaxTokensPerRank)
+        logging.info("activationCode: %d", dump_shared_field.activationCode)
+        logging.info("activationClamp: %d", dump_shared_field.activationClamp)
 
