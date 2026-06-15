@@ -21,6 +21,7 @@
 
 #include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "../op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_data.h"
@@ -95,14 +96,17 @@ protected:
 
     uint64_t GetTilingKey() const override
     {
-        return 0;
+        return tilingKey_;
     }
 
 private:
     ge::graphStatus CheckParam();
+    ge::graphStatus InitTilingData();
     int64_t DTypeCode(ge::DataType dt) const;
 
 private:
+    uint64_t tilingKey_{0};
+    InplacePartialRotaryMulGradTilingData* tilingData_{nullptr};
     int64_t b_{0};
     int64_t s_{0};
     int64_t n_{0};

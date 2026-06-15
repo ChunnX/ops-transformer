@@ -108,9 +108,9 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::CheckParam()
         OP_LOGE(context_->GetNodeName(), "input shape is nullptr.");
         return ge::GRAPH_FAILED;
     }
-    const auto& dyShape = dyShapePtr->GetStorageShape();
-    const auto& cosShape = cosShapePtr->GetStorageShape();
-    const auto& sinShape = sinShapePtr->GetStorageShape();
+    const auto &dyShape = dyShapePtr->GetStorageShape();
+    const auto &cosShape = cosShapePtr->GetStorageShape();
+    const auto &sinShape = sinShapePtr->GetStorageShape();
 
     if (dyShape.GetDimNum() != DIM_NUM) {
         OP_LOGE(context_->GetNodeName(), "dy must be 4D (BSND), got dimNum=%zu.", dyShape.GetDimNum());
@@ -127,8 +127,7 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::CheckParam()
 
     // Only the x == nullptr scenario is supported.
     if (context_->GetInputShape(INPUT_X_INDEX) != nullptr) {
-        OP_LOGE(context_->GetNodeName(),
-            "only the x == nullptr scenario is supported (dcos/dsin are not computed).");
+        OP_LOGE(context_->GetNodeName(), "only the x == nullptr scenario is supported (dcos/dsin are not computed).");
         return ge::GRAPH_FAILED;
     }
 
@@ -165,8 +164,8 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::CheckParam()
         return ge::GRAPH_FAILED;
     }
     if (partialStart_ < 0 || partialStart_ > d_ || sliceLen_ < 0 || partialStart_ + sliceLen_ > d_) {
-        OP_LOGE(context_->GetNodeName(),
-            "partial_slice [%ld, %ld) out of range [0, %ld].", partialStart_, partialStart_ + sliceLen_, d_);
+        OP_LOGE(context_->GetNodeName(), "partial_slice [%ld, %ld) out of range [0, %ld].", partialStart_,
+                partialStart_ + sliceLen_, d_);
         return ge::GRAPH_FAILED;
     }
     if (sliceLen_ > 0) {
@@ -175,7 +174,7 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::CheckParam()
         int64_t alignReq = (rotaryMode_ == MODE_QUARTER) ? 4 : 2;
         if (sliceLen_ % alignReq != 0) {
             OP_LOGE(context_->GetNodeName(), "slice length %ld must be divisible by %ld for rotary_mode %ld.",
-                sliceLen_, alignReq, rotaryMode_);
+                    sliceLen_, alignReq, rotaryMode_);
             return ge::GRAPH_FAILED;
         }
         // interleave (mode 1) CopyIn/CopyOut use InterleaveMode helpers with dstStride=0 /
@@ -188,16 +187,16 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::CheckParam()
             int64_t blockElemsCs = BLOCK_SIZE_BYTES / szCs;
             if (sliceLen_ % blockElemsDy != 0) {
                 OP_LOGE(context_->GetNodeName(),
-                    "interleave mode (1) requires sliceLen (%ld) to be a multiple of %ld "
-                    "(block-aligned for dy dtype size=%ld).",
-                    sliceLen_, blockElemsDy, szDy);
+                        "interleave mode (1) requires sliceLen (%ld) to be a multiple of %ld "
+                        "(block-aligned for dy dtype size=%ld).",
+                        sliceLen_, blockElemsDy, szDy);
                 return ge::GRAPH_FAILED;
             }
             if (sliceLen_ % blockElemsCs != 0) {
                 OP_LOGE(context_->GetNodeName(),
-                    "interleave mode (1) requires sliceLen (%ld) to be a multiple of %ld "
-                    "(block-aligned for cos/sin dtype size=%ld).",
-                    sliceLen_, blockElemsCs, szCs);
+                        "interleave mode (1) requires sliceLen (%ld) to be a multiple of %ld "
+                        "(block-aligned for cos/sin dtype size=%ld).",
+                        sliceLen_, blockElemsCs, szCs);
                 return ge::GRAPH_FAILED;
             }
         }
@@ -209,9 +208,9 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::CheckParam()
             int64_t blockElemsDy = BLOCK_SIZE_BYTES / szDy;
             if (sliceLen_ % blockElemsDy != 0) {
                 OP_LOGE(context_->GetNodeName(),
-                    "interleave-half mode (3) requires sliceLen (%ld) to be a multiple of %ld "
-                    "(block-aligned for dy dtype size=%ld).",
-                    sliceLen_, blockElemsDy, szDy);
+                        "interleave-half mode (3) requires sliceLen (%ld) to be a multiple of %ld "
+                        "(block-aligned for dy dtype size=%ld).",
+                        sliceLen_, blockElemsDy, szDy);
                 return ge::GRAPH_FAILED;
             }
         }
@@ -225,12 +224,9 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::CheckParam()
         OP_LOGE(context_->GetNodeName(), "cos last dim %ld must equal slice length %ld.", cosD, sliceLen_);
         return ge::GRAPH_FAILED;
     }
-    auto checkAxis = [](int64_t cosDim, int64_t dyDim, const char* name) {
-        return cosDim == 1 || cosDim == dyDim;
-    };
+    auto checkAxis = [](int64_t cosDim, int64_t dyDim, const char *name) { return cosDim == 1 || cosDim == dyDim; };
     if (!checkAxis(cosB_, b_, "B") || !checkAxis(cosS_, s_, "S") || !checkAxis(cosN_, n_, "N")) {
-        OP_LOGE(context_->GetNodeName(),
-            "cos B/S/N must each be 1 or equal to dy's B/S/N (BSND broadcast).");
+        OP_LOGE(context_->GetNodeName(), "cos B/S/N must each be 1 or equal to dy's B/S/N (BSND broadcast).");
         return ge::GRAPH_FAILED;
     }
 
@@ -271,10 +267,26 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus InplacePartialRotaryMulGradTilingClass::InitTilingData()
+{
+    if (tilingData_ == nullptr) {
+        tilingData_ = context_->GetTilingData<InplacePartialRotaryMulGradTilingData>();
+        if (tilingData_ == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "get tilingdata ptr failed");
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (memset_s(tilingData_, sizeof(InplacePartialRotaryMulGradTilingData), 0,
+                 sizeof(InplacePartialRotaryMulGradTilingData)) != EOK) {
+        OP_LOGE(context_->GetNodeName(), "memset tilingdata failed");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus InplacePartialRotaryMulGradTilingClass::DoOpTiling()
 {
-    auto tilingData = context_->GetTilingData<InplacePartialRotaryMulGradTiling>();
-    if (tilingData == nullptr) {
+    if (InitTilingData() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -294,10 +306,10 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::DoOpTiling()
     int64_t ubFactorM = 1;
     if (sliceLen_ > 0) {
         int64_t coef = DSplitCoef(rotaryMode_);
-        int64_t szDy = static_cast<int64_t>(ge::GetSizeByDataType(
-            context_->GetInputDesc(INPUT_DY_INDEX)->GetDataType()));
-        int64_t szCs = static_cast<int64_t>(ge::GetSizeByDataType(
-            context_->GetInputDesc(INPUT_COS_INDEX)->GetDataType()));
+        int64_t szDy =
+            static_cast<int64_t>(ge::GetSizeByDataType(context_->GetInputDesc(INPUT_DY_INDEX)->GetDataType()));
+        int64_t szCs =
+            static_cast<int64_t>(ge::GetSizeByDataType(context_->GetInputDesc(INPUT_COS_INDEX)->GetDataType()));
         int64_t blockElemsDy = BLOCK_SIZE_BYTES / szDy;
         int64_t blockElemsCs = BLOCK_SIZE_BYTES / szCs;
         int64_t dAlignDy = CeilAlign(sliceLen_ / coef, blockElemsDy) * coef;
@@ -310,15 +322,15 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::DoOpTiling()
         // on the last tile row can land past the nominal buffer end (single-buffered).
         // Reserve 2*VL_FLOAT32_SIZE elements per buffer as trailing pad (dy_in+dy_out+cos+sin).
         if (rotaryMode_ == MODE_INTERLEAVE) {
-            constexpr int64_t VL_PAD_ELEMS = 128;  // 2 * VL_FLOAT32_SIZE
+            constexpr int64_t VL_PAD_ELEMS = 128; // 2 * VL_FLOAT32_SIZE
             int64_t padBytes = VL_PAD_ELEMS * (2 * szDy + 2 * szCs);
             availableUb -= padBytes;
         }
         if (perTileRowBytes > availableUb) {
             OP_LOGE(context_->GetNodeName(),
-                "UB size insufficient for one tile row: need %ld bytes, available %ld bytes "
-                "(ubSize=%lu, D=%ld, sliceLen=%ld, mode=%ld).",
-                perTileRowBytes, availableUb, aicoreParams_.ubSize, d_, sliceLen_, rotaryMode_);
+                    "UB size insufficient for one tile row: need %ld bytes, available %ld bytes "
+                    "(ubSize=%lu, D=%ld, sliceLen=%ld, mode=%ld).",
+                    perTileRowBytes, availableUb, aicoreParams_.ubSize, d_, sliceLen_, rotaryMode_);
             return ge::GRAPH_FAILED;
         }
         ubFactorM = availableUb / perTileRowBytes;
@@ -327,40 +339,41 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::DoOpTiling()
         ubFactorM = std::max<int64_t>(ubFactorM, 1);
     }
 
-    tilingData->b = static_cast<uint64_t>(b_);
-    tilingData->s = static_cast<uint64_t>(s_);
-    tilingData->n = static_cast<uint64_t>(n_);
-    tilingData->d = static_cast<uint64_t>(d_);
-    tilingData->partialStart = static_cast<uint64_t>(partialStart_);
-    tilingData->sliceLen = static_cast<uint64_t>(sliceLen_);
-    tilingData->rotaryMode = static_cast<uint64_t>(rotaryMode_);
-    tilingData->dyDtypeCode = static_cast<uint64_t>(dyDtypeCode_);
-    tilingData->cosDtypeCode = static_cast<uint64_t>(cosDtypeCode_);
-    tilingData->cosStrideB = static_cast<uint64_t>(cosStrideB_);
-    tilingData->cosStrideS = static_cast<uint64_t>(cosStrideS_);
-    tilingData->cosStrideN = static_cast<uint64_t>(cosStrideN_);
-    tilingData->usedCoreNum = static_cast<uint64_t>(usedCoreNum);
-    tilingData->blockFactorM = static_cast<uint64_t>(blockFactorM);
-    tilingData->ubFactorM = static_cast<uint64_t>(ubFactorM);
-    tilingData->isFullBroadcast = static_cast<uint64_t>(isFullBroadcast_);
+    tilingData_->b = b_;
+    tilingData_->s = s_;
+    tilingData_->n = n_;
+    tilingData_->d = d_;
+    tilingData_->partialStart = partialStart_;
+    tilingData_->sliceLen = sliceLen_;
+    tilingData_->rotaryMode = rotaryMode_;
+    tilingData_->dyDtypeCode = dyDtypeCode_;
+    tilingData_->cosDtypeCode = cosDtypeCode_;
+    tilingData_->cosStrideB = cosStrideB_;
+    tilingData_->cosStrideS = cosStrideS_;
+    tilingData_->cosStrideN = cosStrideN_;
+    tilingData_->usedCoreNum = usedCoreNum;
+    tilingData_->blockFactorM = blockFactorM;
+    tilingData_->ubFactorM = ubFactorM;
+    tilingData_->isFullBroadcast = isFullBroadcast_;
 
     context_->SetBlockDim(usedCoreNum);
+    tilingKey_ = 10012;
+    context_->SetTilingKey(tilingKey_);
 
     OP_LOGD(context_->GetNodeName(),
-        "InplacePartialRotaryMulGrad tiling: mode=%ld slice=[%ld,%ld) M=%ld usedCoreNum=%ld blockFactorM=%ld "
-        "ubFactorM=%ld isFullBroadcast=%ld dyDtype=%ld cosDtype=%ld",
-        rotaryMode_, partialStart_, partialStart_ + sliceLen_, mTotal, usedCoreNum, blockFactorM, ubFactorM,
-        isFullBroadcast_, dyDtypeCode_, cosDtypeCode_);
+            "InplacePartialRotaryMulGrad tiling: mode=%ld slice=[%ld,%ld) M=%ld usedCoreNum=%ld blockFactorM=%ld "
+            "ubFactorM=%ld isFullBroadcast=%ld dyDtype=%ld cosDtype=%ld",
+            rotaryMode_, partialStart_, partialStart_ + sliceLen_, mTotal, usedCoreNum, blockFactorM, ubFactorM,
+            isFullBroadcast_, dyDtypeCode_, cosDtypeCode_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus Tiling4InplacePartialRotaryMulGrad(gert::TilingContext* context)
+ge::graphStatus Tiling4InplacePartialRotaryMulGrad(gert::TilingContext *context)
 {
-    InplacePartialRotaryMulGradTilingClass tiling(context);
-    return tiling.Run();
+    return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-ge::graphStatus TilingPrepareForInplacePartialRotaryMulGrad(gert::TilingParseContext* context)
+ge::graphStatus TilingPrepareForInplacePartialRotaryMulGrad(gert::TilingParseContext *context)
 {
     auto platformInfo = context->GetPlatformInfo();
     if (platformInfo == nullptr) {
