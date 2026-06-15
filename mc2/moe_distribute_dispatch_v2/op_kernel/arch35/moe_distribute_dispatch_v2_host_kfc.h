@@ -2413,16 +2413,17 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     expertOffsetCntGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int16_t *>(gmExpertOffsetCnt + dstOffset));
     expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(gmExpertOffsetCnt + dstFlag));
     writeCntTensor.SetValue(0,1);
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyExtParams expertOffsetCopyOutParams{1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(int16_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetCntGMTensor, expertOffsetCntTensor_, expertOffsetCopyOutParams);
     //SyncFunc<AscendC::HardEvent::MTE3_MTE3>();
     // //LOG_INFO("WriteExpertOffset dstOffset",dstOffset);
     // //LOG_INFO("WriteExpertOffset expertOffsetCntGMTensor", expertOffsetCntGMTensor, {axisBS_, axisK_});
+    PipeBarrier<PIPE_MTE3>();
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyExtParams expertCntCopyOutParams{1U, static_cast<uint32_t>(sizeof(float32_t)), 0U, 0U, 0U};
     DataCopyPad(expertOffsetFlagGMTensor, writeCntTensor, expertCntCopyOutParams);
-    expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(gmExpertOffsetCnt + (aivNum_ - aivUsedCumSum_) * offsetPerMask));
+    //expertOffsetFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float32_t *>(gmExpertOffsetCnt + (aivNum_ - aivUsedCumSum_) * offsetPerMask));
     PipeBarrier<PIPE_ALL>();
     // //LOG_INFO("WriteExpertOffset dstFlag", dstFlag);
     // //LOG_INFO("WriteExpertOffset expertOffsetFlagGMTensor", expertOffsetFlagGMTensor, {1, aivNum_});
@@ -2432,7 +2433,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalTokenSendExpertOffset()
 {
-    uint64_t starttime = GetSystemCycle();
+    // uint64_t starttime = GetSystemCycle();
     uint32_t startExpertId, endExpertId, sendExpertNum;
     SplitToCore(moeExpertNum_, aivUsedCumSum_, aivNum_ - aivUsedCumSum_, startExpertId, endExpertId, sendExpertNum);
     if (startExpertId >= endExpertId || sendExpertNum == 0) {
@@ -2514,8 +2515,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         Scatter(expertOffsetCntTensor_, expertsIndexTensor, dstoffset, 0, static_cast<uint32_t>(sendNumperExpert));
         PipeBarrier<PIPE_V>();
     }
-    uint64_t endtime = GetSystemCycle();
-    uint64_t usetime = endtime -starttime;
+    // uint64_t endtime = GetSystemCycle();
+    // uint64_t usetime = endtime -starttime;
     // //LOG_INFO("CalTokenSendExpertOffset use time",usetime);
     ////LOG_INFO("CalTokenSendExpertOffset expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
     WriteExpertOffset(); // 计算完成将结果写入GM并写flag
@@ -2529,12 +2530,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else {
-            // CalTokenSendExpertOffset();
-            // if(aivId_ < aivUsedCumSum_ + aivUsedRemotComm_ + aivUsedScatter_) {
-            //     ScatterTokenToRemote();  //4 20  5
-            // } else {
-            //     GatherTokenFrRemote();
-            // }
+            CalTokenSendExpertOffset();
+            if(aivId_ < aivUsedCumSum_ + aivUsedRemotComm_ + aivUsedScatter_) {
+                ScatterTokenToRemote();  //4 20  5
+            } else {
+                GatherTokenFrRemote();
+            }
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
         // PipeBarrier<PIPE_ALL>();
