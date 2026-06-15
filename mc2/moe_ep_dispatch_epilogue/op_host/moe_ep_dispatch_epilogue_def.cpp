@@ -16,7 +16,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("recv_src_metadata_internal")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
@@ -46,14 +46,6 @@ public:
         this->Output("recv_src_metadata")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("num_recv_tokens_per_rank")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("num_recv_tokens_per_expert")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
 
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
