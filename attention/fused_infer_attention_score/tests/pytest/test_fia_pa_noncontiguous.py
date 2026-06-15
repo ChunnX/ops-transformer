@@ -105,7 +105,7 @@ def _check(ref, out, tag):
     mx, mn = d.max().item(), d.mean().item()
     ok = (d <= 0.05).sum().item(); t = d.numel()
     logger.info(f"  [{tag}] max={mx:.6f} mean={mn:.6f} pass={ok}/{t} {ok/t:.4f}")
-    assert torch.allclose(out.cpu().float(), ref.cpu().float(), rtol=0.05, atol=0.05), f"[{tag}] FAIL max={mx}"
+    assert torch.allclose(out.cpu().float(), ref.cpu().float(), rtol=0.00, atol=0.00), f"[{tag}] FAIL max={mx}"
 
 
 def _run_one(cfg, expect_pass):
