@@ -113,7 +113,7 @@ template <typename T> static auto CalcTailSize(T num1, T num2) -> T
     return mod != 0 ? mod : num2;
 }
 
-ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckOutShape(gert::Shape &inputshape,
+ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::CheckOutShape(gert::Shape &inputshape,
     const char *inputName, gert::Shape &outputshape)
 {
     if (layoutQuery[DIM_NUM_0] == 'T' && layoutQuery[DIM_NUM_1] == 'N' && layoutQuery[DIM_NUM_2] == 'D') {
@@ -145,7 +145,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckOutShape(gert:
 }
 
 // 比较输出与输入的维度是否对应
-ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckOutPut()
+ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::CheckOutPut()
 {
     auto queryIndexShape = context_->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
     auto keyIndexShape = context_->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
@@ -199,7 +199,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckOutPut()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckContext()
+ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::CheckContext()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -247,7 +247,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::CheckContext()
     return ge::GRAPH_SUCCESS;
 }
 
-bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeAttrs()
+bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
     size_t idx = 0;
@@ -286,7 +286,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeAttrs()
     return true;
 }
 
-bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeDimLayout(const gert::Shape &queryIndexShape,
+bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::AnalyzeDimLayout(const gert::Shape &queryIndexShape,
     const gert::Shape &keyIndexShape, const gert::Shape &weightsShape, const gert::Shape &topKShape, size_t layoutLen)
 {
     if (layoutLen == 3UL) {
@@ -357,7 +357,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeDimLayout(const gert::S
 }
 
 // 对每一个输入参数的变量类型进行对比校验
-bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeDtype()
+bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::AnalyzeDtype()
 {
     // 对5个必须输入的参数进行参数类型判断
     // 输入空指针校验
@@ -420,7 +420,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeDtype()
 
 
 // 输入shape进行交叉验证，防止数据错误输入
-bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
+bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::CrossShapeVerify()
 {
     auto queryIndexShape = context_->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
     auto keyIndexShape = context_->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
@@ -519,8 +519,8 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
             bLen, keyIndexShape[0], weightsShape[0], sparseIndicesShape[0], attnSoftmaxL1Shape[0]),
             return false);
         // 验证s1
-        OP_CHECK_IF(weightsShape[1] != s1Len || 
-            sparseIndicesShape[1] != s1Len || 
+        OP_CHECK_IF(weightsShape[1] != s1Len ||
+            sparseIndicesShape[1] != s1Len ||
             attnSoftmaxL1Shape[1] != s1Len,
             OPS_REPORT_VECTOR_INNER_ERR(opName,
             "CrossShapeVerify S1 is failed, the value of query_index[1], weights[1],
@@ -593,7 +593,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::CrossShapeVerify()
     return true;
 }
 
-bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeLayout()
+bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::AnalyzeLayout()
 {
     auto &queryIndexShape = context_->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
     auto &keyIndexShape = context_->GetInputShape(KEY_INPUT_INDEX)->GetStorageShape();
@@ -612,7 +612,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::AnalyzeLayout()
     return true;
 }
 
-ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::GetPlatformInfo()
+ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::GetPlatformInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
@@ -641,7 +641,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::GetPlatformInfo()
 }
 
 
-ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::GetShapeAttrsInfo()
+ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::GetShapeAttrsInfo()
 {
     opName = context_->GetNodeName();
     OP_LOGD(opName, "TilingContext: %s.", GetTilingContextDebugStr().c_str());
@@ -664,14 +664,15 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::GetShapeAttrsInfo()
     sliGradBaseParams_->set_cmpRatio(cmpRatio);
 
     OP_LOGW(context_,
-        "INPUTPARAM bsize:[%ld], n2Size:[%ld], gSizeQueryIndex:[%ld], s1Size:[%ld], s2Size:[%ld], dSizeQueryIndex:[%ld], \
-            kSize:[%ld], sparseMode:[%ld], cmpRatio:[%ld].",
+        "INPUTPARAM bsize:[%ld], n2Size:[%ld], gSizeQueryIndex:[%ld], 
+        s1Size:[%ld], s2Size:[%ld], dSizeQueryIndex:[%ld], 
+        kSize:[%ld], sparseMode:[%ld], cmpRatio:[%ld].",
         bSize, n2Size, gSizeQueryIndex, s1Size, s2Size, dSizeQueryIndex, kSize, sparseMode, cmpRatio);
 
     return ge::GRAPH_SUCCESS;
 }
 
-int64_t SparseLightningIndexerGradTilingBaseRegbase::GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size,
+int64_t SparseLightningIndexerGradKLLossTilingGeneralRegbase::GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size,
     int32_t s1Idx)
 {
     int64_t s2RealSize = 0;
@@ -686,7 +687,7 @@ int64_t SparseLightningIndexerGradTilingBaseRegbase::GetS2RealSize(int32_t spars
     return std::min(s2RealSize, (int64_t)sliGradBaseParams_->get_kSize());
 }
 
-bool SparseLightningIndexerGradTilingBaseRegbase::InitSparseValidArray(std::vector<int64_t> &sparseValidArray)
+bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::InitSparseValidArray(std::vector<int64_t> &sparseValidArray)
 {
     OP_CHECK_IF(sparseValidArray.size() == 0,
         OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse valid array size should be larger than 0."), return false);
@@ -708,7 +709,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::InitSparseValidArray(std::vect
     return true;
 }
 
-inline bool SparseLightningIndexerGradTilingBaseRegbase::InitLoadValue(const std::vector<int64_t> &sparseValidArray,
+inline bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::InitLoadValue(const std::vector<int64_t> &sparseValidArray,
     int64_t validAicNum, int64_t totalSize, const std::vector<int64_t> &sparseStartIdx,
     std::vector<int64_t> &localValue)
 {
@@ -724,7 +725,7 @@ inline bool SparseLightningIndexerGradTilingBaseRegbase::InitLoadValue(const std
     return true;
 }
 
-bool SparseLightningIndexerGradTilingBaseRegbase::BalanceLoad(const std::vector<int64_t> &sparseValidArray,
+bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::BalanceLoad(const std::vector<int64_t> &sparseValidArray,
     std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx)
 {
     // to avoid buffer overflow, or maybe sometimes we want to only verify single core
@@ -773,7 +774,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::BalanceLoad(const std::vector<
     return (tmpMaxVal >= maxVal) ? false : true;
 }
 
-bool SparseLightningIndexerGradTilingBaseRegbase::Balance4DLoad(std::vector<int64_t> &tmpSparseValue,
+bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::Balance4DLoad(std::vector<int64_t> &tmpSparseValue,
     const std::vector<int64_t> sparseValidArray, const int64_t balanceNum)
 {
     int64_t tmpIndex = 0;
@@ -810,7 +811,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::Balance4DLoad(std::vector<int6
 }
 
 // 负载均衡
-bool SparseLightningIndexerGradTilingBaseRegbase::SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
+bool SparseLightningIndexerGradKLLossTilingGeneralRegbase::SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
     int64_t maxCoreNum)
 {
     // to avoid buffer overflow, or maybe sometimes we want to only verify single core
@@ -842,7 +843,7 @@ bool SparseLightningIndexerGradTilingBaseRegbase::SetSparseStartIdx(const std::v
     return true;
 }
 
-void SparseLightningIndexerGradTilingBaseRegbase::SetSparseParamsRegbase(int64_t maxCoreNum)
+void SparseLightningIndexerGradKLLossTilingGeneralRegbase::SetSparseParamsRegbase(int64_t maxCoreNum)
 {
     std::vector<int64_t> sparseValidArray(sliGradMultiCoreParams_->get_totalSize(), 0);
     InitSparseValidArray(sparseValidArray);
@@ -850,7 +851,7 @@ void SparseLightningIndexerGradTilingBaseRegbase::SetSparseParamsRegbase(int64_t
 }
 
 // 计算S1的总个数
-int64_t SparseLightningIndexerGradTilingBaseRegbase::CalcTotalSize()
+int64_t SparseLightningIndexerGradKLLossTilingGeneralRegbase::CalcTotalSize()
 {
     if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_TND) {
         return realT1Size;
@@ -860,7 +861,7 @@ int64_t SparseLightningIndexerGradTilingBaseRegbase::CalcTotalSize()
     return 0; // 什么也不走就返回0
 }
 
-void SparseLightningIndexerGradTilingBaseRegbase::SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum)
+void SparseLightningIndexerGradKLLossTilingGeneralRegbase::SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum)
 {
     int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(coreNum));
     sliGradMultiCoreParams_->set_coreNum(static_cast<int32_t>(aicNum));
@@ -868,7 +869,7 @@ void SparseLightningIndexerGradTilingBaseRegbase::SetMultiCoreParamsRegbase(int6
     sliGradMultiCoreParams_->set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
 }
 
-void SparseLightningIndexerGradTilingBaseRegbase::InitOutputSplit()
+void SparseLightningIndexerGradKLLossTilingGeneralRegbase::InitOutputSplit()
 {
     SLIGradInitOutputParamsRegbase *initoutput = &tilingData->initOutputParams;
     auto &dKeyIndexShape = context_->GetOutputShape(D_KEY_OUTPUT_INDEX)->GetStorageShape();
@@ -890,7 +891,7 @@ void SparseLightningIndexerGradTilingBaseRegbase::InitOutputSplit()
     initoutput->set_totalOutputSize(totalsize);
 }
 
-ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::DoCastTiling()
+ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::DoCastTiling()
 {
     // softmaxOut、dw、dq
     int64_t dAlign16 = (sliGradBaseParams_->get_dSizeQueryIndex() + 15) >> 4 << 4;
@@ -988,7 +989,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::DoCastTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::DoOpTiling()
+ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::DoOpTiling()
 {
     context_->SetScheduleMode(1);
     OP_LOGD(context_, "try template[%s]", templateName);
@@ -1015,7 +1016,7 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::PostTiling()
+ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::PostTiling()
 {
     OP_LOGI(context_, "====================================== BASE PARAMS ===========================================");
     OP_LOGI(context_, "sliGradBaseParams_.bSize = [%ld]", sliGradBaseParams_->get_bSize());
@@ -1038,12 +1039,12 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::DoLibApiTiling()
+ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t SparseLightningIndexerGradTilingBaseRegbase::GetTilingKey() const
+uint64_t SparseLightningIndexerGradKLLossTilingGeneralRegbase::GetTilingKey() const
 {
     bool hasCuSeqlensQ = true;
     bool hasCuSeqlensK = true;
@@ -1071,7 +1072,7 @@ uint64_t SparseLightningIndexerGradTilingBaseRegbase::GetTilingKey() const
         static_cast<uint8_t>(hasCmpResidualK), static_cast<uint8_t>(deterministic));
 }
 
-ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::GetWorkspaceSize()
+ge::graphStatus SparseLightningIndexerGradKLLossTilingGeneralRegbase::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     int32_t kSizeAlign128 = (kSize + 127) >> 7 << 7;
@@ -1102,6 +1103,6 @@ ge::graphStatus SparseLightningIndexerGradTilingBaseRegbase::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseLightningIndexerKLLossGrad, SparseLightningIndexerGradTilingBaseRegbase,
+REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseLightningIndexerKLLossGrad, SparseLightningIndexerGradKLLossTilingGeneralRegbase,
     static_cast<int32_t>(NpuArch::DAV_3510), 1);
 } // namespace optiling

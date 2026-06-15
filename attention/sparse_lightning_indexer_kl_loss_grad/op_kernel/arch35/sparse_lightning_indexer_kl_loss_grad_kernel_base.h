@@ -22,10 +22,10 @@
 #include "sparse_lightning_indexer_kl_loss_grad_vector_block.h"
 
 namespace Slig {
-template <typename CubeBlockType, typename VecBlockType> class SparseLightningIndexerGradKernelBase {
+template <typename CubeBlockType, typename VecBlockType> class SparseLightningIndexerKLLossGradKernelBase {
 public:
     ARGS_TRAITS;
-    __aicore__ inline SparseLightningIndexerGradKernelBase(){};
+    __aicore__ inline SparseLightningIndexerKLLossGradKernelBase(){};
     __aicore__ inline void Init(GM_ADDR query, GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices,
         GM_ADDR attnSoftmaxL1, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK, GM_ADDR sequsedQ, GM_ADDR sequsedK,
         GM_ADDR cmpResidualK, GM_ADDR metadata, GM_ADDR dQuery, GM_ADDR dKey, GM_ADDR dWeight, GM_ADDR softmaxOut,
@@ -125,7 +125,7 @@ public:
 };
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::Init(GM_ADDR query,
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::Init(GM_ADDR query,
     GM_ADDR key, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR attnSoftmaxL1, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK,
     GM_ADDR sequsedQ, GM_ADDR sequsedK, GM_ADDR cmpResidualK, GM_ADDR metadata, GM_ADDR dQuery, GM_ADDR dKey,
     GM_ADDR dWeight, GM_ADDR softmaxOut, GM_ADDR workspace,
@@ -164,7 +164,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::ProcessSY(
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::ProcessSY(
     SLIGradRunInfo &runInfo, int64_t taskId, int64_t bIdx, int64_t s1Idx)
 {
     bool notLastLoop = true;
@@ -207,7 +207,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::ProcessP(
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::ProcessP(
     SLIGradRunInfo &runInfo, int64_t taskId, int64_t bIdx, int64_t s1Idx)
 {
     bool notLastLoop = true;
@@ -260,7 +260,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::GetTndSeqLen(
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::GetTndSeqLen(
     const int64_t t1Idx, int64_t &bIdx)
 {
     int64_t t1Offset = 0;
@@ -324,7 +324,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::Process()
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::Process()
 {
     if constexpr (Deterministic) {
         ProcessDeter();
@@ -334,7 +334,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::ProcessNormal()
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::ProcessNormal()
 {
     int64_t taskId = 0;
     SLIGradRunInfo runInfo;
@@ -367,7 +367,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::ProcessDeter()
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::ProcessDeter()
 {
     int64_t taskId = 0;
     SLIGradRunInfo runInfo;
@@ -433,7 +433,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int32_t SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::GetS2SparseLen(
+__aicore__ inline int32_t SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::GetS2SparseLen(
     int32_t s1Idx, int32_t actualSeqLensQ, int32_t actualSeqLensK, int32_t cmpResidualK, int64_t cmpRatio,
     SLISparseMode sparseMode)
 {
@@ -450,7 +450,7 @@ __aicore__ inline int32_t SparseLightningIndexerGradKernelBase<CubeBlockType, Ve
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::SetRunInfo(
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetRunInfo(
     SLIGradRunInfo &runInfo, int64_t taskId)
 {
     runInfo.taskId = taskId;
@@ -502,7 +502,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::SetRunInfoP(
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetRunInfoP(
     SLIGradRunInfo &runInfo)
 {
     runInfo.s2LoopTimes = CeilDiv(runInfo.s2RealSize, constInfo.pKBaseSize);
@@ -512,7 +512,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::SetSYRunInfo(
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetSYRunInfo(
     SLIGradKRunInfo &kRunInfo, SLIGradRunInfo &runInfo, int64_t s2TaskId)
 {
     runInfo.s2TailSize =
@@ -527,7 +527,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::SetPRunInfo(
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetPRunInfo(
     SLIGradKRunInfo &kRunInfo, SLIGradRunInfo &runInfo, int64_t s2TaskId)
 {
     runInfo.s2TailSize =
@@ -543,7 +543,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::SetSYSingleRunInfo(
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetSYSingleRunInfo(
     SLIGradKRunInfo &kRunInfo, SLIGradRunInfo &runInfo, int64_t s2TaskId, int64_t taskId)
 {
     kRunInfo.s2SingleIdx = taskId;
@@ -556,7 +556,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::SetPSingleRunInfo(
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetPSingleRunInfo(
     SLIGradKRunInfo &kRunInfo, SLIGradRunInfo &runInfo, int64_t s2TaskId, int64_t taskId)
 {
     kRunInfo.s2SingleIdx = taskId;
@@ -569,7 +569,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::SetConstInfo()
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::SetConstInfo()
 {
     if ASCEND_IS_AIV {
         constInfo.aivIdx = GetBlockIdx();
@@ -632,7 +632,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::InitMMResBuf()
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::InitMMResBuf()
 {
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
     sYL1Buf.Init(l1BufferManager, 128 * 576 * sizeof(INPUT_T));
@@ -659,7 +659,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::FreeBuf()
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::FreeBuf()
 {
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_GATHER_TO_MM12_FLAG[0]);
@@ -679,7 +679,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
     }
 }
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::InitWorkspace(
+__aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::InitWorkspace(
     __gm__ uint8_t *workspace)
 {
     int64_t reduceSumOffset = 2 * constInfo.kSizeAlign128 * sizeof(float);
@@ -752,7 +752,7 @@ __aicore__ inline void SparseLightningIndexerGradKernelBase<CubeBlockType, VecBl
 
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int32_t SparseLightningIndexerGradKernelBase<CubeBlockType, VecBlockType>::GetCmpResidualK(
+__aicore__ inline int32_t SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::GetCmpResidualK(
     int32_t bIdx, int32_t defaultLens)
 {
     if constexpr (HasCmpResidualK) {

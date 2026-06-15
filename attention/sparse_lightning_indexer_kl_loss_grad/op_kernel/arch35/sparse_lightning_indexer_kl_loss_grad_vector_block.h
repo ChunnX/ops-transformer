@@ -693,7 +693,9 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector7(
     }
 
     LocalTensor<T> scatterAddTmpUb = bmm3ResBuf.template GetTensor<T>();
-    int64_t realS2Idx1, realS2Idx2, s2GmOffset;
+    int64_t realS2Idx1;
+    int64_t realS2Idx2;
+    int64_t s2GmOffset;
     SetAtomicAdd<T>();
     constexpr int32_t topKSplitSize = 2;
     int32_t topKTailSize = (vRealKSize % topKSplitSize == 0) ? topKSplitSize : (vRealKSize % topKSplitSize);
