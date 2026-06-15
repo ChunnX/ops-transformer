@@ -954,6 +954,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPad(sendTokenTensor, xGMTensor_[tokenIndex * axisH_], xCopyParams_, copyPadExtParams);
     FillQuadruple(sendTokenTensor, startTokenIndex, tokenIndex);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
     PipeBarrier<PIPE_V>();
     GM_ADDR rankGM = (GetSendAddrBetweenServer(dstServerId) +
                                                                  SERVER_STATE_ALIGN + cnt * sendTokenLengthAlign_);
@@ -2537,12 +2538,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (aivId_ < aivUsedCumSum_) { //cnt计算 + cumsum
             CalCumSum();
         } else {
-            CalTokenSendExpertOffset();
-            if(aivId_ < aivUsedCumSum_ + aivUsedRemotComm_ + aivUsedScatter_) {
-                ScatterTokenToRemote();  //4 20  5
-            } else {
-                GatherTokenFrRemote();
-            }
+            // CalTokenSendExpertOffset();
+            // if(aivId_ < aivUsedCumSum_ + aivUsedRemotComm_ + aivUsedScatter_) {
+            //     ScatterTokenToRemote();  //4 20  5
+            // } else {
+            //     GatherTokenFrRemote();
+            // }
         }
         //localWindowCopy中包含reset操作，需确保前面操作完成
         // PipeBarrier<PIPE_ALL>();
