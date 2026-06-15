@@ -19,8 +19,8 @@
 #include <numeric>
 #include "tiling/tiling_api.h"
 
-#include "../../../common/op_host/fia_tiling_info.h" 
-#include "../../../common/op_host/fia_tiling_shape.h" 
+#include "../../../common/op_host/fia_tiling_info.h"
+#include "../../../common/op_host/fia_tiling_shape.h"
 #include "../fused_infer_attention_score_tiling_utils.h"
 
 namespace optiling {
