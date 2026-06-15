@@ -637,13 +637,13 @@ __aicore__ inline void ComputeForwardZFullVf(
         RegTensor<T> biasReg;
         
         MaskReg maskAll = MicroAPI::CreateMask<T, MaskPattern::ALL>();
+        MicroAPI::UnalignRegForStore uregNormOut, uregZPre, uregZPost, uregZRes;
         
         // 阶段1：整体计算normOut = hcBeforeNorm * invRms（所有batch/seq）
         for (uint16_t bsIdx = 0; bsIdx < tile_; bsIdx++) {
             uint32_t bsOffset = bsIdx * batchSize;
             uint32_t normOutLoopCount = (batchSize + VL_FP32 - 1) / VL_FP32;
             
-            // 加载scalar值invRms（每个batch/seq一个）- 用Duplicate而非DataCopy
             T invRmsScalar = invRmsPtr[bsIdx];
             
             for (uint16_t i = 0; i < normOutLoopCount; i++) {
@@ -652,10 +652,14 @@ __aicore__ inline void ComputeForwardZFullVf(
                 MaskReg maskCalc = MicroAPI::UpdateMask<T>(calcSize);
                 
                 MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(hcBeforeNormReg, hcBeforeNormPtr + bsOffset + i * VL_FP32);
-                MicroAPI::Duplicate<T>(invRmsReg, invRmsScalar);  // scalar值用Duplicate
+                MicroAPI::Duplicate<T>(invRmsReg, invRmsScalar);
                 MicroAPI::Mul<T>(normOutReg, hcBeforeNormReg, invRmsReg, maskCalc);
-                MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(normOutPtr + bsOffset + i * VL_FP32, normOutReg, maskCalc);
+                
+                auto normOutDst = normOutPtr + bsOffset + i * VL_FP32;
+                MicroAPI::StoreUnAlign(normOutDst, normOutReg, uregNormOut, calcSize);
             }
+            auto normOutPost = normOutPtr + bsOffset;
+            MicroAPI::StoreUnAlignPost(normOutPost, uregNormOut, 0);
         }
         
         // 阶段2：计算所有zPre = normOut[:n] * alpha[0] + bias[:n]
@@ -673,8 +677,12 @@ __aicore__ inline void ComputeForwardZFullVf(
                 MicroAPI::Muls<T>(zReg, normPartReg, alphaPtr[0], maskCalc);
                 MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(biasReg, biasPtr + i * VL_FP32);
                 MicroAPI::Add<T>(zReg, zReg, biasReg, maskCalc);
-                MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zPrePtr + zPreOffset + i * VL_FP32, zReg, maskCalc);
+                
+                auto zPreDst = zPrePtr + zPreOffset + i * VL_FP32;
+                MicroAPI::StoreUnAlign(zPreDst, zReg, uregZPre, calcSize);
             }
+            auto zPrePost = zPrePtr + zPreOffset;
+            MicroAPI::StoreUnAlignPost(zPrePost, uregZPre, 0);
         }
         
         // 阶段3：计算所有zPost = normOut[n:2n] * alpha[1] + bias[n:2n]
@@ -692,8 +700,12 @@ __aicore__ inline void ComputeForwardZFullVf(
                 MicroAPI::Muls<T>(zReg, normPartReg, alphaPtr[1], maskCalc);
                 MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(biasReg, biasPtr + n + i * VL_FP32);
                 MicroAPI::Add<T>(zReg, zReg, biasReg, maskCalc);
-                MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zPostPtr + zPostOffset + i * VL_FP32, zReg, maskCalc);
+                
+                auto zPostDst = zPostPtr + zPostOffset + i * VL_FP32;
+                MicroAPI::StoreUnAlign(zPostDst, zReg, uregZPost, calcSize);
             }
+            auto zPostPost = zPostPtr + zPostOffset;
+            MicroAPI::StoreUnAlignPost(zPostPost, uregZPost, 0);
         }
         
         // 阶段4：计算所有zRes = normOut[2n:n²+2n] * alpha[2] + bias[2n:n²+2n]
@@ -711,8 +723,12 @@ __aicore__ inline void ComputeForwardZFullVf(
                 MicroAPI::Muls<T>(zReg, normPartReg, alphaPtr[2], maskCalc);
                 MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(biasReg, biasPtr + 2 * n + i * VL_FP32);
                 MicroAPI::Add<T>(zReg, zReg, biasReg, maskCalc);
-                MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zResPtr + zResOffset + i * VL_FP32, zReg, maskCalc);
+                
+                auto zResDst = zResPtr + zResOffset + i * VL_FP32;
+                MicroAPI::StoreUnAlign(zResDst, zReg, uregZRes, calcSize);
             }
+            auto zResPost = zResPtr + zResOffset;
+            MicroAPI::StoreUnAlignPost(zResPost, uregZRes, 0);
         }
     }
 }
