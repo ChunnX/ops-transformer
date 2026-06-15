@@ -911,12 +911,12 @@ CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T>
                                                             const Vec1SliceInfo &sliceInfo, uint32_t compressTcSize,
                                                             uint32_t dStartIdx, uint32_t dDealSize)
 {
+    LocalTensor<X_T> outputUb = outputQue2.AllocTensor<X_T>();
+    Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, compressTcSize * dDealSize);
+    outputQue2.EnQue(outputUb);
+    outputQue2.DeQue<X_T>();
     if constexpr (COMP::xLayout == X_LAYOUT::BSH) {
         uint32_t bOutputScLen = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
-        uint32_t totalElements = compressTcSize * dDealSize;
-        LocalTensor<X_T> outputUb = comperssoredUb.ReinterpretCast<X_T>();
-        Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, totalElements);
-        PipeBarrier<PIPE_V>();
         uint32_t bIdx = sliceInfo.bIdx;
         uint32_t sIdx = sliceInfo.sIdx;
         uint64_t ubOffset = 0;
@@ -938,13 +938,10 @@ CompressorBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(const LocalTensor<T>
         }
     } else {
         uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
-        uint32_t totalElements = compressTcSize * dDealSize;
-        LocalTensor<X_T> outputUb = comperssoredUb.ReinterpretCast<X_T>();
-        Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, totalElements);
-        PipeBarrier<PIPE_V>();
         DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize,
                             constInfo_.headDim);
     }
+    outputQue2.FreeTensor(outputUb);
 }
 
 template <typename COMP>
@@ -965,15 +962,11 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
     if (statisticInfo.compressorScCnt > 0) {
         LocalTensor<T> tmpUb = tmpBuf2.Get<T>();
         SoftmaxDN(scoreLocal, tmpUb, statisticInfo.compressorScCnt, dDealSize);
-        LocalTensor<T> comperssoredUb = outputQue1.AllocTensor<T>();
         PipeBarrier<PIPE_V>();
-        KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, tmpUb, statisticInfo.compressorScCnt, dDealSize);
+        KvMulReduceScore(kvLocal, scoreLocal, scoreLocal, statisticInfo.compressorScCnt, dDealSize);
         PipeBarrier<PIPE_V>();
-        outputQue1.EnQue(comperssoredUb);
-        outputQue1.DeQue<T>();
-        CopyOutVec1ResToOutput(comperssoredUb, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx + dBaseOffset,
+        CopyOutVec1ResToOutput(scoreLocal, originSliceInfo, statisticInfo.compressorScCnt, dStartIdx + dBaseOffset,
                                dDealSize);
-        outputQue1.FreeTensor(comperssoredUb);
     }
     compressedCnt_ += statisticInfo.compressorScCnt;
 }
