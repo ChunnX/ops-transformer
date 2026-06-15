@@ -247,7 +247,7 @@
   - BS：batch sequence size。
   - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡收到的token数，是recvCounts参数累加之和。
-  - ep通信域内所有卡的 A 参数的累加和等于所有卡上的 BSK 参数的累加和。
+  - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
   - mx量化且gmmX与gmmWeight为FLOAT4_E2M1时，H1和H2必须为偶数且不能为2，同时transGmmWeight和transMmWeight为false情况下，N1和N2必须为偶数。
   - gmmWeight和gmmWeightScale的转置状态必须保持一致：同时转置或同时不转置。mmWeight和mmWeightScale同样需要保持转置状态一致。
   - groupSize: 

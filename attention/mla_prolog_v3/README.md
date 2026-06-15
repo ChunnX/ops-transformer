@@ -51,7 +51,7 @@
     $$
     q^N = q^C \cdot W^{UK}
     $$
-    其中 $\alpha_q$ 是 Query 的尺度矫正参数。
+    其中 $\alpha_q$ 是Query的尺度矫正参数。
 
     对Query进行ROPE旋转位置编码
 
@@ -68,7 +68,7 @@
     $$
     k^C = \mathrm{Cache}(c^{KV})
     $$
-    其中 $\alpha_{kv}$ 是 Key 的尺度矫正参数。
+    其中 $\alpha_{kv}$ 是Key的尺度矫正参数。
 
     对Key进行ROPE旋转位置编码，并将结果存入cache
 
@@ -162,7 +162,7 @@
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。
   - kvcache per-tensor量化模式下，kvCacheQuantMode和queryQuantMode必须同时为1。
 - aclnnMlaPrologV3WeightNz接口支持场景：
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当前不支持 fp8/hif8/mxfp8 全量化场景
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当前不支持fp8/hif8/mxfp8全量化场景
     - <term>Ascend 950PR/Ascend 950DT</term>：当前支持所有量化场景
   <table style="table-layout: auto;" border="1">
     <tr>

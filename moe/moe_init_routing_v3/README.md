@@ -15,7 +15,7 @@
 
 - 算子功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化和动态量化模式。本接口针对V2接口[aclnnMoeInitRoutingV2](../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)做了如下功能变更，请根据实际情况选择合适的接口：
 
-    1.增加动态量化功能，支持输出expendX的 int8动态量化输出。
+    1.增加动态量化功能，支持输出expendX的int8动态量化输出。
 
     2.增加参数activeExpertRangeOptional，支持筛选有效范围内的expertId。
 
@@ -101,7 +101,7 @@
       <tr>
         <td>expertIdx</td>
         <td>输入</td>
-        <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数。对应公式中 expertIdx。</td>
+        <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数。对应公式中expertIdx。</td>
         <td>INT32</td>
         <td>ND</td>
       </tr>
@@ -136,28 +136,28 @@
       <tr>
         <td>expertNum</td>
         <td>属性</td>
-        <td>表示专家数，expertTokensNumType为key\_value模式时，取值范围为[0, 5120], 其它模式取值范围[0, 10240]。</td>
+        <td>表示专家数，expertTokensNumType为key\_value模式时，取值范围为[0, 5120],其它模式取值范围[0, 10240]。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>dropPadMode</td>
         <td>属性</td>
-        <td>表示是否为 DropPad 场景，取值为 0 和 1。<br>• 0：表示 Dropless 场景，该场景下不校验 expertCapacity。<br>• 1：表示 DropPad 场景。</td>
+        <td>表示是否为DropPad场景，取值为0 和1。<br>• 0：表示Dropless场景，该场景下不校验expertCapacity。<br>• 1：表示DropPad场景。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>expertTokensNumType</td>
         <td>属性</td>
-        <td>取值为0、1和2 。<br>• 0：表示 comsum 模式。<br>• 1：表示 count 模式，即输出的值为各个专家处理的 token 数量的累计值。<br>• 2：表示 key\_value 模式，即输出的值为专家和对应专家处理 token 数量的累计值。</td>
+        <td>取值为0、1和2 。<br>• 0：表示comsum模式。<br>• 1：表示count模式，即输出的值为各个专家处理的token数量的累计值。<br>• 2：表示key\_value模式，即输出的值为专家和对应专家处理token数量的累计值。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
       <tr>
         <td>expertTokensNumFlag</td>
         <td>属性</td>
-        <td>取值为false和true。<br>• false：表示不输出 expertTokensCountOrCumsumOut。<br>• true：表示输出 expertTokensCountOrCumsumOut。</td>
+        <td>取值为false和true。<br>• false：表示不输出expertTokensCountOrCumsumOut。<br>• true：表示输出expertTokensCountOrCumsumOut。</td>
         <td>Bool</td>
         <td>-</td>
       </tr>
@@ -171,7 +171,7 @@
       <tr>
         <td>activeExpertRangeOptional</td>
         <td>可选属性</td>
-        <td>长度为2，数组内的值为[expertStart, expertEnd], 表示活跃的expert范围在expertStart和expertEnd之间，左闭右开。要求值大于等于0，并且expertEnd不大于expertNum。</td>
+        <td>长度为2，数组内的值为[expertStart, expertEnd],表示活跃的expert范围在expertStart和expertEnd之间，左闭右开。要求值大于等于0，并且expertEnd不大于expertNum。</td>
         <td>ListInt</td>
         <td>-</td>
       </tr>
@@ -207,7 +207,7 @@
       <tr>
         <td>expandedScaleOut</td>
         <td>输出</td>
-        <td>输出量化计算过程中scaleOptional的中间值。<br>• 非量化场景下为可选输入, 如果输入则要求为1D的Tensor, 类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时, 如果输入则要求3D的Tensor, 类型为FLOAT8_E8M0。当DropPad场景输出是一个1D的Tensor，shape为[expertNum * expertCapacity]，类型为FLOAT32。<br>• quantMode为2、3、9时, 数据类型支持FLOAT8_E8M0。<br>• quantMode为11、12时, 数据类型支持FLOAT32, 且要求为3D的Tensor。<br>• 其余场景数据类型支持FLOAT32。</td>
+        <td>输出量化计算过程中scaleOptional的中间值。<br>• 非量化场景下为可选输入,如果输入则要求为1D的Tensor,类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时,如果输入则要求3D的Tensor,类型为FLOAT8_E8M0。当DropPad场景输出是一个1D的Tensor，shape为[expertNum * expertCapacity]，类型为FLOAT32。<br>• quantMode为2、3、9时,数据类型支持FLOAT8_E8M0。<br>• quantMode为11、12时,数据类型支持FLOAT32,且要求为3D的Tensor。<br>• 其余场景数据类型支持FLOAT32。</td>
         <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>
@@ -217,11 +217,11 @@
 ## 约束说明
 
 - 输入值域限制：
-  - activeNum 当前未使用，校验需等于NUM_ROWS*K。
+  - activeNum当前未使用，校验需等于NUM_ROWS*K。
   - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
-  - dropPadMode 支持取值为0和1，分别代表Dropless场景和DropPad场景。
-  - expertTokensNumType 当前只支持 0、1 和 2，分别代表 cumsum 模式、count 模式和 key\_value 模式。
-  - expertTokensNumFlag 只支持 true，代表输出 expertTokensCountOrCumsumOut。
+  - dropPadMode支持取值为0和1，分别代表Dropless场景和DropPad场景。
+  - expertTokensNumType当前只支持0、1 和2，分别代表cumsum模式、count模式和key\_value模式。
+  - expertTokensNumFlag只支持true，代表输出expertTokensCountOrCumsumOut。
   - quantMode:
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1、-1，分别代表动态量化场景和不量化场景。
     - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -244,11 +244,11 @@
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品。</term>
 
   - 进入低时延性能模板需要同时满足以下条件：
-    - x、expertIdx、scaleOptional 输入 Shape 要求分别为：(1, 7168)、(1, 8)、(256, 7168)。
-    - x 数据类型要求：BFLOAT16。
+    - x、expertIdx、scaleOptional输入Shape要求分别为：(1, 7168)、(1, 8)、(256, 7168)。
+    - x数据类型要求：BFLOAT16。
     - 属性要求：activeExpertRangeOptional=[0, 256]、 quantMode=1、expertTokensNumType=2、expertNum=256。
 
-  - 进入大 batch 性能模板需要同时满足以下条件：
+  - 进入大batch性能模板需要同时满足以下条件：
     - NUM_ROWS范围为[384, 8192]
     - K=8
     - expertNum=256

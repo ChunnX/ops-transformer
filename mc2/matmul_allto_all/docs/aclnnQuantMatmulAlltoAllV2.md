@@ -7,10 +7,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -55,7 +55,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnQuantMatmulAlltoAllV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAlltoAllV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantMatmulAlltoAllV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAlltoAllV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(
@@ -660,7 +660,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         std::vector<float> x1ScaleHostData(x1ScaleShapeSize, 1);
         std::vector<float> x2ScaleHostData(x2ScaleShapeSize, 1);
         std::vector<op::fp16_t> outHostData(outShapeSize, 0);
-        // 创建 tensor
+        // 创建tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);
@@ -893,7 +893,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         std::vector<int16_t> x1ScaleHostData(x1ShapeSize, 1);
         std::vector<int16_t> x2ScaleHostData(x2ShapeSize, 1);
         std::vector<int16_t> outHostData(outShapeSize, 0);
-        // 创建 tensor
+        // 创建tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x2);

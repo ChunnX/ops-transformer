@@ -213,7 +213,7 @@ public:
     uint32_t blockOuter;
     uint32_t maxValidBBLen;
     uint32_t noNeedDeter;
-    uint32_t reserved1; // tilingData需要8字节对齐
+    uint32_t reserved;
     int64_t bandIdx;
     int64_t deterMaxRound;
     uint64_t dqIsNeedDeter[MAX_CORE_NUM];

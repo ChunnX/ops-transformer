@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：将两次FlashAttention的输出根据其不同的softmax的max和sum更新。**与[RingAttentionUpdate](./aclnnRingAttentionUpdate.md)接口的区别是：在输入排布为TND的场景下，原RingAttentionUpdate接口中的softmax相关输入的数据排布为BNS8，RingAttentionUpdateV2 接口支持传入字符串参数 inputSoftmaxLayout，用于控制 softmax 相关输入的数据排布是否与attention保持一致（即采用 TND 排布）。**
+- 接口功能：将两次FlashAttention的输出根据其不同的softmax的max和sum更新。**与[RingAttentionUpdate](./aclnnRingAttentionUpdate.md)接口的区别是：在输入排布为TND的场景下，原RingAttentionUpdate接口中的softmax相关输入的数据排布为BNS8，RingAttentionUpdateV2接口支持传入字符串参数inputSoftmaxLayout，用于控制softmax相关输入的数据排布是否与attention保持一致（即采用TND排布）。**
 - 计算公式：
 
 $$
@@ -417,7 +417,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. (固定写法)device/stream初始化, 参考acl API手册
+  // 1. (固定写法)device/stream初始化,参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;

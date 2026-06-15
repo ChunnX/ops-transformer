@@ -193,11 +193,11 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
-    - scalesOptional：混合精度模式下，支持 expandedX 为 BFLOAT16 时 scalesOptional 为 FLOAT32；非混合精度模式下，数据类型要求与expandedX一致。
+    - scalesOptional：混合精度模式下，支持expandedX为BFLOAT16 时scalesOptional为FLOAT32；非混合精度模式下，数据类型要求与expandedX一致。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
     - scalesOptional数据类型可以与expandedX不一致。
-  - <term>Atlas 推理系列产品</term>：
+  - |<term>Atlas 推理系列产品</term>：
     - expandedX要求是一个2D的Tensor，数据类型支持FLOAT16、FLOAT32，shape要求尾轴H为32对齐。
     - x1Optional、x2Optional、biasOptional、expertIdxOptional仅支持传入nullptr
     - 仅支持dropPadMode传入2。
@@ -305,10 +305,10 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 6. biasOptional存在时，expertIdxOptional必须同时存在。
 
 7. dropPadMode的取值与含义对应如下：
-    - 0：drop less 场景，expandedRowIdx按**列**排列（与[aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting.md)输出格式对应）。
-    - 1：drop pad 场景，expandedRowIdx按**列**排列（与[aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting.md)输出格式对应）。
-    - 2：drop less 场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
-    - 3：drop pad 场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
+    - 0：drop less场景，expandedRowIdx按**列**排列（与[aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting.md)输出格式对应）。
+    - 1：drop pad场景，expandedRowIdx按**列**排列（与[aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting.md)输出格式对应）。
+    - 2：drop less场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
+    - 3：drop pad场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
 
 ## 调用示例
 
@@ -372,7 +372,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化, 参考acl API手册
+  // 1.（固定写法）device/stream初始化,参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -463,7 +463,7 @@ int main() {
   ret = aclnnMoeFinalizeRoutingV2(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeFinalizeRoutingV2 failed. ERROR: %d\n", ret); return ret);
 
-  // 4.（ 固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

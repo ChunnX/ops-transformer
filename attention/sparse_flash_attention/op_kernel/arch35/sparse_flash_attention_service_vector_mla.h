@@ -15,7 +15,7 @@
 #ifndef SPARSE_FLASH_ATTENTION_SERVICE_VECTOR_MLA_H
 #define SPARSE_FLASH_ATTENTION_SERVICE_VECTOR_MLA_H
 
-#include "util_regbase.h"
+#include "./common/util_regbase.h"
 #include "sparse_flash_attention_common_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
@@ -404,8 +404,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
-    blockSize = constInfo.oriBlockSize;
-    maxBlockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
+    blockSize = constInfo.blockSize;
+    maxBlockNumPerBatch = constInfo.maxBlockNumPerBatch;
 
     CalSparseCalSize(runInfo, constInfo);
     ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo, startPos);
@@ -788,10 +788,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     sharedParams.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
     sharedParams.s2Size = sparseAttnSharedkvBaseParams.seqSize;
     sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
-    sharedParams.cmpRatio = 1; // 走sparse， 但不压缩
-    sharedParams.oriMaskMode = sparseAttnSharedkvBaseParams.sparseMode;
-    sharedParams.oriWinLeft = -1;
-    sharedParams.oriWinRight = 0;
+    sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
     sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout;
     sharedParams.dSizeRope = 64; // 64: 编码维度
     sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
@@ -801,8 +798,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 
     // pageAttention, rope在C侧搬运时使用
     if constexpr (isPa) {
-        sharedParams.oriBlockSize = sparseAttnSharedkvBaseParams.blockSize;
-        sharedParams.oriMaxBlockNumPerBatch = sparseAttnSharedkvBaseParams.maxBlockNumPerBatch;
+        sharedParams.blockSize = sparseAttnSharedkvBaseParams.blockSize;
+        sharedParams.maxBlockNumPerBatch = sparseAttnSharedkvBaseParams.maxBlockNumPerBatch;
     }
     
     // actQ->TND, actKV pa场景任意layout均有
