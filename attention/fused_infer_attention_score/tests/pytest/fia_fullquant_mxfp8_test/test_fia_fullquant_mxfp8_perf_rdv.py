@@ -13,12 +13,10 @@
 import concurrent.futures
 
 import pytest
-import torch
-import torch_npu
 
-import fia_fullquant_mxfp8_golden as golden
-import fia_fullquant_mxfp8_paramset as paramset
-import result_compare_method
+from common import fia_fullquant_mxfp8_golden as golden
+from common import result_compare_method
+import fia_fullquant_mxfp8_paramset_perf_rdv as paramset
 
 CASES = paramset.CASES
 CASE_IDS = [case["name"] for case in CASES]
@@ -37,6 +35,9 @@ def _apply_params(params):
     golden.SPARSE_MODE = params["sparse_mode"]
     golden.Q_SCALE_LAYOUT = params["q_scale_layout"]
     golden.P_SCALE = params["p_scale"]
+    golden.DATA_RANGE_Q = params["data_range_q"]
+    golden.DATA_RANGE_K = params["data_range_k"]
+    golden.DATA_RANGE_V = params["data_range_v"]
 
 
 def _execute_test(params):
@@ -72,7 +73,7 @@ def _execute_test(params):
     return atten_result, lse_result
 
 
-@pytest.mark.ci
+@pytest.mark.perf_rdv
 @pytest.mark.parametrize("params", CASES, ids=CASE_IDS)
 def test_fia_fullquant_mxfp8(params):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:

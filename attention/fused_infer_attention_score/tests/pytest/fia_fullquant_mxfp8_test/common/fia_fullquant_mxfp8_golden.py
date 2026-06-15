@@ -28,7 +28,7 @@ import torch_npu
 from torchair.configs.compiler_config import CompilerConfig
 import torchair as tng
 
-import result_compare_method
+from . import result_compare_method
 
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
@@ -80,6 +80,10 @@ SEED_K = 3
 SEED_V = 4
 SEED_QR = 8
 SEED_KR = 9
+
+DATA_RANGE_Q = 1.0
+DATA_RANGE_K = 1.0
+DATA_RANGE_V = 1.0
 
 DEVICE_ID = 0
 
@@ -593,13 +597,13 @@ def generate_data():
     logger.info("[INFO] max_sq=%d, max_skv=%d", max_sq, max_skv)
 
     torch.manual_seed(SEED_Q)
-    q_fp16 = torch.randn(B, N_q, max_sq, D, dtype=torch.float16)
+    q_fp16 = (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
 
     torch.manual_seed(SEED_K)
-    k_fp16 = torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    k_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_K
 
     torch.manual_seed(SEED_V)
-    v_fp16 = torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    v_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_V
 
     qr_bf16 = None
     kr_bf16 = None
