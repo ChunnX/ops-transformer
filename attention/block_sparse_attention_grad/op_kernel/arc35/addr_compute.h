@@ -229,7 +229,7 @@ public:
             // 如果singleBlock未计算完，先计算singleBlock内的内容
             if (single_block_.IsVaild(const_info_, blockSparseMask_, cur_s1_idx, cur_s1_len)) {
                 single_block_.UpdateRunTimeInfo<INPUT_LAYOUT>(const_info_, runTimeInfo, cur_s1_idx, cur_s1_len);
-                break;
+                return;
             }
         }
 
@@ -257,16 +257,16 @@ private:
     __aicore__ inline bool IsValidSingleBlock(int32_t &vaild_s1_idx, int32_t &vaild_s1_len)
     {
         int32_t s1_len = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);
-        int32_t s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
+        int32_t s1_end_idx = s1Idx_ + s1_len;
         int32_t block_y_idx = s2Idx_ / block_y_;
         bool find_vaild_block = false;
 
-        for (int32_t s1_idx = s1Idx_; s1_idx < s1Idx_ + s1_len; s1_idx += block_x_) {
+        for (int32_t s1_idx = s1Idx_; s1_idx < s1_end_idx; s1_idx += block_x_) {
             int32_t block_x_idx = s1_idx / block_x_;
             if (IsValidBlock(const_info_, bIdx_, n1Idx_, block_x_idx, block_y_idx, blockSparseMask_)) {
                 find_vaild_block = true;
                 vaild_s1_idx = s1_idx;
-                vaild_s1_len = s1Idx_ + s1_len - vaild_s1_idx;
+                vaild_s1_len = s1_end_idx - s1_idx;
             }
             if (find_vaild_block) {
                 break;
