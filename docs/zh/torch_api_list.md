@@ -18,4 +18,4 @@
 
 |    接口名   |   说明     | 确定性说明 |
 | ----------- | ------------------- | ------------------- |
-|[flash_attn](../../torch_extension/npu_ops_transformer/doc/npu_flash_attn.md)|完成xx计算。|xx|
+|[flash_attn](../../torch_extension/npu_ops_transformer/docs/zh/npu_flash_attn.md)|完成xx计算。|xx|

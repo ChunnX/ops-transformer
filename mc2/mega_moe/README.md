@@ -284,4 +284,4 @@
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| PyTorch接口调用 | [deepep.py](../../torch_extension/npu_ops_transformer/ops/deep_ep.py) | 通过[mega_moe](../../torch_extension/npu_ops_transformer/doc/mega_moe.md)PyTorch接口方式调用mega_moe算子。 |
+| PyTorch接口调用 | [deepep.py](../../torch_extension/npu_ops_transformer/ops/deep_ep.py) | 通过[mega_moe](../../torch_extension/npu_ops_transformer/docs/zh/mega_moe.md)PyTorch接口方式调用mega_moe算子。 |
