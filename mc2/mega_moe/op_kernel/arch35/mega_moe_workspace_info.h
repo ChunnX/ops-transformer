@@ -58,6 +58,8 @@ constexpr int32_t INT_CACHELINE = 16;
 constexpr int32_t MAX_AICORE_NUM = 36;
 // wave-grain dispatch flag: must match MegaMoeImpl::L1_TILE_M
 constexpr int64_t DISPATCH_WAVE_TILE_M = 256LL;
+// GMM2 tile size for row group calculation
+constexpr int64_t L1_TILE_M_128 = 128LL;
 constexpr uint32_t BUFFER_ALIGN = 96U * 1024U * 2U;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
@@ -144,7 +146,7 @@ struct WorkspaceInfo {
         ptrRowGroupComplete = base + workspaceSize;
         int64_t maxTokensPerExpert = Ops::Base::CeilDiv(
             static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(tilingData->expertPerRank));
-        int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, DISPATCH_WAVE_TILE_M);
+        int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, L1_TILE_M_128);
         int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
             static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE, ALIGN_128);
         int64_t maxRowGroupsStride = Ops::Base::CeilAlign(

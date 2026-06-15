@@ -386,7 +386,7 @@ __aicore__ inline int64_t ComputeMaxTokensStride(uint64_t maxOutputSize, uint32_
 {
     int64_t maxTokensPerExpert = Ops::Base::CeilDiv(
         static_cast<int64_t>(maxOutputSize), static_cast<int64_t>(expertPerRank));
-    int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, static_cast<int64_t>(L1_TILE_M_256));
+    int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, static_cast<int64_t>(L1_TILE_M_128));
     int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
         static_cast<int64_t>(blockAivNum) * INT_CACHELINE, ALIGN_128);
     return Ops::Base::CeilAlign(maxRowGroupsPerExpert * perCoreRowGroupsStride, ALIGN_128);
@@ -481,7 +481,7 @@ __aicore__ inline void GroupMatmul2Quant(
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias, void>;
+        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias>;
     BlockMmad blockMmad;
     bool enableL0CPingPong = false;
     typename BlockMmad::L1Params l1Params{
@@ -490,7 +490,7 @@ __aicore__ inline void GroupMatmul2Quant(
         .l1BufNum = 2
     };
     typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_128, L1_TILE_N, L0_TILE_K, 0};
-    typename BlockMmad::TupleShape matmulShape{m, n, k};
+    typename BlockMmad::ProblemShape matmulShape{m, n, k, 0};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
 
     auto gmC = Te::MakeTensor(
@@ -556,8 +556,8 @@ __aicore__ inline void GroupMatmul2Quant(
         SetFlag<HardEvent::FIX_S>(0);
         WaitFlag<HardEvent::FIX_S>(0);
 
-        uint32_t rowGroupIdx = mLoc / L1_TILE_M_256;
-        uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m, L1_TILE_M_256);
+        uint32_t rowGroupIdx = mLoc / L1_TILE_M_128;
+        uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m, L1_TILE_M_128);
         uint32_t groupCoreStart, groupCoreSize;
         ComputeGroupRange(rowGroupIdx, rowGroupsThisExpert, blockAivNum, groupCoreStart, groupCoreSize);
         int64_t baseOffset = static_cast<int64_t>(groupIdx) * maxRowGroupsStride
