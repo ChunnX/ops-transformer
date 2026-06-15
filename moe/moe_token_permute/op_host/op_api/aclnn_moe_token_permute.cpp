@@ -69,22 +69,22 @@ static inline bool CheckDtypeValidRegbase(const aclTensor *tokens, const aclTens
         OP_CHECK_DTYPE_NOT_SUPPORT(tokens, MOE_DTYPE_SUPPORT_LIST_X_V3, return false);
         OP_CHECK_DTYPE_NOT_SUPPORT(permuteTokensOut, MOE_DTYPE_SUPPORT_LIST_X_V3, return false);
         OP_CHECK_DTYPE_NOT_SAME(tokens, permuteTokensOut, return false);
-        CHECK_RET(expandedScaleOut->GetDataType() == DataType::DT_FLOAT, return false);
+        OP_CHECK_DTYPE_NOT_MATCH(expandedScaleOut, DataType::DT_FLOAT, return false);
         return true;
     }
 
     OP_CHECK_DTYPE_NOT_SUPPORT(tokens, MOE_QUANT_DTYPE_SUPPORT_LIST_X, return false);
     if (quantMode == QUANT_MODE_MXFP8_E5M2) {
-        CHECK_RET(permuteTokensOut->GetDataType() == DataType::DT_FLOAT8_E5M2, return false);
+        OP_CHECK_DTYPE_NOT_MATCH(permuteTokensOut, DataType::DT_FLOAT8_E5M2, return false);
     } else if (quantMode == QUANT_MODE_MXFP8_E4M3FN) {
-        CHECK_RET(permuteTokensOut->GetDataType() == DataType::DT_FLOAT8_E4M3FN, return false);
+        OP_CHECK_DTYPE_NOT_MATCH(permuteTokensOut, DataType::DT_FLOAT8_E4M3FN, return false);
     } else if (quantMode == QUANT_MODE_MXFP4_E2M1) {
-        CHECK_RET(permuteTokensOut->GetDataType() == DataType::DT_FLOAT4_E2M1, return false);
+        OP_CHECK_DTYPE_NOT_MATCH(permuteTokensOut, DataType::DT_FLOAT4_E2M1, return false);
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "quantMode only supports -1, 2, 3 or 9 on Ascend 950.");
         return false;
     }
-    CHECK_RET(expandedScaleOut->GetDataType() == DataType::DT_FLOAT8_E8M0, return false);
+    OP_CHECK_DTYPE_NOT_MATCH(expandedScaleOut, DataType::DT_FLOAT8_E8M0, return false);
     return true;
 }
 
