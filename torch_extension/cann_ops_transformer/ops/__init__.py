@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -23,20 +23,10 @@ from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
 from .flash_attn import npu_flash_attn
 from .graph_convert.graph_convert_flash_attn import convert_npu_flash_attn
 from .flash_attn_metadata import npu_flash_attn_metadata
-from .lightning_indexer_v2_metadata import lightning_indexer_v2_metadata
-from .quant_lightning_indexer_v2_metadata import quant_lightning_indexer_v2_metadata
-from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla
-from .sparse_flash_mla import sparse_flash_mla
-from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_lightning_indexer_v2_metadata
-# >>>>>>> 42e054087... torch_extension目录整改:torch_extension/cann_ops_transformer/ops/__init__.py
-# from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
-#     convert_quant_lightning_indexer_v2_metadata
-# =======
-# from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla, mixed_quant_sparse_flash_mla_metadata
-# from .graph_convert.graph_convert_mixed_quant_sparse_flash_mla import (
-#     convert_mixed_quant_sparse_flash_mla_metadata
-# >>>>>>> 209b5d103... metadata整改
-# )
+from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla, mixed_quant_sparse_flash_mla_metadata
+from .graph_convert.graph_convert_mixed_quant_sparse_flash_mla import (
+    convert_mixed_quant_sparse_flash_mla_metadata
+)
 from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
 from .graph_convert.graph_convert_sparse_flash_mla import convert_sparse_flash_mla_metadata
 from .npu_sparse_lightning_indexer_kl_loss_grad import npu_sparse_lightning_indexer_kl_loss_grad
