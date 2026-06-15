@@ -22,6 +22,11 @@
 using namespace AscendC;
 namespace optiling {
 
+template<typename T>
+constexpr T AlignUp(T value, T align) {
+    return (value + align - 1) / align * align;
+}
+
 constexpr uint8_t GRAD_HIN_IDX = 0;
 constexpr uint8_t GRAD_H_POST_IDX = 1;
 constexpr uint8_t GRAD_H_RES_IDX = 2;
@@ -466,12 +471,33 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetWorkspaceSize()
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
-    size_t gradHat2Workspace = batchSize_ * seqLength_ * (n_ * n_ + 2 * n_ + n_ * c_) * sizeof(float);
+    
+    // 256字节对齐常量
+    constexpr size_t ALIGN_256 = 256;
+    constexpr size_t FP32_BYTE_SIZE = 4;
+    
+    // 计算per core workspace大小（基于kernel代码中的wsPerCoreSize_计算逻辑）
+    size_t alphaSize = AlignUp(3 * FP32_BYTE_SIZE, ALIGN_256);
+    size_t biasSize = AlignUp((n_ * n_ + 2 * n_) * FP32_BYTE_SIZE, ALIGN_256);
+    size_t phiSize = AlignUp((n_ * n_ + 2 * n_) * (n_ * c_) * FP32_BYTE_SIZE, ALIGN_256);
+    size_t gradXSize = AlignUp(tile_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256);
+    size_t xFp32Size = AlignUp(tile_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256);
+    size_t gradXFromRmsSize = AlignUp(tile_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256);
+    
+    size_t perCoreWorkspaceSize = alphaSize + biasSize + phiSize + gradXSize + xFp32Size + gradXFromRmsSize;
+    
+    // 总workspace大小 = per核大小 * 核数
+    size_t usrWorkSpaceSize = perCoreWorkspaceSize * coreNumAiv_;
+    
+    // 系统workspace大小
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
-    size_t usrWorkSpaceSize = gradHat2Workspace;
+    
+    // 总workspace大小也需要256字节对齐
+    size_t totalWorkspaceSize = AlignUp(systemWorkspaceSize + usrWorkSpaceSize, ALIGN_256);
+    
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_IF(currentWorkspace == nullptr, OP_LOGE(opName, "fail to GetWorkspaceSizes"), return ge::GRAPH_FAILED);
-    currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
+    currentWorkspace[0] = totalWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
 }

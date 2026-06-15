@@ -540,7 +540,6 @@ __aicore__ inline void MulVf(
 // 【调整说明】: x的Cast外置到VF调用前，VF输入为已Cast的xFp32
 // 【核心原则】: 按CopyIn→计算→CopyOut组织代码，动态Mask处理尾块
 template<typename T, typename U>
-template<typename T, typename U>
 __aicore__ inline void InputAggregationVf_Optimized(
     LocalTensor<T> gradXLocal,
     LocalTensor<T> xFp32Local,
@@ -569,14 +568,15 @@ __aicore__ inline void InputAggregationVf_Optimized(
         
         MaskReg maskAll = MicroAPI::CreateMask<T, MaskPattern::ALL>();
         MaskReg maskU = MicroAPI::CreateMask<U, MaskPattern::ALL>();
-        MicroAPI::MaskReg OneMaskReg = MicroAPI::CreateMask<T, MicroAPI::VL1>();
+        MicroAPI::MaskReg maskFirst = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL1>();
         MicroAPI::UnalignRegForStore gradHPreSumUreg;
         
         uint32_t vfLen = VL_FP32;
         uint32_t loopCount = (cur_c + vfLen - 1) / vfLen;
         uint32_t maskLen = static_cast<uint32_t>(cur_c);
         
-        MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(existingReg, gradHPrePtr + j);
+        T existingValue = *reinterpret_cast<__local_mem__ T*>(gradHPrePtr + j);
+        MicroAPI::Duplicate<T>(existingReg, existingValue, maskAll);
         MicroAPI::Duplicate<T>(sumReg, static_cast<T>(0.0), maskAll);
         
         for (uint16_t i = 0; i < loopCount; i++) {
@@ -603,7 +603,7 @@ __aicore__ inline void InputAggregationVf_Optimized(
             MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(xFp32Ptr + i * vfLen, xFp32Reg, maskCalc);
         }
         
-        MicroAPI::Adds(gradHPreRegSumReg, sumReg, existingReg, OneMaskReg);
+        MicroAPI::Add<T>(gradHPreRegSumReg, sumReg, existingReg, maskFirst);
         auto gradHPreStart = gradHPrePtr + j;
         MicroAPI::StoreUnAlign(gradHPreStart, gradHPreRegSumReg, gradHPreSumUreg, 1);
         MicroAPI::StoreUnAlignPost(gradHPreStart, gradHPreSumUreg, 0);
@@ -611,13 +611,14 @@ __aicore__ inline void InputAggregationVf_Optimized(
 }
 
 // ========== VF ComputeForwardZFull (Step2大VF: Mul(normOut)+Muls×3+Add×3) ==========
+// 重构优化：先整体计算normOut，再分三路计算zPre/zPost/zRes（流水线优化）
 template<typename T>
 __aicore__ inline void ComputeForwardZFullVf(
     LocalTensor<T> zPreLocal, LocalTensor<T> zPostLocal, LocalTensor<T> zResLocal,
     LocalTensor<T> normOutForwardLocal,  // 输出+中间: normOut=hcBeforeNorm*invRms
     LocalTensor<T> hcBeforeNormLocal, LocalTensor<T> invRmsLocal,
     LocalTensor<T> alphaLocal, LocalTensor<T> biasLocal,
-    int64_t n, uint32_t totalElements)
+    int64_t n, uint32_t tile_)  // tile_ = batch/seq数量
 {
     __local_mem__ T* zPrePtr = (__local_mem__ T*) zPreLocal.GetPhyAddr();
     __local_mem__ T* zPostPtr = (__local_mem__ T*) zPostLocal.GetPhyAddr();
@@ -628,48 +629,90 @@ __aicore__ inline void ComputeForwardZFullVf(
     __local_mem__ T* alphaPtr = (__local_mem__ T*) alphaLocal.GetPhyAddr();
     __local_mem__ T* biasPtr = (__local_mem__ T*) biasLocal.GetPhyAddr();
     
+    const uint32_t batchSize = n * n + 2 * n;  // 每个 batch/seq 的元素数
+    
     __VEC_SCOPE__ {
         RegTensor<T> hcBeforeNormReg, invRmsReg, normOutReg;
-        RegTensor<T> normPreReg, normPostReg, normResReg;
-        RegTensor<T> alphaPreReg, alphaPostReg, alphaResReg;
-        RegTensor<T> biasPreReg, biasPostReg, biasResReg;
-        RegTensor<T> zPreReg, zPostReg, zResReg;
+        RegTensor<T> normPartReg, zReg;
+        RegTensor<T> biasReg;
         
-        MaskReg mask = MicroAPI::CreateMask<T, MaskPattern::ALL>();
+        MaskReg maskAll = MicroAPI::CreateMask<T, MaskPattern::ALL>();
         
-        uint32_t loopCount = (totalElements + VL_FP32 - 1) / VL_FP32;
+        // 阶段1：整体计算normOut = hcBeforeNorm * invRms（所有batch/seq）
+        for (uint16_t bsIdx = 0; bsIdx < tile_; bsIdx++) {
+            uint32_t bsOffset = bsIdx * batchSize;
+            uint32_t normOutLoopCount = (batchSize + VL_FP32 - 1) / VL_FP32;
+            
+            // 加载scalar值invRms（每个batch/seq一个）- 用Duplicate而非DataCopy
+            T invRmsScalar = invRmsPtr[bsIdx];
+            
+            for (uint16_t i = 0; i < normOutLoopCount; i++) {
+                uint32_t calcSize = (i == normOutLoopCount - 1) ? 
+                    (batchSize - i * VL_FP32) : VL_FP32;
+                MaskReg maskCalc = MicroAPI::UpdateMask<T>(calcSize);
+                
+                MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(hcBeforeNormReg, hcBeforeNormPtr + bsOffset + i * VL_FP32);
+                MicroAPI::Duplicate<T>(invRmsReg, invRmsScalar);  // scalar值用Duplicate
+                MicroAPI::Mul<T>(normOutReg, hcBeforeNormReg, invRmsReg, maskCalc);
+                MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(normOutPtr + bsOffset + i * VL_FP32, normOutReg, maskCalc);
+            }
+        }
         
-        for (uint16_t i = 0; i < loopCount; i++) {
-            // 1. Mul: normOut = hcBeforeNorm * invRms
-            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(hcBeforeNormReg, hcBeforeNormPtr + i * VL_FP32);
-            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(invRmsReg, invRmsPtr);
-            MicroAPI::Mul<T>(normOutReg, hcBeforeNormReg, invRmsReg, mask);
+        // 阶段2：计算所有zPre = normOut[:n] * alpha[0] + bias[:n]
+        for (uint16_t bsIdx = 0; bsIdx < tile_; bsIdx++) {
+            uint32_t normOutOffset = bsIdx * batchSize;
+            uint32_t zPreOffset = bsIdx * n;
+            uint32_t zPreLoopCount = (n + VL_FP32 - 1) / VL_FP32;
             
-            // Store normOut到UB（供Step3/45使用）
-            MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(normOutPtr + i * VL_FP32, normOutReg, mask);
+            for (uint16_t i = 0; i < zPreLoopCount; i++) {
+                uint32_t calcSize = (i == zPreLoopCount - 1) ? 
+                    (n - i * VL_FP32) : VL_FP32;
+                MaskReg maskCalc = MicroAPI::UpdateMask<T>(calcSize);
+                
+                MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(normPartReg, normOutPtr + normOutOffset + i * VL_FP32);
+                MicroAPI::Muls<T>(zReg, normPartReg, alphaPtr[0], maskCalc);
+                MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(biasReg, biasPtr + i * VL_FP32);
+                MicroAPI::Add<T>(zReg, zReg, biasReg, maskCalc);
+                MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zPrePtr + zPreOffset + i * VL_FP32, zReg, maskCalc);
+            }
+        }
+        
+        // 阶段3：计算所有zPost = normOut[n:2n] * alpha[1] + bias[n:2n]
+        for (uint16_t bsIdx = 0; bsIdx < tile_; bsIdx++) {
+            uint32_t normOutOffset = bsIdx * batchSize + n;
+            uint32_t zPostOffset = bsIdx * n;
+            uint32_t zPostLoopCount = (n + VL_FP32 - 1) / VL_FP32;
             
-            // 2. 拆分三路normOut
-            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(normPreReg, normOutPtr + i * VL_FP32);
-            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(normPostReg, normOutPtr + n + i * VL_FP32);
-            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(normResReg, normOutPtr + 2 * n + i * VL_FP32);
+            for (uint16_t i = 0; i < zPostLoopCount; i++) {
+                uint32_t calcSize = (i == zPostLoopCount - 1) ? 
+                    (n - i * VL_FP32) : VL_FP32;
+                MaskReg maskCalc = MicroAPI::UpdateMask<T>(calcSize);
+                
+                MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(normPartReg, normOutPtr + normOutOffset + i * VL_FP32);
+                MicroAPI::Muls<T>(zReg, normPartReg, alphaPtr[1], maskCalc);
+                MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(biasReg, biasPtr + n + i * VL_FP32);
+                MicroAPI::Add<T>(zReg, zReg, biasReg, maskCalc);
+                MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zPostPtr + zPostOffset + i * VL_FP32, zReg, maskCalc);
+            }
+        }
+        
+        // 阶段4：计算所有zRes = normOut[2n:n²+2n] * alpha[2] + bias[2n:n²+2n]
+        for (uint16_t bsIdx = 0; bsIdx < tile_; bsIdx++) {
+            uint32_t normOutOffset = bsIdx * batchSize + 2 * n;
+            uint32_t zResOffset = bsIdx * n * n;
+            uint32_t zResLoopCount = (n * n + VL_FP32 - 1) / VL_FP32;
             
-            // 3. Muls×3: z = normOut_part * alpha + bias
-            MicroAPI::Muls<T>(zPreReg, normPreReg, alphaPtr[0], mask);
-            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(biasPreReg, biasPtr + i * VL_FP32);
-            MicroAPI::Add<T>(zPreReg, zPreReg, biasPreReg, mask);
-            
-            MicroAPI::Muls<T>(zPostReg, normPostReg, alphaPtr[1], mask);
-            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(biasPostReg, biasPtr + n + i * VL_FP32);
-            MicroAPI::Add<T>(zPostReg, zPostReg, biasPostReg, mask);
-            
-            MicroAPI::Muls<T>(zResReg, normResReg, alphaPtr[2], mask);
-            MicroAPI::DataCopy<T, LoadDist::DIST_BLK>(biasResReg, biasPtr + 2 * n + i * VL_FP32);
-            MicroAPI::Add<T>(zResReg, zResReg, biasResReg, mask);
-            
-            // 4. Store zPre/zPost/zRes
-            MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zPrePtr + i * VL_FP32, zPreReg, mask);
-            MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zPostPtr + i * VL_FP32, zPostReg, mask);
-            MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zResPtr + i * VL_FP32, zResReg, mask);
+            for (uint16_t i = 0; i < zResLoopCount; i++) {
+                uint32_t calcSize = (i == zResLoopCount - 1) ? 
+                    (n * n - i * VL_FP32) : VL_FP32;
+                MaskReg maskCalc = MicroAPI::UpdateMask<T>(calcSize);
+                
+                MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(normPartReg, normOutPtr + normOutOffset + i * VL_FP32);
+                MicroAPI::Muls<T>(zReg, normPartReg, alphaPtr[2], maskCalc);
+                MicroAPI::DataCopy<T, LoadDist::DIST_NORM>(biasReg, biasPtr + 2 * n + i * VL_FP32);
+                MicroAPI::Add<T>(zReg, zReg, biasReg, maskCalc);
+                MicroAPI::DataCopy<T, StoreDist::DIST_NORM>(zResPtr + zResOffset + i * VL_FP32, zReg, maskCalc);
+            }
         }
     }
 }
@@ -733,19 +776,25 @@ __aicore__ inline void AlphaBiasGradPrePostVf(
         
         // Store results to UB (scalar values via StoreUnAlign)
         MicroAPI::UnalignRegForStore gradAlphaSumUreg, gradBiasSumUreg;
-        MicroAPI::MaskReg OneMaskReg = MicroAPI::CreateMask<T, MicroAPI::VL1>();
+        MicroAPI::MaskReg maskFirst = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::VL1>();
         
-        MicroAPI::StoreUnAlign(gradAlphaPtr, sumAlphaPreReg, gradAlphaSumUreg, 1);
-        MicroAPI::StoreUnAlignPost(gradAlphaPtr, gradAlphaSumUreg, 0);
+        // gradAlpha: scalar results (need temporary address variables)
+        auto gradAlphaPtr0 = gradAlphaPtr;
+        auto gradAlphaPtr1 = gradAlphaPtr + 1;
+        MicroAPI::StoreUnAlign(gradAlphaPtr0, sumAlphaPreReg, gradAlphaSumUreg, 1);
+        MicroAPI::StoreUnAlignPost(gradAlphaPtr0, gradAlphaSumUreg, 0);
         
-        MicroAPI::StoreUnAlign(gradAlphaPtr + 1, sumAlphaPostReg, gradAlphaSumUreg, 1);
-        MicroAPI::StoreUnAlignPost(gradAlphaPtr + 1, gradAlphaSumUreg, 0);
+        MicroAPI::StoreUnAlign(gradAlphaPtr1, sumAlphaPostReg, gradAlphaSumUreg, 1);
+        MicroAPI::StoreUnAlignPost(gradAlphaPtr1, gradAlphaSumUreg, 0);
         
-        MicroAPI::StoreUnAlign(gradBiasPtr, sumBiasPreReg, gradBiasSumUreg, 1);
-        MicroAPI::StoreUnAlignPost(gradBiasPtr, gradBiasSumUreg, 0);
+        // gradBias: scalar results (need temporary address variables)
+        auto gradBiasPtr0 = gradBiasPtr;
+        auto gradBiasPtrN = gradBiasPtr + n;
+        MicroAPI::StoreUnAlign(gradBiasPtr0, sumBiasPreReg, gradBiasSumUreg, 1);
+        MicroAPI::StoreUnAlignPost(gradBiasPtr0, gradBiasSumUreg, 0);
         
-        MicroAPI::StoreUnAlign(gradBiasPtr + n, sumBiasPostReg, gradBiasSumUreg, 1);
-        MicroAPI::StoreUnAlignPost(gradBiasPtr + n, gradBiasSumUreg, 0);
+        MicroAPI::StoreUnAlign(gradBiasPtrN, sumBiasPostReg, gradBiasSumUreg, 1);
+        MicroAPI::StoreUnAlignPost(gradBiasPtrN, gradBiasSumUreg, 0);
     }
 }
 

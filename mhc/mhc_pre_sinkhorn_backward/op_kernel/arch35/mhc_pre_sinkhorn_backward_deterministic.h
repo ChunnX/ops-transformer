@@ -170,7 +170,31 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Init(
     pipe_ = pipe;
     blkIdx_ = GetBlockIdx();
     
+    // ===== 调试打印：第一个核打印全局信息 =====
+    if (blkIdx_ == 0) {
+        AscendC::printf("[Init] ========== Global Info (Core 0) ==========\n");
+        AscendC::printf("[Init] BatchSize=%d, SeqLength=%d\n", tilingData->batchSize, tilingData->seqLength);
+        AscendC::printf("[Init] c=D=%d, n=%d, skIterCount=%d\n", tilingData->c, tilingData->n, tilingData->skIterCount);
+        AscendC::printf("[Init] tileSize=%d, aivNum=%d\n", tilingData->tileSize, tilingData->aivNum);
+        AscendC::printf("[Init] c0=%d, cTail=%d, D_chunk_count=%d\n", tilingData->c0, tilingData->cTail, (tilingData->c + tilingData->c0 - 1) / tilingData->c0);
+        AscendC::printf("[Init] totalTasks=%d (B*S), totalTasksAligned=%d\n", 
+            tilingData->batchSize * tilingData->seqLength, 
+            AlignUp(tilingData->batchSize * tilingData->seqLength, tilingData->aivNum * tilingData->tileSize));
+        AscendC::printf("[Init] GetBlockIdx()=%d, current block index\n", blkIdx_);
+    }
+    
     InitTiling(tilingData);
+    
+    // ===== 调试打印：第一个核打印workspace配置 =====
+    if (blkIdx_ == 0) {
+        AscendC::printf("[Init] ========== Workspace Config ==========\n");
+        AscendC::printf("[Init] wsGradAlphaOffset=%d (3*FP32=%d bytes)\n", wsGradAlphaOffset_, 3 * FP32_BYTE_SIZE);
+        AscendC::printf("[Init] wsGradBiasOffset=%d, wsGradPhiOffset=%d\n", wsGradBiasOffset_, wsGradPhiOffset_);
+        AscendC::printf("[Init] wsGradXOffset=%d, wsXFp32Offset=%d\n", wsGradXOffset_, wsXFp32Offset_);
+        AscendC::printf("[Init] wsGradXFromRmsOffset=%d, wsPerCoreSize=%d\n", wsGradXFromRmsOffset_, wsPerCoreSize_);
+        AscendC::printf("[Init] aivNum=%d, aicNum=%d\n", aivNum_, aicNum_);
+    }
+    
     InitGM(x, phi, h_pre, gradHin, gradHPost, gradHRes, alpha, bias, hcBeforeNorm, invRms,
         sumOut, normOut, gradX, gradPhi, gradAlpha, gradBias, workspace);
     InitBuffer();
@@ -200,13 +224,15 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::InitTiling(
     alphaPost_ = static_cast<T>(0.5);
     alphaRes_ = static_cast<T>(0.5);
     
+// Workspace偏移计算（256字节对齐）
+    constexpr int64_t ALIGN_256 = 256;
     wsGradAlphaOffset_ = 0;
-    wsGradBiasOffset_ = 3 * FP32_BYTE_SIZE;
-    wsGradPhiOffset_ = wsGradBiasOffset_ + (n_ * n_ + 2 * n_) * FP32_BYTE_SIZE;
-    wsGradXOffset_ = wsGradPhiOffset_ + (n_ * n_ + 2 * n_) * (n_ * c_) * FP32_BYTE_SIZE;
-    wsXFp32Offset_ = wsGradXOffset_ + tile_ * n_ * c_ * FP32_BYTE_SIZE;
-    wsGradXFromRmsOffset_ = wsXFp32Offset_ + tile_ * n_ * c_ * FP32_BYTE_SIZE;
-    wsPerCoreSize_ = wsGradXFromRmsOffset_ + tile_ * n_ * c_ * FP32_BYTE_SIZE;
+    wsGradBiasOffset_ = AlignUp(3 * FP32_BYTE_SIZE, ALIGN_256);
+    wsGradPhiOffset_ = wsGradBiasOffset_ + AlignUp((n_ * n_ + 2 * n_) * FP32_BYTE_SIZE, ALIGN_256);
+    wsGradXOffset_ = wsGradPhiOffset_ + AlignUp((n_ * n_ + 2 * n_) * (n_ * c_) * FP32_BYTE_SIZE, ALIGN_256);
+    wsXFp32Offset_ = wsGradXOffset_ + AlignUp(tile_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256);
+    wsGradXFromRmsOffset_ = wsXFp32Offset_ + AlignUp(tile_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256);
+    wsPerCoreSize_ = wsGradXFromRmsOffset_ + AlignUp(tile_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256);
 }
 
 template<typename T, typename U>
@@ -238,43 +264,67 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::InitGM(
 
 template<typename T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::InitBuffer() {
-    int64_t tileSize = tile_ * (n_ * n_ + 2 * n_) * FP32_BYTE_SIZE;
+    // 256字节对齐常量
+    constexpr int64_t ALIGN_256 = 256;
     
+    // 计算对齐后的buffer大小
+    int64_t tileSize = AlignUp(tile_ * (n_ * n_ + 2 * n_) * FP32_BYTE_SIZE, ALIGN_256);
+    int64_t tileSizeN = AlignUp(tile_ * n_ * FP32_BYTE_SIZE, ALIGN_256);
+    int64_t tileSizeNN = AlignUp(tile_ * n_ * n_ * FP32_BYTE_SIZE, ALIGN_256);
+    int64_t tileSizeNC0 = AlignUp(tile_ * n_ * c0_ * FP32_BYTE_SIZE, ALIGN_256);
+    int64_t invRmsSize = AlignUp(tile_ * FP32_BYTE_SIZE, ALIGN_256);
+    int64_t alphaSize = AlignUp(3 * FP32_BYTE_SIZE, ALIGN_256);
+    int64_t biasSize = AlignUp((n_ * n_ + 2 * n_) * FP32_BYTE_SIZE, ALIGN_256);
+    int64_t c0USize = AlignUp(c0_ * sizeof(U), ALIGN_256);
+    int64_t c0Fp32Size = AlignUp(c0_ * FP32_BYTE_SIZE, ALIGN_256);
+    int64_t sumOutSize = AlignUp(2 * skIterCount_ * n_ * FP32_BYTE_SIZE, ALIGN_256);
+    int64_t normOutSize = AlignUp(2 * skIterCount_ * n_ * n_ * FP32_BYTE_SIZE, ALIGN_256);
+    
+    // Queue初始化（256字节对齐）
     pipe_->InitBuffer(hcBeforeNormQueue_, DOUBLE_BUF, tileSize);
-    pipe_->InitBuffer(invRmsQueue_, DOUBLE_BUF, tile_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(gradHResQueue_, DOUBLE_BUF, tile_ * n_ * n_ * FP32_BYTE_SIZE);
+    pipe_->InitBuffer(invRmsQueue_, DOUBLE_BUF, invRmsSize);
+    pipe_->InitBuffer(gradHResQueue_, DOUBLE_BUF, tileSizeNN);
     pipe_->InitBuffer(gradHcQueue_, DOUBLE_BUF, tileSize);
+    pipe_->InitBuffer(hPreQueue_, DOUBLE_BUF, tileSizeN);
+    pipe_->InitBuffer(sumOutQueue_, DOUBLE_BUF, sumOutSize);
+    pipe_->InitBuffer(normOutQueue_, DOUBLE_BUF, normOutSize);
     
-    pipe_->InitBuffer(tmpBuf_, tile_ * n_ * c0_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(alphaBuf_, 3 * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(biasBuf_, (n_ * n_ + 2 * n_) * FP32_BYTE_SIZE);
+    // TBuf初始化（256字节对齐）
+    pipe_->InitBuffer(tmpBuf_, tileSizeNC0);
+    pipe_->InitBuffer(alphaBuf_, alphaSize);
+    pipe_->InitBuffer(biasBuf_, biasSize);
     
-    // Step1: 独立输入/中间buffer（c0_大小，按chunk分配）
-    pipe_->InitBuffer(gradHinInputBuf_, c0_ * sizeof(U));
-    pipe_->InitBuffer(xInputBuf_, c0_ * sizeof(U));
-    pipe_->InitBuffer(xFp32Buf_, c0_ * FP32_BYTE_SIZE);
-    // Step3: 独立Sigmoid中间buffer（SigmoidGrad需要4个输入同时共存）
-    pipe_->InitBuffer(sigmaPreBuf_, tile_ * n_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(sigmaPostBuf_, tile_ * n_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(gradHPostBuf_, tile_ * n_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(hPreQueue_, DOUBLE_BUF, tile_ * n_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(gradAlphaBuf_, 3 * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(gradBiasBuf_, (n_ * n_ + 2 * n_) * FP32_BYTE_SIZE);
+    // Step1: 独立输入/中间buffer（256字节对齐）
+    pipe_->InitBuffer(gradHinInputBuf_, c0USize);
+    pipe_->InitBuffer(xInputBuf_, c0USize);
+    pipe_->InitBuffer(xFp32Buf_, c0Fp32Size);
     
-    pipe_->InitBuffer(sumOutQueue_, DOUBLE_BUF, 2 * skIterCount_ * n_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(normOutQueue_, DOUBLE_BUF, 2 * skIterCount_ * n_ * n_ * FP32_BYTE_SIZE);
+    // Step3: 独立Sigmoid中间buffer（256字节对齐）
+    pipe_->InitBuffer(sigmaPreBuf_, tileSizeN);
+    pipe_->InitBuffer(sigmaPostBuf_, tileSizeN);
+    pipe_->InitBuffer(gradHPostBuf_, tileSizeN);
     
-    pipe_->InitBuffer(zPreBuf_, tile_ * n_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(zPostBuf_, tile_ * n_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(zResBuf_, tile_ * n_ * n_ * FP32_BYTE_SIZE);
+    // Step45: alpha/bias梯度buffer（256字节对齐）
+    pipe_->InitBuffer(gradAlphaBuf_, alphaSize);
+    pipe_->InitBuffer(gradBiasBuf_, biasSize);
     
-    pipe_->InitBuffer(gradZPreBuf_, tile_ * n_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(gradZPostBuf_, tile_ * n_ * FP32_BYTE_SIZE);
-    pipe_->InitBuffer(gradZResBuf_, tile_ * n_ * n_ * FP32_BYTE_SIZE);
+    // Step2: zPre/zPost/zRes buffer（256字节对齐）
+    pipe_->InitBuffer(zPreBuf_, tileSizeN);
+    pipe_->InitBuffer(zPostBuf_, tileSizeN);
+    pipe_->InitBuffer(zResBuf_, tileSizeNN);
     
+    // Step3: gradZ buffer（256字节对齐）
+    pipe_->InitBuffer(gradZPreBuf_, tileSizeN);
+    pipe_->InitBuffer(gradZPostBuf_, tileSizeN);
+    pipe_->InitBuffer(gradZResBuf_, tileSizeNN);
+    
+    // Step9-12: gradNormOut buffer（256字节对齐）
     pipe_->InitBuffer(gradNormOutBuf_, tileSize);
     
-    pipe_->InitBuffer(gradHPreBuf_, tile_ * n_ * FP32_BYTE_SIZE);
+    // Step1: gradHPre buffer（256字节对齐）
+    pipe_->InitBuffer(gradHPreBuf_, tileSizeN);
+    
+    // Step2: normOutForward buffer（256字节对齐）
     pipe_->InitBuffer(normOutForwardBuf_, tileSize);
 }
 
@@ -285,35 +335,35 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Process() {
     if ASCEND_IS_AIV {
         for (int64_t taskIdx = blkIdx_; taskIdx < totalTasksAligned_; taskIdx += aivNum_) {
             // 【责任人: llh】步骤1-5
-            Step1_InputAggregation();
+            // Step1_InputAggregation();
             Step2_ComputeForwardZ();
-            Step3_SigmoidGrad();
-            Step45_AlphaBiasGradPrePost();
-            CrossCoreSetFlag<2, PIPE_FIX>(FLAG_ID_LLH_DONE);
+            // Step3_SigmoidGrad();
+            // Step45_AlphaBiasGradPrePost();
+            // CrossCoreSetFlag<2, PIPE_FIX>(FLAG_ID_LLH_DONE);
             
-            // 【责任人: hbj】步骤6-8
-            Step678_SinkhornExpGrad();
-            CrossCoreSetFlag<2, PIPE_FIX>(FLAG_ID_HBJ_DONE);
+            // // 【责任人: hbj】步骤6-8
+            // Step678_SinkhornExpGrad();
+            // CrossCoreSetFlag<2, PIPE_FIX>(FLAG_ID_HBJ_DONE);
             
-            // 【责任人: lhp】步骤9-15
-            Step911_LinearGradConcat();
-            Step12_RMSNormGrad();
-            Step14_RMSNormInvGrad();
-            Step15_MatmulGradX();
-            CrossCoreSetFlag<2, PIPE_FIX>(FLAG_ID_LHP_DONE);
+            // // 【责任人: lhp】步骤9-15
+            // Step911_LinearGradConcat();
+            // Step12_RMSNormGrad();
+            // Step14_RMSNormInvGrad();
+            // Step15_MatmulGradX();
+            // CrossCoreSetFlag<2, PIPE_FIX>(FLAG_ID_LHP_DONE);
         }
-        CrossCoreWaitFlag(FLAG_ID_ALL_DONE);
-        ReduceWorkspaceToGM();
-    }
+    //     CrossCoreWaitFlag(FLAG_ID_ALL_DONE);
+    //     ReduceWorkspaceToGM();
+    // }
     
-    if ASCEND_IS_AIC {
-        for (int64_t taskIdx = blkIdx_; taskIdx < totalTasksAligned_; taskIdx += aicNum_) {
-            CrossCoreWaitFlag(FLAG_ID_LHP_DONE);
+    // if ASCEND_IS_AIC {
+    //     for (int64_t taskIdx = blkIdx_; taskIdx < totalTasksAligned_; taskIdx += aicNum_) {
+    //         CrossCoreWaitFlag(FLAG_ID_LHP_DONE);
             
-            AIC_MatmulGradX();
-            AIC_MatmulGradPhi();
-            CrossCoreSetFlag<2, PIPE_FIX>(FLAG_ID_ALL_DONE);
-        }
+    //         AIC_MatmulGradX();
+    //         AIC_MatmulGradPhi();
+    //         CrossCoreSetFlag<2, PIPE_FIX>(FLAG_ID_ALL_DONE);
+    //     }
     }
 }
 
@@ -369,29 +419,35 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step1_InputAgg
                 {1, static_cast<uint32_t>(cur_c * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
             AscendC::DataCopyPad(xInputChunk, xGlobal_[gmOffset * n_u * c_u + j * c_u + d_offset],
                 {1, static_cast<uint32_t>(cur_c * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
-            AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
-            AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+            AscendC::PipeBarrier<PIPE_ALL>();
             
             LocalTensor<T> xFp32Chunk = xFp32Buf_.Get<T>();
+            
+            // ===== 调试打印：InputAggregationVf参数（第一个核第一次调用）=====
+                AscendC::printf("[Step1-Debug] InputAggregationVf params:\n");
+                AscendC::printf("  j=%d, cur_c=%d, c0_u=%d, cTail_u=%d\n", j, cur_c, c0_u, cTail_u);
+                AscendC::printf("  hPreScalar=%f, n_u=%d, d_offset=%d\n", hPreScalar, n_u, d_offset);
+                AscendC::printf("  gradHinInput addr=%p, xInputChunk addr=%p\n", 
+                    gradHinInput.GetPhyAddr(), xInputChunk.GetPhyAddr());
+                AscendC::printf("  gradXChunk addr=%p, xFp32Chunk addr=%p\n",
+                    gradXChunk.GetPhyAddr(), xFp32Chunk.GetPhyAddr());
+            
             InputAggregationVf_Optimized<T, U>(
                 gradXChunk, xFp32Chunk, gradHPreLocal, j,
                 gradHinInput, xInputChunk,
                 hPreScalar, cur_c);
             
-            AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
-            AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+            AscendC::PipeBarrier<PIPE_ALL>();
             
             int64_t wsXFp32Offset_j = wsBase + wsXFp32Offset_ + j * c_ * FP32_BYTE_SIZE + d_offset * FP32_BYTE_SIZE;
             AscendC::DataCopyPad(workspaceGlobal_[wsXFp32Offset_j / sizeof(T)], xFp32Chunk,
                 {1, static_cast<uint16_t>(cur_c * sizeof(T)), 0, 0});
-            AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
-            AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+            AscendC::PipeBarrier<PIPE_ALL>();
             
             int64_t wsGradXOffset_j = wsBase + wsGradXOffset_ + j * c_ * FP32_BYTE_SIZE + d_offset * FP32_BYTE_SIZE;
             AscendC::DataCopyPad(workspaceGlobal_[wsGradXOffset_j / sizeof(T)], gradXChunk,
                 {1, static_cast<uint16_t>(cur_c * sizeof(T)), 0, 0});
-            AscendC::SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(0));
-            AscendC::WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(0));
+            AscendC::PipeBarrier<PIPE_ALL>();
         }
     }
     
@@ -445,8 +501,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step2_ComputeF
     AscendC::DataCopyPad(biasLocal, biasGlobal_, 
         {1, static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
     
-    AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
-    AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+    AscendC::PipeBarrier<PIPE_ALL>();
     
     hcBeforeNormQueue_.EnQue(hcBeforeNormLocal);
     invRmsQueue_.EnQue(invRmsLocal);
@@ -457,7 +512,35 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step2_ComputeF
     LocalTensor<T> zPreLocal = zPreBuf_.Get<T>();
     LocalTensor<T> zPostLocal = zPostBuf_.Get<T>();
     LocalTensor<T> zResLocal = zResBuf_.Get<T>();
-    ComputeForwardZFullVf<T>(zPreLocal, zPostLocal, zResLocal, normOutForwardLocal, hcBeforeNormLocal, invRmsLocal, alphaLocal, biasLocal, n_, tile_ * (n_ * n_ + 2 * n_));
+    
+    // ===== 调试打印：ComputeForwardZFullVf参数（第一个核）=====
+    if (blkIdx_ == 0) {
+        AscendC::printf("[Step2-Debug] ComputeForwardZFullVf params:\n");
+        AscendC::printf("  n=%d, totalElements=%d (tile*(n*n+2n))\n", n_, tile_ * (n_ * n_ + 2 * n_));
+        AscendC::printf("  hcBeforeNormLocal size=%d, invRmsLocal size=%d\n", 
+            tile_ * (n_ * n_ + 2 * n_), tile_);
+        AscendC::printf("  alphaLocal size=3, biasLocal size=%d\n", n_ * n_ + 2 * n_);
+        AscendC::printf("  normOutForwardLocal size=%d\n", tile_ * (n_ * n_ + 2 * n_));
+        AscendC::printf("  zPreLocal size=%d, zPostLocal size=%d, zResLocal size=%d\n",
+            tile_ * n_, tile_ * n_, tile_ * n_ * n_);
+        AscendC::printf("  Addresses:\n");
+        AscendC::printf("    hcBeforeNormLocal=%p, invRmsLocal=%p\n", 
+            hcBeforeNormLocal.GetPhyAddr(), invRmsLocal.GetPhyAddr());
+        AscendC::printf("    alphaLocal=%p, biasLocal=%p\n",
+            alphaLocal.GetPhyAddr(), biasLocal.GetPhyAddr());
+        AscendC::printf("    normOutForwardLocal=%p\n", normOutForwardLocal.GetPhyAddr());
+        AscendC::printf("    zPreLocal=%p, zPostLocal=%p, zResLocal=%p\n",
+            zPreLocal.GetPhyAddr(), zPostLocal.GetPhyAddr(), zResLocal.GetPhyAddr());
+        AscendC::printf("  VF loopCount = %d (totalElements/VL_FP32)\n",
+            (tile_ * (n_ * n_ + 2 * n_) + 64 - 1) / 64);
+        AscendC::printf("  WARNING: biasPtr offset in VF may cause overflow!\n");
+        AscendC::printf("    biasPre offset range: [0, %d) but VF uses [0, %d)\n",
+            n_, tile_ * (n_ * n_ + 2 * n_));
+        AscendC::printf("    biasPost offset range: [%d, %d) but VF uses [%d, %d)\n",
+            n_, 2 * n_, n_, n_ + tile_ * (n_ * n_ + 2 * n_));
+    }
+    
+    ComputeForwardZFullVf<T>(zPreLocal, zPostLocal, zResLocal, normOutForwardLocal, hcBeforeNormLocal, invRmsLocal, alphaLocal, biasLocal, n_, tile_);
     
     hcBeforeNormQueue_.FreeTensor(hcBeforeNormLocal);
     invRmsQueue_.FreeTensor(invRmsLocal);
@@ -500,8 +583,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step3_SigmoidG
     int64_t gmOffset = blkIdx_ * tile_;
     AscendC::DataCopyPad(gradHPostLocal, gradHPostGlobal_[gmOffset * n_], 
         {1, static_cast<uint32_t>(tile_ * n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
-    AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+    AscendC::PipeBarrier<PIPE_ALL>();
     
     LocalTensor<T> sigmaPreLocal = sigmaPreBuf_.Get<T>();
     AscendC::Sigmoid(sigmaPreLocal, zPreLocal, tile_ * n_);
@@ -559,16 +641,14 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<T, U>::Step45_AlphaBi
         {1, static_cast<uint32_t>(3 * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
     AscendC::DataCopyPad(wsGradBiasLocal, wsGradBias,
         {1, static_cast<uint32_t>((2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-    AscendC::SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
-    AscendC::WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(0));
+    AscendC::PipeBarrier<PIPE_ALL>();
     
     // ===== 计算阶段2：加法累加 =====
     AscendC::Add(wsGradAlphaLocal, wsGradAlphaLocal, gradAlphaLocal, 3);
     AscendC::Add(wsGradBiasLocal, wsGradBiasLocal, gradBiasLocal, 2 * n_);
     
     // ===== 搬出阶段：并行写回workspace =====
-AscendC::SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
-    AscendC::WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(0));
+    AscendC::PipeBarrier<PIPE_ALL>();
     AscendC::DataCopyPad(wsGradBias, wsGradBiasLocal,
         {1, static_cast<uint16_t>((2 * n_) * sizeof(T)), 0, 0});
     
