@@ -44,7 +44,7 @@ struct TensorDescParam {
 constexpr size_t INPUT_TENSOR_COUNT = 6U;
 constexpr size_t OUTPUT_TENSOR_COUNT = 2U;
 constexpr size_t TENSOR_FIELD_COUNT = 4U;
-constexpr size_t SCALAR_FIELD_COUNT = 18U;
+constexpr size_t SCALAR_FIELD_COUNT = 19U;
 constexpr size_t CSV_COLUMN_COUNT = SCALAR_FIELD_COUNT + (INPUT_TENSOR_COUNT + OUTPUT_TENSOR_COUNT) *
                                                            TENSOR_FIELD_COUNT;
 constexpr uint32_t DEFAULT_L1_SIZE = 1048576U;
@@ -75,7 +75,8 @@ struct GroupedMatmulActivationQuantTilingCase {
                 {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
                 {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
                 {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(tuningConfigVec)},
-                {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
+                {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<string>(quantMode)},
+                {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(yDtype)},
                 {"round_mode", Ops::Transformer::AnyValue::CreateFrom<string>(roundMode)},
                 {"scale_alg", Ops::Transformer::AnyValue::CreateFrom<int64_t>(scaleAlg)},
                 {"dst_type_max", Ops::Transformer::AnyValue::CreateFrom<float>(dstTypeMax)},
@@ -104,7 +105,8 @@ struct GroupedMatmulActivationQuantTilingCase {
     bool transposeWeight = false;
     int64_t groupListType = 0;
     int64_t dequantDtype = 0;
-    int64_t quantDtype = 0;
+    string quantMode;
+    int64_t yDtype = 0;
     string roundMode;
     int64_t scaleAlg = 0;
     float dstTypeMax = 0.0F;
@@ -190,7 +192,8 @@ vector<GroupedMatmulActivationQuantTilingCase> LoadCases(const string &socVersio
             tc.transposeWeight = ParseBool(Trim(items[idx++]));
             tc.groupListType = stoll(Trim(items[idx++]));
             tc.tuningConfig = Trim(items[idx++]);
-            tc.quantDtype = stoll(Trim(items[idx++]));
+            tc.quantMode = Trim(items[idx++]);
+            tc.yDtype = stoll(Trim(items[idx++]));
             tc.roundMode = Trim(items[idx++]);
             tc.scaleAlg = stoll(Trim(items[idx++]));
             tc.dstTypeMax = stof(Trim(items[idx++]));
