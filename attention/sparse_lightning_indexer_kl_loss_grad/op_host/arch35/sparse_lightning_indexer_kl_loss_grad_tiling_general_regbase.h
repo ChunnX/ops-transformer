@@ -29,14 +29,14 @@ using namespace ge;
 using namespace AscendC;
 
 namespace optiling {
-class SparseLightningIndexerGradKLLossTilingGeneralRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class SparseLightningIndexerKLLossGradTilingGeneralRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit SparseLightningIndexerGradKLLossTilingGeneralRegbase(gert::TilingContext *context)
+    explicit SparseLightningIndexerKLLossGradTilingGeneralRegbase(gert::TilingContext *context)
         : TilingBaseClass(context)
     {
         Reset();
     }
-    ~SparseLightningIndexerGradKLLossTilingGeneralRegbase() override = default;
+    ~SparseLightningIndexerKLLossGradTilingGeneralRegbase() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
