@@ -37,7 +37,7 @@ inline bool IsUnknownRank(const gert::Shape* checkShape) {
 }
 
 
-static ge::graphStatus GetAttrs(gert::InferShapeContext* context, int64_t& dropPadMode,
+static ge::graphStatus GetAttrs(const gert::InferShapeContext* context, int64_t& dropPadMode,
                                 int64_t& activeNum, int64_t& expertNum, int64_t& expertCapacity)
 {
     dropPadMode = 0;
@@ -65,7 +65,7 @@ static ge::graphStatus GetAttrs(gert::InferShapeContext* context, int64_t& dropP
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetGradExpandedXOutputShape(gert::InferShapeContext* context, gert::Shape* gradExpandedXShape,
+static ge::graphStatus SetGradExpandedXOutputShape(gert::Shape* gradExpandedXShape,
                                                    const gert::Shape* expandedRowIdxShape,
                                                    const gert::Shape* gradYShape, int64_t dropPadMode,
                                                    int64_t activeNum, int64_t expertNum, int64_t expertCapacity)
@@ -141,7 +141,7 @@ static ge::graphStatus MoeFinalizeRoutingV2GradInferShape(gert::InferShapeContex
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
-        (SetGradExpandedXOutputShape(context, gradExpandedXShape, expandedRowIdxShape, gradYShape,
+        (SetGradExpandedXOutputShape(gradExpandedXShape, expandedRowIdxShape, gradYShape,
             dropPadMode, activeNum, expertNum, expertCapacity) != ge::GRAPH_SUCCESS),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context->GetNodeName(), "SetGradExpandedXOutputShape", "failed", "SetGradExpandedXOutputShape failed"),
