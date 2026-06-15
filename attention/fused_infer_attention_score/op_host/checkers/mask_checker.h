@@ -50,8 +50,8 @@ private:
     ge::graphStatus CheckQKVDDifferent(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo);
+    ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo) const;
     ge::graphStatus CheckDimAndShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAntiquantSparseMode(const FiaTilingInfo &fiaInfo) const;
 private:
