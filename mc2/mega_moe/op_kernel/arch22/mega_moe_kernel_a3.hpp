@@ -55,6 +55,7 @@
 #include "moe_init_routing_quant_v2/moe_v2_fullload_dynamic_quant.h"
 #include "unpermute/moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
+#include "mega_moe_adump_adapter_a3.h"
 
 namespace Catlass::Gemm::Kernel {
 
@@ -268,6 +269,9 @@ public:
     template <>
     CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
+        MC2MegaMoeAdump::MegaMoeAdumpSharedField sharedField = CreateAdumpSharedField(params);
+        adumpAdapter.FillSharedField(sharedField);
+        adumpAdapter.FillCoreBaseInfo();
         DispatchAndCombine(params);
     }
 
@@ -279,12 +283,25 @@ private:
         return shmem.Rank();
     }
 
+    CATLASS_DEVICE
+    MC2MegaMoeAdump::MegaMoeAdumpSharedField CreateAdumpSharedField(Params const &params) const
+    {
+        MC2MegaMoeAdump::MegaMoeAdumpSharedField sharedField;
+        sharedField.cclBufferSize = shmem.SegmentSize();
+        sharedField.worldSize = shmem.RankSize();
+        sharedField.rankId = shmem.Rank();
+        sharedField.aivNum = AscendC::GetBlockNum() * AscendC::GetSubBlockNum();
+        sharedField.expertNumPerRank = params.expertPerRank;
+        return sharedField;
+    }
+
     CATLASS_DEVICE void initBuffer(Params const &params)
     {
         auto tmpContext = reinterpret_cast<__gm__ Mc2Aclnn::Mc2MoeContext *>(params.contextGM);
         shmem.initShmem(tmpContext);
+        adumpAdapter.Init(shmem());
         workspaceInfo = WorkspaceInfo(params);
-        peermemInfo = PeermemInfo(params, shmem);
+        peermemInfo = PeermemInfo(params, shmem, adumpAdapter);
 
         cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrcumsumMM));
 
@@ -1165,6 +1182,7 @@ private:
         }
 
         AscendC::SyncAll<true>();
+        adumpAdapter.UpdateAdumpCurrentStateId(MC2MegaMoeAdump::StageA3::STAGE_APPLY_XACTIVATE_MASK);
 
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 
@@ -1677,6 +1695,7 @@ private:
     };
 
     struct PeermemInfo {
+        int64_t adumpOffset;
         int64_t offsetA;
         int64_t offsetPeerPerTokenScale;
         int64_t offsetPeerTokenPerExpert;
@@ -1688,9 +1707,10 @@ private:
         }
 
         CATLASS_DEVICE
-        PeermemInfo(const Params &params, const HcclShmem<false> &shmem)
+        PeermemInfo(const Params &params, const HcclShmem<false> &shmem, MC2MegaMoeAdump::MegaMoeAdumpAdapterA3 adumpAdapter)
         {
-            offsetA = 0;
+            adumpOffset = 0;
+            offsetA = adumpOffset + adumpAdapter.GetAdumpTotalGmSizeBytes();
             offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512);
             offsetD = offsetPeerPerTokenScale + MB_SIZE;
             offsetPeerTokenPerExpert = shmem.SegmentSize() - 2 * MB_SIZE;
@@ -1720,6 +1740,7 @@ private:
     AscendC::GlobalTensor<int32_t> preSumBeforeRank;
     Layout3D tokenPerExpertLayout;
     HcclShmem<false> shmem;
+    MC2MegaMoeAdump::MegaMoeAdumpAdapterA3 adumpAdapter;
     int32_t paddedExpertNumAligned;
     bool isCombineV1;
 
