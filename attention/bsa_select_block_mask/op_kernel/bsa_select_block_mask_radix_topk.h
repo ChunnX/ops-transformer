@@ -19,10 +19,6 @@
 #define BSA_TOPK_PIPE_ALL_PROBE 1
 #endif
 
-#ifndef BSA_TOPK_INIT_ATTNSCORE_PROBE
-#define BSA_TOPK_INIT_ATTNSCORE_PROBE 1
-#endif
-
 #define BSA_TOPK_PRINTF(...) do { \
     if (BSA_TOPK_DEBUG) { \
         AscendC::printf(__VA_ARGS__); \
@@ -67,7 +63,6 @@ public:
 
     __aicore__ inline void ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx);
 private:
-    __aicore__ inline void InitAttnScoreGmForRobustness(uint32_t batchIdx, uint32_t headIdx);
     __aicore__ inline void NegateDataForLargest(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
     __aicore__ inline void TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen,
                                         int32_t roundId, int32_t tileId);
@@ -291,24 +286,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::FreeEventID()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::InitAttnScoreGmForRobustness(uint32_t batchIdx, uint32_t headIdx)
-{
-    if (!BSA_TOPK_INIT_ATTNSCORE_PROBE || tileNum_ == 0) {
-        return;
-    }
-
-    uint64_t baseOffset = (static_cast<uint64_t>(batchIdx) * constInfo.numHeads + headIdx) * sortLen_;
-    for (uint64_t tileId = 0; tileId < tileNum_; ++tileId) {
-        uint64_t globalTileId = tileStartId_ + tileId;
-        uint64_t curTileLen = (tileId + 1 == tileNum_) ? tailTileLen_ : tileLen_;
-        uint64_t offset = baseOffset + globalTileId * tileLen_;
-        AscendC::InitOutput(attnScoreGmLocal[offset], curTileLen, static_cast<IN_T>(1.0f));
-        attnScoreGmLocal.SetValue(offset, static_cast<IN_T>(2.0f));
-    }
-    PipeBarrier<PIPE_ALL>();
-}
-
-template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx)
 {
     if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
@@ -316,8 +293,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
     }
     // 1. Calculate blockOffset
     this->blockOffset_ = tileStartId_ * tileLen_;
-    InitAttnScoreGmForRobustness(batchIdx, headIdx);
-    SyncAll();
 
     // 3. ClearTileTopKInWs() — batch zero tileTopK in WS
     ClearTileTopKInWs();
