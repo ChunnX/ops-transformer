@@ -42,7 +42,7 @@ __aicore__ inline GM_ADDR GetBaseWinAddrByRankId(uint32_t rankId)
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 3;
 
-template <uint32_t IsCached>
+template <typename XType, uint32_t IsCached>
 class KernelDispatchEpilogue {
 public:
     __aicore__ inline KernelDispatchEpilogue() {};
@@ -74,7 +74,7 @@ private:
     GlobalTensor<int32_t> numRecvPerRankHpGm_;
     GlobalTensor<int64_t> numRecvPerExpertHpGm_;
 
-    GlobalTensor<bfloat16_t> recvXGm_;
+    GlobalTensor<XType> recvXGm_;
     GlobalTensor<int32_t> recvTopkIdxGm_;
     GlobalTensor<float> recvTopkWeightsGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
@@ -82,7 +82,7 @@ private:
 
     GlobalTensor<int32_t> hitCountGm_;
 
-    LocalTensor<bfloat16_t> ubToken_;
+    LocalTensor<XType> ubToken_;
     LocalTensor<int32_t> ubHitCount_;
     LocalTensor<int32_t> ubLocalSeq_;
     LocalTensor<int64_t> ubRowStart_;
@@ -117,8 +117,8 @@ private:
     uint32_t perSlotBytes_{0};
 };
 
-template <uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<IsCached>::SplitToCore(
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::SplitToCore(
     uint32_t totalCnt, uint32_t &startIdx, uint32_t &endIdx)
 {
     uint32_t perAiv = totalCnt / aivNum_;
@@ -133,8 +133,8 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::SplitToCore(
     endIdx = startIdx + perAiv;
 }
 
-template <uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<IsCached>::Init(
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     GM_ADDR context,
     GM_ADDR dstBufferSlotIdx,
     GM_ADDR recvSrcMetadataInternal,
@@ -163,12 +163,12 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::Init(
 
     localWinBase_ = GetBaseWinAddrByRankId(rankId_);
     recvCounterOffset_ = ALIGN_UP(epWorldSize_ * sizeof(int32_t), WIN_ADDR_ALIGN);
-    metaOffset_ = ALIGN_UP(hidden_ * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
+    metaOffset_ = ALIGN_UP(hidden_ * sizeof(XType), WIN_ADDR_ALIGN);
 
     numRecvPerRankHpGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRankHp);
     numRecvPerExpertHpGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpertHp);
 
-    recvXGm_.SetGlobalBuffer((__gm__ bfloat16_t*)recvX);
+    recvXGm_.SetGlobalBuffer((__gm__ XType*)recvX);
     recvTopkIdxGm_.SetGlobalBuffer((__gm__ int32_t*)recvTopkIdx);
     recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
@@ -181,7 +181,7 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::Init(
 
     hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace + hitCountOffset_));
 
-    uint32_t ubTokenBytes     = ALIGN_UP(hidden_ * sizeof(bfloat16_t), 32);
+    uint32_t ubTokenBytes     = ALIGN_UP(hidden_ * sizeof(XType), 32);
     uint32_t ubHitCountBytes  = ALIGN_UP(numLocalExperts_ * sizeof(int32_t), 32);
     uint32_t ubLocalSeqBytes  = ALIGN_UP(numLocalExperts_ * sizeof(int32_t), 32);
     uint32_t ubRowStartBytes  = ALIGN_UP(numLocalExperts_ * sizeof(int64_t), 32);
@@ -204,7 +204,7 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::Init(
     tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
     tpipe_->InitBuffer(ubHitCountFullBuf_, ubHitCountFullBytes);
 
-    ubToken_     = ubTokenBuf_.Get<bfloat16_t>();
+    ubToken_     = ubTokenBuf_.Get<XType>();
     ubHitCount_  = ubHitCountBuf_.Get<int32_t>();
     ubLocalSeq_  = ubLocalSeqBuf_.Get<int32_t>();
     ubRowStart_  = ubRowStartBuf_.Get<int64_t>();
@@ -225,8 +225,8 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::Init(
     PipeBarrier<PIPE_MTE2>();
 }
 
-template <uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<IsCached>::Process()
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Process()
 {
     ComputePrefixSums();
 
@@ -247,8 +247,8 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::Process()
     }
 }
 
-template <uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<IsCached>::ComputePrefixSums()
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::ComputePrefixSums()
 {
     int64_t cumulativeRowOffset = 0;
     for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
@@ -258,8 +258,8 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::ComputePrefixSums()
     }
 }
 
-template <uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<IsCached>::CountHits()
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
 {
     Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
 
@@ -304,8 +304,8 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::CountHits()
     PipeBarrier<PIPE_MTE3>();
 }
 
-template <uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<IsCached>::CopyFromWindowByExpert()
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowByExpert()
 {
     Duplicate(ubLocalSeq_, (int32_t)0, numLocalExperts_);
 
@@ -350,8 +350,8 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::CopyFromWindowByExpert(
             int32_t src_rank_id   = ubMeta_.GetValue(metaBase + 2 * topK_);
             int32_t src_token_idx = ubMeta_.GetValue(metaBase + 2 * topK_ + 1);
 
-            GlobalTensor<bfloat16_t> srcTokenTensor;
-            srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(slotAddr),
+            GlobalTensor<XType> srcTokenTensor;
+            srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr),
                                              hidden_);
             DataCopy(ubToken_, srcTokenTensor, hidden_);
             PipeBarrier<PIPE_MTE2>();
@@ -406,8 +406,8 @@ __aicore__ inline void KernelDispatchEpilogue<IsCached>::CopyFromWindowByExpert(
 //               总元素 = expertSum_ * RECV_META_FIELDS（int32），用 DataCopyPad 兜底尾部
 //               调用方已通过 if (aivId_ == 0) 守卫，本函数体不再判定
 // ---------------------------------------------------------------------------
-template <uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<IsCached>::CopyInputsToOutputs()
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyInputsToOutputs()
 {
     PipeBarrier<PIPE_MTE3>();   // 等待 CopyFromWindowByExpert 写完 recvX/recvTopkIdx/recvTopkWeights
 
