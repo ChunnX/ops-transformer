@@ -271,10 +271,26 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus InplacePartialRotaryMulGradTilingClass::InitTilingData()
+{
+    if (tilingData_ == nullptr) {
+        tilingData_ = context_->GetTilingData<InplacePartialRotaryMulGradTilingData>();
+        if (tilingData_ == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "get tilingdata ptr failed");
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (memset_s(tilingData_, sizeof(InplacePartialRotaryMulGradTilingData), 0,
+        sizeof(InplacePartialRotaryMulGradTilingData)) != EOK) {
+        OP_LOGE(context_->GetNodeName(), "memset tilingdata failed");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus InplacePartialRotaryMulGradTilingClass::DoOpTiling()
 {
-    auto tilingData = context_->GetTilingData<InplacePartialRotaryMulGradTiling>();
-    if (tilingData == nullptr) {
+    if (InitTilingData() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -327,22 +343,22 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::DoOpTiling()
         ubFactorM = std::max<int64_t>(ubFactorM, 1);
     }
 
-    tilingData->b = static_cast<uint64_t>(b_);
-    tilingData->s = static_cast<uint64_t>(s_);
-    tilingData->n = static_cast<uint64_t>(n_);
-    tilingData->d = static_cast<uint64_t>(d_);
-    tilingData->partialStart = static_cast<uint64_t>(partialStart_);
-    tilingData->sliceLen = static_cast<uint64_t>(sliceLen_);
-    tilingData->rotaryMode = static_cast<uint64_t>(rotaryMode_);
-    tilingData->dyDtypeCode = static_cast<uint64_t>(dyDtypeCode_);
-    tilingData->cosDtypeCode = static_cast<uint64_t>(cosDtypeCode_);
-    tilingData->cosStrideB = static_cast<uint64_t>(cosStrideB_);
-    tilingData->cosStrideS = static_cast<uint64_t>(cosStrideS_);
-    tilingData->cosStrideN = static_cast<uint64_t>(cosStrideN_);
-    tilingData->usedCoreNum = static_cast<uint64_t>(usedCoreNum);
-    tilingData->blockFactorM = static_cast<uint64_t>(blockFactorM);
-    tilingData->ubFactorM = static_cast<uint64_t>(ubFactorM);
-    tilingData->isFullBroadcast = static_cast<uint64_t>(isFullBroadcast_);
+    tilingData_->b = b_;
+    tilingData_->s = s_;
+    tilingData_->n = n_;
+    tilingData_->d = d_;
+    tilingData_->partialStart = partialStart_;
+    tilingData_->sliceLen = sliceLen_;
+    tilingData_->rotaryMode = rotaryMode_;
+    tilingData_->dyDtypeCode = dyDtypeCode_;
+    tilingData_->cosDtypeCode = cosDtypeCode_;
+    tilingData_->cosStrideB = cosStrideB_;
+    tilingData_->cosStrideS = cosStrideS_;
+    tilingData_->cosStrideN = cosStrideN_;
+    tilingData_->usedCoreNum = usedCoreNum;
+    tilingData_->blockFactorM = blockFactorM;
+    tilingData_->ubFactorM = ubFactorM;
+    tilingData_->isFullBroadcast = isFullBroadcast_;
 
     context_->SetBlockDim(usedCoreNum);
 
@@ -356,8 +372,7 @@ ge::graphStatus InplacePartialRotaryMulGradTilingClass::DoOpTiling()
 
 ge::graphStatus Tiling4InplacePartialRotaryMulGrad(gert::TilingContext* context)
 {
-    InplacePartialRotaryMulGradTilingClass tiling(context);
-    return tiling.Run();
+    return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
 ge::graphStatus TilingPrepareForInplacePartialRotaryMulGrad(gert::TilingParseContext* context)
