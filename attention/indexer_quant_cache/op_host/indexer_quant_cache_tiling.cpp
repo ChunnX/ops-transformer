@@ -96,7 +96,7 @@ ge::graphStatus IndexerQuantCacheTiling::GetAttr()
     auto quantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
     quantMode_ = quantMode == nullptr ? 1 : *quantMode;
 
-    auto roundScale = attrs->GetAttrPointer<int64_t>(ATTR_ROUND_SCALE_INDEX);
+    auto roundScale = attrs->GetAttrPointer<bool>(ATTR_ROUND_SCALE_INDEX);
     roundScale_ = roundScale == nullptr ? true : *roundScale;
 
     auto scaleAttr = attrs->GetAttrPointer<float>(ATTR_SCALE_INDEX);

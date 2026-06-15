@@ -55,37 +55,31 @@ extern "C" __global__ __aicore__ void indexer_quant_cache(
             DTYPE_CACHE_SCALE> op;
         op.Init(x, slot_mapping, cache, cache_scale, userWs, &tilingData, &pipe);
         op.Process();
-        return;
     } else if (TILING_KEY_IS(SINGLE_ROW_NORMAL_QUANT)) {
         IndexerQuantCache::IndexerQuantCacheSingleRow<DTYPE_X, DTYPE_CACHE,
             DTYPE_CACHE_SCALE> op;
         op.Init(x, slot_mapping, cache, cache_scale, userWs, &tilingData, &pipe);
         op.Process();
-        return;
     } else if (TILING_KEY_IS(MULTI_ROW_MXFP8_QUANT)) {
         IndexerQuantCache::IndexerQuantCacheMultiRowMxFp8<DTYPE_X, DTYPE_CACHE,
             DTYPE_CACHE_SCALE> op;
         op.Init(x, slot_mapping, cache, cache_scale, userWs, &tilingData, &pipe);
         op.Process();
-        return;
     } else if (TILING_KEY_IS(SINGLE_ROW_MXFP8_QUANT)) {
         IndexerQuantCache::IndexerQuantCacheSingleRowMxFp8<DTYPE_X, DTYPE_CACHE,
             DTYPE_CACHE_SCALE> op;
         op.Init(x, slot_mapping, cache, cache_scale, userWs, &tilingData, &pipe);
         op.Process();
-        return;
     } else if (TILING_KEY_IS(MULTI_ROW_MXFP4_QUANT)) {
         IndexerQuantCache::IndexerQuantCacheMultiRowMxFp4<DTYPE_X, DTYPE_CACHE,
             DTYPE_CACHE_SCALE> op;
         op.Init(x, slot_mapping, cache, cache_scale, userWs, &tilingData, &pipe);
         op.Process();
-        return;
     } else if (TILING_KEY_IS(SINGLE_ROW_MXFP4_QUANT)) {
         IndexerQuantCache::IndexerQuantCacheSingleRowMxFp4<DTYPE_X, DTYPE_CACHE,
             DTYPE_CACHE_SCALE> op;
         op.Init(x, slot_mapping, cache, cache_scale, userWs, &tilingData, &pipe);
         op.Process();
-        return;
     }
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }

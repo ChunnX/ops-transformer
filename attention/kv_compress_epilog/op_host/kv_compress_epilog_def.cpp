@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file hc_pre_sinkhorn_def.cpp
+ * \file kv_compress_epilog_def.cpp
  * \brief
  */
 

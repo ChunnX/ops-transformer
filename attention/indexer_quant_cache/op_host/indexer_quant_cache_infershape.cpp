@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file indexer_quant_cache_proto.cpp
+ * \file indexer_quant_cache_infershape.cpp
  * \brief
  */
 #include <graph/utils/type_utils.h>
