@@ -892,8 +892,8 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::FillQuadruple(Local
                 xOutTint32(expertPos) = moeExpertNum_;
             }
         }
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
     }
-
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -946,7 +946,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     FillQuadruple(sendTokenTensor, startTokenIndex, tokenIndex);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    PipeBarrier<PIPE_V>();
+    // PipeBarrier<PIPE_V>();
     GM_ADDR rankGM = (GetSendAddrBetweenServer(dstServerId) +
                                                                  SERVER_STATE_ALIGN + cnt * sendTokenLengthAlign_);
     WriteDataToWinOut(sendTokenTensor, rankGM, blockCntPerToken_);
@@ -955,6 +955,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ScatterToken(uint32_t startIndex, uint32_t endIndex, uint32_t serverId)
 {
+    SyncFunc<AscendC::HardEvent::V_S>();
     for(uint32_t tokenIndex = startIndex; tokenIndex < endIndex; tokenIndex++) {
         uint32_t offset = serverId * perServerMapCnt_ + tokenIndex;
         int32_t tokenSendOffset = tokenSendMap_.GetValue(offset);
@@ -1225,6 +1226,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         PipeBarrier<PIPE_V>();
         GatherMask(gatherIndex, indexTensor, expertMaskTensorU32, true, activeMaskBsCnt, {1, 1, 0, 0}, sendTokenCnt); // 是否可以简化计算
         PipeBarrier<PIPE_V>();
+        SyncFunc<AscendC::HardEvent::V_S>();
         if(sendTokenCnt == 0) {
             continue;
         }
@@ -2500,6 +2502,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GatherMask(validExpertIndexTensor, expertsIndexTensor, gatherMaskTensor, true, calCnt, {1, 1, 0, 0},
                 sendNumperExpert); // 当前需要发送的专家的索引以及需要发送的有效专家总数
         PipeBarrier<PIPE_V>();
+        SyncFunc<AscendC::HardEvent::V_S>();
         if(sendNumperExpert == 0){
             continue;
         }
