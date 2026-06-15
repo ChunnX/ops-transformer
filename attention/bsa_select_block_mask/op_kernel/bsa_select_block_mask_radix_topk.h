@@ -24,7 +24,7 @@
 #endif
 
 #ifndef BSA_TOPK_SMALL_SORT_DEBUG
-#define BSA_TOPK_SMALL_SORT_DEBUG 1
+#define BSA_TOPK_SMALL_SORT_DEBUG 0
 #endif
 
 #define BSA_TOPK_PRINTF(...) do { \
