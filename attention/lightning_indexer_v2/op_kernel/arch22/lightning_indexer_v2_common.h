@@ -67,6 +67,8 @@ struct RunInfo {
 struct ConstInfo {
     // CUBE与VEC核间同步的模式
     static constexpr uint32_t FIA_SYNC_MODE2 = 2;
+    // Cube分块大小(Mmad M维度对齐单位)
+    static constexpr uint32_t BLOCK_CUBE = 16;
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     // 无效索引
