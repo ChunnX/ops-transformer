@@ -31,22 +31,26 @@
 #include "../moe_distribute_dispatch_v2/check_winsize.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_elastic.h"
+#include "../moe_distribute_dispatch_v2/hccl_context_holder.h"
+#include "../moe_distribute_dispatch_v2/mc2_moe_context_holder.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_constant.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/check_winsize.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_elastic.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/hccl_context_holder.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/mc2_moe_context_holder.h"
 #endif
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
-namespace MoeDistributeCombineV2Impl {
+namespace Mc2Kernel {
 using namespace MoeDistributeV2Base;
-using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
-#define CombineMC2TypeClass typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter, \
-    uint8_t QuantMode, bool HasAddRmsNorm
-#define CombineMC2TypeFunc ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm
+#define CombineMC2TypeClass typename ContextHolder, typename ExpandXType, typename XType, typename ExpandIdxType, \
+    bool IsNeedReduceScatter, uint8_t QuantMode, bool HasAddRmsNorm
+#define CombineMC2TypeFunc \
+    ContextHolder, ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm
 
 using namespace AscendC;
 template <CombineMC2TypeClass>
@@ -103,26 +107,25 @@ private:
                                                     const DataCopyExtParams& copyExtParams);
     __aicore__ GM_ADDR GetWinAddrByRankId(const int32_t rankId, const uint8_t domain)
     {
-        if (isMc2Context_) {
-            return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffsetEp_;
-        }
+        uint32_t curRankId = (domain == EP_DOMAIN) ? epRankIdOriginal_ : tpRankId_;
+        uint64_t winDataSizeOffset = (domain == EP_DOMAIN) ? winDataSizeOffsetEp_ : winDataSizeOffsetTp_;
         if (domain == EP_DOMAIN) {
-            return Mc2Kernel::GetBaseWindAddrByRankId(epWinContext_, rankId, epRankIdOriginal_) + winDataSizeOffsetEp_;
-        } else {
-            return Mc2Kernel::GetBaseWindAddrByRankId(tpWinContext_, rankId, tpRankId_) + winDataSizeOffsetTp_;
+            return ctx_.GetWindAddrByRankId(rankId, curRankId) + winDataSizeOffset;
         }
+        // TP 域已下线，本分支随 IsNeedReduceScatter 一并待删
+        auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
+        return Mc2Kernel::GetBaseWindAddrByRankId(tpCtx, rankId, curRankId) + winDataSizeOffset;
     }
 
     __aicore__ GM_ADDR GetWinStateAddrByRankId(const int32_t rankId, const uint8_t domain)
     {
-        if (isMc2Context_) {
-            return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + winStatusOffset_;
-        }
+        uint32_t curRankId = (domain == EP_DOMAIN) ? epRankIdOriginal_ : tpRankId_;
         if (domain == EP_DOMAIN) {
-            return Mc2Kernel::GetBaseWindStateAddrByRankId(epWinContext_, rankId, epRankIdOriginal_) + winStatusOffset_;
-        } else {
-            return Mc2Kernel::GetBaseWindStateAddrByRankId(tpWinContext_, rankId, tpRankId_) + winStatusOffset_;
+            return ctx_.GetWindStateAddrByRankId(rankId, curRankId) + winStatusOffset_;
         }
+        // TP 域已下线，本分支随 IsNeedReduceScatter 一并待删
+        auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
+        return Mc2Kernel::GetBaseWindStateAddrByRankId(tpCtx, rankId, curRankId) + winStatusOffset_;
     }
 
     __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
@@ -161,7 +164,8 @@ private:
     GM_ADDR maskCalcWorkspaceGM_;
     GM_ADDR statusDataSpaceGm_;
 
-    __gm__ Mc2MoeContext* mc2Context_{nullptr};
+    // 统一上下文持有器：v2 走 HcclOpParam，v3 走 Mc2MoeContext
+    ContextHolder ctx_;
 
     LocalTensor<XType> winTpSendCountTensor_;
     LocalTensor<ExpandXType> gmTpSendCountTensor_;
@@ -201,8 +205,6 @@ private:
     uint32_t moeExpertNum_{0};
     uint32_t moeExpertOriginalNum_{0};
     uint32_t globalBS_{0};
-    __gm__ Mc2Kernel::HcclOpParam *epWinContext_{nullptr};
-    __gm__ Mc2Kernel::HcclOpParam *tpWinContext_{nullptr};
     uint32_t tpStateOffsetOnWin_{0};
     uint32_t bsKNum_{0};
     uint32_t startTokenId_{0};
@@ -274,7 +276,6 @@ private:
     bool isScalingDownFlag_ = false;
     bool isShareExpertRankFlag_ = false;
     bool enableSpecialExpert_ = false;
-    bool isMc2Context_ = false;
 
     // int8量化
     TBuf<> xAbsBuf_;
@@ -296,7 +297,8 @@ private:
     LocalTensor<float> sumFloatBufLocal_;
 
     uint32_t scaleNum_{0};
-    MoeDistributeCombineQuant<CombineMC2TypeFunc> quantInst_;
+    MoeDistributeCombineQuant<ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm>
+        quantInst_;
     MoeDistributeElastic elasticInst_;
 };
 
@@ -423,21 +425,9 @@ template <CombineMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitCommContext(
     GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData)
 {
-    uint32_t epRankIdHccl{0};
-    uint32_t epWorldSizeHccl{0};
-    if (isMc2Context_) {
-        // Using Mc2Context instead of hccl context
-        mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
-        epRankIdHccl = mc2Context_->epRankId;
-        epWorldSizeHccl = tilingData->moeDistributeCombineV2Info.epWorldSize;
-        statusDataSpaceGm_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankIdHccl]);
-    } else {
-        auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-        epWinContext_ = (__gm__ Mc2Kernel::HcclOpParam*)contextGM0;
-        statusDataSpaceGm_ = Mc2Kernel::GetStatusDataSpaceGm(epWinContext_);
-        epRankIdHccl = Mc2Kernel::GetRankId(epWinContext_);
-        epWorldSizeHccl = Mc2Kernel::GetRankDim(epWinContext_);
-    }
+    statusDataSpaceGm_ = ctx_.GetStatusDataSpaceGm();
+    uint32_t epRankIdHccl = ctx_.GetEpRankId();
+    uint32_t epWorldSizeHccl = ctx_.GetEpWorldSize();
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     for (int tempEpRankId = 0; tempEpRankId < epWorldSize_; tempEpRankId++) {
         OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(tempEpRankId, EP_DOMAIN)), totalWinSizeEp_);
@@ -501,11 +491,9 @@ template <CombineMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::TpGroupInit(GM_ADDR tpSendCount, GM_ADDR XOut,
     const MoeDistributeCombineV2TilingData *tilingData)
 {
-    if (!isMc2Context_) {
-        auto contextGM1 = AscendC::GetHcclContext<1>();
-        tpWinContext_ = (__gm__ Mc2Kernel::HcclOpParam*)contextGM1;
-        CheckWindowSize(totalWinSizeTp_, Mc2Kernel::GetWinSize(tpWinContext_), tpipe_, XOut);
-    }
+    // TP 域已下线，本分支随 IsNeedReduceScatter 一并待删
+    auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
+    CheckWindowSize(totalWinSizeTp_, Mc2Kernel::GetWinSize(tpCtx), tpipe_, XOut);
     tpSendCountGM_.SetGlobalBuffer((__gm__ int32_t*)tpSendCount);
     tpWorldSize_ = tilingData->moeDistributeCombineV2Info.tpWorldSize;
     tpRankId_ = tilingData->moeDistributeCombineV2Info.tpRankId;
@@ -534,15 +522,10 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     coreIdx_ = GetBlockIdx();
     maskCalcWorkspaceGM_ = workspaceGM + coreIdx_ * MASK_CALC_NEED_WORKSPACE;
     InitInputAndOutput(
-        residualX, gamma, expandX, expertIds, expandIdx, epSendCount, expertScales, xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1,
-        constExpertAlpha2, constExpertV, performanceInfo, yOut, rstdOut, XOut);
-    if (tilingData->moeDistributeCombineV2Info.isMc2Context) {
-        isMc2Context_ = true;
-        mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
-    } else {
-        auto realWinSize = Mc2Kernel::GetWinSize(epWinContext_);
-        CheckWindowSize(totalWinSizeEp_, realWinSize, tpipe_, XOut);
-    }
+        residualX, gamma, expandX, expertIds, expandIdx, epSendCount, expertScales, xActiveMask, sharedExpertX,
+        elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, yOut, rstdOut, XOut);
+    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeCombineV2Info.epWorldSize,
+                      tilingData->moeDistributeCombineV2Info.totalWinSizeEp, tpipe_, XOut);
     InitAttrs(mc2Context, tilingData);
 
     if constexpr (QuantMode > UNQUANT) {
@@ -1574,5 +1557,5 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Process()
     }
 }
 
-} // MoeDistributeCombineV2Impl
+} // Mc2Kernel
 #endif // MOE_DISTRIBUTE_COMBINE_IMPL_H
