@@ -140,9 +140,6 @@ template <typename T0, typename U, typename T1>
                     VFProcessFP8PerGroupQuant<T0, T1, false, false>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max,
                         validIdx, tilingData->d, tilingData->concatCol, tilingData->padCol);
                 }
-            } else if (tilingData->quantMode == QUANT_MODE_HIFLOAT) {
-                // HiFloat8 whole-row quant: cache row = d hifloat8 bytes (kvCacheCol == d).
-                VFProcessHifp8Quant<T0, T1>(kvCacheLocal, xLocal, validIdx, tilingData->d, scalesAttr);
             }
 
             xQue.template FreeTensor(xLocal);

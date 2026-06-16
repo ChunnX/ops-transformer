@@ -61,9 +61,9 @@ def npu_kv_compress_epilog(cache, x, slot_mapping, *, quant_group_size=64,
         slot_mapping (Tensor): token 到 cache slot 的索引映射，dtype 为 int32 或 int64，shape 为 [bs]，
             元素取值范围 [-1, num_slots - 1]，-1 表示跳过该 token。维度需等于 x 的维度减 1。
         quant_group_size (int): 量化分组大小，与内核实现一致固定为 64，默认 64。
-        quant_mode (int): 量化模式，0=group(bf16 scale)、1=group(e8m0 scale)、2=HiFloat8，默认 1。
+        quant_mode (int): 量化模式，0=group(bf16 scale)、1=group(e8m0 scale)，默认 1。
         round_scale (bool): group 模式下是否对每组 scale 向上取到 2 的幂，默认 True。
-        x_scale (float): HiFloat8 模式（quant_mode=2）下的全局 scale 乘数，默认 1.0。
+        x_scale (float): 预留参数，当前未使用，默认 1.0。
 
     Returns:
         Tensor: 更新后的 KV Cache，shape/dtype 与输入 cache 相同。

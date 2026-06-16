@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- API功能：在KV Cache的Epilog阶段对cache进行原地逐组动态量化压缩更新，封装aclnnKvCompressEpilog。将bfloat16激活值x按尾轴每64个元素一组动态量化为FP8（以uint8打包），并按slot_mapping将量化结果散写到cache，slot_mapping中值为-1的token跳过不处理。支持group(bf16 scale)、group(e8m0 scale)、HiFloat8三种量化模式。
+- API功能：在KV Cache的Epilog阶段对cache进行原地逐组动态量化压缩更新，封装aclnnKvCompressEpilog。将bfloat16激活值x按尾轴每64个元素一组动态量化为FP8（以uint8打包），并按slot_mapping将量化结果散写到cache，slot_mapping中值为-1的token跳过不处理。支持group(bf16 scale)、group(e8m0 scale)两种量化模式。
 - 语义说明：底层aclnn接口对cacheRef为原地实现；本Python接口为函数式语义，对输入cache做拷贝后在副本上更新并返回，未被slot_mapping命中的行保留原值。调用方需使用返回的cache。
 
 ## 函数原型
@@ -30,9 +30,9 @@ npu_kv_compress_epilog(Tensor cache, Tensor x, Tensor slot_mapping, *, int quant
 | x | 输入 | 待量化的激活输入，shape为[bs, d]，d需满足d % 64 == 0且d > 64。 | BFLOAT16 | $ND$ |
 | slot_mapping | 输入 | token到cache slot的索引映射，shape为[bs]，元素取值范围[-1, num_slots - 1]，-1表示跳过该token；维度需等于x的维度减1。 | INT32、INT64 | $ND$ |
 | quant_group_size | 可选属性 | 量化分组大小，与内核实现一致固定为64。默认值64。 | INT | - |
-| quant_mode | 可选属性 | 量化模式：0=group(bf16 scale)、1=group(e8m0 scale)、2=HiFloat8。默认值1。 | INT | - |
+| quant_mode | 可选属性 | 量化模式：0=group(bf16 scale)、1=group(e8m0 scale)。默认值1。 | INT | - |
 | round_scale | 可选属性 | group模式下是否对每组scale向上取到2的幂。默认值True。 | BOOL | - |
-| x_scale | 可选属性 | HiFloat8模式（quant_mode=2）下的全局scale乘数。默认值1.0。 | FLOAT | - |
+| x_scale | 可选属性 | 预留参数，当前未使用。默认值1.0。 | FLOAT | - |
 
 ## 输出说明
 
