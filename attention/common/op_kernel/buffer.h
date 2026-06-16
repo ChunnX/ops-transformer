@@ -21,7 +21,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../include/tensor_api/include/tensor_api/tensor.h"
+#include "tensor_api/tensor.h"
 
 using namespace AscendC;
 namespace fa_base_matmul {
