@@ -495,5 +495,6 @@ uint64_t MhcPostTilingBaseArch22::GetTilingKey() const
     return GET_TPL_TILING_KEY(usePermanentX_);
 }
 
-REGISTER_OPS_TILING_TEMPLATE(MhcPost, MhcPostTilingBaseArch22, 0);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(MhcPost, MhcPostTilingBaseArch22,
+    static_cast<int32_t>(NpuArch::DAV_2201), 0);
 }  // namespace optiling

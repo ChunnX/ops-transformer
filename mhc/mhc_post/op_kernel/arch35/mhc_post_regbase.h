@@ -127,7 +127,7 @@ REGBASE_TEMPLATE_DECLARE
 __aicore__ inline void MhcPostRegbaseKernel<REGBASE_TEMPLATE_ARGS>::DoMulAndAdd(
     LocalTensor<float> hPostUb, LocalTensor<float> hResUb, int64_t nNum, int64_t dNum)
 {
-    if (nNum == 4) {
+    if (tilingData_->n == 4) {
         DoMulAndAdd_N4(hPostUb, hResUb, nNum, dNum);
         return;
     }
