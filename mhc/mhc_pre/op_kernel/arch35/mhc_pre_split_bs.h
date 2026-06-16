@@ -21,6 +21,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_utils.h"
 #include "mhc_pre_kernel_base.h"
+#include "mhc_pre_tiling_key.h"
 
 namespace MhcPre {
 
@@ -35,6 +36,7 @@ static constexpr uint32_t DEFAULT_CHUNK_SIZE = 64;
 static constexpr uint32_t DEFAULT_V1_CHUNK_D_SIZE = 5120;
 
 template <class T, class P, int8_t HAS_RESI>
+class MhcPreKernelSplitBS : public MhcPreKernelBase<T, P> {
 public:
     using Base = MhcPreKernelBase<T, P>;
     using Base::mm;
