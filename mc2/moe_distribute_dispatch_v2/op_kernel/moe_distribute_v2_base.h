@@ -182,7 +182,7 @@ __aicore__ inline void AIVRDMAPostSend(
     cacheWriteThrough((__gm__ uint8_t*)curHardwareHead, 8);
     uint64_t curHead = *(__gm__ uint32_t*)(curHardwareHead);
     auto curHardwareTailAddr = qp_ctx_entry->tailAddr;
-    uint64_t shift = 15U;
+    uint64_t shift = 11U;
     auto QP_DEPTH = qp_ctx_entry->depth;
 
     PipeBarrier<PIPE_ALL>();
