@@ -48,8 +48,7 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
         dsL1CachedSize = 0;
         // selectedBlockSize较小时，nIdx需要+2或者更多
         for (int32_t nIdx = blkCntOffset; nIdx < blkCntOffset + selectedCntOffset; nIdx+=blockOffset) {
-            int64_t l1Offset = static_cast<int64_t>(nIdx - blkCntOffset) *
-                selectedBlockSize * AlignTo<int64_t>(mmParam.singleM, SIZE_16);
+            int32_t l1Offset = (nIdx - blkCntOffset) * selectedBlockSize * AlignTo<int64_t>(mmParam.singleM, SIZE_16);
             bool isFirstLoop = (nIdx == blkCntOffset);
             bool isLastLoop = (nIdx + blockOffset >= blkCntOffset + selectedCntOffset);
 
@@ -76,11 +75,7 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
             
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
             if constexpr (MODE == SMLAG_SCFA_MODE) {
-                if (!runInfo.isOri) {
-                    CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleK, mmParam.singleN, dimDTotal);
-                } else {
-                    CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleK, mmParam.singleN, dimDTotal);
-                }
+                CopyGmToL1(l1_key_tensor, selectedKWorkspaceGm[currentKeyOffset], mmParam.singleK, mmParam.singleN, dimDTotal);
             } else if (runInfo.isOri) {
                 CopyGmToL1(l1_key_tensor, oriKvGm[currentKeyOffset], mmParam.singleK, mmParam.singleN, dimDTotal);
             } else {

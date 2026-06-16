@@ -53,11 +53,7 @@ CubeOp<T1>::cube2Process(const int64_t dyGmOffset, const int64_t valueGmOffset,
             
             WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
             if constexpr (MODE == SMLAG_SCFA_MODE) {
-                if (!runInfo.isOri) {
-                    CopyGmToL1(l1_v_tensor, selectedKWorkspaceGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
-                } else {
-                    CopyGmToL1(l1_v_tensor, oriKvGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
-                }
+                CopyGmToL1(l1_v_tensor, selectedKWorkspaceGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
             } else if (runInfo.isOri) {
                 CopyGmToL1(l1_v_tensor, oriKvGm[currentVOffset], mmParam.singleN, K_SPLIT_SIZE, dimDTotal);
             } else {

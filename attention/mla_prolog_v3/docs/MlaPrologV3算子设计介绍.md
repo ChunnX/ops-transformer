@@ -8,7 +8,7 @@
 
 ## 实现原理
 
-图1计算流程图：
+图1 计算流程图：
 
 ![MlaProlog计算流程图](../../../docs/zh/figures/MlaProlog计算流程.png)
 
@@ -49,7 +49,7 @@ MlaPrologV3算子有多个Matmul运算：
 MlaPrologV3融合算子包含了Vector计算和Cube计算，Vector侧和Cube侧的计算存在依赖关系，因此需要进行CV流水设计，
 否则C侧和V侧很有可能是串行流水的效果，不能达到并行计算的目的，无法使得融合算子性能达到最优：
 
-图2流水控制图：
+图2 流水控制图：
 
 ![MlaProlog流水控制图](../../../docs/zh/figures/MlaProlog流水控制.png)
 
@@ -75,13 +75,13 @@ TilingKey为uint64类型，每个模板参数对应TilingKey中的一到数个�
 |-------|------|----|-------|
 |0-3|CACHE_MODE|KVCache的存储格式|0-BNSD(预留)，1-PA_BSND，2-PA_NZ|
 |4-5|SCENARIO|输入场景|0-FP16(预留)，1-非量化场景，2-量化场景|
-|6-9|QUANT_MODE|量化场景|0-非量化，1-MMQcQr量化，2-MMQcQr量化+KVcache量化，3-MMcqCkvKr量化+MMQcQr量化，4-MMCqCkvkr量化+MMQcQr量化+KVcache量化，5-MMQcQr量化+KVcache pertile量化，6-MMCqCkvkr量化+MMQcQr量化+KVcache pertile量化，7-Mxfp8量化+MMQcQr量化8-Mxfp8量化+MMQcQr量化+KVcache量化|
-|10|ENABLE_DEQUANT_OPTIONAL|反量化开启，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
+|6-9|QUANT_MODE|量化场景|0-非量化，1-MMQcQr量化，2-MMQcQr量化+KVcache量化，3-MMcqCkvKr量化+MMQcQr量化，4-MMCqCkvkr量化+MMQcQr量化+KVcache量化，5-MMQcQr量化+KVcache pertile量化，6-MMCqCkvkr量化+MMQcQr量化+KVcache pertile量化，7-Mxfp8量化+MMQcQr量化 8-Mxfp8量化+MMQcQr量化+KVcache量化|
+|10|ENABLE_DEQUANT_OPTIONAL|反量化使能，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |11|ENABLE_GROUP_COMPUTE_OPTIONAL|量化的算力分组优化，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |12-13|EMPTY_TENSOR_MODE|空tensor场景，用于输入tensor维度为0的情况|0-无空tensor，1-KVCache为空和KRCache为空， 2-Query为空|
-|14-15|ACTUAL_SEQ_LEN_MODE|actualSeqLen开启场景|0-关闭1-开启actualSeqLen|
-|16-17|SPLIT_M_MODE|切M模式 |0-关闭(切N) 1-开启(切M)|
-|18-25|CV_MODE|CV模式|ASCENDC_TPL_MIX_AIC_1_1(6)：1:1模式， ASCENDC_TPL_MIX_AIC_1_2(7)：1:2模式|
+|14-15|ACTUAL_SEQ_LEN_MODE|actualSeqLen使能场景|0-关闭 1-使能actualSeqLen|
+|16-17|SPLIT_M_MODE|切M模式 |0-关闭(切N) 1-使能(切M)|
+|18-25|CV_MODE|CV模式|ASCENDC_TPL_MIX_AIC_1_1(6)：1:1模式, ASCENDC_TPL_MIX_AIC_1_2(7)：1:2模式|
 
 ## 主流程
 
@@ -104,12 +104,12 @@ void Process() {
             MatmulQcQr(weightUqQrOffset, qcQrResOffset);
             CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMQCQR_ROPEQR_FLG);      //cube与vector同步
 
-            // 由于MatmulQn和MatmulQcQr的分核策略不一样，MatmulQn又依赖MatmulQcQr的输出
+            // 由于 MatmulQn 和 MatmulQcQr的分核策略不一样，MatmulQn又依赖MatmulQcQr的输出
             // 需要等所有cube核上的MatmulQcQr执行完后才能启动MatmulQn
             CrossCoreSetFlag<0x0, PIPE_FIX>(SYNC_ALL_CUBE_FLG);
             CrossCoreWaitFlag(SYNC_ALL_CUBE_FLG);
       
-            MatmulQn(qcOffset, weightUkOffset, qnResOffset, mmQnLoopTime);  // MatmulQn的结果直接输出到queryOut, qnOffset需要按Batch轴偏移
+            MatmulQn(qcOffset, weightUkOffset, qnResOffset, mmQnLoopTime);  // MatmulQn的结果直接输出到 queryOut, qnOffset需要按Batch轴偏移
         }
     
         if ASCEND_IS_AIV {
@@ -121,12 +121,12 @@ void Process() {
 
             RmsNormCq(rmsNormCqOffset);
 
-            // 由于RmsNormCq和MatmulQcQr的分核策略不一样，需要等所有vector上的RmsNormCq执行完成后才能启动MatmulQcQr
+            // 由于RmsNormCq和MatmulQcQr的分核策略不一样，需要等所有vector上的RmsNormCq执行完成后才能启动 MatmulQcQr
             // 需要所有vector核上的RmsNormCq执行完成后，才发起MatmulQcQr的执行
             CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);
             CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
 
-            CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNC_MMCQ_NORMSCQ_FLG);        // 保障MatmulQcQr等RmsNormCq
+            CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNC_MMCQ_NORMSCQ_FLG);        // 保障MatmulQcQr等 RmsNormCq
             CrossCoreWaitFlag(SYNC_MMCKVKR_NORMROPE_FLG);                   // wait MatmulCkvKr
             CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_ALL_VECTOR_FLG);
             CrossCoreWaitFlag(SYNC_ALL_VECTOR_FLG);
@@ -177,7 +177,7 @@ $$
 
 ### RMSNormCq
 
-对压缩后的$Q$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的rmsnormGammaCq和rmsnormEpsilonCq。
+对压缩后的$Q$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的 rmsnormGammaCq 和 rmsnormEpsilonCq。
 $$
 c_{\mathrm{norm}}^Q = \mathrm{RmsNorm}(c^Q) \tag{2}
 $$
@@ -245,7 +245,7 @@ $$
 $$
 q^R = c_{norm}^Q \cdot W^{QR} \tag{10}
 $$
-同样利用矩阵乘法的性质，$W^{UQ}$和$W^{QR}$矩阵可以横向拼接成一个矩阵$[W^{UQ}|W^{QR}]$来计算，该拼接矩阵对应接口文档的$weightUqQr$参数。
+同样利用矩阵乘法的性质，$W^{UQ}$和$W^{QR}$矩阵可以横向拼接成一个矩阵$[W^{UQ}|W^{QR}]$来计算，该拼接矩阵对应接口文档的$weightDkvKr$参数。
 $$
 q^Cq^R = c_{norm}^Q \cdot [W^{UQ}|W^{QR}] = [c_{norm}^Q \cdot W^{UQ}|c_{norm}^Q \cdot W^{QR}] \tag{11}
 $$

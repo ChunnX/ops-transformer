@@ -68,7 +68,7 @@
   $$
 
     **说明：**
-    query、keyIn、value数据排布格式支持从多种维度解读，其中T (Total S Length)表示所有batch对应的S的总长、B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、d（Head-Dim）表示隐藏层最小的单元尺寸，且满足d=H/N。
+    query、keyIn、value数据排布格式支持从多种维度解读，其中T (Total S Length) 表示所有batch对应的S的总长、B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、d（Head-Dim）表示隐藏层最小的单元尺寸，且满足d=H/N。
 
 ## 函数原型
 
@@ -168,17 +168,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>数据类型与keyIn/value一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>queryRopeOptional</td>
-      <td>输入</td>
-      <td>公式中的输入Q的rope部分。</td>
-      <td>数据类型与query一致。</td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -188,7 +178,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>数据类型与query/value一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -198,7 +188,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>数据类型与keyIn一致。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -208,7 +198,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>数据类型与query/keyIn一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -218,17 +208,17 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
       <td>pseShiftOptional</td>
       <td>可选输入</td>
       <td>公式中的pse，表示位置编码。</td>
-      <td>数据类型与query/keyIn/value一致</td>
+      <td>支持[B,N,S,S]、[B,N,1,S]、[1,N,S,S]、[B,N,H,S]、[1,N,H,S]。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]、[B,N,1024,Skv]、[1,N,1024,Skv]</td>
+      <td>0、4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -278,41 +268,42 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>
         <ul>
           <li>取值1表示该位不参与计算，0表示参与计算。</li>
+          <li>支持[B,N,S,S]、[B,1,S,S]、[1,1,S,S]、[S,S]。</li>
         </ul>
       </td>
       <td>BOOL、UINT8</td>
       <td>ND</td>
-      <td>[B,N,Sq,Skv]、[B,1,Sq,Skv]、[1,1,Sq,Skv]、[Sq,Skv]</td>
+      <td>0、2、4</td>
       <td>√</td>
     </tr>
     <tr>
       <td>softmaxMaxOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>-</td>
+      <td>shape=[B,N,Sq,8],[N,T,8],[T,N,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>[B,N,Sq,8],[N,T,8],[T,N,8]</td>
+      <td>0、4</td>
       <td>√</td>
     </tr>
     <tr>
       <td>softmaxSumOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>-</td>
+      <td>shape=[B,N,Sq,8],[N,T,8],[T,N,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>[B,N,Sq,8],[N,T,8],[T,N,8]</td>
+      <td>0、4</td>
       <td>√</td>
     </tr>
     <tr>
       <td>softmaxInOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。预留参数暂未使用。</td>
-      <td>-</td>
+      <td>shape=[B,N,Sq,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>[B,N,Sq,8]</td>
+      <td>0、4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -322,7 +313,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>数据类型和shape与query一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -549,50 +540,50 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dqOut</td>
       <td>输出</td>
       <td>公式中的dQ，query的梯度。</td>
-      <td>数据类型与query一致</td>
+      <td>-</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
       <td>dqRopeOut</td>
       <td>输出</td>
       <td>表示queryRope的梯度。</td>
-      <td>数据类型与dqOut一致</td>
+      <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
       <td>dkOut</td>
       <td>输出</td>
       <td>公式中的dK，keyIn的梯度。</td>
-      <td>数据类型与keyIn一致</td>
+      <td>-</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
       <td>dkRopeOut</td>
       <td>输出</td>
       <td>公式中的dkRope，表示keyInRope的梯度。</td>
-      <td>数据类型与dkOut一致</td>
+      <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
       <td>dvOut</td>
       <td>输出</td>
       <td>公式中的dV，value的梯度。</td>
-      <td>数据类型与value一致</td>
+      <td>-</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>[BNSD]、[BSND]、[BSH]、[SBH]、[TND]</td>
+      <td>0、3、4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -823,7 +814,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -984,7 +975,7 @@ int main() {
   ret = aclnnFlashAttentionScoreGradV4GetWorkspaceSize(q, k, v, dx, pse, dropMask, padding,
             attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, nullptr, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
             dScaleDy, dScaleO, nullptr, nullptr, nullptr, nullptr, nullptr, scaleValue, keepProb,
-            preTokens, nextTokens, headNum, inputLayOut, softmaxInLayoutArr, innerPrecise, sparseMode, pseType, seed, offset, outDtype,
+            preTokens, nextTokens, headNum, inputLayOut, softmaxInLayoutArr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
             dq,dk,dv,dqRope,dkRope,dpse, nullptr, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGradV4GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
@@ -999,7 +990,7 @@ int main() {
   ret = aclnnFlashAttentionScoreGradV4(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGradV4 failed. ERROR: %d\n", ret); return ret);
 
-  // 4.（固定写法）同步等待任务执行结束
+  // 4. （固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

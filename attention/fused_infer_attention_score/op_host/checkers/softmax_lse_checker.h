@@ -16,6 +16,7 @@
 #ifndef SOFTMAX_LSE_CHECKER_H
 #define SOFTMAX_LSE_CHECKER_H
 
+#include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
@@ -35,8 +36,8 @@ public:
 private:
     // 公共校验函数
     ge::graphStatus CheckSingleDtype(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckExistenceShapeAndDesc(const FiaTilingInfo &fiaInfo) const;
-    ge::graphStatus CheckFeatureDimAndShape(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckExistenceShapeAndDesc(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureDimAndShape(const FiaTilingInfo &fiaInfo);
 
 private:
 };

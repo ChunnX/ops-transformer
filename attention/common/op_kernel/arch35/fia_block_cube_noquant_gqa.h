@@ -311,7 +311,7 @@ public:
         if constexpr (hasRope) {
             if ((dOffset < constInfo.dSize) && (dOffset + dRealSize > constInfo.dSize)) {
                 nopeDealSize = constInfo.dSize - dOffset;
-                ropeDealSize = dOffset + dRealSize - AttentionCommon::Align(constInfo.dSize, 16U);
+                ropeDealSize = dOffset + dRealSize - Align(constInfo.dSize, 16U);
             } else if (dOffset >= constInfo.dSize) {
                 nopeDealSize = 0;
                 ropeDealSize = dRealSize;
@@ -333,7 +333,7 @@ public:
 
         if constexpr (hasRope) {
             if (ropeDealSize > 0) {
-                uint32_t offset = AttentionCommon::Align(nopeDealSize, 16U) * AttentionCommon::Align(runInfo.actMSize, 16U); // 16 B16对齐到32B
+                uint32_t offset = Align(nopeDealSize, 16U) * Align(runInfo.actMSize, 16U); // 16 B16对齐到32B
                 FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor[offset], .rowCount = dstStride};
 
                 GmCoord gmCoord = {.bIdx = runInfo.bIdx,
@@ -368,7 +368,7 @@ public:
         if constexpr (hasRope) {
             if ((dOffset < constInfo.dSize) && (dOffset + dRealSize > constInfo.dSize)) {
                 nopeDealSize = constInfo.dSize - dOffset;
-                ropeDealSize = (uint32_t)(dOffset + dRealSize - AttentionCommon::Align(constInfo.dSize, 16U));
+                ropeDealSize = (uint32_t)(dOffset + dRealSize - Align(constInfo.dSize, 16U));
             } else if (dOffset >= constInfo.dSize) {
                 nopeDealSize = 0;
                 ropeDealSize = dRealSize;
@@ -389,9 +389,9 @@ public:
 
         if constexpr (hasRope) {
             if (ropeDealSize > 0) {
-                uint32_t offset = AttentionCommon::Align(nopeDealSize, 16U) * AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U); // 16 B16对齐到32B
+                uint32_t offset = Align(nopeDealSize, 16U) * Align(runInfo.actSingleLoopS2Size, 16U); // 16 B16对齐到32B
                 FaL1Tensor<KV_T, L1Format::NZ> l1Tensor = {.tensor = dstTensor[offset],
-                                                           .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
+                                                           .rowCount = Align(runInfo.actSingleLoopS2Size, 16U)};
 
                 GmKvCoord gmCoord = {.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
                                      .n2Idx = runInfo.n2Idx,
@@ -409,7 +409,7 @@ public:
                                           RunInfoX &runInfo)
     {
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
+                                                .rowCount = Align(runInfo.actSingleLoopS2Size, 16U)};
 
         GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
                           .n2Idx = runInfo.n2Idx,
@@ -442,7 +442,7 @@ public:
                                                  uint32_t dRealSize, RunInfoX &runInfo)
     {
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
+                                                .rowCount = Align(runInfo.actSingleLoopS2Size, 16U)};
 
         uint32_t s2DealSize = runInfo.actSingleLoopS2Size;
         uint32_t s2StartIdx = runInfo.s2Idx;
@@ -612,6 +612,7 @@ public:
                     param);
             }
         } else {
+            // TODO 整改 内部IF分支太多
             MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
                 mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
                 param);
@@ -853,6 +854,8 @@ public:
 
             Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
             mm2ResL0C.Wait<HardEvent::FIX_M>();
+
+            // TODO： DN 场景V1输出梳理
             MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)realN, (uint32_t)(runInfo.actSingleLoopS2Size),
                                         useDn, false);
             if constexpr (!useDn) {

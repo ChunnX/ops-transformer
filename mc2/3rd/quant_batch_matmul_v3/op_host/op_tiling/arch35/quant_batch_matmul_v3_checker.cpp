@@ -14,7 +14,7 @@
  */
 
 #include "op_host/tiling_type.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 #include "quant_batch_matmul_v3_checker.h"
 #include "mc2_log.h"
 

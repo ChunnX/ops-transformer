@@ -21,7 +21,6 @@
 #include <exe_graph/runtime/tiling_context.h>
 #include "fia_tiling_base.h"
 #include "err/ops_err.h"
-#include "platform/soc_spec.h"
 
 namespace optiling {
 
@@ -95,7 +94,7 @@ public:
 
     ge::graphStatus DoTilingImpl(gert::TilingContext *context, TilingInfo *tilingInfo)
     {
-        int32_t npuArch = static_cast<int32_t>(NpuArch::DAV_RESV);
+        int32_t soc_version = static_cast<int32_t>(platform_ascendc::SocVersion::RESERVED_VERSION);
         const char *op_type = context->GetNodeType();
         fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
         if (platformInfoPtr == nullptr) {
@@ -103,13 +102,13 @@ public:
             return ge::GRAPH_FAILED;
         }
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-        npuArch = static_cast<int32_t>(ascendcPlatform.GetCurNpuArch());
-        OP_LOGI(context, "NpuArch is %d", npuArch);
-        if (npuArch == static_cast<int32_t>(NpuArch::DAV_RESV)) {
-            OPS_REPORT_VECTOR_INNER_ERR(op_type, "Do op tiling failed, cannot find npuArch.");
+        soc_version = static_cast<int32_t>(ascendcPlatform.GetSocVersion());
+        OP_LOGI(context, "soc version is %d", soc_version);
+        if (soc_version == static_cast<int32_t>(platform_ascendc::SocVersion::RESERVED_VERSION)) {
+            OPS_REPORT_VECTOR_INNER_ERR(op_type, "Do op tiling failed, cannot find soc version.");
             return ge::GRAPH_FAILED;
         }
-        auto tilingTemplateRegistryMap = GetTilingTemplates(op_type, npuArch);
+        auto tilingTemplateRegistryMap = GetTilingTemplates(op_type, soc_version);
         OP_LOGI(context, "op_type: %s", op_type);
         for (auto it = tilingTemplateRegistryMap.begin(); it != tilingTemplateRegistryMap.end(); ++it) {
             auto tilingTemplate = it->second(context);
@@ -122,8 +121,7 @@ public:
                 OP_LOGI(context, "Ignore general op tiling priority=%d", it->first);
             }
         }
-        // arch35各模板tiling切换至注册方式中，报error会导致图模式下沉场景执行失败
-        OP_LOGW(op_type, "Do op tiling failed, no valid template is found.");
+        OPS_REPORT_VECTOR_INNER_ERR(op_type, "Do op tiling failed, no valid template is found.");
         return ge::GRAPH_FAILED;
     }
 

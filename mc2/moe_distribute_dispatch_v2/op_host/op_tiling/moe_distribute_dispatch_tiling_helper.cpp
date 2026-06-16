@@ -15,7 +15,7 @@
 
 #include "moe_distribute_dispatch_tiling_helper.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 
 using namespace ge;
 

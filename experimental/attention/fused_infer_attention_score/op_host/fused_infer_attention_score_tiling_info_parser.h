@@ -47,8 +47,6 @@ public:
     void GetOutputParaInfo();
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetKvCache();
-    ge::graphStatus GetTensorListCache(uint32_t index, const std::string &name,
-                                       std::vector<gert::StorageShape *> &cache);
     ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetEmptyTensorFlag();

@@ -73,6 +73,11 @@ public:
     __aicore__ inline void ComputeMm2(const AttentionCommon::RunInfo &info);
 
 protected:
+    template <typename T> __aicore__ inline T Align(T num, T rnd)
+    {
+        return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
+    }
+
     template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
     {
         if constexpr (IsSameType<T, int4b_t>::value) {
@@ -545,12 +550,12 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
     // 最外层还需要一层m的循环
     uint32_t mSize = mSplitInfo.nBufferDealM;
     uint32_t mL1Size = M_L1_SPLIT_SIZE;
-    uint32_t mL1SizeAlign = AttentionCommon::Align(M_L1_SPLIT_SIZE, 16U);
+    uint32_t mL1SizeAlign = Align(M_L1_SPLIT_SIZE, 16U);
     uint32_t mL1Loops = (mSize + M_L1_SPLIT_SIZE - 1) / M_L1_SPLIT_SIZE;
 
     uint32_t nSize = info.actualSingleProcessSInnerSize;
     uint32_t nL1Size = N_L1_SPLIT_SIZE;
-    uint32_t nL1SizeAlign = AttentionCommon::Align(N_L1_SPLIT_SIZE, 16U);
+    uint32_t nL1SizeAlign = Align(N_L1_SPLIT_SIZE, 16U);
     uint32_t nL1Loops = (nSize + N_L1_SPLIT_SIZE - 1) / N_L1_SPLIT_SIZE;
 
     uint32_t kSize = 576;
@@ -575,7 +580,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
         if (nL1 == (nL1Loops - 1)) {
             // 尾块重新计算size
             nL1Size = nSize - (nL1Loops - 1) * N_L1_SPLIT_SIZE;
-            nL1SizeAlign = AttentionCommon::Align(nL1Size, 16U);
+            nL1SizeAlign = Align(nL1Size, 16U);
         }
 
         for (uint32_t kL1 = 0; kL1 < kL1Loops; kL1++) { // L1切k, 576/288, 这里不考虑d泛化
@@ -662,13 +667,13 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
             WaitFlag<HardEvent::MTE2_MTE1>(mte21KVIds[kb]);
 #endif
             mL1Size = M_L1_SPLIT_SIZE;
-            mL1SizeAlign = AttentionCommon::Align(M_L1_SPLIT_SIZE, 16U);
+            mL1SizeAlign = Align(M_L1_SPLIT_SIZE, 16U);
             for (uint32_t mL1 = 0; mL1 < mL1Loops; mL1++) {
                 uint32_t aL1PaddingSize = 0; // 用于使左矩阵对齐到尾部, 以保证两块32K内存连续
                 if (mL1 == (mL1Loops - 1)) {
                     // 尾块重新计算size
                     mL1Size = mSize - (mL1Loops - 1) * M_L1_SPLIT_SIZE;
-                    mL1SizeAlign = AttentionCommon::Align(mL1Size, 16U);
+                    mL1SizeAlign = Align(mL1Size, 16U);
                     aL1PaddingSize = (M_L1_SPLIT_SIZE - mL1SizeAlign) *
                                      288; // mL1SizeAlign<128 kL1=0时需要偏移, 确保qRope能一半拷贝到当前tensor,
                                           // 一半拷贝到下一个tensor
@@ -692,7 +697,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                     if (kL1 == 0) {
                         FaL1Tensor<Q_T, L1Format::NZ> dstTensor {
                             .tensor = aL1Tensor,
-                            .rowCount = AttentionCommon::Align(mL1Size, 16U)
+                            .rowCount = Align(mL1Size, 16U)
                         };
                         GmCoord gmCoord {
                             .bIdx = info.bIdx,
@@ -705,7 +710,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                         LocalTensor<Q_T> qRopeTensor = aL1Tensor[mL1SizeAlign * 256];
                         FaL1Tensor<Q_T, L1Format::NZ> dstRopeTensor {
                             .tensor = aL1Tensor[mL1SizeAlign * 256],
-                            .rowCount = AttentionCommon::Align(mL1Size, 16U)
+                            .rowCount = Align(mL1Size, 16U)
                         };
                         GmCoord gmCoordQRope {
                             .bIdx = info.bIdx,
@@ -732,7 +737,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                     } else {
                         FaL1Tensor<Q_T, L1Format::NZ> dstTensor {
                             .tensor = aL1Tensor[mL1SizeAlign * 32], // 32 : rope headDim的一半
-                            .rowCount = AttentionCommon::Align(mL1Size, 16U)
+                            .rowCount = Align(mL1Size, 16U)
                         };
                         GmCoord gmCoord {
                             .bIdx = info.bIdx,
@@ -852,7 +857,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const Attention
 
     uint32_t kSize = info.actualSingleProcessSInnerSize;
     uint32_t kL1Size = 256;
-    uint32_t kL1SizeAlign = AttentionCommon::Align(kL1Size, 16U);
+    uint32_t kL1SizeAlign = Align(kL1Size, 16U);
     uint32_t kL1Loops = (kSize + kL1Size - 1) / kL1Size;
     uint32_t kL0Size = 128;
     uint32_t kL0Loops = (kL1Size + kL0Size - 1) / kL0Size;
@@ -873,17 +878,17 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const Attention
         if (nL1 == (nL1Loops - 1)) {
             // 尾块
             nL1Size = nSize - (nL1Loops - 1) * N_L1_SPLIT_SIZE;
-            nL1SizeAlign = AttentionCommon::Align(nL1Size, 16U);
+            nL1SizeAlign = Align(nL1Size, 16U);
         }
 
         // k l1写成一个循环, 和mm1保持一致
         kL1Size = 256;
-        kL1SizeAlign = AttentionCommon::Align(kL1Size, 16U);
+        kL1SizeAlign = Align(kL1Size, 16U);
         for (uint32_t k1 = 0; k1 < kL1Loops; k1++) { // k切L1, 这里套了一层l0来操作
             if (k1 == (kL1Loops - 1)) {
                 // 尾块
                 kL1Size = kSize - (kL1Loops - 1) * 256;
-                kL1SizeAlign = AttentionCommon::Align(kL1Size, 16U);
+                kL1SizeAlign = Align(kL1Size, 16U);
             }
 #ifdef BASE_MM
             mm2A = l1KV3Buffers.Get();
@@ -904,7 +909,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const Attention
                 if (kL1 == kOffset + kL0Loops - 1U) {
                     // 尾块
                     kL0Size = kL1Size - (kL0Loops - 1U) * kL0Size;
-                    kL0SizeAlign = AttentionCommon::Align(kL0Size, 16U);
+                    kL0SizeAlign = Align(kL0Size, 16U);
                 }
                 FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
                     .tensor = bL1Tensor[(kL1 - kOffset) * 128U * N_L1_SPLIT_SIZE],
@@ -933,7 +938,7 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm2(const Attention
                 if (mL1 == (mL1Loops - 1)) {
                     // 尾块
                     mL1Size = mSize - (mL1Loops - 1) * M_L1_SPLIT_SIZE;
-                    mL1SizeAlign = AttentionCommon::Align(mL1Size, 16U);
+                    mL1SizeAlign = Align(mL1Size, 16U);
                 }
 
                 uint32_t mIdx = mBaseIdx + mL1;

@@ -13,7 +13,7 @@
  * \brief
  */
 #include "matmul_common_infershape.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 using namespace gert;
 namespace {
 constexpr size_t BATCH_MATMUL_MIN_SHAPE_SIZE = 2;

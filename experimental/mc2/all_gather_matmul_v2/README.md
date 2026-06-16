@@ -95,7 +95,7 @@ MC<sup>2</sup>通算融合算子的性能收益主要来自于通信、计算的
 ### 传统实现分析
 
 ```cpp
-// all_gather_matmul_fp16_bf16.h关键代码
+// all_gather_matmul_fp16_bf16.h 关键代码
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::Process()
 {
     if ASCEND_IS_AIC {
@@ -133,7 +133,7 @@ AllGather通信会将其他卡数据全部收取到本卡上，然后启动计�
 ![all_gather_matmul_demo_2](./docs/images/image-2.jpg)
 
 ```cpp
-// all_gather_matmul_fp16_bf16.h关键代码
+// all_gather_matmul_fp16_bf16.h 关键代码
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::InnerProcess()
 {
@@ -185,7 +185,7 @@ AllGatherMatmul算子通过将通信输入的矩阵切分为多块，主块数�
 ![all_gather_matmul_demo_3](./docs/images/image-3.jpg)
 
 ```cpp
-// all_gather_matmul_fp16_bf16.h关键代码
+// all_gather_matmul_fp16_bf16.h 关键代码
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::MatmulKernelComputeGather(
     GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData& tiling, uint32_t count, bool isLast, bool isTail)

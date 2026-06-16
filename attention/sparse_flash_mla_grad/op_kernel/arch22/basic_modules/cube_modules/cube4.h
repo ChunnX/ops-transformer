@@ -39,13 +39,7 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset,
 
     int64_t mm4ResOutBaseOffset;
     if constexpr (MODE == SMLAG_SCFA_MODE) {
-        if (!runInfo.isOri) {
-            mm4ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDTotal + cBlockIdx * selectedBlockCount * dimDTotal;
-            mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
-        } else {
-            mm4ResOutBaseOffset = runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal;
-            mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + usedWorkspaceLen / sizeof(float));
-        }
+        mm4ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * (selectedBlockCount + oriWinLen) * dimDTotal + cBlockIdx * (selectedBlockCount + oriWinLen) * dimDTotal;
     } else {
         mm4ResOutBaseOffset = runInfo.isOri ? 
                               runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal :
@@ -56,8 +50,7 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset,
         CopyGmToL1(l1_ds_tensor, dsWorkspaceGm[dsGmOffset], mmParam.singleK, selectedCntOffset * selectedBlockSize, singleN);
     }
     for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {
-        int64_t l1Offset =
-            static_cast<int64_t>(mIdx - blkCntOffset) * selectedBlockSize * AlignTo<int64_t>(mmParam.singleK, SIZE_16);
+        int32_t l1Offset = (mIdx - blkCntOffset) * selectedBlockSize * AlignTo<int64_t>(mmParam.singleK, SIZE_16);
 
         mmParam.singleN = perLoopDSize;
         mmParam.singleM = min(selectedBlockSize * blockOffset, selectedCntOffset * selectedBlockSize - (mIdx - blkCntOffset) * selectedBlockSize);
@@ -90,15 +83,9 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset,
 
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            if (runInfo.isOri) {
-                MmadInnerWithSync<T1, true>(l0cTensor, current_l1_ds_tensor, l1_query_tensor,
+            MmadInnerWithSync<T1, MODE!=SMLAG_SCFA_MODE>(l0cTensor, current_l1_ds_tensor, l1_query_tensor,
                     aL0TensorPingPong, bL0TensorPingPong,
                     mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm4ResWorkspaceGm[currentOutGmOffset]);
-            } else {
-                MmadInnerWithSync<T1, MODE!=SMLAG_SCFA_MODE>(l0cTensor, current_l1_ds_tensor, l1_query_tensor,
-                    aL0TensorPingPong, bL0TensorPingPong,
-                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm4ResWorkspaceGm[currentOutGmOffset]);
-            }
             SetFlag<HardEvent::MTE1_MTE2>(MM_L1_QUERY_EVENTS[ping_pong_flag_l1_query_]);
             UpdatePingPongFlag(ping_pong_flag_l0c_);
             UpdatePingPongFlag(ping_pong_flag_l1_query_);
@@ -116,15 +103,9 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset,
 
         int64_t currentOutGmOffset = mm4ResOutOffset + (dLoopTimes - 1) * perLoopDSize;
         
-        if (runInfo.isOri) {
-            MmadInnerWithSync<T1, true>(l0cTensor, current_l1_ds_tensor, l1_query_tensor,
-                    aL0TensorPingPong, bL0TensorPingPong,
-                    mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_, true, mm4ResWorkspaceGm[currentOutGmOffset]);
-        } else {
-            MmadInnerWithSync<T1, MODE!=SMLAG_SCFA_MODE>(l0cTensor, current_l1_ds_tensor, l1_query_tensor,
-                    aL0TensorPingPong, bL0TensorPingPong,
-                    mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_, true, mm4ResWorkspaceGm[currentOutGmOffset]);
-        }
+        MmadInnerWithSync<T1, MODE!=SMLAG_SCFA_MODE>(l0cTensor, current_l1_ds_tensor, l1_query_tensor,
+                aL0TensorPingPong, bL0TensorPingPong,
+                mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_, ping_pong_flag_l0c_, true, mm4ResWorkspaceGm[currentOutGmOffset]);
         SetFlag<HardEvent::MTE1_MTE2>(MM_L1_QUERY_EVENTS[ping_pong_flag_l1_query_]);
         UpdatePingPongFlag(ping_pong_flag_l0c_);
         UpdatePingPongFlag(ping_pong_flag_l1_query_);

@@ -19,7 +19,7 @@
 #include "common/utils/hccl_util.h"
 #include "matmul_all_reduce_util.h"
 #include "mc2_comm_utils.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 
 using namespace op;
 
