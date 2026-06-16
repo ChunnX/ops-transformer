@@ -95,6 +95,7 @@ public:
     {
         return is_finish_;
     }
+    
     __aicore__ inline void SetBaseBlock(uint32_t s1_base_size)
     {
         this->s1_base_size_ = s1_base_size;
@@ -110,9 +111,14 @@ private:
          */
         base_s1_start_idx = this->s1_start_idx_;
         base_s1_len = GetBlockLen(this->s1_start_idx_, this->s1_end_idx_, s1_base_size_);
+        this->s1_start_idx_ += base_s1_len;
+
+        if (this->s1_start_idx_ >= this->s1_end_idx_) {
+            // 下一块遍历完，提前退出
+            return;
+        }
 
         // 判断下一块是否是有效块
-        this->s1_start_idx_ += base_s1_len;
         int32_t q_block_idx = this->s1_start_idx_ / const_info.block_x;
         int32_t kv_block_idx = s2Idx / const_info.block_y;
         while (true) {
@@ -131,6 +137,7 @@ private:
             this->is_finish_ = true;
         }
     }
+
     int32_t s1_start_idx_{0};
     int32_t s1_end_idx_{0};
     int32_t s1_base_size_{0};
@@ -198,7 +205,7 @@ public:
         this->block_y_ = tilingData->BlockY;
         this->base_m_ = tilingData->baseM;
         this->base_n_ = tilingData->baseN;
-        this->single_m_ = 1024;
+        this->single_m_ = tilingData->singleM;
         single_block_.SetBaseBlock(this->base_m_);
         if constexpr (INPUT_LAYOUT == TND) {
             UpdateSeqLen();
