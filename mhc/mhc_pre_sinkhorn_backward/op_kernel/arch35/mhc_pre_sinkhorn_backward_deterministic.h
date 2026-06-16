@@ -77,8 +77,8 @@ private:
     GlobalTensor<U>  gradXWs_;
     GlobalTensor<U>  gradNormOutWs_;
     GlobalTensor<U>  gradXFromHinWs_;
-    GlobalTensor<U>  gradAlphaPreGm_;
-    GlobalTensor<U>  gradBiasPreGm_;
+    GlobalTensor<U>  gradAlphaWs_;
+    GlobalTensor<U>  gradBiasWs_;
 
     GlobalTensor<X_T>  gradXGm_;            //输出
     GlobalTensor<U>  gradPhiGm_;
@@ -291,8 +291,8 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     LocalTensor<U> gradAlphaLocal = gradXFromHinAndAlphaAndBiasQue_.DeQue<U>();
     LocalTensor<U> gradBiasLocal = gradAlphaLocal[gradBiasOft_];
     SetAtomicAdd<U>();
-    CopyOut(gradAlphaPreWs_[gmAlphaOft], gradAlphaLocal, 1, 1, 0, 0);
-    CopyOut(gradBiasPreGm_[gmBiasOft], gradBiasLocal, 1, n_, 0, 0);
+    CopyOut(gradAlphaWs_[gmAlphaOft], gradAlphaLocal, 1, 1, 0, 0);
+    CopyOut(gradBiasWs_[gmBiasOft], gradBiasLocal, 1, n_, 0, 0);
     SetAtomicNone();
     gradXFromHinAndAlphaAndBiasQue_.FreeTensor(gradAlphaLocal);
 }
