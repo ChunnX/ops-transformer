@@ -45,10 +45,12 @@ constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = (MAX_SINGLE_MN_256_256 + 31U)
 constexpr uint32_t MAX_SINGLE_MN_128_256 = 128 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U) / ALIGN32 * ALIGN32;
 
-__aicore__ inline int64_t ComputeMaxRowGroupsStride(uint64_t maxOutputSize, uint32_t blockAivNum, uint32_t expertPerRank)
+// =================================================================================================
+// ComputeMaxRowGroupsStride：计算 rowGroupComplete 计数器中每个 expert 的 stride
+// =================================================================================================
+__aicore__ inline int64_t ComputeMaxRowGroupsStride(uint32_t bs, uint32_t epWorldSize, uint32_t blockAivNum)
 {
-    int64_t maxTokensPerExpert = Ops::Base::CeilDiv(
-        static_cast<int64_t>(maxOutputSize), static_cast<int64_t>(expertPerRank));
+    int64_t maxTokensPerExpert = bs * epWorldSize;
     int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, static_cast<int64_t>(L1_TILE_M_128));
     int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
         static_cast<int64_t>(blockAivNum) * INT_CACHELINE, ALIGN_128);

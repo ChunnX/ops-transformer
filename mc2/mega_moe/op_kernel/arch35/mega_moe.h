@@ -314,7 +314,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
 {
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         maxRowGroupsStride_ = MegaMoeImpl::ComputeMaxRowGroupsStride(
-            maxOutputSize_, blockAivNum_, expertPerRank_);
+            m_, worldSize_, blockAivNum_);
     }
     if constexpr(g_coreType == AIC) {
         return;
@@ -888,14 +888,17 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitCombineBuffers()
 {
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
-        uint32_t nAlign32 = Ops::Base::CeilAlign(k_, 32U);
+        uint32_t nAlign32 = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_32));
         uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
-        uint32_t quantRowSizeBytes = Ops::Base::CeilAlign(k_ + nScale, 32U);
+        uint32_t quantRowSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
         uint32_t singleTokenBytes = nAlign32 * sizeof(bfloat16_t) + quantRowSizeBytes;
         combineUbTensorSize_ = (singleTokenBytes * 2) / sizeof(bfloat16_t);
     }
 }
 
+// =============================================
+// ProcessCombine：量化路径的 Combine 处理，等待 GMM2 完成，读取结果，量化后发送到目标 rank
+// =============================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
     GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State, uint32_t expertIdx)
@@ -906,7 +909,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
     rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.rowGroupCompletePtr);
 
     uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
-    uint32_t quantRowSizeBytes = Ops::Base::CeilAlign(k_ + nScale, 32U);
+    uint32_t quantRowSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
 
     uint32_t m_expert = Get<M_VALUE>(gmm2State.problemShape);
     uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M_128);
@@ -937,12 +940,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
     if (myRowCount > 0) {
         AscendC::SetCtrlSpr<60, 60>(0);
         int64_t offset = 0;
-        LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, myRowCount * 8);
-        offset += myRowCount * 8 * sizeof(int32_t);
+        LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, myRowCount * TRIPLE_SIZE);
+        offset += myRowCount * TRIPLE_SIZE * sizeof(int32_t);
         AscendC::GlobalTensor<int32_t> tripleGm;
         tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
-            params_.workspaceInfo.tripleInfoPtr + (expertBeforeCnt_ + rowStart + myRowOffset) * 32));
-        AscendC::DataCopy(tripleTensor, tripleGm, myRowCount * 8);
+            params_.workspaceInfo.tripleInfoPtr + (expertBeforeCnt_ + rowStart + myRowOffset) * TRIPLE_SIZE * sizeof(int32_t)));
+        AscendC::DataCopy(tripleTensor, tripleGm, myRowCount * TRIPLE_SIZE);
         PipeBarrier<PIPE_MTE2>();
         MegaMoeCombineImpl::CombineRowGroup<CombineQuantMode, bfloat16_t>(
             rowStart + myRowOffset, myRowCount, k_, expertIdx, rankId_,
@@ -985,10 +988,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit()
     uint32_t tempAddr = topKWeightsAddr + topKWeightsBufAlign;
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         uint32_t scaleNum = Ops::Base::CeilAlign(static_cast<uint32_t>(k_), static_cast<uint32_t>(ALIGN_32));
+        // Tensor用处：DeQuantMxFp8 中用于存储 bf16 格式的 scale（e8m0 转换后的中间结果）
+        // Tensor大小：scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * HALF_TO_FP32，双缓冲 + scale 扩展
         uint32_t bf16ScaleBufAlign = Ops::Base::CeilAlign(
-            static_cast<uint32_t>(scaleNum * sizeof(bfloat16_t) * 4), static_cast<uint32_t>(ALIGN_32));
+            static_cast<uint32_t>(scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * HALF_TO_FP32), static_cast<uint32_t>(ALIGN_32));
+        // Tensor用处：DeQuantMxFp8 中用于存储 fp32 格式的 scale（广播后的最终 scale）
+        // Tensor大小：scaleNum * sizeof(float) * DOUBLE_BUFFER * HALF_TO_FP32，双缓冲 + scale 扩展
         uint32_t fp32ScaleBufAlign = Ops::Base::CeilAlign(
-            static_cast<uint32_t>(scaleNum * sizeof(float) * 4), static_cast<uint32_t>(ALIGN_32));
+            static_cast<uint32_t>(scaleNum * sizeof(float) * DOUBLE_BUFFER * HALF_TO_FP32), static_cast<uint32_t>(ALIGN_32));
         bf16ScaleTensor_ = LocalTensor<bfloat16_t>(
             TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
         tempAddr += bf16ScaleBufAlign;

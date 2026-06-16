@@ -48,6 +48,9 @@ __aicore__ inline void CombineTokens(
     }
 }
 
+// =============================================
+// QuantMxFp8：将 bf16 数据量化为 MXFP8 格式
+// =============================================
 template<uint8_t QuantMode, typename ExpandXType>
 __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType>& outLocal, LocalTensor<ExpandXType>& inLocal,
     LocalTensor<float>& floatTemp, int32_t processLen)
@@ -139,6 +142,9 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType>& inLocal, LocalTensor<flo
     }
 }
 
+// =============================================
+// CombineQuantizedTokens：将量化后的 token 发送到目标 rank
+// =============================================
 template <typename QuantOutType>
 __aicore__ inline void CombineQuantizedTokens(
     uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
@@ -146,9 +152,9 @@ __aicore__ inline void CombineQuantizedTokens(
     LocalTensor<QuantOutType>& ubQuant, const Params& params)
 {
     int64_t quantRowSize = n + nScale;
-    uint32_t toRankId = tripleTensor.GetValue(batchStart * 8);
-    uint32_t tokenIdx = tripleTensor.GetValue(batchStart * 8 + 1);
-    uint32_t topkIdx = tripleTensor.GetValue(batchStart * 8 + 2);
+    uint32_t toRankId = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + RANK_ID);
+    uint32_t tokenIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOKEN_ID);
+    uint32_t topkIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOPK_INDEX);
 
     AscendC::GlobalTensor<QuantOutType> gmRemoteD;
     uint64_t gmRemoteOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
@@ -162,45 +168,56 @@ __aicore__ inline void CombineQuantizedTokens(
     AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
 }
 
+// =============================================
+// CombineRowGroup：处理一个 row group 的 Combine 操作，从 GMM2 输出读取数据，量化后发送到目标 rank
+// =============================================
 template <uint8_t QuantMode, typename T>
 __aicore__ inline void CombineRowGroup(
     uint32_t rowStart, uint32_t rowCount, uint32_t n, uint32_t groupIdx, uint32_t rankId,
     GM_ADDR gmm2OutAddr, const Params& params, LocalTensor<int32_t>& tripleTensor,
     int64_t ubTensorSize, int64_t offset, uint32_t quantRowSizeBytes)
 {
-    // 在 offset 基础上申请 combineUbTensor
     LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
     offset += ubTensorSize * sizeof(T);
     
-    // 在 offset 基础上申请 floatTemp
     uint32_t nScale = Ops::Base::CeilDiv(n, uint32_t(MXFP_SCALE_GROUP_NUM));
-    uint32_t nAlign32 = Ops::Base::CeilAlign(n, 32U);
+    uint32_t nAlign32 = Ops::Base::CeilAlign(n, static_cast<uint32_t>(ALIGN_32));
     uint32_t floatTempSize = nScale + nScale / 2;
     LocalTensor<float> floatTemp = LocalTensor<float>(TPosition::VECIN, offset, floatTempSize);
     
     GlobalTensor<T> gmm2OutGm;
     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(gmm2OutAddr));
 
+    using Fp8Type = typename std::conditional<QuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t, fp8_e5m2_t>::type;
+
     uint32_t singleTokenElems = (nAlign32 * sizeof(T) + quantRowSizeBytes) / sizeof(T);
+    DataCopyPadExtParams<T> copyPadParams{false, 0U, 0U, 0U};
+    AscendC::DataCopyExtParams gm2UbParams{
+        static_cast<uint16_t>(1),
+        static_cast<uint32_t>(n * sizeof(T)), 0, 0, 0};
+
     for (uint32_t i = 0; i < rowCount; i++) {
         uint32_t pingPong = i % 2;
         LocalTensor<T> ubBf16 = combineUbTensor[pingPong * singleTokenElems];
         LocalTensor<T> ubQuantData = ubBf16[nAlign32];
+        
+        // MTE2: read from GM
         SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
-        DataCopyPadExtParams<T> copyPadParams{false, 0U, 0U, 0U};
-        AscendC::DataCopyExtParams gm2UbParams{
-            static_cast<uint16_t>(1),
-            static_cast<uint32_t>(n * sizeof(T)), 0, 0, 0};
         AscendC::DataCopyPad(ubBf16, gmm2OutGm[(rowStart + i) * n], gm2UbParams, copyPadParams);
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
+        
+        // V: quantize
         QuantMxFp8<QuantMode, T>(ubQuantData, ubBf16, floatTemp, n);
-        SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID5>();
-        using Fp8Type = typename std::conditional<QuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t, fp8_e5m2_t>::type;
+        SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID5>();
+        
+        // MTE3: send to GM
         LocalTensor<Fp8Type> ubQuantDataFp8 = ubQuantData.template ReinterpretCast<Fp8Type>();
-        CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId,
-            tripleTensor, ubQuantDataFp8, params);
+        CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, tripleTensor,
+            ubQuantDataFp8, params);
     }
-    SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+    
+    // Wait for all MTE3 operations to complete
+    SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
 }
 
 }  // namespace MegaMoeCombineImpl
