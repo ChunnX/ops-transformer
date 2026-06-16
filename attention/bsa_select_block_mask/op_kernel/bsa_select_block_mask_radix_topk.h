@@ -1,4 +1,4 @@
-﻿#ifndef BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
+#ifndef BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
 #define BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
 
 #include "kernel_operator.h"
@@ -27,23 +27,11 @@
 #define BSA_TOPK_SMALL_SORT_DEBUG 0
 #endif
 
-#define BSA_TOPK_PRINTF(...) do { \
-    if (BSA_TOPK_DEBUG) { \
-        AscendC::printf(__VA_ARGS__); \
-    } \
-} while (0)
+#define BSA_TOPK_PRINTF(...) do {} while (0)
 
-#define BSA_TOPK_SYNC_PRINTF(...) do { \
-    if (BSA_TOPK_SYNC_PROBE) { \
-        AscendC::printf(__VA_ARGS__); \
-    } \
-} while (0)
+#define BSA_TOPK_SYNC_PRINTF(...) do {} while (0)
 
-#define BSA_TOPK_DUMP_TENSOR(...) do { \
-    if (BSA_TOPK_DEBUG) { \
-        AscendC::DumpTensor(__VA_ARGS__); \
-    } \
-} while (0)
+#define BSA_TOPK_DUMP_TENSOR(...) do {} while (0)
 
 #define BSA_TOPK_PIPE_ALL() do { \
     if (BSA_TOPK_PIPE_ALL_PROBE) { \
@@ -235,7 +223,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
     this->tileNumBy3Remain_ = static_cast<uint32_t>(myTileNum % MAX_TILE_NUM_IN_UB_BY3);
 
     if (BSA_TOPK_SMALL_SORT_DEBUG && sortLen_ <= 64 && GetBlockIdx() == 0) {
-        AscendC::printf(
+        BSA_TOPK_PRINTF(
             "[SDBG100] sortLen=%lu k=%lu tileLen=%lu totalTile=%lu tileStart=%lu tileNum=%lu "
             "tailTileLen=%lu repeat=%u remain=%u aiv=%u\n",
             sortLen_, kValue_, tileLen_, totalTileNum_, tileStartId_, tileNum_,
@@ -1169,7 +1157,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
     int32_t remainCoreBoundaryNum = static_cast<int32_t>(remainK_) - cumSumValuePrev;
 
     if (BSA_TOPK_SMALL_SORT_DEBUG && sortLen_ <= 64 && GetBlockIdx() == 0) {
-        AscendC::printf(
+        BSA_TOPK_PRINTF(
             "[SDBG550] reduceBoundary=%u cumPrev=%d remainCore=%d remainK=%lu boundary=%d prev=%d\n",
             reduceSumValue, cumSumValuePrev, remainCoreBoundaryNum, remainK_,
             boundaryBin, boundaryBinPrev);
@@ -1269,7 +1257,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::WriteCoreTopKFromWs(
         BSA_TOPK_PRINTF("[DUMP570] WriteCoreTopKFromWs: totalTileTopKInCore=%d\n", totalTileTopKInCore);
     }
     if (BSA_TOPK_SMALL_SORT_DEBUG && sortLen_ <= 64 && GetBlockIdx() == 0) {
-        AscendC::printf("[SDBG570] totalTileTopKInCore=%d\n", totalTileTopKInCore);
+        BSA_TOPK_PRINTF("[SDBG570] totalTileTopKInCore=%d\n", totalTileTopKInCore);
     }
 
     CopyOutCoreTopK(resTensor, totalTileTopKInCore);
@@ -1287,7 +1275,7 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
     FindBoundaryBin(globalHist, roundId);
 
     if (BSA_TOPK_SMALL_SORT_DEBUG && sortLen_ <= 64 && GetBlockIdx() == 0) {
-        AscendC::printf(
+        BSA_TOPK_PRINTF(
             "[SDBG500] round=%d remainBefore=%lu hist=[%d,%d,%d,%d] boundary=%d prev=%d involved=0x%04x\n",
             roundId, remainK_, globalHist.GetValue(0), globalHist.GetValue(1),
             globalHist.GetValue(2), globalHist.GetValue(3), boundaryBin, boundaryBinPrev,
@@ -1309,7 +1297,7 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
     }
 
     if (BSA_TOPK_SMALL_SORT_DEBUG && sortLen_ <= 64 && GetBlockIdx() == 0) {
-        AscendC::printf(
+        BSA_TOPK_PRINTF(
             "[SDBG590] round=%d remainAfter=%lu totalDefinitely=%lu isLast=%d\n",
             roundId, remainK_, totalDefinitelyInTopK_, static_cast<int32_t>(isLastRound));
     }
@@ -1344,7 +1332,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
         }
 
         if (BSA_TOPK_SMALL_SORT_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0) {
-            AscendC::printf("[SDBG705] scalar GT writeCnt=%u curTileKBefore=%d boundary=%f\n",
+            BSA_TOPK_PRINTF("[SDBG705] scalar GT writeCnt=%u curTileKBefore=%d boundary=%f\n",
                 writeCnt, curTileK, static_cast<float>(boundaryHalf));
         }
 
@@ -1370,7 +1358,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
     PipeBarrier<PIPE_V>();
 
     if (BSA_TOPK_SMALL_SORT_DEBUG && sortLen_ <= 64 && GetBlockIdx() == 0 && outputGmOffset == 0) {
-        AscendC::printf("[SDBG700] GT boundary=%f rsvdCnt=%lu curTileKBefore=%d\n",
+        BSA_TOPK_PRINTF("[SDBG700] GT boundary=%f rsvdCnt=%lu curTileKBefore=%d\n",
             static_cast<float>(boundaryHalf), rsvdCnt, curTileK);
     }
 
@@ -1439,7 +1427,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
         }
 
         if (BSA_TOPK_SMALL_SORT_DEBUG && GetBlockIdx() == 0 && outputGmOffset == 0) {
-            AscendC::printf("[SDBG805] scalar EQ writeCnt=%u curTileKBefore=%d\n", writeCnt, curTileK);
+            BSA_TOPK_PRINTF("[SDBG805] scalar EQ writeCnt=%u curTileKBefore=%d\n", writeCnt, curTileK);
         }
 
         SToMTE3Sync();
@@ -1469,11 +1457,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
     uint32_t writeCnt = BSAMin(static_cast<uint32_t>(curTileK), static_cast<uint32_t>(eqRsvdCnt));
 
     if (BSA_TOPK_SMALL_SORT_DEBUG && sortLen_ <= 64 && GetBlockIdx() == 0 && outputGmOffset == 0) {
-        AscendC::printf("[SDBG800] EQ boundary=%f eqRsvdCnt=%lu writeCnt=%u curTileKBefore=%d\n",
+        BSA_TOPK_PRINTF("[SDBG800] EQ boundary=%f eqRsvdCnt=%lu writeCnt=%u curTileKBefore=%d\n",
             static_cast<float>(boundaryHalf), eqRsvdCnt, writeCnt, curTileK);
         uint32_t printCnt = BSAMin(writeCnt, static_cast<uint32_t>(12));
         for (uint32_t i = 0; i < printCnt; i++) {
-            AscendC::printf("[SDBG801] eqIdx[%u]=%d\n", i, vecIndex.GetValue(i));
+            BSA_TOPK_PRINTF("[SDBG801] eqIdx[%u]=%d\n", i, vecIndex.GetValue(i));
         }
     }
 
@@ -1535,7 +1523,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
         MTE2ToSSync();
 
         if (BSA_TOPK_SMALL_SORT_DEBUG && sortLen_ <= 64 && GetBlockIdx() == 0) {
-            AscendC::printf("[SDBG610] repeat=%u dataNum=%u tileTopK0=%d\n",
+            BSA_TOPK_PRINTF("[SDBG610] repeat=%u dataNum=%u tileTopK0=%d\n",
                 repeatId, dataNum, tileTopK.GetValue(0));
         }
 

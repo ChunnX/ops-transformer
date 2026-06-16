@@ -21,11 +21,7 @@ using AscendC::CrossCoreWaitFlag;
 #define BSA_TILING_VERIFY_PRINT 0
 #endif
 
-#define BSA_TILING_VERIFY_PRINTF(...) do { \
-    if (BSA_TILING_VERIFY_PRINT) { \
-        AscendC::printf(__VA_ARGS__); \
-    } \
-} while (0)
+#define BSA_TILING_VERIFY_PRINTF(...) do {} while (0)
 
 template <typename BSAT> class BSASelectBlockMaskBase {
 public:
