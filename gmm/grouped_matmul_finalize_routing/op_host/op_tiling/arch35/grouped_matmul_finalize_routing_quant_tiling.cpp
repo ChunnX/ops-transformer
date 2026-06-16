@@ -575,7 +575,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
                 (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) + SCALER_FACTOR_DEFAULT;
         }
     }
-    PrintMatmulParams();
+    OP_LOGD(context_->GetNodeName(), "%ld", DefaultPrintMatmulParams());
 
     return ge::GRAPH_SUCCESS;
 }
@@ -597,11 +597,6 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::PostTiling()
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
     return ge::GRAPH_SUCCESS;
-}
-
-void GroupedMatmulFinalizeRoutingQuantTiling::PrintMatmulParams()
-{
-    OP_LOGD(context_->GetNodeName(), "%ld", DefaultPrintMatmulParams());
 }
 
 int64_t GroupedMatmulFinalizeRoutingQuantTiling::DefaultPrintMatmulParams() const
