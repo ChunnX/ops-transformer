@@ -71,7 +71,7 @@ public:
         runTimeInfo.n2Idx = this->runTimeInfoBak_.n2Idx;
         runTimeInfo.s1Len = base_s1_len;
         runTimeInfo.s2Len = this->runTimeInfoBak_.s2Len;
-        runTimeInfo.s1LenAlign = RoundUp(base_s1_start_idx, 16);
+        runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
         runTimeInfo.s2LenAlign = this->runTimeInfoBak_.s2LenAlign;
         runTimeInfo.queryGmOffset =
             GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, const_info.q_head_num,
