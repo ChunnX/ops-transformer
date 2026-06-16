@@ -147,13 +147,19 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t t
 }
 
 aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional,
-    const char *layoutQOptional, const char *layoutKOptional, const aclTensor *metadata)
+    const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKOptional,
+    const aclTensor *cmpResidualKOptional, int64_t maxSeqlenQ, int64_t maxSeqlenK, const char *layoutQOptional,
+    const char *layoutKOptional, const aclTensor *metadata)
 {
     // cu_seqlens_q 存在性校验
     if (strcmp(layoutQOptional, "TND") == 0) {
         CHECK_COND(IsTensorExistLiV2(cuSeqlensQOptional), ACLNN_ERR_PARAM_INVALID,
             "For layout_q TND, cu_seqlens_q must be provided!");
+    }
+    // layout_q BSND, seqused_q 不存在时，max_seqlen_q 不能为-1
+    if (strcmp(layoutQOptional, "BSND") == 0 && !IsTensorExistLiV2(sequsedQOptional)) {
+        CHECK_COND(maxSeqlenQ > -1, ACLNN_ERR_PARAM_INVALID,
+            "When layout_q is BSND and seqused_q is not provided, max_seqlen_q can not be -1!");
     }
     // cu_seqlens_k 存在性校验
     if (strcmp(layoutKOptional, "TND") == 0) {
@@ -164,6 +170,11 @@ aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTens
     if (strcmp(layoutKOptional, "PA_BBND") == 0) {
         CHECK_COND(IsTensorExistLiV2(sequsedKOptional), ACLNN_ERR_PARAM_INVALID,
             "For layout_k PA_BBND, seqused_k must be provided!");
+    }
+    // layout_k BSND, seqused_k 不存在时，max_seqlen_k 不能为-1
+    if (strcmp(layoutKOptional, "BSND") == 0 && !IsTensorExistLiV2(sequsedKOptional)) {
+        CHECK_COND(maxSeqlenK > -1, ACLNN_ERR_PARAM_INVALID,
+            "When layout_k is BSND and seqused_k is not provided, max_seqlen_k can not be -1!");
     }
     // cmp_residual_k 存在性校验
     if (cmpRatio != LI_V2_CMP_RATIO_LOWER_BOUND && maskMode == LI_V2_CAUSAL_MASK_MODE) {
@@ -266,8 +277,8 @@ aclnnStatus ParamsCheckLiV2(
         layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    ret = CheckExistenceLiV2(maskMode, cmpRatio, cuSeqlensQOptional, cuSeqlensKOptional, sequsedKOptional,
-        cmpResidualKOptional, layoutQOptional, layoutKOptional, metadata);
+    ret = CheckExistenceLiV2(maskMode, cmpRatio, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional,
+        sequsedKOptional, cmpResidualKOptional, maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckConsistencyLiV2(batchSize, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional,
