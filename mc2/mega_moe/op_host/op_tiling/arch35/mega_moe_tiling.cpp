@@ -73,14 +73,9 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
     OP_LOGD(nodeName, "topK is %u", tilingData->topK);
     OP_LOGD(nodeName, "aicNum is %u", tilingData->aicNum);
     OP_LOGD(nodeName, "expertPerRank is %u", tilingData->expertPerRank);
-    OP_LOGD(nodeName, "groupListType is %u", tilingData->groupListType);
 
     OP_LOGD(nodeName, "epWorldSize is %u", tilingData->epWorldSize);
     OP_LOGD(nodeName, "maxOutputSize is %u", tilingData->maxOutputSize);
-
-    OP_LOGD(nodeName, "transX is %s", (tilingData->transX ? "True" : "False"));
-    OP_LOGD(nodeName, "transW is %s", (tilingData->transW ? "True" : "False"));
-    OP_LOGD(nodeName, "transW2 is %s", (tilingData->transW2 ? "True" : "False"));
 }
 
 void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -368,8 +363,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->bs * tilingData->epWorldSize *
         std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
-    tilingData->blockAivNum = aicNum * 2;
-    tilingData->dispatchRows = 2;
+    tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -931,11 +925,6 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context,
     tilingData->hiddenDim = static_cast<uint32_t>(hiddenDim);
     tilingData->topK = static_cast<uint32_t>(topK);
     tilingData->expertPerRank = static_cast<uint32_t>(expertPerRank);
-    tilingData->groupListType = 1;
-
-    tilingData->transX = false;
-    tilingData->transW = true;
-    tilingData->transW2 = true;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -973,6 +962,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     tilingData->aicNum = aicNum;
+    tilingData->blockAivNum = aivNum;
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
             (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
