@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：在KV Cache的Epilog阶段，对KV Cache进行原地压缩更新。将`bfloat16`的激活值按逐组动态量化（Group-wise Dynamic Quantization）压缩为FP8（以`uint8`打包）格式，并按`slotMapping`散写到cache，值为 -1的token跳过不处理。支持group(bf16 scale)、group(e8m0 scale)、HiFloat8三种量化模式。
+- 接口功能：在KV Cache的Epilog阶段，对KV Cache进行原地压缩更新。将`bfloat16`的激活值按逐组动态量化（Group-wise Dynamic Quantization）压缩为FP8（以`uint8`打包）格式，并按`slotMapping`散写到cache，值为 -1的token跳过不处理。支持group(bf16 scale)、group(e8m0 scale)两种量化模式。
 
 - 计算公式：
 
@@ -27,7 +27,6 @@
 
   - 场景1（quantMode=0）：group量化，`scale`存储为`bfloat16`。
   - 场景2（quantMode=1）：group量化，`scale`存储为`float8_e8m0`，`roundScale=true`时`scale`向上取到2的幂。
-  - 场景3（quantMode=2）：HiFloat8量化，输出为$x \times xScale$后的hifloat8。
 
 - 示例：
 
@@ -137,7 +136,7 @@ aclnnStatus aclnnKvCompressEpilog(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>量化模式。</td>
-      <td>枚举值支持0、1、2，其中0表示group量化（scale存储为bfloat16），1表示group量化（scale存储为float8_e8m0），2表示HiFloat8量化。默认值为1。</td>
+      <td>枚举值支持0、1，其中0表示group量化（scale存储为bfloat16），1表示group量化（scale存储为float8_e8m0）。默认值为1。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -156,8 +155,8 @@ aclnnStatus aclnnKvCompressEpilog(
     <tr>
       <td>xScale（float）</td>
       <td>输入</td>
-      <td>HiFloat8模式（quantMode=2）下的全局scale乘数。</td>
-      <td>仅在quantMode=2时生效。默认值为1.0。</td>
+      <td>预留参数，当前未使用。</td>
+      <td>默认值为1.0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -243,8 +242,6 @@ aclnnStatus aclnnKvCompressEpilog(
 ## 约束说明
 
 - 确定性计算：aclnnKvCompressEpilog默认确定性实现。
-- 仅支持 <term>Ascend 950PR/Ascend 950DT</term> 平台。
-- cacheRef既是输入也是输出（原地操作），调用前后须为同一tensor。
 - slotMapping的维度应等于x的维度减1，即slotMapping为x除最后一维外的所有维度展平。
 - x的最后一维（d轴）需满足d % 64 == 0且d > 64，按每64个元素一组进行逐组量化。
 - slotMapping中值为 -1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。

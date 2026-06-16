@@ -36,3 +36,7 @@ from .lightning_indexer_v2 import npu_lightning_indexer_v2
 from .quant_lightning_indexer_v2 import npu_quant_lightning_indexer_v2
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
+from .kv_compress_epilog import npu_kv_compress_epilog
+from .indexer_quant_cache import npu_indexer_quant_cache
+from .graph_convert.graph_convert_kv_compress_epilog import convert_npu_kv_compress_epilog
+from .graph_convert.graph_convert_indexer_quant_cache import convert_npu_indexer_quant_cache
