@@ -16,7 +16,7 @@
 #endif
 
 #ifndef BSA_TOPK_PIPE_ALL_PROBE
-#define BSA_TOPK_PIPE_ALL_PROBE 0
+#define BSA_TOPK_PIPE_ALL_PROBE 1
 #endif
 
 #ifndef BSA_TOPK_INIT_ATTNSCORE_PROBE
@@ -35,7 +35,7 @@
 
 #define BSA_TOPK_PIPE_ALL() do { \
     if (BSA_TOPK_PIPE_ALL_PROBE) { \
-        PipeBarrier<PIPE_ALL>(); \
+        MTE3ToMTE2Sync(); \
     } \
 } while (0)
 
