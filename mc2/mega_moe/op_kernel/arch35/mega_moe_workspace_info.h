@@ -151,8 +151,7 @@ struct WorkspaceInfo {
 
             // Row group completion counters
             rowGroupCompletePtr = base + workspaceSize;
-            int64_t maxTokensPerExpert = Ops::Base::CeilDiv(
-                static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(tilingData->expertPerRank));
+            int64_t maxTokensPerExpert = static_cast<int64_t>(tilingData->bs) * tilingData->epWorldSize;
             int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, DISPATCH_WAVE_TILE_M);
             int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE, ALIGN_128);
