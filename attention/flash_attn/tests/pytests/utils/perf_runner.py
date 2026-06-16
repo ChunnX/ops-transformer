@@ -45,11 +45,15 @@ def build_case_script(case: Dict, runs: int, case_name: str, device_id: int = 0)
         "skv_t = _to_int32_tensor(skv)",
         "if layout_q == 'TND' and cu_q_t is not None:",
         "    _bs = cu_q_t.shape[0] - 1",
-        "    _msq = c.get('S1', 1)",
-        "    _msk = c.get('S2', c.get('S1', 1))",
         "else:",
         "    _bs = c.get('B', 1)",
+        "if layout_q == 'TND':",
+        "    _msq = max(sq) if sq else (int((cu_q_t[1:]-cu_q_t[:-1]).max()) if cu_q_t is not None else c.get('S1', 1))",
+        "else:",
         "    _msq = c.get('S1', 1)",
+        "if layout_kv == 'TND':",
+        "    _msk = max(skv) if skv else (int((cu_kv_t[1:]-cu_kv_t[:-1]).max()) if cu_kv_t is not None else c.get('S2', c.get('S1', 1)))",
+        "else:",
         "    _msk = c.get('S2', c.get('S1', 1))",
         "",
     ])
@@ -86,7 +90,7 @@ def build_case_script(case: Dict, runs: int, case_name: str, device_id: int = 0)
             "        metadata=meta, cu_seqlens_q=cu_q_t, cu_seqlens_kv=cu_kv_t,",
             "        seqused_q=sq_t, seqused_kv=skv_t,",
             "        softmax_scale=1/(c['D']**0.5), mask_mode=c.get('mask_mode',0),",
-            "        win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1,",
+            "        win_left=-1, win_right=-1, max_seqlen_q=_msq if layout_q=='TND' else -1, max_seqlen_kv=_msk if layout_kv=='TND' else -1,",
             "        layout_q=layout_q, layout_kv=layout_kv, layout_out=c.get('layout_out',layout_q),",
             "        return_softmax_lse=0)",
             "torch.npu.synchronize()",
@@ -127,7 +131,7 @@ def build_case_script(case: Dict, runs: int, case_name: str, device_id: int = 0)
             "        metadata=meta, cu_seqlens_q=cu_q_t, cu_seqlens_kv=cu_kv_t,",
             "        seqused_q=sq_t, seqused_kv=skv_t,",
             "        softmax_scale=1/(c['D']**0.5), mask_mode=c.get('mask_mode',0),",
-            "        win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1,",
+            "        win_left=-1, win_right=-1, max_seqlen_q=_msq if layout_q=='TND' else -1, max_seqlen_kv=_msk if layout_kv=='TND' else -1,",
             "        layout_q=layout_q, layout_kv=layout_kv, layout_out=c.get('layout_out',layout_q),",
             "        return_softmax_lse=0)",
             "torch.npu.synchronize()",
@@ -225,8 +229,6 @@ def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
         else:
             error_msg = error_msg or "no PROF directory"
             print(f"  [{name}] NO PROF_DIR {error_msg}")
-            crashed = True
-            crashed = True
             crashed = True
 
         csv_w.writerow({
@@ -385,7 +387,8 @@ def _gen_batch_hot(idx, runs, total):
         "    sq_t = torch.tensor(sq,dtype=torch.int32,device=device) if sq is not None else None",
         "    skv_t = torch.tensor(skv,dtype=torch.int32,device=device) if skv is not None else None",
         "    _bs = cu_q_t.shape[0]-1 if layout_q=='TND' and cu_q_t is not None else c.get('B',1)",
-        "    _msq = c.get('S1',1); _msk = c.get('S2',c.get('S1',1))",
+        "    _msq = max(sq) if layout_q=='TND' and sq else (int((cu_q_t[1:]-cu_q_t[:-1]).max()) if layout_q=='TND' and cu_q_t is not None else c.get('S1',1))",
+        "    _msk = max(skv) if layout_kv=='TND' and skv else (int((cu_kv_t[1:]-cu_kv_t[:-1]).max()) if layout_kv=='TND' and cu_kv_t is not None else c.get('S2',c.get('S1',1)))",
         "    if bt_dev is not None and str(layout_kv).startswith('PA_'):",
         "        _msk = max(skv) if skv is not None else _msk",
         "    meta = npu_flash_attn_metadata(",
@@ -404,7 +407,7 @@ def _gen_batch_hot(idx, runs, total):
         "            metadata=meta,cu_seqlens_q=cu_q_t,cu_seqlens_kv=cu_kv_t,",
         "            seqused_q=sq_t,seqused_kv=skv_t,",
         "            softmax_scale=1/(c['D']**0.5),mask_mode=c.get('mask_mode',0),",
-        "            win_left=-1,win_right=-1,max_seqlen_q=-1,max_seqlen_kv=-1,",
+        "            win_left=-1,win_right=-1,max_seqlen_q=_msq if layout_q=='TND' else -1,max_seqlen_kv=_msk if layout_kv=='TND' else -1,",
         "            layout_q=layout_q,layout_kv=layout_kv,layout_out=c.get('layout_out',layout_q),",
         "            return_softmax_lse=0)",
     "    torch.npu.synchronize()",
@@ -438,7 +441,8 @@ def _gen_batch_cold(idx, runs, total):
         "    sq_t = torch.tensor(sq,dtype=torch.int32,device=device) if sq is not None else None",
         "    skv_t = torch.tensor(skv,dtype=torch.int32,device=device) if skv is not None else None",
         "    _bs = cu_q_t.shape[0]-1 if layout_q=='TND' and cu_q_t is not None else c.get('B',1)",
-        "    _msq = c.get('S1',1); _msk = c.get('S2',c.get('S1',1))",
+        "    _msq = max(sq) if layout_q=='TND' and sq else (int((cu_q_t[1:]-cu_q_t[:-1]).max()) if layout_q=='TND' and cu_q_t is not None else c.get('S1',1))",
+        "    _msk = max(skv) if layout_kv=='TND' and skv else (int((cu_kv_t[1:]-cu_kv_t[:-1]).max()) if layout_kv=='TND' and cu_kv_t is not None else c.get('S2',c.get('S1',1)))",
         "    if str(layout_kv).startswith('PA_'):",
         "        _msk = max(skv) if skv is not None else _msk",
         "    meta = npu_flash_attn_metadata(",
@@ -465,7 +469,7 @@ def _gen_batch_cold(idx, runs, total):
         "            metadata=meta,cu_seqlens_q=cu_q_t,cu_seqlens_kv=cu_kv_t,",
         "            seqused_q=sq_t,seqused_kv=skv_t,",
         "            softmax_scale=1/(c['D']**0.5),mask_mode=c.get('mask_mode',0),",
-        "            win_left=-1,win_right=-1,max_seqlen_q=-1,max_seqlen_kv=-1,",
+        "            win_left=-1,win_right=-1,max_seqlen_q=_msq if layout_q=='TND' else -1,max_seqlen_kv=_msk if layout_kv=='TND' else -1,",
         "            layout_q=layout_q,layout_kv=layout_kv,layout_out=c.get('layout_out',layout_q),",
         "            return_softmax_lse=0)",
     "    torch.npu.synchronize(); torch.npu.empty_cache()",
