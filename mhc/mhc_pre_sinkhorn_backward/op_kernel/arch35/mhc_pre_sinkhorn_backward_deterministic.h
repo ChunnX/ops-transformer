@@ -50,11 +50,11 @@ private:
 private:
 
 
-    using A0Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
-    using A1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, true>;
-    using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
-    using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
-    using C2Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
+    using A0Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
+    using A1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U, true>;
+    using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
+    using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, X_T>;
+    using C2Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
 
     matmul::MatmulImpl<A0Type, BType, C1Type, C1Type, MHC_PRE_GRAD_MM1_CFG> mm1_;
     matmul::MatmulImpl<A1Type, BType, C2Type, C2Type, MHC_PRE_GRAD_MM2_CFG> mm2_;
