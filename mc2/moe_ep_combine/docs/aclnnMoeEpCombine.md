@@ -331,7 +331,7 @@ aclnnStatus aclnnMoeEpCombine(
 - 当前版本不支持bias参数，biasOptional0和biasOptional1必须传入空指针。
 - 调用接口过程中使用的epWorldSize、numExperts、numMaxTokensPerRank参数需与aclnnMoeEpDispatch保持一致。
 - 参数里Shape使用的变量如下：
-    - A：表示本卡接收的最大token数量，A = epWorldSize \* numMaxTokensPerRank。
+    - A：表示本卡接收的最大token数量，A = epWorldSize \* numMaxTokensPerRank \* K。
     - H：表示hidden size隐藏层大小。取值范围[1024, 8192]。
     - BS：表示batch sequence size，即本卡的原始token数量。
     - K：表示选取topK个专家，取值范围为1 < K ≤ 32。
