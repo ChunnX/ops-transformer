@@ -337,23 +337,23 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOptionalInputShape()
 
 ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOptionalInputDtype()
 {
-     OP_CHECK_IF(
-        (expandedXType_ != gradYType_),
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-            nodeName_, "expanded_x and grad_y",
-            (DtypeToString(expandedXType_) + " and " + DtypeToString(gradYType_)).c_str(),
-            "expanded_x and grad_y dtype must be same"),
-        return ge::GRAPH_FAILED);
-     OP_CHECK_IF(
+    OP_CHECK_IF(
         (scalesType_ != gradYType_),
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             nodeName_, "scales and grad_y", (DtypeToString(scalesType_) + " and " + DtypeToString(gradYType_)).c_str(),
             "scales and grad_y dtype must be same"),
         return ge::GRAPH_FAILED);
-     OP_CHECK_IF(
-        (expandedRowIdxType_ != ge::DataType::DT_INT32),
-        OP_LOGE_FOR_INVALID_DTYPE(nodeName_, "expanded_row_idx", DtypeToString(expandedRowIdxType_).c_str(), "INT32"),
-        return ge::GRAPH_FAILED);
+    if (CheckExpandedXAndRowIdxDtype() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckBiasExpertIdxDtype() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckBiasExpertIdxDtype()
+{
     if (isBiasExist_) {
          OP_CHECK_IF(
             (expertIdxType_ != expandedRowIdxType_),
@@ -369,6 +369,32 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOptionalInputDtype()
                 "bias and grad_y dtype must be same"),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckExpandedXAndRowIdxDtype()
+{
+    OP_CHECK_IF(
+        (expandedXType_ != gradYType_),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            nodeName_, "expanded_x and grad_y",
+            (DtypeToString(expandedXType_) + " and " + DtypeToString(gradYType_)).c_str(),
+            "expanded_x and grad_y dtype must be same"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (expandedRowIdxType_ != ge::DataType::DT_INT32),
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName_, "expanded_row_idx", DtypeToString(expandedRowIdxType_).c_str(), "INT32"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckScalesDtypeForDavid()
+{
+    OP_CHECK_IF(
+        ((scalesType_ != ge::DT_FLOAT) && (scalesType_ != ge::DT_BF16) && (scalesType_ != ge::DT_FLOAT16)),
+        OP_LOGE_FOR_INVALID_DTYPE(
+            nodeName_, "scales", DtypeToString(scalesType_).c_str(), "FLOAT, FLOAT16 or BFLOAT16"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
