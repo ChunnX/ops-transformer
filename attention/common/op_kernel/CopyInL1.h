@@ -351,9 +351,7 @@ __aicore__ inline void GmScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor, G
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt;
         }
         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim;
-        if (kvLayout == KVLAYOUT::NZ) {
-            uint32_t headStride = shape.n2Stride;
-            offset += static_cast<uint64_t>(startPos.n2Idx * headStride) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+            offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
             
             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
