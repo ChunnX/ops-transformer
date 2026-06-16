@@ -99,6 +99,9 @@
 - FIA 使用 common `vf_flash_decode.h` 时没有在算子私有文件里声明 `using AscendC::Reg::StoreDist`，而是在包含 VF 头之前先包含 `kernel_operator.h`、`kernel_operator_list_tensor_intf.h`、`kernel_tiling/kernel_tiling.h`、matmul 相关头等 CANN 上下文；QSMLA 应对齐这种 include 顺序，不修改 common 头文件。
 - FD 前用于保护 GM staging 生产/消费顺序的 `SyncAll()` 必须让 `hasLoad == 0` 的空核也参与；否则有效任务较少时空核提前 return，active 核在 FD 前全局屏障等待不到所有参与核而卡死。
 - Metadata 结束坐标是 `(BN2_END, M_END, S2_END)` 组合坐标；当 S2 split 发生在同一个 BN/M 上时，`M_END` 可能为 0 但 `S2_END != 0` 仍表示当前核有有效工作。Kernel 将右开 BN2 结束转换成循环上界时，不能只检查 `M_END != 0`，还必须检查 `S2_END != 0`。
+- `ComputeS1LoopInfo()` 处理最后一个 BN 的 `gs1LoopEndIdx` 时，同样必须把 `(M_END, S2_END)` 作为组合结束坐标判断；只有 `M_END == 0 && S2_END == 0` 才表示虚拟下一个 batch 的 S1 为 0 并回退到当前 batch 的真实 S1 结尾。S2 切分下可能出现 `M_END == 0 && S2_END != 0`，这里的 `M_END=0` 是当前 batch 的 M 坐标为 0，不是下一个 batch 的 0，因此不能回退为真实 S1 结尾。
+- `ProcessFlashDecode()` 中 `blockSumUb` 会在 `ComputeScaleValue_VF` 后保存 scale，并被后续 `ReduceFinalRes_const_VF` 在 V pipe 读取；chunk 间复用 `blockMaxUb/blockSumUb` 前必须先等上一 chunk 最后一次 V 计算完成，否则下一 chunk 的 MTE2 读入可能抢先覆盖旧 scale，表现为偶现、点位不固定的精度问题。
+- `ReduceFinalRes_const_VF()` 内部会读取 `partialOFp32` 和 `blockSumUb`，并在 `splitIdx > 0` 时读写同一块 `chunkAccumO` 做累加；`SetFlag<V_MTE2>` 前需要先 `PipeBarrier<PIPE_V>()`，让该事件真正表示本轮 V pipe 已经读完 `partialOFp32`、写完 `chunkAccumO`，否则下一 split 的 MTE2/V 可能过早复用这些 UB。
 
 ## Skills
 

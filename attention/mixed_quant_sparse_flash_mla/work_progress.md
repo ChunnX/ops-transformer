@@ -6,6 +6,9 @@
 - 2026-06-08：最终目标是为 QSMLA 算子实现 flash decode 功能。
 - 2026-06-15：按新约定，工作进展和学习进展均维护在当前算子目录。
 - 2026-06-15：实现 FD N=128 staging 适配：split-G 下 staging 逻辑 M 行数改为 128，FA 写 staging 时后 64 head 增加 64 行偏移，staging logical slot 数按 cube pair 减半以保持 workspace 总量不增加；FD 阶段不引入前/后 64 head 判断，仅按 metadata 读取逻辑 M 行。
+- 2026-06-16：修复 `ComputeS1LoopInfo()` 最后 BN 的 `gs1LoopEndIdx` 判断：新增 `s2EndIdx` 入参，并将 `FA_M_END_INDEX` 局部命名改为 `gS1EndIdx`；只有 `gS1EndIdx == 0 && s2EndIdx == 0` 时才回退到当前 batch 真实 S1 结尾，避免 S2 切分场景 `M_END=0, S2_END!=0` 中“当前 batch 的 M=0”被误判为虚拟下一个 batch 的 0。
+- 2026-06-16：检查 `ProcessFlashDecode` 偶现精度/点位不固定问题，补充 FD chunk 间 `blockMaxUb/blockSumUb` 复用同步：下一 chunk GM->UB 读 max/sum 前等待上一 chunk 最后一次 `ReduceFinalRes` 的 V pipe 完成，避免 MTE2 抢先覆写 `blockSumUb`。
+- 2026-06-16：将 `ProcessFlashDecode` 中验证用的 `PipeBarrier<PIPE_ALL>()` 替换为精确 `PipeBarrier<PIPE_V>()`：`WaitFlag<MTE2_V>` 后进入 `ReduceFinalRes` 前同步 V pipe，`ReduceFinalRes` 后、`SetFlag<V_MTE2>` 前再次同步，确保 split 间复用 `partialOFp32`/`chunkAccumO` 时不会读写未完成。
 
 ## Flash Decode Progress
 

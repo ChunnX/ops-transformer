@@ -430,7 +430,8 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     uint32_t firstFdDataWorkspaceIdx =
         metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, false));
     uint32_t s2LoopLimit = 0;
-
+    printf("aicIdx: %d, bN2StartIdx: %d, gS1StartIdx: %d, s2StartIdx: %d, bN2EndIdx: %d, nextGs1Idx: %d, s2EndIdx: %d\n",
+        aicIdx, bN2StartIdx, gS1StartIdx, s2StartIdx, bN2EndIdx, nextGs1Idx, s2EndIdx);
     if (nextGs1Idx != 0 || s2EndIdx != 0) {
         bN2EndIdx++;
     }
@@ -442,9 +443,8 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     runParam.firstFdDataWorkspaceIdx = firstFdDataWorkspaceIdx;
     int64_t multiCoreInnerIdx = 1;
     int64_t s2SplitIdxCounter = 0;
-    printf("#######before main loop\n");
     for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
-        printf("#######main loop\n");
+        printf("####### bnIdx: %d, bN2StartIdx: %d, bN2EndIdx: %d\n", bnIdx, bN2StartIdx, bN2EndIdx);
         bool lastBN = (bnIdx == bN2EndIdx - 1);
         runParam.boIdx = bnIdx;
         runParam.n2oIdx = 0;
@@ -453,13 +453,16 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
             this->actualSeqOriKvlenGm, this->actualSeqCmpKvlenGm, this->cmpResidualKvGm,
             this->hasCuSeqlensOriKv, this->hasCuSeqlensCmpKv,
             this->hasActualSeqQlen, this->hasActualSeqOriKvlen, this->hasActualSeqCmpKvlen);
-        ComputeS1LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, lastBN, nextGs1Idx, gS1StartIdx);
+        ComputeS1LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, lastBN, nextGs1Idx, gS1StartIdx, s2EndIdx);
 
         int64_t gS1LoopEnd = lastBN ? (runParam.gs1LoopEndIdx + PRELOAD_NUM) : runParam.gs1LoopEndIdx;
+        // printf("lastBN: %d, runParam.gs1LoopEndIdx: %d, gS1LoopEnd: %d\n", lastBN, runParam.gs1LoopEndIdx, gS1LoopEnd);
         for (int64_t gS1Index = runParam.gs1LoopStartIdx; gS1Index < gS1LoopEnd; gS1Index++) {
+            // printf("####### gS1Index: %d, runParam.gs1LoopStartIdx: %d\n", gS1Index, runParam.gs1LoopStartIdx);
             bool notLastTwoLoop = true;
             if (lastBN) {
                 int32_t extraGS1 = gS1Index - runParam.gs1LoopEndIdx;
+                // printf("####### extraGS1: %d, gS1Index: %d, runParam.gs1LoopEndIdx: %d\n", extraGS1, gS1Index, runParam.gs1LoopEndIdx);
                 switch (extraGS1) {
                     case 0:
                         notLastTwoLoop = false;
@@ -472,19 +475,39 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                         break;
                 }
             }
+            // printf("notLastTwoLoop: %d\n", notLastTwoLoop);
             if (notLastTwoLoop) {
                 this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
                 bool s1NoNeedCalc = ComputeParamS1<TEMPLATE_INTF_ARGS>(
                     runParam, this->constInfo, gS1Index, this->cuSeqlensQGm);
                 bool s2NoNeedCalc =
                     ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo);
+                // printf("s2NoNeedCalc: %d\n", s2NoNeedCalc);
                 if (!s2NoNeedCalc) {
                     bool isFirstS2RangeTask = (bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx);
                     bool isLastS2RangeTask = (lastBN && gS1Index == runParam.gs1LoopEndIdx - 1);
+                    // if (aicIdx == 2) {
+                        // printf("AIC %d before Apply: bn=%ld gS1=%ld ori=[%ld,%ld] cmp=[%ld,%ld] loopEnd=%ld s2Point=[%ld,%ld] first=%d last=%d\n",
+                        // aicIdx, bnIdx, gS1Index,
+                        // runParam.s2LineStartIdx, runParam.s2LineOriEndIdx,
+                        // runParam.s2CmpLineStartIdx, runParam.s2CmpLineEndIdx,
+                        // runParam.s2LoopEndIdx,
+                        // static_cast<int64_t>(s2StartIdx) * constInfo.s2BaseSize,
+                        // static_cast<int64_t>(s2EndIdx) * constInfo.s2BaseSize,
+                        // isFirstS2RangeTask, isLastS2RangeTask);
+                    // }
                     s2NoNeedCalc = ApplyS2MetadataRange(runParam, this->constInfo,
                         static_cast<int64_t>(s2StartIdx) * constInfo.s2BaseSize,
                         static_cast<int64_t>(s2EndIdx) * constInfo.s2BaseSize,
                         isFirstS2RangeTask, isLastS2RangeTask);
+                    // if (aicIdx == 2) {
+                    //     printf("AIC %d after Apply: s2NoNeed=%d ori=[%ld,%ld] cmp=[%ld,%ld] oriLoop=%ld cmpLoop=%ld loopEnd=%ld isSplit=%d splitIdx=%ld\n",
+                    //         aicIdx, s2NoNeedCalc,
+                    //         runParam.s2LineStartIdx, runParam.s2LineOriEndIdx,
+                    //         runParam.s2CmpLineStartIdx, runParam.s2CmpLineEndIdx,
+                    //         runParam.oriKvLoopEndIdx, runParam.cmpKvLoopEndIdx,
+                    //         runParam.s2LoopEndIdx, runParam.isS2Split, runParam.s2SplitIdx);
+                    // }
                 } else {
                     runParam.isS2Split = false;
                 }
@@ -504,7 +527,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                printf("#######s2LoopCount: %d, s2LoopLimit: %d\n", s2LoopCount, s2LoopLimit);
+                // printf("#######s2LoopCount: %d, s2LoopLimit: %d\n", s2LoopCount, s2LoopLimit);
                 if (notLastTwoLoop) {
                     RunInfo &runInfo1 = runInfo[taskId % 3];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
@@ -526,9 +549,9 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                         }
                     }
                 }
-                printf("#######taskId: %d, notLast: %d\n", taskId, notLast);
+                // printf("#######taskId: %d, notLast: %d\n", taskId, notLast);
                 if (taskId > 0 && notLast) {
-                    printf("#######yes\n");
+                    // printf("#######yes\n");
                     auto &runInfo2 = runInfo[(taskId + 2) % 3];
                     if ASCEND_IS_AIV {
                         printf("#######before ProcessVec1\n");
