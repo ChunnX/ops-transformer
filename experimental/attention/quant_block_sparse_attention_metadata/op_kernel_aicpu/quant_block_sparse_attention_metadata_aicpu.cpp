@@ -77,42 +77,24 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsCheck()
 bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
 {
     // REQUIRED_INPUT tensor check
-    // if (sparseSeqLen_ == nullptr) {
-    //     KERNEL_LOG_ERROR("sparseSeqLen is nullptr");
-    //     return false;
-    // }
-    // if (sparseSeqLen_->GetTensorShape() == nullptr || sparseSeqLen_->GetTensorShape()->GetDims() != 2) {
-    //     KERNEL_LOG_ERROR("sparseSeqLen must be 2D tensor");
-    //     return false;
-    // }
-    // if (sparseSeqLen_->GetTensorShape()->GetDims() > 0 && sparseSeqLen_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("sparseSeqLen data is nullptr");
-    //     return false;
-    // }
-    // // OPTIONAL_INPUT tensor check
-    // if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetTensorShape()->GetDims() > 0 &&
-    //     cuSeqlensQ_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("cuSeqlensQ data is nullptr");
-    //     return false;
-    // }
-    // if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetTensorShape()->GetDims() > 0 &&
-    //     cuSeqlensKv_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("cuSeqlensKv data is nullptr");
-    //     return false;
-    // }
-    // if (sequsedQ_ != nullptr && sequsedQ_->GetTensorShape()->GetDims() > 0 && sequsedQ_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("sequsedQ data is nullptr");
-    //     return false;
-    // }
-    // if (sequsedKv_ != nullptr && sequsedKv_->GetTensorShape()->GetDims() > 0 && sequsedKv_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("sequsedKv data is nullptr");
-    //     return false;
-    // }
-    // // OUTPUT tensor check
-    // if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("metaData is empty");
-    //     return false;
-    // }
+    if (sparseSeqLen_ == nullptr) {
+        KERNEL_LOG_ERROR("sparseSeqLen is nullptr");
+        return false;
+    }
+    if (sparseSeqLen_->GetTensorShape() == nullptr ||
+        (sparseSeqLen_->GetTensorShape()->GetDims() != 2 && sparseSeqLen_->GetTensorShape()->GetDims() != 3)) {
+        KERNEL_LOG_ERROR("sparseSeqLen must be 2D or 3D tensor");
+        return false;
+    }
+    if (sparseSeqLen_->GetTensorShape()->GetDims() > 0 && sparseSeqLen_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("sparseSeqLen data is nullptr");
+        return false;
+    }
+    // OUTPUT tensor check
+    if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("metaData is empty");
+        return false;
+    }
     return true;
 }
 
