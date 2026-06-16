@@ -121,6 +121,11 @@ constexpr uint32_t INT64_LENGTH_IN_INT32 = 2; // INT64 相当于 2个int32长
 constexpr uint32_t GATHER_RESULT_STRIDE = 8;
 constexpr uint32_t DATA_ALIGN = 256;
 
+enum class MaskedSelectMode : int32_t {
+    kFull = 0,
+    kGatherExternalIndex = 1,
+};
+
 template <typename T>
 class KernelMaskedSelectV3
 {
@@ -130,12 +135,17 @@ public:
 
     __aicore__ inline void Init(
         GM_ADDR x, GM_ADDR mask, GM_ADDR y, GM_ADDR sortedIndices, GM_ADDR workspace,
-        const MaskedSelectRMTilingData* maskedSelectTilingData, int64_t hasProb, TPipe* tPipe)
+        const MaskedSelectRMTilingData* maskedSelectTilingData, int64_t topK, int64_t hasProb, TPipe* tPipe,
+        MaskedSelectMode mode = MaskedSelectMode::kFull, GM_ADDR externalIndexGm = nullptr,
+        int64_t valueStreamOffset = 0)
     {
         this->pipe = tPipe;
+        this->processMode = mode;
+        this->valueStreamOffset = valueStreamOffset;
         ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
         __gm__ T* globalWorkTensor = (__gm__ T*)((__gm__ uint64_t*)workspace);
         blockIdx = GetBlockIdx();
+        this->topK = topK;
         InitForMaskedSelectTilingData(maskedSelectTilingData);
         
         this->hasProb = hasProb;
@@ -171,6 +181,15 @@ public:
         tileLengthAlign = (tileLength + alignNum - 1) / alignNum * alignNum;
 
         offsetGlobal.SetGlobalBuffer((__gm__ int32_t*)workspace, numBlocks);
+        indicesWorkspaceGm.SetGlobalBuffer((__gm__ int32_t*)workspace, tokenNum * topK);
+        if (externalIndexGm != nullptr) {
+            uint64_t totalMaskLen =
+                this->formerNum * this->formerLength + this->tailNum * this->tailLength;
+            externalIndexGlobal.SetGlobalBuffer((__gm__ int32_t*)externalIndexGm, totalMaskLen);
+        }
+        if (valueStreamOffset > 0) {
+            valueStreamGm.SetGlobalBuffer((__gm__ int32_t*)workspace + valueStreamOffset, tokenNum * topK);
+        }
         SetPipeBuffer(hasProb);
         indexLocal = indexBuf.Get<int32_t>();
         offsetLocal = offsetBuf.Get<int32_t>();
@@ -178,6 +197,11 @@ public:
 
     __aicore__ inline void Process(GM_ADDR y, GM_ADDR sortedIndices, int32_t& actualOutTokens)
     {
+        if (processMode == MaskedSelectMode::kGatherExternalIndex) {
+            ProcessGatherExternalIndex(y, sortedIndices, actualOutTokens);
+            return;
+        }
+
         if (this->blockIdx < needCoreNum) {
             int32_t loopCount = this->tileNum;
             PipeBarrier<PIPE_V>();
@@ -219,6 +243,11 @@ public:
             actualOutTokens += offsetLocal.GetValue(i);
         }
 
+        int32_t alignedTotalLength = static_cast<int32_t>(topK * tokenNum);
+        if (actualOutTokens != alignedTotalLength) {
+            return;
+        }
+
         if (this->blockIdx < needCoreNum) {
             this->outOffset = 0;
             if (hasProb) {
@@ -231,6 +260,46 @@ public:
             for (int32_t i = 0; i < tileNum; ++i) {
                 CopyIn(i);
                 Compute(i);
+                CopyIndex2WorkSpace();
+                if (hasProb) {
+                    CopyOut2GM();
+                }
+                outOffset += rsvdCnt;
+            }
+        }
+    }
+
+    __aicore__ inline void ProcessGatherExternalIndex(GM_ADDR y, GM_ADDR sortedIndices, int32_t& actualOutTokens)
+    {
+        (void)sortedIndices;
+        PipeBarrier<PIPE_ALL>();
+        DataCopyExtParams copyParams{1, static_cast<uint32_t>(numBlocks * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+        DataCopyPad(offsetLocal, offsetGlobal, copyParams, padParams);
+        PipeBarrier<PIPE_ALL>();
+
+        uint64_t ind = 0;
+        auto blockIdInNeedCore = blockIdx < needCoreNum ? blockIdx : needCoreNum;
+        for (int32_t i = 0; i < blockIdInNeedCore; i++) {
+            ind += offsetLocal.GetValue(i);
+        }
+        actualOutTokens = static_cast<int32_t>(ind);
+        for (int32_t i = blockIdInNeedCore; i < needCoreNum; i++) {
+            actualOutTokens += static_cast<int32_t>(offsetLocal.GetValue(i));
+        }
+
+        if (this->blockIdx < needCoreNum) {
+            this->outOffset = 0;
+            if (hasProb) {
+                yGlobal.SetGlobalBuffer((__gm__ T*)y + ind);
+            }
+            indexGlobal.SetGlobalBuffer((__gm__ int32_t*)valueStreamGm.GetPhyAddr() + ind);
+            PipeBarrier<PIPE_ALL>();
+
+            for (int32_t i = 0; i < tileNum; ++i) {
+                CopyInExternalIndex(i);
+                CopyIn(i);
+                ComputeExternalIndex(i);
                 CopyIndex2WorkSpace();
                 if (hasProb) {
                     CopyOut2GM();
@@ -276,6 +345,47 @@ private:
             pipe->InitBuffer(xCastBuf, this->tileLengthAlign * sizeof(half));
             pipe->InitBuffer(yCastBuf, this->tileLengthAlign * sizeof(half));
         }
+    }
+
+    __aicore__ inline void CopyInExternalIndex(int32_t progress)
+    {
+        uint64_t ind = progress * this->tileLength;
+        uint32_t length = this->tileLength;
+        if (progress == this->tileNum - 1) {
+            length = this->lasttileLength;
+        }
+        uint64_t regionOffset = 0;
+        if (blockIdx < this->formerNum) {
+            regionOffset = this->formerLength * blockIdx + ind;
+        } else {
+            regionOffset = this->formerLength * this->formerNum + this->tailLength * (blockIdx - this->formerNum) + ind;
+        }
+        DataCopyExtParams copyParams{1, static_cast<uint32_t>(length * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+        DataCopyPad(indexLocal, externalIndexGlobal[regionOffset], copyParams, padParams);
+    }
+
+    __aicore__ inline void ComputeExternalIndex(int32_t progress)
+    {
+        LocalTensor<uint8_t> maskLocal = inQueueMask.DeQue<uint8_t>();
+        LocalTensor<uint8_t> bitMaskLocal = bitMaskBuf.Get<uint8_t>();
+        uint32_t length = this->tileLength;
+        if (progress == this->tileNum - 1) {
+            length = this->lasttileLength;
+        }
+        GenerateMask(maskLocal, bitMaskLocal, length);
+        inQueueMask.FreeTensor(maskLocal);
+        if (hasProb) {
+            LocalTensor<T> yLocal = outQueueY.AllocTensor<T>();
+            LocalTensor<T> xLocal = inQueueX.DeQue<T>();
+            GatherResult(yLocal, xLocal, bitMaskLocal, length);
+            outQueueY.EnQue<T>(yLocal);
+            inQueueX.FreeTensor(xLocal);
+        }
+
+        LocalTensor<int32_t> indexOutLocal = outQueueIndex.AllocTensor<int32_t>();
+        GatherIndexResult(indexOutLocal, indexLocal, bitMaskLocal, length);
+        outQueueIndex.EnQue<int32_t>(indexOutLocal);
     }
 
     __aicore__ inline void CopyIn(int32_t progress)
@@ -519,6 +629,9 @@ private:
     GlobalTensor<uint8_t> maskGlobal;
     GlobalTensor<T> workGlobal;
     GlobalTensor<int32_t> offsetGlobal;
+    GlobalTensor<int32_t> indicesWorkspaceGm;
+    GlobalTensor<int32_t> externalIndexGlobal;
+    GlobalTensor<int32_t> valueStreamGm;
     LocalTensor<int32_t> offsetLocal;
     LocalTensor<half> maskHalfLocal;
     LocalTensor<int32_t> indexLocal;
@@ -537,12 +650,15 @@ private:
     uint64_t tailtileLength;
     uint64_t taillasttileLength;
     uint64_t tokenNum;
+    int64_t topK;
     uint64_t tileLengthAlign;
     // 本block/核的
     uint64_t tileNum;
     uint64_t tileLength;
     uint64_t lasttileLength;
     int64_t hasProb;
+    MaskedSelectMode processMode = MaskedSelectMode::kFull;
+    int64_t valueStreamOffset = 0;
     uint64_t rsvdCnt = 0;
     uint64_t outOffset = 0;
     uint32_t blockIdx = 0;

@@ -19,7 +19,6 @@
 
 namespace MoeTokenPermute {
 using namespace AscendC;
-
 template <typename T, typename T2>
 class MoeMrgsortOut
 {
@@ -40,23 +39,6 @@ private:
     __aicore__ inline void MrgsortCompute();
     __aicore__ inline void UpdateSortInfo();
     __aicore__ inline void Extract();
-    __aicore__ inline void PadOutput();
-    __aicore__ inline void PadEnsureBufSpace(int64_t& outPos, int64_t needSlots, int64_t bufCapacity);
-    __aicore__ inline void PadEmitMinusOnes(
-        int64_t& outPos, int64_t count, LocalTensor<int32_t>& outBuf, int64_t bufCapacity);
-    __aicore__ inline int32_t PadGetTokenId(const LocalTensor<float>& tempFloat, int64_t pairIdx);
-    __aicore__ inline bool PadResumeOngoing(
-        LocalTensor<float>& tempFloat, LocalTensor<int32_t>& tempInt, LocalTensor<int32_t>& outBuf,
-        int64_t topK, int64_t pairCount, int64_t bufCapacity, bool mergeFinished, int64_t& outPos,
-        int64_t& pairIdx);
-    __aicore__ inline bool PadProcessPairs(
-        LocalTensor<float>& tempFloat, LocalTensor<int32_t>& tempInt, LocalTensor<int32_t>& outBuf,
-        int64_t topK, int64_t pairCount, int64_t bufCapacity, bool mergeFinished, int64_t& outPos,
-        int64_t& pairIdx);
-    __aicore__ inline void PadFinalizeChunk(
-        LocalTensor<int32_t>& outBuf, int64_t topK, int64_t numTokens, int64_t bufCapacity,
-        bool mergeFinished, int64_t& outPos);
-    __aicore__ inline void FlushPadBuf(int64_t count);
     __aicore__ inline void CopyOut();
     __aicore__ inline void CopyOutCapacity(int64_t capacity);
     __aicore__ inline void ClearCache();
@@ -97,11 +79,6 @@ private:
     event_t eventIdMte3ToMte2;
     event_t eventIdVToMte3;
     event_t eventIdMte2ToV;
-
-    // needPad 时跨多轮归并的补齐状态（勿在 PadOutput 末尾清零 allRemainElements）
-    int32_t padNextExpectedTokenId{0};
-    int32_t padOngoingTokenId{-1};
-    int64_t padOngoingEmittedCount{0};
 };
 
 template <typename T, typename T2>
@@ -110,9 +87,6 @@ __aicore__ inline void MoeMrgsortOut<T, T2>::ClearCache()
     this->listNum = 0;
     this->allRemainElements = 0;
     this->outOffset = 0;
-    this->padNextExpectedTokenId = 0;
-    this->padOngoingTokenId = -1;
-    this->padOngoingEmittedCount = 0;
 }
 
 template <typename T, typename T2>
@@ -229,181 +203,6 @@ __aicore__ inline void MoeMrgsortOut<T, T2>::Extract()
     // sizeof(float)));
 }
 
-// 将 UB 中已补齐的 count 个 int32 写到 gmOutput1[outOffset]，并推进 outOffset
-template <typename T, typename T2>
-__aicore__ inline void MoeMrgsortOut<T, T2>::FlushPadBuf(int64_t count)
-{
-    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-    DataCopyParams params;
-    params.blockCount = 1;
-    params.blockLen = count * sizeof(int32_t);
-    SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
-    WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
-    DataCopyPadCustom(this->gmOutput1[outOffset], this->ubOutput1.template ReinterpretCast<int32_t>(), params);
-    outOffset += count;
-    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
-}
-
-// UB 输出缓冲不足 needSlots 时先 flush，再将 outPos 归零
-template <typename T, typename T2>
-__aicore__ inline void MoeMrgsortOut<T, T2>::PadEnsureBufSpace(
-    int64_t& outPos, int64_t needSlots, int64_t bufCapacity)
-{
-    if (outPos + needSlots > bufCapacity) {
-        FlushPadBuf(outPos);
-        outPos = 0;
-    }
-}
-
-// 向 outBuf 连续写入 count 个 -1，表示该 topK 槽无有效 position
-template <typename T, typename T2>
-__aicore__ inline void MoeMrgsortOut<T, T2>::PadEmitMinusOnes(
-    int64_t& outPos, int64_t count, LocalTensor<int32_t>& outBuf, int64_t bufCapacity)
-{
-    for (int64_t j = 0; j < count; j++) {
-        PadEnsureBufSpace(outPos, 1, bufCapacity);
-        outBuf.SetValue(outPos++, -1);
-    }
-}
-
-// 从 sort pair 的 key（负 float）解析 token id
-template <typename T, typename T2>
-__aicore__ inline int32_t MoeMrgsortOut<T, T2>::PadGetTokenId(
-    const LocalTensor<float>& tempFloat, int64_t pairIdx)
-{
-    return -static_cast<int32_t>(tempFloat.GetValue(pairIdx * 2));
-}
-
-// 续写上一轮 chunk 末尾未凑满 topK 的 token；返回 true 表示本轮 PadOutput 应提前结束
-template <typename T, typename T2>
-__aicore__ inline bool MoeMrgsortOut<T, T2>::PadResumeOngoing(
-    LocalTensor<float>& tempFloat, LocalTensor<int32_t>& tempInt, LocalTensor<int32_t>& outBuf,
-    int64_t topK, int64_t pairCount, int64_t bufCapacity, bool mergeFinished, int64_t& outPos,
-    int64_t& pairIdx)
-{
-    if (padOngoingTokenId < 0) {
-        return false;
-    }
-    if (pairCount > 0 && PadGetTokenId(tempFloat, 0) == padOngoingTokenId) {
-        int64_t countForToken = padOngoingEmittedCount;
-        while (pairIdx < pairCount && PadGetTokenId(tempFloat, pairIdx) == padOngoingTokenId) {
-            PadEnsureBufSpace(outPos, 1, bufCapacity);
-            outBuf.SetValue(outPos++, tempInt.GetValue(pairIdx * 2 + 1));
-            pairIdx++;
-            countForToken++;
-        }
-        bool tokenComplete = (pairIdx < pairCount) || mergeFinished;
-        if (tokenComplete) {
-            PadEmitMinusOnes(outPos, topK - countForToken, outBuf, bufCapacity);
-            padNextExpectedTokenId = padOngoingTokenId + 1;
-            padOngoingTokenId = -1;
-            padOngoingEmittedCount = 0;
-            return false;
-        }
-        padOngoingEmittedCount = countForToken;
-        if (outPos > 0) {
-            FlushPadBuf(outPos);
-        }
-        return true;
-    }
-    PadEmitMinusOnes(outPos, topK - padOngoingEmittedCount, outBuf, bufCapacity);
-    padNextExpectedTokenId = padOngoingTokenId + 1;
-    padOngoingTokenId = -1;
-    padOngoingEmittedCount = 0;
-    return false;
-}
-
-// 按 token 顺序处理当前 chunk 的 (token, position) 对并补齐 topK；跨 chunk 未完成时返回 true
-template <typename T, typename T2>
-__aicore__ inline bool MoeMrgsortOut<T, T2>::PadProcessPairs(
-    LocalTensor<float>& tempFloat, LocalTensor<int32_t>& tempInt, LocalTensor<int32_t>& outBuf,
-    int64_t topK, int64_t pairCount, int64_t bufCapacity, bool mergeFinished, int64_t& outPos,
-    int64_t& pairIdx)
-{
-    while (pairIdx < pairCount) {
-        int32_t curTokenId = PadGetTokenId(tempFloat, pairIdx);
-        while (padNextExpectedTokenId < curTokenId) {
-            PadEnsureBufSpace(outPos, topK, bufCapacity);
-            PadEmitMinusOnes(outPos, topK, outBuf, bufCapacity);
-            padNextExpectedTokenId++;
-        }
-        PadEnsureBufSpace(outPos, topK, bufCapacity);
-        int64_t startIdx = pairIdx;
-        while (pairIdx < pairCount && PadGetTokenId(tempFloat, pairIdx) == curTokenId) {
-            PadEnsureBufSpace(outPos, 1, bufCapacity);
-            outBuf.SetValue(outPos++, tempInt.GetValue(pairIdx * 2 + 1));
-            pairIdx++;
-        }
-        int64_t countForToken = pairIdx - startIdx;
-        bool tokenComplete = (pairIdx < pairCount) || mergeFinished;
-        if (tokenComplete) {
-            PadEmitMinusOnes(outPos, topK - countForToken, outBuf, bufCapacity);
-            padNextExpectedTokenId = curTokenId + 1;
-        } else {
-            padOngoingTokenId = curTokenId;
-            padOngoingEmittedCount = countForToken;
-            if (outPos > 0) {
-                FlushPadBuf(outPos);
-            }
-            return true;
-        }
-    }
-    return false;
-}
-
-// 整次归并结束时补齐尾部无 routing 的 token（每 token topK 个 -1），并 flush 剩余 UB 数据
-template <typename T, typename T2>
-__aicore__ inline void MoeMrgsortOut<T, T2>::PadFinalizeChunk(
-    LocalTensor<int32_t>& outBuf, int64_t topK, int64_t numTokens, int64_t bufCapacity,
-    bool mergeFinished, int64_t& outPos)
-{
-    if (mergeFinished) {
-        while (padNextExpectedTokenId < static_cast<int32_t>(numTokens)) {
-            PadEnsureBufSpace(outPos, topK, bufCapacity);
-            PadEmitMinusOnes(outPos, topK, outBuf, bufCapacity);
-            padNextExpectedTokenId++;
-        }
-        padOngoingTokenId = -1;
-        padOngoingEmittedCount = 0;
-    }
-    if (outPos > 0) {
-        FlushPadBuf(outPos);
-    }
-}
-
-// needPad 路径：将本轮归并结果按 token 分组并 pad 到 topK×numTokens 布局写入 sortedIndices
-template <typename T, typename T2>
-__aicore__ inline void MoeMrgsortOut<T, T2>::PadOutput()
-{
-    if (!this->param->needPad) {
-        return;
-    }
-    SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
-    int64_t topK = this->param->topK;
-    int64_t numTokens = this->param->numTokens;
-    int64_t pairCount = curLoopSortedNum;
-    int64_t bufCapacity = this->param->oneLoopMaxElements * MERGE_LIST_FOUR;
-    bool mergeFinished = (this->allRemainElements == 0);
-
-    LocalTensor<float> tempFloat = this->tempBuffer.template ReinterpretCast<float>();
-    LocalTensor<int32_t> tempInt = this->tempBuffer.template ReinterpretCast<int32_t>();
-    LocalTensor<int32_t> outBuf = this->ubOutput1.template ReinterpretCast<int32_t>();
-
-    int64_t outPos = 0;
-    int64_t pairIdx = 0;
-
-    if (PadResumeOngoing(
-            tempFloat, tempInt, outBuf, topK, pairCount, bufCapacity, mergeFinished, outPos, pairIdx)) {
-        return;
-    }
-    if (PadProcessPairs(
-            tempFloat, tempInt, outBuf, topK, pairCount, bufCapacity, mergeFinished, outPos, pairIdx)) {
-        return;
-    }
-    PadFinalizeChunk(outBuf, topK, numTokens, bufCapacity, mergeFinished, outPos);
-}
-
 template <typename T, typename T2>
 __aicore__ inline void MoeMrgsortOut<T, T2>::CopyOut()
 {
@@ -413,12 +212,7 @@ __aicore__ inline void MoeMrgsortOut<T, T2>::CopyOut()
     SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
     WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
 
-    LocalTensor<int32_t> ubOutputCast;
-    if (this->param->needPad) {
-        ubOutputCast = this->ubOutput1.template ReinterpretCast<int32_t>();
-    } else {
-        ubOutputCast = this->ubOutput2.template ReinterpretCast<int32_t>();
-    }
+    LocalTensor<int32_t> ubOutputCast = this->ubOutput2.template ReinterpretCast<int32_t>();
     DataCopyPadCustom(this->gmOutput1[outOffset], ubOutputCast, intriParams);
     outOffset += curLoopSortedNum;
 }
@@ -458,11 +252,6 @@ __aicore__ inline void MoeMrgsortOut<T, T2>::Init(MoeMrgsortParam* param, TPipe*
         }
         allRemainElements += listRemainElements[i];
     }
-    if (param->needPad) {
-        padNextExpectedTokenId = 0;
-        padOngoingTokenId = -1;
-        padOngoingEmittedCount = 0;
-    }
 }
 template <typename T, typename T2>
 __aicore__ inline void MoeMrgsortOut<T, T2>::Process(int64_t capacity)
@@ -478,7 +267,6 @@ __aicore__ inline void MoeMrgsortOut<T, T2>::Process(int64_t capacity)
     ClearCache();
 }
 
-// 归并主循环：needPad 走 PadOutput，否则 Extract + CopyOut
 template <typename T, typename T2>
 __aicore__ inline void MoeMrgsortOut<T, T2>::Process()
 {
@@ -487,12 +275,8 @@ __aicore__ inline void MoeMrgsortOut<T, T2>::Process()
         UpdateMrgParam();
         MrgsortCompute();
         UpdateSortInfo();
-        if (this->param->needPad) {
-            PadOutput();
-        } else {
-            Extract();
-            CopyOut();
-        }
+        Extract();
+        CopyOut();
     }
     ClearCache();
 }
