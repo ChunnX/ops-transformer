@@ -581,7 +581,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
     - expandScalesOptional 预留参数，当前版本不支持，传空指针即可。
     - sharedExpertXOptional 要求为2D或3D Tensor（2D时shape为 (BS, H)；3D时前两位乘积等于BS、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。
-    - epWorldSize 取值支持[2, 768]。
+    - epWorldSize 取值支持[2, 1024]。
     - moeExpertNum 取值范围(0, 1024]。
     - groupTp 当前版本不支持，传空字符即可。
     - tpWorldSize 当前版本不支持，传0即可。

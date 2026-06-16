@@ -113,7 +113,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     <td>worldSize</td>
     <td>输入</td>
     <td>通信域大小。</td>
-    <td>取值范围：[2,384]</td>
+    <td>-</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -141,8 +141,13 @@ aclnnStatus aclnnDistributeBarrierV2(
     </tr>
     </tbody></table>
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4类型。
-    - <term>Ascend 950DT</term>：timeOutOptional参数里的超时时间单位为us，建议配置5000000us，根据实际环境不同超时时间下限可能不同。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+        - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4类型。
+        - `epWorldSize`取值支持[2, 384]。
+        
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+        - timeOutOptional参数里的超时时间单位为us，建议配置5000000us，根据实际环境不同超时时间下限可能不同。
+        - `epWorldSize`取值支持[2, 1024]。
     
 - **返回值**
 
