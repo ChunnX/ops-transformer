@@ -521,16 +521,9 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::Bmm2FDOut(LocalTensor<T> 
     if constexpr (BaseClass::splitD){
         dSizeAligned64 = constInfo.dBasicBlock;
     }
-    if (constInfo.isRowInvalid) {
-        this->RowInvalid(vec2ResUb, vec2S1Idx, runInfo, constInfo, dSizeAligned64);
-        attenOut = vec2ResUb;
-        SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[0]);
-    } else {
-        SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
-        WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
-        attenOut = vec2ResUb;
-    }
+    SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
+    WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
+    attenOut = vec2ResUb;
 
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = runInfo.halfS1RealSize;
