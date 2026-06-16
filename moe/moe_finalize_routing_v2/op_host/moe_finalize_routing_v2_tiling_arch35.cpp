@@ -190,11 +190,17 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scal
 {
     auto attrsPtr = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrsPtr);
-    int64_t attrK = *(attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX));
-
+    const int64_t* attrKPtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrKPtr);
+    OP_LOGD(context_->GetNodeName(), "get k is %ld", *attrKPtr)
     if (!scalesShape) {
         hasScales_ = false;
-        k = attrK;
+        OP_CHECK_IF(
+            *attrKPtr == 0,
+            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "k",
+                "0", "k is required when scales is not provided"),
+            return ge::GRAPH_FAILED);
+        k = *attrKPtr;
         OP_CHECK_IF(
             k <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
                 std::to_string(k).c_str(), "k must be greater than 0 when scales is null."),
@@ -208,7 +214,15 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scal
         OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scales",
             std::to_string(scalesShape->GetStorageShape().GetDimNum()).c_str(), "2D"),
         return ge::GRAPH_FAILED);
-    k = scalesShape->GetStorageShape().GetDim(1);
+    int64_t scalesDim1 = scalesShape->GetStorageShape().GetDim(1);
+    if (*attrKPtr > 0) {
+        OP_CHECK_IF(
+            *attrKPtr != scalesDim1,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
+                std::to_string(*attrKPtr).c_str(), "k must equal scales dim1"),
+            return ge::GRAPH_FAILED);
+    }
+    k = scalesDim1;
     OP_CHECK_IF(
         k <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
             std::to_string(k).c_str(), "k must be greater than 0."),
@@ -369,6 +383,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckConstExpertPartShapeAndDtypeIs
 {
     // const_expert_alpha等的shape信息要与const_expert_range_num一致
     constExpertRangeNum = constantExpertEnd - constantExpertStart;
+    OP_LOGD(context_, "CheckConstExpertPartShapeAndDtypeIsValid,h is %ld, constExpertRangeNum is %ld", h, constExpertRangeNum);
     auto desc = context_->GetOptionalInputDesc(idx);
     if (desc) {
         OP_CHECK_IF(
@@ -380,11 +395,13 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::CheckConstExpertPartShapeAndDtypeIs
     }
     auto shape = context_->GetOptionalInputShape(idx);
     if (shape) {
+        OP_LOGD(context_, "CheckConstExpertPartShapeAndDtypeIsValid, idx is %ld, dim1 is %ld", idx, shape->GetStorageShape().GetDim(1));
         OP_CHECK_IF(
             shape->GetStorageShape().GetDim(1) != h,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "const_expert",
                 "invalid", "dim 1 of const expert should be h."),
             return ge::GRAPH_FAILED);
+        OP_LOGD(context_, "CheckConstExpertPartShapeAndDtypeIsValid, idx is %ld, dim0 is %ld", idx, shape->GetStorageShape().GetDim(0));
         OP_CHECK_IF(
             shape->GetStorageShape().GetDim(0) != constExpertRangeNum,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "const_expert",
@@ -493,12 +510,19 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetZeroShapeAttrsInfo(int64_t idx
     auto attrsPtr = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrsPtr);
     const auto *attrPtr = attrsPtr->GetAttrPointer<gert::ContinuousVector>(idx);
+    if (attrPtr == nullptr) {
+        OP_LOGD(context_, "DoGetZeroShapeAttrsInfo, idx is %ld, attrPtr is null.", idx);
+    }
+    if (attrPtr->GetSize() != CONST_EXPERT_ATTR_LIST_SIZE) {
+        OP_LOGD(context_, "DoGetZeroShapeAttrsInfo, attrPtr size is %ld.", attrPtr->GetSize());
+    }
     if (attrPtr != nullptr && attrPtr->GetSize() == CONST_EXPERT_ATTR_LIST_SIZE) {
         const int64_t *attrList = static_cast<const int64_t *>(attrPtr->GetData());
         start = attrList[0];
         end = attrList[1];
         OP_LOGD(context_, "Extracted input attrs start = %ld, end = %ld.", start, end);
     }
+    OP_LOGD(context_, "DoGetZeroShapeAttrsInfo, idx is %ld, start is %ld, end is %ld.", idx, start, end);
     return ge::GRAPH_SUCCESS;
 }
 
