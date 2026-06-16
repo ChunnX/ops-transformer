@@ -736,69 +736,59 @@ ge::graphStatus QuantCompressorTiling::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->ape.desc == nullptr, OP_LOGE(context_->opName, "tensor ape is nullptr"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->stateBlockTable.shape == nullptr,
+                OP_LOGE(context_->opName, "tensor stateBlockTable is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->stateBlockTable.desc == nullptr,
+                OP_LOGE(context_->opName, "tensor stateBlockTable is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->cmpKv.shape == nullptr, OP_LOGE(context_->opName, "tensor cmpKv is nullptr"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->cmpKv.desc == nullptr, OP_LOGE(context_->opName, "tensor cmpKv is nullptr"),
                 return ge::GRAPH_FAILED);
-                return ge::GRAPH_FAILED);
-                return ge::GRAPH_FAILED);
-                return ge::GRAPH_FAILED);
-                return ge::GRAPH_FAILED);
-                OP_CHECK_IF(context_->stateBlockTable.shape == nullptr,
-                            OP_LOGE(context_->opName, "tensor stateBlockTable is nullptr"), return ge::GRAPH_FAILED);
-                OP_CHECK_IF(context_->stateBlockTable.desc == nullptr,
-                            OP_LOGE(context_->opName, "tensor stateBlockTable is nullptr"), return ge::GRAPH_FAILED);
-                OP_CHECK_IF(context_->cmpKv.shape == nullptr, OP_LOGE(context_->opName, "tensor cmpKv is nullptr"),
-                            return ge::GRAPH_FAILED);
-                OP_CHECK_IF(context_->cmpKv.desc == nullptr, OP_LOGE(context_->opName, "tensor cmpKv is nullptr"),
-                            return ge::GRAPH_FAILED);
-                if (static_cast<uint8_t>(*context_->quantMode) == static_cast<uint8_t>(QUANT_MODE::HIFP8)) {
-                    OP_CHECK_IF(context_->xDescale.desc == nullptr,
-                                OP_LOGE(context_->opName, "In quant_mode = 1, tensor xDescale should not be nullptr"),
-                                return ge::GRAPH_FAILED);
-                    OP_CHECK_IF(context_->xDescale.shape == nullptr,
-                                OP_LOGE(context_->opName, "In quant_mode = 1, tensor xDescale should not be nullptr"),
-                                return ge::GRAPH_FAILED);
-                    OP_CHECK_IF(context_->wkvDescale.desc == nullptr,
-                                OP_LOGE(context_->opName, "In quant_mode = 1, tensor wkvDescale should not be nullptr"),
-                                return ge::GRAPH_FAILED);
-                    OP_CHECK_IF(context_->wkvDescale.shape == nullptr,
-                                OP_LOGE(context_->opName, "In quant_mode = 1, tensor wkvDescale should not be nullptr"),
-                                return ge::GRAPH_FAILED);
-                    OP_CHECK_IF(
-                        context_->wgateDescale.desc == nullptr,
-                        OP_LOGE(context_->opName, "In quant_mode = 1, tensor wgateDescale should not be nullptr"),
-                        return ge::GRAPH_FAILED);
-                    OP_CHECK_IF(
-                        context_->wgateDescale.shape == nullptr,
-                        OP_LOGE(context_->opName, "In quant_mode = 1, tensor wgateDescale should not be nullptr"),
-                        return ge::GRAPH_FAILED);
-                }
-                if (context_->layout == LayoutType::LAYOUT_TH) {
-                    OP_CHECK_IF(context_->cuSeqlens.desc == nullptr,
-                                OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens should not be nullptr"),
-                                return ge::GRAPH_FAILED);
-                    OP_CHECK_IF(context_->cuSeqlens.shape == nullptr,
-                                OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens should not be nullptr"),
-                                return ge::GRAPH_FAILED);
-                } else {
-                    OP_CHECK_IF(context_->cuSeqlens.desc != nullptr,
-                                OP_LOGE(context_->opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
-                                return ge::GRAPH_FAILED);
-                    OP_CHECK_IF(context_->cuSeqlens.shape != nullptr,
-                                OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens must be nullptr"),
-                                return ge::GRAPH_FAILED);
-                }
-                return ge::GRAPH_SUCCESS;
+    if (static_cast<uint8_t>(*context_->quantMode) == static_cast<uint8_t>(QUANT_MODE::HIFP8)) {
+        OP_CHECK_IF(context_->xDescale.desc == nullptr,
+                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor xDescale should not be nullptr"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(context_->xDescale.shape == nullptr,
+                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor xDescale should not be nullptr"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(context_->wkvDescale.desc == nullptr,
+                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor wkvDescale should not be nullptr"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(context_->wkvDescale.shape == nullptr,
+                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor wkvDescale should not be nullptr"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(context_->wgateDescale.desc == nullptr,
+                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor wgateDescale should not be nullptr"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(context_->wgateDescale.shape == nullptr,
+                    OP_LOGE(context_->opName, "In quant_mode = 1, tensor wgateDescale should not be nullptr"),
+                    return ge::GRAPH_FAILED);
+    }
+    if (context_->layout == LayoutType::LAYOUT_TH) {
+        OP_CHECK_IF(context_->cuSeqlens.desc == nullptr,
+                    OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens should not be nullptr"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(context_->cuSeqlens.shape == nullptr,
+                    OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens should not be nullptr"),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(context_->cuSeqlens.desc != nullptr,
+                    OP_LOGE(context_->opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(context_->cuSeqlens.shape != nullptr,
+                    OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens must be nullptr"),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QuantCompressorTiling::CheckRequiredAttrExistence() const
 {
     OP_CHECK_IF(context_->quantMode == nullptr, OP_LOGE(context_->opName, "attr quantMode is nullptr"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->cmpRatio == nullptr, OP_LOGE(context_->opName, "attr cmpRatio is nullptr"),
                 return ge::GRAPH_FAILED);
-
-                OP_CHECK_IF(context_->cmpRatio == nullptr, OP_LOGE(context_->opName, "attr cmpRatio is nullptr"),
-                            return ge::GRAPH_FAILED);
-                return ge::GRAPH_SUCCESS;
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QuantCompressorTiling::CheckFeature() const
