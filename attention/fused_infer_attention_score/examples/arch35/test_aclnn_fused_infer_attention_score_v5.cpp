@@ -91,6 +91,32 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 } // namespace
 
+float fp16_to_float(uint16_t h) {
+    uint32_t sign = ((h >> 15) & 1);
+    uint32_t exponent = ((h >> 10) & 0x1F);
+    uint32_t mantissa = (h & 0x3FF);
+    
+    uint32_t f32;
+    if (exponent == 0x1F) {
+        exponent = 0xFF;
+        mantissa = (mantissa ? (sign=0, 0x7FFFFF) : 0);
+    } else if (exponent == 0) {
+        if (mantissa != 0) {
+            exponent = 0x71;
+            do {
+                mantissa <<= 1;
+                exponent--;
+            } while (!(mantissa & 0x400));
+            mantissa &= 0x3FF;
+        }
+    } else {
+        exponent += (127 - 15);
+    }
+    
+    f32 = (sign << 31) | (exponent << 23) | (mantissa << 13);
+    return *((float*)&f32);
+}
+
 int main()
 {
     int32_t deviceId = 0;
@@ -113,13 +139,13 @@ int main()
     int64_t pseShapeSize = GetShapeSize(pseShape);
     int64_t attenShapeSize = GetShapeSize(attenShape);
     int64_t outShapeSize = GetShapeSize(outShape);
-    std::vector<float> queryHostData(queryShapeSize, 1);
-    std::vector<float> keyHostData(keyShapeSize, 1);
-    std::vector<float> valueHostData(valueShapeSize, 1);
+    std::vector<uint16_t> queryHostData(queryShapeSize, 0x3C00); // fp16 1.0
+    std::vector<uint16_t> keyHostData(keyShapeSize, 0x3C00);
+    std::vector<uint16_t> valueHostData(valueShapeSize, 0x3C00);
     std::vector<float> pseHostData(pseShapeSize, 1);
     std::vector<float> attenHostData(attenShapeSize, 1);
-    std::vector<float> outHostData(outShapeSize, 1);
-    std::vector<float> resultData(outShapeSize, 0);
+    std::vector<uint16_t> outHostData(outShapeSize, 0);
+    std::vector<uint16_t> resultData(outShapeSize, 0x3C00);
 
     void *queryDeviceAddr = nullptr;
     void *keyDeviceAddr = nullptr;
@@ -235,7 +261,8 @@ int main()
         goto RELEASE;
     }
     for (int64_t i = 0; i < outShapeSize; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+        float float_value = fp16_to_float(resultData[i]);
+        LOG_PRINT("result[%ld] is: %f\n", i, float_value);
     }
 
 RELEASE:
