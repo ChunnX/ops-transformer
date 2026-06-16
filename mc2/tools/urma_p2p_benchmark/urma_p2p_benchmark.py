@@ -1,13 +1,16 @@
 """
-URMA P2P Benchmark Tool (SQE-level HcclCombinOpParam URMA Communication)
+URMA P2P Benchmark Tool (Dual-mode: SQE/Hcomm)
 
 Dual-mode design:
+- comm_alg="sqe": SQE-level HcclCombinOpParam URMA communication (PutCommNotifySQE + DoorBell + PollCQ)
+- comm_alg="hcomm": Hcomm-level WriteNbi+Drain communication (Hcomm<COMM_PROTOCOL_UBC_CTP>)
+
+Test modes:
 - mode=0: Overhead+Latency (Per-operation timing breakdown, 256B~2MB)
 - mode=1: Bandwidth (P2P single-link throughput)
 
-Note: This tool uses SQE-level HcclCombinOpParam URMA communication. The operator
-declares HCCL communication domain via .MC2().HcclGroup({"group"}), the framework
-automatically creates HCCL context, no manual mc2Context required.
+Note: SQE mode uses .MC2().HcclGroup({"group"}) for auto context creation.
+Hcomm mode uses Host-side Mc2Context with COMM_PROTOCOL_UBC_CTP protocol.
 Operator invoked via npu_ops_transformer.ops.npu_urma_p2p_benchmark.
 """
 
@@ -69,8 +72,92 @@ def parse_args():
     parser.add_argument('--graph_type', type=int, choices=[0, 3], default=0, help='图模式: 0=单算子, 3=aclgraph')
     parser.add_argument('--output_csv', type=str, default='urma_p2p_benchmark_results.csv', help='CSV输出文件路径')
     parser.add_argument('--output_dir', type=str, default='./urma_p2p_benchmark_output', help='报告输出目录')
+    parser.add_argument('--comm_alg', choices=['sqe', 'hcomm'], default='sqe',
+                        help='通信算法: sqe=SQE级HcclCombinOpParam, hcomm=Hcomm WriteNbi+Drain')
     parser.add_argument('--dtype', choices=['fp16', 'bf16'], default='fp16', help='数据类型')
     return parser.parse_args()
+
+def compute_hcomm_phase_breakdown(perf_info_list):
+    """从kernel performance_info列表计算Hcomm模式各阶段时延统计
+
+    Hcomm模式5个timing slot + 7个padding(performance_info为int64 tensor shape (12,)):
+      [0]  HCOMM_PROCESS_START   - Process()开始
+      [1]  HCOMM_DATA_COPY_END   - 数据从GM写入本地窗口完成
+      [2]  HCOMM_WRITE_NBI_END   - WriteNbi发送完成
+      [3]  HCOMM_DRAIN_END       - Drain等待完成
+      [4]  HCOMM_NOTIFY_END      - 状态通知WriteNbi完成
+
+    所有阶段时延统一以us为单位(cycle差 / 1000 = us):
+      data_copy_us:    [1]-[0] / 1000  (PROCESS_START->DATA_COPY_END, us)
+      write_nbi_us:    [2]-[1] / 1000  (DATA_COPY_END->WRITE_NBI_END, us)
+      drain_us:        [3]-[2] / 1000  (WRITE_NBI_END->DRAIN_END, us)
+      notify_us:       [4]-[3] / 1000  (DRAIN_END->NOTIFY_END, us)
+      total_us:        [4]-[0] / 1000  (PROCESS_START->NOTIFY_END, us)
+
+    Args:
+        perf_info_list: 每次迭代的performance_info numpy数组列表，每个为shape (12,)
+
+    Returns:
+        dict，每个phase包含 mean/min/max/std/p50/p90/p99 统计值（us单位）
+    """
+    # 各阶段名称 -> (end_index, start_index) 映射
+    phases = {
+        'data_copy_us':    (1, 0),
+        'write_nbi_us':    (2, 1),
+        'drain_us':        (3, 2),
+        'notify_us':       (4, 3),
+        'total_us':        (4, 0),
+    }
+
+    result = {}
+
+    for phase_name, (end_idx, start_idx) in phases.items():
+        values_us = []
+        for perf_info in perf_info_list:
+            cycle_end = perf_info[end_idx]
+            cycle_start = perf_info[start_idx]
+            if cycle_end > cycle_start and cycle_start > 0:
+                values_us.append((cycle_end - cycle_start) / CYCLES_PER_US)
+
+        if len(values_us) > 0:
+            arr = np.array(values_us)
+            result[phase_name] = compute_statistics(arr)
+        else:
+            result[phase_name] = {}
+
+    return result
+
+
+def print_hcomm_phase_breakdown(breakdown, title="Hcomm Phase Breakdown"):
+    """打印Hcomm模式阶段分解表格
+
+    Args:
+        breakdown: compute_hcomm_phase_breakdown返回的dict
+        title: 表格标题
+    """
+    phase_labels = {
+        'data_copy_us':    'PROCESS_START->DATA_COPY_END',
+        'write_nbi_us':    'DATA_COPY_END->WRITE_NBI_END',
+        'drain_us':        'WRITE_NBI_END->DRAIN_END',
+        'notify_us':       'DRAIN_END->NOTIFY_END',
+        'total_us':        'PROCESS_START->NOTIFY_END',
+    }
+
+    print(f"\n  {title}")
+    print(f"  {'Phase':<38} {'Mean':<12} {'Min':<12} {'Max':<12} {'Std':<12} {'P50':<12} {'P90':<12} {'P99':<12}")
+    print(f"  {'-' * 122}")
+
+    for phase_name, label in phase_labels.items():
+        stats = breakdown.get(phase_name, {})
+        if not stats:
+            continue
+        print(f"  {label:<38} {stats.get('mean', 0):.4f}us    "
+              f"{stats.get('min', 0):.4f}us    "
+              f"{stats.get('max', 0):.4f}us    "
+              f"{stats.get('std', 0):.4f}us    "
+              f"{stats.get('p50', 0):.4f}us    "
+              f"{stats.get('p90', 0):.4f}us    "
+              f"{stats.get('p99', 0):.4f}us")
 
 # endregion
 
@@ -82,7 +169,7 @@ def setup_environment(args):
     global graph_type, is_full_core, core_num, aic_core_num, aiv_core_num, aiv_num
     global input_dtype, x_dtype, random_seed
     global server_num, rank_per_dev, world_size, master_ip, server_index, ranks_list, server_ranks
-    global profiling_path_base
+    global profiling_path_base, comm_alg
 
     # 图模式配置
     graph_type = args.graph_type
@@ -109,6 +196,9 @@ def setup_environment(args):
     # Profiling路径基础
     profiling_path_base = './Profiling_Result_urma_p2p_benchmark'
 
+    # 通信算法
+    comm_alg = args.comm_alg
+
     # 创建输出目录
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -134,7 +224,7 @@ def print_setting(args):
     print(f"数据大小列表: {args.data_sizes}")
     print(f"输出CSV: {args.output_csv}")
     print(f"输出目录: {args.output_dir}")
-    print(f"通信模式: SQE级HcclCombinOpParam URMA")
+    print(f"通信模式: {comm_alg}级URMA ({'SQE级HcclCombinOpParam' if comm_alg == 'sqe' else 'Hcomm WriteNbi+Drain'})")
     print(f"{'=' * 60}\n")
 
 # endregion
@@ -213,8 +303,8 @@ def cal_hccl_buffsize(bs, h, ep_world_size):
 
 # region 工具函数
 
-CYCLES_PER_US = 50  # 1 us = 50 cycles on Ascend AIV
-NS_PER_CYCLE = 20   # 1 cycle = 20ns
+CYCLES_PER_US = 1000  # cycle差 / 1000 = us
+NS_PER_CYCLE = 1     # 1 cycle = 1ns (1000 cycles per us)
 
 
 def format_data_size(bytes_size):
@@ -262,16 +352,16 @@ def compute_phase_breakdown(perf_info_list):
       [7]  POLL_CQ_END         - PollCQCompletion完成（CQ轮询确认）
       [8]  UPDATE_PICI_END     - UpdatePiciCompletion完成（PICI更新）= TOTAL_END
 
-    所有阶段时延统一以us为单位(cycle差 / 50 = us):
-      duplicate_us:           [1]-[0] / 50  (PROCESS_START->DUPLICATE_END, us)
-      sq_cq_load_us:          [2]-[1] / 50  (DUPLICATE_END->INIT_SQ_CQ_LOAD_END, us)
-      sqe_template_us:        [3]-[2] / 50  (INIT_SQ_CQ_LOAD_END->SQE_TEMPLATE_END, us)
-      process_token_us:       [4]-[3] / 50  (SQE_TEMPLATE_END->PROCESS_TOKEN_END, us)
-      p2p_send_us:            [5]-[4] / 50  (PROCESS_TOKEN_END->P2P_SEND_END, us)
-      trigger_doorbell_us:    [6]-[5] / 50  (P2P_SEND_END->DOORBELL_END, us)
-      poll_cq_us:             [7]-[6] / 50  (DOORBELL_END->POLL_CQ_END, us)
-      update_pici_us:         [8]-[7] / 50  (POLL_CQ_END->UPDATE_PICI_END, us)
-      total_us:               [8]-[0] / 50  (PROCESS_START->UPDATE_PICI_END, us)
+    所有阶段时延统一以us为单位(cycle差 / 1000 = us):
+      duplicate_us:           [1]-[0] / 1000  (PROCESS_START->DUPLICATE_END, us)
+      sq_cq_load_us:          [2]-[1] / 1000  (DUPLICATE_END->INIT_SQ_CQ_LOAD_END, us)
+      sqe_template_us:        [3]-[2] / 1000  (INIT_SQ_CQ_LOAD_END->SQE_TEMPLATE_END, us)
+      process_token_us:       [4]-[3] / 1000  (SQE_TEMPLATE_END->PROCESS_TOKEN_END, us)
+      p2p_send_us:            [5]-[4] / 1000  (PROCESS_TOKEN_END->P2P_SEND_END, us)
+      trigger_doorbell_us:    [6]-[5] / 1000  (P2P_SEND_END->DOORBELL_END, us)
+      poll_cq_us:             [7]-[6] / 1000  (DOORBELL_END->POLL_CQ_END, us)
+      update_pici_us:         [8]-[7] / 1000  (POLL_CQ_END->UPDATE_PICI_END, us)
+      total_us:               [8]-[0] / 1000  (PROCESS_START->UPDATE_PICI_END, us)
 
     Args:
         perf_info_list: 每次迭代的performance_info numpy数组列表，每个为shape (12,)
@@ -353,11 +443,10 @@ def print_phase_breakdown(breakdown, title="Phase Breakdown"):
 # region SQE级UrmaP2pBenchmark算子调用
 
 def urma_p2p_benchmark_op(x, group, world_size, max_bs, mode,
-                          ccl_buffer_size, dst_rank_id_attr, aiv_num):
-    """调用UrmaP2pBenchmark算子（SQE级HcclCombinOpParam URMA通信）
+                          ccl_buffer_size, comm_alg, dst_rank_id_attr, aiv_num):
+    """调用UrmaP2pBenchmark算子（双模式: SQE/Hcomm）
 
     通过npu_ops_transformer.ops.npu_urma_p2p_benchmark调用GE算子。
-    HCCL上下文由MC2框架基于.MC2().HcclGroup({"group"})声明自动创建。
 
     Args:
         x: 输入tensor (bs, h), dtype=float16
@@ -366,19 +455,23 @@ def urma_p2p_benchmark_op(x, group, world_size, max_bs, mode,
         max_bs: 最大batch size
         mode: 测试模式 (0=overhead+latency, 1=bandwidth)
         ccl_buffer_size: HCCL缓冲区大小
+        comm_alg: 通信算法 ("sqe"=SQE级, "hcomm"=Hcomm级)
         dst_rank_id_attr: P2P目标rank属性 (-1=全部rank)
         aiv_num: AIV核数
 
     Returns:
         (y, receive_cnt, performance_info) 输出tensor三元组
-        performance_info: int64 tensor shape (12,), 9个timing slot + 3 padding, kernel内部各阶段cycle计数
-        mode=0/1 slot语义:
+        performance_info: int64 tensor shape (12,), kernel内部各阶段cycle计数
+        SQE模式slot语义:
           [0]=PROCESS_START, [1]=DUPLICATE_END, [2]=INIT_SQ_CQ_LOAD_END,
           [3]=SQE_TEMPLATE_END, [4]=PROCESS_TOKEN_END, [5]=P2P_SEND_END,
-          [6]=DOORBELL_END, [7]=POLL_CQ_END, [8]=UPDATE_PICI_END
+          [6]=DOORBELL_END, [7]=POLL_CQ_END, [8]=UPDATE_PICI_END, [9-11]=PADDING
+        Hcomm模式slot语义:
+          [0]=HCOMM_PROCESS_START, [1]=HCOMM_DATA_COPY_END, [2]=HCOMM_WRITE_NBI_END,
+          [3]=HCOMM_DRAIN_END, [4]=HCOMM_NOTIFY_END, [5-11]=PADDING
     """
     y, receive_cnt, performance_info = npu_ops_transformer.ops.npu_urma_p2p_benchmark(
-        x, group, world_size, max_bs, mode, ccl_buffer_size, dst_rank_id_attr, aiv_num
+        x, group, world_size, max_bs, mode, ccl_buffer_size, comm_alg, dst_rank_id_attr, aiv_num
     )
     return y, receive_cnt, performance_info
 
@@ -514,6 +607,7 @@ class URMA_P2P_BENCHMARK_GRAPH_Model(torch.nn.Module):
                 max_bs=max_bs,
                 mode=mode,
                 ccl_buffer_size=ccl_buffer_size,
+                comm_alg=comm_alg,
                 dst_rank_id_attr=dst_rank_id_attr,
                 aiv_num=aiv_num,
             )
@@ -611,37 +705,21 @@ def run_urma_p2p_benchmark_npu(queue, rank, x, hcomm_info,
                                test_loop=None, test_warmup=None, test_profiling_path=None,
                                test_ccl_buffer_size=None, test_rank_per_dev=None,
                                test_master_ip=None, test_graph_type=None,
-                               test_aiv_num=None, test_input_dtype=None):
-    """执行urma_p2p_benchmark算子（SQE级HcclCombinOpParam URMA通信）
+                               test_aiv_num=None, test_input_dtype=None, test_comm_alg=None):
+    """执行urma_p2p_benchmark算子（双模式: SQE/Hcomm URMA通信）
 
     Args:
-        queue: 多进程通信队列
-        rank: 当前进程rank
-        x: 输入tensor
-        hcomm_info: HCCL通信域信息，如果为None则创建新通信域
-        test_max_bs: 最大batch size
-        test_mode: 测试模式(0=overhead+latency, 1=bandwidth)
-        test_world_size: world size
-        dst_rank_id_val: P2P目标rank ID（通过属性传递）
-        is_perf_mode: 是否为性能测试模式
-        destroy_comm: 是否在结束时销毁通信域
-        test_loop: 本次测试的循环次数
-        test_warmup: 本次测试的预热次数
-        test_profiling_path: 本次测试的profiling路径
-        test_ccl_buffer_size: HCCL缓冲区大小
-        test_rank_per_dev: 每设备rank数（spawn模式下全局变量不可用）
-        test_master_ip: HCCL主节点IP（spawn模式下全局变量不可用）
-        test_graph_type: 图模式（spawn模式下全局变量不可用）
-        test_aiv_num: AIV核数（spawn模式下全局变量不可用）
-        test_input_dtype: 输入数据类型（spawn模式下全局变量不可用）
+        ... (same as before)
+        test_comm_alg: 通信算法("sqe"/"hcomm"，spawn模式下全局变量不可用)
     """
     # spawn模式下子进程不继承全局变量，必须通过参数传递
-    global rank_per_dev, master_ip, graph_type, aiv_num, input_dtype
+    global rank_per_dev, master_ip, graph_type, aiv_num, input_dtype, comm_alg
     if test_rank_per_dev is not None: rank_per_dev = test_rank_per_dev
     if test_master_ip is not None: master_ip = test_master_ip
     if test_graph_type is not None: graph_type = test_graph_type
     if test_aiv_num is not None: aiv_num = test_aiv_num
     if test_input_dtype is not None: input_dtype = test_input_dtype
+    if test_comm_alg is not None: comm_alg = test_comm_alg
 
     set_device(rank, rank_per_dev)
 
@@ -666,7 +744,7 @@ def run_urma_p2p_benchmark_npu(queue, rank, x, hcomm_info,
     # [0]=PROCESS_START, [1]=DUPLICATE_END, [2]=INIT_SQ_CQ_LOAD_END,
     # [3]=SQE_TEMPLATE_END, [4]=PROCESS_TOKEN_END, [5]=P2P_SEND_END,
     # [6]=DOORBELL_END, [7]=POLL_CQ_END, [8]=UPDATE_PICI_END
-    # CYCLES_PER_US = 50
+    # CYCLES_PER_US = 1000
 
     performance_info_list = []  # 每次迭代的performance_info数据
 
@@ -679,6 +757,7 @@ def run_urma_p2p_benchmark_npu(queue, rank, x, hcomm_info,
                 max_bs=test_max_bs,
                 mode=test_mode,
                 ccl_buffer_size=test_ccl_buffer_size,
+                comm_alg=comm_alg,
                 dst_rank_id_attr=dst_rank_id_val,
                 aiv_num=aiv_num,
             )
@@ -697,6 +776,7 @@ def run_urma_p2p_benchmark_npu(queue, rank, x, hcomm_info,
                     max_bs=test_max_bs,
                     mode=test_mode,
                     ccl_buffer_size=test_ccl_buffer_size,
+                    comm_alg=comm_alg,
                     dst_rank_id_attr=dst_rank_id_val,
                     aiv_num=aiv_num,
                 )
@@ -758,28 +838,22 @@ def run_urma_p2p_benchmark_npu_multi_config(queue, rank, configs,
                                               test_master_ip=None,
                                               test_graph_type=None,
                                               test_aiv_num=None,
-                                              test_input_dtype=None):
+                                              test_input_dtype=None,
+                                              test_comm_alg=None):
     """多配置带宽测试，共享通信域，使用kernel timing替代msprof
 
     Args:
-        queue: 多进程通信队列
-        rank: 当前进程rank
-        configs: 配置列表，每个元素为:
-            (x, test_max_bs, test_data_size_bytes, test_world_size,
-             config_index, dst_rank_id_val, test_loop, test_warmup, ccl_buffer_size) 元组
-        test_rank_per_dev: 每设备rank数（spawn模式下全局变量不可用）
-        test_master_ip: HCCL主节点IP（spawn模式下全局变量不可用）
-        test_graph_type: 图模式（spawn模式下全局变量不可用）
-        test_aiv_num: AIV核数（spawn模式下全局变量不可用）
-        test_input_dtype: 输入数据类型（spawn模式下全局变量不可用）
+        ... (same as before)
+        test_comm_alg: 通信算法("sqe"/"hcomm"，spawn模式下全局变量不可用)
     """
     # spawn模式下子进程不继承全局变量，必须通过参数传递
-    global rank_per_dev, master_ip, graph_type, aiv_num, input_dtype
+    global rank_per_dev, master_ip, graph_type, aiv_num, input_dtype, comm_alg
     if test_rank_per_dev is not None: rank_per_dev = test_rank_per_dev
     if test_master_ip is not None: master_ip = test_master_ip
     if test_graph_type is not None: graph_type = test_graph_type
     if test_aiv_num is not None: aiv_num = test_aiv_num
     if test_input_dtype is not None: input_dtype = test_input_dtype
+    if test_comm_alg is not None: comm_alg = test_comm_alg
 
     set_device(rank, rank_per_dev)
 
@@ -825,6 +899,7 @@ def run_urma_p2p_benchmark_npu_multi_config(queue, rank, configs,
                     max_bs=test_max_bs,
                     mode=1,  # bandwidth mode
                     ccl_buffer_size=ccl_buffer_size,
+                    comm_alg=comm_alg,
                     dst_rank_id_attr=dst_rank_id_val,
                     aiv_num=aiv_num,
                 )
@@ -932,7 +1007,7 @@ def run_overhead_latency_test(args):
                 args=(result_queue, rank, x_per_rank[rank], None,
                       max_bs, mode, world_size, cur_dst_rank, True, True,
                       args.iterations, args.warmup, None, ccl_buffer_size,
-                      rank_per_dev, master_ip, graph_type, aiv_num, input_dtype)
+                      rank_per_dev, master_ip, graph_type, aiv_num, input_dtype, comm_alg)
             )
             p.start()
             processes.append(p)
@@ -955,12 +1030,20 @@ def run_overhead_latency_test(args):
                 print(f"[DEBUG] rank={raw_rank}, raw_perf_info_sample: "
                       f"[0]={sample[0]}, [1]={sample[1]}, [2]={sample[2]}, [3]={sample[3]}, "
                       f"[4]={sample[4]}, [5]={sample[5]}, [6]={sample[6]}, [7]={sample[7]}, [8]={sample[8]}")
-                has_valid_p2p = any(p[2] > p[1] for p in perf_info_list)
+                # SQE模式: sender通过(slot[2]>slot[1]), receiver排除(slot[2]<=slot[1])
+                # Hcomm模式: sender通过(slot[1]>slot[0]), receiver排除(slot[1]<=slot[0])
+                if comm_alg == 'hcomm':
+                    has_valid_p2p = any(p[1] > p[0] for p in perf_info_list)
+                else:
+                    has_valid_p2p = any(p[2] > p[1] for p in perf_info_list)
                 if has_valid_p2p:
                     all_perf_info.extend(perf_info_list)
 
-        # 计算阶段分解（全部以us为单位）
-        breakdown = compute_phase_breakdown(all_perf_info)
+        # 计算阶段分解（全部以us为单位，根据comm_alg选择解析方式）
+        if comm_alg == 'hcomm':
+            breakdown = compute_hcomm_phase_breakdown(all_perf_info)
+        else:
+            breakdown = compute_phase_breakdown(all_perf_info)
 
         result = {
             'test_type': 'latency',
@@ -975,6 +1058,7 @@ def run_overhead_latency_test(args):
             'world_size': world_size,
             'dst_rank': dst_rank_id_val if dst_rank_id_val >= 0 else 'auto',
             'dtype': x_dtype,
+            'comm_alg': comm_alg,
             'phase_breakdown': breakdown,
         }
 
@@ -987,22 +1071,31 @@ def run_overhead_latency_test(args):
         if total_us_stats:
             # 打印当前数据大小的详细结果 - 每个操作单独打印
             print(f"\n{'=' * 60}")
-            print(f"Overhead+Latency Test Result - {format_data_size(data_size_bytes)}")
+            print(f"Overhead+Latency Test Result - {format_data_size(data_size_bytes)} ({comm_alg} mode)")
             print(f"{'=' * 60}")
             print(f"Data Size: {format_data_size(data_size_bytes)}")
 
-            # 定义所有操作阶段的显示顺序和标签
-            phase_display = [
-                ('duplicate_us', 'PROCESS_START->DUPLICATE_END'),
-                ('sq_cq_load_us', 'DUPLICATE_END->INIT_SQ_CQ_LOAD_END'),
-                ('sqe_template_us', 'INIT_SQ_CQ_LOAD_END->SQE_TEMPLATE_END'),
-                ('process_token_us', 'SQE_TEMPLATE_END->PROCESS_TOKEN_END'),
-                ('p2p_send_us', 'PROCESS_TOKEN_END->P2P_SEND_END'),
-                ('trigger_doorbell_us', 'P2P_SEND_END->DOORBELL_END'),
-                ('poll_cq_us', 'DOORBELL_END->POLL_CQ_END'),
-                ('update_pici_us', 'POLL_CQ_END->UPDATE_PICI_END'),
-                ('total_us', 'PROCESS_START->UPDATE_PICI_END'),
-            ]
+            # 根据comm_alg选择显示的阶段
+            if comm_alg == 'hcomm':
+                phase_display = [
+                    ('data_copy_us', 'PROCESS_START->DATA_COPY_END'),
+                    ('write_nbi_us', 'DATA_COPY_END->WRITE_NBI_END'),
+                    ('drain_us', 'WRITE_NBI_END->DRAIN_END'),
+                    ('notify_us', 'DRAIN_END->NOTIFY_END'),
+                    ('total_us', 'PROCESS_START->NOTIFY_END'),
+                ]
+            else:
+                phase_display = [
+                    ('duplicate_us', 'PROCESS_START->DUPLICATE_END'),
+                    ('sq_cq_load_us', 'DUPLICATE_END->INIT_SQ_CQ_LOAD_END'),
+                    ('sqe_template_us', 'INIT_SQ_CQ_LOAD_END->SQE_TEMPLATE_END'),
+                    ('process_token_us', 'SQE_TEMPLATE_END->PROCESS_TOKEN_END'),
+                    ('p2p_send_us', 'PROCESS_TOKEN_END->P2P_SEND_END'),
+                    ('trigger_doorbell_us', 'P2P_SEND_END->DOORBELL_END'),
+                    ('poll_cq_us', 'DOORBELL_END->POLL_CQ_END'),
+                    ('update_pici_us', 'POLL_CQ_END->UPDATE_PICI_END'),
+                    ('total_us', 'PROCESS_START->UPDATE_PICI_END'),
+                ]
 
             for phase_key, phase_label in phase_display:
                 phase_stats = breakdown.get(phase_key, {})
@@ -1012,12 +1105,17 @@ def run_overhead_latency_test(args):
                     print(f"  P50: {phase_stats.get('p50', 0):.4f} us")
                     print(f"  P99: {phase_stats.get('p99', 0):.4f} us")
 
-            print_phase_breakdown(breakdown, f"Overhead+Latency Phase Breakdown - {format_data_size(data_size_bytes)}")
+            if comm_alg == 'hcomm':
+                print_hcomm_phase_breakdown(breakdown, f"Overhead+Latency Phase Breakdown - {format_data_size(data_size_bytes)} ({comm_alg})")
+            else:
+                print_phase_breakdown(breakdown, f"Overhead+Latency Phase Breakdown - {format_data_size(data_size_bytes)} ({comm_alg})")
 
             # 抖动分析（基于total_us）
             total_us_values = []
+            # total_us的end index不同: SQE用[8], Hcomm用[4]
+            total_end_idx = 4 if comm_alg == 'hcomm' else 8
             for perf_info in all_perf_info:
-                cycle_end = perf_info[8]
+                cycle_end = perf_info[total_end_idx]
                 cycle_start = perf_info[0]
                 if cycle_end > cycle_start and cycle_start > 0:
                     total_us_values.append((cycle_end - cycle_start) / CYCLES_PER_US)
@@ -1154,7 +1252,7 @@ def run_bandwidth_test(args):
         p = Process(
             target=run_urma_p2p_benchmark_npu_multi_config,
             args=(result_queue, rank, rank_configs,
-                  rank_per_dev, master_ip, graph_type, aiv_num, input_dtype)
+                  rank_per_dev, master_ip, graph_type, aiv_num, input_dtype, comm_alg)
         )
         p.start()
         processes.append(p)
@@ -1205,14 +1303,18 @@ def run_bandwidth_test(args):
             'world_size': world_size,
             'dst_rank': dst_rank_id_val if dst_rank_id_val >= 0 else 'auto',
             'dtype': x_dtype,
+            'comm_alg': comm_alg,
         }
 
         if config_index in config_perf_info and len(config_perf_info[config_index]) > 0:
-            # 计算阶段分解
-            breakdown = compute_phase_breakdown(config_perf_info[config_index])
+            # 计算阶段分解（根据comm_alg选择解析方式）
+            if comm_alg == 'hcomm':
+                breakdown = compute_hcomm_phase_breakdown(config_perf_info[config_index])
+            else:
+                breakdown = compute_phase_breakdown(config_perf_info[config_index])
             result['phase_breakdown'] = breakdown
 
-            # Bandwidth uses total execution time: total_us = [8]-[0] / 50
+            # Bandwidth uses total execution time: total_us = [8]-[0] / 1000
             total_us_stats = breakdown.get('total_us', {})
 
             if total_us_stats:
@@ -1240,7 +1342,10 @@ def run_bandwidth_test(args):
                       f"Mean BW: {mean_bandwidth_gbps:.2f} GB/s, "
                       f"Max BW: {max_bandwidth_gbps:.2f} GB/s, "
                       f"Mean Time: {mean_time_us:.2f} us")
-                print_phase_breakdown(breakdown, f"Bandwidth Phase Breakdown - {format_data_size(data_size_bytes)}")
+                if comm_alg == 'hcomm':
+                    print_hcomm_phase_breakdown(breakdown, f"Bandwidth Phase Breakdown - {format_data_size(data_size_bytes)} ({comm_alg})")
+                else:
+                    print_phase_breakdown(breakdown, f"Bandwidth Phase Breakdown - {format_data_size(data_size_bytes)} ({comm_alg})")
             else:
                 result['statistics'] = {}
                 result['mean_bandwidth_gbps'] = 0
@@ -1441,7 +1546,7 @@ def generate_report(results, output_dir, args):
         f.write(f"AIV核数: {aiv_num}\n")
         f.write(f"通信模式: SQE级HcclCombinOpParam URMA\n")
         f.write(f"测试时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"时延单位: us (1 us = 50 cycles on Ascend AIV)\n")
+        f.write(f"时延单位: us (cycle差 / 1000 = us)\n")
         f.write("\n")
 
         # 各测试结果
