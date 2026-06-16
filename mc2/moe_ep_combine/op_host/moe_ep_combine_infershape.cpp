@@ -5,9 +5,9 @@ namespace ops {
 
 static constexpr size_t COMBINE_INPUT_CONTEXT_INDEX = 0;
 static constexpr size_t COMBINE_INPUT_X_INDEX = 1;
-static constexpr size_t COMBINE_INPUT_DST_SLOT_IDX_INDEX = 2;
+static constexpr size_t COMBINE_INPUT_TOPK_IDX_INDEX = 2;
 static constexpr size_t COMBINE_INPUT_RECV_SRC_METADATA_INDEX = 3;
-static constexpr size_t COMBINE_INPUT_NUM_RECV_PER_RANK_INDEX = 4;
+static constexpr size_t COMBINE_INPUT_NUM_RECV_PER_EXPERT_INDEX = 4;
 static constexpr size_t COMBINE_INPUT_TOPK_WEIGHTS_OPTIONAL_INDEX = 5;
 static constexpr size_t COMBINE_INPUT_BIAS_0_INDEX = 6;
 static constexpr size_t COMBINE_INPUT_BIAS_1_INDEX = 7;
@@ -33,12 +33,12 @@ static ge::graphStatus InferShapeMoeEpCombine(gert::InferShapeContext *context)
     const gert::Shape *xShape = context->GetInputShape(COMBINE_INPUT_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xShape);
 
-    const gert::Shape *dstSlotIdxShape = context->GetInputShape(COMBINE_INPUT_DST_SLOT_IDX_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, dstSlotIdxShape);
+    const gert::Shape *topkIdxShape = context->GetInputShape(COMBINE_INPUT_TOPK_IDX_INDEX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, topkIdxShape);
 
-    int64_t numTokens = dstSlotIdxShape->GetDim(0);
+    int64_t numTokens = topkIdxShape->GetDim(0);
     int64_t hidden = xShape->GetDim(1);
-    int64_t topK = dstSlotIdxShape->GetDim(1);
+    int64_t topK = topkIdxShape->GetDim(1);
 
     gert::Shape *combinedX = context->GetOutputShape(COMBINE_OUTPUT_COMBINED_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, combinedX);

@@ -8,8 +8,10 @@ struct MoeEpCombineInfo {
     MoeEpCommonTilingData cfg;
     uint32_t hasTopkWeights     = 0;
     uint32_t aivNum             = 0;
+    uint32_t localmoeNum        = 0;
     uint64_t totalWinSizeEp     = 0;
     uint64_t totalUbSize        = 0;
+    
 };
 
 struct MoeEpCombineTilingData {

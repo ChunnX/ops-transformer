@@ -40,9 +40,9 @@
 aclnnStatus aclnnMoeEpCombineGetWorkspaceSize(
     const aclTensor*  context,
     const aclTensor*  x,
-    const aclTensor*  dstBufferSlotIdx,
+    const aclTensor*  topKIdx,
     const aclTensor*  recvSrcMetadata,
-    const aclTensor*  numRecvTokensPerRank,
+    const aclTensor*  numRecvTokensPerExpert,
     const aclTensor*  topkWeightsOptional,
     const aclTensor*  biasOptional0,
     const aclTensor*  biasOptional1,
@@ -113,9 +113,9 @@ aclnnStatus aclnnMoeEpCombine(
     <td>×</td>
     </tr>
     <tr>
-    <td>dstBufferSlotIdx（aclTensor*）</td>
+    <td>topKIdx（aclTensor*）</td>
     <td>输入</td>
-    <td>slot索引张量，由aclnnMoeEpDispatch输出，对应公式中slot。</td>
+    <td>topk专家索引张量。</td>
     <td><ul><li>不支持空Tensor。</li><li>shape为(BS, K)。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
@@ -133,9 +133,9 @@ aclnnStatus aclnnMoeEpCombine(
     <td>×</td>
     </tr>
     <tr>
-    <td>numRecvTokensPerRank（aclTensor*）</td>
+    <td>numRecvTokensPerExpert（aclTensor*）</td>
     <td>输入</td>
-    <td>各卡接收token数量，由aclnnMoeEpDispatchEpilogue输出。</td>
+    <td>本地moe专家接收token数量，由aclnnMoeEpDispatchEpilogue输出。</td>
     <td><ul><li>不支持空Tensor。</li><li>shape为(epWorldSize,)。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
@@ -146,7 +146,7 @@ aclnnStatus aclnnMoeEpCombine(
     <td>topkWeightsOptional（aclTensor*）</td>
     <td>输入</td>
     <td>表示每个token对应的topK专家权重，用于加权聚合，对应公式中topkWeights。</td>
-    <td><ul><li>Optional参数，传入空指针时进行纯累加combine。</li><li>shape为(A, K)。</li></ul></td>
+    <td><ul><li>Optional参数，传入空指针时进行纯累加combine。</li><li>shape为(A, 1)。</li></ul></td>
     <td>FLOAT</td>
     <td>ND</td>
     <td>2</td>
@@ -286,7 +286,7 @@ aclnnStatus aclnnMoeEpCombine(
     <tr>
     <td>ACLNN_ERR_PARAM_NULLPTR</td>
     <td>161001</td>
-    <td>context、x、dstBufferSlotIdx等必选参数存在空指针。</td>
+    <td>context、x、topKIdx等必选参数存在空指针。</td>
     </tr>
     <tr>
     <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
@@ -331,7 +331,7 @@ aclnnStatus aclnnMoeEpCombine(
 - 当前版本不支持bias参数，biasOptional0和biasOptional1必须传入空指针。
 - 调用接口过程中使用的epWorldSize、numExperts、numMaxTokensPerRank参数需与aclnnMoeEpDispatch保持一致。
 - 参数里Shape使用的变量如下：
-    - A：表示本卡接收的最大token数量，A = epWorldSize \* numMaxTokensPerRank。
+    - A：表示本卡接收的最大token数量，A = epWorldSize \* numMaxTokensPerRank \* K。
     - H：表示hidden size隐藏层大小。取值范围[1024, 8192]。
     - BS：表示batch sequence size，即本卡的原始token数量。
     - K：表示选取topK个专家，取值范围为1 < K ≤ 32。

@@ -9,14 +9,13 @@
  */
 
 /*!
- * \file mc2_moe_context.h
+ * \file moe_ep_combine_base.h
  * \brief
  */
-#ifndef MC2_MOE_CONTEXT_H
-#define MC2_MOE_CONTEXT_H
+#ifndef MOE_EP_COMBINE_BASE_H
+#define MOE_EP_COMBINE_BASE_H
 #include <cstdint>
 
-namespace Mc2Aclnn {
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
 
 struct Mc2MoeContext {
@@ -26,7 +25,6 @@ struct Mc2MoeContext {
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
 };
-}
 
 
-#endif // MC2_MOE_CONTEXT_H
+#endif // MOE_EP_COMBINE_BASE_H

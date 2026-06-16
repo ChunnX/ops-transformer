@@ -64,7 +64,7 @@ def run_test_combine_basic(rank):
     combined_x, combined_topk_weights = npu_moe_ep_combine(
         buf.context, x, dst_slot, recv_meta, num_recv_rank,
         None, None, None,
-        buf.ep_world_size.value, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size.value,
+        buf.ep_world_size, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size,
     )
 
     torch.npu.synchronize()
@@ -106,12 +106,12 @@ def run_test_combine_with_weights(rank):
         rank, world_size, num_tokens, top_k, num_experts, num_max_tokens_per_rank, hidden)
 
     x = torch.randn(A, hidden, dtype=torch.bfloat16, device=f"npu:{rank}")
-    topk_weights = torch.rand(num_tokens, top_k, dtype=torch.float32, device=f"npu:{rank}")
+    topk_weights = torch.rand(A, dtype=torch.float32, device=f"npu:{rank}")
 
     combined_x, combined_topk_weights = npu_moe_ep_combine(
         buf.context, x, dst_slot, recv_meta, num_recv_rank,
         topk_weights, None, None,
-        buf.ep_world_size.value, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size.value,
+        buf.ep_world_size, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size,
     )
 
     torch.npu.synchronize()
@@ -154,12 +154,12 @@ def run_test_combine_large_tokens(rank):
         rank, world_size, num_tokens, top_k, num_experts, num_max_tokens_per_rank, hidden)
 
     x = torch.randn(A, hidden, dtype=torch.bfloat16, device=f"npu:{rank}")
-    topk_weights = torch.rand(num_tokens, top_k, dtype=torch.float32, device=f"npu:{rank}")
+    topk_weights = torch.rand(A, dtype=torch.float32, device=f"npu:{rank}")
 
     combined_x, combined_topk_weights = npu_moe_ep_combine(
         buf.context, x, dst_slot, recv_meta, num_recv_rank,
         topk_weights, None, None,
-        buf.ep_world_size.value, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size.value,
+        buf.ep_world_size, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size,
     )
 
     torch.npu.synchronize()
@@ -206,7 +206,7 @@ def run_test_combine_bias_rejected(rank):
         combined_x, combined_topk_weights = npu_moe_ep_combine(
             buf.context, x, dst_slot, recv_meta, num_recv_rank,
             None, bias, None,
-            buf.ep_world_size.value, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size.value,
+            buf.ep_world_size, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size,
         )
         torch.npu.synchronize()
         print(f"[rank {rank}] test_combine_bias_rejected: FAIL - bias should be rejected")
