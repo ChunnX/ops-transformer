@@ -22,7 +22,7 @@ import custom_ops
 import numpy as np
 import torch.nn as nn
 
-from compressor_golden_new_v2 import run_compressor_eager, cpu_compressor
+from compressor_golden import run_compressor_eager, cpu_compressor
 
 class Generalized_operator():
     def forward(self,

@@ -19,6 +19,8 @@ import datetime
 import os
 import sys
 import argparse
+from hif8_utils import hif8_to_fp32_numpy, fp32_to_hif8_numpy
+from hif8_lut import hif8_to_fp32_lut, sample_hif8_value_uniform
 
 np.random.seed(21)  # 固定随机种子
 np.set_printoptions(suppress=True)
@@ -124,10 +126,8 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
         '---------------------------------------------------------------------------------------')
 # fuzz 中precision_method == 1的精度对比方式
 def check_result(expect, result, data_type, pct_thd = 0.005):
-    real_data = result.cpu().numpy()
-    data_compe = expect.cpu().numpy()
-    real_data = real_data.flatten()
-    data_compe = data_compe.flatten()
+    real_data = result.cpu().numpy().ravel()
+    data_compe = expect.cpu().numpy().ravel()
     if real_data.size == 0 and real_data.size == data_compe.size:
         print_log(
             'The npu_output is [],and it is same as bm_output, the result of data_compare is \"Pass\"')
@@ -143,13 +143,7 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
         print_log(
             'Error,the size of npu output[%s] and benchmark[%s] is not equal.' % (real_data.size, data_compe.size))
         return 0.0, result
-    overflows_count = data_compe[np.isinf(data_compe)].size + data_compe[np.isnan(data_compe)].size
 
-
-    if overflows_count > 0:
-        print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
-            overflows_count, data_compe[np.isinf(data_compe)][0:10], data_compe[np.isnan(data_compe)][0:10]))
-    
     if data_type == 'bfloat16':
         diff_thd=0.005
         max_diff_hd=10.0
@@ -167,9 +161,23 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
     print_log('split_count:%s; max_diff_hd:%s;' %
               (float(split_count), max_diff_hd))
 
-    has_nan_inf = False
-    if 'nan' in str(real_data) or 'inf' in str(real_data) or 'nan' in str(data_compe) or 'inf' in str(data_compe):
-        has_nan_inf = True
+    if np.array_equal(real_data, data_compe):
+        fulfill_percent = 100.0
+        pct_thd_pct = (1 - pct_thd) * 100.0
+        display_output_np_isclose(real_data, data_compe, start, end)
+        print_log(
+            '---------------------------------------------------------------------------------------')
+        print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
+        print_log(
+            '---------------------------------------------------------------------------------------')
+        print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
+                    (rtol, atol, pct_thd_pct, fulfill_percent, "Pass"))
+        return fulfill_percent, "Pass"
+
+    overflows_count = int(np.count_nonzero(np.isinf(data_compe))) + int(np.count_nonzero(np.isnan(data_compe)))
+    if overflows_count > 0:
+        print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
+            overflows_count, data_compe[np.isinf(data_compe)][0:10], data_compe[np.isnan(data_compe)][0:10]))
 
     if str(real_data.dtype) == 'bfloat16':
         diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32), rtol=rtol, atol=atol,
@@ -206,18 +214,22 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
         diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
     else:
         diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
-    err_idx = np.where(diff_result != np.array((True,)))[0]
+    err_idx = np.where(~diff_result)[0]
 
-    if str(data_compe.dtype) == 'bool':
-        data_compe = data_compe.astype(np.int8)  
-        real_data = real_data.astype(np.int8)
-    diff_abs = abs(data_compe - real_data)
-    b1 = np.maximum(np.abs(real_data), (np.abs(data_compe)))
     b2 = float((1.0 / (1 << 14)) / diff_thd)
-    b = np.add(np.maximum(b1, b2), 10e-10)
     eps = 10e-10
-    err_diff = diff_abs / (b + eps)
-    err_diff = err_diff[err_idx]
+    if err_idx.size > 0:
+        if str(data_compe.dtype) == 'bool':
+            data_compe = data_compe.astype(np.int8)
+            real_data = real_data.astype(np.int8)
+        err_real = real_data[err_idx]
+        err_expect = data_compe[err_idx]
+        err_abs = np.abs(err_expect - err_real)
+        err_max = np.maximum(np.abs(err_real), np.abs(err_expect))
+        err_b = np.maximum(err_max, b2) + eps
+        err_diff = err_abs / err_b
+    else:
+        err_diff = np.array([], dtype=np.float64)
 
     fulfill_percent = float(split_count - err_idx.size) / \
                         float(split_count) * 100.0
@@ -326,9 +338,9 @@ def cpu_compressor(
     x, wkv, wgate, x_descale, wkv_descale, wgate_descale, kv_state, score_state, update_kv_position, update_score_position, ape,
     block_table=None, cu_seqlens=None, seqused=None, start_pos=None,
     cmp_ratio=4, coff=1, cache_mode=1, quant_mode=1):
-    x = x.to(torch.float32).numpy()
-    wkv = wkv.to(torch.float32).numpy()
-    wgate = wgate.to(torch.float32).numpy()
+    x = x.numpy()
+    wkv = wkv.numpy()
+    wgate = wgate.numpy()
     x_descale = x_descale.to(torch.float32).numpy()
     wkv_descale = wkv_descale.to(torch.float32).numpy()
     wgate_descale = wgate_descale.to(torch.float32).numpy()
@@ -339,10 +351,16 @@ def cpu_compressor(
     for i in range(wkv.shape[1] // 128):
         leftH = i * 128
         rightH = (i + 1) * 128
-    wkv_descale = x_descale * wkv_descale
-    wgate_descale = x_descale * wgate_descale
-    new_kv_state = np.matmul(x, wkv.T, dtype=matmul_dtype) * wkv_descale
-    new_score_state = np.matmul(x, wgate.T, dtype=matmul_dtype) * wgate_descale
+    # 算子实现是先将两个descale相乘
+    x_fp32 = hif8_to_fp32_lut(x)
+    new_kv_state = np.matmul(x_fp32, hif8_to_fp32_lut(wkv.T), dtype=matmul_dtype)
+    new_score_state = np.matmul(x_fp32, hif8_to_fp32_lut(wgate.T), dtype=matmul_dtype)
+
+    if quant_mode == 1:
+        new_kv_state = new_kv_state * (x_descale * wkv_descale)
+        new_score_state = new_score_state * (x_descale * wgate_descale)
+    else:
+        raise ValueError(f"Error: unsupport quantmode {quant_mode}")
 
     B = len(start_pos)
     head_dim = wkv.shape[0] // coff
@@ -534,7 +552,6 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         if len(cu_seqlens) != (B + 1):
             print(f"Error: the len of cu_seqlens is {len(cu_seqlens)}, it should be equal to B({B}) + 1")
             return
-        return
     if bs_combine_flag:
         for i in range(B):
             if start_pos[i] + (cu_seqlens[i + 1] - cu_seqlens[i]) > S_max:
@@ -605,12 +622,13 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
                     block_table[i][j] = next_block_id
                     next_block_id = next_block_id + 1
 
+        actual_block_num = next_block_id
         if B==0:
             kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
             score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
         else:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (block_num, block_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (block_num, block_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (actual_block_num, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (actual_block_num, block_size, coff * head_dim))).to(torch.float32)
     else:
         block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
         token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
@@ -627,16 +645,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     else:
         x_shape = (B, S, hidden_size)
 
-    x = torch.tensor(np.random.uniform(x_datarange[0], x_datarange[1], x_shape)).to(torch.float32)
-    wkv = torch.tensor(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))).to(torch.float32)
-    wgate = torch.tensor(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))).to(torch.float32)
-    x_hif = torch_npu.npu_dtype_cast(x.to("npu:%s" % DEVICE_ID), torch_npu.hifloat8)
-    wkv_hif = torch_npu.npu_dtype_cast(wkv.to("npu:%s" % DEVICE_ID), torch_npu.hifloat8)
-    wgate_hif = torch_npu.npu_dtype_cast(wgate.to("npu:%s" % DEVICE_ID), torch_npu.hifloat8)
-    from generate_hifloat8_data_vec import trans_np_hifuint8_tensor_to_float32
-    x = trans_np_hifuint8_tensor_to_float32(x_hif).cpu()
-    wkv = trans_np_hifuint8_tensor_to_float32(wkv_hif).cpu()
-    wgate = trans_np_hifuint8_tensor_to_float32(wgate_hif).cpu()
+    x = torch.tensor(sample_hif8_value_uniform(x_datarange[0], x_datarange[1], x_shape).astype(np.uint8))
+    wkv = torch.tensor(sample_hif8_value_uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size)).astype(np.uint8))
+    wgate = torch.tensor(sample_hif8_value_uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size)).astype(np.uint8))
 
     x_descale = torch.tensor(np.random.uniform(x_descale_datarange[0], x_descale_datarange[1], (1,))).to(torch.float32)
     wkv_descale = torch.tensor(np.random.uniform(wkv_descale_datarange[0], wkv_descale_datarange[1], (coff * head_dim,))).to(torch.float32)
@@ -665,6 +676,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
 
     # ======================== execute npu start =================================
     
+    x = x.to("npu:%s" % DEVICE_ID)
+    wkv = wkv.to("npu:%s" % DEVICE_ID)
+    wgate = wgate.to("npu:%s" % DEVICE_ID)
     x_descale = x_descale.to("npu:%s" % DEVICE_ID)
     wkv_descale = wkv_descale.to("npu:%s" % DEVICE_ID)
     wgate_descale = wgate_descale.to("npu:%s" % DEVICE_ID)
@@ -716,9 +730,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         seqused = torch.tensor(seqused).to(torch.int32).to("npu:%s" % DEVICE_ID)
     # ======================== execute npu finish ================================
     # start run custom ops
-    print(f"x: shape {x_hif.shape}, dtype: {x_hif.dtype}")
-    print(f"wkv: shape {wkv_hif.shape}, dtype: {wkv_hif.dtype}")
-    print(f"wgate: shape {wgate_hif.shape}, dtype: {wgate_hif.dtype}")
+    print(f"x: shape {x.shape}, dtype: {x.dtype}")
+    print(f"wkv: shape {wkv.shape}, dtype: {wkv.dtype}")
+    print(f"wgate: shape {wgate.shape}, dtype: {wgate.dtype}")
     print(f"x_descale: shape {x_descale.shape}, dtype: {x_descale.dtype}")
     print(f"wkv_descale: shape {wkv_descale.shape}, dtype: {wkv_descale.dtype}")
     print(f"wgate_descale: shape {wgate_descale.shape}, dtype: {wgate_descale.dtype}")
@@ -729,9 +743,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     
     npu_out = (
         torch.ops.custom.quant_compressor(
-            x_hif,
-            wkv_hif,
-            wgate_hif,
+            x,
+            wkv,
+            wgate,
             state_cache,
             ape,
             x_descale = x_descale,
