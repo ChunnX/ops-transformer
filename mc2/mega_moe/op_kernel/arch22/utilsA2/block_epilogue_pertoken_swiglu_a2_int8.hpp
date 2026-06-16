@@ -209,7 +209,8 @@ public:
             if (swigluLimit > 0.0f) {
                 AscendC::ClampMax(ubCFp32, ubCFp32, sharedTmpBuffer, swigluLimit, blockN);
                 AscendC::PipeBarrier<PIPE_V>();
-                AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer, -1.0f * swigluLimit, ChunkTileLen);
+                AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer,
+                                  -1.0f * swigluLimit, ChunkTileLen);
                 AscendC::PipeBarrier<PIPE_V>();
             }
             // SiLU(x_gate) * x_up

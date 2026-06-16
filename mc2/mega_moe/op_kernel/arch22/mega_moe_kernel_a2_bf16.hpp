@@ -1257,7 +1257,8 @@ private:
             LayoutC layoutC{dequantSum1, params.problemShape.n()};
             int64_t gmOffsetC = layoutC.GetOffset(offsetC);
             int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
-            blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], params.epilogueCoreNum, params.swigluLimit);
+            blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD],
+                           params.epilogueCoreNum, params.swigluLimit);
         }
         AscendC::SyncAll<true>();
         // Synchronization signal: SwiGLU notifies GMM2 [1]
