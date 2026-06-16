@@ -175,7 +175,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,D] 或 [T,D]</td>
+      <td>[B,S,n] 或 [T,n]</td>
       <td>-</td>
   </tr>
   <tr>
