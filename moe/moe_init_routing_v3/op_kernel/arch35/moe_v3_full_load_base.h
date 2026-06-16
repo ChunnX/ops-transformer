@@ -210,6 +210,12 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     endXRow_ = (curIndexStart_ + this->coreIndicesElements_ - 1) / this->k_;
 
     InitGlobalBuffers(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace);
+    isInputTopkWeight_ = tilingData->isInputTopkWeight;
+    if (isInputTopkWeight_ == 1) {
+        topkWeightGm_.SetGlobalBuffer((__gm__ float *)topkWeight, totalLength_);
+        expandedTopkWeightGm_.SetGlobalBuffer((__gm__ float *)expandedTopkWeight,
+                                                (dropPadMode_ == DROP_PAD_MODE) ? outputRows_ : totalLength_);
+    }
     InitQueBuffers();
 }
 
@@ -241,11 +247,7 @@ __aicore__ inline void MoeV3FullLoadBase<T>::InitQueBuffers()
     pipe_->InitBuffer(sortedBuffer_, buffSize * kvFactor_);
     pipe_->InitBuffer(expertCountBuf_, AlignBytes(actualExpertNum_, sizeof(int32_t)));
 
-    isInputTopkWeight_ = tilingData->isInputTopkWeight;
     if (isInputTopkWeight_ == 1) {
-        topkWeightGm_.SetGlobalBuffer((__gm__ float *)topkWeight, totalLength_);
-        expandedTopkWeightGm_.SetGlobalBuffer((__gm__ float *)expandedTopkWeight,
-                                                (dropPadMode_ == DROP_PAD_MODE) ? outputRows_ : totalLength_);
         pipe_->InitBuffer(topkWeightBuf_, AlignBytes(1, sizeof(float)));
     }
 }
