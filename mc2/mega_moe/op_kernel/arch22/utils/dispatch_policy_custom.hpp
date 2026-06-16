@@ -57,14 +57,14 @@ struct MmadAtlasA2W4A4MatmulPerChannelDequant
 // ------------------------------------------------------------------
 // Unified dispatch-policy & BlockMmad selector.
 //
-// IS_A3_ : true  → A3 hardware (910_93) → MmadAtlasA3PreloadAsyncFixpipeQuant
-//          false → A2 hardware (910B)   → MmadAtlasA2PreloadAsyncFixpipe
+// IS_A2_ : true  → A2 hardware (910B)   → MmadAtlasA2PreloadAsyncFixpipe
+//          false → A3 hardware (910_93) → MmadAtlasA3PreloadAsyncFixpipeQuant
 //
 // W4A8 (int4b_t weight) always uses MmadAtlasA2W4A4MatmulPerChannelDequant
 // on both architectures — the per-channel dequant is handled by the
 // WithCallback variant regardless of hardware.
 // ------------------------------------------------------------------
-template <typename BType_, bool IS_A3_, uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_,
+template <typename BType_, bool IS_A2_, uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_,
           uint32_t L0B_STAGES_, uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
 struct MmadDispatchPolicyFor {
     // For W4A4 we need the WithCallback variant so the per-channel scale
@@ -73,19 +73,18 @@ struct MmadDispatchPolicyFor {
         std::conditional_t<std::is_same_v<BType_, AscendC::int4b_t>,
                            MmadAtlasA2W4A4MatmulPerChannelDequant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
                                                                   L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
-                           std::conditional_t<IS_A3_,
+                           std::conditional_t<IS_A2_,MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_,
+                                                                                    L0B_STAGES_, L0C_STAGES_, ENABLE_UNIT_FLAG_,
+                                                                                    ENABLE_SHUFFLE_K_>,
                                               MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_,
                                                                                   L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
-                                                                                  ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
-                                              MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_,
-                                                                             L0B_STAGES_, L0C_STAGES_, ENABLE_UNIT_FLAG_,
-                                                                             ENABLE_SHUFFLE_K_>>>;
+                                                                                  ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>>>;
 };
 
-template <typename BType_, bool IS_A3_, uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_,
+template <typename BType_, bool IS_A2_, uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_,
           uint32_t L0B_STAGES_, uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
 using MmadDispatchPolicyFor_t =
-    typename MmadDispatchPolicyFor<BType_, IS_A3_, PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+    typename MmadDispatchPolicyFor<BType_, IS_A2_, PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
                                    ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>::type;
 } // namespace Catlass::Gemm
 
