@@ -20,7 +20,7 @@ def stem_oam_prep_varlen_q_golden(q_fp8, qscale, q_seq_lens, cu_seqlens_q,
 
     Args:
         q_fp8:       varlen Q tensor [total_tokens, H_q, D]  (torch FP8_e4m3fn)
-        qscale:      [batch, H_q, max_seqlen_pad_stemBlockSize]  (torch FP32)
+        qscale:      [total_tokens, H_q]  (torch FP32)
         q_seq_lens:  [batch]                                  (torch INT32)
         cu_seqlens_q:[batch+1]                                (torch INT32)
         B:           stem_block_size (default 128)
@@ -66,11 +66,10 @@ def stem_oam_prep_varlen_q_golden(q_fp8, qscale, q_seq_lens, cu_seqlens_q,
             Q_blocks = Q_dense[:num_Qb * B, h, :].reshape(num_Qb, R, S, D)
 
             # Stage 1 & 3: Scale fusion + Weighted Group Sum
-            # q_scale[b, h, pos] = qscale[b, h, pos]
+            # q_scale[pos, h] = qscale[cu_off + pos, h]
             positions = torch.arange(num_Qb * B).reshape(num_Qb, R, S)
-            max_pos = qscale.shape[2] - 1
-            scale_indices = positions.clamp(max=max_pos)
-            scales = qscale[b, h, scale_indices]   # [num_Qb, R, S]
+            global_positions = cu_off + positions
+            scales = qscale[global_positions, h]   # [num_Qb, R, S]
 
             # Weighted group sum: Q × q_scale, then sum over R dimension
             Q_weighted = Q_blocks * scales.unsqueeze(-1)   # [num_Qb, R, S, D]

@@ -18,13 +18,22 @@ namespace opapi {
 
 aclnnStatus LaunchStemOamPrepVarlenQ(
     const aclTensor* q, const aclTensor* qSeqLens, const aclTensor* cuSeqLensQ,
-    /* * optional */ const aclTensor* qScale, const aclTensor* kScale,
+    /* * optional */ const aclTensor* qScale,
     int64_t stemBlockSize, int64_t stemStride,
     aclTensor* qFlat,
     aclOpExecutor* executor)
 {
+    // 空 tensor 处理: 任一输入为空则直接返回
+    if (q->IsEmpty() || qSeqLens->IsEmpty() || cuSeqLensQ->IsEmpty() ||
+        (qScale != nullptr && qScale->IsEmpty())) {
+        auto uniqueExecutor = CREATE_EXECUTOR();
+        CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_SUCCESS;
+    }
+
     return aclnnStemOamPrepVarlenQGetWorkspaceSize(
-        q, qSeqLens, cuSeqLensQ, qScale, kScale,
+        q, qSeqLens, cuSeqLensQ, qScale,
         stemBlockSize, stemStride,
         qFlat,
         nullptr, &executor);

@@ -27,7 +27,7 @@ Stem OAM (Output-Aware Metric) 是大模型推理中的动态稀疏注意力机�
 ```python
 def _prep_q_reference(
     q_fp8: torch.Tensor,
-    qscale: torch.Tensor,
+    qscale: torch.Tensor,  # [total_tokens, H_q]
     q_seq_lens: torch.Tensor,
     cu_seqlens_q: torch.Tensor,
     stem_block_size: int = 128,
@@ -73,7 +73,7 @@ def _prep_q_reference(
             positions = torch.arange(
                 num_q_blocks * stem_block_size, dtype=torch.long, device=device,
             ).reshape(num_q_blocks, R, stem_stride)
-            scales = qscale[b, h, positions.clamp(max=qscale.shape[2] - 1)]
+            scales = qscale[cu_off + positions, h]  # per-token scale
             q_group_sum = (q_blocks * scales.unsqueeze(-1)).sum(dim=1)
             qflat_out[b, h, :num_q_blocks] = q_group_sum.reshape(
                 num_q_blocks, stem_stride * dim_qk,
@@ -94,14 +94,14 @@ def _prep_q_reference(
 | q | `[total_tokens, H_q, D=128]` | FP8_e4m3fn | 变长 Q tensor |
 | qSeqLens | `[batch]` | INT32 | 每 batch Q 序列长度 |
 | cuSeqLensQ | `[batch+1]` | INT32 | Q 偏移前缀和 |
-| qScale | `[batch, H_q, max_seqlen_pad_B]` | FP32 | Q per-token scale  |
+| qScale | `[total_tokens, H_q]` | FP32 | Q per-token scale  |
 | stemBlockSize (B) | scalar | INT | %32==0, ≤256 |
 | stemStride (S) | scalar | INT | %16==0, ≤64, S≤B |
 
 **典型case**:  
 H_q = 8  
 total_tokens = 1024k  
-batch = 8 
+batch = 8 (最大值 1024)
 H_kv = 2   
 stemBlockSize = 128  
 stemStride = 16  
@@ -112,7 +112,9 @@ total_blocks = 9649
 **阶段 1: Scale Fusion + De-page Varlen + Cast FP32**
 
 $$
-q\_scale[b, h, pos] = qScale[b, h, pos]
+q\_scale[pos, h] = qScale[cu\_off + pos, h]
+$$
+q\_scale[pos, h] = qScale[cu\_off + pos, h]
 $$
 
 $$
@@ -134,7 +136,7 @@ Q\_blocks[b,h] = reshape(Q\_dense[:num\_Qb \times B, h, :],\ [num\_Qb,\ R,\ S,\ 
 $$
 
 $$
-Q\_weighted[b,h,qb,r,g,:] = Q\_blocks[b,h,qb,r,g,:] \times q\_scale[b,h,\ qb \times B + r \times S + g]
+Q\_weighted[b,h,qb,r,g,:] = Q\_blocks[b,h,qb,r,g,:] \times q\_scale[cu\_off + qb \times B + r \times S + g, h]
 $$
 
 $$
@@ -205,7 +207,7 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 | q | 输入 | 变长 Q tensor，所有 batch 的 token 拼接存储 | FLOAT8_E4M3FN | [total_tokens, H_q, D] |
 | qSeqLens | 输入 | 每个 batch 的 Q 序列长度 | INT32 | [batch] |
 | cuSeqLensQ | 输入 | Q 的累积序列长度偏移量 | INT32 | [batch+1] |
-| qScale | 输入(OPTIONAL) | Q 的 per-token scale factor，FP8 必填 | FLOAT | [batch, H_q, max_seqlen_pad_stemBlockSize] |
+| qScale | 输入(OPTIONAL) | Q 的 per-token scale factor，FP8 必填 | FLOAT | [total_tokens, H_q] |
 | stemBlockSize | 输入 | stem block 大小，推荐默认 128 | INT64 | scalar |
 | stemStride | 输入 | stem stride 大小，推荐默认 16 | INT64 | scalar |
 | qFlat | 输出 | flattened Q 输出 | BFLOAT16 | [batch, H_q, max_Qb, kflat_dim] |
@@ -215,7 +217,7 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 | 返回值 | 错误码 | 描述 |
 |-------|------|------|
 | ACLNN_ERR_PARAM_NULLPTR | 161001 | q、qFlat 存在空指针。qScale 在 FP8 输入时不允许空指针 |
-| ACLNN_ERR_PARAM_INVALID | 161002 | q dtype 不在支持范围；qScale dtype 不为 FLOAT；cuSeqLensQ 长度/单调性错误；stemBlockSize/stemStride 不满足约束 |
+| ACLNN_ERR_PARAM_INVALID | 161002 | q dtype 不在支持范围；qScale dtype 不为 FLOAT；cuSeqLensQ 长度/单调性错误；stemBlockSize/stemStride 不满足约束；batch > 1024 |
 | ACLNN_ERR_INNER | 361001 | 内部错误，如 Tiling 计算失败或 Kernel 查找失败 |
 
 **约束说明**:
@@ -225,6 +227,7 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 - qFlat 输出维度 kflat_dim = stemStride × D（默认 16×128=2048）
 - Q 侧 stride 维度为自然顺序（g ∈ [0, S-1]），不翻转（与 K 侧处理不同）
 - qSeqLens 中某 batch 值为 0 时，该 batch 对应的 qFlat 输出填充为零
+- batch 最大值为 1024
 
 #### 1.4.2 图模式IR
 
@@ -233,7 +236,7 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 | INPUT | q | Tensor | FP8_E4M3FN | NA | [total_tokens, H_q, D] | 变长 Q tensor |
 | INPUT | qSeqLens | IntArray | INT32 | NA | [batch] | Q 序列长度 |
 | INPUT | cuSeqLensQ | IntArray | INT32 | NA | [batch+1] | Q 累积序列长度 |
-| OPTIONAL_INPUT | qScale | Tensor | FP32 | NA | [batch, H_q, max_seqlen_pad_stemBlockSize] | Q per-token scale, FP8必填 |
+| OPTIONAL_INPUT | qScale | Tensor | FP32 | NA | [total_tokens, H_q] | Q per-token scale, FP8必填 |
 | ATTR | stemBlockSize | INT64 | {32,...,256} | 128 | NA | Stem block 大小，当前仅支持128 |
 | ATTR | stemStride | INT64 | {16,...,64} | 16 | NA | Stride 大小，当前仅支持16 |
 | OUTPUT | qFlat | Tensor | BF16/FP16 | NA | [batch, H_q, max_Qb, kflat_dim] | Q group sum 结果, FP16输入→FP16输出 |
@@ -251,8 +254,9 @@ stemStride=16；
 **边界情况处理**:
 - qSeqLens 中存在 0 值 batch 时，该 batch 对应的 qFlat 填零
 - 空 tensor (total_tokens=0) 时输出零 tensor
+- batch 最大值为 1024，超出此限制返回错误
 
-**确定性计算**: 默认支持。每个 (batch, head) pair 由单一 AI Core 处理，FP32 累加在单核内完成，无并行累加歧义。
+**确定性计算**: 默认支持。每个 (batch, head) pair 由单一 AI Core 处理，FP32 累加在单核内完成，无并行累加歧义。batch 最大值为 1024。
 
 ## 2 方案设计
 
@@ -376,7 +380,7 @@ namespace ge {
  * @li qSeqLens: [batch] INT32, Q sequence lengths
  * @li cuSeqLensQ: [batch+1] INT32, cumulative Q sequence lengths
  * @par Optional Inputs (*):
- * @li qScale: [batch, H_q, max_seqlen_pad_stemBlockSize] FP32, per-token scale (FP8 required)
+ * @li qScale: [total_tokens, H_q] FP32, per-token scale (FP8 required)
  * @par Attributes:
  * @li stemBlockSize: INT, stem block size (default 128, must be multiple of 32, max 256)
  * @li stemStride: INT, stride size (default 16, must be multiple of 16, max 64, <= stemBlockSize)
@@ -660,7 +664,7 @@ total_blocks = 287136, N=40, blocks_per_core ≈ 7178
 | total_tasks | 决定核数 | 模式0=P, 模式1=N |
 | used_core_num | 实际使用核数 | 模式0=min(P,N), 模式1=N |
 | batch_size, num_q_heads | bh_idx→(b,h)映射 | bh_idx/H_q, bh_idx%H_q |
-| max_q_padded | qScale stride | ceil(max_q_len/B)×B |
+| max_q_padded | qScale stride | 已废弃，qScale shape 改为 [total_tokens, H_q] |
 | max_Qb | qFlat stride | max_q_padded/B |
 | total_tokens | Q GM 总 token 数 | q.size(0) |
 | stem_block_size, stem_stride | Stem Block 结构参数 | aclnn API 传入 |
@@ -785,7 +789,7 @@ __global__ __aicore__ void stem_oam_prep_varlen_q_template(
 | Tensor | Shape | 说明 |
 |---|---|---|
 | q | [total_tokens, H_q, D=128] | 变长存储，所有 batch 的 Q 拼在一起，通过 cuSeqLensQ 索引 |
-| qScale | [batch, H_q, max_seqlen_pad_stemBlockSize] | per-token scale，stride = max_seqlen_pad_stemBlockSize per (b,h) |
+| qScale | [total_tokens, H_q] | per-token scale，与 q 的 token 维度对齐 |
 | qFlat 输出 | [batch, H_q, max_Qb, kflat_dim] | 每 (batch,head) 一条 max_Qb × kflat_dim 连续区域 |
 
 **Varlen Slice 拷入详解**:
@@ -802,10 +806,10 @@ __global__ __aicore__ void stem_oam_prep_varlen_q_template(
 ```
   ┌─────────────────────────────── GM ────────────────────────────────┐
   │ q[cu_off + qb×B + 0..B-1, head_idx, :] (B×D InputT elements)     │
-  │ qScale[batch_idx, head_idx, qb×B : qb×B+B-1] (B FP32 elements)   │
+  │ qScale[cu_off + qb×B + 0..B-1, head_idx] (B FP32 elements)       │
   └─────────────────── DataCopyPad ×B rows ──────────────────────────┤
   │  Q offset per row = global_pos × H_q × D + head_idx × D           │
-  │  Scale offset = batch_idx × (H_q × max_q_padded) + head_idx × max_q_padded + qb×B │
+  │  Scale offset = (cu_off + qb×B + row) × H_q + head_idx            │
   ▼                                                                   │
   ┌─────────────────────────────── UB ────────────────────────────────┐
   │ Step 1: CopyInQBlock(qb)                                            │
@@ -816,9 +820,9 @@ __global__ __aicore__ void stem_oam_prep_varlen_q_template(
   │   qBlockFP32Buf: B×D FP32              ← Duplicate(0) + Cast valid │
   │     (超出 q_len_ 的行保持 0.0f, 不参与累加)                         │
   │                                                                     │
-│ Step 3: CopyInScalesBulk(qb) (FP8 only)                             │
-   │   scalesBuf: B FP32                    ← 1次 DataCopyPad from GM    │
-   │     q_scale[r*S+g] = scalesBuf[r*S+g]                               │
+  │ Step 3: CopyInScalesBulk(qb) (FP8 only)                             │
+  │   scalesBuf: B FP32                    ← 1次 DataCopyPad from GM    │
+  │     q_scale[r*S+g] = scalesBuf[r*S+g]                               │
   │                                                                     │
   │ Step 4: AccumulateBlock(qb) — FP32 累加                             │
   │   groupSumBuf: S×D FP32 (kflat_dim)    ← Duplicate(0) 初始化       │
@@ -827,8 +831,8 @@ __global__ __aicore__ void stem_oam_prep_varlen_q_template(
   │     for r=0..R-1:                                                   │
   │       for g=0..S-1:                                                 │
   │         row_idx = r*S + g                                           │
-│         q_scale = scalesBuf[row_idx]                                  │
-   │         Muls(qWeightedBuf, qBlockFP32[row_idx*D], q_scale, D)        │
+  │         q_scale = scalesBuf[row_idx]                                │
+  │         Muls(qWeightedBuf, qBlockFP32[row_idx*D], q_scale, D)        │
   │         Add(groupSum[g*D..], qWeightedBuf, groupSum[g*D..], D)      │
   │                                                                     │
   │ Step 5: Flatten + Cast → outQueueQflat                              │
@@ -858,16 +862,16 @@ __global__ __aicore__ void stem_oam_prep_varlen_q_template(
     │ Cast(valid_rows*D elements)       │  ← bulk Cast, 1次操作
     └───────────────────────────────────┘
     
-┌── CopyInScalesBulk(qb) ──────────┐ (FP8 only)
-     │ DataCopyPad B scales              │
-     │ from qScale[b,h,qb*B:]           │
-     └───────────────────────────────────┘
-     
-     ┌── AccumulateBlock(qb) ───────────┐
-     │ Duplicate(groupSumBuf, 0)         │  ← FP32 累加器初始化
-     │ for r,g:                          │
-     │   Muls + Add (weighted)           │
-     │   读取 qBlockFP32[row_idx*D]      │  ← 直接从 UB FP32 buffer 读
+    ┌── CopyInScalesBulk(qb) ──────────┐ (FP8 only)
+    │ DataCopyPad B scales              │
+    │ from qScale[cu_off+qb*B:cu_off+qb*B+B, head_idx] │
+    └───────────────────────────────────┘
+    
+    ┌── AccumulateBlock(qb) ───────────┐
+    │ Duplicate(groupSumBuf, 0)         │  ← FP32 累加器初始化
+    │ for r,g:                          │
+    │   Muls + Add (weighted)           │
+    │   读取 qBlockFP32[row_idx*D]      │  ← 直接从 UB FP32 buffer 读
     └───────────────────────────────────┘
     
     ┌── Flatten + Cast + Write ──┐
@@ -893,7 +897,7 @@ __global__ __aicore__ void stem_oam_prep_varlen_q_template(
 | qWeightedBuf | Q × q_scale Muls中间 | 每次Muls写入, Add后可释放 |
 | groupSumBuf | 累加器 (kflat_dim FP32) | 每qb: Duplicate(0)初始化, 累加, 末Cast→qflat |
 | outQueueQflat | Cast→BF16输出 | 每qb Cast, 立即写GM |
-| varlenInfoBuf | qSeqLens + cuSeqLensQ读取 | Init阶段读取一次 |
+| varlenInfoBuf | qSeqLens + cuSeqLensQ per-batch read | Init阶段读取一次 |
 
 **内存管理**:
 
@@ -926,7 +930,7 @@ __global__ __aicore__ void stem_oam_prep_varlen_q_template(
 
 复用优化后实际占用: qChunkBuf(~4KB) + qChunkFP32(~8KB) + scalesBuf(~64B) + qGroupSumAcc(~8KB) + qflatOutBuf(~4KB) = ~24KB + 64B ≈ 24KB ✅ (≤ 248KB)
 
-**UB Buffer Sizing Strategy**: stemBlockSize and stemStride are runtime parameters, not constexpr constants. UB buffers use MAX constants (MAX_STEM_BLOCK_SIZE=256, MAX_STEM_STRIDE=64) for allocation, runtime tiling values for computation. All loop counts (R = stemBlockSize / stemStride), DataCopyPad extents, and buffer indices use runtime tiling values from TilingData. kflat_dim is derived as `stemStride × dim_qk` and stored in TilingData.
+**UB Buffer Sizing Strategy**: stemBlockSize and stemStride are runtime parameters, not constexpr constants. UB buffers use MAX constants (MAX_STEM_BLOCK_SIZE=256, MAX_STEM_STRIDE=64) for allocation, runtime tiling values for computation. All loop counts (R = stemBlockSize / stemStride), DataCopyPad extents, and buffer indices use runtime tiling values from TilingData. kflat_dim is derived as `stemStride × dim_qk` and stored in TilingData. qScale shape is [total_tokens, H_q], indexed by (cu_off + token_pos, head_idx).
 
 #### 2.4.2 性能优化
 
@@ -971,6 +975,7 @@ __global__ __aicore__ void stem_oam_prep_varlen_q_template(
 - **FP32→BF16/FP16 Cast**: qFlat 输出从 FP32 Cast 为 BF16(FP8/BF16输入)或FP16(FP16输入); BF16路径精度损失 rtol 约 1e-2; FP16路径精度损失 rtol 约 5e-4
 - **R 层累加精度**: FP32 累加 R=stemBlockSize/stemStride 层加权结果，数值稳定性依赖 Q 和 scale 的值域范围
 - **Zero-pad 影响**: 对齐到 stemBlockSize 的 zero-pad 区域不参与计算，但 DataCopyPad 需正确设置 padVal=0
+- **batch 大小**: batch 最大值为 1024，超出此限制会导致 TilingData 数组越界
 
 **应对措施**:
 
@@ -978,6 +983,7 @@ __global__ __aicore__ void stem_oam_prep_varlen_q_template(
 - Scale scatter read 改用 bulk DataCopyPad 拷入整行后在 UB 内用偏移索引定位
 - FP32→BF16 使用 CAST_ROUND 模式减少截断误差; FP16 路径同理
 - Zero-pad 通过 DataCopyPad 的 padVal 参数设为 0.0f 保证正确性
+- batch 最大值限制为 1024，避免 TilingData 数组越界
 
 ### 2.5 PTA接口设计
 

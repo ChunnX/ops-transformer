@@ -50,7 +50,7 @@ def main():
     q_len = 128
     q_fp32 = torch.randn(q_len, 1, D) * 0.1
     q_fp8 = q_fp32.to(torch.float8_e4m3fn)
-    qscale = torch.ones(1, 1, q_len, dtype=torch.float32)
+    qscale = torch.ones(q_len, 1, dtype=torch.float32)
     q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
     cu_seqlens_q = torch.tensor([0, q_len], dtype=torch.int32)
     results.append(run_test("P1 single_block", q_fp8, qscale, q_seq_lens, cu_seqlens_q))
@@ -58,7 +58,7 @@ def main():
     # P2: Single block, random scales
     q_fp32 = torch.randn(q_len, 1, D) * 0.1
     q_fp8 = q_fp32.to(torch.float8_e4m3fn)
-    qscale = torch.randn(1, 1, q_len, dtype=torch.float32).abs() + 0.5
+    qscale = torch.randn(q_len, 1, dtype=torch.float32).abs() + 0.5
     q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
     cu_seqlens_q = torch.tensor([0, q_len], dtype=torch.int32)
     results.append(run_test("P2 random_scales", q_fp8, qscale, q_seq_lens, cu_seqlens_q))
@@ -67,7 +67,7 @@ def main():
     q_len = 256  # 2 blocks
     q_fp32 = torch.randn(q_len, 2, D) * 0.1
     q_fp8 = q_fp32.to(torch.float8_e4m3fn)
-    qscale = torch.ones(1, 2, q_len, dtype=torch.float32)
+    qscale = torch.ones(q_len, 2, dtype=torch.float32)
     q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
     cu_seqlens_q = torch.tensor([0, q_len], dtype=torch.int32)
     results.append(run_test("P3 two_blocks_2heads", q_fp8, qscale, q_seq_lens, cu_seqlens_q))
