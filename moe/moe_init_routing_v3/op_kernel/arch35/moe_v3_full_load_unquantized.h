@@ -344,27 +344,18 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutX()
     if (startRow >= endRow) {
         return;
     }
+    int64_t rowCount = endRow - startRow;
 
     if constexpr (IsSameType<T, hifloat8_t>::value) {
-        DataCopyExtParams hif8CopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(uint8_t)),
-                                         0, 0, 0};
-        LocalTensor<uint8_t> zeroLocal = xCopyInQueue_.AllocTensor<uint8_t>();
-        Duplicate<uint8_t>(zeroLocal, static_cast<uint8_t>(0), Align(this->cols_, sizeof(uint8_t)));
-        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-        for (int64_t row = startRow; row < endRow; row++) {
-            DataCopyPad(expandedXGm_[row * this->cols_], zeroLocal.ReinterpretCast<T>(), hif8CopyParams);
-        }
-        xCopyInQueue_.FreeTensor(zeroLocal);
+        GlobalTensor<uint8_t> zeroGm;
+        zeroGm.SetGlobalBuffer((__gm__ uint8_t *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
+                               rowCount * this->cols_);
+        InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<uint8_t>(0));
     } else {
-        DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0,
-                                     0};
-        LocalTensor<T> zeroLocal = xCopyInQueue_.AllocTensor<T>();
-        Duplicate<T>(zeroLocal, static_cast<T>(0), Align(this->cols_, sizeof(T)));
-        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-        for (int64_t row = startRow; row < endRow; row++) {
-            DataCopyPad(expandedXGm_[row * this->cols_], zeroLocal, copyParams);
-        }
-        xCopyInQueue_.FreeTensor(zeroLocal);
+        GlobalTensor<T> zeroGm;
+        zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
+                               rowCount * this->cols_);
+        InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
     }
 }
 
@@ -377,15 +368,10 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutScale()
     if (startRow >= endRow) {
         return;
     }
-
-    LocalTensor<float> zeroLocal = scaleCopyInQueue_.AllocTensor<float>();
-    Duplicate<float>(zeroLocal, 0.0f, static_cast<int32_t>(1));
-    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-    for (int64_t row = startRow; row < endRow; row++) {
-        DataCopyPad(expandedScaleGm_[row], zeroLocal, copyParams);
-    }
-    scaleCopyInQueue_.FreeTensor(zeroLocal);
+    int64_t rowCount = endRow - startRow;
+    GlobalTensor<float> scaleZeroGm;
+    scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, rowCount);
+    InitGlobalMemory(scaleZeroGm, rowCount, 0.0f);
 }
 
 } // namespace MoeInitRoutingV3
