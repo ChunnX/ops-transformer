@@ -301,7 +301,6 @@ __aicore__ inline void QuantCompressorKernelFullLoad<COMP>::ComputeVec1(const Ve
 }
 
 template <typename COMP>
-template <typename COMP>
 __aicore__ inline void QuantCompressorKernelFullLoad<COMP>::AllocEventID()
 {
     if ASCEND_IS_AIC {

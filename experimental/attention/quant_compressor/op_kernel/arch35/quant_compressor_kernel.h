@@ -455,7 +455,6 @@ __aicore__ inline void QuantCompressorKernel<COMP>::ComputeVec1(const Vec1RunInf
 }
 
 template <typename COMP>
-template <typename COMP>
 __aicore__ inline void QuantCompressorKernel<COMP>::AllocEventID()
 {
     if ASCEND_IS_AIC {
