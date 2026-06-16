@@ -92,6 +92,34 @@
       <td>ND</td>
     </tr>
     <tr>
+      <td>seqused_cmp_kv</td>
+      <td>可选输入</td>
+      <td>表示不同Batch中`cmp_kv`实际参与运算的token数，维度为B。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>cmp_residual_kv</td>
+      <td>可选输入</td>
+      <td>表示压缩KV余数，用于按`cmp_len * cmp_ratio + residual`恢复压缩前KV长度，维度为B。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>ori_topk_length</td>
+      <td>可选输入</td>
+      <td>表示每行`ori_kv`有效TopK长度。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>cmp_topk_length</td>
+      <td>可选输入</td>
+      <td>表示每行`cmp_kv`有效TopK长度。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
       <td>batch_size</td>
       <td>可选属性</td>
       <td>输入样本批量大小，默认值为None。</td>
@@ -106,9 +134,16 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>max_seqlen_kv</td>
+      <td>max_seqlen_ori_kv</td>
       <td>可选属性</td>
       <td>表示所有batch中`ori_kv`的最大有效token数。</td>
+      <td>INT32</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>max_seqlen_cmp_kv</td>
+      <td>可选属性</td>
+      <td>表示所有batch中`cmp_kv`的最大有效token数。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -129,7 +164,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对`ori_kv`的压缩率，0和1均表示SWA语义，CFA/SCFA模式支持4或128。</td>
+      <td>表示对`ori_kv`的压缩率，1表示SWA语义，CFA/SCFA模式支持4或128。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -216,4 +251,4 @@
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn接口 | [test_aclnnSparseFlashMlaMetadata](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md)调用SparseFlashMlaMetadata算子 |
-| torch_npu扩展接口 | [npu_sparse_flash_mla_metadata](../../torch_extension/npu_ops_transformer/doc/npu_sparse_flash_mla.md) | 通过`npu_ops_transformer.ops.npu_sparse_flash_mla_metadata`生成SparseFlashMla主算子使用的metadata |
+| torch_npu扩展接口 | [sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla_metadata`生成SparseFlashMla主算子使用的metadata |

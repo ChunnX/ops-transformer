@@ -301,8 +301,9 @@ int main()
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
-      seqUsedQ, seqUsedOriKv, nullptr,
-      N1, N2, D, B, S1, S2,
+      seqUsedQ, seqUsedOriKv,
+      nullptr, nullptr, nullptr, nullptr,
+      N1, N2, D, B, S1, S2, cmpKvLen,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,
       oriWinLeft, oriWinRight,

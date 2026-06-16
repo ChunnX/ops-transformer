@@ -772,7 +772,7 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
 
     smlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
-    smlaInfo.cmpRatio = (*opParamInfo_.cmpRatio == 0) ? 1 : *opParamInfo_.cmpRatio;
+    smlaInfo.cmpRatio = *opParamInfo_.cmpRatio;
     smlaInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     smlaInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
     smlaInfo.oriKvStride0 = GetOptionalInputStride0(ORI_KV_INDEX);
@@ -1177,8 +1177,8 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaMetadata() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
 {
-    OP_CHECK_IF(cmpRatio_ < 0 || cmpRatio_ > 128,
-                OP_LOGE(opName_, "cmpRatio should be in range [0, 128], but got %ld", cmpRatio_),
+    OP_CHECK_IF(cmpRatio_ < 1 || cmpRatio_ > 128,
+                OP_LOGE(opName_, "cmpRatio should be in range [1, 128], but got %ld", cmpRatio_),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

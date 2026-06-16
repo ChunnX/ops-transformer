@@ -42,7 +42,11 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     actSeqLenOriKv_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenOriKv));
     actSeqLenCmpKv_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenCmpKv));
     seqUsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
-    seqUsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedKv));
+    seqUsedOriKv_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedOriKv));
+    seqUsedCmpKv_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedCmpKv));
+    cmpResidualKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpResidualKv));
+    oriTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::oriTopkLength));
+    cmpTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpTopkLength));
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
 
@@ -59,7 +63,8 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "aiv_core_num", aivCoreNum_);
     GetAttrValueOpt(ctx, "batch_size", batchSize_);
     GetAttrValueOpt(ctx, "max_seqlen_q", querySeqSize_);
-    GetAttrValueOpt(ctx, "max_seqlen_kv", kvSeqSize_);
+    GetAttrValueOpt(ctx, "max_seqlen_ori_kv", kvSeqSize_);
+    GetAttrValueOpt(ctx, "max_seqlen_cmp_kv", cmpKvSeqSize_);
     GetAttrValueOpt(ctx, "ori_topk", oriTopK_);
     GetAttrValueOpt(ctx, "cmp_topk", cmpTopK_);
     GetAttrValueOpt(ctx, "cmp_ratio", cmpRatio_);
@@ -99,7 +104,6 @@ int32_t SparseFlashMlaMetadataCpuKernel::GetQueryBatchSize()
 bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
 {
     batchSize_ = GetQueryBatchSize();
-    cmpRatio_ = (cmpRatio_ == 0) ? 1 : cmpRatio_;
     if (cmpRatio_ <= 1) {
         hasCmpKv_ = false;
     }
@@ -164,12 +168,12 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 
 uint32_t SparseFlashMlaMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
 {
-    // 1. 如果 seqUsedKv_ 传了，直接使用
-    if (seqUsedKv_ != nullptr && seqUsedKv_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedKv_->GetData());
+    // 1. 如果 seqUsedOriKv_ 传了，直接使用
+    if (seqUsedOriKv_ != nullptr && seqUsedOriKv_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedOriKv_->GetData());
         return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
-    // 2. seqUsedKv_ 没传，判断 Layout
+    // 2. seqUsedOriKv_ 没传，判断 Layout
     if (layoutKv_ == "TND") {
         // 如果是 TND，尝试使用 actSeqLenOriKv_
         if (actSeqLenOriKv_ != nullptr && actSeqLenOriKv_->GetData() != nullptr) {
@@ -178,7 +182,37 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
         }
     }
     // 3. 如果不是 TND，或者 actSeqLenOriKv_ 为空，使用 kvSeqSize_
-    return static_cast<uint32_t>(kvSeqSize_);
+    if (hasOriKv_) {
+        return static_cast<uint32_t>(kvSeqSize_);
+    }
+    if (hasCmpKv_) {
+        return GetCmpSeqSize(bIdx) * static_cast<uint32_t>(cmpRatio_) + GetCmpResidualSize(bIdx);
+    }
+    return 0U;
+}
+
+uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpSeqSize(uint32_t bIdx)
+{
+    if (seqUsedCmpKv_ != nullptr && seqUsedCmpKv_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedCmpKv_->GetData());
+        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
+    }
+    if (layoutKv_ == "TND") {
+        if (actSeqLenCmpKv_ != nullptr && actSeqLenCmpKv_->GetData() != nullptr) {
+            const int32_t *s2Ptr = static_cast<const int32_t*>(actSeqLenCmpKv_->GetData());
+            return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
+        }
+    }
+    return static_cast<uint32_t>(cmpKvSeqSize_);
+}
+
+uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpResidualSize(uint32_t bIdx)
+{
+    if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
+        const int32_t *residualPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
+        return static_cast<uint32_t>(residualPtr[bIdx]);
+    }
+    return 0U;
 }
 
 uint32_t SparseFlashMlaMetadataCpuKernel::GetS1ValidSeqSize(uint32_t bIdx)

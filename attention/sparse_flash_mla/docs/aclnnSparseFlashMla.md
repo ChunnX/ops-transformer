@@ -109,7 +109,7 @@ aclnnStatus aclnnSparseFlashMlaGetWorkspaceSize(
     bool             returnSoftmaxLse,
     const aclTensor *attnOut,
     const aclTensor *softmaxLse,
-    uint64_t       **workspaceSize,
+    uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
 
@@ -304,7 +304,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpResidualKv（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKv[b]恢复压缩前KV长度；未传时余数按0处理。该参数是主算子入参，不传入SparseFlashMlaMetadata；在cmpRatio大于1且存在cmp段的CFA/SCFA场景生效，layoutKv为BSND、TND、PA_BBND时均可使用，兼容传入PA_BNBD。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKv[b]恢复压缩前KV长度；未传时余数按0处理。该参数是主算子和SparseFlashMlaMetadata的可选入参；在cmpRatio大于1且存在cmp段的CFA/SCFA场景生效，layoutKv为BSND、TND、PA_BBND时均可使用，兼容传入PA_BNBD。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -364,7 +364,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>对oriKv的压缩率。</td>
-      <td>取值范围为[0, 128]。0和1均表示SWA语义；CFA/SCFA模式支持4或128。</td>
+      <td>取值范围为[1, 128]。1表示SWA语义；CFA/SCFA模式支持4或128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -471,7 +471,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>×</td>
     </tr>
     <tr>
-      <td>workspaceSize（uint64_t**）</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -598,7 +598,7 @@ aclnnStatus aclnnSparseFlashMla(
   | N1            | 1到128           | Query头数，必须为2的幂次。                        |
   | N2            | 1            | KV头数仅支持1（共享KV + GQA）。                     |
   | D             | 512          | 每个注意力头的维度仅支持512。                        |
-  | cmpRatio     | 0 / 1 / 4 / 128 | 0和1均表示SWA语义；CFA/SCFA模式支持4或128。               |
+  | cmpRatio     | 1 / 4 / 128 | 1表示SWA语义；CFA/SCFA模式支持4或128。               |
   | oriMaskMode | 4            | 原始KV掩码模式仅支持4（Band模式）。                   |
   | cmpMaskMode | 3            | 压缩KV掩码模式仅支持3（RightDownCausal模式）。        |
   | oriWinLeft  | 127          | 滑动窗口向左扩展仅支持127。                           |
@@ -611,7 +611,7 @@ aclnnStatus aclnnSparseFlashMla(
   - 当前暂不支持对`oriKv`进行稀疏计算，设置`oriSparseIndices`无效。
   - 当前所有输入不支持传入空Tensor。
   - `metadata`参数必须传入，由`aclnnSparseFlashMlaMetadata`算子生成，shape固定为(1024,)。
-  - `cmpResidualKv`为主算子入参，不是`aclnnSparseFlashMlaMetadata`入参；传入后用于按`cmp_len * cmpRatio + residual`恢复cmp侧mask使用的压缩前长度。
+  - `cmpResidualKv`为主算子和`aclnnSparseFlashMlaMetadata`的可选入参；传入后用于按`cmp_len * cmpRatio + residual`恢复cmp侧mask使用的压缩前长度。
 
 - 三种模板模式输入要求
 
@@ -921,8 +921,8 @@ int main()
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
-      seqUsedQ, seqUsedOriKv, nullptr,
-      N1, N2, D, B, S1, S2,
+      seqUsedQ, seqUsedOriKv, nullptr, nullptr, nullptr, nullptr,
+      N1, N2, D, B, S1, S2, cmpKvLen,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,
       oriWinLeft, oriWinRight,

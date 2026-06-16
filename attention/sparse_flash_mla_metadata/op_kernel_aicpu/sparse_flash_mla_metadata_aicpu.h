@@ -292,6 +292,8 @@ private:
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
+    uint32_t GetCmpSeqSize(uint32_t bIdx);
+    uint32_t GetCmpResidualSize(uint32_t bIdx);
     uint32_t GetS1ValidSeqSize(uint32_t bIdx);
     int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
@@ -338,7 +340,11 @@ private:
     Tensor *actSeqLenOriKv_ = nullptr;
     Tensor *actSeqLenCmpKv_ = nullptr;
     Tensor *seqUsedQ_ = nullptr;
-    Tensor *seqUsedKv_ = nullptr;
+    Tensor *seqUsedOriKv_ = nullptr;
+    Tensor *seqUsedCmpKv_ = nullptr;
+    Tensor *cmpResidualKv_ = nullptr;
+    Tensor *oriTopkLength_ = nullptr;
+    Tensor *cmpTopkLength_ = nullptr;
 
     // output
     Tensor *metadata_ = nullptr;
@@ -348,11 +354,12 @@ private:
     int32_t querySeqSize_ = 0;
     int32_t queryHeadNum_ = 0;
     int32_t kvSeqSize_ = 0;
+    int32_t cmpKvSeqSize_ = 0;
     int32_t kvHeadNum_ = 0;
     int32_t headDim_ = 0;
     int32_t oriTopK_ = 0;
     int32_t cmpTopK_ = 0;
-    int32_t cmpRatio_ = -1;
+    int32_t cmpRatio_ = 1;
     int32_t oriMaskMode_ = 4;
     int32_t cmpMaskMode_ = 3;
     int64_t winLeft_ = 127;
@@ -387,7 +394,11 @@ private:
     actSeqLenOriKv = 1,
     actSeqLenCmpKv = 2,
     seqUsedQ = 3,
-    seqUsedKv = 4,
+    seqUsedOriKv = 4,
+    seqUsedCmpKv = 5,
+    cmpResidualKv = 6,
+    oriTopkLength = 7,
+    cmpTopkLength = 8,
     // output
     metadata = 0,
   };

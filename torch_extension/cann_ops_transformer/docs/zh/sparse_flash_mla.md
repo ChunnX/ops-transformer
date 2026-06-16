@@ -1,4 +1,4 @@
-# npu_sparse_flash_mla / npu_sparse_flash_mla_metadata
+# sparse_flash_mla / sparse_flash_mla_metadata
 
 ## 产品支持情况
 
@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-`npu_sparse_flash_mla`是基于`torch_npu`的`npu_ops_transformer`扩展接口，用于调用`SparseFlashMla`算子完成共享KV（Key和Value使用同一份输入）的稀疏注意力计算。该接口支持以下三类计算模式：
+`sparse_flash_mla`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`SparseFlashMla`算子完成共享KV（Key和Value使用同一份输入）的稀疏注意力计算。该接口支持以下三类计算模式：
 
 - **SWA（Sliding Window Attention）**：仅使用`ori_kv`，对原始KV做滑动窗口注意力。
 - **CFA（Compressed Flash Attention）**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
@@ -27,22 +27,22 @@ $$
 
 其中$\tilde{K}=\tilde{V}$，由`ori_kv`的滑动窗口部分和`cmp_kv`的压缩部分共同组成，实际参与计算的KV范围由`cmp_ratio`、`ori_mask_mode`、`cmp_mask_mode`、`ori_win_left`、`ori_win_right`以及`cmp_sparse_indices`决定。
 
-`npu_sparse_flash_mla_metadata`是`SparseFlashMlaMetadata`的torch扩展接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子必须传入该metadata。典型调用流程如下：
+`sparse_flash_mla_metadata`是`SparseFlashMlaMetadata`的torch扩展接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子必须传入该metadata。典型调用流程如下：
 
 1. 准备`q`、`ori_kv`、`cmp_kv`、序列长度、block table、sinks等输入。
-2. 调用`npu_sparse_flash_mla_metadata`生成`metadata`。
-3. 调用`npu_sparse_flash_mla`，将上一步得到的`metadata`传入主算子。
+2. 调用`sparse_flash_mla_metadata`生成`metadata`。
+3. 调用`sparse_flash_mla`，将上一步得到的`metadata`传入主算子。
 
 > [!NOTE]
 >
-> `cmp_residual_kv`是`npu_sparse_flash_mla`主算子的输入，不是`npu_sparse_flash_mla_metadata`的输入。该参数用于恢复压缩前KV长度，从而修正CFA/SCFA中的cmp侧causal mask：`ori_len_for_cmp_mask = cmp_len * cmp_ratio + cmp_residual_kv[b]`。
+> `cmp_residual_kv`同时是`sparse_flash_mla`和`sparse_flash_mla_metadata`的可选输入。该参数用于恢复压缩前KV长度：`ori_len_for_cmp_mask = cmp_len * cmp_ratio + cmp_residual_kv[b]`。
 
 ## 函数原型
 
 ```python
-from npu_ops_transformer.ops import npu_sparse_flash_mla
+from cann_ops_transformer.ops import sparse_flash_mla
 
-npu_sparse_flash_mla(
+sparse_flash_mla(
     q,
     *,
     ori_kv=None,
@@ -76,9 +76,9 @@ npu_sparse_flash_mla(
 ```
 
 ```python
-from npu_ops_transformer.ops import npu_sparse_flash_mla_metadata
+from cann_ops_transformer.ops import sparse_flash_mla_metadata
 
-npu_sparse_flash_mla_metadata(
+sparse_flash_mla_metadata(
     num_heads_q,
     num_heads_kv,
     head_dim,
@@ -88,9 +88,14 @@ npu_sparse_flash_mla_metadata(
     cu_seqlens_cmp_kv=None,
     seqused_q=None,
     seqused_ori_kv=None,
+    seqused_cmp_kv=None,
+    cmp_residual_kv=None,
+    ori_topk_length=None,
+    cmp_topk_length=None,
     batch_size=None,
     max_seqlen_q=None,
-    max_seqlen_kv=None,
+    max_seqlen_ori_kv=None,
+    max_seqlen_cmp_kv=None,
     ori_topk=0,
     cmp_topk=0,
     cmp_ratio=1,
@@ -107,7 +112,7 @@ npu_sparse_flash_mla_metadata(
 
 ## 参数说明
 
-### npu_sparse_flash_mla
+### sparse_flash_mla
 
 | 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -123,14 +128,14 @@ npu_sparse_flash_mla_metadata(
 | cu_seqlens_cmp_kv | 可选输入 | TND场景下cmp_kv的前缀和序列长度。 | `int32` | `[B + 1]`。 |
 | seqused_q | 可选输入 | BSND场景下每个batch实际参与计算的q长度。 | `int32` | `[B]`。 |
 | seqused_ori_kv | 可选输入 | PA场景下每个batch实际参与计算的ori_kv长度。 | `int32` | `[B]`。 |
-| seqused_cmp_kv | 可选输入 | 每个batch实际参与计算的cmp_kv长度。仅在`layout_kv="BSND"`且存在cmp段时作为每个batch的cmp有效长度生效；`layout_kv="TND"`使用`cu_seqlens_cmp_kv`推导，`layout_kv="PA_BBND"`（兼容`PA_BNBD`）使用block table和实际KV长度语义。未传时使用`cmp_kv`或`cu_seqlens_cmp_kv`推导的长度。 | `int32` | `[B]`。 |
-| cmp_residual_kv | 可选输入 | 每个batch的压缩余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前长度。仅主算子使用，metadata不传；在`cmp_ratio > 1`且存在cmp段的CFA/SCFA场景生效，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BBND"`（兼容`PA_BNBD`）均可使用。 | `int32` | `[B]`。 |
+| seqused_cmp_kv | 可选输入 | 每个batch实际参与计算的cmp_kv长度。显式传入时优先于layout推导，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BBND"`（兼容`PA_BNBD`）均可使用；未传时使用`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA实际KV长度语义推导。 | `int32` | `[B]`。 |
+| cmp_residual_kv | 可选输入 | 每个batch的压缩余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前长度。主算子和metadata均可传入；在`cmp_ratio > 1`且存在cmp段的CFA/SCFA场景生效，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BBND"`（兼容`PA_BNBD`）均可使用。 | `int32` | `[B]`。 |
 | ori_topk_length | 可选输入 | 原始KV TopK长度。当前主流程不支持，建议传`None`。 | `int32` | - |
 | cmp_topk_length | 可选输入 | 每行cmp侧有效TopK长度。SCFA模式建议与`cmp_sparse_indices`同时传入，避免无效`-1`位置参与计算。 | `int32` | `layout_q="BSND"`时为`[B, S1, 1]`；`layout_q="TND"`时为`[T1, 1]`。 |
 | sinks | 可选输入 | 每个Query head的sink值，作为online softmax初始项。 | `float32` | `[N1]`。 |
-| metadata | 必选输入 | `npu_sparse_flash_mla_metadata`生成的任务切分结果。 | `int32` | `[1024]`。 |
+| metadata | 必选输入 | `sparse_flash_mla_metadata`生成的任务切分结果。 | `int32` | `[1024]`。 |
 | softmax_scale | 可选属性 | QK矩阵乘后的缩放系数，通常为`1 / sqrt(D)`。 | `float` | - |
-| cmp_ratio | 可选属性 | 压缩率。`0`和`1`均表示SWA语义；CFA/SCFA支持`4`或`128`。 | `int` | - |
+| cmp_ratio | 可选属性 | 压缩率。取值范围为`1~128`；`1`表示SWA语义，CFA/SCFA支持`4`或`128`。 | `int` | - |
 | ori_mask_mode | 可选属性 | ori_kv侧mask模式。当前有效配置为`4`，表示band模式。 | `int` | - |
 | cmp_mask_mode | 可选属性 | cmp_kv侧mask模式。CFA/SCFA中当前有效配置为`3`，表示rightDownCausal模式。 | `int` | - |
 | ori_win_left | 可选属性 | ori_kv滑动窗口左侧长度。当前支持`127`。 | `int` | - |
@@ -140,7 +145,7 @@ npu_sparse_flash_mla_metadata(
 | topk_value_mode | 可选属性 | TopK索引取值模式。当前支持`1`。 | `int` | - |
 | return_softmax_lse | 可选属性 | 是否返回softmax_lse。 | `bool` | 默认`False`。 |
 
-### npu_sparse_flash_mla_metadata
+### sparse_flash_mla_metadata
 
 | 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -152,12 +157,17 @@ npu_sparse_flash_mla_metadata(
 | cu_seqlens_cmp_kv | 可选输入 | TND场景下cmp_kv的前缀和序列长度。 | `int32` | `[B + 1]`。 |
 | seqused_q | 可选输入 | BSND场景下每个batch实际参与计算的q长度。 | `int32` | `[B]`。 |
 | seqused_ori_kv | 可选输入 | PA场景下每个batch实际参与计算的ori_kv长度。 | `int32` | `[B]`。 |
+| seqused_cmp_kv | 可选输入 | 每个batch实际参与计算的cmp_kv长度。 | `int32` | `[B]`。 |
+| cmp_residual_kv | 可选输入 | 每个batch的压缩余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前长度。 | `int32` | `[B]`。 |
+| ori_topk_length | 可选输入 | 原始KV每行有效TopK长度。 | `int32` | `layout_q="BSND"`时为`[B, S1, 1]`；`layout_q="TND"`时为`[T1, 1]`。 |
+| cmp_topk_length | 可选输入 | 压缩KV每行有效TopK长度。 | `int32` | `layout_q="BSND"`时为`[B, S1, 1]`；`layout_q="TND"`时为`[T1, 1]`。 |
 | batch_size | 可选属性 | batch大小。BSND且未传`seqused_q`时需要显式指定。 | `int` | - |
 | max_seqlen_q | 可选属性 | 所有batch中q的最大有效长度。 | `int` | - |
-| max_seqlen_kv | 可选属性 | 所有batch中ori_kv的最大有效长度。 | `int` | - |
+| max_seqlen_ori_kv | 可选属性 | 所有batch中ori_kv的最大有效长度。 | `int` | - |
+| max_seqlen_cmp_kv | 可选属性 | 所有batch中cmp_kv的最大有效长度。 | `int` | - |
 | ori_topk | 可选属性 | 原始KV TopK长度。当前主流程不支持，传`0`。 | `int` | - |
 | cmp_topk | 可选属性 | 压缩KV TopK长度。CFA/SWA传`0`；SCFA支持`512`或`1024`。 | `int` | - |
-| cmp_ratio | 可选属性 | 压缩率。`0`和`1`均表示SWA语义；CFA/SCFA支持`4`或`128`。 | `int` | - |
+| cmp_ratio | 可选属性 | 压缩率。取值范围为`1~128`；`1`表示SWA语义，CFA/SCFA支持`4`或`128`。 | `int` | - |
 | ori_mask_mode | 可选属性 | ori_kv侧mask模式。当前有效配置为`4`。 | `int` | - |
 | cmp_mask_mode | 可选属性 | cmp_kv侧mask模式。CFA/SCFA中当前有效配置为`3`。 | `int` | - |
 | ori_win_left | 可选属性 | ori_kv滑动窗口左侧长度，当前支持`127`。 | `int` | - |
@@ -165,14 +175,14 @@ npu_sparse_flash_mla_metadata(
 | layout_q | 可选属性 | q的数据排布格式。 | `str` | 支持`"BSND"`、`"TND"`。 |
 | layout_kv | 可选属性 | ori_kv/cmp_kv的数据排布格式。 | `str` | 支持`"BSND"`、`"TND"`、`"PA_BBND"`；兼容传入`"PA_BNBD"`。 |
 | has_ori_kv | 可选属性 | 主算子是否会传入`ori_kv`。 | `bool` | - |
-| has_cmp_kv | 可选属性 | 主算子是否会传入`cmp_kv`。`cmp_ratio`为`0`或`1`时按SWA处理。 | `bool` | - |
+| has_cmp_kv | 可选属性 | 主算子是否会传入`cmp_kv`。未传`cmp_kv`或`cmp_ratio`为`1`时按SWA处理。 | `bool` | - |
 | metadata | 输出 | 任务切分metadata。 | `int32` | `[1024]`。 |
 
 ## 返回值说明
 
-- **attention_out**：`npu_sparse_flash_mla`的第一个输出，shape和`q`一致，dtype和`q`一致。
-- **softmax_lse**：`npu_sparse_flash_mla`的第二个输出。`return_softmax_lse=False`时返回FLOAT32标量占位Tensor；`return_softmax_lse=True`时返回FLOAT32的log-sum-exp结果。
-- **metadata**：`npu_sparse_flash_mla_metadata`的输出，shape固定为`[1024]`，dtype为`int32`。
+- **attention_out**：`sparse_flash_mla`的第一个输出，shape和`q`一致，dtype和`q`一致。
+- **softmax_lse**：`sparse_flash_mla`的第二个输出。`return_softmax_lse=False`时返回FLOAT32标量占位Tensor；`return_softmax_lse=True`时返回FLOAT32的log-sum-exp结果。
+- **metadata**：`sparse_flash_mla_metadata`的输出，shape固定为`[1024]`，dtype为`int32`。
 
 ## 约束说明
 
@@ -185,7 +195,7 @@ npu_sparse_flash_mla_metadata(
 - `layout_kv="TND"`时必须传入`cu_seqlens_ori_kv`；若同时存在`cmp_kv`，还必须传入`cu_seqlens_cmp_kv`。
 - `layout_kv="PA_BBND"`时必须传入`seqused_ori_kv`和`ori_block_table`；CFA/SCFA还必须传入`cmp_block_table`。
 - `cmp_sparse_indices`只在SCFA模式传入，最后一维`K`支持512或1024。
-- `cmp_residual_kv`用于修正cmp侧mask语义，不会改变metadata任务切分；长度必须等于batch大小。
+- `cmp_residual_kv`用于修正cmp侧mask语义，主算子和metadata均可传入；长度必须等于batch大小。
 - `ori_kv`和`cmp_kv`允许存在行间padding类非连续内存，接口会通过aclnn获取stride信息传给底层算子。
 
 ## 调用示例
@@ -196,8 +206,8 @@ npu_sparse_flash_mla_metadata(
 import math
 import torch
 import torch_npu
-from npu_ops_transformer.ops import npu_sparse_flash_mla
-from npu_ops_transformer.ops import npu_sparse_flash_mla_metadata
+from cann_ops_transformer.ops import sparse_flash_mla
+from cann_ops_transformer.ops import sparse_flash_mla_metadata
 
 torch_npu.npu.set_device(0)
 
@@ -208,19 +218,19 @@ S2 = 64
 N1 = 64
 N2 = 1
 D = 512
-cmp_ratio = 1  # cmp_ratio=0和cmp_ratio=1均表示SWA语义。
+cmp_ratio = 1  # cmp_ratio=1表示SWA语义。
 
 q = torch.randn(B, S1, N1, D, dtype=dtype, device="npu")
 ori_kv = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")
 sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 
-metadata = npu_sparse_flash_mla_metadata(
+metadata = sparse_flash_mla_metadata(
     N1,
     N2,
     D,
     batch_size=B,
     max_seqlen_q=S1,
-    max_seqlen_kv=S2,
+    max_seqlen_ori_kv=S2,
     ori_topk=0,
     cmp_topk=0,
     cmp_ratio=cmp_ratio,
@@ -234,7 +244,7 @@ metadata = npu_sparse_flash_mla_metadata(
     has_cmp_kv=False,
 )
 
-attn_out, softmax_lse = npu_sparse_flash_mla(
+attn_out, softmax_lse = sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     sinks=sinks,
@@ -262,8 +272,8 @@ assert torch.isfinite(attn_out.float()).all().item()
 import math
 import torch
 import torch_npu
-from npu_ops_transformer.ops import npu_sparse_flash_mla
-from npu_ops_transformer.ops import npu_sparse_flash_mla_metadata
+from cann_ops_transformer.ops import sparse_flash_mla
+from cann_ops_transformer.ops import sparse_flash_mla_metadata
 
 torch_npu.npu.set_device(0)
 
@@ -282,13 +292,14 @@ ori_kv = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")
 cmp_kv = torch.randn(B, S3, N2, D, dtype=dtype, device="npu")
 sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 
-metadata = npu_sparse_flash_mla_metadata(
+metadata = sparse_flash_mla_metadata(
     N1,
     N2,
     D,
     batch_size=B,
     max_seqlen_q=S1,
-    max_seqlen_kv=S2,
+    max_seqlen_ori_kv=S2,
+    max_seqlen_cmp_kv=S3,
     ori_topk=0,
     cmp_topk=0,
     cmp_ratio=cmp_ratio,
@@ -302,7 +313,7 @@ metadata = npu_sparse_flash_mla_metadata(
     has_cmp_kv=True,
 )
 
-attn_out, softmax_lse = npu_sparse_flash_mla(
+attn_out, softmax_lse = sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     cmp_kv=cmp_kv,
@@ -331,8 +342,8 @@ assert torch.isfinite(attn_out.float()).all().item()
 import math
 import torch
 import torch_npu
-from npu_ops_transformer.ops import npu_sparse_flash_mla
-from npu_ops_transformer.ops import npu_sparse_flash_mla_metadata
+from cann_ops_transformer.ops import sparse_flash_mla
+from cann_ops_transformer.ops import sparse_flash_mla_metadata
 
 torch_npu.npu.set_device(0)
 
@@ -361,7 +372,7 @@ cmp_sparse_indices = torch.full((sum(q_lens), N2, K), -1, dtype=torch.int32, dev
 cmp_sparse_indices[:, :, :1] = torch.arange(1, dtype=torch.int32, device="npu").view(1, 1, 1)
 cmp_topk_length = torch.ones((sum(q_lens), 1), dtype=torch.int32, device="npu")
 
-metadata = npu_sparse_flash_mla_metadata(
+metadata = sparse_flash_mla_metadata(
     N1,
     N2,
     D,
@@ -369,7 +380,8 @@ metadata = npu_sparse_flash_mla_metadata(
     cu_seqlens_ori_kv=cu_ori,
     cu_seqlens_cmp_kv=cu_cmp,
     max_seqlen_q=max(q_lens),
-    max_seqlen_kv=max(ori_lens),
+    max_seqlen_ori_kv=max(ori_lens),
+    max_seqlen_cmp_kv=max(cmp_lens),
     ori_topk=0,
     cmp_topk=K,
     cmp_ratio=cmp_ratio,
@@ -383,7 +395,7 @@ metadata = npu_sparse_flash_mla_metadata(
     has_cmp_kv=True,
 )
 
-attn_out, softmax_lse = npu_sparse_flash_mla(
+attn_out, softmax_lse = sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     cmp_kv=cmp_kv,
@@ -428,8 +440,8 @@ rank1虽然只计算seq1的`[8,18)`，但`ori_kv`和`cmp_kv`需要传到当前�
 import math
 import torch
 import torch_npu
-from npu_ops_transformer.ops import npu_sparse_flash_mla
-from npu_ops_transformer.ops import npu_sparse_flash_mla_metadata
+from cann_ops_transformer.ops import sparse_flash_mla
+from cann_ops_transformer.ops import sparse_flash_mla_metadata
 
 
 torch_npu.npu.set_device(0)
@@ -485,7 +497,7 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
     cmp_residual_kv = torch.tensor(residuals, dtype=torch.int32, device="npu")
     cmp_sparse_indices, cmp_topk_length = make_cmp_sparse_indices(q_lens, ori_prefix_lens, cmp_lens)
 
-    metadata = npu_sparse_flash_mla_metadata(
+    metadata = sparse_flash_mla_metadata(
         N1,
         N2,
         D,
@@ -493,7 +505,8 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
         cu_seqlens_ori_kv=cu_ori,
         cu_seqlens_cmp_kv=cu_cmp,
         max_seqlen_q=max(q_lens),
-        max_seqlen_kv=max(ori_prefix_lens),
+        max_seqlen_ori_kv=max(ori_prefix_lens),
+        max_seqlen_cmp_kv=max(cmp_lens),
         ori_topk=0,
         cmp_topk=K,
         cmp_ratio=cmp_ratio,
@@ -507,7 +520,7 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
         has_cmp_kv=True,
     )
 
-    attn_out, softmax_lse = npu_sparse_flash_mla(
+    attn_out, softmax_lse = sparse_flash_mla(
         q,
         ori_kv=ori_kv,
         cmp_kv=cmp_kv,

@@ -235,7 +235,7 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::InitTilingData()
     constInfo.syncC2V2 = SYNC_C2_V2_FLAG;
 
     // cmp
-    constInfo.cmpRatio = (tilingData->cmpParams.cmpRatio == 0) ? 1 : tilingData->cmpParams.cmpRatio;
+    constInfo.cmpRatio = tilingData->cmpParams.cmpRatio;
     constInfo.sparseBlockCount = tilingData->cmpParams.sparseBlockCount;
     constInfo.sparseBlockSize = 1; // sparseBlockSize 固定为1
     constInfo.cmpMaskMode = tilingData->cmpParams.cmpMaskMode;

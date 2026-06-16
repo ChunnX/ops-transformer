@@ -177,7 +177,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对`ori_kv`的压缩率。0和1均表示SWA语义，CFA/SCFA模式支持4或128。</td>
+      <td>表示对`ori_kv`的压缩率。1表示SWA语义，CFA/SCFA模式支持4或128。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -275,7 +275,7 @@
 - 目前暂不支持指定`q`中参与运算的token数，因此设置`seqused_q`无效。
 - 目前暂不支持对`ori_kv`进行稀疏计算，因此设置`ori_sparse_indices`无效。
 - 目前所有输入不支持传入空tensor。
-- `cmp_residual_kv`为主算子入参，不是metadata算子的入参；传入后仅用于恢复cmp侧mask使用的压缩前KV长度。
+- `cmp_residual_kv`为主算子和metadata算子的可选入参；传入后用于恢复cmp侧mask使用的压缩前KV长度。
 - `q`、`ori_kv`、`cmp_kv`数据排布格式支持从多种维度解读，B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 - Q\_S和S1表示q shape中的S，S2表示ori_kv shape中的S，S3表示cmp_kv shape中的S；Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori_kv\_heads和num\_cmp_kv\_heads；Q\_T和T1表示q shape中的输入样本序列长度的累加和。
 
@@ -284,4 +284,4 @@
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn接口 | [test_aclnnSparseFlashMla](./examples/test_aclnn_sparse_flash_mla.cpp) | 通过[aclnnSparseFlashMla](./docs/aclnnSparseFlashMla.md)调用SparseFlashMla算子 |
-| torch_npu扩展接口 | [npu_sparse_flash_mla](../../torch_extension/npu_ops_transformer/doc/npu_sparse_flash_mla.md) | 通过`npu_ops_transformer.ops.npu_sparse_flash_mla`调用SparseFlashMla算子 |
+| torch_npu扩展接口 | [sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla`调用SparseFlashMla算子 |
