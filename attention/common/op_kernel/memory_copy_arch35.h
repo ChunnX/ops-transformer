@@ -213,284 +213,284 @@ __aicore__ inline constexpr bool IsSupportPse()
 }
 
 // post quant 拷贝
-struct PostQuantInfo_V2 {
-    uint32_t gSize;
-    uint32_t dSize;
-    uint32_t s1Size; // actualS1
-    uint32_t n2Idx;
-    uint32_t gS1Idx;
-    uint32_t gS1DealSize;
-    uint32_t colCount;
-};
+// struct PostQuantInfo_V2 {
+//     uint32_t gSize;
+//     uint32_t dSize;
+//     uint32_t s1Size; // actualS1
+//     uint32_t n2Idx;
+//     uint32_t gS1Idx;
+//     uint32_t gS1DealSize;
+//     uint32_t colCount;
+// };
 
-template <typename PARAM_T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
-__aicore__ void CopyParamsGmToUb(LocalTensor<PARAM_T> &dstUb, FaGmTensor<PARAM_T, GM_FORMAT> &srcTensor,
-                                 PostQuantInfo_V2 &postQuantInfo)
-{
-    OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+// template <typename PARAM_T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
+// __aicore__ void CopyParamsGmToUb(LocalTensor<PARAM_T> &dstUb, FaGmTensor<PARAM_T, GM_FORMAT> &srcTensor,
+//                                  PostQuantInfo_V2 &postQuantInfo)
+// {
+//     OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
 
-    if constexpr (UB_FORMAT == UbFormat::S1G) {
-        uint32_t s1IdxStart = postQuantInfo.gS1Idx / offsetCalculator.GetDimG();
-        uint32_t gIdxStart = postQuantInfo.gS1Idx % offsetCalculator.GetDimG();
-        uint32_t s1IdxEnd = (postQuantInfo.gS1Idx + postQuantInfo.gS1DealSize) / offsetCalculator.GetDimG();
-        uint32_t gIdxEnd = (postQuantInfo.gS1Idx + postQuantInfo.gS1DealSize) % offsetCalculator.GetDimG();
+//     if constexpr (UB_FORMAT == UbFormat::S1G) {
+//         uint32_t s1IdxStart = postQuantInfo.gS1Idx / offsetCalculator.GetDimG();
+//         uint32_t gIdxStart = postQuantInfo.gS1Idx % offsetCalculator.GetDimG();
+//         uint32_t s1IdxEnd = (postQuantInfo.gS1Idx + postQuantInfo.gS1DealSize) / offsetCalculator.GetDimG();
+//         uint32_t gIdxEnd = (postQuantInfo.gS1Idx + postQuantInfo.gS1DealSize) % offsetCalculator.GetDimG();
 
-        if (s1IdxEnd - s1IdxStart > 1) {
-            // 存在完整中间段, 拷贝完整G
-            uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
-            uint32_t blockCount = offsetCalculator.GetDimG();
-            CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], offsetCalculator.GetDimG(),
-                                            offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(),
-                                            postQuantInfo.colCount);
-        } else {
-            // 处理第一段S1
-            uint32_t headSize = 0;
-            if (s1IdxStart == s1IdxEnd) {
-                headSize = gIdxEnd - gIdxStart;
-            } else {
-                headSize = offsetCalculator.GetDimG() - gIdxStart;
-            }
-            uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
-            CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], headSize, offsetCalculator.GetDimD(),
-                                            offsetCalculator.GetStrideG(), postQuantInfo.colCount);
+//         if (s1IdxEnd - s1IdxStart > 1) {
+//             // 存在完整中间段, 拷贝完整G
+//             uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
+//             uint32_t blockCount = offsetCalculator.GetDimG();
+//             CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], offsetCalculator.GetDimG(),
+//                                             offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(),
+//                                             postQuantInfo.colCount);
+//         } else {
+//             // 处理第一段S1
+//             uint32_t headSize = 0;
+//             if (s1IdxStart == s1IdxEnd) {
+//                 headSize = gIdxEnd - gIdxStart;
+//             } else {
+//                 headSize = offsetCalculator.GetDimG() - gIdxStart;
+//             }
+//             uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
+//             CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], headSize, offsetCalculator.GetDimD(),
+//                                             offsetCalculator.GetStrideG(), postQuantInfo.colCount);
 
-            // 处理第二段S1
-            if ((s1IdxEnd - s1IdxStart == 1) && (gIdxEnd > 0)) {
-                offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
-                uint32_t ubOffset = headSize * postQuantInfo.colCount;
+//             // 处理第二段S1
+//             if ((s1IdxEnd - s1IdxStart == 1) && (gIdxEnd > 0)) {
+//                 offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
+//                 uint32_t ubOffset = headSize * postQuantInfo.colCount;
 
-                CopySingleMatrixNDToND<PARAM_T>(dstUb[ubOffset], srcTensor.gmTensor[offset], gIdxEnd,
-                                                offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(),
-                                                postQuantInfo.colCount);
-            }
-        }
-    } else {
-        uint32_t gIdxStart = postQuantInfo.gS1Idx / postQuantInfo.s1Size;
-        uint32_t s1IdxStart = postQuantInfo.gS1Idx % postQuantInfo.s1Size;
+//                 CopySingleMatrixNDToND<PARAM_T>(dstUb[ubOffset], srcTensor.gmTensor[offset], gIdxEnd,
+//                                                 offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(),
+//                                                 postQuantInfo.colCount);
+//             }
+//         }
+//     } else {
+//         uint32_t gIdxStart = postQuantInfo.gS1Idx / postQuantInfo.s1Size;
+//         uint32_t s1IdxStart = postQuantInfo.gS1Idx % postQuantInfo.s1Size;
 
-        uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
-        // postQuantInfo.gS1DealSize + s1IdxStart是将第一个G的S1部分补齐后的总GS1行数
-        CopySingleMatrixNDToND<PARAM_T>(
-            dstUb, srcTensor.gmTensor[offset],
-            ((postQuantInfo.gS1DealSize + s1IdxStart) + (postQuantInfo.s1Size - 1)) / postQuantInfo.s1Size,
-            offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
-    }
-}
+//         uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
+//         // postQuantInfo.gS1DealSize + s1IdxStart是将第一个G的S1部分补齐后的总GS1行数
+//         CopySingleMatrixNDToND<PARAM_T>(
+//             dstUb, srcTensor.gmTensor[offset],
+//             ((postQuantInfo.gS1DealSize + s1IdxStart) + (postQuantInfo.s1Size - 1)) / postQuantInfo.s1Size,
+//             offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
+//     }
+// }
 
-// ----------------------------------------------Copy LSE UB To Gm arch35--------------------------------
-template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
-__aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                                 uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
-                                                 const CONST_INFO_T &constInfo, uint64_t s1LeftPaddingSize = 0)
-{
-    uint32_t startS1Idx = mOffset / constInfo.gSize;
-    uint32_t startGIdx = mOffset % constInfo.gSize;
-    uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.gSize;
-    uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.gSize;
-    uint64_t outOffset = 0;
-    uint64_t ubOffset = 0;
-    uint32_t curDealRowCount = 0;
+// // ----------------------------------------------Copy LSE UB To Gm arch35--------------------------------
+// template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
+// __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+//                                                  uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
+//                                                  const CONST_INFO_T &constInfo, uint64_t s1LeftPaddingSize = 0)
+// {
+//     uint32_t startS1Idx = mOffset / constInfo.gSize;
+//     uint32_t startGIdx = mOffset % constInfo.gSize;
+//     uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.gSize;
+//     uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.gSize;
+//     uint64_t outOffset = 0;
+//     uint64_t ubOffset = 0;
+//     uint32_t curDealRowCount = 0;
 
-    for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
-        outOffset = bN2Offset + startGIdx * constInfo.s1Size + s1Idx + s1LeftPaddingSize;
-        if (s1Idx != endS1Idx) {
-            curDealRowCount =  constInfo.gSize - startGIdx;
-        }
-        else {
-            curDealRowCount = endGIdx + 1 - startGIdx;
-        }
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = curDealRowCount;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = (constInfo.s1Size - 1) * sizeof(float);
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-        startGIdx = 0;
-        ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    }
-}
+//     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
+//         outOffset = bN2Offset + startGIdx * constInfo.s1Size + s1Idx + s1LeftPaddingSize;
+//         if (s1Idx != endS1Idx) {
+//             curDealRowCount =  constInfo.gSize - startGIdx;
+//         }
+//         else {
+//             curDealRowCount = endGIdx + 1 - startGIdx;
+//         }
+//         DataCopyExtParams dataCopyParams;
+//         dataCopyParams.blockCount = curDealRowCount;
+//         dataCopyParams.blockLen = sizeof(float);
+//         dataCopyParams.srcStride = 0;
+//         dataCopyParams.dstStride = (constInfo.s1Size - 1) * sizeof(float);
+//         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+//         startGIdx = 0;
+//         ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+//     }
+// }
 
-template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
-__aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                            uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                            const CONST_INFO_T &constInfo,
-                                            uint64_t qActSeqLens, uint64_t s1LeftPaddingSize = 0)
-{
-    uint64_t gOffset = mOffset / qActSeqLens * constInfo.s1Size;
-    uint64_t seqOffset = mOffset % qActSeqLens;
-    uint64_t outOffset = bN2Offset + gOffset + seqOffset + s1LeftPaddingSize;
-    uint64_t ubOffset = 0;
+// template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
+// __aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+//                                             uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+//                                             const CONST_INFO_T &constInfo,
+//                                             uint64_t qActSeqLens, uint64_t s1LeftPaddingSize = 0)
+// {
+//     uint64_t gOffset = mOffset / qActSeqLens * constInfo.s1Size;
+//     uint64_t seqOffset = mOffset % qActSeqLens;
+//     uint64_t outOffset = bN2Offset + gOffset + seqOffset + s1LeftPaddingSize;
+//     uint64_t ubOffset = 0;
 
-    // dealCount ≤ 当前actQs剩余部分，则直接搬运全部dealCount
-    if ((qActSeqLens - seqOffset) >= dealCount) {
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = dealCount;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-        return;
-    }
-    // dealCount > 当前actQs剩余部分，分块搬运dealCount
-    // dealCount首块
-    uint64_t headActSeq = qActSeqLens - seqOffset;
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = headActSeq;
-    dataCopyParams.blockLen = sizeof(float);
-    dataCopyParams.srcStride = 0;
-    dataCopyParams.dstStride = 0;
-    DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-    outOffset += constInfo.s1Size - qActSeqLens + headActSeq;
-    // ubOffset += headActSeq * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    ubOffset += headActSeq * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    // dealCount中间块
-    uint64_t pendingCount = dealCount - headActSeq;
-    while (pendingCount > qActSeqLens) {
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = qActSeqLens;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-        outOffset += constInfo.s1Size;
-        ubOffset += qActSeqLens * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-        pendingCount -= qActSeqLens;
-    }
-    // dealCount尾块
-    if (pendingCount > 0) {
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = pendingCount;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-    }
-}
+//     // dealCount ≤ 当前actQs剩余部分，则直接搬运全部dealCount
+//     if ((qActSeqLens - seqOffset) >= dealCount) {
+//         DataCopyExtParams dataCopyParams;
+//         dataCopyParams.blockCount = dealCount;
+//         dataCopyParams.blockLen = sizeof(float);
+//         dataCopyParams.srcStride = 0;
+//         dataCopyParams.dstStride = 0;
+//         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+//         return;
+//     }
+//     // dealCount > 当前actQs剩余部分，分块搬运dealCount
+//     // dealCount首块
+//     uint64_t headActSeq = qActSeqLens - seqOffset;
+//     DataCopyExtParams dataCopyParams;
+//     dataCopyParams.blockCount = headActSeq;
+//     dataCopyParams.blockLen = sizeof(float);
+//     dataCopyParams.srcStride = 0;
+//     dataCopyParams.dstStride = 0;
+//     DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+//     outOffset += constInfo.s1Size - qActSeqLens + headActSeq;
+//     // ubOffset += headActSeq * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+//     ubOffset += headActSeq * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+//     // dealCount中间块
+//     uint64_t pendingCount = dealCount - headActSeq;
+//     while (pendingCount > qActSeqLens) {
+//         DataCopyExtParams dataCopyParams;
+//         dataCopyParams.blockCount = qActSeqLens;
+//         dataCopyParams.blockLen = sizeof(float);
+//         dataCopyParams.srcStride = 0;
+//         dataCopyParams.dstStride = 0;
+//         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+//         outOffset += constInfo.s1Size;
+//         ubOffset += qActSeqLens * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+//         pendingCount -= qActSeqLens;
+//     }
+//     // dealCount尾块
+//     if (pendingCount > 0) {
+//         DataCopyExtParams dataCopyParams;
+//         dataCopyParams.blockCount = pendingCount;
+//         dataCopyParams.blockLen = sizeof(float);
+//         dataCopyParams.srcStride = 0;
+//         dataCopyParams.dstStride = 0;
+//         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+//     }
+// }
 
-template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
-__aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
-                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
-                                                const CONST_INFO_T &constInfo)
-{
-    uint32_t startS1Idx = mOffset / constInfo.gSize;
-    uint32_t startGIdx = mOffset % constInfo.gSize;
-    uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.gSize;
-    uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.gSize;
-    uint64_t outOffset = 0;
-    uint64_t ubOffset = 0;
-    uint32_t curDealRowCount = 0;
+// template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
+// __aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
+//                                                 uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
+//                                                 const CONST_INFO_T &constInfo)
+// {
+//     uint32_t startS1Idx = mOffset / constInfo.gSize;
+//     uint32_t startGIdx = mOffset % constInfo.gSize;
+//     uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.gSize;
+//     uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.gSize;
+//     uint64_t outOffset = 0;
+//     uint64_t ubOffset = 0;
+//     uint32_t curDealRowCount = 0;
 
-    for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
-        outOffset = bN2Offset + s1Idx * constInfo.n2Size * constInfo.gSize + startGIdx;
-        if (s1Idx != endS1Idx) {
-            curDealRowCount =  constInfo.gSize - startGIdx;
-        }
-        else {
-            curDealRowCount = endGIdx + 1 - startGIdx;
-        }
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = curDealRowCount;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-        startGIdx = 0;
-        ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    }
-}
+//     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
+//         outOffset = bN2Offset + s1Idx * constInfo.n2Size * constInfo.gSize + startGIdx;
+//         if (s1Idx != endS1Idx) {
+//             curDealRowCount =  constInfo.gSize - startGIdx;
+//         }
+//         else {
+//             curDealRowCount = endGIdx + 1 - startGIdx;
+//         }
+//         DataCopyExtParams dataCopyParams;
+//         dataCopyParams.blockCount = curDealRowCount;
+//         dataCopyParams.blockLen = sizeof(float);
+//         dataCopyParams.srcStride = 0;
+//         dataCopyParams.dstStride = 0;
+//         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+//         startGIdx = 0;
+//         ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+//     }
+// }
 
-template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
-__aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                const CONST_INFO_T &constInfo)
-{
-    uint32_t startS1Idx = mOffset / constInfo.realGSize;
-    uint32_t startGIdx = mOffset % constInfo.realGSize;
-    uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.realGSize;
-    uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.realGSize;
-    uint64_t outOffset = 0;
-    uint64_t ubOffset = 0;
-    uint32_t curDealRowCount = 0;
+// template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
+// __aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+//                                                 uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+//                                                 const CONST_INFO_T &constInfo)
+// {
+//     uint32_t startS1Idx = mOffset / constInfo.realGSize;
+//     uint32_t startGIdx = mOffset % constInfo.realGSize;
+//     uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.realGSize;
+//     uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.realGSize;
+//     uint64_t outOffset = 0;
+//     uint64_t ubOffset = 0;
+//     uint32_t curDealRowCount = 0;
 
-    for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
-        outOffset = bN2Offset + s1Idx * constInfo.realN2Size * constInfo.realGSize + startGIdx;
-        if (s1Idx != endS1Idx) {
-            curDealRowCount =  constInfo.realGSize - startGIdx;
-        }
-        else {
-            curDealRowCount = endGIdx + 1 - startGIdx;
-        }
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = curDealRowCount;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-        startGIdx = 0;
-        ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    }
-}
+//     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
+//         outOffset = bN2Offset + s1Idx * constInfo.realN2Size * constInfo.realGSize + startGIdx;
+//         if (s1Idx != endS1Idx) {
+//             curDealRowCount =  constInfo.realGSize - startGIdx;
+//         }
+//         else {
+//             curDealRowCount = endGIdx + 1 - startGIdx;
+//         }
+//         DataCopyExtParams dataCopyParams;
+//         dataCopyParams.blockCount = curDealRowCount;
+//         dataCopyParams.blockLen = sizeof(float);
+//         dataCopyParams.srcStride = 0;
+//         dataCopyParams.dstStride = 0;
+//         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+//         startGIdx = 0;
+//         ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+//     }
+// }
 
-template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
-__aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
-                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
-                                                const CONST_INFO_T &constInfo)
-{
-    uint32_t startS1Idx = mOffset / constInfo.gSize;
-    uint32_t startGIdx = mOffset % constInfo.gSize;
-    uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.gSize;
-    uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.gSize;
-    uint64_t outOffset = 0;
-    uint64_t ubOffset = 0;
-    uint32_t curDealRowCount = 0;
+// template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
+// __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
+//                                                 uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
+//                                                 const CONST_INFO_T &constInfo)
+// {
+//     uint32_t startS1Idx = mOffset / constInfo.gSize;
+//     uint32_t startGIdx = mOffset % constInfo.gSize;
+//     uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.gSize;
+//     uint32_t endGIdx = (mOffset + dealCount - 1) % constInfo.gSize;
+//     uint64_t outOffset = 0;
+//     uint64_t ubOffset = 0;
+//     uint32_t curDealRowCount = 0;
 
-    for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
-        outOffset = bN2Offset + startGIdx * constInfo.t1Size + s1Idx;
-        if (s1Idx != endS1Idx) {
-            curDealRowCount =  constInfo.gSize - startGIdx;
-        }
-        else {
-            curDealRowCount = endGIdx + 1 - startGIdx;
-        }
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = curDealRowCount;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = (constInfo.t1Size - 1) * sizeof(float);
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-        startGIdx = 0;
-        ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    }
-}
-template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
-__aicore__ inline void DataCopySoftmaxLseNTDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                                   uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                   const CONST_INFO_T &constInfo, uint32_t s1Size)
-{
-    uint32_t startS1Idx = mOffset % s1Size;
-    uint32_t startGIdx = mOffset / s1Size;
-    uint32_t endS1Idx = (mOffset + dealCount - 1) % s1Size;
-    uint32_t endGIdx = (mOffset + dealCount - 1) / s1Size;
-    uint64_t outOffset = 0;
-    uint64_t ubOffset = 0;
-    uint32_t curDealRowCount = 0;
+//     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
+//         outOffset = bN2Offset + startGIdx * constInfo.t1Size + s1Idx;
+//         if (s1Idx != endS1Idx) {
+//             curDealRowCount =  constInfo.gSize - startGIdx;
+//         }
+//         else {
+//             curDealRowCount = endGIdx + 1 - startGIdx;
+//         }
+//         DataCopyExtParams dataCopyParams;
+//         dataCopyParams.blockCount = curDealRowCount;
+//         dataCopyParams.blockLen = sizeof(float);
+//         dataCopyParams.srcStride = 0;
+//         dataCopyParams.dstStride = (constInfo.t1Size - 1) * sizeof(float);
+//         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+//         startGIdx = 0;
+//         ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+//     }
+// }
+// template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
+// __aicore__ inline void DataCopySoftmaxLseNTDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+//                                                    uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+//                                                    const CONST_INFO_T &constInfo, uint32_t s1Size)
+// {
+//     uint32_t startS1Idx = mOffset % s1Size;
+//     uint32_t startGIdx = mOffset / s1Size;
+//     uint32_t endS1Idx = (mOffset + dealCount - 1) % s1Size;
+//     uint32_t endGIdx = (mOffset + dealCount - 1) / s1Size;
+//     uint64_t outOffset = 0;
+//     uint64_t ubOffset = 0;
+//     uint32_t curDealRowCount = 0;
 
-    for (uint32_t gIdx = startGIdx; gIdx <= endGIdx; gIdx++) {
-        outOffset = bN2Offset + startS1Idx * constInfo.n2Size * constInfo.gSize + gIdx;
-        if (gIdx != endGIdx) {
-            curDealRowCount =  s1Size - startS1Idx;
-        }
-        else {
-            curDealRowCount = endS1Idx + 1 - startS1Idx;
-        }
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = curDealRowCount;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = (constInfo.gSize * constInfo.n2Size - 1) * sizeof(float);
-        DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
-        startS1Idx = 0;
-        ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    }
-}
+//     for (uint32_t gIdx = startGIdx; gIdx <= endGIdx; gIdx++) {
+//         outOffset = bN2Offset + startS1Idx * constInfo.n2Size * constInfo.gSize + gIdx;
+//         if (gIdx != endGIdx) {
+//             curDealRowCount =  s1Size - startS1Idx;
+//         }
+//         else {
+//             curDealRowCount = endS1Idx + 1 - startS1Idx;
+//         }
+//         DataCopyExtParams dataCopyParams;
+//         dataCopyParams.blockCount = curDealRowCount;
+//         dataCopyParams.blockLen = sizeof(float);
+//         dataCopyParams.srcStride = 0;
+//         dataCopyParams.dstStride = (constInfo.gSize * constInfo.n2Size - 1) * sizeof(float);
+//         DataCopyPad(softmaxLseGm[outOffset], lseSrc[ubOffset], dataCopyParams);
+//         startS1Idx = 0;
+//         ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+//     }
+// }
 #endif

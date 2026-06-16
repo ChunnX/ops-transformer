@@ -26,7 +26,7 @@
 #include "memcopy/fa_ub_tensor.h"
 #include "memcopy/gm_coord.h"
 #include "memcopy/copy_gm_to_l1.h"
-#include "memcopy/copy_gm_to_ub.h"
+// #include "memcopy/copy_gm_to_ub.h"
 #include "memcopy/copy_ub_to_gm.h"
 
 template <FIA_LAYOUT LAYOUT_T>

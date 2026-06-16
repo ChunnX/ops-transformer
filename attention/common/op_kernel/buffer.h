@@ -21,6 +21,8 @@
 #else
 #include "kernel_operator.h"
 #endif
+#include "../include/tensor_api/include/tensor_api/tensor.h"
+
 using namespace AscendC;
 namespace fa_base_matmul {
 __BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
@@ -49,6 +51,18 @@ enum class SyncType {
 
 constexpr uint32_t INVALID_CROSS_CORE_EVENT_ID = 16;
 static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
+
+// 声明主模板
+template<BufferType Type>
+struct BufferTypeToLocation;
+
+// 特化每个枚举值
+template<> struct BufferTypeToLocation<BufferType::L1>  { using type = AscendC::Te::Location::L1;  };
+template<> struct BufferTypeToLocation<BufferType::L0A> { using type = AscendC::Te::Location::L0A; };
+template<> struct BufferTypeToLocation<BufferType::L0B> { using type = AscendC::Te::Location::L0B; };
+template<> struct BufferTypeToLocation<BufferType::L0C> { using type = AscendC::Te::Location::L0C; };
+template<> struct BufferTypeToLocation<BufferType::UB>  { using type = AscendC::Te::Location::UB;  };
+template<> struct BufferTypeToLocation<BufferType::GM>  { using type = AscendC::Te::Location::GM;  };
 
 template<BufferType Type>
 struct BufferInfo{
@@ -119,11 +133,14 @@ class Buffer {
 
     template <typename T>
     using TargetTensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<T>, LocalTensor<T>>;
+
+    using LocType = typename BufferTypeToLocation<bufferType>::type;
 public:
     __aicore__ inline Buffer() {}
     __aicore__ inline Buffer(TensorType tensor, uint32_t size) {
         tensor_ = tensor;
         size_ = size;
+        offset_ = tensor_.GetPhyAddr();
         if constexpr (syncType == SyncType::CROSS_CORE_SYNC_FORWARD) {
             id0_ = MAKE_ID;
             id1_ = INVALID_CROSS_CORE_EVENT_ID;
@@ -284,6 +301,15 @@ public:
         return tensor_.template ReinterpretCast<T>();
     }
 
+    template<typename T, typename LayoutType>
+    __aicore__ inline auto GetTensor(LayoutType tensorLayout) {
+        auto tensorBase = AscendC::Te::MakeTensor(
+            AscendC::Te::MakeMemPtr<LocType, T>(offset_),
+            tensorLayout
+        );
+        return tensorBase;
+    }
+
     template<typename T>
     __aicore__ inline TargetTensorType<T> GetTensor(uint64_t startindex) {
         TargetTensorType<T> tmpTensor = tensor_.template ReinterpretCast<T>();
@@ -292,6 +318,7 @@ public:
 
 private:
     TensorType tensor_;
+    uint32_t offset_;
     uint32_t size_;
     TEventID p2cEventId_;
     TEventID c2pEventId_;
