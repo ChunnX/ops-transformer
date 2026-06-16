@@ -87,12 +87,12 @@ ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLocalBuffer()
 {
     mm1AL1Buffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-    l0aBufferManager.Init(this->tPipe, 65536); // 初始化l0a的总内存为64K
-    l0bBufferManager.Init(this->tPipe, 65536); // 初始化l0b的总内存为64K
-    l0cBufferManager.Init(this->tPipe, 262144); // 初始化l0c的总内存为256K
-    mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);  // 双缓冲 l0a内存大小为32K
-    mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);  // 双缓冲 l0b内存大小32K
-    mmL0CBuffers.Init(l0cBufferManager, 128 * 1024); // 双缓冲 l0c内存大小128K
+    l0aBufferManager.Init(this->tPipe, L0A_SIZE * KB_TO_BYTES); // 初始化l0a的总内存为64K
+    l0bBufferManager.Init(this->tPipe, L0B_SIZE * KB_TO_BYTES); // 初始化l0b的总内存为64K
+    l0cBufferManager.Init(this->tPipe, L0C_SIZE * KB_TO_BYTES); // 初始化l0c的总内存为256K
+    mmL0ABuffers.Init(l0aBufferManager, (L0A_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES);  // 双缓冲 l0a内存大小为32K
+    mmL0BBuffers.Init(l0bBufferManager, (L0B_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES);  // 双缓冲 l0b内存大小32K
+    mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES); // 双缓冲 l0c内存大小128K
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
