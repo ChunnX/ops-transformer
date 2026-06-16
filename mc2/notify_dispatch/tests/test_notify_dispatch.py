@@ -45,6 +45,7 @@ Examples:
 """
 
 import os
+import struct
 import sys
 
 import torch
@@ -106,6 +107,29 @@ def build_context(group, rank, world_size, ccl_buffer_size):
     if ccl_buffer_size.value <= 0:
         raise RuntimeError(f"invalid ccl_buffer_size from update_context: {ccl_buffer_size.value}")
     return context
+
+
+def check_mc2_context(context, rank, world_size):
+    """Lightweight sanity check: epRankId and epHcclBuffer IPC addresses."""
+    print(
+        f"[rank {rank}] context shape={tuple(context.shape)} dtype={context.dtype} device={context.device}",
+        flush=True,
+    )
+    if os.getenv("MOE_NOTIFY_DEBUG_CONTEXT", "1") == "1":
+        print(f"[rank {rank}] context head={context[:8].cpu().tolist()}", flush=True)
+
+    ep_rank_id = int(context[0].item())
+    if ep_rank_id != rank:
+        raise RuntimeError(
+            f"[rank {rank}] context epRankId={ep_rank_id} != rank={rank}"
+        )
+
+    raw = context.detach().cpu().view(torch.uint8).numpy().tobytes()
+    for i in range(world_size):
+        addr = struct.unpack_from("<Q", raw, 16 + i * 8)[0]
+        print(f"[rank {rank}] epHcclBuffer[{i}]=0x{addr:x}", flush=True)
+        if addr == 0:
+            raise RuntimeError(f"[rank {rank}] epHcclBuffer[{i}] is zero after update_context")
 
 
 def make_topk_idx(num_tokens, topk, num_experts, device):
@@ -289,6 +313,7 @@ def main():
 
     ccl_buffer_size = IntWrapper()
     context = build_context(group, rank, world_size, ccl_buffer_size)
+    check_mc2_context(context, rank, world_size)
 
     x_dtype = resolve_x_dtype()
     topk_idx = make_topk_idx(num_tokens, topk, moe_expert_num, "npu")

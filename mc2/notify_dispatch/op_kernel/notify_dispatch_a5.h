@@ -265,7 +265,7 @@ private:
             AscendC::SetFlag<HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
             for (int i = copyOffset; i < copyOffset + copyLen; ++i) {
-                CpUB2GM((__gm__ uint64_t *)(shareAddrs[i]) + rank * FLAG_UNIT_INT_NUM, inputUB, sizeof(uint64_t));
+                CpUB2GM((__gm__ uint64_t *)(shareStatusAddrs[i]) + rank * FLAG_UNIT_INT_NUM, inputUB, sizeof(uint64_t));
             }
             pipe_barrier(PIPE_ALL);
         }
@@ -315,7 +315,7 @@ private:
     __aicore__ inline void WaitSyncFlag(uint64_t magic, uint64_t value, uint64_t eventID, int32_t rank, int64_t flagNum)
     {
         uint64_t v = MergeMagicWithValue(magic, value);
-        WaitOneRankPartFlag((__gm__ uint64_t *)(shareAddrs[rank]) + eventID * FLAG_UNIT_INT_NUM, flagNum, v);
+        WaitOneRankPartFlag((__gm__ uint64_t *)(shareStatusAddrs[rank]) + eventID * FLAG_UNIT_INT_NUM, flagNum, v);
     }
 
     __aicore__ inline void ShareToShareSlice()
@@ -703,7 +703,8 @@ private:
     uint32_t maxBsNum{0};
     uint32_t baseWindSize{0};
     GM_ADDR scale;
-    GM_ADDR shareAddrs[CAM_MAX_RANK_SIZE];  // List of shared memory addresses
+    GM_ADDR shareStatusAddrs[CAM_MAX_RANK_SIZE];  // status/flag base: epHcclBuffer[i], no ping-pong offset
+    GM_ADDR shareAddrs[CAM_MAX_RANK_SIZE];        // data base: epHcclBuffer[i] + winDataOffset (+ IPC_DATA_OFFSET in Process)
     GM_ADDR totalRecvTokens_;
     GM_ADDR recvCount_;
     GM_ADDR recvOffset_;
@@ -762,13 +763,13 @@ __aicore__ inline GM_ADDR NotifyDispatchA5<T>::GetWindAddrByRankId(const int32_t
     return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]);
 }
 
-// Assign values to winContext_[COMM_EP_IDX] and blockIdx before calling
+// Assign mc2Context_ and blockIdx before calling
 template <typename T>
 __aicore__ inline uint64_t NotifyDispatchA5<T>::GetMagicValue(void)
 {
     uint64_t magic = 0;
     GlobalTensor<uint64_t> selfDataStatusTensor;
-    GM_ADDR statusDataSpaceGm = GetStatusDataSpaceGm(winContext_[COMM_EP_IDX]);
+    GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[rank]);
     selfDataStatusTensor.SetGlobalBuffer((__gm__ uint64_t *)(statusDataSpaceGm + STATE_WIN_OFFSET));
     DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         selfDataStatusTensor[blockIdx * UB_ALIGN_SIZE]);
@@ -803,10 +804,10 @@ __aicore__ inline void NotifyDispatchA5<T>::InitSmallFullMesh(GM_ADDR mc2Context
 
     mc2Context_ = (__gm__ Mc2Aclnn::Mc2MoeContext *)mc2Context;
     baseWindSize = totalWinSize - Mc2Kernel::A5_EP_NORMAL_MTE_STATE_WIN_SIZE;
-    // Verification patch: fixed magic skips GetMagicValue() until Mc2 status region is wired up.
-    this->magic = 1;
+    this->magic = GetMagicValue();
     uint64_t winDataOffset = (this->magic % PING_PONG_SIZE) * (baseWindSize / 2);
 
+    shareStatusAddrs[rank] = GetWindAddrByRankId(rank);
     shareAddrs[rank] = GetWindAddrByRankId(rank) + winDataOffset;
 
     int32_t rankNumPerCore = (rankSize + blockNum - 1) / blockNum;
@@ -814,6 +815,7 @@ __aicore__ inline void NotifyDispatchA5<T>::InitSmallFullMesh(GM_ADDR mc2Context
     int32_t copyLen = rankSize - copyOffset < rankNumPerCore ? rankSize - copyOffset : rankNumPerCore;
     if (copyLen > 0) {
         for (int i = copyOffset; i < copyOffset + copyLen; ++i) {
+            shareStatusAddrs[i] = GetWindAddrByRankId(i);
             shareAddrs[i] = GetWindAddrByRankId(i) + winDataOffset;
         }
     }
@@ -827,6 +829,7 @@ __aicore__ inline void NotifyDispatchA5<T>::InitSmallFullMesh(GM_ADDR mc2Context
     if (blockIdx < maxCore) {
         // Calculate the rank to be read based on the block, 48 cores divided into 4 groups
         int readRank = blockIdx / coreNumPerRank;
+        shareStatusAddrs[readRank] = GetWindAddrByRankId(readRank);
         shareAddrs[readRank] = GetWindAddrByRankId(readRank) + winDataOffset;
     }
 
