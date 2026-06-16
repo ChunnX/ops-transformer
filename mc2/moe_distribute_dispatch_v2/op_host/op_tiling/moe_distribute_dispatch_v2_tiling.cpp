@@ -54,7 +54,7 @@ namespace {
 
     constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
     constexpr int64_t MAX_SHARED_EXPERT_NUM = 4;
-    constexpr int64_t MAX_EP_WORLD_SIZE = 1024L;
+    constexpr int64_t MAX_EP_WORLD_SIZE = 768L; // 384 * 2
     constexpr int64_t MAX_EP_WORLD_SIZE_LAYERED = 256;
     constexpr int64_t MIN_EP_WORLD_SIZE = 2;
     constexpr int64_t MAX_TP_WORLD_SIZE = 2;
