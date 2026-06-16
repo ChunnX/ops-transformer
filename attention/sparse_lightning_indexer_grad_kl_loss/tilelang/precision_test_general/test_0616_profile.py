@@ -117,11 +117,21 @@ def print_kernel_info():
 def main():
     do_npu_profile = os.environ.get("NPU_PROFILE", "0") == "1"
 
-    print("=" * 60)
-    print("0616.py Profiling Test")
-    print("=" * 60)
+    if do_npu_profile:
+        print("\\n[NPU Profiler] Use msprof instead of torch.npu.profiler:")
+        print("  msprof --application=\\"python test_0616.py\\" --output=./profiling_output")
+        print("  Then open with MindStudio Insight or chrome://tracing")
+        print("\\n  Also try: SLIG_PROFILE=1 python test_0616.py  (Python-level event timing)")
+    else:
+        print("\\n[Timing] Python-level breakdown ...")
+        os.environ["SLIG_PROFILE"] = "1"
+        call_tl(inputs)
+        os.environ["SLIG_PROFILE"] = "0"
 
-    inputs = gen_inputs()
+        print("\\n  For NPU timeline breakdown:")
+        print("    NPU_PROFILE=1 python test_0616_profile.py      # shows msprof command")
+        print("    SLIG_PROFILE=1 python test_0616.py              # print per-op timing")
+
     print_kernel_info()
 
     # Warmup
