@@ -64,7 +64,6 @@ private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
-    void PrintQuantParams() override;
     int64_t DefaultPrintQuantParams();
     bool SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
