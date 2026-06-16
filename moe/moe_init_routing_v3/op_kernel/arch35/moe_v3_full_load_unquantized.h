@@ -100,7 +100,6 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
             }
 
             if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
-                this->ComputeExpertTokenCount();
                 this->CopyExpertCountToOutput();
             }
 
@@ -109,9 +108,6 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
                 this->ZeroOutScale();
             }
         }
-#ifndef __CCE_KT_TEST__
-        AscendC::SyncAll();
-#endif
         if (this->blockIdx_ < this->needCoreNum_) {
             this->GatherOutX();
             if (this->isInputScale_) {
@@ -329,40 +325,76 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
 template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutX()
 {
-    int64_t perCoreRows = Ceil(this->outputRows_, this->needCoreNum_);
-    int64_t startRow = this->blockIdx_ * perCoreRows;
-    int64_t endRow = Min(startRow + perCoreRows, this->outputRows_);
-    if (startRow >= endRow) {
+    int64_t perCoreExperts = Ceil(this->expertNum_, this->needCoreNum_);
+    int64_t startExpert = this->blockIdx_ * perCoreExperts;
+    int64_t endExpert = Min(startExpert + perCoreExperts, this->expertNum_);
+    if (startExpert >= endExpert) {
         return;
     }
-    int64_t rowCount = endRow - startRow;
+    LocalTensor<int32_t> expertCountLocal = this->expertCountBuf_.template Get<int32_t>(this->actualExpertNum_);
 
     if constexpr (IsSameType<T, hifloat8_t>::value) {
-        GlobalTensor<uint8_t> zeroGm;
-        zeroGm.SetGlobalBuffer((__gm__ uint8_t *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
-                               rowCount * this->cols_);
-        InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<uint8_t>(0));
+        for (int64_t expertId = startExpert; expertId < endExpert; expertId++) {
+            int64_t validCount = 0;
+            if (expertId >= this->expertStart_ && expertId < this->expertEnd_) {
+                validCount = static_cast<int64_t>(expertCountLocal.GetValue(expertId - this->expertStart_));
+                validCount = Min(validCount, this->expertCapacity_);
+            }
+            int64_t rowCount = this->expertCapacity_ - validCount;
+            if (rowCount <= 0) {
+                continue;
+            }
+            int64_t startRow = expertId * this->expertCapacity_ + validCount;
+            GlobalTensor<uint8_t> zeroGm;
+            zeroGm.SetGlobalBuffer((__gm__ uint8_t *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
+                                   rowCount * this->cols_);
+            InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<uint8_t>(0));
+        }
     } else {
-        GlobalTensor<T> zeroGm;
-        zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
-                               rowCount * this->cols_);
-        InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
+        for (int64_t expertId = startExpert; expertId < endExpert; expertId++) {
+            int64_t validCount = 0;
+            if (expertId >= this->expertStart_ && expertId < this->expertEnd_) {
+                validCount = static_cast<int64_t>(expertCountLocal.GetValue(expertId - this->expertStart_));
+                validCount = Min(validCount, this->expertCapacity_);
+            }
+            int64_t rowCount = this->expertCapacity_ - validCount;
+            if (rowCount <= 0) {
+                continue;
+            }
+            int64_t startRow = expertId * this->expertCapacity_ + validCount;
+            GlobalTensor<T> zeroGm;
+            zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
+                                   rowCount * this->cols_);
+            InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
+        }
     }
 }
 
 template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutScale()
 {
-    int64_t perCoreRows = Ceil(this->outputRows_, this->needCoreNum_);
-    int64_t startRow = this->blockIdx_ * perCoreRows;
-    int64_t endRow = Min(startRow + perCoreRows, this->outputRows_);
-    if (startRow >= endRow) {
+    int64_t perCoreExperts = Ceil(this->expertNum_, this->needCoreNum_);
+    int64_t startExpert = this->blockIdx_ * perCoreExperts;
+    int64_t endExpert = Min(startExpert + perCoreExperts, this->expertNum_);
+    if (startExpert >= endExpert) {
         return;
     }
-    int64_t rowCount = endRow - startRow;
-    GlobalTensor<float> scaleZeroGm;
-    scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, rowCount);
-    InitGlobalMemory(scaleZeroGm, rowCount, 0.0f);
+    LocalTensor<int32_t> expertCountLocal = this->expertCountBuf_.template Get<int32_t>(this->actualExpertNum_);
+    for (int64_t expertId = startExpert; expertId < endExpert; expertId++) {
+        int64_t validCount = 0;
+        if (expertId >= this->expertStart_ && expertId < this->expertEnd_) {
+            validCount = static_cast<int64_t>(expertCountLocal.GetValue(expertId - this->expertStart_));
+            validCount = Min(validCount, this->expertCapacity_);
+        }
+        int64_t rowCount = this->expertCapacity_ - validCount;
+        if (rowCount <= 0) {
+            continue;
+        }
+        int64_t startRow = expertId * this->expertCapacity_ + validCount;
+        GlobalTensor<float> scaleZeroGm;
+        scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, rowCount);
+        InitGlobalMemory(scaleZeroGm, rowCount, 0.0f);
+    }
 }
 
 } // namespace MoeInitRoutingV3

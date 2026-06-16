@@ -70,6 +70,29 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadCompute
     asc_atomic_add(actualIdxNumAddr, localCount);
 }
 
+__simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void FullLoadComputeGatherIdxWithCapacitySimt(
+    int32_t elementNum, int32_t expertStart, int32_t expertEnd, int32_t expertCapacity,
+    __local_mem__ int32_t *sortedExpertIdLocalAddr, __local_mem__ int32_t *sortedRowIdxLocalAddr,
+    __local_mem__ int32_t *expertFirstIndexLocalAddr, __local_mem__ int32_t *expandedRowIdxLocalAddr)
+{
+    for (auto i = static_cast<int32_t>(threadIdx.x); i < elementNum;
+         i += static_cast<int32_t>(blockDim.x)) {
+        auto currExpertId = sortedExpertIdLocalAddr[i];
+        if (currExpertId >= expertEnd) {
+            break;
+        }
+        if (currExpertId < expertStart) {
+            continue;
+        }
+        auto expertOffset = currExpertId - expertStart;
+        auto tokenOffset = i - expertFirstIndexLocalAddr[expertOffset];
+        if (tokenOffset < expertCapacity) {
+            auto srcIndex = sortedRowIdxLocalAddr[i];
+            expandedRowIdxLocalAddr[srcIndex] = currExpertId * expertCapacity + tokenOffset;
+        }
+    }
+}
+
 template <typename T>
 class MoeV3FullLoadBase {
 public:
@@ -366,30 +389,30 @@ __aicore__ inline void MoeV3FullLoadBase<T>::ComputeGatherIdxWithCapacity()
     LocalTensor<int32_t> sortedRowIdx = sortedRowIdxQueue_.DeQue<int32_t>();
     LocalTensor<int32_t> sortedExpertIdx = sortedExpertIdxQueue_.DeQue<int32_t>();
     LocalTensor<int32_t> expandedRowIdx = expandedRowIdxQueue_.AllocTensor<int32_t>();
+    LocalTensor<int32_t> expertCountLocal = expertCountBuf_.Get<int32_t>(actualExpertNum_);
+    LocalTensor<int32_t> expertFirstIndexLocal = tempBuffer_.Get<int32_t>(actualExpertNum_);
     Duplicate(expandedRowIdx, static_cast<int32_t>(-1), static_cast<int32_t>(this->totalLength_));
+    Duplicate(expertCountLocal, static_cast<int32_t>(0), actualExpertNum_);
     SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
 
-    int32_t lastExpertId = -1;
-    int64_t tokenCount = 0;
-    for (int64_t i = 0; i < this->actualExpertIdxNum_; i++) {
-        int32_t curExpertId = sortedExpertIdx.GetValue(i);
-        if (curExpertId < this->expertStart_) {
-            continue;
-        }
-        if (curExpertId >= this->expertEnd_) {
-            break;
-        }
-        if (curExpertId != lastExpertId) {
-            lastExpertId = curExpertId;
-            tokenCount = 0;
-        }
-        if (tokenCount < this->expertCapacity_) {
-            int32_t srcIndex = sortedRowIdx.GetValue(i);
-            int32_t dstIndex = static_cast<int32_t>(curExpertId * this->expertCapacity_ + tokenCount);
-            expandedRowIdx.SetValue(srcIndex, dstIndex);
-        }
-        tokenCount++;
-    }
+    __local_mem__ int32_t *sortedExpertIdxLocalAddr = (__local_mem__ int32_t *)sortedExpertIdx.GetPhyAddr();
+    __local_mem__ int32_t *sortedRowIdxLocalAddr = (__local_mem__ int32_t *)sortedRowIdx.GetPhyAddr();
+    __local_mem__ int32_t *expertFirstIndexLocalAddr = (__local_mem__ int32_t *)expertFirstIndexLocal.GetPhyAddr();
+    __local_mem__ int32_t *expertCountLocalAddr = (__local_mem__ int32_t *)expertCountLocal.GetPhyAddr();
+    __local_mem__ int32_t *expandedRowIdxLocalAddr = (__local_mem__ int32_t *)expandedRowIdx.GetPhyAddr();
+    asc_vf_call<FullLoadComputeExpertFirstIndexSimt>(
+        dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(this->totalLength_),
+        static_cast<int32_t>(this->expertStart_), static_cast<int32_t>(this->expertEnd_), sortedExpertIdxLocalAddr,
+        expertFirstIndexLocalAddr);
+    asc_vf_call<FullLoadComputeExpertCountOutSimt>(
+        dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(this->totalLength_),
+        static_cast<int32_t>(this->expertStart_), static_cast<int32_t>(this->expertEnd_), sortedExpertIdxLocalAddr,
+        expertFirstIndexLocalAddr, expertCountLocalAddr);
+    asc_vf_call<FullLoadComputeGatherIdxWithCapacitySimt>(
+        dim3{SIMT_THREAD_NUM, 1, 1}, static_cast<int32_t>(this->totalLength_),
+        static_cast<int32_t>(this->expertStart_), static_cast<int32_t>(this->expertEnd_),
+        static_cast<int32_t>(this->expertCapacity_), sortedExpertIdxLocalAddr, sortedRowIdxLocalAddr,
+        expertFirstIndexLocalAddr, expandedRowIdxLocalAddr);
 
     expandedRowIdxQueue_.EnQue<int32_t>(expandedRowIdx);
     sortedRowIdxQueue_.EnQue<int32_t>(sortedRowIdx);
