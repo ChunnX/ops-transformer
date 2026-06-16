@@ -1712,9 +1712,7 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
                         (fBaseParams.n1 == fBaseParams.n2) &&
                         (fBaseParams.d <= BN2_MAX_D) &&
                         (fBaseParams.queryType != ge::DT_FLOAT) &&
-                        (fBaseParams.d == fBaseParams.d1) &&
                         !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN || fBaseParams.queryType == ge::DT_HIFLOAT8) &&
-                        !fBaseParams.hasRope &&
                         (fBaseParams.tailZeroCount == 0);
 
     bool bnLimit = ((fBaseParams.b * fBaseParams.n1) >= BN2_MULTIBLK_BN_256) ||
@@ -1730,20 +1728,22 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
                                 fBaseParams.d <= BN2_MAX_D &&
                                 (fBaseParams.queryType != ge::DT_FLOAT) &&
                                 (fBaseParams.d == fBaseParams.d1) &&
-                                !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN || fBaseParams.queryType == ge::DT_HIFLOAT8) &&
+                                !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 ||
+                                fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
+                                fBaseParams.queryType == ge::DT_HIFLOAT8) &&
                                 !fBaseParams.hasRope;
     fBaseParams.isBn2 = fBaseParams.isBn2MultiBlk ? true : fBaseParams.isBn2; // 多基本块场景是原始bn2的子集
     if (fBaseParams.isBn2 && !fBaseParams.isBn2MultiBlk) {
         fBaseParams.isDeterministic = false;
-        if ((fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.d > ALIGN128)
-            || fBaseParams.dropoutIsDivisibleBy8 == 0) {
+        if ((fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.d > ALIGN128) ||
+                fBaseParams.dropMaskOuter) {
             fBaseParams.isBn2 = false;
             fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
         }
     }
     if (fBaseParams.isBn2MultiBlk) {
         fBaseParams.isDeterministic = false;
-        if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
+        if (fBaseParams.dropMaskOuter) {
             fBaseParams.isBn2 = false;
             fBaseParams.isBn2MultiBlk = false;
             fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);

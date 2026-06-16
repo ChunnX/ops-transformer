@@ -29,16 +29,21 @@
  #define ASCENDC_TPL_10_BW 10
  #define ASCENDC_TPL_12_BW 12
 
-using FagTilingWithTemplateFFF =
-    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, false, false>;
-using FagTilingWithTemplateFTT =
-    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, true, true>;
-using FagTilingWithTemplateFTF =
-    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, true, false>;
-using FagTilingWithTemplateTTF =
-    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, true, false>;
-using FagTilingWithTemplateTTT =
-    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, true, true>;
+using FagTilingWithTemplateFFFF =
+    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, false, false, false>;
+using FagTilingWithTemplateFFTT =
+    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, false, true, true>;
+using FagTilingWithTemplateFFTF =
+    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, false, true, false>;
+
+using FagTilingWithTemplateTFFF =
+    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, false, false, false>;
+using FagTilingWithTemplateTFTF =
+    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, false, true, false>;
+using FagTilingWithTemplateTTTF =
+    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, true, true, false>;
+using FagTilingWithTemplateTTTT =
+    optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, true, true, true>;
 
  // 可表示的tilingkey范围为64bit，注意不能超过限制
  ASCENDC_TPL_ARGS_DECL(FlashAttentionScoreGrad, // 算子唯一标识，可以opType保持一致
@@ -143,7 +148,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -165,7 +170,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -187,7 +192,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -209,7 +214,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -231,7 +236,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -253,7 +258,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -275,7 +280,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -297,7 +302,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -319,7 +324,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -341,7 +346,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -363,7 +368,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -385,7 +390,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -407,7 +412,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -429,7 +434,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -451,7 +456,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -473,7 +478,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -495,7 +500,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -517,7 +522,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -539,7 +544,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -561,7 +566,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -578,12 +583,12 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
              ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0, 1),
-             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRope, 0, 1),
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -600,12 +605,12 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
              ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0, 1),
-             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRope, 0, 1),
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -627,7 +632,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -649,7 +654,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -671,7 +676,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTT)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTT)
          ),
      #endif
      #if (ORIG_DTYPE_QUERY == -1) || (ORIG_DTYPE_QUERY == DT_BF16) 
@@ -696,7 +701,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -718,7 +723,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -740,7 +745,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -762,7 +767,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -784,7 +789,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -806,7 +811,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -828,7 +833,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -850,7 +855,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -872,7 +877,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -894,7 +899,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -916,7 +921,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -938,7 +943,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -960,7 +965,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -982,7 +987,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1004,7 +1009,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1026,7 +1031,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1048,7 +1053,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1070,7 +1075,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1092,7 +1097,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1114,7 +1119,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1131,12 +1136,12 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
              ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0, 1),
-             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRope, 0, 1),
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1153,12 +1158,12 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
              ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0, 1),
-             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRope, 0, 1),
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1180,7 +1185,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1202,7 +1207,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1224,7 +1229,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTT)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTT)
          ),
      #endif
  
@@ -1250,7 +1255,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1272,7 +1277,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1294,7 +1299,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1316,7 +1321,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1338,7 +1343,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1360,7 +1365,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1382,7 +1387,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1404,7 +1409,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1426,7 +1431,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1448,7 +1453,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-            ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ), 
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1470,7 +1475,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-            ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1492,7 +1497,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1514,7 +1519,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
@@ -1536,7 +1541,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTT)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
      #endif
 
@@ -1562,7 +1567,7 @@ using FagTilingWithTemplateTTT =
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
      #endif
   
@@ -1587,7 +1592,7 @@ using FagTilingWithTemplateTTT =
          ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
          ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
          ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-         ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFF)
+         ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
      ),
  );
  #endif
