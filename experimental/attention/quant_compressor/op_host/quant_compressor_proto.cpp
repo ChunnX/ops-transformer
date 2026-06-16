@@ -113,11 +113,11 @@ ge::graphStatus SetQuantCompressorShapeDim(const QuantCompressorProtoShapeParam 
         cmpKvShape->SetDimNum(DIM_NUM_3); // (B, Sr, H)
         cmpKvShape->SetDim(DIM_INDEX_0, shapeParam.B);
         cmpKvShape->SetDim(DIM_INDEX_1, shapeParam.Sr);
-        cmpKvShape->SetDim(DIM_INDEX_2, shapeParam.H);
+        cmpKvShape->SetDim(DIM_INDEX_2, shapeParam.D);
     } else {
         cmpKvShape->SetDimNum(DIM_NUM_2); // (T, N, Hckv)
         cmpKvShape->SetDim(DIM_INDEX_0, shapeParam.Sr);
-        cmpKvShape->SetDim(DIM_INDEX_1, shapeParam.H);
+        cmpKvShape->SetDim(DIM_INDEX_1, shapeParam.D);
     }
 
     return GRAPH_SUCCESS;
