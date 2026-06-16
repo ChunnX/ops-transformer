@@ -57,6 +57,18 @@ public:
     void set_attentionOutLastCoreIndex(uint64_t attentionOutLastCoreIndexParam) {this->attentionOutLastCoreIndex = attentionOutLastCoreIndexParam;}
 };
 
+
+class StridesParams {
+public:
+    uint64_t bnStride = 0;
+    uint64_t n2Stride = 0;
+
+    void set_bnStride(uint64_t bnStride) {this->bnStride = bnStride;}
+    uint64_t get_bnStride() const {return bnStride;}
+    void set_n2Stride(uint64_t n2Stride) {this->n2Stride = n2Stride;}
+    uint64_t get_n2Stride() const {return n2Stride;}
+};
+
 class InputParamsRegbase {
 public:
     int64_t bSize;
@@ -137,6 +149,11 @@ public:
     uint16_t antiquantPerTensorFlag;
     uint16_t antiquantPerHeadFlag;
     uint32_t antiquantParaSeqSize;
+
+    // 增加strides参数
+    StridesParams keyStrides;
+    StridesParams valueStrides;
+    StridesParams kRopeStrides;
 
     int64_t get_bSize() const {return bSize;}
     void set_bSize(int64_t bSizeParam) {this->bSize = bSizeParam;}
@@ -293,6 +310,17 @@ public:
     void set_antiquantParaSeqSize(uint32_t antiquantParaSeqSizeParam) {this->antiquantParaSeqSize = antiquantParaSeqSizeParam;}
     uint8_t get_tndSoftmaxOut() const {return tndSoftmaxOut;}
     void set_tndSoftmaxOut(uint8_t tndSoftmaxOutParam) {this->tndSoftmaxOut = tndSoftmaxOutParam;}
+
+    void set_keyStrides(StridesParams keyStrides) {this->keyStrides = keyStrides;}
+    StridesParams get_keyStrides() const {return keyStrides;}
+
+    void set_valueStrides(StridesParams valueStrides) {this->valueStrides = valueStrides;}
+
+    StridesParams get_valueStrides() const {return valueStrides;}
+
+    void set_kRopeStrides(StridesParams kRopeStrides) {this->kRopeStrides = kRopeStrides;}
+
+    StridesParams get_kRopeStrides() const {return kRopeStrides;}
 };
 
 class MultiCoreParamsRegbase {
