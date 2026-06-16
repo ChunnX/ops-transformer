@@ -882,6 +882,9 @@ function(op_add_ut_subdirectory OP_UT_LIST OP_UT_DIR_LIST)
     set(_OP_UT_DIR_LIST)
 
     file(GLOB OP_HOST_CMAKE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/**/**/tests/CMakeLists.txt")
+    # experimental ops live one directory level deeper (e.g. experimental/math/cast); also collect them.
+    file(GLOB OP_HOST_CMAKE_FILES_EXP "${CMAKE_CURRENT_SOURCE_DIR}/experimental/**/**/tests/CMakeLists.txt")
+    list(APPEND OP_HOST_CMAKE_FILES ${OP_HOST_CMAKE_FILES_EXP})
 
     foreach(OP_CMAKE_FILE ${OP_HOST_CMAKE_FILES})
         if ("${OP_CMAKE_FILE}" MATCHES "tests")

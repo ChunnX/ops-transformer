@@ -126,6 +126,11 @@ def get_asc_file_path(opname: str):
                 if op_dir == opname:
                     asc_file_path = os.path.join(repo_dir_path, op_dir) + f"/op_kernel/{opname}.cpp"
                     return asc_file_path
+    # experimental ops live one directory level deeper, e.g. experimental/math/cast
+    for root, _dirs, _files in os.walk(project_path):
+        cand = os.path.join(root, opname, "op_kernel", f"{opname}.cpp")
+        if os.path.isfile(cand):
+            return cand
     return asc_file_path
 
 
