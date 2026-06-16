@@ -425,7 +425,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         AscendC::MicroAPI::RegTensor<U> gradXFromHinReg;
         AscendC::MicroAPI::RegTensor<U> gradHPreRegSumReg;
         AscendC::MicroAPI::MaskReg valueMaskReg;
-        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::::MaskPattern::VL1>();
+        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
         uint32_t maskLen = static_cast<uint32_t>(info.cLen);
 
         for (uint16_t i = 0; i < info.bsLen; i++) {
