@@ -33,7 +33,6 @@ constexpr float FP8_E5M2_MIN_VALUE = -57344.0f;
 constexpr float FP8_E4M3FN_MIN_VALUE = -448.0f;
 constexpr int64_t QUANT_MODE_GROUP_QUANT_BF16 = 0;
 constexpr int64_t QUANT_MODE_GROUP_QUANT_E8M0 = 1;
-constexpr int64_t QUANT_MODE_HIFLOAT = 2;
 constexpr uint32_t FAST_LOG_SHIFT_BITS = 23U;
 constexpr uint32_t FAST_LOG_AND_VALUE1 = 0xFF;
 constexpr uint32_t FAST_LOG_AND_VALUE2 = (((uint32_t)1 << (uint32_t)23) - (uint32_t)1);
@@ -109,13 +108,6 @@ constexpr static AscendC::Reg::CastTrait castTraitB322B8Even = {
     AscendC::RoundMode::CAST_NONE,
 };
 
-constexpr static AscendC::Reg::CastTrait castTraitF32toh8 = {
-    AscendC::Reg::RegLayout::ZERO,
-    AscendC::Reg::SatMode::SAT,
-    AscendC::Reg::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_ROUND
-};
-
 template <typename T>
 __simd_callee__ inline void LoadInputData(RegTensor<float>& dst, __ubuf__ T* src, MaskReg pregLoop, uint32_t srcOffset)
 {
@@ -141,10 +133,6 @@ __simd_callee__ inline void StoreOutputData(
     } else if constexpr (IsSameType<T, fp8_e4m3fn_t>::value || IsSameType<T, fp8_e5m2_t>::value) {
         RegTensor<T> tmp;
         Cast<T, float, castTraitF32toFp8Even>(tmp, src, pregLoop);
-        StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
-    } else if constexpr (IsSameType<T, hifloat8_t>::value) {
-        RegTensor<T> tmp;
-        Cast<T, float, castTraitF32toh8>(tmp, src, pregLoop);
         StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
     }
 }
@@ -222,12 +210,10 @@ __simd_vf__ inline void VFProcessFP8PerGroupQuantVF(
                 Div(x0, x0, dupScale, pregLoop);
                 Maxs(x0, x0, fp8Min, pregLoop);
                 Mins(x0, x0, fp8Max, pregLoop);
-                {
-                    RegTensor<fp8_e4m3fn_t> fp8Out;
-                    Cast<fp8_e4m3fn_t, float, castTraitF32toFp8Even>(fp8Out, x0, pregLoop);
-                    StoreAlign<T1, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
-                        yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign + ropeNum, (RegTensor<T1> &)fp8Out, pregLoop);
-                }
+                RegTensor<fp8_e4m3fn_t> fp8Out;
+                Cast<fp8_e4m3fn_t, float, castTraitF32toFp8Even>(fp8Out, x0, pregLoop);
+                StoreAlign<T1, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
+                    yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign + ropeNum, (RegTensor<T1> &)fp8Out, pregLoop);
 
                 // cat scale
                 ShiftRights(scaleTmp0, (RegTensor<uint32_t> &)max2, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
@@ -286,45 +272,6 @@ __aicore__ inline void VFProcessFP8PerGroupQuant(
         yLocalAddr, xLocalAddr, scaleLocalAddr, scaleLocalBf16Addr, ropeYLocalAddr,
         coeff, fp8Min, fp8Max, curRowNum, quantColNum, ropeNum, loopCount, curColNumAlign,
         dstCurColNumAlign, concatColNum, padColNum, sregNum);
-}
-
-template <typename T0, typename T1>
-__simd_vf__ inline void VFProcessHifp8QuantVF(
-    __ubuf__ hifloat8_t* yLocalAddr, __ubuf__ T0* xLocalAddr, const uint16_t curRowNum,
-    const uint32_t curColNum, const float scales, const uint16_t loopCount,
-    const uint32_t curColNumAlign, const uint32_t dstCurColNumAlign)
-{
-    {
-        RegTensor<float> xReg;
-        RegTensor<hifloat8_t> tmp;
-        MaskReg pregLoop = CreateMask<float>();
-        for (uint16_t i = 0; i < curRowNum; i++) {
-            uint32_t sreg = curColNum;
-            for (uint16_t j = 0; j < loopCount; j++) {
-                pregLoop = UpdateMask<float>(sreg);
-                LoadInputData<T0>(xReg, xLocalAddr, pregLoop, j * VL_FP32 + i * curColNumAlign);
-                Muls(xReg, xReg, scales, pregLoop);
-                Cast<hifloat8_t, float, castTraitF32toh8>(tmp, xReg, pregLoop);
-                StoreAlign<hifloat8_t, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
-                    yLocalAddr + j * VL_FP32 + i * dstCurColNumAlign, tmp, pregLoop);
-            }
-        }
-    }
-}
-
-template <typename T0, typename T1>
-__aicore__ inline void VFProcessHifp8Quant(
-    const LocalTensor<T1>& yLocal, const LocalTensor<T0>& xLocal,
-    const uint16_t curRowNum, const uint32_t curColNum, const float scales)
-{
-    LocalTensor<hifloat8_t> outLocal = yLocal.template ReinterpretCast<hifloat8_t>();
-    __ubuf__ hifloat8_t* yLocalAddr = (__ubuf__ hifloat8_t*)outLocal.GetPhyAddr();
-    __ubuf__ T0* xLocalAddr = (__ubuf__ T0*)xLocal.GetPhyAddr();
-    uint16_t loopCount = CeilDiv(static_cast<int32_t>(curColNum), static_cast<int>(VL_FP32));
-    uint32_t curColNumAlign = RoundUp<T0>(curColNum);
-    uint32_t dstCurColNumAlign = RoundUp<T1>(curColNum);
-    VFProcessHifp8QuantVF<T0, T1>(
-        yLocalAddr, xLocalAddr, curRowNum, curColNum, scales, loopCount, curColNumAlign, dstCurColNumAlign);
 }
 
 template <typename T>

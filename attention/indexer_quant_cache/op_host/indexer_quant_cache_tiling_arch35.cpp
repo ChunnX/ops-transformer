@@ -127,7 +127,14 @@ bool IndexerQuantCacheTiling::GetCacheViewLayout(
     blockSize = viewShape.GetDim(CACHE_BLOCKSIZE_DIM);
     rowStride = inputStride->GetStride(CACHE_BLOCKSIZE_DIM);
     blockStride = inputStride->GetStride(CACHE_BLOCKNUM_DIM);
-    return (blockSize > 0 && rowStride > 0 && blockStride > 0);
+    if (blockSize <= 0 || rowStride <= 0 || blockStride <= 0) {
+        return false;
+    }
+    const int64_t storageElems = inputShape->GetStorageShape().GetShapeSize();
+    if (storageElems > 0 && (blockStride > storageElems || rowStride > storageElems || blockSize > storageElems)) {
+        return false;
+    }
+    return true;
 }
 
 ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
