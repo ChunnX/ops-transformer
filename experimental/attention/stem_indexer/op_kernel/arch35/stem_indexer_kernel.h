@@ -36,6 +36,30 @@ using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
 template <typename SIT>
+
+// 由于S2循环前，RunInfo还没有赋值，使用TempLoopInfo临时存放B、N、S1轴相关的信息；同时减少重复计算
+struct TempLoopInfo {
+    uint32_t bN2Idx = 0;
+    uint32_t bIdx = 0U;
+    uint32_t n2Idx = 0U;
+    uint32_t gS1Idx = 0U;
+    uint32_t gS1LoopEnd = 0U;   // gS1方向循环的结束Idx
+    uint32_t s2LoopEnd = 0U;    // S2方向循环的结束Idx
+    uint32_t actS1Size = 1ULL;  // 当前Batch循环处理的S1轴的实际大小
+    uint32_t actS2Size = 0ULL;
+    uint32_t actQTokenLen = 0ULL;
+    uint32_t actKVTokenLen = 0ULL;
+    uint32_t promptTokenLen = 0ULL;
+    uint32_t s2ValidSize = 0ULL;
+    bool curActSeqLenIsZero = false;
+    bool needDealActS1LessThanS1 = false;  // S1的实际长度小于shape的S1长度时，是否需要清理输出
+    uint32_t actMBaseSize = 0U;            // m轴(gS1)方向实际大小
+    uint32_t mBasicSizeTail = 0U;          // gS1方向循环的尾基本块大小
+    uint32_t s2BasicSizeTail = 0U;         // S2方向循环的尾基本块大小
+    bool isDecode = false;
+};
+
+template <typename SIT>
 class SIPreload {
 public:
     __aicore__ inline SIPreload(){};
@@ -124,6 +148,7 @@ protected:
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                GlobalTensor<int32_t> &seqLensGm, uint32_t defaultSeqLen);
+    __aicore__ inline uint32_t GetPromptTokenLen(uint32_t bIdx);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
     __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo);
@@ -141,10 +166,9 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.gSize = tilingData->gSize;
     constInfo.maxQb = tilingData->maxQb;
     constInfo.maxKb = tilingData->maxKb;
-    constInfo.flattenDim = tilingData->flattenDim;
     constInfo.qSeqSize = tilingData->maxQb;
     constInfo.kSeqSize = tilingData->maxKb;
-    constInfo.headDim = tilingData->flattenDim;
+    constInfo.headDim = tilingData->headDim;
     constInfo.sparseCount = tilingData->maxKb;
     constInfo.causal = tilingData->causal;
     constInfo.stemBlockSize = tilingData->stemBlockSize;
@@ -152,8 +176,7 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.initialBlocks = tilingData->initialBlocks;
     constInfo.windowSize = tilingData->windowSize;
     constInfo.mBaseSize = tilingData->mBaseSize;
-    constInfo.nBaseSize = tilingData->nBaseSize;
-    constInfo.s2BaseSize = tilingData->nBaseSize;
+    constInfo.s2BaseSize = tilingData->s2BaseSize;
     constInfo.s1BaseSize = CeilDiv(tilingData->mBaseSize, tilingData->gSize);
     constInfo.rSquare = tilingData->rSquare;
     constInfo.alpha = tilingData->alpha;
@@ -220,10 +243,25 @@ __aicore__ inline void SIPreload<SIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32
                                          constInfo.qSeqSize * constInfo.stemBlockSize);
     uint32_t kTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, kvSeqLensGm,
                                          constInfo.kSeqSize * constInfo.stemBlockSize);
+    uint32_t promptTokenLen = GetPromptTokenLen(bIdx);
+    uint32_t lastKvTokenIdx = (kTokenLen > 0U) ? (kTokenLen - 1U) : 0U;
     tempLoopInfo.actQTokenLen = qTokenLen;
     tempLoopInfo.actKVTokenLen = kTokenLen;
-    actS1Size = CeilDiv(qTokenLen, constInfo.stemBlockSize);
-    actS2Size = CeilDiv(kTokenLen, constInfo.stemBlockSize);
+    tempLoopInfo.promptTokenLen = promptTokenLen;
+    tempLoopInfo.isDecode = (qTokenLen == 1U) && (promptTokenLen >= lastKvTokenIdx);
+    actS1Size = Min(CeilDiv(qTokenLen, constInfo.stemBlockSize), static_cast<uint32_t>(constInfo.qSeqSize));
+    actS2Size = Min(CeilDiv(kTokenLen, constInfo.stemBlockSize), static_cast<uint32_t>(constInfo.kSeqSize));
+}
+
+template <typename SIT>
+__aicore__ inline uint32_t SIPreload<SIT>::GetPromptTokenLen(uint32_t bIdx)
+{
+    uint32_t promptEnd = static_cast<uint32_t>(numPromptTokensGm.GetValue(bIdx));
+    if (bIdx == 0) {
+        return promptEnd;
+    }
+    uint32_t promptStart = static_cast<uint32_t>(numPromptTokensGm.GetValue(bIdx - 1));
+    return (promptEnd > promptStart) ? (promptEnd - promptStart) : 0U;
 }
 
 template <typename SIT>
@@ -426,14 +464,14 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
 
     // if (GetBlockIdx() == 0) {
     //     AscendC::printf("[StemIndexer Init] bSize=%u qHeadNum=%u kvHeadNum=%u gSize=%u maxQb=%u maxKb=%u "
-    //                     "flattenDim=%u usedCoreNum=%u causal=%u stemBlockSize=%u stemStride=%u "
+    //                     "headDim=%u usedCoreNum=%u causal=%u stemBlockSize=%u stemStride=%u "
     //                     "initialBlocks=%u windowSize=%u mBaseSize=%u nBaseSize=%u scoreScale=%f alpha=%f "
     //                     "kBlockNumRateMedium=%f kBlockNumBiasMedium=%u kBlockNumRateLarge=%f "
     //                     "kBlockNumBiasLarge=%u scoreWorkspaceBytes=%u\n",
     //                     static_cast<uint32_t>(constInfo.batchSize), static_cast<uint32_t>(constInfo.qHeadNum),
     //                     static_cast<uint32_t>(constInfo.kvHeadNum), static_cast<uint32_t>(constInfo.gSize),
     //                     static_cast<uint32_t>(constInfo.maxQb), static_cast<uint32_t>(constInfo.maxKb),
-    //                     static_cast<uint32_t>(constInfo.flattenDim), constInfo.usedCoreNum, constInfo.causal,
+    //                     static_cast<uint32_t>(constInfo.headDim), constInfo.usedCoreNum, constInfo.causal,
     //                     constInfo.stemBlockSize, constInfo.stemStride, constInfo.initialBlocks, constInfo.windowSize,
     //                     constInfo.mBaseSize, constInfo.nBaseSize, constInfo.scoreScale, constInfo.alpha,
     //                     constInfo.kBlockNumRateMedium, constInfo.kBlockNumBiasMedium, constInfo.kBlockNumRateLarge,
@@ -483,9 +521,6 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
     tempLoopInfo.needDealActS1LessThanS1 = false;
     tempLoopInfo.s2ValidSize = 0U;
     GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size);
-    tempLoopInfo.promptTokenLen = GetActualSeqLen(tempLoopInfo.bIdx, static_cast<uint32_t>(constInfo.batchSize), true,
-                                                  numPromptTokensGm, 0U);
-    tempLoopInfo.promptLen = CeilDiv(tempLoopInfo.promptTokenLen, constInfo.stemBlockSize);
     if ((tempLoopInfo.actS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
         return;
@@ -508,18 +543,14 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo)
 {
     runInfo.loop = loop;
+    runInfo.bN2Idx = tempLoopInfo.bN2Idx;
     runInfo.bIdx = tempLoopInfo.bIdx;
+    runInfo.n2Idx = tempLoopInfo.n2Idx;
     runInfo.gS1Idx = tempLoopInfo.gS1Idx;
     runInfo.s2Idx = s2LoopIdx;
-    runInfo.bN2Idx = tempLoopInfo.bN2Idx;
-    runInfo.isValid = s2LoopIdx <= tempLoopInfo.s2LoopEnd;
 
     runInfo.s2Start = splitCoreInfo.s2Start;
     runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
-
-    if (!runInfo.isValid) {
-        return;  // 需要验证， v1 时候需要runInfo
-    }
 
     runInfo.actS1Size = tempLoopInfo.actS1Size;
     runInfo.actS2Size = tempLoopInfo.actS2Size;
@@ -530,22 +561,18 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     if (runInfo.s2Idx == s2SplitNum - 1) {
         runInfo.actualSingleProcessSInnerSize = tempLoopInfo.s2BasicSizeTail;
     }
-    runInfo.actualSingleProcessSInnerSizeAlign =
-        SICommon::Align((uint32_t)runInfo.actualSingleProcessSInnerSize, SICommon::ConstInfo::BUFFER_SIZE_BYTE_32B);
 
     runInfo.isFirstS2InnerLoop = s2LoopIdx == splitCoreInfo.s2Start;
     runInfo.isLastS2InnerLoop = s2LoopIdx == tempLoopInfo.s2LoopEnd;
-    runInfo.isAllLoopEnd = (runInfo.bN2Idx == splitCoreInfo.bN2End) && (runInfo.gS1Idx == splitCoreInfo.gS1End) &&
-                           (runInfo.s2Idx == splitCoreInfo.s2End);
 
     if (runInfo.isFirstS2InnerLoop) {
-        uint64_t actualSeqQPrefixSum;
-        if constexpr (Q_LAYOUT_T == SI_LAYOUT::TND) {
-            uint32_t qSeqLensGmIdx = (constInfo.batchSupperFlag) ? runInfo.bIdx : runInfo.bIdx - 1;
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : qSeqLensGm.GetValue(qSeqLensGmIdx);
-        } else {  // BNSD
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
-        }
+
+        queryCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.headDim +
+                          runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.headDim +
+                          runInfo.gs1Idx * constInfo.mBaseSize;
+        
+        indiceOutCoreOffset = 
+
         uint64_t qBatchOffset = actualSeqQPrefixSum * constInfo.qHeadNum;
         uint64_t qHeadOffset = runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
         uint64_t qBlockOffset = static_cast<uint64_t>(runInfo.gS1Idx) * constInfo.mBaseSize;
@@ -564,7 +591,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     } else {
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
     }
-    runInfo.numPromptTokens = tempLoopInfo.promptTokenLen;
+    runInfo.numPromptTokens = GetPromptTokenLen(runInfo.bIdx);
     uint64_t kBatchOffset = actualSeqKPrefixSum * constInfo.kvHeadNum;
     uint64_t kHeadOffset = runInfo.n2Idx * constInfo.kSeqSize;
     keyCoreOffset =

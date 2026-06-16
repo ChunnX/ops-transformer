@@ -72,7 +72,7 @@ constexpr uint32_t KV_HEAD_NUM_2 = 2;
 constexpr uint32_t KV_HEAD_NUM_4 = 4;
 constexpr uint32_t KV_HEAD_NUM_8 = 8;
 constexpr uint32_t STEM_M_BASE_SIZE = 96;
-constexpr uint32_t STEM_N_BASE_SIZE = 256;
+constexpr uint32_t STEM_S2_BASE_SIZE = 256;
 constexpr float ALPHA_MIN = 0.0f;
 constexpr float ATTR_FLOAT_EPS = 0.000001f;
 constexpr float K_BLOCK_NUM_RATE_MEDIUM_LIMIT = 0.2f;
@@ -85,7 +85,7 @@ TILING_DATA_FIELD_DEF(uint32_t, kvHeadNum)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxQb)
 TILING_DATA_FIELD_DEF(uint32_t, maxKb)
-TILING_DATA_FIELD_DEF(uint32_t, flattenDim)
+TILING_DATA_FIELD_DEF(uint32_t, headDim)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, causal)
 TILING_DATA_FIELD_DEF(uint32_t, stemBlockSize)
@@ -93,7 +93,7 @@ TILING_DATA_FIELD_DEF(uint32_t, stemStride)
 TILING_DATA_FIELD_DEF(uint32_t, initialBlocks)
 TILING_DATA_FIELD_DEF(uint32_t, windowSize)
 TILING_DATA_FIELD_DEF(uint32_t, mBaseSize)
-TILING_DATA_FIELD_DEF(uint32_t, nBaseSize)
+TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
 TILING_DATA_FIELD_DEF(float, rSquare)
 TILING_DATA_FIELD_DEF(float, alpha)
 TILING_DATA_FIELD_DEF(float, kBlockNumRateMedium)

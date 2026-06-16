@@ -72,7 +72,6 @@ struct RunInfo {
     uint32_t actS2Size = 1;
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
-    uint32_t actualSingleProcessSInnerSizeAlign;
 
     uint64_t tensorQueryOffset;
     uint64_t tensorKeyOffset;
@@ -85,8 +84,6 @@ struct RunInfo {
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
-    bool isAllLoopEnd = false;
-    bool isValid = false;
     bool isNeedLD = false;
     uint32_t saveWorkSpaceIdx = 0;
 };
@@ -121,7 +118,6 @@ struct ConstInfo {
     uint32_t mBaseSize = 1ULL;
     uint32_t s1BaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
-    uint32_t nBaseSize = 1ULL;
 
     uint64_t batchSize = 0ULL;
     uint64_t gSize = 0ULL;
@@ -130,7 +126,6 @@ struct ConstInfo {
     uint64_t headDim = 0ULL;
     uint64_t maxQb = 0ULL;
     uint64_t maxKb = 0ULL;
-    uint64_t flattenDim = 0ULL;
     uint64_t sparseCount = 0ULL;       // topK选取大小
     uint64_t kSeqSize = 0ULL;          // kv最大S长度
     uint64_t qSeqSize = 1ULL;          // q最大S长度

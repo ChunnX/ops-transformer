@@ -120,16 +120,16 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF(*opParamInfo_.stemBlockSize != STEM_BLOCK_SIZE_LIMIT,
-                OP_LOGE(opName_, "stem_block_size only support %u.", STEM_BLOCK_SIZE_LIMIT),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.stemStride != STEM_STRIDE_LIMIT,
-                OP_LOGE(opName_, "stem_stride only support %u.", STEM_STRIDE_LIMIT), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.initialBlocks != INITIAL_BLOCKS_LIMIT,
-                OP_LOGE(opName_, "initial_blocks only support %u.", INITIAL_BLOCKS_LIMIT),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.windowSize != WINDOW_SIZE_LIMIT,
-                OP_LOGE(opName_, "window_size only support %u.", WINDOW_SIZE_LIMIT), return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(*opParamInfo_.stemBlockSize != STEM_BLOCK_SIZE_LIMIT,
+    //             OP_LOGE(opName_, "stem_block_size only support %u.", STEM_BLOCK_SIZE_LIMIT),
+    //             return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(*opParamInfo_.stemStride != STEM_STRIDE_LIMIT,
+    //             OP_LOGE(opName_, "stem_stride only support %u.", STEM_STRIDE_LIMIT), return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(*opParamInfo_.initialBlocks != INITIAL_BLOCKS_LIMIT,
+    //             OP_LOGE(opName_, "initial_blocks only support %u.", INITIAL_BLOCKS_LIMIT),
+    //             return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(*opParamInfo_.windowSize != WINDOW_SIZE_LIMIT,
+    //             OP_LOGE(opName_, "window_size only support %u.", WINDOW_SIZE_LIMIT), return ge::GRAPH_FAILED);
     OP_CHECK_IF((*opParamInfo_.alpha <= ALPHA_MIN) || (*opParamInfo_.alpha > 1.0f),
                 OP_LOGE(opName_, "alpha should be in (0, 1]."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateMedium, K_BLOCK_NUM_RATE_MEDIUM_LIMIT),
@@ -263,7 +263,7 @@ ge::graphStatus StemIndexerInfoParser::GetBaseShapeInfo()
     bSize_ = static_cast<uint32_t>(opParamInfo_.qflat.shape->GetStorageShape().GetDim(DIM_IDX_ZERO));
     qHeadNum_ = static_cast<uint32_t>(opParamInfo_.qflat.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
     maxQb_ = static_cast<uint32_t>(opParamInfo_.qflat.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
-    flattenDim_ = static_cast<uint32_t>(opParamInfo_.qflat.shape->GetStorageShape().GetDim(DIM_IDX_THREE));
+    headDim_ = static_cast<uint32_t>(opParamInfo_.qflat.shape->GetStorageShape().GetDim(DIM_IDX_THREE));
     kvHeadNum_ = static_cast<uint32_t>(opParamInfo_.kflat.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
     maxKb_ = static_cast<uint32_t>(opParamInfo_.kflat.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
 
@@ -276,8 +276,8 @@ ge::graphStatus StemIndexerInfoParser::GetBaseShapeInfo()
     OP_CHECK_IF(qHeadNum_ % kvHeadNum_ != 0, OP_LOGE(opName_, "q_heads should be divisible by kv_heads."),
                 return ge::GRAPH_FAILED);
     gSize_ = qHeadNum_ / kvHeadNum_;
-    OP_CHECK_IF(flattenDim_ != FLATTEN_DIM_LIMIT,
-                OP_LOGE(opName_, "qflat last dim only support %u.", FLATTEN_DIM_LIMIT), return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(headDim_ != FLATTEN_DIM_LIMIT,
+    //             OP_LOGE(opName_, "qflat last dim only support %u.", FLATTEN_DIM_LIMIT), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -295,7 +295,7 @@ ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
 
     OP_CHECK_IF(kShape.GetDim(DIM_IDX_ZERO) != bSize_, OP_LOGE(opName_, "qflat and kflat batch should be same."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(kShape.GetDim(DIM_IDX_THREE) != flattenDim_, OP_LOGE(opName_, "qflat and kflat last dim should match."),
+    OP_CHECK_IF(kShape.GetDim(DIM_IDX_THREE) != headDim_, OP_LOGE(opName_, "qflat and kflat last dim should match."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(vShape.GetDim(DIM_IDX_ZERO) != bSize_ || vShape.GetDim(DIM_IDX_ONE) != kvHeadNum_ ||
                     vShape.GetDim(DIM_IDX_TWO) != maxKb_,
@@ -332,7 +332,7 @@ void StemIndexerInfoParser::GenerateInfo(StemIndexerTilingInfo &stemInfo)
     stemInfo.gSize = gSize_;
     stemInfo.maxQb = maxQb_;
     stemInfo.maxKb = maxKb_;
-    stemInfo.flattenDim = flattenDim_;
+    stemInfo.headDim = headDim_;
     stemInfo.causal = *opParamInfo_.causal;
     stemInfo.stemBlockSize = static_cast<uint32_t>(*opParamInfo_.stemBlockSize);
     stemInfo.stemStride = static_cast<uint32_t>(*opParamInfo_.stemStride);
@@ -384,7 +384,7 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     constexpr uint32_t FP32_BYTES = 4;
     constexpr uint32_t DOUBLE_BUFFER = 2;
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    workspaceSize += STEM_M_BASE_SIZE * STEM_N_BASE_SIZE * FP32_BYTES * DOUBLE_BUFFER * aicNum;
+    workspaceSize += STEM_M_BASE_SIZE * STEM_S2_BASE_SIZE * FP32_BYTES * DOUBLE_BUFFER * aicNum;
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize;
 
@@ -394,7 +394,7 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     tilingData_.set_gSize(tilingInfo->gSize);
     tilingData_.set_maxQb(tilingInfo->maxQb);
     tilingData_.set_maxKb(tilingInfo->maxKb);
-    tilingData_.set_flattenDim(tilingInfo->flattenDim);
+    tilingData_.set_headDim(tilingInfo->headDim);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.set_causal(static_cast<uint32_t>(tilingInfo->causal));
     tilingData_.set_stemBlockSize(tilingInfo->stemBlockSize);
@@ -402,7 +402,7 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     tilingData_.set_initialBlocks(tilingInfo->initialBlocks);
     tilingData_.set_windowSize(tilingInfo->windowSize);
     tilingData_.set_mBaseSize(STEM_M_BASE_SIZE);
-    tilingData_.set_nBaseSize(STEM_N_BASE_SIZE);
+    tilingData_.set_s2BaseSize(STEM_S2_BASE_SIZE);
     tilingData_.set_rSquare(tilingInfo->rSquare);
     tilingData_.set_alpha(tilingInfo->alpha);
     tilingData_.set_kBlockNumRateMedium(tilingInfo->kBlockNumRateMedium);
