@@ -243,7 +243,7 @@ aclnnStatus CheckX2Valid(const aclTensor* x2) {
 // 检查commMode参数是否合法，并获取commMode对应枚举值
 aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
 {
-    const size_t maxLength = 7UL;
+    const size_t maxLength = 6UL;
     // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
