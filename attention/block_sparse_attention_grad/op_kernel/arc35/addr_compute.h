@@ -73,12 +73,10 @@ public:
         runTimeInfo.s2Len = this->runTimeInfoBak_.s2Len;
         runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
         runTimeInfo.s2LenAlign = this->runTimeInfoBak_.s2LenAlign;
-        runTimeInfo.queryGmOffset =
-            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, const_info.q_head_num,
-                                         const_info.head_dim, runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
-        runTimeInfo.keyGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_kv_seq_sum, runTimeInfo.cur_kv_seq_len,
-                                                               const_info.kv_head_num, const_info.head_dim,
-                                                               runTimeInfo.bIdx, runTimeInfo.s2Idx, runTimeInfo.n2Idx);
+        runTimeInfo.queryGmOffset = GetQGmOffset<INPUT_LAYOUT>(const_info, runTimeInfo.last_q_seq_sum, runTimeInfo.bIdx,
+                                                               runTimeInfo.n1Idx, runTimeInfo.s1Idx);
+        runTimeInfo.keyGmOffset = GetKVGmOffset<INPUT_LAYOUT>(const_info, runTimeInfo.last_kv_seq_sum, runTimeInfo.bIdx,
+                                                              runTimeInfo.n2Idx, runTimeInfo.s2Idx);
         runTimeInfo.lseGmOffset =
             GetLseGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, const_info.q_head_num,
                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
@@ -220,6 +218,10 @@ public:
             }
             q_block_num_ = CeilDiv(max_q_seq_len_, block_x_);
             kv_block_num_ = CeilDiv(max_kv_seq_len_, block_y_);
+            const_info_.s1_stride = q_head_num_ * head_dim_;
+            const_info_.s2_stride = kv_head_num_ * head_dim_;
+            const_info_.n1_stride = head_dim_;
+            const_info_.n2_stride = head_dim_;
         } else {
             cur_q_seq_len_ = q_seq_len_;
             cur_kv_seq_len_ = kv_seq_len_;
@@ -227,6 +229,19 @@ public:
             last_kv_seq_sum_ = 0;
             q_block_num_ = CeilDiv(q_seq_len_, block_x_);
             kv_block_num_ = CeilDiv(kv_seq_len_, block_y_);
+            if constexpr (INPUT_LAYOUT == BSND) {
+                const_info_.b_stride = q_seq_len_ * head_num_ * head_dim_;
+                const_info_.s1_stride = q_head_num_ * head_dim_;
+                const_info_.s2_stride = kv_head_num_ * head_dim_;
+                const_info_.n1_stride = head_dim_;
+                const_info_.n2_stride = head_dim_;
+            } else if (INPUT_LAYOUT == BNSD) {
+                const_info_.b_stride = head_num_ * q_seq_len_ * head_dim_;
+                const_info_.s1_stride = head_dim_;
+                const_info_.s2_stride = head_dim_;
+                const_info_.n1_stride = q_seq_len_ * head_dim_;
+                const_info_.n2_stride = kv_seq_len_ * head_dim_;
+            }
         }
         const_info_.q_head_num = q_head_num_;
         const_info_.kv_head_num = kv_head_num_;
@@ -386,12 +401,10 @@ private:
         runTimeInfo.s2Len = vaild_s2_len;
         runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
         runTimeInfo.s2LenAlign = RoundUp(vaild_s2_len, 16);
-        runTimeInfo.queryGmOffset =
-            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_, head_dim_,
-                                         runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
-        runTimeInfo.keyGmOffset =
-            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_kv_seq_sum, runTimeInfo.cur_kv_seq_len, kv_head_num_,
-                                         head_dim_, runTimeInfo.bIdx, runTimeInfo.s2Idx, runTimeInfo.n2Idx);
+        runTimeInfo.queryGmOffset = GetQGmOffset<INPUT_LAYOUT>(const_info_, runTimeInfo.last_q_seq_sum,
+                                                               runTimeInfo.bIdx, runTimeInfo.n1Idx, runTimeInfo.s1Idx);
+        runTimeInfo.keyGmOffset = GetKVGmOffset<INPUT_LAYOUT>(const_info_, runTimeInfo.last_kv_seq_sum,
+                                                              runTimeInfo.bIdx, runTimeInfo.n2Idx, runTimeInfo.s2Idx);
         runTimeInfo.lseGmOffset =
             GetLseGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_,
                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);

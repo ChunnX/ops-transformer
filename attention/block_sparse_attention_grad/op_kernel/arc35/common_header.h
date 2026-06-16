@@ -38,6 +38,11 @@ struct ConstInfo {
     int32_t head_dim{0};
     int32_t q_block_num{0};
     int32_t kv_block_num{0};
+    int64_t b_stride{0};
+    int64_t s1_stride{0};
+    int64_t s2_stride{0};
+    int64_t n1_stride{0};
+    int64_t n2_stride{0};
 };
 
 struct RunTimeInfo {
@@ -101,19 +106,32 @@ __aicore__ inline int64_t GetSeqTotalLen(int32_t i, __gm__ uint8_t *seq_Len)
 }
 
 template <uint32_t INPUT_LAYOUT>
-__aicore__ inline uint64_t GetQKVGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
-                                          int32_t head_dim, int32_t batch_idx, int32_t seqlen_idx, int32_t n_idx)
+__aicore__ inline uint64_t GetQGmOffset(const ConstInfo &const_info, int32_t lastBatchSum, int32_t batch_idx,
+                                        int32_t n_idx, int32_t seqlen_idx)
 {
     if constexpr (INPUT_LAYOUT == BSND) {
-        return batch_idx * (current_seq_len * head_num * head_dim) + (seqlen_idx * head_num * head_dim) +
-               (n_idx * head_dim);
+        return batch_idx * const_info.b_stride + seqlen_idx * const_info.s1_stride + n_idx * const_info.n1_stride;
     } else if (INPUT_LAYOUT == BNSD) {
-        return batch_idx * (head_num * current_seq_len * head_dim) + (n_idx * current_seq_len * head_dim) +
-               (seqlen_idx * head_dim);
+        return batch_idx * const_info.b_stride + n_idx * const_info.n1_stride + seqlen_idx * const_info.s1_stride
     } else if constexpr (INPUT_LAYOUT == TND) {
-        return lastBatchSum * (head_num * head_dim) + (seqlen_idx * head_num * head_dim) + (n_idx * head_dim);
+        return (lastBatchSum + seqlen_idx) * const_info.s1_stride + n_idx * const_info.n1_stride;
     }
 }
+
+
+template <uint32_t INPUT_LAYOUT>
+__aicore__ inline uint64_t GetKVGmOffset(const ConstInfo &const_info, int32_t lastBatchSum, int32_t batch_idx,
+                                         int32_t seqlen_idx, int32_t n_idx)
+{
+    if constexpr (INPUT_LAYOUT == BSND) {
+        return batch_idx * const_info.b_stride + seqlen_idx * const_info.s2_stride + n_idx * const_info.n2_stride;
+    } else if (INPUT_LAYOUT == BNSD) {
+        return batch_idx * const_info.b_stride + n_idx * const_info.n2_stride + seqlen_idx * const_info.s2_stride
+    } else if constexpr (INPUT_LAYOUT == TND) {
+        return (lastBatchSum + seqlen_idx) * const_info.s2_stride + n_idx * const_info.n2_stride;
+    }
+}
+
 
 template <uint32_t INPUT_LAYOUT>
 __aicore__ inline uint64_t GetLseGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
