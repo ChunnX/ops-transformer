@@ -29,21 +29,21 @@ constexpr size_t HEAD_NUMS_SIZE = 3;
 constexpr size_t QKV_DIM_NUM = 3;
 constexpr size_t CACHE_DIM_NUM = 4;
 
-ge::graphStatus ValidateDimNum(const char *opName, const char *tensorName, const gert::Shape *shape,
+ge::graphStatus ValidateDimNum(gert::InferShapeContext *context, const char *tensorName, const gert::Shape *shape,
                                size_t expectedDimNum)
 {
     if (shape->GetDimNum() != expectedDimNum) {
-        OP_LOGE(opName, "%s dim num must be %zu, but got %zu.", tensorName, expectedDimNum, shape->GetDimNum());
+        OP_LOGE(context, "%s dim num must be %zu, but got %zu.", tensorName, expectedDimNum, shape->GetDimNum());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ValidatePositiveDims(const char *opName, const char *tensorName, const gert::Shape *shape)
+ge::graphStatus ValidatePositiveDims(gert::InferShapeContext *context, const char *tensorName, const gert::Shape *shape)
 {
     for (size_t i = 0; i < shape->GetDimNum(); ++i) {
         if (shape->GetDim(i) <= 0) {
-            OP_LOGE(opName, "%s dim[%zu] must be greater than 0, but got %ld.", tensorName, i, shape->GetDim(i));
+            OP_LOGE(context, "%s dim[%zu] must be greater than 0, but got %ld.", tensorName, i, shape->GetDim(i));
             return ge::GRAPH_FAILED;
         }
     }
@@ -54,20 +54,19 @@ ge::graphStatus ValidatePositiveDims(const char *opName, const char *tensorName,
 ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    const char *opName = context->GetNodeName();
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const auto headNums = attrs->GetListInt(HEAD_NUMS_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, headNums);
     if (headNums->GetSize() != HEAD_NUMS_SIZE) {
-        OP_LOGE(opName, "head_nums size must be %zu, but got %zu.", HEAD_NUMS_SIZE, headNums->GetSize());
+        OP_LOGE(context, "head_nums size must be %zu, but got %zu.", HEAD_NUMS_SIZE, headNums->GetSize());
         return ge::GRAPH_FAILED;
     }
     const auto *headNumsData = headNums->GetData();
     OP_CHECK_NULL_WITH_CONTEXT(context, headNumsData);
     for (size_t i = 0; i < 3; ++i) {
         if (headNumsData[i] <= 0) {
-            OP_LOGE(context->GetNodeName(), "head_nums[%zu] must be greater than 0.", i);
+            OP_LOGE(context, "head_nums[%zu] must be greater than 0.", i);
             return ge::GRAPH_FAILED;
         }
     }
@@ -81,16 +80,16 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
     const gert::Shape *kScaleCacheShape = context->GetInputShape(K_SCALE_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kScaleCacheShape);
 
-    if (ValidateDimNum(opName, "qkv", qkvShape, QKV_DIM_NUM) != ge::GRAPH_SUCCESS ||
-        ValidateDimNum(opName, "k_cache", kCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
-        ValidateDimNum(opName, "v_cache", vCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
-        ValidateDimNum(opName, "k_scale_cache", kScaleCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS) {
+    if (ValidateDimNum(context, "qkv", qkvShape, QKV_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        ValidateDimNum(context, "k_cache", kCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        ValidateDimNum(context, "v_cache", vCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        ValidateDimNum(context, "k_scale_cache", kScaleCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ValidatePositiveDims(opName, "qkv", qkvShape) != ge::GRAPH_SUCCESS ||
-        ValidatePositiveDims(opName, "k_cache", kCacheShape) != ge::GRAPH_SUCCESS ||
-        ValidatePositiveDims(opName, "v_cache", vCacheShape) != ge::GRAPH_SUCCESS ||
-        ValidatePositiveDims(opName, "k_scale_cache", kScaleCacheShape) != ge::GRAPH_SUCCESS) {
+    if (ValidatePositiveDims(context, "qkv", qkvShape) != ge::GRAPH_SUCCESS ||
+        ValidatePositiveDims(context, "k_cache", kCacheShape) != ge::GRAPH_SUCCESS ||
+        ValidatePositiveDims(context, "v_cache", vCacheShape) != ge::GRAPH_SUCCESS ||
+        ValidatePositiveDims(context, "k_scale_cache", kScaleCacheShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
