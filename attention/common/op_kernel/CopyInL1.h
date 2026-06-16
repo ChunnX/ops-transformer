@@ -246,7 +246,7 @@ __aicore__ inline void GmCopyInToL1HasRopePA(LocalTensor<L1Type>& nopeTensor, Lo
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
         }
-        uint64_t offset = idInBlockTable * shape.pageStride;
+        uint64_t offset = idInBlockTable * shape.pageStride; // PA的偏移
         uint64_t keyRopeOffset = (ropeShape.pageStride > 0) ? (idInBlockTable * ropeShape.pageStride) :
             (idInBlockTable * ropeShape.blockSize * ropeShape.headNum * ropeShape.headDim);
         if (kvLayout == KVLAYOUT::NZ) {
