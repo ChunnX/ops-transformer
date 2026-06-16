@@ -20,7 +20,7 @@ import math
 import ctypes
 import copy
 import cann_ops_transformer
-from cann_ops_transformer.ops import lightning_indexer_v2
+from cann_ops_transformer.ops import lightning_indexer_v2, lightning_indexer_metadata
 
 class GeneralizedLIV2:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
