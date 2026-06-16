@@ -145,12 +145,7 @@ __aicore__ inline void QLIMatmul<QLIT>::InitParams(const ConstInfo &constInfo)
 template <typename QLIT>
 __aicore__ inline void QLIMatmul<QLIT>::InitBuffers(TPipe *pipe)
 {
-    // MXFP8: dstStride=64 → 每QK行128 floats(2物理行×64), M=128行 → 8192 floats/pingpong
-    // 需要 2 * 8192 * 4 = 65536 bytes (原始为 32768 bytes)
-    uint64_t ubSizeBytes = IS_MXFP8
-        ? 2 * (uint64_t)M_BASIC_BLOCK_L0 * (S2_BASIC_BLOCK_L0 / 2) * sizeof(float)  // 65536
-        : 2 * (uint64_t)CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(float); // 32768
-    pipe->InitBuffer(bufUB_, ubSizeBytes);
+    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(float));  //大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
     mm1ResUB_ = bufUB_.Get<QK_T>();
     // MXFP8: 额外预留 qScale 空间（与 QUERY_L1_PINGPONG_STRIDE 一致）
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_L1_PINGPONG_STRIDE * sizeof(Q_T));
@@ -549,6 +544,11 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uin
         // srcStride 基于 K 维度(headDim)，参考 MLA Prolog: CeilDiv(kL1Size, K_STEP_SIZE_32 * FP8_TWO)
         loadAScaleParam.srcStride = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
         loadAScaleParam.dstStride = loadAScaleParam.yStep;
+        uint32_t array1[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(128)};
+        ShapeInfo shapeInfo1(2, array1);
+        DumpTensor(queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE], 1003, 128*128, shapeInfo1);
+        DumpTensor(queryL1_, 1004, 128*128, shapeInfo1);
+        DumpTensor(scaleL1, 1005, 128*128, shapeInfo1);
         LoadData(dstTensor,
                  queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE],
                  scaleL1, loadData2DParams, loadAScaleParam);
@@ -590,6 +590,11 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64
         // srcStride 基于 K 维度(headDim)，参考 MLA Prolog: CeilDiv(kL1Size, K_STEP_SIZE_32 * FP8_TWO)
         loadDataMxParams.srcStride = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
         loadDataMxParams.dstStride = loadDataMxParams.yStep;
+        uint32_t array1[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(128)};
+        ShapeInfo shapeInfo1(2, array1);
+        DumpTensor(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_], 1006, 128*128, shapeInfo1);
+        DumpTensor(keyL1_, 1007, 128*128, shapeInfo1);
+        DumpTensor(scaleL1, 1008, 128*128, shapeInfo1);
         LoadData(dstTensor,
                  keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_],
                  scaleL1, loadData2DParams, loadDataMxParams);
@@ -644,12 +649,8 @@ __aicore__ inline void QLIMatmul<QLIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2Gm
     // 固定参数
     fixpipeParams.mSize = mSize;
     fixpipeParams.srcStride = mSize; // 已16对齐
-    if constexpr (IS_MXFP8) {
-        fixpipeParams.dstStride = S2_BASIC_BLOCK_L0 / 2; // 64 floats
-    } else {
-        fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(float); // 128 floats
-    }
-    fixpipeParams.dualDstCtl = 0; // 单目标模式
+    fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(float); // 落到同一个bank
+    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
 
     // nSize已保证N方向32B对齐
     if (nSize <= (256 / sizeof(float))) {
@@ -663,14 +664,12 @@ __aicore__ inline void QLIMatmul<QLIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2Gm
         fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2; // 分2个ND搬, S2_BASIC_BLOCK_L0不为128会有问题
         fixpipeParams.params.ndNum = 2;
         fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
-        fixpipeParams.params.dstNdStride = fixpipeParams.nSize; // 64: ND块在同一行相邻
+        fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * constInfo_.mBaseSize / 2;
     }
-    // MXFP8: ping-pong偏移 = 8192 floats (每个pingpong半区大小)
-    // 非MXFP8: ping-pong偏移 = s2BaseSize / 2 = 64 floats
-    uint64_t ppOffset = IS_MXFP8
-        ? (uint64_t)M_BASIC_BLOCK_L0 * (S2_BASIC_BLOCK_L0 / 2)  // 8192
-        : (uint64_t)constInfo_.s2BaseSize / 2;  // 64
-    Fixpipe<QK_T, QK_T, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * ppOffset],
+    uint32_t array1[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(128)};
+    ShapeInfo shapeInfo1(2, array1);
+    DumpTensor(cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], 1002, 128*128, shapeInfo1);
+    Fixpipe<QK_T, QK_T, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
                                                 cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
 }
 
