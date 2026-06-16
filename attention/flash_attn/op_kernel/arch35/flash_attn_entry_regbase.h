@@ -76,7 +76,7 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                       dTemplateType, hasRopeConst, enableKVPrefixConst, true, IsSameType<INPUT_T, hifloat8_t>::value);
     constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
     constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
-
+    fa_base_matmul::idCounterNum = 0;
     // 3. Block 类型别名
     using CubeBlock =
         BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
