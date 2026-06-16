@@ -19,6 +19,8 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "op_kernel/platform_util.h"
+#include "op_kernel/math_util.h"
 #include "mhc_pre_sinkhorn_backward_deterministic_simd_vf.h"
 
 using namespace AscendC;
@@ -156,7 +158,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     eps_ = tilingData->eps;
     k_ = n_ * n_ + 2 * n_;
     blockIdx_ = GetBlockIdx();
-    blockSize_ = GetUbBlockSize();
+    blockSize_ = Ops::Base::GetUbBlockSize();
     curCoreProcessbsTask_ = (blockIdx_ == tilingData->aivNum - 1) ? tilingData->tailBsTaskCount : tilingData->bsTaskCount;
     nAlignFp32_ = Ops::Base::CeilAlign(n_ * sizeof(U), blockSize_) / sizeof(U);
     cLenAlignFp32_ = Ops::Base::CeilAlign(cLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
@@ -334,7 +336,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeZAndNormOutForward(const LocalTensor<U>& invRmsLocal uint64_t bsLen, 
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeZAndNormOutForward(const LocalTensor<U>& invRmsLocal, uint64_t bsLen, 
                                         uint64_t colLen, uint64_t oft, const U& alpha)
 {
     CopyInHcBeforeNorm(bsLen, colLen, oft);
