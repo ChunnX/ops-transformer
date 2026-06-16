@@ -18,7 +18,7 @@ class SingleBlock {
      */
 public:
     __aicore__ inline void Reset(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask, const int32_t b_idx,
-                                 const int32_t n1_idx, const int32_t s1_idx, const int32_t s2Idx, const int32_t s1_len,
+                                 const int32_t n1_idx, const int32_t s1_idx, const int32_t s2_idx, const int32_t s1_len,
                                  int32_t &base_s1_start_idx, int32_t &base_s1_len)
     {
         /*
@@ -31,7 +31,7 @@ public:
         this->is_finish_ = false;
         this->s1_start_idx_ = s1_idx;
         this->s1_end_idx_ = s1_idx + s1_len;
-        this->Update(const_info, base_s1_start_idx, base_s1_len, block_sparse_mask, b_idx, n1_idx, s2Idx);
+        this->Update(const_info, block_sparse_mask, b_idx, n1_idx, s2_idx, base_s1_start_idx, base_s1_len);
     }
 
     __aicore__ inline void RecordRunTimeInfo(const RunTimeInfo &runTimeInfo)
@@ -53,23 +53,25 @@ public:
     }
 
     template <uint32_t INPUT_LAYOUT>
-    __aicore__ inline void UpdateRunTimeInfo(const ConstInfo &const_info, RunTimeInfo &runTimeInfo)
+    __aicore__ inline void UpdateRunTimeInfo(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask,
+                                             RunTimeInfo &runTimeInfo)
     {
-        int32_t base_s1_idx, base_s1_len;
-        his->Update(base_s1_idx, base_s1_len);
+        int32_t base_s1_start_idx, base_s1_len;
+        this->Update(const_info, block_sparse_mask, this->runTimeInfoBak_.bIdx, this->runTimeInfoBak_.n1Idx,
+                     this->runTimeInfoBak_.s2Idx, base_s1_start_idx, base_s1_len);
 
         runTimeInfo.bIdx = this->runTimeInfoBak_.bIdx;
         runTimeInfo.last_q_seq_sum = this->runTimeInfoBak_.last_q_seq_sum;
         runTimeInfo.last_kv_seq_sum = this->runTimeInfoBak_.last_kv_seq_sum;
         runTimeInfo.cur_q_seq_len = this->runTimeInfoBak_.cur_q_seq_len;
         runTimeInfo.cur_kv_seq_len = this->runTimeInfoBak_.cur_kv_seq_len;
-        runTimeInfo.s1Idx = base_s1_idx;
+        runTimeInfo.s1Idx = base_s1_start_idx;
         runTimeInfo.s2Idx = this->runTimeInfoBak_.s2Idx;
         runTimeInfo.n1Idx = this->runTimeInfoBak_.n1Idx;
         runTimeInfo.n2Idx = this->runTimeInfoBak_.n2Idx;
         runTimeInfo.s1Len = base_s1_len;
         runTimeInfo.s2Len = this->runTimeInfoBak_.s2Len;
-        runTimeInfo.s1LenAlign = RoundUp(base_s1_idx, 16);
+        runTimeInfo.s1LenAlign = RoundUp(base_s1_start_idx, 16);
         runTimeInfo.s2LenAlign = this->runTimeInfoBak_.s2LenAlign;
         runTimeInfo.queryGmOffset =
             GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, const_info.q_head_num,
@@ -240,7 +242,7 @@ public:
 
         while (!single_block_.IsFinish()) {
             // 如果singleBlock未计算完，先计算singleBlock内的内容
-            single_block_.UpdateRunTimeInfo<INPUT_LAYOUT>(const_info_, runTimeInfo);
+            single_block_.UpdateRunTimeInfo<INPUT_LAYOUT>(const_info_, blockSparseMask_, runTimeInfo);
             return;
         }
 
