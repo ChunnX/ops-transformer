@@ -355,4 +355,52 @@ __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, Offset
         }
     } 
 }
+
+// ---------------------------------------Set LSE Gm To Inf--------------------------------
+template <GmFormat FORMAT, typename OffsetCalcType>
+__aicore__ inline void DealActSeqLenIsZeroLse(uint32_t bIdx, uint32_t n2Idx, OffsetCalcType &offsetCalculator,
+                                               GlobalTensor<float>& softmaxLseGm)
+{
+    constexpr float lseInf = 3e+99;
+    if constexpr (FORMAT == GmFormat::TNGD) {
+        uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetTBase(bIdx + 1) -
+            offsetCalculator.actualSeqLensQParser.GetTBase(bIdx);
+        for (int s1Idx = 0; s1Idx < s1Count; s1Idx++) {
+            for (int gIdx = 0; gIdx < offsetCalculator.GetDimG(); gIdx++) {
+                uint64_t lseOffset = offsetCalculator.GetOffset(bIdx, n2Idx, gIdx, s1Idx, 0);
+                matmul::InitOutput<float>(softmaxLseGm[lseOffset], 1, lseInf);
+            }
+        }
+    } else if constexpr (FORMAT == GmFormat::NGTD) {
+        uint32_t s1Count = offsetCalculator.actualSeqLensQParser.GetTBase(bIdx + 1) -
+            offsetCalculator.actualSeqLensQParser.GetTBase(bIdx);
+        uint64_t bN2Offset = offsetCalculator.actualSeqLensQParser.GetTBase(bIdx) * offsetCalculator.GetDimN2() *
+                              offsetCalculator.GetDimG() + n2Idx * offsetCalculator.GetDimG();
+        for (int s1Idx = 0; s1Idx < s1Count; s1Idx++) {
+            uint64_t lseOffset = bN2Offset + s1Idx * offsetCalculator.GetDimN2() * offsetCalculator.GetDimG();
+            matmul::InitOutput<float>(softmaxLseGm[lseOffset], offsetCalculator.GetDimG(), lseInf);
+        }
+    } else if constexpr (FORMAT == GmFormat::BSNGD) {
+        uint64_t bN2Offset = bIdx * offsetCalculator.GetDimN2() * offsetCalculator.GetDimG() * offsetCalculator.GetDimS1() +
+                              n2Idx * offsetCalculator.GetDimG() * offsetCalculator.GetDimS1();
+        for (int gIdx = 0; gIdx < offsetCalculator.GetDimG(); gIdx++) {
+            uint64_t lseOffset = bN2Offset + gIdx * offsetCalculator.GetDimS1();
+            matmul::InitOutput<float>(softmaxLseGm[lseOffset], offsetCalculator.GetDimS1(), lseInf);
+        }
+    } else if constexpr (FORMAT == GmFormat::BNGSD) {
+        uint64_t bN2Offset = bIdx * offsetCalculator.GetDimN2() * offsetCalculator.GetDimG() * offsetCalculator.GetDimS1() +
+                              n2Idx * offsetCalculator.GetDimG() * offsetCalculator.GetDimS1();
+        for (int gIdx = 0; gIdx < offsetCalculator.GetDimG(); gIdx++) {
+            uint64_t lseOffset = bN2Offset + gIdx * offsetCalculator.GetDimS1();
+            matmul::InitOutput<float>(softmaxLseGm[lseOffset], offsetCalculator.GetDimS1(), lseInf);
+        }
+    } else if constexpr (FORMAT == GmFormat::NGBSD) {
+        uint64_t bN2Offset = bIdx * offsetCalculator.GetDimN2() * offsetCalculator.GetDimG() * offsetCalculator.GetDimS1() +
+                              n2Idx * offsetCalculator.GetDimG() * offsetCalculator.GetDimS1();
+        for (int gIdx = 0; gIdx < offsetCalculator.GetDimG(); gIdx++) {
+            uint64_t lseOffset = bN2Offset + gIdx * offsetCalculator.GetDimS1();
+            matmul::InitOutput<float>(softmaxLseGm[lseOffset], offsetCalculator.GetDimS1(), lseInf);
+        }
+    }
+}
 #endif
