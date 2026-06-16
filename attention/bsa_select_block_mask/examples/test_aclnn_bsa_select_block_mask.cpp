@@ -145,10 +145,15 @@ int main() {
     int32_t blockShapeX = GetEnvInt32("BSA_BLOCK_SHAPE_X", 128);
     int32_t blockShapeY = GetEnvInt32("BSA_BLOCK_SHAPE_Y", 128);
     float sparsity = GetEnvFloat("BSA_SPARSITY", 0.50f);
-    double expectedSparsity = 1.0 - static_cast<double>(sparsity);
     
     int32_t xBlocks = (qSeqlen + blockShapeX - 1) / blockShapeX;
     int32_t yBlocks = (kvSeqlen + blockShapeY - 1) / blockShapeY;
+    int64_t sortLen = static_cast<int64_t>(xBlocks) * yBlocks;
+    int64_t expectedSelectedPerMask = static_cast<int64_t>(std::round(static_cast<double>(sparsity) * sortLen));
+    if (expectedSelectedPerMask < 1) {
+        expectedSelectedPerMask = 1;
+    }
+    double expectedSparsity = 1.0 - static_cast<double>(expectedSelectedPerMask) / static_cast<double>(sortLen);
     
     LOG_PRINT("Test parameters:\n");
     LOG_PRINT("  batch=%d, numHeads=%d, qSeqlen=%d, kvSeqlen=%d, headDim=%d\n", 
