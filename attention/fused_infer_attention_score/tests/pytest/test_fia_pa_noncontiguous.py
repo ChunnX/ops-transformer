@@ -74,7 +74,8 @@ def _cstrides(shape):
 
 
 def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, bs, scale,
-         q_n, kv_n, q_rope_npu=None, k_rope_npu=None, d=128, dr=0):
+         q_n, kv_n, q_rope_npu=None, k_rope_npu=None, d=128, dr=0,
+         pre_tok=65535, next_tok=65535, mask_npu=None, sparse_mode=0):
     torch_npu.npu.set_device(DEVICE_ID); torch.npu.synchronize()
     aq = torch.tensor(act_q, dtype=torch.int64)
     akv = torch.tensor(act_kv, dtype=torch.int64)
@@ -84,18 +85,20 @@ def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, bs, scale,
             actual_seq_qlen=aq, actual_seq_kvlen=akv,
             num_query_heads=q_n, num_key_value_heads=kv_n,
             input_layout=q_layout, softmax_scale=scale,
-            pre_tokens=65535, next_tokens=65535,
+            pre_tokens=pre_tok, next_tokens=next_tok,
             block_table=bt_npu if pa else None,
             block_size=bs if pa else 0, out_dtype=DTYPE)
     else:
         r, _ = torch_npu.npu_fused_infer_attention_score(
             q_npu, k_npu, v_npu,
+            atten_mask=mask_npu,
             actual_seq_lengths=aq, actual_seq_lengths_kv=akv,
             num_heads=q_n, num_key_value_heads=kv_n,
             input_layout=q_layout, scale=scale,
-            pre_tokens=65535, next_tokens=65535,
+            pre_tokens=pre_tok, next_tokens=next_tok,
             block_table=bt_npu if pa else None,
-            block_size=bs if pa else 0)
+            block_size=bs if pa else 0,
+            sparse_mode=sparse_mode)
     torch.npu.synchronize()
     return r
 
@@ -112,8 +115,10 @@ def _run_one(cfg, expect_pass):
     B=cfg["B"]; N_q=cfg["N_q"]; N_kv=cfg["N_kv"]; pa=cfg["pa"]; fmt=cfg["fmt"]
     ql=cfg["ql"]; nc=cfg["nc"]; kv_seq=cfg["kv_seq"]; bs=cfg["bs"]; q_seq=cfg["q_seq"]
     d=cfg["d"]; dr=cfg.get("dr",0); dv=cfg.get("dv",d)
-
-    act_q=[q_seq]*B; act_kv=[kv_seq]*B; scale=1.0/math.sqrt(d+dr)
+    act_q=cfg.get("act_q", [q_seq]*B); act_kv=cfg.get("act_kv", [kv_seq]*B)
+    sparse_mode=cfg.get("sparse_mode", 0); pre_tok=cfg.get("pre_tok", 65535); next_tok=cfg.get("next_tok", 65535)
+    mask_shape=cfg.get("mask_shape", None)
+    scale=1.0/math.sqrt(d+dr)
     bt,total_b=None,0
     if pa: bt,total_b=_block_table(B,act_kv,bs)
     else: total_b=B
@@ -139,7 +144,11 @@ def _run_one(cfg, expect_pass):
             k_rope=torch.randn(B,N_kv,kv_seq,dr,dtype=DTYPE).npu()
 
     k_ref,v_ref=_make_kv(kv_shape)
-    ref_out=_run(q_npu,k_ref.npu(),v_ref.npu(),pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope,d,dr)
+    mask_npu = None
+    if mask_shape:
+        mask_npu = torch.ones(mask_shape, dtype=torch.bool).npu()
+    ref_out=_run(q_npu,k_ref.npu(),v_ref.npu(),pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope,d,dr,
+                 pre_tok,next_tok,mask_npu,sparse_mode)
 
     k_nc=_make_nc(k_ref.npu(),nc); v_nc=_make_nc(v_ref.npu(),nc)
     k_rope_nc=_make_nc(k_rope,nc) if dr>0 and nc!="none" else k_rope
@@ -151,10 +160,10 @@ def _run_one(cfg, expect_pass):
 
     if not expect_pass:
         with pytest.raises(Exception) as ei:
-            _run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope_nc,d,dr)
+            _run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope_nc,d,dr,pre_tok,next_tok,mask_npu,sparse_mode)
         logger.info(f"  [{cfg['id']}] ERROR: {ei.value}")
         return
-    out=_run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope_nc,d,dr)
+    out=_run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope_nc,d,dr,pre_tok,next_tok,mask_npu,sparse_mode)
     _check(ref_out,out,cfg["id"])
 
 
@@ -237,6 +246,17 @@ OLD_ERROR = [
      "kv_seq":512,"bs":0,"q_seq":4,"d":128,"dr":64,"dv":128},
 ]
 
+# ==============================================================================
+# JSON 用例验证 (from tiny_rdv case_json)
+# ==============================================================================
+JSON_CASES = [
+    # FP16_BSND_000005: 非PA连续, mask, sparse_mode=0, pre_tokens=1335, next_tokens=1024
+    {"id":"JSON-FP16-BSND-000005","B":8,"N_q":16,"N_kv":16,"pa":False,"fmt":"none","ql":"BSND","nc":"none",
+     "kv_seq":1024,"bs":0,"q_seq":1777,"d":144,"dr":0,"dv":144,
+     "act_q":[809]*8,"act_kv":[809]*8,"sparse_mode":0,"pre_tok":1335,"next_tok":1024,
+     "mask_shape":[1,1,1777,1024]},
+]
+
 
 # ==============================================================================
 # pytest
@@ -253,6 +273,14 @@ def test_normal(cfg):
 def test_error(cfg):
     logger.info(f"\n[ERROR]  {cfg['id']}")
     _run_one(cfg, expect_pass=False)
+
+
+ALL_JSON = JSON_CASES
+
+@pytest.mark.parametrize("cfg", ALL_JSON, ids=[c["id"] for c in ALL_JSON])
+def test_json(cfg):
+    logger.info(f"\n[JSON]  {cfg['id']}")
+    _run_one(cfg, expect_pass=True)
 
 
 if __name__ == '__main__':
