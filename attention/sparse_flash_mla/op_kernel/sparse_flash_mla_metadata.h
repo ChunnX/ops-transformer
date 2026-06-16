@@ -26,7 +26,7 @@ constexpr uint32_t AIV_CORE_NUM = 72;
 constexpr uint32_t SMLA_META_SIZE = 1024;
 using SMLA_METADATA_T = int32_t;
 
-constexpr uint32_t FA_METADATA_SIZE = 9;
+constexpr uint32_t FA_METADATA_SIZE = 8;
 constexpr uint32_t FD_METADATA_SIZE = 8;
 
 // FA Metadata Index Definitions
@@ -38,7 +38,6 @@ constexpr uint32_t FA_BN2_END_INDEX = 4;
 constexpr uint32_t FA_M_END_INDEX = 5;
 constexpr uint32_t FA_S2_END_INDEX = 6;
 constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;
-constexpr uint32_t FA_S2_MAX_NUM = 8;
 
 // FD Metadata Index Definitions
 constexpr uint32_t FD_CORE_ENABLE_INDEX = 0;
@@ -68,13 +67,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-struct SmlaMetaData {
+struct SasMetadata {
     uint32_t faMetadata[AIC_CORE_NUM][FA_METADATA_SIZE];
     uint32_t fdMetadata[AIV_CORE_NUM][FD_METADATA_SIZE];
 };
 } // namespace detail
 
-static_assert(SMLA_META_SIZE * sizeof(SMLA_METADATA_T) >= sizeof(detail::SmlaMetaData));
+static_assert(SMLA_META_SIZE * sizeof(SMLA_METADATA_T) >= sizeof(detail::SasMetadata));
 } // namespace optiling
 
 #endif
