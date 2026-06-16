@@ -125,25 +125,12 @@ private:
     __aicore__ inline void RunPosRecord();
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        uint64_t winDataSizeOffset = (ctxIdx == COMM_EP_IDX)? winDataSizeOffsetEp_ : winDataSizeOffsetTp_;
-        if (ctxIdx == COMM_EP_IDX) {
-            return ctx_.GetWindAddrByRankId(rankId, curRankId) + winDataSizeOffset;
-        }
-        // TP 域已下线，本分支随 IsNeedAllgather 一并待删
-        auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
-        return Mc2Kernel::GetBaseWindAddrByRankId(tpCtx, rankId, curRankId) + winDataSizeOffset;
+        return ctx_.GetWindAddrByRankId(rankId, epRankIdOriginal_) + winDataSizeOffsetEp_;
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        if (ctxIdx == COMM_EP_IDX) {
-            return ctx_.GetWindStateAddrByRankId(rankId, curRankId) + dataState_ * WIN_STATE_OFFSET;
-        }
-        // TP 域已下线，本分支随 IsNeedAllgather 一并待删
-        auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
-        return Mc2Kernel::GetBaseWindStateAddrByRankId(tpCtx, rankId, curRankId) + dataState_ * WIN_STATE_OFFSET;
+        return ctx_.GetWindStateAddrByRankId(rankId, epRankIdOriginal_) + dataState_ * WIN_STATE_OFFSET;
     }
 
     __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)

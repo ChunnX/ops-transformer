@@ -41,7 +41,7 @@ namespace {
 template <CombineMC2TypeClass>
 __aicore__ inline void
 ExecMoeDistributeCombineV3(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine,
-                           GM_ADDR epSendCount, GM_ADDR tpSendCount, GM_ADDR scales, GM_ADDR xActiveMask,
+                           GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR xActiveMask,
                            GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1,
                            GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR XOut,
                            GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe *pipePtr)

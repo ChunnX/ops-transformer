@@ -266,7 +266,7 @@ private:
     LocalTensor<float> sumFloatBufLocal_;
 
     uint32_t scaleNum_{0};
-    MoeDistributeCombineQuant<ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm>
+    MoeDistributeCombineQuant<ExpandXType, XType, ExpandIdxType, QuantMode, HasAddRmsNorm>
         quantInst_;
     MoeDistributeElastic elasticInst_;
 };
