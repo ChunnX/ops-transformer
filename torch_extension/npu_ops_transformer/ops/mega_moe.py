@@ -142,15 +142,27 @@ def npu_get_mega_moe_ccl_buffer_size(
     torch._check(((num_topk >= 1) and (num_topk <= 16)),
                      lambda: (f"num_topk only support in [1, 16], but got {num_topk=}."))
     local_moe_expert_num = moe_expert_num // ep_world_size
-    # 全卡软同步使用
-    peermem_data_offset = 60 * 1024
+    align_32 = 32
+    align_256 = 256
+    align_512 = 512
     y_out_dtype_size = 2
     mb_conversion = 1024 * 1024
-    dispatch_token_per_expert = ep_world_size * \
-        inline_align(ep_world_size * local_moe_expert_num, 128) * 4
-    quant_token_scales = inline_align(num_max_tokens_per_rank * num_topk * (hidden + hidden // 32), 512)
-    combine_out = inline_align(num_max_tokens_per_rank * hidden * num_topk * y_out_dtype_size, 512)
-    ccl_buffer_size = peermem_data_offset + dispatch_token_per_expert + quant_token_scales + combine_out
+    # 全卡软同步使用 60M
+    peermem_data_offset = 60 * 1024
+    # mask_recv_size 
+    compare_count = inline_align(num_max_tokens_per_rank * num_topk * 4, align_256) // 4 # 4 = sizeof(int32)
+    mask_align_size = inline_align(compare_count // 8, align_32) # 8 = align_32 / sizeof(int32)
+    mask_slot_size = mask_align_size + align_32 # 后32字节存count数
+    mask_recv_size = inline_align(local_moe_expert_num * ep_world_size * mask_slot_size, align_512)
+    # quant_token_scale_size
+    mx_scale_num = (hidden + align_32 - 1) // align_32
+    data_bytes = inline_align(hidden, align_256) # 单token 256字节对齐，当前量化为mxfp8
+    token_bytes = inline_align(data_bytes + mx_scale_num, align_32) # token拼接scale长度
+    quant_token_scale_size = inline_align(num_max_tokens_per_rank * token_bytes, align_512)
+    # combine_send_size
+    combine_out = inline_align(num_max_tokens_per_rank * hidden * num_topk * y_out_dtype_size, align_512)
+    # 所需总大小
+    ccl_buffer_size = peermem_data_offset + mask_recv_size + quant_token_scale_size + combine_out
     ccl_buffer_size = inline_align(inline_align(ccl_buffer_size, mb_conversion) // mb_conversion, 2) // 2
     return ccl_buffer_size
 
