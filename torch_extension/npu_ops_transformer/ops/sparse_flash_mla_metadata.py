@@ -40,8 +40,10 @@ class SparseFlashMlaMetadataOpBuilder(OpBuilder):
     def schema(self) -> str:
         return "npu_sparse_flash_mla_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, " \
                "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, Tensor? cu_seqlens_cmp_kv=None, " \
-               "Tensor? seqused_q=None, Tensor? seqused_ori_kv=None, int? batch_size=None, " \
-               "int? max_seqlen_q=None, int? max_seqlen_kv=None, " \
+               "Tensor? seqused_q=None, Tensor? seqused_ori_kv=None, Tensor? seqused_cmp_kv=None, " \
+               "Tensor? cmp_residual_kv=None, Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, " \
+               "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_ori_kv=None, " \
+               "int? max_seqlen_cmp_kv=None, " \
                "int ori_topk=0, int cmp_topk=0, int cmp_ratio=1, int ori_mask_mode=0, int cmp_mask_mode=0, " \
                "int ori_win_left=-1, int ori_win_right=-1, str layout_q=\"BSND\", str layout_kv=\"BSND\", " \
                "bool has_ori_kv=True, bool has_cmp_kv=True) -> Tensor"
@@ -50,9 +52,12 @@ class SparseFlashMlaMetadataOpBuilder(OpBuilder):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_sparse_flash_mla_metadata_meta(num_heads_q, num_heads_kv, head_dim, *,
                                                cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
-                                               seqused_q=None, seqused_ori_kv=None, batch_size: Optional[int] = None,
+                                               seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
+                                               cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
+                                               batch_size: Optional[int] = None,
                                                max_seqlen_q: Optional[int] = None,
-                                               max_seqlen_kv: Optional[int] = None,
+                                               max_seqlen_ori_kv: Optional[int] = None,
+                                               max_seqlen_cmp_kv: Optional[int] = None,
                                                ori_topk=0, cmp_topk=0, cmp_ratio=1, ori_mask_mode=0,
                                                cmp_mask_mode=0, ori_win_left=-1, ori_win_right=-1,
                                                layout_q="BSND", layout_kv="BSND", has_ori_kv=True,
@@ -67,19 +72,25 @@ op_module = npu_sparse_flash_mla_metadata_op_builder.load()
 @impl(AS_LIBRARY, npu_sparse_flash_mla_metadata_op_builder.name, "PrivateUse1")
 def npu_sparse_flash_mla_metadata(num_heads_q, num_heads_kv, head_dim, *,
                                   cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
-                                  seqused_q=None, seqused_ori_kv=None, batch_size: Optional[int] = None,
+                                  seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
+                                  cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
+                                  batch_size: Optional[int] = None,
                                   max_seqlen_q: Optional[int] = None,
-                                  max_seqlen_kv: Optional[int] = None,
+                                  max_seqlen_ori_kv: Optional[int] = None,
+                                  max_seqlen_cmp_kv: Optional[int] = None,
                                   ori_topk=0, cmp_topk=0, cmp_ratio=1, ori_mask_mode=0,
                                   cmp_mask_mode=0, ori_win_left=-1, ori_win_right=-1,
                                   layout_q="BSND", layout_kv="BSND", has_ori_kv=True,
                                   has_cmp_kv=True):
     batch_size = _infer_batch_size(batch_size, cu_seqlens_q, seqused_q)
     max_seqlen_q = 0 if max_seqlen_q is None else max_seqlen_q
-    max_seqlen_kv = 0 if max_seqlen_kv is None else max_seqlen_kv
-    device = _infer_device(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv)
+    max_seqlen_ori_kv = 0 if max_seqlen_ori_kv is None else max_seqlen_ori_kv
+    max_seqlen_cmp_kv = 0 if max_seqlen_cmp_kv is None else max_seqlen_cmp_kv
+    device = _infer_device(cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv,
+                           seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length)
     metadata = torch.empty((SMLA_METADATA_SIZE,), dtype=torch.int32, device=device)
     return op_module.npu_sparse_flash_mla_metadata(
-        cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, num_heads_q, num_heads_kv,
-        head_dim, batch_size, max_seqlen_q, max_seqlen_kv, ori_topk, cmp_topk, cmp_ratio, ori_mask_mode,
+        cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv,
+        cmp_residual_kv, ori_topk_length, cmp_topk_length, num_heads_q, num_heads_kv, head_dim, batch_size,
+        max_seqlen_q, max_seqlen_ori_kv, max_seqlen_cmp_kv, ori_topk, cmp_topk, cmp_ratio, ori_mask_mode,
         cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, has_ori_kv, has_cmp_kv, metadata)

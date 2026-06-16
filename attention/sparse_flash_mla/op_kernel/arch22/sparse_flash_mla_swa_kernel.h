@@ -241,7 +241,7 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::InitTilingData()
 
     // cmp
     if constexpr (TEMPLATE_MODE == CFA_TEMPLATE) {
-        constInfo.cmpRatio = (tilingData->cmpParams.cmpRatio == 0) ? 1 : tilingData->cmpParams.cmpRatio;
+        constInfo.cmpRatio = tilingData->cmpParams.cmpRatio;
         constInfo.cmpMaskMode = tilingData->cmpParams.cmpMaskMode;
         constInfo.cmpKvStride0 = tilingData->cmpParams.cmpKvStride0;
         constInfo.cmpMaxBlockNumPerBatch = tilingData->cmpParams.cmpMaxBlockNumPerBatch;

@@ -108,6 +108,7 @@ int main()
   int64_t K = 512;
   int64_t s2Act = 4096;
   int64_t cmpRatio = 4;
+  int64_t cmpKvLen = s2Act / cmpRatio;
   int64_t oriMaskMode = 4;
   int64_t cmpMaskMode = 3;
   int64_t oriWinLeft = 127;
@@ -166,7 +167,9 @@ int main()
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
       seqUsedQ, seqUsedOriKv,
+      nullptr, nullptr, nullptr, nullptr,
       N1, N2, D, B, S1, S2,
+      cmpKvLen,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,
       oriWinLeft, oriWinRight,

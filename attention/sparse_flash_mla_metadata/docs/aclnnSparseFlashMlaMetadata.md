@@ -71,12 +71,17 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     const aclTensor *cuSeqLensCmpKv,
     const aclTensor *seqUsedQ,
     const aclTensor *seqUsedOriKv,
+    const aclTensor *seqUsedCmpKv,
+    const aclTensor *cmpResidualKv,
+    const aclTensor *oriTopkLength,
+    const aclTensor *cmpTopkLength,
     int64_t          numHeadsQ,
     int64_t          numHeadsKv,
     int64_t          headDim,
     int64_t          batchSize,
     int64_t          maxSeqlenQ,
-    int64_t          maxSeqlenKv,
+    int64_t          maxSeqlenOriKv,
+    int64_t          maxSeqlenCmpKv,
     int64_t          oriTopk,
     int64_t          cmpTopk,
     int64_t          cmpRatio,
@@ -84,12 +89,12 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     int64_t          cmpMaskMode,
     int64_t          oriWinLeft,
     int64_t          oriWinRight,
-    char            *layoutQ,
-    char            *layoutKv,
+    const char      *layoutQ,
+    const char      *layoutKv,
     bool             hasOriKv,
     bool             hasCmpKv,
     const aclTensor *metadata,
-    uint64_t       **workspaceSize,
+    uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
 
@@ -178,6 +183,46 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>√</td>
     </tr>
     <tr>
+      <td>seqUsedCmpKv（aclTensor*）</td>
+      <td>输入</td>
+      <td>表示不同Batch中cmpKv实际参与运算的token数。</td>
+      <td>layoutKv为PA_BBND/PA_BNBD且存在cmpKv时用于指定cmp侧有效长度；BSND/TND场景可由shape或cuSeqLensCmpKv推导。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B,)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>cmpResidualKv（aclTensor*）</td>
+      <td>输入</td>
+      <td>压缩KV余数，用于按cmp_len * cmpRatio + residual恢复cmp侧mask使用的压缩前KV长度。</td>
+      <td>cmpRatio大于1且存在cmpKv时生效，layoutKv为BSND、TND、PA_BBND时均可使用，兼容传入PA_BNBD。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B,)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>oriTopkLength（aclTensor*）</td>
+      <td>输入</td>
+      <td>ori稀疏索引每行实际有效topk长度。</td>
+      <td>仅在传入ori稀疏索引并需要逐行topk长度时使用；未传时使用oriTopk属性。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>-</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>cmpTopkLength（aclTensor*）</td>
+      <td>输入</td>
+      <td>cmp稀疏索引每行实际有效topk长度。</td>
+      <td>仅在SCFA场景需要逐行topk长度时使用；未传时使用cmpTopk属性。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>-</td>
+      <td>√</td>
+    </tr>
+    <tr>
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>Query的多头数。</td>
@@ -228,9 +273,19 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenKv（int64_t）</td>
+      <td>maxSeqlenOriKv（int64_t）</td>
       <td>输入</td>
       <td>所有Batch中oriKv的最大有效token数。</td>
+      <td>默认值为0。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>maxSeqlenCmpKv（int64_t）</td>
+      <td>输入</td>
+      <td>所有Batch中cmpKv的最大有效token数。</td>
       <td>默认值为0。</td>
       <td>-</td>
       <td>-</td>
@@ -261,7 +316,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>对oriKv的压缩率。</td>
-      <td>取值范围为[0,128]。0和1均表示SWA语义；CFA/SCFA模式支持4或128。</td>
+      <td>取值范围为[1,128]。1表示SWA语义；CFA/SCFA模式支持4或128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -358,7 +413,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>×</td>
     </tr>
     <tr>
-      <td>workspaceSize（uint64_t**）</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -419,7 +474,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>oriWinLeft不为127。</td>
     </tr>
     <tr>
-      <td>cmpRatio不在[0,128]范围内，或CFA/SCFA模式下cmpRatio不为4或128。</td>
+      <td>cmpRatio不在[1,128]范围内，或CFA/SCFA模式下cmpRatio不为4或128。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_RUNTIME_ERROR</td>
@@ -485,7 +540,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   | numHeadsQ   | 1到128          | Query头数。numHeadsQ / numHeadsKv必须为[1,128]范围内的2的幂。 |
   | numHeadsKv  | 1              | KV头数仅支持1。                              |
   | headDim      | 512            | 每个注意力头的维度仅支持512。                 |
-  | cmpRatio     | 0 / 1 / 4 / 128    | 0和1均表示SWA语义；CFA/SCFA模式支持4或128。     |
+  | cmpRatio     | 1 / 4 / 128    | 1表示SWA语义；CFA/SCFA模式支持4或128。     |
   | oriMaskMode | 4              | 原始KV掩码模式仅支持4（Band模式）。            |
   | cmpMaskMode | 3              | 压缩KV掩码模式仅支持3（RightDownCausal模式）。 |
   | oriWinLeft  | 127            | 滑动窗口向左扩展仅支持127。                    |
@@ -495,6 +550,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   - layoutQ为TND时，`cuSeqLensQ`必须传入。
   - layoutKv为PA_BBND时，`seqUsedOriKv`必须传入；传入PA_BNBD按兼容别名处理。
   - layoutKv为TND时，`cuSeqLensOriKv`必须传入；若hasCmpKv为true，`cuSeqLensCmpKv`也必须传入。
+  - `cmpResidualKv`为`aclnnSparseFlashMlaMetadata`和`aclnnSparseFlashMla`的可选输入，cmpRatio大于1且存在cmpKv时用于恢复cmp侧mask使用的压缩前长度。
   - 该算子为AICPU算子，在Host侧CPU上执行，不占用NPU计算资源。
 
 
@@ -597,6 +653,7 @@ int main()
   int64_t K = 512;
   int64_t s2Act = 4096;
   int64_t cmpRatio = 4;
+  int64_t cmpKvLen = s2Act / cmpRatio;
   int64_t oriMaskMode = 4;
   int64_t cmpMaskMode = 3;
   int64_t oriWinLeft = 127;
@@ -606,7 +663,7 @@ int main()
   std::vector<int64_t> cuSeqLensQShape = {B + 1};
   std::vector<int64_t> seqUsedOriKvShape = {B};
   std::vector<int64_t> metadataShape = {optiling::SAS_META_SIZE};
-  // 对全部5个输入调用Contiguous，optional输入传shape为 {0} 的空tensor。
+  // 对optional输入调用Contiguous，optional输入传shape为 {0} 的空tensor或nullptr。
   std::vector<int64_t> emptyShape = {0};
   std::vector<int64_t> seqUsedQShape = emptyShape;
 
@@ -654,8 +711,8 @@ int main()
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
-      seqUsedQ, seqUsedOriKv,
-      N1, N2, D, B, S1, S2,
+      seqUsedQ, seqUsedOriKv, nullptr, nullptr, nullptr, nullptr,
+      N1, N2, D, B, S1, S2, cmpKvLen,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,
       oriWinLeft, oriWinRight,
