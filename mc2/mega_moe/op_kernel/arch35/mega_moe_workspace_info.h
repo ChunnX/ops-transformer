@@ -76,7 +76,6 @@ constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t E5M2_QUANT = 3U;
 constexpr int64_t E4M3_QUANT = 4U;
 constexpr int64_t E2M1_QUANT = 5U;
-constexpr int64_t FP4_NUM = 2U;
 constexpr int64_t HALF_TO_FP32 = 2U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
 } // namespace
