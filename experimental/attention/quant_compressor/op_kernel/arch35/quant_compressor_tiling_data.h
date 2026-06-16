@@ -37,9 +37,7 @@ namespace optiling {
         uint32_t hiddenSize = 0;            // hidden size（隐藏层大小）
         uint32_t tokenSize = 0;             // token size = batchSize * seqSize(token总数：批大小x序列1长度)
         uint32_t headDim = 0;               // head size of kv
-        uint32_t csSize = 0;                // Compress sequence len
         uint32_t cmpRatio = 4;              // Compress ratio
-        uint32_t cgSize = 0;                // Compress group size
         uint32_t usedCoreNum = 0;           // 使用核数
         uint32_t nSize = 0;                 // 控制v2积攒的轮数
         uint64_t stateCacheStrideDim0 = 0;  // stateCache第0维的stride

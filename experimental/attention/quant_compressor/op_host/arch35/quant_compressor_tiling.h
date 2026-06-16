@@ -222,10 +222,6 @@ const std::vector<int> CMP_RATIO {2, 4, 8, 16, 32, 64, 128};
 const std::vector<uint32_t> HEAD_DIM {128, 512};
 const std::vector<int> CACHE_MODE {1, 2};
 
-    HALF = 1,
-    INTERLEAVE = 2
-};
-
 enum class CACHE_MODE:uint8_t {
     CONTINUOUS = 1,
     CYCLE = 2
@@ -342,7 +338,6 @@ private:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckFeature() const;
     ge::graphStatus CheckShapeConsistency() const;
-    ge::graphStatus CheckShapeConsistencyRope() const;
     
     ge::graphStatus CheckMultiParaConsistency() const;
     ge::graphStatus CheckDimNumConsistency() const;

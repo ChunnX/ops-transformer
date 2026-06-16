@@ -184,7 +184,6 @@ struct ConstInfo {
     uint32_t hSize = 0;
     uint32_t sSize = 0;
     uint32_t headDim = 0;
-    uint32_t ropeHeadDim = 0;
     uint32_t cmpRatio = 0;
 
     uint64_t stateCacheStrideDim0 = 0;

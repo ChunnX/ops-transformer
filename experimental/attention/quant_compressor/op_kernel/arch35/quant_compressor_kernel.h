@@ -192,7 +192,6 @@ __aicore__ inline void QuantCompressorKernel<COMP>::InitTilingData() {
     constInfo.headDim = tilingData_->baseParams.headDim;
     constInfo.hSize = tilingData_->baseParams.hiddenSize;
     constInfo.sSize = tilingData_->baseParams.seqSize;
-    constInfo.ropeHeadDim = tilingData_->baseParams.ropeHeadDim;
     constInfo.stateCacheStrideDim0 = tilingData_->baseParams.stateCacheStrideDim0;
     constInfo.usedCoreNum = tilingData_->baseParams.usedCoreNum;
     
