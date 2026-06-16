@@ -38,7 +38,6 @@ public:
             LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
         vec_.Init(tilingData, aivLocalId, tensors);
         vec_.InitIntraCoreEvents();
-        SetInitialAivMte3ToAicFixCConsumedCredits();
     }
 
     __aicore__ inline void ComputeTileAic(const TileParam &tile)
@@ -123,10 +122,6 @@ private:
         for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
             SetAicMte1ToAivMte3AConsumed();
         }
-    }
-
-    __aicore__ inline void SetInitialAivMte3ToAicFixCConsumedCredits()
-    {
     }
 
     __aicore__ inline void DrainAicMte1ToAivMte3AConsumedCredits()

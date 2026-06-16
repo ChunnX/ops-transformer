@@ -413,6 +413,25 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, BuildInputUsesNtdQkvShape)
     EXPECT_EQ(static_cast<uint64_t>(input.qkv.shape.GetDim(2)), input.headDim);
 }
 
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, PreservesQ8K1V1HeadFieldsInRawTilingData)
+{
+    const ConcurrentTilingCase item = {128, 8, 1, 1, 128, 32, ge::GRAPH_SUCCESS, 16, 4, 32};
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteConcurrentTilingCase(item, tilingInfo));
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(optiling::QkvRmsNormRopeCacheWithKScaleTilingData));
+    ASSERT_NE(tilingInfo.tilingData, nullptr);
+
+    const auto *tilingData =
+        reinterpret_cast<const optiling::QkvRmsNormRopeCacheWithKScaleTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->qHeadNum, 8U);
+    EXPECT_EQ(tilingData->kvHeadNum, 1U);
+    EXPECT_EQ(tilingData->headDim, 128U);
+    EXPECT_EQ(tilingData->tokenTile, 16U);
+    EXPECT_EQ(tilingData->coreTokenTile, 4U);
+    EXPECT_EQ(tilingData->coreGroupNum, 32U);
+    EXPECT_EQ(tilingInfo.blockNum, 32U);
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, TypicalHeadTableMatchesDesign)
 {
     struct Case {

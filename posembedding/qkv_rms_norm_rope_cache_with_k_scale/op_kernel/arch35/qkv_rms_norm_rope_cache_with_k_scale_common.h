@@ -15,7 +15,31 @@
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h"
 
 namespace QkvRmsNormRopeCacheWithKScale {
-using namespace AscendC;
+using AscendC::CrossCoreSetFlag;
+using AscendC::CrossCoreWaitFlag;
+using AscendC::CO2Layout;
+using AscendC::DataCopy;
+using AscendC::DataCopyExtParams;
+using AscendC::DataCopyParams;
+using AscendC::DataCopyPad;
+using AscendC::DataCopyPadExtParams;
+using AscendC::Fixpipe;
+using AscendC::FixpipeConfig;
+using AscendC::FixpipeParamsC310;
+using AscendC::GetBlockIdx;
+using AscendC::GetSubBlockIdx;
+using AscendC::GlobalTensor;
+using AscendC::HardEvent;
+using AscendC::LoadData;
+using AscendC::LoadData2DParamsV2;
+using AscendC::LocalTensor;
+using AscendC::Mmad;
+using AscendC::MmadParams;
+using AscendC::Nd2NzParams;
+using AscendC::RoundMode;
+using AscendC::SetFlag;
+using AscendC::TPosition;
+using AscendC::WaitFlag;
 using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTilingData;
 
 constexpr uint32_t QKV_RRC_MIX_AIV_PER_AIC = 2U;

@@ -17,7 +17,6 @@
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 
-using namespace AscendC;
 using QkvRmsNormRopeCacheWithKScale::GlobalTensors;
 using QkvRmsNormRopeCacheWithKScale::QKV_RRC_HEAD_DIM_D128;
 using QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleController;
