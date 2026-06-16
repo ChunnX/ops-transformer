@@ -12,10 +12,9 @@
  * \file test_kv_compress_epilog.cpp
  * \brief KvCompressEpilog op_kernel UT (arch35 / ascend950).
  *
- * 用 ICPU_RUN_KF 在 CPU 仿真上真正执行 kernel，覆盖三种量化模式:
+ * 用 ICPU_RUN_KF 在 CPU 仿真上真正执行 kernel，覆盖两种量化模式:
  *   quantMode=0  group quant + bf16 scale (roundScale true/false)
  *   quantMode=1  group quant + e8m0 scale
- *   quantMode=2  hifloat8 整行量化
  * 校验: kernel 运行不崩溃 + 写入 slot 的 cache 字节非全 0 (sanity)。
  *
  * 说明: KvCompressEpilogTilingData 结构体由 UT 框架根据 op_host BEGIN_TILING_DATA_DEF
@@ -46,7 +45,10 @@ constexpr int64_t SLICE_SIZE = 64;
 constexpr int64_t QUANT_GROUP = 128;
 constexpr int64_t QUANT_MODE_GROUP_BF16 = 0;
 constexpr int64_t QUANT_MODE_GROUP_E8M0 = 1;
-constexpr int64_t QUANT_MODE_HIFLOAT = 2;
+constexpr int64_t QUANT_MODE_HIF8_FP4 = 2;  // rope hifloat8 + nope FLOAT4_E2M1 (bf16 scale)
+constexpr int64_t KV_CACHE_ROW_ALIGN = 128;
+constexpr int64_t ROPE_HIF8_BYTES = 64;
+constexpr int64_t FP4_SCALE_BYTES = 2;
 constexpr size_t SYS_WORKSPACE = 16 * 1024 * 1024;
 
 inline int64_t CeilDiv(int64_t a, int64_t b) { return b == 0 ? a : (a + b - 1) / b; }
@@ -78,6 +80,7 @@ struct KvParams {
     int64_t blockDim;
     bool withSkip;  // 部分 slot 置 -1, 验证 skip 分支
     std::string desc;
+    int64_t quantGroup = QUANT_GROUP;  // mode2 下取 16/32/64; mode0/1 沿用默认 128
 };
 
 class KvCompressEpilogKernelTest : public testing::TestWithParam<KvParams> {
@@ -88,12 +91,17 @@ protected:
         int64_t concatCol;
         int64_t kvCacheCol;
         int64_t padCol;
-        if (p.quantMode == QUANT_MODE_HIFLOAT) {
-            scaleCol = 0;
-            concatCol = p.d;
-            kvCacheCol = p.d;
-            padCol = 0;
+        int64_t perGroup;
+        if (p.quantMode == QUANT_MODE_HIF8_FP4) {
+            // mode2 行布局: [rope hifloat8 64B][nope FLOAT4_E2M1 (d-64)/2 B][nope bf16 scale nGroup*2 B][pad]
+            perGroup = p.quantGroup;
+            scaleCol = (p.d - SLICE_SIZE) / perGroup;  // nGroup
+            concatCol = ROPE_HIF8_BYTES + (p.d - SLICE_SIZE) / 2 + scaleCol * FP4_SCALE_BYTES;
+            kvCacheCol = RoundUp(concatCol, KV_CACHE_ROW_ALIGN);
+            padCol = kvCacheCol - concatCol;
         } else {
+            // mode0/1 行布局: [rope bf16 128B][nope fp8 (d-64)B][scale]
+            perGroup = QUANT_GROUP;
             scaleCol = CeilDiv(p.d - SLICE_SIZE, SLICE_SIZE);
             int64_t scaleBytes = (p.quantMode == QUANT_MODE_GROUP_BF16) ? 2 : 1;
             concatCol = p.d - SLICE_SIZE + SLICE_SIZE * 2 + scaleCol * scaleBytes;
@@ -117,7 +125,7 @@ protected:
         t.padCol = padCol;
         t.quantMode = p.quantMode;
         t.roundScale = p.roundScale;
-        t.perGroupSize = QUANT_GROUP;
+        t.perGroupSize = perGroup;
         t.rowOfFormerBlock = rowOfFormer;
         t.rowOfTailBlock = rowOfTail;
         t.rowLoopOfFormerBlock = CeilDiv(rowOfFormer, rowFactor);
@@ -180,6 +188,7 @@ TEST_P(KvCompressEpilogKernelTest, RunKernel)
     }
 
     uint32_t blockDim = static_cast<uint32_t>(usedCore_);
+    // 单一 tiling key 0; mode0/1/2 在 kernel 内按 tilingData.quantMode 运行时分支 (与 host GetTilingKey 一致)
     ICPU_SET_TILING_KEY(0);
     ICPU_RUN_KF(kv_compress_epilog, blockDim, cacheGm, xGm, slotGm, cacheOutGm, workspace, tilingGm);
 
@@ -216,10 +225,15 @@ INSTANTIATE_TEST_SUITE_P(
         KvParams{32, 256, QUANT_MODE_GROUP_BF16, 0, 1, false, "group_bf16_noround"},
         KvParams{32, 256, QUANT_MODE_GROUP_E8M0, 1, 1, false, "group_e8m0_round"},
         KvParams{32, 256, QUANT_MODE_GROUP_E8M0, 0, 1, false, "group_e8m0_noround"},
-        KvParams{32, 256, QUANT_MODE_HIFLOAT, 1, 1, false, "hifloat_row"},
         KvParams{32, 128, QUANT_MODE_GROUP_BF16, 1, 1, false, "group_bf16_d128"},
         KvParams{48, 256, QUANT_MODE_GROUP_E8M0, 1, 2, false, "group_e8m0_multicore"},
-        KvParams{30, 256, QUANT_MODE_GROUP_BF16, 1, 1, true, "group_bf16_with_skip"}));
+        KvParams{30, 256, QUANT_MODE_GROUP_BF16, 1, 1, true, "group_bf16_with_skip"},
+        // mode2: rope hifloat8 + nope FLOAT4_E2M1, d=256 (nope=192, 可被 16/32/64 整除)
+        KvParams{32, 256, QUANT_MODE_HIF8_FP4, 0, 1, false, "hif8_fp4_group64", 64},
+        KvParams{32, 256, QUANT_MODE_HIF8_FP4, 0, 1, false, "hif8_fp4_group32", 32},
+        KvParams{32, 256, QUANT_MODE_HIF8_FP4, 0, 1, false, "hif8_fp4_group16", 16},
+        KvParams{48, 256, QUANT_MODE_HIF8_FP4, 0, 2, false, "hif8_fp4_group64_multicore", 64},
+        KvParams{30, 256, QUANT_MODE_HIF8_FP4, 0, 1, true, "hif8_fp4_group32_with_skip", 32}));
 
 // 结构体字段 sanity (保留原 tiling-data 校验意图: 字段可写、布局可用)。
 TEST(KvCompressEpilogTilingStruct, FieldsWritable)

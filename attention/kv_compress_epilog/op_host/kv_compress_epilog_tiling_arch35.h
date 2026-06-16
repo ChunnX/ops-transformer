@@ -42,10 +42,21 @@ constexpr int64_t SCALE_ATTR_INDEX = 3;
 
 constexpr int64_t QUANT_MODE_GROUP_QUANT_BF16 = 0;
 constexpr int64_t QUANT_MODE_GROUP_QUANT_E8M0 = 1;
-constexpr int64_t QUANT_MODE_HIFLOAT = 2;
+// quant_mode=2: rope 段 hifloat8 静态量化(x_scale) + nope 段 per-group FLOAT4_E2M1 动态量化(bf16 scale)
+constexpr int64_t QUANT_MODE_HIF8_FP4 = 2;
 
 constexpr int64_t DEFAULT_QUANT_GROUP_SIZE = 64;
 constexpr int64_t KV_CACHE_ROW_ALIGN = 128;
+// mode2: rope hifloat8 输出字节数(64 个元素 x 1B)
+constexpr int64_t ROPE_HIF8_BYTES = 64;
+// mode2: nope FLOAT4_E2M1 每个 scale 以 bf16(2B) 写出
+constexpr int64_t FP4_SCALE_BYTES = 2;
+// mode2 三套特化 VF: 每 64-元素块在行内 scratch 中占用的 bf16 槽位数 (32B 对齐, 前 4 槽有效 = 4 个 16-lane datablock)
+constexpr int64_t FP4_SCRATCH_SLOTS_PER_CHUNK = 16;
+// mode2 仅支持的三种 per-group 量化粒度
+constexpr int64_t FP4_GROUP_SIZE_16 = 16;
+constexpr int64_t FP4_GROUP_SIZE_32 = 32;
+constexpr int64_t FP4_GROUP_SIZE_64 = 64;
 constexpr int64_t DEFAULT_WORKSPACE_SIZE = 32;
 constexpr int64_t D_LENGTH_FULL_LOAD = 8192;
 

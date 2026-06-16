@@ -41,7 +41,8 @@ extern "C" __global__ __aicore__ void kv_compress_epilog(
     const KvCompressEpilogTilingData* __restrict__ tilingData = &tilingDataIn;
 
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
-    // Dispatch based on tiling key
+    // 单一 tiling key: 唯一的 KvCompressEpilog 类在 Process 内按 tilingData->quantMode 运行时选择量化分支
+    // quant_mode 0/1: per-group FP8(bf16/e8m0 scale); 2: rope hifloat8 静态 + nope FLOAT4_E2M1 动态
     if (TILING_KEY_IS(0)) {
         KvCompressEpilogOps::KvCompressEpilog<DTYPE_X, DTYPE_SLOT_MAPPING, DTYPE_CACHE> op(&pipe);
         op.Init(x, slot_mapping, cache, tilingData);
