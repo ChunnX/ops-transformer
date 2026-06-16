@@ -400,61 +400,88 @@
     <details>
     <summary> A8W8-FP 量化场景</summary>
 
-    第一阶段对输入 Token 按专家分组收集后做 MXFP8 量化，生成各专家的量化输入与缩放因子：
-    
-    $$
-    \hat{X}_e,\ S_{X,e} = \mathrm{Q}_{\text{MX}}\!\left(X[\mathcal{T}_e]\right), \quad e = 0, 1, \ldots, E_{\text{local}}-1
-    $$
-    
-    说明：根据 `topkIds` 将 Token 按专家排序收集，$\mathcal{T}_e$ 为分配到专家 $e$ 的 Token 索引集合，$E_{local}$表示当前专家收到的最大token数，每个专家数值可能不同，$X[\mathcal{T}_e]$ 为对应的子矩阵。$\mathrm{Q}_{\text{MX}}$ 表示 MX 逐组量化（group size = 32），对每组 32 个元素提取共享指数后量化为 FP8 目标类型（FLOAT8_E5M2 或 FLOAT8_E4M3FN），同时输出 FLOAT8_E8M0 缩放因子。量化后的数据将作为 GMM1 的输入。
-    
-    第二阶段对每个专家执行 GMM1 矩阵乘法（将 $W_1$ 沿列方向分为两半分别计算）、SwiGLU 激活和 MX 量化：
-    
-    $$
-    Z_e^{(x)} = \mathrm{DQ}_{\text{MX}}(\hat{X}_e, S_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{1,e}^{(x)}, S_{1,e}^{(x)}), \quad Z_e^{(y)} = \mathrm{DQ}_{\text{MX}}(\hat{X}_e, S_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{1,e}^{(y)}, S_{1,e}^{(y)})
-    $$
-    
-    $$
-    U_e = Z_e^{(x)} \odot \sigma\!\left(Z_e^{(x)}\right) \odot Z_e^{(y)}
-    $$
-    
-    $$
-    \hat{U}_e,\ S_{U,e} = \mathrm{Q}_{\text{MX}}(U_e)
-    $$
-    
-    说明：将 $W_1$ 的前 $N/2$ 列 $W_{1,e}^{(x)}$ 和后 $N/2$ 列 $W_{1,e}^{(y)}$ 分别与 MX 反量化后的输入做矩阵乘法，得到 Swish 分支 $Z_e^{(x)}$ 和门控分支 $Z_e^{(y)}$。SwiGLU 激活对两个分支做逐元素乘积 $x \cdot \sigma(x) \cdot y$，其中 $\sigma$ 为 Sigmoid 函数，将中间维度从 $N$ 减半为 $N/2$。随后对 SwiGLU 输出做 MX 量化，得到 GMM2 的量化输入 $\hat{U}_e$。
-    
-    第三阶段对每个专家执行 GMM2 矩阵乘法，并将结果按目标 Rank 分发：
-    
-    $$
-    O_e = \mathrm{DQ}_{\text{MX}}(\hat{U}_e, S_{U,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{2,e}, S_{2,e})
-    $$
-    
-    说明：将量化后的 SwiGLU 输出与第二组权重 $W_2$ 做 MX 反量化后的矩阵乘法，将 $N/2$ 维中间表示映射回 $H$ 维隐藏空间，得到每个专家的输出 $O_e$。计算完成后通过 RDMA peermem 将结果按目标 Rank 的专家偏移地址写入远端，实现跨 Rank 聚合。
-    
-    第四阶段对所有 Token 按路由权重加权求和，恢复为与输入相同形状的输出：
-    
-    $$
-    Y[i] = \sum_{k=0}^{K-1} W[i,\, k] \cdot O[\pi(i,\, k)]
-    $$
-    
-    说明：对每个 Token $i$，根据排序后的路由索引 $\pi(i,k)$ 从聚合后的专家结果中取出对应行，按 `topkWeights` 中的权重逐元素加权累加，得到最终输出 $Y$。
-    
-    其中，$X$ 表示参数 `x`，$W$ 表示参数 `topkWeights`，$W_1$ 表示参数 `weight1`，$W_2$ 表示参数 `weight2`，$Y$ 表示参数 `y`，$E_{\text{local}}$ 表示属性 `moeExpertNum / epWorldSize`（每个 Rank 的专家数），$K$ 表示 `topkIds` 的第二维度（top-K 值，取值 6 或 8）。
-    
-    局部变量说明：
-    - $\mathcal{T}_e$：被路由到专家 $e$ 的 Token 索引集合，由 `topkIds` 排序后确定。
-    - $\hat{X}_e,\ S_{X,e}$：专家 $e$ 的量化输入及其 MX 缩放因子，第一阶段中间结果。
-    - $W_{1,e}^{(x)}$、$W_{1,e}^{(y)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由 `weight1` 按 SwiGLU 拆分推导。
-    - $S_{1,e}^{(x)}$、$S_{1,e}^{(y)}$：$W_{1,e}^{(x)}$ 和 $W_{1,e}^{(y)}$ 对应的 MX 缩放因子，从 `weightScales1` 按维度截取。
-    - $S_{2,e}$：$W_{2,e}$ 对应的 MX 缩放因子，来自参数 `weightScales2`。
-    - $Z_e^{(x)},\ Z_e^{(y)}$：GMM1 的两路矩阵乘法输出（Swish 分支和门控分支），中间结果。
-    - $U_e$：SwiGLU 激活输出，维度 $m_e \times N/2$，中间结果。
-    - $\hat{U}_e,\ S_{U,e}$：量化后的 SwiGLU 输出及其 MX 缩放因子，中间结果。
-    - $O_e$：GMM2 的专家级输出，维度 $m_e \times H$，中间结果。
-    - $\pi(i, k)$：Token $i$ 的第 $k$ 个 top-k 专家在展开排序后的行索引，由路由排序确定。
-    - $\mathrm{Q}_{\text{MX}}(\cdot)$：MX 逐组量化操作，block size = 32，输出 FP8 数据和 E8M0 缩放因子。
-    - $\mathrm{DQ}_{\text{MX}}(\cdot)$：MX 逐组反量化操作，在 matmul 内部隐式执行。
+    - **输入**
+        - $l1\_weights\_sf$：Linear1 权重矩阵的 MX 逐组缩放因子（FLOAT8\_E8M0），group size = 32
+        - $l2\_weights\_sf$：Linear2 权重矩阵的 MX 逐组缩放因子（FLOAT8\_E8M0），group size = 32
+
+    - **EP Dispatch**
+
+        在 Dispatch 通信之前，首先将原始 BF16 激活矩阵 $\mathbf{x}$ 进行 MX 逐组量化（group size = 32）。对每个 $\text{token}_i$，将其隐藏维度按连续 32 个元素分为一组，对第 $g$ 组计算 MX 缩放因子：
+        $$
+        S_{X}[i, g] = \text{maxExp}_g - e_{\max} \in \text{FLOAT8\_E8M0}
+        $$
+        其中 $\text{maxExp}_g$ 为组内 32 个 BF16 元素的最大指数位，$e_{\max}$ 为目标 FP8 类型的最大指数（FLOAT8\_E5M2 为 15，FLOAT8\_E4M3FN 为 8）。然后量化得到 FP8 表示：
+        $$
+        \mathbf{q}_i[j] = \text{Cast}_{\text{FP8}}\bigl(\mathbf{x}_i[j] \times 2^{-S_X[i,g]}\bigr) \quad \in \text{FP8}^{1 \times \text{hidden}}
+        $$
+
+        在 Dispatch 通信阶段，每个 $\text{token}_i$ 将其量化后的 FP8 向量 $\mathbf{q}_i$ 和 E8M0 缩放因子 $S_X[i, :]$ 发送给专家 $e_{i,0}, e_{i,1}, \dots, e_{i,\text{num\_topk}-1}$（$e_{i,k} = \text{topk\_idx}[i,k]$）。
+
+        记 $I_e = \{\, i \mid \exists k,\ \text{topk\_idx}[i,k]=e \,\}$ 为所有被分派给专家 $e$ 的 token 索引集合，集合 $I_e$ 的大小 $N_e = |I_e|$ 即为专家 $e$ 需要处理的 token 总数。则有 $\mathbf{Q}_e \in \text{FP8}^{N_e \times \text{hidden}}$ 是由所有满足 $i \in I_e$ 的 $\mathbf{q}_i$ **按任意固定顺序行堆叠**而成的矩阵；同理，对应的专家 $e$ 收到的缩放因子矩阵记为 $\mathbf{S}_{X,e} \in \text{FLOAT8\_E8M0}^{N_e \times \lceil \text{hidden}/32 \rceil}$。
+
+        对于每个 $\text{token}_i$ 及其选中的第 $k$ 个专家 $e_{i,k}$，存在唯一的行索引 $\operatorname{row}(i,k) \in \{0,\dots,N_{e_{i,k}}-1\}$，使得 $\mathbf{Q}_{e_{i,k}}[\operatorname{row}(i,k), :] = \mathbf{q}_i$。该映射记录了 $\mathbf{q}_i$ 在专家 $e_{i,k}$ 的输入矩阵中的位置。
+
+    - **Expert Compute**
+
+        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用 SwiGLU 结构以提升表达能力。在 W8A8-FP 场景下，两个线性层都使用 FP8 输入和 FP8 权重，配合 E8M0 缩放因子进行 MX 反量化矩阵乘。具体分为三个子步骤。
+
+        **1. Linear1 投影（FP8 矩阵乘 + MX 反量化）**
+
+        Linear1 投影是专家网络的第一层线性变换，同时产生 **gate 部分**和 **up 部分**所需的预激活值。将 $\text{l1\_weights}[e]$ 沿输出维度拆分为前 $N/2$ 列 $\text{l1\_weights}[e]^{(\text{gate})}$ 和后 $N/2$ 列 $\text{l1\_weights}[e]^{(\text{up})}$，分别执行 FP8 矩阵乘法，得到 BF16 计算结果：
+        $$
+        \mathbf{C}_e^{(\text{gate})} = \mathbf{Q}_e \cdot \text{l1\_weights}[e]^{(\text{gate})} \quad \in \mathbb{R}^{N_e \times \text{intermediate\_hidden}}
+        $$
+        $$
+        \mathbf{C}_e^{(\text{up})} = \mathbf{Q}_e \cdot \text{l1\_weights}[e]^{(\text{up})} \quad \in \mathbb{R}^{N_e \times \text{intermediate\_hidden}}
+        $$
+        然后用激活和权重的 MX 缩放因子进行反量化：
+        $$
+        \mathbf{Z}_e^{(\text{gate})} = \mathbf{C}_e^{(\text{gate})} \odot \text{l1\_weights\_sf}[e]^{(\text{gate})} \odot \mathbf{S}_{X,e}
+        $$
+        $$
+        \mathbf{Z}_e^{(\text{up})} = \mathbf{C}_e^{(\text{up})} \odot \text{l1\_weights\_sf}[e]^{(\text{up})} \odot \mathbf{S}_{X,e}
+        $$
+
+        **2. SwiGLU 激活 + MX 量化**
+
+        首先对 gate 部分和 up 部分应用 SwiGLU 激活函数，计算过程在 FP32 精度下完成后转换为 BF16：
+        $$
+        \mathbf{A}_e = \text{SiLU}\bigl(\mathbf{Z}_e^{(\text{gate})}\bigr) \;\odot\; \mathbf{Z}_e^{(\text{up})}
+        \quad\bigl(\in \mathbb{R}^{N_e \times \text{intermediate\_hidden}}\bigr)
+        $$
+
+        然后对 SwiGLU 输出 $\mathbf{A}_e$ 进行 MX 逐组量化（group size = 32），为 Linear2 的 FP8 矩阵乘做准备。对第 $g$ 组计算缩放因子并量化：
+        $$
+        S_{A,e}[g] = \text{maxExp}_g - e_{\max} \in \text{FLOAT8\_E8M0}
+        $$
+        $$
+        \hat{\mathbf{A}}_e[j] = \text{Cast}_{\text{FP8}}\bigl(\mathbf{A}_e[j] \times 2^{-S_{A,e}[g]}\bigr) \quad \in \text{FP8}^{N_e \times \text{intermediate\_hidden}}
+        $$
+
+        **3. Linear2 投影（FP8 矩阵乘 + MX 反量化）**
+
+        Linear2 投影作为第二层线性变换，将量化后的中间激活表示 $\hat{\mathbf{A}}_e$ 从高维空间投影回原始的隐藏维度 $\text{hidden}$，使专家输出能够与残差连接等后续操作兼容。先执行 FP8 矩阵乘法，得到 BF16 计算结果：
+        $$
+        \mathbf{D}_e = \hat{\mathbf{A}}_e \cdot \text{l2\_weights}[e] \quad \in \mathbb{R}^{N_e \times \text{hidden}}
+        $$
+        然后用激活和权重的 MX 缩放因子进行反量化：
+        $$
+        \mathbf{Y}_e = \mathbf{D}_e \odot \text{l2\_weights\_sf}[e] \odot S_{A,e}
+        \quad\bigl(\in \mathbb{R}^{N_e \times \text{hidden}}\bigr)
+        $$
+
+        经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 $\text{token}_i$，它在专家 $e_{i,k}$ 中的输出行即为 $\mathbf{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$。
+
+    - **Token Combine**
+
+        Combine 负责收集所有专家计算出的输出向量，按照每个 token 原先分配到的专家权重进行加权求和，最终为每个 token 生成一个融合后的输出。利用之前记录的位置索引 $\operatorname{row}(i,k)$，从专家 $e_{i,k}$ 的输出矩阵中收回属于 $\text{token}_i$ 的行，计算过程在 FP32 精度下完成后转换为 BF16：
+        $$
+        \mathbf{y}_i = \sum_{k=0}^{\text{num\_topk} - 1} w_k \;\cdot\; \mathbf{Y}_{e_{i,k}}\!\bigl[\,\operatorname{row}(i,k),\,:\,\bigr]
+        \qquad\bigl(\in \mathbb{R}^{1 \times \text{hidden}}\bigr)
+        $$
+        其中 $w_k = \text{topk\_weights}[i,k]$ 为 $\text{token}_i$ 对专家 $e_{i,k}$ 的门控权重。
+
+        所有 token 的输出按输入顺序堆叠为最终输出 $\mathbf{Y} \in \mathbb{R}^{\text{total\_num\_tokens} \times \text{hidden}}$。
     </details>
 
 ## 函数原型
