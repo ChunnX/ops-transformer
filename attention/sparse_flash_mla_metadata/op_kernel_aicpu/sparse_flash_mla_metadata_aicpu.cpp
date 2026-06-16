@@ -293,7 +293,6 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
         if (numHeadsQ_ == 128) {
             isSplitG_ = true;
             aicCoreNum_ /= 2;
-            aivCoreNum_ /= 2;
         }
         mBaseSize_ = groupSize_;
         s2BaseSize_ = 128U;
