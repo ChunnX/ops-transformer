@@ -413,10 +413,9 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rc
  */
 ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 {
-    OP_LOGD(opName_, "[tzydebug]geAType[%d],GetSizeByDataType[%d]", args_.geAType,
-            ge::GetSizeByDataType(args_.geAType));
     uint64_t sizeOfSingleM = 0;
-    if (ge::GetSizeByDataType(args_.geAType) < 1000) { // TODO 注意ge::GetSizeByDataType
+    if (ge::GetSizeByDataType(args_.geAType) < 1000) { // ge::GetSizeByDataType对于传入的data_type所占用的内存小于1byte，
+                                                       // 返回1000+该数据类型的bit位数，比如DT_INT4数据类型，返回1004。
         sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
     } else {
         sizeOfSingleM = args_.kValue * args_.rankDim * (ge::GetSizeByDataType(args_.geAType) - 1000) / 8;
