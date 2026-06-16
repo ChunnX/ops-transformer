@@ -112,6 +112,12 @@ static bool CheckAndSetAttrs(const gert::TilingContext *context, DistributeBarri
                              const DistributeBarrierConfig& config)
 {
     auto attrs = context->GetAttrs();
+    std::string socVersion = mc2tiling::GetSocVersion(context);
+    if (socVersion == "Ascend950") {
+        int64_t MAX_WORLD_SIZE = 1024;
+    } else {
+        int64_t MAX_WORLD_SIZE = 384;
+    }
     OP_TILING_CHECK(attrs == nullptr, OPS_LOG_E(A_INNER_DEBUG_BARRIER, "GetAttrs returned nullptr!"), return false);
 
     auto groupPtr = attrs->GetAttrPointer<char>(config.attrGroupIndex);
