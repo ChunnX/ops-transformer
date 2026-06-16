@@ -90,7 +90,7 @@ int64_t CalcCost(uint32_t basicM, uint32_t basicS2)
     uint32_t alignCoefS2 = 64U;
     uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U; // 按alignCoefM对齐，向上取整，4：移位操作实现除16
     uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U; // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
-    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2); // 6：M轴系数，10：S2轴系数
+    return static_cast<int64_t>(8U * alignBasicM + 44U * alignBasicS2 + 17U);
 }
 
 BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
@@ -289,9 +289,13 @@ void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const Batch
             hbmTailBlocks = 1U;
             hbmNormalBlocks = hbmBlocks - 1U;
         }
-        int64_t hbmCostNormal = 2 * CalcCost(splitParam.mBaseSize, splitParam.s2BaseSize);
+        // HBM代价使用块的实际M尺寸：尾行用s1GTailSize，满行用mBaseSize
+        bool isTailRow = (s1GIdx == (splitInfo.s1GBaseNum[batchCache.bIdx] - 1U)) &&
+                         (splitInfo.s1GTailSize[batchCache.bIdx] != 0U);
+        uint32_t curM = isTailRow ? splitInfo.s1GTailSize[batchCache.bIdx] : splitParam.mBaseSize;
+        int64_t hbmCostNormal = CalcCost(curM, splitParam.s2BaseSize);
         int64_t hbmCostTail = (splitInfo.s2TailSize[batchCache.bIdx] != 0U) ?
-                                  2 * CalcCost(splitParam.mBaseSize, splitInfo.s2TailSize[batchCache.bIdx]) : 0;
+                                  CalcCost(curM, splitInfo.s2TailSize[batchCache.bIdx]) : 0;
         int64_t totalHbmCost = hbmCostNormal * hbmNormalBlocks + hbmCostTail * hbmTailBlocks;
 
         // s1GCost = 计算代价 + HBM代价（仅新增块）
@@ -372,13 +376,16 @@ void CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &co
             costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost;
             // 判断最后一块是否为新增块：最后一块索引 = s2End-1，若 >= prevS2End 则为新增
             if (s1GCache.s2End > 0U && (s1GCache.s2End - 1U) >= s1GCache.prevS2End) {
-                // 最后一块是尾块还是满块
+                // HBM代价使用块的实际M尺寸
+                bool isTailRow = (s1GIdx == (splitInfo.s1GBaseNum[bIdx] - 1U)) &&
+                                 (splitInfo.s1GTailSize[bIdx] != 0U);
+                uint32_t curM = isTailRow ? splitInfo.s1GTailSize[bIdx] : splitParam.mBaseSize;
                 uint32_t curTailS2Num =
                     (splitInfo.s2TailSize[bIdx] != 0U && s1GCache.s2End == splitInfo.s2BaseNum[bIdx]) ? 1U : 0U;
                 if (curTailS2Num > 0U) {
-                    costInfo.bN2LastBlockCostOfEachBatch[bIdx] += 2 * CalcCost(splitParam.mBaseSize, splitInfo.s2TailSize[bIdx]);
+                    costInfo.bN2LastBlockCostOfEachBatch[bIdx] += CalcCost(curM, splitInfo.s2TailSize[bIdx]);
                 } else {
-                    costInfo.bN2LastBlockCostOfEachBatch[bIdx] += 2 * CalcCost(splitParam.mBaseSize, splitParam.s2BaseSize);
+                    costInfo.bN2LastBlockCostOfEachBatch[bIdx] += CalcCost(curM, splitParam.s2BaseSize);
                 }
             }
         }
@@ -505,7 +512,11 @@ void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContex
                 (splitInfo.s2TailSize[assignContext.curBIdx] != 0U) &&
                 (assignContext.curS2Idx == splitInfo.s2BaseNum[assignContext.curBIdx] - 1U);
             uint32_t curS2Size = isTailBlock ? splitInfo.s2TailSize[assignContext.curBIdx] : splitParam.s2BaseSize;
-            curCost += 2 * CalcCost(splitParam.mBaseSize, curS2Size); // HBM代价 = 2 × 计算代价
+            // HBM代价使用块的实际M尺寸：尾行用s1GTailSize，满行用mBaseSize
+            bool isTailRow = (assignContext.curS1GIdx == (splitInfo.s1GBaseNum[assignContext.curBIdx] - 1U)) &&
+                             (splitInfo.s1GTailSize[assignContext.curBIdx] != 0U);
+            uint32_t curM = isTailRow ? splitInfo.s1GTailSize[assignContext.curBIdx] : splitParam.mBaseSize;
+            curCost += CalcCost(curM, curS2Size); // HBM额外代价 = CalcCost(M,S2)，总代价 = 2 × CalcCost
         }
 
         // 3. 容差检查：costLimit + tolerance >= cost + curCost
