@@ -148,10 +148,11 @@ class GeneralizedLIV2:
                                                                                         :curr_actualSeq_k] = self.cal_atten_per_batch_fp16(b_idx)
                 y[b_idx: (b_idx + 1), :, curr_actualSeq_q:, :actual_selected_count] = -1
                 if self.layout_query == "TND":
-                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += output_idx_offset.flatten()[prefix: prefix + curr_actualSeq_q].view(1, 1, -1, 1)
+                    offset = output_idx_offset.flatten()[prefix : prefix + curr_actualSeq_q].reshape(1, -1, 1)
                 else:
-                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += output_idx_offset.flatten()[b_idx * qs : b_idx * qs + curr_actualSeq_q].view(1, 1, -1, 1)
-
+                    offset = output_idx_offset.flatten()[b_idx * qs : b_idx * qs + curr_actualSeq_q].reshape(1, -1, 1)
+                offset_mask = (y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] != -1)
+                y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += offset * offset_mask
                 y_value_np[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] = -np.sort(-y_value.numpy())[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count]
             else:
                 pass
@@ -672,30 +673,55 @@ def liv2_output_single(params):
         key = key.npu()
         cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key_bnsd, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
-    max_seqlen_q = actual_seq_lengths_query.max().item()
-    max_seqlen_k = actual_seq_lengths_key.max().item()
-    # metadata = torch.ops.custom.lightning_indexer_v2_metadata(
-    #                                 num_heads_q = q_head_num,
-    #                                 num_heads_k = k_head_num,
-    #                                 head_dim = head_dim,
-    #                                 query_quant_mode = query_quant_mode,
-    #                                 key_quant_mode = key_quant_mode,
-    #                                 actual_seq_lengths_query = actual_seq_lengths_query,
-    #                                 actual_seq_lengths_key = actual_seq_lengths_key,
-    #                                 batch_size = batch_size,
-    #                                 max_seqlen_q = max_seqlen_q,
-    #                                 max_seqlen_k = max_seqlen_k,
-    #                                 layout_query = layout_query,
-    #                                 layout_key = layout_key,
-    #                                 sparse_count = sparse_count,
-    #                                 sparse_mode = sparse_mode,
-    #                                 pre_tokens = (1<<63)-1,
-    #                                 next_tokens = (1<<63)-1,
-    #                                 cmp_ratio = cmp_ratio,
-    #                                 device = 'npu:0')
+    
+    if layout_query == "TND":
+        if seqused_q is not None:
+            max_seqlen_q = max(seqused_q).item()
+        else:
+            seqlen = []
+            for b_idx in range(batch_size):
+                seqlen.append(cu_seqlens_q[b_idx + 1] - cu_seqlens_q[b_idx])
+            max_seqlen_q = max(seqlen).item()
+    else:
+        if seqused_q is not None:
+            max_seqlen_q = max(seqused_q).item()
+        else:
+            max_seqlen_q = q_seq
+    
+    if layout_key == "TND":
+        if seqused_k is not None:
+            max_seqlen_k = max(seqused_k).item()
+        else:
+            seqlen = []
+            for b_idx in range(batch_size):
+                seqlen.append(cu_seqlens_q[b_idx + 1] - cu_seqlens_k[b_idx])
+            max_seqlen_k = max(seqlen).item()
+    elif layout_key == "PA_BBND":
+        max_seqlen_k = max(seqused_k).item()
+    else:
+        if seqused_k is not None:
+            max_seqlen_k = max(seqused_k).item()
+        else:
+            max_seqlen_k = k_seq
+    metadata = lightning_indexer_metadata(
+                                num_heads_q = q_head_num,
+                                num_heads_k = k_head_num,
+                                head_dim = head_dim,
+                                topk = topk,
+                                cu_seqlens_q = cu_seqlens_q,
+                                cu_seqlens_k = cu_seqlens_k,
+                                seqused_q = seqused_q,
+                                seqused_k = seqused_k,
+                                cmp_residual_k = cmp_residual_k,
+                                batch_size = batch_size,
+                                max_seqlen_q = max_seqlen_q,
+                                max_seqlen_k = max_seqlen_k,
+                                layout_q = layout_query,
+                                layout_k = layout_key,
+                                mask_mode = mask_mode,
+                                cmp_ratio = cmp_ratio)
 
-    # metadata = metadata.npu()
-    metadata = None
+    metadata = metadata.npu()
     npu_result, npu_topk_value = lightning_indexer_v2(query, key, weights,
                                              cu_seqlens_q = cu_seqlens_q,
                                              cu_seqlens_k = cu_seqlens_k,
