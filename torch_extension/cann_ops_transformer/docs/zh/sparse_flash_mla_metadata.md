@@ -11,7 +11,7 @@
 
 ## 功能说明<a name="zh-cn_topic_0000002168254826_section14441124184110"></a>
 
--   API功能：生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及 Q 和 K 的分块的索引，供后续[sparse\_flash\_mla](./sparse_flash_mla.md)算子使用。
+-   API功能：生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及 Q 和 K 的分块的索引，供后续sparse\_flash\_mla算子使用。
 
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
@@ -61,7 +61,7 @@ cann_ops_transformer.sparse_flash_mla_metadata(num_heads_q, num_heads_kv, head_d
 
 -   该接口支持推理场景下使用。
 -   该接口支持单算子模式和aclgraph模式。
--   该接口需与[sparse\_flash\_mla](./sparse_flash_mla.md)算子配套使用。
+-   该接口需与sparse\_flash\_mla算子配套使用。
 -   B（Batch）表示输入样本批量大小。
 -   参数cu\_seqlens\_q、cu\_seqlens\_ori\_kv及cu\_seqlens\_cmp\_kv要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
 -   参数seqused\_q、seqused\_ori\_kv、seqused\_cmp\_kv要求其值表示每个Batch中的有效token数。
