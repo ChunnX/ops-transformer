@@ -16,6 +16,9 @@ from importlib import import_module
 mod = import_module("0615")
 sparse_lightning_indexer_grad_kl_loss = mod.sparse_lightning_indexer_grad_kl_loss
 
+# Clear all caches to avoid stale compiled kernels
+mod._clear_caches()
+
 WARMUP_ITERS = 3
 BENCH_ITERS = 5
 
@@ -149,7 +152,7 @@ def main():
     inputs = gen_inputs()
 
     # TileLang
-    print("\n[1] TileLang (0615 多核版)...")
+    print("\n[1] TileLang (0615 多核�?...")
     torch.npu.synchronize()
     try:
         d_qi_tl, d_ki_tl, dw_tl, loss_tl = call_tl(inputs)
@@ -194,7 +197,7 @@ def main():
     speedup = off_med / tl_med
     print(f"  TileLang: avg={tl_avg*1e3:.3f}ms, med={tl_med*1e3:.3f}ms, min={tl_min*1e3:.3f}ms")
     print(f"  官方:     avg={off_avg*1e3:.3f}ms, med={off_med*1e3:.3f}ms, min={off_min*1e3:.3f}ms")
-    print(f"  加速比:   {speedup:.2f}x (基于中位数)")
+    print(f"  加速比:   {speedup:.2f}x (基于中位�?")
 
 
 if __name__ == "__main__":
