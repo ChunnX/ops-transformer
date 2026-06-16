@@ -17,8 +17,6 @@
 #define MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_SIMD_VF_H
 
 #include "kernel_operator.h"
-#include "../inc/platform.h"
-#include "kernel_tiling/kernel_tiling.h"
 
 using namespace AscendC;
 
