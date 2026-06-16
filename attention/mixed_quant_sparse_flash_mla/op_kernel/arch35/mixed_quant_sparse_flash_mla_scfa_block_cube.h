@@ -321,7 +321,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(
 
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
     mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-    MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),          // singleM 64
+    MMParam param = {static_cast<uint32_t>(runInfo.mRealSize), // singleM 64
                      static_cast<uint32_t>(constInfo.dSizeV), // singleN 512
                      static_cast<uint32_t>(runInfo.s2RealSize), // singleK 128
                      0,    // isLeftTranspose

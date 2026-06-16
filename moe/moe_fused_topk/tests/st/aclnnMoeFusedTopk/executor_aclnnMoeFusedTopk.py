@@ -1,4 +1,5 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2012-2023. All rights reserved.
+# -*- coding: utf-8 -*-
 import random
 import torch
 import numpy as np

@@ -17,7 +17,7 @@
 #include <dlfcn.h>
 #include <limits.h>
 #include <unistd.h>
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 namespace Ops {
 namespace MC2 {

@@ -2,24 +2,24 @@
 
 # PromptFlashAttention算子设计介绍
 
-为不断优化提升增量推理性能, 提出支持全量推理的PromptFlashAttention融合算子需求。
+为不断优化提升增量推理性能，提出支持全量推理的PromptFlashAttention融合算子需求。
 
 ## 1 实现原理
 
-按照flashAttention正向计算流程实现, 整体计算流程如下：
+按照flashAttention正向计算流程实现，整体计算流程如下：
 
-1. query与转置后的key做matmul计算后得到最初步的attention_score, 然后与位置编码pse相加后再乘以缩放系数scale_value。此时的结果通过atten_mask进行select操作, 将atten_mask中为true的位置进行遮蔽, 得到结果masked_attention_score, 即atten_mask中为true的位置在select后结果为负的极小值, 经过softmax计算之后变成0从而达到遮蔽效果。
+1. query与转置后的key做matmul计算后得到最初步的attention_score,然后与位置编码pse相加后再乘以缩放系数scale_value。此时的结果通过atten_mask进行select操作，将atten_mask中为true的位置进行遮蔽,得到结果masked_attention_score,即atten_mask中为true的位置在select后结果为负的极小值,经过softmax计算之后变成0从而达到遮蔽效果。
 
-2. 为了实现FlashAttention加速算法, 使用FlashSoftmax操作对masked_attention_score进行运算, 用以代替原公式中的softmax运算, 而后将结果与value做matmul运算。由于FlashSoftmax操作对masked_attention_score的Skv(输入key、value的sequence length)方向进行了切分, 故实现过程中存在一个刷新流程, 具体如下：
+2. 为了实现FlashAttention加速算法，使用FlashSoftmax操作对masked_attention_score进行运算,用以代替原公式中的softmax运算,而后将结果与value做matmul运算。由于FlashSoftmax操作对masked_attention_score的Skv(输入key、value的sequence length)方向进行了切分,故实现过程中存在一个刷新流程,具体如下：
 
-   1. 每次FlashSoftmax计算只对切分后的一个SkvSplit（SkvSplit是针对Skv轴进行切分之后的序列长度的简称）进行操作, 并从第二次循环开始记录exp, 其中 i 表示Skv切分后的循环变量, 针对exp的i是从1开始 , exp的计算公式如下：
+   1. 每次FlashSoftmax计算只对切分后的一个SkvSplit（SkvSplit是针对Skv轴进行切分之后的序列长度的简称）进行操作，并从第二次循环开始记录exp,其中i表示Skv切分后的循环变量,针对exp的i是从1开始, exp的计算公式如下：
       $$
       exp[i] = e^{max_{i - 1} - max_{i}}
       $$
 
-   2. 从i = 1开始, 需要增加Mul和Add操作, 即将上一次的MM[PV]的结果和当前exp相乘, 相乘完的结果和本次MM[PV]的结果相加得到的结果保存到GM中。以此类推, 遍历Skv计算完成。
+   2. 从i = 1开始，需要增加Mul和Add操作,即将上一次的MM[PV]的结果和当前exp相乘,相乘完的结果和本次MM[PV]的结果相加得到的结果保存到GM中。以此类推,遍历Skv计算完成。
 
-   3. 由于FlashSoftmax计算中的除sum被后移到输出attention_out之前, 因此最后需要将ub中的attention_out按行除以softmax_sum并将最终完整的结果保存到输出内存attention_out(Final)上。
+   3. 由于FlashSoftmax计算中的除sum被后移到输出attention_out之前，因此最后需要将ub中的attention_out按行除以softmax_sum并将最终完整的结果保存到输出内存attention_out(Final)上。
 
 ## 2 模板化设计
 
@@ -29,7 +29,7 @@
 
 1. 根据产品形态划分的通用能力模板：
 （1）A2/A3场景通用能力模板，支持<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>。
-(2) 针对Atlas 推理系列加速卡产品，开启通用能力模板。
+(2)针对Atlas推理系列加速卡产品，开启通用能力模板。
 
 2. 根据特定业务场景开发模板：
 （1）针对MLA场景，开发MLA基础API模板。
@@ -60,12 +60,12 @@ tiling操作的目的是为了找到一种更高效的NPU执行方式，原始�
 
 ### 2.2 tilingkey设计
 
-为了在运行态实例化一个确定的模板，需要通过tilingkey来唯一标识 。
+为了在运行态实例化一个确定的模板，需要通过tilingkey来唯一标识。
 
 **tilingKey生成规则**：按十进制位组装tilingkey，初始值为0，每个属性/功能对应不同的魔数，依次累加得到tilingkey。
 
 PFA算子tilingkey设计如下：
-在Atlas 推理系列加速卡产品场景：
+在Atlas推理系列加速卡产品场景：
 > **1.** 魔数12288作为当前场景的标识。
 > **2.** 根据输入的query/key/value矩阵的layout区分，BNSD：+10000。
 > **3.** 根据配置的精度模式区分，输入FP16且高精度模式：+600。
@@ -123,7 +123,7 @@ def Vec():
 
  融合算子通常包含了Vector计算和Cube计算，对于FA算子，V侧的计算是依赖C侧的计算结果的，如果只关注V侧流水，不关注C侧，则C侧与V侧很有可能是串行流水的效果，不能达到并行计算的目的，无法使得融合算子性能达到最优，从而有了CV流水设计。此外，CV流水在不同算子情况下，表现的现象也是不一致的，FA的Cube双发机制可实现流水优化：
 
-  该场景流水特征下，Vector计算节点少，计算速度快，在<term>Atlas A2 训练系列产品</term> C:V=1:2的情况下，Cube的搬运时长足以掩盖Vector的计算时长，因此只要关注Cube的MTE2耗时即可，最终达成MTE2 bound。在Cube双发机制下，提前发射两块Cube计算，Cube1、Cube2计算可以衔接，使得Cube利用率最高，达成Cube bound。
+  该场景流水特征下，Vector计算节点少，计算速度快，在<term>Atlas A2训练系列产品</term> C:V=1:2的情况下，Cube的搬运时长足以掩盖Vector的计算时长，因此只要关注Cube的MTE2耗时即可，最终达成MTE2 bound。在Cube双发机制下，提前发射两块Cube计算，Cube1、Cube2计算可以衔接，使得Cube利用率最高，达成Cube bound。
 
   ![FA流水.jpg](../../../docs/zh/figures/FA流水.png)
 

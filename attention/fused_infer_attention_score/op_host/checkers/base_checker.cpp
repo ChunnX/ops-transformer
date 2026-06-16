@@ -46,9 +46,11 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
 {
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
-        OP_CHECK_IF((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
-                    OP_LOGE("FusedInferAttentionScore", "%s format only supports ND/NCHW/NHWC/NCDHW!", name.c_str()),
-                    return ge::GRAPH_FAILED);
+        if ((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end())) {
+            OP_LOGE_FOR_INVALID_FORMAT("FusedInferAttentionScore", name.c_str(),
+                ToString(format).c_str(), "ND, NCHW, NHWC or NCDHW");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -89,13 +91,13 @@ ge::graphStatus BaseChecker::CheckValueSupport(const T value, const std::vector<
     return ge::GRAPH_SUCCESS;
 }
 
-std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
+std::string BaseChecker::DataTypeToSerialString(ge::DataType type) const
 {
     const auto it = DATATYPE_TO_STRING_MAP.find(type);
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FusedInferAttentionScore", "datatype %d not support", type);
+        OP_LOGE("FusedInferAttentionScore", "datatype %d is not supported", type);
         return "UNDEFINED";
     }
 }

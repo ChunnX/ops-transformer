@@ -31,6 +31,11 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         is_causal = True
         mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
         attn_mask = mask.to(dtype=torch.int8, device=device)
+    elif mask_mode == 4:
+        mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
+        attn_mask = mask.to(dtype=torch.int8, device=device)
+        wl = p.get("win_left", 2147483647)
+        wr = p.get("win_right", 2147483647)
     elif mask_mode != 0:
         wl = p.get("win_left", 2147483647)
         wr = p.get("win_right", 2147483647)
@@ -257,23 +262,27 @@ flash_attn_inputs = (
     .tensor("k", layout={
             "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
             "PA_BBND": "num_blocks,block_size,N2,D",
-            "PA_BNBD": "num_blocks,N2,block_size,D"},
+            "PA_BNBD": "num_blocks,N2,block_size,D",
+            "PA_NZ": "num_blocks,N2,D_nz_sub,block_size,nz_blk_elem"},
             method="uniform", low=-5.0, high=5.0, range_key="k_range",
             when=lambda p: "k_range" in p, layout_override="layout_kv")
     .tensor("k", layout={
             "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
             "PA_BBND": "num_blocks,block_size,N2,D",
-            "PA_BNBD": "num_blocks,N2,block_size,D"},
+            "PA_BNBD": "num_blocks,N2,block_size,D",
+            "PA_NZ": "num_blocks,N2,D_nz_sub,block_size,nz_blk_elem"},
             when=lambda p: "k_range" not in p, layout_override="layout_kv")
     .tensor("v", layout={
             "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
             "PA_BBND": "num_blocks,block_size,N2,_V",
-            "PA_BNBD": "num_blocks,N2,block_size,_V"},
+            "PA_BNBD": "num_blocks,N2,block_size,_V",
+            "PA_NZ": "num_blocks,N2,DV_nz_sub,block_size,nz_blk_elem"},
             method="uniform", low=-5.0, high=5.0, range_key="v_range",
             when=lambda p: "v_range" in p, layout_override="layout_kv")
     .tensor("v", layout={
             "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
             "PA_BBND": "num_blocks,block_size,N2,_V",
-            "PA_BNBD": "num_blocks,N2,block_size,_V"},
+            "PA_BNBD": "num_blocks,N2,block_size,_V",
+            "PA_NZ": "num_blocks,N2,DV_nz_sub,block_size,nz_blk_elem"},
             when=lambda p: "v_range" not in p, layout_override="layout_kv")
 )
