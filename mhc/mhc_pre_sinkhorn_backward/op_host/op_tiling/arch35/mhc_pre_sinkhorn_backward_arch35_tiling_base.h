@@ -48,7 +48,7 @@ private:
     ge::graphStatus SetTilingData();
     void DoUbTiling();
 
-private:
+protected:
     uint64_t coreNumAic_{0};
     uint64_t coreNumAiv_{0};
     uint64_t ubSize_{0};
