@@ -22,6 +22,9 @@
 #include "masked_select_v3.h"
 #include "moe_permute_prob.h"
 
+#include "moe_routing_rank_multi_core.h"
+#include "moe_sortindices_scatter_multi_core.h"
+
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/gather_v2_simd_two_dim.h"
 #include "arch35/gather_v2_simt_two_dim.h"
@@ -39,7 +42,20 @@ using namespace MoeTokenPermute;
         TPipe sortPipe;                                                                                                \
         KernelMaskedSelectV3<DTYPE_PERMUTE_PROBS> opMS;                                                                \
         auto maskedSelectTilingData = &(t->maskedSelectParamsOp);                                                      \
-        opMS.Init(probs, routingMap, permuteProbs, sortedIndices, userWS, maskedSelectTilingData, hasProb, &sortPipe); \
+        opMS.Init(probs, routingMap, permuteProbs, sortedIndices, userWS, maskedSelectTilingData, t->topK, hasProb,    \
+                  &sortPipe);                                                                                          \
+        opMS.Process(permuteProbs, sortedIndices, actualOutTokens);                                                    \
+        sortPipe.Destroy();                                                                                            \
+        AscendC::SyncAll();                                                                                            \
+    } while (0)
+
+#define MASKSELECT_GATHER_RANK_IMPL(sortPositionGm, valueStreamOffset)                                                 \
+    do {                                                                                                               \
+        TPipe sortPipe;                                                                                                \
+        KernelMaskedSelectV3<DTYPE_PERMUTE_PROBS> opMS;                                                                \
+        auto maskedSelectTilingData = &(t->maskedSelectParamsOp);                                                      \
+        opMS.Init(probs, routingMap, permuteProbs, sortedIndices, userWS, maskedSelectTilingData, t->topK, hasProb,    \
+                  &sortPipe, AscendC::MaskedSelectMode::kGatherExternalIndex, sortPositionGm, valueStreamOffset);      \
         opMS.Process(permuteProbs, sortedIndices, actualOutTokens);                                                    \
         sortPipe.Destroy();                                                                                            \
         AscendC::SyncAll();                                                                                            \
@@ -58,19 +74,31 @@ using namespace MoeTokenPermute;
         indexCopyOp.Process();                                                         \
     } while (0)
 
-#define NONALIGNED_SORT_COPY_IMPL(indexCopyClass, tokenDtype)                          \
-    do {                                                                               \
-        TPipe sortPipe2;                                                               \
-        MoeSortMultiCore<int32_t> op2;                                                 \
-        op2.RecalcVBSMultiCoreParams(sortedIndices, actualOutTokens, GetBlockNum(), t);  \
-        op2.SetNeedPad(true, t->topK, t->n);                                           \
-        op2.InitAfterRecalc(sortedIndices, userWS, t, &sortPipe2);                     \
-        op2.Process();                                                                 \
-        sortPipe2.Destroy();                                                           \
-        TPipe MoeindexCopyPipe;                                                        \
-        indexCopyClass<tokenDtype, true> indexCopyOp;                                  \
-        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe);  \
-        indexCopyOp.Process();                                                         \
+#define NONALIGNED_SORT_COPY_IMPL(indexCopyClass, tokenDtype)                                                          \
+    do {                                                                                                               \
+        TPipe sortPipe2;                                                                                               \
+        int64_t msNeedCoreNum = t->maskedSelectParamsOp.needCoreNum;                                                   \
+        int64_t msNumTokens = t->n;                                                                                    \
+        int64_t msNumExperts = t->expertNum;                                                                           \
+        int64_t partialOffset = MoeTokenPermute::Align(msNeedCoreNum, sizeof(int32_t));                                \
+        int64_t sortPositionOffset = partialOffset + msNeedCoreNum * msNumTokens;                                      \
+        int64_t valueStreamOffset = sortPositionOffset + msNumExperts * msNumTokens;                                   \
+        GM_ADDR sortPositionGm = userWS + sortPositionOffset * sizeof(int32_t);                                        \
+        GM_ADDR valueStreamGm = userWS + valueStreamOffset * sizeof(int32_t);                                          \
+        MoeRoutingRankMultiCore rankOp;                                                                                \
+        rankOp.Init(routingMap, userWS, &(t->maskedSelectParamsOp), msNumExperts, t->topK, &sortPipe2);                \
+        rankOp.Process();                                                                                              \
+        sortPipe2.Destroy();                                                                                           \
+        MASKSELECT_GATHER_RANK_IMPL(sortPositionGm, valueStreamOffset);                                                \
+        TPipe scatterPipe;                                                                                             \
+        MoeSortIndicesScatterMultiCore scatterOp;                                                                      \
+        scatterOp.Init(sortedIndices, valueStreamGm, actualOutTokens, t, userWS, &scatterPipe);                        \
+        scatterOp.Process();                                                                                           \
+        scatterPipe.Destroy();                                                                                         \
+        TPipe MoeindexCopyPipe;                                                                                        \
+        indexCopyClass<tokenDtype, true> indexCopyOp;                                                                  \
+        indexCopyOp.Init(tokens, sortedIndices, permuteTokens, t, &MoeindexCopyPipe);                                  \
+        indexCopyOp.Process();                                                                                         \
     } while (0)
 
 #define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, tokenDtype, ifNumOutTokens) \
