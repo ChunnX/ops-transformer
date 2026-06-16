@@ -51,6 +51,15 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
     sq    = _u32(p.get("seqused_q", p.get("actual_seq_qlen")))
     skv   = _u32(p.get("seqused_kv", p.get("actual_seq_kvlen")))
 
+    def _resolve_max_seqlen(explicit, used_seq, cu_seqlens, fallback):
+        if explicit is not None:
+            return int(explicit)
+        if used_seq is not None:
+            return int(used_seq.max())
+        if cu_seqlens is not None:
+            return int((cu_seqlens[1:] - cu_seqlens[:-1]).max())
+        return fallback
+
     # 从 tensor shape 推导 metadata 参数
     q = inputs["q"]; k = inputs["k"]
     if layout_q == "BNSD":
@@ -63,18 +72,8 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         bs = (cu_q.shape[0] - 1) if cu_q is not None else p.get("B", 1)
         nqh, hd = q.shape[1], q.shape[2]
         nkh = k.shape[1]
-        if sq is not None:
-            msq = int(sq.max())
-        elif cu_q is not None:
-            msq = int((cu_q[1:] - cu_q[:-1]).max())
-        else:
-            msq = p.get("S1", 1)
-        if skv is not None:
-            msk = int(skv.max())
-        elif cu_kv is not None:
-            msk = int((cu_kv[1:] - cu_kv[:-1]).max())
-        else:
-            msk = p.get("S2", p.get("S1", 1))
+        msq = _resolve_max_seqlen(p.get("max_seqlen_q"), sq, cu_q, p.get("S1", 1))
+        msk = _resolve_max_seqlen(p.get("max_seqlen_kv"), skv, cu_kv, p.get("S2", p.get("S1", 1)))
     else:
         bs = q.shape[0]; nqh = p["N1"]; nkh = p.get("N2", nqh)
         hd = d; msq = q.shape[1]; msk = k.shape[1]
@@ -87,7 +86,7 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
             bt = bt.to(device)
             nkh = p.get("N2", nqh)
             hd = d
-            msk = max(skv) if skv is not None else p.get("S2", p.get("S1", 1))
+            msk = _resolve_max_seqlen(p.get("max_seqlen_kv"), skv, cu_kv, p.get("S2", p.get("S1", 1)))
 
     # === metadata kwargs ===
     meta_kwargs = dict(
