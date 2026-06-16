@@ -389,10 +389,10 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 
     // 判断当前sparse块是否需要计算
     int64_t delta = runParam.nextTokensPerBatch;
-    uint32_t sparseBlk1S1Offset = runParam.s1oIdx * constInfo.s1BaseSize;
-    uint32_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
-    uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
-    uint32_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
+    int64_t sparseBlk1S1Offset = runParam.s1oIdx * constInfo.s1BaseSize;
+    int64_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
+    int64_t sparseBlk2S1Offset = sparseBlk1S1Offset;
+    int64_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
     AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, sparseBlk1S2Offset, delta, runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx1, runInfo.sparseBlk1PartialMask);
     AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, sparseBlk2S2Offset, delta, runInfo.s2SparseBlk2RealSize, runInfo.sparseBlkIdx2, runInfo.sparseBlk2PartialMask);
 
