@@ -249,8 +249,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LI
     int32_t cuBaseS1Idx = info.gS1Idx * s1BaseSize_;
     int32_t cuBaseS2Idx = info.s2Idx * s2BaseSize_;
 
-    // 计算基本块基地址偏移 偶数循环 -> 0 + aic_offset  奇数循环 -> 512*512 + aic_offset
-    int64_t mmGmOffset = (info.loop % 2) * ((s1BaseSize_ * gSize_) * s2BaseSize_);
+    // 计算基本块基地址偏移 偶数循环 -> 0 + aic_offset  奇数循环 -> mBaseSizeAlign*s2BaseSize + aic_offset
+    int64_t mmGmOffset = (info.loop % 2) * (constInfo_.mBaseSizeAlign * s2BaseSize_);
     // (B,S1,N1,1);(T,N1,1) -> (B,S1,N2,G,1) 当前只切分到S1轴
     int64_t weightGmOffset = info.tensorWeightsOffset + cuBaseS1Idx * kHeadNum_ * gSize_;
 
@@ -674,14 +674,13 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessLD()
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             PipeBarrier<PIPE_V>();
             LocalTensor<int32_t> idxULocal1 = outIdxUb.template ReinterpretCast<int32_t>();
-            LocalTensor<K_T> valueULocal1 = outValueUb.template ReinterpretCast<K_T>();
 
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
             DataCopyPad(indiceOutGm[outOffset], idxULocal1,
                         {1, static_cast<uint16_t>(constInfo_.sparseCount * sizeof(int32_t)), 0, 0});
             DataCopyPad(valueOutGm[outOffset], outValueUb,
-                        {1, static_cast<uint16_t>(constInfo_.sparseCount * sizeof(K_T)), 0, 0});
+                        {1, static_cast<uint16_t>(constInfo_.sparseCount * sizeof(OUT_V_T)), 0, 0});
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
         }
     }
