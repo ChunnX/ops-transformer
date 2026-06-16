@@ -30,7 +30,7 @@ using namespace Ops::Transformer::OpTiling;
 
 class MhcPreSinkhornBackwardArch35DeterminiticTiling : public MhcPreSinkhornBackwardArch35Tiling {
 public:
-    explicit MhcPreSinkhornBackwardArch35DeterminiticTiling(gert::TilingContext* context) : TilingBaseClass(context) {
+    explicit MhcPreSinkhornBackwardArch35DeterminiticTiling(gert::TilingContext* context) : MhcPreSinkhornBackwardArch35Tiling(context) {
     }
 
 protected:
