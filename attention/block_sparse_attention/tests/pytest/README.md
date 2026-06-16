@@ -33,16 +33,16 @@ pytest test_attn.py test_lse.py test_joint.py -v
    bash build.sh --make_clean -j96 --pkg --soc=ascend910b --ops=block_sparse_attention
    ./build/cann-ops-transformer-custom_linux-aarch64.run
    ```
-2. The `npu_ops_transformer` torch extension must be built + installed
+2. The `cann_ops_transformer` torch extension must be built + installed
    (it provides the JIT-compiled Python entry point
-   `npu_ops_transformer.ops.block_sparse_attention`):
+   `cann_ops_transformer.ops.block_sparse_attention`):
    ```bash
    cd torch_extension
    python3 -m pip install -r requirements.txt
    python3 -m build --wheel -n
    python3 -m pip install dist/*.whl --force-reinstall --no-deps
    ```
-   First `import npu_ops_transformer` triggers a one-time ninja JIT compile
+   First `import cann_ops_transformer` triggers a one-time ninja JIT compile
    of the C++ wrapper (`ops/csrc/block_sparse_attention.cpp`). See
    [`torch_extension/README.md`](../../../../torch_extension/README.md) for full
    build instructions.

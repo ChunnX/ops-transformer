@@ -357,7 +357,7 @@ ge::graphStatus LIV2InfoParser::GetN1Size()
 ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
                                                     const std::string &actualSeqLenName) const
 {
-    size = static_cast<uint32_t>(tensor->GetShapeSize());
+    size = static_cast<uint32_t>(tensor->GetShapeSize() - 1);
     if (size <= 0) {
         OP_LOGE(opName_, "%s's shape size is %u, it should be greater than 0.", actualSeqLenName.c_str(), size);
         return ge::GRAPH_FAILED;
@@ -528,10 +528,10 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
     // bSize_ 来源于query
     if (kLayout_ == DataLayout::BnBsND) {
         OP_CHECK_IF((opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_) ||
-                    (opParamInfo_.cuSeqlensK.tensor->GetShapeSize() != bSize_),
-                OP_LOGE(opName_, "BSND case input query, cu_seqlens_k, block_table dim 0 are %u, %ld, %ld "
+                    (opParamInfo_.sequsedK.tensor->GetShapeSize() != bSize_),
+                OP_LOGE(opName_, "BSND case input query, seqused_k, block_table dim 0 are %u, %ld, %ld "
                     "respectively, they must be same.",
-                    bSize_, opParamInfo_.cuSeqlensK.tensor->GetShapeSize(),
+                    bSize_, opParamInfo_.sequsedK.tensor->GetShapeSize(),
                     opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
     } else if (kLayout_ == DataLayout::BSND) {

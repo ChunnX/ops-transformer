@@ -28,7 +28,7 @@ def _fix_invalid_rows(softmax_res, x_max, x_sum):
     for i in range(b):
         for j in range(n):
             for k in range(sq):
-                if x_max[i, j, k, :] == -40000.:
+                if x_max[i, j, k, :] == -1.7e38:
                     softmax_res[i, j, k, :] = 0
                     x_max[i, j, k, :] = torch.finfo(torch.float).min
                     x_sum[i, j, k, :] = torch.finfo(torch.float).max
@@ -42,7 +42,7 @@ def _attend(q, k, v, atten_mask, scale, need_fix_invalid):
 
     qk = torch.matmul(q, k.permute(0, 1, 3, 2)).mul(scale)
     if atten_mask is not None:
-        qk = qk.masked_fill_(atten_mask.cpu().bool(), value=torch.tensor(-40000))
+        qk = qk.masked_fill_(atten_mask.cpu().bool(), value=torch.tensor(-1.7e38))
     
     if qk.shape[-1] == 0:
         b, n, sq, _ = qk.shape

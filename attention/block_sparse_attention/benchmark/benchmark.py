@@ -8,8 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 """
 Benchmark driver for `attention/block_sparse_attention` via
-`npu_ops_transformer.ops.block_sparse_attention` (provided by the
-`torch_extension/npu_ops_transformer/` torch extension package).
+`cann_ops_transformer.ops.block_sparse_attention` (provided by the
+`torch_extension/cann_ops_transformer/` torch extension package).
 
 Key design choices:
 - All workload helpers (`gen_pfa_inputs`, `create_attention_mask`,
@@ -37,7 +37,7 @@ from typing import Callable, List
 
 import torch
 import torch_npu  # noqa: F401  (registers the NPU backend)
-import npu_ops_transformer
+import cann_ops_transformer
 
 # All shared workload helpers live in the local `util.py` (autonomous, no
 # cross-tree imports).
@@ -93,7 +93,7 @@ def _make_our_fn_block_sparse(block_sparse_mask: torch.Tensor, h: int, scale: fl
     closure); the timed call here only invokes the kernel.
     """
     def fn(q, k, v, seq, seqkv):
-        out, _ = npu_ops_transformer.ops.block_sparse_attention(
+        out, _ = cann_ops_transformer.ops.block_sparse_attention(
             q, k, v,
             block_sparse_mask=block_sparse_mask,
             block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],

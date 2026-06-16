@@ -132,8 +132,17 @@ protected:
     ge::graphStatus CheckRequiredInput();
     ge::graphStatus CheckOptionalInputShape();
     virtual ge::graphStatus CheckOptionalInputDtype();
+    ge::graphStatus CheckBiasExpertIdxDtype();
+    ge::graphStatus CheckExpandedXAndRowIdxDtype();
+    ge::graphStatus CheckScalesDtypeForDavid();
     ge::graphStatus CheckOutput();
+    ge::graphStatus CheckGradExpandedXShape();
+    ge::graphStatus CheckGradExpandedXDtype();
+    ge::graphStatus CheckGradScalesShapeAndDtype();
     ge::graphStatus CheckParams();
+    ge::graphStatus CalcExpandedXDimInfo();
+    ge::graphStatus CheckShapeWithScales();
+    ge::graphStatus CheckShapeWithoutScales();
     std::string DimNumToString(size_t dimNum) const
     {
         return std::to_string(dimNum) + "D";

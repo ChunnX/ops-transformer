@@ -164,7 +164,7 @@ this granularity).
 
 | File | Purpose |
 |---|---|
-| `benchmark.py` | The benchmark entry point. Builds the per-row sparse pattern, converts sabi → int8 block mask, times `npu_ops_transformer.ops.block_sparse_attention(…)` over the sparsity sweep, prints the table. |
+| `benchmark.py` | The benchmark entry point. Builds the per-row sparse pattern, converts sabi → int8 block mask, times `cann_ops_transformer.ops.block_sparse_attention(…)` over the sparsity sweep, prints the table. |
 | `util.py` | All shared helpers — `FrameWidths`, constants (`B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS, BLOCK_SIZE_Q, BLOCK_SIZE_KV, FRAME, …`), pattern generators (`generate_sparse_blocks_by_row{,_per_head}`, `make_block_mask{,_per_head}`), reference implementations (`ref_attention_fp32`, `ref_attention_launcher`), timing harness (`_run_timed`, `_check_correctness`), and the sabi→int8 mask converter (`sabi_to_block_sparse_mask`). |
 | `README.md` | This file. |
 

@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,9 +6,9 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
-/*!
+/* !
  * \file sparse_lightning_indexer_kl_loss_grad_tiling.cpp
  * \brief
  */
@@ -23,16 +23,17 @@
 #include "../op_kernel/arch22/sparse_lightning_indexer_kl_loss_grad_tiling.h"
 #include "sparse_lightning_indexer_kl_loss_grad_tiling_general.h"
 #include "platform/platform_info.h"
+#include "op_host/tiling_templates_registry.h"
+#include "sparse_lightning_indexer_kl_loss_grad_tiling_common.h"
 
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 
 using namespace ge;
 using namespace AscendC;
 
 namespace optiling {
-
 constexpr uint32_t PRE_LOAD_NUM = 2;
 constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
 constexpr int32_t SPARSE_MODE_BAND = 4;
@@ -49,18 +50,24 @@ static const std::string ATTEN_OUT_NAME = "attention_out";
 
 ge::graphStatus TilingSparseLightningIndexerKLLossGrad(gert::TilingContext *context)
 {
-    SparseLightningIndexerKLLossGradTilingBase sligKLLossTiling(context);
-    sligKLLossTiling.DoTiling();
-    return ge::GRAPH_SUCCESS;
+    auto platformInfoPtr = context->GetPlatformInfo();
+    auto sligPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    if (sligPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGW(context, "Current npu arch is dav-3510.");
+        return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
+    } else {
+        OP_LOGW(context, "Current npu arch is not dav-3510.");
+        SparseLightningIndexerKLLossGradTilingBase sligKLLossTiling(context);
+        sligKLLossTiling.DoTiling();
+        return ge::GRAPH_SUCCESS;
+    }
 }
 
 ge::graphStatus TilingPrepareForSparseLightningIndexerKLLossGrad(gert::TilingParseContext *context)
 {
     OP_LOGW(context, "Start registering tiling.");
     auto compileInfoPtr = context->GetCompiledInfo<SparseLightningIndexerKLLossGradCompileInfo>();
-    OP_CHECK_IF(compileInfoPtr == nullptr,
-        OP_LOGE(context, "compileInfoPtr is null"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context, "compileInfoPtr is null"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

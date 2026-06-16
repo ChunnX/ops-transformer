@@ -284,79 +284,85 @@ static ge::graphStatus CheckBaseInput(gert::TilingContext *context){
     auto &valueShape = context->GetInputShape(VALUE_INPUT_INDEX)->GetStorageShape();
     int64_t headNum = *context->GetAttrs()->GetAttrPointer<int>(HEAD_NUM_IDX);
     OP_CHECK_IF(headNum == 0,
-               OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [headNum is 0]"),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "headNum",
+                    std::to_string(headNum).c_str(), "The value of headNum must be greater than 0"),
+                return ge::GRAPH_FAILED);
     const char *inputLayout = context->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
     if (strlen(inputLayout) == 3) { // 3: BSH or SBH or TND
         if (inputLayout[0] == 'B') {
             // layout is BSH
+            std::string shapeMsg = "{" + Ops::Base::ToString(queryShape) + ", " + Ops::Base::ToString(keyShape) + "}";
             OP_CHECK_IF((queryShape.GetDim(0) != keyShape.GetDim(0)),
-                OP_LOGE(context,
-                    "In op [FlashAttentionScoreGrad], the tensor shapes of [query, key] are mismatched, "
-                    "the reason is: [query batch and key batch should be same, query batch=%ld, key batch=%ld]",
-                    queryShape.GetDim(0), keyShape.GetDim(0)),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn", shapeMsg.c_str(),
+                    "When inputLayout is BSH, b axis of query must be equal to b axis of keyIn"),
                 return ge::GRAPH_FAILED);
+            std::string reasonMsg = "When inputLayout is BSH, h axis of query must be exactly divisible " +
+                                    std::to_string(headNum);
             OP_CHECK_IF(queryShape.GetDim(2) % headNum != 0,
-               OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [h1 %ld should be a multiple of headNum %ld]",
-               queryShape.GetDim(2), headNum),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query",
+                    Ops::Base::ToString(queryShape).c_str(), reasonMsg.c_str()),
+                return ge::GRAPH_FAILED);
         } else if (inputLayout[0] == 'T') { // TND  N1 != N2
+            std::string reasonMsg = "When inputLayout is TND, n axis of query must be equal to " +
+                                    std::to_string(headNum);
             OP_CHECK_IF(headNum != queryShape.GetDim(1),
-               OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [headNum is %ld, but got n1 %ld]",
-               headNum, queryShape.GetDim(1)),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query",
+                    Ops::Base::ToString(queryShape).c_str(), reasonMsg.c_str()),
+                return ge::GRAPH_FAILED);
             return ge::SUCCESS;
         } else {
             // layout is SBH
+            std::string shapeMsg = "{" + Ops::Base::ToString(queryShape) + ", " + Ops::Base::ToString(keyShape) + "}";
             OP_CHECK_IF((queryShape.GetDim(1) != keyShape.GetDim(1)),
-                OP_LOGE(context,
-                    "In op [FlashAttentionScoreGrad], the tensor shapes of [query, key] are mismatched, "
-                    "the reason is: [query batch and key batch should be same, query batch=%ld, key batch=%ld]",
-                    queryShape.GetDim(1), keyShape.GetDim(1)),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn", shapeMsg.c_str(),
+                    "When inputLayout is SBH, b axis of query must be equal to b axis of keyIn"),
                 return ge::GRAPH_FAILED);
+            std::string reasonMsg = "When inputLayout is SBH, h axis of query must be exactly divisible " +
+                                    std::to_string(headNum);
             OP_CHECK_IF(queryShape.GetDim(2) % headNum != 0,
-               OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [h1 %ld should be a multiple of headNum %ld]",
-               queryShape.GetDim(2), headNum),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query",
+                    Ops::Base::ToString(queryShape).c_str(), reasonMsg.c_str()),
+                return ge::GRAPH_FAILED);
         }
         // kD < vD
+        std::string kvShapeMsg = "{" + Ops::Base::ToString(keyShape) + ", " + Ops::Base::ToString(valueShape) + "}";
         OP_CHECK_IF((keyShape.GetDim(2) < valueShape.GetDim(2)),
-            OP_LOGE(context,
-                "In op [FlashAttentionScoreGrad], the tensor shapes of [key, value] are mismatched, "
-                "the reason is: [key head dim should be greater than or equal to value head dim, key head dim=%ld, value head dim=%ld]",
-                keyShape.GetDim(2), valueShape.GetDim(2)),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value", kvShapeMsg.c_str(),
+                "D axis of keyIn cannnot be less than d axis of value"),
             return ge::GRAPH_FAILED);
     } else if (strlen(inputLayout) == 4) { // 4: layout is BNSD or BSND
+        std::string shapeMsg = "{" + Ops::Base::ToString(queryShape) + ", " + Ops::Base::ToString(keyShape) + "}";
         OP_CHECK_IF((queryShape.GetDim(0) != keyShape.GetDim(0)),
-            OP_LOGE(context,
-                "In op [FlashAttentionScoreGrad], the tensor shapes of [query, key] are mismatched, "
-                "the reason is: [query batch and key batch should be same, query batch=%ld, key batch=%ld]",
-                queryShape.GetDim(0), keyShape.GetDim(0)),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn", shapeMsg.c_str(),
+                "When inputLayout is BNSD or BSND, b axis of query must be equal to b axis of keyIn"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((queryShape.GetDim(3) != keyShape.GetDim(3)),
-            OP_LOGE(context,
-                "In op [FlashAttentionScoreGrad], the tensor shapes of [query, key] are mismatched, "
-                "the reason is: [query head dim and key head dim should be same, query head dim=%ld, key head dim=%ld]",
-                queryShape.GetDim(3), keyShape.GetDim(3)),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn", shapeMsg.c_str(),
+                "When inputLayout is BNSD or BSND, d axis of query must be equal to d axis of keyIn"),
             return ge::GRAPH_FAILED);
         if (inputLayout[1] == 'N') {
+            std::string qReasonMsg = "When inputLayout is BNSD, n axis of query must be equal to " +
+                                     std::to_string(headNum);
             OP_CHECK_IF(headNum != queryShape.GetDim(1),
-                   OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [headNum is %ld, but got n1 %ld]",
-                   headNum, queryShape.GetDim(1)),
-                   return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query",
+                    Ops::Base::ToString(queryShape).c_str(), qReasonMsg.c_str()),
+                return ge::GRAPH_FAILED);
         } else {
+            std::string qReasonMsg = "When inputLayout is BSND, n axis of query must be equal to " +
+                                     std::to_string(headNum);
             OP_CHECK_IF(headNum != queryShape.GetDim(2),
-                   OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [headNum is %ld, but got n1 %ld]",
-                   headNum, queryShape.GetDim(2)),
-                   return ge::GRAPH_FAILED);  
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query",
+                    Ops::Base::ToString(queryShape).c_str(), qReasonMsg.c_str()),
+                return ge::GRAPH_FAILED);
         }
+        std::string kvShapeMsg = "{" + Ops::Base::ToString(keyShape) + ", " + Ops::Base::ToString(valueShape) + "}";
         OP_CHECK_IF((keyShape.GetDim(3) < valueShape.GetDim(3)),
-            OP_LOGE(context,
-                "In op [FlashAttentionScoreGrad], the tensor shapes of [key, value] are mismatched, "
-                "the reason is: [key head dim should be greater than or equal to value head dim, key head dim=%ld, value head dim=%ld]",
-                keyShape.GetDim(3), valueShape.GetDim(3)), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value", kvShapeMsg.c_str(),
+                "When inputLayout is BNSD, d axis of keyIn cannot be less than d axis of value"),
+            return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE(context, "In op [FlashAttentionScoreGrad], the format of [input_layout] is not supported, got [%s]", inputLayout);
+        OP_LOGE_FOR_INVALID_FORMAT("FlashAttentionScoreGrad", "inputLayout", inputLayout,
+            "BSH or SBH or TND or BSND or BNSD");
         return ge::GRAPH_FAILED;
     }
     return ge::SUCCESS;
@@ -370,7 +376,15 @@ static ge::graphStatus CheckParams(gert::TilingContext *context)
                OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [invalid attrs]"), return ge::GRAPH_FAILED);
     if ((context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) != nullptr && context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) == nullptr) ||
         (context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) == nullptr && context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) != nullptr)) {
-        OP_LOGE(context, "In op [FlashAttentionScoreGrad], the tensor shapes of [query_rope, key_rope] are mismatched, the reason is: [must be either both defined or both undefined]");
+        auto &qRShapePtr = context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX)->GetStorageShape();
+        auto &kRShapePtr = context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX)->GetStorageShape();
+        std::string qRShape = context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) != nullptr ?
+                              Ops::Base::ToString(qRShapePtr) : "null";
+        std::string kRShape = context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) != nullptr ?
+                              Ops::Base::ToString(kRShapePtr) : "null";
+        std::string qkRShape = "{" + qRShape + ", " + kRShape + "}";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional",
+            qkRShape.c_str(), "If queryRopeOptional is an empty tensor, keyRopeOptional must also be and empty tensor");
         return ge::GRAPH_FAILED;
     }
 
@@ -383,7 +397,8 @@ static ge::graphStatus CheckParams(gert::TilingContext *context)
             return ge::SUCCESS;
         }
     }
-    OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [fail to get shape or attr from context]");
+    OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad",
+        "query or keyIn or value or dy or softmaxMaxOptional or softmaxSumOptional or attentionInOptional");
     return ge::GRAPH_FAILED;
 }
 

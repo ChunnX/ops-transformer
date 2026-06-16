@@ -42,7 +42,7 @@ import sys
 import pytest
 import torch
 import torch_npu
-import npu_ops_transformer
+import cann_ops_transformer
 
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")))
 from util import (  # noqa: E402
@@ -211,7 +211,7 @@ def _run_kernel_with_lse_dense(q, k, v, h, scale, seq_len):
     kv_blocks = (seq_len + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
     mask = torch.ones(B, h, q_blocks, kv_blocks, dtype=torch.int8, device=q.device)
 
-    out, lse = npu_ops_transformer.ops.block_sparse_attention(
+    out, lse = cann_ops_transformer.ops.block_sparse_attention(
         q, k, v,
         block_sparse_mask=mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
@@ -233,7 +233,7 @@ def _run_kernel_with_lse_sparse(q, k, v, h, scale, seq_len, sabi):
     actual_seq = [seq_len] * B
     mask = _sabi_to_int8_mask(sabi, B, h, seq_len)
 
-    out, lse = npu_ops_transformer.ops.block_sparse_attention(
+    out, lse = cann_ops_transformer.ops.block_sparse_attention(
         q, k, v,
         block_sparse_mask=mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
@@ -450,7 +450,7 @@ def test_lse_shape_and_dtype(shape):
     q_blocks = (S + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
     kv_blocks = (S + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
     mask = torch.ones(B, H, q_blocks, kv_blocks, dtype=torch.int8, device=DEVICE)
-    _, lse_raw = npu_ops_transformer.ops.block_sparse_attention(
+    _, lse_raw = cann_ops_transformer.ops.block_sparse_attention(
         q, q, q,
         block_sparse_mask=mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
@@ -481,7 +481,7 @@ def test_lse_disabled_returns_empty(shape):
     q_blocks = (S + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
     kv_blocks = (S + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
     mask = torch.ones(B, H, q_blocks, kv_blocks, dtype=torch.int8, device=DEVICE)
-    _, lse = npu_ops_transformer.ops.block_sparse_attention(
+    _, lse = cann_ops_transformer.ops.block_sparse_attention(
         q, q, q,
         block_sparse_mask=mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],

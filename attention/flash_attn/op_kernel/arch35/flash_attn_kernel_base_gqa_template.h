@@ -550,7 +550,7 @@ public:
 
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
-        int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+        int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
                                    static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
                                1;
         int64_t s1FirstToken = 0;
@@ -594,11 +594,11 @@ public:
 
         if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) { // first line
             headS2Split = s2OStart_ > s2StartWithSparse ? true : false;
-            curS2Start = Max(s2StartWithSparse, s2OStart_);
+            curS2Start = AttentionCommon::Max(s2StartWithSparse, s2OStart_);
         }
         if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) { // last line
             tailS2Split = s2OEnd_ > 0U ? true : false;
-            curS2End = s2OEnd_ > 0U ? Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
+            curS2End = s2OEnd_ > 0U ? AttentionCommon::Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
         }
         return;
     }
@@ -691,7 +691,7 @@ public:
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
         info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
         if (constInfo.isKvContinuous) {
             info.isChangeBatch = false;
         } else {
