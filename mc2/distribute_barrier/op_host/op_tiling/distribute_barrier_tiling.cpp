@@ -104,7 +104,13 @@ static bool CheckAndSetAttrs(const gert::TilingContext *context, DistributeBarri
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OPS_LOG_E(A_INNER_DEBUG_BARRIER, "GetAttrs returned nullptr!"), return false);
-
+    std::string socVersion = mc2tiling::GetSocVersion(context);
+    int64_t MAX_WORLD_SIZE = 0;
+    if (socVersion = "Ascend950") {
+        MAX_WORLD_SIZE = 1024;
+    } else {
+        MAX_WORLD_SIZE = 384;
+    }
     auto groupPtr = attrs->GetAttrPointer<char>(config.attrGroupIndex);
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(config.attrWorldSizeIndex);
 
