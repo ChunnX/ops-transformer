@@ -95,7 +95,7 @@ public:
     {
         return is_finish_;
     }
-    
+
     __aicore__ inline void SetBaseBlock(uint32_t s1_base_size)
     {
         this->s1_base_size_ = s1_base_size;
@@ -115,6 +115,7 @@ private:
 
         if (this->s1_start_idx_ >= this->s1_end_idx_) {
             // 下一块遍历完，提前退出
+            this->is_finish_ = true;
             return;
         }
 
