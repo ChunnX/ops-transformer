@@ -42,7 +42,7 @@
 |ori_topk_length|可选输入|预留参数，当前不生效|INT32|ND|
 |cmp_topk_length|可选输入|预留参数，当前不生效|INT32|ND|
 |sinks|可选输入|注意力下沉tensor|FLOAT32|ND|
-|metadata|可选输入|aicpu算子（npu_mixed_quant_sparse_flash_mla_metadata）的分核结果，shape固定为[1024]|INT32|ND|
+|metadata|可选输入|aicpu算子（mixed_quant_sparse_flash_mla_metadata）的分核结果，shape固定为[1024]|INT32|ND|
 |quant_mode|可选属性|默认值为None，表示K、V nope的量化模式，当前仅支持1、2，1表示K、V nope为per_token_group量化，scale类型为bfloat16，2表示K、V nope为per_token_group量化，scale类型为float8_e8m0|INT32|-|
 |rope_head_dim|可选属性|默认值为None，当前仅支持64|INT32|-|
 |softmax_scale|可选属性|默认值为None，代表缩放系数，作为q与ori_kv和cmp_kv矩阵乘后Muls的scalar值|FLOAT32|-|
@@ -79,5 +79,5 @@
 -   Q\_S和S1表示q shape中的S，S2表示ori\_kv shape中的S，Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori\_kv\_heads和num\_cmp\_kv\_heads；T1表示q shape中的T。
 
 ## 调用说明
--   调用方式：使用npu_ops_tranformer包中的npu_mixed_quant_sparse_flash_mla接口进行调用，
-             详见torch_extension/npu_ops_transformer/ops/mixed_quant_sparse_flash_mla.py
+-   调用方式：使用npu_ops_tranformer包中的mixed_quant_sparse_flash_mla接口进行调用，
+             详见torch_extension/cann_ops_transformer/ops/mixed_quant_sparse_flash_mla.py

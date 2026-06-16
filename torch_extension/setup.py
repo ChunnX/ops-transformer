@@ -9,9 +9,9 @@
 # -----------------------------------------------------------------------------------------------------------
 
 
-__description__ = "NpuOpsTransformer"
+__description__ = "CannOpsTransformer"
 __version__ = "1.0.0"
-__package_name__ = 'npu_ops_transformer'
+__package_name__ = 'cann_ops_transformer'
 
 import os
 import sys
