@@ -628,11 +628,7 @@ private:
             LayoutB layoutB1 = params.layoutB1;
             LayoutScale layoutScale = params.layoutScale1;
             LayoutC layoutC;
-            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-                layoutC = LayoutC(inGroupProblemShape.m(), inGroupProblemShape.n());
-            } else {
-                layoutC = LayoutC(inGroupProblemShape.m(), inGroupProblemShape.n(), params.problemShape.k());
-            }
+            layoutC = LayoutC(inGroupProblemShape.m(), inGroupProblemShape.n());
             blockScheduler.Update(inGroupProblemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
             uint32_t coreLoops = blockScheduler.GetCoreLoops();
             // Determine the starting loopIdx of the current core under the current groupIdx
@@ -707,11 +703,7 @@ private:
             if (params.listLen == 1) {
                 gmGroupOffsetB += inGroupProblemShape.k() * inGroupProblemShape.n();
             }
-            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-                gmGroupOffsetC += inGroupProblemShape.m() * inGroupProblemShape.n();
-            } else {
-                gmGroupOffsetC += inGroupProblemShape.m() * inGroupProblemShape.k();
-            }
+            gmGroupOffsetC += inGroupProblemShape.m() * inGroupProblemShape.n();
             startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
         }
 
@@ -750,14 +742,10 @@ private:
 
         int64_t preCurrentmSum = 0;
         int32_t syncLoopIdx = -1;
-
+        uint32_t lastDequantExpertNum = params.expertPerRank;
         if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
-            uint32_t lastDequantExpertNum = params.expertPerRank;
             if (params.epilogueGranularity < params.expertPerRank) {
                 lastDequantExpertNum = params.expertPerRank - params.epilogueGranularity;
-            }
-            if (params.epilogueGranularity < params.expertPerRank && params.epilogueGranularity > 0) {
-                AscendC::PipeBarrier<PIPE_ALL>();
             }
         }
 
@@ -800,10 +788,6 @@ private:
                     AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C);
                 }
             } else {
-                uint32_t lastDequantExpertNum = params.expertPerRank;
-                if (params.epilogueGranularity < params.expertPerRank) {
-                    lastDequantExpertNum = params.expertPerRank - params.epilogueGranularity;
-                }
                 if (params.expertPerRank > lastDequantExpertNum &&
                     groupIdx + 1 == params.expertPerRank - lastDequantExpertNum) {
                     AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C);
@@ -1147,13 +1131,17 @@ private:
         ApplyXActiveMask(params);
 
         constexpr bool kRoutingIsQuant = std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>;
+        // expandedX row stride alignment: INT4 needs 512-byte padding for the
+        // int8→int4 conversion scratch; INT8/BF16 needs UB_ALIGN for per-token scale.
+        constexpr int64_t colsAlign =
+            std::is_same_v<ElementB, AscendC::int4b_t> ? int64_t{512} : static_cast<int64_t>(UB_ALIGN);
         if constexpr (kRoutingIsQuant) {
             moe_init_routing_quant_v2<ElementD2>(
                 reinterpret_cast<GM_ADDR>(params.ptrA), params.expertIdx, params.moeInitRoutingQuantV2Scale,
                 params.moeInitRoutingQuantV2Offset, shmem() + peermemInfo.offsetA, workspaceInfo.expandedRowIdx,
                 localTokenPerExpert, params.expertTokensBeforeCapacity, shmem() + peermemInfo.offsetPeerPerTokenScale,
                 params.ptrWorkspace + expandedRowIdxOffset, &params.moeInitRoutingQuantV2TilingData,
-                params.initRoutingQuantTilingKey);
+                params.initRoutingQuantTilingKey, colsAlign);
         } else {
             // BF16 / FP16 path: no scale/offset/dynamicQuantScale inputs and
             // outputs, tiling data is the Inner (non-quant) variant.
@@ -1335,20 +1323,16 @@ private:
                 MatrixCoord offsetC{0U, 0};
                 MatrixCoord shapeC{dequantSum1, params.problemShape.n()};
                 LayoutC layoutC;
-                if constexpr (std::is_same_v<ElementB, int8_t>) {
-                    layoutC = LayoutC{dequantSum1, params.problemShape.k()};
-                } else {
-                    layoutC = LayoutC{dequantSum1, params.problemShape.n()};
-                }
+                layoutC = LayoutC{dequantSum1, params.problemShape.n()};
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                 if constexpr (std::is_same_v<ElementB, int8_t>) {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                    gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
-                                   params.epilogueCoreNum, params.swigluLimit, params.problemShape.k());
+                                   params.epilogueCoreNum, params.swigluLimit, 1);
                 } else {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, params.epilogueCoreNum,
-                                   params.swigluLimit, params.problemShape.n());
+                                   params.swigluLimit, 1);
                 }
             }
             AscendC::SyncAll<true>();
@@ -1363,20 +1347,16 @@ private:
                     uint32_t dequantLen = dequantSum2;
                     MatrixCoord shapeC{dequantLen, params.problemShape.n()};
                     LayoutC layoutC;
-                    if constexpr (std::is_same_v<ElementB, int8_t>) {
-                        layoutC = LayoutC{dequantLen, params.problemShape.k()};
-                    } else {
-                        layoutC = LayoutC{dequantLen, params.problemShape.n()};
-                    }
+                    layoutC = LayoutC{dequantLen, params.problemShape.n()};
                     int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                     int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                     if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                        gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
-                                       coreNum, params.swigluLimit, params.problemShape.k());
+                                       coreNum, params.swigluLimit, 1);
                     } else {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, coreNum,
-                                       params.swigluLimit, params.problemShape.n());
+                                       params.swigluLimit, 1);
                     }
                 }
                 AscendC::SyncAll<true>();
@@ -1398,7 +1378,7 @@ private:
         AscendC::SyncAll<true>();
         ResetTokenPerExpert(params.EP * paddedExpertNumAligned);
 
-        if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+        if constexpr (!std::is_same_v<ElementB, int8_t>) {
             shmem.InitStatusTargetSum();
             if (get_subblockid() == 0) {
                 AscendC::LocalTensor<int32_t> ctrBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
@@ -1621,9 +1601,7 @@ private:
             ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
 
             workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
-            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-                workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
-            }
+            workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
             ptrPerTokenScale = params.ptrWorkspace + workspaceOffset;
 
             workspaceOffset += params.maxOutputSize * sizeof(ElementPerTokenScale);
@@ -1639,9 +1617,6 @@ private:
                 workspaceOffset += params.maxOutputSize * params.problemShape.n() * sizeof(ElementC) * 2;
                 ptrC2 = params.ptrWorkspace + workspaceOffset; // 8
                 workspaceOffset += params.maxOutputSize * n2 * sizeof(ElementC) * 2;
-            } else if constexpr (std::is_same_v<ElementA, int8_t>) {
-                ptrC2 = ptrC;
-                workspaceOffset += params.maxOutputSize * n2 * sizeof(ElementC);
             } else {
                 workspaceOffset += params.maxOutputSize * params.problemShape.n() * sizeof(ElementC);
                 ptrC2 = params.ptrWorkspace + workspaceOffset;
@@ -1655,10 +1630,6 @@ private:
                 workspaceOffset += params.maxOutputSize * k2;
                 ptrCGMM1 = params.ptrWorkspace + workspaceOffset;
                 ptrCGMM2 = params.ptrWorkspace + workspaceOffset;
-            } else if constexpr (std::is_same_v<ElementA, int8_t>) {
-                ptrA = params.ptrWorkspace + workspaceOffset;
-                ptrPermutedToken = ptrA;
-                workspaceOffset += params.maxOutputSize * params.problemShape.k() * sizeof(ElementA);
             } else {
                 ptrA = params.ptrWorkspace + workspaceOffset;
                 workspaceOffset += params.maxOutputSize * params.problemShape.k() * sizeof(ElementA);
