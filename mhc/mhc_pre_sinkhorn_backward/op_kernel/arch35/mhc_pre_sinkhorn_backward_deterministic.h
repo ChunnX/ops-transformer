@@ -25,8 +25,8 @@
 
 using namespace AscendC;
 
-constexpr uint8_t ONE = 1;
-constexpr uint8_t TWO = 2;
+constexpr uint8_t NUMONE = 1;
+constexpr uint8_t NUMTWO = 2;
 template<typename X_T, typename GRADHIN_T, typename U>
 class MhcPreSinkhornBackwardDeterministic {
 public:
@@ -321,13 +321,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     CopyInInvRms(bsLen, invRmsOffset);
     LocalTensor<U> invRmsLocal = invRmsQue_.DeQue<U>();
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, 0, alphaPre_);
-    ComputeSigmoidGrad(bsLen, n_, ONE);
+    ComputeSigmoidGrad(bsLen, n_, NUMONE);
     ComputeGradAlphaAndBias(bsLen, n_);
     CopyOutAlphaAndBias(blockIdx_, blockIdx_ * n_);
     //grad_Z_pre ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, n_, alphaPost_);
     CopyInHpreAndGradHPost(gradHPostGm_[gradHPostOffset], bsLen);
-    ComputeSigmoidGrad(bsLen, n_, TWO);
+    ComputeSigmoidGrad(bsLen, n_, NUMTWO);
     ComputeGradAlphaAndBias(bsLen, n_);
     CopyOutAlphaAndBias(blockIdx_ + 64, blockIdx_ * n_ + 64 * n_);
     //grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
@@ -392,8 +392,8 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     __local_mem__ U* gradAlphaAddr = (__ubuf__ U*)gradAlphaLocal.GetPhyAddr();
     __local_mem__ U* gradBiasAddr = (__ubuf__ U*)gradBiasLocal.GetPhyAddr();
 
-    ComputeGradAlpha<U>(normOutForwardAddr, gradZAddr, gradAlphaAddr, bsLen, colLen);
-    ComputeGradBias<U>(gradBiasAddr, gradZAddr, bsLen, colLen);
+    ComputeGradAlpha<U>(normOutForwardAddr, gradZAddr, gradAlphaAddr, bsLen, colLen, V_REG_SIZE);
+    ComputeGradBias<U>(gradBiasAddr, gradZAddr, bsLen, colLen, V_REG_SIZE);
     gradXFromHinAndAlphaAndBiasQue_.EnQue<U>(gradAlphaLocal);
 }
 
