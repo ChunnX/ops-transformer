@@ -53,6 +53,13 @@ layout_result npu_dispatch_layout(const at::Tensor &topk_idx, int64_t num_tokens
                 "num_experts should be divisible by num_ranks, current num_experts: ",
                 num_experts, ", num_ranks: ", num_ranks);
 
+    TORCH_CHECK(local_ranksize > 0 && local_ranksize <= num_ranks,
+                "local_ranksize must be in (0, num_ranks], got local_ranksize=", local_ranksize,
+                ", num_ranks=", num_ranks);
+    TORCH_CHECK((num_ranks % local_ranksize) == 0,
+                "num_ranks must be divisible by local_ranksize for dispatch_layout, got num_ranks=",
+                num_ranks, ", local_ranksize=", local_ranksize);
+
     int64_t round = (num_tokens + per_round_tokens - 1) / per_round_tokens;
     TORCH_CHECK(num_tokens <= round * per_round_tokens,
                 "num_tokens must be <= round * per_round_tokens, got num_tokens=", num_tokens,

@@ -76,14 +76,13 @@ __global__ __aicore__ void notify_dispatch(GM_ADDR context, GM_ADDR sendData, GM
     int scaleCount = 0;
     GM_ADDR offset = nullptr;
 
-    (void)context;
     if constexpr ((ArchTag == TILINGKEY_TPL_A3) || (ArchTag == TILINGKEY_TPL_A2)) {
         NotifyDispatch<int> opKernel(rank, rankSize, extraFlag);
-        opKernel.Init(KERNELS_ARGS_CALL_ALL2ALL());
+        opKernel.Init(context, KERNELS_ARGS_CALL_ALL2ALL());
         opKernel.Process();
     } else if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         NotifyDispatchA5<int> opKernel(rank, rankSize, extraFlag);
-        opKernel.Init(KERNELS_ARGS_CALL_ALL2ALL());
+        opKernel.Init(context, KERNELS_ARGS_CALL_ALL2ALL());
         opKernel.Process();
     }
 }

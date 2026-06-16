@@ -50,7 +50,9 @@ class Buffer:
         """
         Args:
             group: torch.distributed process group for EP.
-            local_ranksize: Ranks per server for dispatch_layout only (sgl LOCAL_RANK_SIZE=8); 0 means 8.
+            local_ranksize: Ranks per server for dispatch_layout only (sgl LOCAL_RANK_SIZE=8 on
+                16-card); 0 auto-selects 8 when world_size>=16 else world_size. Notify/prefill always
+                uses ep world_size, not this value.
             per_round_tokens: Tokens per round (sgl default 8192; must match dispatch_layout / notify / dispatch).
             quant_mode: 0 = no quant, 2 = dynamic int8 (same as dispatch_normal).
             round_num: Configured max rounds (sgl Buffer.round, default 1). Each request must satisfy
@@ -61,7 +63,7 @@ class Buffer:
         self.rank_id = torch.distributed.get_rank(group)
         self.world_size = torch.distributed.get_world_size(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
-            self.rank_id, init_comm=False
+            self.rank_id
         )
         self.per_round_tokens = per_round_tokens
         self.quant_mode = quant_mode
@@ -70,8 +72,10 @@ class Buffer:
 
         if local_ranksize > 0:
             self.local_ranksize = local_ranksize
-        else:
+        elif self.world_size >= 16 and self.world_size % 8 == 0:
             self.local_ranksize = 8
+        else:
+            self.local_ranksize = self.world_size
 
         context_struct_size = 2 + 1024
         context_tensor_size = ((context_struct_size * 8) + 3) // 4
@@ -196,7 +200,7 @@ class Buffer:
         self.group = new_group
         self.rank_id = torch.distributed.get_rank(new_group)
         self.group_name = new_group._get_backend(torch.device("npu")).get_hccl_comm_name(
-            self.rank_id, init_comm=False
+            self.rank_id
         )
         new_world_size = torch.distributed.get_world_size(new_group)
         torch._check(
@@ -437,7 +441,7 @@ class Buffer:
                 ext_handle_data=self.ext_handle_data,
                 ep_world_size=self.world_size,
                 ep_rank_id=self.rank_id,
-                local_ranksize=self.local_ranksize,
+                local_ranksize=self.world_size,
                 moe_expert_num=self.num_experts,
                 ccl_buffer_size=self.ccl_buffer_size.value,
                 x_scales=x_scales,

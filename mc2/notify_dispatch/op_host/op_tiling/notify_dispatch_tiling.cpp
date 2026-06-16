@@ -83,17 +83,15 @@ constexpr static int ALL_TO_ALL_CORE_NUM = 32;
 namespace optiling {
 static void PrintTilingDataInfo(const char *nodeName, NotifyDispatchTilingData &tilingData)
 {
-    OP_LOGD(nodeName, "rankSize is %u.", tilingData.notifyDispatchInfo.rankSize);
-    OP_LOGD(nodeName, "rankId is %u.", tilingData.notifyDispatchInfo.rankId);
-    OP_LOGD(nodeName, "localRankSize is %u.", tilingData.notifyDispatchInfo.localRankSize);
-    OP_LOGD(nodeName, "localRankId is %u.", tilingData.notifyDispatchInfo.localRankId);
-    OP_LOGD(nodeName, "sendCount is %u.", tilingData.notifyDispatchInfo.sendCount);
-    OP_LOGD(nodeName, "numTokens is %u.", tilingData.notifyDispatchInfo.numTokens);
-    OP_LOGD(nodeName, "round is %u.", tilingData.notifyDispatchInfo.round);
-    OP_LOGD(nodeName, "perRoundTokens is %u.", tilingData.notifyDispatchInfo.perRoundTokens);
-    OP_LOGD(nodeName, "aivNum is %u.", tilingData.notifyDispatchInfo.aivNum);
-    OP_LOGD(nodeName, "totalUbSize is %lu.", tilingData.notifyDispatchInfo.totalUbSize);
-    OP_LOGD(nodeName, "totalWinSize is %lu.", tilingData.notifyDispatchInfo.totalWinSize);
+    OP_LOGI(nodeName,
+            "NotifyDispatch tiling: rankSize=%u rankId=%u localRankSize=%u localRankId=%u "
+            "sendCount=%u numTokens=%u round=%u perRoundTokens=%u aivNum=%u totalUbSize=%lu totalWinSize=%lu",
+            tilingData.notifyDispatchInfo.rankSize, tilingData.notifyDispatchInfo.rankId,
+            tilingData.notifyDispatchInfo.localRankSize, tilingData.notifyDispatchInfo.localRankId,
+            tilingData.notifyDispatchInfo.sendCount, tilingData.notifyDispatchInfo.numTokens,
+            tilingData.notifyDispatchInfo.round, tilingData.notifyDispatchInfo.perRoundTokens,
+            tilingData.notifyDispatchInfo.aivNum, tilingData.notifyDispatchInfo.totalUbSize,
+            tilingData.notifyDispatchInfo.totalWinSize);
 }
 
 static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char *nodeName)

@@ -13,6 +13,7 @@
  * \brief Torch extension for notify_dispatch operator
  */
 
+#include <iostream>
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
@@ -80,6 +81,16 @@ tensor_list npu_notify_dispatch(const at::Tensor &context, const at::Tensor &sen
 
     at::TensorList recv_offset_ref = {recv_offset, recv_count};
     at::TensorList expert_output_offset_ref = {expert_global_offset, srcrank_in_expert_offset, r_in_srcrank_offset};
+
+    std::cout << "[npu_notify_dispatch wrapper] "
+              << "send_data.sizes=" << send_data.sizes()
+              << " num_tokens_per_expert.sizes=" << token_per_expert_data.sizes()
+              << " send_count=" << send_count << " num_tokens=" << num_tokens
+              << " ep_world_size=" << ep_world_size << " ep_rank_id=" << ep_rank_id
+              << " local_rank_size=" << local_rank_size << " local_rank_id=" << local_rank_id
+              << " ccl_buffer_size=" << ccl_buffer_size << " round=" << round
+              << " per_round_tokens=" << per_round_tokens << " num_experts=" << num_experts
+              << " num_local_experts=" << num_local_experts << std::endl;
 
     ACLNN_CMD(aclnnNotifyDispatch, context, send_data, token_per_expert_data, send_count, num_tokens,
               ep_world_size, ep_rank_id, local_rank_size, local_rank_id, ccl_buffer_size,

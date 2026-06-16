@@ -17,6 +17,7 @@
  */
 
 #include <algorithm>
+#include <iostream>
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
@@ -113,11 +114,11 @@ tensor_list npu_moe_dispatch_prefill(
     const int64_t send_per_group = EXPAND_IDX_COUNT_PER_GROUP;
     // umdk: sendCount = sendPerGroup * numLocalExperts * numRanks (= sendPerGroup * numExperts, round=1)
     const int64_t send_count = send_per_group * num_local_experts * ep_world_size * round;
-    // ops-transformer targets A3 only. sgl splits internode notify by A2_MAX_HCCS_PEERS=8 only on
-    // ASCEND910B; on A3 num_rdma_ranks stays 1 and intranode_dispatch notify uses num_ranks.
-    // layout local_ranksize (typically 8) is dispatch_layout-only, not notify local_rank_size.
-    (void)local_ranksize;
-    const int64_t notify_local_rank_size = ep_world_size;
+    // A3 intranode notify: local_ranksize must equal ep_world_size (sgl deep_ep.cpp intranode path).
+    TORCH_CHECK(local_ranksize == ep_world_size,
+                "local_ranksize for notify must equal ep_world_size on A3 intranode, got local_ranksize=",
+                local_ranksize, ", ep_world_size=", ep_world_size);
+    const int64_t notify_local_rank_size = local_ranksize;
     const int64_t notify_local_rank_id = ep_rank_id % notify_local_rank_size;
 
     auto int32_opts = at::TensorOptions()
@@ -143,6 +144,27 @@ tensor_list npu_moe_dispatch_prefill(
     at::TensorList expert_output_offset_ref = {expert_global_offset, srcrank_in_expert_offset, r_in_srcrank_offset};
 
     TORCH_CHECK(context.scalar_type() == at::kInt && context.dim() == DIM_ONE, "context must be 1D int32.");
+
+    std::cout << "[cpp prefill before NotifyDispatch] "
+              << "ep_world_size=" << ep_world_size << " ep_rank_id=" << ep_rank_id
+              << " local_ranksize=" << local_ranksize << " moe_expert_num=" << moe_expert_num
+              << " ccl_buffer_size=" << ccl_buffer_size << " num_worst_tokens=" << num_worst_tokens
+              << " quant_mode=" << quant_mode << " round=" << round << " per_round_tokens=" << per_round_tokens
+              << " send_count=" << send_count << " num_tokens=" << num_tokens
+              << " topk_idx.sizes=" << topk_idx.sizes()
+              << " num_tokens_per_rank.sizes="
+              << (num_tokens_per_rank.has_value() ? num_tokens_per_rank.value().sizes() : c10::IntArrayRef{})
+              << " is_token_in_rank.sizes="
+              << (is_token_in_rank.has_value() ? is_token_in_rank.value().sizes() : c10::IntArrayRef{})
+              << " num_tokens_per_expert.sizes=" << tokens_per_expert.sizes()
+              << " send_data.sizes=" << send_data.sizes() << " send_token_idx_small.sizes=" << send_token_idx_small.sizes()
+              << std::endl;
+    std::cout << "[cpp ext_handle_data] len=" << ext_handle_data.size() << std::endl;
+    for (size_t i = 0; i < ext_handle_data.size(); ++i) {
+        const at::Tensor &t = ext_handle_data[i];
+        std::cout << "  ext_handle_data[" << i << "] sizes=" << t.sizes() << " dtype=" << t.scalar_type()
+                  << " device=" << t.device() << std::endl;
+    }
 
     ACLNN_CMD(aclnnNotifyDispatch, context, send_data, tokens_per_expert, send_count, num_tokens, ep_world_size,
               ep_rank_id, notify_local_rank_size, notify_local_rank_id, ccl_buffer_size, round, per_round_tokens,

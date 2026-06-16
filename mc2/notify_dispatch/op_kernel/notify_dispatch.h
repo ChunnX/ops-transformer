@@ -71,9 +71,9 @@ public:
         : rank(rank), rankSize(rankSize), extraFlag(extraFlag)
     {}
 
-    __aicore__ inline void Init(KERNELS_ARGS_FUN_ALL2ALL())
+    __aicore__ inline void Init(GM_ADDR mc2Context, KERNELS_ARGS_FUN_ALL2ALL())
     {
-        InitSmallFullMesh(KERNELS_ARGS_CALL_ALL2ALL());
+        InitSmallFullMesh(mc2Context, KERNELS_ARGS_CALL_ALL2ALL());
         nodeNum = rankSize / localRankSize;
         localRankId = rank % localRankSize;
         localNodeId = rank / localRankSize;
@@ -794,9 +794,9 @@ private:
     }
 
     __aicore__ inline int64_t GetDataCount(const int64_t dataLen, const int64_t useBlockNum);
-    __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId, uint8_t ctxIdx);
+    __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId);
     __aicore__ inline uint64_t GetMagicValue(void);
-    __aicore__ inline void InitSmallFullMesh(KERNELS_ARGS_FUN_ALL2ALL());
+    __aicore__ inline void InitSmallFullMesh(GM_ADDR mc2Context, KERNELS_ARGS_FUN_ALL2ALL());
     template <typename F>
     __aicore__ inline void SetAtomic(int op);
     __aicore__ inline void UnsetAtomic(int op);
@@ -868,6 +868,7 @@ private:
     GM_ADDR rInSrcrankOffset_;
     GM_ADDR maxBs_;
     GM_ADDR recvTokensPerExpert_;
+    __gm__ Mc2Aclnn::Mc2MoeContext *mc2Context_{nullptr};
     __gm__ HcclOpResParam *winContext_[COMM_NUM]{nullptr, nullptr};
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     TPipe pipe;
@@ -912,22 +913,9 @@ __aicore__ inline int64_t NotifyDispatch<T>::GetDataCount(const int64_t dataLen,
 }
 
 template <typename T>
-__aicore__ inline GM_ADDR NotifyDispatch<T>::GetWindAddrByRankId(const int32_t rankId, uint8_t ctxIdx)
+__aicore__ inline GM_ADDR NotifyDispatch<T>::GetWindAddrByRankId(const int32_t rankId)
 {
-    uint32_t curRankId = rank;
-#ifdef OPT_RANK_OFFSET
-#pragma message("use rank offset")
-    if (curRankId == rankId) {
-        return (GM_ADDR)(winContext_[ctxIdx]->localWindowsIn) + rankId * OPT_RANK_OFFSET;
-    }
-    return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_[ctxIdx]->remoteRes[rankId].nextDevicePtr))->windowsIn) +
-           rankId * OPT_RANK_OFFSET;
-#else
-    if (curRankId == rankId) {
-        return (GM_ADDR)(winContext_[ctxIdx]->localWindowsIn);
-    }
-    return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_[ctxIdx]->remoteRes[rankId].nextDevicePtr))->windowsIn);
-#endif
+    return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]);
 }
 
 // Assign values to winContext_[COMM_EP_IDX] and blockIdx before calling
@@ -949,7 +937,7 @@ __aicore__ inline uint64_t NotifyDispatch<T>::GetMagicValue(void)
 }
 
 template <typename T>
-__aicore__ inline void NotifyDispatch<T>::InitSmallFullMesh(KERNELS_ARGS_FUN_ALL2ALL())
+__aicore__ inline void NotifyDispatch<T>::InitSmallFullMesh(GM_ADDR mc2Context, KERNELS_ARGS_FUN_ALL2ALL())
 {
     this->root = root;
     this->len = len;
@@ -968,21 +956,20 @@ __aicore__ inline void NotifyDispatch<T>::InitSmallFullMesh(KERNELS_ARGS_FUN_ALL
     this->yRankIdx = rank / localRankSize;
     blockIdx = GetBlockIdx();
     blockNum = GetBlockNum();
-    uint8_t ctxIdx;
 
-    winContext_[COMM_EP_IDX] = (__gm__ HcclOpResParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    this->magic = GetMagicValue();
-    ctxIdx = COMM_EP_IDX;
+    mc2Context_ = (__gm__ Mc2Aclnn::Mc2MoeContext *)mc2Context;
+    // Verification patch: fixed magic skips GetMagicValue() until Mc2 status region is wired up.
+    this->magic = 1;
     uint64_t winDataOffset = (this->magic % PING_PONG_SIZE) * (totalWinSize / 2);
 
-    shareAddrs[rank] = GetWindAddrByRankId(rank, ctxIdx) + winDataOffset;
+    shareAddrs[rank] = GetWindAddrByRankId(rank) + winDataOffset;
 
     int32_t rankNumPerCore = (rankSize + blockNum - 1) / blockNum;
     int32_t copyOffset = blockIdx * rankNumPerCore;
     int32_t copyLen = rankSize - copyOffset < rankNumPerCore ? rankSize - copyOffset : rankNumPerCore;
     if (copyLen > 0) {
         for (int i = copyOffset; i < copyOffset + copyLen; ++i) {
-            shareAddrs[i] = GetWindAddrByRankId(i, ctxIdx) + winDataOffset;
+            shareAddrs[i] = GetWindAddrByRankId(i) + winDataOffset;
         }
     }
 
@@ -995,7 +982,7 @@ __aicore__ inline void NotifyDispatch<T>::InitSmallFullMesh(KERNELS_ARGS_FUN_ALL
     if (blockIdx < maxCore) {
         // Calculate the rank to be read based on the block, 48 cores divided into 4 groups
         int readRank = blockIdx / coreNumPerRank;
-        shareAddrs[readRank] = GetWindAddrByRankId(readRank, ctxIdx) + winDataOffset;
+        shareAddrs[readRank] = GetWindAddrByRankId(readRank) + winDataOffset;
     }
 
     pipe.InitBuffer(tBuf, UB_FLAG_SIZE);
