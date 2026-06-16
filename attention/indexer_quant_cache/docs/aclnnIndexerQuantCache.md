@@ -247,8 +247,6 @@ aclnnStatus aclnnIndexerQuantCache(
 ## 约束说明
 
 - 确定性计算：aclnnIndexerQuantCache默认确定性实现。
-- 仅支持 <term>Ascend 950PR/Ascend 950DT</term> 平台。
-- cacheRef与cacheScaleRef均为原地操作（in-place），调用前后须分别为同一tensor。
 - 数据类型组合需与quantMode匹配：Normal/HiFloat8模式cacheScale为FLOAT；MX-FP8/MX-FP4模式cacheScale为FLOAT8_E8M0；MX-FP4模式cache为FP4（uint8打包）。
 - slotMapping的维度应等于x的维度减1，即slotMapping为x除最后一维外的所有维度展平。
 - x的最后一维（d轴）按每128个元素一组进行逐块量化；MX-FP4（quantMode=3）按每32个元素一组（标准MX块）量化出一个float8_e8m0 scale。
