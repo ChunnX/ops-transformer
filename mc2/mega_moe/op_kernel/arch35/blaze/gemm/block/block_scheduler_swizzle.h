@@ -37,14 +37,19 @@ public:
     __aicore__ inline BlockSchedulerSwizzle(const ProblemShape& shape, const Params& params)
         : problemShape_(shape), tileShape_(params.tileShape)
     {
+        using AscendC::Te::Get;
+        int64_t problemM = Get<IDX_M_IDX>(problemShape_);
+        int64_t problemN = Get<IDX_N_IDX>(problemShape_);
+        int64_t tileM = Get<IDX_M_IDX>(tileShape_);
+        int64_t tileN = Get<IDX_N_IDX>(tileShape_);
         if constexpr (SwizzleDirection == 0) {
             // m first
-            loopFirst_ = AscendC::Std::ceil_division(get<IDX_M_IDX>(problemShape_), get<IDX_M_IDX>(tileShape_));
-            loopSecond_ = AscendC::Std::ceil_division(get<IDX_N_IDX>(problemShape_), get<IDX_N_IDX>(tileShape_));
+            loopFirst_ = AscendC::Std::ceil_division(problemM, tileM);
+            loopSecond_ = AscendC::Std::ceil_division(problemN, tileN);
         } else if constexpr (SwizzleDirection == 1) {
             // n first
-            loopSecond_ = AscendC::Std::ceil_division(get<IDX_M_IDX>(problemShape_), get<IDX_M_IDX>(tileShape_));
-            loopFirst_ = AscendC::Std::ceil_division(get<IDX_N_IDX>(problemShape_), get<IDX_N_IDX>(tileShape_));
+            loopSecond_ = AscendC::Std::ceil_division(problemM, tileM);
+            loopFirst_ = AscendC::Std::ceil_division(problemN, tileN);
         }
     }
 
@@ -55,14 +60,22 @@ public:
 
     __aicore__ inline BlockShape GetBlockShape(const BlockCoord& blockCoord)
     {
-        return {
-            min(get<IDX_M_IDX>(tileShape_), get<IDX_M_IDX>(problemShape_) - get<IDX_M_IDX>(blockCoord)),
-            min(get<IDX_N_IDX>(tileShape_), get<IDX_N_IDX>(problemShape_) - get<IDX_N_IDX>(blockCoord)),
-            get<IDX_K_IDX>(problemShape_)};
+        using AscendC::Te::Get;
+        int64_t tileM = Get<IDX_M_IDX>(tileShape_);
+        int64_t tileN = Get<IDX_N_IDX>(tileShape_);
+        int64_t problemM = Get<IDX_M_IDX>(problemShape_);
+        int64_t problemN = Get<IDX_N_IDX>(problemShape_);
+        int64_t problemK = Get<IDX_K_IDX>(problemShape_);
+        int64_t coordM = Get<IDX_M_IDX>(blockCoord);
+        int64_t coordN = Get<IDX_N_IDX>(blockCoord);
+        return {min(tileM, problemM - coordM), min(tileN, problemN - coordN), problemK};
     }
 
     __aicore__ inline BlockCoord GetBlockCoord(int tileIdx)
     {
+        using AscendC::Te::Get;
+        int64_t tileM = Get<IDX_M_IDX>(tileShape_);
+        int64_t tileN = Get<IDX_N_IDX>(tileShape_);
         int64_t blockSpan = SwizzleOffset * loopSecond_;
         int64_t blockIdx = tileIdx / blockSpan;
         int64_t inBlockIdx = tileIdx % blockSpan;
@@ -77,9 +90,9 @@ public:
         }
 
         if constexpr (SwizzleDirection == 0) {
-            return {firstIdx * get<IDX_M_IDX>(tileShape_), secondIdx * get<IDX_N_IDX>(tileShape_), 0};
+            return {firstIdx * tileM, secondIdx * tileN, 0};
         } else {
-            return {secondIdx * get<IDX_M_IDX>(tileShape_), firstIdx * get<IDX_N_IDX>(tileShape_), 0};
+            return {secondIdx * tileM, firstIdx * tileN, 0};
         }
     }
 
