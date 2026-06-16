@@ -765,7 +765,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             g_ms = _t_gather_start.elapsed_time(_t_gather_end)
             k_ms = _t_kernel_start.elapsed_time(_t_kernel_end)
             s_ms = _t_scatter_start.elapsed_time(_t_scatter_end)
-            print(f"[PROFILE] gather={g_ms:.3f}ms rope_gather={0:.3f}ms kernel={k_ms:.3f}ms scatter={s_ms:.3f}ms total={g_ms+r_ms+k_ms+s_ms:.3f}ms")
+            print(f"[PROFILE] gather={g_ms:.3f}ms kernel={k_ms:.3f}ms scatter={s_ms:.3f}ms total={g_ms+k_ms+s_ms:.3f}ms")
 
         return d_query_index, d_key_index, d_weight, loss_tensor
 
