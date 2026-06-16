@@ -46,7 +46,7 @@ constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
 
 const int64_t MIN_WORLD_SIZE = 2;
 const int64_t MIN_WORLD_SIZE_A3 = 384;
-const int64_t MIN_WORLD_SIZE_A5 = 384;
+const int64_t MIN_WORLD_SIZE_A5 = 1024;
 
 struct DistributeBarrierConfig {
     uint32_t contextIndex = INPUT_CONTEXT_EXTEND_INDEX; // 根据disributeBarrierExtend算子原型标志位初始化context索引
