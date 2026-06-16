@@ -63,5 +63,5 @@
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn API | [test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp) | 通过[aclnnMixedQuantSparseFlashMlaMetadata](./docs/aclnnMixedQuantSparseFlashMlaMetadata.md.md)接口调用MixedQuantSparseFlashMlaMetadata算子 |
+| aclnn API | [test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp) | 通过[aclnnMixedQuantSparseFlashMlaMetadata](./docs/aclnnMixedQuantSparseFlashMlaMetadata.md)接口调用MixedQuantSparseFlashMlaMetadata算子 |
 | PyTorch API | [mixed_quant_sparse_flash_mla_metadata 调用示例](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla_metadata.md#调用示例) | 通过[torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla_metadata.md)接口调用MixedQuantSparseFlashMlaMetadata算子 |
