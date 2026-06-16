@@ -51,40 +51,60 @@ constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U)
 __aicore__ inline int64_t ComputeMaxRowGroupsStride(uint32_t bs, uint32_t epWorldSize, uint32_t blockAivNum)
 {
     int64_t maxTokensPerExpert = bs * epWorldSize;
-    int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, static_cast<int64_t>(L1_TILE_M_128));
+    int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, static_cast<int64_t>(L1_TILE_M_256));
     int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
         static_cast<int64_t>(blockAivNum) * INT_CACHELINE, ALIGN_128);
     return Ops::Base::CeilAlign(maxRowGroupsPerExpert * perCoreRowGroupsStride, ALIGN_128);
 }
 
+// =================================================================================================
+// ComputeCoreGrouping：计算当前 core 所属的 group 及其在 group 内的位置
+// =================================================================================================
+// 将 totalCores 个 core 均匀分配到 numGroups 个 group 中，余数分配给前 remainder 个 group。
+// 例如：totalCores=10, numGroups=3 -> 分配为 [4, 3, 3]
+//   - group 0: core 0-3 (4个core)
+//   - group 1: core 4-6 (3个core)
+//   - group 2: core 7-9 (3个core)
 __aicore__ inline void ComputeCoreGrouping(uint32_t coreId, uint32_t numGroups, uint32_t totalCores,
     uint32_t& myGroup, uint32_t& myIdxInGrp, uint32_t& myGrpSize)
 {
-    uint32_t baseSize = totalCores / numGroups;
-    uint32_t remainder = totalCores % numGroups;
-    uint32_t boundary = remainder * (baseSize + 1);
+    uint32_t baseSize = totalCores / numGroups;      // 每个 group 的基础 core 数
+    uint32_t remainder = totalCores % numGroups;     // 余数，前 remainder 个 group 多分配 1 个 core
+    uint32_t boundary = remainder * (baseSize + 1);  // 前 remainder 个 group 占用的 core 总数
+    
+    // 判断当前 core 是否在前 remainder 个 group 中（这些 group 有 baseSize+1 个 core）
     if (coreId < boundary) {
-        myGroup = coreId / (baseSize + 1);
-        myIdxInGrp = coreId % (baseSize + 1);
-        myGrpSize = baseSize + 1;
+        myGroup = coreId / (baseSize + 1);           // 所属 group 索引
+        myIdxInGrp = coreId % (baseSize + 1);        // 在 group 内的索引
+        myGrpSize = baseSize + 1;                    // 当前 group 的 core 数
     } else {
-        uint32_t adjusted = coreId - boundary;
-        myGroup = remainder + adjusted / baseSize;
-        myIdxInGrp = adjusted % baseSize;
-        myGrpSize = baseSize;
+        // 当前 core 在后面的 group 中（这些 group 只有 baseSize 个 core）
+        uint32_t adjusted = coreId - boundary;       // 减去前 remainder 个 group 占用的 core 数
+        myGroup = remainder + adjusted / baseSize;   // 所属 group 索引 = remainder + 偏移
+        myIdxInGrp = adjusted % baseSize;            // 在 group 内的索引
+        myGrpSize = baseSize;                        // 当前 group 的 core 数
     }
 }
 
+// =================================================================================================
+// ComputeGroupRange：计算指定 group 包含的 core 范围
+// =================================================================================================
+// ComputeCoreGrouping 的逆操作：给定 groupIdx，返回该 group 的起始 core 和 core 数量。
+// 用于 GMM2 量化路径中，AIC 计算完一个 tile 后，通知负责该 row group 的所有 AIV core。
 __aicore__ inline void ComputeGroupRange(uint32_t groupIdx, uint32_t numGroups, uint32_t totalCores,
     uint32_t& groupCoreStart, uint32_t& groupCoreSize)
 {
-    uint32_t baseSize = totalCores / numGroups;
-    uint32_t remainder = totalCores % numGroups;
+    uint32_t baseSize = totalCores / numGroups;      // 每个 group 的基础 core 数
+    uint32_t remainder = totalCores % numGroups;     // 余数，前 remainder 个 group 多分配 1 个 core
+    
     if (groupIdx < remainder) {
+        // 当前 group 在前 remainder 个 group 中，有 baseSize+1 个 core
         groupCoreSize = baseSize + 1;
-        groupCoreStart = groupIdx * (baseSize + 1);
+        groupCoreStart = groupIdx * (baseSize + 1);  // 起始 core = groupIdx * (baseSize+1)
     } else {
+        // 当前 group 在后面的 group 中，只有 baseSize 个 core
         groupCoreSize = baseSize;
+        // 起始 core = 前 remainder 个 group 占用的 core 数 + 偏移
         groupCoreStart = remainder * (baseSize + 1) + (groupIdx - remainder) * baseSize;
     }
 }
@@ -329,7 +349,7 @@ __aicore__ inline void GroupMatmul2(
         .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
         .l1BufNum = 2
     };
-    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_128, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_256, L1_TILE_N, L0_TILE_K, 0};
     typename BlockMmad::ProblemShape matmulShape{m, n, k, 0};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
 
@@ -365,7 +385,7 @@ __aicore__ inline void GroupMatmul2(
 
     BlockScheduler scheduler(
         {m, n, k},
-        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_128), static_cast<int64_t>(L1_TILE_N))});
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
     uint32_t tileNum = scheduler.GetTileNum();
 
@@ -433,8 +453,8 @@ __aicore__ inline void GroupMatmul2(
                 WaitFlag<HardEvent::FIX_S>(0);
 
                 // AtomicAdd 通知 AIV
-                uint32_t rowGroupIdx = mLoc / L1_TILE_M_128;
-                uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m, L1_TILE_M_128);
+                uint32_t rowGroupIdx = mLoc / L1_TILE_M_256;
+                uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m, L1_TILE_M_256);
                 uint32_t groupCoreStart, groupCoreSize;
                 ComputeGroupRange(rowGroupIdx, rowGroupsThisExpert, blockAivNum, groupCoreStart, groupCoreSize);
                 int64_t baseOffset = static_cast<int64_t>(groupIdx) * maxRowGroupsStride

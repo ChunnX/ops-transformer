@@ -153,7 +153,7 @@ struct WorkspaceInfo {
             rowGroupCompletePtr = base + workspaceSize;
             int64_t maxTokensPerExpert = Ops::Base::CeilDiv(
                 static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(tilingData->expertPerRank));
-            int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, L1_TILE_M_128);
+            int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, DISPATCH_WAVE_TILE_M);
             int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE, ALIGN_128);
             int64_t maxRowGroupsStride = Ops::Base::CeilAlign(

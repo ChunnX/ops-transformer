@@ -38,19 +38,6 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                                   int32_t QuantMode, int32_t CombineQuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode, CombineQuantMode
 
-template<int32_t QuantMode>
-struct QuantTraits {
-    using OutType = fp8_e4m3fn_t;
-};
-template<>
-struct QuantTraits<E5M2_QUANT> {
-    using OutType = fp8_e5m2_t;
-};
-template<>
-struct QuantTraits<E2M1_QUANT> {
-    using OutType = fp4x2_e2m1_t;
-};
-
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
 public:
@@ -136,7 +123,6 @@ private:
     uint64_t totalSendCntInExp_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
     int32_t compareCount_ = 0;
-    uint32_t sendAndQuantUbEnd_ = 0;  // SendAndQuantBuffInit 分配的 UB 结束地址
     int64_t maxRowGroupsStride_ = 0;  // rowGroupComplete 计数器中每个 expert 的 stride
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
 
@@ -383,7 +369,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         static_cast<int64_t>(ALIGN_256));
     sendGatherOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendGatherOutAddr,
         sendGatherOutSize / sizeof(int32_t));
-    sendAndQuantUbEnd_ = sendGatherOutAddr + sendGatherOutSize;
 }
 
 // ===============================================================================================
@@ -864,6 +849,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
     groupFlagListGm_.SetGlobalBuffer(gmmAddrInfo.groupFlagList);
 }
 
+// =============================================
+// ResetRowGroupCompleteFlags：重置 row group 完成标志计数器
+// =============================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetRowGroupCompleteFlags()
 {
@@ -912,7 +900,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
     uint32_t quantRowSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
 
     uint32_t m_expert = Get<M_VALUE>(gmm2State.problemShape);
-    uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M_128);
+    uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M_256);
 
     uint32_t myGroup, myIdxInGrp, myGrpSize;
     MegaMoeImpl::ComputeCoreGrouping(aivCoreIdx_, rowGroupsThisExpert, blockAivNum_,
@@ -929,8 +917,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
     {
         AscendC::Nop<200>();
     }
-    uint32_t rowStart = myGroup * L1_TILE_M_128;
-    uint32_t rowCount = (L1_TILE_M_128 < m_expert - rowStart) ? L1_TILE_M_128 : m_expert - rowStart;
+    uint32_t rowStart = myGroup * L1_TILE_M_256;
+    uint32_t rowCount = (L1_TILE_M_256 < m_expert - rowStart) ? L1_TILE_M_256 : m_expert - rowStart;
     uint32_t rowsPerCore = Ops::Base::CeilDiv(rowCount, myGrpSize);
     int32_t myRowOffset = myIdxInGrp * rowsPerCore;
     int32_t myRowCount = 0;
