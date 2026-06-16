@@ -284,6 +284,12 @@ def softmax_columns(z):
     # 3. 按列求和（axis=0），并进行归一化
     return exp_z / np.sum(exp_z, axis=0, keepdims=True)
 
+# state.shape is (block_num, block_size, coff * head_dim), is numpy type
+# new_state.shape is (s, coff * head_dim), data writed to state
+# block_table.shape is (B, (s_max + block_size - 1) // block_size)
+def write_state_page_cache(state, update_position, sc_new_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=1):
+    block_size = state.shape[1] # 应该从state，不是从block_table
+    seq_cnt = end_seq_idx - start_seq_idx
     finish_cnt = 0
     if cache_mode == 2:
         block_id = block_table[b_idx]
