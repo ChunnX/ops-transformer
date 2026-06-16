@@ -35,7 +35,7 @@
 
 #define BSA_TOPK_PIPE_ALL() do { \
     if (BSA_TOPK_PIPE_ALL_PROBE) { \
-        MTE3ToMTE2Sync(); \
+        MTE3ToSSync(); \
     } \
 } while (0)
 
