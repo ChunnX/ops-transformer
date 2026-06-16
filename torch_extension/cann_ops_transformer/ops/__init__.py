@@ -40,3 +40,5 @@ from .graph_convert.graph_convert_quant_lightning_indexer import (
 )
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
+from .causal_conv1d_fn import npu_causal_conv1d_fn, causal_conv1d_fn
+from .causal_conv1d_update import npu_causal_conv1d_update, causal_conv1d_update
