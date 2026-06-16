@@ -2036,19 +2036,19 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::SoftmaxInitBuffer()
 {
-    tPipe->InitBuffer(softmaxSumBuf[0], 256); // [64, 1]
-    tPipe->InitBuffer(softmaxSumBuf[1], 256); // [64, 1]
-    tPipe->InitBuffer(softmaxSumBuf[2], 256); // [64, 1]
+    tPipe->InitBuffer(softmaxSumBuf[0], 256); // 256: [64, 1] * sizeof(float)
+    tPipe->InitBuffer(softmaxSumBuf[1], 256); // 256: [64, 1] * sizeof(float)
+    tPipe->InitBuffer(softmaxSumBuf[2], 256); // 256: [64, 1] * sizeof(float)
     if constexpr (!isMlaNoQuant) {
-        tPipe->InitBuffer(maxBrdcst, 1, 2048); // [64, 8]
+        tPipe->InitBuffer(maxBrdcst, 1, 2048); // 2048: [64, 8] * sizeof(float)
     }
-    tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
-    tPipe->InitBuffer(softmaxMaxBuf[0], 256); // [64, 1]
-    tPipe->InitBuffer(softmaxMaxBuf[1], 256); // [64, 1]
-    tPipe->InitBuffer(softmaxMaxBuf[2], 256); // [64, 1]
-    tPipe->InitBuffer(softmaxExpBuf[0], 256); // [64, 1]
-    tPipe->InitBuffer(softmaxExpBuf[1], 256); // [64, 1]
-    tPipe->InitBuffer(softmaxExpBuf[2], 256); // [64, 1]
+    tPipe->InitBuffer(sumBrdcst, 1, 2048); // 2048: [64, 8] * sizeof(float)
+    tPipe->InitBuffer(softmaxMaxBuf[0], 256); // 256: [64, 1] * sizeof(float)
+    tPipe->InitBuffer(softmaxMaxBuf[1], 256); // 256: [64, 1] * sizeof(float)
+    tPipe->InitBuffer(softmaxMaxBuf[2], 256); // 256: [64, 1] * sizeof(float)
+    tPipe->InitBuffer(softmaxExpBuf[0], 256); // 256: [64, 1] * sizeof(float)
+    tPipe->InitBuffer(softmaxExpBuf[1], 256); // 256: [64, 1] * sizeof(float)
+    tPipe->InitBuffer(softmaxExpBuf[2], 256); // 256: [64, 1] * sizeof(float)
 }
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
@@ -2064,10 +2064,10 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffe
             tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
             SoftmaxInitBuffer();
             if constexpr (isFp8) {
-                tPipe->InitBuffer(stage1OutQue[0], 1, 16896);  // (32 + 1) * (256 / 32) * 64
-                tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
+                tPipe->InitBuffer(stage1OutQue[0], 1, 16896);  // 16896: (32 + 1) * (256 / 32) * 64
+                tPipe->InitBuffer(stage1OutQue[1], 1, 16896); // 16896: (32 + 1) * (256 / 32) * 64
                 if constexpr (hasAtten) {
-                    tPipe->InitBuffer(attenMaskInQue[0], 1, 16384); // 256 * 64
+                    tPipe->InitBuffer(attenMaskInQue[0], 1, 16384); // 16384: 256 * 64
                 }
             } else {
                 tPipe->InitBuffer(stage1OutQue[0], 1, 33024);
@@ -2154,7 +2154,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffe
                 tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
             } else {
                 // bmm2结果在Gm，Vector2结果也在Gm，开启多层循环，每次处理32KB
-                tPipe->InitBuffer(stage2OutBuf, 32768);
+                tPipe->InitBuffer(stage2OutBuf, 32768); //32768:32*1024
             }
             if constexpr (IsSameType<INPUT_T, float>::value) {
                 tPipe->InitBuffer(stage1OutQue[0], 1, 33280);

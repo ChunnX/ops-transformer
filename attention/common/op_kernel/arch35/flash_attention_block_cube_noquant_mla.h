@@ -154,9 +154,9 @@ __aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::InitLocalBuffer(Buf
 {
     if ASCEND_IS_AIC {
         l1BufferManagerPtr = l1BuffMgr;
-        l0aBufferManager.Init(tPipe, 65536);
-        l0bBufferManager.Init(tPipe, 65536);
-        l0cBufferManager.Init(tPipe, 262144);
+        l0aBufferManager.Init(tPipe, 65536);  // 65536:64*1024
+        l0bBufferManager.Init(tPipe, 65536);  // 65536:64*1024
+        l0cBufferManager.Init(tPipe, 262144); // 262144:256*1024
 
         // s1=64, s2=128分核方案，mm1和mm2结果全部在ub上
         if constexpr(s1BaseSize == 64 && s2BaseSize == 128) {

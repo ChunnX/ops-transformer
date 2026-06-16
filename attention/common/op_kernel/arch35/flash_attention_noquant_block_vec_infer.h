@@ -347,9 +347,9 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitUniqueLocalBuf
         this->tPipe->InitBuffer(softmaxLseQueue, 1, (BaseClass::s1BaseSize >> 1U) * sizeof(float) * 8);
     }
     if constexpr (POST_QUANT) {
-        this->tPipe->InitBuffer(postQuantScaleQue, 1, 2048); // 2K
+        this->tPipe->InitBuffer(postQuantScaleQue, 1, 2048); // 2048:2K
         if (constInfo.isPostQuantOffsetExist) {
-            this->tPipe->InitBuffer(postQuantOffsetQue, 1, 2048); // 2K
+            this->tPipe->InitBuffer(postQuantOffsetQue, 1, 2048); // 2048:2K
         }
     }
     if constexpr (isMlaFullQuant) {

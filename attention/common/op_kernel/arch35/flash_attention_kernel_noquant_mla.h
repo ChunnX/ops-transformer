@@ -95,7 +95,7 @@ private:
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
 
     BufferManager<BufferType::L1> l1BufferManager;
-    uint32_t l1BuffSize = 524288;  // 512k
+    uint32_t l1BuffSize = 524288;  // 524288: 512k
     // mm1和mm2右矩阵，在L1上复用，其中K_rope内存空间与bmm2的左矩阵p复用
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm12Bmm2AL1Buffers;
 };
