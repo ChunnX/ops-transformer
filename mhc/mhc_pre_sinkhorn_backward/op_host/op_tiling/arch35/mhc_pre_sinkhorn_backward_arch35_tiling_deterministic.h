@@ -21,6 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch35/mhc_pre_sinkhorn_backward_data_arch35.h"
 #include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch35/mhc_pre_sinkhorn_backward_key_arch35.h"
+#include "mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
 #include "err/ops_err.h"
 #include "op_host/tiling_templates_registry.h"
 
@@ -48,30 +49,30 @@ private:
     void DoUbTiling();
 
 private:
-    uint64_t coreNumAic_{0};
-    uint64_t coreNumAiv_{0};
-    uint64_t ubSize_{0};
+    // uint64_t coreNumAic_{0};
+    // uint64_t coreNumAiv_{0};
+    // uint64_t ubSize_{0};
 
-    int64_t batchSize_{0};
-    int64_t seqLength_{0};
-    int64_t n_{0};
-    int64_t c_{0};
-    int64_t c0_{0};
-    int64_t c1_{0};
-    int64_t coreTaskCount_{0};
-    int64_t tile_{0};
-    int64_t tileUB_{0};
-    int64_t skIterCount_{0};
-    float hcEps_{0};
+    // int64_t batchSize_{0};
+    // int64_t seqLength_{0};
+    // int64_t n_{0};
+    // int64_t c_{0};
+    // int64_t c0_{0};
+    // int64_t c1_{0};
+    // int64_t coreTaskCount_{0};
+    // int64_t tile_{0};
+    // int64_t tileUB_{0};
+    // int64_t skIterCount_{0};
+    // float hcEps_{0};
 
-    int64_t mm1K_{0};
-    int64_t mm1M_{0};
-    int64_t mm1N_{0};
-    int64_t mm2K_{0};
-    int64_t mm2M_{0};
-    int64_t mm2N_{0};
+    // int64_t mm1K_{0};
+    // int64_t mm1M_{0};
+    // int64_t mm1N_{0};
+    // int64_t mm2K_{0};
+    // int64_t mm2M_{0};
+    // int64_t mm2N_{0};
 
-    const char* opName = "MhcPreSinkhornBackward";
+    // const char* opName = "MhcPreSinkhornBackward";
 };
 
 } //namespace optiling
