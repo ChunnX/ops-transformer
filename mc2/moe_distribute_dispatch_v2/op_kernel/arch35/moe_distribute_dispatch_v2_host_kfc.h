@@ -1026,20 +1026,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::HcclCommSend() 
 {
-
-    // uint32_t offset = (aivId_ - aivUsedCumSum_) * sizeof(uint32_t);
-    // uint64_t waitNum =  aivUsedScatter_ > activeMaskBsCnt_? aivUsedScatter_ : activeMaskBsCnt_; 
-    // GlobalTensor<int32_t> flagOutGMTensor;
-    // LocalTensor<int32_t> writeFlag = flagRecvGatherMask.ReinterpretCast<int32_t>();
-    // LocalTensor<int32_t> flagTensor = dstExpBuf_.Get<int32_t>();
-    // flagOutGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(gmSendTokenFlg + offset));
-    // DataCopyParams flagCopyOutParams{static_cast<uint16_t>(1), static_cast<uint16_t>(sizeof(int32_t)), 0, 0};
-    // DataCopyPad(flagOutGMTensor, writeFlag, flagCopyOutParams);
-    // SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); //包括需要等待数据拷贝到发送区完成
-    // if(aivId_ == aivUsedCumSum_) { //4//轮询 + (计算) + (接收) 
-    //     //WaitFlag(gmSendTokenFlg, flagTensor, flagRecvGatherMask, waitNum);
-    //     //TODO:调用Hccl接口.还未提供
-    // }//2 4 + 4  []
+    
 }
 
 template <TemplateDispatchKFCTypeClass>
