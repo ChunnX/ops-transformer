@@ -35,7 +35,8 @@ constexpr int64_t SCATTER_PER_LOOP_ALIGN = 512;
 __aicore__ inline int64_t CalcScatterPerLoopMaxRows(int64_t useCoreNum)
 {
     int64_t perLoopMaxRows =
-        (SCATTER_UB_SIZE - ASSIST_NUM * static_cast<int64_t>(sizeof(float)) - SCATTER_PER_LOOP_ALIGN * static_cast<int64_t>(sizeof(float))) /
+        (SCATTER_UB_SIZE - ASSIST_NUM * static_cast<int64_t>(sizeof(float)) - 
+         SCATTER_PER_LOOP_ALIGN * static_cast<int64_t>(sizeof(float))) /
         (SORT32_ALIGN_ELEMENT * 2) / 2;
     return (perLoopMaxRows / SCATTER_PER_LOOP_ALIGN) * SCATTER_PER_LOOP_ALIGN;
 }

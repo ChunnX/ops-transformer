@@ -22,8 +22,7 @@
 namespace MoeTokenPermute {
 using namespace AscendC;
 
-class MoeRoutingRankMultiCore
-{
+class MoeRoutingRankMultiCore {
 public:
     __aicore__ inline MoeRoutingRankMultiCore() {}
 
