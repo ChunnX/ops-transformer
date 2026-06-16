@@ -98,13 +98,12 @@ private:
  * @return void
 */
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
-           bool BTrans, bool IsMxFp4, uint8_t ServerMode>
-__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, IsMxFp4, ServerMode>::Init(
-                                GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM1,
-                                GM_ADDR dequantGM2, GM_ADDR biasGM, GM_ADDR scaleGM, GM_ADDR cGM,
-                                GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR contextGM,
-                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, __gm__ void* mc2InitTiling, 
-                                __gm__ void* mc2CcTiling, TPipe* tPipe)
+          bool BTrans, bool IsMxFp4, uint8_t ServerMode>
+__aicore__ inline void
+AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, IsMxFp4, ServerMode>::Init(
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM1, GM_ADDR dequantGM2, GM_ADDR biasGM, GM_ADDR scaleGM, GM_ADDR cGM,
+    GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR contextGM, Mc2Tiling::AllGatherMatmulTilingDataFp8 *tilingData,
+    __gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling, TPipe *tPipe)
 {
     auto &&cfg = tilingData->param;
 
@@ -162,8 +161,10 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
     uint32_t tailM = tilingData_->quantBmmv3TailTiling.matmulTiling.M / (cfg.rankDim - 1);   // 尾块M轴大小
 
     constexpr uint32_t dataNumPerByte = IsMxFp4 ? PF4_DATA_NUM_PER_BYTE : 1;
-    uint64_t tileSendCount = static_cast<uint64_t>(tilingM) * static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte));    // 整块总共搬运数据个数
-    uint64_t tailSendCount = static_cast<uint64_t>(tailM) * static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte));      // 尾块总共搬运数据个数
+    uint64_t tileSendCount = static_cast<uint64_t>(tilingM) *
+                             static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte)); // 整块总共搬运数据个数
+    uint64_t tailSendCount =
+        static_cast<uint64_t>(tailM) * static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte)); // 尾块总共搬运数据个数
     uint64_t stride = tileSendCount * static_cast<uint64_t>(tileCnt) +
                       tailSendCount * static_cast<uint64_t>(tailCnt); // 不同rank在数据块内的地址偏移
     uint8_t repeat = 1;                                               // 搬运重复次数
@@ -220,9 +221,9 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
  * @return void
 */
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
-           bool BTrans, bool IsMxFp4, uint8_t ServerMode>
-__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
-                                         X2ScaleType, CType, ATrans, BTrans, IsMxFp4, ServerMode>::QuantMatmulLocalCompute()
+          bool BTrans, bool IsMxFp4, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, IsMxFp4,
+                                         ServerMode>::QuantMatmulLocalCompute()
 {
     auto &&cfg = tilingData_->param;
     // 当N=0时，跳过本地计算
@@ -343,11 +344,10 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
     QuantMatmulGatherCompute();
 }
 
-template <
-    typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans, bool BTrans, bool IsMxFp4,
-    uint8_t ServerMode>
-__aicore__ inline void
-AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, IsMxFp4, ServerMode>::QuantMatmulGatherCompute()
+template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
+          bool BTrans, bool IsMxFp4, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, IsMxFp4,
+                                         ServerMode>::QuantMatmulGatherCompute()
 {
     auto &&cfg = tilingData_->param;
     // 处理gather主块
