@@ -58,41 +58,41 @@ const std::map<std::string, std::vector<QSFALayout>> LAYOUT_SUPPORT_MAP = {
 };
 
 const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
-    {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
     {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
+    {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
     {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
-    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},   // fp8_e4m3 type
-    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // hifloat8 type
     {ge::DT_INT8, "DT_INT8"},                     // int8 type
     {ge::DT_INT16, "DT_INT16"},                   // int16 type
+    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},   // fp8_e4m3 type
+    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // hifloat8 type
     {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
     {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
-    {ge::DT_INT32, "DT_INT32"},                   // uint32 type
     {ge::DT_INT64, "DT_INT64"},                   // int64 type
-    {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
+    {ge::DT_INT32, "DT_INT32"},                   // int32 type
     {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
+    {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
     {ge::DT_BOOL, "DT_BOOL"},                     // bool type
     {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
     {ge::DT_DUAL, "DT_DUAL"},                     // dual output type
-    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
-    {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
     {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
     {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
     {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
+    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
+    {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
+    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
+    {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
     {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
     {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
     {ge::DT_QINT32, "DT_QINT32"},                 // qint32 type
-    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
-    {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
     {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
     {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
+    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
     {ge::DT_STRING, "DT_STRING"},                 // string type
     {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
-    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
-    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
-    {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
     {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
-    {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
+    {ge::DT_UINT2, "DT_UINT2"},                   // dt_variant type
+    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
+    {ge::DT_UINT1, "DT_UINT1"}                    // dt_variant type
 };
 
 struct KvQuantSparseFlashAttentionCompileInfo {
@@ -1000,16 +1000,19 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensQDType()
     if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
+
     if (opParamInfo_.actualSeqLengthsQ.desc == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName_, "actualSeqLengthsQ's dtype");
         return ge::GRAPH_FAILED;
     }
+
     if (opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actualSeqLengthsQ",
             QSFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
             "The dtype of actualSeqLengthsQ must be DT_INT32.");
         return ge::GRAPH_FAILED;
     }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1385,6 +1388,7 @@ static bool HasAxis(const QSFAAxis &axis, const QSFALayout &layout, const gert::
     if (qsfaDimIt == QSFA_LAYOUT_DIM_MAP.end() || qsfaDimIt->second != shape.GetDimNum()) {
         return false;
     }
+
     return true;
 }
 
@@ -1392,6 +1396,7 @@ static size_t GetAxisIdx(const QSFAAxis &axis, const QSFALayout &layout)
 {
     const std::vector<QSFAAxis>& axes = QSFA_LAYOUT_AXIS_MAP.find(layout)->second;
     const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
+
     return std::distance(axes.begin(), axisIt);
 }
 
@@ -1671,9 +1676,10 @@ ge::graphStatus QSFAInfoParser::GetS2SizeForBatchContinuous()
 {
     if (kvLayout_ == QSFALayout::BSND) { // BSND
         s2Size_ = GetAxisNum(keyShape_, QSFAAxis::S, kvLayout_);
-    } else if (kvLayout_ == QSFALayout::TND) {
+    } else if (kvLayout_ == QSFALayout::TND) { // TND
         s2Size_ = GetAxisNum(keyShape_, QSFAAxis::T, kvLayout_);
     }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1790,6 +1796,7 @@ void QSFAInfoParser::SetQSFAShape()
 {
     queryShape_ = opParamInfo_.query.shape->GetStorageShape();
     keyShape_ = opParamInfo_.key.shape->GetStorageShape();
+
     valueShape_ = opParamInfo_.value.shape->GetStorageShape();
     sparseIndicesShape_ = opParamInfo_.sparseIndices.shape->GetStorageShape();
 }
