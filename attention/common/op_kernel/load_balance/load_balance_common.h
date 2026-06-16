@@ -91,6 +91,7 @@ enum class DataType : uint8_t {
 template<class T>
 inline T CeilDiv(T a, T b)
 {
+    static_assert(std::is_integral_v<T>, "must be integer type");
     if (b == 0) {
         return 0;
     }
