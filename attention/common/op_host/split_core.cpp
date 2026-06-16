@@ -614,7 +614,7 @@ void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &spli
         AssignByRow(splitContext, assignContext);
         LogAssignContext("ROW", assignContext);
         // 3、按块分配
-        AssignByBlock(splitContext, assignContext);
+        AssignByBlock(assignContext);
         LogAssignContext("BLOCK", assignContext);
         // 4、强制分配
         if (assignContext.coreCache.block == 0) {
