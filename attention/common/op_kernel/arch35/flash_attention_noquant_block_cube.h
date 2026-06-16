@@ -743,7 +743,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                     shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
                 }
                 shape.pageStride = constInfo.valueBnStride;
-            shape.n2Stride = constInfo.valueN2Stride;
+                shape.n2Stride = constInfo.valueN2Stride;
                 GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
                 GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
             } else {
@@ -1803,7 +1803,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
             shape.copyRowNum = runInfo.s2RealSize;
             shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
             shape.pageStride = constInfo.keyBnStride;
-        shape.n2Stride = constInfo.keyN2Stride;
+            shape.n2Stride = constInfo.keyN2Stride;
             GlobalTensor<INPUT_T> mm1BGmTensor = this->keyGm.gmTensor;
             GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shape, startPos);
         } else {

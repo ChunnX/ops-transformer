@@ -265,9 +265,9 @@ public:
     }
 
     __aicore__ inline void InitKVBuffer(uint32_t batchSize, uint32_t kvSeqSize,
-                                         GlobalTensor<uint64_t> actualSeqLengthsGmQ, uint32_t actualLenDims,
-                                         uint32_t n2Size, uint32_t kvCacheBlockSize, uint32_t headDim,
-                                         FaGmTensor<KV_T, KV_FORMAT> &kvGmTensor, __gm__ uint8_t *gm)
+                                        GlobalTensor<uint64_t> actualSeqLengthsGmQ, uint32_t actualLenDims,
+                                        uint32_t n2Size, uint32_t kvCacheBlockSize, uint32_t headDim,
+                                        FaGmTensor<KV_T, KV_FORMAT> &kvGmTensor, __gm__ uint8_t *gm)
     {
         kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
 
