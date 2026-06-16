@@ -15,7 +15,7 @@
 
 #include "sparse_flash_mla_tiling.h"
 #include "arch22/sparse_flash_mla_tiling.h"
-#include "../op_kernel/sparse_flash_mla_template_tiling_key.h"
+#include "../op_kernel/arch22/sparse_flash_mla_template_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -188,25 +188,6 @@ ge::graphStatus SMLAInfoParser::GetOpName()
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus SMLAInfoParser::GetNpuInfo()
-{
-    platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
-
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
-    aivNum_ = ascendcPlatform.GetCoreNumAiv();
-    aicNum_ = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum_ == 0 || aivNum_ == 0, OP_LOGE(opName_, "num of core obtained is 0."), return ge::GRAPH_FAILED);
-
-    socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", (int32_t)socVersion_);
-        return ge::GRAPH_FAILED;
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -779,7 +760,6 @@ ge::graphStatus SMLAInfoParser::Parse(SMLATilingInfo &smlaInfo)
     }
 
     if (ge::GRAPH_SUCCESS != GetOpName() ||
-        ge::GRAPH_SUCCESS != GetNpuInfo() ||
         ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence() ||
         ge::GRAPH_SUCCESS != CheckUnrequiredParaExistence()) {
