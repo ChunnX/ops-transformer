@@ -96,12 +96,12 @@ namespace FaVectorApi {
         UnalignRegForStore ureg_max;
         UnalignRegForStore ureg_exp_sum;
 
-        MaskReg preg_all = pset_b32(PAT_ALL);
-        MaskReg preg_all_b16 = pset_b16(PAT_ALL);
-        MaskReg preg_tail_n1 = plt_b32(pltTailN1, POST_UPDATE);
-        MaskReg preg_ori_tail_n1 = plt_b32(pltOriTailN1, POST_UPDATE);
-        MaskReg preg_tail_n2 = plt_b32(pltTailN2, POST_UPDATE);
-        MaskReg preg_ori_tail_n2 = plt_b32(pltOriTailN2, POST_UPDATE);
+        MaskReg preg_all = CreateMask<T, MaskPattern::ALL>();
+        MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
+        MaskReg preg_tail_n1 = UpdateMask<T>(pltTailN1);
+        MaskReg preg_ori_tail_n1 = UpdateMask<T>(pltOriTailN1);
+        MaskReg preg_tail_n2 = UpdateMask<T>(pltTailN2);
+        MaskReg preg_ori_tail_n2 = UpdateMask<T>(pltOriTailN2);
         MaskReg preg_reduce_n = pset_b32(PAT_VL8);
 
         MaskReg preg_compare1;
@@ -110,7 +110,7 @@ namespace FaVectorApi {
         MaskReg preg_compare4;
 
         MaskReg preg1;
-        MaskReg preg2 = pset_b8(PAT_ALLF);
+        MaskReg preg2 = CreateMask<uint8_t, MaskPattern::ALLF>();
 
         MaskReg preg3;
         MaskReg preg4;
@@ -119,10 +119,10 @@ namespace FaVectorApi {
         // pScale
         RegTensor<float> vreg_p_scale;
         RegTensor<float> vreg_ln_p_scale;
-        vbr(vreg_p_scale, static_cast<float>(pScale));
-        vln(vreg_ln_p_scale, vreg_p_scale, preg_all, MODE_ZEROING);
+        Duplicate<T>(vreg_p_scale, static_cast<float>(pScale));
+        Ln(vreg_ln_p_scale, vreg_p_scale, preg_all);
 
-        vbr(vreg_min, minValue);
+        Duplicate<T>(vreg_min, minValue);
 
         constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
         constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
@@ -145,10 +145,10 @@ namespace FaVectorApi {
             vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm);
             vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm);
             // if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-                vmuls(vreg_input_x1, vreg_input_x1, scale, preg_all, MODE_ZEROING); // Muls(scale)
-                vmuls(vreg_input_x2, vreg_input_x2, scale, preg_all, MODE_ZEROING);
-                vmuls(vreg_input_x3, vreg_input_x3, scale, preg_ori_tail_n1, MODE_ZEROING);
-                vmuls(vreg_input_x4, vreg_input_x4, scale, preg_ori_tail_n2, MODE_ZEROING);
+                Muls(vreg_input_x1, vreg_input_x1, scale, preg_all); // Muls(scale)
+                Muls(vreg_input_x2, vreg_input_x2, scale, preg_all);
+                Muls(vreg_input_x3, vreg_input_x3, scale, preg_ori_tail_n1);
+                Muls(vreg_input_x4, vreg_input_x4, scale, preg_ori_tail_n2);
             // } else {
             //     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             //                   IsSameType<T2, hifloat8_t>::value) {
@@ -217,20 +217,20 @@ namespace FaVectorApi {
                 plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, dist_ds, POST_UPDATE);
                 plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, dist_ds, POST_UPDATE);
                 plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, dist_ds, POST_UPDATE);
-                vsel(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
-                vsel(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
-                vsel(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
-                vsel(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
+                Select(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
+                Select(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
+                Select(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
+                Select(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
                 vsel(vreg_sel3_new, vreg_sel3, vreg_min, preg_ori_tail_n1);
                 vsel(vreg_sel4_new, vreg_sel4, vreg_min, preg_ori_tail_n2);
                 vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm_b32, preg_tail_n2);
-                vmax(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all, MODE_ZEROING);
-                vmax(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all, MODE_ZEROING);
-                vmax(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all, MODE_ZEROING);
-                vcmax(vreg_input_max, vreg_max_tmp3, preg_all, MODE_ZEROING);
+                Max(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all);
+                Max(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all);
+                Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all);
+                Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_max_tmp3, preg_all);
             // } 
             // else {
                 // Select(vreg_input_x3_new, vreg_input_x3, vreg_min, preg_ori_tail_n1);
@@ -263,19 +263,19 @@ namespace FaVectorApi {
 
         for (uint16_t i = 0; i < m; ++i) {
             vlds(vreg_max_brc, (__ubuf__ float*)maxUbStart + i, 0, dist_brc_b32);
-            vsub(vreg_max_brc, vreg_max_brc, vreg_ln_p_scale, preg_all, MODE_ZEROING);
+            Sub(vreg_max_brc, vreg_max_brc, vreg_ln_p_scale, preg_all);
             vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, dist_dintlv_b32);
             vlds(vreg_input_x3, vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_dintlv_b32);
-            vexpdif(vreg_exp_even1, vreg_input_x1, vreg_max_brc, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_odd1, vreg_input_x2, vreg_max_brc, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_even2, vreg_input_x3, vreg_max_brc, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_odd2, vreg_input_x4, vreg_max_brc, preg_all, PART_EVEN);
+            FusedExpSub(vreg_exp_even1, vreg_input_x1, vreg_max_brc, preg_all);
+            FusedExpSub(vreg_exp_odd1, vreg_input_x2, vreg_max_brc, preg_all);
+            FusedExpSub(vreg_exp_even2, vreg_input_x3, vreg_max_brc, preg_all);
+            FusedExpSub(vreg_exp_odd2, vreg_input_x4, vreg_max_brc, preg_all);
 
             // x_sum = sum(x_exp, axis=-1, keepdims=True)
-            vadd(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all, MODE_ZEROING);
-            vadd(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all, MODE_ZEROING);
-            vadd(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all, MODE_ZEROING);
-            vcadd(vreg_exp_sum3, vreg_exp_sum3, preg_all, MODE_ZEROING);
+            Add(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all);
+            Add(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all);
+            Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all);
+            Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum3, vreg_exp_sum3, preg_all);
             vstus(ureg_exp_sum, 1, vreg_exp_sum3, (__ubuf__ float *&)expSumUb, POST_UPDATE);
             // dropmask compute
             // if constexpr (hasDrop == 1) {
@@ -327,20 +327,20 @@ namespace FaVectorApi {
                 RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3_2;
                 RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
                 // RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes_2;
-                MaskReg preg_all_b8 = pset_b8(PAT_ALL);
+                MaskReg preg_all_b8 = CreateMask<uint8_t, MaskPattern::ALL>();
                 uint32_t maskLen = 128;
-                MaskReg preg_all_b8_128 = plt_b8(maskLen, POST_UPDATE);
-                vcvt(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all, ROUND_R, RS_DISABLE, PART_P0, MODE_ZEROING);
-                vcvt(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all, ROUND_R, RS_DISABLE, PART_P0, MODE_ZEROING);
-                vcvt(vreg_exp_odd_f8e4m3_1, vreg_exp_odd1, preg_all, ROUND_R, RS_DISABLE, PART_P2, MODE_ZEROING);
-                vcvt(vreg_exp_odd_f8e4m3_2, vreg_exp_odd2, preg_all, ROUND_R, RS_DISABLE, PART_P2, MODE_ZEROING);
-                vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_1,
-                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8, MODE_ZEROING);
-                vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
-                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8, MODE_ZEROING);
+                MaskReg preg_all_b8_128 = UpdateMask<uint8_t>(maskLen);
+                Cast<T2, T, castTraitZero>(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all);
+                Cast<T2, T, castTraitZero>(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all);
+                Cast<T2, T, castTraitOne>(vreg_exp_odd_f8e4m3_1, vreg_exp_odd1, preg_all);
+                Cast<T2, T, castTraitOne>(vreg_exp_odd_f8e4m3_2, vreg_exp_odd2, preg_all);
+                Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_1,
+                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8);
+                Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
+                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8);
                 vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, dist_norm);
-                vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
-                vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
+                Gather((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
+                Gather((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (__ubuf__ uint8_t *&)expUb1,
                       (blockStride << 16u) | (repeatStride & 0xFFFFU), preg_all_b8_128, POST_UPDATE);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (__ubuf__ uint8_t *&)expUb2,
@@ -426,12 +426,12 @@ namespace FaVectorApi {
         UnalignRegForStore ureg_max;
         UnalignRegForStore ureg_exp_sum;
 
-        MaskReg preg_all = pset_b32(PAT_ALL);
-        MaskReg preg_all_b16 = pset_b16(PAT_ALL);
-        MaskReg preg_tail_n1 = plt_b32(pltTailN1, POST_UPDATE);
-        MaskReg preg_ori_tail_n1 = plt_b32(pltOriTailN1, POST_UPDATE);
-        MaskReg preg_tail_n2 = plt_b32(pltTailN2, POST_UPDATE);
-        MaskReg preg_ori_tail_n2 = plt_b32(pltOriTailN2, POST_UPDATE);
+        MaskReg preg_all = CreateMask<T, MaskPattern::ALL>();
+        MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
+        MaskReg preg_tail_n1 = UpdateMask<T>(pltTailN1);
+        MaskReg preg_ori_tail_n1 = UpdateMask<T>(pltOriTailN1);
+        MaskReg preg_tail_n2 = UpdateMask<T>(pltTailN2);
+        MaskReg preg_ori_tail_n2 = UpdateMask<T>(pltOriTailN2);
         MaskReg preg_reduce_n = pset_b32(PAT_VL8);
 
         MaskReg preg_compare1;
@@ -440,7 +440,7 @@ namespace FaVectorApi {
         MaskReg preg_compare4;
 
         MaskReg preg1;
-        MaskReg preg2 = pset_b8(PAT_ALLF);
+        MaskReg preg2 = CreateMask<uint8_t, MaskPattern::ALLF>();
 
         MaskReg preg3;
         MaskReg preg4;
@@ -449,10 +449,10 @@ namespace FaVectorApi {
         // pScale
         RegTensor<float> vreg_p_scale;
         RegTensor<float> vreg_ln_p_scale;
-        vbr(vreg_p_scale, static_cast<float>(pScale));
-        vln(vreg_ln_p_scale, vreg_p_scale, preg_all, MODE_ZEROING);
+        Duplicate<T>(vreg_p_scale, static_cast<float>(pScale));
+        Ln(vreg_ln_p_scale, vreg_p_scale, preg_all);
 
-        vbr(vreg_min, minValue);
+        Duplicate<T>(vreg_min, minValue);
 
         constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
         constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
@@ -475,10 +475,10 @@ namespace FaVectorApi {
             vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm);
             vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm);
             // if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-                vmuls(vreg_input_x1, vreg_input_x1, scale, preg_all, MODE_ZEROING); // Muls(scale)
-                vmuls(vreg_input_x2, vreg_input_x2, scale, preg_all, MODE_ZEROING);
-                vmuls(vreg_input_x3, vreg_input_x3, scale, preg_ori_tail_n1, MODE_ZEROING);
-                vmuls(vreg_input_x4, vreg_input_x4, scale, preg_ori_tail_n2, MODE_ZEROING);
+                Muls(vreg_input_x1, vreg_input_x1, scale, preg_all); // Muls(scale)
+                Muls(vreg_input_x2, vreg_input_x2, scale, preg_all);
+                Muls(vreg_input_x3, vreg_input_x3, scale, preg_ori_tail_n1);
+                Muls(vreg_input_x4, vreg_input_x4, scale, preg_ori_tail_n2);
             // } else {
             //     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             //                   IsSameType<T2, hifloat8_t>::value) {
@@ -547,20 +547,20 @@ namespace FaVectorApi {
                 plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, dist_ds, POST_UPDATE);
                 plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, dist_ds, POST_UPDATE);
                 plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, dist_ds, POST_UPDATE);
-                vsel(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
-                vsel(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
-                vsel(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
-                vsel(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
+                Select(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
+                Select(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
+                Select(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
+                Select(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
                 vsel(vreg_sel3_new, vreg_sel3, vreg_min, preg_ori_tail_n1);
                 vsel(vreg_sel4_new, vreg_sel4, vreg_min, preg_ori_tail_n2);
                 vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm_b32, preg_tail_n2);
-                vmax(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all, MODE_ZEROING);
-                vmax(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all, MODE_ZEROING);
-                vmax(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all, MODE_ZEROING);
-                vcmax(vreg_input_max, vreg_max_tmp3, preg_all, MODE_ZEROING);
+                Max(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all);
+                Max(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all);
+                Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all);
+                Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_max_tmp3, preg_all);
             // }
             // else {
                 // Select(vreg_input_x3_new, vreg_input_x3, vreg_min, preg_ori_tail_n1);
@@ -590,9 +590,9 @@ namespace FaVectorApi {
         vlds(vreg_in_max, (__ubuf__ float*)inMaxUb, 0, dist_norm);
         mem_bar(VST_VLD);
         vlds(vreg_input_max, (__ubuf__ float*)tmpMaxUb2, 0, dist_norm);
-        vmax(vreg_input_max, vreg_in_max, vreg_input_max,
-            preg_all, MODE_ZEROING); // loop1的max需要和loop0的max取一个max，保证loop1的max是当前的全局最大max，不要被loop1的max覆盖掉
-        vexpdif(vreg_exp_max, vreg_in_max, vreg_input_max, preg_all, PART_EVEN);
+        Max(vreg_input_max, vreg_in_max, vreg_input_max,
+            preg_all); // loop1的max需要和loop0的max取一个max，保证loop1的max是当前的全局最大max，不要被loop1的max覆盖掉
+        FusedExpSub(vreg_exp_max, vreg_in_max, vreg_input_max, preg_all);
         vsts(vreg_exp_max, (__ubuf__ float *&)expMaxUb, 0, dist_norm_b32, preg_all);
         vsts(vreg_input_max, (__ubuf__ float *&)maxUb, 0, dist_norm_b32, preg_all);
 
@@ -603,20 +603,20 @@ namespace FaVectorApi {
 
         for (uint16_t i = 0; i < m; ++i) {
             vlds(vreg_max_brc, (__ubuf__ float*)maxUbStart + i, 0, dist_brc_b32);
-            vsub(vreg_max_brc, vreg_max_brc, vreg_ln_p_scale, preg_all, MODE_ZEROING);
+            Sub(vreg_max_brc, vreg_max_brc, vreg_ln_p_scale, preg_all);
             vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, dist_dintlv_b32);
             vlds(vreg_input_x3, vreg_input_x4,
                  (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_dintlv_b32);
-            vexpdif(vreg_exp_even1, vreg_input_x1, vreg_max_brc, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_odd1, vreg_input_x2, vreg_max_brc, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_even2, vreg_input_x3, vreg_max_brc, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_odd2, vreg_input_x4, vreg_max_brc, preg_all, PART_EVEN);
+            FusedExpSub(vreg_exp_even1, vreg_input_x1, vreg_max_brc, preg_all);
+            FusedExpSub(vreg_exp_odd1, vreg_input_x2, vreg_max_brc, preg_all);
+            FusedExpSub(vreg_exp_even2, vreg_input_x3, vreg_max_brc, preg_all);
+            FusedExpSub(vreg_exp_odd2, vreg_input_x4, vreg_max_brc, preg_all);
 
             // x_sum = sum(x_exp, axis=-1, keepdims=True)
-            vadd(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all, MODE_ZEROING);
-            vadd(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all, MODE_ZEROING);
-            vadd(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all, MODE_ZEROING);
-            vcadd(vreg_exp_sum3, vreg_exp_sum3, preg_all, MODE_ZEROING);
+            Add(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all);
+            Add(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all);
+            Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all);
+            Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum3, vreg_exp_sum3, preg_all);
             vstus(ureg_exp_sum, 1, vreg_exp_sum3, (__ubuf__ float *&)tmpExpSumUb, POST_UPDATE);
             // dropmask compute
             // if constexpr (hasDrop == 1) {
@@ -668,20 +668,20 @@ namespace FaVectorApi {
                 RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3_2;
                 RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
                 // RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes_2;
-                MaskReg preg_all_b8 = pset_b8(PAT_ALL);
+                MaskReg preg_all_b8 = CreateMask<uint8_t, MaskPattern::ALL>();
                 uint32_t maskLen = 128;
-                MaskReg preg_all_b8_128 = plt_b8(maskLen, POST_UPDATE);
-                vcvt(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all, ROUND_R, RS_DISABLE, PART_P0, MODE_ZEROING);
-                vcvt(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all, ROUND_R, RS_DISABLE, PART_P0, MODE_ZEROING);
-                vcvt(vreg_exp_odd_f8e4m3_1, vreg_exp_odd1, preg_all, ROUND_R, RS_DISABLE, PART_P2, MODE_ZEROING);
-                vcvt(vreg_exp_odd_f8e4m3_2, vreg_exp_odd2, preg_all, ROUND_R, RS_DISABLE, PART_P2, MODE_ZEROING);
-                vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_1,
-                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8, MODE_ZEROING);
-                vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
-                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8, MODE_ZEROING);
+                MaskReg preg_all_b8_128 = UpdateMask<uint8_t>(maskLen);
+                Cast<T2, T, castTraitZero>(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all);
+                Cast<T2, T, castTraitZero>(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all);
+                Cast<T2, T, castTraitOne>(vreg_exp_odd_f8e4m3_1, vreg_exp_odd1, preg_all);
+                Cast<T2, T, castTraitOne>(vreg_exp_odd_f8e4m3_2, vreg_exp_odd2, preg_all);
+                Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_1,
+                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8);
+                Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
+                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8);
                 vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, dist_norm);
-                vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
-                vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
+                Gather((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
+                Gather((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (__ubuf__ uint8_t *&)expUb1,
                       (blockStride << 16u) | (repeatStride & 0xFFFFU), preg_all_b8_128, POST_UPDATE);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (__ubuf__ uint8_t *&)expUb2,
@@ -693,8 +693,8 @@ namespace FaVectorApi {
         RegTensor<float> first_loop_sum;
         vlds(first_loop_sum, (__ubuf__ float*)inExpSumUb, 0, dist_norm);
         vlds(vreg_exp_sum_brc, (__ubuf__ float*)tmpExpSumUb2, 0, dist_norm);
-        vmul(first_loop_sum, vreg_exp_max, first_loop_sum, preg_all, MODE_ZEROING);
-        vadd(vreg_exp_sum3, first_loop_sum, vreg_exp_sum_brc, preg_all, MODE_ZEROING);
+        Mul(first_loop_sum, vreg_exp_max, first_loop_sum, preg_all);
+        Add(vreg_exp_sum3, first_loop_sum, vreg_exp_sum_brc, preg_all);
         vsts(vreg_exp_sum3, (__ubuf__ float *&)expSumUb, 0, dist_norm_b32, preg_all);
     }
 
@@ -783,19 +783,19 @@ namespace FaVectorApi {
         UnalignRegForStore ureg_max;
         UnalignRegForStore ureg_exp_sum;
 
-        MaskReg preg_all = pset_b32(PAT_ALL);
-        MaskReg preg_all_b16 = pset_b16(PAT_ALL);
+        MaskReg preg_all = CreateMask<T, MaskPattern::ALL>();
+        MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
         // MaskReg preg_n_b16 = UpdateMask<uint16_t>(pltN);
-        MaskReg preg_tail_n1 = plt_b32(pltTailN1, POST_UPDATE);
-        MaskReg preg_ori_tail_n1 = plt_b32(pltOriTailN1, POST_UPDATE);
-        MaskReg preg_tail_n2 = plt_b32(pltTailN2, POST_UPDATE);
-        MaskReg preg_ori_tail_n2 = pset_b32(pltOriTailN2);
+        MaskReg preg_tail_n1 = UpdateMask<T>(pltTailN1);
+        MaskReg preg_ori_tail_n1 = UpdateMask<T>(pltOriTailN1);
+        MaskReg preg_tail_n2 = UpdateMask<T>(pltTailN2);
+        MaskReg preg_ori_tail_n2 = UpdateMask<T>(pltOriTailN2);
         MaskReg preg_compare1;
         MaskReg preg_compare2;
         MaskReg preg_compare3;
         MaskReg preg_compare4;
         MaskReg preg1;
-        MaskReg preg2 = pset_b8(PAT_ALLF);
+        MaskReg preg2 = CreateMask<uint8_t, MaskPattern::ALLF>();
         MaskReg preg3;
         MaskReg preg4;
         MaskReg preg5;
@@ -803,10 +803,10 @@ namespace FaVectorApi {
         // pScale
         RegTensor<float> vreg_p_scale;
         RegTensor<float> vreg_ln_p_scale;
-        vbr(vreg_p_scale, static_cast<float>(pScale));
-        vln(vreg_ln_p_scale, vreg_p_scale, preg_all, MODE_ZEROING);
+        Duplicate<T>(vreg_p_scale, static_cast<float>(pScale));
+        Ln(vreg_ln_p_scale, vreg_p_scale, preg_all);
 
-        vbr(vreg_min, minValue);
+        Duplicate<T>(vreg_min, minValue);
 
         constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
         constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
@@ -829,10 +829,10 @@ namespace FaVectorApi {
             vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm);
             vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm);
             // if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-                vmuls(vreg_input_x1, vreg_input_x1, scale, preg_all, MODE_ZEROING); // Muls(scale)
-                vmuls(vreg_input_x2, vreg_input_x2, scale, preg_all, MODE_ZEROING);
-                vmuls(vreg_input_x3, vreg_input_x3, scale, preg_ori_tail_n1, MODE_ZEROING);
-                vmuls(vreg_input_x4, vreg_input_x4, scale, preg_ori_tail_n2, MODE_ZEROING);
+                Muls(vreg_input_x1, vreg_input_x1, scale, preg_all); // Muls(scale)
+                Muls(vreg_input_x2, vreg_input_x2, scale, preg_all);
+                Muls(vreg_input_x3, vreg_input_x3, scale, preg_ori_tail_n1);
+                Muls(vreg_input_x4, vreg_input_x4, scale, preg_ori_tail_n2);
             // }
             // if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
             //     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
@@ -894,20 +894,20 @@ namespace FaVectorApi {
                 plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, dist_ds, POST_UPDATE);
                 plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, dist_ds, POST_UPDATE);
                 plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, dist_ds, POST_UPDATE);
-                vsel(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
-                vsel(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
-                vsel(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
-                vsel(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
+                Select(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
+                Select(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
+                Select(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
+                Select(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
                 vsel(vreg_sel3_new, vreg_sel3, vreg_min, preg_ori_tail_n1);
                 vsel(vreg_sel4_new, vreg_sel4, vreg_min, preg_ori_tail_n2);
                 vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm_b32, preg_all);
-                vmax(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all, MODE_ZEROING);
-                vmax(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all, MODE_ZEROING);
-                vmax(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all, MODE_ZEROING);
-                vcmax(vreg_input_max, vreg_max_tmp3, preg_all, MODE_ZEROING);
+                Max(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all);
+                Max(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all);
+                Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all);
+                Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_max_tmp3, preg_all);
             // } else {
                 // Select(vreg_input_x3_new, vreg_input_x3, vreg_min, preg_ori_tail_n1);
                 // Select(vreg_input_x4_new, vreg_input_x4, vreg_min, preg_ori_tail_n2);
@@ -936,8 +936,8 @@ namespace FaVectorApi {
         mem_bar(VST_VLD);
         vlds(vreg_input_max, (__ubuf__ float*)tmpMaxUb2, 0, dist_norm);
         vsts(vreg_in_max, (__ubuf__ float *&)preLoopMaxUb, 0, dist_norm_b32, preg_all);
-        vmax(vreg_max_new, vreg_in_max, vreg_input_max, preg_all, MODE_ZEROING);
-        vexpdif(vreg_exp_max, vreg_in_max, vreg_max_new, preg_all, PART_EVEN);
+        Max(vreg_max_new, vreg_in_max, vreg_input_max, preg_all);
+        FusedExpSub(vreg_exp_max, vreg_in_max, vreg_max_new, preg_all);
         vsts(vreg_exp_max, (__ubuf__ float *&)expMaxUb, 0, dist_norm_b32, preg_all);
         vsts(vreg_max_new, (__ubuf__ float *&)maxUb, 0, dist_norm_b32, preg_all);
 
@@ -949,20 +949,20 @@ namespace FaVectorApi {
 
         for (uint16_t i = 0; i < m; ++i) {
             vlds(vreg_max, (__ubuf__ float*)maxUbStart + i, 0, dist_brc_b32);
-            vsub(vreg_max, vreg_max, vreg_ln_p_scale, preg_all, MODE_ZEROING);
+            Sub(vreg_max, vreg_max, vreg_ln_p_scale, preg_all);
             vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, dist_dintlv_b32);
             vlds(vreg_input_x3, vreg_input_x4,
                  (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_dintlv_b32);
-            vexpdif(vreg_exp_even1, vreg_input_x1, vreg_max, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_odd1, vreg_input_x2, vreg_max, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_even2, vreg_input_x3, vreg_max, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_odd2, vreg_input_x4, vreg_max, preg_all, PART_EVEN);
+            FusedExpSub(vreg_exp_even1, vreg_input_x1, vreg_max, preg_all);
+            FusedExpSub(vreg_exp_odd1, vreg_input_x2, vreg_max, preg_all);
+            FusedExpSub(vreg_exp_even2, vreg_input_x3, vreg_max, preg_all);
+            FusedExpSub(vreg_exp_odd2, vreg_input_x4, vreg_max, preg_all);
 
             // x_sum = sum(x_exp, axis=-1, keepdims=True)
-            vadd(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all, MODE_ZEROING);
-            vadd(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all, MODE_ZEROING);
-            vadd(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all, MODE_ZEROING);
-            vcadd(vreg_exp_sum3, vreg_exp_sum3, preg_all, MODE_ZEROING);
+            Add(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all);
+            Add(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all);
+            Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all);
+            Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum3, vreg_exp_sum3, preg_all);
             vstus(ureg_exp_sum, 1, vreg_exp_sum3, (__ubuf__ float *&)tmpExpSumUb, POST_UPDATE);
 
             // dropmask compute
@@ -1009,20 +1009,20 @@ namespace FaVectorApi {
                 RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3_2;
                 RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
                 // RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes_2;
-                MaskReg preg_all_b8 = pset_b8(PAT_ALL);
+                MaskReg preg_all_b8 = CreateMask<uint8_t, MaskPattern::ALL>();
                 uint32_t maskLen = 128;
-                MaskReg preg_all_b8_128 = plt_b8(maskLen, POST_UPDATE);
-                vcvt(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all, ROUND_R, RS_DISABLE, PART_P0, MODE_ZEROING);
-                vcvt(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all, ROUND_R, RS_DISABLE, PART_P0, MODE_ZEROING);
-                vcvt(vreg_exp_odd_f8e4m3_1, vreg_exp_odd1, preg_all, ROUND_R, RS_DISABLE, PART_P2, MODE_ZEROING);
-                vcvt(vreg_exp_odd_f8e4m3_2, vreg_exp_odd2, preg_all, ROUND_R, RS_DISABLE, PART_P2, MODE_ZEROING);
-                vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_1,
-                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8, MODE_ZEROING);
-                vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
-                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8, MODE_ZEROING);
+                MaskReg preg_all_b8_128 = UpdateMask<uint8_t>(maskLen);
+                Cast<T2, T, castTraitZero>(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all);
+                Cast<T2, T, castTraitZero>(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all);
+                Cast<T2, T, castTraitOne>(vreg_exp_odd_f8e4m3_1, vreg_exp_odd1, preg_all);
+                Cast<T2, T, castTraitOne>(vreg_exp_odd_f8e4m3_2, vreg_exp_odd2, preg_all);
+                Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_1,
+                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8);
+                Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
+                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8);
                 vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, dist_norm);
-                vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
-                vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
+                Gather((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
+                Gather((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (__ubuf__ uint8_t *&)expUb1,
                       (blockStride << 16u) | (repeatStride & 0xFFFFU), preg_all_b8_128, POST_UPDATE);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (__ubuf__ uint8_t *&)expUb2,
@@ -1048,9 +1048,9 @@ namespace FaVectorApi {
         vlds(vreg_in_exp_sum, (__ubuf__ float*)inExpSumUb, 0, dist_norm);
         vlds(vreg_exp_sum_brc, (__ubuf__ float*)tmpExpSumUb2, 0, dist_norm);
         vsts(vreg_in_exp_sum, (__ubuf__ float *&)preLoopSumUb, 0, dist_norm_b32, preg_all);
-        vmul(vreg_exp_max, vreg_exp_max, vreg_in_exp_sum, preg_all, MODE_ZEROING);
-        vadd(vreg_exp_max, vreg_exp_max, vreg_exp_sum_brc,
-            preg_all, MODE_ZEROING);
+        Mul(vreg_exp_max, vreg_exp_max, vreg_in_exp_sum, preg_all);
+        Add(vreg_exp_max, vreg_exp_max, vreg_exp_sum_brc,
+            preg_all);
         vsts(vreg_exp_max, (__ubuf__ float *&)expSumUb, 0, dist_norm_b32, preg_all);
         vsts(vreg_exp_sum_brc, (__ubuf__ float *&)firstLoopSumUb, 0, dist_norm_b32, preg_all); // 传给loop 1用于更新rowSum
     }
@@ -1139,19 +1139,19 @@ namespace FaVectorApi {
         UnalignRegForStore ureg_max;
         UnalignRegForStore ureg_exp_sum;
 
-        MaskReg preg_all = pset_b32(PAT_ALL);
-        MaskReg preg_all_b16 = pset_b16(PAT_ALL);
+        MaskReg preg_all = CreateMask<T, MaskPattern::ALL>();
+        MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
         // MaskReg preg_n_b16 = UpdateMask<uint16_t>(pltN);
-        MaskReg preg_tail_n1 = plt_b32(pltTailN1, POST_UPDATE);
-        MaskReg preg_ori_tail_n1 = plt_b32(pltOriTailN1, POST_UPDATE);
-        MaskReg preg_tail_n2 = plt_b32(pltTailN2, POST_UPDATE);
-        MaskReg preg_ori_tail_n2 = plt_b32(pltOriTailN2, POST_UPDATE);
+        MaskReg preg_tail_n1 = UpdateMask<T>(pltTailN1);
+        MaskReg preg_ori_tail_n1 = UpdateMask<T>(pltOriTailN1);
+        MaskReg preg_tail_n2 = UpdateMask<T>(pltTailN2);
+        MaskReg preg_ori_tail_n2 = UpdateMask<T>(pltOriTailN2);
         MaskReg preg_compare1;
         MaskReg preg_compare2;
         MaskReg preg_compare3;
         MaskReg preg_compare4;
         MaskReg preg1;
-        MaskReg preg2 = pset_b8(PAT_ALLF);
+        MaskReg preg2 = CreateMask<uint8_t, MaskPattern::ALLF>();
         MaskReg preg3;
         MaskReg preg4;
         MaskReg preg5;
@@ -1159,10 +1159,10 @@ namespace FaVectorApi {
         // pScale
         RegTensor<float> vreg_p_scale;
         RegTensor<float> vreg_ln_p_scale;
-        vbr(vreg_p_scale, static_cast<float>(pScale));
-        vln(vreg_ln_p_scale, vreg_p_scale, preg_all, MODE_ZEROING);
+        Duplicate<T>(vreg_p_scale, static_cast<float>(pScale));
+        Ln(vreg_ln_p_scale, vreg_p_scale, preg_all);
 
-        vbr(vreg_min, minValue);
+        Duplicate<T>(vreg_min, minValue);
 
         constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
         constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
@@ -1186,10 +1186,10 @@ namespace FaVectorApi {
             vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm);
             vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm);
             // if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-                vmuls(vreg_input_x1, vreg_input_x1, scale, preg_all, MODE_ZEROING); // Muls(scale)
-                vmuls(vreg_input_x2, vreg_input_x2, scale, preg_all, MODE_ZEROING);
-                vmuls(vreg_input_x3, vreg_input_x3, scale, preg_ori_tail_n1, MODE_ZEROING);
-                vmuls(vreg_input_x4, vreg_input_x4, scale, preg_ori_tail_n2, MODE_ZEROING);
+                Muls(vreg_input_x1, vreg_input_x1, scale, preg_all); // Muls(scale)
+                Muls(vreg_input_x2, vreg_input_x2, scale, preg_all);
+                Muls(vreg_input_x3, vreg_input_x3, scale, preg_ori_tail_n1);
+                Muls(vreg_input_x4, vreg_input_x4, scale, preg_ori_tail_n2);
             // }
             // if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
             //     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
@@ -1250,20 +1250,20 @@ namespace FaVectorApi {
                 plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, dist_ds, POST_UPDATE);
                 plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, dist_ds, POST_UPDATE);
                 plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, dist_ds, POST_UPDATE);
-                vsel(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
-                vsel(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
-                vsel(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
-                vsel(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
+                Select(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
+                Select(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
+                Select(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
+                Select(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
                 vsel(vreg_sel3_new, vreg_sel3, vreg_min, preg_ori_tail_n1);
                 vsel(vreg_sel4_new, vreg_sel4, vreg_min, preg_ori_tail_n2);
                 vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm_b32, preg_all);
                 vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm_b32, preg_all);
-                vmax(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all, MODE_ZEROING);
-                vmax(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all, MODE_ZEROING);
-                vmax(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all, MODE_ZEROING);
-                vcmax(vreg_input_max, vreg_max_tmp3, preg_all, MODE_ZEROING);
+                Max(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all);
+                Max(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all);
+                Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all);
+                Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_max_tmp3, preg_all);
             // } else {
                 // Select(vreg_input_x3_new, vreg_input_x3, vreg_min, preg_ori_tail_n1);
                 // Select(vreg_input_x4_new, vreg_input_x4, vreg_min, preg_ori_tail_n2);
@@ -1291,10 +1291,10 @@ namespace FaVectorApi {
         vlds(vreg_in_max, (__ubuf__ float*)inMaxUb, 0, dist_norm);
         mem_bar(VST_VLD);
         vlds(vreg_input_max, (__ubuf__ float*)tmpMaxUb2, 0, dist_norm);
-        vmax(vreg_max_new, vreg_in_max, vreg_input_max, preg_all, MODE_ZEROING);
-        vexpdif(vreg_subloop_update, vreg_in_max, vreg_max_new, preg_all, PART_EVEN);
+        Max(vreg_max_new, vreg_in_max, vreg_input_max, preg_all);
+        FusedExpSub(vreg_subloop_update, vreg_in_max, vreg_max_new, preg_all);
         vlds(vreg_pre_loop_max, (__ubuf__ float*)preLoopMaxUb, 0, dist_norm);
-        vexpdif(vreg_exp_max, vreg_pre_loop_max, vreg_max_new, preg_all, PART_EVEN);
+        FusedExpSub(vreg_exp_max, vreg_pre_loop_max, vreg_max_new, preg_all);
         vsts(vreg_exp_max, (__ubuf__ float *&)expMaxUb, 0, dist_norm_b32, preg_all);
         vsts(vreg_max_new, (__ubuf__ float *&)maxUb, 0, dist_norm_b32, preg_all);
 
@@ -1305,20 +1305,20 @@ namespace FaVectorApi {
 
         for (uint16_t i = 0; i < m; ++i) {
             vlds(vreg_max, (__ubuf__ float*)maxUbStart + i, 0, dist_brc_b32);
-            vsub(vreg_max, vreg_max, vreg_ln_p_scale, preg_all, MODE_ZEROING);
+            Sub(vreg_max, vreg_max, vreg_ln_p_scale, preg_all);
             vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, dist_dintlv_b32);
             vlds(vreg_input_x3, vreg_input_x4,
                  (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_dintlv_b32);
-            vexpdif(vreg_exp_even1, vreg_input_x1, vreg_max, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_odd1, vreg_input_x2, vreg_max, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_even2, vreg_input_x3, vreg_max, preg_all, PART_EVEN);
-            vexpdif(vreg_exp_odd2, vreg_input_x4, vreg_max, preg_all, PART_EVEN);
+            FusedExpSub(vreg_exp_even1, vreg_input_x1, vreg_max, preg_all);
+            FusedExpSub(vreg_exp_odd1, vreg_input_x2, vreg_max, preg_all);
+            FusedExpSub(vreg_exp_even2, vreg_input_x3, vreg_max, preg_all);
+            FusedExpSub(vreg_exp_odd2, vreg_input_x4, vreg_max, preg_all);
 
             // x_sum = sum(x_exp, axis=-1, keepdims=True)
-            vadd(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all, MODE_ZEROING);
-            vadd(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all, MODE_ZEROING);
-            vadd(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all, MODE_ZEROING);
-            vcadd(vreg_exp_sum3, vreg_exp_sum3, preg_all, MODE_ZEROING);
+            Add(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all);
+            Add(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all);
+            Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all);
+            Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum3, vreg_exp_sum3, preg_all);
             vstus(ureg_exp_sum, 1, vreg_exp_sum3, (__ubuf__ float *&)tmpExpSumUb, POST_UPDATE);
 
             // dropmask compute
@@ -1365,20 +1365,20 @@ namespace FaVectorApi {
                 RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3_2;
                 RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
                 // RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes_2;
-                MaskReg preg_all_b8 = pset_b8(PAT_ALL);
+                MaskReg preg_all_b8 = CreateMask<uint8_t, MaskPattern::ALL>();
                 uint32_t maskLen = 128;
-                MaskReg preg_all_b8_128 = plt_b8(maskLen, POST_UPDATE);
-                vcvt(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all, ROUND_R, RS_DISABLE, PART_P0, MODE_ZEROING);
-                vcvt(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all, ROUND_R, RS_DISABLE, PART_P0, MODE_ZEROING);
-                vcvt(vreg_exp_odd_f8e4m3_1, vreg_exp_odd1, preg_all, ROUND_R, RS_DISABLE, PART_P2, MODE_ZEROING);
-                vcvt(vreg_exp_odd_f8e4m3_2, vreg_exp_odd2, preg_all, ROUND_R, RS_DISABLE, PART_P2, MODE_ZEROING);
-                vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_1,
-                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8, MODE_ZEROING);
-                vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
-                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8, MODE_ZEROING);
+                MaskReg preg_all_b8_128 = UpdateMask<uint8_t>(maskLen);
+                Cast<T2, T, castTraitZero>(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all);
+                Cast<T2, T, castTraitZero>(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all);
+                Cast<T2, T, castTraitOne>(vreg_exp_odd_f8e4m3_1, vreg_exp_odd1, preg_all);
+                Cast<T2, T, castTraitOne>(vreg_exp_odd_f8e4m3_2, vreg_exp_odd2, preg_all);
+                Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_1,
+                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8);
+                Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
+                   (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8);
                 vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, dist_norm);
-                vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
-                vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
+                Gather((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
+                Gather((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (__ubuf__ uint8_t *&)expUb1,
                       (blockStride << 16u) | (repeatStride & 0xFFFFU), preg_all_b8_128, POST_UPDATE);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (__ubuf__ uint8_t *&)expUb2,
@@ -1405,10 +1405,10 @@ namespace FaVectorApi {
         RegTensor<float> vreg_first_sum;
         vlds(vreg_first_sum, (__ubuf__ float*)firstLoopSumUb, 0, dist_norm);
         vlds(vreg_pre_sum, (__ubuf__ float*)preLoopSumUb, 0, dist_norm);
-        vmul(vreg_first_sum, vreg_subloop_update, vreg_first_sum, preg_all, MODE_ZEROING);
-        vadd(vreg_first_sum, vreg_first_sum, vreg_exp_sum_brc, preg_all, MODE_ZEROING);
-        vmul(vreg_pre_sum, vreg_exp_max, vreg_pre_sum, preg_all, MODE_ZEROING);
-        vadd(vreg_pre_sum, vreg_first_sum, vreg_pre_sum, preg_all, MODE_ZEROING);
+        Mul(vreg_first_sum, vreg_subloop_update, vreg_first_sum, preg_all);
+        Add(vreg_first_sum, vreg_first_sum, vreg_exp_sum_brc, preg_all);
+        Mul(vreg_pre_sum, vreg_exp_max, vreg_pre_sum, preg_all);
+        Add(vreg_pre_sum, vreg_first_sum, vreg_pre_sum, preg_all);
         vsts(vreg_pre_sum, (__ubuf__ float *&)expSumUb, 0, dist_norm_b32, preg_all);
     }
 
