@@ -662,6 +662,47 @@ for innerIdx = 0 to innerExtend-1:                 // K 方向按 256 元素分�
 
 7. **输出 NZ 格式**：VF 输出到 UB 的 highBitData 使用 NZ 格式（`DATA_BLOCK_COPY + POST_MODE_UPDATE`），后续 MTE3 从 UB 搬到 L1 时需要按 NZ 格式解析。这与 GMM 现有的 MTE3 流程一致，无需修改。
 
+#### 4.4.5 双 AIV 并行切分策略
+
+Ascend 950 的 AI Core 包含 1 个 Cube 和 2 个 Vector Core（AIV0、AIV1）。GMM 的 basic_block 利用双 AIV 并行执行反量化，提高吞吐量。切分策略与 wqbmmv2 一致：
+
+| 路径 | bTrans | 切分方向 | AIV0 工作量 | AIV1 工作量 |
+|------|--------|----------|-------------|-------------|
+| ND KN | false | **K** | 前 `kbL1Size / 2` 行 | 剩余 K 行 |
+| ND NK | true | **N** | 前 `nL1Size / 2` 列 | 剩余 N 列 |
+
+**ND KN 路径**（`ComputeBasicBlockAivNdKnNzNk`）：
+
+```text
+kMte2BaseSize = kbL1Size / VEC_CORE_NUM    // K 平分给 2 个 AIV
+AIV0: 前 K/2 行，AIV1: 后 K/2 行
+两个 AIV 都处理完整的 N
+```
+
+**ND NK 路径**（`ComputeBasicBlockAivNdNkNzKn`）：
+
+```text
+curVecCoreMte2RealN = nL1Size / VEC_CORE_NUM    // N 平分给 2 个 AIV
+AIV0: 前 N/2 列，AIV1: 后 N/2 列
+两个 AIV 都处理完整的 K（外层循环迭代 K）
+```
+
+对 pergroup 反量化的影响：
+
+| 路径 | AIV 切分方向 | per-AIV 块大小 | group num per AIV |
+|------|-------------|---------------|------------------|
+| KN (bTrans=false) | K | N=256, K=128 | 128 / groupSize |
+| NK (bTrans=true) | N | N=128, K=256 | 256 / groupSize |
+
+**关键影响**：
+
+- **KN 路径**：每个 AIV 处理的 K 减半，group 数减半，但 scale 加载方式不变（`DIST_NORM` 按 group 加载，在 K 内循环中复用 groupSize 次）。**无需特殊处理。**
+- **NK 路径**：每个 AIV 处理的 N 减半，但 K 完整，group 数不变。
+- **gs=32 KN 路径**：每个 AIV 处理 K=128，对应 128/32 = 4 个 group。scale 加载方式与 gs=128/256 完全相同（`DIST_NORM` 一次加载 128 个 N 方向的 scale），K 内循环迭代 32 次复用同一 scale。**无需特殊处理。**
+- **gs=32 NK 路径**：每个 AIV 处理 K=256（完整），对应 256/32 = 8 个 group。需要构造 2 个 128 元素 scale 寄存器（8 groups × 32 elements = 256 K elements）。**需要特殊构造**（已在 §4.4.2 gs=32 部分给出具体方案）。
+
+**单任务回退**：当 `kBL1Len_ <= kBubSize`（KN）或 `nBL1Len_ <= nBubSize`（NK）时，两个 AIV 执行相同的工作（冗余执行），不影响正确性。
+
 ### 4.5 Cube 复用
 
 Cube 侧只看到 L1 中的 `xType` weight：
@@ -699,8 +740,8 @@ Cube 侧只看到 L1 中的 `xType` weight：
 | `grouped_matmul_apt.cpp` | 新增 8 个 basic-controller 分支 |
 | `grouped_matmul_weight_quant_basic_controller.h` | pergroup scale/offset 偏移和 bias 独立偏移 |
 | `basic_block_config.h` | A16W4 ND pergroup `WqmmConfig` |
-| `weight_quant_vec_compute.h` | A16W4 pergroup VF 分发；scale/offset 按 VF tile 搬运；PER_GROUP offset 搬运 |
-| `basic_block_vf_nd.h` | 新增 KN/NK INT4 pergroup VF；NK 按固定 `[G,N]` scale/offset 输入构造广播与 Select |
+| `weight_quant_vec_compute.h` | ① `CopyAntiQuantParamsGmToUb` 补充 PER_GROUP offset 搬运（`if constexpr (hasAntiQuantOffset)` 分支）；② `CalLocalAddrForVf` 增加 PER_GROUP scale UB 地址计算（含 K 方向 group 偏移）；③ A16W4 pergroup VF 分发与参数构造 |
+| `basic_block_vf_nd.h` | 新增 KN/NK INT4 pergroup VF；`NdNkLoadScaleOffset` / `NdKnLoadScaleOffset` 增加 PER_GROUP 分支（NK 按固定 `[G,N]` scale/offset 输入构造广播与 Select） |
 | `grouped_matmul_def.cpp` | config950 增加 INT4 ND 组合 |
 
 ### 6.2 复用不修改
