@@ -84,19 +84,27 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
 }
 
 // ========== 产出 ElasticResult ==========
-// CalcAdjustments(localExpertNum, sharedA, moeA, epWorldSize) → ElasticResult
+// 与 v2 现行实现对齐：
+//   adjustedA               = max(sharedA, moeA)
+//     来源：moe_distribute_dispatch_v2_tiling.cpp:1053
+//           A = std::max(maxBs * maxSharedGroupNum, globalBs * std::min(localMoeExpertNum, expertIdsDim1))
+//   adjustedExpertTokenDim0 = max(localExpertNum, 1)
+//     来源：moe_distribute_dispatch_v2_tiling.cpp:1138
+//           expertTokenNumsDim0 == (localMoeExpertNum > 1 ? localMoeExpertNum : 1)
+//   adjustedEpRecvDim0      = epWorldSize * max(localExpertNum, 1)
+//     来源：moe_distribute_dispatch_v2_tiling.cpp:1167
+//           epRecvCount = std::max(epWorldSize, epWorldSize * localMoeExpertNum)
+//
 //   sharedA: 共享专家路径的 A 值（maxBs * maxSharedGroupNum）
 //   moeA   : moe 专家路径的 A 值（globalBs * min(localExpertNum, k)）
 inline ElasticResult CalcAdjustments(uint32_t localExpertNum, uint32_t sharedA, uint32_t moeA, uint32_t epWorldSize)
 {
     ElasticResult result{};
     result.hasElastic = true;
-    // 弹性场景下 A 取两路最大值
     result.adjustedA = sharedA > moeA ? sharedA : moeA;
-    // expertTokenNums dim0 = localExpertNum
-    result.adjustedExpertTokenDim0 = localExpertNum;
-    // epRecvCounts dim0 = epWorldSize * localExpertNum
-    result.adjustedEpRecvDim0 = epWorldSize * localExpertNum;
+    uint32_t adjustedLocalExpertNum = localExpertNum > 1U ? localExpertNum : 1U;
+    result.adjustedExpertTokenDim0 = adjustedLocalExpertNum;
+    result.adjustedEpRecvDim0 = epWorldSize * adjustedLocalExpertNum;
     return result;
 }
 

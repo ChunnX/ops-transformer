@@ -48,14 +48,14 @@ ge::graphStatus CheckTensorRules(gert::TilingContext *ctx, const TensorCheckRule
         }
 
         // 检查维度
-        if (CheckTensorDimNum(shape, rule.expectedDim) != ge::GRAPH_SUCCESS) {
+        if (CheckDimNum(shape, rule.expectedDim) != ge::GRAPH_SUCCESS) {
             OPS_LOG_E("CheckTensorRules", "tensor %s dim check failed, expected %u.", rule.name, rule.expectedDim);
             return ge::GRAPH_FAILED;
         }
 
         // 检查 dtype
         if (rule.dtypeCount > 0U) {
-            if (CheckTensorDtypeIn(desc, rule.validDtypes, rule.dtypeCount) != ge::GRAPH_SUCCESS) {
+            if (CheckDtypeIn(desc->GetDataType(), rule.validDtypes, rule.dtypeCount) != ge::GRAPH_SUCCESS) {
                 OPS_LOG_E("CheckTensorRules", "tensor %s dtype check failed.", rule.name);
                 return ge::GRAPH_FAILED;
             }

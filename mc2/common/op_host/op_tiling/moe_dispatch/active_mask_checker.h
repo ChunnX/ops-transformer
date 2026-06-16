@@ -19,6 +19,7 @@
 #ifndef MOE_DISPATCH_ACTIVE_MASK_CHECKER_H
 #define MOE_DISPATCH_ACTIVE_MASK_CHECKER_H
 
+#include <optional>
 #include "defs.h"
 #include "utils.h"
 #include "register/tilingdata_base.h"
@@ -27,10 +28,11 @@ namespace active_mask_check {
 
 // ========== 互斥/约束规则校验 ==========
 // CheckCompatibility(nodeName, isLayered, isExpertMask, globalBs, bsTimesEpWorldSize)
-// globalBs 用于 globalBs > bs * epWorldSize 时不允许 ActiveMask 的约束校验
-// （bs * epWorldSize 由调用方根据 globalBs 推断；当为 0 时跳过该项校验）
+//   bsTimesEpWorldSize 用 std::optional：
+//     - 有值时强制校验 globalBs <= bsTimesEpWorldSize
+//     - 无值（std::nullopt）显式表示"调用方已在外部完成校验或场景无需校验"
 inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, bool isExpertMask, uint32_t globalBs,
-                                          uint32_t bsTimesEpWorldSize)
+                                          std::optional<uint32_t> bsTimesEpWorldSize)
 {
     // 2D mask (isExpertMask=true) 与 layered 互斥
     if (isLayered && isExpertMask) {
@@ -39,9 +41,9 @@ inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, 
     }
 
     // globalBs 超过 bs * epWorldSize 时不允许 ActiveMask
-    if (bsTimesEpWorldSize != 0U && globalBs > bsTimesEpWorldSize) {
+    if (bsTimesEpWorldSize.has_value() && globalBs > bsTimesEpWorldSize.value()) {
         OPS_LOG_E(nodeName, "Cannot support xActiveMask when globalBs(%u) > bs * epWorldSize(%u).", globalBs,
-                  bsTimesEpWorldSize);
+                  bsTimesEpWorldSize.value());
         return ge::GRAPH_FAILED;
     }
 

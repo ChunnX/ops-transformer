@@ -110,12 +110,6 @@ inline ge::graphStatus CheckDimNum(const gert::StorageShape *shape, uint32_t exp
     return ge::GRAPH_SUCCESS;
 }
 
-// 兼容旧名（CheckTensorRules 内部使用）
-inline ge::graphStatus CheckTensorDimNum(const gert::StorageShape *shape, uint32_t expectedDim)
-{
-    return CheckDimNum(shape, expectedDim);
-}
-
 // dtype 在合法集合中
 inline ge::graphStatus CheckDtypeIn(ge::DataType dtype, const ge::DataType *validDtypes, uint32_t dtypeCount)
 {
@@ -128,16 +122,6 @@ inline ge::graphStatus CheckDtypeIn(ge::DataType dtype, const ge::DataType *vali
         }
     }
     return ge::GRAPH_FAILED;
-}
-
-// desc 版本（CheckTensorRules 内部使用）
-inline ge::graphStatus CheckTensorDtypeIn(const gert::CompileTimeTensorDesc *desc, const ge::DataType *validDtypes,
-                                          uint32_t dtypeCount)
-{
-    if (desc == nullptr) {
-        return ge::GRAPH_FAILED;
-    }
-    return CheckDtypeIn(desc->GetDataType(), validDtypes, dtypeCount);
 }
 
 // format 非 FRACTAL_NZ 校验
@@ -153,12 +137,6 @@ inline ge::graphStatus CheckNotFractalNZ(ge::Format format)
 inline ge::graphStatus CheckRangeU32(uint32_t val, uint32_t minVal, uint32_t maxVal)
 {
     return (val >= minVal && val <= maxVal) ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
-}
-
-// 兼容旧名
-inline ge::graphStatus CheckAttrRangeU32(uint32_t val, uint32_t minVal, uint32_t maxVal)
-{
-    return CheckRangeU32(val, minVal, maxVal);
 }
 
 inline ge::graphStatus CheckAttrRangeInt64(int64_t val, int64_t minVal, int64_t maxVal)
