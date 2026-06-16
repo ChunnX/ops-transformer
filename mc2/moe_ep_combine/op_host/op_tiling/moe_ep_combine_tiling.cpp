@@ -116,7 +116,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     info.localmoeNum = static_cast<uint32_t>(numRecvPerExpertShape->GetStorageShape().GetDim(0));
 
 
-    bool hasTopkWeights = (context->GetInputDesc(TOPK_WEIGHTS_INDEX) != nullptr);
+    bool hasTopkWeights = (context->GetOptionalInputDesc(TOPK_WEIGHTS_INDEX) != nullptr);
     if (hasTopkWeights) {
         const gert::StorageShape *topkWeightsShape = context->GetInputShape(TOPK_WEIGHTS_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, topkWeightsShape);
@@ -125,7 +125,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     }
     info.hasTopkWeights = hasTopkWeights ? 1 : 0;
 
-    bool hasBias0 = (context->GetInputDesc(BIAS_0_INDEX) != nullptr);
+    bool hasBias0 = (context->GetOptionalInputDesc(BIAS_0_INDEX) != nullptr);
     if (hasBias0) {
         const gert::StorageShape *bias0Shape = context->GetInputShape(BIAS_0_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, bias0Shape);
@@ -133,7 +133,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
             OP_LOGE(nodeName, "bias0Shape dims must be 2."), return ge::GRAPH_FAILED);
     }
 
-    bool hasBias1 = (context->GetInputDesc(BIAS_1_INDEX) != nullptr);
+    bool hasBias1 = (context->GetOptionalInputDesc(BIAS_1_INDEX) != nullptr);
     if (hasBias1) {
         const gert::StorageShape *bias1Shape = context->GetInputShape(BIAS_1_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, bias1Shape);

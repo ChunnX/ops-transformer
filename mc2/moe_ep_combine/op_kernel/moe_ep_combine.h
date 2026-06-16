@@ -507,8 +507,8 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPha
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
-    SendPhaseExpertToToken();
-    RecvPhaseReduce();
+    // SendPhaseExpertToToken();
+    // RecvPhaseReduce();
     printf("moe_ep_combine End\r\n");
 }
 

@@ -163,8 +163,8 @@ class MoEElasticBuffer:
         assert bias_0 is None and bias_1 is None, "bias not supported in first release"
 
         combined_x, combined_topk_weights = _op.npu_moe_ep_combine(
-            self.context, x, handle.dst_buffer_slot_idx,
-            handle.recv_src_metadata, handle.num_recv_tokens_per_rank,
+            self.context, x, handle.topk_idx,
+            handle.recv_src_metadata, handle.num_recv_tokens_per_expert,
             topk_weights, bias_0, bias_1, self.ep_world_size, self.rank_id,
             handle.num_experts, handle.num_max_tokens_per_rank, self.ccl_buffer_size
         )
