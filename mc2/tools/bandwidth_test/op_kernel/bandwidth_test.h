@@ -250,8 +250,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     dstRankIdsTensor_ = dstRankIdsBuf_.Get<int32_t>();
 
     uint32_t hFp32Size = axisH_ * sizeof(float);
-    uint32_t maxSize = dstRankIdsSize;
-    maxSize = hFp32Size > dstRankIdsSize ? hFp32Size : dstRankIdsSize;
+    uint32_t maxSize = hFp32Size > dstRankIdsSize ? hFp32Size : dstRankIdsSize;
     tpipe_->InitBuffer(gatherMaskOutBuf_, maxSize);
     totalUsedUB_ += maxSize;
 
@@ -535,6 +534,9 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     tpipe_->InitBuffer(tripleQueue, BUFFER_NUM, dataSize);
 
     uint32_t countPerDataSize = dataSize / hOutAlignUbSize_; // 每次拷贝的token数量
+    if (countPerDataSize == 0) {
+        countPerDataSize = 1;
+    }
     uint32_t beginIdx = preCnt;
 
     // ============ 遍历每个rank，从窗口拷贝数据到输出 ============

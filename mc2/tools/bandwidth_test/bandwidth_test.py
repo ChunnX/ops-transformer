@@ -65,8 +65,14 @@ if not is_cloud:
     server_index = 0                     # 多机每个脚本保持一致并递增index值
     master_ip = '71.20.45.123' if server_num > 1 else '127.0.0.1'    # 如果通信不通，查看一下master_ip是否设对
 else:
-    server_index = int(os.environ.get("VC_TASK_INDEX"))
-    host_url_list = os.environ.get("VC_WORKER_HOSTS").split(",")
+    task_index = os.environ.get("VC_TASK_INDEX")
+    if task_index is None:
+        raise EnvironmentError("环境变量 VC_TASK_INDEX 未设置，请检查云环境配置")
+    server_index = int(task_index)
+    host_urls = os.environ.get("VC_WORKER_HOSTS")
+    if host_urls is None or host_urls == "":
+        raise EnvironmentError("环境变量 VC_WORKER_HOSTS 未设置，请检查云环境配置")
+    host_url_list = host_urls.split(",")
     master_ip = socket.gethostbyname(host_url_list[0])
 
 rank_per_dev = 8
@@ -179,7 +185,7 @@ def check_setting():
         if cfg['max_bs'] < cfg['bs']:
             error_log_and_exit(f"test_configs[{i}]: max_bs 应大于等于 bs")
 
-    if (server_index < 0) or (server_index > server_num):
+    if (server_index < 0) or (server_index >= server_num):
         error_log_and_exit("server_index 取值范围为 [0, server_num)")
 
     if server_num * rank_per_dev != world_size:
@@ -748,6 +754,7 @@ def run_precision_test(
                 return False
     else:
         logger.error("Get result_queue Failed")
+        return False
   
     logger.info("-" * 60)
     logger.info("Precision Verification:")
