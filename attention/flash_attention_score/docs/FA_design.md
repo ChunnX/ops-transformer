@@ -1250,6 +1250,401 @@ workspace 读法:
 - `enablePreSfmg`:额外 softmax grad workspace。
 - deterministic:旧方案有 `deterGmOffset/deterWorkSpaceOffset`;新 dense/band + BN2S2 有额外 DKV deterministic buffer。
 
+### 13.6.1 FAG 分核枚举器:`GetNextValidIdx`
+
+这一小节只讲 `flash_attention_score_grad_kernel_base.h` 里的任务枚举,不是 §13.6 的 `splitAxis` 选择。`splitAxis` 决定走 BN2/BN2S2/BN2GS1S2 哪条大路径;`GetNextValidIdx` 决定在 BN2GS1S2/TND-swizzle 这类 `(B,N2,G,S1o,S2o)` 基本块空间里,当前 AIC 下一拍该算哪一块。
+
+主循环里它有两个输入坐标:
+
+- `blockInnerIdx`:普通线性分核的真实全局块号,来自 host 写好的 `blockStarts/blockEnds[cBlockIdx]`。
+- `curLoopIdx`:连续 swizzle 分核的逻辑轮次,每个 AIC 用 `cBlockIdx` 从同一个轮次里抽自己的列/块。
+
+主循环关系可以先简化成:
+
+```text
+blockInnerIdx = NextValid(runInfos[0], taskId=0, blockStarts[cBlockIdx], loop=0)
+
+while true:
+    isLastLoop = (blockInnerIdx == END)
+    if !isLastLoop:
+        nextIdx = NextValid(nextRunInfo, taskId+1, blockInnerIdx+1, curLoopIdx+1)
+        SetRunInfo(curRunInfo, nextRunInfo, taskId, blockInnerIdx, nextIdx)
+
+        if isSplitByBlockIdx or IS_TND_SWIZZLE:
+            curLoopIdx += 1
+        else:
+            blockInnerIdx += 1
+
+    ... run current task and drain previous task ...
+
+    if blockInnerIdx == END:
+        break
+    taskId += 1
+    blockInnerIdx = nextIdx
+```
+
+注意一个容易误读的点:swizzle 专用 dense/causal 路径常返回 `0` 表示"还有任务",结束才返回 `-1`;真正的 `(b,n2,g,s1o,s2o,s2CvBegin,s2CvEnd)` 已经写进 `runInfo`。普通线性路径返回的才是可再次 decode 的全局块号。
+
+入口分派可抽象为:
+
+```text
+function NextValid(runInfo, taskId, blockInnerIdx, loop):
+    if IS_TND_SWIZZLE:
+        if sparseType == DENSE:
+            return NextTndDense(runInfo, loop)
+        if sparseType == CASUAL:      # 源码拼写是 CASUAL,语义是 causal
+            return NextTndCausal(runInfo, loop)
+        return NextTndBand(runInfo, loop)
+
+    if !isSplitByBlockIdx:
+        return LinearScanAndFilter(runInfo, taskId, blockInnerIdx)
+
+    if !IS_TND and DETER_SPARSE_TYPE == NO_DETER:
+        return NextNonTndSwizzle(runInfo, loop)
+
+    return END
+```
+
+| 路径 | 触发条件 | 枚举方式 | 主要目的 | 返回值语义 |
+|---|---|---|---|---|
+| 普通线性 scan | `!IS_TND_SWIZZLE && !isSplitByBlockIdx` | 从 `blockStarts[cBlockIdx]` 到 `blockEnds[cBlockIdx]` 顺序扫 | 复用 host 的粗分核,用 `IsValid` 跳过 sparse/mask 无效块 | 真实线性块号或 `-1` |
+| 非 TND swizzle | `isSplitByBlockIdx && !IS_TND && NO_DETER` | `curLoopIdx` + `cBlockIdx` 反算坐标;dense/causal 有专门宏块 swizzle,band/兜底走压缩 valid-space | 大 invalid block 或 L2 压力大时,让每核按连续 valid 块取活,减少空扫并改善局部性 | dense/causal 专用返回 `0/-1`;兜底返回线性块号/`-1` |
+| TND dense swizzle | `IS_TND_SWIZZLE && DENSE` | 先按 batch prefix 定位 batch,再把同一 `loop` 的 S2/N2G 维按 AIC stride 展开 | varlen batch 下避免按最大 S 空转,同时让各核取不同 S2/N2G 列 | `loopIdx` 或 `-1` |
+| TND causal swizzle | `IS_TND_SWIZZLE && CASUAL` | 把 causal 三角形塞进成对 N2G 的镜像矩形,再映射回真实三角 | 对三角 workload 做负载配平,减少无效半区 | `loopIdx` 或 `-1` |
+| TND band swizzle | `IS_TND_SWIZZLE && band/prefix-like sparse` | 维护内部 `bandLoopIdx`,在 band envelope 中产候选再用 band 谓词过滤 | 对带状稀疏只枚举近似有效带,跳过大面积空白 | `loopIdx` 或 `-1` |
+
+host 侧开关可以先按三层理解:
+
+```text
+enableSwizzle =
+    (CheckExceedL2Cache() or CheckIsLargeInvalidBlk())
+    and blockOuter == aicNum
+
+isSplitByBlockIdx(non-TND) =
+    enableSwizzle
+    and layout != TND
+    and splitAxis == BN2GS1S2
+    and s1Inner*s1CvRatio == s2Inner*s2CvRatio
+    and sparseType != UNSUPPORTED
+    # deterministic 还会额外要求 b*n2 偶数、g==1、S1 足够大、deterSparseType 可支持;
+    # 但当前 base 这段 GetNextValidIdx 只接 NO_DETER,deterministic 主要去 deter kernel 看坐标。
+
+isTndSwizzle =
+    enableSwizzle
+    and layout == TND
+    and template/sparse support cond
+    and b < TND_SWIZZLE_PREFIX_NUM
+    and no zero sequence / no tailZero batch
+```
+
+所以 `GetNextValidIdx` 末尾那个 `return -1` 不宜理解成"漏实现";更准确地说,host/template 正常情况下不应该把不支持的 `isSplitByBlockIdx + TND/deterministic` 组合送到这个 base 普通枚举器。
+
+普通线性 scan 的核心是"先 decode,再用 sparse 规则过滤":
+
+```text
+function LinearScanAndFilter(runInfo, taskId, idx):
+    end = blockEnds[cBlockIdx]
+    while idx < end:
+        if IsValidAndFillRunInfo(runInfo, taskId, idx):
+            return idx
+        idx += 1
+    return END
+```
+
+非 TND 的线性块 decode 顺序是 `s1o` 最快、`s2o` 次之、再到 `g/n2/b`:
+
+```text
+function DecodeNonTnd(idx):
+    local = idx % (s1Outer * s2Outer)
+    s2o = local / s1Outer
+    s1o = local % s1Outer
+
+    tmp = idx / (s1Outer * s2Outer)
+    g   = tmp % G
+    n2  = (tmp / G) % N2
+    b   = tmp / (N2 * G)
+    return (b, n2, g, s1o, s2o)
+```
+
+`IsValid` 的简化判据:
+
+```text
+function IsValidAndFillRunInfo(runInfo, taskId, idx):
+    (b,n2,g,s1o,s2o) = Decode(idx)
+    s2Block = [s2o * CUBE_BASEN, min((s2o+1) * CUBE_BASEN, actualS2)]
+
+    if no attention mask:
+        fill runInfo
+        return true
+
+    if sparseMode in {RIGHT_DOWN_CAUSAL, PREFIX, PREFIX_COMPRESS}:
+        # CheckIsValidBlock / CheckIsValidBlockForDeter
+        s2End = causal_or_prefix_right_boundary(s1o, actualS1, actualS2, prefixN)
+        valid = (s2Block.left < s2End)
+    else:
+        # 一般 causal/band:按 token 窗口给当前 S1 块算 S2 有效区间
+        sparseLeft  = floor64(max(CUBE_BASEM * s1o - s1Token, 0))
+        sparseRight = min(align64(min(CUBE_BASEM * (s1o+1), actualS1) + s2Token), actualS2)
+        valid = overlap(s2Block, [sparseLeft, sparseRight))
+
+    if valid:
+        fill runInfo and tail s2CvBegin/s2CvEnd
+    return valid
+```
+
+TND 的 `IsValidForTND` 多一步:每个 batch 的 `S1/S2` 都可能不同,所以要用 `GetSeqQlenKvlenByBidx` 和 TND prefix 先定位实际 batch,再用该 batch 的 `s1OuterTmp/s2OuterTmp` decode。`BN2S2` 路径还有一个特殊计数:如果某个 S2 column 整列无效,会通过 `curS2InvalidTotalNum` 让循环保留一个"结构性有效"点,避免 BN2S2 后续按列累加/flush 的边界被打乱。这个点后续读 BN2S2 atomic/flush 时要一起看。
+
+非 TND swizzle 由 `SetSwizzleConstInfo` 先把几种形状的常量算好:
+
+```text
+enableDenseSwizzle  = no mask or sparseType==DENSE, and S1/S2 outer large enough
+enableCausalSwizzle = causal mask, S1==S2, and S1 outer large enough
+continuousBlockNum  = min(maxValidBBLen, SWIZZLE_CONTINUOUS_BLOCK_NUM) for dense/causal
+```
+
+非 TND swizzle 的通用映射:
+
+```text
+function NextNonTndSwizzle(runInfo, loop):
+    if enableDenseSwizzle:
+        return NextMacroDenseSwizzle(runInfo)
+    if enableCausalSwizzle:
+        return NextMacroCausalSwizzle(runInfo)
+
+    group = loop / continuousBlockNum
+    inner = loop % continuousBlockNum
+    global = aicCoreNum * continuousBlockNum * group
+             + cBlockIdx * continuousBlockNum
+             + inner
+
+    bn2g = global / totalPerBatchNum
+    if bn2g >= B * N2 * G:
+        return END
+
+    local = global % totalPerBatchNum
+    (s1o,s2o) = DecodeCompressedValidSpace(local, sparseType)
+    fill runInfo with bn2g and (s1o,s2o)
+    return linearIndex(bn2g, s1o, s2o)
+```
+
+`DecodeCompressedValidSpace` 的三个形态:
+
+```text
+DENSE:
+    s2o = local / s1Outer
+    s1o = local % s1Outer
+
+CAUSAL:
+    if RIGHT_DOWN and S1 < S2:
+        # 前面有一段 full rectangle,后面才是三角
+        if local < s1Outer * (s2Outer - s1Outer + 1):
+            decode as rectangle
+        else:
+            inverse_triangular(local - rectangleNum)
+    else:
+        inverse_triangular(local)
+
+BAND:
+    # SetSwizzleConstInfo 已把有效带压成三段:
+    # 1) rising triangle, 2) middle rectangle/diagonal strip, 3) falling triangle
+    decode by {s2FirstBlockNum, s2SecondBlockNum, firstValidColBlockNum,
+               firstValidRowBlockNum, actualS1Outer, mGap, nGap}
+    shift back by (mGap,nGap)
+```
+
+`NextMacroDenseSwizzle` 和 `NextMacroCausalSwizzle` 是更强的局部性版本,不用 `curLoopIdx` 直接当全局号,而是用内部 `swizzleLoopIdx` 逐个宏块推进:
+
+```text
+function NextMacroDenseSwizzle(runInfo):
+    while true:
+        bn2g      = swizzleLoopIdx / batchTotalRound
+        localLoop = swizzleLoopIdx % batchTotalRound
+        swizzleLoopIdx += 1
+        if bn2g >= B*N2*G:
+            return END
+
+        (macroS1, macroS2, innerLoop) = decompose_dense_macro_tile(localLoop)
+        (localS1, localS2, outOfTile) =
+            LocalIdxDense(innerLoop, macro_m_size, macro_n_size)
+        if outOfTile:
+            continue
+
+        s1o = macroS1 * M_SWIZZLE_BLOCK_SIZE + localS1
+        s2o = macroS2 * N_SWIZZLE_BLOCK_SIZE + localS2
+        if in_range(s1o,s2o):
+            fill runInfo
+            return ALIVE        # 源码返回 0
+```
+
+```text
+function NextMacroCausalSwizzle(runInfo):
+    while true:
+        bn2g      = swizzleLoopIdx / batchTotalRound
+        localLoop = swizzleLoopIdx % batchTotalRound
+        swizzleLoopIdx += 1
+        if bn2g >= B*N2*G:
+            return END
+
+        if localLoop in leftTotalRound:
+            # 用求根公式定位第几个 causal macro column
+            macroS2 = inverse_macro_triangle(localLoop)
+            if in diagonal macro:
+                (localS1,localS2) = LocalIdxTriangular(...)
+                macroS1 = macroS2
+            else:
+                (localS1,localS2) = LocalIdxDense(...)
+                macroS1 = macroS2 + lower_rectangle_offset
+        else:
+            # 右下 tail macro 仍是三角
+            (macroS1,macroS2) = tail_macro
+            (localS1,localS2) = LocalIdxTriangular(...)
+
+        if in_range(s1o,s2o):
+            fill runInfo
+            return ALIVE        # 源码返回 0
+```
+
+`LocalIdxDense/Triangular` 的公共思想是把每个宏块内的 `continuousBlockNum` 个连续任务按 AIC 交错:
+
+```text
+global = aicCoreNum * continuousBlockNum * (loop / continuousBlockNum)
+         + cBlockIdx * continuousBlockNum
+         + loop % continuousBlockNum
+
+Dense:      localS1 = global % m, localS2 = global / m
+Triangular: localS2 = inverse_triangular(global), localS1 = global - prefix(localS2)
+```
+
+TND dense swizzle 的关键是 batch prefix + S2/N2G stride:
+
+```text
+function NextTndDense(runInfo, loop):
+    for b in 0..B-1:
+        if loop >= tndS2BlockPrefixSum[b+1]:
+            continue
+
+        (actualS1, actualS2) = GetSeqQlenKvlenByBidx(b)
+        s1Outer = ceil(actualS1 / CUBE_BASEM)
+        s2Outer = ceil(actualS2 / CUBE_BASEN)
+
+        delta = loop - tndS2BlockPrefixSum[b] + deltaCnt
+        if delta < 0:
+            deltaCnt += -delta
+            delta = 0
+
+        s1o = delta % s1Outer
+        packedS2N2G = (delta / s1Outer) * aicCoreNum + cBlockIdx
+        if packedS2N2G >= s2Outer * N2 * G:
+            continue        # 这个 core 在该轮轮空
+
+        n2g = packedS2N2G / s2Outer
+        s2o = packedS2N2G % s2Outer
+        fill runInfo with b, n2=n2g/G, g=n2g%G, s1o, s2o, actual sizes
+        return loop
+    return END
+```
+
+TND causal swizzle 的核心是"两个 N2G group 拼成一个镜像矩形",再把矩形里的点映射回 causal 三角:
+
+```text
+function NextTndCausal(runInfo, loop):
+    halfN2G = (N2 * G) / 2
+    locate batch by tndS2BlockPrefixSum
+    compute actual s1Outer/s2Outer
+
+    if LEFT_UP and s1Outer < s2Outer:
+        s2Outer = s1Outer       # 去掉天然无效列
+    if RIGHT_DOWN and s1Outer > s2Outer:
+        s1Outer = s2Outer
+
+    if RIGHT_DOWN:
+        envelopeS1 = s1Outer
+        envelopeS2 = 2*s2Outer - s1Outer + 1
+    else:
+        envelopeS1 = 2*s1Outer - s2Outer + 1
+        envelopeS2 = s2Outer
+
+    delta = corrected(loop - batchPrefix + deltaCnt)
+    s1 = delta % envelopeS1
+    packed = (delta / envelopeS1) * aicCoreNum + cBlockIdx
+    if packed >= envelopeS2 * halfN2G:
+        skip current batch/round
+
+    pair = packed / envelopeS2
+    s2   = packed % envelopeS2
+
+    if RIGHT_DOWN:
+        if point in mirrored half:
+            n2g = 2*pair + 1
+            (s1,s2) = mirror_right_down_point(s1,s2)
+        else:
+            n2g = 2*pair
+    else:
+        if point in direct shifted half:
+            n2g = 2*pair + 1
+            s1 = s1 - shift
+        else:
+            n2g = 2*pair
+            (s1,s2) = mirror_left_up_point(s1,s2)
+
+    fill runInfo
+    return loop or END
+```
+
+这里还需要后续确认一处 host 约束:`halfN2G = n2G >> 1` 暗示 TND causal swizzle 以成对 N2G 做镜像配平。源码里 kernel 直接右移,我还没有把所有 host 侧约束完全闭环到"保证 n2G 为偶数/或奇数如何处理"这一点;后续可以沿 `isTndSwizzle` 与 tiling key 条件继续追。
+
+TND band swizzle 更像"候选 envelope + 最终 band 谓词":
+
+```text
+function NextTndBand(runInfo, loop):
+    preBlock  = min(ceil(preTokens  / CUBE_BASEM) + 1, s1Outer)
+    nextBlock = min(ceil(nextTokens / CUBE_BASEN) + 1, s2Outer)
+
+    while true:
+        locate batch by internal bandLoopIdx
+        delta = corrected(bandLoopIdx - batchPrefix + deltaCnt)
+        bandLoopIdx += 1
+
+        if preBlock + nextBlock <= s1Outer:
+            incWidth = nextBlock - 1
+            eqWidth  = min(s2Outer - nextBlock + 1,
+                           s1Outer + 2 - preBlock - nextBlock)
+            decWidth = max(0, min(preBlock + s2Outer - s1Outer - 1,
+                                  preBlock + nextBlock - 2))
+            maxValidLen = preBlock + nextBlock - 1
+
+            if decWidth == 0 or cannot_diagonal_splice:
+                # 按 S2 column 枚举,每列最多 maxValidLen 个 S1
+                candidate = decode_column_envelope(delta, maxValidLen, inc/eq/dec)
+            else:
+                # 把下降段斜向拼接,减少后半段空洞
+                candidate = decode_diagonal_spliced_envelope(delta)
+        else:
+            # band 比 S1 还宽,退化为近似矩形
+            candidate = decode_wide_band_rectangle(delta)
+
+        (s1o,s2o,n2g) = candidate
+        if s1o,s2o out of real range:
+            continue
+        if s1o - s2o >= preBlock:
+            continue
+        if s2o - s1o >= nextBlock:
+            continue
+
+        fill runInfo
+        return loop
+```
+
+所以这几种分核可以用一句话区分:
+
+- 普通 scan:host 已经把每核范围切好,kernel 只负责顺序跳过无效块。
+- 非 TND swizzle:kernel 把全局 valid-space 压缩后按 `AIC * continuousBlockNum` 交错,减少空扫并强化连续块局部性。
+- TND dense:按 batch prefix 避免 varlen 空转,按 S2/N2G 维 stride 给每个 AIC 发列。
+- TND causal:用 N2G 成对镜像把三角形摊平成更均衡的矩形 envelope。
+- TND band:先在带状 envelope 里找候选,再用真实 band 谓词过滤。
+
+和 §4.3 的 L2/Die 亲和关系:这些 FAG swizzle 代码没有显式 Die id 或 STARS group id,源码能证明的是"同一轮按 `cBlockIdx` stride 消费 S2/N2G,且 dense/causal 会尽量让每核拿连续 valid 块";至于满芯片时这些消费核是否被调度到同一 AI Die、是否真的吃到本 Die L2 复用,要看运行时 core-to-Die 映射/profile,不能只靠这段 kernel C++ 写死结论。
+
 ### 13.7 FAG Cube/Vector 优化点
 
 - **五个 MM 的 L0C 复用**:当 `IS_DKV_RESIDENT_L0C` 成立时,MM1/MM2/MM3 共用 L0C buffer,DK/DV 分别驻留 L0C,公式见 `IS_DKV_RESIDENT_L0C`:最大临时 MM 结果 + DK + DV 不超过 256KB。
@@ -1268,8 +1663,9 @@ workspace 读法:
 4. 看 D>256/FP32/FP8/HIFLOAT8,重点观察 BMM2 何时写 GM、splitD 怎么让 Vec2 分块读回。
 5. 反向先读普通 `FlashAttentionScoreGradKernel::Process`,把 MM1~5 和 Vec1~6 对齐到 §13.5。
 6. 回 host 看 `SetSplitAxis` 与 workspace,分别挑 BN2、BN2S2、BN2GS1S2 case 对照主循环分支。
-7. 最后读 deterministic 与 quant:它们复用了大量普通 block,先抓额外 workspace/flag/scale,再看坐标或量化细节。
-8. 读到不确定处先放进 §13.12,不要在主线里硬下结论;能靠代码闭环的再移到 §14 Track A。
+7. 如果 case 命中 BN2GS1S2/TND swizzle,读 §13.6.1 的 `GetNextValidIdx` 枚举器,先确认当前 AIC 的 `(B,N2,G,S1o,S2o)` 坐标怎么生成。
+8. 最后读 deterministic 与 quant:它们复用了大量普通 block,先抓额外 workspace/flag/scale,再看坐标或量化细节。
+9. 读到不确定处先放进 §13.12,不要在主线里硬下结论;能靠代码闭环的再移到 §14 Track A。
 
 ### 13.9 后续深挖 TODO
 
@@ -1354,6 +1750,7 @@ workspace 读法:
 | A5 | Symmetric 镜像在 `partialLen % coreNum ≠ 0` 时的残差均衡度 | trace `CalcRealTimes`/`relativePosReverse`(可纸面推演,不必跑) | §4.3.4 |
 | A6 | PREFIX/PREFIX_COMPRESS 的 sparse start idx 分配逻辑 | host `SetSparseStartIdx` + `GetS2LoopRange` | §4.3.6 补充 / §13.4 |
 | A7 | deterministic 路径如何复用普通 block + 归并 workspace 布局 | `FlashAttentionScoreGradKernelDeter`、`deter.h`、post 阶段 | §13.6 / §13.7 |
+| A8 | FAG `GetNextValidIdx` 的 host 开关闭环,尤其 TND causal swizzle 的 N2G 成对约束 | kernel base:`GetNextValidIdx*`;host:`enableSwizzle`、`isSplitByBlockIdx`、`isTndSwizzle` | §13.6.1 |
 
 ### Track B — 必须 Profile / 看汇编(代码推不出数值,需要跑)
 
