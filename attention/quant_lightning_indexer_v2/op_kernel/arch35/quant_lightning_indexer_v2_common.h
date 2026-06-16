@@ -55,6 +55,9 @@ struct RunInfo {
     uint32_t s2Idx;
     uint32_t s2Start;
     uint32_t s2LoopEnd;
+    uint32_t validS2Len;
+    uint32_t qScaleLoop;
+    uint32_t kScaleLoop;
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
