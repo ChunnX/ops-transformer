@@ -248,13 +248,23 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             (std::string("should equal ") + std::to_string(expertPerRank * epWorldSize)).c_str()),
         return ge::GRAPH_FAILED);
 
+    // maskRecv Size
+    int64_t compareCount = ops::CeilAlign((int64_t)(bs * topK * sizeof(int32_t)), (int64_t)(ALIGN_256))
+        / (int64_t)sizeof(int32_t);
+    int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32); // 8 = block_32 / sizeof(int32_t)
+    int64_t maskSlotSize = maskAlignSize + ALIGN_32;  // mask + 32B count
+    int64_t maskRecvSize = ops::CeilAlign(expertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
+    // quantTokenScale Size
+    uint32_t mxScaleNum = ops::CeilDiv(h, static_cast<int64_t>(ALIGN_32));
+    uint32_t dataBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256)) * sizeof(int8_t);
+    uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
+    uint32_t tokenBytes = ops::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+    int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+    // combineSend Size
+    int64_t combineSendSize = ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512);
+    int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
-    // leastCclBufferSize = PEERMEM_DATA_OFFSET + tokenPerExpert + quantTokenScale + combineOut
-    int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET +
-        (epWorldSize * ops::CeilAlign(epWorldSize * expertPerRank, ALIGN_128) * sizeof(int32_t)) + // tokenPerExpert
-        (ops::CeilAlign(bs * topK * (h + h / MXFP_SCALE_GROUP_NUM), ALIGN_512) * sizeof(int8_t)) + // quantTokenScale
-        (ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512)); // combineOut
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize",
             std::to_string(cclBufferSize).c_str(),
