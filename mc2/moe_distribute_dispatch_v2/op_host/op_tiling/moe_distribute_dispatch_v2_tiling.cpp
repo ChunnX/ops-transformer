@@ -2120,8 +2120,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncImplPublicV2(
         OP_TILING_CHECK(active_mask_check::CheckDtype(activeMaskDesc, nodeName) != ge::GRAPH_SUCCESS,
                         OPS_LOG_E(nodeName, "Public layer activeMask CheckDtype failed."), return ge::GRAPH_FAILED);
         OP_TILING_CHECK(active_mask_check::CheckCompatibility(
-                            nodeName, tc.isLayered, tilingData->moeDistributeDispatchV2Info.isExpertMask,
-                            tilingData->moeDistributeDispatchV2Info.globalBs) != ge::GRAPH_SUCCESS,
+                            nodeName, tc.isLayered, tilingData->moeDistributeDispatchV2Info.isExpertMask) !=
+                            ge::GRAPH_SUCCESS,
                         OPS_LOG_E(nodeName, "Public layer activeMask CheckCompatibility failed."),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(active_mask_check::CheckShape(context, config.xActiveMaskIndex, tc.bs, tc.k, nodeName) !=

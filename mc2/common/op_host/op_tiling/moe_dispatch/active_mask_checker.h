@@ -24,7 +24,7 @@ namespace active_mask_check {
 
 // ========== 互斥/约束规则校验 ==========
 
-inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, bool isExpertMask, uint32_t globalBs)
+inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, bool isExpertMask)
 {
     // 2D mask (isExpertMask=true) 与 layered 互斥
     if (isLayered && isExpertMask) {
@@ -32,8 +32,8 @@ inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, 
         return ge::GRAPH_FAILED;
     }
 
-    // 不同 bs 且 2D mask 不能共存（业务约束）
-    // globalBs 用于判断是否有不同 bs 的情况
+    // 注：globalBs > bs * epWorldSize 时不允许 ActiveMask 的约束在主流程 tiling
+    // (moe_distribute_dispatch_v2_tiling.cpp / arch35.cpp) 已统一收口，本处不再重复
 
     return ge::GRAPH_SUCCESS;
 }
