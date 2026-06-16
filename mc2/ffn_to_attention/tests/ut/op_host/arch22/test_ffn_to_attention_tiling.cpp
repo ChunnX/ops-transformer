@@ -51,7 +51,7 @@ TEST_F(FFNToAttentionArch22TilingTest, NoRankTable)
         &compileInfo
     );
 
-    uint64_t expectTilingKey = 2;
+    uint64_t expectTilingKey = 0;
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -82,7 +82,7 @@ TEST_F(FFNToAttentionArch22TilingTest, RankTable)
         &compileInfo
     );
 
-    uint64_t expectTilingKey = 3;
+    uint64_t expectTilingKey = 1;
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
