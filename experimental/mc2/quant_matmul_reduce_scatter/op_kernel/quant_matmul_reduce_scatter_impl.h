@@ -93,6 +93,8 @@ public:
     using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Te::Coord<int64_t, int64_t, int64_t, int64_t>;
 
+    using MakeLayoutUB = AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<TypeC>>;
+
     static constexpr bool weightNz = BlockMmad::weightNz;
 
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR x1Scale, GM_ADDR x2Scale, GM_ADDR y,
@@ -105,6 +107,7 @@ private:
     __aicore__ inline void MatmulProcess();
     __aicore__ inline void ReduceScatterProcess();
     __aicore__ inline void CommProcess(int64_t mPos, int64_t nPos, const BlockShape &singleShape);
+    __aicore__ inline void CommProcessTensorMode(int64_t mPos, int64_t nPos, const BlockShape &singleShape);
     __aicore__ inline void WriteStatusToWin();
     __aicore__ inline void ReadStatus();
     __aicore__ inline void ReadRemoteDataAdd();
@@ -133,6 +136,8 @@ private:
     GM_ADDR x2ScaleGM_;
     GM_ADDR cGM_;
     GM_ADDR yGM_;
+
+    __gm__ TypeC* cGmAddr_;
 
     Params params_;
 
@@ -201,6 +206,8 @@ __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, i
     cGM_ = !isX2Nz ? y : workspaceGm;
     yGM_ = y;
 
+    cGmAddr_ = reinterpret_cast<__gm__ TypeC*>(cGM_); // tensor 化通信
+
     tilingData = (__gm__ QuantMatmulReduceScatterTilingData *)tilingGM;
     m_ = tilingData->qbmmTilingdata.m;
     k_ = tilingData->qbmmTilingdata.k;
@@ -266,7 +273,8 @@ __aicore__ inline void quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, i
             break;
         }
         CrossCoreWaitFlag(CROSS_CORE_FLAG_ID_NINE);
-        CommProcess(mPos, nPos, singleShape);
+        // CommProcess(mPos, nPos, singleShape);
+        CommProcessTensorMode(mPos, nPos, singleShape);
     }
 
     SyncAll<true>();
@@ -315,40 +323,43 @@ __aicore__ inline void
 quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, isX2Nz>::CommProcess(int64_t mPos, int64_t nPos,
                                                                              const BlockShape &singleShape)
 {
+    // CommProcess 完成的是单个核的matmul计算结果搬入本卡ub 后，按rankid搬到对卡winGM的动作（localGM->UB + UB->RemoteGM）
+    // 取到单核单次计算完成的matmul结果，basem x basen
     int64_t singleM = AscendC::Te::Get<IDX_M_TILEIDX>(singleShape);
     int64_t singleN = AscendC::Te::Get<IDX_N_TILEIDX>(singleShape);
     if (singleM <= 0 || singleN <= 0) {
         return;
     }
 
-    int64_t tpSizeM = tpSizeM_;
+    int64_t tpSizeM = tpSizeM_; // scatter 后的每张卡m
     int64_t aivIdx = coreVid_ % 2;
-    int64_t subTileCnt = Blaze::Gemm::CeilDiv(singleM, AIV_UB_TILE_M);
+    int64_t subTileCnt = Blaze::Gemm::CeilDiv(singleM, AIV_UB_TILE_M); // 每32行（m方向切）一个tile搬运
 
     __gm__ TypeC *workspaceAddr = reinterpret_cast<__gm__ TypeC *>(params_.mmadParams.cGmAddr);
     AscendC::GlobalTensor<bfloat16_t> workspaceGm;
     workspaceGm.SetGlobalBuffer(workspaceAddr);
 
-    uint32_t blkLenBytes = static_cast<uint32_t>(singleN * sizeof(bfloat16_t));
-    uint32_t rowPaddedBytes = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(blkLenBytes), UB_ALIGN_BYTES) * UB_ALIGN_BYTES;
-    uint32_t rowInVECINElems = rowPaddedBytes / sizeof(bfloat16_t);
+    uint32_t blkLenBytes = static_cast<uint32_t>(singleN * sizeof(bfloat16_t)); // 单行（base n 的数据bytes）
+    uint32_t rowPaddedBytes = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(blkLenBytes), UB_ALIGN_BYTES) * UB_ALIGN_BYTES; // padding
+    uint32_t rowInVECINElems = rowPaddedBytes / sizeof(bfloat16_t); // 单行搬运的元素个数
 
     for (int64_t st = aivIdx; st < subTileCnt; st += 2) {
         int64_t subTileM = Min(AIV_UB_TILE_M, singleM - st * AIV_UB_TILE_M);
         if (subTileM <= 0) {
             continue;
         }
-        int64_t globalBaseM = mPos + st * AIV_UB_TILE_M;
+        int64_t globalBaseM = mPos + st * AIV_UB_TILE_M; // for循环中对单核m tile的GM起始搬运行
 
         DataCopyPadExtParams<bfloat16_t> padParams{false, 0, 0, 0};
         AscendC::LocalTensor<bfloat16_t> batchLocal = inQueue_.AllocTensor<bfloat16_t>();
 
         DataCopyExtParams readParams{static_cast<uint16_t>(subTileM), blkLenBytes,
                                      static_cast<uint32_t>((n_ - singleN) * sizeof(bfloat16_t)), 0, 0};
-        DataCopyPad(batchLocal, workspaceGm[globalBaseM * n_ + nPos], readParams, padParams);
+        DataCopyPad(batchLocal, workspaceGm[globalBaseM * n_ + nPos], readParams, padParams); // 从GM搬运 subTileM * singleN 的数据块到ub上连续放置
         inQueue_.EnQue(batchLocal);
         batchLocal = inQueue_.DeQue<bfloat16_t>();
 
+        // 本端UB--> 对端GM
         int64_t processed = 0;
         while (processed < subTileM) {
             int64_t globalRow = globalBaseM + processed;
@@ -376,6 +387,117 @@ quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, isX2Nz>::CommProcess(int
         }
 
         inQueue_.FreeTensor(batchLocal);
+    }
+}
+
+template <typename X1Type, typename X2Type, typename ScaleType, bool isX2Nz>
+__aicore__ inline void
+quantMatmulReduceScatterImpl<X1Type, X2Type, ScaleType, isX2Nz>::CommProcessTensorMode(int64_t mPos, int64_t nPos,
+                                                                             const BlockShape &singleShape)
+{
+    // CommProcess 完成的是单个核的matmul计算结果搬入本卡ub 后，按rankid搬到对卡winGM的动作（localGM->UB + UB->RemoteGM）
+    // 取到单核单次计算完成的matmul结果，basem x basen
+    int64_t singleM = AscendC::Te::Get<IDX_M_TILEIDX>(singleShape);
+    int64_t singleN = AscendC::Te::Get<IDX_N_TILEIDX>(singleShape);
+    if (singleM <= 0 || singleN <= 0) {
+        return;
+    }
+
+    int64_t tpSizeM = tpSizeM_; // scatter 后的每张卡m
+    int64_t aivIdx = coreVid_ % 2;
+    int64_t subTileCnt = Blaze::Gemm::CeilDiv(singleM, AIV_UB_TILE_M); // 每32行（m方向切）一个tile搬运
+
+    // __gm__ TypeC *workspaceAddr = reinterpret_cast<__gm__ TypeC *>(params_.mmadParams.cGmAddr);
+    // AscendC::GlobalTensor<bfloat16_t> workspaceGm;
+    // workspaceGm.SetGlobalBuffer(workspaceAddr);
+
+    // uint32_t blkLenBytes = static_cast<uint32_t>(singleN * sizeof(bfloat16_t)); // 单行（base n 的数据bytes）
+    // uint32_t rowPaddedBytes = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(blkLenBytes), UB_ALIGN_BYTES) * UB_ALIGN_BYTES; // padding
+    // uint32_t rowInVECINElems = rowPaddedBytes / sizeof(bfloat16_t); // 单行搬运的元素个数
+    // 全局gm, 这个应该可以移到init只做一次
+    auto layoutTensorC = AscendC::Te::FrameLayoutFormat<LayoutC, TypeC>{}(AscendC::Te::Get<MNK_M>(params_.problemShape), AscendC::Te::Get<MNK_N>(params_.problemShape));
+    auto gmC = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(cGmAddr_), layoutTensorC);
+    auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{}); // 构造拷贝数据通路类型
+    auto copyUB2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyUB2GM{}); // 构造拷贝数据通路类型
+
+    // UB的padding
+    uint64_t rowPaddedBytes = Blaze::Gemm::CeilDiv(static_cast<uint64_t>(singleN * sizeof(TypeC)), UB_ALIGN_BYTES) * UB_ALIGN_BYTES;
+    uint64_t paddingN = rowPaddedBytes / sizeof(TypeC); // 单行搬运的元素个数
+
+    for (int64_t st = aivIdx; st < subTileCnt; st += 2) {
+        int64_t subTileM = Min(AIV_UB_TILE_M, singleM - st * AIV_UB_TILE_M);
+        if (subTileM <= 0) {
+            continue;
+        }
+        int64_t globalBaseM = mPos + st * AIV_UB_TILE_M; // for循环中对单核m tile的GM起始搬运行
+        // 1. GM->UB
+        auto layoutUB = MakeLayoutUB{}(subTileM, singleN); // 实际有效数据shape
+        auto layoutPaddingUB = MakeLayoutUB{}(subTileM, paddingN); // padding 后的ub shape
+
+        auto paddingUBTensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, TypeC>(0), layoutPaddingUB); // 构造padding UB tensor
+        auto ubTensor = paddingUBTensor.Slice(AscendC::Te::MakeCoord(0, 0), AscendC::Te::MakeShape(subTileM, singleN)); // 切出有效数据 ub tensor
+        // auto ubTensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, TypeC>(0), layoutUB); // 构造UB tensor
+        auto gmTensor = gmC.Slice(AscendC::Te::MakeCoord(globalBaseM, nPos), AscendC::Te::MakeShape(subTileM, singleN)); // 切出当前tile 需要搬运的数据块
+
+        AscendC::Te::Copy(copyGM2UB, ubTensor, gmTensor); // 后续的batchLocal 就变成ubTensor了
+
+        SyncFunc<AscendC::HardEvent::MTE2_MTE3>(); // 确保UB上数据已经准备好了，再往外搬
+
+        // DataCopyPadExtParams<bfloat16_t> padParams{false, 0, 0, 0};
+        // AscendC::LocalTensor<bfloat16_t> batchLocal = inQueue_.AllocTensor<bfloat16_t>();
+
+        // DataCopyExtParams readParams{static_cast<uint16_t>(subTileM), blkLenBytes,
+        //                              static_cast<uint32_t>((n_ - singleN) * sizeof(bfloat16_t)), 0, 0};
+        // DataCopyPad(batchLocal, workspaceGm[globalBaseM * n_ + nPos], readParams, padParams); // 从GM搬运 subTileM * singleN 的数据块到ub上连续放置
+        // inQueue_.EnQue(batchLocal);
+        // batchLocal = inQueue_.DeQue<bfloat16_t>();
+
+        // 2. UB->GM
+        // padding的问题后续讨论一下，先写一版不考虑32字节不对齐情况的
+        // 本端UB--> 对端GM
+        int64_t processed = 0;
+        while (processed < subTileM) {
+            int64_t globalRow = globalBaseM + processed;
+            int32_t dstRankId = static_cast<int32_t>(globalRow / tpSizeM);
+            if (dstRankId >= tpWorldSize_) {
+                break;
+            }
+            int64_t tpBoundary = (dstRankId + 1) * tpSizeM;
+            int64_t rowsInBatch = Min(subTileM - processed, tpBoundary - globalRow); // 当前while需要搬运的行数
+            if (rowsInBatch <= 0) {
+                break;
+            }
+
+            GM_ADDR remoteWinAddr = GetWindAddrByRankId(dstRankId);
+            auto layoutTensorRemote = AscendC::Te::FrameLayoutFormat<LayoutC, TypeC>{}(
+                tpSizeM, 
+                AscendC::Te::Get<MNK_N>(params_.problemShape)); // scatter 到每张卡的m * 完整n
+            __gm__ TypeC* remoteGmAddr_ = reinterpret_cast<__gm__ TypeC*>(remoteWinAddr);
+            auto gmRemote = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(remoteGmAddr_), layoutTensorRemote); // 对卡完整矩阵(tpSizeM * N)
+
+            // 切出当前tile 需要搬运的数据块
+            auto remoteGMTensor = gmRemote.Slice(
+                AscendC::Te::MakeCoord(static_cast<uint64_t>(rankId_) * tpSizeM + globalRow % tpSizeM, nPos), 
+                AscendC::Te::MakeShape(rowsInBatch, singleN)
+            );
+            auto ubProcessTensor = ubTensor.Slice(
+                AscendC::Te::MakeCoord(processed, 0),
+                AscendC::Te::MakeShape(rowsInBatch, singleN)
+            );
+            AscendC::Te::Copy(copyUB2GM, remoteGMTensor, ubProcessTensor);
+
+            // AscendC::GlobalTensor<bfloat16_t> remoteGm;
+            // remoteGm.SetGlobalBuffer((__gm__ bfloat16_t *)remoteWinAddr);
+            // uint64_t dstBaseOffset = static_cast<uint64_t>(rankId_) * tpSizeM * n_ + (globalRow % tpSizeM) * n_ + nPos;
+
+            // DataCopyExtParams writeParams{static_cast<uint16_t>(rowsInBatch), blkLenBytes, 0,
+            //                               static_cast<uint32_t>((n_ - singleN) * sizeof(bfloat16_t)), 0};
+            // DataCopyPad(remoteGm[dstBaseOffset], batchLocal[processed * rowInVECINElems], writeParams);
+
+            processed += rowsInBatch;
+        }
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 确保当前UB->GM的动作完成
+        //inQueue_.FreeTensor(batchLocal);
     }
 }
 
