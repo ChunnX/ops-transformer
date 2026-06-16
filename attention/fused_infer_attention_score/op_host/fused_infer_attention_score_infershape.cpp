@@ -163,6 +163,7 @@ static ge::graphStatus GetQueryTND(const gert::Shape *queryShape,
                                   const std::string queryLayout,
                                   int64_t& t, int64_t& n1, int64_t& d1)
 {
+    // NTD TND
     if (queryLayout == "TND") {
         t = (*queryShape)[FIA_LAYOUT_DIM0];
         n1 = (*queryShape)[FIA_LAYOUT_DIM1];
