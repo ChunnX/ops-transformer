@@ -274,7 +274,14 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
             actualSeqOriKvlenGm, cuSeqlensOriKvGm, constInfo.s2Size);
         int64_t s1Size = GetSeqLen(bIdx, hasActualSeqQlen, hasCuSeqlensQ,
             actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
-        if (s1Size > s2Size) {
+        int expectQs;
+        if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
+            expectQs = GetSeqLen(bIdx, false, hasCuSeqlensQ,
+                actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+        } else {
+            expectQs = constInfo.s1Size;
+        }
+        if (s1Size > s2Size || s1Size < expectQs) {
             constInfo.needInit = 1;
             break;
         }
@@ -394,6 +401,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     if constexpr (IS_SPLIT_G) {
         maxS2LoopCnt = static_cast<int64_t>(metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_MAX_NUM, false)));
     }
+    printf("hasLoad: %d\n", hasLoad);
     if (hasLoad == 0) {
         if ASCEND_IS_AIV {
             if constexpr (IS_SPLIT_G) {
@@ -434,7 +442,9 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     runParam.firstFdDataWorkspaceIdx = firstFdDataWorkspaceIdx;
     int64_t multiCoreInnerIdx = 1;
     int64_t s2SplitIdxCounter = 0;
+    printf("#######before main loop\n");
     for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
+        printf("#######main loop\n");
         bool lastBN = (bnIdx == bN2EndIdx - 1);
         runParam.boIdx = bnIdx;
         runParam.n2oIdx = 0;
@@ -494,6 +504,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
+                printf("#######s2LoopCount: %d, s2LoopLimit: %d\n", s2LoopCount, s2LoopLimit);
                 if (notLastTwoLoop) {
                     RunInfo &runInfo1 = runInfo[taskId % 3];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
@@ -515,9 +526,12 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                         }
                     }
                 }
+                printf("#######taskId: %d, notLast: %d\n", taskId, notLast);
                 if (taskId > 0 && notLast) {
+                    printf("#######yes\n");
                     auto &runInfo2 = runInfo[(taskId + 2) % 3];
                     if ASCEND_IS_AIV {
+                        printf("#######before ProcessVec1\n");
                         this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo2,
                             this->constInfo);
                     } else {
