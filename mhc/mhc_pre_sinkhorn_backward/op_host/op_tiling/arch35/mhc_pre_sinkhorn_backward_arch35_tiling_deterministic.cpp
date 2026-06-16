@@ -48,6 +48,12 @@ constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr uint8_t BF16_BYTE_SIZE = 2;
 constexpr int64_t ALPHA_SIZE_3 = 3;
 constexpr int64_t N_SIZE_4 = 4;
+constexpr int64_t ALIGN_32 = 32;
+
+template<typename T>
+constexpr T AlignUp(T value, T align) {
+    return (value + align - 1) / align * align;
+}
 
 using namespace ge;
 using namespace std;
@@ -114,7 +120,33 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
 
 void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
 {
-
+    int64_t totalBs = batchSize_ * seqLength_;
+    bsTaskCount_ = totalBs / coreNumAiv_;
+    tailBsTaskCount_ = totalBs - bsTaskCount_ * coreNumAiv_;
+    constexpr int64_t FP32_BYTE_SIZE = 4;
+    
+    int64_t nAlignFp32 = AlignUp(n_ * FP32_BYTE_SIZE, ALIGN_32) / FP32_BYTE_SIZE;
+    int64_t cAlignFp32 = AlignUp(c_ * FP32_BYTE_SIZE, ALIGN_32) / FP32_BYTE_SIZE;
+    int64_t cAlignFp16 = AlignUp(c_ * BF16_BYTE_SIZE, ALIGN_32) / BF16_BYTE_SIZE;
+    
+    int64_t hPreBuffer = nAlignFp32 * FP32_BYTE_SIZE;
+    int64_t xBuffer = cAlignFp16 * n_ * BF16_BYTE_SIZE;
+    int64_t gradHinBuffer = cAlignFp16 * BF16_BYTE_SIZE;
+    int64_t xFp32Buffer = cAlignFp32 * n_ * FP32_BYTE_SIZE;
+    int64_t gradXFromHinBuffer = cAlignFp32 * n_ * FP32_BYTE_SIZE;
+    int64_t gradHPreBuffer = nAlignFp32 * FP32_BYTE_SIZE;
+    
+    int64_t totalUbPerBs = (hPreBuffer + xBuffer + gradHinBuffer + xFp32Buffer + gradXFromHinBuffer + gradHPreBuffer) * DOUBLE_BUFFER;
+    int64_t maxBsLoopDataLen = static_cast<int64_t>(ubSize_ * 0.9 / totalUbPerBs);
+    
+    bsLoopDataLen_ = std::min(maxBsLoopDataLen, bsTaskCount_);
+    bsLoopDataLen_ = std::max(bsLoopDataLen_, static_cast<int64_t>(1));
+    
+    cLoopDataLen_ = c_;
+    tile_ = bsLoopDataLen_;
+    
+    OP_LOGI(opName, "DoUbTiling: totalBs=%lld, bsTaskCount=%lld, tailBsTaskCount=%lld, bsLoopDataLen=%lld, cLoopDataLen=%lld, nAlign=%lld, cAlign=%lld",
+        totalBs, bsTaskCount_, tailBsTaskCount_, bsLoopDataLen_, cLoopDataLen_, nAlignFp32, cAlignFp32);
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::DoOpTiling()
@@ -143,7 +175,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
-    size_t gradHat2Workspace = batchSize_ * seqLength_ * (n_ * n_ + 2 * n_ + n_ * c_) * sizeof(float);
+    size_t gradHat2Workspace = batchSize_ * seqLength_ * n_ * c_ * 10 * sizeof(float);
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     size_t usrWorkSpaceSize = gradHat2Workspace;
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
