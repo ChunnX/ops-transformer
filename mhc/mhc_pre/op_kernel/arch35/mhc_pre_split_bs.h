@@ -35,6 +35,7 @@ static constexpr uint32_t DEFAULT_CHUNK_SIZE = 64;
 static constexpr uint32_t DEFAULT_V1_CHUNK_D_SIZE = 5120;
 
 template <class T, class P, int8_t HAS_RESI>
+class MhcPreKernelSplitBS : public MhcPreKernelBase<T, P> {
 public:
     using Base = MhcPreKernelBase<T, P>;
     using Base::mm;

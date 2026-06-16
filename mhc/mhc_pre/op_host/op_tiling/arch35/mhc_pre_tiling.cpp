@@ -280,6 +280,7 @@ ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, u
                     outHpostShape->GetDim(DIM_1) != s || outHpostShape->GetDim(DIM_2) != n,
                 OP_LOGE(context_->GetNodeName(), "OutHpost shape (B,S,N) mismatch with X"), return ge::GRAPH_FAILED);
 
+    // 是否还要校验 没有Resi输出 还要给shape吗
     if (hasResi_) {
         auto outHresShapePtr = context_->GetOutputShape(OUT_H_RES_INDEX);
         auto outHresShape = &outHresShapePtr->GetStorageShape();

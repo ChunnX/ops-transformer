@@ -67,6 +67,7 @@ struct MhcParamsBase {
     aclTensor *hPreOptional = nullptr;
     bool hasResi = true;
 
+    // 用于存储转换后的连续tensor（在ConverDataContiguous中使用）
     const aclTensor *xContiguous = nullptr;
     const aclTensor *phiContiguous = nullptr;
     const aclTensor *alphaContiguous = nullptr;
