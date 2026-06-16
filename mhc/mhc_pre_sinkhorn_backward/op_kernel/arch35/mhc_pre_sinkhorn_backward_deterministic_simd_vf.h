@@ -150,7 +150,7 @@ __aicore__ inline void ComputeGradAlpha(__local_mem__ U* normOutForwardPartAddr,
         AscendC::MicroAPI::RegTensor<U> gradAlphaLoopSumReg;
         AscendC::MicroAPI::RegTensor<U> gradAlphaSumReg;
         AscendC::MicroAPI::MaskReg maskReg;
-        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::::MaskPattern::VL1>();
+        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
         MicroAPI::Duplicate(gradAlphaSumReg, U(0), OneMaskReg);
         for (uint16_t i = 0; i < loopCnt; i++) {
             maskReg = AscendC::MicroAPI::UpdateMask<U>(bsLen * colLen);
