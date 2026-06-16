@@ -32,7 +32,7 @@
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
 #include "../../op_kernel/ffn_to_attention_tiling.h"
-#include "../../op_kernel/ffn_to_attention_tilling_key.h"
+#include "../../op_kernel/ffn_to_attention_tiling_key.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
 
