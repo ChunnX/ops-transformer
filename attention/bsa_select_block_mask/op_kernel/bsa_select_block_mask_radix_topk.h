@@ -16,7 +16,7 @@
 #endif
 
 #ifndef BSA_TOPK_PIPE_ALL_PROBE
-#define BSA_TOPK_PIPE_ALL_PROBE 1
+#define BSA_TOPK_PIPE_ALL_PROBE 0
 #endif
 
 #ifndef BSA_TOPK_INIT_ATTNSCORE_PROBE
