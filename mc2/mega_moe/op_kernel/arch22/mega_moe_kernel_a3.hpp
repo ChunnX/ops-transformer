@@ -1420,7 +1420,7 @@ private:
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum);
             KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
             kernelMoeTokenUnpermuteOp.Init(shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx, params.probs,
-                                           reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData);
+                                           reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData, true);
             kernelMoeTokenUnpermuteOp.Process();
         }
     }
