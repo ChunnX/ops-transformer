@@ -99,7 +99,6 @@ TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(uint32_t, cmpRatio)
-TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
 TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
@@ -116,8 +115,6 @@ struct QLIV2ParaInfo {
     TilingRequiredParaInfo weights = {nullptr, nullptr};
     TilingRequiredParaInfo query_dequant_scale = {nullptr, nullptr};
     TilingRequiredParaInfo key_dequant_scale = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
     TilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
     TilingOptionalParaInfo cuSeqLensK = {nullptr, nullptr};
     TilingOptionalParaInfo sequsedQ = {nullptr, nullptr};
@@ -165,7 +162,6 @@ public:
     // Others Flag
     uint32_t sparseCount = 0;
     uint32_t cmpRatio = 1;
-    bool batchSupperFlag = false;
     bool returnValue = false;
     uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
@@ -232,7 +228,6 @@ public:
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
-    bool batchSupperFlag_ = false;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
     DataLayout kLayout_ = DataLayout::PA_BBND;

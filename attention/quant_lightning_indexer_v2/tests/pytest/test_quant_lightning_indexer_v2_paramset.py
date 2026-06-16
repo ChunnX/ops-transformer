@@ -13,8 +13,14 @@
 import torch
 
 # 定义测试参数组合
+# 参数规则：
+#   cu_seqlens_q/k: TND 时必传 [B+1] 前缀和（首元素=0），非 TND 时为 None
+#   seqused_q/k:    每个 batch 的实际有效元素数 [B]
+#                   TND 时可选（golden 可从 cu_seqlens 推导）
+#                   BSND 时可选（None 则用 q_seq/k_seq 填满）
+#                   PA_BBND 时 seqused_k 必传
 TEST_PARAMS = {
-    # 基础场景
+    # Ascend950 基础场景: BSND query + PA_BBND key
     "quant_li_default_a5":{
         "batch_size": [8],
         "q_seq": [15],
@@ -29,15 +35,15 @@ TEST_PARAMS = {
         "qk_dtype": [torch.float8_e4m3fn],
         "dequant_dtype": [torch.float32],
         "actual_seq_dtype": [torch.int32],
-        "cu_seqlens_q": [[0,3,3,3,3,3,3,3,3]],
-        "cu_seqlens_k": [[0,28,34,50,66,77,86,90,111]],
-        "act_seq_q": [[3,3,3,3,3,3,3,3]],
-        "act_seq_k": [[28,24,80,96,47,76,0,111]], #PA场景非前缀和，表示每个batch_size的实际token数
+        "cu_seqlens_q": [None],     # BSND: cu_seqlens_q 不传
+        "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
+        "seqused_q": [[3,3,3,3,3,3,3,3]],
+        "seqused_k": [[28,24,80,96,47,76,0,111]], # PA场景每个batch的实际token数
         "cmp_residual_k": [[3,3,3,3,3,3,3,3]],
         "max_seqlen_q": [-1],
-        "quant_mode": [0],
+        "quant_mode": [1],
         "layout_query": ["BSND"],
-        "layout_key":["PA_BSND"],
+        "layout_key":["PA_BBND"],
         "sparse_count": [512],
         "sparse_mode": [3],
         "query_datarange":[[-448,448]],
@@ -49,6 +55,7 @@ TEST_PARAMS = {
         "return_value":[0]
     },
 
+    # Ascend950 hifp8 场景: BSND query + PA_BBND key
     "quant_li_default_hifp8_a5":{
         "batch_size": [8],
         "q_seq": [15],
@@ -63,13 +70,15 @@ TEST_PARAMS = {
         "qk_dtype": [torch.uint8],
         "dequant_dtype": [torch.float32],
         "actual_seq_dtype": [torch.int32],
-        "act_seq_q": [[3,3,3,3,3,3,3,3]],
-        "act_seq_k": [[28,24,80,96,47,76,0,111]], #PA场景非前缀和，表示每个batch_size的实际token数
+        "cu_seqlens_q": [None],     # BSND: cu_seqlens_q 不传
+        "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
+        "seqused_q": [[3,3,3,3,3,3,3,3]],
+        "seqused_k": [[28,24,80,96,47,76,0,111]],
         "max_seqlen_q": [-1],
         "cmp_residual_k":[[3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]],
-        "quant_mode": [0], 
+        "quant_mode": [1],
         "layout_query": ["BSND"],
-        "layout_key":["PA_BSND"],
+        "layout_key":["PA_BBND"],
         "sparse_count": [512],
         "sparse_mode": [3],
         "query_datarange":[[-448,448]],
@@ -81,6 +90,7 @@ TEST_PARAMS = {
         "return_value":[0]
     },
 
+    # Ascend910_93 场景: TND query + PA_BBND key
     "quant_li_default_a3":{
         "batch_size": [1],
         "q_seq": [1],
@@ -95,12 +105,14 @@ TEST_PARAMS = {
         "qk_dtype": [torch.int8],
         "dequant_dtype": [torch.float16],
         "actual_seq_dtype": [torch.int32],
-        "act_seq_q": [[1]],
-        "act_seq_k": [[8196]], #PA场景非前缀和，表示每个batch_size的实际token数
-        "query_quant_mode": [0],
-        "key_quant_mode": [0],
+        "cu_seqlens_q": [[0, 1]],   # TND: cu_seqlens_q 必传 [B+1]
+        "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
+        "seqused_q": [None],        # TND: seqused_q 可选，None 时从 cu_seqlens 推导
+        "seqused_k": [[8196]],      # PA_BBND: seqused_k 必传
+        "cmp_residual_k": [[1]],    # cmp_ratio=4 时需要
+        "quant_mode": [2],          # 910_93 tiling 要求 quant_mode=2
         "layout_query": ["TND"],
-        "layout_key":["PA_BSND"],
+        "layout_key":["PA_BBND"],
         "sparse_count": [512],
         "sparse_mode": [3],
         "query_datarange":[[-100,100]],
@@ -108,7 +120,9 @@ TEST_PARAMS = {
         "weights_datarange":[[-25,25]],
         "q_scale_datarange":[[0,255]],
         "k_scale_datarange":[[0,65504]],
-        "cmp_ratio":[4] #1/2/4/8/16/32/64/128
+        "cmp_ratio":[4], #1/2/4/8/16/32/64/128
+        "max_seqlen_q": [-1],
+        "return_value": [0]
     }
 
 }
@@ -118,4 +132,4 @@ properties = torch.npu.get_device_properties()
 if "Ascend910_93" in properties.name:
     ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a3"]]
 elif "Ascend950" in properties.name:
-    ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a5"]] 
+    ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a5"]]
