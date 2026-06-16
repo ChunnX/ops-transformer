@@ -66,7 +66,7 @@ constexpr uint32_t DURATION_OFFSET = sizeof(int64_t) / sizeof(int32_t);
 constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 
 #define TemplateMC2TypeFullmeshClass typename ContextHolder, typename XType, typename ExpandXOutType, \
-                                     int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
+                                     int32_t QuantMode, bool IsSmoothScaleExist
 #define TemplateMC2TypeFullmeshFunc \
     ContextHolder, XType, ExpandXOutType, QuantMode, IsSmoothScaleExist
 
