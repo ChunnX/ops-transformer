@@ -11,7 +11,7 @@
 |<term>Atlas 训练系列产品</term>                                | ×  |
 
 ## 功能说明
-- API功能：`SparseAttnSharedkvMetadata`算子旨在生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及 Q 和 K 的分块的索引，供后续`SparseAttnSharedkv`算子使用。
+- API功能：`SparseAttnSharedkvMetadata`算子旨在生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`SparseAttnSharedkv`算子使用。
 
 
 
@@ -198,7 +198,7 @@
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。</td>
+      <td>每个cube核上FlashAttention计算任务的Batch、Head、以及Q和K的分块的索引，以及每个vector核上FlashDecode的规约任务索引。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>

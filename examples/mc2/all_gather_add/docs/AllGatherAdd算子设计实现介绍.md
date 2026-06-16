@@ -198,7 +198,7 @@ explicit AllGatherAdd(const char *name) : OpDef(name) {
 
     this->AICore().AddConfig("ascend910b");
     this->AICore().AddConfig("ascend910_93");
-    this->MC2().HcclGroup("group"); // group 属性配置为该算子的通信域名称
+    this->MC2().HcclGroup("group"); // group属性配置为该算子的通信域名称
 }
 };
 
@@ -214,7 +214,7 @@ OP_ADD(AllGatherAdd);
 - 通信切分策略：每轮通信数据块的大小，对通算融合算子的性能有较大影响。本样例为了向通算融合算子的初次使用者清晰展示通信计算掩盖的流程，将通信切分为两轮进行，第二轮通信和前一轮通信结果的Add计算进行掩盖。具体场景中如何切分使得性能最优，请参考[《Ascend C最佳实践》](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_map_10_0002.html)中的优秀实践：[MC²算子性能调优案例](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_best_practices_10_0043.html)。
 - Add多核切分: 根据当前核数(rank_size = 2)，对输入shape的Y轴进行多核切分，得到单核内shape的大小。
 
-本样例中计算数据量为x2的数据量，即 480 * 256 * sizeof (float16) = 480 * 256 * （2 bytes/1024） KB = 240KB。当AIV核数为48时，单核计算量为5KB，当AIV核数为40时，单核计算量为6KB，两种情况均小于最大可分配Unified Buffer（AIV的[统一缓冲区](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0008.html)，向量和标量计算的输入和输出）大小192KB，进行Add计算时需要均分给三个操作数，因此每个操作数有64KB最大可用片上UB（开启[Double Buffer](https://www.hiascend.com/document/detail/zh/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0090.html)时最大可用32KB），因此不需要核内切分。
+本样例中计算数据量为x2的数据量，即480 * 256 * sizeof (float16) = 480 * 256 *（2 bytes/1024） KB = 240KB。当AIV核数为48时，单核计算量为5KB，当AIV核数为40时，单核计算量为6KB，两种情况均小于最大可分配Unified Buffer（AIV的[统一缓冲区](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0008.html)，向量和标量计算的输入和输出）大小192KB，进行Add计算时需要均分给三个操作数，因此每个操作数有64KB最大可用片上UB（开启[Double Buffer](https://www.hiascend.com/document/detail/zh/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0090.html)时最大可用32KB），因此不需要核内切分。
 
 下面给出本样例Tiling实现关键步骤：
 
@@ -244,7 +244,7 @@ OP_ADD(AllGatherAdd);
     - tileNum: 计算切分轮次。在本节Tiling实现分析中可知单轮计算UB无溢出风险，该值为1。
     - totalElemNum: 总计算数，其值为输入b的ShapeSize，即480。
     - blockElemNum：每个核需要处理的数据量，其值为totalElemNum / GetBlockDim()。
-    - addTileElemNum: 单次add计算数据个数，该值为 blockElemNum/ tileNum。
+    - addTileElemNum: 单次add计算数据个数，该值为blockElemNum/ tileNum。
     - gatherTileElemNum：单次通信数据个数，其值为totalElemNum / rankSize / commTurn。
     - addCoresPerRank：单次add计算时每个rank分到的核数，其值为GetBlockDim() / rankSize。
 
@@ -414,7 +414,7 @@ extern "C" __global__ __aicore__ void all_gather_add(GM_ADDR aGM, GM_ADDR bGM, G
 
     - 轮询等待每个分块的通信完成和计算完成，最后释放资源。
 
-    整合前述代码 ，完整Kernel代码请访问开源仓。  
+    整合前述代码，完整Kernel代码请访问开源仓。  
 
 ## 编译和运行
 

@@ -254,7 +254,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
 
   如果CV基本块过大，Cube和Vector核内会将CV基本块进一步的切分，切分成适合核内L0A、L0B、L0C、UB等大小的基本块，这个就叫**核内基本块**；对于Cube侧，核内基本块一般在32KB（单位Bytes），这样可以让L0A、L0B的DoubleBuffer能力展开，同时算力和带宽也能尽可能用满；在Vector侧一般基本块大小是32KB（单位Bytes）。
 
-  **xxx.i:** 表示经过切分后，CV基本块中的某根轴的大小,一般基本块都是2维的，xxx.i表示其中一个维度的大小。xxx可以是B、N2、G、S1、S2;
+  **xxx.i:** 表示经过切分后，CV基本块中的某根轴的大小，一般基本块都是2维的，xxx.i表示其中一个维度的大小。xxx可以是B、N2、G、S1、S2;
   例如，S1 = 512, S2 = 1024， S1.i = 64, S2.i = 128,表示把[S1, S2]切分成大小是[64, 128]的基本块，S1轴的基本块大小是64，S2轴的基本块大小是128。
 
   **xxx.o**: 表示经过基本块切分后某根轴的分数，xxx可以是B、N2、G、S1、S2;
@@ -291,7 +291,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
     >
     > 
     >
-    > 3. 核间切分B、N2.o轴，核内切分N2.i、G、S1、S2轴,该模板是为了优化G * S1 * S2都比较小的场景时的性能，把N2轴切分到核内，并且在核内也切分N2.i轴，用于加速Vector计算。相比于模板2,模板3会更复杂一些，模板3在核内计算中也切分了N2.i轴，让每次的计算量更大。
+    > 3. 核间切分B、N2.o轴，核内切分N2.i、G、S1、S2轴，该模板是为了优化G * S1 * S2都比较小的场景时的性能，把N2轴切分到核内，并且在核内也切分N2.i轴，用于加速Vector计算。相比于模板2,模板3会更复杂一些，模板3在核内计算中也切分了N2.i轴，让每次的计算量更大。
     >
     >    tiling代码文件：ops-transformer-dev/attention/flash_attention_score_grad/op_host/flash_attention_score_grad_tiling_ngs1s2_bn.cpp
     >
