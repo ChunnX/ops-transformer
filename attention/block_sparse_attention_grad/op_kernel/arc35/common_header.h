@@ -113,7 +113,7 @@ __aicore__ inline uint64_t GetQGmOffset(const ConstInfo &const_info, int64_t las
     if constexpr (INPUT_LAYOUT == BSND) {
         return batch_idx * const_info.b1_stride + seqlen_idx * const_info.s1_stride + n_idx * const_info.n1_stride;
     } else if (INPUT_LAYOUT == BNSD) {
-        return batch_idx * const_info.b1_stride + n_idx * const_info.n1_stride + seqlen_idx * const_info.s1_stride
+        return batch_idx * const_info.b1_stride + n_idx * const_info.n1_stride + seqlen_idx * const_info.s1_stride;
     } else if constexpr (INPUT_LAYOUT == TND) {
         return (lastBatchSum + seqlen_idx) * const_info.s1_stride + n_idx * const_info.n1_stride;
     }
@@ -127,7 +127,7 @@ __aicore__ inline uint64_t GetKVGmOffset(const ConstInfo &const_info, int64_t la
     if constexpr (INPUT_LAYOUT == BSND) {
         return batch_idx * const_info.b2_stride + seqlen_idx * const_info.s2_stride + n_idx * const_info.n2_stride;
     } else if (INPUT_LAYOUT == BNSD) {
-        return batch_idx * const_info.b2_stride + n_idx * const_info.n2_stride + seqlen_idx * const_info.s2_stride
+        return batch_idx * const_info.b2_stride + n_idx * const_info.n2_stride + seqlen_idx * const_info.s2_stride;
     } else if constexpr (INPUT_LAYOUT == TND) {
         return (lastBatchSum + seqlen_idx) * const_info.s2_stride + n_idx * const_info.n2_stride;
     }
