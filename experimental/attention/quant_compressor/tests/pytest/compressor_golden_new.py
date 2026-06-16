@@ -328,6 +328,7 @@ def read_state_page_cache(state, b_idx, start_seq_idx, end_seq_idx, block_table,
     return result
 
 def cpu_compressor(
+    x, wkv, wgate, x_descale, wkv_descale, wgate_descale, kv_state, score_state, update_kv_position, update_score_position, ape,
     block_table=None, cu_seqlens=None, seqused=None, start_pos=None,
     cmp_ratio=4, coff=1, cache_mode=1, quant_mode=1):
     x = x.numpy()
