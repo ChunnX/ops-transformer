@@ -74,7 +74,7 @@ private:
     bool ParamsInit();
     bool ScheduleSection(SplitResult &splitRes);
     bool GenMetadata(const SplitResult &splitRes);
-    uint32_t GetRowBlockNum(uint32_t bn1Idx, uint32_t s1Idx) const;
+    uint32_t GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const;
     uint64_t CalcBlockNum() const;
     bool AdvanceToValidRow(AssignContext &assignContext) const;
     void ScheduleFa(uint64_t blockNum, SplitResult &result);
