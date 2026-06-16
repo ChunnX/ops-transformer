@@ -55,7 +55,7 @@ using namespace AscendC;
 
 bool MhcPreSinkhornBackwardArch35DeterminiticTiling::IsCapable()
 {
-    auto isDeterministic = (context->GetDeterministic() == 1);
+    auto isDeterministic = (context_->GetDeterministic() == 1);
     if (!isDeterministic) {
         return false;
     }
@@ -105,11 +105,9 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     tilingData->seqLength = seqLength_;
     tilingData->c = c_;
     tilingData->n = n_;
-    tilingData->c0 = c0_;
-    tilingData->c1 = c1_;
     tilingData->aivNum = coreNumAiv_;
     tilingData->skIterCount = skIterCount_;
-    tilingData->tileSize = tile_;
+    tilingData->eps = hcEps_;
 
     return ge::GRAPH_SUCCESS;  
 }
