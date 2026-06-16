@@ -53,9 +53,9 @@ public:
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
 
-    static constexpr uint64_t M_BASIC_BLOCK = 96;
-    static constexpr uint64_t D_BASIC_BLOCK = 512;
-    static constexpr uint64_t S2_BASIC_BLOCK = 32;
+    static constexpr uint64_t M_BASIC_BLOCK_L1 = 96;
+    static constexpr uint64_t D_BASIC_BLOCK_L1 = 512;
+    static constexpr uint64_t S2_BASIC_BLOCK_L1 = 32;
 
     static constexpr uint64_t M_BASIC_BLOCK_L0 = 32;
     static constexpr uint64_t D_BASIC_BLOCK_L0 = 512;
@@ -64,10 +64,10 @@ public:
     static constexpr uint64_t FP8_BLOCK_CUBE = 32;
     static constexpr FixpipeConfig SI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};   // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
 
-    static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK * D_BASIC_BLOCK;
-    static constexpr uint64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK * D_BASIC_BLOCK;
+    static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
+    static constexpr uint64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
     static constexpr uint64_t L0AB_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
-    static constexpr uint64_t L0C_BUFFER_OFFSET = 96 * 256;
+    static constexpr uint64_t L0C_BUFFER_OFFSET = constInfo_.mBaseSize * constInfo_.s2BaseSize;
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
@@ -123,9 +123,9 @@ __aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(QK_T));                   //大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
     mm1ResUB_ = bufUB_.Get<QK_T>();
-    pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(Q_T));
+    pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1 * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
-    pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * S2_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(K_T));
+    pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * S2_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1 * sizeof(K_T));
     keyL1_ = bufKeyL1_.Get<K_T>();
 
     pipe->InitBuffer(bufQL0_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0 * sizeof(Q_T));
@@ -133,7 +133,7 @@ __aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(bufKeyL0_, L0_BUF_NUM * D_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(K_T));
     keyL0_ = bufKeyL0_.Get<K_T>();
 
-    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * 96 * 256 * sizeof(float));
+    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * constInfo_.mBaseSize * constInfo_.s2BaseSize * sizeof(float));
     cL0_ = bufL0C_.Get<float>();
 }
 
@@ -152,21 +152,21 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
-    uint64_t kProcessSize = 2048;
+    uint64_t kProcessSize = constInfo_.headDim;
 
     //s2轴循环
-    for (uint64_t s2GmOffset = 0; s2GmOffset < s2ProcessSize; s2GmOffset += S2_BASIC_BLOCK) {
+    for (uint64_t s2GmOffset = 0; s2GmOffset < s2ProcessSize; s2GmOffset += S2_BASIC_BLOCK_L1) {
         uint64_t s2L1RealSize =
-            s2GmOffset + S2_BASIC_BLOCK > s2ProcessSize ? s2ProcessSize - s2GmOffset : S2_BASIC_BLOCK;
-        for (uint64_t kGmOffset = 0; kGmOffset < kProcessSize; kGmOffset += D_BASIC_BLOCK) {
+            s2GmOffset + S2_BASIC_BLOCK_L1 > s2ProcessSize ? s2ProcessSize - s2GmOffset : S2_BASIC_BLOCK_L1;
+        for (uint64_t kGmOffset = 0; kGmOffset < kProcessSize; kGmOffset += D_BASIC_BLOCK_L1) {
             WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
             KeyNd2Nz(s2L1RealSize, s2GmOffset, kGmOffset, runInfo);
 
             SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
-            for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += M_BASIC_BLOCK) {
+            for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += M_BASIC_BLOCK_L1) {
                 uint64_t s1gL1RealSize =
-                s1gGmOffset + M_BASIC_BLOCK > s1gProcessSize ? s1gProcessSize - s1gGmOffset : M_BASIC_BLOCK;
+                s1gGmOffset + M_BASIC_BLOCK_L1 > s1gProcessSize ? s1gProcessSize - s1gGmOffset : M_BASIC_BLOCK_L1;
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
@@ -193,7 +193,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
 
                     }
                 }
-                if (s2GmOffset + S2_BASIC_BLOCK >= s2ProcessSize && runInfo.isLastS2InnerLoop) {
+                if (s2GmOffset + S2_BASIC_BLOCK_L1 >= s2ProcessSize && runInfo.isLastS2InnerLoop) {
                     queryL1Mte1BufIdx_++;
                     SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte1BufIdx_ % QUERY_BUF_NUM);
                 }
@@ -215,15 +215,15 @@ __aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
     nd2nzPara.nValue = s2L1RealSize; // 行数
-    nd2nzPara.dValue = 512;
-    nd2nzPara.srcDValue = 2048;
+    nd2nzPara.dValue = D_BASIC_BLOCK_L1;
+    nd2nzPara.srcDValue = constInfo_.headDim;
     nd2nzPara.dstNzC0Stride = CeilAlign(s2L1RealSize, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
     DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET],
-             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * 2048 + kGmOffset], nd2nzPara);   //需要修改tensorKeyOffset
+             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * 2048 + kGmOffset], nd2nzPara);  
 }
 
 // batch, n2, g, s1, d
@@ -234,8 +234,8 @@ __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
     nd2nzPara.nValue = s1gL1RealSize; // 行数
-    nd2nzPara.dValue = 512;
-    nd2nzPara.srcDValue = 2048;
+    nd2nzPara.dValue = D_BASIC_BLOCK_L1;
+    nd2nzPara.srcDValue = constInfo_.headDim;
     nd2nzPara.dstNzC0Stride = CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
