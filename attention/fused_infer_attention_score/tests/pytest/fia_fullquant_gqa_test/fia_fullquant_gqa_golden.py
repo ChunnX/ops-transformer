@@ -595,7 +595,7 @@ if __name__ == '__main__':
     print("=" * 60)
     print("FIA Full Quant GQA GOLDEN")
     print("=" * 60)
-    print(f"[INFO] 场景: {'PA' if ENABLE_PA else ''}, INPUT_LAYOUT: {INPUT_LAYOUT}, OUTPUT_LAYOUT: {OUTPUT_LAYOUT}")
+    print(f"[INFO] 场景: {'PA' if ENABLE_PA else 'noPA'}, INPUT_LAYOUT: {INPUT_LAYOUT}, OUTPUT_LAYOUT: {OUTPUT_LAYOUT}")
     print(f"[INFO] B={B}, N_q={N_q}, N_kv={N_kv}, D={D}")
     print(f"[INFO] ACTUAL_SEQ_Q={ACTUAL_SEQ_Q}")
     print(f"[INFO] ACTUAL_SEQ_KV={ACTUAL_SEQ_KV}")
