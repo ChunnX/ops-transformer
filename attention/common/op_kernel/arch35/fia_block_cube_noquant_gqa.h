@@ -182,9 +182,9 @@ public:
         }
 
         // L0A B C 当前写死，能否通过基础api获取
-        l0aBufferManager.Init(tPipe, 65536);  // 64 * 1024
-        l0bBufferManager.Init(tPipe, 65536);  // 64 * 1024
-        l0cBufferManager.Init(tPipe, 262144); // 256 * 1024
+        l0aBufferManager.Init(tPipe, 65536);  // 65536: 64 * 1024
+        l0bBufferManager.Init(tPipe, 65536);  // 65536: 64 * 1024
+        l0cBufferManager.Init(tPipe, 262144); // 262144: 256 * 1024
         // L0A B C当前写死，要改成通过计算获取
         mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
         mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);

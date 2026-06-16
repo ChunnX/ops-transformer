@@ -109,14 +109,14 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (keyDimNum == 3) {                    // BBH
+    if (keyDimNum == DIM_NUM_3) {                    // BBH
         keyBlockNum = keyShape->GetStorageShape().GetDim(0);
         keyBlockSize = keyShape->GetStorageShape().GetDim(1);
         keyH = keyShape->GetStorageShape().GetDim(2);
         valueBlockNum = valueShape->GetStorageShape().GetDim(0);
         valueBlockSize = valueShape->GetStorageShape().GetDim(1);
         valueH = valueShape->GetStorageShape().GetDim(2);
-    } else if (keyDimNum == 4) {            // BNBD
+    } else if (keyDimNum == DIM_NUM_4) {            // BNBD
         keyBlockNum = keyShape->GetStorageShape().GetDim(0);
         keyHeadNum = keyShape->GetStorageShape().GetDim(1);
         keyBlockSize = keyShape->GetStorageShape().GetDim(2);
@@ -125,7 +125,7 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
         valueHeadNum = valueShape->GetStorageShape().GetDim(1);
         valueBlockSize = valueShape->GetStorageShape().GetDim(2);
         valueHeadDim = valueShape->GetStorageShape().GetDim(3);
-    } else if (keyDimNum == 5) {           // BND1BD0
+    } else if (keyDimNum == DIM_NUM_5) {           // BND1BD0
         keyBlockNum = keyShape->GetStorageShape().GetDim(0);
         keyHeadNum = keyShape->GetStorageShape().GetDim(1);
         keyD1 = keyShape->GetStorageShape().GetDim(2);
@@ -1269,7 +1269,7 @@ bool CommonChecker::CheckNTDLayoutCrossover(const FiaTilingInfo &fiaInfo)
         !(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128);
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     if (isGqa) { // GQA
-        if ((fiaInfo.qkHeadDim != 64 && fiaInfo.qkHeadDim != 128)) {
+        if ((fiaInfo.qkHeadDim != DSIZE_64 && fiaInfo.qkHeadDim != DSIZE_128)) {
             std::string reason = "D of query must be 64 or 128 in the GQA scenario, when layout is " + layoutStr;
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
                 ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
