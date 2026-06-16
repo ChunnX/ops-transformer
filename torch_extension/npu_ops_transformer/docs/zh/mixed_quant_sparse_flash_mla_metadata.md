@@ -65,7 +65,7 @@ mixed_quant_sparse_flash_mla_metadata(cu_seqlens_q=None, cu_seqlens_ori_kv=None,
 
 -   **rope\_head\_dim** (`int`)：可选参数，表示rope头的维度，默认值为64，当前仅支持64。
 
--   **cmp\_ratio** (`int`)：可选参数，表示对ori\_kv的压缩率，取值范围\[1, 128\]，默认值为1，当前仅支持4/128。
+-   **cmp\_ratio** (`int`)：可选参数，表示对cmp\_kv的压缩率，取值范围\[1, 128\]，默认值为1，当前仅支持4/128。
 
 -   **ori\_mask\_mode** (`int`)：可选参数，表示q和ori\_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0，当前仅支持4。
 
@@ -136,7 +136,7 @@ mixed_quant_sparse_flash_mla_metadata(cu_seqlens_q=None, cu_seqlens_ori_kv=None,
         ori_win_left = 127,
         ori_win_right = 0,
         layout_q = "TND",
-        layout_kv = "PA_BNBD",
+        layout_kv = "PA_BBND",
         has_ori_kv = True,
         has_cmp_kv = True
     )
@@ -160,8 +160,8 @@ mixed_quant_sparse_flash_mla_metadata(cu_seqlens_q=None, cu_seqlens_ori_kv=None,
         def forward(self, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv,
                     cmp_residual_kv, ori_topk_length, cmp_topk_length, num_heads_q, num_heads_kv, head_dim, quant_mode,
                     batch_size, max_seqlen_q, max_seqlen_ori_kv, max_seqlen_cmp_kv, ori_topk, cmp_topk, rope_head_dim,
-                    cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, has_ori_kv,
-                    has_cmp_kv):
+                    cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv,
+                    has_ori_kv, has_cmp_kv):
             metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
                 cu_seqlens_q = cu_seqlens_q,
                 cu_seqlens_ori_kv = cu_seqlens_ori_kv,
