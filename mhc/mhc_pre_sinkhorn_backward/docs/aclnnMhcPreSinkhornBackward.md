@@ -312,7 +312,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>gradHin(aclTensor *)</td>
         <td>输入</td>
         <td>输出h_in的梯度。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(B,S,C)</td>
@@ -322,7 +322,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>gradHPost(aclTensor *)</td>
         <td>输入</td>
         <td>输出h_post的梯度。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(B,S,N)</td>
@@ -332,7 +332,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>gradHRes(aclTensor *)</td>
         <td>输入</td>
         <td>输出h_res的梯度。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(B,S,N*N)或(B,S,N,N)</td>
@@ -342,8 +342,8 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>x(aclTensor *)</td>
         <td>输入</td>
         <td>前向输入x。</td>
-        <td>不支持空Tensor。</td>
-        <td>BFLOAT16 </td>
+        <td>支持空Tensor。</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(B,S,N,C)</td>
         <td>√</td>
@@ -352,7 +352,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>phi(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数phi。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2, N*C)</td>
@@ -362,7 +362,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>alpha(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数alpha。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(3)</td>
@@ -372,7 +372,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>bias(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数bias。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2)</td>
@@ -382,7 +382,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>hPre(aclTensor *)</td>
         <td>输入</td>
         <td>前向保存的中间结果h_pre。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(B,S,N)</td>
@@ -392,7 +392,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>hcBeforeNorm(aclTensor *)</td>
         <td>输入</td>
         <td>前向保存的中间结果hc_before_norm。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(B,S,N*N+2*N)</td>
@@ -402,7 +402,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>invRms(aclTensor *)</td>
         <td>输入</td>
         <td>前向保存的中间结果inv_rms。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(B,S,1)</td>
@@ -412,7 +412,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>sumOut(aclTensor *)</td>
         <td>输入</td>
         <td>Sinkhorn变换正向计算保存的中间sum结果。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2*sk_iter_count,B,S,N)</td>
@@ -422,7 +422,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>normOut(aclTensor *)</td>
         <td>输入</td>
         <td>Sinkhorn变换正向计算保存的中间norm结果。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2*sk_iter_count,B,S,N,N)</td>
