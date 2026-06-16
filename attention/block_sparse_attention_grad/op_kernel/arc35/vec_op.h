@@ -181,6 +181,7 @@ public:
         constexpr static uint32_t SFTG_TILE_LEN = 8 * 1024; // POST一次处理元素的个数
         uint32_t process_s1_size = SFTG_TILE_LEN / head_dim_;
         uint32_t ub_offset = 0;
+        uint32_t sftg_ping_pong_idx = 0;
         dy_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
         dy_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
@@ -189,7 +190,6 @@ public:
         ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
         attention_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
-
         dy_out_ping_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(float);
         dy_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
@@ -205,6 +205,8 @@ public:
         sftg_tmp_tensor = ub_buffer.GetWithOffset<uint8_t>(tilingData->sftgTmpSpaceSize, ub_offset);
         ub_offset += tilingData->sftgTmpSpaceSize;
 
+        SET_FLAG(MTE3, MTE2, event_ping_);
+        SET_FLAG(MTE3, MTE2, event_pong_);
         for (uint32_t b_idx = 0; b_idx < batch_num_; b_idx++) {
             int64_t current_q_seqlen, last_seq_total_len;
             if constexpr (INPUT_LAYOUT == TND) {
@@ -228,14 +230,19 @@ public:
                     in_gm_offset = last_seq_total_len * q_head_num_ * head_dim_ + n1_idx * head_dim_;
                     out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * current_q_seqlen * 8;
                 }
-
+                TEventID event_id = sftg_ping_pong_idx ? event_ping_ : event_pong_;
                 ComputeEvenCoreInfo(info, current_q_seqlen, process_s1_size);
+
+                WAIT_FLAG(MTE3, MTE2, event_id);
                 ComputeSoftmaxGradFront(sftg_workspace[out_gm_offset], dy_gm[in_gm_offset], out_gm[in_gm_offset], info,
-                                        tilingData);
-                SET_FLAG(MTE3, MTE2, EVENT_ID0);
-                WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+                                        tilingData, sftg_ping_pong_idx);
+                SET_FLAG(MTE3, MTE2, event_id);
+                sftg_ping_pong_idx = 1 - sftg_ping_pong_idx;
             }
         }
+
+        WAIT_FLAG(MTE3, MTE2, event_ping_);
+        WAIT_FLAG(MTE3, MTE2, event_pong_);
     }
 
     __aicore__ inline void SendVecSftPreProcess(const RunTimeInfo &runTimeInfo, uint32_t pingpong_idx)
@@ -395,16 +402,16 @@ private:
     __aicore__ inline void ComputeSoftmaxGradFront(const GlobalTensor<float> &dst_gm,
                                                    const GlobalTensor<INPUT_TYPE> &dy_gm,
                                                    const GlobalTensor<INPUT_TYPE> &out_gm, const EvenCoreInfo &info,
-                                                   const TILING_CLASS *tilingData)
+                                                   const TILING_CLASS *tilingData, const uint32_t sftg_ping_pong_idx)
     {
         if (info.start_idx >= info.data_size) {
             return;
         }
-        LocalTensor<INPUT_TYPE> dy_tensor = dy_in_ping_;
-        LocalTensor<INPUT_TYPE> attention_tensor = attention_in_ping_;
-        LocalTensor<float> dy_out_tensor = dy_out_ping_;
-        LocalTensor<float> attention_out_tensor = attention_out_ping_;
-        LocalTensor<float> sftg_front_tensor = sftg_front_ping_;
+        LocalTensor<INPUT_TYPE> dy_tensor = sftg_ping_pong_idx ? dy_in_ping_ : dy_in_pong_;
+        LocalTensor<INPUT_TYPE> attention_tensor = sftg_ping_pong_idx ? attention_in_ping_ : attention_in_pong_;
+        LocalTensor<float> dy_out_tensor = sftg_ping_pong_idx ? dy_out_ping_ : dy_out_pong_;
+        LocalTensor<float> attention_out_tensor = sftg_ping_pong_idx ? attention_out_ping_ : attention_out_pong_;
+        LocalTensor<float> sftg_front_tensor = sftg_ping_pong_idx ? sftg_front_ping_ : sftg_front_pong_;
         uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个数
         uint32_t src_stride;
         if constexpr (INPUT_LAYOUT == BSND) {
