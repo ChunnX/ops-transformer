@@ -15,7 +15,7 @@
 
 #include "sparse_flash_mla_tiling.h"
 #include "arch22/sparse_flash_mla_tiling.h"
-#include "../op_kernel/sparse_flash_mla_template_tiling_key.h"
+#include "../op_kernel/arch22/sparse_flash_mla_template_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
