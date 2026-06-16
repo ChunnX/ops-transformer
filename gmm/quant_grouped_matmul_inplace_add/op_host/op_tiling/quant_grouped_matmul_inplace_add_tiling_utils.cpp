@@ -157,7 +157,7 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     OP_CHECK_IF(x1FirstDim != inputParams.groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     inputParams.opType, "scale1", ShapeToString(x1ScaleShape),
-                    StrCat("in T-T/T-C mode, first dim of scale1 must be equal to groupNum[",
+                    BuildErrorMsgStr("in T-T/T-C mode, first dim of scale1 must be equal to groupNum[",
                            inputParams.groupNum, "]")),
                 return false);
     if (x1ScaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D) {
@@ -179,17 +179,17 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     OP_CHECK_IF(x2FirstDim != inputParams.groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams.opType, "scale2",
                                                       ShapeToString(x2ScaleShape),
-                                                      StrCat("in T-T/T-C mode, first dim of scale2 must be equal to "
-                                                             "groupNum[",
-                                                             inputParams.groupNum, "]")),
+                                                      BuildErrorMsgStr("in T-T/T-C mode, first dim of scale2 must "
+                                                                       "be equal to groupNum[",
+                                                                       inputParams.groupNum, "]")),
                 return false);
     if (x2ScaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D) {
         auto x2LastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(1));
         OP_CHECK_IF(x2LastDim != 1 && x2LastDim != inputParams.nSize,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         inputParams.opType, "scale2", ShapeToString(x2ScaleShape),
-                        StrCat("in T-T/T-C mode, last dim of scale2 must be equal to 1 or n[", inputParams.nSize,
-                               "]")),
+                        BuildErrorMsgStr("in T-T/T-C mode, last dim of scale2 must be "
+                                         "equal to 1 or n[", inputParams.nSize, "]")),
                     return false);
     }
     return true;
