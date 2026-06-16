@@ -846,6 +846,43 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
     liInfo.inputQLayout = qLayout_;
     liInfo.inputKLayout = kLayout_;
 }
+ge::graphStatus LIInfoParser::CheckFeatureMlaNoQuantShape() const
+{
+    if (npuArch_ == NpuArch::DAV_3510) {
+        OP_CHECK_IF(bSize_ <= 0,
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(opName_, "batch_size",
+                std::to_string(bSize_).c_str(),
+                "batch_size should be greater than 0"),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(s1Size_ <= 0 && (qLayout_ == DataLayout::BSND),
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(opName_, "query",
+                std::to_string(s1Size_).c_str(),
+                "BSND case input query dim 1 should be greater than 0"),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(s2Size_ <= 0 && (kLayout_ == DataLayout::BSND),
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(opName_, "key",
+                std::to_string(s2Size_).c_str(),
+                "BSND case input key dim 1 should be greater than 0"),
+            return ge::GRAPH_FAILED);
+
+        uint32_t qTsize = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
+        OP_CHECK_IF(qTsize <= 0 && (qLayout_ == DataLayout::TND),
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(opName_, "query",
+                std::to_string(qTsize).c_str(),
+                "TND case input query dim 0 should be greater than 0"),
+            return ge::GRAPH_FAILED);
+
+        uint32_t kTsize = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
+        OP_CHECK_IF(kTsize <= 0 && (kLayout_ == DataLayout::TND),
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(opName_, "key",
+                std::to_string(kTsize).c_str(),
+                "TND case input key dim 0 should be greater than 0"),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
 {
@@ -870,6 +907,11 @@ ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
         ge::GRAPH_SUCCESS != GetHeadDim() || ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;
     }
+
+    if (ge::GRAPH_SUCCESS != CheckFeatureMlaNoQuantShape()) {
+        return ge::GRAPH_FAILED;
+    }
+
     if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch()) {
         return ge::GRAPH_FAILED;
     }
