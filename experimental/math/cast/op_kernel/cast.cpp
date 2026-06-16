@@ -232,6 +232,14 @@ private:
         }
     }
 
+    __aicore__ inline void Bf16ToBool(const AscendC::LocalTensor<uint16_t>& src,
+                                      const AscendC::LocalTensor<int8_t>& dst, int64_t count)
+    {
+        for (int64_t i = 0; i < count; ++i) {
+            dst.SetValue(i, src.GetValue(i) == 0 ? static_cast<int8_t>(0) : static_cast<int8_t>(1));
+        }
+    }
+
     __aicore__ inline void Compute(int64_t count)
     {
         AscendC::LocalTensor<TX> inLocal = inQue_.DeQue<TX>();
@@ -330,6 +338,10 @@ private:
             Bf16ToF32(src, outLocal.template ReinterpretCast<float>(), count);
             return;
         }
+        if constexpr (Y == DT_BOOL) {
+            Bf16ToBool(src, outLocal.template ReinterpretCast<int8_t>(), count);
+            return;
+        }
         AscendC::LocalTensor<float> midF = midBuf_.Get<float>();
         Bf16ToF32(src, midF, count);
         SyncEvent<AscendC::HardEvent::S_V>();
@@ -347,15 +359,6 @@ private:
             AscendC::Cast(midH, midF, RoundMode::CAST_NONE, calc);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Cast(outLocal, midH, RoundMode::CAST_ROUND, calc);
-        } else {  // bool
-            AscendC::LocalTensor<half> midH = mid2Buf_.Get<half>();
-            AscendC::Cast(midH, midF, RoundMode::CAST_NONE, calc);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Abs(midH, midH, calc);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Mins(midH, midH, static_cast<half>(1.0), calc);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Cast(outLocal, midH, RoundMode::CAST_CEIL, calc);
         }
     }
 
