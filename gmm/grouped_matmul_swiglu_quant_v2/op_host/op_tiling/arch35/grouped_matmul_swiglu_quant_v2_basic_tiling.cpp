@@ -730,7 +730,7 @@ void GroupedMatmulSwigluQuantV2Tiling950::PrintQuantParams()
 
 int64_t GroupedMatmulSwigluQuantV2Tiling950::DefaultPrintQuantParams() const
 {
-    optiling::GMMSwigluQuantParams &params = tilingData_.gmmSwigluQuantParams;
+    const auto &params = tilingData_.gmmSwigluQuantParams;
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.get_groupNum()
         << ", groupListType = " << static_cast<uint32_t>(params.get_groupListType())
@@ -846,7 +846,7 @@ void GroupedMatmulSwigluQuantV2Tiling950::PrintPertokenQuantParams()
 
 int64_t GroupedMatmulSwigluQuantV2Tiling950::DefaultPrintPertokenQuantParams() const
 {
-    optiling::GMMSwigluQuantParams &params = tilingData_.gmmSwigluQuantParams;
+    const auto &params = tilingData_.gmmSwigluQuantParams;
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.get_groupNum()
         << ", groupListType = " << static_cast<uint32_t>(params.get_groupListType())
