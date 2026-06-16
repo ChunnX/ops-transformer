@@ -151,7 +151,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
     size_t expectedDimNum = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
 
     if ((IsA16MxFp4NZ() || IsS8S4NZ()) && tensorType.find("antiquant") != std::string::npos) {
-        expectedDimNum = 3; // Mx / PerGroup量化，仅支持antiquantSacle/antiquantOffset维度为3
+        expectedDimNum = 3;
     } else if (IsMxA8W4NZ()) {
         if (tensorType.find("antiquant") != std::string::npos) {
             expectedDimNum = IsMultiTensorWeight() ? 3 : 4;
@@ -160,6 +160,18 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
         } else if (tensorType.find("bias") != std::string::npos) {
             expectedDimNum = IsMultiTensorWeight() ? 1 : 2;
         }
+    } else if (IsA16W4() && tensorType.find("antiquant") != std::string::npos) {
+        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;
+        size_t pergroupDim = perchannelDim + 1;
+        if (tensorDimNum != perchannelDim && tensorDimNum != pergroupDim) {
+            std::string reason = "Dim must be [" + std::to_string(perchannelDim) +
+                "] (perchannel) or [" + std::to_string(pergroupDim) +
+                "] (pergroup) in A16W4 case, but now is [" + std::to_string(tensorDimNum) + "]";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), tensorType,
+                std::to_string(tensorDimNum), reason);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        expectedDimNum = tensorDimNum;
     }
 
     if (unlikely(tensorDimNum != expectedDimNum)) {
@@ -730,6 +742,42 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckUnsupportedApi() c
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t idx) const
 {
+    if (IsA16W4()) {
+        if (gmmParams_.antiquantScaleOptional == nullptr) {
+            return ACLNN_SUCCESS;
+        }
+        auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
+        auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
+        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;
+        if (antiquantScaleDimNum <= perchannelDim) {
+            return ACLNN_SUCCESS;
+        }
+        auto weightShape = (*gmmParams_.weight)[idx]->GetViewShape();
+        int64_t kSize = weightShape.GetDim(weightShape.GetDimNum() - 2);
+        int64_t groupNum = antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
+        if (unlikely(groupNum <= 0)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupNum",
+                std::to_string(groupNum),
+                "The value of groupNum must be greater than 0");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (unlikely(kSize % groupNum != 0)) {
+            std::string incorrectValues = "kSize: " + std::to_string(kSize) +
+                ", groupNum: " + std::to_string(groupNum);
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GetAclnnName(), "kSize, groupNum",
+                incorrectValues, "kSize must be a multiple of groupNum");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        int64_t groupSize = kSize / groupNum;
+        if (unlikely(!(groupSize == 32 || groupSize == 64 || groupSize == 128 || groupSize == 256))) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
+                std::to_string(groupSize),
+                "The value of groupSize must be 32/64/128/256 on Ascend 950PR");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        return ACLNN_SUCCESS;
+    }
+
     if (!(IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ())) {
         return ACLNN_SUCCESS;
     }
