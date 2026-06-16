@@ -108,6 +108,7 @@ private:
     TBuf<TPosition::VECCALC> zBuf_;
     TBuf<TPosition::VECCALC> normOutForwardBuf_;
     TBuf<TPosition::VECCALC> gradZBuf_;
+    TBuf<TPosition::VECCALC> biasBuf_;
 
     int64_t batchSize_ = 0;
     int64_t seqLength_ = 0;
@@ -160,13 +161,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     blockIdx_ = GetBlockIdx();
     blockSize_ = Ops::Base::GetUbBlockSize();
     curCoreProcessbsTask_ = (blockIdx_ == tilingData->aivNum - 1) ? tilingData->tailBsTaskCount : tilingData->bsTaskCount;
-    nAlignFp32_ = Ops::Base::CeilDiv((int64_t)n_ * sizeof(U), blockSize_) / sizeof(U);
-    cLenAlignFp32_ = Ops::Base::CeilDiv((int64_t)cLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
-    cLenAlignFp16_ = Ops::Base::CeilDiv((int64_t)cLoopDataLen_ * sizeof(X_T), blockSize_) / sizeof(X_T);
-    kAlignFp32_ = Ops::Base::CeilDiv((int64_t)k_ * sizeof(U), blockSize_) / sizeof(U);
-    bsnAlignFp32_ = Ops::Base::CeilDiv((int64_t)n_ * bsLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
-    bsAlignFp32_ = Ops::Base::CeilDiv((int64_t)bsLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
-    bskAlignFp32_ = Ops::Base::CeilDiv((int64_t)bsLoopDataLen_ * k_ * sizeof(U), blockSize_) / sizeof(U);
+    nAlignFp32_ = Ops::Base::CeilDiv(int64_t(n_ * sizeof(U)), blockSize_) / sizeof(U);
+    cLenAlignFp32_ = Ops::Base::CeilDiv(int64_t(cLoopDataLen_ * sizeof(U)), blockSize_) / sizeof(U);
+    cLenAlignFp16_ = Ops::Base::CeilDiv(int64_t(cLoopDataLen_ * sizeof(X_T)), blockSize_) / sizeof(X_T);
+    kAlignFp32_ = Ops::Base::CeilDiv(int64_t(k_ * sizeof(U)), blockSize_) / sizeof(U);
+    bsnAlignFp32_ = Ops::Base::CeilDiv(int64_t(n_ * bsLoopDataLen_ * sizeof(U)), blockSize_) / sizeof(U);
+    bsAlignFp32_ = Ops::Base::CeilDiv(int64_t(bsLoopDataLen_ * sizeof(U)), blockSize_) / sizeof(U);
+    bskAlignFp32_ = Ops::Base::CeilDiv(int64_t(bsLoopDataLen_ * k_) * sizeof(U), blockSize_) / sizeof(U);
     gradBiasOft_ = blockSize_ / sizeof(U);
 
     gradPhiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ GRADHIN_T*>(gradPhi));
@@ -210,6 +211,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         pipe_->InitBuffer(zBuf_, bskAlignFp32_ * sizeof(U));
         pipe_->InitBuffer(normOutForwardBuf_, bskAlignFp32_ * sizeof(U));
         pipe_->InitBuffer(gradZBuf_, bsnAlignFp32_ * sizeof(U));
+        pipe_->InitBuffer(biasBuf_, bsAlignFp32_ * sizeof(U));
     }
 }
 
@@ -290,9 +292,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     uint32_t vfLen = V_REG_SIZE / sizeof(U);
     for (uint64_t cIdx = 0; cIdx < cLoopNum; cIdx++) {
         auto cLen = cIdx == cLoopNum - 1 ? cTailDataLen : cLoopDataLen;
-        int64_t cLenXTAlign = Ops::Base::CeilDiv((int64_t)cLen * sizeof(X_T), blockSize_) / sizeof(X_T);
-        int64_t cLenUAlign = Ops::Base::CeilDiv((int64_t)cLen * sizeof(U), blockSize_) / sizeof(U);
-        int64_t cLenGRADHINTAlign = Ops::Base::CeilDiv((int64_t)cLen * sizeof(GRADHIN_T), blockSize_) / sizeof(GRADHIN_T);
+        int64_t cLenXTAlign = Ops::Base::CeilDiv(int64_t(cLen * sizeof(X_T)), blockSize_) / sizeof(X_T);
+        int64_t cLenUAlign = Ops::Base::CeilDiv(int64_t(cLen * sizeof(U)), blockSize_) / sizeof(U);
+        int64_t cLenGRADHINTAlign = Ops::Base::CeilDiv(int64_t(cLen * sizeof(GRADHIN_T)), blockSize_) / sizeof(GRADHIN_T);
         info.cLen = cLen;
         info.cLenXTAlign = cLenXTAlign;
         info.cLenUAlign = cLenUAlign;
@@ -315,13 +317,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, 0, alphaPre_);
     ComputeSigmoidGrad(bsLen, n_, ONE);
     ComputeGradAlphaAndBias(bsLen, n_);
-    CopyOutAlphaAndBias(blockIdx, blockIdx * n_);
+    CopyOutAlphaAndBias(blockIdx_, blockIdx_ * n_);
     //grad_Z_pre ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, n_, alphaPost_);
     CopyInHpreAndGradHPost(gradHPostGm_[gradHPostOffset], bsLen);
     ComputeSigmoidGrad(bsLen, n_, TOW);
     ComputeGradAlphaAndBias(bsLen, n_);
-    CopyOutAlphaAndBias(blockIdx + 64, blockIdx * n_ + 64 * n_);
+    CopyOutAlphaAndBias(blockIdx_ + 64, blockIdx_ * n_ + 64 * n_);
     //grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_ * n_, 2 * n_, alphaRes_);
     invRmsQue_.FreeTensor(invRmsLocal);
@@ -344,7 +346,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     __local_mem__ U* normOutForwardAddr = (__ubuf__ U*)normOutForwardLocal.GetPhyAddr();
     __local_mem__ U* biasAddr = (__ubuf__ U*)biasLocal[oft].GetPhyAddr();
 
-    auto cLenAlign = Ops::Base::CeilDiv((int64_t)colLen * sizeof(U), blockSize_) / sizeof(U);
+    auto cLenAlign = Ops::Base::CeilDiv(int64_t(colLen * sizeof(U)), blockSize_) / sizeof(U);
     ComputeZAndForwardPart<U>(zAddr, hcBeformNormAddr, invRmsAddr, normOutForwardAddr, biasAddr, bsLen, colLen, cLenAlign, V_REG_SIZE, alpha);
     hcBeforeNormQue_.FreeTensor(hcBeforeNormLocal);
 }
