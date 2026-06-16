@@ -27,6 +27,7 @@ using namespace AscendC;
 
 constexpr uint8_t NUMONE = 1;
 constexpr uint8_t NUMTWO = 2;
+
 template<typename X_T, typename GRADHIN_T, typename U>
 class MhcPreSinkhornBackwardDeterministic {
 public:
@@ -175,7 +176,8 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
 
     gradPhiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(gradPhi));
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(phi));
-
+    constexpr int64_t ALIGN_256 = 256;
+ 	constexpr int64_t FP32_BYTE_SIZE = sizeof(U);
     int64_t wsGradAlphaOffset_ = AlignUp(bsLoopDataLen_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256) / FP32_BYTE_SIZE;
     int64_t wsGradBiasOffset_ = wsGradAlphaOffset_ + AlignUp(64 * FP32_BYTE_SIZE, ALIGN_256) / FP32_BYTE_SIZE;
     int64_t wsGradXFromHinOffset_ = wsGradBiasOffset_ + AlignUp(n_ * FP32_BYTE_SIZE, ALIGN_256) / FP32_BYTE_SIZE;
