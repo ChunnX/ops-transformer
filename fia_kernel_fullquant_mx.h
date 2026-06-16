@@ -655,9 +655,9 @@ public:
                     cubeBlock.IterateBmm1(mm1ResTensor, bmm1_id % 2, bIdxp[loop % 3], n2Idxp[loop % 3],
                                     gS1Idxp[loop % 3], s2Idxp[loop % 3], actMSizexp[loop % 3], inner, subLoop);
                 } else {
-                    __cbuf__ void *p1Ptr = (loop % 3 == 0) ? L1_P0.Get<void*>() : ((loop % 3 == 1) ? L1_P1.Get<void*>() : L1_P2.Get<void*>());
-                    __ubuf__ void *mm1ResPtr = (subLoop == 0) ? UB_MM1Res0.Get<void*>() : UB_MM1Res1.Get<void*>();
-                    vecFaBlock.ProcessVec1(p1Ptr, mm1ResPtr, bmm1_id % 2, loop % 3, inner,
+                    // AIV: 传 LocalTensor<float>，p1 不需要（vec 内部直接用共享的 L1_P TBuf）
+                    LocalTensor<float> mm1ResTensor = (subLoop == 0) ? UB_MM1Res0.Get<float>() : UB_MM1Res1.Get<float>();
+                    vecFaBlock.ProcessVec1(mm1ResTensor, bmm1_id % 2, loop % 3, inner,
                                             loopIdx[loop % 3], mloopIdx[loop % 3], subLoop);
                 }
             }
@@ -671,7 +671,6 @@ public:
                     cubeBlock.IterateBmm2((loop - 2) % 3, mm2ResTensor, p1Tensor, bmm2_id, pscaleTensor,
                                             bIdxp[(loop - 2) % 3], n2Idxp[(loop - 2) % 3], s2Idxp[(loop - 2) % 3], actMSizexp[(loop - 2) % 3]);
                 } else {
-                    __cbuf__ void *p1Ptr = ((loop - 2) % 3 == 0) ? L1_P0.Get<void*>() : (((loop - 2) % 3 == 1) ? L1_P1.Get<void*>() : L1_P2.Get<void*>());
                     vecFaBlock.ProcessVec2(UB_MM2Res.Get<float>(), bmm2_id, runInfoNegN);
                 }
                 runInfoNegN.isValid = false;

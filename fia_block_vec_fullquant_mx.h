@@ -118,7 +118,7 @@ public:
         // }
 
     }
-    __aicore__ inline void ub_l1_vec1(__cbuf__ void *p1, uint32_t subLoop, uint32_t createdTaskCount)
+    __aicore__ inline void ub_l1_vec1(uint32_t subLoop, uint32_t createdTaskCount)
     {
         // block_count = 256 / 32;
         // block_len = (uint16_t)16;
@@ -141,7 +141,7 @@ public:
 
     }
 
-    __aicore__ inline void process_vec1_noupdate(__ubuf__ void *mm1Res, int mm1_id, uint32_t subLoop, uint32_t createdTaskCount, uint32_t mloopCount, float minValue, const float pScale = 1.0f)
+    __aicore__ inline void process_vec1_noupdate(LocalTensor<float> mm1ResTensor, int mm1_id, uint32_t subLoop, uint32_t createdTaskCount, uint32_t mloopCount, float minValue, const float pScale = 1.0f)
     {
         const uint32_t blockStride = 65;
         const uint32_t repeatStride = 1;
@@ -158,7 +158,7 @@ public:
         __ubuf__ float *inMaxUb = (__ubuf__ float *)UB_softmaxMax0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
         __ubuf__ float *tmpMaxUb = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr() + 64;
         __ubuf__ float *tmpMaxUb2 = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr() + 64;
-        __ubuf__ float *srcUb = (__ubuf__ float *)mm1Res;//这个看mm1_id需要改吗
+        __ubuf__ float *srcUb = (__ubuf__ float *)mm1ResTensor.GetPhyAddr();
         __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)UB_vselrIndexes0.Get<uint8_t>().GetPhyAddr();
 
         ////printf("vec1: runInfo.mloop = %d, runInfo.loop = %d\n", mloopCount, createdTaskCount);
@@ -196,7 +196,7 @@ public:
         }
     }
 
-    __aicore__ inline void process_vec1_update(__ubuf__ void *mm1Res, int mm1_id, uint32_t subLoop, uint32_t createdTaskCount, uint32_t mloopCount, float minValue, const float pScale = 1.0f)
+    __aicore__ inline void process_vec1_update(LocalTensor<float> mm1ResTensor, int mm1_id, uint32_t subLoop, uint32_t createdTaskCount, uint32_t mloopCount, float minValue, const float pScale = 1.0f)
     {
         const uint32_t blockStride = 65;
         const uint32_t repeatStride = 1;
@@ -213,7 +213,7 @@ public:
         __ubuf__ float *inMaxUb = (__ubuf__ float *)UB_softmaxMax0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
         __ubuf__ float *tmpMaxUb = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr() + 64;
         __ubuf__ float *tmpMaxUb2 = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr() + 64;
-        __ubuf__ float *srcUb = (__ubuf__ float *)mm1Res;//这个看mm1_id需要改吗
+        __ubuf__ float *srcUb = (__ubuf__ float *)mm1ResTensor.GetPhyAddr();
         __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)UB_vselrIndexes0.Get<uint8_t>().GetPhyAddr();
 
         __ubuf__ float *preLoopMaxUb = (__ubuf__ float *)UB_preLoopMax.Get<float>().GetPhyAddr();
@@ -547,32 +547,32 @@ public:
     }
 
 //subloop1   搬运mask  比 subloop0还快  ，导致数据踩踏
-    __aicore__ inline void ProcessVec1(__cbuf__ void *p1, __ubuf__ void *mm1Res, int bmm1_id, int ipuse, 
+    __aicore__ inline void ProcessVec1(LocalTensor<float> mm1ResTensor, int bmm1_id, int ipuse,
                          uint32_t inner, uint32_t loop, uint32_t mloop, uint32_t subLoop)
     {
         // bmm1ResBuf.WaitCrossCore();
         int bmm1_idused = 6 + bmm1_id * 2;
         wait_intra_block(PIPE_V, bmm1_idused + 0);
 
-        wait_flag(PIPE_V, PIPE_MTE2, (event_t)4); 
+        wait_flag(PIPE_V, PIPE_MTE2, (event_t)4);
         // AttenMaskCopyIn_MX(runInfo, subLoop);
 
-        wait_flag(PIPE_MTE3, PIPE_V, 2 + loop % 2); 
+        wait_flag(PIPE_MTE3, PIPE_V, 2 + loop % 2);
         if(inner == 0) {
-           process_vec1_noupdate(mm1Res, bmm1_id, subLoop, loop, mloop, negativeFloatScalar);
+           process_vec1_noupdate(mm1ResTensor, bmm1_id, subLoop, loop, mloop, negativeFloatScalar);
         } else{
-           process_vec1_update(mm1Res, bmm1_id, subLoop, loop, mloop, negativeFloatScalar);
+           process_vec1_update(mm1ResTensor, bmm1_id, subLoop, loop, mloop, negativeFloatScalar);
         }
         set_flag(PIPE_V, PIPE_MTE3, (event_t)2);
 
         set_flag(PIPE_V, PIPE_MTE2, (event_t)4);
 
-        
+
         // bmm1ResBuf.SetCrossCore();
         set_intra_block(PIPE_V, bmm1_idused + 1);
 
         wait_flag(PIPE_V, PIPE_MTE3, (event_t)2);
-        ub_l1_vec1(p1, subLoop, loop % 2);
+        ub_l1_vec1(subLoop, loop % 2);
         set_flag(PIPE_MTE3, PIPE_V, 2 + loop % 2);
 
 
