@@ -34,6 +34,9 @@ using namespace Mc2Kernel;
 constexpr uint64_t SQ_WQE_DUMP_BYTES = 64UL * 2048UL;
 constexpr uint64_t SQ_WQE_DUMP_OFFSET = 800UL * 1024UL;
 constexpr uint32_t SQ_WQE_DUMP_COPY_U64_NUM = UB_ALIGN / sizeof(uint64_t);
+constexpr uint32_t DB_HISTORY_ENTRY_NUM = 500U;
+constexpr uint32_t DB_HISTORY_ENTRY_U32_NUM = 8U;
+constexpr uint64_t DB_HISTORY_DUMP_OFFSET = SQ_WQE_DUMP_OFFSET + SQ_WQE_DUMP_BYTES;
 
 __aicore__ inline void DumpSQWqeToWin(GM_ADDR sqBaseAddr, uint32_t wqeSize, uint32_t depth,
     LocalTensor<uint64_t>& ubLocalTensor, GlobalTensor<uint32_t>& selfDataStatusGMAiv)
@@ -139,6 +142,19 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     auto curHardwareTailAddr = qp_ctx_entry->tailAddr;
     cacheWriteThrough((__gm__ uint8_t*)curHardwareTailAddr, CACHEWRITESIZE);
     uint32_t curTail = *(__gm__ uint32_t*)(curHardwareTailAddr);
+    GlobalTensor<uint32_t> dbHistoryGm;
+    dbHistoryGm.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm + DB_HISTORY_DUMP_OFFSET));
+    uint32_t dbHistoryOffset = ((doorBellCnt - 1) % DB_HISTORY_ENTRY_NUM) * DB_HISTORY_ENTRY_U32_NUM;
+    dbHistoryGm.SetValue(dbHistoryOffset, doorBellCnt);
+    dbHistoryGm.SetValue(dbHistoryOffset + 1, static_cast<uint32_t>(doorBellInfo));
+    dbHistoryGm.SetValue(dbHistoryOffset + 2, static_cast<uint32_t>(doorBellInfo >> 32));
+    dbHistoryGm.SetValue(dbHistoryOffset + 3, static_cast<uint32_t>(curHead));
+    dbHistoryGm.SetValue(dbHistoryOffset + 4, static_cast<uint32_t>(curHead >> 32));
+    dbHistoryGm.SetValue(dbHistoryOffset + 5, curTail);
+    dbHistoryGm.SetValue(dbHistoryOffset + 6, static_cast<uint32_t>((uint64_t)doorBellAddr));
+    dbHistoryGm.SetValue(dbHistoryOffset + 7, static_cast<uint32_t>((uint64_t)doorBellAddr >> 32));
+    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(dbHistoryGm[dbHistoryOffset]);
     selfDataStatusGMAiv2.SetValue(6, static_cast<uint32_t>(doorBellInfo));
     selfDataStatusGMAiv2.SetValue(7, static_cast<uint32_t>(doorBellInfo >> 32));
     selfDataStatusGMAiv2.SetValue(9, curTail);
