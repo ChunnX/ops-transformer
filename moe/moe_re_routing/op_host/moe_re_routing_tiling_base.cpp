@@ -114,7 +114,7 @@ ge::graphStatus MoeReRoutingTilingBase::CheckNullptr() const
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputDesc(OUTPUT_EXPERT_TOKEN_NUM_INDEX));
     if (hasTopkWeight_) {
         OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOptionalInputShape(IN_EXPERT_TOPK_WEIGHT_INDEX));
-        OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(IN_EXPERT_TOPK_WEIGHT_INDEX));
+        OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOptionalInputDesc(IN_EXPERT_TOPK_WEIGHT_INDEX));
         OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputDesc(OUT_PERMUTE_TOPK_WEIGHT_INDEX));
     }
     return ge::GRAPH_SUCCESS;
