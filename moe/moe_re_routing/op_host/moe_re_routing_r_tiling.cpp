@@ -50,8 +50,10 @@ void MoeReRoutingRTiling::SplitCore()
 
 ge::graphStatus MoeReRoutingRTiling::SplitUb()
 {
-    // 切分ub
     int64_t reserveUbSize = INDEX_UB_SIZE * DOUBLE_BUFFER * ge::GetSizeByDataType(expertDtype_);
+    if (hasTopkWeight_) {
+        reserveUbSize += INDEX_UB_SIZE * DOUBLE_BUFFER * sizeof(float);
+    }
     int64_t canUseUbSize = (ubSize_ - reserveUbSize) / DOUBLE_BUFFER;
     canUseUbSize -= RESERVE_UB_GAP;
     ubFactor_ = Ops::Base::CeilAlign(canUseUbSize, static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)));
