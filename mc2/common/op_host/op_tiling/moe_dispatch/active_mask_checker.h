@@ -11,6 +11,10 @@
 /*!
  * \file active_mask_checker.h
  * \brief MOE Distribute Dispatch ActiveMask 可选特性校验
+ *
+ * 设计原则（architecture_v0.md §5.4）：
+ *   仅做互斥规则校验 + shape 精确值校验。
+ *   dim/dtype/format 基础校验统一在阶段 E 通过 TensorCheckRule 处理。
  */
 
 #ifndef MOE_DISPATCH_ACTIVE_MASK_CHECKER_H
@@ -23,8 +27,11 @@
 namespace active_mask_check {
 
 // ========== 互斥/约束规则校验 ==========
-
-inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, bool isExpertMask)
+// 接口签名遵循架构文档 §5.4：CheckCompatibility(nodeName, isLayered, isExpertMask, globalBs)
+// globalBs 用于 globalBs > bs * epWorldSize 时不允许 ActiveMask 的约束校验
+// （bs * epWorldSize 由调用方根据 globalBs 推断；当为 0 时跳过该项校验）
+inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, bool isExpertMask, uint32_t globalBs,
+                                          uint32_t bsTimesEpWorldSize)
 {
     // 2D mask (isExpertMask=true) 与 layered 互斥
     if (isLayered && isExpertMask) {
@@ -32,14 +39,18 @@ inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, 
         return ge::GRAPH_FAILED;
     }
 
-    // 注：globalBs > bs * epWorldSize 时不允许 ActiveMask 的约束在主流程 tiling
-    // (moe_distribute_dispatch_v2_tiling.cpp / arch35.cpp) 已统一收口，本处不再重复
+    // globalBs 超过 bs * epWorldSize 时不允许 ActiveMask
+    if (bsTimesEpWorldSize != 0U && globalBs > bsTimesEpWorldSize) {
+        OPS_LOG_E(nodeName, "Cannot support xActiveMask when globalBs(%u) > bs * epWorldSize(%u).", globalBs,
+                  bsTimesEpWorldSize);
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
 
 // ========== shape 值校验 ==========
-
+// 1D 时 dim0=bs；2D 时 dim0=bs && dim1=k
 inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex, uint32_t bs, uint32_t k,
                                   const char *nodeName)
 {
@@ -50,40 +61,18 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
     }
 
     uint32_t dimNum = static_cast<uint32_t>(shape->GetStorageShape().GetDimNum());
-    // dim0 必须等于 bs
     int64_t dim0 = shape->GetStorageShape().GetDim(0);
     if (dim0 != static_cast<int64_t>(bs)) {
         OPS_LOG_E(nodeName, "The input of xActiveMask dim0 = %ld is not equal to x dim0 = %u.", dim0, bs);
         return ge::GRAPH_FAILED;
     }
 
-    // 2D 时 dim1 必须等于 k
     if (dimNum == moe_dispatch_defs::TWO_DIMS) {
         int64_t dim1 = shape->GetStorageShape().GetDim(1);
         if (dim1 != static_cast<int64_t>(k)) {
             OPS_LOG_E(nodeName, "The input of xActiveMask dim1 = %ld is not equal to expertId dim1 = %u.", dim1, k);
             return ge::GRAPH_FAILED;
         }
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
-// ========== dtype 校验 ==========
-
-inline ge::graphStatus CheckDtype(const gert::CompileTimeTensorDesc *desc, const char *nodeName)
-{
-    if (desc == nullptr) {
-        OPS_LOG_E(nodeName, "xActiveMask desc is null.");
-        return ge::GRAPH_FAILED;
-    }
-
-    // activeMask dtype: uint8, int8, bool
-    ge::DataType dtype = desc->GetDataType();
-    if (dtype != ge::DT_UINT8 && dtype != ge::DT_INT8 && dtype != ge::DT_BOOL) {
-        OPS_LOG_E(nodeName, "xActiveMask dtype should be uint8, int8 or bool, but got %s.",
-                  Ops::Base::ToString(dtype).c_str());
-        return ge::GRAPH_FAILED;
     }
 
     return ge::GRAPH_SUCCESS;

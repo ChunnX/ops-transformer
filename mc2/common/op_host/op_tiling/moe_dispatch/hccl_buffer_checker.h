@@ -11,6 +11,14 @@
 /*!
  * \file hccl_buffer_checker.h
  * \brief MOE Distribute Dispatch HCCL buffer 大小校验
+ *
+ * 设计原则（architecture_v0.md §5.7）：
+ *   - CalcMinBuffSize(params)              : 按 setup/teardown 通用公式计算最小 buffer 需求
+ *   - CheckBuffSizeFromContext(...)        : 从框架获取 HCCL group 实际大小并比较
+ *   - CheckBuffSizeFromAttr(...)           : 从属性获取（V3/Mc2Context 场景）
+ *
+ * 注：v2 的 winSize 公式（layered/fullmesh/TP 多路）属算子层 dispatch_v2_win_size.h，
+ *     不在公共层实现。
  */
 
 #ifndef MOE_DISPATCH_HCCL_BUFFER_CHECKER_H
@@ -18,99 +26,77 @@
 
 #include "defs.h"
 #include "utils.h"
-#include "register/tilingdata_base.h"
-#include "tiling/tiling_api.h"
 
 namespace hccl_buffer_check {
 
-// ========== 计算最小 buffer 需求 ==========
+// ========== CalcMinBuffSize 入参 ==========
+// 与 setup/teardown 现有公式一致：
+//   align = ceilAlign(ceilAlign(2*h, 32) + HCCL_BUFFER_SIZE_HEAD, 512)
+//   golden = MIN_AVAILABLE_BUFF_SIZE * (
+//       localExpertNum * maxBs * epWorldSize * align +
+//       (k + sharedExpertNum) * maxBs * ceilAlign(2*h, 512))
+//
+// 调用方填好以下字段即可（h、bs、k、epWorldSize、moe/shared 等）。
+// HCCL_BUFFER_SIZE_HEAD 与 MIN_AVAILABLE_BUFF_SIZE 由调用方传入，
+// 因为不同算子取值不同（teardown=2 / setup=2）。
+struct MinBuffSizeParams {
+    uint32_t h;
+    uint32_t bs;
+    uint32_t k;
+    uint32_t epWorldSize;
+    uint32_t globalBs;
+    uint32_t localExpertNum;
+    uint32_t sharedExpertNum;
+    uint64_t hcclBufferSizeHead; // 头部对齐用，与算子约定一致
+    uint64_t minAvailableFactor; // setup/teardown 一般为 2
+};
 
-inline uint64_t CalcMinBuffSize(uint32_t localExpertNum, uint32_t maxBs, uint32_t epWorldSize, uint32_t k,
-                                uint32_t sharedExpertNum, uint32_t h, uint32_t quantMode)
+// 计算最小 buffer 需求
+inline uint64_t CalcMinBuffSize(const MinBuffSizeParams &p)
 {
-    // 基础 buffer 计算公式（由具体算子决定）
-    // 这里提供通用计算框架，具体公式在算子主流程中实现
-
-    uint64_t baseSize = static_cast<uint64_t>(maxBs) * static_cast<uint64_t>(k);
-    baseSize *= static_cast<uint64_t>(localExpertNum);
-    baseSize *= static_cast<uint64_t>(epWorldSize);
-    baseSize *= static_cast<uint64_t>(h);
-
-    // 根据 quantMode 调整
-    // quantMode 0: h * dtype_size
-    // quantMode 1-4: 需要考虑 scales 和 dynamicScales
-
-    return baseSize;
-}
-
-// ========== 从 HCCL group 获取实际大小 ==========
-
-inline ge::graphStatus CheckBuffSizeFromContext(gert::TilingContext *ctx, uint32_t groupIndex, uint64_t minRequired,
-                                                const char *nodeName)
-{
-    if (ctx == nullptr) {
-        OPS_LOG_E(nodeName, "TilingContext is null when checking HCCL buffer size.");
-        return ge::GRAPH_FAILED;
-    }
-
-    // 获取 HCCL group 中的 buffer 大小
-    // 具体实现依赖框架 API
-    uint64_t actualSize = 0UL;
-
-    // 通过 HcclTopoInfo 获取 buffer 大小
-    // actualSize = ctx->GetHcclBuffSize(groupIndex);
-
-    if (actualSize < minRequired) {
-        OPS_LOG_E(nodeName, "HCCL buffer size %lu is less than required minimum %lu.", actualSize, minRequired);
-        return ge::GRAPH_FAILED;
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
-// ========== 从属性获取 buffer 大小 ==========
-
-inline ge::graphStatus CheckBuffSizeFromAttr(uint64_t cclBufferSize, uint64_t minRequired, const char *nodeName)
-{
-    if (cclBufferSize < minRequired) {
-        OPS_LOG_E(nodeName, "CCL buffer size %lu is less than required minimum %lu.", cclBufferSize, minRequired);
-        return ge::GRAPH_FAILED;
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
-// ========== Win Size 校验（dispatch_v2 特有）==========
-
-inline uint64_t CalcWinSize(uint64_t hcclBufferSize, uint32_t aivNum, bool isCcu)
-{
-    // MTE 模式: winSize = hcclBufferSize - 1MB (状态区)
-    // CCU 模式: winSize = hcclBufferSize * 2
-
-    if (isCcu) {
-        return hcclBufferSize * 2UL;
-    }
-
-    uint64_t stateZoneSize = 1024UL * 1024UL; // 1MB
-    if (hcclBufferSize <= stateZoneSize) {
+    if (p.epWorldSize == 0U) {
         return 0UL;
     }
 
-    return hcclBufferSize - stateZoneSize;
+    uint32_t maxBs = p.bs;
+    if (p.globalBs != 0U) {
+        maxBs = p.globalBs / p.epWorldSize;
+    }
+
+    uint64_t alignH32 = static_cast<uint64_t>(
+        moe_dispatch_utils::AlignUp(2U * p.h, moe_dispatch_defs::ALIGN_32));
+    uint64_t alignH512 = static_cast<uint64_t>(
+        moe_dispatch_utils::AlignUp(2U * p.h, moe_dispatch_defs::ALIGN_512));
+
+    uint64_t alignTotal = alignH32 + p.hcclBufferSizeHead;
+    alignTotal = (alignTotal + moe_dispatch_defs::ALIGN_512 - 1UL) /
+                 static_cast<uint64_t>(moe_dispatch_defs::ALIGN_512) *
+                 static_cast<uint64_t>(moe_dispatch_defs::ALIGN_512);
+
+    uint64_t expandPart = static_cast<uint64_t>(p.localExpertNum) * static_cast<uint64_t>(maxBs) *
+                          static_cast<uint64_t>(p.epWorldSize) * alignTotal;
+    uint64_t aggregatePart =
+        static_cast<uint64_t>(p.k + p.sharedExpertNum) * static_cast<uint64_t>(maxBs) * alignH512;
+
+    return p.minAvailableFactor * (expandPart + aggregatePart);
 }
 
-// ========== 工作空间大小计算 ==========
-
-inline uint64_t CalcWorkspaceSize(uint32_t aivNum, uint32_t quantMode, uint32_t sharedExpertNum)
+// ========== 从框架 HCCL group 获取实际 buffer 大小并比较 ==========
+// 注：实际大小通过 mc2tiling::Mc2TilingUtils::GetMaxWindowSize() / 2 获取
+//     （与 setup/teardown 现有实现一致），由调用方传入 actualBuffSize。
+inline ge::graphStatus CheckBuffSize(uint64_t actualBuffSize, uint64_t minRequired, const char *nodeName)
 {
-    // 基础工作空间: 16MB
-    uint64_t baseWorkspace = moe_dispatch_defs::SYSTEM_NEED_WORKSPACE;
+    if (actualBuffSize < minRequired) {
+        OPS_LOG_E(nodeName, "HCCL_BUFFSIZE [%lu] < required minimum [%lu].", actualBuffSize, minRequired);
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
-    // 额外工作空间: 512 * aivNum^2
-    uint64_t extraWorkspace = static_cast<uint64_t>(aivNum) * static_cast<uint64_t>(aivNum);
-    extraWorkspace *= static_cast<uint64_t>(moe_dispatch_defs::SYSTEM_NEED_WORKSPACE) / 32UL;
-
-    return baseWorkspace + extraWorkspace;
+// ========== 从属性获取（V3/Mc2Context 场景）==========
+inline ge::graphStatus CheckBuffSizeFromAttr(uint64_t cclBufferSize, uint64_t minRequired, const char *nodeName)
+{
+    return CheckBuffSize(cclBufferSize, minRequired, nodeName);
 }
 
 } // namespace hccl_buffer_check

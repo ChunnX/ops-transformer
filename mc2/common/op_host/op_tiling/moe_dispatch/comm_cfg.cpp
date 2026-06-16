@@ -11,26 +11,28 @@
 /*!
  * \file comm_cfg.cpp
  * \brief MOE Distribute Dispatch 通信配置实现
+ *
+ * 注：Mc2CcTilingInner 镜像结构体 + reinterpret_cast 设置 protocal 字段，
+ *     是因为框架 Mc2CcTilingConfig 未公开 protocal setter，受限于框架 API。
+ *     设计文档（architecture_v0.md 原则 11）已记录此项约束。
  */
 
 #include "comm_cfg.h"
 #include "defs.h"
 #include "tiling/tiling_api.h"
-#include "exe_graph/runtime/tiling_context.h"
 #include "../mc2_tiling_utils.h"
 
 namespace moe_dispatch_comm_cfg {
 
-using namespace optiling;
-
-// ========== 内部结构体定义（与框架兼容）==========
+namespace {
+// 镜像 Mc2CcTiling 内部布局（与各算子已有定义保持一致），用于设置 protocal 字段
 struct Mc2CcTilingInner {
     uint8_t skipLocalRankCopy;
     uint8_t skipBufferWindowCopy;
     uint8_t stepSize;
     uint8_t version;
     char reserved[8];
-    uint8_t protocal; // 注意：拼写保持与框架一致
+    uint8_t protocal; // 拼写与框架一致：0 = UB-MEM, 1 = URMA
     uint8_t communicationEngine;
     uint8_t srcDataType;
     uint8_t dstDataType;
@@ -40,51 +42,29 @@ struct Mc2CcTilingInner {
     uint32_t reduceType;
 };
 
-// ========== 版本1：简化接口（dispatch_v2 使用）==========
-void SetEpAllToAllCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling,
-                      const std::string &groupEp, bool isLayered)
+// 选择 AllToAll 的 algConfig 字符串
+inline std::string PickAllToAllAlgConfig(bool isLayered)
 {
-    uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_TO_ALL;
-
-    // 根据 layered 模式选择算法配置
-    std::string algConfigStr;
-    if (isLayered) {
-        algConfigStr = "AlltoAll=level1:hierarchy";
-    } else {
-        algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
-    }
-
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfigStr);
-    mc2CcTilingConfig.SetCommEngine(moe_dispatch_defs::AIV_ENGINE);
-    mc2CcTilingConfig.GetTiling(mc2InitTiling);
-    mc2CcTilingConfig.GetTiling(mc2CcTiling);
+    return isLayered ? "AlltoAll=level1:hierarchy" : "AlltoAll=level0:fullmesh;level1:pairwise";
 }
+} // namespace
 
-// ========== 版本2：完整接口（teardown/setup 使用，支持 URMA）==========
-void SetEpAllToAllCfgWithUrma(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling,
-                              const std::string &groupEp, bool isLayered, bool isUrma)
+// ========== EP AllToAll 配置 ==========
+void SetEpAllToAllCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling,
+                      const std::string &groupEp, bool isLayered, bool isUrma)
 {
     uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_TO_ALL;
-
-    // 根据 layered 模式选择算法配置
-    std::string algConfigStr;
-    if (isLayered) {
-        algConfigStr = "AlltoAll=level1:hierarchy";
-    } else {
-        algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
-    }
+    std::string algConfigStr = PickAllToAllAlgConfig(isLayered);
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfigStr);
     mc2CcTilingConfig.SetCommEngine(moe_dispatch_defs::AIV_ENGINE);
     mc2CcTilingConfig.GetTiling(mc2InitTiling);
     mc2CcTilingConfig.GetTiling(mc2CcTiling);
 
-    // 设置 URMA 标志
     if (isUrma) {
-        auto *inner = reinterpret_cast<Mc2CcTilingInner *>(&mc2CcTiling);
-        if (inner != nullptr) {
-            inner->protocal = static_cast<uint8_t>(moe_dispatch_defs::URMA_COMM);
-        }
+        // 框架未公开 protocal setter，按既有算子实现保持一致
+        reinterpret_cast<Mc2CcTilingInner *>(&mc2CcTiling)->protocal =
+            static_cast<uint8_t>(moe_dispatch_defs::URMA_COMM);
     }
 }
 
@@ -102,8 +82,9 @@ void SetTpAllGatherCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::t
 }
 
 // ========== CCU 配置 ==========
-void SetCcuCommCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling1,
-                   AscendC::tiling::Mc2CcTiling &mc2CcTiling2, const std::string &groupEp, const std::string &groupTp)
+void SetCcuCommCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTilingEp,
+                   AscendC::tiling::Mc2CcTiling &mc2CcTilingTp, const std::string &groupEp,
+                   const std::string &groupTp)
 {
     uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_HALFALLTOALLV);
     std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
@@ -111,40 +92,10 @@ void SetCcuCommCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tilin
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfigStr);
     mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
     mc2CcTilingConfig.GetTiling(mc2InitTiling);
-    mc2CcTilingConfig.GetTiling(mc2CcTiling1);
+    mc2CcTilingConfig.GetTiling(mc2CcTilingEp);
 
     mc2CcTilingConfig.SetGroupName(groupTp);
-    mc2CcTilingConfig.GetTiling(mc2CcTiling2);
+    mc2CcTilingConfig.GetTiling(mc2CcTilingTp);
 }
-
-// ========== BatchWrite 配置 ==========
-// 注：当前未接入，暂用 #if 0 保留
-#if 0
-void SetBatchWriteCfg(
-    gert::TilingContext* ctx,
-    const std::string& groupEp,
-    uint32_t aivNum,
-    uint32_t sdmaUsedStreamPerCore)
-{
-    if (ctx == nullptr) {
-        return;
-    }
-
-    uint32_t opType = moe_dispatch_defs::OP_TYPE_BATCH_WRITE;
-    std::string algConfigStr = "BatchWrite=level0:fullmesh";
-
-    uint32_t reduceType = 0U;
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfigStr, reduceType);
-    mc2CcTilingConfig.SetQueueNum(sdmaUsedStreamPerCore);
-    mc2CcTilingConfig.SetCommBlockNum(aivNum);
-
-    // TODO: 需指定 GetTilingData<T>() 模板参数
-    // auto* tilingData = ctx->GetTilingData<XXX>();
-    // if (tilingData != nullptr) {
-    //     mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-    //     mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
-    // }
-}
-#endif
 
 } // namespace moe_dispatch_comm_cfg

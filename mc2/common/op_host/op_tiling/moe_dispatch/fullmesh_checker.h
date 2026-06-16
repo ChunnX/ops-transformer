@@ -16,6 +16,7 @@
 #ifndef MOE_DISPATCH_FULLMESH_CHECKER_H
 #define MOE_DISPATCH_FULLMESH_CHECKER_H
 
+#include <string>
 #include "defs.h"
 
 namespace fullmesh_check {

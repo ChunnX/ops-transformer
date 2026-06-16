@@ -11,6 +11,10 @@
 /*!
  * \file elastic_info_checker.h
  * \brief MOE Distribute Dispatch ElasticInfo 可选特性校验
+ *
+ * 设计原则（architecture_v0.md §5.4）：
+ *   仅做互斥规则校验 + shape 精确值校验 + 产出 ElasticResult。
+ *   dim/dtype/format 基础校验统一在阶段 E 通过 TensorCheckRule 处理。
  */
 
 #ifndef MOE_DISPATCH_ELASTIC_INFO_CHECKER_H
@@ -22,9 +26,17 @@
 
 namespace elastic_info_check {
 
-// ========== 互斥规则校验 ==========
+// ========== ElasticResult 小结果结构（架构文档 §4.6）==========
+struct ElasticResult {
+    bool hasElastic;
+    uint32_t adjustedA;
+    uint32_t adjustedExpertTokenDim0;
+    uint32_t adjustedEpRecvDim0;
+};
 
-inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, uint32_t tpWorldSize)
+// ========== 互斥规则校验 ==========
+// 接口签名遵循架构文档 §5.4：CheckCompatibility(nodeName, isLayered, hasTp)
+inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, bool hasTp)
 {
     // elastic 与 layered 互斥
     if (isLayered) {
@@ -33,8 +45,8 @@ inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, 
     }
 
     // elastic 与 tp>1 互斥
-    if (tpWorldSize > moe_dispatch_defs::TP_WORLD_SIZE_ONE) {
-        OPS_LOG_E(nodeName, "Cannot support elasticInfo when tpWorldSize = %u > 1.", tpWorldSize);
+    if (hasTp) {
+        OPS_LOG_E(nodeName, "Cannot support elasticInfo when tpWorldSize > 1.");
         return ge::GRAPH_FAILED;
     }
 
@@ -42,7 +54,7 @@ inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, 
 }
 
 // ========== shape 校验 ==========
-
+// dim0 = ELASTIC_INFO_OFFSET + RANK_LIST_NUM * epWorldSize = 4 + 2 * epWorldSize
 inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex, uint32_t epWorldSize,
                                   const char *nodeName)
 {
@@ -52,8 +64,6 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
         return ge::GRAPH_FAILED;
     }
 
-    // dim0 = ELASTIC_INFO_OFFSET + RANK_LIST_NUM * epWorldSize
-    // = 4 + 2 * epWorldSize
     int64_t expectedDim0 =
         static_cast<int64_t>(moe_dispatch_defs::ELASTIC_INFO_OFFSET + moe_dispatch_defs::RANK_LIST_NUM * epWorldSize);
 
@@ -74,24 +84,21 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
     return ge::GRAPH_SUCCESS;
 }
 
-// ========== dtype 校验 ==========
-
-inline ge::graphStatus CheckDtype(const gert::CompileTimeTensorDesc *desc, const char *nodeName)
+// ========== 产出 ElasticResult（架构文档 §5.4）==========
+// CalcAdjustments(localExpertNum, sharedA, moeA, epWorldSize) → ElasticResult
+//   sharedA: 共享专家路径的 A 值（maxBs * maxSharedGroupNum）
+//   moeA   : moe 专家路径的 A 值（globalBs * min(localExpertNum, k)）
+inline ElasticResult CalcAdjustments(uint32_t localExpertNum, uint32_t sharedA, uint32_t moeA, uint32_t epWorldSize)
 {
-    if (desc == nullptr) {
-        OPS_LOG_E(nodeName, "elasticInfo desc is null.");
-        return ge::GRAPH_FAILED;
-    }
-
-    // elasticInfo dtype: int32 或 int64
-    ge::DataType dtype = desc->GetDataType();
-    if (dtype != ge::DT_INT32 && dtype != ge::DT_INT64) {
-        OPS_LOG_E(nodeName, "elasticInfo dtype should be int32 or int64, but got %s.",
-                  Ops::Base::ToString(dtype).c_str());
-        return ge::GRAPH_FAILED;
-    }
-
-    return ge::GRAPH_SUCCESS;
+    ElasticResult result{};
+    result.hasElastic = true;
+    // 弹性场景下 A 取两路最大值
+    result.adjustedA = sharedA > moeA ? sharedA : moeA;
+    // expertTokenNums dim0 = localExpertNum
+    result.adjustedExpertTokenDim0 = localExpertNum;
+    // epRecvCounts dim0 = epWorldSize * localExpertNum
+    result.adjustedEpRecvDim0 = epWorldSize * localExpertNum;
+    return result;
 }
 
 } // namespace elastic_info_check

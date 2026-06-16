@@ -11,6 +11,10 @@
 /*!
  * \file performance_info_checker.h
  * \brief MOE Distribute Dispatch PerformanceInfo 可选特性校验
+ *
+ * 设计原则（architecture_v0.md §5.4）：
+ *   仅做互斥规则校验 + shape 精确值校验。
+ *   dim/dtype/format 基础校验统一在阶段 E 通过 TensorCheckRule 处理。
  */
 
 #ifndef MOE_DISPATCH_PERFORMANCE_INFO_CHECKER_H
@@ -23,7 +27,6 @@
 namespace performance_info_check {
 
 // ========== 互斥规则校验 ==========
-
 inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered)
 {
     // performance 与 layered 互斥
@@ -36,7 +39,7 @@ inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered)
 }
 
 // ========== shape 校验 ==========
-
+// dim0 = epWorldSize
 inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex, uint32_t epWorldSize,
                                   const char *nodeName)
 {
@@ -46,7 +49,6 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
         return ge::GRAPH_FAILED;
     }
 
-    // dim0 = epWorldSize
     if (shape->GetStorageShape().GetDimNum() != moe_dispatch_defs::ONE_DIM) {
         OPS_LOG_E(nodeName, "performanceInfo dim must be 1, but current dim num is %lu.",
                   shape->GetStorageShape().GetDimNum());
@@ -58,26 +60,6 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
                   "performanceInfo's dim0 not equal to epWorldSize, "
                   "performanceInfo's dim0 is %ld, epWorldSize is %u.",
                   shape->GetStorageShape().GetDim(0), epWorldSize);
-        return ge::GRAPH_FAILED;
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
-// ========== dtype 校验 ==========
-
-inline ge::graphStatus CheckDtype(const gert::CompileTimeTensorDesc *desc, const char *nodeName)
-{
-    if (desc == nullptr) {
-        OPS_LOG_E(nodeName, "performanceInfo desc is null.");
-        return ge::GRAPH_FAILED;
-    }
-
-    // performanceInfo dtype: float 或 int32
-    ge::DataType dtype = desc->GetDataType();
-    if (dtype != ge::DT_FLOAT && dtype != ge::DT_INT32) {
-        OPS_LOG_E(nodeName, "performanceInfo dtype should be float or int32, but got %s.",
-                  Ops::Base::ToString(dtype).c_str());
         return ge::GRAPH_FAILED;
     }
 

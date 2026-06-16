@@ -95,7 +95,8 @@ inline int64_t AlignUpInt64(int64_t val, int64_t align)
 
 // ========== Tensor 基础校验函数 ==========
 
-inline ge::graphStatus CheckTensorDimNum(const gert::StorageShape *shape, uint32_t expectedDim)
+// 维度数校验（架构文档 §5.2 原子工具：CheckDimNum）
+inline ge::graphStatus CheckDimNum(const gert::StorageShape *shape, uint32_t expectedDim)
 {
     if (shape == nullptr) {
         return ge::GRAPH_FAILED;
@@ -109,25 +110,55 @@ inline ge::graphStatus CheckTensorDimNum(const gert::StorageShape *shape, uint32
     return ge::GRAPH_SUCCESS;
 }
 
-inline ge::graphStatus CheckTensorDtypeIn(const gert::CompileTimeTensorDesc *desc, const ge::DataType *validDtypes,
-                                          uint32_t dtypeCount)
+// 兼容旧名（CheckTensorRules 内部使用）
+inline ge::graphStatus CheckTensorDimNum(const gert::StorageShape *shape, uint32_t expectedDim)
 {
-    if (desc == nullptr) {
+    return CheckDimNum(shape, expectedDim);
+}
+
+// dtype 在合法集合中（架构文档 §5.2 原子工具：CheckDtypeIn）
+inline ge::graphStatus CheckDtypeIn(ge::DataType dtype, const ge::DataType *validDtypes, uint32_t dtypeCount)
+{
+    if (validDtypes == nullptr || dtypeCount == 0U) {
         return ge::GRAPH_FAILED;
     }
     for (uint32_t i = 0U; i < dtypeCount; ++i) {
-        if (desc->GetDataType() == validDtypes[i]) {
+        if (dtype == validDtypes[i]) {
             return ge::GRAPH_SUCCESS;
         }
     }
     return ge::GRAPH_FAILED;
 }
 
+// desc 版本（CheckTensorRules 内部使用）
+inline ge::graphStatus CheckTensorDtypeIn(const gert::CompileTimeTensorDesc *desc, const ge::DataType *validDtypes,
+                                          uint32_t dtypeCount)
+{
+    if (desc == nullptr) {
+        return ge::GRAPH_FAILED;
+    }
+    return CheckDtypeIn(desc->GetDataType(), validDtypes, dtypeCount);
+}
+
+// format 非 FRACTAL_NZ 校验（架构文档 §5.2 原子工具：CheckNotFractalNZ）
+inline ge::graphStatus CheckNotFractalNZ(ge::Format format)
+{
+    ge::Format primaryFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(format));
+    return (primaryFormat == ge::FORMAT_FRACTAL_NZ) ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS;
+}
+
 // ========== 属性范围校验 ==========
 
-inline ge::graphStatus CheckAttrRangeU32(uint32_t val, uint32_t minVal, uint32_t maxVal)
+// uint32 范围校验（架构文档 §5.2：CheckRangeU32）
+inline ge::graphStatus CheckRangeU32(uint32_t val, uint32_t minVal, uint32_t maxVal)
 {
     return (val >= minVal && val <= maxVal) ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
+}
+
+// 兼容旧名
+inline ge::graphStatus CheckAttrRangeU32(uint32_t val, uint32_t minVal, uint32_t maxVal)
+{
+    return CheckRangeU32(val, minVal, maxVal);
 }
 
 inline ge::graphStatus CheckAttrRangeInt64(int64_t val, int64_t minVal, int64_t maxVal)
@@ -204,6 +235,41 @@ inline ge::graphStatus CheckEpRankRelation(uint32_t epRankId, uint32_t epWorldSi
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
+}
+
+// ========== A 值计算（架构文档 §5.2：CalcA）==========
+// A = max(maxBs * maxSharedGroupNum,                        // 共享专家路径
+//         globalBs * min(localExpertNum, expertIdsDim1))    // moe 专家路径
+//
+// 当 hasElastic=false 时按 isSharedRank 选择其中一路；
+// 当 hasElastic=true 时取两路最大值。
+//
+// maxBs           : globalBs / epWorldSize
+// maxSharedGroupNum: ceil(epWorldSize, sharedExpertRankNum/sharedExpertNum)
+//                    （sharedExpertNum=0 时为 0）
+inline uint32_t CalcA(uint32_t globalBs, uint32_t epWorldSize, uint32_t k, uint32_t localExpertNum,
+                      uint32_t sharedExpertNum, uint32_t sharedExpertRankNum, bool isSharedRank, bool hasElastic)
+{
+    if (epWorldSize == 0U) {
+        return 0U;
+    }
+    uint32_t maxBs = globalBs / epWorldSize;
+
+    uint32_t maxSharedGroupNum = 0U;
+    if (sharedExpertNum != 0U && sharedExpertRankNum != 0U) {
+        uint32_t rankNumPerSharedExpert = sharedExpertRankNum / sharedExpertNum;
+        if (rankNumPerSharedExpert != 0U) {
+            maxSharedGroupNum = CeilDiv(epWorldSize, rankNumPerSharedExpert);
+        }
+    }
+
+    uint32_t sharedPath = maxBs * maxSharedGroupNum;
+    uint32_t moePath = globalBs * (localExpertNum < k ? localExpertNum : k);
+
+    if (hasElastic) {
+        return sharedPath > moePath ? sharedPath : moePath;
+    }
+    return isSharedRank ? sharedPath : moePath;
 }
 
 // ========== 平台信息获取 ==========
