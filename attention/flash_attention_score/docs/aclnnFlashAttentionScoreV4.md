@@ -577,6 +577,10 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     - N：取值范围为1\~256。
     - S：取值范围为1\~1M。
     - D：取值范围为1\~768。
+- 空Tensor场景说明：
+    - 当B、N1(headNum)、S1(query的sequence length)中任一维度为0时，算子不执行任何计算，直接返回成功，workspaceSize为0。
+    - 当N2(key/value的head数)、S2(key/value的sequence length)、D(Head-Dim)中任一维度为0时，query/key/value为空Tensor（shapeSize为0），但softmaxMaxOut和softmaxSumOut的输出shape可能非空（其shape不依赖D维度），算子将执行空输入处理流程，对非空输出进行初始化。
+    - 上述空Tensor场景下，算子正常返回，不报错。
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - innerPrecise: 当前0、1为保留配置值，2为开启无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。如果算子可判断出存在无效行场景，会自动开启无效行计算，例如sparseMode为3，Sq > Skv场景。
 - pseType各个取值含义

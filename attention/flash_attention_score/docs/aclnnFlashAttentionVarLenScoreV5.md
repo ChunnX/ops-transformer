@@ -4,7 +4,7 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
@@ -523,6 +523,10 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   - S：取值范围为1\~1M。
   - D：取值范围为1\~768。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
+- 空Tensor场景说明：
+    - 当T(B*S)、N1(headNum)中任一维度为0时，算子不执行任何计算，直接返回成功，workspaceSize为0。
+    - 当N2(key/value的head数)、D(Head-Dim)中任一维度为0时，query/key/value为空Tensor（shapeSize为0），但softmaxMaxOut和softmaxSumOut的输出shape可能非空（其shape不依赖D维度），算子将执行空输入处理流程，对非空输出进行初始化。
+    - 上述空Tensor场景下，算子正常返回，不报错。
 - realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可开启alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
