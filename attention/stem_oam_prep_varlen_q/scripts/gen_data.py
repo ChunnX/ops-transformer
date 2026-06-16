@@ -34,8 +34,8 @@ np.random.seed(42)
 q_fp32 = np.random.randn(total_tokens, H_q, D).astype(np.float32) * 0.1
 q_fp8 = torch.from_numpy(q_fp32).to(torch.float8_e4m3fn)
 
-# qscale: [batch, H_q, max_q_padded] FP32, all 1.0
-qscale = np.ones((batch, H_q, max_q_padded), dtype=np.float32)
+# qscale: [total_tokens, H_q] FP32, all 1.0
+qscale = np.ones((total_tokens, H_q), dtype=np.float32)
 
 # q_seq_lens: [batch] INT32
 q_seq_lens = np.array([q_len], dtype=np.int32)

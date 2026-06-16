@@ -100,17 +100,17 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
       <td>qScale（aclTensor*）</td>
       <td>输入</td>
       <td>表示Q的per-token scale factor，仅FP8输入时有效。对应公式中qscale。</td>
-      <td><ul><li>FP8输入时必填，最后一维必须为ceil(max(qSeqLens)/stemBlockSize)×stemBlockSize，数据类型必须为FLOAT。</li><li>BF16/FP16输入时传入nullptr，Kernel内部跳过加权，执行无权重Group Sum。</li></ul></td>
+      <td><ul><li>FP8输入时必填，shape为[total_tokens, H_q]，数据类型必须为FLOAT。</li><li>BF16/FP16输入时传入nullptr，Kernel内部跳过加权，执行无权重Group Sum。</li></ul></td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td>3 ([batch, H_q, max_seqlen_pad_stemBlockSize])</td>
+      <td>2 ([total_tokens, H_q])</td>
       <td>×</td>
     </tr>
     <tr>
       <td>qSeqLens（aclIntArray*）</td>
       <td>输入</td>
       <td>表示每个batch的Q序列长度。对应公式中q_seq_lens。</td>
-      <td><ul><li>长度等于batch。</li><li>每个值≥0。</li><li>不支持空Array。</li></ul></td>
+      <td><ul><li>长度等于batch。</li><li>每个值≥0。</li><li>不支持空Array。</li><li>batch最大值为1024。</li></ul></td>
       <td>INT32</td>
       <td>-</td>
       <td>1 ([batch])</td>

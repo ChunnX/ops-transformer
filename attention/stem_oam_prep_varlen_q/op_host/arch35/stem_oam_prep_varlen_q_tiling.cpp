@@ -9,96 +9,245 @@
  */
 
 #include "stem_oam_prep_varlen_q_tiling.h"
+#include "../../op_kernel/arch35/stem_oam_prep_varlen_q_tiling_data.h"
 #include "register/op_impl_registry.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "log/log.h"
 #include <algorithm>
-#include <cmath>
-#include <cstring>
 
 namespace optiling {
 
 static constexpr int64_t DIM_QK_HOST = 128;
-static constexpr uint32_t MAX_CORE_NUM_HOST = 64;
-static constexpr uint32_t MAX_BATCH_SIZE_HOST = 256;
+static constexpr int64_t MAX_BATCH_SIZE = 1024;
 
-ge::graphStatus Tiling4StemOamPrepVarlenQ(gert::TilingContext* context) {
+static void PrintTilingData(const char* nodeName, const StemPrepQTilingData* tiling)
+{
+    OP_LOGD(nodeName, "========== StemPrepQTilingData ==========");
+    OP_LOGD(nodeName, "batch_size: %u", tiling->batch_size);
+    OP_LOGD(nodeName, "num_q_heads: %u", tiling->num_q_heads);
+    OP_LOGD(nodeName, "dim_qk: %u", tiling->dim_qk);
+    OP_LOGD(nodeName, "stem_block_size: %u", tiling->stem_block_size);
+    OP_LOGD(nodeName, "stem_stride: %u", tiling->stem_stride);
+    OP_LOGD(nodeName, "R_val: %u", tiling->R_val);
+    OP_LOGD(nodeName, "kflat_dim: %u", tiling->kflat_dim);
+    OP_LOGD(nodeName, "max_Qb: %u", tiling->max_Qb);
+    OP_LOGD(nodeName, "used_core_num: %u", tiling->used_core_num);
+    OP_LOGD(nodeName, "blocks_per_core_base: %u", tiling->blocks_per_core_base);
+    OP_LOGD(nodeName, "blocks_remainder: %u", tiling->blocks_remainder);
+}
+
+static ge::graphStatus ValidateInputs(gert::TilingContext* context,
+                                       int64_t& stemBlockSize,
+                                       int64_t& stemStride,
+                                       int64_t& batch,
+                                       int64_t& numQHeads)
+{
+    const char* nodeName = context->GetNodeName();
+    
     auto compile_info = static_cast<const StemPrepQCompileInfo*>(context->GetCompileInfo());
-    uint32_t N = static_cast<uint32_t>(compile_info->core_num);
+    if (compile_info == nullptr || compile_info->core_num == 0) {
+        OP_LOGE(nodeName, "Invalid compile info or core_num is 0");
+        return ge::GRAPH_FAILED;
+    }
 
     auto attrs = context->GetAttrs();
     const int64_t *stemBlockSizePtr = attrs->GetInt(0);
     const int64_t *stemStridePtr = attrs->GetInt(1);
     if (stemBlockSizePtr == nullptr || stemStridePtr == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "stemBlockSize/stemStride");
         return ge::GRAPH_FAILED;
     }
-    int64_t stemBlockSize = *stemBlockSizePtr;
-    int64_t stemStride = *stemStridePtr;
+    stemBlockSize = *stemBlockSizePtr;
+    stemStride = *stemStridePtr;
 
-    uint32_t B = static_cast<uint32_t>(stemBlockSize);
-    uint32_t S = static_cast<uint32_t>(stemStride);
-    uint32_t R = B / S;
-    uint32_t qflat_dim = S * DIM_QK_HOST;
+    if (stemBlockSize % 32 != 0 || stemBlockSize > 256 || stemBlockSize <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "stemBlockSize", 
+            std::to_string(stemBlockSize).c_str(), "must be positive, <= 256, and multiple of 32");
+        return ge::GRAPH_FAILED;
+    }
+    if (stemStride % 16 != 0 || stemStride > 64 || stemStride <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "stemStride", 
+            std::to_string(stemStride).c_str(), "must be positive, <= 64, and multiple of 16");
+        return ge::GRAPH_FAILED;
+    }
+    if (stemStride > stemBlockSize) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "stemStride", 
+            std::to_string(stemStride).c_str(), 
+            ("must be <= stemBlockSize (" + std::to_string(stemBlockSize) + ")").c_str());
+        return ge::GRAPH_FAILED;
+    }
 
-    auto tiling = context->GetTilingData<StemPrepQTilingData>();
-    tiling->set_stem_block_size(B);
-    tiling->set_stem_stride(S);
-    tiling->set_R_val(R);
-    tiling->set_kflat_dim(qflat_dim);
-    tiling->set_dim_qk(DIM_QK_HOST);
+    auto qShape = context->GetInputShape(0);
+    auto qSeqLensShape = context->GetInputShape(1);
+    if (qShape == nullptr || qSeqLensShape == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "q/qSeqLens");
+        return ge::GRAPH_FAILED;
+    }
 
-    tiling->set_batch_size(context->GetInputShape(1)->GetStorageShape().GetDim(0));
-    tiling->set_num_q_heads(context->GetInputShape(0)->GetStorageShape().GetDim(1));
-    tiling->set_total_tokens(context->GetInputShape(0)->GetStorageShape().GetDim(0));
+    // Validate shape dimensions
+    if (qShape->GetStorageShape().GetDimNum() != 3) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "q", 
+            std::to_string(qShape->GetStorageShape().GetDimNum()).c_str(), "3");
+        return ge::GRAPH_FAILED;
+    }
+    if (qSeqLensShape->GetStorageShape().GetDimNum() != 1) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "qSeqLens", 
+            std::to_string(qSeqLensShape->GetStorageShape().GetDimNum()).c_str(), "1");
+        return ge::GRAPH_FAILED;
+    }
 
-    uint32_t H_q = tiling->get_num_q_heads();
-    uint32_t batch = tiling->get_batch_size();
+    // Validate dtypes
+    auto qDesc = context->GetInputDesc(0);
+    auto qSeqLensDesc = context->GetInputDesc(1);
+    if (qDesc == nullptr || qSeqLensDesc == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "q/qSeqLens descriptor");
+        return ge::GRAPH_FAILED;
+    }
+    if (qDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) {
+        OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "q", 
+            std::to_string(static_cast<int>(qDesc->GetDataType())).c_str(), "DT_FLOAT8_E4M3FN");
+        return ge::GRAPH_FAILED;
+    }
+    if (qSeqLensDesc->GetDataType() != ge::DT_INT32) {
+        OP_LOGE_WITH_INVALID_INPUT_DTYPE(nodeName, "qSeqLens", 
+            std::to_string(static_cast<int>(qSeqLensDesc->GetDataType())).c_str(), "DT_INT32");
+        return ge::GRAPH_FAILED;
+    }
 
-    // Read q_seq_lens to compute per-batch num_Qb
+    numQHeads = qShape->GetStorageShape().GetDim(1);
+    int64_t D = qShape->GetStorageShape().GetDim(2);
+    if (D != DIM_QK_HOST) {
+        OP_LOGE_WITH_INVALID_INPUT_SHAPESIZE(nodeName, 0, 
+            std::to_string(D).c_str(), std::to_string(DIM_QK_HOST).c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    batch = qSeqLensShape->GetStorageShape().GetDim(0);
+    if (batch <= 0 || batch > MAX_BATCH_SIZE || numQHeads <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "batch/numQHeads", 
+            ("batch=" + std::to_string(batch) + ", numQHeads=" + std::to_string(numQHeads)).c_str(),
+            ("batch must be in (0, " + std::to_string(MAX_BATCH_SIZE) + "], numQHeads must be > 0").c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CalcSequenceInfo(gert::TilingContext* context,
+                                         StemPrepQTilingData* tiling,
+                                         uint32_t B,
+                                         uint32_t& totalBlocks)
+{
+    const char* nodeName = context->GetNodeName();
+    
     auto qSeqLensTensor = context->GetInputTensor(1);
-    int32_t* qSeqLensData = nullptr;
-    if (qSeqLensTensor != nullptr) {
-        qSeqLensData = const_cast<int32_t*>(qSeqLensTensor->GetData<int32_t>());
+    if (qSeqLensTensor == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "qSeqLens");
+        return ge::GRAPH_FAILED;
+    }
+    int32_t* qSeqLensData = const_cast<int32_t*>(qSeqLensTensor->GetData<int32_t>());
+    if (qSeqLensData == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "qSeqLens data");
+        return ge::GRAPH_FAILED;
     }
 
     uint32_t max_q_len = 0;
-    uint32_t total_blocks = 0;
+    totalBlocks = 0;
+    uint32_t H_q = tiling->num_q_heads;
+    uint32_t batchU32 = tiling->batch_size;
 
-    for (uint32_t b = 0; b < batch; b++) {
-        uint32_t q_len_b = 0;
-        if (qSeqLensData != nullptr) {
-            q_len_b = static_cast<uint32_t>(qSeqLensData[b]);
-        }
+    for (uint32_t b = 0; b < batchU32; b++) {
+        uint32_t q_len_b = static_cast<uint32_t>(qSeqLensData[b]);
         uint32_t q_padded_b = ((q_len_b + B - 1) / B) * B;
         uint32_t num_Qb_b = q_padded_b / B;
-        total_blocks += H_q * num_Qb_b;
-        if (q_len_b > max_q_len) max_q_len = q_len_b;
+        totalBlocks += H_q * num_Qb_b;
+        if (q_len_b > max_q_len) {
+            max_q_len = q_len_b;
+        }
     }
 
-    tiling->set_total_blocks(total_blocks);
     uint32_t max_q_padded = ((max_q_len + B - 1) / B) * B;
-    uint32_t max_Qb = max_q_padded / B;
-    tiling->set_max_q_padded(max_q_padded);
-    tiling->set_max_Qb(max_Qb);
+    tiling->max_Qb = max_q_padded / B;
 
-    uint32_t P = batch * H_q;
+    return ge::GRAPH_SUCCESS;
+}
 
-    if (P >= N) {
-        tiling->set_split_mode(0);
-        tiling->set_total_tasks(P);
-        tiling->set_used_core_num(std::min(P, N));
-        tiling->set_cores_per_bh_base(1);
-        tiling->set_remainder_bh(0);
-    } else {
-        tiling->set_split_mode(1);
-        tiling->set_used_core_num(N);
-        tiling->set_total_tasks(N);
-        tiling->set_cores_per_bh_base(N / P);
-        tiling->set_remainder_bh(N % P);
+static void CalcCoreDistribution(gert::TilingContext* context,
+                                  StemPrepQTilingData* tiling,
+                                  uint32_t totalBlocks,
+                                  uint32_t N)
+{
+    const char* nodeName = context->GetNodeName();
+    
+    if (totalBlocks == 0) {
+        tiling->used_core_num = 0;
+        tiling->blocks_per_core_base = 0;
+        tiling->blocks_remainder = 0;
+        context->SetTilingKey(0);
+        context->SetBlockDim(1);
+        OP_LOGI(nodeName, "No work to do, totalBlocks=0");
+        return;
     }
+
+    tiling->used_core_num = std::min(totalBlocks, N);
+    tiling->blocks_per_core_base = totalBlocks / tiling->used_core_num;
+    tiling->blocks_remainder = totalBlocks % tiling->used_core_num;
 
     context->SetTilingKey(0);
-    context->SetBlockDim(tiling->get_used_core_num());
+    context->SetBlockDim(tiling->used_core_num);
+    context->SetScheduleMode(1);  // Batch mode
+    
+    OP_LOGI(nodeName, "Tiling: totalBlocks=%u, used_core_num=%u, blocks_per_core_base=%u, blocks_remainder=%u",
+            totalBlocks, tiling->used_core_num, tiling->blocks_per_core_base, tiling->blocks_remainder);
+}
+
+ge::graphStatus Tiling4StemOamPrepVarlenQ(gert::TilingContext* context) {
+    const char* nodeName = context->GetNodeName();
+    int64_t stemBlockSize, stemStride, batch, numQHeads;
+
+    if (ValidateInputs(context, stemBlockSize, stemStride, batch, numQHeads) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    auto compile_info = static_cast<const StemPrepQCompileInfo*>(context->GetCompileInfo());
+    uint32_t N = static_cast<uint32_t>(compile_info->core_num);
+
+    StemPrepQTilingData* tiling = context->GetTilingData<StemPrepQTilingData>();
+    if (tiling == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "tiling");
+        return ge::GRAPH_FAILED;
+    }
+
+    uint32_t B = static_cast<uint32_t>(stemBlockSize);
+    uint32_t S = static_cast<uint32_t>(stemStride);
+
+    tiling->stem_block_size = B;
+    tiling->stem_stride = S;
+    tiling->R_val = B / S;
+    tiling->kflat_dim = S * DIM_QK_HOST;
+    tiling->dim_qk = DIM_QK_HOST;
+    tiling->batch_size = static_cast<uint32_t>(batch);
+    tiling->num_q_heads = static_cast<uint32_t>(numQHeads);
+
+    uint32_t totalBlocks = 0;
+    if (CalcSequenceInfo(context, tiling, B, totalBlocks) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    CalcCoreDistribution(context, tiling, totalBlocks, N);
+
+    // Calculate workspace size (this operator doesn't need workspace for computation)
+    auto platformInfo = context->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    size_t* workspaceSizes = context->GetWorkspaceSizes(1);
+    if (workspaceSizes != nullptr) {
+        workspaceSizes[0] = workspaceSize;
+    }
+    OP_LOGI(nodeName, "Workspace size: %zu bytes", workspaceSize);
+
+    PrintTilingData(nodeName, tiling);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -108,9 +257,6 @@ ge::graphStatus TilingPrepare4StemOamPrepVarlenQ(gert::TilingParseContext* conte
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->core_num = ascendcPlatform.GetCoreNumAiv();
-    uint64_t ubSize;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    compileInfo->ub_size = static_cast<int32_t>(ubSize);
     return ge::GRAPH_SUCCESS;
 }
 
