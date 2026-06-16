@@ -47,7 +47,7 @@ sparse_flash_mla_metadata(cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_
 
 -   **num\_heads\_kv** (`int`)：必选参数，表示Key和Value对应的多头数，当前仅支持1。
 
--   **head\_dim** (`int`)：必选参数，表示注意力头的维度。
+-   **head\_dim** (`int`)：必选参数，表示注意力头的维度，当前仅支持512。
 
 -   **batch\_size** (`int`)：可选参数，表示Batch数量，默认值为0。
 
@@ -88,6 +88,7 @@ sparse_flash_mla_metadata(cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_
 -   该接口支持推理场景下使用。
 -   该接口支持aclgraph模式。
 -   该接口需与[sparse\_flash\_mla](./sparse_flash_mla.md)算子配套使用。
+-   B（Batch）表示输入样本批量大小。
 -   参数cu\_seqlens\_q、cu\_seqlens\_ori\_kv及cu\_seqlens\_cmp\_kv要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
 -   参数seqused\_q、seqused\_ori\_kv、seqused\_cmp\_kv要求其值表示每个Batch中的有效token数。
 -   参数cmp\_residual\_kv需满足cmp\_residual\_kv\[i\] < cmp\_ratio。
