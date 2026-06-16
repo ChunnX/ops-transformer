@@ -18,19 +18,23 @@ class StemOamPrepVarlenQ : public OpDef {
         .ParamType(REQUIRED)
         .DataType({ge::DT_FLOAT8_E4M3FN})
         .Format({ge::FORMAT_ND})
-        .UnknownShapeFormat({ge::FORMAT_ND});
+        .UnknownShapeFormat({ge::FORMAT_ND})
+        .AutoContiguous();
     this->Input("qSeqLens")
         .ParamType(REQUIRED)
         .DataType({ge::DT_INT32})
-        .Format({ge::FORMAT_ND});
+        .Format({ge::FORMAT_ND})
+        .AutoContiguous();
     this->Input("cuSeqLensQ")
         .ParamType(REQUIRED)
         .DataType({ge::DT_INT32})
-        .Format({ge::FORMAT_ND});
+        .Format({ge::FORMAT_ND})
+        .AutoContiguous();
     this->Input("qScale")
         .ParamType(OPTIONAL)
         .DataType({ge::DT_FLOAT})
-        .Format({ge::FORMAT_ND});
+        .Format({ge::FORMAT_ND})
+        .AutoContiguous();
     this->Output("qFlat")
         .ParamType(REQUIRED)
         .DataType({ge::DT_BF16})
