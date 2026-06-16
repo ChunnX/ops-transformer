@@ -39,7 +39,7 @@
 |ori_topk|可选属性|表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0|INT32|-|
 |cmp_topk|可选属性|表示cmp_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0|INT32|-|
 |rope_head_dim|可选属性|表示rope头的维度，默认值为64|INT32|-|
-|cmp_ratio|可选属性|表示对ori_kv的压缩率，取值范围[1, 128]，默认值为1|INT32|-|
+|cmp_ratio|可选属性|表示对cmp_kv的压缩率，取值范围[1, 128]，默认值为1|INT32|-|
 |ori_mask_mode|可选属性|表示q和ori_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0|INT32|-|
 |cmp_mask_mode|可选属性|表示q和cmp_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0|INT32|-|
 |ori_win_left|可选属性|表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1|INT32|-|
