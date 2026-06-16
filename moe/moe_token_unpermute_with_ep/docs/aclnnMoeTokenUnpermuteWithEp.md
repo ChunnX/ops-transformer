@@ -144,7 +144,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
     <tr>
       <td>rangeOptional</td>
       <td>输入</td>
-      <td>ep切分的有效范围, size为2。</td>
+      <td>ep切分的有效范围， size为2。</td>
       <td>为空时，忽略numTopk，执行逻辑回退到<a href="../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md">aclnnMoeTokenUnpermute</a>。</td>
       <td>-</td>
       <td>-</td>

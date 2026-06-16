@@ -2,7 +2,7 @@
 
 ## 详细目录层级介绍如下
 
-> ### 本章罗列的部分目录是可选的，请以实际交付件为准。尤其**单算子目录**，不同场景下交付件有差异，具体说明如下
+> 本章罗列的部分目录是可选的，请以实际交付件为准。尤其**单算子目录**，不同场景下交付件有差异，具体说明如下
 >
 > - 若缺少op_host目录，可能是调用了其他算子op_host实现，调用逻辑参见该算子op_api或op_graph目录下源码实现；也可能是Kernel暂无Ascend C实现，如有需要，欢迎开发者参考[贡献指南](../../../CONTRIBUTING.md)补充贡献该算子。
 > - 若缺少op_kernel目录，可能是调用了其他算子op_kernel实现，调用逻辑参见该算子op_api或op_graph目录下源码实现；也可能是Kernel暂无Ascend C实现，如有需要，欢迎开发者参考[贡献指南](../../../CONTRIBUTING.md)补充贡献该算子。
@@ -80,6 +80,17 @@
 │   └── README.md                                       # 项目示例介绍文档
 ├── scripts                                             # 脚本目录，包含自定义算子、Kernel构建相关配置文件
 ├── tests                                               # 项目级测试目录
+├── torch_extension                                     # torch扩展目录，用于开放torch扩展api
+│   ├── cann_ops_transformer                            # torch扩展module根目录
+│       ├── common                                      # torch扩展用到的公共能力目录
+│       ├── docs                                         # 扩展api文档目录（含开发规范torch_extension_guidelines.md）
+│       ├── op_builder                                  # OpBuilder基类，管理JIT编译与schema/meta注册
+│       ├── ops                                         # torch扩展算子api目录
+│       │   ├── csrc                                    # 算子api的c++实现文件目录
+│       │   ├── graph_convert                           # 算子api适配torchair图模式的Converter目录
+│       │   ├── ${api_name}.py                          # 算子api的Python前端定义与实现
+│       │   └── __init__.py                             # ops子包入口，导出算子api与Converter
+│       └── __init__.py                                 # 包根入口，对外导出算子api接口
 ├── CMakeLists.txt                                      # 项目工程cmakelist入口
 ├── CONTRIBUTING.md                                     # 项目贡献指南文件
 ├── LICENSE                                             # 项目开源许可证信息

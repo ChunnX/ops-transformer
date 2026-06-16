@@ -34,7 +34,7 @@ public:
 
 private:
     // enableNonQuant 相关校验函数
-    ge::graphStatus CheckExistenceNoquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckExistenceNoquant(const FiaTilingInfo &fiaInfo) const;
 
     // enableFullQuant 相关校验函数
     ge::graphStatus CheckDataTypeSupportFullquant(const FiaTilingInfo &fiaInfo);
@@ -43,85 +43,85 @@ private:
     ge::graphStatus CheckDequantScaleDtypeGQAPertensor(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleDtypeMXFP8Fullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleDtypeFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDequantModeMLAFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDequantModeGQAPerblock(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDequantModeGQAPertensor(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDequantModeMXFP8Fullquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDequantModeMLAFullquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantModeGQAPerblock(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantModeGQAPertensor(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantModeMXFP8Fullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantModeFullquant(const FiaTilingInfo &fiaInfo);
 
     ge::graphStatus CheckTensorExistFullquant(const FiaTilingInfo &fiaInfo, const gert::Tensor *tensor,
-        const std::string &quantModeName, const std::string &inputName);
+        const std::string &quantModeName, const std::string &inputName) const;
     ge::graphStatus CheckTensorNotExistFullquant(const FiaTilingInfo &fiaInfo, const gert::Tensor *tensor,
-        const std::string &quantModeName, const std::string &inputName);
+        const std::string &quantModeName, const std::string &inputName) const;
     ge::graphStatus CheckExistencePertensorFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckExistenceMLAFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckExistencePerblockFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckExistenceMXFP8Fullquant(const FiaTilingInfo &fiaInfo);
 
-    ge::graphStatus CheckFeaturePertensorFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeaturePerblockFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureMLAFullquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeaturePertensorFullquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeaturePerblockFullquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureSupportFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureMXFP8Fullquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureMXFP8Fullquant(const FiaTilingInfo &fiaInfo) const;
 
-    ge::graphStatus CheckDequantScaleKVMLAFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDequantScaleQueryMLAFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDequantScaleShapePertensor(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDequantScaleKVMLAFullquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantScaleQueryMLAFullquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantScaleShapePertensor(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDequantScaleNZShapeMXFP8(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckQuantScale1ShapePerblock(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckQuantScale1ShapeMXFP8(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDequantScaleShapePerblock(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantScaleNZShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckQuantScale1ShapePerblock(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckQuantScale1ShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantScaleShapePerblock(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleShapeFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleShapeCrossFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckInputDTypeFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckInputLayoutPerblock(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckInputLayoutPertensor(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckInputLayoutMLAFullquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckInputLayoutPerblock(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckInputLayoutPertensor(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckInputLayoutMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckInputLayoutFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckInputLayoutMXFP8Fullquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckInputLayoutMXFP8Fullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckInputAxisFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckN1SizeFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckN2SizeFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckGSizeFullquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDSizeFullquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckN1SizeFullquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckN2SizeFullquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckGSizeFullquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDSizeFullquant(const FiaTilingInfo &fiaInfo) const;
 
     // enableAntiQuant 相关校验函数
     // SinglePara
     ge::graphStatus CheckSingleParaForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckAntiquantModeForAntiquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckAntiquantModeForAntiquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckInputKVTypeForAntiquant(const FiaTilingInfo &fiaInfo);
     
     // Existence
     ge::graphStatus CheckExistenceForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckScaleExistenceForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckDescExistenceForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckOffsetExistenceForAntiquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckScaleExistenceForAntiquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDescExistenceForAntiquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckOffsetExistenceForAntiquant(const FiaTilingInfo &fiaInfo) const;
 
     // Feature
     ge::graphStatus CheckFeatureForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureLayoutForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureQuerySForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeaturePAForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureRopeForAntiquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureLayoutForAntiquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureQuerySForAntiquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeaturePAForAntiquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureRopeForAntiquant(const FiaTilingInfo &fiaInfo) const;
 
     // MultiPara
     ge::graphStatus CheckMultiParaForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckScaleTypeForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckScaleShapeForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckOffsetTypeForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckOffsetShapeForAntiquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckOffsetShapeForAntiquant(const FiaTilingInfo &fiaInfo) const;
 
-    ge::graphStatus CheckKScaleShapeForPerChannelPerTensorMode(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKScaleShapeForPerTensorHeadMode(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKScaleShapeForPerTokenHeadMode(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKScaleShapeForPerTokenPAMode(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKScaleShapeForPerTokenHeadPAMode(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKScaleShapeForPerTokenGroupMode(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckVScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo);
-    int64_t GetValueScaleActualKVlens4TNDNoPa(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckKScaleShapeForPerChannelPerTensorMode(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckKScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckKScaleShapeForPerTensorHeadMode(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckKScaleShapeForPerTokenHeadMode(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckKScaleShapeForPerTokenPAMode(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckKScaleShapeForPerTokenHeadPAMode(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckKScaleShapeForPerTokenGroupMode(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckVScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo) const;
+    int64_t GetValueScaleActualKVlens4TNDNoPa(const FiaTilingInfo &fiaInfo) const;
 
 private:
     bool enableQKVPerblockQuant_ = false;
