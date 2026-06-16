@@ -21,6 +21,8 @@
 #include "lib/matmul_intf.h"
 #include "mhc_pre_sinkhorn_backward_deterministic_simd_vf.h"
 
+constexpr uint8_t ONE = 1;
+constexpr uint8_t TWO = 2;
 template<typename X_T, typename GRADHIN_T, typename U>
 class MhcPreSinkhornBackwardDeterministic {
 public:
@@ -34,11 +36,16 @@ public:
 private:
     __aicore__ inline void GetAlphaAndBias(void);
     __aicore__ inline void ComputeFirst(uint64_t bsIdx, uint64_t bsLen);
-    __aicore__ inline void CopyInHpre(uint64_t hPreGmOffset, uint64_t bsLen);
+    __aicore__ inline void CopyInHpreAndGradHPost(const GlobalTensor<U>& gmTensor, uint64_t bsLen);
     __aicore__ inline void CopyInXandGradHin(uint64_t xGmOffset, uint64_t gradHinGmOffset, uint64_t bsLen, uint64_t cLen);
     __aicore__ inline void ComputeGradHpreAndXFromIn(LocalTensor<U>& hPreLocal, LocalTensor<U>& gradHPreLocal, const Process1Info& info);
-    __aicore__ inline void ComputeSigmoidGradOne(uint64_t bsLen);
-    __aicore__ inline void ComputeGradAlphaAndBiasPart1(uint64_t bsLen, uint64_t colLen);
+    __aicore__ inline void ComputeSigmoidGrad(uint64_t bsLen, uint64_t colLen, uint8_t num);
+    __aicore__ inline void ComputeGradAlphaAndBias(uint64_t bsLen, uint64_t colLen);
+    __aicore__ inline void ComputeZAndNormOutForward(const LocalTensor<U>& invRmsLocal uint64_t bsLen, 
+                                        uint64_t colLen, uint64_t oft, uint64_t gmOft, const U& alpha);
+    __aicore__ inline void CopyInHcBeforeNorm(uint64_t bsLen, uint64_t colLen, uint64_t gmOft);
+    __aicore__ inline void CopyInInvRms(uint64_t bsLen, uint64_t gmOft);
+    __aicore__ inline void CopyOutAlphaAndBias(uint64_t gmAlphaOft, uint64_t gmBiasOft);
     
 private:
 
@@ -78,20 +85,20 @@ private:
     GlobalTensor<U>  gradAlphaGm_;
     GlobalTensor<U>  gradBiasGm_;
 
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> hPreQue_;
+
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> xQue_;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER> hPreAndGradHPostQue_;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> gradHinQue_;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> hcBeforeNormQue_;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER> invRmsQue_;
+
     TQue<QuePosition::VECOUT, DOUBLE_BUFFER> xFp32Que_;
-    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> gradXFromHinQue_;
-    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> gradAlphaQue_;
-    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> gradBiasQue_;
-    
+    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> gradXFromHinAndAlphaAndBiasQue_;
+
     TBuf<TPosition::VECCALC> gradHPreBuf_;
-    TBuf<TPosition::VECCALC> zPreBuf_;
-    TBuf<TPosition::VECCALC> gradZPreBuf_;
-    TBuf<TPosition::VECCALC> biasBuf_;
-    TBuf<TPosition::VECCALC> normOutForwardPart1Buf_;
+    TBuf<TPosition::VECCALC> zBuf_;
+    TBuf<TPosition::VECCALC> normOutForwardBuf_;
+    TBuf<TPosition::VECCALC> gradZBuf_;
 
     int64_t batchSize_ = 0;
     int64_t seqLength_ = 0;
@@ -111,9 +118,14 @@ private:
     int64_t mm2M_ = 0;
     int64_t mm2N_ = 0;
     int64_t blockSize_ = 0;
-    int64_t nAlignFp32_;
-    int64_t cLenAlignFp32_;
-    int64_t cLenAlignFp16_;
+    int64_t nAlignFp32_ = 0;
+    int64_t cLenAlignFp32_ = 0;
+    int64_t cLenAlignFp16_ = 0;
+    int64_t kLenAlignFp32_ = 0;
+    int64_t bsnAlignFp32_ = 0;
+    int64_t bsAlignFp32_ = 0;
+    int64_t bskAlignFp32_ = 0;
+    int64_t gradBiasOft_ = 0;
     U alphaPre_, alphaPost_, alphaRes_;
     constexpr static uint32_t V_REG_SIZE = platform::GetVRegSize();
 
@@ -140,6 +152,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     nAlignFp32_ = ops::CeilAlign(n_ * sizeof(U), blockSize_) / sizeof(U);
     cAlignFp32_ = ops::CeilAlign(cLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
     cAlignFp16_ = ops::CeilAlign(cLoopDataLen_ * sizeof(X_T), blockSize_) / sizeof(X_T);
+    kLenAlignFp32_ = ops::CeilAlign(k_ * sizeof(U), blockSize_) / sizeof(U);
+    bsnAlignFp32_ = ops::CeilAlign(n_ * bsLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
+    bsAlignFp32_ = ops::CeilAlign(bsLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
+    bskAlignFp32_ = ops::CeilAlign(bsLoopDataLen_ * k_ * sizeof(U), blockSize_) / sizeof(U);
+    gradBiasOft_ = blockSize_ / sizeof(U);
 
     gradPhiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ GRADHIN_T*>(gradPhi));
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(phi));
@@ -163,13 +180,20 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         gradHinGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(gradHin));
 
         // Init UB
-        pipe_->InitBuffer(hPreQue_, DOUBLE_BUFFER, nAlignFp32_ * bsLoopDataLen_ * sizeof(U));
+        //VECIN
         pipe_->InitBuffer(xQue_, DOUBLE_BUFFER, cLenAlignFp16_ * n_ * bsLoopDataLen_ * sizeof(X_T));
+        pipe_->InitBuffer(hPreAndGradHPostQue_, DOUBLE_BUFFER, bsnAlignFp32_ * sizeof(U));
         pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cLenAlignFp16_ * bsLoopDataLen_ * sizeof(GRADHIN_T));
+        pipe_->InitBuffer(hcBeforeNormQue_, DOUBLE_BUFFER, bsLoopDataLen_ * kLenAlignFp32_ * sizeof(U));
+        pipe_->InitBuffer(invRmsQue_, DOUBLE_BUFFER, bsAlignFp32_ * sizeof(U));
+        //VECOUT
         pipe_->InitBuffer(xFp32Que_, DOUBLE_BUFFER, cLenAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
-        pipe_->InitBuffer(gradXFromHinQue_, DOUBLE_BUFFER, cLenAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U));
-        pipe_->InitBuffer(gradHPreBuf_, nAlignFp32_ * bsLoopDataLen_ * sizeof(U));
-        pipe_->InitBuffer(biasBuf_, (n_ * n_ + 2 * n_) * sizeof(U));
+        pipe_->InitBuffer(gradXFromHinAndAlphaAndBiasQue_, DOUBLE_BUFFER, cLenAlignFp32_ * n_ * bsLoopDataLen_ * sizeof(U) + blockSize_);
+        //BUF
+        pipe_->InitBuffer(gradHPreBuf_, bsnAlignFp32_ * sizeof(U));
+        pipe_->InitBuffer(zBuf_, bskAlignFp32_ * sizeof(U));
+        pipe_->InitBuffer(normOutForwardBuf_, bskAlignFp32_ * sizeof(U));
+        pipe_->InitBuffer(gradZBuf_, bsnAlignFp32_ * sizeof(U));
     }
 
     if ASCEND_IS_AIV {
@@ -192,13 +216,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::CopyInHpre(uint64_t hPreGmOffset, uint64_t bsLen)
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::CopyInHpreAndGradHPost(const GlobalTensor<U>& gMTensor, uint64_t bsLen)
 {
-    LocalTensor<U> hPreLocal = hPreQue_.AllocTensor<U>();
-
-    CopyIn(hPreLocal, hPreGm_[hPreGmOffset], 1, bsLen * n_, 0, 0);
-
-    hPreQue_.EnQue(hPreLocal)
+    LocalTensor<U> hPreLocal = hPreAndGradHPostQue_.AllocTensor<U>();
+    CopyIn(hPreLocal, gMTensor, 1, bsLen * n_, 0, 0);
+    hPreAndGradHPostQue_.EnQue(hPreLocal)
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
@@ -212,10 +234,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     uint64_t cTailDataLen = c_ - cLoopDataLen * (cLoopNum - 1);
     uint64_t bsOffset = blockIdx_ * curCoreProcessbsTask_ + bsIdx * bsLoopDataLen_;
     uint64_t hPreOffset = bsOffset * n_;
+    uint64_t gradHPostOffset = bsOffset * n_;
     uint64_t xOffset = bsOffset * n_ * c_;
     uint64_t gradHinOffset = bsOffset * c_;
-    CopyInHpre(hPreOffset, bsLen);
-    LocalTensor<U> hPreLocal = hPreQue_.DeQue<U>();
+    uint64_t hcBeforeNormOffset = bsOffset * k_;
+    uint64_t invRmsOffset = bsOffset;
+    CopyInHpreAndGradHPost(hPreGm_[hPreOffset], bsLen);
+    LocalTensor<U> hPreLocal = hPreAndGradHPostQue_.DeQue<U>();
 
     Process1Info info;
     info.bsLen = bsLen;
@@ -236,25 +261,126 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         CopyInXandGradHin(xStartOft, gradHinStartOft, bsLen, cLen);
         ComputeGradHpreAndXFromIn(hPreLocal, gradHPreLocal, info);
         LocalTensor<U> xFp32Local = xFp32Que_.DeQue<U>();     //out
-        LocalTensor<U> gradXFromHinLocal = gradXFromHinQue_.DeQue<U>();       //out        
+        LocalTensor<U> gradXFromHinLocal = gradXFromHinAndAlphaAndBiasQue_.DeQue<U>();       //out        
         CopyOut(xFp32Ws_[cIdx * cLoopDataLen], xFp32Local, bsLen * n_, cLen, 0, (c_ - cLoopDataLen) * sizeof(U));       //搬运x_f32到workspace
         CopyOut(gradXFromHinWs_[cIdx * cLoopDataLen], gradXFromHinLocal, bsLen * n_, cLen, 0, (c_ - cLoopDataLen) * sizeof(U));       //搬运grad_x_from_hin到workspace
         xFp32Que_.FreeTensor(xFp32Local);
-        gradXFromHinQue_.FreeTensor(gradXFromHinLocal);
+        gradXFromHinAndAlphaAndBiasQue_.FreeTensor(gradXFromHinLocal);
     }
-    hPreQue_.FreeTensor(hPreLocal);
-    //Get z_pre, z_post, norm_out_forward_part1, norm_out_forward_part2, norm_out_forward_part3;
-    ComputeSigmoidGradOne(bsLen);
-    //grad_Z_pre ->workspace        宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
-    ComputeGradAlphaAndBiasPart1(bsLen, n_);
-    LocalTensor<U> gradAlphaLocal = gradAlphaQue_.DeQue<U>();
-    LocalTensor<U> gradBiasLocal = gradBiasQue_.DeQue<U>();
+    hPreAndGradHPostQue_.FreeTensor(hPreLocal);
+    CopyInInvRms(bsLen, invRmsOffset);
+    LocalTensor<U> invRmsLocal = invRmsQue_.DeQue<U>();
+    ComputeZAndNormOutForward(invRmsLocal, bsLen, 0, n_, alphaPre_);
+    ComputeSigmoidGrad(bsLen, n_, ONE);
+    ComputeGradAlphaAndBias(bsLen, n_);
+    CopyOutAlphaAndBias(blockIdx, blockIdx * n_);
+    //grad_Z_pre ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
+    ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, n_, alphaPost_);
+    CopyInHpreAndGradHPost(gradHPostGm_[gradHPostOffset], bsLen);
+    ComputeSigmoidGrad(bsLen, n_, TOW);
+    ComputeGradAlphaAndBias(bsLen, n_);
+    CopyOutAlphaAndBias(blockIdx + 64, blockIdx * n_ + 64 * n_);
+    //grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
+    ComputeZAndNormOutForward(invRmsLocal, bsLen, 2 * n_, n_ * n_, alphaRes_);
+    invRmsQue_.FreeTensor(invRmsLocal);
+}
+
+template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::CopyOutAlphaAndBias(uint64_t gmAlphaOft, uint64_t gmBiasOft) 
+{
+    LocalTensor<U> gradAlphaLocal = gradXFromHinAndAlphaAndBiasQue_.DeQue<U>();
+    LocalTensor<U> gradBiasLocal = gradAlphaLocal[gradBiasOft_];
     SetAtomicAdd<U>();
-    CopyOut(gradAlphaPreWs_[blockIdx], gradAlphaLocal, 1, 1, 0, 0);
-    CopyOut(gradBiasPreGm_[blockIdx * n_], gradBiasLocal, 1, n_, 0, 0);
+    CopyOut(gradAlphaPreWs_[gmAlphaOft], gradAlphaLocal, 1, 1, 0, 0);
+    CopyOut(gradBiasPreGm_[gmBiasOft], gradBiasLocal, 1, n_, 0, 0);
     SetAtomicNone();
-    gradAlphaQue_.FreeTensor(gradAlphaLocal);
-    gradBiasQue_.FreeTensor(gradBiasLocal);
+    gradXFromHinAndAlphaAndBiasQue_.FreeTensor(gradAlphaLocal);
+}
+
+template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::CopyInHcBeforeNorm(uint64_t bsLen, uint64_t colLen, uint64_t gmOft) 
+{
+    LocalTensor<U> gradHLocal = gradHPostQue_.AllocTensor<U>();
+    CopyIn(gradHLocal, hcBeforeNormGm_[gmOft], bsLen, colLen, 0, k_ - colLen);
+    gradHPostQue_.EnQue(gradHLocal);
+}
+
+template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::CopyInHcBeforeNorm(uint64_t bsLen, uint64_t colLen, uint64_t gmOft) 
+{
+    LocalTensor<U> hcBeforeNormLocal = hcBeforeNormQue_.AllocTensor<U>();
+    CopyIn(hcBeforeNormLocal, hcBeforeNormGm_[gmOft], bsLen, colLen, 0, k_ - colLen);
+    hcBeforeNormQue_.EnQue(hcBeforeNormLocal);
+}
+
+template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::CopyInInvRms(uint64_t bsLen, uint64_t gmOft) 
+{
+    LocalTensor<U> invRmsLocal = invRmsQue_.AllocTensor<U>();
+    CopyIn(invRmsLocal, invRmsGm_[gmOft], 1, bsLen, 0, 0);
+    invRmsQue_.EnQue(invRmsLocal);
+}
+
+template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeZAndNormOutForward(const LocalTensor<U>& invRmsLocal uint64_t bsLen, 
+                                        uint64_t colLen, uint64_t oft, uint64_t gmOft, const U& alpha)
+{
+    CopyInHcBeforeNorm(bsLen, colLen, gmOft + oft);
+    LocalTensor<U> hcBeforeNormLocal = hcBeforeNormQue_.DeQue<U>();
+
+    LocalTensor<U> zLocal = zBuf_.Get<U>();
+    LocalTensor<U> normOutForwardLocal = normOutForwardBuf_.Get<U>();
+    LocalTensor<U> biasLocal = biasBuf_.Get<U>();
+
+    __local_mem__ U* zAddr = (__ubuf__ U*)zLocal.GetPhyAddr();
+    __local_mem__ U* hcBeformNormAddr = (__ubuf__ U*)hcBeforeNormLocal[oft].GetPhyAddr();
+    __local_mem__ U* invRmsAddr = (__ubuf__ U*)invRmsLocal.GetPhyAddr();
+    __local_mem__ U* normOutForwardAddr = (__ubuf__ U*)normOutForwardLocal.GetPhyAddr();
+    __local_mem__ U* biasAddr = (__ubuf__ U*)biasLocal[oft].GetPhyAddr();
+
+    auto cLenAlign = ops::CeilAlign(colLen * sizeof(U), blockSize_) / sizeof(U);
+    ComputeZAndForwardPart(zAddr, hcBeformNormAddr, invRmsAddr, normOutForwardAddr, biasAddr, bsLen, colLen, cLenAlign, V_REG_SIZE, alpha);
+    hcBeforeNormQue_.FreeTensor(hcBeforeNormLocal);
+}
+
+template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeSigmoidGrad(uint64_t bsLen, uint64_t colLen, uint8_t num)
+{
+    LocalTensor<U> gradHLocal;
+    LocalTensor<U> zPreLocal = zBuf_.Get<U>();
+    LocalTensor<U> gradZLocal = gradZBuf_.Get<U>();
+
+    __local_mem__ U* gradHAddr;
+    __local_mem__ U* zPreAddr = (__ubuf__ U*)zPreLocal.GetPhyAddr();
+    __local_mem__ U* gradZAddr = (__ubuf__ U*)gradZLocal.GetPhyAddr();
+    if (num == ONE) {
+        gradHLocal = gradHPreBuf_.Get<U>();
+        gradHAddr = (__ubuf__ U*)gradHLocal.GetPhyAddr();
+        SigmoidGrad<U, true>(gradHAddr, zPreAddr, gradZAddr, bsLen, colLen, V_REG_SIZE, eps_);
+    } else {
+        gradHLocal = hPreAndGradHPostQue_.DeQue<U>();
+        gradHAddr = (__ubuf__ U*)gradHPreLocal.GetPhyAddr();
+        SigmoidGrad<U, false>(gradHPreAddr, zPreAddr, gradZAddr, bsLen, colLen, V_REG_SIZE, eps_);
+        hPreAndGradHPostQue_.FreeTensor(gradHLocal);
+    }
+}
+
+template<typename X_T, typename GRADHIN_T, typename U>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeGradAlphaAndBias(uint64_t bsLen, uint64_t colLen)
+{
+    LocalTensor<U> normOutForwardLocal = normOutForwardBuf_.Get<U>();
+    LocalTensor<U> gradZLocal = gradZBuf_.Get<U>();
+    LocalTensor<U> gradAlphaLocal = gradXFromHinAndAlphaAndBiasQue_.AllocTensor<U>();
+    LocalTensor<U> gradBiasLocal = gradAlphaLocal[gradBiasOft_];
+
+    __local_mem__ U* normOutForwardAddr = (__ubuf__ U*)normOutForwardLocal.GetPhyAddr();
+    __local_mem__ U* gradZAddr = (__ubuf__ U*)gradZLocal.GetPhyAddr();
+    __local_mem__ U* gradAlphaAddr = (__ubuf__ U*)gradAlphaLocal.GetPhyAddr();
+    __local_mem__ U* gradBiasAddr = (__ubuf__ U*)gradBiasLocal.GetPhyAddr();
+
+    ComputeGradAlpha<U>(normOutForwardAddr, gradZAddr, gradAlphaAddr, bsLen, colLen);
+    ComputeGradBias<U>(gradBiasAddr, gradZAddr, bsLen, colLen);
+    gradXFromHinAndAlphaAndBiasQue_.EnQue<U>(gradAlphaLocal);
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
@@ -262,7 +388,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     LocalTensor<U>& gradHPreLocal, const Process1Info& info)
 {
     LocalTensor<X_T> xFp32Local = xFp32Que_.AllocTensor<U>();
-    LocalTensor<U> gradXFromHinLocal = gradXFromHinQue_.AllocTensor<U>();
+    LocalTensor<U> gradXFromHinLocal = gradXFromHinAndAlphaAndBiasQue_.AllocTensor<U>();
     LocalTensor<X_T> xLocal = xQue_.DeQue<X_T>();
     LocalTensor<GRADHIN_T> gradHInLocal = gradHinQue_.DeQue<GRADHIN_T>();
 
@@ -322,40 +448,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         }
     }
     xFp32Que_.EnQue(xFp32Local);
-    gradXFromHinQue_.EnQue(gradXFromHinLocal);
+    gradXFromHinAndAlphaAndBiasQue_.EnQue(gradXFromHinLocal);
     xQue_.FreeTensor(xLocal);
     gradHinQue_.FreeTensor(gradHInLocal);
-}
-
-template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeSigmoidGradOne(uint64_t bsLen)
-{
-    LocalTensor<U> gradHPreLocal = gradHPreBuf_.Get<U>();
-    LocalTensor<U> zPreLocal = zPreBuf_.Get<U>();
-    LocalTensor<U> gradZPreLocal = gradZPreBuf_.Get<U>();
-    __local_mem__ U* gradHPreAddr = (__ubuf__ U*)gradHPreLocal.GetPhyAddr();
-    __local_mem__ U* zPreAddr = (__ubuf__ U*)zPreLocal.GetPhyAddr();
-    __local_mem__ U* gradZPreAddr = (__ubuf__ U*)gradZPreLocal.GetPhyAddr();
-
-    SigmoidGrad<U, true>(gradHPreAddr, zPreAddr, gradZPreAddr, bsLen, n_, V_REG_SIZE, eps_);
-}
-
-template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeGradAlphaAndBiasPart1(uint64_t bsLen, uint64_t colLen)
-{
-    LocalTensor<U> normOutForwardPart1Local = normOutForwardPart1Buf_.Get<U>();
-    LocalTensor<U> gradZPreLocal = gradZPreBuf_.Get<U>();
-    LocalTensor<U> gradAlphaLocal = gradAlphaQue_.AllocTensor<U>();
-    LocalTensor<U> gradBiasLocal = gradBiasQue_.AllocTensor<U>();
-
-    __local_mem__ U* normOutForwardPart1Addr = (__ubuf__ U*)normOutForwardPart1Local.GetPhyAddr();
-    __local_mem__ U* gradZPreAddr = (__ubuf__ U*)gradZPreLocal.GetPhyAddr();
-    __local_mem__ U* gradAlphaPreAddr = (__ubuf__ U*)gradAlphaLocal.GetPhyAddr();
-
-    ComputeGradAlpha<U>(normOutForwardPart1Addr, gradZPreAddr, gradAlphaPreAddr, bsLen, colLen);
-    ComputeGradBias<U>(gradBiasLocal, gradZPreAddr, bsLen, colLen);
-    gradAlphaQue_.EnQue<U>(gradAlphaLocal);
-    gradBiasQue_.EnQue<U>(gradBiasLocal);
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
