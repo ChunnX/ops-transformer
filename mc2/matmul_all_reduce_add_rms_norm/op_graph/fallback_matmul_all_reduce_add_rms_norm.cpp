@@ -123,6 +123,7 @@ struct CommParas {
 
 inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
 {
+    OPS_LOG_E(kInnerDebug, "Enter fallback_matmul_all_reduce_add_rms_norm.py GetCommPara.");
     const auto attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
 
