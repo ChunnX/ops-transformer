@@ -100,7 +100,7 @@ def test_compressor_process(filepath, device_id=0):
         score_block_table = block_table.npu()
 
     #调用compressor算子
-    npu_result = torch.ops.custom.compressor(
+    npu_result = torch.ops.custom.quant_compressor(
                 x.npu(),
                 wkv.npu(),
                 wgate.npu(),

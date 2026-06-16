@@ -27,6 +27,9 @@ for _, params in enumerate(ENABLED_PARAMS):
 
     # 生成所有参数组合
     param_names = [
+        "batch_size", "hidden_size", "Seq_len", "head_dim", "block_size", "cmp_ratio",
+        "coff", "start_p", "cache_mode", "layout_x", "data_type", "cu_seqlens", "seqused", "start_pos",
+        "x_datarange", "wkv_datarange", "wgate_datarange", "ape_datarange", "kv_state_datarange", "score_state_datarange"
     ]
 
     param_values = [
@@ -81,6 +84,10 @@ for _, params in enumerate(ENABLED_PARAMS):
         kv_state_datarange = param_combinations['kv_state_datarange']
         score_state_datarange = param_combinations['score_state_datarange']
 
+
+        test_data = batch_size, hidden_size, Seq_len, head_dim, block_size, cmp_ratio, coff, \
+                    start_p, cache_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, \
+                    x_datarange, wkv_datarange, wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange
 
         torch_npu.npu.set_device(0)
 

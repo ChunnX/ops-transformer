@@ -43,9 +43,13 @@ class Generalized_operator():
         return cpu_compressor(
             x, wkv, wgate, kv_state, score_state, ape,
             block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
+            cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode)
 
 def output_operator(params):
     #构造输入
+    batch_size, hidden_size, Seq_len, head_dim, block_size, cmp_ratio, coff, \
+    start_p, cache_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, \
+    x_datarange, wkv_datarange, wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange = params
     S_max = 0
     save_state_seqlens = None
     bs_combine_flag = False
@@ -85,5 +89,8 @@ def output_operator(params):
           f"x_datarange={x_datarange}, wkv_datarange={wkv_datarange}, wgate_datarange={wgate_datarange}, "
           f"kv_state_datarange={kv_state_datarange}, score_state_datarange={score_state_datarange}")
 
-    run_compressor_eager(batch_size, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = Seq_len, start_pos = start_pos, \
-    x_datarange = x_datarange, wkv_datarange = wkv_datarange, wgate_datarange = wgate_datarange, ape_datarange = ape_datarange, \
+    run_compressor_eager(batch_size, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = Seq_len, start_pos = start_pos,
+    seqused = seqused, cu_seqlens = cu_seqlens, block_size = block_size, cache_mode = cache_mode, data_type = data_type,
+    hidden_size = hidden_size, save_state_seqlens = save_state_seqlens,
+    x_datarange = x_datarange, wkv_datarange = wkv_datarange, wgate_datarange = wgate_datarange, ape_datarange = ape_datarange,
+    kv_state_datarange = kv_state_datarange, score_state_datarange = score_state_datarange)

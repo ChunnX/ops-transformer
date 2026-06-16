@@ -52,6 +52,9 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
         # 定义必需的列名
         required_columns = [
+            'Testcase_Name', 'batch_size', 'hidden_size', 'Seq_len', 'head_dim', 'block_size', 'cmp_ratio',
+            'coff', 'start_p', 'cache_mode', 'layout_x', 'data_type', 'cu_seqlens', 'seqused', 'start_pos',
+            'x_datarange','wkv_datarange','wgate_datarange','ape_datarange','kv_state_datarange','score_state_datarange'
         ]
 
         # 检查是否缺少必要列
@@ -110,13 +113,18 @@ class Generalized_operator():
                 coff,
                 cache_mode):
         return cpu_compressor(
+            x, wkv, wgate, kv_state, score_state, update_kv_position, update_score_position, ape,
             block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
+            cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode)
 
 
 def compressor_output_single(data_case):
     casename = data_case[0]
     params = data_case[1:]
 
+    batch_size, hidden_size, Seq_len, head_dim, block_size, cmp_ratio, coff, \
+    start_p, cache_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, \
+    x_datarange, wkv_datarange, wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange = params
 
     if data_type == 'FP16':
         data_type =  torch.float16

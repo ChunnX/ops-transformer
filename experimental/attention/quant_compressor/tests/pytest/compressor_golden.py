@@ -493,6 +493,7 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
                          block_size = 128, data_type = torch.bfloat16, hidden_size = 4096,
                          save_state_seqlens = None, cache_mode = 1, quant_mode = 1,
                          x_datarange = [-10, 10],
+                         wkv_datarange = [-10, 10], wgate_datarange = [-10, 10], ape_datarange = [-10, 10],
                          kv_state_datarange = [-10, 10], score_state_datarange = [-10, 10],
                          x_descale_datarange = [0.001, 1.0], wkv_descale_datarange = [0.001, 1.0], wgate_descale_datarange = [0.001, 1.0]):
     torch_npu.npu.set_device(int(DEVICE_ID))
@@ -656,7 +657,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     update_score = torch.zeros((cpu_score_state.shape[0],cpu_score_state.shape[1],cpu_score_state.shape[2]), dtype=torch.bool)
 
     cpu_out, cmp_kv_mask = cpu_compressor(
+        x, wkv, wgate, x_descale, wkv_descale, wgate_descale, cpu_kv_state, cpu_score_state, update_kv, update_score, ape,
         block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
+        cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode, quant_mode=quant_mode)
 
     # ======================== execute cpu finish ================================
 
