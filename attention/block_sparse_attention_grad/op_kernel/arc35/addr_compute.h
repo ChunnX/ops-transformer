@@ -240,7 +240,7 @@ public:
         runTimeInfo.need_compute = 0;
         int32_t cur_s1_idx, cur_s1_len;
 
-        while (!single_block_.IsFinish()) {
+        if (!single_block_.IsFinish()) {
             // 如果singleBlock未计算完，先计算singleBlock内的内容
             single_block_.UpdateRunTimeInfo<INPUT_LAYOUT>(const_info_, blockSparseMask_, runTimeInfo);
             return;

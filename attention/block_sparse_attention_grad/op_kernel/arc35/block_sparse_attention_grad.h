@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #pragma once
-#include "kernel_operator.h"
 #include "common_header.h"
 #include "addr_compute.h"
 #include "cube_op.h"
