@@ -80,26 +80,20 @@
 
 ## 任务 7：Tiling 实现 + UT 验证
 
-**任务状态**：🔄 进行中
+**任务状态**：✅ 已完成
 
-**简要说明**：在 arch35 tiling 中为 A16W4 pergroup ND 场景生成正确的 tiling 参数，采用 TDD 方式（先写测试 → 再实现代码 → 最后验证）。分 3 个子阶段：7.1 UT 测试框架搭建 + 用例编写、7.2 Tiling 代码实现、7.3 UT 验证 + 迭代。
+**完成摘要**：
+- 新增 `IsA16W4NDPergroup()` 辅助函数
+- `CheckGroupSize()` 支持 32/64/128/256
+- `SetAntiquantGroupSize()` 支持单单单 3D 和多多多 2D scale 推导 groupSize
+- `SetTilingKey()` 生成 `PER_GROUP` antiquant type，编码 offset+bias 组合
+- 维度校验扩展（单单单 2/3D，多多多 1/2D）
+- `weight_quant_tiling_key.h` 新增 8 个 `ASCENDC_TPL_ARGS_SEL` 组合
+- CSV 驱动 UT 37 个用例全部通过，原有 13 个 WeightQuant 用例无回归
 
-**参考文档**：
-- `.workflow/raw/design/03_tiling_design.md` — Tiling 拦截校验与切分方案（核心）
-- `.workflow/raw/design/01_deliverables.md` — 交付件清单
-- `.workflow/raw/design/02_platform_independent_design.md` — 与硬件无关的实现方案
-- `.workflow/raw/development/gmm_a16w4_pergroup_nd_srs.md` — SRS 算子实现方案
-- `.workflow/raw/design/05_test_case_design.md` — 测试用例设计（T-01~T-44, TW-01~TW-20）
-
-**目标文件**：
-- `gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.h` — 新增辅助函数
-- `gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp` — pergroup 校验/计算分支
-- `gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h` — 8 个新 tiling key
-- `gmm/grouped_matmul/tests/ut/op_host/test_grouped_weight_quant_arch35_pergroup_tiling.cpp` — CSV 驱动测试（新增）
-- `gmm/grouped_matmul/tests/ut/op_host/test_grouped_weight_quant_arch35_pergroup_tiling.csv` — CSV 用例数据（新增）
-
-**编译命令**：`bash build.sh -u --ophost --soc=ascend950 --ops=grouped_matmul -j8 --noexec`
-
-**UT 命令**：`ASCEND_SLOG_PRINT_TO_STDOUT=0 ASCEND_GLOBAL_LOG_LEVEL=0 BUILD_PATH=$(pwd)/build ./build/tests/ut/framework_normal/op_host/transformer_op_host_ut`
-
-**任务详情**：[详细任务说明](reference/next_steps/7_tiling_impl.md)
+**修改文件**：
+- `grouped_weight_quant_batch_matmul_tiling.h` — 新增声明
+- `grouped_weight_quant_batch_matmul_tiling.cpp` — 9 个修改点
+- `weight_quant_tiling_key.h` — 8 个新 tiling key
+- `test_grouped_weight_quant_arch35_pergroup_tiling.cpp` — 新增 CSV 驱动测试
+- `test_grouped_weight_quant_arch35_pergroup_tiling.csv` — 37 个用例

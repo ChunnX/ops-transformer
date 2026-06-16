@@ -254,6 +254,7 @@ protected:
     void SetTilingKey(gert::TilingContext *context);
     bool SetCustomParam(gert::TilingContext *context);
     bool IsA16W4ND() const;
+    bool IsA16W4NDPergroup() const;
     bool IsMxA8W4() const;
     bool CheckPerTokenScale(const gert::TilingContext* context) const;
     bool CheckUnsupportDataFlow() const;

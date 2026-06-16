@@ -537,3 +537,49 @@
 #### 影响范围
 - 仅工作流文档更新，不涉及代码
 - 下一步按 7.1 → 7.2 → 7.3 顺序执行编码
+
+---
+
+### 2026-06-16 | Task 7 Tiling 实现 + UT 验证完成
+
+**类型**: 🆕 新功能
+**范围**: tiling 代码 + UT 测试 + tiling key 注册
+
+#### 变更内容
+- **`grouped_weight_quant_batch_matmul_tiling.h`**：
+  - 新增 `bool IsA16W4NDPergroup() const;` 声明
+- **`grouped_weight_quant_batch_matmul_tiling.cpp`**（9 个修改点）：
+  - `IsA16W4NDPergroup()` 实现：`IsA16W4ND() && groupSize_ > 0`
+  - `CheckGroupSize()` 新增 A16W4 pergroup 分支：校验 32/64/128/256
+  - `SetAntiquantGroupSize()` 3D 分支：`IsA16W4ND()` 时 G 始终取 `GetDim(1)`（不受 transB 影响）
+  - `SetAntiquantGroupSize()` 2D 分支：多多多 pergroup `groupSize_ = kList_[0] / scaleDim0`
+  - `SetTilingKey()` antiquantType：新增 `PER_GROUP` 分支
+  - `SetTilingKey()` optionInputSituation：pergroup 时编码 offset+bias（4 种组合）
+  - `CheckTensorDimSingleXSingleWeightSingleY()`：scale/offset 接受 2D 或 3D
+  - `CheckTensorDimMultiXMultiWeightMultiY()`：scale/offset 接受 1D 或 2D
+  - `SetBaseTiling()`：已有 `groupSize` 字段传播，无需修改
+- **`weight_quant_tiling_key.h`**：
+  - 新增 8 个 `ASCENDC_TPL_ARGS_SEL` 组合（2 transB × 4 offset/bias），全部使用 `WQGMM_PER_GROUP` + `WQGMM_ND` + `WQGMM_N_FIRST_BASIC_BLOCK` + `WQGMM_VECTOR_ANTIQUANT`
+- **`test_grouped_weight_quant_arch35_pergroup_tiling.cpp`**（新增，339 行）：
+  - CSV 驱动参数化测试，参考 `test_grouped_quant_arch35_tiling.cpp` 模式
+  - 支持单单单（groupType=0）和多多多（groupType=-1）两种场景的 shape 构造
+- **`test_grouped_weight_quant_arch35_pergroup_tiling.csv`**（新增，37 个用例）：
+  - 正常通过：单单单 12 个 + 多多多 9 个 + 边界 5 个
+  - 异常拦截：gs 非法 3 个 + K%gs≠0 1 个 + dtype 非法 2 个 + transA 1 个 + NZ 1 个 + groupType 非法 2 个 + K=0 1 个
+
+#### 关键决策
+- 采用 TDD 方式：先写测试（7.1），再实现代码（7.2），最后验证（7.3）
+- 所有 tiling 修改通过 `IsA16W4NDPergroup()` 隔离，确保 A16W8 perchannel 回归安全
+- pergroup scale 布局固定为 `[E, G, N]`（单单单）或 `[G_i, N_i]`（多多多），不受 transB 影响
+- optionInputSituation 对 pergroup 编码 offset+bias（4 种），对非 pergroup 保持原有 offset-only（2 种）
+
+#### 验证结果
+- 编译通过 ✅
+- pergroup UT 37/37 通过 ✅
+- 原有 WeightQuant UT 13/13 无回归 ✅
+- LSP diagnostics 零错误 ✅
+
+#### 影响范围
+- 新增 A16W4 PerGroup ND 数据流的 tiling 支持
+- 原有 A16W8 perchannel、A8W4、S8S4 路径不受影响
+- 下一步：Task 8 Kernel 适配
