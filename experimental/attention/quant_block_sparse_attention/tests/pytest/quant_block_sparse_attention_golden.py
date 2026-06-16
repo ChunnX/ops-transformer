@@ -164,8 +164,8 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
     group = n1 // n2
     qb_max = math.ceil(case["S1"] / case["sparse_q_block_size"])
     sparse_count = case["sparse_count"]
-    sparse_indices = torch.zeros((batch, n2, group, qb_max, sparse_count), dtype=torch.int32)
-    sparse_seq_len = torch.zeros((batch, n2, group, qb_max), dtype=torch.int32)
+    sparse_indices = torch.zeros((batch, n1, qb_max, sparse_count), dtype=torch.int32)
+    sparse_seq_len = torch.zeros((batch, n1, qb_max), dtype=torch.int32)
 
     for batch_idx in range(batch):
         for qb_idx in range(qb_max):
@@ -174,13 +174,14 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
                 q_lengths[batch_idx], kv_lengths[batch_idx])
             for n2_idx in range(n2):
                 for group_idx in range(group):
+                    head_idx = n2_idx * group + group_idx
                     if case["sparse_pattern"] == "empty_tail" and qb_idx == qb_max - 1:
                         selected = []
                     else:
                         selected = _select_blocks(allowed, sparse_count, case["sparse_pattern"], rng)
-                    sparse_seq_len[batch_idx, n2_idx, group_idx, qb_idx] = len(selected)
+                    sparse_seq_len[batch_idx, head_idx, qb_idx] = len(selected)
                     if selected:
-                        sparse_indices[batch_idx, n2_idx, group_idx, qb_idx, :len(selected)] = torch.tensor(
+                        sparse_indices[batch_idx, head_idx, qb_idx, :len(selected)] = torch.tensor(
                             selected, dtype=torch.int32)
     return sparse_indices, sparse_seq_len
 
@@ -273,10 +274,10 @@ def _mask_positions(case, q_idx, positions, q_len, kv_len):
     return torch.tensor([pos <= limit for pos in positions], dtype=torch.bool)
 
 
-def _positions_from_sparse(case, sparse_indices, sparse_seq_len, batch_idx, n2_idx, group_idx, qb_idx, kv_len):
-    block_count = int(sparse_seq_len[batch_idx, n2_idx, group_idx, qb_idx].item())
+def _positions_from_sparse(case, sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len):
+    block_count = int(sparse_seq_len[batch_idx, head_idx, qb_idx].item())
     positions = []
-    for block_idx in sparse_indices[batch_idx, n2_idx, group_idx, qb_idx, :block_count].tolist():
+    for block_idx in sparse_indices[batch_idx, head_idx, qb_idx, :block_count].tolist():
         if block_idx < 0:
             continue
         start = int(block_idx) * case["sparse_kv_block_size"]
@@ -314,9 +315,8 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
             qb_idx = q_idx // case["sparse_q_block_size"]
             for head_idx in range(n1):
                 n2_idx = head_idx // group
-                group_idx = head_idx % group
                 positions = _positions_from_sparse(
-                    case, sparse_indices, sparse_seq_len, batch_idx, n2_idx, group_idx, qb_idx, kv_lengths[batch_idx])
+                    case, sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_lengths[batch_idx])
                 if not positions:
                     continue
 
@@ -333,10 +333,16 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
                 scores = scores * q_scale_value * k_scale_vec * float(case["softmax_scale"])
                 scores = torch.where(valid_mask, scores, torch.full_like(scores, MASK_VALUE))
 
-                probs = torch.softmax(scores, dim=-1)
-                probs = torch.where(valid_mask, probs, torch.zeros_like(probs))
-                p_quant = (probs / p_scale_value).to(_fp8_dtype()).to(torch.float32)
+                # flash-attention fp8 数据流：量化未归一化的 exp(s-max)（量级 O(1)、fp8 友好），
+                # PV 之后再除以 fp32 行和 l。不能对归一化概率(~1/N)做 fp8 量化——小值舍入会带来
+                # 与硬件不符的系统性误差（如均匀注意力下 N 非 2 的幂时输出偏离 1.0）。
+                row_max = scores.max(dim=-1, keepdim=True).values
+                p_unnorm = torch.exp(scores - row_max)
+                p_unnorm = torch.where(valid_mask, p_unnorm, torch.zeros_like(p_unnorm))
+                row_sum = p_unnorm.sum(dim=-1, keepdim=True)
+                p_quant = (p_unnorm / p_scale_value).to(_fp8_dtype()).to(torch.float32)
                 attn = torch.matmul(p_quant, v_mat) * p_scale_value * float(v_scale[n2_idx].item())
+                attn = attn / row_sum
                 _set_output(attention_out, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, attn.to(output_dtype))
                 _set_lse(softmax_lse, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx,
                          torch.logsumexp(scores[valid_mask], dim=-1))
@@ -450,7 +456,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "sparse_seq_len": sparse_seq_len,
             "block_table": block_table,
             "atten_mask": atten_mask,
-            "metadata": torch.zeros((1,), dtype=torch.int32),
+            "metadata": None,
             "max_seqlen_q": max_seqlen_q,
             "max_seqlen_kv": max_seqlen_kv,
             "softmax_scale": case["softmax_scale"],

@@ -118,7 +118,13 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
 
 bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
 {
-    int64_t sparseSeqLenBatchSize = sparseSeqLen_->GetTensorShape()->GetDimSize(0);
+    if (sparseSeqLen_ == nullptr || sparseSeqLen_->GetTensorShape() == nullptr || sparseSeqLen_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("sparseSeqLen must be a valid tensor");
+        return false;
+    }
+    auto sparseSeqLenShape = sparseSeqLen_->GetTensorShape();
+    sparseSeqLenDimNum_ = static_cast<uint32_t>(sparseSeqLenShape->GetDims());
+    int64_t sparseSeqLenBatchSize = sparseSeqLenShape->GetDimSize(0);
     if (batchSize_ <= 0) {
         KERNEL_LOG_ERROR("invalid batch size, batchSize=%d", batchSize_);
         return false;
@@ -130,12 +136,6 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
     }
     mBaseSize_ = static_cast<uint32_t>(std::max(sparseBlockSizeQ_, 1));
     s2BaseSize_ = static_cast<uint32_t>(std::max(sparseBlockSizeKv_, 1));
-    Qbmax_ = static_cast<uint32_t>(sparseSeqLen_->GetTensorShape()->GetDimSize(1));
-    if (numHeadsQ_ <= 0 || aicCoreNum_ <= 0 || Qbmax_ == 0U) {
-        KERNEL_LOG_ERROR("invalid split params, batchSize=%d, numHeadsQ=%d, numHeadsKv=%d, aicCoreNum=%d, Qbmax=%u",
-                         batchSize_, numHeadsQ_, numHeadsKv_, aicCoreNum_, Qbmax_);
-        return false;
-    }
     if (numHeadsKv_ == 0) {
         numHeadsKv_ = numHeadsQ_;
     }
@@ -144,29 +144,56 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
                          numHeadsQ_, numHeadsKv_);
         return false;
     }
+    if (sparseSeqLenDimNum_ == 3U) {
+        uint32_t sparseN1Size = static_cast<uint32_t>(sparseSeqLenShape->GetDimSize(1));
+        Qbmax_ = static_cast<uint32_t>(sparseSeqLenShape->GetDimSize(2));
+        if (sparseN1Size != static_cast<uint32_t>(numHeadsQ_)) {
+            KERNEL_LOG_ERROR("sparseSeqLen shape must be [B,N1,Qb], got N1=%u, expected N1=%d",
+                             sparseN1Size, numHeadsQ_);
+            return false;
+        }
+    } else if (sparseSeqLenDimNum_ == 2U) {
+        Qbmax_ = static_cast<uint32_t>(sparseSeqLenShape->GetDimSize(1));
+    } else {
+        KERNEL_LOG_ERROR("sparseSeqLen must be 3D [B,N1,Qb] or legacy 2D [B,Qb], but got %u dims",
+                         sparseSeqLenDimNum_);
+        return false;
+    }
+    if (numHeadsQ_ <= 0 || aicCoreNum_ <= 0 || Qbmax_ == 0U) {
+        KERNEL_LOG_ERROR("invalid split params, batchSize=%d, numHeadsQ=%d, numHeadsKv=%d, aicCoreNum=%d, Qbmax=%u",
+                         batchSize_, numHeadsQ_, numHeadsKv_, aicCoreNum_, Qbmax_);
+        return false;
+    }
     return true;
 }
 
-uint32_t QuantBlockSparseAttentionMetadataCpuKernel::GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const
+uint32_t QuantBlockSparseAttentionMetadataCpuKernel::GetRowBlockNum(uint32_t bn1Idx, uint32_t s1Idx) const
 {
-    if (bIdx >= static_cast<uint32_t>(batchSize_) || s1Idx >= Qbmax_ || sparseSeqLen_ == nullptr ||
+    if (bn1Idx >= static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_) || s1Idx >= Qbmax_ ||
+        sparseSeqLen_ == nullptr ||
         sparseSeqLen_->GetData() == nullptr) {
         return 0U;
     }
     const int32_t *sparseSeqLenData = static_cast<const int32_t *>(sparseSeqLen_->GetData());
+    uint32_t bIdx = bn1Idx / static_cast<uint32_t>(numHeadsQ_);
+    uint32_t n1Idx = bn1Idx % static_cast<uint32_t>(numHeadsQ_);
     uint32_t idx = bIdx * Qbmax_ + s1Idx;
+    if (sparseSeqLenDimNum_ == 3U) {
+        idx = ((bIdx * static_cast<uint32_t>(numHeadsQ_) + n1Idx) * Qbmax_) + s1Idx;
+    }
     return sparseSeqLenData[idx] > 0 ? static_cast<uint32_t>(sparseSeqLenData[idx]) : 0U;
 }
 
 uint64_t QuantBlockSparseAttentionMetadataCpuKernel::CalcBlockNum() const
 {
-    uint64_t blockNumPerHead = 0U;
-    for (uint32_t bIdx = 0U; bIdx < static_cast<uint32_t>(batchSize_); ++bIdx) {
+    uint64_t blockNum = 0U;
+    uint32_t totalBN1 = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
+    for (uint32_t bn1Idx = 0U; bn1Idx < totalBN1; ++bn1Idx) {
         for (uint32_t s1Idx = 0U; s1Idx < Qbmax_; ++s1Idx) {
-            blockNumPerHead += GetRowBlockNum(bIdx, s1Idx);
+            blockNum += GetRowBlockNum(bn1Idx, s1Idx);
         }
     }
-    return blockNumPerHead * static_cast<uint32_t>(numHeadsQ_);
+    return blockNum;
 }
 
 bool QuantBlockSparseAttentionMetadataCpuKernel::AdvanceToValidRow(AssignContext &assignContext) const
@@ -179,7 +206,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::AdvanceToValidRow(AssignContext
     while (assignContext.curBN1Idx < totalBN1) {
         assignContext.curBIdx = assignContext.curBN1Idx / static_cast<uint32_t>(numHeadsQ_);
         while (assignContext.curS1Idx < Qbmax_ &&
-               GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx) == 0U) {
+               GetRowBlockNum(assignContext.curBN1Idx, assignContext.curS1Idx) == 0U) {
             assignContext.curS1Idx++;
         }
         if (assignContext.curS1Idx < Qbmax_) {
@@ -216,7 +243,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, S
         // 根据剩余基本块数和剩余核数，动态重新计算当前核负载上限。
         assignContext.coreCache.blockLimit =
             (assignContext.unassignedBlock + remainingCore - 1U) / remainingCore;
-        uint32_t curRowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx);
+        uint32_t curRowBlock = GetRowBlockNum(assignContext.curBN1Idx, assignContext.curS1Idx);
         assignContext.coreCache.blockLimit =
             std::max(assignContext.coreCache.blockLimit, static_cast<uint64_t>(curRowBlock));
 
@@ -224,7 +251,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, S
             if (!AdvanceToValidRow(assignContext)) {
                 break;
             }
-            uint32_t rowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx);
+            uint32_t rowBlock = GetRowBlockNum(assignContext.curBN1Idx, assignContext.curS1Idx);
             if (rowBlock == 0U) {
                 assignContext.curS1Idx++;
                 continue;
