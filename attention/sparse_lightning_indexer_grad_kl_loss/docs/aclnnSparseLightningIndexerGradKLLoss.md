@@ -761,7 +761,7 @@ int main() {
 
   std::vector<float> dQIndexHostData(1*32*128, 1);
   std::vector<float> dKIndexHostData(1*1*128, 1);
-  std::vector<float> dWeightHostData(1*1*32, 1);
+  std::vector<int32_t> dWeightHostData(1*32, 1);
   std::vector<float> lossHostData(1, 1);
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
