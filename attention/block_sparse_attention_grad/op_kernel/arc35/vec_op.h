@@ -346,6 +346,7 @@ public:
         uint64_t dq_size = tilingData->dqSize;
         uint64_t dkv_size = tilingData->dkSize;
         uint32_t ub_offset = 0;
+        uint32_t post_ping_pong_idx = 0;
         vec_in_ping_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
         ub_offset += POST_TILE_LEN * sizeof(float);
         vec_in_pong_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
@@ -354,18 +355,18 @@ public:
         ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
         vec_out_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(POST_TILE_LEN, ub_offset);
         ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
+        SET_FLAG(MTE3, MTE2, event_ping_);
+        SET_FLAG(MTE3, MTE2, event_pong_);
 
         EvenCoreInfo info;
         ComputeEvenCoreInfo(info, dkv_size, POST_TILE_LEN);
-        ComputeVecPost<false>(dv_out_gm, dv_workspace, info);
-        SET_FLAG(MTE3, MTE2, EVENT_ID0);
-        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
-        ComputeVecPost<true>(dk_out_gm, dk_workspace, info);
-
-        SET_FLAG(MTE3, MTE2, EVENT_ID0);
-        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        ComputeVecPost<false>(dv_out_gm, dv_workspace, info, post_ping_pong_idx);
+        ComputeVecPost<true>(dk_out_gm, dk_workspace, info, post_ping_pong_idx);
         ComputeEvenCoreInfo(info, dq_size, POST_TILE_LEN);
-        ComputeVecPost<true>(dq_out_gm, dq_workspace, info);
+        ComputeVecPost<true>(dq_out_gm, dq_workspace, info, post_ping_pong_idx);
+
+        WAIT_FLAG(MTE3, MTE2, event_ping_);
+        WAIT_FLAG(MTE3, MTE2, event_pong_);
     }
 
 private:
@@ -472,14 +473,15 @@ private:
 
     template <bool MULS>
     __aicore__ inline void ComputeVecPost(const GlobalTensor<INPUT_TYPE> &dst_tensor,
-                                          const GlobalTensor<float> &src_tensor, const EvenCoreInfo &info)
+                                          const GlobalTensor<float> &src_tensor, const EvenCoreInfo &info,
+                                          uint32_t &post_ping_pong_idx)
     {
         if (info.start_idx >= info.data_size) {
             return;
         }
 
-        LocalTensor<float> vecIn = vec_in_ping_;
-        LocalTensor<INPUT_TYPE> vecOut = vec_out_ping_;
+        LocalTensor<float> vecIn;
+        LocalTensor<INPUT_TYPE> vecOut;
         uint32_t process_size = info.max_process_size;
 
         for (uint32_t i = 0; i < info.loop_num; i++) {
@@ -489,8 +491,12 @@ private:
                     break;
                 }
             }
+            vecIn = post_ping_pong_idx ? vec_in_ping_ : vec_in_pong_;
+            vecOut = post_ping_pong_idx ? vec_out_ping_ : vec_out_pong_;
+            event_id = post_ping_pong_idx ? event_ping_ : event_pong_;
             uint64_t gm_offset = info.start_idx + i * info.max_process_size;
 
+            WAIT_FLAG(MTE3, MTE2, event_id);
             DataCopy(vecIn, src_tensor[gm_offset], process_size);
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
@@ -505,11 +511,14 @@ private:
             SET_FLAG(V, MTE3, EVENT_ID0);
             WAIT_FLAG(V, MTE3, EVENT_ID0);
             DataCopy(dst_tensor[gm_offset], vecOut, process_size);
-            SET_FLAG(MTE3, MTE2, EVENT_ID0);
-            WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+            SET_FLAG(MTE3, MTE2, event_id);
+            post_ping_pong_idx = 1 - post_ping_pong_idx;
         }
 
         if (info.pad_tail > 0) {
+            vecIn = post_ping_pong_idx ? vec_in_ping_ : vec_in_pong_;
+            vecOut = post_ping_pong_idx ? vec_out_ping_ : vec_out_pong_;
+            event_id = post_ping_pong_idx ? event_ping_ : event_pong_;
             uint64_t gm_offset = info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
             uint32_t pad_tail_align = RoundUp<uint32_t>(info.pad_tail, 16);
             DataCopyParams copyParam;
@@ -517,6 +526,8 @@ private:
             copyParam.blockLen = info.pad_tail * sizeof(float);
             copyParam.srcStride = 0;
             copyParam.dstStride = 0;
+
+            WAIT_FLAG(MTE3, MTE2, event_id);
             DataCopyPad(vecIn, src_tensor[gm_offset], copyParam, {false, 0, 0, 0});
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
@@ -532,6 +543,8 @@ private:
             WAIT_FLAG(V, MTE3, EVENT_ID0);
             copyParam.blockLen = info.pad_tail * sizeof(INPUT_TYPE);
             DataCopyPad(dst_tensor[gm_offset], vecOut, copyParam);
+            SET_FLAG(MTE3, MTE2, event_id);
+            post_ping_pong_idx = 1 - post_ping_pong_idx;
         }
     }
 
