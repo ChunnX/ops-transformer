@@ -75,10 +75,13 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *contex
     OPS_LOG_E_IF_NULL(context, wkvShape, return ge::GRAPH_FAILED)
 
     auto attr = context->GetAttrs();
-    const uint32_t *cmpRatioPtr = attr->GetAttrPointer<uint32_t>(CMP_RATIO_ATTR_INDEX);
-    uint32_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
-    const uint32_t *coffPtr = attr->GetAttrPointer<uint32_t>(COFF_ATTR_INDEX);
-    uint32_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
+    const int *cmpRatioPtr = attr->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
+    int cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
+    OPS_LOG_E_IF(cmpRatio <= 0, context, return ge::GRAPH_FAILED, "cmp_ratio should be greater than 0");
+
+    const int *coffPtr = attr->GetAttrPointer<int>(COFF_ATTR_INDEX);
+    int coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
+    OPS_LOG_E_IF(coff <= 0, context, return ge::GRAPH_FAILED, "coff should be greater than 0");
 
 
     if (xShape->GetDimNum() == DIM_NUM_3) { // BS
