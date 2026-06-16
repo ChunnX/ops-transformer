@@ -583,3 +583,31 @@
 - 新增 A16W4 PerGroup ND 数据流的 tiling 支持
 - 原有 A16W8 perchannel、A8W4、S8S4 路径不受影响
 - 下一步：Task 8 Kernel 适配
+
+---
+
+### 2026-06-17 | 任务 8 Kernel 适配详细规划
+
+**类型**: 📝 文档
+**范围**: `PLAN.md` + `NEXT_STEPS.md` + `reference/next_steps/8_kernel_impl.md`
+
+#### 变更内容
+- **新建 `reference/next_steps/8_kernel_impl.md`**（~750 行）：任务 8 详细任务说明
+  - 现有代码结构分析（apt.cpp 6 个分支、WqmmConfig 3 个实例、Controller/VecCompute/VF 现状）
+  - 6 个子任务拆分（8.1~8.6），按依赖顺序排列
+  - 每个子任务的修改文件、代码修改方案、验收标准
+  - 完整的参考代码索引（GMM + ops-nn wqbmmv2）
+  - 风险分析与应对
+- **更新 `NEXT_STEPS.md`**：新增任务 8 索引条目
+- **更新 `PLAN.md`**：任务 8 拆分为 6 个子任务，当前进度更新
+
+#### 关键决策
+- **config950 需新增 4 个 dtype 组合**：现有 3 个 A16W4 ND 条目均含 antiquant_offset，需补充 4 个 antiquant_offset=null 的组合（FP16: bias=FP16/null，BF16: bias=BF16/FLOAT）
+- **编译命令**：使用 `bash build.sh --opkernel --soc=ascend950 --ops=grouped_matmul -j8`（当前环境无法运行 UT，仅编译验证）
+- **子任务拆分策略**：按代码层次自底向上（配置层 → Controller → VecCompute → VF KN → VF NK → 编译验证），每个子任务可独立编译验证
+- **VF 函数策略**：KN 路径统一 VF（所有 groupSize 共用），NK 路径按 groupSize 分派 4 个专用 VF
+- **Buffer 配置**：复用 `GetNdBufferInfo()`，不新增 pergroup buffer 配置
+
+#### 影响范围
+- 仅工作流文档更新，不涉及代码
+- 下一步按 8.1 → 8.2 → 8.3 → 8.4 → 8.5 → 8.6 顺序执行编码

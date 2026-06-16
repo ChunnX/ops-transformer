@@ -80,11 +80,50 @@
 
 ### 任务 8：Kernel 适配
 **目标**: 在 `weight_quant_basic_block` 体系中适配 A16W4 pergroup ND 计算逻辑
-**目标文件**:
-- `grouped_matmul_weight_quant_basic_controller.h` — Controller 适配
-- `basic_block_vf_nd.h` — ND 反量化 VF 函数实现
-- `weight_quant_vec_compute.h` — 向量计算适配
-- `basic_block_config.h` — WqmmConfig 新增
+**详细任务说明**: [reference/next_steps/8_kernel_impl.md](reference/next_steps/8_kernel_impl.md)
+
+#### 8.1 基础配置层（WqmmConfig + Buffer + Kernel 入口 + config950）
+**目标**: 新增 4 个 WqmmConfig 实例 + Buffer 配置 + 8 个 Kernel 入口分支 + config950 新增 4 个 dtype 组合
+**修改文件**:
+- `basic_block_config.h` — 新增 A16W4_NDKN_PG/A16W4_NDKN_PG_OFF/A16W4_NDNK_PG/A16W4_NDNK_PG_OFF
+- `grouped_matmul_apt.cpp` — 新增 8 个 if constexpr 分支（2 transB × 2 offset × 2 bias）
+- `grouped_matmul_def.cpp` — config950 新增 4 个 antiquant_offset=null 的 dtype 组合
+**验证**: 编译通过
+
+#### 8.2 Controller 层适配
+**目标**: SetGmAddr pergroup scale/offset 偏移 + bias 偏移独立
+**修改文件**:
+- `grouped_matmul_weight_quant_basic_controller.h` — pergroup 偏移公式 + biasBaseOffset
+**验证**: 编译通过，perchannel 路径不受影响
+
+#### 8.3 VecCompute 层适配
+**目标**: pergroup scale/offset UB 地址计算 + offset 搬运 + pergroup 分发
+**修改文件**:
+- `weight_quant_vec_compute.h` — CalLocalAddrForVf + CopyAntiQuantParamsGmToUb + AntiQuantProcessNd
+**验证**: 编译通过
+
+#### 8.4 VF 层 — KN 路径反量化（bTrans=false）
+**目标**: 实现 pergroup KN 统一 VF 函数（所有 groupSize 共用）
+**修改文件**:
+- `basic_block_vf_nd.h` — NdKnLoadScaleOffset PER_GROUP 分支 + AntiQuantInt4PerGroupNdKn
+**参考**: ops-nn `AntiquantPerGroupKN`（vf.h L347-443）
+**验证**: 编译通过
+
+#### 8.5 VF 层 — NK 路径反量化（bTrans=true）
+**目标**: 实现 pergroup NK 按 groupSize 分派 4 个专用 VF 函数
+**修改文件**:
+- `basic_block_vf_nd.h` — NdNkLoadScaleOffset PER_GROUP 分支 + AntiQuantInt4PerGroupNdNk（含 gs=32/64/128/256）
+**参考**: ops-nn `AntiquantComputeW4NKPerGroup`（reg_base_common.h L1185-1409）
+**核心差异**: GMM scale/offset 固定 `[G,N]` 布局，地址公式为 `gLocal * nTileAlign + nLocal`
+**验证**: 编译通过
+
+#### 8.6 编译验证
+**目标**: 完整编译验证
+**编译命令**: `bash build.sh --opkernel --soc=ascend950 --ops=grouped_matmul -j8`
+**验证**:
+- 编译通过（exit code 0）
+- LSP diagnostics 零错误
+- 无新增编译告警
 
 ## 阶段三：验证（待启动）
 
@@ -109,6 +148,12 @@
     - [x] 7.2 Tiling 代码实现（9 个修改点 + 8 个 tiling key） ✅
     - [x] 7.3 UT 验证 + 迭代（37/37 pergroup 通过，13/13 回归通过） ✅
   - [ ] 任务 8：Kernel 适配
+    - [ ] 8.1 基础配置层（WqmmConfig + Buffer + Kernel 入口）
+    - [ ] 8.2 Controller 层适配（SetGmAddr pergroup 偏移）
+    - [ ] 8.3 VecCompute 层适配（scale/offset 搬运 + 地址计算）
+    - [ ] 8.4 VF — KN 路径反量化（统一 VF 函数）
+    - [ ] 8.5 VF — NK 路径反量化（4 个 groupSize 专用 VF）
+    - [ ] 8.6 编译验证
 - [ ] 阶段三：验证
 
 ## 风险与应对
