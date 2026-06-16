@@ -786,26 +786,21 @@ __aicore__ inline void IncreFlashAttentionAttenAllVecNew<IFAT>::CalculateBN2Offs
     if constexpr (LAYOUT_T == LAYOUT::BSND || LAYOUT_T == LAYOUT::BSH) {
         // B,S2,N2,D
         tensorBCoreOffset =
-            static_cast<uint64_t>(bIdx) * kvSeqSize * kvHeadNum * headDim +
-            static_cast<uint64_t>(n2Idx) * headDim +
-            static_cast<uint64_t>(kvPaddingBeginOffset) * kvHeadNum * headDim;
+            bIdx * kvSeqSize * kvHeadNum * headDim + n2Idx * headDim + kvPaddingBeginOffset * kvHeadNum * headDim;
         
         if (!batchContinuous) {
-            tensorBCoreOffset = static_cast<uint64_t>(n2Idx) * headDim;
+            tensorBCoreOffset = n2Idx * headDim;
         }
 
         if constexpr (FLASH_DECODE) {
-            tensorBCoreOffset += static_cast<uint64_t>(s2Idx) * sInnerLoopSize * headDim * kvHeadNum;
+            tensorBCoreOffset += s2Idx * sInnerLoopSize * headDim * kvHeadNum;
         }
         // B,1,N2,G,D
-        tensorACoreOffset = static_cast<uint64_t>(bIdx) * qHeadNum * headDim +
-                            static_cast<uint64_t>(n2Idx) * gSize * headDim;
+        tensorACoreOffset = bIdx * qHeadNum * headDim + n2Idx * gSize * headDim;
     } else {
         // B,N2,S2,D
         tensorBCoreOffset =
-            static_cast<uint64_t>(bIdx) * kvHeadNum * kvSeqSize * headDim +
-            static_cast<uint64_t>(n2Idx) * kvSeqSize * headDim +
-            static_cast<uint64_t>(kvPaddingBeginOffset) * headDim;
+            bIdx * kvHeadNum * kvSeqSize * headDim + n2Idx * kvSeqSize * headDim + kvPaddingBeginOffset * headDim;
 
         if (!batchContinuous) {
             uint64_t seqSize = SeqLenFromTensorList(bIdx);
@@ -816,8 +811,7 @@ __aicore__ inline void IncreFlashAttentionAttenAllVecNew<IFAT>::CalculateBN2Offs
             tensorBCoreOffset += s2Idx * sInnerLoopSize * headDim;
         }
         // B,N2,G,1,D
-        tensorACoreOffset = static_cast<uint64_t>(bIdx) * qHeadNum * headDim +
-                            static_cast<uint64_t>(n2Idx) * gSize * headDim;
+        tensorACoreOffset = bIdx * qHeadNum * headDim + n2Idx * gSize * headDim;
     }
 }
 
@@ -1145,8 +1139,7 @@ __aicore__ inline void IncreFlashAttentionAttenAllVecNew<IFAT>::FlashDecodeCompu
 {
     bIdx = tmpBlockIdx / kvHeadNum;
     n2Idx = tmpBlockIdx % kvHeadNum;
-    attenOutOffset = static_cast<uint64_t>(bIdx) * kvHeadNum * gSize * headDim +
-                     static_cast<uint64_t>(n2Idx) * gSize * headDim;
+    attenOutOffset = bIdx * kvHeadNum * gSize * headDim + n2Idx * gSize * headDim;
     if (batchSize * kvHeadNum <= tmpBlockIdx ) {
         return;
     }
@@ -1161,10 +1154,8 @@ __aicore__ inline void IncreFlashAttentionAttenAllVecNew<IFAT>::FlashDecodeCompu
     } else {
         curActualSeqLen = actualSeqLengthsGm.GetValue(bIdx);
     }
-    combineLseOffset = (static_cast<uint64_t>(bIdx) * kvHeadNum * splitKVNum +
-                        static_cast<uint64_t>(n2Idx) * splitKVNum) * gSize * FP32_ONE_BLOCK_SIZE;
-    combineAccumOutOffset = (static_cast<uint64_t>(bIdx) * kvHeadNum * splitKVNum +
-                             static_cast<uint64_t>(n2Idx) * splitKVNum) * headDim * gSize;
+    combineLseOffset = (bIdx * kvHeadNum * splitKVNum + n2Idx * splitKVNum) * gSize * FP32_ONE_BLOCK_SIZE;
+    combineAccumOutOffset = (bIdx * kvHeadNum * splitKVNum + n2Idx * splitKVNum) * headDim * gSize;
     actualCombineLoopSize = (curActualSeqLen + sInnerLoopSize - 1) / sInnerLoopSize;
     CombineSplitKVRes();
 }
