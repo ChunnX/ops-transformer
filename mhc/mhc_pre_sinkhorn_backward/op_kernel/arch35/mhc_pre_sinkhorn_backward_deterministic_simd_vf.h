@@ -82,7 +82,7 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U* gradHAddr, __local_mem__ U* 
         AscendC::MicroAPI::MaskReg maskReg;
 
         for (uint16_t i = 0; i < loopCnt; i++) {
-            maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
+            maskReg = AscendC::MicroAPI::UpdateMask<U>(bsLen * n);
             MicroAPI::Duplicate(onesReg, U(1), maskReg);
             AscendC::MicroAPI::AddrReg zOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
             AscendC::MicroAPI::AddrReg gradHOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
@@ -116,21 +116,21 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U* gradBiasAddr, __local_me
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<U> gradZReg;
-        AscendC::MicroAPI::RegTensor<U> gradZSumReg;
+        AscendC::MicroAPI::RegTensor<U> gradBiasReg;
         AscendC::MicroAPI::MaskReg maskReg;
         AscendC::MicroAPI::UnalignReg u0;
-        AscendC::MicroAPI::MaskReg allMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::::MaskPattern::ALL>();
-        for (int i = 0; i < loopCnt; i++) {
-            auto gradBiasStart = gradBiasZAddr + i * vfLen;
+        AscendC::MicroAPI::MaskReg allMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::ALL>();
+        for (uint16_t i = 0; i < loopCnt; i++) {
+            auto gradBiasStart = gradBiasAddr + i * vfLen;
             maskReg = AscendC::MicroAPI::UpdateMask<U>(colLen);
-            MicroAPI::Duplicate(gradZPreSumReg, U(0), allMaskReg);
-            for (int j = 0; j < bsLen; j++) {
+            MicroAPI::Duplicate(gradBiasReg, U(0), allMaskReg);
+            for (uint16_t j = 0; j < bsLen; j++) {
                 auto gradZAddrStart = gradZAddr + i * colLen;
                 AscendC::MicroAPI::LoadUnAlignPre(u0, gradZAddrStart);
                 AscendC::MicroAPI::LoadUnAlign(gradZReg, u0, gradZAddrStart);
-                AscendC::MicroAPI::Add(gradAlphaSumReg, gradZSumReg, gradZReg, maskReg)
+                AscendC::MicroAPI::Add(gradBiasReg, gradBiasReg, gradZReg, maskReg);
             }
-            AscendC::MicroAPI::DataCopy(gradBiasStart, gradAlphaSumReg, maskReg);
+            AscendC::MicroAPI::DataCopy(gradBiasStart, gradBiasReg, maskReg);
         }
     }
 }
