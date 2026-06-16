@@ -137,6 +137,10 @@ private:
     static ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName,
                                              size_t expectedRank, const std::string &opName);
     ge::graphStatus ValidateShapeInputsForDerivedFields(const std::string &opName) const;
+    ge::graphStatus ValidateNonCacheShapeRanks(const std::string &opName) const;
+    ge::graphStatus ValidateQkvAndGammaShapes(const std::string &opName) const;
+    ge::graphStatus ValidatePositionInputShapes(const std::string &opName) const;
+    ge::graphStatus ValidateRotationAndScaleShapes(const std::string &opName) const;
     ge::graphStatus ValidateNonCacheShapes(const std::string &opName) const;
     ge::graphStatus ValidateCacheShapes(const std::string &opName) const;
     ge::graphStatus ValidateShapes(const std::string &opName) const;

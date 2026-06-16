@@ -187,7 +187,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeInputsForD
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapes(const std::string &opName) const
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapeRanks(
+    const std::string &opName) const
 {
     struct NonCacheRankRule {
         const char *tensorName;
@@ -208,6 +209,12 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapes(
         }
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateQkvAndGammaShapes(
+    const std::string &opName) const
+{
     const uint64_t numQkHeads = input_.numQHeads + input_.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + input_.numVHeads;
     OP_CHECK_IF(static_cast<uint64_t>(input_.qkv.shape.GetDim(0)) != numQkvHeads ||
@@ -222,6 +229,12 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapes(
                         "QkvRmsNormRopeCacheWithKScale contract reject: gamma dims qGamma={%ld} kGamma={%ld}.",
                         input_.qGamma.shape.GetDim(0), input_.kGamma.shape.GetDim(0)),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidatePositionInputShapes(
+    const std::string &opName) const
+{
     OP_CHECK_IF(static_cast<uint64_t>(input_.cosSin.shape.GetDim(0)) != input_.maxSeqLen ||
                     static_cast<uint64_t>(input_.cosSin.shape.GetDim(1)) != input_.headDim,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: cosSin dims={%ld,%ld}.",
@@ -235,6 +248,12 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapes(
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: cuSeqLen dim0=%ld.",
                         input_.cuSeqLen.shape.GetDim(0)),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateRotationAndScaleShapes(
+    const std::string &opName) const
+{
     OP_CHECK_IF(static_cast<uint64_t>(input_.qRotation.shape.GetDim(0)) != input_.headDim ||
                     static_cast<uint64_t>(input_.qRotation.shape.GetDim(1)) != input_.headDim,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: qRotation dims={%ld,%ld}.",
@@ -249,6 +268,23 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapes(
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale contract reject: vScale dim0=%ld.",
                         input_.vScale.shape.GetDim(0)),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapes(const std::string &opName) const
+{
+    if (ValidateNonCacheShapeRanks(opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ValidateQkvAndGammaShapes(opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ValidatePositionInputShapes(opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ValidateRotationAndScaleShapes(opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
