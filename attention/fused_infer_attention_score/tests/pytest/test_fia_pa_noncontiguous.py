@@ -42,11 +42,14 @@ def _block_table(batch, seqs_kv, bs):
     return tbl, total
 
 
-def _kv_shape(fmt, total_blocks, bs, d, N_kv, B, kv_seq):
+def _kv_shape(fmt, total_blocks, bs, d, N_kv, B, kv_seq, q_layout, act_kv):
     if fmt == "BnNBsD":  return (total_blocks, N_kv, bs, d)
     if fmt == "BnBsH":   return (total_blocks, bs, N_kv * d)
     if fmt == "NZ":      return (total_blocks, N_kv, d // 16, bs, 16)
-    if fmt == "none":    return (B, N_kv, kv_seq, d)
+    if fmt == "none":
+        if q_layout == "BSND": return (B, kv_seq, N_kv, d)
+        if q_layout == "TND":  return (sum(act_kv), N_kv, d)
+        return (B, N_kv, kv_seq, d)
     raise ValueError(fmt)
 
 
@@ -73,13 +76,21 @@ def _cstrides(shape):
     return tuple(s)
 
 
+def _accum(seqs):
+    out, acc = [], 0
+    for s in seqs:
+        acc += s
+        out.append(acc)
+    return out
+
+
 def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, bs, scale,
          q_n, kv_n, q_rope_npu=None, k_rope_npu=None, d=128, dr=0,
          pre_tok=65535, next_tok=65535, mask_npu=None, sparse_mode=0):
     torch_npu.npu.set_device(DEVICE_ID); torch.npu.synchronize()
     if q_layout == "TND":
         aq = torch.tensor(_accum(act_q), dtype=torch.int64)
-        akv = torch.tensor(_accum(act_kv), dtype=torch.int64)
+        akv = torch.tensor(act_kv if pa else _accum(act_kv), dtype=torch.int64)
     else:
         aq = torch.tensor(act_q, dtype=torch.int64)
         akv = torch.tensor(act_kv, dtype=torch.int64)
@@ -137,12 +148,16 @@ def _run_one(cfg, expect_pass):
         q_bnsd=q_tnd
     q_npu=q_bnsd.npu()
 
-    kv_shape=_kv_shape(fmt,total_b,bs,d,N_kv,B,kv_seq) if pa else _kv_shape("none",total_b,bs,d,N_kv,B,kv_seq)
+    kv_shape=_kv_shape(fmt,total_b,bs,d,N_kv,B,kv_seq,ql,act_kv) if pa else _kv_shape("none",total_b,bs,d,N_kv,B,kv_seq,ql,act_kv)
 
     q_rope,k_rope=None,None
     if dr>0:
         torch.manual_seed(300); qr=torch.randn(B,N_q,q_seq,dr,dtype=DTYPE)
         if ql=="BSND": qr=qr.permute(0,2,1,3).contiguous()
+        elif ql=="TND":
+            T=sum(act_q); qr_tnd=torch.zeros(T,N_q,dr,dtype=DTYPE); t=0
+            for b,s in enumerate(act_q): qr_tnd[t:t+s]=qr[b,:,:s,:].transpose(0,1); t+=s
+            qr=qr_tnd
         q_rope=qr.npu()
         torch.manual_seed(400)
         if pa:
