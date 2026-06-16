@@ -367,7 +367,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     __local_mem__ U* gradHAddr;
     __local_mem__ U* zPreAddr = (__ubuf__ U*)zPreLocal.GetPhyAddr();
     __local_mem__ U* gradZAddr = (__ubuf__ U*)gradZLocal.GetPhyAddr();
-    if (num == ONE) {
+    if (num == NUMONE) {
         gradHLocal = gradHPreBuf_.Get<U>();
         gradHAddr = (__ubuf__ U*)gradHLocal.GetPhyAddr();
         SigmoidGrad<U, true>(gradHAddr, zPreAddr, gradZAddr, bsLen, colLen, V_REG_SIZE, eps_);
