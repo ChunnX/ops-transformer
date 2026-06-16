@@ -294,7 +294,9 @@ public:
     using TensorApiType = decltype(AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<LocType, DataType>(0), Layout{}(0U, 0U)));
 
     using MakeLayoutQGM = AscendC::Te::FrameLayoutFormat<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>;
-    using MakeLayoutKGM = AscendC::Te::FrameLayoutFormat<AscendC::Te::DNExtLayoutPtn, AscendC::Te::LayoutTraitDefault<KV_T>>;
+    
+    template <typename GmPtn>
+    using MakeLayoutKVGM = AscendC::Te::FrameLayoutFormat<GmPtn, AscendC::Te::LayoutTraitDefault<KV_T>>;
 
     template <typename DataType, typename LayoutTrait = AscendC::Te::LayoutTraitDefault<DataType>>
     using MakeLayoutL1 = AscendC::Te::FrameLayoutFormat<AscendC::Te::NZLayoutPtn, LayoutTrait>;
@@ -302,16 +304,28 @@ public:
     template <typename DataType, typename LayoutTrait = AscendC::Te::LayoutTraitDefault<DataType>>
     using MakeLayoutUB = AscendC::Te::FrameLayoutFormat<AscendC::Te::NDLayoutPtn, LayoutTrait>;
 
-    using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, TensorApiType<AscendC::Te::Location::GM, Q_T, MakeLayoutQGM>, int32_t, Q_NEEDS_WZH>;
-    using FaGmTensorK = FaGmTensor<KV_T, KV_FORMAT, TensorApiType<AscendC::Te::Location::GM, KV_T, MakeLayoutKGM>, int32_t, KV_NEEDS_WZH>;
-    using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, GlobalTensor<KV_T>, int32_t, KV_NEEDS_WZH>;
+    template <typename DataType, typename Layout>
+    using GmTensorApiType = TensorApiType<AscendC::Te::Location::GM, DataType, Layout>;
+
+    template <typename DataType>
+    using L1TensorApiType = TensorApiType<AscendC::Te::Location::L1, DataType, MakeLayoutL1<DataType>>;
+
+    using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, GmTensorApiType<Q_T, MakeLayoutQGM>, int32_t, Q_NEEDS_WZH>;
+
+    template <typename GmPtn>
+    using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, GmTensorApiType<KV_T, MakeLayoutKVGM<GmPtn>>>, int32_t, KV_NEEDS_WZH>;
+
+    using L1TensorQ = FaL1Tensor<Q_T, L1Format::NZ, L1TensorApiType<Q_T>>;
+    using L1TensorKV = FaL1Tensor<KV_T, L1Format::NZ, L1TensorApiType<KV_T>>;
+
+    using KVShape = AscendC::Std::tuple<uint32_t, uint32_t>;
 
     TPipe *tPipe;
 
     /* =====================GM变量(with layout)==================== */
     FaGmTensorQ queryGm;
-    FaGmTensorK keyGm;
-    FaGmTensorKV valueGm;
+    FaGmTensorKV<AscendC::Te::DNExtLayoutPtn> keyGm;
+    FaGmTensorKV<AscendC::Te::NDExtLayoutPtn> valueGm;
     // FaGmTensorQ queryRopeGm;
     // FaGmTensorKV keyRopeGm;
     GlobalTensor<int32_t> blockTableGm;
@@ -320,8 +334,8 @@ public:
     KvSeqParserType *kvSeqParserPtr = nullptr;
 
     CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1;
-    CopyKeyGmToL1<KV_T, KV_FORMAT> copyKeyGmToL1;
-    CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
+    CopyKvGmToL1<KV_T, KV_FORMAT> copyKeyGmToL1;
+    CopyKvGmToL1<KV_T, KV_FORMAT, L1Format::NZ, true> copyValueGmToL1;
 
     /* =====================LocalBuffer变量====================*/
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
@@ -339,8 +353,6 @@ public:
 
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
-    __gm__ Q_T* queryGmAddr;
-    __gm__ KV_T* keyGmAddr;
 
     const ConstInfoX &constInfo;
 
@@ -412,10 +424,18 @@ public:
         keyPtr = key;
         valuePtr = value;
         if (constInfo.isKvContinuous) {
-            InitKBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSize,
-                         keyGm, key);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV,
-                         valueGm, value);
+            auto kShape = AscendC::Te::MakeShape(
+                (uint32_t)constInfo.dSize, 
+                (uint32_t)(constInfo.bSize * constInfo.s2Size * constInfo.n2Size)
+            );
+            InitKVBuffer<AscendC::Te::DNExtLayoutPtn>(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSize,
+                         keyGm, kShape, key);
+            auto vShape = AscendC::Te::MakeShape(
+                (uint32_t)(constInfo.bSize * constInfo.s2Size * constInfo.n2Size), 
+                (uint32_t)constInfo.dSize
+            );
+            InitKVBuffer<AscendC::Te::NDExtLayoutPtn>(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV,
+                         valueGm, vShape, value);
         }
     }
 
@@ -433,13 +453,14 @@ public:
         }
     }
 
-    __aicore__ inline void InitKBuffer(uint32_t batchSize, uint32_t kvSeqSize, uint32_t n2Size,
-                                        uint32_t kvCacheBlockSize, uint32_t headDim, FaGmTensorK &kvGmTensor,
-                                        __gm__ uint8_t *gm)
+    template <typename GmPtn>
+    __aicore__ inline void InitKVBuffer(uint32_t batchSize, uint32_t kvSeqSize, uint32_t n2Size,
+                                        uint32_t kvCacheBlockSize, uint32_t headDim, FaGmTensorKV<GmPtn> &kvGmTensor,
+                                        KVShape &kvShape, __gm__ uint8_t *gm)
     {
         kvGmTensor.gmTensor = AscendC::Te::MakeTensor(
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>((__gm__ KV_T *)gm),
-            MakeLayoutKGM{}(headDim, batchSize * kvSeqSize * n2Size)
+            MakeLayoutKVGM<GmPtn>{}(AscendC::Std::get<0>(kvShape), AscendC::Std::get<1>(kvShape))
         );
 
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
@@ -455,28 +476,6 @@ public:
             kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr);
-        }
-    }
-
-    __aicore__ inline void InitKVBuffer(uint32_t batchSize, uint32_t kvSeqSize, uint32_t n2Size,
-                                        uint32_t kvCacheBlockSize, uint32_t headDim, FaGmTensorKV &kvGmTensor,
-                                        __gm__ uint8_t *gm)
-    {
-        kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
-
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
-            kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
-                                             constInfo.maxBlockNumPerBatch);
-        } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
-            uint32_t d0 = 32 / sizeof(KV_T);
-            uint32_t d1 = headDim / d0;
-            kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
-                                             constInfo.maxBlockNumPerBatch);
-        } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
-            kvGmTensor.offsetCalculator.Init(n2Size, headDim, *this->kvSeqParserPtr);
-        } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim);
-            kvGmTensor.offsetCalculator.Init(*this->kvSeqParserPtr);
         }
     }
 
@@ -504,7 +503,7 @@ public:
 
         uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
         if (nopeDealSize > 0) {
-            FaL1Tensor<Q_T, L1Format::NZ, TensorApiType<AscendC::Te::Location::L1, Q_T, MakeLayoutL1<Q_T>>> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
+            FaL1Tensor<Q_T, L1Format::NZ, L1TensorQ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
             GmCoord gmCoord{.bIdx = runInfo.bIdx,
                             .n2Idx = runInfo.n2Idx,
@@ -532,7 +531,7 @@ public:
         uint32_t nopeDealSize = dRealSize;
 
         if (nopeDealSize > 0) {
-            FaL1Tensor<KV_T, L1Format::NZ, TensorApiType<AscendC::Te::Location::L1, KV_T, MakeLayoutL1<KV_T>>> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
+            FaL1Tensor<KV_T, L1Format::NZ, L1TensorKV> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
             GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
                               .n2Idx = runInfo.n2Idx,
@@ -549,8 +548,8 @@ public:
     __aicore__ inline void CopyValueSlice(const DstTensorType &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfoX &runInfo)
     {
-        FaL1Tensor<KV_T, L1Format::NZ, LocalTensor<KV_T>> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
+        FaL1Tensor<KV_T, L1Format::NZ, L1TensorKV> l1Tensor{.tensor = dstTensor,
+                                                            .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
 
         GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
                           .n2Idx = runInfo.n2Idx,
@@ -558,7 +557,7 @@ public:
                           .dIdx = dOffset,
                           .s2DealSize = runInfo.actSingleLoopS2Size,
                           .dDealSize = dRealSize};
-        copyKvGmToL1(l1Tensor, valueGm, gmCoord);
+        copyValueGmToL1(l1Tensor, valueGm, gmCoord);
     }
 
     // 全量拷贝
@@ -587,11 +586,11 @@ public:
 
     __aicore__ inline void UpdateValue(uint32_t bIdx)
     {
-        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr, bIdx);
-        valueGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
-        valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize);
+        // ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
+        // __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
+        // uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr, bIdx);
+        // valueGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
+        // valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize);
     }
 
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
@@ -1112,11 +1111,16 @@ public:
 
     __aicore__ inline void IterateBmm2l0Split(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
+        auto layoutMM2A = MakeLayoutL1<Q_T>{}(mBaseSize, runInfo.actSingleLoopS2Size);
+        auto layoutMM2B = MakeLayoutL1<KV_T>{}(runInfo.actSingleLoopS2Size, constInfo.dSizeV);
+        auto layoutMM2ResL0C = MakeLayoutL1<T, AscendC::Std::Int<16>>{}(mBaseSize, constInfo.dSizeV);
+        auto layoutUB = MakeLayoutUB<T>{}(((mBaseSize + 1) >> 1 << 1), s2BaseSize);
+
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
         Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
         mm2A.WaitCrossCore();
         mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
-        auto mm2BTensor = mm2B.GetTensor<KV_T>();
+        auto mm2BTensor = mm2B.GetTensor<KV_T>(layoutMM2B);
         CopyValueTile(mm2BTensor, runInfo);
         mm2B.Set<HardEvent::MTE2_MTE1>(); // 通知
 
@@ -1134,17 +1138,19 @@ public:
         }
         mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
 
-        if constexpr ((uint32_t)dVTemplateType <= 128) {
-            if constexpr (s2BaseSize == 128) {
-                MatmulFull<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-                    mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
-            } else {
-                MatmulBase<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-                    mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
-            }
+        if constexpr ((uint32_t)dVTemplateType > 128) {
+            // MatmulN<Q_T, KV_T, T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
+            //     mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
         } else {
-            MatmulN<Q_T, KV_T, T, mBaseSize, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-                mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+            // if constexpr (s2BaseSize == 128) {
+            //     MatmulFull<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+            //         mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+            // } else {
+            //     MatmulBase<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+            //         mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+            // }
+            MatMulTensorAPI<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                mm2A.GetTensor<Q_T>(layoutMM2A), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(layoutMM2ResL0C), param);
         }
 
         mm2B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
@@ -1155,7 +1161,9 @@ public:
             outputBuf.WaitCrossCore();
         }
 
-        FixpipeMm2PartialN(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), constInfo.dSizeV, runInfo);
+        // FixpipeMm2PartialN(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), constInfo.dSizeV, runInfo);    
+        auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{}, CopyL0C2UBTraitCustom{});   
+        AscendC::Te::Copy(CopyL0C2UB, outputBuf.template GetTensor<T>(layoutUB), mm2ResL0C.GetTensor<T>(layoutMM2ResL0C));
 
         mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
         outputBuf.SetCrossCore();

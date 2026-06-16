@@ -194,8 +194,8 @@ struct GmKvCoord {
     uint32_t dDealSize;
 };
 
-template <typename KV_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
-class CopyKeyGmToL1 {
+template <typename KV_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ, bool IsTranspose = false>
+class CopyKvGmToL1 {
 public:
     template <typename FaL1TensorType, typename FaGmTensorType>
     __aicore__ inline void operator()(FaL1TensorType &dstTensor, FaGmTensorType &srcTensor,
@@ -218,14 +218,25 @@ private:
         // B*N2*GS1*D
         auto &offsetCalculator = srcTensor.offsetCalculator;
         // uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
-        auto srcTileTensor = srcTensor.gmTensor.Slice(
-            AscendC::Te::MakeCoord(
-                gmCoord.n2Idx * gmCoord.dDealSize,
-                gmCoord.bIdx * offsetCalculator.actualSeqLensKVParser.GetActualSeqLength(gmCoord.bIdx) + gmCoord.s2Idx
-            ), 
-            AscendC::Te::MakeShape(gmCoord.dDealSize, gmCoord.s2DealSize)
-        );    
-        CopySingleMatrixGMToL1(dstTensor.tensor, srcTileTensor);
+        if constexpr (!IsTranspose) {
+            auto srcTileTensor = srcTensor.gmTensor.Slice(
+                AscendC::Te::MakeCoord(
+                    gmCoord.n2Idx * gmCoord.dDealSize,
+                    gmCoord.bIdx * offsetCalculator.actualSeqLensKVParser.GetActualSeqLength(gmCoord.bIdx) + gmCoord.s2Idx
+                ), 
+                AscendC::Te::MakeShape(gmCoord.dDealSize, gmCoord.s2DealSize)
+            );
+            CopySingleMatrixGMToL1(dstTensor.tensor, srcTileTensor);
+        } else {
+            auto srcTileTensor = srcTensor.gmTensor.Slice(
+                AscendC::Te::MakeCoord(
+                    gmCoord.bIdx * offsetCalculator.actualSeqLensKVParser.GetActualSeqLength(gmCoord.bIdx) + gmCoord.s2Idx,
+                    gmCoord.n2Idx * gmCoord.dDealSize
+                ), 
+                AscendC::Te::MakeShape(gmCoord.s2DealSize, gmCoord.dDealSize)
+            );
+            CopySingleMatrixGMToL1(dstTensor.tensor, srcTileTensor);            
+        }
     }
 
     // template <typename FaGmTensorType>
@@ -268,161 +279,6 @@ private:
     //         curS2Idx += copyRowCnt;
     //     }
     // }
-};
-
-// ----------------------------------------------CopyQueryGmToL1--------------------------------
-template <typename T>
-__aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor, uint32_t nValue,
-                                              uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
-{
-    constexpr uint32_t SRCDVALUE_LIMIT = 65536;
-    Nd2NzParams nd2nzPara;
-    if (unlikely(srcDValue < SRCDVALUE_LIMIT)) {
-        nd2nzPara.ndNum = 1;
-        nd2nzPara.nValue = nValue; // nd矩阵的行数
-        if constexpr (IsSameType<T, int4b_t>::value) {
-            constexpr uint32_t HALF_SIZE_DIVISOR = 2;
-            nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
-            nd2nzPara.srcDValue = srcDValue / HALF_SIZE_DIVISOR;
-        } else {
-            nd2nzPara.dValue = dValue;       // nd矩阵的列数
-            nd2nzPara.srcDValue = srcDValue; // 同一nd矩阵相邻行起始地址间的偏移
-        }
-        nd2nzPara.dstNzC0Stride = dstNzC0Stride;
-        nd2nzPara.dstNzNStride = 1;
-        nd2nzPara.srcNdMatrixStride = 0;
-        nd2nzPara.dstNzMatrixStride = 0;
-        DataCopy(l1Tensor, gmTensor, nd2nzPara);
-    } else {
-        constexpr uint32_t BLOCK_ELEMENT_CNT =
-            IsSameType<T, int4b_t>::value ? 64 : AttentionCommon::BYTE_BLOCK / sizeof(T);
-        uint64_t l1Offset = 0;
-        uint64_t gmOffset = 0;
-        for (uint32_t i = 0; i < nValue; i++) {
-            nd2nzPara.ndNum = 1;
-            nd2nzPara.nValue = 1;
-            if constexpr (IsSameType<T, int4b_t>::value) {
-                constexpr uint32_t HALF_SIZE_DIVISOR = 2;
-                nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
-                nd2nzPara.srcDValue = dValue / HALF_SIZE_DIVISOR;
-            } else {
-                nd2nzPara.dValue = dValue;
-                nd2nzPara.srcDValue = dValue;
-            }
-            nd2nzPara.dstNzC0Stride = dstNzC0Stride;
-            nd2nzPara.dstNzNStride = 1;
-            nd2nzPara.srcNdMatrixStride = 0;
-            nd2nzPara.dstNzMatrixStride = 0;
-            DataCopy(l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
-
-            gmOffset += srcDValue;
-            l1Offset += BLOCK_ELEMENT_CNT;
-        }
-    }
-}
-template <typename T>
-__aicore__ inline void CopyMultiMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor,
-                                             uint32_t srcNdMatrixNum, uint32_t srcNdMatrixStride,
-                                             uint32_t dstNzMatrixStride, uint32_t nValue, uint32_t dValue,
-                                             uint32_t srcDValue, uint32_t dstNzC0Stride)
-{
-    constexpr uint32_t ND_MATRIX_STRIDE_LIMIT = 65536; // Mutil ND2NZ搬运时，Nd2NzParams支持的srcNdMatrixStride的取值范围为[0, 65536]，单位为元素
-    if (unlikely(srcNdMatrixStride > ND_MATRIX_STRIDE_LIMIT)) {
-        uint64_t l1Offset = 0;
-        uint64_t gmOffset = 0;
-        for (uint32_t i = 0; i < srcNdMatrixNum; i++) {
-            CopySingleMatrixNDToNZ(l1Tensor[l1Offset], gmTensor[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
-            gmOffset += srcNdMatrixStride;
-            l1Offset += dstNzMatrixStride;
-        }
-    } else {
-        Nd2NzParams nd2nzPara;
-        nd2nzPara.ndNum = srcNdMatrixNum;
-        nd2nzPara.nValue = nValue; // nd矩阵的行数
-        if constexpr (IsSameType<T, int4b_t>::value) {
-            constexpr uint32_t HALF_SIZE_DIVISOR = 2;
-            nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
-            nd2nzPara.srcDValue = srcDValue / HALF_SIZE_DIVISOR;
-        } else {
-            nd2nzPara.dValue = dValue;       // nd矩阵的列数
-            nd2nzPara.srcDValue = srcDValue; // 同一nd矩阵相邻行起始地址间的偏移
-        }
-        nd2nzPara.dstNzC0Stride = dstNzC0Stride;
-        nd2nzPara.dstNzNStride = 1;
-        nd2nzPara.srcNdMatrixStride = srcNdMatrixStride;
-        nd2nzPara.dstNzMatrixStride = dstNzMatrixStride;
-        DataCopy(l1Tensor, gmTensor, nd2nzPara);
-    }
-}
-
-template <typename KV_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
-class CopyKvGmToL1 {
-public:
-    template <typename FaGmTensorType>
-    __aicore__ inline void operator()(FaL1Tensor<KV_T, L1_FORMAT, LocalTensor<KV_T>> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmKvCoord &gmCoord)
-    {
-        if constexpr (GM_FORMAT == GmFormat::BNSD || GM_FORMAT == GmFormat::BSND || GM_FORMAT == GmFormat::NTD ||
-                      GM_FORMAT == GmFormat::TND) {
-            ProcessContinuousOrTensorlist(dstTensor, srcTensor, gmCoord);
-        } else if constexpr (GM_FORMAT == GmFormat::PA_BnBsND || GM_FORMAT == GmFormat::PA_BnNBsD ||
-                             GM_FORMAT == GmFormat::PA_NZ || GM_FORMAT == GmFormat::PA_BnNBsD_KS) {
-            ProcessPageAttention(dstTensor, srcTensor, gmCoord);
-        }
-    }
-
-private:
-    template <typename FaGmTensorType>
-    __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<KV_T, L1_FORMAT, LocalTensor<KV_T>> &dstTensor,
-                                                         FaGmTensorType &srcTensor, GmKvCoord &gmCoord)
-    {
-        // B*N2*GS1*D
-        auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
-        CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s2DealSize, gmCoord.dDealSize,
-                               offsetCalculator.GetStrideS2(), dstTensor.rowCount);
-    }
-
-    template <typename FaGmTensorType>
-    __aicore__ inline void ProcessPageAttention(FaL1Tensor<KV_T, L1_FORMAT, LocalTensor<KV_T>> &dstTensor,
-                                                FaGmTensorType &srcTensor, GmKvCoord &gmCoord)
-    {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
-        uint32_t curS2Idx = gmCoord.s2Idx;
-        uint32_t copyFinishRowCnt = 0;
-        uint32_t blockElementCnt = 32 / sizeof(KV_T);
-        if constexpr (IsSameType<KV_T, int4b_t>::value) {
-            blockElementCnt = 64; // int4b时32B可以存64个元素
-        }
-        while (copyFinishRowCnt < gmCoord.s2DealSize) {
-            // 获取需要拷贝的行数
-            uint32_t copyRowCnt = offsetCalculator.GetBlockSize() - curS2Idx % offsetCalculator.GetBlockSize();
-            if (copyFinishRowCnt + copyRowCnt > gmCoord.s2DealSize) {
-                copyRowCnt = gmCoord.s2DealSize - copyFinishRowCnt; // 一个block未拷满
-            }
-
-            // 计算offset
-            uint64_t gmOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, curS2Idx, gmCoord.dIdx);
-            uint64_t l1Offset = copyFinishRowCnt * blockElementCnt;
-
-            // 拷贝数据
-            if constexpr (GM_FORMAT == GmFormat::PA_NZ) {
-                DataCopyParams intriParams;
-                intriParams.blockCount = gmCoord.dDealSize / blockElementCnt;
-                intriParams.blockLen = copyRowCnt;
-                intriParams.dstStride = dstTensor.rowCount - copyRowCnt;
-                intriParams.srcStride = offsetCalculator.GetBlockSize() - copyRowCnt;
-                DataCopy(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], intriParams);
-            } else {
-                CopySingleMatrixNDToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], copyRowCnt,
-                                       gmCoord.dDealSize, offsetCalculator.GetStrideBlockSize(), dstTensor.rowCount);
-            }
-
-            // 更新完成拷贝的行数和s2Idx
-            copyFinishRowCnt += copyRowCnt;
-            curS2Idx += copyRowCnt;
-        }
-    }
 };
 
 // template <typename KV_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
