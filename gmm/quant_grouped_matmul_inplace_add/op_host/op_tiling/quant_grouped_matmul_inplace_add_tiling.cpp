@@ -182,15 +182,17 @@ ge::graphStatus QuantGroupedInplaceAddTiling::PostTiling()
 
 void QuantGroupedInplaceAddTiling::PrintQuantParams()
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
+    OP_LOGD(inputParams_.opName, "%ld", DefaultPrintQuantParams());
+}
+
+int64_t QuantGroupedInplaceAddTiling::DefaultPrintQuantParams() const
+{
     QuantGroupedMatmulInplaceAdd::QGmmInplaceAddParams &params = tilingData_.quantGmmInplaceAddParams;
     std::ostringstream oss;
     oss << "QGMMIAParams: groupNum = " << params.groupNum
         << ", groupListType = " << static_cast<uint32_t>(params.groupListType);
     OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
+    return 0;
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingGMMInplaceAdd(gert::TilingContext *context)
