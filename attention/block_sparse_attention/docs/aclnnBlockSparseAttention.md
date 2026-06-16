@@ -513,7 +513,7 @@ aclnnStatus aclnnBlockSparseAttention(
 - blockSize当前只支持输入0，表示不支持paged cache。
 - preTokens和nextTokens当前只支持输入2147483647，表示当前token的前后所有token都参与attention运算，即不支持滑窗attention。
 
-## 调用示例
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
