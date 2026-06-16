@@ -72,42 +72,32 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
 }
 
 /* ============确定L0A的类型（仅供matmul使用）============= */
+// D=128 + 非DN + bmm2写UB + 非FD 场景：L0A/L0B 类型固定 DB（INPUT_T 仅 bf16/fp16，非 float）
 template <typename INPUT_T>
 struct L0ABuffSel {
-    using Type = std::conditional_t<std::is_same_v<INPUT_T, float>, BuffersPolicySingleBuffer<BufferType::L0A>,
-                                    BuffersPolicyDB<BufferType::L0A>>;
+    using Type = BuffersPolicyDB<BufferType::L0A>;
 };
-/* ============确定L0B的类型（仅供matmul使用）============= */
-template <typename INPUT_T, uint32_t s2BaseSize, uint32_t dBaseSize>
+template <typename INPUT_T>
 struct L0BBuffSel {
-    using Type = std::conditional_t<std::is_same_v<INPUT_T, float> ||
-                                        (s2BaseSize == 256 && dBaseSize > 128 &&
-                                         !(std::is_same_v<INPUT_T, fp8_e4m3fn_t> ||
-                                           std::is_same_v<INPUT_T, fp8_e5m2_t> || std::is_same_v<INPUT_T, hifloat8_t>)),
-                                    BuffersPolicySingleBuffer<BufferType::L0B>, BuffersPolicyDB<BufferType::L0B>>;
+    using Type = BuffersPolicyDB<BufferType::L0B>;
 };
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
-          bool bmm2Write2Ub = true, bool splitD = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0>
 class CubeBlockBase {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
-    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
-    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr uint32_t l1BaseD = 128;
+    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;     // 固定 128
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;   // 固定 128
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
-    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
-    static constexpr bool USE_DN = useDn;
-    static constexpr bool SPLITD = splitD;
-    static constexpr bool HAS_PREFIX = false;
 
-    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
+    // bmm2 输出固定写 UB
+    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
@@ -117,7 +107,7 @@ public:
     using MM_T = T;
 
     using L0AType = typename L0ABuffSel<INPUT_T>::Type;
-    using L0BType = typename L0BBuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type;
+    using L0BType = typename L0BBuffSel<INPUT_T>::Type;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
@@ -128,24 +118,18 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false,
-          bool bmm2Write2Ub = true, bool splitD = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0>
 class FANoQuantGqaBlockCube : public CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType,
-                                                   dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD> {
+                                                   dVTemplateType, KvLayoutType> {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
-    static constexpr uint32_t l1BaseD = 128;
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
-    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
-    static constexpr bool USE_DN = useDn;
-    static constexpr bool SPLITD = splitD;
-    static constexpr bool HAS_PREFIX = false;
 
-    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
+    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
@@ -154,18 +138,15 @@ public:
     using KV_T = INPUT_T;
     using MM_T = T;
 
-    // L0A/L0B类型保留给matmul使用
+    // L0A/L0B 类型固定 DB（INPUT_T 仅 bf16/fp16）
     using L0AType = typename L0ABuffSel<INPUT_T>::Type;
-    using L0BType = typename L0BBuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type;
+    using L0BType = typename L0BBuffSel<INPUT_T>::Type;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
-    // ====== L1/L0C 缓冲区布局常量 ======
-    static constexpr bool L1Q_IS_SINGLE = (dBaseSize > 256);
-    static constexpr bool L1KV_IS_SINGLE = (s2BaseSize == 256 && dBaseSize > 128);
-    static constexpr bool L0C_IS_4BUFF = (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
-                                          mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4);
-    static constexpr uint32_t L0C_SLOT_COUNT = L0C_IS_4BUFF ? 4 : 2;
+    // ====== L1/L0C 缓冲区布局：目标场景下全部硬编码 ======
+    // D=128 → L1Q DB；s2==256 && d>128 永远 false → L1KV DB；
+    // mBaseSize*s2BaseSize*4 ≤ L0C/4 在 D=128 下永远成立 → L0C 4-buff
 
     // ====== 核间同步常量 ======
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
@@ -241,25 +222,16 @@ public:
     L0AType mmL0ABuffers;
     L0BType mmL0BBuffers;
 
-    // ====== Buffer 数与单个 slot 字节数（全部编译期常量，方便偏移计算）======
-    static constexpr uint32_t L1_Q_BUFCNT  = L1Q_IS_SINGLE  ? 1U : 2U;
-    static constexpr uint32_t L1_KV_BUFCNT = L1KV_IS_SINGLE ? 1U : 2U;
-    static constexpr uint32_t L0C_BUFCNT   = L0C_SLOT_COUNT;  // 2 或 4
+    // ====== Buffer 数与单个 slot 字节数（D=128 场景全部硬编码）======
+    static constexpr uint32_t L1_Q_BUFCNT  = 2U;  // L1Q DB
+    static constexpr uint32_t L1_KV_BUFCNT = 2U;  // L1KV DB
+    static constexpr uint32_t L0C_BUFCNT   = 4U;  // L0C 4-buff
 
-    // Q slot 字节数：mBaseSize * dBaseSize（Q_T）
+    // Q/K/V/L0C 单 slot 字节数：D=128 → 一次性载入整个 dBaseSize 列；L0C 4-buff 各占 L0C/4
     static constexpr uint32_t L1_Q_SLOT_BYTES = mBaseSize * dBaseSize * sizeof(Q_T);
-    // K slot 字节数：dBaseSize > 256 时 L1 切 K 仅加载 l1BaseD 列；否则一次性加载 dBaseSize 列
-    static constexpr uint32_t L1_K_SLOT_BYTES =
-        (dBaseSize > 256) ? (s2BaseSize * l1BaseD * sizeof(KV_T))
-                          : (dBaseSize * s2BaseSize * sizeof(KV_T));
-    // V slot 字节数：dBaseSize > 256 时按 l1BaseD 切 N；否则按 dVTemplateType
-    static constexpr uint32_t L1_V_SLOT_BYTES =
-        (dBaseSize > 256) ? (s2BaseSize * l1BaseD * sizeof(KV_T))
-                          : ((uint32_t)dVTemplateType * s2BaseSize * sizeof(KV_T));
-    // L0C slot 字节数：4buff 时 L0C/4，否则 L0C/2
-    static constexpr uint32_t L0C_SLOT_BYTES =
-        L0C_IS_4BUFF ? ((uint32_t)L0C_SIZE * (uint32_t)KB_TO_BYTES / NUM_4)
-                     : ((uint32_t)L0C_SIZE * (uint32_t)KB_TO_BYTES / NUM_2);
+    static constexpr uint32_t L1_K_SLOT_BYTES = dBaseSize * s2BaseSize * sizeof(KV_T);
+    static constexpr uint32_t L1_V_SLOT_BYTES = dVBaseSize * s2BaseSize * sizeof(KV_T);
+    static constexpr uint32_t L0C_SLOT_BYTES  = (uint32_t)L0C_SIZE * (uint32_t)KB_TO_BYTES / NUM_4;
 
     // Buffer ID 简单计数器（参考 quant_flash_attn qBufId / kvBufId / qkL0cBufId 风格）
     uint32_t qBufId = 0;
@@ -274,8 +246,8 @@ public:
 
     /*============================================================================== */
     __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo)
-        : CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, KvLayoutType,
-                        useDn, bmm2Write2Ub, splitD>(constInfo),
+        : CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                        KvLayoutType>(constInfo),
           constInfo(constInfo){};
 
     __aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -309,25 +281,18 @@ public:
         addrL1 += L1_KV_BUFCNT * L1_K_SLOT_BYTES;
         l1VTensor = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_KV_BUFCNT * L1_V_SLOT_BYTES);
 
-        // L0A：始终为 DB，ping=offset 0，pong=offset 32KB
+        // L0A/L0B：D=128 场景下均为 DB，ping=offset 0，pong=offset 32KB
         constexpr uint32_t FA_L0_BUF_SIZE = 32U * 1024U;
         mmL0ABuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, FA_L0_BUF_SIZE,
                                       FA_L0A_C2P_0, FA_L0A_C2P_0,
                                       FA_L0A_C2P_1, FA_L0A_C2P_1);
+        mmL0BBuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, FA_L0_BUF_SIZE,
+                                      FA_L0B_C2P_0, FA_L0B_C2P_0,
+                                      FA_L0B_C2P_1, FA_L0B_C2P_1);
 
-        // L0B：Single if s2==256&&d>128, else DB
-        if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
-            mmL0BBuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, FA_L0B_C2P_0, FA_L0B_C2P_0);
-        } else {
-            mmL0BBuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, FA_L0_BUF_SIZE,
-                                          FA_L0B_C2P_0, FA_L0B_C2P_0,
-                                          FA_L0B_C2P_1, FA_L0B_C2P_1);
-        }
-
-        // L0C：单个 LocalTensor 覆盖整片 ping/pong/...（4buff 各 64KB 或 DB 各 128KB）
+        // L0C：单个 LocalTensor 覆盖整片 4-buff（每 slot = L0C/4）
         // 注意 L0C 的 TPosition 标准是 CO1（对应 BufferInfo<L0C>::Position），不是 C1 —
-        // 之前用 C1 会让 LocalTensor 指向错误的物理区域，fixpipe 读到的 L0C 数据有缺失，
-        // 表现为部分 m-block（尤其是 m=0 和 S2-split 的尾 m）精度异常。
+        // 之前用 C1 会让 LocalTensor 指向错误的物理区域，fixpipe 读到的 L0C 数据有缺失。
         l0CTensor = LocalTensor<uint8_t>(TPosition::CO1, 0U, L0C_BUFCNT * L0C_SLOT_BYTES);
     }
 
@@ -386,74 +351,42 @@ public:
 
     __aicore__ inline void AllocEventID()
     {
-        // 与 VEC 侧完全对称：AllocEventID 统一完成所有流水预置 SetFlag（无动态 AllocEventID 调用）
-        // L1 c2p 预置：MTE1 告知 MTE2 当前 slot 空闲可以覆写
+        // 目标场景下：L1Q DB / L1KV DB / L0A DB / L0B DB / L0C 4-buff（全部硬编码，无分支）
         SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);
-        if constexpr (!L1Q_IS_SINGLE) {
-            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_1);
-        }
+        SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_1);
         SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
-        if constexpr (!L1KV_IS_SINGLE) {
-            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_1);
-        }
+        SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_1);
         SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
-        if constexpr (!L1KV_IS_SINGLE) {
-            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_1);
-        }
-        // L0A c2p 预置：CUBE 告知 MTE1 当前 slot 空闲可重新加载（L0A 始终为 DB）
+        SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_1);
+
         SetFlag<HardEvent::M_MTE1>(FA_L0A_C2P_0);
         SetFlag<HardEvent::M_MTE1>(FA_L0A_C2P_1);
-        // L0B c2p 预置：Single if s2==256&&d>128, else DB
-        if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
-            SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_0);
-        } else {
-            SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_0);
-            SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_1);
-        }
-        // L0C c2p 预置：FixPipe 告知 CUBE 当前 slot 空闲可写入（4buff 或 DB）
-        if constexpr (L0C_IS_4BUFF) {
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_2);
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_3);
-        } else {
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
-        }
+        SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_0);
+        SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_1);
+
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_2);
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_3);
     }
 
     __aicore__ inline void FreeEventID()
     {
-        // 排干所有 c2p 流水：WaitFlag 等待最后一次 Set 完成
-        // L1: MTE1_MTE2 事件
-        if constexpr (L1Q_IS_SINGLE) {
-            WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);
-        } else {
-            WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);
-            WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_1);
-        }
-        if constexpr (L1KV_IS_SINGLE) {
-            WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
-            WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
-        } else {
-            WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
-            WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_1);
-            WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
-            WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_1);
-        }
-        // L0A/L0B: 保留 Buffer 接口
+        WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);
+        WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_1);
+        WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
+        WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_1);
+        WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
+        WaitFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_1);
+
+        // L0A/L0B: 保留 Buffer 接口（DB 模式）
         mmL0ABuffers.UninitStaticDirect();
         mmL0BBuffers.UninitStaticDirect();
-        // L0C: FIX_M 事件
-        if constexpr (L0C_IS_4BUFF) {
-            WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
-            WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
-            WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_2);
-            WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_3);
-        } else {
-            WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
-            WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
-        }
+
+        WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
+        WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
+        WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_2);
+        WaitFlag<HardEvent::FIX_M>(FA_L0C_C2P_3);
     }
 
     // copy query with full s1g and split D
@@ -686,7 +619,8 @@ public:
         fixpipeParams.nSize = (realN + 7) >> 3 << 3;
         fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
-        fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
+        // dVBaseSize 固定 128，对齐到 16 仍为 128
+        fixpipeParams.dstStride = (dVBaseSize + 15) >> 4 << 4;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
@@ -728,11 +662,12 @@ public:
             };
             param.realM = (uint32_t)runInfo.actMSize;
 
+            // s2BaseSize == 128 (config0) vs 256 (config1) 是 tiling 决定，必须保留
             if constexpr (s2BaseSize == 128) {
-                MatmulFull<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                MatmulFull<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
                     l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
             } else {
-                MatmulBase<Q_T, KV_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                MatmulBase<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
                     l1PTensor, mm2BTensor, mmL0ABuffers, mmL0BBuffers, l0CSubTensor, param);
             }
 

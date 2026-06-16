@@ -41,7 +41,7 @@ template <
     LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
     S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
     DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
-    uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+    uint8_t KvLayoutType = 0>
 class VecBlockBase {
 public:
     /* =================编译期常量的基本块信息================= */
@@ -81,10 +81,10 @@ template <
     LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
     S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
     DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, bool hasDrop = false,
-    uint8_t KvLayoutType = 0, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+    uint8_t KvLayoutType = 0>
 class FANoQuantGqaBlockVec
     : public VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
-                          dVTemplateType, hasAtten, hasDrop, KvLayoutType, useDn, bmm2Write2Ub, splitD> {
+                          dVTemplateType, hasAtten, hasDrop, KvLayoutType> {
 public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -182,7 +182,7 @@ public:
     // ==================== Functions ======================
     __aicore__ inline FANoQuantGqaBlockVec(ConstInfoX &constInfo)
         : VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
-                       dVTemplateType, hasAtten, hasDrop, KvLayoutType, useDn, bmm2Write2Ub, splitD>(constInfo),
+                       dVTemplateType, hasAtten, hasDrop, KvLayoutType>(constInfo),
           constInfo(constInfo){};
 
     __aicore__ inline void InitVecBlock(__gm__ uint8_t *actualSeqQlenAddr,
