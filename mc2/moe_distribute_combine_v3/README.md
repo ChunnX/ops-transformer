@@ -368,10 +368,10 @@
         - `shared_expert_num`：当前取值范围[0, 4]。
         - `comm_quant_mode`：int8量化当且仅当`tp_world_size` < 2时可开启。
         - `performance_info_optional`：预留参数，当前版本不支持，传空指针即可。
-        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/npu_ops_transformer/ops/deep_ep.py)。
+        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/cann_ops_transformer/ops/deep_ep.py)。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| npu_low_latency_combine接口 | [deepep.py](../../torch_extension/npu_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_combine](../../torch_extension/npu_ops_transformer/doc/npu_low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
+| npu_low_latency_combine接口 | [deepep.py](../../torch_extension/cann_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_combine](../../torch_extension/cann_ops_transformer/doc/npu_low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
