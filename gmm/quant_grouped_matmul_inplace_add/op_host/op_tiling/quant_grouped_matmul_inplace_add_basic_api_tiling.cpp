@@ -122,11 +122,11 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::DoOpTiling()
     tilingData_.gmmQuantParams.aQuantMode = static_cast<uint32_t>(inputParams_.aQuantMode);
     tilingData_.gmmQuantParams.bQuantMode = static_cast<uint32_t>(inputParams_.bQuantMode);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
-    OP_LOGD(inputParams_.opName, "%ld", DefaultPrintQuantParams());
+    OP_LOGD(inputParams_.opName, "%ld", LogQuantParams());
     return ge::GRAPH_SUCCESS;
 }
 
-int64_t QGMMInplaceAddBasicApiTiling::DefaultPrintQuantParams() const
+int64_t QGMMInplaceAddBasicApiTiling::LogQuantParams() const
 {
     std::ostringstream oss;
     oss << "QGmmInplaceAddBasicApiParams: groupNum = " << tilingData_.gmmQuantParams.groupNum

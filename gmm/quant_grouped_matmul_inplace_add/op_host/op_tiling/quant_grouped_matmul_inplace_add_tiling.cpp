@@ -116,11 +116,11 @@ ge::graphStatus QuantGroupedInplaceAddTiling::DoOpTiling()
 {
     tilingData_.quantGmmInplaceAddParams.groupNum = inputParams_.groupNum;
     tilingData_.quantGmmInplaceAddParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
-    OP_LOGD(inputParams_.opName, "%ld", DefaultPrintQuantParams());
+    OP_LOGD(inputParams_.opName, "%ld", LogQuantParams());
     return ge::GRAPH_SUCCESS;
 }
 
-int64_t QuantGroupedInplaceAddTiling::DefaultPrintQuantParams() const
+int64_t QuantGroupedInplaceAddTiling::LogQuantParams() const
 {
     const auto &params = tilingData_.quantGmmInplaceAddParams;
     std::ostringstream oss;

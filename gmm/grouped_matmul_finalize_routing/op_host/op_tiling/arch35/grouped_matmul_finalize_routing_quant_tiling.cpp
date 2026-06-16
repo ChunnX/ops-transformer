@@ -526,11 +526,11 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
     OP_CHECK_IF(DeterministicTilingProcess() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "DeterministicTilingProcess failed."),
                 return ge::GRAPH_FAILED);
-    OP_LOGD(context_->GetNodeName(), "%ld", DefaultPrintQuantParams());
+    OP_LOGD(context_->GetNodeName(), "%ld", LogQuantParams());
     return ge::GRAPH_SUCCESS;
 }
 
-int64_t GroupedMatmulFinalizeRoutingQuantTiling::DefaultPrintQuantParams() const
+int64_t GroupedMatmulFinalizeRoutingQuantTiling::LogQuantParams() const
 {
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << tilingData_.gmmFinalizeRoutingDataParams.groupNum
@@ -591,7 +591,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
                 (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) + SCALER_FACTOR_DEFAULT;
         }
     }
-    OP_LOGD(context_->GetNodeName(), "%ld", DefaultPrintMatmulParams());
+    OP_LOGD(context_->GetNodeName(), "%ld", LogMatmulParams());
 
     return ge::GRAPH_SUCCESS;
 }
@@ -615,7 +615,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-int64_t GroupedMatmulFinalizeRoutingQuantTiling::DefaultPrintMatmulParams() const
+int64_t GroupedMatmulFinalizeRoutingQuantTiling::LogMatmulParams() const
 {
     std::ostringstream oss;
     oss << "GMM matmul tiling: M = " << tilingData_.matmulTiling.M << ", N = " << tilingData_.matmulTiling.N
