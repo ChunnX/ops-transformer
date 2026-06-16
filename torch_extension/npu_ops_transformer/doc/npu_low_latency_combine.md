@@ -58,7 +58,7 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
 
 -   **comm\_quant\_mode** (`int`)：可选参数，表示通信量化类型。支持取0和2。0表示通信时不量化，2表示通信时进行`int8`量化。
 
--   **x\_active\_mask** (`Tensor`)：可选参数，表示token是否参与通信。要求为一个1维或2维张量。当输入为1维时，shape为\(BS, \)输入为2维时，shape为\(BS, K\)。数据类型支持`bool`，数据格式要求为$ND$，支持非连续的Tensor。当输入为1维时，参数为true表示对应的token参与通信，true必须排到false之前，例：{true, false, true} 为非法输入；当输入为2维时，参数为true表示当前token对应的`topk_idx`参与通信，若当前token对应的K个`bool`值全为false，表示当前token不会参与通信。默认所有token都会参与通信。当每张卡的BS数量不一致时，所有token必须全部有效。
+-   **x\_active\_mask** (`Tensor`)：可选参数，表示token是否参与通信。要求为一个1维或2维张量。当输入为1维时，shape为\(BS, \);当输入为2维时，shape为\(BS, K\)。数据类型支持`bool`，数据格式要求为$ND$，支持非连续的Tensor。当输入为1维时，参数为true表示对应的token参与通信，true必须排到false之前，例：{true, false, true} 为非法输入；当输入为2维时，参数为true表示当前token对应的`topk_idx`参与通信，若当前token对应的K个`bool`值全为false，表示当前token不会参与通信。默认所有token都会参与通信。当每张卡的BS数量不一致时，所有token必须全部有效。
 
 -   **expand\_scales** (`Tensor`)：可选参数，对应[npu\_low\_latency\_dispatch](npu_low_latency_dispatch.md)的`expand_scales`输出。暂不支持该参数，使用默认值即可。
 

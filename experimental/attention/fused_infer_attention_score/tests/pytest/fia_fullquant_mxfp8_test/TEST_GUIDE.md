@@ -85,7 +85,7 @@ pytest test_fia_fullquant_mxfp8.py -v -k "not Decode"
 
 ## 4. 新增用例
 
-在`fia_fullquant_mxfp8_paramset.py`TEST_PARAMS典中添加新条目：
+在`fia_fullquant_mxfp8_paramset.py`的`TEST_PARAMS`字典中添加新条目：
 
 ```python
 "PA_NZ_QS256_KVS512_Nq4_Nkv1_D128_SP3_Prefill": {

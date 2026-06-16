@@ -82,7 +82,7 @@ return (output, bufferSize)
 
 #### 逻辑关系
 
-- **顺序依赖**: `CreateHcclContext执行建立通信框架，产出`commHandle`；`CreatMc2Context执行，依赖`commHandle询buffer地址
+- **顺序依赖**: `CreateHcclContext`先执行建立通信框架，产出`commHandle`；`CreatMc2Context`后执行，依赖`commHandle`查询buffer地址
 
 ## 缓存机制
 
@@ -99,5 +99,5 @@ if (isInit && new_group_ep_str == last_group_ep_str) {
 ## Context的作用
 
 1. **预获取通信地址**: 初始化时一次性获取所有rank的HCCL buffer地址，避免每次kernel调用时重复HCCL API查询
-2. **支持零拷贝**: Kernel通过`epHcclBuffer[rank_id]接访问目标rank的buffer地址
+2. **支持零拷贝**: Kernel通过`epHcclBuffer[rank_id]`直接访问目标rank的buffer地址
 3. **通信资源缓存**: 同一group重复调用时直接返回已创建的context

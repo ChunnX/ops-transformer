@@ -45,7 +45,7 @@
     <tr>
       <td>inThr</td>
       <td>输入</td>
-      <td>残差输入张量，shape为(gbH, gbW)，与(inOne + inTwo加</td>
+      <td>残差输入张量，shape为(gbH, gbW)，与(inOne + inTwo)相加</td>
       <td>float16</td>
       <td>ND</td>
     </tr>
@@ -149,10 +149,11 @@
       - Compute：
       - 计算LayerNormNormAddAdd
       - 计算量化结果
-      - 将out_add (halfout_lyn_quant (int8_t回GM对应行
+      - 将out_add (half)和out_lyn_quant (int8_t)搬回GM对应行
 
 - **数据搬入（CopyIn）**
   - 从GM搬入当前行的inOne和inThr到UB，尾部补零。
 
 - **数据搬出（CopyOut）**
-  - 将out_add (halfout_lyn_quant (int8_t回GM对应行。
+  - 将out_add (half)和out_lyn_quant (int8_t)搬回GM对应行。
+  

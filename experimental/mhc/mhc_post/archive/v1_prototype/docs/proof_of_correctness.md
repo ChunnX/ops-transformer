@@ -22,7 +22,7 @@ x_{l+1} = H_l^{res} · x_l + H_l^{post}^T · F(H_l^{pre} · x_l, W_l)
 
 假设：
 
-- branch_output = F(...输出，shape = [batch, seq_len, dim]
+- branch_output = F(...)的输出，shape = [batch, seq_len, dim]
 - h_post = H_l^{post}，shape = [num_streams] (经softmax归一化)
 
 mhc_post计算：
@@ -64,14 +64,14 @@ def depth_connection(self, branch_output, residuals, *, beta):
 
 ## 4. 数学等价性验证
 
-einsum "b ... d, s -> b ... s d含义：
+einsum "b ... d, s -> b ... s d"的含义：
 
 - 输入1: branch_output [b, seq, d]
 - 输入2: beta [s]
 - 输出: [b, seq, s, d]
 - 计算: output[b,seq,s,d] = branch_output[b,seq,d] × beta[s]
 
-rearrange "b ... s d -> (b s) ... d含义：
+rearrange "b ... s d -> (b s) ... d"的含义：
 
 - 输入: [b, seq, s, d]
 - 输出: [b×s, seq, d]

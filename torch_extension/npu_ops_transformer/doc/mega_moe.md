@@ -10,7 +10,7 @@
 
 -   API功能：
 
-    需与[get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明)配套使用，该算子将`MoE（Mixture of Experts）`以及`FFN（Feed-Forward Network）`的完整计算流程融合为单个算子，实现`Dispatch + GroupMatmul1 + SwiGLUQuant + GroupMatmul2 + Combine端到端融合计算。
+    需与[get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明)配套使用，该算子将`MoE（Mixture of Experts）`以及`FFN（Feed-Forward Network）`的完整计算流程融合为单个算子，实现`Dispatch + GroupMatmul1 + SwiGLUQuant + GroupMatmul2 + Combine`的端到端融合计算。
 -   计算公式：
 
     MegaMoe是一个多阶段融合的MoE算子，在专家并行场景下依次完成Token路由分发与量化、分组矩阵乘法 + SwiGLU激活、二次分组矩阵乘法与跨Rank聚合、以及加权求和，完整计算流程可以分解为以下四个阶段。
@@ -21,7 +21,7 @@
  	   \hat{X}_e,\ S_{X,e} = \mathrm{Q}_{\text{MX}}\!\left(X[\mathcal{T}_e]\right), \quad e = 0, 1, \ldots, E_{\text{local}}-1
  	   $$
  	 
- 	   说明：根据`topkIdsToken按专家排序收集，$\mathcal{T}_e$ 为分配到专家 $e$ 的Token索引集合，$E_{local}$表示当前专家收到的最大token数，每个专家数值可能不同，$X[\mathcal{T}_e]$ 为对应的子矩阵。$\mathrm{Q}_{\text{MX}}$ 表示MX逐组量化（group size = 32），对每组32个元素提取共享指数后量化为FP8目标类型（FLOAT8_E5M2或FLOAT8_E4M3FN），同时输出FLOAT8_E8M0缩放因子。量化后的数据将作为GMM1的输入。
+ 	   说明：根据`topkIds`将Token按专家排序收集，$\mathcal{T}_e$ 为分配到专家 $e$ 的Token索引集合，$E_{local}$表示当前专家收到的最大token数，每个专家数值可能不同，$X[\mathcal{T}_e]$ 为对应的子矩阵。$\mathrm{Q}_{\text{MX}}$ 表示MX逐组量化（group size = 32），对每组32个元素提取共享指数后量化为FP8目标类型（FLOAT8_E5M2或FLOAT8_E4M3FN），同时输出FLOAT8_E8M0缩放因子。量化后的数据将作为GMM1的输入。
  	 
  	   第二阶段对每个专家执行GMM1矩阵乘法（将 $W_1$ 沿列方向分为两半分别计算）、SwiGLU激活和MX量化：
  	 
@@ -53,15 +53,15 @@
  	   Y[i] = \sum_{k=0}^{K-1} W[i,\, k] \cdot O[\pi(i,\, k)]
  	   $$
  	 
- 	   说明：对每个Token $i$，根据排序后的路由索引 $\pi(i,k)$ 从聚合后的专家结果中取出对应行，按`topkWeights的权重逐元素加权累加，得到最终输出 $Y$。
+ 	   说明：对每个Token $i$，根据排序后的路由索引 $\pi(i,k)$ 从聚合后的专家结果中取出对应行，按`topkWeights`中的权重逐元素加权累加，得到最终输出 $Y$。
  	 
- 	   其中，$X$ 表示参数`x`，$W$ 表示参数`topkWeights`，$W_1$ 表示参数`weight1`，$W_2$ 表示参数`weight2`，$Y$ 表示参数`y`，$E_{\text{local}}$ 表示属性`moeExpertNum / epWorldSize`（每个Rank的专家数），$K$ 表示`topkIds第二维度（top-K值，取值6或8）。
+ 	   其中，$X$ 表示参数`x`，$W$ 表示参数`topkWeights`，$W_1$ 表示参数`weight1`，$W_2$ 表示参数`weight2`，$Y$ 表示参数`y`，$E_{\text{local}}$ 表示属性`moeExpertNum / epWorldSize`（每个Rank的专家数），$K$ 表示`topkIds`的第二维度（top-K值，取值6或8）。
  	 
  	   局部变量说明：
- 	   - $\mathcal{T}_e$：被路由到专家 $e$ 的Token索引集合，由`topkIds序后确定。
+ 	   - $\mathcal{T}_e$：被路由到专家 $e$ 的Token索引集合，由`topkIds`排序后确定。
  	   - $\hat{X}_e,\ S_{X,e}$：专家 $e$ 的量化输入及其MX缩放因子，第一阶段中间结果。
- 	   - $W_{1,e}^{(x)}$、$W_{1,e}^{(y)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由`weight1SwiGLU拆分推导。
- 	   - $S_{1,e}^{(x)}$、$S_{1,e}^{(y)}$：$W_{1,e}^{(x)}$ 和 $W_{1,e}^{(y)}$ 对应的MX缩放因子，从`weightScales1维度截取。
+ 	   - $W_{1,e}^{(x)}$、$W_{1,e}^{(y)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由`weight1SwiGLU`按拆分推导。
+ 	   - $S_{1,e}^{(x)}$、$S_{1,e}^{(y)}$：$W_{1,e}^{(x)}$ 和 $W_{1,e}^{(y)}$ 对应的MX缩放因子，从`weightScales1`按维度截取。
  	   - $S_{2,e}$：$W_{2,e}$ 对应的MX缩放因子，来自参数`weightScales2`。
  	   - $Z_e^{(x)},\ Z_e^{(y)}$：GMM1的两路矩阵乘法输出（Swish分支和门控分支），中间结果。
  	   - $U_e$：SwiGLU激活输出，维度 $m_e \times N/2$，中间结果。
@@ -115,8 +115,8 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
     - 调用算子过程中使用的`epWorldSize`、`globalBs`、`HCCL_BUFFSIZE`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域使用约束**：
-    - 仅支持`EP`域，无`TP，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
-    - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_type`、`global_bs数取值需保持一致。
+    - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
+    - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_type`、`global_bs`参数取值需保持一致。
 
 - **参数约束**：
     - BS（x.dim0）范围 [1, 512]。

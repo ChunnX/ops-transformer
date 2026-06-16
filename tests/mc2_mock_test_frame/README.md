@@ -14,11 +14,11 @@ Device (kernel)                      CCU (HCCL Server)
   │  1. 填sendMsgs[slot]              │
   │  2. 写commitTurnCnt[slot]         │
   │  ──────── workspace ──────────→    │
-  │                                    │  3. 读commitTurnCnt现有效
-  │                                    │  4. 读sendMsgs行集合通信
+  │                                    │  3. 读commitTurnCnt，发现有效
+  │                                    │  4. 读sendMsgs，执行集合通信
   │                                    │  5. 写finishedTurnCnt[slot]
   │  ←──────── workspace ─────────     │
-  │  6. 轮询finishedTurnCnt续     │
+  │  6. 轮询finishedTurnCnt，继续       │
   │                                    │
 ```
 
@@ -84,7 +84,7 @@ Workspace (512B对齐):
 
 | 偏移 | 字段 | 说明 |
 |------|------|------|
-| +0x00 | valid (u64) | COMMIT_VALID_MASK (987654321示有效 |
+| +0x00 | valid (u64) | COMMIT_VALID_MASK (987654321)表示有效 |
 | +0x08 | cnt (u64) | 提交/完成计数 |
 | +0x10 | reserved[6] | 填充至cache line对齐 |
 
@@ -98,7 +98,7 @@ kernel:
   2. 写commitTurnCnt[slot].valid = COMMIT_VALID_MASK
 
 server (MockHcclServer):
-  3. 轮询commitTurnCnt现valid → 读sendMsgs[slot]
+  3. 轮询commitTurnCnt，发现valid → 读sendMsgs[slot]
   4. 根据commType执行操作(单卡: D2D memcpy sendBuf → recvBuf)
   5. 写finishedTurnCnt[slot].cnt = commitCnt
   6. 清除commitTurnCnt[slot].valid
@@ -144,7 +144,7 @@ kernel:
 
 ### 2.2 MockContextBuilder —单rank HCCL Context构造
 
-在device侧构造kernel需要的`HcclA2CombineOpParam构（即commContext）。所有rank的`windowsIn[i]向同一块device内存，使得910B AIV模式的flag同步机制自洽。
+在device侧构造kernel需要的`HcclA2CombineOpParam`结构（即commContext）。所有rank的`windowsIn[i]`指向同一块device内存，使得910B AIV模式的flag同步机制自洽。
 
 ### 2.3 MultiRankMockContext —多rank Context构造
 
@@ -179,7 +179,7 @@ ctx_r1 = mctx.context_tensor(1)
 
 ## 3. 单元测试
 
-`mock_framework_test.cpp证mock server的协议正确性（与具体算子无关）：
+`mock_framework_test.cpp`验证mock server的协议正确性（与具体算子无关）：
 
 | Test | 验证点 |
 |------|--------|
@@ -209,7 +209,7 @@ g++ -std=c++17 -O2 -I${ASCEND_HOME}/include \
 1. **构造mock context**— `MockContextBuilder.Build(rankNum, rankId)`
 2. **启动mock server**— `MockHcclServer(workspace).Start()`
 3. **调用算子**—将mock context作为commContext输入传给算子
-4. **等待完成**— `WaitForFinalize()待kernel的Finalize握手
+4. **等待完成**— `WaitForFinalize()`等待kernel的Finalize握手
 5. **验证结果**—检查算子的计算输出是否正确
 
 ---

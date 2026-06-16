@@ -103,7 +103,7 @@
 
 ## 约束说明
 
-- 输入张量的列数`gbW须为偶数，以便均分为Gate和Value两部分。
+- 输入张量的列数`gbW`必须为偶数，以便均分为Gate和Value两部分。
 - 数据类型约束：输入为float16，Scale为float32，输出为int8_t。
 
 ## 价值/作用
@@ -115,10 +115,10 @@
 ### Tiling策略
 
 - **分核策略**：
-  按行（gbH）维度进行分核。每个Core处理`⌈gbH / blockNum⌉数据，采用向上取整方式分配，尾部行通过`i * blockNum_ + blockIdx_ < gbH断跳过。
+  按行（gbH）维度进行分核。每个Core处理`⌈gbH / blockNum⌉`行数据，采用向上取整方式分配，尾部行通过`i * blockNum_ + blockIdx_ < gbH`判断跳过。
 
 - **分块策略**：
-  在列方向（bkW = gbW / 2）上按可用UB容量进行分块。每个Tile的宽度`tlW_据UB最大可用字节数（184KB）和所需Buffer（2个half输入、1个float scale、1个int8输出）动态计算，并向下对齐到64元素（满足128字节对齐）。尾部Tile宽度`tlTailW_`bkW % tlW_`，向上对齐到64用于计算，实际有效宽度用于搬入搬出。
+  在列方向（bkW = gbW / 2）上按可用UB容量进行分块。每个Tile的宽度`tlW_`根据UB最大可用字节数（184KB）和所需Buffer（2个half输入、1个float scale、1个int8输出）动态计算，并向下对齐到64元素（满足128字节对齐）。尾部Tile宽度`tlTailW_`为`bkW % tlW_`，向上对齐到64用于计算，实际有效宽度用于搬入搬出。
 
 ### Kernel侧设计
 
@@ -140,9 +140,9 @@
       1. `Gelu(in_one, in_one)`：对Gate部分计算GELU激活。
       2. `Mul(in_two, in_one, in_two)`：Gate和Value逐元素相乘，得到GeGLU结果。
       3. `Cast(infloat_local, in_two, CAST_NONE)`：将FP16结果转为FP32，以便进行高精度量化计算。
-      4. **[可选约束]** 若`constrait_true，则使用`Mins`MaxsFP32结果截断在`[-clampValue_, clampValue_]围内。
+      4. **[可选约束]** 若 `constrait_` 为 true，则使用 `Mins` 和 `Maxs` 将 FP32 结果截断在 `[-clampValue_, clampValue_]` 范围内。
       5. `Mul(infloat_local, infloat_local, scale_local)`：乘以Per-Channel量化缩放因子。
       6. `Cast(infloat_local, infloat_local, CAST_RINT)`：FP32四舍五入到整数（仍以FP32格式存储）。
-      7. `Mins`Maxs`：将值截断到`[-128.0, 127.0]INT8表示范围。
-      8. `Cast(in_one_local, infloat_local, CAST_NONE)`Cast(out_local, in_one_local, CAST_RINT)`：将结果从FP32经FP16转换为最终INT8输出。
+      7. `Mins` 和 `Maxs`：将值截断到 `[-128.0, 127.0]` 的 INT8 表示范围。
+      8. `Cast(in_one_local, infloat_local, CAST_NONE)` 和 `Cast(out_local, in_one_local, CAST_RINT)`：将结果从FP32经FP16转换为最终INT8输出。
     - **CopyOut**：将INT8计算结果从UB搬回GM，输出偏移量：`offset = (i * blockNum_ + blockIdx_) * bkW_ + j * tlW_`。

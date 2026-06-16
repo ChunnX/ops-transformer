@@ -190,6 +190,6 @@ block_idx ∈ [0, B*N):
   //                        对应branch_output[b, s, d] × h_post[n]
 ```
 
-由于`block_idx = b * N + n`，所以`output[block_idx]价于`output[b*N + n]`
+由于`block_idx = b * N + n`，所以`output[block_idx]`等价于`output[b*N + n]`
 
 因此，NPU实现与论文公式完全等价。

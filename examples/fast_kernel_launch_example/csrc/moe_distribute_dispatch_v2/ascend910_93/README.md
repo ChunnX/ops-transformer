@@ -230,9 +230,9 @@ SK（Super Kernel）是Ascend C提供的一种算子融合机制，通过将同�
 - `split_num`模板参数表示分割模式，支持0-3四种模式，对应不同的核间任务分配策略
 - `SK_BIND`宏将SK kernel的不同分割模式绑定到主kernel，由底层调度器自动选择最优模式
 
-**参数封装**：`MoeDistributeDispatchV2SkArgs构体将所有kernel参数打包，便于SK调用时传递。结构体包含tilingKey、所有输入输出tensor地址、workspace、mc2Context、tilingData等字段。
+**参数封装**：`MoeDistributeDispatchV2SkArgs`结构体将所有kernel参数打包，便于SK调用时传递。结构体包含tilingKey、所有输入输出tensor地址、workspace、mc2Context、tilingData等字段。
 
-**执行流程**：当调度器选择SK模式执行时，调用`moe_distribute_dispatch_v2_generic_sk数，从SkArgs结构体解析参数，然后执行与普通kernel相同的逻辑（调用`moe_dispatch_switch`）。
+**执行流程**：当调度器选择SK模式执行时，调用`moe_distribute_dispatch_v2_generic_sk`函数，从SkArgs结构体解析参数，然后执行与普通kernel相同的逻辑（调用`moe_dispatch_switch`）。
 
 ### 5. Kernel层
 
@@ -255,19 +255,19 @@ moe_distribute_dispatch_v2_generic Kernel基于HCCL Window机制实现MoE分发�
 
 ### 为什么需要Context
 
-传统HCCL通信方式下，Kernel通过`GetHcclContextHCCL API获取各rank的Window地址。这种方式依赖HCCL通过框架创建的HcclOpParam，在<<<>>>直调场景下，通过torch接口直调kernel，HCCL不会通过调用框架创建HcclOpParam。所以需要将dispatch、combine所需的通信上下文直接作为参数传入kernel。
+传统HCCL通信方式下，Kernel通过`GetHcclContextHCCL API`等HCCL API获取各rank的Window地址。这种方式依赖HCCL通过框架创建的HcclOpParam，在<<<>>>直调场景下，通过torch接口直调kernel，HCCL不会通过调用框架创建HcclOpParam。所以需要将dispatch、combine所需的通信上下文直接作为参数传入kernel。
 
 ### Context创建流程
 
 详见 [update_context.md](../../update_context/update_context.md)。核心流程分为两阶段：
 
-1. **CreateHcclContext**：建立HCCL通信框架，通过`HcclCommGetHandleWithName取通信句柄，通过`HcclCreateOpResCtx建操作资源上下文
+1. **CreateHcclContext**：建立HCCL通信框架，通过`HcclCommGetHandleWithName`获取通信句柄，通过`HcclCreateOpResCtx建操作资源上下文
 
-2. **CreatMc2Context**：填充IPC buffer地址，遍历所有rank，通过`HcclGetHcclBuffer`（本地）和`HcclGetRemoteIpcHcclBuf`（远程）获取各rank的IPC buffer地址，存入`epHcclBuffer组
+2. **CreatMc2Context**：填充IPC buffer地址，遍历所有rank，通过`HcclGetHcclBuffer`（本地）和`HcclGetRemoteIpcHcclBuf`（远程）获取各rank的IPC buffer地址，存入`epHcclBuffer`数组
 
 ### Context在Kernel内的使用
 
-在Kernel内，context addr取代了`GetBaseWindAddrByRankId()数获取目标rank的Window地址：当使用Context方式时，直接从根据对端rankID从`mc2Context_->epHcclBuffer_[rankId]组获取。
+在Kernel内，context addr取代了`GetBaseWindAddrByRankId()`函数获取目标rank的Window地址：当使用Context方式时，直接从根据对端rankID从`mc2Context_->epHcclBuffer_[rankId]`数组获取。
 
 获取对端地址后，前1MB作为状态区地址，后面作为数据区地址。
 
