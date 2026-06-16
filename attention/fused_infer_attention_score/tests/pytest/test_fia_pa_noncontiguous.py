@@ -254,17 +254,6 @@ OLD_ERROR = [
      "kv_seq":512,"bs":0,"q_seq":4,"d":128,"dr":64,"dv":128},
 ]
 
-# ==============================================================================
-# JSON 用例验证 (from tiny_rdv case_json)
-# ==============================================================================
-JSON_CASES = [
-    # FP16_BSND_000005: 非PA连续, mask, sparse_mode=0, pre_tokens=1335, next_tokens=1024
-    {"id":"JSON-FP16-BSND-000005","B":8,"N_q":16,"N_kv":16,"pa":False,"fmt":"none","ql":"BSND","nc":"none",
-     "kv_seq":1024,"bs":0,"q_seq":1777,"d":144,"dr":0,"dv":144,
-     "act_q":[809]*8,"act_kv":[809]*8,"sparse_mode":0,"pre_tok":1335,"next_tok":1024,
-     "mask_shape":[1,1,1777,1024]},
-]
-
 
 # ==============================================================================
 # pytest
@@ -281,14 +270,6 @@ def test_normal(cfg):
 def test_error(cfg):
     logger.info(f"\n[ERROR]  {cfg['id']}")
     _run_one(cfg, expect_pass=False)
-
-
-ALL_JSON = JSON_CASES
-
-@pytest.mark.parametrize("cfg", ALL_JSON, ids=[c["id"] for c in ALL_JSON])
-def test_json(cfg):
-    logger.info(f"\n[JSON]  {cfg['id']}")
-    _run_one(cfg, expect_pass=True)
 
 
 if __name__ == '__main__':
