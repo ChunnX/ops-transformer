@@ -44,6 +44,7 @@ constexpr uint32_t MAX_SINGLE_MN_256_256 = 256 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = (MAX_SINGLE_MN_256_256 + 31U) / ALIGN32 * ALIGN32;
 constexpr uint32_t MAX_SINGLE_MN_128_256 = 128 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U) / ALIGN32 * ALIGN32;
+constexpr uint32_t TRIPLE_TENSOR_ADDR = 200U * 1024U;  // triple tensor 在 UB 中的起始地址
 
 // =================================================================================================
 // ComputeMaxRowGroupsStride：计算 rowGroupComplete 计数器中每个 expert 的 stride
@@ -109,7 +110,9 @@ __aicore__ inline void ComputeGroupRange(uint32_t groupIdx, uint32_t numGroups, 
     }
 }
 
-// GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
+// =================================================================================================
+// GroupMatmulSwigluQuant：GMM1 矩阵乘法 + SwiGLU 激活 + 量化
+// =================================================================================================
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
@@ -278,7 +281,11 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
-// GroupMatmul2 - GMM2矩阵乘法，支持量化和非量化模式
+// =================================================================================================
+// GroupMatmul2：GMM2 矩阵乘法，支持量化和非量化模式
+// =================================================================================================
+// 量化模式：AIC 计算结果写入 GM，通过 AtomicAdd 通知 AIV；AIV 不参与计算
+// 非量化模式：AIC 计算结果写入 UB，通过 pingpong 双缓冲通知 AIV；AIV 执行 CombineTokens
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, 
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
@@ -477,10 +484,10 @@ __aicore__ inline void GroupMatmul2(
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
                 AscendC::GlobalTensor<int32_t> tripleGm;
                 int32_t lenTile = Get<M_VALUE>(actualShape);
-                LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECCALC, 200 * 1024, lenTile * 8);
+                LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECCALC, TRIPLE_TENSOR_ADDR, lenTile * TRIPLE_SIZE);
                 tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
-                    (groupCnt + mLoc) * 32));
-                AscendC::DataCopy(tripleTensor, tripleGm, lenTile * 8);
+                    (groupCnt + mLoc) * TRIPLE_SIZE * sizeof(int32_t)));
+                AscendC::DataCopy(tripleTensor, tripleGm, lenTile * TRIPLE_SIZE);
                 MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
                     mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
