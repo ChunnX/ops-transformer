@@ -77,8 +77,12 @@ def _run(q_npu, k_npu, v_npu, pa, q_layout, act_q, act_kv, bt_npu, bs, scale,
          q_n, kv_n, q_rope_npu=None, k_rope_npu=None, d=128, dr=0,
          pre_tok=65535, next_tok=65535, mask_npu=None, sparse_mode=0):
     torch_npu.npu.set_device(DEVICE_ID); torch.npu.synchronize()
-    aq = torch.tensor(act_q, dtype=torch.int64)
-    akv = torch.tensor(act_kv, dtype=torch.int64)
+    if q_layout == "TND":
+        aq = torch.tensor(_accum(act_q), dtype=torch.int64)
+        akv = torch.tensor(_accum(act_kv), dtype=torch.int64)
+    else:
+        aq = torch.tensor(act_q, dtype=torch.int64)
+        akv = torch.tensor(act_kv, dtype=torch.int64)
     if dr > 0:
         r, _ = torch_npu.npu_fused_infer_attention_score_v2(
             q_npu, k_npu, v_npu, query_rope=q_rope_npu, key_rope=k_rope_npu,
@@ -127,6 +131,10 @@ def _run_one(cfg, expect_pass):
     torch.manual_seed(42)
     q_bnsd=torch.randn(B,N_q,q_seq,d,dtype=DTYPE)
     if ql=="BSND": q_bnsd=q_bnsd.permute(0,2,1,3).contiguous()
+    elif ql=="TND":
+        T=sum(act_q); q_tnd=torch.zeros(T,N_q,d,dtype=DTYPE); t=0
+        for b,s in enumerate(act_q): q_tnd[t:t+s]=q_bnsd[b,:,:s,:].transpose(0,1); t+=s
+        q_bnsd=q_tnd
     q_npu=q_bnsd.npu()
 
     kv_shape=_kv_shape(fmt,total_b,bs,d,N_kv,B,kv_seq) if pa else _kv_shape("none",total_b,bs,d,N_kv,B,kv_seq)
@@ -175,24 +183,24 @@ NEW_NORMAL = [
     # BnNBsD
     {"id":"NEW-BnNBsD-contig", "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"none",
      "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
-    {"id":"NEW-BnNBsD-dim0",   "B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim0",
-     "kv_seq":1536,"bs":256,"q_seq":6,"d":128},
-    {"id":"NEW-BnNBsD-dim01",  "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim01",
+    {"id":"NEW-BnNBsD-dim0",   "B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"TND","nc":"dim0",
+     "kv_seq":1536,"bs":256,"q_seq":6,"d":128,"act_q":[3,6]},
+    {"id":"NEW-BnNBsD-dim01",  "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BSND","nc":"dim01",
      "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
     # BnBsH
-    {"id":"NEW-BnBsH-contig",  "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"none",
+    {"id":"NEW-BnBsH-contig",  "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BSND","nc":"none",
      "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
-    {"id":"NEW-BnBsH-dim0",    "B":3,"N_q":6,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim0",
-     "kv_seq":2304,"bs":384,"q_seq":4,"d":128},
+    {"id":"NEW-BnBsH-dim0",    "B":3,"N_q":6,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"TND","nc":"dim0",
+     "kv_seq":2304,"bs":384,"q_seq":4,"d":128,"act_q":[2,4,3]},
     # NZ
     {"id":"NEW-NZ-contig",     "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"none",
      "kv_seq":2560,"bs":512,"q_seq":4,"d":128},
-    {"id":"NEW-NZ-dim0",       "B":2,"N_q":4,"N_kv":4,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"dim0",
+    {"id":"NEW-NZ-dim0",       "B":2,"N_q":4,"N_kv":4,"pa":True,"fmt":"NZ","ql":"BSND","nc":"dim0",
      "kv_seq":1536,"bs":256,"q_seq":3,"d":128},
-    {"id":"NEW-NZ-dim01",      "B":1,"N_q":1,"N_kv":1,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"dim01",
+    {"id":"NEW-NZ-dim01",      "B":1,"N_q":1,"N_kv":1,"pa":True,"fmt":"NZ","ql":"TND","nc":"dim01",
      "kv_seq":1024,"bs":128,"q_seq":5,"d":128},
     # ROPE_COMBINE: D=192, V=128
-    {"id":"NEW-d192-dim0",     "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim0",
+    {"id":"NEW-d192-dim0",     "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"TND","nc":"dim0",
      "kv_seq":1536,"bs":384,"q_seq":4,"d":192,"dv":128},
 ]
 
@@ -206,14 +214,14 @@ NEW_ERROR = [
 # ==============================================================================
 OLD_NORMAL = [
     # ROPE_SPLIT: D=128+rope64, V=128
-    {"id":"OLD-ROPE-dim0",     "B":1,"N_q":4,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim0",
+    {"id":"OLD-ROPE-dim0",     "B":1,"N_q":4,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"TND","nc":"dim0",
      "kv_seq":2048,"bs":512,"q_seq":4,"d":128,"dr":64,"dv":128},
     {"id":"OLD-ROPE-dim01",    "B":2,"N_q":8,"N_kv":4,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim01",
      "kv_seq":1024,"bs":256,"q_seq":6,"d":128,"dr":64,"dv":128},
     # D=256 (D≠128 且非 ROPE_COMBINE, 路由至老模板)
     {"id":"OLD-d256-contig",    "B":1,"N_q":8,"N_kv":4,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"none",
      "kv_seq":1024,"bs":128,"q_seq":8,"d":256},
-    {"id":"OLD-d256-dim0",      "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim0",
+    {"id":"OLD-d256-dim0",      "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BSND","nc":"dim0",
      "kv_seq":1024,"bs":128,"q_seq":8,"d":256},
     {"id":"OLD-d256-dim01",     "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim01",
      "kv_seq":1024,"bs":128,"q_seq":8,"d":256},
@@ -223,8 +231,8 @@ OLD_NORMAL = [
     {"id":"OLD-d64BnBsH-dim0",  "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BNSD","nc":"dim0",
      "kv_seq":1536,"bs":256,"q_seq":4,"d":64},
     # 非PA
-    {"id":"OLD-NonPA-contig",  "B":3,"N_q":3,"N_kv":1,"pa":False,"fmt":"none","ql":"BNSD","nc":"none",
-     "kv_seq":800,"bs":0,"q_seq":7,"d":64},
+    {"id":"OLD-NonPA-contig",  "B":3,"N_q":3,"N_kv":1,"pa":False,"fmt":"none","ql":"TND","nc":"none",
+     "kv_seq":800,"bs":0,"q_seq":7,"d":64,"act_q":[3,5,7]},
     # NZ + D=64 (D≠128 路由至老模板)
     {"id":"OLD-NZ-d64-contig",  "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"none",
      "kv_seq":1024,"bs":128,"q_seq":4,"d":64},
