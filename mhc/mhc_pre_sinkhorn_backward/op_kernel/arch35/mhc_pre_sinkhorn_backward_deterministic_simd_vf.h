@@ -192,7 +192,7 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U* zAddr, __local_me
             auto biasAddrStart = biasAddr + i * vfLen;
             AscendC::MicroAPI::LoadUnAlignPre(u0, biasAddrStart);
             AscendC::MicroAPI::LoadUnAlign(biasReg, u0, biasAddrStart);
-            for (uint16_t j = 0; j < bsLen; i++) {
+            for (uint16_t j = 0; j < bsLen; j++) {
                 AscendC::MicroAPI::UnalignReg u1;
                 auto hcBeformNormAddrStart = hcBeformNormAddr + j * cLenAlign;
                 auto normOutForwardAddrStart = normOutForwardAddr + j * colLen + i * vfLen;
