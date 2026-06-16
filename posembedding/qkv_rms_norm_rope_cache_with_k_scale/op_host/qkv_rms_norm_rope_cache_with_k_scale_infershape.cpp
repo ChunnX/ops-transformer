@@ -8,32 +8,40 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <cstdint>
+
 #include "log/log.h"
 #include "register/op_impl_registry.h"
 
 namespace ops {
 namespace {
-constexpr size_t QKV_INDEX = 0;
-constexpr size_t K_CACHE_INDEX = 5;
-constexpr size_t V_CACHE_INDEX = 6;
-constexpr size_t K_SCALE_CACHE_INDEX = 7;
-constexpr size_t HEAD_NUMS_ATTR_INDEX = 0;
+constexpr uint64_t QKV_INDEX = 0;
+constexpr uint64_t K_CACHE_INDEX = 5;
+constexpr uint64_t V_CACHE_INDEX = 6;
+constexpr uint64_t K_SCALE_CACHE_INDEX = 7;
+constexpr uint64_t HEAD_NUMS_ATTR_INDEX = 0;
 
-constexpr size_t Q_OUT_INDEX = 0;
-constexpr size_t Q_SCALE_INDEX = 1;
-constexpr size_t K_CACHE_OUT_INDEX = 2;
-constexpr size_t V_CACHE_OUT_INDEX = 3;
-constexpr size_t K_SCALE_CACHE_OUT_INDEX = 4;
+constexpr uint64_t Q_OUT_INDEX = 0;
+constexpr uint64_t Q_SCALE_INDEX = 1;
+constexpr uint64_t K_CACHE_OUT_INDEX = 2;
+constexpr uint64_t V_CACHE_OUT_INDEX = 3;
+constexpr uint64_t K_SCALE_CACHE_OUT_INDEX = 4;
 
-constexpr size_t HEAD_NUMS_SIZE = 3;
-constexpr size_t QKV_DIM_NUM = 3;
-constexpr size_t CACHE_DIM_NUM = 4;
+constexpr uint64_t HEAD_NUMS_SIZE = 3;
+constexpr uint64_t QKV_DIM_NUM = 3;
+constexpr uint64_t CACHE_DIM_NUM = 4;
+
+unsigned long long U64(uint64_t value)
+{
+    return static_cast<unsigned long long>(value);
+}
 
 ge::graphStatus ValidateDimNum(gert::InferShapeContext *context, const char *tensorName, const gert::Shape *shape,
-                               size_t expectedDimNum)
+                               uint64_t expectedDimNum)
 {
-    if (shape->GetDimNum() != expectedDimNum) {
-        OP_LOGE(context, "%s dim num must be %zu, but got %zu.", tensorName, expectedDimNum, shape->GetDimNum());
+    const uint64_t actualDimNum = static_cast<uint64_t>(shape->GetDimNum());
+    if (actualDimNum != expectedDimNum) {
+        OP_LOGE(context, "%s dim num must be %llu, but got %llu.", tensorName, U64(expectedDimNum), U64(actualDimNum));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -41,9 +49,11 @@ ge::graphStatus ValidateDimNum(gert::InferShapeContext *context, const char *ten
 
 ge::graphStatus ValidatePositiveDims(gert::InferShapeContext *context, const char *tensorName, const gert::Shape *shape)
 {
-    for (size_t i = 0; i < shape->GetDimNum(); ++i) {
+    const uint64_t dimNum = static_cast<uint64_t>(shape->GetDimNum());
+    for (uint64_t i = 0; i < dimNum; ++i) {
         if (shape->GetDim(i) <= 0) {
-            OP_LOGE(context, "%s dim[%zu] must be greater than 0, but got %ld.", tensorName, i, shape->GetDim(i));
+            OP_LOGE(context, "%s dim[%llu] must be greater than 0, but got %ld.", tensorName, U64(i),
+                    shape->GetDim(i));
             return ge::GRAPH_FAILED;
         }
     }
@@ -58,15 +68,16 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const auto headNums = attrs->GetListInt(HEAD_NUMS_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, headNums);
-    if (headNums->GetSize() != HEAD_NUMS_SIZE) {
-        OP_LOGE(context, "head_nums size must be %zu, but got %zu.", HEAD_NUMS_SIZE, headNums->GetSize());
+    const uint64_t headNumsSize = static_cast<uint64_t>(headNums->GetSize());
+    if (headNumsSize != HEAD_NUMS_SIZE) {
+        OP_LOGE(context, "head_nums size must be %llu, but got %llu.", U64(HEAD_NUMS_SIZE), U64(headNumsSize));
         return ge::GRAPH_FAILED;
     }
     const auto *headNumsData = headNums->GetData();
     OP_CHECK_NULL_WITH_CONTEXT(context, headNumsData);
-    for (size_t i = 0; i < 3; ++i) {
+    for (uint64_t i = 0; i < HEAD_NUMS_SIZE; ++i) {
         if (headNumsData[i] <= 0) {
-            OP_LOGE(context, "head_nums[%zu] must be greater than 0.", i);
+            OP_LOGE(context, "head_nums[%llu] must be greater than 0.", U64(i));
             return ge::GRAPH_FAILED;
         }
     }

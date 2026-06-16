@@ -15,6 +15,12 @@
 #include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
+namespace {
+unsigned long long U64(uint64_t value)
+{
+    return static_cast<unsigned long long>(value);
+}
+} // namespace
 
 ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *context)
 {
@@ -39,10 +45,10 @@ ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseCon
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfo->l0cSize);
     compileInfo->opWorkspaceSize = static_cast<uint64_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
     OP_LOGD(context,
-            "QkvRmsNormRopeCacheWithKScale tiling prepare resources: aicNum=%u aivNum=%u ubSize=%lu l1Size=%lu "
-            "l0cSize=%lu opWorkspaceSize=%lu.",
-            compileInfo->aicNum, compileInfo->aivNum, compileInfo->ubSize, compileInfo->l1Size, compileInfo->l0cSize,
-            compileInfo->opWorkspaceSize);
+            "QkvRmsNormRopeCacheWithKScale tiling prepare resources: aicNum=%u aivNum=%u ubSize=%llu "
+            "l1Size=%llu l0cSize=%llu opWorkspaceSize=%llu.",
+            compileInfo->aicNum, compileInfo->aivNum, U64(compileInfo->ubSize), U64(compileInfo->l1Size),
+            U64(compileInfo->l0cSize), U64(compileInfo->opWorkspaceSize));
     OP_CHECK_IF(compileInfo->aicNum == 0 || compileInfo->aivNum == 0 || compileInfo->ubSize == 0 ||
                     compileInfo->l1Size == 0 || compileInfo->l0cSize == 0,
                 OP_LOGE(context, "invalid platform resource for QkvRmsNormRopeCacheWithKScale."),

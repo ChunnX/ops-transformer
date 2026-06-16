@@ -272,7 +272,7 @@ struct ConcurrentTilingCase {
 
 struct ConcurrentTilingResult {
     bool ok = true;
-    size_t failedCase = 0;
+    uint64_t failedCase = 0;
     uint32_t failedIteration = 0;
     bool success = false;
     uint64_t tokenTile = 0;
@@ -695,7 +695,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
                 std::this_thread::yield();
             }
             for (uint32_t iter = 0U; iter < ITERATIONS; ++iter) {
-                const size_t caseIdx = (static_cast<size_t>(threadIdx) + iter) % cases.size();
+                const uint64_t caseIdx = (static_cast<uint64_t>(threadIdx) + iter) % cases.size();
                 const auto &item = cases[caseIdx];
                 TilingInfo tilingInfo;
                 const bool success = ExecuteConcurrentTilingCase(item, tilingInfo);
