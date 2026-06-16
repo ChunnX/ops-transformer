@@ -187,7 +187,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
 
     if ASCEND_IS_AIV {
         xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ X_T*>(x));
-        gradHinGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(gradHin));
+        gradHinGm_.SetGlobalBuffer(reinterpret_cast<__gm__ GRADHIN_T*>(gradHin));
         gradHPostGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(gradHPost));
         gradHResGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(gradHRes));
         alphaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(alpha));
@@ -293,7 +293,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 
     Process1Info info;
     info.bsLen = bsLen;
-    info.n = n;
+    info.n = n_;
     info.vRegSize = V_REG_SIZE;
     uint32_t vfLen = V_REG_SIZE / uTypeSize;
     for (uint64_t cIdx = 0; cIdx < cLoopNum; cIdx++) {
@@ -439,8 +439,8 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
                 for (uint16_t k = 0; k < info.n; k++) {
                     U hPre = *(hPreAddr + i * info.n + k);
                     U gradHPre = *(gradHPreStart + k);
-                    auto xCastStart = xCastAddr + (i * n + k) * info.cLenUAlign;
-                    auto xAddrStart = xAddr + (i * n + k) * info.cLenXTAlign;
+                    auto xCastStart = xCastAddr + (i * n_ + k) * info.cLenUAlign;
+                    auto xAddrStart = xAddr + (i * n_ + k) * info.cLenXTAlign;
                     auto gradXFromHinStart = gradXFromHinAddr + (i * n_ + k) * info.cLenUAlign;
 
                     AscendC::MicroAPI::AddrReg xAddrOfst = AscendC::MicroAPI::CreateAddrReg<X_T>(j, vfLen);
@@ -475,7 +475,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::G
     alphaPost_ = alphaGm_.GetValue(1);
     alphaRes_ = alphaGm_.GetValue(2);
     DataCopyPad(biasLocal_, biasGm_, {static_cast<uint16_t>(1),
-        static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
+        static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(U)), 0, 0, 0}, {false, 0, 0, 0});
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
