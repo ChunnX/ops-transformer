@@ -22,6 +22,12 @@
 #include "mhc_pre_sinkhorn_backward_deterministic_simd_vf.h"
 #include "op_kernel/platform_util.h"
 
+// AlignUp函数：将value向上对齐到align边界
+template<typename T>
+constexpr T AlignUp(T value, T align) {
+    return (value + align - 1) / align * align;
+}
+
 template<typename X_T, typename GRADHIN_T, typename U>
 class MhcPreSinkhornBackwardDeterministic {
 private:
@@ -75,13 +81,21 @@ using C2Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, X_T>;
     GlobalTensor<U>  sumOutGm_;
     GlobalTensor<U>  normOutGm_;
 
-    GlobalTensor<U>  xFp32Ws_;                  //中间结果
+    GlobalTensor<U>  xFp32Ws_;
     GlobalTensor<U>  gradHcBeforeNormWs_;
     GlobalTensor<U>  gradXWs_;
     GlobalTensor<U>  gradNormOutWs_;
     GlobalTensor<U>  gradXFromHinWs_;
     GlobalTensor<U>  gradAlphaPreGm_;
     GlobalTensor<U>  gradBiasPreGm_;
+
+    int64_t wsGradAlphaOffset_ = 0;
+    int64_t wsGradBiasOffset_ = 0;
+    int64_t wsGradPhiOffset_ = 0;
+    int64_t wsGradXOffset_ = 0;
+    int64_t wsXFp32Offset_ = 0;
+    int64_t wsGradXFromRmsOffset_ = 0;
+    int64_t wsPerCoreSize_ = 0;
 
     GlobalTensor<X_T>  gradXGm_;            //输出
     GlobalTensor<U>  gradPhiGm_;
@@ -153,6 +167,17 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     blockIdx_ = GetBlockIdx();
     blockSize_ = Ops::Base::GetUbBlockSize();
     curCoreProcessbsTask_ = (blockIdx_ == tilingData->aivNum - 1) ? tilingData->tailBsTaskCount : tilingData->bsTaskCount;
+
+    constexpr int64_t ALIGN_256 = 256;
+    constexpr int64_t FP32_BYTE_SIZE = sizeof(U);
+
+    wsGradAlphaOffset_ = 0;
+    wsGradBiasOffset_ = AlignUp(3 * FP32_BYTE_SIZE, ALIGN_256);
+    wsGradPhiOffset_ = wsGradBiasOffset_ + AlignUp(k_ * FP32_BYTE_SIZE, ALIGN_256);
+    wsGradXOffset_ = wsGradPhiOffset_ + AlignUp(k_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256);
+    wsXFp32Offset_ = wsGradXOffset_ + AlignUp(bsLoopDataLen_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256);
+    wsGradXFromRmsOffset_ = wsXFp32Offset_ + AlignUp(bsLoopDataLen_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256);
+    wsPerCoreSize_ = wsGradXFromRmsOffset_ + AlignUp(bsLoopDataLen_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256);
 nAlignFp32_ = CeilAlign(n_ * sizeof(U), blockSize_) / sizeof(U);
 cAlignFp32_ = CeilAlign(cLoopDataLen_ * sizeof(U), blockSize_) / sizeof(U);
 cAlignFp16_ = CeilAlign(cLoopDataLen_ * sizeof(X_T), blockSize_) / sizeof(X_T);
@@ -164,10 +189,12 @@ bskAlignFp32_ = CeilAlign(bsLoopDataLen_ * k_ * sizeof(U), blockSize_) / sizeof(
 
     gradPhiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(gradPhi));
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(phi));
-    gradXWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));       //后需添加偏移计算
-    xFp32Ws_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));
-    gradHcBeforeNormWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));
-    gradNormOutWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));
+
+    gradXWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace) + wsGradXOffset_);
+    xFp32Ws_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace) + wsXFp32Offset_);
+    gradHcBeforeNormWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace) + wsGradPhiOffset_);
+    gradNormOutWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace) + wsGradPhiOffset_);
+    gradXFromHinWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace) + wsGradXFromRmsOffset_);
 
     if ASCEND_IS_AIV {
         xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ X_T*>(x));
