@@ -1,14 +1,12 @@
 # kv_quant_sparse_flash_attention pytest测试框架
 
-
-
 ## 功能说明
 
 基于pytest测试框架，实现kv_quant_sparse_flash_attention算子的功能验证：
 
--   **CPU侧**：复现算子功能用以生成golden数据
--   **NPU侧**：通过torch_npu进行算子直调获取实际数据
--   **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
+- **CPU侧**：复现算子功能用以生成golden数据
+- **NPU侧**：通过torch_npu进行算子直调获取实际数据
+- **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
 
 支持三条主流程：
 

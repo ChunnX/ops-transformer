@@ -115,8 +115,8 @@ Token重排操作旨在优化通信效率。由于每次通信下发均存在固
 1. 目标专家索引 = expertIds(i,j)
 2. 目标rank索引 = ceil(expertIds(i,j) / localExpertNum)
 3. 专家在目标rank上的局部索引 = expertIds(i,j) % localExpertNum
-4. expandIdx(i,j) = sendStatus(目标rank索引,专家局部索引)
-5. 更新sendStatus(目标rank索引,专家局部索引)++
+4. expandIdx(i,j) = sendStatus(目标rank索引，专家局部索引)
+5. 更新sendStatus(目标rank索引，专家局部索引)++
 
 ##### Token重排机制
 

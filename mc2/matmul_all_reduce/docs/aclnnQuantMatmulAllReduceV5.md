@@ -141,7 +141,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
           <td>commQuantScale1Optional</td>
           <td>输入</td>
           <td>MatMul+Add计算后的perchannel量化系数，即计算公式中的commQuantScale1Optional。</td>
-          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时, shape可为(n)或者(1,n)</li></ul></td>
+          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时， shape可为(n)或者(1,n)</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>1-2</td>
@@ -151,7 +151,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
           <td>commQuantScale2Optional</td>
           <td>输入</td>
           <td>AllGather计算后的perchannel量化系数，即计算公式中的commQuantScale2Optional。</td>
-          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时, shape可为(n)或者(1,n)</li></ul></td>
+          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时， shape可为(n)或者(1,n)</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>1-2</td>
@@ -352,7 +352,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
 - 确定性计算：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnQuantMatmulAllReduceV5`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算。
   - Ascend 950PR/Ascend 950DT：`aclnnQuantMatmulAllReduceV5`默认确定性实现。
-- 增量场景不使能MC2，全量场景使能MC2。
+- 增量场景不开启MC2，全量场景开启MC2。
 - 输入x1可为2维或者3维，其shape为(b, s, k)或者(m, k)。x2必须是2维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等。
 - m大小不超过2147483647，x1与x2的最后一维大小不超过65535，x1的最后一维指k，x2的最后一维指转置时的k或非转置时的n。
 - 传入的x1、x2、x2Scale或者output不为空指针。
@@ -362,7 +362,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
     - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
 - 一个模型中的通算融合MC2算子，仅支持相同通信域。
-- INT8和FP8低bit通信仅在通信bound的情况下存在性能收益，计算bound的情况不建议使能INT8或FP8低bit通信，即不建议输入commQuantScale1和commQuantScale2，且commQuantMode输入0。（注：INT8低bit通信指输入为int8且使能commQuantScale1Optional、commQuantScale2Optional；FP8低bit通信指输入为FLOAT8_E4M3FN/FLOAT8_E5M2且使能commQuantMode=1。）
+- INT8和FP8低bit通信仅在通信bound的情况下存在性能收益，计算bound的情况不建议开启INT8或FP8低bit通信，即不建议输入commQuantScale1和commQuantScale2，且commQuantMode输入0。（注：INT8低bit通信指输入为int8且开启commQuantScale1Optional、commQuantScale2Optional；FP8低bit通信指输入为FLOAT8_E4M3FN/FLOAT8_E5M2且开启commQuantMode=1。）
 - 空tensor支持度：
   - 不支持空tensor。
 - groupSize相关约束:
