@@ -10,10 +10,12 @@
 
 /*!
  * \file urma_p2p_benchmark.cpp
- * \brief URMA P2P基准测试Kernel入口函数（SQE级通信）
+ * \brief URMA P2P基准测试Kernel入口函数（双模式通信）
  *
- * 只支持URMA通信模式(CommMode == TILINGKEY_TPL_URAMA)
- * 使用HcclCombinOpParam上下文（通过GetHcclContext内部获取），无需传入context参数
+ * 支持URMA通信模式(CommMode == TILINGKEY_TPL_URAMA)
+ * 双模式设计:
+ *   - SQE级(P2pUrmaSqeComm): HcclCombinOpParam上下文(框架自动创建)，无需context参数
+ *   - Hcomm(P2pHcommComm): Mc2MoeContext上下文(Host端Mc2Context创建)，需要contextGM参数
  * 模板参数: uint8_t CommMode, uint8_t ArchTag
  */
 
@@ -31,7 +33,7 @@ using namespace AscendC;
 
 template<uint8_t CommMode, uint8_t ArchTag>
 __global__ __aicore__ void urma_p2p_benchmark(
-    GM_ADDR x, GM_ADDR y, GM_ADDR receiveCnt,
+    GM_ADDR context, GM_ADDR x, GM_ADDR y, GM_ADDR receiveCnt,
     GM_ADDR performanceInfo, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     // 注册Tiling数据结构，支持默认配置和A5架构
@@ -45,7 +47,8 @@ __global__ __aicore__ void urma_p2p_benchmark(
         // 只支持URMA通信模式
         if constexpr (CommMode == TILINGKEY_TPL_URAMA) {
             UrmaP2pBenchmark<DTYPE_X, DTYPE_Y> op;
-            op.Init(x, y, receiveCnt, performanceInfo, workspaceGM, &pipe, &tilingData);
+            // context: SQE模式下为nullptr(HcclCombinOpParam框架自动创建), Hcomm模式下为Mc2MoeContext GM地址
+            op.Init(x, y, receiveCnt, performanceInfo, workspaceGM, context, &pipe, &tilingData);
             op.Process();
         }
     }

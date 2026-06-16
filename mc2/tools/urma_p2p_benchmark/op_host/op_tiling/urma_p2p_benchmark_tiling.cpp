@@ -70,20 +70,22 @@ constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
 namespace optiling {
 
 // ============ 输入输出索引常量 ============
-// dst_rank_id通过属性传递，不再作为输入tensor
-constexpr uint32_t INPUT_X_INDEX = 0U;              // 输入x的索引
-constexpr uint32_t OUTPUT_Y_INDEX = 0U;             // 输出y的索引
-constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U;   // 输出receive_cnt的索引
-constexpr uint32_t OUTPUT_PERFORMANCE_INFO_INDEX = 2U;  // 输出performance_info的索引
+// context为新增的输入(Hcomm模式Mc2MoeContext, SQE模式可为空tensor)
+constexpr uint32_t INPUT_CONTEXT_INDEX = 0U;           // Mc2MoeContext通信上下文
+constexpr uint32_t INPUT_X_INDEX = 1U;                 // 输入x的索引
+constexpr uint32_t OUTPUT_Y_INDEX = 0U;                // 输出y的索引
+constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U;      // 输出receive_cnt的索引
+constexpr uint32_t OUTPUT_PERFORMANCE_INFO_INDEX = 2U; // 输出performance_info的索引
 
 // ============ 属性索引常量 ============
 constexpr uint32_t ATTR_GROUP_INDEX = 0U;           // 通信组名称
 constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U;      // 世界大小
 constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;          // 最大batch size
-constexpr uint32_t ATTR_MODE_INDEX = 3U;            // 执行模式: 0=overhead, 1=latency, 2=bandwidth
+constexpr uint32_t ATTR_MODE_INDEX = 3U;            // 执行模式: 0=overhead+latency, 1=bandwidth
 constexpr uint32_t ATTR_HCCL_BUFFER_INDEX = 4U;     // HCCL缓冲区大小
-constexpr uint32_t ATTR_DST_RANK_ID_INDEX = 5U;     // 点对点目标rank ID
-constexpr uint32_t ATTR_AIV_NUM_INDEX = 6U;         // AIV核数量
+constexpr uint32_t ATTR_COMM_ALG_INDEX = 5U;        // 通信算法: "sqe"或"hcomm"
+constexpr uint32_t ATTR_DST_RANK_ID_INDEX = 6U;     // 点对点目标rank ID
+constexpr uint32_t ATTR_AIV_NUM_INDEX = 7U;         // AIV核数量
 
 // ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
@@ -199,13 +201,23 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
     auto dstRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_DST_RANK_ID_INDEX);
+    auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMM_ALG_INDEX));
 
     group = std::string(groupPtr);
     tilingData.world_size = static_cast<int32_t>(*worldSizePtr);
     tilingData.max_bs = static_cast<int32_t>(*maxBsPtr);
     tilingData.mode = static_cast<int32_t>(*modePtr);
     tilingData.dst_rank_id = static_cast<int32_t>(*dstRankIdPtr);
-    tilingData.timing_slots = 12;  // 9个timing slot + 3个padding, 12是4的倍数满足DataCopy对齐
+
+    // 根据comm_alg设置comm_mode和timing_slots
+    // "sqe" → comm_mode=0, timing_slots=12 (9个timing slot + 3个padding)
+    // "hcomm" → comm_mode=1, timing_slots=12 (5个timing slot + 7个padding, 统一用12适配SQE最大值)
+    if (commAlgPtr != nullptr && std::strcmp(commAlgPtr, "hcomm") == 0) {
+        tilingData.comm_mode = 1;  // Hcomm WriteNbi+Drain模式
+    } else {
+        tilingData.comm_mode = 0;  // SQE级HcclCombinOpParam模式（默认）
+    }
+    tilingData.timing_slots = 12;  // 统一12个slot，适配两种模式
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
     OP_LOGD(nodeName, "worldSize = %ld", *worldSizePtr);
