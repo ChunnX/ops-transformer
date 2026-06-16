@@ -90,7 +90,7 @@ int64_t CalcCost(uint32_t basicM, uint32_t basicS2)
     uint32_t alignCoefS2 = 64U;
     uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U; // 按alignCoefM对齐，向上取整，4：移位操作实现除16
     uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U; // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
-    return static_cast<int64_t>(8U * alignBasicM + 44U * alignBasicS2 + 17U);
+    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);
 }
 
 BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
