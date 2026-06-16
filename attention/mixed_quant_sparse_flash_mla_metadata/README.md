@@ -36,7 +36,7 @@
 |max_seqlen_q|可选属性|表示Query的最长Sequence Length，默认值为0|INT32|-|
 |max_seqlen_ori_kv|可选属性|表示ori_kv的最长Sequence Length，默认值为0|INT32|-|
 |max_seqlen_cmp_kv|可选属性|表示cmp_kv的最长Sequence Length，默认值为0|INT32|-|
-|ori_topk|可选属性|预留参数，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0|INT32|-|
+|ori_topk|可选属性|预留参数，当前不生效，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0|INT32|-|
 |cmp_topk|可选属性|表示cmp_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0，当前仅支持512/1024|INT32|-|
 |rope_head_dim|可选属性|表示rope头的维度，默认值为64，当前仅支持64|INT32|-|
 |cmp_ratio|可选属性|表示对cmp_kv的压缩率，取值范围[1, 128]，默认值为1，当前仅支持4/128|INT32|-|

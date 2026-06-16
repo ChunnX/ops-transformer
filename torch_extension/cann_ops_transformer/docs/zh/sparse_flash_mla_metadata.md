@@ -57,7 +57,7 @@ sparse_flash_mla_metadata(cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_
 
 -   **max\_seqlen\_cmp\_kv** (`int`)：可选参数，表示cmp\_kv的最长Sequence Length，默认值为0。
 
--   **ori\_topk** (`int`)：可选参数，预留参数，表示ori\_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0。
+-   **ori\_topk** (`int`)：可选参数，预留参数，当前不生效，表示ori\_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0。
 
 -   **cmp\_topk** (`int`)：可选参数，表示cmp\_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0，当前仅支持512/1024。
 
