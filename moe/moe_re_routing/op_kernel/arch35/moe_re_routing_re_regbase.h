@@ -60,7 +60,8 @@ protected:
     GlobalTensor<float> srcTopkWeightGm_;
     GlobalTensor<float> dstTopkWeightGm_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> queBind_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> idxOutQue_;
+    TQue<QuePosition::VECOUT, 1> idxOutQue_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> topkWeightQue_;
     static constexpr int64_t DOUBLE_BUFFER = 2;
     static constexpr int64_t INDEX_UB_SIZE = 256;
     int64_t blockIdx_ = 0;
@@ -106,6 +107,10 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Init
                             Ops::Base::CeilAlign(tilingData_->ubFactor, static_cast<int64_t>(BLOCK_SIZE / sizeof(T))));
     this->pipe_->InitBuffer(idxOutQue_, DOUBLE_BUFFER,
                             Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(TIndex), BLOCK_SIZE / sizeof(TIndex)));
+    if (tilingData_->hasTopkWeight == 1) {
+        this->pipe_->InitBuffer(topkWeightQue_, DOUBLE_BUFFER,
+                                Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(float), BLOCK_SIZE / sizeof(float)));
+    }
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
@@ -262,7 +267,7 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Calc
         }
         LocalTensor<TIndex> expertTokenTensor = idxOutQue_.AllocTensor<TIndex>();
         Duplicate<TIndex>(expertTokenTensor, res, 1);
-        idxOutQue_.EnQue<QuePosition::VECOUT, QuePosition::GM>(expertTokenTensor);
+        idxOutQue_.EnQue(expertTokenTensor);
         expertTokenTensor = idxOutQue_.DeQue<TIndex>();
         DataCopyExtParams copyParams(1, sizeof(TIndex), 0, 0, 0);
         DataCopyPad(dstExpertTokenGm_[eIdx], expertTokenTensor, copyParams);
@@ -327,7 +332,7 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Copy
         }
         LocalTensor indexLocal = idxOutQue_.AllocTensor<int32_t>();
         CreateVecIndex(indexLocal, static_cast<int32_t>(head + loopIdx * INDEX_UB_SIZE), subRows);
-        idxOutQue_.EnQue<QuePosition::VECOUT, QuePosition::GM>(indexLocal);
+        idxOutQue_.EnQue(indexLocal);
         indexLocal = idxOutQue_.DeQue<int32_t>();
         DataCopyExtParams copyParams(1, subRows * sizeof(int32_t), 0, 0, 0);
         DataCopyPad(tokenIdxGm_[offset + loopIdx * INDEX_UB_SIZE], indexLocal, copyParams);
@@ -345,14 +350,14 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Copy
         if (loopIdx == loopCnt - 1 && rows % INDEX_UB_SIZE != 0) {
             subRows = rows % INDEX_UB_SIZE;
         }
-        LocalTensor<float> topkLocal = idxOutQue_.AllocTensor<float>();
+        LocalTensor<float> topkLocal = topkWeightQue_.AllocTensor<float>();
         DataCopyExtParams copyParams(1, subRows * sizeof(float), 0, 0, 0);
         DataCopyPadExtParams<float> padParams(false, 0, 0, 0);
         DataCopyPad(topkLocal, srcTopkWeightGm_[srcOffset + loopIdx * INDEX_UB_SIZE], copyParams, padParams);
-        idxOutQue_.EnQue(topkLocal);
-        topkLocal = idxOutQue_.DeQue<float>();
+        topkWeightQue_.EnQue(topkLocal);
+        topkLocal = topkWeightQue_.DeQue<float>();
         DataCopyPad(dstTopkWeightGm_[dstOffset + loopIdx * INDEX_UB_SIZE], topkLocal, copyParams);
-        idxOutQue_.FreeTensor(topkLocal);
+        topkWeightQue_.FreeTensor(topkLocal);
     }
 }
 
