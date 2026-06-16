@@ -113,27 +113,27 @@ def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_da
         for i in range(split_count - 10 + 1, split_count + 1):
             display_inner(i)
 
-def find_batch_and_position(act_q, x):
+def find_batch_and_position(cu_seqlens, x):
     """
     判断x属于哪个batch以及在该batch中的位置
 
     参数:
-        act_q: 前缀和列表，act_q[b_idx]表示前(b_idx+1)个batch的总长度
+        cu_seqlens: 前缀和列表, cu_seqlens[b_idx]表示前(b_idx)个batch的总长度
         x: 需要判断的数值
 
     返回:
         tuple: (batch_idx, position)
-               - batch_idx: 所属的batch索引（从0开始），超出范围则为-1
-               - position: 在该batch中的位置（从0开始），超出范围则为-1
+               - batch_idx: 所属的batch索引(从0开始)，超出范围则为-1
+               - position: 在该batch中的位置(从0开始), 超出范围则为-1
     """
-    if not act_q:
+    if not cu_seqlens:
         return (-1, -1)
     # 遍历前缀和列表查找所属批次
-    for batch_idx in range(len(act_q)):
+    for batch_idx in range(len(cu_seqlens) - 1):
         # 计算当前批次的起始位置
-        start = act_q[batch_idx - 1] if batch_idx > 0 else 0
+        start = cu_seqlens[batch_idx]
         # 判断是否在当前批次范围内
-        if start <= x < act_q[batch_idx]:
+        if start <= x < cu_seqlens[batch_idx + 1]:
             # 计算在当前批次中的位置（偏移量）
             position = x - start
             return (batch_idx, position)
@@ -173,7 +173,7 @@ def judge_value_by_isclose(real_data, data_compe):
 
 def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
                        cur_npu_output_value=None, cur_cpu_output_value=None, thres=0.0001, return_value_flag=False,
-                       output_idx_offset_bns=None, layout_query=None):
+                       output_idx_offset_bns=None, layout_query=None, cu_seqlens_q=None):
     b_idx, s1_idx, n2_idx = bsn
     max_re = 0.0
     npu_pass = True
@@ -184,10 +184,15 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
     if is_equivalent:
         pass
     else:
-        offset = output_idx_offset_bns[b_idx, 0, s1_idx]
-        if offset != 0:
-            cur_npu = cur_npu - offset.numpy()
-            cur_cpu = cur_cpu - offset.numpy()
+        if output_idx_offset is not None:
+            if layout_query == "TND":
+                cur_prefix = cu_seqlens_q[b_idx]
+                offset = np.array(output_idx_offset).flatten()[cur_prefix + s1_idx]
+            else:
+                offset = np.array(output_idx_offset)[b_idx, s1_idx]
+            offset_mask = cur_cpu != -1
+            cur_npu = np.where(offset_mask, cur_npu - offset, cur_npu)
+            cur_cpu = np.where(offset_mask, cur_cpu - offset, cur_cpu)
             npu_set = set(cur_npu)
             cpu_set = set(cur_cpu)
         value_bm = topk_value[b_idx, n2_idx, s1_idx, cur_cpu[-1]]
@@ -247,11 +252,11 @@ def trans_tnd_actseq(list):
             raise ValueError(f'TND情况下 act_seq_len 为非递减数列 act_seq_len={list}')
     return list_new
 
-def check_result(expect, result, topk_value, params, output_idx_offset_bns):
+def check_result(expect, result, topk_value, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
     layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
-    output_idx_offset_datarange, cmp_ratio, return_value, max_seqlen_q = params
+    cmp_ratio, return_value, max_seqlen_q = params
 
     if isinstance(cu_seqlens_q, int):
         cu_seqlens_q = [cu_seqlens_q]
@@ -339,10 +344,7 @@ def check_result(expect, result, topk_value, params, output_idx_offset_bns):
     for t_id in rows:
         bsn = np.unravel_index(t_id, sp)
         if layout_query == "TND":
-            if seqused_q is not None:
-                b_idx, s1_idx = find_batch_and_position(seqused_q, bsn[0])
-            else:
-                b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
+            b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
             bsn = (b_idx, s1_idx, bsn[-1])
         cur_cpu_output_value = cpu_reshape[t_id, :]
         cur_npu_output_value = npu_reshape[t_id, :]
@@ -353,7 +355,7 @@ def check_result(expect, result, topk_value, params, output_idx_offset_bns):
                                                     topk_value, bsn, diff_npu, diff_cpu,
                                                     cur_npu_output_value,
                                                     cur_cpu_output_value, thres,
-                                                    return_value, output_idx_offset_bns, layout_query)
+                                                    return_value, output_idx_offset_bns, layout_query, cu_seqlens_q)
         if not npu_pass_t:
             npu_pass = False
     end_time = time()
@@ -408,7 +410,7 @@ def check_result_return_value(expect, result, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
     layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
-    output_idx_offset_datarange, cmp_ratio, return_value, max_seqlen_q = params
+    cmp_ratio, return_value, max_seqlen_q = params
 
     if isinstance(cu_seqlens_q, int):
         cu_seqlens_q = [cu_seqlens_q]
