@@ -13,10 +13,8 @@
 namespace ops {
 class QuantCompressor : public OpDef {
 public:
-    static constexpr uint32_t ROPE_HEAD_DIM_VALUE = 64;
     static constexpr uint32_t CMP_RATIO_VALUE = 4;
     static constexpr uint32_t COFF_VALUE = 1;
-    static constexpr uint32_t ROTARY_MODE_VALUE = 1;
     static constexpr uint32_t CACHE_MODE_VALUE = 1;
     static constexpr uint32_t STATE_CACHE_STRIDE_DIM0 = 0;
     static constexpr uint32_t QUANT_MODE_VALUE = 1;
@@ -44,21 +42,6 @@ public:
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("ape")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("norm_weight")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("rope_sin")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("rope_cos")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
@@ -107,11 +90,8 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         this->Attr("quant_mode").AttrType(REQUIRED).Int(QUANT_MODE_VALUE);
-        this->Attr("rope_head_dim").AttrType(REQUIRED).Int(ROPE_HEAD_DIM_VALUE);
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(CMP_RATIO_VALUE);
         this->Attr("coff").AttrType(OPTIONAL).Int(COFF_VALUE);
-        this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
-        this->Attr("rotary_mode").AttrType(OPTIONAL).Int(ROTARY_MODE_VALUE);
         this->Attr("cache_mode").AttrType(OPTIONAL).Int(CACHE_MODE_VALUE);
         this->Attr("state_cache_stride_dim0").AttrType(OPTIONAL).Int(STATE_CACHE_STRIDE_DIM0);
         OpAICoreConfig aicore_config;

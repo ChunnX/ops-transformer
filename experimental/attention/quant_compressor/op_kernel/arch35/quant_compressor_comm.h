@@ -85,11 +85,6 @@ enum class COFF : std::uint8_t {
     OVERLAP = static_cast<std::uint8_t>(2)
 };
 
-enum class ROTARY_MODE : std::uint8_t {
-    HALF = static_cast<std::uint8_t>(1),
-    INTERLEAVE = static_cast<std::uint8_t>(2)
-};
-
 enum class CACHE_MODE : std::uint8_t {
     CONTINUOUS = static_cast<std::uint8_t>(1),
     CYCLE = static_cast<std::uint8_t>(2)
@@ -105,12 +100,11 @@ enum class TEMPLATE_ID : uint8_t {
     FULL_LOAD = 2
 };
 
-template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, ROTARY_MODE Rotary_Mode, CACHE_MODE Cache_Mode, QUANT_MODE Quant_Mode, typename... Args>
+template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, CACHE_MODE Cache_Mode, QUANT_MODE Quant_Mode, typename... Args>
 struct COMPType {
     static constexpr X_LAYOUT xLayout = X_L;
     static constexpr X_DTYPE xDtype = X_T;
     static constexpr COFF coff = C;
-    static constexpr ROTARY_MODE rotaryMode = Rotary_Mode;
     static constexpr CACHE_MODE cacheMode = Cache_Mode;
     static constexpr QUANT_MODE quantMode = Quant_Mode;
 };
@@ -190,10 +184,8 @@ struct ConstInfo {
     uint32_t hSize = 0;
     uint32_t sSize = 0;
     uint32_t headDim = 0;
-    uint32_t ropeHeadDim = 0;
     uint32_t cmpRatio = 0;
-    float normEps = 1e-6;
-    float reciprocalD = 0;
+
     uint64_t stateCacheStrideDim0 = 0;
 
     uint32_t curGroupIdx = 0;
@@ -256,29 +248,10 @@ struct RunInfo {
 
 struct Vec1RunInfo {
     // vec相关信息，一次syncAll需处理数据的起始索引
-    bool resetResFlag = false; // v1积攒N轮 是否是N轮的起始轮
     uint32_t c1v1DbIdx = 0;    // vec1 doubleBuffer索引
-    uint32_t v1v2DbIdx = 0;    // v1v2 doubleBuffer索引
     uint32_t bStart = 0;
     uint32_t sStart = 0;
     uint32_t dealTcNum = 0;
-    uint32_t dealScSize = 0;
-};
-
-struct Vec2RunInfo {
-    // uint32_t bStart = 0;
-    uint32_t v2DbIdx = 0; // v2 doubleBuffer索引
-    uint32_t sStart = 0;
-    uint32_t bEnd = 0;
-    uint32_t sEnd = 0;
-    // v2分核信息 sc是左闭右开
-    uint32_t scStart = 0;
-    uint32_t scEnd = 0;
-
-    // 增加字段
-    uint32_t bStart = 0;
-    uint32_t compressedId = 0;
-    uint32_t bCompressedId = 0;
     uint32_t dealScSize = 0;
 };
 
@@ -344,14 +317,6 @@ struct Vec1SplitInfo {
     uint32_t dLoopCount = 0;
 };
 
-struct Vec2SplitInfo {
-    uint32_t dealedScCnt = 0;
-    uint32_t preScCnt = 0;
-    uint32_t dealScNum = 0;
-    uint32_t curBStart = 0;
-    uint32_t curScStart = 0;
-};
-
 // BUFFER的字节数
 inline constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
@@ -366,19 +331,19 @@ inline constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
 
 // BLOCK和REPEAT的字节数
-inline constexpr uint64_t BYTE_BLOCK = 32UL;
+inline constexpr uint32_t BYTE_BLOCK = 32UL;
 inline constexpr uint32_t REPEAT_BLOCK_BYTE = 256U;
 
-template <typename T>
-__aicore__ inline constexpr T BlockElementNum()
+template <typename C>
+__aicore__ inline constexpr uint32_t BlockElementNum()
 {
-    return BYTE_BLOCK / sizeof(T);
+    return (BYTE_BLOCK / sizeof(C));
 }
 
-template <typename T>
-__aicore__ inline constexpr T RepeatElementNum()
+template <typename C>
+__aicore__ inline constexpr uint32_t RepeatElementNum()
 {
-    return REPEAT_BLOCK_BYTE / sizeof(T);
+    return (REPEAT_BLOCK_BYTE / sizeof(C));
 }
 // BLOCK和REPEAT的FP32元素数
 inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float); // 8
