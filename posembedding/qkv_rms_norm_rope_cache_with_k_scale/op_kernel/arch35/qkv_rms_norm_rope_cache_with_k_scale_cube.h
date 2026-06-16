@@ -110,58 +110,42 @@ private:
 
     __aicore__ inline void SetMte2ToMte1RotationReady()
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
-#endif
     }
 
     __aicore__ inline void WaitMte2ToMte1RotationReady()
     {
-#ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
-#endif
     }
 
     __aicore__ inline void SetMte1ToMmadRotationReady()
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
-#endif
     }
 
     __aicore__ inline void WaitMte1ToMmadRotationReady()
     {
-#ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
-#endif
     }
 
     __aicore__ inline void WaitMmadToMte1L0Reusable(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void SetMmadToMte1L0Reusable(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void SetMte1ToMmadL0Ready(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void WaitMte1ToMmadL0Ready(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void CopyRotationGmToL1Nz(const LocalTensor<bfloat16_t> &rotationL1Nz,

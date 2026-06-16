@@ -151,102 +151,70 @@ private:
 
     __aicore__ inline void WaitVToMte2InputBufferReusable(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void SetVToMte2InputBufferReusable(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId));
-#endif
     }
 
-    __aicore__ inline void SetMte2ToVInputReady(uint32_t bufferId)
+    __aicore__ inline void SetAndWaitMte2ToVInputReady(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + bufferId));
-#endif
-    }
-
-    __aicore__ inline void WaitMte2ToVInputReady(uint32_t bufferId)
-    {
-#ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void SetAndWaitMte2ToSSlotMappingReady()
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE2_S>(static_cast<event_t>(EVT_MTE2_TO_S_SLOT_MAPPING_READY));
         WaitFlag<HardEvent::MTE2_S>(static_cast<event_t>(EVT_MTE2_TO_S_SLOT_MAPPING_READY));
-#endif
     }
 
     __aicore__ inline void WaitMte3ToVVOutBufferReusable(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void SetMte3ToVVOutBufferReusable(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void SetVToMte3VOutReady(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void WaitVToMte3VOutReady(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void WaitMte3ToVQkOutBufferReusableByBufferId(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void SetMte3ToVQkOutBufferReusableByBufferId(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void SetVToMte3QkOutReady(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void WaitVToMte3QkOutReady(uint32_t bufferId)
     {
-#ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-#endif
     }
 
     __aicore__ inline void SetAndWaitVToMte3Al1StageReady()
     {
-#ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_A_L1_READY));
         WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_A_L1_READY));
-#endif
     }
 
     __aicore__ inline void CopyPersistentInputs()
@@ -259,8 +227,7 @@ private:
         if (tilingData_->kvHeadNum > 0U) {
             DataCopyGmToUb2D(vScale, vScaleGm_, {1U, tilingData_->kvHeadNum, tilingData_->kvHeadNum});
         }
-        SetMte2ToVInputReady(0U);
-        WaitMte2ToVInputReady(0U);
+        SetAndWaitMte2ToVInputReady(0U);
     }
 
     __aicore__ inline void PreprocessQkv(TileParam &tile, const AivSlice &slice, uint32_t inputBufferId,
@@ -273,8 +240,7 @@ private:
         CopyPreprocessInputs(slice, inputBufferId);
         SetAndWaitMte2ToSSlotMappingReady();
         BuildCacheOffsetsFromSlotMapping(tile, slice, inputBufferId);
-        SetMte2ToVInputReady(inputBufferId);
-        WaitMte2ToVInputReady(inputBufferId);
+        SetAndWaitMte2ToVInputReady(inputBufferId);
         BuildRopeBf16NzUb(tile, slice, inputBufferId, outputBufferId);
         SetAndWaitVToMte3Al1StageReady();
         CopyRopeBf16NzUbToL1Nz(tile, slice, aRotL1Nz, outputBufferId);

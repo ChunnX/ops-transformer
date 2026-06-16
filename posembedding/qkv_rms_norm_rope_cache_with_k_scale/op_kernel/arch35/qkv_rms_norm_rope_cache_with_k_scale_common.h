@@ -291,35 +291,27 @@ __aicore__ inline void DataCopyUbToGm2D(const GlobalTensor<T> &dst, const LocalT
 template <const pipe_t pipe>
 __aicore__ inline void SetAivToAic(uint64_t syncFlag)
 {
-#ifndef __CCE_KT_TEST__
     CrossCoreSetFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
-#endif
 }
 
 template <const pipe_t pipe>
 __aicore__ inline void WaitAivToAic(uint64_t syncFlag)
 {
-#ifndef __CCE_KT_TEST__
     CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag + QKV_RRC_FLAG_ID_MAX);
     CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
-#endif
 }
 
 template <const pipe_t pipe>
 __aicore__ inline void SetAicToAiv(uint64_t syncFlag)
 {
-#ifndef __CCE_KT_TEST__
     CrossCoreSetFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag + QKV_RRC_FLAG_ID_MAX);
     CrossCoreSetFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
-#endif
 }
 
 template <const pipe_t pipe>
 __aicore__ inline void WaitAicToAiv(uint64_t syncFlag)
 {
-#ifndef __CCE_KT_TEST__
     CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
-#endif
 }
 
 __aicore__ inline uint32_t GetAicCubeIndex()
