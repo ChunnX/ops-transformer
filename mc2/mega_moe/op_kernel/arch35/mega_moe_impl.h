@@ -349,7 +349,8 @@ __aicore__ inline void GroupMatmul2(
         .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
         .l1BufNum = 2
     };
-    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_256, L1_TILE_N, L0_TILE_K, 0};
+    constexpr uint32_t TILE_M = (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_M_128 : L1_TILE_M_256;
+    typename BlockMmad::BlockShape l0TileShape{TILE_M, L1_TILE_N, L0_TILE_K, 0};
     typename BlockMmad::ProblemShape matmulShape{m, n, k, 0};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
 
@@ -385,7 +386,7 @@ __aicore__ inline void GroupMatmul2(
 
     BlockScheduler scheduler(
         {m, n, k},
-        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(TILE_M), static_cast<int64_t>(L1_TILE_N))});
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
     uint32_t tileNum = scheduler.GetTileNum();
 
@@ -453,8 +454,8 @@ __aicore__ inline void GroupMatmul2(
                 WaitFlag<HardEvent::FIX_S>(0);
 
                 // AtomicAdd 通知 AIV
-                uint32_t rowGroupIdx = mLoc / L1_TILE_M_256;
-                uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m, L1_TILE_M_256);
+                uint32_t rowGroupIdx = mLoc / TILE_M;
+                uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m, TILE_M);
                 uint32_t groupCoreStart, groupCoreSize;
                 ComputeGroupRange(rowGroupIdx, rowGroupsThisExpert, blockAivNum, groupCoreStart, groupCoreSize);
                 int64_t baseOffset = static_cast<int64_t>(groupIdx) * maxRowGroupsStride
