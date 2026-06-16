@@ -24,6 +24,7 @@
 namespace MoeGatingTopK {
 using namespace AscendC;
 using MicroAPI::RegTensor;
+using MicroAPI::LoadDist;
 
 constexpr int32_t CONSTANT_TWO = 2;
 constexpr int32_t CONSTANT_THREE = 3;
@@ -1029,8 +1030,7 @@ MoeGatingTopKRegbase<T>::LargeKCoreWithNormImpl(LocalTensor<float> xSigmoidTenso
 
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg0 = MicroAPI::UpdateMask<uint32_t>(k);
-            MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                              2 * i * VL_FLOAT_SIZE + mrgSortAddr);
+            MicroAPI::DataCopy<uint32_t, DIST_DINTLV_B32>(vreg0, vreg1, 2 * i * VL_FLOAT_SIZE + mrgSortAddr);
             MicroAPI::Duplicate(vreg2, static_cast<float>(0), preg1);
             MicroAPI::DataCopyGather(vreg2, inputAddr, vreg1, preg0);
             MicroAPI::Add(vregSum, vregSum, vreg2, preg1);
@@ -1040,8 +1040,7 @@ MoeGatingTopKRegbase<T>::LargeKCoreWithNormImpl(LocalTensor<float> xSigmoidTenso
         MicroAPI::Duplicate(vreg4, vregSum, preg1);
         for (uint16_t i = 0; i < vfLoopNum; i++) {
             preg1 = MicroAPI::UpdateMask<uint32_t>(k1);
-            MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
-                                                                              mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
+            MicroAPI::DataCopy<uint32_t, DIST_DINTLV_B32>(vreg0, vreg1, mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
             MicroAPI::DataCopyGather(vreg2, inputAddr, vreg1, preg1);
             MicroAPI::Div(vregOutput, vreg2, vreg4, preg1);
             MicroAPI::Muls(vregOutput, vregOutput, routedScalingFactor, preg1);
