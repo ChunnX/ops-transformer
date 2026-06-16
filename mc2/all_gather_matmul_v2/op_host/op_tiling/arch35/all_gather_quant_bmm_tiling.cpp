@@ -87,8 +87,7 @@ bool AllGatherQuantBmmTiling::IsCapable()
         return true;
     }
     // geAType 和 geBType 为fp4时做tiling
-    if (mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::MXFP4DTYPE_SUPPORT_LIST) &&
-        mc2tiling::CheckDataTypeVaild(args_.geBType, mc2tiling::MXFP4DTYPE_SUPPORT_LIST)) {
+    if ((args_.geAType == ge::DataType::DT_FLOAT4_E2M1) && (args_.geBType == ge::DataType::DT_FLOAT4_E2M1)) {
         OP_LOGI(opName_, "Start with allgather quantbmm mxfp4 tiling.");
         isFp4_ = true;
         return true;
@@ -158,8 +157,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckX1Input()
     OP_TILING_CHECK(
         ((quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) &&
          (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) &&
-            (mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::MXFP4DTYPE_SUPPORT_LIST)) &&
-            (CheckMXFP4Input() != ge::GRAPH_SUCCESS),
+            (isFp4_) && (CheckMXFP4Input() != ge::GRAPH_SUCCESS),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Dim1", std::to_string(args_.kValue).c_str(),// TODO 换一个原因
                                               "The value of x1Dim1 must be even and divisible by 32 in mxfp4 scene"),
         return ge::GRAPH_FAILED);
@@ -394,8 +392,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckInputValid()
         "If the dtype of AType is hifp8, the value of BType must be equal to that of AType"),
         return ge::GRAPH_FAILED);
     // mxfp4: x1和x2类型应一致
-    OP_TILING_CHECK((mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::MXFP4DTYPE_SUPPORT_LIST)) &&
-                        (args_.geAType != args_.geBType),
+    OP_TILING_CHECK((isFp4_) && (args_.geAType != args_.geBType),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BType", Ops::Base::ToString(args_.geBType).c_str(),
             "If the dtype of AType is mxfp4, the value of BType must be equal to that of AType"),
         return ge::GRAPH_FAILED);
@@ -418,8 +415,7 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckInputValid()
         Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(), "The dtype of scale1 must be float32"),
         return ge::GRAPH_FAILED);
     // mxfp4: x1_scale需要为fp8e8m0
-    OP_TILING_CHECK((mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::MXFP4DTYPE_SUPPORT_LIST)) &&
-        (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0),
+    OP_TILING_CHECK((isFp4_) && (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "scale1",
         Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(), "The dtype of scale1 must be float8_e8m0"),
         return ge::GRAPH_FAILED);
