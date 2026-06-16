@@ -531,7 +531,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
         
         queryCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.headDim + 
                           runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.headDim + 
-                          runInfo.gs1Idx * constInfo.mBaseSize * constInfo.headDim;
+                          runInfo.gS1Idx * constInfo.mBaseSize * constInfo.headDim;
         
         indiceOutCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.sparseCount +
                               runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.sparseCount;
