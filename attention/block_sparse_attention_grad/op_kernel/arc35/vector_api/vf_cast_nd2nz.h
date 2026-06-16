@@ -6,11 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- * /
-
-/*!
- * \file vf_cast_transdata.h
- */
+ */
 #pragma once
 #include "kernel_tensor.h"
 namespace AscendC {
@@ -28,9 +24,7 @@ constexpr AscendC::MicroAPI::CastTrait castTraitFp322Fp16Even = {
     AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT,
 };
-/* **************************************************************************************************
- * cast + ND_2_NZ                                             *
- * ************************************************************************************************* */
+
 template <typename T1>
 __aicore__ inline void CastND2NZ(const LocalTensor<T1> &dstTensor, const LocalTensor<float> &srcTensor,
                                  const uint32_t srcM, const uint32_t srcN)
