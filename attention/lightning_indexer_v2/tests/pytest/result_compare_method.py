@@ -173,7 +173,7 @@ def judge_value_by_isclose(real_data, data_compe):
 
 def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
                        cur_npu_output_value=None, cur_cpu_output_value=None, thres=0.0001, return_value_flag=False,
-                       output_idx_offset=None, layout_query=None, cu_seqlens_q=None):
+                       output_idx_offset=None, layout_query=None, cu_seqlens_q=None, q_seq=0):
     b_idx, s1_idx, n2_idx = bsn
     max_re = 0.0
     npu_pass = True
@@ -189,7 +189,7 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
                 cur_prefix = cu_seqlens_q[b_idx]
                 offset = np.array(output_idx_offset).flatten()[cur_prefix + s1_idx]
             else:
-                offset = np.array(output_idx_offset)[b_idx, s1_idx]
+                offset = np.array(output_idx_offset).flatten()[b_idx * q_seq + s1_idx]
             offset_mask = cur_cpu != -1
             cur_npu = np.where(offset_mask, cur_npu - offset, cur_npu)
             cur_cpu = np.where(offset_mask, cur_cpu - offset, cur_cpu)
@@ -355,7 +355,7 @@ def check_result(expect, result, topk_value, params):
                                                     topk_value, bsn, diff_npu, diff_cpu,
                                                     cur_npu_output_value,
                                                     cur_cpu_output_value, thres,
-                                                    return_value, output_idx_offset, layout_query, cu_seqlens_q)
+                                                    return_value, output_idx_offset, layout_query, cu_seqlens_q, q_seq)
         if not npu_pass_t:
             npu_pass = False
     end_time = time()
