@@ -37,6 +37,7 @@ constexpr uint8_t BSA_LAYOUT_TYPE_TND = 2U;
 constexpr uint8_t BSA_PA_LAYOUT_TYPE_BNBD = 0U;
 constexpr uint8_t BSA_COMPAT_MASK_NONE = 0U;
 constexpr uint8_t BSA_COMPAT_MASK_LEFT_UP_CAUSAL = 1U;
+constexpr uint8_t BSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL = 2U;
 constexpr uint32_t BSA_COMBINE_ALIGN_BYTES = 32U;
 constexpr uint32_t BSA_K_SCALE_BYTES = sizeof(float);
 
@@ -90,7 +91,7 @@ void QuantBlockSparseAttentionTiling::FillSparseParams()
 void QuantBlockSparseAttentionTiling::FillInputParams()
 {
     const auto &info = *tilingInfo_;
-    const uint8_t compatMaskMode = (info.maskModeVal == 3U) ? BSA_COMPAT_MASK_LEFT_UP_CAUSAL : BSA_COMPAT_MASK_NONE;
+    const uint8_t compatMaskMode = (info.maskModeVal == 3U) ? BSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL : BSA_COMPAT_MASK_NONE;
     auto &inputParams = tilingData_.inputParamsRegbase;
     inputParams.set_bSize(info.bSize);
     inputParams.set_t1Size(info.qTokenNum);

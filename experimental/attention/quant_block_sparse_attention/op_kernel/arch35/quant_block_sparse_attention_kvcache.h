@@ -153,9 +153,13 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
                 runParam.goIdx * constInfo.dSizeV;
         }
         if constexpr (layout == BSALayout::TND) {
-            runParam.softmaxLseOffset = seqOffset * constInfo.n2G + 
-                                runParam.sOuterOffset * constInfo.n2G +
-                                runParam.n2oIdx * constInfo.gSize + runParam.goIdx;
+            if (constInfo.isGqa) {
+                runParam.softmaxLseOffset = runParam.n1oIdx * constInfo.t1Size + seqOffset + runParam.sOuterOffset;
+            } else {
+                runParam.softmaxLseOffset = seqOffset * constInfo.n2G +
+                                    runParam.sOuterOffset * constInfo.n2G +
+                                    runParam.n2oIdx * constInfo.gSize + runParam.goIdx;
+            }
         }
     }
 }
@@ -232,8 +236,9 @@ __aicore__ inline void AttentionMaskFullProcessingOrRequired(
 {
     int64_t offsetDiff = s1Offset - s2Offset + delta;
     if (offsetDiff + realSize - 1 < 0) {
-        // 情景三
-        sparseBlkIdx = -1;
+        // 情景三：该 sparse block 全部被 mask 掉。DN 流水仍会用 sparseBlkIdx 做 PA GM 搬运，
+        // 因此不能写成 -1；保留原 index，由 mask 阶段把该块全部置无效。
+        sparseBlkPartialMask = true;
         return;
     }
     if (offsetDiff - realSize + 1 < 0) {
