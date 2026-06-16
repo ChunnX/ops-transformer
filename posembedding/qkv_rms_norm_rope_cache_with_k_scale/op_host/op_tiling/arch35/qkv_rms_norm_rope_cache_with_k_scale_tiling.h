@@ -11,7 +11,7 @@
 #ifndef QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TILING_H_
 #define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TILING_H_
 
-#include "../op_kernel/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h"
+#include "../../../op_kernel/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h"
 #include "register/op_impl_registry.h"
 
 namespace optiling {

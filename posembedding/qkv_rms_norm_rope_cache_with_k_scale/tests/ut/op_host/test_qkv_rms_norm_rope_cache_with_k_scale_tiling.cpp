@@ -23,8 +23,8 @@
 #include "op_common/op_host/util/math_util.h"
 #include "tiling_case_executor.h"
 
-#include "../../../op_host/qkv_rms_norm_rope_cache_with_k_scale_base_tiling.h"
-#include "../../../op_host/qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
+#include "../../../op_host/op_tiling/arch35/qkv_rms_norm_rope_cache_with_k_scale_base_tiling.h"
+#include "../../../op_host/op_tiling/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
 
 namespace {
 using QkvTiling = optiling::QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleBaseTiling;

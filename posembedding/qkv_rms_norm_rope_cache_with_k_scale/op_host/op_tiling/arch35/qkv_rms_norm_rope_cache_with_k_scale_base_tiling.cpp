@@ -14,7 +14,7 @@
 #include <limits>
 #include <string>
 
-#include "../op_kernel/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
+#include "../../../op_kernel/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
 #include "log/log.h"
 #include "op_common/op_host/util/math_util.h"
 #include "securec.h"
@@ -760,9 +760,9 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogTilingData(const std::string &o
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale final tilingData: totalTokens=%lu batch=%lu qHeadNum=%lu kvHeadNum=%lu "
             "headDim=%lu blockSize=%lu coreTokenTile=%lu coreGroupNum=%lu tokenTile=%lu epsilon=%f.",
-            tilingData.totalTokens, tilingData.batch, tilingData.qHeadNum, tilingData.kvHeadNum,
-            tilingData.headDim, tilingData.blockSize, tilingData.coreTokenTile, tilingData.coreGroupNum,
-            tilingData.tokenTile, tilingData.epsilon);
+            tilingData.totalTokens, tilingData.batch, tilingData.qHeadNum, tilingData.kvHeadNum, tilingData.headDim,
+            tilingData.blockSize, tilingData.coreTokenTile, tilingData.coreGroupNum, tilingData.tokenTile,
+            tilingData.epsilon);
     OP_LOGD(opName.c_str(),
             "QkvRmsNormRopeCacheWithKScale final strides: kvCache={%lu,%lu,%lu} kScaleCache={%lu,%lu,%lu}.",
             tilingData.kvCacheStrideBlock, tilingData.kvCacheStrideHead, tilingData.kvCacheStrideToken,
