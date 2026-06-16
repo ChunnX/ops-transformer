@@ -858,15 +858,13 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::DataCopy(tokenPerExpert, tmp, num);
-        if (coreIdx == 0) {
-            __gm__ int32_t *flagAddr = reinterpret_cast<__gm__ int32_t *>(
-                shmem() + peermemInfo.offsetFlag);
-            AscendC::GlobalTensor<int32_t> recvFlag;
-            recvFlag.SetGlobalBuffer(flagAddr);
-            uint32_t count = sizeof(uint64_t) / sizeof(int32_t) * params.EP;
-            count = AlignUp(count, static_cast<uint32_t>(UB_ALIGN / sizeof(int32_t)));
-            AscendC::DataCopy(recvFlag, tmp, count);
-        }
+        __gm__ int32_t *flagAddr = reinterpret_cast<__gm__ int32_t *>(
+            shmem() + peermemInfo.offsetFlag);
+        AscendC::GlobalTensor<int32_t> recvFlag;
+        recvFlag.SetGlobalBuffer(flagAddr);
+        uint32_t count = sizeof(uint64_t) / sizeof(int32_t) * params.EP;
+        count = AlignUp(count, static_cast<uint32_t>(UB_ALIGN / sizeof(int32_t)));
+        AscendC::DataCopy(recvFlag, tmp, count);
     }
 
     CATLASS_DEVICE
