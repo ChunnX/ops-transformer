@@ -503,17 +503,13 @@ def cpu_compressor(
                 sc_data = sc_kv_state * sc_score_state
                 # reduce sum
                 sc_cmp_kv = np.sum(sc_data, axis=0, keepdims=True)
-                # RmsNorm
-                sc_cmp_kv = rms_norm(sc_cmp_kv, norm_weight, norm_eps)
-                # inplace rotary_emb
                 if bs_combine_flag == False:
-                    sc_cmp_kv[:, -rope_head_dim:] = rotary_emb(sc_cmp_kv[:, -rope_head_dim:], rope_sin[b_idx, batch_out_sc_id, :], rope_cos[b_idx, batch_out_sc_id, :], rotary_mode)
                     cmp_kv[b_idx, batch_out_sc_id, :] = sc_cmp_kv
                     cmp_kv_mask[b_idx, batch_out_sc_id, :] = 1
                 else:
-                    sc_cmp_kv[:, -rope_head_dim:] = rotary_emb(sc_cmp_kv[:, -rope_head_dim:], rope_sin[out_sum_sc_cnt, :], rope_cos[out_sum_sc_cnt, :], rotary_mode)
                     cmp_kv[out_sum_sc_cnt, :] = sc_cmp_kv
                     cmp_kv_mask[out_sum_sc_cnt, :] = 1
+
                 batch_out_sc_id = batch_out_sc_id + 1
                 out_sum_sc_cnt = out_sum_sc_cnt + 1
 
@@ -790,17 +786,20 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     # 结果精度对比
     check_succeed = True
     data_type = str(npu_out.dtype)
+    results = {}
     print("--------------------------------------------------------------check result-------------------------------------------------------------")
-    check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
+    _, results['cmp_kv'] = check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
     print("--------------------------------------------------------------check kv state update-------------------------------------------------------------")
-    check_result(cpu_kv_state[update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[update_kv].to(torch.float32), data_type)
+    _, results['kv_state_update'] = check_result(cpu_kv_state[update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[update_kv].to(torch.float32), data_type)
     print("--------------------------------------------------------------check score state update-------------------------------------------------------------")
-    check_result(cpu_score_state[update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[update_score].to(torch.float32), data_type)
+    _, results['score_state_update'] = check_result(cpu_score_state[update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[update_score].to(torch.float32), data_type)
     print("--------------------------------------------------------------check kv state origin-------------------------------------------------------------")
-    check_result(cpu_kv_state[~update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[~update_kv].to(torch.float32), data_type, 0.0)
+    _, results['kv_state_origin'] = check_result(cpu_kv_state[~update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[~update_kv].to(torch.float32), data_type, 0.0)
     print("--------------------------------------------------------------check score state origin-------------------------------------------------------------")
-    check_result(cpu_score_state[~update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[~update_score].to(torch.float32), data_type, 0.0)
-
+    _, results['score_state_origin'] = check_result(cpu_score_state[~update_score].to(torch.float32), state_cache[:, :, state_cache.shape[2] // 2:].cpu()[~update_score].to(torch.float32), data_type, 0.0)
+    print("\n============================== SUMMARY ==============================")
+    failed = [k for k, v in results.items() if v != "Pass"]
+    assert len(failed) == 0, f"FAILED checks: {failed}"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
