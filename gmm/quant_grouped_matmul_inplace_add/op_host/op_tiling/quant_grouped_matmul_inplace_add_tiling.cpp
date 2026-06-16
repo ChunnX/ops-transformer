@@ -187,7 +187,7 @@ void QuantGroupedInplaceAddTiling::PrintQuantParams()
 
 int64_t QuantGroupedInplaceAddTiling::DefaultPrintQuantParams() const
 {
-    QuantGroupedMatmulInplaceAdd::QGmmInplaceAddParams &params = tilingData_.quantGmmInplaceAddParams;
+    const auto &params = tilingData_.quantGmmInplaceAddParams;
     std::ostringstream oss;
     oss << "QGMMIAParams: groupNum = " << params.groupNum
         << ", groupListType = " << static_cast<uint32_t>(params.groupListType);
