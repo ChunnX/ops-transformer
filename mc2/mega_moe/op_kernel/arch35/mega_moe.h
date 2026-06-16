@@ -1035,5 +1035,30 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CalSendTokenCnt()
+{
+    uint32_t maxTokenNum = 200 * 1024 / (sizeof(int32_t) * params_.tilingData->k);
+    params_.expertIdxGmAddr
+    GlobalTensor<int32_t> expertIdxGmTensor;
+    expertIdxGmTensor.SetGlobalBuffer((__gm__ int32_t*)params_.expertIdxGmAddr);
+    LocalTensor<int32_t> expertIdxTensor = LocalTensor<int32_t>(TPosition::VECCALC, 0, 200 * 1024);
+    // 按轮次分核，
+    uint32_t aivUsePerRoud = aivNum_ / params_.tilingData->expertPerRank;
+    uint32_t roundSendNum = aivId_ / aivUsePerRoud;
+    uint32_t remaind = aivNum_ % params_.tilingData->expertPerRank;
+    if (roundSendNum < remaind) {
+        aivUsePerRoud += 1;
+    }
+    SplitCore(params_.tilingData->bs, aivUsePerRoud, roundSendNum * aivUsePerRoud,startTokenId,endTokenId,processTokenNum);
+    uint32_t copyRoundCnt = Ops::Base::CeilAlign(processTokenNum, maxTokenNum);
+    for (uint32_t index =0; index < copyRoundCnt; index++) {
+        uint32_t copyTokenCnt = index == copyRoundCnt - 1? (params_.tilingData->bs - (copyRoundCnt -1) * maxTokenNum) : maxTokenNum;
+        DataCopyExtParams parase{1,copyTokenCnt * sizeof(int32_t), 0,0};
+        DataCopyPad(expertIdxTensor, expertIdxGmTensor[index * maxTokenNum],parase);
+        
+    }
+}
+
 }   // namespace MegaMoeImpl
 #endif
