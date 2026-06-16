@@ -48,7 +48,8 @@ public:
     const ConstInfoX &constInfo;
 
     __gm__ uint64_t *actualSeqLengthsGmQ;
-    TPipe tPipe;
+    TPipe *tPipePtr = nullptr;
+    __aicore__ inline void SetTPipe(TPipe& pipe) { tPipePtr = &pipe; }
     TBuf<TPosition::A1> L1_P;
     TBuf<TPosition::VECIN> UB_MM2Res;
     TBuf<TPosition::VECIN> UB_stage1OutQue0;
@@ -679,7 +680,7 @@ public:
         // CopyAttentionOut(ubTensor, gmCoord);
 
         uint32_t blockCount = 8;
-        uint32_t blockLen = 128 * sizeof(OUTPUT_T);
+        uint32_t blockLen = 128;
         uint32_t srcStride = 0;
         uint32_t dstStride = 0;
         
@@ -749,7 +750,7 @@ public:
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
     }
 
-    __aicore__ inline void ProcessVec2(__ubuf__ void *mm2Res, int bmm2_id, RunInfoX runInfo)
+    __aicore__ inline void ProcessVec2(LocalTensor<float> mm2ResTensor, int bmm2_id, RunInfoX runInfo)
     {
         // bmm2ResBuf.WaitCrossCore();
         wait_intra_block(PIPE_V, bmm2_id);
@@ -766,14 +767,13 @@ public:
         // WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
 
         __ubuf__ float * dstUb = (__ubuf__ float *)UB_stage2OutBuf.Get<float>().GetPhyAddr();
-        __ubuf__ float * curUb = (__ubuf__ float *)((__ubuf__ float *)mm2Res);
+        __ubuf__ float * curUb = (__ubuf__ float *)mm2ResTensor.GetPhyAddr();
         wait_flag(PIPE_MTE3, PIPE_V, (event_t)0);
 
 
         if (unlikely(runInfo.isFirstS2Loop)) {
             // DataCopy(vec2ResUb, mmRes, vec2CalcSize);
             LocalTensor<T> stage2OutTensor = UB_stage2OutBuf.Get<T>();
-            LocalTensor<T> mm2ResTensor = UB_MM2Res.Get<T>();
             DataCopy(stage2OutTensor, mm2ResTensor, vec2CalcSize);
         } else {
             // // LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
@@ -821,28 +821,28 @@ public:
         constexpr uint32_t mm2ResultSize = 128 / 2 * 128 * 4;
 
         constexpr uint32_t mm2LeftSize = 128 * 512;
-        tPipe.InitBuffer(L1_P, mm2LeftSize * 3);
-        tPipe.InitBuffer(UB_MM2Res, mm2ResultSize);
-        tPipe.InitBuffer(UB_stage1OutQue0, stage1OutSize);
-        tPipe.InitBuffer(UB_stage1OutQue1, stage1OutSize);
-        tPipe.InitBuffer(UB_attenMask, maskSize);
-        tPipe.InitBuffer(UB_softmaxSum0, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_softmaxSum1, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_softmaxSum2, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_softmaxMax0, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_softmaxMax1, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_softmaxMax2, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_softmaxExp0, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_softmaxExp1, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_softmaxExp2, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_preLoopMax, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_preLoopSum, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_firstLoopSum, 256 * sizeof(float));
-        tPipe.InitBuffer(UB_common, 512 * sizeof(float));
-        tPipe.InitBuffer(UB_stage2OutBuf, 64 * 128 * sizeof(float));
-        tPipe.InitBuffer(UB_vselrIndexes0, 128);
-        tPipe.InitBuffer(UB_vselrIndexes1, 128);
-        tPipe.InitBuffer(UB_pScale, 256 * sizeof(float));
+        tPipePtr->InitBuffer(L1_P, mm2LeftSize * 3);
+        tPipePtr->InitBuffer(UB_MM2Res, mm2ResultSize);
+        tPipePtr->InitBuffer(UB_stage1OutQue0, stage1OutSize);
+        tPipePtr->InitBuffer(UB_stage1OutQue1, stage1OutSize);
+        tPipePtr->InitBuffer(UB_attenMask, maskSize);
+        tPipePtr->InitBuffer(UB_softmaxSum0, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_softmaxSum1, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_softmaxSum2, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_softmaxMax0, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_softmaxMax1, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_softmaxMax2, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_softmaxExp0, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_softmaxExp1, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_softmaxExp2, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_preLoopMax, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_preLoopSum, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_firstLoopSum, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_common, 512 * sizeof(float));
+        tPipePtr->InitBuffer(UB_stage2OutBuf, 64 * 128 * sizeof(float));
+        tPipePtr->InitBuffer(UB_vselrIndexes0, 128);
+        tPipePtr->InitBuffer(UB_vselrIndexes1, 128);
+        tPipePtr->InitBuffer(UB_pScale, 256 * sizeof(float));
 
         LocalTensor<uint8_t> vselrIndexes0Tensor = UB_vselrIndexes0.Get<uint8_t>();
         LocalTensor<uint8_t> vselrIndexes1Tensor = UB_vselrIndexes1.Get<uint8_t>();

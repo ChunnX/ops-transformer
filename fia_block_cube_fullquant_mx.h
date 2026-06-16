@@ -54,7 +54,8 @@ public:
     __gm__ uint8_t* attenMaskGmInt = nullptr;
     __gm__ uint32_t *fiaMetaDataGm = nullptr;
     // TBuf 声明（替代 raw pointer）
-    TPipe tPipe;
+    TPipe *tPipePtr = nullptr;
+    __aicore__ inline void SetTPipe(TPipe& pipe) { tPipePtr = &pipe; }
     TBuf<TPosition::A1> L1_Q;      // q1 double buffer: 2 * (mm1QSize + mm1QScaleSize)
     TBuf<TPosition::A1> L1_KV;     // kv1 quad buffer: 4 * (mm1KVSize + mm1KVScaleSize)
     TBuf<TPosition::A2> L0_A;      // l0a double buffer: 2 * 32KB
@@ -114,11 +115,11 @@ public:
         constexpr uint32_t mm1KVSize = 128 * 256;
         constexpr uint32_t mm1KVScaleSize = 128 * 256 / 32;
 
-        tPipe.InitBuffer(L1_Q, (mm1QSize + mm1QScaleSize) * 2);
-        tPipe.InitBuffer(L1_KV, (mm1KVSize + mm1KVScaleSize) * 4);
-        tPipe.InitBuffer(L0_A, 32 * 1024 * 2);
-        tPipe.InitBuffer(L0_B, 32 * 1024 * 2);
-        tPipe.InitBuffer(L0_C, 128 * 256 * 4 * 2);
+        tPipePtr->InitBuffer(L1_Q, (mm1QSize + mm1QScaleSize) * 2);
+        tPipePtr->InitBuffer(L1_KV, (mm1KVSize + mm1KVScaleSize) * 4);
+        tPipePtr->InitBuffer(L0_A, 32 * 1024 * 2);
+        tPipePtr->InitBuffer(L0_B, 32 * 1024 * 2);
+        tPipePtr->InitBuffer(L0_C, 128 * 256 * 4 * 2);
     }
 
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -369,9 +370,8 @@ public:
         Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
     }
 
-    __aicore__ inline void l0c_ub_mm1(uint64_t actMSize, __ubuf__ void *mm1Res, int l0c_iduse)
+    __aicore__ inline void l0c_ub_mm1(uint64_t actMSize, LocalTensor<float> mm1Res, int l0c_iduse)
     {
-        LocalTensor<float> dstTensor = ((__ubuf__ float *)mm1Res);
         LocalTensor<float> srcTensor = L0_C.Get<float>()[l0c_iduse * 128 * 256];
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
@@ -383,7 +383,7 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<float, float, PFA_CFG_ROW_MAJOR_UB>(dstTensor, srcTensor, fixpipeParams);
+        Fixpipe<float, float, PFA_CFG_ROW_MAJOR_UB>(mm1Res, srcTensor, fixpipeParams);
     }
 
     // __aicore__ inline void IterateBmm1(__ubuf__ void *mm1Res, int bmm1_id, uint32_t bIdx, uint32_t n2Idx, uint32_t gS1Idx,
@@ -456,7 +456,7 @@ public:
     //     set_intra_block(PIPE_FIX, 16 + bmm1_idused + 0);//14
 
     // }
-    __aicore__ inline void IterateBmm1(__ubuf__ void *mm1Res, int bmm1_id, uint32_t bIdx, uint32_t n2Idx, uint32_t gS1Idx,
+    __aicore__ inline void IterateBmm1(LocalTensor<float> mm1Res, int bmm1_id, uint32_t bIdx, uint32_t n2Idx, uint32_t gS1Idx,
                                         uint32_t s2Idx, uint32_t actMSize, uint32_t inner, uint32_t subLoop)
     {
         // q and qscale:gm->l1
@@ -569,11 +569,11 @@ public:
         DataCopy(vsL1Tensor, vsGmTensor, intriParams);
     }
 
-    __aicore__ inline void mm2_l1_l0a_no_trans(uint64_t actMSize, __cbuf__ void *p1, __cbuf__ void *pscale, uint32_t k, int ipuse, int l0a_iduse)
+    __aicore__ inline void mm2_l1_l0a_no_trans(uint64_t actMSize, LocalTensor<float8_e4m3_t> p1Tensor, LocalTensor<float8_e8m0_t> pscaleTensor, uint32_t k, int ipuse, int l0a_iduse)
     {
         LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>()[(l0a_iduse - 4) * 32 * 1024];
-        LocalTensor<float8_e4m3_t> aL1Tensor = ((__cbuf__ float8_e4m3_t *)p1 + k * 256 * dBaseSize);
-        LocalTensor<float8_e8m0_t> aScaleL1Tensor = ((__cbuf__ float8_e8m0_t *)pscale);
+        LocalTensor<float8_e4m3_t> aL1Tensor = p1Tensor[k * 256 * dBaseSize];
+        LocalTensor<float8_e8m0_t> aScaleL1Tensor = pscaleTensor;
 
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.ifTranspose = false;
@@ -633,9 +633,8 @@ public:
         Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
     }
 
-    __aicore__ inline void l0c_ub_mm2(uint64_t actMSize, __ubuf__ void *mm2Res, int l0c_iduse)
+    __aicore__ inline void l0c_ub_mm2(uint64_t actMSize, LocalTensor<float> mm2Res, int l0c_iduse)
     {
-        LocalTensor<float> dstTensor = ((__ubuf__ float *)mm2Res);
         LocalTensor<float> srcTensor = L0_C.Get<float>()[l0c_iduse * 128 * 256];
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
@@ -647,10 +646,10 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<float, float, PFA_CFG_ROW_MAJOR_UB>(dstTensor, srcTensor, fixpipeParams);
+        Fixpipe<float, float, PFA_CFG_ROW_MAJOR_UB>(mm2Res, srcTensor, fixpipeParams);
     }
 
-    __aicore__ inline void IterateBmm2(int ipuse, __ubuf__ void *mm2Res, __cbuf__ void *p1, int bmm2_id, __cbuf__ void *pscale, uint32_t bIdx, uint32_t n2Idx,
+    __aicore__ inline void IterateBmm2(int ipuse, LocalTensor<float> mm2Res, LocalTensor<float8_e4m3_t> p1Tensor, int bmm2_id, LocalTensor<float8_e8m0_t> pscaleTensor, uint32_t bIdx, uint32_t n2Idx,
                                         uint32_t s2Idx, uint32_t actMSize)
     {
         // set_intra_block / wait_intra_block 不变
@@ -674,7 +673,7 @@ public:
             l0a_id ++ ;
             int l0a_iduse = l0a_id % 2 + 4;  // tbuf: ID 偏移 +4
             wait_flag(PIPE_M, PIPE_MTE1, l0a_iduse);// mte1 alloc l0ab buffer
-            mm2_l1_l0a_no_trans(actMSize, p1, pscale, k, ipuse, l0a_iduse);
+            mm2_l1_l0a_no_trans(actMSize, p1Tensor, pscaleTensor, k, ipuse, l0a_iduse);
             mm2_l1_l0b_trans(ivkuse, l0a_iduse);
             set_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
             wait_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
