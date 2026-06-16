@@ -150,7 +150,28 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     const aclIntArray* constantExpertRange, int64_t k, const aclTensor* out,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize", "aclnnMoeFinalizeRoutingV2GetWorkspaceSize k is %ld", k);
+    OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize k is %ld", k);
+    if (zeroExpertRange == nullptr) {
+        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize zeroExpertRange is null");
+    } else {
+        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize zeroExpertRange is not null");
+        // OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize zeroExpertRange is [%ld,%ld]", (*zeroExpertRange)[0], (*zeroExpertRange)[1]);
+    }
+
+    if (copyExpertRange == nullptr) {
+        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize copyExpertRange is null");
+    } else {
+        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize copyExpertRange is not null");
+        // OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize copyExpertRange is [%ld,%ld]", (*copyExpertRange)[0], (*copyExpertRange)[1]);
+    }
+
+    if (constantExpertRange == nullptr) {
+        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize constantExpertRange is null");
+    } else {
+        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize constantExpertRange is not null");
+        // OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize constantExpertRange is [%ld,%ld]", (*constantExpertRange)[0], (*constantExpertRange)[1]);
+    }
+
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2,
         DFX_IN(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
@@ -210,10 +231,34 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
         CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
+    const aclTensor* xContiguous = nullptr;
+    if (xContiguous != nullptr) {
+        xContiguous = l0op::Contiguous(xOptional, uniqueExecutor.get());
+        CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    const aclTensor* alpha1Contiguous = nullptr;
+    if (alpha1Contiguous != nullptr) {
+        alpha1Contiguous = l0op::Contiguous(alpha1Optional, uniqueExecutor.get());
+        CHECK_RET(alpha1Contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    const aclTensor* alpha2Contiguous = nullptr;
+    if (alpha2Contiguous != nullptr) {
+        alpha2Contiguous = l0op::Contiguous(alpha2Optional, uniqueExecutor.get());
+        CHECK_RET(alpha2Contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    const aclTensor* vContiguous = nullptr;
+    if (vContiguous != nullptr) {
+        vContiguous = l0op::Contiguous(vOptional, uniqueExecutor.get());
+        CHECK_RET(vContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
     // 调用l0接口进行计算，传入out参数
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
                                            x2Contiguous, biasContiguous, scalesContiguous,
-                                           expertIdxContiguous, xOptional, alpha1Optional, alpha2Optional, vOptional,
+                                           expertIdxContiguous, xContiguous, alpha1Contiguous, alpha2Contiguous, vContiguous,
                                            dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange,
                                            k, out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);

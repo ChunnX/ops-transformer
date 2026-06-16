@@ -323,26 +323,6 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
     const int64_t* dropPadModePtr = attrs->GetAttrPointer<int64_t>(ATTR_DROP_PAD_MODE);
     OP_CHECK_NULL_WITH_CONTEXT(context, dropPadModePtr);
     const int64_t dropPadMode = *dropPadModePtr;
-    auto zeroExpertRangePtr = attrs->GetListInt(ATTR_ZERO_EXPERT_RANGE_IDX);
-    if (zeroExpertRangePtr == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "zeroExpertRangePtr");
-    }
-
-    auto copyExpertRangePtr = attrs->GetListInt(ATTR_COPY_EXPERT_RANGE_IDX);
-    if (copyExpertRangePtr == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "copyExpertRangePtr");
-    }
-
-    auto constantExpertRangePtr = attrs->GetListInt(ATTR_CONSTANT_EXPERT_RANGE_IDX);
-    if (constantExpertRangePtr == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "constantExpertRangePtr");
-    }
-
-    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(ATTR_K);
-    if (kPtr == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "k");
-    }
-    const int64_t k = *kPtr;
 
     auto outShape = context->GetOutputShape(INDEX_OUT);
     OP_CHECK_IF(
@@ -387,6 +367,31 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
     if (ret != ge::GRAPH_SUCCESS || earlyReturn) {
         return ret;
     }
+    
+    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(ATTR_K);
+    int64_t k = -1;
+    if (kPtr != nullptr) {
+        k = *kPtr;
+    }
+    if (scalesInputShape != nullptr && !IsUnknownRank(scalesInputShape)) {
+        int64_t scalesDim1 = scalesInputShape->GetDim(1);
+        if (kPtr != nullptr) {
+            OP_CHECK_IF(
+                k != scalesDim1,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "k",
+                    std::to_string(k).c_str(), "k must equal scales dim1"),
+                return ge::GRAPH_FAILED);
+        } else {
+            k = scalesDim1;
+        }
+    } else {
+        OP_CHECK_IF(
+            kPtr == nullptr,
+            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "k",
+                "nullptr", "k is required when scales is not provided"),
+            return ge::GRAPH_FAILED);
+    }
+
     ret = CheckOptionalInputShape(context, INDEX_IN_EXPERT_IDX, "expert_idx", outShape, &expertIdxShape, earlyReturn);
     if (ret != ge::GRAPH_SUCCESS || earlyReturn) {
         return ret;
