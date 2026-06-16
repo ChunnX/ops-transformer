@@ -1724,7 +1724,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - Q_S、KV_S仅支持64对齐
       - inputLayout仅支持TND
       - 支持PagedAttention场景和非PagedAttention场景，PagedAttention场景仅支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
-      - 不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
+      - 支持传入独立Rope，若传入Rope，Rope和attentionOut的dtype仅支持BFLOAT16
+      - 不支持alibi场景、不支持后量化、不支持D不等长场景、不支持公共前缀场景
 
 #### <span id="PostQuantChecker">后量化参数组（PostQuantChecker）</span>
 
