@@ -11,9 +11,7 @@
 
 ## 功能说明<a name="zh-cn_topic_0000002168254826_section14441124184110"></a>
 
--   API功能：
-
-    生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及 Q 和 K 的分块的索引，供后续[sparse\_flash\_mla](./sparse_flash_mla.md)算子使用。
+-   API功能：生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及 Q 和 K 的分块的索引，供后续[sparse\_flash\_mla](./sparse_flash_mla.md)算子使用。
 
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
