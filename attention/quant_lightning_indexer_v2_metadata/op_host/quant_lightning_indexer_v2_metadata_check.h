@@ -139,7 +139,7 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
             "For Atlas A2/A3, quant_mode should be 2, but got %lld", quantMode);
         // cmp_ratio 校验
         CHECK_COND((cmpRatio >= QLI_V2_CMP_RATIO_LOWER_BOUND) && (cmpRatio <= QLI_V2_CMP_RATIO_UPPER_BOUND) &&
-            (cmpRatio & (cmpRatio - 1) == 0), ACLNN_ERR_PARAM_INVALID,
+            ((cmpRatio & (cmpRatio - 1)) == 0), ACLNN_ERR_PARAM_INVALID,
             "For Atlas A2/A3, cmp_ratio should be 1/2/4/8/16/32/64/128, but got %lld", cmpRatio);
         CHECK_COND(strcmp(layoutKOptional, "PA_BBND") == 0, ACLNN_ERR_PARAM_INVALID,
             "For Atlas A2/A3, layout_k must be PA_BBND, but got %s", layoutKOptional);
