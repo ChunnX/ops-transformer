@@ -156,6 +156,14 @@ private:
     static const char *DtypeName(ge::DataType dtype);
     static ge::graphStatus ToTensorInfo(gert::TilingContext *context, const std::string &opName, const char *tensorName,
                                         size_t index, TensorContractInfo &info);
+    static void LogCacheInputShapeQuery(const std::string &opName, size_t index, bool inputIsView,
+                                        const gert::Shape &storageShapeInfo, const gert::Shape &logicalShapeInfo);
+    static ge::graphStatus FillViewCacheTensorInfo(gert::TilingContext *context, const std::string &opName,
+                                                   size_t index, ge::DataType dtype,
+                                                   const gert::Shape &logicalShapeInfo, TensorContractInfo &info);
+    static ge::graphStatus FillContiguousCacheTensorInfo(const std::string &opName, size_t index, ge::DataType dtype,
+                                                         const gert::Shape &storageShapeInfo,
+                                                         TensorContractInfo &info);
     static ge::graphStatus ToCacheTensorInfo(gert::TilingContext *context, const std::string &opName, size_t index,
                                              TensorContractInfo &info);
     static TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, size_t index);

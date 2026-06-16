@@ -671,6 +671,66 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ToTensorInfo(gert::Tili
     return ge::GRAPH_SUCCESS;
 }
 
+void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogCacheInputShapeQuery(
+    const std::string &opName, size_t index, bool inputIsView, const gert::Shape &storageShapeInfo,
+    const gert::Shape &logicalShapeInfo)
+{
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale cache input index=%zu InputIsView=%u storageRank=%u "
+            "logicalRank=%u.",
+            index, inputIsView ? 1U : 0U, static_cast<uint32_t>(storageShapeInfo.GetDimNum()),
+            static_cast<uint32_t>(logicalShapeInfo.GetDimNum()));
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillViewCacheTensorInfo(
+    gert::TilingContext *context, const std::string &opName, size_t index, ge::DataType dtype,
+    const gert::Shape &logicalShapeInfo, TensorContractInfo &info)
+{
+    const auto inputStride = context->GetInputStride(index);
+    const uint32_t inputStrideRank = inputStride == nullptr ? 0U : static_cast<uint32_t>(inputStride->GetDimNum());
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale cache input index=%zu view stride query: stridePresent=%u "
+            "strideRank=%u.",
+            index, inputStride == nullptr ? 0U : 1U, inputStrideRank);
+    if (inputStride == nullptr || inputStride->GetDimNum() == 0) {
+        OP_LOGE(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale cache input index=%zu is view but stride is missing or empty.",
+                index);
+        return ge::GRAPH_FAILED;
+    }
+
+    info.shape = logicalShapeInfo;
+    info.shapePresent = true;
+    info.stride = *inputStride;
+    info.stridePresent = true;
+    info.dtype = dtype;
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale cache input index=%zu uses view shape/stride: "
+            "shapeRank=%u strideRank=%u stride={%lld,%lld,%lld,%lld}.",
+            index, static_cast<uint32_t>(info.shape.GetDimNum()), static_cast<uint32_t>(info.stride.GetDimNum()),
+            info.stride.GetStride(0), info.stride.GetStride(1), info.stride.GetStride(2), info.stride.GetStride(3));
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillContiguousCacheTensorInfo(
+    const std::string &opName, size_t index, ge::DataType dtype, const gert::Shape &storageShapeInfo,
+    TensorContractInfo &info)
+{
+    info.shape = storageShapeInfo;
+    info.shapePresent = true;
+    OP_CHECK_IF(MakeContiguousStrideInfo(storageShapeInfo, opName, info.stride) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "make contiguous cache stride failed, input index=%zu.", index),
+                return ge::GRAPH_FAILED);
+    info.stridePresent = true;
+    info.dtype = dtype;
+    OP_LOGD(opName.c_str(),
+            "QkvRmsNormRopeCacheWithKScale cache input index=%zu uses contiguous storage shape/stride: "
+            "shapeRank=%u strideRank=%u stride={%lld,%lld,%lld,%lld}.",
+            index, static_cast<uint32_t>(info.shape.GetDimNum()), static_cast<uint32_t>(info.stride.GetDimNum()),
+            info.stride.GetStride(0), info.stride.GetStride(1), info.stride.GetStride(2), info.stride.GetStride(3));
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ToCacheTensorInfo(gert::TilingContext *context,
                                                                            const std::string &opName, size_t index,
                                                                            TensorContractInfo &info)
@@ -689,53 +749,11 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ToCacheTensorInfo(gert:
     const gert::Shape &storageShapeInfo = storageShape->GetStorageShape();
     const gert::Shape &logicalShapeInfo = storageShape->GetShape();
     const bool inputIsView = context->InputIsView(index);
-    OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale cache input index=%zu InputIsView=%u storageRank=%u "
-            "logicalRank=%u.",
-            index, inputIsView ? 1U : 0U, static_cast<uint32_t>(storageShapeInfo.GetDimNum()),
-            static_cast<uint32_t>(logicalShapeInfo.GetDimNum()));
-
+    LogCacheInputShapeQuery(opName, index, inputIsView, storageShapeInfo, logicalShapeInfo);
     if (inputIsView) {
-        const auto inputStride = context->GetInputStride(index);
-        const uint32_t inputStrideRank = inputStride == nullptr ? 0U : static_cast<uint32_t>(inputStride->GetDimNum());
-        OP_LOGD(opName.c_str(),
-                "QkvRmsNormRopeCacheWithKScale cache input index=%zu view stride query: stridePresent=%u "
-                "strideRank=%u.",
-                index, inputStride == nullptr ? 0U : 1U, inputStrideRank);
-        if (inputStride != nullptr && inputStride->GetDimNum() != 0) {
-            info.shape = logicalShapeInfo;
-            info.shapePresent = true;
-            info.stride = *inputStride;
-            info.stridePresent = true;
-            info.dtype = desc->GetDataType();
-            OP_LOGD(opName.c_str(),
-                    "QkvRmsNormRopeCacheWithKScale cache input index=%zu uses view shape/stride: "
-                    "shapeRank=%u strideRank=%u stride={%lld,%lld,%lld,%lld}.",
-                    index, static_cast<uint32_t>(info.shape.GetDimNum()),
-                    static_cast<uint32_t>(info.stride.GetDimNum()), info.stride.GetStride(0), info.stride.GetStride(1),
-                    info.stride.GetStride(2), info.stride.GetStride(3));
-            return ge::GRAPH_SUCCESS;
-        }
-        OP_LOGE(opName.c_str(),
-                "QkvRmsNormRopeCacheWithKScale cache input index=%zu is view but stride is missing or empty.",
-                index);
-        return ge::GRAPH_FAILED;
+        return FillViewCacheTensorInfo(context, opName, index, desc->GetDataType(), logicalShapeInfo, info);
     }
-
-    const gert::Shape &shape = storageShape->GetStorageShape();
-    info.shape = storageShapeInfo;
-    info.shapePresent = true;
-    OP_CHECK_IF(MakeContiguousStrideInfo(shape, opName, info.stride) != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "make contiguous cache stride failed, input index=%zu.", index),
-                return ge::GRAPH_FAILED);
-    info.stridePresent = true;
-    info.dtype = desc->GetDataType();
-    OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale cache input index=%zu uses contiguous storage shape/stride: "
-            "shapeRank=%u strideRank=%u stride={%lld,%lld,%lld,%lld}.",
-            index, static_cast<uint32_t>(info.shape.GetDimNum()), static_cast<uint32_t>(info.stride.GetDimNum()),
-            info.stride.GetStride(0), info.stride.GetStride(1), info.stride.GetStride(2), info.stride.GetStride(3));
-    return ge::GRAPH_SUCCESS;
+    return FillContiguousCacheTensorInfo(opName, index, desc->GetDataType(), storageShapeInfo, info);
 }
 
 TensorContractInfo QkvRmsNormRopeCacheWithKScaleBaseTiling::ToOptionalTensorInfo(gert::TilingContext *context,
