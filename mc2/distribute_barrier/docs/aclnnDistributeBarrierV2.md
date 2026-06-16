@@ -149,7 +149,6 @@ aclnnStatus aclnnDistributeBarrierV2(
         - timeOutOptional参数里的超时时间单位为us，建议配置5000000us，根据实际环境不同超时时间下限可能不同。
         - `epWorldSize`取值支持[2, 1024]。
 
-    
 - **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
