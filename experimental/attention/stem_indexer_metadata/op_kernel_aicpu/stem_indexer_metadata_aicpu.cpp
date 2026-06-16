@@ -178,7 +178,7 @@ bool StemIndexerMetadataCpuKernel::GenerateBaseInfo(StemIndexerBaseInfo &baseInf
     baseInfo.isCumulativeQuerySeq = false;
     baseInfo.isCumulativeKvSeq = false;
     baseInfo.actualQuerySeqSize = GetTensorDataAsInt64(qSeqLens_, batchSize);
-    baseInfo.actualKvSeqSize = GetTensorDataAsInt64(qSeqLens_, batchSize);
+    baseInfo.actualKvSeqSize = GetTensorDataAsInt64(kvSeqLens_, batchSize);
     for (size_t i = 0; i < batchSize; ++i) {
         baseInfo.actualQuerySeqSize[i] = load_balance::CeilDiv(baseInfo.actualQuerySeqSize[i], stemBlockSize_);
         baseInfo.actualKvSeqSize[i] = load_balance::CeilDiv(baseInfo.actualKvSeqSize[i], stemBlockSize_);
@@ -225,15 +225,9 @@ bool StemIndexerMetadataCpuKernel::GenMetadata(SectionStreamKResult &result)
         sliMetadata.SetFdMetadata(i, optiling::SLD_M_START_INDEX, 0U);
         sliMetadata.SetFdMetadata(i, optiling::SLD_M_NUM_INDEX, 0U);
     }
-    KERNEL_LOG_ERROR("balanceResult.sectionNum: %u", result.sectionNum);
 
-    KERNEL_LOG_ERROR("Assign FA");
     // FA Metadata Generate
     auto faResult = result.sectionFaResult[0];
-    KERNEL_LOG_ERROR("faResult.usedCoreNum: %u", faResult.usedCoreNum);
-    KERNEL_LOG_ERROR("faResult.FA_BN2_END_INDEX: %u", faResult.bN2End[0]);
-    KERNEL_LOG_ERROR("faResult.FA_M_END_INDEX: %u", faResult.gS1End[0]);
-    KERNEL_LOG_ERROR("faResult.FA_S2_END_INDEX: %u", faResult.s2End[0]);
 
     for (uint32_t i = 0; i < faResult.usedCoreNum; ++i) {
         sliMetadata.SetFaMetadata(i, optiling::SLI_CORE_ENABLE_INDEX, 1);
