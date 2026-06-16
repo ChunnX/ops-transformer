@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_noquant_kernel_base.h
@@ -24,6 +24,7 @@
 #include "flash_attn_block_cube_noquant_gqa.h"
 #include "flash_attn_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "flash_attention_noquant_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -39,7 +40,7 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
-template <typename CubeBlockType, typename VecFaBlockType>
+template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class FlashAttentionNoQuantGqaKernel {
 public:
     static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
@@ -47,6 +48,9 @@ public:
     static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
+    static constexpr bool USE_DN = CubeBlockType::USE_DN;
+    static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
+    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
@@ -73,8 +77,9 @@ public:
 
     // ===== 核间共享 buffer slots（静态 LocalTensor，无 BufferManager / BuffersPolicy）=====
     LocalTensor<uint8_t> bmm1UbSlot[2];   // bmm1 双缓冲 (UB, AIC→AIV, BOTH)
-    LocalTensor<uint8_t> bmm2UbSlot[2];   // bmm2 双缓冲 (UB, AIC→AIV, BOTH)
+    LocalTensor<uint8_t> bmm2UbSlot[2];   // bmm2 双缓冲 (UB, AIC→AIV, BOTH)，仅 BMM2_TOUB
     LocalTensor<uint8_t> l1PSlot[3];      // l1P 三缓冲 (L1, AIV→AIC, FORWARD)
+    GlobalTensor<T>      bmm2GmSlot[3];   // bmm2 三缓冲 (GM, AIC→AIV, FORWARD)，仅 !BMM2_TOUB
 
     // ===== 静态 cross-core 事件 ID（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
@@ -97,7 +102,9 @@ public:
     GlobalTensor<int32_t> seqUsedGmQ;
     GlobalTensor<int32_t> seqUsedGmKv;
     GlobalTensor<uint32_t> faMetaDataGm;
+    GlobalTensor<uint32_t> fdMetaDataGm;
     GlobalTensor<float> softmaxLseGm;
+    GlobalTensor<INPUT_T> sinkGm;
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
 
@@ -106,10 +113,12 @@ public:
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
+    VecFdBlockType vecFdBlock;
 
     uint32_t coreGS1Loops = 0U;
     uint32_t frontGS1Count = 0U;
     uint32_t invalidGS1Size = 0U;
+    uint32_t accGS1Loops = 0U;
     uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
@@ -132,6 +141,7 @@ public:
 
     // metadata
     uint32_t sectionNum_;
+    bool isFd;
     // fa metadata
     uint32_t bN2Start_;
     uint32_t bN2End_;
@@ -140,6 +150,8 @@ public:
     uint32_t s2OStart_;
     uint32_t s2OEnd_;
     uint32_t coreFirstTmpOutWsPos_;
+    // fd metadata
+    FDparamsX fdParams_;
 
     // 非tnd时不使用cuSeqLens，这里保证定义
     typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
@@ -155,7 +167,7 @@ public:
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernel()
-        : cubeBlock(constInfo), vecFaBlock(constInfo){};
+        : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
@@ -183,6 +195,7 @@ public:
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
         }
         sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
+        isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
 
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
                                      FA_AIC_CORE_NUM * 16U * sectionNum_);
@@ -194,6 +207,11 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
+            fdMetaDataGm.SetGlobalBuffer(
+            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+            FA_AIV_CORE_NUM * 16U * sectionNum_);
+            vecFaBlock.isFd = isFd;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock.InitVecBlock(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
                                         attentionOut, workspace);
@@ -215,17 +233,42 @@ public:
                                         kvSeqUsedParser);
             }
         }
+        if (isFd) {
+            if ASCEND_IS_AIV {
+                vecFdBlock.InitParams();
+                vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
+                                            this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm, keyPtr);
+                if (learnableSink != nullptr) {
+                    sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
+                    constInfo.learnableSinkFlag = true;
+                    vecFdBlock.InitLearnableSinkGm(sinkGm);
+                }
+                if (constInfo.isSoftmaxLseEnable) {
+                    softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+                    vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
+                }
+                if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                    vecFdBlock.SetCuSeqLensParsers(qCuSeqLensParser, kvCuSeqLensParser);
+                } else {
+                    vecFdBlock.SetCuSeqLensParsers(qSeqUsedParser, kvSeqUsedParser);
+                }
+            }
+        }
     }
 
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
     {
         constexpr uint32_t mm1SlotSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-        constexpr uint32_t mm2SlotSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
+        constexpr uint32_t mm2SlotSize = BMM2_TOUB ?
+            (mBaseSize / CV_RATIO * dVBaseSize * sizeof(T)) : 0U;
         constexpr uint32_t l1PSlotSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
         constexpr uint32_t bmm1UbBase  = 2U * mm2SlotSize; // bmm2 在前，bmm1 在后
 
-        bmm2UbSlot[0] = LocalTensor<uint8_t>(TPosition::VECIN, 0U,          mm2SlotSize);
-        bmm2UbSlot[1] = LocalTensor<uint8_t>(TPosition::VECIN, mm2SlotSize, mm2SlotSize);
+        // bmm2 双缓冲（仅 BMM2_TOUB）
+        if constexpr (BMM2_TOUB) {
+            bmm2UbSlot[0] = LocalTensor<uint8_t>(TPosition::VECIN, 0U,          mm2SlotSize);
+            bmm2UbSlot[1] = LocalTensor<uint8_t>(TPosition::VECIN, mm2SlotSize, mm2SlotSize);
+        }
         // bmm1 双缓冲
         bmm1UbSlot[0] = LocalTensor<uint8_t>(TPosition::VECIN, bmm1UbBase,               mm1SlotSize);
         bmm1UbSlot[1] = LocalTensor<uint8_t>(TPosition::VECIN, bmm1UbBase + mm1SlotSize, mm1SlotSize);
@@ -234,6 +277,16 @@ public:
         l1PSlot[0] = LocalTensor<uint8_t>(TPosition::A1, 0U,               l1PSlotSize);
         l1PSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1PSlotSize,      l1PSlotSize);
         l1PSlot[2] = LocalTensor<uint8_t>(TPosition::A1, 2U * l1PSlotSize, l1PSlotSize);
+
+        // bmm2 GM 三缓冲（仅 !BMM2_TOUB）
+        if constexpr (!BMM2_TOUB) {
+            int64_t mm2GmSlotElems = mBaseSize * constInfo.dBasicBlock;
+            int64_t prevCoreOffset = constInfo.aicIdx * 3 * mm2GmSlotElems;
+            bmm2GmSlot[0].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset);
+            bmm2GmSlot[1].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset + mm2GmSlotElems);
+            bmm2GmSlot[2].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset + 2 * mm2GmSlotElems);
+            workspace = workspace + constInfo.coreNum * 3 * mm2GmSlotElems * sizeof(T);
+        }
     }
 
     __aicore__ inline void InitQCuSeqLensParser()
@@ -311,6 +364,10 @@ public:
         // Kernel field constants ( FLASH_ATTN_BN2_START_INDEX=1, etc.) are 1-based, so subtract 1.
         return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
     }
+    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    {
+        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
+    }
 
     __aicore__ inline void CrossCoreBufferInit()
     {
@@ -324,8 +381,10 @@ public:
             // 使 AIC 端计数器 +2，与 AIC 端只 Wait 一次的逻辑不对称，进而在 m=0 / S2-split 尾 m 等
             // 边界场景上引起 stage1OutBuf 读到 stale bmm1 数据，导致整行 attention 输出精度异常。
             // 对应 common/op_kernel/buffer.h::Buffer<UB>::SetCrossCore() 的 AIV 分支也是单次 Set。
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
+            if constexpr (BMM2_TOUB) {
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
+            }
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
         }
@@ -338,10 +397,12 @@ public:
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0 + AIV0_AIV1_OFFSET);
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1);
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1 + AIV0_AIV1_OFFSET);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0 + AIV0_AIV1_OFFSET);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
+            if constexpr (BMM2_TOUB) {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0 + AIV0_AIV1_OFFSET);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
+            }
         }
     }
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
@@ -357,6 +418,7 @@ public:
         createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         mloop = 0;
+        accGS1Loops = 0;
         headS2Split = false;
         tailS2Split = false;
 
@@ -381,7 +443,7 @@ public:
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
                     if ASCEND_IS_AIV {
-                        // vecFaBlock.DealZeroActSeqLen(bN2Cur);
+                        vecFaBlock.DealZeroActSeqLen(bN2Cur);
                     }
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                     continue;
@@ -403,25 +465,7 @@ public:
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        if (bN2Cur > bN2End_) {
-            return false;
-        } else if (bN2Cur == bN2End_) {
-            if (gS1Cur > gS1OEnd_) {
-                return false;
-            } else if (gS1Cur == gS1OEnd_) {
-                if (s2Cur > s2OEnd_) {
-                    return false;
-                } else if (s2Cur == s2OEnd_) {
-                    return false;
-                } else {
-                    return true;
-                }
-            } else {
-                return true;
-            }
-        } else {
-            return true;
-        }
+        return ((bN2Cur != bN2End_) || (gS1Cur != gS1OEnd_) || (s2Cur != s2OEnd_));
     }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
@@ -465,8 +509,12 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
+        if (curS2Start < curS2End && s2Cur >= curS2End) {
+            return TASK_DEAL_MODE::S2_END;
+        }
+
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP_REMAINING_S2;
+            return TASK_DEAL_MODE::SKIP;
         }
 
         if (s2Cur == curS2Start) {
@@ -609,9 +657,15 @@ public:
         uint32_t l1PIdx  = runInfo.loop % 3U;
         uint32_t l1PCcId = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
         auto l1PTensor   = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
-        auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
-        cubeBlock.IterateBmm2(bmm2Tensor, CC_BMM2_0 + outSlot, CC_BMM2_0 + outSlot,
-                              l1PTensor, l1PCcId, runInfo);
+        if constexpr (BMM2_TOUB) {
+            auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
+            cubeBlock.IterateBmm2(bmm2Tensor, CC_BMM2_0 + outSlot, CC_BMM2_0 + outSlot,
+                                  l1PTensor, l1PCcId, runInfo);
+        } else {
+            cubeBlock.IterateBmm2(bmm2GmSlot[runInfo.loop % 3U],
+                                  CC_BMM2_0 + (runInfo.loop % 3U), 0U,
+                                  l1PTensor, l1PCcId, runInfo);
+        }
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
@@ -627,8 +681,13 @@ public:
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
         uint32_t outSlot = runInfo.loop % 2U;
-        auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
-        vecFaBlock.ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot, runInfo);
+        if constexpr (BMM2_TOUB) {
+            auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
+            vecFaBlock.ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot, runInfo);
+        } else {
+            vecFaBlock.ProcessVec2(bmm2GmSlot[runInfo.loop % 3U],
+                                   CC_BMM2_0 + (runInfo.loop % 3U), runInfo);
+        }
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
@@ -691,7 +750,12 @@ public:
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
-        info.actVecMSize = (info.actMSize + 1) >> 1;
+        if constexpr (USE_DN) {
+            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+        } else {
+            info.actVecMSize = (info.actMSize + 1) >> 1;
+        }
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
@@ -720,12 +784,15 @@ public:
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
-        if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
-            // 当前S2未处理完
-            if (s2Cur + 1 < s2LoopTimes) {
-                s2Cur++;
-                return;
-            }
+        // 当前S2未处理完
+        if (s2Cur + 1 < s2LoopTimes) {
+            s2Cur++;
+            return;
+        }
+
+        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
+            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
+            accGS1Loops++;
         }
 
         // 当前BN2未处理完
@@ -735,9 +802,45 @@ public:
             return;
         }
 
+        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
+            accGS1Loops++;
+        }
+
         // 当前BN2已处理完
         gS1Cur = 0;
         bN2Cur++;
+    }
+
+    __aicore__ inline void FlashDecode(uint32_t sectionIdx)
+    {
+        if (!isFd) {
+            return;
+        }
+        GetFDSectionInfo(sectionIdx);
+        vecFdBlock.InitBuffers();
+        AscendC::ICachePreLoad(2);
+        vecFdBlock.AllocEventID();
+        vecFdBlock.InitDecodeParams();
+        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
+        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
+        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                AscendC::PipeBarrier<PIPE_MTE3>();
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+        }
+        // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
+        // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
+        // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
+        // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
+        //   不会触发 aicore subErrType 0x4 timeout-trap。
+        AscendC::SyncAll();
+        vecFdBlock.FlashDecode(fdParams_);
+        AscendC::SyncAll();
+        vecFdBlock.FreeEventID();
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
@@ -751,6 +854,24 @@ public:
         coreFirstTmpOutWsPos_ = faMetaDataGm.GetValue(
             GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
     }
+
+    __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
+    {
+        fdParams_.mLen = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
+        fdParams_.fdCoreEnable = fdParams_.mLen > 0 ? 1U : 0U;
+        if (!fdParams_.fdCoreEnable) {
+            return;
+        }
+        fdParams_.fdBN2Idx =
+            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
+        fdParams_.fdMIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
+        fdParams_.fdWorkspaceIdx =
+            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
+        fdParams_.fdS2SplitNum =
+            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
+        fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+    }
+
 
     __aicore__ inline void Process()
     {
@@ -767,6 +888,9 @@ public:
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo.aicIdx < constInfo.coreNum) {
                 FlashAttention(sectionIdx);
+            }
+            if ASCEND_IS_AIV {
+                FlashDecode(sectionIdx);
             }
         }
 
