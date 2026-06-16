@@ -105,8 +105,8 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         block_table=bt, sinks=None, attn_mask=attn_mask,
         cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv,
         seqused_q=sq, seqused_kv=skv,
-        max_seqlen_q=msq if layout_q == "TND" else -1,
-        max_seqlen_kv=msk if layout_kv == "TND" else -1,
+        max_seqlen_q=msq if (p.get("max_seqlen_q") is not None or layout_q == "TND") else -1,
+        max_seqlen_kv=msk if (p.get("max_seqlen_kv") is not None or layout_kv == "TND") else -1,
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
         return_softmax_lse=p.get("return_softmax_lse", 0),
     )
