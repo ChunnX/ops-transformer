@@ -253,7 +253,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     constexpr uint32_t l0CStages = 1;
 
     using DispatchPolicy = Gemm::MmadDispatchPolicyFor_t<
-        BElement, !IS_A2_, preloadStages, l1Stages, l0AStages, l0BStages, l0CStages,
+        BElement, IS_A2_, preloadStages, l1Stages, l0AStages, l0BStages, l0CStages,
         enableUnitFlag, enableShuffleK>;
 
     using AType = Gemm::GemmType<AElement, layout::RowMajor>;
