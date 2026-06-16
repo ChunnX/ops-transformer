@@ -266,8 +266,8 @@ ge::graphStatus QSMLATilingCheck::CheckLayoutSupport(const QSMLALayout &actualLa
 ge::graphStatus QSMLATilingCheck::CheckSingleParaNumHeads() const
 {
     OP_CHECK_IF(n1Size_ < 1 || n1Size_ > 128,
-        OP_LOGE(opName_, "n1Size_ only should be in range [1, 128], but got %u.", n1Size_),
-        return ge::GRAPH_FAILED);
+            OP_LOGE(opName_, "n1Size_ only should be in range [1, 128], but got %u.", n1Size_),
+            return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
