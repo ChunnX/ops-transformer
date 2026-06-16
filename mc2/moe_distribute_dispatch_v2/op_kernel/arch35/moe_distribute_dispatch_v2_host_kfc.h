@@ -1466,6 +1466,7 @@ template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CleanTokenFlag(uint32_t serverId, uint32_t startTokenId, uint32_t cleanTokenNum)
 {
     SyncFunc<AscendC::HardEvent::V_MTE3>();
+    SyncFunc<AscendC::HardEvent::V_MTE2>();
     uint32_t cleanUpNum = blockCntPerToken_ * cleanTokenNum;
     //GlobalTensor<uint32_t> statusCntGlobal;
     GM_ADDR dataCleanAddr = GetReceiveAddrBetweenServer(serverId) + SERVER_STATE_ALIGN + startTokenId * sendTokenLengthAlign_ + SPLIT_BLOCK_DATA_SIZE;
@@ -2311,6 +2312,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                                                      beginIdx * hCommuSize_ + SPLIT_BLOCK_DATA_SIZE);  //TODO:
         uint32_t flagNum = blockCntPerTokenToExpert_ * uint32_t(copyCnt);  
         // LOG_INFO("[WaitAndFormatOutput] start");
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         bool isArrived = WaitFlag<false>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, flagNum);
         // LOG_INFO("[WaitAndFormatOutput] end");
         // LOG_INFO("WaitAndFormatOutput index:", index);
@@ -2336,7 +2338,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 //DataCopyPad(cleanGlobal[SPLIT_BLOCK_DATA_SIZE / sizeof(int32_t)], cleanTensor, cleanUoParams); //todo:需要重写
                 finishNum++;
             }
-            PipeBarrier<PIPE_ALL>();
+            //PipeBarrier<PIPE_ALL>();
         } else {
             index = (index + 1) % validNum;
         }
