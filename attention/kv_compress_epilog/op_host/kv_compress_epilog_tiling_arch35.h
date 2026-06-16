@@ -42,7 +42,6 @@ constexpr int64_t SCALE_ATTR_INDEX = 3;
 
 constexpr int64_t QUANT_MODE_GROUP_QUANT_BF16 = 0;
 constexpr int64_t QUANT_MODE_GROUP_QUANT_E8M0 = 1;
-constexpr int64_t QUANT_MODE_HIFLOAT = 2;
 
 constexpr int64_t DEFAULT_QUANT_GROUP_SIZE = 64;
 constexpr int64_t KV_CACHE_ROW_ALIGN = 128;

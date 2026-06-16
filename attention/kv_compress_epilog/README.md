@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：在KV Cache的Epilog阶段对缓存进行原地压缩更新。算子按逐组动态量化（Group-wise Dynamic Quantization）将`bfloat16`激活值`x`压缩为FP8（以`uint8`打包），并按`slot_mapping`将量化结果散写（scatter）到`cache`，`slot_mapping`中值为 -1的token跳过不处理。支持group(bf16 scale)、group(e8m0 scale)、HiFloat8三种量化模式。
+- 算子功能：在KV Cache的Epilog阶段对缓存进行原地压缩更新。算子按逐组动态量化（Group-wise Dynamic Quantization）将`bfloat16`激活值`x`压缩为FP8（以`uint8`打包），并按`slot_mapping`将量化结果散写（scatter）到`cache`，`slot_mapping`中值为 -1的token跳过不处理。支持group(bf16 scale)、group(e8m0 scale)两种量化模式。
 
 - 计算公式：
 
@@ -23,7 +23,7 @@
   scale_g = \frac{\max(|x_g|)}{FP8\_MAX}, \quad q_i = \mathrm{round}\left(\frac{x_i}{scale_g}\right)
   $$
 
-  其中`quant_mode=0/1`为group量化，`scale`分别以`bfloat16` / `float8_e8m0`存储（`round_scale=true`时`scale`向上取到2的幂）；`quant_mode=2`为HiFloat8量化，输出为$x \times x\_scale$后的hifloat8。
+  其中`quant_mode=0/1`为group量化，`scale`分别以`bfloat16` / `float8_e8m0`存储（`round_scale=true`时`scale`向上取到2的幂）。
 
 ## 参数说明
 
@@ -34,9 +34,9 @@
 | slot_mapping     | 输入           | token到cache slot的索引映射，值为 -1表示跳过该token。shape为[bs]。              | INT32、INT64  | ND       |
 | cache            | 输出           | 原地更新后的KV Cache，与输入`cache`为同一tensor。                            | UINT8         | ND       |
 | quant_group_size | 可选属性       | 量化分组大小。建议值为64。                                                 | INT           | -        |
-| quant_mode       | 可选属性       | 量化模式：0=group(bf16 scale)，1=group(e8m0 scale)，2=HiFloat8。建议值为1。 | INT           | -        |
+| quant_mode       | 可选属性       | 量化模式：0=group(bf16 scale)，1=group(e8m0 scale)。建议值为1。 | INT           | -        |
 | round_scale      | 可选属性       | group模式下是否对每组scale向上取到2的幂。建议值为true。                            | BOOL          | -        |
-| x_scale          | 可选属性       | HiFloat8模式（quant_mode=2）下的全局scale乘数。建议值为1.0。                   | FLOAT         | -        |
+| x_scale          | 可选属性       | 预留参数，当前未使用。建议值为1.0。                   | FLOAT         | -        |
 
 ## 约束说明
 

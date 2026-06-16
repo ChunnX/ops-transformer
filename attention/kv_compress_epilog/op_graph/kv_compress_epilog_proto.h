@@ -22,7 +22,7 @@ namespace ge {
 
 /**
  * @brief Compresses cached key/value data in the KV-cache epilog stage by applying
- *        group-wise dynamic quantization (FP8 group / E8M0 / HiFloat8) with scale factors. \n
+ *        group-wise dynamic quantization (FP8 group / E8M0) with scale factors. \n
  *        The quantized rows are scattered into cache for each valid slot. \n
 
  * @par Inputs:
@@ -42,9 +42,8 @@ namespace ge {
  * @li quant_mode: An optional int attribute. Quantization mode.
  *   - 0: group quantization, scale stored as bfloat16
  *   - 1: group quantization, scale stored as float8_e8m0 (default)
- *   - 2: HiFloat8 quantization (whole-row, scale attribute applied)
  * @li round_scale: An optional bool attribute. Whether to round the group scale value. Defaults to true.
- * @li x_scale: An optional float attribute. Global scale multiplier for HiFloat8 mode. Defaults to 1.0.
+ * @li x_scale: An optional float attribute. Reserved, currently unused. Defaults to 1.0.
 
  * @par Outputs:
  * @li cache: Updated key/value cache after in-place compression.
