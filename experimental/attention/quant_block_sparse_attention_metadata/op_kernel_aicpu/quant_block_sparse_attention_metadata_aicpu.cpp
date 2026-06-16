@@ -158,10 +158,9 @@ uint32_t QuantBlockSparseAttentionMetadataCpuKernel::GetRowBlockNum(uint32_t bn1
     }
     const int32_t *sparseSeqLenData = static_cast<const int32_t *>(sparseSeqLen_->GetData());
     uint32_t bIdx = bn1Idx / static_cast<uint32_t>(numHeadsQ_);
-    uint32_t n1Idx = bn1Idx % static_cast<uint32_t>(numHeadsQ_);
     uint32_t idx = bIdx * Qbmax_ + s1Idx;
     if (sparseSeqLenDimNum_ == 3U) {
-        idx = ((bIdx * static_cast<uint32_t>(numHeadsQ_) + n1Idx) * Qbmax_) + s1Idx;
+        idx = (bIdx * static_cast<uint32_t>(numHeadsQ_)) * Qbmax_ + s1Idx;
     }
     return sparseSeqLenData[idx] > 0 ? static_cast<uint32_t>(sparseSeqLenData[idx]) : 0U;
 }
