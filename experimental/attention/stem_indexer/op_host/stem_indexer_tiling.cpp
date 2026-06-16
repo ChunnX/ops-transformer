@@ -120,16 +120,16 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
         return ge::GRAPH_FAILED;
     }
 
-    // OP_CHECK_IF(*opParamInfo_.stemBlockSize != STEM_BLOCK_SIZE_LIMIT,
-    //             OP_LOGE(opName_, "stem_block_size only support %u.", STEM_BLOCK_SIZE_LIMIT),
-    //             return ge::GRAPH_FAILED);
-    // OP_CHECK_IF(*opParamInfo_.stemStride != STEM_STRIDE_LIMIT,
-    //             OP_LOGE(opName_, "stem_stride only support %u.", STEM_STRIDE_LIMIT), return ge::GRAPH_FAILED);
-    // OP_CHECK_IF(*opParamInfo_.initialBlocks != INITIAL_BLOCKS_LIMIT,
-    //             OP_LOGE(opName_, "initial_blocks only support %u.", INITIAL_BLOCKS_LIMIT),
-    //             return ge::GRAPH_FAILED);
-    // OP_CHECK_IF(*opParamInfo_.windowSize != WINDOW_SIZE_LIMIT,
-    //             OP_LOGE(opName_, "window_size only support %u.", WINDOW_SIZE_LIMIT), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*opParamInfo_.stemBlockSize != STEM_BLOCK_SIZE_LIMIT,
+                OP_LOGE(opName_, "stem_block_size only support %u.", STEM_BLOCK_SIZE_LIMIT),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*opParamInfo_.stemStride != STEM_STRIDE_LIMIT,
+                OP_LOGE(opName_, "stem_stride only support %u.", STEM_STRIDE_LIMIT), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*opParamInfo_.initialBlocks != INITIAL_BLOCKS_LIMIT,
+                OP_LOGE(opName_, "initial_blocks only support %u.", INITIAL_BLOCKS_LIMIT),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*opParamInfo_.windowSize != WINDOW_SIZE_LIMIT,
+                OP_LOGE(opName_, "window_size only support %u.", WINDOW_SIZE_LIMIT), return ge::GRAPH_FAILED);
     OP_CHECK_IF((*opParamInfo_.alpha <= ALPHA_MIN) || (*opParamInfo_.alpha > 1.0f),
                 OP_LOGE(opName_, "alpha should be in (0, 1]."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateMedium, K_BLOCK_NUM_RATE_MEDIUM_LIMIT),
@@ -276,8 +276,8 @@ ge::graphStatus StemIndexerInfoParser::GetBaseShapeInfo()
     OP_CHECK_IF(qHeadNum_ % kvHeadNum_ != 0, OP_LOGE(opName_, "q_heads should be divisible by kv_heads."),
                 return ge::GRAPH_FAILED);
     gSize_ = qHeadNum_ / kvHeadNum_;
-    // OP_CHECK_IF(headDim_ != FLATTEN_DIM_LIMIT,
-    //             OP_LOGE(opName_, "qflat last dim only support %u.", FLATTEN_DIM_LIMIT), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(headDim_ != FLATTEN_DIM_LIMIT,
+                OP_LOGE(opName_, "qflat last dim only support %u.", FLATTEN_DIM_LIMIT), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

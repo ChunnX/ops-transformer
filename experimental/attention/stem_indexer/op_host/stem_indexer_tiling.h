@@ -140,7 +140,7 @@ public:
     uint32_t gSize = 0;
     uint32_t maxQb = 0;
     uint32_t maxKb = 0;
-    uint32_t flattenDim = 0;
+    uint32_t headDim = 0;
     bool causal = true;
     uint32_t stemBlockSize = STEM_BLOCK_SIZE_LIMIT;
     uint32_t stemStride = STEM_STRIDE_LIMIT;
@@ -193,7 +193,7 @@ private:
     uint32_t gSize_ = 0;
     uint32_t maxQb_ = 0;
     uint32_t maxKb_ = 0;
-    uint32_t flattenDim_ = 0;
+    uint32_t headDim_ = 0;
     ge::DataType inputQType_ = ge::DT_BF16;
     ge::DataType inputKType_ = ge::DT_BF16;
     ge::DataType vbiasType_ = ge::DT_FLOAT;
