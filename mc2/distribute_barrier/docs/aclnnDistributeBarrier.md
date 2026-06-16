@@ -86,7 +86,7 @@ aclnnStatus aclnnDistributeBarrier(
     <td>worldSize（int64_t）</td>
     <td>输入</td>
     <td>通信域大小。</td>
-    <td>取值范围：[2,384]</td>
+    <td><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>取值范围：[2,384] 、<term>Ascend 950DT</term>取值范围：[2,1024]</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
