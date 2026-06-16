@@ -18,14 +18,14 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 
 // 模板参数
-ASCENDC_TPL_ARGS_DECL(MoeDistributeCombineTeardown,
-    ASCENDC_TPL_BOOL_DECL(TILINGKEY_TP, 0, 1),
-);
+ASCENDC_TPL_ARGS_DECL(MoeDistributeCombineTeardown);
 
 // 模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
 ASCENDC_TPL_SEL(
-    ASCENDC_TPL_BOOL_SEL(TILINGKEY_TP, 0),
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_TILING_STRUCT_SEL(MoeDistributeCombineTeardownTilingData)
+    )
 );
 
 #endif // MOE_DISTRIBUTE_COMBINE_TEARDOWN_TILING_KEY_H
