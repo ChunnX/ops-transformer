@@ -130,9 +130,9 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U* gradBiasAddr, __local_me
                 auto gradZAddrStart = gradZAddr + i * colLen;
                 AscendC::MicroAPI::LoadUnAlignPre(u0, gradZAddrStart);
                 AscendC::MicroAPI::LoadUnAlign(gradZReg, u0, gradZAddrStart);
-                AscendC::MicroAPI::Add(gradZSumReg, gradZSumReg, gradZReg)
+                AscendC::MicroAPI::Add(gradAlphaSumReg, gradZSumReg, gradZReg, maskReg)
             }
-            AscendC::MicroAPI::DataCopy(gradAlphaAddr, gradAlphaSumReg, maskReg);
+            AscendC::MicroAPI::DataCopy(gradBiasStart, gradAlphaSumReg, maskReg);
         }
     }
 }
@@ -197,8 +197,8 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U* zAddr, __local_me
                 auto normOutForwardAddrStart = normOutForwardAddr + j * colLen + i * vfLen;
                 auto zAddrStart = zAddr + j * colLen + i * vfLen;
                 U invRms = *(invRmsAddr + j);
-                AscendC::MicroAPI::LoadUnAlignPre(u1, hcBeformNormAddrStart);
-                AscendC::MicroAPI::LoadUnAlign(hcBeformNormReg, u1, hcBeformNormAddrStart);             
+                AscendC::MicroAPI::AddrReg hcBeformNormOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
+                AscendC::MicroAPI::DataCopy(hcBeformNormReg, hcBeformNormAddrStart, hcBeformNormOfst);           
                 AscendC::MicroAPI::Muls(normOutForwardReg, hcBeformNormReg, invRms, valueMaskReg);
                 AscendC::MicroAPI::Muls(zReg, normOutForwardReg, invRms, valueMaskReg);
                 AscendC::MicroAPI::Add(zReg, zReg, biasReg, valueMaskReg);
