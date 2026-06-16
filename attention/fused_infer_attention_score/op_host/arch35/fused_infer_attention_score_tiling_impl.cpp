@@ -1704,12 +1704,12 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
         uint8_t sparseType = 0;
         if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) {
             if (fiaInfo.preToken >= fiaInfo.s1Size && fiaInfo.nextToken == 0) {
-                sparseType = 3; //casual mask
+                sparseType = 3; // casual mask
             } else if (fiaInfo.preToken >= fiaInfo.s1Size && fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION &&
                        fiaInfo.nextToken >= fiaInfo.s2Size) {
                 sparseType = 0;
             } else {
-                sparseType = 4; //window mask
+                sparseType = 4; // window mask
             }
         } else if (fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) {
             sparseType = 0;
@@ -2049,7 +2049,7 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "s1OuterSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_s1OuterSize());
     OP_LOGD(fiaInfo.opName, "splitFactorSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorSize());
     OP_LOGD(fiaInfo.opName, "splitFactorTailSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorTailSize());
-    for (uint32_t i = 0; i < 48; i++) { // 48 cores 
+    for (uint32_t i = 0; i < 48; i++) { // 48 cores
         OP_LOGD(fiaInfo.opName, "bnStartIdx[%d]:%d", i,
                 faRunTilingAdapter_.multiCoreParamsRegbase.get_bnStartIdxPtr()[i]);
     }
