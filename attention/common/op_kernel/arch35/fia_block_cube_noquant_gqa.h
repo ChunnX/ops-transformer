@@ -218,17 +218,15 @@ public:
 
         keyPtr = key;
         valuePtr = value;
-        if (constInfo.isKvContinuous) {
-            ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-            __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
-            ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-            __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
+        __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
+        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
+        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
 
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_);
-        }
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+                        constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_);
+        InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+                        constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_);
 
         if constexpr (hasRope) {
             InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSizeRope,
@@ -257,8 +255,7 @@ public:
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
         if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
             qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, actualSeqLengthsGmQ,
-                                            actualLenQDims, constInfo.isQHasLeftPadding,
-                                            constInfo.queryRightPaddingSize);
+                                            actualLenQDims);
         } else if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, actualSeqLengthsGmQ, actualLenQDims);
         }
@@ -280,8 +277,7 @@ public:
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, d1, d0, blockTableGm,
                                              constInfo.maxBlockNumPerBatch);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLengthsGm, actualLenDims,
-                                             constInfo.isKVHasLeftPadding, constInfo.kvRightPaddingSize);
+            kvGmTensor.offsetCalculator.Init(batchSize, n2Size, kvSeqSize, headDim, actualSeqLengthsGm, actualLenDims);
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, actualSeqLengthsGm, actualLenDims);
         }
@@ -378,7 +374,7 @@ public:
         if (nopeDealSize > 0) {
             FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+            GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                               .n2Idx = runInfo.n2Idx,
                               .s2Idx = runInfo.s2Idx,
                               .dIdx = dOffset,
@@ -393,7 +389,7 @@ public:
                 FaL1Tensor<KV_T, L1Format::NZ> l1Tensor = {.tensor = dstTensor[offset],
                                                            .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
 
-                GmKvCoord gmCoord = {.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+                GmKvCoord gmCoord = {.bIdx = runInfo.bIdx,
                                      .n2Idx = runInfo.n2Idx,
                                      .s2Idx = runInfo.s2Idx,
                                      .dIdx = dOffset + nopeDealSize - static_cast<uint32_t>(constInfo.dSize),
@@ -411,7 +407,7 @@ public:
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
                                                 .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
 
-        GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
+        GmKvCoord gmCoord{.bIdx = runInfo.bIdx,
                           .n2Idx = runInfo.n2Idx,
                           .s2Idx = runInfo.s2Idx,
                           .dIdx = dOffset,
@@ -435,105 +431,8 @@ public:
         CopyValueSlice(dstTensor, 0, constInfo.dSizeV, runInfo);
     }
 
-    // prefix:  no rope  no page-attention
-    // copy KV & prefix with full s2 and split D
-    template <bool VALUE = false>
-    __aicore__ inline void CopyKVSliceWithPrefix(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset,
-                                                 uint32_t dRealSize, RunInfoX &runInfo)
-    {
-        FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U)};
-
-        uint32_t s2DealSize = runInfo.actSingleLoopS2Size;
-        uint32_t s2StartIdx = runInfo.s2Idx;
-        uint32_t s2EndIdx = runInfo.s2Idx + s2DealSize;
-
-        uint32_t prefixDealSize =
-            constInfo.actualKVPrefixSize > s2StartIdx ? (constInfo.actualKVPrefixSize - s2StartIdx) : 0U;
-        prefixDealSize = s2DealSize < prefixDealSize ? s2DealSize : prefixDealSize;
-
-        uint32_t normalDealSize =
-            s2EndIdx > constInfo.actualKVPrefixSize ? (s2EndIdx - constInfo.actualKVPrefixSize) : 0U;
-        normalDealSize = s2DealSize < normalDealSize ? s2DealSize : normalDealSize;
-
-        // prefix
-        if (prefixDealSize > 0) {
-            GmKvCoord gmCoord{.bIdx = 0U,
-                              .n2Idx = runInfo.n2Idx,
-                              .s2Idx = s2StartIdx,
-                              .dIdx = dOffset,
-                              .s2DealSize = prefixDealSize,
-                              .dDealSize = dRealSize};
-            copyKvGmToL1(l1Tensor, VALUE ? valuePrefixGm : keyPrefixGm, gmCoord);
-        }
-
-        // normal
-        if (normalDealSize > 0) {
-            GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0U,
-                              .n2Idx = runInfo.n2Idx,
-                              .s2Idx = (uint32_t)(constInfo.actualKVPrefixSize > s2StartIdx ?
-                                                      0U :
-                                                      (s2StartIdx - constInfo.actualKVPrefixSize)),
-                              .dIdx = dOffset,
-                              .s2DealSize = normalDealSize,
-                              .dDealSize = dRealSize};
-            l1Tensor.tensor = dstTensor[BUFFER_SIZE_BYTE_32B / sizeof(KV_T) * prefixDealSize];
-            copyKvGmToL1(l1Tensor, VALUE ? valueGm : keyGm, gmCoord);
-        }
-    }
-
-    __aicore__ inline void CopyKeySliceWithPrefix(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset,
-                                                  uint32_t dRealSize, RunInfoX &runInfo)
-    {
-        CopyKVSliceWithPrefix<true>(dstTensor, dOffset, dRealSize, runInfo);
-    }
-
-    __aicore__ inline void CopyValueSliceWithPrefix(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset,
-                                                    uint32_t dRealSize, RunInfoX &runInfo)
-    {
-        CopyKVSliceWithPrefix<false>(dstTensor, dOffset, dRealSize, runInfo);
-    }
-
-    // 全量拷贝
-    __aicore__ inline void CopyKeyTileWithPrefix(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
-    {
-        CopyKVSliceWithPrefix<true>(dstTensor, 0, constInfo.dSize, runInfo);
-    }
-
-    __aicore__ inline void CopyValueTileWithPrefix(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo)
-    {
-        CopyKVSliceWithPrefix<false>(dstTensor, 0, constInfo.dSizeV, runInfo);
-    }
-
-    __aicore__ inline void UpdateKey(uint32_t bIdx)
-    {
-        ListTensorDesc keyListTensorDesc((__gm__ void *)(this->keyPtr));
-        __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(this->keyPtr, bIdx);
-        keyGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key_);
-        keyGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize, actualSeqLengthsGm,
-                                    constInfo.actualSeqLenKVSize);
-    }
-
-    __aicore__ inline void UpdateValue(uint32_t bIdx)
-    {
-        ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
-        __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
-        uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr, bIdx);
-        valueGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
-        valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize, actualSeqLengthsGm,
-                                      constInfo.actualSeqLenKVSize);
-    }
-
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateKey(runInfo.bIdx);
-            }
-        }
-
         if constexpr (dBaseSize > 256) {
             IterateBmm1NdL1SplitK(outputBuf, runInfo);
             return;
@@ -811,12 +710,6 @@ public:
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
-        if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateValue(runInfo.bIdx);
-            }
-        }
-
         if constexpr ((uint32_t)dVTemplateType > 256 || (uint32_t)dTemplateType > 256) {
             IterateBmm2L1SplitN(outputBuf, inputBuf, runInfo);
         } else {
