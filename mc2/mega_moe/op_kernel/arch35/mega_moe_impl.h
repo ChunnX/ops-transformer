@@ -286,7 +286,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 // =================================================================================================
 // 量化模式：AIC 计算结果写入 GM，通过 AtomicAdd 通知 AIV；AIV 不参与计算
 // 非量化模式：AIC 计算结果写入 UB，通过 pingpong 双缓冲通知 AIV；AIV 执行 CombineTokens
-template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, 
+template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
@@ -449,8 +449,8 @@ __aicore__ inline void GroupMatmul2(
             } else {
                 // 量化：输出到 GM
                 rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.rowGroupCompletePtr);
-                auto gmC = Te::MakeTensor(
-                    Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
+                auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
+                    reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
                 auto gmBlockC = gmC.Slice(
                     Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 
@@ -484,7 +484,8 @@ __aicore__ inline void GroupMatmul2(
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
                 AscendC::GlobalTensor<int32_t> tripleGm;
                 int32_t lenTile = Get<M_VALUE>(actualShape);
-                LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECCALC, TRIPLE_TENSOR_ADDR, lenTile * TRIPLE_SIZE);
+                LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(
+                    TPosition::VECCALC, TRIPLE_TENSOR_ADDR, lenTile * TRIPLE_SIZE);
                 tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
                     (groupCnt + mLoc) * TRIPLE_SIZE * sizeof(int32_t)));
                 AscendC::DataCopy(tripleTensor, tripleGm, lenTile * TRIPLE_SIZE);
