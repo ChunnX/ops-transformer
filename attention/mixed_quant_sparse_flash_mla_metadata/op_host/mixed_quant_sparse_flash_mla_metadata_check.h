@@ -65,9 +65,9 @@ aclDataType GetDataTypeMqsmla(const aclTensor *tensor)
 }
 
 aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenOriKv, int64_t maxSeqlenCmpKv,
-                                  int64_t numHeadsQ, int64_t numHeadsKv, int64_t quantMode, int64_t oriTopk,
-                                  int64_t cmpTopk, int64_t ropeHeadDim, int64_t cmpRatio, int64_t oriMaskMode,
-                                  int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
+                                  int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
+                                  int64_t oriTopk, int64_t cmpTopk, int64_t ropeHeadDim, int64_t cmpRatio,
+                                  int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
                                   const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv,
                                   bool hasCmpKv, uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion)
 {
@@ -100,6 +100,11 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
     // num_heads_kv: 1
     if (numHeadsKv != 1) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_kv should only be 1, but got %lld", numHeadsKv);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // head_dim: 512
+    if (headDim != 512) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "head_dim should only be 512, but got %lld", headDim);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // quant_mode
@@ -586,8 +591,8 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
                                const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, uint32_t aicCoreNum,
                                uint32_t aivCoreNum, const char *socVersion, const aclTensor *metaData)
 {
-    if (CheckSingleParamMqsmla(batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, numHeadsQ, numHeadsKv, quantMode,
-                              oriTopk, cmpTopk, ropeHeadDim, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft,
+    if (CheckSingleParamMqsmla(batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, numHeadsQ, numHeadsKv, headDim,
+                              quantMode, oriTopk, cmpTopk, ropeHeadDim, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft,
                               oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, aicCoreNum,
                               aivCoreNum, socVersion) == ACLNN_SUCCESS &&
         CheckExistenceMqsmla(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedOriKvOptional,
