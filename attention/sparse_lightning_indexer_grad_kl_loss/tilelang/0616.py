@@ -171,8 +171,8 @@ def tilelang_grad_kl_loss_single_kernel(
     d_num_query_index = DQueryIndex // k_block
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
-
     v3_chunks = Nidx1 // 4
+
     @T.prim_func
     def main(
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
@@ -481,29 +481,33 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("FIX", 4)
 
             # ============================================================
-            # C scope 3: dKeyIndex matmul (reluGrad^T @ queryIndex)
-            # Each core processes its own K block, writes to contiguous region
+            # C scope 3: dKeyIndex = reluGrad^T @ QueryIndex (explicit transpose, no transpose_A)
+            # Each core processes its own K block, writes contiguous region
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(4)
 
-                RG3_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
-                QI3_L1 = T.alloc_L1((Nidx1, BLOCK_K), input_dtype)
-                DK3_L0C = T.alloc_L0C((n_block, BLOCK_K), calc_dtype)
+                RG_T_L1 = T.alloc_L1((n_block, Nidx1), input_dtype)
+                QI_L1 = T.alloc_L1((Nidx1, BLOCK_K), input_dtype)
+                DK_L0C = T.alloc_L0C((n_block, BLOCK_K), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
-                        T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG3_L1)
-                        T.copy(queryIndex[bz, s1_row, 0:Nidx1, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], QI3_L1)
-                        T.gemm_v0(RG3_L1, QI3_L1, DK3_L0C, transpose_A=True, init=True)
-                        T.copy(DK3_L0C, dKeyIndexFlat[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                        # Explicit transpose: copy each column of reluGradRes to a row of RG_T_L1
+                        for j in T.serial(n_block):
+                            T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block + j], RG_T_L1[j, 0:Nidx1])
+                        T.copy(QueryIndex[bz, s1_row, 0:Nidx1, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], QI_L1)
+                        T.gemm_v0(RG_T_L1, QI_L1, DK_L0C, transpose_A=False, init=True)
+                        T.copy(DK_L0C, dKeyIndexFlat[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
 
     return main
 
 
+
+# ==============================================================================
 # Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
 # ==============================================================================
-def _preprocess_gather(key, key_index, key_rope, sparse_indices, B, S1, S2, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, dtype):
+def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, K, DQuery, DQueryIndex):
     device = key.device
     dtype = key.dtype
 
@@ -520,19 +524,10 @@ def _preprocess_gather(key, key_index, key_rope, sparse_indices, B, S1, S2, N2, 
     idx_ki = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQueryIndex)
     gather_key_index = torch.gather(key_index_2d, 1, idx_ki).reshape(B, S1, K, DQueryIndex).contiguous()
 
-    # Rope gather -- merged with key gather, same sparse_indices
-    if key_rope is not None:
-        key_rope_2d = key_rope[:, :, 0, :]
-        idx_rope = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
-        gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig).contiguous()
-        gather_key_rope.mul_(valid_mask)
-    else:
-        gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=dtype, device=key.device)
-
     gather_key.mul_(valid_mask)
     gather_key_index.mul_(valid_mask)
 
-    return gather_key, gather_key_index, gather_key_rope
+    return gather_key, gather_key_index
 
 
 # ==============================================================================
@@ -674,16 +669,32 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_gather_start = torch.npu.Event(enable_timing=True)
             _t_gather_end = torch.npu.Event(enable_timing=True)
             _t_gather_start.record()
-        d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
-        gather_key, gather_key_index, gather_key_rope = _preprocess_gather(
-            key, key_index, key_rope, sparse_indices,
-            B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, query.dtype,
+        gather_key, gather_key_index = _preprocess_gather(
+            key, key_index, sparse_indices,
+            B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex,
         )
         if _PROFILE:
             _t_gather_end.record()
 
         gather_key_index_t = gather_key_index.permute(0, 1, 3, 2).contiguous()
 
+        if _PROFILE:
+            _t_rope_start = torch.npu.Event(enable_timing=True)
+            _t_rope_end = torch.npu.Event(enable_timing=True)
+            _t_rope_start.record()
+        d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
+        if query_rope is not None and key_rope is not None:
+            _sparse_idx_rope = sparse_indices[:, :, 0, :].clamp(min=0)
+            key_rope_2d = key_rope[:, :, 0, :]
+            idx_rope = _sparse_idx_rope.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
+            gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig).contiguous()
+            _valid_mask_rope = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1).to(query.dtype)
+            gather_key_rope.mul_(_valid_mask_rope)
+        else:
+            gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=query.dtype, device=query.device)
+
+        if _PROFILE:
+            _t_rope_end.record()
 
         # Pad rope dims to k_block alignment to avoid partial T.copy in kernel
         d_rope = ((d_rope_orig + BLOCK_K - 1) // BLOCK_K) * BLOCK_K if d_rope_orig > 0 else 0
@@ -778,9 +789,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         if _PROFILE:
             torch.npu.synchronize()
             g_ms = _t_gather_start.elapsed_time(_t_gather_end)
+# r_ms merged
             k_ms = _t_kernel_start.elapsed_time(_t_kernel_end)
             s_ms = _t_scatter_start.elapsed_time(_t_scatter_end)
-            print(f"[PROFILE] gather={g_ms:.3f}ms kernel={k_ms:.3f}ms scatter={s_ms:.3f}ms total={g_ms+k_ms+s_ms:.3f}ms")
+            print(f"[PROFILE] gather={g_ms:.3f}ms rope_gather=(merged) kernel={k_ms:.3f}ms scatter={s_ms:.3f}ms total={g_ms+k_ms+s_ms:.3f}ms")
 
         return d_query_index, d_key_index, d_weight, loss_tensor
 
