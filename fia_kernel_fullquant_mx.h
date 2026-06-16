@@ -66,15 +66,11 @@ public:
     using ConstInfoX = typename CubeBlockType::ConstInfoX;
 
     // CV buffers
-    // BufferManager<BufferType::GM> gmBufferManager;
-    // BufferManager<BufferType::UB> ubBufferManager;
-    // BufferManager<BufferType::L1> l1BufferManager;
-    // BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
-    // BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    // BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
-    // BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-    __ubuf__ void *mm1Res[2], *mm2Res;
-    __cbuf__ void *p1[3], *pscale;
+    TPipe tPipe;
+    TBuf<TPosition::A1> L1_P0, L1_P1, L1_P2;
+    TBuf<TPosition::A1> L1_PScale;
+    TBuf<TPosition::VECIN> UB_MM1Res0, UB_MM1Res1;
+    TBuf<TPosition::VECIN> UB_MM2Res;
     int bmm1_id{0};
     int bmm2_id{4};
 
@@ -165,23 +161,17 @@ public:
     {
         constexpr uint32_t mm2LeftSize = 128 * 512;
         constexpr uint32_t pScaleSize = 128 * 512 / 32;
-        // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        p1[0] = (__cbuf__ void *)get_imm(0);
-        p1[1] = (__cbuf__ void *)get_imm(mm2LeftSize);
-        p1[2] = (__cbuf__ void *)get_imm(mm2LeftSize * 2);
-        pscale = (__cbuf__ void *)get_imm(mm2LeftSize * 3);
+        // 保存p结果的L1内存，triple buffer
+        tPipe.InitBuffer(L1_P0, mm2LeftSize);
+        tPipe.InitBuffer(L1_P1, mm2LeftSize);
+        tPipe.InitBuffer(L1_P2, mm2LeftSize);
+        tPipe.InitBuffer(L1_PScale, pScaleSize);
 
         constexpr uint32_t mm1ResultSize = 128 / 2 * 512 * 4 / 2;
         constexpr uint32_t mm2ResultSize = 128 / 2 * 128 * 4;
-        mm1Res[0] = (__ubuf__ void *)get_imm(0); 
-        mm1Res[1] = (__ubuf__ void *)get_imm(mm1ResultSize);
-        mm2Res = (__ubuf__ void *)get_imm(mm1ResultSize * 2);
-
-        if ASCEND_IS_AIC{
-            int64_t repeatBit = (static_cast<uint64_t>(128 * 512 / 32) << 16) |
-                            (static_cast<uint64_t>(0) << 32) | 1;
-            create_cbuf_matrix((__cbuf__ int16_t * )pscale, repeatBit, GetScalarBitcodeToHalf(0x7f7f));
-        }
+        tPipe.InitBuffer(UB_MM1Res0, mm1ResultSize);
+        tPipe.InitBuffer(UB_MM1Res1, mm1ResultSize);
+        tPipe.InitBuffer(UB_MM2Res, mm2ResultSize);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -336,17 +326,17 @@ public:
     }
 
     __aicore__ inline void prefree_l0ab(){
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)0);
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)1);
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)2);
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)3);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)4);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)5);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)6);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)7);
     }
 
     __aicore__ inline void postalloc_l0ab(){
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)0);
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)1);
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)2);
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)3);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)4);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)5);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)6);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)7);
     }
 
     __aicore__ inline void postalloc_l0c(){
@@ -654,24 +644,28 @@ public:
         // }
         // printf("\n");
         if (runInfo[loop % 3]) {
+            // p1 triple buffer 解析
+            __cbuf__ void *p1Ptrs[3] = {L1_P0.Get<void*>(), L1_P1.Get<void*>(), L1_P2.Get<void*>()};
+            __ubuf__ void *mm1ResPtrs[2] = {UB_MM1Res0.Get<void*>(), UB_MM1Res1.Get<void*>()};
             for (uint32_t subLoop = 0; subLoop < 2; ++subLoop) {
                 bmm1_id ++;
                 if ASCEND_IS_AIC {
-                    cubeBlock.IterateBmm1(mm1Res[subLoop], bmm1_id % 2, bIdxp[loop % 3], n2Idxp[loop % 3], 
+                    cubeBlock.IterateBmm1(mm1ResPtrs[subLoop], bmm1_id % 2, bIdxp[loop % 3], n2Idxp[loop % 3],
                                     gS1Idxp[loop % 3], s2Idxp[loop % 3], actMSizexp[loop % 3], inner, subLoop);
                 } else {
-                    vecFaBlock.ProcessVec1(p1[loop % 3], mm1Res[subLoop], bmm1_id % 2, loop % 3, inner,
+                    vecFaBlock.ProcessVec1(p1Ptrs[loop % 3], mm1ResPtrs[subLoop], bmm1_id % 2, loop % 3, inner,
                                             loopIdx[loop % 3], mloopIdx[loop % 3], subLoop);
                 }
             }
         }
         if (loop >= PRELOAD_N) {
             if (runInfoNegN.isValid) {
+                __cbuf__ void *p1Ptrs[3] = {L1_P0.Get<void*>(), L1_P1.Get<void*>(), L1_P2.Get<void*>()};
                 if ASCEND_IS_AIC {
-                    cubeBlock.IterateBmm2((loop - 2) % 3, mm2Res, p1[(loop - 2) % 3], bmm2_id, pscale, 
+                    cubeBlock.IterateBmm2((loop - 2) % 3, UB_MM2Res.Get<void*>(), p1Ptrs[(loop - 2) % 3], bmm2_id, L1_PScale.Get<void*>(),
                                             bIdxp[(loop - 2) % 3], n2Idxp[(loop - 2) % 3], s2Idxp[(loop - 2) % 3], actMSizexp[(loop - 2) % 3]);
                 } else {
-                    vecFaBlock.ProcessVec2(mm2Res, bmm2_id, runInfoNegN);
+                    vecFaBlock.ProcessVec2(UB_MM2Res.Get<void*>(), bmm2_id, runInfoNegN);
                 }
                 runInfoNegN.isValid = false;
                 runInfo[(loop - 2) % 3] = false;

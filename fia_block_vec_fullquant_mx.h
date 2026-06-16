@@ -48,20 +48,31 @@ public:
     const ConstInfoX &constInfo;
 
     __gm__ uint64_t *actualSeqLengthsGmQ;
-    __ubuf__ void *stage1OutQue[2];
-    __ubuf__ void *stage2OutBuf;
-    __ubuf__ void *attenMaskUB[2];
-    __ubuf__ void *softmaxSumUB[3];
-    __ubuf__ void *softmaxMaxUB[3];
-    __ubuf__ void *softmaxExpUB[3];
-    __ubuf__ void *preLoopMaxUB;
-    __ubuf__ void *preLoopSumUB;
-    __ubuf__ void *firstLoopSumUB;
-    __ubuf__ void *commonUB;
-    __ubuf__ uint8_t *vselrIndexesUB[4];
+    TPipe tPipe;
+    TBuf<TPosition::A1> L1_P;
+    TBuf<TPosition::VECIN> UB_MM2Res;
+    TBuf<TPosition::VECIN> UB_stage1OutQue0;
+    TBuf<TPosition::VECIN> UB_stage1OutQue1;
+    TBuf<TPosition::VECIN> UB_stage2OutBuf;
+    TBuf<TPosition::VECIN> UB_attenMask;
+    TBuf<TPosition::VECIN> UB_softmaxSum0;
+    TBuf<TPosition::VECIN> UB_softmaxSum1;
+    TBuf<TPosition::VECIN> UB_softmaxSum2;
+    TBuf<TPosition::VECIN> UB_softmaxMax0;
+    TBuf<TPosition::VECIN> UB_softmaxMax1;
+    TBuf<TPosition::VECIN> UB_softmaxMax2;
+    TBuf<TPosition::VECIN> UB_softmaxExp0;
+    TBuf<TPosition::VECIN> UB_softmaxExp1;
+    TBuf<TPosition::VECIN> UB_softmaxExp2;
+    TBuf<TPosition::VECIN> UB_preLoopMax;
+    TBuf<TPosition::VECIN> UB_preLoopSum;
+    TBuf<TPosition::VECIN> UB_firstLoopSum;
+    TBuf<TPosition::VECIN> UB_common;
+    TBuf<TPosition::VECIN> UB_vselrIndexes0;
+    TBuf<TPosition::VECIN> UB_vselrIndexes1;
+    TBuf<TPosition::VECIN> UB_pScale;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
 
-    __ubuf__ float * pScaleUb;
     __gm__ uint8_t* attenMaskGmInt;
     __gm__ OUTPUT_T* attentionOutGm;
     int ikv{-1};
@@ -117,9 +128,15 @@ public:
                 256 * 128 * subLoop;
         //set_mark(0x11223390);
         //set_mark(dstOffset);
-        copy_ubuf_to_cbuf((__cbuf__ void*)((__cbuf__ float8_e4m3_t *)p1 + dstOffset), 
-                          (__ubuf__ void*)((__ubuf__ float8_e4m3_t *)stage1OutQue[createdTaskCount]), 
-                           0, 8, (uint16_t)16, (uint16_t)49, (uint16_t)112);
+        constexpr uint32_t stage1OutQueSize = 16640;
+        LocalTensor<float8_e4m3_t> dstTensor = L1_P.Get<float8_e4m3_t>()[dstOffset];
+        LocalTensor<float8_e4m3_t> srcTensor = UB_stage1OutQue0.Get<float8_e4m3_t>()[createdTaskCount * stage1OutQueSize];
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = 8;
+        dataCopyParams.blockLen = 16;
+        dataCopyParams.srcStride = 49;
+        dataCopyParams.dstStride = 112;
+        DataCopy(dstTensor, srcTensor, dataCopyParams);
 
     }
 
@@ -127,29 +144,29 @@ public:
     {
         const uint32_t blockStride = 65;
         const uint32_t repeatStride = 1;
-        __ubuf__ fp8_e4m3fn_t *expUb1 = (__ubuf__ fp8_e4m3fn_t *)stage1OutQue[createdTaskCount % 2];
-        __ubuf__ fp8_e4m3fn_t *expUb2 = (__ubuf__ fp8_e4m3fn_t *)stage1OutQue[createdTaskCount % 2] + 65 * 128;
+        __ubuf__ fp8_e4m3fn_t *expUb1 = (__ubuf__ fp8_e4m3fn_t *)UB_stage1OutQue0.Get<fp8_e4m3fn_t>().GetPhyAddr() + createdTaskCount % 2 * 16640;
+        __ubuf__ fp8_e4m3fn_t *expUb2 = (__ubuf__ fp8_e4m3fn_t *)UB_stage1OutQue0.Get<fp8_e4m3fn_t>().GetPhyAddr() + createdTaskCount % 2 * 16640 + 65 * 128;
         // __ubuf__ pseShiftType *pseUb = (__ubuf__ pseShiftType *)pseTensor.GetPhyAddr();
-        __ubuf__ float *expSumUb = (__ubuf__ float *)softmaxSumUB[mloopCount % 3];
-        __ubuf__ float *inExpSumUb = (__ubuf__ float *)softmaxSumUB[mloopCount % 3];
-        __ubuf__ float *tmpExpSumUb = (__ubuf__ float *)commonUB;
-        __ubuf__ float *tmpExpSumUb2 = (__ubuf__ float *)commonUB;
-        __ubuf__ float *maxUb = (__ubuf__ float *)softmaxMaxUB[mloopCount % 3];
-        __ubuf__ float *maxUbStart = (__ubuf__ float *)softmaxMaxUB[mloopCount % 3];
-        __ubuf__ float *expMaxUb = (__ubuf__ float *)softmaxExpUB[createdTaskCount % 3];
-        __ubuf__ float *inMaxUb = (__ubuf__ float *)softmaxMaxUB[mloopCount % 3];
-        __ubuf__ float *tmpMaxUb = (__ubuf__ float *)commonUB + 64;
-        __ubuf__ float *tmpMaxUb2 = (__ubuf__ float *)commonUB + 64;
+        __ubuf__ float *expSumUb = (__ubuf__ float *)UB_softmaxSum0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
+        __ubuf__ float *inExpSumUb = (__ubuf__ float *)UB_softmaxSum0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
+        __ubuf__ float *tmpExpSumUb = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr();
+        __ubuf__ float *tmpExpSumUb2 = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr();
+        __ubuf__ float *maxUb = (__ubuf__ float *)UB_softmaxMax0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
+        __ubuf__ float *maxUbStart = (__ubuf__ float *)UB_softmaxMax0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
+        __ubuf__ float *expMaxUb = (__ubuf__ float *)UB_softmaxExp0.Get<float>().GetPhyAddr() + createdTaskCount % 3 * 256;
+        __ubuf__ float *inMaxUb = (__ubuf__ float *)UB_softmaxMax0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
+        __ubuf__ float *tmpMaxUb = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr() + 64;
+        __ubuf__ float *tmpMaxUb2 = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr() + 64;
         __ubuf__ float *srcUb = (__ubuf__ float *)mm1Res;//这个看mm1_id需要改吗
-        __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)vselrIndexesUB[0];
+        __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)UB_vselrIndexes0.Get<uint8_t>().GetPhyAddr();
 
         ////printf("vec1: runInfo.mloop = %d, runInfo.loop = %d\n", mloopCount, createdTaskCount);
         ////printf("vec1: runInfo.mloop % (PRELOAD_N + 1)= %d, runInfo.loop % (PRELOAD_N + 1) = %d\n", mloopCount % 3, createdTaskCount % 3);
 
-        __ubuf__ uint32_t *maskUb1 = (__ubuf__ uint32_t *)attenMaskUB[0];
-        __ubuf__ uint32_t *maskUb2 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)attenMaskUB[0] + 64);
-        __ubuf__ uint32_t *maskUb3 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)attenMaskUB[0] + 64 * 2);
-        __ubuf__ uint32_t *maskUb4 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)attenMaskUB[0] + 64 * 3);
+        __ubuf__ uint32_t *maskUb1 = (__ubuf__ uint32_t *)UB_attenMask.Get<uint8_t>().GetPhyAddr();
+        __ubuf__ uint32_t *maskUb2 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)UB_attenMask.Get<uint8_t>().GetPhyAddr() + 64);
+        __ubuf__ uint32_t *maskUb3 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)UB_attenMask.Get<uint8_t>().GetPhyAddr() + 64 * 2);
+        __ubuf__ uint32_t *maskUb4 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)UB_attenMask.Get<uint8_t>().GetPhyAddr() + 64 * 3);
         // __ubuf__ uint32_t *dropMaskUb1 = (__ubuf__ uint32_t *)dropTensor.GetPhyAddr();
         // __ubuf__ uint32_t *dropMaskUb2 = (__ubuf__ uint32_t *)(dropTensor.GetPhyAddr() + 256 / 16);
 
@@ -166,15 +183,13 @@ public:
         // uint32_t pltN = 256;
 
         if (subLoop == 0) {
-            set_mark(0x8633393);
-            FaVectorApi::process_vec1_noupdate_subloop0<float, fp8_e4m3fn_t>(expUb1, expUb2, maxUb, maxUbStart, srcUb, expSumUb, indexesUb, 
+            FaVectorApi::process_vec1_noupdate_subloop0<float, fp8_e4m3fn_t>(expUb1, expUb2, maxUb, maxUbStart, srcUb, expSumUb, indexesUb,
                 maskUb1, maskUb2, maskUb3, maskUb4, nPadding, blockStride, repeatStride,
                 pltOriTailN1, pltOriTailN2, pltTailN1, pltTailN2, 16, static_cast<float>(constInfo.scaleValue), minValue, pScale);
         } else {
-            set_mark(0x8633394);
             FaVectorApi::process_vec1_noupdate_subloop1<float, fp8_e4m3fn_t>(expUb1, expUb2, maxUb, maxUbStart, srcUb, expMaxUb,
                 inMaxUb, expSumUb, inExpSumUb, tmpExpSumUb,
-                tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb, 
+                tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb,
                 maskUb1, maskUb2, maskUb3, maskUb4, nPadding, blockStride, repeatStride,
                 pltOriTailN1, pltOriTailN2, pltTailN1, pltTailN2, 16, static_cast<float>(constInfo.scaleValue), minValue, pScale);
         }
@@ -184,33 +199,33 @@ public:
     {
         const uint32_t blockStride = 65;
         const uint32_t repeatStride = 1;
-        __ubuf__ fp8_e4m3fn_t *expUb1 = (__ubuf__ fp8_e4m3fn_t *)stage1OutQue[createdTaskCount % 2];
-        __ubuf__ fp8_e4m3fn_t *expUb2 = (__ubuf__ fp8_e4m3fn_t *)stage1OutQue[createdTaskCount % 2] + 65 * 128;
+        __ubuf__ fp8_e4m3fn_t *expUb1 = (__ubuf__ fp8_e4m3fn_t *)UB_stage1OutQue0.Get<fp8_e4m3fn_t>().GetPhyAddr() + createdTaskCount % 2 * 16640;
+        __ubuf__ fp8_e4m3fn_t *expUb2 = (__ubuf__ fp8_e4m3fn_t *)UB_stage1OutQue0.Get<fp8_e4m3fn_t>().GetPhyAddr() + createdTaskCount % 2 * 16640 + 65 * 128;
         // __ubuf__ pseShiftType *pseUb = (__ubuf__ pseShiftType *)pseTensor.GetPhyAddr();
-        __ubuf__ float *expSumUb = (__ubuf__ float *)softmaxSumUB[mloopCount % 3];
-        __ubuf__ float *inExpSumUb = (__ubuf__ float *)softmaxSumUB[mloopCount % 3];
-        __ubuf__ float *tmpExpSumUb = (__ubuf__ float *)commonUB;
-        __ubuf__ float *tmpExpSumUb2 = (__ubuf__ float *)commonUB;
-        __ubuf__ float *maxUb = (__ubuf__ float *)softmaxMaxUB[mloopCount % 3];
-        __ubuf__ float *maxUbStart = (__ubuf__ float *)softmaxMaxUB[mloopCount % 3];
-        __ubuf__ float *expMaxUb = (__ubuf__ float *)softmaxExpUB[createdTaskCount % 3];
-        __ubuf__ float *inMaxUb = (__ubuf__ float *)softmaxMaxUB[mloopCount % 3];
-        __ubuf__ float *tmpMaxUb = (__ubuf__ float *)commonUB + 64;
-        __ubuf__ float *tmpMaxUb2 = (__ubuf__ float *)commonUB + 64;
+        __ubuf__ float *expSumUb = (__ubuf__ float *)UB_softmaxSum0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
+        __ubuf__ float *inExpSumUb = (__ubuf__ float *)UB_softmaxSum0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
+        __ubuf__ float *tmpExpSumUb = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr();
+        __ubuf__ float *tmpExpSumUb2 = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr();
+        __ubuf__ float *maxUb = (__ubuf__ float *)UB_softmaxMax0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
+        __ubuf__ float *maxUbStart = (__ubuf__ float *)UB_softmaxMax0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
+        __ubuf__ float *expMaxUb = (__ubuf__ float *)UB_softmaxExp0.Get<float>().GetPhyAddr() + createdTaskCount % 3 * 256;
+        __ubuf__ float *inMaxUb = (__ubuf__ float *)UB_softmaxMax0.Get<float>().GetPhyAddr() + mloopCount % 3 * 256;
+        __ubuf__ float *tmpMaxUb = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr() + 64;
+        __ubuf__ float *tmpMaxUb2 = (__ubuf__ float *)UB_common.Get<float>().GetPhyAddr() + 64;
         __ubuf__ float *srcUb = (__ubuf__ float *)mm1Res;//这个看mm1_id需要改吗
-        __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)vselrIndexesUB[0];
+        __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)UB_vselrIndexes0.Get<uint8_t>().GetPhyAddr();
 
-        __ubuf__ float *preLoopMaxUb = (__ubuf__ float *)preLoopMaxUB;
-        __ubuf__ float *preLoopSumUb = (__ubuf__ float *)preLoopSumUB;;
-        __ubuf__ float *firstLoopSumUb = (__ubuf__ float *)firstLoopSumUB;;
+        __ubuf__ float *preLoopMaxUb = (__ubuf__ float *)UB_preLoopMax.Get<float>().GetPhyAddr();
+        __ubuf__ float *preLoopSumUb = (__ubuf__ float *)UB_preLoopSum.Get<float>().GetPhyAddr();;
+        __ubuf__ float *firstLoopSumUb = (__ubuf__ float *)UB_firstLoopSum.Get<float>().GetPhyAddr();;
 
         ////printf("vec1: runInfo.mloop = %d, runInfo.loop = %d\n", mloopCount, createdTaskCount);
         ////printf("vec1: runInfo.mloop % (PRELOAD_N + 1)= %d, runInfo.loop % (PRELOAD_N + 1) = %d\n", mloopCount % 3, createdTaskCount % 3);
 
-        __ubuf__ uint32_t *maskUb1 = (__ubuf__ uint32_t *)attenMaskUB[0];
-        __ubuf__ uint32_t *maskUb2 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)attenMaskUB[0] + 64);
-        __ubuf__ uint32_t *maskUb3 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)attenMaskUB[0] + 64 * 2);
-        __ubuf__ uint32_t *maskUb4 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)attenMaskUB[0] + 64 * 3);
+        __ubuf__ uint32_t *maskUb1 = (__ubuf__ uint32_t *)UB_attenMask.Get<uint8_t>().GetPhyAddr();
+        __ubuf__ uint32_t *maskUb2 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)UB_attenMask.Get<uint8_t>().GetPhyAddr() + 64);
+        __ubuf__ uint32_t *maskUb3 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)UB_attenMask.Get<uint8_t>().GetPhyAddr() + 64 * 2);
+        __ubuf__ uint32_t *maskUb4 = (__ubuf__ uint32_t *)((__ubuf__ uint8_t *)UB_attenMask.Get<uint8_t>().GetPhyAddr() + 64 * 3);
         // __ubuf__ uint32_t *dropMaskUb1 = (__ubuf__ uint32_t *)dropTensor.GetPhyAddr();
         // __ubuf__ uint32_t *dropMaskUb2 = (__ubuf__ uint32_t *)(dropTensor.GetPhyAddr() + 256 / 16);
 
@@ -227,17 +242,15 @@ public:
         // uint32_t pltN = 256;
 
         if (subLoop == 0) {
-            set_mark(0x8633390);
             FaVectorApi::process_vec1_update_subloop0<float, fp8_e4m3fn_t>(
                 expUb1, expUb2, maxUb, maxUbStart, srcUb, expMaxUb, inMaxUb, expSumUb, inExpSumUb, tmpExpSumUb,
-                tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb, maskUb1, maskUb2, maskUb3, maskUb4, 
+                tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb, maskUb1, maskUb2, maskUb3, maskUb4,
                 preLoopMaxUb, preLoopSumUb, firstLoopSumUb, nPadding, blockStride, repeatStride,
                 pltOriTailN1, pltOriTailN2, pltTailN1, pltTailN2, 16, static_cast<float>(constInfo.scaleValue), minValue, pScale);
         } else {
-            set_mark(0x8633391);
             FaVectorApi::process_vec1_update_subloop1<float, fp8_e4m3fn_t>(
                 expUb1, expUb2, maxUb, maxUbStart, srcUb, expMaxUb, inMaxUb, expSumUb, inExpSumUb, tmpExpSumUb,
-                tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb, maskUb1, maskUb2, maskUb3, maskUb4, 
+                tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb, maskUb1, maskUb2, maskUb3, maskUb4,
                 preLoopMaxUb, preLoopSumUb, firstLoopSumUb, nPadding, blockStride, repeatStride,
                 pltOriTailN1, pltOriTailN2, pltTailN1, pltTailN2, 16, static_cast<float>(constInfo.scaleValue), minValue, pScale);
         }
@@ -429,31 +442,15 @@ public:
 
              // blockLen + padParams.len + dstStride = gSize * s2Size
             DataCopyPadExtParams<uint8_t> padParams{true, 0, 0, 1U};//isPad,leftPadding,rightPadding,paddingValue
-            const uint8_t cacheMode = ExtractCacheMode((__gm__ uint8_t*)attenMaskGmInt + maskOffset);
-            set_mov_pad_val(GetScalarBitcodeValue(padParams.paddingValue));
-            // DataCopyPad(attenMaskUB[headGSize * attenMaskS2Stride], srcGmAddr[maskOffset], dataCopyParams, padParams);
-
-            uint32_t unitOfBytes = 1;
-            uint32_t burstLength = dataCopyParams.blockLen * unitOfBytes;
-            uint32_t padLength = 0 * 1 + static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum) * 1;
-            uint64_t srcStride310 = dataCopyParams.srcStride * unitOfBytes + burstLength; // GM  DataCopy:32Bytes, DataCopyPad:1Byte
-            uint32_t  dstStride310 =
-                AlignUp(static_cast<uint32_t>(dataCopyParams.dstStride) * 32 + burstLength + padLength, 32);
-            uint8_t leftPaddingCnt = 0;
-            uint8_t rigntPaddingCnt = static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum);
-            // copy_gm_to_ubuf_align_v2((__ubuf__ uint8_t*)attenMaskUB[0] + headGSize * attenMaskS2Stride, (__gm__ uint8_t*)attenMaskGmInt + maskOffset, 0, 2, 256,
-            //                          0, 0, true, 0, 1792 + 256 , 2048);
-            using PrimType = PrimT<uint8_t>;
-            copy_gm_to_ubuf_align_v2((__ubuf__ uint8_t*)attenMaskUB[0] + headGSize * attenMaskS2Stride,
-                                     (__gm__ uint8_t*)attenMaskGmInt + maskOffset, 0, 
-                                        dataCopyParams.blockCount, burstLength,
-                                        leftPaddingCnt, rigntPaddingCnt, true, cacheMode, srcStride310,
-                                        dstStride310);
+            LocalTensor<uint8_t> attenMaskTensor = UB_attenMask.Get<uint8_t>()[headGSize * attenMaskS2Stride];
+            GlobalTensor<uint8_t> attenMaskGmTensor;
+            attenMaskGmTensor.SetGlobalBuffer((__gm__ uint8_t*)(attenMaskGmInt + maskOffset));
+            DataCopyPad(attenMaskTensor, attenMaskGmTensor, dataCopyParams, padParams);
         }
     
         set_flag(PIPE_MTE2, PIPE_V, event_t(0));
         wait_flag(PIPE_MTE2, PIPE_V, event_t(0));
-        MaskUbCopyS1G_MX((__ubuf__ uint8_t*)attenMaskUB[0], headGSize, info.gSize, tailGSize, midS1Count);
+        MaskUbCopyS1G_MX((__ubuf__ uint8_t*)UB_attenMask.Get<uint8_t>().GetPhyAddr(), headGSize, info.gSize, tailGSize, midS1Count);
     
         // MaskUbCopyS1G<T, s2BaseSize>(attenMaskUb, headGSize, info.gSize, tailGSize, midS1Count);
     }
@@ -526,12 +523,10 @@ public:
         // bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
         if (IsSkipMask) {
             // printf("IsSkipMask\n");
-            set_mark(0x5566740);
-            DuplicateFromScalarImpl<uint8_t, Reg::RegTensor<uint8_t, Reg::RegTraitNumOne>>(
-                (__ubuf__ uint8_t*)attenMaskUB[0], static_cast<uint8_t>(0U), 16 * 256);
+            LocalTensor<uint8_t> attenMaskTensor = UB_attenMask.Get<uint8_t>();
+            Duplicate(attenMaskTensor, static_cast<uint8_t>(0U), 16 * 256);
             return;
         } else {
-            set_mark(0x5566741);
             AttentionmaskCopyInForSgLayout_MX(maskInfo);
         }
 
@@ -648,7 +643,7 @@ public:
                 // }
                 // LocalTensor<float> maxTensor =
                 //     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
-                __ubuf__ float *maxUb = (__ubuf__ float *)softmaxMaxUB[runInfo.mloop % 3]+ mStartVec;
+                __ubuf__ float *maxUb = (__ubuf__ float *)UB_softmaxMax0.Get<float>().GetPhyAddr() + runInfo.mloop % 3 * 256 + mStartVec;
                 // if constexpr (!POST_QUANT) {
                     RowInvalidUpdateVF_MX<float>(vec2ResUb, maxUb, mDealSize, constInfo.dSizeV,
                                               static_cast<uint32_t>(dSizeAligned64), min);
@@ -709,15 +704,24 @@ public:
                        + burstLength; // UB   DataCopy:32Bytes, DataCopyPad:32Bytes
         // srcstride should be 32B aligned
         srcStride310 = DivCeil(srcStride310, 32) * 32;
-    
+
         uint64_t dstStride310 = dstStride + burstLength; // GM   DataCopy:32Bytes, DataCopyPad:1Byte
-        copy_ubuf_to_gm_align_v2((__gm__ void*)((__gm__ OUTPUT_T*)attentionOutGm + gmOffset), (__ubuf__ void*)((__ubuf__ OUTPUT_T *)attenOutUb + ubOffset), 0, blockCount, blockLen, cacheMode,
-                                     blockLen, srcStride310);
+        LocalTensor<OUTPUT_T> attenOutTensor = UB_stage2OutBuf.Get<OUTPUT_T>();
+        GlobalTensor<OUTPUT_T> attenOutGmTensor;
+        attenOutGmTensor.SetGlobalBuffer((__gm__ OUTPUT_T*)(attentionOutGm + gmOffset));
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = blockCount;
+        dataCopyParams.blockLen = blockLen;
+        dataCopyParams.srcStride = srcStride;
+        dataCopyParams.dstStride = dstStride;
+        DataCopy(attenOutTensor, attenOutGmTensor, dataCopyParams);
 
         gmOffset = attenOutGmbaseOffset + 8 * 8 * 128;
         ubOffset = ((uint64_t)8) * ((uint64_t)128);
-        copy_ubuf_to_gm_align_v2((__gm__ void*)(attentionOutGm + gmOffset), (__ubuf__ void*)(attenOutUb + ubOffset), 0, blockCount, blockLen, cacheMode,
-                                     blockLen, srcStride310);
+        GlobalTensor<OUTPUT_T> attenOutGmTensor2;
+        attenOutGmTensor2.SetGlobalBuffer((__gm__ OUTPUT_T*)(attentionOutGm + gmOffset));
+        LocalTensor<OUTPUT_T> attenOutTensor2 = UB_stage2OutBuf.Get<OUTPUT_T>()[ubOffset];
+        DataCopy(attenOutTensor2, attenOutGmTensor2, dataCopyParams);
     }
 
 
@@ -761,33 +765,32 @@ public:
         // LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
         // WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
 
-        __ubuf__ float * dstUb = (__ubuf__ T*)stage2OutBuf;
-        __ubuf__ float * curUb = (__ubuf__ T*)mm2Res;
+        __ubuf__ float * dstUb = (__ubuf__ float *)UB_stage2OutBuf.Get<float>().GetPhyAddr();
+        __ubuf__ float * curUb = (__ubuf__ float *)((__ubuf__ float *)mm2Res);
         wait_flag(PIPE_MTE3, PIPE_V, (event_t)0);
 
 
         if (unlikely(runInfo.isFirstS2Loop)) {
             // DataCopy(vec2ResUb, mmRes, vec2CalcSize);
-            using PrimType = PrimT<T>;
-            struct DataCopyParams repeatParams;
-            repeatParams.blockLen = vec2CalcSize / AscendCUtils::GetC0Count(sizeof(PrimType));
-            copy_ubuf_to_ubuf((__ubuf__ void*)stage2OutBuf, (__ubuf__ void*)mm2Res, 0, repeatParams.blockCount, repeatParams.blockLen, repeatParams.srcStride, repeatParams.dstStride);
+            LocalTensor<T> stage2OutTensor = UB_stage2OutBuf.Get<T>();
+            LocalTensor<T> mm2ResTensor = UB_MM2Res.Get<T>();
+            DataCopy(stage2OutTensor, mm2ResTensor, vec2CalcSize);
         } else {
             // // LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
             // // LocalTensor<T> pScaleUb;
 
-            __ubuf__ float *expMaxUb = (__ubuf__ float *)softmaxExpUB[runInfo.loop % 3];
+            __ubuf__ float *expMaxUb = (__ubuf__ float *)UB_softmaxExp0.Get<float>().GetPhyAddr() + runInfo.loop % 3 * 256;
 
             float deSCalePreVValue = 1.0f;
             if (!runInfo.isLastS2Loop) {
-                __ubuf__ float * preUb = (__ubuf__ T*)stage2OutBuf;
-                __ubuf__ float * rowMaxUb = (__ubuf__ T*)pScaleUb;
+                __ubuf__ float * preUb = (__ubuf__ float *)UB_stage2OutBuf.Get<float>().GetPhyAddr();
+                __ubuf__ float * rowMaxUb = (__ubuf__ float *)UB_pScale.Get<float>().GetPhyAddr();
                 FaVectorApi::FlashUpdateBasicVF_MX<T, INPUT_T, OUTPUT_T, dTemplateAlign64, 1, false, false>(
                     dstUb, curUb, preUb, expMaxUb, rowMaxUb, runInfo.actVecMSize, dTemplateAlign64, 1.0, 1.0);
             } else {
-                __ubuf__ float * preUb = (__ubuf__ T*)stage2OutBuf;
-                __ubuf__ float *expSumUb = (__ubuf__ float *)softmaxSumUB[runInfo.mloop % 3];
-                __ubuf__ float * rowMaxUb = (__ubuf__ T*)pScaleUb;
+                __ubuf__ float * preUb = (__ubuf__ float *)UB_stage2OutBuf.Get<float>().GetPhyAddr();
+                __ubuf__ float *expSumUb = (__ubuf__ float *)UB_softmaxSum0.Get<float>().GetPhyAddr() + runInfo.mloop % 3 * 256;
+                __ubuf__ float * rowMaxUb = (__ubuf__ float *)UB_pScale.Get<float>().GetPhyAddr();
                 FaVectorApi::FlashUpdateLastBasicVF_MX<T, INPUT_T, OUTPUT_T, dTemplateAlign64, 1, false, false>(
                     dstUb, curUb, preUb, expMaxUb, expSumUb, rowMaxUb, runInfo.actVecMSize, dTemplateAlign64, 1.0,
                     1.0);
@@ -799,8 +802,8 @@ public:
         if (runInfo.isLastS2Loop) {
             if (unlikely(runInfo.isFirstS2Loop)) {
                 // LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
-                __ubuf__ float * srcUb = (__ubuf__ T*)stage2OutBuf;
-                __ubuf__ float *expSumUb = (__ubuf__ float *)softmaxSumUB[runInfo.mloop % 3];
+                __ubuf__ float * srcUb = (__ubuf__ float *)UB_stage2OutBuf.Get<float>().GetPhyAddr();
+                __ubuf__ float *expSumUb = (__ubuf__ float *)UB_softmaxSum0.Get<float>().GetPhyAddr() + runInfo.mloop % 3 * 256;
                 FaVectorApi::LastDivNewVF_MX<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     dstUb, srcUb, expSumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
             }
@@ -816,44 +819,38 @@ public:
         constexpr uint32_t maskSize = 64  * 256;
         constexpr uint32_t mm1ResultSize = 128 / 2 * 512 * 4 / 2;
         constexpr uint32_t mm2ResultSize = 128 / 2 * 128 * 4;
-        stage1OutQue[0] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize);
-        stage1OutQue[1] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize);
 
-        attenMaskUB[0] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2);//16384
+        constexpr uint32_t mm2LeftSize = 128 * 512;
+        tPipe.InitBuffer(L1_P, mm2LeftSize * 3);
+        tPipe.InitBuffer(UB_MM2Res, mm2ResultSize);
+        tPipe.InitBuffer(UB_stage1OutQue0, stage1OutSize);
+        tPipe.InitBuffer(UB_stage1OutQue1, stage1OutSize);
+        tPipe.InitBuffer(UB_attenMask, maskSize);
+        tPipe.InitBuffer(UB_softmaxSum0, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_softmaxSum1, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_softmaxSum2, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_softmaxMax0, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_softmaxMax1, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_softmaxMax2, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_softmaxExp0, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_softmaxExp1, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_softmaxExp2, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_preLoopMax, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_preLoopSum, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_firstLoopSum, 256 * sizeof(float));
+        tPipe.InitBuffer(UB_common, 512 * sizeof(float));
+        tPipe.InitBuffer(UB_stage2OutBuf, 64 * 128 * sizeof(float));
+        tPipe.InitBuffer(UB_vselrIndexes0, 128);
+        tPipe.InitBuffer(UB_vselrIndexes1, 128);
+        tPipe.InitBuffer(UB_pScale, 256 * sizeof(float));
 
-
-        softmaxSumUB[0] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize);
-        softmaxSumUB[1] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256);
-        softmaxSumUB[2] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 2);
-        softmaxMaxUB[0] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 3);
-        softmaxMaxUB[1] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 4);
-        softmaxMaxUB[2] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 5);
-        softmaxExpUB[0] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 6);
-        softmaxExpUB[1] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 7);
-        softmaxExpUB[2] = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 8);
-        preLoopMaxUB = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 9);
-        preLoopSumUB = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 10);
-        firstLoopSumUB = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 11);
-        commonUB = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 12);
-
-        stage2OutBuf = (__ubuf__ void *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 12 + 512);
-
-        vselrIndexesUB[0] = (__ubuf__ uint8_t *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 12 + 512 + 64 * 128 * 4);
-        vselrIndexesUB[1] = (__ubuf__ uint8_t *)get_imm(mm1ResultSize * 2 + mm2ResultSize + stage1OutSize * 2 + maskSize + 256 * 12 + 512 + 64 * 128 * 4 + 128);
-
-        // constexpr auto orderMode = std::integral_constant<::Order, static_cast<::Order>(order)>();
-        // vci((__ubuf__ uint8_t *)vselrIndexesUB[0], 2, orderMode);
-        // vselrIndexesUB[0] = 0x7f;
-        // 先获取 UB 内存地址（uint8 指针）
-        // __ubuf__ uint8_t *ub0 = (__ubuf__ uint8_t *)vselrIndexesUB[0];
-        // __ubuf__ uint8_t *ub1 = (__ubuf__ uint8_t *)vselrIndexesUB[1];
-
+        LocalTensor<uint8_t> vselrIndexes0Tensor = UB_vselrIndexes0.Get<uint8_t>();
+        LocalTensor<uint8_t> vselrIndexes1Tensor = UB_vselrIndexes1.Get<uint8_t>();
         for (int i = 0; i < 128; i++) {
-            *(vselrIndexesUB[0] + i) = i * 2;
+            vselrIndexes0Tensor[i] = i * 2;
         }
         for (int i = 0; i < 64; i++) {
-            *(vselrIndexesUB[1] + i) = i * 4;
-            // vselrIndexesUB[1][i] = i * 4;
+            vselrIndexes1Tensor[i] = i * 4;
         }
     }
 
