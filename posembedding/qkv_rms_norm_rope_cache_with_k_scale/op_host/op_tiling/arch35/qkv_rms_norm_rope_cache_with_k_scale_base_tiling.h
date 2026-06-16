@@ -162,8 +162,7 @@ private:
                                                    size_t index, ge::DataType dtype,
                                                    const gert::Shape &logicalShapeInfo, TensorContractInfo &info);
     static ge::graphStatus FillContiguousCacheTensorInfo(const std::string &opName, size_t index, ge::DataType dtype,
-                                                         const gert::Shape &storageShapeInfo,
-                                                         TensorContractInfo &info);
+                                                         const gert::Shape &storageShapeInfo, TensorContractInfo &info);
     static ge::graphStatus ToCacheTensorInfo(gert::TilingContext *context, const std::string &opName, size_t index,
                                              TensorContractInfo &info);
     static TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, size_t index);
