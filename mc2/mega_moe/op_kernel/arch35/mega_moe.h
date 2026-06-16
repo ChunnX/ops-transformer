@@ -128,13 +128,17 @@ private:
     uint64_t quantWinOffset_ = 0;  // quantTokenScalePtr 相对 win 基址的偏移
     uint64_t totalSendCntInExp_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
-    // 分块流式 dispatch: 所有随 ST=bs*topK 增长的 UB 缓冲都按 chunkLen_ 个 token 分批, 循环
-    // numChunks_=ceil(ST/chunkLen_) 次, 使 UB 占用与 bs 解耦(win/HBM 仍按全 ST 分配)。
-    // chunkLen_ 在 Init 里按两个时段各自 UB 余量动态算上限, 再 cap 到对齐后的 ST:
-    //   ⇒ 中小 bs 直接单块跑(numChunks_=1, 零分块开销), 仅超 UB 上限的大 bs 才分块, 且分得尽量少。
-    //   chunkLen_ 恒为 256 倍数 ⇒ chunkLen_/8 mask 切片天然 32B 对齐。
-    int32_t chunkLen_ = 0;
-    int32_t numChunks_ = 0;
+    // 分块流式 dispatch: 所有随 ST=bs*topK 增长的 UB 缓冲都按 chunk 个 token 分批循环处理,
+    // 使 UB 占用与 bs 解耦(win/HBM 仍按全 ST 分配)。两个时段时间隔离(SyncAll)、UB 各自从 0 铺,
+    // win mask 是整条 ST 的 bit 数组(写/读怎么切互不相关) ⇒ 发/收各按自己时段 UB 余量独立定 chunk:
+    //   chunkLenA_/numChunksA_: 发侧(SendAndQuantBuffInit + SendMaskCal), 段 A 余量决定;
+    //   chunkLenB_/numChunksB_: 收侧(DispatchBuffInit + TripleInfoCalAndDispatch), 段 B 余量决定。
+    // 均在 Init 动态算并 cap 到 CeilAlign(ST,256) ⇒ 中小 bs 各自单块(numChunks=1)零分块开销;
+    // 恒为 256 倍数 ⇒ chunk/8 mask 切片天然 32B 对齐。发/收 chunk 不必相等(无耦合, 见设计文档 §6.3)。
+    int32_t chunkLenA_ = 0;
+    int32_t numChunksA_ = 0;
+    int32_t chunkLenB_ = 0;
+    int32_t numChunksB_ = 0;
     // resetTensor_ 封顶份额(int32 个数), Init 里 = min(本核 flag 份额, DISPATCH_RESET_BATCH)。
     //   ⇒ reset UB 占用与 flag 总数(∝ maxOutputSize ∝ bs)解耦; 本核份额 ≤ 此值时 ResetFlagList 单批退化为改前。
     int32_t resetBatchLen_ = 0;
@@ -221,9 +225,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     quantWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.quantTokenScalePtr - params_.peermemInfo.rankSyncInWorldPtr);
-    // ---- 动态 chunkLen_: 按两个时段各自 UB 余量算上限, 取 min, 再 cap 到对齐后的 ST ----
-    // 两个 BuffInit 都从 UB 地址 0 铺平 ⇒ 取两段上限的 min 保证单一 chunkLen_ 同时安全;
-    // cap 到 CeilAlign(ST,256) ⇒ 中小 bs 单块(numChunks_=1) 零分块开销, 仅大 bs 才分块。
+    // ---- 动态 chunk: 发/收两段各按自己 UB 余量独立算上限, 再各自 cap 到对齐后的 ST ----
+    // 两段时间隔离、UB 各自从 0 铺, win mask 是整条 ST bit 数组(写/读切法无耦合) ⇒ 不取 min, 各算各的:
+    //   chunkLenA_(发, 段 A) / chunkLenB_(收, 段 B); cap 到 CeilAlign(ST,256) ⇒ 中小 bs 各自单块零开销。
     // 随 CK 线性增长部分的字节系数(上界): 段 A topkChunk(4CK)+sendMask(CK/4)+sendGatherOut(4CK)=8.25CK;
     //                                   段 B maskChunk(CK/8)+validTopkIndex(4CK)+topkIndex(4CK)=8.125CK。
     // 各段固定占用与 SendAndQuantBuffInit/DispatchBuffInit 的分配逐项对应(改那两处布局须同步这里, 否则 UB 越界)。
@@ -260,16 +264,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         expertTokenNumsBytes +
         static_cast<int64_t>(DISPATCH_TRIPLE_TILE) * static_cast<int64_t>(INT32_PER_256B) *
             static_cast<int64_t>(sizeof(int32_t));
-    // 8.25=33/4, 8.125=65/8; 整型除法即向下取整。
+    // 8.25=33/4, 8.125=65/8; 整型除法即向下取整。发/收各按自己段余量独立定 chunk(无耦合, §6.3):
+    // 段 A 余量 → 发侧 chunkLenA_; 段 B 余量 → 收侧 chunkLenB_。各自 cap 到 ST、向下取 256 倍数、兜底下限。
     int64_t ckMaxA = (ubBudget - fixedA) * 4 / 33;
     int64_t ckMaxB = (ubBudget - fixedB) * 8 / 65;
-    int64_t ck = ckMaxA < ckMaxB ? ckMaxA : ckMaxB;
     int64_t ckCap = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256));
-    if (ck > ckCap) { ck = ckCap; }
-    ck = ck / ALIGN_256 * ALIGN_256;                   // 向下取整到 256 倍数 ⇒ chunkLen_/8 天然 32B 对齐
-    if (ck < ALIGN_256) { ck = ALIGN_256; }            // 兜底下限(极端大 H 时固定占用已近满)
-    chunkLen_ = static_cast<int32_t>(ck);
-    numChunks_ = static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(chunkLen_)));
+    int64_t ckA = ckMaxA < ckCap ? ckMaxA : ckCap;
+    ckA = ckA / ALIGN_256 * ALIGN_256;                 // 向下取整到 256 倍数 ⇒ chunk/8 天然 32B 对齐
+    if (ckA < ALIGN_256) { ckA = ALIGN_256; }          // 兜底下限(极端大 H 时固定占用已近满)
+    chunkLenA_ = static_cast<int32_t>(ckA);
+    numChunksA_ = static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(chunkLenA_)));
+    int64_t ckB = ckMaxB < ckCap ? ckMaxB : ckCap;
+    ckB = ckB / ALIGN_256 * ALIGN_256;
+    if (ckB < ALIGN_256) { ckB = ALIGN_256; }
+    chunkLenB_ = static_cast<int32_t>(ckB);
+    numChunksB_ = static_cast<int32_t>(Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(chunkLenB_)));
     // maskAlignSize_/maskSlotSize_ 仅依赖 sendTotalNum_, 公式与改前一致(分块不改 win 槽位大小):
     // 源按 chunk 分片填同一 mask 区, 末片 clamp 到 maskAlignSize_。须与 PeermemInfo(mega_moe_base.h) 一致。
     uint32_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
@@ -288,11 +297,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
 // UB(unified buffer, 每个 AIV 独立 256KB) 总体划分 —— 按"时段"整块复用:
 // 三个 BuffInit 都从 UB 地址 0 重新铺平, 时段之间有 PipeBarrier/SyncAll 隔离,
 // 所以【跨时段同地址重叠是有意复用】; 同一时段内部各 tensor 顺序排布、互不重叠。
-// 记号: ST = sendTotalNum_ = bs*topK, CK = chunkLen_(Init 动态算, 256 倍数, ≤ 对齐后的 ST; 中小 bs 即 ST),
-//       TT = DISPATCH_TRIPLE_TILE = 2048, slot = maskSlotSize_ = align32(cc/8)+32B(win 仍存全 ST mask, 大小不变),
-//       ws = worldSize_, epr = expertPerRank_, H = k_。
-// ★ 分块流式后所有 O(ST) 缓冲都降为 O(CK), UB 占用与 bs 解耦; 循环 numChunks_=ceil(ST/CK) 次。
-// ★ CK 取两段(A/B)各自 UB 余量上限的 min(见 Init), 故两段峰值都 ≤ UB_CAP-UB_SAFETY; 单块时退化为原始无分块。
+// 记号: ST = sendTotalNum_ = bs*topK, CK = 本时段 chunk(段A=chunkLenA_, 段B=chunkLenB_; Init 动态算,
+//       256 倍数, ≤ 对齐后的 ST; 中小 bs 即 ST), TT = DISPATCH_TRIPLE_TILE = 2048,
+//       slot = maskSlotSize_ = align32(cc/8)+32B(win 仍存全 ST mask, 大小不变), ws = worldSize_, epr = expertPerRank_, H = k_。
+// ★ 分块流式后所有 O(ST) 缓冲都降为 O(CK), UB 占用与 bs 解耦; 各段循环 numChunks=ceil(ST/CK) 次。
+// ★ 发/收两段各按自己 UB 余量独立定 CK(见 Init, 不取 min), 故两段峰值都 ≤ UB_CAP-UB_SAFETY; 单块时退化为原始无分块。
 //
 // 时段 A: SendAndQuantBuffInit (SendMaskCal / ResetFlagList / QuantProcessInRank, 跨卡同步前)
 //   [0)                topkChunk_          4*CK          当前 chunk 的 topk(尾部哨兵 -1)
@@ -332,7 +341,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     // maskAlignSize_/maskSlotSize_ 已在 Init 算好。
     // 时段 B 布局从 UB 地址 0 起, 整体覆盖时段 A(SendAndQuantBuffInit)的区域 —— 跨时段重叠是有意复用。
     // 分块流式后所有 O(ST) 缓冲降为 O(CK)(maskChunk_/validTopkIndex_/topkIndex_), 与 bs 无关。
-    const int32_t CK = chunkLen_;
+    const int32_t CK = chunkLenB_;
     // [0, 32B): 单个 expert 收到 token 数(SendCntCal 写 GM 用的 32B 暂存)。
     uint32_t expertTokenCntTensorAddr = 0;
     uint32_t expertTokenCntTensorSize = ALIGN_32;
@@ -404,7 +413,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     // 时段 A 布局从 UB 地址 0 起(跨卡同步后整体被时段 B DispatchBuffInit 覆盖复用)。
     // [0, 4*CK): 当前 chunk 的 topk(CompareScalar 处理 CK 个 int, 256B 对齐)。每 chunk 在 SendMaskCal
     // 里先 Duplicate(-1) 哨兵再 DataCopyPad 有效段(尾 chunk 不足 CK 的部分保持 -1, 不会误命中专家 0)。
-    const int32_t CK = chunkLen_;
+    const int32_t CK = chunkLenA_;
     uint32_t topkChunkAddr = 0;
     uint32_t topkChunkSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(CK) * static_cast<int64_t>(sizeof(int32_t)), static_cast<int64_t>(ALIGN_256));
@@ -550,7 +559,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
     GlobalTensor<int32_t> srcGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer((__gm__ int32_t*)params_.expertIdxGmAddr);
     GlobalTensor<uint8_t> dstGlobalTensor;
-    const int32_t CK = chunkLen_;
+    const int32_t CK = chunkLenA_;
     const int32_t maskSliceBytesFull = CK / 8;  // 满块 mask 切片字节数(CK 为 256 倍数 ⇒ 32B 对齐)
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
 
@@ -563,7 +572,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
         SetFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
     }
     int32_t iter = 0;
-    for (int32_t c = 0; c < numChunks_; ++c) {
+    for (int32_t c = 0; c < numChunksA_; ++c) {
         int32_t chunkStart = c * CK;
         int32_t validLen = static_cast<int32_t>(sendTotalNum_) - chunkStart;
         if (validLen > CK) { validLen = CK; }
@@ -575,7 +584,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
         }
         // count 回折: 末块把累计 count 紧跟 mask 切片一起 push(切片末尾恰好是槽的 count 字段偏移
         // maskAlignSize_, 见 clamp 不变量 H), 省掉每专家单独的 count 写。非末块只 push 切片。
-        bool isLastChunk = (c == numChunks_ - 1);
+        bool isLastChunk = (c == numChunksA_ - 1);
         int32_t pushBytes = isLastChunk ? (sliceBytes + static_cast<int32_t>(sizeof(int32_t))) : sliceBytes;
         DataCopyExtParams maskCopyParams{1U, static_cast<uint32_t>(pushBytes), 0U, 0U, 0U};
         // 载本 chunk topk: 先 Duplicate(-1) 哨兵, 再 DataCopyPad 有效段; 尾 chunk 余下保持 -1(不会误命中专家0)。
@@ -839,7 +848,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
 {
     // Phase 1: 分组分核进行三元组组装以及token dispatch
     constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
-    const int32_t CK = chunkLen_;
+    const int32_t CK = chunkLenB_;
     // priorExpertCumsum = 前面所有 expert 在本卡的总 token 数 = 当前 expert 在 dispatchRevData
     // 里的起始 row。等价于 cumsumInfoTensor_[localExpertId * worldSize_ - 1]。
     int32_t priorExpertCumsum = (localExpertId == 0) ? 0 :
@@ -880,7 +889,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
         GlobalTensor<uint8_t> maskSrcGlobal;
         int32_t matchedSoFar = 0;
         int32_t rowsThisCore = 0;
-        for (int32_t c = 0; c < numChunks_ && matchedSoFar < coreHi; ++c) {
+        for (int32_t c = 0; c < numChunksB_ && matchedSoFar < coreHi; ++c) {
             int32_t chunkStart = c * CK;
             int32_t validLen = static_cast<int32_t>(sendTotalNum_ - static_cast<uint64_t>(chunkStart));
             if (validLen > CK) { validLen = CK; }

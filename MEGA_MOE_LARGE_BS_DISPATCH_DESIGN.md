@@ -67,11 +67,11 @@
 > 本文中"写对端 / 推送 / 搬运 / 跨卡写"均指这种 AIV 直驱 MTE 访存；
 > 性能上关心的是**跨卡 MTE 搬运的次数**（指令/描述符数）与**跨卡访存延迟**，而非 RDMA。
 
-- 分批粒度：`CK = chunkLen_`（成员）**在 `Init` 运行时按 UB 余量动态算**，不再是编译期常量（见 §6.3）。
+- 分批粒度：`CK = chunkLenA_`(发)/`chunkLenB_`(收)（成员）**在 `Init` 运行时按 UB 余量动态算**，不再是编译期常量（见 §6.3）。
   `mega_moe_base.h` 仅保留 `DISPATCH_TRIPLE_TILE = 2048`（TT: `tripleTensor_` 每批最多行数，每行 32B）。
   ```cpp
-  // Init 内: CK = min(ckMaxA, ckMaxB, CeilAlign(ST,256)), 向下取整到 256 倍数
-  // mask 切片字节 = CK/8（CK 为 256 倍数 ⇒ 天然 32B 对齐）
+  // Init 内: 发 chunkLenA_=min(ckMaxA, CeilAlign(ST,256)), 收 chunkLenB_=min(ckMaxB, CeilAlign(ST,256));
+  //          各自向下取整到 256 倍数(发/收独立, 不取 min)。mask 切片字节 = CK/8（CK 为 256 倍数 ⇒ 天然 32B 对齐）
   constexpr int32_t DISPATCH_TRIPLE_TILE = 2048;
   ```
 - `CK` 越大 ⇒ 大 bs 时分片数越少 ⇒ 源跨卡 MTE 搬运次数 & 接收端迭代越少；`CK=ST` 时单块跑（见 §6.3）。
@@ -369,7 +369,7 @@ sendToCurExpTokenCnt = cumsumInfoTensor_[le·ws + dstRank] - cumsumInfoTensor_[l
 
 | 改动 | 说明 / 为什么 |
 |---|---|
-| **保留 `DISPATCH_TRIPLE_TILE`(2048)** | `CK` 改为 `Init` 运行时算的 `chunkLen_`（§6.3），原 `DISPATCH_TOKEN_CHUNK`/`DISPATCH_MASK_SLICE_BYTES` 两个常量已删除。 |
+| **保留 `DISPATCH_TRIPLE_TILE`(2048)** | `CK` 改为 `Init` 运行时算的 `chunkLenA_`/`chunkLenB_`（§6.3），原 `DISPATCH_TOKEN_CHUNK`/`DISPATCH_MASK_SLICE_BYTES` 两个常量已删除。 |
 | **新增 `DISPATCH_RESET_BATCH`(2048 int32=8KB)** | `resetTensor_` 清零分批粒度（§6.7），使 reset UB 与 bs 解耦。 |
 | **`PeermemInfo` 的 `maskAlignSize` 公式** | **数值与改前一致**（`align32(compareCount/8)`），仅更新注释说明"分块不改槽位大小，末块 clamp"。→ win 布局 / host 分配零变化（§4.1）。 |
 
@@ -489,23 +489,30 @@ for c in [0, numChunks_) while matchedSoFar < coreHi:
   `INT32_PER_256B = 8`（256 **bit** = 32B 内的 int32 数，命名易误读为 256 Byte）。
   即每行 32B，分配 `n*INT32_PER_256B` 个 int32 = n·32B，TT=2048 ⇒ 上限 64KB。
 
-### 6.3 动态 CHUNK（`chunkLen_` 随 UB 余量运行时算，取代固定常量）
+### 6.3 动态 CHUNK（发/收两段各按自己 UB 余量独立算 `chunkLenA_`/`chunkLenB_`，取代固定常量）
 - **动机**：固定 `CK` 会把本可单块装下的中小 bs 也强行切块（如 bs=2048/topK=8、ST=16384 在 CK=8192 下切成
   2 块），白付每块固定开销（同步屏障、`CreateVecIndex`/`GatherMask` 重发、跨卡 push 的 RDMA setup、
   高 `aivIdxInGroup` 核扫前导块）。这些开销 ∝ `numChunks`。
-- **做法**：`Init` 里按两个时段各自 UB 余量算 `CK` 上限，取 min，再 cap 到 `CeilAlign(ST,256)`：
-  - 随 `CK` 线性增长的字节系数：段 A `8.25·CK`（topkChunk 4CK + sendMask CK/4 + sendGatherOut 4CK）、
-    段 B `8.125·CK`（maskChunk CK/8 + validTopkIndex 4CK + topkIndex 4CK）；
+- **发/收 chunk 解耦（不取 min）**：发(段 A：`SendAndQuantBuffInit`+`SendMaskCal`)和收(段 B：
+  `DispatchBuffInit`+`TripleInfoCalAndDispatch`)是**时间隔离**的(中间 `SyncAll`)、UB 各自从地址 0 铺、
+  两段 chunk 缓冲从不共存；且 win mask 是**整条 ST 的 bit 数组**，发按 `chunkLenA_` 切片写、收按
+  `chunkLenB_` 切片读，**写/读怎么切互不相关**（只需各自覆盖完整 ST、边界 256 对齐 ⇒ `/8` 即 32B 对齐；
+  count 固定落 `maskAlignSize_`、与 chunk 无关；收侧顺序由升序扫+`CreateVecIndex(chunkStartB, chunkB)` 保证）。
+  ⇒ **无任何耦合，两段各按自己余量取最大 chunk**，不再被另一段拖小。
+- **做法**：`Init` 里两段各算上限，各自 cap 到 `CeilAlign(ST,256)`：
+  - 随 `CK` 线性增长的字节系数：段 A `8.25·CK`（topkChunk 4CK + sendMask CK/4 + sendGatherOut 4CK）→ `chunkLenA_`、
+    段 B `8.125·CK`（maskChunk CK/8 + validTopkIndex 4CK + topkIndex 4CK）→ `chunkLenB_`；
   - 固定占用（段 A：reset(封顶≤8KB,§6.7)+mxTemp+2·xOut+2·xIn+sendCntAcc；段 B：cumsum+sendCnt+copyTmp48KB+
-    expertTokenNumsOut + 尾部预留 `TT·32B`）与 `BuffInit`/`FirstBuffInit` 分配**逐项字节对应**；
-  - `ckMaxA=(预算-fixedA)·4/33`、`ckMaxB=(预算-fixedB)·8/65`，`CK=min` 后向下取整到 256 倍数
-    （⇒ `CK/8` 天然 32B 对齐），预算 `=256KB-4KB安全余量`。
+    expertTokenNumsOut + 尾部预留 `TT·32B`）与 `SendAndQuantBuffInit`/`DispatchBuffInit` 分配**逐项字节对应**；
+  - `ckMaxA=(预算-fixedA)·4/33` → `chunkLenA_`、`ckMaxB=(预算-fixedB)·8/65` → `chunkLenB_`，各自向下取整到
+    256 倍数（⇒ `CK/8` 天然 32B 对齐），预算 `=256KB-4KB安全余量`。
 - **效果**：
-  - **中小 bs（`ST ≤ CK上限`）单块跑**（`numChunks=1`）= 完全回到原始无分块、零 chunk 开销；
-  - 仅超上限的大 bs 才分块，且块数最少（如 bs=7168/topK=8 从固定 8192 的 7 块降到 ~4 块）；
+  - **中小 bs（`ST ≤ CK上限`）两段各自单块跑**（`numChunksA_=numChunksB_=1`）= 完全回到原始无分块、零 chunk 开销；
+  - 大 bs 时**发侧不再被收侧的较小余量拖累**：因段 B 多 `copyTmp48KB+triple64KB`，`ckMaxB<ckMaxA`，旧
+    取 min 把发侧也压到 `ckMaxB`；拆开后发侧用 `ckMaxA`（H=7168 下约 +50%），发侧迭代/跨卡 mask 推送次数减约 1/3。收侧不变（本就是 binding）；
   - `CK` 上限随 `H`/`ws`/`epr` 自适应（`H` 越大固定占用越多 ⇒ `CK` 自动变小），不再依赖手调常量。
 - **正确性**：固定项是分配的字节精确镜像，仅 `CK`-线性项因 `CeilAlign` 上取整被低估 ≤568B(A)/≤62B(B)，
-  由 4KB 安全余量吸收；两段峰值都 `< 256KB`。**改 `BuffInit`/`FirstBuffInit` 布局时必须同步 `Init` 的 fixedA/fixedB**。
+  由 4KB 安全余量吸收；两段峰值都 `< 256KB`。**改 `SendAndQuantBuffInit`/`DispatchBuffInit` 布局时必须同步 `Init` 的 fixedA/fixedB**。
 
 ### 6.4 主动放弃的优化（per-chunk count 向量跳前导扫描）
 - 可让接收端读"每块命中数向量"前缀和后直接跳到自己的首个重叠块，省掉 leading 扫描。
