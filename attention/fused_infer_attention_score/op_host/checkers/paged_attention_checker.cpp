@@ -388,9 +388,11 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShape(const FiaTilingInfo 
     const gert::Shape blockTableShape = fiaInfo.opParamInfo.blockTable.tensor->GetStorageShape();
     if ((blockTableShape.GetDim(0) != fiaInfo.bSize) || (blockTableShape.GetDim(1) < maxBlockNumPerBatch)) {
         std::string shapeStr = ToStringRaw(blockTableShape);
+        std::string reasonMsg = "When page attention enable, block_table shape must be [batch_size(" +
+            std::to_string(fiaInfo.bSize) + "), >=max_block_num_per_batch(" +
+            std::to_string(maxBlockNumPerBatch) + ")]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            fiaInfo.opName, "block_table", shapeStr.c_str(),
-            "When page attention enable, block_table shape must be [batch_size, >=max_block_num_per_batch]");
+            fiaInfo.opName, "block_table", shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
 
