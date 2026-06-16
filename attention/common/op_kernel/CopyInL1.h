@@ -189,7 +189,8 @@ __aicore__ inline void GmCopyInToL1HasRopePANoContinue(LocalTensor<L1Type>& nope
             keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.blockSize * ropeShape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * ropeShape.blockSize;
             LocalTensor<L1Type> tmpNopeDstTensor = nopeTensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = nopeGmTensor[offset];
-            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
+            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt,
+                (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
 
             LocalTensor<L1Type> tmpRopeDstTensor = ropeTensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpRopeSrcTensor = ropeGmTensor[keyRopeOffset];
@@ -198,13 +199,17 @@ __aicore__ inline void GmCopyInToL1HasRopePANoContinue(LocalTensor<L1Type>& nope
             uint64_t dStride = shape.headDim;
             uint64_t dRopeStride = ropeShape.headDim;
             if (kvLayout == KVLAYOUT::BBH) {
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
-                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim) + remainRowCnt * ropeShape.headDim * ropeShape.headNum;
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) +
+                    remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
+                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim) +
+                    remainRowCnt * ropeShape.headDim * ropeShape.headNum;
                 dStride = shape.headDim * shape.headNum;
                 dRopeStride = ropeShape.headDim * ropeShape.headNum;
             } else{
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
-                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim * ropeShape.blockSize) + remainRowCnt * ropeShape.headDim;
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) +
+                    remainRowCnt * shape.headDim + startPos.dIdx;
+                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim * ropeShape.blockSize) +
+                    remainRowCnt * ropeShape.headDim;
             }
 
             uint32_t dValue = shape.actHeadDim;
@@ -217,7 +222,8 @@ __aicore__ inline void GmCopyInToL1HasRopePANoContinue(LocalTensor<L1Type>& nope
 
             LocalTensor<L1Type> tmpRopeDstTensor = ropeTensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpRopeSrcTensor = ropeGmTensor[keyRopeOffset];
-            DataCopyGmNDToL1(tmpRopeDstTensor, tmpRopeSrcTensor, copyRowCnt, shape.copyRowNumAlign, dRopeValue, srcRopeDValue);
+            DataCopyGmNDToL1(tmpRopeDstTensor, tmpRopeSrcTensor, copyRowCnt,
+                shape.copyRowNumAlign, dRopeValue, srcRopeDValue);
         }
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
@@ -249,11 +255,14 @@ __aicore__ inline void GmCopyInToL1HasRopePA(LocalTensor<L1Type>& nopeTensor, Lo
         uint64_t offset = idInBlockTable * shape.pageStride; // PA的偏移
         uint64_t keyRopeOffset = idInBlockTable * ropeShape.pageStride;
         if (kvLayout == KVLAYOUT::NZ) {
-            offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
-            keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.n2Stride) + remainRowCnt * blockElementCnt + startPos.dIdx * ropeShape.blockSize;
+            offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) +
+                remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+            keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.n2Stride) +
+                remainRowCnt * blockElementCnt + startPos.dIdx * ropeShape.blockSize;
             LocalTensor<L1Type> tmpNopeDstTensor = nopeTensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = nopeGmTensor[offset];
-            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
+            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt,
+                (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
 
             LocalTensor<L1Type> tmpRopeDstTensor = ropeTensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpRopeSrcTensor = ropeGmTensor[keyRopeOffset];
@@ -262,12 +271,15 @@ __aicore__ inline void GmCopyInToL1HasRopePA(LocalTensor<L1Type>& nopeTensor, Lo
             uint64_t dStride = shape.headDim;
             uint64_t dRopeStride = ropeShape.headDim;
             if (kvLayout == KVLAYOUT::BBH) {
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
-                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim) + remainRowCnt * ropeShape.headDim * ropeShape.headNum;
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) +
+                    remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
+                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim) +
+                    remainRowCnt * ropeShape.headDim * ropeShape.headNum;
                 dStride = shape.headDim * shape.headNum;
                 dRopeStride = ropeShape.headDim * ropeShape.headNum;
             } else{
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) + remainRowCnt * shape.headDim + startPos.dIdx;
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) +
+                    remainRowCnt * shape.headDim + startPos.dIdx;
                 keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.n2Stride) + remainRowCnt * ropeShape.headDim;
             }
 
@@ -281,7 +293,8 @@ __aicore__ inline void GmCopyInToL1HasRopePA(LocalTensor<L1Type>& nopeTensor, Lo
 
             LocalTensor<L1Type> tmpRopeDstTensor = ropeTensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpRopeSrcTensor = ropeGmTensor[keyRopeOffset];
-            DataCopyGmNDToL1(tmpRopeDstTensor, tmpRopeSrcTensor, copyRowCnt, shape.copyRowNumAlign, dRopeValue, srcRopeDValue);
+            DataCopyGmNDToL1(tmpRopeDstTensor, tmpRopeSrcTensor, copyRowCnt,
+                shape.copyRowNumAlign, dRopeValue, srcRopeDValue);
         }
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
@@ -308,18 +321,22 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
         }
         uint64_t offset = idInBlockTable * shape.pageStride;
         if (kvLayout == KVLAYOUT::NZ) {
-            offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+            offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) +
+                remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
             
             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
-            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
+            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt,
+                (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
         } else {
             uint64_t dStride = shape.headDim;
             if (kvLayout == KVLAYOUT::BBH) {
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) +
+                    remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
                 dStride = shape.headDim * shape.headNum;
             } else {
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) + remainRowCnt * shape.headDim + startPos.dIdx;
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) +
+                    remainRowCnt * shape.headDim + startPos.dIdx;
             }
 
             uint32_t dValue = shape.actHeadDim;
@@ -352,18 +369,21 @@ __aicore__ inline void GmScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor, G
         }
         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim;
         if (kvLayout == KVLAYOUT::NZ) {
-            offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+            offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) +
+                remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
             
             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
-            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
+            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt,
+                (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
         } else {
             uint64_t dStride = shape.headDim;
             if (kvLayout == KVLAYOUT::BBH) {
                 offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
                 dStride = shape.headDim * shape.headNum;
             } else {
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) + remainRowCnt * shape.headDim + startPos.dIdx;
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) +
+                    remainRowCnt * shape.headDim + startPos.dIdx;
             }
  
             uint32_t dValue = shape.actHeadDim;
@@ -401,7 +421,8 @@ __aicore__ inline void GmScaleCopyInToL1PAForDN(LocalTensor<L1Type>& l1Tensor, G
             
             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
-            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
+            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt,
+                (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
         } else {
             uint64_t dStride = shape.headDim;
             if (kvLayout == KVLAYOUT::BBH) {
