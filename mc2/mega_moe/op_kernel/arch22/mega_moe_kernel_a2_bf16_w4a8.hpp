@@ -858,6 +858,13 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::DataCopy(tokenPerExpert, tmp, num);
+        __gm__ int32_t *flagAddr = reinterpret_cast<__gm__ int32_t *>(
+            shmem() + peermemInfo.offsetFlag);
+        AscendC::GlobalTensor<int32_t> recvFlag;
+        recvFlag.SetGlobalBuffer(flagAddr);
+        uint32_t count = sizeof(uint64_t) / sizeof(int32_t) * params.EP;
+        count = AlignUp(count, static_cast<uint32_t>(UB_ALIGN / sizeof(int32_t)));
+        AscendC::DataCopy(recvFlag, tmp, count);
     }
 
     CATLASS_DEVICE
@@ -1063,17 +1070,26 @@ private:
         AscendC::LocalTensor<uint64_t> bufFlag = bufT.template ReinterpretCast<uint64_t>();
         using TType = Gemm::GemmType<T, layout::RowMajor>;
         using CopyGmToUb = Epilogue::Tile::CopyGm2Ub<ArchTag, TType>;
+        using CopyUbToGm = Epilogue::Tile::CopyUb2Gm<ArchTag, TType>;
         CopyGmToUb copyGmToUb;
+        CopyUbToGm copyUbToGm;
 
         int32_t srcServerId = srcEpIdx / static_cast<int32_t>(SERVER_RANK_SIZE_A2);
+        bufFlag.SetValue(UB_ALIGN / sizeof(uint64_t), 0x0);
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         for (int32_t i = 0; i < rows2; ++i) {
+            auto offset = (rowStart2 + i) * copyInNum + copyInNum - UB_ALIGN;
             do {
-                auto offset = (rowStart2 + i) * copyInNum + copyInNum - UB_ALIGN;
                 copyGmToUb(bufT, gmDstA[offset],
                         layout::RowMajor{1, UB_ALIGN}, layout::RowMajor{1, UB_ALIGN});
-                AscendC::PipeBarrier<PIPE_ALL>();
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
             } while (bufFlag(0) != 0xffffffff);
+            copyUbToGm(gmDstA[offset], bufT[UB_ALIGN],
+                layout::RowMajor{1, UB_ALIGN}, layout::RowMajor{1, UB_ALIGN});
         }
+        AscendC::PipeBarrier<PIPE_ALL>();
         FetchAndPreprocessInt8ToInt4(gmOffsetA,
             gmPerTokenScale1[rowStart2], gmDstA[rowStart2 * copyInNum], rows2, hiddenSize);
         return;
