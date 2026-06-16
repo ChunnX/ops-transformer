@@ -148,10 +148,15 @@ class GPUBackend(Backend):
             if k.dim() == 3:
                 k_tnd = k.contiguous()
                 v_tnd = v.contiguous()
+                cu_kv = params.get("cu_seqlens_kv")
             else:
-                k_tnd = k.squeeze(0).permute(1, 0, 2).contiguous()
-                v_tnd = v.squeeze(0).permute(1, 0, 2).contiguous()
-            cu_kv = params.get("cu_seqlens_kv")
+                if layout_kv == "BSND":
+                    k_bnsd = k.permute(0, 2, 1, 3)
+                    v_bnsd = v.permute(0, 2, 1, 3)
+                else:
+                    k_bnsd = k
+                    v_bnsd = v
+                k_tnd, v_tnd, cu_kv = self._bnsd_to_tnd_packed(k_bnsd, v_bnsd, params)
 
         cu_q = params.get("cu_seqlens_q")
         if cu_q is None:
@@ -256,10 +261,11 @@ class GPUBackend(Backend):
         v_tnd = torch.cat(v_slices, dim=1).permute(1, 0, 2).contiguous()
 
         cu_kv = params.get("cu_seqlens_kv")
-        if cu_kv is None and seqused_kv is not None:
+        if cu_kv is None:
             cu_kv = [0]
-            for s in seqused_kv:
-                cu_kv.append(cu_kv[-1] + int(s))
+            for i in range(B_kv):
+                s = int(seqused_kv[i]) if seqused_kv else k_bnsd.shape[2]
+                cu_kv.append(cu_kv[-1] + s)
         return k_tnd, v_tnd, cu_kv
 
 
