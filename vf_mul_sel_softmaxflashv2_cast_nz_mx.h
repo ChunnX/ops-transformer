@@ -123,6 +123,12 @@ namespace FaVectorApi {
         vln(vreg_ln_p_scale, vreg_p_scale, preg_all, MODE_ZEROING);
 
         vbr(vreg_min, minValue);
+
+        constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
+        constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
+        constexpr auto dist_dintlv_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_DINTLV_B32)>();
+        constexpr auto dist_norm_b32 = std::integral_constant<::DistVST, static_cast<::DistVST>(StoreDist::DIST_NORM_B32)>();
+        constexpr auto dist_ds = std::integral_constant<::Dist, static_cast<::Dist>(MaskDist::DIST_DS)>();
         // if constexpr (hasSink) {
         //     Duplicate(vreg_sink_input, sinkValue);
         // }
@@ -134,10 +140,10 @@ namespace FaVectorApi {
         //     Arange(vreg_alibi4, posShift + floatRepSize * 3);
         // }
         for (uint16_t i = 0; i < m; ++i) {
-            vlds(vreg_input_x1, (__ubuf__ float*)srcUb + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x2, (__ubuf__ float*)srcUb + floatRepSize + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, DIST_NORM);
+            vlds(vreg_input_x1, (__ubuf__ float*)srcUb + i * 256, 0, dist_norm);
+            vlds(vreg_input_x2, (__ubuf__ float*)srcUb + floatRepSize + i * 256, 0, dist_norm);
+            vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm);
+            vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm);
             // if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
                 vmuls(vreg_input_x1, vreg_input_x1, scale, preg_all, MODE_ZEROING); // Muls(scale)
                 vmuls(vreg_input_x2, vreg_input_x2, scale, preg_all, MODE_ZEROING);
@@ -207,20 +213,20 @@ namespace FaVectorApi {
             // }
 
             // if constexpr (hasAtten == 1) {
-                plds(preg_compare1, (__ubuf__ uint32_t *&)maskUb1, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, DIST_DS, POST_UPDATE);
+                plds(preg_compare1, (__ubuf__ uint32_t *&)maskUb1, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, dist_ds, POST_UPDATE);
                 vsel(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
                 vsel(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
                 vsel(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
                 vsel(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
                 vsel(vreg_sel3_new, vreg_sel3, vreg_min, preg_ori_tail_n1);
                 vsel(vreg_sel4_new, vreg_sel4, vreg_min, preg_ori_tail_n2);
-                vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, DIST_NORM_B32, preg_tail_n2);
+                vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm_b32, preg_tail_n2);
                 vmax(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all, MODE_ZEROING);
                 vmax(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all, MODE_ZEROING);
                 vmax(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all, MODE_ZEROING);
@@ -256,10 +262,10 @@ namespace FaVectorApi {
         mem_bar(VST_VLD);
 
         for (uint16_t i = 0; i < m; ++i) {
-            vlds(vreg_max_brc, (__ubuf__ float*)maxUbStart + i, 0, DIST_BRC_B32);
+            vlds(vreg_max_brc, (__ubuf__ float*)maxUbStart + i, 0, dist_brc_b32);
             vsub(vreg_max_brc, vreg_max_brc, vreg_ln_p_scale, preg_all, MODE_ZEROING);
-            vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, DIST_DINTLV_B32);
-            vlds(vreg_input_x3, vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, DIST_DINTLV_B32);
+            vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, dist_dintlv_b32);
+            vlds(vreg_input_x3, vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_dintlv_b32);
             vexpdif(vreg_exp_even1, vreg_input_x1, vreg_max_brc, preg_all, PART_EVEN);
             vexpdif(vreg_exp_odd1, vreg_input_x2, vreg_max_brc, preg_all, PART_EVEN);
             vexpdif(vreg_exp_even2, vreg_input_x3, vreg_max_brc, preg_all, PART_EVEN);
@@ -332,7 +338,7 @@ namespace FaVectorApi {
                    (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8, MODE_ZEROING);
                 vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
                    (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8, MODE_ZEROING);
-                vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, DIST_NORM);
+                vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, dist_norm);
                 vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (__ubuf__ uint8_t *&)expUb1,
@@ -447,6 +453,12 @@ namespace FaVectorApi {
         vln(vreg_ln_p_scale, vreg_p_scale, preg_all, MODE_ZEROING);
 
         vbr(vreg_min, minValue);
+
+        constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
+        constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
+        constexpr auto dist_dintlv_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_DINTLV_B32)>();
+        constexpr auto dist_norm_b32 = std::integral_constant<::DistVST, static_cast<::DistVST>(StoreDist::DIST_NORM_B32)>();
+        constexpr auto dist_ds = std::integral_constant<::Dist, static_cast<::Dist>(MaskDist::DIST_DS)>();
         // if constexpr (hasSink) {
         //     Duplicate(vreg_sink_input, sinkValue);
         // }
@@ -458,10 +470,10 @@ namespace FaVectorApi {
         //     Arange(vreg_alibi4, posShift + floatRepSize * 3);
         // }
         for (uint16_t i = 0; i < m; ++i) {
-            vlds(vreg_input_x1, (__ubuf__ float*)srcUb + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x2, (__ubuf__ float*)srcUb + floatRepSize + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, DIST_NORM);
+            vlds(vreg_input_x1, (__ubuf__ float*)srcUb + i * 256, 0, dist_norm);
+            vlds(vreg_input_x2, (__ubuf__ float*)srcUb + floatRepSize + i * 256, 0, dist_norm);
+            vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm);
+            vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm);
             // if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
                 vmuls(vreg_input_x1, vreg_input_x1, scale, preg_all, MODE_ZEROING); // Muls(scale)
                 vmuls(vreg_input_x2, vreg_input_x2, scale, preg_all, MODE_ZEROING);
@@ -531,20 +543,20 @@ namespace FaVectorApi {
             // }
 
             // if constexpr (hasAtten == 1) {
-                plds(preg_compare1, (__ubuf__ uint32_t *&)maskUb1, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, DIST_DS, POST_UPDATE);
+                plds(preg_compare1, (__ubuf__ uint32_t *&)maskUb1, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, dist_ds, POST_UPDATE);
                 vsel(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
                 vsel(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
                 vsel(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
                 vsel(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
                 vsel(vreg_sel3_new, vreg_sel3, vreg_min, preg_ori_tail_n1);
                 vsel(vreg_sel4_new, vreg_sel4, vreg_min, preg_ori_tail_n2);
-                vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, DIST_NORM_B32, preg_tail_n2);
+                vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm_b32, preg_tail_n2);
                 vmax(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all, MODE_ZEROING);
                 vmax(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all, MODE_ZEROING);
                 vmax(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all, MODE_ZEROING);
@@ -575,14 +587,14 @@ namespace FaVectorApi {
         }
         vstas(ureg_max, (__ubuf__ float *&)tmpMaxUb, 0, POST_UPDATE);
         RegTensor<float> vreg_in_max;
-        vlds(vreg_in_max, (__ubuf__ float*)inMaxUb, 0, DIST_NORM);
+        vlds(vreg_in_max, (__ubuf__ float*)inMaxUb, 0, dist_norm);
         mem_bar(VST_VLD);
-        vlds(vreg_input_max, (__ubuf__ float*)tmpMaxUb2, 0, DIST_NORM);
+        vlds(vreg_input_max, (__ubuf__ float*)tmpMaxUb2, 0, dist_norm);
         vmax(vreg_input_max, vreg_in_max, vreg_input_max,
             preg_all, MODE_ZEROING); // loop1的max需要和loop0的max取一个max，保证loop1的max是当前的全局最大max，不要被loop1的max覆盖掉
         vexpdif(vreg_exp_max, vreg_in_max, vreg_input_max, preg_all, PART_EVEN);
-        vsts(vreg_exp_max, (__ubuf__ float *&)expMaxUb, 0, DIST_NORM_B32, preg_all);
-        vsts(vreg_input_max, (__ubuf__ float *&)maxUb, 0, DIST_NORM_B32, preg_all);
+        vsts(vreg_exp_max, (__ubuf__ float *&)expMaxUb, 0, dist_norm_b32, preg_all);
+        vsts(vreg_input_max, (__ubuf__ float *&)maxUb, 0, dist_norm_b32, preg_all);
 
         // if constexpr (hasDrop == 1) {
         //     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_zero, 0.0f, preg_all);
@@ -590,11 +602,11 @@ namespace FaVectorApi {
         mem_bar(VST_VLD);
 
         for (uint16_t i = 0; i < m; ++i) {
-            vlds(vreg_max_brc, (__ubuf__ float*)maxUbStart + i, 0, DIST_BRC_B32);
+            vlds(vreg_max_brc, (__ubuf__ float*)maxUbStart + i, 0, dist_brc_b32);
             vsub(vreg_max_brc, vreg_max_brc, vreg_ln_p_scale, preg_all, MODE_ZEROING);
-            vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, DIST_DINTLV_B32);
+            vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, dist_dintlv_b32);
             vlds(vreg_input_x3, vreg_input_x4,
-                 (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, DIST_DINTLV_B32);
+                 (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_dintlv_b32);
             vexpdif(vreg_exp_even1, vreg_input_x1, vreg_max_brc, preg_all, PART_EVEN);
             vexpdif(vreg_exp_odd1, vreg_input_x2, vreg_max_brc, preg_all, PART_EVEN);
             vexpdif(vreg_exp_even2, vreg_input_x3, vreg_max_brc, preg_all, PART_EVEN);
@@ -667,7 +679,7 @@ namespace FaVectorApi {
                    (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8, MODE_ZEROING);
                 vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
                    (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8, MODE_ZEROING);
-                vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, DIST_NORM);
+                vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, dist_norm);
                 vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (__ubuf__ uint8_t *&)expUb1,
@@ -679,11 +691,11 @@ namespace FaVectorApi {
         vstas(ureg_exp_sum, (__ubuf__ float *&)tmpExpSumUb, 0, POST_UPDATE);
         mem_bar(VST_VLD);
         RegTensor<float> first_loop_sum;
-        vlds(first_loop_sum, (__ubuf__ float*)inExpSumUb, 0, DIST_NORM);
-        vlds(vreg_exp_sum_brc, (__ubuf__ float*)tmpExpSumUb2, 0, DIST_NORM);
+        vlds(first_loop_sum, (__ubuf__ float*)inExpSumUb, 0, dist_norm);
+        vlds(vreg_exp_sum_brc, (__ubuf__ float*)tmpExpSumUb2, 0, dist_norm);
         vmul(first_loop_sum, vreg_exp_max, first_loop_sum, preg_all, MODE_ZEROING);
         vadd(vreg_exp_sum3, first_loop_sum, vreg_exp_sum_brc, preg_all, MODE_ZEROING);
-        vsts(vreg_exp_sum3, (__ubuf__ float *&)expSumUb, 0, DIST_NORM_B32, preg_all);
+        vsts(vreg_exp_sum3, (__ubuf__ float *&)expSumUb, 0, dist_norm_b32, preg_all);
     }
 
 
@@ -795,6 +807,12 @@ namespace FaVectorApi {
         vln(vreg_ln_p_scale, vreg_p_scale, preg_all, MODE_ZEROING);
 
         vbr(vreg_min, minValue);
+
+        constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
+        constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
+        constexpr auto dist_dintlv_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_DINTLV_B32)>();
+        constexpr auto dist_norm_b32 = std::integral_constant<::DistVST, static_cast<::DistVST>(StoreDist::DIST_NORM_B32)>();
+        constexpr auto dist_ds = std::integral_constant<::Dist, static_cast<::Dist>(MaskDist::DIST_DS)>();
         // if constexpr (hasSink) {
         //     Duplicate(vreg_sink_input, sinkValue);
         // }
@@ -805,12 +823,11 @@ namespace FaVectorApi {
         //     Arange(vreg_alibi3, posShift + floatRepSize * 2);
         //     Arange(vreg_alibi4, posShift + floatRepSize * 3);
         // }
-        // x_max = max(src, axis=-1, keepdims=True); x_max = Max(x_max, inMax)
         for (uint16_t i = 0; i < m; ++i) {
-            vlds(vreg_input_x1, (__ubuf__ float*)srcUb + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x2, (__ubuf__ float*)srcUb + floatRepSize + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, DIST_NORM);
+            vlds(vreg_input_x1, (__ubuf__ float*)srcUb + i * 256, 0, dist_norm);
+            vlds(vreg_input_x2, (__ubuf__ float*)srcUb + floatRepSize + i * 256, 0, dist_norm);
+            vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm);
+            vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm);
             // if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
                 vmuls(vreg_input_x1, vreg_input_x1, scale, preg_all, MODE_ZEROING); // Muls(scale)
                 vmuls(vreg_input_x2, vreg_input_x2, scale, preg_all, MODE_ZEROING);
@@ -873,20 +890,20 @@ namespace FaVectorApi {
 
             // if constexpr (hasAtten == 1) {
                 // atten mask
-                plds(preg_compare1, (__ubuf__ uint32_t *&)maskUb1, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, DIST_DS, POST_UPDATE);
+                plds(preg_compare1, (__ubuf__ uint32_t *&)maskUb1, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, dist_ds, POST_UPDATE);
                 vsel(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
                 vsel(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
                 vsel(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
                 vsel(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
                 vsel(vreg_sel3_new, vreg_sel3, vreg_min, preg_ori_tail_n1);
                 vsel(vreg_sel4_new, vreg_sel4, vreg_min, preg_ori_tail_n2);
-                vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, DIST_NORM_B32, preg_all);
+                vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm_b32, preg_all);
                 vmax(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all, MODE_ZEROING);
                 vmax(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all, MODE_ZEROING);
                 vmax(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all, MODE_ZEROING);
@@ -915,14 +932,14 @@ namespace FaVectorApi {
         }
         vstas(ureg_max, (__ubuf__ float *&)tmpMaxUb, 0, POST_UPDATE);
 
-        vlds(vreg_in_max, (__ubuf__ float*)inMaxUb, 0, DIST_NORM);
+        vlds(vreg_in_max, (__ubuf__ float*)inMaxUb, 0, dist_norm);
         mem_bar(VST_VLD);
-        vlds(vreg_input_max, (__ubuf__ float*)tmpMaxUb2, 0, DIST_NORM);
-        vsts(vreg_in_max, (__ubuf__ float *&)preLoopMaxUb, 0, DIST_NORM_B32, preg_all);
+        vlds(vreg_input_max, (__ubuf__ float*)tmpMaxUb2, 0, dist_norm);
+        vsts(vreg_in_max, (__ubuf__ float *&)preLoopMaxUb, 0, dist_norm_b32, preg_all);
         vmax(vreg_max_new, vreg_in_max, vreg_input_max, preg_all, MODE_ZEROING);
         vexpdif(vreg_exp_max, vreg_in_max, vreg_max_new, preg_all, PART_EVEN);
-        vsts(vreg_exp_max, (__ubuf__ float *&)expMaxUb, 0, DIST_NORM_B32, preg_all);
-        vsts(vreg_max_new, (__ubuf__ float *&)maxUb, 0, DIST_NORM_B32, preg_all);
+        vsts(vreg_exp_max, (__ubuf__ float *&)expMaxUb, 0, dist_norm_b32, preg_all);
+        vsts(vreg_max_new, (__ubuf__ float *&)maxUb, 0, dist_norm_b32, preg_all);
 
 
         // if constexpr (hasDrop == 1) {
@@ -931,11 +948,11 @@ namespace FaVectorApi {
         mem_bar(VST_VLD);
 
         for (uint16_t i = 0; i < m; ++i) {
-            vlds(vreg_max, (__ubuf__ float*)maxUbStart + i, 0, DIST_BRC_B32);
+            vlds(vreg_max, (__ubuf__ float*)maxUbStart + i, 0, dist_brc_b32);
             vsub(vreg_max, vreg_max, vreg_ln_p_scale, preg_all, MODE_ZEROING);
-            vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, DIST_DINTLV_B32);
+            vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, dist_dintlv_b32);
             vlds(vreg_input_x3, vreg_input_x4,
-                 (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, DIST_DINTLV_B32);
+                 (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_dintlv_b32);
             vexpdif(vreg_exp_even1, vreg_input_x1, vreg_max, preg_all, PART_EVEN);
             vexpdif(vreg_exp_odd1, vreg_input_x2, vreg_max, preg_all, PART_EVEN);
             vexpdif(vreg_exp_even2, vreg_input_x3, vreg_max, preg_all, PART_EVEN);
@@ -1003,7 +1020,7 @@ namespace FaVectorApi {
                    (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8, MODE_ZEROING);
                 vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
                    (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8, MODE_ZEROING);
-                vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, DIST_NORM);
+                vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, dist_norm);
                 vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (__ubuf__ uint8_t *&)expUb1,
@@ -1028,14 +1045,14 @@ namespace FaVectorApi {
         vstas(ureg_exp_sum, (__ubuf__ float *&)tmpExpSumUb, 0, POST_UPDATE);
 
         mem_bar(VST_VLD);
-        vlds(vreg_in_exp_sum, (__ubuf__ float*)inExpSumUb, 0, DIST_NORM);
-        vlds(vreg_exp_sum_brc, (__ubuf__ float*)tmpExpSumUb2, 0, DIST_NORM);
-        vsts(vreg_in_exp_sum, (__ubuf__ float *&)preLoopSumUb, 0, DIST_NORM_B32, preg_all);
+        vlds(vreg_in_exp_sum, (__ubuf__ float*)inExpSumUb, 0, dist_norm);
+        vlds(vreg_exp_sum_brc, (__ubuf__ float*)tmpExpSumUb2, 0, dist_norm);
+        vsts(vreg_in_exp_sum, (__ubuf__ float *&)preLoopSumUb, 0, dist_norm_b32, preg_all);
         vmul(vreg_exp_max, vreg_exp_max, vreg_in_exp_sum, preg_all, MODE_ZEROING);
         vadd(vreg_exp_max, vreg_exp_max, vreg_exp_sum_brc,
             preg_all, MODE_ZEROING);
-        vsts(vreg_exp_max, (__ubuf__ float *&)expSumUb, 0, DIST_NORM_B32, preg_all);
-        vsts(vreg_exp_sum_brc, (__ubuf__ float *&)firstLoopSumUb, 0, DIST_NORM_B32, preg_all); // 传给loop 1用于更新rowSum
+        vsts(vreg_exp_max, (__ubuf__ float *&)expSumUb, 0, dist_norm_b32, preg_all);
+        vsts(vreg_exp_sum_brc, (__ubuf__ float *&)firstLoopSumUb, 0, dist_norm_b32, preg_all); // 传给loop 1用于更新rowSum
     }
 
     template <typename T = float, typename T2 = fp8_e4m3fn_t>
@@ -1146,6 +1163,12 @@ namespace FaVectorApi {
         vln(vreg_ln_p_scale, vreg_p_scale, preg_all, MODE_ZEROING);
 
         vbr(vreg_min, minValue);
+
+        constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
+        constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
+        constexpr auto dist_dintlv_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_DINTLV_B32)>();
+        constexpr auto dist_norm_b32 = std::integral_constant<::DistVST, static_cast<::DistVST>(StoreDist::DIST_NORM_B32)>();
+        constexpr auto dist_ds = std::integral_constant<::Dist, static_cast<::Dist>(MaskDist::DIST_DS)>();
         // if constexpr (hasSink) {
         //     Duplicate(vreg_sink_input, sinkValue);
         // }
@@ -1158,10 +1181,10 @@ namespace FaVectorApi {
         // }
         // x_max = max(src, axis=-1, keepdims=True); x_max = Max(x_max, inMax)
         for (uint16_t i = 0; i < m; ++i) {
-            vlds(vreg_input_x1, (__ubuf__ float*)srcUb + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x2, (__ubuf__ float*)srcUb + floatRepSize + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, DIST_NORM);
-            vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, DIST_NORM);
+            vlds(vreg_input_x1, (__ubuf__ float*)srcUb + i * 256, 0, dist_norm);
+            vlds(vreg_input_x2, (__ubuf__ float*)srcUb + floatRepSize + i * 256, 0, dist_norm);
+            vlds(vreg_input_x3, (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm);
+            vlds(vreg_input_x4, (__ubuf__ float*)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm);
             // if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
                 vmuls(vreg_input_x1, vreg_input_x1, scale, preg_all, MODE_ZEROING); // Muls(scale)
                 vmuls(vreg_input_x2, vreg_input_x2, scale, preg_all, MODE_ZEROING);
@@ -1223,20 +1246,20 @@ namespace FaVectorApi {
             // }
 
             // if constexpr (hasAtten == 1) {
-                plds(preg_compare1, (__ubuf__ uint32_t *&)maskUb1, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, DIST_DS, POST_UPDATE);
-                plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, DIST_DS, POST_UPDATE);
+                plds(preg_compare1, (__ubuf__ uint32_t *&)maskUb1, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding, dist_ds, POST_UPDATE);
+                plds(preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding, dist_ds, POST_UPDATE);
                 vsel(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
                 vsel(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
                 vsel(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
                 vsel(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
                 vsel(vreg_sel3_new, vreg_sel3, vreg_min, preg_ori_tail_n1);
                 vsel(vreg_sel4_new, vreg_sel4, vreg_min, preg_ori_tail_n2);
-                vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, DIST_NORM_B32, preg_all);
-                vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, DIST_NORM_B32, preg_all);
+                vsts(vreg_sel1, (__ubuf__ float *&)srcUb + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel2, (__ubuf__ float *&)srcUb + floatRepSize + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel3_new, (__ubuf__ float *&)srcUb + floatRepSize * 2 + i * 256, 0, dist_norm_b32, preg_all);
+                vsts(vreg_sel4_new, (__ubuf__ float *&)srcUb + floatRepSize * 3 + i * 256, 0, dist_norm_b32, preg_all);
                 vmax(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all, MODE_ZEROING);
                 vmax(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all, MODE_ZEROING);
                 vmax(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all, MODE_ZEROING);
@@ -1265,15 +1288,15 @@ namespace FaVectorApi {
         }
         vstas(ureg_max, (__ubuf__ float *&)tmpMaxUb, 0, POST_UPDATE);
 
-        vlds(vreg_in_max, (__ubuf__ float*)inMaxUb, 0, DIST_NORM);
+        vlds(vreg_in_max, (__ubuf__ float*)inMaxUb, 0, dist_norm);
         mem_bar(VST_VLD);
-        vlds(vreg_input_max, (__ubuf__ float*)tmpMaxUb2, 0, DIST_NORM);
+        vlds(vreg_input_max, (__ubuf__ float*)tmpMaxUb2, 0, dist_norm);
         vmax(vreg_max_new, vreg_in_max, vreg_input_max, preg_all, MODE_ZEROING);
         vexpdif(vreg_subloop_update, vreg_in_max, vreg_max_new, preg_all, PART_EVEN);
-        vlds(vreg_pre_loop_max, (__ubuf__ float*)preLoopMaxUb, 0, DIST_NORM);
+        vlds(vreg_pre_loop_max, (__ubuf__ float*)preLoopMaxUb, 0, dist_norm);
         vexpdif(vreg_exp_max, vreg_pre_loop_max, vreg_max_new, preg_all, PART_EVEN);
-        vsts(vreg_exp_max, (__ubuf__ float *&)expMaxUb, 0, DIST_NORM_B32, preg_all);
-        vsts(vreg_max_new, (__ubuf__ float *&)maxUb, 0, DIST_NORM_B32, preg_all);
+        vsts(vreg_exp_max, (__ubuf__ float *&)expMaxUb, 0, dist_norm_b32, preg_all);
+        vsts(vreg_max_new, (__ubuf__ float *&)maxUb, 0, dist_norm_b32, preg_all);
 
         // if constexpr (hasDrop == 1) {
         //     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_zero, 0.0f, preg_all);
@@ -1281,11 +1304,11 @@ namespace FaVectorApi {
         mem_bar(VST_VLD);
 
         for (uint16_t i = 0; i < m; ++i) {
-            vlds(vreg_max, (__ubuf__ float*)maxUbStart + i, 0, DIST_BRC_B32);
+            vlds(vreg_max, (__ubuf__ float*)maxUbStart + i, 0, dist_brc_b32);
             vsub(vreg_max, vreg_max, vreg_ln_p_scale, preg_all, MODE_ZEROING);
-            vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, DIST_DINTLV_B32);
+            vlds(vreg_input_x1, vreg_input_x2, (__ubuf__ float*)srcUb + i * 256, 0, dist_dintlv_b32);
             vlds(vreg_input_x3, vreg_input_x4,
-                 (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, DIST_DINTLV_B32);
+                 (__ubuf__ float*)srcUb + floatRepSize * 2 + i * 256, 0, dist_dintlv_b32);
             vexpdif(vreg_exp_even1, vreg_input_x1, vreg_max, preg_all, PART_EVEN);
             vexpdif(vreg_exp_odd1, vreg_input_x2, vreg_max, preg_all, PART_EVEN);
             vexpdif(vreg_exp_even2, vreg_input_x3, vreg_max, preg_all, PART_EVEN);
@@ -1353,7 +1376,7 @@ namespace FaVectorApi {
                    (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_1, preg_all_b8, MODE_ZEROING);
                 vor((RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_even_f8e4m3_2,
                    (RegTensor<uint8_t> &)vreg_exp_odd_f8e4m3_2, preg_all_b8, MODE_ZEROING);
-                vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, DIST_NORM);
+                vlds(vreg_exp_merge_f8e4m3_indexes, (__ubuf__ uint8_t*)indexesUb, 0, dist_norm);
                 vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_1, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vselr((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_tmp_f8e4m3_2, (RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_indexes);
                 vsstb((RegTensor<uint8_t> &)vreg_exp_merge_f8e4m3_1, (__ubuf__ uint8_t *&)expUb1,
@@ -1378,15 +1401,15 @@ namespace FaVectorApi {
         vstas(ureg_exp_sum, (__ubuf__ float *&)tmpExpSumUb, 0, POST_UPDATE);
 
         mem_bar(VST_VLD);
-        vlds(vreg_exp_sum_brc, (__ubuf__ float*)tmpExpSumUb2, 0, DIST_NORM);
+        vlds(vreg_exp_sum_brc, (__ubuf__ float*)tmpExpSumUb2, 0, dist_norm);
         RegTensor<float> vreg_first_sum;
-        vlds(vreg_first_sum, (__ubuf__ float*)firstLoopSumUb, 0, DIST_NORM);
-        vlds(vreg_pre_sum, (__ubuf__ float*)preLoopSumUb, 0, DIST_NORM);
+        vlds(vreg_first_sum, (__ubuf__ float*)firstLoopSumUb, 0, dist_norm);
+        vlds(vreg_pre_sum, (__ubuf__ float*)preLoopSumUb, 0, dist_norm);
         vmul(vreg_first_sum, vreg_subloop_update, vreg_first_sum, preg_all, MODE_ZEROING);
         vadd(vreg_first_sum, vreg_first_sum, vreg_exp_sum_brc, preg_all, MODE_ZEROING);
         vmul(vreg_pre_sum, vreg_exp_max, vreg_pre_sum, preg_all, MODE_ZEROING);
         vadd(vreg_pre_sum, vreg_first_sum, vreg_pre_sum, preg_all, MODE_ZEROING);
-        vsts(vreg_pre_sum, (__ubuf__ float *&)expSumUb, 0, DIST_NORM_B32, preg_all);
+        vsts(vreg_pre_sum, (__ubuf__ float *&)expSumUb, 0, dist_norm_b32, preg_all);
     }
 
 } // namespace
