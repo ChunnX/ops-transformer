@@ -64,7 +64,7 @@ private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
-    int64_t DefaultPrintQuantParams();
+    int64_t LogQuantParams();
     bool SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckDtype();
@@ -87,7 +87,7 @@ private:
     bool CheckDtypePertoken();
     bool AnalyzeInputsPertoken();
     ge::graphStatus DoOpTilingPertoken();
-    int64_t DefaultPrintPertokenQuantParams();
+    int64_t LogPertokenQuantParams();
     bool CheckCoreNum() const override;
     bool CheckWeightNdDtype();
     bool CheckQuantDtypeByFormat(ge::DataType quantDtype, ge::Format weightFormat);
