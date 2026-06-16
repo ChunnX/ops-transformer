@@ -20,6 +20,7 @@
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 #include "test_grouped_matmul_utils.h"
+#include "gmm_csv_ge_parse_utils.h"
 
 using namespace std;
 using namespace ge;
@@ -36,6 +37,203 @@ protected:
         std::cout << "GroupedWeightQuantBatchMatmulTiling TearDown" << std::endl;
     }
 };
+
+namespace {
+using TensorDescription = gert::TilingContextPara::TensorDescription;
+using OpAttr = gert::TilingContextPara::OpAttr;
+using GMMWeightQuantTilingData = GroupedMatmulTilingData::GMMWeightQuantTilingData;
+
+struct MxA8W4SmsTilingParam {
+    size_t m = 64;
+    size_t k = 128;
+    size_t n = 256;
+    size_t groupNum = 2;
+    std::vector<int64_t> antiquantScaleOriginShape = {};
+    std::vector<int64_t> antiquantScaleStorageShape = {};
+};
+
+optiling::GMMCompileInfo MakeArch35CompileInfo()
+{
+    return {
+        32,                                      // aicNum
+        64,                                      // aivNum
+        262144,                                  // ubSize
+        524288,                                  // l1Size
+        196608,                                  // l2Size
+        262144,                                  // l0CSize
+        65536,                                   // l0ASize
+        65536,                                   // l0BSize
+        platform_ascendc::SocVersion::ASCEND950, // ASCEND950
+        NpuArch::DAV_3510,
+    };
+}
+
+std::vector<OpAttr> MakeMxA8W4SmsAttrs()
+{
+    return {
+        {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+        {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+        {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+        {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+    };
+}
+
+TensorDescription MakeTensorDesc(const std::vector<int64_t> &originShape, const std::vector<int64_t> &storageShape,
+                                 ge::DataType dtype, ge::Format format)
+{
+    return {ops::ut::MakeGertStorageShape(originShape, storageShape), dtype, format};
+}
+
+TensorDescription MakeTensorDesc(const std::vector<int64_t> &shape, ge::DataType dtype, ge::Format format)
+{
+    return {ops::ut::MakeGertStorageShape(shape), dtype, format};
+}
+
+std::vector<TensorDescription> MakeMxA8W4SmsInputs(const MxA8W4SmsTilingParam &param)
+{
+    std::vector<TensorDescription> inputs;
+    inputs.reserve(1 + param.groupNum * 2 + 2);
+    inputs.emplace_back(MakeTensorDesc({static_cast<int64_t>(param.m), static_cast<int64_t>(param.k)},
+                                       ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND));
+    for (size_t i = 0; i < param.groupNum; ++i) {
+        inputs.emplace_back(MakeTensorDesc(
+            {static_cast<int64_t>(param.k / 32), static_cast<int64_t>(param.n / 16), 16, 32},
+            {static_cast<int64_t>(param.k / 32), static_cast<int64_t>(param.n / 16), 16, 32},
+            ge::DT_FLOAT4_E2M1, ge::FORMAT_FRACTAL_NZ));
+    }
+
+    std::vector<int64_t> scaleOriginShape = param.antiquantScaleOriginShape.empty() ?
+        std::vector<int64_t>{static_cast<int64_t>(param.n), static_cast<int64_t>(param.k / 64), 2} :
+        param.antiquantScaleOriginShape;
+    std::vector<int64_t> scaleStorageShape = param.antiquantScaleStorageShape.empty() ? scaleOriginShape :
+        param.antiquantScaleStorageShape;
+    for (size_t i = 0; i < param.groupNum; ++i) {
+        inputs.emplace_back(MakeTensorDesc(scaleOriginShape, scaleStorageShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND));
+    }
+    inputs.emplace_back(MakeTensorDesc({static_cast<int64_t>(param.groupNum)}, ge::DT_INT64, ge::FORMAT_ND));
+    inputs.emplace_back(MakeTensorDesc(
+        {static_cast<int64_t>(param.m), static_cast<int64_t>(param.k / 64), 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND));
+    return inputs;
+}
+
+std::vector<uint32_t> MakeMxA8W4SmsInputInstanceNums(const MxA8W4SmsTilingParam &param)
+{
+    return {1U, static_cast<uint32_t>(param.groupNum), 0U, 0U, 0U,
+            static_cast<uint32_t>(param.groupNum), 0U, 1U, 1U};
+}
+
+gert::TilingContextPara MakeMxA8W4SmsContext(const MxA8W4SmsTilingParam &param, optiling::GMMCompileInfo *compileInfo)
+{
+    return gert::TilingContextPara(
+        "GroupedMatmul",
+        MakeMxA8W4SmsInputs(param),
+        {MakeTensorDesc({static_cast<int64_t>(param.m), static_cast<int64_t>(param.n)}, ge::DT_BF16, ge::FORMAT_ND)},
+        MakeMxA8W4SmsAttrs(),
+        MakeMxA8W4SmsInputInstanceNums(param),
+        {1U},
+        compileInfo);
+}
+
+const GMMWeightQuantTilingData *GetGMMWeightQuantTilingData(const TilingInfo &tilingInfo)
+{
+    EXPECT_EQ(tilingInfo.tilingDataSize, sizeof(GMMWeightQuantTilingData));
+    return reinterpret_cast<const GMMWeightQuantTilingData *>(tilingInfo.tilingData.get());
+}
+
+void ExpectMxA8W4SmsTilingData(const TilingInfo &tilingInfo, const MxA8W4SmsTilingParam &param)
+{
+    const auto *tilingData = GetGMMWeightQuantTilingData(tilingInfo);
+    ASSERT_NE(tilingData, nullptr);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.groupNum, static_cast<uint32_t>(param.groupNum));
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.kSize, static_cast<uint64_t>(param.k));
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.nSize, static_cast<uint64_t>(param.n));
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.singleX, 1);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.singleWeight, 0);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.singleY, 1);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.groupType, 0);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.groupListType, 1);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.hasBias, 0);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.groupSize, 32);
+    for (size_t i = 0; i < param.groupNum; ++i) {
+        EXPECT_EQ(tilingData->gmmArray.mList[i], -1);
+        EXPECT_EQ(tilingData->gmmArray.kList[i], static_cast<int32_t>(param.k));
+        EXPECT_EQ(tilingData->gmmArray.nList[i], static_cast<int32_t>(param.n));
+    }
+}
+
+void ExpectMxA8W4SmsTilingSuccess(const MxA8W4SmsTilingParam &param)
+{
+    auto compileInfo = MakeArch35CompileInfo();
+    auto tilingContextPara = MakeMxA8W4SmsContext(param, &compileInfo);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    EXPECT_GT(tilingInfo.tilingKey, 0);
+    ExpectMxA8W4SmsTilingData(tilingInfo, param);
+}
+
+void ExpectMxA8W4SmsTilingFailure(const MxA8W4SmsTilingParam &param)
+{
+    auto compileInfo = MakeArch35CompileInfo();
+    auto tilingContextPara = MakeMxA8W4SmsContext(param, &compileInfo);
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+} // namespace
+
+// MxA8W4 NZ场景 - 单多单模式, antiquantScale为去掉g轴的3维shape
+TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sms_scale3d_no_bias)
+{
+    MxA8W4SmsTilingParam param;
+    ExpectMxA8W4SmsTilingSuccess(param);
+}
+
+
+
+
+
+// MxA8W4 NZ场景 - 单多单模式, antiquantScale单个tensor不能是4维
+TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sms_antiquant_scale_dim4_invalid)
+{
+    MxA8W4SmsTilingParam param;
+    param.antiquantScaleOriginShape = {1, static_cast<int64_t>(param.n), static_cast<int64_t>(param.k / 64), 2};
+    param.antiquantScaleStorageShape = param.antiquantScaleOriginShape;
+    ExpectMxA8W4SmsTilingFailure(param);
+}
+
+// MxA8W4 NZ场景 - 单多单模式, antiquantScale单个tensor不能是2维
+TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sms_antiquant_scale_dim2_invalid)
+{
+    MxA8W4SmsTilingParam param;
+    param.antiquantScaleOriginShape = {static_cast<int64_t>(param.n), static_cast<int64_t>(param.k / 64)};
+    param.antiquantScaleStorageShape = param.antiquantScaleOriginShape;
+    ExpectMxA8W4SmsTilingFailure(param);
+}
+
+// MxA8W4 NZ场景 - 单多单模式, antiquantScale的N轴必须与同下标weight对齐
+TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sms_antiquant_scale_n_mismatch)
+{
+    MxA8W4SmsTilingParam param;
+    param.antiquantScaleOriginShape = {static_cast<int64_t>(param.n + 16), static_cast<int64_t>(param.k / 64), 2};
+    param.antiquantScaleStorageShape = param.antiquantScaleOriginShape;
+    ExpectMxA8W4SmsTilingFailure(param);
+}
+
+// MxA8W4 NZ场景 - 单多单模式, antiquantScale的K分组必须满足MX group size
+TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_mxa8w4_sms_antiquant_scale_group_size_invalid)
+{
+    MxA8W4SmsTilingParam param;
+    param.antiquantScaleOriginShape = {static_cast<int64_t>(param.n), 1, 2};
+    param.antiquantScaleStorageShape = param.antiquantScaleOriginShape;
+    ExpectMxA8W4SmsTilingFailure(param);
+}
+
+
+
+
 
 // A16W4 ND场景 - BF16输入, INT4权重, 单单单模式, Split M
 TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_single_single_single_splitm)
