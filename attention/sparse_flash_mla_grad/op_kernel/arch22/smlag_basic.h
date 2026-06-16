@@ -317,9 +317,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::VecCompute(VecOp<SMLAGT> &vec
 {
     int64_t taskMod = runInfo[mmPingPongIdx].task & 1;
     CrossCoreWaitFlag(taskMod == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
-    if (subBlockIdx == 0) {
-        vecOp.Process(runInfo[mmPingPongIdx]);
-    }
+    vecOp.Process(runInfo[mmPingPongIdx]);
     CrossCoreSetFlag<2, PIPE_MTE3>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
     mmPingPongIdx = 1 - mmPingPongIdx;
 }
