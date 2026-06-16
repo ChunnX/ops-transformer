@@ -1,19 +1,19 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*
  * \file vf_flashupdate_new_mx.h
  * \brief
  */
-#ifndef MY_FLASH_UPDATE_NEW_INTERFACE_MX_H
-#define MY_FLASH_UPDATE_NEW_INTERFACE_MX_H
+#ifndef MY_FLASH_UPDATE_NEW_INTERFACE_MX_V2_H
+#define MY_FLASH_UPDATE_NEW_INTERFACE_MX_V2_H
 
 #include "kernel_tensor.h"
 
@@ -32,34 +32,37 @@ __simd_vf__ inline void FlashUpdateBasicVF_MX(__ubuf__ float * dstUb, __ubuf__ f
     RegTensor<float> vreg_mul;
     RegTensor<float> vreg_add;
 
-    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+    MaskReg preg_all = pset_b32(PAT_ALL);
+
+    constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
+    constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
+    constexpr auto dist_norm_b32 = std::integral_constant<::DistVST, static_cast<::DistVST>(StoreDist::DIST_NORM_B32)>();
 
     // dstTensor = preTensor * expMaxTensor + curTensor
     for (uint16_t i = 0; i < m; ++i) {
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);  // [m,8]
+        vlds(vreg_exp_max, (__ubuf__ float*)expMaxUb + i * reduceSize, 0, dist_brc_b32);  // [m,8]
         // if constexpr (isMlaFullQuant) {
-        //     LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
+        //     vlds(vreg_row_max, (__ubuf__ float*)rowMaxUb + i * reduceSize, 0, dist_brc_b32);
         // }
 
         for (uint16_t j = 0; j < dLoops; ++j) {
-            LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
-            LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);//不对
+            vlds(vreg_input_pre, (__ubuf__ float*)preUb + i * d + j * floatRepSize, 0, dist_norm);
+            vlds(vreg_input_cur, (__ubuf__ float*)curUb + i * d + j * floatRepSize, 0, dist_norm);//不对
             // if constexpr (isMlaFullQuant) {
-            //     Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
+            //     vmul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all, MODE_ZEROING);
             // }
-            Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
+            vmul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all, MODE_ZEROING);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                             IsSameType<INPUT_T, hifloat8_t>::value ||
                             IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+                vmuls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all, MODE_ZEROING);
                 if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
+                    vmuls(vreg_mul, vreg_mul, deScaleVPre, preg_all, MODE_ZEROING);
                 }
             }
-            Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_add, preg_all);
+            vadd(vreg_add, vreg_mul, vreg_input_cur, preg_all, MODE_ZEROING);
+            vsts(vreg_add, (__ubuf__ float *&)dstUb + i * d + j * floatRepSize, 0, dist_norm_b32, preg_all);
         }
     }
 }
@@ -79,42 +82,45 @@ __simd_vf__ inline void FlashUpdateLastBasicVF_MX(__ubuf__ float * dstUb, __ubuf
     RegTensor<half> vreg_cast;
     RegTensor<float> vreg_exp_sum;
 
-    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+    MaskReg preg_all = pset_b32(PAT_ALL);
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD / floatRepSize;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
     constexpr float int8MaxValueRec = 1 / 127.0f;
     constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
+    constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
+    constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
+    constexpr auto dist_norm_b32 = std::integral_constant<::DistVST, static_cast<::DistVST>(StoreDist::DIST_NORM_B32)>();
+
     for (uint16_t i = 0; i < m; ++i) {
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * reduceSize);
+        vlds(vreg_exp_max, (__ubuf__ float*)expMaxUb + i * reduceSize, 0, dist_brc_b32);
+        vlds(vreg_exp_sum, (__ubuf__ float*)expSumUb + i * reduceSize, 0, dist_brc_b32);
         for (uint16_t j = 0; j < dLoops; ++j) {
-            LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
-            LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
-            Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
+            vlds(vreg_input_pre, (__ubuf__ float*)preUb + i * d + j * floatRepSize, 0, dist_norm);
+            vlds(vreg_input_cur, (__ubuf__ float*)curUb + i * d + j * floatRepSize, 0, dist_norm);
+            vmul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all, MODE_ZEROING);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                             IsSameType<INPUT_T, hifloat8_t>::value ||
                             IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+                vmuls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all, MODE_ZEROING);
                 if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
+                    vmuls(vreg_mul, vreg_mul, deScaleVPre, preg_all, MODE_ZEROING);
                 }
             }
-            Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
-            Div(vreg_div, vreg_add, vreg_exp_sum, preg_all);
+            vadd(vreg_add, vreg_mul, vreg_input_cur, preg_all, MODE_ZEROING);
+            vdiv(vreg_div, vreg_add, vreg_exp_sum, preg_all, MODE_ZEROING);
             if constexpr (isMlaFullQuant) {
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
-                    Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
+                    vmuls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all, MODE_ZEROING);
                 } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
-                    Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
+                    vmuls(vreg_div, vreg_div, int8MaxValueRec, preg_all, MODE_ZEROING);
                 } else {
-                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
+                    vmuls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all, MODE_ZEROING);
                 }
             }
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div, preg_all);
+            vsts(vreg_div, (__ubuf__ float *&)dstUb + i * d + j * floatRepSize, 0, dist_norm_b32, preg_all);
         }
     }
 }
@@ -127,38 +133,41 @@ __simd_vf__ inline void LastDivNewVF_MX(__ubuf__ float * dstUb, __ubuf__ float *
     RegTensor<float> vreg_input_cur;
     RegTensor<float> vreg_div;
     RegTensor<float> vreg_exp_sum;
-    MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
+    MaskReg preg_all = pset_b32(PAT_ALL);
     constexpr uint16_t floatRepSize = 64;
     const uint16_t dLoops = d >> 6;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
     constexpr float int8MaxValueRec = 1 / 127.0f;
     constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
+    constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
+    constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
+    constexpr auto dist_norm_b32 = std::integral_constant<::DistVST, static_cast<::DistVST>(StoreDist::DIST_NORM_B32)>();
+
     for (uint16_t i = 0; i < m; ++i) {
         uint32_t sreg_init = d;
-        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * REDUCE_SIZE);
+        vlds(vreg_exp_sum, (__ubuf__ float*)expSumUb + i * REDUCE_SIZE, 0, dist_brc_b32);
         for (uint16_t j = 0; j < dLoops; ++j) {
-            MaskReg preg_update = UpdateMask<float>(sreg_init);
+            MaskReg preg_update = plt_b32(sreg_init, POST_UPDATE);
 
-            LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
+            vlds(vreg_input_cur, (__ubuf__ float*)curUb + i * d + j * floatRepSize, 0, dist_norm);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value ||
                             IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                             IsSameType<INPUT_T, hifloat8_t>::value ||
                             IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+                vmuls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all, MODE_ZEROING);
             }
-            Div(vreg_div, vreg_input_cur, vreg_exp_sum, preg_update);
+            vdiv(vreg_div, vreg_input_cur, vreg_exp_sum, preg_update, MODE_ZEROING);
             if constexpr (isMlaFullQuant) {
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
-                    Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
+                    vmuls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all, MODE_ZEROING);
                 } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
-                    Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
+                    vmuls(vreg_div, vreg_div, int8MaxValueRec, preg_all, MODE_ZEROING);
                 } else {
-                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
+                    vmuls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all, MODE_ZEROING);
                 }
             }
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div, preg_update);
+            vsts(vreg_div, (__ubuf__ float *&)dstUb + i * d + j * floatRepSize, 0, dist_norm_b32, preg_update);
         }
     }
 }
@@ -180,27 +189,29 @@ __simd_vf__ inline void RowInvalidUpdateVF_MX(__ubuf__ T *finalUb, __ubuf__ floa
     MicroAPI::RegTensor<T> vregFinal;
     MicroAPI::RegTensor<T> vregFinalNew;
 
-    MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg pregAll = pset_b32(PAT_ALL);
     uint32_t tmpTailD = pltTailD;
-    MicroAPI::MaskReg pregTailD = MicroAPI::UpdateMask<T>(tmpTailD);
+    MicroAPI::MaskReg pregTailD = plt_b32(tmpTailD, POST_UPDATE);
     MicroAPI::MaskReg pregCompare;
 
-    MicroAPI::Duplicate<float, float>(vregMinValue, minValue);
-    MicroAPI::Duplicate<T, T>(vregZeroValue, zeroValue);
+    constexpr auto dist_brc_b32 = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_BRC_B32)>();
+    constexpr auto dist_norm = std::integral_constant<::Dist, static_cast<::Dist>(LoadDist::DIST_NORM)>();
+    constexpr auto dist_norm_b32 = std::integral_constant<::DistVST, static_cast<::DistVST>(StoreDist::DIST_NORM_B32)>();
+
+    vbr(vregMinValue, minValue);
+    vbr(vregZeroValue, zeroValue);
     for (uint16_t i = 0; i < m; ++i) {
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vregMax, maxUb + i);
-        MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregAll);
+        vlds(vregMax, (__ubuf__ float*)maxUb + i, 0, dist_brc_b32);
+        vcmp_eq(pregCompare, vregMax, vregMinValue, pregAll);
         for (uint16_t j = 0; j < dLoops; ++j) {
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + j * floatRepSize);
-            MicroAPI::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
-            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + j * floatRepSize,
-                vregFinalNew, pregAll);
+            vlds(vregFinal, (__ubuf__ float*)finalUb + i * dSize + j * floatRepSize, 0, dist_norm);
+            vsel(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
+            vsts(vregFinalNew, (__ubuf__ float *&)finalUb + i * dSize + j * floatRepSize, 0, dist_norm_b32, pregAll);
         }
         for (uint16_t t = 0; t < hasTail; ++t) {
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + dLoops * floatRepSize);
-            MicroAPI::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
-            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + dLoops * floatRepSize,
-                vregFinalNew, pregTailD);
+            vlds(vregFinal, (__ubuf__ float*)finalUb + i * dSize + dLoops * floatRepSize, 0, dist_norm);
+            vsel(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
+            vsts(vregFinalNew, (__ubuf__ float *&)finalUb + i * dSize + dLoops * floatRepSize, 0, dist_norm_b32, pregTailD);
         }
     }
 }
@@ -224,4 +235,4 @@ __aicore__ inline void RowInvalidUpdateVF_MX(__ubuf__ T *finalUb, __ubuf__ float
 }
 } // namespace
 
-#endif // MY_FLASH_UPDATE_INTERFACE_H
+#endif // MY_FLASH_UPDATE_INTERFACE_V2_H
