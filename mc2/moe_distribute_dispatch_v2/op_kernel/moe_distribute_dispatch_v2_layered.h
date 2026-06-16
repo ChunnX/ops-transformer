@@ -741,10 +741,18 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         }
         PipeBarrier<PIPE_ALL>();
         if ((AscendC::GetSystemCycle() - startCycle >= WAIT_TOKEN_TIMEOUT_CYCLES) && dumpId == 0) {
-            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 5, tokenStatus);
-            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 6, FINISH_STATUS);
+            // DFX: localWindowsExp + 760KB + aivId * 32B, 8 uint32 per AIV.
+            uint32_t tokenProgressOffset = 760 * 1024 / 4 + aivId_ * 8;
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset, 7777);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 1, 1); // CreateInnerReduceInfo
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 2, tokenStatus);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 3, tokenIdx);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 4, curServerId);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 5, selfTokenIdx);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 6, 0);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 7, bufferId_);
             DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMTensor[tokenProgressOffset]);
             dumpId += 1;
             // assert(false, "Dispatch DFX: CreateInnerReduceInfo timeout!");
         }
@@ -1508,10 +1516,18 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         }
 
         if ((AscendC::GetSystemCycle() - startCycle >= WAIT_TOKEN_TIMEOUT_CYCLES) && dumpId == 0) {
-            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 7, tokenStatus);
-            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 8, FINISH_STATUS);
+            // DFX: localWindowsExp + 760KB + aivId * 32B, 8 uint32 per AIV.
+            uint32_t tokenProgressOffset = 760 * 1024 / 4 + aivId_ * 8;
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset, 7777);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 1, 2); // Win2Ipc
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 2, tokenStatus);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 3, tokenIdx);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 4, formServerId);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 5, selfTokenIdx);
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 6, static_cast<uint32_t>(justExpInfo));
+            selfDataStatusGMTensor.SetValue(tokenProgressOffset + 7, bufferId_);
             DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMTensor[tokenProgressOffset]);
             dumpId += 1;
             // assert(false, "Dispatch DFX: Win2Ipc timeout!");
         }
