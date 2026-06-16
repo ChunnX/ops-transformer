@@ -1163,7 +1163,7 @@ private:
             workspaceInfo.expandedRowIdx, localTokenPerExpert, params.expertTokensBeforeCapacity,
             shmem.windowsOutAddr() + peermemInfo.offsetPeerPerTokenScale,
             params.ptrWorkspace + expandedRowIdxOffset, &params.moeInitRoutingQuantV2TilingData,
-            params.initRoutingQuantTilingKey);
+            params.initRoutingQuantTilingKey, 512);
         AscendC::SyncAll<true>();
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 
