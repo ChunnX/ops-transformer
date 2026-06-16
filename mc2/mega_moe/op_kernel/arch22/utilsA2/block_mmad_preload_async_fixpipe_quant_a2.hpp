@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// These two files (block_mmad_preload_async_fixpipe_quant.hpp and
-// block_mmad_preload_async_fixpipe_quant_a2.hpp) specialize the same
-// BlockMmad template and are mutually exclusive — only one may be included.
-#ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_HPP
+// A2-specific BlockMmad specialization for MmadAtlasA2PreloadAsyncFixpipe.
+// This file and utils/block_mmad_preload_async_fixpipe_quant.hpp (A3)
+// specialize different dispatch policies and can coexist in the same TU.
+
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_A2_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_A2_HPP
-#define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_HPP
+
 
 #include "../template_linear_algebra_v2/catlass.hpp"
 #include "../template_linear_algebra_v2/arch/resource.hpp"
@@ -535,4 +535,3 @@ private:
 }  // namespace Catlass::Gemm::Block
 
 #endif  // CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_A2_HPP
-#endif  // CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_HPP
