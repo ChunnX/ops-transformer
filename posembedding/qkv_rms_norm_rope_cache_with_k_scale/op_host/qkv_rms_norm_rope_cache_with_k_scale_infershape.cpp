@@ -25,17 +25,42 @@ constexpr size_t K_CACHE_OUT_INDEX = 2;
 constexpr size_t V_CACHE_OUT_INDEX = 3;
 constexpr size_t K_SCALE_CACHE_OUT_INDEX = 4;
 
-constexpr int64_t UNKNOWN_DIM = -1;
+constexpr size_t HEAD_NUMS_SIZE = 3;
+constexpr size_t QKV_DIM_NUM = 3;
+constexpr size_t CACHE_DIM_NUM = 4;
+
+ge::graphStatus ValidateDimNum(const char *opName, const char *tensorName, const gert::Shape *shape,
+                               size_t expectedDimNum)
+{
+    if (shape->GetDimNum() != expectedDimNum) {
+        OP_LOGE(opName, "%s dim num must be %zu, but got %zu.", tensorName, expectedDimNum, shape->GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus ValidatePositiveDims(const char *opName, const char *tensorName, const gert::Shape *shape)
+{
+    for (size_t i = 0; i < shape->GetDimNum(); ++i) {
+        if (shape->GetDim(i) <= 0) {
+            OP_LOGE(opName, "%s dim[%zu] must be greater than 0, but got %ld.", tensorName, i, shape->GetDim(i));
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
 } // namespace
 
 ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    const char *opName = context->GetNodeName();
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const auto headNums = attrs->GetListInt(HEAD_NUMS_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, headNums);
-    if (headNums->GetSize() != 3) {
+    if (headNums->GetSize() != HEAD_NUMS_SIZE) {
+        OP_LOGE(opName, "head_nums size must be %zu, but got %zu.", HEAD_NUMS_SIZE, headNums->GetSize());
         return ge::GRAPH_FAILED;
     }
     const auto *headNumsData = headNums->GetData();
@@ -56,6 +81,19 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
     const gert::Shape *kScaleCacheShape = context->GetInputShape(K_SCALE_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kScaleCacheShape);
 
+    if (ValidateDimNum(opName, "qkv", qkvShape, QKV_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        ValidateDimNum(opName, "k_cache", kCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        ValidateDimNum(opName, "v_cache", vCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        ValidateDimNum(opName, "k_scale_cache", kScaleCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ValidatePositiveDims(opName, "qkv", qkvShape) != ge::GRAPH_SUCCESS ||
+        ValidatePositiveDims(opName, "k_cache", kCacheShape) != ge::GRAPH_SUCCESS ||
+        ValidatePositiveDims(opName, "v_cache", vCacheShape) != ge::GRAPH_SUCCESS ||
+        ValidatePositiveDims(opName, "k_scale_cache", kScaleCacheShape) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     gert::Shape *qOutShape = context->GetOutputShape(Q_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qOutShape);
     gert::Shape *qScaleShape = context->GetOutputShape(Q_SCALE_INDEX);
@@ -67,9 +105,9 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
     gert::Shape *kScaleCacheOutShape = context->GetOutputShape(K_SCALE_CACHE_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kScaleCacheOutShape);
 
-    const int64_t totalTokens = qkvShape->GetDimNum() >= 2 ? qkvShape->GetDim(1) : UNKNOWN_DIM;
+    const int64_t totalTokens = qkvShape->GetDim(1);
     const int64_t qHeads = headNumsData[0];
-    const int64_t headDim = qkvShape->GetDimNum() >= 3 ? qkvShape->GetDim(2) : UNKNOWN_DIM;
+    const int64_t headDim = qkvShape->GetDim(2);
 
     qOutShape->SetDimNum(3);
     qOutShape->SetDim(0, qHeads);
@@ -89,6 +127,7 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
 ge::graphStatus InferDtype4QkvRmsNormRopeCacheWithKScale(gert::InferDataTypeContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    // q_out is always the quantized FP8 query output of this op, independent of the qkv input dtype.
     context->SetOutputDataType(Q_OUT_INDEX, ge::DT_FLOAT8_E4M3FN);
     context->SetOutputDataType(Q_SCALE_INDEX, ge::DT_FLOAT);
     context->SetOutputDataType(K_CACHE_OUT_INDEX, context->GetInputDataType(K_CACHE_INDEX));

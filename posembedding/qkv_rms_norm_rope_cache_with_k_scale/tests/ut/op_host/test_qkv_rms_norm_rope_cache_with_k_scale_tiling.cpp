@@ -378,6 +378,16 @@ bool ExecuteConcurrentTilingCase(const ConcurrentTilingCase &item, TilingInfo &t
     return ExecuteTiling(para, tilingInfo);
 }
 
+bool ExecuteTilingWithInputs(const ConcurrentTilingCase &item,
+                             const std::vector<gert::TilingContextPara::TensorDescription> &inputs)
+{
+    auto compileInfo = BuildCompileInfo(item);
+    TilingInfo tilingInfo;
+    const gert::TilingContextPara para("QkvRmsNormRopeCacheWithKScale", inputs, BuildTilingOutputs(item),
+        BuildTilingAttrs(item), &compileInfo, "Ascend950", 64, 262144, 4096);
+    return ExecuteTiling(para, tilingInfo);
+}
+
 bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, bool success, const TilingInfo &tilingInfo)
 {
     if (success != (item.status == ge::GRAPH_SUCCESS)) {
@@ -553,6 +563,28 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsNonPositiveHeadNumsAttr)
         "QkvRmsNormRopeCacheWithKScale", BuildTilingInputs(item), BuildTilingOutputs(item),
         BuildTilingAttrs({16, -1, 2}), &compileInfo, "Ascend950", 64, 262144, 4096);
     EXPECT_FALSE(ExecuteTiling(negativeHeadPara, tilingInfo));
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsNonPositiveDimsBeforeShapeDerivedFields)
+{
+    const ConcurrentTilingCase item = {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 4, 32};
+    const uint64_t qkvN = item.numQHeads + item.numKHeads + item.numVHeads;
+
+    auto inputs = BuildTilingInputs(item);
+    inputs[0].shape_ = MakeStorageShape({ToI64(qkvN), -1, ToI64(item.headDim)});
+    EXPECT_FALSE(ExecuteTilingWithInputs(item, inputs));
+
+    inputs = BuildTilingInputs(item);
+    inputs[8].shape_ = MakeStorageShape({0});
+    EXPECT_FALSE(ExecuteTilingWithInputs(item, inputs));
+
+    inputs = BuildTilingInputs(item);
+    inputs[8].shape_ = MakeStorageShape({1});
+    EXPECT_FALSE(ExecuteTilingWithInputs(item, inputs));
+
+    inputs = BuildTilingInputs(item);
+    inputs[5].shape_ = MakeStorageShape({ToI64(TEST_BLOCK_NUM), ToI64(item.numKHeads), -1, ToI64(item.headDim)});
+    EXPECT_FALSE(ExecuteTilingWithInputs(item, inputs));
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsNonTwoToOneAivAicRatioInPlatformInfo)
@@ -734,6 +766,26 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsInvalidShapeAndDtype)
 
     input = BuildInput();
     input.kScaleCache.shape[3] = 2;
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+
+    input = BuildInput();
+    input.qkv.shape[1] = -1;
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+
+    input = BuildInput();
+    input.cuSeqLen.shape[0] = 0;
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+
+    input = BuildInput();
+    input.cuSeqLen.shape[0] = 1;
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+
+    input = BuildInput();
+    input.kCache.shape[2] = -1;
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+
+    input = BuildInput();
+    input.kScaleCache.shape[0] = -1;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();

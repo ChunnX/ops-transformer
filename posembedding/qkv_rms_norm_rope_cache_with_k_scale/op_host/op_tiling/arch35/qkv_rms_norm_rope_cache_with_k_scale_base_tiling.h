@@ -136,6 +136,7 @@ private:
     static ge::graphStatus ValidateDtypes(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateShapeInputsForDerivedFields(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateShapeRanks(const ContractInput &input, const std::string &opName);
+    static ge::graphStatus ValidatePositiveShapeDims(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateNonCacheShapes(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateCacheShapes(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateShapes(const ContractInput &input, const std::string &opName);
