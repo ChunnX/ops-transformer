@@ -374,11 +374,7 @@ __aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLs
     uint64_t outOffset = 0;
     uint64_t ubOffset = 0;
     uint32_t curDealRowCount = 0;
-    PRINTF("mOffset:%d\n", mOffset);
-    PRINTF("constInfo.gSize:%d\n", constInfo.gSize);
-    PRINTF("dealCount:%d\n", dealCount);
-    PRINTF("startS1Idx:%d\n", startS1Idx);
-    PRINTF("endS1Idx:%d\n", endS1Idx);
+
     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
         outOffset = bN2Offset + s1Idx * constInfo.n2Size * constInfo.gSize + startGIdx;
         if (s1Idx != endS1Idx) {
