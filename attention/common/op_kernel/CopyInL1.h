@@ -365,8 +365,7 @@ __aicore__ inline void GmScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor, G
                 offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
                 dStride = shape.headDim * shape.headNum;
             } else {
-                uint32_t headStride = shape.n2Stride;
-                offset += static_cast<uint64_t>(startPos.n2Idx * headStride) + remainRowCnt * shape.headDim + startPos.dIdx;
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.n2Stride) + remainRowCnt * shape.headDim + startPos.dIdx;
             }
  
             uint32_t dValue = shape.actHeadDim;
