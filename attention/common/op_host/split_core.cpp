@@ -468,7 +468,7 @@ void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
     }
 }
 
-void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
+void AssignByBlock(AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
