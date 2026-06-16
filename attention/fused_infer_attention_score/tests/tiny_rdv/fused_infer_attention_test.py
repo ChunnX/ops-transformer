@@ -561,6 +561,12 @@ def cpu_golden_base(query, key, value,
             softmax_lse = None
     return attn_out, softmax_lse
 
+def tensor_set_to_contiguous(tensor):
+    if not tensor.is_contiguous():
+        return tensor.contiguous()
+    else:
+        return tensor
+
 def generate_cpu_input_and_output(b, n2, g, s1, s2, qk_d, v_d, rope_d, input_layout, kv_storage_mode, q_dtype, kv_dtype, out_dtype,
         rope_dtype, block_size, act_seq_lens_q, act_seq_lens_kv, enable_softmax_lse,
         enable_mask, mask_shape, sparse_mode, pre_tokens, next_tokens, enable_learnable_sink,
@@ -711,6 +717,13 @@ def generate_cpu_input_and_output(b, n2, g, s1, s2, qk_d, v_d, rope_d, input_lay
     key_antiquant_offset = None
     value_antiquant_scale = None
     value_antiquant_offset = None
+
+    # tensor set contiguous
+    key = tensor_set_to_contiguous(key)
+    value = tensor_set_to_contiguous(value)
+    if key_rope is not None:
+        key_rope = tensor_set_to_contiguous(key_rope)
+
     # ======================== generate cpu and npu golden data finish ========================
     return (query, key, value, pse_shift, atten_mask, act_seq_lens_q, act_seq_lens_kv,
         dequant_scale1, quant_scale1, dequant_scale2, quant_scale2, quant_offset2,
