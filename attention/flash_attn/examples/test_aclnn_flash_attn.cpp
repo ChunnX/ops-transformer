@@ -21,13 +21,23 @@
 #include <random>
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <cstdint>
+#include <fstream>
+#include <sys/wait.h>
+#if defined(__linux__)
+#include <unistd.h>
+#endif
 #include <string>
 #include <sstream>
 #include "acl/acl.h"
 #include "../op_api/aclnn_flash_attn.h"
-#include "../../flash_attn_metadata/op_host/op_api/aclnn_flash_attn_metadata.h"
 
 namespace {
+
+// examples 目录下的默认文件名（与 test_aclnn_flash_attn.cpp 同级）
+static const char *kDefaultMetadataPtName   = "metadata.pt";
+static const char *kDefaultLoaderScriptName = "load_metadata_pt.py";
 
 static float fp16_to_float(uint16_t h) {
     uint32_t sign = (h >> 15) & 0x1u;
@@ -145,7 +155,75 @@ static uint16_t float_to_fp16(float f)
     return (uint16_t)((sign << 15) | ((uint32_t)exp << 10) | mant);
 }
 
-// maskMode: 0=全量注意力  1=RIGHT_DOWN_CAUSAL(下三角因果)  其他暂不支持CPU参考
+static uint16_t float_to_bf16(float f)
+{
+    uint32_t bits;
+    std::memcpy(&bits, &f, sizeof(bits));
+    return static_cast<uint16_t>(bits >> 16);
+}
+
+static float bf16_to_float(uint16_t h)
+{
+    uint32_t bits = static_cast<uint32_t>(h) << 16;
+    float result;
+    std::memcpy(&result, &bits, sizeof(result));
+    return result;
+}
+
+static float half_to_float(uint16_t h, aclDataType dt)
+{
+    return (dt == aclDataType::ACL_BF16) ? bf16_to_float(h) : fp16_to_float(h);
+}
+
+static uint16_t float_to_half(float f, aclDataType dt)
+{
+    return (dt == aclDataType::ACL_BF16) ? float_to_bf16(f) : float_to_fp16(f);
+}
+
+static bool IsBsndLayout(const char *layout)
+{
+    return layout && (std::strcmp(layout, "BSND") == 0 || std::strcmp(layout, "bsnd") == 0);
+}
+
+static bool IsTndLayout(const char *layout)
+{
+    return layout && (std::strcmp(layout, "TND") == 0 || std::strcmp(layout, "tnd") == 0);
+}
+
+static void GetMaxSeqlenAttrs(const char *layoutQ, const char *layoutKv,
+                              int64_t S_q, int64_t S_kv,
+                              int64_t &maxSeqlenQ, int64_t &maxSeqlenKv)
+{
+    // 与 pytests/core/data.py 一致：仅 TND layout 传实际 max_seqlen，BSND/BNSD 传 -1
+    maxSeqlenQ  = IsTndLayout(layoutQ)  ? S_q  : -1;
+    maxSeqlenKv = IsTndLayout(layoutKv) ? S_kv : -1;
+}
+
+static void BuildShapes(const char *layoutQ, const char *layoutOut,
+                        int64_t B, int64_t N_q, int64_t N_kv,
+                        int64_t S_q, int64_t S_kv, int64_t D,
+                        std::vector<int64_t> &qShape,
+                        std::vector<int64_t> &kShape,
+                        std::vector<int64_t> &vShape,
+                        std::vector<int64_t> &outShape)
+{
+    if (IsBsndLayout(layoutQ)) {
+        qShape   = {B, S_q,  N_q,  D};
+        kShape   = {B, S_kv, N_kv, D};
+        vShape   = {B, S_kv, N_kv, D};
+    } else {
+        qShape   = {B, N_q,  S_q,  D};
+        kShape   = {B, N_kv, S_kv, D};
+        vShape   = {B, N_kv, S_kv, D};
+    }
+    if (IsBsndLayout(layoutOut)) {
+        outShape = {B, S_q, N_q, D};
+    } else {
+        outShape = {B, N_q, S_q, D};
+    }
+}
+
+// maskMode: 0=全量  1=RIGHT_DOWN_CAUSAL(下三角)  3=rightDownCausal(同 pytests)
 static void cpu_flash_attention(
     const std::vector<float> &Q,   // BNSD [B, N_q, S_q, D]
     const std::vector<float> &K,   // BNSD [B, N_kv, S_kv, D]
@@ -156,18 +234,19 @@ static void cpu_flash_attention(
     int64_t maskMode = 0)
 {
     float scale = 1.0f / std::sqrt((float)D);
-    // 因果偏移: position (s1, s2) 有效当且仅当 s2 <= s1 + causalOffset
-    // RIGHT_DOWN_CAUSAL: causalOffset = S_kv - S_q
     int64_t causalOffset = (maskMode == 1) ? (S_kv - S_q) : (S_kv - 1);
     std::vector<float> score(S_q * S_kv);
     for (int64_t b = 0; b < B; b++) {
         for (int64_t nq = 0; nq < N_q; nq++) {
             int64_t nkv = nq * N_kv / N_q;  // GQA head mapping
-            // 1. QK^T * scale（含因果掩码）
             for (int64_t s1 = 0; s1 < S_q; s1++) {
                 for (int64_t s2 = 0; s2 < S_kv; s2++) {
                     if (maskMode == 1 && s2 > s1 + causalOffset) {
-                        score[s1 * S_kv + s2] = -1e9f;  // masked
+                        score[s1 * S_kv + s2] = -1e9f;
+                        continue;
+                    }
+                    if (maskMode == 3 && s2 > s1 + S_kv - S_q) {
+                        score[s1 * S_kv + s2] = -1e9f;
                         continue;
                     }
                     float dot = 0.0f;
@@ -214,9 +293,11 @@ static int CreateAclTensorRandom(const std::vector<int64_t> &shape, void **devic
                                  std::vector<float> *floatRef = nullptr,
                                  int64_t refElems = 0)
 {
-    const int64_t CHUNK = 1 << 20;  // 1M elements per chunk (~2MB fp16)
+    const int64_t CHUNK = 1 << 20;
     int64_t total = GetShapeSize(shape);
-    auto ret = aclrtMalloc(deviceAddr, (size_t)total * sizeof(uint16_t), ACL_MEM_MALLOC_HUGE_FIRST);
+    size_t elemSize = (dataType == aclDataType::ACL_BF16 ||
+                       dataType == aclDataType::ACL_FLOAT16) ? 2U : 4U;
+    auto ret = aclrtMalloc(deviceAddr, (size_t)total * elemSize, ACL_MEM_MALLOC_HUGE_FIRST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) { LOG_PRINT("aclrtMalloc random failed. ERROR: %d\n", ret); return ret; }
     if (floatRef && refElems > 0) floatRef->resize(refElems);
     std::uniform_real_distribution<float> dist(randMin, randMax);
@@ -226,14 +307,14 @@ static int CreateAclTensorRandom(const std::vector<int64_t> &shape, void **devic
         int64_t count = std::min(CHUNK, total - offset);
         for (int64_t i = 0; i < count; ++i) {
             float v = dist(rng);
-            uint16_t h = float_to_fp16(v);
+            uint16_t h = float_to_half(v, dataType);
             chunk[i] = h;
             if (floatRef && offset + i < refElems)
-                (*floatRef)[offset + i] = fp16_to_float(h);  // fp16 round-trip
+                (*floatRef)[offset + i] = half_to_float(h, dataType);
         }
-        ret = aclrtMemcpy(reinterpret_cast<uint8_t*>(*deviceAddr) + offset * sizeof(uint16_t),
-                          (size_t)count * sizeof(uint16_t), chunk.data(),
-                          (size_t)count * sizeof(uint16_t), ACL_MEMCPY_HOST_TO_DEVICE);
+        ret = aclrtMemcpy(reinterpret_cast<uint8_t*>(*deviceAddr) + offset * elemSize,
+                          (size_t)count * elemSize, chunk.data(),
+                          (size_t)count * elemSize, ACL_MEMCPY_HOST_TO_DEVICE);
         if (!CHECK_RET(ret == ACL_SUCCESS)) { LOG_PRINT("aclrtMemcpy chunk failed. ERROR: %d\n", ret); return ret; }
         offset += count;
     }
@@ -257,18 +338,192 @@ static constexpr int64_t METADATA_MAX_ELEMS = 8192;  // uint32；支持最多 ~4
 static constexpr uint32_t META_AIC = 36, META_AIV = 72;
 static constexpr uint32_t META_FA_SLOT = 16, META_FD_SLOT = 16, META_HDR = 16;
 
-static int CreateMetadataTensor(void **deviceAddr, aclTensor **tensor)
+static int CreateMetadataTensor(void **deviceAddr, aclTensor **tensor, int64_t numElems = METADATA_MAX_ELEMS)
 {
-    size_t size = METADATA_MAX_ELEMS * sizeof(uint32_t);
+    size_t size = (size_t)numElems * sizeof(uint32_t);
     int ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) { LOG_PRINT("aclrtMalloc metadata failed. ERROR: %d\n", ret); return ret; }
     ret = aclrtMemset(*deviceAddr, size, 0, size);
     if (ret != ACL_SUCCESS) { LOG_PRINT("aclrtMemset metadata failed. ERROR: %d\n", ret); return ret; }
-    int64_t shape[1] = {METADATA_MAX_ELEMS};
+    int64_t shape[1] = {numElems};
     int64_t strides[1] = {1};
     *tensor = aclCreateTensor(shape, 1, aclDataType::ACL_INT32, strides, 0,
                               aclFormat::ACL_FORMAT_ND, shape, 1, *deviceAddr);
     return ACL_SUCCESS;
+}
+
+static int UploadMetadataTensor(const std::vector<uint32_t> &hostMeta,
+                                void **deviceAddr, aclTensor **tensor)
+{
+    if (hostMeta.empty()) {
+        LOG_PRINT("[LoadMetadata] metadata 为空\n");
+        return -1;
+    }
+    int64_t numElems = (int64_t)hostMeta.size();
+    int ret = CreateMetadataTensor(deviceAddr, tensor, numElems);
+    if (ret != ACL_SUCCESS) return ret;
+    ret = aclrtMemcpy(*deviceAddr, hostMeta.size() * sizeof(uint32_t),
+                      hostMeta.data(), hostMeta.size() * sizeof(uint32_t),
+                      ACL_MEMCPY_HOST_TO_DEVICE);
+    if (ret != ACL_SUCCESS) {
+        LOG_PRINT("[LoadMetadata] H2D memcpy failed. ERROR: %d\n", ret);
+        return ret;
+    }
+    return ACL_SUCCESS;
+}
+
+static bool LoadMetadataRawBin(const std::string &path, std::vector<uint32_t> &out)
+{
+    std::ifstream ifs(path, std::ios::binary | std::ios::ate);
+    if (!ifs) {
+        LOG_PRINT("[LoadMetadata] 无法打开文件: %s\n", path.c_str());
+        return false;
+    }
+    auto fileSize = ifs.tellg();
+    if (fileSize <= 0 || (fileSize % (std::streamoff)sizeof(uint32_t)) != 0) {
+        LOG_PRINT("[LoadMetadata] 非法 bin 大小 (%lld bytes): %s\n",
+                  (long long)fileSize, path.c_str());
+        return false;
+    }
+    out.resize((size_t)fileSize / sizeof(uint32_t));
+    ifs.seekg(0, std::ios::beg);
+    ifs.read(reinterpret_cast<char*>(out.data()), fileSize);
+    return ifs.good();
+}
+
+static std::string ShellQuote(const std::string &s)
+{
+    std::string out = "'";
+    for (char c : s) {
+        if (c == '\'') out += "'\\''";
+        else out += c;
+    }
+    out += "'";
+    return out;
+}
+
+static void PrintPythonLoadError(const std::string &errPath)
+{
+    std::ifstream err(errPath);
+    if (!err.good()) return;
+    std::string line;
+    while (std::getline(err, line)) {
+        LOG_PRINT("[LoadMetadata] python: %s\n", line.c_str());
+    }
+}
+
+static std::string DirnameOfPath(const std::string &path)
+{
+    auto pos = path.find_last_of("/\\");
+    if (pos == std::string::npos) return "./";
+    return path.substr(0, pos + 1);
+}
+
+static bool FileExists(const std::string &path)
+{
+    std::ifstream f(path);
+    return f.good();
+}
+
+static std::string GetExecutableDir(const char *argv0)
+{
+#if defined(__linux__)
+    char buf[4096];
+    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (len > 0) {
+        buf[len] = '\0';
+        return DirnameOfPath(buf);
+    }
+#endif
+    if (argv0 != nullptr && argv0[0] != '\0') {
+        return DirnameOfPath(argv0);
+    }
+    return "./";
+}
+
+// 在 example 源码目录 / 可执行文件目录 / 当前工作目录 中查找 assets
+static std::string ResolveExampleDir(const char *argv0)
+{
+    const std::string candidates[] = {
+        DirnameOfPath(__FILE__),
+        GetExecutableDir(argv0),
+        std::string("./"),
+    };
+    for (const auto &dir : candidates) {
+        if (FileExists(dir + kDefaultLoaderScriptName) || FileExists(dir + kDefaultMetadataPtName)) {
+            return dir;
+        }
+    }
+    return DirnameOfPath(__FILE__);
+}
+
+static std::string ResolveMetadataPtPath(const std::string &exampleDir)
+{
+    const char *names[] = {kDefaultMetadataPtName, "case_test_001_metadata.pt"};
+    for (const char *name : names) {
+        std::string path = exampleDir + name;
+        if (FileExists(path)) return path;
+    }
+    return exampleDir + kDefaultMetadataPtName;
+}
+
+static std::string ResolveMetadataLoaderScript(const std::string &exampleDir)
+{
+    return exampleDir + kDefaultLoaderScriptName;
+}
+
+static bool LoadMetadataFromPt(const std::string &path, const std::string &loaderScript,
+                               std::vector<uint32_t> &out)
+{
+    const std::string binPath = "/tmp/flash_attn_metadata.bin";
+    const std::string errPath = "/tmp/flash_attn_metadata_pt_err.txt";
+    if (!FileExists(loaderScript)) {
+        LOG_PRINT("[LoadMetadata] 未找到脚本: %s\n", loaderScript.c_str());
+        return false;
+    }
+    std::string cmd = std::string("python3 ") + ShellQuote(loaderScript) + " " +
+                      ShellQuote(path) + " " + ShellQuote(binPath) + " 2>" + ShellQuote(errPath);
+    LOG_PRINT("[LoadMetadata] 执行: python3 %s %s\n", loaderScript.c_str(), path.c_str());
+    int status = system(cmd.c_str());
+    bool exitOk = (status != -1) && WIFEXITED(status) && (WEXITSTATUS(status) == 0);
+    if (!exitOk) {
+        LOG_PRINT("[LoadMetadata] python 退出失败 (status=%d, script=%s)\n",
+                  status, loaderScript.c_str());
+        PrintPythonLoadError(errPath);
+        out.clear();
+        return false;
+    }
+    if (!LoadMetadataRawBin(binPath, out)) {
+        PrintPythonLoadError(errPath);
+        return false;
+    }
+    LOG_PRINT("[LoadMetadata] 从 .pt 加载 %zu 个 uint32 元素: %s\n", out.size(), path.c_str());
+    return true;
+}
+
+static bool LoadMetadataFromFile(const std::string &path, const std::string &loaderScript,
+                                 std::vector<uint32_t> &out)
+{
+    if (path.size() >= 3 && path.substr(path.size() - 3) == ".pt") {
+        return LoadMetadataFromPt(path, loaderScript, out);
+    }
+    return LoadMetadataRawBin(path, out);
+}
+
+// mask_mode=3 需要 attn_mask: INT8 [2048,2048]，与 pytests 一致 triu(diagonal=1)
+static constexpr int64_t CAUSAL_ATTN_MASK_SIZE = 2048;
+
+static int CreateCausalAttnMask2048(void **deviceAddr, aclTensor **tensor)
+{
+    const int64_t M = CAUSAL_ATTN_MASK_SIZE;
+    std::vector<int8_t> host(M * M, 0);
+    for (int64_t i = 0; i < M; ++i) {
+        for (int64_t j = i + 1; j < M; ++j) {
+            host[i * M + j] = 1;
+        }
+    }
+    std::vector<int64_t> shape = {M, M};
+    return CreateAclTensor(host, shape, deviceAddr, aclDataType::ACL_INT8, tensor);
 }
 
 // ─── 形象打印 metadata buffer（对标 npu_impl.py::print_metadata）───────────
@@ -380,50 +635,59 @@ static void SaveFloatToTxt(const char *path, const float *data, int64_t n,
 // ─── 测试参数结构（对标 test_case.py 各字段）────────────────────────────────
 struct TestCase {
     const char *name;
-    int64_t B;         // batch_size
-    int64_t N_q;       // query head 数（N1）
-    int64_t N_kv;      // kv head 数（N2，支持 GQA/MQA，=N_q 为 MHA）
-    int64_t S_q;       // query 序列长度（S1）；S_q=1 触发 FlashDecode 模式
-    int64_t S_kv;      // key/value 序列长度（S2）
-    int64_t D;         // head dim
-    int64_t maskMode;  // 0=全量注意力  1=因果下三角(RIGHT_DOWN_CAUSAL)
-    int64_t winLeft;   // 对应 pre_tokens；-1 表示无限制（INT_MAX）
-    int64_t winRight;  // 对应 next_tokens；-1 表示无限制（INT_MAX）
-    float qMin, qMax;  // Q tensor 均匀随机值域
-    float kMin, kMax;  // K tensor 均匀随机值域
-    float vMin, vMax;  // V tensor 均匀随机值域
+    int64_t B;
+    int64_t N_q;
+    int64_t N_kv;
+    int64_t S_q;
+    int64_t S_kv;
+    int64_t D;
+    int64_t maskMode;
+    int64_t winLeft;
+    int64_t winRight;
+    float qMin, qMax;
+    float kMin, kMax;
+    float vMin, vMax;
+    const char *layoutQ;
+    const char *layoutKv;
+    const char *layoutOut;
+    aclDataType dtype;
+    bool skipCpuRef;
 };
 
-// ─── 单用例运行（精度比较阈值对标 pytests RATIO_THRESHOLD/FAIL_RATIO_LIMIT）──
-static constexpr float RATIO_THRESHOLD = 0.005f;   // 单元素相对误差阈值 0.5%
-static constexpr float FAIL_RATIO_LIMIT = 0.005f;  // 超阈值元素占比上限 0.5%
-
 static bool RunTestCase(const TestCase &tc, aclrtStream stream,
-                        bool dumpOutput, bool verbose, uint32_t seed)
+                        bool dumpOutput, bool verbose, uint32_t seed,
+                        const std::string &metaFilePath,
+                        const std::string &loaderScript)
 {
+    static constexpr float RATIO_THRESHOLD = 0.005f;
+    static constexpr float FAIL_RATIO_LIMIT = 0.005f;
+
     const char *SEP64 = "──────────────────────────────────────────────────────────────────";
 
     LOG_PRINT("\n┌%s┐\n", SEP64);
-    LOG_PRINT("│  Case: %-10s  B=%ld N_q=%ld N_kv=%ld S_q=%ld S_kv=%ld D=%ld  "
+    LOG_PRINT("│  Case: %-14s  B=%ld N_q=%ld N_kv=%ld S_q=%ld S_kv=%ld D=%ld  "
               "mask=%ld\n",
               tc.name, tc.B, tc.N_q, tc.N_kv, tc.S_q, tc.S_kv, tc.D, tc.maskMode);
+    LOG_PRINT("│  layout Q/Kv/Out = %s / %s / %s   dtype=%s\n",
+              tc.layoutQ, tc.layoutKv, tc.layoutOut,
+              tc.dtype == aclDataType::ACL_BF16 ? "bf16" : "fp16");
     LOG_PRINT("└%s┘\n", SEP64);
 
     int64_t B = tc.B, N_q = tc.N_q, N_kv = tc.N_kv;
     int64_t S_q = tc.S_q, S_kv = tc.S_kv, D = tc.D;
+    size_t elemSize = 2;
 
-    // ── 张量形状 ────────────────────────────────────────────────────────────
-    std::vector<int64_t> qShape   = {B, N_q,  S_q,  D};
-    std::vector<int64_t> kShape   = {B, N_kv, S_kv, D};
-    std::vector<int64_t> vShape   = {B, N_kv, S_kv, D};
-    std::vector<int64_t> outShape = {B, N_q,  S_q,  D};
+    std::vector<int64_t> qShape, kShape, vShape, outShape;
+    BuildShapes(tc.layoutQ, tc.layoutOut, B, N_q, N_kv, S_q, S_kv, D,
+                qShape, kShape, vShape, outShape);
     int64_t qElem = GetShapeSize(qShape), kElem = GetShapeSize(kShape);
     int64_t outElem = GetShapeSize(outShape); (void)GetShapeSize(vShape);
     int64_t qRefElems  = N_q  * S_q  * D;   // batch 0 CPU参考
     int64_t kvRefElems = N_kv * S_kv * D;
 
-    LOG_PRINT("  Tensors: Q[%ld,%ld,%ld,%ld]=%.2fMB  K/V[%ld,%ld,%ld,%ld]=%.2fMB\n",
-              B,N_q,S_q,D, qElem*2.0/1e6, B,N_kv,S_kv,D, kElem*2.0/1e6);
+    LOG_PRINT("  Tensors: Q shape=[%ld,%ld,%ld,%ld] (%.2fMB)  K/V shape=[%ld,%ld,%ld,%ld] (%.2fMB)\n",
+              qShape[0], qShape[1], qShape[2], qShape[3], qElem * (double)elemSize / 1e6,
+              kShape[0], kShape[1], kShape[2], kShape[3], kElem * (double)elemSize / 1e6);
 
     std::mt19937 rng(seed ? seed : static_cast<uint32_t>(std::random_device{}()));
     std::vector<float> qRef, kRef, vRef;
@@ -431,7 +695,9 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
     // ── 分配设备张量 ────────────────────────────────────────────────────────
     void *qDev=nullptr, *kDev=nullptr, *vDev=nullptr, *outDev=nullptr;
     void *metaDev = nullptr;
+    void *maskDev = nullptr;
     aclTensor *qT=nullptr, *kT=nullptr, *vT=nullptr, *outT=nullptr, *metaT=nullptr;
+    aclTensor *maskT = nullptr;
 
     auto cleanup = [&]() {
         if (qT)    aclDestroyTensor(qT);
@@ -439,11 +705,13 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
         if (vT)    aclDestroyTensor(vT);
         if (outT)  aclDestroyTensor(outT);
         if (metaT) aclDestroyTensor(metaT);
+        if (maskT) aclDestroyTensor(maskT);
         if (qDev)    aclrtFree(qDev);
         if (kDev)    aclrtFree(kDev);
         if (vDev)    aclrtFree(vDev);
         if (outDev)  aclrtFree(outDev);
         if (metaDev) aclrtFree(metaDev);
+        if (maskDev) aclrtFree(maskDev);
     };
 
     // Q
@@ -452,100 +720,76 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
         std::vector<uint16_t> h(qElem);
         qRef.resize(qRefElems);
         for (int64_t i = 0; i < qElem; ++i) {
-            uint16_t fp = float_to_fp16(dist(rng));
+            uint16_t fp = float_to_half(dist(rng), tc.dtype);
             h[i] = fp;
-            if (i < qRefElems) qRef[i] = fp16_to_float(fp);
+            if (i < qRefElems) qRef[i] = half_to_float(fp, tc.dtype);
         }
-        if (CreateAclTensor(h, qShape, &qDev, aclDataType::ACL_FLOAT16, &qT) != ACL_SUCCESS)
+        if (CreateAclTensor(h, qShape, &qDev, tc.dtype, &qT) != ACL_SUCCESS)
             { cleanup(); return false; }
     }
     // K
-    if (CreateAclTensorRandom(kShape, &kDev, aclDataType::ACL_FLOAT16, &kT,
+    if (CreateAclTensorRandom(kShape, &kDev, tc.dtype, &kT,
                               rng, tc.kMin, tc.kMax, &kRef, kvRefElems) != ACL_SUCCESS)
         { cleanup(); return false; }
     // V
-    if (CreateAclTensorRandom(vShape, &vDev, aclDataType::ACL_FLOAT16, &vT,
+    if (CreateAclTensorRandom(vShape, &vDev, tc.dtype, &vT,
                               rng, tc.vMin, tc.vMax, &vRef, kvRefElems) != ACL_SUCCESS)
         { cleanup(); return false; }
     // Out (清零)
-    if (CreateAclTensorDeviceZero(outShape, &outDev, aclDataType::ACL_FLOAT16,
-                                  sizeof(uint16_t), &outT) != ACL_SUCCESS)
+    if (CreateAclTensorDeviceZero(outShape, &outDev, tc.dtype, elemSize, &outT) != ACL_SUCCESS)
         { cleanup(); return false; }
-    // Metadata (清零)
-    if (CreateMetadataTensor(&metaDev, &metaT) != ACL_SUCCESS)
-        { cleanup(); return false; }
+
+    std::vector<uint32_t> metaHost;
+    LOG_PRINT("\n  [A] 从 .pt 加载 metadata: %s\n", metaFilePath.c_str());
+    if (!LoadMetadataFromFile(metaFilePath, loaderScript, metaHost)) {
+        cleanup(); return false;
+    }
+    if (UploadMetadataTensor(metaHost, &metaDev, &metaT) != ACL_SUCCESS) {
+        cleanup(); return false;
+    }
+
+    // mask_mode=3 (causal) 必须提供 attn_mask [2048,2048] INT8
+    if (tc.maskMode == 3) {
+        if (CreateCausalAttnMask2048(&maskDev, &maskT) != ACL_SUCCESS) {
+            cleanup(); return false;
+        }
+        LOG_PRINT("  attn_mask: INT8 [%ld,%ld] (causal / mask_mode=3)\n",
+                  CAUSAL_ATTN_MASK_SIZE, CAUSAL_ATTN_MASK_SIZE);
+    }
 
     double softmaxScale = 1.0 / std::sqrt((double)D);
     int64_t winLeft     = tc.winLeft;
     int64_t winRight    = tc.winRight;
-
-    // ────────────────────────────────────────────────────────────────────────
-    //  步骤 A：调用 flash_attn_metadata 算子预计算 tiling 切分方案
-    // ────────────────────────────────────────────────────────────────────────
-    LOG_PRINT("\n  [A] 调用 flash_attn_metadata 算子...\n");
-    {
-        uint64_t wsSize = 0;
-        aclOpExecutor *exec = nullptr;
-        int ret = aclnnFlashAttnMetadataGetWorkspaceSize(
-            nullptr,       // cuSeqlensQOptional
-            nullptr,       // cuSeqlensKvOptional
-            nullptr,       // sequsedQOptional
-            nullptr,       // sequsedKvOptional
-            B, S_q, S_kv, N_q, N_kv, D,
-            tc.maskMode, winLeft, winRight,
-            "BNSD", "BNSD", "BNSD",
-            metaT, &wsSize, &exec);
-        if (ret != ACL_SUCCESS) {
-            LOG_PRINT("  aclnnFlashAttnMetadataGetWorkspaceSize FAILED. ret=%d\n", ret);
-            cleanup(); return false;
-        }
-        void *ws = nullptr;
-        if (wsSize > 0) {
-            aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        }
-        ret = aclnnFlashAttnMetadata(ws, wsSize, exec, stream);
-        if (ret != ACL_SUCCESS) {
-            LOG_PRINT("  aclnnFlashAttnMetadata FAILED. ret=%d\n", ret);
-            if (ws) aclrtFree(ws);
-            cleanup(); return false;
-        }
-        aclrtSynchronizeStream(stream);
-        if (ws) aclrtFree(ws);
+    if (tc.maskMode == 0 || tc.maskMode == 3) {
+        winLeft = -1;
+        winRight = -1;
     }
 
-    // 回读 metadata → 打印
-    std::vector<uint32_t> metaHost(METADATA_MAX_ELEMS, 0);
-    aclrtMemcpy(metaHost.data(), METADATA_MAX_ELEMS * sizeof(uint32_t),
-                metaDev, METADATA_MAX_ELEMS * sizeof(uint32_t),
-                ACL_MEMCPY_DEVICE_TO_HOST);
-    LOG_PRINT("\n  ▼ flash_attn_metadata 输出（sectionNum=%u  mBase=%u  s2Base=%u）\n",
+    int64_t metaPrintElems = (int64_t)metaHost.size();
+    LOG_PRINT("\n  ▼ metadata（sectionNum=%u  mBase=%u  s2Base=%u）\n",
               metaHost[0], metaHost[1], metaHost[2]);
-    PrintMetadata(metaHost.data(), METADATA_MAX_ELEMS);
+    PrintMetadata(metaHost.data(), metaPrintElems);
 
     // ────────────────────────────────────────────────────────────────────────
-    //  步骤 B：调用 flash_attn 算子（传入上一步的 metadata）
+    //  步骤 B：调用 flash_attn 算子（传入 metadata）
     // ────────────────────────────────────────────────────────────────────────
-    LOG_PRINT("  [B] 调用 flash_attn 算子（使用预计算 metadata）...\n");
+    LOG_PRINT("  [B] 调用 flash_attn 算子（使用 .pt metadata）...\n");
     {
+        int64_t maxSeqlenQ = -1, maxSeqlenKv = -1;
+        GetMaxSeqlenAttrs(tc.layoutQ, tc.layoutKv, S_q, S_kv, maxSeqlenQ, maxSeqlenKv);
         uint64_t wsSize = 0;
         aclOpExecutor *exec = nullptr;
         int ret = aclnnFlashAttnGetWorkspaceSize(
             qT, kT, vT,
-            nullptr,    // blockTable
-            nullptr,    // cuSeqlensQ
-            nullptr,    // cuSeqlensKv
-            nullptr,    // sequsedQ
-            nullptr,    // sequsedKv
-            nullptr,    // sinks (arg 9)
-            nullptr,    // reserved optional (arg 10, actual API has extra tensor here)
-            metaT,      // metadata (arg 11) ← 传入预计算好的 metadata
+            nullptr, nullptr, nullptr, nullptr, nullptr,
+            nullptr, maskT,
+            metaT,
             softmaxScale,
             (int32_t)tc.maskMode, (int32_t)winLeft, (int32_t)winRight,
-            (int32_t)S_q, (int32_t)S_kv,
-            "BNSD", "BNSD", "BNSD",
-            (int32_t)0, // returnSoftmaxLse
-            outT,
-            nullptr,    // softmaxLse
+            maxSeqlenQ, maxSeqlenKv,
+            tc.layoutQ, tc.layoutKv, tc.layoutOut,
+            (int32_t)0,
+            outT, nullptr,
             &wsSize, &exec);
         if (ret != ACL_SUCCESS) {
             LOG_PRINT("  aclnnFlashAttnGetWorkspaceSize FAILED. ret=%d\n", ret);
@@ -566,8 +810,14 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
 
     // ── 回读 NPU 输出 ───────────────────────────────────────────────────────
     std::vector<uint16_t> outHost(outElem, 0);
-    aclrtMemcpy(outHost.data(), (size_t)outElem * sizeof(uint16_t),
-                outDev, (size_t)outElem * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    aclrtMemcpy(outHost.data(), (size_t)outElem * elemSize,
+                outDev, (size_t)outElem * elemSize, ACL_MEMCPY_DEVICE_TO_HOST);
+
+    if (tc.skipCpuRef) {
+        LOG_PRINT("\n  [C] 跳过 CPU 参考（大 shape 或 --skipCpuRef）\n");
+        cleanup();
+        return true;
+    }
 
     // ── CPU 参考计算（仅 batch 0）──────────────────────────────────────────
     LOG_PRINT("\n  [C] CPU 参考计算（batch 0, mask=%ld）...\n", tc.maskMode);
@@ -578,7 +828,7 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
     double maxAbsErr=0, sumAbsErr=0, maxRelErr=0, sumRelErr=0;
     int64_t failCount = 0;
     for (int64_t i = 0; i < qRefElems; ++i) {
-        float npu = fp16_to_float(outHost[i]);
+        float npu = half_to_float(outHost[i], tc.dtype);
         float cpu = cpuOut[i];
         float ae  = std::abs(npu - cpu);
         float ref = std::abs(cpu) + 1e-6f;
@@ -619,7 +869,7 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
                   "idx", "NPU", "CPU", "absErr", "relErr");
         int64_t printed = 0;
         for (int64_t i = 0; i < qRefElems && printed < printMax; ++i) {
-            float npu = fp16_to_float(outHost[i]);
+            float npu = half_to_float(outHost[i], tc.dtype);
             float cpu = cpuOut[i];
             float ae  = std::abs(npu - cpu);
             float ref = std::abs(cpu) + 1e-6f;
@@ -638,7 +888,7 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
         char buf[256];
         // NPU output (batch 0)
         std::vector<float> npuFloat(qRefElems);
-        for (int64_t i = 0; i < qRefElems; ++i) npuFloat[i] = fp16_to_float(outHost[i]);
+        for (int64_t i = 0; i < qRefElems; ++i) npuFloat[i] = half_to_float(outHost[i], tc.dtype);
         snprintf(buf, sizeof(buf), "fa_npu_out_%s.txt", tc.name);
         char hdr[256];
         snprintf(hdr, sizeof(hdr), "shape=[1,%ld,%ld,%ld]  case=%s  elems=%ld",
@@ -663,7 +913,7 @@ static bool RunTestCase(const TestCase &tc, aclrtStream stream,
             fprintf(f, "%-8s  %-14s  %-14s  %-14s  %-12s  %s\n",
                     "idx", "npu", "cpu", "absErr", "relErr", "result");
             for (int64_t i = 0; i < qRefElems; ++i) {
-                float npu = fp16_to_float(outHost[i]);
+                float npu = half_to_float(outHost[i], tc.dtype);
                 float ae  = std::abs(npu - cpuOut[i]);
                 float ref = std::abs(cpuOut[i]) + 1e-6f;
                 float thr = std::max(ref * RATIO_THRESHOLD, 0.000025f);
@@ -688,14 +938,14 @@ static void PrintUsage(const char *prog)
         "\n"
         "形状参数（对标 test_case.py 各字段）:\n"
         "  --B     <int>   batch_size                        (默认 1)\n"
-        "  --N1    <int>   query head 数                     (默认 1)\n"
-        "  --N2    <int>   kv head 数；N2<N1 为 GQA/MQA     (默认 = N1)\n"
-        "  --S1    <int>   query 序列长度；S1=1 触发 FD 模式 (默认 64)\n"
-        "  --S2    <int>   key/value 序列长度                (默认 256)\n"
+        "  --N1    <int>   query head 数                     (默认 32)\n"
+        "  --N2    <int>   kv head 数；N2<N1 为 GQA/MQA     (默认 2)\n"
+        "  --S1    <int>   query 序列长度                    (默认 8192)\n"
+        "  --S2    <int>   key/value 序列长度                (默认 8192)\n"
         "  --D     <int>   head_dim                          (默认 128)\n"
         "\n"
         "掩码参数:\n"
-        "  --mask  <int>   mask_mode: 0=全量 1=因果下三角    (默认 1)\n"
+        "  --mask  <int>   mask_mode: 0=全量 3=rightDownCausal (默认 3)\n"
         "  --wL    <int>   win_left / pre_tokens；-1=无限制  (默认 -1)\n"
         "  --wR    <int>   win_right / next_tokens；-1=无限制(默认 -1)\n"
         "\n"
@@ -707,89 +957,132 @@ static void PrintUsage(const char *prog)
         "  --vMin  <float> V 下界  (默认  0.0)\n"
         "  --vMax  <float> V 上界  (默认  1.0)\n"
         "\n"
-        "其他选项:\n"
-        "  --name    <str> 输出文件名前缀                    (默认 \"test\")\n"
-        "  --seed    <int> 随机种子；0=每次随机              (默认 42)\n"
-        "  --device  <int> NPU device id                     (默认 0)\n"
-        "  --dump          保存 npu_out/cpu_ref/prec_cmp.txt\n"
-        "  --verbose       打印全部超阈值点（而非仅前 10 个）\n"
-        "  --help          打印此帮助\n"
+        "布局 / 数据类型:\n"
+        "  --layoutQ   <str>  query layout: BNSD/BSND       (默认 BSND)\n"
+        "  --layoutKv  <str>  kv layout                     (默认 BSND)\n"
+        "  --layoutOut <str>  output layout                 (默认 BSND)\n"
+        "  --dtype     <str>  fp16 / bf16                   (默认 bf16)\n"
         "\n"
-        "示例:\n"
-        "  %s                                    # 默认参数运行\n"
-        "  %s --B 1 --N1 8 --N2 2 --S1 1 --S2 512 --D 128  # FD+GQA\n"
-        "  %s --B 4 --N1 16 --N2 4 --S1 256 --S2 256 --D 128 --mask 1\n"
-        "  %s --S1 64 --S2 256 --qMin 10 --qMax 10 --kMin 10 --kMax 10\n",
-        prog, prog, prog, prog, prog);
+        "  --metaPt  <path> 指定 metadata.pt（默认自动查找 example 同级目录）\n"
+        "\n"
+        "其他选项:\n"
+        "  --name    <str>  case 名称                       (默认 case_test_001)\n"
+        "  --seed    <int>  随机种子                        (默认 42)\n"
+        "  --device  <int>  NPU device id                   (默认 0)\n"
+        "  --skipCpuRef     跳过 CPU 参考（大 shape 默认开启）\n"
+        "  --cpuRef         强制开启 CPU 参考\n"
+        "  --dump           保存 npu_out/cpu_ref/prec_cmp.txt\n"
+        "  --verbose        打印全部超阈值点\n"
+        "  --help           打印此帮助\n"
+        "\n"
+        "说明: 默认在 example 同级目录查找 load_metadata_pt.py / metadata.pt\n"
+        "示例: %s --device 0\n",
+        prog, prog);
 }
 
 int main(int argc, char *argv[])
 {
-    // ─── 默认参数（对标 test_case.py 常用字段）──────────────────────────────
-    std::string caseName = "test";
+    std::string exampleDir = ResolveExampleDir(argv[0]);
+    std::string metaPtPath = ResolveMetadataPtPath(exampleDir);
+    std::string loaderScript = ResolveMetadataLoaderScript(exampleDir);
+
+    // ─── 默认参数：case_test_001 ───────────────────────────────────────────
+    std::string caseName = "case_test_001";
     int64_t B        = 1;
-    int64_t N_q      = 19;      // N1
-    int64_t N_kv     = 19;     // N2；-1 表示"等于 N_q"
-    int64_t S_q      = 640;     // S1
-    int64_t S_kv     = 1024;    // S2
+    int64_t N_q      = 32;
+    int64_t N_kv     = 2;
+    int64_t S_q      = 8192;
+    int64_t S_kv     = 8192;
     int64_t D        = 128;
-    int64_t maskMode = 0;      // 1=因果下三角
+    int64_t maskMode = 3;
     int64_t winLeft  = -1;
     int64_t winRight = -1;
     float   qMin = -10.0f, qMax = 10.0f;
     float   kMin = -10.0f, kMax = 10.0f;
     float   vMin = -10.0f, vMax = 10.0f;
+    std::string layoutQ   = "BSND";
+    std::string layoutKv  = "BSND";
+    std::string layoutOut = "BSND";
+    std::string dtypeStr  = "bf16";
     uint32_t seed    = 42u;
     int32_t deviceId = 0;
     bool dumpOutput  = false;
     bool verbose     = false;
+    bool skipCpuRef  = true;   // S1*S2 较大时默认跳过
+    bool forceCpuRef = false;
 
-    // ─── 命令行参数解析 ─────────────────────────────────────────────────────
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto nextStr = [&]() -> std::string {
             return (i + 1 < argc) ? argv[++i] : "";
         };
-        if      (a == "--help")    { PrintUsage(argv[0]); return 0; }
-        else if (a == "--dump")    { dumpOutput = true; }
-        else if (a == "--verbose") { verbose    = true; }
-        else if (a == "--name")    { caseName   = nextStr(); }
-        else if (a == "--seed")    { seed       = (uint32_t)std::stoul(nextStr()); }
-        else if (a == "--device")  { deviceId   = (int32_t) std::stoi(nextStr()); }
-        else if (a == "--B")       { B          = std::stoll(nextStr()); }
-        else if (a == "--N1")      { N_q        = std::stoll(nextStr()); }
-        else if (a == "--N2")      { N_kv       = std::stoll(nextStr()); }
-        else if (a == "--S1")      { S_q        = std::stoll(nextStr()); }
-        else if (a == "--S2")      { S_kv       = std::stoll(nextStr()); }
-        else if (a == "--D")       { D          = std::stoll(nextStr()); }
-        else if (a == "--mask")    { maskMode   = std::stoll(nextStr()); }
-        else if (a == "--wL")      { winLeft    = std::stoll(nextStr()); }
-        else if (a == "--wR")      { winRight   = std::stoll(nextStr()); }
-        else if (a == "--qMin")    { qMin       = std::stof(nextStr()); }
-        else if (a == "--qMax")    { qMax       = std::stof(nextStr()); }
-        else if (a == "--kMin")    { kMin       = std::stof(nextStr()); }
-        else if (a == "--kMax")    { kMax       = std::stof(nextStr()); }
-        else if (a == "--vMin")    { vMin       = std::stof(nextStr()); }
-        else if (a == "--vMax")    { vMax       = std::stof(nextStr()); }
+        if      (a == "--help")      { PrintUsage(argv[0]); return 0; }
+        else if (a == "--dump")      { dumpOutput = true; }
+        else if (a == "--verbose")   { verbose    = true; }
+        else if (a == "--skipCpuRef"){ skipCpuRef = true; }
+        else if (a == "--cpuRef")    { forceCpuRef = true; skipCpuRef = false; }
+        else if (a == "--name")      { caseName   = nextStr(); }
+        else if (a == "--seed")      { seed       = (uint32_t)std::stoul(nextStr()); }
+        else if (a == "--device")    { deviceId   = (int32_t) std::stoi(nextStr()); }
+        else if (a == "--metaPt")    { metaPtPath = nextStr(); }
+        else if (a == "--layoutQ")   { layoutQ    = nextStr(); }
+        else if (a == "--layoutKv")  { layoutKv   = nextStr(); }
+        else if (a == "--layoutOut") { layoutOut  = nextStr(); }
+        else if (a == "--dtype")     { dtypeStr   = nextStr(); }
+        else if (a == "--B")         { B          = std::stoll(nextStr()); }
+        else if (a == "--N1")        { N_q        = std::stoll(nextStr()); }
+        else if (a == "--N2")        { N_kv       = std::stoll(nextStr()); }
+        else if (a == "--S1")        { S_q        = std::stoll(nextStr()); }
+        else if (a == "--S2")        { S_kv       = std::stoll(nextStr()); }
+        else if (a == "--D")         { D          = std::stoll(nextStr()); }
+        else if (a == "--mask")      { maskMode   = std::stoll(nextStr()); }
+        else if (a == "--wL")        { winLeft    = std::stoll(nextStr()); }
+        else if (a == "--wR")        { winRight   = std::stoll(nextStr()); }
+        else if (a == "--qMin")      { qMin       = std::stof(nextStr()); }
+        else if (a == "--qMax")      { qMax       = std::stof(nextStr()); }
+        else if (a == "--kMin")      { kMin       = std::stof(nextStr()); }
+        else if (a == "--kMax")      { kMax       = std::stof(nextStr()); }
+        else if (a == "--vMin")      { vMin       = std::stof(nextStr()); }
+        else if (a == "--vMax")      { vMax       = std::stof(nextStr()); }
         else { LOG_PRINT("[WARN] 未知参数: %s，已忽略（--help 查看用法）\n", a.c_str()); }
     }
-    if (N_kv < 0) N_kv = N_q;  // N2 默认等于 N1（MHA）
+    if (N_kv < 0) N_kv = N_q;
+    if (!forceCpuRef && S_q * S_kv > (1LL << 20)) skipCpuRef = true;
 
-    // ─── 构造测试参数 ────────────────────────────────────────────────────────
+    // loader 优先与 metadata.pt 同目录，否则用 example 目录
+    {
+        std::string besidePt = DirnameOfPath(metaPtPath) + kDefaultLoaderScriptName;
+        if (FileExists(besidePt)) {
+            loaderScript = besidePt;
+        } else if (!FileExists(loaderScript)) {
+            loaderScript = exampleDir + kDefaultLoaderScriptName;
+        }
+    }
+
+    aclDataType dtype = aclDataType::ACL_FLOAT16;
+    if (dtypeStr == "bf16" || dtypeStr == "BF16") {
+        dtype = aclDataType::ACL_BF16;
+    }
+
     TestCase tc;
-    tc.name     = caseName.c_str();
-    tc.B        = B;
-    tc.N_q      = N_q;
-    tc.N_kv     = N_kv;
-    tc.S_q      = S_q;
-    tc.S_kv     = S_kv;
-    tc.D        = D;
-    tc.maskMode = maskMode;
-    tc.winLeft  = winLeft;
-    tc.winRight = winRight;
-    tc.qMin     = qMin;  tc.qMax = qMax;
-    tc.kMin     = kMin;  tc.kMax = kMax;
-    tc.vMin     = vMin;  tc.vMax = vMax;
+    tc.name      = caseName.c_str();
+    tc.B         = B;
+    tc.N_q       = N_q;
+    tc.N_kv      = N_kv;
+    tc.S_q       = S_q;
+    tc.S_kv      = S_kv;
+    tc.D         = D;
+    tc.maskMode  = maskMode;
+    tc.winLeft   = winLeft;
+    tc.winRight  = winRight;
+    tc.qMin      = qMin;  tc.qMax = qMax;
+    tc.kMin      = kMin;  tc.kMax = kMax;
+    tc.vMin      = vMin;  tc.vMax = vMax;
+    tc.layoutQ   = layoutQ.c_str();
+    tc.layoutKv  = layoutKv.c_str();
+    tc.layoutOut = layoutOut.c_str();
+    tc.dtype     = dtype;
+    tc.skipCpuRef = skipCpuRef;
 
     // ─── 打印当前参数配置 ────────────────────────────────────────────────────
     const char *SEP = "══════════════════════════════════════════════════════════════════";
@@ -798,12 +1091,17 @@ int main(int argc, char *argv[])
     LOG_PRINT("%s\n", SEP);
     LOG_PRINT("  B=%ld  N1(N_q)=%ld  N2(N_kv)=%ld  S1(S_q)=%ld  S2(S_kv)=%ld  D=%ld\n",
               B, N_q, N_kv, S_q, S_kv, D);
+    LOG_PRINT("  layout Q/Kv/Out = %s / %s / %s   dtype=%s\n",
+              layoutQ.c_str(), layoutKv.c_str(), layoutOut.c_str(), dtypeStr.c_str());
     LOG_PRINT("  maskMode=%ld  winLeft=%ld  winRight=%ld\n",
               maskMode, winLeft, winRight);
     LOG_PRINT("  Q∈[%.3g, %.3g]  K∈[%.3g, %.3g]  V∈[%.3g, %.3g]\n",
               (double)qMin, (double)qMax, (double)kMin, (double)kMax, (double)vMin, (double)vMax);
-    LOG_PRINT("  seed=%u  device=%d  dump=%s  verbose=%s\n",
-              seed, deviceId, dumpOutput ? "yes" : "no", verbose ? "yes" : "no");
+    LOG_PRINT("  exampleDir=%s\n", exampleDir.c_str());
+    LOG_PRINT("  seed=%u  device=%d  metaPt=%s  loader=%s  skipCpuRef=%s  dump=%s  verbose=%s\n",
+              seed, deviceId, metaPtPath.c_str(), loaderScript.c_str(),
+              skipCpuRef ? "yes" : "no",
+              dumpOutput ? "yes" : "no", verbose ? "yes" : "no");
     LOG_PRINT("%s\n\n", SEP);
 
     // ─── device / stream 初始化 ─────────────────────────────────────────────
@@ -816,7 +1114,7 @@ int main(int argc, char *argv[])
     // ─── 运行 ────────────────────────────────────────────────────────────────
     bool passed = false;
     try {
-        passed = RunTestCase(tc, stream, dumpOutput, verbose, seed);
+        passed = RunTestCase(tc, stream, dumpOutput, verbose, seed, metaPtPath, loaderScript);
     } catch (const std::exception &e) {
         LOG_PRINT("[ERROR] 运行异常: %s\n", e.what());
     } catch (...) {

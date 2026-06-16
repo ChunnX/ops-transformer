@@ -509,12 +509,8 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::S2_END;
-        }
-
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP;
+            return TASK_DEAL_MODE::SKIP_REMAINING_S2;
         }
 
         if (s2Cur == curS2Start) {
@@ -784,14 +780,16 @@ public:
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
-        // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
-            s2Cur++;
-            return;
+        if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
+            // 当前S2未处理完
+            if (s2Cur + 1 < s2LoopTimes) {
+                s2Cur++;
+                return;
+            }
         }
 
         if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
-            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
+            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT || taskDealMode == TASK_DEAL_MODE::SKIP_REMAINING_S2) {
             accGS1Loops++;
         }
 
