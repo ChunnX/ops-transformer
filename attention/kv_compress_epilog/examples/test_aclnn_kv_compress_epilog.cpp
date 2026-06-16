@@ -15,10 +15,11 @@
 int main()
 {
     // 1. 创建输入 tensor
-    // cache (in-place input/output): [2048, 384], dtype=uint8
-    int64_t cacheShape[] = {2048, 384};
+    // cache (in-place input/output): 4D [blockNum, blockSize, 1, headDim] = [128, 16, 1, 384],
+    //   num_slots = 128*16 = 2048, headDim=384 >= kvCacheCol(mode1 d256 -> 323), dtype=uint8
+    int64_t cacheShape[] = {128, 16, 1, 384};
     aclTensor *cache = aclCreateTensor(
-        cacheShape, 2, ACL_UINT8, ACL_FORMAT_ND, ACL_FORMAT_ND);
+        cacheShape, 4, ACL_UINT8, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
     // x: [1024, 256], dtype=bfloat16
     int64_t xShape[] = {1024, 256};

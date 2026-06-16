@@ -109,8 +109,6 @@ constexpr static AscendC::Reg::CastTrait castTraitU32toU8Even = {
     AscendC::RoundMode::CAST_NONE,
 };
 
-// B16->B32 拆偶/拆奇布局 (与 swiglu_group_quant 一致): Layout0 取偶数位元素, Layout1 取奇数位元素。
-// castTraitB162B32Even 即 Layout0 (RegLayout::ZERO), 此处补充 Layout1 (RegLayout::ONE)。
 constexpr AscendC::Reg::CastTrait traitB16ToB32Layout1 = {
     AscendC::Reg::RegLayout::ONE,
     AscendC::Reg::SatMode::UNKNOWN,
@@ -402,20 +400,16 @@ __simd_vf__ inline void VFProcessDynamicBlockQuantVF(
                 Max(rowMax, rowMax, partMax, preg1);
             }
             Compares<float, CMPMODE::NE>(cmpScalar, rowMax, (float)0.0, preg1);
-            Mul(scale, rowMax, (RegTensor<float>&)coeffReg, cmpScalar);  // rowmax / fp8max
+            Mul(scale, rowMax, (RegTensor<float>&)coeffReg, cmpScalar);
             Min(scale, scale, inf, preg1);
-            // 与 VFProcessSwigluGroupQuant 的 if constexpr (!hasRoundScale) {...} else {...} 结构一致:
-            // 两条路径各自算出 invScale, pass2 统一用 Mul(x, invScale)。
             if constexpr (!roundScale) {
-                // 非 round: 存储 scale = rowmax/fp8max, invScale = 1/scale (倒数)。
                 Div<float, &mode>(invScale, one, scale, preg1);
             } else {
-                // round: scale 向上取最近的 2 的幂 (exp + (mantissa != 0)), invScale = 2^-(exp_scale)。
                 ShiftRights(rsExp, (RegTensor<uint32_t>&)scale, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                 And(rsMant, (RegTensor<uint32_t>&)scale, rsMantMask, preg1);
                 Compare<uint32_t, AscendC::CMPMODE::NE>(rsCmp, rsMant, rsZeroU, preg1);
                 Select(rsSel, rsOneU, rsZeroU, rsCmp);
-                Add(rsExp, rsExp, rsSel, preg1);   // 存储 scale 的指数字段 (scale = 2^(rsExp-127))
+                Add(rsExp, rsExp, rsSel, preg1);
                 ShiftLefts((RegTensor<int32_t>&)scale, (RegTensor<int32_t>&)rsExp, static_cast<int16_t>(23), preg1);
                 Sub((RegTensor<int32_t>&)rsInvExp, (RegTensor<int32_t>&)rs254, (RegTensor<int32_t>&)rsExp, preg1);
                 ShiftLefts((RegTensor<int32_t>&)invScale, (RegTensor<int32_t>&)rsInvExp,
@@ -423,7 +417,6 @@ __simd_vf__ inline void VFProcessDynamicBlockQuantVF(
             }
             StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(
                 scaleLocalAddr + i * scaleRowAlign, scale, preg1);
-            // pass 2: 两条路径统一 Mul(x, invScale)。NaN 安全 (结果 NaN 时保留原值)。
             Duplicate(dupInvScale, invScale, pregMain);
             sreg = curColNum;
             for (uint16_t j = 0; j < loopCount; j++) {
@@ -451,7 +444,7 @@ __aicore__ inline void VFProcessDynamicBlockQuant(
     uint16_t loopCount = CeilDiv(curColNum, VL_FP32);
     uint32_t curColNumAlign = RoundUp<T1>(curColNum);
     uint32_t dstCurColNumAlign = RoundUp<T0>(curColNum);
-    uint32_t scaleRowAlign = RoundUp<float>(1);  // 整行一个 scale
+    uint32_t scaleRowAlign = RoundUp<float>(1);
     uint32_t maxValueInt = 0;
     if constexpr (IsSameType<T0, fp8_e5m2_t>::value) {
         maxValueInt = INV_FP8_E5M2_MAX_VALUE;

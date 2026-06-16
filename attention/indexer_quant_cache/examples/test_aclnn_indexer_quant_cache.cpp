@@ -15,15 +15,17 @@
 int main()
 {
     // 1. 创建输入 tensor
-    // cache (in-place input/output): [2048, 128], dtype=float8_e4m3fn
-    int64_t cacheShape[] = {2048, 128};
+    // cache (in-place input/output): 4D [blockNum, blockSize, 1, headDim] = [128, 16, 1, 128],
+    //   num_slots = 128*16 = 2048; mode1(Normal) headDim=128 >= d(128), dtype=float8_e4m3fn
+    int64_t cacheShape[] = {128, 16, 1, 128};
     aclTensor *cache = aclCreateTensor(
-        cacheShape, 2, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, ACL_FORMAT_ND);
+        cacheShape, 4, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
-    // cacheScale (in-place input/output): [2048, 1], dtype=float32
-    int64_t scaleShape[] = {2048, 1};
+    // cacheScale (in-place input/output): 4D [blockNum, blockSize, 1, scaleHeadDim] = [128, 16, 1, 1],
+    //   mode1 scaleCol=1, dtype=float32
+    int64_t scaleShape[] = {128, 16, 1, 1};
     aclTensor *cacheScale = aclCreateTensor(
-        scaleShape, 2, ACL_FLOAT, ACL_FORMAT_ND, ACL_FORMAT_ND);
+        scaleShape, 4, ACL_FLOAT, ACL_FORMAT_ND, ACL_FORMAT_ND);
 
     // x: [1024, 128], dtype=float16
     int64_t xShape[] = {1024, 128};
