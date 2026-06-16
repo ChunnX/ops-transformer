@@ -19,13 +19,11 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-
 #if __has_include("../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h")
 #include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
 #else
 #include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
 #endif
-
 #if __has_include("../../common/op_kernel/arch35/vf/vf_flashupdate_new.h")
 #include "../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
 #else
@@ -66,9 +64,11 @@ public:
             if (actualSeqLengthsQ != nullptr) {
                 cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ);
             }
+
             if (actualSeqLengths != nullptr) {
                 actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengths);
             }
+
             this->InitCubeVecSharedParams(sharedParams, aicIdx, subBlockIdx);
             this->GetExtremeValue(this->negativeFloatScalar);
         }
@@ -168,8 +168,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         topkBS1Idx += runInfo.boIdx * constInfo.s1Size * constInfo.sparseBlockCount +
             runInfo.s1oIdx * constInfo.sparseBlockCount; // B, S1, N2(1), K
     }
+
     int64_t cmpS2LoopCnt = runInfo.s2LoopCount;
     int64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
+
     if (unlikely(topkKIdx >= constInfo.sparseBlockCount)) {
         token0Idx = -1;
     } else {
@@ -273,18 +275,23 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_A
 // fp8->fp32
 static constexpr MicroAPI::CastTrait castTraitFp8_1 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                        MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+
 // fp8->fp32
 static constexpr MicroAPI::CastTrait castTraitFp8_2 = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::UNKNOWN,
                                                        MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+
 // fp32->fp16
 static constexpr MicroAPI::CastTrait castTraitFp8_3 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                                        MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+
 // fp32->fp16
 static constexpr MicroAPI::CastTrait castTraitFp8_4 = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::NO_SAT,
                                                        MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+
 // int8->half
 static constexpr MicroAPI::CastTrait castTraitint8_1 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                         MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+
 // half->fp32
 static constexpr MicroAPI::CastTrait castTraithalf_1 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                         MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
@@ -572,18 +579,18 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
                 static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
         } else if(runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
         }
     } else {
         if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
         } else if (runInfo.s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
         } else if(runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
                 stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
@@ -591,12 +598,12 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
         }
     }
     bmm1ResBuf.SetCrossCore();
-
     // ===================DataCopy to L1 ====================
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
     this->stage1OutQue[stage1Offset].template DeQue<Q_T>();
 
     LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>(s2BaseSize * constInfo.dSizeV);
+
     if (likely(runInfo.halfMRealSize != 0)) {
         DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) * (runInfo.mRealSize - runInfo.halfMRealSize)],
             stage1CastTensor, {s2BaseSize / 16, (uint16_t)runInfo.halfMRealSize,
@@ -618,11 +625,11 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec2(
     ConstInfo &constInfo)
 {
     bmm2ResBuf.WaitCrossCore();
+
     if (unlikely(runInfo.vec2MBaseSize == 0)) {
         bmm2ResBuf.SetCrossCore();
         return;
     }
-    
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
     runInfo.vec2MRealSize = runInfo.vec2MBaseSize;
     int64_t qsfaVec2CalcSize = runInfo.vec2MRealSize * qsfaDTemplateAlign64;
@@ -779,9 +786,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
     auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
     sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
     sharedParams.n2Size = 1;
-    sharedParams.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup; 
     sharedParams.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
     sharedParams.s2Size = sparseAttnSharedkvBaseParams.seqSize;
+    sharedParams.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup;
+
     sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
     sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
     sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout; 
@@ -831,10 +839,12 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         if (subBlockIdx == 0) {
             auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
             auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
+
             #pragma unroll
             for (int i = 0; i < sizeof(CVSharedParams) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
                 *tempTilingSSbuf = *tempTiling;
             }
+
             CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
         }
     }
@@ -857,10 +867,10 @@ public:
     __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
         CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
+
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}
-
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}

@@ -10,7 +10,7 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas推理系列加速卡产品</term>|      ×     |
+|<term>Atlas 推理系列加速卡产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
@@ -739,7 +739,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 
 - 入参为空的处理：算子内部需要判断参数query是否为空，如果是空则直接返回。参数query不为空Tensor，参数key、value为空tensor（即S2为0），则attentionOut填充为全零。attentionOut为空Tensor时，AscendCLNN框架会处理。其余在上述参数说明中标注了“可传入nullptr”的入参为空指针时，不进行处理。
 
-- 参数key、value中对应tensor的shape需要完全一致；非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制,非连续场景下B不能大于256。
+- 参数key、value中对应tensor的shape需要完全一致；非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制，非连续场景下B不能大于256。
 
 - 当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1。
 
@@ -754,7 +754,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 
   - 仅支持kv_dtype为int8的伪量化场景。
   - per-channel模式：两个参数的shape可支持\(2, N, 1, D\)，\(2, N, D\)，\(2, H\)，N为numKeyValueHeads。参数数据类型和query数据类型相同，antiquantMode置0。
-  - per-tensor模式：两个参数的shape均为(2)，数据类型和query数据类型相同, antiquantMode置0。
+  - per-tensor模式：两个参数的shape均为(2)，数据类型和query数据类型相同， antiquantMode置0。
   - per-token模式：两个参数的shape均为\(2, B, S\),数据类型固定为FLOAT32, antiquantMode置1。
   - 非对称量化模式下， antiquantScale和antiquantOffset参数需同时存在。
   - 对称量化模式下，antiquantOffset可以为空（即nullptr）；当antiquantOffset参数为空时，执行对称量化，否则执行非对称量化。
@@ -1023,7 +1023,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 - softmaxLse使用限制如下：
 
   - ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max,再取exp，接着求sum，得到softmax_sum。最后对softmax_sum取log，再加上softmax_max得到的结果。
-  - softmaxLseFlag为True时，一般情况下,shape必须为[B,N,Q_S,1]，当inputLayout为TND/NTD_TND时，shape必须为[T,N,1]。
+  - softmaxLseFlag为True时，一般情况下，shape必须为[B,N,Q_S,1]，当inputLayout为TND/NTD_TND时，shape必须为[T,N,1]。
   - softmaxLseFlag为False时，如果softmaxLse传入的Tensor非空，则直接返回该Tensor数据，如果softmaxLse传入的是nullptr，则返回shape为{1}全0的Tensor。
 
 - **当Q_S大于1时**：
@@ -1032,7 +1032,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
 
     - B轴限制
       - 支持B轴小于等于65536。
-      - 非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制,非连续场景下B不能大于256。
+      - 非连续场景下key、value的tensorlist中的batch只能为1，个数等于query的B，N和D需要相等。由于tensorlist限制，非连续场景下B不能大于256。
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - 如果输入类型为INT8且D轴不是32字节对齐，则B轴的最大支持值为128。若输入类型为FLOAT16或BFLOAT16且D轴不是16字节对齐，B轴同样仅支持到128。
 
@@ -1235,7 +1235,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
     - page attention的开启必要条件是blocktable存在且有效，同时key、value是按照blocktable中的索引在一片连续内存中排布，在该场景下key、value的inputLayout参数无效。
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8。
       - <term>Ascend 950PR/Ascend 950DT</term>：支持key、value dtype为FLOAT16/BFLOAT16/INT8/HIFLOAT8/FLOAT8_E4M3FN/FLOAT4_E2M1/INT4(INT32)。
-    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在开启page attention场景下，blockSize需要传入非0值,且blockSize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在开启page attention场景下，blockSize需要传入非0值，且blockSize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：key、value输入类型为FLOAT16/BFLOAT16时需要16对齐；key、value输入类型为INT8时需要32对齐，推荐使用128。
       - <term>Ascend 950PR/Ascend 950DT</term>：key、value输入类型为FLOAT16/BFLOAT16时需要16对齐；key、value输入类型为INT8/HIFLOAT8/FLOAT8_E4M3FN时需要32对齐；key、value输入类型为FLOAT4_E2M1/INT4(INT32)时需要64对齐。
     - page attention场景下，当query的inputLayout为BNSD、TND时，kv cache排布支持BnBsH（blocknum, blocksize, H）和BnNBsD（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持BnBsH一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。

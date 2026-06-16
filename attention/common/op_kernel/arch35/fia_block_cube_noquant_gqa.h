@@ -612,7 +612,6 @@ public:
                     param);
             }
         } else {
-            // TODO 整改 内部IF分支太多
             MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
                 mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
                 param);
@@ -854,8 +853,6 @@ public:
 
             Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
             mm2ResL0C.Wait<HardEvent::FIX_M>();
-
-            // TODO： DN 场景V1输出梳理
             MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)realN, (uint32_t)(runInfo.actSingleLoopS2Size),
                                         useDn, false);
             if constexpr (!useDn) {

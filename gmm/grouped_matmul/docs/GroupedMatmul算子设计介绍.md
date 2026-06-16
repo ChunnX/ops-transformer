@@ -12,12 +12,12 @@ GroupedMatmul算子实现时还需要考虑如下两个方面：
 1. 支持不同的参数、数据类型，如有无bias、不同激活函数类型，非量化、量化、伪量化等不同场景；不同场景对应的计算流程不同，性能优化方法不同，因此实现上划分成了不同的模板，有各自的模板参数；
 2. 硬件上AiCore内存大小有限，一般完成一个算子的计算需要对数据进行切分，并对数据搬运和计算过程进行流水并行排布，该过程对算子的影响非常大，也是性能优化阶段主要调整对象，而host上的tiling函数即是为完成该切分和流水的参数计算。
 
-# 2场景划分
+# 2 场景划分
 
 从功能角度可分为非量化场景、量化场景和伪量化场景，代码层面通过三种方式选择具体模板：
-1.编译宏：通过x和weight的数据类型编译的宏ORIG_DTYPE_X，ORIG_DTYPE_WEIGHT；
-2.tilingkey：如x/weight是否转置；
-3.tilingData：如tiling中isPerTokenQuant表示是否为per token量化。
+1. 编译宏：通过x和weight的数据类型编译的宏ORIG_DTYPE_X，ORIG_DTYPE_WEIGHT；
+2. tilingkey：如x/weight是否转置；
+3. tilingData：如tiling中isPerTokenQuant表示是否为per token量化。
 说明：
 
 - 非量化指x、weight、y均为浮点数类型，如float16/bfloat16/float32，非量化为纯cube场景，其计算过程由matmul高阶api实现；
@@ -31,7 +31,7 @@ matmul(int32) -> 反量化(fp32) -> mul(fp32) -> 激活函数(fp32)(可选) -> c
 
 ![GroupedMatmul量化场景流程图](../../../docs/zh/figures/GMM量化场景流程图.png)
 
-## 2.2分组方式
+## 2.2 分组方式
 
 针对不同场景，GroupedMatmul可分为m轴分组和k轴分组，又称切M，切K。在正向训练过程对m轴进行分组，在反向计算梯度时就需要对k轴进行分组。
 
@@ -56,7 +56,7 @@ graph LR
     B([GroupedMatmul:group_type=K,transpose_x:True]) --> C[(dw:G,K,N)]
 ```
 
-## 2.3多tensor/单tensor支持
+## 2.3 多tensor/单tensor支持
 
 GroupedMatmul算子支持输入输出为多tensor、单tensor。
 单tensor指一个tensor list中所有分组的tensor在groupType指定的分组轴上合并为1个；否则为多tensor。
@@ -106,13 +106,13 @@ UB buffer分配如下：
 
 总共需要分配的UB buffer为28 * 6kb = 168kb。
 
-## 3.3基本块分核方案
+## 3.3 基本块分核方案
 
 GroupedMatmul实现时需要考虑输入为多个tensor的情况，即每组matmul的shape可能各不相同，而kernel侧不能为每组matmul单独配置对应的matmul高阶api接口实例（tiling结构体和core栈空间大小均不允许）。为了适配不同shape的matmul计算，GroupedMatmul采用基本块方式（横向分核），以baseM、baseN为基本块进行分核计算，此处baseM/baseN为matmul的参数。
 
 ![基本块分核](../../../docs/zh/figures/GMM横向分核方案.png)
 
-## 3.4对角线分核方案
+## 3.4 对角线分核方案
 
 按基本块方案进行分核，容易存在同地址访问的问题，例如当基本块方案中nDim=coreNum时，则同一时间所有的核都在访问左矩阵的相同地址，对性能影响较大。因此当基本块数量超过coreNum时（没超过coreNum时，对角线方案无法解决同地址访问问题），可以采用如下对角线方案，同一时间不同核尽量错开对数据的访问，每个方块代表一个输出的基本块，数字代表基本块遍历顺序（横向分核为原始基本块分核方案）。
 

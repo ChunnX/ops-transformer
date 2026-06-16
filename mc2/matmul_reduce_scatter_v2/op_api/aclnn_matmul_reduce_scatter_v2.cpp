@@ -25,7 +25,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "aclnn_matmul_reduce_scatter_v2.h"

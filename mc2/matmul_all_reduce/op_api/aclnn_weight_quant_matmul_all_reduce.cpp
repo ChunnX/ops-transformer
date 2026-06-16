@@ -14,7 +14,7 @@
 #include "opdev/tensor_view_utils.h"
 #include "matmul_all_reduce_util.h"
 #include "mc2_comm_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 
@@ -195,7 +195,8 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
-    if (x1->GetViewShape().GetDim(x1Len - 1) != x2Dim0) {
+    // tensor维度始终非负，安全转换为uint64_t进行比较
+    if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "x1",
             op::ToString(x1->GetViewShape()).GetString(),
             std::string("The shape [last dim] of x1 must be equal to first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
