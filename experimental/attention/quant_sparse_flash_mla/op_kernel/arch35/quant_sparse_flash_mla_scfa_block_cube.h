@@ -165,18 +165,6 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
             constInfo.s1Size, constInfo.dSize);
     } else {  // QSMLA_LAYOUT::TND
-        // GlobalTensor<int32_t> cuSeqlensQGm;
-        // cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
-        // GlobalTensor<int32_t> sequsedQGm;
-        // if (sequsedQ != nullptr) {
-        //     sequsedQGm.SetGlobalBuffer((__gm__ int32_t *)sequsedQ);
-        // }
-        // uint32_t sequsedQSize = (sequsedQ == nullptr) ? 0 : constInfo.bSize;
-        // ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
-        // parser.Init(cuSeqlensQGm, sequsedQGm, constInfo.bSize, sequsedQSize);
-        // this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
-        //     parser);
-        
         GlobalTensor<int32_t> actualSeqQLen;
         actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
