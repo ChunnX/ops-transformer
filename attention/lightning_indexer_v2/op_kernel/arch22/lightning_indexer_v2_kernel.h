@@ -196,6 +196,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
 
     constInfo.s1BaseSize = constInfo.isSparseCountOver2K ? SPARSE_COUNT_8K / constInfo.sparseCount * 2 : 8;
     constInfo.mBaseSize = constInfo.s1BaseSize * constInfo.gSize;
+    constInfo.mBaseSizeAlign = LIV2Common::Align(constInfo.mBaseSize, ConstInfo::BLOCK_CUBE);
 }
 
 template <typename LIT>
@@ -476,9 +477,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
     // |Core0_mm1ResDB0-Core0_mm1ResDB1-Core1_mm1ResDB0....Core23_mm1ResDB0-Core23_mm1ResDB1|Core0_vec1Res...
     uint64_t offset = 0;
 
-    // mm1开DoubleBuffer (Fixp nz2nd按BLOCK_CUBE对齐M维度，需分配对齐后的大小)
-    uint64_t alignedMBaseSize = CeilAlign(constInfo.mBaseSize, ConstInfo::BLOCK_CUBE);
-    uint64_t singleCoreMm1ResSize = WS_DOUBLE * alignedMBaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
+    // mm1开DoubleBuffer
+    uint64_t singleCoreMm1ResSize = WS_DOUBLE * constInfo.mBaseSizeAlign * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
     mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 

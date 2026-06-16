@@ -80,6 +80,7 @@ struct ConstInfo {
 
     // 基本块大小
     uint32_t mBaseSize = 1U;
+    uint32_t mBaseSizeAlign = 1U;
     uint32_t s1BaseSize = 1U;
     uint32_t s2BaseSize = 1U;
 
