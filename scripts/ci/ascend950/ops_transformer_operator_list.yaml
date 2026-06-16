@@ -55,6 +55,7 @@ operator_group_4:
   - rotary_position_embedding_grad
   - ring_attention_update
   - sparse_flash_attention_grad
+  - sparse_flash_mla_grad
   - fused_infer_attention_score,10-9
   - moe_token_permute_with_routing_map
 operator_group_5:
