@@ -21,6 +21,7 @@
 #include "fused_infer_attention_score_v3.cpp"
 
 
+ 
 #define FullQuantTiling 15
 extern "C" __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
                                                                 __gm__ uint8_t* pse_shift, __gm__ uint8_t* attenMask,
