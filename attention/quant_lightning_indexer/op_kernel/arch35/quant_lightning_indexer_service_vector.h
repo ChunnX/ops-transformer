@@ -142,7 +142,11 @@ private:
 template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
+    // MXFP8: dstStride=64 → 8192 floats/pingpong → 需要 65536 bytes
+    uint64_t resMm1SizeBytes = IS_MXFP8
+        ? 2 * (uint64_t)128 * 64 * sizeof(QK_T)  // 65536
+        : 2 * (uint64_t)CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T); // 32768
+    pipe->InitBuffer(resMm1Buf_, resMm1SizeBytes);
     resMm1UB_ = resMm1Buf_.Get<QK_T>();
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>();
@@ -403,18 +407,22 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(uint16_t))];
     auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))];
     auto weightFloatBase = weightFloatUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
-    auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(float))];
-    auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(float)) / 2 * constInfo_.mBaseSize;
+    // MXFP8: ping-pong偏移 = 8192 floats; 非MXFP8: 64 floats
+    uint64_t qkPPOffset = IS_MXFP8
+        ? (uint64_t)128 * 64  // 8192
+        : (uint64_t)(UB_BANK_STRIDE / sizeof(float));  // 64
+    auto qkBase = resMm1UB_[pingpong * qkPPOffset];
+    // MXFP8: dstStride=64 → qkVLstride=128; 非MXFP8: qkVLstride=4096
+    uint32_t qkVLstride = IS_MXFP8
+        ? (uint32_t)128
+        : (uint32_t)((UB_BANK_DEPTH_STRIDE / sizeof(float)) / 2 * constInfo_.mBaseSize);
 
     if constexpr (IS_MXFP8) {
-        printf("HHHHHHH mx\n");
-        uint32_t array1[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(128)};
-        ShapeInfo shapeInfo1(2, array1);
-        DumpTensor(qkBase, 1001, 128*128, shapeInfo1);
         // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + Relu + ReduceSum
+        // qkStride = 4096 (dstStride=64 layout下, S1 token 1 在 row 64, 距离 S1 token 0 = 64*128/2 = 4096 floats)
         vector1::BatchMulWeightAndReduceSum_NoScale(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
-                                                    (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(float)),
+                                                    (uint32_t)4096,  // qkStride for MXFP8
                                                     weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
                                                     weightFloatBase,
                                                     gSize_, curAivS1ProcNum);
