@@ -99,7 +99,6 @@ public:
     static constexpr uint32_t kAlphaPostIndex = 1;
     static constexpr uint32_t kAlphaCombIndex = 2;
     static constexpr uint32_t kAlphaCombBaseOffset = 2;
-
     static constexpr uint32_t kSupportedN4 = 4;
     static constexpr uint32_t kSupportedN6 = 6;
     static constexpr uint32_t kSupportedN8 = 8;

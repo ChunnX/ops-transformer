@@ -46,7 +46,7 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
                                   h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
             MT mm;
             mm.Init(&tilingData.matmulTiling, &pipe);
-            MhcPreKernelSplitBS<DTYPE_X, float32_t, MHC_PRE_NO_RES> op(mm);
+            MhcPreKernelSplitBS<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op(mm);
             op.Init(initParams);
             op.Process();
         }
@@ -64,7 +64,7 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
                                   h_res, inv_rms, h_mix, h_pre, user,  &pipe, &tilingData};
             MT mm;
             mm.Init(&tilingData.matmulTiling, &pipe);
-            MhcPreKernelSplitND<DTYPE_X, float32_t, MHC_PRE_NO_RES> op(mm);
+            MhcPreKernelSplitND<DTYPE_X, float32_t, MHC_PRE_NO_RESI> op(mm);
             op.Init(initParams);
             op.Process();
         }

@@ -21,6 +21,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_utils.h"
 #include "mhc_pre_kernel_base.h"
+#include "mhc_pre_tiling_key.h"
 
 namespace MhcPre {
 
