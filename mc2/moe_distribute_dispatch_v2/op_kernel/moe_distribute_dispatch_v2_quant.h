@@ -114,7 +114,8 @@ public:
         } 
         #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         else if constexpr (QuantMode == MX_QUANT) {
-            QuantDynamicMx(outLocal, inLocal);
+            // QuantDynamicMx(outLocal, inLocal);
+            QuantDynamicMxClip(outLocal, inLocal);
         } else if constexpr (QuantMode == MX_CLIP_QUANT) {
             QuantDynamicMxClip(outLocal, inLocal);
         } else if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
