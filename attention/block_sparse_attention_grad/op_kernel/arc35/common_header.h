@@ -107,8 +107,8 @@ __aicore__ inline int64_t GetSeqTotalLen(int32_t i, __gm__ uint8_t *seq_Len)
 }
 
 template <uint32_t INPUT_LAYOUT>
-__aicore__ inline uint64_t GetQGmOffset(const ConstInfo &const_info, int32_t lastBatchSum, int32_t batch_idx,
-                                        int32_t n_idx, int32_t seqlen_idx)
+__aicore__ inline uint64_t GetQGmOffset(const ConstInfo &const_info, int64_t lastBatchSum, int64_t batch_idx,
+                                        int64_t n_idx, int64_t seqlen_idx)
 {
     if constexpr (INPUT_LAYOUT == BSND) {
         return batch_idx * const_info.b1_stride + seqlen_idx * const_info.s1_stride + n_idx * const_info.n1_stride;
@@ -121,8 +121,8 @@ __aicore__ inline uint64_t GetQGmOffset(const ConstInfo &const_info, int32_t las
 
 
 template <uint32_t INPUT_LAYOUT>
-__aicore__ inline uint64_t GetKVGmOffset(const ConstInfo &const_info, int32_t lastBatchSum, int32_t batch_idx,
-                                         int32_t seqlen_idx, int32_t n_idx)
+__aicore__ inline uint64_t GetKVGmOffset(const ConstInfo &const_info, int64_t lastBatchSum, int64_t batch_idx,
+                                         int64_t seqlen_idx, int64_t n_idx)
 {
     if constexpr (INPUT_LAYOUT == BSND) {
         return batch_idx * const_info.b2_stride + seqlen_idx * const_info.s2_stride + n_idx * const_info.n2_stride;
