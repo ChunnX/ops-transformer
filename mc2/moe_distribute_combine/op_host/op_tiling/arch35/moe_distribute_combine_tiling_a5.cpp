@@ -32,7 +32,6 @@ using namespace ge;
 
 namespace {
 constexpr uint32_t INT8_COMM_QUANT = 2U;
-const int64_t MAX_TP_WORLD_SIZE = 2;
 }
 
 namespace optiling {
@@ -44,6 +43,7 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckA
     MoeDistributeCombineTilingData *tilingData = context->GetTilingData<MoeDistributeCombineTilingData>();
     std::string groupEp = "";
     std::string groupTp = "";
+    uint32_t tpWorldSize = 1;
     bool isShared = true;
     uint32_t localMoeExpertNum = 1;
     commQuantMode = 0U;
@@ -80,10 +80,9 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckA
         OP_LOGE(context->GetNodeName(), "Tiling set workspace Failed"),
         return ge::GRAPH_FAILED);
 
-    uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;
     OP_TILING_CHECK(SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -104,18 +103,13 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingFuncIm
     OP_TILING_CHECK(MoeDistributeCombineA5TilingCheckAttr(context, commQuantMode) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "CombineSA5Tiling attr check failed."), return ge::GRAPH_FAILED);
 
-    uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;
-    bool tp = false;
     uint32_t quantMode = TILINGKEY_NO_QUANT;
     uint32_t layeredMode = TILINGKEY_TPL_MTE;  // A2
-    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
-        tp = true;
-    }
     if (commQuantMode == INT8_COMM_QUANT) {
         quantMode = TILINGKEY_INT8_QUANT;
     }
     uint32_t archTag = (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) ? TILINGKEY_TPL_A5 : TILINGKEY_TPL_A3;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, layeredMode, archTag);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, layeredMode, archTag);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     uint32_t numBlocks = 1U;
