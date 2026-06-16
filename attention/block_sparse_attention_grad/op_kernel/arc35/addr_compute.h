@@ -246,7 +246,6 @@ public:
     __aicore__ inline void GetRunTimeInfo(RunTimeInfo &runTimeInfo)
     {
         runTimeInfo.need_compute = 0;
-        int32_t cur_s1_idx, cur_s1_len;
 
         if (!single_block_.IsFinish()) {
             // 如果singleBlock未计算完，先计算singleBlock内的内容
@@ -258,7 +257,8 @@ public:
             if (InitStartIdx()) {
                 break;
             }
-            int32_t vaild_s1_idx, vaild_s1_len;
+            int32_t vaild_s1_idx;
+            int32_t vaild_s1_len;
             int32_t s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
 
             if (IsValidSingleBlock(vaild_s1_idx, vaild_s1_len)) {
@@ -315,7 +315,6 @@ private:
         last_q_seq_sum_ = bIdx_ > 0 ? GetSeqTotalLen(bIdx_ - 1, actualQseqlen_) : 0;
         last_kv_seq_sum_ = bIdx_ > 0 ? GetSeqTotalLen(bIdx_ - 1, actualKvseqlen_) : 0;
     }
-
 
     __aicore__ inline bool InitStartIdx()
     {

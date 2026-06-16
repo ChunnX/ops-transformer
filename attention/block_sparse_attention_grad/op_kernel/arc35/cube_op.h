@@ -56,6 +56,11 @@ private:
     static constexpr int32_t BASE_BLOCK_SIZE = 128 * 128;
     TEventID event_ping_ = EVENT_ID3;
     TEventID event_pong_ = EVENT_ID4;
+    AscendC::Nd2NzParams nd2nzPara;
+    AscendC::LoadData2DParamsV2 loadData2dParams;
+    AscendC::FixpipeParamsV220 fixpipeParamsV220;
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+    MmadParams madParams;
 
 public:
     __aicore__ inline CubeOp(){};
@@ -213,17 +218,14 @@ private:
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
         WAIT_FLAG(FIX, M, evnet_id);
-        MmadParams madParams;
         madParams.m = mProcess == 1 ? 2 : mProcess;
         madParams.n = nProcess;
         madParams.k = head_dim_;
         madParams.cmatrixInitVal = true;
         madParams.unitFlag = 3;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
-        AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.mSize = mProcessAlign;
         fixpipeParams.nSize = nProcessAlign;
         fixpipeParams.srcStride = mProcessAlign;
@@ -261,14 +263,12 @@ private:
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
         WAIT_FLAG(FIX, M, evnet_id);
-        MmadParams madParams;
         madParams.m = nProcess == 1 ? 2 : nProcess;
         madParams.n = head_dim_;
         madParams.k = mProcess;
         madParams.cmatrixInitVal = runTimeInfo.need_copy_kv;
         madParams.unitFlag = runTimeInfo.is_singlekv_last ? 3 : 2;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
-        AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
         if (runTimeInfo.is_singlekv_last) {
@@ -303,17 +303,14 @@ private:
         WAIT_FLAG(MTE1, M, EVENT_ID0);
 
         WAIT_FLAG(FIX, M, evnet_id);
-        MmadParams madParams;
         madParams.m = mProcess == 1 ? 2 : mProcess;
         madParams.n = head_dim_;
         madParams.k = nProcess;
         madParams.cmatrixInitVal = true;
         madParams.unitFlag = 3;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
-        AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
-        AscendC::FixpipeParamsV220 fixpipeParamsV220;
         fixpipeParamsV220.mSize = mProcess;
         fixpipeParamsV220.nSize = head_dim_;
         fixpipeParamsV220.srcStride = mProcessAlign;
@@ -328,7 +325,6 @@ private:
                                              const int32_t kSize, const int32_t mSizeAlign, const int32_t kSizeAlign,
                                              const int32_t srcStride)
     {
-        Nd2NzParams nd2nzPara;
         nd2nzPara.ndNum = 1;
         nd2nzPara.nValue = mSize;
         nd2nzPara.dValue = kSize;
@@ -347,7 +343,6 @@ private:
         /*
          * Load 左矩阵非转置 or 右矩阵转置
          */
-        AscendC::LoadData2DParamsV2 loadData2dParams;
         loadData2dParams.mStartPosition = 0;
         loadData2dParams.kStartPosition = 0;
         loadData2dParams.mStep = mSizeAlign / 16;
@@ -366,7 +361,6 @@ private:
         /*
          * Load 左矩阵转置 or 右矩阵非转置
          */
-        AscendC::LoadData2DParamsV2 loadData2dParams;
         loadData2dParams.kStartPosition = 0;
         loadData2dParams.mStep = 1;
         loadData2dParams.kStep = kSizeAlign / 16;

@@ -169,9 +169,6 @@ public:
                                          GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
                                          const TILING_CLASS *tilingData, TPipe *tPipe)
     {
-        uint32_t taskId = 0;
-        uint32_t ping_pong_idx = 0;
-        uint32_t last_ping_pong_idx = 0;
         VecOp<BSA_TYPE> vecOp;
         vecOp.Init(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualQseqlen,
                    actualKvseqlen, dq, dk, dv, workspace, tilingData, ub_buffer_, ub_offset_);
@@ -184,6 +181,7 @@ public:
         PipeBarrier<PIPE_ALL>();
         SyncAll();
         AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
+
         vecOp.SetFlag();
         while (true) {
             ping_pong_idx = taskId % 2;
