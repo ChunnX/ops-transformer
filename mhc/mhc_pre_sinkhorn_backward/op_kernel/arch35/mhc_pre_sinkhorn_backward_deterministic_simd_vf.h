@@ -17,7 +17,6 @@
 #define MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_SIMD_VF_H
 
 #include "kernel_operator.h"
-#include "../inc/platform.h"
 #include "kernel_tiling/kernel_tiling.h"
 
 using namespace AscendC;
@@ -84,6 +83,7 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U* gradHAddr, __local_mem__ U* 
         AscendC::MicroAPI::MaskReg maskReg;
 
         for (uint16_t i = 0; i < loopCnt; i++) {
+            uint32_t maskLen = static_cast<uint32_t>(bsLen * n - i * vfLen);
             maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             MicroAPI::Duplicate(onesReg, U(1), maskReg);
             AscendC::MicroAPI::AddrReg zOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
@@ -121,18 +121,19 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U* gradBiasAddr, __local_me
         AscendC::MicroAPI::RegTensor<U> gradZSumReg;
         AscendC::MicroAPI::MaskReg maskReg;
         AscendC::MicroAPI::UnalignReg u0;
-        AscendC::MicroAPI::MaskReg allMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::::MaskPattern::ALL>();
-        for (int i = 0; i < loopCnt; i++) {
-            auto gradBiasStart = gradBiasZAddr + i * vfLen;
-            maskReg = AscendC::MicroAPI::UpdateMask<U>(colLen);
-            MicroAPI::Duplicate(gradZPreSumReg, U(0), allMaskReg);
-            for (int j = 0; j < bsLen; j++) {
-                auto gradZAddrStart = gradZAddr + i * colLen;
+        AscendC::MicroAPI::MaskReg allMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::ALL>();
+        for (uint16_t i = 0; i < loopCnt; i++) {
+            auto gradBiasStart = gradBiasAddr + i * vfLen;
+            uint32_t maskLen = static_cast<uint32_t>(colLen);
+            maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
+            MicroAPI::Duplicate(gradZSumReg, U(0), allMaskReg);
+            for (uint16_t j = 0; j < bsLen; j++) {
+                auto gradZAddrStart = gradZAddr + j * colLen + i * vfLen;
                 AscendC::MicroAPI::LoadUnAlignPre(u0, gradZAddrStart);
                 AscendC::MicroAPI::LoadUnAlign(gradZReg, u0, gradZAddrStart);
-                AscendC::MicroAPI::Add(gradZSumReg, gradZSumReg, gradZReg)
+                AscendC::MicroAPI::Add(gradZSumReg, gradZSumReg, gradZReg, allMaskReg);
             }
-            AscendC::MicroAPI::DataCopy(gradAlphaAddr, gradAlphaSumReg, maskReg);
+            AscendC::MicroAPI::DataCopy(gradBiasStart, gradZSumReg, maskReg);
         }
     }
 }
@@ -152,10 +153,11 @@ __aicore__ inline void ComputeGradAlpha(__local_mem__ U* normOutForwardPartAddr,
         AscendC::MicroAPI::RegTensor<U> gradAlphaLoopSumReg;
         AscendC::MicroAPI::RegTensor<U> gradAlphaSumReg;
         AscendC::MicroAPI::MaskReg maskReg;
-        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::::MaskPattern::VL1>();
+        AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
         MicroAPI::Duplicate(gradAlphaSumReg, U(0), OneMaskReg);
         for (uint16_t i = 0; i < loopCnt; i++) {
-            maskReg = AscendC::MicroAPI::UpdateMask<U>(bsLen * colLen);
+            uint32_t maskLen = static_cast<uint32_t>(bsLen * colLen);
+            maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             AscendC::MicroAPI::AddrReg normOutForwardPartOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
             AscendC::MicroAPI::AddrReg gradZOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
             AscendC::MicroAPI::DataCopy(normOutForwardPartReg, normOutForwardPartAddr, normOutForwardPartOfst);
@@ -187,7 +189,8 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U* zAddr, __local_me
         AscendC::MicroAPI::UnalignRegForStore unStoreZReg;
         for (uint16_t i = 0; i < loopCnt; i++) {
             AscendC::MicroAPI::UnalignReg u0;
-            valueMaskReg = AscendC::MicroAPI::UpdateMask<U>(colLen);
+            uint32_t maskLen = static_cast<uint32_t>(colLen);
+            valueMaskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             auto biasAddrStart = biasAddr + i * vfLen;
             AscendC::MicroAPI::LoadUnAlignPre(u0, biasAddrStart);
             AscendC::MicroAPI::LoadUnAlign(biasReg, u0, biasAddrStart);
