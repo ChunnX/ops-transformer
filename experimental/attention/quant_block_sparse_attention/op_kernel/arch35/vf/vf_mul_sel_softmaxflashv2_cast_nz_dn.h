@@ -141,13 +141,13 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_qscale_vec, preg_135);
 
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
-        Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_qscale_vec, preg_135);
+        Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
-        Mul(vreg_data_tmp0, vreg_data_tmp1, vreg_qscale_vec, preg_135);
+        Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
-        Mul(vreg_data_tmp0, vreg_data_tmp2, vreg_qscale_vec, preg_135);
+        Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
-        Mul(vreg_data_tmp0, vreg_data_tmp3, vreg_qscale_vec, preg_135);
+        Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, vreg_data_tmp0, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, vreg_data_tmp1, preg_135);
@@ -455,13 +455,13 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_qscale_vec, preg_135);
 
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
-        Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_qscale_vec, preg_135);
+        Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
-        Mul(vreg_data_tmp0, vreg_data_tmp1, vreg_qscale_vec, preg_135);
+        Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
-        Mul(vreg_data_tmp0, vreg_data_tmp2, vreg_qscale_vec, preg_135);
+        Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
-        Mul(vreg_data_tmp0, vreg_data_tmp3, vreg_qscale_vec, preg_135);
+        Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m * 4, vreg_data_tmp0, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, vreg_data_tmp1, preg_135);

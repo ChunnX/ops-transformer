@@ -354,6 +354,23 @@ __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo &runInfo, ConstIn
     return result;
 }
 
+__aicore__ inline void GenerateRightDownCausalMaskDn(LocalTensor<uint8_t> &dstTensor, RunInfo &runInfo,
+                                                     ConstInfo &constInfo, int64_t sparseBlkIdx,
+                                                     uint32_t sparseBlkRealSize)
+{
+    uint32_t halfS1BaseSize = constInfo.s1BaseSize >> 1;
+    int64_t qBase = runInfo.s1oIdx * constInfo.s1BaseSize + runInfo.vecCoreOffset;
+    int64_t kvBase = sparseBlkIdx * constInfo.kvSparseBlockSize;
+    int64_t causalShift = runInfo.actualS2Size - runInfo.actualS1Size;
+    for (uint32_t s2Idx = 0; s2Idx < sparseBlkRealSize; ++s2Idx) {
+        int64_t kvPos = kvBase + s2Idx;
+        for (uint32_t s1Idx = 0; s1Idx < halfS1BaseSize; ++s1Idx) {
+            int64_t qPos = qBase + s1Idx;
+            dstTensor.SetValue(s2Idx * halfS1BaseSize + s1Idx, kvPos <= qPos + causalShift ? 1 : 0);
+        }
+    }
+}
+
 template <bool hasAtten>
 __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQue, GlobalTensor<uint8_t> &srcTensor,
                                        RunInfo &runInfo, ConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
@@ -377,15 +394,32 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
 {
     if constexpr (hasAtten) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
+        if (!needAtten1 || !needAtten2) {
+            Duplicate<uint8_t>(attenMaskUb, 1,
+                (runInfo.s2SparseBlk1RealSize + runInfo.s2SparseBlk2RealSize) * (constInfo.s1BaseSize >> 1));
+        }
+        bool isRightDownCausal =
+            attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE);
         if (needAtten1) {
-            int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, true);
-            BoolCopyInRegbase(attenMaskUb, srcTensor, maskOffset, runInfo.s2SparseBlk1RealSize,
-                          constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+            if (isRightDownCausal) {
+                GenerateRightDownCausalMaskDn(attenMaskUb, runInfo, constInfo,
+                    runInfo.sparseBlkIdx1, runInfo.s2SparseBlk1RealSize);
+            } else {
+                int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, true, true);
+                BoolCopyInRegbase(attenMaskUb, srcTensor, maskOffset, runInfo.s2SparseBlk1RealSize,
+                            constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+            }
         }
         if (needAtten2) {
-            int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, false);
-            BoolCopyInRegbase(attenMaskUb[(constInfo.s1BaseSize >> 1) * runInfo.s2SparseBlk1RealSize], srcTensor, maskOffset, runInfo.s2SparseBlk2RealSize,
-                            constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+            LocalTensor<uint8_t> attenMaskUb2 = attenMaskUb[(constInfo.s1BaseSize >> 1) * runInfo.s2SparseBlk1RealSize];
+            if (isRightDownCausal) {
+                GenerateRightDownCausalMaskDn(attenMaskUb2, runInfo, constInfo,
+                    runInfo.sparseBlkIdx2, runInfo.s2SparseBlk2RealSize);
+            } else {
+                int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, false, true);
+                BoolCopyInRegbase(attenMaskUb2, srcTensor, maskOffset, runInfo.s2SparseBlk2RealSize,
+                                constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+            }
         }
         attenMaskInQue.template EnQue(attenMaskUb);
     }

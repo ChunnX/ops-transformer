@@ -43,9 +43,11 @@ using namespace regbaseutil;
 
 namespace BaseApi {
 namespace BSAKernelBase {
-template <bool isFp8>
+template <bool useDn, bool isFp8>
 struct Bmm2ResBuffSel {
-    using Type = BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    using Type = std::conditional_t<(useDn && isFp8),
+        BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+        BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
 };
 }
 
@@ -111,7 +113,7 @@ public:
 
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    using bmm2ResBufferType = typename BSAKernelBase::Bmm2ResBuffSel<isFp8>::Type;
+    using bmm2ResBufferType = typename BSAKernelBase::Bmm2ResBuffSel<useDn, isFp8>::Type;
     bmm2ResBufferType bmm2Buffers;
 
     BufferManager<BufferType::L1> l1BufferManager;
@@ -242,11 +244,17 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     l1BufferManager.Init(pipe, 524288);
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     if constexpr (bmm2Write2Ub) {
-        ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
+        if constexpr (useDn && isFp8) {
+            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
+        } else {
+            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
+        }
         bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         if ASCEND_IS_AIV {
             bmm2Buffers.Get().SetCrossCore();
-            bmm2Buffers.Get().SetCrossCore();
+            if constexpr (!(useDn && isFp8)) {
+                bmm2Buffers.Get().SetCrossCore();
+            }
         }
     } else {
         ubBufferManager.Init(pipe, mm1ResultSize * 2);
@@ -319,7 +327,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
         constInfo.mm2Kb = constInfo.n2Dv;
-
         if ASCEND_IS_AIV {
             // BSA: 输出 TND [T, N1, Dv]，同一 head 相邻 token 间隔 (n2G-1)*Dv 个元素（跳过其余 head）。
             // 每核独立计算一个 head，不做 FIA GS1 合轴/连续 GQA 输出，固定使用 per-head stride。
