@@ -317,7 +317,7 @@ __aicore__ inline uint32_t CompressorBlockVectorPerf<COMP>::GetStartPos(uint32_t
 template <typename COMP>
 __aicore__ inline uint32_t CompressorBlockVectorPerf<COMP>::GetSeqLength(uint32_t bIdx)
 {
-     if (COMP::xLayout == X_LAYOUT::TH) {
+    if (COMP::xLayout == X_LAYOUT::TH) {
         return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
     } else {
         return constInfo_.sSize;

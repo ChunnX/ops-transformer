@@ -54,7 +54,7 @@ if _TORCHAIR_AVAILABLE:
         result = x.new_empty(x.size())
         return result
         
-    @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_compressor.default)
+    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_compressor.default)
     def convert_npu_compressor(
         x: Tensor,
         wkv: Tensor,

@@ -22,6 +22,8 @@ const int64_t DIM_TWO = 2;
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
 const int64_t VALUE_0 = 0;
+const int64_t VALUE_1 = 1;
+const int64_t VALUE_2 = 2;
 
 std::vector<bool> is_contiguous_axes(const at::Tensor &tensor)
 {
@@ -54,10 +56,17 @@ at::Tensor construct_compressor_output_tensor(const at::Tensor &x, const at::Ten
     int64_t cmp_s = 0;
     int64_t b_size = 0;
 
+    TORCH_CHECK(wkv.defined(), "Check x != nullptr failed");
+    auto wkv_dim = wkv.dim();
+    TORCH_CHECK(wkv_dim == DIM_TWO, "wkv dim num[", wkv_dim, "] should be 2");
+
+    TORCH_CHECK(coff == VALUE_1 || COFF == VALUE_2, "coff value[", coff, "] should be 1 or 2");
+
     if (x_dim == DIM_THREE) {
         cmp_s = (x.size(1) + cmp_ratio - 1) / cmp_ratio;
         cmp_kv_size = {x.size(0), cmp_s, wkv.size(0) / coff};
     } else {
+        TORCH_CHECK(cu_seqlens.has_value(), "Check cu_seqlens != nullptr failed");
         b_size = cu_seqlens->size(0) - 1;
         cmp_s = std::min(x.size(0), x.size(0) / cmp_ratio + b_size);
         cmp_kv_size = {cmp_s, wkv.size(0) / coff};
