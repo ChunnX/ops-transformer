@@ -640,9 +640,7 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessMain()
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
         CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + 0);
-#if CVRATIO > 1
         CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + 1);
-#endif
     } else {
         matmulService.AllocEventID();
     }
@@ -680,9 +678,7 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessMain()
     } else {
         matmulService.FreeEventID();
         CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + 0); 
-#if CVRATIO > 1
         CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(QLICommon::ConstInfo::CROSS_VC_EVENT + 1); 
-#endif
     }
 }
 
