@@ -1063,8 +1063,8 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::DumpTilingInfo()
     LogTilingData();
 }
 
-REGISTER_OPS_TILING_TEMPLATE(QkvRmsNormRopeCacheWithKScale, QkvRmsNormRopeCacheWithKScaleBaseTiling,
-                             TILING_TEMPLATE_PRIORITY);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(QkvRmsNormRopeCacheWithKScale, QkvRmsNormRopeCacheWithKScaleBaseTiling,
+                                   static_cast<int32_t>(NpuArch::DAV_3510), TILING_TEMPLATE_PRIORITY);
 
 } // namespace QkvRmsNormRopeCacheWithKScale
 } // namespace optiling

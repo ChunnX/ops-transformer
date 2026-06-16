@@ -614,6 +614,17 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsNonTwoToOneAivAicRatioInPla
     EXPECT_FALSE(ExecuteTiling(moreAivPara, tilingInfo));
 }
 
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsNonAscend950TilingDispatch)
+{
+    const ConcurrentTilingCase item = {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 4, 32};
+    auto compileInfo = BuildCompileInfo(item);
+    TilingInfo tilingInfo;
+    const gert::TilingContextPara para(
+        "QkvRmsNormRopeCacheWithKScale", BuildTilingInputs(item), BuildTilingOutputs(item), BuildTilingAttrs(item),
+        &compileInfo, "Ascend910B", 64, 262144, 4096);
+    EXPECT_FALSE(ExecuteTiling(para, tilingInfo));
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, AcceptsT512Q64K8V8Aic32)
 {
     ContractTiling tiling;

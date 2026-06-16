@@ -22,7 +22,7 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
     OP_LOGD(context, "QkvRmsNormRopeCacheWithKScale tiling start.");
-    return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
+    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseContext *context)
