@@ -17,8 +17,6 @@
  * injected by the build system from the JSON binary config entries.
  */
 
-#define INPLACE_PARTIAL_ROTARY_MUL_GRAD_TILING_KEY 10012
-
 #include "kernel_operator.h"
 #include "arch35/inplace_partial_rotary_mul_grad_tiling_data.h"
 #include "arch35/inplace_partial_rotary_mul_grad.h"
@@ -34,22 +32,4 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
     (void)dcos;
     (void)dsin;
     (void)workspace;
-
-    GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, tilingDataIn, tiling);
-    const InplacePartialRotaryMulGradTilingData *__restrict tilingData = &tilingDataIn;
-
-    // start == end: nothing to compute.
-    if (tilingData->sliceLen <= 0) {
-        return;
-    }
-    if (GetBlockIdx() >= tilingData->usedCoreNum) {
-        return;
-    }
-
-    AscendC::TPipe pipe;
-    if (TILING_KEY_IS(INPLACE_PARTIAL_ROTARY_MUL_GRAD_TILING_KEY)) {
-        InplacePartialRotaryMulGrad::InplacePartialRotaryMulGradRef<DTYPE_DY, DTYPE_COS> op;
-        op.Init(dy, cos, sin, dyOut, tilingData, &pipe);
-        op.Process();
-    }
 }
