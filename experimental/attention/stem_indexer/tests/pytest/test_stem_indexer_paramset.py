@@ -13,12 +13,12 @@
 # StemIndexer single pytest case set.
 # Add new cases by appending one dict to ENABLED_PARAMS. Keep fixed-spec attrs unchanged unless testing FAIL paths.
 ENABLED_PARAMS = [
-    # SI_WB_001 basic_prefill_medium_no_tail
-    # 覆盖: 基础链路；prefill；medium档；q/kv无尾块；causal=true
+    # SI_WB_001 basic_prefill_small_prompt_no_tail
+    # 覆盖: 基础链路；prefill；small prompt分支；q/kv无尾块；causal=true
     # 设计: 所有固定规格使用合法默认值，先验证 StemIndexer 端到端最基础路径。
     {
         'case_id': 'SI_WB_001',
-        'testcase_name': 'basic_prefill_medium_no_tail',
+        'testcase_name': 'basic_prefill_small_prompt_no_tail',
         'expected_result': 'PASS',
         'batch_size': 1,
         'q_heads': 32,
@@ -320,11 +320,11 @@ ENABLED_PARAMS = [
         'batch_size': 1,
         'q_heads': 32,
         'kv_heads': 8,
-        'q_token_lens_per_batch': [2048],
+        'q_token_lens_per_batch': [8192],
         'kv_token_lens_per_batch': [8192],
-        'q_seq_lens_input_prefix': [2048],
+        'q_seq_lens_input_prefix': [8192],
         'kv_seq_lens_input_prefix': [8192],
-        'num_prompt_tokens_input_prefix': [2048],
+        'num_prompt_tokens_input_prefix': [8192],
         'causal': True,
         'alpha': 0.5,
         'stem_block_size': 128,
@@ -347,11 +347,11 @@ ENABLED_PARAMS = [
         'batch_size': 1,
         'q_heads': 32,
         'kv_heads': 8,
-        'q_token_lens_per_batch': [2048],
+        'q_token_lens_per_batch': [8192],
         'kv_token_lens_per_batch': [8192],
-        'q_seq_lens_input_prefix': [2048],
+        'q_seq_lens_input_prefix': [8192],
         'kv_seq_lens_input_prefix': [8192],
-        'num_prompt_tokens_input_prefix': [2048],
+        'num_prompt_tokens_input_prefix': [8192],
         'causal': True,
         'alpha': 0.01,
         'stem_block_size': 128,
@@ -364,12 +364,12 @@ ENABLED_PARAMS = [
         'special_setting': '',
     },
 
-    # SI_WB_014 medium_boundary_16384
-    # 覆盖: kv_len=16384；使用medium rate=0.2
-    # 设计: 覆盖 medium/large 档位边界左侧，设计方案规定 <=16K 使用 medium rate。
+    # SI_WB_014 s2_128_blocks
+    # 覆盖: max_Kb=128；长S2但未跨过baseN=256
+    # 设计: 覆盖 S2 为128个block的常见长上下文路径。
     {
         'case_id': 'SI_WB_014',
-        'testcase_name': 'medium_boundary_16384',
+        'testcase_name': 's2_128_blocks',
         'expected_result': 'PASS',
         'batch_size': 1,
         'q_heads': 32,
@@ -391,12 +391,12 @@ ENABLED_PARAMS = [
         'special_setting': '',
     },
 
-    # SI_WB_015 large_boundary_16385
-    # 覆盖: kv_len=16385；使用large rate=0.1；档位切换
-    # 设计: 覆盖超过 16K 后切换 large rate 的路径。
+    # SI_WB_015 s2_129_blocks_tail
+    # 覆盖: max_Kb=129；S2存在尾块但仍未跨过baseN=256
+    # 设计: 覆盖比128个block多一个尾块的S2路径。
     {
         'case_id': 'SI_WB_015',
-        'testcase_name': 'large_boundary_16385',
+        'testcase_name': 's2_129_blocks_tail',
         'expected_result': 'PASS',
         'batch_size': 1,
         'q_heads': 32,
@@ -716,8 +716,8 @@ ENABLED_PARAMS = [
     },
 
     # SI_WB_027 batch2_varlen_prefill
-    # 覆盖: batch=2；变长q/kv；前缀和输入；per-batch不均衡
-    # 设计: 覆盖多 batch 负载不均和前缀和输入解析，metadata 分核也应覆盖不均衡场景。
+    # 覆盖: batch=2；变长q/kv；per-batch实际长度；prompt前缀和输入
+    # 设计: 覆盖多 batch 负载不均；BNSD下q/kv seq_lens按实际长度读取，num_prompt_tokens按前缀和读取。
     {
         'case_id': 'SI_WB_027',
         'testcase_name': 'batch2_varlen_prefill',
@@ -727,8 +727,8 @@ ENABLED_PARAMS = [
         'kv_heads': 8,
         'q_token_lens_per_batch': [256, 384],
         'kv_token_lens_per_batch': [512, 1152],
-        'q_seq_lens_input_prefix': [256, 640],
-        'kv_seq_lens_input_prefix': [512, 1664],
+        'q_seq_lens_input_prefix': [256, 384],
+        'kv_seq_lens_input_prefix': [512, 1152],
         'num_prompt_tokens_input_prefix': [256, 640],
         'causal': True,
         'alpha': 1.0,
@@ -754,8 +754,8 @@ ENABLED_PARAMS = [
         'kv_heads': 8,
         'q_token_lens_per_batch': [512, 1],
         'kv_token_lens_per_batch': [512, 8193],
-        'q_seq_lens_input_prefix': [512, 513],
-        'kv_seq_lens_input_prefix': [512, 8705],
+        'q_seq_lens_input_prefix': [512, 1],
+        'kv_seq_lens_input_prefix': [512, 8193],
         'num_prompt_tokens_input_prefix': [512, 8704],
         'causal': True,
         'alpha': 1.0,
@@ -1240,6 +1240,33 @@ ENABLED_PARAMS = [
         'kflat_dtype': 'BF16',
         'vbias_dtype': 'FP32',
         'special_setting': 'batch=1 but q_seq_lens has 2 elements',
+    },
+
+    # SI_WB_046 dynamic_topk_large_prompt_decode
+    # 覆盖: num_prompt_tokens=20480；prompt block=160；large分支；decode路径下alpha衰减
+    # 设计: 当前TopK预算按prompt block数分段，构造单token decode降低计算量并覆盖large分支。
+    {
+        'case_id': 'SI_WB_046',
+        'testcase_name': 'dynamic_topk_large_prompt_decode',
+        'expected_result': 'PASS',
+        'batch_size': 1,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_token_lens_per_batch': [1],
+        'kv_token_lens_per_batch': [20481],
+        'q_seq_lens_input_prefix': [1],
+        'kv_seq_lens_input_prefix': [20481],
+        'num_prompt_tokens_input_prefix': [20480],
+        'causal': True,
+        'alpha': 0.5,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
     },
 
 ]

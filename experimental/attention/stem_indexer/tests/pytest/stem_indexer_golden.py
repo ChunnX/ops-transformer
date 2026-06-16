@@ -10,17 +10,17 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import math
-
 import torch
 
 
 HEAD_DIM = 128
+MAX_TOPK_COUNT = 256
+K_SMALL_SEQ_MAX = 56
+K_MEDIUM_SEQ_MAX = 160
 K_BLOCK_NUM_RATE_MEDIUM = 0.2
 K_BLOCK_NUM_BIAS_MEDIUM = 30
 K_BLOCK_NUM_RATE_LARGE = 0.1
 K_BLOCK_NUM_BIAS_LARGE = 30
-MEDIUM_KV_TOKEN_LIMIT = 16384
 METADATA_SIZE = 2048
 
 DTYPE_MAP = {
@@ -145,26 +145,36 @@ def get_call_attrs(case):
     }
 
 
+def get_metadata_attrs(case):
+    return {
+        "causal": bool(case["causal"]),
+        "stem_block_size": int(case["stem_block_size"]),
+        "dim_qkflat": HEAD_DIM,
+        "window_size": int(case["window_size"]),
+    }
+
+
 def is_decode_case(q_len, kv_len, prompt_len):
     return q_len == 1 and prompt_len >= max(kv_len - 1, 0)
 
 
-def calc_topk_budget(case, q_block_idx, q_block_num, kv_len, kv_block_num, decode):
-    if kv_len <= MEDIUM_KV_TOKEN_LIMIT:
-        rate = K_BLOCK_NUM_RATE_MEDIUM
-        bias = K_BLOCK_NUM_BIAS_MEDIUM
+def calc_topk_budget(case, q_block_idx, q_block_num, kv_block_num, prompt_len):
+    prompt_block_num = ceil_div(prompt_len, case["stem_block_size"])
+    if prompt_block_num < K_SMALL_SEQ_MAX:
+        k_start = K_SMALL_SEQ_MAX
+    elif prompt_block_num < K_MEDIUM_SEQ_MAX:
+        k_start = int(prompt_block_num * K_BLOCK_NUM_RATE_MEDIUM + K_BLOCK_NUM_BIAS_MEDIUM)
     else:
-        rate = K_BLOCK_NUM_RATE_LARGE
-        bias = K_BLOCK_NUM_BIAS_LARGE
+        k_start = int(prompt_block_num * K_BLOCK_NUM_RATE_LARGE + K_BLOCK_NUM_BIAS_LARGE)
 
-    k_start = rate * kv_block_num + bias
-    if decode:
-        position = max(kv_len - 1, 0)
-        denominator = max(kv_len, 1)
-    else:
-        position = q_block_idx
-        denominator = max(q_block_num, 1)
-    return math.floor(k_start - (k_start * (1.0 - float(case["alpha"])) / denominator) * position)
+    s1_pos = q_block_idx + kv_block_num - q_block_num
+    decay_len = prompt_block_num - k_start
+    if s1_pos < k_start or decay_len < 1:
+        return k_start
+
+    k_end = int(k_start * float(case["alpha"]))
+    topk_count = int(k_start + ((s1_pos - k_start) / (decay_len - 1)) * (k_end - k_start))
+    return min(max(topk_count, 1), k_start)
 
 
 def get_forced_indices(s2_valid, initial_blocks, window_size):
@@ -172,6 +182,11 @@ def get_forced_indices(s2_valid, initial_blocks, window_size):
     window_begin = max(s2_valid - window_size, 0)
     window = range(window_begin, s2_valid)
     return set(sink).union(window)
+
+
+def calc_causal_s2_valid(q_block_idx, q_block_num, kv_block_num):
+    s2_valid = kv_block_num - q_block_num + q_block_idx + 1
+    return max(min(s2_valid, kv_block_num), 0)
 
 
 def stem_indexer_golden(case, inputs):
@@ -215,23 +230,20 @@ def stem_indexer_golden(case, inputs):
             for local_q_head_idx, q_head_idx in enumerate(range(q_head_begin, q_head_end)):
                 for q_block_idx in range(q_block_num):
                     if case["causal"] and not decode:
-                        s2_valid = min(kv_block_num, q_block_idx + 1)
+                        s2_valid = calc_causal_s2_valid(q_block_idx, q_block_num, kv_block_num)
                     else:
                         s2_valid = kv_block_num
                     if s2_valid <= 0:
                         continue
 
-                    budget = calc_topk_budget(case, q_block_idx, q_block_num, kv_len, kv_block_num, decode)
-                    topk_curr = min(max(budget, 0), s2_valid)
-                    if topk_curr <= 0:
-                        continue
-
+                    topk_select_num = min(max(
+                        calc_topk_budget(case, q_block_idx, q_block_num, kv_block_num, prompt_len), 0
+                    ), MAX_TOPK_COUNT)
                     forced = get_forced_indices(s2_valid, case["initial_blocks"], case["window_size"])
-                    remain_count = max(topk_curr - len(forced), 0)
                     candidate_indices = [idx for idx in range(s2_valid) if idx not in forced]
                     scores = score_group[local_q_head_idx, q_block_idx]
                     ranked = sorted(candidate_indices, key=lambda idx: (-float(scores[idx]), idx))
-                    selected = sorted(forced.union(ranked[:remain_count]))
+                    selected = sorted(forced.union(ranked[:topk_select_num]))
                     sparse_seq_len[batch_idx, q_head_idx, q_block_idx] = len(selected)
                     if selected:
                         sparse_indices[batch_idx, q_head_idx, q_block_idx, :len(selected)] = torch.tensor(

@@ -17,7 +17,7 @@ torch_npu = pytest.importorskip("torch_npu")
 
 import result_compare_method
 import stem_indexer_golden
-from npu_ops_transformer.ops import npu_stem_indexer
+from npu_ops_transformer.ops import npu_stem_indexer, npu_stem_indexer_metadata
 from test_stem_indexer_paramset import ENABLED_PARAMS
 
 
@@ -29,9 +29,23 @@ def move_inputs_to_npu(inputs):
     return {name: tensor.npu() for name, tensor in inputs.items()}
 
 
+def build_metadata(case, npu_inputs):
+    if case["expected_result"] == "FAIL":
+        return npu_inputs["metadata"]
+    metadata_attrs = stem_indexer_golden.get_metadata_attrs(case)
+    return npu_stem_indexer_metadata(
+        npu_inputs["q_seq_lens"],
+        npu_inputs["kv_seq_lens"],
+        case["q_heads"],
+        case["kv_heads"],
+        **metadata_attrs,
+    )
+
+
 def call_stem_indexer(case, inputs):
     npu_inputs = move_inputs_to_npu(inputs)
     attrs = stem_indexer_golden.get_call_attrs(case)
+    metadata = build_metadata(case, npu_inputs)
     return npu_stem_indexer(
         npu_inputs["qflat"],
         npu_inputs["kflat"],
@@ -39,7 +53,7 @@ def call_stem_indexer(case, inputs):
         npu_inputs["q_seq_lens"],
         npu_inputs["kv_seq_lens"],
         npu_inputs["num_prompt_tokens"],
-        npu_inputs["metadata"],
+        metadata,
         **attrs,
     )
 

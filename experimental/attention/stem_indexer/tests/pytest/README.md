@@ -5,7 +5,8 @@
 基于pytest测试框架，实现StemIndexer算子的功能验证：
 
 - CPU侧：按StemIndexer设计方案实现golden。
-- NPU侧：通过`npu_ops_transformer.ops.npu_stem_indexer`获取实际结果。
+- NPU侧：先通过`npu_ops_transformer.ops.npu_stem_indexer_metadata`生成分核信息，再通过
+  `npu_ops_transformer.ops.npu_stem_indexer`获取实际结果。
 - 结果比对：比较`sparse_seq_len`，并只比较`sparse_indices`中`sparse_seq_len`范围内的有效前缀；尾部未定义区域不校验。
 
 ## 用例来源
@@ -24,13 +25,22 @@ case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点�
 - `initial_blocks=4`与`window_size=4`在不同`s2Valid`下的完全重叠、部分交集、无交集、短序列裁剪。
 - causal与non-causal路径。
 - TPD `alpha`无衰减、普通衰减、强衰减。
-- medium/large档位边界：`kv_len=16384`与`kv_len=16385`。
+- 动态TopK预算的small/medium/large prompt block分支。
 - S2方向`baseN=256`整块和尾块。
 - M方向`baseM=96`整块和尾块。
 - GQA组合：`q_heads`为32/64，`kv_heads`为2/4/8。
 - 多batch变长、prefill/decode混合、单token decode。
 - OAM `vbias`影响选块、`scoreScale=1/64`路径。
 - 参数非法负例。
+
+## Metadata说明
+
+`metadata`是StemIndexer主算子的前置输入，pytest正例和普通单case脚本都会先调用
+`npu_stem_indexer_metadata`生成`int32[2048]`的metadata，再传给`npu_stem_indexer`。
+pytest负例会继续传入参数表中构造的metadata，用于覆盖StemIndexer主算子的参数校验。
+
+当前StemIndexer主算子使用BNSD布局，`q_seq_lens`和`kv_seq_lens`按batch实际长度传入；
+`num_prompt_tokens`按前缀和传入，用于动态TopK预算。
 
 ## 文件结构
 

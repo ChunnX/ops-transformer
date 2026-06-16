@@ -42,7 +42,7 @@ def assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, c
             continue
         actual_prefix = actual_indices[b_idx, q_head_idx, q_block_idx, :valid_len].tolist()
         expected_prefix = expected_indices[b_idx, q_head_idx, q_block_idx, :valid_len].tolist()
-        if set(actual_prefix) != set(expected_prefix):
+        if sorted(actual_prefix) != sorted(expected_prefix):
             failures.append({
                 "b": b_idx,
                 "q_head": q_head_idx,
