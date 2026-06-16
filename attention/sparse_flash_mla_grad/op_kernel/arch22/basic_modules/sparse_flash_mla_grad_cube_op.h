@@ -308,12 +308,14 @@ __aicore__ inline void CubeOp<SMLAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR ori_k
      * mm1 与 p 复用workspace
      */
     int64_t mm1Addr = usedWorkspaceLen / sizeof(float) + cBlockIdx * mm12WorkspaceLen / sizeof(float);
+    usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     int64_t pAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * mm12WorkspaceLen / sizeof(T1);
     usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     /*
      * mm2 与 ds 复用workspace
      */
     int64_t mm2Addr = usedWorkspaceLen / sizeof(float) + cBlockIdx * mm12WorkspaceLen / sizeof(float);
+    usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     int64_t dsAddr = usedWorkspaceLen / sizeof(T1) + cBlockIdx * mm12WorkspaceLen / sizeof(T1);
     usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
 
