@@ -535,9 +535,6 @@ public:
         float deSCaleKValue = 1.0;
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
-        uint32_t array[] = {static_cast<uint32_t>(8), static_cast<uint32_t>(s2BaseSize)};
-        AscendC::ShapeInfo shapeInfo(2, array);
-        AscendC::DumpTensor(mmRes, 111, 8 * s2BaseSize, shapeInfo);
         
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
         if (runInfo.isFirstS2Loop) {
@@ -910,7 +907,7 @@ public:
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
+            FaGmTensor<OUTPUT_T, OUT_FORMAT, GlobalTensor<OUTPUT_T>, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                               constInfo.dSizeV, *qActSeqLensParser);
@@ -918,7 +915,7 @@ public:
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
+            FaGmTensor<OUTPUT_T, OUT_FORMAT, GlobalTensor<OUTPUT_T>, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                               constInfo.dSizeV, *qActSeqLensParser);
@@ -926,7 +923,7 @@ public:
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
+            FaGmTensor<OUTPUT_T, OUT_FORMAT, GlobalTensor<OUTPUT_T>, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
                                               *qActSeqLensParser);
