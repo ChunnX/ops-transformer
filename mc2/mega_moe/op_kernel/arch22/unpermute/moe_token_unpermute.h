@@ -30,7 +30,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs,
                                 GM_ADDR unpermuted_tokens, const MoeTokenUnpermuteTilingData *__restrict tiling_data,
-                                bool useAllVectorCore);
+                                bool useAllVectorCore=false);
     __aicore__ inline void Process();
 
 protected:
@@ -80,7 +80,7 @@ __aicore__ inline void
 KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs,
                                                  GM_ADDR unpermuted_tokens,
                                                  const MoeTokenUnpermuteTilingData *__restrict tiling_data,
-                                                bool useAllVectorCore = false)
+                                                bool useAllVectorCore)
 {
     if (useAllVectorCore) {
         this->blockIdx = get_block_idx() + get_subblockid() * get_block_num();
