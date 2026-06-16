@@ -25,6 +25,8 @@
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
 #include "moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#include "adv_api/hccl/hccl.h"
+#include "adv_api/hcomm/hcomm.h"
 
 using namespace AscendC;
 
@@ -75,6 +77,7 @@ private:
     __aicore__ inline void QuantProcessInRank();
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // todo: 通信上下文
     Params params_{};
 
     GlobalTensor<int32_t> groupFlagListGm_;
@@ -1012,6 +1015,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 QuantScaleOutType, QuantScaleOutType>(
                 params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 expertBeforeCnt_, gmm2PingPongIdx_);
+        }
+        if constexpr(g_coreType == AIV) {
+            if (subBlockIdx_ == 1) {
+                
+            }
         }
     }
     EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);

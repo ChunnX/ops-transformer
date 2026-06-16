@@ -90,6 +90,8 @@ struct WorkspaceInfo {
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR combineDataPtr;
+    GM_ADDR combineNotifyPtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -129,6 +131,15 @@ struct WorkspaceInfo {
         int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
+        
+        uint64_t maxCombineDataSize = Ops::Base::CeilAlign(tilingData->bs * tilingData->h * tilingData->epWorldSize, ALIGN_512);
+        combineDataPtr = base + workspaceSize;
+        workspaceSize += maxCombineDataSize;
+
+        combineNotifyPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(tilingData->bs * sizeof(uint32_t) * tilingData->epWorldSize, ALIGN_512);// todo:
+
+
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H
