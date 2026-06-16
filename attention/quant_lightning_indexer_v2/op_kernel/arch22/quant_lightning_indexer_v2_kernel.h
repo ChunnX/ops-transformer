@@ -156,7 +156,8 @@ protected:
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
-    __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
+    __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
+ 	                                              uint32_t cmpResiduaKLenDims, bool isAccumSeq,
                                                   GlobalTensor<uint32_t> &actualSeqLengthsGm,
                                                   GlobalTensor<uint32_t> &cmpResidualKGm,
                                                   uint32_t defaultSeqLen, uint32_t cmpRatio);
@@ -243,7 +244,12 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitActualSeqLen(__gm__ uint8_t *cu
         }
     }
     // cmpResidualK获取
-    cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)cmpResidualK, constInfo.batchSize);
+    if (cmpResidualK != nullptr) {
+        constInfo.cmpResiduaKLenDims = constInfo.batchSize;
+        cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)cmpResidualK, constInfo.batchSize);
+    } else {
+        constInfo.cmpResiduaKLenDims = 0;
+    }
 }
 
 template <typename QLIV2T>
@@ -264,12 +270,17 @@ __aicore__ inline uint32_t QLIV2Preload<QLIV2T>::GetActualSeqLen(uint32_t bIdx, 
 
 template <typename QLIV2T>
 __aicore__ inline uint32_t QLIV2Preload<QLIV2T>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
-                                                                    bool isAccumSeq,
+                                                                    uint32_t cmpResiduaKLenDims, bool isAccumSeq,
                                                                     GlobalTensor<uint32_t> &actualSeqLengthsGm,
                                                                     GlobalTensor<uint32_t> &cmpResidualKGm,
                                                                     uint32_t defaultSeqLen, uint32_t cmpRatio)
 {
-    uint32_t cmpResidualK = cmpResidualKGm.GetValue(bIdx);
+    uint32_t cmpResidualK;      // 当前bidx对应的cmpResidualK
+    if (cmpResiduaKLenDims == 0) {
+        cmpResidualK = 0;
+    } else {
+        cmpResidualK = cmpResidualKGm.GetValue(bIdx);
+    }
     if (actualLenDims == 0) {
         return defaultSeqLen * cmpRatio + cmpResidualK;
     } else if (isAccumSeq) {
@@ -287,8 +298,8 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::GetS1S2ActualSeqLen(uint32_t bIdx, 
     actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
                                 constInfo.qSeqSize);
     actS2SizeOrig =
-        GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, actualSeqLengthsGm, cmpResidualKGm,
-            constInfo.kSeqSize, constInfo.cmpRatio); // 压缩前的actS2Size
+        GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.cmpResiduaKLenDims, constInfo.isAccumSeqS2,
+            actualSeqLengthsGm, cmpResidualKGm, constInfo.kSeqSize, constInfo.cmpRatio); // 压缩前的actS2Size
     actS2Size = actS2SizeOrig / constInfo.cmpRatio;   // 真实使用的压缩后S2长度
 }
 

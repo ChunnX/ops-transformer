@@ -20,7 +20,6 @@ import math
 import ctypes
 import copy
 import cann_ops_transformer
-from cann_ops_transformer.ops.quant_lightning_indexer_v2_metadata import quant_lightning_indexer_v2_metadata
 
 FP32_FRACTION_BITS = 23        # fp32尾数位数
 
@@ -780,27 +779,32 @@ def qliv2_output_single(params):
     # PA_BBND key 构造用的 act_seq_k 列表
     act_seq_k = lengths_k_list
 
-    # cmp_residual_k
-    if cmp_ratio == 1:
-        cmp_residual_k = torch.zeros(batch_size, dtype=actual_seq_dtype, device='npu')
+    # 检查 cmp_residual_k 参数
+    if (sparse_mode == 0 or cmp_ratio == 1) and cmp_residual_k is not None:
+        print(f"Warning: sparse_mode={sparse_mode} or cmp_ratio={cmp_ratio}, "
+              f"cmp_residual_k={cmp_residual_k}, should be None")
+        print("Hint: set cmp_residual_k to None when sparse_mode==0 or cmp_ratio==1")
+
+    # cmp_residual_k for CPU golden (always a list with zeros when cmp_ratio==1 or sparse_mode==0)
+    if cmp_ratio == 1 or sparse_mode == 0:
+        cmp_residual_k_for_cpu = [0] * batch_size
     else:
-        cmp_residual_k = torch.tensor(cmp_residual_k).to(actual_seq_dtype).npu()
+        cmp_residual_k_for_cpu = list(cmp_residual_k)
+
+    # cmp_residual_k for NPU (None when cmp_ratio==1 or sparse_mode==0, tensor otherwise)
+    if cmp_ratio == 1 or sparse_mode == 0:
+        cmp_residual_k_for_npu = None
+    else:
+        cmp_residual_k_for_npu = torch.tensor(cmp_residual_k).to(actual_seq_dtype).npu()
 
     # ======================== 构造 GeneralizedQLIV2 用于 CPU golden ========================
     # GeneralizedQLIV2 需要 act_seq 个体长度（用于 TND→BNSD 转换等）
     test_qliv2 = GeneralizedQLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
                     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k,
-                    lengths_q_list, lengths_k_list, cmp_residual_k, max_seqlen_q, quant_mode,
+                    lengths_q_list, lengths_k_list, cmp_residual_k_for_cpu, max_seqlen_q, quant_mode,
                     layout_query, layout_key, sparse_count,
                     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
                     k_scale_datarange, cmp_ratio, return_value)
-
-    if cmp_ratio == 1:
-        cmp_residual_k = torch.zeros(batch_size, dtype=actual_seq_dtype, device='npu')
-    else:
-        # 假设外部的 cmp_residual_k_input 已定义
-        cmp_residual_k_input = cmp_residual_k
-        cmp_residual_k = torch.tensor(cmp_residual_k_input).to(actual_seq_dtype).npu()
 
 
     if layout_query == "BSND":
@@ -914,12 +918,12 @@ def qliv2_output_single(params):
     # max_seqlen 从个体长度中取
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
-    metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_v2_metadata(
+    metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
                                     cu_seqlens_q = cu_seqlens_query,
                                     cu_seqlens_k = cu_seqlens_key,
                                     seqused_q = seqused_q_tensor,
                                     seqused_k = seqused_k_tensor,
-                                    cmp_residual_k = cmp_residual_k,
+                                    cmp_residual_k = cmp_residual_k_for_npu,
                                     batch_size = batch_size,
                                     max_seqlen_q = max_seqlen_q_meta,
                                     max_seqlen_k = max_seqlen_k_meta,
@@ -941,7 +945,7 @@ def qliv2_output_single(params):
                                                     cu_seqlens_k = cu_seqlens_key,
                                                     seqused_q = seqused_q_tensor,
                                                     seqused_k = seqused_k_tensor,
-                                                    cmp_residual_k = cmp_residual_k,
+                                                    cmp_residual_k = cmp_residual_k_for_npu,
                                                     output_idx_offset = None,
                                                     max_seqlen_q = max_seqlen_q,
                                                     block_table = block_table,
