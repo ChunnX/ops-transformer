@@ -52,6 +52,9 @@ public:
     static constexpr uint32_t MTE1_M_EVENT = EVENT_ID2;
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
+    
+    static constexpr uint64_t M_BASIC_BLOCK_ = 96;
+    static constexpr uint64_t S2_BASIC_BLOCK = 256;
 
     static constexpr uint64_t M_BASIC_BLOCK_L1 = 96;
     static constexpr uint64_t D_BASIC_BLOCK_L1 = 512;
@@ -67,7 +70,7 @@ public:
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
     static constexpr uint64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
     static constexpr uint64_t L0AB_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
-    static constexpr uint64_t L0C_BUFFER_OFFSET = constInfo_.mBaseSize * constInfo_.s2BaseSize;
+    static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK_ * S2_BASIC_BLOCK;
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
@@ -133,7 +136,7 @@ __aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(bufKeyL0_, L0_BUF_NUM * D_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(K_T));
     keyL0_ = bufKeyL0_.Get<K_T>();
 
-    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * constInfo_.mBaseSize * constInfo_.s2BaseSize * sizeof(float));
+    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK_ * S2_BASIC_BLOCK * sizeof(float));
     cL0_ = bufL0C_.Get<float>();
 }
 
