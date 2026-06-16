@@ -24,11 +24,10 @@ using namespace AscendC;
 using namespace matmul;
 
 constexpr uint8_t STAGE3_AIC_AIV_SYNC_MODE = 0x2;
-constexpr uint32_t STAGE3_TMP_GM_SLOT_COUNT = 3;
-constexpr uint16_t STAGE3_AIV0_READY_AIC_FLAG_BASE = 0x4;
-constexpr uint16_t STAGE3_AIV1_READY_AIC_FLAG_BASE = 0x7;
-constexpr uint16_t STAGE3_AIC_DONE_AIV0_FLAG_BASE = 0xa;
-constexpr uint16_t STAGE3_AIC_DONE_AIV1_FLAG_BASE = 0xd;
+constexpr uint32_t STAGE3_TMP_GM_SLOT_COUNT = 4;
+constexpr uint16_t STAGE3_FLAG_ID_MAX = 16;
+constexpr uint16_t STAGE3_AIV_READY_AIC_FLAG_BASE = 0x4;
+constexpr uint16_t STAGE3_AIC_DONE_AIV_FLAG_BASE = 0x8;
 
 using aT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
 using bT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
@@ -152,14 +151,14 @@ public:
 
     __aicore__ inline uint16_t GetAivReadyAicFlag(uint32_t slotIdx, uint32_t subBlockIdx)
     {
-        return (subBlockIdx == 0 ? STAGE3_AIV0_READY_AIC_FLAG_BASE : STAGE3_AIV1_READY_AIC_FLAG_BASE) +
-               static_cast<uint16_t>(slotIdx);
+        return STAGE3_AIV_READY_AIC_FLAG_BASE + static_cast<uint16_t>(slotIdx) +
+               static_cast<uint16_t>(subBlockIdx) * STAGE3_FLAG_ID_MAX;
     }
 
     __aicore__ inline uint16_t GetAicDoneAivFlag(uint32_t slotIdx, uint32_t subBlockIdx)
     {
-        return (subBlockIdx == 0 ? STAGE3_AIC_DONE_AIV0_FLAG_BASE : STAGE3_AIC_DONE_AIV1_FLAG_BASE) +
-               static_cast<uint16_t>(slotIdx);
+        return STAGE3_AIC_DONE_AIV_FLAG_BASE + static_cast<uint16_t>(slotIdx) +
+               static_cast<uint16_t>(subBlockIdx) * STAGE3_FLAG_ID_MAX;
     }
 
     __aicore__ inline void LoadMaskToBuffer(int32_t rowOffset)
