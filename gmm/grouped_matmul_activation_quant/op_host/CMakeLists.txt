@@ -27,5 +27,7 @@ if (BUILD_OPS_RTY_KERNEL)
     )
 else()
     add_modules_sources(
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
         OPTYPE grouped_matmul_activation_quant ACLNNTYPE aclnn_exclude)
 endif()
