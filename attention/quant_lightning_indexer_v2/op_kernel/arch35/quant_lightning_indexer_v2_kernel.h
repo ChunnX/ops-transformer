@@ -277,8 +277,9 @@ __aicore__ inline uint32_t QLIV2Preload<QLIV2T>::GetActualSeqLenKey(uint32_t bId
     uint32_t cmpResidualK;      // 当前bidx对应的cmpResidualK
     if (cmpResiduaKLenDims == 0) {
         cmpResidualK = 0;
+    } else {
+        cmpResidualK = cmpResidualKGm.GetValue(bIdx);
     }
-    cmpResidualK = cmpResidualKGm.GetValue(bIdx);
     if (actualLenDims == 0) {
         return defaultSeqLen * cmpRatio + cmpResidualK;
     } else if (isAccumSeq) {

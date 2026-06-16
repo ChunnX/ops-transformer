@@ -39,7 +39,7 @@ TEST_PARAMS = {
         "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
         "seqused_q": [[3,3,3,3,3,3,3,3]],
         "seqused_k": [[28,24,80,96,47,76,0,111]], # PA场景每个batch的实际token数
-        "cmp_residual_k": [[3,3,3,3,3,3,3,3]],
+        "cmp_residual_k": [None],
         "max_seqlen_q": [-1],
         "quant_mode": [1],
         "layout_query": ["BSND"],
