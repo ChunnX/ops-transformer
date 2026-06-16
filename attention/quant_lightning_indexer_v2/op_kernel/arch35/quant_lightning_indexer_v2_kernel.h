@@ -245,6 +245,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitActualSeqLen(__gm__ uint8_t *cu
     }
     // cmpResidualK获取
     if (cmpResidualK != nullptr) {
+        constInfo.cmpResiduaKLenDims = constInfo.batchSize;
         cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)cmpResidualK, constInfo.batchSize);
     } else {
         constInfo.cmpResiduaKLenDims = 0;
