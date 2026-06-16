@@ -46,9 +46,6 @@ struct TempLoopInfo {
     uint32_t s2LoopEnd = 0U;    // S2方向循环的结束Idx
     uint32_t actS1Size = 1ULL;  // 当前Batch循环处理的S1轴的实际大小
     uint32_t actS2Size = 0ULL;
-    uint32_t actQTokenLen = 0ULL;
-    uint32_t actKVTokenLen = 0ULL;
-    uint32_t promptTokenLen = 0ULL;
     uint32_t promptLen = 0ULL;
     uint32_t s2ValidSize = 0ULL;
     bool curActSeqLenIsZero = false;
@@ -80,7 +77,7 @@ struct RunInfo {
     uint64_t tensorVBiasOffset;
     uint64_t indiceOutOffset;
     uint64_t indiceLenOffset;
-    uint32_t numPromptTokens;
+    uint32_t promptLen;
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;

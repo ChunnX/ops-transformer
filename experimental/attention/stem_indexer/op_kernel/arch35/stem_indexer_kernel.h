@@ -218,8 +218,6 @@ __aicore__ inline void SIPreload<SIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32
                                          constInfo.qSeqSize * constInfo.stemBlockSize);
     uint32_t kTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, kvSeqLensGm,
                                          constInfo.kSeqSize * constInfo.stemBlockSize);
-    tempLoopInfo.actQTokenLen = qTokenLen;
-    tempLoopInfo.actKVTokenLen = kTokenLen;
     actS1Size = CeilDiv(qTokenLen, constInfo.stemBlockSize);
     actS2Size = CeilDiv(kTokenLen, constInfo.stemBlockSize);
 }
@@ -481,9 +479,9 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
     tempLoopInfo.needDealActS1LessThanS1 = false;
     tempLoopInfo.s2ValidSize = 0U;
     GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size);
-    tempLoopInfo.promptTokenLen = GetActualSeqLen(tempLoopInfo.bIdx, static_cast<uint32_t>(constInfo.batchSize), true,
+    uint64_t promptTokenLen = GetActualSeqLen(tempLoopInfo.bIdx, static_cast<uint32_t>(constInfo.batchSize), true,
                                                   numPromptTokensGm, 0U);
-    tempLoopInfo.promptLen = CeilDiv(tempLoopInfo.promptTokenLen, constInfo.stemBlockSize);
+    tempLoopInfo.promptLen = CeilDiv(promptTokenLen, constInfo.stemBlockSize);
     if ((tempLoopInfo.actS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
         return;
@@ -511,6 +509,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     runInfo.n2Idx = tempLoopInfo.n2Idx;
     runInfo.gS1Idx = tempLoopInfo.gS1Idx;
     runInfo.s2Idx = s2LoopIdx;
+    runInfo.promptLen = tempLoopInfo.promptLen;
 
     runInfo.s2Start = splitCoreInfo.s2Start;
     runInfo.s2LoopEnd = tempLoopInfo.s2LoopEnd;
@@ -529,47 +528,27 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     runInfo.isLastS2InnerLoop = s2LoopIdx == tempLoopInfo.s2LoopEnd;
 
     if (runInfo.isFirstS2InnerLoop) {
-        uint64_t actualSeqQPrefixSum;
-        if constexpr (Q_LAYOUT_T == SI_LAYOUT::TND) {
-            uint32_t qSeqLensGmIdx = (constInfo.batchSupperFlag) ? runInfo.bIdx : runInfo.bIdx - 1;
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : qSeqLensGm.GetValue(qSeqLensGmIdx);
-        } else {  // BNSD
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
-        }
-        uint64_t qBatchOffset = actualSeqQPrefixSum * constInfo.qHeadNum;
-        uint64_t qHeadOffset = runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-        uint64_t qBlockOffset = static_cast<uint64_t>(runInfo.gS1Idx) * constInfo.mBaseSize;
-        // qflat: B,N1,Qb,D. gS1Idx is an M tile index over flattened G*S1.
-        queryCoreOffset = (qBatchOffset + qHeadOffset + qBlockOffset) *
-                          constInfo.headDim;
-        // sparse_indices: B,N2,G,S1,maxKb. Use the storage stride, not the actual valid S2 length.
-        indiceOutCoreOffset = (qBatchOffset + qHeadOffset) * constInfo.sparseCount;
-        // sparse_seq_len: B,N2,G,S1
-        indiceLenCoreOffset = qBatchOffset + qHeadOffset;
+        
+        queryCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.headDim + 
+                          runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.headDim + 
+                          runInfo.gs1Idx * constInfo.mBaseSize * constInfo.headDim;
+        
+        indiceOutCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.sparseCount +
+                              runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.sparseCount;
+
+        indiceLenCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize + 
+                              runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
     }
-    uint64_t actualSeqKPrefixSum;
-    if constexpr (K_LAYOUT_T == SI_LAYOUT::TND) { // T N2 D
-        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : kvSeqLensGm.GetValue(runInfo.bIdx - 1);
-        actualSeqKPrefixSum = actualSeqKPrefixSum / constInfo.cmpRatio;
-    } else {
-        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
-    }
-    runInfo.numPromptTokens = tempLoopInfo.promptTokenLen;
-    uint64_t kBatchOffset = actualSeqKPrefixSum * constInfo.kvHeadNum;
-    uint64_t kHeadOffset = runInfo.n2Idx * constInfo.kSeqSize;
-    keyCoreOffset =
-        (kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.headDim;
-    keyScaleCoreOffset = kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize;
-    weightsCoreOffset = kBatchOffset + kHeadOffset + runInfo.s2Idx * constInfo.s2BaseSize;
-    // vbias: B,N2,maxKb. Keep the same maxKb stride as kflat.
-    vBiasCoreOffset = kBatchOffset + kHeadOffset;
     runInfo.tensorQueryOffset = queryCoreOffset;
-    runInfo.tensorKeyOffset = keyCoreOffset;
-    runInfo.tensorKeyScaleOffset = keyScaleCoreOffset;
-    runInfo.tensorWeightsOffset = weightsCoreOffset;
-    runInfo.tensorVBiasOffset = vBiasCoreOffset;
     runInfo.indiceOutOffset = indiceOutCoreOffset;
     runInfo.indiceLenOffset = indiceLenCoreOffset;
+
+    runInfo.tensorKeyOffset = runInfo.bIdx * constInfo.kvHeadNum * constInfo.kSeqSize * constInfo.headDim + 
+                              runInfo.n2Idx * constInfo.kSeqSize * constInfo.headDim + 
+                              runInfo.s2Idx * constInfo.s2BaseSize * constInfo.headDim;
+
+    runInfo.tensorVBiasOffset = runInfo.bIdx * constInfo.kvHeadNum * constInfo.kSeqSize + 
+                                runInfo.n2Idx * constInfo.kSeqSize;
 }
 
 template <typename SIT>
@@ -643,9 +622,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
             // s2ValidSize excludes windowSize, so initial blocks covering it can use direct output.
             if (tempLoopInfo.s2ValidSize <= constInfo.initialBlocks) {
-                if ASCEND_IS_AIV {
-                    vectorService.ProcessDirectOutput(tempLoopInfo, gS1LoopIdx);
-                }
+                vectorService.ProcessDirectOutput(tempLoopInfo, gS1LoopIdx);
                 splitCoreInfo.s2Start = 0;
                 continue;
             }

@@ -323,7 +323,6 @@ __aicore__ inline uint32_t SIVector<SIT>::CalcDynamicTopkCount(
     const int32_t K_MEDIUM_SEQ_MAX = 160;
 
     // block级别的s1索引转换成token级别的s1索引，向上取整确保block数不小于实际值
-    numPromptK = CeilDiv(numPromptK, 128);
 
     // 计算 kStart（分段函数）
     int32_t kStart;
@@ -390,7 +389,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     
     // 计算动态 topkCount 所需的块级常量（使用原始 actS2Size）
     int32_t kbOffset = (int32_t)info.actS2Size - (int32_t)info.actS1Size;
-    int32_t numPromptK = (int32_t)info.numPromptTokens;
+    int32_t numPromptK = (int32_t)info.promptLen;
     
     // 常量定义：用于填充零值和无效索引
     uint16_t zero = 0;
