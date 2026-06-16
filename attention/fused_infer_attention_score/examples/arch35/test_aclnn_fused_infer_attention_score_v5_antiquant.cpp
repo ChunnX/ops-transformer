@@ -154,8 +154,8 @@ int main() {
     int64_t valueAntiquantScaleShapeSize = GetShapeSize(valueAntiquantScaleShape); // B, KV_N, ceil(KV_S, 256), 1
     int64_t outShapeSize = GetShapeSize(outShape);     // BNSD
     std::vector<uint16_t> queryHostData(queryShapeSize, 0x3C00); // fp16 1.0
-    std::vector<uint8_t> keyHostData(keyShapeSize, 0b0111000); // fp8_e4m3 1.0
-    std::vector<uint8_t> valueHostData(valueShapeSize, 0b0111000);
+    std::vector<uint8_t> keyHostData(keyShapeSize, 0b01110000); // fp8_e4m3 1.0
+    std::vector<uint8_t> valueHostData(valueShapeSize, 0b01110000);
     std::vector<uint16_t> keyAntiquantScaleHostData(keyAntiquantScaleShapeSize, 0x3C00);
     std::vector<uint16_t> valueAntiquantScaleHostData(valueAntiquantScaleShapeSize, 0x3C00);
     std::vector<uint16_t> outHostData(outShapeSize, 0x3C00);
