@@ -15,9 +15,9 @@ import math
 import numpy as np
 import random
 from einops import rearrange
-import npu_ops_transformer
-from npu_ops_transformer.ops import npu_flash_attn
-from npu_ops_transformer.ops import npu_flash_attn_metadata
+import cann_ops_transformer
+from cann_ops_transformer.ops import npu_flash_attn
+from cann_ops_transformer.ops import npu_flash_attn_metadata
 from utils import trans_bnsd_to_layout
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
@@ -106,7 +106,7 @@ def flash_attn_metadata_only(**kwargs):
         "layout_out": layout_out,
     })
 
-    metadata = torch.ops.npu_ops_transformer.npu_flash_attn_metadata(
+    metadata = torch.ops.cann_ops_transformer.npu_flash_attn_metadata(
         cu_seqlens_q  = cu_q_u32,
         cu_seqlens_kv = cu_kv_u32,
         seqused_q     = seqused_q_u32,
@@ -261,7 +261,7 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, **kwargs):
         "layout_out": layout_out,
     })
 
-    metadata = torch.ops.npu_ops_transformer.npu_flash_attn_metadata(
+    metadata = torch.ops.cann_ops_transformer.npu_flash_attn_metadata(
         cu_seqlens_q  = cu_q_meta,
         cu_seqlens_kv = cu_kv_meta,
         seqused_q     = seqused_q_meta,
@@ -483,7 +483,7 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, **kwargs):
         "layout_out": layout_out,
     })
 
-    metadata = torch.ops.npu_ops_transformer.npu_flash_attn_metadata(
+    metadata = torch.ops.cann_ops_transformer.npu_flash_attn_metadata(
         cu_seqlens_q  = cu_q_meta,
         cu_seqlens_kv = cu_kv_meta,
         seqused_q     = seqused_q_meta,

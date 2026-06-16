@@ -1,7 +1,7 @@
 import subprocess                                                                                                                                                                    
 import torch                                                                                                                                                                         
 import torch_npu                                                                                                                                                                     
-import npu_ops_transformer                                                                                                                                                           
+import cann_ops_transformer                                                                                                                                                           
                                                                                                                                                                                     
 # 初始化 NPU                                                                                                                                                                         
 torch_npu.npu.set_device(0)                                                                                                                                                          
@@ -40,8 +40,8 @@ print("seqused_kv",seqused_kv)
 print("seqused_kv",seqused_kv)
                                                                                                                                                                                     
 # 调用算子
-# result = npu_ops_transformer.ops.npu_flash_attn_metadata(
-result =  torch.ops.npu_ops_transformer.npu_flash_attn_metadata(
+# result = cann_ops_transformer.ops.npu_flash_attn_metadata(
+result =  torch.ops.cann_ops_transformer.npu_flash_attn_metadata(
     # cu_seqlens_q = cu_seqlens_q,
     # cu_seqlens_kv = cu_seqlens_kv,
     # seqused_q = seqused_q,

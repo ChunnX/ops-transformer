@@ -19,8 +19,8 @@ import numpy as np
 import math
 import ctypes
 import copy
-import npu_ops_transformer
-from npu_ops_transformer.ops.quant_lightning_indexer_v2_metadata import npu_quant_lightning_indexer_v2_metadata
+import cann_ops_transformer
+from cann_ops_transformer.ops.quant_lightning_indexer_v2_metadata import quant_lightning_indexer_v2_metadata
 
 FP32_FRACTION_BITS = 23        # fp32尾数位数
 
@@ -914,7 +914,7 @@ def qliv2_output_single(params):
     # max_seqlen 从个体长度中取
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
-    metadata = torch.ops.npu_ops_transformer.npu_quant_lightning_indexer_v2_metadata(
+    metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_v2_metadata(
                                     cu_seqlens_q = cu_seqlens_query,
                                     cu_seqlens_k = cu_seqlens_key,
                                     seqused_q = seqused_q_tensor,
@@ -934,9 +934,7 @@ def qliv2_output_single(params):
                                     cmp_ratio = cmp_ratio)
 
     metadata = metadata.npu()
-
-    # ======================== NPU 算子调用 ========================
-    npu_result, _ = torch.ops.npu_ops_transformer.npu_quant_lightning_indexer_v2(query, key, weights,
+    npu_result, _ = torch.ops.cann_ops_transformer.quant_lightning_indexer_v2(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,
                                                     cu_seqlens_q = cu_seqlens_query,

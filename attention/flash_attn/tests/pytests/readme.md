@@ -99,7 +99,7 @@ pytests/
 | 依赖 | 说明 |
 |------|------|
 | `torch_npu` | PyTorch NPU扩展 |
-| `npu_ops_transformer` | 提供`npu_flash_attn`和`npu_flash_attn_metadata` |
+| `cann_ops_transformer` | 提供`npu_flash_attn`和`npu_flash_attn_metadata` |
 
 ### GPU模式(可选)
 
@@ -112,7 +112,7 @@ pytests/
 
 ```bash
 # NPU
-python -c "import torch_npu, npu_ops_transformer; print('NPU OK')"
+python -c "import torch_npu, cann_ops_transformer; print('NPU OK')"
 
 # GPU
 python -c "import torch, flash_attn, einops; print('GPU OK')"
@@ -425,9 +425,9 @@ flash_attn_inputs = (
 
 ## 十一、常见问题
 
-### Q1: `ModuleNotFoundError: No module named 'npu_ops_transformer'`
+### Q1: `ModuleNotFoundError: No module named 'cann_ops_transformer'`
 
-NPU模式需要安装`npu_ops_transformer`，或改用GPU模式：
+NPU模式需要安装`cann_ops_transformer`，或改用GPU模式：
 ```bash
 python test_flash_attn.py --case_id BASE_01 --use_gpu
 ```

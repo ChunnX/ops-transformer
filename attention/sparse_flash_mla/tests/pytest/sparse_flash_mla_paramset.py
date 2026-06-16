@@ -58,8 +58,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "cfa_prefill_tnd_padding": {
-        "testcase_name": ["cfa_prefill_tnd_padding"],
+    "cfa_prefill_tnd": {
+        "testcase_name": ["cfa_prefill_tnd"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -69,13 +69,13 @@ TEST_PARAMS = {
         "S1": [1],
         "T1": [1],
         "T2": [18],
-        "T3": [5],
+        "T3": [4],
         "N1": [64],
         "N2": [1],
         "D": [512],
         "cu_seqlens_q": [[0, 1]],
         "cu_seqlens_ori_kv": [[0, 18]],
-        "cu_seqlens_cmp_kv": [[0, 5]],
+        "cu_seqlens_cmp_kv": [[0, 4]],
         "seqused_cmp_kv": [[4]],
         "cmp_residual_kv": [[2]],
         "softmax_scale": [0.04419417],
