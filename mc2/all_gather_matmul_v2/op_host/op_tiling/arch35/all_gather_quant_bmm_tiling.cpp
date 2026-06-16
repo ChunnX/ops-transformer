@@ -157,9 +157,8 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckX1Input()
     OP_TILING_CHECK(
         ((quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) &&
          (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) &&
-            (isFp4_) && (CheckMXFP4Input() != ge::GRAPH_SUCCESS),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Dim1", std::to_string(args_.kValue).c_str(),// TODO 换一个原因
-                                              "The value of x1Dim1 must be even and divisible by 32 in mxfp4 scene"),
+        (isFp4_) && (CheckMXFP4Input() != ge::GRAPH_SUCCESS),
+        OP_LOGE(opName_, "Check mxfp4 input failed."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -482,7 +481,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
     std::string algConfig = "AllGather=level0:fullmesh";
     // mxfp4场景使用int8类型通信，通信量减半
     uint32_t hcclDataType;
-    if (args_.geAType == ge::DataType::DT_FLOAT4_E2M1) {// TODO 使用变量isMXFP4
+    if (isFp4_) {
         hcclDataType = static_cast<uint32_t>(mc2tiling::HcclDataType::HCCL_DATA_TYPE_UINT8);
     } else {
         hcclDataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType));
