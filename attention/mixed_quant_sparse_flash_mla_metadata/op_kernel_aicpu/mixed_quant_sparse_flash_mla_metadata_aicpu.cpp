@@ -1196,7 +1196,8 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::BalanceSchedule(SplitResult &spl
 
 bool MixedQuantSparseFlashMlaMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
-    optiling::detail::MqsmlaMetadata* metadataPtr = static_cast<optiling::detail::MqsmlaMetadata*>(metadata_->GetData());
+    optiling::detail::MqsmlaMetadata* metadataPtr =
+        static_cast<optiling::detail::MqsmlaMetadata*>(metadata_->GetData());
     *metadataPtr = {};
     // FA Metadata Generate
     if (isSplitG_) {
