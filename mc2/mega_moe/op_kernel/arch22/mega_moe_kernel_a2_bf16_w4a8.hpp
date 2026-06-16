@@ -1070,7 +1070,6 @@ private:
         gmDstA.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(shmem() + peermemInfo.offsetA));
         AscendC::LocalTensor<T> bufT = resource.ubBuf.template GetBufferByByte<T>(0);
         AscendC::LocalTensor<uint64_t> bufFlag = bufT.template ReinterpretCast<uint64_t>();
-
         using TType = Gemm::GemmType<T, layout::RowMajor>;
         using CopyGmToUb = Epilogue::Tile::CopyGm2Ub<ArchTag, TType>;
         using CopyUbToGm = Epilogue::Tile::CopyUb2Gm<ArchTag, TType>;
@@ -1567,9 +1566,6 @@ private:
         // and polled by RecvTokensV3. On A3 we don't push flags through
         // peer-mem at all, so this stays 0.
         int64_t offsetFlag{0};
-
-        // 每个 flag 槽占 16 个 int32（= 64B = 1 个 cache line）
-        static constexpr int64_t kFlagSlotI32{16};
 
         CATLASS_DEVICE
         PeermemInfo() {}
