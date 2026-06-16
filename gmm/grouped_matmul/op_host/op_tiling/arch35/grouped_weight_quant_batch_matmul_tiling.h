@@ -257,6 +257,7 @@ protected:
     bool IsMxA8W4() const;
     bool CheckPerTokenScale(const gert::TilingContext* context) const;
     bool CheckUnsupportDataFlow(const gert::TilingContext *context) const;
+    bool CheckUnsupportedRemainingCases() const;
     bool CheckAntiQuantDtype(const gert::TilingContext *context) const;
     bool CheckBiasDtype(const gert::TilingContext *context) const;
     bool CheckGroupTypeAndSplitItem(const gert::TilingContext *context) const;
