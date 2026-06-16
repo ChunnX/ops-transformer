@@ -56,61 +56,122 @@ using namespace MoeGatingTopKSoftmaxV2;
         op.Process(tilingData);                                                                           \
     } while (0)
 
-extern "C" __global__ __aicore__ void moe_gating_top_k_softmax_v2(
-    GM_ADDR gating, GM_ADDR finished, GM_ADDR out, GM_ADDR indicesOut, GM_ADDR softmaxOut, GM_ADDR workspace,
-    GM_ADDR tiling)
+__aicore__ inline bool DispatchEKFullLoad(GM_ADDR gating, GM_ADDR finished, GM_ADDR out, GM_ADDR indicesOut,
+                                            GM_ADDR softmaxOut, GM_ADDR workspace, GM_ADDR tiling)
+{
+    if (TILING_KEY_IS(101010)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(float, 1, 0);
+        return true;
+    } else if (TILING_KEY_IS(101011)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(float, 2, 0);
+        return true;
+    } else if (TILING_KEY_IS(101020)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(half, 1, 0);
+        return true;
+    } else if (TILING_KEY_IS(101021)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(half, 2, 0);
+        return true;
+    } else if (TILING_KEY_IS(101030)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(bfloat16_t, 1, 0);
+        return true;
+    } else if (TILING_KEY_IS(101031)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(bfloat16_t, 2, 0);
+        return true;
+    } else if (TILING_KEY_IS(101110)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(float, 1, 1);
+        return true;
+    } else if (TILING_KEY_IS(101111)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(float, 2, 1);
+        return true;
+    } else if (TILING_KEY_IS(101120)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(half, 1, 1);
+        return true;
+    } else if (TILING_KEY_IS(101121)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(half, 2, 1);
+        return true;
+    } else if (TILING_KEY_IS(101130)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(bfloat16_t, 1, 1);
+        return true;
+    } else if (TILING_KEY_IS(101131)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(bfloat16_t, 2, 1);
+        return true;
+    }
+    return false;
+}
+
+__aicore__ inline bool DispatchKFullLoad(GM_ADDR gating, GM_ADDR finished, GM_ADDR out, GM_ADDR indicesOut,
+                                          GM_ADDR softmaxOut, GM_ADDR workspace, GM_ADDR tiling)
+{
+    if (TILING_KEY_IS(102011)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_K_FULL_LOAD_IMPL(float, 0);
+        return true;
+    } else if (TILING_KEY_IS(102021)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_K_FULL_LOAD_IMPL(half, 0);
+        return true;
+    } else if (TILING_KEY_IS(102031)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_K_FULL_LOAD_IMPL(bfloat16_t, 0);
+        return true;
+    }
+    return false;
+}
+
+__aicore__ inline bool DispatchKRenorm(GM_ADDR gating, GM_ADDR finished, GM_ADDR out, GM_ADDR indicesOut,
+                                        GM_ADDR softmaxOut, GM_ADDR workspace, GM_ADDR tiling)
+{
+    if (TILING_KEY_IS(102111)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_K_RENORM_IMPL(float, 1);
+        return true;
+    } else if (TILING_KEY_IS(102121)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_K_RENORM_IMPL(half, 1);
+        return true;
+    } else if (TILING_KEY_IS(102131)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_K_RENORM_IMPL(bfloat16_t, 1);
+        return true;
+    }
+    return false;
+}
+
+__aicore__ inline bool DispatchPerf(GM_ADDR gating, GM_ADDR finished, GM_ADDR out, GM_ADDR indicesOut,
+                                     GM_ADDR softmaxOut, GM_ADDR workspace, GM_ADDR tiling)
+{
+    if (TILING_KEY_IS(103010)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(float, 0);
+        return true;
+    } else if (TILING_KEY_IS(103020)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(half, 0);
+        return true;
+    } else if (TILING_KEY_IS(103030)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(bfloat16_t, 0);
+        return true;
+    } else if (TILING_KEY_IS(103110)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(float, 1);
+        return true;
+    } else if (TILING_KEY_IS(103120)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(half, 1);
+        return true;
+    } else if (TILING_KEY_IS(103130)) {
+        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(bfloat16_t, 1);
+        return true;
+    }
+    return false;
+}
+
+extern "C" __global__ __aicore__ void moe_gating_top_k_softmax_v2(GM_ADDR gating, GM_ADDR finished, GM_ADDR out,
+                                                                   GM_ADDR indicesOut, GM_ADDR softmaxOut,
+                                                                   GM_ADDR workspace, GM_ADDR tiling)
 {
     if (g_coreType == AIC) {
         return;
     }
 
-    if (TILING_KEY_IS(101010)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(float, 1, 0);
-    } else if (TILING_KEY_IS(101011)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(float, 2, 0);
-    } else if (TILING_KEY_IS(101020)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(half, 1, 0);
-    } else if (TILING_KEY_IS(101021)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(half, 2, 0);
-    } else if (TILING_KEY_IS(101030)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(bfloat16_t, 1, 0);
-    } else if (TILING_KEY_IS(101031)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(bfloat16_t, 2, 0);
-    } else if (TILING_KEY_IS(101110)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(float, 1, 1);
-    } else if (TILING_KEY_IS(101111)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(float, 2, 1);
-    } else if (TILING_KEY_IS(101120)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(half, 1, 1);
-    } else if (TILING_KEY_IS(101121)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(half, 2, 1);
-    } else if (TILING_KEY_IS(101130)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(bfloat16_t, 1, 1);
-    } else if (TILING_KEY_IS(101131)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_EK_FULL_LOAD_IMPL(bfloat16_t, 2, 1);
-    } else if (TILING_KEY_IS(102011)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_K_FULL_LOAD_IMPL(float, 0);
-    } else if (TILING_KEY_IS(102021)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_K_FULL_LOAD_IMPL(half, 0);
-    } else if (TILING_KEY_IS(102031)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_K_FULL_LOAD_IMPL(bfloat16_t, 0);
-    } else if (TILING_KEY_IS(102111)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_K_RENORM_IMPL(float, 1);
-    } else if (TILING_KEY_IS(102121)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_K_RENORM_IMPL(half, 1);
-    } else if (TILING_KEY_IS(102131)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_K_RENORM_IMPL(bfloat16_t, 1);
-    } else if (TILING_KEY_IS(103010)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(float, 0);
-    } else if (TILING_KEY_IS(103020)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(half, 0);
-    } else if (TILING_KEY_IS(103030)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(bfloat16_t, 0);
-    } else if (TILING_KEY_IS(103110)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(float, 1);
-    } else if (TILING_KEY_IS(103120)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(half, 1);
-    } else if (TILING_KEY_IS(103130)) {
-        MOE_GATING_TOP_K_SOFTMAX_V2_PERF_IMPL(bfloat16_t, 1);
+    if (DispatchEKFullLoad(gating, finished, out, indicesOut, softmaxOut, workspace, tiling)) {
+        return;
     }
+    if (DispatchKFullLoad(gating, finished, out, indicesOut, softmaxOut, workspace, tiling)) {
+        return;
+    }
+    if (DispatchKRenorm(gating, finished, out, indicesOut, softmaxOut, workspace, tiling)) {
+        return;
+    }
+    DispatchPerf(gating, finished, out, indicesOut, softmaxOut, workspace, tiling);
 }
