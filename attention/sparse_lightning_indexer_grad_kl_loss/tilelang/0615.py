@@ -1,4 +1,4 @@
-import torch
+﻿import torch
 import math
 import numpy as np
 import os
@@ -171,8 +171,8 @@ def tilelang_grad_kl_loss_single_kernel(
     d_num_query_index = DQueryIndex // k_block
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
-
     v3_chunks = Nidx1 // 4
+
     @T.prim_func
     def main(
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
@@ -478,6 +478,8 @@ def tilelang_grad_kl_loss_single_kernel(
 
     return main
 
+
+# ==============================================================================
 # Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
 # ==============================================================================
 def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, K, DQuery, DQueryIndex):
