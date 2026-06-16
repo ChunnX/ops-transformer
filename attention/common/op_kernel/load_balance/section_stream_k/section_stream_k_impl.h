@@ -312,7 +312,7 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     }
 
     // calc section
-    int64_t tokenSize = 0U;
+    int64_t tokenSize = 0L;
     uint32_t bn2Idx = 0U;
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
         int64_t s2Size = static_cast<int64_t>(baseInfo.GetKvSeqSize(bIdx));
