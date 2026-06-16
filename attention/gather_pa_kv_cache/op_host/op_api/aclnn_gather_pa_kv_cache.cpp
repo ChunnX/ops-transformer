@@ -477,13 +477,23 @@ static aclnnStatus ProcessContiguous(
 {
     bool isPaNz = (cacheMode != nullptr && strcmp(cacheMode, "PA_NZ") == 0);
 
-    // PA_NZ非连续cache走NZ-as-ND连续化; 连续cache或Norm模式维持原通用连续化。
-    auto keyCacheContiguous = (isPaNz && !IsContiguous(keyCache))
+    // ===== 临时诊断日志(确认ProcessContiguous分支走向), 验证后删除 =====
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "[GPKC_DBG3] ProcessContiguous enter: isPaNz=%d kFallback=%d vFallback=%d kIsContig=%d vIsContig=%d",
+            (int)isPaNz, (int)NeedContiguousFallback(keyCache, isPaNz),
+            (int)NeedContiguousFallback(valueCache, isPaNz),
+            (int)IsContiguous(keyCache), (int)IsContiguous(valueCache));
+    // ===== 临时诊断日志结束 =====
+
+    // PA_NZ的cache若NZ内部轴(轴[1,dimNum))非连续, 走NZ-as-ND连续化; 否则维持原通用连续化。
+    // 注意: 此处用NeedContiguousFallback(基于view_strides相对view_shape判内部轴), 不能用IsContiguous——
+    // IsContiguous对FRACTAL_NZ的view按storage判定会误返回true, 导致漏走NZ-as-ND分支。
+    auto keyCacheContiguous = NeedContiguousFallback(keyCache, isPaNz)
         ? ContiguousNzCacheAsNd(keyCache, uniqueExecutor)
         : l0op::Contiguous(keyCache, uniqueExecutor.get());
     CHECK_RET(keyCacheContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto valueCacheContiguous = (isPaNz && !IsContiguous(valueCache))
+    auto valueCacheContiguous = NeedContiguousFallback(valueCache, isPaNz)
         ? ContiguousNzCacheAsNd(valueCache, uniqueExecutor)
         : l0op::Contiguous(valueCache, uniqueExecutor.get());
     CHECK_RET(valueCacheContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
