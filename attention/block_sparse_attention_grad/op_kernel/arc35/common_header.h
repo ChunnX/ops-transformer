@@ -38,7 +38,8 @@ struct ConstInfo {
     int32_t head_dim{0};
     int32_t q_block_num{0};
     int32_t kv_block_num{0};
-    int64_t b_stride{0};
+    int64_t b1_stride{0};
+    int64_t b2_stride{0};
     int64_t s1_stride{0};
     int64_t s2_stride{0};
     int64_t n1_stride{0};
@@ -110,9 +111,9 @@ __aicore__ inline uint64_t GetQGmOffset(const ConstInfo &const_info, int32_t las
                                         int32_t n_idx, int32_t seqlen_idx)
 {
     if constexpr (INPUT_LAYOUT == BSND) {
-        return batch_idx * const_info.b_stride + seqlen_idx * const_info.s1_stride + n_idx * const_info.n1_stride;
+        return batch_idx * const_info.b1_stride + seqlen_idx * const_info.s1_stride + n_idx * const_info.n1_stride;
     } else if (INPUT_LAYOUT == BNSD) {
-        return batch_idx * const_info.b_stride + n_idx * const_info.n1_stride + seqlen_idx * const_info.s1_stride
+        return batch_idx * const_info.b1_stride + n_idx * const_info.n1_stride + seqlen_idx * const_info.s1_stride
     } else if constexpr (INPUT_LAYOUT == TND) {
         return (lastBatchSum + seqlen_idx) * const_info.s1_stride + n_idx * const_info.n1_stride;
     }
@@ -124,9 +125,9 @@ __aicore__ inline uint64_t GetKVGmOffset(const ConstInfo &const_info, int32_t la
                                          int32_t seqlen_idx, int32_t n_idx)
 {
     if constexpr (INPUT_LAYOUT == BSND) {
-        return batch_idx * const_info.b_stride + seqlen_idx * const_info.s2_stride + n_idx * const_info.n2_stride;
+        return batch_idx * const_info.b2_stride + seqlen_idx * const_info.s2_stride + n_idx * const_info.n2_stride;
     } else if (INPUT_LAYOUT == BNSD) {
-        return batch_idx * const_info.b_stride + n_idx * const_info.n2_stride + seqlen_idx * const_info.s2_stride
+        return batch_idx * const_info.b2_stride + n_idx * const_info.n2_stride + seqlen_idx * const_info.s2_stride
     } else if constexpr (INPUT_LAYOUT == TND) {
         return (lastBatchSum + seqlen_idx) * const_info.s2_stride + n_idx * const_info.n2_stride;
     }

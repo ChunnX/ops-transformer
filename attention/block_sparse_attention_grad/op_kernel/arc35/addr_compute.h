@@ -230,13 +230,15 @@ public:
             q_block_num_ = CeilDiv(q_seq_len_, block_x_);
             kv_block_num_ = CeilDiv(kv_seq_len_, block_y_);
             if constexpr (INPUT_LAYOUT == BSND) {
-                const_info_.b_stride = q_seq_len_ * head_num_ * head_dim_;
+                const_info_.b1_stride = q_seq_len_ * q_head_num_ * head_dim_;
+                const_info_.b2_stride = q_seq_len_ * kv_head_num_ * head_dim_;
                 const_info_.s1_stride = q_head_num_ * head_dim_;
                 const_info_.s2_stride = kv_head_num_ * head_dim_;
                 const_info_.n1_stride = head_dim_;
                 const_info_.n2_stride = head_dim_;
             } else if (INPUT_LAYOUT == BNSD) {
-                const_info_.b_stride = head_num_ * q_seq_len_ * head_dim_;
+                const_info_.b1_stride = q_head_num_ * q_seq_len_ * head_dim_;
+                const_info_.b2_stride = kv_head_num_ * kv_seq_len_ * head_dim_;
                 const_info_.s1_stride = head_dim_;
                 const_info_.s2_stride = head_dim_;
                 const_info_.n1_stride = q_seq_len_ * head_dim_;
