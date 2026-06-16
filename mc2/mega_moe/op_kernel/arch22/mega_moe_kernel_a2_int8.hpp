@@ -163,7 +163,6 @@ public:
         if ASCEND_IS_AIV {
             coreIdx = get_block_idx() + get_subblockid() * get_block_num();
             coreNum = get_block_num() * get_subblockdim();
-            serverId_ = RuntimeRank(params) / SERVER_RANK_SIZE_A2;
         }
         initBuffer(params);
     }
@@ -206,8 +205,11 @@ private:
         shmem.initShmem(tmpContext);
         qp_info_ = reinterpret_cast<__gm__ HcclAiRMAInfo *>(
             reinterpret_cast<__gm__ HcclA2CombineOpParam *>(shmem.WinContext_)->aiRMAInfo);
+        const int32_t rank = RuntimeRank(params);
+        serverId_ = static_cast<int32_t>(rank / SERVER_RANK_SIZE_A2);
         workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
+
         cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrcumsumMM));
         gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(shmem() + peermemInfo.offsetA));
         gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC));
@@ -966,7 +968,8 @@ private:
         workspaceInfo.expandedRowIdx, localTokenPerExpert, params.expertTokensBeforeCapacity,
         shmem.windowsOutAddr() + peermemInfo.offsetPeerPerTokenScale,
         params.ptrWorkspace + expandedRowIdxOffset,
-        &params.moeInitRoutingQuantV2TilingData, params.initRoutingQuantTilingKey);
+        &params.moeInitRoutingQuantV2TilingData, params.initRoutingQuantTilingKey,
+        static_cast<int64_t>(512));
 
         AscendC::SyncAll<true>();
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);

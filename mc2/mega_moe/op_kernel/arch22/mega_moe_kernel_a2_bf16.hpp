@@ -176,9 +176,6 @@ public:
         if ASCEND_IS_AIV {
             coreIdx = get_block_idx() + get_subblockid() * get_block_num();
             coreNum = get_block_num() * get_subblockdim();
-
-            const int32_t rank = RuntimeRank(params);
-            serverId_ = rank / SERVER_RANK_SIZE_A2;
         }
 
         initBuffer(params);
