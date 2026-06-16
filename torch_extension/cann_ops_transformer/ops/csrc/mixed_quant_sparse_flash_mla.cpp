@@ -25,7 +25,6 @@ const int DIM_2 = 2;
 const int DIM_3 = 3;
 const int DIM_4 = 4;
 
-<<<<<<< HEAD:torch_extension/cann_ops_transformer/ops/csrc/mixed_quant_sparse_flash_mla.cpp
 constexpr int64_t MQSMLA_METADATA_SIZE = 1024;
 
 at::Tensor mixed_quant_sparse_flash_mla_metadata(
@@ -86,8 +85,6 @@ at::Tensor mixed_quant_sparse_flash_mla_metadata(
     return output;
 }
 
-=======
->>>>>>> 2ac58c079 (删除pta注册):torch_extension/npu_ops_transformer/ops/csrc/mixed_quant_sparse_flash_mla.cpp
 std::tuple<at::Tensor, at::Tensor> construct_mixed_quant_sparse_flash_mla_atten_out_tensor(
     const at::Tensor& q, const at::Tensor& ori_kv, std::string layout_q_str,
     std::string layout_kv_str, const uint64_t &rope_head_dim, bool return_softmax_lse)
