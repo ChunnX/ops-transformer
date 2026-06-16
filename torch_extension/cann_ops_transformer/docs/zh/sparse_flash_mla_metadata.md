@@ -21,68 +21,46 @@ cann_ops_transformer.sparse_flash_mla_metadata(num_heads_q, num_heads_kv, head_d
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
 
--   **cu\_seqlens\_q** (`Tensor`)：可选参数，表示不同Batch中Query的有效Sequence Length，维度为\(B+1\)，仅layout\_q为TND场景需传入。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。
-
--   **cu\_seqlens\_ori\_kv** (`Tensor`)：可选参数，表示不同Batch中ori\_kv的有效Sequence Length，维度为\(B+1\)，仅layout\_kv为TND场景需传入。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。
-
--   **cu\_seqlens\_cmp\_kv** (`Tensor`)：可选参数，表示不同Batch中cmp\_kv的有效Sequence Length，维度为\(B+1\)，仅layout\_kv为TND场景需传入。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。
-
--   **seqused\_q** (`Tensor`)：可选参数，表示不同Batch中Query实际参与运算的Sequence Length，维度为\(B\)。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。
-
--   **seqused\_ori\_kv** (`Tensor`)：可选参数，表示不同Batch中ori\_kv实际参与运算的Sequence Length，维度为\(B\)。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。
-
--   **seqused\_cmp\_kv** (`Tensor`)：可选参数，表示不同Batch中cmp\_kv实际参与运算的Sequence Length，维度为\(B\)。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。
-
--   **cmp\_residual\_kv** (`Tensor`)：可选参数，表示不同Batch中cmp\_kv压缩后Sequence Length的余数，配合cmp\_ratio实现cmp\_kv部分的mask和负载计算。cmp\_mask\_mode=3且cmp\_ratio≠1时必须传入，维度为\(B\)。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。
-
--   **ori\_topk\_length** (`Tensor`)：可选参数，预留参数，当前不生效。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。
-
--   **cmp\_topk\_length** (`Tensor`)：可选参数，预留参数，当前不生效。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。
-
--   **num\_heads\_q** (`int`)：必选参数，表示Query的head个数，当前仅支持2/4/8/16/32/64/128。
-
--   **num\_heads\_kv** (`int`)：必选参数，表示Key和Value对应的多头数，当前仅支持1。
-
--   **head\_dim** (`int`)：必选参数，表示注意力头的维度，当前仅支持512。
-
--   **batch\_size** (`int`)：可选参数，表示Batch数量，默认值为0。
-
--   **max\_seqlen\_q** (`int`)：可选参数，表示Query的最长Sequence Length，默认值为0。
-
--   **max\_seqlen\_ori\_kv** (`int`)：可选参数，表示ori\_kv的最长Sequence Length，默认值为0。
-
--   **max\_seqlen\_cmp\_kv** (`int`)：可选参数，表示cmp\_kv的最长Sequence Length，默认值为0。
-
--   **ori\_topk** (`int`)：可选参数，预留参数，当前不生效，表示ori\_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0。
-
--   **cmp\_topk** (`int`)：可选参数，表示cmp\_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0，当前仅支持512/1024。
-
--   **cmp\_ratio** (`int`)：可选参数，表示对cmp\_kv的压缩率，取值范围\[1, 128\]，默认值为1，当前仅支持4/128。
-
--   **ori\_mask\_mode** (`int`)：可选参数，表示q和ori\_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0，当前仅支持4。
-
--   **cmp\_mask\_mode** (`int`)：可选参数，表示q和cmp\_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0，当前仅支持3。
-
--   **ori\_win\_left** (`int`)：可选参数，表示q和ori\_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1，当前仅支持127。
-
--   **ori\_win\_right** (`int`)：可选参数，表示q和ori\_kv计算中q对未来token计算的数量，-1表示无穷大，默认值为-1，当前仅支持0。
-
--   **layout\_q** (`str`)：可选参数，表示Query的排列格式，支持"BSND"、"TND"，默认值为"BSND"。
-
--   **layout\_kv** (`str`)：可选参数，表示Key的排列格式，支持"BSND"、"TND"、"PA\_BBND"，默认值为"BSND"。
-
--   **has\_ori\_kv** (`bool`)：可选参数，用于标识是否含有ori\_kv，默认值为True。
-
--   **has\_cmp\_kv** (`bool`)：可选参数，用于标识是否含有cmp\_kv，默认值为True。
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| num\_heads\_q | int | 必选 | 表示Query的head个数，当前仅支持2/4/8/16/32/64/128 | int32 | - |
+| num\_heads\_kv | int | 必选 | 表示Key和Value对应的多头数，当前仅支持1 | int32 | - |
+| head\_dim | int | 必选 | 表示注意力头的维度，当前仅支持512 | int32 | - |
+| cu\_seqlens\_q | Tensor | 可选 | 表示不同Batch中Query的有效Sequence Length，仅layout\_q为TND场景需传入。数据格式为ND，支持非连续的Tensor | int32 | B+1 |
+| cu\_seqlens\_ori\_kv | Tensor | 可选 | 表示不同Batch中ori\_kv的有效Sequence Length，仅layout\_kv为TND场景需传入。数据格式为ND，支持非连续的Tensor | int32 | B+1 |
+| cu\_seqlens\_cmp\_kv | Tensor | 可选 | 表示不同Batch中cmp\_kv的有效Sequence Length，仅layout\_kv为TND场景需传入。数据格式为ND，支持非连续的Tensor | int32 | B+1 |
+| seqused\_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor | int32 | B |
+| seqused\_ori\_kv | Tensor | 可选 | 表示不同Batch中ori\_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor | int32 | B |
+| seqused\_cmp\_kv | Tensor | 可选 | 表示不同Batch中cmp\_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor | int32 | B |
+| cmp\_residual\_kv | Tensor | 可选 | 表示不同Batch中cmp\_kv压缩后Sequence Length的余数，配合cmp\_ratio实现cmp\_kv部分的mask和负载计算。cmp\_mask\_mode=3且cmp\_ratio≠1时必须传入。数据格式为ND，支持非连续的Tensor | int32 | B |
+| ori\_topk\_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor | int32 | B |
+| cmp\_topk\_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor | int32 | B |
+| batch\_size | int | 可选 | 表示Batch数量，默认值为0 | int32 | - |
+| max\_seqlen\_q | int | 可选 | 表示Query的最长Sequence Length，默认值为0 | int32 | - |
+| max\_seqlen\_ori\_kv | int | 可选 | 表示ori\_kv的最长Sequence Length，默认值为0 | int32 | - |
+| max\_seqlen\_cmp\_kv | int | 可选 | 表示cmp\_kv的最长Sequence Length，默认值为0 | int32 | - |
+| ori\_topk | int | 可选 | 预留参数，当前不生效，表示ori\_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0 | int32 | - |
+| cmp\_topk | int | 可选 | 表示cmp\_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0，当前仅支持512/1024 | int32 | - |
+| cmp\_ratio | int | 可选 | 表示对cmp\_kv的压缩率，取值范围[1, 128]，默认值为1，当前仅支持4/128 | int32 | - |
+| ori\_mask\_mode | int | 可选 | 表示q和ori\_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0，当前仅支持4 | int32 | - |
+| cmp\_mask\_mode | int | 可选 | 表示q和cmp\_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0，当前仅支持3 | int32 | - |
+| ori\_win\_left | int | 可选 | 表示q和ori\_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1，当前仅支持127 | int32 | - |
+| ori\_win\_right | int | 可选 | 表示q和ori\_kv计算中q对未来token计算的数量，-1表示无穷大，默认值为-1，当前仅支持0 | int32 | - |
+| layout\_q | str | 可选 | 表示Query的排列格式，支持"BSND"、"TND"，默认值为"BSND" | string | - |
+| layout\_kv | str | 可选 | 表示Key的排列格式，支持"BSND"、"TND"、"PA\_BBND"，默认值为"BSND" | string | - |
+| has\_ori\_kv | bool | 可选 | 用于标识是否含有ori\_kv，默认值为True | bool | - |
+| has\_cmp\_kv | bool | 可选 | 用于标识是否含有cmp\_kv，默认值为True | bool | - |
 
 ## 返回值说明<a name="zh-cn_topic_0000002168254826_section22231435517"></a>
 
-**metadata** (`Tensor`)：每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。shape固定为\[1024\]，数据类型为`int32`，数据格式为$ND$，不支持非连续的Tensor。
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| metadata | Tensor | 必选 | 每个cube核上FlashAttention计算任务的Batch、Head、以及 Q 和 K 的分块的索引，以及每个vector核上FlashDecode的规约任务索引。数据格式为ND，不支持非连续的Tensor | int32 | 1024 |
 
 ## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
 
 -   该接口支持推理场景下使用。
--   该接口支持aclgraph模式。
+-   该接口支持单算子模式和aclgraph模式。
 -   该接口需与[sparse\_flash\_mla](./sparse_flash_mla.md)算子配套使用。
 -   B（Batch）表示输入样本批量大小。
 -   参数cu\_seqlens\_q、cu\_seqlens\_ori\_kv及cu\_seqlens\_cmp\_kv要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
