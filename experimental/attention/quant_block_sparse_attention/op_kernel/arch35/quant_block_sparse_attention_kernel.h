@@ -397,6 +397,12 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     uint32_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
     AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, sparseBlk1S2Offset, delta, runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx1, runInfo.sparseBlk1PartialMask);
     AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, sparseBlk2S2Offset, delta, runInfo.s2SparseBlk2RealSize, runInfo.sparseBlkIdx2, runInfo.sparseBlk2PartialMask);
+
+    // 将sparseBlkIdx映射为phyBlkNumIdx  并按照phyBlkNumIdx的大小顺序排列
+    uint64_t blockTableBaseOffset = runInfo.boIdx * constInfo.maxBlockNumPerBatch;
+    runInfo.phyBlkNumIdx1 = runInfo.sparseBlkIdx1 == -1 ? -1 : cubeBlock.blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx1);
+    runInfo.phyBlkNumIdx2 = runInfo.sparseBlkIdx2 == -1 ? -1 : cubeBlock.blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx2);
+    IdxSortByPhyBlkNumIdx(runInfo);
 }
 
 

@@ -169,6 +169,8 @@ struct RunInfo {
     /* sparseIndices 偏移量计算 */  
     int64_t sparseBlkIdx1;      /*256/128 第一个sparse块 */  
     int64_t sparseBlkIdx2;      /* 256/128 第二个sparse块 */
+    int64_t phyBlkNumIdx1;      // blockTable映射后的blockNum的Idx
+    int64_t phyBlkNumIdx1;
     bool sparseBlk1PartialMask;    // true表示部分计算  false表示全量计算
     bool sparseBlk2PartialMask;    // true表示部分计算  false表示全量计算
     // lse 输出offset
