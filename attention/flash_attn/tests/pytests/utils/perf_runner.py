@@ -71,11 +71,6 @@ def build_case_script(case: Dict, runs: int, case_name: str, device_id: int = 0)
             "    inputs['block_table'] = bt_t",
             "q, k, v = inputs['q'], inputs['k'], inputs['v']",
             "bt_dev = inputs.get('block_table')",
-            "if bt_dev is not None and str(layout_kv).startswith('PA_'):",
-            "    if c.get('max_seqlen_kv') is not None:",
-            "        _msk = int(c['max_seqlen_kv'])",
-            "    elif skv is not None:",
-            "        _msk = max(skv)",
             "meta = npu_flash_attn_metadata(",
             "    cu_seqlens_q=cu_q_t, cu_seqlens_kv=cu_kv_t,",
             "    seqused_q=sq_t, seqused_kv=skv_t,",
@@ -102,8 +97,6 @@ def build_case_script(case: Dict, runs: int, case_name: str, device_id: int = 0)
         ])
     else:
         lines.extend([
-            "if layout_kv.startswith('PA_'):",
-            "    _msk = max(skv) if skv is not None else _msk",
             "meta = npu_flash_attn_metadata(",
             "    cu_seqlens_q=cu_q_t, cu_seqlens_kv=cu_kv_t,",
             "    seqused_q=sq_t, seqused_kv=skv_t,",
