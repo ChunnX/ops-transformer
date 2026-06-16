@@ -79,15 +79,17 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
 
     auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);    // (r, coff * D)
     OP_CHECK_NULL_WITH_CONTEXT(context, apeShape);
-    // (B, sMax/block_size) | (B, )
-    auto stateBlockTableShape = context->GetRequiredInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, stateBlockTableShape);
 
-    auto cuSeqlensShape = context->GetRequiredInputShape(CU_SEQ_LEN_INPUT_INDEX);    // (B+1,)
-    OP_CHECK_NULL_WITH_CONTEXT(context, cuSeqlensShape);
-    auto seqUsedShape = context->GetRequiredInputShape(SEQ_USED_INPUT_INDEX);    // (B,)
+    // (B, sMax/block_size) | (B, )
+    auto stateBlockTableShape = context->GetOptionalInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, stateBlockTableShape);
+    if (xShape->GetDimNum() == DIM_NUM_2) {
+        auto cuSeqlensShape = context->GetOptionalInputShape(CU_SEQ_LEN_INPUT_INDEX);    // (B+1,)
+        OP_CHECK_NULL_WITH_CONTEXT(context, cuSeqlensShape);
+    }
+    auto seqUsedShape = context->GetOptionalInputShape(SEQ_USED_INPUT_INDEX);    // (B,)
     OP_CHECK_NULL_WITH_CONTEXT(context, seqUsedShape);
-    auto startPosShape = context->GetRequiredInputShape(START_POS_INPUT_INDEX);    // (B,)
+    auto startPosShape = context->GetOptionalInputShape(START_POS_INPUT_INDEX);    // (B,)
     OP_CHECK_NULL_WITH_CONTEXT(context, startPosShape);
 
     auto attr = context->GetAttrs();
@@ -106,6 +108,7 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
         shapeParam.T = shapeParam.B * shapeParam.S;
     } else {                                                    // T
         shapeParam.isBsMerge = true;
+        auto cuSeqlensShape = context->GetOptionalInputShape(CU_SEQ_LEN_INPUT_INDEX);
         shapeParam.Sr = std::min(xShape->GetDim(DIM_INDEX_0),
             xShape->GetDim(DIM_INDEX_0) / cmpRatio+ cuSeqlensShape->GetDim(DIM_INDEX_0) - 1);
         shapeParam.T = xShape->GetDim(DIM_INDEX_0);

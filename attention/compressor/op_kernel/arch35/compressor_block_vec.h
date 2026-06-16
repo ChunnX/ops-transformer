@@ -763,7 +763,7 @@ CompressorBlockVector<COMP>::WriteToCacheState(const GlobalTensor<T> &state, con
                                        stateIdx * coff_ * constInfo_.headDim + dStartIdx;
                 DataCopyWithOutputQue(
                     state[stateOffset], input[copyFinishRowCnt * coff_ * dDealSize],
-                    copyRowCount, dDealSize, coff_ * dDealSize, 
+                    copyRowCount, dDealSize, coff_ * dDealSize,
                     coff_ * constInfo_.headDim * STATE_INTERLEAVE_FACTOR);
             }
 

@@ -83,7 +83,8 @@ __simd_vf__ void HalfModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T
                                                                       mask);
 
         for (uint64_t dOffset = 0; dOffset < baseAddr; dOffset += Compressor::FP32_REPEAT_ELEMENT_NUM) {
-            uint32_t castMaskValue = min(baseAddr - dOffset, static_cast<uint64_t>(Compressor::FP32_REPEAT_ELEMENT_NUM));
+            uint32_t castMaskValue =
+                min(baseAddr - dOffset, static_cast<uint64_t>(Compressor::FP32_REPEAT_ELEMENT_NUM));
             MicroAPI::MaskReg castMask = MicroAPI::UpdateMask<T>(castMaskValue);
             MicroAPI::LoadAlign(vregCastIn, curInUb + dOffset);
             MicroAPI::Cast<ROPET, T, castTraitB322B16>(vregCastOut, vregCastIn, castMask);
