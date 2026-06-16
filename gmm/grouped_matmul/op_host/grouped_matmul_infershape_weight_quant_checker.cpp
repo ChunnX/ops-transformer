@@ -250,13 +250,37 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckDimNumNoSplit(const gert::
         }
         if (hasAntiquantOffset_) {
             auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, i);
-            OP_CHECK_IF(
-                CheckTensorDimEqualOne(context, antiquantOffsetShape, "antiquantOffset", i) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context->GetNodeName(), "CheckTensorDimEqualOne is failed."), return ge::GRAPH_FAILED);
+            if (IsA16W4(xDtype_, weightDtype_)) {
+                OP_CHECK_IF(antiquantOffsetShape == nullptr,
+                            OP_LOGE(context->GetNodeName(), "antiquantOffset Shape[%zu] is null.", i),
+                            return ge::GRAPH_FAILED);
+                size_t dimNum = antiquantOffsetShape->GetDimNum();
+                OP_CHECK_IF(dimNum != 1 && dimNum != 2,
+                            OP_LOGE(context->GetNodeName(),
+                                    "antiquantOffset[%zu] dimNum is %zu, but only support 1 (perchannel) or 2 (pergroup).",
+                                    i, dimNum),
+                            return ge::GRAPH_FAILED);
+            } else {
+                OP_CHECK_IF(
+                    CheckTensorDimEqualOne(context, antiquantOffsetShape, "antiquantOffset", i) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "CheckTensorDimEqualOne is failed."), return ge::GRAPH_FAILED);
+            }
         }
         auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, i);
-        OP_CHECK_IF(CheckTensorDimEqualOne(context, antiquantScaleShape, "antiquantScale", i) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "CheckTensorDimEqualOne is failed."), return ge::GRAPH_FAILED);
+        if (IsA16W4(xDtype_, weightDtype_)) {
+            OP_CHECK_IF(antiquantScaleShape == nullptr,
+                        OP_LOGE(context->GetNodeName(), "antiquantScale Shape[%zu] is null.", i),
+                        return ge::GRAPH_FAILED);
+            size_t dimNum = antiquantScaleShape->GetDimNum();
+            OP_CHECK_IF(dimNum != 1 && dimNum != 2,
+                        OP_LOGE(context->GetNodeName(),
+                                "antiquantScale[%zu] dimNum is %zu, but only support 1 (perchannel) or 2 (pergroup).",
+                                i, dimNum),
+                        return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(CheckTensorDimEqualOne(context, antiquantScaleShape, "antiquantScale", i) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(context->GetNodeName(), "CheckTensorDimEqualOne is failed."), return ge::GRAPH_FAILED);
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -287,10 +311,15 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorNDimMultiScenario(co
     // 检验weight的n轴和antiquantScale的n轴一致
     auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, index);
     OP_CHECK_NULL_WITH_CONTEXT(context, antiquantScaleShape);
-    int64_t antiquantScaleNDim = antiquantScaleShape->GetDim(0);
+    int64_t antiquantScaleNDim;
+    if (IsA16W4(xDtype_, weightDtype_) && antiquantScaleShape->GetDimNum() == 2) {
+        antiquantScaleNDim = antiquantScaleShape->GetDim(antiquantScaleShape->GetDimNum() - 1);
+    } else {
+        antiquantScaleNDim = antiquantScaleShape->GetDim(0);
+    }
     OP_CHECK_IF(antiquantScaleNDim != weightNDimValue,
                 OP_LOGE(context->GetNodeName(),
-                        "weight[%zu] dim %zu value %ld should equal to antiquantScale[%zu] dim 0 value %ld.", index,
+                        "weight[%zu] dim %zu value %ld should equal to antiquantScale[%zu] N dim value %ld.", index,
                         wNDimIdx, weightNDimValue, index, antiquantScaleNDim),
                 return ge::GRAPH_FAILED);
 
@@ -309,10 +338,15 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorNDimMultiScenario(co
         // 检验weight的n轴和antiquantOffset的n轴一致
         auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, index);
         OP_CHECK_NULL_WITH_CONTEXT(context, antiquantOffsetShape);
-        int64_t antiquantOffsetNDim = antiquantOffsetShape->GetDim(0);
+        int64_t antiquantOffsetNDim;
+        if (IsA16W4(xDtype_, weightDtype_) && antiquantOffsetShape->GetDimNum() == 2) {
+            antiquantOffsetNDim = antiquantOffsetShape->GetDim(antiquantOffsetShape->GetDimNum() - 1);
+        } else {
+            antiquantOffsetNDim = antiquantOffsetShape->GetDim(0);
+        }
         OP_CHECK_IF(antiquantOffsetNDim != weightNDimValue,
                     OP_LOGE(context->GetNodeName(),
-                            "weight[%zu] dim %zu value %ld should equal to antiquantOffset[%zu] dim 0 value %ld.",
+                            "weight[%zu] dim %zu value %ld should equal to antiquantOffset[%zu] N dim value %ld.",
                             index, wNDimIdx, weightNDimValue, index, antiquantOffsetNDim),
                     return ge::GRAPH_FAILED);
     }
@@ -378,6 +412,31 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckCaseMultiScenario(const ge
                     OP_LOGE(context->GetNodeName(), "CheckTensorNDimMultiScenario is failed."),
                     return ge::GRAPH_FAILED);
     }
+
+    if (IsA16W4(xDtype_, weightDtype_)) {
+        for (size_t i = 0; i < xSize; i++) {
+            auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, i);
+            if (antiquantScaleShape == nullptr || antiquantScaleShape->GetDimNum() <= 1) {
+                continue;
+            }
+            auto wShape_i = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, i);
+            int64_t kSize = wShape_i->GetDim(wKDimIdx);
+            int64_t groupNum = antiquantScaleShape->GetDim(0);
+            OP_CHECK_IF(groupNum <= 0,
+                        OP_LOGE(context->GetNodeName(), "GroupNum must be greater than 0."),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(kSize % groupNum != 0,
+                        OP_LOGE(context->GetNodeName(), "GroupNum must be multiple of the k axis of weight."),
+                        return ge::GRAPH_FAILED);
+            int64_t groupSize = kSize / groupNum;
+            OP_CHECK_IF(groupSize != 32 && groupSize != 64 && groupSize != 128 && groupSize != 256,
+                        OP_LOGE(context->GetNodeName(),
+                                "groupSize must be 32/64/128/256 on Ascend 950PR, but current groupSize is (%ld).",
+                                groupSize),
+                        return ge::GRAPH_FAILED);
+        }
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -498,6 +557,19 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForTensorList(const g
         } else if ((gmm_index == GMM_INDEX_IN_ANTIQUANT_SCALE) && IsMxA8W4NZ(xDtype_, weightDtype_)) {
             expectedDimNum = isMultiTensorWeight_ ? ANTIQUANT_PARAM_DIM_NUM_PER_GROUP_SINGLE
                                                   : ANTIQUANT_PARAM_DIM_NUM_MX;
+        } else if ((gmm_index == GMM_INDEX_IN_ANTIQUANT_SCALE || gmm_index == GMM_INDEX_IN_ANTIQUANT_OFFSET) &&
+                   IsA16W4(xDtype_, weightDtype_)) {
+            if (tensorDimNum != OPTIONAL_PARAM_DIM_NUM_DEFAULT_SINGLE &&
+                tensorDimNum != ANTIQUANT_PARAM_DIM_NUM_PER_GROUP_SINGLE) {
+                OP_CHECK_IF(true,
+                            OP_LOGE(context->GetNodeName(),
+                                    "%s dim num should be [%zu] (perchannel) or [%zu] (pergroup) in A16W4, "
+                                    "but the actual dim num is [%zu].",
+                                    tensorType.c_str(), OPTIONAL_PARAM_DIM_NUM_DEFAULT_SINGLE,
+                                    ANTIQUANT_PARAM_DIM_NUM_PER_GROUP_SINGLE, tensorDimNum),
+                            return ge::GRAPH_FAILED);
+            }
+            expectedDimNum = tensorDimNum;
         }
         if ((gmm_index == GMM_INDEX_IN_BIAS) && IsMxA8W4NZ(xDtype_, weightDtype_) && isMultiTensorWeight_) {
             expectedDimNum = 1;
@@ -626,6 +698,31 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForWeightQuantParam(c
 ge::graphStatus GroupedMatmulWeightQuantChecker::CheckGroupSize(const gert::InferShapeContext *context,
                                                                 const GMMAttrs &gmmAttrs) const
 {
+    if (IsA16W4(xDtype_, weightDtype_)) {
+        auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, 0);
+        if (antiquantScaleShape == nullptr) {
+            return ge::GRAPH_SUCCESS;
+        }
+        auto antiquantScaleDimNum = antiquantScaleShape->GetDimNum();
+        if (antiquantScaleDimNum <= OPTIONAL_PARAM_DIM_NUM_DEFAULT_SINGLE) {
+            return ge::GRAPH_SUCCESS;
+        }
+        int64_t groupNum = antiquantScaleShape->GetDim(antiquantScaleDimNum - PENULTIMATE_DIM);
+        OP_CHECK_IF(groupNum <= 0,
+                    OP_LOGE(context->GetNodeName(), "GroupNum must be greater than 0."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(weightKDim_ % groupNum != 0,
+                    OP_LOGE(context->GetNodeName(), "GroupNum must be multiple of the k axis of weight."),
+                    return ge::GRAPH_FAILED);
+        int64_t groupSize = weightKDim_ / groupNum;
+        OP_CHECK_IF(groupSize != 32 && groupSize != 64 && groupSize != 128 && groupSize != 256,
+                    OP_LOGE(context->GetNodeName(),
+                            "groupSize must be 32/64/128/256 on Ascend 950PR, but current groupSize is (%ld).",
+                            groupSize),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+
     if (!(IsA16MxFp4NZ(xDtype_, weightDtype_) || IsMxA8W4NZ(xDtype_, weightDtype_) ||
           IsS8S4NZ(xDtype_, weightDtype_))) {
         return ge::GRAPH_SUCCESS;
