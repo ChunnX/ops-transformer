@@ -1275,16 +1275,17 @@ ge::graphStatus FiaInfoParser::GetFullQuantMode()
     if (quantMode_ == FiaQuantMode::FULL_QUANT) {
         if (*opParamInfo_.queryQuantMode == 7 && *opParamInfo_.keyAntiquantMode == 7 &&
             *opParamInfo_.valueAntiquantMode == 7) {
-            fullQuantMode_ = FiaFullQuantMode::PER_BLOCK_FULL_QUANT;
+            OP_LOGE(opName_, "In the fullquant scenario, per-block(QuantMode == 7) is not supported.");
+            return ge::GRAPH_FAILED;
         } else if (*opParamInfo_.queryQuantMode == 6 && *opParamInfo_.keyAntiquantMode == 6 &&
                    *opParamInfo_.valueAntiquantMode == 8) {
-            fullQuantMode_ = FiaFullQuantMode::MXFP8_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::QKV_MXFP8_FULL_QUANT;
         } else if (ropeMode_ == RopeMode::ROPE_SPLIT &&
                    (*opParamInfo_.queryQuantMode == 3 && *opParamInfo_.keyAntiquantMode == 0 &&
                     *opParamInfo_.valueAntiquantMode == 0)) {
-            fullQuantMode_ = FiaFullQuantMode::PER_TOKEN_HEAD_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT;
         } else {
-            fullQuantMode_ = FiaFullQuantMode::PER_TENSOR_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT;
         }
     }
     return ge::GRAPH_SUCCESS;

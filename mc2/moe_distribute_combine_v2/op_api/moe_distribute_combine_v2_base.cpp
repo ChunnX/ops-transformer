@@ -153,7 +153,6 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     auto retParam = CombineCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
                                        groupTp, xOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-
     const aclTensor *performanceInfoOptionalCombineV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
     char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
@@ -175,10 +174,9 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
             constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp,
-            groupEpBuf, epWorldSize, epRankId, moeExpertNum, groupTpBuf,
-            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
-            commQuantMode, groupListType, commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum,
-            xOut, workspaceSize, executor);
+            groupEpBuf, epWorldSize, epRankId, moeExpertNum, groupTpBuf, tpWorldSize, tpRankId, expertShardType,
+            sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlgBuf,
+            zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
     } else {
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;

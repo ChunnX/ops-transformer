@@ -172,10 +172,10 @@ enum class FiaTemplateId : uint32_t {
 
 enum class FiaFullQuantMode : uint32_t{
     NO_FULL_QUANT = 0,
-    PER_TENSOR_FULL_QUANT = 1,
-    PER_BLOCK_FULL_QUANT = 2,
-    MXFP8_FULL_QUANT = 3,
-    PER_TOKEN_HEAD_FULL_QUANT = 4,
+    QKV_PER_TENSOR_FULL_QUANT = 1,
+    QKV_PER_BLOCK_FULL_QUANT = 2,
+    QKV_MXFP8_FULL_QUANT = 3,
+    Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT = 4,
 };
 
 std::string LayoutToSerialString(FiaLayout layout);

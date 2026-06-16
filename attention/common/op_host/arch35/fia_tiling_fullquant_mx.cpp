@@ -47,7 +47,7 @@ bool FiaTilingFullQuantMxArch35::IsCapable()
     if (fiaInfo_->emptyTensorFlag) {
         return false;
     }
-    if (fiaInfo_->fullQuantMode != FiaFullQuantMode::MXFP8_FULL_QUANT) {
+    if (fiaInfo_->fullQuantMode != FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         return false;
     }
 
@@ -115,6 +115,7 @@ ge::graphStatus FiaTilingFullQuantMxArch35::DoOpTiling()
     if (fiaInfo_->isMaxWorkspace) {
         // tiling下沉场景，无法获取到actual_seq，分核结果未知，workspace设置成最大
         CalcMaxWorkspaceSize();
+        GenTilingKey();
         CalcNumBlocks(platformInfo_.aicNum);
 
         if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
@@ -580,6 +581,7 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyConfig()
     } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     } else {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     }
 }
 
@@ -608,9 +610,9 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyPseMode()
 void FiaTilingFullQuantMxArch35::UpdateTilingKeyQuantMode()
 {
     if (decodeS1GMerge_) {
-        tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8_DECODE;
+        tilingKeyInfo_.quantMode = FULLQUANT_MODE_QKV_MXFP8_DECODE;
     } else {
-        tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8_PREFILL;
+        tilingKeyInfo_.quantMode = FULLQUANT_MODE_QKV_MXFP8_PREFILL;
     }
 }
 

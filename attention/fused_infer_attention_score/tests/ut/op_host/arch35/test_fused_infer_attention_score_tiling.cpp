@@ -4845,7 +4845,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_per
         &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 73666816;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 // per-block 全量化 check QKV反量化参数必须为4维
@@ -6530,7 +6530,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_per
         &compileInfo, "Ascend950", 64, 262144, 16384);
     int64_t expectTilingKey = 73666820;
     std::string expectTilingData = "";
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
 
 // per-block 全量化 check 不支持 NTD
@@ -13837,7 +13837,9 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_MXFP8)
             {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo, "Ascend950", 64, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS);
+    int64_t expectTilingKey = 35515538434;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_MXFP8_KPaBNBDScaleShape)
@@ -14349,7 +14351,9 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_MXFP8_VSca
             {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
         &compileInfo, "Ascend950", 64, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+    int64_t expectTilingKey = 34441796610;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 TEST_F(FusedInferAttentionScoreTiling, DISABLED_FusedInferAttentionScoreTiling_MXFP8_QscaleWarning)
