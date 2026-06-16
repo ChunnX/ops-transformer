@@ -343,7 +343,7 @@ $$
             - "fullmesh_v2"：开启fullmesh_v2模板，其中`comm_alg`仅在`tp_world_size`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下开启。
         - `ep_recv_count_out`：要求shape为(`ep_world_size` * max(`tp_world_size`, 1) * `local_expert_num`, )。
         - `performance_Info_optional`：预留参数，当前版本不支持，传空指针即可。
-        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/npu_ops_transformer/ops/deep_ep.py)。
+        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/cann_ops_transformer/ops/deep_ep.py)。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
@@ -352,4 +352,4 @@ $$
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| npu_low_latency_dispatch接口 | [deepep.py](../../torch_extension/npu_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_dispatch](../../torch_extension/npu_ops_transformer/doc/npu_low_latency_dispatch.md)接口方式调用moe_distribute_dispatch_v3算子。 |
+| npu_low_latency_dispatch接口 | [deepep.py](../../torch_extension/cann_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_dispatch](../../torch_extension/cann_ops_transformer/doc/npu_low_latency_dispatch.md)接口方式调用moe_distribute_dispatch_v3算子。 |
