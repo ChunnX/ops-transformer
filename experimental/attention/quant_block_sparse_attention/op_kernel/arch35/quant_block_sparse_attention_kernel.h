@@ -311,7 +311,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     constInfo.gD = constInfo.gSize * constInfo.dSize;
     constInfo.n2GD = constInfo.n2Size * constInfo.gD; 
     constInfo.gS1D = constInfo.gS1 * constInfo.dSize;
-    constInfo.maxBlockNumPerBatch = sharedParams->blockTableDim2;
+    constInfo.maxBlockNumPerBatch = sharedParams.blockTableDim2;
 
     if constexpr (layout == BSALayout::TND) {
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
