@@ -884,6 +884,9 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     runNpu: 生成完毕后执行npu计算
     return test_data
     '''
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
 
     Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2, \
     block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, \
