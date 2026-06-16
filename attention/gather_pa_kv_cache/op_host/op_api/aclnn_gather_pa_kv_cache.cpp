@@ -280,31 +280,11 @@ static bool IsLastAxisContiguous(const aclTensor *tensor)
     return lastAxisContiguous && (dimNum == 1 || otherAxesNonContiguous);
 }
 
-// NZ模式仅支持dim0(num_blocks)轴非连续: 判断tensor是否存在"非dim0轴"的非连续。
-static bool HasNonDim0NonContiguous(const aclTensor *tensor)
-{
-    if (tensor == nullptr) {
-        return false;
-    }
-    int64_t dimNum = tensor->GetViewShape().GetDimNum();
-    if (dimNum < 2) {
-        // 0/1维无"非dim0轴", 不可能存在非dim0非连续。
-        return false;
-    }
-    return !IsAxesContiguous(tensor, 1, dimNum);
-}
-
-// NZ模式下, 任一KV tensor存在非dim0非连续即视为不支持的形态(文档: NZ仅dim0支持非连续)。
-static bool NzHasUnsupportedNonContiguous(
-    const aclTensor *keyCache, const aclTensor *valueCache,
-    const aclTensor *keyRef, const aclTensor *valueRef)
-{
-    return HasNonDim0NonContiguous(keyCache) || HasNonDim0NonContiguous(valueCache) ||
-           HasNonDim0NonContiguous(keyRef) || HasNonDim0NonContiguous(valueRef);
-}
-
-// 判断tensor尾轴(head_size/elenum维)是否非连续, 即最后一维stride != 1。
-static bool IsLastAxisNonContiguous(const aclTensor *tensor)
+// 判断单个tensor是否需要走ProcessContiguous物理连续化兜底(kernel无法处理的非连续形态):
+//   NZ模式: kernel只用stride0, 仅支持dim0(num_blocks)非连续, 故轴[1,dimNum)任一非连续即需兜底(已含尾轴);
+//   ND模式: kernel行内按连续DataCopy, 仅尾轴(最后一维)非连续无法处理。
+// size为1的轴stride不影响连续性, 视为连续。
+static bool NeedContiguousFallback(const aclTensor *tensor, bool isPaNz)
 {
     if (tensor == nullptr) {
         return false;
@@ -314,26 +294,33 @@ static bool IsLastAxisNonContiguous(const aclTensor *tensor)
     if (dimNum < 1) {
         return false;
     }
-    // 尾轴size为1时stride不影响连续性, 视为连续。
+    if (isPaNz) {
+        // dimNum<2时无"非dim0轴", 不可能非连续。
+        return dimNum >= 2 && !IsAxesContiguous(tensor, 1, dimNum);
+    }
+    // ND: 仅判尾轴, size为1视为连续。
     if (viewShape.GetDim(dimNum - 1) == 1) {
         return false;
     }
     return tensor->GetViewStrides()[dimNum - 1] != 1;
 }
 
-// 任一KV tensor尾轴非连续即视为不支持形态(ND/NZ通用): 必须走ProcessContiguous物理连续化,
-static bool HasUnsupportedLastAxisNonContiguous(
+// 任一KV tensor命中即需走ProcessContiguous兜底: 否则保留view下发会因kernel仅用stride0/尾轴按连续搬运
+// 而读错数据(NZ), 或在tiling触发"last dim stride must be 1"报错(ND/NZ尾轴)。
+static bool NeedContiguousFallbackAny(
     const aclTensor *keyCache, const aclTensor *valueCache,
-    const aclTensor *keyRef, const aclTensor *valueRef)
+    const aclTensor *keyRef, const aclTensor *valueRef, bool isPaNz)
 {
-    return IsLastAxisNonContiguous(keyCache) || IsLastAxisNonContiguous(valueCache) ||
-           IsLastAxisNonContiguous(keyRef) || IsLastAxisNonContiguous(valueRef);
+    return NeedContiguousFallback(keyCache, isPaNz) || NeedContiguousFallback(valueCache, isPaNz) ||
+           NeedContiguousFallback(keyRef, isPaNz) || NeedContiguousFallback(valueRef, isPaNz);
 }
 
 static bool IsSupportNonContiguousCache(const aclTensor *keyCache, const aclTensor *valueCache)
 {
     bool keyCacheCase1 = IsFirstAxisNonContiguous(keyCache);
     bool valueCacheCase1 = IsFirstAxisNonContiguous(valueCache);
+    // 任一cache首轴非连续即支持(与scatter对齐): 单个cache非连续场景也需走非连续路径,
+    // 否则会落到ProcessContiguous, 丢失view的stride0/offset导致读错block。
     return keyCacheCase1 || valueCacheCase1;
 }
 
@@ -535,11 +522,34 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    // Norm和PA_NZ模式都支持非连续: PA_NZ非连续view若走ProcessContiguous,
+    // 其连续化无法正确还原NZ view的stride0/offset, 会读错block导致精度错误。
     bool isPaNz = (cacheMode != nullptr && strcmp(cacheMode, "PA_NZ") == 0);
-    bool nzUnsupportedNonContig =
-        isPaNz && NzHasUnsupportedNonContiguous(keyCache, valueCache, keyRef, valueRef);
-    bool lastAxisNonContig = HasUnsupportedLastAxisNonContiguous(keyCache, valueCache, keyRef, valueRef);
-    bool mustContiguous = nzUnsupportedNonContig || lastAxisNonContig;
+    // kernel无法处理的非连续形态(NZ非dim0 / ND尾轴)必须走ProcessContiguous物理连续化兜底,
+    // 否则保留view下发会读错数据或在tiling触发"last dim stride must be 1"报错。
+    bool mustContiguous = NeedContiguousFallbackAny(keyCache, valueCache, keyRef, valueRef, isPaNz);
+
+    // ===== 临时诊断日志(定位非连续路由), 验证后删除 =====
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG] isPaNz=%d mustContiguous=%d", (int)isPaNz, (int)mustContiguous);
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG] kCache shape=%s strides=%s fallback=%d",
+            op::ToString(keyCache->GetViewShape()).GetString(),
+            op::ToString(keyCache->GetViewStrides()).GetString(),
+            (int)NeedContiguousFallback(keyCache, isPaNz));
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG] vCache shape=%s strides=%s fallback=%d",
+            op::ToString(valueCache->GetViewShape()).GetString(),
+            op::ToString(valueCache->GetViewStrides()).GetString(),
+            (int)NeedContiguousFallback(valueCache, isPaNz));
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG] keyRef shape=%s strides=%s fallback=%d",
+            op::ToString(keyRef->GetViewShape()).GetString(),
+            op::ToString(keyRef->GetViewStrides()).GetString(),
+            (int)NeedContiguousFallback(keyRef, isPaNz));
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG] valRef shape=%s strides=%s fallback=%d",
+            op::ToString(valueRef->GetViewShape()).GetString(),
+            op::ToString(valueRef->GetViewStrides()).GetString(),
+            (int)NeedContiguousFallback(valueRef, isPaNz));
+    // ===== 临时诊断日志结束 =====
+
     bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
     bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
     if (!mustContiguous && (isCacheNonContiguous || isKeyAndCacheNonContiguous)) {
