@@ -1113,18 +1113,6 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                 int32_t srcRow      = srcRowArr[i];
 
                 if (newPos >= activeNum_) {
-                    SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-                    if (rowIdxType_ == GATHER) {
-                        Duplicate(idxBuf, static_cast<int32_t>(newPos), 8);
-                    } else {
-                        Duplicate(idxBuf, static_cast<int32_t>(origFlatIdx), 8);
-                    }
-                    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-                    if (rowIdxType_ == GATHER) {
-                        DataCopyPad(expandedRowIdxGm_[origFlatIdx], idxBuf, idxCopyParams);
-                    } else {
-                        DataCopyPad(expandedRowIdxGm_[newPos], idxBuf, idxCopyParams);
-                    }
                     continue;
                 }
 
@@ -1196,6 +1184,46 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                 WaitFlag<HardEvent::V_MTE2>(evMteVDone0);
             }
             WaitFlag<HardEvent::V_MTE2>(evMteVDone1);
+            WaitFlag<HardEvent::MTE3_V>(evMte3Done3);
+            WaitFlag<HardEvent::MTE3_V>(evMte3Done2);
+
+            SetFlag<HardEvent::MTE3_V>(evMte3Done3);  // slot 0 free for V
+            SetFlag<HardEvent::MTE3_V>(evMte3Done2);  // slot 1 free for V
+
+            int32_t invPingpong = 0;
+            for (int64_t i = 0; i < batchSize; i++) {
+                int32_t newPos      = newPosArr[i];
+                int32_t origFlatIdx = origFlatIdxArr[i];
+
+                if (newPos < activeNum_) {
+                    continue;
+                }
+
+                int32_t bc = invPingpong & 1;
+                LocalTensor<int32_t>& curIdxBuf = (bc == 0) ? idxBuf : idxBuf1;
+                event_t evCur = (bc == 0) ? evMte3Done3 : evMte3Done2;
+
+                WaitFlag<HardEvent::MTE3_V>(evCur);  // V: wait slot bc free from prev same-slot DCP
+                if (rowIdxType_ == GATHER) {
+                    Duplicate(curIdxBuf, static_cast<int32_t>(newPos), 8);
+                } else {
+                    Duplicate(curIdxBuf, static_cast<int32_t>(origFlatIdx), 8);
+                }
+                // Issuer stalls here until V done; meanwhile prev row's MTE3 DCP keeps running
+                SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                if (rowIdxType_ == GATHER) {
+                    DataCopyPad(expandedRowIdxGm_[origFlatIdx], curIdxBuf, idxCopyParams);
+                } else {
+                    DataCopyPad(expandedRowIdxGm_[newPos], curIdxBuf, idxCopyParams);
+                }
+                SetFlag<HardEvent::MTE3_V>(evCur);  // MTE3: slot bc free for V next round
+
+                invPingpong++;
+            }
+            // SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);  // drain last DCP
+            // Drain pending soft events: each iteration's SetFlag(evCur) may not have been
+            // consumed by a subsequent WaitFlag (last 1-2 iterations leave signals pending).
+            // Must drain before next batch's prologue re-sets these events.
             WaitFlag<HardEvent::MTE3_V>(evMte3Done3);
             WaitFlag<HardEvent::MTE3_V>(evMte3Done2);
         } else if (colsLoops_ == 1 && quantMode_ == 1) {
