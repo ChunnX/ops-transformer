@@ -11,7 +11,6 @@
 /*!
  * \file quant_mode_map.h
  * \brief MOE Distribute Dispatch QuantMode + dtype → RealMode 查表
- *        从 defs.h 抽出，归属 quant_checker 模块（architecture_v0.md §5.3 规定）
  */
 
 #ifndef MOE_DISPATCH_QUANT_MODE_MAP_H

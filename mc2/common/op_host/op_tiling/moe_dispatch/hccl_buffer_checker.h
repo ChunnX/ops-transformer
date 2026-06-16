@@ -12,9 +12,8 @@
  * \file hccl_buffer_checker.h
  * \brief MOE Distribute Dispatch HCCL buffer 大小校验
  *
- * 设计原则（architecture_v0.md §5.7）：
  *   - CalcMinBuffSize(params)              : 按 setup/teardown 通用公式计算最小 buffer 需求
- *   - CheckBuffSizeFromContext(...)        : 从框架获取 HCCL group 实际大小并比较
+ *   - CheckBuffSize(actualBuffSize, ...)   : 比较实际 buffer 大小与最小需求
  *   - CheckBuffSizeFromAttr(...)           : 从属性获取（V3/Mc2Context 场景）
  *
  * 注：v2 的 winSize 公式（layered/fullmesh/TP 多路）属算子层 dispatch_v2_win_size.h，

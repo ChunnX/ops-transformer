@@ -12,7 +12,6 @@
  * \file active_mask_checker.h
  * \brief MOE Distribute Dispatch ActiveMask 可选特性校验
  *
- * 设计原则（architecture_v0.md §5.4）：
  *   仅做互斥规则校验 + shape 精确值校验。
  *   dim/dtype/format 基础校验统一在阶段 E 通过 TensorCheckRule 处理。
  */
@@ -27,7 +26,7 @@
 namespace active_mask_check {
 
 // ========== 互斥/约束规则校验 ==========
-// 接口签名遵循架构文档 §5.4：CheckCompatibility(nodeName, isLayered, isExpertMask, globalBs)
+// CheckCompatibility(nodeName, isLayered, isExpertMask, globalBs, bsTimesEpWorldSize)
 // globalBs 用于 globalBs > bs * epWorldSize 时不允许 ActiveMask 的约束校验
 // （bs * epWorldSize 由调用方根据 globalBs 推断；当为 0 时跳过该项校验）
 inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, bool isExpertMask, uint32_t globalBs,

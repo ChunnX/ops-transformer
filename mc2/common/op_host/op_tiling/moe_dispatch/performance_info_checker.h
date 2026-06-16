@@ -12,7 +12,6 @@
  * \file performance_info_checker.h
  * \brief MOE Distribute Dispatch PerformanceInfo 可选特性校验
  *
- * 设计原则（architecture_v0.md §5.4）：
  *   仅做互斥规则校验 + shape 精确值校验。
  *   dim/dtype/format 基础校验统一在阶段 E 通过 TensorCheckRule 处理。
  */

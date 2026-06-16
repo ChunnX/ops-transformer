@@ -14,7 +14,6 @@
  *
  * 注：Mc2CcTilingInner 镜像结构体 + reinterpret_cast 设置 protocal 字段，
  *     是因为框架 Mc2CcTilingConfig 未公开 protocal setter，受限于框架 API。
- *     设计文档（architecture_v0.md 原则 11）已记录此项约束。
  */
 
 #include "comm_cfg.h"

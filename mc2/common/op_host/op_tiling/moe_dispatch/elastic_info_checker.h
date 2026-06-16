@@ -12,7 +12,6 @@
  * \file elastic_info_checker.h
  * \brief MOE Distribute Dispatch ElasticInfo 可选特性校验
  *
- * 设计原则（architecture_v0.md §5.4）：
  *   仅做互斥规则校验 + shape 精确值校验 + 产出 ElasticResult。
  *   dim/dtype/format 基础校验统一在阶段 E 通过 TensorCheckRule 处理。
  */
@@ -26,7 +25,7 @@
 
 namespace elastic_info_check {
 
-// ========== ElasticResult 小结果结构（架构文档 §4.6）==========
+// ========== ElasticResult 小结果结构 ==========
 struct ElasticResult {
     bool hasElastic;
     uint32_t adjustedA;
@@ -35,7 +34,7 @@ struct ElasticResult {
 };
 
 // ========== 互斥规则校验 ==========
-// 接口签名遵循架构文档 §5.4：CheckCompatibility(nodeName, isLayered, hasTp)
+// CheckCompatibility(nodeName, isLayered, hasTp)
 inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, bool hasTp)
 {
     // elastic 与 layered 互斥
@@ -84,7 +83,7 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
     return ge::GRAPH_SUCCESS;
 }
 
-// ========== 产出 ElasticResult（架构文档 §5.4）==========
+// ========== 产出 ElasticResult ==========
 // CalcAdjustments(localExpertNum, sharedA, moeA, epWorldSize) → ElasticResult
 //   sharedA: 共享专家路径的 A 值（maxBs * maxSharedGroupNum）
 //   moeA   : moe 专家路径的 A 值（globalBs * min(localExpertNum, k)）

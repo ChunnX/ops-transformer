@@ -12,7 +12,7 @@
  * \file defs.h
  * \brief MOE Distribute Dispatch Tiling 公共常量和枚举定义
  *
- * 设计原则（architecture_v0.md §5.1）：
+ * 设计原则：
  *   1. 仅放各算子共享的常量；算子特化上界写在各算子 AttrCheckRule 中
  *   2. 不放 A2 专有常量（A2 不在本次重构范围）
  *   3. 不放算子层私有常量

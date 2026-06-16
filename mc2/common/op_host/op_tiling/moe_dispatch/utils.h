@@ -95,7 +95,7 @@ inline int64_t AlignUpInt64(int64_t val, int64_t align)
 
 // ========== Tensor 基础校验函数 ==========
 
-// 维度数校验（架构文档 §5.2 原子工具：CheckDimNum）
+// 维度数校验
 inline ge::graphStatus CheckDimNum(const gert::StorageShape *shape, uint32_t expectedDim)
 {
     if (shape == nullptr) {
@@ -116,7 +116,7 @@ inline ge::graphStatus CheckTensorDimNum(const gert::StorageShape *shape, uint32
     return CheckDimNum(shape, expectedDim);
 }
 
-// dtype 在合法集合中（架构文档 §5.2 原子工具：CheckDtypeIn）
+// dtype 在合法集合中
 inline ge::graphStatus CheckDtypeIn(ge::DataType dtype, const ge::DataType *validDtypes, uint32_t dtypeCount)
 {
     if (validDtypes == nullptr || dtypeCount == 0U) {
@@ -140,7 +140,7 @@ inline ge::graphStatus CheckTensorDtypeIn(const gert::CompileTimeTensorDesc *des
     return CheckDtypeIn(desc->GetDataType(), validDtypes, dtypeCount);
 }
 
-// format 非 FRACTAL_NZ 校验（架构文档 §5.2 原子工具：CheckNotFractalNZ）
+// format 非 FRACTAL_NZ 校验
 inline ge::graphStatus CheckNotFractalNZ(ge::Format format)
 {
     ge::Format primaryFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(format));
@@ -149,7 +149,7 @@ inline ge::graphStatus CheckNotFractalNZ(ge::Format format)
 
 // ========== 属性范围校验 ==========
 
-// uint32 范围校验（架构文档 §5.2：CheckRangeU32）
+// uint32 范围校验
 inline ge::graphStatus CheckRangeU32(uint32_t val, uint32_t minVal, uint32_t maxVal)
 {
     return (val >= minVal && val <= maxVal) ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
@@ -237,13 +237,11 @@ inline ge::graphStatus CheckEpRankRelation(uint32_t epRankId, uint32_t epWorldSi
     return ge::GRAPH_SUCCESS;
 }
 
-// ========== A 值计算（架构文档 §5.2：CalcA）==========
+// ========== A 值计算 ==========
 // A = max(maxBs * maxSharedGroupNum,                        // 共享专家路径
 //         globalBs * min(localExpertNum, expertIdsDim1))    // moe 专家路径
-//
 // 当 hasElastic=false 时按 isSharedRank 选择其中一路；
 // 当 hasElastic=true 时取两路最大值。
-//
 // maxBs           : globalBs / epWorldSize
 // maxSharedGroupNum: ceil(epWorldSize, sharedExpertRankNum/sharedExpertNum)
 //                    （sharedExpertNum=0 时为 0）

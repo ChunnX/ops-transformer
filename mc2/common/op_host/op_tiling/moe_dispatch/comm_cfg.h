@@ -12,7 +12,6 @@
  * \file comm_cfg.h
  * \brief MOE Distribute Dispatch 通信配置统一接口
  *
- * 设计原则（architecture_v0.md §5.6）：
  *   提供 SetEpAllToAllCfg / SetTpAllGatherCfg / SetCcuCommCfg 三组单一接口。
  *   公共层不依赖具体算子 tilingData 类型，调用方传入 mc2InitTiling/mc2CcTiling 引用。
  *   isUrma 参数控制 protocal 字段（受限于框架 API：通过镜像结构体设置）。
