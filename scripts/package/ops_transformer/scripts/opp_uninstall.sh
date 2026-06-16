@@ -36,6 +36,8 @@ TARGET_VERSION_DIR=$(readlink -f ${TARGET_VERSION_DIR})     # TARGET_INSTALL_PAT
 TARGET_MOULDE_DIR=${TARGET_VERSION_DIR}/${OPP_PLATFORM_DIR} # TARGET_INSTALL_PATH + PKG_VERSION_DIR + OPP_PLATFORM_DIR
 TARGET_OPP_BUILT_IN=${TARGET_VERSION_DIR}/opp/built-in
 TARGET_SHARED_INFO_DIR=${TARGET_VERSION_DIR}/share/info
+AICPU_ENV_BEGIN="# OPS_TRANSFORMER_AICPU_ENV_BEGIN"
+AICPU_ENV_END="# OPS_TRANSFORMER_AICPU_ENV_END"
 
 ASCEND_INSTALL_INFO="ascend_install.info"
 # init log file path
@@ -136,6 +138,23 @@ unsetenv() {
   else
     UNINSTALL_OPTION=""
   fi
+}
+
+remove_aicpu_env_from_file() {
+  local env_file="$1"
+
+  if [ ! -f "${env_file}" ]; then
+    return 0
+  fi
+
+  chmod u+w "${env_file}" 2>/dev/null
+  sed -i "/^${AICPU_ENV_BEGIN}$/,/^${AICPU_ENV_END}$/d" "${env_file}"
+  log_with_errorlevel "$?" "warn" "[WARNING]: Remove AICPU env from ${env_file} failed."
+}
+
+unset_aicpu_builtin_env() {
+  remove_aicpu_env_from_file "${TARGET_VERSION_DIR}/set_env.sh"
+  remove_aicpu_env_from_file "${TARGET_VERSION_DIR}/bin/setenv.bash"
 }
 
 get_installed_info() {
@@ -282,6 +301,8 @@ main() {
   check_installed_type "${INSTALLED_TYPE}"
 
   unsetenv
+
+  unset_aicpu_builtin_env
 
   uninstall_es_whl
   

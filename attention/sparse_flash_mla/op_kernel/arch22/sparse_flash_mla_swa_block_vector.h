@@ -424,17 +424,26 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::SetInfInBlk(const LocalTensor<T> &
     if (startId > endId) {
         return;
     }
-    startId = static_cast<uint64_t>(startId);
-    endId = static_cast<uint64_t>(endId);
-    uint64_t startFloorAlignSize = startId / BLOCK_ELEMENT_NUM * BLOCK_ELEMENT_NUM;
-    uint64_t notComputePreMaskOneBlk = (1llu << static_cast<uint64_t>(startId - startFloorAlignSize)) - 1;
-    uint64_t notComputePostMaskOneBlk = ~((1llu << static_cast<uint64_t>(endId - startFloorAlignSize + 1)) - 1);
-    uint64_t notComputeMaskOneBlk = notComputePreMaskOneBlk ^ notComputePostMaskOneBlk;
+    int64_t start = startId < 0 ? 0 : startId;
+    int64_t end = endId >= static_cast<int64_t>(columnCount) ? static_cast<int64_t>(columnCount) - 1 : endId;
+    if (start > end) {
+        return;
+    }
 
-    uint64_t maskOneBlk = ~notComputeMaskOneBlk;
-    uint64_t mask[1] = {maskOneBlk};
-    Duplicate(mmResUb[startFloorAlignSize], SOFTMAX_MIN_NUM, mask,
-              dealRowCount, 1, columnCount / 8);
+    uint64_t curStart = static_cast<uint64_t>(start);
+    uint64_t curEnd = static_cast<uint64_t>(end);
+    while (curStart <= curEnd) {
+        uint64_t blockStart = curStart / BLOCK_ELEMENT_NUM * BLOCK_ELEMENT_NUM;
+        uint64_t blockEnd = blockStart + BLOCK_ELEMENT_NUM - 1;
+        blockEnd = blockEnd > curEnd ? curEnd : blockEnd;
+
+        uint64_t preMask = (1llu << (curStart - blockStart)) - 1;
+        uint64_t postMask = ~((1llu << (blockEnd - blockStart + 1)) - 1);
+        uint64_t mask[1] = {~(preMask | postMask)};
+        Duplicate(mmResUb[blockStart], SOFTMAX_MIN_NUM, mask,
+                  dealRowCount, 1, columnCount / BLOCK_ELEMENT_NUM);
+        curStart = blockEnd + 1;
+    }
 }
 
 template <typename SMLAT>
@@ -568,7 +577,9 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ProcessVec1SingleBuf(const RunInfo
     uint32_t loopCount = (mSplitInfo.vecDealM + mSplitSize - 1) / mSplitSize;
     uint32_t tailSplitSize = mSplitInfo.vecDealM - (loopCount - 1) * mSplitSize;
 
-    SliceAndContactSinksValue((mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) % constInfo.qHeadNum,
+    uint32_t sinkHeadIdx = (info.n2IdxReal * constInfo.gSize + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) %
+                           constInfo.qHeadNum;
+    SliceAndContactSinksValue(sinkHeadIdx,
                               mSplitInfo.vecDealM);
 
     for (uint32_t i = 0, dealSize = mSplitSize; i < loopCount; i++) {

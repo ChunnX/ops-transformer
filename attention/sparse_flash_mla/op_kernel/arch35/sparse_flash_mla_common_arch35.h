@@ -71,7 +71,7 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
     X(IS_FD, bool, false) \
     X(IS_PA, bool, true) \
     X(LAYOUT_T, SMLA_LAYOUT, SMLA_LAYOUT::BSND) \
-    X(KV_LAYOUT_T, SMLA_LAYOUT, SMLA_LAYOUT::PA_BBND) \
+    X(KV_LAYOUT_T, SMLA_LAYOUT, SMLA_LAYOUT::PA_BNBD) \
     X(TEMPLATE_MODE, SMLATemplateMode, SMLATemplateMode::SCFA_TEMPLATE_MODE) \
     X(IS_SPLIT_G, bool, false) \
 
