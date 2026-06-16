@@ -12,7 +12,7 @@
  * \file flash_attention_score_antiquant_kernel.h
  * \brief
  */
-//a3c0e129c5cf3be91c42731c9d9a0df0c89e4d74
+
 #ifndef FLASH_ATTENTION_SCORE_ANTIQUANT_KERNEL_H_
 #define FLASH_ATTENTION_SCORE_ANTIQUANT_KERNEL_H_
 
