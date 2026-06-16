@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <chrono>
 #include "acl/acl.h"
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_bsa_select_block_mask.h"
@@ -211,6 +212,9 @@ int main() {
     int64_t firstSelectedSecondHalf = -1;
     double actualSparsity = 0.0;
     int32_t kernelRunTimes = GetEnvInt32("BSA_KERNEL_RUN_TIMES", 1);
+    double totalOpExecuteMs = 0.0;
+    double maxOpExecuteMs = 0.0;
+    double lastOpExecuteMs = 0.0;
 
     LOG_PRINT("Calling aclnnBSASelectBlockMask %d times with reused tensors and fresh executor...\n", kernelRunTimes);
     for (int32_t runId = 0; runId < kernelRunTimes; ++runId) {
@@ -263,6 +267,7 @@ int main() {
                       workspaceCapacity, workspaceCapacity / 1024.0 / 1024.0);
         }
 
+        auto opExecuteStart = std::chrono::steady_clock::now();
         ret = aclnnBSASelectBlockMask(workspaceAddr, workspaceSize, executor, stream);
         CHECK_RET(ret == ACL_SUCCESS,
                   LOG_PRINT("aclnnBSASelectBlockMask failed at run %d. ERROR: %d\n", runId + 1, ret);
@@ -276,6 +281,14 @@ int main() {
                   aclDestroyIntArray(blockShape);
                   FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
                                maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
+        auto opExecuteEnd = std::chrono::steady_clock::now();
+        lastOpExecuteMs = std::chrono::duration<double, std::milli>(opExecuteEnd - opExecuteStart).count();
+        totalOpExecuteMs += lastOpExecuteMs;
+        if (lastOpExecuteMs > maxOpExecuteMs) {
+            maxOpExecuteMs = lastOpExecuteMs;
+        }
+        LOG_PRINT("Run %03d/%03d: Op execute time %.3f ms\n",
+                  runId + 1, kernelRunTimes, lastOpExecuteMs);
 
         ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(int8_t), maskOutDeviceAddr,
                           resultData.size() * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
@@ -315,6 +328,10 @@ int main() {
     LOG_PRINT("Selected first half: %ld, second half: %ld, first second-half index: %ld\n",
               selectedFirstHalf, selectedSecondHalf, firstSelectedSecondHalf);
     LOG_PRINT("Actual sparsity: %.4f (expected: %.4f)\n", actualSparsity, expectedSparsity);
+    if (kernelRunTimes > 0) {
+        LOG_PRINT("Op execute time: last=%.3f ms, avg=%.3f ms, max=%.3f ms\n",
+                  lastOpExecuteMs, totalOpExecuteMs / kernelRunTimes, maxOpExecuteMs);
+    }
     
     uint64_t printNum = 20;
     LOG_PRINT("First %lu elements:\n", printNum);
