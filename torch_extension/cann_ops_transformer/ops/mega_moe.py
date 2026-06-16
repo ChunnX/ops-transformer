@@ -164,6 +164,10 @@ def npu_get_mega_moe_ccl_buffer_size(
     # 所需总大小
     ccl_buffer_size = peermem_data_offset + mask_recv_size + quant_token_scale_size + combine_out
     ccl_buffer_size = inline_align(inline_align(ccl_buffer_size, mb_conversion) // mb_conversion, 2) // 2
+<<<<<<< HEAD
+=======
+
+>>>>>>> a194b7c8e (torch_extension目录整改)
     return ccl_buffer_size
 
 

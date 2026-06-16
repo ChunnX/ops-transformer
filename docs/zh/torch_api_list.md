@@ -19,7 +19,11 @@
 |    接口名   |   说明     | 确定性说明 |
 | ----------- | ------------------- | ------------------- |
 <<<<<<< HEAD
+<<<<<<< HEAD
 |[flash_attn](../../torch_extension/cann_ops_transformer/doc/npu_flash_attn.md)|完成xx计算。|xx|
 =======
 |[flash_attn](../../torch_extension/npu_ops_transformer/docs/zh/npu_flash_attn.md)|完成xx计算。|xx|
 >>>>>>> 0180b92df (docs(torch_extension): 算子 api 文档迁移至 docs/zh)
+=======
+|[flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/npu_flash_attn.md)|完成xx计算。|xx|
+>>>>>>> a194b7c8e (torch_extension目录整改)

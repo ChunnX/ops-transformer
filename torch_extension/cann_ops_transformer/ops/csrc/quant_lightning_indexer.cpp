@@ -101,7 +101,11 @@ std::tuple<at::Tensor, at::Tensor> construct_quant_lightning_indexer_output_tens
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices_out, sparse_values_out);
 }
 
+<<<<<<<< HEAD:torch_extension/cann_ops_transformer/ops/csrc/quant_lightning_indexer.cpp
 std::tuple<at::Tensor, at::Tensor> quant_lightning_indexer(
+========
+std::tuple<at::Tensor, at::Tensor> quant_lightning_indexer_v2(
+>>>>>>>> a194b7c8e (torch_extension目录整改):torch_extension/cann_ops_transformer/ops/csrc/quant_lightning_indexer_v2.cpp
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &weights,
     const at::Tensor &query_dequant_scale, const at::Tensor &key_dequant_scale,
     int64_t topk, int64_t quant_mode,
@@ -144,6 +148,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("quant_lightning_indexer_metadata", &quant_lightning_indexer_metadata,
         "quant_lightning_indexer_metadata");
+<<<<<<<< HEAD:torch_extension/cann_ops_transformer/ops/csrc/quant_lightning_indexer.cpp
     m.def("quant_lightning_indexer", &quant_lightning_indexer, "quant_lightning_indexer");
+========
+    m.def("quant_lightning_indexer_v2", &quant_lightning_indexer_v2, "quant_lightning_indexer_v2");
+>>>>>>>> a194b7c8e (torch_extension目录整改):torch_extension/cann_ops_transformer/ops/csrc/quant_lightning_indexer_v2.cpp
 }
 } // namespace op_api

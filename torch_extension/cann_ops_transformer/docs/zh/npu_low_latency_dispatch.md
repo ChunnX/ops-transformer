@@ -165,7 +165,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
     from torch.multiprocessing import Process
     import torch.distributed as dist
     from torch.distributed import ReduceOp
-    from npu_ops_transformer.ops import MoeDistributeBuffer
+    from cann_ops_transformer.ops import MoeDistributeBuffer
 
     # 控制模式
     quant_mode = 2  # 2为动态量化
@@ -369,7 +369,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
     import torch.distributed as dist
     from torch.distributed import ReduceOp
     import time
-    from npu_ops_transformer.ops import MoeDistributeBuffer
+    from cann_ops_transformer.ops import MoeDistributeBuffer
 
     # 控制模式
     quant_mode = 2  # 2为动态量化

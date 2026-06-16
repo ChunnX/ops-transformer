@@ -375,7 +375,11 @@
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
 <<<<<<< HEAD
+<<<<<<< HEAD
 | npu_low_latency_combine接口 | [deepep.py](../../torch_extension/cann_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_combine](../../torch_extension/cann_ops_transformer/doc/npu_low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
 =======
 | npu_low_latency_combine接口 | [deepep.py](../../torch_extension/npu_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_combine](../../torch_extension/npu_ops_transformer/docs/zh/npu_low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
 >>>>>>> 0180b92df (docs(torch_extension): 算子 api 文档迁移至 docs/zh)
+=======
+| npu_low_latency_combine接口 | [deepep.py](../../torch_extension/cann_ops_transformer/ops/deep_ep.py) | 通过[npu_low_latency_combine](../../torch_extension/cann_ops_transformer/docs/zh/npu_low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
+>>>>>>> a194b7c8e (torch_extension目录整改)

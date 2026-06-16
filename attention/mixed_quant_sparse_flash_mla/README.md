@@ -79,5 +79,9 @@
 -   Q\_S和S1表示q shape中的S，S2表示ori\_kv shape中的S，Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori\_kv\_heads和num\_cmp\_kv\_heads；T1表示q shape中的T。
 
 ## 调用说明
+<<<<<<< HEAD
 -   调用方式：使用npu_ops_tranformer包中的mixed_quant_sparse_flash_mla接口进行调用，
+=======
+-   调用方式：使用cann_ops_transformer包中的mixed_quant_sparse_flash_mla接口进行调用，
+>>>>>>> a194b7c8e (torch_extension目录整改)
              详见torch_extension/cann_ops_transformer/ops/mixed_quant_sparse_flash_mla.py

@@ -181,7 +181,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
     import torch.distributed as dist
     from torch.distributed import ReduceOp
     import torch.multiprocessing as mp
-    from npu_ops_transformer.ops import get_symm_buffer_for_mega_moe, mega_moe
+    from cann_ops_transformer.ops import get_symm_buffer_for_mega_moe, mega_moe
     import torchair
 
     E = 4

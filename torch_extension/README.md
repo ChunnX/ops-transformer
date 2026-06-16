@@ -61,7 +61,7 @@ print("Verification successful!")
 
 ## Developer Guide: Adding a New Operator
 
-> For the full operator development specification — directory layout, naming, per-layer implementation (C++ / Python / torchair graph mode), docstring and DeviceGuard requirements — see [torch_extension 开发规范](npu_ops_transformer/docs/torch_extension_guidelines.md).
+> For the full operator development specification — directory layout, naming, per-layer implementation (C++ / Python / torchair graph mode), docstring and DeviceGuard requirements — see [torch_extension 开发规范](cann_ops_transformer/docs/torch_extension_guidelines.md).
 
 To implement a new operator (e.g. `abs`), you need to provide two components: a C++ kernel wrapper and a Python JIT builder.
 
