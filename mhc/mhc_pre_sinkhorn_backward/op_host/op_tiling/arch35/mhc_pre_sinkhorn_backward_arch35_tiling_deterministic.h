@@ -9,12 +9,12 @@
  */
 
 /* !
- * \file mhc_pre_sinkhorn_backward_arch35_tiling_base.h
+ * \file mhc_pre_sinkhorn_backward_arch35_tiling_deterministic.h
  * \brief
  */
 
-#ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_
-#define MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_
+#ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_DETERMINITIC_H_
+#define MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_DETERMINITIC_H_
 
 #include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
@@ -76,4 +76,4 @@ private:
 };
 
 } //namespace optiling
-#endif  // MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_
+#endif  // MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_DETERMINITIC_H_
