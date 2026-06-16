@@ -421,6 +421,46 @@ static aclnnStatus ProcessNonContiguous(
     return ACLNN_SUCCESS;
 }
 
+// PA_NZ的cache若为非连续view, 直接对FRACTAL_NZ tensor调l0op::Contiguous会走格式感知路径,
+// 产出的物理布局与kernel的NZ分形连续寻址(blockId*blockSize*hiddenSize)不一致, 读错block。
+// 这里先把view重解释为ND, 使Contiguous按view_strides做纯strided gather(行优先连续化),
+// 再把结果format贴回FRACTAL_NZ下发: 连续化后逐元素布局与kernel期望的连续NZ完全一致。
+static const aclTensor *ContiguousNzCacheAsNd(const aclTensor *cache, UniqueExecutor& uniqueExecutor)
+{
+    // CreateView复制元数据(不改用户原tensor), 仅在副本上把format改为ND。
+    auto ndView = uniqueExecutor->CreateView(cache,
+                                             cache->GetViewShape(),
+                                             cache->GetStorageShape(),
+                                             cache->GetViewStrides(),
+                                             cache->GetViewOffset());
+    if (ndView == nullptr) {
+        return nullptr;
+    }
+    ndView->SetViewFormat(op::Format::FORMAT_ND);
+    ndView->SetStorageFormat(op::Format::FORMAT_ND);
+
+    auto ndContiguous = const_cast<aclTensor *>(l0op::Contiguous(ndView, uniqueExecutor.get()));
+    if (ndContiguous == nullptr) {
+        return nullptr;
+    }
+
+    // ===== 临时诊断日志(观测NZ-as-ND连续化结果), 验证后删除 =====
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG2] nzCache before contig: viewShape=%s storageShape=%s strides=%s",
+            op::ToString(cache->GetViewShape()).GetString(),
+            op::ToString(cache->GetStorageShape()).GetString(),
+            op::ToString(cache->GetViewStrides()).GetString());
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG2] nzCache after  contig: viewShape=%s storageShape=%s strides=%s",
+            op::ToString(ndContiguous->GetViewShape()).GetString(),
+            op::ToString(ndContiguous->GetStorageShape()).GetString(),
+            op::ToString(ndContiguous->GetViewStrides()).GetString());
+    // ===== 临时诊断日志结束 =====
+
+    // 连续化结果贴回NZ format给kernel。
+    ndContiguous->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
+    ndContiguous->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+    return ndContiguous;
+}
+
 static aclnnStatus ProcessContiguous(
     const aclTensor *keyCache,
     const aclTensor *valueCache,
@@ -435,10 +475,17 @@ static aclnnStatus ProcessContiguous(
     aclOpExecutor **executor,
     UniqueExecutor& uniqueExecutor)
 {
-    auto keyCacheContiguous = l0op::Contiguous(keyCache, uniqueExecutor.get());
+    bool isPaNz = (cacheMode != nullptr && strcmp(cacheMode, "PA_NZ") == 0);
+
+    // PA_NZ非连续cache走NZ-as-ND连续化; 连续cache或Norm模式维持原通用连续化。
+    auto keyCacheContiguous = (isPaNz && !IsContiguous(keyCache))
+        ? ContiguousNzCacheAsNd(keyCache, uniqueExecutor)
+        : l0op::Contiguous(keyCache, uniqueExecutor.get());
     CHECK_RET(keyCacheContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto valueCacheContiguous = l0op::Contiguous(valueCache, uniqueExecutor.get());
+    auto valueCacheContiguous = (isPaNz && !IsContiguous(valueCache))
+        ? ContiguousNzCacheAsNd(valueCache, uniqueExecutor)
+        : l0op::Contiguous(valueCache, uniqueExecutor.get());
     CHECK_RET(valueCacheContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto blockTablesContiguous = l0op::Contiguous(blockTables, uniqueExecutor.get());
@@ -529,26 +576,6 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
     // kernel无法处理的非连续形态(NZ非dim0 / ND尾轴)必须走ProcessContiguous物理连续化兜底,
     // 否则保留view下发会读错数据或在tiling触发"last dim stride must be 1"报错。
     bool mustContiguous = NeedContiguousFallbackAny(keyCache, valueCache, keyRef, valueRef, isPaNz);
-
-    // ===== 临时诊断日志(定位非连续路由), 验证后删除 =====
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG] isPaNz=%d mustContiguous=%d", (int)isPaNz, (int)mustContiguous);
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG] kCache shape=%s strides=%s fallback=%d",
-            op::ToString(keyCache->GetViewShape()).GetString(),
-            op::ToString(keyCache->GetViewStrides()).GetString(),
-            (int)NeedContiguousFallback(keyCache, isPaNz));
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG] vCache shape=%s strides=%s fallback=%d",
-            op::ToString(valueCache->GetViewShape()).GetString(),
-            op::ToString(valueCache->GetViewStrides()).GetString(),
-            (int)NeedContiguousFallback(valueCache, isPaNz));
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG] keyRef shape=%s strides=%s fallback=%d",
-            op::ToString(keyRef->GetViewShape()).GetString(),
-            op::ToString(keyRef->GetViewStrides()).GetString(),
-            (int)NeedContiguousFallback(keyRef, isPaNz));
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG] valRef shape=%s strides=%s fallback=%d",
-            op::ToString(valueRef->GetViewShape()).GetString(),
-            op::ToString(valueRef->GetViewStrides()).GetString(),
-            (int)NeedContiguousFallback(valueRef, isPaNz));
-    // ===== 临时诊断日志结束 =====
 
     bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
     bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
