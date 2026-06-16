@@ -1674,9 +1674,11 @@ ge::graphStatus DequantChecker::CheckDSizeFullquant(const FiaTilingInfo &fiaInfo
         if (fiaInfo.qkHeadDim != fiaInfo.vHeadDim) {
             std::string shapeMsg = ToString(fiaInfo.opParamInfo.value.shape->GetStorageShape()) + " and " +
                 ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
+            std::string reasonMsg = "In per-tensor quant scenario, the axis D of value(" +
+                std::to_string(fiaInfo.vHeadDim) + ") must be equal to the axis D of key(" +
+                std::to_string(fiaInfo.qkHeadDim) + ")";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                fiaInfo.opName, "value and key", shapeMsg.c_str(),
-                "In per-tensor quant scenario, the axis D of value must be equal to the axis D of key");
+                fiaInfo.opName, "value and key", shapeMsg.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -2560,9 +2562,12 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenMode(const FiaTilingI
         if (keyAntiquantScaleTensorShape.GetDim(DIM_NUM_0) != batchSize ||
             keyAntiquantScaleTensorShape.GetDim(DIM_NUM_1) < seqLength) {
             std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
+            std::string reasonMsg = "The shape of key_antiquant_scale must be [1, B(" +
+                std::to_string(batchSize) + "), >=S(" + std::to_string(seqLength) + ")] or "
+                "[B(" + std::to_string(batchSize) + "), >=S(" + std::to_string(seqLength) + ")] "
+                "when keyAntiquantMode is per-token mode";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
-                                                  "The shape of key_antiquant_scale must be [1,B,>=S] or [B,>=S] when "
-                                                  "keyAntiquantMode is per-token mode");
+                reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
@@ -2573,9 +2578,12 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenMode(const FiaTilingI
             keyAntiquantScaleTensorShape.GetDim(DIM_NUM_1) != batchSize ||
             keyAntiquantScaleTensorShape.GetDim(DIM_NUM_2) < seqLength) {
             std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
+            std::string reasonMsg = "The shape of key_antiquant_scale must be [1, B(" +
+                std::to_string(batchSize) + "), >=S(" + std::to_string(seqLength) + ")] or "
+                "[B(" + std::to_string(batchSize) + "), >=S(" + std::to_string(seqLength) + ")] "
+                "when keyAntiquantMode is per-token mode";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
-                                                  "The shape of key_antiquant_scale must be [1,B,>=S] or [B,>=S] when "
-                                                  "keyAntiquantMode is per-token mode");
+                reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
