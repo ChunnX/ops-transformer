@@ -12,7 +12,6 @@
 #define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_BASE_TILING_H_
 
 #include <cstdint>
-#include <string>
 
 #include "op_host/tiling_base.h"
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
@@ -101,11 +100,9 @@ public:
     static constexpr uint64_t DIM_TILE_FAST = 128;
     static constexpr uint64_t AIV_PER_AIC = 2;
 
-    static ge::graphStatus ValidateContractInput(const ContractInput &input,
-                                                 const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
+    static ge::graphStatus ValidateContractInput(const ContractInput &input)
         __attribute__((visibility("default")));
-    static ge::graphStatus BuildContractTiling(const ContractInput &input, uint64_t aicNum, ContractTiling &tiling,
-                                               const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
+    static ge::graphStatus BuildContractTiling(const ContractInput &input, uint64_t aicNum, ContractTiling &tiling)
         __attribute__((visibility("default")));
     explicit QkvRmsNormRopeCacheWithKScaleBaseTiling(gert::TilingContext *context) : TilingBaseClass(context)
     {
@@ -129,59 +126,56 @@ private:
     void Reset();
 
     static uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numKHeads);
-    ge::graphStatus ValidateHeadNums(const std::string &opName) const;
-    ge::graphStatus ValidateScalarInputs(const std::string &opName) const;
-    static ge::graphStatus ValidateDtype(const std::string &opName, const char *tensorName,
-                                         const TensorContractInfo &tensor, ge::DataType expected);
-    ge::graphStatus ValidateDtypes(const std::string &opName) const;
-    static ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName,
-                                             size_t expectedRank, const std::string &opName);
-    ge::graphStatus ValidateShapeInputsForDerivedFields(const std::string &opName) const;
-    ge::graphStatus ValidateNonCacheShapeRanks(const std::string &opName) const;
-    ge::graphStatus ValidateQkvAndGammaShapes(const std::string &opName) const;
-    ge::graphStatus ValidatePositionInputShapes(const std::string &opName) const;
-    ge::graphStatus ValidateRotationAndScaleShapes(const std::string &opName) const;
-    ge::graphStatus ValidateNonCacheShapes(const std::string &opName) const;
-    ge::graphStatus ValidateCacheShapes(const std::string &opName) const;
-    ge::graphStatus ValidateShapes(const std::string &opName) const;
-    ge::graphStatus ValidateStrides(const std::string &opName) const;
-    ge::graphStatus ValidateMinimumTokenTileFeasible(const std::string &opName) const;
-    bool TrySelectTokenTile(uint64_t tokenTile, const std::string &opName, TokenTileSelection &selection) const;
-    ge::graphStatus SelectTokenTile(const std::string &opName, TokenTileSelection &selection) const;
+    ge::graphStatus ValidateHeadNums() const;
+    ge::graphStatus ValidateScalarInputs() const;
+    ge::graphStatus ValidateDtype(const char *tensorName, const TensorContractInfo &tensor,
+                                  ge::DataType expected) const;
+    ge::graphStatus ValidateDtypes() const;
+    ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName,
+                                      size_t expectedRank) const;
+    ge::graphStatus ValidateShapeInputsForDerivedFields() const;
+    ge::graphStatus ValidateNonCacheShapeRanks() const;
+    ge::graphStatus ValidateQkvAndGammaShapes() const;
+    ge::graphStatus ValidatePositionInputShapes() const;
+    ge::graphStatus ValidateRotationAndScaleShapes() const;
+    ge::graphStatus ValidateNonCacheShapes() const;
+    ge::graphStatus ValidateCacheShapes() const;
+    ge::graphStatus ValidateShapes() const;
+    ge::graphStatus ValidateStrides() const;
+    ge::graphStatus ValidateMinimumTokenTileFeasible() const;
+    bool TrySelectTokenTile(uint64_t tokenTile, TokenTileSelection &selection) const;
+    ge::graphStatus SelectTokenTile(TokenTileSelection &selection) const;
     void FillContractTiling(const TokenTileSelection &selection);
-    ge::graphStatus ValidateContractInput(const std::string &opName) const;
-    ge::graphStatus BuildContractTiling(const std::string &opName);
-    static ge::graphStatus MakeContiguousStrideInfo(const gert::Shape &shape, const std::string &opName,
+    ge::graphStatus ValidateContractInput() const;
+    ge::graphStatus BuildContractTiling();
+    static ge::graphStatus MakeContiguousStrideInfo(gert::TilingContext *context, const gert::Shape &shape,
                                                     gert::Stride &strideInfo);
     static const char *DtypeName(ge::DataType dtype);
-    static ge::graphStatus ToTensorInfo(gert::TilingContext *context, const std::string &opName, const char *tensorName,
-                                        size_t index, TensorContractInfo &info);
-    static void LogCacheInputShapeQuery(const std::string &opName, size_t index, bool inputIsView,
+    static ge::graphStatus ToTensorInfo(gert::TilingContext *context, const char *tensorName, size_t index,
+                                        TensorContractInfo &info);
+    static void LogCacheInputShapeQuery(gert::TilingContext *context, size_t index, bool inputIsView,
                                         const gert::Shape &storageShapeInfo, const gert::Shape &logicalShapeInfo);
-    static ge::graphStatus FillViewCacheTensorInfo(gert::TilingContext *context, const std::string &opName,
-                                                   size_t index, ge::DataType dtype,
+    static ge::graphStatus FillViewCacheTensorInfo(gert::TilingContext *context, size_t index, ge::DataType dtype,
                                                    const gert::Shape &logicalShapeInfo, TensorContractInfo &info);
-    static ge::graphStatus FillContiguousCacheTensorInfo(const std::string &opName, size_t index, ge::DataType dtype,
+    static ge::graphStatus FillContiguousCacheTensorInfo(gert::TilingContext *context, size_t index, ge::DataType dtype,
                                                          const gert::Shape &storageShapeInfo, TensorContractInfo &info);
-    static ge::graphStatus ToCacheTensorInfo(gert::TilingContext *context, const std::string &opName, size_t index,
-                                             TensorContractInfo &info);
+    static ge::graphStatus ToCacheTensorInfo(gert::TilingContext *context, size_t index, TensorContractInfo &info);
     static TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, size_t index);
-    static void LogTensorInfo(const std::string &opName, const char *tensorName, const TensorContractInfo &info);
-    void LogContractInput(const std::string &opName) const;
-    static ge::graphStatus SetWorkspace(gert::TilingContext *context, const std::string &opName,
+    void LogTensorInfo(const char *tensorName, const TensorContractInfo &info) const;
+    void LogContractInput() const;
+    static ge::graphStatus SetWorkspace(gert::TilingContext *context,
                                         const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
                                         size_t &workspaceSize);
     void LogTilingData() const;
-    ge::graphStatus ParseHeadNumsAttr(const std::string &opName);
+    ge::graphStatus ParseHeadNumsAttr();
     float ParseEpsilonAttr() const;
-    ge::graphStatus FillShapeDerivedFields(const std::string &opName);
-    ge::graphStatus FillRequiredTensorInputs(const std::string &opName);
+    ge::graphStatus FillShapeDerivedFields();
+    ge::graphStatus FillRequiredTensorInputs();
     void FillOptionalTensorInputs();
-    ge::graphStatus BuildContractInput(const std::string &opName);
+    ge::graphStatus BuildContractInput();
     void FillTilingData();
-    static ge::graphStatus ValidateCompileInfo(const std::string &opName,
-                                               const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo);
-    static ge::graphStatus CopyRawTilingData(gert::TilingContext *context, const std::string &opName,
+    ge::graphStatus ValidateCompileInfo(const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo) const;
+    static ge::graphStatus CopyRawTilingData(gert::TilingContext *context,
                                              const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
                                              size_t &tilingDataSize);
 

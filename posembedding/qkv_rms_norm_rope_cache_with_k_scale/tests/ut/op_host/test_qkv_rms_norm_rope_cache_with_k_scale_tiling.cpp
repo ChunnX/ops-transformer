@@ -47,28 +47,23 @@ struct AivSliceForTest {
     uint64_t tokenSize = 0;
 };
 
-ge::graphStatus ValidateContractInput(
-    const ContractInput &input, const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
+ge::graphStatus ValidateContractInput(const ContractInput &input)
 {
-    return QkvTiling::ValidateContractInput(input, opName);
+    return QkvTiling::ValidateContractInput(input);
 }
 
-ge::graphStatus BuildContractTiling(
-    const ContractInput &input, ContractTiling &tiling, uint64_t aicNum = 32,
-    const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
+ge::graphStatus BuildContractTiling(const ContractInput &input, ContractTiling &tiling, uint64_t aicNum = 32)
 {
-    return QkvTiling::BuildContractTiling(input, aicNum, tiling, opName);
+    return QkvTiling::BuildContractTiling(input, aicNum, tiling);
 }
 
-ge::graphStatus ValidateThenBuildTiling(
-    const ContractInput &input, ContractTiling &tiling, uint64_t aicNum = 32,
-    const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
+ge::graphStatus ValidateThenBuildTiling(const ContractInput &input, ContractTiling &tiling, uint64_t aicNum = 32)
 {
-    const auto status = ValidateContractInput(input, opName);
+    const auto status = ValidateContractInput(input);
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
-    return BuildContractTiling(input, tiling, aicNum, opName);
+    return BuildContractTiling(input, tiling, aicNum);
 }
 
 uint64_t AlignUp(uint64_t value, uint64_t align)
