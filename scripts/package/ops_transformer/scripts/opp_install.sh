@@ -39,6 +39,9 @@ TARGET_MOULDE_DIR=""  # TARGET_INSTALL_PATH + PKG_VERSION_DIR + OPP_PLATFORM_DIR
 TARGET_VERSION_DIR="" # TARGET_INSTALL_PATH + PKG_VERSION_DIR
 TARGET_SHARED_INFO_DIR="" # TARGET_INSTALL_PATH + PKG_VERSION_DIR + share/info
 TARGET_OPP_BUILT_IN=""
+AICPU_BUILTIN_CUSTOM_ROOT="opp/built-in/op_impl/aicpu/ops_transformer"
+AICPU_ENV_BEGIN="# OPS_TRANSFORMER_AICPU_ENV_BEGIN"
+AICPU_ENV_END="# OPS_TRANSFORMER_AICPU_ENV_END"
 
 COMMON_INC_FILE="${CURR_PATH}/common_func.inc"
 COMMON_FUNC_V2_PATH="${CURR_PATH}/common_func_v2.inc"
@@ -219,6 +222,48 @@ setenv() {
 }
 
 # 创建单个文件的软链接，链接文件级别
+append_aicpu_env_to_file() {
+  local env_file="$1"
+  local aicpu_path_val="${relative_path_val}/${AICPU_BUILTIN_CUSTOM_ROOT}"
+
+  if [ ! -f "${env_file}" ]; then
+    return 0
+  fi
+
+  chmod u+w "${env_file}" 2>/dev/null
+  sed -i "/^${AICPU_ENV_BEGIN}$/,/^${AICPU_ENV_END}$/d" "${env_file}"
+  cat >> "${env_file}" <<EOF
+
+${AICPU_ENV_BEGIN}
+if [ -d "${aicpu_path_val}/op_impl/cpu" ]; then
+    if [ -z "\${ASCEND_CUSTOM_OPP_PATH:-}" ]; then
+        export ASCEND_CUSTOM_OPP_PATH="${aicpu_path_val}"
+    else
+        case ":\${ASCEND_CUSTOM_OPP_PATH}:" in
+            *":${aicpu_path_val}:"*) ;;
+            *) export ASCEND_CUSTOM_OPP_PATH="${aicpu_path_val}:\${ASCEND_CUSTOM_OPP_PATH}" ;;
+        esac
+    fi
+fi
+${AICPU_ENV_END}
+EOF
+  log_with_errorlevel "$?" "error" "[ERROR]: ERR_NO:${FILE_WRITE_FAILED};ERR_DES:Update ${env_file} failed."
+}
+
+setup_aicpu_builtin_env() {
+  local aicpu_root="${TARGET_VERSION_DIR}/${AICPU_BUILTIN_CUSTOM_ROOT}"
+  local aicpu_json="${aicpu_root}/op_impl/cpu/config/cust_aicpu_kernel.json"
+  local aicpu_so="${aicpu_root}/op_impl/cpu/aicpu_kernel/impl/libtransformer_aicpu_kernels.so"
+
+  if [ ! -f "${aicpu_json}" ] && [ ! -f "${aicpu_so}" ]; then
+    return 0
+  fi
+
+  append_aicpu_env_to_file "${TARGET_VERSION_DIR}/set_env.sh"
+  append_aicpu_env_to_file "${TARGET_VERSION_DIR}/bin/setenv.bash"
+  logandprint "[INFO]: Set AICPU path [ export ASCEND_CUSTOM_OPP_PATH=${relative_path_val}/${AICPU_BUILTIN_CUSTOM_ROOT} ]."
+}
+
 create_file_softlink() {
   local src_file=$1
   local dst_file=$2
@@ -425,6 +470,8 @@ install_opp() {
     --use-share-info --version-dir=$PKG_VERSION_DIR $INSTALL_OPTION ${INSTALL_FOR_ALL} "--feature=all" "--chip=all" \
     "${INSTALL_TYPE}" "${TARGET_INSTALL_PATH}" "${FILELIST_FILE}"
   log_with_errorlevel "$?" "error" "[ERROR]: ERR_NO:${INSTALL_FAILED};ERR_DES:Install opp module files failed."
+
+  setup_aicpu_builtin_env
 
   logandprint "[INFO]: upgradePercentage:30%"
 

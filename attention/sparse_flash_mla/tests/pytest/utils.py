@@ -324,7 +324,7 @@ def generate_case_with_default_param(param_combinations):
     cmp_block_num_per_batch = []
     cmp_block_num_sum = 0
 
-    if layout_kv == "PA_BBND":
+    if layout_kv == "PA_BNBD":
         for cur_ori_act_kv in case_param['seqused_ori_kv']:
             cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param['block_size1'])
             ori_block_num_per_batch.append(cur_ori_kv_block_num)

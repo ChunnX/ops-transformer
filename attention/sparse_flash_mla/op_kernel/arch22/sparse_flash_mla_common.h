@@ -34,11 +34,11 @@ enum class SMLA_RUN_MODE {
 enum class SMLA_LAYOUT {
     BSND = 0,
     TND = 1,
-    PA_BBND = 2
+    PA_BNBD = 2
 };
 
 template <typename Q_T, typename KV_T, typename OUT_T, const bool FLASH_DECODE = false,
-          SMLA_LAYOUT LAYOUT_T = SMLA_LAYOUT::BSND, SMLA_LAYOUT KV_LAYOUT_T = SMLA_LAYOUT::PA_BBND,
+          SMLA_LAYOUT LAYOUT_T = SMLA_LAYOUT::BSND, SMLA_LAYOUT KV_LAYOUT_T = SMLA_LAYOUT::PA_BNBD,
           int TEMPLATE_MODE = 0, typename... Args>
 struct SMLAType {
     using queryType = Q_T;
@@ -47,7 +47,7 @@ struct SMLAType {
     static constexpr bool flashDecode = FLASH_DECODE;
     static constexpr SMLA_LAYOUT layout = LAYOUT_T;
     static constexpr SMLA_LAYOUT kvLayout = KV_LAYOUT_T;
-    static constexpr bool pageAttention = (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND);
+    static constexpr bool pageAttention = (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD);
     static constexpr int templateMode = TEMPLATE_MODE;
 };
 
@@ -133,7 +133,7 @@ __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T
     BSH\BSND\TND 为BBH
     shape.copyRowNumAlign 需要16字节对齐，如拷贝k矩阵，一次拷贝128*512，遇到尾块 10*512 需对齐到16*512
 */
-template <typename T, SMLA_LAYOUT SRC_LAYOUT = SMLA_LAYOUT::PA_BBND>
+template <typename T, SMLA_LAYOUT SRC_LAYOUT = SMLA_LAYOUT::PA_BNBD>
 __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
                                   GlobalTensor<T> &srcTensor, // gm
                                   GlobalTensor<int32_t> &blockTableGm,
@@ -299,6 +299,9 @@ struct ConstInfo {
     uint32_t actualLenDimsQ = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDimsKV = 0U; // KV 的actualSeqLength 的维度
 
+    uint32_t actualLenDimsCmpKV = 0U;
+    uint32_t cmpResidualKVSize = 0U;
+
     // TND
     uint32_t s2Start = 0U; // TND场景下，S2的起始位置
     uint32_t s2End = 0U;   // 单核TND场景下S2循环index上限
@@ -320,6 +323,8 @@ struct ConstInfo {
 
     // cmp attr
     int64_t cmpRatio = 0;
+
+    uint64_t cmpSeqSize = 0ULL;
 
     // win
     int32_t oriWinRight = 0;
