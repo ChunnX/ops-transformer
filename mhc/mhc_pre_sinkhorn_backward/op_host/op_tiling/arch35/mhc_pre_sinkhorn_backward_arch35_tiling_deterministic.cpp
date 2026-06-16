@@ -16,7 +16,7 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
+#include "mhc_pre_sinkhorn_backward_arch35_tiling_deterministic.h"
 #include "log/log.h"
 
 using namespace AscendC;
