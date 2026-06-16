@@ -333,7 +333,7 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "copyExpertRangePtr");
     }
 
-    auto constantExpertRangePtr = attrs->GetListInt(ATTR_CONST_EXPERT_RANGE_IDX);
+    auto constantExpertRangePtr = attrs->GetListInt(ATTR_CONSTANT_EXPERT_RANGE_IDX);
     if (constantExpertRangePtr == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "constantExpertRangePtr");
     }
