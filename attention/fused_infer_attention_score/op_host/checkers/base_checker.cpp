@@ -46,37 +46,9 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
 {
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
-        if ((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end())) {
-            OP_LOGE_FOR_INVALID_FORMAT("FusedInferAttentionScore", name.c_str(),
-                ToString(format).c_str(), "ND, NCHW, NHWC or NCDHW");
-            return ge::GRAPH_FAILED;
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-// 判断tensor是否连续
-ge::graphStatus BaseChecker::CheckTensorContiguous(const uint32_t &tensorDimNum, const gert::Shape &inputShape,
-        const gert::Stride *Strides, int32_t &index) const
-{
-    // 根据kv kvscale krope算出连续场景的strides，如果存在某一维不相等则表示不连续
-    if (Strides == nullptr || Strides->GetDimNum() == 0){
-            return ge::GRAPH_SUCCESS;
-    }
-    uint64_t preStride = 1; // 连续场景最后一维的stride默认为1
-    for (index = tensorDimNum - 1; index >= 0; index--) {
-        if (index == tensorDimNum - 1) {
-            if (Strides->GetStride(index) != preStride) {
-                return ge::GRAPH_FAILED;
-            } else {
-                continue;
-            }
-        }
-        uint64_t tensorStride = inputShape.GetDim(index+1) * preStride;
-        if (Strides->GetStride(index) != tensorStride) {
-            return ge::GRAPH_FAILED;
-        }
-        preStride = tensorStride;
+        OP_CHECK_IF((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
+                    OP_LOGE("FusedInferAttentionScore", "%s format only supports ND/NCHW/NHWC/NCDHW!", name.c_str()),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -91,13 +63,13 @@ ge::graphStatus BaseChecker::CheckValueSupport(const T value, const std::vector<
     return ge::GRAPH_SUCCESS;
 }
 
-std::string BaseChecker::DataTypeToSerialString(ge::DataType type) const
+std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
 {
     const auto it = DATATYPE_TO_STRING_MAP.find(type);
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FusedInferAttentionScore", "datatype %d is not supported", type);
+        OP_LOGE("FusedInferAttentionScore", "datatype %d not support", type);
         return "UNDEFINED";
     }
 }

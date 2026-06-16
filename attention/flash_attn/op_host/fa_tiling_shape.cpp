@@ -31,7 +31,6 @@ static const std::map<FaLayout, std::vector<FaAxis>> FA_LAYOUT_AXIS_MAP = {
     {FaLayout::TND, {FaAxis::T, FaAxis::N, FaAxis::D}},
     {FaLayout::PA_BBND, {FaAxis::Bn, FaAxis::Bs, FaAxis::N, FaAxis::D}},
     {FaLayout::PA_BNBD, {FaAxis::Bn, FaAxis::N, FaAxis::Bs, FaAxis::D}},
-    {FaLayout::PA_NZ, {FaAxis::Bn, FaAxis::N, FaAxis::D1, FaAxis::Bs, FaAxis::D0}},
     {FaLayout::LSE_BNS, {FaAxis::B, FaAxis::N, FaAxis::S1}},
     {FaLayout::LSE_NT, {FaAxis::N, FaAxis::T}}};
 
@@ -208,9 +207,6 @@ ge::graphStatus FaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpecte
             break;
         case FaLayout::PA_BNBD:
             shapeExpected = gert::Shape({param.Bn, param.N, param.Bs, param.D});
-            break;
-        case FaLayout::PA_NZ:
-            shapeExpected = gert::Shape({param.Bn, param.N, param.D / param.D0, param.Bs, param.D0});
             break;
         case FaLayout::LSE_BNS:
             shapeExpected = gert::Shape({param.B, param.N, param.S1});

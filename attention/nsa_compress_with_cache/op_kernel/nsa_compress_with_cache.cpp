@@ -100,18 +100,16 @@ protected:
         int64_t seqLen = actSeqLenGm.GetValue(batchIdx);
         seqLenStartidx = seqLen - tilingData->compressBlockSize;
         int32_t slotMappingIdx = slotMappingGm.GetValue(batchIdx);
-        outputOffset = static_cast<uint64_t>(slotMappingIdx) * tilingData->headDim * tilingData->headNum +
-            static_cast<uint64_t>(headIdx) * tilingData->headDim;
+        outputOffset = slotMappingIdx * tilingData->headDim * tilingData->headNum + headIdx * tilingData->headDim;
     }
 
     __aicore__ inline void CopyKvCache(uint32_t tileIdx)
     {
-        pageBlockUnitOffset =
-            static_cast<uint64_t>(tilingData->pageBlockSize) * tilingData->headNum * tilingData->headDim;
+        pageBlockUnitOffset = tilingData->pageBlockSize * tilingData->headNum * tilingData->headDim;
         AscendC::LocalTensor<T> kvCacheLocal = inQueue.AllocTensor<T>();
         uint32_t curTokenIdx = seqLenStartidx + tileIdx * this->tilingData->tokenNumPerTile;
         uint64_t curBlockPageIdx = curTokenIdx / tilingData->pageBlockSize;
-        uint64_t curPageOffset =
+        uint32_t curPageOffset =
             (curTokenIdx - curBlockPageIdx * tilingData->pageBlockSize) * tilingData->headNum * tilingData->headDim;
 
         curBlockPageIdx = blockTableGm.GetValue(batchIdx * tilingData->pageNumPerBatch + curBlockPageIdx);
@@ -229,10 +227,10 @@ protected:
     uint32_t lastPageIdx;
     uint32_t lastPageTokenNum;
     uint32_t lastPageOffset;
-    uint64_t pageBlockUnitOffset;
+    uint32_t pageBlockUnitOffset;
     uint32_t pageBlockSize;
     uint32_t compressBatchSize;
-    uint64_t outputOffset;
+    uint32_t outputOffset;
     uint32_t compressBatchIdxList[MAX_BATCH_SIZE];
     const NsaCompressWithCacheTilingData *__restrict tilingData;
 }; // namespace NsaCompressWithCacheBasetemplate<typenameT>class KernelNsaCompressWithCacheBase

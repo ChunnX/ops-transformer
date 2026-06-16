@@ -10,7 +10,7 @@ x_{l+1} = H_l^{res} · x_l + H_l^{post}^T · F(H_l^{pre} · x_l, W_l)
                             mhc_post computes this
 ```
 
-**mhc_post implements `H_l^{post}^T · F(...)`**— broadcast 1 input to N streams.
+**mhc_post implements `H_l^{post}^T · F(...)`** — broadcast 1 input to N streams.
 
 ```
 output[b × N + s, seq, d] = branch_output[b, seq, d] × h_post[s]
@@ -18,9 +18,9 @@ output[b × N + s, seq, d] = branch_output[b, seq, d] × h_post[s]
 
 Where:
 
-- `branch_output`: [batch, seq_len, dim]— output from branch module F(...)
-- `h_post`: [num_streams]— learned weights (normalization handled upstream)
-- `output`: [batch × num_streams, seq_len, dim]— distributed to N streams
+- `branch_output`: [batch, seq_len, dim] — output from branch module F(...)
+- `h_post`: [num_streams] — learned weights (normalization handled upstream)
+- `output`: [batch × num_streams, seq_len, dim] — distributed to N streams
 
 ## 2. PyTorch Reference (tokenbender/mHC)
 

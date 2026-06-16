@@ -246,8 +246,6 @@ int main() {
     aclDestroyTensor(keyTensor);
     aclDestroyTensor(valueTensor);
     aclDestroyTensor(outTensor);
-    aclDestroyTensor(keyAntiquantScaleTensor);
-    aclDestroyTensor(valueAntiquantScaleTensor);
     aclrtFree(queryDeviceAddr);
     aclrtFree(keyDeviceAddr);
     aclrtFree(valueDeviceAddr);

@@ -4070,9 +4070,9 @@ void PromptFlashAttentionTilingV2::UpdateTilingKeyQuantMode(ge::DataType inputDa
     if (inputDataType == ge::DT_FLOAT16 || inputDataType == ge::DT_BF16) {
         quantMode = NoQuantMode;
     } else if (enablePerblockQuant) {
-        quantMode = FULLQUANT_MODE_QKV_PERBLOCK;
+        quantMode = PerBlock;
     } else if (enableIFAMLAFullQuant) {
-        quantMode = FULLQUANT_MODE_Q_PER_TOKEN_HEAD_KV_PER_TENSOR;
+        quantMode = FULLQUANT_MODE_PER_TOKEN_HEAD;
     } else {
         quantMode = FullQuantMode;
     }

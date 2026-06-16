@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MC2_MOE_V2_QUANT_GATHER_DYNAMIC_QUANT_H
-#define MC2_MOE_V2_QUANT_GATHER_DYNAMIC_QUANT_H
+#ifndef MC2_MOE_V2_GATHER_DYNAMIC_QUANT_H
+#define MC2_MOE_V2_GATHER_DYNAMIC_QUANT_H
 
 #include "moe_v2_common.h"
 
@@ -470,11 +470,7 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR 
     this->needCoreNum = this->gatherOutTilingData->needCoreNum;
     this->activateRows = this->gatherOutTilingData->activateRows;
     this->cols = tilingData->cols;
-    if constexpr (IsSameType<DTYPE_WEIGHT1, int4b_t>::value) {
-        this->cols_scale_ = this->cols + ALIGN_512;
-    } else {
-        this->cols_scale_ = this->cols + UB_ALIGN;
-    }
+    this->cols_scale_ = this->cols + ALIGN_512;
     this->n = tilingData->n;
     this->k = tilingData->k;
     this->totalLength = tilingData->n * tilingData->k;
@@ -561,4 +557,4 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T>::Process()
     }
 }
 } // namespace MoeInitRoutingQuantV2
-#endif // MC2_MOE_V2_QUANT_GATHER_DYNAMIC_QUANT_H
+#endif // MC2_MOE_V2_GATHER_DYNAMIC_QUANT_H

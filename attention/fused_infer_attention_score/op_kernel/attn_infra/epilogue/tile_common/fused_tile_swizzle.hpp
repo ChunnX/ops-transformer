@@ -21,7 +21,7 @@ namespace NpuArch::Epilogue::Tile
 struct EpilogueIdentityTileSwizzle {
     MatrixCoord blockShape;
     MatrixCoord tileShape;
-    MatrixCoord loopsNum;
+    MatrixCoord loopsMN;
 
     __aicore__ inline
     EpilogueIdentityTileSwizzle() = default;
@@ -31,19 +31,19 @@ struct EpilogueIdentityTileSwizzle {
         blockShape(blockShape),
         tileShape(tileShape)
     {
-        loopsNum = NpuArch::Detail::Alignment::CeilDiv(blockShape, tileShape);
+        loopsMN = NpuArch::Detail::Alignment::CeilDiv(blockShape, tileShape);
     }
 
     __aicore__ inline
     uint32_t GetLoops() const
     {
-        return loopsNum.row() * loopsNum.column();
+        return loopsMN.row() * loopsMN.column();
     }
 
     __aicore__ inline
     MatrixCoord GetTileCoord(uint32_t loopIdx) const
     {
-        return MatrixCoord{ loopIdx / loopsNum.column(), loopIdx % loopsNum.column() };
+        return MatrixCoord{ loopIdx / loopsMN.column(), loopIdx % loopsMN.column() };
     }
 
     __aicore__ inline

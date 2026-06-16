@@ -22,67 +22,51 @@
 
 - 计算公式：
     - **非量化场景：**
-
-      $$
-      y_i=x_i\times weight_i + bias_i
-      $$
+    $$
+     y_i=x_i\times weight_i + bias_i
+    $$
 
     - **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
-
-      $$
+    $$
       y_i=(x_i\times weight_i) * scale_i + offset_i
-      $$
-
+    $$
       - x为INT8，bias为INT32
-
-        $$
+      $$
         y_i=(x_i\times weight_i + bias_i) * scale_i + offset_i
-        $$
-
+      $$
       - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32，无offset
-
-        $$
+      $$
         y_i=(x_i\times weight_i) * scale_i + bias_i
-        $$
+      $$
 
     - **量化场景（动态量化，T-T && T-C && K-T && K-C量化）：**
-
-      $$
-      y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i
-      $$
-
+    $$
+     y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i
+    $$
       - x为INT8，bias为INT32
-
-        $$
+      $$
         y_i=(x_i\times weight_i + bias_i) * scale_i * per\_token\_scale_i
-        $$
-
+      $$
       - x为INT8，bias为BFLOAT16/FLOAT16/FLOAT32
-
-        $$
+      $$
         y_i=(x_i\times weight_i) * scale_i * per\_token\_scale_i  + bias_i
-        $$
+      $$
 
     - **量化场景（动态量化，MX && G-B量化）：**
-
-      $$
-      y_i[m,n] = \sum_{j=0}^{kLoops-1} ((\sum_{k=0}^{gsK-1} (xSlice_i * weightSlice_i)) * (per\_token\_scale_i[m/gsM, j] * scale_i[j, n/gsN])) + bias_i[n]
-      $$
-
-      其中，gsM,gsN和gsK分别代表M/N/K轴的量化的block size，$xSlice_i$代表$x_i$第m行长度为gsK的向量，$weightSlice_i$代表$weight_i$第n列长度为gsK的向量，K轴均从j * gsK起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
+    $$
+    y_i[m,n] = \sum_{j=0}^{kLoops-1} ((\sum_{k=0}^{gsK-1} (xSlice_i * weightSlice_i)) * (per\_token\_scale_i[m/gsM, j] * scale_i[j, n/gsN])) + bias_i[n]
+    $$
+    其中，gsM,gsN和gsK分别代表M/N/K轴的量化的block size，$xSlice_i$代表$x_i$第m行长度为gsK的向量，$weightSlice_i$代表$weight_i$第n列长度为gsK的向量，K轴均从j * gsK起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
 
     - **伪量化场景：**
       - x为Float16、BFloat16，weight为INT4、INT8（仅支持x、weight、y均为单tensor的场景）。
-
-        $$
-        y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
-        $$
-
+    $$
+      y_i=x_i\times (weight_i + antiquant\_offset_i) * antiquant\_scale_i + bias_i
+    $$
       - x为INT8，weight为INT4（仅支持x、weight、y均为单tensor的场景）。其中$bias$为必选参数，是离线计算的辅助结果，且 $bias_i=8\times weight_i  * scale_i$ ，并沿k轴规约。
-
-        $$
-        y_i=((x_i - 8) \times weight_i * scale_i+bias_i ) * per\_token\_scale_i
-        $$
+    $$
+      y_i=((x_i - 8) \times weight_i * scale_i+bias_i ) * per\_token\_scale_i
+    $$
 
 ## 参数说明
 
@@ -316,7 +300,7 @@
       - 该场景仅支持groupType=0(x,weight,y均为单tensor)，actType=0，groupListType=0/1。
       - 该场景不支持weight转置。
 
-    - 仅量化场景(per-token)、反量化场景支持激活函数计算。
+    - 仅量化场景 (per-token)、反量化场景支持激活函数计算。
 
     - <a id="groupType-constraints"></a>不同groupType支持场景：
       - 伪量化仅支持groupType为-1和0场景。
@@ -329,7 +313,7 @@
       | 0 | 单单单 | 2/3 | 1）必须传groupListOptional<br>2）当groupListType为0时，最后一个值应小于等于x中tensor的第一维；当groupListType为1时，数值的总和应小于等于x中tensor的第一维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第一维<br>3）groupListOptional第1维最大支持1024，即最多支持1024个group |1）x不支持转置<br>2）支持weight转置，A8W4与A4W4场景不支持weight转置 |1）weight中tensor需为3维，x，y中tensor需为2维|
       | 0 | 单多单 | 2/3 | 1）必须传groupListOptional<br>2）当groupListType为0时，最后一个值应小于等于x中tensor的第一维；当groupListType为1时，数值的总和应小于等于x中tensor的第一维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第一维<br>3）groupListOptional第1维最大支持128，即最多支持128个group|1）x不支持转置<br>2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一 |1）x，weight，y中tensor需为2维<br>2）weight中每个tensor的N轴必须相等 |
       | 0 | 多多单 | 2/3 | 1）groupListOptional可选<br>2）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应；当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应；当groupListType为2时，groupListOptional第二列的数值需与x中tensor的第一维一一对应<br>3）groupListOptional第1维最大支持128，即最多支持128个group |1）x不支持转置<br> 2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一| 1）x，weight，y中tensor需为2维<br>2）weight中每个tensor的N轴必须相等 |
-      | 2 | 单单单 | 2/3 | 1）必须传groupListOptional<br>2）当groupListType为0时，最后一个值应小于等于x中tensor的第二维；当groupListType为1时，数值的总和与x应小于等于tensor的第二维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第二维<br>3）groupListOptional第1维最大支持1024，即最多支持1024个group | 1）x必须转置<br>2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维<br>2）bias必须传空|
+      | 2 | 单单单 | 2/3 | 1）必须传groupListOptional<br>2）当groupListType为0时，最后一个值应小于等于x中tensor的第二维；当groupListType为1时，数值的总和与x应小于等于tensor的第二维；当groupListType为2时，第二列数值的总和应小于等于x中tensor的第二维<br>3）groupListOptional第1维最大支持1024， 即最多支持1024个group | 1）x必须转置<br>2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维<br>2）bias必须传空|
       | 2 | 单多多 | 0/1 | groupListOptional必须传空 | 1）x必须转置<br>2）weight不能转置<br>| 1）x，weight，y中tensor需为2维<br>2）weight长度最大支持128，即最多支持128个group<br>3）原始shape中weight每个tensor的第一维之和不应超过x第一维<br>4）bias必须传空 |
 
   - <term>Ascend 950PR/Ascend 950DT AI处理器</term>：

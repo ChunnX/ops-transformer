@@ -15,7 +15,7 @@
 #include "op_cache_tiling.h"
 #ifdef BUILD_OPEN_PROJECT
 #include "legacy_common_manager.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 #endif
 
 namespace optiling {

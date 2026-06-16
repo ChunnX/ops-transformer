@@ -9,7 +9,7 @@
 */
 
 /*!
- * \file split_core_v2.h
+ * \file split_core.h
  * \brief
 */
 
