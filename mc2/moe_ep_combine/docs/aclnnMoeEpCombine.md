@@ -146,7 +146,7 @@ aclnnStatus aclnnMoeEpCombine(
     <td>topkWeightsOptional（aclTensor*）</td>
     <td>输入</td>
     <td>表示每个token对应的topK专家权重，用于加权聚合，对应公式中topkWeights。</td>
-    <td><ul><li>Optional参数，传入空指针时进行纯累加combine。</li><li>shape为(A, K)。</li></ul></td>
+    <td><ul><li>Optional参数，传入空指针时进行纯累加combine。</li><li>shape为(A, 1)。</li></ul></td>
     <td>FLOAT</td>
     <td>ND</td>
     <td>2</td>

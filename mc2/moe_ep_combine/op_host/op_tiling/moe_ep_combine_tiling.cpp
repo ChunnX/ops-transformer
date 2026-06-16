@@ -50,6 +50,7 @@ constexpr uint32_t ATTR_NUM_EXPERTS_INDEX = 2;
 constexpr uint32_t ATTR_NUM_MAX_TPR_INDEX = 3;
 constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 
+constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr int64_t MAX_EP_WORLD_SIZE = 768;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
@@ -109,7 +110,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
 
     const gert::StorageShape *numRecvPerExpertShape = context->GetInputShape(NUM_RECV_PER_EXPERT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertShape);
-    OP_TILING_CHECK(numRecvPerExpertShape->GetStorageShape().GetDimNum() != 1,
+    OP_TILING_CHECK(numRecvPerExpertShape->GetStorageShape().GetDimNum() != ONE_DIMS,
         OP_LOGE(nodeName, "numRecvPerExpertShape dims must be 1."), return ge::GRAPH_FAILED);
 
     info.localmoeNum = static_cast<uint32_t>(numRecvPerExpertShape->GetStorageShape().GetDim(0));
@@ -119,8 +120,8 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     if (hasTopkWeights) {
         const gert::StorageShape *topkWeightsShape = context->GetInputShape(TOPK_WEIGHTS_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, topkWeightsShape);
-        OP_TILING_CHECK(topkWeightsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-            OP_LOGE(nodeName, "topkWeightsShape dims must be 2."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(topkWeightsShape->GetStorageShape().GetDimNum() != ONE_DIMS,
+            OP_LOGE(nodeName, "topkWeightsShape dims must be 1."), return ge::GRAPH_FAILED);
     }
     info.hasTopkWeights = hasTopkWeights ? 1 : 0;
 

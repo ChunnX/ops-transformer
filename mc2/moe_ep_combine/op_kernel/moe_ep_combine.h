@@ -38,8 +38,8 @@ namespace MoeEpCombineImpl {
 
 using namespace AscendC;
 
-#define TemplateMoeEpCombineTypeClass typename XType, uint32_t HAS_TOPK_WEIGHTS
-#define TemplateMoeEpCombineTypeFunc XType, HAS_TOPK_WEIGHTS
+#define TemplateMoeEpCombineTypeClass typename XType, uint32_t HasTopkWeight
+#define TemplateMoeEpCombineTypeFunc XType, HasTopkWeight
 #define HCOMM_INIT_SIZE 512UL
 
 static constexpr uint32_t MAX_TOPK = 8;
@@ -210,7 +210,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
         actualA += numRecvPerExpertGm_(i);
     }
 
-    if constexpr (HAS_TOPK_WEIGHTS == 1) {
+    if constexpr (HasTopkWeight == 1) {
         topkWeightsOptionalGm_.SetGlobalBuffer((__gm__ float *)topkWeightsOptional);
         combinedTopkWeightsGm_.SetGlobalBuffer((__gm__ float *)combinedTopkWeightsOptional);
     }
@@ -224,14 +224,14 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     tpipe_->InitBuffer(ubAccFp32Buf_, ubAccBytes);
     tpipe_->InitBuffer(ubTmpFp32Buf_, ubTmpBytes);
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);  // 32
-    if constexpr (HAS_TOPK_WEIGHTS == 1) {
+    if constexpr (HasTopkWeight == 1) {
         tpipe_->InitBuffer(ubWeightedBuf_, ubWeightBytes);
     }
 
     ubX_ = ubXBuf_.Get<XType>();
     ubAccFp32_ = ubAccFp32Buf_.Get<float>();
     ubTmpFp32_ = ubTmpFp32Buf_.Get<float>();
-    if constexpr (HAS_TOPK_WEIGHTS == 1) {
+    if constexpr (HasTopkWeight == 1) {
         ubWeighted_ = ubWeightedBuf_.Get<float>();
     }
 }
@@ -369,7 +369,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPha
                 (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
             GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, STATE_WIN_SIZE) + 
                 (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
-            if constexpr (HAS_TOPK_WEIGHTS == 1) {
+            if constexpr (HasTopkWeight == 1) {
                 localRankWorkSpaceAddr = GetLocalWinAddrByRankId(src_rank, STATE_WIN_SIZE + WEIGHT_DATA_SIZE) + 
                     (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
                 remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, STATE_WIN_SIZE + WEIGHT_DATA_SIZE) + 
@@ -433,7 +433,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
         // 读取expert_id
         GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, STATE_WIN_SIZE ) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
-        if constexpr (HAS_TOPK_WEIGHTS == 1) {
+        if constexpr (HasTopkWeight == 1) {
             wAddr = GetUrmaWinAddrByRankId(rankId_, STATE_WIN_SIZE + WEIGHT_DATA_SIZE) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
         }
         GlobalTensor<XType> srcTokenTensor;
@@ -490,7 +490,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPha
             CompletedtokenNum++;
             tokenStatusTensor.SetValue(tokenIdx - tStart_, 1);
 
-            if constexpr (HAS_TOPK_WEIGHTS == 1) {
+            if constexpr (HasTopkWeight == 1) {
                 ProcessTopKWeight(tokenIdx);
             }
             ProcessTopKToken(tokenIdx);

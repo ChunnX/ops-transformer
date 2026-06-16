@@ -33,12 +33,12 @@ static ge::graphStatus InferShapeMoeEpCombine(gert::InferShapeContext *context)
     const gert::Shape *xShape = context->GetInputShape(COMBINE_INPUT_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xShape);
 
-    const gert::Shape *dstSlotIdxShape = context->GetInputShape(COMBINE_INPUT_TOPK_IDX_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, dstSlotIdxShape);
+    const gert::Shape *topkIdxShape = context->GetInputShape(COMBINE_INPUT_TOPK_IDX_INDEX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, topkIdxShape);
 
-    int64_t numTokens = dstSlotIdxShape->GetDim(0);
+    int64_t numTokens = topkIdxShape->GetDim(0);
     int64_t hidden = xShape->GetDim(1);
-    int64_t topK = dstSlotIdxShape->GetDim(1);
+    int64_t topK = topkIdxShape->GetDim(1);
 
     gert::Shape *combinedX = context->GetOutputShape(COMBINE_OUTPUT_COMBINED_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, combinedX);
