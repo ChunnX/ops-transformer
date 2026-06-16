@@ -58,8 +58,9 @@ std::tuple<at::Tensor, at::Tensor> npu_indexer_quant_cache(
 
     // aclnn 的 xScale 为 float，需由 double 转 float 以匹配接口原型
     float x_scale_f = static_cast<float>(x_scale);
-    // 拉起 aclnn kernel（cacheRef、cacheScaleRef 均为原地输入/输出）
-    ACLNN_CMD(aclnnIndexerQuantCache, cache_out, cache_scale_out, x, slot_mapping,
+    StorageShapeTensor x_wrapped{x};
+    StorageShapeTensor slot_mapping_wrapped{slot_mapping};
+    ACLNN_CMD(aclnnIndexerQuantCache, cache_out, cache_scale_out, x_wrapped, slot_mapping_wrapped,
               quant_mode, round_scale, x_scale_f);
     return std::make_tuple(cache_out, cache_scale_out);
 }
