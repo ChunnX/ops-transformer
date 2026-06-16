@@ -2224,7 +2224,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyExtParams scalesCopyInParams{1U, static_cast<uint32_t>(rscvStatusNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> copyPadExtParams{false, 0U, 0U, 0U};
     DataCopyPad(sendCntTensor_, workspaceGlobal[aivId_ * rscvStatusNum_], scalesCopyInParams, copyPadExtParams);
-    PipeBarrier<PIPE_ALL>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     Duplicate<uint32_t>(expertFinishNumTensor_, 0, expInfoSize / sizeof(uint32_t));
     for (uint32_t index = startProcessId; index < endProcessId; index++) { // 从sendCnt中挑选当前有发送过来的卡的token数量
@@ -2546,8 +2546,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 GatherTokenFrRemote();
             }
         }
-        //localWindowCopy中包含reset操作，需确保前面操作完成
-        PipeBarrier<PIPE_ALL>();
         LocalWindowCopy();      // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
