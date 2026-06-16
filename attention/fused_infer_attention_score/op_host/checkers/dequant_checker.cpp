@@ -1531,6 +1531,8 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
                 return ge::GRAPH_FAILED);
 
     // key scale: BnNBs layout [totalBlockNum, n2Size, blockSize]
+    const gert::Shape keyInputShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
+    const uint32_t keyDimNum = keyInputShape.GetDimNum();
     const gert::Shape keyAntiquantScaleShape = fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape();
     const uint32_t keyAntiquantScaleDimNum = keyAntiquantScaleShape.GetDimNum();
     // OP_CHECK_IF(keyAntiquantScaleDimNum != 3,
@@ -1546,8 +1548,24 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
                         keyAntiquantScaleShape.GetDim(DIM_NUM_0), keyAntiquantScaleShape.GetDim(DIM_NUM_1),
                         keyAntiquantScaleShape.GetDim(DIM_NUM_2) - 4, fiaInfo.totalBlockNum, fiaInfo.n2Size, fiaInfo.blockSize),
                 return ge::GRAPH_FAILED);
+    // pa场景 key kscale BnNBsD支持0/1轴非连续
+    int32_t dimIndex = 0;
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyAntiquantScaleDimNum, keyAntiquantScaleShape, fiaInfo.kScaleStrides, dimIndex)) &&
+                (dimIndex != 0 && dimIndex != 1)),
+                OP_LOGE(fiaInfo.opName,
+                        "In FP8 GQA fullquant BnNBsD scenarios, kscale only supports non-contiguous tensors in dimensions 0 or 1, " 
+                        "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyDimNum, keyInputShape, fiaInfo.keyStrides, dimIndex)) &&
+                (dimIndex != 0 && dimIndex != 1)),
+                OP_LOGE(fiaInfo.opName,
+                        "In FP8 GQA fullquant BnNBsD scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, " 
+                        "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+                return ge::GRAPH_FAILED);
 
     // value scale: N layout [n2Size]
+    const gert::Shape valueInputShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
+    const uint32_t valueDimNum = valueInputShape.GetDimNum();
     const gert::Shape valueAntiquantScaleShape = fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape();
     const uint32_t valueAntiquantScaleDimNum = valueAntiquantScaleShape.GetDimNum();
     OP_CHECK_IF(valueAntiquantScaleDimNum != 1,
@@ -1559,6 +1577,13 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
                 OP_LOGE(fiaInfo.opName,
                         "In FP8 GQA fullquant scenario, the shape of valueAntiquantScale([%ld]) should be [%ld] (N layout).",
                         valueAntiquantScaleShape.GetDim(DIM_NUM_0), fiaInfo.n2Size),
+                return ge::GRAPH_FAILED);
+    // pa场景 value BnNBsD支持0/1轴非连续
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueDimNum, valueInputShape, fiaInfo.valueStrides, dimIndex)) &&
+                (dimIndex != 0 && dimIndex != 1)),
+                OP_LOGE(fiaInfo.opName,
+                        "In FP8 GQA fullquant BnNBsD scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, " 
+                        "but currently the non-contiguous dimension is dimension %d.", dimIndex),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
