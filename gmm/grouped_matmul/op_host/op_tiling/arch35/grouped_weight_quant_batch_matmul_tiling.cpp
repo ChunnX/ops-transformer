@@ -539,7 +539,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckAntiquantScaleSingleXMultiWeightS
     for (size_t i = 0; i < numAntiquantScale_; ++i) {
         OP_CHECK_IF(!CheckNotNullPtr(context, ANTIQUANT_SCALE_IDX, i),
                     OP_LOGE(context->GetNodeName(), "antiquantScale's tensor or Desc is nullptr."), return false);
-        OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_SCALE_IDX, i, 4, "antiquantScale"),
+        OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_SCALE_IDX, i, 3, "antiquantScale"),
                     OP_LOGE(context->GetNodeName(), "Invalid antiquantScale dimension."), return false);
         OP_CHECK_IF(!CheckTensorDtypeSingleXMultiWeightSingleY(context, ANTIQUANT_SCALE_IDX, i, antiquantScaleDtype_,
                                                                "antiquantScale"),
@@ -1148,9 +1148,9 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensorSingleXMultiWeightSing
                 "The shape dim of weight must be >= 2"),
             return false);
         if (weightNzFlag_) {
-            OP_CHECK_IF(wDimNum < 4,
+            OP_CHECK_IF(wDimNum != 4,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight[" + std::to_string(i) + "]",
-                    std::to_string(wDimNum), "The shape dim of weight must be >= 4 in MxA8W4 NZ mode"),
+                    std::to_string(wDimNum), "The shape dim of weight must be 4 in MxA8W4 NZ mode"),
                 return false);
         }
         // -2含义为(N, K)场景N索引，-1含义为(K, N)场景N索引
@@ -1389,8 +1389,20 @@ bool GroupedWeightQuantBatchMatmulTiling::SetAntiquantGroupSize(const gert::Tili
     OP_CHECK_IF(antiquantScale == nullptr, OP_LOGE(context->GetNodeName(), "antiquantScale is nullptr."), return false);
     auto antiquantScaleShape = antiquantScale->GetStorageShape();
     int64_t antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-    // 3含义：单场景antiquantScale维度在切M时是(g, N, K)或(g, K, N)
-    if (antiquantScaleDimNum == 3) {
+    const bool isSingleMultiSingle = IsMxA8W4() && isSingleX_ && !isSingleWeight_ && isSingleY_;
+    if (isSingleMultiSingle && antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM - 1) {
+        // antiquantScaleShape: (n,k/64,2), compared with (g,n,k/64,2) missing g axis
+        int64_t groupNum = antiquantScaleShape.GetDim(antiquantScaleDimNum - PENULTIMATE_DIM) * MX_GROUP_FACTOR;
+        OP_CHECK_IF(groupNum <= 0 || kSize_ % groupNum > 0,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScaleShape",
+                Ops::Base::ToString(antiquantScaleShape),
+                "The groupNum[" + std::to_string(groupNum) + "] of antiquantScaleShape must be "
+                "greater than 0 and divisible by kSize[" + std::to_string(kSize_) + "]"),
+            return false);
+        // GMM伪量化场景支持K=groupSize
+        groupSize_ = groupNum > 0 ? kSize_ / static_cast<uint64_t>(groupNum) : 0;
+    } else if (antiquantScaleDimNum == 3) {
+        // 3含义：单场景antiquantScale维度在切M时是(g, N, K)或(g, K, N)
         // 2含义：(g, K, N)格式K轴索引
         int64_t groupNum = transB_ ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 1)
                                    : antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
