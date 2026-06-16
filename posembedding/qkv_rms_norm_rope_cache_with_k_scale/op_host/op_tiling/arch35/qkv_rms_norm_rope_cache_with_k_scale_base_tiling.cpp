@@ -667,10 +667,10 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ToCacheTensorInfo(gert:
                     info.stride.GetStride(2), info.stride.GetStride(3));
             return ge::GRAPH_SUCCESS;
         }
-        OP_LOGD(opName.c_str(),
-                "QkvRmsNormRopeCacheWithKScale cache input index=%zu is view but stride is missing or empty; "
-                "fall back to contiguous storage stride.",
+        OP_LOGE(opName.c_str(),
+                "QkvRmsNormRopeCacheWithKScale cache input index=%zu is view but stride is missing or empty.",
                 index);
+        return ge::GRAPH_FAILED;
     }
 
     const gert::Shape &shape = storageShape->GetStorageShape();

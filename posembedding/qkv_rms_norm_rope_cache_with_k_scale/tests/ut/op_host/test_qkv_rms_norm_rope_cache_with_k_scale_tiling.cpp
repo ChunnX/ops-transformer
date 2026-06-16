@@ -587,6 +587,14 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsNonPositiveDimsBeforeShapeD
     EXPECT_FALSE(ExecuteTilingWithInputs(item, inputs));
 }
 
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsViewCacheWithoutStride)
+{
+    const ConcurrentTilingCase item = {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 4, 32};
+    auto inputs = BuildTilingInputs(item);
+    inputs[5].isView_ = true;
+    EXPECT_FALSE(ExecuteTilingWithInputs(item, inputs));
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsNonTwoToOneAivAicRatioInPlatformInfo)
 {
     const ConcurrentTilingCase item = {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 4, 32};
