@@ -409,21 +409,30 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureFP8GQAFullquant(const FiaTiling
     if (fiaInfo.fullQuantMode != FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) {
         return ge::GRAPH_SUCCESS;
     }
-    constexpr uint32_t minQuerySeqLen = 1U;
-    constexpr uint32_t maxQuerySeqLen = 65536U;
-    constexpr uint32_t maxKVSeqLen = 262144U;
+    if (fiaInfo.isMaxWorkspace) {
+        return ge::GRAPH_SUCCESS;
+    }
 
-    OP_CHECK_IF(fiaInfo.s1Size < minQuerySeqLen || fiaInfo.s1Size > maxQuerySeqLen,
-        OP_LOGE(fiaInfo.opName,
-                "In FP8 GQA fullquant scenario, query sequence length(%u) should be in range of [%u, %u].",
-                fiaInfo.s1Size, minQuerySeqLen, maxQuerySeqLen),
-        return ge::GRAPH_FAILED);
+    constexpr int64_t minQuerySeqLen = 1;
+    constexpr int64_t maxQuerySeqLen = 65536; // 64K
+    constexpr int64_t maxKVSeqLen = 262144; // 256K
 
-    OP_CHECK_IF(fiaInfo.s2Size > maxKVSeqLen,
-        OP_LOGE(fiaInfo.opName,
-                "In FP8 GQA fullquant scenario, kv sequence length(%u) should be in range of [0, %u].",
-                fiaInfo.s2Size, maxKVSeqLen),
-        return ge::GRAPH_FAILED);
+    uint32_t batchSize = fiaInfo.bSize;
+    for (uint32_t bIdx = 0; bIdx < batchSize; bIdx++) {
+        int64_t qSeqLen = GetActualSeqLengthsQData(fiaInfo, bIdx);
+        OP_CHECK_IF(qSeqLen < minQuerySeqLen || qSeqLen > maxQuerySeqLen,
+            OP_LOGE(fiaInfo.opName,
+                    "In FP8 GQA fullquant scenario, query sequence length(%ld) should be in range of [%ld, %ld].",
+                    qSeqLen, minQuerySeqLen, maxQuerySeqLen),
+            return ge::GRAPH_FAILED);
+
+        int64_t kvSeqLen = GetActualSeqLengthsKvData(fiaInfo, bIdx);
+        OP_CHECK_IF(kvSeqLen < 0 || kvSeqLen > maxKVSeqLen,
+            OP_LOGE(fiaInfo.opName,
+                    "In FP8 GQA fullquant scenario, kv sequence length(%ld) should be in range of [0, %ld].",
+                    kvSeqLen, maxKVSeqLen),
+            return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

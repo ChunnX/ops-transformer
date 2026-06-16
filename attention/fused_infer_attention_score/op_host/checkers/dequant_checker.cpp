@@ -653,6 +653,12 @@ ge::graphStatus DequantChecker::CheckExistenceFP8GQAFullquant(const FiaTilingInf
                                                           quantModeName, "keyRopeAntiquantScale")) {
         return ge::GRAPH_FAILED;
     }
+    // fp8 gqa 仅支持PA场景
+    if (ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.blockTable.tensor,
+                                                       quantModeName, "block_table")) {
+        return ge::GRAPH_FAILED;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -870,10 +876,6 @@ ge::graphStatus DequantChecker::CheckFeatureFP8GQAFullquant(const FiaTilingInfo 
 
     OP_CHECK_IF(fiaInfo.sysPrefixFlag,
                 OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, system prefix is not supported."),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(fiaInfo.opParamInfo.blockTable.tensor == nullptr,
-                OP_LOGE(fiaInfo.opName, "In FP8 GQA fullquant scenario, block_table must be provided (page attention only)."),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
@@ -1799,6 +1801,11 @@ ge::graphStatus DequantChecker::CheckInputLayoutFP8GQAFullquant(const FiaTilingI
                         LayoutToSerialString(fiaInfo.qLayout)),
                 return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF(fiaInfo.kvLayout != FiaLayout::BnNBsD,
+                OP_LOGE(fiaInfo.opName, "In FP8 GQA full quant scenario, "
+                        "key/value layout only support BnNBsD, but got %s.",
+                        LayoutToSerialString(fiaInfo.kvLayout)),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
