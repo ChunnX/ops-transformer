@@ -317,6 +317,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     constInfo.gD = constInfo.gSize * constInfo.dSize;
     constInfo.n2GD = constInfo.n2Size * constInfo.gD; 
     constInfo.gS1D = constInfo.gS1 * constInfo.dSize;
+    constInfo.maxBlockNumPerBatch = sharedParams->blockTableDim2;
 
     if constexpr (layout == BSALayout::TND) {
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
@@ -324,9 +325,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
         constInfo.mm2Kb = constInfo.n2Dv;
-        if (sharedParams.isGqa) {
-            constInfo.mm1Ka = constInfo.dSize;
-        }
+
         if ASCEND_IS_AIV {
             constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
             if (sharedParams.isPfaGS1Merge == 1) {
@@ -398,6 +397,12 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     uint32_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
     AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, sparseBlk1S2Offset, delta, runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx1, runInfo.sparseBlk1PartialMask);
     AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, sparseBlk2S2Offset, delta, runInfo.s2SparseBlk2RealSize, runInfo.sparseBlkIdx2, runInfo.sparseBlk2PartialMask);
+
+    // 将sparseBlkIdx映射为phyBlkNumIdx  并按照phyBlkNumIdx的大小顺序排列
+    uint64_t blockTableBaseOffset = runInfo.boIdx * constInfo.maxBlockNumPerBatch;
+    runInfo.phyBlkNumIdx1 = runInfo.sparseBlkIdx1 == -1 ? -1 : cubeBlock.blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx1);
+    runInfo.phyBlkNumIdx2 = runInfo.sparseBlkIdx2 == -1 ? -1 : cubeBlock.blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx2);
+    IdxSortByPhyBlkNumIdx(runInfo);
 }
 
 

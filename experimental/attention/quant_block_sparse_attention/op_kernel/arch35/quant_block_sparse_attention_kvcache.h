@@ -245,5 +245,22 @@ __aicore__ inline void AttentionMaskFullProcessingOrRequired(
     }
 }
 
+__aicore__ inline void SwapValues(int64_t &numValue1, int64_t &numValue2)
+{
+    int64_t tempValue = numValue1;
+    numValue1 = numValue2;
+    numValue2 = tempValue;
+}
+
+__aicore__ inline void IdxSortByPhyBlkNumIdx(RunInfo &runInfo)
+{
+    if (runInfo.sparseBlkIdx1 == -1 && runInfo.sparseBlkIdx2 == -1) {
+        return;
+    }
+    if ((runInfo.phyBlkNumIdx1 == -1) || (runInfo.phyBlkNumIdx1 > runInfo.phyBlkNumIdx2)) {
+        SwapValues(runInfo.sparseBlkIdx1, runInfo.sparseBlkIdx2);
+        SwapValues(runInfo.phyBlkNumIdx1, runInfo.phyBlkNumIdx2);
+    }
+}
 
 #endif  // INFER_FLASH_ATTENTION_KVCACHE_H
