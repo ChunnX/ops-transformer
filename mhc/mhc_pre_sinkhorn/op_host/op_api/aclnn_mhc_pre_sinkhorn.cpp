@@ -237,38 +237,40 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
     return true;
 }
 
-static bool IsFormatSupport(const aclTensor *tensor, const std::string &tensorName)
+static aclnnStatus CheckFormat(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
+                               const aclTensor *hin, const aclTensor *hPost, const aclTensor *hRes,
+                               const aclTensor *hPre, const aclTensor *hcBeforeNorm, const aclTensor *invRms,
+                               const aclTensor *sumOut, const aclTensor *normOut, bool needBackward)
 {
-    if (tensor != nullptr && tensor->GetStorageFormat() != op::Format::FORMAT_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s's format should be ND, but got %s.",
-                tensorName.c_str(), op::ToString(tensor->GetStorageFormat()).GetString());
-        return false;
-    }
-    return true;
-}
-
-static bool CheckFormat(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
-                       const aclTensor *hin, const aclTensor *hPost, const aclTensor *hRes,
-                       const aclTensor *hPre, const aclTensor *hcBeforeNorm, const aclTensor *invRms,
-                       const aclTensor *sumOut, const aclTensor *normOut, bool needBackward)
-{
-    CHECK_RET(IsFormatSupport(x, "x"), false);
-    CHECK_RET(IsFormatSupport(phi, "phi"), false);
-    CHECK_RET(IsFormatSupport(alpha, "alpha"), false);
-    CHECK_RET(IsFormatSupport(bias, "bias"), false);
-    CHECK_RET(IsFormatSupport(hin, "hin"), false);
-    CHECK_RET(IsFormatSupport(hPost, "hPost"), false);
-    CHECK_RET(IsFormatSupport(hRes, "hRes"), false);
+    CHECK_COND(!op::IsPrivateFormat(x->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+               "format of x %s is invalid.", op::ToString(x->GetStorageFormat()).GetString());
+    CHECK_COND(!op::IsPrivateFormat(phi->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+               "format of phi %s is invalid.", op::ToString(phi->GetStorageFormat()).GetString());
+    CHECK_COND(!op::IsPrivateFormat(alpha->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+               "format of alpha %s is invalid.", op::ToString(alpha->GetStorageFormat()).GetString());
+    CHECK_COND(!op::IsPrivateFormat(bias->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+               "format of bias %s is invalid.", op::ToString(bias->GetStorageFormat()).GetString());
+    CHECK_COND(!op::IsPrivateFormat(hin->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+               "format of hin %s is invalid.", op::ToString(hin->GetStorageFormat()).GetString());
+    CHECK_COND(!op::IsPrivateFormat(hPost->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+               "format of hPost %s is invalid.", op::ToString(hPost->GetStorageFormat()).GetString());
+    CHECK_COND(!op::IsPrivateFormat(hRes->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+               "format of hRes %s is invalid.", op::ToString(hRes->GetStorageFormat()).GetString());
     
     if (needBackward) {
-        CHECK_RET(IsFormatSupport(hPre, "hPre"), false);
-        CHECK_RET(IsFormatSupport(hcBeforeNorm, "hcBeforeNorm"), false);
-        CHECK_RET(IsFormatSupport(invRms, "invRms"), false);
-        CHECK_RET(IsFormatSupport(sumOut, "sumOut"), false);
-        CHECK_RET(IsFormatSupport(normOut, "normOut"), false);
+        CHECK_COND(!op::IsPrivateFormat(hPre->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+                   "format of hPre %s is invalid.", op::ToString(hPre->GetStorageFormat()).GetString());
+        CHECK_COND(!op::IsPrivateFormat(hcBeforeNorm->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+                   "format of hcBeforeNorm %s is invalid.", op::ToString(hcBeforeNorm->GetStorageFormat()).GetString());
+        CHECK_COND(!op::IsPrivateFormat(invRms->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+                   "format of invRms %s is invalid.", op::ToString(invRms->GetStorageFormat()).GetString());
+        CHECK_COND(!op::IsPrivateFormat(sumOut->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+                   "format of sumOut %s is invalid.", op::ToString(sumOut->GetStorageFormat()).GetString());
+        CHECK_COND(!op::IsPrivateFormat(normOut->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
+                   "format of normOut %s is invalid.", op::ToString(normOut->GetStorageFormat()).GetString());
     }
     
-    return true;
+    return ACLNN_SUCCESS;
 }
 
 static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
