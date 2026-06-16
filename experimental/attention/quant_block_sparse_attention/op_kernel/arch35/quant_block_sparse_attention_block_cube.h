@@ -141,7 +141,7 @@ public:
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV);
-
+    GlobalTensor<int32_t> blockTableGm; // pageattention需要
 private:
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitGmTensor(CVSharedParams<isPa> *sharedParams, __gm__ int32_t *actualSeqQlenAddr,
@@ -165,7 +165,6 @@ private:
     __gm__ uint8_t *currentKey; // pageattention需要
     __gm__ uint8_t *currentValue; // pageattention需要
     __gm__ uint8_t *blocktablePtr; // pageattention需要
-    GlobalTensor<int32_t> blockTableGm; // pageattention需要
     static constexpr GmFormat Q_FORMAT = QuantBlockSparseAttentionCube::GetQueryGmFormat<layout>();
     static constexpr GmFormat KV_FORMAT = QuantBlockSparseAttentionCube::GetKVGmFormat<kvLayout>();
     FaGmTensor<INPUT_T, Q_FORMAT, int32_t> queryGm;
@@ -777,6 +776,7 @@ __aicore__ inline bool BSABlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo &constI
 TEMPLATES_DEF
 class BSABlockCubeDummy {
 public:
+    GlobalTensor<int32_t> blockTableGm; // pageattention需要
     static constexpr bool isFp8 = BSABlockCube<TEMPLATE_ARGS>::isFp8;
     static constexpr TPosition bmm2OutPos = BSABlockCube<TEMPLATE_ARGS>::bmm2OutPos;
     static constexpr bool bmm2Write2Ub = BSABlockCube<TEMPLATE_ARGS>::bmm2Write2Ub;
