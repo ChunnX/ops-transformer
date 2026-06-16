@@ -103,12 +103,12 @@ bool CheckDynamicInputShapeNotEmpty(const gert::TilingContext& context, uint32_t
 
 bool IsDynamicInputEmpty(const gert::TilingContext& context, uint32_t index)
 {
-    if (context.GetInputDesc(index) == nullptr) {
-        return true;
-    }
-
     const auto *shapePtr = context.GetDynamicInputShape(index, 0);
     if (shapePtr == nullptr) {
+        return true;
+    }
+    const auto *desc = context.GetDynamicInputDesc(index, 0);
+    if (desc == nullptr) {
         return true;
     }
     const auto &storageShape = shapePtr->GetStorageShape();
@@ -136,7 +136,7 @@ bool CheckDynamicInputDesc(const gert::TilingContext& context, uint32_t inputInd
                            const char* inputName, ge::DataType expectedDtype)
 {
     const auto *desc = context.GetDynamicInputDesc(inputIndex, tensorIndex);
-    OP_CHECK_IF(desc == nullptr,
+    OP_CHECK_IF(desc == nullptr || !desc->IsExist(),
         OP_LOGE(&context, "Dynamic input desc of %s[%u] is nullptr.", inputName, tensorIndex),
         return false);
     OP_CHECK_IF(desc->GetDataType() != expectedDtype,
@@ -150,7 +150,7 @@ bool CheckDynamicInputDesc(const gert::TilingContext& context, uint32_t inputInd
 bool CheckWeightFormat(const gert::TilingContext& context, uint32_t tensorIndex)
 {
     const auto *desc = context.GetDynamicInputDesc(WEIGHT_INDEX, tensorIndex);
-    OP_CHECK_IF(desc == nullptr,
+    OP_CHECK_IF(desc == nullptr || !desc->IsExist(),
         OP_LOGE(OP_NAME, "Dynamic input desc of weight[%u] is nullptr.", tensorIndex), return false);
     auto wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat()));
     if (unlikely(wFormat != ge::FORMAT_FRACTAL_NZ && wFormat != ge::FORMAT_FRACTAL_NZ_C0_32)) {
@@ -165,7 +165,7 @@ bool CheckWeightFormat(const gert::TilingContext& context, uint32_t tensorIndex)
 bool CheckWeightScaleFormat(const gert::TilingContext& context, uint32_t tensorIndex, const char* opName)
 {
     const auto *desc = context.GetDynamicInputDesc(WEIGHT_SCALE_INDEX, tensorIndex);
-    OP_CHECK_IF(desc == nullptr,
+    OP_CHECK_IF(desc == nullptr || !desc->IsExist(),
         OP_LOGE(opName, "Dynamic input desc of weightScale[%u] is nullptr.", tensorIndex), return false);
     auto wScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat()));
     if (unlikely(wScaleFormat != ge::FORMAT_ND && wScaleFormat != ge::FORMAT_NCHW)) {
@@ -329,10 +329,14 @@ bool CheckAttrs([[maybe_unused]] const gert::TilingContext& context, const GMMSQ
 bool CheckDtypes(const gert::TilingContext& context, const GMMSQWeightQuantInputParams& params)
 {
     const auto *xDesc = context.GetInputDesc(X_INDEX);
-    const auto *wDesc = context.GetInputDesc(WEIGHT_INDEX);
+    const auto *wDesc = context.GetDynamicInputDesc(WEIGHT_INDEX, 0);
     const auto *xScaleDesc = context.GetInputDesc(X_SCALE_INDEX);
-    const auto *wScaleDesc = context.GetInputDesc(WEIGHT_SCALE_INDEX);
+    const auto *wScaleDesc = context.GetDynamicInputDesc(WEIGHT_SCALE_INDEX, 0);
     const auto *groupListDesc = context.GetInputDesc(GROUPLIST_INDEX);
+    OP_CHECK_IF(wDesc == nullptr || !wDesc->IsExist(),
+        OP_LOGE(OP_NAME, "Dynamic input desc of weight[0] is nullptr."), return false);
+    OP_CHECK_IF(wScaleDesc == nullptr || !wScaleDesc->IsExist(),
+        OP_LOGE(OP_NAME, "Dynamic input desc of weightScale[0] is nullptr."), return false);
 
     if (unlikely(xDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "x",
@@ -449,7 +453,7 @@ bool CheckInputFormats(const gert::TilingContext& context, const GMMSQWeightQuan
         return false;
     }
 
-    OP_CHECK_IF(!CheckWeightScaleFormat(context, 0, params.opName),
+    OP_CHECK_IF(!CheckWeightScaleFormat(context, 0, params.opName.c_str()),
         OP_LOGE(OP_NAME, "Check weightScale format failed."), return false);
 
     return true;
@@ -603,7 +607,7 @@ bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams
                 OP_LOGE(params.opName, "Check dynamic input desc of weightScale[%ld] failed.", i), return false);
             OP_CHECK_IF(!CheckWeightFormat(context, tensorIndex),
                 OP_LOGE(params.opName, "Check weight[%ld] format failed.", i), return false);
-            OP_CHECK_IF(!CheckWeightScaleFormat(context, tensorIndex, params.opName),
+            OP_CHECK_IF(!CheckWeightScaleFormat(context, tensorIndex, params.opName.c_str()),
                 OP_LOGE(params.opName, "Check weightScale[%ld] format failed.", i), return false);
             if (!CheckInputShape(&context, "weight", curWeightShapePtr->GetStorageShape(), expectedWeightShape)) {
                 return false;
