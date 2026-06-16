@@ -196,6 +196,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
 
     constInfo.s1BaseSize = constInfo.isSparseCountOver2K ? SPARSE_COUNT_8K / constInfo.sparseCount * 2 : 8;
     constInfo.mBaseSize = constInfo.s1BaseSize * constInfo.gSize;
+    constInfo.mBaseSizeAlign = LIV2Common::Align(constInfo.mBaseSize, ConstInfo::BLOCK_CUBE);
 }
 
 template <typename LIT>
@@ -477,7 +478,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
     uint64_t offset = 0;
 
     // mm1开DoubleBuffer
-    uint64_t singleCoreMm1ResSize = WS_DOUBLE * constInfo.mBaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
+    uint64_t singleCoreMm1ResSize = WS_DOUBLE * constInfo.mBaseSizeAlign * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
     mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 
@@ -604,7 +605,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(
         }
         uint64_t tndBIdxOffset = actualSeqQPrefixSum * constInfo.qHeadNum * constInfo.headDim;
         uint64_t tndKeyBIdxOffset = actualSeqKPrefixSum * constInfo.kHeadNum * constInfo.headDim;
-        // B,S1,N1(N2,G),D
+        // B,S1,N1(N2,G),D (Q数据在GM中按原始mBaseSize排列，不使用对齐后的大小)
         queryCoreOffset = tndBIdxOffset + runInfo.gS1Idx * constInfo.mBaseSize * constInfo.headDim;
         keyCoreOffset = tndKeyBIdxOffset + runInfo.n2Idx * constInfo.headDim;
         // B,S1,N1(N2,G)/T,N1(N2,G)

@@ -528,10 +528,10 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
     // bSize_ 来源于query
     if (kLayout_ == DataLayout::BnBsND) {
         OP_CHECK_IF((opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_) ||
-                    (opParamInfo_.cuSeqlensK.tensor->GetShapeSize() != bSize_),
-                OP_LOGE(opName_, "BSND case input query, cu_seqlens_k, block_table dim 0 are %u, %ld, %ld "
+                    (opParamInfo_.sequsedK.tensor->GetShapeSize() != bSize_),
+                OP_LOGE(opName_, "BSND case input query, seqused_k, block_table dim 0 are %u, %ld, %ld "
                     "respectively, they must be same.",
-                    bSize_, opParamInfo_.cuSeqlensK.tensor->GetShapeSize(),
+                    bSize_, opParamInfo_.sequsedK.tensor->GetShapeSize(),
                     opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
     } else if (kLayout_ == DataLayout::BSND) {
