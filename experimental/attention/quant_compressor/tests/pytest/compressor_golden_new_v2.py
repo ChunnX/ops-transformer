@@ -546,7 +546,6 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         if len(cu_seqlens) != (B + 1):
             print(f"Error: the len of cu_seqlens is {len(cu_seqlens)}, it should be equal to B({B}) + 1")
             return
-        return
     if bs_combine_flag:
         for i in range(B):
             if start_pos[i] + (cu_seqlens[i + 1] - cu_seqlens[i]) > S_max:

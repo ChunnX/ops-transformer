@@ -228,7 +228,6 @@ def compressor_output_single(data_case):
         if len(cu_seqlens) != (batch_size + 1):
             print(f"Error: the len of cu_seqlens is {len(cu_seqlens)}, it should be equal to batch_size({batch_size}) + 1")
             return
-        return
     if bs_combine_flag:
         for i in range(batch_size):
             if start_pos[i] + (cu_seqlens[i + 1] - cu_seqlens[i]) > S_max:
