@@ -44,7 +44,7 @@
         <td>gradHin</td>
         <td>输入</td>
         <td>输出h_in的梯度。</td>
-        <td>BFLOAT16,FLOAT16</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -65,7 +65,7 @@
         <td>x</td>
         <td>输入</td>
         <td>前向输入x。</td>
-        <td>BFLOAT16,FLOAT16</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -135,7 +135,7 @@
         <td>gradX</td>
         <td>输出</td>
         <td>输入x的梯度。</td>
-        <td>BFLOAT16,FLOAT16</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -166,9 +166,11 @@
 
 sumOut的shape记为(2*sk_iter_count,B,S,N)
 x的shape记为(B,S,N,C)
-- `sk_iter_count`当前仅支持`20`。
-- `N`当前仅支持`4`。
-- `C`大于0小于100000且可以被128整除。
+gradHRes的shape记为(B,S,N*N)或(B,S,N,N)
+phi和gradPhi的shape记为(2N+N^2, N*C)
+- `sk_iter_count` 当前仅支持 `20`。
+- `N` 当前仅支持 `4`。
+- `C` 大于0 小于 100000 且可以被128整除。
 
 ## 调用说明
 
