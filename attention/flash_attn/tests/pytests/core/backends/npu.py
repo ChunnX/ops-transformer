@@ -8,7 +8,7 @@ from typing import Any, Dict
 from .base import Backend
 
 try:
-    from npu_ops_transformer.ops import npu_flash_attn, npu_flash_attn_metadata
+    from cann_ops_transformer.ops import npu_flash_attn, npu_flash_attn_metadata
     _HAS_NPU = True
 except ImportError:
     _HAS_NPU = False
