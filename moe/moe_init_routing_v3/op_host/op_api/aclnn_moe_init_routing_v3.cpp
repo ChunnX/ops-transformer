@@ -54,7 +54,9 @@ static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_ROW_IDX
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPERT_TOKENS_COUNT_OR_CUMSUMOUT = {DataType::DT_INT64};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT = {DataType::DT_FLOAT};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT_REGBASE = {DataType::DT_FLOAT,
-                                                                                              DataType::DT_FLOAT8_E8M0};
+                                                                                               DataType::DT_FLOAT8_E8M0};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_TOPK_WEIGHT = {DataType::DT_FLOAT};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_TOPK_WEIGHT_OUT = {DataType::DT_FLOAT};
 
 static inline bool CheckNotNull(const aclTensor *x, const aclTensor *expertIdx, const aclTensor *expandedXOut,
                                 const aclTensor *expandedRowIdxOut, const aclTensor *expertTokensCountOrCumsumOut,
@@ -72,9 +74,11 @@ static inline bool CheckNotNull(const aclTensor *x, const aclTensor *expertIdx, 
 
 static inline bool CheckDtypeValidRegbase(const aclTensor *x, const aclTensor *expertIdx,
                                           const aclTensor *scaleOptional, const aclTensor *offsetOptional,
-                                          const aclTensor *expandedXOut, const aclTensor *expandedRowIdxOut,
+                                          const aclTensor *topkWeightOptional, const aclTensor *expandedXOut,
+                                          const aclTensor *expandedRowIdxOut,
                                           const aclTensor *expertTokensCountOrCumsumOut,
-                                          const aclTensor *expandedScaleOut)
+                                          const aclTensor *expandedScaleOut,
+                                          const aclTensor *expandedTopkWeightOut)
 {
     if (x != nullptr && x->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x, DTYPE_SUPPORT_LIST_X_REGBASE, return false);
@@ -88,6 +92,9 @@ static inline bool CheckDtypeValidRegbase(const aclTensor *x, const aclTensor *e
     if (offsetOptional != nullptr && offsetOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(offsetOptional, DTYPE_SUPPORT_LIST_OFFSET, return false);
     }
+    if (topkWeightOptional != nullptr && topkWeightOptional->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(topkWeightOptional, DTYPE_SUPPORT_LIST_TOPK_WEIGHT, return false);
+    }
     if (expandedXOut != nullptr && expandedXOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedXOut, DTYPE_SUPPORT_LIST_EXPANDED_X_OUT_REGBASE, return false);
     }
@@ -100,6 +107,9 @@ static inline bool CheckDtypeValidRegbase(const aclTensor *x, const aclTensor *e
     }
     if (expandedScaleOut != nullptr && expandedScaleOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedScaleOut, DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT_REGBASE, return false);
+    }
+    if (expandedTopkWeightOut != nullptr && expandedTopkWeightOut->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(expandedTopkWeightOut, DTYPE_SUPPORT_LIST_EXPANDED_TOPK_WEIGHT_OUT, return false);
     }
     return true;
 }
@@ -151,8 +161,9 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(const aclTensor *x,
 
     // regbase场景下dtype校验
     if (Ops::Transformer::AclnnUtil::IsRegbase()) {
-        CHECK_RET(CheckDtypeValidRegbase(x, expertIdx, scaleOptional, offsetOptional, expandedXOut, expandedRowIdxOut,
-                                         expertTokensCountOrCumsumOut, expandedScaleOut),
+        CHECK_RET(CheckDtypeValidRegbase(x, expertIdx, scaleOptional, offsetOptional, topk_weightOptional,
+                                         expandedXOut, expandedRowIdxOut,
+                                         expertTokensCountOrCumsumOut, expandedScaleOut, expanded_topk_weightOut),
                   ACLNN_ERR_PARAM_INVALID);
     }
 

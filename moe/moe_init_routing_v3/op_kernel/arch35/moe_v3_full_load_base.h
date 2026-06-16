@@ -81,7 +81,8 @@ public:
 protected:
     __aicore__ inline void CopyIn();
     __aicore__ inline void InitGlobalBuffers(GM_ADDR expertIdx, GM_ADDR expandedRowIdx,
-                                             GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace);
+                                             GM_ADDR expertTokensCountOrCumsum, GM_ADDR topkWeight,
+                                             GM_ADDR expandedTopkWeight, GM_ADDR workspace);
     __aicore__ inline void InitQueBuffers();
     __aicore__ inline void SortCompute();
     __aicore__ inline void FilterExpertIdx(LocalTensor<int32_t> &expertIdxLocal,
@@ -194,6 +195,7 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     this->actualExpertNum_ = tilingData->actualExpertNum;
     this->epFullload_ = tilingData->epFullload;
     this->pipe_ = tPipe;
+    isInputTopkWeight_ = tilingData->isInputTopkWeight;
 
     if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
         expertCountElements_ = ((actualExpertNum_ + 1) < expertNum_) ?
@@ -209,19 +211,14 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     startXRow_ = curIndexStart_ / this->k_;
     endXRow_ = (curIndexStart_ + this->coreIndicesElements_ - 1) / this->k_;
 
-    InitGlobalBuffers(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace);
-    isInputTopkWeight_ = tilingData->isInputTopkWeight;
-    if (isInputTopkWeight_ == 1) {
-        topkWeightGm_.SetGlobalBuffer((__gm__ float *)topkWeight, totalLength_);
-        expandedTopkWeightGm_.SetGlobalBuffer((__gm__ float *)expandedTopkWeight,
-                                                (dropPadMode_ == DROP_PAD_MODE) ? outputRows_ : totalLength_);
-    }
+    InitGlobalBuffers(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, topkWeight, expandedTopkWeight, workspace);
     InitQueBuffers();
 }
 
 template <typename T>
 __aicore__ inline void MoeV3FullLoadBase<T>::InitGlobalBuffers(GM_ADDR expertIdx, GM_ADDR expandedRowIdx,
-                                                                GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace)
+                                                                GM_ADDR expertTokensCountOrCumsum, GM_ADDR topkWeight,
+                                                                GM_ADDR expandedTopkWeight, GM_ADDR workspace)
 {
     expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength_);
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength_);
@@ -232,6 +229,12 @@ __aicore__ inline void MoeV3FullLoadBase<T>::InitGlobalBuffers(GM_ADDR expertIdx
 
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(this->totalLength_, sizeof(int32_t)) * 2 +
                                         Align(this->actualExpertNum_, sizeof(int32_t)), 1);
+
+    if (isInputTopkWeight_ == 1) {
+        topkWeightGm_.SetGlobalBuffer((__gm__ float *)topkWeight, totalLength_);
+        expandedTopkWeightGm_.SetGlobalBuffer((__gm__ float *)expandedTopkWeight,
+                                                (dropPadMode_ == DROP_PAD_MODE) ? outputRows_ : totalLength_);
+    }
 }
 
 template <typename T>
