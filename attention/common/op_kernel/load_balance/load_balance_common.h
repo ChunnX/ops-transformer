@@ -17,6 +17,7 @@
 #define LOAD_BALANCE_COMMON_H
 
 #include <cstdint>
+#include <string>
 #include <array>
 #include <functional>
 #include <unordered_map>
@@ -93,7 +94,7 @@ inline T CeilDiv(T a, T b)
     if (b == 0) {
         return 0;
     }
-    return a / b + (a % b != 0);        // avoid overflow
+    return a / b + (a % b != 0 ? 1 : 0);        // avoid overflow
 }
 
 template<class T>
