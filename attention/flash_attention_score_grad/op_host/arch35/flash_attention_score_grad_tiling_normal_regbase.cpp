@@ -1061,7 +1061,6 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     preTilingData_->set_vPreBlockTotal(vPreBlockTotal);
     preTilingData_->set_vPreBlockTail(vPreTailNum);
     preTilingData_->set_dropoutIsDivisibleBy8(fBaseParams.dropoutIsDivisibleBy8);
-    preTilingData_->set_maskPreBlockTotal(maskPreBlockTotal);
     preTilingData_->set_sValueZeroUnderTND(fBaseParams.sValueZeroUnderTND);
     preTilingData_->set_hasInvalidCol(fBaseParams.isInvalidCol);
 }
@@ -1108,7 +1107,6 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
         postTilingData_->set_sinkPostTailNum(sinkPostTailNum);
     }
 
-    postTilingData_->set_postUbBaseSize(postUbBaseSize);
     postTilingData_->set_qPostBlockFactor(qPostBlockFactor);
     postTilingData_->set_qPostBlockTotal(qPostBlockTotal);
     postTilingData_->set_qPostBaseNum(qPostBaseNum);
@@ -1207,7 +1205,6 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
         // fp8 vScaleDs
         if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
             fBaseParams.queryType == ge::DT_HIFLOAT8) {
-            postTilingData_->set_vScaleDsWorkSpaceOffset(workspaceSize);
             workspaceSize =
                 (workspaceSize + fBaseParams.coreNum * ALIGN128 * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
         }
@@ -1247,10 +1244,10 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
 void FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize4Deter(size_t &workspaceSize)
 {
     if (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_OLD)) {
-        postTilingData_->set_deterGmOffset(workspaceSize);
+        baseDeterParam_->set_deterGmOffset(workspaceSize);
         workspaceSize += (fBaseParams.s1Inner * S1CV_RATIO_DEFAULT + NUM_TWO * fBaseParams.s2Inner) *
                          fBaseParams.sfmgdInner * fBaseParams.aicNum * FP32_BYTES * NUM_TWO;
-        postTilingData_->set_deterWorkSpaceOffset(workspaceSize);
+        baseDeterParam_->set_deterWorkSpaceOffset(workspaceSize);
         // NUM_THREE: querGmOffset, keyGmOffset and valueGmOffset
         workspaceSize += fBaseParams.maxValidBBLen * fBaseParams.aicNum * INT64_BLOCK_NUM * NUM_THREE * INT64_BYTES;
     }
@@ -1258,7 +1255,7 @@ void FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize4Deter(size_t &
     if (fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
         (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) ||
          fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE))) {
-        postTilingData_->set_deterGmOffset(workspaceSize);
+        baseDeterParam_->set_deterGmOffset(workspaceSize);
         workspaceSize += (fBaseParams.s2Inner * fBaseParams.sfmgdInner * CORE_LIST_NUM * FP32_BYTES + GM_ALIGN) /
                          GM_ALIGN * GM_ALIGN * NUM_TWO;
     }
@@ -1585,7 +1582,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
 {
     bool isTnd = (fBaseParams.layoutType == INPUT_FORMAT_TND);
     if (IsNewDeter(fBaseParams) && tndBaseInfo.isTndSwizzle) {
-        FagTilingWithTemplateTTT *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTTT>();
+        FagTilingWithTemplateTTTT *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTTTT>();
         if (tilingData == nullptr) {
             OP_LOGE("InitTilingData", "InitTilingData failed.");
             return ge::GRAPH_FAILED;
@@ -1597,8 +1594,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
         postTilingData_ = &tilingData->postTilingData;
         deterParam = &tilingData->deterParam;
         tndSwizzleParam_ = &tilingData->tndSwizzleParam;
+        baseDeterParam_ = &tilingData->baseDeterParam;
     } else if (IsNewDeter(fBaseParams)) {
-        FagTilingWithTemplateTTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTTF>();
+        FagTilingWithTemplateTTTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTTTF>();
         if (tilingData == nullptr) {
             OP_LOGE("InitTilingData", "InitTilingData failed.");
             return ge::GRAPH_FAILED;
@@ -1609,8 +1607,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
         preTilingData_ = &tilingData->preTilingData;
         postTilingData_ = &tilingData->postTilingData;
         deterParam = &tilingData->deterParam;
+        baseDeterParam_ = &tilingData->baseDeterParam;
     } else if (tndBaseInfo.isTndSwizzle) {
-        FagTilingWithTemplateFTT *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFTT>();
+        FagTilingWithTemplateFFTT *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFTT>();
         if (tilingData == nullptr) {
             OP_LOGE("InitTilingData", "InitTilingData failed.");
             return ge::GRAPH_FAILED;
@@ -1622,28 +1621,23 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
         postTilingData_ = &tilingData->postTilingData;
         tndSwizzleParam_ = &tilingData->tndSwizzleParam;
     } else if (isTnd) {
-        FagTilingWithTemplateFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFTF>();
-        if (tilingData == nullptr) {
-            OP_LOGE("InitTilingData", "InitTilingData failed.");
-            return ge::GRAPH_FAILED;
+        if (fBaseParams.isDeterministic) {
+            FagTilingWithTemplateTFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTFTF>();
+            TND_TILING_DATA_COMMON_ASSIGN(tilingData);
+            baseDeterParam_ = &tilingData->baseDeterParam;
+        } else {
+            FagTilingWithTemplateFFTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFTF>();
+            TND_TILING_DATA_COMMON_ASSIGN(tilingData);
         }
-        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;
-        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;
-        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;
-        preTilingData_ = &tilingData->preTilingData;
-        postTilingData_ = &tilingData->postTilingData;
-        tndParam_ = &tilingData->tndParam;
     } else {
-        FagTilingWithTemplateFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFF>();
-        if (tilingData == nullptr) {
-            OP_LOGE("InitTilingData", "InitTilingData failed.");
-            return ge::GRAPH_FAILED;
+        if (fBaseParams.isDeterministic) {
+            FagTilingWithTemplateTFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTFFF>();
+            BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
+            baseDeterParam_ = &tilingData->baseDeterParam;
+        } else {
+            FagTilingWithTemplateFFFF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateFFFF>();
+            BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
         }
-        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;
-        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;
-        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;
-        preTilingData_ = &tilingData->preTilingData;
-        postTilingData_ = &tilingData->postTilingData;
     }
     if (s1s2BNGS1S2BaseParams_ == nullptr || s1s2BNGS1S2SplitCoreParams_ == nullptr ||
         s1s2BNGS1S2BlockNumList_ == nullptr || preTilingData_ == nullptr || postTilingData_ == nullptr) {
@@ -1664,14 +1658,11 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_d(fBaseParams.d);
     s1s2BNGS1S2BaseParams_->set_d1(fBaseParams.d1);
     s1s2BNGS1S2BaseParams_->set_s2(fBaseParams.s2);
-    s1s2BNGS1S2BaseParams_->set_pseOptional(fBaseParams.pseOptional);
     s1s2BNGS1S2BaseParams_->set_pseType(fBaseParams.pseType);
     s1s2BNGS1S2BaseParams_->set_pseShapeType(fBaseParams.pseShapeType);
     s1s2BNGS1S2BaseParams_->set_pseLayoutType(fBaseParams.pseLayoutType);
     s1s2BNGS1S2BaseParams_->set_pseDtype(fBaseParams.pseDtype);
-    s1s2BNGS1S2BaseParams_->set_attenMaskOptional(fBaseParams.attenMaskOptional);
     s1s2BNGS1S2BaseParams_->set_attenMaskShapeType(fBaseParams.attenMaskShapeType);
-    s1s2BNGS1S2BaseParams_->set_attenMaskDtype(fBaseParams.attenMaskDtype);
     s1s2BNGS1S2BaseParams_->set_layout(fBaseParams.layoutType);
     s1s2BNGS1S2BaseParams_->set_tndMaxSumLayout(fBaseParams.tndMaxSumLayout);
     s1s2BNGS1S2BaseParams_->set_scaleValue(fBaseParams.scaleValue);
@@ -1730,16 +1721,18 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BlockNumList_->set_blockEnds(fBaseParams.blockEnds);
     s1s2BNGS1S2SplitCoreParams_->set_blockOuter(fBaseParams.blockOuter);
     s1s2BNGS1S2SplitCoreParams_->set_maxValidBBLen(fBaseParams.maxValidBBLen);
-    s1s2BNGS1S2SplitCoreParams_->set_noNeedDeter(fBaseParams.noNeedDeter);
-    s1s2BNGS1S2SplitCoreParams_->set_deterMaxRound(fBaseParams.deterMaxRound);
-    if ((fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) ||
-         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
-        fBaseParams.layoutType == INPUT_FORMAT_TND) {
-        s1s2BNGS1S2SplitCoreParams_->set_dqIsNeedDeter(fBaseParams.startNeedSyncRound);
-        s1s2BNGS1S2SplitCoreParams_->set_dkDvIsNeedDeter(fBaseParams.endNeedSyncRound);
-    } else {
-        s1s2BNGS1S2SplitCoreParams_->set_dqIsNeedDeter(fBaseParams.dqIsNeedDeter);
-        s1s2BNGS1S2SplitCoreParams_->set_dkDvIsNeedDeter(fBaseParams.dkDvIsNeedDeter);
+    if (fBaseParams.isDeterministic) {
+        baseDeterParam_->set_noNeedDeter(fBaseParams.noNeedDeter);
+        baseDeterParam_->set_deterMaxRound(fBaseParams.deterMaxRound);
+        if ((fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) ||
+            fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
+            fBaseParams.layoutType == INPUT_FORMAT_TND) {
+            baseDeterParam_->set_dqIsNeedDeter(fBaseParams.startNeedSyncRound);
+            baseDeterParam_->set_dkDvIsNeedDeter(fBaseParams.endNeedSyncRound);
+        } else {
+            baseDeterParam_->set_dqIsNeedDeter(fBaseParams.dqIsNeedDeter);
+            baseDeterParam_->set_dkDvIsNeedDeter(fBaseParams.dkDvIsNeedDeter);
+        }
     }
     if (IsNewDeter(fBaseParams) && deterParam != nullptr) {
         deterParam->set_coreDivide(fBaseParams.coreDivide);
