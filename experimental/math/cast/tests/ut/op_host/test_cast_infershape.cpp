@@ -12,8 +12,8 @@
 
 class CastInferShape310p : public testing::Test {};
 
-TEST_F(CastInferShape310p, placeholder_phase1)
+TEST_F(CastInferShape310p, build_linkage)
 {
-    // elementwise infershape (y = x) covered by examples in phase 2; build placeholder
+    // Elementwise infershape is y = x; this UT keeps op_host linkage covered.
     EXPECT_TRUE(true);
 }

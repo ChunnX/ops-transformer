@@ -10,7 +10,7 @@
 
 /*!
  * \file cast_tiling.cpp
- * \brief Cast tiling for ascend310p, elementwise split following ops-math arch35 formula
+ * \brief Cast tiling for ascend310p, elementwise split
  */
 
 #include "cast_tiling.h"

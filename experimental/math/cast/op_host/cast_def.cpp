@@ -10,13 +10,13 @@
 
 /*!
  * \file cast_def.cpp
- * \brief Cast op definition for ascend310p (phase 1: hardware DIRECT + TWO_CAST via f16)
+ * \brief Cast op definition for ascend310p
  */
 
 #include "register/op_def_registry.h"
 
 namespace ops {
-// 45 dtype pairs: phase1 32 + phase2 i64 family 5 + bf16 input family 8
+// 45 dtype pairs: base cast family 32 + int64 family 5 + bf16 input family 8
 static const std::vector<ge::DataType> xDataType310p = {
     // f16 -> f32 i32 i8 u8 i16 bool
     ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
@@ -32,9 +32,9 @@ static const std::vector<ge::DataType> xDataType310p = {
     ge::DT_INT16, ge::DT_INT16,
     // bool -> f16 f32 i32 u8
     ge::DT_BOOL, ge::DT_BOOL, ge::DT_BOOL, ge::DT_BOOL,
-    // phase2 i64 family: i64 -> i32 f32 f16; i32/f32 -> i64
+    // int64 family: i64 -> i32 f32 f16; i32/f32 -> i64
     ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT32, ge::DT_FLOAT,
-    // phase2 bf16 input only: bf16 -> f32 f16 i32 i8 u8 bool i16 i64
+    // bf16 input only: bf16 -> f32 f16 i32 i8 u8 bool i16 i64
     ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16
 };
 static const std::vector<ge::DataType> yDataType310p = {

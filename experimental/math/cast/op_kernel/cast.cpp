@@ -10,9 +10,10 @@
 
 /*!
  * \file cast.cpp
- * \brief Cast kernel for ascend310p (dav_m200).
- *        phase1: DIRECT vconv + TWO_CAST via f16 + DST_BOOL
- *        phase2: int64 family (GatherMask narrow / sign-extend widen) + bf16 input family (bit ops via f32)
+ * \brief Cast kernel for Atlas 300V Pro / ascend310p (dav_m200).
+ *
+ * Supported software paths are kept in this file because dav_m200 lacks native
+ * int64 and bf16 vector conversion primitives for the task-required pairs.
  */
 
 #include "kernel_operator.h"
@@ -71,8 +72,9 @@ using AscendC::RoundMode;
 constexpr int CAST_X = ORIG_DTYPE_X;
 constexpr int CAST_Y = ORIG_DTYPE_Y;
 constexpr int BUFFER_NUM = 2;
+constexpr int64_t DATA_BLOCK_BYTES = 32;
 
-// storage type: bf16 input handled as uint16_t, int64 as uint32_t pairs (2 lanes per element)
+// Storage type: bf16 input is uint16_t; int64 is two uint32_t lanes per element.
 template <int D> struct DtMap;
 template <> struct DtMap<DT_FLOAT> { using T = float; };
 template <> struct DtMap<DT_FLOAT16> { using T = half; };
@@ -120,10 +122,9 @@ public:
     static constexpr bool DIRECT = !DST_BOOL && !HAS64 && !HASBF && !SCALAR_I16_F32 && IsDirectPair(X, Y);
     static constexpr bool TWO_CAST = !DST_BOOL && !DIRECT && !HAS64 && !HASBF;
     static constexpr bool NEED_MID = TWO_CAST || DST_BOOL || HAS64 || HASBF;
-    static constexpr bool NEED_DEQ = (X == DT_INT32 && (NEED_MID || Y == DT_FLOAT16)) ||
-                                     false;
-    // mid buffers: phase1 paths need one f16 lane; 64bit/bf16 paths need two 4-byte stages.
-    static constexpr int MID_BYTES = (HAS64 || HASBF) ? 4 : 2;
+    static constexpr bool NEED_DEQ = (X == DT_INT32 && (NEED_MID || Y == DT_FLOAT16));
+    static constexpr bool NEED_SCALAR_MTE2_FENCE = HAS64 || HASBF || SCALAR_I16_F32;
+    static constexpr int STAGE_BYTES = (HAS64 || HASBF) ? 4 : 2;
 
 public:
     __aicore__ inline CastKernel() {}
@@ -147,10 +148,10 @@ public:
         pipe_.InitBuffer(inQue_, BUFFER_NUM, ubFormer_ * sizeof(TX) * LanesOf(X));
         pipe_.InitBuffer(outQue_, BUFFER_NUM, ubFormer_ * sizeof(TY) * LanesOf(Y));
         if constexpr (NEED_MID) {
-            pipe_.InitBuffer(midBuf_, ubFormer_ * MID_BYTES);
+            pipe_.InitBuffer(midBuf_, ubFormer_ * STAGE_BYTES);
         }
         if constexpr (HAS64 || HASBF) {
-            pipe_.InitBuffer(mid2Buf_, ubFormer_ * MID_BYTES);
+            pipe_.InitBuffer(mid2Buf_, ubFormer_ * STAGE_BYTES);
         }
         if constexpr (NEED_DEQ) {
             AscendC::SetDeqScale(static_cast<half>(1.0));
@@ -173,11 +174,25 @@ private:
         return (n + align - 1) / align * align;
     }
 
+    template <typename T>
+    __aicore__ inline int64_t AlignDataBlockLanes(int64_t lanes)
+    {
+        return CeilAlign(lanes, DATA_BLOCK_BYTES / sizeof(T));
+    }
+
+    template <AscendC::HardEvent EVENT>
+    __aicore__ inline void SyncEvent()
+    {
+        event_t evt = static_cast<event_t>(GetTPipePtr()->FetchEventID(EVENT));
+        AscendC::SetFlag<EVENT>(evt);
+        AscendC::WaitFlag<EVENT>(evt);
+    }
+
     __aicore__ inline void CopyIn(int64_t loop, int64_t count)
     {
         AscendC::LocalTensor<TX> inLocal = inQue_.AllocTensor<TX>();
         int64_t lanes = count * LanesOf(X);
-        AscendC::DataCopy(inLocal, xGm_[loop * ubFormer_ * LanesOf(X)], CeilAlign(lanes, 32 / sizeof(TX)));
+        AscendC::DataCopy(inLocal, xGm_[loop * ubFormer_ * LanesOf(X)], AlignDataBlockLanes<TX>(lanes));
         inQue_.EnQue(inLocal);
     }
 
@@ -192,13 +207,11 @@ private:
 
     __aicore__ inline void SyncScalarToVector()
     {
-        event_t evt = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_V));
-        AscendC::SetFlag<AscendC::HardEvent::S_V>(evt);
-        AscendC::WaitFlag<AscendC::HardEvent::S_V>(evt);
+        SyncEvent<AscendC::HardEvent::S_V>();
     }
 
 
-    // i32 -> i64 (u32 pairs): scalar even-lane write + sign extension (phase2 baseline, vectorize in phase3)
+    // i32 -> i64 (u32 pairs): scalar even-lane write + sign extension.
     __aicore__ inline void Widen64(const AscendC::LocalTensor<int32_t>& src,
                                    const AscendC::LocalTensor<uint32_t>& dst, int64_t count)
     {
@@ -209,7 +222,7 @@ private:
         }
     }
 
-    // bf16 (u16) -> f32: bit splice into high16, lossless
+    // bf16 (u16) -> f32: bit splice into high16, lossless.
     __aicore__ inline void Bf16ToF32(const AscendC::LocalTensor<uint16_t>& src,
                                      const AscendC::LocalTensor<float>& dst, int64_t count)
     {
@@ -224,10 +237,8 @@ private:
         AscendC::LocalTensor<TX> inLocal = inQue_.DeQue<TX>();
         AscendC::LocalTensor<TY> outLocal = outQue_.AllocTensor<TY>();
         uint32_t calc = static_cast<uint32_t>(CeilAlign(count, 32));
-        if constexpr (HAS64 || HASBF || SCALAR_I16_F32) {  // scalar code may read inLocal right after MTE2 copy
-            event_t e = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_S));
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(e);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(e);
+        if constexpr (NEED_SCALAR_MTE2_FENCE) {
+            SyncEvent<AscendC::HardEvent::MTE2_S>();
         }
         if constexpr (SCALAR_I16_F32) {
             for (int64_t i = 0; i < count; ++i) {
@@ -259,10 +270,8 @@ private:
         } else {  // X == DT_BF16
             ComputeFromBf16(inLocal, outLocal, count, calc);
         }
-        if constexpr (HAS64 || HASBF || SCALAR_I16_F32) {  // scalar code may write outLocal right before MTE3 copy
-            event_t e = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_MTE3));
-            AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(e);
-            AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(e);
+        if constexpr (NEED_SCALAR_MTE2_FENCE) {
+            SyncEvent<AscendC::HardEvent::S_MTE3>();
         }
         inQue_.FreeTensor(inLocal);
         outQue_.EnQue(outLocal);
@@ -300,21 +309,15 @@ private:
             AscendC::LocalTensor<int32_t> mid = midBuf_.Get<int32_t>();
             AscendC::Cast(mid, inLocal, RoundMode::CAST_RINT, calc);
             AscendC::PipeBarrier<PIPE_V>();
-            event_t evt = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_S));
-            AscendC::SetFlag<AscendC::HardEvent::V_S>(evt);
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(evt);
+            SyncEvent<AscendC::HardEvent::V_S>();
             Widen64(mid, dst, count);
         } else {  // DT_BF16 -> i64: bits->f32->i32->widen
             AscendC::LocalTensor<float> midF = midBuf_.Get<float>();
             AscendC::LocalTensor<int32_t> midI = mid2Buf_.Get<int32_t>();
             Bf16ToF32(inLocal.template ReinterpretCast<uint16_t>(), midF, count);
-            event_t evtSV = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_V));
-            AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
-            AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
+            SyncEvent<AscendC::HardEvent::S_V>();
             AscendC::Cast(midI, midF, RoundMode::CAST_RINT, calc);
-            event_t evtVS = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_S));
-            AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS);
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS);
+            SyncEvent<AscendC::HardEvent::V_S>();
             Widen64(midI, dst, count);
         }
     }
@@ -329,9 +332,7 @@ private:
         }
         AscendC::LocalTensor<float> midF = midBuf_.Get<float>();
         Bf16ToF32(src, midF, count);
-        event_t evtSV = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_V));
-        AscendC::SetFlag<AscendC::HardEvent::S_V>(evtSV);
-        AscendC::WaitFlag<AscendC::HardEvent::S_V>(evtSV);
+        SyncEvent<AscendC::HardEvent::S_V>();
         if constexpr (Y == DT_FLOAT16) {
             AscendC::Cast(outLocal, midF, RoundMode::CAST_NONE, calc);
         } else if constexpr (Y == DT_INT32) {
@@ -362,7 +363,7 @@ private:
     {
         AscendC::LocalTensor<TY> outLocal = outQue_.DeQue<TY>();
         int64_t lanes = count * LanesOf(Y);
-        AscendC::DataCopy(yGm_[loop * ubFormer_ * LanesOf(Y)], outLocal, CeilAlign(lanes, 32 / sizeof(TY)));
+        AscendC::DataCopy(yGm_[loop * ubFormer_ * LanesOf(Y)], outLocal, AlignDataBlockLanes<TY>(lanes));
         outQue_.FreeTensor(outLocal);
     }
 
