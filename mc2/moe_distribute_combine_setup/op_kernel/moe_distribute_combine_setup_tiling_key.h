@@ -18,8 +18,9 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 
 // 模板参数
+// 注意：TILINGKEY_TP 只支持 TP=0 模式（setup 算子只在特定模式使用）
 ASCENDC_TPL_ARGS_DECL(MoeDistributeCombineSetup,
-    ASCENDC_TPL_BOOL_DECL(TILINGKEY_TP, 0, 1),
+    ASCENDC_TPL_BOOL_DECL(TILINGKEY_TP, 0),
 );
 
 // 模板参数组合
