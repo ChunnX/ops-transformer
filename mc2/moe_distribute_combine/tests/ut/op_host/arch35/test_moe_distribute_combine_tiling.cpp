@@ -67,18 +67,18 @@ TEST_F(MoeDistributeCombineArch35TilingTest, BasicSharedExpert)
         &compileInfo,
         "Ascend950", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 64UL);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 32UL);
 }
 
-// Success: tpWorldSize=2, covers tp=true branch and SetHCommCfg TP branch
-TEST_F(MoeDistributeCombineArch35TilingTest, TpWorldSize2)
+// Success: tpWorldSize=1, 校验 tp 属性参数
+TEST_F(MoeDistributeCombineArch35TilingTest, TpWorldSize1)
 {
     struct MoeDistributeCombineCompileInfo {};
     MoeDistributeCombineCompileInfo compileInfo;
     std::string epGroup("epGroup");
     std::string tpGroup("tpGroup");
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -97,7 +97,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, TpWorldSize2)
             {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{288}, {288}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
@@ -125,7 +125,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, TpWorldSize2)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-// tpWorldSize=2 + commQuantMode=2 (should fail: tpWorldSize>1 requires commQuantMode=0)
+// tpWorldSize>=2 校验失败
 TEST_F(MoeDistributeCombineArch35TilingTest, Int8CommQuant)
 {
     struct MoeDistributeCombineCompileInfo {};
@@ -316,7 +316,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, EpWorldSize2)
             {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{8, 1}, {8, 1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{8, 1}, {8, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
         },
@@ -353,7 +353,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, MoeExpertRank)
     std::string epGroup("epGroup");
     std::string tpGroup("tpGroup");
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 32;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -372,7 +372,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, MoeExpertRank)
             {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{288}, {288}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
@@ -730,15 +730,15 @@ TEST_F(MoeDistributeCombineArch35TilingTest, MoeExpertRankSuccess)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-// tpWorldSize=2 with valid shapes (expandX dim1=7168), attempts tp=true branch
-TEST_F(MoeDistributeCombineArch35TilingTest, TpWorldSize2Success)
+// tpWorldSize=1 with valid shapes (expandX dim1=7168)
+TEST_F(MoeDistributeCombineArch35TilingTest, TpWorldSize1Success)
 {
     struct MoeDistributeCombineCompileInfo {};
     MoeDistributeCombineCompileInfo compileInfo;
     std::string epGroup("epGroup");
     std::string tpGroup("tpGroup");
     int64_t epWorldSize = 8;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -758,7 +758,7 @@ TEST_F(MoeDistributeCombineArch35TilingTest, TpWorldSize2Success)
             {{{7*8}, {7*8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{16}, {16}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{8, 7}, {8, 7}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
             {{{8, 7168}, {8, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
