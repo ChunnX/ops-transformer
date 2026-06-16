@@ -1459,6 +1459,11 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+if [[ "${ENABLE_BUILD_PKG}" == "TRUE" ]] && [[ "${ENABLE_BUILT_IN}" == "TRUE" ]] && [[ "${ENABLE_AICPU}" != "FALSE" ]]; then
+    ENABLE_AICPU_KERNEL=TRUE
+fi
+
 set_ut_mode
 
 if [ -n "$KERNEL_TEMPLATE_INPUT" ]; then

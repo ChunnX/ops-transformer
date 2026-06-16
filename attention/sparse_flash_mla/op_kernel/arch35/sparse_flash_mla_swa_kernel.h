@@ -217,7 +217,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Par
     constInfo.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
         int64_t s2Size;
-        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
             GlobalTensor<int32_t> actualSeqLengthsKVGm;
             actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedOriKV);
             s2Size = actualSeqLengthsKVGm.GetValue(bIdx);

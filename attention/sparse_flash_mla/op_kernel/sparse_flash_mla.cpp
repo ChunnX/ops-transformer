@@ -56,7 +56,7 @@ using namespace SMLAKernel;
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                     \
         op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,             \
-                cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV,                                      \
+                cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV,         \
                 sinks, metadata, attentionOut, softmaxLse, user, tiling_data, tiling, &tPipe);               \
         op.Process();                                                                                        \
     } while (0)
@@ -81,11 +81,11 @@ sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *c
 #if (__CCE_AICORE__ == 310)
     if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
         SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaScfaKernel, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, float,
-            bfloat16_t, FLASH_DECODE, (KV_LAYOUT_T == SMLA_LAYOUT_PA_BBND), static_cast<SMLA_LAYOUT>(LAYOUT_T),
+            bfloat16_t, FLASH_DECODE, (KV_LAYOUT_T == SMLA_LAYOUT_PA_BNBD), static_cast<SMLA_LAYOUT>(LAYOUT_T),
             static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
     } else {
         SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaSwaKernel, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, float,
-            bfloat16_t, FLASH_DECODE, (KV_LAYOUT_T == SMLA_LAYOUT_PA_BBND), static_cast<SMLA_LAYOUT>(LAYOUT_T),
+            bfloat16_t, FLASH_DECODE, (KV_LAYOUT_T == SMLA_LAYOUT_PA_BNBD), static_cast<SMLA_LAYOUT>(LAYOUT_T),
             static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
     }
 #else

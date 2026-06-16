@@ -626,7 +626,7 @@ def gen_ori_kv(layout_q, layout_kv, ori_kv_type, B, S1, S2, T1, T2, N2, D, block
     cu_seqlens_q, cu_seqlens_ori_kv, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_mask_mode,
     ori_sparse_indices_mode, ori_kv_topk_mode, template_idx, data_range_left=DATA_RANGE_LEFT,
     data_range_right=DATA_RANGE_RIGHT):
-    if layout_kv == "PA_BBND":
+    if layout_kv == "PA_BNBD":
         ori_max_s2 = max(seqused_ori_kv)
         ori_max_block_num_per_batch = math.ceil(ori_max_s2 / block_size1)
 
@@ -694,10 +694,10 @@ def gen_cmp_kv(layout_q, layout_kv, cmp_kv_type, B, S1, S2, T1, T2, T3, N2, D, K
     data_range_right=DATA_RANGE_RIGHT):
     if cmp_ratio is None:
         raise ValueError(f"cmp_ratio can't be None")
-    if cmp_ratio == 0:
-        raise ValueError(f"cmp_ratio can't be 0")
+    if cmp_ratio < 1 or cmp_ratio > 128:
+        raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
 
-    if layout_kv == "PA_BBND":
+    if layout_kv == "PA_BNBD":
         ori_max_s2 = max(seqused_ori_kv)
         cmp_max_s2 = math.floor(ori_max_s2 / cmp_ratio)
         cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2)
@@ -832,7 +832,7 @@ def gen_data(params, template_mode=None):
     if seqused_q is not None:
         seqused_q = torch.tensor(seqused_q).to(torch.int32)
 
-    if layout_kv == "PA_BBND" and len(seqused_ori_kv) != B:
+    if layout_kv == "PA_BNBD" and len(seqused_ori_kv) != B:
         raise ValueError(f"len(seqused_ori_kv) != B, which is {len(seqused_ori_kv)} != {B}")
     elif layout_kv == "TND" :
         if len(cu_seqlens_ori_kv) != B + 1:
@@ -870,13 +870,15 @@ def gen_data(params, template_mode=None):
     else:
         raise ValueError(f"layout_q is not support {layout_q}")
 
-    # generate ori_kv/cmp_kv (only support PA_BBND)
-    if layout_kv in ["PA_BBND", "TND", "BSND"]:
+    # generate ori_kv/cmp_kv (only support PA_BNBD)
+    if layout_kv in ["PA_BNBD", "TND", "BSND"]:
         pass
     else:
         raise ValueError(f"layout_kv is not support {layout_kv}")
 
-    if seqused_ori_kv is not None and cmp_ratio is not None and cmp_ratio != 0:
+    if seqused_ori_kv is not None and cmp_ratio is not None:
+        if cmp_ratio < 1:
+            raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
         seqused_cmp_kv = seqused_ori_kv // cmp_ratio
         cmp_residual_kv = seqused_ori_kv % cmp_ratio
     # 路由到三个算子的逻辑：
@@ -913,7 +915,7 @@ def gen_data(params, template_mode=None):
                 cmp_ratio = int(cmp_ratio)
             K = int(K)
     print("template_run_mode: ", template_run_mode)
-    if layout_kv == "PA_BBND":
+    if layout_kv == "PA_BNBD":
         block_size1, block_num1 = int(block_size1), int(block_num1)
         if template_idx != 0:
             block_size2, block_num2 = int(block_size2), int(block_num2)
@@ -971,11 +973,12 @@ def gen_data(params, template_mode=None):
             'seqused_ori_kv': seqused_ori_kv,
             'seqused_cmp_kv': seqused_cmp_kv,
             'cmp_residual_kv': cmp_residual_kv,
-            'ori_topk_length': ori_topk_length,
-            'cmp_topk_length': cmp_topk_length,
+            'ori_topk_length': None,
+            'cmp_topk_length': None,
             'B': B,
             'max_seqlen_q': max_seqlen_q,
-            'max_seqlen_kv': max(seqused_ori_kv) if seqused_ori_kv is not None else (T2 if layout_kv == "TND" else S2),
+            'max_seqlen_ori_kv': max(seqused_ori_kv) if seqused_ori_kv is not None else (T2 if layout_kv == "TND" else S2),
+            'max_seqlen_cmp_kv': max(seqused_cmp_kv) if seqused_cmp_kv is not None else 0,
             'K': K,
             'cmp_ratio': cmp_ratio,
             'ori_mask_mode': ori_mask_mode,
