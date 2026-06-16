@@ -45,7 +45,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
     // output
-    metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
+    metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
     bool requiredAttrs =
         GetAttrValue(ctx, "soc_version", socVersion_) &&
@@ -91,8 +91,8 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
         return false;
     }
     // OUTPUT tensor check
-    if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("metadata is empty");
+    if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("metaData is empty");
         return false;
     }
     return true;
@@ -215,7 +215,6 @@ void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, S
 
         assignContext.coreCache = {};
         uint32_t remainingCore = static_cast<uint32_t>(aicCoreNum_) - i;
-        // 根据剩余基本块数和剩余核数，动态重新计算当前核负载上限。
         assignContext.coreCache.blockLimit =
             (assignContext.unassignedBlock + remainingCore - 1U) / remainingCore;
         uint32_t curRowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx);
@@ -231,7 +230,6 @@ void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, S
                 assignContext.curS1Idx++;
                 continue;
             }
-            // 当前方案不切S2，一个S1行是最小分配粒度；当前核未分到行时，整行放入以避免空核。
             if (assignContext.coreCache.block > 0U &&
                 assignContext.coreCache.block + rowBlock > assignContext.coreCache.blockLimit) {
                 break;
@@ -272,15 +270,11 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ScheduleSection(SplitResult &sp
 
 bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetadata(const SplitResult &splitRes)
 {
-    if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
+    if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
         return false;
     }
-    optiling::detail::FaMetadata faMetadata(metadata_->GetData());
-    // uint32_t *ptr = static_cast<uint32_t *>(metadata_->GetData());
-    // ptr[1] = 0U;
-    // ptr[2] = mBaseSize_;
-    // ptr[3] = s2BaseSize_;
+    optiling::detail::FaMetaData faMetadata(metaData_->GetData());
     for (uint32_t i = 0; i < optiling::AIC_CORE_NUM; i++) {
         faMetadata.setFaMetadata(i, optiling::FA_CORE_ENABLE_INDEX, 0U);
         faMetadata.setFaMetadata(i, optiling::FA_BN1_START_INDEX, 0U);

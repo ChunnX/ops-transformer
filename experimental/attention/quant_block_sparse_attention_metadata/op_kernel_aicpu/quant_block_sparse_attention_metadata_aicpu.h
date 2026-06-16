@@ -97,9 +97,9 @@ private:
     int32_t headDim_ = 0;
     int32_t sparseBlockSizeQ_ = 128;
     int32_t sparseBlockSizeKv_ = 128;
-    int32_t quantMode_ = 0; // TODO: confirm default value for quant_mode
+    int32_t quantMode_ = 1; 
     int32_t maskMode_ = 3;
-    std::string layoutQ_ = "BSND"; // TODO: confirm default value for layout_q
+    std::string layoutQ_ = "TMD"; 
     std::string layoutKv_ = "PA_BNSD";
     std::string layoutSparseIndices_ = "B_N_Qb_Kb";
 
