@@ -838,6 +838,18 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, AcceptsPaddedCacheStrides)
     EXPECT_EQ(tiling.kScaleCacheStrideToken, 2U);
 }
 
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, AcceptsMatchedCompactViewStrides)
+{
+    ContractTiling tiling;
+    auto input = BuildInput();
+    input.kCache.stride = Stride({1, 1, 1, 1});
+    input.vCache.stride = Stride({1, 1, 1, 1});
+    ASSERT_EQ(ValidateThenBuildTiling(input, tiling), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(tiling.kvCacheStrideBlock, 1U);
+    EXPECT_EQ(tiling.kvCacheStrideHead, 1U);
+    EXPECT_EQ(tiling.kvCacheStrideToken, 1U);
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsMismatchedKvCacheStrides)
 {
     auto input = BuildInput();
@@ -858,7 +870,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsInvalidCacheStrides)
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
-    input.vCache.stride.SetStride(1, static_cast<int64_t>(input.headDim - 1));
+    input.vCache.stride.SetStride(2, 0);
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();

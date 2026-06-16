@@ -324,29 +324,28 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides(const C
     const auto strideDimOrZero = [](const gert::Stride &stride, size_t index) -> int64_t {
         return index < stride.GetDimNum() ? stride.GetStride(index) : 0;
     };
-    const int64_t headDimValue = static_cast<int64_t>(input.headDim);
     const gert::Stride &kStride = input.kCache.stride;
     const gert::Stride &vStride = input.vCache.stride;
     const gert::Stride &kScaleStride = input.kScaleCache.stride;
     OP_CHECK_IF(
         !input.kCache.stridePresent || kStride.GetDimNum() != 4 || kStride.GetStride(0) <= 0 ||
-            kStride.GetStride(1) < headDimValue || kStride.GetStride(2) < headDimValue || kStride.GetStride(3) != 1,
+            kStride.GetStride(1) <= 0 || kStride.GetStride(2) <= 0 || kStride.GetStride(3) != 1,
         OP_LOGE(opName.c_str(),
                 "QkvRmsNormRopeCacheWithKScale contract reject: kCache stride present=%u rank=%u "
-                "strides={%lld,%lld,%lld,%lld}, headDim=%lu.",
+                "strides={%lld,%lld,%lld,%lld}; expected positive strides and stride[3]=1.",
                 input.kCache.stridePresent ? 1U : 0U, static_cast<uint32_t>(input.kCache.stride.GetDimNum()),
                 strideDimOrZero(input.kCache.stride, 0), strideDimOrZero(input.kCache.stride, 1),
-                strideDimOrZero(input.kCache.stride, 2), strideDimOrZero(input.kCache.stride, 3), input.headDim),
+                strideDimOrZero(input.kCache.stride, 2), strideDimOrZero(input.kCache.stride, 3)),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         !input.vCache.stridePresent || vStride.GetDimNum() != 4 || vStride.GetStride(0) <= 0 ||
-            vStride.GetStride(1) < headDimValue || vStride.GetStride(2) < headDimValue || vStride.GetStride(3) != 1,
+            vStride.GetStride(1) <= 0 || vStride.GetStride(2) <= 0 || vStride.GetStride(3) != 1,
         OP_LOGE(opName.c_str(),
                 "QkvRmsNormRopeCacheWithKScale contract reject: vCache stride present=%u rank=%u "
-                "strides={%lld,%lld,%lld,%lld}, headDim=%lu.",
+                "strides={%lld,%lld,%lld,%lld}; expected positive strides and stride[3]=1.",
                 input.vCache.stridePresent ? 1U : 0U, static_cast<uint32_t>(input.vCache.stride.GetDimNum()),
                 strideDimOrZero(input.vCache.stride, 0), strideDimOrZero(input.vCache.stride, 1),
-                strideDimOrZero(input.vCache.stride, 2), strideDimOrZero(input.vCache.stride, 3), input.headDim),
+                strideDimOrZero(input.vCache.stride, 2), strideDimOrZero(input.vCache.stride, 3)),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(kStride.GetStride(0) != vStride.GetStride(0) || kStride.GetStride(1) != vStride.GetStride(1) ||
                     kStride.GetStride(2) != vStride.GetStride(2),
@@ -358,10 +357,11 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides(const C
                         input.vCache.stride.GetStride(1), input.vCache.stride.GetStride(2)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input.kScaleCache.stridePresent || kScaleStride.GetDimNum() != 4 || kScaleStride.GetStride(0) <= 0 ||
-                    kScaleStride.GetStride(1) < 1 || kScaleStride.GetStride(2) < 1 || kScaleStride.GetStride(3) != 1,
+                    kScaleStride.GetStride(1) <= 0 || kScaleStride.GetStride(2) <= 0 ||
+                    kScaleStride.GetStride(3) != 1,
                 OP_LOGE(opName.c_str(),
                         "QkvRmsNormRopeCacheWithKScale contract reject: kScaleCache stride present=%u rank=%u "
-                        "strides={%lld,%lld,%lld,%lld}.",
+                        "strides={%lld,%lld,%lld,%lld}; expected positive strides and stride[3]=1.",
                         input.kScaleCache.stridePresent ? 1U : 0U,
                         static_cast<uint32_t>(input.kScaleCache.stride.GetDimNum()),
                         strideDimOrZero(input.kScaleCache.stride, 0), strideDimOrZero(input.kScaleCache.stride, 1),
