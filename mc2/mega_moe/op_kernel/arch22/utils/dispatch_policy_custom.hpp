@@ -73,9 +73,10 @@ struct MmadDispatchPolicyFor {
         std::conditional_t<std::is_same_v<BType_, AscendC::int4b_t>,
                            MmadAtlasA2W4A4MatmulPerChannelDequant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
                                                                   L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
-                           std::conditional_t<IS_A2_,MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_,
-                                                                                    L0B_STAGES_, L0C_STAGES_, ENABLE_UNIT_FLAG_,
-                                                                                    ENABLE_SHUFFLE_K_>,
+                           std::conditional_t<IS_A2_,
+                                              MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_,
+                                                                             L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                                                             ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
                                               MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_,
                                                                                   L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
                                                                                   ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>>>;
