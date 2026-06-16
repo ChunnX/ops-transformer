@@ -150,8 +150,6 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     // TODO kbSize获取
     pipe->InitBuffer(vBiasBuf_, 2 * s2BaseSize_ * sizeof(float));   // 大小：2(开dB) * kbSize(256) * 4 = 4KB 
     vBiasLocal_ = vBiasBuf_.Get<float>();                      // vBias
-    pipe->InitBuffer(outBuf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(SCORE_T));      // 大小：2(开dB) * 2 * 128 * 4 = 2KB
-    vec1OutUB_ = outBuf_.Get<SCORE_T>();// out
 
     // Topk
     pipe->InitBuffer(mrgValueBuf_, CeilDiv(constInfo_.mBaseSize, 2) * (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
@@ -160,7 +158,7 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(globalIndexBuf_, CeilDiv(constInfo_.mBaseSize, 2) * (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     globalIndexLocal_ = globalIndexBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(indicesOutBuf_, MAX_TOPK_COUNT * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
+    pipe->InitBuffer(indicesOutBuf_, (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
     pipe->InitBuffer(scoreOutBuf_, trunkLen_ * sizeof(SCORE_T));            // (topkCountAlign256_ + 64) * sizeof(SCORE_T) 64:duplicate刷-1额外空间
@@ -327,7 +325,7 @@ __aicore__ inline uint32_t SIVector<SIT>::CalcDynamicTopkCount(
     // 计算 kStart（分段函数）
     int32_t kStart;
     if (numPromptK < K_SMALL_SEQ_MAX) {
-        kStart = K_SMALL_SEQ_MAX;
+        kStart = numPromptK;
     } else if (numPromptK < K_MEDIUM_SEQ_MAX) {
         kStart = (int32_t)(numPromptK * kBlockNumRateMedium_ + kBlockNumBiasMedium_);
     } else {
@@ -423,7 +421,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
             // 搬出indiceLen和indice到gm
-            Duplicate(indiceLenLocal_, curS1RealS2Len, curAivGSize);
+            Duplicate(indiceLenLocal_, curS1RealS2Len, 1);
             CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), 0, curS1RealS2Len);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -454,13 +452,12 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         uint32_t totalOutput = initialBlocks_ + topkSelectNum + windowSize_;
 
         // 短路2：参与 TopK 的有效数据不足 topkSelectNum，直接输出连续索引
-        if (curS1RealS2Len < totalOutput) {
+        if (curS1RealS2Len <= totalOutput) {
             if (!isFirstS2InnerLoop) continue;  // 非首块跳过，避免重复写入GM
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
-            // 搬出indiceLen到gm
-            // indice第一次copyout，[0 ~ curS1RealS2Len-1]
-            Duplicate(indiceLenLocal_, totalOutput, curAivGSize);
+            // 搬出indiceLen和indice到gm
+            Duplicate(indiceLenLocal_, curS1RealS2Len, 1);
             CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)0, (uint32_t)curS1RealS2Len);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -479,23 +476,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                                      indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
             }
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-            WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-
-            if (windowSize_ > 0) {
-                // indice第二次copyout，[topkSelectNum, topkSelectNum+windowSize_-1]
-                CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)topkSelectNum, (uint32_t)windowSize_);
-                SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                copyOutParams.blockCount = 1;
-                copyOutParams.blockLen = (uint16_t)((uint32_t)windowSize_ * sizeof(int32_t));
-                copyOutParams.srcStride = 0;
-                copyOutParams.dstStride = 0;
-                for (uint32_t gIdx = 0; gIdx < curAivGSize; gIdx++) {
-                    DataCopyPad(sparseIndicesGm[baseOutOffset + initialBlocks_ + topkSelectNum + gIdx * constInfo_.qSeqSize * constInfo_.kSeqSize],
-                                            indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
-                }
-            }
-            SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             continue;
         }
         
@@ -504,7 +484,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         uint32_t topkSelectNumAlign256 = SICommon::Align((uint32_t)topkSelectNum, (uint32_t)256);
         
         // 当前基本块的s2范围
-        uint32_t s2BlockEnd = Min(s2BlockStart + s2BaseSize_, Max(curS1RealS2Len, 0));
+        uint32_t s2BlockEnd = Min(s2BlockStart + s2BaseSize_, Max(curS1RealS2Len - windowSize_, 0));
         // 当前基本块中s2的有效长度
         uint32_t s2BlockValidLen = (s2BlockEnd > s2BlockStart) ? (s2BlockEnd - s2BlockStart) : 0;
 
@@ -528,7 +508,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             }
             uint32_t mInnerOffset = mInnerIdx * (MAX_TOPK_COUNT + trunkLen_);
 
-            // todo:确认这个同步的必要性
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
             uint32_t s2BlockValidLenAlign256 = SICommon::Align(s2BlockValidLen, trunkLen_);
@@ -545,7 +524,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                     mask[0] = ~0;
                     mask[0] = mask[0] << (topkSelectNum % 64);
                     Duplicate(mrgValueLocal_[mInnerOffset + topkSelectNum / 64 * 64], (uint32_t)zero, mask, 1, 1, 0);
-                    PipeBarrier<PIPE_V>();
                     Duplicate(mrgValueLocal_[mInnerOffset + topkSelectNum / 64 * 64 + 64],(uint32_t)zero,
                               topkSelectNumAlign256 - (topkSelectNum / 64 * 64 + 64));
                 }
@@ -554,9 +532,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 uint64_t mask[1];
                 mask[0] = ~0;
                 mask[0] = mask[0] << (s2BlockValidLen % 64);
-                PipeBarrier<PIPE_V>();
                 Duplicate(mrgValueLocal_[mInnerOffset + topkSelectNumAlign256 + s2BlockValidLen / 64 * 64], (uint32_t)zero, mask, 1, 1, 0);
-                PipeBarrier<PIPE_V>();
                 Duplicate(mrgValueLocal_[mInnerOffset + topkSelectNumAlign256 + s2BlockValidLen / 64 * 64 + 64], (uint32_t)zero,
                             s2BlockValidLenAlign256 - (s2BlockValidLen / 64 * 64 + 64));
             }
@@ -568,8 +544,13 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 }
             }
             PipeBarrier<PIPE_V>();
-            topkOp_(mrgValueLocal_[mInnerOffset], indicesOutLocal_, scoreOutLocal_, topkSelectNumAlign256 + s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd);
-
+            topkOp_(mrgValueLocal_[mInnerOffset], indicesOutLocal_, scoreOutLocal_, topkSelectNumAlign256 + s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
+            PipeBarrier<PIPE_V>();
+            // 如果是首块，因为mrgValueLocal_的前topkSelectNumAlign256的位置没有数据，这里需要把偏移值减掉
+            if (isFirstS2InnerLoop) {
+                Subs(indicesOutLocal_.ReinterpretCast<int32_t>(), indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)topkSelectNumAlign256, s2BlockValidLenAlign256);
+                PipeBarrier<PIPE_V>();
+            }
             copyCount = topkSelectNumAlign256;
             copyMask = (copyCount <= 64) ? copyCount : 64;
             copyRepeat = (copyCount + 63) / 64;
@@ -593,28 +574,23 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                                          mrgValueLocal_[mInnerOffset].ReinterpretCast<int32_t>(), copyOutParams);
                 }
 
-                SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 copyOutParams.blockLen = (uint16_t)((uint32_t)topkSelectNum * sizeof(int32_t));
                 DataCopyPad(sparseIndicesGm[baseOutOffset + initialBlocks_],
                                      globalIndexLocal_[mInnerOffset].ReinterpretCast<int32_t>(), copyOutParams);
-                SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                 
                 if (windowSize_ > 0) {
-                    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
                     // 把之前在s2Len尾部减去的windowsSize拼回来
                     int32_t windowBase = curS1RealS2Len - windowSize_;
-                    CreateVecIndex(mrgValueLocal_[mInnerOffset].ReinterpretCast<int32_t>(),
+                    CreateVecIndex(mrgValueLocal_[mInnerOffset + topkSelectNumAlign256].ReinterpretCast<int32_t>(),
                                              (int32_t)windowBase, windowSize_);
                     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                     WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                     copyOutParams.blockLen = (uint16_t)((uint32_t)windowSize_ * sizeof(int32_t));
                     DataCopyPad(sparseIndicesGm[baseOutOffset + initialBlocks_ + topkSelectNum],
-                                         mrgValueLocal_[mInnerOffset].ReinterpretCast<int32_t>(), copyOutParams);
-                    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+                                         mrgValueLocal_[mInnerOffset + topkSelectNumAlign256].ReinterpretCast<int32_t>(), copyOutParams);
                 }
                 // 正常topk的indiceLen搬出
-                Duplicate(indiceLenLocal_, totalOutput, curAivGSize);
+                Duplicate(indiceLenLocal_, totalOutput, 1);
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 DataCopyPad(sparseSeqLenGm[baseLenOffset + gIdx * constInfo_.qSeqSize],
@@ -666,7 +642,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
                 curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);
             }
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-            Duplicate(indiceLenLocal_, curS1RealS2Len, curAivGSize);
+            Duplicate(indiceLenLocal_, curS1RealS2Len, 1);
             CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)0, curS1RealS2Len);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -686,6 +662,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
                 DataCopyPad(sparseIndicesGm[baseOutOffset + gIdx * constInfo_.qSeqSize * constInfo_.kSeqSize],
                                     indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
             }
+            SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         }
     }
 }

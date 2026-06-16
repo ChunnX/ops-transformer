@@ -78,14 +78,14 @@ public:
                                                idx0Local, idx1Local, idx2Local, idx3Local,
                                                nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, topK);
+            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, SICommon::Align(topK, (uint32_t)256));
         } else {
             if (loopIdx == 0) {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                                                   idx0Local, idx1Local, idx2Local, idx3Local,
                                                   nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, topK);
+                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, SICommon::Align(topK, (uint32_t)256));
             } else {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                                                   idx0Local, idx1Local, idx2Local, idx3Local,
