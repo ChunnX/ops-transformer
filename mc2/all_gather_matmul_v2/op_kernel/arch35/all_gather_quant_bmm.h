@@ -162,8 +162,10 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
     uint32_t tailM = tilingData_->quantBmmv3TailTiling.matmulTiling.M / (cfg.rankDim - 1);   // 尾块M轴大小
 
     constexpr uint32_t dataNumPerByte = IsMxFp4 ? PF4_DATA_NUM_PER_BYTE : 1;
-    uint64_t tileSendCount = static_cast<uint64_t>(tilingM) * static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte));    // 整块总共搬运数据个数
-    uint64_t tailSendCount = static_cast<uint64_t>(tailM) * static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte));      // 尾块总共搬运数据个数
+    uint64_t tileSendCount = static_cast<uint64_t>(tilingM) *
+        static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte)); // 整块总共搬运数据个数
+    uint64_t tailSendCount =
+        static_cast<uint64_t>(tailM) * static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte)); // 尾块总共搬运数据个数
     uint64_t stride = tileSendCount * static_cast<uint64_t>(tileCnt) +
                       tailSendCount * static_cast<uint64_t>(tailCnt); // 不同rank在数据块内的地址偏移
     uint8_t repeat = 1;                                               // 搬运重复次数
@@ -198,6 +200,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
                                                     scaleStride, repeat);
     }
 
+    // 对于mxfp4场景，实际传输数据量需要做减半处理，已在前面代码中进行处理
     for (uint32_t i = 0U; i < tileCnt; i++) {
         handleList_[i] = hcclAllgather_.template AllGather<true>(aGM, gatherOut, tileSendCount, dataType_,
                                                                  stride, repeat);
