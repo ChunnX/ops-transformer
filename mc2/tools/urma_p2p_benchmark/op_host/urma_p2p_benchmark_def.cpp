@@ -14,16 +14,20 @@ namespace ops {
 class UrmaP2pBenchmark : public OpDef {
 public:
   explicit UrmaP2pBenchmark(const char* name) : OpDef(name) {
-    // 输入: x(发送数据)
-    // context输入已移除：HCCL上下文由MC2框架基于.MC2().HcclGroup声明自动创建
-    // dst_rank_id使用属性而非输入，P2P场景目标rank为固定值
+    // 输入: context(Mc2MoeContext通信上下文, Hcomm模式需要, SQE模式可为空), x(发送数据)
+    // context在Hcomm模式下由Host端Mc2Context创建, SQE模式下框架自动创建HcclCombinOpParam
+    this->Input("context")
+        .ParamType(REQUIRED)
+        .DataType({ge::DT_INT32})
+        .Format({ge::FORMAT_ND})
+        .AutoContiguous();
     this->Input("x")
         .ParamType(REQUIRED)
         .DataType({ge::DT_FLOAT16})
         .Format({ge::FORMAT_ND})
         .AutoContiguous();
 
-    // 输出: y(接收数据), receive_cnt(各rank接收token计数)
+    // 输出: y(接收数据), receive_cnt(各rank接收token计数), performance_info(kernel打点数据)
     this->Output("y")
         .ParamType(REQUIRED)
         .DataType({ge::DT_FLOAT16})
@@ -38,13 +42,14 @@ public:
         .Format({ge::FORMAT_ND});
 
     // 属性: group(通信域), world_size(rank数), max_bs(最大batch), mode(测试模式),
-    //        ccl_buffer_size(HCCL缓冲区), dst_rank_id(P2P目标rank), aiv_num(AIV核数)
-    // 注意: 删除comm_alg属性(固定为urma via SQE级), 新增dst_rank_id属性
+    //        ccl_buffer_size(HCCL缓冲区), comm_alg(通信算法:sqe/hcomm),
+    //        dst_rank_id(P2P目标rank), aiv_num(AIV核数)
     this->Attr("group").AttrType(REQUIRED).String();
     this->Attr("world_size").AttrType(REQUIRED).Int();
     this->Attr("max_bs").AttrType(REQUIRED).Int();
     this->Attr("mode").AttrType(REQUIRED).Int();
     this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
+    this->Attr("comm_alg").AttrType(OPTIONAL).String("sqe");
     this->Attr("dst_rank_id").AttrType(OPTIONAL).Int(-1);
     this->Attr("aiv_num").AttrType(OPTIONAL).Int(-1);
 

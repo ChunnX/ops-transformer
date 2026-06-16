@@ -27,9 +27,10 @@ struct UrmaP2pBenchmarkTilingData {
     int32_t mode;            // 测试模式: 0=overhead+latency, 1=bandwidth
     int32_t aiv_num;         // AIV核总数
     int32_t dst_rank_id;     // P2P通信的目标rank ID（-1表示使用dst_rank_id输入tensor）
-    int32_t timing_slots;    // timing slot数量（7个timing slot用于写入performanceInfo输出tensor）
+    int32_t timing_slots;    // timing slot数量
     uint64_t total_ub_size;  // 总UB大小
     uint64_t total_win_size; // 通信窗口总大小
+    int32_t comm_mode;       // 通信模式: 0=SQE级(P2pUrmaSqeComm), 1=Hcomm(WriteNbi+Drain)
 };
 
 #endif // URMA_P2P_BENCHMARK_TILING_H

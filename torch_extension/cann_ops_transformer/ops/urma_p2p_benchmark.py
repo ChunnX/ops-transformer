@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -24,10 +24,10 @@ class UrmaP2pBenchmarkOpBuilder(OpBuilder):
         return ['ops/csrc/urma_p2p_benchmark.cpp']
 
     def schema(self) -> str:
-        """PyTorch operator signature."""
+        """PyTorch operator signature. Dual-mode: SQE/Hcomm."""
         return "npu_urma_p2p_benchmark(Tensor x, " \
             "str group, int world_size, int max_bs, int mode, " \
-            "int ccl_buffer_size, int dst_rank_id, int aiv_num) " \
+            "int ccl_buffer_size, str comm_alg, int dst_rank_id, int aiv_num) " \
             "-> (Tensor, Tensor, Tensor)"
 
     def register_meta(self):
@@ -37,7 +37,7 @@ class UrmaP2pBenchmarkOpBuilder(OpBuilder):
         """
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_urma_p2p_benchmark_meta(x, group, world_size, max_bs, mode,
-                                         ccl_buffer_size, dst_rank_id, aiv_num):
+                                         ccl_buffer_size, comm_alg, dst_rank_id, aiv_num):
             torch._check(
                 world_size > 0,
                 lambda: (
@@ -53,7 +53,7 @@ class UrmaP2pBenchmarkOpBuilder(OpBuilder):
             max_recv_cnt = max_bs * world_size
             y = x.new_empty((max_recv_cnt, h), dtype=x.dtype)
             receive_cnt = x.new_empty((world_size,), dtype=torch.int32)
-            performance_info = x.new_empty((12,), dtype=torch.int64)  # 9个timing slot + 3个padding, DataCopy对齐
+            performance_info = x.new_empty((12,), dtype=torch.int64)  # 12 slots适配SQE(9+3)和Hcomm(5+7)
             return (y, receive_cnt, performance_info)
 
 
@@ -64,16 +64,16 @@ op_module = urma_p2p_benchmark_op_builder.load()
 
 @impl(AS_LIBRARY, urma_p2p_benchmark_op_builder.name, "PrivateUse1")
 def _npu_urma_p2p_benchmark(x, group, world_size, max_bs, mode,
-                             ccl_buffer_size, dst_rank_id, aiv_num):
+                             ccl_buffer_size, comm_alg, dst_rank_id, aiv_num):
     """
     Implementation for NPU.
     'PrivateUse1' is the key for custom NPU backends.
     """
     return op_module.npu_urma_p2p_benchmark(x, group, world_size, max_bs, mode,
-                                             ccl_buffer_size, dst_rank_id, aiv_num)
+                                             ccl_buffer_size, comm_alg, dst_rank_id, aiv_num)
 
 def npu_urma_p2p_benchmark(x, group, world_size, max_bs, mode,
-                            ccl_buffer_size, dst_rank_id, aiv_num):
+                            ccl_buffer_size, comm_alg, dst_rank_id, aiv_num):
 
     return torch.ops.npu_ops_transformer.npu_urma_p2p_benchmark(
-        x, group, world_size, max_bs, mode, ccl_buffer_size, dst_rank_id, aiv_num)
+        x, group, world_size, max_bs, mode, ccl_buffer_size, comm_alg, dst_rank_id, aiv_num)

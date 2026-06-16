@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,6 +9,7 @@
  */
 #include "aclnn_urma_p2p_benchmark.h"
 #include <algorithm>
+#include <cstring>
 #include "op_mc2.h"
 #include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -19,12 +20,16 @@
 #include "aclnnInner_urma_p2p_benchmark.h"
 
 #ifdef BUILD_OPEN_PROJECT
+#if __has_include("version/hcomm_version.h")
 #include "version/hcomm_version.h"
-#ifndef HCCL_CHANNEL_SUPPORT_VERSION
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#else
+// 如果没有hcomm_version.h，定义HCOMM_VERSION_NUM为0（不支持Mc2Context）
+#define HCOMM_VERSION_NUM 0
 #endif
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+// HCCL_CHANNEL_SUPPORT_VERSION由mc2_context.h内部定义，不在此处重复定义
+#if HCOMM_VERSION_NUM >= 89999700
 #include "common/op_api/mc2_context.h"
+#include "p2p_hcomm_context.h"
 #endif
 #endif
 
@@ -85,9 +90,9 @@ static aclnnStatus CheckParams(const aclTensor* x, char* group,
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    // mode范围: 0=overhead, 1=latency, 2=bandwidth
-    if (mode < 0 || mode > 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mode must be in [0, 2], got %ld", mode);
+    // mode范围: 0=overhead+latency, 1=bandwidth
+    if (mode < 0 || mode > 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mode must be in [0, 1], got %ld", mode);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -108,11 +113,13 @@ static aclnnStatus CheckParams(const aclTensor* x, char* group,
 }
 
 // 第一段接口：计算workspace大小
-// SQE级HcclCombinOpParam URMA通信：不再创建mc2Context，HCCL上下文由框架自动管理
+// 双模式设计:
+//   - SQE级(commAlg=="sqe"): Mc2Context用默认UB_MEM协议创建，但kernel使用HcclCombinOpParam（框架自动管理）
+//   - Hcomm级(commAlg=="hcomm"): Mc2Context用COMM_PROTOCOL_UBC_CTP协议创建，kernel使用Mc2MoeContext
 aclnnStatus aclnnUrmaP2pBenchmarkGetWorkspaceSize(
     const aclTensor* x,
     char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
-    int64_t cclBufferSize, int64_t dstRankIdAttr, int64_t aivNum,
+    int64_t cclBufferSize, char* commAlg, int64_t dstRankIdAttr, int64_t aivNum,
     aclTensor* y, aclTensor* receiveCnt, aclTensor* performanceInfo,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
@@ -123,8 +130,26 @@ aclnnStatus aclnnUrmaP2pBenchmarkGetWorkspaceSize(
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
 
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    aclTensor *mc2Context = nullptr;
+    uint64_t hcclBuffSize = 0;
+    // 关键: SQE和Hcomm必须使用不同的opName(上下文标签)
+    // 否则SQE先运行后缓存8KB的Mc2Context(不含hcommHandle_)，
+    // Hcomm复用时hcommHandle_读垃圾值导致WriteNbi/Drain死锁
+    const char *opName = strcmp(commAlg, "hcomm") == 0 ? "urma_p2p_benchmark_hcomm" : "urma_p2p_benchmark";
+    if (strcmp(commAlg, "hcomm") == 0) {
+        // Hcomm模式: 使用本地5参数版P2pHcommContext(含hcommHandle_)
+        // 创建COMM_PROTOCOL_UBC_CTP协议的通信上下文
+        aclnnRet = P2pHcommAclnn::P2pHcommContextHelper::GetP2pHcommContextTensor(
+            group, opName, hcclBuffSize, mc2Context, CommProtocol::COMM_PROTOCOL_UBC_CTP);
+    } else {
+        // SQE模式: 使用common的4参数版Mc2Context(不含hcommHandle_)
+        aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(
+            group, opName, hcclBuffSize, mc2Context);
+    }
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+
     aclnnRet = aclnnInnerUrmaP2pBenchmarkGetWorkspaceSize(
-        x, group, worldSize, maxBs, mode, cclBufferSize, dstRankIdAttr, aivNum,
+        mc2Context, x, group, worldSize, maxBs, mode, cclBufferSize, commAlg, dstRankIdAttr, aivNum,
         y, receiveCnt, performanceInfo, workspaceSize, executor);
 #endif
 
