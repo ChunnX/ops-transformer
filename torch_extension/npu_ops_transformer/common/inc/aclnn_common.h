@@ -467,7 +467,15 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
         }
         if (acl_data_type != ACL_STRING) {
             TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
-            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
+            // 连续 base-format 张量：storage shape 采用多维 view shape（与 view 一致，描述同一段连续内存，
+            // 元素总数不变），以兼容通过 GetStorageShape 读取逻辑维度的算子（如 KvCompressEpilog /
+            // IndexerQuantCache 的 tiling 校验 xDims-1==slotMappingDims）。非连续或 4bit 打包场景维持原有
+            // 按元素总数的一维 storage shape 行为不变。
+            if (at_tensor.is_contiguous() && !Is4BitDtype(acl_data_type)) {
+                storageDims.assign(at_tensor.sizes().begin(), at_tensor.sizes().end());
+            } else {
+                storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
+            }
         }
     }
 
@@ -664,7 +672,15 @@ aclTensor *ConvertType(const TensorWrapper &tensor_r)
         }
         if (acl_data_type != ACL_STRING) {
             TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
-            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
+            // 连续 base-format 张量：storage shape 采用多维 view shape（与 view 一致，描述同一段连续内存，
+            // 元素总数不变），以兼容通过 GetStorageShape 读取逻辑维度的算子（如 KvCompressEpilog /
+            // IndexerQuantCache 的 tiling 校验 xDims-1==slotMappingDims）。非连续或 4bit 打包场景维持原有
+            // 按元素总数的一维 storage shape 行为不变。
+            if (at_tensor.is_contiguous() && !Is4BitDtype(acl_data_type)) {
+                storageDims.assign(at_tensor.sizes().begin(), at_tensor.sizes().end());
+            } else {
+                storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
+            }
         }
     }
 
