@@ -153,7 +153,7 @@ uint32_t AddExampleCpuKernel::Compute(CpuKernelContext& ctx) {
   // 从CpuKernelContext中获取output tensor
   Tensor* output = ctx.Output(0);
 
-  // 对tensor进行基本校验，判断是否为空指针
+  // 对tensor进行基本校验, 判断是否为空指针
   if (input0 == nullptr || input1 == nullptr || output == nullptr) {
     return kParamInvalid;
   }
@@ -186,7 +186,7 @@ REGISTER_CPU_KERNEL(kAddExample, AddExampleCpuKernel);
 ```
 ## aclnn适配
 
-通常算子开发和编译完成后，会自动生成aclnn接口（一套基于C的API），无需做其他配置，可直接在应用程序中调用aclnn接口实现调用算子。
+通常算子开发和编译完成后，会自动生成aclnn接口（一套基于C 的API），无需做其他配置，可直接在应用程序中调用aclnn接口实现调用算子。
 
 ## 编译部署
 
@@ -206,7 +206,7 @@ REGISTER_CPU_KERNEL(kAddExample, AddExampleCpuKernel);
    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
    - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
    - --ops（可选）：\$\{op\_list\}表示待编译算子，不指定时默认编译所有算子。格式形如"--ops=add_example"。
-   - --aicpu_kernel：开启ENABLE_AICPU_KERNEL，编译kernel_aicpu
+   - --aicpu_kernel：使能ENABLE_AICPU_KERNEL，编译kernel_aicpu
    - --experimental（可选）：若编译的算子为贡献算子，需配置--experimental。
    - -j（可选）：指定编译线程数，加快编译速度。
 

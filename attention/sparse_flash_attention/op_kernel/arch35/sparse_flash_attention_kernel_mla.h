@@ -223,8 +223,7 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitCalcParamsE
     }
 
     if constexpr (IS_SPLIT_G) {
-        maxS2LoopCnt = avgBaseNum * (Min(constInfo.sparseBlockCount, constInfo.s2Size) +
-            constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+        maxS2LoopCnt = avgBaseNum * (constInfo.sparseBlockCount + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     }
 
     if (aicIdx >= usedCoreNum) {
@@ -425,7 +424,10 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     constInfo.tileSize = sharedParams.tileSize;
     constInfo.sparseBlockCount = sharedParams.sparseBlockCount;
     constInfo.sparseBlockSize = 1;
-    constInfo.sparseMode = sharedParams.maskMode;
+    constInfo.cmpRatio = sharedParams.cmpRatio;
+    constInfo.oriWinLeft = sharedParams.oriWinLeft;
+    constInfo.oriWinRight = sharedParams.oriWinRight;
+    constInfo.sparseMode = sharedParams.oriMaskMode;
     constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
     constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
@@ -464,8 +466,8 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     }
     if ASCEND_IS_AIV {
         constInfo.softmaxScale = sharedParams.softmaxScale;
-        constInfo.blockSize = sharedParams.blockSize;
-        constInfo.maxBlockNumPerBatch = sharedParams.maxBlockNumPerBatch;
+        constInfo.oriBlockSize = sharedParams.oriBlockSize;
+        constInfo.oriMaxBlockNumPerBatch = sharedParams.oriMaxBlockNumPerBatch;
     }
 
     InitUniqueConstInfo();
@@ -678,6 +680,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     runInfo.actualS2Size = runParam.actualS2Size;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.sOuterOffset = runParam.sOuterOffset;
+    runInfo.queryOffset = runParam.tensorQOffset;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);
 }

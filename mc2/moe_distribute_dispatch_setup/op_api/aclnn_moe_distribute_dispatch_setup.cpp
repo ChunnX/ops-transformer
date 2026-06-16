@@ -16,7 +16,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_moe_distribute_dispatch_setup.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 
 using namespace op;
 

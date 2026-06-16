@@ -19,7 +19,7 @@
 #include <map>
 #include "graph/types.h"
 #include "util/math_util.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 
 namespace optiling {
 namespace mc2_matmul_v3 {

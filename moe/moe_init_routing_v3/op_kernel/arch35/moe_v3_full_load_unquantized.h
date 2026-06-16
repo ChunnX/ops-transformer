@@ -32,10 +32,6 @@ public:
 protected:
     __aicore__ inline void ScatterOutX();
     __aicore__ inline void GatherOutX();
-    __aicore__ inline void ProcessDropPadMode();
-    __aicore__ inline void GatherOutXScatterLoop(const LocalTensor<int32_t>& expandedRowIdx,
-                                                  const LocalTensor<T>& xLocal, int64_t startRowIdx,
-                                                  int64_t outputRows, int64_t inFactor);
     __aicore__ inline void ScatterOutScale();
     __aicore__ inline void GatherOutScale();
     __aicore__ inline void ZeroOutX();
@@ -95,7 +91,34 @@ template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
 {
     if (this->dropPadMode_ == DROP_PAD_MODE) {
-        ProcessDropPadMode();
+        if (this->blockIdx_ < this->needCoreNum_) {
+            this->CopyIn();
+            this->SortCompute();
+
+            if (this->blockIdx_ == 0) {
+                this->CopyOutRowIdx();
+            }
+
+            if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
+                this->ComputeExpertTokenCount();
+                this->CopyExpertCountToOutput();
+            }
+
+            this->ZeroOutX();
+            if (this->isInputScale_) {
+                this->ZeroOutScale();
+            }
+        }
+#ifndef __CCE_KT_TEST__
+        AscendC::SyncAll();
+#endif
+        if (this->blockIdx_ < this->needCoreNum_) {
+            this->GatherOutX();
+            if (this->isInputScale_) {
+                this->GatherOutScale();
+            }
+            this->FreeLocalTensor();
+        }
         return;
     }
 
@@ -124,39 +147,6 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
             }
         }
 
-        this->FreeLocalTensor();
-    }
-}
-
-template <typename T>
-__aicore__ inline void MoeV3FullLoadUnquantized<T>::ProcessDropPadMode()
-{
-    if (this->blockIdx_ < this->needCoreNum_) {
-        this->CopyIn();
-        this->SortCompute();
-
-        if (this->blockIdx_ == 0) {
-            this->CopyOutRowIdx();
-        }
-
-        if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
-            this->ComputeExpertTokenCount();
-            this->CopyExpertCountToOutput();
-        }
-
-        this->ZeroOutX();
-        if (this->isInputScale_) {
-            this->ZeroOutScale();
-        }
-    }
-#ifndef __CCE_KT_TEST__
-    AscendC::SyncAll();
-#endif
-    if (this->blockIdx_ < this->needCoreNum_) {
-        this->GatherOutX();
-        if (this->isInputScale_) {
-            this->GatherOutScale();
-        }
         this->FreeLocalTensor();
     }
 }
@@ -227,7 +217,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
     int64_t inFactor = Align(this->cols_, sizeof(T));
     int64_t outputRows = this->dropPadMode_ == DROP_PAD_MODE ? this->outputRows_ :
-                         Min(this->actualExpertIdxNum_, this->activeNum_);
+ 	                     Min(this->actualExpertIdxNum_, this->activeNum_);
 
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
 
@@ -240,7 +230,17 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
         SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
         xCopyInQueue_.EnQue(xLocal);
         LocalTensor<T> xOutLocal = xCopyInQueue_.DeQue<T>();
-        GatherOutXScatterLoop(expandedRowIdx, xOutLocal, startRowIdx, outputRows, inFactor);
+        int64_t curIndex = startRowIdx;
+        int64_t k = 0;
+        for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
+            for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
+                int32_t outIndex = expandedRowIdx.GetValue(curIndex);
+                if (outIndex >= 0 && outIndex < outputRows) {
+                    DataCopyPad(expandedXGm_[outIndex * this->cols_], xOutLocal[(i - this->startXRow_) * inFactor],
+                                copyParams);
+                }
+            }
+        }
         xCopyInQueue_.FreeTensor(xOutLocal);
     } else {
         DataCopyExtParams dataXCopyParams{static_cast<uint16_t>(rowLength),
@@ -249,30 +249,21 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
         LocalTensor<T> xLocal = xCopyInQueue_.AllocTensor<T>();
         DataCopyPad(xLocal, xGm_[this->startXRow_ * this->cols_], dataXCopyParams, padParams);
         SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
-        GatherOutXScatterLoop(expandedRowIdx, xLocal, startRowIdx, outputRows, inFactor);
+        int64_t curIndex = startRowIdx;
+        int64_t k = 0;
+        for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
+            for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
+                int32_t outIndex = expandedRowIdx.GetValue(curIndex);
+                if (outIndex >= 0 && outIndex < outputRows) {
+                    DataCopyPad(expandedXGm_[outIndex * this->cols_], xLocal[(i - this->startXRow_) * inFactor],
+                                copyParams);
+                }
+            }
+        }
         xCopyInQueue_.FreeTensor(xLocal);
     }
 
     this->expandedRowIdxQueue_.template EnQue<int32_t>(expandedRowIdx);
-}
-
-template <typename T>
-__aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutXScatterLoop(
-    const LocalTensor<int32_t>& expandedRowIdx, const LocalTensor<T>& xLocal,
-    int64_t startRowIdx, int64_t outputRows, int64_t inFactor)
-{
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
-    int64_t curIndex = startRowIdx;
-    int64_t k = 0;
-    for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
-        for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
-            int32_t outIndex = expandedRowIdx.GetValue(curIndex);
-            if (outIndex >= 0 && outIndex < outputRows) {
-                DataCopyPad(expandedXGm_[outIndex * this->cols_], xLocal[(i - this->startXRow_) * inFactor],
-                            copyParams);
-            }
-        }
-    }
 }
 
 template <typename T>

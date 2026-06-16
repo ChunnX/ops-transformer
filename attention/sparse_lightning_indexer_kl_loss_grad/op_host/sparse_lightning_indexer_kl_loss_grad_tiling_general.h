@@ -20,7 +20,6 @@
 #include <algorithm>
 #include "../op_kernel/sparse_lightning_indexer_kl_loss_grad_template_tiling_key.h"
 #include "../op_kernel/arch22/sparse_lightning_indexer_kl_loss_grad_tiling.h"
-#include "sparse_lightning_indexer_kl_loss_grad_tiling_common.h"
 #include "err/ops_err.h"
 
 // tiling_base 需要
@@ -39,6 +38,16 @@ using namespace ge;
 using namespace AscendC;
 
 namespace optiling {
+
+struct AiCoreParams {
+    uint64_t ubSize = 0;
+    uint64_t blockDim = 0;
+    uint64_t aicNum = 0;
+    uint64_t l1Size = 0;
+    uint64_t l0aSize = 0;
+    uint64_t l0bSize = 0;
+    uint64_t l0cSize = 0;
+};
 
 class TilingBaseClass {
 public:
@@ -278,7 +287,7 @@ protected:
     bool AnalyzeLayout();
     int64_t CalcTotalSize();
     void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum);
-    ge::graphStatus InitOutputSplit();
+    void InitOutputSplit();
 
     // 基础输入参数
     int32_t bSize;

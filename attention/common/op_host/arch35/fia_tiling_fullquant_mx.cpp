@@ -47,7 +47,7 @@ bool FiaTilingFullQuantMxArch35::IsCapable()
     if (fiaInfo_->emptyTensorFlag) {
         return false;
     }
-    if (fiaInfo_->fullQuantMode != FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
+    if (fiaInfo_->fullQuantMode != FiaFullQuantMode::MXFP8_FULL_QUANT) {
         return false;
     }
 
@@ -115,7 +115,6 @@ ge::graphStatus FiaTilingFullQuantMxArch35::DoOpTiling()
     if (fiaInfo_->isMaxWorkspace) {
         // tiling下沉场景，无法获取到actual_seq，分核结果未知，workspace设置成最大
         CalcMaxWorkspaceSize();
-        GenTilingKey();
         CalcNumBlocks(platformInfo_.aicNum);
 
         if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
@@ -379,7 +378,7 @@ void FiaTilingFullQuantMxArch35::CreateSplitInput(split_core_v2::BaseInfo &baseI
     baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.s2Size = fiaInfo_->s2Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
-    baseInfo.actualLenKvDims = fiaInfo_->actualLenKvDims;
+    baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
     baseInfo.isS1G = (fiaInfo_->qLayout == FiaLayout::BSH) || (fiaInfo_->qLayout == FiaLayout::BSND) ||
@@ -581,7 +580,6 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyConfig()
     } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     } else {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     }
 }
 
@@ -610,9 +608,9 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyPseMode()
 void FiaTilingFullQuantMxArch35::UpdateTilingKeyQuantMode()
 {
     if (decodeS1GMerge_) {
-        tilingKeyInfo_.quantMode = FULLQUANT_MODE_QKV_MXFP8_DECODE;
+        tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8_DECODE;
     } else {
-        tilingKeyInfo_.quantMode = FULLQUANT_MODE_QKV_MXFP8_PREFILL;
+        tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8_PREFILL;
     }
 }
 
@@ -791,26 +789,12 @@ void FiaTilingFullQuantMxArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.dSizeRope = fiaInfo_->ropeHeadDim;
     tilingData_.baseTiling.fiaBaseParams.scaleValue = fiaInfo_->scaleValue;
     tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsQSize = fiaInfo_->actualLenQDims;
-    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenKvDims;
+    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenDims;
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout);
-    if (!fiaInfo_->isTensorV1) { // 只有tensorv2才会包含strides信息
-        // fiaBaseParams增加strides参数，从fiaInfo获取strides值
-        tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyStrides->GetStride(0);
-        tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);
-        tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueStrides->GetStride(0);
-        tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueStrides->GetStride(1);
-        if (fiaInfo_->ropeHeadDim != 0) {  // 传入了rope才赋值
-            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeStrides->GetStride(0);
-            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeStrides->GetStride(1);
-        }
-        tilingData_.baseTiling.fiaBaseParams.kScaleStrides.bnStride = fiaInfo_->kScaleStrides->GetStride(0);
-        tilingData_.baseTiling.fiaBaseParams.kScaleStrides.n2Stride = fiaInfo_->kScaleStrides->GetStride(1);
-        tilingData_.baseTiling.fiaBaseParams.vScaleStrides.bnStride = fiaInfo_->vScaleStrides->GetStride(0);
-        tilingData_.baseTiling.fiaBaseParams.vScaleStrides.n2Stride = fiaInfo_->vScaleStrides->GetStride(1);
-    }
+
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
     tilingData_.baseTiling.fiaAttenMaskParams.isRowInvalidOpen = (fiaInfo_->innerPrecise >> 1) & 1;

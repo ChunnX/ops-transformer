@@ -94,7 +94,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -148,33 +148,13 @@
   </tr>
   <tr>
     <td>attention</td>
-    <td><a href="../../attention/indexer_quant_cache/README.md">indexer_quant_cache</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>AI Core</td>
-    <td>在Indexer注意力机制的Epilog阶段对KV Cache进行原地逐块动态量化压缩更新，支持MX-FP8、Normal、HiFloat8、MX-FP4四种量化模式。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
     <td><a href="../../attention/inplace_fused_causal_conv1d/README.md">inplace_fused_causal_conv1d</a></td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
-    <td><a href="../../attention/kv_compress_epilog/README.md">kv_compress_epilog</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>AI Core</td>
-    <td>在KV Cache的Epilog阶段对缓存进行原地逐组动态量化压缩更新，将bfloat16激活值压缩为FP8格式并按slotMapping散写。</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -205,16 +185,6 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>lightning_indexer的反向梯度计算算子。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
-    <td><a href="../../attention/lightning_indexer_v2/README.md">lightning_indexer_v2</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>AI Core</td>
-    <td>基于一系列操作得到每一个token对应的Top-k个位置。支持KV压缩场景。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -448,16 +418,6 @@
   </tr>
   <tr>
     <td>attention</td>
-    <td><a href="../../attention/sparse_flash_mla/README.md">sparse_flash_mla</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>支持Sliding Window Attention（SWA）、Compressed Flash Attention（CFA）和Sparse Compressed Flash Attention（SCFA）。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
     <td><a href="../../attention/sparse_flash_mla_grad/README.md">sparse_flash_mla_grad</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -524,7 +484,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>完成fp16权重场景下的Swin Transformer网络模型的Q、K、V的计算。</td>
+    <td>完成fp16权重场景下的Swin Transformer 网络模型的Q、K、V 的计算。</td>
   </tr>
   <tr>
     <td>ffn</td>
@@ -534,7 +494,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>Swin Transformer网络模型 完成Q、K、V的计算。</td>
+    <td>Swin Transformer 网络模型 完成 Q、K、V 的计算。</td>
   </tr>
   <tr>
     <td>gmm</td>
@@ -1214,17 +1174,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>针对单输入x进行旋转位置编码。</td>
-  </tr>
-  <tr>
-    <td>posembedding</td>
-    <td><a href="../../posembedding/inplace_partial_rotary_mul/README.md">inplace_partial_rotary_mul</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>AI Core</td>
-    <td>执行单路旋转位置编码的Inplace计算，直接修改输入张量，不产生新的输出张量。</td>
+    <td>针对单输入 x 进行旋转位置编码。</td>
   </tr>
   <tr>
     <td>posembedding</td>

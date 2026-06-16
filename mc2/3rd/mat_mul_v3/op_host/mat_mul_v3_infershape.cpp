@@ -14,7 +14,7 @@
  */
 
 #include "common/op_host/matmul_common_infershape.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 
 using namespace gert;
 namespace {

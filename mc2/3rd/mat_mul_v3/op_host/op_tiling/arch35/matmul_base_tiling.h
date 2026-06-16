@@ -16,7 +16,7 @@
 #define __OP_HOST_MATMUL_BASE_TILING_H__
 
 #include "exe_graph/runtime/tiling_context.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 #include "matmul_tiling_cfg.h"
 
 namespace optiling {
