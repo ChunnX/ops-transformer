@@ -25,6 +25,7 @@
 #include "log/error_code.h"
 #include "err/ops_err.h"
 #include "platform/platform_info.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 // ------------------公共定义--------------------------
@@ -234,7 +235,7 @@ public:
     SMLAParaInfo opParamInfo;
 
     // Base Param
-    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch = NpuArch::DAV_2201;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -427,7 +428,7 @@ private:
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     uint64_t l2CacheSize_ = 0;
 
     bool isSameSeqAllKVTensor_ = true;
@@ -550,7 +551,7 @@ public:
     // template mode
     SMLATemplateMode perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
 
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType qType_ = ge::DT_FLOAT16;
     ge::DataType oriKvType_ = ge::DT_FLOAT16;
     ge::DataType cmpKvType_ = ge::DT_FLOAT16;

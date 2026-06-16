@@ -23,7 +23,7 @@
 #else
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "arch22/sparse_flash_mla_template_tiling_key.h"
+#include "sparse_flash_mla_template_tiling_key.h"
 #include "arch22/sparse_flash_mla_scfa_kernel.h"
 #include "arch22/sparse_flash_mla_swa_kernel.h"
 #include "arch22/sparse_flash_mla_metadata.h"
