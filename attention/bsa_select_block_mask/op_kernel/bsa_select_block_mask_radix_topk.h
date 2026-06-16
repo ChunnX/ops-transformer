@@ -796,6 +796,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearTileTopKInWs()
         VToMTE3Sync();
         CopyTileTopKUb2Ws(tileTopK, tileNumRepeatTimes_ * MAX_TILE_NUM_IN_UB, tileNumRemain_);
     }
+    MTE3ToVSync();
 }
 
 template <typename BSAT>
@@ -1052,12 +1053,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::AddTileHistToTileTopK(LocalTen
 
     if (globalHist.GetValue(boundaryBin) == static_cast<int32_t>(remainK_)) {
         AddTileHist2TileTopKInWs(boundaryBin * tileNum_);
+        MTE3ToSSync();
         totalDefinitelyInTopK_ += globalHist.GetValue(boundaryBin);
         if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
             BSA_TOPK_PRINTF("[DUMP511] Branch 1: added boundaryBin, totalDefinitelyInTopK_=%lu\n", totalDefinitelyInTopK_);
         }
     } else if (boundaryBinPrev < static_cast<int32_t>(numValue_)) {
         AddTileHist2TileTopKInWs(boundaryBinPrev * tileNum_);
+        MTE3ToSSync();
         totalDefinitelyInTopK_ += globalHist.GetValue(boundaryBinPrev);
         if (BSA_TOPK_DEBUG && GetBlockIdx() == 0) {
             BSA_TOPK_PRINTF("[DUMP511] Branch 2: added boundaryBinPrev, totalDefinitelyInTopK_=%lu\n", totalDefinitelyInTopK_);
