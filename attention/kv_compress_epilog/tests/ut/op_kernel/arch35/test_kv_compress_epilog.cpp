@@ -12,10 +12,9 @@
  * \file test_kv_compress_epilog.cpp
  * \brief KvCompressEpilog op_kernel UT (arch35 / ascend950).
  *
- * 用 ICPU_RUN_KF 在 CPU 仿真上真正执行 kernel，覆盖三种量化模式:
+ * 用 ICPU_RUN_KF 在 CPU 仿真上真正执行 kernel，覆盖两种量化模式:
  *   quantMode=0  group quant + bf16 scale (roundScale true/false)
  *   quantMode=1  group quant + e8m0 scale
- *   quantMode=2  hifloat8 整行量化
  * 校验: kernel 运行不崩溃 + 写入 slot 的 cache 字节非全 0 (sanity)。
  *
  * 说明: KvCompressEpilogTilingData 结构体由 UT 框架根据 op_host BEGIN_TILING_DATA_DEF
@@ -46,7 +45,6 @@ constexpr int64_t SLICE_SIZE = 64;
 constexpr int64_t QUANT_GROUP = 128;
 constexpr int64_t QUANT_MODE_GROUP_BF16 = 0;
 constexpr int64_t QUANT_MODE_GROUP_E8M0 = 1;
-constexpr int64_t QUANT_MODE_HIFLOAT = 2;
 constexpr size_t SYS_WORKSPACE = 16 * 1024 * 1024;
 
 inline int64_t CeilDiv(int64_t a, int64_t b) { return b == 0 ? a : (a + b - 1) / b; }
@@ -88,18 +86,11 @@ protected:
         int64_t concatCol;
         int64_t kvCacheCol;
         int64_t padCol;
-        if (p.quantMode == QUANT_MODE_HIFLOAT) {
-            scaleCol = 0;
-            concatCol = p.d;
-            kvCacheCol = p.d;
-            padCol = 0;
-        } else {
-            scaleCol = CeilDiv(p.d - SLICE_SIZE, SLICE_SIZE);
-            int64_t scaleBytes = (p.quantMode == QUANT_MODE_GROUP_BF16) ? 2 : 1;
-            concatCol = p.d - SLICE_SIZE + SLICE_SIZE * 2 + scaleCol * scaleBytes;
-            kvCacheCol = RoundUp(concatCol, QUANT_GROUP);
-            padCol = kvCacheCol - concatCol;
-        }
+        scaleCol = CeilDiv(p.d - SLICE_SIZE, SLICE_SIZE);
+        int64_t scaleBytes = (p.quantMode == QUANT_MODE_GROUP_BF16) ? 2 : 1;
+        concatCol = p.d - SLICE_SIZE + SLICE_SIZE * 2 + scaleCol * scaleBytes;
+        kvCacheCol = RoundUp(concatCol, QUANT_GROUP);
+        padCol = kvCacheCol - concatCol;
         int64_t coreNum = p.blockDim;
         int64_t rowOfFormer = CeilDiv(p.bs, coreNum);
         int64_t usedCore = std::min(CeilDiv(p.bs, rowOfFormer), coreNum);
@@ -216,7 +207,6 @@ INSTANTIATE_TEST_SUITE_P(
         KvParams{32, 256, QUANT_MODE_GROUP_BF16, 0, 1, false, "group_bf16_noround"},
         KvParams{32, 256, QUANT_MODE_GROUP_E8M0, 1, 1, false, "group_e8m0_round"},
         KvParams{32, 256, QUANT_MODE_GROUP_E8M0, 0, 1, false, "group_e8m0_noround"},
-        KvParams{32, 256, QUANT_MODE_HIFLOAT, 1, 1, false, "hifloat_row"},
         KvParams{32, 128, QUANT_MODE_GROUP_BF16, 1, 1, false, "group_bf16_d128"},
         KvParams{48, 256, QUANT_MODE_GROUP_E8M0, 1, 2, false, "group_e8m0_multicore"},
         KvParams{30, 256, QUANT_MODE_GROUP_BF16, 1, 1, true, "group_bf16_with_skip"}));

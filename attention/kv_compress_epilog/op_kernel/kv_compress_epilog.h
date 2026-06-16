@@ -24,6 +24,8 @@ using namespace AscendC;
 
 namespace KvCompressEpilogOps {
 
+constexpr int32_t FOUR_UNFOLD = 4;   // 拷出按 4 行展开
+
 template <typename T0, typename U, typename T1>
 class KvCompressEpilog {
 public:
@@ -49,11 +51,9 @@ private:
     TQue<QuePosition::VECIN, 1> xQue;
     TQue<QuePosition::VECOUT, 1> kvCacheQue;
     TBuf<QuePosition::VECCALC> kvCacheScaleBuf;
-    TBuf<QuePosition::VECCALC> indexBuf;
 
     LocalTensor<T0> xLocal;
     LocalTensor<T1> kvCacheLocal;
-    LocalTensor<U> indexLocal;
     int64_t validIdx = 0;
     float maxValue = 0.0f;
     float fp8Min = 0.0f;
@@ -85,8 +85,6 @@ __aicore__ inline void KvCompressEpilog<T0, U, T1>::Init(
         pipe_->InitBuffer(xQue, 2, tilingData->rowFactor * RoundUp<T0>(tilingData->d) * sizeof(T0));
         pipe_->InitBuffer(kvCacheQue, 2, tilingData->rowFactor * RoundUp<T1>(tilingData->kvCacheCol) * sizeof(T1));
 
-        pipe_->InitBuffer(indexBuf, RoundUp<U>(tilingData->rowFactor) * sizeof(U));
-        indexLocal = indexBuf.Get<U>();
         AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 }
 
@@ -100,26 +98,12 @@ template <typename T0, typename U, typename T1>
                                                                      tilingData->tailRowFactorOfFormerBlock;
         for (int64_t rowOuterIdx = 0; rowOuterIdx < rowOuterLoop; rowOuterIdx++) {
             int64_t curRowFactor = (rowOuterIdx == rowOuterLoop - 1) ? tailRowFactor : tilingData->rowFactor;
+            int64_t xRowBase = rowOuterIdx * tilingData->rowFactor * tilingData->d;   // xGm 已按 block base 偏移
+            int64_t slotGmBase = GetBlockIdx() * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->rowFactor;
+            // ---- 优化2: 取消输入侧 slot==-1 压缩与逐行同步, 整块连续搬入 x ----
+            //   x buffer 行步长 RoundUp<T0>(d)==d (kv 的 d 为 64 倍数), 一条大描述符整块搬入全部行
             xLocal = xQue.template AllocTensor<T0>();
-            validIdx = 0;
-            for (int64_t rowInnerIdx = 0; rowInnerIdx < curRowFactor; rowInnerIdx++) {
-                int32_t curSlotIdx = GetBlockIdx() * tilingData->rowOfFormerBlock +
-                    rowOuterIdx * tilingData->rowFactor + rowInnerIdx;
-                int32_t slot = static_cast<int32_t>(slotMappingGm.GetValue(curSlotIdx));
-                if (slot == -1) {
-                    continue;
-                }
-                CopyIn(
-                    xGm[rowOuterIdx * tilingData->rowFactor * tilingData->d +
-                        rowInnerIdx * tilingData->d],
-                    xLocal[validIdx * RoundUp<T0>(tilingData->d)], 1, tilingData->d);
-                indexLocal.SetValue(validIdx, slot);
-                validIdx++;
-
-                event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
-                SetFlag<HardEvent::S_MTE3>(eventId);
-                WaitFlag<HardEvent::S_MTE3>(eventId);
-            }
+            CopyIn(xGm[xRowBase], xLocal, curRowFactor, tilingData->d);
             xQue.template EnQue(xLocal);
             xLocal = xQue.template DeQue<T0>();
 
@@ -127,36 +111,53 @@ template <typename T0, typename U, typename T1>
             if (tilingData->quantMode == QUANT_MODE_GROUP_QUANT_BF16) {
                 if (tilingData->roundScale == 1) {
                     VFProcessFP8PerGroupQuant<T0, T1, true, true>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max,
-                        validIdx, tilingData->d, tilingData->concatCol, tilingData->padCol);
+                        curRowFactor, tilingData->d, tilingData->concatCol, tilingData->padCol);
                 } else {
                     VFProcessFP8PerGroupQuant<T0, T1, false, true>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max,
-                        validIdx, tilingData->d, tilingData->concatCol, tilingData->padCol);
+                        curRowFactor, tilingData->d, tilingData->concatCol, tilingData->padCol);
                 }
             } else if (tilingData->quantMode == QUANT_MODE_GROUP_QUANT_E8M0) {
                 if (tilingData->roundScale == 1) {
                     VFProcessFP8PerGroupQuant<T0, T1, true, false>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max,
-                        validIdx, tilingData->d, tilingData->concatCol, tilingData->padCol);
+                        curRowFactor, tilingData->d, tilingData->concatCol, tilingData->padCol);
                 } else {
                     VFProcessFP8PerGroupQuant<T0, T1, false, false>(kvCacheLocal, xLocal, maxValue, fp8Min, fp8Max,
-                        validIdx, tilingData->d, tilingData->concatCol, tilingData->padCol);
+                        curRowFactor, tilingData->d, tilingData->concatCol, tilingData->padCol);
                 }
-            } else if (tilingData->quantMode == QUANT_MODE_HIFLOAT) {
-                // HiFloat8 whole-row quant: cache row = d hifloat8 bytes (kvCacheCol == d).
-                VFProcessHifp8Quant<T0, T1>(kvCacheLocal, xLocal, validIdx, tilingData->d, scalesAttr);
             }
 
             xQue.template FreeTensor(xLocal);
 
             kvCacheQue.template EnQue(kvCacheLocal);
             kvCacheLocal = kvCacheQue.template DeQue<T1>();
-            for (int32_t curValidIdx = 0; curValidIdx < validIdx; curValidIdx++) {
-                int64_t slot = static_cast<int64_t>(indexLocal.GetValue(curValidIdx));
+            // ---- 优化1+3: 拷出 4 展开 + 直接从 GM 读 slot (无 UB slot 缓冲); slot==-1 丢弃; 保留分页偏移 ----
+            int64_t r = 0;
+            for (; r + FOUR_UNFOLD <= curRowFactor; r += FOUR_UNFOLD) {
+                for (int32_t k = 0; k < FOUR_UNFOLD; k++) {
+                    int64_t slot = static_cast<int64_t>(slotMappingGm.GetValue(slotGmBase + r + k));
+                    if (slot == -1) {
+                        continue;
+                    }
+                    int64_t block = slot / tilingData->kvCacheBlockSize;
+                    int64_t posInBlock = slot % tilingData->kvCacheBlockSize;
+                    int64_t gmOffset =
+                        block * tilingData->kvCacheBlockStride + posInBlock * tilingData->kvCacheRowStride;
+                    CopyOut(
+                        kvCacheLocal[(r + k) * RoundUp<T1>(tilingData->kvCacheCol)],
+                        kvCacheGm[gmOffset], 1, tilingData->kvCacheCol);
+                }
+            }
+            for (; r < curRowFactor; r++) {
+                int64_t slot = static_cast<int64_t>(slotMappingGm.GetValue(slotGmBase + r));
+                if (slot == -1) {
+                    continue;
+                }
                 int64_t block = slot / tilingData->kvCacheBlockSize;
                 int64_t posInBlock = slot % tilingData->kvCacheBlockSize;
-                int64_t gmOffset = block * tilingData->kvCacheBlockStride +
-                                   posInBlock * tilingData->kvCacheRowStride;
+                int64_t gmOffset =
+                    block * tilingData->kvCacheBlockStride + posInBlock * tilingData->kvCacheRowStride;
                 CopyOut(
-                    kvCacheLocal[curValidIdx * RoundUp<T1>(tilingData->kvCacheCol)],
+                    kvCacheLocal[r * RoundUp<T1>(tilingData->kvCacheCol)],
                     kvCacheGm[gmOffset], 1, tilingData->kvCacheCol);
             }
             kvCacheQue.template FreeTensor(kvCacheLocal);

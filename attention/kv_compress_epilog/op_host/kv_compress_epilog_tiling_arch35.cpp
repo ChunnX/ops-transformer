@@ -96,9 +96,8 @@ ge::graphStatus KvCompressEpilogTilingArch35::GetAttributes()
     if (attrQuantMode != nullptr) {
         quantMode_ = *attrQuantMode;
     }
-    OP_CHECK_IF(quantMode_ != QUANT_MODE_GROUP_QUANT_BF16 && quantMode_ != QUANT_MODE_GROUP_QUANT_E8M0 &&
-                  quantMode_ != QUANT_MODE_HIFLOAT,
-              OP_LOGE(context_->GetNodeName(), "quantMode should be 0, 1 or 2"),
+    OP_CHECK_IF(quantMode_ != QUANT_MODE_GROUP_QUANT_BF16 && quantMode_ != QUANT_MODE_GROUP_QUANT_E8M0,
+              OP_LOGE(context_->GetNodeName(), "quantMode should be 0 or 1"),
               return ge::GRAPH_FAILED);
 
     const bool* attrRoundScale = attrs->GetAttrPointer<bool>(ROUND_SCALE_ATTR_INDEX);
@@ -200,7 +199,14 @@ bool KvCompressEpilogTilingArch35::GetCacheViewLayout(
     blockSize = viewShape.GetDim(CACHE_BLOCKSIZE_DIM);
     rowStride = inputStride->GetStride(CACHE_BLOCKSIZE_DIM);
     blockStride = inputStride->GetStride(CACHE_BLOCKNUM_DIM);
-    return (blockSize > 0 && rowStride > 0 && blockStride > 0);
+    if (blockSize <= 0 || rowStride <= 0 || blockStride <= 0) {
+        return false;
+    }
+    const int64_t storageElems = inputShape->GetStorageShape().GetShapeSize();
+    if (storageElems > 0 && (blockStride > storageElems || rowStride > storageElems || blockSize > storageElems)) {
+        return false;
+    }
+    return true;
 }
 
 ge::graphStatus KvCompressEpilogTilingArch35::GetKvCacheLayout()
@@ -238,21 +244,14 @@ ge::graphStatus KvCompressEpilogTilingArch35::DoOpTiling()
 
     int64_t concatCol;
     int64_t padCol;
-    if (quantMode_ == QUANT_MODE_HIFLOAT) {
-        scaleCol_ = 0;
-        concatCol = d_;
-        kvCacheCol_ = d_;
-        padCol = 0;
-    } else {
-        scaleCol_ = CeilDiv(d_ - 64, static_cast<int64_t>(64));
-        int64_t scaleBytes = 1;
-        if (quantMode_ == QUANT_MODE_GROUP_QUANT_BF16) {
-            scaleBytes = 2;
-        }
-        concatCol = d_ - SLICE_SIZE + SLICE_SIZE * 2 + scaleCol_ * scaleBytes;
-        kvCacheCol_ = RoundUp(concatCol, KV_CACHE_ROW_ALIGN);
-        padCol = kvCacheCol_ - concatCol;
+    scaleCol_ = CeilDiv(d_ - 64, static_cast<int64_t>(64));
+    int64_t scaleBytes = 1;
+    if (quantMode_ == QUANT_MODE_GROUP_QUANT_BF16) {
+        scaleBytes = 2;
     }
+    concatCol = d_ - SLICE_SIZE + SLICE_SIZE * 2 + scaleCol_ * scaleBytes;
+    kvCacheCol_ = RoundUp(concatCol, KV_CACHE_ROW_ALIGN);
+    padCol = kvCacheCol_ - concatCol;
 
     if (GetKvCacheLayout() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
