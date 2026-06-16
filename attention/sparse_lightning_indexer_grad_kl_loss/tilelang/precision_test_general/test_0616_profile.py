@@ -16,7 +16,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from importlib import import_module
-mod = import_module("0615")
+mod = import_module("0616")
 sparse_lightning_indexer_grad_kl_loss = mod.sparse_lightning_indexer_grad_kl_loss
 BLOCK_M, BLOCK_N, BLOCK_K = mod.BLOCK_M, mod.BLOCK_N, mod.BLOCK_K
 

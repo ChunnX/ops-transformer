@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Case 0 测试 - 基于0612.py NPU多核并行版本
+Case 0 测试 - 基于0616.py NPU多核并行版本
 """
 
 import torch
@@ -15,6 +15,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from importlib import import_module
 mod = import_module("0616")
 sparse_lightning_indexer_grad_kl_loss = mod.sparse_lightning_indexer_grad_kl_loss
+
+# Clear all caches to avoid stale compiled kernels
+mod._clear_caches()
 
 WARMUP_ITERS = 3
 BENCH_ITERS = 5
