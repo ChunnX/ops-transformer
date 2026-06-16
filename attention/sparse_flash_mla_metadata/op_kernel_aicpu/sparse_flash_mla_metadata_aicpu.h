@@ -129,6 +129,33 @@ inline void GetAttrValueOpt(CpuKernelContext &ctx, const std::string &name, bool
     }
 }
 
+inline bool IsNonEmptyTensor(const Tensor *tensor)
+{
+    if (tensor == nullptr || tensor->GetTensorShape() == nullptr) {
+        return false;
+    }
+    auto shape = tensor->GetTensorShape();
+    auto dims = shape->GetDims();
+    if (dims == 0) {
+        return true;
+    }
+    for (int64_t i = 0; i < dims; ++i) {
+        if (shape->GetDimSize(i) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+inline bool CheckReservedOptionalTensor(const Tensor *tensor, const std::string &name)
+{
+    if (!IsNonEmptyTensor(tensor)) {
+        return true;
+    }
+    KERNEL_LOG_ERROR("%s is reserved and does not support non-empty tensor in current version", name.c_str());
+    return false;
+}
+
 // 分核功能模块输出：FD信息，包含需要归约的数据索引及其分核信息
 struct FlashDecodeResult {
     uint32_t fdUsedVecNum { 0U };             // 归约过程使用的vector数量
@@ -292,6 +319,8 @@ private:
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
+    uint32_t GetCmpSeqSize(uint32_t bIdx);
+    uint32_t GetCmpResidualSize(uint32_t bIdx);
     uint32_t GetS1ValidSeqSize(uint32_t bIdx);
     int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
@@ -338,7 +367,11 @@ private:
     Tensor *actSeqLenOriKv_ = nullptr;
     Tensor *actSeqLenCmpKv_ = nullptr;
     Tensor *seqUsedQ_ = nullptr;
-    Tensor *seqUsedKv_ = nullptr;
+    Tensor *seqUsedOriKv_ = nullptr;
+    Tensor *seqUsedCmpKv_ = nullptr;
+    Tensor *cmpResidualKv_ = nullptr;
+    Tensor *oriTopkLength_ = nullptr;
+    Tensor *cmpTopkLength_ = nullptr;
 
     // output
     Tensor *metadata_ = nullptr;
@@ -348,17 +381,18 @@ private:
     int32_t querySeqSize_ = 0;
     int32_t queryHeadNum_ = 0;
     int32_t kvSeqSize_ = 0;
+    int32_t cmpKvSeqSize_ = 0;
     int32_t kvHeadNum_ = 0;
     int32_t headDim_ = 0;
     int32_t oriTopK_ = 0;
     int32_t cmpTopK_ = 0;
-    int32_t cmpRatio_ = -1;
+    int32_t cmpRatio_ = 1;
     int32_t oriMaskMode_ = 4;
     int32_t cmpMaskMode_ = 3;
     int64_t winLeft_ = 127;
     int64_t winRight_ = 0;
     std::string layoutQuery_ = "BSND";
-    std::string layoutKv_ = "PA_BNBD";
+    std::string layoutKv_ = "BSND";
     bool hasOriKv_ = true;
     bool hasCmpKv_ = true;
     uint32_t aicCoreNum_ = 24U;
@@ -387,7 +421,11 @@ private:
     actSeqLenOriKv = 1,
     actSeqLenCmpKv = 2,
     seqUsedQ = 3,
-    seqUsedKv = 4,
+    seqUsedOriKv = 4,
+    seqUsedCmpKv = 5,
+    cmpResidualKv = 6,
+    oriTopkLength = 7,
+    cmpTopkLength = 8,
     // output
     metadata = 0,
   };

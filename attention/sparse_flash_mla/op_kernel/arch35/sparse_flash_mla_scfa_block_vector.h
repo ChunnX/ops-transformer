@@ -721,12 +721,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint
     __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
 {
     oriKVGm.SetGlobalBuffer((__gm__ KV_T *)(oriKV));
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
         oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
     }
     if constexpr (TEMPLATE_MODE == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
         cmpKVGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
-        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
             cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
         }
         cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
