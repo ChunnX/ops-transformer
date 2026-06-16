@@ -20,7 +20,7 @@
 #endif
 #include "../ffn_to_attention.h"
 #include "../ffn_to_attention_tiling.h"
-#include "../ffn_to_attention_tilling_key.h"
+#include "../ffn_to_attention_tiling_key.h"
 
 using namespace AscendC;
 using namespace FFNToAttentionImpl;

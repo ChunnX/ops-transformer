@@ -19,7 +19,7 @@
 
 // 模板参数
 ASCENDC_TPL_ARGS_DECL(MoeDistributeCombineTeardown,
-    ASCENDC_TPL_BOOL_DECL(TILINGKEY_TP, 0, 1),
+    ASCENDC_TPL_BOOL_DECL(TILINGKEY_TP, 0),
 );
 
 // 模板参数组合
