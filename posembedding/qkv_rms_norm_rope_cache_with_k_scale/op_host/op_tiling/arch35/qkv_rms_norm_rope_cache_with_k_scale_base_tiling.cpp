@@ -996,8 +996,7 @@ QkvRmsNormRopeCacheWithKScaleBaseTiling::CopyRawTilingData(gert::TilingContext *
     OP_CHECK_IF(tilingDataSize > tilingCapacity,
                 OP_LOGE(context, "tiling data size[%zu] exceeds capacity[%zu].", tilingDataSize, tilingCapacity),
                 return ge::GRAPH_FAILED);
-    const auto ret =
-        memcpy_s(rawTilingData->GetData(), tilingCapacity, reinterpret_cast<const void *>(&tilingData), tilingDataSize);
+    const auto ret = memcpy_s(rawTilingData->GetData(), tilingCapacity, &tilingData, tilingDataSize);
     OP_CHECK_IF(ret != EOK,
                 OP_LOGE(context, "copy QkvRmsNormRopeCacheWithKScale tiling data failed, ret=%d.", ret),
                 return ge::GRAPH_FAILED);
