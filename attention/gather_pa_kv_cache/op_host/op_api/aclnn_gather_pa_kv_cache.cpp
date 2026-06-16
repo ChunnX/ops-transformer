@@ -280,12 +280,60 @@ static bool IsLastAxisContiguous(const aclTensor *tensor)
     return lastAxisContiguous && (dimNum == 1 || otherAxesNonContiguous);
 }
 
+// NZ模式仅支持dim0(num_blocks)轴非连续: 判断tensor是否存在"非dim0轴"的非连续。
+static bool HasNonDim0NonContiguous(const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        return false;
+    }
+    int64_t dimNum = tensor->GetViewShape().GetDimNum();
+    if (dimNum < 2) {
+        // 0/1维无"非dim0轴", 不可能存在非dim0非连续。
+        return false;
+    }
+    return !IsAxesContiguous(tensor, 1, dimNum);
+}
+
+// NZ模式下, 任一KV tensor存在非dim0非连续即视为不支持的形态(文档: NZ仅dim0支持非连续)。
+static bool NzHasUnsupportedNonContiguous(
+    const aclTensor *keyCache, const aclTensor *valueCache,
+    const aclTensor *keyRef, const aclTensor *valueRef)
+{
+    return HasNonDim0NonContiguous(keyCache) || HasNonDim0NonContiguous(valueCache) ||
+           HasNonDim0NonContiguous(keyRef) || HasNonDim0NonContiguous(valueRef);
+}
+
+// 判断tensor尾轴(head_size/elenum维)是否非连续, 即最后一维stride != 1。
+static bool IsLastAxisNonContiguous(const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        return false;
+    }
+    auto viewShape = tensor->GetViewShape();
+    int64_t dimNum = viewShape.GetDimNum();
+    if (dimNum < 1) {
+        return false;
+    }
+    // 尾轴size为1时stride不影响连续性, 视为连续。
+    if (viewShape.GetDim(dimNum - 1) == 1) {
+        return false;
+    }
+    return tensor->GetViewStrides()[dimNum - 1] != 1;
+}
+
+// 任一KV tensor尾轴非连续即视为不支持形态(ND/NZ通用): 必须走ProcessContiguous物理连续化,
+static bool HasUnsupportedLastAxisNonContiguous(
+    const aclTensor *keyCache, const aclTensor *valueCache,
+    const aclTensor *keyRef, const aclTensor *valueRef)
+{
+    return IsLastAxisNonContiguous(keyCache) || IsLastAxisNonContiguous(valueCache) ||
+           IsLastAxisNonContiguous(keyRef) || IsLastAxisNonContiguous(valueRef);
+}
+
 static bool IsSupportNonContiguousCache(const aclTensor *keyCache, const aclTensor *valueCache)
 {
     bool keyCacheCase1 = IsFirstAxisNonContiguous(keyCache);
     bool valueCacheCase1 = IsFirstAxisNonContiguous(valueCache);
-    // 任一cache首轴非连续即支持(与scatter对齐): 单个cache非连续场景也需走非连续路径,
-    // 否则会落到ProcessContiguous, 丢失view的stride0/offset导致读错block。
     return keyCacheCase1 || valueCacheCase1;
 }
 
@@ -487,12 +535,14 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
-    // Norm和PA_NZ模式都支持非连续: PA_NZ非连续view若走ProcessContiguous,
-    // 其连续化无法正确还原NZ view的stride0/offset, 会读错block导致精度错误。
+    bool isPaNz = (cacheMode != nullptr && strcmp(cacheMode, "PA_NZ") == 0);
+    bool nzUnsupportedNonContig =
+        isPaNz && NzHasUnsupportedNonContiguous(keyCache, valueCache, keyRef, valueRef);
+    bool lastAxisNonContig = HasUnsupportedLastAxisNonContiguous(keyCache, valueCache, keyRef, valueRef);
+    bool mustContiguous = nzUnsupportedNonContig || lastAxisNonContig;
     bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
     bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
-    if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
+    if (!mustContiguous && (isCacheNonContiguous || isKeyAndCacheNonContiguous)) {
         return ProcessNonContiguous(
             keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
             seqOffsetOptional, cacheMode, isSeqLensCumsum,
