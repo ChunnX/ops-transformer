@@ -42,6 +42,11 @@ constexpr int32_t TILING_TEMPLATE_PRIORITY = 1000;
 constexpr size_t WORKSPACE_COUNT = 1;
 constexpr size_t RESERVED_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
 
+int64_t GetStrideDimOrZero(const gert::Stride &stride, size_t index)
+{
+    return index < stride.GetDimNum() ? stride.GetStride(index) : 0;
+}
+
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeRank(const TensorContractInfo &tensor,
                                                                            const char *tensorName,
                                                                            size_t expectedRank) const
@@ -344,9 +349,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapes() const
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides() const
 {
-    const auto strideDimOrZero = [](const gert::Stride &stride, size_t index) -> int64_t {
-        return index < stride.GetDimNum() ? stride.GetStride(index) : 0;
-    };
     const gert::Stride &kStride = input_.kCache.stride;
     const gert::Stride &vStride = input_.vCache.stride;
     const gert::Stride &kScaleStride = input_.kScaleCache.stride;
@@ -356,8 +358,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides() const
                         "QkvRmsNormRopeCacheWithKScale contract reject: kCache stride present=%u rank=%u "
                         "strides={%lld,%lld,%lld,%lld}; expected positive strides and stride[3]=1.",
                         input_.kCache.stridePresent ? 1U : 0U, static_cast<uint32_t>(input_.kCache.stride.GetDimNum()),
-                        strideDimOrZero(input_.kCache.stride, 0), strideDimOrZero(input_.kCache.stride, 1),
-                        strideDimOrZero(input_.kCache.stride, 2), strideDimOrZero(input_.kCache.stride, 3)),
+                        GetStrideDimOrZero(input_.kCache.stride, 0), GetStrideDimOrZero(input_.kCache.stride, 1),
+                        GetStrideDimOrZero(input_.kCache.stride, 2), GetStrideDimOrZero(input_.kCache.stride, 3)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.vCache.stridePresent || vStride.GetDimNum() != 4 || vStride.GetStride(0) <= 0 ||
                     vStride.GetStride(1) <= 0 || vStride.GetStride(2) <= 0 || vStride.GetStride(3) != 1,
@@ -365,8 +367,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides() const
                         "QkvRmsNormRopeCacheWithKScale contract reject: vCache stride present=%u rank=%u "
                         "strides={%lld,%lld,%lld,%lld}; expected positive strides and stride[3]=1.",
                         input_.vCache.stridePresent ? 1U : 0U, static_cast<uint32_t>(input_.vCache.stride.GetDimNum()),
-                        strideDimOrZero(input_.vCache.stride, 0), strideDimOrZero(input_.vCache.stride, 1),
-                        strideDimOrZero(input_.vCache.stride, 2), strideDimOrZero(input_.vCache.stride, 3)),
+                        GetStrideDimOrZero(input_.vCache.stride, 0), GetStrideDimOrZero(input_.vCache.stride, 1),
+                        GetStrideDimOrZero(input_.vCache.stride, 2), GetStrideDimOrZero(input_.vCache.stride, 3)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(kStride.GetStride(0) != vStride.GetStride(0) || kStride.GetStride(1) != vStride.GetStride(1) ||
                     kStride.GetStride(2) != vStride.GetStride(2),
@@ -384,8 +386,10 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides() const
                         "strides={%lld,%lld,%lld,%lld}; expected positive strides and stride[3]=1.",
                         input_.kScaleCache.stridePresent ? 1U : 0U,
                         static_cast<uint32_t>(input_.kScaleCache.stride.GetDimNum()),
-                        strideDimOrZero(input_.kScaleCache.stride, 0), strideDimOrZero(input_.kScaleCache.stride, 1),
-                        strideDimOrZero(input_.kScaleCache.stride, 2), strideDimOrZero(input_.kScaleCache.stride, 3)),
+                        GetStrideDimOrZero(input_.kScaleCache.stride, 0),
+                        GetStrideDimOrZero(input_.kScaleCache.stride, 1),
+                        GetStrideDimOrZero(input_.kScaleCache.stride, 2),
+                        GetStrideDimOrZero(input_.kScaleCache.stride, 3)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -760,16 +764,14 @@ TensorContractInfo QkvRmsNormRopeCacheWithKScaleBaseTiling::ToOptionalTensorInfo
 void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogTensorInfo(const char *tensorName,
                                                             const TensorContractInfo &info) const
 {
-    const auto strideDimOrZero = [](const gert::Stride &stride, size_t index) -> int64_t {
-        return index < stride.GetDimNum() ? stride.GetStride(index) : 0;
-    };
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale input tensor %s: dtype=%s(%u) shapePresent=%u shapeRank=%u "
             "stridePresent=%u strideRank=%u stride={%lld,%lld,%lld,%lld}.",
             tensorName, DtypeName(info.dtype), static_cast<uint32_t>(info.dtype), info.shapePresent ? 1U : 0U,
             static_cast<uint32_t>(info.shape.GetDimNum()), info.stridePresent ? 1U : 0U,
-            static_cast<uint32_t>(info.stride.GetDimNum()), strideDimOrZero(info.stride, 0),
-            strideDimOrZero(info.stride, 1), strideDimOrZero(info.stride, 2), strideDimOrZero(info.stride, 3));
+            static_cast<uint32_t>(info.stride.GetDimNum()), GetStrideDimOrZero(info.stride, 0),
+            GetStrideDimOrZero(info.stride, 1), GetStrideDimOrZero(info.stride, 2),
+            GetStrideDimOrZero(info.stride, 3));
 }
 
 void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogContractInput() const
