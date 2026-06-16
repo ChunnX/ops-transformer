@@ -62,6 +62,7 @@ private:
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
     void PrintQuantParams() override;
+    int64_t DefaultPrintQuantParams() const;
     bool SetQuantModeForQGmmInplaceAdd();
     bool CheckCoreNum() const override;
     QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams tilingData_;

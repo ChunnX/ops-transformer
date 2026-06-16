@@ -96,7 +96,7 @@ ge::graphStatus GroupedQmmBasicApiTiling::PostTiling()
 
 void GroupedQmmBasicApiTiling::PrintQuantParams()
 {
-    LogQuantParams(tilingData_.gmmQuantParams);
+    OP_LOGD(inputParams_.opName, "%ld", DefaultPrintQuantParams(tilingData_.gmmQuantParams));
 }
 
 ge::graphStatus GroupedQmmBasicApiTiling::CalL1Tiling()
