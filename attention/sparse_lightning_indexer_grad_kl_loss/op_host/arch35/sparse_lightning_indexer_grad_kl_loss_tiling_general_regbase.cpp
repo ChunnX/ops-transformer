@@ -946,8 +946,8 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::SetSparseStartIdx(const 
         localSparseStartIdx[idx] = std::min((idx * splitFactorSize), totalSize);
     }
     std::vector<int64_t> localValue(validAicNum, 0);
-    //得到了每个核需要计算的S2数量，在T方向平均分配，但是有于有Sparse的存在，localValue中的数值，每个核之间应该差距很大
-    InitLoadValue(sparseValidArray, validAicNum, totalSize, localSparseStartIdx, localValue); 
+    // 得到了每个核需要计算的S2数量，在T方向平均分配，但是有于有Sparse的存在，localValue中的数值，每个核之间应该差距很大
+    InitLoadValue(sparseValidArray, validAicNum, totalSize, localSparseStartIdx, localValue);
 
     // 负载均衡粗调
     std::vector<int64_t> tmpLocalValue(validAicNum, 0);
