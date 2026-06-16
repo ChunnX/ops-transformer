@@ -4,7 +4,6 @@ import torch
 from typing import Any, Dict
 
 from .base import Backend
-from utils.data import generate_cpu_mask
 
 
 class CPUBackend(Backend):

@@ -80,7 +80,6 @@ if __name__ == "__main__":
 
     # ── 性能测试分支 ──
     if args.perf_mode:
-        from pathlib import Path
         from utils.perf_parser import parse_op_summary, compute_stats
 
         cases_list = [normalize_params(all_cases[name]) for name in run_cases]
@@ -166,7 +165,6 @@ if __name__ == "__main__":
         print(f"└{SEP}┘")
 
         if not args.one_by_one:
-            import csv as csv_mod
             perf_csv = out / "perf.csv"
             with open(perf_csv, "w", newline="") as f:
                 w = csv_mod.DictWriter(f, ["#","case","dir","avg_us","mode","error"])

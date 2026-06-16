@@ -1,10 +1,8 @@
-"""编排器 — 串联数据生成 → 后端计算 → 精度对比 + golden 持久化 + 子进程隔离。"""
+"""编排器 — 串联数据生成 → 后端计算 → 精度对比 + golden 持久化。"""
 
 import gc
-import os
-import multiprocessing as mp
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List
 
 import torch
 
@@ -12,8 +10,6 @@ from core.data import InputSpec, flash_attn_inputs
 from core.backends.base import Backend
 from utils.compare import check_result
 from utils.data import trans_bnsd_to_layout
-
-_ctx = mp.get_context('spawn')
 
 
 # ─── Golden 持久化 ───────────────────────────────────────────────────────────
@@ -66,87 +62,6 @@ def load_golden_case(case_name: str, golden_dir: str):
             params[k] = v
 
     return inputs, golden, params
-
-
-# ─── 子进程隔离 NPU 执行 ─────────────────────────────────────────────────────
-
-def _npu_worker(inputs_path, result_path, params, device_id):
-    import torch
-    import torch_npu
-    torch.npu.set_device(device_id)
-
-    from core.backends.npu import NPUBackend
-    primary = NPUBackend(device_id)
-
-    inputs = torch.load(inputs_path, map_location="cpu")
-    dev_inputs = {k: v.to(primary.device) for k, v in inputs.items()
-                  if isinstance(v, torch.Tensor)}
-    out = primary.compute(dev_inputs, params)
-
-    result_cpu = {k: v.cpu() if isinstance(v, torch.Tensor) else v
-                  for k, v in out.items()}
-    torch.save(result_cpu, result_path)
-
-
-def run_npu_isolated(inputs, params, device_id, timeout=300):
-    tmp_inputs = f"/tmp/_fa_inputs_{os.getpid()}.pt"
-    tmp_result = f"/tmp/_fa_result_{os.getpid()}.pt"
-
-    tensor_inputs = {k: v for k, v in inputs.items() if isinstance(v, torch.Tensor)}
-    torch.save(tensor_inputs, tmp_inputs)
-
-    p = _ctx.Process(target=_npu_worker,
-                     args=(tmp_inputs, tmp_result, params, device_id))
-    p.start()
-    p.join(timeout=timeout)
-
-    if p.is_alive():
-        p.kill()
-        p.join()
-        _cleanup(tmp_inputs, tmp_result)
-        return None, "TIMEOUT: kernel hang"
-
-    _cleanup(tmp_inputs)
-
-    if p.exitcode != 0:
-        _cleanup(tmp_result)
-        return None, f"CRASHED: exit code {p.exitcode}"
-
-    if not os.path.exists(tmp_result):
-        return None, "NO_OUTPUT: 子进程未写出结果文件"
-
-    result = torch.load(tmp_result, map_location="cpu", weights_only=False)
-    _cleanup(tmp_result)
-    return result, None
-
-
-def _cleanup(*paths):
-    for p in paths:
-        if os.path.exists(p):
-            os.remove(p)
-
-
-def _npu_health_check(device_id, timeout=10):
-    def _probe(result_path, dev_id):
-        import torch, torch_npu
-        torch.npu.set_device(dev_id)
-        x = torch.ones(1, device=f"npu:{dev_id}")
-        y = x + x
-        torch.npu.synchronize()
-        torch.save({"ok": True}, result_path)
-
-    tmp = f"/tmp/_fa_health_{os.getpid()}.pt"
-    p = _ctx.Process(target=_probe, args=(tmp, device_id))
-    p.start()
-    p.join(timeout=timeout)
-    if p.is_alive():
-        p.kill()
-        p.join()
-        _cleanup(tmp)
-        return False
-    ok = os.path.exists(tmp)
-    _cleanup(tmp)
-    return ok
 
 
 # ─── 核心运行逻辑 ────────────────────────────────────────────────────────────

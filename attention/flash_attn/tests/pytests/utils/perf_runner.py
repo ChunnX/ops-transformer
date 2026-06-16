@@ -230,8 +230,6 @@ def run_all_perf(cases: List[Dict], runs: int, cold_thr: int,
             error_msg = error_msg or "no PROF directory"
             print(f"  [{name}] NO PROF_DIR {error_msg}")
             crashed = True
-            crashed = True
-            crashed = True
 
         csv_w.writerow({
             "#": i + 1, "case": name, "dir": case_dir_name,

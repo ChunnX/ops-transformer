@@ -57,9 +57,6 @@ def _attend(q, k, v, atten_mask, scale, need_fix_invalid):
     if need_fix_invalid:
         softmax_res, x_max, x_sum = _fix_invalid_rows(softmax_res, x_max, x_sum)
 
-    if need_fix_invalid:
-        softmax_res, x_max, x_sum = _fix_invalid_rows(softmax_res, x_max, x_sum)
-
     out = torch.matmul(softmax_res, v)
     x_max = x_max
     x_sum = x_sum
