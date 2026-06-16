@@ -107,9 +107,9 @@ static bool CheckAndSetAttrs(const gert::TilingContext *context, DistributeBarri
     std::string socVersion = mc2tiling::GetSocVersion(context);
     int64_t MAX_WORLD_SIZE = 0;
     if (socVersion = "Ascend950") {
-        MAX_WORLD_SIZE = 1024;
+        MAX_WORLD_SIZE = 1024; // Ascend950放开至1024
     } else {
-        MAX_WORLD_SIZE = 384;
+        MAX_WORLD_SIZE = 384; // A3保持不变
     }
     auto groupPtr = attrs->GetAttrPointer<char>(config.attrGroupIndex);
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(config.attrWorldSizeIndex);
