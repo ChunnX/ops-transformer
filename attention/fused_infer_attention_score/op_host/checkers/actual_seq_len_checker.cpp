@@ -103,7 +103,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
             if (curSeqLengthData < 0) {
                 std::string valueStr = "actual_seq_lengths[" + std::to_string(bIdx) + "]";
                 std::string reason = "The value of actual_seq_lengths[" + std::to_string(bIdx) +
-                    "] cannot be less than 0.";
+                    "] cannot be less than 0";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -130,7 +130,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
             if (curSeqLengthData < 0) {
                 std::string valueStr = "actual_seq_lengths[" + std::to_string(i) + "]";
                 std::string reason = "The value of actual_seq_lengths[" + std::to_string(i) +
-                    "] cannot be less than 0.";
+                    "] cannot be less than 0";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -212,7 +212,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
             if (curSeqLengthData < 0) {
                 std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(bIdx) + "]";
                 std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(bIdx) +
-                    "] cannot be less than 0.";
+                    "] cannot be less than 0";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -232,7 +232,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
                 std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(i) + "]";
                 std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
                     "] cannot be greater than KV_S: " +
-                    std::to_string(sOfKeyValue) + ".";
+                    std::to_string(sOfKeyValue);
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -241,7 +241,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
             if (curSeqLengthData < 0) {
                 std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(i) + "]";
                 std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
-                    "] cannot be less than 0.";
+                    "] cannot be less than 0";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -379,7 +379,7 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureAlibi(const FiaTilingInfo &fiaI
                     "] and actualSeqLengthsKvData[" + std::to_string(bIdx) + "]";
                 std::string valueStr = std::to_string(actualSeqLengthsQData) + " and " +
                     std::to_string(actualSeqLengthsKvData);
-                std::string reason = attrName + " must be the same when pseType is 2 or 3.";
+                std::string reason = attrName + " must be the same when pseType is 2 or 3";
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, attrName.c_str(),
                     valueStr.c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;

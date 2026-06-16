@@ -17,7 +17,6 @@
 #define PAGED_ATTENTION_CHECKER_H
 
 #include <map>
-#include <numeric>
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
@@ -37,26 +36,27 @@ public:
 private:
     // 公共校验函数
 
-    ge::graphStatus CheckBlockTableDtype(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckBlockTableShapeSize(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckBlockSize(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckBlockTableDtype(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckBlockTableShapeSize(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckBlockSize(const FiaTilingInfo &fiaInfo) const;
 
-    ge::graphStatus CheckBlockTableExistence(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckSeqLengthKVExistence(const FiaTilingInfo &fiaInfo);
+
+    ge::graphStatus CheckBlockTableExistence(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureSupport(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckSeqLengthKVExistence(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckQDtypeSupport(const FiaTilingInfo &fiaInfo);
 
-    int64_t GetMaxBlockNumPerBatch(const FiaTilingInfo &fiaInfo);
+    int64_t GetMaxBlockNumPerBatch(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckMaskShape(const FiaTilingInfo &fiaInfo);
 
     ge::graphStatus CheckBlockTableShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckBlockSizeSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKVLayout(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckKVLayout(const FiaTilingInfo &fiaInfo) const;
 
     ge::graphStatus CheckPACacheShape(const FiaTilingInfo &fiaInfo, const gert::Shape tempShape,
-        const std::string& inputName);
+        const std::string& inputName) const;
     ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo &fiaInfo) const;
-    ge::graphStatus CheckFeatureInputLayoutForAntiquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureInputLayoutForAntiquant(const FiaTilingInfo &fiaInfo) const;
 };
 
 } // namespace optiling

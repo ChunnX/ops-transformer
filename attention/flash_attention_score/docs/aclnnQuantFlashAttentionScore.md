@@ -370,7 +370,7 @@ aclnnStatus aclnnQuantFlashAttentionScore(
   - B：batchsize必须相等。
   - D：Head-Dim必须满足(qD == kD && kD >= vD)。
   - inputLayout必须一致。
-- 关于数据shape的约束,目前支持以下场景：
+- 关于数据shape的约束，目前支持以下场景：
     <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
     <col style="width: 150px">
     <col style="width: 300px">
