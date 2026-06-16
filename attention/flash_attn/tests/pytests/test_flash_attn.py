@@ -203,7 +203,7 @@ if __name__ == "__main__":
         else:
             try:
                 from core.backends.npu import NPUBackend
-                primary = NPUBackend(args.device_id)
+                primary = NPUBackend(args.device_id, graph_mode=args.graph_mode)
             except ImportError:
                 print("[ERROR] NPU backend 不可用"); sys.exit(1)
 
@@ -270,7 +270,8 @@ if __name__ == "__main__":
     else:
         try:
             from core.backends.npu import NPUBackend
-            primary = NPUBackend(args.device_id, meta_only=args.meta_only)
+            primary = NPUBackend(args.device_id, meta_only=args.meta_only,
+                                 graph_mode=args.graph_mode)
         except ImportError:
             print("[ERROR] NPU backend 不可用"); sys.exit(1)
 
