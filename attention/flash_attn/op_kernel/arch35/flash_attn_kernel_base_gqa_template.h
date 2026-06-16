@@ -835,12 +835,12 @@ public:
             }
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
-            if (constInfo.aicIdx < constInfo.coreNum) {
-                FlashAttention(sectionIdx);
-            }
-            if ASCEND_IS_AIV {
-                FlashDecode(sectionIdx);
-            }
+            // if (constInfo.aicIdx < constInfo.coreNum) {
+            //     FlashAttention(sectionIdx);
+            // }
+            // if ASCEND_IS_AIV {
+            //     FlashDecode(sectionIdx);
+            // }
         }
 
         if (constInfo.aicIdx < constInfo.coreNum) {
