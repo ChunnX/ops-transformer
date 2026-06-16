@@ -65,7 +65,7 @@ public:
     __aicore__ inline void Process();
 private:
     __aicore__ inline void ProcessMainLoop();
-    __aicore__ inline int64_t GetSeqLen(int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,
+    __aicore__ inline int64_t GetSeqLen(int32_t bIdx, bool hasActualSeq, bool useCuSeqlens,
         GlobalTensor<int32_t>& actualSeqGm, GlobalTensor<int32_t>& cuSeqlensGm, int64_t defaultSize);
     __aicore__ inline void ParseTilingData(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
         __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *sequsedOriKv,
@@ -184,12 +184,12 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::GetSeqLen(
-    int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,
+    int32_t bIdx, bool hasActualSeq, bool useCuSeqlens,
     GlobalTensor<int32_t>& actualSeqGm, GlobalTensor<int32_t>& cuSeqlensGm, int64_t defaultSize)
 {
     if (hasActualSeq) {
         return actualSeqGm.GetValue(bIdx);
-    } else if (hasCuSeqlens) {
+    } else if (useCuSeqlens) {
         return cuSeqlensGm.GetValue(bIdx + 1) - cuSeqlensGm.GetValue(bIdx);
     } else {
         return defaultSize;
@@ -236,16 +236,16 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         }
     }
 
-    if (cuSeqlensQ != nullptr) {
+    if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
         hasCuSeqlensQ = true;
     }
-    if (cuSeqlensOriKv != nullptr) {
+    if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
         cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
         hasCuSeqlensOriKv = true;
     }
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
-        if (cuSeqlensCmpKv != nullptr) {
+        if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
             cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
             hasCuSeqlensCmpKv = true;
         }
@@ -270,11 +270,19 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
 
     constInfo.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
-        int64_t s2Size = GetSeqLen(bIdx, hasActualSeqOriKvlen, hasCuSeqlensOriKv,
+        constexpr bool USE_CU_SEQLENS_Q = LAYOUT_T == QSMLA_LAYOUT::TND;
+        constexpr bool USE_CU_SEQLENS_KV = KV_LAYOUT_T == QSMLA_LAYOUT::TND;
+        int64_t s2Size = GetSeqLen(bIdx, hasActualSeqOriKvlen, USE_CU_SEQLENS_KV,
             actualSeqOriKvlenGm, cuSeqlensOriKvGm, constInfo.s2Size);
-        int64_t s1Size = GetSeqLen(bIdx, hasActualSeqQlen, hasCuSeqlensQ,
+        int64_t s1Size = GetSeqLen(bIdx, hasActualSeqQlen, USE_CU_SEQLENS_Q,
             actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
-        if (s1Size > s2Size) {
+        int64_t s1LayoutSize = constInfo.s1Size;
+        if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
+            if (hasCuSeqlensQ) {
+                s1LayoutSize = cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
+            }
+        }
+        if (s1Size > s2Size || s1Size < s1LayoutSize) {
             constInfo.needInit = 1;
             break;
         }
@@ -483,7 +491,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                     continue;
                 }
                 runParam.s2SplitIdx = s2SplitIdxCounter;
-                if (runParam.isS2Split && s2SplitIdxCounter < 2) {
+                if (runParam.isS2Split) {
                     s2SplitIdxCounter++;
                 }
                 if constexpr (IS_SPLIT_G) {
@@ -624,6 +632,20 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     fdRunInfo.workspaceNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_NUM_INDEX, true));
     fdRunInfo.mStartIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_START_INDEX, true));
     fdRunInfo.mNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_NUM_INDEX, true));
+
+    uint32_t bIdx = static_cast<uint32_t>(fdRunInfo.bn2Idx / constInfo.n2Size);
+    constexpr bool USE_CU_SEQLENS_Q = LAYOUT_T == QSMLA_LAYOUT::TND;
+    int64_t actualS1Size = GetSeqLen(bIdx, hasActualSeqQlen, USE_CU_SEQLENS_Q,
+        actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+    int64_t actualMSize = actualS1Size * constInfo.gSize;
+    int64_t fdMStart = fdRunInfo.mIdx * constInfo.s1BaseSize + fdRunInfo.mStartIdx;
+    if (fdMStart >= actualMSize) {
+        fdRunInfo.coreEnable = false;
+        return;
+    }
+    if (fdMStart + fdRunInfo.mNum > actualMSize) {
+        fdRunInfo.mNum = actualMSize - fdMStart;
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>

@@ -89,14 +89,14 @@ public:
     {
         if ASCEND_IS_AIV {
             tPipe = pipe;
-            if (cuSeqlensQ != nullptr) {
+            if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
                 cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
             }
-            if (cuSeqlensOriKv != nullptr) {
+            if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
                 cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
             }
             if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
-                if (cuSeqlensCmpKv != nullptr) {
+                if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
                     cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
                 }
             }
@@ -1103,7 +1103,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
 
     Duplicate(accumulatedO, (T)0.0, vec2CalcSize);
 
-    uint32_t fdMOffset = static_cast<uint32_t>(fdRunInfo.mStartIdx);
+    uint32_t fdMOffset = static_cast<uint32_t>(fdRunInfo.mStartIdx) * FD_M_BASE_SIZE;
     GlobalTensor<float> maxGm;
     maxGm.SetGlobalBuffer((__gm__ float *)(maxRegion + fdRunInfo.workspaceIdx * MAX_SUM_BYTES));
     GlobalTensor<float> sumGm;
@@ -1143,18 +1143,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
         // ========== 4. 逐split读回partial output并用 VF 归约累加 ==========
         LocalTensor<T> chunkAccumO = accumulatedO[startRow * dTemplateAlign64];
         for (uint32_t splitIdx = 0; splitIdx < fdRunInfo.workspaceNum; splitIdx++) {
-            DataCopyExtParams inParams;
-            inParams.blockLen = constInfo.dSizeV * sizeof(float);
-            inParams.srcStride = 0;
-            constexpr uint32_t outputElemsPerBlock = BUFFER_SIZE_BYTE_32B / sizeof(float);
-            inParams.dstStride = static_cast<uint16_t>((dTemplateAlign64 - constInfo.dSizeV) / outputElemsPerBlock);
-            inParams.blockCount = dealRowCount;
-            DataCopyPadExtParams<float> padParams{true, 0,
-                static_cast<uint8_t>((dTemplateAlign64 - constInfo.dSizeV) % outputElemsPerBlock), 0};
             uint32_t outSrcOffset = splitIdx * outSplitStride + (fdMOffset + startRow) * constInfo.dSizeV;
             // 反向同步: 等上一轮split的ReduceFinalRes(V)读完partialOFp32, 再覆写(MTE2), 避免跨split竞态
             WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
-            DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
+            DataCopy(partialOFp32, stagingOutGm[outSrcOffset], dealRowCount * constInfo.dSizeV);
             SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
 

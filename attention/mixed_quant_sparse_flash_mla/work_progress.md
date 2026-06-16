@@ -6,6 +6,10 @@
 - 2026-06-08：最终目标是为 QSMLA 算子实现 flash decode 功能。
 - 2026-06-15：按新约定，工作进展和学习进展均维护在当前算子目录。
 - 2026-06-15：实现 FD N=128 staging 适配：split-G 下 staging 逻辑 M 行数改为 128，FA 写 staging 时后 64 head 增加 64 行偏移，staging logical slot 数按 cube pair 减半以保持 workspace 总量不增加；FD 阶段不引入前/后 64 head 判断，仅按 metadata 读取逻辑 M 行。
+- 2026-06-16：修复 FD 规约读 staging 的 M 偏移：`ProcessFlashDecode()` 中 `fdRunInfo.mStartIdx` 先乘 `FD_M_BASE_SIZE/StagingMSize()` 再参与 max/sum 和 partial output 的 GM 读回偏移，避免 N=64 应按 64 行、N=128 应按 128 行推进时仍只按单行偏移读取。
+- 2026-06-16：收敛 cu_seqlens 使用条件：kernel 侧 `hasCuSeqlensQ` 仅在 `LAYOUT_T == TND` 时置 true，`hasCuSeqlensOriKv/hasCuSeqlensCmpKv` 仅在 `KV_LAYOUT_T == TND` 时置 true；Vec block 也只在对应 TND layout 下绑定 cu_seqlens GM tensor，并修正 `actualS2CmpSize` 分支从看 Q layout 改为看 KV layout。
+- 2026-06-16：明确 `GetSeqLen()` 语义：该函数返回 compute length，优先 actual/used length；只有调用处按 layout 传入 `useCuSeqlens=true` 时才从 `cu_seqlens` 推导长度。ParseTilingData 和 FD metadata 裁剪调用处传编译期 `USE_CU_SEQLENS_Q/KV`，非 TND 不再可能因占位指针走 cu 路径。
+- 2026-06-16：FD 规约读回 partial output 时，当前算子约束 `dSizeV=512` 且 `dTemplateAlign64=512`，GM staging 与 UB 目标行均连续无 padding；已将 `DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], ...)` 简化为 `DataCopy(partialOFp32, stagingOutGm[outSrcOffset], dealRowCount * constInfo.dSizeV)`。
 
 ## Flash Decode Progress
 

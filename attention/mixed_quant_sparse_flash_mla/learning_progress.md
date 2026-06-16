@@ -24,6 +24,7 @@
 - Vec0 稀疏 KV 处理中，`n=64` 下两个 subBlock 将 `s2RealSize=128` 分成 `[0,63]` 和 `[64,127]`；`n=128` 下两个 AIC 的四个 subBlock 近似切成四段。
 - FD staging 在 `n=128` 下按逻辑 `M=128` 布局：FA 阶段前 64 head 写 `[0,63]`，后 64 head 写 `[64,127]`；FD 阶段不感知 cube 配对，只按 metadata 的 `workspaceIdx/mStartIdx/mNum` 读取逻辑 M 行。
 - `n=128` FD staging 不额外增加总 workspace：每个 logical slot 的行数从 64 翻倍到 128，同时 logical slot 数按 cube pair 减半。
+- FD 规约读取 staging 时，metadata 中的 `mStartIdx` 若作为 staging M block 偏移使用，必须先乘 `StagingMSize()` 转成行偏移：`n=64` 为 64 行，`n=128/split-G` 为 128 行。
 
 ## MatmulK Understanding
 
@@ -88,6 +89,8 @@
 - `cu_seqlen_xx` 表示数据在内存中的排布长度，采用前缀和形式存储；每个值表示前面所有 batch 在 S 维累计占用的内存长度。
 - `usedlen_xx` 表示每个 batch 实际参与计算的 S 长度。
 - 例如 `cu_seqlen_xx = [0, 3]`、`usedlen_xx = [2]` 时，内存占用按 3 计算，实际计算长度按 2 计算。
+- Kernel 侧 `hasCuSeqlens*` 必须由 layout 决定：Q 仅 `LAYOUT_T == TND` 时为 true，KV 仅 `KV_LAYOUT_T == TND` 时为 true；非 TND 场景即使外部传了占位 cu_seqlens 指针也不能使用。
+- `GetSeqLen()` 返回参与计算长度，优先使用 `usedlen/seqused`；只有没有 actual/used length 且对应 layout 是 TND 时，才允许从 `cu_seqlens` 前缀和推导长度；非 TND 不使用 `cu_seqlens`。
 - TND padding 指 `layout = TND` 时，Q 或 KV 的 `cu_seqlen_xx` 推导出的内存排布长度与 `usedlen_xx` 指定的实际计算长度不一致；该现象只出现在 TND layout。
 
 ## Flash Decode Metadata S2 Range
