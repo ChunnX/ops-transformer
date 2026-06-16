@@ -2,8 +2,8 @@
 """
 Profiling test: use torch.npu.profiler + SLIG_PROFILE to capture pipeline timing.
 Usage:
-    SLIG_PROFILE=1 python test_0615_profile.py          # print Python-level breakdown
-    NPU_PROFILE=1 python test_0615_profile.py           # capture NPU timeline (chrome trace)
+    SLIG_PROFILE=1 python test_0616_profile.py          # print Python-level breakdown
+    NPU_PROFILE=1 python test_0616_profile.py           # capture NPU timeline (chrome trace)
 """
 
 import torch
@@ -118,7 +118,7 @@ def main():
     do_npu_profile = os.environ.get("NPU_PROFILE", "0") == "1"
 
     print("=" * 60)
-    print("0615.py Profiling Test")
+    print("0616.py Profiling Test")
     print("=" * 60)
 
     inputs = gen_inputs()
@@ -157,7 +157,7 @@ def main():
         os.environ["SLIG_PROFILE"] = "0"
 
         print(f"\n  To capture NPU-level timeline (C1/V1/C2/V3 breakdown):")
-        print(f"    NPU_PROFILE=1 python test_0615_profile.py")
+        print(f"    NPU_PROFILE=1 python test_0616_profile.py")
 
 if __name__ == "__main__":
     main()

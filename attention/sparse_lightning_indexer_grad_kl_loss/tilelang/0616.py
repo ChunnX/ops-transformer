@@ -480,7 +480,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
 # Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
 # ==============================================================================
-def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, K, DQuery, DQueryIndex):
+def _preprocess_gather(key, key_index, key_rope, sparse_indices, B, S1, S2, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, dtype):
     device = key.device
     dtype = key.dtype
 
@@ -497,10 +497,19 @@ def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, K, 
     idx_ki = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQueryIndex)
     gather_key_index = torch.gather(key_index_2d, 1, idx_ki).reshape(B, S1, K, DQueryIndex).contiguous()
 
+    # Rope gather -- merged with key gather, same sparse_indices
+    if key_rope is not None:
+        key_rope_2d = key_rope[:, :, 0, :]
+        idx_rope = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
+        gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig).contiguous()
+        gather_key_rope.mul_(valid_mask)
+    else:
+        gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=dtype, device=key.device)
+
     gather_key.mul_(valid_mask)
     gather_key_index.mul_(valid_mask)
 
-    return gather_key, gather_key_index
+    return gather_key, gather_key_index, gather_key_rope
 
 
 # ==============================================================================
@@ -652,32 +661,16 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_gather_start = torch.npu.Event(enable_timing=True)
             _t_gather_end = torch.npu.Event(enable_timing=True)
             _t_gather_start.record()
-        gather_key, gather_key_index = _preprocess_gather(
-            key, key_index, sparse_indices,
-            B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex,
+        d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
+        gather_key, gather_key_index, gather_key_rope = _preprocess_gather(
+            key, key_index, key_rope, sparse_indices,
+            B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, query.dtype,
         )
         if _PROFILE:
             _t_gather_end.record()
 
         gather_key_index_t = gather_key_index.permute(0, 1, 3, 2).contiguous()
 
-        if _PROFILE:
-            _t_rope_start = torch.npu.Event(enable_timing=True)
-            _t_rope_end = torch.npu.Event(enable_timing=True)
-            _t_rope_start.record()
-        d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
-        if query_rope is not None and key_rope is not None:
-            _sparse_idx_rope = sparse_indices[:, :, 0, :].clamp(min=0)
-            key_rope_2d = key_rope[:, :, 0, :]
-            idx_rope = _sparse_idx_rope.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
-            gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig).contiguous()
-            _valid_mask_rope = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1).to(query.dtype)
-            gather_key_rope.mul_(_valid_mask_rope)
-        else:
-            gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=query.dtype, device=query.device)
-
-        if _PROFILE:
-            _t_rope_end.record()
 
         # Pad rope dims to k_block alignment to avoid partial T.copy in kernel
         d_rope = ((d_rope_orig + BLOCK_K - 1) // BLOCK_K) * BLOCK_K if d_rope_orig > 0 else 0
@@ -770,10 +763,9 @@ def sparse_lightning_indexer_grad_kl_loss(
         if _PROFILE:
             torch.npu.synchronize()
             g_ms = _t_gather_start.elapsed_time(_t_gather_end)
-            r_ms = _t_rope_start.elapsed_time(_t_rope_end)
             k_ms = _t_kernel_start.elapsed_time(_t_kernel_end)
             s_ms = _t_scatter_start.elapsed_time(_t_scatter_end)
-            print(f"[PROFILE] gather={g_ms:.3f}ms rope_gather={r_ms:.3f}ms kernel={k_ms:.3f}ms scatter={s_ms:.3f}ms total={g_ms+r_ms+k_ms+s_ms:.3f}ms")
+            print(f"[PROFILE] gather={g_ms:.3f}ms rope_gather={0:.3f}ms kernel={k_ms:.3f}ms scatter={s_ms:.3f}ms total={g_ms+r_ms+k_ms+s_ms:.3f}ms")
 
         return d_query_index, d_key_index, d_weight, loss_tensor
 
