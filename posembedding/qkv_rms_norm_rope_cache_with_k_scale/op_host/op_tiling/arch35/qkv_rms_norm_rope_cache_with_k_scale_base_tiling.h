@@ -129,25 +129,24 @@ private:
     void Reset();
 
     static uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numKHeads);
-    static ge::graphStatus ValidateHeadNums(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateScalarInputs(const ContractInput &input, const std::string &opName);
+    ge::graphStatus ValidateHeadNums(const std::string &opName) const;
+    ge::graphStatus ValidateScalarInputs(const std::string &opName) const;
     static ge::graphStatus ValidateDtype(const std::string &opName, const char *tensorName,
                                          const TensorContractInfo &tensor, ge::DataType expected);
-    static ge::graphStatus ValidateDtypes(const ContractInput &input, const std::string &opName);
+    ge::graphStatus ValidateDtypes(const std::string &opName) const;
     static ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName,
                                              size_t expectedRank, const std::string &opName);
-    static ge::graphStatus ValidateShapeInputsForDerivedFields(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateNonCacheShapes(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateCacheShapes(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateShapes(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateStrides(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateMinimumTokenTileFeasible(const ContractInput &input, const std::string &opName);
-    static bool TrySelectTokenTile(const ContractTiling &tiling, uint64_t tokenTile, const std::string &opName,
-                                   TokenTileSelection &selection);
-    static ge::graphStatus SelectTokenTile(const ContractTiling &tiling, const std::string &opName,
-                                           TokenTileSelection &selection);
-    static void FillContractTiling(const ContractInput &input, uint64_t aicNum, const TokenTileSelection &selection,
-                                   ContractTiling &tiling);
+    ge::graphStatus ValidateShapeInputsForDerivedFields(const std::string &opName) const;
+    ge::graphStatus ValidateNonCacheShapes(const std::string &opName) const;
+    ge::graphStatus ValidateCacheShapes(const std::string &opName) const;
+    ge::graphStatus ValidateShapes(const std::string &opName) const;
+    ge::graphStatus ValidateStrides(const std::string &opName) const;
+    ge::graphStatus ValidateMinimumTokenTileFeasible(const std::string &opName) const;
+    bool TrySelectTokenTile(uint64_t tokenTile, const std::string &opName, TokenTileSelection &selection) const;
+    ge::graphStatus SelectTokenTile(const std::string &opName, TokenTileSelection &selection) const;
+    void FillContractTiling(const TokenTileSelection &selection);
+    ge::graphStatus ValidateContractInput(const std::string &opName) const;
+    ge::graphStatus BuildContractTiling(const std::string &opName);
     static ge::graphStatus MakeContiguousStrideInfo(const gert::Shape &shape, const std::string &opName,
                                                     gert::Stride &strideInfo);
     static const char *DtypeName(ge::DataType dtype);
@@ -157,24 +156,18 @@ private:
                                              TensorContractInfo &info);
     static TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, size_t index);
     static void LogTensorInfo(const std::string &opName, const char *tensorName, const TensorContractInfo &info);
-    static void LogContractInput(const std::string &opName, const ContractInput &input, uint64_t aicNum, float epsilon);
+    void LogContractInput(const std::string &opName) const;
     static ge::graphStatus SetWorkspace(gert::TilingContext *context, const std::string &opName,
                                         const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
                                         size_t &workspaceSize);
-    static void LogTilingData(const std::string &opName, const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
-                              const ContractTiling &contractTiling, uint64_t tilingKey, uint64_t blockDim,
-                              size_t dataSize, size_t workspaceSize);
-    static ge::graphStatus ParseHeadNumsAttr(gert::TilingContext *context, const std::string &opName,
-                                             ContractInput &input);
-    static float ParseEpsilonAttr(gert::TilingContext *context);
-    static ge::graphStatus FillShapeDerivedFields(const std::string &opName, ContractInput &input);
-    static ge::graphStatus FillRequiredTensorInputs(gert::TilingContext *context, const std::string &opName,
-                                                    ContractInput &input);
-    static void FillOptionalTensorInputs(gert::TilingContext *context, ContractInput &input);
-    static ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::string &opName,
-                                              ContractInput &input, float &epsilon);
-    static void FillTilingData(const ContractInput &input, const ContractTiling &contractTiling, float epsilon,
-                               QkvRmsNormRopeCacheWithKScaleTilingData &tilingData);
+    void LogTilingData() const;
+    ge::graphStatus ParseHeadNumsAttr(const std::string &opName);
+    float ParseEpsilonAttr() const;
+    ge::graphStatus FillShapeDerivedFields(const std::string &opName);
+    ge::graphStatus FillRequiredTensorInputs(const std::string &opName);
+    void FillOptionalTensorInputs();
+    ge::graphStatus BuildContractInput(const std::string &opName);
+    void FillTilingData();
     static ge::graphStatus ValidateCompileInfo(const std::string &opName,
                                                const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo);
     static ge::graphStatus CopyRawTilingData(gert::TilingContext *context, const std::string &opName,
