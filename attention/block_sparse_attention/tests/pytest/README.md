@@ -1,10 +1,10 @@
 
 # Correctness check (pytest)
 
-The sibling `attention/block_sparse_attention/tests/pytest/` directory ships
-a Python correctness suite that reuses the same workload helpers from this
-`util.py`. This benchmark only checks correctness at sparsity 0 by default
-(the full dense reference mask costs ~42 GB at `S=118 806` and OOMs), so the
+This directory ships a Python correctness suite for `block_sparse_attention`.
+It reuses the workload helpers from the sibling `../../benchmark/util.py`. The
+benchmark in `../../benchmark/` only checks correctness at sparsity 0 by default
+(the full dense reference mask costs ~42 GB at `S=118 806` and OOMs), so this
 pytest suite is the end-to-end correctness gate at smaller sequence lengths.
 
 ```bash
@@ -20,7 +20,7 @@ pytest test_attn.py test_lse.py test_joint.py -v
 
 ### Tolerances and known gaps
 
-- **`attention_out`**: strictly within `rtol=0.01, atol=0.001` at every tested sparsity.
+- **`attention_out`**: strictly within `rtol=0.005, atol=0.001` at every tested sparsity.
 - **dense `softmax_lse`**: strictly within `rtol=1e-3, atol=1e-4`.
 - **sparse `softmax_lse` vs FIAS**: drifts by ~0.06–0.16 at sparsity 0.5 / 0.8 / 0.9 — this is a definitional gap (FIAS `sparse_mode=1` sums over different positions than this kernel). `test_lse.py` records the expected band as `SPARSE_FIAS_LSE_ATOL=0.25`.
 - **sparse `softmax_lse` vs Python reference**: strictly within `atol=5e-2` (BF16 matmul accumulation budget). Passing this is what proves the kernel's LSE is correct under its own definition.
@@ -30,8 +30,9 @@ pytest test_attn.py test_lse.py test_joint.py -v
 1. The `block_sparse_attention` kernel + aclnn library must be built and
    installed into `$ASCEND_OPP_PATH/vendors/custom_transformer/op_api/`:
    ```bash
+   # adjust --soc to your device: ascend910b (A2), ascend950 (A5), ascend_910_93 (A3)
    bash build.sh --make_clean -j96 --pkg --soc=ascend910b --ops=block_sparse_attention
-   ./build/cann-ops-transformer-custom_linux-aarch64.run
+   ./build_out/cann-ops-transformer-custom_linux-aarch64.run --quiet
    ```
 2. The `cann_ops_transformer` torch extension must be built + installed
    (it provides the JIT-compiled Python entry point
