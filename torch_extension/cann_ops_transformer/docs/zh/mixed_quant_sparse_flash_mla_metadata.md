@@ -2,14 +2,12 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明<a name="zh-cn_topic_0000002168254826_section14441124184110"></a>
 
@@ -20,7 +18,7 @@
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```
-mixed_quant_sparse_flash_mla_metadata(cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None, seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None, *, num_heads_q, num_heads_kv, head_dim, quant_mode, batch_size=0, max_seqlen_q=0, max_seqlen_ori_kv=0, max_seqlen_cmp_kv=0, ori_topk=0, cmp_topk=0, rope_head_dim=64, cmp_ratio=1, ori_mask_mode=0, cmp_mask_mode=0, ori_win_left=-1, ori_win_right=-1, layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True) -> Tensor
+cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(num_heads_q, num_heads_kv, head_dim, quant_mode, *, cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None, seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None, batch_size=0, max_seqlen_q=0, max_seqlen_ori_kv=0, max_seqlen_cmp_kv=0, ori_topk=0, cmp_topk=0, rope_head_dim=64, cmp_ratio=1, ori_mask_mode=0, cmp_mask_mode=0, ori_win_left=-1, ori_win_right=-1, layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True) -> Tensor
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
@@ -236,4 +234,3 @@ mixed_quant_sparse_flash_mla_metadata(cu_seqlens_q=None, cu_seqlens_ori_kv=None,
         has_cmp_kv = True
     )
     ```
-    其他调用示例详见 [mixed_quant_sparse_flash_mla 调用示例](./mixed_quant_sparse_flash_mla.md#调用示例)。

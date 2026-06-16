@@ -61,5 +61,5 @@
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnn_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata.md](./docs/aclnnSparseFlashMlaMetadata.md.md)调用SparseFlashMlaMetadata算子 |
-| torch接口 | [sparse_flash_mla_metadata 调用示例](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_metadata.md#调用示例) | 通过[sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_metadata.md)接口方式调用SparseFlashMlaMetadata算子 |
+| aclnn API | [test_aclnn_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md.md)接口调用SparseFlashMlaMetadata算子 |
+| PyTorch API | [sparse_flash_mla_metadata 调用示例](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_metadata.md#调用示例) | 通过[torch.ops.cann_ops_transformer.sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_metadata.md)接口调用SparseFlashMlaMetadata算子 |
