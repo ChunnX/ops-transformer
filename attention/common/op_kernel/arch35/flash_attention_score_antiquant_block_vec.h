@@ -395,7 +395,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitOutputS
         uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
         if constexpr (POST_QUANT) {
             InitOutput<half>(this->attentionOutInitGm[constInfo.aivIdx * initParams.singleCoreSize / 2],
-                singleInitOutputSize / 2, 0.0); // 将内容一分为二
+                singleInitOutputSize / 2, 0.0); // 2: 将内容一分为二
         } else {
             InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * initParams.singleCoreSize],
                 singleInitOutputSize, 0.0);
