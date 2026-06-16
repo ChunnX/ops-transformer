@@ -165,7 +165,7 @@ private:
     static ge::graphStatus ParseHeadNumsAttr(gert::TilingContext *context, const std::string &opName,
                                              ContractInput &input);
     static float ParseEpsilonAttr(gert::TilingContext *context);
-    static void FillShapeDerivedFields(const std::string &opName, ContractInput &input);
+    static ge::graphStatus FillShapeDerivedFields(const std::string &opName, ContractInput &input);
     static ge::graphStatus FillRequiredTensorInputs(gert::TilingContext *context, const std::string &opName,
                                                     ContractInput &input);
     static void FillOptionalTensorInputs(gert::TilingContext *context, ContractInput &input);

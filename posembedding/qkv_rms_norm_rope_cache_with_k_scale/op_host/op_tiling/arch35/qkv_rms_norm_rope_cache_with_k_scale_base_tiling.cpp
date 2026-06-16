@@ -185,25 +185,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeInputsForD
                         "QkvRmsNormRopeCacheWithKScale contract reject: kCache present=%u rank=%u, expected rank=4.",
                         input.kCache.shapePresent ? 1U : 0U, static_cast<uint32_t>(input.kCache.shape.GetDimNum())),
                 return ge::GRAPH_FAILED);
-    struct DerivedDimRule {
-        const char *tensorName;
-        const gert::Shape *shape;
-        size_t dim;
-    };
-    const DerivedDimRule derivedDimRules[] = {
-        {"qkv", &input.qkv.shape, 1},
-        {"qkv", &input.qkv.shape, 2},
-        {"cosSin", &input.cosSin.shape, 0},
-        {"kCache", &input.kCache.shape, 0},
-        {"kCache", &input.kCache.shape, 2},
-    };
-    for (const auto &rule : derivedDimRules) {
-        OP_CHECK_IF(rule.shape->GetDim(rule.dim) <= 0,
-                    OP_LOGE(opName.c_str(),
-                            "QkvRmsNormRopeCacheWithKScale contract reject: %s dim[%zu]=%ld, expected > 0.",
-                            rule.tensorName, rule.dim, rule.shape->GetDim(rule.dim)),
-                    return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -833,12 +814,30 @@ float QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseEpsilonAttr(gert::TilingCont
     return epsilonAttr == nullptr ? DEFAULT_EPSILON : *epsilonAttr;
 }
 
-void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillShapeDerivedFields(const std::string &opName, ContractInput &input)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillShapeDerivedFields(const std::string &opName,
+                                                                                ContractInput &input)
 {
     const auto &qkvShape = input.qkv.shape;
     const auto &cosSinShape = input.cosSin.shape;
     const auto &cuSeqLenShape = input.cuSeqLen.shape;
     const auto &kCacheShape = input.kCache.shape;
+    OP_CHECK_IF(qkvShape.GetDim(1) <= 0 || qkvShape.GetDim(2) <= 0,
+                OP_LOGE(opName.c_str(),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: qkv dims={%ld,%ld,%ld}, "
+                        "expected token/head_dim > 0.",
+                        qkvShape.GetDim(0), qkvShape.GetDim(1), qkvShape.GetDim(2)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(cosSinShape.GetDim(0) <= 0,
+                OP_LOGE(opName.c_str(),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: cosSin dim0=%ld, expected > 0.",
+                        cosSinShape.GetDim(0)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(kCacheShape.GetDim(0) <= 0 || kCacheShape.GetDim(2) <= 0,
+                OP_LOGE(opName.c_str(),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: kCache dims={%ld,%ld,%ld,%ld}, "
+                        "expected block_num/block_size > 0.",
+                        kCacheShape.GetDim(0), kCacheShape.GetDim(1), kCacheShape.GetDim(2), kCacheShape.GetDim(3)),
+                return ge::GRAPH_FAILED);
     input.totalTokens = static_cast<uint64_t>(qkvShape.GetDim(1));
     input.headDim = static_cast<uint64_t>(qkvShape.GetDim(2));
     input.batch = static_cast<uint64_t>(cuSeqLenShape.GetDim(0)) - 1;
@@ -849,6 +848,7 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillShapeDerivedFields(const std::
             "QkvRmsNormRopeCacheWithKScale derived shape fields: totalTokens=%lu batch=%lu headDim=%lu "
             "maxSeqLen=%lu blockNum=%lu blockSize=%lu.",
             input.totalTokens, input.batch, input.headDim, input.maxSeqLen, input.blockNum, input.blockSize);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillRequiredTensorInputs(gert::TilingContext *context,
@@ -897,7 +897,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractInput(gert
 
     OP_CHECK_IF(ValidateShapeInputsForDerivedFields(input, opName) != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "invalid shape inputs for derived fields."), return ge::GRAPH_FAILED);
-    FillShapeDerivedFields(opName, input);
+    OP_CHECK_IF(FillShapeDerivedFields(opName, input) != ge::GRAPH_SUCCESS,
+                OP_LOGE(opName.c_str(), "failed to fill shape derived fields."), return ge::GRAPH_FAILED);
     FillOptionalTensorInputs(context, input);
     epsilon = ParseEpsilonAttr(context);
     return ge::GRAPH_SUCCESS;
