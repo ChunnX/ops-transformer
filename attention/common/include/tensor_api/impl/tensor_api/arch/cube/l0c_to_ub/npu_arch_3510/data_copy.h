@@ -89,7 +89,6 @@ private:
         uint32_t nSize = Std::min(GetTotalColumnShape(srcLayout), GetTotalColumnShape(dstLayout));
         uint32_t mSize = Std::min(GetTotalRowShape(srcLayout), GetTotalRowShape(dstLayout));
         uint32_t srcStride = GetElement<AttrInfo::Stride, AttrInfo::Column, 1>(srcLayout) / FRACTAL_FIXED;
-        printf("--- L0C==>UB srcStride pre = [%ld] ---\n", srcStride);
         uint32_t dstStride = 0;
 
         if constexpr (isNdFormat) {
@@ -114,7 +113,6 @@ private:
         bool isChannelSplit = trait.enableChannelSplit;
 
         uint8_t dualDstCtl = trait.dualDstCtl;
-        printf("--- L0C==>UB dualDstCtl = [%ld] ---\n", dualDstCtl);
         bool subBlockId = params.subBlockId;
         CopyMatrixCcToUbInstr::DataCopy<quantPre, T, U>(dst, src, nSize, mSize, srcStride, dstStride, dualDstCtl,
                                                         reluEn, unitFlag, subBlockId, isChannelSplit, nz2ndEn, nz2dnEn);

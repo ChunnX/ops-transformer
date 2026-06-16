@@ -15,7 +15,6 @@
 #ifndef MATMUL_H
 #define MATMUL_H
 #include "buffers_policy.h"
-#include "buffers_policy_tensor_api.h"
 #include "../include/tensor_api/include/tensor_api/tensor.h"
 #include "utils/debug/asc_dump.h"
 using namespace AscendC;
@@ -715,41 +714,31 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
 }
 
 // 切K
-template <typename L0ADType, typename L0BDType, typename L0CDType, typename L0AType, typename L0BType, 
-          typename TensorAL1, typename TensorBL1, typename TensorCL0C, uint32_t baseM = 128, uint32_t baseN = 128, 
-          uint32_t baseK = 128, ABLayout AL = ABLayout::MK, ABLayout BL = ABLayout::KN>
+template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
+          typename L0AType, typename L0BType, typename TensorAL1, typename TensorBL1, typename TensorCL0C>
 __aicore__ inline void MatMulTensorAPI(const TensorAL1 &aL1Tensor, const TensorBL1 &bL1Tensor, 
-                                        const TensorCL0C &cL0Tensor, L0AType &aL0BuffsDb, L0BType &bL0BuffsDb, 
-                                        const MMParam &param)
+                                       L0AType &aL0BuffsDb, L0BType &bL0BuffsDb, const TensorCL0C &cL0Tensor,
+                                       const MMParam &param)
 {
     // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
     Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
-    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
-    LocalTensor<L0ADType> PreL0ATensor = l0aBuffer.GetTensor<L0ADType>();
-    uint64_t offsetQL0A = PreL0ATensor.GetPhyAddr();
-
-    auto L0ALayout = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<L0ADType>>(param.singleM, baseK);
-    auto L0ATensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0A, L0ADType>(offsetQL0A), L0ALayout);
-    auto sliceAL1Tensor = AscendC::Te::Slice(aL1Tensor, AscendC::Te::MakeCoord(0, 0), AscendC::Te::MakeShape(param.singleM, baseK));
+    l0aBuffer.Wait<HardEvent::M_MTE1>();
+    auto L0ALayout = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<A>>(param.singleM, baseK);
+    auto L0ATensor = l0aBuffer.GetTensor<A>(L0ALayout);
     auto CopyL12L0A = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0A{});
-    AscendC::Te::Copy(CopyL12L0A, L0ATensor, sliceAL1Tensor);
-    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
+    AscendC::Te::Copy(CopyL12L0A, L0ATensor, aL1Tensor);
+    l0aBuffer.Set<HardEvent::MTE1_M>();
 
     Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
-    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
-    LocalTensor<L0BDType> PreL0BTensor = l0bBuffer.GetTensor<L0BDType>();
-    uint64_t offsetKL0B = PreL0BTensor.GetPhyAddr();
-
-    auto L0BLayout = AscendC::Te::MakeFrameLayout<AscendC::Te::ZNLayoutPtn, AscendC::Te::LayoutTraitDefault<L0BDType>>(baseK, param.singleN);
-    auto L0BTensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0B, L0BDType>(offsetKL0B), L0BLayout);
-    auto sliceBL1Tensor = AscendC::Te::Slice(bL1Tensor, AscendC::Te::MakeCoord(0, 0), AscendC::Te::MakeShape(baseK, param.singleN));
+    l0bBuffer.Wait<HardEvent::M_MTE1>();
+    auto L0BLayout = AscendC::Te::MakeFrameLayout<AscendC::Te::ZNLayoutPtn, AscendC::Te::LayoutTraitDefault<B>>(baseK, param.singleN);
+    auto L0BTensor = l0bBuffer.GetTensor<B>(L0BLayout);
     auto CopyL12L0B = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0B{});
-    AscendC::Te::Copy(CopyL12L0B, L0BTensor, sliceBL1Tensor);
-    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(1);
+    AscendC::Te::Copy(CopyL12L0B, L0BTensor, bL1Tensor);
+    l0bBuffer.Set<HardEvent::MTE1_M>();
 
-    // mte1搬运完后，通知可以开始matmul
-    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(1);
+    l0aBuffer.Wait<HardEvent::MTE1_M>();
+    l0bBuffer.Wait<HardEvent::MTE1_M>();
 
     AscendC::Te::MmadParams mmadParams;
     mmadParams.m = param.singleM;
@@ -771,8 +760,8 @@ __aicore__ inline void MatMulTensorAPI(const TensorAL1 &aL1Tensor, const TensorB
         cL0Tensor, L0ATensor, L0BTensor);
 
     // matmul完成后，通知mte1可以开始搬运新数据到L0A
-    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
-    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(1);
+    l0aBuffer.Set<HardEvent::M_MTE1>();
+    l0bBuffer.Set<HardEvent::M_MTE1>();
 }
 
 // 切K
