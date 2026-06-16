@@ -20,6 +20,7 @@ import math
 import ctypes
 import copy
 import npu_ops_transformer
+from npu_ops_transformer.ops.quant_lightning_indexer_v2_metadata import npu_quant_lightning_indexer_v2_metadata
 
 FP32_FRACTION_BITS = 23        # fp32尾数位数
 
@@ -159,14 +160,14 @@ class GeneralizedQLIV2:
 
         out_shape_bnss = copy.deepcopy(self.q_bnsd_shape)
         out_shape_bnss[1] = n2
-        out_shape_bnss[-1] = math.floor(max(actualSeqLengths_k)/cmp_ratio)
+        out_shape_bnss[-1] = math.floor(max(actualSeqLengths_k))
 
         y = torch.full(out_shape_bnsd,-1,dtype = torch.int32)
         y_value = torch.full(out_shape_bnss,-float('inf'), dtype=torch.float32)
 
         for b_idx in range(batch_size):
             curr_actualSeq_q = actualSeqLengths_q[b_idx]
-            curr_actualSeq_k = math.floor(actualSeqLengths_k[b_idx] /cmp_ratio)
+            curr_actualSeq_k = math.floor(actualSeqLengths_k[b_idx])
             self.cur_actseq_q = curr_actualSeq_q
             self.cur_actseq_k = curr_actualSeq_k
             self.cur_q = q_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
@@ -528,6 +529,7 @@ class GeneralizedQLIV2:
         mask_s_q = m_shape[0]
         mask_s_kv = m_shape[1]
         cmp_ratio = self.cmp_ratio
+        cmp_residual_k = self.cmp_residual_k
         next_tokens_list = []
         re_mask_batch = []
         pre_tokens = 214748647
@@ -540,10 +542,10 @@ class GeneralizedQLIV2:
             if len(actualSeqLengthsK) == 0:
                 S2 = mask_s_kv
             else:
-                S2 = math.floor(actualSeqLengthsK[i]/cmp_ratio)
+                S2 = math.floor(actualSeqLengthsK[i])
             next_tokens = S2-S1
             next_tokens_list.append(next_tokens)
-            act_k = actualSeqLengthsK[i]
+            act_k = actualSeqLengthsK[i] *  cmp_ratio + cmp_residual_k[i]
             atten_masks = self.create_mask(m_shape, act_k, S1)
             re_mask_batch.append(atten_masks)
         re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
@@ -608,11 +610,11 @@ class GeneralizedQLIV2:
             k_shape = self.k_shape
             k_scale_shape = [batch_size, k_seq, k_head_num]
 
-        elif layout_key == "PA_BSND":
+        elif layout_key == "PA_BBND":
             self.actual_seq_lengths_key = actual_seq_lengths_key
             actualSeqLengths_k = self.actual_seq_lengths_key
             layout_key_scale = layout_key
-            k_max_s2 = math.floor(max(actualSeqLengths_k)/self.cmp_ratio)
+            k_max_s2 = math.floor(max(actualSeqLengths_k))
             k_shape = [batch_size, k_head_num, k_max_s2, head_dim]
             k_scale_shape = [batch_size, k_head_num, k_max_s2]
         query = query.cpu()
@@ -628,13 +630,13 @@ class GeneralizedQLIV2:
 
         ## BSND/TND/ -> BNSD
         k_bnsd_tensor, k_bnsd_shape = self.trans_shape_to_bnsd(key, k_shape, layout_key,
-                                                        k_head_num, torch.floor(actualSeqLengths_k/cmp_ratio).to(actual_seq_dtype))
+                                                        k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
 
 
 
         k_scale_bnsd_tensor, k_scale_bnsd_shape = self.trans_shape_to_bnsd(key_dequant_scale, k_scale_shape,
                                                                     layout_key_scale,
-                                                                    k_head_num, torch.floor(actualSeqLengths_k/cmp_ratio).to(actual_seq_dtype))
+                                                                    k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
 
         ## BSN1 -> BNS1   TN1 -> BNS1
         is_weights = True
@@ -693,11 +695,11 @@ def trans_prefix_actseq(self,list):
 
 def qliv2_output_single(params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,\
-    act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
+    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
+    seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
     k_scale_datarange, cmp_ratio, return_value = params
-    
+
     if qk_dtype == torch.uint8:
         hifp8mode = 1
         query_dtype = torch_npu.hifloat8 # ACL_HIFLOAT8
@@ -705,23 +707,93 @@ def qliv2_output_single(params):
     else:
         hifp8mode = 0
 
+    # ======================== 核心推导：从 cu_seqlens / seqused 推导个体长度 ========================
+    # 辅助函数：从前缀和 cu_seqlens [B+1] 推导个体长度 [B]
+    def _cu_seqlens_to_lengths(cu_list):
+        return [cu_list[i+1] - cu_list[i] for i in range(len(cu_list) - 1)]
+
+    # Q 侧个体长度（CPU golden 用）
+    if layout_query == "TND":
+        # TND: 必传 cu_seqlens_q，从差分推导个体长度
+        assert cu_seqlens_q is not None, "TND layout requires cu_seqlens_q"
+        lengths_q_list = _cu_seqlens_to_lengths(cu_seqlens_q)
+    else:
+        # BSND: 从 seqused_q 获取，若 None 则用 q_seq 填满
+        if seqused_q is not None:
+            lengths_q_list = list(seqused_q)
+        else:
+            lengths_q_list = [q_seq] * batch_size
+
+    # K 侧个体长度（CPU golden 用）
+    if layout_key == "TND":
+        # TND: 必传 cu_seqlens_k，从差分推导个体长度
+        assert cu_seqlens_k is not None, "TND layout requires cu_seqlens_k"
+        lengths_k_list = _cu_seqlens_to_lengths(cu_seqlens_k)
+    elif layout_key == "PA_BBND":
+        # PA_BBND: 从 seqused_k 获取
+        assert seqused_k is not None, f"{layout_key} layout requires seqused_k"
+        lengths_k_list = list(seqused_k)
+    else:
+        # BSND: 从 seqused_k 获取，若 None 则用 q_seq 填满
+        if seqused_k is not None:
+            lengths_k_list = list(seqused_k)
+        else:
+            lengths_k_list = [k_seq] * batch_size
+
+    # ======================== 构造 NPU 输入 tensor ========================
+    # cu_seqlens tensor（仅 TND 传入）
+    if layout_query == "TND":
+        cu_seqlens_query = torch.tensor(cu_seqlens_q).to(actual_seq_dtype).npu()
+    else:
+        cu_seqlens_query = None
+
+    if layout_key == "TND":
+        cu_seqlens_key = torch.tensor(cu_seqlens_k).to(actual_seq_dtype).npu()
+    else:
+        cu_seqlens_key = None
+
+    # seqused tensor
+    if seqused_q is not None:
+        seqused_q_tensor = torch.tensor(lengths_q_list).to(actual_seq_dtype).npu()
+    else:
+        seqused_q_tensor = None
+    if seqused_k is not None:
+        seqused_k_tensor = torch.tensor(lengths_k_list).to(actual_seq_dtype).npu()
+    else:
+        seqused_k_tensor = None
+
+    # ======================== CPU golden forward 用的 actual_seq ========================
+    # TND:     actual_seq 是前缀和格式，即 cu_seqlens[1:]（去掉首位 0）
+    #          golden.forward 内部会 trans_tnd_actseq 差分为个体长度
+    # BSND/PA: actual_seq 是个体长度，即 seqused
+    # （actual_seq始终传入，CPU golden 也需要）
+    if layout_query == "TND":
+        actual_seq_lengths_query = torch.tensor(cu_seqlens_q[1:]).to(actual_seq_dtype).npu()
+    else:
+        actual_seq_lengths_query = torch.tensor(lengths_q_list).to(actual_seq_dtype).npu()
+
+    if layout_key == "TND":
+        actual_seq_lengths_key = torch.tensor(cu_seqlens_k[1:]).to(actual_seq_dtype).npu()
+    else:
+        actual_seq_lengths_key = torch.tensor(lengths_k_list).to(actual_seq_dtype).npu()
+
+    # PA_BBND key 构造用的 act_seq_k 列表
+    act_seq_k = lengths_k_list
+
+    # cmp_residual_k
+    if cmp_ratio == 1:
+        cmp_residual_k = torch.zeros(batch_size, dtype=actual_seq_dtype, device='npu')
+    else:
+        cmp_residual_k = torch.tensor(cmp_residual_k).to(actual_seq_dtype).npu()
+
+    # ======================== 构造 GeneralizedQLIV2 用于 CPU golden ========================
+    # GeneralizedQLIV2 需要 act_seq 个体长度（用于 TND→BNSD 转换等）
     test_qliv2 = GeneralizedQLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
-                    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,
-                    act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,
+                    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k,
+                    lengths_q_list, lengths_k_list, cmp_residual_k, max_seqlen_q, quant_mode,
+                    layout_query, layout_key, sparse_count,
                     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
                     k_scale_datarange, cmp_ratio, return_value)
-
-    # 生成 actual_seq_lengths_query 和 actual_seq_lengths_key
-    actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(actual_seq_dtype).npu() \
-                               if act_seq_q is None else torch.tensor(act_seq_q).to(actual_seq_dtype).npu()
-    actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq*cmp_ratio, k_seq*cmp_ratio, batch_size)).to(actual_seq_dtype).npu() \
-                             if act_seq_k is None else torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
-    cu_seqlens_query = (torch.tensor(cu_seqlens_q).to(actual_seq_dtype).npu() 
-                    if (layout_query == "TND" and cu_seqlens_q is not None) 
-                    else None)
-    cu_seqlens_key = (torch.tensor(cu_seqlens_k).to(actual_seq_dtype).npu() 
-                    if (layout_key == "TND" and cu_seqlens_k is not None) 
-                    else None)
 
     if cmp_ratio == 1:
         cmp_residual_k = torch.zeros(batch_size, dtype=actual_seq_dtype, device='npu')
@@ -777,9 +849,9 @@ def qliv2_output_single(params):
         block_table = None
         cpu_result, topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
 
-    elif layout_key == "PA_BSND":
+    elif layout_key == "PA_BBND":
         # 以不同batch中最大seq为标准初始化key(bnsd)和key_dequant_scale(bns)
-        k_max_s2 = math.floor(max(act_seq_k)/cmp_ratio)
+        k_max_s2 = math.floor(max(act_seq_k))
         k_max_block_num_per_batch = math.ceil(k_max_s2 / block_size) #遍历batch得到的最大的block num
         if hifp8mode ==1:
             key_bnsd = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1],(batch_size, k_head_num, k_max_s2, head_dim))).to(torch.float)
@@ -792,7 +864,7 @@ def qliv2_output_single(params):
         key_block_num_per_batch = []
         key_block_num_sum = 0
         for cur_act_k in act_seq_k:
-            cur_cmp_act_k = math.floor(cur_act_k / cmp_ratio)
+            cur_cmp_act_k = math.floor(cur_act_k)
             cur_key_block_num = math.ceil(cur_cmp_act_k / block_size)
             key_block_num_per_batch.append(cur_key_block_num)
             key_block_num_sum += cur_key_block_num
@@ -838,13 +910,15 @@ def qliv2_output_single(params):
         key_dequant_scale = key_dequant_scale.npu()
         cpu_result, topk_value = test_qliv2.forward(query, key_bnsd, weights, query_dequant_scale, key_dequant_scale_bns, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
+    # ======================== metadata 构造 ========================
+    # max_seqlen 从个体长度中取
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
     metadata = torch.ops.npu_ops_transformer.npu_quant_lightning_indexer_v2_metadata(
                                     cu_seqlens_q = cu_seqlens_query,
                                     cu_seqlens_k = cu_seqlens_key,
-                                    seqused_q = actual_seq_lengths_query,
-                                    seqused_k = actual_seq_lengths_key,
+                                    seqused_q = seqused_q_tensor,
+                                    seqused_k = seqused_k_tensor,
                                     cmp_residual_k = cmp_residual_k,
                                     batch_size = batch_size,
                                     max_seqlen_q = max_seqlen_q_meta,
@@ -860,13 +934,15 @@ def qliv2_output_single(params):
                                     cmp_ratio = cmp_ratio)
 
     metadata = metadata.npu()
+
+    # ======================== NPU 算子调用 ========================
     npu_result, _ = torch.ops.npu_ops_transformer.npu_quant_lightning_indexer_v2(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,
                                                     cu_seqlens_q = cu_seqlens_query,
                                                     cu_seqlens_k = cu_seqlens_key,
-                                                    seqused_q = actual_seq_lengths_query,
-                                                    seqused_k = actual_seq_lengths_key,
+                                                    seqused_q = seqused_q_tensor,
+                                                    seqused_k = seqused_k_tensor,
                                                     cmp_residual_k = cmp_residual_k,
                                                     output_idx_offset = None,
                                                     max_seqlen_q = max_seqlen_q,
