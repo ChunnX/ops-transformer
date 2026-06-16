@@ -36,20 +36,11 @@
         - C4A: $C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};$
         - C128A: $C_{i}^{\text{Comp}} = \left[1\right]_{1\times128} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{128};$ 
 
-    后处理阶段：
-
-    6. 计算RMSNorm：
-        - $\text{RMS}(C^{\text{Comp}}) = \sqrt{\frac{1}{N} \sum_{i=j* N}^{(j+1)* N} {(C_{i}^{\text{Comp}})}^{\text{2}} + norm\_eps} ,N=head\_dim, ~j=1,2,\cdots, \frac{s}{cmp\_ratio}$
-        - $\text{RmsNorm}(C^{\text{Comp}}) = norm\_weight \cdot \frac{C_{i}^{\text{Comp}}}{\text{RMS}(C^{\text{Comp}})}$
-    7. 计算Rope；
-   
 - 主要计算过程为：
     1. 将HIFLOAT8输入$X_{hifp8}$与$W^{KV}_{hifp8}$做Matmul运算（通过反量化缩放系数$x\_descale \otimes wkv\_descale$将结果反量化为FP32）得到$kv\_state$，将HIFLOAT8输入$X_{hifp8}$与$W^{Gate}_{hifp8}$做Matmul运算（通过反量化缩放系数$x\_descale \otimes wgate\_descale$将结果反量化为FP32）得到$score\_state$，并根据输入的start\_pos及cu\_seqlens完成state\_cache更新。
     2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
-    3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
-    4. 根据输入数据norm\_weight、rope\_sin、rope\_cos，进行RMSNorm和Rope运算，得到$cmp\_kv$结果输出。
-
-    5. 更新后的state\_cache作为第二个输出返回。
+    3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算，得到$cmp\_kv$结果输出。
+    4. 更新后的state\_cache作为第二个输出返回。
 
 ## 参数说明
 
@@ -60,22 +51,16 @@
 | wgate | 输入 | 公式中的$W^{Gate}_{hifp8}$，表示gate压缩权重。 | HIFLOAT8 | ND |
 | state\_cache | 输入/输出 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。作为输入读取历史数据，作为输出写回更新后的数据。支持非连续输入（通过state\_cache\_stride\_dim0属性指定stride）。 | FLOAT32     | ND         |
 | ape | 输入 | 公式中的$Ape$，表示positional biases。 | FLOAT32       | ND         |
-| norm\_weight | 输入 | 表示计算RmsNorm时的权重系数。 | FLOAT32       | ND         |
-| rope\_sin | 输入 | 表示Rope计算时sin的权重系数。 | FLOAT32       | ND         |
-| rope\_cos | 输入 | 表示Rope计算时cos的权重系数。 | FLOAT32       | ND         |
 | x\_descale | 可选输入 | 表示输入x的反量化缩放系数。当quant\_mode=1时为必选输入。shape为[1]。 | FLOAT32 | ND |
 | wkv\_descale | 可选输入 | 表示输入wkv的反量化缩放系数。当quant\_mode=1时为必选输入。shape为[coff\*D]。 | FLOAT32 | ND |
 | wgate\_descale | 可选输入 | 表示输入wgate的反量化缩放系数。当quant\_mode=1时为必选输入。shape为[coff\*D]。 | FLOAT32 | ND |
 | quant\_mode | 属性 | 表示量化模式。当前仅支持1，代表HIFP8量化模式。 | INT32       | -         |
-| rope\_head\_dim | 属性 | 表示rope\_cos和rope\_sin的hidden层最小单元大小，当前仅支持64。 | INT32       | -         |
 | cmp\_ratio | 属性 | 用于稀疏计算，表示数据压缩率。 | INT32          | -         |
 | state\_block\_table | 可选输入 | 表示state\_cache存储使用的block映射表。 | INT32 | ND         |
 | cu\_seqlens | 可选输入 | 表示不同Batch中的有效token数。TH布局下为必选输入，BSH布局下必须为空。 | INT32          | ND         |
 | seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数，如果指定为None时，表示和每个Batch上的Sequence Length长度相同。 | INT32          | ND         |
 | start\_pos | 可选输入 | 表示计算起始位置。 | INT32          | ND         |
 | coff | 可选属性 | 默认值1，支持1/2。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。 | INT32          | -         |
-| norm\_eps | 可选属性 | 表示RmsNorm计算的权重系数。默认值1e-6。 | FLOAT32          | -         |
-| rotary\_mode | 可选属性 | 表示Rope计算的模式。默认值1，支持1/2。rotary\_mode为1时，代表half模式。rotary\_mode为2时，代表interleave模式。 | INT32          | -         |
 | cache\_mode | 可选属性 | 表示state\_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。**目前A3暂不支持输入2**。 | INT32          | -         |
 | state\_cache\_stride\_dim0 | 可选属性 | 表示state\_cache第0维的stride，用于支持非连续的state\_cache输入。默认值0。 | INT32          | -         |
 | cmp\_kv | 输出 | 表示压缩后的数据。 | BFLOAT16         | ND          |
@@ -88,23 +73,20 @@
     - wgate支持输入shape[coff\* D,H]
     - state\_cache支持输入shape[block\_num,block\_size,2\* coff\* D]，要求block\_num>0。支持非连续输入（通过state\_cache\_stride\_dim0属性指定stride）。
     - ape支持输入shape[cmp\_ratio,coff\* D]
-    - norm\_weight支持输入shape[D,]
     - x\_descale支持输入shape[1]
     - wkv\_descale支持输入shape[coff\* D]
     - wgate\_descale支持输入shape[coff\* D]
     - start\_pos支持输入shape[B,]
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]
-        - rope\_sin、rope\_cos要求输入shape为[min(T,T//cmp\_ratio+B),rope\_head\_dim]。
         - cu\_seqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。**TH布局下为必选输入**。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
         - state\_block\_table支持输入shape[B,ceil(Smax/block\_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+max(cu\_seqlens[n+1] - cu\_seqlens[n])。
-        - cmp\_kv，输出shape为[min(T,T//cmp\_ratio+B),H]：<batch0>compressed\_tokens + <batch1>compressed\_tokens + ... + <batchN>compressed\_tokens + pad。
+        - cmp\_kv，输出shape为[min(T,T//cmp\_ratio+B),D]：<batch0>compressed\_tokens + <batch1>compressed\_tokens + ... + <batchN>compressed\_tokens + pad。
     - 若x的维度不采用BS合轴，即x的输入shape为[B,S,H]
-        - rope\_sin、rope\_cos要求输入shape为[B,ceil(S/cmp\_ratio),rope\_head\_dim]。
         - cu\_seqlens，**参数必须为空**。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求seqused[n] <= S，且不小于0。
         - state\_block\_table支持输入shape[B,ceil(Smax/block\_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+S。
-        - cmp\_kv，输出shape为[B,ceil(S/cmp\_ratio),H]：(<batch0>compressed\_tokens+pad0) + (<batch1>compressed\_tokens+pad1) + ...  + (<batchN>compressed\_tokens+padN)。
+        - cmp\_kv，输出shape为[B,ceil(S/cmp\_ratio),D]：(<batch0>compressed\_tokens+pad0) + (<batch1>compressed\_tokens+pad1) + ...  + (<batchN>compressed\_tokens+padN)。
 - 输入值域限制：
   - 该接口支持B、S泛化，且存在如下场景限制：
       - 部分长序列场景下，如果计算量过大可能会导致出现超过NPU内存的报错，注：这里计算量会受x输入shape的影响，值越大计算量越大。典型的长序列（即B、S的乘积或T较大）场景包括但不限于：
@@ -149,7 +131,6 @@
       - C4A: D=512, coff=2, cmp\_ratio=4；
       - C4Li: D=128, coff=2, cmp\_ratio=4；
       - C128A: D=512, coff=1, cmp\_ratio=128。
-  - 支持rotary\_mode为1/2，分别代表half模式和interleave模式。
   - 支持cache\_mode为1/2，分别代表连续buffer和循环buffer。**目前A3暂不支持输入2**。
   - 支持quant\_mode为1，代表HIFP8量化模式。当quant\_mode=1时，x\_descale、wkv\_descale、wgate\_descale为必选输入。
   - state\_cache支持非连续输入（通过state\_cache\_stride\_dim0属性指定stride）。
@@ -177,11 +158,8 @@
 
     data_type = torch.bfloat16
     hidden_size = 4096
-    rope_head_dim = 64
-    norm_eps = 1e-6
     coff = 1
     cmp_ratio = 128
-    rotary_mode = 2
     cache_mode = 1
     head_dim = 512
     quant_mode = 1
@@ -272,12 +250,8 @@
     # other input
     if bs_combine_flag:
         x_shape = (cu_seqlens[-1], hidden_size)
-        rope_sin_shape = (min(x_shape[0], x_shape[0] // cmp_ratio + B), rope_head_dim)
-        rope_cos_shape = rope_sin_shape
     else:
         x_shape = (B, S, hidden_size)
-        rope_sin_shape = (B, (S + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
-        rope_cos_shape = rope_sin_shape
 
     x_fp32 = torch.tensor(np.random.uniform(-10.0, 10.0, x_shape)).to(torch.float32)
     wkv_fp32 = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(torch.float32)
@@ -295,9 +269,6 @@
     wgate_descale = torch.ones(coff * head_dim, dtype=torch.float32).npu()
 
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32).npu()
-    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(torch.float32).npu()
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32).npu()
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32).npu()
 
     if cache_mode == 1:
         state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2 * kv_state.shape[2]))
@@ -328,9 +299,6 @@
             wgate,
             state_cache,
             ape,
-            norm_weight, 
-            rope_sin,
-            rope_cos,
             x_descale = x_descale,
             wkv_descale = wkv_descale,
             wgate_descale = wgate_descale,
@@ -339,11 +307,8 @@
             seqused = seqused,
             start_pos = start_pos,
             quant_mode = quant_mode,
-            rope_head_dim = rope_head_dim,
             cmp_ratio = cmp_ratio,
             coff = coff,
-            norm_eps = norm_eps,
-            rotary_mode = rotary_mode,
             cache_mode = cache_mode,
             state_cache_stride_dim0 = 0
         )
@@ -372,11 +337,8 @@
 
     data_type = torch.bfloat16
     hidden_size = 4096
-    rope_head_dim = 64
-    norm_eps = 1e-6
     coff = 1
     cmp_ratio = 128
-    rotary_mode = 2
     cache_mode = 1
     head_dim = 512
     quant_mode = 1
@@ -465,12 +427,8 @@
 
     if bs_combine_flag:
         x_shape = (cu_seqlens[-1], hidden_size)
-        rope_sin_shape = (min(x_shape[0], x_shape[0] // cmp_ratio + B), rope_head_dim)
-        rope_cos_shape = rope_sin_shape
     else:
         x_shape = (B, S, hidden_size)
-        rope_sin_shape = (B, (S + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
-        rope_cos_shape = rope_sin_shape
 
     x_fp32 = torch.tensor(np.random.uniform(-10.0, 10.0, x_shape)).to(torch.float32)
     wkv_fp32 = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(torch.float32)
@@ -488,9 +446,6 @@
     wgate_descale = torch.ones(coff * head_dim, dtype=torch.float32).npu()
 
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32).npu()
-    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(torch.float32).npu()
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32).npu()
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32).npu()
 
     if cache_mode == 1:
         state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2 * kv_state.shape[2]))
@@ -518,10 +473,10 @@
         def __init__(self):
             super(QuantCompressorNetwork, self).__init__()
 
-        def forward(self, x, wkv, wgate, state_cache, ape, norm_weight, rope_sin,
-                    rope_cos, x_descale, wkv_descale, wgate_descale,
-                    quant_mode, rope_head_dim, cmp_ratio, state_block_table = None, cu_seqlens = None,
-                    seqused = None, start_pos = None, coff = 1, norm_eps = 1e-6, rotary_mode = 1, cache_mode = 1,
+        def forward(self, x, wkv, wgate, state_cache, ape,
+                    x_descale, wkv_descale, wgate_descale,
+                    quant_mode, cmp_ratio, state_block_table = None, cu_seqlens = None,
+                    seqused = None, start_pos = None, coff = 1, cache_mode = 1,
                     state_cache_stride_dim0 = 0):
             cmp_kv, = torch.ops.custom.quant_compressor(
                     x,
@@ -529,9 +484,6 @@
                     wgate,
                     state_cache,
                     ape,
-                    norm_weight, 
-                    rope_sin,
-                    rope_cos,
                     x_descale = x_descale,
                     wkv_descale = wkv_descale,
                     wgate_descale = wgate_descale,
@@ -540,11 +492,8 @@
                     seqused = seqused,
                     start_pos = start_pos,
                     quant_mode = quant_mode,
-                    rope_head_dim = rope_head_dim,
                     cmp_ratio = cmp_ratio,
                     coff = coff,
-                    norm_eps = norm_eps,
-                    rotary_mode = rotary_mode,
                     cache_mode = cache_mode,
                     state_cache_stride_dim0 = state_cache_stride_dim0
                 )
@@ -562,9 +511,6 @@
                     wgate,
                     state_cache,
                     ape,
-                    norm_weight, 
-                    rope_sin,
-                    rope_cos,
                     x_descale = x_descale,
                     wkv_descale = wkv_descale,
                     wgate_descale = wgate_descale,
@@ -573,11 +519,8 @@
                     seqused = seqused,
                     start_pos = start_pos,
                     quant_mode = quant_mode,
-                    rope_head_dim = rope_head_dim,
                     cmp_ratio = cmp_ratio,
                     coff = coff,
-                    norm_eps = norm_eps,
-                    rotary_mode = rotary_mode,
                     cache_mode = cache_mode,
                     state_cache_stride_dim0 = 0)
     ```
