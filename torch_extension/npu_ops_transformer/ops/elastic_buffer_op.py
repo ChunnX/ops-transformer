@@ -46,4 +46,4 @@ class ElasticBufferOpBuilder(OpBuilder):
 
 # Instantiate the builder and load module
 elastic_buffer_op_builder = ElasticBufferOpBuilder()
-op_module = elastic_buffer_op_builder.load()  # Compiles/loads the .so file
+_elastic_buffer_ops = elastic_buffer_op_builder.load()  # Compiles/loads the .so file

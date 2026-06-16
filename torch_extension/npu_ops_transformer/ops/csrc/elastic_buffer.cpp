@@ -112,7 +112,13 @@ void ElasticBufferDestroy(uint64_t hostPinnedAddr)
         void *addr = reinterpret_cast<void *>(hostPinnedAddr);
         std::cout << "[C++] Freeing host pinned memory: " << addr << std::endl;
 
-        aclError ret = aclrtFreeHost(addr);
+        // Unregister host memory first (required before aclrtFreeHost)
+        aclError ret = aclrtHostUnregister(addr);
+        TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed with error code: ", ret,
+                    ", hostPinnedAddr: ", hostPinnedAddr);
+
+        // Free host pinned memory
+        ret = aclrtFreeHost(addr);
         TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreeHost failed with error code: ", ret,
                     ", hostPinnedAddr: ", hostPinnedAddr);
 
@@ -138,26 +144,21 @@ void ElasticBufferBarrier(const std::string &groupName, bool withDeviceSync)
         initialized = true;
     }
 
-    // 设备同步（可选）
     if (withDeviceSync) {
         aclError aclRet = aclrtSynchronizeDevice();
         TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed with error code: ", aclRet);
     }
 
-    // 通过 groupName 获取 HcclComm
     HcclComm comm = nullptr;
     HcclResult ret = HcclCommGetHandleWithNameFunc(groupName.c_str(), &comm);
     TORCH_CHECK(ret == HCCL_SUCCESS && comm != nullptr, "HcclCommGetHandleWithName failed with error code: ", ret,
                 ", groupName: ", groupName);
 
-    // 获取当前 NPU stream
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
-    // 调用 HcclBarrier
     ret = HcclBarrierFunc(comm, stream);
     TORCH_CHECK(ret == HCCL_SUCCESS, "HcclBarrier failed with error code: ", ret, ", comm: ", comm,
                 ", stream: ", stream);
 
-    // 再次设备同步（可选）
     if (withDeviceSync) {
         aclError aclRet = aclrtSynchronizeDevice();
         TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed with error code: ", aclRet);
@@ -177,8 +178,6 @@ void ElasticBufferWrite(uint64_t hostPinnedAddr, const at::Tensor &storage)
 {
     std::cout << "[C++] ElasticBufferWrite called" << std::endl;
 
-    TORCH_CHECK(storage.is_cpu(), "Storage tensor must be on CPU");
-    TORCH_CHECK(storage.is_contiguous(), "Storage tensor must be contiguous");
     TORCH_CHECK(hostPinnedAddr != 0, "Host pinned memory address is null");
 
     void *dstAddr = reinterpret_cast<void *>(hostPinnedAddr);
@@ -211,22 +210,17 @@ void ElasticBufferWrite(uint64_t hostPinnedAddr, const at::Tensor &storage)
  *   indices: 全局索引（NPU tensor）
  *   hiddenSize: 隐藏层维度
  *   numEngramEntries: Engram 条目数（用于计算偏移量）
- *   dtypeVal: 数据类型枚举值（11 = bfloat16）
+ *   outDtype: 数据类型（torch.dtype，自动转换为at::ScalarType）
  *
  * 返回：
  *   callable，调用后返回 fetched tensor
  */
 std::function<at::Tensor()> EngramFetch(const at::Tensor &commContextTensor, const at::Tensor &indices,
-                                        int64_t hiddenSize, int64_t numEngramEntries, int64_t dtypeVal)
+                                        int64_t hiddenSize, int64_t numEngramEntries, at::ScalarType outDtype)
 {
-    std::cout << "[C++] EngramFetch called" << std::endl;
-    std::cout << "[C++] hiddenSize: " << hiddenSize << ", numEngramEntries: " << numEngramEntries
-              << ", dtypeVal: " << dtypeVal << std::endl;
-
-    // 创建输出 tensor
+    // 创建输出 tensor（直接使用传入的dtype）
     int64_t numTokens = indices.size(0);
-    auto fetched =
-        at::empty({numTokens, hiddenSize}, at::TensorOptions().dtype(at::kBFloat16).device(indices.device()));
+    auto fetched = at::empty({numTokens, hiddenSize}, at::TensorOptions().dtype(outDtype).device(indices.device()));
 
     std::cout << "[C++] Calling ACLNN_CMD(aclnnEngramFetch)" << std::endl;
 

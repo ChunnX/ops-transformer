@@ -13,15 +13,7 @@ import torch_npu
 import torch.distributed as dist
 from typing import Callable
 
-from .elastic_buffer_op import op_module
-
-
-# ACLNN dtype mapping (torch.dtype -> aclDataType enum value)
-_DTYPE_MAP = {
-    torch.bfloat16: 11,  # ACL_DT_BF16
-    torch.float16: 1,    # ACL_DT_FP16
-    torch.float32: 0,    # ACL_DT_FLOAT
-}
+from .elastic_buffer_op import _elastic_buffer_ops
 
 
 def ceil_div(x: int, y: int) -> int:
@@ -59,7 +51,7 @@ class ElasticBuffer:
         self.num_engram_entries = 0
         self.engram_dtype = None  # Engram storage dtype, set in engram_write
         
-        result = op_module.npu_elastic_buffer_init(
+        result = _elastic_buffer_ops.npu_elastic_buffer_init(
             self.group_name,
             self.rank_id,
             self.world_size,
@@ -78,26 +70,35 @@ class ElasticBuffer:
         Returns:
             None
         """
-        if not storage.is_cpu:
-            raise ValueError("Storage tensor must be on CPU")
-        if not storage.is_contiguous():
-            raise ValueError("Storage tensor must be contiguous")
+        # Check storage size does not exceed buffer capacity (most critical check)
+        torch._check(storage.nbytes <= self.num_cpu_bytes,
+                     lambda: (f"Storage size exceeds CPU buffer capacity, "
+                              f"got {storage.nbytes=} bytes ({storage.nbytes / (1024**2):.2f} MB) "
+                              f"but buffer capacity is {self.num_cpu_bytes=} bytes ({self.num_cpu_bytes / (1024**2):.2f} MB). "
+                                ))
+        
+        # Check tensor device (must be CPU)
+        torch._check(storage.is_cpu,
+                     lambda: f"Storage tensor must be on CPU, got {storage.device=}.")
+        
+        # Check tensor contiguity
+        torch._check(storage.is_contiguous(),
+                     lambda: f"Storage tensor must be contiguous.")
         
         # Check dtype (only bf16/fp16/fp32 supported for Engram storage)
         supported_dtypes = [torch.bfloat16, torch.float16, torch.float32]
-        if storage.dtype not in supported_dtypes:
-            raise ValueError(
-                f"Engram storage dtype must be one of [bfloat16, float16, float32], "
-                f"but got {storage.dtype}. "
-            )
+        torch._check(storage.dtype in supported_dtypes,
+                     lambda: (f"Engram storage dtype must be one of [bfloat16, float16, float32], "
+                              f"but got {storage.dtype=}. "))
         
+        # Derive parameters from storage shape
         self.num_engram_entries = storage.shape[0]
         self.hidden_size = storage.shape[1]
         self.engram_dtype = storage.dtype
         
         self.__barrier(with_device_sync=True)
         
-        op_module.npu_elastic_buffer_write(self.host_pinned_addr, storage)
+        _elastic_buffer_ops.npu_elastic_buffer_write(self.host_pinned_addr, storage)
         
         self.__barrier(with_device_sync=True)
     
@@ -111,7 +112,7 @@ class ElasticBuffer:
         Returns:
             None
         """
-        op_module.npu_elastic_buffer_barrier(self.group_name, with_device_sync)
+        _elastic_buffer_ops.npu_elastic_buffer_barrier(self.group_name, with_device_sync)
     
     def destroy(self) -> None:
         """
@@ -122,7 +123,7 @@ class ElasticBuffer:
         """
         self.__barrier(with_device_sync=True)
         if self.host_pinned_addr != 0:
-            op_module.npu_elastic_buffer_destroy(self.host_pinned_addr)
+            _elastic_buffer_ops.npu_elastic_buffer_destroy(self.host_pinned_addr)
             self.host_pinned_addr = 0
             self.comm_context_tensor = None
     
@@ -139,14 +140,16 @@ class ElasticBuffer:
         if self.hidden_size == 0 or self.num_engram_entries == 0 or self.engram_dtype is None:
             raise RuntimeError("Must call engram_write at least once before engram_fetch")
         
-        dtype_val = _DTYPE_MAP[self.engram_dtype]
+        # Check dtype (must be int32)
+        torch._check(indices.dtype == torch.int32,
+                     lambda: (f"indices dtype must be torch.int32, but got {indices.dtype=}. "))
         
-        wait_callable = op_module.npu_engram_fetch(
+        wait_callable = _elastic_buffer_ops.npu_engram_fetch(
             self.comm_context_tensor,
             indices,
             self.hidden_size,
             self.num_engram_entries,
-            dtype_val
+            self.engram_dtype  # 直接传递torch.dtype，无需数字映射
         )
         return wait_callable
     
@@ -165,7 +168,7 @@ class ElasticBuffer:
         Returns:
             num_cpu_bytes: the recommended CPU buffer size in bytes (2 MB-aligned).
         """
-        buffer_alignment = 2 * 1024 * 1024  # 2 MB
+        buffer_alignment = 2 * 1024 * 1024
         num_sf_packs = ceil_div(hidden, 32) if dtype.itemsize <= 1 else 0
         num_bytes_per_entry = align(hidden * dtype.itemsize + num_sf_packs * 4, 32)
         num_cpu_bytes = align(num_bytes_per_entry * num_entries, buffer_alignment)
