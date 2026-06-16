@@ -142,7 +142,6 @@ ge::graphStatus QuantCompressorTiling::SetBaseInfo()
     coff = static_cast<uint8_t>(*context_->coff);
     baseParams_->headDim = context_->wkv.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) / coff;
     baseParams_->csSize = baseParams_->seqSize - (baseParams_->seqSize % baseParams_->cmpRatio);
-    baseParams_->reciprocalD = 1.0 / baseParams_->headDim;
     baseParams_->cgSize =
         (baseParams_->seqSize + baseParams_->cmpRatio - 1) / baseParams_->cmpRatio; // number of token after compress
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
