@@ -134,6 +134,8 @@ private:
     static ge::graphStatus ValidateDtype(const std::string &opName, const char *tensorName,
                                          const TensorContractInfo &tensor, ge::DataType expected);
     static ge::graphStatus ValidateDtypes(const ContractInput &input, const std::string &opName);
+    static ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName,
+                                             size_t expectedRank, const std::string &opName);
     static ge::graphStatus ValidateShapeInputsForDerivedFields(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateNonCacheShapes(const ContractInput &input, const std::string &opName);
     static ge::graphStatus ValidateCacheShapes(const ContractInput &input, const std::string &opName);

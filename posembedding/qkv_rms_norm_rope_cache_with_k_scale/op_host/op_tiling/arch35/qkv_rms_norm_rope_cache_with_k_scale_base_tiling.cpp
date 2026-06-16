@@ -43,9 +43,10 @@ constexpr int32_t TILING_TEMPLATE_PRIORITY = 1000;
 constexpr size_t WORKSPACE_COUNT = 1;
 constexpr size_t RESERVED_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
 
-namespace {
-ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName, size_t expectedRank,
-                                  const std::string &opName)
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeRank(const TensorContractInfo &tensor,
+                                                                           const char *tensorName,
+                                                                           size_t expectedRank,
+                                                                           const std::string &opName)
 {
     OP_CHECK_IF(!tensor.shapePresent || tensor.shape.GetDimNum() != expectedRank,
                 OP_LOGE(opName.c_str(),
@@ -55,7 +56,6 @@ ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-} // namespace
 
 uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads,
                                                                     uint64_t numKHeads)
