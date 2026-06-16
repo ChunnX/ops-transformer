@@ -222,7 +222,7 @@ def should_skip_directory(dir_name):
     skip_dirs = {
         'build', 'cmake', 'common', 'docs', 'examples',
         'experimental', 'scripts', 'tests', 'third_party',
-        '3rdparty', 'torch_extension', '3rd'
+        '3rdparty', 'torch_extension', '3rd', "mc2", "gmm", "ffn"
     }
     return dir_name in skip_dirs
 
