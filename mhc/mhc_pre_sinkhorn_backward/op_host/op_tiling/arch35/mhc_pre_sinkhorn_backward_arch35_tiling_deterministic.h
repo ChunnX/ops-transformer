@@ -49,6 +49,10 @@ private:
     void DoUbTiling();
 
 private:
+    int64_t bsTaskCount_{0};
+    int64_t tailBsTaskCount_{0};
+    int64_t bsLoopDataLen_{0};
+    int64_t cLoopDataLen_{0};
     // uint64_t coreNumAic_{0};
     // uint64_t coreNumAiv_{0};
     // uint64_t ubSize_{0};

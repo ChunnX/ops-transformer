@@ -40,6 +40,11 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitFloatTo16 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
     AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
+template<typename T>
+constexpr T AlignUp(T value, T align) {
+    return (value + align - 1) / align * align;
+}
+
 
 template <typename PARAM_T>
 __aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const GlobalTensor<PARAM_T>& srcTensor, int64_t repTime, int64_t dataLen, 
