@@ -82,9 +82,6 @@ static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTe
                                        uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
                                        const aclTensor *metaData)
 {
-    int64_t *viewDims = nullptr;
-    uint64_t viewDimsNum = 0;
-    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     if (sparseSeqLen == nullptr) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen is nullptr");
         return ACLNN_ERR_PARAM_INVALID;
@@ -93,33 +90,29 @@ static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTe
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen must be 2D or 3D tensor");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    ret = aclGetDataType(sparseSeqLen, &dataType);
-    if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of sparseSeqLen must be int32");
+    if (sparseSeqLen->GetDataType() != ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen dtype must be INT32");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // metadata
-    ret = aclGetViewShape(metaData, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-        if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of metaData must be 1, but got %lu", viewDimsNum);
-            delete[] viewDims;
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (viewDims[0] != optiling::QBSA_METADATA_SIZE) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metaData must be %u, but got %ld",
-                    optiling::QBSA_METADATA_SIZE, viewDims[0]);
-            delete[] viewDims;
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        ret = aclGetDataType(metaData, &dataType);
-        if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of metaData must be int32");
-            delete[] viewDims;
-            return ACLNN_ERR_PARAM_INVALID;
-        }
+    if (metaData == nullptr) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData must not be null");
+        return ACLNN_ERR_PARAM_INVALID;
     }
-    delete[] viewDims;
+    if (metaData->GetViewShape().GetDimNum() != 1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData must be 1D tensor, but got %ld dims",
+                metaData->GetViewShape().GetDimNum());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (metaData->GetViewShape().GetDim(0) != optiling::QBSA_METADATA_SIZE) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData shape must be (%u,), but got %ld",
+                optiling::QBSA_METADATA_SIZE, metaData->GetViewShape().GetDim(0));
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (metaData->GetDataType() != ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData dtype must be INT32");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // platform
     if (aicCoreNum <= 0) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "aicCoreNum must be > 0, but got %u", aicCoreNum);
