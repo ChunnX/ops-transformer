@@ -43,6 +43,20 @@ constexpr int32_t TILING_TEMPLATE_PRIORITY = 1000;
 constexpr size_t WORKSPACE_COUNT = 1;
 constexpr size_t RESERVED_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
 
+namespace {
+ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName, size_t expectedRank,
+                                  const std::string &opName)
+{
+    OP_CHECK_IF(!tensor.shapePresent || tensor.shape.GetDimNum() != expectedRank,
+                OP_LOGE(opName.c_str(),
+                        "QkvRmsNormRopeCacheWithKScale contract reject: %s present=%u rank=%u, expected rank=%zu.",
+                        tensorName, tensor.shapePresent ? 1U : 0U, static_cast<uint32_t>(tensor.shape.GetDimNum()),
+                        expectedRank),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+} // namespace
+
 uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads,
                                                                     uint64_t numKHeads)
 {
@@ -171,91 +185,24 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeInputsForD
                         "QkvRmsNormRopeCacheWithKScale contract reject: kCache present=%u rank=%u, expected rank=4.",
                         input.kCache.shapePresent ? 1U : 0U, static_cast<uint32_t>(input.kCache.shape.GetDimNum())),
                 return ge::GRAPH_FAILED);
-    struct DerivedShapeRule {
+    struct DerivedDimRule {
         const char *tensorName;
         const gert::Shape *shape;
+        size_t dim;
     };
-    const DerivedShapeRule derivedShapeRules[] = {
-        {"qkv", &input.qkv.shape},
-        {"cosSin", &input.cosSin.shape},
-        {"cuSeqLen", &input.cuSeqLen.shape},
-        {"kCache", &input.kCache.shape},
+    const DerivedDimRule derivedDimRules[] = {
+        {"qkv", &input.qkv.shape, 1},
+        {"qkv", &input.qkv.shape, 2},
+        {"cosSin", &input.cosSin.shape, 0},
+        {"kCache", &input.kCache.shape, 0},
+        {"kCache", &input.kCache.shape, 2},
     };
-    for (const auto &rule : derivedShapeRules) {
-        for (size_t dim = 0; dim < rule.shape->GetDimNum(); ++dim) {
-            OP_CHECK_IF(rule.shape->GetDim(dim) <= 0,
-                        OP_LOGE(opName.c_str(),
-                                "QkvRmsNormRopeCacheWithKScale contract reject: %s dim[%zu]=%ld, expected > 0.",
-                                rule.tensorName, dim, rule.shape->GetDim(dim)),
-                        return ge::GRAPH_FAILED);
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeRanks(const ContractInput &input,
-                                                                            const std::string &opName)
-{
-    struct RankRule {
-        const char *tensorName;
-        const TensorContractInfo *tensor;
-        size_t expectedRank;
-    };
-    const RankRule rankRules[] = {
-        {"qkv", &input.qkv, 3},
-        {"qGamma", &input.qGamma, 1},
-        {"kGamma", &input.kGamma, 1},
-        {"cosSin", &input.cosSin, 2},
-        {"slotMapping", &input.slotMapping, 1},
-        {"cuSeqLen", &input.cuSeqLen, 1},
-        {"qRotation", &input.qRotation, 2},
-        {"kRotation", &input.kRotation, 2},
-        {"vScale", &input.vScale, 1},
-        {"kCache", &input.kCache, 4},
-        {"vCache", &input.vCache, 4},
-        {"kScaleCache", &input.kScaleCache, 4},
-    };
-    for (const auto &rule : rankRules) {
-        OP_CHECK_IF(!rule.tensor->shapePresent || rule.tensor->shape.GetDimNum() != rule.expectedRank,
+    for (const auto &rule : derivedDimRules) {
+        OP_CHECK_IF(rule.shape->GetDim(rule.dim) <= 0,
                     OP_LOGE(opName.c_str(),
-                            "QkvRmsNormRopeCacheWithKScale contract reject: %s present=%u rank=%u, "
-                            "expected rank=%zu.",
-                            rule.tensorName, rule.tensor->shapePresent ? 1U : 0U,
-                            static_cast<uint32_t>(rule.tensor->shape.GetDimNum()), rule.expectedRank),
+                            "QkvRmsNormRopeCacheWithKScale contract reject: %s dim[%zu]=%ld, expected > 0.",
+                            rule.tensorName, rule.dim, rule.shape->GetDim(rule.dim)),
                     return ge::GRAPH_FAILED);
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidatePositiveShapeDims(const ContractInput &input,
-                                                                                   const std::string &opName)
-{
-    struct ShapeRule {
-        const char *tensorName;
-        const TensorContractInfo *tensor;
-    };
-    const ShapeRule shapeRules[] = {
-        {"qkv", &input.qkv},
-        {"qGamma", &input.qGamma},
-        {"kGamma", &input.kGamma},
-        {"cosSin", &input.cosSin},
-        {"slotMapping", &input.slotMapping},
-        {"cuSeqLen", &input.cuSeqLen},
-        {"qRotation", &input.qRotation},
-        {"kRotation", &input.kRotation},
-        {"vScale", &input.vScale},
-        {"kCache", &input.kCache},
-        {"vCache", &input.vCache},
-        {"kScaleCache", &input.kScaleCache},
-    };
-    for (const auto &rule : shapeRules) {
-        for (size_t dim = 0; dim < rule.tensor->shape.GetDimNum(); ++dim) {
-            OP_CHECK_IF(rule.tensor->shape.GetDim(dim) <= 0,
-                        OP_LOGE(opName.c_str(),
-                                "QkvRmsNormRopeCacheWithKScale contract reject: %s dim[%zu]=%ld, expected > 0.",
-                                rule.tensorName, dim, rule.tensor->shape.GetDim(dim)),
-                        return ge::GRAPH_FAILED);
-        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -263,6 +210,25 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidatePositiveShapeDi
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapes(const ContractInput &input,
                                                                                 const std::string &opName)
 {
+    struct NonCacheRankRule {
+        const char *tensorName;
+        const TensorContractInfo *tensor;
+        size_t expectedRank;
+    };
+    const NonCacheRankRule rankRules[] = {
+        {"qGamma", &input.qGamma, 1},
+        {"kGamma", &input.kGamma, 1},
+        {"slotMapping", &input.slotMapping, 1},
+        {"qRotation", &input.qRotation, 2},
+        {"kRotation", &input.kRotation, 2},
+        {"vScale", &input.vScale, 1},
+    };
+    for (const auto &rule : rankRules) {
+        if (ValidateShapeRank(*rule.tensor, rule.tensorName, rule.expectedRank, opName) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+
     const uint64_t numQkHeads = input.numQHeads + input.numKHeads;
     const uint64_t numQkvHeads = numQkHeads + input.numVHeads;
     OP_CHECK_IF(static_cast<uint64_t>(input.qkv.shape.GetDim(0)) != numQkvHeads ||
@@ -310,6 +276,20 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapes(
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateCacheShapes(const ContractInput &input,
                                                                              const std::string &opName)
 {
+    struct CacheRankRule {
+        const char *tensorName;
+        const TensorContractInfo *tensor;
+    };
+    const CacheRankRule rankRules[] = {
+        {"vCache", &input.vCache},
+        {"kScaleCache", &input.kScaleCache},
+    };
+    for (const auto &rule : rankRules) {
+        if (ValidateShapeRank(*rule.tensor, rule.tensorName, 4, opName) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+
     OP_CHECK_IF(static_cast<uint64_t>(input.kCache.shape.GetDim(0)) != input.blockNum ||
                     static_cast<uint64_t>(input.kCache.shape.GetDim(1)) != input.numKHeads ||
                     static_cast<uint64_t>(input.kCache.shape.GetDim(2)) != input.blockSize ||
@@ -345,17 +325,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateCacheShapes(con
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapes(const ContractInput &input,
                                                                         const std::string &opName)
 {
-    ge::graphStatus status = ValidateShapeRanks(input, opName);
-    OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale shape rank validation failed."),
-                return ge::GRAPH_FAILED);
-
-    status = ValidatePositiveShapeDims(input, opName);
-    OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
-                OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale positive shape dim validation failed."),
-                return ge::GRAPH_FAILED);
-
-    status = ValidateNonCacheShapes(input, opName);
+    ge::graphStatus status = ValidateNonCacheShapes(input, opName);
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName.c_str(), "QkvRmsNormRopeCacheWithKScale non-cache shape validation failed."),
                 return ge::GRAPH_FAILED);
