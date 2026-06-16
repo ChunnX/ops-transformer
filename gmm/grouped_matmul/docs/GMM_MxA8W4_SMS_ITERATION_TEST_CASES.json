@@ -319,7 +319,7 @@
       "id": "NEG010",
       "category": "异常-shape",
       "importance": "P1",
-      "input": "M=32, K=64, N=128, groupNum=2；异常构造：antiquantScale[g] dim非4",
+      "input": "M=32, K=64, N=128, groupNum=2；异常构造：antiquantScale[g] dim非3",
       "steps": "1. 构造antiquantScale维度错误输入；\n2. 使用ttk/Aclnn测试框架执行；\n3. 检查参数检查失败日志。",
       "expected": "参数检查失败，日志包含antiquantScale dimension。",
       "remark": "每条异常仅违反一个规则。",
