@@ -167,10 +167,10 @@ public:
         uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;
         m = subBlockIdx_ == 0 ? m : actualBlockShape.m() - m;
         if (m == 0) {
-            WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-            SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-            WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
-            SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+            // WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+            // SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+            // WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+            // SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
             return;
         }
         uint32_t n = actualBlockShape.n();
@@ -192,7 +192,7 @@ public:
         __ubuf__ float *expMaxUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId * DM_UB_GLOBAL_ELEM_NUM].GetPhyAddr();
 
         // wait QK Fixpipe finsh
-        WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+        // WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
         uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
         if (kvBaseTileRegStages == 1) {
             ComputeScaleAndMax<KvBaseTileRegSplitStages::ONE>(
@@ -228,7 +228,7 @@ public:
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
-        SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+        // SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
         uint32_t curNRound = FULL_QUANT_FP8 ? RoundUp(n, ELE_NUM_PER_C0_FP8) : RoundUp(n, ELE_NUM_PER_C0);
         auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, curNRound);
@@ -238,12 +238,12 @@ public:
                 tla::MakeCoord(0, 0), tla::MakeShape(m, n));
         auto l1PTensorTlaTile = GetTile(l1PTensorTla,
                 tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
-        WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+        // WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
         CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         // crossCoreSync after PIPE_MTE1 move
-        SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+        // SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
         mLoops = AscendC::CeilDivision(m, 64) - 1;
         tailM = (m - 1) % 64 + 1;
         if (isFirstKvSTile) {

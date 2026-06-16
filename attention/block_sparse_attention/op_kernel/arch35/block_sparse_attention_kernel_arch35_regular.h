@@ -304,7 +304,7 @@ public:
             auto gmQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(qBaseTile_, qShapeCol);
             auto gmQTensorTla = tla::MakeTensor(gQ[gmOffsetQ], gmQLayoutTla, Arch::PositionGM{});
             GemmCoord actualBlockShapeQ{rowNum, embed_, 0};
-            blockMmadQK.loadQGM(gmQTensorTla, actualBlockShapeQ);
+            // blockMmadQK.loadQGM(gmQTensorTla, actualBlockShapeQ);
 
             auto gmKLayoutTla = tla::MakeLayout<ElementK, LayoutK>(kvShapeCol, kvBaseTile_);
             auto gmKTensorTla = tla::MakeTensor(gK[gmOffsetK], gmKLayoutTla, Arch::PositionGM{});
@@ -351,15 +351,15 @@ public:
                         gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
-                    blockMmadQK(
-                        gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx],
-                        actualBlockShapeQK,
-                        gatheredKvSTileIdx, kvSeqlen,
-                        kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                        prefixSumL0AStages, prefixSumL0BStages,
-                        mm1ToSmFlag);
-                    if (gatheredKvSTileIdx == kvSLoopNum - 1)
-                    AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
+                    // blockMmadQK(
+                    //     gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx],
+                    //     actualBlockShapeQK,
+                    //     gatheredKvSTileIdx, kvSeqlen,
+                    //     kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                    //     prefixSumL0AStages, prefixSumL0BStages,
+                    //     mm1ToSmFlag);
+                    // if (gatheredKvSTileIdx == kvSLoopNum - 1)
+                    // AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
 #endif
                     // SM
                     uint32_t l1PBufId = gatheredKvSTileIdx % pL1BufNum_;
@@ -404,24 +404,24 @@ public:
                         gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
-                    blockMmadPV(
-                        gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
-                        actualBlockShapePV,
-                        gatheredKvSTileIdxDe, kvSeqlen,
-                        kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                        prefixSumL0AStages, prefixSumL0BStages,
-                        smToMm2Flag, mm2ToReFlag);
+                    // blockMmadPV(
+                    //     gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
+                    //     actualBlockShapePV,
+                    //     gatheredKvSTileIdxDe, kvSeqlen,
+                    //     kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                    //     prefixSumL0AStages, prefixSumL0BStages,
+                    //     smToMm2Flag, mm2ToReFlag);
 #endif
 #ifdef __DAV_VEC__
                     // rescale O
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
                     uint32_t curTileMod = gatheredKvSTileIdxDe % (PRE_LAUNCH + 1);
-                    epilogueRescaleO(
-                        gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
-                        curTileMod, gatheredKvSTileIdxDe,
-                        (gatheredKvSTileIdxDe == 0),
-                        (gatheredKvSTileIdxDe == kvSLoopNum - 1),
-                        mm2ToReFlag);
+                    // epilogueRescaleO(
+                    //     gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
+                    //     curTileMod, gatheredKvSTileIdxDe,
+                    //     (gatheredKvSTileIdxDe == 0),
+                    //     (gatheredKvSTileIdxDe == kvSLoopNum - 1),
+                    //     mm2ToReFlag);
 #endif
                 }
             }
@@ -534,35 +534,35 @@ public:
     void InitSyncFlags()
     {
 #ifdef __DAV_CUBE__
-        // same core sync between pipes
-        // Query
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
-        // Key
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
-        // Value
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
-        // L0A
-        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
-        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
-        // L0B
-        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
-        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
-        // L0C
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
-        // cross core sync
-        if constexpr (SM_MM2_MODE == 4U) {
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(2);
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(18);
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(3);
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(19);
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(4);
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(20);
-        }
+        // // same core sync between pipes
+        // // Query
+        // AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
+        // // Key
+        // AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
+        // AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
+        // // Value
+        // AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
+        // AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
+        // // L0A
+        // AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
+        // AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
+        // // L0B
+        // AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
+        // AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
+        // // L0C
+        // AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
+        // AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
+        // AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
+        // AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
+        // // cross core sync
+        // if constexpr (SM_MM2_MODE == 4U) {
+        //     AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(2);
+        //     AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(18);
+        //     AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(3);
+        //     AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(19);
+        //     AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(4);
+        //     AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(20);
+        // }
 #endif
 #ifdef __DAV_VEC__
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -574,19 +574,19 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
         // rescale
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        // AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
 
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
-        if constexpr (MM1_SM_MODE == 4U) {
-            AscendC::CrossCoreSetFlag<MM1_SM_MODE, PIPE_V>(0);
-            AscendC::CrossCoreSetFlag<MM1_SM_MODE, PIPE_V>(1);
-        }
-        if constexpr (MM2_RE_MODE == 4U) {
-            AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(5);
-            AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(6);
-        }
+        // if constexpr (MM1_SM_MODE == 4U) {
+        //     AscendC::CrossCoreSetFlag<MM1_SM_MODE, PIPE_V>(0);
+        //     AscendC::CrossCoreSetFlag<MM1_SM_MODE, PIPE_V>(1);
+        // }
+        // if constexpr (MM2_RE_MODE == 4U) {
+        //     AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(5);
+        //     AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(6);
+        // }
 #endif
     }
 
@@ -595,32 +595,32 @@ public:
     void ReleaseSyncFlags()
     {
 #ifdef __DAV_CUBE__
-        // same core sync between pipes
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
-        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
-        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
-        if constexpr (MM1_SM_MODE == 4U) {
-            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(0);
-            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(1);
-            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(16);
-            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(17);
-        }
-        if constexpr (MM2_RE_MODE == 4U) {
-            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(5);
-            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(21);
-            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(6);
-            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(22);
-        }
+        // // same core sync between pipes
+        // AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
+        // AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
+        // AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
+        // AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
+        // AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
+        // AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
+        // AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
+        // AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
+        // AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
+        // AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
+        // AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
+        // AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
+        // AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
+        // if constexpr (MM1_SM_MODE == 4U) {
+        //     AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(0);
+        //     AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(1);
+        //     AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(16);
+        //     AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(17);
+        // }
+        // if constexpr (MM2_RE_MODE == 4U) {
+        //     AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(5);
+        //     AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(21);
+        //     AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(6);
+        //     AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(22);
+        // }
 #endif
 #ifdef __DAV_VEC__
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -629,15 +629,15 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        // AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
-        if constexpr (SM_MM2_MODE == 4U) {
-            AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(2);
-            AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(3);
-            AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(4);
-        }
+        // if constexpr (SM_MM2_MODE == 4U) {
+        //     AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(2);
+        //     AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(3);
+        //     AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(4);
+        // }
 #endif
         AscendC::PipeBarrier<PIPE_ALL>();
     }
