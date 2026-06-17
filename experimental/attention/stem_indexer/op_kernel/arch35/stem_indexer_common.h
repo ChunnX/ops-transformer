@@ -44,10 +44,10 @@ struct TempLoopInfo {
     uint32_t gS1Idx = 0U;
     uint32_t gS1LoopEnd = 0U;   // gS1方向循环的结束Idx
     uint32_t s2LoopEnd = 0U;    // S2方向循环的结束Idx
-    uint32_t actS1Size = 1ULL;  // 当前Batch循环处理的S1轴的实际大小
-    uint32_t actS2Size = 0ULL;
-    uint32_t promptLen = 0ULL;
-    uint32_t s2ValidSize = 0ULL;
+    uint32_t actS1Size = 1U;  // 当前Batch循环处理的S1轴的实际大小
+    uint32_t actS2Size = 0U;
+    uint32_t promptLen = 0U;
+    uint32_t s2ValidSize = 0U;
     bool curActSeqLenIsZero = false;
     bool needDealActS1LessThanS1 = false;  // S1的实际长度小于shape的S1长度时，是否需要清理输出
     uint32_t actMBaseSize = 0U;            // m轴(gS1)方向实际大小

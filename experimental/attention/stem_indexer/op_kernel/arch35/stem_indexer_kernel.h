@@ -479,9 +479,9 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
     tempLoopInfo.needDealActS1LessThanS1 = false;
     tempLoopInfo.s2ValidSize = 0U;
     GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size);
-    uint64_t promptTokenLen = GetActualSeqLen(tempLoopInfo.bIdx, static_cast<uint32_t>(constInfo.batchSize), true,
+    uint64_t promptTokenLen = GetActualSeqLen(tempLoopInfo.bIdx, static_cast<uint32_t>(constInfo.batchSize), false,
                                                   numPromptTokensGm, 0U);
-    tempLoopInfo.promptLen = CeilDiv(promptTokenLen, constInfo.stemBlockSize);
+    tempLoopInfo.promptLen = CeilDiv((uint32_t)promptTokenLen, constInfo.stemBlockSize);
     if ((tempLoopInfo.actS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
         return;
@@ -533,8 +533,8 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
                           runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.headDim + 
                           runInfo.gS1Idx * constInfo.mBaseSize * constInfo.headDim;
         
-        indiceOutCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.sparseCount +
-                              runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.sparseCount;
+        indiceOutCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.kSeqSize +
+                              runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.kSeqSize;
 
         indiceLenCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize + 
                               runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize;
@@ -657,7 +657,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
     } else {
         vectorService.ProcessVec1(runInfo);
         if (runInfo.isFirstS2InnerLoop) {
-            vectorService.initS2LenToNeg(runInfo.actMBaseSize, runInfo.indiceOutOffset);
+            vectorService.initS2LenToNeg(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.indiceOutOffset);
         }
         vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }
