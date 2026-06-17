@@ -105,7 +105,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[n^2+2n, nD]</td>
+      <td>[n^2+2n, nD]或[2n, nD]</td>
       <td>√</td>
   </tr>
   <tr>
@@ -115,7 +115,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>-</td>
-      <td>[3]</td>
+      <td>[3]或[2]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -125,7 +125,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>-</td>
-      <td>[n^2+2n]</td>
+      <td>[n^2+2n]或[2n]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -205,7 +205,7 @@ aclnnStatus aclnnMhcPre(
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>[B,S,n^2+2n] 或 [T,n^2+2n]</td>
+      <td>[B,S,n^2+2n] 或 [T,n^2+2n] 或 [B,S,2n] 或 [T, 2n]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -331,6 +331,7 @@ aclnnStatus aclnnMhcPre(
 - 规格约束：
   - n目前支持4、6、8。
   - D支持1~16384范围以内，需满足D为16对齐。
+  - 当alpha=[3]时，支持hRes输出，必须满足以下条件：输入phi=[n^2+2n, nD],bias=[n^2+2n]，输出hMixOptional=[B,S,n^2+2n] 或 [T,n^2+2n]；当alpha=[2]时，hRes输出为空，必须满足以下条件：输入phi=[2n, nD],bias=[2n]，输出hMixOptional=[B,S,2n] 或 [T,2n]。
 
 ## 调用示例
 
