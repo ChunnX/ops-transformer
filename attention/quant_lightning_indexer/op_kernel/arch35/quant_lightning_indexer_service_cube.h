@@ -410,7 +410,6 @@ template <typename QLIT>
 __aicore__ inline void QLIMatmul<QLIT>::LoadQScaleToL1(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
                                                          const QLICommon::RunInfo &runInfo)
 {
-    if constexpr (!IS_MXFP8) return;
     // qScale 存储在当前 ping-pong buffer 的数据之后
     // 使用 QUERY_L1_PINGPONG_STRIDE 保持与 InitBuffers/QueryNd2Nz/LoadQueryToL0a 一致
     uint64_t scaleOffsetInBuf = (queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE
@@ -439,7 +438,6 @@ template <typename QLIT>
 __aicore__ inline void QLIMatmul<QLIT>::LoadKScaleToL1(uint64_t s2L1RealSize, uint64_t s2GmOffset,
                                                          const QLICommon::RunInfo &runInfo)
 {
-    if constexpr (!IS_MXFP8) return;
     // kScale 存储在 keyL1_ buffer 尾部
     uint64_t scaleOffsetInBuf = KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK;
     LocalTensor<bfloat16_t> scaleL1 = keyL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
@@ -544,11 +542,6 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uin
         // srcStride 基于 K 维度(headDim)，参考 MLA Prolog: CeilDiv(kL1Size, K_STEP_SIZE_32 * FP8_TWO)
         loadAScaleParam.srcStride = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
         loadAScaleParam.dstStride = loadAScaleParam.yStep;
-        uint32_t array1[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(128)};
-        ShapeInfo shapeInfo1(2, array1);
-        DumpTensor(queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE], 1003, 128*128, shapeInfo1);
-        DumpTensor(queryL1_, 1004, 128*128, shapeInfo1);
-        DumpTensor(scaleL1, 1005, 128*128, shapeInfo1);
         LoadData(dstTensor,
                  queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE],
                  scaleL1, loadData2DParams, loadAScaleParam);
@@ -570,6 +563,7 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64
     loadData2DParams.kStep = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE);
     loadData2DParams.srcStride = CeilDiv(s2L1RealSize, BLOCK_CUBE);
     loadData2DParams.dstStride = CeilDiv(s2L0RealSize, BLOCK_CUBE);
+    loadData2DParams.ifTranspose = false;
 
     if constexpr (IS_MXFP8) {
         // MXFP8: 使用 LoadData Mx 变体，同时加载数据和 scale 到 L0
@@ -579,9 +573,6 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64
         uint64_t scaleOffsetInBuf = KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK;
         LocalTensor<fp8_e8m0_t> scaleL1 = keyL1_[scaleOffsetInBuf].template ReinterpretCast<fp8_e8m0_t>();
 
-        // MXFP8 需要转置
-        loadData2DParams.ifTranspose = false;
-
         LoadData2DMxParams loadDataMxParams;
         loadDataMxParams.xStartPosition = 0;
         loadDataMxParams.yStartPosition = 0;
@@ -590,18 +581,10 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64
         // srcStride 基于 K 维度(headDim)，参考 MLA Prolog: CeilDiv(kL1Size, K_STEP_SIZE_32 * FP8_TWO)
         loadDataMxParams.srcStride = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
         loadDataMxParams.dstStride = loadDataMxParams.yStep;
-        uint32_t array1[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(128)};
-        ShapeInfo shapeInfo1(2, array1);
-        DumpTensor(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_], 1006, 128*128, shapeInfo1);
-        DumpTensor(keyL1_, 1007, 128*128, shapeInfo1);
-        DumpTensor(scaleL1, 1008, 128*128, shapeInfo1);
         LoadData(dstTensor,
                  keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_],
                  scaleL1, loadData2DParams, loadDataMxParams);
     } else {
-        // 非 MXFP8 不需要转置
-        loadData2DParams.ifTranspose = false;
-
         LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
                  keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * keyBufferOffset_], loadData2DParams);
     }
@@ -666,9 +649,6 @@ __aicore__ inline void QLIMatmul<QLIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2Gm
         fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
         fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * constInfo_.mBaseSize / 2;
     }
-    uint32_t array1[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(128)};
-    ShapeInfo shapeInfo1(2, array1);
-    DumpTensor(cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], 1002, 128*128, shapeInfo1);
     Fixpipe<QK_T, QK_T, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
                                                 cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
 }

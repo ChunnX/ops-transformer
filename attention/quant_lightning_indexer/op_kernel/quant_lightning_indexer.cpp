@@ -45,7 +45,7 @@ __global__ __aicore__ void quant_lightning_indexer(__gm__ uint8_t *query, __gm__
 {
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);  // 修改为1:1比值
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);  // 修改为1:1比值
 
 #if (true)
     if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN) {

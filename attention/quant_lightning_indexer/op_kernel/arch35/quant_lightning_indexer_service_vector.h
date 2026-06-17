@@ -413,10 +413,6 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(float)) / 2 * constInfo_.mBaseSize;
 
     if constexpr (IS_MXFP8) {
-        printf("HHHHHHH mx\n");
-        uint32_t array1[] = {static_cast<uint32_t>(128), static_cast<uint32_t>(128)};
-        ShapeInfo shapeInfo1(2, array1);
-        DumpTensor(qkBase, 1001, 128*128, shapeInfo1);
         // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + Relu + ReduceSum
         vector1::BatchMulWeightAndReduceSum_NoScale(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
