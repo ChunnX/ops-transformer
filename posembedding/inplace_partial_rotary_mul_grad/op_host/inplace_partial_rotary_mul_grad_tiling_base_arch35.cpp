@@ -256,7 +256,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::CheckShapeLimit()
     }
 
     if (context_->GetInputShape(X_INDEX) != nullptr) {
-        dCosFlag_ = 1;
         return CheckOptionalInput();
     }
     return ge::GRAPH_SUCCESS;
@@ -404,6 +403,15 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::CheckRotaryModeSh
 {
     auto &dyShape = context_->GetInputShape(DY_INPUT_INDEX)->GetStorageShape();
     int64_t dyD = dyShape.GetDim(DIM_3);
+
+    if (sliceStart_ < 0 || sliceEnd_ > dyD) {
+        std::string sliceStr = "[" + std::to_string(sliceStart_) + ", " + std::to_string(sliceEnd_) + ")";
+        std::string reasonMsg = "partial_slice [start, end) must satisfy 0 <= start <= end <= D, "
+                                "where D is the last dim of input dy. Got D=" + std::to_string(dyD);
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), sliceStr.c_str(), std::to_string(dyD).c_str(),
+                                  reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     if (dyD > D_LIMIT) {
         std::string shapeMsg = ToString(dyShape);

@@ -66,7 +66,6 @@ struct InplacePartialRotaryMulGradTilingData {
     int64_t sliceLength;
     InplacePartialRotaryMulGradRegbaseParams inplacePartialRotaryMulGradParams;
     InplacePartialRotaryMulGradRegbaseABParams inplacePartialRotaryMulGradABParams;
-    uint32_t dCosFlag;
 };
 
 #endif

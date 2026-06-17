@@ -24,7 +24,7 @@
 namespace InplacePartialRotaryMulGrad {
 using namespace AscendC;
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN>
+template <typename DTYPE_DY, typename DTYPE_COS>
 class InplacePartialRotaryMulGradAB {
 public:
     __aicore__ inline InplacePartialRotaryMulGradAB() {}
@@ -59,8 +59,8 @@ private:
     int64_t sliceAlignX_{0};
 };
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN>
-__aicore__ inline void InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS, DTYPE_SIN>::Init(
+template <typename DTYPE_DY, typename DTYPE_COS>
+__aicore__ inline void InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS>::Init(
     TPipe *pipe, const InplacePartialRotaryMulGradRegbaseABParams *tiling, GM_ADDR dy, GM_ADDR cos, GM_ADDR sin,
     GM_ADDR dyOut)
 {
@@ -110,8 +110,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS, DTYPE_
     pipe_->InitBuffer(sinInQueue_, DB_FLAG, bufferSizeCos);
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN>
-__aicore__ inline void InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS, DTYPE_SIN>::Process()
+template <typename DTYPE_DY, typename DTYPE_COS>
+__aicore__ inline void InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS>::Process()
 {
     if (GetBlockIdx() >= tilingData_->usedCoreNum) {
         return;
@@ -160,8 +160,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS, DTYPE_
     }
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN>
-__aicore__ inline void InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS, DTYPE_SIN>::ProcessLoop(
+template <typename DTYPE_DY, typename DTYPE_COS>
+__aicore__ inline void InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS>::ProcessLoop(
     int64_t gradGmOffset, const LocalTensor<DTYPE_COS> &cosBuffer, const LocalTensor<DTYPE_COS> &sinBuffer,
     int64_t ubIdx, int64_t bsCount, int64_t nCount)
 {

@@ -141,7 +141,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::PostTiling()
     tilingData_->inplacePartialRotaryMulGradABParams.sliceEnd = sliceEnd_;
     tilingData_->inplacePartialRotaryMulGradABParams.sliceLength = sliceLength_;
     tilingData_->sliceLength = sliceLength_;
-    tilingData_->dCosFlag = 0;
 
     // 单 tiling key，不需要 reduce
     context_->SetBlockDim(usedCoreNum_);
