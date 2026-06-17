@@ -1253,6 +1253,29 @@ public:
         }
     }
 
+    // FD 兼容：进入 FlashDecode 前排干 mask V→MTE2 ping/pong 反向同步预置。
+    // FA 的 AllocEventID 预置了 V_MTE2[0]/[1] 且这两个 flag 会一直挂到所有 section 结束才由
+    // FreeEventID 排干，因此 FD 运行时 FA 仍残留 2 个 V_MTE2 pending flag。FD 自身的 V_MTE2 同步
+    // （SYNC_* = 8~13）在物理 flag 空间上与 FA 的 [0]/[1] 冲突，导致 FD 的 WaitFlag<V_MTE2> 卡死。
+    // 进入 FD 前先 Wait 排干，使 FD 期间 FA 无任何残留 V_MTE2 flag。
+    __aicore__ inline void DrainMaskReverseSync()
+    {
+        if constexpr (HAS_MASK) {
+            WaitFlag<AscendC::HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_0);
+            WaitFlag<AscendC::HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_1);
+        }
+    }
+
+    // FD 结束后恢复 mask V→MTE2 ping/pong 预置，供下一 section 的 FA ProcessVec1Nd 首轮 Wait 使用，
+    // 并保证 kernel 退出时 FreeEventID 的 WaitFlag 配平。与 DrainMaskReverseSync 成对调用。
+    __aicore__ inline void PresetMaskReverseSync()
+    {
+        if constexpr (HAS_MASK) {
+            SetFlag<AscendC::HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_0);
+            SetFlag<AscendC::HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_1);
+        }
+    }
+
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
                                            RunInfoX &runInfo)
     {
