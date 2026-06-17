@@ -394,10 +394,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
             int32_t endTileId = BSAMin(startTileId + MAX_TILE_NUM_IN_UB_BY3,
                                        static_cast<int32_t>(tileNum_));
 
-            if (repeatId > 0) {
-                WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
-            }
-
             for (int32_t tileId = startTileId; tileId < endTileId; tileId++) {
                 uint64_t curTileLen = (tileId == static_cast<int32_t>(tileNum_) - 1)
                                     ? tailTileLen_ : tileLen_;
