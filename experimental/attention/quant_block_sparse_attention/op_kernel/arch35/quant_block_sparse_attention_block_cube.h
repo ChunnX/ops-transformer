@@ -141,6 +141,7 @@ public:
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV);
+    GlobalTensor<int32_t> blockTableGm; // pageattention需要
 private:
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitGmTensor(CVSharedParams<isPa> *sharedParams, __gm__ int32_t *actualSeqQlenAddr,
@@ -250,6 +251,8 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(
         attenMaskInfo->attenMaskS1Size = sharedParams->attenMaskS1Size;
         attenMaskInfo->attenMaskS2Size = sharedParams->attenMaskS2Size;
         if constexpr (isPa) {
+            this->blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blocktablePtr);
+            // this->kvCacheBlockSize = sharedParams->blockSize;
             this->maxBlockNumPerBatch = sharedParams->blockTableDim2;
             if (sharedParams->paLayoutType == 2) { // NZ下paLayoutType == 2
                 pa_kvLayout = KVLAYOUT::NZ;
@@ -362,6 +365,11 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
     mm2A.WaitCrossCore();
     mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
     LocalTensor<INPUT_T> mm2BTensor = mm2B.GetTensor<INPUT_T>();
+    int32_t remainBlocks = runInfo.actSparseLen - runInfo.s2LoopCount * 2;
+    uint32_t actualS2RealSize = (uint32_t)runInfo.s2SparseBlk1RealSize;
+    if (remainBlocks >= 2) {
+        actualS2RealSize += (uint32_t)runInfo.s2SparseBlk2RealSize;
+    }
     if constexpr (isPa) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
@@ -378,12 +386,24 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
         shape.pageStride = constInfo.paBlockStride;
         shape.rowStride = constInfo.dSizeV;
         if constexpr (isFp8) {
-            shape.copyRowNumAlign = (shape.copyRowNum + 31) >> 5 << 5;
+            shape.copyRowNumAlign = (actualS2RealSize + 31) >> 5 << 5;
         } else {
-            shape.copyRowNumAlign = (shape.copyRowNum + 15) >> 4 << 4;
+            shape.copyRowNumAlign = (actualS2RealSize + 15) >> 4 << 4;
         }
         GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
-        GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, pa_kvLayout, runInfo, constInfo);
+        GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+
+        if (remainBlocks >= 2) {
+            startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] * constInfo.kvSparseBlockSize;
+            shape.copyRowNum = runInfo.s2SparseBlk2RealSize;
+            uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
+            if constexpr (IsSameType<INPUT_T, int4b_t>::value) {
+                blockElementCnt = 64U;
+            }
+            uint32_t halfOffset = runInfo.s2SparseBlk1RealSize * blockElementCnt;
+            LocalTensor<INPUT_T> mm2BTensor2 = mm2BTensor[halfOffset];
+            GmCopyInToL1PA<INPUT_T>(mm2BTensor2, mm2BGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+        }
     } else {
         uint64_t gmOffset = runInfo.keyOffset;
         if (constInfo.dSize != constInfo.dSizeV) {
@@ -398,10 +418,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
 
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
     mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-    uint32_t actualS2RealSize = (uint32_t)runInfo.s2SparseBlk1RealSize;
-    if (runInfo.phyBlkNumIdx2 != -1) {
-        actualS2RealSize += (uint32_t)runInfo.s2SparseBlk2RealSize;
-    }
     MMParam param = {(uint32_t)s1BaseSize,  // singleM 128
                     (uint32_t)constInfo.dSizeV, // singleN 128
                     (uint32_t)actualS2RealSize,  // singleK
@@ -513,6 +529,11 @@ BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROS
     mm1A = l1KBuffers.Get();
     mm1A.Wait<HardEvent::MTE1_MTE2>();
     LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
+    int32_t remainBlocks = runInfo.actSparseLen - runInfo.s2LoopCount * 2;
+    uint32_t actualS2RealSize = (uint32_t)runInfo.s2SparseBlk1RealSize;
+    if (remainBlocks >= 2) {
+        actualS2RealSize += (uint32_t)runInfo.s2SparseBlk2RealSize;
+    }
     if constexpr (isPa) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
@@ -528,9 +549,25 @@ BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROS
         shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
         shape.pageStride = constInfo.paBlockStride;
         shape.rowStride = constInfo.dSize;
-        shape.copyRowNumAlign = (shape.copyRowNum + 15) >> 4 << 4;
+        if constexpr (isFp8) {
+            shape.copyRowNumAlign = (actualS2RealSize + 31) >> 5 << 5;
+        } else {
+            shape.copyRowNumAlign = (actualS2RealSize + 15) >> 4 << 4;
+        }
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
-        GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, pa_kvLayout, runInfo, constInfo);
+        GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+
+        if (remainBlocks >= 2) {
+            startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] * constInfo.kvSparseBlockSize;
+            shape.copyRowNum = runInfo.s2SparseBlk2RealSize;
+            uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
+            if constexpr (IsSameType<INPUT_T, int4b_t>::value) {
+                blockElementCnt = 64U;
+            }
+            uint32_t halfOffset = runInfo.s2SparseBlk1RealSize * blockElementCnt;
+            LocalTensor<INPUT_T> mm1ATensor2 = mm1ATensor[halfOffset];
+            GmCopyInToL1PA<INPUT_T>(mm1ATensor2, mm1AGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+        }
     } else {
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
             coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
@@ -544,10 +581,6 @@ BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROS
 
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>();
-    uint32_t actualS2RealSize = (uint32_t)runInfo.s2SparseBlk1RealSize;
-    if (runInfo.phyBlkNumIdx2 != -1) {
-        actualS2RealSize += (uint32_t)runInfo.s2SparseBlk2RealSize;
-    }
     MMParam param = {actualS2RealSize, (uint32_t)runInfo.s1RealSize, (uint32_t)(constInfo.dSize), 0, 1};
     MatmulBase<INPUT_T, INPUT_T, T, 256, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
@@ -682,7 +715,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
             shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         }
         GlobalTensor<INPUT_T> mm1BGmTensor = GetKeyGm(runInfo, constInfo);
-        GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, pa_kvLayout, runInfo, constInfo);
+        GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
     } else {
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
             coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
@@ -696,16 +729,11 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
 
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-
-    uint32_t actualS2RealSize = (uint32_t)runInfo.s2SparseBlk1RealSize;
-    if (runInfo.phyBlkNumIdx2 != -1) {
-        actualS2RealSize += (uint32_t)runInfo.s2SparseBlk2RealSize;
-    }
     MMParam param = {(uint32_t)runInfo.s1RealSize,  // singleM
-                     (uint32_t)actualS2RealSize,  // singleN
-                     (uint32_t)(constInfo.dSize), // singleK
-                     0,    // isLeftTranspose
-                     1     // isRightTranspose
+                        (uint32_t)runInfo.s2RealSize,  // singleN
+                        (uint32_t)(constInfo.dSize), // singleK
+                        0,    // isLeftTranspose
+                        1     // isRightTranspose
     };
     MatmulBase<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
@@ -754,6 +782,7 @@ __aicore__ inline bool BSABlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo &constI
 TEMPLATES_DEF
 class BSABlockCubeDummy {
 public:
+    GlobalTensor<int32_t> blockTableGm; // pageattention需要
     static constexpr bool isFp8 = BSABlockCube<TEMPLATE_ARGS>::isFp8;
     static constexpr TPosition bmm2OutPos = BSABlockCube<TEMPLATE_ARGS>::bmm2OutPos;
     static constexpr bool bmm2Write2Ub = BSABlockCube<TEMPLATE_ARGS>::bmm2Write2Ub;

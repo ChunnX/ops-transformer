@@ -35,18 +35,6 @@ using namespace regbaseutil;
 
 
 namespace BaseApi {
-
-__aicore__ inline constexpr GmFormat BsaLayoutToGmFormat(BSALayout layout)
-{
-    switch (layout) {
-        case BSALayout::TND:
-            return GmFormat::TND;
-        case BSALayout::PA_BNSD:
-            return GmFormat::PA_BnNBsD;
-        default:
-            return GmFormat::TND;
-    }
-}
 TEMPLATES_DEF
 class BSABlockVec {
 public:
@@ -141,7 +129,7 @@ public:
     attenMaskGmType attenMaskGmInt;
     using quantGmType = typename std::conditional<isFp8, GlobalTensor<float>, int8_t>::type;
     quantGmType deScaleQGm;
-    FaGmTensor<float, BsaLayoutToGmFormat(kvLayout)> keyScaleGm;
+    quantGmType deScaleKGm;
     quantGmType deScaleVGm;
     quantGmType pScaleGm;
     GlobalTensor<int32_t> blockTableGm;
@@ -168,6 +156,8 @@ public:
     TBuf<> mm2OutBuf;
     TQue<QuePosition::VECOUT, 1> maxBrdcst;
     TQue<QuePosition::VECOUT, 1> sumBrdcst;
+    CopyQueryScaleGmToUb<float, layout> copyQueryScaleGmToUb;
+    CopyAntiquantGmToUb<float, kvLayout> copyKeyScaleGmToUb;
 
     AttenMaskInfo *attenMaskInfoPtr;
     T negativeFloatScalar;
@@ -178,9 +168,6 @@ public:
     GlobalTensor<float> softmaxLseGm;
     TBuf<> lseTmpBuff;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
-
-    CopyQueryScaleGmToUb<float, layout> copyQueryScaleGmToUb;
-    CopyAntiquantGmToUb<float, BsaLayoutToGmFormat(kvLayout)> copyAntiquantGmToUb;
 
 
 protected:
@@ -215,21 +202,18 @@ private:
         __gm__ int32_t *actualSeqKvlenAddr, int64_t boIdx, int64_t &actualSeqKvLen);
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
                                              RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyKeyScaleSlice(const LocalTensor<float> &dstTensor, uint32_t dOffset,
-                                             uint32_t dRealSize, RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyKeyScaleTile(const LocalTensor<float> &dstTensor, RunInfo &runInfo, ConstInfo &constInfo);
 };
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
-    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *key, __gm__ uint8_t *deqScaleV,
+    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
     __gm__ uint8_t *pScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
     ConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
         deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
-        keyScaleGm.gmTensor.SetGlobalBuffer((__gm__ float *)key);
+        deScaleKGm.SetGlobalBuffer((__gm__ float *)deqScaleK);
         deScaleVGm.SetGlobalBuffer((__gm__ float *)deqScaleV);
         if (pScale != nullptr) {
             pScaleGm.SetGlobalBuffer((__gm__ float *)pScale);
@@ -239,7 +223,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
         }
         if constexpr (isPa) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
-            keyScaleGm.offsetCalculator.Init(constInfo.n2Size, constInfo.kvSparseBlockSize, constInfo.dSize, blockTableGm, constInfo.maxBlockNumPerBatch);
         }
 
         if constexpr (hasAtten) {
@@ -342,29 +325,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::BroadCastAndCopyOut(
     maxBrdcst.template FreeTensor(maxOutTensor);
 }
 
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CopyKeyScaleSlice(const LocalTensor<float> &dstTensor, uint32_t dOffset,
-                                             uint32_t dRealSize, RunInfo &runInfo, ConstInfo &constInfo) {
-        FaUbTensor<float> ubTensor {
-            .tensor = dstTensor,
-            .rowCount = static_cast<uint32_t>(runInfo.halfS1RealSize),
-            .colCount = dRealSize,
-        };
-        AntiqGmCoord antiqGmCoord {
-            .bIdx = static_cast<uint32_t>(runInfo.boIdx),
-            .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
-            .firstS2Idx = static_cast<uint32_t>(runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize),
-            .nextS2Idx = static_cast<uint32_t>(runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize),
-            .firstS2DealSize = static_cast<uint32_t>(runInfo.s2SparseBlk1RealSize),
-            .nextS2DealSize = static_cast<uint32_t>(runInfo.s2SparseBlk2RealSize),
-        };
-        copyAntiquantGmToUb(ubTensor, keyScaleGm, antiqGmCoord, constInfo);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CopyKeyScaleTile(const LocalTensor<float> &dstTensor, RunInfo &runInfo, ConstInfo &constInfo) {
-    CopyKeyScaleSlice(dstTensor, 0, 1, runInfo, constInfo);
-}
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
@@ -385,11 +345,13 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
 
     auto expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[0];
     int64_t stage1Offset = runInfo.taskIdMod2;
-    
+     
+    float descaleQK = 1.0;
+    int64_t deScaleQOffset = 0;
     LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
     LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
     copyQueryScaleGmToUb(qScaleUbTensor, deScaleQGm, runInfo, constInfo);
-    CopyKeyScaleTile(kScaleUbTensor, runInfo, constInfo);
+    copyKeyScaleGmToUb(kScaleUbTensor, deScaleKGm, blockTableGm, runInfo, constInfo);
     qScaleInputQue.template EnQue(qScaleUbTensor);
     qScaleUbTensor = qScaleInputQue.DeQue<float>();
     kScaleInputQue.template EnQue(kScaleUbTensor);
@@ -401,13 +363,13 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
         FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize>(
             stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
             ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
-            static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.keepProb, 
+            static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb, 
             runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
     } else {
         FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize>(
             stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
             ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
-            static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.keepProb, 
+            static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb, 
             runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
     }
     bmm1ResBuf.SetCrossCore();
@@ -890,7 +852,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *s
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
-    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *key, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
+    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
     __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
     __gm__ uint8_t *softmaxMax,
@@ -898,7 +860,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     ConstInfo &constInfo)
 {
     InitCommonGlobalBuffer(
-        deqScaleQ, key, deqScaleV, pScale, prefix, attenMask, blockTable,
+        deqScaleQ, deqScaleK, deqScaleV, pScale, prefix, attenMask, blockTable,
         workspace, constInfo);
 }
 

@@ -20,35 +20,17 @@
 // GM->UB
 //antiquant
 // ----------------------------------------------CopyAntiquantGmToUb--------------------------------
-struct AntiqGmCoord {
-    uint32_t bIdx = 0;
-    uint32_t n2Idx = 0;
-    uint32_t firstS2Idx = 0;
-    uint32_t nextS2Idx = 0;
-
-    uint32_t firstS2DealSize = 0;
-    uint32_t nextS2DealSize = 0;
-};
-
-template <typename OUT_T>
-struct FaUbTensor {
-    LocalTensor<OUT_T> tensor;
-    uint32_t rowCount;
-    uint32_t colCount;
-};
-
-template <typename T, GmFormat GM_FORMAT>
+template <typename T, BSALayout GM_FORMAT>
 class CopyAntiquantGmToUb {
 public:
-    __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
-                                      AntiqGmCoord &antiqGmCoord, ConstInfo &constInfo)
+    __aicore__ inline void operator()(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor, const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
     {
-        ProcessAntiqPA(dstTensor, srcTensor, antiqGmCoord, constInfo);
+        //per per_head + per_token + PA
+        ProcessPA(dstTensor, srcTensor, blockTableTensor, runInfo, constInfo);
     }
 
 private:
-    __aicore__ inline void ProcessAntiqPA(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
-                                          AntiqGmCoord &antiqGmCoord, ConstInfo &constInfo)
+    __aicore__ inline void ProcessPA(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor, const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
     {
         int32_t byteOffset1 = 0;
         int32_t byteOffset2 = 0;
@@ -105,9 +87,9 @@ private:
             DataCopyExtParams dataCopyParams;
             dataCopyParams.blockCount = 64;
             dataCopyParams.blockLen = sizeof(float);
-            dataCopyParams.srcStride = (constInfo.n2Size * constInfo.gSize - 1) * sizeof(float);
+            dataCopyParams.srcStride = (constInfo.n1Size - 1) * sizeof(float);
             dataCopyParams.dstStride = 0;
-            DataCopyPadExtParams<T> dataCopyPadParams;
+            DataCopyPadExtParams<T> dataCopyPadParams{};
             int64_t n1Idx = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx;
             int64_t qScaleOffset = runInfo.qBScalarOffset + runInfo.sOuterOffset * constInfo.n1Size + n1Idx;
             DataCopyPad(dstTensor, srcTensor[qScaleOffset], dataCopyParams, dataCopyPadParams);
@@ -116,6 +98,7 @@ private:
         } else if (GM_FORMAT == BSALayout::BNSD) {
 
         }
+        
     }
 };
 #endif

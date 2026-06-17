@@ -139,26 +139,51 @@ __aicore__ inline void DataCopyGmNZToL1(LocalTensor<L1Type>& l1Tensor, GlobalTen
 }
 
 template<typename L1Type>
-__aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor, KVLAYOUT kvLayout,
-                                      const regbaseutil::RunInfo &runInfo, const regbaseutil::ConstInfo &constInfo)
-{   
-    // PA_BNSD格式
-    uint64_t blockTableBaseOffset = runInfo.boIdx * constInfo.maxBlockNumPerBatch;
-    uint64_t offset = runInfo.phyBlkNumIdx1 * constInfo.paBlockStride + runInfo.n2oIdx * constInfo.kvSparseBlockSize * constInfo.combineDim;
-    Nd2NzParams nd2nzPara;
-    nd2nzPara.ndNum = runInfo.phyBlkNumIdx2 == -1 ? 1 : 2; 
-    nd2nzPara.nValue = constInfo.kvSparseBlockSize; // 行数
+__aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
+                                GlobalTensor<int32_t>& blockTableGm, KVLAYOUT kvLayout,
+                                const PAShape &shape, const Position &startPos)
+{
+    uint32_t copyFinishRowCnt = 0;
+    uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch; // 块表的基偏移量
+    uint32_t curS2Idx = startPos.s2Offset;
+    uint32_t blockElementCnt = 32U / sizeof(L1Type); // 每个块的元素数量
+    while(copyFinishRowCnt < shape.copyRowNum){
+        uint64_t blockIdOffset = curS2Idx / shape.blockSize; // 获取block table上的索引
+        uint64_t remainRowCnt = curS2Idx % shape.blockSize; // 获取在单个块上超出的行数
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上获取的编号
+        //计算可以拷贝行数
+        uint32_t copyRowCnt = shape.blockSize - remainRowCnt; // 一次只能处理一个Block
+        if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
+            copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
+        }
+        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
+        if (kvLayout == KVLAYOUT::NZ) {
+            offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+            
+            LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
+            GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
+            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
+        } else {
+            uint64_t dStride = shape.headDim;
+            if (kvLayout == KVLAYOUT::BBH) {
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
+                dStride = shape.headDim * shape.headNum;
+            } else {
+                offset = idInBlockTable * shape.pageStride +
+                    static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.rowStride) +
+                    remainRowCnt * shape.rowStride + startPos.dIdx;
+                dStride = shape.rowStride;
+            }
 
-    nd2nzPara.dValue = constInfo.dSize; 
-    nd2nzPara.srcNdMatrixStride = runInfo.phyBlkNumIdx2 == -1 ? 0 :
-                                  (runInfo.phyBlkNumIdx2 - runInfo.phyBlkNumIdx1) * constInfo.paBlockStride; 
-    nd2nzPara.srcDValue = constInfo.combineDim; 
-    nd2nzPara.dstNzC0Stride = runInfo.phyBlkNumIdx2 == -1 ?
-                              (runInfo.s2SparseBlk1RealSize + 31) >> 5 << 5 :
-                              (runInfo.s2SparseBlk1RealSize + runInfo.s2SparseBlk2RealSize + 31) >> 5 << 5; // Fp8 32 对齐, 非Fp8 16对齐
-    nd2nzPara.dstNzNStride = 1; 
-    nd2nzPara.dstNzMatrixStride = runInfo.phyBlkNumIdx2 == -1 ? 0 : runInfo.s2SparseBlk1RealSize * 32;
-    DataCopy(l1Tensor, gmTensor[offset], nd2nzPara);
+            uint32_t dValue = shape.actHeadDim;
+            uint32_t srcDValue = dStride;
+            LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
+            GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
+            DataCopyGmNDToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, shape.copyRowNumAlign, dValue, srcDValue);
+        }
+        copyFinishRowCnt += copyRowCnt;
+        curS2Idx += copyRowCnt;
+    }
 }
 
 template<typename INPUT_T>
