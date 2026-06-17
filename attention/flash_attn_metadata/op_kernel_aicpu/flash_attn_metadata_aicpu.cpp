@@ -142,6 +142,8 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     deviceInfo.aicCoreMinNum = 1;
     // baseInfo
     // actual seq size
+    baseInfo.querySeqSize = maxSeqlenQ_;
+    baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
     baseInfo.isCumulativeKvSeq = layoutKv_ == "TND" || layoutKv_ == "NTD";
     if (batchSize_ > 0) {
@@ -206,9 +208,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     }
     baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
-    baseInfo.querySeqSize = maxSeqlenQ_;
     baseInfo.kvHeadNum = numHeadsKv_;
-    baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.headDim = headDim_;
     baseInfo.attenMaskFlag = (maskMode_ != 0);
     baseInfo.sparseMode = static_cast<uint32_t>(maskMode_);
