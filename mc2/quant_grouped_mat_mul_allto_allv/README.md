@@ -4,8 +4,8 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
+| <term>Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
@@ -280,7 +280,7 @@
               <td>sendCounts</td>
               <td>输入</td>
               <td>AlltoAllv使用的send count。表示其他Rank向当前rank上各expert发送的token数量。</td>
-              <td>支持的维度为e * ep。按<code>sendCounts[fromRank][expertId]</code>一维展开,例如e=3时顺序为<code>e0,e1,e2,e0,e1,e2, ...</code></td>
+              <td>支持的维度为e * ep。按<code>sendCounts[fromRank][expertId]</code>一维展开，例如e=3时顺序为<code>e0,e1,e2,e0,e1,e2, ...</code></td>
               <td>aclIntArray*（元素类型INT64）</td>
               <td>ND</td>
               <td>-</td>
@@ -291,7 +291,7 @@
               <td>recvCounts</td>
               <td>输入</td>
               <td>AlltoAllv使用的recv count。表示AlltoAllv后本卡需要接收到的token数量。</td>
-              <td>支持的维度为e * ep。按<code>recvCounts[fromRank][expertId]</code>一维展开,例如e=3时顺序为<code>e0,e1,e2,e0,e1,e2, ...</code></td>
+              <td>支持的维度为e * ep。按<code>recvCounts[fromRank][expertId]</code>一维展开，例如e=3时顺序为<code>e0,e1,e2,e0,e1,e2, ...</code></td>
               <td>aclIntArray*（元素类型INT64）</td>
               <td>ND</td>
               <td>-</td>
@@ -382,7 +382,7 @@
 - 确定性计算：
   - aclnnQuantGroupedMatMulAlltoAllv默认确定性实现。
 - 通信引擎约束：
-  - Ascend 950PR/Ascend 950DT：支持CCU通信。
+  - Ascend 950DT：支持CCU通信和AI_CPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
 - e * epWorldSize最大支持256，e表示单卡上的专家数量，最大支持到32，epWorldSize支持2/4/8/16/32/64/128/256;
 - gmmX的shape(A, H1)，A为sendCounts之和，H1取值范围(0, 65536);
 - gmmWeight的shape(e, H1, N1)，N1取值范围(0, 65536);

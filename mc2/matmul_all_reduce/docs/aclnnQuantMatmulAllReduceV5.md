@@ -141,7 +141,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
           <td>commQuantScale1Optional</td>
           <td>输入</td>
           <td>MatMul+Add计算后的perchannel量化系数，即计算公式中的commQuantScale1Optional。</td>
-          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时, shape可为(n)或者(1,n)</li></ul></td>
+          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时， shape可为(n)或者(1,n)</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>1-2</td>
@@ -151,7 +151,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
           <td>commQuantScale2Optional</td>
           <td>输入</td>
           <td>AllGather计算后的perchannel量化系数，即计算公式中的commQuantScale2Optional。</td>
-          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时, shape可为(n)或者(1,n)</li></ul></td>
+          <td><ul><li>当前版本仅在输入为int8类型时支持，其他场景传入空。</li><li>x2为(k, n)时， shape可为(n)或者(1,n)</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
           <td>ND</td>
           <td>1-2</td>
@@ -343,7 +343,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
 
 - 通信引擎commMode支持度：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：目前不支持指定通信引擎，commMode仅允许输入为空字符串，默认使用AICPU。
-  - <term>Ascend 950PR/Ascend 950DT</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"、"ccu"和空字符串，前两者直接指定AICPU和CCU，空字符串表示自适应模式，优先选择最佳的通信引擎，当前版本默认使用CCU作为通信引擎。
+  - <term>Ascend 950PR/Ascend 950DT</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"、"ccu"和空字符串，前两者直接指定AICPU和CCU，空字符串表示自适应模式，优先选择最佳的通信引擎，当前版本默认使用CCU作为通信引擎。CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
   - 同一条通信链路内，只能选择同一种通信引擎。
   - AICPU和CCU通信引擎简单介绍：
     - AICPU：不占用计算核，通信效率高，但通信静态开销较大，对小数据量通信场景不友好。适用于大数据高带宽场景。
