@@ -1252,6 +1252,12 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                 }
 
                 if (newPos >= activeNum_) {
+                    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                    if (rowIdxType_ == GATHER) {
+                        DataCopyPad(expandedRowIdxGm_[origFlatIdx], idxBuf, idxCopyParams);
+                    } else {
+                        DataCopyPad(expandedRowIdxGm_[newPos], idxBuf, idxCopyParams);
+                    }
                     continue;
                 }
 
