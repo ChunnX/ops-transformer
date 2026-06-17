@@ -95,37 +95,37 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     </tr></thead>
   <tbody>
     <tr>
-      <td>cuSeqlensQOptional</td>
+      <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length</br>layoutQOptional为TND场景下必传</br>第一个值为额外值并固定为0。</td>
-      <td>支持空Tensor</td>
+      <td>表示不同Batch中Query的有效Sequence Length</td>
+      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape固定为(B+1，)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>cuSeqlensOriKvOptional</td>
+      <td>cuSeqlensOriKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中ori_Kv的有效Sequence Length</br>layoutKvOptional为TND场景下必传</br>第一个值为额外值并固定为0。</td>
-      <td>支持空Tensor</td>
+      <td>表示不同Batch中ori_Kv的有效Sequence Length</td>
+      <td><ul><li>支持空Tensor</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape固定为(B+1，)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>cuSeqlensCmpKvOptional</td>
+      <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中cmp_Kv的有效Sequence Length</br>layoutKvOptional为TND场景下必传</br>第一个值为额外值并固定为0。</td>
-      <td>支持空Tensor</td>
+      <td>表示不同Batch中cmp_Kv的有效Sequence Length</td>
+      <td><ul><li>支持空Tensor</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape固定为(B+1，)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>sequsedQOptional</td>
+      <td>sequsedQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query实际参与运算的Sequence Length。</td>
       <td>支持空Tensor</td>
@@ -135,7 +135,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>√</td>
     </tr>
     <tr>
-      <td>sequsedOriKvOptional</td>
+      <td>sequsedOriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中ori_kv实际参与运算的Sequence Length。</td>
       <td>支持空Tensor</td>
@@ -145,7 +145,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>√</td>
     </tr>
     <tr>
-      <td>sequsedCmpKvOptional</td>
+      <td>sequsedCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length。</td>
       <td>支持空Tensor</td>
@@ -155,17 +155,17 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>√</td>
     </tr>
     <tr>
-      <td>cmpResidualKvOptional</td>
+      <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</br>如果cmpRatio不为1，且mask为3，则必须传入cmpResidualKvOptional。</td>
-      <td>支持空Tensor</td>
+      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</td>
+      <td><ul><li>支持空Tensor</li><li>cmpRatio不为1，且mask为3场景下必传。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape固定为(B，)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>oriTopkLengthOptional</td>
+      <td>oriTopkLengthOptional（aclTensor*）</td>
       <td>输入</td>
       <td>预留参数，当前不生效。</td>
       <td>支持空Tensor</td>
@@ -175,7 +175,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>√</td>
     </tr>
     <tr>
-      <td>cmpTopkLengthOptional</td>
+      <td>cmpTopkLengthOptional（aclTensor*）</td>
       <td>输入</td>
       <td>预留参数，当前不生效。</td>
       <td>支持空Tensor</td>
@@ -185,207 +185,207 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>√</td>
     </tr>
     <tr>
-      <td>numHeadsQ</td>
+      <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的head个数。</td>
       <td>支持非负数</td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>numHeadsKv</td>
+      <td>numHeadsKv（int64_t）</td>
       <td>输入</td>
       <td>Key和Value对应的多头数。</td>
       <td>支持非负数</td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>headDim</td>
+      <td>headDim（int64_t）</td>
       <td>输入</td>
       <td>注意力头的维度。</td>
       <td>支持非负数</td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>quantMode</td>
+      <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示量化模式</td>
-      <td>1: Q: nope+rope: 非量化; KV: nope: per-token-group FP8_e4m3。group_size=64; rope: non-quantized and consistent with q; scale: bf16; kv_cache_layout: block_size*(rope[64*2]+nope[448]+scale[448/64*2]+pad[18])</br> 2: Q: nope+rope: 非量化; KV: nope: per-token-group FP8_e4m3。group_size=64; rope: non-quantized and consistent with q; scale: e8m0; kv_cache_layout: block_size*(nope+rope)+block_size*(scale+pad[1])</td>
-      <td>INT64</td>
+      <td><ul><li>1: Q: nope+rope: 非量化; KV: nope: per-token-group FP8_e4m3。group_size=64; rope: non-quantized and consistent with q; scale: bf16; kv_cache_layout: block_size*(rope[64*2]+nope[448]+scale[448/64*2]+pad[18])</li><li>2: Q: nope+rope: 非量化; KV: nope: per-token-group FP8_e4m3。group_size=64; rope: non-quantized and consistent with q; scale: e8m0; kv_cache_layout: block_size*(nope+rope)+block_size*(scale+pad[1])</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>batchSize</td>
+      <td>batchSize（int64_t）</td>
       <td>输入</td>
       <td>表示Batch数量。</td>
-      <td>支持非负数</br>建议值为0</td>
-      <td>INT64</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenQ</td>
+      <td>maxSeqlenQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
-      <td>INT64</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenOriKv</td>
+      <td>maxSeqlenOriKv（int64_t）</td>
       <td>输入</td>
       <td>表示ori_kv的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
-      <td>INT64</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenCmpKv</td>
+      <td>maxSeqlenCmpKv（int64_t）</td>
       <td>输入</td>
       <td>表示cmp_kv的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
-      <td>INT64</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>oriTopk</td>
+      <td>oriTopk（int64_t）</td>
       <td>输入</td>
       <td>预留参数，当前不生效。表示ori_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景</td>
-      <td>支持非负数</br>建议值为0</td>
-      <td>INT64</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>cmpTopk</td>
+      <td>cmpTopk（int64_t）</td>
       <td>输入</td>
       <td>表示cmp_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景</td>
-      <td>支持非负数</br>建议值为0</td>
-      <td>INT64</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>rope_head_dim</td>
+      <td>rope_head_dim（int64_t）</td>
       <td>输入</td>
       <td>rope头的维度。</td>
-      <td>支持非负数</br>建议值为64</td>
-      <td>INT64</td>
+      <td><ul><li>支持非负数</li><li>建议值为64</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>cmpRatio</td>
+      <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>表示对cmp_kv的压缩率。</td>
-      <td>取值范围[1，128]</br>建议值1，表示无压缩。</td>
-      <td>INT64</td>
+      <td><ul><li>取值范围[1，128]</li><li>建议值1，表示无压缩。</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>oriMaskMode</td>
+      <td>oriMaskMode（int64_t）</td>
       <td>输入</td>
       <td>表示q和ori_kv计算的mask模式。</td>
-      <td>0: No mask</br>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景</br>4: sliding window模式的mask，对应由oriWinLeft和oriWinRight划分的窗口场景</br>建议值为0</td>
-      <td>INT64</td>
+      <td><ul><li>0: No mask</li><li>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景</li><li>4: sliding window模式的mask，对应由oriWinLeft和oriWinRight划分的窗口场景</li><li>建议值为0</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>cmpMaskMode</td>
+      <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
       <td>表示q和cmp_kv计算的mask模式。</td>
-      <td>0: No mask</br>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景</br>建议值为0</td>
-      <td>INT64</td>
+      <td><ul><li>0: No mask</li><li>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景</li><li>建议值为0</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>oriWinLeft</td>
+      <td>oriWinLeft（int64_t）</td>
       <td>输入</td>
       <td>表示q和ori_kv计算中q对过去token计算的数量。</td>
-      <td>取值范围≥-1，-1表示无穷大</br>建议值为-1</td>
-      <td>INT64</td>
+      <td><ul><li>取值范围≥-1，-1表示无穷大</li><li>建议值为-1</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>oriWinRight</td>
+      <td>oriWinRight（int64_t）</td>
       <td>输入</td>
       <td>表示q和ori_kv计算中q对未来token计算的数量。</td>
-      <td>取值范围≥-1，-1表示无穷大</br>建议值为-1</td>
-      <td>INT64</td>
+      <td><ul><li>取值范围≥-1，-1表示无穷大</li><li>建议值为-1</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutQOptional</td>
+      <td>layoutQOptional（char*）</td>
       <td>输入</td>
       <td>表示Query的排列格式。</td>
-      <td>支持 BSND、TND</br>建议值为BSND</td>
-      <td>char*</td>
+      <td><ul><li>支持 BSND、TND</li><li>建议值为BSND</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutKvOptional</td>
+      <td>layoutKvOptional（char*）</td>
       <td>输入</td>
       <td>表示Key的排列格式。</td>
-      <td>支持 BSND、TND、PA_BBND</br>建议值为BSND</td>
-      <td>char*</td>
+      <td><ul><li>支持 BSND、TND、PA_BBND</li><li>建议值为BSND</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>hasOriKv</td>
+      <td>hasOriKv（bool）</td>
       <td>输入</td>
       <td>用于标识是否含有ori_kv。</td>
-      <td>true: 含有ori_kv</br>false: 不含有ori_kv</br>建议值为true</td>
-      <td>bool</td>
+      <td><ul><li>true: 含有ori_kv</br>false: 不含有ori_kv</li><li>建议值为true</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>hasCmpKv</td>
+      <td>hasCmpKv（bool）</td>
       <td>输入</td>
       <td>用于标识是否含有cmp_kv。</td>
-      <td>true: 含有cmp_kv</br>false: 不含有cmp_kv</br>建议值为true</td>
-      <td>bool</td>
+      <td><ul><li>true: 含有cmp_kv</br>false: 不含有cmp_kv</li><li>建议值为true</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>metadata</td>
+      <td>metadata（aclTensor*）</td>
       <td>输出</td>
       <td>表示负载均衡结果输出。</td>
       <td>-</td>
@@ -395,7 +395,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>×</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -405,7 +405,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
