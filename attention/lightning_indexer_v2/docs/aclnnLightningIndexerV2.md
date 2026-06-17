@@ -237,7 +237,7 @@ aclnnStatus aclnnLightningIndexerV2(
   <td>layoutK（char*）</td>
   <td>输入</td>
   <td>用于标识输入k的数据排布格式。</td>
-  <td><ul><li>当前支持PA_BSND、BSND、TND。</li><li>建议值是BSND。</li></ul></td>
+  <td><ul><li>当前支持PA_BBND、BSND、TND。</li><li>建议值是BSND。</li></ul></td>
   <td>STRING</td>
   <td>-</td>
   <td>-</td>
