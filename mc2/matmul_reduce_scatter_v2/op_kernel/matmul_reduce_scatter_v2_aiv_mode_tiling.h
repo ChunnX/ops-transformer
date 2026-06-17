@@ -10,7 +10,16 @@
 
 /* !
  * \file matmul_reduce_scatter_v2_aiv_mode_tiling.h
- * \brief
+ * \brief MatmulReduceScatterV2算子AIV模式的Tiling数据结构定义
+ *
+ * 本文件定义了AIV模式所需的Tiling参数，包括：
+ *   - DequantType: 反量化类型枚举（PER_CHANNEL / PER_TOKEN）
+ *   - MatmulReduceScatterV2AivModeInfo: 算子形状和特性信息（M/K/N、量化标志、对齐标志等）
+ *   - CoCTiling: 分块策略参数（m0/n0/k0、Swizzle参数、通信切分策略等）
+ *   - MatmulReduceScatterV2AivModeTilingData: 完整的Tiling数据结构（包含MC2通信Tiling）
+ *   - MatmulReduceScatterV2AivModeTilingValue: Tiling键值，用于Tiling策略选择
+ *   - 默认常量：各参数的默认值
+ *   - Tiling Code Mask: Tiling键值的位掩码定义
  */
 #ifndef __MATMUL_REDUCE_SCATTER_V2_AIV_MODE_TILING_H__
 #define __MATMUL_REDUCE_SCATTER_V2_AIV_MODE_TILING_H__
@@ -20,46 +29,46 @@
 namespace matmulReduceScatterV2_aivmode_tiling{
 
 enum class DequantType : int {
-    DEQUANT_TYPE_UNDEFINED = -1,
-    PER_CHANNEL = 0,
-    PER_TOKEN = 1,
+    DEQUANT_TYPE_UNDEFINED = -1,    // 未定义反量化类型
+    PER_CHANNEL = 0,                // 按通道反量化（per-channel dequant）：每个输出列一个scale
+    PER_TOKEN = 1,                  // 按token反量化（per-token dequant）：每个输入行+每个输出列各一个scale
     DEQUANT_TYPE_MAX = 2,
 };
 
 struct MatmulReduceScatterV2AivModeInfo {
-    uint32_t M;
-    uint32_t K;
-    uint32_t N;
-    uint32_t aivNum;
-    uint32_t totalUbSize;
-    bool isTransposeA;
-    bool isTransposeB;
-    uint64_t aAlignSize;
-    uint64_t bAlignSize;
-    uint64_t dequantSize;
-    bool hasAAlign;
-    bool hasBAlign;
-    bool quantFlag;
-    bool is910C;
-    bool isX2ScaleTypeInt64; /* 当前x2Scale存在入参类型为int64的场景，需要tilingKey的方式传入kernel */
-    DequantType dequant_type;
+    uint32_t M;                     // 矩阵乘法的M维度（token数量/行数）
+    uint32_t K;                     // 矩阵乘法的K维度（隐藏层大小/内积维度）
+    uint32_t N;                     // 矩阵乘法的N维度（权重列数/输出维度）
+    uint32_t aivNum;                // AIV核心总数，用于多核并行
+    uint32_t totalUbSize;           // 每个AIV核心的UB（Unified Buffer）总大小
+    bool isTransposeA;              // A矩阵是否转置（当前版本仅支持false）
+    bool isTransposeB;              // B矩阵是否转置
+    uint64_t aAlignSize;            // A矩阵对齐后所需的workspace大小（字节）
+    uint64_t bAlignSize;            // B矩阵对齐后所需的workspace大小（字节）
+    uint64_t dequantSize;           // 反量化中间结果所需的workspace大小（字节）
+    bool hasAAlign;                 // A矩阵是否需要对齐padding
+    bool hasBAlign;                 // B矩阵是否需要对齐padding
+    bool quantFlag;                 // 是否为量化场景（A和B均为int8时为true）
+    bool is910C;                    // 是否为Ascend910_93芯片（910C）
+    bool isX2ScaleTypeInt64;        // x2Scale的数据类型是否为int64（仅FP16输出时支持）
+    DequantType dequant_type;       // 反量化类型：PER_CHANNEL或PER_TOKEN
 };
 
 struct CoCTiling {
-    int32_t m0 = -1;
-    int32_t k0 = -1;
-    int32_t n0 = -1;
-    int32_t mLoop = -1;
-    int32_t kLoop = -1;
-    int32_t nLoop = -1;
-    int32_t swizzlCount = -1;
-    int32_t swizzlDirect = -1;
-    int32_t pValue = -1;
-    int32_t ubMoveNum = -1;
-    int32_t commNpuSplit = -1;
-    int32_t commDataSplit = -1;
-    int32_t lenPerLoop = -1;
-    int32_t commDirect = -1;
+    int32_t m0 = -1;                // M维度的L1分块大小（128或256）
+    int32_t k0 = -1;                // K维度的L1分块大小（256或512）
+    int32_t n0 = -1;                // N维度的L1分块大小（128或256）
+    int32_t mLoop = -1;             // M维度的分块循环次数 = Ceil(M, m0)
+    int32_t kLoop = -1;             // K维度的分块循环次数 = Ceil(K, k0)
+    int32_t nLoop = -1;             // N维度的分块循环次数 = Ceil(N, n0)
+    int32_t swizzlCount = -1;       // Swizzle块数量，用于优化L1缓存访问模式
+    int32_t swizzlDirect = -1;      // Swizzle方向：0=Zn（按行），1=Nz（按列）
+    int32_t pValue = -1;            // 每次通信前AIC计算的块数，控制计算与通信的重叠粒度
+    int32_t ubMoveNum = -1;         // UB单次搬运的数据量（以512B为单位）
+    int32_t commNpuSplit = -1;      // 通信时NPU维度的切分策略
+    int32_t commDataSplit = -1;     // 通信时数据维度的切分策略
+    int32_t lenPerLoop = -1;        // 每次循环处理的数据长度
+    int32_t commDirect = -1;        // 通信方向：0=正向，1=反向
 };
 
 struct MatmulReduceScatterV2AivModeTilingData {

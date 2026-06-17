@@ -1,0 +1,405 @@
+version: v2.1
+name: AttentionToFFN
+aclnn_name: AttentionToFFN
+api: pytorch
+api_type: execute_Attention2FFN
+dist_api_type: execute_Attention2FFN # 表示自定义的通信算子的接口调用方式，跟自定义文件中的注册名字对应，使用方法与api_type相同
+generate: reduce_Attention2FFN # 表示自定义参数约束的文件
+dtype_numbers: 2
+standard:
+  acc: default
+  perf: not_key
+inputs:
+  # 0. x - x
+  - name: x
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp16,bf16]  # bf16
+    shapes:
+      dim_numbers:
+        values: [3]
+      dim_values: 
+        values: [ [32, 32] ]
+    ranges:
+      valid:
+        values: [ [-1, 1] ]
+      invalid:
+        values: []
+  # 1. sessionId - token的attention节点索引
+  - name: sessionId
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    shapes:
+      dim_numbers:
+        values: [ 1 ]      # 1D张量
+      dim_values:
+        values: [ [1, 1] ]  # 表示micro batch sequence size（token组数），当前版本只支持X = 1。
+    ranges:
+      valid:
+        values: [[0, 6]]  # 每个元素的值是 0 - 6，对应7个Worker
+      invalid:
+        values: []
+  # 2. microBatchId - token的microBatc索引
+  - name: microBatchId
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    shapes:
+      dim_numbers:
+        values: [ 1 ]  # 1D Tensor
+      dim_values:
+        values: [ [1, 1] ]  # 表示micro batch sequence size（token组数），当前版本只支持X = 1。
+    ranges:
+      valid:
+        values: [[0]]  # 1个micro-batch
+      invalid:
+        values: []
+  # 3. layerId - 当前模型层数的Id
+  - name: layerId
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    shapes:
+      dim_numbers:
+        values: [ 1 ]  # 1D Tensor
+      dim_values:
+        values: [ [1, 1] ]  # 表示micro batch sequence size（token组数），当前版本只支持X = 1。
+    ranges:
+      valid:
+        values: [[0]]  # LayerNum = 1
+      invalid:
+        values: []
+  # 4. expertIds - TopK 专家索引   TO DO
+  - name: expertIds
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    shapes:
+      dim_numbers:
+        values: [ 3 ] # 3D Tensor
+      dim_values:
+        values: [ [32, 32] ]  
+    ranges:
+      valid:
+        values: [[0, 10]]  # 每个token最多k个专家
+      invalid:
+        values: []
+
+  # 5. expertRankTable - 每个micro batch组中专家Id到FFN卡专家部署的映射表（外部需保证值正确）
+  - name: expertRankTable
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    shapes:
+      dim_numbers:
+        values: [ 3 ] # 3D Tensor
+      dim_values:
+        values: [ [1, 1] ]  # 固定为标量v
+    ranges:
+      valid:
+        values: [[1, 1]]  # 不超过最大Y
+      invalid:
+        values: []
+  # 6. scalesOptional - 每个专家的量化平滑参数。
+  - name: scalesOptional
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp32 ]
+    shapes:
+      dim_numbers:
+        values: [ 3 ]     # 3D Tensor
+      dim_values:
+        values: [ [7, 7] ]   
+    ranges:
+      valid:
+        values: [[0, 0]]  
+      invalid:
+        values: []
+  # 7. activeMaskOptional - 表示token是否参与通信，可传有效数据或空指针
+  - name: activeMaskOptional
+    type: tensor
+    required: true
+    dtypes:
+      values: [ bool ]
+    shapes:
+      dim_numbers:
+        values: [ 2 ]     # 2D Tensor
+      dim_values:
+        values: [ [32, 32] ]    
+    ranges:
+      valid:
+        values: [True]  # 默认全True
+      invalid:
+        values: []
+  # 8. worldSize - 通信域大小
+  - name: worldSize
+    type: attr
+    required: true
+    dtypes:
+      values: [ int64_t ]
+    ranges:
+      valid:
+        values: [[16]]  # 通信域大小范围
+      invalid:
+        values: [] 
+  # 9. ffnTokenInfoTableShape - 表示FFN节点上token信息表格shape大小的列表。长度为3，包括Attention节点的数量、microBatchSize的大小以及每个token对应的相关发送状态信息shape的大小。
+  - name: ffnTokenInfoTableShape
+    type: attr_tuple
+    required: true
+    tuple_numbers:
+      values: [3]
+    dtypes:
+      values: [ int32_t ]
+    ranges:
+      valid:
+        values: [ [1, 250] ]
+      invalid:
+        values: []  
+  # 10. ffnTokenDataShape - 表示FFN节点上token数据表格shape大小的列表。包括Attention节点的数量、microBatchSize的大小、batchSize大小、每个token需发送的专家数量（包括共享专家）、单个token的长度。
+  - name: ffnTokenDataShape
+    type: attr_tuple
+    required: true
+    tuple_numbers:
+      values: [5]
+    dtypes:
+      values: [ int32_t ]
+    ranges:
+      valid:
+        values: [ [1, 250] ]
+      invalid:
+        values: []  
+  # 11. attnTokenInfoTableShape - 表示Attention节点上token信息表格shape大小的列表。长度为3，长度为3，包括microBatchSize的大小、batchSize大小、每个token需发送的专家数量（包括共享专家）。
+  - name: attnTokenInfoTableShape
+    type: attr_tuple
+    required: true
+    tuple_numbers:
+      values: [3]
+    dtypes:
+      values: [ int32_t ]
+    ranges:
+      valid:
+        values: [ [1, 250] ]
+      invalid:
+        values: []  
+  # 12. moeExpertNum - MoE专家数量。取值范围(0, 1024]。
+  - name: moeExpertNum
+    type: attr
+    required: true
+    dtypes:
+      values: [ int64_t ]
+    ranges:
+      valid:
+        values: [ [8, 8] ]
+      invalid:
+        values: []  
+  # 13. quantMode - 表示量化模式。仅支持0（非量化）、2（动态量化）。
+  - name: quantMode
+    type: attr
+    required: true
+    dtypes:
+      values: [ int64_t ]
+    ranges:
+      valid:
+        values: [ 2 ] 
+      invalid:
+        values: []  
+  # 14. syncFlag - 表示FFN节点同步模式。仅支持0（同步）、1（异步）。
+  - name: syncFlag
+    type: attr
+    required: true
+    dtypes:
+      values: [ int64_t ]
+    ranges:
+      valid:
+        values: [ 1 ]
+      invalid:
+        values: []  
+  # 15. ffnStartrankId - 表示FFN节点的起始ID。取值范围为[0, worldSize)。
+  - name: ffnStartrankId
+    type: attr
+    required: true
+    dtypes:
+      values: [ int64_t ]
+    ranges:
+      valid:
+        values: [ 0 ]
+      invalid:
+        values: []  
+
+  # 用以约束输入的变量
+  # 16. bsList - worldsize卡上token个数组成的list
+  - name: bsList
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [1] # 1表示所有卡的BS相同，等于epWorldSize时，每卡BS不同
+    ranges:
+      valid:
+        values: [ [8, 8] ]
+      invalid:
+        values: [ ]
+  # 17. graphType - 图模式类型
+  - name: graphType
+    type: attr
+    required: false
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 0 ]
+      invalid:
+        values: [ ]
+  # 18. x_world 用来生成Golden值
+  - name: x_world
+    type: tensor
+    required: true
+    dtypes:
+      values: [bf16]
+    shapes:
+      dim_numbers:
+        values: [4]
+      dim_values: 
+        values: [ [32, 32] ]
+    ranges:
+      valid:
+        values: [ [-1, 1] ]
+      invalid:
+        values: []
+  # 19. expertIds_world - 用来生成Golden值
+  - name: expertIds_world
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    shapes:
+      dim_numbers:
+        values: [ 4 ] # 3D Tensor
+      dim_values:
+        values: [ [32, 32] ]  
+    ranges:
+      valid:
+        values: [[0, 10]]  # 每个token最多k个专家
+      invalid:
+        values: []
+  # 20. activeMaskOptional_world - 表示token是否参与通信，可传有效数据或空指针
+  - name: activeMaskOptional_world
+    type: tensor
+    required: true
+    dtypes:
+      values: [ bool ]
+    shapes:
+      dim_numbers:
+        values: [ 3 ]     # 2D Tensor
+      dim_values:
+        values: [ [32, 32] ]    
+    ranges:
+      valid:
+        values: [True]  # 默认全True
+      invalid:
+        values: []
+  # 21. is_attn2ffn_scales - 量化时是否scales
+  - name: is_attn2ffn_scales
+    type: attr
+    required: false
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 1 ]
+      invalid:
+        values: [ ]
+  # 22. is_mask - 是否一维掩码
+  - name: is_mask
+    type: attr
+    required: false
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ [0] ]
+      invalid:
+        values: [ ]
+  # 23. localmoeExpert - 每张卡上有多少moe专家
+  - name: localmoeExpert
+    type: attr
+    required: false
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 1 ]
+      invalid:
+        values: [ ]
+  # 24. sharedExpertNum - 每张卡上有多少moe专家
+  - name: sharedExpertNum
+    type: attr
+    required: false
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 1 ]
+      invalid:
+        values: [ ]
+
+  # 25. BS
+  - name: BS
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values: 
+        values: [ [1, 512] ]
+    ranges:
+      valid:
+        values: [ [1, 1] ]
+      invalid:
+        values: []
+  # 26. H
+  - name: H
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values: 
+        values: [ [1024, 8192] ]
+    ranges:
+      valid:
+        values: [ [1, 1] ]
+      invalid:
+        values: []
+  # 27. K
+  - name: K
+    type: tensor
+    required: false
+    dtypes:
+      values: [int32]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values: 
+        values: [ [1, 8] ]
+    ranges:
+      valid:
+        values: [ [1, 1] ]
+      invalid:
+        values: []

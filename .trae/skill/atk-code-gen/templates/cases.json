@@ -1,0 +1,112 @@
+[
+    {
+        "id": 0,
+        "default_seed": null,
+        "name": "<算子名称>",
+        "aclnn_name": "<aclnn算子名>",
+        "triton_name": null,
+        "kernel_name": null,
+        "version": "v2.1",
+        "expected_error_msg": null,
+        "api": "pytorch",
+        "api_type": "<api_type>",
+        "aclnn_api_type": "<aclnn_api_type>",
+        "triton_api_type": "triton_function",
+        "fusion_api_type": "fusion_function",
+        "fusion_mode": null,
+        "dist_api_type": "<dist_api_type>",
+        "kernel_api_type": "kernel_function",
+        "backward": false,
+        "standard": {
+            "acc": "single_bm",
+            "perf": "not_key",
+            "mem": 1.1
+        },
+        "outputs": null,
+        "inputs": [
+            {
+                "_comment": "========== tensor 类型 ==========",
+                "name": "<tensor_name>",
+                "type": "tensor",
+                "required": true,
+                "dtype": "float16",
+                "shape": [2, 3, 224, 224],
+                "range_values": [-1, 1],
+                "backward": true,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "_comment": "========== attr 类型（int64_t） ==========",
+                "name": "<attr_name>",
+                "type": "attr",
+                "required": true,
+                "dtype": "int64_t",
+                "shape": null,
+                "range_values": 0,
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "_comment": "========== attr 类型（bool） ==========",
+                "name": "<bool_attr_name>",
+                "type": "attr",
+                "required": false,
+                "dtype": "bool",
+                "shape": null,
+                "range_values": false,
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            {
+                "_comment": "========== attr 类型（string） ==========",
+                "name": "<string_attr_name>",
+                "type": "attr",
+                "required": true,
+                "dtype": "string",
+                "shape": null,
+                "range_values": ["-inf", "inf"],
+                "backward": false,
+                "align_32B": null,
+                "outlier_values": null
+            },
+            [
+                {
+                    "_comment": "========== attrs 类型（多选项，数组包裹，每个元素生成一个独立case） ==========",
+                    "name": "<attrs_name>",
+                    "type": "attrs",
+                    "required": true,
+                    "dtype": "int64_t",
+                    "shape": null,
+                    "range_values": 0,
+                    "backward": false,
+                    "align_32B": null,
+                    "outlier_values": null
+                },
+                {
+                    "name": "<attrs_name>",
+                    "type": "attrs",
+                    "required": true,
+                    "dtype": "int64_t",
+                    "shape": null,
+                    "range_values": 1,
+                    "backward": false,
+                    "align_32B": null,
+                    "outlier_values": null
+                }
+            ]
+        ],
+        "acl_json": "",
+        "method_inputs": null,
+        "tensor_input": null,
+        "compute_times": null,
+        "save_name": null,
+        "uuid": null,
+        "downloaded": false,
+        "is_boundary": false,
+        "xrun_cs_name": null,
+        "xrun_data": null
+    }
+]

@@ -10,7 +10,24 @@
 
 /*!
  * \file matmul_reduce_scatter_aiv_mode_block_epilogue_dequant.h
- * \brief
+ * \brief BlockEpilogue的特化实现：在AIV核心上执行反量化（Dequant）的Epilogue操作
+ *
+ * 本文件是Catlass模板线性代数库中BlockEpilogue类的全特化版本，专门用于
+ * MatmulReduceScatterV2算子的反量化场景。支持三种反量化模式：
+ *   1. Per-Channel + Per-Token: C_int32 × perChannelScale × perTokenScale → D
+ *   2. Per-Channel only: C_int32 × perChannelScale → D
+ *   3. Per-Token only: D_half/bf16 × perTokenScale → D
+ *
+ * UB内存布局（双缓冲，UB_STAGES=2）：
+ *   [C_0][Scale_0][PerTokenScale_0][D_0] | [C_1][Scale_1][PerTokenScale_1][D_1] | [CFp32][Mul][PerTokenScaleBrcb]
+ *
+ * 执行流水线（以Per-Channel+Per-Token为例）：
+ *   1. GM→UB: 拷贝C、scale、perTokenScale
+ *   2. Cast: C_int32 → C_fp32
+ *   3. 广播乘法: C_fp32 × scale（行广播）→ mul
+ *   4. 广播乘法: mul × perTokenScale（列广播）→ perTokenMul
+ *   5. Cast: perTokenMul_fp32 → D_half/bf16
+ *   6. UB→GM: 拷贝D到输出
  */
 #ifndef MATMUL_REDUCE_SCATTER_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 #define MATMUL_REDUCE_SCATTER_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
@@ -27,6 +44,18 @@
 
 namespace Catlass::Epilogue::Block {
 
+// BlockEpilogue全特化：用于MatmulReduceScatterV2的反量化Epilogue
+// 模板参数：
+//   ArchTag_: 硬件架构标签（AtlasA2）
+//   CType_: int32累加结果类型
+//   ScaleType_: per-channel scale类型（float向量）
+//   PerTokenScaleType_: per-token scale类型（float向量）
+//   DType_: 输出数据类型（half或bfloat16_t）
+//   TileRowBroadcastMul_: 行广播乘法Tile操作
+//   TileBroadcastOneBlk_: 单块广播Tile操作
+//   TileOneBlkColumnBroadcastMul_: 列广播乘法Tile操作
+//   TileCopy_: GM↔UB数据拷贝策略
+//   EpilogueTileSwizzle_: Epilogue分块调度策略
 template <
     class ArchTag_,
     class CType_,
@@ -56,9 +85,9 @@ class BlockEpilogue <
     EpilogueTileSwizzle_
 > {
 public:
-    static constexpr uint32_t UB_STAGES = 2;
+    static constexpr uint32_t UB_STAGES = 2;  // UB双缓冲数量，实现计算与搬运重叠
 
-    // Data infos
+    // Data infos - 数据类型定义
     using ArchTag = ArchTag_;
     using ElementC = typename CType_::Element;
     using LayoutC = typename CType_::Layout;
@@ -71,12 +100,13 @@ public:
     using ElementD = typename DType_::Element;
     using LayoutD = typename DType_::Layout;
 
-    // Check data infos
+    // Check data infos - 编译期类型检查：确保C为int32、D为half/bf16、scale为float
     static_assert(
         std::is_same_v<ElementC, int32_t> && (std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>) &&
             std::is_same_v<ElementScale, float> && std::is_same_v<ElementPerTokenScale, float>,
         "The element type template parameters of BlockEpilogue are wrong"
     );
+    // Check layout infos - 编译期布局检查：确保C/D为RowMajor、scale/perTokenScale为VectorLayout
     static_assert(
         std::is_same_v<LayoutC, layout::RowMajor> && std::is_same_v<LayoutScale, layout::VectorLayout> &&
             std::is_same_v<LayoutPerTokenScale, layout::VectorLayout> && std::is_same_v<LayoutD, layout::RowMajor>,
@@ -97,9 +127,9 @@ public:
     using CopyUbToGmD = typename TileCopy_::CopyUbToGmD;
     using CopyGmToUbD = Epilogue::Tile::CopyGm2Ub<ArchTag, Gemm::GemmType<ElementD, layout::RowMajor>>;
 
-    using EpilogueTileSwizzle = EpilogueTileSwizzle_;
+    using EpilogueTileSwizzle = EpilogueTileSwizzle_;  // Epilogue分块调度策略
 
-    using TileShape = typename TileRowBroadcastMul::TileShape;
+    using TileShape = typename TileRowBroadcastMul::TileShape;  // 分块形状（64×128）
 
     static_assert(
         TileShape::ROW == TileBroadcastOneBlk::COMPUTE_LENGTH &&
@@ -107,6 +137,7 @@ public:
         "TileShape must be consistent for all tile compute ops"
     );
 
+    // 编译期UB容量检查：确保双缓冲+临时缓冲区不超过UB大小
     static_assert(
         (UB_STAGES * (TileShape::COUNT * sizeof(ElementC) + TileShape::COLUMN * sizeof(ElementScale) +
          TileShape::ROW * sizeof(ElementPerTokenScale) + TileShape::COLUMN * sizeof(ElementBias) +
@@ -116,14 +147,17 @@ public:
         "TileShape is too large to fit in UB"
     );
 
+    // 构造函数：分配UB缓冲区并初始化event flag
+    // UB布局：[C_0][Scale_0][PerTokenScale_0][D_0] | [C_1][Scale_1][PerTokenScale_1][D_1] | [CFp32][Mul][PerTokenScaleBrcb]
     CATLASS_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource)
     {
         size_t ubOffset = 0;
-        int32_t eventVMTE2 = 0;
-        int32_t eventMTE2V = 0;
-        int32_t eventMTE3V = 0;
-        int32_t eventVMTE3 = 0;
+        int32_t eventVMTE2 = 0;   // V→MTE2事件计数器
+        int32_t eventMTE2V = 0;   // MTE2→V事件计数器
+        int32_t eventMTE3V = 0;   // MTE3→V事件计数器
+        int32_t eventVMTE3 = 0;   // V→MTE3事件计数器
+        // 为每个双缓冲stage分配UB空间
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
             ubCList[i] = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
             ubOffset += TileShape::COUNT * sizeof(ElementC);
@@ -145,6 +179,7 @@ public:
             eventUbDMTE3VList[i] = eventMTE3V++;
             eventUbDVMTE3List[i] = eventVMTE3++;
         }
+        // 共享临时缓冲区：用于Cast和广播乘法的中间结果
         ubCFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
         ubOffset += TileShape::COUNT * sizeof(float);
         if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
@@ -160,6 +195,7 @@ public:
         ubBiasAdd = ubMul;
     }
 
+    // 等待所有双缓冲stage的event flag，确保所有异步操作完成
     CATLASS_DEVICE
     void WaitFlag()
     {
@@ -170,6 +206,7 @@ public:
         }
     }
 
+    // 初始化所有双缓冲stage的event flag，允许第一次DMA操作
     CATLASS_DEVICE
     void InitFlag()
     {
@@ -180,7 +217,9 @@ public:
         }
     }
 
-    // perChannel、perToken
+    // operator()重载1：Per-Channel + Per-Token组合反量化
+    // 计算：C_int32 × perChannelScale × perTokenScale → D
+    // 流水线：GM→UB(C,scale,perTokenScale) → Cast(int32→fp32) → 行广播乘 → 列广播乘 → Cast(fp32→D) → UB→GM
     CATLASS_DEVICE
     void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
                      __gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
@@ -326,7 +365,9 @@ public:
         WaitFlag();
     }
 
-    // perChannel
+    // operator()重载2：仅Per-Channel反量化
+    // 计算：C_int32 × perChannelScale → D
+    // 流水线：GM→UB(C,scale) → Cast(int32→fp32) → 行广播乘 → Cast(fp32→D) → UB→GM
     CATLASS_DEVICE
     void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale, __gm__ ElementBias *ptrBias,
                      LayoutBias layoutBias, __gm__ ElementC *ptrC, LayoutC layoutC, __gm__ ElementD *ptrD,
@@ -453,7 +494,10 @@ public:
         WaitFlag();
     }
 
-    // perToken
+    // operator()重载3：仅Per-Token反量化
+    // 计算：D_half/bf16 × perTokenScale → D
+    // 流水线：GM→UB(D,perTokenScale) → Cast(half/bf16→fp32) → 列广播乘 → Cast(fp32→D) → UB→GM
+    // 注意：此场景的输入D已经是half/bf16类型（由AIC fixpipe输出），不是int32
     CATLASS_DEVICE
     void operator() (__gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
                      __gm__ ElementBias *ptrBias, LayoutBias layoutBias,
@@ -601,7 +645,7 @@ private:
     int32_t eventUbDMTE3VList[UB_STAGES];
     int32_t eventUbDVMTE3List[UB_STAGES];
 
-    uint32_t ubListId{0};
+    uint32_t ubListId{0};  // 当前使用的双缓冲索引（0或1交替）
 
     AscendC::LocalTensor<float> ubCFp32;
     AscendC::LocalTensor<float> ubBiasFp32;

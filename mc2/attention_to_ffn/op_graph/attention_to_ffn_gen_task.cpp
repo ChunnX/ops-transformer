@@ -27,9 +27,16 @@
 #include "mc2_log.h"
 
 namespace ops {
+// Name of the AICPU KFC server used for communication
 constexpr char AICPU_KFC_SERVER_NAME[] = "aicpu kfc server";
+// Key for reusing the KFC stream
 constexpr char KFC_STREAM_NAME[] = "kfc_stream";
 
+/**
+ * @brief Calculates the parameters for the AttentionToFFN operation.
+ * @param context The execution resource generation context.
+ * @return Status of the calculation.
+ */
 ge::Status AttentionToFFNCalcParamFunc(gert::ExeResGenerationContext *context)
 {
     const ge::AscendString name = AICPU_KFC_SERVER_NAME;
@@ -38,6 +45,12 @@ ge::Status AttentionToFFNCalcParamFunc(gert::ExeResGenerationContext *context)
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, name, reuseKey);
 }
 
+/**
+ * @brief Generates the task for the AttentionToFFN operation.
+ * @param context The execution resource generation context.
+ * @param tasks The generated tasks.
+ * @return Status of the task generation.
+ */
 ge::Status AttentionToFFNGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
@@ -46,7 +59,7 @@ ge::Status AttentionToFFNGenTaskFunc(const gert::ExeResGenerationContext *contex
     return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallbackV2(context, tasks);
 }
 
-// new ver
+// Register the AttentionToFFN operation with its CalcOpParam and GenerateTask functions
 IMPL_OP(AttentionToFFN)
     .CalcOpParam(AttentionToFFNCalcParamFunc)
     .GenerateTask(AttentionToFFNGenTaskFunc);

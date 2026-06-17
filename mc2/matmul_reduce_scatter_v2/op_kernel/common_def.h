@@ -41,11 +41,11 @@ struct HcclTypeSelector<AICPU_COMM_MODE> {
 };
 template <class T>
 struct BiasType {
-    using type = float;
+    using type = float;                         // 默认bias类型为float
 };
 template <>
 struct BiasType<half> {
-    using type = half;
+    using type = half;                          // half类型的bias特化
 };
 template <>
 struct BiasType<bfloat16_t> {
