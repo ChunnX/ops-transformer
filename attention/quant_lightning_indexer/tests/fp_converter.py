@@ -248,7 +248,7 @@ def main(stdscr):
         title = "  Float Format Converter"
         stdscr.addstr(0, 2, title, curses.A_BOLD | curses.color_pair(1))
 
-        hint = "[Up/Down] navigate  [Enter] convert  [Esc/Ctrl-C] quit  [c] clear"
+        hint = "[Up/Down] navigate  [Enter] convert  [Esc/Ctrl-C] quit  [l] clear"
         if w > len(hint) + 4:
             stdscr.addstr(1, 2, hint, curses.color_pair(2))
 
@@ -306,7 +306,7 @@ def main(stdscr):
             cur = (cur + 1) % len(FIELDS)
             input_buf = ""
             error_msg = ""
-        elif ch == ord('c'):
+        elif ch == ord('l'):
             values = {k: "" for k, _ in FIELDS}
             input_buf = ""
             error_msg = ""
