@@ -446,11 +446,12 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
                 uint32_t tokenEnd = BSAMin(qChunkEnd * constInfo.blockShapeX, constInfo.maxQSeqlen);
                 ProcessPoolingQ(batchIdx, headIdx, tokenStart, tokenEnd);
 
+                uint32_t qChunkFlagIdx = (qChunkStart / constInfo.qChunkSize) & 1;
                 if ASCEND_IS_AIV {
-                    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkStart & 1]);
+                    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
                 }
                 if ASCEND_IS_AIC {
-                    CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkStart & 1]);
+                    CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
                 }
 
                 T mFinal = SOFTMAX_NEG_INF;
@@ -518,11 +519,13 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
         if ASCEND_IS_AIC {
             matmulService.ComputeMatmulChunk(qChunkStart, curQChunkSize,
                                              kChunkStart, curKChunkSize);
-            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[kChunkStart & 1]);
+            uint32_t kChunkFlagIdx = (kChunkStart / constInfo.kChunkSize) & 1;
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[kChunkFlagIdx]);
         }
 
         if ASCEND_IS_AIV {
-            CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[kChunkStart & 1]);
+            uint32_t kChunkFlagIdx = (kChunkStart / constInfo.kChunkSize) & 1;
+            CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[kChunkFlagIdx]);
             vectorService.OnlineSoftmaxFirstPassChunk(
                 qChunkStart, curQChunkSize, kChunkStart, curKChunkSize,
                 mFinal, lFinal);
