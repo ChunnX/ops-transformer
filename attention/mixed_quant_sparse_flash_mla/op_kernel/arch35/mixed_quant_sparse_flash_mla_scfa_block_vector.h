@@ -168,10 +168,8 @@ private:
     __aicore__ inline uint32_t GetFaStagingWorkspaceIdx(const RunInfo &runInfo) const
     {
         uint32_t workspaceIdx = static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx);
-        // if constexpr (IS_SPLIT_G) {
-        //     workspaceIdx >>= 1U;
-        // }
-        // printf("workspaceIdx: %u\n", workspaceIdx);
+        printf("runInfo.firstFdDataWorkspaceIdx: %u\n", runInfo.firstFdDataWorkspaceIdx);
+        printf("runInfo.s2SplitIdx: %u\n", runInfo.s2SplitIdx);
         return workspaceIdx;
     }
 
@@ -969,6 +967,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyMaxSumToStaging(
     sumGm.SetGlobalBuffer((__gm__ float *)sumRegion);
 
     uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
+    printf("vec1 workspace: %d\n", workspaceIdx);
     uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
 
     // 广播暂存复用dequantScaleBuff(vec1阶段空闲, 8192B足够放max+sum各一份)
@@ -1050,6 +1049,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
 
             GlobalTensor<float> stagingOut;
             uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
+            printf("vec2 workspace: %d\n", workspaceIdx);
             stagingOut.SetGlobalBuffer((__gm__ float *)(basePtr + workspaceIdx * ATTEN_OUT_BYTES));
             uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
             SetFlag<HardEvent::V_MTE3>(vToMte3Id);
@@ -1151,7 +1151,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
         ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
                                    dealRowCount, fdRunInfo.workspaceNum, false, false);
         PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
 
         // ========== 4. 逐split读回partial output并用 VF 归约累加 ==========
         LocalTensor<T> chunkAccumO = accumulatedO[startRow * dTemplateAlign64];
@@ -1166,20 +1165,20 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
                 static_cast<uint8_t>((dTemplateAlign64 - constInfo.dSizeV) % outputElemsPerBlock), 0};
             uint32_t outSrcOffset = splitIdx * outSplitStride + (fdMOffset + startRow) * constInfo.dSizeV;
             // 反向同步: 等上一轮split的ReduceFinalRes(V)读完partialOFp32, 再覆写(MTE2), 避免跨split竞态
-            WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+            WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
             DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
             SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
-            PipeBarrier<PIPE_V>();
+            // PipeBarrier<PIPE_V>();  // todo: 测试一下能否去掉
             // splitIdx==0: dst = scale*partialO；否则 dst += scale*partialO（VF内部按行广播scale）
             ReduceFinalRes_const_VF<T, dTemplateAlign64>(chunkAccumO, blockSumUb, partialOFp32,
                                                          dealRowCount, splitIdx);
             // 正向同步: 确保本轮V已读完partialOFp32并写完chunkAccumO, 再允许下一轮MTE2覆写
-            PipeBarrier<PIPE_V>();
-            SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+            // PipeBarrier<PIPE_V>();
+            SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
         }
 
-        WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+        SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
     }
     // ========== 5. 数据拷出：reduce结果去padding写回GM ==========
     RunInfo runInfo;

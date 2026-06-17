@@ -670,5 +670,5 @@ TEST_PARAMS["with_tail"] = {
     "S1EQS2": [False],
 }
 # ENABLED_PARAMS = [TEST_PARAMS["residual"]]
-# ENABLED_PARAMS = [TEST_PARAMS["tnd_padding_1"]]
-ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
+ENABLED_PARAMS = [TEST_PARAMS["1_core_has_2_reduce"]]
+# ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

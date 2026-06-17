@@ -102,6 +102,8 @@
 - `ComputeS1LoopInfo()` 处理最后一个 BN 的 `gs1LoopEndIdx` 时，同样必须把 `(M_END, S2_END)` 作为组合结束坐标判断；只有 `M_END == 0 && S2_END == 0` 才表示虚拟下一个 batch 的 S1 为 0 并回退到当前 batch 的真实 S1 结尾。S2 切分下可能出现 `M_END == 0 && S2_END != 0`，这里的 `M_END=0` 是当前 batch 的 M 坐标为 0，不是下一个 batch 的 0，因此不能回退为真实 S1 结尾。
 - `ProcessFlashDecode()` 中 `blockSumUb` 会在 `ComputeScaleValue_VF` 后保存 scale，并被后续 `ReduceFinalRes_const_VF` 在 V pipe 读取；chunk 间复用 `blockMaxUb/blockSumUb` 前必须先等上一 chunk 最后一次 V 计算完成，否则下一 chunk 的 MTE2 读入可能抢先覆盖旧 scale，表现为偶现、点位不固定的精度问题。
 - `ReduceFinalRes_const_VF()` 内部会读取 `partialOFp32` 和 `blockSumUb`，并在 `splitIdx > 0` 时读写同一块 `chunkAccumO` 做累加；`SetFlag<V_MTE2>` 前需要先 `PipeBarrier<PIPE_V>()`，让该事件真正表示本轮 V pipe 已经读完 `partialOFp32`、写完 `chunkAccumO`，否则下一 split 的 MTE2/V 可能过早复用这些 UB。
+- 当前 FA 写 staging 的 `s2SplitIdxCounter` 与 workspace 常量都隐含“每个 staging 起点最多 2 个 S2 split”：`MAX_S2_SPLIT_NUM=2`，host workspace 按 2 个 split/slot 分配，FA 写端用 `firstFdDataWorkspaceIdx + s2SplitIdx` 定位 partialO/max/sum。counter 只应在当前核 S1 循环范围的最后一个有效 S1 task 确实发生 S2 split 时推进，即 `gS1Index == runParam.gs1LoopEndIdx - 1`；末个 S2 loop 才会实际写 FD staging。若 metadata 允许同一 `(BN,M/G)` 被 3 个及以上核切分，需要 host metadata/workspace 共同扩展。
+- `runParam.s2SplitIdx` 会通过 `SetRunInfo()` 传给当前 S1 task 的每个 S2 loop，但实际参与 staging 地址计算只在 `isS2Split && s2LoopCount == s2LoopLimit` 的末轮：Vec1 末轮拷出 max/sum，Vec2 末轮拷出 partial attention output。因此它标识的是“当前核负责的这个 S1 task 对应的 split slot”，不是每个普通 S2 基本块都独立消费的索引。
 
 ## Skills
 

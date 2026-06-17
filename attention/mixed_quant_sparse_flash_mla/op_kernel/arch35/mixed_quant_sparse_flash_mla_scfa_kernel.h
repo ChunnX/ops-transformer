@@ -516,7 +516,8 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                     continue;
                 }
                 runParam.s2SplitIdx = s2SplitIdxCounter;
-                if (runParam.isS2Split && s2SplitIdxCounter < 2) {
+                printf("s2SplitIdxCounter: %d\n", s2SplitIdxCounter);
+                if (runParam.isS2Split && gS1Index == runParam.gs1LoopEndIdx - 1) {
                     s2SplitIdxCounter++;
                 }
                 if constexpr (IS_SPLIT_G) {

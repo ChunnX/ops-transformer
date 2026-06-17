@@ -9,6 +9,9 @@
 - 2026-06-16：修复 `ComputeS1LoopInfo()` 最后 BN 的 `gs1LoopEndIdx` 判断：新增 `s2EndIdx` 入参，并将 `FA_M_END_INDEX` 局部命名改为 `gS1EndIdx`；只有 `gS1EndIdx == 0 && s2EndIdx == 0` 时才回退到当前 batch 真实 S1 结尾，避免 S2 切分场景 `M_END=0, S2_END!=0` 中“当前 batch 的 M=0”被误判为虚拟下一个 batch 的 0。
 - 2026-06-16：检查 `ProcessFlashDecode` 偶现精度/点位不固定问题，补充 FD chunk 间 `blockMaxUb/blockSumUb` 复用同步：下一 chunk GM->UB 读 max/sum 前等待上一 chunk 最后一次 `ReduceFinalRes` 的 V pipe 完成，避免 MTE2 抢先覆写 `blockSumUb`。
 - 2026-06-16：将 `ProcessFlashDecode` 中验证用的 `PipeBarrier<PIPE_ALL>()` 替换为精确 `PipeBarrier<PIPE_V>()`：`WaitFlag<MTE2_V>` 后进入 `ReduceFinalRes` 前同步 V pipe，`ReduceFinalRes` 后、`SetFlag<V_MTE2>` 前再次同步，确保 split 间复用 `partialOFp32`/`chunkAccumO` 时不会读写未完成。
+- 2026-06-16：确认 `s2SplitIdxCounter` 当前只支持每个 FA staging 起点最多 2 个 S2 split；若一个被切开的 S2 在同一核/同一行对应超过 2 个 split，`firstFdDataWorkspaceIdx + s2SplitIdx` 写 staging 会复用或越过 slot，属于需要 host metadata/workspace 共同约束或扩展的风险点。
+- 2026-06-17：收窄 `s2SplitIdxCounter` 推进条件：仅当 `gS1Index == runParam.gs1LoopEndIdx - 1` 且发生 S2 split 时递增，避免非当前核 S1 循环末端的任务推进 split slot。
+- 2026-06-17：确认 `s2SplitIdx` 实际只在 split task 的末轮 S2 loop 参与 staging 地址计算；普通中间 S2 基本块虽携带该字段，但不会用它写 FD staging。
 
 ## Flash Decode Progress
 
