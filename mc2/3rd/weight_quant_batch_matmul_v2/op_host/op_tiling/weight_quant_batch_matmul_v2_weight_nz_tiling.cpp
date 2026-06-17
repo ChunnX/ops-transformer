@@ -1341,10 +1341,6 @@ uint64_t Mc2WeightQuantBatchMatmulV2WeightNz::CalCubFactorTiling(uint64_t cubNz2
 
 void Mc2WeightQuantBatchMatmulV2WeightNz::PrintCVTilingData(bool debugLevel)
 {
-    if (debugLevel && CheckLogLevel(OP, DLOG_DEBUG) != 1) {
-        return;
-    }
-
     std::stringstream ss;
     ss << "kAlign: " << tilingData_->kAlign << " kSize: " << tilingData_->kSize
        << " nSize: " << tilingData_->nSize << " mSize: " << tilingData_->mSize
