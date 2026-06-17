@@ -307,19 +307,23 @@ public:
             alltoAllvRecvOffset[i] = alltoAllvRecvOffsetLastSum;
             alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
         }
-        uint64_t totalSendCnt = 0UL;
-        for (uint64_t i = 0UL; i < rankDim_; i++) {
-            totalSendCnt += alltoAllvSendCnt[i];
+        if (turnIdx < 2U) {
+            for (uint32_t i = 0U; i < rankDim_; i++) {
+                AscendC::printf("[SEND] turn=%u rank=%u experts=", turnIdx, i);
+                for (uint32_t j = 0U; j < realCombineSize; j++) {
+                    uint32_t expertIdx = startExpertIdx + j;
+                    uint32_t cnt = static_cast<uint32_t>(sendCnt[expertIdx + i * e_]);
+                    AscendC::printf("e%u(%u),", expertIdx, cnt);
+                }
+                AscendC::printf("\n");
+                if (alltoAllvSendCnt[i] > 0U) {
+                    AscendC::DumpTensor(sendGlobalBuffer_[alltoAllvSendOffset[i]], 100U + i, 16U);
+                }
+            }
         }
-        DumpTensor(sendGlobalBuffer_[alltoAllvSendOffset[0]], 50U, 16U);
         alltoAllvHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
-        AscendC::printf("[LBH] LaunchCombined turn=%u startExpert=%u axis=%lu\n", turnIdx, startExpertIdx, axis);
-        for (uint64_t i = 0UL; i < rankDim_; i++) {
-            AscendC::printf("[LBH] LaunchCombined rank=%lu sendCnt=%lu sendOff=%lu recvCnt=%lu recvOff=%lu\n",
-                i, alltoAllvSendCnt[i], alltoAllvSendOffset[i], alltoAllvRecvCnt[i], alltoAllvRecvOffset[i]);
-        }
     }
 
     __aicore__ inline void WaitCombinedAic(uint32_t turnIdx)
@@ -333,6 +337,24 @@ public:
             }
         }
         hccl_.Wait(alltoAllvHandleId_[turnIdx]);
+        if (turnIdx < 2U) {
+            uint32_t combineExpertSize = taskTilingInfo_->combineExpertSize;
+            uint32_t startExpertIdx = turnIdx * combineExpertSize;
+            uint32_t realCombineSize = (turnIdx == taskTilingInfo_->commTurn - 1U)
+                ? (e_ - startExpertIdx) : combineExpertSize;
+            for (uint32_t i = 0U; i < rankDim_; i++) {
+                AscendC::printf("[RECV] turn=%u rank=%u experts=", turnIdx, i);
+                for (uint32_t j = 0U; j < realCombineSize; j++) {
+                    uint32_t expertIdx = startExpertIdx + j;
+                    uint32_t cnt = static_cast<uint32_t>(recvCounts_[expertIdx + i * e_]);
+                    AscendC::printf("e%u(%u),", expertIdx, cnt);
+                }
+                AscendC::printf("\n");
+                if (alltoAllvRecvCnt[i] > 0U) {
+                    AscendC::DumpTensor(recvGlobalBuffer_[alltoAllvRecvOffset[i]], 200U + i, 16U);
+                }
+            }
+        }
     }
 
     __aicore__ inline void LaunchScaleCombinedAic(uint32_t turnIdx, uint32_t realCombineSize)
