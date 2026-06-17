@@ -51,7 +51,7 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai\_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI\_CPU引擎。
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
 
 ## 函数原型
 
@@ -220,7 +220,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
     <td>commMode</td>
     <td>输入</td>
     <td>指定当前通信类型。</td>
-    <td>支持输入空字符串""、"ai\_cpu"或"ccu"。</td>
+    <td>支持输入空字符串""、"ai_cpu"或"ccu"。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -535,6 +535,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
    - <term>Ascend 950PR/Ascend 950DT</term>：
       - 支持CCU通信和AI\_CPU通信。
+      - 传""空字符串场景为自适应模式：卡数小于等于8卡时使用CCU通信，大于8卡时使用AI_CPU通信。
       - CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
       - 通信域约束：同一个通信域内只能使用同一种通信方式。
 
