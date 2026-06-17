@@ -39,7 +39,7 @@ aclnnStatus aclnnQuantBlockSparseAttentionMetadataGetWorkspaceSize(
     const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
     int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeKv, int64_t quantMode,
     int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQOptional,
-    const char *layoutKvOptional, const char *layoutSparseIndicesOptional, const aclTensor *metaData,
+    const char *layoutKvOptional, const char *layoutSparseIndicesOptional, const aclTensor *metadata,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnQuantBlockSparseAttentionMetadata,
@@ -47,7 +47,7 @@ aclnnStatus aclnnQuantBlockSparseAttentionMetadataGetWorkspaceSize(
                            batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeKv, quantMode,
                            maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional,
                            layoutSparseIndicesOptional),
-                    DFX_OUT(metaData));
+                    DFX_OUT(metadata));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -60,7 +60,7 @@ aclnnStatus aclnnQuantBlockSparseAttentionMetadataGetWorkspaceSize(
     auto ret = ParamsCheck(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
                            batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeKv, quantMode,
                            maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional,
-                           layoutSparseIndicesOptional, aicCoreNum, aivCoreNum, socVersion, metaData);
+                           layoutSparseIndicesOptional, aicCoreNum, aivCoreNum, socVersion, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // Contiguous conversion - INPUT_TENSOR_ROWS order
@@ -106,7 +106,7 @@ aclnnStatus aclnnQuantBlockSparseAttentionMetadataGetWorkspaceSize(
         sparseSeqLenContiguous, cuSeqlensQOptionalContiguous, cuSeqlensKvOptionalContiguous,
         sequsedQOptionalContiguous, sequsedKvOptionalContiguous, batchSize, numHeadsQ, numHeadsKv, headDim,
         sparseBlockSizeQ, sparseBlockSizeKv, quantMode, maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional,
-        layoutKvOptional, layoutSparseIndicesOptional, socVersion, aicCoreNum, aivCoreNum, metaData,
+        layoutKvOptional, layoutSparseIndicesOptional, socVersion, aicCoreNum, aivCoreNum, metadata,
         uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

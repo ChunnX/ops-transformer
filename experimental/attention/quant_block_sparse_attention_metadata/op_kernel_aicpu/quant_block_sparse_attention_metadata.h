@@ -44,11 +44,11 @@ constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7U; // 当前AIC核第
 
 #ifndef __CCE_AICORE__
 namespace detail {
-struct FaMetaData {
+struct FaMetadata {
     QBSA_METADATA_T *faMetadata; // [AIC_CORE_NUM][FA_METADATA_SIZE];
     QBSA_METADATA_T *fdMetadata; // [AIV_CORE_NUM][FD_METADATA_SIZE];
 
-    explicit FaMetaData(void *metadataPtr)
+    explicit FaMetadata(void *metadataPtr)
         : faMetadata(static_cast<QBSA_METADATA_T *>(metadataPtr)),
           fdMetadata(static_cast<QBSA_METADATA_T *>(metadataPtr) + AIC_CORE_NUM * FA_METADATA_SIZE)
     {}

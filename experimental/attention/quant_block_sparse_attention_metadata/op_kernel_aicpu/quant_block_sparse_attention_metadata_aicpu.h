@@ -74,7 +74,7 @@ private:
     bool ParamsInit();
     bool ScheduleSection(SplitResult &splitRes);
     bool GenMetadata(const SplitResult &splitRes);
-    uint32_t GetRowBlockNum(uint32_t bn1Idx, uint32_t s1Idx) const;
+    uint32_t GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const;
     uint64_t CalcBlockNum() const;
     bool AdvanceToValidRow(AssignContext &assignContext) const;
     void ScheduleFa(uint64_t blockNum, SplitResult &result);
@@ -88,7 +88,7 @@ private:
     Tensor *sequsedQ_ = nullptr;
     Tensor *sequsedKv_ = nullptr;
     // output tensor
-    Tensor *metaData_ = nullptr;
+    Tensor *metadata_ = nullptr;
 
     // attr
     int32_t batchSize_ = 0;
@@ -123,7 +123,7 @@ private:
         sequsedQ = 3,
         sequsedKv = 4,
         // output
-        metaData = 0,
+        metadata = 0,
     };
 };
 } // namespace aicpu

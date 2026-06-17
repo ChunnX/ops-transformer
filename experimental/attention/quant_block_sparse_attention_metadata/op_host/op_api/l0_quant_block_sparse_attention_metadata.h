@@ -36,7 +36,7 @@ const aclTensor* QuantBlockSparseAttentionMetadata(
     const char* socVersion,
     int64_t aicCoreNum,
     int64_t aivCoreNum,
-    const aclTensor* metaData,
+    const aclTensor* metadata,
     aclOpExecutor* executor);
 } // namespace l0op
 
