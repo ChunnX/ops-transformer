@@ -13,8 +13,6 @@ static constexpr size_t EPILOGUE_OUTPUT_RECV_X_INDEX = 0;
 static constexpr size_t EPILOGUE_OUTPUT_RECV_TOPK_IDX_INDEX = 1;
 static constexpr size_t EPILOGUE_OUTPUT_RECV_TOPK_WEIGHTS_INDEX = 2;
 static constexpr size_t EPILOGUE_OUTPUT_RECV_SRC_METADATA_INDEX = 3;
-static constexpr size_t EPILOGUE_OUTPUT_NUM_RECV_PER_RANK_INDEX = 4;
-static constexpr size_t EPILOGUE_OUTPUT_NUM_RECV_PER_EXPERT_INDEX = 5;
 
 static constexpr size_t EPILOGUE_ATTR_EP_WORLD_SIZE_INDEX = 0;
 static constexpr size_t EPILOGUE_ATTR_EP_RANK_ID_INDEX = 1;
@@ -37,15 +35,9 @@ static ge::graphStatus InferShapeMoeEpDispatchEpilogue(gert::InferShapeContext *
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const auto epWorldSize = attrs->GetAttrPointer<int64_t>(EPILOGUE_ATTR_EP_WORLD_SIZE_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSize);
-    const auto numExperts = attrs->GetAttrPointer<int64_t>(EPILOGUE_ATTR_NUM_EXPERTS_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, numExperts);
 
-    int64_t numTokens = dstSlotIdxShape->GetDim(0);
     int64_t topK = dstSlotIdxShape->GetDim(1);
-    int64_t ep = *epWorldSize;
-    int64_t numLocalExperts = *numExperts / ep;
-
-    int64_t aAlloc = ep * *attrs->GetAttrPointer<int64_t>(EPILOGUE_ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX);
+    int64_t aAlloc = *epWorldSize * *attrs->GetAttrPointer<int64_t>(EPILOGUE_ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX);
 
     gert::Shape *recvX = context->GetOutputShape(EPILOGUE_OUTPUT_RECV_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, recvX);
@@ -70,16 +62,6 @@ static ge::graphStatus InferShapeMoeEpDispatchEpilogue(gert::InferShapeContext *
     recvSrcMetadata->SetDim(0U, aAlloc);
     recvSrcMetadata->SetDim(1U, 3);
 
-    gert::Shape *numRecvPerRank = context->GetOutputShape(EPILOGUE_OUTPUT_NUM_RECV_PER_RANK_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, numRecvPerRank);
-    numRecvPerRank->SetDimNum(DIM_ONE);
-    numRecvPerRank->SetDim(0U, ep);
-
-    gert::Shape *numRecvPerExpert = context->GetOutputShape(EPILOGUE_OUTPUT_NUM_RECV_PER_EXPERT_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpert);
-    numRecvPerExpert->SetDimNum(DIM_ONE);
-    numRecvPerExpert->SetDim(0U, numLocalExperts);
-
     OP_LOGD(context->GetNodeName(), "InferShape for MoeEpDispatchEpilogue done.");
     return ge::GRAPH_SUCCESS;
 }
@@ -90,8 +72,6 @@ static ge::graphStatus InferDataTypeMoeEpDispatchEpilogue(gert::InferDataTypeCon
     context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_TOPK_IDX_INDEX, ge::DT_INT32);
     context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_TOPK_WEIGHTS_INDEX, ge::DT_FLOAT);
     context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_SRC_METADATA_INDEX, ge::DT_INT32);
-    context->SetOutputDataType(EPILOGUE_OUTPUT_NUM_RECV_PER_RANK_INDEX, ge::DT_INT32);
-    context->SetOutputDataType(EPILOGUE_OUTPUT_NUM_RECV_PER_EXPERT_INDEX, ge::DT_INT64);
     return ge::GRAPH_SUCCESS;
 }
 

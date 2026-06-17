@@ -32,29 +32,30 @@ using namespace AscendC;
 using Mc2Aclnn::Mc2MoeContext;
 using Mc2Aclnn::HCCL_MAX_RANK_SIZE;
 
-inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
-
-__aicore__ inline GM_ADDR GetBaseWinAddrByRankId(uint32_t rankId)
-{
-    return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE);
-}
-
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 3;
 
+template <typename XType, uint32_t IsCached>
 class KernelDispatchEpilogue {
 public:
     __aicore__ inline KernelDispatchEpilogue() {};
     __aicore__ inline void Init(
-        GM_ADDR context, GM_ADDR dstBufferSlotIdx,
+        GM_ADDR context,
+        GM_ADDR dstBufferSlotIdx,
+        GM_ADDR recvSrcMetadataInternal,
         GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
         GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
-        GM_ADDR recvSrcMetadata, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
+        GM_ADDR recvSrcMetadata,
         GM_ADDR workspace, GM_ADDR tilingGM,
         TPipe* pipe, const MoeEpDispatchEpilogueInfo* tilingData);
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline GM_ADDR GetBaseWinAddrByRankId(uint32_t rankId)
+    {
+        return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE);
+    }
+
     __aicore__ inline void ComputePrefixSums();
     __aicore__ inline void CountHits();
     __aicore__ inline void CopyFromWindowByExpert();
@@ -67,20 +68,20 @@ private:
     uint32_t rankId_{0};
     uint32_t aivId_{0};
     uint32_t recvCounterOffset_{0};
+    GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
 
     GlobalTensor<int32_t> numRecvPerRankHpGm_;
     GlobalTensor<int64_t> numRecvPerExpertHpGm_;
 
-    GlobalTensor<bfloat16_t> recvXGm_;
+    GlobalTensor<XType> recvXGm_;
     GlobalTensor<int32_t> recvTopkIdxGm_;
     GlobalTensor<float> recvTopkWeightsGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
-    GlobalTensor<int32_t> numRecvPerRankGm_;
-    GlobalTensor<int64_t> numRecvPerExpertGm_;
+    GlobalTensor<int32_t> cachedRecvSrcMetadataGm_;   // cached 路径专用：来自上一轮 dispatch 的 recv_src_metadata
 
     GlobalTensor<int32_t> hitCountGm_;
 
-    LocalTensor<bfloat16_t> ubToken_;
+    LocalTensor<XType> ubToken_;
     LocalTensor<int32_t> ubHitCount_;
     LocalTensor<int32_t> ubLocalSeq_;
     LocalTensor<int64_t> ubRowStart_;
@@ -105,6 +106,7 @@ private:
     uint32_t hitCountOffset_{0};
     uint32_t metaBytes_{0};
     uint32_t paddedMetaElems_{0};
+    uint32_t ubMetaCapElems_{0};   // ubMeta_ 容纳的 int32 元素数（用于 cached 路径分块拷贝）
     uint32_t numLocalExperts_{0};
     uint32_t aivNum_{0};
     uint32_t topK_{0};
@@ -114,7 +116,8 @@ private:
     uint32_t perSlotBytes_{0};
 };
 
-__aicore__ inline void KernelDispatchEpilogue::SplitToCore(
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::SplitToCore(
     uint32_t totalCnt, uint32_t &startIdx, uint32_t &endIdx)
 {
     uint32_t perAiv = totalCnt / aivNum_;
@@ -129,11 +132,14 @@ __aicore__ inline void KernelDispatchEpilogue::SplitToCore(
     endIdx = startIdx + perAiv;
 }
 
-__aicore__ inline void KernelDispatchEpilogue::Init(
-    GM_ADDR context, GM_ADDR dstBufferSlotIdx,
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
+    GM_ADDR context,
+    GM_ADDR dstBufferSlotIdx,
+    GM_ADDR recvSrcMetadataInternal,
     GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
     GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
-    GM_ADDR recvSrcMetadata, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
+    GM_ADDR recvSrcMetadata,
     GM_ADDR workspace, GM_ADDR tilingGM,
     TPipe* pipe, const MoeEpDispatchEpilogueInfo* tilingData)
 {
@@ -156,23 +162,26 @@ __aicore__ inline void KernelDispatchEpilogue::Init(
 
     localWinBase_ = GetBaseWinAddrByRankId(rankId_);
     recvCounterOffset_ = ALIGN_UP(epWorldSize_ * sizeof(int32_t), WIN_ADDR_ALIGN);
-    metaOffset_ = ALIGN_UP(hidden_ * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
+    metaOffset_ = ALIGN_UP(hidden_ * sizeof(XType), WIN_ADDR_ALIGN);
 
     numRecvPerRankHpGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRankHp);
     numRecvPerExpertHpGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpertHp);
 
-    recvXGm_.SetGlobalBuffer((__gm__ bfloat16_t*)recvX);
+    recvXGm_.SetGlobalBuffer((__gm__ XType*)recvX);
     recvTopkIdxGm_.SetGlobalBuffer((__gm__ int32_t*)recvTopkIdx);
     recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
-    numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRank);
-    numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
+
+    if constexpr (IsCached) {
+        cachedRecvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadataInternal);
+    }
 
     hitCountOffset_ = ALIGN_UP(numLocalExperts_ * sizeof(int64_t), 32);
+    uint32_t hitCountElems = aivNum_ * numLocalExperts_;
 
-    hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace + hitCountOffset_));
+    hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace + hitCountOffset_), hitCountElems);
 
-    uint32_t ubTokenBytes     = ALIGN_UP(hidden_ * sizeof(bfloat16_t), 32);
+    uint32_t ubTokenBytes     = ALIGN_UP(hidden_ * sizeof(XType), 32);
     uint32_t ubHitCountBytes  = ALIGN_UP(numLocalExperts_ * sizeof(int32_t), 32);
     uint32_t ubLocalSeqBytes  = ALIGN_UP(numLocalExperts_ * sizeof(int32_t), 32);
     uint32_t ubRowStartBytes  = ALIGN_UP(numLocalExperts_ * sizeof(int64_t), 32);
@@ -181,6 +190,7 @@ __aicore__ inline void KernelDispatchEpilogue::Init(
     paddedMetaElems_ = ((2 * topK_ + 2) + 7) / 8 * 8;
     uint32_t maxSlotsPerAiv = (numMaxTokensPerRank_ + aivNum_ - 1) / aivNum_;
     uint32_t ubMetaBytes = ALIGN_UP(maxSlotsPerAiv * paddedMetaElems_ * sizeof(int32_t), 32);
+    ubMetaCapElems_ = ubMetaBytes / sizeof(int32_t);
     uint32_t ubRecvCntBytes = ALIGN_UP(epWorldSize_ * sizeof(int32_t), 32);
     uint32_t ubExpertPfxBytes = ALIGN_UP(numLocalExperts_ * sizeof(int64_t), 32);
     uint32_t ubHitCountFullBytes = ALIGN_UP(aivNum_ * numLocalExperts_ * sizeof(int32_t), 32);
@@ -194,7 +204,7 @@ __aicore__ inline void KernelDispatchEpilogue::Init(
     tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
     tpipe_->InitBuffer(ubHitCountFullBuf_, ubHitCountFullBytes);
 
-    ubToken_     = ubTokenBuf_.Get<bfloat16_t>();
+    ubToken_     = ubTokenBuf_.Get<XType>();
     ubHitCount_  = ubHitCountBuf_.Get<int32_t>();
     ubLocalSeq_  = ubLocalSeqBuf_.Get<int32_t>();
     ubRowStart_  = ubRowStartBuf_.Get<int64_t>();
@@ -215,7 +225,8 @@ __aicore__ inline void KernelDispatchEpilogue::Init(
     PipeBarrier<PIPE_MTE2>();
 }
 
-__aicore__ inline void KernelDispatchEpilogue::Process()
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Process()
 {
     ComputePrefixSums();
 
@@ -236,7 +247,8 @@ __aicore__ inline void KernelDispatchEpilogue::Process()
     }
 }
 
-__aicore__ inline void KernelDispatchEpilogue::ComputePrefixSums()
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::ComputePrefixSums()
 {
     int64_t cumulativeRowOffset = 0;
     for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
@@ -246,7 +258,8 @@ __aicore__ inline void KernelDispatchEpilogue::ComputePrefixSums()
     }
 }
 
-__aicore__ inline void KernelDispatchEpilogue::CountHits()
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
 {
     Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
 
@@ -291,7 +304,8 @@ __aicore__ inline void KernelDispatchEpilogue::CountHits()
     PipeBarrier<PIPE_MTE3>();
 }
 
-__aicore__ inline void KernelDispatchEpilogue::CopyFromWindowByExpert()
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowByExpert()
 {
     Duplicate(ubLocalSeq_, (int32_t)0, numLocalExperts_);
 
@@ -336,8 +350,8 @@ __aicore__ inline void KernelDispatchEpilogue::CopyFromWindowByExpert()
             int32_t src_rank_id   = ubMeta_.GetValue(metaBase + 2 * topK_);
             int32_t src_token_idx = ubMeta_.GetValue(metaBase + 2 * topK_ + 1);
 
-            GlobalTensor<bfloat16_t> srcTokenTensor;
-            srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(slotAddr),
+            GlobalTensor<XType> srcTokenTensor;
+            srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr),
                                              hidden_);
             DataCopy(ubToken_, srcTokenTensor, hidden_);
             PipeBarrier<PIPE_MTE2>();
@@ -363,9 +377,18 @@ __aicore__ inline void KernelDispatchEpilogue::CopyFromWindowByExpert()
 
                 int32_t rawBits = ubMeta_.GetValue(metaBase + topK_ + topkIdx);
                 recvTopkWeightsGm_.SetValue(globalRow, *reinterpret_cast<float*>(&rawBits));
-                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 0, src_token_idx);
-                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 1, src_rank_id);
-                recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 2, static_cast<int32_t>(topkIdx));
+                // SetValue 走 scalar cache，需 DCCI 把 cache line 刷回 GM，保证 host / 其他 core 可见
+                AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                    AscendC::DcciDst::CACHELINE_OUT>(recvTopkWeightsGm_[globalRow]);
+
+                if constexpr (!IsCached) {
+                    recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 0, src_token_idx);
+                    recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 1, src_rank_id);
+                    recvSrcMetadataGm_.SetValue(globalRow * RECV_META_FIELDS + 2, static_cast<int32_t>(topkIdx));
+                    // 同上：3 个 int32（12B）落在同一 cache line 内，单条 DCCI 即可
+                    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                        AscendC::DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_[globalRow * RECV_META_FIELDS]);
+                }
             }
 
             if (hasPendingWrite) {
@@ -376,15 +399,44 @@ __aicore__ inline void KernelDispatchEpilogue::CopyFromWindowByExpert()
     }
 }
 
-__aicore__ inline void KernelDispatchEpilogue::CopyInputsToOutputs()
+// ---------------------------------------------------------------------------
+// CopyInputsToOutputs
+//   non-cached: recvSrcMetadata 已在 CopyFromWindowByExpert 中由各 aiv 写好，本函数无操作
+//   cached:     把 cachedRecvSrcMetadataGm_ 整段拷贝到 recvSrcMetadataGm_
+//               总元素 = expertSum_ * RECV_META_FIELDS（int32），用 DataCopyPad 兜底尾部
+//               调用方已通过 if (aivId_ == 0) 守卫，本函数体不再判定
+// ---------------------------------------------------------------------------
+template <typename XType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyInputsToOutputs()
 {
-    DataCopy(numRecvPerRankGm_, ubRecvCnt_, epWorldSize_);
+    PipeBarrier<PIPE_MTE3>();   // 等待 CopyFromWindowByExpert 写完 recvX/recvTopkIdx/recvTopkWeights
 
-    DataCopy(ubExpertPfx_, numRecvPerExpertHpGm_, numLocalExperts_);
-    PipeBarrier<PIPE_MTE2>();
-    DataCopy(numRecvPerExpertGm_, ubExpertPfx_, numLocalExperts_);
+    if constexpr (IsCached) {
+        const uint32_t totalElems = expertSum_ * RECV_META_FIELDS;
+        if (totalElems == 0) {
+            return;
+        }
+        // 复用 ubMeta_（int32），其元素容量 ubMetaCapElems_ 已在 Init 中算好
+        // 取容量做分块，向下对齐到 8（int32 → 32B/4）以便对齐路径
+        const uint32_t ubElemsCap = ubMetaCapElems_;
+        uint32_t chunkElems = (ubElemsCap / 8U) * 8U;
+        if (chunkElems == 0) {
+            chunkElems = 8U;
+        }
 
-    PipeBarrier<PIPE_MTE3>();
+        for (uint32_t off = 0; off < totalElems; off += chunkElems) {
+            uint32_t copyElems = (off + chunkElems > totalElems) ? (totalElems - off) : chunkElems;
+            // 整段（含尾部不对齐）统一用 DataCopyPad，兼容 < 8 elem 余数（实现简单优先）
+            DataCopyExtParams copyParams{1U,
+                                         static_cast<uint32_t>(copyElems * sizeof(int32_t)),
+                                         0U, 0U, 0U};
+            DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+            DataCopyPad(ubMeta_, cachedRecvSrcMetadataGm_[off], copyParams, padParams);
+            PipeBarrier<PIPE_MTE2>();
+            DataCopyPad(recvSrcMetadataGm_[off], ubMeta_, copyParams);
+            PipeBarrier<PIPE_MTE3>();
+        }
+    }
 }
 
 }  // namespace MoeEpDispatchEpilogueImpl

@@ -11,9 +11,10 @@ extern "C" {
  * @brief MoE EP Dispatch Epilogue: compact copy from HCCL Window to caller-preallocated
  *        recv_x (corresponding to DeepEP V2 launch_dispatch_copy_epilogue).
  *
-* @param [in] context             communication context int32 tensor
+ * @param [in] context             communication context int32 tensor
  * @param [in] dstBufferSlotIdx           [num_tokens, top_k] int32 from Dispatch
- * @param [in] recvSrcMetadataInternal    internal metadata tensor
+ * @param [in] recvSrcMetadataInternal    OPTIONAL internal metadata tensor
+ *                                        (cached path: [A_actual, 3] int32; nullptr in non-cached path)
  * @param [in] numRecvTokensPerRankHostPinned   [ep_world_size] int32 host-pinned from Dispatch
  * @param [in] numRecvTokensPerExpertHostPinned  [num_local_experts] int64 host-pinned from Dispatch
  * @param [in] epWorldSize                EP world size
@@ -26,8 +27,6 @@ extern "C" {
  * @param [out] recvTopkIdx               [A_alloc, top_k] int32
  * @param [out] recvTopkWeights           [A_alloc] float
  * @param [out] recvSrcMetadata           [A_alloc, 3] int32 handle field: [src_token_idx, src_rank_id, src_topk_idx]
- * @param [out] numRecvTokensPerRank      [ep_world_size] int32 handle field (device tensor)
- * @param [out] numRecvTokensPerExpert    [num_local_experts] int64 handle field
  * @param [out] workspaceSize
  * @param [out] executor
  * @return aclnnStatus
@@ -48,8 +47,6 @@ ACLNN_API aclnnStatus aclnnMoeEpDispatchEpilogueGetWorkspaceSize(
     aclTensor* recvTopkIdx,
     aclTensor* recvTopkWeights,
     aclTensor* recvSrcMetadata,
-    aclTensor* numRecvTokensPerRank,
-    aclTensor* numRecvTokensPerExpert,
     uint64_t* workspaceSize,
     aclOpExecutor** executor);
 
