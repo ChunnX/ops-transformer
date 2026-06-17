@@ -162,7 +162,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
     if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "actualSeqLengths", "empty",
-            "When inputLayout is " + LayoutToSerialString(qLayout_) + ", actualSeqLengths cannot be empty.");
+            "When inputLayout is " + LayoutToSerialString(qLayout_) + ", actualSeqLengths cannot be empty");
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize();
