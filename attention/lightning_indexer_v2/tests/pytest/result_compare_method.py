@@ -286,13 +286,6 @@ def check_result(expect, result, topk_value, params):
     else:
         seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
 
-    if layout_query == 'TND':
-        if len(cu_seqlens_q) == batch_size + 1:
-            cu_seqlens_q = cu_seqlens_q[1:]
-    if layout_key == 'TND':
-        if len(cu_seqlens_k) == batch_size + 1:
-            cu_seqlens_k = cu_seqlens_k[1:]
-
     npu_pass = True
     max_error = 0
     max_re = 0
