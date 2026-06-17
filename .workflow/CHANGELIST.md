@@ -611,3 +611,43 @@
 #### 影响范围
 - 仅工作流文档更新，不涉及代码
 - 下一步按 8.1 → 8.2 → 8.3 → 8.4 → 8.5 → 8.6 顺序执行编码
+
+---
+
+### 2026-06-17 | Task 8 Kernel 适配完成 — GMM A16W4 PerGroup ND
+
+**类型**: 🆕 新功能
+**范围**: 6 个文件修改，新增 A16W4 INT4 pergroup ND 数据流的 kernel 支持
+
+#### 变更内容
+
+**修改文件**（6 个）：
+
+| 文件 | 修改内容 |
+|------|----------|
+| `basic_block_config.h` | 新增 4 个 WqmmConfig 实例（A16W4_NDKN_PG/OFF, A16W4_NDNK_PG/OFF） |
+| `grouped_matmul_apt.cpp` | 新增 8 个 if constexpr 分支（2 transB × 2 offset × 2 bias） |
+| `grouped_matmul_def.cpp` | config950 新增 4 个 dtype 组合（antiquant_offset=null），154→158 条目 |
+| `grouped_matmul_weight_quant_basic_controller.h` | SetGmAddr pergroup 偏移（kSize/groupSize × nSize）+ biasBaseOffset_ 独立偏移 |
+| `weight_quant_vec_compute.h` | CalLocalAddrForVf PER_GROUP 地址 + CopyAntiQuantParamsGmToUb offset 搬运 + AntiQuantProcessNd pergroup 分发 |
+| `basic_block_vf_nd.h` | NdKnLoadScaleOffset PER_GROUP 分支 + AntiQuantInt4PerGroupNdKn（统一 VF）+ AntiQuantInt4PerGroupNdNk 分派器 + 4 个 gs 专用 VF（Gs32/Gs64/Gs128/Gs256） |
+
+#### 关键决策
+
+1. **Buffer 配置复用**：PER_GROUP + ND 路由到 `GetNdBufferInfo()`，不新增 pergroup buffer 配置
+2. **bias 偏移独立**：新增 `biasBaseOffset_` 成员变量，bias 地址不再与 antiquantScale/offset 共用偏移
+3. **NK scale 地址公式**：GMM 固定 `[G,N]` 布局，地址 = `groupIdx * VEC_MAX_ELEM_B16 + nBubIdx`，不使用 ops-nn 的 `[N,G]` 索引
+4. **gs=32 NK 实现**：8 次 DIST_BRC_B16 + 4 次 Interleave + 2 次 Select（GMM [G,N] 布局下不能用 DIST_E2B_B16）
+5. **KN 统一 VF**：所有 groupSize 共用一个函数，通过 groupNum/groupTail 处理尾部
+
+#### 编译验证
+
+- 编译命令：`bash build.sh --opkernel --soc=ascend950 --ops=grouped_matmul -j8`
+- 结果：**0 errors**，1574 pre-existing warnings
+- 最终审查：42/42 检查项全部通过
+
+#### 影响范围
+
+- 新增 A16W4 PerGroup ND 数据流支持
+- 原有 A16W8 perchannel、A8W4、S8S4 路径不受影响（`if constexpr` 隔离）
+- 下一步：阶段三验证（UT + 兼容性回归，需 NPU 硬件环境）

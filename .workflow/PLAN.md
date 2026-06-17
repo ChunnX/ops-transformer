@@ -147,13 +147,13 @@
     - [x] 7.1 UT 测试框架搭建 + 用例编写（37 个 CSV 用例） ✅
     - [x] 7.2 Tiling 代码实现（9 个修改点 + 8 个 tiling key） ✅
     - [x] 7.3 UT 验证 + 迭代（37/37 pergroup 通过，13/13 回归通过） ✅
-  - [ ] 任务 8：Kernel 适配
-    - [ ] 8.1 基础配置层（WqmmConfig + Buffer + Kernel 入口）
-    - [ ] 8.2 Controller 层适配（SetGmAddr pergroup 偏移）
-    - [ ] 8.3 VecCompute 层适配（scale/offset 搬运 + 地址计算）
-    - [ ] 8.4 VF — KN 路径反量化（统一 VF 函数）
-    - [ ] 8.5 VF — NK 路径反量化（4 个 groupSize 专用 VF）
-    - [ ] 8.6 编译验证
+  - [x] 任务 8：Kernel 适配 ✅
+    - [x] 8.1 基础配置层（4 WqmmConfig + 8 apt 分支 + config950 4 条目） ✅
+    - [x] 8.2 Controller 层适配（pergroup 偏移 + biasBaseOffset_） ✅
+    - [x] 8.3 VecCompute 层适配（CalLocalAddrForVf + CopyAntiQuantParamsGmToUb + AntiQuantProcessNd） ✅
+    - [x] 8.4 VF — KN 路径反量化（NdKnLoadScaleOffset PER_GROUP + AntiQuantInt4PerGroupNdKn） ✅
+    - [x] 8.5 VF — NK 路径反量化（AntiQuantInt4PerGroupNdNk + Gs32/Gs64/Gs128/Gs256） ✅
+    - [x] 8.6 编译验证（0 errors, 42/42 审查通过） ✅
 - [ ] 阶段三：验证
 
 ## 风险与应对

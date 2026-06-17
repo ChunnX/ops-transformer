@@ -102,38 +102,26 @@
 
 ## 任务 8：Kernel 适配
 
-**任务状态**：⬜ 待执行
+**任务状态**：✅ 已完成
 
-**简要说明**：在 `weight_quant_basic_block` 体系中适配 A16W4 INT4 pergroup ND 计算逻辑。基于现有 A16W8 ND perchannel 数据流，新增 pergroup 反量化支持。核心修改集中在 Controller 地址偏移、VecCompute scale/offset 搬运、VF 反量化函数（KN/NK 两条路径）和 Kernel 入口分支注册。
+**完成摘要**：
+- 新增 4 个 WqmmConfig 实例（A16W4_NDKN_PG/OFF, A16W4_NDNK_PG/OFF）
+- `grouped_matmul_apt.cpp` 新增 8 个 if constexpr 分支（2 transB × 2 offset × 2 bias）
+- config950 新增 4 个 dtype 组合（antiquant_offset=null），154→158 条目
+- Controller SetGmAddr pergroup 偏移（kSize/groupSize × nSize）+ biasBaseOffset_ 独立偏移
+- VecCompute CalLocalAddrForVf PER_GROUP 地址 + CopyAntiQuantParamsGmToUb offset 搬运 + AntiQuantProcessNd pergroup 分发
+- NdKnLoadScaleOffset PER_GROUP 分支 + AntiQuantInt4PerGroupNdKn（统一 VF，所有 groupSize 共用）
+- AntiQuantInt4PerGroupNdNk 分派器 + 4 个 gs 专用 VF（Gs32/Gs64/Gs128/Gs256）
+- 编译验证：0 errors，42/42 审查项全部通过
 
-**子任务拆分**（按依赖顺序）：
-- **8.1 基础配置层**：新增 WqmmConfig 实例（4 个）+ Buffer 配置 + Kernel 入口分支（8 个 if constexpr）+ config950 新增 4 个 dtype 组合
-- **8.2 Controller 层**：SetGmAddr pergroup scale/offset 偏移 + bias 偏移独立
-- **8.3 VecCompute 层**：CalLocalAddrForVf pergroup scale 地址 + CopyAntiQuantParamsGmToUb offset 搬运 + AntiQuantProcessNd pergroup 分发
-- **8.4 VF — KN 路径**：AntiQuantInt4PerGroupNdKn（统一 VF 函数，所有 groupSize 共用）
-- **8.5 VF — NK 路径**：AntiQuantInt4PerGroupNdNk（按 groupSize=32/64/128/256 分派 4 个专用 VF）
-- **8.6 编译验证**
-
-**目标文件**：
-- `basic_block_config.h` — WqmmConfig + Buffer（8.1）
-- `grouped_matmul_apt.cpp` — Kernel 入口（8.1）
-- `grouped_matmul_def.cpp` — config950 新增 dtype 组合（8.1）
-- `grouped_matmul_weight_quant_basic_controller.h` — Controller（8.2）
-- `weight_quant_vec_compute.h` — VecCompute（8.3）
-- `basic_block_vf_nd.h` — VF KN/NK（8.4, 8.5）
-
-**参考文档**：
-- `.workflow/raw/design/01_deliverables.md` — 交付件清单
-- `.workflow/raw/design/04_kernel_design.md` — Kernel 设计方案（950 行）
-- `.workflow/raw/development/gmm_a16w4_pergroup_nd_srs.md` — SRS 实现方案
-- `.workflow/raw/development/wqbmmv2_pergroup_dequant_research.md` — VF 反量化调研
-
-**参考代码**（ops-nn 仓库）：
-- `~/Code/ops-nn/matmul/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_reg_base_common.h` — KN/NK pergroup 反量化入口
-- `~/Code/ops-nn/matmul/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_vf.h` — VF 函数实现
+**修改文件**（6 个）：
+- `basic_block_config.h` — 4 个 WqmmConfig 实例
+- `grouped_matmul_apt.cpp` — 8 个 if constexpr 分支
+- `grouped_matmul_def.cpp` — config950 新增 4 个 dtype 组合
+- `grouped_matmul_weight_quant_basic_controller.h` — pergroup 偏移 + biasBaseOffset_
+- `weight_quant_vec_compute.h` — CalLocalAddrForVf + CopyAntiQuantParamsGmToUb + AntiQuantProcessNd
+- `basic_block_vf_nd.h` — NdKnLoadScaleOffset + AntiQuantInt4PerGroupNdKn + AntiQuantInt4PerGroupNdNk + Gs32/Gs64/Gs128/Gs256
 
 **编译命令**：`bash build.sh --opkernel --soc=ascend950 --ops=grouped_matmul -j8`
-
-> 当前环境 kernel 代码编写完成后无法直接运行 UT 验证，仅通过编译检查保证代码正确性。
 
 **任务详情**：[详细任务说明](reference/next_steps/8_kernel_impl.md)

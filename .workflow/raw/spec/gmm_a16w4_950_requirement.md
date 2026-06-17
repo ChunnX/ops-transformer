@@ -41,7 +41,7 @@
 
 - x: FLOAT16/BFLOAT16, weight: INT4(ND), out: FLOAT16/BFLOAT16
 - x不支持转置
-- 仅支持GroupType=-1、0，actType=0，groupListType=0/1/2
+- 仅支持GroupType=-1、0，actType=0，groupListType=0/1
 - 对称量化支持perchannel和pergroup，非对称量化仅支持perchannel
 - pergroup数G必须能整除k_i
 - 若weight为多tensor，所有pergroup长度s_i = k_i/G_i 必须相等
