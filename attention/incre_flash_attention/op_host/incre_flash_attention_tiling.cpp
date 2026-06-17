@@ -3459,7 +3459,7 @@ ge::graphStatus IFATiling::GenTilingKey() const
     }
 
     // sparseMode == 9（tree mask）场景通过IFA_GET_TILINGKEY追加第11位做模板隔离
-    uint8_t enableTreeVal = (sparseMode_ == 9U) ? 2U : 0U;
+    uint8_t enableTreeVal = (sparseMode_ == 9U) ? 1U : 0U;
 
     uint64_t baseOffset =
         modeVal * IFA_TILINGKEYOFFSET + (static_cast<uint64_t>(perfMode_)) * IFA_PERF_MODE_TILINGKEYOFFSET;
