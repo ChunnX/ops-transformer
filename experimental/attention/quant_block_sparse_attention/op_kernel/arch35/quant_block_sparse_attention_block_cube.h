@@ -363,6 +363,25 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
     mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
     LocalTensor<INPUT_T> mm2BTensor = mm2B.GetTensor<INPUT_T>();
     if constexpr (isPa) {
+        Position startPos;
+        startPos.bIdx = runInfo.boIdx;
+        startPos.n2Idx = runInfo.n2oIdx;
+        startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] * constInfo.kvSparseBlockSize;
+        startPos.dIdx = 0;
+        PAShape shape;
+        shape.blockSize = constInfo.kvSparseBlockSize;
+        shape.headNum = constInfo.n2Size;
+        shape.headDim = constInfo.dSizeV;
+        shape.actHeadDim = constInfo.dSizeV;
+        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+        shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
+        shape.pageStride = constInfo.paBlockStride;
+        shape.rowStride = constInfo.dSizeV;
+        if constexpr (isFp8) {
+            shape.copyRowNumAlign = (shape.copyRowNum + 31) >> 5 << 5;
+        } else {
+            shape.copyRowNumAlign = (shape.copyRowNum + 15) >> 4 << 4;
+        }
         GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, pa_kvLayout, runInfo, constInfo);
     } else {
@@ -495,6 +514,21 @@ BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROS
     mm1A.Wait<HardEvent::MTE1_MTE2>();
     LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
     if constexpr (isPa) {
+        Position startPos;
+        startPos.bIdx = runInfo.boIdx;
+        startPos.n2Idx = runInfo.n2oIdx;
+        startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] * constInfo.kvSparseBlockSize;
+        startPos.dIdx = 0;
+        PAShape shape;
+        shape.blockSize = constInfo.kvSparseBlockSize;
+        shape.headNum = constInfo.n2Size;
+        shape.headDim = constInfo.dSize;
+        shape.actHeadDim = constInfo.dSize;
+        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+        shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
+        shape.pageStride = constInfo.paBlockStride;
+        shape.rowStride = constInfo.dSize;
+        shape.copyRowNumAlign = (shape.copyRowNum + 15) >> 4 << 4;
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, pa_kvLayout, runInfo, constInfo);
     } else {
@@ -628,6 +662,25 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
     mm1B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
     LocalTensor<INPUT_T> mm1BTensor = mm1B.GetTensor<INPUT_T>();
     if constexpr (isPa) {
+        Position startPos;
+        startPos.bIdx = runInfo.boIdx;
+        startPos.n2Idx = runInfo.n2oIdx;
+        startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
+        startPos.dIdx = 0;
+        PAShape shape;
+        shape.blockSize = constInfo.kvSparseBlockSize;
+        shape.headNum = constInfo.n2Size;
+        shape.headDim = constInfo.dSize;
+        shape.actHeadDim = constInfo.dSize;
+        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+        shape.copyRowNum = runInfo.s2RealSize;
+        shape.pageStride = constInfo.paBlockStride;
+        shape.rowStride = constInfo.dSize;
+        if constexpr (isFp8) {
+            shape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
+        } else {
+            shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+        }
         GlobalTensor<INPUT_T> mm1BGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, pa_kvLayout, runInfo, constInfo);
     } else {

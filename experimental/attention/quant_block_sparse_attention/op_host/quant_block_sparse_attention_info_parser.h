@@ -149,7 +149,7 @@ private:
     ge::graphStatus ParseQuery(QuantBlockSparseAttentionTilingInfo &tilingInfo, const gert::Shape &queryShape,
                                const gert::Shape &sparseIndicesShape, const gert::RuntimeAttrs *attrs);
     ge::graphStatus ParseKeyValue(QuantBlockSparseAttentionTilingInfo &tilingInfo, const gert::Shape &keyShape,
-                                  const gert::RuntimeAttrs *attrs);
+                                  const gert::Shape &vDescaleShape, const gert::RuntimeAttrs *attrs);
     ge::graphStatus ParseSparseIndices(QuantBlockSparseAttentionTilingInfo &tilingInfo,
                                        const gert::Shape &sparseIndicesShape, const gert::Shape &sparseSeqLenShape);
     ge::graphStatus ParseOptionalInputs(QuantBlockSparseAttentionTilingInfo &tilingInfo);

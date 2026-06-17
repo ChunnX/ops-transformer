@@ -97,30 +97,46 @@ def _row_from_legacy_tuple(params, result, fulfill_percent):
     return row_data
 
 
+def _append_result_row(existing_df, row_data):
+    current_columns = list(row_data.keys())
+    if existing_df is None:
+        return pd.DataFrame([row_data], columns=current_columns)
+
+    df = existing_df.rename(columns=LEGACY_RESULT_COLUMN_RENAMES)
+    if set(df.columns) != set(current_columns):
+        missing_columns = [column for column in current_columns if column not in df.columns]
+        extra_columns = [column for column in df.columns if column not in current_columns]
+        print("warning: result columns do not match current case fields, merging columns")
+        print(f"Missing columns: {missing_columns}")
+        print(f"Extra columns: {extra_columns}")
+        for column in missing_columns:
+            df[column] = None
+        for column in extra_columns:
+            row_data[column] = None
+        current_columns.extend(extra_columns)
+    df = df.reindex(columns=current_columns)
+    return pd.concat([df, pd.DataFrame([row_data], columns=current_columns)], ignore_index=True)
+
+
+def _save_result_csv_fallback(row_data, result_path, error):
+    csv_path = result_path.with_suffix(".csv")
+    existing_df = pd.read_csv(csv_path) if csv_path.exists() else None
+    df = _append_result_row(existing_df, row_data)
+    df.to_csv(csv_path, index=False)
+    print(f"warning: Excel result requires optional dependency ({error}); wrote {csv_path}")
+    return True
+
+
 def save_result(params, result, fulfill_percent, result_path):
     if isinstance(params, dict):
         row_data = _row_from_dict(params, result, fulfill_percent)
     else:
         row_data = _row_from_legacy_tuple(params, result, fulfill_percent)
 
-    if result_path.exists():
-        df = pd.read_excel(result_path).rename(columns=LEGACY_RESULT_COLUMN_RENAMES)
-        current_columns = list(row_data.keys())
-        if set(df.columns) != set(current_columns):
-            missing_columns = [column for column in current_columns if column not in df.columns]
-            extra_columns = [column for column in df.columns if column not in current_columns]
-            print("warning: result.xlsx columns do not match current case fields, merging columns")
-            print(f"Missing columns: {missing_columns}")
-            print(f"Extra columns: {extra_columns}")
-            for column in missing_columns:
-                df[column] = None
-            for column in extra_columns:
-                row_data[column] = None
-            current_columns.extend(extra_columns)
-        df = df.reindex(columns=current_columns)
-        df = pd.concat([df, pd.DataFrame([row_data], columns=current_columns)], ignore_index=True)
-    else:
-        df = pd.DataFrame([row_data])
-
-    df.to_excel(result_path, index=False)
+    try:
+        existing_df = pd.read_excel(result_path) if result_path.exists() else None
+        df = _append_result_row(existing_df, row_data)
+        df.to_excel(result_path, index=False)
+    except ImportError as error:
+        return _save_result_csv_fallback(row_data, result_path, error)
     return True

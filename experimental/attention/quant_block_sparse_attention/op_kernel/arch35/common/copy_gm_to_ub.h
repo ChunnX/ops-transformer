@@ -50,26 +50,42 @@ private:
     __aicore__ inline void ProcessAntiqPA(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
                                           AntiqGmCoord &antiqGmCoord, ConstInfo &constInfo)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
-
-        uint64_t dstOffset = 0;
-        uint32_t curS2Idx = antiqGmCoord.firstS2Idx;
-        uint64_t srcOffset = offsetCalculator.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, curS2Idx, constInfo.dSize);
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = antiqGmCoord.firstS2DealSize;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
-        DataCopyPadExtParams<T> dataCopyPadParams;
-        DataCopyPad(dstTensor.tensor[dstOffset], srcTensor.gmTensor[srcOffset / sizeof(float)], dataCopyParams, dataCopyPadParams);
-
-        curS2Idx = antiqGmCoord.nextS2Idx;
-        srcOffset = offsetCalculator.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, curS2Idx, constInfo.dSize);
-        dataCopyParams.blockCount = antiqGmCoord.nextS2DealSize;
-        dataCopyParams.blockLen = sizeof(float);
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = 0;
-        DataCopyPad(dstTensor.tensor[dstOffset + antiqGmCoord.firstS2DealSize], srcTensor.gmTensor[srcOffset / sizeof(float)], dataCopyParams, dataCopyPadParams);
+        int32_t byteOffset1 = 0;
+        int32_t byteOffset2 = 0;
+        if (GM_FORMAT == BSALayout::PA_BNSD) {
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = 1;
+            dataCopyParams.blockLen = constInfo.kvSparseBlockSize * sizeof(float);
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = 0;
+            DataCopyPadExtParams<T> dataCopyPadParams{};
+            if (runInfo.sparseBlkIdx1 >= 0) {
+                GetPaKScaleOffset(byteOffset1, runInfo.sparseBlkIdx1, blockTableTensor, runInfo, constInfo);
+                DataCopyPad(dstTensor, srcTensor[byteOffset1], dataCopyParams, dataCopyPadParams);
+            }
+            if (runInfo.sparseBlkIdx2 >= 0 && runInfo.s2SparseBlk2RealSize > 0) {
+                GetPaKScaleOffset(byteOffset2, runInfo.sparseBlkIdx2, blockTableTensor, runInfo, constInfo);
+                DataCopyPad(dstTensor[constInfo.kvSparseBlockSize], srcTensor[byteOffset2], dataCopyParams,
+                    dataCopyPadParams);
+            }
+        } else if (GM_FORMAT == BSALayout::PA_BSND) {
+            GetPaKScaleOffset(byteOffset1, runInfo.sparseBlkIdx1, blockTableTensor, runInfo, constInfo);
+            GetPaKScaleOffset(byteOffset2, runInfo.sparseBlkIdx2, blockTableTensor, runInfo, constInfo);
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = 128;
+            dataCopyParams.blockLen = sizeof(float);
+            dataCopyParams.srcStride = ((constInfo.n2Size - 1) * constInfo.combineDim) * sizeof(float);
+            dataCopyParams.dstStride = 0;
+            DataCopyPadExtParams<T> dataCopyPadParams{};
+            DataCopyPad(dstTensor, srcTensor[byteOffset1], dataCopyParams, dataCopyPadParams);
+            DataCopyPad(dstTensor[128], srcTensor[byteOffset2], dataCopyParams, dataCopyPadParams);
+        }
+    }
+    __aicore__ inline void GetPaKScaleOffset(int32_t &byteOffset, const int64_t sparseBlkIdx, const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo, const ConstInfo &constInfo)
+    {
+        int32_t physicalBlock = blockTableTensor.GetValue(runInfo.boIdx * constInfo.blockTableDim2 + sparseBlkIdx);
+        byteOffset = physicalBlock * (constInfo.paBlockStride / sizeof(float)) +
+            runInfo.n2oIdx * constInfo.kvSparseBlockSize;
     }
 };
 
@@ -92,7 +108,9 @@ private:
             dataCopyParams.srcStride = (constInfo.n2Size * constInfo.gSize - 1) * sizeof(float);
             dataCopyParams.dstStride = 0;
             DataCopyPadExtParams<T> dataCopyPadParams;
-            DataCopyPad(dstTensor, srcTensor[runInfo.qBScalarOffset], dataCopyParams, dataCopyPadParams);
+            int64_t n1Idx = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx;
+            int64_t qScaleOffset = runInfo.qBScalarOffset + runInfo.sOuterOffset * constInfo.n1Size + n1Idx;
+            DataCopyPad(dstTensor, srcTensor[qScaleOffset], dataCopyParams, dataCopyPadParams);
         } else if (GM_FORMAT == BSALayout::BSND) {
 
         } else if (GM_FORMAT == BSALayout::BNSD) {
