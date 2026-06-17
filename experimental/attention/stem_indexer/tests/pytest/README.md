@@ -39,8 +39,8 @@ case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点�
 `npu_stem_indexer_metadata`生成`int32[2048]`的metadata，再传给`npu_stem_indexer`。
 pytest负例会继续传入参数表中构造的metadata，用于覆盖StemIndexer主算子的参数校验。
 
-当前StemIndexer主算子使用BNSD布局，`q_seq_lens`和`kv_seq_lens`按batch实际长度传入；
-`num_prompt_tokens`按前缀和传入，用于动态TopK预算。
+当前StemIndexer主算子使用BNSD布局，`q_seq_lens`、`kv_seq_lens`和`num_prompt_tokens`
+均按batch实际长度传入，其中`num_prompt_tokens`用于动态TopK预算。
 
 ## 文件结构
 

@@ -51,15 +51,6 @@ def parse_shape(shape_str):
     return [int(item.strip()) for item in shape_str.strip()[1:-1].split(",") if item.strip()]
 
 
-def prefix_to_lengths(prefix):
-    lengths = []
-    previous = 0
-    for value in prefix:
-        lengths.append(int(value) - previous)
-        previous = int(value)
-    return lengths
-
-
 def dtype_from_name(dtype_name):
     if dtype_name not in DTYPE_MAP:
         raise ValueError(f"Unsupported dtype name in StemIndexer test case: {dtype_name}")
@@ -114,9 +105,9 @@ def build_case_inputs(case):
     qflat = make_float_tensor(qflat_shape, dtype_from_name(case["qflat_dtype"]), qflat_pattern, seed=17)
     kflat = make_float_tensor(kflat_shape, dtype_from_name(case["kflat_dtype"]), kflat_pattern, seed=23)
     vbias = make_float_tensor(vbias_shape, dtype_from_name(case["vbias_dtype"]), vbias_pattern, seed=31)
-    q_seq_lens = torch.tensor(case["q_seq_lens_input_prefix"], dtype=torch.int32)
-    kv_seq_lens = torch.tensor(case["kv_seq_lens_input_prefix"], dtype=torch.int32)
-    num_prompt_tokens = torch.tensor(case["num_prompt_tokens_input_prefix"], dtype=torch.int32)
+    q_seq_lens = torch.tensor(case["q_seq_lens_per_batch"], dtype=torch.int32)
+    kv_seq_lens = torch.tensor(case["kv_seq_lens_per_batch"], dtype=torch.int32)
+    num_prompt_tokens = torch.tensor(case["num_prompt_tokens_per_batch"], dtype=torch.int32)
     metadata = torch.zeros(metadata_shape, dtype=torch.int32)
 
     return {
@@ -161,7 +152,7 @@ def is_decode_case(q_len, kv_len, prompt_len):
 def calc_topk_budget(case, q_block_idx, q_block_num, kv_block_num, prompt_len):
     prompt_block_num = ceil_div(prompt_len, case["stem_block_size"])
     if prompt_block_num < K_SMALL_SEQ_MAX:
-        k_start = K_SMALL_SEQ_MAX
+        k_start = prompt_block_num
     elif prompt_block_num < K_MEDIUM_SEQ_MAX:
         k_start = int(prompt_block_num * K_BLOCK_NUM_RATE_MEDIUM + K_BLOCK_NUM_BIAS_MEDIUM)
     else:
@@ -200,7 +191,7 @@ def stem_indexer_golden(case, inputs):
     g_size = q_heads // kv_heads
     q_token_lens = case["q_token_lens_per_batch"]
     kv_token_lens = case["kv_token_lens_per_batch"]
-    prompt_lens = prefix_to_lengths(case["num_prompt_tokens_input_prefix"])
+    prompt_lens = case["num_prompt_tokens_per_batch"]
     stem_block_size = case["stem_block_size"]
     stem_stride = case["stem_stride"]
     score_scale = 1.0 / ((stem_block_size // stem_stride) ** 2)
