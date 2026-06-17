@@ -211,32 +211,32 @@ public:
                             (kL0Idx < kL0Loop - 1U) ? L0TileShape::K : (kL1Actual - kL0Idx * L0TileShape::K);
                         LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mL1ActualTemp, kL0Actual);
                         MatrixCoord l1ATileCoord{0, kL0Idx * L0TileShape::K};
-                        auto l1ATile = l1ATensor[l1PPingPongFlag][layoutAInL1.GetOffset(l1ATileCoord)];
+                        auto l1ATileTensor = l1ATensor[l1PPingPongFlag][layoutAInL1.GetOffset(l1ATileCoord)];
 
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
                         if (kL0Idx == 0U) {
                             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1PPingPongFlag);
                         }
-                        copyL1ToL0A(l0ATensor[l0ABPingPongFlag], l1ATile, layoutAInL0, layoutAInL1);
+                        copyL1ToL0A(l0ATensor[l0ABPingPongFlag], l1ATileTensor, layoutAInL0, layoutAInL1);
                         if (kL0Idx == kL0Loop - 1U) {
                             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1PPingPongFlag);
                         }
 
                         LayoutBInL0 layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kL0Actual, nL1Actual);
                         MatrixCoord l1BTileCoord{kL1Idx * l1KDynamic + kL0Idx * L0TileShape::K, L0TileShape::N * nL1Idx};
-                        auto l1BTile = l1BTensor[layoutBInL1.GetOffset(l1BTileCoord)];
+                        auto l1BTileTensor = l1BTensor[layoutBInL1.GetOffset(l1BTileCoord)];
 
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2U);
-                        copyL1ToL0B(l0BTensor[l0ABPingPongFlag], l1BTile, layoutBInL0, layoutBInL1);
+                        copyL1ToL0B(l0BTensor[l0ABPingPongFlag], l1BTileTensor, layoutBInL0, layoutBInL1);
 
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
                         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
                         bool initMmad = (kL1Idx == 0U) && (kL0Idx == 0U);
-                        uint32_t mL0Align = (mL1ActualTemp + BLOCK_SIZE - 1U) / BLOCK_SIZE * BLOCK_SIZE;
+                        uint32_t mL0AlignUp = (mL1ActualTemp + BLOCK_SIZE - 1U) / BLOCK_SIZE * BLOCK_SIZE;
                         tileMmad(l0CTensor[l0CPingPongFlag],
                             l0ATensor[l0ABPingPongFlag],
                             l0BTensor[l0ABPingPongFlag],
-                            mL0Align,
+                            mL0AlignUp,
                             nL1Actual,
                             kL0Actual,
                             initMmad);
@@ -262,9 +262,9 @@ public:
 protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor[STAGES];
-    AscendC::LocalTensor<ElementB> l1BTensor;
     AscendC::LocalTensor<ElementA> l0ATensor[STAGES];
     AscendC::LocalTensor<ElementB> l0BTensor[STAGES];
+    AscendC::LocalTensor<ElementB> l1BTensor;
     AscendC::LocalTensor<ElementAccumulator> l0CTensor[STAGES];
 
     TileMmad tileMmad;

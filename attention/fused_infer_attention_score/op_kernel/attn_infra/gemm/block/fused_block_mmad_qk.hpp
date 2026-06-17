@@ -15,10 +15,10 @@
 #include "../../../attn_infra/fused_gemm_coord.hpp"
 #include "../../../attn_infra/arch/fused_resource.hpp"
 #include "../../../attn_infra/fused_coord.hpp"
-#include "../../../attn_infra/gemm/fused_gemm_dispatch_policy.hpp"
 #include "../../../attn_infra/gemm/fused_helper.hpp"
-#include "../../../attn_infra/gemm/tile_common/fused_gemm_tile_copy.hpp"
+#include "../../../attn_infra/gemm/fused_gemm_dispatch_policy.hpp"
 #include "../../../attn_infra/gemm/tile_common/fused_tile_mmad.hpp"
+#include "../../../attn_infra/gemm/tile_common/fused_gemm_tile_copy.hpp"
 ////////////////////////////////////////////////////////////////////
 namespace NpuArch::Gemm::Block {
 ////////////////////////////////////////////////////////////////////
@@ -150,11 +150,11 @@ public:
     __aicore__ inline
     void getBlockShape(GemmCoord &actualShape, uint32_t nL1Index, uint32_t nL1Loop, uint32_t stackSeqTile)
     {
-        uint32_t nSplitSize = l1NDynamic;
+        uint32_t splitSize = l1NDynamic;
         if (nL1Index == nL1Loop - 1U) {
-            nSplitSize = stackSeqTile - nL1Index * l1NDynamic;
+            splitSize = stackSeqTile - nL1Index * l1NDynamic;
         }
-        actualShape[COORD_DIM1] = nSplitSize;
+        actualShape[COORD_DIM1] = splitSize;
     }
 
      __aicore__ inline
@@ -331,8 +331,8 @@ public:
 protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor;
-    AscendC::LocalTensor<ElementB> l1BTensor[STAGES];
     AscendC::LocalTensor<ElementA> l0ATensor[STAGES];
+    AscendC::LocalTensor<ElementB> l1BTensor[STAGES];
     AscendC::LocalTensor<ElementB> l0BTensor[STAGES];
     AscendC::LocalTensor<ElementAccumulator> l0CTensor[STAGES];
 
