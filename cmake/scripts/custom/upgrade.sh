@@ -109,6 +109,42 @@ upgrade_file()
     return 0
 }
 
+write_set_env()
+{
+    # custom包升级路径也需要刷新set_env.bash，避免升级后仍指向旧的自定义OPP或op_api路径。
+    _ASCEND_CUSTOM_OPP_PATH=${targetdir}/${vendordir}
+    bin_path="${_ASCEND_CUSTOM_OPP_PATH}/bin"
+    set_env_file="${bin_path}/set_env.bash"
+    if [ ! -d ${bin_path} ]; then
+        mkdir -p ${bin_path} >> /dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            log "[ERROR] create ${bin_path} failed"
+            return 1
+        fi
+    fi
+    cat > ${set_env_file} <<EOF
+#!/bin/bash
+export ASCEND_CUSTOM_OPP_PATH=${_ASCEND_CUSTOM_OPP_PATH}:\${ASCEND_CUSTOM_OPP_PATH}
+export LD_LIBRARY_PATH=${_ASCEND_CUSTOM_OPP_PATH}/op_api/lib/:\${LD_LIBRARY_PATH}
+EOF
+    if [ $? -ne 0 ]; then
+        log "[ERROR] write ASCEND_CUSTOM_OPP_PATH to set_env.bash failed"
+        return 1
+    fi
+    return 0
+}
+
+log_custom_env_requirements()
+{
+    # 同时给出export和source两种方式，兼容不同用户的环境使能习惯。
+    _ASCEND_CUSTOM_OPP_PATH=${targetdir}/${vendordir}
+    log "[INFO] using requirements: when custom module install finished or before you run the custom module, \
+        execute the following commands to set the environment path: \
+        [ export ASCEND_CUSTOM_OPP_PATH=${_ASCEND_CUSTOM_OPP_PATH}:\${ASCEND_CUSTOM_OPP_PATH} ] and \
+        [ export LD_LIBRARY_PATH=${_ASCEND_CUSTOM_OPP_PATH}/op_api/lib/:\${LD_LIBRARY_PATH} ]."
+    log "[INFO] You can also execute the equivalent command [ source ${_ASCEND_CUSTOM_OPP_PATH}/bin/set_env.bash ]."
+}
+
 log "[INFO] copy uninstall sh success"
 
 log "[INFO] upgrade framework"
@@ -148,6 +184,12 @@ vendor=$(echo $found_vendor | tr -s ' ' ',')
 if [ "$vendor" != "" ]; then
     sed -i "/load_priority=$found_vendors/s@load_priority=$found_vendors@load_priority=$vendor_name,$vendor@g" "$config_file"
 fi
+
+write_set_env
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+log_custom_env_requirements
 
 echo "SUCCESS"
 exit 0
