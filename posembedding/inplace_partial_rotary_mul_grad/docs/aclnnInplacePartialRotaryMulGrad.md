@@ -249,7 +249,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
     <tr>
       <td>xOptional</td>
       <td>可选输入</td>
-      <td>正向计算输入x，空指针时不计算dcosOut和dsinOut。</td>
+      <td>正向计算输入x。<b>当前版本暂不支持，请传入空指针。</b>空指针时不计算dcosOut和dsinOut。</td>
       <td>与dy数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
@@ -289,7 +289,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
     <tr>
       <td>dcosOut</td>
       <td>输出</td>
-      <td>正向计算输入cos的导数，xOptional非空时有效。</td>
+      <td>正向计算输入cos的导数。<b>当前版本暂不支持，输出无意义。</b></td>
       <td>与cos数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
@@ -299,7 +299,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
     <tr>
       <td>dsinOut</td>
       <td>输出</td>
-      <td>正向计算输入sin的导数，xOptional非空时有效。</td>
+      <td>正向计算输入sin的导数。<b>当前版本暂不支持，输出无意义。</b></td>
       <td>与sin数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
@@ -434,6 +434,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
   - 输出张量dcosOut与cos的数据类型必须相同。
   - 输出张量dsinOut与sin的数据类型必须相同。
   - 当xOptional为空指针时，不计算dcosOut和dsinOut，此时dcosOut和dsinOut无意义。
+  - **注意**：当前版本暂不支持xOptional（即dcos/dsin）的梯度计算。xOptional输入及dcosOut/dsinOut输出参数保留用于后续版本兼容，现阶段请传入空指针。
 
 
 ## 调用示例
