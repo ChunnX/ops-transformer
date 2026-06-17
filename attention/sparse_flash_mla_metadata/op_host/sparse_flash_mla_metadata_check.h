@@ -95,8 +95,10 @@ static aclnnStatus CheckReservedOptionalTensorSas(const aclTensor* tensor, const
 
 aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenOriKv,
                                 int64_t maxSeqlenCmpKv, int64_t numHeadsQ, int64_t numHeadsKv,
-                                int64_t cmpTopK, int64_t cmpRatio, int64_t oriMaskMode, int64_t oriWinLeft,
-                                const char* layoutQOptional, const char* layoutKvOptional, bool hasCmpKv)
+                                int64_t headDim, int64_t oriTopK, int64_t cmpTopK, int64_t cmpRatio,
+                                int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft,
+                                int64_t oriWinRight, const char* layoutQOptional, const char* layoutKvOptional,
+                                bool hasCmpKv)
 {
     // batch_size 非负校验
     if (batchSize < 0) {
@@ -133,6 +135,10 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_kv should only be 1, but got %ld", numHeadsKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    if (headDim != 512) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "head_dim should only be 512, but got %ld", headDim);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (numHeadsQ % numHeadsKv != 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "num_heads_q should be divisible by num_heads_kv, but got %ld and %ld", numHeadsQ, numHeadsKv);
@@ -153,9 +159,21 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ori_mask_mode should be 0, 3 or 4, but got %ld", oriMaskMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    if (cmpMaskMode != 0 && cmpMaskMode != 3) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_mask_mode should be 0 or 3, but got %ld", cmpMaskMode);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (oriTopK != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ori_topk is reserved and should only be 0, but got %ld", oriTopK);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // ori_win_left 校验
     if (oriWinLeft != 127) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ori_win_left should only be 127, but got %ld", oriWinLeft);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (oriWinRight != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ori_win_right should only be 0, but got %ld", oriWinRight);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (hasCmpKv && cmpRatio > 1) {
@@ -453,8 +471,8 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
                                const aclTensor* metadata)
 {
     if (CheckSingleParamSas(batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, numHeadsQ, numHeadsKv,
-                            cmpTopK, cmpRatio, oriMaskMode, oriWinLeft, layoutQOptional, layoutKvOptional,
-                            hasCmpKv) == ACLNN_SUCCESS &&
+                            headDim, oriTopK, cmpTopK, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft,
+                            oriWinRight, layoutQOptional, layoutKvOptional, hasCmpKv) == ACLNN_SUCCESS &&
         CheckExistenceSas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, cuSeqLensOriKvOptional,
                           cuSeqLensCmpKvOptional, sequsedOriKvOptional, hasCmpKv, metadata) == ACLNN_SUCCESS &&
         CheckConsistencySas(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,

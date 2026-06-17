@@ -598,7 +598,7 @@ aclnnStatus aclnnSparseFlashMla(
   | N1            | 1到128           | Query头数，必须为2的幂次。                        |
   | N2            | 1            | KV头数仅支持1（共享KV + GQA）。                     |
   | D             | 512          | 每个注意力头的维度仅支持512。                        |
-  | cmpRatio     | 1 / 4 / 128 | 1表示SWA语义；CFA/SCFA模式支持4或128。               |
+  | cmpRatio     | 0 / 1 / 4 / 128 | 0和1表示SWA语义；CFA/SCFA模式支持4或128。           |
   | oriMaskMode | 4            | 原始KV掩码模式仅支持4（Band模式）。                   |
   | cmpMaskMode | 3            | 压缩KV掩码模式仅支持3（RightDownCausal模式）。        |
   | oriWinLeft  | 127          | 滑动窗口向左扩展仅支持127。                           |

@@ -316,7 +316,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>对oriKv的压缩率。</td>
-      <td>取值范围为[1,128]。1表示SWA语义；CFA/SCFA模式支持4或128。</td>
+      <td>取值范围为[0,128]。0和1表示SWA语义；CFA/SCFA模式支持4或128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -336,7 +336,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
       <td>q和cmpKv计算的mask模式。</td>
-      <td>仅支持3（RightDownCausal模式）。默认值为3。</td>
+      <td>支持0（No mask）或3（RightDownCausal模式）。默认值为3。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -468,13 +468,13 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>numHeadsKv不为1。</td>
     </tr>
     <tr>
-      <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
+      <td>oriMaskMode不在支持范围内，或cmpMaskMode不为0/3。</td>
     </tr>
     <tr>
       <td>oriWinLeft不为127。</td>
     </tr>
     <tr>
-      <td>cmpRatio不在[1,128]范围内，或CFA/SCFA模式下cmpRatio不为4或128。</td>
+      <td>cmpRatio不在[0,128]范围内，或CFA/SCFA模式下cmpRatio不为4或128。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_RUNTIME_ERROR</td>
@@ -540,9 +540,9 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   | numHeadsQ   | 1到128          | Query头数。numHeadsQ / numHeadsKv必须为[1,128]范围内的2的幂。 |
   | numHeadsKv  | 1              | KV头数仅支持1。                              |
   | headDim      | 512            | 每个注意力头的维度仅支持512。                 |
-  | cmpRatio     | 1 / 4 / 128    | 1表示SWA语义；CFA/SCFA模式支持4或128。     |
+  | cmpRatio     | 0 / 1 / 4 / 128 | 0和1表示SWA语义；CFA/SCFA模式支持4或128。 |
   | oriMaskMode | 4              | 原始KV掩码模式仅支持4（Band模式）。            |
-  | cmpMaskMode | 3              | 压缩KV掩码模式仅支持3（RightDownCausal模式）。 |
+  | cmpMaskMode | 0 / 3          | 压缩KV掩码模式支持0（No mask）或3（RightDownCausal模式）。 |
   | oriWinLeft  | 127            | 滑动窗口向左扩展仅支持127。                    |
   | oriWinRight | 0              | 滑动窗口向右扩展仅支持0。                      |
 

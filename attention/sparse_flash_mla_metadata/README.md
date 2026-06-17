@@ -164,7 +164,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对`ori_kv`的压缩率，1表示SWA语义，CFA/SCFA模式支持4或128。</td>
+      <td>表示对`ori_kv`的压缩率，0和1表示SWA语义，CFA/SCFA模式支持4或128。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
