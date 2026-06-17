@@ -182,7 +182,7 @@ def parse_byte(s):
         return int(s, 16)
     if s.startswith(('0b', '0B')):
         return int(s, 2)
-    return int(s)
+    return int(s, 16)
 
 
 FIELDS = [
