@@ -174,7 +174,6 @@ ge::graphStatus QuantCompressorTiling::SetWorkSpaceInfo()
     if (coff == 2) {
         workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim;
     }
-    workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * baseParams_->nSize;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -261,8 +260,6 @@ ge::graphStatus QuantCompressorTiling::CalcWorkSpace()
         workspaceParams_->mm1ScoreResSize * maxGroupNum * MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
     workspaceSize_ +=
         workspaceParams_->vec1TailCacheSize * MM1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio * 2; // 2 kv和score
-    workspaceSize_ +=
-        workspaceParams_->vec1ResSize * maxGroupNum * V1_RES_ELEM_SIZE * workspaceParams_->dbWorkspaceRatio;
 
     if (context_->workSpaces) {
         context_->workSpaces[0] = workspaceSize_;

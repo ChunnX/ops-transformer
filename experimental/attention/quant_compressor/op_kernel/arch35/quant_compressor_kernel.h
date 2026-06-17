@@ -396,7 +396,6 @@ __aicore__ inline void QuantCompressorKernel<COMP>::CalcSplitCoreInfo()
     uint32_t coff = (uint32_t)COMP::coff;
     constInfo.mm1KvResSize = constInfo.mBaseSize * constInfo.headDim * coff;
     constInfo.mm1ScoreResSize = constInfo.mBaseSize * constInfo.headDim * coff;
-    constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
 
     constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
 }

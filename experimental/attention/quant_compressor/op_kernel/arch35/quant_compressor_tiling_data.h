@@ -62,7 +62,6 @@ namespace optiling {
     struct QuantCompressorWorkspaceParams {
         uint32_t mm1KvResSize;
         uint32_t mm1ScoreResSize;
-        uint32_t vec1ResSize;
         uint32_t vec1TailCacheSize;
         uint32_t dbWorkspaceRatio = 1;
     };
