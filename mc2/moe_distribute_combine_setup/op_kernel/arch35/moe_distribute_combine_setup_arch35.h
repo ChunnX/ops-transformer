@@ -47,6 +47,8 @@ struct WriteWithNotifySQEInfoParams {
 #define TemplateMC2TypeClass typename ExpandXType, typename ExpandIdxType
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
 
+#define TOKEN_BY_TOKEN
+
 using namespace AscendC;
 using namespace Mc2Aclnn;
 
@@ -148,9 +150,11 @@ private:
     __gm__ ChannelEntity* urmaCommHandle_[HCCL_MAX_RANK_SIZE];
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
 
+    // GetUrmaAddrByRankId中是否包含 winDataSizeOffset_??????
     __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId, const int32_t epRankId)
     {
         if (rankId == epRankId) {
+            // ---todo 需要确认 rma.addr + STATE_SIZE 是否已经等价于目标 rank 当前 winDataSizeOffset_ 对应的数据半区。如果不是，remoteAddr 还需要补 winDataSizeOffset
             return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
         }
         uint32_t currRankId = rankId > epRankId? rankId - 1 : rankId;
@@ -345,6 +349,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         }
         // 当前要发送的token数量
         uint32_t curTokenNum = assistInfoForCombineLocal.GetValue(assistInfoIdx) - preCount;
+        if(0 == curTokenNum) {
+            continue;
+        }
 
         if (unlikely(sendRankId == moeDistributeCombineSetupInfo_->epRankId)) { // 本卡通信：仅搬运数据
             if (likely(curTokenNum > 0U)) {
@@ -367,17 +374,38 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 
         //非本卡通信：统一敲doorbell
         uint32_t currRankId = sendRankId > moeDistributeCombineSetupInfo_->epRankId ? sendRankId - 1 : sendRankId;
+#ifdef TOKEN_BY_TOKEN
+        // WriteNbi 逐 token
         for(uint32_t tokenIndex = 0; tokenIndex < curTokenNum; ++tokenIndex) {
-            // 计算目标窗口地址:
-            // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
-            GM_ADDR rankGM = (GM_ADDR)(GetWinAddrByRankId(sendRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
-            GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(sendRankId, moeDistributeCombineSetupInfo_->epRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
-            hcomm_.WriteNbi<false>(mc2Context_->hcommHandle_[currRankId], remoteAddr, rankGM, hAlignSize_);
+            GM_ADDR rankGM = (GM_ADDR)(expandXGM_ + (static_cast<uint64_t>(preCount) + tokenIndex) * axisHExpandXTypeSize_);
+            GM_ADDR remoteAddr = (GM_ADDR)(
+                GetUrmaAddrByRankId(sendRankId, moeDistributeCombineSetupInfo_->epRankId) + // GetUrmaAddrByRankId中是否包含 winDataSizeOffset_??????
+                epDataOffsetOnWin_ +
+                static_cast<uint64_t>(sendExpertId) * expertPerSizeOnWin_ +
+                static_cast<uint64_t>(tokenIndex) * axisHExpandXTypeSize_);
+
+            hcomm_.WriteNbi<false>(
+                mc2Context_->hcommHandle_[currRankId],
+                remoteAddr,
+                rankGM,
+                static_cast<uint32_t>(axisHExpandXTypeSize_));
         }
-        if(likely(curTokenNum > 0U)) {
-            hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
-            hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
-        }
+#else
+        // ---todo 如果 WriteNbi 支持一次写整段
+        GM_ADDR rankGM = (GM_ADDR)(expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_);
+        GM_ADDR remoteAddr = (GM_ADDR)(
+            GetUrmaAddrByRankId(sendRankId, moeDistributeCombineSetupInfo_->epRankId) +
+            epDataOffsetOnWin_ +
+            static_cast<uint64_t>(sendExpertId) * expertPerSizeOnWin_);
+
+        hcomm_.WriteNbi<false>(
+            mc2Context_->hcommHandle_[currRankId],
+            remoteAddr,
+            rankGM,
+            static_cast<uint32_t>(curTokenNum * axisHExpandXTypeSize_));
+#endif
+        hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
+        hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
     }
     SyncAll<true>();
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);

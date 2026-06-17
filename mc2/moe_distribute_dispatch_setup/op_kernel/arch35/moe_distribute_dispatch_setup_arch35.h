@@ -72,6 +72,10 @@ struct BatchWriteItem {
     typename XType, typename YOutType, int32_t QuantMode, bool IsSmoothScaleExist
 #define TemplateMC2TypeFunc XType, YOutType, QuantMode, IsSmoothScaleExist
 
+// 下述两个开关：定义时开启，注释时关闭
+//#define DETECTION_TIME    // 统计时延开关
+//#define IDENTIFICATION    // 识别热卡开关
+
 using namespace AscendC;
 using namespace Mc2Aclnn;
 
@@ -1073,7 +1077,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Separate
 // 但不能写到中转 rank 的普通 expert window。应该写到一个专门的 reroute/overflow buffer，并额外写 metadata，
 // 例如原始目标 (sendRankId, sendExpertId)、原始 slot、token 数等。
 
-//#define DETECTION_TIME
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communication()
 {
