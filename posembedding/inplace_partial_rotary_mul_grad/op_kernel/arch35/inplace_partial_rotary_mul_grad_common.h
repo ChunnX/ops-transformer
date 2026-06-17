@@ -45,8 +45,8 @@ __aicore__ inline void HalfGradAlignVF(const LocalTensor<DTYPE_COS> &sinTensor,
                                         uint32_t dAlignDy, uint16_t currSNum, uint16_t currDNum)
 {
     uint32_t halfD = dLen / HALF_INTERLEAVE_COEF;
-    uint32_t halfDAlignDy = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY)));
-    uint32_t halfDAlignCos = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS)));
+    uint32_t halfDAlignDy = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY));
+    uint32_t halfDAlignCos = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
     uint16_t repeatTimes = AscendC::Ceil(halfD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
     uint32_t cosRowStride = dLen;
@@ -106,7 +106,7 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<DTYPE_COS> &sinTen
                                              const LocalTensor<DTYPE_DY> &outTensor, uint32_t dLen,
                                              uint16_t currSNum, uint16_t currDNum)
 {
-    uint32_t dAlignDy = AscendC::Ceil(dLen, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY)));
+    uint32_t dAlignDy = AscendC::Ceil(dLen, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY));
     uint16_t repeatTimes = AscendC::Ceil(dLen, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
     uint32_t cosRowStride = dLen;
@@ -182,9 +182,9 @@ __aicore__ inline void QuarterGradAlignVF(const LocalTensor<DTYPE_COS> &sinTenso
 {
     uint32_t quarterD = dLen / QUARTER_MODE_COEF;
     uint32_t quarterDAlignDy =
-        AscendC::Ceil(quarterD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY)));
+        AscendC::Ceil(quarterD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY));
     uint32_t quarterDAlignCos =
-        AscendC::Ceil(quarterD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS)));
+        AscendC::Ceil(quarterD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
     uint16_t repeatTimes = AscendC::Ceil(quarterD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
     uint32_t cosRowStride = dLen;
@@ -273,9 +273,9 @@ __aicore__ inline void InterleaveHalfModeGradVF(const LocalTensor<DTYPE_COS> &si
                                                  uint16_t currSNum, uint16_t currDNum)
 {
     uint32_t halfD = dLen / HALF_INTERLEAVE_COEF;
-    uint32_t dAlignDy = AscendC::Ceil(dLen, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY)));
-    uint32_t halfDAlignDy = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY)));
-    uint32_t halfDAlignCos = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS)));
+    uint32_t dAlignDy = AscendC::Ceil(dLen, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY));
+    uint32_t halfDAlignDy = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY));
+    uint32_t halfDAlignCos = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
     uint16_t repeatTimes = AscendC::Ceil(halfD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
     uint32_t cosRowStride = dLen;
@@ -340,7 +340,7 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ DTYPE_DY *in, __local_
     uint16_t dLoopCount = (dHalfSize + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
     uint32_t dHalfOffsetDy = dAlignDy / HALF_INTERLEAVE_COEF;
     uint32_t dHalfOffsetCos =
-        AscendC::Ceil(dHalfSize, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS)));
+        AscendC::Ceil(dHalfSize, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
 
     int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy;
     int32_t nStepUb = ubFactorS * dAlignDy;
@@ -412,7 +412,7 @@ __aicore__ inline void BatchQuarterGradAlignVF(
     uint32_t dThreeQuarterOffsetDy = dQuarterOffsetDy + dHalfOffsetDy;
     uint32_t dQuarterOffsetCos =
         AscendC::Ceil(static_cast<uint32_t>(dQuarterSize),
-                      static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS)));
+                      static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
     uint32_t dHalfOffsetCos = dQuarterOffsetCos * HALF_INTERLEAVE_COEF;
     uint32_t dThreeQuarterOffsetCos = dQuarterOffsetCos + dHalfOffsetCos;
 
@@ -582,7 +582,7 @@ __aicore__ inline void BatchInterleaveHalfModeGradVF(
     uint32_t dHalfOffsetDy = dAlignDy / HALF_INTERLEAVE_COEF;
     uint32_t dHalfOffsetCos =
         AscendC::Ceil(static_cast<uint32_t>(dHalfSize),
-                      static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS)));
+                      static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
 
     int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy;
     int32_t nStepUb = ubFactorS * dAlignDy;
