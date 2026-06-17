@@ -21,6 +21,10 @@ using AscendC::CrossCoreWaitFlag;
 #define BSA_TILING_VERIFY_PRINT 0
 #endif
 
+#ifndef BSA_ENABLE_PRE_TOPK_PIPELINE
+#define BSA_ENABLE_PRE_TOPK_PIPELINE 0
+#endif
+
 #define BSA_TILING_VERIFY_PRINTF(...) do {} while (0)
 
 template <typename BSAT> class BSASelectBlockMaskBase {
@@ -433,34 +437,36 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
     for (uint32_t batchIdx = 0; batchIdx < constInfo.batchSize; batchIdx++) {
         for (uint32_t headIdx = 0; headIdx < constInfo.numHeads; headIdx++) {
 
-            ProcessPoolingK(batchIdx, headIdx);
-            SyncAll<false>();
+            if (BSA_ENABLE_PRE_TOPK_PIPELINE) {
+                ProcessPoolingK(batchIdx, headIdx);
+                SyncAll<false>();
 
-            for (uint32_t qChunkStart = startRow; qChunkStart < endRow;
-                 qChunkStart += constInfo.qChunkSize) {
+                for (uint32_t qChunkStart = startRow; qChunkStart < endRow;
+                     qChunkStart += constInfo.qChunkSize) {
 
-                uint32_t qChunkEnd = BSAMin(qChunkStart + constInfo.qChunkSize, endRow);
-                uint32_t curQChunkSize = qChunkEnd - qChunkStart;
+                    uint32_t qChunkEnd = BSAMin(qChunkStart + constInfo.qChunkSize, endRow);
+                    uint32_t curQChunkSize = qChunkEnd - qChunkStart;
 
-                uint32_t tokenStart = qChunkStart * constInfo.blockShapeX;
-                uint32_t tokenEnd = BSAMin(qChunkEnd * constInfo.blockShapeX, constInfo.maxQSeqlen);
-                ProcessPoolingQ(batchIdx, headIdx, tokenStart, tokenEnd);
+                    uint32_t tokenStart = qChunkStart * constInfo.blockShapeX;
+                    uint32_t tokenEnd = BSAMin(qChunkEnd * constInfo.blockShapeX, constInfo.maxQSeqlen);
+                    ProcessPoolingQ(batchIdx, headIdx, tokenStart, tokenEnd);
 
-                uint32_t qChunkFlagIdx = (qChunkStart / constInfo.qChunkSize) & 1;
-                if ASCEND_IS_AIV {
-                    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
+                    uint32_t qChunkFlagIdx = (qChunkStart / constInfo.qChunkSize) & 1;
+                    if ASCEND_IS_AIV {
+                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
+                    }
+                    if ASCEND_IS_AIC {
+                        CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
+                    }
+
+                    T mFinal = SOFTMAX_NEG_INF;
+                    T lFinal = 0.0f;
+                    ProcessMatmulSoftmax(batchIdx, headIdx, qChunkStart, curQChunkSize, mFinal, lFinal);
+
+                    ProcessSoftmaxSecondPass(qChunkStart, qChunkEnd, mFinal, lFinal);
                 }
-                if ASCEND_IS_AIC {
-                    CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
-                }
-
-                T mFinal = SOFTMAX_NEG_INF;
-                T lFinal = 0.0f;
-                ProcessMatmulSoftmax(batchIdx, headIdx, qChunkStart, curQChunkSize, mFinal, lFinal);
-
-                ProcessSoftmaxSecondPass(qChunkStart, qChunkEnd, mFinal, lFinal);
+                SyncAll<false>();
             }
-            SyncAll<false>();
 
             if ASCEND_IS_AIV {
                 radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx);
