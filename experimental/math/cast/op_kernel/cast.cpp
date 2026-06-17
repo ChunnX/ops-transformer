@@ -73,6 +73,7 @@ constexpr int CAST_X = ORIG_DTYPE_X;
 constexpr int CAST_Y = ORIG_DTYPE_Y;
 constexpr int BUFFER_NUM = 2;
 constexpr int64_t DATA_BLOCK_BYTES = 32;
+constexpr int64_t BF16_TRANSPOSE_CHUNK = 4080;
 
 // Storage type: bf16 input is uint16_t; int64 is two uint32_t lanes per element.
 template <int D> struct DtMap;
@@ -118,6 +119,11 @@ public:
     static_assert(Y != DT_BF16, "BF16 output is not supported by this task");
     static constexpr bool HASBF = (X == DT_BF16);
     static constexpr bool DST_BOOL = (Y == DT_BOOL) && !HASBF;
+    static constexpr bool BF_BOOL = HASBF && (Y == DT_BOOL);
+    // bf16 numeric dtypes eligible for the v4dtrans (T) expansion. i64 is excluded: it always ends
+    // in the scalar Widen64 (no dav_m200 i64 vector path), so T gives no net win and adds a tile-edge
+    // staging hazard -> i64 keeps the correct scalar bit-splice.
+    static constexpr bool BF_T = HASBF && (Y != DT_BOOL) && (Y != DT_INT64);
     static constexpr bool SCALAR_I16_F32 = (X == DT_INT16 && Y == DT_FLOAT);
     static constexpr bool DIRECT = !DST_BOOL && !HAS64 && !HASBF && !SCALAR_I16_F32 && IsDirectPair(X, Y);
     static constexpr bool TWO_CAST = !DST_BOOL && !DIRECT && !HAS64 && !HASBF;
@@ -145,13 +151,18 @@ public:
         xGm_.SetGlobalBuffer((__gm__ TX*)x + blockOffset * LanesOf(X));
         yGm_.SetGlobalBuffer((__gm__ TY*)y + blockOffset * LanesOf(Y));
 
-        pipe_.InitBuffer(inQue_, BUFFER_NUM, ubFormer_ * sizeof(TX) * LanesOf(X));
+        // HASBF numeric path: v4dtrans writes/reads AlignDataBlockLanes(count) (>= count, up to +15)
+        // per chunk; add 32-elem slack so transpose padding never overflows into the adjacent
+        // double-buffer (inQue) or the neighbouring scratch (mid/mid2).
+        int64_t bfSlack = BF_T ? DATA_BLOCK_BYTES : 0;
+        pipe_.InitBuffer(inQue_, BUFFER_NUM, BF_T ? (ubFormer_ + bfSlack) * sizeof(float)
+                                                  : ubFormer_ * sizeof(TX) * LanesOf(X));
         pipe_.InitBuffer(outQue_, BUFFER_NUM, ubFormer_ * sizeof(TY) * LanesOf(Y));
         if constexpr (NEED_MID) {
-            pipe_.InitBuffer(midBuf_, ubFormer_ * STAGE_BYTES);
+            pipe_.InitBuffer(midBuf_, (ubFormer_ + bfSlack) * STAGE_BYTES);
         }
         if constexpr (HAS64 || HASBF) {
-            pipe_.InitBuffer(mid2Buf_, ubFormer_ * STAGE_BYTES);
+            pipe_.InitBuffer(mid2Buf_, (ubFormer_ + bfSlack) * STAGE_BYTES);
         }
         if constexpr (NEED_DEQ) {
             AscendC::SetDeqScale(static_cast<half>(1.0));
@@ -191,8 +202,28 @@ private:
     __aicore__ inline void CopyIn(int64_t loop, int64_t count)
     {
         AscendC::LocalTensor<TX> inLocal = inQue_.AllocTensor<TX>();
-        int64_t lanes = count * LanesOf(X);
-        AscendC::DataCopy(inLocal, xGm_[loop * ubFormer_ * LanesOf(X)], AlignDataBlockLanes<TX>(lanes));
+        if constexpr (BF_T) {
+            // H014: build [zero...][bf16...] then v4dtrans NCHW2NHWC -> [0,bf16,0,bf16,...] = FP32 bits.
+            AscendC::LocalTensor<uint16_t> dst = inLocal.template ReinterpretCast<uint16_t>();
+            AscendC::LocalTensor<uint16_t> tmp = midBuf_.Get<uint16_t>();
+            int64_t done = 0;
+            while (done < count) {
+                int64_t chunk = (count - done > BF16_TRANSPOSE_CHUNK) ? BF16_TRANSPOSE_CHUNK : (count - done);
+                int64_t aligned = AlignDataBlockLanes<uint16_t>(chunk);
+                AscendC::Duplicate(tmp, static_cast<uint16_t>(0), static_cast<uint32_t>(aligned));
+                AscendC::DataCopy(tmp[aligned], xGm_[loop * ubFormer_ + done], aligned);
+                SyncEvent<AscendC::HardEvent::MTE2_V>();
+                AscendC::TransposeParamsExt params(1, 2, 1, static_cast<uint16_t>(aligned),
+                    AscendC::TransposeType::TRANSPOSE_NCHW2NHWC);
+                AscendC::Transpose<uint16_t>(dst[done * 2], tmp, tmp.template ReinterpretCast<uint8_t>(), params);
+                AscendC::PipeBarrier<PIPE_V>();
+                SyncEvent<AscendC::HardEvent::V_MTE2>();  // next chunk DataCopy must not race this transpose's tmp read
+                done += chunk;
+            }
+        } else {
+            int64_t lanes = count * LanesOf(X);
+            AscendC::DataCopy(inLocal, xGm_[loop * ubFormer_ * LanesOf(X)], AlignDataBlockLanes<TX>(lanes));
+        }
         inQue_.EnQue(inLocal);
     }
 
@@ -350,7 +381,7 @@ private:
             AscendC::PipeBarrier<PIPE_V>();
             SyncEvent<AscendC::HardEvent::V_S>();
             Widen64(mid, dst, count);
-        } else {  // DT_BF16 -> i64: bits->f32->i32->widen
+        } else {  // DT_BF16 -> i64: scalar bit-splice (i64 path is scalar-Widen64 dominated anyway)
             AscendC::LocalTensor<float> midF = midBuf_.Get<float>();
             AscendC::LocalTensor<int32_t> midI = mid2Buf_.Get<int32_t>();
             Bf16ToF32(inLocal.template ReinterpretCast<uint16_t>(), midF, count);
@@ -364,19 +395,16 @@ private:
     __aicore__ inline void ComputeFromBf16(const AscendC::LocalTensor<TX>& inLocal,
                                            const AscendC::LocalTensor<TY>& outLocal, int64_t count, uint32_t calc)
     {
-        AscendC::LocalTensor<uint16_t> src = inLocal.template ReinterpretCast<uint16_t>();
-        if constexpr (Y == DT_FLOAT) {
-            Bf16ToF32(src, outLocal.template ReinterpretCast<float>(), count);
-            return;
-        }
         if constexpr (Y == DT_BOOL) {
-            Bf16ToBool(src, outLocal.template ReinterpretCast<int8_t>(), count, calc);
+            // bf16 stays raw uint16 in inLocal (no transpose); bitwise nan-aware path.
+            Bf16ToBool(inLocal.template ReinterpretCast<uint16_t>(), outLocal.template ReinterpretCast<int8_t>(), count, calc);
             return;
         }
-        AscendC::LocalTensor<float> midF = midBuf_.Get<float>();
-        Bf16ToF32(src, midF, count);
-        SyncEvent<AscendC::HardEvent::S_V>();
-        if constexpr (Y == DT_FLOAT16) {
+        // H014: inLocal already holds FP32 bit layout (built in CopyIn via v4dtrans).
+        AscendC::LocalTensor<float> midF = inLocal.template ReinterpretCast<float>();
+        if constexpr (Y == DT_FLOAT) {
+            AscendC::Adds(outLocal.template ReinterpretCast<float>(), midF, static_cast<float>(0.0), calc);
+        } else if constexpr (Y == DT_FLOAT16) {
             AscendC::Cast(outLocal, midF, RoundMode::CAST_NONE, calc);
         } else if constexpr (Y == DT_INT32) {
             AscendC::Cast(outLocal, midF, RoundMode::CAST_RINT, calc);
