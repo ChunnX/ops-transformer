@@ -30,7 +30,6 @@ using namespace AscendC;
 
 // Double Buffer configuration - Double Buffer提升Memory Bound算子性能
 constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;  // Double Buffer depth for data tiles
-constexpr uint32_t SINGLE_BUFFER_DEPTH = 1;  // Single Buffer depth for weights
 
 #define TEMPLATE_DECLARE template <typename T, uint16_t USE_PERMANENT_X>
 #define TEMPLATE_ARGS T, USE_PERMANENT_X
@@ -216,7 +215,9 @@ __aicore__ inline void MhcPostKernel<TEMPLATE_ARGS>::ComputeCopyOutAllX(int64_t 
 
         Muls(outF32, hOutF32, hPostGm_.GetValue(hPostBase + i), dNum);
         for (int64_t j = 0; j < tilingData_->n; j++) {
+            PipeBarrier<PIPE_V>();
             Axpy(outF32, xF32[j * dNumAlign], hResGm_.GetValue(hResBase + j * tilingData_->n + i), dNum);
+            PipeBarrier<PIPE_V>();
         }
 
         Cast(outputTile, outF32, RoundMode::CAST_RINT, dNum);
@@ -238,7 +239,7 @@ __aicore__ inline void MhcPostKernel<TEMPLATE_ARGS>::CopyInX(int64_t bsIdx, int6
 
     if constexpr (USE_PERMANENT_X == 1) {
         DataCopyExtParams copyParams = {static_cast<uint16_t>(tilingData_->n), static_cast<uint32_t>(dNum * sizeof(T)),
-                                        static_cast<int64_t>((tilingData_->d - dNum) * sizeof(T)), 0, 0};
+                                        static_cast<uint32_t>((tilingData_->d - dNum) * sizeof(T)), 0, 0};
         DataCopyPad(xTileLocal, xGm_[xOffset], copyParams, {false, 0, 0, 0});
     } else {
         DataCopyExtParams copyParams = {1, static_cast<uint32_t>(dNum * sizeof(T)), 0, 0, 0};
