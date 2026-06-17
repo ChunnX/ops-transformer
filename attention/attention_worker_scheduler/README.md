@@ -52,28 +52,26 @@ $$
 
 ## 参数说明
 
-- **参数说明**
-
-  <table style="undefined;table-layout: fixed; width: 1565px"><colgroup>
-  <col style="width: 146px">
-  <col style="width: 135px">
-  <col style="width: 326px">
-  <col style="width: 246px">
-  <col style="width: 275px">
-  <col style="width: 101px">
-  <col style="width: 190px">
-  <col style="width: 146px">
+<table style="table-layout: fixed; width: 100%; white-space: normal;"><colgroup>
+  <col style="width: 12%">
+  <col style="width: 8%">
+  <col style="width: 26%">
+  <col style="width: 18%">
+  <col style="width: 8%">
+  <col style="width: 8%">
+  <col style="width: 12%">
+  <col style="width: 8%">
   </colgroup>
   <thead>
     <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
+      <th>参数<br>名</th>
+      <th>输入/<br>输出</th>
       <th>描述</th>
-      <th>使用说明</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
+      <th>使用<br>说明</th>
+      <th>数据<br>类型</th>
+      <th>数据<br>格式</th>
+      <th>维度<br>(shape)</th>
+      <th>非连续<br>Tensor</th>
     </tr></thead>
   <tbody>
     <tr>
@@ -117,4 +115,4 @@ $$
 
 | 调用方式  | 样例代码                                                                | 说明                                                                                          |
 | ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| aclnn接口 | [test_aclnn_inplace_attention_worker_scheduler](./examples/test_aclnn_inplace_attention_worker_scheduler.cpp) | 通过[`aclnnInplaceAttentionWorkerScheduler`](./docs/aclnnInplaceAttentionWorkerScheduler.md)接口方式调用AttentionWorkScheduler算子。 |
+| aclnn接口 | [test_aclnn_inplace_attention_worker_scheduler](./examples/test_aclnn_inplace_attention_worker_scheduler.cpp) | 通过[aclnnInplaceAttentionWorkerScheduler](./docs/aclnnInplaceAttentionWorkerScheduler.md)接口方式调用AttentionWorkScheduler算子。 |
