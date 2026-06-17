@@ -15,11 +15,6 @@ if (BUILD_OPEN_PROJECT)
     add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn)
 endif()
 
-set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    set(inplace_partial_rotary_mul_grad_apt_depends posembedding/apply_rotary_pos_emb CACHE INTERNAL "Dependencies for inplace_partial_rotary_mul_grad")
-endif()
-
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
             OP_NAME InplacePartialRotaryMulGrad

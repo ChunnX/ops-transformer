@@ -33,10 +33,6 @@ constexpr int64_t DIM_3 = 3;
 constexpr int64_t HALF_INTERLEAVE_MODE_COEF = 2;
 constexpr int64_t QUARTER_MODE_COEF = 4;
 constexpr int64_t D_LIMIT = 1024;
-constexpr int64_t CACHE_LINE_SIZE = 512;
-constexpr int64_t DOUBLE_BUFFER = 2;
-constexpr int64_t INPUT_OUTPUT_NUM = 2;
-constexpr int64_t INPUT_TWO_OUTPUT = 3; // 1个输入 2个输出
 
 const std::vector<ge::DataType> SUPPORT_DTYPE = {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16};
 static const std::vector<std::string> inputNames = {"dy", "cos", "sin", "x"};
@@ -508,6 +504,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::GetShapeAttrsInfo
 
     auto &dyInputShape = context_->GetInputShape(DY_INPUT_INDEX)->GetStorageShape();
     auto &cosInputShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
+    dyShape_ = dyInputShape;
+    cosShape_ = cosInputShape;
     OP_CHECK_IF(JudgeLayoutByShape(dyInputShape, cosInputShape) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "JudgeLayoutByShape fail."), return ge::GRAPH_FAILED);
     d_ = dyInputShape.GetDim(DIM_3);
