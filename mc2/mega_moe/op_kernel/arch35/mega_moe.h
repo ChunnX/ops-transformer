@@ -254,15 +254,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     // 分块流式后所有 O(ST) 缓冲降为 O(收侧 chunk)(maskChunk_/validTopkIndex_/topkIndex_), 与 bs 无关。
 
     // —— 与 chunk 无关的固定占用, 先逐项算大小 ——
-    uint32_t expertTokenCntTensorSize = ALIGN_32;     // 单 expert 收到 token 数(写 GM 用的 32B 暂存)
-    uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(   // 全局 [expert][srcRank] 收 token cumsum 表, 全程驻留
+    // Tensor用处：expertTokenCntTensor_ —— SendCntCal 写 GM 用的单 expert 收到 token 数暂存。
+    // Tensor大小：32B。
+    uint32_t expertTokenCntTensorSize = ALIGN_32;
+    // Tensor用处：cumsumInfoTensor_ —— 全局 [expert][srcRank] 收 token cumsum 表, 全程驻留(GMM offset/输出用)。
+    // Tensor大小：ws*epr*4 对齐 32B。
+    uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);  // ws 个 srcRank count, 每 rank 占 32B
-    constexpr uint32_t COPY_TMP_BUFFER_SIZE = TOKEN_SCALE_SIZE;                 // 6 个 dispatch buffer, 共 48KB
+    // Tensor用处：sendCntTensor_ —— SendCntCal stride 读本 expert 的 ws 个 srcRank count(只读 count, 不读 mask)。
+    // Tensor大小：每 rank 一个 burst 占 32B, 共 ws*32B。
+    uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
+    // Tensor用处：copyTmpTensors_ —— TripleInfoCalAndDispatch 的 6 个 dispatch buffer(EVENT_ID0..5 软流水)。
+    // Tensor大小：每块 TOKEN_SCALE_SIZE=8KB 容纳 token+scale, 共 6 块 48KB。
+    constexpr uint32_t COPY_TMP_BUFFER_SIZE = TOKEN_SCALE_SIZE;
     uint32_t copyTmpTotalSize = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * COPY_TMP_BUFFER_SIZE;
-    uint32_t expertTokenNumsOutTensorSize = Ops::Base::CeilAlign(               // 本卡各专家收到的 tokenCnt 数
+    // Tensor用处：expertTokenNumsOutTensor_ —— ExpertTokenNumCopyOut 用, 本卡各专家收到的 tokenCnt 数。
+    // Tensor大小：epr*4 对齐 32B。
+    uint32_t expertTokenNumsOutTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    // 尾部为 tripleTensor_(每行 32B)预留 DISPATCH_TRIPLE_TILE 行, 与 chunk 解耦。
+    // Tensor用处：tripleTensor_ 尾部预留区 —— TripleInfoCalAndDispatch 每 sub-slice 动态重建(每行 32B), 与 chunk 解耦。
+    // Tensor大小：DISPATCH_TRIPLE_TILE 行 * 32B。
     uint32_t tripleReserveSize = static_cast<uint32_t>(DISPATCH_TRIPLE_TILE) *
         static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
     uint32_t fixedBytes = expertTokenCntTensorSize + cumsumInfoTensorSize + sendCntTensorSize +
@@ -294,18 +305,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t sendCntTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
     sendCntTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendCntTensorAddr,
         sendCntTensorSize / sizeof(int32_t));
-    // 接收端单个 (dstRank,chunk) 的 mask 切片: maskChunk_(u8)/maskChunkU32_(u32) 同址别名(u8 读 win, u32 给 GatherMask)。
+    // Tensor用处：maskChunk_(u8)/maskChunkU32_(u32) 同址别名 —— 接收端单个 (dstRank,chunk) 的 mask 切片(u8 读 win, u32 给 GatherMask)。
+    // Tensor大小：chunk/8(chunk 为 256 倍数 ⇒ 32B 对齐)。
     uint32_t maskChunkAddr = sendCntTensorAddr + sendCntTensorSize;
-    uint32_t maskChunkSize = static_cast<uint32_t>(recvChunkTokenNum_ / 8);   // chunk/8(chunk 为 256 倍数 ⇒ 32B 对齐)
+    uint32_t maskChunkSize = static_cast<uint32_t>(recvChunkTokenNum_ / 8);
     maskChunk_ = LocalTensor<uint8_t>(TPosition::VECCALC, maskChunkAddr, maskChunkSize / sizeof(uint8_t));
     maskChunkU32_ = LocalTensor<uint32_t>(TPosition::VECCALC, maskChunkAddr, maskChunkSize / sizeof(uint32_t));
-    // validTopkIndexTensor_: GatherMask 输出, 命中当前 (dstRank,chunk) 的 chunk-local token 位置(每 chunk 覆写)。
+    // Tensor用处：validTopkIndexTensor_ —— GatherMask 输出, 命中当前 (dstRank,chunk) 的 chunk-local token 位置(每 chunk 覆写)。
+    // Tensor大小：chunk*4 对齐 32B。
     uint32_t validTopkIndexTensorAddr = maskChunkAddr + maskChunkSize;
     uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(recvChunkTokenNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     validTopkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr,
         validTopkIndexTensorSize / sizeof(int32_t));
-    // topkIndexTensor_: 当前 chunk 的全局 token 位置 [chunkStart, +chunk)(每 chunk 重 CreateVecIndex, 作 GatherMask src)。
+    // Tensor用处：topkIndexTensor_ —— 当前 chunk 的全局 token 位置 [chunkStart,+chunk)(每 chunk 重 CreateVecIndex, 作 GatherMask src)。
+    // Tensor大小：同 validTopkIndexTensor_(chunk*4 对齐 32B)。
     uint32_t topkIndexTensorAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
     uint32_t topkIndexTensorSize = validTopkIndexTensorSize;
     topkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr,
@@ -342,8 +356,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     // 先按各 tensor 实际大小算出与 chunk 无关的固定占用, 再用 UB 余量反推发侧 chunk, 最后按既定顺序落地址。
 
     // —— 与 chunk 无关的固定占用, 先逐项算大小 ——
-    // resetTensor_: groupFlagList 清零用的零缓冲, 封顶到 resetBatchNum_(本核 flag 份额与 DISPATCH_RESET_BATCH 取小);
-    //   本核份额超封顶时 ResetFlagList 用同一片零 UB 分批推 GM ⇒ reset UB 与 flag 总数(∝ bs)解耦(§6.7)。
+    // Tensor用处：resetTensor_ —— groupFlagList 清零用的零缓冲(封顶到 resetBatchNum_, 超额时 ResetFlagList 分批推 GM, §6.7)。
+    // Tensor大小：resetBatchNum_(=min(本核 flag 份额, DISPATCH_RESET_BATCH))个 int32, 对齐 256B。
     uint64_t flagInt32 = static_cast<uint64_t>(expertPerRank_) *
         (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_));
     uint32_t resetPerCore = Ops::Base::CeilDiv(flagInt32, static_cast<uint64_t>(blockAivNum_));
@@ -351,14 +365,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         static_cast<int32_t>(resetPerCore) : DISPATCH_RESET_BATCH;
     uint32_t resetTensorSize = Ops::Base::CeilAlign(static_cast<uint64_t>(resetBatchNum_),
         static_cast<uint64_t>(INT32_PER_256B)) * sizeof(int32_t);
-    uint32_t mxTempTensorSize = 2 * 1024;             // QuantProcessInRank 量化中间区域
-    // xOutTensor1_/2_(双 buffer): 量化输出 = token 长度 Align256 + scale 存储长度。
+    // Tensor用处：mxTempTensor_ —— QuantProcessInRank 量化计算中间区域。
+    // Tensor大小：2KB。
+    uint32_t mxTempTensorSize = 2 * 1024;
+    // Tensor用处：xOutTensor1_/2_(双 buffer) —— QuantProcessInRank 量化输出结果(token+scale)。
+    // Tensor大小：token 长度 Align256 + scale 存储长度(sizeof(ActivationType)=1)。
     uint32_t xOutTokenBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(k_ / ELEMS_PER_BYTE),
         static_cast<uint32_t>(ALIGN_256));
     uint32_t xOutTensorSize = xOutTokenBytes + Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
-    // xInTensor1_/2_(双 buffer): 输入 token, 长度 Align128。
+    // Tensor用处：xInTensor1_/2_(双 buffer) —— QuantProcessInRank 搬入的输入 token。
+    // Tensor大小：H 长度 Align128 * sizeof(bf16)。
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
-    // sendCntAccumulateTensor_: 每核 owned 全局专家数上界 = ceil(ws*epr/核), count 跨 chunk 累加, 与 bs 无关。
+    // Tensor用处：sendCntAccumulateTensor_ —— SendMaskCal 每核 per-owned-expert 跨 chunk count 累加器。
+    // Tensor大小：每核 owned 全局专家数上界 ceil(ws*epr/核)个 int32, 对齐 32B; 与 bs 无关。
     uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * expertPerRank_, blockAivNum_);
     uint32_t sendCntAccSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
@@ -382,8 +401,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(sendChunkTokenNum_)));
 
     // —— 按既定顺序落地址(复用上面的 size) ——
-    // topkChunk_: 当前 chunk 的 topk(CompareScalar 处理 chunk 个 int, 256B 对齐)。SendMaskCal 每块先 Duplicate(-1)
-    //   填无效位、再 DataCopyPad 有效段(尾块不足部分保持 -1, 不会误命中专家 0)。
+    // Tensor用处：topkChunk_ —— 当前 chunk 的 topk(CompareScalar 处理 chunk 个 int)。SendMaskCal 末块先 Duplicate(-1)
+    //   填无效位、再 DataCopyPad 有效段(尾部保持 -1, 不会误命中专家 0)。
+    // Tensor大小：chunk*4 对齐 256B。
     uint32_t topkChunkAddr = 0;
     uint32_t topkChunkSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(sendChunkTokenNum_) * static_cast<int64_t>(sizeof(int32_t)),
@@ -403,14 +423,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     xInTensor1_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr1, xInAlignSize / sizeof(bfloat16_t));
     uint32_t xInAlignAddr2 = xInAlignAddr1 + xInAlignSize;
     xInTensor2_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAlignAddr2, xInAlignSize / sizeof(bfloat16_t));
-    // sendMaskTensor_ 双 buffer(配 V->MTE3 软流水): 各 = chunk/8 mask 切片 + 32B(末块折叠 count)。chunk/8 天然 32B 对齐。
+    // Tensor用处：sendMaskTensor_ 双 buffer(配 V->MTE3 软流水) —— 源卡每 (chunk,expert) 算出的 mask 切片。
+    // Tensor大小：各 = chunk/8 mask 切片 + 32B(末块折叠 count); chunk/8 天然 32B 对齐。
     uint32_t maskBufBytes = static_cast<uint32_t>(sendChunkTokenNum_ / 8) + static_cast<uint32_t>(ALIGN_32);
     uint32_t sendMaskAddr = xInAlignAddr2 + xInAlignSize;
     for (int32_t index = 0; index < DOUBLE_BUFFER; ++index) {
         sendMaskTensor_[index] = LocalTensor<uint8_t>(TPosition::VECCALC,
             sendMaskAddr + static_cast<uint32_t>(index) * maskBufBytes, maskBufBytes);
     }
-    // sendGatherOutTensor_: SendMaskCal GatherMask 计 count 用的废弃输出 scratch(chunk 个 int, 256B 对齐)。
+    // Tensor用处：sendGatherOutTensor_ —— SendMaskCal GatherMask 计 count 用的废弃输出 scratch。
+    // Tensor大小：chunk*4 对齐 256B。
     uint32_t sendGatherOutAddr = sendMaskAddr + static_cast<uint32_t>(DOUBLE_BUFFER) * maskBufBytes;
     uint32_t sendGatherOutSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(sendChunkTokenNum_) * static_cast<int64_t>(sizeof(int32_t)),
@@ -524,10 +546,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
             }
             // count 回折: 末块把累计 count 紧跟 mask 切片一起 push(切片末尾恰好是槽的 count 字段偏移 maskAlignSize_)。
             pushBytes = sliceBytes + static_cast<int32_t>(sizeof(int32_t));
+            // 仅末块有无效尾: Duplicate(-1) 填满, 下面 DataCopyPad 只覆盖有效段, 余下保持 -1(不会误命中专家0)。
+            // 非末块整块都是有效 topk, DataCopyPad 全覆盖, 不必填 -1, 省一次 Duplicate。
+            Duplicate<int32_t>(topkChunk_, -1, sendChunkTokenNum_);
         }
         DataCopyExtParams maskCopyParams{1U, static_cast<uint32_t>(pushBytes), 0U, 0U, 0U};
-        // 载本 chunk topk: 先 Duplicate(-1) 填无效位, 再 DataCopyPad 有效段; 末块余下保持 -1(不会误命中专家0)。
-        Duplicate<int32_t>(topkChunk_, -1, sendChunkTokenNum_);
+        // V->MTE2: 保护 topkChunk_ 复用(等上一轮 GatherMask 读完)兼使末块 Duplicate 对下面的 DataCopyPad 可见。
         SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
         DataCopyExtParams loadParams{1U, static_cast<uint32_t>(validLen * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(topkChunk_, srcGlobalTensor[chunkStart], loadParams, loadPad);
@@ -1157,7 +1181,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // dispatch 反压预发信用: AIC 先放 GMM1_DISPATCH_CREDITS 个信用, 允许 sb1 提前这么多个专家做 dispatch;
     // 之后每处理完一专家归还 1 个(UpdateGroupParams 里), sb1 每专家消费 1 个 → sb1 领先 AIC 恒 ≤ 信用数,
     // flag2/credit 两个计数器都恒 <15, 与 epr 无关(epr=1024 也不溢出)。预发的这 N 个比消费多出 N 个,
-    // 循环结束后由 sb1 一次性排空(见下方 drain), 否则信用 flag 计数器残留会污染后续 kernel。
+    // 通道 8 在 GMM1 之后不再被复用, 故留到 kernel 末尾由 sb1 一次性排空(见 Process 结尾 drain),
+    // 只需保证退出前归零、不污染后续 kernel。
     if constexpr (g_coreType == AscendC::AIC) {
         for (int c = 0; c < GMM1_DISPATCH_CREDITS; c++) {
             CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_S>(GMM1_CREDIT_FLAG + 16);
@@ -1188,11 +1213,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     EndSync(vecSetSyncCom_);
     if constexpr(g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
-            // 排空 AIC 预发但未被循环消费的 GMM1_DISPATCH_CREDITS 个信用(每专家归还 1 个, 预发的 N 个恒多出)。
-            // AIC 已在循环里把全部归还发齐, 这 N 个必定可取; 取空后信用 flag 计数器归零, 不污染后续 kernel。
-            for (int c = 0; c < GMM1_DISPATCH_CREDITS; c++) {
-                CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(GMM1_CREDIT_FLAG);
-            }
             ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
         }
     }
@@ -1222,6 +1242,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         UnpermuteBuffInit();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
+    }
+    // kernel 收尾: sb1 排空 AIC 在 GMM1 预发但未被循环消费的 GMM1_DISPATCH_CREDITS 个信用(每专家归还 1, 预发的 N 个恒多出)。
+    // 通道 8 在 GMM1 之后无人复用, AIC 早已发齐全部归还, 这 N 个必定可取; 取空使计数器归零, 不污染后续 kernel。
+    if constexpr(g_coreType == AIV) {
+        if (subBlockIdx_ == 1) {
+            for (int c = 0; c < GMM1_DISPATCH_CREDITS; c++) {
+                CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(GMM1_CREDIT_FLAG);
+            }
+        }
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }

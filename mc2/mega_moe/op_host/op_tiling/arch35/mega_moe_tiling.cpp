@@ -968,6 +968,11 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
 
     uint64_t ubSize = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    // 校验平台查到的 UB 大小: kernel 分块流式按它动态算 chunk, 为 0(查询失败)会导致 chunk 计算下溢, 必须拦下。
+    OP_TILING_CHECK(ubSize == 0U,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "ubSize", std::to_string(ubSize).c_str(),
+            "non-zero (platform UB query failed)"),
+        return ge::GRAPH_FAILED);
     tilingData->ubSize = static_cast<uint32_t>(ubSize);  // 分块流式动态算 chunk 用, 不再在 kernel 里硬编码
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
     context->SetScheduleMode(1); // batch model, all cores start at the same time
