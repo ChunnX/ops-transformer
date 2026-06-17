@@ -389,6 +389,7 @@ __aicore__ inline void GmmAddCompute<mmType, sync>::MmComputePrepare(uint32_t gr
 extern "C" __global__ __aicore__ void grouped_matmul_add(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y,
                                                          GM_ADDR yRef, GM_ADDR workspace, GM_ADDR tiling)
 {
+    AscendC::InitSocState();
     TPipe tPipe;
     AscendCUtils::SetOverflow(1);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
