@@ -397,8 +397,8 @@ static ge::graphStatus CheckParams(gert::TilingContext *context)
             return ge::SUCCESS;
         }
     }
-    OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad",
-        "query or keyIn or value or dy or softmaxMaxOptional or softmaxSumOptional or attentionInOptional");
+    OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, "
+            "the reason is: [fail to get shape or attr from context]");
     return ge::GRAPH_FAILED;
 }
 
