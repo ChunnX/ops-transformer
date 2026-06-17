@@ -59,5 +59,5 @@
 - tiling 策略参考GMM A16W8 多多多策略，x: `256*256` L1切分，weight：`256*256`，kL1=256
 - kernel参考GMMWeightQuantBasicController，用多多多计算方式，同时实现单单单
 - kernel的cube主要流程与A16W8多多多方案一致
-- vec反量化写NK/KN两份功能实现代码，代码参考 [wqbmmv2的weight ND int4的反量化方法](/home/sunduiyang/Code/ops-nn/matmul/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_reg_base_common.h)，核心函数为AntiquantComputeW4NKPerGroup和AntiquantComputeKNPerGroup。UB划分参考GMM A16W8实现，暂时不修改
+- vec反量化写NK/KN两份功能实现代码，代码参考 [wqbmmv2的weight ND int4的反量化方法](~/Code/ops-nn/matmul/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_reg_base_common.h)，核心函数为AntiquantComputeW4NKPerGroup和AntiquantComputeKNPerGroup。UB划分参考GMM A16W8实现，暂时不修改
 - 每个基本块计算完成后地址计算更新按int4计算字节偏移，字节大小需要减半

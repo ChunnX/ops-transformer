@@ -73,29 +73,25 @@
 
 | 文件 | 路径 | 修改类型 |
 |------|------|----------|
-| 算子定义 | `gmm/grouped_matmul/op_host/grouped_matmul_def.cpp` | **需确认，可能需要修改** |
+| 算子定义 | `gmm/grouped_matmul/op_host/grouped_matmul_def.cpp` | 需要新增A16W4数据流 |
 
-**分析**：`config950` 中已有的 dtype/format 组合：
-- x: FLOAT16/BFLOAT16 ✓（已有）
-- weight: INT4 + FORMAT_FRACTAL_NZ ✓（已有，用于 S8S4 场景）
-- weight: INT4 + **FORMAT_ND** — **需确认是否已存在**
+需要新增两组数据流：
 
-**需要确认的 dtype 组合**：
+第一组 支持float16
+- x: float16, ND
+- weight: int4, ND
+- bias: float16, ND
+- antiquant_scale: float16, ND
+- antiquant_offset: float16, ND
+- group_list: int64, ND
 
-| 参数 | dtype | format | 是否已注册 |
-|------|-------|--------|-----------|
-| x | FLOAT16 | ND | ✓ 已有 |
-| x | BFLOAT16 | ND | ✓ 已有 |
-| weight | INT4 | **ND** | ⚠️ 需确认 |
-| antiquantScale | FLOAT16 | ND | ✓ 已有 |
-| antiquantScale | BFLOAT16 | ND | ✓ 已有 |
-| antiquantOffset | FLOAT16 | ND | ✓ 已有 |
-| antiquantOffset | BFLOAT16 | ND | ✓ 已有 |
-| bias | FLOAT16 | ND | ✓ 已有 |
-| bias | BFLOAT16 | ND | ✓ 已有 |
-| bias | FLOAT32 | ND | ✓ 已有 |
-
-**结论**：config950 中 weight INT4 的 format 当前仅有 `FORMAT_FRACTAL_NZ`（用于 S8S4 场景），**需要新增 weight=INT4 + FORMAT_ND 的组合条目**。具体需要在 config950 的 x/weight/bias/antiquantScale/antiquantOffset 各 Input 数组中追加对应条目。
+第二组 支持bfloat16
+- x: bfloat16, ND
+- weight: int4, ND
+- bias: float32, ND
+- antiquant_scale: bfloat16, ND
+- antiquant_offset: bfloat16, ND
+- group_list: int64, ND
 
 ---
 

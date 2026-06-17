@@ -13,6 +13,7 @@
 ```text
 x:      FP16/BF16, ND
 weight: INT4, ND
+bias: FP16/FLOAT32, ND, dtype 当x为FP16时为FP16，当x为BF16时为FLOAT32
 scale:  FP16/BF16, pergroup, dtype 与 x 一致
 offset: FP16/BF16, pergroup, 可选
 out:    FP16/BF16, ND
@@ -723,9 +724,9 @@ Cube 侧只看到 L1 中的 `xType` weight：
 | weight/scale GM -> UB | Vector Core | UB | MTE2 |
 | INT4 unpack + pergroup 反量化 | Vector Core | UB | VF |
 | highBitData UB -> WeightL1 | Vector -> Cube | L1 | MTE3 |
-| x/bias GM -> L1 | Cube Core | L1/BiasTable | MTE1 |
+| x/bias GM -> L1 | Cube Core | L1/BiasTable | MTE2 |
 | matmul | Cube Core | L0A/L0B/L0C | Cube |
-| out 写回 | Cube Core | GM | MTE1 |
+| out 写回 | Cube Core | GM | MTE3 |
 
 ---
 

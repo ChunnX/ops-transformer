@@ -29,7 +29,7 @@
 - biasOptional（可选, ParamType=DYNAMIC）
   - dtype
     - x=FLOAT16 时: FLOAT16 / null
-    - x=BFLOAT16 时: BFLOAT16 / FLOAT32 / null
+    - x=BFLOAT16 时: FLOAT32 / null
   - format: ND
   - shape
     - 多多多（groupType=-1）: 1维 (n_i)
