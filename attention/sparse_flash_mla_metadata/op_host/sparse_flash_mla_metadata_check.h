@@ -30,7 +30,17 @@ static bool IsPowerOfTwoInRangeSas(int64_t value, int64_t minValue, int64_t maxV
 
 static bool IsPaLayoutSas(const char* layout)
 {
-    return layout != nullptr && strcmp(layout, "PA_BNBD") == 0;
+    return layout != nullptr && strcmp(layout, "PA_BBND") == 0;
+}
+
+static bool IsNonEmptyTensorSas(const aclTensor* tensor)
+{
+    int64_t *viewDims = nullptr;
+    uint64_t viewDimsNum = 0;
+    auto ret = aclGetViewShape(tensor, &viewDims, &viewDimsNum);
+    bool exists = ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0;
+    delete[] viewDims;
+    return exists;
 }
 
 static aclnnStatus CheckOptionalInt32TensorSas(const aclTensor* tensor, const char* tensorName)
@@ -98,7 +108,7 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
                                 int64_t headDim, int64_t oriTopK, int64_t cmpTopK, int64_t cmpRatio,
                                 int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft,
                                 int64_t oriWinRight, const char* layoutQOptional, const char* layoutKvOptional,
-                                bool hasCmpKv)
+                                bool hasCmpKv, bool isA5)
 {
     // batch_size 非负校验
     if (batchSize < 0) {
@@ -145,13 +155,24 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
         return ACLNN_ERR_PARAM_INVALID;
     }
     int64_t headRatio = numHeadsQ / numHeadsKv;
-    if (!IsPowerOfTwoInRangeSas(headRatio, 1, 128)) {
+    if (isA5) {
+        if (headRatio < 1 || headRatio > 128) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "num_heads_q / num_heads_kv should be in [1, 128], but got %ld", headRatio);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else if (!IsPowerOfTwoInRangeSas(headRatio, 1, 128)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "num_heads_q / num_heads_kv should be power of two in [1, 128], but got %ld", headRatio);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (cmpRatio < 0 || cmpRatio > 128) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be in range [0, 128], but got %ld", cmpRatio);
+    if (isA5) {
+        if (cmpRatio < 1 || cmpRatio > 128) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be in range [1, 128], but got %ld", cmpRatio);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else if (cmpRatio != 1 && cmpRatio != 4 && cmpRatio != 128) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be 1, 4 or 128, but got %ld", cmpRatio);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // ori_mask_mode 校验
@@ -176,13 +197,7 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ori_win_right should only be 0, but got %ld", oriWinRight);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (hasCmpKv && cmpRatio > 1) {
-        // cmp_ratio 校验
-        if (cmpRatio != 4 && cmpRatio != 128) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In CFA or SCFA, cmp_ratio should only be 4 or 128, but got %ld", cmpRatio);
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        // cmp_topk 校验
+    if (hasCmpKv) {
         if (cmpTopK != 0 && cmpTopK != 512 && cmpTopK != 1024) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_topk should be 0, 512 or 1024, but got %ld", cmpTopK);
             return ACLNN_ERR_PARAM_INVALID;
@@ -196,7 +211,7 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
     // layout_kv 校验
     if (!IsPaLayoutSas(layoutKvOptional) && (strcmp(layoutKvOptional, "TND") != 0) &&
         (strcmp(layoutKvOptional, "BSND") != 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BNBD!");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BBND!");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -205,7 +220,8 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
 aclnnStatus CheckExistenceSas(const char* layoutQOptional, const char* layoutKvOptional,
                               const aclTensor* cuSeqLensQOptional,
                               const aclTensor* cuSeqLensOriKvOptional, const aclTensor* cuSeqLensCmpKvOptional,
-                              const aclTensor* sequsedOriKvOptional, bool hasCmpKv, const aclTensor* metadata)
+                              const aclTensor* sequsedOriKvOptional, const aclTensor* cmpResidualKvOptional,
+                              bool hasCmpKv, int64_t cmpRatio, int64_t cmpMaskMode, const aclTensor* metadata)
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
@@ -243,6 +259,11 @@ aclnnStatus CheckExistenceSas(const char* layoutQOptional, const char* layoutKvO
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
+    }
+    if (hasCmpKv && cmpMaskMode == 3 && cmpRatio != 1 && !IsNonEmptyTensorSas(cmpResidualKvOptional)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "cmp_residual_kv is required when has_cmp_kv is true, cmp_mask_mode=3 and cmp_ratio != 1");
+        return ACLNN_ERR_PARAM_INVALID;
     }
     // metadata 存在性校验
     auto ret = aclGetViewShape(metadata, &viewDims, &viewDimsNum);
@@ -468,13 +489,14 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
                                int64_t maxSeqlenCmpKv, int64_t oriTopK, int64_t cmpTopK, int64_t cmpRatio,
                                int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
                                const char* layoutQOptional, const char* layoutKvOptional, bool hasOriKv, bool hasCmpKv,
-                               const aclTensor* metadata)
+                               bool isA5, const aclTensor* metadata)
 {
     if (CheckSingleParamSas(batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, numHeadsQ, numHeadsKv,
                             headDim, oriTopK, cmpTopK, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft,
-                            oriWinRight, layoutQOptional, layoutKvOptional, hasCmpKv) == ACLNN_SUCCESS &&
+                            oriWinRight, layoutQOptional, layoutKvOptional, hasCmpKv, isA5) == ACLNN_SUCCESS &&
         CheckExistenceSas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, cuSeqLensOriKvOptional,
-                          cuSeqLensCmpKvOptional, sequsedOriKvOptional, hasCmpKv, metadata) == ACLNN_SUCCESS &&
+                          cuSeqLensCmpKvOptional, sequsedOriKvOptional, cmpResidualKvOptional, hasCmpKv,
+                          cmpRatio, cmpMaskMode, metadata) == ACLNN_SUCCESS &&
         CheckConsistencySas(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
                             sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional,
                             oriTopkLengthOptional, cmpTopkLengthOptional, layoutQOptional, layoutKvOptional,

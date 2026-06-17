@@ -293,7 +293,7 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   char layoutQ[] = "TND";
-  char layoutKv[] = "PA_BNBD";
+  char layoutKv[] = "PA_BBND";
 
   uint64_t metadataWorkspaceSize = 0;
   aclOpExecutor* metadataExecutor = nullptr;

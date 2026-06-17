@@ -10,7 +10,7 @@
 
 /*!
  * \file test_aclnn_sparse_flash_mla_metadata.cpp
- * \brief SparseFlashMlaMetadata 算子调用示例（SCFA / layout_q=TND, layout_kv=PA_BNBD）
+ * \brief SparseFlashMlaMetadata 算子调用示例（SCFA / layout_q=TND, layout_kv=PA_BBND）
  */
 
 #include <iostream>
@@ -158,7 +158,7 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   char layoutQ[] = "TND";
-  char layoutKv[] = "PA_BNBD";
+  char layoutKv[] = "PA_BBND";
 
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;

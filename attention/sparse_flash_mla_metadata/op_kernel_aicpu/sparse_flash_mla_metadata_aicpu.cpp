@@ -78,9 +78,6 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "has_ori_kv", hasOriKv_);
     GetAttrValueOpt(ctx, "has_cmp_kv", hasCmpKv_);
-    if (cmpRatio_ <= 1) {
-        hasCmpKv_ = false;
-    }
 
     return (ParamsCheck() && ParamsInit());
 }
@@ -289,9 +286,29 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
         KERNEL_LOG_ERROR("num_heads_q should be divisible by num_heads_kv.");
         return false;
     }
+    ValidSocVersion validSocVersion = ProcessSocVersion();
     groupSize_ = numHeadsQ_ / numHeadsKv_;
-    if (groupSize_ == 0 || groupSize_ > 128 || ((groupSize_ & (groupSize_ - 1U)) != 0U)) {
+    if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (groupSize_ == 0 || groupSize_ > 128) {
+            KERNEL_LOG_ERROR("num_heads_q / num_heads_kv should be in [1, 128].");
+            return false;
+        }
+    } else if (groupSize_ == 0 || groupSize_ > 128 || ((groupSize_ & (groupSize_ - 1U)) != 0U)) {
         KERNEL_LOG_ERROR("num_heads_q / num_heads_kv should be power of two in [1, 128].");
+        return false;
+    }
+    if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (cmpRatio_ < 1 || cmpRatio_ > 128) {
+            KERNEL_LOG_ERROR("cmp_ratio should be in [1, 128].");
+            return false;
+        }
+    } else if (cmpRatio_ != 1 && cmpRatio_ != 4 && cmpRatio_ != 128) {
+        KERNEL_LOG_ERROR("cmp_ratio should be 1, 4 or 128.");
+        return false;
+    }
+    if (hasCmpKv_ && cmpMaskMode_ == static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL) &&
+        cmpRatio_ != 1 && !IsNonEmptyTensor(cmpResidualKv_)) {
+        KERNEL_LOG_ERROR("cmp_residual_kv is required when cmp_mask_mode=3 and cmp_ratio is not 1.");
         return false;
     }
     if (hasOriKv_ && oriTopK_ != 0) {
@@ -300,7 +317,6 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
     if (hasCmpKv_ && cmpTopK_ != 0) {
         isSparseCmpKv_ = true;
     }
-    ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND910) {
         mBaseSize_ = isSparseCmpKv_ ? groupSize_ : (256U / groupSize_) * groupSize_;
         s2BaseSize_ = 512U;

@@ -42,7 +42,7 @@ struct SMLATilingOptionalParaInfo {
 enum class SMLALayout : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BNBD = 2
+    PA_BBND = 2
 };
 
 enum class SMLAAxis : uint32_t {
@@ -295,7 +295,7 @@ public:
     SMLALayout qLayout = SMLALayout::TND;
     SMLALayout cmpSparseIndicesLayout = SMLALayout::TND;
     SMLALayout oriSparseIndicesLayout = SMLALayout::TND;
-    SMLALayout kvLayout = SMLALayout::PA_BNBD;
+    SMLALayout kvLayout = SMLALayout::PA_BBND;
     SMLALayout outLayout = SMLALayout::BSND;
 
     // template mode
@@ -415,7 +415,7 @@ private:
     SMLALayout cmpSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout oriSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout outLayout_ = SMLALayout::TND;
-    SMLALayout kvLayout_ = SMLALayout::PA_BNBD;
+    SMLALayout kvLayout_ = SMLALayout::PA_BBND;
 
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
@@ -539,7 +539,7 @@ public:
     SMLALayout cmpSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout oriSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout outLayout_ = SMLALayout::BSND;
-    SMLALayout kvLayout_ = SMLALayout::PA_BNBD;
+    SMLALayout kvLayout_ = SMLALayout::PA_BBND;
     // PageAttention
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;

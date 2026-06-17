@@ -117,31 +117,31 @@ sparse_flash_mla_metadata(
 | 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
 | :--- | :--- | :--- | :--- | :--- |
 | q | 必选输入 | Query输入。 | `float16`、`bfloat16` | `layout_q="BSND"`时为`[B, S1, N1, D]`；`layout_q="TND"`时为`[T1, N1, D]`。 |
-| ori_kv | 可选输入 | 原始KV输入，Key和Value共享同一份数据。SWA/CFA/SCFA模式需要传入。 | 与`q`一致 | `layout_kv="BSND"`时为`[B, S2, N2, D]`；`layout_kv="TND"`时为`[T2, N2, D]`；`layout_kv="PA_BNBD"`时为`[ori_block_num, ori_block_size, N2, D]`。 |
-| cmp_kv | 可选输入 | 压缩KV输入，Key和Value共享同一份数据。CFA/SCFA模式需要传入，SWA模式不传。 | 与`q`一致 | `layout_kv="BSND"`时为`[B, S3, N2, D]`；`layout_kv="TND"`时为`[T3, N2, D]`；`layout_kv="PA_BNBD"`时为`[cmp_block_num, cmp_block_size, N2, D]`。 |
+| ori_kv | 可选输入 | 原始KV输入，Key和Value共享同一份数据。SWA/CFA/SCFA模式需要传入。 | 与`q`一致 | `layout_kv="BSND"`时为`[B, S2, N2, D]`；`layout_kv="TND"`时为`[T2, N2, D]`；`layout_kv="PA_BBND"`时为`[ori_block_num, ori_block_size, N2, D]`。 |
+| cmp_kv | 可选输入 | 压缩KV输入，Key和Value共享同一份数据。CFA/SCFA模式需要传入，SWA模式不传。 | 与`q`一致 | `layout_kv="BSND"`时为`[B, S3, N2, D]`；`layout_kv="TND"`时为`[T3, N2, D]`；`layout_kv="PA_BBND"`时为`[cmp_block_num, cmp_block_size, N2, D]`。 |
 | ori_sparse_indices | 可选输入 | 原始KV稀疏索引。当前主流程不支持，建议传`None`。 | `int32` | - |
 | cmp_sparse_indices | 可选输入 | 压缩KV TopK索引。SCFA模式必须传入，SWA/CFA模式传`None`。无效位置填`-1`。 | `int32` | `layout_q="BSND"`时为`[B, S1, N2, K]`；`layout_q="TND"`时为`[T1, N2, K]`，`K`支持512或1024。 |
-| ori_block_table | 可选输入 | PA场景下`ori_kv`的block映射表。 | `int32` | `layout_kv="PA_BNBD"`时为`[B, ori_max_block_num_per_batch]`。 |
-| cmp_block_table | 可选输入 | PA场景下`cmp_kv`的block映射表。 | `int32` | CFA/SCFA且`layout_kv="PA_BNBD"`时为`[B, cmp_max_block_num_per_batch]`。 |
+| ori_block_table | 可选输入 | PA场景下`ori_kv`的block映射表。 | `int32` | `layout_kv="PA_BBND"`时为`[B, ori_max_block_num_per_batch]`。 |
+| cmp_block_table | 可选输入 | PA场景下`cmp_kv`的block映射表。 | `int32` | CFA/SCFA且`layout_kv="PA_BBND"`时为`[B, cmp_max_block_num_per_batch]`。 |
 | cu_seqlens_q | 可选输入 | TND场景下q的前缀和序列长度。 | `int32` | `[B + 1]`。 |
 | cu_seqlens_ori_kv | 可选输入 | TND场景下ori_kv的前缀和序列长度。 | `int32` | `[B + 1]`。 |
 | cu_seqlens_cmp_kv | 可选输入 | TND场景下cmp_kv的前缀和序列长度。 | `int32` | `[B + 1]`。 |
 | seqused_q | 可选输入 | BSND场景下每个batch实际参与计算的q长度。 | `int32` | `[B]`。 |
-| seqused_ori_kv | 可选输入 | 每个batch实际参与计算的ori_kv长度。`layout_kv="PA_BNBD"`时必须传入；`layout_kv="BSND"`时可作为每个batch的ori_kv有效长度覆盖值；`layout_kv="TND"`时使用`cu_seqlens_ori_kv`表达序列边界。 | `int32` | `[B]`。 |
-| seqused_cmp_kv | 可选输入 | 每个batch实际参与计算的cmp_kv长度。显式传入时作为cmp逻辑有效长度，优先于layout推导，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BNBD"`均可使用；未传时使用`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA block table相关语义推导。 | `int32` | `[B]`。 |
-| cmp_residual_kv | 可选输入 | 每个batch的压缩余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前长度。主算子和metadata均可传入；在`cmp_ratio > 1`且存在cmp段的CFA/SCFA场景生效，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BNBD"`均可使用。 | `int32` | `[B]`。 |
+| seqused_ori_kv | 可选输入 | 每个batch实际参与计算的ori_kv长度。`layout_kv="PA_BBND"`时必须传入；`layout_kv="BSND"`时可作为每个batch的ori_kv有效长度覆盖值；`layout_kv="TND"`时使用`cu_seqlens_ori_kv`表达序列边界。 | `int32` | `[B]`。 |
+| seqused_cmp_kv | 可选输入 | 每个batch实际参与计算的cmp_kv长度。显式传入时作为cmp逻辑有效长度，优先于layout推导，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BBND"`均可使用；未传时使用`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA block table相关语义推导。 | `int32` | `[B]`。 |
+| cmp_residual_kv | 可选输入 | 每个batch的压缩余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前长度。主算子和metadata均可传入；在CFA/SCFA、`cmp_ratio != 1`且`cmp_mask_mode = 3`场景必传，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BBND"`均可使用。 | `int32` | `[B]`。 |
 | ori_topk_length | 可选输入 | 预留输入，当前版本不支持传入非空Tensor；请传`None`。 | `int32` | - |
 | cmp_topk_length | 可选输入 | 预留输入，当前版本不支持传入非空Tensor；请传`None`，SCFA有效位置通过`cmp_sparse_indices`中的`-1`表达。 | `int32` | - |
 | sinks | 可选输入 | 每个Query head的sink值，作为online softmax初始项。 | `float32` | `[N1]`。 |
 | metadata | 必选输入 | `sparse_flash_mla_metadata`生成的任务切分结果。 | `int32` | `[1024]`。 |
 | softmax_scale | 可选属性 | QK矩阵乘后的缩放系数，通常为`1 / sqrt(D)`。 | `float` | - |
-| cmp_ratio | 可选属性 | 压缩率。取值范围为`1~128`；`1`表示SWA语义，CFA/SCFA支持`4`或`128`。 | `int` | - |
+| cmp_ratio | 可选属性 | 压缩率。A2/A3支持`1`、`4`、`128`，`0`为非法值；A5支持`1~128`。 | `int` | - |
 | ori_mask_mode | 可选属性 | ori_kv侧mask模式。当前有效配置为`4`，表示band模式。 | `int` | - |
 | cmp_mask_mode | 可选属性 | cmp_kv侧mask模式。CFA/SCFA中当前有效配置为`3`，表示rightDownCausal模式。 | `int` | - |
 | ori_win_left | 可选属性 | ori_kv滑动窗口左侧长度。当前支持`127`。 | `int` | - |
 | ori_win_right | 可选属性 | ori_kv滑动窗口右侧长度。当前支持`0`。 | `int` | - |
 | layout_q | 可选属性 | q的数据排布格式。 | `str` | 支持`"BSND"`、`"TND"`。 |
-| layout_kv | 可选属性 | ori_kv/cmp_kv的数据排布格式，默认值为`"BSND"`。 | `str` | 支持`"BSND"`、`"TND"`、`"PA_BNBD"`。 |
+| layout_kv | 可选属性 | ori_kv/cmp_kv的数据排布格式，默认值为`"BSND"`。 | `str` | 支持`"BSND"`、`"TND"`、`"PA_BBND"`。 |
 | topk_value_mode | 可选属性 | TopK索引取值模式。当前支持`1`。 | `int` | - |
 | return_softmax_lse | 可选属性 | 是否返回softmax_lse。 | `bool` | 默认`False`。 |
 
@@ -156,8 +156,8 @@ sparse_flash_mla_metadata(
 | cu_seqlens_ori_kv | 可选输入 | TND场景下ori_kv的前缀和序列长度。 | `int32` | `[B + 1]`。 |
 | cu_seqlens_cmp_kv | 可选输入 | TND场景下cmp_kv的前缀和序列长度。 | `int32` | `[B + 1]`。 |
 | seqused_q | 可选输入 | BSND场景下每个batch实际参与计算的q长度。 | `int32` | `[B]`。 |
-| seqused_ori_kv | 可选输入 | 每个batch实际参与计算的ori_kv长度。PA_BNBD场景必须传入；BSND场景可作为每个batch的ori_kv有效长度覆盖值；TND场景使用`cu_seqlens_ori_kv`表达序列边界。 | `int32` | `[B]`。 |
-| seqused_cmp_kv | 可选输入 | 每个batch实际参与计算的cmp_kv长度。显式传入时作为cmp逻辑有效长度，BSND、TND、PA_BNBD场景均可使用。 | `int32` | `[B]`。 |
+| seqused_ori_kv | 可选输入 | 每个batch实际参与计算的ori_kv长度。PA_BBND场景必须传入；BSND场景可作为每个batch的ori_kv有效长度覆盖值；TND场景使用`cu_seqlens_ori_kv`表达序列边界。 | `int32` | `[B]`。 |
+| seqused_cmp_kv | 可选输入 | 每个batch实际参与计算的cmp_kv长度。显式传入时作为cmp逻辑有效长度，BSND、TND、PA_BBND场景均可使用。 | `int32` | `[B]`。 |
 | cmp_residual_kv | 可选输入 | 每个batch的压缩余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前长度。 | `int32` | `[B]`。 |
 | ori_topk_length | 可选输入 | 预留输入，当前版本不支持传入非空Tensor；请传`None`。 | `int32` | - |
 | cmp_topk_length | 可选输入 | 预留输入，当前版本不支持传入非空Tensor；请传`None`。 | `int32` | - |
@@ -167,15 +167,15 @@ sparse_flash_mla_metadata(
 | max_seqlen_cmp_kv | 可选属性 | 所有batch中cmp_kv的最大有效长度。 | `int` | - |
 | ori_topk | 可选属性 | 原始KV TopK长度。当前主流程不支持，传`0`。 | `int` | - |
 | cmp_topk | 可选属性 | 压缩KV TopK长度。CFA/SWA传`0`；SCFA支持`512`或`1024`。 | `int` | - |
-| cmp_ratio | 可选属性 | 压缩率。取值范围为`1~128`；`1`表示SWA语义，CFA/SCFA支持`4`或`128`。 | `int` | - |
+| cmp_ratio | 可选属性 | 压缩率。A2/A3支持`1`、`4`、`128`，`0`为非法值；A5支持`1~128`。 | `int` | - |
 | ori_mask_mode | 可选属性 | ori_kv侧mask模式。当前有效配置为`4`。 | `int` | - |
 | cmp_mask_mode | 可选属性 | cmp_kv侧mask模式。CFA/SCFA中当前有效配置为`3`。 | `int` | - |
 | ori_win_left | 可选属性 | ori_kv滑动窗口左侧长度，当前支持`127`。 | `int` | - |
 | ori_win_right | 可选属性 | ori_kv滑动窗口右侧长度，当前支持`0`。 | `int` | - |
 | layout_q | 可选属性 | q的数据排布格式。 | `str` | 支持`"BSND"`、`"TND"`。 |
-| layout_kv | 可选属性 | ori_kv/cmp_kv的数据排布格式，默认值为`"BSND"`。 | `str` | 支持`"BSND"`、`"TND"`、`"PA_BNBD"`。 |
+| layout_kv | 可选属性 | ori_kv/cmp_kv的数据排布格式，默认值为`"BSND"`。 | `str` | 支持`"BSND"`、`"TND"`、`"PA_BBND"`。 |
 | has_ori_kv | 可选属性 | 主算子是否会传入`ori_kv`。 | `bool` | - |
-| has_cmp_kv | 可选属性 | 主算子是否会传入`cmp_kv`。未传`cmp_kv`或`cmp_ratio`为`1`时按SWA处理。 | `bool` | - |
+| has_cmp_kv | 可选属性 | 主算子是否会传入`cmp_kv`。未传`cmp_kv`时按SWA处理；传入`cmp_kv`时保留cmp段语义。 | `bool` | - |
 | metadata | 输出 | 任务切分metadata。 | `int32` | `[1024]`。 |
 
 ## 返回值说明
@@ -189,11 +189,11 @@ sparse_flash_mla_metadata(
 - 该接口支持推理场景。
 - `q`、`ori_kv`、`cmp_kv`的数据类型必须一致，支持`float16`和`bfloat16`。
 - `head_dim`当前支持`512`。
-- `num_heads_kv`当前仅支持`1`；`num_heads_q / num_heads_kv`必须为`[1, 128]`范围内的2的幂。
-- `layout_q`支持`BSND`和`TND`；`layout_kv`支持`BSND`、`TND`和`PA_BNBD`，默认值为`BSND`。
+- `num_heads_kv`当前仅支持`1`；`num_heads_q / num_heads_kv`在A2/A3上必须为`[1,128]`范围内的2的幂，在A5上支持`[1,128]`范围内任意整数。
+- `layout_q`支持`BSND`和`TND`；`layout_kv`支持`BSND`、`TND`和`PA_BBND`，默认值为`BSND`。
 - `layout_q="TND"`时必须传入`cu_seqlens_q`。
 - `layout_kv="TND"`时必须传入`cu_seqlens_ori_kv`；若同时存在`cmp_kv`，还必须传入`cu_seqlens_cmp_kv`。
-- `layout_kv="PA_BNBD"`时必须传入`seqused_ori_kv`和`ori_block_table`；CFA/SCFA还必须传入`cmp_block_table`。`layout_kv="BSND"`时可选传入`seqused_ori_kv`覆盖每个batch的ori_kv有效长度；`layout_kv="TND"`时使用`cu_seqlens_ori_kv`表达ori_kv序列边界。
+- `layout_kv="PA_BBND"`时必须传入`seqused_ori_kv`和`ori_block_table`；CFA/SCFA还必须传入`cmp_block_table`。`layout_kv="BSND"`时可选传入`seqused_ori_kv`覆盖每个batch的ori_kv有效长度；`layout_kv="TND"`时使用`cu_seqlens_ori_kv`表达ori_kv序列边界。
 - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
 - `cmp_sparse_indices`只在SCFA模式传入，最后一维`K`支持512或1024。
 - `cmp_residual_kv`用于修正cmp侧mask语义，主算子和metadata均可传入；长度必须等于batch大小。
@@ -219,7 +219,7 @@ S2 = 64
 N1 = 64
 N2 = 1
 D = 512
-cmp_ratio = 1  # cmp_ratio=1表示SWA语义。
+cmp_ratio = 1  # SWA示例不传cmp_kv，cmp_ratio使用合法默认值1。
 
 q = torch.randn(B, S1, N1, D, dtype=dtype, device="npu")
 ori_kv = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")

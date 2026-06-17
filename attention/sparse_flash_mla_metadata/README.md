@@ -38,7 +38,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>Q的多头数，取值范围为[1,128]，且num_heads_q / num_heads_kv必须为[1,128]范围内的2的幂。</td>
+      <td>Q的多头数，取值范围为[1,128]。num_heads_q / num_heads_kv在A2/A3上必须为[1,128]范围内的2的幂，在A5上支持[1,128]范围内任意整数。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -87,14 +87,14 @@
     <tr>
       <td>seqused_ori_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中ori_kv实际参与运算的token数，维度为B。PA_BNBD场景必须传入；BSND场景可作为每个batch的ori_kv有效长度覆盖值；TND场景使用cu_seqlens_ori_kv表达序列边界。</td>
+      <td>表示不同Batch中ori_kv实际参与运算的token数，维度为B。PA_BBND场景必须传入；BSND场景可作为每个batch的ori_kv有效长度覆盖值；TND场景使用cu_seqlens_ori_kv表达序列边界。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_cmp_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中`cmp_kv`实际参与运算的token数，维度为B。显式传入时作为每个batch的cmp逻辑有效长度，BSND、TND、PA_BNBD场景均可使用。</td>
+      <td>表示不同Batch中`cmp_kv`实际参与运算的token数，维度为B。显式传入时作为每个batch的cmp逻辑有效长度，BSND、TND、PA_BBND场景均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -164,7 +164,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对`ori_kv`的压缩率，0和1表示SWA语义，CFA/SCFA模式支持4或128。</td>
+      <td>表示对`ori_kv`的压缩率。A2/A3支持1、4、128，0为非法值；A5支持[1,128]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -205,7 +205,7 @@
     <tr>
       <td>layout_kv</td>
       <td>可选属性</td>
-      <td>用于标识输入ori_kv和cmp_kv的数据排布格式，支持BSND、TND、PA_BNBD，默认值为BSND。</td>
+      <td>用于标识输入ori_kv和cmp_kv的数据排布格式，支持BSND、TND、PA_BBND，默认值为BSND。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>

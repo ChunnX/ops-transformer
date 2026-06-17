@@ -44,7 +44,7 @@ namespace l0op {
  * @param [in] oriWinLeft: Sliding-window left extension token count
  * @param [in] oriWinRight: Sliding-window right extension token count
  * @param [in] layoutQOptional: Layout string of q, e.g. "BSND" or "TND"
- * @param [in] layoutKvOptional: Layout string of kv, e.g. "PA_BNBD", "BSND" or "TND"
+ * @param [in] layoutKvOptional: Layout string of kv, e.g. "PA_BBND", "BSND" or "TND"
  * @param [in] hasOriKv: Whether oriKv is provided
  * @param [in] hasCmpKv: Whether cmpKv is provided
  * @param [in] socVersion: SoC version string for core capability query

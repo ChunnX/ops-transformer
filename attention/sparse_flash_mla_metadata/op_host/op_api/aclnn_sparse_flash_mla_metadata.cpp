@@ -73,20 +73,20 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    bool effectiveHasCmpKv = hasCmpKv && cmpRatio > 1;
-    auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
-                           sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional,
-                           oriTopkLengthOptional, cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSize,
-                           maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, oriTopK, cmpTopK, cmpRatio, oriMaskMode,
-                           cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv,
-                           effectiveHasCmpKv, metadata);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
     uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     std::string socVersionStr = npuInfo.GetSocLongVersion();
     const char *socVersion = socVersionStr.c_str();
+    bool isA5 = socVersionStr.find("Ascend950") != std::string::npos;
+    bool effectiveHasCmpKv = hasCmpKv;
+    auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
+                           sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional,
+                           oriTopkLengthOptional, cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSize,
+                           maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, oriTopK, cmpTopK, cmpRatio, oriMaskMode,
+                           cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv,
+                           effectiveHasCmpKv, isA5, metadata);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     aclnnStatus contiguousStatus = ACLNN_SUCCESS;
     auto cuSeqLensQOptionalContiguous =

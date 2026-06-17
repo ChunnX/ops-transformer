@@ -63,7 +63,7 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 template <SMLA_LAYOUT KV_LAYOUT_T>
 __aicore__ inline constexpr GmFormat GetKvGmFormat()
 {
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         return GmFormat::PA_BnBsND;
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         return GmFormat::TND;
@@ -200,12 +200,12 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_
 {
     if ASCEND_IS_AIC {
         this->oriKvGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)oriKv);
-        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
             this->oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
         }
         if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
             this->cmpKvGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)cmpKv);
-            if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+            if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                 this->cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
             }
         }
@@ -268,7 +268,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t
             parser);
     }
 
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.oriBlockSize, constInfo.dSize,
             this->oriBlockTableGm, constInfo.oriMaxBlockNumPerBatch);
         if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {

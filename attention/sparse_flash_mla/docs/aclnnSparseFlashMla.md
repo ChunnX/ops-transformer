@@ -171,7 +171,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BNBD时：(ori_block_num, ori_block_size, N2, D)</li>
+          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D)</li>
           <li>layoutKv为BSND时：(B, S2, N2, D)</li>
           <li>layoutKv为TND时：(T2, N2, D)</li>
         </ul>
@@ -187,7 +187,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BNBD时：(cmp_block_num, cmp_block_size, N2, D)</li>
+          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D)</li>
           <li>layoutKv为BSND时：(B, S3, N2, D)</li>
           <li>layoutKv为TND时：(T3, N2, D)</li>
         </ul>
@@ -224,7 +224,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>oriBlockTable（aclTensor*）</td>
       <td>输入</td>
       <td>PageAttention中oriKvCache存储使用的block映射表。</td>
-      <td>layoutKv为PA_BNBD时必须传入。第二维长度不小于所有batch中最大的S2对应的block数量。</td>
+      <td>layoutKv为PA_BBND时必须传入。第二维长度不小于所有batch中最大的S2对应的block数量。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B, ori_max_block_num_per_batch)</td>
@@ -234,7 +234,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpBlockTable（aclTensor*）</td>
       <td>输入</td>
       <td>PageAttention中cmpKvCache存储使用的block映射表。</td>
-      <td>CFA/SCFA模式且layoutKv为PA_BNBD时必须传入。</td>
+      <td>CFA/SCFA模式且layoutKv为PA_BBND时必须传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B, cmp_max_block_num_per_batch)</td>
@@ -284,7 +284,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>seqUsedOriKv（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中oriKv实际参与运算的token数。</td>
-      <td>layoutKv为PA_BNBD时必须传入；layoutKv为BSND时可选传入，用于指定每个batch的oriKv有效长度；layoutKv为TND时使用cuSeqLensOriKv表达序列边界。</td>
+      <td>layoutKv为PA_BBND时必须传入；layoutKv为BSND时可选传入，用于指定每个batch的oriKv有效长度；layoutKv为TND时使用cuSeqLensOriKv表达序列边界。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -294,7 +294,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>seqUsedCmpKv（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmpKv实际参与运算的token数。</td>
-      <td>可选输入。传入时shape必须为(B,)，作为每个batch的cmp逻辑有效长度，优先于cmpKv shape、cuSeqLensCmpKv或PA block table推导；layoutKv为BSND、TND、PA_BNBD时均可使用。</td>
+      <td>可选输入。传入时shape必须为(B,)，作为每个batch的cmp逻辑有效长度，优先于cmpKv shape、cuSeqLensCmpKv或PA block table推导；layoutKv为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -304,7 +304,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpResidualKv（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKv[b]恢复压缩前KV长度；未传时余数按0处理。该参数是主算子和SparseFlashMlaMetadata的可选入参；在cmpRatio大于1且存在cmp段的CFA/SCFA场景生效，layoutKv为BSND、TND、PA_BNBD时均可使用。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKv[b]恢复压缩前KV长度；在CFA/SCFA、cmpRatio不等于1且cmpMaskMode为3场景必传。该参数是主算子和SparseFlashMlaMetadata的可选入参，layoutKv为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -364,7 +364,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>对oriKv的压缩率。</td>
-      <td>取值范围为[1, 128]。1表示SWA语义；CFA/SCFA模式支持4或128。</td>
+      <td>A2/A3支持1、4、128，0为非法值；A5支持[1,128]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -424,7 +424,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>layoutKv（char*）</td>
       <td>输入</td>
       <td>标识输入oriKv和cmpKv的数据排布格式。</td>
-      <td>支持"PA_BNBD"、"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"PA_BBND"、"BSND"和"TND"，默认值为"BSND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -523,7 +523,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>N1不在[1,128]范围内，或N1/N2不是[1,128]范围内的2的幂。</td>
+      <td>N1不在[1,128]范围内；或A2/A3场景下N1/N2不是[1,128]范围内的2的幂；或A5场景下N1/N2不在[1,128]范围内。</td>
     </tr>
     <tr>
       <td>N2不为1。</td>
@@ -595,16 +595,16 @@ aclnnStatus aclnnSparseFlashMla(
 
   | 规格项        | 规格         | 规格说明                                           |
   | :------------ | :----------- | :------------------------------------------------- |
-  | N1            | 1到128           | Query头数，必须为2的幂次。                        |
+  | N1            | 1到128           | Query头数。N1/N2在A2/A3上必须为2的幂，在A5上支持[1,128]范围内任意整数。 |
   | N2            | 1            | KV头数仅支持1（共享KV + GQA）。                     |
   | D             | 512          | 每个注意力头的维度仅支持512。                        |
-  | cmpRatio     | 0 / 1 / 4 / 128 | 0和1表示SWA语义；CFA/SCFA模式支持4或128。           |
+  | cmpRatio     | A2/A3：1 / 4 / 128；A5：[1,128] | 0为非法值；A2/A3仅支持1、4、128，A5支持1到128的连续取值。 |
   | oriMaskMode | 4            | 原始KV掩码模式仅支持4（Band模式）。                   |
   | cmpMaskMode | 3            | 压缩KV掩码模式仅支持3（RightDownCausal模式）。        |
   | oriWinLeft  | 127          | 滑动窗口向左扩展仅支持127。                           |
   | oriWinRight | 0            | 滑动窗口向右扩展仅支持0。                             |
   | block_size    | 16的倍数，≤1024 | PageAttention的block_size取值范围。               |
-  | layout组合    | -           | Q支持BSND/TND；KV支持BSND/TND/PA_BNBD。        |
+  | layout组合    | -           | Q支持BSND/TND；KV支持BSND/TND/PA_BBND。        |
 
 - 使用约束
 
@@ -624,7 +624,7 @@ aclnnStatus aclnnSparseFlashMla(
 - Layout约束
 
   - 当`layoutQ`为TND时，`cuSeqLensQ`必须传入。
-  - 当`layoutKv`为PA_BNBD时，`seqUsedOriKv`必须传入，`oriBlockTable`必须传入。BSND场景可选传入`seqUsedOriKv`覆盖每个batch的oriKv有效长度；TND场景使用`cuSeqLensOriKv`表达oriKv序列边界。
+  - 当`layoutKv`为PA_BBND时，`seqUsedOriKv`必须传入，`oriBlockTable`必须传入。BSND场景可选传入`seqUsedOriKv`覆盖每个batch的oriKv有效长度；TND场景使用`cuSeqLensOriKv`表达oriKv序列边界。
   - 当`layoutKv`为TND时，`cuSeqLensOriKv`必须传入。
   - 当`layoutKv`为TND且存在`cmpKv`时，`cuSeqLensCmpKv`必须传入。
   - `seqUsedCmpKv`为所有layoutKv下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
@@ -914,7 +914,7 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   char layoutQ[] = "TND";
-  char layoutKv[] = "PA_BNBD";
+  char layoutKv[] = "PA_BBND";
 
   uint64_t metadataWorkspaceSize = 0;
   aclOpExecutor* metadataExecutor = nullptr;

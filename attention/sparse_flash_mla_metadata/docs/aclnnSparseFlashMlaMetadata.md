@@ -176,7 +176,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>seqUsedOriKv（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中oriKv实际参与运算的token数。</td>
-      <td>layoutKv为PA_BNBD时必须传入；layoutKv为BSND时可选传入，用于指定每个batch的oriKv有效长度；layoutKv为TND时使用cuSeqLensOriKv表达序列边界。</td>
+      <td>layoutKv为PA_BBND时必须传入；layoutKv为BSND时可选传入，用于指定每个batch的oriKv有效长度；layoutKv为TND时使用cuSeqLensOriKv表达序列边界。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>seqUsedCmpKv（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmpKv实际参与运算的token数。</td>
-      <td>可选输入。传入时shape必须为(B,)，作为每个batch的cmp逻辑有效长度，优先于maxSeqlenCmpKv、cuSeqLensCmpKv或PA block table推导；layoutKv为BSND、TND、PA_BNBD时均可使用。</td>
+      <td>可选输入。传入时shape必须为(B,)，作为每个batch的cmp逻辑有效长度，优先于maxSeqlenCmpKv、cuSeqLensCmpKv或PA block table推导；layoutKv为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -196,7 +196,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpResidualKv（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于按cmp_len * cmpRatio + residual恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>cmpRatio大于1且存在cmpKv时生效，layoutKv为BSND、TND、PA_BNBD时均可使用。</td>
+      <td>在CFA/SCFA、cmpRatio不等于1且cmpMaskMode为3场景必传，layoutKv为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -226,7 +226,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>Query的多头数。</td>
-      <td>取值范围为[1,128]，且numHeadsQ / numHeadsKv必须为[1,128]范围内的2的幂。</td>
+      <td>取值范围为[1,128]。numHeadsQ / numHeadsKv在A2/A3上必须为[1,128]范围内的2的幂，在A5上支持[1,128]范围内任意整数。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -316,7 +316,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>对oriKv的压缩率。</td>
-      <td>取值范围为[0,128]。0和1表示SWA语义；CFA/SCFA模式支持4或128。</td>
+      <td>A2/A3支持1、4、128，0为非法值；A5支持[1,128]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -376,7 +376,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>layoutKv（char*）</td>
       <td>输入</td>
       <td>标识输入KV的数据排布格式。</td>
-      <td>支持"PA_BNBD"、"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>支持"PA_BBND"、"BSND"和"TND"，默认值为"BSND"。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -474,7 +474,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>oriWinLeft不为127。</td>
     </tr>
     <tr>
-      <td>cmpRatio不在[0,128]范围内，或CFA/SCFA模式下cmpRatio不为4或128。</td>
+      <td>A2/A3场景下cmpRatio不为1、4或128，或A5场景下cmpRatio不在[1,128]范围内。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_RUNTIME_ERROR</td>
@@ -537,10 +537,10 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
 
   | 规格项        | 规格           | 规格说明                                    |
   | :------------ | :------------- | :------------------------------------------ |
-  | numHeadsQ   | 1到128          | Query头数。numHeadsQ / numHeadsKv必须为[1,128]范围内的2的幂。 |
+  | numHeadsQ   | 1到128          | Query头数。numHeadsQ / numHeadsKv在A2/A3上必须为2的幂，在A5上支持[1,128]范围内任意整数。 |
   | numHeadsKv  | 1              | KV头数仅支持1。                              |
   | headDim      | 512            | 每个注意力头的维度仅支持512。                 |
-  | cmpRatio     | 0 / 1 / 4 / 128 | 0和1表示SWA语义；CFA/SCFA模式支持4或128。 |
+  | cmpRatio     | A2/A3：1 / 4 / 128；A5：[1,128] | 0为非法值；A2/A3仅支持1、4、128，A5支持1到128的连续取值。 |
   | oriMaskMode | 4              | 原始KV掩码模式仅支持4（Band模式）。            |
   | cmpMaskMode | 0 / 3          | 压缩KV掩码模式支持0（No mask）或3（RightDownCausal模式）。 |
   | oriWinLeft  | 127            | 滑动窗口向左扩展仅支持127。                    |
@@ -548,10 +548,10 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
 
 - 使用约束
   - layoutQ为TND时，`cuSeqLensQ`必须传入。
-  - layoutKv为PA_BNBD时，`seqUsedOriKv`必须传入。BSND场景可选传入`seqUsedOriKv`覆盖每个batch的oriKv有效长度；TND场景使用`cuSeqLensOriKv`表达oriKv序列边界。
+  - layoutKv为PA_BBND时，`seqUsedOriKv`必须传入。BSND场景可选传入`seqUsedOriKv`覆盖每个batch的oriKv有效长度；TND场景使用`cuSeqLensOriKv`表达oriKv序列边界。
   - layoutKv为TND时，`cuSeqLensOriKv`必须传入；若hasCmpKv为true，`cuSeqLensCmpKv`也必须传入。
   - `seqUsedCmpKv`为所有layoutKv下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
-  - `cmpResidualKv`为`aclnnSparseFlashMlaMetadata`和`aclnnSparseFlashMla`的可选输入，cmpRatio大于1且存在cmpKv时用于恢复cmp侧mask使用的压缩前长度。
+  - `cmpResidualKv`为`aclnnSparseFlashMlaMetadata`和`aclnnSparseFlashMla`的可选输入，在CFA/SCFA、cmpRatio不等于1且cmpMaskMode为3场景必传，用于恢复cmp侧mask使用的压缩前长度。
   - 该算子为AICPU算子，在Host侧CPU上执行，不占用NPU计算资源。
 
 
@@ -704,7 +704,7 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   char layoutQ[] = "TND";
-  char layoutKv[] = "PA_BNBD";
+  char layoutKv[] = "PA_BBND";
 
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;

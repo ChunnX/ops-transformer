@@ -17,7 +17,7 @@ TEST_PARAMS = {
     "swa_decode": {
         "testcase_name": ["swa_decode"],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_BNBD"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.bfloat16],
         "B": [1],
@@ -39,7 +39,7 @@ TEST_PARAMS = {
     "smoke_test_swa_decode_pa": {
         "testcase_name": ["smoke_test_swa_decode_pa"],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_BNBD"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.bfloat16],
         "B": [1],
@@ -117,7 +117,7 @@ TEST_PARAMS = {
     "scfa_decode111":{
         "testcase_name": ["scfa_decode111"],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_BNBD"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.bfloat16],
         "cmp_kv_type": [torch.bfloat16],
@@ -150,7 +150,7 @@ TEST_PARAMS = {
     "ori_scfa_g128_test_decode":{
         "testcase_name": ["ori_scfa_g128_test_decode"],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_BNBD"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.bfloat16],
         "cmp_kv_type": [torch.bfloat16],
@@ -183,7 +183,7 @@ TEST_PARAMS = {
     "ori_scfa_g128_test_decode_B1":{
         "testcase_name": ["ori_scfa_g128_test_decode_B1"],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_BNBD"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.bfloat16],
         "cmp_kv_type": [torch.bfloat16],
@@ -216,7 +216,7 @@ TEST_PARAMS = {
     "ori_scfa_g128_test_decode_B16": {
         "testcase_name": ["ori_scfa_g128_test_decode_B16"],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_BNBD"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.bfloat16],
         "cmp_kv_type": [torch.bfloat16],
@@ -247,7 +247,7 @@ TEST_PARAMS = {
     "scfa_g64_test_prefill":{
         "testcase_name": ["scfa_g64_test_prefill"],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_BNBD"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.bfloat16],
         "cmp_kv_type": [torch.bfloat16],
@@ -280,7 +280,7 @@ TEST_PARAMS = {
     "ori_scfa_g128_test_prefill":{
         "testcase_name": ["ori_scfa_g128_test_prefill"],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_BNBD"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.bfloat16],
         "cmp_kv_type": [torch.bfloat16],
