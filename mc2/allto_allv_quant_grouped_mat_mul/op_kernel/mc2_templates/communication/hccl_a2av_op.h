@@ -308,8 +308,10 @@ public:
             alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
         }
         if (turnIdx < 2U) {
+            AscendC::printf("[LAUNCH] turn=%u recvOffsetLastSum=%lu\n", turnIdx, alltoAllvRecvOffsetLastSum);
             for (uint32_t i = 0U; i < rankDim_; i++) {
-                AscendC::printf("[SEND] turn=%u rank=%u experts=", turnIdx, i);
+                AscendC::printf("[SEND] turn=%u rank=%u sendCnt=%lu sendOff=%lu recvCnt=%lu recvOff=%lu experts=",
+                    turnIdx, i, alltoAllvSendCnt[i], alltoAllvSendOffset[i], alltoAllvRecvCnt[i], alltoAllvRecvOffset[i]);
                 for (uint32_t j = 0U; j < realCombineSize; j++) {
                     uint32_t expertIdx = startExpertIdx + j;
                     uint32_t cnt = static_cast<uint32_t>(sendCnt[expertIdx + i * e_]);
@@ -317,7 +319,7 @@ public:
                 }
                 AscendC::printf("\n");
                 if (alltoAllvSendCnt[i] > 0U) {
-                    AscendC::DumpTensor(sendGlobalBuffer_[alltoAllvSendOffset[i]], 100U + i, 16U);
+                    AscendC::DumpTensor(sendGlobalBuffer_[alltoAllvSendOffset[i]], 100U + turnIdx * rankDim_ + i, 16U);
                 }
             }
         }
@@ -342,6 +344,33 @@ public:
             uint32_t startExpertIdx = turnIdx * combineExpertSize;
             uint32_t realCombineSize = (turnIdx == taskTilingInfo_->commTurn - 1U)
                 ? (e_ - startExpertIdx) : combineExpertSize;
+            // 重算本 turn 的 recv cnt（alltoAllvRecvCnt 已被后续 turn 的 Launch 覆写）
+            uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
+            uint64_t turnRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
+            for (uint64_t i = 0UL; i < rankDim_; i++) {
+                for (uint64_t j = 0UL; j < realCombineSize; j++) {
+                    turnRecvCnt[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + j + i * e_]) * axis;
+                }
+            }
+            // 计算本 turn 的正确 recv offset（从 tiling 重新算，避免被覆写）
+            uint64_t turnRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+            uint64_t baseOff = 0UL;
+            for (uint32_t t = 0U; t < turnIdx; t++) {
+                uint32_t tStart = t * combineExpertSize;
+                uint32_t tReal = (t == taskTilingInfo_->commTurn - 1U) ? (e_ - tStart) : combineExpertSize;
+                for (uint32_t r = 0U; r < rankDim_; r++) {
+                    for (uint32_t j = 0U; j < tReal; j++) {
+                        baseOff += static_cast<uint64_t>(recvCounts_[tStart + j + r * e_]) * axis;
+                    }
+                }
+            }
+            turnRecvOffset[0] = baseOff;
+            for (uint32_t i = 1U; i < rankDim_; i++) {
+                turnRecvOffset[i] = turnRecvOffset[i - 1U];
+                for (uint32_t j = 0U; j < realCombineSize; j++) {
+                    turnRecvOffset[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + (i - 1U) * e_ + j]) * axis;
+                }
+            }
             for (uint32_t i = 0U; i < rankDim_; i++) {
                 AscendC::printf("[RECV] turn=%u rank=%u experts=", turnIdx, i);
                 for (uint32_t j = 0U; j < realCombineSize; j++) {
@@ -350,8 +379,8 @@ public:
                     AscendC::printf("e%u(%u),", expertIdx, cnt);
                 }
                 AscendC::printf("\n");
-                if (alltoAllvRecvCnt[i] > 0U) {
-                    AscendC::DumpTensor(recvGlobalBuffer_[alltoAllvRecvOffset[i]], 200U + i, 16U);
+                if (turnRecvCnt[i] > 0U) {
+                    AscendC::DumpTensor(recvGlobalBuffer_[turnRecvOffset[i]], 200U + turnIdx * rankDim_ + i, 16U);
                 }
             }
         }
