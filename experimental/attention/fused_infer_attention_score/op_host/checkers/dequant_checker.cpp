@@ -2714,7 +2714,8 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
     if (enableFullQuant_) {
         // 量化方式
-        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
+        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT &&
+        fiaInfo.fullQuantMode != FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
             enableIFAMLAFullQuant_ = true;
         } else if (fiaInfo.inputQType == ge::DT_INT8) {
             enablePertensorQuant_ = true;
