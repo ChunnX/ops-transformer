@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 #include "log/log.h"
 #include "util/math_util.h"
 #include "op_host/tiling_util.h"
@@ -16,7 +26,8 @@ inline int64_t CeilDiv(int64_t x, int64_t y) { return (x + y - 1) / y; }
 
 struct CompileInfo {};
 
-static ge::graphStatus GetPlatformInfo(gert::TilingContext* ctx, uint64_t& ubSize, int64_t& coreNum) {
+static ge::graphStatus GetPlatformInfo(gert::TilingContext* ctx, uint64_t& ubSize, int64_t& coreNum) 
+{
     auto* pi = ctx->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(ctx, pi);
     auto plat = platform_ascendc::PlatformAscendC(pi);
@@ -34,7 +45,8 @@ struct TilingInput {
     int32_t dtype; // ge::DT_FLOAT=0, ge::DT_FLOAT16=1
 };
 
-static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInput* in) {
+static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInput* in) 
+{
     auto hsShape = EnsureNotScalar(context->GetInputShape(0)->GetStorageShape());
     int64_t batch = hsShape.GetDim(0);
     int64_t seqLen = hsShape.GetDim(1);
@@ -61,7 +73,10 @@ static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInp
 static void ConfigCubeTiling(
     matmul_tiling::MultiCoreMatmulTiling* ct, const TilingInput& in)
 {
-    auto dt = (in.dtype == static_cast<int32_t>(ge::DT_FLOAT16)) ? matmul_tiling::DataType::DT_FLOAT16 : matmul_tiling::DataType::DT_FLOAT;
+    matmul_tiling::DataType dt = matmul_tiling::DataType::DT_FLOAT;
+    if (in.dtype == static_cast<int32_t>(ge::DT_FLOAT16)) {
+        dt = matmul_tiling::DataType::DT_FLOAT16;
+    }
     
     ct->SetAType(TPosition::GM, CubeFormat::ND, dt);
     ct->SetBType(TPosition::GM, CubeFormat::ND, dt);
@@ -71,9 +86,7 @@ static void ConfigCubeTiling(
     int64_t alignedM = CeilDiv(in.M, 16) * 16;
     int64_t alignedN = CeilDiv(in.N, 16) * 16;
 
-    if (dt == matmul_tiling::DataType::DT_FLOAT16 && alignedN == 32) {
-        alignedN = 48;
-    }
+    if (dt == matmul_tiling::DataType::DT_FLOAT16 && alignedN == 32) alignedN = 48;
     
     ct->SetShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
     ct->SetOrgShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
@@ -130,7 +143,8 @@ static void FillTilingOutputs(
     context->SetTilingKey(GET_TPL_TILING_KEY(ELEMENTWISE_TPL_SCH_MODE_0, dtypeVal));
 }
 
-static ge::graphStatus TilingFunc(gert::TilingContext* context) {
+static ge::graphStatus TilingFunc(gert::TilingContext* context) 
+{
     uint64_t ubSize;
     int64_t coreNum;
     OP_CHECK_IF(GetPlatformInfo(context, ubSize, coreNum) != ge::GRAPH_SUCCESS,

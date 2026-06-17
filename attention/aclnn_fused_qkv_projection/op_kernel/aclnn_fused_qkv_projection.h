@@ -1,3 +1,14 @@
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+
 #ifndef ACLNN_FUSED_QKV_PROJECTION_H
 #define ACLNN_FUSED_QKV_PROJECTION_H
 
@@ -9,9 +20,9 @@ using namespace AscendC;
 using namespace matmul;
 
 template <typename T>
-class KernelFusedQkvProjection {
+class AclnnFusedQkvProjection {
 public:
-    __aicore__ inline KernelFusedQkvProjection() {}
+    __aicore__ inline AclnnFusedQkvProjection() {}
     __aicore__ inline void Init(GM_ADDR hs, GM_ADDR wt, GM_ADDR bias,
                                 GM_ADDR q, GM_ADDR k, GM_ADDR v,
                                 GM_ADDR ws, const AclnnFusedQkvProjectionTilingData* td);
@@ -24,7 +35,9 @@ private:
     using biasType = MatmulType<TPosition::GM, CubeFormat::ND, T>;
 
     // ---- CopyOut ----
-    __aicore__ inline void CopyQkvOutputs(const LocalTensor<T>& cOut, int32_t computedRows, int32_t tileRows, int32_t matmulStride) {
+    __aicore__ inline void CopyQkvOutputs(const LocalTensor<T>& cOut, int32_t computedRows,
+                                                int32_t tileRows, int32_t matmulStride) 
+    {
         for (int32_t r = 0; r < tileRows; r++) {
             int32_t gr = computedRows + r;
             int32_t srcOff = r * matmulStride;
@@ -36,21 +49,27 @@ private:
                     DataCopy(kGm_[gr * kDim_], cOut[srcOff + qDim_], kDim_);
                     DataCopy(vGm_[gr * vDim_], cOut[srcOff + qDim_ + kDim_], vDim_);
                 } else {
-                    for (int32_t i = 0; i < qDim_; i++) qGm_.SetValue(gr * qDim_ + i, cOut.GetValue(srcOff + i));
-                    for (int32_t i = 0; i < kDim_; i++) kGm_.SetValue(gr * kDim_ + i, cOut.GetValue(srcOff + qDim_ + i));
-                    for (int32_t i = 0; i < vDim_; i++) vGm_.SetValue(gr * vDim_ + i, cOut.GetValue(srcOff + qDim_ + kDim_ + i));
+                    for (int32_t i = 0; i < qDim_; i++) 
+                        qGm_.SetValue(gr * qDim_ + i, cOut.GetValue(srcOff + i));
+                    for (int32_t i = 0; i < kDim_; i++) 
+                        kGm_.SetValue(gr * kDim_ + i, cOut.GetValue(srcOff + qDim_ + i));
+                    for (int32_t i = 0; i < vDim_; i++) 
+                        vGm_.SetValue(gr * vDim_ + i, cOut.GetValue(srcOff + qDim_ + kDim_ + i));
                 }
             } else {
-                if (qDim_ % 32 == 0 && kDim_ % 32 == 0 && vDim_ % 32 == 0 && 
+                if (qDim_ % 32 == 0 && kDim_ % 32 == 0 && vDim_ % 32 == 0 &&
                     srcOff % 32 == 0 && (srcOff + qDim_) % 32 == 0 && (srcOff + qDim_ + kDim_) % 32 == 0 &&
                     (gr * qDim_) % 32 == 0 && (gr * kDim_) % 32 == 0 && (gr * vDim_) % 32 == 0) {
                     DataCopy(qGm_[gr * qDim_], cOut[srcOff], qDim_);
                     DataCopy(kGm_[gr * kDim_], cOut[srcOff + qDim_], kDim_);
                     DataCopy(vGm_[gr * vDim_], cOut[srcOff + qDim_ + kDim_], vDim_);
                 } else {
-                    for (int32_t i = 0; i < qDim_; i++) qGm_.SetValue(gr * qDim_ + i, cOut.GetValue(srcOff + i));
-                    for (int32_t i = 0; i < kDim_; i++) kGm_.SetValue(gr * kDim_ + i, cOut.GetValue(srcOff + qDim_ + i));
-                    for (int32_t i = 0; i < vDim_; i++) vGm_.SetValue(gr * vDim_ + i, cOut.GetValue(srcOff + qDim_ + kDim_ + i));
+                    for (int32_t i = 0; i < qDim_; i++) 
+                        qGm_.SetValue(gr * qDim_ + i, cOut.GetValue(srcOff + i));
+                    for (int32_t i = 0; i < kDim_; i++) 
+                        kGm_.SetValue(gr * kDim_ + i, cOut.GetValue(srcOff + qDim_ + i));
+                    for (int32_t i = 0; i < vDim_; i++) 
+                        vGm_.SetValue(gr * vDim_ + i, cOut.GetValue(srcOff + qDim_ + kDim_ + i));
                 }
             }
         }
@@ -69,7 +88,7 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void KernelFusedQkvProjection<T>::Init(
+__aicore__ inline void AclnnFusedQkvProjection<T>::Init(
     GM_ADDR hs, GM_ADDR wt, GM_ADDR bias,
     GM_ADDR q, GM_ADDR k, GM_ADDR v,
     GM_ADDR ws, const AclnnFusedQkvProjectionTilingData* td)
@@ -103,7 +122,7 @@ __aicore__ inline void KernelFusedQkvProjection<T>::Init(
 }
 
 template <typename T>
-__aicore__ inline void KernelFusedQkvProjection<T>::Process()
+__aicore__ inline void AclnnFusedQkvProjection<T>::Process()
 {
     uint32_t blockIdx = GetBlockIdx();
     if (blockIdx >= td_->blockDim || realCoreM_ == 0) return;
