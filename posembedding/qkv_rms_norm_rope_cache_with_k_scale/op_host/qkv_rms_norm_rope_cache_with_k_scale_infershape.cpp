@@ -31,17 +31,12 @@ constexpr uint64_t HEAD_NUMS_SIZE = 3;
 constexpr uint64_t QKV_DIM_NUM = 3;
 constexpr uint64_t CACHE_DIM_NUM = 4;
 
-unsigned long long U64(uint64_t value)
-{
-    return static_cast<unsigned long long>(value);
-}
-
 ge::graphStatus ValidateDimNum(gert::InferShapeContext *context, const char *tensorName, const gert::Shape *shape,
                                uint64_t expectedDimNum)
 {
     const uint64_t actualDimNum = static_cast<uint64_t>(shape->GetDimNum());
     if (actualDimNum != expectedDimNum) {
-        OP_LOGE(context, "%s dim num must be %llu, but got %llu.", tensorName, U64(expectedDimNum), U64(actualDimNum));
+        OP_LOGE(context, "%s dim num must be %llu, but got %llu.", tensorName, expectedDimNum, actualDimNum);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -52,7 +47,7 @@ ge::graphStatus ValidatePositiveDims(gert::InferShapeContext *context, const cha
     const uint64_t dimNum = static_cast<uint64_t>(shape->GetDimNum());
     for (uint64_t i = 0; i < dimNum; ++i) {
         if (shape->GetDim(i) <= 0) {
-            OP_LOGE(context, "%s dim[%llu] must be greater than 0, but got %ld.", tensorName, U64(i),
+            OP_LOGE(context, "%s dim[%llu] must be greater than 0, but got %ld.", tensorName, i,
                     shape->GetDim(i));
             return ge::GRAPH_FAILED;
         }
@@ -70,14 +65,14 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
     OP_CHECK_NULL_WITH_CONTEXT(context, headNums);
     const uint64_t headNumsSize = static_cast<uint64_t>(headNums->GetSize());
     if (headNumsSize != HEAD_NUMS_SIZE) {
-        OP_LOGE(context, "head_nums size must be %llu, but got %llu.", U64(HEAD_NUMS_SIZE), U64(headNumsSize));
+        OP_LOGE(context, "head_nums size must be %llu, but got %llu.", HEAD_NUMS_SIZE, headNumsSize);
         return ge::GRAPH_FAILED;
     }
     const auto *headNumsData = headNums->GetData();
     OP_CHECK_NULL_WITH_CONTEXT(context, headNumsData);
     for (uint64_t i = 0; i < HEAD_NUMS_SIZE; ++i) {
         if (headNumsData[i] <= 0) {
-            OP_LOGE(context, "head_nums[%llu] must be greater than 0.", U64(i));
+            OP_LOGE(context, "head_nums[%llu] must be greater than 0.", i);
             return ge::GRAPH_FAILED;
         }
     }
