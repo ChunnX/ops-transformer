@@ -156,7 +156,6 @@ int RunTest(int64_t batchSize, int64_t seqLen, int64_t hiddenSize, int64_t qDim,
     aclrtMemcpy(kD.data(), kD.size()*sizeof(DeviceT), kDev, kD.size()*sizeof(DeviceT), ACL_MEMCPY_DEVICE_TO_HOST);
     aclrtMemcpy(vD.data(), vD.size()*sizeof(DeviceT), vDev, vD.size()*sizeof(DeviceT), ACL_MEMCPY_DEVICE_TO_HOST);
 
-    // 根据数据类型调整容差范围，float16 精度截断误差会偏大
     float eps = std::is_same<DeviceT, float>::value ? 1e-4f : 5e-2f; 
 
     for (int64_t i = 0; i < (int64_t)qD.size(); i++) {

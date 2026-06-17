@@ -41,7 +41,6 @@ private:
                     for (int32_t i = 0; i < vDim_; i++) vGm_.SetValue(gr * vDim_ + i, cOut.GetValue(srcOff + qDim_ + kDim_ + i));
                 }
             } else {
-                // FP16 按 32 元素 (64 Bytes) 严格对齐，否则硬件报错。若不对齐则降级为 SetValue
                 if (qDim_ % 32 == 0 && kDim_ % 32 == 0 && vDim_ % 32 == 0 && 
                     srcOff % 32 == 0 && (srcOff + qDim_) % 32 == 0 && (srcOff + qDim_ + kDim_) % 32 == 0 &&
                     (gr * qDim_) % 32 == 0 && (gr * kDim_) % 32 == 0 && (gr * vDim_) % 32 == 0) {

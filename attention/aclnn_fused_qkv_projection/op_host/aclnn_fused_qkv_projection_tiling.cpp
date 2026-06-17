@@ -71,7 +71,6 @@ static void ConfigCubeTiling(
     int64_t alignedM = CeilDiv(in.M, 16) * 16;
     int64_t alignedN = CeilDiv(in.N, 16) * 16;
 
-    // FP16 + N=32：Cube 粒度过小触发多核竞争，padding 到 48 列规避
     if (dt == matmul_tiling::DataType::DT_FLOAT16 && alignedN == 32) {
         alignedN = 48;
     }
@@ -97,7 +96,6 @@ static ge::graphStatus DoCubeTiling(
         return ge::GRAPH_FAILED;
     }
 
-    // 如果 baseN < N，GetTensorC fullC=true 会截断列。尝试用 SetFixSplit 强制单 N-tile
     if (td->cubeTiling.baseN < N) {
         ct->SetFixSplit(static_cast<int32_t>(1), static_cast<int32_t>(1));
         if (ct->GetTiling(td->cubeTiling) != 0) {
