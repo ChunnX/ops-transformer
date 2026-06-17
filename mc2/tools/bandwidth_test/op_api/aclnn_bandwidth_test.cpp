@@ -21,7 +21,7 @@
 #if __has_include("version/hcomm_version.h")
 #include "version/hcomm_version.h"
 #else
-#define HCOMM_VRSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION)
+#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION)
 #endif
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
@@ -77,7 +77,7 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* dstRankId, c
     }
     
     if (mode < 0 || mode > 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mode must be positive, got %ld", mode);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mode must be 0 or 1, got %ld", mode);
         return ACLNN_ERR_PARAM_INVALID;
     }
     

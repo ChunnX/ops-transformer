@@ -26,7 +26,7 @@ tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id
                                int64_t mode, std::string comm_alg, int64_t aiv_num)
 {
     TORCH_CHECK((x.dim() == DIM_TWO), "The x should be 2D");
-    TORCH_CHECK((dstrank_id.dim() == 1), "The expert_id should be 1D");
+    TORCH_CHECK((dstrank_id.dim() == 1), "The dstrank_id should be 1D");
     TORCH_CHECK((world_size > 0), "The world_size should be greater than 0, current is: ", world_size);
     TORCH_CHECK((max_bs > 0), "The max_bs should be greater than 0, current is: ", max_bs);
     TORCH_CHECK((mode == 0 || mode == 1), "The mode should be 0 or 1, current is: ", mode);

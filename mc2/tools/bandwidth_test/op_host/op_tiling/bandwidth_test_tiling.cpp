@@ -189,7 +189,6 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
         OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be positive, but got %ld.", xDim1),
                 return ge::GRAPH_FAILED);
 
-    tilingData.maxBs = static_cast<int32_t>(xDim0);
     tilingData.dataSize = static_cast<int32_t>(xDim1);
 
     const gert::StorageShape *dstRankIdStorageShape = context->GetInputShape(INPUT_DST_RANK_ID_INDEX);
@@ -365,7 +364,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     auto aivNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_AIV_NUM_INDEX);
     uint32_t aivNum = platformAivNum;
-    if (aivNumPtr != nullptr && *aivNumPtr <= platformAivNum) {
+    if (*aivNumPtr > 0 && *aivNumPtr <= platformAivNum) {
         aivNum = static_cast<uint32_t>(*aivNumPtr);
     }
 
