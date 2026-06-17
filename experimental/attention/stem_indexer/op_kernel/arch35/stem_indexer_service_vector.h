@@ -165,10 +165,6 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     // 走复用UB逻辑 初始化topk相关ub大小
     topkOp_.InitBuffers(topkSharedTmpLocal_, globalIndexLocal_, indicesOutLocal_);
 
-    //刷-1
-    pipe->InitBuffer(outInvalidBuf_, MAX_TOPK_COUNT * sizeof(int32_t));
-    outInvalidLocal_ = outInvalidBuf_.Get<int32_t>();
-
     // indice_len
     pipe->InitBuffer(indiceLenBuf_, CeilDiv(constInfo_.mBaseSize, 2) * sizeof(uint32_t));
     indiceLenLocal_ = indiceLenBuf_.Get<uint32_t>();
@@ -534,7 +530,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             PipeBarrier<PIPE_V>();
             // topk UB复用 resMm1Local_
             LocalTensor<uint32_t> reuseMm1ResLocal = resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
-            topkOp_(mrgValueLocal_[mInnerOffset], indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
+            topkOp_(mrgValueLocal_[mrgValueOffset], indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
                     topkSelectNumAlign256 + s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
             PipeBarrier<PIPE_V>();
             // 如果是首块，因为mrgValueLocal_的前topkSelectNumAlign256的位置没有数据，这里需要把偏移值减掉
