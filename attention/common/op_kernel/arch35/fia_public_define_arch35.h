@@ -91,6 +91,8 @@ struct RunInfoX {
     uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
     uint32_t bandHeadCopySkip = 0;
 
+    bool shouldDealInitToken = false;
+
     uint32_t actSingleLoopS2Size = 0; // S2方向长度
     uint32_t actSingleLoopS2SizeAlign;
     // uint32_t curS2LoopTimes = 0;
