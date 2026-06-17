@@ -267,32 +267,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::CheckOptionalInpu
             "Input x is not supported yet: dcos/dsin gradient computation is not implemented. "
             "Please set x to nullptr.");
     return ge::GRAPH_FAILED;
-
-    auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
-    auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
-    auto &dyOutputShape = context_->GetOutputShape(DY_OUTPUT_INDEX)->GetStorageShape();
-    auto &xShape = context_->GetInputShape(X_INDEX)->GetStorageShape();
-    auto &dcosShape = context_->GetOutputShape(DCOS_INDEX)->GetStorageShape();
-    auto &dsinShape = context_->GetOutputShape(DSIN_INDEX)->GetStorageShape();
-    if (xShape != dyOutputShape) {
-        std::string shapeMsg = ToString(xShape) + " and " + ToString(dyOutputShape);
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and dy", shapeMsg.c_str(),
-                                               "The shapes of input x and output dy should be the same");
-        return ge::GRAPH_FAILED;
-    }
-    if (cosShape != dcosShape) {
-        std::string shapeMsg = ToString(cosShape) + " and " + ToString(dcosShape);
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos and dcos", shapeMsg.c_str(),
-                                               "The shapes of input cos and output dcos should be the same");
-        return ge::GRAPH_FAILED;
-    }
-    if (sinShape != dsinShape) {
-        std::string shapeMsg = ToString(sinShape) + " and " + ToString(dsinShape);
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "sin and dsin", shapeMsg.c_str(),
-                                               "The shapes of input sin and output dsin should be the same");
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::CheckShape()
