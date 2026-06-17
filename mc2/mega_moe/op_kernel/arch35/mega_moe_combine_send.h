@@ -140,13 +140,22 @@ __aicore__ inline void CombineTokensWithUrma(uint32_t gsendCnt, const Params& pa
         uint32_t curCnt  = ReadGmByPassDCache(notifyAddr);
         if (curCnt > sendTokenCnt(rankIndex)) {
             uint32_t needCnt = curCnt - sendTokenCnt(rankIndex);
-            for (uint32_t i = 0; i < needCnt; i++) {
-                GM_ADDR dataAddr = params.workspaceInfo.combineDataPtr + (rankIndex + startRankId) * max_data_size + i * (maxDataLength + 32);
+            uint32_t index = 0;
+            while(true) {
+                GM_ADDR dataAddr = params.workspaceInfo.combineDataPtr + (rankIndex + startRankId) * max_data_size + index * (maxDataLength + 32);
                 gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dataAddr + maxDataLength)); // 设置目标rank的combineSendPtr
+                AscendC::Nop<20>();
                 AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-                WriteNbi(dataAddr, sendTensor, 8);
+                if (sendTensor.GetValue(7) == 1) {
+                    //WriteNbi(dataAddr, sendTensor, 8);
+                    needCnt--;
+                    if (needCnt == 0) {
+                        break;
+                    }
+                }
+                index = (index + 1) % needCnt;
             }
             sendTokenCnt.SetValue(rankIndex, curCnt);
             if (sendTokenCnt(rankIndex) == totalTokenCnt(rankIndex)) {
