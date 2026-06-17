@@ -19,6 +19,7 @@ MXFP8 Flash Attention Golden
 
 """
 
+import argparse
 import logging
 import math
 
@@ -28,7 +29,13 @@ import torch_npu
 from torchair.configs.compiler_config import CompilerConfig
 import torchair as tng
 
-import result_compare_method
+try:
+    from . import result_compare_method
+except ImportError:
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import result_compare_method
 
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
@@ -44,7 +51,7 @@ N_kv = 1           # kv heads
 D = 128
 
 ENABLE_ROPE = False
-D_rope = 0
+D_rope = 64
 
 ACTUAL_SEQ_Q = [4]
 ACTUAL_SEQ_KV = [1024]
@@ -81,7 +88,12 @@ SEED_V = 4
 SEED_QR = 8
 SEED_KR = 9
 
+DATA_RANGE_Q = 1.0
+DATA_RANGE_K = 1.0
+DATA_RANGE_V = 1.0
+
 DEVICE_ID = 0
+
 
 def _get_npu_fa_kwargs():
     # 每次调用时读取最新全局变量，确保 pytest 修改配置后生效
@@ -593,13 +605,13 @@ def generate_data():
     logger.info("[INFO] max_sq=%d, max_skv=%d", max_sq, max_skv)
 
     torch.manual_seed(SEED_Q)
-    q_fp16 = torch.randn(B, N_q, max_sq, D, dtype=torch.float16)
+    q_fp16 = (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
 
     torch.manual_seed(SEED_K)
-    k_fp16 = torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    k_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_K
 
     torch.manual_seed(SEED_V)
-    v_fp16 = torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+    v_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_V
 
     qr_bf16 = None
     kr_bf16 = None
@@ -1132,8 +1144,33 @@ def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_k
 # ==============================================================================
 
 if __name__ == '__main__':
+    try:
+        from . import golden_cache
+    except ImportError:
+        import golden_cache
+
+    _VALID_MODES = {"all", "gen", "cpu", "npu", "compare"}
+
+    parser = argparse.ArgumentParser(description="MXFP8 Flash Attention Golden")
+    parser.add_argument("--mode", default="all",
+                        help="执行模式，支持逗号组合: all/gen/cpu/npu/compare. 例: --mode=npu,compare")
+    parser.add_argument("--case-name", default="default",
+                        help="case 名称，用于 .pt 文件命名")
+    parser.add_argument("--cache-dir", default=None,
+                        help="缓存目录路径（默认 golden_cache/）")
+    args = parser.parse_args()
+
+    raw_parts = {m.strip() for m in args.mode.split(",") if m.strip()}
+    invalid = raw_parts - _VALID_MODES
+    if invalid:
+        parser.error(f"Invalid mode: {invalid}. Valid: {_VALID_MODES}")
+    mode = {"gen", "cpu", "npu", "compare"} if "all" in raw_parts else raw_parts
+
+    case_name = args.case_name
+    cdir = args.cache_dir
+
     logger.info("=" * 60)
-    logger.info("MXFP8 Flash Attention Golden")
+    logger.info("MXFP8 Flash Attention Golden  [mode=%s, case=%s]", mode, case_name)
     logger.info("输出: 逐元素表格 + 统计汇总 (PctRlt 通过率)")
     logger.info("=" * 60)
     logger.info("场景: %s", 'PA' if ENABLE_PA else 'TND')
@@ -1142,22 +1179,52 @@ if __name__ == '__main__':
     logger.info("B=%d, N_q=%d, N_kv=%d, D=%d", B, N_q, N_kv, D)
     logger.info("ACTUAL_SEQ_Q=%s, ACTUAL_SEQ_KV=%s", ACTUAL_SEQ_Q, ACTUAL_SEQ_KV)
 
-    logger.info("\n[Step 1] 数据生成")
-    (q_fp8, k_fp8, v_fp8,
-     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-     qr_bf16, kr_bf16, block_table_torch) = generate_data()
+    if "gen" in mode:
+        logger.info("\n[Step 1] 数据生成")
+        (q_fp8, k_fp8, v_fp8,
+         dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+         qr_bf16, kr_bf16, block_table_torch) = generate_data()
+        golden_cache.save_input(case_name, golden_cache.build_input_dict(
+            q_fp8, k_fp8, v_fp8, dequant_scale_q, dequant_scale_k, dequant_scale_v,
+            p_scale, qr_bf16, kr_bf16, block_table_torch
+        ), cache_dir=cdir)
+    else:
+        logger.info("\n[Step 1] 加载已保存的输入数据")
+        (q_fp8, k_fp8, v_fp8,
+         dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+         qr_bf16, kr_bf16, block_table_torch) = golden_cache.load_input(case_name, cache_dir=cdir)
 
-    logger.info("\n[Step 2] CPU Golden")
-    cpu_out, cpu_lse = cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
+    if "gen" in mode and not (mode & {"cpu", "npu", "compare"}):
+        logger.info("\n[Done] 数据已保存，退出")
+        exit(0)
+
+    if "cpu" in mode:
+        logger.info("\n[Step 2] CPU Golden")
+        cpu_out, cpu_lse = cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
+                                   dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+                                   ACTUAL_SEQ_Q, ACTUAL_SEQ_KV,
+                                   qr_bf16, kr_bf16)
+        golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
+    else:
+        cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=cdir)
+
+    if "cpu" in mode and not (mode & {"npu", "compare"}):
+        logger.info("\n[Done] CPU 输出已保存，退出")
+        exit(0)
+
+    if "npu" in mode:
+        logger.info("\n[Step 3] NPU 调用")
+        atten_out, lse_out = npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
                                dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                                ACTUAL_SEQ_Q, ACTUAL_SEQ_KV,
-                               qr_bf16, kr_bf16)
+                               block_table_torch, qr_bf16, kr_bf16)
+        golden_cache.save_npu_output(case_name, atten_out, lse_out, cache_dir=cdir)
+    else:
+        atten_out, lse_out = golden_cache.load_npu_output(case_name, cache_dir=cdir)
 
-    logger.info("\n[Step 3] NPU 调用")
-    atten_out, lse_out = npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
-                           dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-                           ACTUAL_SEQ_Q, ACTUAL_SEQ_KV,
-                           block_table_torch, qr_bf16, kr_bf16)
+    if "npu" in mode and "compare" not in mode:
+        logger.info("\n[Done] NPU 输出已保存，退出")
+        exit(0)
 
     logger.info("\n[Step 4] Atten OUT 精度对比")
     cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out, ACTUAL_SEQ_Q, "TND")
