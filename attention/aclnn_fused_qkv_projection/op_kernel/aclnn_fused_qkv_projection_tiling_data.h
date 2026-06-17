@@ -5,23 +5,22 @@
 
 struct AclnnFusedQkvProjectionTilingData {
     TCubeTiling cubeTiling;
-
-    int32_t M;                  // 总行数 (batch * seq_len)
-    int32_t N;                  // 总列数 (q_dim + k_dim + v_dim)
-    int32_t K;                  // 隐藏层维度
-    int32_t singleCoreM;        // 单核处理的行数
-    int32_t singleCoreN;        // 单核处理的列数
-    int32_t baseM;              // 单次迭代处理的行数
-    int32_t baseN;              // 单次迭代处理的列数
-    int32_t baseK;              // 单次迭代处理的 K 维度
+    int32_t M;
+    int32_t N;
+    int32_t K;
+    int32_t singleCoreM;
+    int32_t singleCoreN;
+    int32_t baseM;
+    int32_t baseN;
+    int32_t baseK;
     int32_t qDim;
     int32_t kDim;
     int32_t vDim;
-    
-    int64_t sysWsOffset;       // byte
-    int64_t fusedOutOffset;    // byte
-
-    bool    hasBias;
+    int64_t sysWsOffset;
+    int64_t fusedOutOffset;
+    bool hasBias;
     uint32_t blockDim;
+    int32_t dtype; // ge::DT_FLOAT(0) or ge::DT_FLOAT16(1)
 };
+
 #endif
