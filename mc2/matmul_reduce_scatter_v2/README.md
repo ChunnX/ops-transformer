@@ -30,7 +30,7 @@
     - 情形2：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的pertensor场景，或者x1和x2数据类型为INT8的perchannel、pertoken场景，且不输出amaxOut，入参x1、x2进行matmul计算和dequant计算后，进行ReduceScatter通信。
 
         $$
-        output=ReduceScatter((x1Scale*x2Scale)*(x1@x2 + bias_{optional}))
+        output=ReduceScatter((x1Scale*x2Scale)*(x1@x2) + bias_{optional})
         $$
 
     - 情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut，当x1的shape为(m, k)、x2的shape为(k, n)时， x1Scale的shape为(ceildiv(m, 128), ceildiv(k, 128))、x2Scale的shape为(ceildiv(k, 128), ceildiv(n, 128))时，入参x1、x2进行matmul计算和dequant计算后，再进行ReduceScatter通信。
@@ -277,7 +277,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
         - x1、x2：在commMode为aicpu时，数据类型支持FLOAT16、BFLOAT16；commMode为aiv时，数据类型支持FLOAT16、BFLOAT16、INT8，x1数据格式仅支持ND，x2数据格式支持ND、FRACTAL_NZ。
-        - bias：在commMode为aicpu时，数据类型支持FLOAT16、BFLOAT16，仅支持为0的输入。在commMode为aiv时，当前版本仅支持输入nullptr。
+        - bias：在commMode为aicpu时，数据类型支持FLOAT16、BFLOAT16，仅支持为0的输入。在commMode为aiv时，当x1和x2数据类型为INT8时，bias数据类型可以是FLOAT16、BFLOAT16、FLOAT；当x1和x2数据类型为FLOAT16时，bias数据类型必须为FLOAT16、FLOAT；当x1和x2数据类型为BFLOAT16时，bias数据类型必须为BFLOAT16、FLOAT。
         - x1Scale：在commMode为aicpu时，仅支持输入nullptr。在commMode为aiv时，数据类型支持FLOAT。当x1和x2数据类型为FLOAT16/BFLOAT16时，仅支持输入为nullptr。在pertoken场景，shape为(m, 1)。
         - x2Scale：在commMode为aicpu时，仅支持输入nullptr。在commMode为aiv时，数据类型支持FLOAT、INT64，数据格式支持ND。INT64数据类型仅在output数据类型为FLOAT16场景支持。当x1和x2数据类型为FLOAT16、BFLOAT16时，仅支持输入为nullptr。在perchannel场景，shape为(1, n)。
         - groupSize：当前版本仅支持输入为0。
@@ -400,7 +400,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     - 支持2、4、8、16、32、64卡；支持CCU通信和AICPU通信，CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
     - reduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
     - 输入x1为2维，其shape为\(m, k\)，m须为卡数rank\_size的整数倍。
     - 输入x2必须是2维，其shape为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
