@@ -124,23 +124,15 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     } else { // SWA/CFA
         // 不需要取topk, 每次计算gSize行, 循环qs次
         gs1LoopEndIdx = (runParam.actualS1Size + runParam.qSNumInOneBlock - 1) / runParam.qSNumInOneBlock;
-        // printf("@@@@@@@@@@@@@@@  runParam.actualS1Size: %d, runParam.qSNumInOneBlock: %d, gs1LoopEndIdx: %d\n",
-        //     runParam.actualS1Size, runParam.qSNumInOneBlock, gs1LoopEndIdx);
     }
-    // 不是最后一个bn, 赋值souterBlockNum
     if (!lastBN) {
-        // printf("@@@@@@@@@@@@@@@  not lastBN\n");
         runParam.gs1LoopEndIdx = gs1LoopEndIdx;
-    } else { // 最后一个bn, 从数组下一个元素取值
-        // 如果s2EndIdx不为0，说明s2也切分了，nextGs1Idx是最后一个S2块所在的S1
+    } else {
         uint32_t actualNextGs1Idx = s2EndIdx == 0 ? nextGs1Idx : nextGs1Idx + 1;
         runParam.gs1LoopEndIdx = (nextGs1Idx == 0 && s2EndIdx == 0) ? gs1LoopEndIdx : actualNextGs1Idx;
-        // printf("@@@@@@@@@@@@@@@  lastBN: nextGs1Idx: %d, gs1LoopEndIdx: %d, runParam.gs1LoopEndIdx: %d, actualNextGs1Idx: %d\n",
-        //     nextGs1Idx, gs1LoopEndIdx, runParam.gs1LoopEndIdx, actualNextGs1Idx);
     }
 
     if (runParam.gs1LoopStartIdx > runParam.gs1LoopEndIdx) {
-        // printf("@@@@@@@@@@@@@@@  big: runParam.gs1LoopEndIdx: %d\n", runParam.gs1LoopEndIdx);
         runParam.gs1LoopStartIdx = runParam.gs1LoopEndIdx;
     }
 }
