@@ -1542,11 +1542,11 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
     //             return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.totalBlockNum != keyAntiquantScaleShape.GetDim(DIM_NUM_0) ||
                 fiaInfo.n2Size != keyAntiquantScaleShape.GetDim(DIM_NUM_1) ||
-                fiaInfo.blockSize + 4 != keyAntiquantScaleShape.GetDim(DIM_NUM_2),
+                fiaInfo.blockSize != keyAntiquantScaleShape.GetDim(DIM_NUM_2),
                 OP_LOGE(fiaInfo.opName,
                         "In FP8 GQA fullquant scenario, the shape of keyAntiquantScale([%ld, %ld, %ld]) should be [%ld, %ld, %ld] (BnNBs layout).",
                         keyAntiquantScaleShape.GetDim(DIM_NUM_0), keyAntiquantScaleShape.GetDim(DIM_NUM_1),
-                        keyAntiquantScaleShape.GetDim(DIM_NUM_2) - 4, fiaInfo.totalBlockNum, fiaInfo.n2Size, fiaInfo.blockSize),
+                        keyAntiquantScaleShape.GetDim(DIM_NUM_2), fiaInfo.totalBlockNum, fiaInfo.n2Size, fiaInfo.blockSize),
                 return ge::GRAPH_FAILED);
     // pa场景 key kscale BnNBsD支持0/1轴非连续
     int32_t dimIndex = 0;
