@@ -486,7 +486,7 @@ def _preprocess_gather(key, key_index, key_rope, sparse_indices, B, S1, S2, N2, 
     t_dtype = key.dtype
 
     sparse_idx_3d = sparse_indices[:, :, 0, :]            # [B, S1, K]
-    valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1)        # bool, no .to() cast needed
+    valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(t_dtype)
     sparse_idx_safe = sparse_idx_3d.clamp(min=0)
 
     key_2d = key[:, :, 0, :]                              # [B, S2, DQuery]
@@ -573,26 +573,24 @@ def _compute_vector_outputs(
 # ScatterAdd: compute dKeyIndex from reluGrad and queryIndex
 # ==============================================================================
 def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx1, Nidx2, K, DQueryIndex, device, dtype):
-    rg_fp32 = relu_grad.float()                              # [B, S1, Nidx1, K]
-    qi_fp32 = query_index.float()                             # [B, S1, Nidx1, DQI]
+    relu_grad_fp32 = relu_grad.float()
+    query_index_fp32 = query_index.float()
 
-    # bmm: [B*S1, K, Nidx1] @ [B*S1, Nidx1, DQI] -> [B*S1, K, DQI]
+    relu_grad_t = relu_grad_fp32.transpose(-1, -2)
     scatter_add = torch.bmm(
-        rg_fp32.transpose(-1, -2).reshape(B * S1, K, Nidx1),
-        qi_fp32.reshape(B * S1, Nidx1, DQueryIndex),
+        relu_grad_t.reshape(B * S1, K, Nidx1),
+        query_index_fp32.reshape(B * S1, Nidx1, DQueryIndex),
     ).reshape(B, S1, K, DQueryIndex)
 
-    # Pre-compute index + mask, apply in-place
-    sparse_idx = sparse_indices[:, :, 0, :].clamp(min=0)     # [B, S1, K]
-    valid_mask = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1)
-    scatter_add.mul_(valid_mask)
-
-    # Scatter-add: accumulate [S1*K, DQI] -> [S2, DQI]
     d_key_index = torch.zeros(B, S2, Nidx2, DQueryIndex, dtype=torch.float32, device=device)
-    idx_flat = sparse_idx.unsqueeze(-1).expand(B, S1, K, DQueryIndex) \
-                         .reshape(B, S1 * K, DQueryIndex)[:, :S2, :]
-    src_flat = scatter_add.reshape(B, S1 * K, DQueryIndex)[:, :S2, :]
-    d_key_index[:, :, 0, :].scatter_add_(1, idx_flat, src_flat)
+    sparse_idx = sparse_indices[:, :, 0, :].clamp(min=0)
+    valid_mask = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1).to(torch.float32)
+
+    scatter_add_masked = scatter_add * valid_mask
+    idx_expanded = sparse_idx.unsqueeze(-1).expand(B, S1, K, DQueryIndex)
+    d_key_index_2d = d_key_index[:, :, 0, :]
+    d_key_index_2d.scatter_add_(1, idx_expanded.reshape(B, S1 * K, DQueryIndex)[:, :S2, :],
+                                 scatter_add_masked.reshape(B, S1 * K, DQueryIndex)[:, :S2, :])
 
     return d_key_index.to(dtype)
 
