@@ -263,6 +263,11 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::CheckShapeLimit()
 
 ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::CheckOptionalInput() const
 {
+    OP_LOGE(context_->GetNodeName(),
+            "Input x is not supported yet: dcos/dsin gradient computation is not implemented. "
+            "Please set x to nullptr.");
+    return ge::GRAPH_FAILED;
+
     auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
     auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
     auto &dyOutputShape = context_->GetOutputShape(DY_OUTPUT_INDEX)->GetStorageShape();
