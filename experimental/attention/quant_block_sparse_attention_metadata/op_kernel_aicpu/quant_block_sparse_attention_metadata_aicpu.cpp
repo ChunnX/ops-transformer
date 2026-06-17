@@ -160,13 +160,20 @@ uint32_t QuantBlockSparseAttentionMetadataCpuKernel::GetRowBlockNum(uint32_t bId
     return sparseSeqLenData[idx] > 0 ? static_cast<uint32_t>(sparseSeqLenData[idx]) : 0U;
 }
 
+uint64_t QuantBlockSparseAttentionMetadataCpuKernel::GetBatchBlockNum(uint32_t bIdx) const
+{
+    uint64_t batchBlockNum = 0U;
+    for (uint32_t s1Idx = 0U; s1Idx < Qbmax_; ++s1Idx) {
+        batchBlockNum += GetRowBlockNum(bIdx, s1Idx);
+    }
+    return batchBlockNum;
+}
+
 uint64_t QuantBlockSparseAttentionMetadataCpuKernel::CalcBlockNum() const
 {
     uint64_t blockNumPerHead = 0U;
     for (uint32_t bIdx = 0U; bIdx < static_cast<uint32_t>(batchSize_); ++bIdx) {
-        for (uint32_t s1Idx = 0U; s1Idx < Qbmax_; ++s1Idx) {
-            blockNumPerHead += GetRowBlockNum(bIdx, s1Idx);
-        }
+        blockNumPerHead += GetBatchBlockNum(bIdx);
     }
     return blockNumPerHead * static_cast<uint32_t>(numHeadsQ_);
 }
@@ -195,6 +202,68 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::AdvanceToValidRow(AssignContext
     return false;
 }
 
+void QuantBlockSparseAttentionMetadataCpuKernel::AssignByBatch(AssignContext &assignContext) const
+{
+    if (assignContext.isFinished) {
+        return;
+    }
+
+    const uint32_t totalBN1 = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
+    while (assignContext.curBN1Idx < totalBN1) {
+        if (!AdvanceToValidRow(assignContext)) {
+            return;
+        }
+        bool hasAssignedRow = false;
+        for (uint32_t s1Idx = 0U; s1Idx < assignContext.curS1Idx; ++s1Idx) {
+            if (GetRowBlockNum(assignContext.curBIdx, s1Idx) != 0U) {
+                hasAssignedRow = true;
+                break;
+            }
+        }
+        if (hasAssignedRow) {
+            return;
+        }
+
+        uint64_t batchBlock = GetBatchBlockNum(assignContext.curBIdx);
+        if (batchBlock == 0U) {
+            assignContext.curBN1Idx++;
+            assignContext.curS1Idx = 0U;
+            assignContext.curS2Idx = 0U;
+            continue;
+        }
+        if (assignContext.coreCache.block + batchBlock > assignContext.coreCache.blockLimit) {
+            return;
+        }
+
+        assignContext.coreCache.block += batchBlock;
+        assignContext.curBN1Idx++;
+        assignContext.curS1Idx = 0U;
+        assignContext.curS2Idx = 0U;
+    }
+
+    assignContext.isFinished = true;
+}
+
+void QuantBlockSparseAttentionMetadataCpuKernel::AssignByRow(AssignContext &assignContext) const
+{
+    while (!assignContext.isFinished) {
+        if (!AdvanceToValidRow(assignContext)) {
+            break;
+        }
+        uint32_t rowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx);
+        if (rowBlock == 0U) {
+            assignContext.curS1Idx++;
+            continue;
+        }
+        if (assignContext.coreCache.block > 0U &&
+            assignContext.coreCache.block + rowBlock > assignContext.coreCache.blockLimit) {
+            break;
+        }
+        assignContext.coreCache.block += rowBlock;
+        assignContext.curS1Idx++;
+    }
+}
+
 void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, SplitResult &result)
 {
     AssignContext assignContext {};
@@ -221,22 +290,8 @@ void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, S
         assignContext.coreCache.blockLimit =
             std::max(assignContext.coreCache.blockLimit, static_cast<uint64_t>(curRowBlock));
 
-        while (!assignContext.isFinished) {
-            if (!AdvanceToValidRow(assignContext)) {
-                break;
-            }
-            uint32_t rowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx);
-            if (rowBlock == 0U) {
-                assignContext.curS1Idx++;
-                continue;
-            }
-            if (assignContext.coreCache.block > 0U &&
-                assignContext.coreCache.block + rowBlock > assignContext.coreCache.blockLimit) {
-                break;
-            }
-            assignContext.coreCache.block += rowBlock;
-            assignContext.curS1Idx++;
-        }
+        AssignByBatch(assignContext);
+        AssignByRow(assignContext);
 
         result.bN1End[i] = assignContext.curBN1Idx;
         result.s1End[i] = assignContext.curS1Idx;
