@@ -26,7 +26,7 @@ inline int64_t CeilDiv(int64_t x, int64_t y) { return (x + y - 1) / y; }
 
 struct CompileInfo {};
 
-static ge::graphStatus GetPlatformInfo(gert::TilingContext* ctx, uint64_t& ubSize, int64_t& coreNum) 
+static ge::graphStatus GetPlatformInfo(gert::TilingContext* ctx, uint64_t& ubSize, int64_t& coreNum)
 {
     auto* pi = ctx->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(ctx, pi);
@@ -45,7 +45,7 @@ struct TilingInput {
     int32_t dtype; // ge::DT_FLOAT=0, ge::DT_FLOAT16=1
 };
 
-static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInput* in) 
+static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInput* in)
 {
     auto hsShape = EnsureNotScalar(context->GetInputShape(0)->GetStorageShape());
     int64_t batch = hsShape.GetDim(0);
@@ -77,7 +77,7 @@ static void ConfigCubeTiling(
     if (in.dtype == static_cast<int32_t>(ge::DT_FLOAT16)) {
         dt = matmul_tiling::DataType::DT_FLOAT16;
     }
-    
+
     ct->SetAType(TPosition::GM, CubeFormat::ND, dt);
     ct->SetBType(TPosition::GM, CubeFormat::ND, dt);
     ct->SetCType(TPosition::LCM, CubeFormat::ND, dt);
@@ -86,8 +86,10 @@ static void ConfigCubeTiling(
     int64_t alignedM = CeilDiv(in.M, 16) * 16;
     int64_t alignedN = CeilDiv(in.N, 16) * 16;
 
-    if (dt == matmul_tiling::DataType::DT_FLOAT16 && alignedN == 32) alignedN = 48;
-    
+    if (dt == matmul_tiling::DataType::DT_FLOAT16 && alignedN == 32) {
+        alignedN = 48;
+    }
+
     ct->SetShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
     ct->SetOrgShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
     ct->SetBias(in.hasBias);
@@ -139,11 +141,14 @@ static void FillTilingOutputs(
     td->blockDim = BLOCK_DIM;
 
     context->SetBlockDim(BLOCK_DIM);
-    uint64_t dtypeVal = (in.dtype == static_cast<int32_t>(ge::DT_FLOAT16)) ? TPL_DTYPE_FLOAT16 : TPL_DTYPE_FLOAT;
+    uint64_t dtypeVal = TPL_DTYPE_FLOAT;
+    if (in.dtype == static_cast<int32_t>(ge::DT_FLOAT16)) {
+        dtypeVal = TPL_DTYPE_FLOAT16;
+    }
     context->SetTilingKey(GET_TPL_TILING_KEY(ELEMENTWISE_TPL_SCH_MODE_0, dtypeVal));
 }
 
-static ge::graphStatus TilingFunc(gert::TilingContext* context) 
+static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     uint64_t ubSize;
     int64_t coreNum;

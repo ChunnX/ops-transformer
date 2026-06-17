@@ -36,12 +36,12 @@ private:
 
     // ---- CopyOut ----
     __aicore__ inline void CopyQkvOutputs(const LocalTensor<T>& cOut, int32_t computedRows,
-                                                int32_t tileRows, int32_t matmulStride) 
+                                                int32_t tileRows, int32_t matmulStride)
     {
         for (int32_t r = 0; r < tileRows; r++) {
             int32_t gr = computedRows + r;
             int32_t srcOff = r * matmulStride;
-            
+
             if constexpr (std::is_same_v<T, float>) {
                 // FP32 按 8 元素 (32 Bytes) 对齐
                 if (qDim_ % 8 == 0 && kDim_ % 8 == 0 && vDim_ % 8 == 0) {
@@ -49,11 +49,11 @@ private:
                     DataCopy(kGm_[gr * kDim_], cOut[srcOff + qDim_], kDim_);
                     DataCopy(vGm_[gr * vDim_], cOut[srcOff + qDim_ + kDim_], vDim_);
                 } else {
-                    for (int32_t i = 0; i < qDim_; i++) 
+                    for (int32_t i = 0; i < qDim_; i++)
                         qGm_.SetValue(gr * qDim_ + i, cOut.GetValue(srcOff + i));
-                    for (int32_t i = 0; i < kDim_; i++) 
+                    for (int32_t i = 0; i < kDim_; i++)
                         kGm_.SetValue(gr * kDim_ + i, cOut.GetValue(srcOff + qDim_ + i));
-                    for (int32_t i = 0; i < vDim_; i++) 
+                    for (int32_t i = 0; i < vDim_; i++)
                         vGm_.SetValue(gr * vDim_ + i, cOut.GetValue(srcOff + qDim_ + kDim_ + i));
                 }
             } else {
@@ -64,11 +64,11 @@ private:
                     DataCopy(kGm_[gr * kDim_], cOut[srcOff + qDim_], kDim_);
                     DataCopy(vGm_[gr * vDim_], cOut[srcOff + qDim_ + kDim_], vDim_);
                 } else {
-                    for (int32_t i = 0; i < qDim_; i++) 
+                    for (int32_t i = 0; i < qDim_; i++)
                         qGm_.SetValue(gr * qDim_ + i, cOut.GetValue(srcOff + i));
-                    for (int32_t i = 0; i < kDim_; i++) 
+                    for (int32_t i = 0; i < kDim_; i++)
                         kGm_.SetValue(gr * kDim_ + i, cOut.GetValue(srcOff + qDim_ + i));
-                    for (int32_t i = 0; i < vDim_; i++) 
+                    for (int32_t i = 0; i < vDim_; i++)
                         vGm_.SetValue(gr * vDim_ + i, cOut.GetValue(srcOff + qDim_ + kDim_ + i));
                 }
             }
@@ -105,7 +105,13 @@ __aicore__ inline void AclnnFusedQkvProjection<T>::Init(
     if (blockIdx >= td_->blockDim) return;
 
     int64_t blkOff = td_->singleCoreM * blockIdx;
-    realCoreM_ = (blkOff >= td_->M) ? 0 : (td_->singleCoreM < (td_->M - blkOff) ? td_->singleCoreM : static_cast<int32_t>(td_->M - blkOff));
+    if (blkOff >= td_->M) {
+        realCoreM_ = 0;
+    } else if (td_->singleCoreM < (td_->M - blkOff)) {
+        realCoreM_ = td_->singleCoreM;
+    } else {
+        realCoreM_ = static_cast<int32_t>(td_->M - blkOff);
+    }
 
     hsGm_.SetGlobalBuffer((__gm__ T*)hs, td_->M * td_->K);
     wtGm_.SetGlobalBuffer((__gm__ T*)wt, td_->K * td_->N);

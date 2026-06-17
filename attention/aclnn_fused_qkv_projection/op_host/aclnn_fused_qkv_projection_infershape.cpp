@@ -44,14 +44,14 @@ static ge::graphStatus InferShapeAclnnFusedQkvProjection(gert::InferShapeContext
     qShape->SetDimNum(3);
     kShape->SetDimNum(3);
     vShape->SetDimNum(3);
-    qShape->SetDim(0, batch); 
-    qShape->SetDim(1, seqLen); 
+    qShape->SetDim(0, batch);
+    qShape->SetDim(1, seqLen);
     qShape->SetDim(2, qDim);
-    kShape->SetDim(0, batch); 
-    kShape->SetDim(1, seqLen); 
+    kShape->SetDim(0, batch);
+    kShape->SetDim(1, seqLen);
     kShape->SetDim(2, kDim);
-    vShape->SetDim(0, batch); 
-    vShape->SetDim(1, seqLen); 
+    vShape->SetDim(0, batch);
+    vShape->SetDim(1, seqLen);
     vShape->SetDim(2, vDim);
 
     return GRAPH_SUCCESS;
