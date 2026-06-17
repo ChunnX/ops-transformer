@@ -19,8 +19,14 @@ import random
 import numpy as np
 import math
 import custom_ops as ops
-import torchair
-from torchair.configs.compiler_config import CompilerConfig
+try:
+    import torchair
+    from torchair.configs.compiler_config import CompilerConfig
+    _HAS_TORCHAIR = True
+except ImportError:
+    # torchair is only needed by the graph-mode path (test_sas_quant_process_graph).
+    # The CI/eager path (test_sas_quant_process_ci) works without it.
+    _HAS_TORCHAIR = False
 
 class Network(torch.nn.Module):
     def __init__(self):

@@ -26,9 +26,9 @@ import check_valid_param
 from batch import kv_quant_sparse_attn_sharedkv_process
 import utils
 
-testcase_path = "qsas_testcase"
-result_path = Path('result.xlsx')
-device_id=0
+testcase_path = os.environ.get("QSAS_TESTCASE_DIR", "qsas_testcase")
+result_path = Path(os.environ.get("QSAS_RESULT", "result.xlsx"))
+device_id = int(os.environ.get("ASCEND_DEVICE_ID", "0"))
 
 locals()["testcase_files"] = []
 if os.path.isdir(testcase_path):
