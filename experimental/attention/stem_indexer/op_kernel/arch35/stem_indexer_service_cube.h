@@ -289,10 +289,10 @@ __aicore__ inline void SIMatmul<SIT>::ComuteL0c(uint64_t s1gOffset, uint64_t s2O
     MmadParams mmadParams;
     mmadParams.m = CeilAlign(s1gL0RealSize, BLOCK_CUBE);
     mmadParams.n = s2L0RealSize;
-    mmadParams.k = constInfo_.headDim;
+    mmadParams.k = D_BASIC_BLOCK_L0;
     mmadParams.cmatrixInitVal = true;
     mmadParams.cmatrixSource = false;
-    uint64_t offset = (l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + s2Offset * 96 + s1gOffset * 32;
+    uint64_t offset = (l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + s2Offset * M_BASIC_BLOCK + s1gOffset * S2_BASIC_BLOCK_L0;
     Mmad(cL0_[offset], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
          keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET], mmadParams);
     if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
