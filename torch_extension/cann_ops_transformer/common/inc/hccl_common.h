@@ -70,6 +70,8 @@ using _HcclEngineCtxCreate = HcclResult (*)(HcclComm, const char*, CommEngine, u
 using _HcclEngineCtxGet = HcclResult (*)(HcclComm, const char*, CommEngine, void**, uint64_t*);
 // 拷贝context
 using _HcclEngineCtxCopy = HcclResult (*)(HcclComm, CommEngine, const char*, void*, uint64_t, uint64_t);
+// HcclBarrier
+using _HcclBarrier = HcclResult (*)(HcclComm, aclrtStream); 
 
 static _HcclKfcAllocOpArgs HcclKfcAllocOpArgsFunc = nullptr;
 static _HcclKfcOpArgsSetAlgConfig HcclKfcOpArgsSetAlgConfigFunc = nullptr;
@@ -93,6 +95,7 @@ static _HcclChannelGetHcclBuffer HcclChannelGetHcclBufferFunc = nullptr;
 static _HcclEngineCtxCreate HcclEngineCtxCreateFunc = nullptr;
 static _HcclEngineCtxGet HcclEngineCtxGetFunc = nullptr;
 static _HcclEngineCtxCopy HcclEngineCtxCopyFunc = nullptr;
+static _HcclBarrier HcclBarrierFunc = nullptr;
 
 inline const char *GetHcclLibName(void)
 {
@@ -160,6 +163,8 @@ inline void InitHcclFunctions()
     TORCH_CHECK(HcclCreateOpResCtxFunc != nullptr, "getFuncHcclCreateOpResCtx failed.");
     HcclGetRankSizeFunc = GetHcclFuncAddr<_HcclGetRankSize>("HcclGetRankSize"); // 获取通信域大小
     TORCH_CHECK(HcclGetRankSizeFunc != nullptr, "getFuncHcclGetRankSize failed.");
+    HcclBarrierFunc = GetHcclFuncAddr<_HcclBarrier>("HcclBarrier"); // 执行Barrier同步
+    TORCH_CHECK(HcclBarrierFunc != nullptr, "getFuncHcclBarrier failed.");
 }
 
 // 初始化新的EngineCtx API (从libhccl_fwk.so加载)
