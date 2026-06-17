@@ -150,7 +150,7 @@ def check_param_valid(
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2],
-    workspace_idx=[10, 11, 12, 13, 14, 19],
+    workspace_idx=[10, 11, 12, 13, 14, 18],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -188,7 +188,6 @@ def tilelang_grad_kl_loss_single_kernel(
         PReduced: T.Tensor((B, S1, K), calc_dtype),
         ReduceSumY: T.Tensor((B, S1, K), calc_dtype),
         SoftmaxI: T.Tensor((B, S1, K), calc_dtype),
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),
@@ -695,15 +694,13 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_kernel_start = torch.npu.Event(enable_timing=True)
             _t_kernel_end = torch.npu.Event(enable_timing=True)
             _t_kernel_start.record()
-        # dQueryIndex is now a regular input (not kernel output) — just needs valid tensor
-        d_query_index_out = torch.empty(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
         results = func(
             query, query_rope, gather_key, gather_key_rope,
             query_index, gather_key_index, gather_key_index_t,
             weights, softmax_max, softmax_sum,
             bmm1_res_ws, bmm2_res_ws,
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
-            d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,
+            d_weight_partial_out, relu_grad_out, loss_out,
             d_query_index_ws_partial,
         )
         if _PROFILE:
