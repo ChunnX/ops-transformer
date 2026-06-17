@@ -42,6 +42,7 @@ struct AssignContext {
     uint32_t curS1Idx { 0U };
     uint32_t curS2Idx { 0U };
     uint64_t unassignedBlock { 0U };
+    uint64_t bN1Block { 0U };
     CoreCache coreCache {};
     bool isFinished { false };
 };

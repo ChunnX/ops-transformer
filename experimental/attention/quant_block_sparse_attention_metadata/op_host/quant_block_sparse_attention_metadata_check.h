@@ -104,9 +104,9 @@ static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTe
                 metadata->GetViewShape().GetDimNum());
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (metadata->GetViewShape().GetDim(0) != optiling::QBSA_METADATA_SIZE) {
+    if (metadata->GetViewShape().GetDim(0) != optiling::QBSA_META_SIZE) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata shape must be (%u,), but got %ld",
-                optiling::QBSA_METADATA_SIZE, metadata->GetViewShape().GetDim(0));
+                optiling::QBSA_META_SIZE, metadata->GetViewShape().GetDim(0));
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (metadata->GetDataType() != ACL_INT32) {
