@@ -38,6 +38,20 @@ def _case(**kwargs):
 
 
 TEST_PARAMS = {
+    "TND_TYPICAL_CASE": _case(
+        layout_q=["TND"],
+        B=[4],
+        S1=[1024],
+        S2=[1024],
+        sparse_count=[8],
+        return_softmax_lse=[True],
+        actlen_mode=["full"],
+        sparse_pattern=["sequential"],
+        scale_pattern=["ones"],
+        block_table_pattern=["sequential"],
+        p_scale_value=[1.0],
+        seed=[3],
+    ),
     "tnd_dense_equiv": _case(
         layout_q=["TND"],
         B=[1],
