@@ -85,7 +85,6 @@ static void ConfigCubeTiling(
 
     int64_t alignedM = CeilDiv(in.M, 16) * 16;
     int64_t alignedN = CeilDiv(in.N, 16) * 16;
-
     if (dt == matmul_tiling::DataType::DT_FLOAT16 && alignedN == 32) {
         alignedN = 48;
     }
