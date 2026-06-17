@@ -281,9 +281,6 @@ static bool IsLastAxisContiguous(const aclTensor *tensor)
 }
 
 // 判断单个tensor是否需要走ProcessContiguous物理连续化兜底(kernel无法处理的非连续形态):
-//   NZ模式: kernel只用stride0, 仅支持dim0(num_blocks)非连续, 故轴[1,dimNum)任一非连续即需兜底(已含尾轴);
-//   ND模式: kernel行内按连续DataCopy, 仅尾轴(最后一维)非连续无法处理。
-// size为1的轴stride不影响连续性, 视为连续。
 static bool NeedContiguousFallback(const aclTensor *tensor, bool isPaNz)
 {
     if (tensor == nullptr) {
@@ -422,9 +419,6 @@ static aclnnStatus ProcessNonContiguous(
 }
 
 // PA_NZ的cache若为非连续view, 直接对FRACTAL_NZ tensor调l0op::Contiguous会走格式感知路径,
-// 产出的物理布局与kernel的NZ分形连续寻址(blockId*blockSize*hiddenSize)不一致, 读错block。
-// 这里先把view重解释为ND, 使Contiguous按view_strides做纯strided gather(行优先连续化),
-// 再把结果format贴回FRACTAL_NZ下发: 连续化后逐元素布局与kernel期望的连续NZ完全一致。
 static const aclTensor *ContiguousNzCacheAsNd(const aclTensor *cache, UniqueExecutor& uniqueExecutor)
 {
     // CreateView复制元数据(不改用户原tensor), 仅在副本上把format改为ND。
@@ -443,18 +437,6 @@ static const aclTensor *ContiguousNzCacheAsNd(const aclTensor *cache, UniqueExec
     if (ndContiguous == nullptr) {
         return nullptr;
     }
-
-    // ===== 临时诊断日志(观测NZ-as-ND连续化结果), 验证后删除 =====
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG2] nzCache before contig: viewShape=%s storageShape=%s strides=%s",
-            op::ToString(cache->GetViewShape()).GetString(),
-            op::ToString(cache->GetStorageShape()).GetString(),
-            op::ToString(cache->GetViewStrides()).GetString());
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[GPKC_DBG2] nzCache after  contig: viewShape=%s storageShape=%s strides=%s",
-            op::ToString(ndContiguous->GetViewShape()).GetString(),
-            op::ToString(ndContiguous->GetStorageShape()).GetString(),
-            op::ToString(ndContiguous->GetViewStrides()).GetString());
-    // ===== 临时诊断日志结束 =====
-
     // 连续化结果贴回NZ format给kernel。
     ndContiguous->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
     ndContiguous->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
@@ -476,18 +458,7 @@ static aclnnStatus ProcessContiguous(
     UniqueExecutor& uniqueExecutor)
 {
     bool isPaNz = (cacheMode != nullptr && strcmp(cacheMode, "PA_NZ") == 0);
-
-    // ===== 临时诊断日志(确认ProcessContiguous分支走向), 验证后删除 =====
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "[GPKC_DBG3] ProcessContiguous enter: isPaNz=%d kFallback=%d vFallback=%d kIsContig=%d vIsContig=%d",
-            (int)isPaNz, (int)NeedContiguousFallback(keyCache, isPaNz),
-            (int)NeedContiguousFallback(valueCache, isPaNz),
-            (int)IsContiguous(keyCache), (int)IsContiguous(valueCache));
-    // ===== 临时诊断日志结束 =====
-
     // PA_NZ的cache若NZ内部轴(轴[1,dimNum))非连续, 走NZ-as-ND连续化; 否则维持原通用连续化。
-    // 注意: 此处用NeedContiguousFallback(基于view_strides相对view_shape判内部轴), 不能用IsContiguous——
-    // IsContiguous对FRACTAL_NZ的view按storage判定会误返回true, 导致漏走NZ-as-ND分支。
     auto keyCacheContiguous = NeedContiguousFallback(keyCache, isPaNz)
         ? ContiguousNzCacheAsNd(keyCache, uniqueExecutor)
         : l0op::Contiguous(keyCache, uniqueExecutor.get());
@@ -579,12 +550,9 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
     // Norm和PA_NZ模式都支持非连续: PA_NZ非连续view若走ProcessContiguous,
-    // 其连续化无法正确还原NZ view的stride0/offset, 会读错block导致精度错误。
     bool isPaNz = (cacheMode != nullptr && strcmp(cacheMode, "PA_NZ") == 0);
     // kernel无法处理的非连续形态(NZ非dim0 / ND尾轴)必须走ProcessContiguous物理连续化兜底,
-    // 否则保留view下发会读错数据或在tiling触发"last dim stride must be 1"报错。
     bool mustContiguous = NeedContiguousFallbackAny(keyCache, valueCache, keyRef, valueRef, isPaNz);
 
     bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
