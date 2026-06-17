@@ -36,6 +36,10 @@ TARGET_VERSION_DIR=$(readlink -f ${TARGET_VERSION_DIR})     # TARGET_INSTALL_PAT
 TARGET_MOULDE_DIR=${TARGET_VERSION_DIR}/${OPP_PLATFORM_DIR} # TARGET_INSTALL_PATH + PKG_VERSION_DIR + OPP_PLATFORM_DIR
 TARGET_OPP_BUILT_IN=${TARGET_VERSION_DIR}/opp/built-in
 TARGET_SHARED_INFO_DIR=${TARGET_VERSION_DIR}/share/info
+AICPU_BUILTIN_CUSTOM_ROOT="opp/built-in/op_impl/aicpu/ops_transformer"
+# 安装脚本用marker写入AICPU环境片段，卸载时按同一marker精确删除，避免影响用户其它自定义OPP路径。
+AICPU_ENV_BEGIN="# OPS_TRANSFORMER_AICPU_ENV_BEGIN"
+AICPU_ENV_END="# OPS_TRANSFORMER_AICPU_ENV_END"
 
 ASCEND_INSTALL_INFO="ascend_install.info"
 # init log file path
@@ -136,6 +140,54 @@ unsetenv() {
   else
     UNINSTALL_OPTION=""
   fi
+}
+
+remove_aicpu_env_from_file() {
+  # 只删除ops_transformer自动追加的marker区间，不清理整份ASCEND_CUSTOM_OPP_PATH配置。
+  local env_file="$1"
+
+  if [ ! -f "${env_file}" ]; then
+    return 0
+  fi
+
+  chmod u+w "${env_file}" 2>/dev/null
+  sed -i "/^${AICPU_ENV_BEGIN}$/,/^${AICPU_ENV_END}$/d" "${env_file}"
+  log_with_errorlevel "$?" "warn" "[WARNING]: Remove AICPU env from ${env_file} failed."
+}
+
+unset_aicpu_builtin_env() {
+  remove_aicpu_env_from_file "${TARGET_VERSION_DIR}/set_env.sh"
+  remove_aicpu_env_from_file "${TARGET_VERSION_DIR}/bin/setenv.bash"
+}
+
+remove_aicpu_builtin_files() {
+  local aicpu_root="${TARGET_VERSION_DIR}/${AICPU_BUILTIN_CUSTOM_ROOT}"
+
+  rm -f "${aicpu_root}/op_impl/cpu/config/cust_aicpu_kernel.json" 2>/dev/null
+  rm -f "${aicpu_root}/op_impl/cpu/aicpu_kernel/impl/libtransformer_aicpu_kernels.so" 2>/dev/null
+}
+
+remove_empty_dir_quiet() {
+  local dir="$1"
+
+  if [ -d "${dir}" ]; then
+    rmdir "${dir}" 2>/dev/null || true
+  fi
+}
+
+cleanup_optional_empty_dirs() {
+  # 清理本包新增或可选目录的空目录残留；非空目录不删除，避免影响其它包内容。
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp/built-in/op_impl/ai_core/tbe/config"
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp/built-in/op_impl/aicpu/ops_transformer/op_impl/cpu/aicpu_kernel/impl"
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp/built-in/op_impl/aicpu/ops_transformer/op_impl/cpu/aicpu_kernel"
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp/built-in/op_impl/aicpu/ops_transformer/op_impl/cpu/config"
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp/built-in/op_impl/aicpu/ops_transformer/op_impl/cpu"
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp/built-in/op_impl/aicpu/ops_transformer/op_impl"
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp/built-in/op_impl/aicpu/ops_transformer"
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp/built-in/op_impl/aicpu"
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp/built-in/op_impl"
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp/built-in"
+  remove_empty_dir_quiet "${TARGET_VERSION_DIR}/opp"
 }
 
 get_installed_info() {
@@ -283,9 +335,15 @@ main() {
 
   unsetenv
 
+  unset_aicpu_builtin_env
+
   uninstall_es_whl
   
   remove_ops_transformer
+
+  remove_aicpu_builtin_files
+
+  cleanup_optional_empty_dirs
 
   if [ "${UNINSTALL_MODE}" != "upgrade" ]; then
     remove_dir_if_empty ${TARGET_VERSION_DIR}
