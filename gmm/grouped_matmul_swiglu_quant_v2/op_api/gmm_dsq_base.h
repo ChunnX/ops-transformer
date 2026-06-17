@@ -574,7 +574,7 @@ protected:
         auto strides = tensor->GetViewStrides();
         if (strides[dim2] == 1 && strides[dim1] == shape.GetDim(dim2)) {
             int64_t tmpNxD = shape.GetDim(dim1) * shape.GetDim(dim2);
-            for (size_t batchDim = shape.GetDimNum() - 3; batchDim >= 0; batchDim--) {
+            for (int64_t batchDim = static_cast<int64_t>(dimNum) - 3; batchDim >= 0; batchDim--) {
                 if (strides[batchDim] != tmpNxD) {
                     return false;
                 }
@@ -615,7 +615,7 @@ protected:
             size_t strideSize = newStride.size();
             // 转置场景，B32承载B4时Strides缩小了8倍，需要调整回来
             newStride[strideSize - 1] *= INT4_PER_INT32;
-            for(size_t batchDim = strideSize - 3; batchDim >= 0; batchDim--) {
+            for(int64_t batchDim = static_cast<int64_t>(strideSize) - 3; batchDim >= 0; batchDim--) {
                 newStride[batchDim] *= INT4_PER_INT32;
             }
             tensorS4->SetViewStrides(newStride);
