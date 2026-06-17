@@ -26,7 +26,7 @@ protected:
     }
 };
 
-// when key layout is not PA_BSND, input block_table must be null (BSND/BSND with block_table)
+// when key layout is not PA_BBND, input block_table must be null (BSND/BSND with block_table)
 TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_0)
 {
     struct LIV2CompileInfo {} compileInfo;
@@ -62,7 +62,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_0)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// key shape[2] is numhead, only support 1 (BSND/PA_BSND, N2=2)
+// key shape[2] is numhead, only support 1 (BSND/PA_BBND, N2=2)
 TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_1)
 {
     struct LIV2CompileInfo {} compileInfo;
@@ -90,7 +90,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_1)
             {"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
             {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"return_value", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
@@ -127,7 +127,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_2)
             {"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(10000)},
             {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"return_value", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
@@ -176,7 +176,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_3)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
-// BSND/PA_BSND success: BF16, B=2, S1=39, N1=64, D=128, block_size=16, topk=2048, mask_mode=3
+// BSND/PA_BBND success: BF16, B=2, S1=39, N1=64, D=128, block_size=16, topk=2048, mask_mode=3
 TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_4)
 {
     struct LIV2CompileInfo {} compileInfo;
@@ -204,7 +204,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_910b_tiling_4)
             {"topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
             {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"layout_k", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BBND")},
             {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
