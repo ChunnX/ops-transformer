@@ -449,13 +449,12 @@ public:
         }
     }
 
-    __aicore__ inline void UpdateMinCheckValueForDn(uint32_t &min)
+    __aicore__ inline void UpdateMinCheckValue(uint32_t &min)
     {
-        if constexpr (!USE_DN) {
-            return;
-        }
         float minValue = *((float*)&min);
-        minValue *= constInfo.scaleValue;
+        if constexpr (USE_DN) {
+            minValue *= constInfo.scaleValue;
+        }
         float tmp = minValue / LN2;
         // int64_t 最大能表示约 9e18。
         // 如果 tmp 比 -9e18 还要小（说明是绝对值极大的负数，如 -10^37），
@@ -497,7 +496,7 @@ public:
         uint32_t min = 0xFF7FFFFF;
 
         if constexpr (USE_DN) {
-            UpdateMinCheckValueForDn(min);
+            UpdateMinCheckValue(min);
         }
         ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, vecMSize, min);
         softmaxLseQueue.template EnQue(lseUb);
@@ -900,7 +899,7 @@ public:
             if (blockNeedRowInvalid) {
                 uint32_t min = 0xFF7FFFFF; // min value of float
                 if constexpr (USE_DN) {
-                    UpdateMinCheckValueForDn(min);
+                    UpdateMinCheckValue(min);
                 }
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
