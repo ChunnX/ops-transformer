@@ -185,7 +185,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS>::Proce
     // 根据 mode 选择 VF 函数（同一套函数适配所有 dtype 组合）
     if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
         HalfGradAlignVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
-                                               tilingData_->sliceLength, tilingData_->dAlign,
+                                               tilingData_->sliceLength,
                                                static_cast<uint16_t>(bsCount), static_cast<uint16_t>(nCount));
     } else if (tilingData_->rotaryMode == ROTARY_MODE_INTERLEAVE) {
         InterleaveModeGradVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
@@ -193,7 +193,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS>::Proce
                                                     static_cast<uint16_t>(nCount));
     } else if (tilingData_->rotaryMode == ROTARY_MODE_QUARTER) {
         QuarterGradAlignVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
-                                                  tilingData_->sliceLength, tilingData_->dAlign,
+                                                  tilingData_->sliceLength,
                                                   static_cast<uint16_t>(bsCount), static_cast<uint16_t>(nCount));
     } else {
         InterleaveHalfModeGradVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,

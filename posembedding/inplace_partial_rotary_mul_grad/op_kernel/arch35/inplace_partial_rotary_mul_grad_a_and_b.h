@@ -137,7 +137,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsB
     if constexpr (IsBoardCast) {
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
             HalfGradAlignVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
-                                                   tilingData_->sliceLength, static_cast<uint32_t>(dAlign_),
+                                                   tilingData_->sliceLength,
                                                    static_cast<uint16_t>(bUbLength), 1);
         } else if (tilingData_->rotaryMode == ROTARY_MODE_INTERLEAVE) {
             InterleaveModeGradVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
@@ -145,7 +145,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsB
                                                         static_cast<uint16_t>(bUbLength), 1);
         } else if (tilingData_->rotaryMode == ROTARY_MODE_QUARTER) {
             QuarterGradAlignVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
-                                                      tilingData_->sliceLength, static_cast<uint32_t>(dAlign_),
+                                                      tilingData_->sliceLength,
                                                       static_cast<uint16_t>(bUbLength), 1);
         } else {
             InterleaveHalfModeGradVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
@@ -155,19 +155,19 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsB
     } else {
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
             BatchHalfGradAlignVF<DTYPE_DY, DTYPE_COS, IsBoardCast>(
-                inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength, dAlign_,
+                inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength,
                 ubFactorB_, 1);
         } else if (tilingData_->rotaryMode == ROTARY_MODE_INTERLEAVE) {
             BatchInterleaveModeGradVF<DTYPE_DY, DTYPE_COS, IsBoardCast>(
-                inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength, dAlign_,
+                inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength,
                 ubFactorB_, 1);
         } else if (tilingData_->rotaryMode == ROTARY_MODE_QUARTER) {
             BatchQuarterGradAlignVF<DTYPE_DY, DTYPE_COS, IsBoardCast>(
-                inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength, dAlign_,
+                inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength,
                 ubFactorB_, 1);
         } else {
             BatchInterleaveHalfModeGradVF<DTYPE_DY, DTYPE_COS, IsBoardCast>(
-                inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength, dAlign_,
+                inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength,
                 ubFactorB_, 1);
         }
     }
