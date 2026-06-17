@@ -82,8 +82,8 @@ __aicore__ inline void CombineTokensWithUrma( // 先这样写
         AscendC::DataCopyPad(gmLocalD,
                 l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
         AscendC::PipeBarrier<PIPE_MTE3>();
-        gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(dataAddr + cnt * (maxDataLength + 32) + maxDataLength)); // 设置目标rank的combineSendPtr
-        AscendC::DataCopy(gmLocalD, tripleTempTensor, 8);
+        gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(dataAddr + cnt * (maxDataLength + 32) + maxDataLength)); // 设置目标rank的combineSendPtr
+        AscendC::DataCopy(gmLocalDTriple, tripleTempTensor, 8);
     }
 }
 
@@ -91,6 +91,7 @@ __aicore__ inline void CombineTokensWithUrma( // 先这样写
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTokensWithUrma(uint32_t gsendCnt, const Params& params)
 {
+    uint32_t maxDataLength = L1_TILE_N * sizeof(ElementMMadOut2); // 32b对齐
     LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, 0, 32); // 三元组
     uint32_t startRankId, endRankId, processRankNum;
     SplitToCore(params.combineSendInfo.aivNum, params.tilingData->epWorldSize, startRankId, endRankId, processRankNum);
@@ -130,6 +131,7 @@ __aicore__ inline void CombineTokensWithUrma(uint32_t gsendCnt, const Params& pa
     }
     uint32_t rankIndex = 0;
     uint32_t processRank = 0;
+    AscendC::GlobalTensor<int32_t> gmLocalDTriple;
     while (true) {
         while (sendTokenCnt(rankIndex) == totalTokenCnt(rankIndex)) {
             rankIndex = (rankIndex + 1) % processRankNum;
@@ -139,7 +141,12 @@ __aicore__ inline void CombineTokensWithUrma(uint32_t gsendCnt, const Params& pa
         if (curCnt > sendTokenCnt(rankIndex)) {
             uint32_t needCnt = curCnt - sendTokenCnt(rankIndex);
             for (uint32_t i = 0; i < needCnt; i++) {
-                WriteNbi()
+                GM_ADDR dataAddr = params.workspaceInfo.combineDataPtr + (rankIndex + startRankId) * max_data_size + i * (maxDataLength + 32);
+                gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dataAddr + maxDataLength)); // 设置目标rank的combineSendPtr
+                AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+                WriteNbi(dataAddr, sendTensor, 8);
             }
             sendTokenCnt.SetValue(rankIndex, curCnt);
             if (sendTokenCnt(rankIndex) == totalTokenCnt(rankIndex)) {
