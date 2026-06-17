@@ -103,6 +103,14 @@ inline uint32_t AlignData(const uint32_t a, const uint32_t b)
     return (a + b - 1U) / b * b;
 }
 
+inline int64_t AlignData(const int64_t a, const int64_t b)
+{
+    if (b == 0) {
+        return a;
+    }
+    return (a + b - 1) / b * b;
+}
+
 inline uint32_t CalcTschBlockDim(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum)
 {
     uint32_t ration;

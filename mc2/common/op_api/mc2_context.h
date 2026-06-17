@@ -29,20 +29,17 @@
 #include <unordered_map>
 #include "hccl/hccl_rank_graph.h"
 #include "aclnn/aclnn_base.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/common_types.h"
 #include "mc2_moe_context.h"
-#include "mc2_quant_reduce_scatter_context.h"
 
 namespace Mc2Aclnn {
 
 class Mc2Context {
 public:
     static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
-                                           aclTensor *&mc2Context);
+                                           aclTensor *&mc2Context, bool &isCrossServer = false);
     static aclnnStatus GetMc2RankSize(const char *groupEp, uint32_t &rankSize);
-    static aclnnStatus GetMc2ContextTensorForQrs(const char *group, const char *opName, uint64_t &hcclBuffSize,
-                                                 aclTensor *&mc2Context, int64_t &worldSize);
 
 private:
     explicit Mc2Context();
@@ -66,21 +63,15 @@ private:
                                 uint64_t &hcclBuffSize);
     aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize);
-    aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum);
-    aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol);
+    aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum,
+                                      bool &isCrossServer);
+    aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol, bool &isCrossServer);
+    aclnnStatus GetHcclCommHandle(const HcclComm &hcclHandle, const CommProtocol &protocol,
+                                   Mc2MoeContext *mc2ContextStruct);
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
     aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList);
     aclnnStatus CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
                                   const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize);
-    /* for quant_reduce_scatter */
-    aclnnStatus GetHcclCommResourceForQrs(const HcclComm &hcclHandle, const CommEngine &engine,
-                                          const CommProtocol &protocol, Mc2QuantReduceScatterContext *mc2ContextStruct);
-    aclnnStatus CreatMc2ContextForQrs(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
-                                      const CommEngine &engine, const CommProtocol &protocol,
-                                      Mc2QuantReduceScatterContext *mc2ContextStruct, void *&ctx,
-                                      uint64_t &hcclBuffSize);
-    aclnnStatus CreatMc2ContextTensorForQrs(void *ctx, aclTensor *&mc2Context);
-
     const std::string GetLibPath();
     template <typename T>
     T GetHcclLibFunc(void *handle, const std::string &funcName);
@@ -89,6 +80,8 @@ private:
     uint64_t hcclBuffSize_ = 0;
     uint32_t epRankSize_ = 0;
     uint32_t rankSizePerServer_ = 0;
+    uint32_t rankNumPerUbDomain_ = 0;
+    uint32_t layerNumMyUbDomain_ = 0;
     std::unordered_map<uint32_t, uint32_t> layerMap; // 记录本卡与其他卡的通信层数，key为其他卡的rankId，value为通信层数
 
     HcclResult (*HcomGetCommHandleByGroup)(const char *, HcclComm *) = nullptr;

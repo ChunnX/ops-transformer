@@ -30,7 +30,7 @@ namespace load_balance {
 
 struct SectionStreamKParam : GeneralBalanceParam {
     uint32_t l2Byte { 128 * 1024U * 1024U };              // L2 size in Byte, 0 means infinite large
-    uint32_t v0Cost { 0U };
+    int64_t v0Cost { 0 };
 };
 
 struct SectionStreamKFaResult {
@@ -70,8 +70,9 @@ struct SectionStreamKFdResult {
 };
 
 struct SectionStreamKResult {
-    SectionStreamKFaResult sectionFaResult{0};
-    SectionStreamKFdResult sectionFdResult{0, 0};
+    uint32_t sectionNum { 0U };
+    std::vector<SectionStreamKFaResult> sectionFaResult {};
+    std::vector<SectionStreamKFdResult> sectionFdResult {};
 };
 
 }

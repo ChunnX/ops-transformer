@@ -7,10 +7,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -319,7 +319,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
 
     ```Cpp
     #include <thread>
@@ -469,7 +469,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
         ret = aclnnBatchMatMulReduceScatterAlltoAll(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnBatchMatMulReduceScatterAlltoAll failed. ret = %d \n", ret);
             return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);
@@ -530,7 +530,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
         int32_t devicesEp[DEV_NUM];
         int32_t devicesTp[DEV_NUM];
 
-        // 初始化ep域  ep = 4  {0,2,4,6} {1,3,5,7}
+        // 初始化ep域ep = 4  {0,2,4,6} {1,3,5,7}
         HcclComm commsEp[DEV_NUM];
         for (int i = 0; i < TP_WORLD_SIZE; i++) {
             for (int j =0; j < EP_WORLD_SIZE; j++) {
@@ -541,7 +541,7 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAll(
                 return ret);
         }
 
-        // 初始化tp域  tp = 4  {0,1},{2,3},{4,5},{6,7}
+        // 初始化tp域tp = 4  {0,1},{2,3},{4,5},{6,7}
         HcclComm commsTp[DEV_NUM];
         for (int i = 0; i < EP_WORLD_SIZE; i++) {
             for (int j =0; j < TP_WORLD_SIZE; j++) {

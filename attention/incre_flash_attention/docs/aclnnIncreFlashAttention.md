@@ -110,7 +110,7 @@ aclnnStatus aclnnIncreFlashAttention(
         <td>key</td>
         <td>输入</td>
         <td>公式中的输入K。</td>
-        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>key、value中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -120,7 +120,7 @@ aclnnStatus aclnnIncreFlashAttention(
         <td>value</td>
         <td>输入</td>
         <td>公式中的输入V。</td>
-        <td>key、value 中对应tensor的shape需要完全一致。</td>
+        <td>key、value中对应tensor的shape需要完全一致。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td><ul><li>(B, N, S, D)</li><li>(B, S, N, D)</li><li>(B, S, H)</li></ul></td>
@@ -395,7 +395,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -477,7 +477,7 @@ int main() {
   ret = aclnnIncreFlashAttention(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnIncreFlashAttention failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

@@ -26,6 +26,7 @@ struct Mc2MoeContext {
     uint32_t epRankSize;
     uint64_t winSize;
     uint64_t epHcclBuffer[1024];
+    uint64_t hcommHandle[1024]; // URMA通信对端句柄
 };
 
 struct GMMAddrInfo {
@@ -43,7 +44,7 @@ struct PeermemInfo {
     GM_ADDR quantTokenScalePtr;      // 量化结果，包括data+scale
     GM_ADDR combineSendPtr;
     __aicore__ inline PeermemInfo() = default;
-    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1)
     {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
@@ -62,7 +63,8 @@ struct PeermemInfo {
 
         quantTokenScalePtr = base + offset;
         uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
-        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h / elemsPerByte,
+            static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
         uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
         uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
         offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
@@ -83,6 +85,11 @@ struct Params {
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
     MegaMoeTilingData *tilingData;
+};
+
+enum class AddrUpdateMode : int32_t {
+    kGmm1,
+    kGmm2
 };
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)

@@ -56,7 +56,7 @@ bash run.sh -v ascend950pr_9599 -b Release -c ON -r OFF -n 2
 -i install-path --- cann包安装路径（source环境后不用指定）
     cann包路径，安装cann包后，source /usr/local/Ascend/cann/set_env.sh
 
--b build-type --- 编译选项 Release or Debug
+-b build-type --- 编译选项Release or Debug
 
 -p install-prefix --- 编译文件输出目录
     编译完成后，编译产物路径，默认路径为运行目录下的out/文件夹中。

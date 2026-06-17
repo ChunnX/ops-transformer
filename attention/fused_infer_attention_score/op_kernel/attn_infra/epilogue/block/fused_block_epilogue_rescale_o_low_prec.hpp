@@ -13,10 +13,10 @@
 
 #include "../../../attn_infra/fused_base_defs.hpp"
 #include "../../../attn_infra/arch/fused_resource.hpp"
-#include "../../../attn_infra/epilogue/fused_epilogue_dispatch_policy.hpp"
-#include "../../../attn_infra/epilogue/tile_common/fused_epilogue_tile_copy.hpp"
 #include "../../../attn_infra/fused_gemm_coord.hpp"
 #include "../../../attn_infra/fused_matrix_coord.hpp"
+#include "../../../attn_infra/epilogue/fused_epilogue_dispatch_policy.hpp"
+#include "../../../attn_infra/epilogue/tile_common/fused_epilogue_tile_copy.hpp"
 
 namespace NpuArch::Epilogue::Block {
 
@@ -38,15 +38,15 @@ public:
     using DispatchPolicy = EpilogueAtlasA2RescaleO<LSE_MODE_, half>;
     using ArchTag = typename DispatchPolicy::ArchTag;
 
-    using ElementOutput = typename OutputType_::Element;
     using ElementInput = typename InputType_::Element;
     using ElementUpdate = typename UpdateType_::Element;
     using ElementLse = typename LseType_::Element;
+    using ElementOutput = typename OutputType_::Element;
 
-    using LayoutOutput = typename OutputType_::Layout;
     using LayoutInput = typename InputType_::Layout;
     using LayoutUpdate = typename UpdateType_::Layout;
     using LayoutLse = typename LseType_::Layout;
+    using LayoutOutput = typename OutputType_::Layout;
 
     static constexpr LseMode LSE_MODE = DispatchPolicy::LSE_MODE;
 
@@ -105,17 +105,17 @@ public:
     ~BlockEpilogue() {}
 
     __aicore__ inline
-    void SetMask(int32_t len)
+    void SetMask(int32_t actualLen)
     {
         const int32_t MAX_MASK_LEN = 128;
         const int32_t HALF_MASK_LEN = 64;
-        if (len >= MAX_MASK_LEN) {
+        if (actualLen >= MAX_MASK_LEN) {
             AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
             return;
         }
-        int32_t highMask = len - HALF_MASK_LEN > 0 ? len - HALF_MASK_LEN : 0;
-        int32_t lowMask = len - HALF_MASK_LEN >= 0 ? HALF_MASK_LEN : len;
-        if (len < HALF_MASK_LEN) {
+        int32_t highMask = actualLen - HALF_MASK_LEN > 0 ? actualLen - HALF_MASK_LEN : 0;
+        int32_t lowMask = actualLen - HALF_MASK_LEN >= 0 ? HALF_MASK_LEN : actualLen;
+        if (actualLen < HALF_MASK_LEN) {
             AscendC::SetVectorMask<int8_t>(0x0, ((uint64_t)1 << lowMask) - 1);
         } else {
             AscendC::SetVectorMask<int8_t>(((uint64_t)1 << highMask) - 1, 0xffffffffffffffff);
@@ -161,7 +161,7 @@ public:
     void SubCoreCompute(
         AscendC::GlobalTensor<ElementOutput> gOutput,
         AscendC::GlobalTensor<ElementInput> gInput,
-        AscendC::GlobalTensor<ElementUpdate> gUpdate,
+        AscendC::GlobalTensor<ElementUpdate> gUpdateAtten,
         AscendC::GlobalTensor<ElementLse> gLse,
         const LayoutOutput &layoutOutput,
         const LayoutInput &layoutInput,
@@ -198,7 +198,7 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
             if (needRowLoop) {
                 AscendC::DataCopy(
-                    goUbTensor, gUpdate,
+                    goUbTensor, gUpdateAtten,
                     AscendC::DataCopyParams(1, curRowNum * embedRoundV / HALF_BLOCK_SIZE, 0, 0));
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
@@ -225,7 +225,7 @@ public:
                     curRowNum,
                     AscendC::BinaryRepeatParams(
                         1, 1, 0, embedRoundV / HALF_BLOCK_SIZE, embedRoundV / HALF_BLOCK_SIZE, 1));
-                AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
+                AscendC::SetVectorMask<int8_t>((uint64_t)(-1), (uint64_t)(-1));
             }
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
@@ -342,7 +342,7 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
             AscendC::DataCopy(
-                gUpdate, goUbTensor, AscendC::DataCopyParams(1, curRowNum * embedRoundV / HALF_BLOCK_SIZE, 0, 0));
+                gUpdateAtten, goUbTensor, AscendC::DataCopyParams(1, curRowNum * embedRoundV / HALF_BLOCK_SIZE, 0, 0));
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID6);
     }
@@ -352,14 +352,14 @@ public:
         AscendC::GlobalTensor<ElementOutput> gOutput,
         AscendC::GlobalTensor<ElementInput> gInput,
         AscendC::GlobalTensor<ElementUpdate> gUpdate,
-        AscendC::GlobalTensor<ElementLse> gLse,
+        AscendC::GlobalTensor<ElementLse> gOutputLse,
         const LayoutOutput &layoutOutput,
         const LayoutInput &layoutInput,
         const LayoutUpdate &layoutUpdate,
         const LayoutLse &layoutLse,
         GemmCoord actualBlockShape,
         uint32_t qSBlockSize, uint32_t qNBlockSize,
-        uint32_t isFirstStackTile, uint32_t isLastStackTile, uint32_t curStackTileMod,
+        uint32_t firstStackTileFlag, uint32_t isLastStackTile, uint32_t curStackTileMod,
         int32_t delStartRow, int32_t delEndRow, uint32_t qSeqlen, uint32_t qSBlockIdx, uint32_t curQNBlockTile)
     {
         uint32_t rowNum = actualBlockShape.m();
@@ -369,14 +369,14 @@ public:
         uint32_t rowNumTile = NpuArch::Detail::Alignment::RoundDown(maxRowNumPerLoop, HALF_BLOCK_SIZE);
 
         uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
-        uint32_t subBlockNum = AscendC::GetSubBlockNum();
+        uint32_t subBlockSize = AscendC::GetSubBlockNum();
 
-        uint32_t qNSplitSubBlock = qNBlockSize / subBlockNum;
+        uint32_t qNSplitSubBlock = qNBlockSize / subBlockSize;
         uint32_t qNThisSubBlock = (qNBlockSize == 1U) ? 0
                                   : (subBlockIdx == 1U) ? (qNBlockSize - qNSplitSubBlock)
                                                        : qNSplitSubBlock;
         uint32_t inRowSplitSubBlock =
-            (qNBlockSize == 1U) ? (qSBlockSize / subBlockNum) : (qSBlockSize * qNSplitSubBlock);
+            (qNBlockSize == 1U) ? (qSBlockSize / subBlockSize) : (qSBlockSize * qNSplitSubBlock);
         uint32_t inRowActualThisSubBlock = (subBlockIdx == 1U) ? (rowNum - inRowSplitSubBlock) : inRowSplitSubBlock;
         uint32_t inRowOffsetThisSubBlock = subBlockIdx * inRowSplitSubBlock;
         uint32_t outRowOffsetThisSubBlock = (qNBlockSize == 1U) ? inRowOffsetThisSubBlock : 0;
@@ -391,7 +391,7 @@ public:
             0 : subBlockIdx * qNSplitSubBlock;
         int64_t offsetLse =
             layoutLse.GetOffset(MatrixCoord(outLseRowOffsetThisSubBlock, outLseColOffsetThisSubBlock));
-        auto gLseThisSubBlock = gLse[offsetLse];
+        auto gLseThisSubBlock = gOutputLse[offsetLse];
         auto layoutOutLseThisSubBlock = layoutLse;
 
         if (inRowActualThisSubBlock > 0U) {
@@ -441,7 +441,7 @@ public:
                     qNThisSubBlock,
                     qSThisSubBlock,
                     inRowActualThisSubBlock,
-                    isFirstStackTile,
+                    firstStackTileFlag,
                     isLastStackTile,
                     curStackTileMod,
                     needRowLoop,

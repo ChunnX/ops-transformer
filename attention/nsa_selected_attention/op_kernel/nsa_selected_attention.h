@@ -622,9 +622,9 @@ __aicore__ inline void NsaSelectedAttention<INPUT_T, ATTEN_ENABLE>::HandleMask(u
 {
     event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
     event_t eventIdMte2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
-    uint8_t dstStride = this->selectedLength / FP32_DATA_BLOCK;
+    uint32_t dstStride = this->selectedLength / FP32_DATA_BLOCK;
     // when block size > 64, total bytes in one block will exceed 256
-    // when selectedLength >= 2048, dstStride will be >= 256, can not be saved in uint8_t
+    // when selectedLength >= 2048, dstStride will be >= 256, useLoop branch avoids narrow stride param
     bool useLoop = this->selectedBlockSize > UL_BIT_COUNT || (this->selectedLength >= FP32_DATA_BLOCK * NUM_256);
     uint64_t diagBlockIdx = this->currentS1 / this->selectedBlockSize;
     int32_t currentBlockIdx = 0;
@@ -645,7 +645,7 @@ __aicore__ inline void NsaSelectedAttention<INPUT_T, ATTEN_ENABLE>::HandleMask(u
             } else {
                 GetShiftLeftMask(this->selectedBlockSize, saveNum, mask[0]);
                 AscendC::Duplicate(this->bmm1ResUb[selectedBlockIdx * this->selectedBlockSize],
-                                   this->negativeScalar, mask, currentProcessSize, 1, dstStride);
+                                   this->negativeScalar, mask, currentProcessSize, 1, static_cast<uint8_t>(dstStride));
             }
             AscendC::PipeBarrier<PIPE_V>();
         } else if (currentBlockIdx > diagBlockIdx) {
@@ -655,8 +655,8 @@ __aicore__ inline void NsaSelectedAttention<INPUT_T, ATTEN_ENABLE>::HandleMask(u
                     AscendC::Duplicate(this->bmm1ResUb[offset], this->negativeScalar, this->selectedBlockSize);
                 }
             } else {
-                AscendC::Duplicate(this->bmm1ResUb[selectedBlockIdx * this->selectedBlockSize],
-                                   this->negativeScalar, this->selectedBlockSize, currentProcessSize, 1, dstStride);
+                AscendC::Duplicate(this->bmm1ResUb[selectedBlockIdx * this->selectedBlockSize], this->negativeScalar,
+                    this->selectedBlockSize, currentProcessSize, 1, static_cast<uint8_t>(dstStride));
             }
             AscendC::PipeBarrier<PIPE_V>();
         }

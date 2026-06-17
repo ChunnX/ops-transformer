@@ -31,7 +31,7 @@ extern "C" {
 namespace {
 
 extern aclnnStatus aclnnInnerSparseFlashAttentionGetWorkspaceSize(
-    const aclTensor *query, const aclTensor *key, const aclTensor *sparse_indices, const aclTensor *valueOptional,
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparse_indices,
     const aclTensor *blockTableOptional, const aclTensor *actualSeqLengthsQueryOptional, const aclTensor *actualSeqLengthsKvOptional,
     const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional, double scaleValue,
     int64_t sparseBlockSizeOptional, char *layoutQueryOptional, char *layoutKvOptional,
@@ -126,7 +126,7 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
         }
     }
     return aclnnInnerSparseFlashAttentionGetWorkspaceSize(
-        query, key, sparseIndices, value, blockTableOptional, actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,
+        query, key, value, sparseIndices, blockTableOptional, actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,
         scaleValue, sparseBlockSizeOptional, layoutQueryOptional, layoutKvOptional, sparseMode, preTokens,
         nextTokens, attentionMode, returnSoftmaxLse, attentionOut,
         softmaxMax, softmaxSum, workspaceSize, executor);

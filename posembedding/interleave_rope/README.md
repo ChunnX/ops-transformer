@@ -12,7 +12,7 @@
 
 ## 功能说明
 
-- 算子功能：针对单输入 x 进行旋转位置编码。
+- 算子功能：针对单输入x进行旋转位置编码。
 - 计算公式：
   $$
   q = \text{reshape}(x, [B, N, S, D//2, 2]) \cdot \text{transpose}(-1, -2) \cdot \text{reshape}([B, N, S, D])
@@ -22,7 +22,7 @@
   q_{\text{embed}} = q \cdot \text{cos} + \text{RotateHalf}(q) \cdot \sin
   $$
 
-  其中：RotateHalf(q) 表示将 q 的 D 维后半部分元素移至前半部分并乘以 -1，后半部分用前半部分的值。
+  其中：RotateHalf(q)表示将q的D维后半部分元素移至前半部分并乘以 -1，后半部分用前半部分的值。
   $$
   \text{RotateHalf}(q)_{\text{i}} = 
   \begin{cases} 
@@ -52,28 +52,28 @@
     <tr>
       <td>x</td>
       <td>输入</td>
-      <td>表示待处理张量，对应公式中的 x。</td>
+      <td>表示待处理张量，对应公式中的x。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cos</td>
       <td>输入</td>
-      <td>表示 RoPE 旋转位置的余弦分量，对应公式中的 cos。</td>
+      <td>表示RoPE旋转位置的余弦分量，对应公式中的cos。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>sin</td>
       <td>输入</td>
-      <td>表示 RoPE 旋转位置的正弦分量，对应公式中的 sin。</td>
+      <td>表示RoPE旋转位置的正弦分量，对应公式中的sin。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>y</td>
       <td>输出</td>
-      <td>表示旋转编码后的结果，对应公式中的 q_embed。</td>
+      <td>表示旋转编码后的结果，对应公式中的q_embed。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
@@ -85,11 +85,11 @@
 ## 约束说明
 
   * 该接口支持推理场景下使用。
-  * x，y 要求为 4 维张量，shape 为（B，N，S，D）。
-  * cos，sin 要求为 4 维张量，shape 为（B，N，S，D），S 可以为 1 或与 x 的 S 相同，数据类型、数据格式与 x 一致。
-  * 输入x、cos、sin 的 D 维度必须等于 64。
-  * cos、sin 的 N 维度必须等于 1。
-  * x、cos、sin、y 都不支持非连续的 Tensor。
+  * x，y要求为4 维张量，shape为（B，N，S，D）。
+  * cos，sin要求为4 维张量，shape为（B，N，S，D），S可以为1 或与x的S相同，数据类型、数据格式与x一致。
+  * 输入x、cos、sin的D维度必须等于64。
+  * cos、sin的N维度必须等于1。
+  * x、cos、sin、y都不支持非连续的Tensor。
 
 ## 调用说明
 
