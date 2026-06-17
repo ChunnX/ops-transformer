@@ -389,6 +389,9 @@ public:
         outputPermuteDstBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)dstBuffer);
         outputPermuteSrcBaseOffset_ = 0UL;
         outputPermuteDstBaseOffset_ = 0UL;
+        AscendC::printf("[INIT_PERMUTE] srcBuffer=%p dstBuffer=%p srcBufAddr=%p dstBufAddr=%p\n",
+            srcBuffer, dstBuffer,
+            outputPermuteSrcBuffer_.GetPhyAddr(), outputPermuteDstBuffer_.GetPhyAddr());
         TPipe *pipe = GetTPipePtr();
         uint64_t halfUbLen = taskTilingInfo_->ubSize / 2;
         pipe->InitBuffer(outputPermuteBufA_, halfUbLen);
@@ -471,9 +474,11 @@ public:
 
             // [位置2] 验证每个pair的offset映射
             if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U && pairIdx < 4U) {
-                AscendC::printf("[PAIR] turn=%u pair=%u loc=%u rank=%u posB=%u posA=%u srcOff=%lu dstOff=%lu totalCnt=%lu\n",
+                GM_ADDR srcAddr = outputPermuteSrcBuffer_.GetPhyAddr();
+                GM_ADDR dstAddr = outputPermuteDstBuffer_.GetPhyAddr();
+                AscendC::printf("[PAIR] turn=%u pair=%u loc=%u rank=%u posB=%u posA=%u srcOff=%lu dstOff=%lu totalCnt=%lu srcAddr=%p dstAddr=%p\n",
                     turnIdx, pairIdx, localIdx, rankIndex, posBefore, posAfter,
-                    srcOffset, dstOffset, totalCnt);
+                    srcOffset, dstOffset, totalCnt, srcAddr, dstAddr);
                 if (totalCnt > 0UL) {
                     AscendC::DumpTensor(outputPermuteSrcBuffer_[srcOffset], 300U + turnIdx * 8U + pairIdx, 16U);
                 }

@@ -51,6 +51,8 @@ public:
             Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
                           PACK_FACTOR) * X_TYPE_SIZE,
                   TENSOR_LIST_SIZE);
+        AscendC::printf("[SCHED_WORKSPACE] workspaceGM=%p commOutLen=%lu isCombined=%u isPermuteOut=%u\n",
+            workspaceGM, commOutLen, (uint32_t)isCombinedMode_, (uint32_t)tilingData_->isPermuteOut);
         // x通信输出区域：combined mode always uses workspace; old flow depends on isPermuteOut
         if (isCombinedMode_ || !tilingData_->isPermuteOut) {
             commOutGm_ = workspaceGM + workspaceOffset;
@@ -94,6 +96,8 @@ public:
             workspaceOffset += yOffsetListSize;
             if (tilingData_->isPermuteOut) {
                 commOp.InitOutputPermuteBuffer(commOutGm_, permuteOutOptionalGM);
+                AscendC::printf("[SCHED_ADDR] commOutGm_=%p permuteOutGM=%p scaleCommOut=%p workspaceOff=%lu\n",
+                    commOutGm_, permuteOutOptionalGM, gmmxScaleCommOutGm_, workspaceOffset);
             }
         }
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
