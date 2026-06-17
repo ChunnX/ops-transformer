@@ -59,6 +59,7 @@
 		<path value="opp/built-in/op_impl" install_mod="550"/>
 		<path value="opp/built-in/op_impl/ai_core" install_mod="550"/>
 		<path value="opp/built-in/op_impl/ai_core/tbe" install_mod="550"/>
+		<path value="opp/built-in/op_impl/ai_core/tbe/config" install_mod="550"/>
 		<path value="opp/built-in/op_impl/ai_core/tbe/op_host" install_mod="550"/>
 		<path value="opp/built-in/op_impl/ai_core/tbe/op_host/lib" install_mod="550"/>
 		<path value="opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux" install_mod="550"/>
