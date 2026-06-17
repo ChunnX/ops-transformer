@@ -274,7 +274,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetadata(const SplitResult &
         KERNEL_LOG_ERROR("metadata is empty");
         return false;
     }
-    optiling::detail::FaMetaData faMetadata(metaData_->GetData());
+    optiling::detail::FaMetadata faMetadata(metadata_->GetData());
     for (uint32_t i = 0; i < optiling::AIC_CORE_NUM; i++) {
         faMetadata.setFaMetadata(i, optiling::FA_CORE_ENABLE_INDEX, 0U);
         faMetadata.setFaMetadata(i, optiling::FA_BN1_START_INDEX, 0U);
