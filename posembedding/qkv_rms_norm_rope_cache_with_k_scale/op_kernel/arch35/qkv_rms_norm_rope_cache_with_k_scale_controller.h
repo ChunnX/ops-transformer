@@ -20,13 +20,11 @@ public:
     __aicore__ inline void Process(const GlobalTensors &tensors,
                                    const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
-#if defined(__CCE_AICORE__)
         if ASCEND_IS_AIC {
             ProcessAic(tensors, tilingData);
         } else {
             ProcessAiv(tensors, tilingData);
         }
-#endif
     }
 
 private:
