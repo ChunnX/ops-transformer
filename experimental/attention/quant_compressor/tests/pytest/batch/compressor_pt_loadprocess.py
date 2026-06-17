@@ -72,7 +72,7 @@ def test_compressor_process(filepath, device_id=0):
             # 填充数据
             state_cache[:, :, :kv_state.shape[2]] = kv_state.clone()
             state_cache[:, :, kv_state.shape[2]:] = score_state.clone()
-            print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride: {state_cache.stride()}")  
+            print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride: {state_cache.stride()}") 
     else:
         layer_num = random.randint(1, 50)
         layer_start_idx = random.randint(0, layer_num-1)

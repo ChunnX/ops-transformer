@@ -1576,7 +1576,7 @@ __aicore__ inline void SoftmaxDnVF(const LocalTensor<T>& dstTensor, const LocalT
             ReduceSize, vScRealSize, minValue);
     } else if (dDealSize == 64) {
         SoftmaxDndBase64<T>(inputAddr, outputAddr, RowSize,
-            ReduceSize, vScRealSize, minValue);        
+            ReduceSize, vScRealSize, minValue);
     } else if (dDealSize == 128) {
         SoftmaxDndBase128<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);

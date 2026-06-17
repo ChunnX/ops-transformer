@@ -258,8 +258,8 @@ struct QuantCompressorContext {
     TemplateId templateId;
 
     ge::DataType dtype = ge::DT_BF16; 
-    LayoutType layout = LayoutType::LAYOUT_BSH; 
-
+    LayoutType layout = LayoutType::LAYOUT_BSH;
+    
     size_t *workSpaces;
     uint64_t tilingKey;
     uint32_t blockDim;
