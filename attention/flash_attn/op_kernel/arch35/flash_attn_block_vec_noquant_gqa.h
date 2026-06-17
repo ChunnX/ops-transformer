@@ -372,20 +372,46 @@ public:
     {
         // accumOut / softmaxFDSum / softmaxFDMax 在 user workspace 上连续排布
         // （见 InitVecInput：accumOut@workspace, softmaxFDSum@+accumOutSize, softmaxFDMax@+accumOutSize+logSumExpSize），
-        // 总大小为 accumOutSize + 2 * logSumExpSize（单位：float 元素）。整体清零以消除批跑跨启动的脏残留。
-        int64_t totalFdWsSize = (int64_t)constInfo.accumOutSize + 2 * (int64_t)constInfo.logSumExpSize;
-        if (totalFdWsSize <= 0) {
-            return;
-        }
-        int64_t singleCoreSize =
-            (totalFdWsSize + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum); // 2 means c:v = 1:2
-        int64_t tailSize = totalFdWsSize - constInfo.aivIdx * singleCoreSize;
-        int64_t singleInitSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
+        // 单位：float 元素。批跑跨 kernel 启动复用同一段 workspace，稀疏(mask)场景下 FA 实际写入的 split 槽位
+        // 少于 FD combine 读取的槽位，未写槽位会残留上一轮用例的数据，因此每轮入口都需重置。
+        //
+        // 关键：FD combine 对各 split 做在线 softmax 规约：globalMax = max(splitMax_i)，
+        //       weight_i = exp(splitMax_i - globalMax) * splitSum_i，out = Σ(weight_i*acc_i) / Σ(weight_i)。
+        // 因此「中性/无效」split 的正确初值是：
+        //   - accumOut = 0、softmaxFDSum = 0（对分子分母均无贡献）；
+        //   - softmaxFDMax = 大负值(-inf)（否则若残留/置零得到的 max 大于所有有效 split 的 max，
+        //     会污染 globalMax，使全部有效 split 的 exp(validMax-globalMax) 下溢为 0 → ΣweightDenom=0 →
+        //     除零得到 NaN/Inf → aicore；这正是批跑(maskmode=3+fd, 轮次>1)的根因，
+        //     单跑/首轮因 workspace 为全新清零内存而恰好规避）。
+        // 故此处不能把 max 区一并置 0，必须单独置为大负值。
+        const int64_t accumPlusSum = (int64_t)constInfo.accumOutSize + (int64_t)constInfo.logSumExpSize; // accumOut+sum
+        const int64_t maxRegionBeg = accumPlusSum;                                                       // max 区起点
+        const int64_t maxRegionLen = (int64_t)constInfo.logSumExpSize;                                   // max 区长度
+        constexpr float FD_NEG_INF = -3.0e38F; // 远小于任何有效 split max，使 exp(.-globalMax) 安全下溢为 0
 
-        if (singleInitSize > 0) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            matmul::InitOutput<float>(accumOutGm[constInfo.aivIdx * singleCoreSize], singleInitSize, 0);
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+        // ---- pass1：accumOut + softmaxFDSum 区整体置 0 ----
+        if (accumPlusSum > 0) {
+            int64_t singleCoreSize = (accumPlusSum + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum);
+            int64_t tailSize = accumPlusSum - constInfo.aivIdx * singleCoreSize;
+            int64_t singleInitSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
+            if (singleInitSize > 0) {
+                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+                matmul::InitOutput<float>(accumOutGm[constInfo.aivIdx * singleCoreSize], singleInitSize, 0);
+                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            }
+        }
+
+        // ---- pass2：softmaxFDMax 区整体置大负值(-inf) ----
+        if (maxRegionLen > 0) {
+            int64_t singleCoreSize = (maxRegionLen + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum);
+            int64_t tailSize = maxRegionLen - constInfo.aivIdx * singleCoreSize;
+            int64_t singleInitSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
+            if (singleInitSize > 0) {
+                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+                matmul::InitOutput<float>(accumOutGm[maxRegionBeg + constInfo.aivIdx * singleCoreSize], singleInitSize,
+                                          FD_NEG_INF);
+                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            }
         }
     }
 
@@ -1245,10 +1271,6 @@ public:
     }
 
     // FD 兼容：进入 FlashDecode 前排干 mask V→MTE2 ping/pong 反向同步预置。
-    // FA 的 AllocEventID 预置了 V_MTE2[0]/[1] 且这两个 flag 会一直挂到所有 section 结束才由
-    // FreeEventID 排干，因此 FD 运行时 FA 仍残留 2 个 V_MTE2 pending flag。FD 自身的 V_MTE2 同步
-    // （SYNC_* = 8~13）在物理 flag 空间上与 FA 的 [0]/[1] 冲突，导致 FD 的 WaitFlag<V_MTE2> 卡死。
-    // 进入 FD 前先 Wait 排干，使 FD 期间 FA 无任何残留 V_MTE2 flag。
     __aicore__ inline void DrainMaskReverseSync()
     {
         if constexpr (HAS_MASK) {
@@ -1257,8 +1279,7 @@ public:
         }
     }
 
-    // FD 结束后恢复 mask V→MTE2 ping/pong 预置，供下一 section 的 FA ProcessVec1Nd 首轮 Wait 使用，
-    // 并保证 kernel 退出时 FreeEventID 的 WaitFlag 配平。与 DrainMaskReverseSync 成对调用。
+    // FD 结束后恢复 mask V→MTE2 ping/pong 预置，与 DrainMaskReverseSync 成对。
     __aicore__ inline void PresetMaskReverseSync()
     {
         if constexpr (HAS_MASK) {
