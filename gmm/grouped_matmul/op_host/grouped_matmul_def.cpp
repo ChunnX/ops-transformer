@@ -600,7 +600,7 @@ public:
                  ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,
                  ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,
                  ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,
-                 ge::DT_FLOAT16,     ge::DT_FLOAT16})
+                 ge::DT_FLOAT16,     ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
