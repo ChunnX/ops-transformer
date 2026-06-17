@@ -264,6 +264,20 @@ setup_aicpu_builtin_env() {
   logandprint "[INFO]: Set AICPU path [ export ASCEND_CUSTOM_OPP_PATH=${relative_path_val}/${AICPU_BUILTIN_CUSTOM_ROOT} ]."
 }
 
+log_opp_env_requirements() {
+  logandprint "[INFO]: Using requirements: when opp module install finished or \
+before you run the opp module, execute the command \
+[ export ASCEND_OPP_PATH=${relative_path_val}/opp ] to set the environment path."
+
+  local aicpu_root="${TARGET_VERSION_DIR}/${AICPU_BUILTIN_CUSTOM_ROOT}"
+  local aicpu_json="${aicpu_root}/op_impl/cpu/config/cust_aicpu_kernel.json"
+  local aicpu_so="${aicpu_root}/op_impl/cpu/aicpu_kernel/impl/libtransformer_aicpu_kernels.so"
+  if [ -f "${aicpu_json}" ] || [ -f "${aicpu_so}" ]; then
+    logandprint "[INFO]: To enable AICPU metadata operators, also execute the command \
+[ export ASCEND_CUSTOM_OPP_PATH=${relative_path_val}/${AICPU_BUILTIN_CUSTOM_ROOT}:\${ASCEND_CUSTOM_OPP_PATH} ]."
+  fi
+}
+
 create_file_softlink() {
   local src_file=$1
   local dst_file=$2
@@ -527,9 +541,7 @@ main() {
   logandprint "[INFO]: Operation log file path: (${COMM_OPERATION_LOGFILE})"
 
   if [ "${IS_SETENV}" != "y" ]; then
-    logandprint "[INFO]: Using requirements: when opp module install finished or \
-before you run the opp module, execute the command \
-[ export ASCEND_OPP_PATH=${TARGET_INSTALL_PATH}/cann/opp ] to set the environment path."
+    log_opp_env_requirements
   fi
 
   logandprint "[INFO]: Opp package installed successfully! The new version takes effect immediately."

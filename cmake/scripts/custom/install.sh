@@ -253,6 +253,16 @@ EOF
     return 0
 }
 
+log_custom_env_requirements()
+{
+    _ASCEND_CUSTOM_OPP_PATH=${targetdir}/${vendordir}
+    log "[INFO] using requirements: when custom module install finished or before you run the custom module, \
+        execute the following commands to set the environment path: \
+        [ export ASCEND_CUSTOM_OPP_PATH=${_ASCEND_CUSTOM_OPP_PATH}:\${ASCEND_CUSTOM_OPP_PATH} ] and \
+        [ export LD_LIBRARY_PATH=${_ASCEND_CUSTOM_OPP_PATH}/op_api/lib/:\${LD_LIBRARY_PATH} ]."
+    log "[INFO] You can also execute the equivalent command [ source ${_ASCEND_CUSTOM_OPP_PATH}/bin/set_env.bash ]."
+}
+
 delete_optiling_file()
 {
   if [ ! -d ${targetdir}/vendors ];then
@@ -321,10 +331,7 @@ if [ $? -ne 0 ]; then
 fi
 
 if [ -n "${INSTALL_PATH}" ] && [ -d ${INSTALL_PATH} ]; then
-    _ASCEND_CUSTOM_OPP_PATH=${targetdir}/${vendordir}
-    bin_path="${_ASCEND_CUSTOM_OPP_PATH}/bin"
-    log "[INFO] using requirements: when custom module install finished or before you run the custom module, \
-        execute the command [ source ${bin_path}/set_env.bash ] to set the environment path"
+    log_custom_env_requirements
 else
     _ASCEND_CUSTOM_OPP_PATH=${targetdir}/${vendordir}
     config_file=${targetdir}/vendors/config.ini
@@ -347,8 +354,7 @@ else
     if test $INSTALL_FOR_ALL = "y"; then
         chmod 755 ${config_file}
     fi
-    log "[INFO] using requirements: when custom module install finished or before you run the custom module, \
-        execute the command [ source ${_ASCEND_CUSTOM_OPP_PATH}/bin/set_env.bash ] to set the environment path"
+    log_custom_env_requirements
 fi
 
 if [ -d ${targetdir}/$vendordir/op_impl/cpu/aicpu_kernel/impl/ ]; then

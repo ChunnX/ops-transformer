@@ -133,6 +133,16 @@ EOF
     return 0
 }
 
+log_custom_env_requirements()
+{
+    _ASCEND_CUSTOM_OPP_PATH=${targetdir}/${vendordir}
+    log "[INFO] using requirements: when custom module install finished or before you run the custom module, \
+        execute the following commands to set the environment path: \
+        [ export ASCEND_CUSTOM_OPP_PATH=${_ASCEND_CUSTOM_OPP_PATH}:\${ASCEND_CUSTOM_OPP_PATH} ] and \
+        [ export LD_LIBRARY_PATH=${_ASCEND_CUSTOM_OPP_PATH}/op_api/lib/:\${LD_LIBRARY_PATH} ]."
+    log "[INFO] You can also execute the equivalent command [ source ${_ASCEND_CUSTOM_OPP_PATH}/bin/set_env.bash ]."
+}
+
 log "[INFO] copy uninstall sh success"
 
 log "[INFO] upgrade framework"
@@ -177,8 +187,7 @@ write_set_env
 if [ $? -ne 0 ]; then
     exit 1
 fi
-log "[INFO] using requirements: when custom module install finished or before you run the custom module, \
-    execute the command [ source ${targetdir}/${vendordir}/bin/set_env.bash ] to set the environment path"
+log_custom_env_requirements
 
 echo "SUCCESS"
 exit 0
