@@ -142,11 +142,13 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     deviceInfo.aicCoreMinNum = 1;
     // baseInfo
     // actual seq size
+    baseInfo.querySeqSize = maxSeqlenQ_;
+    baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
     baseInfo.isCumulativeKvSeq = layoutKv_ == "TND" || layoutKv_ == "NTD";
     if (batchSize_ > 0) {
-        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
-        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+        baseInfo.actualQuerySeqSize.resize(batchSize_, baseInfo.querySeqSize);
+        baseInfo.actualKvSeqSize.resize(batchSize_, baseInfo.kvSeqSize);
         if (baseInfo.isCumulativeQuerySeq) {
             for (uint32_t i = 1; i < batchSize_; ++i) {
                 baseInfo.actualQuerySeqSize[i] += baseInfo.actualQuerySeqSize[i - 1];
@@ -161,50 +163,52 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     if (baseInfo.isCumulativeQuerySeq && cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
         batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1;
         auto cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, batchSize_ + 1);
-        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
+        baseInfo.actualQuerySeqSize.resize(batchSize_, baseInfo.querySeqSize);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = cuSeqlensQ[i + 1];
-            maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), cuSeqlensQ[i + 1] - cuSeqlensQ[i]);
+            baseInfo.querySeqSize =
+                std::max(static_cast<int64_t>(baseInfo.querySeqSize), cuSeqlensQ[i + 1] - cuSeqlensQ[i]);
         }
     }
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
         auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, batchSize_);
-        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
+        baseInfo.actualQuerySeqSize.resize(batchSize_, baseInfo.querySeqSize);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = sequsedQ[i];
             if (baseInfo.isCumulativeQuerySeq && (i > 0)) {
                 baseInfo.actualQuerySeqSize[i] += baseInfo.actualQuerySeqSize[i - 1];
             }
-            maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), sequsedQ[i]);
+            baseInfo.querySeqSize =
+                std::max(static_cast<int64_t>(baseInfo.querySeqSize), sequsedQ[i]);
         }
     }
     if (baseInfo.isCumulativeKvSeq && cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
         batchSize_ = cuSeqlensKv_->GetTensorShape()->GetDimSize(0) - 1;
         auto cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_, batchSize_ + 1);
-        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+        baseInfo.actualKvSeqSize.resize(batchSize_, baseInfo.kvSeqSize);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualKvSeqSize[i] = cuSeqlensKv[i + 1];
-            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
+            baseInfo.kvSeqSize =
+                std::max(static_cast<int64_t>(baseInfo.kvSeqSize), cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
         }
     }
     if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
         batchSize_ = sequsedKv_->GetTensorShape()->GetDimSize(0);
         auto sequsedKv = GetTensorDataAsInt64(sequsedKv_, batchSize_);
-        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+        baseInfo.actualKvSeqSize.resize(batchSize_, baseInfo.kvSeqSize);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualKvSeqSize[i] = sequsedKv[i];
             if (baseInfo.isCumulativeKvSeq && (i > 0)) {
                 baseInfo.actualKvSeqSize[i] += baseInfo.actualKvSeqSize[i - 1];
             }
-            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), sequsedKv[i]);
+            baseInfo.kvSeqSize =
+                std::max(static_cast<int64_t>(baseInfo.kvSeqSize), sequsedKv[i]);
         }
     }
     baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
-    baseInfo.querySeqSize = maxSeqlenQ_;
     baseInfo.kvHeadNum = numHeadsKv_;
-    baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.headDim = headDim_;
     baseInfo.attenMaskFlag = (maskMode_ != 0);
     baseInfo.sparseMode = static_cast<uint32_t>(maskMode_);
@@ -215,20 +219,14 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.queryType = load_balance::DataType::FP16; // noquant
     baseInfo.kvType = load_balance::DataType::FP16; // noquant
     // param
-    if (numHeadsKv_ == 0) {
-        numHeadsKv_ = numHeadsQ_;
-        groupSize_ = 1;
-    } else {
-        groupSize_ = numHeadsQ_ / numHeadsKv_;
-    }
     uint32_t qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BNSD;
     if (baseInfo.layoutQuery == Layout::BSH || baseInfo.layoutQuery == Layout::BSND) {
         qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BSH;
     } else if (baseInfo.layoutQuery == Layout::TND) {
         qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_TND;
     }
-    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize,
-        baseInfo.kvSeqSize, baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken, qlayout,
+    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, maxSeqlenQ_,
+        maxSeqlenKv_, baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken, qlayout,
         mBaseSize_, s2BaseSize_);
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_); // CV_Ratio
     param.mBaseSize = mBaseSize_;
