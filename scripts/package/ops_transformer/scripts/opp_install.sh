@@ -39,6 +39,11 @@ TARGET_MOULDE_DIR=""  # TARGET_INSTALL_PATH + PKG_VERSION_DIR + OPP_PLATFORM_DIR
 TARGET_VERSION_DIR="" # TARGET_INSTALL_PATH + PKG_VERSION_DIR
 TARGET_SHARED_INFO_DIR="" # TARGET_INSTALL_PATH + PKG_VERSION_DIR + share/info
 TARGET_OPP_BUILT_IN=""
+# 内置整包中的AICPU metadata算子仍按自定义AICPU目录被runtime发现，因此需要额外加入ASCEND_CUSTOM_OPP_PATH。
+AICPU_BUILTIN_CUSTOM_ROOT="opp/built-in/op_impl/aicpu/ops_transformer"
+# 用marker包住自动写入的环境片段，保证重复安装/升级时可以先删后写，避免路径重复堆叠。
+AICPU_ENV_BEGIN="# OPS_TRANSFORMER_AICPU_ENV_BEGIN"
+AICPU_ENV_END="# OPS_TRANSFORMER_AICPU_ENV_END"
 
 COMMON_INC_FILE="${CURR_PATH}/common_func.inc"
 COMMON_FUNC_V2_PATH="${CURR_PATH}/common_func_v2.inc"
@@ -219,6 +224,65 @@ setenv() {
 }
 
 # 创建单个文件的软链接，链接文件级别
+append_aicpu_env_to_file() {
+  # 仅追加ops_transformer自己的AICPU路径，不改写用户已有ASCEND_CUSTOM_OPP_PATH。
+  local env_file="$1"
+  local aicpu_path_val="${relative_path_val}/${AICPU_BUILTIN_CUSTOM_ROOT}"
+
+  if [ ! -f "${env_file}" ]; then
+    return 0
+  fi
+
+  chmod u+w "${env_file}" 2>/dev/null
+  sed -i "/^${AICPU_ENV_BEGIN}$/,/^${AICPU_ENV_END}$/d" "${env_file}"
+  cat >> "${env_file}" <<EOF
+
+${AICPU_ENV_BEGIN}
+if [ -d "${aicpu_path_val}/op_impl/cpu" ]; then
+    if [ -z "\${ASCEND_CUSTOM_OPP_PATH:-}" ]; then
+        export ASCEND_CUSTOM_OPP_PATH="${aicpu_path_val}"
+    else
+        case ":\${ASCEND_CUSTOM_OPP_PATH}:" in
+            *":${aicpu_path_val}:"*) ;;
+            *) export ASCEND_CUSTOM_OPP_PATH="${aicpu_path_val}:\${ASCEND_CUSTOM_OPP_PATH}" ;;
+        esac
+    fi
+fi
+${AICPU_ENV_END}
+EOF
+  log_with_errorlevel "$?" "error" "[ERROR]: ERR_NO:${FILE_WRITE_FAILED};ERR_DES:Update ${env_file} failed."
+}
+
+setup_aicpu_builtin_env() {
+  # run包里存在AICPU json或so时才修改环境脚本，避免无AICPU包产生多余环境变量。
+  local aicpu_root="${TARGET_VERSION_DIR}/${AICPU_BUILTIN_CUSTOM_ROOT}"
+  local aicpu_json="${aicpu_root}/op_impl/cpu/config/cust_aicpu_kernel.json"
+  local aicpu_so="${aicpu_root}/op_impl/cpu/aicpu_kernel/impl/libtransformer_aicpu_kernels.so"
+
+  if [ ! -f "${aicpu_json}" ] && [ ! -f "${aicpu_so}" ]; then
+    return 0
+  fi
+
+  append_aicpu_env_to_file "${TARGET_VERSION_DIR}/set_env.sh"
+  append_aicpu_env_to_file "${TARGET_VERSION_DIR}/bin/setenv.bash"
+  logandprint "[INFO]: Set AICPU path [ export ASCEND_CUSTOM_OPP_PATH=${relative_path_val}/${AICPU_BUILTIN_CUSTOM_ROOT} ]."
+}
+
+log_opp_env_requirements() {
+  # ASCEND_OPP_PATH仍按整包原有方式提示；AICPU metadata算子额外提示ASCEND_CUSTOM_OPP_PATH。
+  logandprint "[INFO]: Using requirements: when opp module install finished or \
+before you run the opp module, execute the command \
+[ export ASCEND_OPP_PATH=${relative_path_val}/opp ] to set the environment path."
+
+  local aicpu_root="${TARGET_VERSION_DIR}/${AICPU_BUILTIN_CUSTOM_ROOT}"
+  local aicpu_json="${aicpu_root}/op_impl/cpu/config/cust_aicpu_kernel.json"
+  local aicpu_so="${aicpu_root}/op_impl/cpu/aicpu_kernel/impl/libtransformer_aicpu_kernels.so"
+  if [ -f "${aicpu_json}" ] || [ -f "${aicpu_so}" ]; then
+    logandprint "[INFO]: To enable AICPU metadata operators, also execute the command \
+[ export ASCEND_CUSTOM_OPP_PATH=${relative_path_val}/${AICPU_BUILTIN_CUSTOM_ROOT}:\${ASCEND_CUSTOM_OPP_PATH} ]."
+  fi
+}
+
 create_file_softlink() {
   local src_file=$1
   local dst_file=$2
@@ -426,6 +490,8 @@ install_opp() {
     "${INSTALL_TYPE}" "${TARGET_INSTALL_PATH}" "${FILELIST_FILE}"
   log_with_errorlevel "$?" "error" "[ERROR]: ERR_NO:${INSTALL_FAILED};ERR_DES:Install opp module files failed."
 
+  setup_aicpu_builtin_env
+
   logandprint "[INFO]: upgradePercentage:30%"
 
   add_init_py
@@ -480,9 +546,7 @@ main() {
   logandprint "[INFO]: Operation log file path: (${COMM_OPERATION_LOGFILE})"
 
   if [ "${IS_SETENV}" != "y" ]; then
-    logandprint "[INFO]: Using requirements: when opp module install finished or \
-before you run the opp module, execute the command \
-[ export ASCEND_OPP_PATH=${TARGET_INSTALL_PATH}/cann/opp ] to set the environment path."
+    log_opp_env_requirements
   fi
 
   logandprint "[INFO]: Opp package installed successfully! The new version takes effect immediately."
