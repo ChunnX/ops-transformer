@@ -143,7 +143,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
 {
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
-    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * LIV2Common::Align((uint64_t)gSize_, (uint64_t)16) * sizeof(W_T));
+    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) *
+                     LIV2Common::Align((uint64_t)gSize_,(uint64_t)16) * sizeof(W_T));
     weightUB_ = weightBuf_.Get<W_T>();
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
@@ -192,7 +193,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitParams(const st
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
     returnValueFlag = constInfo.returnValueFlag;
     blockId_ = GetBlockIdx();
-    trunkLen_ = constInfo.topk > TOPK_LEN_5K ? (constInfo.topk > TOPK_LEN_7K ? TRUNK_LEN_2K : TRUNK_LEN_4K) : TRUNK_LEN_8K;
+    trunkLen_ = constInfo.topk > TOPK_LEN_5K ?
+                (constInfo.topk > TOPK_LEN_7K ? TRUNK_LEN_2K : TRUNK_LEN_4K) : TRUNK_LEN_8K;
     topkCount_ = constInfo.topk;
     topkOp_.Init(topkCount_, trunkLen_);
     topkCountAlign256_ = LIV2Common::Align(constInfo.topk, (uint64_t)256); // topkCount对齐到256
@@ -436,7 +438,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
         AscendC::DataCopyPadExtParams<SCORE_T> padParams{true, 0, 0, 0};
         if (validS2Len >= topkCount_) {
             uint32_t s2LoopNum = (validS2Len + trunkLen_ - 1) / trunkLen_;
-            bool useSingleLoop = (s2LoopNum == 1) || ((topkCount_ > trunkLen_) && (validS2Len <= (uint32_t)topkCountAlign256_));
+            bool useSingleLoop = (s2LoopNum == 1) ||
+                                 ((topkCount_ > trunkLen_) && (validS2Len <= (uint32_t)topkCountAlign256_));
             if (useSingleLoop) {
                 uint32_t validS2LenAlign = LIV2Common::Align(validS2Len, (int32_t)256);
                 Duplicate(mrgValueLocal_[validS2Len / 256 * 256], zero, validS2LenAlign - validS2Len / 256 * 256);
@@ -473,8 +476,10 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
                                                 copyInParams, padParams);
                             SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                             WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                            AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)zero, topkCountAlign256_);
-                            AscendC::CreateVecIndex(topkSharedTmpLocal_.ReinterpretCast<int32_t>(), (int32_t)zero, topkCountAlign256_);
+                            AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)zero,
+                                                    topkCountAlign256_);
+                            AscendC::CreateVecIndex(topkSharedTmpLocal_.ReinterpretCast<int32_t>(), (int32_t)zero,
+                                                    topkCountAlign256_);
                         } else {
                             copyInParams.blockLen = trunkLen_ * sizeof(SCORE_T); // byte
                             AscendC::DataCopyPad(mrgValueLocal_,
@@ -586,12 +591,14 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
                 mask[0] = ~0;
                 mask[0] = mask[0] << (validS2Len % 16);
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16], constInfo_.NEG_INF_FLOAT, mask, 1, 1, 0);
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16],
+                          constInfo_.NEG_INF_FLOAT, mask, 1, 1, 0);
             }
         
             if (validS2Len / 16 * 16 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64], constInfo_.NEG_INF_FLOAT,
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64],
+                          constInfo_.NEG_INF_FLOAT,
                           topkCount_ - (validS2Len / 16 * 16 + 64));
             }
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
