@@ -393,7 +393,7 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::WeightAntiQuantC
     WaitFlag<HardEvent::MTE3_V>(vecEventIdMte3ToV_ + (ubComputeLoopIdx_ & (WEIGHT_8BIT_BUFFER_NUM - 1)));
 
     // Pure compute: anti-quantization using tile helper
-    Tile::ShiftW4ToW8<OutType, InType>(weight4BitTensor, weight8BitTensor);
+    Blaze::Gemm::Tile::ShiftW4ToW8<OutType, InType>(weight4BitTensor, weight8BitTensor);
 
     // Set/Wait flags AFTER compute
     SetFlag<HardEvent::V_MTE3>(0);

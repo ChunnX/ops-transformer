@@ -84,6 +84,7 @@ private:
     GlobalTensor<int32_t> expertTokenNumsOut_;
     GlobalTensor<int32_t> tripleGloablTensor_;
     GlobalTensor<int32_t> expertRevNumsGloablTensor_;
+    GlobalTensor<int32_t> cumsumInfoTensor_;
 
     uint32_t m_ = 0;
     uint32_t k_ = 0;
@@ -126,7 +127,7 @@ private:
     LocalTensor<uint32_t> gatherMaskInt32Tensor_;
     LocalTensor<int32_t> expertTokenCntTensor_;
     LocalTensor<int32_t> validTopkIndexTensor_;
-    LocalTensor<int32_t> cumsumInfoTensor_;
+    // LocalTensor<int32_t> cumsumInfoTensor_;
     LocalTensor<QuantOutType> copyTmpTensors_[DISPATCH_BUFFER_NUM]; // 6-buffer 软流水：占满 EVENT_ID0..EVENT_ID5。
     LocalTensor<int32_t> tripleTensor_;
     LocalTensor<bfloat16_t> xInTensor1_;
@@ -193,6 +194,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t*)params_.expertTokenNumsOutGmAddr);
     expertRevNumsGloablTensor_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expertRevTokenNumsPtr);
     tripleGloablTensor_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.tripleInfoPtr);
+    // 每个 block 负责一个专家，cumsumInfo 中每个专家占 worldSize 个
+    // int32_t 存 rank 维度的 cumsum 结果，blockIdx 决定了负责哪个专家。
+    cumsumInfoTensor_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.cumsumInfoPtr +
+                                            worldSize_ * expertPerRank_ * blockIdx_);
     epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr, params_.workspaceInfo.swigluQuantScalePtr,
         params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256});
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
@@ -234,8 +239,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     uint32_t cumsumInfoTensorAddr = expertTokenCntTensorAddr + expertTokenCntTensorSize;
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    cumsumInfoTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr,
-        cumsumInfoTensorSize / sizeof(int32_t));
+    // cumsumInfoTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr,
+    //     cumsumInfoTensorSize / sizeof(int32_t));
     // Tensor用处：SendCntCal 函数中用来存储本卡上专家收到的mask+count位的buffer；
     // Tensor大小：maskSlotSize_ * worldSize_，每个maskSlotSize_中包含mask与count；
     uint32_t gatherMaskTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
@@ -278,7 +283,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     // 记录当前已被使用的ub地址，用于后续TripleInfoCalAndDispatch函数中分核后神申请tripleTensor_
     ubBufferUsedAddr_ = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
     CreateVecIndex(topkIndexTensor_, 0, (topkIndexTensorSize / sizeof(int32_t)));
-    Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
+    // Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -380,6 +385,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
 {
     int32_t lastRankIdx = static_cast<int32_t>(worldSize_ - 1);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(cumsumInfoTensor_);
     expertTokenNumsOutTensor_.SetValue(0, cumsumInfoTensor_.GetValue(lastRankIdx));
     for (int32_t expertIdx = 1; expertIdx < expertPerRank_; expertIdx++) {
         int32_t cur = cumsumInfoTensor_.GetValue(expertIdx * static_cast<int32_t>(worldSize_) + lastRankIdx);
@@ -389,6 +395,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopyExtParams copyParams{1U, static_cast<uint32_t>(expertPerRank_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(expertTokenNumsOut_, expertTokenNumsOutTensor_, copyParams);
+    AscendC:SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
 }
 
 // ======================================================================================================
@@ -542,6 +550,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
         totalSendCntInExp_ += static_cast<uint64_t>(sendCnt);
         cumsumRevCntInRank_ += static_cast<uint64_t>(sendCnt);
         cumsumInfoTensor_.SetValue(localExpertId * worldSize_ + calRankId, static_cast<int32_t>(cumsumRevCntInRank_));
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(cumsumInfoTensor_);
     }
     
     // Phase 3: 写到 gm 上，并通知 AIC
@@ -658,8 +667,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
 {
     // Phase 1: 分组分核进行三元组组装以及token dispatch
     constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(cumsumInfoTensor_);
     int32_t priorExpertCumsum = (localExpertId == 0) ? 0 : // 前面所有 expert 在本卡的总 token 数
         cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
+    uint32_t topkIndexTensorSize =
+        Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+    CreateVecIndex(topkIndexTensor_, 0, topkIndexTensorSize / sizeof(int32_t));
     for (uint32_t idx = blockIdx_; idx < worldSize_ * blockNumPerRank_; idx += blockNum_) {
         uint32_t dstRankIdx = idx / blockNumPerRank_;
         uint64_t sendToCurExpTokenCnt = 0;
@@ -667,7 +680,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
             gatherMaskInt32Tensor_[dstRankIdx * (maskSlotSize_ / sizeof(uint32_t))],
             true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
         uint32_t aivIdxInGroup = idx % blockNumPerRank_;
-        uint32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(cumsumInfoTensor_);
+        int32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
             cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
         int32_t rowsThisCore = 0;
         int32_t rowDstOffsetInCore = 0;

@@ -94,6 +94,7 @@ struct WorkspaceInfo {
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR cumsumInfoPtr;
     GM_ADDR ptrGmm1MmadRes;
     GM_ADDR ptrGmm2MmadRes;
 
@@ -136,6 +137,8 @@ struct WorkspaceInfo {
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
 
+        cumsumInfoPtr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize * tilingData->aicNum;
         ptrGmm1MmadRes = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->maxOutputSize * tilingData->hiddenDim;
         ptrGmm2MmadRes = base + workspaceSize;
