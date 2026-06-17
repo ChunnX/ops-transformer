@@ -555,15 +555,15 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
             return ge::GRAPH_FAILED;
         }
         if (qLayout_ == SMLALayout::TND) {
-            if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0) != bSize_ - 1) {
+            if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0) != bSize_) {
                 OP_LOGE(opName_, "cmp_block_table's first dimension(%u) should be equal to query's B(%u).",
-                    opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1), bSize_ - 1);
+                    opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0), bSize_);
                 return ge::GRAPH_FAILED;
             }
         } else if (qLayout_ == SMLALayout::BSND) {
             if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0) != bSize_) {
                 OP_LOGE(opName_, "cmp_block_table's first dimension(%u) should be equal to query's B(%u).",
-                    opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1), bSize_);
+                    opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0), bSize_);
                 return ge::GRAPH_FAILED;
             }
         }

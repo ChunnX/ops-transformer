@@ -146,22 +146,6 @@ __aicore__ inline void SFAUpdateExpSumAndExpMax(
 }
 
 template <typename T>
-__simd_vf__ inline void DuplicateSumWithR0VF(__ubuf__ T * sumUb, const T R0, uint32_t m) {
-    AscendC::MicroAPI::RegTensor<T> vreg_sum;
-    AscendC::MicroAPI::MaskReg preg_m = AscendC::MicroAPI::UpdateMask<T>(m);
-    AscendC::MicroAPI::UnalignRegForStore ureg;
-    AscendC::MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_sum, R0, preg_m);
-    AscendC::MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(sumUb, vreg_sum, preg_m);
-}
-
-template <typename T>
-__aicore__ inline void DuplicateSumWithR0(const LocalTensor<T>& sumTensor, const T R0, uint32_t m)
-{
-    __ubuf__ T * sumUb = (__ubuf__ T*)sumTensor.GetPhyAddr();
-    DuplicateSumWithR0VF<T>(sumUb, R0, m);
-}
-
-template <typename T>
 __simd_vf__ inline void InitSoftmaxFromSinksVF(__ubuf__ T * sumUb, __ubuf__ T * maxUb, __ubuf__ T * sinksUb,
     uint32_t sinksOffset, const T R0, uint32_t m)
 {
