@@ -106,6 +106,16 @@ private:
         uint32_t curSendCnt_, uint32_t curUseAivNum, uint32_t& startTokenId_, uint32_t& endTokenId_,
         uint32_t& sendTokenNum_, bool isFront = true);
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t& curExpertCnt);
+
+#ifdef IDENTIFICATION
+    __aicore__ inline void PackPair(uint64_t& packed, uint32_t rankId, uint32_t expertId);
+    __aicore__ inline void UnpackPair(uint64_t packed, uint32_t& rankId, uint32_t& expertId);
+    __aicore__ inline void SeparateHotAndCold(
+        LocalTensor<uint64_t>& hotInfoTensor_, uint32_t& hotInfoCnt,
+        LocalTensor<uint64_t>& coldInfoTensor_, uint32_t& coldInfoCnt,
+        uint32_t startRankId, uint32_t endRankId);
+#endif
+
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
         return (GM_ADDR)((mc2Context_->epHcclBuffer_[rankId]) + winDataSizeOffset_);
@@ -986,6 +996,83 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
     moeStartToken += calCnt;
 }
 
+#ifdef IDENTIFICATION
+// 将rankId和expertId打包到packed
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::PackPair(uint64_t& packed, uint32_t rankId, uint32_t expertId)
+{
+    packed = (static_cast<uint64_t>(rankId) << 32) | expertId;
+}
+
+// 从packed中解析出rankId和expertId
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::UnpackPair(uint64_t packed, uint32_t& rankId, uint32_t& expertId)
+{
+    rankId = static_cast<uint32_t>(rankId >> 32);
+    expertId = static_cast<uint32_t>(rankId & 0xFFFFFFFFULL);
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SeparateHotAndCold(
+    LocalTensor<uint64_t>& hotInfoTensor_, uint32_t& hotInfoCnt,
+    LocalTensor<uint64_t>& coldInfoTensor_, uint32_t& coldInfoCnt,
+    uint32_t startRankId, uint32_t endRankId)
+{
+    LocalTensor<uint32_t> tmpStatusTensor = statusBuf_.Get<int32_t>();
+    Duplicate<int32_t>(tmpStatusTensor, 0, recvWinBlockNum_ * 8);
+    GlobalTensor<int32_t> windowExpGMTensor;
+    windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t*)(statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1)));
+    uint32_t len = sharedExpertRankNum_;
+    if (endRankId > sharedExpertRankNum_) {
+        len += (endRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
+    }
+    DataCopy<int32_t>(tmpStatusTensor, windowExpGMTensor, len * 8); // 8时数据大小，按32对齐拷贝
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+    hotInfoCnt = 0;
+    coldInfoCnt = 0;
+    // 水线的计算方式：waterline = 总 token-expert 路由数 / MoE expert 总数
+    // axisBS_ * axisK_：总路由条目数，也就是 batch 中每个 token 选 K 个 expert 后的总 token-expert 数量。
+    // moeExpertNum_：MoE expert 总数，也就是 moeExpertRankNum_ * moeExpertNumPerRank_
+    // waterline：MoE expert 的平均 token 路由数，平均每个 expert/block 分到多少 token
+    uint32_t waterline = (axisBS_ * axisK_) / moeExpertNum_;
+    for(int32_t sendRankId = startRankId; sendRankId < endRankId; ++sendRankId) {
+        if(sendRankId == epRankId_ /* || sendRankId / 8 == epRankId_ / 8*/) {
+            continue;
+        }
+        for(uint32_t expertIdx = 0; expertIdx < moeExpertNumPerRank_; ++expertIdx) {
+            uint32_t globalExpertId = sharedExpertRankNum_ +
+                (sendRankId - sharedExpertRankNum_) * moeExpertNumPerRank_ + expertIdx;
+
+            uint32_t tokenNum = tmpStatusTensor(globalExpertId * 8 + 1);
+            uint64_t packRankExpert = 0;
+            PackPair(packRankExpert, sendRankId, expertIdx);
+            if(tokenNum > waterline) {
+                // hotInfoTensor_.SetValue(hotInfoCnt++, packRankExpert);
+                hotInfoTensor_(hotInfoCnt++) = packRankExpert;
+            }
+            else {
+                coldInfoTensor_(coldInfoCnt++) = packRankExpert;
+            }
+        }
+    }
+}
+#endif
+
+// 方案 1：改派到别的 expert/副本执行
+// 这种不是在 Communication() 里改 remoteAddr 就行。因为到这里时：
+// yOutGM_ 已经按原 expert 排序好了
+// statusTensor_ 已经按原 expert 统计好了
+// moeStartToken 也是按原 expert count 累加出来的
+// 如果要把 token 改派到另一个 rank/expert，应该在更早的路由阶段完成，
+// 比如生成 packed (rankId, expertId) 时就决定最终目标，然后重新按最终目标排序、统计 status。
+// 否则 Communication() 里临时改地址，会导致 status 和真实数据位置不一致。
+
+// 方案 2：中转绕路
+// 如果“绕路”是先写到一张非热点 rank 做中转，再由它转发/聚合到原目标 expert，那么可以在 Communication() 里处理 overflow token，
+// 但不能写到中转 rank 的普通 expert window。应该写到一个专门的 reroute/overflow buffer，并额外写 metadata，
+// 例如原始目标 (sendRankId, sendExpertId)、原始 slot、token 数等。
+
 //#define DETECTION_TIME
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communication()
@@ -998,6 +1085,18 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
         return;
     }
 
+#if IDENTIFICATION
+    TBuf<> hotInfoBuf_;
+    TBuf<> codeInfoBuf_;
+    LocalTensor<uint64_t> hotInfoTensor_;
+    LocalTensor<uint64_t> codeInfoTensor_;
+    tpipe_->InitBuffer(hotInfoBuf_, moeExpertRankNum_);
+    hotInfoTensor_ = hotInfoBuf_.Get<int64_t>();
+    tpipe_->InitBuffer(codeInfoBuf_, moeExpertRankNum_);
+    codeInfoTensor_ = codeInfoBuf_.Get<int64_t>();
+    uint32_t hotInfoCnt, coldInfoCnt;
+    SeparateHotAndCold(hotInfoTensor_, hotInfoCnt, codeInfoTensor_, coldInfoCnt, startRankId, endRankId);
+#endif
     GlobalTensor<int32_t> windowExpGMTensor;
     windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t*)(statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1))); // 不加偏移
     //uint32_t len = sharedExpertRankNum_ + (endRankId - sharedExpertRankNum_) * moeExpertNumPerRank_; // 要传0到end位置的状态数
@@ -1012,6 +1111,12 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
     uint32_t moeStartToken = 0; // 当前核处理的第一张moe卡之前的token数，根据该值计算起始偏移地址
     CalMoeStartTokenNum(startRankId, statusTensor_, moeStartToken);
 
+    // 水线的计算方式：waterline = 总 token-expert 路由数 / MoE expert 总数
+    // axisBS_ * axisK_：总路由条目数，也就是 batch 中每个 token 选 K 个 expert 后的总 token-expert 数量。
+    // moeExpertNum_：MoE expert 总数，也就是 moeExpertRankNum_ * moeExpertNumPerRank_
+    // waterline：MoE expert 的平均 token 路由数，平均每个 expert/block 分到多少 token
+    uint32_t waterline = (axisBS_ * axisK_) / moeExpertNum_;
+
     for (uint32_t sendRankId = startRankId; sendRankId < endRankId; ++sendRankId) {
         if (sendRankId < sharedExpertRankNum_) {
             continue;
@@ -1025,29 +1130,94 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
         // 非本卡通信：发完 epRankId_-->sendRankId 的所有token后，统一敲doorbell
         bool hasWrite = false;
         uint32_t currRankId = sendRankId > epRankId_ ? sendRankId - 1 : sendRankId;
-        for (uint32_t sendExpertId = 0; sendExpertId < moeExpertNumPerRank_; ++sendExpertId) {
-            uint32_t globalExpertId =
-                sharedExpertRankNum_ +
-                (sendRankId - sharedExpertRankNum_) * moeExpertNumPerRank_ +
-                sendExpertId;
+        uint32_t tmpRankId = sendRankId < moeExpertNumPerRank_ ? sendRankId : moeExpertNumPerRank_
+        for (uint32_t sendExpertId = tmpRankId; sendExpertId < moeExpertNumPerRank_; ++sendExpertId) {
+            uint32_t globalExpertId = sharedExpertRankNum_ +
+                (sendRankId - sharedExpertRankNum_) * moeExpertNumPerRank_ + sendExpertId;
 
             uint32_t curTokenNum = statusTensor_(globalExpertId * 8 + 1);
             uint32_t dstBlockIdx = epRankId_ * moeExpertNumPerRank_ + sendExpertId;
 
-            for (uint32_t slot = 0; slot < curTokenNum; ++slot) {
-                GM_ADDR rankGM = (GM_ADDR)(yOutGM_ + (moeStartToken + slot) * hAlignWinSize_);
+            if(curTokenNum > waterline) {
+                //热点卡，需要绕路处理，todo 如何实现绕路？重置 remoteAddr??????
+                for (uint32_t slot = 0; slot < curTokenNum; ++slot) {
+                    GM_ADDR rankGM = (GM_ADDR)(yOutGM_ + (moeStartToken + slot) * hAlignWinSize_);
 
-                GM_ADDR remoteAddr = (GM_ADDR)(
-                    GetUrmaAddrByRankId(sendRankId, epRankId_) +
-                    dstBlockIdx * expertPerSizeOnWin_ +
-                    slot * hAlignWinSize_);
+                    GM_ADDR remoteAddr = (GM_ADDR)(
+                        GetUrmaAddrByRankId(sendRankId, epRankId_) +
+                        dstBlockIdx * expertPerSizeOnWin_ +
+                        slot * hAlignWinSize_);
 
-                hcomm_.WriteNbi<false>(
-                    mc2Context_->hcommHandle_[currRankId],
-                    remoteAddr,
-                    rankGM,
-                    hOutSizeAlign_);
+                    hcomm_.WriteNbi<false>(
+                        mc2Context_->hcommHandle_[currRankId],
+                        remoteAddr,
+                        rankGM,
+                        hOutSizeAlign_);
+                }
             }
+            else {
+                // 非热点卡，走最短路径
+                for (uint32_t slot = 0; slot < curTokenNum; ++slot) {
+                    GM_ADDR rankGM = (GM_ADDR)(yOutGM_ + (moeStartToken + slot) * hAlignWinSize_);
+
+                    GM_ADDR remoteAddr = (GM_ADDR)(
+                        GetUrmaAddrByRankId(sendRankId, epRankId_) +
+                        dstBlockIdx * expertPerSizeOnWin_ +
+                        slot * hAlignWinSize_);
+
+                    hcomm_.WriteNbi<false>(
+                        mc2Context_->hcommHandle_[currRankId],
+                        remoteAddr,
+                        rankGM,
+                        hOutSizeAlign_);
+                }
+            }
+
+            hasWrite = hasWrite || (curTokenNum > 0U);
+            moeStartToken += curTokenNum;
+        }
+        for (uint32_t sendExpertId = 0; sendExpertId < tmpRankId; ++sendExpertId) {
+            uint32_t globalExpertId = sharedExpertRankNum_ +
+                (sendRankId - sharedExpertRankNum_) * moeExpertNumPerRank_ + sendExpertId;
+
+            uint32_t curTokenNum = statusTensor_(globalExpertId * 8 + 1);
+            uint32_t dstBlockIdx = epRankId_ * moeExpertNumPerRank_ + sendExpertId;
+
+            if(curTokenNum > waterline) {
+                //热点卡，需要绕路处理，todo 如何实现绕路？重置 remoteAddr??????
+                for (uint32_t slot = 0; slot < curTokenNum; ++slot) {
+                    GM_ADDR rankGM = (GM_ADDR)(yOutGM_ + (moeStartToken + slot) * hAlignWinSize_);
+
+                    GM_ADDR remoteAddr = (GM_ADDR)(
+                        GetUrmaAddrByRankId(sendRankId, epRankId_) +
+                        dstBlockIdx * expertPerSizeOnWin_ +
+                        slot * hAlignWinSize_);
+
+                    hcomm_.WriteNbi<false>(
+                        mc2Context_->hcommHandle_[currRankId],
+                        remoteAddr,
+                        rankGM,
+                        hOutSizeAlign_);
+                }
+            }
+            else {
+                // 非热点卡，走最短路径
+                for (uint32_t slot = 0; slot < curTokenNum; ++slot) {
+                    GM_ADDR rankGM = (GM_ADDR)(yOutGM_ + (moeStartToken + slot) * hAlignWinSize_);
+
+                    GM_ADDR remoteAddr = (GM_ADDR)(
+                        GetUrmaAddrByRankId(sendRankId, epRankId_) +
+                        dstBlockIdx * expertPerSizeOnWin_ +
+                        slot * hAlignWinSize_);
+
+                    hcomm_.WriteNbi<false>(
+                        mc2Context_->hcommHandle_[currRankId],
+                        remoteAddr,
+                        rankGM,
+                        hOutSizeAlign_);
+                }
+            }
+
             hasWrite = hasWrite || (curTokenNum > 0U);
             moeStartToken += curTokenNum;
         }
