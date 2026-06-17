@@ -825,10 +825,7 @@ public:
         GetFDSectionInfo(sectionIdx);
         vecFdBlock.InitBuffers();
         AscendC::ICachePreLoad(2);
-        // 进入 FD 前先排干 FA mask V→MTE2 ping/pong 反向同步预置：
-        // FA AllocEventID 预置的 V_MTE2[0]/[1] 会一直挂到所有 section 结束，若残留进入 FD，
-        // 会与 FD 的 V_MTE2 同步(SYNC_*=8~13)在物理 flag 上冲突，导致 FD WaitFlag<V_MTE2> 卡死。
-        // 必须在 FD AllocEventID 之前 Wait 排干，FD 结束后再由 PresetMaskReverseSync 恢复。
+        // 进入 FD 前先排干 FA mask V→MTE2 ping/pong 反向同步预置，FD 结束后由 PresetMaskReverseSync 恢复。
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
                 vecFaBlock.DrainMaskReverseSync();
@@ -836,9 +833,7 @@ public:
         }
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
-        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
-        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
-        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
+        // 进入 FD 前：排空 AIV 侧 FA 路径残留的 V/MTE3 流水，避免 FD 复用共享 UB 时读到未完成的写。
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
                 WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
@@ -848,16 +843,11 @@ public:
             }
         }
         // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
-        // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
-        // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
-        // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
-        //   不会触发 aicore subErrType 0x4 timeout-trap。
         AscendC::SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
         AscendC::SyncAll();
         vecFdBlock.FreeEventID();
-        // FD 结束后恢复 FA mask V→MTE2 ping/pong 预置（与上面的 DrainMaskReverseSync 成对），
-        // 供下一 section 的 FA 使用，并保证 vecFaBlock.FreeEventID 退出时配平。
+        // FD 结束后恢复 FA mask V→MTE2 ping/pong 预置（与上面的 DrainMaskReverseSync 成对）。
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
                 vecFaBlock.PresetMaskReverseSync();

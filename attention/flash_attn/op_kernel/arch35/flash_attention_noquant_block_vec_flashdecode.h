@@ -553,7 +553,17 @@ public:
             if (unlikely(learnableSinkFlag)) {
                 CopySinkIn(reduceMLoop);
             }
-            for (uint32_t preLoadIdx = 0; preLoadIdx < preLoadNum; preLoadIdx++) {
+            // 预取份数必须按实际规约份数 actualCombineLoopSize 截断：
+            // 稀疏(mask)场景下单个 FD combine 任务的 KV split 数可能为 1（< preLoadNum=2）。
+            // 若仍按固定 preLoadNum 预取，会比主规约循环多取 (preLoadNum - actualCombineLoopSize) 份，
+            // 导致 SYNC_MM2RES ping/pong 的 V_MTE2/MTE2_V 事件 Set/Wait 不配对：主循环 i<preLoadNum 时
+            // 走 else 分支不再补 Wait/Set，残留一个未消费的 MTE2_V + 一个亏空的 V_MTE2，
+            // FreeEventID 末尾 WaitFlag<V_MTE2>(SYNC_MM2RES_BUF2) 取不到 token 永久阻塞 → AIV 卡死，
+            // 进而 AIC 在下一 section 的 bmm 跨核等待处全部 timeout(subErrType 0x4)。
+            // 同时也避免预取读到不存在的 split 槽位(越界/脏数据)。
+            uint32_t effPreLoadNum =
+                preLoadNum < taskInfo.actualCombineLoopSize ? preLoadNum : taskInfo.actualCombineLoopSize;
+            for (uint32_t preLoadIdx = 0; preLoadIdx < effPreLoadNum; preLoadIdx++) {
                 LocalTensor<T> mm2Res = (((reduceGlobaLoop + preLoadIdx) & 1) == 0) ? fdMm2ResBuf1 : fdMm2ResBuf2;
                 WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
                 CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
@@ -596,7 +606,7 @@ public:
 
             for (uint32_t i = 0; i < taskInfo.actualCombineLoopSize; i++) {
                 LocalTensor<T> mm2Res = (reduceGlobaLoop & 1) == 0 ? fdMm2ResBuf1 : fdMm2ResBuf2;
-                if (i >= preLoadNum) {
+                if (i >= effPreLoadNum) {
                     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                     CopyAccumOutIn(mm2Res, i, taskOffset + startRow, actualGSplitSize);
                     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
