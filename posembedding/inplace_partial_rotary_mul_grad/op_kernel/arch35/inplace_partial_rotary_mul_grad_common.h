@@ -42,11 +42,9 @@ __aicore__ inline void HalfGradAlignVF(const LocalTensor<DTYPE_COS> &sinTensor,
                                         const LocalTensor<DTYPE_COS> &cosTensor,
                                         const LocalTensor<DTYPE_DY> &inTensor,
                                         const LocalTensor<DTYPE_DY> &outTensor, uint32_t dLen,
-                                        uint32_t dAlignDy, uint16_t currSNum, uint16_t currDNum)
+                                        uint16_t currSNum, uint16_t currDNum)
 {
     uint32_t halfD = dLen / HALF_INTERLEAVE_COEF;
-    uint32_t halfDAlignDy = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY));
-    uint32_t halfDAlignCos = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
     uint16_t repeatTimes = AscendC::Ceil(halfD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
     uint32_t cosRowStride = dLen;
@@ -63,21 +61,20 @@ __aicore__ inline void HalfGradAlignVF(const LocalTensor<DTYPE_COS> &sinTensor,
             __local_mem__ DTYPE_COS *currSinUb = sinUb + sIdx * cosRowStride;
             __local_mem__ DTYPE_COS *currCosUb = cosUb + sIdx * cosRowStride;
             for (uint16_t row = 0; row < currDNum; row++) {
-                __local_mem__ DTYPE_DY *currInUb = inUb + (sIdx * currDNum + row) * dAlignDy;
-                __local_mem__ DTYPE_DY *currOutUb = outUb + (sIdx * currDNum + row) * dAlignDy;
+                __local_mem__ DTYPE_DY *currInUb = inUb + (sIdx * currDNum + row) * dLen;
+                __local_mem__ DTYPE_DY *currOutUb = outUb + (sIdx * currDNum + row) * dLen;
                 uint32_t updateCnt = halfD;
                 for (uint16_t i = 0; i < repeatTimes; i++) {
                     preg = MicroAPI::UpdateMask<float>(updateCnt);
                     int32_t offset = i * VL_FLOAT32_SIZE;
-                    int32_t halfOffset = offset + halfDAlignDy;
-                    int32_t cosHalfOffset = offset + halfDAlignCos;
+                    int32_t halfOffset = offset + halfD;
 
                     ops::LoadTwoTensorForDtypeT<DTYPE_DY>(currInUb, currInUb, vregIn, vregHalfIn, preg, preg, offset,
                                                            halfOffset);
                     ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currSinUb, currSinUb, vregSin, vregHalfSin, preg, preg,
-                                                            offset, cosHalfOffset);
+                                                            offset, halfOffset);
                     ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currCosUb, currCosUb, vregCos, vregHalfCos, preg, preg,
-                                                            offset, cosHalfOffset);
+                                                            offset, halfOffset);
 
                     Mul(vregOut, vregCos, vregIn, preg);
                     Mul(vregHalfSin, vregHalfSin, vregHalfIn, preg);
@@ -106,7 +103,6 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<DTYPE_COS> &sinTen
                                              const LocalTensor<DTYPE_DY> &outTensor, uint32_t dLen,
                                              uint16_t currSNum, uint16_t currDNum)
 {
-    uint32_t dAlignDy = AscendC::Ceil(dLen, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY));
     uint16_t repeatTimes = AscendC::Ceil(dLen, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
     uint32_t cosRowStride = dLen;
@@ -126,8 +122,8 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<DTYPE_COS> &sinTen
             __local_mem__ DTYPE_COS *currSinUb = sinUb + sIdx * cosRowStride;
             __local_mem__ DTYPE_COS *currCosUb = cosUb + sIdx * cosRowStride;
             for (uint16_t row = 0; row < currDNum; row++) {
-                __local_mem__ DTYPE_DY *currInUb = inUb + (sIdx * currDNum + row) * dAlignDy;
-                __local_mem__ DTYPE_DY *currOutUb = outUb + (sIdx * currDNum + row) * dAlignDy;
+                __local_mem__ DTYPE_DY *currInUb = inUb + (sIdx * currDNum + row) * dLen;
+                __local_mem__ DTYPE_DY *currOutUb = outUb + (sIdx * currDNum + row) * dLen;
                 uint32_t updateCnt = dLen;
                 for (uint16_t i = 0; i < repeatTimes; i++) {
                     preg = MicroAPI::UpdateMask<float>(updateCnt);
@@ -178,13 +174,9 @@ __aicore__ inline void QuarterGradAlignVF(const LocalTensor<DTYPE_COS> &sinTenso
                                            const LocalTensor<DTYPE_COS> &cosTensor,
                                            const LocalTensor<DTYPE_DY> &inTensor,
                                            const LocalTensor<DTYPE_DY> &outTensor, uint32_t dLen,
-                                           uint32_t dAlignDy, uint16_t currSNum, uint16_t currDNum)
+                                           uint16_t currSNum, uint16_t currDNum)
 {
     uint32_t quarterD = dLen / QUARTER_MODE_COEF;
-    uint32_t quarterDAlignDy =
-        AscendC::Ceil(quarterD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY));
-    uint32_t quarterDAlignCos =
-        AscendC::Ceil(quarterD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
     uint16_t repeatTimes = AscendC::Ceil(quarterD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
     uint32_t cosRowStride = dLen;
@@ -204,33 +196,29 @@ __aicore__ inline void QuarterGradAlignVF(const LocalTensor<DTYPE_COS> &sinTenso
             __local_mem__ DTYPE_COS *currSinUb = sinUb + sIdx * cosRowStride;
             __local_mem__ DTYPE_COS *currCosUb = cosUb + sIdx * cosRowStride;
             for (uint16_t row = 0; row < currDNum; row++) {
-                __local_mem__ DTYPE_DY *currInUb = inUb + (sIdx * currDNum + row) * dAlignDy;
-                __local_mem__ DTYPE_DY *currOutUb = outUb + (sIdx * currDNum + row) * dAlignDy;
+                __local_mem__ DTYPE_DY *currInUb = inUb + (sIdx * currDNum + row) * dLen;
+                __local_mem__ DTYPE_DY *currOutUb = outUb + (sIdx * currDNum + row) * dLen;
                 uint32_t updateCnt = quarterD;
                 for (uint16_t i = 0; i < repeatTimes; i++) {
                     preg = MicroAPI::UpdateMask<float>(updateCnt);
                     int32_t offset = i * VL_FLOAT32_SIZE;
-                    int32_t dyQ1Off = offset + quarterDAlignDy;
-                    int32_t dyQ2Off = dyQ1Off + quarterDAlignDy;
-                    int32_t dyQ3Off = dyQ2Off + quarterDAlignDy;
-                    int32_t cosQ1Off = offset + quarterDAlignCos;
-                    int32_t cosQ2Off = cosQ1Off + quarterDAlignCos;
-                    int32_t cosQ3Off = cosQ2Off + quarterDAlignCos;
+                    int32_t q1Off = offset + quarterD;
+                    int32_t q2Off = q1Off + quarterD;
+                    int32_t q3Off = q2Off + quarterD;
 
-                    // Load dy as 4 quarters (dy-aligned)
+                    // Load dy, sin, cos as 4 quarters
                     ops::LoadTwoTensorForDtypeT<DTYPE_DY>(currInUb, currInUb, vregIn, vregQ1In, preg, preg,
-                                                            offset, dyQ1Off);
+                                                            offset, q1Off);
                     ops::LoadTwoTensorForDtypeT<DTYPE_DY>(currInUb, currInUb, vregQ2In, vregQ3In, preg, preg,
-                                                            dyQ2Off, dyQ3Off);
-                    // Load sin, cos as 4 quarters (cos-aligned)
+                                                            q2Off, q3Off);
                     ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currSinUb, currSinUb, vregSin, vregQ1Sin, preg, preg,
-                                                            offset, cosQ1Off);
+                                                            offset, q1Off);
                     ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currSinUb, currSinUb, vregQ2Sin, vregQ3Sin, preg, preg,
-                                                            cosQ2Off, cosQ3Off);
+                                                            q2Off, q3Off);
                     ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currCosUb, currCosUb, vregCos, vregQ1Cos, preg, preg,
-                                                            offset, cosQ1Off);
+                                                            offset, q1Off);
                     ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currCosUb, currCosUb, vregQ2Cos, vregQ3Cos, preg, preg,
-                                                            cosQ2Off, cosQ3Off);
+                                                            q2Off, q3Off);
 
                     // q1: cos_q1 * dy_q1 + sin_q2 * dy_q2
                     Mul(vregOut, vregCos, vregIn, preg);
@@ -250,9 +238,9 @@ __aicore__ inline void QuarterGradAlignVF(const LocalTensor<DTYPE_COS> &sinTenso
                     Sub(vregQ3Out, vregQ3Cos, vregQ2Sin, preg);
 
                     ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregOut, preg, offset);
-                    ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregQ1Out, preg, dyQ1Off);
-                    ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregQ2Out, preg, dyQ2Off);
-                    ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregQ3Out, preg, dyQ3Off);
+                    ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregQ1Out, preg, q1Off);
+                    ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregQ2Out, preg, q2Off);
+                    ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregQ3Out, preg, q3Off);
                 }
             }
         }
@@ -273,9 +261,6 @@ __aicore__ inline void InterleaveHalfModeGradVF(const LocalTensor<DTYPE_COS> &si
                                                  uint16_t currSNum, uint16_t currDNum)
 {
     uint32_t halfD = dLen / HALF_INTERLEAVE_COEF;
-    uint32_t dAlignDy = AscendC::Ceil(dLen, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY));
-    uint32_t halfDAlignDy = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY));
-    uint32_t halfDAlignCos = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
     uint16_t repeatTimes = AscendC::Ceil(halfD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
     uint32_t cosRowStride = dLen;
@@ -292,21 +277,20 @@ __aicore__ inline void InterleaveHalfModeGradVF(const LocalTensor<DTYPE_COS> &si
             __local_mem__ DTYPE_COS *currSinUb = sinUb + sIdx * cosRowStride;
             __local_mem__ DTYPE_COS *currCosUb = cosUb + sIdx * cosRowStride;
             for (uint16_t row = 0; row < currDNum; row++) {
-                __local_mem__ DTYPE_DY *currInUb = inUb + (sIdx * currDNum + row) * dAlignDy;
-                __local_mem__ DTYPE_DY *currOutUb = outUb + (sIdx * currDNum + row) * dAlignDy;
+                __local_mem__ DTYPE_DY *currInUb = inUb + (sIdx * currDNum + row) * dLen;
+                __local_mem__ DTYPE_DY *currOutUb = outUb + (sIdx * currDNum + row) * dLen;
                 uint32_t updateCnt = halfD;
                 for (uint16_t i = 0; i < repeatTimes; i++) {
                     preg = MicroAPI::UpdateMask<float>(updateCnt);
                     int32_t offset = i * VL_FLOAT32_SIZE;
-                    int32_t halfOffset = offset + halfDAlignDy;
-                    int32_t cosHalfOffset = offset + halfDAlignCos;
+                    int32_t halfOffset = offset + halfD;
 
                     ops::LoadTwoTensorForDtypeT<DTYPE_DY>(currInUb, currInUb, vregIn, vregHalfIn, preg, preg,
                                                             offset, halfOffset);
                     ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currSinUb, currSinUb, vregSin, vregHalfSin, preg, preg,
-                                                            offset, cosHalfOffset);
+                                                            offset, halfOffset);
                     ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currCosUb, currCosUb, vregCos, vregHalfCos, preg, preg,
-                                                            offset, cosHalfOffset);
+                                                            offset, halfOffset);
 
                     // dx_left = cos_left * dy_left + sin_right * dy_right
                     Mul(vregOut, vregCos, vregIn, preg);
@@ -334,17 +318,15 @@ template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
 __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ DTYPE_DY *in, __local_mem__ DTYPE_COS *cos,
                                              __local_mem__ DTYPE_COS *sin, __local_mem__ DTYPE_DY *out,
                                              uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
-                                             int64_t dAlignDy, int64_t ubFactorS, int64_t ubFactorN)
+                                             int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t dHalfSize = dLen / HALF_INTERLEAVE_COEF;
+    uint32_t dLen32 = static_cast<uint32_t>(dLen);
     uint16_t dLoopCount = (dHalfSize + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
-    uint32_t dHalfOffsetDy = dAlignDy / HALF_INTERLEAVE_COEF;
-    uint32_t dHalfOffsetCos =
-        AscendC::Ceil(dHalfSize, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
 
-    int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy;
-    int32_t nStepUb = ubFactorS * dAlignDy;
-    uint32_t cosRowStride = static_cast<uint32_t>(dLen);
+    int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
+    int32_t nStepUb = ubFactorS * dLen32;
+    uint32_t cosRowStride = dLen32;
     int32_t nStepCosUb = ubFactorS * cosRowStride;
 
     __VEC_SCOPE__ {
@@ -356,8 +338,8 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ DTYPE_DY *in, __local_
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
                     uint32_t count = dHalfSize;
-                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
-                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
+                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
+                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     if constexpr (IsBBoardcast) {
                         currCosUb = cos + sIdx * cosRowStride;
                         currSinUb = sin + sIdx * cosRowStride;
@@ -370,15 +352,15 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ DTYPE_DY *in, __local_
                         ops::LoadOneTensorForDtypeT<DTYPE_DY>(currInUb, inPart1Reg, pregLoop,
                                                                 i * VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<DTYPE_DY>(currInUb, inPart2Reg, pregLoop,
-                                                                i * VL_FLOAT32_SIZE + dHalfOffsetDy);
+                                                                i * VL_FLOAT32_SIZE + dHalfSize);
                         ops::LoadOneTensorForDtypeT<DTYPE_COS>(currCosUb, cosPart1Reg, pregLoop,
                                                                 i * VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<DTYPE_COS>(currCosUb, cosPart2Reg, pregLoop,
-                                                                i * VL_FLOAT32_SIZE + dHalfOffsetCos);
+                                                                i * VL_FLOAT32_SIZE + dHalfSize);
                         ops::LoadOneTensorForDtypeT<DTYPE_COS>(currSinUb, sinPart1Reg, pregLoop,
                                                                 i * VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<DTYPE_COS>(currSinUb, sinPart2Reg, pregLoop,
-                                                                i * VL_FLOAT32_SIZE + dHalfOffsetCos);
+                                                                i * VL_FLOAT32_SIZE + dHalfSize);
                         Mul(cosPart1Reg, inPart1Reg, cosPart1Reg, pregLoop);
                         Mul(sinPart2Reg, sinPart2Reg, inPart2Reg, pregLoop);
                         Add(cosPart1Reg, cosPart1Reg, sinPart2Reg, pregLoop);
@@ -388,7 +370,7 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ DTYPE_DY *in, __local_
                         ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, cosPart1Reg, pregLoop,
                                                                 i * VL_FLOAT32_SIZE);
                         ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, cosPart2Reg, pregLoop,
-                                                                i * VL_FLOAT32_SIZE + dHalfOffsetDy);
+                                                                i * VL_FLOAT32_SIZE + dHalfSize);
                     }
                 }
             }
@@ -403,22 +385,15 @@ template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
 __aicore__ inline void BatchQuarterGradAlignVF(
     __local_mem__ DTYPE_DY *in, __local_mem__ DTYPE_COS *cos, __local_mem__ DTYPE_COS *sin,
     __local_mem__ DTYPE_DY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
-    int64_t dAlignDy, int64_t ubFactorS, int64_t ubFactorN)
+    int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t dQuarterSize = dLen / QUARTER_MODE_COEF;
+    uint32_t dLen32 = static_cast<uint32_t>(dLen);
     uint16_t dLoopCount = (dQuarterSize + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
-    uint32_t dQuarterOffsetDy = dAlignDy / QUARTER_MODE_COEF;
-    uint32_t dHalfOffsetDy = dAlignDy / HALF_INTERLEAVE_COEF;
-    uint32_t dThreeQuarterOffsetDy = dQuarterOffsetDy + dHalfOffsetDy;
-    uint32_t dQuarterOffsetCos =
-        AscendC::Ceil(static_cast<uint32_t>(dQuarterSize),
-                      static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
-    uint32_t dHalfOffsetCos = dQuarterOffsetCos * HALF_INTERLEAVE_COEF;
-    uint32_t dThreeQuarterOffsetCos = dQuarterOffsetCos + dHalfOffsetCos;
 
-    int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy;
-    int32_t nStepUb = ubFactorS * dAlignDy;
-    uint32_t cosRowStride = static_cast<uint32_t>(dLen);
+    int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
+    int32_t nStepUb = ubFactorS * dLen32;
+    uint32_t cosRowStride = dLen32;
     int32_t nStepCosUb = ubFactorS * cosRowStride;
 
     __VEC_SCOPE__ {
@@ -432,8 +407,8 @@ __aicore__ inline void BatchQuarterGradAlignVF(
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
                     uint32_t count = dQuarterSize;
-                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
-                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
+                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
+                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     if constexpr (IsBBoardcast) {
                         currCosUb = cos + sIdx * cosRowStride;
                         currSinUb = sin + sIdx * cosRowStride;
@@ -444,28 +419,23 @@ __aicore__ inline void BatchQuarterGradAlignVF(
                     for (uint16_t i = 0; i < dLoopCount; i++) {
                         pregLoop = MicroAPI::UpdateMask<float>(count);
                         int32_t off0 = i * VL_FLOAT32_SIZE;
-                        int32_t dyOff1 = off0 + dQuarterOffsetDy;
-                        int32_t dyOff2 = off0 + dHalfOffsetDy;
-                        int32_t dyOff3 = off0 + dThreeQuarterOffsetDy;
-                        int32_t cosOff0 = off0;
-                        int32_t cosOff1 = off0 + dQuarterOffsetCos;
-                        int32_t cosOff2 = off0 + 2 * dQuarterOffsetCos;
-                        int32_t cosOff3 = off0 + 3 * dQuarterOffsetCos;
+                        int32_t off1 = off0 + dQuarterSize;
+                        int32_t off2 = off1 + dQuarterSize;
+                        int32_t off3 = off2 + dQuarterSize;
 
-                        // Load dy as 4 quarters (dy-aligned)
+                        // Load dy, sin, cos as 4 quarters
                         ops::LoadTwoTensorForDtypeT<DTYPE_DY>(currInUb, currInUb, inPart1Reg, inPart2Reg,
-                                                                pregLoop, pregLoop, off0, dyOff1);
+                                                                pregLoop, pregLoop, off0, off1);
                         ops::LoadTwoTensorForDtypeT<DTYPE_DY>(currInUb, currInUb, inPart3Reg, inPart4Reg,
-                                                                pregLoop, pregLoop, dyOff2, dyOff3);
-                        // Load sin, cos as 4 quarters (cos-aligned)
+                                                                pregLoop, pregLoop, off2, off3);
                         ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currSinUb, currSinUb, sinPart1Reg, sinPart2Reg,
-                                                                pregLoop, pregLoop, cosOff0, cosOff1);
+                                                                pregLoop, pregLoop, off0, off1);
                         ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currSinUb, currSinUb, sinPart3Reg, sinPart4Reg,
-                                                                pregLoop, pregLoop, cosOff2, cosOff3);
+                                                                pregLoop, pregLoop, off2, off3);
                         ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currCosUb, currCosUb, cosPart1Reg, cosPart2Reg,
-                                                                pregLoop, pregLoop, cosOff0, cosOff1);
+                                                                pregLoop, pregLoop, off0, off1);
                         ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currCosUb, currCosUb, cosPart3Reg, cosPart4Reg,
-                                                                pregLoop, pregLoop, cosOff2, cosOff3);
+                                                                pregLoop, pregLoop, off2, off3);
 
                         // q1: cos_q1 * dy_q1 + sin_q2 * dy_q2
                         Mul(cosPart1Reg, inPart1Reg, cosPart1Reg, pregLoop);
@@ -485,9 +455,9 @@ __aicore__ inline void BatchQuarterGradAlignVF(
                         Sub(cosPart4Reg, cosPart4Reg, sinPart3Reg, pregLoop);
 
                         ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, cosPart1Reg, pregLoop, off0);
-                        ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, cosPart2Reg, pregLoop, dyOff1);
-                        ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, cosPart3Reg, pregLoop, dyOff2);
-                        ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, cosPart4Reg, pregLoop, dyOff3);
+                        ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, cosPart2Reg, pregLoop, off1);
+                        ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, cosPart3Reg, pregLoop, off2);
+                        ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, cosPart4Reg, pregLoop, off3);
                     }
                 }
             }
@@ -502,13 +472,14 @@ template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
 __aicore__ inline void BatchInterleaveModeGradVF(
     __local_mem__ DTYPE_DY *in, __local_mem__ DTYPE_COS *cos, __local_mem__ DTYPE_COS *sin,
     __local_mem__ DTYPE_DY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
-    int64_t dAlignDy, int64_t ubFactorS, int64_t ubFactorN)
+    int64_t ubFactorS, int64_t ubFactorN)
 {
+    uint32_t dLen32 = static_cast<uint32_t>(dLen);
     uint16_t dLoopCount = (dLen + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
 
-    int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy;
-    int32_t nStepUb = ubFactorS * dAlignDy;
-    uint32_t cosRowStride = static_cast<uint32_t>(dLen);
+    int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
+    int32_t nStepUb = ubFactorS * dLen32;
+    uint32_t cosRowStride = dLen32;
     int32_t nStepCosUb = ubFactorS * cosRowStride;
 
     __VEC_SCOPE__ {
@@ -520,9 +491,9 @@ __aicore__ inline void BatchInterleaveModeGradVF(
         for (uint16_t bIdx = 0; bIdx < bLength; bIdx++) {
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
-                    uint32_t count = dLen;
-                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
-                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
+                    uint32_t count = dLen32;
+                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
+                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     if constexpr (IsBBoardcast) {
                         currCosUb = cos + sIdx * cosRowStride;
                         currSinUb = sin + sIdx * cosRowStride;
@@ -575,18 +546,15 @@ template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
 __aicore__ inline void BatchInterleaveHalfModeGradVF(
     __local_mem__ DTYPE_DY *in, __local_mem__ DTYPE_COS *cos, __local_mem__ DTYPE_COS *sin,
     __local_mem__ DTYPE_DY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
-    int64_t dAlignDy, int64_t ubFactorS, int64_t ubFactorN)
+    int64_t ubFactorS, int64_t ubFactorN)
 {
     uint16_t dHalfSize = dLen / HALF_INTERLEAVE_COEF;
+    uint32_t dLen32 = static_cast<uint32_t>(dLen);
     uint16_t dLoopCount = (dHalfSize + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
-    uint32_t dHalfOffsetDy = dAlignDy / HALF_INTERLEAVE_COEF;
-    uint32_t dHalfOffsetCos =
-        AscendC::Ceil(static_cast<uint32_t>(dHalfSize),
-                      static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS))) * static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS));
 
-    int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy;
-    int32_t nStepUb = ubFactorS * dAlignDy;
-    uint32_t cosRowStride = static_cast<uint32_t>(dLen);
+    int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
+    int32_t nStepUb = ubFactorS * dLen32;
+    uint32_t cosRowStride = dLen32;
     int32_t nStepCosUb = ubFactorS * cosRowStride;
 
     __VEC_SCOPE__ {
@@ -598,8 +566,8 @@ __aicore__ inline void BatchInterleaveHalfModeGradVF(
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
                     uint32_t count = dHalfSize;
-                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
-                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
+                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
+                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     if constexpr (IsBBoardcast) {
                         currCosUb = cos + sIdx * cosRowStride;
                         currSinUb = sin + sIdx * cosRowStride;
@@ -612,15 +580,15 @@ __aicore__ inline void BatchInterleaveHalfModeGradVF(
                         ops::LoadOneTensorForDtypeT<DTYPE_DY>(currInUb, vregIn, pregLoop,
                                                                 i * VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<DTYPE_DY>(currInUb, vregHalfIn, pregLoop,
-                                                                i * VL_FLOAT32_SIZE + dHalfOffsetDy);
+                                                                i * VL_FLOAT32_SIZE + dHalfSize);
                         ops::LoadOneTensorForDtypeT<DTYPE_COS>(currCosUb, vregCos, pregLoop,
                                                                 i * VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<DTYPE_COS>(currCosUb, vregHalfCos, pregLoop,
-                                                                i * VL_FLOAT32_SIZE + dHalfOffsetCos);
+                                                                i * VL_FLOAT32_SIZE + dHalfSize);
                         ops::LoadOneTensorForDtypeT<DTYPE_COS>(currSinUb, vregSin, pregLoop,
                                                                 i * VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<DTYPE_COS>(currSinUb, vregHalfSin, pregLoop,
-                                                                i * VL_FLOAT32_SIZE + dHalfOffsetCos);
+                                                                i * VL_FLOAT32_SIZE + dHalfSize);
 
                         // dx_left = cos_left * dy_left + sin_right * dy_right
                         Mul(vregOut, vregCos, vregIn, pregLoop);
@@ -634,7 +602,7 @@ __aicore__ inline void BatchInterleaveHalfModeGradVF(
                         ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregOut, pregLoop,
                                                                 i * VL_FLOAT32_SIZE);
                         ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregHalfOut, pregLoop,
-                                                                i * VL_FLOAT32_SIZE + dHalfOffsetDy);
+                                                                i * VL_FLOAT32_SIZE + dHalfSize);
                     }
                 }
             }

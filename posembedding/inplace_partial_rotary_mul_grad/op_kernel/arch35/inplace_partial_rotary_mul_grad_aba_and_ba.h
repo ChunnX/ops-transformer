@@ -242,19 +242,19 @@ InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, IsBBoardcast>::ProcessI
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
             BatchHalfGradAlignVF<DTYPE_DY, DTYPE_COS, IsBBoardcast>(
                 inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(sLength), static_cast<uint16_t>(bLength),
-                static_cast<uint16_t>(nLength), tilingData_->sliceLength, dAlign_, ubFactorS_, ubFactorN_);
+                static_cast<uint16_t>(nLength), tilingData_->sliceLength, ubFactorS_, ubFactorN_);
         } else if (tilingData_->rotaryMode == ROTARY_MODE_INTERLEAVE) {
             BatchInterleaveModeGradVF<DTYPE_DY, DTYPE_COS, IsBBoardcast>(
                 inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(sLength), static_cast<uint16_t>(bLength),
-                static_cast<uint16_t>(nLength), tilingData_->sliceLength, dAlign_, ubFactorS_, ubFactorN_);
+                static_cast<uint16_t>(nLength), tilingData_->sliceLength, ubFactorS_, ubFactorN_);
         } else if (tilingData_->rotaryMode == ROTARY_MODE_QUARTER) {
             BatchQuarterGradAlignVF<DTYPE_DY, DTYPE_COS, IsBBoardcast>(
                 inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(sLength), static_cast<uint16_t>(bLength),
-                static_cast<uint16_t>(nLength), tilingData_->sliceLength, dAlign_, ubFactorS_, ubFactorN_);
+                static_cast<uint16_t>(nLength), tilingData_->sliceLength, ubFactorS_, ubFactorN_);
         } else {
             BatchInterleaveHalfModeGradVF<DTYPE_DY, DTYPE_COS, IsBBoardcast>(
                 inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(sLength), static_cast<uint16_t>(bLength),
-                static_cast<uint16_t>(nLength), tilingData_->sliceLength, dAlign_, ubFactorS_, ubFactorN_);
+                static_cast<uint16_t>(nLength), tilingData_->sliceLength, ubFactorS_, ubFactorN_);
         }
 
         gradInQueue_.FreeTensor(inBuffer);
