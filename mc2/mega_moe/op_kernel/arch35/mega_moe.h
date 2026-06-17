@@ -38,9 +38,9 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode
 
-// GMM1 dispatch(sb1)->matmul(AIC) 反压: aic↔aiv1 信用额度(credit)flag。
-//   循环前 AIC 预发 GMM1_DISPATCH_CREDITS 个信用; sb1 每专家开头 WaitFlag 消费 1 个再 SendCntCal;
-//   AIC 每处理完一专家 SetFlag 归还 1 个。⇒ sb1 领先 AIC 恒 ≤ 信用数, 故 flag2 与本 ack 两个计数器都恒
+// GMM1 dispatch(sb1)->matmul(AIC) 反压: aic↔aiv1 credit flag。
+//   循环前 AIC 预发 GMM1_DISPATCH_CREDITS 个flag; sb1 每专家开头 WaitFlag 消费 1 个再 SendCntCal;
+//   AIC 每处理完一专家 SetFlag 归还 1 个。⇒ sb1 领先 AIC 恒 ≤ 信用flag数, 故 flag2 与本 ack 两个计数器都恒
 //   ≤ 信用数 < 15, 与 epr 解耦(epr=1024 也不会触顶溢出)。取 8, 远离 15 上限, 又够 sb1 提前 8 个专家做
 //   dispatch 保流水。aiv1↔aic 约定: aiv1 用通道 N(0-10), aic 用 N+16; 本 ack 为 aic->aiv1, 故 aic 侧
 //   SetFlag(GMM1_CREDIT_FLAG+16), sb1 侧 WaitFlag(GMM1_CREDIT_FLAG)。通道 8 与 matmul 的 4/6(+value) 无冲突。
@@ -223,9 +223,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         params_.peermemInfo.rankSyncInWorldPtr);
     quantWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.quantTokenScalePtr -
         params_.peermemInfo.rankSyncInWorldPtr);
-    // 发/收侧 chunk(sendChunkTokenNum_/recvChunkTokenNum_)在各自的 SendAndQuantBuffInit/DispatchBuffInit
-    // 里就地计算: 那里本就要逐项算各 tensor 大小, 顺带用 UB 余量反推 chunk, 避免在此重复一遍固定占用计算。
-    // maskAlignSize_/maskSlotSize_ 仅依赖 sendTotalNum_, 公式与改前一致(分块不改 win 槽位大小):
+    // maskAlignSize_/maskSlotSize_ 仅依赖 sendTotalNum_, 分块不改 win 槽位大小:
     // 源按 chunk 分片填同一 mask 区, 末片 clamp 到 maskAlignSize_。须与 PeermemInfo(mega_moe_base.h)一致。
     uint32_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t);
@@ -250,7 +248,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
         return;
     }
 
-    // 时段 B 布局从 UB 地址 0 起, 整体覆盖时段 A(SendAndQuantBuffInit)的区域 —— 跨时段重叠是有意复用。
+    // DispatchBuffInit 布局从 UB 地址 0 起, 整体覆盖时段 SendAndQuantBuffInit的区域 —— 跨时段重叠是有意复用。
     // 分块流式后所有 O(ST) 缓冲降为 O(收侧 chunk)(maskChunkTensor_/validTopkIndex_/topkIndex_), 与 bs 无关。
 
     // —— 与 chunk 无关的固定占用, 先逐项算大小 ——
@@ -280,16 +278,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
         copyTmpTotalSize + expertTokenNumsOutTensorSize + tripleReserveSize;
 
     // —— 用 UB 余量反推收侧 chunk(与发侧无耦合, 各算各的) ——
-    // chunk 随 token 线性增长的 UB: validTopkIndex(4B/tok) + topkIndex(4B/tok) + maskChunk(1/8 B/tok)。
-    // 解 chunk*(4+4 + 1/8)B ≤ 余量 ⇒ chunk ≤ 余量*8 / ((4+4)*8 + 1)(分母 65 即 8.125 B/token)。
     int64_t ubBudget = static_cast<int64_t>(params_.tilingData->ubSize) - DISPATCH_UB_SAFETY;
     int64_t avail = ubBudget - static_cast<int64_t>(fixedBytes);
-    int64_t ckLimit = avail * 8 / ((4 + 4) * 8 + 1);
+    // chunk 随 token数 bs 线性增长的 UB: 
+    // validTopkIndex(4B*bs) + topkIndex(4B*bs) + maskChunk(1/8 B*bs)。 4b为int32大小 1/8b为bit位存储。
+    // 总共所占余量 chunk*(4B + 4B + 1/8 B) ≤ UB余量 ⇒ chunk ≤ UB余量* 8 / ((4+4)*8 + 1)
+    int64_t ckLimit = avail * 8 / ((4 + 4) * 8 + 1); //根据上述公式计算的余量限制的 chunk 大小
     int64_t ckCap = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256));
-    int64_t ck = ckLimit < ckCap ? ckLimit : ckCap;
-    ck = ck / ALIGN_256 * ALIGN_256;                  // 向下取整到 256 倍数 ⇒ chunk/8 mask 切片天然 32B 对齐
-    ck = ck < ALIGN_256 ? ALIGN_256 : ck;             // 兜底下限(极端大 H 时固定占用已近满)
-    recvChunkTokenNum_ = static_cast<int32_t>(ck);
+    int64_t ckTemp = ckLimit < ckCap ? ckLimit : ckCap;
+    ckTemp = ckTemp / ALIGN_256 * ALIGN_256;                  // 向下取整到 256 倍数 ⇒ chunk/8 mask 切片天然 32B 对齐
+    ckTemp = ckTemp < ALIGN_256 ? ALIGN_256 : ckTemp;             // 兜底下限(极端大 H 时固定占用已近满)
+    recvChunkTokenNum_ = static_cast<int32_t>(ckTemp);
     recvChunkNum_ = static_cast<int32_t>(
         Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(recvChunkTokenNum_)));
 
@@ -387,16 +386,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         sendCntAccSize + sendMaskFixedBytes;
 
     // —— 用 UB 余量反推发侧 chunk(与收侧无耦合, 各算各的) ——
-    // chunk 随 token 线性增长的 UB: topkChunk(4B/tok) + sendGatherOut(4B/tok) + sendMask 双buf(DOUBLE_BUFFER * 1/8 B/tok)。
-    // 解 chunk*((4+4)B + DOUBLE_BUFFER/8 B) ≤ 余量 ⇒ chunk ≤ 余量*8 / ((4+4)*8 + DOUBLE_BUFFER)(分母 66 即 8.25 B/token)。
+    // chunk 随 token 线性增长的 UB: 4b为int32大小 1/8b为bit位存储。
+    // topkChunk(bs*4B) + sendGatherOut(bs*4B) + sendMask 双buf(DOUBLE_BUFFER * 1/8B * bs)。
+    // 总共所占余量 chunk*((4+4)B + DOUBLE_BUFFER/8 B) ≤ 余量 ⇒ chunk ≤ 余量*8 / ((4+4)*8 + DOUBLE_BUFFER)
     int64_t ubBudget = static_cast<int64_t>(params_.tilingData->ubSize) - DISPATCH_UB_SAFETY;
     int64_t avail = ubBudget - static_cast<int64_t>(fixedBytes);
     int64_t ckLimit = avail * 8 / ((4 + 4) * 8 + static_cast<int64_t>(DOUBLE_BUFFER));
     int64_t ckCap = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256));
-    int64_t ck = ckLimit < ckCap ? ckLimit : ckCap;
-    ck = ck / ALIGN_256 * ALIGN_256;                  // 向下取整到 256 倍数 ⇒ chunk/8 mask 切片天然 32B 对齐
-    ck = ck < ALIGN_256 ? ALIGN_256 : ck;             // 兜底下限(极端大 H 时固定占用已近满)
-    sendChunkTokenNum_ = static_cast<int32_t>(ck);
+    int64_t ckTemp = ckLimit < ckCap ? ckLimit : ckCap;
+    ckTemp = ckTemp / ALIGN_256 * ALIGN_256;                  // 向下取整到 256 倍数 ⇒ chunk/8 mask 切片天然 32B 对齐
+    ckTemp = ckTemp < ALIGN_256 ? ALIGN_256 : ckTemp;             // 兜底下限(极端大 H 时固定占用已近满)
+    sendChunkTokenNum_ = static_cast<int32_t>(ckTemp);
     sendChunkNum_ = static_cast<int32_t>(
         Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(sendChunkTokenNum_)));
 

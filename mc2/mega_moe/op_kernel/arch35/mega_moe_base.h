@@ -21,7 +21,7 @@
 #include "op_kernel/math_util.h"
 #include "mega_moe_workspace_info.h"
 
-// tripleTensor_ 每批最多这么多行(每行 32B), 与 chunk 解耦保证 UB 不爆; 2048*32B = 64KB, 计入收侧固定预留。
+// tripleTensor_ 每批最多这么多行(每行 32B), 与 chunk 解耦; 2048*32B = 64KB, 计入收侧固定预留。
 constexpr int32_t DISPATCH_TRIPLE_TILE = 2048;
 
 // groupFlagList 清零的分批粒度(int32 个数): 本核份额超此值时 ResetFlagList 分批推 GM, 使 reset UB 与 bs 解耦;
