@@ -433,6 +433,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Write partial Loss for MY K block only (first element)
                     T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k * 16:(n_idx_k + 1) * 16])
 
+                T.barrier_all()
+
     return main
 
 # Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
