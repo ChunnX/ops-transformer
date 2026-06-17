@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -32,8 +32,8 @@ public:
     // hif8/e4m3fn/e5m2/f4 类型需要 scales（静态缩放），bf16/fp16 不需要
     bool ShouldHaveScales(ge::DataType xDtype) const override
     {
-        if (xDtype == ge::DT_HIFLOAT8 || xDtype == ge::DT_FLOAT8_E4M3FN || xDtype == ge::DT_FLOAT8_E5M2 ||
-            xDtype == ge::DT_FLOAT4_E2M1 || xDtype == ge::DT_FLOAT4_E1M2) {
+        if ((xDtype == ge::DT_HIFLOAT8) || (xDtype == ge::DT_FLOAT8_E4M3FN) || (xDtype == ge::DT_FLOAT8_E5M2) ||
+            (xDtype == ge::DT_FLOAT4_E2M1) || (xDtype == ge::DT_FLOAT4_E1M2)) {
             return true;
         }
         return false;
@@ -51,12 +51,12 @@ public:
                                 uint32_t h) const override
     {
         // scales 可选，如果存在则校验 dtype
-        if (info.dtype == ge::DT_UNDEFINED) {
+        if ((info.dtype == ge::DT_UNDEFINED)) {
             return ge::GRAPH_SUCCESS; // 允许不存在
         }
 
         // dtype: float 或 e8m0
-        if (info.dtype != ge::DT_FLOAT && info.dtype != ge::DT_FLOAT8_E8M0) {
+        if ((info.dtype != ge::DT_FLOAT) && (info.dtype != ge::DT_FLOAT8_E8M0)) {
             return ge::GRAPH_FAILED;
         }
 

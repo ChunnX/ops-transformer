@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, 
     }
 
     // globalBs 超过 bs * epWorldSize 时不允许 ActiveMask
-    if (bsTimesEpWorldSize.has_value() && globalBs > bsTimesEpWorldSize.value()) {
+    if (bsTimesEpWorldSize.has_value() && (globalBs > bsTimesEpWorldSize.value())) {
         OPS_LOG_E(nodeName, "Cannot support xActiveMask when globalBs(%u) > bs * epWorldSize(%u).", globalBs,
                   bsTimesEpWorldSize.value());
         return ge::GRAPH_FAILED;
@@ -56,21 +56,21 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
                                   const char *nodeName)
 {
     const gert::StorageShape *shape = ctx->GetOptionalInputShape(inputIndex);
-    if (shape == nullptr) {
+    if ((shape == nullptr)) {
         OPS_LOG_E(nodeName, "xActiveMask shape is null.");
         return ge::GRAPH_FAILED;
     }
 
     uint32_t dimNum = static_cast<uint32_t>(shape->GetStorageShape().GetDimNum());
     int64_t dim0 = shape->GetStorageShape().GetDim(0);
-    if (dim0 != static_cast<int64_t>(bs)) {
+    if ((dim0 != static_cast<int64_t>(bs))) {
         OPS_LOG_E(nodeName, "The input of xActiveMask dim0 = %ld is not equal to x dim0 = %u.", dim0, bs);
         return ge::GRAPH_FAILED;
     }
 
-    if (dimNum == moe_dispatch_defs::TWO_DIMS) {
+    if ((dimNum == moe_dispatch_defs::TWO_DIMS)) {
         int64_t dim1 = shape->GetStorageShape().GetDim(1);
-        if (dim1 != static_cast<int64_t>(k)) {
+        if ((dim1 != static_cast<int64_t>(k))) {
             OPS_LOG_E(nodeName, "The input of xActiveMask dim1 = %ld is not equal to expertId dim1 = %u.", dim1, k);
             return ge::GRAPH_FAILED;
         }

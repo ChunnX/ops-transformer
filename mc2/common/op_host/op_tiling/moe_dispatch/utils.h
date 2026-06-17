@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -75,7 +75,7 @@ struct PlatformInfo {
 
 inline uint32_t CeilDiv(uint32_t a, uint32_t b)
 {
-    return (b == 0U) ? 0U : (a + b - 1U) / b;
+    return ((b == 0U) ? 0U : (a + b - 1U) / b);
 }
 
 inline uint32_t AlignUp(uint32_t val, uint32_t align)
@@ -85,7 +85,7 @@ inline uint32_t AlignUp(uint32_t val, uint32_t align)
 
 inline int64_t CeilDivInt64(int64_t a, int64_t b)
 {
-    return (b == 0) ? 0 : (a + b - 1) / b;
+    return ((b == 0) ? 0 : (a + b - 1) / b);
 }
 
 inline int64_t AlignUpInt64(int64_t val, int64_t align)
@@ -98,13 +98,13 @@ inline int64_t AlignUpInt64(int64_t val, int64_t align)
 // 维度数校验
 inline ge::graphStatus CheckDimNum(const gert::StorageShape *shape, uint32_t expectedDim)
 {
-    if (shape == nullptr) {
+    if ((shape == nullptr)) {
         return ge::GRAPH_FAILED;
     }
-    if (expectedDim == 0U) {
+    if ((expectedDim == 0U)) {
         return ge::GRAPH_SUCCESS; // 0 表示不检查
     }
-    if (shape->GetStorageShape().GetDimNum() != expectedDim) {
+    if ((shape->GetStorageShape().GetDimNum() != expectedDim)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -113,11 +113,11 @@ inline ge::graphStatus CheckDimNum(const gert::StorageShape *shape, uint32_t exp
 // dtype 在合法集合中
 inline ge::graphStatus CheckDtypeIn(ge::DataType dtype, const ge::DataType *validDtypes, uint32_t dtypeCount)
 {
-    if (validDtypes == nullptr || dtypeCount == 0U) {
+    if ((validDtypes == nullptr) || (dtypeCount == 0U)) {
         return ge::GRAPH_FAILED;
     }
-    for (uint32_t i = 0U; i < dtypeCount; ++i) {
-        if (dtype == validDtypes[i]) {
+    for (uint32_t i = 0U; (i < dtypeCount); ++i) {
+        if ((dtype == validDtypes[i])) {
             return ge::GRAPH_SUCCESS;
         }
     }
@@ -128,7 +128,7 @@ inline ge::graphStatus CheckDtypeIn(ge::DataType dtype, const ge::DataType *vali
 inline ge::graphStatus CheckNotFractalNZ(ge::Format format)
 {
     ge::Format primaryFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(format));
-    return (primaryFormat == ge::FORMAT_FRACTAL_NZ) ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS;
+    return ((primaryFormat == ge::FORMAT_FRACTAL_NZ) ? ge::GRAPH_FAILED : ge::GRAPH_SUCCESS);
 }
 
 // ========== 属性范围校验 ==========
@@ -136,12 +136,12 @@ inline ge::graphStatus CheckNotFractalNZ(ge::Format format)
 // uint32 范围校验
 inline ge::graphStatus CheckRangeU32(uint32_t val, uint32_t minVal, uint32_t maxVal)
 {
-    return (val >= minVal && val <= maxVal) ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
+    return (((val >= minVal) && (val <= maxVal)) ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED);
 }
 
 inline ge::graphStatus CheckAttrRangeInt64(int64_t val, int64_t minVal, int64_t maxVal)
 {
-    return (val >= minVal && val <= maxVal) ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
+    return (((val >= minVal) && (val <= maxVal)) ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED);
 }
 
 // ========== Shared Expert 计算 ==========
@@ -154,20 +154,20 @@ inline SharedExpertResult CalcLocalExpertNum(uint32_t epRankId, uint32_t sharedR
     result.isSharedRank = false;
     result.moeExpertPerRankNum = 0U;
 
-    if (sharedRankNum == 0U) {
+    if ((sharedRankNum == 0U)) {
         result.moeExpertPerRankNum = moeExpertNum / epWorldSize;
         result.localExpertNum = result.moeExpertPerRankNum;
         return result;
     }
 
-    if (epRankId < sharedRankNum) {
+    if ((epRankId < sharedRankNum)) {
         result.isSharedRank = true;
         result.localExpertNum = 1U;
         result.moeExpertPerRankNum = 1U;
     } else {
         result.isSharedRank = false;
         uint32_t normalRankNum = epWorldSize - sharedRankNum;
-        if (normalRankNum > 0U && moeExpertNum % normalRankNum == 0U) {
+        if ((normalRankNum > 0U) && ((moeExpertNum % normalRankNum) == 0U)) {
             result.moeExpertPerRankNum = moeExpertNum / normalRankNum;
             result.localExpertNum = result.moeExpertPerRankNum;
         }
@@ -181,23 +181,23 @@ inline ge::graphStatus CheckSharedExpertRelation(uint32_t sharedExpertNum, uint3
                                                  uint32_t epWorldSize, uint32_t moeExpertNum)
 {
     // 1. sharedExpertRankNum == 0 时 sharedExpertNum 必须为 0
-    if (sharedExpertRankNum == 0U && sharedExpertNum != 0U) {
+    if ((sharedExpertRankNum == 0U) && (sharedExpertNum != 0U)) {
         return ge::GRAPH_FAILED;
     }
 
     // 2. sharedExpertRankNum > 0 时校验关系
-    if (sharedExpertRankNum > 0U) {
+    if ((sharedExpertRankNum > 0U)) {
         // sharedExpertNum 必须大于 0 且 <= sharedExpertRankNum
-        if (sharedExpertNum == 0U || sharedExpertNum > sharedExpertRankNum) {
+        if ((sharedExpertNum == 0U) || (sharedExpertNum > sharedExpertRankNum)) {
             return ge::GRAPH_FAILED;
         }
         // sharedExpertRankNum % sharedExpertNum == 0
-        if (sharedExpertRankNum % sharedExpertNum != 0U) {
+        if (((sharedExpertRankNum % sharedExpertNum) != 0U)) {
             return ge::GRAPH_FAILED;
         }
         // moeExpertNum % (epWorldSize - sharedExpertRankNum) == 0
         uint32_t normalRankNum = epWorldSize - sharedExpertRankNum;
-        if (normalRankNum == 0U || moeExpertNum % normalRankNum != 0U) {
+        if ((normalRankNum == 0U) || ((moeExpertNum % normalRankNum) != 0U)) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -209,7 +209,7 @@ inline ge::graphStatus CheckSharedExpertRelation(uint32_t sharedExpertNum, uint3
 
 inline ge::graphStatus CheckEpRankRelation(uint32_t epRankId, uint32_t epWorldSize)
 {
-    if (epRankId >= epWorldSize) {
+    if ((epRankId >= epWorldSize)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -226,24 +226,24 @@ inline ge::graphStatus CheckEpRankRelation(uint32_t epRankId, uint32_t epWorldSi
 inline uint32_t CalcA(uint32_t globalBs, uint32_t epWorldSize, uint32_t k, uint32_t localExpertNum,
                       uint32_t sharedExpertNum, uint32_t sharedExpertRankNum, bool isSharedRank, bool hasElastic)
 {
-    if (epWorldSize == 0U) {
+    if ((epWorldSize == 0U)) {
         return 0U;
     }
     uint32_t maxBs = globalBs / epWorldSize;
 
     uint32_t maxSharedGroupNum = 0U;
-    if (sharedExpertNum != 0U && sharedExpertRankNum != 0U) {
+    if ((sharedExpertNum != 0U) && (sharedExpertRankNum != 0U)) {
         uint32_t rankNumPerSharedExpert = sharedExpertRankNum / sharedExpertNum;
-        if (rankNumPerSharedExpert != 0U) {
+        if ((rankNumPerSharedExpert != 0U)) {
             maxSharedGroupNum = CeilDiv(epWorldSize, rankNumPerSharedExpert);
         }
     }
 
     uint32_t sharedPath = maxBs * maxSharedGroupNum;
-    uint32_t moePath = globalBs * (localExpertNum < k ? localExpertNum : k);
+    uint32_t moePath = globalBs * ((localExpertNum < k) ? localExpertNum : k);
 
     if (hasElastic) {
-        return sharedPath > moePath ? sharedPath : moePath;
+        return ((sharedPath > moePath) ? sharedPath : moePath);
     }
     return isSharedRank ? sharedPath : moePath;
 }
@@ -257,7 +257,7 @@ inline PlatformInfo GetPlatformInfo(const gert::TilingContext *ctx)
     result.ubSize = 0UL;
     result.blockDim = 0U;
 
-    if (ctx == nullptr) {
+    if ((ctx == nullptr)) {
         return result;
     }
 

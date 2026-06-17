@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
                                   const char *nodeName)
 {
     const gert::StorageShape *shape = ctx->GetOptionalInputShape(inputIndex);
-    if (shape == nullptr) {
+    if ((shape == nullptr)) {
         OPS_LOG_E(nodeName, "elasticInfo is null.");
         return ge::GRAPH_FAILED;
     }
@@ -66,13 +66,13 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
     int64_t expectedDim0 =
         static_cast<int64_t>(moe_dispatch_defs::ELASTIC_INFO_OFFSET + moe_dispatch_defs::RANK_LIST_NUM * epWorldSize);
 
-    if (shape->GetStorageShape().GetDimNum() != moe_dispatch_defs::ONE_DIM) {
+    if ((shape->GetStorageShape().GetDimNum() != moe_dispatch_defs::ONE_DIM)) {
         OPS_LOG_E(nodeName, "elasticInfo dim must be 1, but current dim num is %lu.",
                   shape->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
 
-    if (shape->GetStorageShape().GetDim(0) != expectedDim0) {
+    if ((shape->GetStorageShape().GetDim(0) != expectedDim0)) {
         OPS_LOG_E(nodeName,
                   "elasticInfo's dim0 not equal to 4 + 2 * epWorldSize, "
                   "elasticInfo's dim0 is %ld, epWorldSize is %u.",
@@ -101,8 +101,8 @@ inline ElasticResult CalcAdjustments(uint32_t localExpertNum, uint32_t sharedA, 
 {
     ElasticResult result{};
     result.hasElastic = true;
-    result.adjustedA = sharedA > moeA ? sharedA : moeA;
-    uint32_t adjustedLocalExpertNum = localExpertNum > 1U ? localExpertNum : 1U;
+    result.adjustedA = (sharedA > moeA) ? sharedA : moeA;
+    uint32_t adjustedLocalExpertNum = (localExpertNum > 1U) ? localExpertNum : 1U;
     result.adjustedExpertTokenDim0 = adjustedLocalExpertNum;
     result.adjustedEpRecvDim0 = epWorldSize * adjustedLocalExpertNum;
     return result;

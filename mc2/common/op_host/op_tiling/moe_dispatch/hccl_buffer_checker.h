@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -53,12 +53,12 @@ struct MinBuffSizeParams {
 // 计算最小 buffer 需求
 inline uint64_t CalcMinBuffSize(const MinBuffSizeParams &p)
 {
-    if (p.epWorldSize == 0U) {
+    if ((p.epWorldSize == 0U)) {
         return 0UL;
     }
 
     uint32_t maxBs = p.bs;
-    if (p.globalBs != 0U) {
+    if ((p.globalBs != 0U)) {
         maxBs = p.globalBs / p.epWorldSize;
     }
 
@@ -85,7 +85,7 @@ inline uint64_t CalcMinBuffSize(const MinBuffSizeParams &p)
 //     （与 setup/teardown 现有实现一致），由调用方传入 actualBuffSize。
 inline ge::graphStatus CheckBuffSize(uint64_t actualBuffSize, uint64_t minRequired, const char *nodeName)
 {
-    if (actualBuffSize < minRequired) {
+    if ((actualBuffSize < minRequired)) {
         OPS_LOG_E(nodeName, "HCCL_BUFFSIZE [%lu] < required minimum [%lu].", actualBuffSize, minRequired);
         return ge::GRAPH_FAILED;
     }

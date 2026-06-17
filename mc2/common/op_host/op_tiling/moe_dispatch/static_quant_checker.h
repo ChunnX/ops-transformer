@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ public:
     // 返回期望的维度数：hif8 时必须为 1D，其他为 1D 或 2D
     uint32_t GetExpectedScalesDimNum(ge::DataType expandXDtype) const
     {
-        if (expandXDtype == ge::DT_HIFLOAT8) {
+        if ((expandXDtype == ge::DT_HIFLOAT8)) {
             return moe_dispatch_defs::ONE_DIM; // hif8 强制 1D
         }
         return 0U; // 返回 0 表示允许 1D 或 2D，由调用方进一步校验
@@ -54,7 +54,7 @@ public:
     // scales 是否允许 2D（静态量化特有）
     bool AllowScalesTwoDim(ge::DataType expandXDtype) const
     {
-        return expandXDtype != ge::DT_HIFLOAT8;
+        return (expandXDtype != ge::DT_HIFLOAT8);
     }
 
     // scales 校验
@@ -62,12 +62,12 @@ public:
                                 uint32_t h) const override
     {
         // 静态量化必须有 scales
-        if (info.dtype == ge::DT_UNDEFINED) {
+        if ((info.dtype == ge::DT_UNDEFINED)) {
             return ge::GRAPH_FAILED;
         }
 
         // dtype: float
-        if (info.dtype != ge::DT_FLOAT) {
+        if ((info.dtype != ge::DT_FLOAT)) {
             return ge::GRAPH_FAILED;
         }
 
