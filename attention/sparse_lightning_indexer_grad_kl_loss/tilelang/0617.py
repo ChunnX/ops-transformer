@@ -481,33 +481,47 @@ def tilelang_grad_kl_loss_single_kernel(
 # Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
 # ==============================================================================
 def _preprocess_gather(key, key_index, key_rope, sparse_indices, B, S1, S2, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, dtype):
+    """Optimized gather: reuse index tensor, avoid redundant contiguous copies."""
     device = key.device
-    dtype = key.dtype
+    t_dtype = key.dtype
 
-    sparse_idx_3d = sparse_indices[:, :, 0, :]
-    valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(dtype)
+    sparse_idx_3d = sparse_indices[:, :, 0, :]            # [B, S1, K]
+    valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(t_dtype)
     sparse_idx_safe = sparse_idx_3d.clamp(min=0)
 
-    key_2d = key[:, :, 0, :]
-    key_index_2d = key_index[:, :, 0, :]
+    key_2d = key[:, :, 0, :]                              # [B, S2, DQuery]
+    key_index_2d = key_index[:, :, 0, :]                   # [B, S2, DQueryIndex]
 
-    idx_k = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQuery)
-    gather_key = torch.gather(key_2d, 1, idx_k).reshape(B, S1, K, DQuery).contiguous()
+    # Pre-compute flat index once, reuse for all three gathers
+    idx_flat = sparse_idx_safe.reshape(B, S1 * K)          # [B, S1*K]
 
-    idx_ki = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQueryIndex)
-    gather_key_index = torch.gather(key_index_2d, 1, idx_ki).reshape(B, S1, K, DQueryIndex).contiguous()
+    # Gather key
+    idx_k = idx_flat.unsqueeze(-1).expand(B, S1 * K, DQuery)
+    gather_key = torch.gather(key_2d, 1, idx_k).reshape(B, S1, K, DQuery)
 
-    # Rope gather -- merged with key gather, same sparse_indices
+    # Gather key_index
+    idx_ki = idx_flat.unsqueeze(-1).expand(B, S1 * K, DQueryIndex)
+    gather_key_index = torch.gather(key_index_2d, 1, idx_ki).reshape(B, S1, K, DQueryIndex)
+
+    # Gather key_rope (merged into same function, shares idx_flat)
     if key_rope is not None:
-        key_rope_2d = key_rope[:, :, 0, :]
-        idx_rope = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
-        gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig).contiguous()
+        key_rope_2d = key_rope[:, :, 0, :]                 # [B, S2, d_rope_orig]
+        idx_rope = idx_flat.unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
+        gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig)
         gather_key_rope.mul_(valid_mask)
     else:
-        gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=dtype, device=key.device)
+        gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=t_dtype, device=device)
 
     gather_key.mul_(valid_mask)
     gather_key_index.mul_(valid_mask)
+
+    # Only call .contiguous() if torch.gather didn't already produce contiguous output
+    if not gather_key.is_contiguous():
+        gather_key = gather_key.contiguous()
+    if not gather_key_index.is_contiguous():
+        gather_key_index = gather_key_index.contiguous()
+    if key_rope is not None and not gather_key_rope.is_contiguous():
+        gather_key_rope = gather_key_rope.contiguous()
 
     return gather_key, gather_key_index, gather_key_rope
 
@@ -559,24 +573,26 @@ def _compute_vector_outputs(
 # ScatterAdd: compute dKeyIndex from reluGrad and queryIndex
 # ==============================================================================
 def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx1, Nidx2, K, DQueryIndex, device, dtype):
-    relu_grad_fp32 = relu_grad.float()
-    query_index_fp32 = query_index.float()
+    rg_fp32 = relu_grad.float()                              # [B, S1, Nidx1, K]
+    qi_fp32 = query_index.float()                             # [B, S1, Nidx1, DQI]
 
-    relu_grad_t = relu_grad_fp32.permute(0, 1, 3, 2)
+    # bmm: [B*S1, K, Nidx1] @ [B*S1, Nidx1, DQI] -> [B*S1, K, DQI]
     scatter_add = torch.bmm(
-        relu_grad_t.reshape(B * S1, K, Nidx1),
-        query_index_fp32.reshape(B * S1, Nidx1, DQueryIndex),
+        rg_fp32.transpose(-1, -2).reshape(B * S1, K, Nidx1),
+        qi_fp32.reshape(B * S1, Nidx1, DQueryIndex),
     ).reshape(B, S1, K, DQueryIndex)
 
-    d_key_index = torch.zeros(B, S2, Nidx2, DQueryIndex, dtype=torch.float32, device=device)
-    sparse_idx = sparse_indices[:, :, 0, :].clamp(min=0)
-    valid_mask = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1).to(torch.float32)
+    # Pre-compute index + mask, apply in-place
+    sparse_idx = sparse_indices[:, :, 0, :].clamp(min=0)     # [B, S1, K]
+    valid_mask = (sparse_indices[:, :, 0, :] >= 0).unsqueeze(-1)
+    scatter_add.mul_(valid_mask)
 
-    scatter_add_masked = scatter_add * valid_mask
-    idx_expanded = sparse_idx.unsqueeze(-1).expand(B, S1, K, DQueryIndex)
-    d_key_index_2d = d_key_index[:, :, 0, :]
-    d_key_index_2d.scatter_add_(1, idx_expanded.reshape(B, S1 * K, DQueryIndex)[:, :S2, :],
-                                 scatter_add_masked.reshape(B, S1 * K, DQueryIndex)[:, :S2, :])
+    # Scatter-add: accumulate [S1*K, DQI] -> [S2, DQI]
+    d_key_index = torch.zeros(B, S2, Nidx2, DQueryIndex, dtype=torch.float32, device=device)
+    idx_flat = sparse_idx.unsqueeze(-1).expand(B, S1, K, DQueryIndex) \
+                         .reshape(B, S1 * K, DQueryIndex)[:, :S2, :]
+    src_flat = scatter_add.reshape(B, S1 * K, DQueryIndex)[:, :S2, :]
+    d_key_index[:, :, 0, :].scatter_add_(1, idx_flat, src_flat)
 
     return d_key_index.to(dtype)
 
