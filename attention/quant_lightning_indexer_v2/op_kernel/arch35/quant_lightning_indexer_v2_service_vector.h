@@ -95,6 +95,9 @@ private:
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
     LocalTensor<float> weightUB_;
+    // tmp buff for weight cast float
+    TBuf<TPosition::VECCALC> weightTempBuf_;
+    LocalTensor<float> weightTempUB_;
     // tmp buff for kScale
     TBuf<TPosition::VECCALC> kScaleBuf_;
     LocalTensor<float> kScaleUB_;
@@ -165,6 +168,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(weightBuf_,
         2 * CeilDiv(s1BaseSize_, 2) * gSize_ * sizeof(float));
     weightUB_ = weightBuf_.Get<float>(); // weight
+    pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
+    weightTempUB_ = weightTempBuf_.Get<float>();
     // 大小：2(开dB) * 128 * 4 = 1KB
     pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(float));
     kScaleUB_ = kScaleBuf_.Get<float>(); // kScale
@@ -425,6 +430,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     static_assert(std::is_same_v<SCORE_T, uint16_t>);
     auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCORE_T))];
     auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
+    auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
     auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
     auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ + ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
 
@@ -432,7 +438,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / 2 * constInfo_.mBaseSize;
     vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
                                         qkBase, qkVLstride, (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-                                        weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
+                                        weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
                                         kScaleBase, (uint32_t)0,
                                         qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
                                         gSize_, curAivS1ProcNum);
