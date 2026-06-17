@@ -114,7 +114,7 @@ private:
     uint32_t axisH_{0};
     uint32_t hAlignSize_{0};       // UB对齐后的hidden size
     uint32_t perSlotBytes_{0};
-    uint32_t actualA{0};
+    uint64_t actualA_{0};
     uint32_t aivNum_{0};
     uint32_t localmoeNum_{0};
     uint32_t totalWinSizeEp_{0};
@@ -180,7 +180,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     axisH_ = tilingData_->cfg.hidden;
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
     aivNum_ = tilingData_->aivNum;
-    localmoeNum_ = tilingData_->localmoeNum;
+    localmoeNum_ = tilingData_->cfg.numLocalExperts;
     totalWinSizeEp_ = tilingData->totalWinSizeEp;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     stateOffset_ = STATE_OFFSET;
@@ -202,12 +202,12 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int32_t *)numRecvPerExpert);
     combinedXGm_.SetGlobalBuffer((__gm__ XType *)combinedX);
 
-    // 计算ActualA的大小
+    // 计算actualA_的大小
     for(int i = 0; i < localmoeNum_; i++){
         if (i % (DCCI_OFFSET / sizeof(int32_t)) == 0) {
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvPerExpertGm_[i]);
         }
-        actualA += numRecvPerExpertGm_(i);
+        actualA_ += numRecvPerExpertGm_(i);
     }
 
     if constexpr (HasTopkWeight == 1) {
@@ -356,7 +356,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPha
         return; 
     }
     for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
-        for (uint32_t tokenIndex = 0; tokenIndex < actualA; ++tokenIndex) {
+        for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
             int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 0);
             int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 1);
             int32_t src_topK_idx = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 2);
