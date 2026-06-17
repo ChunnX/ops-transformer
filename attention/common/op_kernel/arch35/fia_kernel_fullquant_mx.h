@@ -364,7 +364,13 @@ public:
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        return ((bN2Cur != constInfo.bN2End) || (gS1Cur != constInfo.gS1OEnd) || (s2Cur != constInfo.s2OEnd));
+        if (bN2Cur != constInfo.bN2End) {
+            return bN2Cur < constInfo.bN2End;
+        }
+        if (gS1Cur != constInfo.gS1OEnd) {
+            return gS1Cur < constInfo.gS1OEnd;
+        }
+        return s2Cur < constInfo.s2OEnd;
     }
 
     __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
@@ -412,12 +418,8 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::S2_END;
-        }
-
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP;
+            return TASK_DEAL_MODE::SKIP_REMAINING_S2;
         }
 
         if (s2Cur == curS2Start) {
@@ -679,10 +681,12 @@ public:
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.realGSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
-            s2Cur++;
-            return;
+        if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
+            // 当前S2未处理完
+            if (s2Cur + 1 < s2LoopTimes) {
+                s2Cur++;
+                return;
+            }
         }
 
         // 当前BN2未处理完
