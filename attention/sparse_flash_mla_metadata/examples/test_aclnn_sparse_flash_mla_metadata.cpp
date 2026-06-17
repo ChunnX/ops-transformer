@@ -10,7 +10,7 @@
 
 /*!
  * \file test_aclnn_sparse_flash_mla_metadata.cpp
- * \brief SparseFlashMlaMetadata 算子调用示例（SCFA / layout_q=TND, layout_kv=PA_BNBD）
+ * \brief SparseFlashMlaMetadata 算子调用示例（SCFA / layout_q=TND, layout_kv=PA_BBND）
  */
 
 #include <iostream>
@@ -108,6 +108,7 @@ int main()
   int64_t K = 512;
   int64_t s2Act = 4096;
   int64_t cmpRatio = 4;
+  int64_t cmpKvLen = s2Act / cmpRatio;
   int64_t oriMaskMode = 4;
   int64_t cmpMaskMode = 3;
   int64_t oriWinLeft = 127;
@@ -157,7 +158,7 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   char layoutQ[] = "TND";
-  char layoutKv[] = "PA_BNBD";
+  char layoutKv[] = "PA_BBND";
 
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
@@ -166,7 +167,9 @@ int main()
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
       seqUsedQ, seqUsedOriKv,
+      nullptr, nullptr, nullptr, nullptr,
       N1, N2, D, B, S1, S2,
+      cmpKvLen,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,
       oriWinLeft, oriWinRight,
