@@ -10,6 +10,9 @@
 
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
+#include <iostream>
+#include <cstring>
+#include <iomanip>
 
 using namespace op;
 
@@ -152,6 +155,14 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
     }
     auto softmaxOutOut = executor->AllocTensor(outputDtype, Format::FORMAT_ND, Format::FORMAT_ND);
     auto attentionOutOut = executor->AllocTensor(outputDtype, Format::FORMAT_ND, Format::FORMAT_ND);
+
+    std::cout << "[SCALE_TRACE] L0_API: input scaleValue(double) = " << std::setprecision(17) << scaleValue
+              << ", after cast to float = " << static_cast<float>(scaleValue) << std::endl;
+    {
+        float fv = static_cast<float>(scaleValue);
+        uint32_t raw; std::memcpy(&raw, &fv, sizeof(float));
+        std::cout << "[SCALE_TRACE] L0_API: float hex = 0x" << std::hex << raw << std::dec << std::endl;
+    }
 
     auto ret = INFER_SHAPE(FlashAttentionScore,
                            OP_INPUT(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional,

@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cstdint>
+#include <iostream>
 #include "kernel_tiling/kernel_tiling.h"
 
 class BaseParams {
@@ -75,7 +76,10 @@ public:
     void set_keepProb(float value) { this->keepProb = value; }
 
     float get_scaleValue() const { return scaleValue; }
-    void set_scaleValue(float value) { this->scaleValue = value; }
+    void set_scaleValue(float value) {
+        this->scaleValue = value;
+        std::cout << "[SCALE_TRACE] BaseParams::set_scaleValue: value=" << value << std::endl;
+    }
 
     uint32_t get_preTockens() const { return preTockens; }
     void set_preTockens(uint32_t value) { this->preTockens = value; }
@@ -824,7 +828,10 @@ public:
     void set_keepProb(float value) { this->keepProb = value; }
 
     float get_scaleValue() const { return scaleValue; }
-    void set_scaleValue(float value) { this->scaleValue = value; }
+    void set_scaleValue(float value) {
+        this->scaleValue = value;
+        std::cout << "[SCALE_TRACE] InputParams::set_scaleValue: value=" << value << std::endl;
+    }
 
     int64_t get_preTokens() const { return preTokens; }
     void set_preTokens(int64_t value) { this->preTokens = value; }
