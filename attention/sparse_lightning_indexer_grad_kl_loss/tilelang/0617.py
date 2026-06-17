@@ -481,47 +481,33 @@ def tilelang_grad_kl_loss_single_kernel(
 # Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
 # ==============================================================================
 def _preprocess_gather(key, key_index, key_rope, sparse_indices, B, S1, S2, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, dtype):
-    """Optimized gather: reuse index tensor, avoid redundant contiguous copies."""
     device = key.device
-    t_dtype = key.dtype
+    dtype = key.dtype
 
-    sparse_idx_3d = sparse_indices[:, :, 0, :]            # [B, S1, K]
-    valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(t_dtype)
+    sparse_idx_3d = sparse_indices[:, :, 0, :]
+    valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(dtype)
     sparse_idx_safe = sparse_idx_3d.clamp(min=0)
 
-    key_2d = key[:, :, 0, :]                              # [B, S2, DQuery]
-    key_index_2d = key_index[:, :, 0, :]                   # [B, S2, DQueryIndex]
+    key_2d = key[:, :, 0, :]
+    key_index_2d = key_index[:, :, 0, :]
 
-    # Pre-compute flat index once, reuse for all three gathers
-    idx_flat = sparse_idx_safe.reshape(B, S1 * K)          # [B, S1*K]
+    idx_k = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQuery)
+    gather_key = torch.gather(key_2d, 1, idx_k).reshape(B, S1, K, DQuery).contiguous()
 
-    # Gather key
-    idx_k = idx_flat.unsqueeze(-1).expand(B, S1 * K, DQuery)
-    gather_key = torch.gather(key_2d, 1, idx_k).reshape(B, S1, K, DQuery)
+    idx_ki = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQueryIndex)
+    gather_key_index = torch.gather(key_index_2d, 1, idx_ki).reshape(B, S1, K, DQueryIndex).contiguous()
 
-    # Gather key_index
-    idx_ki = idx_flat.unsqueeze(-1).expand(B, S1 * K, DQueryIndex)
-    gather_key_index = torch.gather(key_index_2d, 1, idx_ki).reshape(B, S1, K, DQueryIndex)
-
-    # Gather key_rope (merged into same function, shares idx_flat)
+    # Rope gather -- merged with key gather, same sparse_indices
     if key_rope is not None:
-        key_rope_2d = key_rope[:, :, 0, :]                 # [B, S2, d_rope_orig]
-        idx_rope = idx_flat.unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
-        gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig)
+        key_rope_2d = key_rope[:, :, 0, :]
+        idx_rope = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
+        gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig).contiguous()
         gather_key_rope.mul_(valid_mask)
     else:
-        gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=t_dtype, device=device)
+        gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=dtype, device=key.device)
 
     gather_key.mul_(valid_mask)
     gather_key_index.mul_(valid_mask)
-
-    # Only call .contiguous() if torch.gather didn't already produce contiguous output
-    if not gather_key.is_contiguous():
-        gather_key = gather_key.contiguous()
-    if not gather_key_index.is_contiguous():
-        gather_key_index = gather_key_index.contiguous()
-    if key_rope is not None and not gather_key_rope.is_contiguous():
-        gather_key_rope = gather_key_rope.contiguous()
 
     return gather_key, gather_key_index, gather_key_rope
 
@@ -576,7 +562,7 @@ def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx
     relu_grad_fp32 = relu_grad.float()
     query_index_fp32 = query_index.float()
 
-    relu_grad_t = relu_grad_fp32.transpose(-1, -2)
+    relu_grad_t = relu_grad_fp32.permute(0, 1, 3, 2)
     scatter_add = torch.bmm(
         relu_grad_t.reshape(B * S1, K, Nidx1),
         query_index_fp32.reshape(B * S1, Nidx1, DQueryIndex),
@@ -790,7 +776,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             r_ms = _t_reduce_start.elapsed_time(_t_reduce_end)
             s_ms = _t_scatter_start.elapsed_time(_t_scatter_end)
             total_ms = g_ms + p_ms + k_ms + r_ms + s_ms
-            print(f"[PROFILE] gather={g_ms:.3f}ms prep={p_ms:.3f}ms kernel={k_ms:.3f}ms reduce={r_ms:.3f}ms scatter={s_ms:.3f}ms total={total_ms:.3f}ms")
+            print(f"[PROFILE] gather={g_ms:.3f} prep={p_ms:.3f} kernel={k_ms:.3f} reduce={r_ms:.3f} scatter={s_ms:.3f} total={total_ms:.3f}ms")
 
         return d_query_index, d_key_index, d_weight, loss_tensor
 
