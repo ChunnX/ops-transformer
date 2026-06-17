@@ -1637,4 +1637,216 @@ TEST_F(MoeUpdateExpertArch22TilingTest, WrongFormatActiveMask)
                        expectTilingData, expectWorkspaces, mc2TilingDataReservedLen);
 }
 
+// ========== boundary positive tests ==========
+
+TEST_F(MoeUpdateExpertArch22TilingTest, BoundaryBsMax)
+{
+    struct MoeUpdateExpertCompileInfo {} compileInfo;
+    const std::string socVersion = "";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+
+    gert::TilingContextPara tilingContextPara(
+        "MoeUpdateExpert",
+        {
+            {{{512, 4}, {512, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{256, 5}, {256, 5}}, ge::DT_INT32, ge::FORMAT_ND}
+        },
+        {
+            {{{512, 4}, {512, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{512, 4}, {512, 4}}, ge::DT_BOOL, ge::FORMAT_ND}
+        },
+        {
+            {"local_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"balance_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        },
+        &compileInfo,
+        socVersion,
+        coreNum,
+        ubSize,
+        tilingDataSize
+    );
+
+    uint64_t expectTilingKey = 0;
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
+TEST_F(MoeUpdateExpertArch22TilingTest, BoundaryKMax)
+{
+    struct MoeUpdateExpertCompileInfo {} compileInfo;
+    const std::string socVersion = "";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+
+    gert::TilingContextPara tilingContextPara(
+        "MoeUpdateExpert",
+        {
+            {{{128, 16}, {128, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{256, 5}, {256, 5}}, ge::DT_INT32, ge::FORMAT_ND}
+        },
+        {
+            {{{128, 16}, {128, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{128, 16}, {128, 16}}, ge::DT_BOOL, ge::FORMAT_ND}
+        },
+        {
+            {"local_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"balance_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        },
+        &compileInfo,
+        socVersion,
+        coreNum,
+        ubSize,
+        tilingDataSize
+    );
+
+    uint64_t expectTilingKey = 0;
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
+TEST_F(MoeUpdateExpertArch22TilingTest, BoundaryMoeExpertNumMax)
+{
+    struct MoeUpdateExpertCompileInfo {} compileInfo;
+    const std::string socVersion = "";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+
+    gert::TilingContextPara tilingContextPara(
+        "MoeUpdateExpert",
+        {
+            {{{128, 4}, {128, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1024, 5}, {1024, 5}}, ge::DT_INT32, ge::FORMAT_ND}
+        },
+        {
+            {{{128, 4}, {128, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{128, 4}, {128, 4}}, ge::DT_BOOL, ge::FORMAT_ND}
+        },
+        {
+            {"local_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"balance_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        },
+        &compileInfo,
+        socVersion,
+        coreNum,
+        ubSize,
+        tilingDataSize
+    );
+
+    uint64_t expectTilingKey = 0;
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
+TEST_F(MoeUpdateExpertArch22TilingTest, BoundaryMoeExpertNumEqualsK)
+{
+    struct MoeUpdateExpertCompileInfo {} compileInfo;
+    const std::string socVersion = "";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+
+    gert::TilingContextPara tilingContextPara(
+        "MoeUpdateExpert",
+        {
+            {{{128, 8}, {128, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8, 5}, {8, 5}}, ge::DT_INT32, ge::FORMAT_ND}
+        },
+        {
+            {{{128, 8}, {128, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{128, 8}, {128, 8}}, ge::DT_BOOL, ge::FORMAT_ND}
+        },
+        {
+            {"local_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"balance_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        },
+        &compileInfo,
+        socVersion,
+        coreNum,
+        ubSize,
+        tilingDataSize
+    );
+
+    uint64_t expectTilingKey = 0;
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
+TEST_F(MoeUpdateExpertArch22TilingTest, BoundaryFMin)
+{
+    struct MoeUpdateExpertCompileInfo {} compileInfo;
+    const std::string socVersion = "";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+
+    gert::TilingContextPara tilingContextPara(
+        "MoeUpdateExpert",
+        {
+            {{{128, 4}, {128, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{256, 2}, {256, 2}}, ge::DT_INT32, ge::FORMAT_ND}
+        },
+        {
+            {{{128, 4}, {128, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{128, 4}, {128, 4}}, ge::DT_BOOL, ge::FORMAT_ND}
+        },
+        {
+            {"local_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"balance_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        },
+        &compileInfo,
+        socVersion,
+        coreNum,
+        ubSize,
+        tilingDataSize
+    );
+
+    uint64_t expectTilingKey = 0;
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
+TEST_F(MoeUpdateExpertArch22TilingTest, BoundaryFMax)
+{
+    struct MoeUpdateExpertCompileInfo {} compileInfo;
+    const std::string socVersion = "";
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    uint64_t tilingDataSize = 8192;
+
+    gert::TilingContextPara tilingContextPara(
+        "MoeUpdateExpert",
+        {
+            {{{128, 4}, {128, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{256, 9}, {256, 9}}, ge::DT_INT32, ge::FORMAT_ND}
+        },
+        {
+            {{{128, 4}, {128, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{128, 4}, {128, 4}}, ge::DT_BOOL, ge::FORMAT_ND}
+        },
+        {
+            {"local_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"balance_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
+        },
+        &compileInfo,
+        socVersion,
+        coreNum,
+        ubSize,
+        tilingDataSize
+    );
+
+    uint64_t expectTilingKey = 0;
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
 }  // namespace
