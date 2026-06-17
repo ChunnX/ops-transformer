@@ -103,15 +103,12 @@ public:
     int64_t totalPerBatchNum;
     uint32_t layout;
     uint32_t tndMaxSumLayout;
-    uint32_t pseOptional;
     uint32_t pseType;
     uint32_t pseShapeType;
     uint32_t pseLayoutType;
     uint32_t pseDtype;
     uint32_t qStartIdx;
     uint32_t kvStartIdx;
-    uint32_t attenMaskOptional;
-    uint32_t attenMaskDtype;
     uint32_t attenMaskShapeType;
     uint32_t sparseMode;
     uint32_t attenMaskCompressMode;
@@ -138,12 +135,9 @@ public:
     uint8_t get_dropMaskOuter() const {return dropMaskOuter;}
     uint32_t get_layout() const {return layout;}
     uint32_t get_tndMaxSumLayout() const {return tndMaxSumLayout;}
-    uint32_t get_pseOptional() const {return pseOptional;}
     uint32_t get_pseType() const {return pseType;}
     uint32_t get_qStartIdx() const {return qStartIdx;}
     uint32_t get_kvStartIdx() const {return kvStartIdx;}
-    uint32_t get_attenMaskOptional() const {return attenMaskOptional;}
-    uint32_t get_attenMaskDtype() const {return attenMaskDtype;}
     uint32_t get_attenMaskShapeType() const {return attenMaskShapeType;}
     int64_t get_s1Token() const {return s1Token;}
     int64_t get_s2Token() const {return s2Token;}
@@ -174,15 +168,12 @@ public:
     void set_dropMaskOuter(uint8_t dropMaskOuterParam) { this->dropMaskOuter = dropMaskOuterParam; }
     void set_layout(uint32_t layoutParam) { this->layout = layoutParam; }
     void set_tndMaxSumLayout(uint32_t tndMaxSumLayoutParam) { this->tndMaxSumLayout = tndMaxSumLayoutParam; }
-    void set_pseOptional(uint32_t pseOptionalParam) { this->pseOptional = pseOptionalParam; }
     void set_pseType(uint32_t pseTypeParam) { this->pseType = pseTypeParam; }
     void set_pseShapeType(uint32_t pseShapeTypeParam) { this->pseShapeType = pseShapeTypeParam; }
     void set_pseLayoutType(uint32_t pseLayoutTypeParam) { this->pseLayoutType = pseLayoutTypeParam; }
     void set_pseDtype(uint32_t pseDtypeParam) { this->pseDtype = pseDtypeParam; }
     void set_qStartIdx(uint32_t qStartIdxParam) { this->qStartIdx = qStartIdxParam; }
     void set_kvStartIdx(uint32_t kvStartIdxParam) { this->kvStartIdx = kvStartIdxParam; }
-    void set_attenMaskOptional(uint32_t attenMaskOptionalParam) { this->attenMaskOptional = attenMaskOptionalParam; }
-    void set_attenMaskDtype(uint32_t attenMaskDtypeParam) { this->attenMaskDtype = attenMaskDtypeParam; }
     void set_attenMaskShapeType(uint32_t attenMaskShapeTypeParam) { this->attenMaskShapeType = attenMaskShapeTypeParam; }
     void set_s1Token(int64_t s1TokenParam) { this->s1Token = s1TokenParam; }
     void set_s2Token(int64_t s2TokenParam) { this->s2Token = s2TokenParam; }
@@ -212,12 +203,7 @@ public:
     uint32_t s2Tail;
     uint32_t blockOuter;
     uint32_t maxValidBBLen;
-    uint32_t noNeedDeter;
-    uint32_t reserved;
     int64_t bandIdx;
-    int64_t deterMaxRound;
-    uint64_t dqIsNeedDeter[MAX_CORE_NUM];
-    uint64_t dkDvIsNeedDeter[MAX_CORE_NUM];
 
     int64_t get_s1Outer() const { return s1Outer; }
     uint32_t get_s1Inner() const { return s1Inner; }
@@ -229,13 +215,7 @@ public:
     uint32_t get_s2Tail() const { return s2Tail; }
     uint32_t get_blockOuter() const { return blockOuter; }
     uint32_t get_maxValidBBLen() const { return maxValidBBLen; }
-    uint32_t get_noNeedDeter() const { return noNeedDeter; }
     int64_t get_bandIdx() const { return bandIdx; }
-    int64_t get_deterMaxRound() const { return deterMaxRound; }
-    const uint64_t* get_dqIsNeedDeter() const { return dqIsNeedDeter; }
-    uint64_t get_dqIsNeedDeter(int index) const { return dqIsNeedDeter[index]; }
-    const uint64_t* get_dkDvIsNeedDeter() const { return dkDvIsNeedDeter; }
-    uint64_t get_dkDvIsNeedDeter(int index) const { return dkDvIsNeedDeter[index]; }
 
     void set_s1Outer(int64_t val) { s1Outer = val; }
     void set_s1Inner(uint32_t val) { s1Inner = val; }
@@ -247,21 +227,7 @@ public:
     void set_s2Tail(uint32_t val) { s2Tail = val; }
     void set_blockOuter(uint32_t val) { blockOuter = val; }
     void set_maxValidBBLen(uint32_t val) { maxValidBBLen = val; }
-    void set_noNeedDeter(uint32_t val) { noNeedDeter = val; }
     void set_bandIdx(int64_t val) { bandIdx = val; }
-    void set_deterMaxRound(int64_t value) { deterMaxRound = value; }
-    void set_dqIsNeedDeter(const uint64_t* val) { 
-        for (uint i = 0; i < MAX_CORE_NUM; ++i) {
-            dqIsNeedDeter[i] = val[i];
-        }
-    }
-    void set_dqIsNeedDeter(int index, uint64_t val) { dqIsNeedDeter[index] = val; }
-    void set_dkDvIsNeedDeter(const uint64_t* val) { 
-        for (uint i = 0; i < MAX_CORE_NUM; ++i) {
-            dkDvIsNeedDeter[i] = val[i];
-        }
-    }
-    void set_dkDvIsNeedDeter(int index, uint64_t val) { dkDvIsNeedDeter[index] = val; }
 };
 
 class BlockNumListParamsRegbase {
@@ -289,7 +255,6 @@ public:
 
 class PreParamsRegbase {
 public:
-    uint64_t maskPreBlockTotal;
     uint64_t maskSingleCoreNum;
     uint64_t qPreBlockFactor;
     uint64_t qPreBlockTotal;
@@ -332,7 +297,6 @@ public:
     int64_t tailCoreNBurstNums;
     int64_t normalAxisSize;
 
-    uint64_t get_maskPreBlockTotal() const { return maskPreBlockTotal; }
     uint64_t get_maskSingleCoreNum() const { return maskSingleCoreNum; }
     uint64_t get_qPreBlockFactor() const { return qPreBlockFactor; }
     uint64_t get_qPreBlockTotal() const { return qPreBlockTotal; }
@@ -371,7 +335,6 @@ public:
     int64_t get_tailCoreNBurstNums() const {return tailCoreNBurstNums;}
     int64_t get_normalAxisSize() const {return normalAxisSize;}
 
-    void set_maskPreBlockTotal(uint64_t val) { maskPreBlockTotal = val; }
     void set_maskSingleCoreNum(uint64_t val) { maskSingleCoreNum = val; }
     void set_qPreBlockFactor(uint64_t val) { qPreBlockFactor = val; }
     void set_qPreBlockTotal(uint64_t val) { qPreBlockTotal = val; }
@@ -413,7 +376,6 @@ public:
 
 class PostParamsRegbase {
 public:
-    uint64_t postUbBaseSize;
     uint64_t qPostBlockFactor;
     uint64_t qPostBlockTotal;
     uint64_t qPostBaseNum;
@@ -429,10 +391,7 @@ public:
     uint64_t dqWorkSpaceOffset;
     uint64_t dkWorkSpaceOffset;
     uint64_t dvWorkSpaceOffset;
-    uint64_t vScaleDsWorkSpaceOffset;
     uint64_t dropMaskGmOffset;
-    uint64_t deterGmOffset;
-    uint64_t deterWorkSpaceOffset;
     uint64_t sfmgWorkSpaceOffset;
     uint64_t dsinkWorkSpaceOffset;
     uint64_t sinkReduceAxis;
@@ -440,7 +399,6 @@ public:
     uint64_t sinkPostBlockFactor;
     uint64_t sinkPostTailNum;
 
-    uint64_t get_postUbBaseSize() const { return postUbBaseSize; }
     uint64_t get_qPostBlockFactor() const { return qPostBlockFactor; }
     uint64_t get_qPostBlockTotal() const { return qPostBlockTotal; }
     uint64_t get_qPostBaseNum() const { return qPostBaseNum; }
@@ -456,10 +414,7 @@ public:
     uint64_t get_dqWorkSpaceOffset() const { return dqWorkSpaceOffset; }
     uint64_t get_dkWorkSpaceOffset() const { return dkWorkSpaceOffset; }
     uint64_t get_dvWorkSpaceOffset() const { return dvWorkSpaceOffset; }
-    uint64_t get_vScaleDsWorkSpaceOffset() const { return vScaleDsWorkSpaceOffset; }
     uint64_t get_dropMaskGmOffset() const { return dropMaskGmOffset; }
-    uint64_t get_deterGmOffset() const { return deterGmOffset; }
-    uint64_t get_deterWorkSpaceOffset() const { return deterWorkSpaceOffset; }
     uint64_t get_sfmgWorkSpaceOffset() const {return sfmgWorkSpaceOffset;}
     uint64_t get_dsinkWorkSpaceOffset() const {return dsinkWorkSpaceOffset;}
     uint64_t get_sinkReduceAxis() const { return sinkReduceAxis; }
@@ -467,7 +422,6 @@ public:
     uint64_t get_sinkPostBlockFactor() const { return sinkPostBlockFactor; }
     uint64_t get_sinkPostTailNum() const {return sinkPostTailNum;}
 
-    void set_postUbBaseSize(uint64_t value) { postUbBaseSize = value; }
     void set_qPostBlockFactor(uint64_t value) { qPostBlockFactor = value; }
     void set_qPostBlockTotal(uint64_t value) { qPostBlockTotal = value; }
     void set_qPostBaseNum(uint64_t value) { qPostBaseNum = value; }
@@ -483,16 +437,54 @@ public:
     void set_dqWorkSpaceOffset(uint64_t value) { dqWorkSpaceOffset = value; }
     void set_dkWorkSpaceOffset(uint64_t value) { dkWorkSpaceOffset = value; }
     void set_dvWorkSpaceOffset(uint64_t value) { dvWorkSpaceOffset = value; }
-    void set_vScaleDsWorkSpaceOffset(uint64_t value) { vScaleDsWorkSpaceOffset = value; }
     void set_dropMaskGmOffset(uint64_t value) { dropMaskGmOffset = value; }
-    void set_deterGmOffset(uint64_t value) { deterGmOffset = value; }
-    void set_deterWorkSpaceOffset(uint64_t value) { deterWorkSpaceOffset = value; }
     void set_sfmgWorkSpaceOffset(uint64_t value) { sfmgWorkSpaceOffset = value; }
     void set_dsinkWorkSpaceOffset(uint64_t value) { dsinkWorkSpaceOffset = value; }
     void set_sinkReduceAxis(uint64_t value) { sinkReduceAxis = value; }
     void set_sinkPostBlockTotal(uint64_t value) { sinkPostBlockTotal = value; }
     void set_sinkPostBlockFactor(uint64_t value) { sinkPostBlockFactor = value; }
     void set_sinkPostTailNum(uint64_t value) { sinkPostTailNum = value; }
+};
+
+class BaseDeterParamRegbase {
+public:
+    uint32_t noNeedDeter;
+    uint32_t reserved1; // tilingData需要8字节对齐
+    int64_t deterMaxRound;
+    uint64_t deterGmOffset;
+    uint64_t deterWorkSpaceOffset;
+    uint64_t dqIsNeedDeter[MAX_CORE_NUM];
+    uint64_t dkDvIsNeedDeter[MAX_CORE_NUM];
+
+    uint32_t get_noNeedDeter() const { return noNeedDeter; }
+    int64_t get_deterMaxRound() const { return deterMaxRound; }
+    uint64_t get_deterGmOffset() const { return deterGmOffset; }
+    uint64_t get_deterWorkSpaceOffset() const { return deterWorkSpaceOffset; }
+    uint64_t get_dqIsNeedDeter(int index) const { return dqIsNeedDeter[index]; }
+    const uint64_t* get_dqIsNeedDeter() const { return dqIsNeedDeter; }
+    const uint64_t* get_dkDvIsNeedDeter() const { return dkDvIsNeedDeter; }
+    uint64_t get_dkDvIsNeedDeter(int index) const { return dkDvIsNeedDeter[index]; }
+
+    void set_noNeedDeter(uint32_t val) { noNeedDeter = val; }
+    void set_deterMaxRound(int64_t value) { deterMaxRound = value; }
+    void set_deterGmOffset(uint64_t value) { deterGmOffset = value; }
+    void set_deterWorkSpaceOffset(uint64_t value) { deterWorkSpaceOffset = value; }
+    void set_dqIsNeedDeter(const uint64_t* val)
+    {
+        for (uint i = 0; i < MAX_CORE_NUM; ++i)
+        {
+            dqIsNeedDeter[i] = val[i];
+        }
+    }
+    void set_dqIsNeedDeter(int index, uint64_t val) { dqIsNeedDeter[index] = val; }
+    void set_dkDvIsNeedDeter(const uint64_t* val)
+    {
+        for (uint i = 0; i < MAX_CORE_NUM; ++i)
+        {
+            dkDvIsNeedDeter[i] = val[i];
+        }
+    }
+    void set_dkDvIsNeedDeter(int index, uint64_t val) { dkDvIsNeedDeter[index] = val; }
 };
 
 class DeterParamRegbase {
@@ -615,7 +607,8 @@ public:
     }
 };
 
-template<const bool isNewDeter = false, const bool isTnd = false, const bool isTndSwizzle = false>
+template<const bool isDeter = false, const bool isNewDeter = false,
+    const bool isTnd = false, const bool isTndSwizzle = false>
 class FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase {
 public:
     FlashAttentionScoreGradS1S2BNGS1S2BaseParamsRegbase s1s2BNGS1S2BaseParams;
@@ -623,6 +616,7 @@ public:
     BlockNumListParamsRegbase s1s2BNGS1S2BlockNumList;
     PreParamsRegbase preTilingData;
     PostParamsRegbase postTilingData;
+    typename std::conditional<isDeter, BaseDeterParamRegbase, std::nullptr_t>::type baseDeterParam;
     typename std::conditional<isNewDeter, DeterParamRegbase, std::nullptr_t>::type deterParam;
     typename std::conditional<!isNewDeter && isTnd, TndParamRegbase, std::nullptr_t>::type tndParam;
     typename std::conditional<isTndSwizzle, TndSwizzleParamRegbase, std::nullptr_t>::type tndSwizzleParam;

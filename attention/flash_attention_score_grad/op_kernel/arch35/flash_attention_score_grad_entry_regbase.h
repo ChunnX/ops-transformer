@@ -271,9 +271,12 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     SetSysWorkspace(workspace);
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     constexpr static bool needDeterPrefix = NEED_DETER_PREFIX(deterType, isTnd);
-    using fagTiling = FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<needDeterPrefix, isTnd, isTndSwizzle>;
-    GET_TILING_DATA_WITH_STRUCT(fagTiling, tiling_data_in, tiling_data);
-    const fagTiling *__restrict tilingData = &tiling_data_in;
+    using fagTiling = FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(deterType),
+        needDeterPrefix, isTnd, isTndSwizzle>;
+    // GET_TILING_DATA_WITH_STRUCT(fagTiling, tiling_data_in, tiling_data);
+    size_t offset = (size_t)(&((fagTiling *)0)->s1s2BNGS1S2BaseParams);
+
+    const __gm__ fagTiling *__restrict tilingData = (const __gm__ fagTiling *__restrict)(tiling_data + offset);
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
     if constexpr (splitAxis == BN2GS1S2) {
         INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(

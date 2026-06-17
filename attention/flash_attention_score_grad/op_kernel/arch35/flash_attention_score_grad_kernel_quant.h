@@ -54,8 +54,6 @@ public:
             GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR workspace,
             FagTilingType ordTilingData, TPipe *pipeIn);
     __aicore__ inline void InitBuffer();
-    __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
-    __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
     __aicore__ inline void SetConstInfo();
     __aicore__ inline void InitCVCommonBuffer();
     __aicore__ inline void InitCVCommonGlobalBuffer(GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR deqScaleQ, GM_ADDR deqScaleK,
@@ -149,7 +147,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBloc
     // split info
     this->constInfo.s1Outer = tilingData->s1s2BNGS1S2SplitCoreParams.s1Outer;
     this->constInfo.s1CvTail = tilingData->s1s2BNGS1S2SplitCoreParams.s1CvTail;
-    this->constInfo.s1Tail = tilingData->s1s2BNGS1S2SplitCoreParams.s1Tail;
     this->constInfo.s2Tail = tilingData->s1s2BNGS1S2SplitCoreParams.s2Tail;
     this->constInfo.s2Outer = tilingData->s1s2BNGS1S2SplitCoreParams.s2Outer;
  
@@ -282,17 +279,6 @@ FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBlockType>::InitCVCommonGlo
                                     tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
     dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                     tilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
-{
-}
- 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
-{
 }
  
 template <typename CubeBlockType, typename VecBlockType>
