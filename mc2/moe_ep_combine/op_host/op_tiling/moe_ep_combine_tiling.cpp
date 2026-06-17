@@ -58,7 +58,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
-constexpr uint64_t METADATA_DTYPE_SIZE = 8UL;  
+constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;  
 constexpr int64_t H_MIN = 1024;
 constexpr int64_t H_MAX = 7168;
 
@@ -112,9 +112,6 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertShape);
     OP_TILING_CHECK(numRecvPerExpertShape->GetStorageShape().GetDimNum() != ONE_DIMS,
         OP_LOGE(nodeName, "numRecvPerExpertShape dims must be 1."), return ge::GRAPH_FAILED);
-
-    info.localmoeNum = static_cast<uint32_t>(numRecvPerExpertShape->GetStorageShape().GetDim(0));
-
 
     bool hasTopkWeights = (context->GetOptionalInputDesc(TOPK_WEIGHTS_INDEX) != nullptr);
     if (hasTopkWeights) {
