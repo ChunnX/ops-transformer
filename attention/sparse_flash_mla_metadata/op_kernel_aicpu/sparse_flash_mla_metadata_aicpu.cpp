@@ -47,6 +47,10 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     cmpTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpTopkLength));
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
+    if (!CheckReservedOptionalTensor(oriTopkLength_, "ori_topk_length") ||
+        !CheckReservedOptionalTensor(cmpTopkLength_, "cmp_topk_length")) {
+        return false;
+    }
 
     bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
                          GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
@@ -278,16 +282,43 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
     CalcOriMaskMode();
     CalcCmpMaskMode();
     isS1G_ = (layoutQ_ == "BSND" || layoutQ_ == "BSH" || layoutQ_ == "TND");
+    if (numHeadsKv_ == 0 || numHeadsQ_ % numHeadsKv_ != 0) {
+        KERNEL_LOG_ERROR("num_heads_q should be divisible by num_heads_kv.");
+        return false;
+    }
+    ValidSocVersion validSocVersion = ProcessSocVersion();
     groupSize_ = numHeadsQ_ / numHeadsKv_;
+    if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (groupSize_ == 0 || groupSize_ > 128) {
+            KERNEL_LOG_ERROR("num_heads_q / num_heads_kv should be in [1, 128].");
+            return false;
+        }
+    } else if (groupSize_ == 0 || groupSize_ > 128 || ((groupSize_ & (groupSize_ - 1U)) != 0U)) {
+        KERNEL_LOG_ERROR("num_heads_q / num_heads_kv should be power of two in [1, 128].");
+        return false;
+    }
+    if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (cmpRatio_ < 1 || cmpRatio_ > 128) {
+            KERNEL_LOG_ERROR("cmp_ratio should be in [1, 128].");
+            return false;
+        }
+    } else if (cmpRatio_ != 1 && cmpRatio_ != 4 && cmpRatio_ != 128) {
+        KERNEL_LOG_ERROR("cmp_ratio should be 1, 4 or 128.");
+        return false;
+    }
+    if (hasCmpKv_ && cmpMaskMode_ == static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL) &&
+        cmpRatio_ != 1 && !IsNonEmptyTensor(cmpResidualKv_)) {
+        KERNEL_LOG_ERROR("cmp_residual_kv is required when cmp_mask_mode=3 and cmp_ratio is not 1.");
+        return false;
+    }
     if (hasOriKv_ && oriTopK_ != 0) {
         isSparseOriKv_ = true;
     }
     if (hasCmpKv_ && cmpTopK_ != 0) {
         isSparseCmpKv_ = true;
     }
-    ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND910) {
-        mBaseSize_ = groupSize_;
+        mBaseSize_ = isSparseCmpKv_ ? groupSize_ : (256U / groupSize_) * groupSize_;
         s2BaseSize_ = 512U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (numHeadsQ_ == 128) {

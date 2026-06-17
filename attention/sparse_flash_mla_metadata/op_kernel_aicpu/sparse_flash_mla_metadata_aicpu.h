@@ -80,6 +80,33 @@ inline bool IsWithinTolerance(T limit, T tolerance, T value)
     return limit + tolerance >= value;
 }
 
+inline bool IsNonEmptyTensor(const Tensor *tensor)
+{
+    if (tensor == nullptr || tensor->GetTensorShape() == nullptr) {
+        return false;
+    }
+    auto shape = tensor->GetTensorShape();
+    auto dims = shape->GetDims();
+    if (dims == 0) {
+        return true;
+    }
+    for (int64_t i = 0; i < dims; ++i) {
+        if (shape->GetDimSize(i) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+inline bool CheckReservedOptionalTensor(const Tensor *tensor, const std::string &name)
+{
+    if (!IsNonEmptyTensor(tensor)) {
+        return true;
+    }
+    KERNEL_LOG_ERROR("%s is reserved and does not support non-empty tensor in current version", name.c_str());
+    return false;
+}
+
 // 分核功能模块输出：FD信息，包含需要归约的数据索引及其分核信息
 struct FlashDecodeResult {
     uint32_t fdUsedVecNum { 0U };             // 归约过程使用的vector数量
