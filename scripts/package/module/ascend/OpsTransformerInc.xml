@@ -20,12 +20,12 @@
     <file_info copy_type="delivery" src_path=""
         dst_path="opp/built-in/op_impl/ai_core/tbe"
         install_path="opp/built-in/op_impl/ai_core/tbe" install_type="all">
-        <file value="config" install_mod="550"/>
+        <file value="config" optional="true" install_mod="550"/>
     </file_info>
     <file_info copy_type="delivery" src_path=""
         dst_path="opp/built-in/op_impl/ai_core/tbe"
         install_path="opp/built-in/op_impl/ai_core/tbe" install_type="all">
-        <file value="impl" install_mod="550"/>
+        <file value="impl" optional="true" install_mod="550"/>
     </file_info>
     <file_info copy_type="delivery" src_path=""
         dst_path="opp/built-in/op_impl/ai_core/tbe"

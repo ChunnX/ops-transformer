@@ -397,11 +397,19 @@ function(gen_cust_aicpu_json_symbol)
   )
   add_custom_target(gen_aicpu_json_from_opdef DEPENDS ${MERGED_JSON})
   add_custom_target(merge_aicpu_json ALL DEPENDS ${MERGED_JSON})
-  install(
-    FILES ${MERGED_JSON}
-    DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_impl/cpu/config
-    OPTIONAL
-  )
+  if(ENABLE_BUILT_IN)
+    install(
+      FILES ${MERGED_JSON}
+      DESTINATION ${AICPU_KERNEL_CONFIG_INSTALL_DIR}
+      OPTIONAL
+    )
+  else()
+    install(
+      FILES ${MERGED_JSON}
+      DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_impl/cpu/config
+      OPTIONAL
+    )
+  endif()
 endfunction()
 
 function(gen_cust_aicpu_kernel_symbol)
@@ -450,11 +458,19 @@ function(gen_cust_aicpu_kernel_symbol)
   )
   add_custom_target(cust_aicpu_kernels ALL DEPENDS ${ARM_SO_OUTPUT})
 
-  install(
-    FILES ${ARM_SO_OUTPUT}
-    DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_impl/cpu/aicpu_kernel/impl
-    OPTIONAL
-  )
+  if(ENABLE_BUILT_IN)
+    install(
+      FILES ${ARM_SO_OUTPUT}
+      DESTINATION ${AICPU_KERNEL_LIB_INSTALL_DIR}
+      OPTIONAL
+    )
+  else()
+    install(
+      FILES ${ARM_SO_OUTPUT}
+      DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_impl/cpu/aicpu_kernel/impl
+      OPTIONAL
+    )
+  endif()
 endfunction()
 
 function(gen_onnx_plugin_symbol)
@@ -494,6 +510,10 @@ function(gen_norm_symbol)
   gen_opgraph_symbol()
   gen_onnx_plugin_symbol()
   gen_aicpu_const_symbol()
+  if (ENABLE_AICPU_KERNEL)
+    gen_cust_aicpu_json_symbol()
+    gen_cust_aicpu_kernel_symbol()
+  endif()
 
 endfunction()
 
