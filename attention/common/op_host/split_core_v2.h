@@ -22,7 +22,7 @@
 #include <algorithm>
 
 namespace split_core_v2 {
-constexpr int64_t FA_TOLERANCE_RATIO = 2;
+constexpr int64_t FA_TOLERANCE_RATIO = 5;
 constexpr uint32_t FD_TOLERANCE_RATIO = 2U;
 
 enum BlockType : uint32_t {
