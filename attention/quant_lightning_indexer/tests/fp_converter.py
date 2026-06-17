@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 import struct
 import math
+import curses
 
 
 def float32_to_hex(f):
-    return f"0x{struct.unpack('>I', struct.pack('>f', f))[0]:08X}"
+    return "0x{:08X}".format(struct.unpack('>I', struct.pack('>f', f))[0])
 
 
 def hex_to_float32(h):
@@ -15,7 +16,7 @@ def hex_to_float32(h):
 
 
 def float16_to_hex(f):
-    return f"0x{struct.unpack('>H', struct.pack('>e', f))[0]:04X}"
+    return "0x{:04X}".format(struct.unpack('>H', struct.pack('>e', f))[0])
 
 
 def hex_to_float16(h):
@@ -34,7 +35,7 @@ def bfloat16_to_hex(f):
     if guard and (rest > 0 or (bf16 & 1)):
         bf16 += 1
     bf16 &= 0xFFFF
-    return f"0x{bf16:04X}"
+    return "0x{:04X}".format(bf16)
 
 
 def hex_to_bfloat16(h):
@@ -149,7 +150,6 @@ def float_to_e8m0(value):
 
     exp_floor = int(math.floor(math.log2(value)))
     lower = 2.0 ** exp_floor
-    upper = 2.0 ** (exp_floor + 1)
     threshold = lower * math.sqrt(2.0)
 
     if value > threshold:
@@ -185,105 +185,152 @@ def parse_byte(s):
     return int(s)
 
 
-class FPConverterApp:
-    def __init__(self, root, tk, ttk):
-        self.root = root
-        self.tk = tk
-        self.ttk = ttk
-        self.root.title("Floating Point Format Converter")
-        self.root.resizable(True, False)
+FIELDS = [
+    ("float",       "Decimal Float  "),
+    ("float32_hex", "Float32 Hex    "),
+    ("e4m3",        "Float8 E4M3    "),
+    ("e8m0",        "Float8 E8M0    "),
+    ("float16",     "Float16 Hex    "),
+    ("bfloat16",    "BFloat16 Hex   "),
+]
 
-        style = ttk.Style()
-        style.configure('Title.TLabel', font=('Helvetica', 14, 'bold'))
 
-        ttk.Label(root, text="Float Format Converter", style='Title.TLabel').grid(
-            row=0, column=0, columnspan=3, padx=10, pady=(10, 5))
+def convert_from(source, raw):
+    if source == 'float':
+        return float(raw)
+    elif source == 'float32_hex':
+        return hex_to_float32(raw)
+    elif source == 'e4m3':
+        return e4m3_to_float(parse_byte(raw))
+    elif source == 'e8m0':
+        return e8m0_to_float(parse_byte(raw))
+    elif source == 'float16':
+        return hex_to_float16(raw)
+    elif source == 'bfloat16':
+        return hex_to_bfloat16(raw)
 
-        self.entries = {}
-        self.vars = {}
-        self._updating = False
 
-        fields = [
-            ("float", "Decimal Float"),
-            ("float32_hex", "Float32 Hex"),
-            ("e4m3", "Float8 E4M3"),
-            ("e8m0", "Float8 E8M0"),
-            ("float16", "Float16 Hex"),
-            ("bfloat16", "BFloat16 Hex"),
-        ]
+def format_field(key, value):
+    if key == 'float':
+        return repr(value)
+    elif key == 'float32_hex':
+        return float32_to_hex(value)
+    elif key == 'e4m3':
+        bits = float_to_e4m3(value)
+        return "0x{:02X}  ({})".format(bits, e4m3_to_float(bits))
+    elif key == 'e8m0':
+        bits = float_to_e8m0(value)
+        return "0x{:02X}  ({})".format(bits, e8m0_to_float(bits))
+    elif key == 'float16':
+        return float16_to_hex(value)
+    elif key == 'bfloat16':
+        return bfloat16_to_hex(value)
 
-        for i, (key, label) in enumerate(fields):
-            ttk.Label(root, text=label + ":").grid(
-                row=i + 1, column=0, sticky='e', padx=(10, 5), pady=3)
-            var = tk.StringVar()
-            entry = ttk.Entry(root, textvariable=var, width=28, font=('Courier', 11))
-            entry.grid(row=i + 1, column=1, padx=(0, 5), pady=3)
-            entry.bind('<Return>', lambda e, k=key: self.on_enter(k))
-            btn = ttk.Button(root, text="Convert", width=8,
-                             command=lambda k=key: self.on_enter(k))
-            btn.grid(row=i + 1, column=2, padx=(0, 10), pady=3)
-            self.entries[key] = entry
-            self.vars[key] = var
 
-        btn_frame = ttk.Frame(root)
-        btn_frame.grid(row=len(fields) + 1, column=0, columnspan=3, pady=10)
-        ttk.Button(btn_frame, text="Clear All", command=self.clear_all).pack(side='left', padx=5)
+def main(stdscr):
+    curses.curs_set(1)
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_CYAN, -1)
+    curses.init_pair(2, curses.COLOR_YELLOW, -1)
+    curses.init_pair(3, curses.COLOR_GREEN, -1)
+    curses.init_pair(4, curses.COLOR_RED, -1)
 
-    def on_enter(self, source):
-        if self._updating:
-            return
-        self._updating = True
-        try:
-            raw = self.vars[source].get().strip()
-            if not raw:
-                return
+    cur = 0
+    values = {k: "" for k, _ in FIELDS}
+    input_buf = ""
+    error_msg = ""
+    FIELD_WIDTH = 40
 
-            if source == 'float':
-                value = float(raw)
-            elif source == 'float32_hex':
-                value = hex_to_float32(raw)
-            elif source == 'e4m3':
-                value = e4m3_to_float(parse_byte(raw))
-            elif source == 'e8m0':
-                value = e8m0_to_float(parse_byte(raw))
-            elif source == 'float16':
-                value = hex_to_float16(raw)
-            elif source == 'bfloat16':
-                value = hex_to_bfloat16(raw)
+    while True:
+        stdscr.erase()
+        h, w = stdscr.getmaxyx()
+
+        title = "  Float Format Converter"
+        stdscr.addstr(0, 2, title, curses.A_BOLD | curses.color_pair(1))
+
+        hint = "[Up/Down] navigate  [Enter] convert  [Esc/Ctrl-C] quit  [c] clear"
+        if w > len(hint) + 4:
+            stdscr.addstr(1, 2, hint, curses.color_pair(2))
+
+        for i, (key, label) in enumerate(FIELDS):
+            row = i + 3
+            is_active = (i == cur)
+
+            if is_active:
+                attr_label = curses.A_BOLD | curses.color_pair(1)
+                attr_val = curses.A_BOLD
             else:
-                return
+                attr_label = curses.A_NORMAL
+                attr_val = curses.A_NORMAL
 
-            for key in self.vars:
-                if key == source:
-                    continue
-                if key == 'float':
-                    self.vars[key].set(repr(value))
-                elif key == 'float32_hex':
-                    self.vars[key].set(float32_to_hex(value))
-                elif key == 'e4m3':
-                    bits = float_to_e4m3(value)
-                    self.vars[key].set(f"0x{bits:02X}  ({e4m3_to_float(bits)})")
-                elif key == 'e8m0':
-                    bits = float_to_e8m0(value)
-                    self.vars[key].set(f"0x{bits:02X}  ({e8m0_to_float(bits)})")
-                elif key == 'float16':
-                    self.vars[key].set(float16_to_hex(value))
-                elif key == 'bfloat16':
-                    self.vars[key].set(bfloat16_to_hex(value))
-        except Exception as e:
-            self.root.title(f"Error: {e}")
-        finally:
-            self._updating = False
+            marker = "> " if is_active else "  "
+            stdscr.addstr(row, 2, marker, attr_label)
+            stdscr.addstr(row, 4, label, attr_label)
+            stdscr.addstr(row, 4 + len(label), ": ", attr_label)
 
-    def clear_all(self):
-        for var in self.vars.values():
-            var.set('')
-        self.root.title("Floating Point Format Converter")
+            col = 4 + len(label) + 2
+            if is_active:
+                stdscr.addstr(row, col, "[", curses.color_pair(2))
+                stdscr.addstr(row, col + 1, input_buf.ljust(FIELD_WIDTH), curses.A_BOLD)
+                stdscr.addstr(row, col + 1 + FIELD_WIDTH, "]", curses.color_pair(2))
+                prev = values[key]
+                if prev:
+                    stdscr.addstr(row, col + FIELD_WIDTH + 4, "= " + prev, curses.color_pair(3))
+                stdscr.move(row, col + 1 + len(input_buf))
+            else:
+                val = values[key]
+                if val:
+                    stdscr.addstr(row, col, val, curses.color_pair(3))
+                else:
+                    stdscr.addstr(row, col, "-" * FIELD_WIDTH, curses.A_DIM)
+
+        if error_msg:
+            err_row = len(FIELDS) + 4
+            if err_row < h:
+                stdscr.addstr(err_row, 2, "Error: " + error_msg, curses.color_pair(4))
+
+        stdscr.refresh()
+
+        try:
+            ch = stdscr.getch()
+        except KeyboardInterrupt:
+            break
+
+        if ch == 27 or ch == ord('q'):
+            break
+        elif ch == curses.KEY_UP:
+            cur = (cur - 1) % len(FIELDS)
+            input_buf = ""
+            error_msg = ""
+        elif ch == curses.KEY_DOWN:
+            cur = (cur + 1) % len(FIELDS)
+            input_buf = ""
+            error_msg = ""
+        elif ch == ord('c'):
+            values = {k: "" for k, _ in FIELDS}
+            input_buf = ""
+            error_msg = ""
+        elif ch == curses.KEY_BACKSPACE or ch == 127 or ch == 8:
+            input_buf = input_buf[:-1]
+            error_msg = ""
+        elif ch == 10 or ch == 13:
+            raw = input_buf.strip()
+            if raw:
+                source_key = FIELDS[cur][0]
+                try:
+                    value = convert_from(source_key, raw)
+                    values[source_key] = raw
+                    for k, _ in FIELDS:
+                        if k != source_key:
+                            values[k] = format_field(k, value)
+                    error_msg = ""
+                except Exception as e:
+                    error_msg = str(e)
+            input_buf = ""
+        elif 32 <= ch <= 126:
+            input_buf += chr(ch)
+            error_msg = ""
 
 
 if __name__ == '__main__':
-    import tkinter as tk
-    from tkinter import ttk
-    root = tk.Tk()
-    app = FPConverterApp(root, tk, ttk)
-    root.mainloop()
+    curses.wrapper(main)
