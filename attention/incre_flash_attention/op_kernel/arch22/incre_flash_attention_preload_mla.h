@@ -117,6 +117,7 @@ public:
     static constexpr LAYOUT KV_LAYOUT_T = IFAT::kvLayout;
     static constexpr AMLAMODE AMLA = IFAT::isAMla;
     static constexpr bool BALANCE = IFAT::isBalance;
+    static constexpr bool ENABLE_TREE = IFAT::enableTree;
 
     static constexpr bool QUANT = (IsSameType<Q_T, KV_T>::value && IsSameType<KV_T, int8_t>::value);
     static constexpr uint8_t PER_CHANNEL_MODE = 0; // 伪量化: K V per-channel
@@ -748,35 +749,37 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadMla<IFAT>::InitOutputSingl
         SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         // TND 场景：sparse9 有 s2=0 的 batch，其 Q token 不会被计算路径写入，必须清零
         if constexpr (LAYOUT_T == LAYOUT::TND) {
-            if (sparseMode == 9U && actualLenDims > 1U) {
-                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-                // 按 batch 轮询分配，跳过 s2≠0 的 batch
-                for (uint64_t bIdx = (uint64_t)tmpBlockIdx; bIdx < batchSize;
-                     bIdx += (uint64_t)usedCoreNum) {
-                    uint64_t s2 = actualSeqLengthsGm.GetValue(bIdx);
-                    if (s2 != 0) {
-                        continue;
+            if constexpr (ENABLE_TREE) {
+                if (actualLenDims > 1U) {
+                    WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+                    // 按 batch 轮询分配，跳过 s2≠0 的 batch
+                    for (uint64_t bIdx = (uint64_t)tmpBlockIdx; bIdx < batchSize;
+                         bIdx += (uint64_t)usedCoreNum) {
+                        uint64_t s2 = actualSeqLengthsGm.GetValue(bIdx);
+                        if (s2 != 0) {
+                            continue;
+                        }
+                        uint64_t tBase = (bIdx == 0) ? 0 : actualSeqLengthsGmQ.GetValue(bIdx - 1);
+                        uint64_t s1 = actualSeqLengthsGmQ.GetValue(bIdx) - tBase;
+                        if (s1 == 0) {
+                            continue;
+                        }
+                        // TND: [T, N, D]，batch 对应的 T 区间连续，一次清零
+                        uint64_t outputOffset = tBase * qHeadNum * headDim;
+                        uint64_t outputSize = s1 * qHeadNum * headDim;
+                        if constexpr (IsSameType<OUT_T, int8_t>::value) {
+                            GlobalTensor<half> attentionOutTmpGm;
+                            attentionOutTmpGm.SetGlobalBuffer(
+                                reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
+                            matmul::InitOutput<half>(
+                                attentionOutTmpGm[outputOffset / 2], outputSize / 2, 0);
+                        } else {
+                            matmul::InitOutput<OUT_T>(
+                                attentionOutGm[outputOffset], outputSize, 0);
+                        }
                     }
-                    uint64_t tBase = (bIdx == 0) ? 0 : actualSeqLengthsGmQ.GetValue(bIdx - 1);
-                    uint64_t s1 = actualSeqLengthsGmQ.GetValue(bIdx) - tBase;
-                    if (s1 == 0) {
-                        continue;
-                    }
-                    // TND: [T, N, D]，batch 对应的 T 区间连续，一次清零
-                    uint64_t outputOffset = tBase * qHeadNum * headDim;
-                    uint64_t outputSize = s1 * qHeadNum * headDim;
-                    if constexpr (IsSameType<OUT_T, int8_t>::value) {
-                        GlobalTensor<half> attentionOutTmpGm;
-                        attentionOutTmpGm.SetGlobalBuffer(
-                            reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
-                        matmul::InitOutput<half>(
-                            attentionOutTmpGm[outputOffset / 2], outputSize / 2, 0);
-                    } else {
-                        matmul::InitOutput<OUT_T>(
-                            attentionOutGm[outputOffset], outputSize, 0);
-                    }
+                    SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
                 }
-                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             }
         }
         WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
@@ -2086,14 +2089,14 @@ IncreFlashAttentionAttenPreloadMla<IFAT>::IsSkipAttenMask(const ExtraInfoMla &in
 
     uint32_t s2EndPos = info.s2Idx * singleProcessSInnerSize + info.actualSingleProcessSInnerSize;
     // 新增sparse9的处理，sparse9和sparse3类似，但是sparse9是用户自己传入的mask矩阵，算子无法感知具体数值，所以涉及到基本块都要参与计算
-    if (sparseMode == 9U) {
+    if constexpr (ENABLE_TREE) {
         if (s2EndPos > (info.s2Size - actualSeqQ)) {
             return false;
         } else {
             return true;
         }
     }
-    
+
     // s2<s1时，必然走mask
     if (info.s2Size < actualSeqQ) {
         return false;
@@ -2170,7 +2173,7 @@ IncreFlashAttentionAttenPreloadMla<IFAT>::ElewiseCompute(const ExtraInfoMla &inf
                 }
                 attenMaskUb = attenMaskUbDst;
             } else { // BSH/BSND/TND
-                if (sparseMode == 9U) {
+                if constexpr (ENABLE_TREE) {
                     AttenMaskCopyForTree(info, attenMaskUb, startRow, dealRowCount);
                 } else {
                     AttenMaskCopyForSplitG(info, attenMaskUb, startRow, dealRowCount);
