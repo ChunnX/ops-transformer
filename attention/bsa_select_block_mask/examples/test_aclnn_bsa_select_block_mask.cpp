@@ -45,6 +45,21 @@ int32_t GetEnvInt32(const char* name, int32_t defaultValue) {
     return static_cast<int32_t>(parsed);
 }
 
+bool GetEnvBool(const char* name, bool defaultValue) {
+    const char* value = std::getenv(name);
+    if (value == nullptr || value[0] == '\0') {
+        return defaultValue;
+    }
+    if (std::strcmp(value, "0") == 0 || std::strcmp(value, "false") == 0 || std::strcmp(value, "FALSE") == 0) {
+        return false;
+    }
+    if (std::strcmp(value, "1") == 0 || std::strcmp(value, "true") == 0 || std::strcmp(value, "TRUE") == 0) {
+        return true;
+    }
+    LOG_PRINT("Invalid %s=%s, use default %d\n", name, value, defaultValue ? 1 : 0);
+    return defaultValue;
+}
+
 float GetEnvFloat(const char* name, float defaultValue) {
     const char* value = std::getenv(name);
     if (value == nullptr || value[0] == '\0') {
@@ -212,11 +227,13 @@ int main() {
     int64_t firstSelectedSecondHalf = -1;
     double actualSparsity = 0.0;
     int32_t kernelRunTimes = GetEnvInt32("BSA_KERNEL_RUN_TIMES", 1);
+    bool verifyEachRun = GetEnvBool("BSA_VERIFY_EACH_RUN", true);
     double totalOpExecuteMs = 0.0;
     double maxOpExecuteMs = 0.0;
     double lastOpExecuteMs = 0.0;
 
     LOG_PRINT("Calling aclnnBSASelectBlockMask %d times with reused tensors and fresh executor...\n", kernelRunTimes);
+    LOG_PRINT("Verify result each run: %d\n", verifyEachRun ? 1 : 0);
     for (int32_t runId = 0; runId < kernelRunTimes; ++runId) {
         uint64_t workspaceSize = 0;
         aclOpExecutor* executor = nullptr;
@@ -289,6 +306,11 @@ int main() {
         }
         LOG_PRINT("Run %03d/%03d: Op execute time %.3f ms\n",
                   runId + 1, kernelRunTimes, lastOpExecuteMs);
+
+        bool shouldVerifyResult = verifyEachRun || (runId + 1 == kernelRunTimes);
+        if (!shouldVerifyResult) {
+            continue;
+        }
 
         ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(int8_t), maskOutDeviceAddr,
                           resultData.size() * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
