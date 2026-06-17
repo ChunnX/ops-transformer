@@ -228,7 +228,7 @@ protected:
     bool CheckCoreNum(const gert::TilingContext *context) const;
     bool SetShapeList(const gert::TilingContext *context);
     bool CheckEmptyTensor(const gert::TilingContext *context) const;
-    bool CheckTensorListSize(const gert::TilingContext *context) const;
+    bool CheckTensorListSize() const;
     bool CheckTensorDtype(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
                           const ge::DataType &tensorDtype, const std::string &tensorType) const;
     bool IsNzFormat(const gert::TilingContext *context, uint32_t attrIdx, size_t idx) const;
@@ -256,17 +256,17 @@ protected:
     bool IsA16W4ND() const;
     bool IsMxA8W4() const;
     bool CheckPerTokenScale(const gert::TilingContext* context) const;
-    bool CheckUnsupportDataFlow(const gert::TilingContext *context) const;
-    bool CheckAntiQuantDtype(const gert::TilingContext *context) const;
-    bool CheckBiasDtype(const gert::TilingContext *context) const;
-    bool CheckGroupTypeAndSplitItem(const gert::TilingContext *context) const;
-    bool CheckTransposeStatus(const gert::TilingContext *context) const;
+    bool CheckUnsupportDataFlow() const;
+    bool CheckAntiQuantDtype() const;
+    bool CheckBiasDtype() const;
+    bool CheckGroupTypeAndSplitItem() const;
+    bool CheckTransposeStatus() const;
     bool SetShapeListSplitMSingleXSingleWeightSingleY(const gert::TilingContext *context);
     bool SetShapeListMultiXMultiWeightMultiY(const gert::TilingContext *context);
     uint16_t GetTensorListSize(const gert::TilingContext *context, uint32_t attrIdx) const;
     void GetNumOfInputs(const gert::TilingContext *context);
     bool SetAntiquantGroupSize(const gert::TilingContext *context);
-    bool CheckGroupSize(const gert::TilingContext *context) const;
+    bool CheckGroupSize() const;
     bool GetC0Size(const gert::TilingContext *context, ge::DataType dtype, uint64_t &c0Size) const;
     void CalcFullNumBlocksResplitTiling(uint64_t c0Size);
     void CalcNoFullNumBlocksResplitTiling(uint64_t c0Size);
