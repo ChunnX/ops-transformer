@@ -741,8 +741,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         }
         PipeBarrier<PIPE_ALL>();
         if ((AscendC::GetSystemCycle() - startCycle >= WAIT_TOKEN_TIMEOUT_CYCLES) && dumpId == 0) {
-            // DFX: localWindowsExp + 760KB + aivId * 32B, 8 uint32 per AIV.
-            uint32_t tokenProgressOffset = 760 * 1024 / 4 + aivId_ * 8;
+            // DFX: localWindowsExp + 760KB + aivId * 64B, 16 uint32 per AIV.
+            uint32_t tokenProgressOffset = 760 * 1024 / 4 + aivId_ * 16;
             selfDataStatusGMTensor.SetValue(tokenProgressOffset, 7777);
             selfDataStatusGMTensor.SetValue(tokenProgressOffset + 1, 1); // CreateInnerReduceInfo
             selfDataStatusGMTensor.SetValue(tokenProgressOffset + 2, tokenStatus);
@@ -751,6 +751,39 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             selfDataStatusGMTensor.SetValue(tokenProgressOffset + 5, selfTokenIdx);
             selfDataStatusGMTensor.SetValue(tokenProgressOffset + 6, 0);
             selfDataStatusGMTensor.SetValue(tokenProgressOffset + 7, bufferId_);
+            for (uint32_t dumpIdx = 8; dumpIdx < 16; ++dumpIdx) {
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + dumpIdx, 0);
+            }
+            if (curServerId != serverId_) {
+                GlobalTensor<uint64_t> tokenFlagDumpGt;
+                tokenFlagDumpGt.SetGlobalBuffer((__gm__ uint64_t*)(windowInGM_));
+                LocalTensor<uint64_t> tokenFlagDumpLt = statusBuf_.Get<uint64_t>();
+                if (tokenIdx > 0) {
+                    uint32_t prevTokenOffset = curServerId * serverSizeOnWin_ + (tokenIdx - 1) * tokenStructLen_;
+                    DataCopy(tokenFlagDumpLt, tokenFlagDumpGt[(prevTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
+                        flagLenInStruct_ / sizeof(uint64_t));
+                    PipeBarrier<PIPE_ALL>();
+                    SyncFunc<AscendC::HardEvent::MTE2_S>();
+                    selfDataStatusGMTensor.SetValue(tokenProgressOffset + 8, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(0)));
+                    selfDataStatusGMTensor.SetValue(tokenProgressOffset + 9, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(1)));
+                }
+                uint32_t curTokenOffset = curServerId * serverSizeOnWin_ + tokenIdx * tokenStructLen_;
+                DataCopy(tokenFlagDumpLt, tokenFlagDumpGt[(curTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
+                    flagLenInStruct_ / sizeof(uint64_t));
+                PipeBarrier<PIPE_ALL>();
+                SyncFunc<AscendC::HardEvent::MTE2_S>();
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 10, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(0)));
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 11, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(1)));
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 12, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(2)));
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 13, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(3)));
+                uint32_t nextTokenOffset = curServerId * serverSizeOnWin_ + (tokenIdx + 1) * tokenStructLen_;
+                DataCopy(tokenFlagDumpLt, tokenFlagDumpGt[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
+                    flagLenInStruct_ / sizeof(uint64_t));
+                PipeBarrier<PIPE_ALL>();
+                SyncFunc<AscendC::HardEvent::MTE2_S>();
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 14, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(0)));
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 15, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(1)));
+            }
             DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMTensor[tokenProgressOffset]);
             dumpId += 1;
@@ -1235,6 +1268,13 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCopy(sendTokenInfoLocalTensor, tokenDstServerMaskWorkspaceGMTensor_, (activeMaskBsCnt_ * FLAG_SIZE)/sizeof(uint64_t));
     PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
+    auto qpNum = ((__gm__ HcclAiRMAInfo*)qpInfo_)->qpNum;
+    auto qpCtxEntry = (__gm__ HcclAiRMAWQ*)(((__gm__ HcclAiRMAInfo*)qpInfo_)->sqPtr +
+        dstRankId * qpNum * (uint64_t)(((__gm__ HcclAiRMAInfo*)qpInfo_)->sizeOfAiRMAWQ));
+    auto curHardwareHead = qpCtxEntry->headAddr;
+    uint64_t sendHeadSeq = 0;
+    bool sendHeadSeqInit = false;
+    uint32_t sendTokenCnt = 0;
 
     selfDataStatusGMAiv.SetValue(0, 10); // 初始化为0，表示数据未准备好
     DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
@@ -1244,8 +1284,23 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         uint64_t dstServerInfo = sendTokenInfoLocalTensor(tokenIdx * FLAG_SIZE / sizeof(uint64_t));
         if ((dstServerInfo & dstServerMask) != 0) { // 当前有需要发送的token立即发送
             uint64_t srcRdmaAddr = (uint64_t)(srcRdmaAddrBase + (tokenStructLen_ * tokenIdx * 1UL));
+            cacheWriteThrough((__gm__ uint8_t*)curHardwareHead, 8);
+            uint64_t curHead = *(__gm__ uint32_t*)(curHardwareHead);
+            if (!sendHeadSeqInit) {
+                sendHeadSeq = curHead;
+                sendHeadSeqInit = true;
+            }
+            __gm__ uint64_t* tokenFlagAddr = (__gm__ uint64_t*)(srcRdmaAddr + flagOffsetInStruct_);
+            tokenFlagAddr[0] = SHOULD_SEND_FLAG_VALUE;
+            tokenFlagAddr[1] = curHead;
+            tokenFlagAddr[2] = sendHeadSeq;
+            tokenFlagAddr[3] = sendTokenCnt;
+            cacheWriteThrough((__gm__ uint8_t*)tokenFlagAddr, flagLenInStruct_);
+            PipeBarrier<PIPE_ALL>();
             AIVRDMAPostSend((GM_ADDR)srcRdmaAddr, (GM_ADDR)dstRdmaAddr, dstRankId, tokenStructLen_, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, 0);
             dstRdmaAddr += tokenStructLen_;
+            sendHeadSeq++;
+            sendTokenCnt++;
             PipeBarrier<PIPE_ALL>();
         }
     }
@@ -1299,9 +1354,6 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCopyPad(selfDataStatusGMAivSendDump, dumpLt, params);
     PipeBarrier<PIPE_ALL>();
 
-    auto qpNum = ((__gm__ HcclAiRMAInfo*)qpInfo_)->qpNum;
-    auto qpCtxEntry = (__gm__ HcclAiRMAWQ*)(((__gm__ HcclAiRMAInfo*)qpInfo_)->sqPtr +
-        dstRankId * qpNum * (uint64_t)(((__gm__ HcclAiRMAInfo*)qpInfo_)->sizeOfAiRMAWQ));
     uint32_t qpDepth = static_cast<uint32_t>(qpCtxEntry->depth);
     dumpLt.SetValue(0, bufferId_);
     PipeBarrier<PIPE_ALL>();
@@ -1516,8 +1568,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         }
 
         if ((AscendC::GetSystemCycle() - startCycle >= WAIT_TOKEN_TIMEOUT_CYCLES) && dumpId == 0) {
-            // DFX: localWindowsExp + 760KB + aivId * 32B, 8 uint32 per AIV.
-            uint32_t tokenProgressOffset = 760 * 1024 / 4 + aivId_ * 8;
+            // DFX: localWindowsExp + 760KB + aivId * 64B, 16 uint32 per AIV.
+            uint32_t tokenProgressOffset = 760 * 1024 / 4 + aivId_ * 16;
             selfDataStatusGMTensor.SetValue(tokenProgressOffset, 7777);
             selfDataStatusGMTensor.SetValue(tokenProgressOffset + 1, 2); // Win2Ipc
             selfDataStatusGMTensor.SetValue(tokenProgressOffset + 2, tokenStatus);
@@ -1526,6 +1578,39 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             selfDataStatusGMTensor.SetValue(tokenProgressOffset + 5, selfTokenIdx);
             selfDataStatusGMTensor.SetValue(tokenProgressOffset + 6, static_cast<uint32_t>(justExpInfo));
             selfDataStatusGMTensor.SetValue(tokenProgressOffset + 7, bufferId_);
+            for (uint32_t dumpIdx = 8; dumpIdx < 16; ++dumpIdx) {
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + dumpIdx, 0);
+            }
+            if (formServerId != serverId_) {
+                GlobalTensor<uint64_t> tokenFlagDumpGt;
+                tokenFlagDumpGt.SetGlobalBuffer((__gm__ uint64_t*)(windowInGM_));
+                LocalTensor<uint64_t> tokenFlagDumpLt = statusBuf_.Get<uint64_t>();
+                if (tokenIdx > 0) {
+                    uint32_t prevTokenOffset = formServerId * serverSizeOnWin_ + (tokenIdx - 1) * tokenStructLen_;
+                    DataCopy(tokenFlagDumpLt, tokenFlagDumpGt[(prevTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
+                        flagLenInStruct_ / sizeof(uint64_t));
+                    PipeBarrier<PIPE_ALL>();
+                    SyncFunc<AscendC::HardEvent::MTE2_S>();
+                    selfDataStatusGMTensor.SetValue(tokenProgressOffset + 8, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(0)));
+                    selfDataStatusGMTensor.SetValue(tokenProgressOffset + 9, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(1)));
+                }
+                uint32_t curTokenOffset = formServerId * serverSizeOnWin_ + tokenIdx * tokenStructLen_;
+                DataCopy(tokenFlagDumpLt, tokenFlagDumpGt[(curTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
+                    flagLenInStruct_ / sizeof(uint64_t));
+                PipeBarrier<PIPE_ALL>();
+                SyncFunc<AscendC::HardEvent::MTE2_S>();
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 10, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(0)));
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 11, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(1)));
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 12, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(2)));
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 13, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(3)));
+                uint32_t nextTokenOffset = formServerId * serverSizeOnWin_ + (tokenIdx + 1) * tokenStructLen_;
+                DataCopy(tokenFlagDumpLt, tokenFlagDumpGt[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
+                    flagLenInStruct_ / sizeof(uint64_t));
+                PipeBarrier<PIPE_ALL>();
+                SyncFunc<AscendC::HardEvent::MTE2_S>();
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 14, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(0)));
+                selfDataStatusGMTensor.SetValue(tokenProgressOffset + 15, static_cast<uint32_t>(tokenFlagDumpLt.GetValue(1)));
+            }
             DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMTensor[tokenProgressOffset]);
             dumpId += 1;
