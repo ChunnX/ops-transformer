@@ -387,14 +387,17 @@ aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
     return isFoundUbMemProtocol ? ACLNN_SUCCESS : ACLNN_ERR_INNER;
 }
 
-aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum)
+aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum,
+                                               bool &isCrossServer)
 {
+    isCrossServer = false;
     uint32_t srcRankId = 0;
-    uint32_t dstRankId = 0;
-    uint32_t netLinkNum = 0;
     uint32_t rankNumInLayer = 0;
     uint32_t *rankIdLists = nullptr;
     CommLink *linksList = nullptr;
+    uint32_t netLinkNum = 0;
+    rankNumPerUbDomain_ = 0;
+    layerNumMyUbDomain_ = 0;
 
     auto hcclRet = HcclGetRankId(hcclHandle, &srcRankId);
     if (hcclRet != HCCL_SUCCESS) {
@@ -410,9 +413,11 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
             OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get rank IDs by layer failed");
             return ACLNN_ERR_INNER;
         }
+
+        bool allSupportUbMem = true;
         for (uint32_t rankId = 0; rankId < rankNumInLayer; ++rankId) {
             if (rankIdLists[rankId] == srcRankId ||
-                layerMap.find(rankIdLists[rankId]) != layerMap.end()) { // 本卡或者已经校验过的卡跳过
+                layerMap.find(rankIdLists[rankId]) != layerMap.end()) {
                 continue;
             }
             hcclRet = HcclRankGraphGetLinks(hcclHandle, layerList[layerIndex], srcRankId, rankIdLists[rankId],
@@ -422,24 +427,113 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
                 return ACLNN_ERR_INNER;
             }
             if (netLinkNum == 0) {
-                OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No available HCCL links found, srcRankID %u, dstRankID %u layer is %u",
+                OP_LOGE_LIBOPAPI_REPORT("Mc2Context",
+                        "No available HCCL links found, srcRankID %u, dstRankID %u layer is %u",
                         srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
             if (CheckLinks(netLinkNum, linksList) != ACLNN_SUCCESS) {
-                OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No HCCL links support UB_MEM srcRankID %u, dstRankID %u layer is %u",
-                        srcRankId, rankIdLists[rankId], layerList[layerIndex]);
-                return ACLNN_ERR_INNER;
+                OP_LOGD("Mc2Context",
+                        "UB_MEM not supported for rank %u on layer %u, checking if all visited ranks cover domain",
+                        rankIdLists[rankId], layerList[layerIndex]);
+                allSupportUbMem = false;
+                break;
             }
             layerMap[rankIdLists[rankId]] = layerList[layerIndex];
         }
+
+        if (allSupportUbMem) {
+            rankNumPerUbDomain_ = rankNumInLayer;
+            layerNumMyUbDomain_ = layerList[layerIndex];
+        } else {
+            if (rankNumPerUbDomain_ == epRankSize_) {
+                OP_LOGI("All visited ranks cover entire domain, only UB_MEM supported");
+                isCrossServer = false;
+                return ACLNN_SUCCESS;
+            }
+            OP_LOGD("Not all ranks support UB_MEM, breaking to check URMA");
+            break;
+        }
     }
+
+    if (rankNumPerUbDomain_ == 0) {
+        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No UB domain found where all ranks support UB_MEM");
+        return ACLNN_ERR_INNER;
+    }
+
+    if (rankNumPerUbDomain_ >= epRankSize_ || epRankSize_ % rankNumPerUbDomain_ != 0) {
+        OP_LOGE_LIBOPAPI_REPORT("Mc2Context",
+                "Invalid UB domain size: rankNumPerUbDomain_=%u, rankSize=%u",
+                rankNumPerUbDomain_, epRankSize_);
+        return ACLNN_ERR_INNER;
+    }
+
+    uint32_t maxLayer = layerList[layerNum - 1];
+    uint32_t *allRankIds = nullptr;
+    uint32_t allRankNum = 0;
+    hcclRet = HcclRankGraphGetRanksByLayer(hcclHandle, maxLayer, &allRankIds, &allRankNum);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get rank IDs by max layer failed");
+        return ACLNN_ERR_INNER;
+    }
+
+    uint32_t *myUbDomainRankIds = nullptr;
+    uint32_t myUbDomainRankNum = 0;
+    hcclRet = HcclRankGraphGetRanksByLayer(hcclHandle, layerNumMyUbDomain_, &myUbDomainRankIds, &myUbDomainRankNum);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get UB domain rank IDs failed");
+        return ACLNN_ERR_INNER;
+    }
+
+    for (uint32_t i = 0; i < allRankNum; ++i) {
+        if (allRankIds[i] == srcRankId) {
+            continue;
+        }
+
+        bool isInMyUbDomain = false;
+        for (uint32_t j = 0; j < myUbDomainRankNum; ++j) {
+            if (allRankIds[i] == myUbDomainRankIds[j]) {
+                isInMyUbDomain = true;
+                break;
+            }
+        }
+        if (isInMyUbDomain) {
+            continue;
+        }
+
+        hcclRet = HcclRankGraphGetLinks(hcclHandle, maxLayer, srcRankId, allRankIds[i],
+                                        &linksList, &netLinkNum);
+        if (hcclRet != HCCL_SUCCESS || netLinkNum == 0) {
+            OP_LOGE_LIBOPAPI_REPORT("Mc2Context",
+                    "Get HCCL links failed for cross-server rank %u", allRankIds[i]);
+            return ACLNN_ERR_INNER;
+        }
+
+        bool supportUrma = false;
+        for (uint32_t j = 0; j < netLinkNum; ++j) {
+            if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_URMA) {
+                supportUrma = true;
+                break;
+            }
+        }
+        if (!supportUrma) {
+            OP_LOGE_LIBOPAPI_REPORT("Mc2Context",
+                    "URMA protocol not supported for cross-server rank %u", allRankIds[i]);
+            return ACLNN_ERR_INNER;
+        }
+        layerMap[allRankIds[i]] = maxLayer;
+    }
+
+    isCrossServer = true;
+    OP_LOGI("Cross-server confirmed with URMA support, rankNumPerUbDomain_=%u, layerNumMyUbDomain_=%u",
+            rankNumPerUbDomain_, layerNumMyUbDomain_);
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol)
+aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol, bool &isCrossServer)
 {
     OP_LOGD("Start to get HCCL communication protocol");
+    isCrossServer = false;
     uint32_t layerNum = 0;
     uint32_t *layerList = nullptr;
     auto ret = HcclRankGraphGetLayers(hcclHandle, &layerList, &layerNum);
@@ -449,19 +543,23 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
     }
 
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
-        OP_LOGI("HCCL communication layerNum is %u,so set protocol to UB_MEM", layerNum);
+        OP_LOGI("HCCL communication layerNum is %u, not cross-server, set protocol to UB_MEM", layerNum);
         protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         return ACLNN_SUCCESS;
     }
 
     OP_LOGD("start CheckProtocolSupport, layerNum is %u", layerNum);
 
-    auto aclnnRet = CheckProtocolSupport(hcclHandle, layerList, layerNum);
+    auto aclnnRet = CheckProtocolSupport(hcclHandle, layerList, layerNum, isCrossServer);
     if (aclnnRet != ACLNN_SUCCESS) {
         return aclnnRet;
     }
 
-    OP_LOGD("CheckProtocolSupport success!");
+    if (isCrossServer) {
+        OP_LOGI("Cross-server scenario confirmed, protocol set to UB_MEM for intra-server, URMA for cross-server");
+    } else {
+        OP_LOGI("Not cross-server, protocol set to UB_MEM");
+    }
     protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
     return ACLNN_SUCCESS;
 }
@@ -492,8 +590,82 @@ aclnnStatus Mc2Context::CheckContextCache(const HcclComm &hcclHandle, const std:
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus Mc2Context::GetHcclCommHandle(const HcclComm &hcclHandle, const CommProtocol &protocol,
+                                            Mc2MoeContext *mc2ContextStruct)
+{
+    OP_LOGD("Start to get HCCL URMA communication handle for cross-server ranks");
+    uint32_t rankId = mc2ContextStruct->epRankId;
+
+    std::vector<uint32_t> crossServerRanks;
+    for (uint32_t i = 0; i < epRankSize_; ++i) {
+        if (i == rankId) {
+            continue;
+        }
+        if (layerMap[i] != layerNumMyUbDomain_) {
+            crossServerRanks.push_back(i);
+        }
+    }
+
+    uint32_t channelNum = crossServerRanks.size();
+    if (channelNum == 0) {
+        OP_LOGI("No cross-server ranks found, skip URMA channel acquisition");
+        return ACLNN_SUCCESS;
+    }
+
+    std::vector<HcclChannelDesc> channelDesc(channelNum);
+    auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "URMA channel desc init failed");
+        return ACLNN_ERR_INNER;
+    }
+
+    for (uint32_t idx = 0; idx < channelNum; ++idx) {
+        uint32_t dstRank = crossServerRanks[idx];
+        CommLink *links = nullptr;
+        auto ret = GetHcclCommLink(hcclHandle, layerMap[dstRank], rankId, dstRank, protocol, links);
+        if (ret != ACLNN_SUCCESS) {
+            OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get URMA comm link failed for rank %u", dstRank);
+            return ret;
+        }
+        channelDesc[idx].channelProtocol = protocol;
+        channelDesc[idx].remoteRank = dstRank;
+        channelDesc[idx].localEndpoint = links->srcEndpointDesc;
+        channelDesc[idx].remoteEndpoint = links->dstEndpointDesc;
+    }
+
+    std::vector<ChannelHandle> channels(channelNum);
+    hcclRet = HcclChannelAcquire(hcclHandle, CommEngine::COMM_ENGINE_AIV, channelDesc.data(),
+                                  channelNum, channels.data());
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Acquire URMA channel failed");
+        return ACLNN_ERR_INNER;
+    }
+    OP_LOGD("Acquire URMA channel success, channel num is: %u", channelNum);
+
+    for (uint32_t i = 0; i < epRankSize_; ++i) {
+        mc2ContextStruct->hcommHandle_[i] = 0;
+    }
+
+    for (uint32_t idx = 0; idx < channelNum; ++idx) {
+        uint32_t dstRank = crossServerRanks[idx];
+        mc2ContextStruct->hcommHandle_[dstRank] = reinterpret_cast<uint64_t>(channels[idx]);
+
+        void *tempBuffer = nullptr;
+        uint64_t bufSize = 0;
+        hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+        if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
+            OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get URMA buffer failed, src: %u, dst: %u", rankId, dstRank);
+            return ACLNN_ERR_INNER;
+        }
+        mc2ContextStruct->epHcclBuffer_[dstRank] = reinterpret_cast<uint64_t>(tempBuffer) + dstRank * EP_RANK_OFFSET_STEP;
+    }
+
+    OP_LOGI("Get HCCL URMA communication handle success, cross-server rank num: %u", channelNum);
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
-                                            aclTensor *&mc2Context)
+                                            aclTensor *&mc2Context, bool &isCrossServer)
 {
     OP_LOGI("Start to get Mc2MoeContext Tensor");
     Mc2Context instance;
@@ -505,7 +677,8 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     CommProtocol protocol;
     std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
     CommEngine engine = CommEngine::COMM_ENGINE_AIV;
-    hcclBuffSize = 0; // Default to 0, will be updated in CheckContextCache
+    hcclBuffSize = 0;
+    isCrossServer = false;
 
     aclnnRet = instance.ValidateContextTag(mc2ContextTag);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
@@ -516,14 +689,14 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
 
     aclnnRet = instance.CheckContextCache(hcclHandle, mc2ContextTag, engine, ctx, hcclBuffSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
-    if (hcclBuffSize != 0) { // Cache not found, need to create context
+    if (hcclBuffSize != 0) {
         aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
         CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         OP_LOGI("Found context cache, Get Mc2MoeContext Tensor Success");
         return ACLNN_SUCCESS;
     }
 
-    aclnnRet = instance.GetCommProtocol(hcclHandle, protocol);
+    aclnnRet = instance.GetCommProtocol(hcclHandle, protocol, isCrossServer);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     Mc2MoeContext mc2ContextStruct;
@@ -531,10 +704,15 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
                                         &mc2ContextStruct, ctx, hcclBuffSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
+    if (isCrossServer) {
+        aclnnRet = instance.GetHcclCommHandle(hcclHandle, CommProtocol::COMM_PROTOCOL_URMA, &mc2ContextStruct);
+        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    }
+
     aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
-    OP_LOGI("Get Mc2MoeContext Tensor Success");
+    OP_LOGI("Get Mc2MoeContext Tensor Success, isCrossServer: %d", isCrossServer);
     return ACLNN_SUCCESS;
 }
 

@@ -35,6 +35,7 @@ struct CommContext {
     uint32_t rankSizePerServer = 0;
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
+    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE] = {}; // URMA通信对端句柄
 };
 
 // ======================== Common Types and Utilities ========================

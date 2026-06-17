@@ -40,5 +40,6 @@ struct CommContextForDump {
     uint64_t epRankid = 0;
     uint64_t kfcContextAddr = 0;
     uint64_t epHcclBufffer_[EP_HCCL_BUFFER_RANK_NUM];
+    uint64_t hcommHandle_[EP_HCCL_BUFFER_RANK_NUM];
 };
 #endif

@@ -38,7 +38,7 @@ namespace Mc2Aclnn {
 class Mc2Context {
 public:
     static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
-                                           aclTensor *&mc2Context);
+                                           aclTensor *&mc2Context, bool &isCrossServer = false);
     static aclnnStatus GetMc2RankSize(const char *groupEp, uint32_t &rankSize);
 
 private:
@@ -63,8 +63,11 @@ private:
                                 uint64_t &hcclBuffSize);
     aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize);
-    aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum);
-    aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol);
+    aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum,
+                                      bool &isCrossServer);
+    aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol, bool &isCrossServer);
+    aclnnStatus GetHcclCommHandle(const HcclComm &hcclHandle, const CommProtocol &protocol,
+                                   Mc2MoeContext *mc2ContextStruct);
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
     aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList);
     aclnnStatus CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
@@ -77,6 +80,8 @@ private:
     uint64_t hcclBuffSize_ = 0;
     uint32_t epRankSize_ = 0;
     uint32_t rankSizePerServer_ = 0;
+    uint32_t rankNumPerUbDomain_ = 0;
+    uint32_t layerNumMyUbDomain_ = 0;
     std::unordered_map<uint32_t, uint32_t> layerMap; // 记录本卡与其他卡的通信层数，key为其他卡的rankId，value为通信层数
 
     HcclResult (*HcomGetCommHandleByGroup)(const char *, HcclComm *) = nullptr;

@@ -52,6 +52,7 @@ struct Mc2MoeContext {
     uint32_t rankSizePerServer;
     uint64_t kfcContextAddr;
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
+    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE]; // URMA通信对端句柄
 };
 
 struct LinkQueryParams {

@@ -26,6 +26,7 @@ struct Mc2MoeContext {
     uint32_t epRankSize;
     uint64_t winSize;
     uint64_t epHcclBuffer[1024];
+    uint64_t hcommHandle[1024]; // URMA通信对端句柄
 };
 
 struct GMMAddrInfo {
