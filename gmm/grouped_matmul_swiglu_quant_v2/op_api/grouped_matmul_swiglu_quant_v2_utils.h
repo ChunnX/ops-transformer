@@ -16,6 +16,7 @@
 #include "log/log.h"
 
 #include <sstream>
+#include <vector>
 
 namespace gmmSwigluQuantV2 {
 
@@ -38,6 +39,20 @@ inline std::string ViewShapeToString(const aclTensor *tensor)
     return ShapeToStringWithoutBracket(tensor->GetViewShape());
 }
 
+inline std::string SupportListToString(const std::vector<DataType> &supportList)
+{
+    std::ostringstream oss;
+    oss << "{";
+    for (size_t i = 0; i < supportList.size(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << op::ToString(supportList[i]).GetString();
+    }
+    oss << "}";
+    return oss.str();
+}
+
 #define GMM_SWIGLU_CHECK_SHAPE(tensor, paramName, expectedShape, retExpr)                              \
     do {                                                                                               \
         if ((tensor)->GetViewShape() != (expectedShape)) {                                             \
@@ -50,10 +65,11 @@ inline std::string ViewShapeToString(const aclTensor *tensor)
 
 #define GMM_SWIGLU_CHECK_DTYPE(tensor, paramName, supportList, retExpr)                                \
     do {                                                                                               \
-        if (!CheckType((tensor)->GetDataType(), supportList)) {                                        \
+        if (std::find((supportList).begin(), (supportList).end(),                                      \
+                      (tensor)->GetDataType()) == (supportList).end()) {                               \
             OP_LOGE_FOR_INVALID_DTYPE(GMM_SWIGLU_ACLNN_OP_NAME, paramName,                            \
                                       op::ToString((tensor)->GetDataType()).GetString(),               \
-                                      op::ToString(supportList).GetString());                          \
+                                      SupportListToString(supportList).c_str());                       \
             retExpr;                                                                                  \
         }                                                                                              \
     } while (0)
@@ -119,32 +135,35 @@ constexpr int64_t MXA8W4_K_MIN = 32LL;
 constexpr int64_t MXA8W4_N_ALIGN = 128LL;
 constexpr int64_t MXA8W4_N_MIN = 128LL;
 constexpr int64_t MXA8W4_SCALE_BLOCK = 128LL;
+constexpr size_t MX_A8W4_MULTI_WEIGHT_DIM = 2UL;
+constexpr size_t MX_A8W4_MULTI_WEIGHT_NZ_DIM = 4UL;
+constexpr size_t MX_A8W4_MULTI_WEIGHT_SCALE_DIM = 3UL;
 constexpr const char *GMM_SWIGLU_ACLNN_OP_NAME = "aclnnGroupedMatmulSwigluQuantV2";
 
-const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
-const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
-const std::initializer_list<DataType> XW_DTYPE_SUPPORT_LIST_PERTOKEN = {
+const std::vector<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
+const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
+const std::vector<DataType> XW_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
-const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN,
-                                                                   DataType::DT_FLOAT8_E5M2};
-const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1,
-                                                                         DataType::DT_FLOAT4_E1M2};
-const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
-const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XINT8 = {
+const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN,
+                                                         DataType::DT_FLOAT8_E5M2};
+const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1,
+                                                               DataType::DT_FLOAT4_E1M2};
+const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
+const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XINT8 = {
     DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_FLOAT};
-const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XFP8HIF8 = {DataType::DT_BF16,
-                                                                                           DataType::DT_FLOAT};
-const std::initializer_list<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
-const std::initializer_list<DataType> X_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
-const std::initializer_list<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
-const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4 = {
+const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XFP8HIF8 = {DataType::DT_BF16,
+                                                                                 DataType::DT_FLOAT};
+const std::vector<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
+const std::vector<DataType> X_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
+const std::vector<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
+const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4 = {
     DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
-const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {
+const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
-const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
-const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
-const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT8_E4M3FN};
-const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT4_E2M1};
+const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
+const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
+const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT8_E4M3FN};
+const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT4_E2M1};
 
 inline const char *GetGroupedMatmulSwigluQuantV2ScenarioName(const GroupedMatmulSwigluQuantParamsBase &params)
 {
@@ -182,6 +201,21 @@ inline const char *GetGroupedMatmulSwigluQuantV2ScenarioName(const GroupedMatmul
 
 class GroupedMatmulSwigluQuantBaseHandler : public GroupedMatmulSwigluQuantHandler {
 protected:
+    bool IsMultiTensorWeight() const
+    {
+        auto wDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
+        if (wDimNum == MX_A8W4_MULTI_WEIGHT_DIM || wDimNum == MX_A8W4_MULTI_WEIGHT_NZ_DIM) {
+            return true;
+        }
+        if (gmmDsqParams_.weight->Size() != SINGLE_TENSOR_SIZE) {
+            OP_LOGE_FOR_INVALID_TENSORNUM(GMM_SWIGLU_ACLNN_OP_NAME, "weight",
+                                          static_cast<int64_t>(gmmDsqParams_.weight->Size()),
+                                          std::to_string(SINGLE_TENSOR_SIZE));
+            return false;
+        }
+        return false;
+    }
+
     bool IsTransposeForMxShape(const aclTensor *tensor) const
     {
         auto shape = tensor->GetViewShape();
@@ -338,6 +372,34 @@ protected:
         return true;
     }
 
+    bool CheckMxA8W4MultiWeightTranspose(bool &transposeWeight, bool &transposeWeightScale)
+    {
+        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
+            bool wTrans = IsTransposeLastTwoDims((*gmmDsqParams_.weight)[i]);
+            bool wsTrans = IsTransposeForMxShape((*gmmDsqParams_.weightScale)[i]);
+            if (!wTrans) {
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    GMM_SWIGLU_ACLNN_OP_NAME, "weight",
+                    ViewShapeToString((*gmmDsqParams_.weight)[i]),
+                    "MxA8W4: weight[" + std::to_string(i) + "] must be transposed");
+                return false;
+            }
+            if (wsTrans != wTrans) {
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    GMM_SWIGLU_ACLNN_OP_NAME, "weightScale and weight",
+                    "weightScale[" + std::to_string(i) + "]=" +
+                        ViewShapeToString((*gmmDsqParams_.weightScale)[i]) +
+                        ", weight[" + std::to_string(i) + "]=" +
+                        ViewShapeToString((*gmmDsqParams_.weight)[i]),
+                    "the transposition of weightScale must be equal to the transposition of weight");
+                return false;
+            }
+        }
+        transposeWeight = true;
+        transposeWeightScale = true;
+        return true;
+    }
+
     bool CheckMXTranspose()
     {
         bool transposeWeightScale = IsTransposeForMxShape((*gmmDsqParams_.weightScale)[0]);
@@ -347,10 +409,16 @@ protected:
         const char *scenario = GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
 
         if (gmmDsqParams_.isMxA8W4) {
-            if (!transposeWeight) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "transposeWeight", "false",
-                                                      "in MxA8W4, the transposition of weight must be true");
-                return false;
+            if (IsMultiTensorWeight()) {
+                if (!CheckMxA8W4MultiWeightTranspose(transposeWeight, transposeWeightScale)) {
+                    return false;
+                }
+            } else {
+                if (!transposeWeight) {
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "transposeWeight", "false",
+                                                          "in MxA8W4, the transposition of weight must be true");
+                    return false;
+                }
             }
             gmmDsqParams_.transposeWeight = true;
         }
@@ -424,31 +492,85 @@ protected:
         return true;
     }
 
+    int64_t GetWeightK(const aclTensor *weight) const
+    {
+        auto dimNum = weight->GetViewShape().GetDimNum();
+        return gmmDsqParams_.transposeWeight
+            ? weight->GetViewShape().GetDim(dimNum - 1)
+            : weight->GetViewShape().GetDim(dimNum - 2);
+    }
+
+    int64_t GetWeightN(const aclTensor *weight) const
+    {
+        auto dimNum = weight->GetViewShape().GetDimNum();
+        return gmmDsqParams_.transposeWeight
+            ? weight->GetViewShape().GetDim(dimNum - 2)
+            : weight->GetViewShape().GetDim(dimNum - 1);
+    }
+
+    bool CheckMultiWeightKNConsistency()
+    {
+        int64_t k0 = GetWeightK((*gmmDsqParams_.weight)[0]);
+        int64_t n0 = GetWeightN((*gmmDsqParams_.weight)[0]);
+        for (size_t i = 1; i < gmmDsqParams_.weight->Size(); i++) {
+            int64_t ki = GetWeightK((*gmmDsqParams_.weight)[i]);
+            int64_t ni = GetWeightN((*gmmDsqParams_.weight)[i]);
+            if (ki != k0 || ni != n0) {
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    GMM_SWIGLU_ACLNN_OP_NAME, "weight",
+                    "weight[0]=(k=" + std::to_string(k0) + ", n=" + std::to_string(n0) +
+                        "), weight[" + std::to_string(i) + "]=(k=" + std::to_string(ki) +
+                        ", n=" + std::to_string(ni) + ")",
+                    "MxA8W4: all weight tensors must have the same k and n");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool CheckMultiWeightShape(int64_t n, int64_t k)
+    {
+        if (!CheckMultiWeightKNConsistency()) {
+            return false;
+        }
+        op::Shape weightTransExpectShape = {n, k};
+        op::Shape weightExpectShape = {k, n};
+        op::Shape weightScaleTransExpectShape = {n, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), SWIGLU_SPLIT_FACTOR};
+        op::Shape weightScaleExpectShape = {Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), n, SWIGLU_SPLIT_FACTOR};
+        for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
+            const aclTensor *weight = (*gmmDsqParams_.weight)[i];
+            const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
+            if (gmmDsqParams_.transposeWeight) {
+                GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
+                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
+            } else {
+                GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightExpectShape, return false);
+                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
+            }
+        }
+        return true;
+    }
+
     bool CheckMXShape()
     {
-        int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0); // 从x的第0维获取m
-        int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1); // 从x的第1维获取k
-        // 转置情况下从weight的第1维获取n，非转置情况下从weight的第2维获取n
-        int64_t n = gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
-                                                    ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2);
-        int64_t e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0); // 从weight的第0维获取e
+        bool isMultiWeight = IsMultiTensorWeight();
+        int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
+        int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
+        int64_t n = 0;
+        int64_t e = 0;
 
-        // x的shape期望为[M, K]
+        if (gmmDsqParams_.isMxA8W4 && isMultiWeight) {
+            n = GetWeightN((*gmmDsqParams_.weight)[0]);
+            e = static_cast<int64_t>(gmmDsqParams_.weight->Size());
+        } else {
+            n = GetWeightN((*gmmDsqParams_.weight)[0]);
+            e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
+        }
+
         op::Shape xExpectShape = {m, k};
-        // xScale的shape期望为[M, CeilDiv(K, 64), 2]
         op::Shape xScaleExpectShape = {m, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), SWIGLU_SPLIT_FACTOR};
-        // weight的shape期望为[E, K, N]
-        op::Shape weightExpectShape = {e, k, n};
-        // weightScale的shape期望为[E, CeilDiv(K, 64), N, 2]
-        op::Shape weightScaleExpectShape = {e, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), n, SWIGLU_SPLIT_FACTOR};
-        // weight转置的shape期望为[E, N, K]
-        op::Shape weightTransExpectShape = {e, n, k};
-        // weightScale转置的shape期望为[E, N, CeilDiv(K, 64), 2]
-        op::Shape weightScaleTransExpectShape = {e, n, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), SWIGLU_SPLIT_FACTOR};
         int64_t nAfterHalve = static_cast<int64_t>(n / SWIGLU_SPLIT_FACTOR);
-        // output的shape期望为[M, N / 2]
         op::Shape outputExpectShape = {m, nAfterHalve};
-        // outputScale的shape期望为[M, CeilDiv(N / 2, 64), 2]
         op::Shape outputScaleExpectShape = {m, Ops::Base::CeilDiv(nAfterHalve, SWIGLU_SPLIT_SIZE), SWIGLU_SPLIT_FACTOR};
         const aclTensor *x = gmmDsqParams_.x;
         const aclTensor *xScale = gmmDsqParams_.xScale;
@@ -460,16 +582,26 @@ protected:
         GMM_SWIGLU_CHECK_SHAPE(output, "output", outputExpectShape, return false);
         GMM_SWIGLU_CHECK_SHAPE(outputScale, "outputScale", outputScaleExpectShape, return false);
 
-        const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[0];
-        const aclTensor *weight = (*gmmDsqParams_.weight)[0];
-        if (gmmDsqParams_.transposeWeight) {
-            GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
-            GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
+        if (gmmDsqParams_.isMxA8W4 && isMultiWeight) {
+            if (!CheckMultiWeightShape(n, k)) {
+                return false;
+            }
         } else {
-            GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
-            GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightExpectShape, return false);
+            op::Shape weightExpectShape = {e, k, n};
+            op::Shape weightScaleExpectShape = {e, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), n, SWIGLU_SPLIT_FACTOR};
+            op::Shape weightTransExpectShape = {e, n, k};
+            op::Shape weightScaleTransExpectShape = {e, n, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), SWIGLU_SPLIT_FACTOR};
+
+            const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[0];
+            const aclTensor *weight = (*gmmDsqParams_.weight)[0];
+            if (gmmDsqParams_.transposeWeight) {
+                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
+                GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
+            } else {
+                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
+                GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightExpectShape, return false);
+            }
         }
-        // 进行swiglu操作需满足n为偶数
         if (n % SWIGLU_N_CONSTRAINT != 0) {
             std::string gotStr = BuildLogValue("N", n);
             std::ostringstream constraint;
@@ -480,7 +612,6 @@ protected:
                                                   "axis N of weight must be an even number");
             return false;
         }
-        // groupList的长度应等于weight的专家数
         int64_t groupListLen = gmmDsqParams_.groupList->GetViewShape().GetDim(0);
         if (groupListLen != e) {
             std::ostringstream reason;
@@ -577,16 +708,16 @@ protected:
     bool CheckMxA8W4DtypeValid(const aclTensor *x, const aclTensor *xScale, const aclTensor *groupList,
                                const aclTensor *output, const aclTensor *outputScale)
     {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x, X_DTYPE_SUPPORT_LIST_MXA8W4, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(xScale, X_SCALE_DTYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(groupList, GROUP_LIST_DTYPE_SUPPORT_LIST, return false);
+        GMM_SWIGLU_CHECK_DTYPE(x, "x", X_DTYPE_SUPPORT_LIST_MXA8W4, return false);
+        GMM_SWIGLU_CHECK_DTYPE(xScale, "xScale", X_SCALE_DTYPE_SUPPORT_LIST, return false);
+        GMM_SWIGLU_CHECK_DTYPE(groupList, "groupList", GROUP_LIST_DTYPE_SUPPORT_LIST, return false);
 
         size_t weightLength = gmmDsqParams_.weight->Size();
         for (size_t i = 0; i < weightLength; i++) {
             const aclTensor *weight = (*gmmDsqParams_.weight)[i];
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
-            OP_CHECK_DTYPE_NOT_SUPPORT(weight, WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4, return false);
-            OP_CHECK_DTYPE_NOT_SUPPORT(weightScale, WEIGHT_SCALE_DTYPE_SUPPORT_LIST, return false);
+            GMM_SWIGLU_CHECK_DTYPE(weight, "weight", WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4, return false);
+            GMM_SWIGLU_CHECK_DTYPE(weightScale, "weightScale", WEIGHT_SCALE_DTYPE_SUPPORT_LIST, return false);
         }
 
         DataType outputDtype = output->GetDataType();
@@ -595,7 +726,7 @@ protected:
                                       "{FLOAT8_E4M3FN}");
             return false;
         }
-        OP_CHECK_DTYPE_NOT_SUPPORT(outputScale, QUANTSCALEOUT_DTYPE_SUPPORT_LIST, return false);
+        GMM_SWIGLU_CHECK_DTYPE(outputScale, "outputScale", QUANTSCALEOUT_DTYPE_SUPPORT_LIST, return false);
         return true;
     }
 
@@ -681,8 +812,13 @@ protected:
     {
         int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
         int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
-        int64_t n = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
-        int64_t e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
+        auto wDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
+        int64_t n = gmmDsqParams_.transposeWeight
+            ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(wDimNum - 2)
+            : ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(wDimNum - 1);
+        int64_t e = (wDimNum == MX_A8W4_MULTI_WEIGHT_DIM)
+            ? static_cast<int64_t>(gmmDsqParams_.weight->Size())
+            : ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
 
         if (k % MXA8W4_K_ALIGN != 0 || k < MXA8W4_K_MIN) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "x", ViewShapeToString(gmmDsqParams_.x),
@@ -765,15 +901,44 @@ protected:
         auto outputScaleDimNumber = gmmDsqParams_.outputScale->GetViewShape().GetDimNum();
         GMM_SWIGLU_CHECK_DIM(xDimNumber, MX_X_DIM, "x", return false);
         GMM_SWIGLU_CHECK_DIM(xScaleDimNumber, MX_X_SCALE_DIM, "xScale", return false);
-        GMM_SWIGLU_CHECK_TENSORNUM(gmmDsqParams_.weight->Size(), SINGLE_TENSOR_SIZE, "weight", return false);
-        GMM_SWIGLU_CHECK_TENSORNUM(gmmDsqParams_.weightScale->Size(), SINGLE_TENSOR_SIZE, "weightScale",
-                                   return false);
         GMM_SWIGLU_CHECK_DIM(outputDimNumber, MX_OUTPUT_DIM, "output", return false);
         GMM_SWIGLU_CHECK_DIM(outputScaleDimNumber, MX_OUTPUT_SCALE_DIM, "outputScale", return false);
-        auto weightDimNumber = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
-        auto weightScaleDimNumber = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDimNum();
-        GMM_SWIGLU_CHECK_DIM(weightScaleDimNumber, MX_WEIGHT_SCALE_DIM, "weightScale", return false);
-        GMM_SWIGLU_CHECK_DIM(weightDimNumber, MX_WEIGHT_DIM, "weight", return false);
+
+        size_t wSize = gmmDsqParams_.weight->Size();
+        size_t wsSize = gmmDsqParams_.weightScale->Size();
+        if (wSize != wsSize) {
+            OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
+                GMM_SWIGLU_ACLNN_OP_NAME, "weight and weightScale",
+                "weight=" + std::to_string(wSize) + ", weightScale=" + std::to_string(wsSize),
+                "weight and weightScale must have the same number of tensors");
+            return false;
+        }
+
+        if (gmmDsqParams_.isMxA8W4 && IsMultiTensorWeight()) {
+            for (size_t i = 0; i < wSize; i++) {
+                auto weightDimNumber = ((*gmmDsqParams_.weight)[i])->GetViewShape().GetDimNum();
+                auto weightScaleDimNumber = ((*gmmDsqParams_.weightScale)[i])->GetViewShape().GetDimNum();
+                if (weightDimNumber != MX_A8W4_MULTI_WEIGHT_DIM &&
+                    weightDimNumber != MX_A8W4_MULTI_WEIGHT_NZ_DIM) {
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        GMM_SWIGLU_ACLNN_OP_NAME, "weight",
+                        std::to_string(weightDimNumber),
+                        "weight view shape dim num must be " +
+                            std::to_string(MX_A8W4_MULTI_WEIGHT_DIM) + " or " +
+                            std::to_string(MX_A8W4_MULTI_WEIGHT_NZ_DIM) + " in MxA8W4 multi-weight scenario");
+                    return false;
+                }
+                GMM_SWIGLU_CHECK_DIM(weightScaleDimNumber, MX_A8W4_MULTI_WEIGHT_SCALE_DIM,
+                                     "weightScale", return false);
+            }
+        } else {
+            GMM_SWIGLU_CHECK_TENSORNUM(wSize, SINGLE_TENSOR_SIZE, "weight", return false);
+            GMM_SWIGLU_CHECK_TENSORNUM(wsSize, SINGLE_TENSOR_SIZE, "weightScale", return false);
+            auto weightDimNumber = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
+            auto weightScaleDimNumber = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDimNum();
+            GMM_SWIGLU_CHECK_DIM(weightScaleDimNumber, MX_WEIGHT_SCALE_DIM, "weightScale", return false);
+            GMM_SWIGLU_CHECK_DIM(weightDimNumber, MX_WEIGHT_DIM, "weight", return false);
+        }
         return true;
     }
     bool CheckInputOutDimsForPertoken()
@@ -811,9 +976,12 @@ protected:
         }
         // 从x的第1维获取k
         int64_t kInX = gmmDsqParams_.x->GetViewShape().GetDim(1);
-        // 根据是否转置从weight中读取维度k
-        int64_t kInWeight = gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2) :
-                                                    ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
+        // 根据是否转置从weight中读取维度k，使用dimNum-based索引兼容2D和3D weight
+        auto weightViewDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
+        bool useTransposeK = gmmDsqParams_.transposeWeight || gmmDsqParams_.isMxA8W4;
+        int64_t kInWeight = useTransposeK
+            ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightViewDimNum - 1)
+            : ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightViewDimNum - 2);
         if (kInX != kInWeight) {
             std::ostringstream reason;
             reason << "K dim should be equal when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_)
