@@ -41,15 +41,9 @@ private:
     ge::graphStatus CheckBlockSize(const FiaTilingInfo &fiaInfo) const;
 
 
-<<<<<<< HEAD
-    ge::graphStatus CheckBlockTableExistence(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckSeqLengthKVExistence(const FiaTilingInfo &fiaInfo);
-=======
     ge::graphStatus CheckBlockTableExistence(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureSupport(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckSeqLengthKVExistence(const FiaTilingInfo &fiaInfo) const;
->>>>>>> d41076b9b (cleancode问题清理)
     ge::graphStatus CheckQDtypeSupport(const FiaTilingInfo &fiaInfo);
 
     int64_t GetMaxBlockNumPerBatch(const FiaTilingInfo &fiaInfo) const;
@@ -60,15 +54,9 @@ private:
     ge::graphStatus CheckKVLayout(const FiaTilingInfo &fiaInfo) const;
 
     ge::graphStatus CheckPACacheShape(const FiaTilingInfo &fiaInfo, const gert::Shape tempShape,
-<<<<<<< HEAD
-        const std::string& inputName);
-    ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureInputLayoutForAntiquant(const FiaTilingInfo &fiaInfo);
-=======
         const std::string& inputName) const;
     ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureInputLayoutForAntiquant(const FiaTilingInfo &fiaInfo) const;
->>>>>>> d41076b9b (cleancode问题清理)
 };
 
 } // namespace optiling
