@@ -256,7 +256,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t* out_,
             MicroAPI::LoadAlign<float>(regQK[1], qk_ + 128 * i + qkVLStride);
         }
         BroadcastLane(regwBrc, regW, i);
-        WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
+        WeightedAccum<float, 2, false>(regSum0, regQK, regwBrc, maskAllB32);
         if constexpr (std::is_same<QK_T, int32_t>::value) {
             MicroAPI::LoadAlign<int32_t>(regQKInt32[0], qk_ + 128 * i + 128);
             MicroAPI::LoadAlign<int32_t>(regQKInt32[1], qk_ + 128 * i + 128 + qkVLStride);
@@ -267,7 +267,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t* out_,
             MicroAPI::LoadAlign<float>(regQK[1], qk_ + 128 * i + 128 + qkVLStride);
         }
         BroadcastLane(regwBrc, regW, i + 1);
-        WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
+        WeightedAccum<float, 2, false>(regSum1, regQK, regwBrc, maskAllB32);
     }
 
     AscendC::MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
@@ -351,7 +351,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t* out_,
             MicroAPI::LoadAlign<float>(regQK[1], qk_ + 128 * i + qkVLStride);
         }
         BroadcastLane(regwBrc, regW, i);
-        WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
+        WeightedAccum<float, 2, false>(regSum0, regQK, regwBrc, maskAllB32);
         if constexpr (std::is_same<QK_T, int32_t>::value) {
             MicroAPI::LoadAlign<int32_t>(regQKInt32[0], qk_ + 128 * i + 128);
             MicroAPI::LoadAlign<int32_t>(regQKInt32[1], qk_ + 128 * i + 128 + qkVLStride);
@@ -362,7 +362,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t* out_,
             MicroAPI::LoadAlign<float>(regQK[1], qk_ + 128 * i + 128 + qkVLStride);
         }
         BroadcastLane(regwBrc, regW, i + 1);
-        WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
+        WeightedAccum<float, 2, false>(regSum1, regQK, regwBrc, maskAllB32);
     }
 
     AscendC::MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
@@ -441,7 +441,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t* out_,
             MicroAPI::LoadAlign<float>(regQK[1], qk_ + 128 * i + qkVLStride);
         }
         BroadcastLane(regwBrc, regW, i);
-        WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
+        WeightedAccum<float, 2, false>(regSum0, regQK, regwBrc, maskAllB32);
         if constexpr (std::is_same<QK_T, int32_t>::value) {
             MicroAPI::LoadAlign<int32_t>(regQKInt32[0], qk_ + 128 * i + 128);
             MicroAPI::LoadAlign<int32_t>(regQKInt32[1], qk_ + 128 * i + 128 + qkVLStride);
@@ -452,7 +452,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t* out_,
             MicroAPI::LoadAlign<float>(regQK[1], qk_ + 128 * i + 128 + qkVLStride);
         }
         BroadcastLane(regwBrc, regW, i + 1);
-        WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
+        WeightedAccum<float, 2, false>(regSum1, regQK, regwBrc, maskAllB32);
     }
 
     AscendC::MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
@@ -553,10 +553,6 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
         BroadcastLane(regwBrc[0], regW[0], i);
         // Weight无bank冲突，用LoadAlign来提取weight标量
         BroadcastLane(regwBrc[1], weight1_, i);
-        AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK1[1], regQK1[1], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum1[0], regQK1[0], regwBrc[1], maskAllB32);
@@ -671,10 +667,6 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
         BroadcastLane(regwBrc[0], regW[0], i);
         // Weight无bank冲突，用LoadAlign来提取weight标量
         BroadcastLane(regwBrc[1], weightFloat_, i);
-        AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK1[1], regQK1[1], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum1[0], regQK1[0], regwBrc[1], maskAllB32);
@@ -795,10 +787,6 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
         BroadcastLane(regwBrc[0], regW[0], i);
         // Weight无bank冲突，用LoadAlign来提取weight标量
         BroadcastLane(regwBrc[1], weightFloat_, i);
-        AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK1[1], regQK1[1], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum1[0], regQK1[0], regwBrc[1], maskAllB32);
@@ -920,7 +908,7 @@ __simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
             MicroAPI::LoadAlign<float>(regQK[1], qk_ + 128 * i + qkVLStride);
         }
         BroadcastLane(regwBrc, regW, i);
-        WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
+        WeightedAccum<float, 2, false>(regSum0, regQK, regwBrc, maskAllB32);
         if constexpr (std::is_same<QK_T, int32_t>::value) {
             MicroAPI::LoadAlign<int32_t>(regQKInt32[0], qk_ + 128 * i + 128);
             MicroAPI::LoadAlign<int32_t>(regQKInt32[1], qk_ + 128 * i + 128 + qkVLStride);
@@ -931,7 +919,7 @@ __simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
             MicroAPI::LoadAlign<float>(regQK[1], qk_ + 128 * i + 128 + qkVLStride);
         }
         BroadcastLane(regwBrc, regW, i + 1);
-        WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
+        WeightedAccum<float, 2, false>(regSum1, regQK, regwBrc, maskAllB32);
     }
 
     // 合并累加器（不乘 kScale）
@@ -996,7 +984,7 @@ __simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
             MicroAPI::LoadAlign<float>(regQK[1], qk_ + 128 * i + qkVLStride);
         }
         BroadcastLane(regwBrc, regW, i);
-        WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
+        WeightedAccum<float, 2, false>(regSum0, regQK, regwBrc, maskAllB32);
         if constexpr (std::is_same<QK_T, int32_t>::value) {
             MicroAPI::LoadAlign<int32_t>(regQKInt32[0], qk_ + 128 * i + 128);
             MicroAPI::LoadAlign<int32_t>(regQKInt32[1], qk_ + 128 * i + 128 + qkVLStride);
@@ -1007,7 +995,7 @@ __simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
             MicroAPI::LoadAlign<float>(regQK[1], qk_ + 128 * i + 128 + qkVLStride);
         }
         BroadcastLane(regwBrc, regW, i + 1);
-        WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
+        WeightedAccum<float, 2, false>(regSum1, regQK, regwBrc, maskAllB32);
     }
 
     AscendC::MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
@@ -1085,10 +1073,6 @@ __simd_vf__ inline void MulWeightAndReduceSum2_NoScale(__ubuf__ uint16_t* out0_,
         }
         BroadcastLane(regwBrc[0], regW[0], i);
         BroadcastLane(regwBrc[1], weightFloat_, i);
-        AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK1[1], regQK1[1], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum1[0], regQK1[0], regwBrc[1], maskAllB32);
@@ -1178,10 +1162,6 @@ __simd_vf__ inline void MulWeightAndReduceSum2_NoScale(__ubuf__ uint16_t* out0_,
         }
         BroadcastLane(regwBrc[0], regW[0], i);
         BroadcastLane(regwBrc[1], weightFloat_, i);
-        AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
-        AscendC::MicroAPI::Relu(regQK1[1], regQK1[1], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
         AscendC::MicroAPI::MulAddDst(regSum1[0], regQK1[0], regwBrc[1], maskAllB32);

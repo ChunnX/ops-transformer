@@ -633,7 +633,8 @@ __aicore__ inline void QLIMatmul<QLIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2Gm
     fixpipeParams.mSize = mSize;
     fixpipeParams.srcStride = mSize; // 已16对齐
     fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(float); // 落到同一个bank
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+    fixpipeParams.dualDstCtl = 0; // 单目标模式（CVRATIO=1，不需要拆M）
+    fixpipeParams.reluEn = true;   // 启用随路ReLU
 
     // nSize已保证N方向32B对齐
     if (nSize <= (256 / sizeof(float))) {
