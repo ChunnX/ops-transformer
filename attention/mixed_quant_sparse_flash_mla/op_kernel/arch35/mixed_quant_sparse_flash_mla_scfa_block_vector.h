@@ -115,7 +115,7 @@ public:
 
     // 初始化LocalTensor
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
-    __aicore__ inline void InitFDBuffers(ConstInfo &constInfo);
+    __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo, ConstInfo &constInfo);
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
@@ -1052,6 +1052,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             outParams.dstStride = 0;
             outParams.blockCount = runInfo.vec2MRealSize;
             DataCopyPad(stagingOut[stagingMOffset * constInfo.dSizeV], vec2ResUb, outParams);
+            SetFlag<HardEvent::MTE3_V>(mte3ToVId);
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
         } else {
             if (unlikely(runInfo.s2LoopCount == 0)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
@@ -1069,7 +1071,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     FdRunInfo &fdRunInfo, ConstInfo &constInfo,
     mm2ResPos &tempBuf)
 {
-    InitFDBuffers(constInfo);
+    InitFDBuffers(fdRunInfo, constInfo);
     int64_t vec2CalcSize = fdRunInfo.mNum * dTemplateAlign64;
     int64_t seqOffset = 0;
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
@@ -1343,16 +1345,15 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitFDBuffers(ConstInfo &constInfo)
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo, ConstInfo &constInfo)
 {
     this->tPipe->Reset();
-    constexpr uint32_t FD_MAX_ROW = 64;
+    constexpr uint32_t DEAL_ROW_COUNT = 16;
     constexpr uint32_t BLOCK_ELEM = 8;
-    constexpr uint32_t MAX_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
-    uint32_t maxSumTotal = MAX_SPLIT_NUM * FD_MAX_ROW * BLOCK_ELEM * sizeof(float);
-    uint32_t lseExpSize = FD_MAX_ROW * BLOCK_ELEM * sizeof(float);
-    uint32_t accumOutSize = FD_MAX_ROW * dTemplateAlign64 * sizeof(T);
-    uint32_t partialOSize = FD_MAX_ROW * dTemplateAlign64 * sizeof(T);
+    uint32_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * DEAL_ROW_COUNT * BLOCK_ELEM * sizeof(float);
+    uint32_t lseExpSize = DEAL_ROW_COUNT * BLOCK_ELEM * sizeof(float);
+    uint32_t accumOutSize = static_cast<uint32_t>(fdRunInfo.mNum) * dTemplateAlign64 * sizeof(T);
+    uint32_t partialOSize = DEAL_ROW_COUNT * dTemplateAlign64 * sizeof(T);
     this->tPipe->InitBuffer(fdAccumOutBuf, accumOutSize);
     this->tPipe->InitBuffer(fdBlockMaxBuf, maxSumTotal);
     this->tPipe->InitBuffer(fdBlockSumBuf, maxSumTotal);
@@ -1381,7 +1382,7 @@ public:
         __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv,
         __gm__ uint8_t *cmpResidualKv) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
-    __aicore__ inline void InitFDBuffers(ConstInfo &constInfo) {}
+    __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo, ConstInfo &constInfo) {}
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}
