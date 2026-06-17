@@ -70,6 +70,12 @@ struct PeermemInfo {
     }
 };
 
+struct CombineSendInfo {
+    uint32_t sendCnt;
+    uint32_t sendPtr;
+    uint32_t aivNum;
+};
+
 struct Params {
     GM_ADDR aGmAddr;
     GM_ADDR expertIdxGmAddr;
@@ -83,6 +89,7 @@ struct Params {
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
     MegaMoeTilingData *tilingData;
+    CombineSendInfo combineSendInfo;
 };
 
 enum class AddrUpdateMode : int32_t {

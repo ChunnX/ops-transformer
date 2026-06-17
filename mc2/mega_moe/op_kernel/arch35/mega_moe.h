@@ -177,6 +177,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
+    // TODO:需要初始化 combineSendInfo
+    params_.combineSendInfo.sendCnt = 0;
+    params_.combineSendInfo.sendPtr = 0;
+    params_.combineSendInfo.aivNum = blockAivNum_;
+
+
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
     params_.bGmAddr = GetTensorAddr(0, weight1);
@@ -1035,30 +1041,51 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CalSendTokenCnt()
-{
-    uint32_t maxTokenNum = 200 * 1024 / (sizeof(int32_t) * params_.tilingData->k);
-    params_.expertIdxGmAddr
-    GlobalTensor<int32_t> expertIdxGmTensor;
-    expertIdxGmTensor.SetGlobalBuffer((__gm__ int32_t*)params_.expertIdxGmAddr);
-    LocalTensor<int32_t> expertIdxTensor = LocalTensor<int32_t>(TPosition::VECCALC, 0, 200 * 1024);
-    // 按轮次分核，
-    uint32_t aivUsePerRoud = aivNum_ / params_.tilingData->expertPerRank;
-    uint32_t roundSendNum = aivId_ / aivUsePerRoud;
-    uint32_t remaind = aivNum_ % params_.tilingData->expertPerRank;
-    if (roundSendNum < remaind) {
-        aivUsePerRoud += 1;
-    }
-    SplitCore(params_.tilingData->bs, aivUsePerRoud, roundSendNum * aivUsePerRoud,startTokenId,endTokenId,processTokenNum);
-    uint32_t copyRoundCnt = Ops::Base::CeilAlign(processTokenNum, maxTokenNum);
-    for (uint32_t index =0; index < copyRoundCnt; index++) {
-        uint32_t copyTokenCnt = index == copyRoundCnt - 1? (params_.tilingData->bs - (copyRoundCnt -1) * maxTokenNum) : maxTokenNum;
-        DataCopyExtParams parase{1,copyTokenCnt * sizeof(int32_t), 0,0};
-        DataCopyPad(expertIdxTensor, expertIdxGmTensor[index * maxTokenNum],parase);
-        
-    }
-}
+// #define MAX_UB_SIZE 200 * 1024  //还有48KB
+// #define MAX_SHARED_SIZE 10 * 1024  // 10KB
+// GM_ADDR expertMaskGmAddr_;
+
+// template <TemplateMegaMoeTypeClass> // 计算每一轮的tokenId
+// __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CalSendTokenCnt()
+// {
+//     uint32_t maxTokenNum = MAX_UB_SIZE / (sizeof(int32_t) * params_.tilingData->k);
+//     LocalTensor<int32_t> expertIdxTensor = LocalTensor<int32_t>(TPosition::VECCALC, 0, MAX_UB_SIZE);
+//     LocalTensor<half> expertIdxFp16Tensor = LocalTensor<half>(TPosition::VECCALC, 0, MAX_UB_SIZE);
+//     LocalTensor<uint8_t> sharedTensor = LocalTensor<uint8_t>(TPosition::VECCALC, MAX_UB_SIZE, MAX_SHARED_SIZE);
+//     LocalTensor<int16_t> expertIdxInt16Tensor = LocalTensor<int16_t>(TPosition::VECCALC, 0, MAX_UB_SIZE / 2);
+//     LocalTensor<int16_t> xorTempTensor = LocalTensor<int16_t>(TPosition::VECCALC, MAX_UB_SIZE / 2, MAX_UB_SIZE / 2);
+//     GlobalTensor<int32_t> expertIdxGmTensor;
+//     expertIdxGmTensor.SetGlobalBuffer((__gm__ int32_t*)params_.expertIdxGmAddr);
+//     uint32_t maxMoeNum = params_.tilingData->expertPerRank * params_.tilingData->epWorldSize;
+//     uint32_t startExpertId =0;
+//     uint32_t endExpertId = 0;
+//     uint32_t processTokenNum = 0;
+//     SplitToCore(aivNum_, maxMoeNum, startExpertId, endExpertId, processTokenNum);
+//     if (processTokenNum == 0 || startExpertId >= endExpertId) {
+//         return;
+//     }
+//     uint32_t roundNumPerExpert = Ops::Base::CeilAlign(params_.tilingData->bs, maxTokenNum);
+//     for (uint32_t expertIdx = startExpertId; expertIdx < endExpertId; expertIdx++) {
+//         for (uint32_t roundIdx = 0; roundIdx < roundNumPerExpert; roundIdx++) {
+//             uint32_t copyTokenCnt = roundIdx == roundNumPerExpert - 1? (params_.tilingData->bs - (roundNumPerExpert - 1) * maxTokenNum) : maxTokenNum;
+//             uint32_t compareCount = Ceil(copyTokenCnt * sizeof(int16_t) * params_.tilingData->k, ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int16_t);
+//             uint32_t maskSize = Ceil(compareCount / BITS_PER_BYTE, UB_ALIGN) * UB_ALIGN; // 为了匹配CompareScalar接口1bit一共8位
+//             DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(copyTokenCnt * params_.tilingData->k * sizeof(int32_t)), 0U, 0U, 0U};
+//             DataCopyPadExtParams<int32_t> copyPadParams{false, 0U, 0U, 0U};
+//             DataCopyPad(expertIdxTensor, expertIdxGmTensor[roundIdx * maxTokenNum], copyParams, copyPadParams);
+//             SetFlag<AscendC::HardEvent::MTE2_V>(0);
+//             WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+//             Subs(expertIdxTensor, expertIdxTensor, expertIdx, copyTokenCnt);
+//             Abs(expertIdxTensor, expertIdxTensor, copyTokenCnt);
+//             Mins(expertIdxTensor, expertIdxTensor, 1, copyTokenCnt);
+//             Cast(expertIdxInt16Tensor, expertIdxTensor, RoundMode::CAST_NONE, copyTokenCnt);
+//             Duplicate<int16_t>(xorTempTensor, static_cast<int16_t>(1), copyTokenCnt);
+//             Xor(xorTempTensor, expertIdxInt16Tensor, xorTempTensor, sharedTensor, copyTokenCnt);
+            
+//         }
+//     }
+
+// }
 
 }   // namespace MegaMoeImpl
 #endif

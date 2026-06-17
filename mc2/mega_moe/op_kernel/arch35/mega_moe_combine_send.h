@@ -88,18 +88,17 @@ __aicore__ inline void CombineTokensWithUrma( // 先这样写
 }
 
 
-
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTokensWithUrma(uint32_t gsendCnt, const Params& params)
 {
     LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, 0, 32); // 三元组
     uint32_t startRankId, endRankId, processRankNum;
-    SplitToCore(aiv_num, epWorldSize_, startRankId, endRankId, processRankNum);
+    SplitToCore(params.combineSendInfo.aivNum, params.tilingData->epWorldSize, startRankId, endRankId, processRankNum);
     if(startRankId >= endRankId || processRankNum == 0) {
         return ;
     }
-    LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, 32, processRankNum * sizeof(uint32_t)); // 三元组
-    LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, 32 + processRankNum * sizeof(uint32_t), processRankNum * sizeof(uint32_t)); // 三元组
+    LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, TRIPLE_SIZE, processRankNum * sizeof(uint32_t)); // 三元组
+    LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, TRIPLE_SIZE + processRankNum * sizeof(uint32_t), processRankNum * sizeof(uint32_t)); // 三元组
 
     // maskRecvPtr布局: [localExpert][srcRank], 每个槽位 = maskAlignSize + 32B count
     int64_t sendTotalNum = static_cast<int64_t>(params.tilingData->bs) * params.tilingData->topK;
@@ -112,7 +111,7 @@ __aicore__ inline void CombineTokensWithUrma(uint32_t gsendCnt, const Params& pa
     uint32_t expertPerRank = params.tilingData->expertPerRank;
     uint32_t worldSize = params.tilingData->epWorldSize;
     LocalTensor<uint32_t> slotReadTensor = LocalTensor<uint32_t>(TPosition::VECCALC,
-        32 + processRankNum * sizeof(uint32_t) + processRankNum * sizeof(uint32_t), slotWordStride);
+        TRIPLE_SIZE + processRankNum * sizeof(uint32_t) + processRankNum * sizeof(uint32_t), slotWordStride);
     AscendC::GlobalTensor<uint8_t> maskSrcGlobal;
 
     for (uint32_t index = startRankId; index < endRankId; index++) {
@@ -126,7 +125,8 @@ __aicore__ inline void CombineTokensWithUrma(uint32_t gsendCnt, const Params& pa
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
             cnt += slotReadTensor.GetValue(countWordIdx);
         }
-        totalTokenCnt.SetValue(index - startRankId, cnt);
+        uint32_t tatalDataBlockCnt = Ops::Base::CeilAlign(cnt * params.tilingData->h, L1_TILE_N);
+        totalTokenCnt.SetValue(index - startRankId, tatalDataBlockCnt);
     }
     uint32_t rankIndex = 0;
     uint32_t processRank = 0;
@@ -134,7 +134,7 @@ __aicore__ inline void CombineTokensWithUrma(uint32_t gsendCnt, const Params& pa
         while (sendTokenCnt(rankIndex) == totalTokenCnt(rankIndex)) {
             rankIndex = (rankIndex + 1) % processRankNum;
         }
-        GM_ADDR notifyAddr = params.combineNotifyPtr + params.tilingData->bs * params.tilingData->h * sizeof() + (rankIndex + startRankId) * sizeof(int32_t);
+        GM_ADDR notifyAddr = params.combineNotifyPtr + (rankIndex + startRankId) * sizeof(int32_t);
         uint32_t curCnt  = ReadGmByPassDCache(notifyAddr);
         if (curCnt > sendTokenCnt(rankIndex)) {
             uint32_t needCnt = curCnt - sendTokenCnt(rankIndex);
