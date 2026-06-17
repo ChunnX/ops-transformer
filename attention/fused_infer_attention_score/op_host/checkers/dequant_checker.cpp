@@ -892,15 +892,16 @@ ge::graphStatus DequantChecker::CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilin
     int32_t dimIndex = 0;
     OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyAntiquantScaleDimNum, keyAntiquantScaleShape, fiaInfo.kScaleStrides, dimIndex)) &&
             (dimIndex != 0 && dimIndex != 1)),
-        OP_LOGE(fiaInfo.opName,
-                "In BnNBsD scenarios, kscale only supports non-contiguous tensors in dimensions 0 or 1, " 
-                "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyAntiquantScale",
+            "In MXFP8 Fullquant BnNBsD scenario, only 0th and 1st axis of keyAntiquantScale can be non-contiguous, the "
+            + std::to_string(dimIndex) + "th axis of keyAntiquantScale must be contiguous."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueAntiquantScaleDimNum, valueAntiquantScaleShape, fiaInfo.vScaleStrides, dimIndex)) &&
             (dimIndex != 0 && dimIndex != 1)),
-        OP_LOGE(fiaInfo.opName,
-                "In BnNBsD scenarios, vscale only supports non-contiguous tensors in dimensions 0 or 1, " 
-                "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "valueAntiquantScale",
+            std::string("In MXFP8 Fullquant BnNBsD scenario, ") +
+            "only 0th and 1st axis of valueAntiquantScale can be non-contiguous, the" +
+            std::to_string(dimIndex) + "th axis of valueAntiquantScale must be contiguous."),
         return ge::GRAPH_FAILED);
 
     // BnNBsD pa key --[blocknum, kv_n, blocksize, k_D/64, 2] // [fzj] 
@@ -955,15 +956,15 @@ ge::graphStatus DequantChecker::CheckDequantScaleNZShapeMXFP8(const FiaTilingInf
     int32_t dimIndex = 0;
     OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyAntiquantScaleDimNum, keyAntiquantScaleShape, fiaInfo.kScaleStrides, dimIndex)) &&
             (dimIndex != 0 && dimIndex != 1)),
-        OP_LOGE(fiaInfo.opName,
-                "In NZ scenarios, kscale only supports non-contiguous tensors in dimensions 0 or 1, " 
-                "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyAntiquantScale",
+            "In MXFP8 Fullquant Nz scenario, only 0th and 1st axis of keyAntiquantScale can be non-contiguous, the "
+            + std::to_string(dimIndex) + "th axis of keyAntiquantScale must be contiguous."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueAntiquantScaleDimNum, valueAntiquantScaleShape, fiaInfo.vScaleStrides, dimIndex)) &&
             (dimIndex != 0 && dimIndex != 1)),
-        OP_LOGE(fiaInfo.opName,
-                "In NZ scenarios, vscale only supports non-contiguous tensors in dimensions 0 or 1, " 
-                "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "valueAntiquantScale",
+            "In MXFP8 Fullquant Nz scenario, only 0th and 1st axis of valueAntiquantScale can be non-contiguous, the "
+            + std::to_string(dimIndex) + "th axis of valueAntiquantScale must be contiguous."),
         return ge::GRAPH_FAILED);
 
     // NZ pa key --[blocknum, kv_n, blocksize/16, k_D/64, 16, 2]
@@ -1032,7 +1033,8 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
         (CheckTensorContiguous(valueDimNum, valueInputShape, fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
         (CheckTensorContiguous(keyAntiquantScaleDimNum, keyAntiquantScaleShape, fiaInfo.kScaleStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
         (CheckTensorContiguous(valueAntiquantScaleDimNum, valueAntiquantScaleShape, fiaInfo.vScaleStrides, dimIndex) != ge::GRAPH_SUCCESS))),
-            OP_LOGE(fiaInfo.opName, "In non-PA scenarios, MXFP8 full quantization does not support non-contiguous tensors."),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key/value/keyAntiquantScale/valueAntiquantScale",
+            "In non-PA scenarios, MXFP8 full quantization does not support non-contiguous tensors."),
             return ge::GRAPH_FAILED); 
     
     // qscale dim支持4维[T, N, D//64, 2]和5维[N2, T, G, D//64, 2]
@@ -1110,15 +1112,15 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
         // pa场景 BNBD/NZ支持0/1轴非连续
         OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyDimNum, keyInputShape, fiaInfo.keyStrides, dimIndex)) &&
                     (dimIndex != 0 && dimIndex != 1)),
-                OP_LOGE(fiaInfo.opName,
-                        "In BnNBsD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, " 
-                        "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                    "In MXFP8 Fullquant BnNBsD/NZ scenario, only 0th and 1st axis of key can be non-contiguous, the "
+                    + std::to_string(dimIndex) + "th axis of key must be contiguous."),
                 return ge::GRAPH_FAILED);
         OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueDimNum, valueInputShape, fiaInfo.valueStrides, dimIndex)) &&
                     (dimIndex != 0 && dimIndex != 1)),
-                OP_LOGE(fiaInfo.opName,
-                        "In BnNBsD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, " 
-                        "but currently the non-contiguous dimension is dimension %d.", dimIndex),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                    "In MXFP8 Fullquant BnNBsD/NZ scenario, only 0th and 1st axis of value can be non-contiguous, the "
+                    + std::to_string(dimIndex) + "th axis of value must be contiguous."),
                 return ge::GRAPH_FAILED);
         if (ge::GRAPH_SUCCESS != CheckDequantScaleBnNBsDShapeMXFP8(fiaInfo)) {
             return ge::GRAPH_FAILED;
