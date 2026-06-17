@@ -37,5 +37,6 @@ struct MegaMoeTilingData {
     bool transX;
     bool transW;
     bool transW2;
+    float clampLimit;
 };
 #endif
