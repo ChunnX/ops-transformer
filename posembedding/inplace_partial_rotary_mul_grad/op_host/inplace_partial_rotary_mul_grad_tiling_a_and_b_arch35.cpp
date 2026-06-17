@@ -24,9 +24,9 @@ constexpr int64_t UB_FACTOR = 4;
 constexpr int64_t HALF_INTERLEAVE_COEF = 2;
 constexpr int64_t QUARTER_MODE_COEF = 4;
 
-class RopeGradRegBaseTilingClassAAndB : public InplacePartialRotaryMulGradRegBaseTilingClass {
+class InplacePartialRotaryMulGradRegBaseTilingClassAAndB : public InplacePartialRotaryMulGradRegBaseTilingClass {
 public:
-    explicit RopeGradRegBaseTilingClassAAndB(gert::TilingContext *context)
+    explicit InplacePartialRotaryMulGradRegBaseTilingClassAAndB(gert::TilingContext *context)
         : InplacePartialRotaryMulGradRegBaseTilingClass(context)
     {
     }
@@ -54,14 +54,14 @@ private:
     int64_t ubTailFactorN_{0};
 };
 
-bool RopeGradRegBaseTilingClassAAndB::IsCapable()
+bool InplacePartialRotaryMulGradRegBaseTilingClassAAndB::IsCapable()
 {
     // 处理全boardcast和不boardcast的情况
     return (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) &&
            (layout_ == RopeLayout::NO_BROADCAST || layout_ == RopeLayout::BROADCAST_BSN);
 }
 
-ge::graphStatus RopeGradRegBaseTilingClassAAndB::MergeDim()
+ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAAndB::MergeDim()
 {
     b_ = b_ * n_ * s_;
     n_ = 1;
@@ -74,7 +74,7 @@ ge::graphStatus RopeGradRegBaseTilingClassAAndB::MergeDim()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeGradRegBaseTilingClassAAndB::SplitCore()
+ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAAndB::SplitCore()
 {
     blockFactorB_ = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), aicoreParams_.numBlocks);
     blockNumB_ = Ops::Base::CeilDiv(static_cast<int64_t>(b_), blockFactorB_);
@@ -82,7 +82,7 @@ ge::graphStatus RopeGradRegBaseTilingClassAAndB::SplitCore()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeGradRegBaseTilingClassAAndB::ComputeUbFactor()
+ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAAndB::ComputeUbFactor()
 {
     ubFactorB_ = 1;
     // UB占用大小：
@@ -109,27 +109,27 @@ ge::graphStatus RopeGradRegBaseTilingClassAAndB::ComputeUbFactor()
     return ge::GRAPH_SUCCESS;
 }
 
-void RopeGradRegBaseTilingClassAAndB::SetTilingData()
+void InplacePartialRotaryMulGradRegBaseTilingClassAAndB::SetTilingData()
 {
-    tilingData_->ropeGradParams.b = b_;
-    tilingData_->ropeGradParams.s = s_;
-    tilingData_->ropeGradParams.d = d_;
-    tilingData_->ropeGradParams.n = n_;
-    tilingData_->ropeGradParams.blockNumB = blockNumB_;
-    tilingData_->ropeGradParams.blockFactorB = blockFactorB_;
-    tilingData_->ropeGradParams.blockNumS = blockNumS_;
-    tilingData_->ropeGradParams.blockFactorS = blockFactorS_;
-    tilingData_->ropeGradParams.ubFactorS = ubFactorS_;
-    tilingData_->ropeGradParams.ubFactorB = ubFactorB_;
-    tilingData_->ropeGradParams.ubLoopNumN = ubLoopNumN_;
-    tilingData_->ropeGradParams.ubFactorN = ubFactorN_;
-    tilingData_->ropeGradParams.ubTailFactorN = ubTailFactorN_;
-    tilingData_->ropeGradParams.usedCoreNum = usedCoreNum_;
-    tilingData_->ropeGradParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
-    tilingData_->ropeGradParams.sliceStart = sliceStart_;
-    tilingData_->ropeGradParams.sliceEnd = sliceEnd_;
-    tilingData_->ropeGradParams.sliceLength = sliceLength_;
-    tilingData_->dCosFlag = dCosFlag_;
+    tilingData_->inplacePartialRotaryMulGradABParams.b = b_;
+    tilingData_->inplacePartialRotaryMulGradABParams.s = s_;
+    tilingData_->inplacePartialRotaryMulGradABParams.d = d_;
+    tilingData_->inplacePartialRotaryMulGradABParams.n = n_;
+    tilingData_->inplacePartialRotaryMulGradABParams.blockNumB = blockNumB_;
+    tilingData_->inplacePartialRotaryMulGradABParams.blockFactorB = blockFactorB_;
+    tilingData_->inplacePartialRotaryMulGradABParams.blockNumS = blockNumS_;
+    tilingData_->inplacePartialRotaryMulGradABParams.blockFactorS = blockFactorS_;
+    tilingData_->inplacePartialRotaryMulGradABParams.ubFactorS = ubFactorS_;
+    tilingData_->inplacePartialRotaryMulGradABParams.ubFactorB = ubFactorB_;
+    tilingData_->inplacePartialRotaryMulGradABParams.ubLoopNumN = ubLoopNumN_;
+    tilingData_->inplacePartialRotaryMulGradABParams.ubFactorN = ubFactorN_;
+    tilingData_->inplacePartialRotaryMulGradABParams.ubTailFactorN = ubTailFactorN_;
+    tilingData_->inplacePartialRotaryMulGradABParams.usedCoreNum = usedCoreNum_;
+    tilingData_->inplacePartialRotaryMulGradABParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
+    tilingData_->inplacePartialRotaryMulGradABParams.sliceStart = sliceStart_;
+    tilingData_->inplacePartialRotaryMulGradABParams.sliceEnd = sliceEnd_;
+    tilingData_->inplacePartialRotaryMulGradABParams.sliceLength = sliceLength_;
+    tilingData_->inplacePartialRotaryMulGradABParams.dCosFlag = dCosFlag_;
 
     OP_LOGI(context_->GetNodeName(),
             "RopeGradRegBaseTilingClassAAndB tilingData: "
@@ -137,16 +137,22 @@ void RopeGradRegBaseTilingClassAAndB::SetTilingData()
             "blockNumS %ld, blockFactorS is %ld, ubFactorS is %ld, ubFactorB is %ld,"
             "ubLoopNumN is %ld, ubFactorN is %ld, ubTailFactorN is %ld, rotaryMode is %ld, tilingKey is %ld,"
             "usedCoreNum = %ld.",
-            tilingData_->ropeGradParams.b, tilingData_->ropeGradParams.s, tilingData_->ropeGradParams.d,
-            tilingData_->ropeGradParams.n, tilingData_->ropeGradParams.blockNumB,
-            tilingData_->ropeGradParams.blockFactorB, tilingData_->ropeGradParams.blockNumS,
-            tilingData_->ropeGradParams.blockFactorS, tilingData_->ropeGradParams.ubFactorS,
-            tilingData_->ropeGradParams.ubFactorB, tilingData_->ropeGradParams.ubLoopNumN,
-            tilingData_->ropeGradParams.ubFactorN, tilingData_->ropeGradParams.ubTailFactorN,
-            tilingData_->ropeGradParams.rotaryMode, tilingKey_, tilingData_->ropeGradParams.usedCoreNum);
+            tilingData_->inplacePartialRotaryMulGradABParams.b, tilingData_->inplacePartialRotaryMulGradABParams.s,
+            tilingData_->inplacePartialRotaryMulGradABParams.d, tilingData_->inplacePartialRotaryMulGradABParams.n,
+            tilingData_->inplacePartialRotaryMulGradABParams.blockNumB,
+            tilingData_->inplacePartialRotaryMulGradABParams.blockFactorB,
+            tilingData_->inplacePartialRotaryMulGradABParams.blockNumS,
+            tilingData_->inplacePartialRotaryMulGradABParams.blockFactorS,
+            tilingData_->inplacePartialRotaryMulGradABParams.ubFactorS,
+            tilingData_->inplacePartialRotaryMulGradABParams.ubFactorB,
+            tilingData_->inplacePartialRotaryMulGradABParams.ubLoopNumN,
+            tilingData_->inplacePartialRotaryMulGradABParams.ubFactorN,
+            tilingData_->inplacePartialRotaryMulGradABParams.ubTailFactorN,
+            tilingData_->inplacePartialRotaryMulGradABParams.rotaryMode, tilingKey_,
+            tilingData_->inplacePartialRotaryMulGradABParams.usedCoreNum);
 }
 
-ge::graphStatus RopeGradRegBaseTilingClassAAndB::DoOpTiling()
+ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAAndB::DoOpTiling()
 {
     OP_CHECK_IF(MergeDim() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "failed to merge dim."),
                 return ge::GRAPH_FAILED);
@@ -161,12 +167,12 @@ ge::graphStatus RopeGradRegBaseTilingClassAAndB::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeGradRegBaseTilingClassAAndB::DoLibApiTiling()
+ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAAndB::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeGradRegBaseTilingClassAAndB::PostTiling()
+ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAAndB::PostTiling()
 {
     SetTilingData();
     SetRotaryXTilingData();
@@ -176,6 +182,6 @@ ge::graphStatus RopeGradRegBaseTilingClassAAndB::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(RotaryPositionEmbeddingGrad, RopeGradRegBaseTilingClassAAndB,
+REGISTER_OPS_TILING_TEMPLATE(RotaryPositionEmbeddingGrad, InplacePartialRotaryMulGradRegBaseTilingClassAAndB,
                              ROPE_GRAD_A_AND_B_TILING_PRIORITY);
 } // namespace optiling
