@@ -182,6 +182,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.cmpRatio = tilingData->cmpRatio;
     constInfo.keyStride0 = tilingData->keyStride0;
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
+    constInfo.maxSeqlenQ = tilingData->maxSeqlenQ;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;

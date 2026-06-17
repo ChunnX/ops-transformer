@@ -165,6 +165,7 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     static const int64_t key_stride0 = -1;
 
     opParamInfo_.quantMode = attrs->GetAttrPointer<int32_t>(ATTR_QUANT_MODE_INDEX);
+    opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_Q_INDEX);
     opParamInfo_.layOutQuery = attrs->GetStr(ATTR_QUERY_LAYOUT_INDEX);
     opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
     opParamInfo_.sparseCount = attrs->GetAttrPointer<int32_t>(ATTR_TOPK_INDEX);
@@ -191,6 +192,9 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     }
     if (opParamInfo_.returnValue != nullptr) {
         OP_LOGI(context_->GetNodeName(), "returnValue is:%s", *opParamInfo_.returnValue ? "true" : "false");
+    }
+    if (opParamInfo_.maxSeqlenQ != nullptr) {
+        OP_LOGI(context_->GetNodeName(), "maxSeqlenQ  is:%d", *opParamInfo_.maxSeqlenQ);
     }
     if (opParamInfo_.quantMode != nullptr) {
         OP_LOGI(context_->GetNodeName(), "query_quant_mode mode is:%d", *opParamInfo_.quantMode);
@@ -881,6 +885,7 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
     QLIV2Info.sparseCount = *opParamInfo_.sparseCount;
     QLIV2Info.cmpRatio = *opParamInfo_.cmpRatio;
     QLIV2Info.returnValue = *opParamInfo_.returnValue;
+    QLIV2Info.maxSeqlenQ = (opParamInfo_.maxSeqlenQ != nullptr) ? *opParamInfo_.maxSeqlenQ : -1;
 
     if (opParamInfo_.keyStride0 != -1) {
         QLIV2Info.keyStride0 = opParamInfo_.keyStride0;
@@ -994,6 +999,7 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
     tilingData_.set_sparseMode(tilingInfo->sparseMode);
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.set_returnValue(tilingInfo->returnValue);
+    tilingData_.set_maxSeqlenQ(tilingInfo->maxSeqlenQ);
     tilingData_.set_keyStride0(tilingInfo->keyStride0);
     tilingData_.set_keyDequantScaleStride0(tilingInfo->keyDequantScaleStride0);
     tilingData_.set_usedCoreNum(blockDim);
