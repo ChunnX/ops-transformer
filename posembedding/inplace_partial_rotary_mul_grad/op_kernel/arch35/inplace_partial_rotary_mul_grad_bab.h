@@ -152,7 +152,6 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS>::Proc
     uint32_t ubLoopNumN = static_cast<uint32_t>(tilingData_->ubLoopNumN);
     LocalTensor<DTYPE_COS> cosBuffer = cosInQue_.DeQue<DTYPE_COS>();
     LocalTensor<DTYPE_COS> sinBuffer = sinInQue_.DeQue<DTYPE_COS>();
-    LocalTensor<DTYPE_DY> outBuffer = xGradOutQue_.AllocTensor<DTYPE_DY>();
 
     for (uint32_t idxN = 0; idxN < ubLoopNumN; idxN++) {
         uint32_t currDNum =
@@ -167,6 +166,8 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS>::Proc
         DataCopyPad(inBuffer, gradGm_[offset], copyInParams, padParamsX_);
         gradInQue_.EnQue(inBuffer);
         inBuffer = gradInQue_.DeQue<DTYPE_DY>();
+
+        LocalTensor<DTYPE_DY> outBuffer = xGradOutQue_.AllocTensor<DTYPE_DY>();
 
         // 根据 mode 选择 VF
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
@@ -193,8 +194,8 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS>::Proc
 
         DataCopyExtParams copyOutParams = {static_cast<uint16_t>(currSNum * currDNum), blockLenX, 0, strideBytesX, 0};
         DataCopyPad(dyOutGm_[offset], outBuffer, copyOutParams);
+        xGradOutQue_.FreeTensor(outBuffer);
     }
-    xGradOutQue_.FreeTensor(outBuffer);
 }
 
 } // namespace InplacePartialRotaryMulGrad
