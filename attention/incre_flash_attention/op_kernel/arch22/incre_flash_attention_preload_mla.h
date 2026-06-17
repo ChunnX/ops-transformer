@@ -1895,7 +1895,7 @@ IncreFlashAttentionAttenPreloadMla<IFAT>::IsSkipAttenMask(const ExtraInfoMla &in
     }
 
     // 当前的s2位置不超过需要打标记的位置时，不需要mask
-    uint32_t s2EndPos = info.s2Idx * singleProcessSInnerSize + info.actualSingleProcessSInnerSize
+    uint32_t s2EndPos = info.s2Idx * singleProcessSInnerSize + info.actualSingleProcessSInnerSize;
     if (s2EndPos <= (info.s2Size - actualSeqQ + 1)) {
         return true;
     }
