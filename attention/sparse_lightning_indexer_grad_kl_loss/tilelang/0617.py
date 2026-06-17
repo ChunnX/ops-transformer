@@ -146,11 +146,10 @@ def check_param_valid(
 # Single Kernel: CV-separated architecture
 # C scope 1: Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
 # V scope 1: softmaxI, P_reduced, dWeight, reluGrad computation
-# C scope 2: Matmul4 (reluGrad @ gatherKeyIndex^T -> dQueryIndex) — per-core atomic_add
-# V scope 2: cast dQueryIndex FP32->FP16 (all cores, redundant but V is cheap)
+# C scope 2: Matmul4 (reluGrad @ gatherKeyIndex^T) — per-core partial, summed in Python
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-5, -4, -3, -2],
+    out_idx=[-4, -3, -2],
     workspace_idx=[10, 11, 12, 13, 14, 19],
     pass_configs=pass_configs,
 )
@@ -172,7 +171,6 @@ def tilelang_grad_kl_loss_single_kernel(
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
 
-    v3_chunks = Nidx1 // 4
     @T.prim_func
     def main(
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
@@ -194,7 +192,7 @@ def tilelang_grad_kl_loss_single_kernel(
         dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),
-        dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
+        dQueryIndex_ws_partial: T.Tensor((B, S1, n_num, Nidx1, DQueryIndex), calc_dtype),
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
@@ -440,9 +438,8 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("V", 12)
 
             # ============================================================
-            # C scope 2: Matmul4 (reluGrad @ GatherKeyIndexT^T -> dQueryIndex)
-            # Each core contributes only its own K block via atomic_add
-            # This eliminates ~n_num× redundant Cube computation (was 73% of Cube time!)
+            # C scope 2: Matmul4 (reluGrad @ GatherKeyIndexT^T)
+            # Per-core partial write → Python-side reduction replaces n_num× Cube redundancy
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(12)
@@ -456,25 +453,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
                         T.copy(GatherKeyIndexT[bz, s1_row, d_idx * k_block:(d_idx + 1) * k_block, n_idx_k * n_block:(n_idx_k + 1) * n_block], GKIT_L1)
                         T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
-                        T.tile.atomic_add(dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C)
-
-                T.set_cross_flag("FIX", 3)
-
-            # ============================================================
-            # V scope 3: Cast dQueryIndex (minimal buffers)
-            # ============================================================
-            with T.Scope("V"):
-                T.wait_cross_flag(3)
-
-                dq_fp32_ub = T.alloc_ub((4, BLOCK_K), calc_dtype)
-                dq_fp16_ub = T.alloc_ub((4, BLOCK_K), input_dtype)
-
-                for s1_row in T.serial(s1_start, s1_end):
-                    for g_id in T.serial(v3_chunks):
-                        for d_idx in T.serial(d_num_query_index):
-                            T.copy(dQueryIndex_ws[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
-                            T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
-                            T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                        T.copy(DQ_L0C, dQueryIndex_ws_partial[bz, s1_row, n_idx_k, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block])
 
     return main
 
@@ -698,28 +677,26 @@ def sparse_lightning_indexer_grad_kl_loss(
         if ws_key in _workspace_cache:
             ws = _workspace_cache[ws_key]
             bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws, \
-                d_query_index_ws, d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out = ws
+                d_query_index_ws_partial, d_weight_partial_out, relu_grad_out, loss_out = ws
         else:
             bmm1_res_ws = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=query.device)
             bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=query.device)
             p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
             reduce_sum_y_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
             softmax_i_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
-            d_query_index_ws = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
-            d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
+            d_query_index_ws_partial = torch.zeros(B, S1, n_num_ws, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
             d_weight_partial_out = torch.zeros(B, S1, n_num_ws, Nidx1, dtype=input_dtype, device=query.device)
             relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
             loss_out = torch.zeros(B, S1, n_num_ws * 16, dtype=torch.float32, device=query.device)
             _workspace_cache[ws_key] = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
-                                        d_query_index_ws, d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out)
-
-        # Zero dQueryIndex_ws before each kernel call for atomic_add accumulation
-        d_query_index_ws.zero_()
+                                        d_query_index_ws_partial, d_weight_partial_out, relu_grad_out, loss_out)
 
         if _PROFILE:
             _t_kernel_start = torch.npu.Event(enable_timing=True)
             _t_kernel_end = torch.npu.Event(enable_timing=True)
             _t_kernel_start.record()
+        # dQueryIndex is now a regular input (not kernel output) — just needs valid tensor
+        d_query_index_out = torch.empty(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
         results = func(
             query, query_rope, gather_key, gather_key_rope,
             query_index, gather_key_index, gather_key_index_t,
@@ -727,15 +704,16 @@ def sparse_lightning_indexer_grad_kl_loss(
             bmm1_res_ws, bmm2_res_ws,
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
             d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,
-            d_query_index_ws,
+            d_query_index_ws_partial,
         )
         if _PROFILE:
             _t_kernel_end.record()
 
-        d_query_index = results[0]
-        d_weight_partial = results[1]
-        relu_grad = results[2]
-        loss_out = results[3]
+        # dQueryIndex is no longer a kernel output — reduce partials and cast in Python
+        d_weight_partial = results[0]
+        relu_grad = results[1]
+        loss_out = results[2]
+        d_query_index = d_query_index_ws_partial.sum(dim=2).to(input_dtype)
 
         # Accumulate partial dWeight across K blocks
         d_weight = d_weight_partial.sum(dim=2)
