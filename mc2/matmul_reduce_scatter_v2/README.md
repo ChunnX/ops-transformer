@@ -295,7 +295,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
             groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32
             $$
             - 如果满足重新设置条件，一般情况下，当x1Scale、x2Scale输入都是2维，且数据类型都为FLOAT时，[groupSizeM，groupSizeN，groupSizeK]取值组合会推导为[128, 128, 128]，对应groupSize的值为549764202624；当x1Scale、x2Scale输入都是3维，且数据类型都为FLOAT8_E8M0时，[groupSizeM, groupSizeN, groupSizeK]取值组合会推导为[1, 1, 32]，对应groupSize的值为4295032864。
-        - commMode：当前版本仅支持输入“ccu”。
+        - commMode：当前版本支持输入空字符串、“ai_cpu” 或 “ccu”。
         - output：如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。如果x1类型为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8，则数据类型支持FLOAT16、BFLOAT16、FLOAT。
 
             $$
@@ -379,8 +379,8 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 - 通信引擎约束：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持commMode为"aiv"。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：仅支持commMode为"aiv"。
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持commMode为"ccu"。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持commMode为"aiv"。
+  - <term>Ascend 950PR/Ascend 950DT</term>：当前版本支持输入空字符串、“ai_cpu” 或 “ccu”。
 
 - 确定性计算：
   - `aclnnMatmulReduceScatterV2`默认采用确定性计算实现。
@@ -397,7 +397,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8时，不支持空tensor。
     - 当x1、x2的数据类型为FLOAT16/BFLOAT16/HIFLOAT8时，x1和x2的数据类型需要保持一致。
     - 当x1、x2的数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2时，x1和x2的数据可以为其中一种。
-    - 支持2、4、8、16、32、64卡。
+    - 支持2、4、8、16、32、64卡；支持CCU通信和AICPU通信，CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
     - reduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：

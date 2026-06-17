@@ -6,8 +6,8 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
+| <term>Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
@@ -35,7 +35,7 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
+  - <term>Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
 ## 函数原型
 
 该算子分为两段式接口，必须先调用`aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnQuantGroupedMatMulAlltoAllvV2`接口执行计算。
@@ -518,7 +518,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
 - 确定性计算：
   - aclnnQuantGroupedMatMulAlltoAllvV2默认确定性实现。
 - 通信引擎约束：
-  - Ascend 950PR/Ascend 950DT：支持CCU通信。
+  - Ascend 950DT：支持CCU通信和AI_CPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
 - e * epWorldSize最大支持256，e表示单卡上的专家数量，最大支持到32，epWorldSize支持2/4/8/16/32/64/128/256;
 - gmmX的shape(A, H1)，A为sendCounts之和，H1取值范围(0, 65536);
 - gmmWeight的shape(e, H1, N1)，N1取值范围(0, 65536);
@@ -577,7 +577,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950DT</term>：
 
     ```Cpp
     #include <thread>
