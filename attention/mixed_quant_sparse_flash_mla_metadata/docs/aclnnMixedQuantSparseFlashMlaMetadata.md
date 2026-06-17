@@ -72,7 +72,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 ## aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1300px"><colgroup>
   <col style="width: 150px">
   <col style="width: 100px">
   <col style="width: 350px">
