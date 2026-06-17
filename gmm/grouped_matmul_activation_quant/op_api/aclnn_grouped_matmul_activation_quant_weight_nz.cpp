@@ -50,7 +50,7 @@ constexpr int64_t MX_GROUP_SIZE = 64L;
 constexpr int64_t MX_SCALE_PAIR = 2L;
 constexpr int64_t NZ_C0_DIM = 16L;
 constexpr int64_t NZ_LAST_DIM = 32L;
-constexpr int64_t MAX_GROUP_NUM = 2048L;
+constexpr int64_t MAX_GROUP_NUM = 1024L;
 constexpr int64_t DEFAULT_DEQUANT_DTYPE = static_cast<int64_t>(DataType::DT_FLOAT);
 constexpr int64_t FLOAT8_E5M2_VALUE = static_cast<int64_t>(DataType::DT_FLOAT8_E5M2);
 constexpr int64_t FLOAT8_E4M3FN_VALUE = static_cast<int64_t>(DataType::DT_FLOAT8_E4M3FN);
@@ -107,7 +107,7 @@ aclnnStatus CheckShapeValue(const aclTensor *x, const aclTensor *groupList, cons
     int64_t n = transposeWeightOptional ? weightScale->GetViewShape().GetDim(DIM_1) :
                                            weightScale->GetViewShape().GetDim(DIM_2);
     CHECK_COND(e >= 1 && e <= MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], the first dim of groupList must be in range [1, 2048], but got %ld.", OP_NAME, e);
+               "In op [%s], the first dim of groupList must be in range [1, 1024], but got %ld.", OP_NAME, e);
     CHECK_COND(m == 0 || n == 0 || k > 0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], K must be greater than 0 unless M or N is 0.", OP_NAME);
     CHECK_COND(n % MX_GROUP_SIZE == 0, ACLNN_ERR_PARAM_INVALID,

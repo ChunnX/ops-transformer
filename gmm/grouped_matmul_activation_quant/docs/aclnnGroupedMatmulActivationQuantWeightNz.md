@@ -495,7 +495,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
   - 确定性计算：
       - aclnnGroupedMatmulActivationQuantWeightNz默认为确定性实现。
   - <term>Ascend 950PR/Ascend 950DT</term>：
-    - groupList第1维最小为1，最大为2048。
+    - groupList第1维最小为1，最大为1024。
     - 当前仅支持MXFP8量化场景，激活函数仅支持gelu_tanh。
     - MXFP8量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
