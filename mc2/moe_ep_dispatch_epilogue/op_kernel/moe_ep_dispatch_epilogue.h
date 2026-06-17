@@ -32,13 +32,6 @@ using namespace AscendC;
 using Mc2Aclnn::Mc2MoeContext;
 using Mc2Aclnn::HCCL_MAX_RANK_SIZE;
 
-inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
-
-__aicore__ inline GM_ADDR GetBaseWinAddrByRankId(uint32_t rankId)
-{
-    return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE);
-}
-
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 3;
 
@@ -58,6 +51,11 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline GM_ADDR GetBaseWinAddrByRankId(uint32_t rankId)
+    {
+        return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE);
+    }
+
     __aicore__ inline void ComputePrefixSums();
     __aicore__ inline void CountHits();
     __aicore__ inline void CopyFromWindowByExpert();
@@ -70,6 +68,7 @@ private:
     uint32_t rankId_{0};
     uint32_t aivId_{0};
     uint32_t recvCounterOffset_{0};
+    GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
 
     GlobalTensor<int32_t> numRecvPerRankHpGm_;
     GlobalTensor<int64_t> numRecvPerExpertHpGm_;
@@ -178,8 +177,9 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     }
 
     hitCountOffset_ = ALIGN_UP(numLocalExperts_ * sizeof(int64_t), 32);
+    uint32_t hitCountElems = aivNum_ * numLocalExperts_;
 
-    hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace + hitCountOffset_));
+    hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace + hitCountOffset_), hitCountElems);
 
     uint32_t ubTokenBytes     = ALIGN_UP(hidden_ * sizeof(XType), 32);
     uint32_t ubHitCountBytes  = ALIGN_UP(numLocalExperts_ * sizeof(int32_t), 32);
