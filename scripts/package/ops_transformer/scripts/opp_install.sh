@@ -39,7 +39,9 @@ TARGET_MOULDE_DIR=""  # TARGET_INSTALL_PATH + PKG_VERSION_DIR + OPP_PLATFORM_DIR
 TARGET_VERSION_DIR="" # TARGET_INSTALL_PATH + PKG_VERSION_DIR
 TARGET_SHARED_INFO_DIR="" # TARGET_INSTALL_PATH + PKG_VERSION_DIR + share/info
 TARGET_OPP_BUILT_IN=""
+# 内置整包中的AICPU metadata算子仍按自定义AICPU目录被runtime发现，因此需要额外加入ASCEND_CUSTOM_OPP_PATH。
 AICPU_BUILTIN_CUSTOM_ROOT="opp/built-in/op_impl/aicpu/ops_transformer"
+# 用marker包住自动写入的环境片段，保证重复安装/升级时可以先删后写，避免路径重复堆叠。
 AICPU_ENV_BEGIN="# OPS_TRANSFORMER_AICPU_ENV_BEGIN"
 AICPU_ENV_END="# OPS_TRANSFORMER_AICPU_ENV_END"
 
@@ -223,6 +225,7 @@ setenv() {
 
 # 创建单个文件的软链接，链接文件级别
 append_aicpu_env_to_file() {
+  # 仅追加ops_transformer自己的AICPU路径，不改写用户已有ASCEND_CUSTOM_OPP_PATH。
   local env_file="$1"
   local aicpu_path_val="${relative_path_val}/${AICPU_BUILTIN_CUSTOM_ROOT}"
 
@@ -251,6 +254,7 @@ EOF
 }
 
 setup_aicpu_builtin_env() {
+  # run包里存在AICPU json或so时才修改环境脚本，避免无AICPU包产生多余环境变量。
   local aicpu_root="${TARGET_VERSION_DIR}/${AICPU_BUILTIN_CUSTOM_ROOT}"
   local aicpu_json="${aicpu_root}/op_impl/cpu/config/cust_aicpu_kernel.json"
   local aicpu_so="${aicpu_root}/op_impl/cpu/aicpu_kernel/impl/libtransformer_aicpu_kernels.so"
@@ -265,6 +269,7 @@ setup_aicpu_builtin_env() {
 }
 
 log_opp_env_requirements() {
+  # ASCEND_OPP_PATH仍按整包原有方式提示；AICPU metadata算子额外提示ASCEND_CUSTOM_OPP_PATH。
   logandprint "[INFO]: Using requirements: when opp module install finished or \
 before you run the opp module, execute the command \
 [ export ASCEND_OPP_PATH=${relative_path_val}/opp ] to set the environment path."

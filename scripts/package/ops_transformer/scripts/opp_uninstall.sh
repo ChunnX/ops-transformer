@@ -36,6 +36,7 @@ TARGET_VERSION_DIR=$(readlink -f ${TARGET_VERSION_DIR})     # TARGET_INSTALL_PAT
 TARGET_MOULDE_DIR=${TARGET_VERSION_DIR}/${OPP_PLATFORM_DIR} # TARGET_INSTALL_PATH + PKG_VERSION_DIR + OPP_PLATFORM_DIR
 TARGET_OPP_BUILT_IN=${TARGET_VERSION_DIR}/opp/built-in
 TARGET_SHARED_INFO_DIR=${TARGET_VERSION_DIR}/share/info
+# 安装脚本用marker写入AICPU环境片段，卸载时按同一marker精确删除，避免影响用户其它自定义OPP路径。
 AICPU_ENV_BEGIN="# OPS_TRANSFORMER_AICPU_ENV_BEGIN"
 AICPU_ENV_END="# OPS_TRANSFORMER_AICPU_ENV_END"
 
@@ -141,6 +142,7 @@ unsetenv() {
 }
 
 remove_aicpu_env_from_file() {
+  # 只删除ops_transformer自动追加的marker区间，不清理整份ASCEND_CUSTOM_OPP_PATH配置。
   local env_file="$1"
 
   if [ ! -f "${env_file}" ]; then

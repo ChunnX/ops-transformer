@@ -111,6 +111,7 @@ upgrade_file()
 
 write_set_env()
 {
+    # custom包升级路径也需要刷新set_env.bash，避免升级后仍指向旧的自定义OPP或op_api路径。
     _ASCEND_CUSTOM_OPP_PATH=${targetdir}/${vendordir}
     bin_path="${_ASCEND_CUSTOM_OPP_PATH}/bin"
     set_env_file="${bin_path}/set_env.bash"
@@ -135,6 +136,7 @@ EOF
 
 log_custom_env_requirements()
 {
+    # 同时给出export和source两种方式，兼容不同用户的环境使能习惯。
     _ASCEND_CUSTOM_OPP_PATH=${targetdir}/${vendordir}
     log "[INFO] using requirements: when custom module install finished or before you run the custom module, \
         execute the following commands to set the environment path: \

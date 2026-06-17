@@ -1460,6 +1460,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# built-in整包需要把AICPU kernel一起打入run包，否则metadata类算子需要额外指定--aicpu_kernel才会生效。
 if [[ "${ENABLE_BUILD_PKG}" == "TRUE" ]] && [[ "${ENABLE_BUILT_IN}" == "TRUE" ]] && [[ "${ENABLE_AICPU}" != "FALSE" ]]; then
     ENABLE_AICPU_KERNEL=TRUE
 fi
