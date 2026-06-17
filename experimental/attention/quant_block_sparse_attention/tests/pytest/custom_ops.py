@@ -27,6 +27,14 @@ def _prepend_env_path(env_name, paths):
         os.environ[env_name] = ":".join(new_parts + current_parts)
 
 
+def _append_env_path(env_name, paths):
+    current = os.environ.get(env_name, "")
+    current_parts = [part for part in current.split(":") if part]
+    new_parts = [str(path) for path in paths if path and path.exists() and str(path) not in current_parts]
+    if new_parts:
+        os.environ[env_name] = ":".join(current_parts + new_parts)
+
+
 def _candidate_roots():
     roots = []
     value = os.environ.get("BSA_CUSTOM_OPS_PATH")
@@ -98,12 +106,30 @@ def _load_converter(root):
             _LOAD_ERRORS.append(f"{converter_file}: {error}")
 
 
-def _load_custom_ops():
-    lib_paths = [
-        Path("/home/dyx/vendors/custom_transformer/op_api/lib"),
-        Path("/workspace/vendors/custom_transformer/op_api/lib"),
+def _custom_opp_roots():
+    repo_root = Path(__file__).resolve().parents[5]
+    build_candidates = [
+        repo_root / "build/_CPack_Packages/Linux/External/cann-ops-transformer-custom_linux-x86_64.run"
+        / "packages/vendors/custom_transformer",
     ]
-    _prepend_env_path("LD_LIBRARY_PATH", [path for path in lib_paths if path.exists()])
+    build_roots = [path for path in build_candidates if path.exists()]
+    if build_roots:
+        return build_roots
+    candidates = [
+        Path("/home/dyx/vendors/custom_transformer"),
+        Path("/workspace/vendors/custom_transformer"),
+    ]
+    return [path for path in candidates if path.exists()]
+
+
+def _configure_custom_opp_paths():
+    custom_opp_roots = _custom_opp_roots()
+    _prepend_env_path("ASCEND_CUSTOM_OPP_PATH", custom_opp_roots)
+    _prepend_env_path("LD_LIBRARY_PATH", [root / "op_api" / "lib" for root in custom_opp_roots])
+
+
+def _load_custom_ops():
+    _configure_custom_opp_paths()
     if has_quant_block_sparse_attention_op() and has_quant_block_sparse_attention_metadata_op():
         for root in _candidate_roots():
             if root.exists():

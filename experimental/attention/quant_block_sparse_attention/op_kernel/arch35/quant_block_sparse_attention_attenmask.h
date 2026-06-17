@@ -80,7 +80,16 @@ __aicore__ inline void BoolCopyInRegbase(const LocalTensor<uint8_t> &dstTensor, 
         dataCopyExtParams.dstStride = CeilDiv(s2BaseSize, blockBytes) - CeilDiv(s2Size, blockBytes);
         dataCopyExtParams.blockLen = s2Size;
         dataCopyExtParams.srcStride = totalS2Size - s2Size;
-        DataCopyPadExtParams<uint8_t> dataCopyPadParams;
+        DataCopyPadExtParams<uint8_t> dataCopyPadParams{};
+        if (constInfo.isGqa) {
+            dataCopyExtParams.blockCount = 1;
+            // IFA GS1合轴后, 1Size = gSize * s1 (1) , 但mask实际只有s1 (1) 行，因此需要循环拷贝
+            for (uint32_t i = 0; i < s1Size; ++i) {
+                // 需要用 s2BaseSize, 兼容S2方向有尾块情况
+                DataCopyPad(dstTensor[i * s2BaseSize], srcTensor[srcOffset], dataCopyExtParams, dataCopyPadParams);
+            }
+            return;
+        }
         DataCopyPad(dstTensor, srcTensor[srcOffset], dataCopyExtParams, dataCopyPadParams);
     }
 }

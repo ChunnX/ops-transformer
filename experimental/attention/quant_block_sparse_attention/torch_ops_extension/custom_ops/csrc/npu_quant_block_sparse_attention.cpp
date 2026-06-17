@@ -33,7 +33,7 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(
 
     at::SmallVector<int64_t, SIZE> atten_out_size;
     at::SmallVector<int64_t, SIZE> softmax_lse_size;
-    int64_t d_size = value.size(value.dim() - 1);
+    int64_t d_size = query.size(query.dim() - 1);
     if (query.dim() == DIM_THREE) {
         // TND -> (T, N1, D)
         int64_t t_size = query.size(0);
@@ -67,18 +67,40 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_npu(
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata,
     int64_t max_seqlen_q, int64_t max_seqlen_kv,
+    int64_t pa_block_stride,
     c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices,
     int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
-    int64_t paBlockStride = key.stride(0);
-    TORCH_CHECK(paBlockStride > 0, "key.stride(0) (paBlockStride) should be greater than 0, but got ", paBlockStride);
-    TORCH_CHECK(value.stride(0) == paBlockStride,
-        "value.stride(0) should equal key.stride(0), but got value.stride(0)=", value.stride(0),
-        " and key.stride(0)=", paBlockStride);
-    TORCH_CHECK(k_descale.stride(0) * FP32_BYTES == paBlockStride,
-        "k_descale.stride(0) * ", FP32_BYTES, " should equal key.stride(0), but got k_descale.stride(0)=",
-        k_descale.stride(0), " and key.stride(0)=", paBlockStride);
+    int64_t paBlockStride = pa_block_stride;
+    if (key.dim() == 1) {
+        TORCH_CHECK(paBlockStride > 0,
+            "pa_block_stride should be explicitly set when key is the combined KV storage tail, but got ",
+            paBlockStride);
+        TORCH_CHECK(value.dim() == 1 && k_descale.dim() == 1,
+            "segmented combined KV kernel inputs should be 1D key/value/k_descale tails, but got dims ",
+            key.dim(), "/", value.dim(), "/", k_descale.dim());
+    } else {
+        paBlockStride = key.stride(0);
+        TORCH_CHECK(paBlockStride > 0, "key.stride(0) (paBlockStride) should be greater than 0, but got ", paBlockStride);
+        TORCH_CHECK(value.stride(0) == paBlockStride,
+            "value.stride(0) should equal key.stride(0), but got value.stride(0)=", value.stride(0),
+            " and key.stride(0)=", paBlockStride);
+        TORCH_CHECK(k_descale.stride(0) * FP32_BYTES == paBlockStride,
+            "k_descale.stride(0) * ", FP32_BYTES, " should equal key.stride(0), but got k_descale.stride(0)=",
+            k_descale.stride(0), " and key.stride(0)=", paBlockStride);
+        TORCH_CHECK(key.stride(1) == key.size(2) * key.size(3) && key.stride(2) == key.size(3) &&
+                key.stride(3) == 1,
+            "key should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
+            key.strides());
+        TORCH_CHECK(value.stride(1) == value.size(2) * value.size(3) && value.stride(2) == value.size(3) &&
+                value.stride(3) == 1,
+            "value should use segmented PA_BNSD stride [paBlockStride, blockSize * headDim, headDim, 1], but got ",
+            value.strides());
+        TORCH_CHECK(k_descale.stride(1) == k_descale.size(2) && k_descale.stride(2) == 1,
+            "k_descale should use segmented PA_BNSD stride [paBlockStride / 4, blockSize, 1], but got ",
+            k_descale.strides());
+    }
 
     // construct the output tensors
     std::tuple<at::Tensor, at::Tensor> outputs =
@@ -116,6 +138,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_meta(
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata,
     int64_t max_seqlen_q, int64_t max_seqlen_kv,
+    int64_t pa_block_stride,
     c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices,
     int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
 {
