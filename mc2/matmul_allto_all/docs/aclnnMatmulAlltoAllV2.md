@@ -319,7 +319,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：支持AI_CPU通信。
    - <term>Ascend 950PR/Ascend 950DT</term>：
       - 支持CCU通信和AI_CPU通信。
-      - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
+      - 传""空字符串场景为自适应模式：卡数小于等于8卡时使用CCU通信，大于8卡时使用AI_CPU通信。
       - CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
       - 通信域约束：同一个通信域内只能使用同一种通信方式。
 
