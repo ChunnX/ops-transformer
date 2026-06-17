@@ -24,7 +24,7 @@
 namespace InplacePartialRotaryMulGrad {
 using namespace AscendC;
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBoardCast>
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
 class InplacePartialRotaryMulGradAAndB {
 public:
     __aicore__ inline InplacePartialRotaryMulGradAAndB() {}
@@ -63,8 +63,8 @@ private:
     int64_t ubFactorB_{0};
 };
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBoardCast>
-__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBoardCast>::Init(
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
+__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBoardCast>::Init(
     TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling, GM_ADDR dy, GM_ADDR cos, GM_ADDR sin,
     GM_ADDR dyOut)
 {
@@ -110,8 +110,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, DTY
     bBlockStart_ = blockIdx_ * tilingData_->blockFactorB;
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBoardCast>
-__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBoardCast>::
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
+__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBoardCast>::
     CopyInCosAndSin(int64_t bStart, int64_t bLength)
 {
     DataCopyExtParams cosParams = {static_cast<uint16_t>(bLength * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0, 0};
@@ -124,8 +124,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, DTY
     sinInQueue_.EnQue(sinUb);
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBoardCast>
-__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBoardCast>::Compute(
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
+__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBoardCast>::Compute(
     const LocalTensor<DTYPE_COS> &cosBuffer, const LocalTensor<DTYPE_COS> &sinBuffer,
     const LocalTensor<DTYPE_DY> &inBuffer, const LocalTensor<DTYPE_DY> &outBuffer, int64_t bUbLength)
 {
@@ -173,8 +173,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, DTY
     }
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBoardCast>
-__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBoardCast>::ProcessInLoop(
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
+__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBoardCast>::ProcessInLoop(
     const LocalTensor<DTYPE_COS> &cosBuffer, const LocalTensor<DTYPE_COS> &sinBuffer, int64_t bUbStart,
     int64_t bUbLength)
 {
@@ -202,8 +202,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, DTY
     xGradOutQueue_.FreeTensor(outBuffer);
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBoardCast>
-__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBoardCast>::Process()
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
+__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBoardCast>::Process()
 {
     if (blockIdx_ >= tilingData_->usedCoreNum) {
         return;
