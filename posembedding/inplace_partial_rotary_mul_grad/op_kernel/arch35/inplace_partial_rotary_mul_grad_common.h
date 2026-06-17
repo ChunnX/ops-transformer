@@ -49,8 +49,7 @@ __aicore__ inline void HalfGradAlignVF(const LocalTensor<DTYPE_COS> &sinTensor,
     uint32_t halfDAlignCos = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS)));
     uint16_t repeatTimes = AscendC::Ceil(halfD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
-    uint32_t rowStrideBytes = dAlignDy * sizeof(DTYPE_DY);
-    uint32_t cosRowStride = rowStrideBytes / sizeof(DTYPE_COS);
+    uint32_t cosRowStride = dLen;
 
     __local_mem__ DTYPE_COS *sinUb = const_cast<__local_mem__ DTYPE_COS *>(sinTensor.GetPhyAddr());
     __local_mem__ DTYPE_COS *cosUb = const_cast<__local_mem__ DTYPE_COS *>(cosTensor.GetPhyAddr());
@@ -110,8 +109,7 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<DTYPE_COS> &sinTen
     uint32_t dAlignDy = AscendC::Ceil(dLen, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_DY)));
     uint16_t repeatTimes = AscendC::Ceil(dLen, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
-    uint32_t rowStrideBytes = dAlignDy * sizeof(DTYPE_DY);
-    uint32_t cosRowStride = rowStrideBytes / sizeof(DTYPE_COS);
+    uint32_t cosRowStride = dLen;
 
     __local_mem__ DTYPE_COS *sinUb = const_cast<__local_mem__ DTYPE_COS *>(sinTensor.GetPhyAddr());
     __local_mem__ DTYPE_COS *cosUb = const_cast<__local_mem__ DTYPE_COS *>(cosTensor.GetPhyAddr());
@@ -189,8 +187,7 @@ __aicore__ inline void QuarterGradAlignVF(const LocalTensor<DTYPE_COS> &sinTenso
         AscendC::Ceil(quarterD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS)));
     uint16_t repeatTimes = AscendC::Ceil(quarterD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
-    uint32_t rowStrideBytes = dAlignDy * sizeof(DTYPE_DY);
-    uint32_t cosRowStride = rowStrideBytes / sizeof(DTYPE_COS);
+    uint32_t cosRowStride = dLen;
 
     __local_mem__ DTYPE_COS *sinUb = const_cast<__local_mem__ DTYPE_COS *>(sinTensor.GetPhyAddr());
     __local_mem__ DTYPE_COS *cosUb = const_cast<__local_mem__ DTYPE_COS *>(cosTensor.GetPhyAddr());
@@ -281,8 +278,7 @@ __aicore__ inline void InterleaveHalfModeGradVF(const LocalTensor<DTYPE_COS> &si
     uint32_t halfDAlignCos = AscendC::Ceil(halfD, static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / sizeof(DTYPE_COS)));
     uint16_t repeatTimes = AscendC::Ceil(halfD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
-    uint32_t rowStrideBytes = dAlignDy * sizeof(DTYPE_DY);
-    uint32_t cosRowStride = rowStrideBytes / sizeof(DTYPE_COS);
+    uint32_t cosRowStride = dLen;
 
     __local_mem__ DTYPE_COS *sinUb = const_cast<__local_mem__ DTYPE_COS *>(sinTensor.GetPhyAddr());
     __local_mem__ DTYPE_COS *cosUb = const_cast<__local_mem__ DTYPE_COS *>(cosTensor.GetPhyAddr());
@@ -348,7 +344,7 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ DTYPE_DY *in, __local_
 
     int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy;
     int32_t nStepUb = ubFactorS * dAlignDy;
-    uint32_t cosRowStride = dAlignDy * sizeof(DTYPE_DY) / sizeof(DTYPE_COS);
+    uint32_t cosRowStride = static_cast<uint32_t>(dLen);
     int32_t nStepCosUb = ubFactorS * cosRowStride;
 
     __VEC_SCOPE__ {
@@ -422,7 +418,7 @@ __aicore__ inline void BatchQuarterGradAlignVF(
 
     int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy;
     int32_t nStepUb = ubFactorS * dAlignDy;
-    uint32_t cosRowStride = dAlignDy * sizeof(DTYPE_DY) / sizeof(DTYPE_COS);
+    uint32_t cosRowStride = static_cast<uint32_t>(dLen);
     int32_t nStepCosUb = ubFactorS * cosRowStride;
 
     __VEC_SCOPE__ {
@@ -512,7 +508,7 @@ __aicore__ inline void BatchInterleaveModeGradVF(
 
     int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy;
     int32_t nStepUb = ubFactorS * dAlignDy;
-    uint32_t cosRowStride = dAlignDy * sizeof(DTYPE_DY) / sizeof(DTYPE_COS);
+    uint32_t cosRowStride = static_cast<uint32_t>(dLen);
     int32_t nStepCosUb = ubFactorS * cosRowStride;
 
     __VEC_SCOPE__ {
@@ -590,7 +586,7 @@ __aicore__ inline void BatchInterleaveHalfModeGradVF(
 
     int32_t bStepUb = ubFactorN * ubFactorS * dAlignDy;
     int32_t nStepUb = ubFactorS * dAlignDy;
-    uint32_t cosRowStride = dAlignDy * sizeof(DTYPE_DY) / sizeof(DTYPE_COS);
+    uint32_t cosRowStride = static_cast<uint32_t>(dLen);
     int32_t nStepCosUb = ubFactorS * cosRowStride;
 
     __VEC_SCOPE__ {
