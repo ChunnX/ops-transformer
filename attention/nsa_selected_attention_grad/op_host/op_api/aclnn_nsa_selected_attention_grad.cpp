@@ -75,6 +75,8 @@ static aclnnStatus CheckParams(const NsaSelectedAttentionGradParams &params)
     CHECK_COND(params.dvOut != nullptr, ACLNN_ERR_PARAM_NULLPTR, "dvOut must not be nullptr.");
 
     auto query_dtype = params.query->GetDataType();
+    CHECK_COND(query_dtype == ACL_FLOAT16 || query_dtype == ACL_BF16, ACLNN_ERR_PARAM_INVALID,
+               "The dtype of query is not support.");
     CHECK_COND(query_dtype == params.key->GetDataType(), ACLNN_ERR_PARAM_INVALID, "key dtype error.");
     CHECK_COND(query_dtype == params.value->GetDataType(), ACLNN_ERR_PARAM_INVALID, "value dtype error.");
     CHECK_COND(query_dtype == params.attentionOut->GetDataType(), ACLNN_ERR_PARAM_INVALID, "attentionOut dtype error.");
