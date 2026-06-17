@@ -74,10 +74,6 @@ static void ConfigCubeTiling(
     if (dt == matmul_tiling::DataType::DT_FLOAT16 && alignedN == 32) {
         alignedN = 48;
     }
-
-    if (dt == matmul_tiling::DataType::DT_FLOAT16) {
-        ct->SetMadType(matmul_tiling::MadType::USE_FP32_MAD);
-    }
     
     ct->SetShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
     ct->SetOrgShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
