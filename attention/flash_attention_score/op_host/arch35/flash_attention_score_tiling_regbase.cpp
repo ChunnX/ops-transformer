@@ -809,16 +809,20 @@ bool FlashAttentionScoreTilingRegbase::Analyze2DimAttenOptionalInput(AttenMaskSh
 {
     int64_t attenMaskDim0Size = attenMaskStorageShape.GetDim(0);
     int64_t attenMaskDim1Size = attenMaskStorageShape.GetDim(1);
+    bool isTndLayout = (tilingKeyLayout == LayoutType::LAYOUT_TND);
     if ((attenMaskDim0Size == s1Size && attenMaskDim1Size == s2Size) ||
         (attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE))) {
         attenMaskShapeType = AttenMaskShapeType::ATTEN_1_1_1_S1_S2; // maybe [S1, S2]
-    } else if (attenMaskDim0Size == accumS1 && attenMaskDim1Size == accumS2) {
+    } else if (isTndLayout && attenMaskDim0Size == accumS1 && attenMaskDim1Size == accumS2) {
         attenMaskShapeType = AttenMaskShapeType::ATTEN_1_1_1_T_T;
     } else {
         std::string attenMaskShapeStr = Ops::Base::ToString(attenMaskStorageShape);
         std::string expected1 = "[" + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
-        std::string expected2 = "[" + std::to_string(accumS1) + ", " + std::to_string(accumS2) + "]";
-        std::string reason = "The shape of atten_mask must be " + expected1 + " or " + expected2;
+        std::string reason = "The shape of atten_mask must be " + expected1;
+        if (isTndLayout) {
+            std::string expected2 = "[" + std::to_string(accumS1) + ", " + std::to_string(accumS2) + "]";
+            reason += " or " + expected2;
+        }
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "atten_mask",
             attenMaskShapeStr.c_str(), reason.c_str());
         return false;
