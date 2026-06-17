@@ -294,7 +294,8 @@ aclnnStatus aclnnMhcPostBackward(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-参数说明中维度N的取值目前仅支持4、6和8。
+- Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：参数说明中维度N的取值目前仅支持4。
+- Ascend 950PR/Ascend 950DT ：参数说明中维度N的取值目前仅支持4、6和8。
 
 
 ## 调用示例
