@@ -32,16 +32,20 @@ namespace ge {
  * must be equal to the slice length ("partial_slice"'s end - start).
  * @li x: An optional 4D tensor which is input "x" in InplacePartialRotaryMul, format supports ND, data type
  * must be the same as "dy", and shape must be the same as "dy".
- * If "x" is nullptr, the output "dcos" and "dsin" is meaningless.
+ * Currently only nullptr is supported for this input; passing a non-null x will cause an error.
  * @par Outputs:
  * @li dy: A 4D Tensor, in-place updated from input "dy", which is the grad of input "x" in
  * InplacePartialRotaryMul. Format supports ND, data type and shape must be the same as input "dy".
  * @li dcos: A 4D Tensor which is the grad of input "cos" in InplacePartialRotaryMul, format supports ND,
  * data type must be the same as "cos", and shape must be the same as "cos". The D of "dcos" must be equal to
- * the slice length ("partial_slice"'s end - start). This output is meaningless if input "x" is nullptr.
+ * the slice length ("partial_slice"'s end - start).
+ * NOTE: dcos/dsin gradient computation is not yet implemented; these outputs are currently always
+ * meaningless. The x input must be set to nullptr.
  * @li dsin: A 4D Tensor which is the grad of input "sin" in InplacePartialRotaryMul, format supports ND,
  * data type must be the same as "sin", and shape must be the same as "sin". The D of "dsin" must be equal to
- * the slice length ("partial_slice"'s end - start). This output is meaningless if input "x" is nullptr.
+ * the slice length ("partial_slice"'s end - start).
+ * NOTE: dcos/dsin gradient computation is not yet implemented; these outputs are currently always
+ * meaningless. The x input must be set to nullptr.
  * @par Attributes:
  * @li rotary_mode: An optional attribute of type int, specifying the mode of rotary position embedding, must be
  * 0-"half", 1-"interleave", 2-"quarter" or 3-"interleave-half". Defaults to 0.
