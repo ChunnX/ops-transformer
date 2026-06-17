@@ -28,23 +28,24 @@ public:
     }
 
 private:
-    __aicore__ inline TokenRange MakeCoreTokenRange(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
-                                                    uint32_t cubeIndex) const
+    __aicore__ inline void MakeCoreTokenRange(TokenRange &range,
+                                              const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
+                                              uint32_t cubeIndex) const
     {
-        TokenRange range = {0U, 0U};
+        range.begin = 0U;
+        range.end = 0U;
         if (tilingData->coreGroupNum == 0U || tilingData->coreTokenTile == 0U ||
             cubeIndex >= tilingData->coreGroupNum || tilingData->totalTokens == 0U) {
-            return range;
+            return;
         }
 
         range.begin = cubeIndex * tilingData->coreTokenTile;
         if (range.begin >= tilingData->totalTokens) {
             range.begin = tilingData->totalTokens;
             range.end = tilingData->totalTokens;
-            return range;
+            return;
         }
         range.end = MinU64(tilingData->totalTokens, range.begin + tilingData->coreTokenTile);
-        return range;
     }
 
     __aicore__ inline void ResetTileParam(TileParam &tile) const
@@ -126,7 +127,8 @@ private:
                                       const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
         const uint32_t cubeIndex = GetAicCubeIndex();
-        const TokenRange tokenRange = MakeCoreTokenRange(tilingData, cubeIndex);
+        TokenRange tokenRange = {0U, 0U};
+        MakeCoreTokenRange(tokenRange, tilingData, cubeIndex);
         QkvRmsNormRopeCacheWithKScaleBasicBlock basicBlock;
         basicBlock.InitAic(tensors, tilingData);
         basicBlock.PrepareBeforeLoopAic();
@@ -138,7 +140,8 @@ private:
                                       const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
         const uint32_t cubeIndex = GetAivCubeIndex();
-        const TokenRange tokenRange = MakeCoreTokenRange(tilingData, cubeIndex);
+        TokenRange tokenRange = {0U, 0U};
+        MakeCoreTokenRange(tokenRange, tilingData, cubeIndex);
         QkvRmsNormRopeCacheWithKScaleBasicBlock basicBlock;
         TileParam tileParam[QKV_RRC_DOUBLE_BUFFER_NUM];
         InitTileParamBuffer(tileParam);
