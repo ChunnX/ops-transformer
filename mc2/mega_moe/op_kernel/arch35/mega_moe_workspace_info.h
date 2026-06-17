@@ -168,7 +168,9 @@ struct WorkspaceInfo {
         }
 
         cumsumInfoPtr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize * tilingData->aicNum;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize), ALIGN_32) *
+            tilingData->aicNum;
         ptrGmm1MmadRes = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->maxOutputSize * tilingData->hiddenDim;
         ptrGmm2MmadRes = base + workspaceSize;
