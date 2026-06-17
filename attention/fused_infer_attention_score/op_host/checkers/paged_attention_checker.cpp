@@ -54,7 +54,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShapeSize(const FiaTilingI
     // check dim num
     if (blockTableShape.GetDimNum() != 2) {
         std::string dimStr = std::to_string(blockTableShape.GetDimNum()) + "D";
-        std::string reasonMsg = "When blockTable is not empty, the shape of blockTable must be 2D";
+        std::string reasonMsg = "When blockTable is not empty, the shape of blockTable must be 2D.";
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "blockTable", dimStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
@@ -64,7 +64,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShapeSize(const FiaTilingI
         std::string shapeStr = ToStringRaw(blockTableShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             fiaInfo.opName, "blockTable", shapeStr.c_str(),
-            "When page attention enable, all axes of blockTable must be positive numbers");
+            "When page attention enable, all axes of blockTable must be positive numbers.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -171,7 +171,7 @@ ge::graphStatus PagedAttentionChecker::CheckMaskShape(const FiaTilingInfo &fiaIn
             std::string reasonMsg =
                 std::string("When page attention enable and attenMask enable, "
                             "the last dimension of input atten_mask must be >= maxBlockNumPerBatch(") +
-                std::to_string(maxBlockNumPerBatch) + ") * blockSize(" + std::to_string(fiaInfo.blockSize) + ")";
+                std::to_string(maxBlockNumPerBatch) + ") * blockSize(" + std::to_string(fiaInfo.blockSize) + ").";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -368,7 +368,7 @@ ge::graphStatus PagedAttentionChecker::CheckQDtypeSupport(const FiaTilingInfo &f
     OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 && fiaInfo.ropeMode != RopeMode::ROPE_SPLIT,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query", ToString(fiaInfo.inputQType).c_str(),
             "When the page attention function is enabled, the data type of the query operation cannot be INT8 in"
-            " the GQA scenario. INT8 is supported only in the full quantization scenario of MLA"),
+            " the GQA scenario. INT8 is supported only in the full quantization scenario of MLA."),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -432,7 +432,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
                         std::to_string(fiaInfo.blockSize) + ") must be a multiple of " +
                         std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", and must be within the range [" +
                         std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " + std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) +
-                        "]";
+                        "].";
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "blockSize",
                                                           std::to_string(fiaInfo.blockSize).c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
