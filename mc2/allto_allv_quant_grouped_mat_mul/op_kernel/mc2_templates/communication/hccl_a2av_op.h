@@ -477,8 +477,8 @@ public:
                 AscendC::printf("[PAIR] turn=%u pair=%u loc=%u rank=%u posB=%u posA=%u srcOff=%lu dstOff=%lu totalCnt=%lu srcAddr=%p dstAddr=%p\n",
                     turnIdx, pairIdx, localIdx, rankIndex, posBefore, posAfter,
                     srcOffset, dstOffset, totalCnt,
-                    reinterpret_cast<void*>(outputPermuteSrcBuffer_.GetPhyAddr()),
-                    reinterpret_cast<void*>(outputPermuteDstBuffer_.GetPhyAddr()));
+                    outputPermuteSrcBuffer_.GetPhyAddr(),
+                    outputPermuteDstBuffer_.GetPhyAddr());
                 if (totalCnt > 0UL) {
                     AscendC::DumpTensor(outputPermuteSrcBuffer_[srcOffset], 300U + turnIdx * 8U + pairIdx, 16U);
                 }
