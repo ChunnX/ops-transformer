@@ -92,26 +92,26 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::DoOpTiling()
 
 ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::PostTiling()
 {
-    tilingData_->ropeGradABParams.b = b_;
-    tilingData_->ropeGradABParams.s = s_;
-    tilingData_->ropeGradABParams.d = d_;
-    tilingData_->ropeGradABParams.n = bn_;
-    tilingData_->ropeGradABParams.dAlign = dAlign_;
-    tilingData_->ropeGradABParams.dSplitCoef = dSplitCoef_;
-    tilingData_->ropeGradABParams.blockNumBS = blockNumBS_;
-    tilingData_->ropeGradABParams.blockFactorBS = blockFactorBS_;
-    tilingData_->ropeGradABParams.blockTailBS = blockTailBS_;
-    tilingData_->ropeGradABParams.blockNumN = blockNumN_;
-    tilingData_->ropeGradABParams.blockFactorN = blockFactorN_;
-    tilingData_->ropeGradABParams.blockTailN = blockTailN_;
-    tilingData_->ropeGradABParams.ubFactorBS = ubFactorBS_;
-    tilingData_->ropeGradABParams.ubFactorN = ubFactorN_;
-    tilingData_->ropeGradABParams.usedCoreNum = usedCoreNum_;
-    tilingData_->ropeGradABParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
-    tilingData_->ropeGradABParams.sliceStart = sliceStart_;
-    tilingData_->ropeGradABParams.sliceEnd = sliceEnd_;
-    tilingData_->ropeGradABParams.sliceLength = sliceLength_;
-    tilingData_->dCosFlag = dCosFlag_;
+    tilingData_->inplacePartialRotaryMulGradABParams.b = b_;
+    tilingData_->inplacePartialRotaryMulGradABParams.s = s_;
+    tilingData_->inplacePartialRotaryMulGradABParams.d = d_;
+    tilingData_->inplacePartialRotaryMulGradABParams.n = bn_;
+    tilingData_->inplacePartialRotaryMulGradABParams.dAlign = dAlign_;
+    tilingData_->inplacePartialRotaryMulGradABParams.dSplitCoef = dSplitCoef_;
+    tilingData_->inplacePartialRotaryMulGradABParams.blockNumBS = blockNumBS_;
+    tilingData_->inplacePartialRotaryMulGradABParams.blockFactorBS = blockFactorBS_;
+    tilingData_->inplacePartialRotaryMulGradABParams.blockTailBS = blockTailBS_;
+    tilingData_->inplacePartialRotaryMulGradABParams.blockNumN = blockNumN_;
+    tilingData_->inplacePartialRotaryMulGradABParams.blockFactorN = blockFactorN_;
+    tilingData_->inplacePartialRotaryMulGradABParams.blockTailN = blockTailN_;
+    tilingData_->inplacePartialRotaryMulGradABParams.ubFactorBS = ubFactorBS_;
+    tilingData_->inplacePartialRotaryMulGradABParams.ubFactorN = ubFactorN_;
+    tilingData_->inplacePartialRotaryMulGradABParams.usedCoreNum = usedCoreNum_;
+    tilingData_->inplacePartialRotaryMulGradABParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
+    tilingData_->inplacePartialRotaryMulGradABParams.sliceStart = sliceStart_;
+    tilingData_->inplacePartialRotaryMulGradABParams.sliceEnd = sliceEnd_;
+    tilingData_->inplacePartialRotaryMulGradABParams.sliceLength = sliceLength_;
+    tilingData_->inplacePartialRotaryMulGradABParams.dCosFlag = dCosFlag_;
     SetRotaryXTilingData();
     SetTilingKeyBlockDim(static_cast<uint32_t>(ropeGradTilingKey::TILING_KEY_AB));
 
@@ -121,13 +121,20 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::PostTiling()
         "dSplitCoef: %ld, BlockNumBS: %ld, BlockFactorBS: %ld, BlockTailBS: %ld, BlockNumN: %ld, "
         "BlockFactorN: %ld, blockTailN: %ld, ubFactorBS: %ld, ubFactorN: %ld, "
         "usedCoreNum_: %ld, RotaryMode: %ld, TilingKey: %ld.",
-        tilingData_->ropeGradABParams.b, tilingData_->ropeGradABParams.s, tilingData_->ropeGradABParams.n,
-        tilingData_->ropeGradABParams.d, tilingData_->ropeGradABParams.dAlign, tilingData_->ropeGradABParams.dSplitCoef,
-        tilingData_->ropeGradABParams.blockNumBS, tilingData_->ropeGradABParams.blockFactorBS,
-        tilingData_->ropeGradABParams.blockTailBS, tilingData_->ropeGradABParams.blockNumN,
-        tilingData_->ropeGradABParams.blockFactorN, tilingData_->ropeGradABParams.blockTailN,
-        tilingData_->ropeGradABParams.ubFactorBS, tilingData_->ropeGradABParams.ubFactorN,
-        tilingData_->ropeGradABParams.usedCoreNum, tilingData_->ropeGradABParams.rotaryMode, tilingKey_);
+        tilingData_->inplacePartialRotaryMulGradABParams.b, tilingData_->inplacePartialRotaryMulGradABParams.s,
+        tilingData_->inplacePartialRotaryMulGradABParams.n, tilingData_->inplacePartialRotaryMulGradABParams.d,
+        tilingData_->inplacePartialRotaryMulGradABParams.dAlign,
+        tilingData_->inplacePartialRotaryMulGradABParams.dSplitCoef,
+        tilingData_->inplacePartialRotaryMulGradABParams.blockNumBS,
+        tilingData_->inplacePartialRotaryMulGradABParams.blockFactorBS,
+        tilingData_->inplacePartialRotaryMulGradABParams.blockTailBS,
+        tilingData_->inplacePartialRotaryMulGradABParams.blockNumN,
+        tilingData_->inplacePartialRotaryMulGradABParams.blockFactorN,
+        tilingData_->inplacePartialRotaryMulGradABParams.blockTailN,
+        tilingData_->inplacePartialRotaryMulGradABParams.ubFactorBS,
+        tilingData_->inplacePartialRotaryMulGradABParams.ubFactorN,
+        tilingData_->inplacePartialRotaryMulGradABParams.usedCoreNum,
+        tilingData_->inplacePartialRotaryMulGradABParams.rotaryMode, tilingKey_);
     return ge::GRAPH_SUCCESS;
 }
 
