@@ -14,6 +14,9 @@
  */
 
 #include <numeric>
+#include <iostream>
+#include <cstring>
+#include <iomanip>
 #include <alog_pub.h>
 #include <register/tilingdata_base.h>
 #include <tiling/tiling_api.h>
@@ -622,6 +625,15 @@ ge::graphStatus FlashAttentionScoreTilingBase::CheckContext()
     auto inputLayoutPtr = attrs->GetAttrPointer<char>(idx++);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
 
+    std::cout << "[SCALE_TRACE] CheckContext: scaleValue(raw attr ptr) = "
+              << (scaleValuePtr ? *scaleValuePtr : -999.0f)
+              << ", hex = ";
+    if (scaleValuePtr) {
+        uint32_t raw; std::memcpy(&raw, scaleValuePtr, sizeof(float));
+        std::cout << "0x" << std::hex << raw << std::dec;
+    }
+    std::cout << std::endl;
+
     OP_CHECK_NULL_WITH_CONTEXT(context_, scaleValuePtr);
     OP_CHECK_NULL_WITH_CONTEXT(context_, keepProbPtr);
     OP_CHECK_NULL_WITH_CONTEXT(context_, preTokensPtr);
@@ -956,6 +968,18 @@ ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
     inputParams.set_alignedS2(alignedS2);
     inputParams.set_pseType(static_cast<uint32_t>(pseType));
     inputParams.set_tndSoftmaxOut(tndSoftmaxOut);
+
+    std::cout << "[SCALE_TRACE] SetInputParams: inputParams.scaleValue = "
+              << inputParams.get_scaleValue()
+              << " (set from scaleValue=" << scaleValue << ")"
+              << std::endl;
+    {
+        float sv = inputParams.get_scaleValue();
+        uint32_t raw; std::memcpy(&raw, &sv, sizeof(float));
+        std::cout << "[SCALE_TRACE] SetInputParams: tiling data scaleValue hex = 0x"
+                  << std::hex << raw << std::dec << std::endl;
+    }
+
     OP_LOGD(context_, "input params: bn2gs1s2d[%ld, %ld, %ld, %ld, %ld, %ld], keepProb[%f], scaleValue[%f],"
               "pseType:%ld, s1BasicBlockBest:%ld.", bSize, n2Size, gSize, s1Size, s2Size,
               dSize, keepProb, scaleValue, pseType, s1BasicBlockBest);
@@ -1094,6 +1118,18 @@ bool FlashAttentionScoreTilingBase::AnalyzeAttrs()
     keepProb = *keepProbPtr;
     scaleValue = *scaleValuePtr;
     n1Size = *n1SizePtr;
+
+    std::cout << "[SCALE_TRACE] AnalyzeAttrs: scaleValue(member) = " << scaleValue
+              << ", keepProb = " << keepProb
+              << ", preTokens = " << preTokens
+              << ", nextTokens = " << nextTokens
+              << ", n1Size = " << n1Size
+              << std::endl;
+    {
+        uint32_t raw; std::memcpy(&raw, &scaleValue, sizeof(float));
+        std::cout << "[SCALE_TRACE] AnalyzeAttrs: scaleValue hex = 0x" << std::hex << raw << std::dec << std::endl;
+    }
+
     OP_CHECK_IF(n1Size == 0, OP_LOGE(opName, "Head num is zero."), return false);
     OP_CHECK_IF(keepProb <= 0.0 || keepProb > 1.0,
                OP_LOGE(opName, "keepProb value must be in range of (0, 1]."), return false);
