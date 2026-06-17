@@ -34,8 +34,8 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(num_heads_q, num_head
 | seqused\_ori\_kv | Tensor | 可选 | 表示不同Batch中ori\_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor | int32 | B |
 | seqused\_cmp\_kv | Tensor | 可选 | 表示不同Batch中cmp\_kv实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor | int32 | B |
 | cmp\_residual\_kv | Tensor | 可选 | 表示不同Batch中cmp\_kv压缩后Sequence Length的余数，配合cmp\_ratio实现cmp\_kv部分的mask和负载计算。cmp\_mask\_mode=3且cmp\_ratio≠1时必须传入。数据格式为ND，支持非连续的Tensor | int32 | B |
-| ori\_topk\_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor | int32 | B |
-| cmp\_topk\_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor | int32 | B |
+| ori\_topk\_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor | int32 | (B, S1, N2)或(T1, N2) |
+| cmp\_topk\_length | Tensor | 可选 | 预留参数，当前不生效。数据格式为ND，支持非连续的Tensor | int32 | (B, S1, N2)或(T1, N2) |
 | batch\_size | int | 可选 | 表示Batch数量，默认值为0 | int32 | - |
 | max\_seqlen\_q | int | 可选 | 表示Query的最长Sequence Length，默认值为0 | int32 | - |
 | max\_seqlen\_ori\_kv | int | 可选 | 表示ori\_kv的最长Sequence Length，默认值为0 | int32 | - |

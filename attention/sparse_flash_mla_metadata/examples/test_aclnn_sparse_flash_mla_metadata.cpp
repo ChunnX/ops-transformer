@@ -239,7 +239,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     CHECK_LOG_RET(context.layoutQOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutQOptional failed");
     CHECK_LOG_RET(context.layoutKvOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutKvOptional failed");
     strcpy(context.layoutQOptional, "BSND");                // BSND,TND
-    strcpy(context.layoutKvOptional, "BSND");                // BSND,TND,PA_BBND
+    strcpy(context.layoutKvOptional, "BSND");               // BSND,TND,PA_BBND
     context.hasOriKv = true;
     context.hasCmpKv = true;
 

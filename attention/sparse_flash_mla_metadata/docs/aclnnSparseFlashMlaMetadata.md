@@ -1,5 +1,7 @@
 # aclnnSparseFlashMlaMetadata
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/sparse_flash_mla_metadata)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -93,7 +95,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>cuSeqlensQOptional</td>
       <td>输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length</br>layoutQOptional为TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
+      <td>表示不同Batch中Query的有效Sequence Length</br>layoutQOptional为TND场景下必传</br>第一个值为额外值并固定为0。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -103,7 +105,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>cuSeqlensOriKvOptional</td>
       <td>输入</td>
-      <td>表示不同Batch中ori_Kv的有效Sequence Length</br>layoutKvOptional为TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
+      <td>表示不同Batch中ori_Kv的有效Sequence Length</br>layoutKvOptional为TND场景下必传</br>第一个值为额外值并固定为0。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -113,7 +115,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>cuSeqlensCmpKvOptional</td>
       <td>输入</td>
-      <td>表示不同Batch中cmp_Kv的有效Sequence Length</br>layoutKvOptional为TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
+      <td>表示不同Batch中cmp_Kv的有效Sequence Length</br>layoutKvOptional为TND场景下必传</br>第一个值为额外值并固定为0。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -163,7 +165,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>oriTopkLengthOptional</td>
       <td>输入</td>
-      <td>预留参数，表示不同q token对应的ori_kv部分关键稀疏token的个数。</br>如果oriTopk不为0，且mask为0，则必须传入oriTopkLengthOptional。</td>
+      <td>预留参数，当前不生效。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -173,7 +175,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>cmpTopkLengthOptional</td>
       <td>输入</td>
-      <td>预留参数，表示不同q token对应的cmp_kv部分关键稀疏token的个数。</br>如果cmpTopk不为0，且mask为0，则必须传入cmpTopkLengthOptional。</td>
+      <td>预留参数，当前不生效。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -253,7 +255,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>oriTopk</td>
       <td>输入</td>
-      <td>表示ori_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景</td>
+      <td>预留参数，当前不生效。表示ori_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景</td>
       <td>支持非负数</br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
@@ -691,7 +693,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     CHECK_LOG_RET(context.layoutQOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutQOptional failed");
     CHECK_LOG_RET(context.layoutKvOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutKvOptional failed");
     strcpy(context.layoutQOptional, "BSND");                // BSND,TND
-    strcpy(context.layoutKvOptional, "BSND");                // BSND,TND,PA_BBND
+    strcpy(context.layoutKvOptional, "BSND");               // BSND,TND,PA_BBND
     context.hasOriKv = true;
     context.hasCmpKv = true;
 
