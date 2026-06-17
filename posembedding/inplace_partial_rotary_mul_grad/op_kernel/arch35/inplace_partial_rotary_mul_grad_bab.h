@@ -183,7 +183,7 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS>::Proc
                                                       tilingData_->sliceLength,
                                                       static_cast<uint16_t>(currSNum), static_cast<uint16_t>(currDNum));
         } else {
-            InterleaveHalfModeGradVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
+            DeepSeekInterleaveModeGradVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
                                                             tilingData_->sliceLength, static_cast<uint16_t>(currSNum),
                                                             static_cast<uint16_t>(currDNum));
         }
