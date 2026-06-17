@@ -37,6 +37,7 @@ struct InplacePartialRotaryMulGradRegbaseParams {
     int64_t sliceStart;
     int64_t sliceEnd;
     int64_t sliceLength;
+    int64_t dSplitCoef;
 };
 
 struct InplacePartialRotaryMulGradRegbaseABParams {

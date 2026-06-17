@@ -172,6 +172,7 @@ void InplacePartialRotaryMulGradRegBaseTilingClassABAAndBA::SetTilingData()
     tilingData_->inplacePartialRotaryMulGradParams.sliceStart = sliceStart_;
     tilingData_->inplacePartialRotaryMulGradParams.sliceEnd = sliceEnd_;
     tilingData_->inplacePartialRotaryMulGradParams.sliceLength = sliceLength_;
+    tilingData_->inplacePartialRotaryMulGradParams.dSplitCoef = dSplitCoef_;
     tilingData_->sliceLength = sliceLength_;
     tilingData_->dCosFlag = dCosFlag_;
 }

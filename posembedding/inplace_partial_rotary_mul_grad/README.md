@@ -193,7 +193,7 @@
   <tr>
     <td>xOptional</td>
     <td>可选输入</td>
-    <td>公式中的x，正向计算输入，需与dy数据类型一致。如果为空指针，则不计算dcosOut和dsinOut。</td>
+    <td>公式中的x，正向计算输入，需与dy数据类型一致。**当前版本暂不支持，请传入空指针。** 如果为空指针，则不计算dcosOut和dsinOut。</td>
     <td>BFLOAT16、FLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
@@ -221,14 +221,14 @@
   <tr>
     <td>dcosOut</td>
     <td>输出</td>
-    <td>公式中的dcos，输入cos的导数，需与cos数据类型一致，仅当xOptional非空时有效。</td>
+    <td>公式中的dcos，输入cos的导数，需与cos数据类型一致。**当前版本暂不支持，输出无意义。**</td>
     <td>BFLOAT16、FLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>dsinOut</td>
     <td>输出</td>
-    <td>公式中的dsin，输入sin的导数，需与sin数据类型一致，仅当xOptional非空时有效。</td>
+    <td>公式中的dsin，输入sin的导数，需与sin数据类型一致。**当前版本暂不支持，输出无意义。**</td>
     <td>BFLOAT16、FLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
@@ -254,6 +254,7 @@
   - 输出张量dcosOut与cos的数据类型必须相同。
   - 输出张量dsinOut与sin的数据类型必须相同。
   - 当xOptional为空指针时，不计算dcosOut和dsinOut，此时dcosOut和dsinOut无意义。
+  - **注意**：当前版本暂不支持xOptional（即dcos/dsin）的梯度计算。xOptional输入及dcosOut/dsinOut输出参数保留用于后续版本兼容，现阶段请传入空指针。
 
 
 ## 调用说明
