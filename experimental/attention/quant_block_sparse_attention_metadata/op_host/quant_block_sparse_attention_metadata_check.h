@@ -80,7 +80,7 @@ static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTe
                                        const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
                                        const aclTensor *sequsedKvOptional, int64_t batchSize,
                                        uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
-                                       const aclTensor *metaData)
+                                       const aclTensor *metadata)
 {
     if (sparseSeqLen == nullptr) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen is nullptr");
@@ -95,22 +95,22 @@ static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTe
         return ACLNN_ERR_PARAM_INVALID;
     }
     // metadata
-    if (metaData == nullptr) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData must not be null");
+    if (metadata == nullptr) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata must not be null");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (metaData->GetViewShape().GetDimNum() != 1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData must be 1D tensor, but got %ld dims",
-                metaData->GetViewShape().GetDimNum());
+    if (metadata->GetViewShape().GetDimNum() != 1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata must be 1D tensor, but got %ld dims",
+                metadata->GetViewShape().GetDimNum());
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (metaData->GetViewShape().GetDim(0) != optiling::QBSA_METADATA_SIZE) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData shape must be (%u,), but got %ld",
-                optiling::QBSA_METADATA_SIZE, metaData->GetViewShape().GetDim(0));
+    if (metadata->GetViewShape().GetDim(0) != optiling::QBSA_METADATA_SIZE) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata shape must be (%u,), but got %ld",
+                optiling::QBSA_METADATA_SIZE, metadata->GetViewShape().GetDim(0));
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (metaData->GetDataType() != ACL_INT32) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metaData dtype must be INT32");
+    if (metadata->GetDataType() != ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "metadata dtype must be INT32");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // platform
@@ -144,14 +144,14 @@ static aclnnStatus ParamsCheck(const aclTensor *sparseSeqLen, const aclTensor *c
                                 int64_t sparseBlockSizeKv, int64_t quantMode, int64_t maskMode, int64_t maxSeqlenQ,
                                 int64_t maxSeqlenKv, const char *layoutQOptional, const char *layoutKvOptional,
                                 const char *layoutSparseIndicesOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
-                                const char *socVersion, const aclTensor *metaData)
+                                const char *socVersion, const aclTensor *metadata)
 {
     aclnnStatus ret = CheckSingleParamQbsa(batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ,
                                            sparseBlockSizeKv, quantMode, maskMode, maxSeqlenQ, maxSeqlenKv,
                                            layoutSparseIndicesOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckExistenceQbsa(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
-                             sequsedKvOptional, batchSize, aicCoreNum, aivCoreNum, socVersion, metaData);
+                             sequsedKvOptional, batchSize, aicCoreNum, aivCoreNum, socVersion, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckConsistencyQbsa(numHeadsQ, numHeadsKv);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);

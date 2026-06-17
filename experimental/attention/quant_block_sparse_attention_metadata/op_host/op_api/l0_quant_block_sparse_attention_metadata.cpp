@@ -32,12 +32,12 @@ const aclTensor *QuantBlockSparseAttentionMetadata(
     int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeKv, int64_t quantMode,
     int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQOptional,
     const char *layoutKvOptional, const char *layoutSparseIndicesOptional, const char *socVersion,
-    int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor *metaData, aclOpExecutor *executor)
+    int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor *metadata, aclOpExecutor *executor)
 {
     L0_DFX(QuantBlockSparseAttentionMetadata, sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional,
             sequsedQOptional, sequsedKvOptional, batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ,
             sparseBlockSizeKv, quantMode, maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional,
-            layoutSparseIndicesOptional, socVersion, aicCoreNum, aivCoreNum, metaData);
+            layoutSparseIndicesOptional, socVersion, aicCoreNum, aivCoreNum, metadata);
 
     static internal::AicpuTaskSpace space("QuantBlockSparseAttentionMetadata");
 
@@ -48,14 +48,14 @@ const aclTensor *QuantBlockSparseAttentionMetadata(
                        "layout_q", "layout_kv", "layout_sparse_indices", "soc_version", "aic_core_num",
                        "aiv_core_num"}),
         OP_INPUT(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional),
-        OP_OUTPUT(metaData),
+        OP_OUTPUT(metadata),
         OP_ATTR(batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeKv, quantMode, maskMode,
                 maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional, layoutSparseIndicesOptional, socVersion,
                 aicCoreNum, aivCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "QuantBlockSparseAttentionMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
              return nullptr);
-    return metaData;
+    return metadata;
 }
 
 } // namespace l0op
