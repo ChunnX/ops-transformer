@@ -38,8 +38,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FaTilingInfo &faInfo)
         int64_t returnSoftmaxLseVal = *returnSoftmaxLse;
         OP_CHECK_IF(
             returnSoftmaxLseVal != 0 && returnSoftmaxLseVal != 1,
-            OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "return_softmax_lse",
-                std::to_string(returnSoftmaxLseVal).c_str(), "0 or 1"),
+            OP_LOGE(faInfo.opName, "return_softmax_lse only supports 0 or 1, but got %ld.", returnSoftmaxLseVal),
             return ge::GRAPH_FAILED);
     }
 
@@ -53,8 +52,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FaTilingInfo &faInfo)
     }
 
     OP_CHECK_IF(lseOutDesc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(faInfo.opName, "lse_out",
-                        Ops::Base::ToString(lseOutDesc->GetDataType()).c_str(), "FP32"),
+                OP_LOGE(faInfo.opName, "lseOut dtype must be FP32, but got %s",
+                        DataTypeToSerialString(lseOutDesc->GetDataType()).c_str()),
                 return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(lseOutDesc, SOFTMAX_LSE_NAME)) {
@@ -69,8 +68,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FaTilingInfo &faInfo
     if (faInfo.softmaxLseFlag) {
         const gert::StorageShape *lseOutShape = faInfo.opParamInfo.lseOut.shape;
         OP_CHECK_IF(lseOutShape == nullptr,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "lse_out", "empty",
-                "When softmaxLSE is enabled, lse_out cannot be empty"),
+                    OP_LOGE(faInfo.opName, "lseOut must not be null when softmaxLSE is enabled."),
                     return ge::GRAPH_FAILED);
     }
 
