@@ -2,28 +2,29 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+
+| 产品                              | 是否支持 |
+| ------------------------------- | ---- |
+| Ascend 950PR/Ascend 950DT       | √    |
+| Atlas A3 训练系列产品/Atlas A3 推理系列产品 | √    |
+| Atlas A2 训练系列产品/Atlas A2 推理系列产品 | √    |
+| Atlas 200I/500 A2 推理产品          | ×    |
+| Atlas 推理系列产品                    | ×    |
+| Atlas 训练系列产品                    | ×    |
+
 
 ## 功能说明
 
 - 接口功能：mhc_post基于一系列计算对MHC（Manifold-Constrained Hyper-Connection）架构中上一层输出$h_{t}^{out}$进行Post Mapping，对上一层的输入$x_j$进行ResMapping，然后对二者进行残差连接，得到下一层的输入$x_{l+1}$。该算子实现前述过程的反向功能。
-  
 - 计算公式：
-  $$
-  grad\_x = H_{l}^{res} \times grad\_output\\
-  grad\_h\_res = x_{l} \times {grad\_output}^{T}
-  $$
-  $$
-  grad\_h\_out=({grad\_output} * (H_{l}^{post}.unsqueeze(-1))).sum(dim=-2)\\
-  grad\_h\_post=({grad\_output} * (h_{l}^{out}.unsqueeze(-2))).sum(dim=-1)
-  $$
+$$
+gradx = H_{l}^{res} \times gradoutput
+gradhres = x_{l} \times {gradoutput}^{T}
+$$
+$$
+gradhout=({gradoutput} * (H_{l}^{post}.unsqueeze(-1))).sum(dim=-2)
+gradhpost=({gradoutput} * (h_{l}^{out}.unsqueeze(-2))).sum(dim=-1)
+$$
 
 ## 函数原型
 
@@ -56,246 +57,50 @@ aclnnStatus aclnnMhcPostBackward(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width:  1400px"><colgroup>
-  <col style="width: 145px">
-  <col style="width: 90px">
-  <col style="width: 441px">
-  <col style="width: 158px">
-  <col style="width: 186px">
-  <col style="width: 80px">
-  <col style="width: 155px">
-  <col style="width: 145px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-      <th>使用说明</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>gradOutput</td>
-      <td>输入</td>
-      <td>待计算的数据，表示网络中MHC层的输入数据</td>
-      <td>
-        <ul>      
-          <li>不支持空Tensor</li>
-        <ul>
-      </td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td>[B,S,N,D]、[T,N,D]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>x</td>
-      <td>输入</td>
-      <td>待计算的数据，表示网络中MHC层的输入数据</td>
-      <td>
-        <ul>      
-          <li>不支持空Tensor</li>
-        <ul>
-      </td>
-      <td>数据类型与gradOutput一致</td>
-      <td>ND</td>
-      <td>[B,S,N,D]、[T,N,D]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>hRes</td>
-      <td>输入</td>
-      <td>MHC的hRes变换矩阵</td>
-      <td>
-        <ul>      
-          <li>不支持空Tensor</li>
-        <ul>
-      </td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td>[B,S,N,N]、[T,N,N]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>hOut</td>
-      <td>输入</td>
-      <td>Atten/MLP层的输出</td>
-      <td>
-        <ul>      
-          <li>不支持空Tensor</li>
-        <ul>
-      </td>
-      <td>数据类型与gradOutput一致</td>
-      <td>ND</td>
-      <td>[B,S,D]、[T,D]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>hPost</td>
-      <td>输入</td>
-      <td>MHC的hPost变换矩阵</td>
-      <td>
-        <ul>      
-          <li>不支持空Tensor</li>
-        <ul>
-      </td>
-      <td>数据类型与hRes一致</td>
-      <td>ND</td>
-      <td>[B,S,N]、[T,N]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>gradX</td>
-      <td>输出</td>
-      <td>网络中MHC层的输入数据x的梯度</td>
-      <td>-</td>
-      <td>数据类型与gradOutput一致</td>
-      <td>ND</td>
-      <td>[B,S,N,D]、[T,N,D]</td>
-      <td>√</td>
-      </tr>
-    </tr>
-    <tr>
-      <td>gradHRes</td>
-      <td>输出</td>
-      <td>网络中MHC层的输入数据hRes的梯度</td>
-      <td>-</td>
-      <td>数据类型与hRes一致</td>
-      <td>ND</td>
-      <td>[B,S,N,N]、[T,N,N]</td>
-      <td>√</td>
-      </tr>
-    </tr>
-    <tr>
-      <td>gradHout</td>
-      <td>输出</td>
-      <td>网络中MHC层的输入数据hOut的梯度</td>
-      <td>-</td>
-      <td>数据类型与hOut一致</td>
-      <td>ND</td>
-      <td>[B,S,D]、[T,D]</td>
-      <td>√</td>
-      </tr>
-    </tr>
-    <tr>
-      <td>gradHpost</td>
-      <td>输出</td>
-      <td>网络中MHC层的输入数据h_post的梯度</td>
-      <td>-</td>
-      <td>数据类型与hPost一致</td>
-      <td>ND</td>
-      <td>[B,S,N]、[T,N]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      </tr>
-      <tr>
-      <td>executor</td>
-      <td>输出</td>
-      <td>返回op执行器，包含了算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      </tr>
-    </tbody></table>
-
+  | 参数名           | 输入/输出 | 描述                          | 使用说明           | 数据类型              | 数据格式 | 维度(shape)         | 非连续Tensor |
+  | ------------- | ----- | --------------------------- | -------------- | ----------------- | ---- | ----------------- | --------- |
+  | gradOutput    | 输入    | 待计算的数据，表示网络中MHC层的输入数据       | - 不支持空Tensor - | FLOAT16、BFLOAT16  | ND   | [B,S,N,D]、[T,N,D] | √         |
+  | x             | 输入    | 待计算的数据，表示网络中MHC层的输入数据       | - 不支持空Tensor - | 数据类型与gradOutput一致 | ND   | [B,S,N,D]、[T,N,D] | √         |
+  | hRes          | 输入    | MHC的hRes变换矩阵                | - 不支持空Tensor - | FLOAT32           | ND   | [B,S,N,N]、[T,N,N] | √         |
+  | hOut          | 输入    | Atten/MLP层的输出               | - 不支持空Tensor - | 数据类型与gradOutput一致 | ND   | [B,S,D]、[T,D]     | √         |
+  | hPost         | 输入    | MHC的hPost变换矩阵               | - 不支持空Tensor - | 数据类型与hRes一致       | ND   | [B,S,N]、[T,N]     | √         |
+  | gradX         | 输出    | 网络中MHC层的输入数据x的梯度            | -              | 数据类型与gradOutput一致 | ND   | [B,S,N,D]、[T,N,D] | √         |
+  | gradHRes      | 输出    | 网络中MHC层的输入数据hRes的梯度         | -              | 数据类型与hRes一致       | ND   | [B,S,N,N]、[T,N,N] | √         |
+  | gradHout      | 输出    | 网络中MHC层的输入数据hOut的梯度         | -              | 数据类型与hOut一致       | ND   | [B,S,D]、[T,D]     | √         |
+  | gradHpost     | 输出    | 网络中MHC层的输入数据h_post的梯度       | -              | 数据类型与hPost一致      | ND   | [B,S,N]、[T,N]     | √         |
+  | workspaceSize | 输出    | 返回需要在Device侧申请的workspace大小。 | -              | -                 | -    | -                 | -         |
+  | executor      | 输出    | 返回op执行器，包含了算子计算流程。          | -              | -                 | -    | -                 | -         |
 
 - **返回值：**
-
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
-    <col style="width: 300px">
-    <col style="width: 150px">
-    <col style="width: 550px">
-    </colgroup>
-    <thead>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-    </thead>
-    <tbody>
-        <tr>
-          <td>ACLNN_ERR_PARAM_NULLPTR</td>
-          <td>161001</td>
-          <td>gradOutput、x、hRes、hOut、hPost存在空指针。</td>
-        </tr>
-        <tr>
-          <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-          <td rowspan="3">161002</td>
-          <td>gradOutput、x、hRes、hOut、hPost的数据类型不在支持的范围内。</td>
-        </tr>
-          <tr>
-          <td>gradOutput、x、hRes、hOut、hPost的shape维度不在支持的范围内。</td>
-        </tr>
-        <tr>
-          <td>gradOutput、x、hRes、hOut、hPost的数据类型或shape不匹配。</td>
-        </tr>
-  </tbody></table>
+  | 返回值                                           | 错误码    | 描述                                         |
+  | --------------------------------------------- | ------ | ------------------------------------------ |
+  | ACLNN_ERR_PARAM_NULLPTR                       | 161001 | gradOutput、x、hRes、hOut、hPost存在空指针。         |
+  | ACLNN_ERR_PARAM_INVALID                       | 161002 | gradOutput、x、hRes、hOut、hPost的数据类型不在支持的范围内。 |
+  | gradOutput、x、hRes、hOut、hPost的shape维度不在支持的范围内。 |        |                                            |
+  | gradOutput、x、hRes、hOut、hPost的数据类型或shape不匹配。   |        |                                            |
 
 
 ## aclnnMhcPostBackwardGrad
 
 - **参数说明：**
- 	 
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
-    <col style="width: 144px">
-    <col style="width: 125px">
-    <col style="width: 700px">
-    </colgroup>
-    <thead>
-        <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        </tr></thead>
-    <tbody>
-        <tr>
-        <td>workspace</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
-        </tr>
-        <tr>
-        <td>workspaceSize</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnMhcPostBacwardGetWorkspaceSize获取。</td>
-        </tr>
-        <tr>
-        <td>executor</td>
-        <td>输入</td>
-        <td>op执行器，包含了算子计算流程。</td>
-        </tr>
-        <tr>
-        <td>stream</td>
-        <td>输入</td>
-        <td>指定执行任务的AscendCL stream流。</td>
-        </tr>
-    </tbody>
-  </table>
+
+  | 参数名           | 输入/输出 | 描述                                                                  |
+  | ------------- | ----- | ------------------------------------------------------------------- |
+  | workspace     | 输入    | 在Device侧申请的workspace内存地址。                                           |
+  | workspaceSize | 输入    | 在Device侧申请的workspace大小，由第一段接口aclnnMhcPostBacwardGetWorkspaceSize获取。 |
+  | executor      | 输入    | op执行器，包含了算子计算流程。                                                    |
+  | stream        | 输入    | 指定执行任务的AscendCL stream流。                                            |
 
 - **返回值：**
-
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-参数说明中维度N的取值目前仅支持4、6和8。
 
+- Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：参数说明中维度N的取值目前仅支持4。
+- Ascend 950PR/Ascend 950DT ：参数说明中维度N的取值目前仅支持4、6和8。
 
 ## 调用示例
 
@@ -587,3 +392,4 @@ int main() {
     return 0;
 } 
 ```
+
