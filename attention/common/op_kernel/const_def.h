@@ -28,6 +28,7 @@ enum class TASK_DEAL_MODE : uint32_t
     SKIP_ZERO = 4,      // 跳过非首个actualSeqLen为0的块
     S2_END = 5,         // 有效行且S2已全部计算完
     NOT_START = 6,      // 有效行且S2还未开始计算
+    SKIP_REMAINING_S2 = 7, // 跳过S2上尚未遍历的任务
 };
 
 template <typename T>
