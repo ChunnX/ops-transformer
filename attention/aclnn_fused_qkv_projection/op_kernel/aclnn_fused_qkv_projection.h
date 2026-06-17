@@ -104,21 +104,19 @@ __aicore__ inline void AclnnFusedQkvProjection<T>::Init(
     uint32_t blockIdx = GetBlockIdx();
     if (blockIdx >= td_->blockDim) return;
 
+    // 计算本核要处理的 M 偏移
     int64_t blkOff = td_->singleCoreM * blockIdx;
-    if (blkOff >= td_->M) {
-        realCoreM_ = 0;
-    } else if (td_->singleCoreM < (td_->M - blkOff)) {
-        realCoreM_ = td_->singleCoreM;
-    } else {
-        realCoreM_ = static_cast<int32_t>(td_->M - blkOff);
-    }
+    realCoreM_ = (blkOff >= td_->M) ? 0 : (td_->singleCoreM < (td_->M - blkOff) ? td_->singleCoreM : static_cast<int32_t>(td_->M - blkOff));
+    if (realCoreM_ == 0) return;
 
-    hsGm_.SetGlobalBuffer((__gm__ T*)hs, td_->M * td_->K);
+    // 本核只读自己分配到的 hidden states 片段
+    hsGm_.SetGlobalBuffer((__gm__ T*)hs + blkOff * td_->K, realCoreM_ * td_->K);
     wtGm_.SetGlobalBuffer((__gm__ T*)wt, td_->K * td_->N);
     if (hasBias_) {
         biasGm_.SetGlobalBuffer((__gm__ T*)bias, td_->N);
     }
 
+    // 写入对应的 Q K V 片段
     qGm_.SetGlobalBuffer((__gm__ T*)q + blkOff * qDim_, realCoreM_ * qDim_);
     kGm_.SetGlobalBuffer((__gm__ T*)k + blkOff * kDim_, realCoreM_ * kDim_);
     vGm_.SetGlobalBuffer((__gm__ T*)v + blkOff * vDim_, realCoreM_ * vDim_);
@@ -134,7 +132,8 @@ __aicore__ inline void AclnnFusedQkvProjection<T>::Process()
     if (blockIdx >= td_->blockDim || realCoreM_ == 0) return;
 
     REGIST_MATMUL_OBJ(&pipe, GetSysWorkSpacePtr(), mm, &td_->cubeTiling);
-    mm.SetOrgShape(td_->M, td_->N, td_->K);
+    // 将单核的 OrgShape 传给框架
+    mm.SetOrgShape(td_->singleCoreM, td_->N, td_->K);
     mm.SetLocalWorkspace(localWsBuf_.Get<uint8_t>());
     mm.SetTensorA(hsGm_);
     mm.SetTensorB(wtGm_);

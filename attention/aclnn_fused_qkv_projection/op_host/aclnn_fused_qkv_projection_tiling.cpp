@@ -20,8 +20,6 @@ namespace optiling {
 using namespace Ops::Transformer::OpTiling;
 using namespace matmul_tiling;
 
-constexpr uint32_t MAX_BLOCK_DIM = 8;
-
 inline int64_t CeilDiv(int64_t x, int64_t y) { return (x + y - 1) / y; }
 
 struct CompileInfo {};
@@ -71,7 +69,7 @@ static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInp
 }
 
 static void ConfigCubeTiling(
-    matmul_tiling::MultiCoreMatmulTiling* ct, const TilingInput& in)
+    matmul_tiling::MultiCoreMatmulTiling* ct, const TilingInput& in, int64_t coreNum)
 {
     matmul_tiling::DataType dt = matmul_tiling::DataType::DT_FLOAT;
     if (in.dtype == static_cast<int32_t>(ge::DT_FLOAT16)) {
@@ -89,11 +87,17 @@ static void ConfigCubeTiling(
         alignedN = 48;
     }
 
-    ct->SetShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
-    ct->SetOrgShape(static_cast<int32_t>(alignedM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
+    // 计算多核实际使用的核数与单核M
+    int64_t useCoreNum = std::min(coreNum, CeilDiv(in.M, 16));
+    if (useCoreNum < 1) useCoreNum = 1;
+    int64_t singleCoreM = CeilDiv(alignedM, useCoreNum);
+
+    // 【关键修改】将单核视角的 singleCoreM 传给框架进行Tiling
+    ct->SetShape(static_cast<int32_t>(singleCoreM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
+    ct->SetOrgShape(static_cast<int32_t>(singleCoreM), static_cast<int32_t>(alignedN), static_cast<int32_t>(in.K));
     ct->SetBias(in.hasBias);
     ct->SetBufferSpace(-1, -1, -1);
-    ct->SetDim(1);
+    ct->SetDim(1); // 强制 Matmul 内部为单核 Tiling
 }
 
 static ge::graphStatus DoCubeTiling(
@@ -105,29 +109,26 @@ static ge::graphStatus DoCubeTiling(
         OP_LOGE(context, "GetTiling failed");
         return ge::GRAPH_FAILED;
     }
-
-    if (td->cubeTiling.baseN < N) {
-        ct->SetFixSplit(static_cast<int32_t>(1), static_cast<int32_t>(1));
-        if (ct->GetTiling(td->cubeTiling) != 0) {
-            OP_LOGE(context, "GetTiling(fixsplit) failed");
-            return ge::GRAPH_FAILED;
-        }
-    }
     return ge::GRAPH_SUCCESS;
 }
 
 static void FillTilingOutputs(
     gert::TilingContext* context, AclnnFusedQkvProjectionTilingData* td,
-    const TilingInput& in, platform_ascendc::PlatformAscendC& plat)
+    const TilingInput& in, platform_ascendc::PlatformAscendC& plat, int64_t coreNum)
 {
-    constexpr uint32_t BLOCK_DIM = 1;
     size_t* ws = context->GetWorkspaceSizes(1);
     ws[0] = plat.GetLibApiWorkSpaceSize();
 
     td->M = static_cast<int32_t>(in.M);
     td->N = static_cast<int32_t>(in.N);
     td->K = static_cast<int32_t>(in.K);
-    td->singleCoreM = td->cubeTiling.singleCoreM;
+
+    int64_t alignedM = CeilDiv(in.M, 16) * 16;
+    int64_t useCoreNum = std::min(coreNum, CeilDiv(in.M, 16));
+    if (useCoreNum < 1) useCoreNum = 1;
+    
+    // 把我们手动计算的单核M下发给Kernel
+    td->singleCoreM = static_cast<int32_t>(CeilDiv(alignedM, useCoreNum));
     td->singleCoreN = td->cubeTiling.singleCoreN;
     td->baseM = td->cubeTiling.baseM;
     td->baseN = td->cubeTiling.baseN;
@@ -137,15 +138,17 @@ static void FillTilingOutputs(
     td->vDim = static_cast<int32_t>(in.vDim);
     td->hasBias = in.hasBias;
     td->dtype = in.dtype;
-    td->blockDim = BLOCK_DIM;
+    
+    td->blockDim = static_cast<uint32_t>(useCoreNum);
+    context->SetBlockDim(td->blockDim);
 
-    context->SetBlockDim(BLOCK_DIM);
     uint64_t dtypeVal = TPL_DTYPE_FLOAT;
     if (in.dtype == static_cast<int32_t>(ge::DT_FLOAT16)) {
         dtypeVal = TPL_DTYPE_FLOAT16;
     }
     context->SetTilingKey(GET_TPL_TILING_KEY(ELEMENTWISE_TPL_SCH_MODE_0, dtypeVal));
 }
+
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
@@ -160,13 +163,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     auto plat = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     matmul_tiling::MultiCoreMatmulTiling cubeTiling(plat);
-    ConfigCubeTiling(&cubeTiling, in);
+    ConfigCubeTiling(&cubeTiling, in, coreNum);
 
     auto* td = context->GetTilingData<AclnnFusedQkvProjectionTilingData>();
     OP_CHECK_IF(DoCubeTiling(context, &cubeTiling, td, static_cast<int32_t>(in.N)) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context, "DoCubeTiling error"), return ge::GRAPH_FAILED);
 
-    FillTilingOutputs(context, td, in, plat);
+    FillTilingOutputs(context, td, in, plat, coreNum);
     return ge::GRAPH_SUCCESS;
 }
 

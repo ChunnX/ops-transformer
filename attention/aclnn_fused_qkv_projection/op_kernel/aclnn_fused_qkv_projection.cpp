@@ -22,11 +22,11 @@ __global__ __aicore__ void aclnn_fused_qkv_projection(
     GET_TILING_DATA_WITH_STRUCT(AclnnFusedQkvProjectionTilingData, tilingData, tiling);
     
     if constexpr (dtype == TPL_DTYPE_FLOAT16) {
-        KernelFusedQkvProjection<half> op;
+        AclnnFusedQkvProjection<half> op;
         op.Init(hiddenStates, weight, bias, query, key, value, workspace, &tilingData);
         op.Process();
     } else {
-        KernelFusedQkvProjection<float> op;
+        AclnnFusedQkvProjection<float> op;
         op.Init(hiddenStates, weight, bias, query, key, value, workspace, &tilingData);
         op.Process();
     }

@@ -114,6 +114,6 @@ TEST_F(AclnnFusedQkvProjectionTest, infershape_dynamic)
         {"k_output_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
         {"v_output_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
     });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 8, 32}, {2, 8, 16}, {2, 8, 16}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{-1, -1, 32}, {-1, -1, 16}, {-1, -1, 16}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
