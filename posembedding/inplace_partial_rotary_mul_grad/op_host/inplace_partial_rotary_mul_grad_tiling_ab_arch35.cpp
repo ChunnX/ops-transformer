@@ -1,23 +1,23 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file inplace_partial_rotary_mul_grad_tiling_ab_arch35.cpp
- * \brief
+ * \brief AB template tiling for InplacePartialRotaryMulGrad (SBND layout)
  */
 #include "op_host/tiling_templates_registry.h"
 #include "inplace_partial_rotary_mul_grad_tiling.h"
+#include "../op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_key.h"
 
 namespace optiling {
 constexpr int64_t CONST_TWO = 2;
-constexpr int64_t CONST_FOUR = 4;
 constexpr int64_t DB_FLAG = 2;
 
 class InplacePartialRotaryMulGradRegBaseTilingClassAB : public InplacePartialRotaryMulGradRegBaseTilingClass {
@@ -53,13 +53,19 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::DoOpTiling()
         bs = s_;
         bn_ = b_ * n_;
     }
-    int64_t typeSize = std::max(ge::GetSizeByDataType(dtype_), ge::GetSizeByDataType(cosDtype_));
-    dAlign_ = Ops::Base::CeilAlign(d_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
 
+    // dAlign 基于 sliceLength 和 max(typeSize, cosTypeSize)，所有 buffer 统一对齐
+    int64_t typeSize = ge::GetSizeByDataType(dtype_);
+    int64_t cosTypeSize = ge::GetSizeByDataType(cosDtype_);
+    int64_t maxTypeSize = std::max(typeSize, cosTypeSize);
+    dAlign_ = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / maxTypeSize) * dSplitCoef_;
+
+    // 分核 (BS 维度)
     blockFactorBS_ = Ops::Base::CeilDiv(bs, int64_t(aicoreParams_.numBlocks));
     blockNumBS_ = Ops::Base::CeilDiv(bs, blockFactorBS_);
     blockTailBS_ = bs - (blockNumBS_ - 1) * blockFactorBS_;
 
+    // 分核 (N 维度)
     if (bs <= int64_t(aicoreParams_.numBlocks) / CONST_TWO) {
         blockNumN_ = aicoreParams_.numBlocks / blockNumBS_;
         blockFactorN_ = Ops::Base::CeilDiv(bn_, blockNumN_);
@@ -71,22 +77,38 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::DoOpTiling()
         blockTailN_ = bn_;
     }
     usedCoreNum_ = blockNumBS_ * blockNumN_;
-    int64_t baseBufferSize = dAlign_ * typeSize;
+
+    // UB 分块
+    // UB 布局: gradInQueue(DB=2) + dyOutQueue(DB=2) + cosInQueue(DB=2) + sinInQueue(DB=2)
+    // 所有 buffer 统一按 dAlign_ * maxTypeSize 对齐，适配所有 dtype 组合
+    int64_t dSizeX = dAlign_ * maxTypeSize;
+
     int64_t baseBlockInUb =
-        Ops::Base::FloorAlign(static_cast<int64_t>(aicoreParams_.ubSize / CONST_TWO / DB_FLAG), blockSize_) /
-        baseBufferSize;
-    OP_CHECK_IF(baseBlockInUb < 1, OP_LOGE(context_->GetNodeName(), "ubSize can't load 8 d size, d = %ld.", d_),
+        Ops::Base::FloorAlign(static_cast<int64_t>(aicoreParams_.ubSize / CONST_TWO / DB_FLAG), blockSize_);
+    int64_t baseBlockX = baseBlockInUb / dSizeX;
+
+    // 同精度时 cos+sin 占 1 份 dSizeX；混合精度时也占 1 份（buffer 统一大小）
+    OP_CHECK_IF(baseBlockX < 1,
+                OP_LOGE(context_->GetNodeName(), "ubSize can't load AB grad, d = %ld.", sliceLength_),
                 return ge::GRAPH_FAILED);
 
-    ubFactorN_ = std::min(blockFactorN_, baseBlockInUb - 1);
+    ubFactorN_ = std::min(blockFactorN_, baseBlockX - 1);
     ubFactorN_ = std::min(ubFactorN_, MAX_COPY_BLOCK_COUNT / dSplitCoef_);
+    ubFactorN_ = std::max(ubFactorN_, int64_t(1));
 
-    ubFactorBS_ = std::min(Ops::Base::FloorDiv(baseBlockInUb, ubFactorN_ + 1), blockFactorBS_);
-    ubFactorBS_ = (ubFactorBS_ == 0) ? 1 : ubFactorBS_;
-    OP_CHECK_IF(InitTilingData() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "InitTilingData failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(TilingReduce() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "TilingReduce failed."),
-                return ge::GRAPH_FAILED);
+    ubFactorBS_ = std::min(Ops::Base::FloorDiv(baseBlockX, ubFactorN_ + 1), blockFactorBS_);
+    ubFactorBS_ = std::max(ubFactorBS_, int64_t(1));
+
+    // 初始化 tiling data
+    if (tilingData_ == nullptr) {
+        tilingData_ = context_->GetTilingData<InplacePartialRotaryMulGradTilingData>();
+        OP_CHECK_IF(tilingData_ == nullptr, OP_LOGE(context_->GetNodeName(), "get tilingdata ptr failed"),
+                    return ge::GRAPH_FAILED);
+    }
+    OP_CHECK_IF((memset_s(tilingData_, sizeof(InplacePartialRotaryMulGradTilingData), 0,
+                          sizeof(InplacePartialRotaryMulGradTilingData)) != EOK),
+                OP_LOGE(context_->GetNodeName(), "memset tilingdata failed"), return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -111,30 +133,26 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::PostTiling()
     tilingData_->inplacePartialRotaryMulGradABParams.sliceStart = sliceStart_;
     tilingData_->inplacePartialRotaryMulGradABParams.sliceEnd = sliceEnd_;
     tilingData_->inplacePartialRotaryMulGradABParams.sliceLength = sliceLength_;
-    tilingData_->inplacePartialRotaryMulGradABParams.dCosFlag = dCosFlag_;
-    SetRotaryXTilingData();
-    SetTilingKeyBlockDim(static_cast<uint32_t>(ropeGradTilingKey::TILING_KEY_AB));
+    tilingData_->sliceLength = sliceLength_;
+    tilingData_->dCosFlag = 0;
 
-    OP_LOGI(
-        context_->GetNodeName(),
-        "InplacePartialRotaryMulGradRegBaseTilingClassAB tilingData is B: %ld, S: %ld, N: %ld, D: %ld, kAlign: %ld, "
-        "dSplitCoef: %ld, BlockNumBS: %ld, BlockFactorBS: %ld, BlockTailBS: %ld, BlockNumN: %ld, "
-        "BlockFactorN: %ld, blockTailN: %ld, ubFactorBS: %ld, ubFactorN: %ld, "
-        "usedCoreNum_: %ld, RotaryMode: %ld, TilingKey: %ld.",
-        tilingData_->inplacePartialRotaryMulGradABParams.b, tilingData_->inplacePartialRotaryMulGradABParams.s,
-        tilingData_->inplacePartialRotaryMulGradABParams.n, tilingData_->inplacePartialRotaryMulGradABParams.d,
-        tilingData_->inplacePartialRotaryMulGradABParams.dAlign,
-        tilingData_->inplacePartialRotaryMulGradABParams.dSplitCoef,
-        tilingData_->inplacePartialRotaryMulGradABParams.blockNumBS,
-        tilingData_->inplacePartialRotaryMulGradABParams.blockFactorBS,
-        tilingData_->inplacePartialRotaryMulGradABParams.blockTailBS,
-        tilingData_->inplacePartialRotaryMulGradABParams.blockNumN,
-        tilingData_->inplacePartialRotaryMulGradABParams.blockFactorN,
-        tilingData_->inplacePartialRotaryMulGradABParams.blockTailN,
-        tilingData_->inplacePartialRotaryMulGradABParams.ubFactorBS,
-        tilingData_->inplacePartialRotaryMulGradABParams.ubFactorN,
-        tilingData_->inplacePartialRotaryMulGradABParams.usedCoreNum,
-        tilingData_->inplacePartialRotaryMulGradABParams.rotaryMode, tilingKey_);
+    // 单 tiling key，不需要 reduce
+    context_->SetBlockDim(usedCoreNum_);
+    context_->SetTilingKey(static_cast<uint64_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_AB));
+
+    tilingData_->SaveToBuffer(context_->GetRawTilingData()->GetData(),
+                              context_->GetRawTilingData()->GetCapacity());
+    context_->GetRawTilingData()->SetDataSize(tilingData_->GetDataSize());
+
+    OP_LOGI(context_->GetNodeName(),
+            "InplacePartialRotaryMulGradAB tiling: B=%ld S=%ld N=%ld D=%ld dAlign=%ld dSplitCoef=%ld "
+            "blockNumBS=%ld blockFactorBS=%ld blockTailBS=%ld "
+            "blockNumN=%ld blockFactorN=%ld blockTailN=%ld "
+            "ubFactorBS=%ld ubFactorN=%ld usedCoreNum=%ld rotaryMode=%ld "
+            "sliceStart=%ld sliceEnd=%ld sliceLength=%ld",
+            b_, s_, bn_, d_, dAlign_, dSplitCoef_, blockNumBS_, blockFactorBS_, blockTailBS_, blockNumN_, blockFactorN_,
+            blockTailN_, ubFactorBS_, ubFactorN_, usedCoreNum_, static_cast<int64_t>(rotaryMode_), sliceStart_, sliceEnd_,
+            sliceLength_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -143,9 +161,7 @@ bool InplacePartialRotaryMulGradRegBaseTilingClassAB::IsCapable()
     if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
         return false;
     }
-
-    OP_LOGI(context_->GetNodeName(), "layout: %ld", static_cast<int64_t>(layout_));
-    // 1. qk:bsnd, cos:bs1d 2. qk:sbnd, cos:sb1d 3. qk:sbnd, cos:s11d 4. qk:bsnd, cos:b11d
+    // SBND layout: dy(S,B,N,D), cos(S,B,1,D) 或 cos(S,1,1,D)
     return layout_ == InplacePartialRotaryMulGradLayout::SBND;
 }
 

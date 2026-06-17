@@ -16,7 +16,7 @@
 #ifndef _INPLACE_PARTIAL_ROTARY_MUL_GRAD_TILING_DATA_H_
 #define _INPLACE_PARTIAL_ROTARY_MUL_GRAD_TILING_DATA_H_
 
-#include "atvoss/reduce/reduce_tiling_data.h"
+#include <cstdint>
 
 struct InplacePartialRotaryMulGradRegbaseParams {
     int64_t b;
@@ -76,6 +76,7 @@ struct InplacePartialRotaryMulGradRotaryXParams {
     int64_t sliceLength;
 };
 struct InplacePartialRotaryMulGradTilingData {
+    int64_t sliceLength;
     InplacePartialRotaryMulGradRegbaseParams inplacePartialRotaryMulGradParams;
     InplacePartialRotaryMulGradRegbaseABParams inplacePartialRotaryMulGradABParams;
     InplacePartialRotaryMulGradRotaryXParams inplacePartialRotaryMulGradXParams;

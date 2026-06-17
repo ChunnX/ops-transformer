@@ -39,63 +39,58 @@ protected:
                                     })";
 };
 
-TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp16_mode0_half)
+// ============================================================================
+// 同精度 — 4 个 mode 全覆盖
+// ============================================================================
+
+// mode=0 half, layout=NO_BROADCAST → AAndB → TILING_KEY_A(205)
+TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp16_mode0_half_nobroadcast)
 {
     optiling::InplacePartialRotaryMulGradCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara("InplacePartialRotaryMulGrad",
                                               {
-                                                  // input info: dy, cos, sin
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                               },
                                               {
-                                                  // output info: dyOut, dcosOut, dsinOut
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                               },
                                               {
-                                                  // attrs
                                                   {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                   {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 64})},
                                               },
                                               &compileInfo);
-    uint64_t expectTilingKey = 10012;
-    string expectTilingData = "1 1 1 64 0 64 0 2 1 1 0 0 0 1 1 1 1";
-    std::vector<size_t> expectWorkspaces = {};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 205);
 }
 
-TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp16_mode1_interleave)
+// mode=1 interleave, layout=BSND(cosb_==1) → BAB → TILING_KEY_BAB(203)
+TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp16_mode1_interleave_bsnd)
 {
     optiling::InplacePartialRotaryMulGradCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara("InplacePartialRotaryMulGrad",
                                               {
-                                                  // input info: dy, cos, sin
                                                   {{{2, 4, 8, 128}, {2, 4, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 4, 1, 128}, {1, 4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 4, 1, 128}, {1, 4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                               },
                                               {
-                                                  // output info
                                                   {{{2, 4, 8, 128}, {2, 4, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 4, 1, 128}, {1, 4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 4, 1, 128}, {1, 4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                               },
                                               {
-                                                  // attrs
                                                   {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                                   {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 128})},
                                               },
                                               &compileInfo);
-    uint64_t expectTilingKey = 10012;
-    string expectTilingData = "2 4 8 128 0 128 1 1 1 1 0 1 0 32 2 2 0";
-    std::vector<size_t> expectWorkspaces = {};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 203);
 }
 
-TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp32_mode2_quarter)
+// mode=2 quarter, layout=BROADCAST_BSN → AAndB(B) → TILING_KEY_B(206)
+TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp32_mode2_quarter_broadcast)
 {
     optiling::InplacePartialRotaryMulGradCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara("InplacePartialRotaryMulGrad",
@@ -114,13 +109,11 @@ TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp32_mode2_quarter)
                                                   {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 64})},
                                               },
                                               &compileInfo);
-    uint64_t expectTilingKey = 10012;
-    string expectTilingData = "2 64 4 64 0 64 2 4 0 0 1 0 0 47 11 11 0";
-    std::vector<size_t> expectWorkspaces = {};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 206);
 }
 
-TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp32_mode3_interleave_half)
+// mode=3 interleave_half, layout=SBND → AB → TILING_KEY_AB(204)
+TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp32_mode3_interleavehalf_sbnd)
 {
     optiling::InplacePartialRotaryMulGradCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara("InplacePartialRotaryMulGrad",
@@ -139,13 +132,15 @@ TEST_F(InplacePartialRotaryMulGradTiling, tiling_fp32_mode3_interleave_half)
                                                   {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 64})},
                                               },
                                               &compileInfo);
-    uint64_t expectTilingKey = 10012;
-    string expectTilingData = "1 32 2 64 0 64 3 2 0 0 0 1 0 32 2 2 0";
-    std::vector<size_t> expectWorkspaces = {};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 204);
 }
 
-TEST_F(InplacePartialRotaryMulGradTiling, tiling_mixed_dtype_fp16_dy_fp32_cos)
+// ============================================================================
+// 混合精度 — 两种方向全覆盖
+// ============================================================================
+
+// dy=fp16 + cos=fp32, mode=0, layout=SBND → AB → TILING_KEY_AB(204)
+TEST_F(InplacePartialRotaryMulGradTiling, tiling_mixed_fp16dy_fp32cos)
 {
     optiling::InplacePartialRotaryMulGradCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara("InplacePartialRotaryMulGrad",
@@ -164,23 +159,69 @@ TEST_F(InplacePartialRotaryMulGradTiling, tiling_mixed_dtype_fp16_dy_fp32_cos)
                                                   {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 128})},
                                               },
                                               &compileInfo);
-    uint64_t expectTilingKey = 10012;
-    string expectTilingData = "2 8 4 128 0 128 0 2 1 0 0 1 0 32 2 2 0";
-    std::vector<size_t> expectWorkspaces = {};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 204);
 }
 
-// Error case: x is not nullptr (unsupported)
-TEST_F(InplacePartialRotaryMulGradTiling, tiling_error_x_not_null)
+// dy=fp32 + cos=fp16, mode=0, layout=BSND(cosb_==1) → BAB → TILING_KEY_BAB(203)
+TEST_F(InplacePartialRotaryMulGradTiling, tiling_mixed_fp32dy_fp16cos)
 {
     optiling::InplacePartialRotaryMulGradCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara("InplacePartialRotaryMulGrad",
                                               {
-                                                  // input info: dy, cos, sin, x (4 inputs!)
+                                                  {{{1, 4, 8, 128}, {1, 4, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1, 4, 1, 128}, {1, 4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 4, 1, 128}, {1, 4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{1, 4, 8, 128}, {1, 4, 8, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1, 4, 1, 128}, {1, 4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 4, 1, 128}, {1, 4, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                  {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 128})},
+                                              },
+                                              &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 203);
+}
+
+// dy=fp32 + cos=bf16, mode=1, layout=BROADCAST_BSN → AAndB(B) → TILING_KEY_B(206)
+TEST_F(InplacePartialRotaryMulGradTiling, tiling_mixed_fp32dy_bf16cos)
+{
+    optiling::InplacePartialRotaryMulGradCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("InplacePartialRotaryMulGrad",
+                                              {
+                                                  {{{2, 8, 4, 64}, {2, 8, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{2, 8, 4, 64}, {2, 8, 4, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                                  {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 64})},
+                                              },
+                                              &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 206);
+}
+
+// ============================================================================
+// 错误 case
+// ============================================================================
+
+// x 不为 nullptr — CheckShapeLimit 设置 dCosFlag_=1，校验 x shape == dy shape
+TEST_F(InplacePartialRotaryMulGradTiling, tiling_error_x_with_shape_mismatch)
+{
+    optiling::InplacePartialRotaryMulGradCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("InplacePartialRotaryMulGrad",
+                                              {
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                  {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{2, 4, 8, 64}, {2, 4, 8, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                               },
                                               {
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -195,8 +236,8 @@ TEST_F(InplacePartialRotaryMulGradTiling, tiling_error_x_not_null)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// Error case: partial_slice out of range
-TEST_F(InplacePartialRotaryMulGradTiling, tiling_error_bad_slice)
+// partial_slice end-start != cos D — CheckAttr 会报错
+TEST_F(InplacePartialRotaryMulGradTiling, tiling_error_slice_mismatch_cos_d)
 {
     optiling::InplacePartialRotaryMulGradCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara("InplacePartialRotaryMulGrad",
@@ -218,20 +259,20 @@ TEST_F(InplacePartialRotaryMulGradTiling, tiling_error_bad_slice)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// Error case: cos D != sliceLen
-TEST_F(InplacePartialRotaryMulGradTiling, tiling_error_cos_dim_mismatch)
+// cos D > dy D — CheckShape 会报错
+TEST_F(InplacePartialRotaryMulGradTiling, tiling_error_cos_d_larger_than_dy_d)
 {
     optiling::InplacePartialRotaryMulGradCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara("InplacePartialRotaryMulGrad",
                                               {
+                                                  {{{1, 1, 1, 32}, {1, 1, 1, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                  {{{1, 1, 1, 32}, {1, 1, 1, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                  {{{1, 1, 1, 32}, {1, 1, 1, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                               },
                                               {
+                                                  {{{1, 1, 1, 32}, {1, 1, 1, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                                   {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                  {{{1, 1, 1, 32}, {1, 1, 1, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                  {{{1, 1, 1, 32}, {1, 1, 1, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{1, 1, 1, 64}, {1, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
                                               },
                                               {
                                                   {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},

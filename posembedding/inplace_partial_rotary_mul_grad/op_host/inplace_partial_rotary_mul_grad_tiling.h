@@ -15,7 +15,6 @@
 #ifndef OPS_BUILD_IN_OP_TILING_RUNTIME_INPLACE_PARTIAL_ROTARY_MUL_GRAD_H
 #define OPS_BUILD_IN_OP_TILING_RUNTIME_INPLACE_PARTIAL_ROTARY_MUL_GRAD_H
 
-#include "inplace_partial_rotary_mul_grad_regbase_tiling.h"
 #include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
 #include "op_host/tiling_templates_registry.h"
@@ -24,7 +23,6 @@
 #include "op_host/tiling_util.h"
 #include "../op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_data.h"
 #include "platform/platform_info.h"
-#include "atvoss/reduce/reduce_tiling.h"
 #include "util/math_util.h"
 
 namespace optiling {
