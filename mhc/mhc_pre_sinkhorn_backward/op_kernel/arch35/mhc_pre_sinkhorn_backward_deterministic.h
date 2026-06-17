@@ -461,7 +461,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     LocalTensor<U> gradZLocal = gradZBuf_.Get<U>();
     for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
         int64_t curBsIdx = bsOffset + bsLoop;
-        U invRms = invRmsGm_(curBsIdx);
+        U invRms = invRmsLocal(bsLoop);
         ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPre_, invRms, n_, curBsIdx * k_);
     }
 
@@ -474,7 +474,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     // grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
     for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
         int64_t curBsIdx = bsOffset + bsLoop;
-        U invRms = invRmsGm_(curBsIdx);
+        U invRms = invRmsLocal(bsLoop);
         ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPost_, invRms, n_, curBsIdx * k_ + n_);
     }
 
@@ -699,7 +699,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         // 计算GradXFromRms
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0); // GradHcBeforeNorm计算完成，可以进行matmul计算
         SyncAll(); // GradNormOut需全部存储完毕再进行RMSNormGrad的计算
-        for (uint64_t bsIdx = 0; bsIdx < bsLoopNum; bsIdx++) {
+        for (uint64_t bsIdx = 0; bsIdx < curCoreProcessbsTask_; bsIdx++) {
             ProcessGradXFromRms(bsIdx);
         }
         
