@@ -24,7 +24,7 @@
 namespace InplacePartialRotaryMulGrad {
 using namespace AscendC;
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN>
+template <typename DTYPE_DY, typename DTYPE_COS>
 class InplacePartialRotaryMulGradBAB {
 public:
     __aicore__ inline InplacePartialRotaryMulGradBAB() {}
@@ -60,8 +60,8 @@ private:
     uint32_t ubFactorN_{0};
 };
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN>
-__aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS, DTYPE_SIN>::Init(
+template <typename DTYPE_DY, typename DTYPE_COS>
+__aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS>::Init(
     TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling, GM_ADDR dy, GM_ADDR cos, GM_ADDR sin,
     GM_ADDR dyOut)
 {
@@ -94,8 +94,8 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS, DTYPE
     pipe_->InitBuffer(sinInQue_, 2, bufferSizeCos);
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN>
-__aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS, DTYPE_SIN>::Process()
+template <typename DTYPE_DY, typename DTYPE_COS>
+__aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS>::Process()
 {
     if (GetBlockIdx() >= tilingData_->usedCoreNum) {
         return;
@@ -119,8 +119,8 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS, DTYPE
     }
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN>
-__aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS, DTYPE_SIN>::ProcessNLoop(
+template <typename DTYPE_DY, typename DTYPE_COS>
+__aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS>::ProcessNLoop(
     int64_t sIdx, uint32_t currSNum, int64_t bIdx)
 {
     LocalTensor<DTYPE_COS> cosBuffer = cosInQue_.AllocTensor<DTYPE_COS>();
@@ -145,8 +145,8 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS, DTYPE
     sinInQue_.FreeTensor(sinBuffer);
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN>
-__aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS, DTYPE_SIN>::ProcessN(
+template <typename DTYPE_DY, typename DTYPE_COS>
+__aicore__ inline void InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS>::ProcessN(
     int64_t sIdx, uint32_t currSNum, int64_t bIdx, int64_t baseOffset)
 {
     uint32_t ubLoopNumN = static_cast<uint32_t>(tilingData_->ubLoopNumN);

@@ -122,7 +122,6 @@ void InplacePartialRotaryMulGradRegBaseTilingClassAAndB::SetTilingData()
     tilingData_->inplacePartialRotaryMulGradParams.sliceLength = sliceLength_;
     tilingData_->inplacePartialRotaryMulGradParams.dSplitCoef = dSplitCoef_;
     tilingData_->sliceLength = sliceLength_;
-    tilingData_->dCosFlag = dCosFlag_;
 }
 
 ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAAndB::DoOpTiling()
