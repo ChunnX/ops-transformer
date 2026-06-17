@@ -48,6 +48,7 @@ struct WriteWithNotifySQEInfoParams {
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
 
 #define TOKEN_BY_TOKEN
+//#define DETECTION_TIME    // 统计时延开关
 
 using namespace AscendC;
 using namespace Mc2Aclnn;
@@ -404,8 +405,19 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             rankGM,
             static_cast<uint32_t>(curTokenNum * axisHExpandXTypeSize_));
 #endif
+
+#ifdef DETECTION_TIME
+            AscendC::PipeBarrier<PIPE_ALL>();                       // 1.清空流水线，确保之前的任务不干扰本次测量
+            int64_t g0 = AscendC::GetSystemCycle();                 // 2.记录起始时间
+#endif
         hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
         hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
+#ifdef DETECTION_TIME
+        AscendC::PipeBarrier<PIPE_ALL>();
+        int64_t g1 = AscendC::GetSystemCycle();
+        int64_t costCycles = g1 - g0;
+        op_LOGD("Communication cost cycles:%ld\n", costCycles);
+#endif
     }
     SyncAll<true>();
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
