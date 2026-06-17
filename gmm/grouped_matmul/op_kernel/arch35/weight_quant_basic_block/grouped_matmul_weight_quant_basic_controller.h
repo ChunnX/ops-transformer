@@ -23,6 +23,7 @@ using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
 using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
+using WeightQuantBatchMatmulV2::Arch35::QuantType;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
 using WeightQuantBatchMatmulV2::Arch35::WeightQuantMatmulBasicBlock;
 using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
@@ -62,6 +63,7 @@ private:
     TILING_TYPE *mListGm_;
     TILING_TYPE *nListGm_;
     TILING_TYPE *kListGm_;
+    uint64_t biasBaseOffset_;
 
     WeightQuantMatmulBasicBlock<xType, wType, xType, uint64_t, float, biasType, yType, wqmmConfig, vecConfig>
         wqmmBasicBlock_;
@@ -87,6 +89,7 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
     antiquantOffsetGm_ = antiquantOffset;
     biasGm_ = bias;
     yGm_ = y;
+    biasBaseOffset_ = 0;
     if (groupList != nullptr) {
         groupListGm_.SetGlobalBuffer((__gm__ int64_t *)groupList);
     }
@@ -223,7 +226,7 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
         weightGm = GetTensorAddr<wType>(0, weightGm_) + weightBaseOffset;
         antiquantScaleGm = GetTensorAddr<xType>(0, antiquantScaleGm_) + antiquantParamsBaseOffset;
         antiquantOffsetGm = GetTensorAddr<xType>(0, antiquantOffsetGm_) + antiquantParamsBaseOffset;
-        biasGm = GetTensorAddr<biasType>(0, biasGm_) + antiquantParamsBaseOffset;
+        biasGm = GetTensorAddr<biasType>(0, biasGm_) + biasBaseOffset_;
     }
     wqmmBasicBlock_.UpdateGlobalAddr(xGm, weightGm, antiquantScaleGm, antiquantOffsetGm, nullptr, nullptr, biasGm,
                                      yGm, mmTiling_->isBias, true);
@@ -233,7 +236,13 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
     } else {
         weightBaseOffset += offsetParam.nSize * offsetParam.kSize;
     }
-    antiquantParamsBaseOffset += offsetParam.nSize;
+    if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP) {
+        uint64_t groupNumK = offsetParam.kSize / gmmBaseTiling_->groupSize;
+        antiquantParamsBaseOffset += groupNumK * offsetParam.nSize;
+    } else {
+        antiquantParamsBaseOffset += offsetParam.nSize;
+    }
+    biasBaseOffset_ += offsetParam.nSize;
     yBaseOffset += offsetParam.mSize * offsetParam.nSize;
 }
 
