@@ -474,11 +474,11 @@ public:
 
             // [位置2] 验证每个pair的offset映射
             if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U && pairIdx < 4U) {
-                GM_ADDR srcAddr = outputPermuteSrcBuffer_.GetPhyAddr();
-                GM_ADDR dstAddr = outputPermuteDstBuffer_.GetPhyAddr();
                 AscendC::printf("[PAIR] turn=%u pair=%u loc=%u rank=%u posB=%u posA=%u srcOff=%lu dstOff=%lu totalCnt=%lu srcAddr=%p dstAddr=%p\n",
                     turnIdx, pairIdx, localIdx, rankIndex, posBefore, posAfter,
-                    srcOffset, dstOffset, totalCnt, srcAddr, dstAddr);
+                    srcOffset, dstOffset, totalCnt,
+                    reinterpret_cast<void*>(outputPermuteSrcBuffer_.GetPhyAddr()),
+                    reinterpret_cast<void*>(outputPermuteDstBuffer_.GetPhyAddr()));
                 if (totalCnt > 0UL) {
                     AscendC::DumpTensor(outputPermuteSrcBuffer_[srcOffset], 300U + turnIdx * 8U + pairIdx, 16U);
                 }
