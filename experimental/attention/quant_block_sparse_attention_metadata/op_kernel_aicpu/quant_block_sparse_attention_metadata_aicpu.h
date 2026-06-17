@@ -103,7 +103,7 @@ private:
     int32_t sparseBlockSizeKv_ = 128;
     int32_t quantMode_ = 1; 
     int32_t maskMode_ = 3;
-    std::string layoutQ_ = "TMD"; 
+    std::string layoutQ_ = "TND"; 
     std::string layoutKv_ = "PA_BNSD";
     std::string layoutSparseIndices_ = "B_N_Qb_Kb";
 
