@@ -60,7 +60,7 @@ at::Tensor construct_compressor_output_tensor(const at::Tensor &x, const at::Ten
     auto wkv_dim = wkv.dim();
     TORCH_CHECK(wkv_dim == DIM_TWO, "wkv dim num[", wkv_dim, "] should be 2");
 
-    TORCH_CHECK(coff == VALUE_1 || COFF == VALUE_2, "coff value[", coff, "] should be 1 or 2");
+    TORCH_CHECK(coff == VALUE_1 || coff == VALUE_2, "coff value[", coff, "] should be 1 or 2");
 
     if (x_dim == DIM_THREE) {
         cmp_s = (x.size(1) + cmp_ratio - 1) / cmp_ratio;
