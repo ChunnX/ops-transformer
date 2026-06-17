@@ -366,7 +366,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
 
 - 通信引擎约束：
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
-  - <term>Ascend 950DT</term>：支持CCU通信和AICPU通信，CCU仅支持UB域内互联，AICPU可跨PCIE或跨机互联。
+  - <term>Ascend 950DT</term>：支持CCU通信和AICPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
 
 - 确定性计算：
   - aclnnAlltoAllvGroupedMatMulV2默认确定性实现。
