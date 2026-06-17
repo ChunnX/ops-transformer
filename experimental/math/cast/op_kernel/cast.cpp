@@ -232,12 +232,43 @@ private:
         }
     }
 
+    // bf16 (u16) -> bool, vectorized to match golden: nan_to_num(nan->0) then (x != 0).
+    // result = 1 iff magnitude m=(bits&0x7FFF) in [1, 0x7F80]; m==0 (incl -0) -> 0; m>0x7F80 (NaN) -> 0.
     __aicore__ inline void Bf16ToBool(const AscendC::LocalTensor<uint16_t>& src,
-                                      const AscendC::LocalTensor<int8_t>& dst, int64_t count)
+                                      const AscendC::LocalTensor<int8_t>& dst, int64_t count, uint32_t calc)
     {
-        for (int64_t i = 0; i < count; ++i) {
-            dst.SetValue(i, src.GetValue(i) == 0 ? static_cast<int8_t>(0) : static_cast<int8_t>(1));
-        }
+        // m = bits & 0x7FFF (clear sign; -0 -> 0). Held in mid2Buf as int16 [0, 0x7FFF].
+        AscendC::LocalTensor<uint16_t> mask = midBuf_.Get<uint16_t>();
+        AscendC::Duplicate(mask, static_cast<uint16_t>(0x7FFF), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<uint16_t> mU = mid2Buf_.Get<uint16_t>();
+        AscendC::And(mU, src, mask, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<int16_t> m = mU.ReinterpretCast<int16_t>();
+        // a = (m != 0) ? 1 : 0   (NaN also yields 1 here; removed below). Held in midBuf.
+        AscendC::LocalTensor<int16_t> a = midBuf_.Get<int16_t>();
+        AscendC::Mins(a, m, static_cast<int16_t>(1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        // nan = (m > 0x7F80) ? 1 : 0, computed in-place on m.
+        AscendC::Maxs(m, m, static_cast<int16_t>(0x7F80), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(m, m, static_cast<int16_t>(-0x7F80), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Mins(m, m, static_cast<int16_t>(1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        // notnan = 1 - nan
+        AscendC::Muls(m, m, static_cast<int16_t>(-1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(m, m, static_cast<int16_t>(1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        // res = a AND notnan = min(a, notnan)
+        AscendC::Min(a, a, m, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        // 0/1 int16 -> half -> int8 bool
+        AscendC::LocalTensor<half> h = mid2Buf_.Get<half>();
+        AscendC::Cast(h, a, RoundMode::CAST_NONE, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Cast(dst, h, RoundMode::CAST_ROUND, calc);
     }
 
     __aicore__ inline void Compute(int64_t count)
@@ -339,7 +370,7 @@ private:
             return;
         }
         if constexpr (Y == DT_BOOL) {
-            Bf16ToBool(src, outLocal.template ReinterpretCast<int8_t>(), count);
+            Bf16ToBool(src, outLocal.template ReinterpretCast<int8_t>(), count, calc);
             return;
         }
         AscendC::LocalTensor<float> midF = midBuf_.Get<float>();
