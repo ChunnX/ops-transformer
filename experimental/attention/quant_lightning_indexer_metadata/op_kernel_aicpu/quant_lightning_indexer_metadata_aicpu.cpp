@@ -116,11 +116,14 @@ bool QuantLightningIndexerMetadataCpuKernel::ParamsInit()
     batchSize_ = std::min(qBatchSize_, kvBatchSize_);
     validSocVersion_ = ProcessSocVersion();
     if (validSocVersion_ == ValidSocVersion::ASCEND910B){
-        s2BaseSize_ = 2048U; // 仅用于A3
+        mBaseSize_ = 256U;
+        s2BaseSize_ = 2048U;
     } else if (validSocVersion_ == ValidSocVersion::ASCEND950){
-        s2BaseSize_ = 128U; // 仅用于A5
+        mBaseSize_ = 128U;
+        s2BaseSize_ = 256U;
     } else {
-        s2BaseSize_ = 128U; // 其他情况
+        mBaseSize_ = 256U;
+        s2BaseSize_ = 128U;
     }
     return true;
 }
