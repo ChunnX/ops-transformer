@@ -234,7 +234,6 @@ __aicore__ inline void SIVector<SIT>::FreeEventID()
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t gS1Idx, uint32_t actMBaseSize, uint64_t indiceOutOffset)
 {
-    
     // 当前处理的GS1行起始索引（全局位置）
     int64_t curGS1Idx = gS1Idx * mBaseSize_;
     // 当前GS1行需要处理的数量（可能小于mBaseSize_，处理尾块）
@@ -288,8 +287,6 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     vector1::MulRSquareAndAddVBiasVF(outBase, qkBase, vBiasBase, constInfo_.rSquare, gS1BasePerVecSize_, s2BaseSize_, (trunkLen_ + MAX_TOPK_COUNT));
 
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
-    
-    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   //V核处理完，通知C核可以把mm1Res搬运到UB
 }
 
 template <typename SIT>
@@ -584,6 +581,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             }
         }
     }
+    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + (info.loop % 2));   //V核处理完，通知C核可以把mm1Res搬运到UB
 }
 
 template <typename SIT>
