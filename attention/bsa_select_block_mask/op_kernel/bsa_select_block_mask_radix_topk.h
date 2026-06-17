@@ -15,6 +15,10 @@
 #define BSA_TOPK_SYNC_PROBE 0
 #endif
 
+#ifndef BSA_TOPK_PIPE_ALL_PROBE
+#define BSA_TOPK_PIPE_ALL_PROBE 1
+#endif
+
 #ifndef BSA_TOPK_INIT_ATTNSCORE_PROBE
 #define BSA_TOPK_INIT_ATTNSCORE_PROBE 1
 #endif
@@ -28,6 +32,12 @@
 #define BSA_TOPK_SYNC_PRINTF(...) do {} while (0)
 
 #define BSA_TOPK_DUMP_TENSOR(...) do {} while (0)
+
+#define BSA_TOPK_PIPE_ALL() do { \
+    if (BSA_TOPK_PIPE_ALL_PROBE) { \
+        MTE3ToSSync(); \
+    } \
+} while (0)
 
 template <typename BSAT>
 class BSARadixTopKService {
@@ -959,6 +969,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyOutHistToWs(uint64_t maskL
     DataCopyExtParams globalHistParams{
         static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * maskLen), 0, 0, 0};
     DataCopyPad(globalHistGm_[gmOffset], globalHist, globalHistParams);
+    BSA_TOPK_PIPE_ALL();
 }
 
 template <typename BSAT>
@@ -1589,4 +1600,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 #undef BSA_TOPK_PRINTF
 #undef BSA_TOPK_SYNC_PRINTF
 #undef BSA_TOPK_DUMP_TENSOR
+#undef BSA_TOPK_PIPE_ALL
+
 #endif // BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
