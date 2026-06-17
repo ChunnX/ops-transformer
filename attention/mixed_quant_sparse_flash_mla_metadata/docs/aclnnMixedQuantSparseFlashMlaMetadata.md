@@ -73,7 +73,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1450px"><colgroup>
-  <col style="width: 200px">
+  <col style="width: 240px">
   <col style="width: 120px">
   <col style="width: 350px">
   <col style="width: 200px">
