@@ -32,6 +32,7 @@ struct MegaMoeTilingData {
     uint32_t rankId;
     uint32_t topK;
     uint32_t aicNum;
+    uint32_t ubSize;            // 单 AIV UB 总字节数(host 由平台查得), 分块流式动态算 chunk 用
     int32_t dispatchRows;
     uint8_t groupListType;
     bool transX;

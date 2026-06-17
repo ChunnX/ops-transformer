@@ -47,7 +47,6 @@ namespace {
     const static int64_t TWO_DIMS = 2LL;
     const static int64_t ONE_DIM = 1LL;
     const static int64_t MIN_BS = 1LL;
-    const static int64_t MAX_BS = 512000LL;
     const static int64_t MIN_TOPK = 1LL;
     const static int64_t MAX_TOPK = 32LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
@@ -859,10 +858,10 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
 
     int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > MAX_BS,
+    // bs 上限不再校验: 超限会在前面 ccl/workspace 申请阶段被显存校验拦下, 这里只需保证 bs > 0。
+    OP_TILING_CHECK(xDim0 < MIN_BS,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
-            (std::string("should in [") + std::to_string(MIN_BS) + ", " +
-             std::to_string(MAX_BS) + "]").c_str()),
+            (std::string("should >= ") + std::to_string(MIN_BS)).c_str()),
         return ge::GRAPH_FAILED);
 
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
@@ -969,6 +968,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
 
     uint64_t ubSize = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    tilingData->ubSize = static_cast<uint32_t>(ubSize);  // 分块流式动态算 chunk 用, 不再在 kernel 里硬编码
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum));
     context->SetScheduleMode(1); // batch model, all cores start at the same time
     OP_LOGI(nodeName, "TilingData Init: aivNum: %u, aicNum: %u, ubSize:%lu \n", aivNum, aicNum, ubSize);
