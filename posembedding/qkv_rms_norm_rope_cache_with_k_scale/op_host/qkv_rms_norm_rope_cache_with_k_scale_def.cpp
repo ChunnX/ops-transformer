@@ -44,6 +44,11 @@ public:
             .DataType(int32Types)
             .Format(ndFormats)
             .UnknownShapeFormat(ndFormats);
+        this->Input("actual_seq_lens")
+            .ParamType(REQUIRED)
+            .DataType(int32Types)
+            .Format(ndFormats)
+            .UnknownShapeFormat(ndFormats);
         this->Input("q_rotation")
             .ParamType(OPTIONAL)
             .DataType(bf16Types)

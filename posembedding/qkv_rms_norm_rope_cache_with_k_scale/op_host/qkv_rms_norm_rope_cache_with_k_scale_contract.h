@@ -43,6 +43,7 @@ enum class ContractStatus : uint32_t {
     kInvalidCosSinShape,
     kInvalidSlotMappingShape,
     kInvalidCuSeqLenShape,
+    kInvalidActualSeqLensShape,
     kInvalidQRotationShape,
     kInvalidKRotationShape,
     kInvalidVScaleShape,
@@ -106,6 +107,7 @@ struct ContractInput {
     TensorContractInfo vCache;
     TensorContractInfo kScaleCache;
     TensorContractInfo cuSeqLen;
+    TensorContractInfo actualSeqLens;
     TensorContractInfo qRotation;
     TensorContractInfo kRotation;
     TensorContractInfo vScale;

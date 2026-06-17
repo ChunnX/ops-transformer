@@ -82,6 +82,7 @@ void RefreshShapes(ContractInput &input)
     input.kScaleCache.shape = Shape({input.blockNum, input.numKHeads, input.blockSize, 1});
     input.kScaleCache.stride = Stride({input.numKHeads * input.blockSize, input.blockSize, 1, 1});
     input.cuSeqLen.shape = Shape({static_cast<uint64_t>(input.batch) + 1});
+    input.actualSeqLens.shape = Shape({input.batch});
     input.qRotation.shape = Shape({input.headDim, input.headDim});
     input.kRotation.shape = Shape({input.headDim, input.headDim});
     input.vScale.shape = Shape({input.numVHeads});
@@ -111,6 +112,7 @@ ContractInput BuildInput(uint64_t totalTokens = 128, uint64_t numQHeads = 16, ui
     input.vCache.dtype = ContractDtype::kFloat8E4M3fn;
     input.kScaleCache.dtype = ContractDtype::kFloat;
     input.cuSeqLen.dtype = ContractDtype::kInt32;
+    input.actualSeqLens.dtype = ContractDtype::kInt32;
     input.qRotation.dtype = ContractDtype::kBf16;
     input.kRotation.dtype = ContractDtype::kBf16;
     input.vScale.dtype = ContractDtype::kFloat;
@@ -370,6 +372,10 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKRotationShape);
 
     input = BuildInput();
+    input.actualSeqLens.shape.dim0 += 1;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidActualSeqLensShape);
+
+    input = BuildInput();
     input.qkv.dtype = ContractDtype::kFloat;
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidDtype);
 
@@ -379,6 +385,10 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
 
     input = BuildInput();
     input.kRotation.dtype = ContractDtype::kFloat;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidDtype);
+
+    input = BuildInput();
+    input.actualSeqLens.dtype = ContractDtype::kFloat;
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidDtype);
 }
 

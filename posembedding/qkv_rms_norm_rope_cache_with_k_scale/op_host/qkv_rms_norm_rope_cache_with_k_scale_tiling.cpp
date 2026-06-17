@@ -39,9 +39,10 @@ constexpr size_t kKCacheIndex = 5;
 constexpr size_t kVCacheIndex = 6;
 constexpr size_t kKScaleCacheIndex = 7;
 constexpr size_t kCuSeqLenIndex = 8;
-constexpr size_t kQRotationIndex = 9;
-constexpr size_t kKRotationIndex = 10;
-constexpr size_t kVScaleIndex = 11;
+constexpr size_t kActualSeqLensIndex = 9;
+constexpr size_t kQRotationIndex = 10;
+constexpr size_t kKRotationIndex = 11;
+constexpr size_t kVScaleIndex = 12;
 
 constexpr size_t kHeadNumsAttrIndex = 0;
 constexpr size_t kEpsilonAttrIndex = 1;
@@ -224,6 +225,7 @@ void LogContractInput(const char *opName, const ContractInput &input, float epsi
     LogTensorInfo(opName, "vCache", input.vCache);
     LogTensorInfo(opName, "kScaleCache", input.kScaleCache);
     LogTensorInfo(opName, "cuSeqLen", input.cuSeqLen);
+    LogTensorInfo(opName, "actualSeqLens", input.actualSeqLens);
     LogTensorInfo(opName, "qRotation", input.qRotation);
     LogTensorInfo(opName, "kRotation", input.kRotation);
     LogTensorInfo(opName, "vScale", input.vScale);
@@ -296,6 +298,7 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, ContractInput &
     const auto cosSin = ToTensorInfo(context, kCosSinIndex);
     const auto kCache = ToCacheTensorInfo(context, kKCacheIndex);
     const auto cuSeqLen = ToTensorInfo(context, kCuSeqLenIndex);
+    const auto actualSeqLens = ToTensorInfo(context, kActualSeqLensIndex);
     const auto &qkvShape = qkv.shape;
     const auto &cosSinShape = cosSin.shape;
     const auto &kCacheShape = kCache.shape;
@@ -328,6 +331,7 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, ContractInput &
     input.vCache = ToCacheTensorInfo(context, kVCacheIndex);
     input.kScaleCache = ToCacheTensorInfo(context, kKScaleCacheIndex);
     input.cuSeqLen = cuSeqLen;
+    input.actualSeqLens = actualSeqLens;
     input.qRotation = ToOptionalTensorInfo(context, kQRotationIndex);
     input.kRotation = ToOptionalTensorInfo(context, kKRotationIndex);
     input.vScale = ToOptionalTensorInfo(context, kVScaleIndex);

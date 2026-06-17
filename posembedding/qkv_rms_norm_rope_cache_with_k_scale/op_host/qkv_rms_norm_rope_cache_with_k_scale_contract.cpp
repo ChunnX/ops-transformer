@@ -223,19 +223,22 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         !HasDtype(input.kGamma, ContractDtype::kFloat) || !HasDtype(input.cosSin, ContractDtype::kFloat) ||
         !HasDtype(input.slotMapping, ContractDtype::kInt32) || !HasDtype(input.kCache, ContractDtype::kFloat8E4M3fn) ||
         !HasDtype(input.vCache, ContractDtype::kFloat8E4M3fn) || !HasDtype(input.kScaleCache, ContractDtype::kFloat) ||
-        !HasDtype(input.cuSeqLen, ContractDtype::kInt32) || !HasDtype(input.qRotation, ContractDtype::kBf16) ||
-        !HasDtype(input.kRotation, ContractDtype::kBf16) || !HasDtype(input.vScale, ContractDtype::kFloat)) {
+        !HasDtype(input.cuSeqLen, ContractDtype::kInt32) ||
+        !HasDtype(input.actualSeqLens, ContractDtype::kInt32) ||
+        !HasDtype(input.qRotation, ContractDtype::kBf16) || !HasDtype(input.kRotation, ContractDtype::kBf16) ||
+        !HasDtype(input.vScale, ContractDtype::kFloat)) {
         if (ShouldLog(opName)) {
             OP_LOGD(opName,
                     "QkvRmsNormRopeCacheWithKScale contract reject: dtype check failed qkv=%u qGamma=%u kGamma=%u "
-                    "cosSin=%u slotMapping=%u kCache=%u vCache=%u kScaleCache=%u cuSeqLen=%u qRotation=%u "
-                    "kRotation=%u vScale=%u.",
+                    "cosSin=%u slotMapping=%u kCache=%u vCache=%u kScaleCache=%u cuSeqLen=%u actualSeqLens=%u "
+                    "qRotation=%u kRotation=%u vScale=%u.",
                     static_cast<uint32_t>(input.qkv.dtype), static_cast<uint32_t>(input.qGamma.dtype),
                     static_cast<uint32_t>(input.kGamma.dtype), static_cast<uint32_t>(input.cosSin.dtype),
                     static_cast<uint32_t>(input.slotMapping.dtype), static_cast<uint32_t>(input.kCache.dtype),
                     static_cast<uint32_t>(input.vCache.dtype), static_cast<uint32_t>(input.kScaleCache.dtype),
-                    static_cast<uint32_t>(input.cuSeqLen.dtype), static_cast<uint32_t>(input.qRotation.dtype),
-                    static_cast<uint32_t>(input.kRotation.dtype), static_cast<uint32_t>(input.vScale.dtype));
+                    static_cast<uint32_t>(input.cuSeqLen.dtype), static_cast<uint32_t>(input.actualSeqLens.dtype),
+                    static_cast<uint32_t>(input.qRotation.dtype), static_cast<uint32_t>(input.kRotation.dtype),
+                    static_cast<uint32_t>(input.vScale.dtype));
         }
         return ContractStatus::kInvalidDtype;
     }
@@ -281,6 +284,14 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
                     input.cuSeqLen.shape.rank, input.cuSeqLen.shape.dim0);
         }
         return ContractStatus::kInvalidCuSeqLenShape;
+    }
+    if (!IsShape1D(input.actualSeqLens.shape, input.batch)) {
+        if (ShouldLog(opName)) {
+            OP_LOGD(opName,
+                    "QkvRmsNormRopeCacheWithKScale contract reject: actualSeqLens shape rank=%u dim0=%lu.",
+                    input.actualSeqLens.shape.rank, input.actualSeqLens.shape.dim0);
+        }
+        return ContractStatus::kInvalidActualSeqLensShape;
     }
     if (!IsShape2D(input.qRotation.shape, input.headDim, input.headDim)) {
         if (ShouldLog(opName)) {
@@ -512,6 +523,8 @@ const char *ContractStatusName(ContractStatus status)
             return "invalid_slot_mapping_shape";
         case ContractStatus::kInvalidCuSeqLenShape:
             return "invalid_cu_seq_len_shape";
+        case ContractStatus::kInvalidActualSeqLensShape:
+            return "invalid_actual_seq_lens_shape";
         case ContractStatus::kInvalidQRotationShape:
             return "invalid_q_rotation_shape";
         case ContractStatus::kInvalidKRotationShape:

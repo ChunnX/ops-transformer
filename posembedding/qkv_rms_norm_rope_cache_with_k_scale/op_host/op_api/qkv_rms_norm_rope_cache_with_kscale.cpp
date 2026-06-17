@@ -23,12 +23,13 @@ std::tuple<const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor
 QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma,
                               const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache,
                               aclTensor *vCache, aclTensor *kScaleCache, const aclTensor *cuSeqLen,
-                              const aclTensor *optionalQRotation, const aclTensor *optionalKRotation,
-                              const aclTensor *optionalVScale, const aclIntArray *headNums, float epsilon,
-                              aclTensor *qOut, aclTensor *qScale, aclOpExecutor *executor)
+                              const aclTensor *actualSeqLens, const aclTensor *optionalQRotation,
+                              const aclTensor *optionalKRotation, const aclTensor *optionalVScale,
+                              const aclIntArray *headNums, float epsilon, aclTensor *qOut, aclTensor *qScale,
+                              aclOpExecutor *executor)
 {
     L0_DFX(QkvRmsNormRopeCacheWithKScale, qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
-           cuSeqLen, optionalQRotation, optionalKRotation, optionalVScale, headNums, epsilon);
+           cuSeqLen, actualSeqLens, optionalQRotation, optionalKRotation, optionalVScale, headNums, epsilon);
 
     if (optionalQRotation == nullptr) {
         optionalQRotation = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -42,7 +43,7 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
 
     auto ret = INFER_SHAPE(QkvRmsNormRopeCacheWithKScale,
                            OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
-                                    cuSeqLen, optionalQRotation, optionalKRotation, optionalVScale),
+                                    cuSeqLen, actualSeqLens, optionalQRotation, optionalKRotation, optionalVScale),
                            OP_OUTPUT(qOut, qScale, kCache, vCache, kScaleCache),
                            OP_ATTR(headNums, epsilon));
     if (ret != ACLNN_SUCCESS) {
@@ -52,8 +53,8 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
         QkvRmsNormRopeCacheWithKScale,
-        OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen, optionalQRotation,
-                 optionalKRotation, optionalVScale),
+        OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen, actualSeqLens,
+                 optionalQRotation, optionalKRotation, optionalVScale),
         OP_OUTPUT(qOut, qScale, kCache, vCache, kScaleCache),
         OP_ATTR(headNums, epsilon));
     if (ret != ACLNN_SUCCESS) {

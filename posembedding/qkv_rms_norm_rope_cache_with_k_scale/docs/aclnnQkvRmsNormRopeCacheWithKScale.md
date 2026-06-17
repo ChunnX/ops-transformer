@@ -13,6 +13,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     aclTensor *vCache,
     aclTensor *kScaleCache,
     const aclTensor *cuSeqLen,
+    const aclTensor *actualSeqLens,
     const aclTensor *qRotation,
     const aclTensor *kRotation,
     const aclTensor *vScale,
@@ -48,7 +49,8 @@ QkvRmsNormRopeCacheWithKScale 面向 Transformer decode/prefill 流程，融合 
 | kCache | 必选 | FLOAT8_E4M3FN | ND | [BlockNum, Nk, BlockSize, D] | K cache，输入输出复用 |
 | vCache | 必选 | FLOAT8_E4M3FN | ND | [BlockNum, Nv, BlockSize, D] | V cache，输入输出复用 |
 | kScaleCache | 必选 | FLOAT | ND | [BlockNum, Nk, BlockSize, 1] | K scale cache，输入输出复用 |
-| cuSeqLen | 必选 | INT32 | ND | [Batch+1] | batch 前缀和 |
+| cuSeqLen | 必选 | INT32 | ND | [Batch+1] | 本次调用内 token 的 batch 前缀和 |
+| actualSeqLens | 必选 | INT32 | ND | [Batch] | 每个 batch 在本次调用后对应的实际总长度，用于计算 RoPE 表位置偏移 |
 | qRotation | 可选 | BFLOAT16 | ND | [D, D] | Q 分支 rotation 矩阵，当前场景必须非空 |
 | kRotation | 可选 | BFLOAT16 | ND | [D, D] | K 分支 rotation 矩阵，当前场景必须非空 |
 | vScale | 可选 | FLOAT | ND | [Nv] | V 分支量化 scale，当前场景必须非空 |
@@ -78,6 +80,7 @@ QkvRmsNormRopeCacheWithKScale 面向 Transformer decode/prefill 流程，融合 
 - `D` 必须为偶数。
 - `qRotation.shape == [D, D]`，`kRotation.shape == [D, D]`，均为非转置 ND 矩阵。
 - `vScale.shape[0] == Nv`。
+- `actualSeqLens.shape[0] == cuSeqLen.shape[0] - 1`。对 batch `b`，`actualSeqLens[b]` 表示该 batch 在本次调用写入后对应的实际总长度，通常应不小于 `cuSeqLen[b+1] - cuSeqLen[b]`。
 - `headNums` 必须包含恰好 3 个正整数。
 - `kCache`、`vCache`、`kScaleCache` 为 in-place 参数，ACLNN 调用不再额外传入 cache 输出 tensor。
 
@@ -100,6 +103,15 @@ v_cache[block_id,nv,block_offset,:] = v_out[t,nv,:]
 k_scale_cache[block_id,nk,block_offset,0] = k_scale[t,nk]
 ```
 
+RoPE 表行号：
+
+```text
+local_pos = t - cu_seq_len[b]
+local_len = cu_seq_len[b+1] - cu_seq_len[b]
+history_offset = actual_seq_lens[b] - local_len
+rope_row = history_offset + local_pos
+```
+
 ## 调用示例
 
 ```cpp
@@ -113,7 +125,7 @@ uint64_t workspaceSize = 0;
 aclOpExecutor *executor = nullptr;
 aclnnStatus ret = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     qkv, qGamma, kGamma, cosSin, slotMapping,
-    kCache, vCache, kScaleCache, cuSeqLen,
+    kCache, vCache, kScaleCache, cuSeqLen, actualSeqLens,
     qRotation, kRotation, vScale, headNums, epsilon,
     qOut, qScale, &workspaceSize, &executor);
 ```

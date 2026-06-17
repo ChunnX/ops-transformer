@@ -58,9 +58,15 @@ contract:
 
 | Index | Input | Shape |
 |---:|---|---|
-| 9 | `q_rotation` | `[headDim, headDim]` |
-| 10 | `k_rotation` | `[headDim, headDim]` |
-| 11 | `v_scale` | `[numVHeads]` |
+| 9 | `actual_seq_lens` | `[batch]` |
+| 10 | `q_rotation` | `[headDim, headDim]` |
+| 11 | `k_rotation` | `[headDim, headDim]` |
+| 12 | `v_scale` | `[numVHeads]` |
+
+`cu_seq_len` remains the per-call prefix sum. `actual_seq_lens[b]` carries the
+post-update real sequence length for batch `b`, so RoPE rows can add the
+history offset `actual_seq_lens[b] - (cu_seq_len[b + 1] - cu_seq_len[b])` after
+the local batch is resolved.
 
 Both rotation tensors must be present and BF16; missing inputs report
 `missing_q_rotation` or `missing_k_rotation`. Existing callers that used one
