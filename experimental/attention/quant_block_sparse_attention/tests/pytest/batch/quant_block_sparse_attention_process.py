@@ -60,7 +60,8 @@ def _prepare_kv_inputs(inputs):
         return None, _to_npu(inputs["key"]), _to_npu(inputs["value"]), _to_npu(inputs["k_descale"])
 
     kv_cache_storage = _to_npu(inputs["kv_cache_storage"])
-    key, value, k_descale = combined_kv_cache.assert_combined_kv_views(
+    combined_kv_cache.assert_combined_kv_views(kv_cache_storage, inputs["kv_cache_meta"])
+    key, value, k_descale = combined_kv_cache.make_combined_kv_kernel_inputs(
         kv_cache_storage, inputs["kv_cache_meta"])
     return kv_cache_storage, key, value, k_descale
 
@@ -174,6 +175,7 @@ def _call_npu_quant_block_sparse_attention(test_data, device_id):
         metadata=metadata,
         max_seqlen_q=inputs["max_seqlen_q"],
         max_seqlen_kv=inputs["max_seqlen_kv"],
+        pa_block_stride=inputs.get("pa_block_stride", inputs.get("kv_cache_meta", {}).get("pa_block_stride", 0)),
         layout_kv=inputs["layout_kv"],
         layout_q=inputs["layout_q"],
         layout_sparse_indices=inputs["layout_sparse_indices"],
@@ -201,6 +203,7 @@ class _QuantBlockSparseAttentionGraph(torch.nn.Module):
             cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv, seqused_q=seqused_q,
             seqused_kv=seqused_kv, block_table=block_table, metadata=metadata,
             max_seqlen_q=self.inputs["max_seqlen_q"], max_seqlen_kv=self.inputs["max_seqlen_kv"],
+            pa_block_stride=self.inputs.get("pa_block_stride", self.inputs.get("kv_cache_meta", {}).get("pa_block_stride", 0)),
             layout_kv=self.inputs["layout_kv"], layout_q=self.inputs["layout_q"],
             layout_sparse_indices=self.inputs["layout_sparse_indices"], quant_mode=self.inputs["quant_mode"],
             mask_mode=self.inputs["mask_mode"], return_softmax_lse=self.inputs["return_softmax_lse"])

@@ -59,7 +59,7 @@ def _normalize_params(params):
     normalized.setdefault("sparse_pattern", "sequential")
     normalized.setdefault("scale_pattern", "ones")
     normalized.setdefault("block_table_pattern", "sequential")
-    normalized.setdefault("pa_block_padding_bytes", 32)
+    normalized.setdefault("pa_block_padding_bytes", 0)
     normalized.setdefault("p_scale_value", 1.0)
     normalized["output_dtype"] = _torch_dtype(normalized["output_dtype"])
     for key in (
@@ -462,6 +462,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "softmax_scale": case["softmax_scale"],
             "sparse_q_block_size": sparse_q_block_size,
             "sparse_kv_block_size": sparse_kv_block_size,
+            "pa_block_stride": kv_cache_meta["pa_block_stride"],
             "layout_kv": case["layout_kv"],
             "layout_q": case["layout_q"],
             "layout_sparse_indices": case["layout_sparse_indices"],
