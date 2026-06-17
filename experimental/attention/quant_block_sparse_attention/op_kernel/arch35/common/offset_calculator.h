@@ -474,7 +474,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_BNBD, ACTLEN_T> {
         int32_t blockIdx = blockTableParser.GetBlockIdx(bIdx, blockIdxInBatch);
 
         uint64_t offset =
-            blockIdx * GetStrideBlockNum() + n2Idx * GetStrideN2() + bsIdx * GetStrideBlockSize() + dIdx * GetStrideD();
+            blockIdx * (GetStrideBlockNum() * 2 + GetN2() * GetBlockSize() * 4) + GetStrideBlockNum() * 2 + n2Idx * GetN2() * GetBlockSize() * 4;
         return offset;
     }
 
