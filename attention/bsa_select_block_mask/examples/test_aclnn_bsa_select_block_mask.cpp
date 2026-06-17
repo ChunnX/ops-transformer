@@ -165,7 +165,8 @@ int main() {
     int32_t xBlocks = (qSeqlen + blockShapeX - 1) / blockShapeX;
     int32_t yBlocks = (kvSeqlen + blockShapeY - 1) / blockShapeY;
     int64_t sortLen = static_cast<int64_t>(xBlocks) * yBlocks;
-    int64_t expectedSelectedPerMask = static_cast<int64_t>(std::round(static_cast<double>(sparsity) * sortLen));
+    float expectedSelectedFloat = std::round(sparsity * static_cast<float>(sortLen));
+    int64_t expectedSelectedPerMask = static_cast<int64_t>(expectedSelectedFloat);
     if (expectedSelectedPerMask < 1) {
         expectedSelectedPerMask = 1;
     }
@@ -176,6 +177,7 @@ int main() {
               batch, numHeads, qSeqlen, kvSeqlen, headDim);
     LOG_PRINT("  blockShape=[%d, %d], xBlocks=%d, yBlocks=%d, sparsity=%.2f\n",
               blockShapeX, blockShapeY, xBlocks, yBlocks, sparsity);
+    LOG_PRINT("  sortLen=%ld, expectedSelected=%ld\n", sortLen, expectedSelectedPerMask);
 
     aclTensor *queryTensor = nullptr;
     aclTensor *keyTensor = nullptr;
@@ -339,14 +341,14 @@ int main() {
         }
 
         actualSparsity = 1.0 - static_cast<double>(selectedCount) / static_cast<double>(maskOutSize);
-        LOG_PRINT("Run %03d/%03d: Selected=%ld, Actual sparsity=%.4f (expected: %.4f)\n",
-                  runId + 1, kernelRunTimes, selectedCount, actualSparsity, expectedSparsity);
+        LOG_PRINT("Run %03d/%03d: Selected=%ld (expected: %ld), Actual sparsity=%.4f (expected: %.4f)\n",
+                  runId + 1, kernelRunTimes, selectedCount, expectedSelectedPerMask, actualSparsity, expectedSparsity);
     }
     
     LOG_PRINT("\n=== Results ===\n");
     LOG_PRINT("maskOut shape: [%d, %d, %d, %d]\n", batch, numHeads, xBlocks, yBlocks);
     LOG_PRINT("Total elements: %ld\n", maskOutSize);
-    LOG_PRINT("Selected (non-zero): %ld\n", selectedCount);
+    LOG_PRINT("Selected (non-zero): %ld (expected: %ld)\n", selectedCount, expectedSelectedPerMask);
     LOG_PRINT("Selected first half: %ld, second half: %ld, first second-half index: %ld\n",
               selectedFirstHalf, selectedSecondHalf, firstSelectedSecondHalf);
     LOG_PRINT("Actual sparsity: %.4f (expected: %.4f)\n", actualSparsity, expectedSparsity);
