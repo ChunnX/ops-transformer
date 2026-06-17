@@ -467,10 +467,7 @@ ge::graphStatus FaInfoParser::GetGSize()
         return ge::GRAPH_FAILED;
     }
     if (n1Size_ % n2Size_ != 0U) {
-        std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-            ToString(opParamInfo_.key.shape->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
+        OP_LOGE(opName_, "Q numHeads(%ld) should be a multiple of Kv Heads(%ld).", n1Size_, n2Size_);
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
