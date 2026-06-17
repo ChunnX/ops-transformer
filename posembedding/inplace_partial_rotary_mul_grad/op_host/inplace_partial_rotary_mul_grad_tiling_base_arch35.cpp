@@ -421,6 +421,23 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::CheckRotaryModeSh
                 return ge::GRAPH_FAILED;
             }
         }
+
+        // 32-byte alignment: VF loads use raw logical offsets; hardware requires
+        // (offset * sizeof(T)) to be 32-byte aligned for both dy and cos types.
+        int64_t typeSize = ge::GetSizeByDataType(dtype_);
+        int64_t cosTypeSize = ge::GetSizeByDataType(cosDtype_);
+        int64_t minTypeSize = typeSize < cosTypeSize ? typeSize : cosTypeSize;
+        int64_t alignUnit = 32 / minTypeSize;
+        if (sliceLen % alignUnit != 0) {
+            std::string reasonMsg =
+                "The slice length must be a multiple of " + std::to_string(alignUnit) +
+                " to satisfy 32-byte alignment for dy (" + std::to_string(typeSize) +
+                "B) and cos (" + std::to_string(cosTypeSize) + "B) types. "
+                "Got sliceLength=" + std::to_string(sliceLen);
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "partial_slice",
+                                      std::to_string(sliceLen).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
 
     if (rotaryMode_ == InplacePartialRotaryMulGradMode::HALF ||
