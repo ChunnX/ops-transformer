@@ -18,6 +18,42 @@ namespace QkvRmsNormRopeCacheWithKScale {
 
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
+    __aicore__ inline void Init(const GlobalTensors &tensors,
+                                const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
+    {
+        if ASCEND_IS_AIC {
+            InitAic(tensors, tilingData);
+        } else {
+            InitAiv(tensors, tilingData, GetSubBlockIdx());
+        }
+    }
+
+    __aicore__ inline void PrepareBeforeLoop()
+    {
+        if ASCEND_IS_AIC {
+            PrepareBeforeLoopAic();
+        }
+    }
+
+    __aicore__ inline void ComputeTile(TileParam &tile, const TileParam &lastTile)
+    {
+        if ASCEND_IS_AIC {
+            ComputeTileAic(tile);
+        } else {
+            ComputeTileAiv(tile, lastTile);
+        }
+    }
+
+    __aicore__ inline void End(const TileParam &lastTile)
+    {
+        if ASCEND_IS_AIC {
+            EndAic();
+        } else {
+            EndAiv(lastTile);
+        }
+    }
+
+private:
     __aicore__ inline void InitAic(const GlobalTensors &tensors,
                                    const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
@@ -111,7 +147,6 @@ public:
         vec_.EndIntraCoreEvents();
     }
 
-private:
     __aicore__ inline uint64_t ReserveARotL1BufferUseId()
     {
         return aRotL1BufferUseId_++;

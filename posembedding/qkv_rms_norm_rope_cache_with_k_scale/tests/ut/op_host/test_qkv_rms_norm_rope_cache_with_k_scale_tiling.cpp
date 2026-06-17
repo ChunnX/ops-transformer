@@ -178,11 +178,6 @@ CoreTokenRange MakeCoreTokenRangeForTest(uint64_t totalTokens, uint64_t cubeInde
     }
 
     range.begin = cubeIndex * tiling.coreTokenTile;
-    if (range.begin >= totalTokens) {
-        range.begin = totalTokens;
-        range.end = totalTokens;
-        return range;
-    }
     range.end = std::min(totalTokens, range.begin + tiling.coreTokenTile);
     return range;
 }

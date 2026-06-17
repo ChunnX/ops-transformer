@@ -324,6 +324,14 @@ __aicore__ inline uint32_t GetAivCubeIndex()
     return GetBlockIdx() / QKV_RRC_MIX_AIV_PER_AIC;
 }
 
+__aicore__ inline uint32_t GetCubeIndex()
+{
+    if ASCEND_IS_AIC {
+        return GetAicCubeIndex();
+    }
+    return GetAivCubeIndex();
+}
+
 } // namespace QkvRmsNormRopeCacheWithKScale
 
 #endif // QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_COMMON_H_
