@@ -122,7 +122,6 @@ protected:
     int64_t blockSize_;
     int64_t vLength_;
     int64_t dSplitCoef_;
-    uint32_t dCosFlag_{0};
     int64_t sliceStart_{0};
     int64_t sliceEnd_{0};
     int64_t sliceLength_{0};
