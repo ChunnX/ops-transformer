@@ -155,7 +155,6 @@ private:
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
     uint32_t dataState_{0};
-    uint32_t actualACnt_{0};
     uint32_t startTokenId_{0};
     uint32_t endTokenId_{0};
     uint32_t sendTokenNum_{0};
@@ -178,6 +177,7 @@ private:
     uint32_t metaOffset_{0};
     uint32_t calRankCoreNum_{0};
     uint32_t calExpertCoreNum_{0};
+    int64_t actualACnt_{0};
 
     DataCopyParams xCopyParams_;
     DataCopyParams topkCopyParams_;
@@ -541,10 +541,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumP
     numRecvPerExpertTensor_ = numRecvPerExpertBuf_.Get<int64_t>();
     LocalTensor<int32_t> recvTensorInt32 = recvCntBuf_.Get<int32_t>();
     LocalTensor<int32_t> tempRecvTensor = dstExpBuf_.GetWithOffset<int32_t>(recvExpertSizeAlign / sizeof(int32_t), 0);
-    LocalTensor<int32_t> recvCntTensor = recvTempBuf_.Get<int32_t>();
-    LocalTensor<float> tempTensorFp32 = tempRecvTensor.template ReinterpretCast<float>();
-    LocalTensor<float> recvCntTensorFp32 = recvCntTensor.template ReinterpretCast<float>();
-    LocalTensor<float> sharedTmp = recvTensorInt32.template ReinterpretCast<float>();
+    LocalTensor<int64_t> recvCntTensor = recvTempBuf_.Get<int64_t>();
+    LocalTensor<int64_t> sharedTmp = recvTensorInt32.template ReinterpretCast<int64_t>();
 
     const uint32_t shape[] = {epWorldSize_, static_cast<uint32_t>(recvExpertSizeAlign / sizeof(int32_t))};
     DataCopyParams inRecvCntParams = {static_cast<uint16_t>(epWorldSize_),
@@ -553,19 +551,18 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SetRecvNumP
     DataCopyPad(recvTensorInt32, recvCounterGMTensor_[cntPerRankSizeAlign_ / sizeof(int32_t)], inRecvCntParams, padParams_);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(tempRecvTensor, recvTensorInt32, shape, true);
+    Cast(numRecvPerExpertTensor_, tempRecvTensor, RoundMode::CAST_NONE, moeExpertNumPerRank_);
 
     // if constexpr (DoCpuSync) {   // 计算actualA，并写入host pin
-    GlobalTensor<int32_t> hostPinnedCounterTensor;
-    hostPinnedCounterTensor.SetGlobalBuffer((__gm__ int32_t*)hostPinnedCounterAddrGM_);
-    ReduceSum(recvCntTensorFp32, tempTensorFp32, sharedTmp, moeExpertNumPerRank_);
+    GlobalTensor<int64_t> hostPinnedCounterTensor;
+    hostPinnedCounterTensor.SetGlobalBuffer((__gm__ int64_t*)hostPinnedCounterAddrGM_);
+    ReduceSum(recvCntTensor, numRecvPerExpertTensor_, sharedTmp, moeExpertNumPerRank_);
     // SyncFunc<AscendC::HardEvent::V_S>();
     // actualACnt_ = recvCntTensor.GetValue(0);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(hostPinnedCounterTensor, recvCntTensor, UB_STRIDE);
     // }
 
-    // 输出为 int64
-    Cast(numRecvPerExpertTensor_, tempRecvTensor, RoundMode::CAST_NONE, moeExpertNumPerRank_);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyPad(numRecvPerExpertGMTensor_, numRecvPerExpertTensor_, recvPerExpertParams);
 }

@@ -25,8 +25,8 @@
 class HostPinnedCounter {
 public:
     HostPinnedCounter() {
-        ACL_CHECK(aclrtMallocHost(&hostPtr_, 8 * sizeof(int32_t)));
-        ACL_CHECK(aclrtHostRegisterV2(hostPtr_, 8 * sizeof(int32_t), ACL_HOST_REG_MAPPED));
+        ACL_CHECK(aclrtMallocHost(&hostPtr_, 4 * sizeof(int64_t)));
+        ACL_CHECK(aclrtHostRegisterV2(hostPtr_, 4 * sizeof(int64_t), ACL_HOST_REG_MAPPED));
         ACL_CHECK(aclrtHostGetDevicePointer(hostPtr_, &devPtr_, 0));
         Reset();
     }
@@ -41,13 +41,13 @@ public:
     }
 
     void Reset() {
-        *reinterpret_cast<volatile int32_t*>(hostPtr_) = -1;
+        *reinterpret_cast<volatile int64_t*>(hostPtr_) = -1;
     }
 
-    int32_t SpinWait(int timeoutSecs = 100) {
+    int64_t SpinWait(int timeoutSecs = 100) {
         auto start = std::chrono::high_resolution_clock::now();
         while (true) {
-            int32_t v = *reinterpret_cast<volatile int32_t*>(hostPtr_);
+            int64_t v = *reinterpret_cast<volatile int64_t*>(hostPtr_);
             if (v >= 0) { return v; }
             auto el = std::chrono::duration_cast<std::chrono::seconds>(
                           std::chrono::high_resolution_clock::now() - start).count();
