@@ -1532,7 +1532,6 @@ private:
         // and polled by RecvTokensV3. On A3 we don't push flags through
         // peer-mem at all, so this stays 0.
         int64_t offsetFlag{0};
-        // uint32_t buffer_align{512};
         uint32_t bufferAlign{64};
         static constexpr int32_t tokenArrivedFlag{123456789};
 
