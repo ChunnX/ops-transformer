@@ -501,6 +501,15 @@ public:
             }
         }
 
+        // [位置1] 验证前缀和数组构建
+        if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U) {
+            uint32_t printCnt = (realCombineSize * rankDim_ < 8U) ? realCombineSize * rankDim_ : 8U;
+            for (uint32_t k = 0U; k < printCnt; k++) {
+                AscendC::printf("[PRE] turn=%u src[%u]=%lu dst[%u]=%lu\n",
+                    turnIdx, k, recvSumCntSrc[k], k, recvSumCntDst[k]);
+            }
+        }
+
         TPipe *permutePipe = GetTPipePtr();
         LocalTensor<hcclDataType> ubBuf = outputPermuteBufA_.Get<hcclDataType>();
 
@@ -520,6 +529,17 @@ public:
                 dstOffset += recvSumCntDst[posAfter - 1U];
             }
             uint64_t totalCnt = static_cast<uint64_t>(recvCounts_[globalExpertIdx + rankIndex * e_]) * axis;
+
+            // [位置2] 验证每个pair的offset映射
+            if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U && pairIdx < 4U) {
+                AscendC::printf("[PAIR] turn=%u pair=%u loc=%u rank=%u posB=%u posA=%u srcOff=%lu dstOff=%lu totalCnt=%lu\n",
+                    turnIdx, pairIdx, localIdx, rankIndex, posBefore, posAfter,
+                    srcOffset, dstOffset, totalCnt);
+                if (totalCnt > 0UL) {
+                    AscendC::DumpTensor(outputPermuteSrcBuffer_[srcOffset], 300U + turnIdx * 8U + pairIdx, 16U);
+                }
+            }
+
             if (totalCnt == 0UL) {
                 continue;
             }
@@ -548,6 +568,11 @@ public:
                 int32_t writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
                 SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
                 WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
+
+                // [位置3] 验证写入结果
+                if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U && pairIdx < 2U && tile == 0UL) {
+                    AscendC::DumpTensor(outputPermuteDstBuffer_[dstOffset], 400U + turnIdx * 8U + pairIdx, 16U);
+                }
             }
         }
 
@@ -557,6 +582,16 @@ public:
             uint32_t rankIndex = pairIdx / realCombineSize;
             turnTotalData += static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
         }
+
+        // [位置4] 验证跨turn的baseOffset累加
+        if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U) {
+            AscendC::printf("[BASE] turn=%u srcBase=%lu dstBase=%lu totalData=%lu srcAfter=%lu dstAfter=%lu\n",
+                turnIdx, outputPermuteSrcBaseOffset_, outputPermuteDstBaseOffset_,
+                turnTotalData,
+                outputPermuteSrcBaseOffset_ + turnTotalData,
+                outputPermuteDstBaseOffset_ + turnTotalData);
+        }
+
         outputPermuteSrcBaseOffset_ += turnTotalData;
         outputPermuteDstBaseOffset_ += turnTotalData;
 
