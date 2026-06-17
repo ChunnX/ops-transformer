@@ -481,9 +481,7 @@ public:
         LocalTensor<float> lseUb = this->softmaxLseQueue.template AllocTensor<float>();
         uint32_t min = 0xFF7FFFFF;
 
-        if constexpr (USE_DN) {
-            UpdateMinCheckValue(min);
-        }
+        UpdateMinCheckValue(min);
         ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, vecMSize, min);
         softmaxLseQueue.template EnQue(lseUb);
         softmaxLseQueue.DeQue<float>();
@@ -884,9 +882,7 @@ public:
 
             if (blockNeedRowInvalid) {
                 uint32_t min = 0xFF7FFFFF; // min value of float
-                if constexpr (USE_DN) {
-                    UpdateMinCheckValue(min);
-                }
+                UpdateMinCheckValue(min);
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
                 if constexpr (!POST_QUANT) {
