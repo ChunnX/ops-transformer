@@ -40,7 +40,7 @@ enum class InplacePartialRotaryMulGradMode : int64_t {
     HALF = 0,
     INTERLEAVE = 1,
     QUARTER = 2,
-    INTERLEAVE_HALF = 3
+    DEEPSEEK_INTERLEAVE = 3
 };
 
 class InplacePartialRotaryMulGradRegBaseTilingClass : public Ops::Transformer::OpTiling::TilingBaseClass {

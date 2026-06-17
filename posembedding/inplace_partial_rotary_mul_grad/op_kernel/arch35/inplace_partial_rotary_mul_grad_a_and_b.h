@@ -24,7 +24,7 @@
 namespace InplacePartialRotaryMulGrad {
 using namespace AscendC;
 
-template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBroadcast>
 class InplacePartialRotaryMulGradAAndB {
 public:
     __aicore__ inline InplacePartialRotaryMulGradAAndB() {}
@@ -43,8 +43,8 @@ private:
     TPipe *pipe_{nullptr};
     TQue<QuePosition::VECIN, 2> gradInQueue_;
     TQue<QuePosition::VECOUT, 2> xGradOutQueue_;
-    TQue<QuePosition::VECIN, IsBoardCast ? 1 : 2> cosInQueue_;
-    TQue<QuePosition::VECIN, IsBoardCast ? 1 : 2> sinInQueue_;
+    TQue<QuePosition::VECIN, IsBroadcast ? 1 : 2> cosInQueue_;
+    TQue<QuePosition::VECIN, IsBroadcast ? 1 : 2> sinInQueue_;
 
     GlobalTensor<DTYPE_DY> gradGm_;
     GlobalTensor<DTYPE_DY> dyOutGm_;
@@ -63,8 +63,8 @@ private:
     int64_t ubFactorB_{0};
 };
 
-template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
-__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBoardCast>::Init(
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBroadcast>
+__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBroadcast>::Init(
     TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling, GM_ADDR dy, GM_ADDR cos, GM_ADDR sin,
     GM_ADDR dyOut)
 {
@@ -95,7 +95,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsB
     pipe_->InitBuffer(gradInQueue_, 2, bufferSizeX);
     pipe_->InitBuffer(xGradOutQueue_, 2, bufferSizeX);
 
-    if constexpr (IsBoardCast) {
+    if constexpr (IsBroadcast) {
         pipe_->InitBuffer(cosInQueue_, 1, dAlign_ * sizeof(DTYPE_COS));
         pipe_->InitBuffer(sinInQueue_, 1, dAlign_ * sizeof(DTYPE_COS));
     } else {
@@ -110,8 +110,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsB
     bBlockStart_ = blockIdx_ * tilingData_->blockFactorB;
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
-__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBoardCast>::
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBroadcast>
+__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBroadcast>::
     CopyInCosAndSin(int64_t bStart, int64_t bLength)
 {
     DataCopyExtParams cosParams = {static_cast<uint16_t>(bLength * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0, 0};
@@ -124,8 +124,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsB
     sinInQueue_.EnQue(sinUb);
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
-__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBoardCast>::Compute(
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBroadcast>
+__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBroadcast>::Compute(
     const LocalTensor<DTYPE_COS> &cosBuffer, const LocalTensor<DTYPE_COS> &sinBuffer,
     const LocalTensor<DTYPE_DY> &inBuffer, const LocalTensor<DTYPE_DY> &outBuffer, int64_t bUbLength)
 {
@@ -134,7 +134,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsB
     auto *cosUb = const_cast<__local_mem__ DTYPE_COS *>(cosBuffer.GetPhyAddr());
     auto *sinUb = const_cast<__local_mem__ DTYPE_COS *>(sinBuffer.GetPhyAddr());
 
-    if constexpr (IsBoardCast) {
+    if constexpr (IsBroadcast) {
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
             HalfGradAlignVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
                                                    tilingData_->sliceLength,
@@ -148,33 +148,33 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsB
                                                       tilingData_->sliceLength,
                                                       static_cast<uint16_t>(bUbLength), 1);
         } else {
-            InterleaveHalfModeGradVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
+            DeepSeekInterleaveModeGradVF<DTYPE_DY, DTYPE_COS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
                                                             tilingData_->sliceLength,
                                                             static_cast<uint16_t>(bUbLength), 1);
         }
     } else {
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
-            BatchHalfGradAlignVF<DTYPE_DY, DTYPE_COS, IsBoardCast>(
+            BatchHalfGradAlignVF<DTYPE_DY, DTYPE_COS, IsBroadcast>(
                 inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength,
                 ubFactorB_, 1);
         } else if (tilingData_->rotaryMode == ROTARY_MODE_INTERLEAVE) {
-            BatchInterleaveModeGradVF<DTYPE_DY, DTYPE_COS, IsBoardCast>(
+            BatchInterleaveModeGradVF<DTYPE_DY, DTYPE_COS, IsBroadcast>(
                 inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength,
                 ubFactorB_, 1);
         } else if (tilingData_->rotaryMode == ROTARY_MODE_QUARTER) {
-            BatchQuarterGradAlignVF<DTYPE_DY, DTYPE_COS, IsBoardCast>(
+            BatchQuarterGradAlignVF<DTYPE_DY, DTYPE_COS, IsBroadcast>(
                 inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength,
                 ubFactorB_, 1);
         } else {
-            BatchInterleaveHalfModeGradVF<DTYPE_DY, DTYPE_COS, IsBoardCast>(
+            BatchDeepSeekInterleaveModeGradVF<DTYPE_DY, DTYPE_COS, IsBroadcast>(
                 inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength,
                 ubFactorB_, 1);
         }
     }
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
-__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBoardCast>::ProcessInLoop(
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBroadcast>
+__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBroadcast>::ProcessInLoop(
     const LocalTensor<DTYPE_COS> &cosBuffer, const LocalTensor<DTYPE_COS> &sinBuffer, int64_t bUbStart,
     int64_t bUbLength)
 {
@@ -202,8 +202,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsB
     xGradOutQueue_.FreeTensor(outBuffer);
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, bool IsBoardCast>
-__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBoardCast>::Process()
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBroadcast>
+__aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsBroadcast>::Process()
 {
     if (blockIdx_ >= tilingData_->usedCoreNum) {
         return;
@@ -211,7 +211,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, IsB
 
     uint32_t ubLoopCnt = AscendC::Ceil(static_cast<uint64_t>(bBlockLength_), static_cast<uint64_t>(ubFactorB_));
 
-    if constexpr (IsBoardCast) {
+    if constexpr (IsBroadcast) {
         CopyInCosAndSin(0, 1);
         LocalTensor<DTYPE_COS> cosBuffer = cosInQueue_.DeQue<DTYPE_COS>();
         LocalTensor<DTYPE_COS> sinBuffer = sinInQueue_.DeQue<DTYPE_COS>();

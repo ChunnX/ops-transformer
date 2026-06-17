@@ -29,7 +29,7 @@ constexpr uint32_t QUARTER_MODE_COEF = 4;
 constexpr int64_t ROTARY_MODE_HALF = 0;
 constexpr int64_t ROTARY_MODE_INTERLEAVE = 1;
 constexpr int64_t ROTARY_MODE_QUARTER = 2;
-constexpr int64_t ROTARY_MODE_INTERLEAVE_HALF = 3;
+constexpr int64_t ROTARY_MODE_DEEPSEEK_INTERLEAVE = 3;
 
 // ============================================================================
 // VF 函数 — 同一套模板适配所有 DTYPE_DY × DTYPE_COS 组合
@@ -247,21 +247,33 @@ __aicore__ inline void QuarterGradAlignVF(const LocalTensor<DTYPE_COS> &sinTenso
     }
 }
 
-// ---- InterleaveHalfModeGradVF ----
-// interleave-half mode (rotary_mode=3): dx formula is identical to half mode —
+// ---- DeepSeekInterleaveModeGradVF ----
+// DeepSeek interleave mode (rotary_mode=3): dx formula is identical to half mode —
 //   dx_left  = cos_left  * dy_left  + sin_right * dy_right
 //   dx_right = cos_right * dy_right - sin_left  * dy_left
-// (the difference from half mode is only in dcos/dsin, not in dx).
+// The output must be interleaved (matching forward DeepSeekInterleave's input format).
 // Matches reference DeepSeekInterleaveModeGradVF in rotary_position_embedding_grad.
 template <typename DTYPE_DY, typename DTYPE_COS>
-__aicore__ inline void InterleaveHalfModeGradVF(const LocalTensor<DTYPE_COS> &sinTensor,
+__aicore__ inline void DeepSeekInterleaveModeGradVF(const LocalTensor<DTYPE_COS> &sinTensor,
                                                  const LocalTensor<DTYPE_COS> &cosTensor,
                                                  const LocalTensor<DTYPE_DY> &inTensor,
                                                  const LocalTensor<DTYPE_DY> &outTensor, uint32_t dLen,
                                                  uint16_t currSNum, uint16_t currDNum)
 {
     uint32_t halfD = dLen / HALF_INTERLEAVE_COEF;
-    uint16_t repeatTimes = AscendC::Ceil(halfD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
+    uint32_t loopSize = HALF_INTERLEAVE_COEF * VL_FLOAT32_SIZE;
+    uint16_t repeatTimes = AscendC::Ceil(dLen, loopSize);
+
+    // output mask: part1/part2 for the two interleaved output blocks per iteration
+    uint32_t part1Num = (repeatTimes - 1) * VL_FLOAT32_SIZE;
+    uint32_t part2Num = part1Num;
+    uint32_t tailNum = dLen - part1Num - part2Num;
+    if (tailNum > VL_FLOAT32_SIZE) {
+        part1Num += VL_FLOAT32_SIZE;
+        part2Num += (tailNum - VL_FLOAT32_SIZE);
+    } else {
+        part1Num += tailNum;
+    }
 
     uint32_t cosRowStride = dLen;
 
@@ -272,37 +284,46 @@ __aicore__ inline void InterleaveHalfModeGradVF(const LocalTensor<DTYPE_COS> &si
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> vregIn, vregHalfIn, vregSin, vregHalfSin, vregCos, vregHalfCos, vregOut, vregHalfOut;
-        MicroAPI::MaskReg preg;
+        MicroAPI::MaskReg pregLoop, pregPart1, pregPart2;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             __local_mem__ DTYPE_COS *currSinUb = sinUb + sIdx * cosRowStride;
             __local_mem__ DTYPE_COS *currCosUb = cosUb + sIdx * cosRowStride;
             for (uint16_t row = 0; row < currDNum; row++) {
                 __local_mem__ DTYPE_DY *currInUb = inUb + (sIdx * currDNum + row) * dLen;
                 __local_mem__ DTYPE_DY *currOutUb = outUb + (sIdx * currDNum + row) * dLen;
-                uint32_t updateCnt = halfD;
+                uint32_t halfCnt = halfD;
+                uint32_t part1Cnt = part1Num;
+                uint32_t part2Cnt = part2Num;
                 for (uint16_t i = 0; i < repeatTimes; i++) {
-                    preg = MicroAPI::UpdateMask<float>(updateCnt);
+                    pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
+                    pregPart1 = MicroAPI::UpdateMask<float>(part1Cnt);
+                    pregPart2 = MicroAPI::UpdateMask<float>(part2Cnt);
                     int32_t offset = i * VL_FLOAT32_SIZE;
                     int32_t halfOffset = offset + halfD;
+                    int32_t outOffset = offset * HALF_INTERLEAVE_COEF;
 
-                    ops::LoadTwoTensorForDtypeT<DTYPE_DY>(currInUb, currInUb, vregIn, vregHalfIn, preg, preg,
+                    ops::LoadTwoTensorForDtypeT<DTYPE_DY>(currInUb, currInUb, vregIn, vregHalfIn, pregLoop, pregLoop,
                                                             offset, halfOffset);
-                    ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currSinUb, currSinUb, vregSin, vregHalfSin, preg, preg,
+                    ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currSinUb, currSinUb, vregSin, vregHalfSin, pregLoop, pregLoop,
                                                             offset, halfOffset);
-                    ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currCosUb, currCosUb, vregCos, vregHalfCos, preg, preg,
+                    ops::LoadTwoTensorForDtypeT<DTYPE_COS>(currCosUb, currCosUb, vregCos, vregHalfCos, pregLoop, pregLoop,
                                                             offset, halfOffset);
 
                     // dx_left = cos_left * dy_left + sin_right * dy_right
-                    Mul(vregOut, vregCos, vregIn, preg);
-                    Mul(vregHalfSin, vregHalfSin, vregHalfIn, preg);
-                    Add(vregOut, vregOut, vregHalfSin, preg);
+                    Mul(vregOut, vregCos, vregIn, pregLoop);
+                    Mul(vregHalfSin, vregHalfSin, vregHalfIn, pregLoop);
+                    Add(vregOut, vregOut, vregHalfSin, pregLoop);
                     // dx_right = cos_right * dy_right - sin_left * dy_left
-                    Mul(vregSin, vregSin, vregIn, preg);
-                    Mul(vregHalfCos, vregHalfCos, vregHalfIn, preg);
-                    Sub(vregHalfOut, vregHalfCos, vregSin, preg);
+                    Mul(vregSin, vregSin, vregIn, pregLoop);
+                    Mul(vregHalfCos, vregHalfCos, vregHalfIn, pregLoop);
+                    Sub(vregHalfOut, vregHalfCos, vregSin, pregLoop);
 
-                    ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregOut, preg, offset);
-                    ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregHalfOut, preg, halfOffset);
+                    // Interleave: half format → interleaved format (matching forward input x layout)
+                    // Reuse vregCos/vregHalfCos (dead after compute) as interleave outputs
+                    MicroAPI::Interleave<float>(vregCos, vregHalfCos, vregOut, vregHalfOut);
+                    ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregCos, pregPart1, outOffset);
+                    ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregHalfCos, pregPart2,
+                                                           outOffset + VL_FLOAT32_SIZE);
                 }
             }
         }
@@ -314,7 +335,7 @@ __aicore__ inline void InterleaveHalfModeGradVF(const LocalTensor<DTYPE_COS> &si
 // ============================================================================
 
 // ---- BatchHalfGradAlignVF ----
-template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBroadcast>
 __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ DTYPE_DY *in, __local_mem__ DTYPE_COS *cos,
                                              __local_mem__ DTYPE_COS *sin, __local_mem__ DTYPE_DY *out,
                                              uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
@@ -340,7 +361,7 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ DTYPE_DY *in, __local_
                     uint32_t count = dHalfSize;
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
-                    if constexpr (IsBBoardcast) {
+                    if constexpr (IsBroadcast) {
                         currCosUb = cos + sIdx * cosRowStride;
                         currSinUb = sin + sIdx * cosRowStride;
                     } else {
@@ -381,7 +402,7 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ DTYPE_DY *in, __local_
 // ---- BatchQuarterGradAlignVF ----
 // quarter mode (rotary_mode=2): batch version.
 // Matches reference in rotary_position_embedding_grad.
-template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBroadcast>
 __aicore__ inline void BatchQuarterGradAlignVF(
     __local_mem__ DTYPE_DY *in, __local_mem__ DTYPE_COS *cos, __local_mem__ DTYPE_COS *sin,
     __local_mem__ DTYPE_DY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
@@ -409,7 +430,7 @@ __aicore__ inline void BatchQuarterGradAlignVF(
                     uint32_t count = dQuarterSize;
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
-                    if constexpr (IsBBoardcast) {
+                    if constexpr (IsBroadcast) {
                         currCosUb = cos + sIdx * cosRowStride;
                         currSinUb = sin + sIdx * cosRowStride;
                     } else {
@@ -468,7 +489,7 @@ __aicore__ inline void BatchQuarterGradAlignVF(
 // ---- BatchInterleaveModeGradVF ----
 // interleave mode (rotary_mode=1): batch version.
 // Matches reference in rotary_position_embedding_grad.
-template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBroadcast>
 __aicore__ inline void BatchInterleaveModeGradVF(
     __local_mem__ DTYPE_DY *in, __local_mem__ DTYPE_COS *cos, __local_mem__ DTYPE_COS *sin,
     __local_mem__ DTYPE_DY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
@@ -494,7 +515,7 @@ __aicore__ inline void BatchInterleaveModeGradVF(
                     uint32_t count = dLen32;
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
-                    if constexpr (IsBBoardcast) {
+                    if constexpr (IsBroadcast) {
                         currCosUb = cos + sIdx * cosRowStride;
                         currSinUb = sin + sIdx * cosRowStride;
                     } else {
@@ -539,18 +560,32 @@ __aicore__ inline void BatchInterleaveModeGradVF(
     }
 }
 
-// ---- BatchInterleaveHalfModeGradVF ----
-// interleave-half mode (rotary_mode=3): batch version.
-// dx formula identical to half mode — matches reference DeepSeekInterleaveModeGradVF.
-template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
-__aicore__ inline void BatchInterleaveHalfModeGradVF(
+// ---- BatchDeepSeekInterleaveModeGradVF ----
+// DeepSeek interleave mode (rotary_mode=3): batch version.
+// The output must be interleaved (matching forward DeepSeekInterleave's input format).
+// Matches reference BatchDeepSeekInterleaveModeGradVF in rotary_position_embedding_grad.
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBroadcast>
+__aicore__ inline void BatchDeepSeekInterleaveModeGradVF(
     __local_mem__ DTYPE_DY *in, __local_mem__ DTYPE_COS *cos, __local_mem__ DTYPE_COS *sin,
     __local_mem__ DTYPE_DY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
     int64_t ubFactorS, int64_t ubFactorN)
 {
-    uint16_t dHalfSize = dLen / HALF_INTERLEAVE_COEF;
+    uint32_t loopSize = HALF_INTERLEAVE_COEF * VL_FLOAT32_SIZE;
+    uint16_t dLoopCount = AscendC::Ceil(static_cast<uint32_t>(dLen), loopSize);
+    uint32_t dHalfSize = static_cast<uint32_t>(dLen) / HALF_INTERLEAVE_COEF;
     uint32_t dLen32 = static_cast<uint32_t>(dLen);
-    uint16_t dLoopCount = (dHalfSize + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
+
+    // output mask: part1/part2 for the two interleaved output blocks per iteration
+    uint32_t halfNum = dLen32 / HALF_INTERLEAVE_COEF;
+    uint32_t part1Num = (dLoopCount - 1) * VL_FLOAT32_SIZE;
+    uint32_t part2Num = part1Num;
+    uint32_t tailNum = dLen32 - part1Num - part2Num;
+    if (tailNum > VL_FLOAT32_SIZE) {
+        part1Num += VL_FLOAT32_SIZE;
+        part2Num += (tailNum - VL_FLOAT32_SIZE);
+    } else {
+        part1Num += tailNum;
+    }
 
     int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
     int32_t nStepUb = ubFactorS * dLen32;
@@ -559,16 +594,18 @@ __aicore__ inline void BatchInterleaveHalfModeGradVF(
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> vregIn, vregHalfIn, vregCos, vregHalfCos, vregSin, vregHalfSin, vregOut, vregHalfOut;
-        MicroAPI::MaskReg pregLoop;
+        MicroAPI::MaskReg pregLoop, pregPart1, pregPart2;
         __local_mem__ DTYPE_DY *currInUb, *currOutUb;
         __local_mem__ DTYPE_COS *currSinUb, *currCosUb;
         for (uint16_t bIdx = 0; bIdx < bLength; bIdx++) {
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
-                    uint32_t count = dHalfSize;
+                    uint32_t halfCnt = halfNum;
+                    uint32_t part1Cnt = part1Num;
+                    uint32_t part2Cnt = part2Num;
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
-                    if constexpr (IsBBoardcast) {
+                    if constexpr (IsBroadcast) {
                         currCosUb = cos + sIdx * cosRowStride;
                         currSinUb = sin + sIdx * cosRowStride;
                     } else {
@@ -576,7 +613,9 @@ __aicore__ inline void BatchInterleaveHalfModeGradVF(
                         currSinUb = sin + bIdx * nStepCosUb + sIdx * cosRowStride;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
-                        pregLoop = MicroAPI::UpdateMask<float>(count);
+                        pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
+                        pregPart1 = MicroAPI::UpdateMask<float>(part1Cnt);
+                        pregPart2 = MicroAPI::UpdateMask<float>(part2Cnt);
                         ops::LoadOneTensorForDtypeT<DTYPE_DY>(currInUb, vregIn, pregLoop,
                                                                 i * VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<DTYPE_DY>(currInUb, vregHalfIn, pregLoop,
@@ -599,10 +638,13 @@ __aicore__ inline void BatchInterleaveHalfModeGradVF(
                         Mul(vregHalfCos, vregHalfCos, vregHalfIn, pregLoop);
                         Sub(vregHalfOut, vregHalfCos, vregSin, pregLoop);
 
-                        ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregOut, pregLoop,
-                                                                i * VL_FLOAT32_SIZE);
-                        ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregHalfOut, pregLoop,
-                                                                i * VL_FLOAT32_SIZE + dHalfSize);
+                        // Interleave: half format → interleaved format (matching forward input x layout)
+                        // Reuse vregCos/vregHalfCos (dead after compute) as interleave outputs
+                        MicroAPI::Interleave<float>(vregCos, vregHalfCos, vregOut, vregHalfOut);
+                        ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregCos, pregPart1,
+                                                                i * loopSize);
+                        ops::StoreOneTensorForDtypeT<DTYPE_DY>(currOutUb, vregHalfCos, pregPart2,
+                                                                i * loopSize + VL_FLOAT32_SIZE);
                     }
                 }
             }

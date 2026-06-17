@@ -122,7 +122,7 @@ bool InplacePartialRotaryMulGradRegBaseTilingClass::IsInplacePartialRotaryMulGra
         case static_cast<int32_t>(InplacePartialRotaryMulGradMode::HALF):
         case static_cast<int32_t>(InplacePartialRotaryMulGradMode::INTERLEAVE):
         case static_cast<int32_t>(InplacePartialRotaryMulGradMode::QUARTER):
-        case static_cast<int32_t>(InplacePartialRotaryMulGradMode::INTERLEAVE_HALF):
+        case static_cast<int32_t>(InplacePartialRotaryMulGradMode::DEEPSEEK_INTERLEAVE):
             return true;
         default:
             return false;
@@ -403,11 +403,11 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::CheckRotaryModeSh
     if (sliceLen != 0) {
         if (rotaryMode_ == InplacePartialRotaryMulGradMode::HALF ||
             rotaryMode_ == InplacePartialRotaryMulGradMode::INTERLEAVE ||
-            rotaryMode_ == InplacePartialRotaryMulGradMode::INTERLEAVE_HALF) {
+            rotaryMode_ == InplacePartialRotaryMulGradMode::DEEPSEEK_INTERLEAVE) {
             if (sliceLen % HALF_INTERLEAVE_MODE_COEF != 0) {
                 std::string reasonMsg = "The slice length (partial_slice's end - start) should be divisible by " +
                                         std::to_string(HALF_INTERLEAVE_MODE_COEF) +
-                                        " when the attr mode is half, interleave or interleave-half";
+                                        " when the attr mode is half, interleave or DeepSeek interleave";
                 OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "partial_slice", std::to_string(sliceLen).c_str(),
                                           reasonMsg.c_str());
                 return ge::GRAPH_FAILED;
@@ -424,7 +424,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::CheckRotaryModeSh
     }
 
     if (rotaryMode_ == InplacePartialRotaryMulGradMode::HALF ||
-        rotaryMode_ == InplacePartialRotaryMulGradMode::INTERLEAVE_HALF) {
+        rotaryMode_ == InplacePartialRotaryMulGradMode::DEEPSEEK_INTERLEAVE) {
         dSplitCoef_ = HALF_INTERLEAVE_MODE_COEF;
     } else if (rotaryMode_ == InplacePartialRotaryMulGradMode::QUARTER) {
         dSplitCoef_ = QUARTER_MODE_COEF;
