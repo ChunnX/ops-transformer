@@ -818,6 +818,15 @@ public:
         GetFDSectionInfo(sectionIdx);
         vecFdBlock.InitBuffers();
         AscendC::ICachePreLoad(2);
+        // 进入 FD 前先排干 FA mask V→MTE2 ping/pong 反向同步预置：
+        // FA AllocEventID 预置的 V_MTE2[0]/[1] 会一直挂到所有 section 结束，若残留进入 FD，
+        // 会与 FD 的 V_MTE2 同步(SYNC_*=8~13)在物理 flag 上冲突，导致 FD WaitFlag<V_MTE2> 卡死。
+        // 必须在 FD AllocEventID 之前 Wait 排干，FD 结束后再由 PresetMaskReverseSync 恢复。
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                vecFaBlock.DrainMaskReverseSync();
+            }
+        }
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
         // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
@@ -840,6 +849,13 @@ public:
         vecFdBlock.FlashDecode(fdParams_);
         AscendC::SyncAll();
         vecFdBlock.FreeEventID();
+        // FD 结束后恢复 FA mask V→MTE2 ping/pong 预置（与上面的 DrainMaskReverseSync 成对），
+        // 供下一 section 的 FA 使用，并保证 vecFaBlock.FreeEventID 退出时配平。
+        if (constInfo.aicIdx < constInfo.coreNum) {
+            if ASCEND_IS_AIV {
+                vecFaBlock.PresetMaskReverseSync();
+            }
+        }
     }
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
