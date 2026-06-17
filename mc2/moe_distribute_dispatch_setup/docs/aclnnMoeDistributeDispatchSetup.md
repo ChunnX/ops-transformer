@@ -22,7 +22,8 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用“aclnnMoeDistributeDispatchSetupGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchSetup”接口执行计算。
+每个算子分为两段式接口，必须先调用“aclnnMoeDistributeDispatchSetupGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchSetup”接口执行计算。为用户提供“aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize”接口计算“aclnnMoeDistributeDispatchSetup”
+部分输出的size大小。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
@@ -54,6 +55,30 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
     uint64_t        workspaceSize,
     aclOpExecutor   *executor,
     aclrtStream     stream)
+```
+
+```cpp
+aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
+    const aclTensor* x,
+    const aclTensor* expertIds,
+    const aclTensor* scalesOptional,
+    const aclTensor* xActiveMaskOptional,
+    const char* groupEp,
+    int64_t epWorldSize,
+    int64_t epRankId,
+    int64_t moeExpertNum,
+    int64_t expertShardType,
+    int64_t sharedExpertNum,
+    int64_t sharedExpertRankNum,
+    int64_t quantMode,
+    int64_t globalBs,
+    int64_t expertTokenNumsType,
+    int64_t commType,
+    const char* commAlg,
+    uint64_t& tokenMsgSize,
+    uint64_t& expandIdxOutSize,
+    uint64_t& assistInfoForCombineOutSize,
+    uint64_t& commCmdInfoOutSize)
 ```
 
 ## aclnnMoeDistributeDispatchSetupGetWorkspaceSize
@@ -397,6 +422,241 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
 - **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+## aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize
+
+- **参数说明**
+  
+    <table style="undefined;table-layout: fixed; width: 1550px"> <colgroup>
+    <col style="width: 110px">
+    <col style="width: 120px">
+    <col style="width: 305px">
+    <col style="width: 330px">
+    <col style="width: 210px">
+    <col style="width: 100px"> 
+    <col style="width: 180px">
+    <col style="width: 145px">
+    </colgroup>
+    <thead>
+    <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    <th>使用说明</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+    <th>维度(shape)</th>
+    <th>非连续Tensor</th>
+    </tr>
+    </thead>
+    <tbody>
+
+    <tr>
+    <td>x</td>
+    <td>输入</td>
+    <td>表示本卡发送的token数据。</td>
+    <td>要求为2D Tensor。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    <td>(Bs, H)</td>
+    <td>√</td>
+    </tr>
+    <tr>
+    <td>expertIds</td>
+    <td>输入</td>
+    <td>每个token的topK个专家索引。</td>
+    <td>要求为2D Tensor。</td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>(Bs, K)</td>
+    <td>√</td>
+    </tr>
+    <tr>
+    <td>scalesOptional</td>
+    <td>输入</td>
+    <td>每个专家的量化平滑参数。</td>
+    <td>要求为2D Tensor。非量化场景传空指针，动态量化可选择传入有效数据或传入空指针。</td>
+    <td>FLOAT32</td>
+    <td>ND</td>
+    <td>(sharedExpertNum + moeExpertNum, H)</td>
+    <td>√</td>
+    </tr>
+    <tr>
+    <td>xActiveMaskOptional</td>
+    <td>输入</td>
+    <td>表示token是否参与通信。</td>
+    <td>要求为1D Tensor。可选择传入有效数据或传入空指针，传入空指针时是表示所有token都会参与通信。</td>
+    <td>BOOL</td>
+    <td>ND</td>
+    <td>(Bs, )</td>
+    <td>√</td>
+    </tr>
+    <tr>
+    <td>groupEp</td>
+    <td>输入</td>
+    <td>EP通信域名称（专家并行通信域）。</td>
+    <td>字符串长度范围为[1, 128)。</td>
+    <td>STRING</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>epWorldSize</td>
+    <td>输入</td>
+    <td>EP通信域大小。</td>
+    <td>-</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>epRankId</td>
+    <td>输入</td>
+    <td>EP域本卡Id。</td>
+    <td>取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>moeExpertNum</td>
+    <td>输入</td>
+    <td>MoE专家数量。</td>
+    <td>取值范围(0, 512]。满足moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>expertShardType</td>
+    <td>输入</td>
+    <td>表示共享专家卡分布类型。</td>
+    <td>当前仅支持传入0，表示共享专家卡排在MoE专家卡前面。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>sharedExpertNum</td>
+    <td>输入</td>
+    <td>表示共享专家数量。</td>
+    <td>取值范围[0, 4]。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>sharedExpertRankNum</td>
+    <td>输入</td>
+    <td>表示共享专家卡数量。</td>
+    <td>取值范围[0, epWorldSize / 2]。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>quantMode</td>
+    <td>输入</td>
+    <td>表示量化模式。</td>
+    <td>取值范围[0, 4]。0表示非量化，1表示静态量化，2表示Pertoken动态量化，3表示Pergroup动态量化，4表示MX量化，当前仅支持0和4。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>globalBs</td>
+    <td>输入</td>
+    <td>EP域全局的batch size大小。</td>
+    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize或0。</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>expertTokenNumsType</td>
+    <td>输入</td>
+    <td>输出expertTokenNums中值的语义类型。</td>
+    <td><ul><li>取值为0：expertTokenNums中的输出为每个专家处理的token数的前缀和。</li><li>取值为1：expertTokenNums中的输出为每个专家处理的token数量。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>commType</td>
+    <td>输入</td>
+    <td>表示通信方案选择。</td>
+    <td>取值范围[0, 2]，0表示AICPU-SDMA方案，1表示CCU方案，2表示URMA方案，当前版本仅支持2。</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>commAlg</td>
+    <td>输入</td>
+    <td>表示通信亲和内存布局算法。</td>
+    <td>预留字段，当前版本不支持，传空指针或空字符串即可。</td>
+    <td>STRING</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>tokenMsgSize</td>
+    <td>输出</td>
+    <td>aclnnMoeDistributeDispatchSetup接口yOut第二维输出，表示每个token在数据通信时的维度信息。</td>
+    <td>-</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>非量化场景下，tokenMsgSize = Align256(H)。量化场景下，quantmode = 1时，tokenMsgSize = Align512(H)；quantmode = 2时，tokenMsgSize = Align512(Align32(H) + 4)；quantmode = 3时，tokenMsgSize = Align512(Align128(H) + ceilDiv(H，128))；quantmode = 4时，tokenMsgSize = Align512(Align128(H) + Align2(ceilDiv(H，32)))，其中AlignN(x) = ((x + N - 1) / N) * N, ceilDiv(n,m) = ((n + m - 1) / m)。</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>expandIdxOutSize</td>
+    <td>输出</td>
+    <td>aclnnMoeDistributeDispatchSetup接口的expandIdxOut的空间大小。</td>
+    <td>-</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>(BS * K)</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>assisInfoForCombineOutSize</td>
+    <td>输出</td>
+    <td>aclnnMoeDistributeDispatchSetup接口的assisInfoForCombineOut的空间大小。</td>
+    <td>-</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>(A * 128)</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>commCmdInfoOutSize</td>
+    <td>输出</td>
+    <td>aclnnMoeDistributeDispatchSetup接口的commCmdInfoOut的大小。</td>
+    <td>-</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>(BS * (K + sharedExpertNum) + epWorldSize * localExpertNum) * 16</td>
+    <td>-</td>
+    </tr>
+    </tbody>
+    </table>
+
+- **返回值：**
+  
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 

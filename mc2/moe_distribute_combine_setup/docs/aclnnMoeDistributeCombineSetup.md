@@ -28,7 +28,7 @@
 
 ## 函数原型
 
-该算子分为两段式接口，必须先调用“`aclnnMoeDistributeCombineSetupGetWorkspaceSize`”接口获取入参并根据计算流程计算所需workspace大小获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“`aclnnMoeDistributeCombineSetup`”接口执行计算。
+该算子分为两段式接口，必须先调用“`aclnnMoeDistributeCombineSetupGetWorkspaceSize`”接口获取入参并根据计算流程计算所需workspace大小获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“`aclnnMoeDistributeCombineSetup`”接口执行计算。为用户提供“aclnnMoeDistributeCombineSetupTeardownCalcOutputSize”接口计算“aclnnMoeDistributeDispatchSetup”部分输出的size大小。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
@@ -58,6 +58,26 @@ aclnnStatus aclnnMoeDistributeCombineSetup(
     uint64_t workspaceSize,
     aclOpExecutor *executor,
     aclrtStream stream)
+```
+
+```cpp
+aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
+    const aclTensor *expandX,
+    const aclTensor *expertIds,
+    const aclTensor *assistInfoForCombine,
+    const char *groupEp,
+    int64_t epWorldSize,
+    int64_t epRankId,
+    int64_t moeExpertNum,
+    int64_t expertShardType,
+    int64_t sharedExpertNum,
+    int64_t sharedExpertRankNum,
+    int64_t globalBs,
+    int64_t commQuantMode,
+    int64_t commType,
+    const char *commAlg,
+    uint64_t &tokenMsgSize,
+    uint64_t &commCmdInfoOutSize)
 ```
 
 ## aclnnMoeDistributeCombineSetupGetWorkspaceSize
@@ -371,6 +391,218 @@ aclnnStatus aclnnMoeDistributeCombineSetup(
 - **返回值：**
   
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+## aclnnMoeDistributeCombineSetupTeardownCalcOutputSize
+
+- **参数说明**
+  
+    <table style="undefined;table-layout: fixed; width: 1434px"><colgroup>
+    <col style="width: 156px">
+    <col style="width: 71px">
+    <col style="width: 338px">
+    <col style="width: 450px">
+    <col style="width: 87px">
+    <col style="width: 67px">
+    <col style="width: 170px">
+    <col style="width: 95px">
+    </colgroup>
+    <thead>
+    <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度</th>
+        <th>非连续Tensor</th>
+    </tr></thead>
+    <tbody>
+    <tr>
+        <td>expandX</td>
+        <td>输入</td>
+        <td>自刷新参数，根据expertIds进行扩展过的token特征</td>
+        <td>不支持空Tensor。</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>(A, H)</td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>expertIds</td>
+        <td>输入</td>
+        <td>每个token的topK个专家索引</td>
+        <td>不支持空Tensor。</td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>(Bs, K)</td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>assistInfoForCombine</td>
+        <td>输入</td>
+        <td>对应aclnnMoeDistributeDispatchTeardown中的assistInfoForCombine输出</td>
+        <td>不支持空Tensor。</td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>(A * 128, )</td>
+        <td>√</td>
+    </tr>
+    <tr>
+        <td>groupEp</td>
+        <td>输入</td>
+        <td>EP通信域名称</td>
+        <td>字符串长度范围为[1, 128)</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>epWorldSize</td>
+        <td>输入</td>
+        <td>EP通信域size</td>
+        <td>取值支持[2, 384]</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>epRankId</td>
+        <td>输入</td>
+        <td>EP域本卡Id</td>
+        <td>取值范围[0, epWorldSize)。<br>同一个EP通信域中各卡的epRankId不重复。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>moeExpertNum</td>
+        <td>输入</td>
+        <td>MoE专家数量</td>
+        <td>取值范围(0, 512]。<br>满足moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>expertShardType</td>
+        <td>输入</td>
+        <td>共享专家卡分布类型</td>
+        <td>当前仅支持传0，表示共享专家卡排在MoE专家卡前面。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>sharedExpertNum </td>
+        <td>输入</td>
+        <td>共享专家数量</td>
+        <td>当前取值范围[0, 4]。0表示无共享专家。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>sharedExpertRankNum</td>
+        <td>输入</td>
+        <td>共享专家卡数量</td>
+        <td>当前取值范围[0, epWorldSize / 2]。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>globalBs</td>
+        <td>输入</td>
+        <td>EP域全局的batch size大小</td>
+        <td>当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize或globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>commQuantMode</td>
+        <td>输入</td>
+        <td>通信量化类型</td>
+        <td>当前仅支持传入0。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>commType</td>
+        <td>输入</td>
+        <td>通信方案选择</td>
+        <td>当前仅支持2，表示URMA通路。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>commAlg</td>
+        <td>输入</td>
+        <td>通信算法选择</td>
+        <td>仅支持传入空指针或空字符串</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>tokenMsgSize</td>
+        <td>输出</td>
+        <td>aclnnMoeDistributeCombineSetup接口quantExpandX第二维tokenMsgSize大小，表示每个token在数据通信时的维度信息。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>Align512(Align32(H) + Align8(H) / 8 * sizeof(float))，其中AlignN(x) = ((x + N - 1) / N) * N。</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>commCmdInfoOutSize</td>
+        <td>输出</td>
+        <td>aclnnMoeDistributeCombineSetup接口commCmdInfoOut的大小。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>(A + epWorldSize) * 16</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需要在Device侧申请的workspace大小</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含了算子计算流程</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+    </tr>
+    </tbody></table>
+
+- **返回值**
+  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
