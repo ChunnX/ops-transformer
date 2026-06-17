@@ -689,6 +689,17 @@ def sparse_lightning_indexer_grad_kl_loss(
         relu_grad = results[1]
         loss_out = results[2]
 
+        # DEBUG: check kernel outputs
+        _DEBUG = os.environ.get("SLIG_DEBUG", "0") == "1"
+        if _DEBUG:
+            def _stat(t, name):
+                print(f"  {name}: shape={t.shape} dtype={t.dtype} "
+                      f"nan={t.isnan().any().item()} inf={t.isinf().any().item()} "
+                      f"min={t.float().min().item():.4e} max={t.float().max().item():.4e}")
+            _stat(d_weight_partial, "d_weight_partial(kernel out)")
+            _stat(relu_grad, "relu_grad(kernel out)")
+            _stat(loss_out, "loss_out(kernel out)")
+
         # Matmul4: dQueryIndex = reluGrad @ GatherKeyIndexT^T  (computed in Python via bmm)
         d_query_index = torch.bmm(
             relu_grad.float().reshape(B * S1, Nidx1, K),
