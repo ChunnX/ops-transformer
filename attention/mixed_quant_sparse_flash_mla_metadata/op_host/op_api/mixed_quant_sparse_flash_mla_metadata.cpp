@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file l0_mixed_quant_sparse_flash_mla_metadata.cpp
+ * \file mixed_quant_sparse_flash_mla_metadata.cpp
  * \brief
  */
 
-#include "l0_mixed_quant_sparse_flash_mla_metadata.h"
+#include "mixed_quant_sparse_flash_mla_metadata.h"
 #include "opdev/aicpu/aicpu_task.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
