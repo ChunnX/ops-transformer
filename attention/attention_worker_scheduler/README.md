@@ -54,15 +54,15 @@ $$
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1565px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
   <col style="width: 146px">
-  <col style="width: 135px">
-  <col style="width: 326px">
+  <col style="width: 120px">
+  <col style="width: 271px">
   <col style="width: 246px">
-  <col style="width: 275px">
+  <col style="width: 223px">
   <col style="width: 101px">
   <col style="width: 190px">
-  <col style="width: 146px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>
@@ -117,4 +117,4 @@ $$
 
 | 调用方式  | 样例代码                                                                | 说明                                                                                          |
 | ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| aclnn接口 | [test_aclnn_inplace_attention_worker_scheduler](./examples/test_aclnn_inplace_attention_worker_scheduler.cpp) | 通过[`aclnnInplaceAttentionWorkerScheduler`](./docs/aclnnInplaceAttentionWorkerScheduler.md)接口方式调用AttentionWorkScheduler算子。 |
+| aclnn接口 | [test_aclnn_inplace_attention_worker_scheduler](./examples/test_aclnn_inplace_attention_worker_scheduler.cpp) | 通过[aclnnInplaceAttentionWorkerScheduler](./docs/aclnnInplaceAttentionWorkerScheduler.md)接口方式调用AttentionWorkScheduler算子。 |
