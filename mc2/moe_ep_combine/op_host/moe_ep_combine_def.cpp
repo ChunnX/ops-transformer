@@ -28,7 +28,7 @@ public:
             .AutoContiguous();
         this->Input("num_recv_tokens_per_expert")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("topk_weights_optional")
