@@ -433,6 +433,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Write partial Loss for MY K block only (first element)
                     T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k * 16:(n_idx_k + 1) * 16])
 
+                T.set_cross_flag("V", 12)
+
+            # ============================================================
+            # V scope 2: DMA flush barrier — consume cross_flag to ensure
+            # all V Scope 1 GM writes (MTE3) are complete before kernel return
+            # ============================================================
+            with T.Scope("V"):
+                T.wait_cross_flag(12)
                 T.barrier_all()
 
     return main
