@@ -40,10 +40,14 @@ constexpr uint64_t IDX_B2_OFFSET = 8UL;
 constexpr uint64_t IDX_B2_SCALE_OFFSET = 9UL;
 constexpr uint64_t IDX_Y2_OFFSET = 10UL;
 constexpr uint64_t IDX_M_OFFSET = 11UL;
+constexpr uint64_t IDX_GMM1_OFFSET = 12UL;
+constexpr uint64_t IDX_GMM2_OFFSET = 13UL;
 constexpr uint64_t INT32_PER_256B = 8U;
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
+constexpr uint16_t AIC_SYNC_AIV_EPILOGUE_FLAG = 8;
+constexpr uint16_t FLAG_ID_MAX_PER_V = 16;
 constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;
@@ -100,6 +104,9 @@ struct WorkspaceInfo {
     GM_ADDR flagDispatchToGmm1Ptr;
     GM_ADDR gmmOutPtr;
     GM_ADDR rowGroupCompletePtr;
+    GM_ADDR cumsumInfoPtr;
+    GM_ADDR ptrGmm1MmadRes;
+    GM_ADDR ptrGmm2MmadRes;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -159,6 +166,13 @@ struct WorkspaceInfo {
                 maxRowGroupsPerExpert * perCoreRowGroupsStride, ALIGN_128);
             workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * maxRowGroupsStride;
         }
+
+        cumsumInfoPtr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize * tilingData->aicNum;
+        ptrGmm1MmadRes = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * tilingData->maxOutputSize * tilingData->hiddenDim;
+        ptrGmm2MmadRes = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * tilingData->maxOutputSize * tilingData->h;
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H

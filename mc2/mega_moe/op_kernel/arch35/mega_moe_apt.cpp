@@ -43,7 +43,8 @@ __global__ __aicore__ void mega_moe(
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
 #ifdef ENABLE_TENSOR_API
     if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-        MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DispatchQuantOutType, CombineQuantOutType> op;
+    MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
+        DispatchQuantOutType, CombineQuantOutType> op;
         op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                 scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
         op.Process();
