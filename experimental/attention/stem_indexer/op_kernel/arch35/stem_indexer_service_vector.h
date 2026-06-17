@@ -81,13 +81,10 @@ private:
     // ================================Local Buffer区====================================
     // tmp buff for vector
     TBuf<TPosition::VECCALC> resMm1Buf_;
-    LocalTensor<QK_T> resMm1UB_;
+    LocalTensor<QK_T> resMm1Local_;
     // tmp buff for vbias
     TBuf<TPosition::VECCALC> vBiasBuf_;
     LocalTensor<float> vBiasLocal_;
-    //tmp buff for out
-    TBuf<TPosition::VECCALC> outBuf_;
-    LocalTensor<SCORE_T> vec1OutUB_;
 
     TBuf<TPosition::VECCALC> topkIndexBuf_;
     LocalTensor<uint32_t> topkIndexLocal_;
@@ -146,28 +143,29 @@ template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));   //大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
-    resMm1UB_ = resMm1Buf_.Get<QK_T>();// qk
-    // TODO kbSize获取
+    resMm1Local_ = resMm1Buf_.Get<QK_T>();// qk
+
     pipe->InitBuffer(vBiasBuf_, 2 * s2BaseSize_ * sizeof(float));   // 大小：2(开dB) * kbSize(256) * 4 = 4KB 
-    vBiasLocal_ = vBiasBuf_.Get<float>();                      // vBias
+    vBiasLocal_ = vBiasBuf_.Get<float>();                           // vBias
 
     // Topk
     pipe->InitBuffer(mrgValueBuf_, CeilDiv(constInfo_.mBaseSize, 2) * (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     mrgValueLocal_ = mrgValueBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(globalIndexBuf_, CeilDiv(constInfo_.mBaseSize, 2) * (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
+    pipe->InitBuffer(globalIndexBuf_, CeilDiv(constInfo_.mBaseSize, 2) * (MAX_TOPK_COUNT) * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     globalIndexLocal_ = globalIndexBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(indicesOutBuf_, (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
+    pipe->InitBuffer(indicesOutBuf_, (MAX_TOPK_COUNT) * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
     pipe->InitBuffer(scoreOutBuf_, trunkLen_ * sizeof(SCORE_T));            // (topkCountAlign256_ + 64) * sizeof(SCORE_T) 64:duplicate刷-1额外空间
     scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
 
-    uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
+    uint64_t topkSharedTmpSize = topkOp_.GetReUseSharedTmpBufferSize();
     pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
     topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
-    topkOp_.InitBuffers(topkSharedTmpLocal_);
+    // 走复用UB逻辑 初始化topk相关ub大小
+    topkOp_.InitBuffers(topkSharedTmpLocal_, globalIndexLocal_, indicesOutLocal_);
 
     //刷-1
     pipe->InitBuffer(outInvalidBuf_, MAX_TOPK_COUNT * sizeof(int32_t));
@@ -273,10 +271,10 @@ template <typename SIT>
 __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
 {
     auto pingpong = (info.loop % 2);
-    int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
+    int64_t curS1Idx = info.gS1Idx * constInfo_.mBaseSize;
     int64_t gS1BasePerVecSize_ = CeilDiv(constInfo_.mBaseSize, 2); // 当前每个vec核上分到的mbase/2行
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
-    int64_t curS1ProcNum = curS1Idx + s1BaseSize_ > info.actS1Size ? info.actS1Size % s1BaseSize_ : s1BaseSize_;	 
+    int64_t curS1ProcNum = curS1Idx + constInfo_.mBaseSize > info.actS1Size ? info.actS1Size % constInfo_.mBaseSize : constInfo_.mBaseSize;	 
     int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
 
     if (curAivS1ProcNum == 0) {
@@ -301,7 +299,7 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     //CV同步
     CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + pingpong);   //V核等C核计算完mm1，mm1Res已搬运到U
 
-    auto qkBase = resMm1UB_[pingpong * (gS1BasePerVecSize_ * s2BaseSize_)];
+    auto qkBase = resMm1Local_[pingpong * (gS1BasePerVecSize_ * s2BaseSize_)];
     auto outBase = mrgValueLocal_[MAX_TOPK_COUNT];
     auto vBiasBase = vBiasLocal_[pingpong * s2BaseSize_];
 
@@ -544,7 +542,10 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 }
             }
             PipeBarrier<PIPE_V>();
-            topkOp_(mrgValueLocal_[mInnerOffset], indicesOutLocal_, scoreOutLocal_, topkSelectNumAlign256 + s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
+            // topk UB复用 resMm1Local_
+            LocalTensor<uint32_t> reuseMm1ResLocal = resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
+            topkOp_(mrgValueLocal_[mInnerOffset], indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
+                    topkSelectNumAlign256 + s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
             PipeBarrier<PIPE_V>();
             // 如果是首块，因为mrgValueLocal_的前topkSelectNumAlign256的位置没有数据，这里需要把偏移值减掉
             if (isFirstS2InnerLoop) {

@@ -43,6 +43,17 @@ public:
         return bufferSize1 + bufferSize2;
     }
 
+    __aicore__ inline uint32_t GetReUseSharedTmpBufferSize()
+    {
+        // 1 * 256：histogramsLocal
+        // 64：nkValueLocal
+        // 其余皆复用
+        uint64_t bufferSize1 = (256 + 64)  * sizeof(uint32_t);
+        // SICommon::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
+        uint64_t bufferSize2 = (SICommon::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint32_t);
+        return bufferSize1 + bufferSize2;
+    }
+
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
     {
         this->topK = topK;
@@ -69,10 +80,30 @@ public:
         tmpIndexLocal = nkValueLocal[64];
     }
 
-    __aicore__ inline void operator()(const LocalTensor<uint32_t>& mrgValueLocal, const LocalTensor<uint32_t>& indicesOutLocal,
-                                      const LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx,
-                                      uint32_t s2LoopNum)
+    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer,
+                                       LocalTensor<uint32_t>& globalIndexLocal,
+                                       LocalTensor<uint32_t>& indicesOutLocal)
     {
+        LocalTensor<uint32_t> hisIndexLocal1 = globalIndexLocal;
+        LocalTensor<uint32_t> hisIndexLocal2 = indicesOutLocal;
+        hisIndexLocal[0] = hisIndexLocal1;
+        hisIndexLocal[1] = hisIndexLocal2;
+        histogramsLocal = sharedTmpBuffer[0];
+        nkValueLocal = histogramsLocal[256];
+        tmpIndexLocal = nkValueLocal[64];
+    }
+
+
+    __aicore__ inline void operator()(const LocalTensor<uint32_t>& mrgValueLocal, const LocalTensor<uint32_t>& indicesOutLocal,
+                                      const LocalTensor<uint32_t>& hisValueLocal, const LocalTensor<uint32_t>& reuseMm1ResLocal,
+                                      uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum)
+    {
+        // uint32_t时UB需要进行复用，此处将每8位的targetbin复用mm1res
+        idx0Local = reuseMm1ResLocal;
+        idx1Local = idx0Local[256];
+        idx2Local = idx1Local[256];
+        idx3Local = idx2Local[256];
+
         if (s2LoopNum == 1) {
             SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                                                idx0Local, idx1Local, idx2Local, idx3Local,
@@ -85,21 +116,16 @@ public:
                                                   idx0Local, idx1Local, idx2Local, idx3Local,
                                                   nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, SICommon::Align(topK, (uint32_t)256));
+                AscendC::DataCopy(hisIndexLocal[1], tmpIndexLocal, SICommon::Align(topK, (uint32_t)256));
             } else {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                                                   idx0Local, idx1Local, idx2Local, idx3Local,
                                                   nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                SITopkb32gather::SiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal,
-                                                  mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2],
+                SITopkb32gather::SiTopKGatherVF(hisIndexLocal[1], hisValueLocal,
+                                                  mrgValueLocal, tmpIndexLocal, hisIndexLocal[0],
                                                   topK, loopIdx * trunkLen - SICommon::Align(topK, (uint32_t)256),
                                                   s2SeqLen);
-                if (loopIdx == s2LoopNum - 1) {
-                    PipeBarrier<PIPE_V>();
-                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                                      SICommon::Align(topK, (uint32_t)256));
-                }
             }
         }
     }
