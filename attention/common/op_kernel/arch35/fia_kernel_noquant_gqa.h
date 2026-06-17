@@ -453,7 +453,13 @@ public:
         if (constInfo.enableS1OutSplit) {
             return coreGS1Loops < varlenCalcTimes;
         }
-        return ((bN2Cur != constInfo.bN2End) || (gS1Cur != constInfo.gS1OEnd) || (s2Cur != constInfo.s2OEnd));
+        if (unlikely(bN2Cur > constInfo.bN2End)) {
+            return false;
+        } else if (unlikely((bN2Cur == constInfo.bN2End) && (gS1Cur > constInfo.gS1OEnd))) {    // 分核结束位置刚好被跳过时
+            return false;
+        } else {
+            return ((bN2Cur != constInfo.bN2End) || (gS1Cur != constInfo.gS1OEnd) || (s2Cur != constInfo.s2OEnd));
+        }
     }
 
     __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
@@ -862,8 +868,14 @@ public:
             return;
         }
 
-        // 当前BN2未处理完
+        // 需跳过现s2行
+        if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1OEnd) {
+            s2Cur = constInfo.s2OEnd;
+            return;
+        }
         s2Cur = 0;
+
+        // 当前BN2未处理完
         if (constInfo.enableS1OutSplit) {
             if (taskDealMode != TASK_DEAL_MODE::SKIP_S1OUT) {
                 coreGS1Loops++;
