@@ -83,7 +83,6 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *contex
     int coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
     OPS_LOG_E_IF(coff <= 0, context, return ge::GRAPH_FAILED, "coff should be greater than 0");
 
-
     if (xShape->GetDimNum() == DIM_NUM_3) { // BS
         shapeParam.isBsMerge = false;
         shapeParam.B = xShape->GetDim(DIM_INDEX_0);
