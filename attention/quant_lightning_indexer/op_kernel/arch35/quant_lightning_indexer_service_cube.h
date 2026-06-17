@@ -69,11 +69,9 @@ public:
 
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK * D_BASIC_BLOCK;
     // MXFP8: 每个 ping-pong buffer 尾部额外预留空间存放 qScale
-    // qScale 需要 s1gL1RealSize * (scalePerToken/FP8_TWO) 个 bf16 元素
-    // = mBaseSize * 2 个 bf16 = 128 * 2 = 256 bf16 = 512 bytes
-    // 用 M_BASIC_BLOCK (=256) 个 fp8 元素 = 256 bytes 不够
-    // 需要 M_BASIC_BLOCK * 2 (=512) 个 fp8 元素 = 512 bytes
-    static constexpr uint64_t MXFP8_SCALE_EXTRA = IS_MXFP8 ? (M_BASIC_BLOCK * 2) : 0;
+    // qScale 需要 s1gL1RealSize * (D/32) 个 fp8_e8m0 元素
+    // = M_BASIC_BLOCK * D_BASIC_BLOCK / 32 = 256 * 128 / 32 = 1024 bytes
+    static constexpr uint64_t MXFP8_SCALE_EXTRA = IS_MXFP8 ? (M_BASIC_BLOCK * D_BASIC_BLOCK / 32) : 0;
     static constexpr uint64_t QUERY_L1_PINGPONG_STRIDE = M_BASIC_BLOCK * D_BASIC_BLOCK + MXFP8_SCALE_EXTRA;
     static constexpr uint64_t L0AB_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
     static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0;
@@ -151,7 +149,9 @@ __aicore__ inline void QLIMatmul<QLIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_L1_PINGPONG_STRIDE * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
     // MXFP8: 额外预留 kScale 空间（所有 ping-pong buffer 之后）
-    uint64_t kL1ExtraScale = IS_MXFP8 ? (s2BasicBlock_ * 2) : 0;
+    // kScale 需要 s2BasicBlock_ * (D/32) 个 fp8_e8m0 元素
+    // = s2BasicBlock_ * D_BASIC_BLOCK / 32 = 128 * 128 / 32 = 512 bytes
+    uint64_t kL1ExtraScale = IS_MXFP8 ? (s2BasicBlock_ * D_BASIC_BLOCK / 32) : 0;
     pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK * sizeof(K_T) + kL1ExtraScale * sizeof(K_T));
     keyL1_ = bufKeyL1_.Get<K_T>();
 
@@ -580,7 +580,7 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64
         LocalTensor<fp8_e8m0_t> scaleL1 = keyL1_[scaleOffsetInBuf].template ReinterpretCast<fp8_e8m0_t>();
 
         // MXFP8 需要转置
-        loadData2DParams.ifTranspose = true;
+        loadData2DParams.ifTranspose = false;
 
         LoadData2DMxParams loadDataMxParams;
         loadDataMxParams.xStartPosition = 0;
