@@ -218,20 +218,17 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
     }
 
     // 加载当前轮的右矩阵到L1
+    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KLoadBufId);
+    LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
+    v0ResGm.WaitCrossCore();
     if constexpr (IS_SPLIT_G) {
-        WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KLoadBufId);
-        LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
-        v0ResGm.WaitCrossCore();
         CrossCoreSetFlag<0, PIPE_MTE2>(10);
         CrossCoreWaitFlag<0, PIPE_MTE2>(10);
-
-        GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-        DataCopy(dst, v0ResGmTensor, Align16Func(runInfo.s2RealSize) * constInfo.dSize);
-        SetFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KLoadBufId);
-        l1KLoadBufId = (l1KLoadBufId + 1) % 3;
-    } else {
-        inputRightBuf.WaitCrossCore(); // 核间同步，这里需要根据V0操作处理同步，确保取tensor时，数据已经准备好
     }
+    GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
+    DataCopy(dst, v0ResGmTensor, Align16Func(runInfo.s2RealSize) * constInfo.dSize);
+    SetFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KLoadBufId);
+    l1KLoadBufId = (l1KLoadBufId + 1) % 3;
 }
  	
 
@@ -243,10 +240,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
     bool notLastTwoLoop, RunInfo &runInfoNext,
     RunInfo &runInfo, ConstInfo &constInfo)
 {
-    if constexpr (IS_SPLIT_G) {
-        WaitFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KMatmul1BufId);
-        l1KMatmul1BufId = (l1KMatmul1BufId + 1) % 3;
-    }
+    WaitFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KMatmul1BufId);
+    l1KMatmul1BufId = (l1KMatmul1BufId + 1) % 3;
     WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
 
     MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),     // singleM
@@ -335,10 +330,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<Buff
 
     SetFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
     WaitFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
-    if constexpr (IS_SPLIT_G) {
-        SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KMatmul2BufId);
-        l1KMatmul2BufId = (l1KMatmul2BufId + 1) % 3;
-    }
+    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KMatmul2BufId);
+    l1KMatmul2BufId = (l1KMatmul2BufId + 1) % 3;
 
     outputBuf.WaitCrossCore(); //占用
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
