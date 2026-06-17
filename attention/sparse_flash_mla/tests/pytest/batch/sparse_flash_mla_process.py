@@ -108,7 +108,7 @@ def call_npu(input_data):
         max_seqlen_q=max_seqlen_q,
         max_seqlen_ori_kv=max_seqlen_ori_kv,
         max_seqlen_cmp_kv=max_seqlen_cmp_kv,
-        ori_topk=K,
+        ori_topk=K if ori_sparse_indices is not None else 0,
         cmp_topk=K if cmp_sparse_indices is not None else 0,
         cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
         ori_mask_mode=ori_mask_mode,
