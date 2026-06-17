@@ -57,7 +57,7 @@ static const std::initializer_list<op::DataType> positions_dtype_list = {op::Dat
 static const std::initializer_list<op::DataType> emptyDtypes = {};
 
 static const std::initializer_list<std::vector<int64_t>> mropeSupportList = {
-    {16, 24, 24}, {8, 12, 12}, {24, 20, 20}, {16, 16, 16, 16}}; // 支持的mrope输入
+    {16, 24, 24}, {8, 12, 12}, {24, 20, 20}, {11, 11, 10}, {16, 16, 16, 16}}; // 支持的mrope输入
 
 static const std::initializer_list<int64_t> cacheModeSupportList = {0, 1};
 
