@@ -247,7 +247,9 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
     OP_CHECK_IF((!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)) &&
  	                *opParamInfo_.sparseCount % 1024 != 0),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_count",
-        std::to_string(*opParamInfo_.sparseCount).c_str(), "sparse_count must > 0 and <= 2048."),
+        std::to_string(*opParamInfo_.sparseCount).c_str(),
+        "input attr sparse_count must > 0 and <= 8192."
+        " And when sparse_count > 2048, sparse_count must be an interger multiple of 1024."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.sparseMode == 0) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_mode",
@@ -654,8 +656,8 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQtnd()
                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != qTsize),
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query, weights, sparse_indices",
                     std::to_string(qTsize) + " , " +
-                    std::to_string(opParamInfo_.actualSeqLengths.tensor->GetShapeSize()) + " , " +
-                    std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
+                    std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + " , " +
+                    std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
                     "TND case input query, weights, sparse_indices dim 0 must be same."),
                 return ge::GRAPH_FAILED);
 

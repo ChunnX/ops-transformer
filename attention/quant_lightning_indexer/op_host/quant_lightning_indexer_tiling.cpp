@@ -881,7 +881,7 @@ ge::graphStatus QLIInfoParser::CheckScaleShape()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(kDequantScaleShapeDim != (kShapeDim - 1),
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "key_dequant_scale",
-                    std::to_string(qDequantScaleShapeDim),
+                    std::to_string(kDequantScaleShapeDim),
                     "The shape dim of key_dequant_scale must be " + std::to_string(kShapeDim - 1) + "."),
                 return ge::GRAPH_FAILED);
     // check q scale
