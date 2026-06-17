@@ -144,8 +144,8 @@ aclnnStatus CheckSingleParamSas(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
                 "num_heads_q / num_heads_kv should be power of two in [1, 128], but got %ld", headRatio);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (cmpRatio < 1 || cmpRatio > 128) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be in range [1, 128], but got %ld", cmpRatio);
+    if (cmpRatio < 0 || cmpRatio > 128) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be in range [0, 128], but got %ld", cmpRatio);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // ori_mask_mode 校验

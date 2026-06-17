@@ -41,6 +41,11 @@ static bool IsNonEmptyOptionalTensor(const gert::Tensor *tensor)
     return tensor != nullptr && tensor->GetShapeSize() > 0;
 }
 
+static bool IsPowerOfTwoInRange(uint32_t value, uint32_t minValue, uint32_t maxValue)
+{
+    return value >= minValue && value <= maxValue && (value & (value - 1U)) == 0U;
+}
+
 static const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME,                  {ge::DT_FLOAT16, ge::DT_BF16}},
     {ORI_KV_NAME,                    {ge::DT_FLOAT16, ge::DT_BF16}},
@@ -298,12 +303,24 @@ ge::graphStatus SMLAInfoParser::GetOpParaInfo()
 
 uint64_t SMLAInfoParser::GetOptionalInputStride0(uint32_t inputIndex) const
 {
-    const gert::StorageShape *inputShape = context_->GetOptionalInputShape(inputIndex);
-    if (inputShape == nullptr) {
+    const gert::Tensor *inputTensor = nullptr;
+    if (inputIndex == ORI_KV_INDEX) {
+        inputTensor = opParamInfo_.oriKv.tensor;
+    } else if (inputIndex == CMP_KV_INDEX) {
+        inputTensor = opParamInfo_.cmpKv.tensor;
+    }
+    if (inputTensor == nullptr) {
         return 0ULL;
     }
 
-    const gert::Shape &storageShape = inputShape->GetStorageShape();
+    // Keep the tiling-context shape path here for future CANN packages that expose real input stride.
+    // const gert::StorageShape *inputShape = context_->GetOptionalInputShape(inputIndex);
+    // if (inputShape == nullptr) {
+    //     return 0ULL;
+    // }
+    // const gert::Shape &storageShape = inputShape->GetStorageShape();
+
+    const gert::Shape &storageShape = inputTensor->GetStorageShape();
     if (storageShape.GetDimNum() <= DIM_NUM_ONE) {
         return 0ULL;
     }
@@ -580,16 +597,10 @@ ge::graphStatus SMLAInfoParser::GetMaxBlockNumPerBatch()
             OP_LOGE(opName_, "the dim num of cmp_block_table is %u, it should be %u.", cmpDimNum, DIM_NUM_TWO);
             return ge::GRAPH_FAILED;
         }
-        if (qLayout_ == SMLALayout::TND) {
-            if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0) != bSize_ - 1) {
-                OP_LOGE(opName_, "cmp_block_table's first dimension(%u) should be equal to query's B(%u).",
-                    opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1), bSize_ - 1);
-                return ge::GRAPH_FAILED;
-            }
-        } else if (qLayout_ == SMLALayout::BSND) {
+        if (qLayout_ == SMLALayout::TND || qLayout_ == SMLALayout::BSND) {
             if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0) != bSize_) {
-                OP_LOGE(opName_, "cmp_block_table's first dimension(%u) should be equal to query's B(%u).",
-                    opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1), bSize_);
+                OP_LOGE(opName_, "cmp_block_table's first dimension(%lld) should be equal to query's B(%u).",
+                    opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0), bSize_);
                 return ge::GRAPH_FAILED;
             }
         }
@@ -753,6 +764,7 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             OP_LOGE(opName_, "Input sequsedOriKv must not be provided when kv layout is TND"),
             return ge::GRAPH_FAILED);
     } else if (kvLayout_ == SMLALayout::BSND) {
+        actualLenDimsKV_ = actualLenDimsOriKV_;
     } else {
         OP_LOGE(opName_, "oriKV and cmpKv only support PA_BNBD, TND and BSND layout, but got %d.", kvLayout_);
         return ge::GRAPH_FAILED;
@@ -780,6 +792,7 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.qTSize = qTSize_;
     smlaInfo.oriSparseBlockCount = oriSparseBlockCount_;
     smlaInfo.cmpSparseBlockCount = cmpSparseBlockCount_;
+    smlaInfo.sparseBlockCount = cmpSparseBlockCount_;
     smlaInfo.oriWinLeft = oriWinLeft_;
     smlaInfo.oriWinRight = oriWinRight_;
     smlaInfo.qType = qType_;
@@ -1069,7 +1082,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCuSeqLensOriKv() const
     if (opParamInfo_.cuSeqLensOriKv.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedOriKv.desc, CU_SEQLENS_ORI_KV_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cuSeqLensOriKv.desc, CU_SEQLENS_ORI_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(opParamInfo_.cuSeqLensOriKv.tensor->GetShapeSize() != bSize_ + 1,
@@ -1084,7 +1097,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCuSeqLensCmpKv() const
     if (opParamInfo_.cuSeqLensCmpKv.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedOriKv.desc, CU_SEQLENS_CMP_KV_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cuSeqLensCmpKv.desc, CU_SEQLENS_CMP_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(opParamInfo_.cuSeqLensCmpKv.tensor->GetShapeSize() != bSize_ + 1,
@@ -1246,7 +1259,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriWinRight() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
-    if (*opParamInfo_.cmpMaskMode == 3 && *opParamInfo_.cmpRatio != 1) {
+    if (*opParamInfo_.cmpMaskMode == 3 && cmpRatio_ > 1) {
         OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor == nullptr,
             OP_LOGE(opName_, "cmp_redisual_kv is required when cmp_mask_mode=3 and cmp_ratio != 1"),
             return ge::GRAPH_FAILED);
@@ -1359,21 +1372,9 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                 OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
                 return ge::GRAPH_FAILED);
 
-    if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(n1Size_ < 1 || n1Size_ > 128,
-                    OP_LOGE(opName_, "q_head_num should be in [1, 128], but got %u", n1Size_),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(gSize_ < 1 || gSize_ > 128,
-                    OP_LOGE(opName_, "group num should be in [1, 128] but got %u", gSize_),
-                    return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(n1Size_ % 4 != 0,
-                    OP_LOGE(opName_, "q_head_num should be multiple of 4, but got %u", n1Size_),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(gSize_ % 4 != 0,
-                    OP_LOGE(opName_, "group num should be multiple of 4, but got %u", gSize_),
-                    return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(n1Size_ < 1 || n1Size_ > 128,
+                OP_LOGE(opName_, "q_head_num should be in [1, 128], but got %u", n1Size_),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n2Size_ != 1,
                 OP_LOGE(opName_, "kv_head_num should be 1, but got %u", n2Size_),
@@ -1381,6 +1382,9 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
 
     OP_CHECK_IF(n1Size_ % n2Size_ != 0,
                 OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!IsPowerOfTwoInRange(gSize_, 1, 128),
+                OP_LOGE(opName_, "group num should be power of two in [1, 128], but got %u", gSize_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qHeadDim_ != DIM_LIMIT,
@@ -1654,15 +1658,15 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.cmpParams.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.cmpParams.set_cmpMaskMode(tilingInfo->cmpMaskMode);
     tilingData_.cmpParams.set_cmpKvStride0(tilingInfo->cmpKvStride0);
+    tilingData_.cmpParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
+    tilingData_.baseParams.set_actualLenDimsOriKV(tilingInfo->actualLenDimsOriKV);
+    tilingData_.baseParams.set_actualLenDimsCmpKV(tilingInfo->actualLenDimsCmpKV);
+    tilingData_.baseParams.set_cmpResidualKVSize(tilingInfo->cmpResidualKVSize);
 
     if (tilingInfo->npuArch == NpuArch::DAV_3510) {
         tilingData_.baseParams.set_oriSparseBlockCount(tilingInfo->oriSparseBlockCount);
         tilingData_.baseParams.set_topkValueMode(tilingInfo->topkValueMode);
         tilingData_.cmpParams.set_cmpSparseBlockCount(tilingInfo->cmpSparseBlockCount);
-        tilingData_.cmpParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
-        tilingData_.baseParams.set_actualLenDimsOriKV(tilingInfo->actualLenDimsOriKV);
-        tilingData_.baseParams.set_actualLenDimsCmpKV(tilingInfo->actualLenDimsCmpKV);
-        tilingData_.baseParams.set_cmpResidualKVSize(tilingInfo->cmpResidualKVSize);
     } else {
         tilingData_.cmpParams.set_sparseBlockCount(tilingInfo->sparseBlockCount);
     }
@@ -1676,12 +1680,16 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     uint32_t inputKvLayout = static_cast<uint32_t>(tilingInfo->kvLayout);
 
     uint32_t tilingKey;
+    uint32_t splitG = 0U;
+    uint32_t headRatioOne = static_cast<uint32_t>(
+        tilingInfo->npuArch == NpuArch::DAV_2201 &&
+        tilingInfo->perfMode == SMLATemplateMode::SCFA_TEMPLATE_MODE &&
+        tilingInfo->gSize == 1U);
     if (tilingInfo->npuArch == NpuArch::DAV_3510) {
-        tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode),
-            static_cast<uint32_t>(tilingInfo->gSize > 64));
-    } else {
-        tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode));
+        splitG = static_cast<uint32_t>(tilingInfo->gSize > 64);
     }
+    tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
+        headRatioOne);
     context_->SetScheduleMode(1);
     context_->SetTilingKey(tilingKey);
 

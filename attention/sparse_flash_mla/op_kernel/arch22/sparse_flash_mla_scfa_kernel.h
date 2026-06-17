@@ -101,6 +101,7 @@ private:
     static constexpr bool FLASH_DECODE = SMLAT::flashDecode;
     static constexpr SMLA_LAYOUT LAYOUT_T = SMLAT::layout;
     static constexpr SMLA_LAYOUT KV_LAYOUT_T = SMLAT::kvLayout;
+    static constexpr bool HEAD_RATIO_ONE = SMLAT::headRatioOne;
 
     static constexpr uint32_t PRELOAD_NUM = 2;
     static constexpr uint32_t N_BUFFER_M_BASIC_SIZE = 256;
@@ -653,18 +654,22 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::CalcParams(uint32_t loop, uint
         }
         info.s2StartPoint = 0;
         info.cmpS2IdLimit = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
+        if constexpr (HEAD_RATIO_ONE) {
+            info.v0S2Start = static_cast<int32_t>(s2Offset);
+            info.v0S2DealSize = static_cast<int32_t>(info.actualSingleProcessSInnerSize);
+        } else {
+            info.v0S2Start = 0;
+            if (s2LoopIdx + 1 == tempLoopInfo.s2LoopTimes && s2LoopIdx == 2) {
+                info.v0S2Start = 512;
+            }
+            info.v0S2DealSize = 512;
+        }
     }
 
     info.actualSingleProcessSInnerSizeAlign = SMLAAlign(info.actualSingleProcessSInnerSize, SMLAVectorBlock<SMLAT>::BYTE_BLOCK);
     if (info.isOriOnly) {
         info.v0S2Start = 0;
         info.v0S2DealSize = 0;
-    } else {
-        info.v0S2Start = 0;
-        if (s2LoopIdx + 1 == tempLoopInfo.s2LoopTimes && s2LoopIdx == 2) { // tail
-            info.v0S2Start = 512;
-        }
-        info.v0S2DealSize = 512;
     }
 }
 
@@ -678,6 +683,11 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::ComputeMm1(const RunInfo &info
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
         cubeBlock.ComputeMm1(info, mSplitInfo);
+        if constexpr (HEAD_RATIO_ONE) {
+            event_t eventIdFixWait = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
+            SetFlag<HardEvent::FIX_M>(eventIdFixWait);
+            WaitFlag<HardEvent::FIX_M>(eventIdFixWait);
+        }
         CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC1V1);
     }
 }
@@ -691,8 +701,17 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::ComputeMm2(const RunInfo &info
         MSplitInfo mSplitInfo;
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
-        CrossCoreWaitFlag(constInfo.syncV1C2);
+        if constexpr (HEAD_RATIO_ONE) {
+            CrossCoreWaitFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);
+        } else {
+            CrossCoreWaitFlag(constInfo.syncV1C2);
+        }
         cubeBlock.ComputeMm2(info, mSplitInfo);
+        if constexpr (HEAD_RATIO_ONE) {
+            event_t eventIdFixWait = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
+            SetFlag<HardEvent::FIX_M>(eventIdFixWait);
+            WaitFlag<HardEvent::FIX_M>(eventIdFixWait);
+        }
         CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V2);
     }
 }
@@ -852,38 +871,77 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::PreloadPipeline(uint32_t loop,
     RunInfo &extraInfo1 = extraInfo[(loop + 1) % SMLA_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
 
     CalcParams(loop, cmpLoop, s2Start, s2LoopIdx, extraInfo0);
-    if (extraInfo0.isValid) {
-        if ASCEND_IS_AIC {
-            if (!extraInfo0.isOriOnly) {
-                CrossCoreWaitFlag(constInfo.syncV0C1);
-            }
-            ComputeMm1(extraInfo0);
-        } else {
-            if (extraInfo0.isFirstSInnerLoop) {
-                CrossCoreWaitFlag(3);
-            }
-            vectorBlock.ProcessVec0L(extraInfo0);
-            if (!extraInfo0.isOriOnly) {
-                CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
-            }
-        }
-    }
-    if (extraInfo2.isValid) {
-        if ASCEND_IS_AIV {
-            vectorBlock.ProcessVec1L(extraInfo2);
-        }
-        if ASCEND_IS_AIC {
-            ComputeMm2(extraInfo2);
-            if (extraInfo2.isLastS2Loop) {
-                CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE2>(3);
+    if constexpr (!HEAD_RATIO_ONE) {
+        if (extraInfo0.isValid) {
+            if ASCEND_IS_AIC {
+                if (!extraInfo0.isOriOnly) {
+                    CrossCoreWaitFlag(constInfo.syncV0C1);
+                }
+                ComputeMm1(extraInfo0);
+            } else {
+                if (extraInfo0.isFirstSInnerLoop) {
+                    CrossCoreWaitFlag(3);
+                }
+                vectorBlock.ProcessVec0L(extraInfo0);
+                if (!extraInfo0.isOriOnly) {
+                    CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
+                }
             }
         }
-    }
-    if (extraInfo1.isValid) {
-        if ASCEND_IS_AIV {
-            vectorBlock.ProcessVec2L(extraInfo1);
+        if (extraInfo2.isValid) {
+            if ASCEND_IS_AIV {
+                vectorBlock.ProcessVec1L(extraInfo2);
+            }
+            if ASCEND_IS_AIC {
+                ComputeMm2(extraInfo2);
+                if (extraInfo2.isLastS2Loop) {
+                    CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE2>(3);
+                }
+            }
         }
-        extraInfo1.isValid = false;
+        if (extraInfo1.isValid) {
+            if ASCEND_IS_AIV {
+                vectorBlock.ProcessVec2L(extraInfo1);
+            }
+            extraInfo1.isValid = false;
+        }
+    } else {
+        if (extraInfo0.isValid) {
+            if ASCEND_IS_AIV {
+                if (extraInfo0.isFirstSInnerLoop) {
+                    CrossCoreWaitFlag(3);
+                }
+                vectorBlock.ProcessVec0L(extraInfo0);
+                if (!extraInfo0.isOriOnly) {
+                    CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
+                }
+            }
+        }
+        if (extraInfo2.isValid) {
+            if ASCEND_IS_AIV {
+                vectorBlock.ProcessVec1L(extraInfo2);
+            }
+            if ASCEND_IS_AIC {
+                ComputeMm2(extraInfo2);
+                if (extraInfo2.isLastS2Loop) {
+                    CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE2>(3);
+                }
+            }
+        }
+        if (extraInfo1.isValid) {
+            if ASCEND_IS_AIV {
+                vectorBlock.ProcessVec2L(extraInfo1);
+            }
+            extraInfo1.isValid = false;
+        }
+        if (extraInfo0.isValid) {
+            if ASCEND_IS_AIC {
+                if (!extraInfo0.isOriOnly) {
+                    CrossCoreWaitFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
+                }
+                ComputeMm1(extraInfo0);
+            }
+        }
     }
 }
 
