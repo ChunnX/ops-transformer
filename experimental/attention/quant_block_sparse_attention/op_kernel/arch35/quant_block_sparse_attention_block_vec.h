@@ -372,6 +372,8 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
             static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb, 
             runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
     }
+    qScaleInputQue.FreeTensor(qScaleUbTensor);
+    kScaleInputQue.FreeTensor(kScaleUbTensor);
     bmm1ResBuf.SetCrossCore();
     if constexpr (isFp8 && hasAtten) {
         this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
