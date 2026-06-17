@@ -280,16 +280,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
         copyTmpTotalSize + expertTokenNumsOutTensorSize + tripleReserveSize;
 
     // —— 用 UB 余量反推收侧 chunk(与发侧无耦合, 各算各的) ——
-    // chunk 随 token 线性增长的 UB: validTopkIndex(4B/tok) + topkIndex(4B/tok) + maskChunk(1/8 B/tok)。
-    // 解 chunk*(4+4 + 1/8)B ≤ 余量 ⇒ chunk ≤ 余量*8 / ((4+4)*8 + 1)(分母 65 即 8.125 B/token)。
     int64_t ubBudget = static_cast<int64_t>(params_.tilingData->ubSize) - DISPATCH_UB_SAFETY;
     int64_t avail = ubBudget - static_cast<int64_t>(fixedBytes);
-    int64_t ckLimit = avail * 8 / ((4 + 4) * 8 + 1);
+    // chunk 随 token数 bs 线性增长的 UB: 
+    // validTopkIndex(4B*bs) + topkIndex(4B*bs) + maskChunk(1/8 B*bs)。 4b为int32大小 1/8b为bit位存储。
+    // 总共所占余量 chunk*(4B + 4B + 1/8 B) ≤ UB余量 ⇒ chunk ≤ UB余量* 8 / ((4+4)*8 + 1)
+    int64_t ckLimit = avail * 8 / ((4 + 4) * 8 + 1); //根据上述公式计算的余量限制的 chunk 大小
     int64_t ckCap = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256));
-    int64_t ck = ckLimit < ckCap ? ckLimit : ckCap;
-    ck = ck / ALIGN_256 * ALIGN_256;                  // 向下取整到 256 倍数 ⇒ chunk/8 mask 切片天然 32B 对齐
-    ck = ck < ALIGN_256 ? ALIGN_256 : ck;             // 兜底下限(极端大 H 时固定占用已近满)
-    recvChunkTokenNum_ = static_cast<int32_t>(ck);
+    int64_t ckTemp = ckLimit < ckCap ? ckLimit : ckCap;
+    ckTemp = ckTemp / ALIGN_256 * ALIGN_256;                  // 向下取整到 256 倍数 ⇒ chunk/8 mask 切片天然 32B 对齐
+    ckTemp = ckTemp < ALIGN_256 ? ALIGN_256 : ckTemp;             // 兜底下限(极端大 H 时固定占用已近满)
+    recvChunkTokenNum_ = static_cast<int32_t>(ckTemp);
     recvChunkNum_ = static_cast<int32_t>(
         Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(recvChunkTokenNum_)));
 
@@ -387,16 +388,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         sendCntAccSize + sendMaskFixedBytes;
 
     // —— 用 UB 余量反推发侧 chunk(与收侧无耦合, 各算各的) ——
-    // chunk 随 token 线性增长的 UB: topkChunk(4B/tok) + sendGatherOut(4B/tok) + sendMask 双buf(DOUBLE_BUFFER * 1/8 B/tok)。
-    // 解 chunk*((4+4)B + DOUBLE_BUFFER/8 B) ≤ 余量 ⇒ chunk ≤ 余量*8 / ((4+4)*8 + DOUBLE_BUFFER)(分母 66 即 8.25 B/token)。
+    // chunk 随 token 线性增长的 UB: 4b为int32大小 1/8b为bit位存储。
+    // topkChunk(bs*4B) + sendGatherOut(bs*4B) + sendMask 双buf(DOUBLE_BUFFER * 1/8B * bs)。
+    // 总共所占余量 chunk*((4+4)B + DOUBLE_BUFFER/8 B) ≤ 余量 ⇒ chunk ≤ 余量*8 / ((4+4)*8 + DOUBLE_BUFFER)
     int64_t ubBudget = static_cast<int64_t>(params_.tilingData->ubSize) - DISPATCH_UB_SAFETY;
     int64_t avail = ubBudget - static_cast<int64_t>(fixedBytes);
     int64_t ckLimit = avail * 8 / ((4 + 4) * 8 + static_cast<int64_t>(DOUBLE_BUFFER));
     int64_t ckCap = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256));
-    int64_t ck = ckLimit < ckCap ? ckLimit : ckCap;
-    ck = ck / ALIGN_256 * ALIGN_256;                  // 向下取整到 256 倍数 ⇒ chunk/8 mask 切片天然 32B 对齐
-    ck = ck < ALIGN_256 ? ALIGN_256 : ck;             // 兜底下限(极端大 H 时固定占用已近满)
-    sendChunkTokenNum_ = static_cast<int32_t>(ck);
+    int64_t ckTemp = ckLimit < ckCap ? ckLimit : ckCap;
+    ckTemp = ckTemp / ALIGN_256 * ALIGN_256;                  // 向下取整到 256 倍数 ⇒ chunk/8 mask 切片天然 32B 对齐
+    ckTemp = ckTemp < ALIGN_256 ? ALIGN_256 : ckTemp;             // 兜底下限(极端大 H 时固定占用已近满)
+    sendChunkTokenNum_ = static_cast<int32_t>(ckTemp);
     sendChunkNum_ = static_cast<int32_t>(
         Ops::Base::CeilDiv(sendTotalNum_, static_cast<uint64_t>(sendChunkTokenNum_)));
 
