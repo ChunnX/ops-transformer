@@ -111,7 +111,7 @@ class MoEElasticBuffer:
             self._host_pinned_counter.reset()
             hp_addr = self._host_pinned_counter.device_ptr()
 
-        num_recv_per_rank_hp, num_recv_per_expert_hp, dst_slot, _ = \
+        num_recv_per_rank, num_recv_per_expert, dst_slot, _ = \
             _op.npu_moe_ep_dispatch(
                 self.context, x, topk_idx, topk_weights, cached_dst_slot,
                 ep_world_size, self.rank_id, ne, nm, self.ccl_buffer_size,
@@ -133,7 +133,7 @@ class MoEElasticBuffer:
 
         recv_x, recv_topk_idx, recv_topk_weights, recv_src_meta = \
             _op.npu_moe_ep_dispatch_epilogue(
-                self.context, dst_slot, cached_recv_src_metadata, num_recv_per_rank_hp, num_recv_per_expert_hp,
+                self.context, dst_slot, cached_recv_src_metadata, num_recv_per_rank, num_recv_per_expert,
                 ep_world_size, self.rank_id, ne, nm, self.ccl_buffer_size, expert_alignment=ea,
                 recv_x=recv_x, recv_topk_idx=recv_topk_idx, recv_topk_weights=recv_topk_weights,
                 recv_src_metadata=recv_src_meta
@@ -142,8 +142,8 @@ class MoEElasticBuffer:
         new_handle = EPHandle(
             dst_buffer_slot_idx=dst_slot,
             recv_src_metadata=recv_src_meta,
-            num_recv_tokens_per_rank=num_recv_per_rank_hp,
-            num_recv_tokens_per_expert=num_recv_per_expert_hp,
+            num_recv_tokens_per_rank=num_recv_per_rank,
+            num_recv_tokens_per_expert=num_recv_per_expert,
             num_experts=ne, expert_alignment=ea, num_max_tokens_per_rank=nm,
             topk_idx=(topk_idx.clone() if topk_idx is not None else handle.topk_idx),
         )
