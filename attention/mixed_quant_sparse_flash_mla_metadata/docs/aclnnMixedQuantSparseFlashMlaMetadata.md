@@ -79,7 +79,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
   <col style="width: 160px">
   <col style="width: 100px">
   <col style="width: 100px">
-  <col style="width: 190px">
+  <col style="width: 170px">
   <col style="width: 150px">
   </colgroup>
   <thead>
