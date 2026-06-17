@@ -240,8 +240,6 @@ struct QSMLAParaInfo {
     const int64_t *tileSize = nullptr;
     const int64_t *ropeHeadDim = nullptr;
     const float *softmaxScale = nullptr;
-    const int64_t *oriKvStride = nullptr;
-    const int64_t *cmpKvStride = nullptr;
     const int64_t *cmpRatio = nullptr;
     const uint32_t *oriMaskMode = nullptr;
     const uint32_t *cmpMaskMode = nullptr;

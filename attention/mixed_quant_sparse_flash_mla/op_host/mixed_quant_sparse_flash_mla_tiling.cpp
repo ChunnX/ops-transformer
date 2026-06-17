@@ -450,10 +450,10 @@ ge::graphStatus QSMLAInfoParser::GetKvstride()
 {
     auto oriKvStrides = context_->GetDynamicInputStride(ORI_KV_INDEX, 0);
     auto cmpKvStrides = context_->GetDynamicInputStride(CMP_KV_INDEX, 0);
-    if (oriKvStrides != nullptr && oriKvStrides->GetDimNum > 0) {
+    if (oriKvStrides != nullptr && oriKvStrides->GetDimNum() > 0) {
         oriKvStride_ = oriKvStrides->GetStride(0);
     }
-    if (cmpKvStrides != nullptr && cmpKvStrides->GetDimNum > 0) {
+    if (cmpKvStrides != nullptr && cmpKvStrides->GetDimNum() > 0) {
         cmpKvStride_ = cmpKvStrides->GetStride(0);
     }
     return ge::GRAPH_SUCCESS;
