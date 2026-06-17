@@ -25,9 +25,11 @@ import utils
 import argparse
 import concurrent.futures
 
-# 读取表格
-save_path = "qsas_testcase"
-ENABLED_PARAMS = utils.load_excel_test_cases("./excel/example.xlsx", "decode")
+# 读取表格 (env-overridable: QSAS_XLSX / QSAS_SHEET / QSAS_SAVE_PATH)
+save_path = os.environ.get("QSAS_SAVE_PATH", "qsas_testcase")
+_qsas_xlsx = os.environ.get("QSAS_XLSX", "./excel/example.xlsx")
+_qsas_sheet = os.environ.get("QSAS_SHEET", "decode")
+ENABLED_PARAMS = utils.load_excel_test_cases(_qsas_xlsx, _qsas_sheet)
 
 locals()["param_combinations"] = []
 for _, params in enumerate(ENABLED_PARAMS):
@@ -127,8 +129,10 @@ def sas(param_combinations):   # 初始化参数和tensor
         kv_type_str = "HIF8"
     if Testcase_Name is None :
         Testcase_Name = f"kvquantSparseAttenShardkv_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{layout_kv}_{kv_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{rope_head_dim}_{case_id:06d}"
+    # 保证同一行展开出的 SWA/CFA/SCFA 三种模式落到不同的 .pt 文件 (否则同名互相覆盖)
+    Testcase_Name = f"{Testcase_Name}_{template_run_mode}"
 
-    # 生成actLen 
+    # 生成actLen
     QS = [0]
     KVS = []
     if layout_q == "TND":
