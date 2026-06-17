@@ -26,22 +26,17 @@
 // ============================================================================
 // OP_LOGE_LIBOPAPI_REPORT fallback
 // New log.h defines this macro; old log.h does not.
-// For opapi build (OP_LOG_LIBOPAPI_ONLY): use opdev's DlogRecordInner directly
+// For opapi build (OP_LOG_LIBOPAPI_ONLY): use opdev's DOplogSub
 //   to avoid type conflicts with old log.h's GetOpInfo template.
 // For host build: use old log.h's D_OP_LOGE via Ops::Base::GetOpInfo.
 // ============================================================================
 #ifndef OP_LOGE_LIBOPAPI_REPORT
 #ifdef OP_LOG_LIBOPAPI_ONLY
 #define OP_LOGE_LIBOPAPI_REPORT(opName, fmt, ...) \
-    do { \
-        if (CheckLogLevelInner(OP_ID, OP_LOG_ERROR) == 1) { \
-            DlogRecordInner(OP_ID, OP_LOG_ERROR, \
-                "[%s:%d][%s][%s][%lu] OpName:[%s] " fmt, \
-                __FILE__, __LINE__, OPAPI_SUBMOD_NAME, __FUNCTION__, \
-                op::OpLog::GetTid(), opName, \
-                ##__VA_ARGS__); \
-        } \
-    } while (0)
+    DOplogSub(static_cast<int32_t>(OP_ID), OPAPI_SUBMOD_NAME, OP_LOG_ERROR, \
+        "[%s][%lu] OpName:[%s] " fmt, \
+        __FUNCTION__, op::OpLog::GetTid(), opName, \
+        ##__VA_ARGS__)
 #else
 #define OP_LOGE_LIBOPAPI_REPORT(opName, fmt, ...) \
     D_OP_LOGE(Ops::Base::GetOpInfo(opName), fmt, ##__VA_ARGS__)
@@ -71,7 +66,7 @@
 #undef OP_CHECK_NULL_WITH_CONTEXT
 
 // Restore opdev/op_log.h signatures after old log.h shadowed them.
-// DOplogSub, CheckLogLevelInner, DlogRecordInner, GetOpName, GetFileName,
+// DOplogSub, GetOpName, GetFileName,
 // and op::OpLog::GetTid() are from opdev/op_log.h and NOT redefined by old
 // log.h (different names), so they remain available.
 #define OpLogSub(moduleId, level, op_info, fmt, ...) \
