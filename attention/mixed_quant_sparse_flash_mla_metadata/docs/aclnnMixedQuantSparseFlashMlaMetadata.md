@@ -23,6 +23,7 @@
     3. 分配结果包含每个AIC核基本块的起始点和终止点，已经每个AIV核的FD任务信息。详细内容可以参考[调用示例](#调用示例)。
 
 ## 函数原型
+
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnMixedQuantSparseFlashMlaMetadata"执行计算
 
 ``` cpp
@@ -70,6 +71,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 ```
 
 ## aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize
+
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1450px"><colgroup>
@@ -368,7 +370,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>hasOriKv（bool）</td>
       <td>输入</td>
       <td>用于标识是否含有ori_kv。</td>
-      <td><ul><li>true: 含有ori_kv</br>false: 不含有ori_kv</li><li>建议值为true</li></ul></td>
+      <td><ul><li>true: 含有ori_kv</li><li>false: 不含有ori_kv</li><li>建议值为true</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -378,7 +380,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>hasCmpKv（bool）</td>
       <td>输入</td>
       <td>用于标识是否含有cmp_kv。</td>
-      <td><ul><li>true: 含有cmp_kv</br>false: 不含有cmp_kv</li><li>建议值为true</li></ul></td>
+      <td><ul><li>true: 含有cmp_kv</li><li>false: 不含有cmp_kv</li><li>建议值为true</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -422,6 +424,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## aclnnMixedQuantSparseFlashMlaMetadata
+
 - **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
@@ -465,6 +468,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
   - aclnnMixedQuantSparseFlashMlaMetadata默认确定性实现
 
   - Batch取值规则
@@ -484,6 +488,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     - 当传入的layoutKvOptional为"TND"时，若hasOriKv为true，必传cuSeqlensOriKvOptional；若hasCmpKv为true，必传cuSeqlensCmpKvOptional参数
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ``` cpp

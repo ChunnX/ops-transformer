@@ -15,7 +15,7 @@
 
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
-```
+```python
 cann_ops_transformer.sparse_flash_mla_metadata(num_heads_q, num_heads_kv, head_dim, *, cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None, seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None, cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None, batch_size=0, max_seqlen_q=0, max_seqlen_ori_kv=0, max_seqlen_cmp_kv=0, ori_topk=0, cmp_topk=0, cmp_ratio=1, ori_mask_mode=0, cmp_mask_mode=0, ori_win_left=-1, ori_win_right=-1, layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True) -> Tensor
 ```
 
