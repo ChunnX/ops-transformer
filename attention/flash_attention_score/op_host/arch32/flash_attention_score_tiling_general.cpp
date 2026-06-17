@@ -3374,6 +3374,9 @@ protected:
 
     bool IsCapable() override
     {
+        if (dSize != d2Size) {  // [issue#2155] D不等长: S1S2 支持 d!=dv，主动接住，覆盖 s2 性能让位
+            return true;
+        }
         if (s2Size > s2sizeLimitMin) {
             return true;
         }
