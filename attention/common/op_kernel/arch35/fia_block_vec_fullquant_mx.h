@@ -796,7 +796,6 @@ public:
                 }
             }
             if (gmDealRowCount == 0) {
-                SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
                 return;
             }
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, vecMSize, gmDealRowCount);
