@@ -328,8 +328,13 @@ static aclnnStatus CheckShape(const MhcPostBackwardParams &params)
 
     if (IsTNDFormat(xDimNum)) {
         auto xDim1 = params.x->GetViewShape().GetDim(DIM_IDX_1);
-        CHECK_COND((xDim1 == 4) || (xDim1 == 6) || (xDim1 == 8), ACLNN_ERR_PARAM_INVALID,
-            "the dim n should be 4 / 6 / 8 for 3D format");
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            CHECK_COND((xDim1 == 4) || (xDim1 == 6) || (xDim1 == 8), ACLNN_ERR_PARAM_INVALID,
+                "the dim n should be 4 / 6 / 8 for 3D format");
+        } else {
+            CHECK_COND(xDim1 == 4, ACLNN_ERR_PARAM_INVALID,
+                "the dim n should be 4 for 3D format");
+        }
         CHECK_COND(gradOutputDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
             "GradOutput dim num should be 3 for 3D format, but got %zu", gradOutputDimNum);
         CHECK_COND(hResDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
@@ -349,8 +354,13 @@ static aclnnStatus CheckShape(const MhcPostBackwardParams &params)
         CHECK_COND(CheckShape3D(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "invalid shape for 3D format");
     } else {
         auto xDim2 = params.x->GetViewShape().GetDim(DIM_IDX_2);
-        CHECK_COND((xDim2 == 4) || (xDim2 == 6) || (xDim2 == 8), ACLNN_ERR_PARAM_INVALID,
-            "the dim n should be 4 / 6 / 8 for 4D format");
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            CHECK_COND((xDim2 == 4) || (xDim2 == 6) || (xDim2 == 8), ACLNN_ERR_PARAM_INVALID,
+                "the dim n should be 4 / 6 / 8 for 4D format");
+        } else {
+            CHECK_COND(xDim2 == 4, ACLNN_ERR_PARAM_INVALID,
+                "the dim n should be 4 for 4D format");
+        }
         CHECK_COND(gradOutputDimNum == DIM_NUM_4, ACLNN_ERR_PARAM_INVALID,
             "GradOutput dim num should be 4 for 4D format, but got %zu", gradOutputDimNum);
         CHECK_COND(hResDimNum == DIM_NUM_4, ACLNN_ERR_PARAM_INVALID,
