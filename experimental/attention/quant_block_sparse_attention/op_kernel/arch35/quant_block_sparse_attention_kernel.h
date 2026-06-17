@@ -124,6 +124,7 @@ public:
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> sparseSeqLenGm;
     GlobalTensor<int32_t> metadataGm;
+    GlobalTensor<int32_t> blockTableGm;
     __gm__ int32_t *actualSeqQlenAddr;
     __gm__ int32_t *actualSeqKvlenAddr;
     int32_t aicIdx;
@@ -200,6 +201,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
     metadataGm.SetGlobalBuffer((__gm__ int32_t *)metadata);
+    blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     if constexpr (layout == BSALayout::TND) {
         actualSeqQlenAddr = (__gm__ int32_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengthsKv;
@@ -398,8 +400,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 
     // 将sparseBlkIdx映射为phyBlkNumIdx  并按照phyBlkNumIdx的大小顺序排列
     uint64_t blockTableBaseOffset = runInfo.boIdx * constInfo.maxBlockNumPerBatch;
-    runInfo.phyBlkNumIdx1 = runInfo.sparseBlkIdx1 == -1 ? -1 : cubeBlock.blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx1);
-    runInfo.phyBlkNumIdx2 = runInfo.sparseBlkIdx2 == -1 ? -1 : cubeBlock.blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx2);
+    runInfo.phyBlkNumIdx1 = runInfo.sparseBlkIdx1 == -1 ? -1 : blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx1);
+    runInfo.phyBlkNumIdx2 = runInfo.sparseBlkIdx2 == -1 ? -1 : blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx2);
     IdxSortByPhyBlkNumIdx(runInfo);
 }
 
