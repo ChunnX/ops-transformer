@@ -368,10 +368,10 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxInit
     this->tPipe->InitBuffer(this->sumBrdcst, 1, SOFTMAX_BRDCST_BUF_SIZE); // [64, 8] SUMBRDCST_SIZE:2048
     this->tPipe->InitBuffer(this->softmaxMaxBuf[0], SOFTMAX_ROW_BUF_SIZE); // [64, 1] SOFTMAXMAXBUF_SIZE:256
     this->tPipe->InitBuffer(this->softmaxMaxBuf[1], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 1 is second buffer
-    this->tPipe->InitBuffer(this->softmaxMaxBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] the third buffer
+    this->tPipe->InitBuffer(this->softmaxMaxBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 2 is the third buffer
     this->tPipe->InitBuffer(this->softmaxExpBuf[0], SOFTMAX_ROW_BUF_SIZE); // [64, 1] SOFTMAXEXPBUF_SIZE:256
     this->tPipe->InitBuffer(this->softmaxExpBuf[1], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 1 is second buffer
-    this->tPipe->InitBuffer(this->softmaxExpBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] the third buffer
+    this->tPipe->InitBuffer(this->softmaxExpBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 2 is the third buffer
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
