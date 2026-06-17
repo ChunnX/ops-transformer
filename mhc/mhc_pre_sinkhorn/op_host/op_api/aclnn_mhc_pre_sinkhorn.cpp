@@ -239,7 +239,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
 
 static bool IsFormatSupport(const aclTensor *tensor, const std::string &tensorName)
 {
-    if (tensor != nullptr && tensor->GetStorageFormat() != op::Format::FORMAT_ND) {
+    if (tensor != nullptr && op::IsPrivateFormat(tensor->GetStorageFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s's format should be ND, but got %s.",
                 tensorName.c_str(), op::ToString(tensor->GetStorageFormat()).GetString());
         return false;
