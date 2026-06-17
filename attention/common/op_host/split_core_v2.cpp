@@ -673,7 +673,6 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     OP_LOGI("FusedInferAttentionScore", "preToken: %lld\n", baseInfo.preToken);
     OP_LOGI("FusedInferAttentionScore", "nextToken: %lld\n", baseInfo.nextToken);
     OP_LOGI("FusedInferAttentionScore", "actualSeqPrefixSize: %lld\n", baseInfo.actualSeqPrefixSize);
-    OP_LOGI("FusedInferAttentionScore", "result.usedCoreNum: %d \n", result.usedCoreNum);
 
     // 打印 actualSeqS1Size
     if (baseInfo.actualSeqS1Size.empty()) {
@@ -737,26 +736,6 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
         }
         ClearTmpResult(tmpResult);
     }
-
-    // 判断是否要开FD
-    //  splitContext.splitParam.streamK = false;
-    //  CalcSplitPlan(result.usedCoreNum, INT64_MAX, splitContext, tmpResult);
-    //  uint32_t gapCoreNum = 27U; // 实验值
-    //  uint32_t gapBlockNum = 9U; // 实验计算值： 9 * BlockCost(64,256) = 10 * fdblockCost
-    //  uint32_t maxFdSize = *std::max_element(result.fdRes.mSize.begin(), result.fdRes.mSize.end());
-
-    // if (result.usedCoreNum - tmpResult.usedCoreNum < gapCoreNum){
-    //     if (tmpResult.maxCost - result.maxCost < gapBlockNum *
-    //     CalcCost(std::min(maxFdSize,param.mBaseSize),param.s2BaseSize)){
-    //         CopyTmpResult(tmpResult,result);
-    //     }
-    // }
-    // else {
-    //     if (tmpResult.maxCost - result.maxCost < (gapBlockNum + 1) *
-    //     CalcCost(std::min(maxFdSize,param.mBaseSize),param.s2BaseSize)){
-    //         CopyTmpResult(tmpResult,result);
-    //     }
-    // }
 
     // 3、存在FD任务，对FD进行负载均衡分配
     if (result.fdRes.fdNum > 0U) {

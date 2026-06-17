@@ -117,7 +117,7 @@ private:
         std::vector<uint32_t> bN2BlockOfEachBatch {};           // 整个batch的开销
         std::vector<int64_t> bN2LastBlockCostOfEachBatch {};    // batch最后一块的开销
         std::vector<uint32_t> sectionBlockNum {};
-        std::vector<uint32_t> sectionCost {};
+        std::vector<int64_t> sectionCost {};
 
         explicit CostInfo(uint32_t batchSize)
             : bN2CostOfEachBatch(batchSize),
@@ -293,11 +293,12 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     }
 
     // 计算所有head的最大数据量，用于判断是否需要开启section切分
-    uint32_t maxHeadTokenCost = 0U;
-    uint32_t headDim = baseInfo.GetHeadDim();
+    int64_t maxHeadTokenCost = 0U;
+    int64_t headDim = static_cast<int64_t>(baseInfo.GetHeadDim());
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
-        uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
-        uint32_t tokenCost = s2Size * headDim * GetDataTypeByteSize(baseInfo.GetKvDataType()) * 2U;  // 2: K和V两份数据
+        int64_t s2Size = static_cast<int64_t>(baseInfo.GetKvSeqSize(bIdx));
+        int64_t tokenCost = s2Size * headDim *
+            static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;  // 2: K和V两份数据
         if (tokenCost > maxHeadTokenCost) {
             maxHeadTokenCost = tokenCost;
         }
@@ -311,17 +312,17 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     }
 
     // calc section
-    uint32_t tokenSize = 0U;
+    int64_t tokenSize = 0L;
     uint32_t bn2Idx = 0U;
-    uint32_t tokenCost;
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
-        uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
+        int64_t s2Size = static_cast<int64_t>(baseInfo.GetKvSeqSize(bIdx));
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
-            tokenCost = s2Size * headDim * GetDataTypeByteSize(baseInfo.GetKvDataType()) * 2U;     // 2: k and v
-            if (!IsWithinTolerance(m_param.l2Byte, 0U, tokenSize + tokenCost) && tokenSize != 0U) {
+            int64_t tokenCost = s2Size * headDim *
+                static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;  // 2: K和V两份数据
+            if (!IsWithinTolerance(static_cast<int64_t>(m_param.l2Byte), 0L, tokenSize + tokenCost) && tokenSize != 0) {
                 gridInfo.sectionBn2Idx.emplace_back(bn2Idx);
                 gridInfo.sectionNum++;
-                tokenSize = 0U;
+                tokenSize = 0L;
             }
             tokenSize += tokenCost;
             bn2Idx++;
@@ -410,9 +411,9 @@ inline void SectionStreamKImpl::CalcS1GCache(uint32_t s1GIdx, const ComputeConte
 
     // 计算S2方向满块、尾块数量
     s1GCache.s1GBlock = s1GCache.s2End - s1GCache.s2Start;
-    uint32_t curTailS2Num = (gridInfo.s2TailSize[batchCache.bIdx] != 0U &&
-        s1GCache.s2End == gridInfo.s2BaseNum[batchCache.bIdx]) ? 1U : 0U;
-    uint32_t curNormalS2Num = s1GCache.s1GBlock - curTailS2Num;
+    int64_t curTailS2Num = (gridInfo.s2TailSize[batchCache.bIdx] != 0U &&
+        s1GCache.s2End == gridInfo.s2BaseNum[batchCache.bIdx]) ? 1L : 0L;
+    int64_t curNormalS2Num = static_cast<int64_t>(s1GCache.s1GBlock - curTailS2Num);
     if (s1GIdx == (gridInfo.mBaseNum[batchCache.bIdx] - 1U) && gridInfo.mTailSize[batchCache.bIdx] != 0U) {
         s1GCache.s1GCost = batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
             batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] * curTailS2Num;
