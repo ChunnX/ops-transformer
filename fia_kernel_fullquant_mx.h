@@ -175,6 +175,12 @@ public:
         tPipe.InitBuffer(UB_MM1Res0, mm1ResultSize);
         tPipe.InitBuffer(UB_MM1Res1, mm1ResultSize);
         tPipe.InitBuffer(UB_MM2Res, mm2ResultSize);
+
+        // 填充 pscale 为全 1 MX scale（0x7f7f = half 格式的全 1）
+        if ASCEND_IS_AIC {
+            LocalTensor<int16_t> pscaleTensor = L1_PScale.Get<int16_t>();
+            InitConstValue(pscaleTensor, {1, pScaleSize / 32, 0, 0x7f7f});
+        }
     }
 
     __aicore__ inline void InitConstInfo()
@@ -655,9 +661,10 @@ public:
                     cubeBlock.IterateBmm1(mm1ResTensor, bmm1_id % 2, bIdxp[loop % 3], n2Idxp[loop % 3],
                                     gS1Idxp[loop % 3], s2Idxp[loop % 3], actMSizexp[loop % 3], inner, subLoop);
                 } else {
-                    // AIV: 传 LocalTensor<float>，p1 不需要（vec 内部直接用共享的 L1_P TBuf）
+                    // AIV: 传 LocalTensor<float> 和 p1 LocalTensor
                     LocalTensor<float> mm1ResTensor = (subLoop == 0) ? UB_MM1Res0.Get<float>() : UB_MM1Res1.Get<float>();
-                    vecFaBlock.ProcessVec1(mm1ResTensor, bmm1_id % 2, loop % 3, inner,
+                    LocalTensor<float8_e4m3_t> p1Tensor = (loop % 3 == 0) ? L1_P0.Get<float8_e4m3_t>() : ((loop % 3 == 1) ? L1_P1.Get<float8_e4m3_t>() : L1_P2.Get<float8_e4m3_t>());
+                    vecFaBlock.ProcessVec1(mm1ResTensor, p1Tensor, bmm1_id % 2, loop % 3, inner,
                                             loopIdx[loop % 3], mloopIdx[loop % 3], subLoop);
                 }
             }

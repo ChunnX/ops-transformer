@@ -50,8 +50,6 @@ public:
     __gm__ uint64_t *actualSeqLengthsGmQ;
     TPipe *tPipePtr = nullptr;
     __aicore__ inline void SetTPipe(TPipe& pipe) { tPipePtr = &pipe; }
-    TBuf<TPosition::A1> L1_P;
-    TBuf<TPosition::VECIN> UB_MM2Res;
     TBuf<TPosition::VECIN> UB_stage1OutQue0;
     TBuf<TPosition::VECIN> UB_stage1OutQue1;
     TBuf<TPosition::VECIN> UB_stage2OutBuf;
@@ -118,7 +116,7 @@ public:
         // }
 
     }
-    __aicore__ inline void ub_l1_vec1(uint32_t subLoop, uint32_t createdTaskCount)
+    __aicore__ inline void ub_l1_vec1(LocalTensor<float8_e4m3_t> p1Tensor, uint32_t subLoop, uint32_t createdTaskCount)
     {
         // block_count = 256 / 32;
         // block_len = (uint16_t)16;
@@ -130,7 +128,7 @@ public:
         //set_mark(0x11223390);
         //set_mark(dstOffset);
         constexpr uint32_t stage1OutQueSize = 16640;
-        LocalTensor<float8_e4m3_t> dstTensor = L1_P.Get<float8_e4m3_t>()[dstOffset];
+        LocalTensor<float8_e4m3_t> dstTensor = p1Tensor[dstOffset];
         LocalTensor<float8_e4m3_t> srcTensor = UB_stage1OutQue0.Get<float8_e4m3_t>()[createdTaskCount * stage1OutQueSize];
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = 8;
@@ -547,7 +545,7 @@ public:
     }
 
 //subloop1   搬运mask  比 subloop0还快  ，导致数据踩踏
-    __aicore__ inline void ProcessVec1(LocalTensor<float> mm1ResTensor, int bmm1_id, int ipuse,
+    __aicore__ inline void ProcessVec1(LocalTensor<float> mm1ResTensor, LocalTensor<float8_e4m3_t> p1Tensor, int bmm1_id, int ipuse,
                          uint32_t inner, uint32_t loop, uint32_t mloop, uint32_t subLoop)
     {
         // bmm1ResBuf.WaitCrossCore();
@@ -572,7 +570,7 @@ public:
         set_intra_block(PIPE_V, bmm1_idused + 1);
 
         wait_flag(PIPE_V, PIPE_MTE3, (event_t)2);
-        ub_l1_vec1(subLoop, loop % 2);
+        ub_l1_vec1(p1Tensor, subLoop, loop % 2);
         set_flag(PIPE_MTE3, PIPE_V, 2 + loop % 2);
 
 
@@ -817,40 +815,35 @@ public:
     {
         constexpr uint32_t stage1OutSize = (64 + 1) * 256;
         constexpr uint32_t maskSize = 64  * 256;
-        constexpr uint32_t mm1ResultSize = 128 / 2 * 512 * 4 / 2;
-        constexpr uint32_t mm2ResultSize = 128 / 2 * 128 * 4;
 
-        constexpr uint32_t mm2LeftSize = 128 * 512;
-        tPipePtr->InitBuffer(L1_P, mm2LeftSize * 3);
-        tPipePtr->InitBuffer(UB_MM2Res, mm2ResultSize);
         tPipePtr->InitBuffer(UB_stage1OutQue0, stage1OutSize);
         tPipePtr->InitBuffer(UB_stage1OutQue1, stage1OutSize);
         tPipePtr->InitBuffer(UB_attenMask, maskSize);
-        tPipePtr->InitBuffer(UB_softmaxSum0, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_softmaxSum1, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_softmaxSum2, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_softmaxMax0, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_softmaxMax1, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_softmaxMax2, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_softmaxExp0, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_softmaxExp1, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_softmaxExp2, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_preLoopMax, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_preLoopSum, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_firstLoopSum, 256 * sizeof(float));
-        tPipePtr->InitBuffer(UB_common, 512 * sizeof(float));
-        tPipePtr->InitBuffer(UB_stage2OutBuf, 64 * 128 * sizeof(float));
+        tPipePtr->InitBuffer(UB_softmaxSum0, 256);
+        tPipePtr->InitBuffer(UB_softmaxSum1, 256);
+        tPipePtr->InitBuffer(UB_softmaxSum2, 256);
+        tPipePtr->InitBuffer(UB_softmaxMax0, 256);
+        tPipePtr->InitBuffer(UB_softmaxMax1, 256);
+        tPipePtr->InitBuffer(UB_softmaxMax2, 256);
+        tPipePtr->InitBuffer(UB_softmaxExp0, 256);
+        tPipePtr->InitBuffer(UB_softmaxExp1, 256);
+        tPipePtr->InitBuffer(UB_softmaxExp2, 256);
+        tPipePtr->InitBuffer(UB_preLoopMax, 256);
+        tPipePtr->InitBuffer(UB_preLoopSum, 256);
+        tPipePtr->InitBuffer(UB_firstLoopSum, 256);
+        tPipePtr->InitBuffer(UB_common, 512);
+        tPipePtr->InitBuffer(UB_stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
         tPipePtr->InitBuffer(UB_vselrIndexes0, 128);
-        tPipePtr->InitBuffer(UB_vselrIndexes1, 128);
-        tPipePtr->InitBuffer(UB_pScale, 256 * sizeof(float));
+        tPipePtr->InitBuffer(UB_vselrIndexes1, 64);
+        // UB_pScale: 和原始 CCE 一样，声明但不分配
 
         LocalTensor<uint8_t> vselrIndexes0Tensor = UB_vselrIndexes0.Get<uint8_t>();
         LocalTensor<uint8_t> vselrIndexes1Tensor = UB_vselrIndexes1.Get<uint8_t>();
         for (int i = 0; i < 128; i++) {
-            vselrIndexes0Tensor[i] = i * 2;
+            vselrIndexes0Tensor.SetValue(i, i * 2);
         }
         for (int i = 0; i < 64; i++) {
-            vselrIndexes1Tensor[i] = i * 4;
+            vselrIndexes1Tensor.SetValue(i, i * 4);
         }
     }
 
@@ -908,6 +901,7 @@ public:
     using OUT_T = OUTPUT_T;
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
     __aicore__ inline FAFullQuantMxBlockVecDummy(ConstInfoX &constInfo) {};
+    __aicore__ inline void SetTPipe(TPipe&) {}
 };
 } // namespace BaseApi
 #endif // FIA_BLOCK_VEC_FULLQUANT_MX_H_
