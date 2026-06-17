@@ -24,7 +24,7 @@
 namespace InplacePartialRotaryMulGrad {
 using namespace AscendC;
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBBoardcast>
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
 class InplacePartialRotaryMulGradABAAndBA {
 public:
     __aicore__ inline InplacePartialRotaryMulGradABAAndBA() {}
@@ -65,9 +65,9 @@ private:
     int64_t ubFactorN_{0};
 };
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBBoardcast>
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
 __aicore__ inline void
-InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBBoardcast>::Init(
+InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, IsBBoardcast>::Init(
     TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling, GM_ADDR dy, GM_ADDR cos, GM_ADDR sin,
     GM_ADDR dyOut)
 {
@@ -122,9 +122,9 @@ InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBBoardcast
     }
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBBoardcast>
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
 __aicore__ inline void
-InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBBoardcast>::Process()
+InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, IsBBoardcast>::Process()
 {
     if (blockIdx_ >= tilingData_->usedCoreNum) {
         return;
@@ -141,9 +141,9 @@ InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBBoardcast
     }
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBBoardcast>
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
 __aicore__ inline void
-InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBBoardcast>::ProcessInSLoop(
+InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, IsBBoardcast>::ProcessInSLoop(
     int64_t sStart, int64_t sLength)
 {
     uint32_t ubLoopCntB =
@@ -201,9 +201,9 @@ InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBBoardcast
     }
 }
 
-template <typename DTYPE_DY, typename DTYPE_COS, typename DTYPE_SIN, bool IsBBoardcast>
+template <typename DTYPE_DY, typename DTYPE_COS, bool IsBBoardcast>
 __aicore__ inline void
-InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, DTYPE_SIN, IsBBoardcast>::ProcessInSBLoop(
+InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, IsBBoardcast>::ProcessInSBLoop(
     int64_t sStart, int64_t sLength, int64_t bStart, int64_t bLength,
     const LocalTensor<DTYPE_COS> &cosBuffer, const LocalTensor<DTYPE_COS> &sinBuffer)
 {
