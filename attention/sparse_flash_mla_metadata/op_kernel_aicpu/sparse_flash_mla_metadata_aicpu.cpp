@@ -302,7 +302,7 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND910) {
-        mBaseSize_ = groupSize_;
+        mBaseSize_ = isSparseCmpKv_ ? groupSize_ : (256U / groupSize_) * groupSize_;
         s2BaseSize_ = 512U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (numHeadsQ_ == 128) {
