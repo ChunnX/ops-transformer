@@ -109,6 +109,7 @@ public:
         GM_ADDR biasGmAddr{nullptr};
         uint32_t baseM;
         uint32_t baseN;
+        float clampLimit{0.0f};
         Arguments() = default;
     };
 
@@ -196,6 +197,9 @@ private:
     uint16_t fpEmax_ = 0;
 
     BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
+    float clampLimit_{0.0f};
+    AscendC::MicroAPI::RegTensor<float> clampPos_;
+    AscendC::MicroAPI::RegTensor<float> clampNeg_;
 };
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -206,6 +210,7 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Param
         return;
     }
     params_ = &params;
+    clampLimit_ = params.clampLimit;
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
@@ -569,10 +574,16 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     // swiglu
     __VEC_SCOPE__
     {
+        AscendC::MicroAPI::Duplicate<float>(clampPos_, clampLimit_);
+        AscendC::MicroAPI::Duplicate<float>(clampNeg_, -clampLimit_);
+        const uint16_t calBlockNum = sizeof(float) / sizeof(DataTypeIn); // 2
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) { // 需要计算m次
-            uint32_t elementNum = nSize;
-            AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) { // 每次计算m=1, n=64的数据大小
+                uint32_t remaining = static_cast<uint32_t>(nSize) - vfBlockIdx * sizePerRepeat;
+                uint32_t validElements = remaining < sizePerRepeat ? remaining : sizePerRepeat;
+                uint32_t validFloats = validElements / calBlockNum;
+                AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(validFloats);
+                AscendC::MicroAPI::MaskReg mask1 = AscendC::MicroAPI::UpdateMask<float>(validFloats);
                 AscendC::MicroAPI::RegTensor<DataTypeIn> swishInput0, gateInput0, swishInput1, gateInput1;
                 AscendC::MicroAPI::RegTensor<float> swishData0, swishData1, gateData0, gateData1;
 
@@ -587,8 +598,17 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(swishData1, swishInput1, mask);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(gateData0, gateInput0, mask);
                 AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(gateData1, gateInput1, mask);
+                // clamp
+                // x0 = min(x0, clampLimit)
+                AscendC::MicroAPI::Min<float>(swishData0, swishData0, clampPos_, mask1);
+                AscendC::MicroAPI::Min<float>(swishData1, swishData1, clampPos_, mask1);
+                // x1 = clamp(x1, -clampLimit, clampLimit)
+                AscendC::MicroAPI::Min<float>(gateData0, gateData0, clampPos_, mask1);
+                AscendC::MicroAPI::Max<float>(gateData0, gateData0, clampNeg_, mask1);
+                AscendC::MicroAPI::Min<float>(gateData1, gateData1, clampPos_, mask1);
+                AscendC::MicroAPI::Max<float>(gateData1, gateData1, clampNeg_, mask1);
+
                 // 计算
-                uint16_t calBlockNum = sizeof(float) / sizeof(DataTypeIn); // 2
                 uint16_t calBlockSize = sizePerRepeat / calBlockNum; // 128/2 = 64
                 for (uint16_t i = 0; i < calBlockNum; i++) {
                     AscendC::MicroAPI::RegTensor<bfloat16_t> output; // output:swish(x)*y
