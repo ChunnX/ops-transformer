@@ -162,6 +162,7 @@ inline std::string ToString(const gert::Shape &shape)
     return ToString(ToVector(shape));
 }
 
+
 } // namespace optiling
 
 #endif // FUSED_INFER_ATTENTION_SCORE_TILING_UTILS_H
