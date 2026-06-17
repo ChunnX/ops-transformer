@@ -454,6 +454,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
                         T.copy(DQ_L0C, dQueryIndex_ws_partial[bz, s1_row, n_idx_k, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block])
 
+                T.set_cross_flag("FIX", 3)
+
     return main
 
 # Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
