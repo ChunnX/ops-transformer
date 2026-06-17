@@ -198,7 +198,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     OP_CHECK_IF(!((*opParamInfo_.maskMode == 0) || (*opParamInfo_.maskMode == SPARSE_MODE_LOWER)),
                OP_LOGE(opName_, "input attr mask_mode only supported 0 or 3."), return ge::GRAPH_FAILED);
     OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128),
-                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, "
+                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128, "
                         "but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

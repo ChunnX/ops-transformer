@@ -144,7 +144,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) *
-                     LIV2Common::Align((uint64_t)gSize_,(uint64_t)16) * sizeof(W_T));
+                     LIV2Common::Align((uint64_t)gSize_, (uint64_t)16) * sizeof(W_T));
     weightUB_ = weightBuf_.Get<W_T>();
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
