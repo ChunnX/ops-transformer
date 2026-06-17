@@ -486,7 +486,7 @@ def _preprocess_gather(key, key_index, key_rope, sparse_indices, B, S1, S2, N2, 
     t_dtype = key.dtype
 
     sparse_idx_3d = sparse_indices[:, :, 0, :]            # [B, S1, K]
-    valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(t_dtype)
+    valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1)        # bool, no .to() cast needed
     sparse_idx_safe = sparse_idx_3d.clamp(min=0)
 
     key_2d = key[:, :, 0, :]                              # [B, S2, DQuery]
@@ -676,6 +676,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         if _PROFILE:
             _t_gather_start = torch.npu.Event(enable_timing=True)
             _t_gather_end = torch.npu.Event(enable_timing=True)
+            _t_prep_start = torch.npu.Event(enable_timing=True)
+            _t_prep_end = torch.npu.Event(enable_timing=True)
+            _t_reduce_start = torch.npu.Event(enable_timing=True)
+            _t_reduce_end = torch.npu.Event(enable_timing=True)
             _t_gather_start.record()
         d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
         gather_key, gather_key_index, gather_key_rope = _preprocess_gather(
@@ -684,6 +688,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         )
         if _PROFILE:
             _t_gather_end.record()
+            _t_prep_start.record()
 
         gather_key_index_t = gather_key_index.permute(0, 1, 3, 2).contiguous()
 
@@ -730,6 +735,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                                         d_query_index_ws, d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out)
 
         if _PROFILE:
+            _t_prep_end.record()
             _t_kernel_start = torch.npu.Event(enable_timing=True)
             _t_kernel_end = torch.npu.Event(enable_timing=True)
             _t_kernel_start.record()
@@ -744,6 +750,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         )
         if _PROFILE:
             _t_kernel_end.record()
+            _t_reduce_start.record()
 
         d_query_index = results[0]
         d_weight_partial = results[1]
@@ -762,6 +769,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         kl_loss = loss_values.sum()
 
         if _PROFILE:
+            _t_reduce_end.record()
             _t_scatter_start = torch.npu.Event(enable_timing=True)
             _t_scatter_end = torch.npu.Event(enable_timing=True)
             _t_scatter_start.record()
@@ -779,9 +787,12 @@ def sparse_lightning_indexer_grad_kl_loss(
         if _PROFILE:
             torch.npu.synchronize()
             g_ms = _t_gather_start.elapsed_time(_t_gather_end)
+            p_ms = _t_prep_start.elapsed_time(_t_prep_end)
             k_ms = _t_kernel_start.elapsed_time(_t_kernel_end)
+            r_ms = _t_reduce_start.elapsed_time(_t_reduce_end)
             s_ms = _t_scatter_start.elapsed_time(_t_scatter_end)
-            print(f"[PROFILE] gather={g_ms:.3f}ms kernel={k_ms:.3f}ms scatter={s_ms:.3f}ms total={g_ms+k_ms+s_ms:.3f}ms")
+            total_ms = g_ms + p_ms + k_ms + r_ms + s_ms
+            print(f"[PROFILE] gather={g_ms:.3f}ms prep={p_ms:.3f}ms kernel={k_ms:.3f}ms reduce={r_ms:.3f}ms scatter={s_ms:.3f}ms total={total_ms:.3f}ms")
 
         return d_query_index, d_key_index, d_weight, loss_tensor
 
