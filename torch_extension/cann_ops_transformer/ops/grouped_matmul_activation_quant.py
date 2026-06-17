@@ -165,7 +165,7 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
             m = x.shape[0]
             k = x.shape[1]
             e = group_list.shape[0]
-            torch._check(1 <= e <= 2048, lambda: f"group_list first dim must be in [1, 2048], but got {e}.")
+            torch._check(1 <= e <= 1024, lambda: f"group_list first dim must be in [1, 1024], but got {e}.")
             torch._check(weight[0].shape[0] == e,
                          lambda: f"weight dim 0 must equal group number {e}, but got {weight[0].shape[0]}.")
             torch._check(weight_scale[0].shape[0] == e,
