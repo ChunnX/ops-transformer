@@ -198,6 +198,9 @@ bool LightningIndexerV2MetadataCpuKernel::ParamsInit()
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 2048U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (groupSize_ == 64) {
+            s1BaseSize_ = 2;
+        }
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 128U;
     } else {
