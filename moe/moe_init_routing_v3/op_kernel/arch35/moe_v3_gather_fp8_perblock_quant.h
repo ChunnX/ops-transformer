@@ -212,6 +212,8 @@ MoeGatherOutFP8PerBlockQuant<T, U>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr
                                             Align(actualExpertNum_, sizeof(int32_t)),
                                         actualExpertNum_);
 
+    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
+        expertTotalCountGm_);
     int64_t expertTotalCount_ = expertTotalCountGm_.GetValue(0);
     perCoreRow_ = Ceil(expertTotalCount_, tilingData->coreNum);
     needCoreNum_ = Ceil(expertTotalCount_, perCoreRow_);
@@ -282,6 +284,7 @@ template <typename T, typename U>
 __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyExpandedXandFP8Quant(int64_t progress)
 {
     LocalTensor<int32_t> indicesLocal = sortedRowIdxInQueue_.DeQue<int32_t>();
+    SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
     for (int64_t index = 0; index < currentLoopRows_; index++) {
         int32_t srcIdx = indicesLocal.GetValue(index);
@@ -310,15 +313,12 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyIn(int64_t srcIdx
     int64_t loopColsTail = loopCols % FP8_PERBLOCK_BLOCK_SIZE;
     if (loopColsTail != 0) {
         padParams.isPad = true;
-        if (loopColsTail > numElemPerUbBlock_) {
-            padParams.rightPadding = numElemPerUbBlock_ - (loopColsTail - numElemPerUbBlock_);
-        } else {
-            padParams.rightPadding = numElemPerUbBlock_;
-        }
+        int64_t tailBytes = loopColsTail * sizeof(T);
+        int64_t alignedTailBytes = (tailBytes + ubBlockSize_ - 1) / ubBlockSize_ * ubBlockSize_;
+        padParams.rightPadding = (alignedTailBytes - tailBytes) / sizeof(T);
     }
 
-    DataCopyPad<T, PaddingMode::Compact>(inLocal, xInGm_[srcIdx * cols_ + colIdx * perLoopCols_], copyParams,
-                                         padParams);
+    DataCopyPad(inLocal, xInGm_[srcIdx * cols_ + colIdx * perLoopCols_], copyParams, padParams);
 
     inQueue_.EnQue(inLocal);
 }
