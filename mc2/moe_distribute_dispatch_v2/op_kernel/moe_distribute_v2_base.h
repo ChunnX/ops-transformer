@@ -113,7 +113,7 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     uint64_t doorBellInfo = 0;
     doorBellInfo |= qp_ctx_entry->wqn; // [0:23] DB_TAG (qp_num)
     doorBellInfo |= 0UL << 24UL; // [24:27] DB_CMD = HNS_ROCE_V2_SQ_DB (0)
-    doorBellInfo |= (curHead % 65536UL) << 32UL; // [32:47] DB_PI = sq.head
+    doorBellInfo |= (curHead % 4096UL) << 32UL; // [32:47] DB_PI = sq.head
     doorBellInfo |= (uint64_t)(qp_ctx_entry->sl) << 48UL; // [48:50] DB_SL = qp.sl
 
     __gm__ uint64_t* doorBellAddr = (__gm__ uint64_t* )(qp_ctx_entry->dbAddr);
