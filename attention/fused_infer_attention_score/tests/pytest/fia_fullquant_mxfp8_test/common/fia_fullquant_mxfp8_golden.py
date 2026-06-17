@@ -695,23 +695,22 @@ def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total,
 
 
 def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
-    """Online softmax: 计算 m, P, s 更新
+    """Online softmax: 计算 m, P, s 更新 (MXFP8: stored max 不含 -ln(p_scale), P 含 p_scale 因子)
     1. mask 位置填 -inf
     2. 求 block 内 max (m_block_j)
-    3. TND layout: m 对齐到 ln2 整数倍 (ceil)，模拟 NPU FP8 量化精度损失
-    4. 减去 ln(p_scale) 模拟 P 量化
-    5. 与前一个 block 的 m 取 max
-    6. 计算 P = exp(S - m)，求 s = sum(P)
+    3. m 对齐到 ln2 整数倍 (ceil)，模拟 NPU MXFP8 量化精度损失
+    4. 与前一个 block 的 m 取 max (stored max 不含 -ln(p_scale))
+    5. 计算 P = exp(S - m + ln_p_scale)，模拟 NPU: exp 用 adjusted max (含 -ln(p_scale))，但 stored max 不含
+    6. 求 s = sum(P)
     7. P 转 FP8 再转回 FP32，模拟 NPU 侧 P 的量化损失
     """
     S_ij = S_ij.masked_fill(mask_j, float('-inf'))
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
     m_block_j = torch.ceil(m_block_j / LN2) * LN2
-    m_block_j = m_block_j - ln_p_scale
     m_block_j = torch.max(mi, m_block_j)
 
-    P_ij_raw = torch.exp(S_ij - m_block_j)
+    P_ij_raw = torch.exp(S_ij - m_block_j + ln_p_scale)
     s_block_j = torch.sum(P_ij_raw, dim=-1, keepdims=True)
     P_ij_drop = P_ij_raw.to(FP8_DTYPE).to(torch.float32)
 
@@ -749,9 +748,10 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     dv = v_tensor.shape[-1]
     Sq, Skv = q_tensor.shape[2], k_tensor.shape[2]
 
+    minValue = torch.tensor(-3.402823466e+38, dtype=torch.float32)
     out = torch.zeros([b, n, Sq, dv], dtype=torch.float32)
     o_sum = torch.zeros(q_tensor.shape[:-1])[..., None]
-    o_max = torch.ones(q_tensor.shape[:-1])[..., None] * torch.finfo(torch.float).min
+    o_max = torch.full(q_tensor.shape[:-1], minValue.item(), dtype=torch.float32)[..., None]
 
     TILES_Q = (Sq + Q_BLOCK_SIZE - 1) // Q_BLOCK_SIZE
     TILES_KV = (Skv + K_BLOCK_SIZE - 1) // K_BLOCK_SIZE
@@ -852,7 +852,11 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     out = out / (out_sum + EPSILON)
 
     o_max = torch.cat(m_BLOCKS, dim=2)
-    lse = o_max + torch.log(out_sum + EPSILON)
+    all_masked = (o_max <= minValue.item())
+    lse = torch.where(all_masked,
+                      torch.full_like(o_max, float('inf')),
+                      o_max + torch.log(out_sum + EPSILON))
+    out = torch.where(all_masked, torch.zeros_like(out), out)
     logger.info("[CPU Golden] output=%s", out.shape)
     return out, lse
 
