@@ -42,7 +42,7 @@ private:
 
     TPipe *pipe_{nullptr};
     TQue<QuePosition::VECIN, 2> gradInQueue_;
-    TQue<QuePosition::VECIN, 2> xGradOutQueue_;
+    TQue<QuePosition::VECOUT, 2> xGradOutQueue_;
     TQue<QuePosition::VECIN, IsBoardCast ? 1 : 2> cosInQueue_;
     TQue<QuePosition::VECIN, IsBoardCast ? 1 : 2> sinInQueue_;
 
