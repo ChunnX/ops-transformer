@@ -141,47 +141,59 @@ private:
         LocalTensor<float> lseLocal = inQueueLse.AllocTensor<float>();
         LocalTensor<float> inLocal = inQueueIn.AllocTensor<float>();
 
-        uint64_t inLocalFp16Offest = tileLength * hDim * sp;
-        if ((inLocalFp16Offest * NUM2) % NUM32 == NUM16) {
-            inLocalFp16Offest += NUM8;
-        }
-        LocalTensor<outType> inLocalFp16 = inLocal.template ReinterpretCast<outType>()[inLocalFp16Offest];
-
-        if (curLength % ALIGNED_TO_8 == 0) {
-            for (int32_t i = 0; i < sp; i++) {
-                lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
-                inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), totalLength * hDim);
-                DataCopy(lseLocal[curLength * i], lseGm[progress * tileLength + gmStartOffset],
-                         curLength);
-                if constexpr (std::is_same<outType, float>::value) {
+        if constexpr (std::is_same<outType, float>::value) {
+            if (curLength % ALIGNED_TO_8 == 0) {
+                for (int32_t i = 0; i < sp; i++) {
+                    lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
+                    inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), totalLength * hDim);
+                    DataCopy(lseLocal[curLength * i], lseGm[progress * tileLength + gmStartOffset],
+                             curLength);
                     DataCopy(inLocal[curLength * hDim * i],
                          inGm[progress * tileLength * hDim + gmStartOffset * hDim],
                          curLength * hDim);
-                } else {
-                    DataCopy(inLocalFp16[curLength * hDim * i],
+                }
+            } else {
+                uint32_t curLengthAlig = ((curLength + NUM7) / NUM8) * NUM8;
+                for (int32_t i = 0; i < sp; i++) {
+                    lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
+                    inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), totalLength * hDim);
+                    DataCopyPad(lseLocal[curLengthAlig * i], lseGm[progress * tileLength + gmStartOffset],
+                                {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * sizeof(lseType)), 0, 0, 0},
+                                {true, 0, static_cast<uint8_t>(NUM8 - curLength % NUM8), 0});
+                    DataCopy(inLocal[curLength * hDim * i],
                          inGm[progress * tileLength * hDim + gmStartOffset * hDim],
                          curLength * hDim);
                 }
             }
-            if constexpr (!std::is_same<outType, float>::value) {
+        } else {
+            uint64_t inLocalFp16Offest = tileLength * hDim * sp;
+            if ((inLocalFp16Offest * NUM2) % NUM32 == NUM16) {
+                inLocalFp16Offest += NUM8;
+            }
+            LocalTensor<outType> inLocalFp16 = inLocal.template ReinterpretCast<outType>()[inLocalFp16Offest];
+
+            if (curLength % ALIGNED_TO_8 == 0) {
+                for (int32_t i = 0; i < sp; i++) {
+                    lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
+                    inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), totalLength * hDim);
+                    DataCopy(lseLocal[curLength * i], lseGm[progress * tileLength + gmStartOffset],
+                             curLength);
+                    DataCopy(inLocalFp16[curLength * hDim * i],
+                         inGm[progress * tileLength * hDim + gmStartOffset * hDim],
+                         curLength * hDim);
+                }
                 inQueueIn.EnQue(inLocal);
                 inLocal = inQueueIn.DeQue<float>();
                 inLocalFp16 = inLocal.template ReinterpretCast<outType>()[inLocalFp16Offest];
                 Cast(inLocal, inLocalFp16, RoundMode::CAST_NONE, curLength * hDim * sp);
-            }
-        } else {
-            uint32_t curLengthAlig = ((curLength + NUM7) / NUM8) * NUM8;
-            for (int32_t i = 0; i < sp; i++) {
-                lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
-                inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), totalLength * hDim);
-                DataCopyPad(lseLocal[curLengthAlig * i], lseGm[progress * tileLength + gmStartOffset],
-                            {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * sizeof(lseType)), 0, 0, 0},
-                            {true, 0, static_cast<uint8_t>(NUM8 - curLength % NUM8), 0});
-                if constexpr (std::is_same<outType, float>::value) {
-                    DataCopy(inLocal[curLength * hDim * i],
-                         inGm[progress * tileLength * hDim + gmStartOffset * hDim],
-                         curLength * hDim);
-                } else {
+            } else {
+                uint32_t curLengthAlig = ((curLength + NUM7) / NUM8) * NUM8;
+                for (int32_t i = 0; i < sp; i++) {
+                    lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
+                    inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), totalLength * hDim);
+                    DataCopyPad(lseLocal[curLengthAlig * i], lseGm[progress * tileLength + gmStartOffset],
+                                {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * sizeof(lseType)), 0, 0, 0},
+                                {true, 0, static_cast<uint8_t>(NUM8 - curLength % NUM8), 0});
                     uint64_t inLocalFp16OffestAlign32 = curLength * hDim * i * NUM2;
                     if (inLocalFp16OffestAlign32 % NUM32 == NUM16) {
                         inLocalFp16OffestAlign32 += NUM16;
