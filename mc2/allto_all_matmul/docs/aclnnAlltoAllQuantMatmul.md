@@ -306,7 +306,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     </tr>
     <tr>
     <td>output</td>
-    <td>输入</td>
+    <td>输出</td>
     <td>最终的计算结果。</td>
     <td>根据设备型号对数据类型有不同限制，详细参见<a href="#约束说明">约束说明</a>。</td>
     <td>FLOAT16、BFLOAT16、FLOAT32</td>
@@ -574,7 +574,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
 * 不支持跨超节点通信，只支持超节点内。
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信引擎，CCU仅支持单机UB域内互联。
 
 ## 调用示例
 

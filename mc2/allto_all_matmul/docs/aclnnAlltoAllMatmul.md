@@ -147,7 +147,7 @@ aclnnStatus aclnnAlltoAllMatmul(
     </tr>
     <tr>
     <td>output</td>
-    <td>输入</td>
+    <td>输出</td>
     <td>最终的计算结果。</td>
     <td>数据类型与输入x1保持一致。</td>
     <td>FLOAT16、BFLOAT16</td>
@@ -307,7 +307,7 @@ aclnnStatus aclnnAlltoAllMatmul(
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信引擎，CCU仅支持单机UB域内互联。
 
 ## 调用示例
 
