@@ -149,8 +149,8 @@ def check_param_valid(
 # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex^T) — per-core partial, summed in Python
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-4, -3, -2],
-    workspace_idx=[10, 11, 12, 13, 14, 18],
+    out_idx=[-4, -3, -2, -1],
+    workspace_idx=[10, 11, 12, 13, 14],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -706,11 +706,11 @@ def sparse_lightning_indexer_grad_kl_loss(
         if _PROFILE:
             _t_kernel_end.record()
 
-        # dQueryIndex is no longer a kernel output — reduce partials and cast in Python
+        # dQueryIndex reduced from per-core partials (now output via out_idx, fully synced)
         d_weight_partial = results[0]
         relu_grad = results[1]
         loss_out = results[2]
-        d_query_index = d_query_index_ws_partial.sum(dim=2).to(input_dtype)
+        d_query_index = results[3].sum(dim=2).to(input_dtype)
 
         # Accumulate partial dWeight across K blocks
         d_weight = d_weight_partial.sum(dim=2)
