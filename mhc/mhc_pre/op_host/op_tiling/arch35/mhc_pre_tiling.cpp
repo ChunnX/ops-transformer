@@ -80,6 +80,8 @@ const constexpr uint64_t DECODE_BS_THRESHOLD = 512;
 const constexpr uint32_t DECODE_CHUNK_T_SIZE = 2;
 const constexpr uint32_t DECODE_ALIGN_16 = 16;
 const constexpr size_t DECODE_WORKSPACE_ALIGN = 32;
+const constexpr size_t SPLIT_BS_GAMMA_BUFFER_LENGTH = 256;
+const constexpr size_t SPLIT_ND_GAMMA_BUFFER_LENGTH = 2048;
 
 static constexpr size_t OUT_H_IN_INDEX = 0;
 static constexpr size_t OUT_H_POST_INDEX = 1;
@@ -475,11 +477,11 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
 {
     auto attrs = context_->GetAttrs();
 
-    auto normEpsPtr = attrs->GetAttrPointer<double>(1);
-    normEps_ = (normEpsPtr != nullptr) ? static_cast<float>(*normEpsPtr) : DEFAULT_NORM_EPS;
+    auto normEpsPtr = attrs->GetAttrPointer<float>(1);
+    normEps_ = (normEpsPtr != nullptr) ? *normEpsPtr : DEFAULT_NORM_EPS;
 
-    auto hcEpsPtr = attrs->GetAttrPointer<double>(2);
-    hcEps_ = (hcEpsPtr != nullptr) ? static_cast<float>(*hcEpsPtr) : DEFAULT_HC_EPS;
+    auto hcEpsPtr = attrs->GetAttrPointer<float>(2);
+    hcEps_ = (hcEpsPtr != nullptr) ? *hcEpsPtr : DEFAULT_HC_EPS;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -595,11 +597,12 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     size_t fixedBufferSize = 0;
     size_t dynamicBufferSize = 0;
     const size_t floatSize = sizeof(float);
+    const size_t doubleBufferCount = 2;
 
     if (tilingMode_ == TilingMode::SPLIT_BS) {
-        fixedBufferSize = 80 * 1024 + 20 * 1024 + 40 * 1024;
+        fixedBufferSize = 80 * 1024 * doubleBufferCount + 20 * 1024 * doubleBufferCount + 40 * 1024;
     } else {
-        fixedBufferSize = 80 * 1024 + 32 * 1024 + 20 * 1024;
+        fixedBufferSize = 80 * 1024 * doubleBufferCount + 16 * 1024 * doubleBufferCount + 20 * 1024;
     }
 
     dynamicBufferSize = static_cast<size_t>(matN_) * floatSize * 2;
@@ -611,7 +614,9 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     }
 
     if (hasGamma_) {
-        dynamicBufferSize += static_cast<size_t>(D_) * floatSize;
+        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_BS) ? SPLIT_BS_GAMMA_BUFFER_LENGTH
+                                                                         : SPLIT_ND_GAMMA_BUFFER_LENGTH;
+        dynamicBufferSize += gammaBufferLength * floatSize;
     }
 
     size_t totalUbRequired = fixedBufferSize + dynamicBufferSize;

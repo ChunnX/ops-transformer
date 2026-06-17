@@ -39,7 +39,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetShapeAttrsInfo()
                     return ge::GRAPH_FAILED);
 
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     // 判断为空或者空字符串
     OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "group", "null", "not null"),
@@ -99,7 +99,7 @@ QuantModePair QuantGroupedMatmulAllToAllvTilingBase::GetQuantMode(const gert::Ti
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     if (attrs == nullptr) {
-        OP_LOGE(opName, "Failed to get attrs.");
+        OP_LOGE_WITH_INVALID_INPUT(opName, "attrs");
         return QUANT_PAIR_ERROR;
     }
     // 获取量化模式属性（默认为0，表示非量化）

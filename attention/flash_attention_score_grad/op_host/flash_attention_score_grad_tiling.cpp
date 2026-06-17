@@ -73,7 +73,7 @@ public:
         auto platformInfoPtr = context->GetPlatformInfo();
         if (platformInfoPtr == nullptr) {
             auto compilePtr = reinterpret_cast<const FlashAttentionScoreGradCompileInfo *>(context->GetCompileInfo());
-            OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "compile_info is null"),
+            OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [compile_info is null]"),
                        return ge::GRAPH_FAILED);
             aivNum = compilePtr->aivNum;
             aicNum = compilePtr->aicNum;
@@ -82,7 +82,7 @@ public:
             aicNum = ascendcPlatform.GetCoreNumAic();
             aivNum = ascendcPlatform.GetCoreNumAiv();
         }
-        OP_CHECK_IF(aivNum == 0, OP_LOGE("flash_attention_score_grad", "num of aiv is 0."),
+        OP_CHECK_IF(aivNum == 0, OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [num of aiv is 0]"),
                    return GRAPH_FAILED);
         uint64_t dqNum = static_cast<uint64_t>(context->GetOutputShape(OUTPUT_IDX_DQ)->GetStorageShape().GetShapeSize());
         if (dqNum % aivNum == 0ULL) {
@@ -143,7 +143,7 @@ public:
         auto platformInfoPtr = context->GetPlatformInfo();
         if (platformInfoPtr == nullptr) {
             auto compilePtr = reinterpret_cast<const FlashAttentionScoreGradCompileInfo *>(context->GetCompileInfo());
-            OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "compile_info is null"),
+            OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [compile_info is null]"),
                        return ge::GRAPH_FAILED);
             aivNum = compilePtr->aivNum;
             aicNum = compilePtr->aicNum;
@@ -152,7 +152,7 @@ public:
             aicNum = ascendcPlatform.GetCoreNumAic();
             aivNum = ascendcPlatform.GetCoreNumAiv();
         }
-        OP_CHECK_IF(aivNum == 0, OP_LOGE("flash_attention_score_grad", "num of aiv is 0."),
+        OP_CHECK_IF(aivNum == 0, OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [num of aiv is 0]"),
                    return GRAPH_FAILED);
         uint64_t dqNum = static_cast<uint64_t>(context->GetOutputShape(OUTPUT_IDX_DQ)->GetStorageShape().GetShapeSize());
         if (dqNum % aivNum == 0ULL) {
@@ -284,61 +284,79 @@ static ge::graphStatus CheckBaseInput(gert::TilingContext *context){
     auto &valueShape = context->GetInputShape(VALUE_INPUT_INDEX)->GetStorageShape();
     int64_t headNum = *context->GetAttrs()->GetAttrPointer<int>(HEAD_NUM_IDX);
     OP_CHECK_IF(headNum == 0,
-               OP_LOGE(context, "headNum is 0."),
+               OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [headNum is 0]"),
                return ge::GRAPH_FAILED);
     const char *inputLayout = context->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
     if (strlen(inputLayout) == 3) { // 3: BSH or SBH or TND
         if (inputLayout[0] == 'B') {
             // layout is BSH
             OP_CHECK_IF((queryShape.GetDim(0) != keyShape.GetDim(0)),
-                OP_LOGE(context, "query or key shape is invalid"),
+                OP_LOGE(context,
+                    "In op [FlashAttentionScoreGrad], the tensor shapes of [query, key] are mismatched, "
+                    "the reason is: [query batch and key batch should be same, query batch=%ld, key batch=%ld]",
+                    queryShape.GetDim(0), keyShape.GetDim(0)),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(queryShape.GetDim(2) % headNum != 0,
-               OP_LOGE(context, "h1 [%ld] should be a multiple of headNum [%ld].",
+               OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [h1 %ld should be a multiple of headNum %ld]",
                queryShape.GetDim(2), headNum),
                return ge::GRAPH_FAILED);
         } else if (inputLayout[0] == 'T') { // TND  N1 != N2
             OP_CHECK_IF(headNum != queryShape.GetDim(1),
-               OP_LOGE(context, "headNum is [%ld], but got n1 [%ld].",
+               OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [headNum is %ld, but got n1 %ld]",
                headNum, queryShape.GetDim(1)),
                return ge::GRAPH_FAILED);
             return ge::SUCCESS;
         } else {
             // layout is SBH
             OP_CHECK_IF((queryShape.GetDim(1) != keyShape.GetDim(1)),
-                OP_LOGE(context, "query or key shape is invalid"),
+                OP_LOGE(context,
+                    "In op [FlashAttentionScoreGrad], the tensor shapes of [query, key] are mismatched, "
+                    "the reason is: [query batch and key batch should be same, query batch=%ld, key batch=%ld]",
+                    queryShape.GetDim(1), keyShape.GetDim(1)),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(queryShape.GetDim(2) % headNum != 0,
-               OP_LOGE(context, "h1 [%ld] should be a multiple of headNum [%ld].",
+               OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [h1 %ld should be a multiple of headNum %ld]",
                queryShape.GetDim(2), headNum),
                return ge::GRAPH_FAILED);
         }
         // kD < vD
         OP_CHECK_IF((keyShape.GetDim(2) < valueShape.GetDim(2)),
-            OP_LOGE(context, "key or value shape is invalid"),
+            OP_LOGE(context,
+                "In op [FlashAttentionScoreGrad], the tensor shapes of [key, value] are mismatched, "
+                "the reason is: [key head dim should be greater than or equal to value head dim, key head dim=%ld, value head dim=%ld]",
+                keyShape.GetDim(2), valueShape.GetDim(2)),
             return ge::GRAPH_FAILED);
     } else if (strlen(inputLayout) == 4) { // 4: layout is BNSD or BSND
         OP_CHECK_IF((queryShape.GetDim(0) != keyShape.GetDim(0)),
-            OP_LOGE(context, "query or key shape is invalid"),
+            OP_LOGE(context,
+                "In op [FlashAttentionScoreGrad], the tensor shapes of [query, key] are mismatched, "
+                "the reason is: [query batch and key batch should be same, query batch=%ld, key batch=%ld]",
+                queryShape.GetDim(0), keyShape.GetDim(0)),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((queryShape.GetDim(3) != keyShape.GetDim(3)),
-            OP_LOGE(context, "query or key shape is invalid"),
+            OP_LOGE(context,
+                "In op [FlashAttentionScoreGrad], the tensor shapes of [query, key] are mismatched, "
+                "the reason is: [query head dim and key head dim should be same, query head dim=%ld, key head dim=%ld]",
+                queryShape.GetDim(3), keyShape.GetDim(3)),
             return ge::GRAPH_FAILED);
         if (inputLayout[1] == 'N') {
             OP_CHECK_IF(headNum != queryShape.GetDim(1),
-                   OP_LOGE(context, "headNum is [%ld], but got n1 [%ld].",
+                   OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [headNum is %ld, but got n1 %ld]",
                    headNum, queryShape.GetDim(1)),
                    return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(headNum != queryShape.GetDim(2),
-                   OP_LOGE(context, "headNum is [%ld], but got n1 [%ld].",
+                   OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [headNum is %ld, but got n1 %ld]",
                    headNum, queryShape.GetDim(2)),
                    return ge::GRAPH_FAILED);  
         }
         OP_CHECK_IF((keyShape.GetDim(3) < valueShape.GetDim(3)),
-            OP_LOGE(context, "key or value shape is invalid"), return ge::GRAPH_FAILED);
+            OP_LOGE(context,
+                "In op [FlashAttentionScoreGrad], the tensor shapes of [key, value] are mismatched, "
+                "the reason is: [key head dim should be greater than or equal to value head dim, key head dim=%ld, value head dim=%ld]",
+                keyShape.GetDim(3), valueShape.GetDim(3)), return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE(context, "invalid input_layout[%s].", inputLayout);
+        OP_LOGE(context, "In op [FlashAttentionScoreGrad], the format of [input_layout] is not supported, got [%s]", inputLayout);
         return ge::GRAPH_FAILED;
     }
     return ge::SUCCESS;
@@ -347,12 +365,12 @@ static ge::graphStatus CheckBaseInput(gert::TilingContext *context){
 static ge::graphStatus CheckParams(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr,
-        OP_LOGE("CheckParams", "context is null."), return ge::GRAPH_FAILED);
+        OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [context is null]"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckAttrs(context) != ge::GRAPH_SUCCESS,
-               OP_LOGE(context->GetNodeName(), "invalid attrs"), return ge::GRAPH_FAILED);
+               OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [invalid attrs]"), return ge::GRAPH_FAILED);
     if ((context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) != nullptr && context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) == nullptr) ||
         (context->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX) == nullptr && context->GetOptionalInputShape(KEY_ROPE_INPUT_INDEX) != nullptr)) {
-        OP_LOGE(context, "input shape Query Rope and Key Rope must be either both defined or both undefined.");
+        OP_LOGE(context, "In op [FlashAttentionScoreGrad], the tensor shapes of [query_rope, key_rope] are mismatched, the reason is: [must be either both defined or both undefined]");
         return ge::GRAPH_FAILED;
     }
 
@@ -365,7 +383,7 @@ static ge::graphStatus CheckParams(gert::TilingContext *context)
             return ge::SUCCESS;
         }
     }
-    OP_LOGE(context, "fail to get shape or attr from context");
+    OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [fail to get shape or attr from context]");
     return ge::GRAPH_FAILED;
 }
 
@@ -375,7 +393,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionGradScore(gert::TilingConte
         return ge::GRAPH_FAILED;
     }
     auto compilePtr = reinterpret_cast<const FlashAttentionScoreGradCompileInfo *>(context->GetCompileInfo());
-    OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "compile_info is null"),
+    OP_CHECK_IF(compilePtr == nullptr, OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [compile_info is null]"),
                return ge::GRAPH_FAILED);
     auto npuArch = compilePtr->npuArch;
     if (npuArch == NpuArch::DAV_3510) {
@@ -397,15 +415,15 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionGradScore(gert::TilingConte
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttentionScoreGrad(gert::TilingParseContext *context)
 {
     OP_CHECK_IF(context == nullptr,
-        OP_LOGE("TilingPrepare", "context is null."), return ge::GRAPH_FAILED);
+        OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [context is null]"), return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr,
-        OP_LOGE(context, "platformInfoPtr is null."),
+        OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [platformInfoPtr is null]"),
         return ge::GRAPH_FAILED);
 
     auto compileInfoPtr = context->GetCompiledInfo<FlashAttentionScoreGradCompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr,
-        OP_LOGE(context, "compileInfoPtr is null."),
+        OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [compileInfoPtr is null]"),
         return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);

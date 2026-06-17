@@ -225,7 +225,7 @@ aclnnStatus aclnnMoeFusedTopk(
     <tr>
       <td>enableExpertMapping</td>
       <td>输入</td>
-      <td>是否使能物理专家到逻辑专家的映射。</td>
+      <td>是否开启物理专家到逻辑专家的映射。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

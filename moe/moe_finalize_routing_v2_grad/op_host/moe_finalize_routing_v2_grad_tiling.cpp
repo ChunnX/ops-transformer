@@ -372,22 +372,22 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOptionalInputDtype()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOutput()
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckGradExpandedXShape()
 {
-     OP_CHECK_IF(
+    OP_CHECK_IF(
         ((gradExpandedXShape_.GetDimNum() != NUM_TWO) && (gradExpandedXShape_.GetDimNum() != NUM_THREE)),
         OP_LOGE_FOR_INVALID_SHAPEDIM(
             nodeName_, "grad_expanded_x", DimNumToString(gradExpandedXShape_.GetDimNum()).c_str(), "2D or 3D"),
         return ge::GRAPH_FAILED);
 
     if (expandedXDimNum_ == NUM_TWO) {
-         OP_CHECK_IF(
+        OP_CHECK_IF(
             (gradExpandedXShape_.GetDim(0) != expandedXDim0_),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 nodeName_, "grad_expanded_x", ShapeToString(gradExpandedXShape_).c_str(),
                 ("grad_expanded_x dim0 must be equal to " + std::to_string(expandedXDim0_)).c_str()),
             return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
+        OP_CHECK_IF(
             (gradExpandedXShape_.GetDim(1) != gradYShape_.GetDim(1)),
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 nodeName_, "grad_expanded_x and grad_y",
@@ -395,13 +395,13 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOutput()
                 "grad_expanded_x and grad_y dim1 must be same"),
             return ge::GRAPH_FAILED);
     } else {
-         OP_CHECK_IF(
+        OP_CHECK_IF(
             (gradExpandedXShape_.GetDim(0) * gradExpandedXShape_.GetDim(1) != expandedXDim0_),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 nodeName_, "grad_expanded_x", ShapeToString(gradExpandedXShape_).c_str(),
                 ("grad_expanded_x dim0 * dim1 must be equal to " + std::to_string(expandedXDim0_)).c_str()),
             return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
+        OP_CHECK_IF(
             (gradExpandedXShape_.GetDim(NUM_TWO) != gradYShape_.GetDim(1)),
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 nodeName_, "grad_expanded_x and grad_y",
@@ -409,44 +409,133 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOutput()
                 "grad_expanded_x dim2 and grad_y dim1 must be same"),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
-     OP_CHECK_IF(
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckGradExpandedXDtype()
+{
+    OP_CHECK_IF(
         (gradExpandedXType_ != gradYType_),
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             nodeName_, "grad_expanded_x and grad_y",
             (DtypeToString(gradExpandedXType_) + " and " + DtypeToString(gradYType_)).c_str(),
             "grad_expanded_x and grad_y dtype must be same"),
         return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckGradScalesShapeAndDtype()
+{
+    OP_CHECK_IF(
+        (gradScalesShape_.GetDim(0) != gradYShape_.GetDim(0)),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            nodeName_, "grad_scales and grad_y",
+            (ShapeToString(gradScalesShape_) + " and " + ShapeToString(gradYShape_)).c_str(),
+            "grad_scales and grad_y dim0 must be same"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (gradScalesShape_.GetShapeSize() != expandedRowIdxShape_.GetShapeSize()),
+        OP_LOGE_FOR_INVALID_SHAPESIZE(
+            nodeName_, "grad_scales and expanded_row_idx",
+            (std::to_string(gradScalesShape_.GetShapeSize()) + " and " +
+             std::to_string(expandedRowIdxShape_.GetShapeSize())).c_str(),
+            "same shape size"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (gradScalesShape_.GetDimNum() != NUM_TWO),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            nodeName_, "grad_scales", DimNumToString(gradScalesShape_.GetDimNum()).c_str(), "2D"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (gradScalesType_ != scalesType_),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            nodeName_, "grad_scales and scales",
+            (DtypeToString(gradScalesType_) + " and " + DtypeToString(scalesType_)).c_str(),
+            "grad_scales and scales dtype must be same"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckOutput()
+{
+    OP_CHECK_IF(
+        (CheckGradExpandedXShape() != ge::GRAPH_SUCCESS),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "CheckGradExpandedXShape", "failed", "CheckGradExpandedXShape check failed"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (CheckGradExpandedXDtype() != ge::GRAPH_SUCCESS),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "CheckGradExpandedXDtype", "failed", "CheckGradExpandedXDtype check failed"),
+        return ge::GRAPH_FAILED);
     if (isScalesExist_) {
-         OP_CHECK_IF(
-            (gradScalesShape_.GetDim(0) != gradYShape_.GetDim(0)),
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                nodeName_, "grad_scales and grad_y",
-                (ShapeToString(gradScalesShape_) + " and " + ShapeToString(gradYShape_)).c_str(),
-                "grad_scales and grad_y dim0 must be same"),
-            return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
-            (gradScalesShape_.GetShapeSize() != expandedRowIdxShape_.GetShapeSize()),
-            OP_LOGE_FOR_INVALID_SHAPESIZE(
-                nodeName_, "grad_scales and expanded_row_idx",
-                (std::to_string(gradScalesShape_.GetShapeSize()) + " and " +
-                 std::to_string(expandedRowIdxShape_.GetShapeSize())).c_str(),
-                "same shape size"),
-            return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
-            (gradScalesShape_.GetDimNum() != NUM_TWO),
-            OP_LOGE_FOR_INVALID_SHAPEDIM(
-                nodeName_, "grad_scales", DimNumToString(gradScalesShape_.GetDimNum()).c_str(), "2D"),
-            return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
-            (gradScalesType_ != scalesType_),
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                nodeName_, "grad_scales and scales",
-                (DtypeToString(gradScalesType_) + " and " + DtypeToString(scalesType_)).c_str(),
-                "grad_scales and scales dtype must be same"),
+        OP_CHECK_IF(
+            (CheckGradScalesShapeAndDtype() != ge::GRAPH_SUCCESS),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName_, "CheckGradScalesShapeAndDtype", "failed", "CheckGradScalesShapeAndDtype check failed"),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
 
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CalcExpandedXDimInfo()
+{
+    expandedXDimNum_ = NUM_TWO;
+    expandedXDim0_ = expandedRowIdxShape_.GetDim(0);
+    if (dropPadMode_ == 0 && activeNum_ > 0 && activeNum_ < expandedXDim0_) {
+        expandedXDim0_ = activeNum_;
+    } else if (dropPadMode_ == 1) {
+        expandedXDimNum_ = NUM_THREE;
+        expandedXDim0_ = expertNum_ * expertCapacity_;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckShapeWithScales()
+{
+    OP_CHECK_IF(
+        (expandedXShape_.GetDimNum() != static_cast<size_t>(expandedXDimNum_)),
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName_, "expanded_x", DimNumToString(expandedXShape_.GetDimNum()).c_str(),
+            ("expanded_x dimnum error when drop_pad_mode is " + std::to_string(dropPadMode_)).c_str()),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (scalesShape_.GetDimNum() != NUM_TWO),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "scales", DimNumToString(scalesShape_.GetDimNum()).c_str(), "2D"),
+        return ge::GRAPH_FAILED);
+    if (isBiasExist_) {
+        OP_CHECK_IF(
+            (expertIdxShape_.GetDimNum() != NUM_TWO),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(
+                nodeName_, "expert_idx", DimNumToString(expertIdxShape_.GetDimNum()).c_str(), "2D"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (biasShape_.GetDimNum() != NUM_TWO),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "bias", DimNumToString(biasShape_.GetDimNum()).c_str(), "2D"),
+            return ge::GRAPH_FAILED);
+    }
+    OP_CHECK_IF(
+        (CheckOptionalInputShape() != ge::GRAPH_SUCCESS),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "CheckOptionalInputShape", "failed", "CheckOptionalInputShape check failed"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (CheckOptionalInputDtype() != ge::GRAPH_SUCCESS),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "CheckOptionalInputDtype", "failed", "CheckOptionalInputDtype check failed"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckShapeWithoutScales()
+{
+    OP_CHECK_IF(
+        (gradYShape_.GetDim(0) != expandedRowIdxShape_.GetDim(0)),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            nodeName_, "grad_y and expanded_row_idx",
+            (ShapeToString(gradYShape_) + " and " + ShapeToString(expandedRowIdxShape_)).c_str(),
+            "grad_y and expanded_row_idx dim0 must be same"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -463,53 +552,19 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::CheckParams()
             nodeName_, "CheckRequiredInput", "failed", "CheckRequiredInput check failed"),
         return ge::GRAPH_FAILED);
 
-    expandedXDimNum_ = NUM_TWO;
-    expandedXDim0_ = expandedRowIdxShape_.GetDim(0);
-    if (dropPadMode_ == 0 && activeNum_ > 0 && activeNum_ < expandedXDim0_) {
-        expandedXDim0_ = activeNum_;
-    } else if (dropPadMode_ == 1) {
-        expandedXDimNum_ = NUM_THREE;
-        expandedXDim0_ = expertNum_ * expertCapacity_;
-    }
+    CalcExpandedXDimInfo();
+
     if (isScalesExist_) {
-         OP_CHECK_IF(
-            (expandedXShape_.GetDimNum() != static_cast<size_t>(expandedXDimNum_)),
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                nodeName_, "expanded_x", DimNumToString(expandedXShape_.GetDimNum()).c_str(),
-                ("expanded_x dimnum error when drop_pad_mode is " + std::to_string(dropPadMode_)).c_str()),
-            return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
-            (scalesShape_.GetDimNum() != NUM_TWO),
-            OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "scales", DimNumToString(scalesShape_.GetDimNum()).c_str(), "2D"),
-            return ge::GRAPH_FAILED);
-        if (isBiasExist_) {
-             OP_CHECK_IF(
-                (expertIdxShape_.GetDimNum() != NUM_TWO),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(
-                    nodeName_, "expert_idx", DimNumToString(expertIdxShape_.GetDimNum()).c_str(), "2D"),
-                return ge::GRAPH_FAILED);
-             OP_CHECK_IF(
-                (biasShape_.GetDimNum() != NUM_TWO),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "bias", DimNumToString(biasShape_.GetDimNum()).c_str(), "2D"),
-                return ge::GRAPH_FAILED);
-        }
-         OP_CHECK_IF(
-            (CheckOptionalInputShape() != ge::GRAPH_SUCCESS),
+        OP_CHECK_IF(
+            (CheckShapeWithScales() != ge::GRAPH_SUCCESS),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                nodeName_, "CheckOptionalInputShape", "failed", "CheckOptionalInputShape check failed"),
-            return ge::GRAPH_FAILED);
-         OP_CHECK_IF(
-            (CheckOptionalInputDtype() != ge::GRAPH_SUCCESS),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                nodeName_, "CheckOptionalInputDtype", "failed", "CheckOptionalInputDtype check failed"),
+                nodeName_, "CheckShapeWithScales", "failed", "CheckShapeWithScales check failed"),
             return ge::GRAPH_FAILED);
     } else {
-         OP_CHECK_IF(
-            (gradYShape_.GetDim(0) != expandedRowIdxShape_.GetDim(0)),
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                nodeName_, "grad_y and expanded_row_idx",
-                (ShapeToString(gradYShape_) + " and " + ShapeToString(expandedRowIdxShape_)).c_str(),
-                "grad_y and expanded_row_idx dim0 must be same"),
+        OP_CHECK_IF(
+            (CheckShapeWithoutScales() != ge::GRAPH_SUCCESS),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName_, "CheckShapeWithoutScales", "failed", "CheckShapeWithoutScales check failed"),
             return ge::GRAPH_FAILED);
     }
 

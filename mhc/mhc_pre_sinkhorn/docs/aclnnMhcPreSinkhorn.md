@@ -37,29 +37,29 @@
     \begin{aligned}
         \mathbf{normOut}[0] &= \text{softmax}(\mathbf{H^{res}_l},  \dim=-1) + \epsilon, \\
         \mathbf{sumOut}[1] &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \mathbf{normOut}[0] + \epsilon, \\
-        \mathbf{normOut}[1] &= \frac{\mathbf{normOut}[0]}{\mathbf{sum\_out}[1]}, \\
+        \mathbf{normOut}[1] &= \frac{\mathbf{normOut}[0]}{\mathbf{sumOut}[1]}, \\
     \end{aligned}
     $$
 
-    第$i$次迭代（$i = 1, 2, \dots, \mathbf({num\_iters}-1)$）：
+    第$i$次迭代（$i = 1, 2, \dots, \mathbf({numIters}-1)$）：
 
     $$
     \begin{aligned}
         \mathbf{sumOut}[2i] &= \sum_{\dim=-1,\text{keepdim}=\text{True}} \mathbf{normOut}[2i-1] + \epsilon, \\
-        \mathbf{normOut}[2i] &= \frac{\mathbf{normOut}[2i-1]}{\mathbf{sum\_out}[2i]}, \\
+        \mathbf{normOut}[2i] &= \frac{\mathbf{normOut}[2i-1]}{\mathbf{sumOut}[2i]}, \\
         \mathbf{sumOut}[2i+1] &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \mathbf{normOut}[2i] + \epsilon, \\
-        \mathbf{normOut}[2i+1] &= \frac{\mathbf{normOut}[2i]}{\mathbf{sum\_out}[2i+1]}, \\
+        \mathbf{normOut}[2i+1] &= \frac{\mathbf{normOut}[2i]}{\mathbf{sumOut}[2i+1]}, \\
     \end{aligned}
     $$
 
   - 最终输出
 
   $$
-  \mathbf{normOut}[2 \times \mathbf{num\_iters} - 1]
+  \mathbf{normOut}[2 \times \mathbf{numIters} - 1]
   $$
 
   $$
-  \mathbf{sumOut}[2 \times \mathbf{num\_iters} - 1]
+  \mathbf{sumOut}[2 \times \mathbf{numIters} - 1]
   $$
 
   - 符号说明
@@ -140,7 +140,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>输入</td>
         <td>待计算数据，表示网络中mHC层的输入数据。</td>
         <td>支持空Tensor。</td>
-        <td>BFLOAT16</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(bs, seq_len, n, c)</td>
         <td>√</td>
@@ -190,7 +190,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>输入</td>
         <td>表示sinkhorn算法迭代次数。</td>
         <td>当前仅支持20。</td>
-        <td>INT32</td>
+        <td>-</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -230,7 +230,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>输出</td>
         <td>输出的h_in作为Atten/MLP层的输入。</td>
         <td>-</td>
-        <td>BFLOAT16</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(bs, seq_len, c)</td>
         <td>×</td>
@@ -421,11 +421,11 @@ aclnnStatus aclnnMhcPreSinkhorn(
 
 - 规格约束
 
-  | 规格项   | 规格               | 规格说明                               |
+  | 规格项   | 规格               | 规格说明                                |
   | :------- | :----------------- | :------------------------------------- |
-  | numIters | 20                 | 迭代次数超出该范围会返回参数无效错误。 |
+  | numIters | 20                 | 迭代次数超出该范围会返回参数无效错误。    |
   | n        | 4                  | 目前只支持4。                          |
-  | C        | [1280, 1920, 2560] | 目前只支持这三个数                     |
+  | c        | 范围1到100000       | 128的倍数                             |
 
 ## 调用示例
 

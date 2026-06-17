@@ -32,7 +32,7 @@ constexpr uint32_t DIM_NUM_4 = 4;
 static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE("QuantLightningIndexer", "context is nullptr!");
+        OP_LOGE_WITH_INVALID_INPUT("QuantLightningIndexer", "InferShapeContext");
         return ge::GRAPH_FAILED;
     }
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
@@ -53,7 +53,7 @@ static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
     if (inputLayoutQueryPtrStr != "TND" && inputLayoutQueryPtrStr != "BSND") {
-        OP_LOGE(context, "The input layout query should be TND or BSND, but got %s.", inputLayoutQueryPtrStr.c_str());
+        OP_LOGE_FOR_INVALID_FORMAT("QuantLightningIndexer", "query", inputLayoutQueryPtrStr.c_str(), "BSND or TND");
         return GRAPH_FAILED;
     }
 
@@ -78,7 +78,7 @@ static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *
 static ge::graphStatus InferDataTypeQuantLightningIndexer(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE("QuantLightningIndexer", "InferDataTypeContext context is nullptr!");
+        OP_LOGE_WITH_INVALID_INPUT("QuantLightningIndexer", "InferDataTypeContext");
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context->GetNodeName(), "Enter QuantLightningIndexer InferDataType impl.");

@@ -242,7 +242,7 @@ aclnnStatus aclnnQuantAllReduce(
 
 - 当x的数据类型为FLOAT8_E4M3FN、FLOAT8_E5M2并且scales的数据类型为FLOAT8_E8M0时，输入数据的量化方式为mx量化。
 - 当x的数据类型为INT8、HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2并且scales的数据类型为FLOAT时，输入数据的量化方式为pertoken-pergroup量化（groupSize=128）。
-- 只在Ascend950系列平台使能。
+- 只在Ascend950系列平台开启。
 - 不支持空Tensor输入。
 - 通信引擎约束：
   - Ascend950PR/Ascend950DT: 仅支持UB-Memory通信。

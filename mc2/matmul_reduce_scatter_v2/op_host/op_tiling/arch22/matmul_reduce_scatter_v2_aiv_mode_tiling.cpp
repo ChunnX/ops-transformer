@@ -16,7 +16,6 @@
 #include "vector"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "mc2_log.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_aiv_mode_tiling.h"
@@ -575,6 +574,16 @@ inline AlgorithmStrategy GetAlgorithmPolicy(uint32_t M, uint32_t N, bool is910C,
     return AlgorithmStrategy::LARGE_M_OPTIMIZED;
 }
 
+static int ConvertGeTypeToBiasDTypeKey(ge::DataType type)
+{
+    if (type == ge::DT_FLOAT) {
+        return TILINGKEY_TPL_FP32;
+    } else if (type == ge::DT_BF16) {
+        return TILINGKEY_TPL_BF16;
+    }
+    return TILINGKEY_TPL_FP16;
+}
+
 static void GetTilingKey(uint64_t &tilingKey, const MatmulReduceScatterV2AivModeInfo &info,
                          const gert::TilingContext *context)
 {
@@ -582,7 +591,15 @@ static void GetTilingKey(uint64_t &tilingKey, const MatmulReduceScatterV2AivMode
     bool isBias = (matrix_bias == nullptr) ? false : true;
     bool isSmallM =
         GetAlgorithmPolicy(info.M, info.N, info.is910C, info.quantFlag) == AlgorithmStrategy::SMALL_M_OPTIMIZED;
-    tilingKey = GET_TPL_TILING_KEY(isBias, info.isTransposeA, info.isTransposeB, isSmallM);
+    ge::DataType biasDatatype = context->GetOutputDesc(0)->GetDataType();
+    if (isBias) {
+        auto biasDesc = context->GetOptionalInputDesc(BIAS_INDEX);
+        if (biasDesc != nullptr) {
+            biasDatatype = biasDesc->GetDataType();
+        }
+    }
+    uint32_t biasDType = ConvertGeTypeToBiasDTypeKey(biasDatatype);
+    tilingKey = GET_TPL_TILING_KEY(isBias, info.isTransposeA, info.isTransposeB, isSmallM, biasDType);
     return;
 }
 
@@ -876,7 +893,7 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, 
         coreNum == 0,
         OP_LOGE(context->GetNodeName(), "ascendcPlatform.GetCoreNumAic() return 0 cores."),
         return ge::GRAPH_FAILED);
-    int32_t count_m_tile = cocTilingData.swizzlDirect ?
+    int32_t count_m_tile = cocTilingData.swizzlDirect != 0 ?
                                ((coreNum * (cocTilingData.pValue)) / cocTilingData.swizzlCount) :
                                cocTilingData.swizzlCount;
 
@@ -1014,7 +1031,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     auto ret = context->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    MC2_CHECK_LOG_RET(context->GetNodeName(), ret);
 
     // 1. tilingData
     MatmulReduceScatterV2AivModeTilingData *tilingData =

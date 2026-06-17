@@ -228,7 +228,7 @@
 
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
-    - 输入张量dy支持BNSD、BSND、SBND排布。
+    - 输入张量dy支持BNSD、BSND、SBND、TND排布。
     - 输入张量dy、cos、sin、xOptional及输出张量dxOut、dcosOut、dsinOut的D维度大小必须相同，满足D<896，且必须为2的倍数。
     - 输入张量dy、xOptional和输出张量dxOut的shape必须完全相同。
     - 输入张量cos、sin和输出张量dcosOut、dsinOut的shape必须完全相同，且cos和sin的shape必须完全相同。
@@ -237,11 +237,13 @@
       - 当dy为BNSD时，cos、sin支持11SD、B1SD、BNSD；当cos、sin为B1SD时需满足B < S
       - 当dy为BSND时，cos、sin支持1S1D、BS1D、BSND；当cos、sin为BS1D时需满足B < S
       - 当dy为SBND时，cos、sin支持S11D、SB1D、SBND
+      - 当dy为TND时，cos、sin支持T1D、TND
     - interleave模式：
-      - B * N < 1000
+      - B * N < 1000（N < 1000当dy为TND时）
       - 当dy为BNSD时，cos、sin支持11SD
       - 当dy为BSND时，cos、sin支持1S1D
       - 当dy为SBND时，cos、sin支持S11D
+      - 当dy为TND时，cos、sin支持T1D
 
 ## 调用说明
 

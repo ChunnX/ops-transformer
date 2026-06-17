@@ -240,7 +240,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>x1、x2、scale2、groupList、yRef、scale1Optional、groupListType、groupSize的数据类型和数据格式不在支持的范围内。</td>
+      <td>x1、x2、scale2、groupList、yRef、scale1Optional的数据类型和数据格式不在支持的范围内，或groupListType、groupSize的取值不在支持的范围内。</td>
     </tr>
   </tbody></table>
 

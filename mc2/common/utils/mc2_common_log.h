@@ -134,19 +134,57 @@ inline std::vector<char> CreateErrorMsg()
             return returnValue;                                                                                        \
         }                                                                                                              \
     } while (0)
-#define GE_ASSERT(exp, ...)                                                                                            \
-    do {                                                                                                               \
-        if (!(exp)) {                                                                                                  \
-            auto msg = CreateErrorMsg(__VA_ARGS__);                                                                    \
-            if (msg.empty()) {                                                                                         \
-                REPORT_INNER_ERR_MSG("E19999", "Assert %s failed", #exp);                                              \
-                return ge::FAILED;                                                                                     \
-            } else {                                                                                                   \
-                REPORT_INNER_ERR_MSG("E19999", "%s", msg.data());                                                      \
-                return ge::FAILED;                                                                                     \
-            }                                                                                                          \
-        }                                                                                                              \
-    } while (false)
+// MC2_CHECK_GRAPH_STATUS — 检查 graphStatus 返回值为 0，上报 EZ9999
+#define MC2_CHECK_LOG_RET(opName, callExpr)                                              \
+    do {                                                                                       \
+        const ge::graphStatus _mc2_gs_ = (callExpr);                                           \
+        if (_mc2_gs_ != 0) {                                                                   \
+            OP_LOGE(opName, "call %s failed, status=%d", #callExpr, (int)_mc2_gs_);            \
+            return ge::FAILED;                                                                 \
+        }                                                                                      \
+    } while (0)
+
+// MC2_CHECK_NOTNULL — 空指针检查，上报 EZ0004
+#define MC2_CHECK_NOTNULL_RET(opName, ptr)                                                         \
+    do {                                                                                       \
+        if (unlikely((ptr) == nullptr)) {                                                      \
+            OP_LOGE_WITH_INVALID_INPUT(opName, #ptr);                                          \
+            return ge::FAILED;                                                                 \
+        }                                                                                      \
+    } while (0)
+
+// MC2_CHECK_TRUE — 布尔条件断言，上报 EZ9999
+#define MC2_CHECK_TRUE_RET(opName, condition)                                                      \
+    do {                                                                                       \
+        if (unlikely(!(condition))) {                                                          \
+            OP_LOGE(opName, "assert %s failed", #condition);                                   \
+            return ge::FAILED;                                                                 \
+        }                                                                                      \
+    } while (0)
+
+// MC2_CHECK_SUCCESS — 检查返回值 == ge::SUCCESS，上报 EZ9999
+#define MC2_CHECK_SUCCESS_RET(opName, callExpr)                                                    \
+    do {                                                                                       \
+        const auto _mc2_ret_ = (callExpr);                                                     \
+        if (_mc2_ret_ != ge::SUCCESS) {                                                        \
+            OP_LOGE(opName, "call %s failed, ret=%d", #callExpr, (int)_mc2_ret_);              \
+            return ge::FAILED;                                                                 \
+        }                                                                                      \
+    } while (0)
+
+// MC2_CHECK_EQ_ERR — 等值断言，返回 ::ErrorResult()，上报 EZ9999
+#define MC2_CHECK_EQ_RET(opName, x, y)                                                         \
+    do {                                                                                       \
+        const auto &_mc2_x_ = (x);                                                             \
+        const auto &_mc2_y_ = (y);                                                             \
+        if (_mc2_x_ != _mc2_y_) {                                                              \
+            std::stringstream _mc2_ss_;                                                        \
+            _mc2_ss_ << "Assert (" << #x << " == " << #y << ")failed, expect "                \
+                     << _mc2_y_ << " actual " << _mc2_x_;                                      \
+            OP_LOGE(opName, "%s", _mc2_ss_.str().c_str());                                     \
+            return ::ErrorResult();                                                            \
+        }                                                                                      \
+    } while (0)
 
 namespace ops {
 #define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)                                                                      \
@@ -165,22 +203,6 @@ namespace ops {
     }
 } // namespace ops
 
-#define GE_ASSERT_SUCCESS(v, ...) GE_ASSERT(((v) == ge::SUCCESS), __VA_ARGS__)
-#define GE_ASSERT_NOTNULL(v, ...) GE_ASSERT(((v) != nullptr), __VA_ARGS__)
-#define GE_ASSERT_GRAPH_SUCCESS(v, ...) GE_ASSERT(((v) == 0), __VA_ARGS__)
-#define GE_ASSERT_TRUE(v, ...) GE_ASSERT((v), __VA_ARGS__)
-#define GE_ASSERT_EQ(x, y)                                                                                             \
-    do {                                                                                                               \
-        const auto &xv = (x);                                                                                          \
-        const auto &yv = (y);                                                                                          \
-        if (xv != yv) {                                                                                                \
-            std::stringstream ss;                                                                                      \
-            ss << "Assert (" << #x << " == " << #y << ")failed, expect " << yv << " actual " << xv;                    \
-            REPORT_INNER_ERR_MSG("E19999", "%s", ss.str().c_str());                                                    \
-            return ::ErrorResult();                                                                                    \
-        }                                                                                                              \
-    } while (0)
-
 #else
 #define OPS_ERR_IF(COND, LOG_FUNC, EXPR)
 #define OPS_CHECK(COND, LOG_FUNC, EXPR)
@@ -189,7 +211,10 @@ namespace ops {
 #define OPS_LOG_W(opName, ...)
 #define OPS_LOG_I(opName, ...)
 #define OPS_LOG_D(opName, ...)
-#define GE_ASSERT_SUCCESS(v, ...)
-#define GE_ASSERT_NOTNULL(v, ...)
+#define MC2_CHECK_LOG_RET(opName, callExpr)
+#define MC2_CHECK_NOTNULL_RET(opName, ptr)
+#define MC2_CHECK_TRUE_RET(opName, condition)
+#define MC2_CHECK_SUCCESS_RET(opName, callExpr)
+#define MC2_CHECK_EQ_RET(opName, x, y)
 #endif
 #endif

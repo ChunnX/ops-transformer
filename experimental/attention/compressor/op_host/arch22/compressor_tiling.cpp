@@ -155,6 +155,7 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     coff = static_cast<uint8_t>(*context_->coff);
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
+    baseParams_->usedCoreNum = aicNum_;
 
     OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u", baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, coff);
 
@@ -181,11 +182,7 @@ ge::graphStatus CompressorTiling::SetWorkSpaceInfo()
     if (coff == 2) {
         workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim;
     }
-    if (context_->templateId == TemplateId::PERF) {
-        workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * baseParams_->nSize;
-    } else {
-        workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize / baseParams_->cmpRatio * innerSplitParams_->dBaseSize * baseParams_->nSize;
-    }
+    workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * baseParams_->nSize;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -201,29 +198,64 @@ ge::graphStatus CompressorTiling::SetTemplateId()
         return ge::GRAPH_SUCCESS;
     }
     // 设置高性能模板
-    context_->templateId = TemplateId::PERF;
+    if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 128) {
+        context_->templateId = TemplateId::FULL_LOAD;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus CompressorTiling::SetInnerSplitInfo()
 {
-    innerSplitParams_->mBaseSize = 256; // 256:核间切分，M轴基本块大小
-    innerSplitParams_->dBaseSize = 128 / coff; // 128：核间切分，D轴基本块大小
-    if (context_->templateId == TemplateId::PERF) {
+    if (context_->templateId == TemplateId::FULL_LOAD) {
+        uint32_t kAlignNum = baseParams_->hiddenSize / 128;
+        innerSplitParams_->mBaseSize = 128;              // 256:核间切分，M轴基本块大小
+        innerSplitParams_->dBaseSize = 256 / (coff * 2); // nBase = dBase * coff * 2
+        uint32_t dBaseNum = baseParams_->headDim / innerSplitParams_->dBaseSize;
+        uint32_t mBaseNum = (baseParams_->tokenSize + innerSplitParams_->mBaseSize - 1) / innerSplitParams_->mBaseSize;
+        baseParams_->coreGroupNum = baseParams_->usedCoreNum / dBaseNum;
+        baseParams_->kBaseNum = 1;
+        baseParams_->kBaseSize = baseParams_->hiddenSize;
+        if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum) {
+            baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
+            baseParams_->kBaseSize = kAlignNum / baseParams_->kBaseNum * 128;
+        }
+        for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
+            baseParams_->splitCoreParam[i].nStart = (i % dBaseNum) * innerSplitParams_->dBaseSize;
+            baseParams_->splitCoreParam[i].nEnd = baseParams_->splitCoreParam[i].nStart + innerSplitParams_->dBaseSize;
+            if (baseParams_->kBaseNum > 1) {
+                uint32_t kStartIdx = i / dBaseNum;
+                uint32_t dealKSize = baseParams_->kBaseSize;
+                if (kStartIdx < kAlignNum % baseParams_->kBaseNum) {
+                    dealKSize += 128;
+                    baseParams_->splitCoreParam[i].kStart = kStartIdx * dealKSize;
+                } else if (kStartIdx < baseParams_->kBaseNum) {
+                    baseParams_->splitCoreParam[i].kStart =
+                        kStartIdx * baseParams_->kBaseSize + (kAlignNum % baseParams_->kBaseNum) * 128;
+                } else {
+                    dealKSize = 0;
+                    baseParams_->splitCoreParam[i].kStart = 0;
+                }
+                baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
+                baseParams_->splitCoreParam[i].mStart = 0;
+                baseParams_->splitCoreParam[i].mEnd = baseParams_->tokenSize;
+                baseParams_->mLoopNum = 1;
+            } else {
+                baseParams_->splitCoreParam[i].kStart = 0;
+                baseParams_->splitCoreParam[i].kEnd = baseParams_->hiddenSize;
+                baseParams_->splitCoreParam[i].mStart = (i / dBaseNum) * innerSplitParams_->mBaseSize;
+                baseParams_->splitCoreParam[i].mEnd =
+                    baseParams_->splitCoreParam[i].mStart + innerSplitParams_->mBaseSize;
+                baseParams_->mLoopNum = mBaseNum / baseParams_->coreGroupNum;
+            }
+        }
+    } else {
         if (coff == 2) {
             innerSplitParams_->mBaseSize = 128;
         } else {
             innerSplitParams_->mBaseSize = 256;
         }
         innerSplitParams_->dBaseSize = 64;
-    } else {
-        innerSplitParams_->mBaseSize = 256; // 256:核间切分，M轴基本块大小
-        innerSplitParams_->dBaseSize = 128 / coff; // 128：核间切分，D轴基本块大小
     }
-    // a5 由于loc更大, mBaseSize x 2
-    // if (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) { 
-    //      innerSplitParams_->mBaseSize *= 2;
-    //  }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -316,8 +348,6 @@ ge::graphStatus CompressorTiling::RunBigKernelTiling(CompressorTilingData* tilin
             return ge::GRAPH_FAILED;
         }
     }
-
-    baseParams_->usedCoreNum = aicNum_;
 
     context_->blockDim = aicNum_;
 

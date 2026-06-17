@@ -148,6 +148,7 @@ private:
     int64_t isResidualConnection_;
     int8_t padSlotId_;
     int64_t yDim_;
+    int64_t maxQueryLen_;
     int64_t apcEnable_;            // APC 是否开启（F1）
     int64_t blockSize_;            // APC block 大小（F1）
     int64_t maxNumBlocks_;         // cacheIndices 第二维大小（F1）
@@ -241,6 +242,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalCo
     inplace_ = tilingData->inplace;
     convMode_ = tilingData->convMode;
     hasNumComputedTokens_ = tilingData->hasNumComputedTokens;
+    maxQueryLen_ = tilingData->maxQueryLen;
 
     // === stride参数 ===
     dimSum_ = tilingData->xStride;
@@ -307,7 +309,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitQueues()
     // xWeightQueue: x和weight合并，前半段x，后半段weight
     int32_t xQueueSize = ubMainFactorBS_ * seqLen_ * ubMainFactorDim_ * sizeof(T);
     if (xInputMode_ == 1) {
-        xQueueSize = ubMainFactorBS_ * MAX_SEQUENCE_LEN * ubMainFactorDim_ * sizeof(T);
+        xQueueSize = ubMainFactorBS_ * maxQueryLen_ * ubMainFactorDim_ * sizeof(T);
     }
     int32_t weightQueueSize = kernelSize_ * ubMainFactorDim_ * sizeof(T);
     xPartSize_ = xQueueSize / sizeof(T);

@@ -30,10 +30,10 @@ namespace mc2_matmul_v3_advanced {
 
 inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, Mc2MatmulV3CompileInfo *compileInfoPtr)
 {
-    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE("Mc2MatMul", "InitCompileInfo platformInfo is null."),
+    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2MatMul", "platformInfo"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(compileInfoPtr == nullptr,
-        OP_LOGE("Mc2MatMul", "InitCompileInfo compileInfoPtr is null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("Mc2MatMul", "compileInfoPtr"), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
@@ -64,7 +64,7 @@ inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, Mc2Matmu
 
 inline ge::graphStatus InitCompileInfo(gert::TilingParseContext *context)
 {
-    OP_TILING_CHECK(context == nullptr, OP_LOGE("Mc2MatMul", "InitCompileInfo context is null."),
+    OP_TILING_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2MatMul", "context"),
         return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
     auto compileInfoPtr = context->GetCompiledInfo<Mc2MatmulV3CompileInfo>();

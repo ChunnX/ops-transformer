@@ -286,6 +286,9 @@ template <typename T>
 __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
                                                      uint32_t h0, uint32_t ubFactorHCur)
 {
+    int32_t eventIdToMTE3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(eventIdToMTE3);
+    WaitFlag<HardEvent::MTE3_V>(eventIdToMTE3);
     LocalTensor<T> ioBuf = ioQueue_.AllocTensor<T>();
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
