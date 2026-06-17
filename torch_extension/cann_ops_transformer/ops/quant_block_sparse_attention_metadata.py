@@ -13,7 +13,6 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 from typing import Optional
 
-print("xxxxxxxxxxxxxxxxxxxxx")
 class QuantBlockSparseAttentionMetadataOpBuilder(OpBuilder):
     def __init__(self):
         super(QuantBlockSparseAttentionMetadataOpBuilder, self).__init__(
