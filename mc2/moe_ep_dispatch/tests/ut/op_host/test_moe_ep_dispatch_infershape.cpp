@@ -49,7 +49,6 @@ TEST_F(MoeEpDispatchInfershape, InferShape0)
             {{}, ge::DT_INT32, ge::FORMAT_ND},
             {{}, ge::DT_INT64, ge::FORMAT_ND},
             {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -66,10 +65,9 @@ TEST_F(MoeEpDispatchInfershape, InferShape0)
     };
     int64_t numLocalExperts = 8;
     std::vector<std::vector<int64_t>> xOutputShape = {
-        {8},                       // num_recv_tokens_per_rank_host_pinned
-        {numLocalExperts},         // num_recv_tokens_per_expert_host_pinned
+        {8},                       // num_recv_tokens_per_rank
+        {numLocalExperts},         // num_recv_tokens_per_expert
         {2048, 8},                 // dst_buffer_slot_idx
-        {8 * 2048, 3},             // recv_src_metadata_internal
     };
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, xOutputShape);
 }
@@ -93,7 +91,6 @@ TEST_F(MoeEpDispatchInfershape, InferShapeCached)
             {{}, ge::DT_INT32, ge::FORMAT_ND},
             {{}, ge::DT_INT64, ge::FORMAT_ND},
             {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
@@ -113,7 +110,6 @@ TEST_F(MoeEpDispatchInfershape, InferShapeCached)
         {4},
         {numLocalExperts},
         {1024, 4},
-        {4 * 1024, 3},
     };
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, xOutputShape);
 }
@@ -125,12 +121,11 @@ TEST_F(MoeEpDispatchInfershape, InferDtype0)
     ge::DataType xType = ge::DT_BF16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(2, 4)
+        .NodeIoNum(2, 3)
         .InputDataTypes({&contextType, &xType})
         .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
         .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
         .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
         .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
@@ -139,7 +134,6 @@ TEST_F(MoeEpDispatchInfershape, InferDtype0)
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_INT32);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_INT64);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(2), ge::DT_INT32);
-    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(3), ge::DT_INT32);
 }
 
 // InferShape with FP16 input
@@ -161,7 +155,6 @@ TEST_F(MoeEpDispatchInfershape, InferShapeFp16)
             {{}, ge::DT_INT32, ge::FORMAT_ND},
             {{}, ge::DT_INT64, ge::FORMAT_ND},
             {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -181,7 +174,6 @@ TEST_F(MoeEpDispatchInfershape, InferShapeFp16)
         {2},
         {numLocalExperts},
         {512, 4},
-        {2 * 512, 3},
     };
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, xOutputShape);
 }

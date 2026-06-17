@@ -38,14 +38,15 @@ namespace optiling {
 
 constexpr uint32_t CONTEXT_INDEX = 0U;
 constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 1U;
-constexpr uint32_t RECV_SRC_META_INTERNAL_INDEX = 2U;
-constexpr uint32_t NUM_RECV_PER_RANK_HP_INDEX = 3U;
-constexpr uint32_t NUM_RECV_PER_EXPERT_HP_INDEX = 4U;
+constexpr uint32_t NUM_RECV_PER_RANK_INDEX = 2U;
+constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 3U;
+constexpr uint32_t CACHED_RECV_SRC_METADATA_INDEX = 4U;
 
 constexpr uint32_t OUT_RECV_X_INDEX = 0U;
 constexpr uint32_t OUT_RECV_TOPK_IDX_INDEX = 1U;
 constexpr uint32_t OUT_RECV_TOPK_WEIGHTS_INDEX = 2U;
 constexpr uint32_t OUT_RECV_SRC_METADATA_INDEX = 3U;
+constexpr uint32_t OUT_RECV_SCALES_INDEX = 4U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
@@ -137,7 +138,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
 }
 
 // ---------------------------------------------------------------------------
-// 输入 dtype（cached 路径才校验 OPTIONAL recvSrcMetadataInternal）
+// 输入 dtype（cached 路径才校验 OPTIONAL cachedRecvSrcMetadata）
 // ---------------------------------------------------------------------------
 static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, const char *nodeName, bool cached)
 {
@@ -156,25 +157,25 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
         return ge::GRAPH_FAILED);
 
     if (cached) {
-        auto recvSrcMetaDesc = context->GetInputDesc(RECV_SRC_META_INTERNAL_INDEX);
+        auto recvSrcMetaDesc = context->GetInputDesc(CACHED_RECV_SRC_METADATA_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaDesc);
         OP_TILING_CHECK(recvSrcMetaDesc->GetDataType() != ge::DT_INT32,
-            OP_LOGE(nodeName, "recvSrcMetadataInternal dtype must be int32, got %d.",
+            OP_LOGE(nodeName, "cachedRecvSrcMetadata dtype must be int32, got %d.",
                 static_cast<int32_t>(recvSrcMetaDesc->GetDataType())),
             return ge::GRAPH_FAILED);
     }
 
-    auto numRecvRankDesc = context->GetInputDesc(NUM_RECV_PER_RANK_HP_INDEX);
+    auto numRecvRankDesc = context->GetInputDesc(NUM_RECV_PER_RANK_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvRankDesc);
     OP_TILING_CHECK(numRecvRankDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(nodeName, "numRecvPerRankHp dtype must be int32, got %d.",
+        OP_LOGE(nodeName, "numRecvPerRank dtype must be int32, got %d.",
             static_cast<int32_t>(numRecvRankDesc->GetDataType())),
         return ge::GRAPH_FAILED);
 
-    auto numRecvExpertDesc = context->GetInputDesc(NUM_RECV_PER_EXPERT_HP_INDEX);
+    auto numRecvExpertDesc = context->GetInputDesc(NUM_RECV_PER_EXPERT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvExpertDesc);
     OP_TILING_CHECK(numRecvExpertDesc->GetDataType() != ge::DT_INT64,
-        OP_LOGE(nodeName, "numRecvPerExpertHp dtype must be int64, got %d.",
+        OP_LOGE(nodeName, "numRecvPerExpert dtype must be int64, got %d.",
             static_cast<int32_t>(numRecvExpertDesc->GetDataType())),
         return ge::GRAPH_FAILED);
 
@@ -182,7 +183,7 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
 }
 
 // ---------------------------------------------------------------------------
-// 输入 shape（cached 路径才校验 OPTIONAL recvSrcMetadataInternal）
+// 输入 shape（cached 路径才校验 OPTIONAL cachedRecvSrcMetadata）
 // 必须先于本函数完成 attr 校验，依赖 epWorldSize / numLocalExperts / nmt
 // ---------------------------------------------------------------------------
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
@@ -213,12 +214,12 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         OP_LOGE(nodeName, "dstBufferSlotIdx dim1(topK) must be in (0, %ld], got %ld.", K_MAX, topK),
         return ge::GRAPH_FAILED);
 
-    // ---- recvSrcMetadataInternal [*, 3] int32 (OPTIONAL，cached 路径才校验) ----
+    // ---- cachedRecvSrcMetadata [*, 3] int32 (OPTIONAL，cached 路径才校验) ----
     if (cached) {
-        const gert::StorageShape *recvSrcMetaShape = context->GetInputShape(RECV_SRC_META_INTERNAL_INDEX);
+        const gert::StorageShape *recvSrcMetaShape = context->GetInputShape(CACHED_RECV_SRC_METADATA_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaShape);
         OP_TILING_CHECK(recvSrcMetaShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-            OP_LOGE(nodeName, "recvSrcMetadataInternalShape dims must be 2, got %lu.",
+            OP_LOGE(nodeName, "cachedRecvSrcMetadataShape dims must be 2, got %lu.",
                 recvSrcMetaShape->GetStorageShape().GetDimNum()),
             return ge::GRAPH_FAILED);
         const int64_t metaUpper = static_cast<int64_t>(info.cfg.epWorldSize)
@@ -227,37 +228,37 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         const int64_t metaDim1 = recvSrcMetaShape->GetStorageShape().GetDim(1);
         OP_TILING_CHECK(metaDim0 < 0 || metaDim0 > metaUpper,
             OP_LOGE(nodeName,
-                "recvSrcMetadataInternal dim0 must be in [0, epWorldSize*numMaxTokensPerRank=%ld], got %ld.",
+                "cachedRecvSrcMetadata dim0 must be in [0, epWorldSize*numMaxTokensPerRank=%ld], got %ld.",
                 metaUpper, metaDim0),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(metaDim1 != META_INNER_DIM,
-            OP_LOGE(nodeName, "recvSrcMetadataInternal dim1 must be %ld, got %ld.", META_INNER_DIM, metaDim1),
+            OP_LOGE(nodeName, "cachedRecvSrcMetadata dim1 must be %ld, got %ld.", META_INNER_DIM, metaDim1),
             return ge::GRAPH_FAILED);
     }
 
-    // ---- numRecvPerRankHp [ep_world_size] int32 ----
-    const gert::StorageShape *numRecvRankShape = context->GetInputShape(NUM_RECV_PER_RANK_HP_INDEX);
+    // ---- numRecvPerRank [ep_world_size] int32 ----
+    const gert::StorageShape *numRecvRankShape = context->GetInputShape(NUM_RECV_PER_RANK_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvRankShape);
     OP_TILING_CHECK(numRecvRankShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "numRecvPerRankHpShape dims must be 1, got %lu.",
+        OP_LOGE(nodeName, "numRecvPerRankShape dims must be 1, got %lu.",
             numRecvRankShape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
     const int64_t numRecvRankDim0 = numRecvRankShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(numRecvRankDim0 != static_cast<int64_t>(info.cfg.epWorldSize),
-        OP_LOGE(nodeName, "numRecvPerRankHp dim0 must equal epWorldSize=%u, got %ld.",
+        OP_LOGE(nodeName, "numRecvPerRank dim0 must equal epWorldSize=%u, got %ld.",
             info.cfg.epWorldSize, numRecvRankDim0),
         return ge::GRAPH_FAILED);
 
-    // ---- numRecvPerExpertHp [num_local_experts] int64 ----
-    const gert::StorageShape *numRecvExpertShape = context->GetInputShape(NUM_RECV_PER_EXPERT_HP_INDEX);
+    // ---- numRecvPerExpert [num_local_experts] int64 ----
+    const gert::StorageShape *numRecvExpertShape = context->GetInputShape(NUM_RECV_PER_EXPERT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvExpertShape);
     OP_TILING_CHECK(numRecvExpertShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "numRecvPerExpertHpShape dims must be 1, got %lu.",
+        OP_LOGE(nodeName, "numRecvPerExpertShape dims must be 1, got %lu.",
             numRecvExpertShape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
     const int64_t numRecvExpertDim0 = numRecvExpertShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(numRecvExpertDim0 != static_cast<int64_t>(info.cfg.numLocalExperts),
-        OP_LOGE(nodeName, "numRecvPerExpertHp dim0 must equal numLocalExperts=%u, got %ld.",
+        OP_LOGE(nodeName, "numRecvPerExpert dim0 must equal numLocalExperts=%u, got %ld.",
             info.cfg.numLocalExperts, numRecvExpertDim0),
         return ge::GRAPH_FAILED);
 
@@ -266,7 +267,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
 
 // ---------------------------------------------------------------------------
 // 输出 shape + dtype
-// 4 个输出全部 caller 预分配；A_alloc = recvX.shape[0] ≤ ep × nmt（§8.2）
+// 5 个输出全部 caller 预分配；A_alloc = recvX.shape[0] ≤ ep × nmt
 // ---------------------------------------------------------------------------
 static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, const char *nodeName,
                                              const MoeEpDispatchEpilogueInfo &info, int64_t topK)
@@ -292,8 +293,9 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
     auto recvXDesc = context->GetOutputDesc(OUT_RECV_X_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvXDesc);
     const ge::DataType recvXDtype = recvXDesc->GetDataType();
-    OP_TILING_CHECK(recvXDtype != ge::DT_BF16 && recvXDtype != ge::DT_FLOAT16,
-        OP_LOGE(nodeName, "recvX dtype must be bf16 or fp16, got %d.",
+    OP_TILING_CHECK(recvXDtype != ge::DT_BF16 && recvXDtype != ge::DT_FLOAT16
+                     && recvXDtype != ge::DT_FLOAT8_E5M2 && recvXDtype != ge::DT_FLOAT8_E4M3FN,
+        OP_LOGE(nodeName, "recvX dtype must be bf16/fp16/fp8_e5m2/fp8_e4m3fn, got %d.",
             static_cast<int32_t>(recvXDtype)),
         return ge::GRAPH_FAILED);
 
@@ -399,8 +401,8 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     OP_TILING_CHECK(CheckAttrParams(context, nodeName, info) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check attr params failed."), return ge::GRAPH_FAILED);
 
-    // 1.5) cached 判定（OPTIONAL recvSrcMetadataInternal 是否传入决定 cached 路径）
-    bool cached = (context->GetOptionalInputDesc(RECV_SRC_META_INTERNAL_INDEX) != nullptr);
+    // 1.5) cached 判定（OPTIONAL cachedRecvSrcMetadata 是否传入决定 cached 路径）
+    bool cached = (context->GetOptionalInputDesc(CACHED_RECV_SRC_METADATA_INDEX) != nullptr);
     info.cached = cached ? 1U : 0U;
 
     // 2) 输入 dtype（先于 shape，避免 shape 校验时基于错误 dtype 推断）
@@ -417,7 +419,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     info.cfg.topK = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(1));
     const int64_t topK = static_cast<int64_t>(info.cfg.topK);
 
-    // 5) 输出 shape + dtype（含 A_alloc ≤ ep × nmt 上界 / hidden 范围 / 4 个输出交叉一致）
+    // 5) 输出 shape + dtype（含 A_alloc ≤ ep × nmt 上界 / hidden 范围 / 5 个输出交叉一致）
     OP_TILING_CHECK(CheckOutputTensors(context, nodeName, info, topK) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check output tensors failed."), return ge::GRAPH_FAILED);
 

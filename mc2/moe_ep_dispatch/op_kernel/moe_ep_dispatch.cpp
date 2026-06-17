@@ -29,9 +29,9 @@ using namespace AscendC;
 
 template<uint32_t DoCpuSync, uint32_t IsCached, uint8_t NetworkMode>
 __global__ __aicore__ void moe_ep_dispatch(
-    GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR cachedSlotIdx,
-    GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp, GM_ADDR dstBufferSlotIdx,
-    GM_ADDR recvSrcMetadataInternal, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+    GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales,
+    GM_ADDR cachedSlotIdx, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
+    GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeEpDispatchTilingData);
     // REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeEpDispatchTilingData);
@@ -40,7 +40,7 @@ __global__ __aicore__ void moe_ep_dispatch(
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchTilingData, tilingData, tilingGM);
     MoeEpDispatch<DTYPE_X, DoCpuSync, IsCached, NetworkMode> op;
     AscendC::printf("start MoeEpDispatch kernel\n");
-    op.Init(context, x, topkIdx, topkWeights, cachedSlotIdx, numRecvPerRankHp, numRecvPerExpertHp,
-            dstBufferSlotIdx, recvSrcMetadataInternal, workspaceGM, &pipe, &tilingData);
+    op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank,
+            numRecvPerExpert, dstBufferSlotIdx, workspaceGM, &pipe, &tilingData);
     op.Process();
 }
