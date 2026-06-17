@@ -25,8 +25,7 @@ TEMPLATES_DEF
 class SligBlockCube {
 public:
     TPipe *pipe;
-    constexpr static uint32_t QUERY_BUFFER_SIZE = 128 * 576 * 2;
-    constexpr static uint32_t QUERY_INDEX_BUFFER_SIZE = 64 * 128 * 2;
+    constexpr static uint32_t QUERY_INDEX_BUFFER_SIZE = 128 * 128 * 2;
     constexpr static uint32_t MM4_GATHER_BUFFER_SIZE = 128 * 128 * 2;
     constexpr static uint32_t L0C_SINGLE_BUFFER_SIZE = 64 * 1024;
     constexpr static uint32_t L0_SINGLE_BUFFER_SIZE = 32 * 1024;
@@ -36,7 +35,7 @@ public:
     static constexpr uint32_t M_SPLIT_SIZE = 128;    // m方向切分
     static constexpr uint32_t N_SPLIT_SIZE = 128;    // n方向切分
     static constexpr uint32_t K_SPLIT_SIZE = 128;    // k方向切分
-    static constexpr uint32_t QUERY_INDEX_SIZE = 64; // k方向切分
+    static constexpr uint32_t QUERY_INDEX_SIZE = 128; // k方向切分
     static constexpr uint32_t DROPE_SIZE = 64;
 
     static constexpr uint8_t SYNC_MODE = 2;
@@ -53,7 +52,6 @@ public:
     /* =====================LocalBuffer变量==================== */
 
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
-    BuffersPolicySingleBuffer<BufferType::L1> queryBuf;
     BuffersPolicySingleBuffer<BufferType::L1> sYQueryL1Buf;
     BuffersPolicySingleBuffer<BufferType::L1> sYGatherResBuf; // mm4右矩阵用
 
@@ -107,7 +105,6 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::InitCubeBuffers()
 {
     // init l1 buffer
-    queryBuf.Init(*l1BufferManagerPtr, QUERY_BUFFER_SIZE);
     sYQueryL1Buf.Init(*l1BufferManagerPtr, QUERY_INDEX_BUFFER_SIZE);
     sYGatherResBuf.Init(*l1BufferManagerPtr, MM4_GATHER_BUFFER_SIZE);
 

@@ -19,7 +19,7 @@
 #include "../../../common/op_kernel/buffers_policy.h"
 using namespace fa_base_matmul;
 
-static constexpr uint32_t VEC_SY_BASESIZE = 256;
+static constexpr uint32_t VEC_SY_BASESIZE = 128;
 static constexpr uint32_t VEC_P_BASESIZE = 128;
 enum class SLILayout { BSND = 0, TND = 1 };
 
