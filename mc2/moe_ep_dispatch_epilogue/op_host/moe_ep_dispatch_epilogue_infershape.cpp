@@ -5,14 +5,15 @@ namespace ops {
 
 static constexpr size_t EPILOGUE_INPUT_CONTEXT_INDEX = 0;
 static constexpr size_t EPILOGUE_INPUT_DST_SLOT_IDX_INDEX = 1;
-static constexpr size_t EPILOGUE_INPUT_RECV_SRC_META_INTERNAL_INDEX = 2;
-static constexpr size_t EPILOGUE_INPUT_NUM_RECV_PER_RANK_HP_INDEX = 3;
-static constexpr size_t EPILOGUE_INPUT_NUM_RECV_PER_EXPERT_HP_INDEX = 4;
+static constexpr size_t EPILOGUE_INPUT_NUM_RECV_PER_RANK_INDEX = 2;
+static constexpr size_t EPILOGUE_INPUT_NUM_RECV_PER_EXPERT_INDEX = 3;
+static constexpr size_t EPILOGUE_INPUT_CACHED_RECV_SRC_METADATA_INDEX = 4;
 
 static constexpr size_t EPILOGUE_OUTPUT_RECV_X_INDEX = 0;
 static constexpr size_t EPILOGUE_OUTPUT_RECV_TOPK_IDX_INDEX = 1;
 static constexpr size_t EPILOGUE_OUTPUT_RECV_TOPK_WEIGHTS_INDEX = 2;
 static constexpr size_t EPILOGUE_OUTPUT_RECV_SRC_METADATA_INDEX = 3;
+static constexpr size_t EPILOGUE_OUTPUT_RECV_SCALES_INDEX = 4;
 
 static constexpr size_t EPILOGUE_ATTR_EP_WORLD_SIZE_INDEX = 0;
 static constexpr size_t EPILOGUE_ATTR_EP_RANK_ID_INDEX = 1;
@@ -72,6 +73,7 @@ static ge::graphStatus InferDataTypeMoeEpDispatchEpilogue(gert::InferDataTypeCon
     context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_TOPK_IDX_INDEX, ge::DT_INT32);
     context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_TOPK_WEIGHTS_INDEX, ge::DT_FLOAT);
     context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_SRC_METADATA_INDEX, ge::DT_INT32);
+    context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_SCALES_INDEX, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }
 
