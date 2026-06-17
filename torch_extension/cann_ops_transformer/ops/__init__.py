@@ -39,3 +39,4 @@ from .graph_convert.graph_convert_quant_lightning_indexer import (
 )
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
+from .engram_embedding_utils import EngramEmbeddingUtils
