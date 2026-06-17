@@ -896,11 +896,12 @@ ge::graphStatus DequantChecker::CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilin
             "In MXFP8 Fullquant BnNBsD scenario, only 0th and 1st axis of keyAntiquantScale can be non-contiguous, the "
             + std::to_string(dimIndex) + "th axis of keyAntiquantScale must be contiguous."),
         return ge::GRAPH_FAILED);
+    std::string reasonMsg = std::string("In MXFP8 Fullquant BnNBsD scenario, ") +
+            "only 0th and 1st axis of valueAntiquantScale can be non-contiguous, the" +
+            std::to_string(dimIndex) + "th axis of valueAntiquantScale must be contiguous.";
     OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueAntiquantScaleDimNum, valueAntiquantScaleShape, fiaInfo.vScaleStrides, dimIndex)) &&
             (dimIndex != 0 && dimIndex != 1)),
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "valueAntiquantScale",
-            "In MXFP8 Fullquant BnNBsD scenario, only 0th and 1st axis of valueAntiquantScale can be non-contiguous," + 
-            " the " + std::to_string(dimIndex) + "th axis of valueAntiquantScale must be contiguous."),
+         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "valueAntiquantScale", reasonMsg),
         return ge::GRAPH_FAILED);
 
     // BnNBsD pa key --[blocknum, kv_n, blocksize, k_D/64, 2] // [fzj] 
