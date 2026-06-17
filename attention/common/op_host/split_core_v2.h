@@ -9,7 +9,7 @@
 */
 
 /*!
- * \file split_core_v2.h
+ * \file split_core.h
  * \brief
 */
 
@@ -22,7 +22,7 @@
 #include <algorithm>
 
 namespace split_core_v2 {
-constexpr int64_t FA_TOLERANCE_RATIO = 2;
+constexpr int64_t FA_TOLERANCE_RATIO = 5;
 constexpr uint32_t FD_TOLERANCE_RATIO = 2U;
 
 enum BlockType : uint32_t {
@@ -190,10 +190,12 @@ struct S1GCache {
     uint32_t s1GIdx{0U};
     uint32_t s2Start{0U};
     uint32_t s2End{0U};
+    uint32_t prevS2End{0U}; // 前一行的s2End，用于判断新增KV块（HBM加载）
     int64_t s1GCost{0};
     int64_t s1GLastBlockCost{0};
     uint32_t s1GBlock{0U};
     int64_t s1GNormalBlockCost{0};
+    uint32_t hbmBlocks{0U}; // 该行需要从HBM加载的KV块数
 };
 
 // 分核功能模块内部使用：记录分配过程中，当前核的负载信息
@@ -246,11 +248,9 @@ void CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &co
 void CalcCostInfo(SplitContext &splitContext);
 
 // assign
-void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext);
 void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext);
 void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext);
 void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext);
-void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext);
 
 // FD
 bool IsNeedRecordFDInfo(const AssignContext &assignContext, const FAMetaData &splitRes);

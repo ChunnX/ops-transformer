@@ -9,7 +9,7 @@
 */
 
 /*!
- * \file split_core_v2.cpp
+ * \file fia_tiling_split_core.cpp
  * \brief
 */
 
@@ -90,7 +90,7 @@ int64_t CalcCost(uint32_t basicM, uint32_t basicS2)
     uint32_t alignCoefS2 = 64U;
     uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U; // 按alignCoefM对齐，向上取整，4：移位操作实现除16
     uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U; // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
-    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2); // 6：M轴系数，10：S2轴系数
+    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);
 }
 
 BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
@@ -210,6 +210,19 @@ void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const Batch
 
     s1GCache.bIdx = batchCache.bIdx;
     s1GCache.s1GIdx = s1GIdx;
+    s1GCache.hbmBlocks = 0U;
+    s1GCache.prevS2End = 0U;
+
+    // Guard: invalid s1GIdx (e.g. past end of batch)
+    if (s1GIdx >= splitInfo.s1GBaseNum[batchCache.bIdx]) {
+        s1GCache.s2Start = 0U;
+        s1GCache.s2End = 0U;
+        s1GCache.s1GBlock = 0;
+        s1GCache.s1GCost = 0;
+        s1GCache.s1GLastBlockCost = 0;
+        s1GCache.s1GNormalBlockCost = 0;
+        return;
+    }
 
     auto s2Range = CalcS2Range(s1GIdx, baseInfo, splitParam, batchCache);
     s1GCache.s2Start = s2Range.first;
@@ -229,6 +242,8 @@ void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const Batch
         (splitInfo.s2TailSize[batchCache.bIdx] != 0U && s1GCache.s2End == splitInfo.s2BaseNum[batchCache.bIdx]) ? 1U :
                                                                                                                   0U;
     uint32_t curNormalS2Num = s1GCache.s1GBlock - curTailS2Num;
+
+    // ---- 计算代价（纯计算，不含访存） ----
     if (splitInfo.s1GBaseNum[batchCache.bIdx] == 0) {
         s1GCache.s1GCost = 0;
         s1GCache.s1GLastBlockCost = 0;
@@ -245,6 +260,48 @@ void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const Batch
         s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? batchCache.typeCost[NORMAL_BLOCK][TAIL_BLOCK] :
                                                         batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
         s1GCache.s1GNormalBlockCost = batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
+    }
+
+    // ---- 访存代价建模 ----
+    // 判断KV块是否在L2中（已被同BN2内的前序行加载）
+    // S1G模式：s2End随行号单调不减，前一行s2End即为L2覆盖范围
+    // GS1模式：每个G是独立三角形（s2End在组边界回落），但所有G共享KV
+
+    uint32_t l2End = 0U;
+    if (s1GIdx > 0U) {
+        uint32_t refRow = baseInfo.isS1G
+            ? (s1GIdx - 1U)
+            : std::min(s1GIdx - 1U, batchCache.s1Size > 0U ? batchCache.s1Size - 1U : 0U);
+        auto refRange = CalcS2Range(refRow, baseInfo, splitParam, batchCache);
+        l2End = refRange.second;
+    }
+    s1GCache.prevS2End = l2End;
+
+    uint32_t hbmBlocks = (s1GCache.s2End > l2End) ? (s1GCache.s2End - l2End) : 0U;
+    s1GCache.hbmBlocks = hbmBlocks;
+
+    if (hbmBlocks > 0U) {
+        // HBM代价仅与KV块大小(S2轴)相关，与Q块大小(M轴)无关
+        // 区分新增块中的满块和尾块
+        uint32_t hbmTailBlocks = 0U;
+        uint32_t hbmNormalBlocks = hbmBlocks;
+        if (curTailS2Num > 0U && l2End < s1GCache.s2End) {
+            hbmTailBlocks = 1U;
+            hbmNormalBlocks = hbmBlocks - 1U;
+        }
+        // HBM代价使用块的实际M尺寸：尾行用s1GTailSize，满行用mBaseSize
+        bool isTailRow = (s1GIdx == (splitInfo.s1GBaseNum[batchCache.bIdx] - 1U)) &&
+                         (splitInfo.s1GTailSize[batchCache.bIdx] != 0U);
+        uint32_t curM = isTailRow ? splitInfo.s1GTailSize[batchCache.bIdx] : splitParam.mBaseSize;
+        int64_t hbmCostNormal = CalcCost(curM, splitParam.s2BaseSize);
+        int64_t hbmCostTail = (splitInfo.s2TailSize[batchCache.bIdx] != 0U) ?
+                                  CalcCost(curM, splitInfo.s2TailSize[batchCache.bIdx]) : 0;
+        int64_t totalHbmCost = hbmCostNormal * hbmNormalBlocks + hbmCostTail * hbmTailBlocks;
+
+        // s1GCost = 计算代价 + HBM代价（仅新增块）
+        s1GCache.s1GCost += totalHbmCost;
+        // s1GNormalBlockCost / s1GLastBlockCost 保持纯计算代价
+        // HBM代价在AssignByBlock中根据curS2Idx与prevS2End的关系逐块精确叠加
     }
 }
 
@@ -293,6 +350,7 @@ void CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &co
 {
     const BaseInfo &baseInfo = splitContext.baseInfo;
     const SplitInfo &splitInfo = splitContext.splitInfo;
+    const SplitParam &splitParam = splitContext.splitParam;
 
     costInfo.bN2CostOfEachBatch[bIdx] = 0;
     costInfo.bN2BlockOfEachBatch[bIdx] = 0U;
@@ -313,7 +371,23 @@ void CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &co
             costInfo.maxS1GCost = s1GCache.s1GCost;
         }
         if (s1GCache.s1GBlock > 0) {
+            // s1GLastBlockCost是纯计算代价
+            // batch最后一块（最右KV块）一定是新增块（prevS2End < s2End），需补上HBM代价
             costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost;
+            // 判断最后一块是否为新增块：最后一块索引 = s2End-1，若 >= prevS2End 则为新增
+            if (s1GCache.s2End > 0U && (s1GCache.s2End - 1U) >= s1GCache.prevS2End) {
+                // HBM代价使用块的实际M尺寸
+                bool isTailRow = (s1GIdx == (splitInfo.s1GBaseNum[bIdx] - 1U)) &&
+                                 (splitInfo.s1GTailSize[bIdx] != 0U);
+                uint32_t curM = isTailRow ? splitInfo.s1GTailSize[bIdx] : splitParam.mBaseSize;
+                uint32_t curTailS2Num =
+                    (splitInfo.s2TailSize[bIdx] != 0U && s1GCache.s2End == splitInfo.s2BaseNum[bIdx]) ? 1U : 0U;
+                if (curTailS2Num > 0U) {
+                    costInfo.bN2LastBlockCostOfEachBatch[bIdx] += CalcCost(curM, splitInfo.s2TailSize[bIdx]);
+                } else {
+                    costInfo.bN2LastBlockCostOfEachBatch[bIdx] += CalcCost(curM, splitParam.s2BaseSize);
+                }
+            }
         }
     }
 }
@@ -336,56 +410,6 @@ void CalcCostInfo(SplitContext &splitContext)
         CalcBatchCost(bIdx, splitContext, costInfo);
         costInfo.totalCost += costInfo.bN2CostOfEachBatch[bIdx] * baseInfo.n2Size;
         costInfo.totalBlockNum += costInfo.bN2BlockOfEachBatch[bIdx] * baseInfo.n2Size;
-    }
-}
-
-void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext)
-{
-    const BaseInfo &baseInfo = splitContext.baseInfo;
-    const SplitInfo &splitInfo = splitContext.splitInfo;
-    const CostInfo &costInfo = splitContext.costInfo;
-
-    bool UpdateS1G = false;
-    bool UpdateBatch = false;
-
-    // Update S2
-    if (assignContext.curS2Idx >= assignContext.s1GCache.s2End) { // 边界assignInfo.s2End是取不到的开区间
-        assignContext.curS2Idx = 0U;
-        assignContext.curS1GIdx++;
-        UpdateS1G = true;
-    }
-
-    // Update S1G
-    if (assignContext.curS1GIdx >= splitInfo.s1GBaseNum[assignContext.curBIdx]) {
-        assignContext.curS1GIdx = 0U;
-        assignContext.curBN2Idx++;
-    }
-
-    // Update Batch
-    if (assignContext.curBN2Idx ==
-        baseInfo.bSize * baseInfo.n2Size) { // 所有负载全部分配完，设置最后一个核的右开区间，返回
-        assignContext.curS1GIdx = 0U;
-        assignContext.curS2Idx = 0U;
-        assignContext.isFinished = true;
-        return;
-    }
-
-    if (assignContext.curBN2Idx / baseInfo.n2Size != assignContext.curBIdx) {
-        assignContext.curBIdx = assignContext.curBN2Idx / baseInfo.n2Size;
-        assignContext.curS1GIdx = 0U;
-        UpdateBatch = true;
-        UpdateS1G = true;
-    }
-
-    // Update Cache
-    if (UpdateBatch) {
-        CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
-        assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
-        assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
-    }
-    if (UpdateS1G) {
-        CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
 
@@ -434,6 +458,8 @@ void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
         return;
     }
 
+    const SplitInfo &splitInfo = splitContext.splitInfo;
+
     while (IsWithinTolerance(assignContext.coreCache.costLimit,
                              assignContext.s1GCache.s1GLastBlockCost / FA_TOLERANCE_RATIO,
                              assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
@@ -450,6 +476,13 @@ void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
         // 计算新一行的信息
         do {
             assignContext.curS1GIdx++;
+            // 边界保护：已到达batch末尾，结束当前行的分配
+            if (assignContext.curS1GIdx >= splitInfo.s1GBaseNum[assignContext.curBIdx]) {
+                assignContext.s1GCache.s1GBlock = 0;
+                assignContext.s1GCache.s1GCost = 0;
+                assignContext.s1GCache.s1GLastBlockCost = 0;
+                return;
+            }
             CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
         } while (assignContext.s1GCache.s1GBlock == 0);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
@@ -462,47 +495,45 @@ void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContex
         return;
     }
 
-    int64_t curCost = assignContext.s1GCache.s1GNormalBlockCost;
-    if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
-        curCost = assignContext.s1GCache.s1GLastBlockCost;
-    }
+    const SplitParam &splitParam = splitContext.splitParam;
+    const SplitInfo &splitInfo = splitContext.splitInfo;
 
-    while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
-                             assignContext.coreCache.cost +
-                             curCost)) { // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
+    while (assignContext.curS2Idx < assignContext.s1GCache.s2End) {
+        // 1. 计算当前块的计算代价（不含HBM）
+        int64_t curCost = assignContext.s1GCache.s1GNormalBlockCost;
+        if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
+            curCost = assignContext.s1GCache.s1GLastBlockCost;
+        }
+
+        // 2. 精确判断是否为新增块（首次访问，需从HBM加载）
+        //    curS2Idx >= prevS2End 表示该KV块未被前序行访问过
+        if (assignContext.curS2Idx >= assignContext.s1GCache.prevS2End) {
+            bool isTailBlock =
+                (splitInfo.s2TailSize[assignContext.curBIdx] != 0U) &&
+                (assignContext.curS2Idx == splitInfo.s2BaseNum[assignContext.curBIdx] - 1U);
+            uint32_t curS2Size = isTailBlock ? splitInfo.s2TailSize[assignContext.curBIdx] : splitParam.s2BaseSize;
+            // HBM代价使用块的实际M尺寸：尾行用s1GTailSize，满行用mBaseSize
+            bool isTailRow = (assignContext.curS1GIdx == (splitInfo.s1GBaseNum[assignContext.curBIdx] - 1U)) &&
+                             (splitInfo.s1GTailSize[assignContext.curBIdx] != 0U);
+            uint32_t curM = isTailRow ? splitInfo.s1GTailSize[assignContext.curBIdx] : splitParam.mBaseSize;
+            curCost += CalcCost(curM, curS2Size); // HBM额外代价 = CalcCost(M,S2)，总代价 = 2 × CalcCost
+        }
+
+        // 3. 容差检查：costLimit + tolerance >= cost + curCost
+        if (!IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
+                               assignContext.coreCache.cost + curCost)) {
+            break;
+        }
+
+        // 4. 分配当前块
         assignContext.coreCache.cost += curCost;
         assignContext.coreCache.block++;
         assignContext.curS2Idx++;
-        // 当前batch被分配一块出去，更新剩余负载
         assignContext.bN2Cost = assignContext.bN2Cost - curCost;
-        // 当前行被分配一块出去，更新剩余负载
         assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
         assignContext.bN2Block--;
         assignContext.s1GCache.s1GBlock--;
     }
-}
-
-void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
-{
-    if (assignContext.isFinished) {
-        return;
-    }
-
-    int64_t curCost = assignContext.s1GCache.s1GNormalBlockCost;
-    if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
-        curCost = assignContext.s1GCache.s1GLastBlockCost;
-    }
-
-    assignContext.coreCache.cost += curCost;
-    assignContext.coreCache.block++;
-    assignContext.curS2Idx++;
-    // 当前batch被分配一块出去，更新剩余负载
-    assignContext.bN2Cost = assignContext.bN2Cost - curCost;
-    assignContext.bN2Block--;
-    // 当前行被分配一块出去，更新剩余负载
-    assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
-    assignContext.s1GCache.s1GBlock--;
-    UpdateCursor(splitContext, assignContext);
 }
 
 bool IsNeedRecordFDInfo(const AssignContext &assignContext, const FAMetaData &splitRes)
@@ -584,11 +615,9 @@ void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &spli
 
         int64_t avgCost = assignContext.unassignedCost / (coreNum - assignContext.curCoreIdx);
         assignContext.coreCache = {};
-        if (!splitContext.splitParam.streamK) {
-            assignContext.coreCache.costLimit = std::max(avgCost, costInfo.maxS1GCost);
-        } else {
-            assignContext.coreCache.costLimit = avgCost;
-        }
+        // costLimit始终取max(avgCost, maxS1GCost)，保证每核至少能分到一行，
+        // 从而无需ForceAssign强制分配，也无需UpdateCursor修正游标位置
+        assignContext.coreCache.costLimit = std::max(avgCost, costInfo.maxS1GCost);
 
         // 1、按整batch分配
         AssignByBatch(splitContext, assignContext);
@@ -596,10 +625,6 @@ void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &spli
         AssignByRow(splitContext, assignContext);
         // 3、按块分配
         AssignByBlock(splitContext, assignContext);
-        // 4、强制分配
-        if (assignContext.coreCache.block == 0 && splitContext.splitParam.streamK) {
-            ForceAssign(splitContext, assignContext);
-        }
 
         result.bN2End[i] = assignContext.curBN2Idx;
         result.mEnd[i] = assignContext.curS1GIdx;
