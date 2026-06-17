@@ -36,7 +36,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("topk_weights")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
