@@ -106,7 +106,13 @@ __aicore__ inline void AclnnFusedQkvProjection<T>::Init(
 
     // 计算本核要处理的 M 偏移
     int64_t blkOff = td_->singleCoreM * blockIdx;
-    realCoreM_ = (blkOff >= td_->M) ? 0 : (td_->singleCoreM < (td_->M - blkOff) ? td_->singleCoreM : static_cast<int32_t>(td_->M - blkOff));
+    if (blkOff >= td_->M) {
+        realCoreM_ = 0;
+    } else if (td_->singleCoreM < (td_->M - blkOff)) {
+        realCoreM_ = td_->singleCoreM;
+    } else {
+        realCoreM_ = static_cast<int32_t>(td_->M - blkOff);
+    }
     if (realCoreM_ == 0) return;
 
     // 本核只读自己分配到的 hidden states 片段
