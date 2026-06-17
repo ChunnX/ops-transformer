@@ -67,8 +67,11 @@ namespace ge {
  * end-start), (1, S, 1, end-start) or (B, 1, 1, end-start).
  * @li Let the value of "partial_slice" be [start, end]. "start" must be in range [0, D], "end" must be in range
  * ["start", D]. In half, interleave and interleave-half mode, ("end" - "start") must be a multiple of 2. In quarter
- * mode, ("end" - "start") must be a multiple of 4. If "start" equals "end", the operator performs no effective
- * computation and returns directly.
+ * mode, ("end" - "start") must be a multiple of 4. Additionally, ("end" - "start") must satisfy 32-byte alignment
+ * for both dy and cos/sin element types: the slice length must be a multiple of max(32/sizeof(dy), 32/sizeof(cos)),
+ * i.e. 8 for float32, 16 for float16/bf16. If dy and cos/sin have different types, the stricter requirement
+ * (based on the type with fewer bytes per element) applies. If "start" equals "end", the operator performs no
+ * effective computation and returns directly.
  */
 REG_OP(InplacePartialRotaryMulGrad)
     .INPUT(dy, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))

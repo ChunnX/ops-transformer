@@ -426,8 +426,10 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
   - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dy满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dy的B、S、N。
   - half、interleave和interleave-half模式下，切片长度(end - start)必须能被2整除。
   - quarter模式下，切片长度(end - start)必须能被4整除。
-  - interleave模式（rotary_mode=1）下，切片长度(end - start)必须能被dy和cos/sin数据类型的block大小同时整除（即32字节中包含的元素个数：float16/bf16为16，float32为8。若dy和cos/sin类型不同，取两者的最小公倍数）。
-  - interleave-half模式（rotary_mode=3）下，切片长度(end - start)必须能被dy数据类型的block大小整除（即32字节中包含的dy元素个数：float16/bf16为16，float32为8）。
+  - 所有模式下，切片长度(end - start)必须同时满足dy和cos/sin两种数据类型的32字节对齐要求。对齐粒度为 max(32/sizeof(dy元素), 32/sizeof(cos元素))，取两者中对齐要求更严格的一方：
+    - dy和cos都为float32时，切片长度需被8整除。
+    - dy和cos都为float16或bf16时，切片长度需被16整除。
+    - dy和cos类型不同时，以元素字节数较小的类型为准（如dy=float16/ cos=float32 时需被16整除）。
   - 当start等于end时，算子不执行有效计算，直接返回。
   - 输入张量cos和sin的数据类型必须相同。
   - 输入张量xOptional与dy的数据类型必须相同。
