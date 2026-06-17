@@ -126,6 +126,11 @@ function(pack_built_in)
   install(FILES ${PACKAGE_FILES}
       DESTINATION share/info/ops_transformer/script
   )
+  # When built-in packages enable AICPU kernel generation, AI Core ops-info files may be skipped.
+  # The run-package install XML still copies/chmods tbe/config, so keep the source directory in the package.
+  install(CODE [[
+    file(MAKE_DIRECTORY "${CMAKE_INSTALL_PREFIX}/opp/built-in/op_impl/ai_core/tbe/config")
+  ]])
 
   # 打包 cann_ops_transformer whl 文件
   set(WHL_SOURCE_DIR "${CMAKE_SOURCE_DIR}/torch_extension/dist")
