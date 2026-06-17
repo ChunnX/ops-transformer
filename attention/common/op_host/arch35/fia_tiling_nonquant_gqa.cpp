@@ -198,6 +198,7 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
     if (fiaInfo_->isMaxWorkspace) {
         // tiling下沉场景，无法获取到actual_seq，分核结果未知，workspace设置成最大
         CalcMaxWorkspaceSize();
+        // tiling下沉场景需传入有效Tilingkey，FE会严格校验tilingkey
         GenTilingKey();
         CalcNumBlocks(platformInfo_.aicNum);
 
