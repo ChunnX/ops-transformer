@@ -113,27 +113,27 @@ def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_da
         for i in range(split_count - 10 + 1, split_count + 1):
             display_inner(i)
 
-def find_batch_and_position(act_q, x):
+def find_batch_and_position(cu_seqlens, x):
     """
     判断x属于哪个batch以及在该batch中的位置
 
     参数:
-        act_q: 前缀和列表，act_q[b_idx]表示前(b_idx+1)个batch的总长度
+        cu_seqlens: 前缀和列表, cu_seqlens[b_idx]表示前(b_idx)个batch的总长度
         x: 需要判断的数值
 
     返回:
         tuple: (batch_idx, position)
-               - batch_idx: 所属的batch索引（从0开始），超出范围则为-1
-               - position: 在该batch中的位置（从0开始），超出范围则为-1
+               - batch_idx: 所属的batch索引(从0开始)，超出范围则为-1
+               - position: 在该batch中的位置(从0开始), 超出范围则为-1
     """
-    if not act_q:
+    if not cu_seqlens:
         return (-1, -1)
     # 遍历前缀和列表查找所属批次
-    for batch_idx in range(len(act_q)):
+    for batch_idx in range(len(cu_seqlens) - 1):
         # 计算当前批次的起始位置
-        start = act_q[batch_idx - 1] if batch_idx > 0 else 0
+        start = cu_seqlens[batch_idx]
         # 判断是否在当前批次范围内
-        if start <= x < act_q[batch_idx]:
+        if start <= x < cu_seqlens[batch_idx + 1]:
             # 计算在当前批次中的位置（偏移量）
             position = x - start
             return (batch_idx, position)
@@ -172,7 +172,8 @@ def judge_value_by_isclose(real_data, data_compe):
     return result
 
 def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
-                       cur_npu_output_value=None, cur_cpu_output_value=None, thres=0.0001, return_value_flag=False):
+                       cur_npu_output_value=None, cur_cpu_output_value=None, thres=0.0001, return_value_flag=False,
+                       output_idx_offset=None, layout_query=None, cu_seqlens_q=None, q_seq=0):
     b_idx, s1_idx, n2_idx = bsn
     max_re = 0.0
     npu_pass = True
@@ -183,6 +184,17 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
     if is_equivalent:
         pass
     else:
+        if output_idx_offset is not None:
+            if layout_query == "TND":
+                cur_prefix = cu_seqlens_q[b_idx]
+                offset = np.array(output_idx_offset).flatten()[cur_prefix + s1_idx]
+            else:
+                offset = np.array(output_idx_offset).flatten()[b_idx * q_seq + s1_idx]
+            offset_mask = cur_cpu != -1
+            cur_npu = np.where(offset_mask, cur_npu - offset, cur_npu)
+            cur_cpu = np.where(offset_mask, cur_cpu - offset, cur_cpu)
+            npu_set = set(cur_npu)
+            cpu_set = set(cur_cpu)
         value_bm = topk_value[b_idx, n2_idx, s1_idx, cur_cpu[-1]]
         element_list = topk_value[b_idx, n2_idx, s1_idx, :]
         only_in_npu = npu_set - cpu_set
@@ -220,6 +232,12 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
                     max_re = max(max_re, npu_re)
     return npu_pass, max_re
 
+def compare_return_value(cur_npu_output_value=None, cur_cpu_output_value=None):
+    max_re = 0.0
+    npu_pass = True
+    npu_pass = judge_value_by_isclose(cur_npu_output_value, cur_cpu_output_value)
+    return npu_pass, max_re
+
 def trans_tnd_actseq(list):
     list_len = len(list)
     if list_len == 0:
@@ -238,7 +256,154 @@ def check_result(expect, result, topk_value, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
     layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
-    output_idx_offset_datarange, cmp_ratio, return_value, max_seqlen_q = params
+    cmp_ratio, return_value, max_seqlen_q = params
+
+    if isinstance(cu_seqlens_q, int):
+        cu_seqlens_q = [cu_seqlens_q]
+    elif isinstance(cu_seqlens_q, list):
+        cu_seqlens_q = cu_seqlens_q
+    else:
+        cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
+    
+    if isinstance(cu_seqlens_k, int):
+        cu_seqlens_k = [cu_seqlens_k]
+    elif isinstance(cu_seqlens_k, list):
+        cu_seqlens_k = cu_seqlens_k
+    else:
+        cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
+
+    if isinstance(seqused_q, int):
+        seqused_q = [seqused_q]
+    elif isinstance(seqused_q, list):
+        seqused_q = seqused_q
+    else:
+        seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
+    
+    if isinstance(seqused_k, int):
+        seqused_k = [seqused_k]
+    elif isinstance(seqused_k, list):
+        seqused_k = seqused_k
+    else:
+        seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
+
+    npu_pass = True
+    max_error = 0
+    max_re = 0
+    thres = 0.0001
+    diff_thd=0.01
+    pct_thd=0.05
+    max_diff_hd=0.1
+    rtol=0.005
+    atol=0.000025
+    max_error_idx = 10000000
+    cpu_output = expect.cpu().numpy()
+    npu_output = result.cpu().numpy()
+    real_data = result.cpu().numpy()
+    data_compe = expect.cpu().numpy()
+    real_data = npu_output.flatten()
+    data_compe = cpu_output.flatten()
+    diff_cpu = []
+    diff_npu = []
+
+    if layout_query in ["BSND"]:
+        sp = (batch_size, q_seq, k_head_num)
+        total_rows = batch_size * q_seq * k_head_num
+    elif layout_query in ["TND"]:
+        sp = (q_t_size, k_head_num)
+        total_rows = q_t_size * k_head_num
+    else:
+        total_rows = 0
+        sp = (0, 0)
+    print(f"total_line is {total_rows}")
+    npu_reshape = npu_output.reshape([total_rows, topk])
+    cpu_reshape = cpu_output.reshape([total_rows, topk])
+    start_time = time()
+    invalid_data = cpu_reshape != -1
+    valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
+    # 判断有效值部分集合是否相同
+    cpu_output_sorted = np.sort(cpu_reshape, axis=1)
+    npu_output_sorted = np.sort(npu_reshape, axis=1)
+    diff_rows = np.zeros(total_rows, dtype=bool)
+    diff_rows |= np.any(cpu_output_sorted != npu_output_sorted, axis=1) #标记存在差异的行
+    test_id = []
+    rows = []
+    if np.any(diff_rows):
+        rows = np.where(diff_rows)[0]
+    num_rows = len(rows)
+    if num_rows:
+        print(f"需要进行第二步比较的batch有{num_rows}")
+    else:
+        print(f"有效值集合相同，无需进行比较")
+    for t_id in rows:
+        bsn = np.unravel_index(t_id, sp)
+        if layout_query == "TND":
+            b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
+            bsn = (b_idx, s1_idx, bsn[-1])
+        cur_cpu_output_value = cpu_reshape[t_id, :]
+        cur_npu_output_value = npu_reshape[t_id, :]
+        npu_pass_t = True
+        max_re_t = 0
+        valid_len = valid_lens[t_id]
+        npu_pass_t, max_re_t = compare_topk_valid(cpu_reshape[t_id, :valid_len], npu_reshape[t_id, :valid_len],
+                                                    topk_value, bsn, diff_npu, diff_cpu,
+                                                    cur_npu_output_value,
+                                                    cur_cpu_output_value, thres,
+                                                    return_value, output_idx_offset, layout_query, cu_seqlens_q, q_seq)
+        if not npu_pass_t:
+            npu_pass = False
+    end_time = time()
+    print(f"耗时：{end_time - start_time:.6f} 秒")
+    topk_precision = not diff_npu and not diff_cpu
+    if topk_precision:
+        print(f'[success]TopK精度通过, idx不同的地方的value误差在阈值之内')
+    else:
+        print(f'[fail]TopK精度失败')
+    print(f"npu_pass is {npu_pass}")
+    if real_data.size == 0 and real_data.size == data_compe.size:
+        print_log(
+            'The npu_output is [],and it is same as bm_output, the result of data_compare is \"Pass\"')
+        return "Pass", 100.0, 0
+    start = 0
+    end = real_data.size - 1
+    if end < start:
+        end = start
+    diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True)
+    err_idx = np.where(diff_result != np.array((True,)))[0]
+    diff_abs = abs(data_compe - real_data)
+    b1 = np.maximum(np.abs(real_data), (np.abs(data_compe)))
+    b2 = float((1.0 / (1 << 14)) / diff_thd)
+    b = np.add(np.maximum(b1, b2), 10e-10)
+    eps = 10e-10
+    err_diff = diff_abs / (b + eps)
+    err_diff = err_diff[err_idx]
+    split_count = int(end - start + 1) if end != start else 1
+    print_log('split_count:%s; max_diff_hd:%s;' %
+              (float(split_count), max_diff_hd))
+    fulfill_percent = float(split_count - err_idx.size) / \
+                        float(split_count) * 100.0
+    display_output_np_isclose(real_data, data_compe, start, end)
+    pct_thd = (1 - pct_thd) * 100.0
+    result = "Pass" if (npu_pass or topk_precision) else "Failed"
+    print_log(
+        '---------------------------------------------------------------------------------------')
+    print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
+    print_log(
+        '---------------------------------------------------------------------------------------')
+    print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
+                (rtol, atol, pct_thd, fulfill_percent, result))
+    if len(err_diff) > 0:
+        print_log('Max-RelativeError is: %s. Threshold is: %s.' %
+                    (max_error, max_diff_hd))
+    if result == "Failed":
+        display_error_output(real_data, data_compe,
+                                err_idx, err_diff[0:max_error_idx])
+    return result, fulfill_percent
+
+def check_result_return_value(expect, result, params):
+    batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
+    qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
+    layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
+    cmp_ratio, return_value, max_seqlen_q = params
 
     if isinstance(cu_seqlens_q, int):
         cu_seqlens_q = [cu_seqlens_q]
@@ -285,7 +450,6 @@ def check_result(expect, result, topk_value, params):
     rtol=0.005
     atol=0.000025
     max_error_idx = 10000000
-    return_value_flag = True
     cpu_output = expect.cpu().numpy()
     npu_output = result.cpu().numpy()
     real_data = result.cpu().numpy()
@@ -310,21 +474,8 @@ def check_result(expect, result, topk_value, params):
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
-    # 判断有效值部分集合是否相同
-    cpu_output_sorted = np.sort(cpu_reshape, axis=1)
-    npu_output_sorted = np.sort(npu_reshape, axis=1)
-    diff_rows = np.zeros(total_rows, dtype=bool)
-    diff_rows |= np.any(cpu_output_sorted != npu_output_sorted, axis=1) #标记存在差异的行
-    test_id = []
-    rows = []
-    if np.any(diff_rows):
-        rows = np.where(diff_rows)[0]
-    num_rows = len(rows)
-    if num_rows:
-        print(f"需要进行第二步比较的batch有{num_rows}")
-    else:
-        print(f"有效值集合相同，无需进行比较")
-    for t_id in rows:
+
+    for t_id in range(total_rows):
         bsn = np.unravel_index(t_id, sp)
         if layout_query == "TND":
             if seqused_q is not None:
@@ -337,11 +488,8 @@ def check_result(expect, result, topk_value, params):
         npu_pass_t = True
         max_re_t = 0
         valid_len = valid_lens[t_id]
-        npu_pass_t, max_re_t = compare_topk_valid(cpu_reshape[t_id, :valid_len], npu_reshape[t_id, :valid_len],
-                                                    topk_value, bsn, diff_npu, diff_cpu,
-                                                    cur_npu_output_value,
-                                                    cur_cpu_output_value, thres,
-                                                    return_value_flag)
+        npu_pass_t, max_re_t = compare_return_value(cur_npu_output_value,
+                                                    cur_cpu_output_value)
         if not npu_pass_t:
             npu_pass = False
     end_time = time()
