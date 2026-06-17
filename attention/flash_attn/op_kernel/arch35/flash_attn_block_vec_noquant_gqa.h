@@ -1244,23 +1244,42 @@ public:
         }
     }
 
-    // FD 兼容：进入 FlashDecode 前排干 mask V→MTE2 ping/pong 反向同步预置。
-    // FA 的 AllocEventID 预置了 V_MTE2[0]/[1] 且这两个 flag 会一直挂到所有 section 结束才由
-    // FreeEventID 排干，因此 FD 运行时 FA 仍残留 2 个 V_MTE2 pending flag。FD 自身的 V_MTE2 同步
-    // （SYNC_* = 8~13）在物理 flag 空间上与 FA 的 [0]/[1] 冲突，导致 FD 的 WaitFlag<V_MTE2> 卡死。
-    // 进入 FD 前先 Wait 排干，使 FD 期间 FA 无任何残留 V_MTE2 flag。
-    __aicore__ inline void DrainMaskReverseSync()
+    // ============================ FD 兼容：FA→FD 边界事件隔离 ============================
+    // 背景：FA 与 FD 在同一 AIV 核上按 section 交替执行（FA, FD, FA, FD, ...），共享同一套
+    // 硬件事件 flag 资源。FA 在 AllocEventID() 中预置的全部反向同步 flag
+    //   - MTE3_V: FA_MTE3_TO_V_0/1、FA_STAGE1_MTE3_TO_V_0/1（= 0/1/3/5）
+    //   - V_MTE2: FA_ATTEN_MASK_V_MTE2_0/1（= 0/1，仅 HAS_MASK）
+    // 在整个 kernel 生命周期内一直挂起（每个 FA section 内 Wait/Set 成对、结束时仍为 SET 态），
+    // 直到 kernel 退出才由 FreeEventID() 排干。
+    //
+    // FD 自身使用的事件 ID（V_MTE2 SYNC_*=8~13、MTE3_V=2/4 等）在硬件物理 flag 空间上会与 FA 这些
+    // 残留 flag 别名冲突（按通道、且物理 flag 数有限时按其数量取模别名，例如 FD 的 V_MTE2[8]/[9]
+    // 与 FA mask 的 V_MTE2[0]/[1] 落到同一物理 flag）。一旦 FD 的 WaitFlag 误消费了 FA 的残留 flag，
+    // 就会造成 FA 后续 WaitFlag 永久等待 → 卡死 / aicore timeout-trap。
+    // 单跑只暴露 mask 一处；批跑多轮（多次 kernel launch）会把更隐蔽的 MTE3_V 残留冲突累积放大。
+    //
+    // 解决：进入 FD 前，把 FA 预置的【全部】常驻 flag 整体 Wait 排干，使 FD 运行期间 FA 在所有通道
+    // 零残留，从根本上杜绝别名冲突；FD 结束后再【原样】Set 恢复，供下一 section 的 FA 使用，
+    // 并保证 kernel 退出时 FA FreeEventID 的 WaitFlag 严格配平（跨 launch 干净，无 flag 泄漏）。
+    // DrainFaSyncBeforeFd 与 PresetFaSyncAfterFd 成对调用，且与 FA AllocEventID/FreeEventID 完全镜像。
+    __aicore__ inline void DrainFaSyncBeforeFd()
     {
+        WaitFlag<AscendC::HardEvent::MTE3_V>(FA_MTE3_TO_V_0);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(FA_MTE3_TO_V_1);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(FA_STAGE1_MTE3_TO_V_0);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(FA_STAGE1_MTE3_TO_V_1);
         if constexpr (HAS_MASK) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_0);
             WaitFlag<AscendC::HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_1);
         }
     }
 
-    // FD 结束后恢复 mask V→MTE2 ping/pong 预置，供下一 section 的 FA ProcessVec1Nd 首轮 Wait 使用，
-    // 并保证 kernel 退出时 FreeEventID 的 WaitFlag 配平。与 DrainMaskReverseSync 成对调用。
-    __aicore__ inline void PresetMaskReverseSync()
+    __aicore__ inline void PresetFaSyncAfterFd()
     {
+        SetFlag<AscendC::HardEvent::MTE3_V>(FA_MTE3_TO_V_0);
+        SetFlag<AscendC::HardEvent::MTE3_V>(FA_MTE3_TO_V_1);
+        SetFlag<AscendC::HardEvent::MTE3_V>(FA_STAGE1_MTE3_TO_V_0);
+        SetFlag<AscendC::HardEvent::MTE3_V>(FA_STAGE1_MTE3_TO_V_1);
         if constexpr (HAS_MASK) {
             SetFlag<AscendC::HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_0);
             SetFlag<AscendC::HardEvent::V_MTE2>(FA_ATTEN_MASK_V_MTE2_1);
