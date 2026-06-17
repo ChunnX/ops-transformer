@@ -285,6 +285,7 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     auto vBiasBase = vBiasLocal_[pingpong * s2BaseSize_];
 
     vector1::MulRSquareAndAddVBiasVF(outBase, qkBase, vBiasBase, constInfo_.rSquare, gS1BasePerVecSize_, s2BaseSize_, (trunkLen_ + MAX_TOPK_COUNT));
+    PipeBarrier<PIPE_V>();
 
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
 }
