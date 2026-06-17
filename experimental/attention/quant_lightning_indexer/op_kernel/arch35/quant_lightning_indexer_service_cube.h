@@ -54,11 +54,11 @@ public:
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
 
-    static constexpr uint64_t M_BASIC_BLOCK = 256;
+    static constexpr uint64_t M_BASIC_BLOCK = 128;
     static constexpr uint64_t D_BASIC_BLOCK = 128;
-    static constexpr uint64_t S2_BASIC_BLOCK = 128;
+    static constexpr uint64_t S2_BASIC_BLOCK = 256;
 
-    static constexpr uint64_t M_BASIC_BLOCK_L0 = 256;
+    static constexpr uint64_t M_BASIC_BLOCK_L0 = 128;
     static constexpr uint64_t D_BASIC_BLOCK_L0 = 128;
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 128;
 
@@ -343,7 +343,8 @@ __aicore__ inline void QLIMatmul<QLIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2Gm
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
-    static_assert(S2_BASIC_BLOCK == S2_BASIC_BLOCK_L0 && S2_BASIC_BLOCK_L0 == 128);
+    static_assert(M_BASIC_BLOCK == M_BASIC_BLOCK_L0 && M_BASIC_BLOCK_L0 == 128);
+    static_assert(S2_BASIC_BLOCK == 2 * S2_BASIC_BLOCK_L0 && S2_BASIC_BLOCK_L0 == 128);
     if constexpr (std::is_same_v<QK_T, float>) {
         // s1gL0RealSize：2*gSize(128)对齐, 最大256
         // s2L0RealSize <= S2_BASIC_BLOCK_L0, 未约束
@@ -368,9 +369,12 @@ __aicore__ inline void QLIMatmul<QLIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2Gm
             fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2; // 分2个ND搬, S2_BASIC_BLOCK_L0不为128会有问题
             fixpipeParams.params.ndNum = 2;
             fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
-            fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * constInfo_.mBaseSize / 2; // S2_BASIC_BLOCK * M_BASE_SIZE / 2
+            fixpipeParams.params.dstNdStride = S2_BASIC_BLOCK_L0 * constInfo_.mBaseSize / 2;
         }
-        Fixpipe<QK_T, float, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2], // 未考虑s1gGmOffset和s2GmOffset
+        uint64_t s2SubBlockIdx = (s2GmOffset % constInfo_.s2BaseSize) / S2_BASIC_BLOCK_L0;
+        uint64_t ubSubBlockOffset = s2SubBlockIdx * M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0;
+        uint64_t ubPingpongOffset = (runInfo.loop % 2) * (UB_BANK_STRIDE / sizeof(QK_T));
+        Fixpipe<QK_T, float, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[ubPingpongOffset + ubSubBlockOffset],
                                                     cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams); // 将matmul结果从L0C搬运到UB
     } else {
         // nSize * sizeof(QT) <= 256B, 小于一个UB bank大小(VL)

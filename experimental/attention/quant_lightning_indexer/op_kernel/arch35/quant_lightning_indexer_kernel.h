@@ -82,8 +82,8 @@ public:
     static constexpr uint32_t SYNC_C1_V1_FLAG = 4;
     static constexpr uint32_t SYNC_V1_C1_FLAG = 5;
 
-    static constexpr uint32_t M_BASE_SIZE = 256;
-    static constexpr uint32_t S2_BASE_SIZE = 128;
+    static constexpr uint32_t M_BASE_SIZE = 128;
+    static constexpr uint32_t S2_BASE_SIZE = 256;
     static constexpr uint32_t HEAD_DIM = 128;
     static constexpr uint32_t K_HEAD_NUM = 1;
     static constexpr uint32_t GM_ALIGN_BYTES = 512;
