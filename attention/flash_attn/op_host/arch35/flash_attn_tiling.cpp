@@ -123,7 +123,7 @@ void FlashAttnTilingImpl::SplitPolicy()
         winRight = MASK_MODE_INT_MAX;
     }
     fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
-                                          static_cast<uint32_t>(faInfo_->s1Size), faInfo_->s2Size,
+                                          faInfo_->maxSeqQ, faInfo_->maxSeqKv,
                                           static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
                                           static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
