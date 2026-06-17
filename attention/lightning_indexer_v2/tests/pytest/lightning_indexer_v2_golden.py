@@ -722,6 +722,7 @@ def liv2_output_single(params):
                                 cmp_ratio = cmp_ratio)
 
     metadata = metadata.npu()
+    metadata = None
     npu_result, npu_topk_value = lightning_indexer_v2(query, key, weights,
                                              cu_seqlens_q = cu_seqlens_q,
                                              cu_seqlens_k = cu_seqlens_k,
