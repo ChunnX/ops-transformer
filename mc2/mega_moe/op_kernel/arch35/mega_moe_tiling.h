@@ -29,7 +29,7 @@ struct MegaMoeTilingData {
     uint32_t epWorldSize;
     uint32_t blockNumPerEP; // if blockNumPerEP < dispatchRows, then dispatchRows is invalid
     uint32_t maxOutputSize;
-    uint32_t rankId;
+    float clampLimit;
     uint32_t topK;
     uint32_t aicNum;
     int32_t dispatchRows;
