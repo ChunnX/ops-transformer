@@ -106,6 +106,84 @@ static const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
 };
 
+static uint64_t GetStorageShapeStride0(const gert::Shape &storageShape)
+{
+    if (storageShape.GetDimNum() <= DIM_NUM_ONE) {
+        return 0ULL;
+    }
+
+    uint64_t stride0 = 1ULL;
+    for (size_t i = 1; i < storageShape.GetDimNum(); ++i) {
+        int64_t dim = storageShape.GetDim(i);
+        if (dim <= 0) {
+            return 0ULL;
+        }
+        stride0 *= static_cast<uint64_t>(dim);
+    }
+    return stride0;
+}
+
+template <typename StrideT>
+static auto GetStride0FromStrideImpl(const StrideT &stride, int)
+    -> decltype(stride.GetDimNum(), stride.GetStride(0), uint64_t())
+{
+    if (stride.GetDimNum() <= 0) {
+        return 0ULL;
+    }
+    int64_t stride0 = stride.GetStride(0);
+    return stride0 > 0 ? static_cast<uint64_t>(stride0) : 0ULL;
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStrideImpl(const StrideT &, ...)
+{
+    return 0ULL;
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStride(const StrideT &stride)
+{
+    return GetStride0FromStrideImpl(stride, 0);
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStride(const StrideT *stride)
+{
+    if (stride == nullptr) {
+        return 0ULL;
+    }
+    return GetStride0FromStride(*stride);
+}
+
+template <typename ContextT>
+static auto TryGetOptionalInputStride0(ContextT *context, uint32_t inputIndex, int)
+    -> decltype(context->GetOptionalInputStride(inputIndex), uint64_t())
+{
+    return GetStride0FromStride(context->GetOptionalInputStride(inputIndex));
+}
+
+template <typename ContextT>
+static uint64_t TryGetOptionalInputStride0(ContextT *, uint32_t, ...)
+{
+    return 0ULL;
+}
+
+template <typename ContextT>
+static auto TryGetInputViewStride0(ContextT *context, uint32_t inputIndex, int)
+    -> decltype(context->InputIsView(inputIndex), context->GetInputStride(inputIndex), uint64_t())
+{
+    if (!context->InputIsView(inputIndex)) {
+        return 0ULL;
+    }
+    return GetStride0FromStride(context->GetInputStride(inputIndex));
+}
+
+template <typename ContextT>
+static uint64_t TryGetInputViewStride0(ContextT *, uint32_t, ...)
+{
+    return 0ULL;
+}
+
 std::string SMLALayoutToSerialString(SMLALayout layout)
 {
     switch (layout) {
@@ -313,6 +391,17 @@ uint64_t SMLAInfoParser::GetOptionalInputStride0(uint32_t inputIndex) const
         return 0ULL;
     }
 
+    uint64_t stride0 = TryGetOptionalInputStride0(context_, inputIndex, 0);
+    if (stride0 > 0) {
+        return stride0;
+    }
+
+    // Compatible with CANN packages that only expose view stride by normal input index.
+    stride0 = TryGetInputViewStride0(context_, inputIndex, 0);
+    if (stride0 > 0) {
+        return stride0;
+    }
+
     // Keep the tiling-context shape path here for future CANN packages that expose real input stride.
     // const gert::StorageShape *inputShape = context_->GetOptionalInputShape(inputIndex);
     // if (inputShape == nullptr) {
@@ -321,19 +410,7 @@ uint64_t SMLAInfoParser::GetOptionalInputStride0(uint32_t inputIndex) const
     // const gert::Shape &storageShape = inputShape->GetStorageShape();
 
     const gert::Shape &storageShape = inputTensor->GetStorageShape();
-    if (storageShape.GetDimNum() <= DIM_NUM_ONE) {
-        return 0ULL;
-    }
-
-    uint64_t stride0 = 1ULL;
-    for (size_t i = 1; i < storageShape.GetDimNum(); ++i) {
-        int64_t dim = storageShape.GetDim(i);
-        if (dim <= 0) {
-            return 0ULL;
-        }
-        stride0 *= static_cast<uint64_t>(dim);
-    }
-    return stride0;
+    return GetStorageShapeStride0(storageShape);
 }
 ge::graphStatus SMLAInfoParser::GetInOutDataType()
 {
