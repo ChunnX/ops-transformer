@@ -75,7 +75,7 @@ constexpr int64_t GMMFR_SPLIT_SIZE = 64L;
 constexpr int64_t GMMFR_SPLIT_FACTOR = 2L;
 constexpr int64_t MOD2 = 2L;
 constexpr int64_t MAX_NUM_EXPERTS = 1024L;
-constexpr const char *GMMFR_ACLNN_OP_NAME = "aclnnGroupedMatmulFinalizeRouting";
+constexpr const char *GMMFR_ACLNN_OP_NAME = "aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize";
 
 const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
