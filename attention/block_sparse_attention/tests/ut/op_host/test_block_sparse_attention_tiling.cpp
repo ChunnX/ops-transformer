@@ -1401,6 +1401,7 @@ TEST_F(block_sparse_attention_tiling_ut, blockShapeY_not_multiple_of_128)
 TEST_F(block_sparse_attention_tiling_ut, blockShape_wrong_size)
 {
     struct BlockSparseAttentionCompileInfo {} compileInfo;
+    int64_t invalidBlockShapeData[] = {128, 128, 128};
     gert::TilingContextPara tilingContextPara(
         "BlockSparseAttention",
         {
@@ -1409,7 +1410,7 @@ TEST_F(block_sparse_attention_tiling_ut, blockShape_wrong_size)
             {{{tokenKv, numKvHeads, headDim}, {tokenKv, numKvHeads, headDim}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{batch, numHeads, qBlockNum, kvBlockNum}, {batch, numHeads, qBlockNum, kvBlockNum}}, ge::DT_INT8, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
-            {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, blockShapeData},
+            {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, invalidBlockShapeData},
             {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsData},
             {{{batch}, {batch}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqLengthsKvData},
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -2032,7 +2033,7 @@ TEST_F(block_sparse_attention_tiling_ut, A5_innerPrecise_is_not_4)
 // ============================================================================
 // 用例 48: A2A3 fp16场景innerPrecise不为0或1
 // ============================================================================
-TEST_F(block_sparse_attention_tiling_ut, A5_fp16_innerPrecise_is_not_0_or_1)
+TEST_F(block_sparse_attention_tiling_ut, A2A3_fp16_innerPrecise_is_not_0_or_1)
 {
     struct BlockSparseAttentionCompileInfo {} compileInfo;
     gert::TilingContextPara tilingContextPara(
@@ -2074,7 +2075,7 @@ TEST_F(block_sparse_attention_tiling_ut, A5_fp16_innerPrecise_is_not_0_or_1)
 // ============================================================================
 // 用例 49: A2A3 bf16场景innerPrecise不为0
 // ============================================================================
-TEST_F(block_sparse_attention_tiling_ut, A5_bf16_innerPrecise_is_not_0)
+TEST_F(block_sparse_attention_tiling_ut, A2A3_bf16_innerPrecise_is_not_0)
 {
     struct BlockSparseAttentionCompileInfo {} compileInfo;
     gert::TilingContextPara tilingContextPara(

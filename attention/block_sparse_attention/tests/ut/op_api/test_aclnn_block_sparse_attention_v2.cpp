@@ -59,8 +59,8 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, normal)
         TensorDesc({batch, numHeads, qBlockNum, kvBlockNum}, ACL_INT8, ACL_FORMAT_ND).Value(vector<int8_t>{1});
     auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY});
     auto qDequantScale = TensorDesc({batch, numHeads, qBlockNum, 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
-    auto kDequantScale = TensorDesc({batch, numHeads, kvBlockNum, 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
-    auto vDequantScale = TensorDesc({batch, numHeads, kvBlockNum, 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto kDequantScale = TensorDesc({batch, numKvHeads, kvBlockNum, 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto vDequantScale = TensorDesc({batch, numKvHeads, kvBlockNum, 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
     auto actualSeqLengths = IntArrayDesc(vector<int64_t>{qSeqlen});
     auto actualSeqLengthsKv = IntArrayDesc(vector<int64_t>{kvSeqlen});
     char qInputLayout[] = "BNSD";

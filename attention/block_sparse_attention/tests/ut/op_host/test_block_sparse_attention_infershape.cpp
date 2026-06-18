@@ -991,7 +991,7 @@ TEST_F(block_sparse_attention_infershape_ut, inferDataType)
 
     auto contextHolder =
         gert::InferDataTypeContextFaker()
-            .NodeIoNum(12, 1)
+            .NodeIoNum(12, 2)
             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
             .InputDataTypes({&queryType, &keyType, &valueType, &blockSparseMaskType, &attenMaskType, &blockShapeType,
