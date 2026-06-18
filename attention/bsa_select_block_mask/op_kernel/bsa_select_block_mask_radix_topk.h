@@ -482,6 +482,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
         CopyOutHistToWs<false>(numValue_, GetBlockIdx() * numValue_);
 
         // g. SyncAll
+        PipeBarrier<PIPE_ALL>();
         SyncAll();
 
         // h. Update
@@ -1147,6 +1148,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
     resTensor.SetValue(0, static_cast<int32_t>(reduceSumValue));
     SToMTE3Sync();
     CopyOutBoundaryBinCumSum(resTensor);
+    PipeBarrier<PIPE_ALL>();
     SyncAll();
 
     int32_t cumSumValuePrev = 0;
