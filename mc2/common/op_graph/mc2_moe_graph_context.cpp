@@ -612,6 +612,7 @@ void Mc2MoeGraphContext::UpdateBufferSizeCache(const std::string& key, int64_t h
 {
     hcclBuffSizeCacheA5_[key] = hcclBuffSize;
 }
+
 ge::graphStatus Mc2MoeGraphContext::GetMc2ContextA5(
     ge::Graph& graph, const std::string& contextTag, const std::string& epName,
     const ge::GNode& originalNode, ge::GNode& constNode, int64_t& hcclBuffSize)
@@ -672,6 +673,314 @@ ge::graphStatus Mc2MoeGraphContext::CreateNewMc2Context(
     }
     contextNodeMapA5_[uniqueKey] = constNode;
     return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief FillContextBuffer for QuantReduceScatter
+ */
+ge::graphStatus Mc2MoeGraphContext::FillContextBufferForQrs(const HcclComm &hcclHandle, const CommEngine &engine,
+                                                            Mc2QuantReduceScatterContext *context, uint32_t rankId,
+                                                            const std::vector<ChannelHandle> &channels)
+{
+    OPS_LOG_I(LOG_TAG, "Start to fill context buffer for QuantReduceScatter");
+
+    for (uint32_t i = 0; i < context->rankDim; ++i) {
+        void *tempBuffer = nullptr;
+        uint64_t bufSize = 0;
+        HcclResult hcclRet;
+
+        if (i == rankId) {
+            hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
+            bufSize = hcclBuffSize_;
+        } else {
+            uint32_t idx = (i < rankId) ? i : (i - 1);
+            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+        }
+
+        if ((hcclRet != HCCL_SUCCESS) || (tempBuffer == nullptr)) {
+            OPS_LOG_E(LOG_TAG, "Get HCCL buffer failed, src is: %u, dst is: %u", rankId, i);
+            return ge::GRAPH_FAILED;
+        }
+
+        context->windowsIn[i] = reinterpret_cast<uint64_t>(tempBuffer);
+        context->windowsOut[i] = reinterpret_cast<uint64_t>(static_cast<char *>(tempBuffer) + bufSize / 2);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief GetHcclCommResource for QuantReduceScatter
+ */
+ge::graphStatus Mc2MoeGraphContext::GetHcclCommResourceForQrs(const HcclComm &hcclHandle,
+                                                              const CommEngine &engine,
+                                                              const CommProtocol &protocol,
+                                                              Mc2QuantReduceScatterContext *context)
+{
+    OPS_LOG_I(LOG_TAG, "Start to get HCCL communication resource for QuantReduceScatter");
+
+    uint32_t rankId = context->rankId;
+    std::vector<ChannelHandle> channels;
+
+    ChannelAcquireParams params{context->rankDim, rankId, protocol, engine};
+    auto status = GetHcclCommChannel(hcclHandle, params, channels);
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Get HCCL communication channel failed for Qrs");
+        return status;
+    }
+
+    status = FillContextBufferForQrs(hcclHandle, engine, context, rankId, channels);
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "FillContextBuffer failed for Qrs");
+        return status;
+    }
+
+    OPS_LOG_I(LOG_TAG, "Fill context buffer success for Qrs");
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief CreatMc2Context for QuantReduceScatter
+ */
+ge::graphStatus Mc2MoeGraphContext::CreatMc2ContextForQrs(const ContextCreateParams &params,
+                                                          Mc2QuantReduceScatterContext *context)
+{
+    OPS_LOG_I(LOG_TAG, "start to create mc2 context for QuantReduceScatter");
+
+    void *ctx = nullptr;
+    uint64_t ctxSize = sizeof(Mc2QuantReduceScatterContext);
+    auto hcclRet = HcclEngineCtxCreate(params.hcclHandle, params.mc2ContextTag.c_str(),
+                                       params.engine, ctxSize, &ctx);
+    if (hcclRet != HCCL_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Create HCCL context memory failed for Qrs");
+        return ge::GRAPH_FAILED;
+    }
+
+    auto cleanup = [&]() {
+        if (ctx != nullptr) {
+            HcclEngineCtxDestroy(params.hcclHandle, params.mc2ContextTag.c_str(), params.engine);
+        }
+    };
+
+    hcclRet = HcclGetRankId(params.hcclHandle, &context->rankId);
+    if ((hcclRet != HCCL_SUCCESS) || (context->rankId >= MAX_EP_RANK_SIZE)) {
+        OPS_LOG_E(LOG_TAG, "Get rankId failed, rankId is: %u", context->rankId);
+        cleanup();
+        return ge::GRAPH_FAILED;
+    }
+
+    hcclRet = HcclGetRankSize(params.hcclHandle, &context->rankDim);
+    if ((hcclRet != HCCL_SUCCESS) || (context->rankDim == 0) || (context->rankDim >= MAX_EP_RANK_SIZE)) {
+        OPS_LOG_E(LOG_TAG, "Get rankDim failed, rankSize is: %u", context->rankDim);
+        cleanup();
+        return ge::GRAPH_FAILED;
+    }
+
+    auto status = GetHcclCommResourceForQrs(params.hcclHandle, params.engine, params.protocol, context);
+    if (status != ge::GRAPH_SUCCESS) {
+        cleanup();
+        OPS_LOG_E(LOG_TAG, "Get HCCL communication resource failed for Qrs");
+        return status;
+    }
+
+    hcclRet = HcclEngineCtxCopy(params.hcclHandle, params.engine, params.mc2ContextTag.c_str(),
+                                context, ctxSize, CTX_COPY_DEFAULT_OFFSET);
+    if (hcclRet != HCCL_SUCCESS) {
+        cleanup();
+        OPS_LOG_E(LOG_TAG, "Copy context from host to device failed for Qrs");
+        return ge::GRAPH_FAILED;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief GetMc2Context for QuantReduceScatter
+ */
+ge::graphStatus Mc2MoeGraphContext::GetMc2ContextForQrs(const ContextAcquireParams &params,
+                                                        Mc2QuantReduceScatterContext *context,
+                                                        int64_t &hcclBuffSize)
+{
+    OPS_LOG_I(LOG_TAG, "start to get mc2 context for QuantReduceScatter");
+
+    ContextCreateParams createParams{
+        params.hcclHandle,
+        params.engine,
+        params.protocol,
+        params.mc2ContextTag
+    };
+    auto status = CreatMc2ContextForQrs(createParams, context);
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Creat Mc2 Context failed for Qrs");
+        return status;
+    }
+
+    hcclBuffSize = static_cast<int64_t>(hcclBuffSize_);
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief GetHcclContext for QuantReduceScatter
+ */
+ge::graphStatus Mc2MoeGraphContext::GetHcclContextForQrs(const std::string &contextTag,
+                                                         const std::string &group,
+                                                         Mc2QuantReduceScatterContext *context,
+                                                         int64_t &hcclBuffSize)
+{
+    OPS_LOG_I(LOG_TAG, "start to get hccl context for QuantReduceScatter, tag is: %s, group is: %s",
+              contextTag.c_str(), group.c_str());
+
+    auto status = LoadHcclSymbols();
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Load HCCL symbols failed for Qrs");
+        return ge::GRAPH_FAILED;
+    }
+
+    CommProtocol protocol;
+    static std::atomic<uint64_t> s_ctxVersion{0};
+    std::string mc2ContextTag = contextTag + "_" + group + "_" +
+                                std::to_string(s_ctxVersion.fetch_add(1, std::memory_order_relaxed));
+
+    status = ValidateContextTag(mc2ContextTag);
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Validate context tag failed for Qrs");
+        return ge::GRAPH_FAILED;
+    }
+
+    HcclComm hcclHandle;
+    status = GetCommHandle(group.c_str(), hcclHandle);
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Get communication handle failed for Qrs");
+        return ge::GRAPH_FAILED;
+    }
+
+    CommEngine engine = CommEngine::COMM_ENGINE_AIV;
+    status = GetCommProtocol(hcclHandle, protocol);
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Get Communication protocol failed for Qrs");
+        return ge::GRAPH_FAILED;
+    }
+    OPS_LOG_I(LOG_TAG, "Get Communication protocol done, protocol is: %d", protocol);
+
+    ContextAcquireParams params{hcclHandle, engine, protocol, mc2ContextTag};
+    status = GetMc2ContextForQrs(params, context, hcclBuffSize);
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Get Mc2 context failed for Qrs");
+        return ge::GRAPH_FAILED;
+    }
+
+    OPS_LOG_I(LOG_TAG, "Get HCCL context done, hcclBuffSize is: %lld", hcclBuffSize);
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief CreateContextNode for QuantReduceScatter
+ */
+ge::graphStatus Mc2MoeGraphContext::CreateContextNodeForQrs(ge::Graph& graph,
+                                                            const Mc2QuantReduceScatterContext& context,
+                                                            ge::GNode& constNode)
+{
+    OPS_LOG_I(LOG_TAG, "Start to create context node for QuantReduceScatter");
+
+    static const std::string kContextConstName = "mc2_quant_reduce_scatter_v2_context";
+    static const uint32_t IDX_0 = 0;
+
+    ge::Shape shape({static_cast<int64_t>(sizeof(Mc2QuantReduceScatterContext) / sizeof(int32_t))});
+    ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
+    ge::Tensor tensorValue(tensorDesc, reinterpret_cast<const uint8_t*>(&context), sizeof(Mc2QuantReduceScatterContext));
+
+    auto constOp = ge::OperatorFactory::CreateOperator(kContextConstName, "Const");
+    if (constOp.IsEmpty()) {
+        OPS_LOG_E(LOG_TAG, "Const op not found in factory for Qrs");
+        return ge::GRAPH_FAILED;
+    }
+    constOp.UpdateOutputDesc(IDX_0, tensorDesc);
+    constOp.SetAttr("value", tensorValue);
+
+    constNode = graph.AddNodeByOp(constOp);
+    ge::AscendString ctxNodeName;
+    constNode.GetName(ctxNodeName);
+    OPS_LOG_I(LOG_TAG, "Context Const node added as: %s", ctxNodeName.GetString());
+
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief CreateNewMc2Context for QuantReduceScatter
+ */
+ge::graphStatus Mc2MoeGraphContext::CreateNewMc2ContextForQrs(ge::Graph& graph, const std::string& contextTag,
+                                                              const std::string& group,
+                                                              const std::string& uniqueKey,
+                                                              ge::GNode& constNode, int64_t& hcclBuffSize)
+{
+    OPS_LOG_I(LOG_TAG, "Start to create new mc2 context for QuantReduceScatter");
+
+    Mc2QuantReduceScatterContext context{0};
+    auto status = GetHcclContextForQrs(contextTag, group, &context, hcclBuffSize);
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Get HCCL context failed for Qrs");
+        return status;
+    }
+
+    UpdateBufferSizeCache(uniqueKey, hcclBuffSize);
+    status = CreateContextNodeForQrs(graph, context, constNode);
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Create context node failed for Qrs");
+        return status;
+    }
+
+    contextNodeMapA5_[uniqueKey] = constNode;
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
+ * @brief GetMc2ContextA5 for QuantReduceScatter
+ */
+ge::graphStatus Mc2MoeGraphContext::GetMc2ContextA5ForQrs(ge::Graph& graph,
+                                                          const std::string& contextTag,
+                                                          const std::string& name,
+                                                          const ge::GNode& originalNode,
+                                                          ge::GNode& constNode, int64_t& hcclBuffSize)
+{
+    OPS_LOG_I(LOG_TAG, "Start to get mc2 context A5 for QuantReduceScatter");
+
+    if ((contextTag.empty()) || (name.empty())) {
+        OPS_LOG_E(LOG_TAG, "Context tag or name is empty for Qrs");
+        return ge::GRAPH_FAILED;
+    }
+
+    ge::AscendString groupStr;
+    if ((originalNode.GetAttr(ge::AscendString(name.c_str()), groupStr) != ge::GRAPH_SUCCESS) ||
+        (groupStr.GetString() == nullptr) || (*groupStr.GetString() == '\0')) {
+        OPS_LOG_E(LOG_TAG, "Failed to get %s attr for Qrs", name.c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    Mc2MoeGraphContext& manager = GetInstance();
+    std::string group(groupStr.GetString());
+    ge::AscendString graphNameStr;
+    graph.GetName(graphNameStr);
+    std::string uniqueKey = contextTag + "_" + group + "_" +
+                            (graphNameStr.GetString() ? graphNameStr.GetString() : "unknown");
+    auto nodeIt = manager.contextNodeMapA5_.find(uniqueKey);
+    if (nodeIt != manager.contextNodeMapA5_.end()) {
+        ge::AscendString cachedName;
+        if (nodeIt->second.GetName(cachedName) == ge::GRAPH_SUCCESS) {
+            constNode = nodeIt->second;
+            if (manager.TryGetBufferSizeCache(uniqueKey, hcclBuffSize)) {
+                return ge::GRAPH_SUCCESS;
+            }
+            Mc2QuantReduceScatterContext context{0};
+            auto status = manager.GetHcclContextForQrs(contextTag, group, &context, hcclBuffSize);
+            if (status != ge::GRAPH_SUCCESS) {
+                OPS_LOG_E(LOG_TAG, "Get HCCL context failed for reuse in Qrs");
+                return status;
+            }
+            manager.UpdateBufferSizeCache(uniqueKey, hcclBuffSize);
+            return ge::GRAPH_SUCCESS;
+        }
+        manager.contextNodeMapA5_.erase(nodeIt);
+    }
+    return manager.CreateNewMc2ContextForQrs(graph, contextTag, group, uniqueKey, constNode, hcclBuffSize);
 }
 
 template void *Mc2MoeGraphContext::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
