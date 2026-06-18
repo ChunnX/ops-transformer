@@ -13,7 +13,7 @@
  * \brief
  */
 
-#if ASC_DEVKIT_MAJOR >= 9 && ASC_DEVKIT_MINOR > 0
+#if ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)
 #define ENABLE_TENSOR_API
 #endif
 
