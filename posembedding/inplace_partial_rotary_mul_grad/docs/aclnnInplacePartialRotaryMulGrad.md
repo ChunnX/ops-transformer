@@ -224,7 +224,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>cos</td>
@@ -234,7 +234,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>sin</td>
@@ -244,7 +244,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>xOptional</td>
@@ -254,7 +254,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>rotaryMode</td>
@@ -284,7 +284,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>dcosOut</td>
@@ -294,7 +294,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>dsinOut</td>
@@ -304,7 +304,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>4</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
@@ -415,7 +415,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
 ## 约束说明
 
 - 该算子仅支持Ascend 950 AI Processor。
-- 该算子仅支持连续Tensor，不支持非连续Tensor。
+- 该算子支持非连续Tensor，输入非连续时内部会转换为连续Tensor进行计算。
 
 - 确定性计算：
   - aclnnInplacePartialRotaryMulGrad默认确定性实现。
