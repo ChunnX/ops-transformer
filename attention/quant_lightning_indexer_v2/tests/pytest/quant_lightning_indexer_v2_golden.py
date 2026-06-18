@@ -888,7 +888,7 @@ def qliv2_output_single(params):
             key_bnsd = key_bnsd.to(qk_dtype)
         
         k_scale = random.uniform(k_scale_datarange[0], k_scale_datarange[1])
-        key_dequant_scale_bns = torch.tensor(np.random.uniform(k_scale, k_scale, (batch_size, k_head_num, k_max_s2))).to(dequant_dtype)
+        key_dequant_scale_bns = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], (batch_size, k_head_num, k_max_s2))).to(dequant_dtype)
         key_block_num_per_batch = []
         key_block_num_sum = 0
         for cur_act_k in act_seq_k:
@@ -985,44 +985,6 @@ def qliv2_output_single(params):
                                                     cmp_ratio = cmp_ratio,
                                                     return_value = return_value)
 
-    # if hifp8mode == 1:
-    #     npu_result,_ = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights,
-    #                                                 query_dequant_scale,
-    #                                                 key_dequant_scale,
-    #                                                 actual_seq_lengths_query = actual_seq_lengths_query,
-    #                                                 actual_seq_lengths_key = actual_seq_lengths_key,
-    #                                                 block_table = block_table,
-    #                                                 metadata = metadata,
-    #                                                 quant_mode = quant_mode,
-    #                                                 key_quant_mode = key_quant_mode,
-    #                                                 layout_query = layout_query,
-    #                                                 layout_key = layout_key,
-    #                                                 sparse_count = sparse_count,
-    #                                                 sparse_mode = sparse_mode,
-    #                                                 pre_tokens = (1<<63)-1,
-    #                                                 next_tokens = (1<<63)-1,
-    #                                                 cmp_ratio = cmp_ratio,
-    #                                                 return_value = False,
-    #                                                 query_dtype = query_dtype,
-    #                                                 key_dtype = key_dtype)
-    # else:
-    #     npu_result,_ = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights,
-    #                                                     query_dequant_scale,
-    #                                                     key_dequant_scale,
-    #                                                     actual_seq_lengths_query = actual_seq_lengths_query,
-    #                                                     actual_seq_lengths_key = actual_seq_lengths_key,
-    #                                                     block_table = block_table,
-    #                                                     metadata = metadata,
-    #                                                     quant_mode = quant_mode,
-    #                                                     key_quant_mode = key_quant_mode,
-    #                                                     layout_query = layout_query,
-    #                                                     layout_key = layout_key,
-    #                                                     sparse_count = sparse_count,
-    #                                                     sparse_mode = sparse_mode,
-    #                                                     pre_tokens = (1<<63)-1,
-    #                                                     next_tokens = (1<<63)-1,
-    #                                                     cmp_ratio = cmp_ratio,
-    #                                                     return_value = False)
     torch.npu.synchronize()
     return cpu_result, npu_result, topk_value
 
