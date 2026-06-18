@@ -53,8 +53,10 @@ def grouped_matmul_activation_quant_golden(x, group_list, weight, weight_scale, 
     del bias, tuning_config, round_mode, dst_type_max
     if activation_type != "gelu_tanh":
         raise ValueError("activation_type only supports gelu_tanh.")
+    if quant_mode in (None, ""):
+        quant_mode = "MX"
     if quant_mode != "MX":
-        raise ValueError("quant_mode only supports MX.")
+        raise ValueError("当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX")
     if x_scale is None:
         raise ValueError("x_scale is required for MX quant mode.")
 
