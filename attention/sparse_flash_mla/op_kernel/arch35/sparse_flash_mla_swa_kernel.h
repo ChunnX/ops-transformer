@@ -165,7 +165,8 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     constInfo.hasCmpTopkLength = (cmpTopkLength != nullptr);
 
     this->pipe = tPipe;
-    this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKv, seqUsedCmpKv, cmpResidualKV);
+    this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKv,
+        seqUsedCmpKv, cmpResidualKV);
     vecBlock.InitVecBlock(
         tPipe, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKv, seqUsedCmpKv, cmpResidualKV);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
