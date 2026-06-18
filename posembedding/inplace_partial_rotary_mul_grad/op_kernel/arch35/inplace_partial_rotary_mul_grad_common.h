@@ -24,6 +24,9 @@ using namespace AscendC;
 
 constexpr uint32_t HALF_INTERLEAVE_COEF = 2;
 constexpr uint32_t QUARTER_MODE_COEF = 4;
+constexpr uint32_t BLOCK_TYPE_SIZE = 32U;                            // bytes, = GetUbBlockSize()
+constexpr uint32_t VREG_SIZE_BITS = 256U;                            // Ascend950 vector register width
+constexpr uint32_t VL_FLOAT32_SIZE = VREG_SIZE_BITS / sizeof(float); // 256/4 = 64 floats per vector
 
 // mode 常量，与 InplacePartialRotaryMulGradMode 对齐
 constexpr int64_t ROTARY_MODE_HALF = 0;
@@ -135,9 +138,9 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor,
                     ops::LoadOneTensorForDtypeT<TCOS>(currSinUb, vregSin, preg, offset);
 
                     // Deinterleave to get even/odd elements
-                    ops::Deinterleave(vregDyEven, vregDyOdd, vregIn, preg);
-                    ops::Deinterleave(vregCosEven, vregCosOdd, vregCos, preg);
-                    ops::Deinterleave(vregSinEven, vregSinOdd, vregSin, preg);
+                    MicroAPI::DeInterleave<float>(vregDyEven, vregDyOdd, vregIn, preg);
+                    MicroAPI::DeInterleave<float>(vregCosEven, vregCosOdd, vregCos, preg);
+                    MicroAPI::DeInterleave<float>(vregSinEven, vregSinOdd, vregSin, preg);
 
                     // cos_even * dy_even, cos_odd * dy_odd
                     Mul(vregCosEven, vregCosEven, vregDyEven, preg);
@@ -153,7 +156,7 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor,
                     Add(vregCosOdd, vregCosOdd, vregSinEven, preg);
 
                     // Interleave back to full vector
-                    ops::Interleave(vregOut, vregCosEven, vregCosOdd, preg);
+                    MicroAPI::Interleave<float>(vregOut, vregCosEven, vregCosOdd, preg);
 
                     ops::StoreOneTensorForDtypeT<TDY>(currOutUb, vregOut, preg, offset);
                 }
@@ -532,9 +535,9 @@ __aicore__ inline void BatchInterleaveModeGradVF(
                         ops::LoadOneTensorForDtypeT<TCOS>(currSinUb, vregSin, pregLoop, offset);
 
                         // Deinterleave to get even/odd elements
-                        ops::Deinterleave(vregDyEven, vregDyOdd, vregIn, pregLoop);
-                        ops::Deinterleave(vregCosEven, vregCosOdd, vregCos, pregLoop);
-                        ops::Deinterleave(vregSinEven, vregSinOdd, vregSin, pregLoop);
+                        MicroAPI::DeInterleave<float>(vregDyEven, vregDyOdd, vregIn, pregLoop);
+                        MicroAPI::DeInterleave<float>(vregCosEven, vregCosOdd, vregCos, pregLoop);
+                        MicroAPI::DeInterleave<float>(vregSinEven, vregSinOdd, vregSin, pregLoop);
 
                         // cos_even * dy_even, cos_odd * dy_odd
                         Mul(vregCosEven, vregCosEven, vregDyEven, pregLoop);
@@ -550,7 +553,7 @@ __aicore__ inline void BatchInterleaveModeGradVF(
                         Add(vregCosOdd, vregCosOdd, vregSinEven, pregLoop);
 
                         // Interleave back to full vector
-                        ops::Interleave(vregOut, vregCosEven, vregCosOdd, pregLoop);
+                        MicroAPI::Interleave<float>(vregOut, vregCosEven, vregCosOdd, pregLoop);
 
                         ops::StoreOneTensorForDtypeT<TDY>(currOutUb, vregOut, pregLoop, offset);
                     }
