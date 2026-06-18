@@ -306,7 +306,6 @@ private:
     uint32_t axisHCommu_{0};
     uint32_t hCommuSize_{0};
     uint32_t maskSizePerExpert_{0};
-    uint32_t tripleOutOffset_{0};  // triple 在 outTensor_ slot 中经 Copy stride 映射后的 int32 偏移
     uint32_t expertIdsBufSize_{0};
     uint32_t rscvStatusNum_{0};
     uint32_t startStatusIndex_{0};
@@ -420,15 +419,6 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     blockCntPerToken_ = Ceil(hOutSizeAlign_, SPLIT_BLOCK_DATA_SIZE);
     hCommuSize_ = blockCntPerToken_ * SPLIT_BLOCK_SIZE;
     axisHCommu_ = hCommuSize_ / sizeof(XOutType);
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    tripleOutOffset_ = 0;
-#else
-    // Copy strides {1,1,16,15}: 每个 repeat src 120 int32, dst 128 int32
-    constexpr uint32_t SRC_REPEAT = 120;  // 64 + 56
-    constexpr uint32_t DST_REPEAT = 128;  // 16 * 8
-    tripleOutOffset_ = (tokenQuantAlign_ / SRC_REPEAT) * DST_REPEAT
-                     + (tokenQuantAlign_ % SRC_REPEAT);
-#endif
     expertPerSizeOnWin_ = axisMaxBS_ * hCommuSize_;
     rscvStatusNum_ = isShareExpertRankFlag_ ? epWorldSize_ : (epWorldSize_ * moeExpertNumPerRank_);
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
@@ -943,6 +933,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 {
     LocalTensor<int32_t> outTensorInt32 = outTensor_.template ReinterpretCast<int32_t>();
     GlobalTensor<XOutType> dstWinGMTensor;
+    uint32_t tripleOutOffset = (tokenQuantAlign_ / SPLIT_BLOCK_DATA_COUNT) * SPLIT_BLOCK_COUNT
+                             + (tokenQuantAlign_ % SPLIT_BLOCK_DATA_COUNT);
 
     // 按 sendTokenBufNum_ 分批处理 expert，批次间等待 MTE3 完成后复用 slot
     for (uint32_t batchStart = kIterStart; batchStart < kIterEnd; batchStart += sendTokenBufNum_) {
@@ -964,7 +956,6 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
                 toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
             }
 
-            // 计算目标窗口地址（与A3按专家分核路径一致）
             GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(toRankId)
                 + expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_
                 + dstExpertId % moeExpertNumPerRank_)
@@ -979,8 +970,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
                 uint8_t(blockCntPerToken_), {1, 1, 16, 15});
             SyncFunc<AscendC::HardEvent::V_S>();
 
-            // 标量更新 triple（位置经 Copy stride 映射）
-            uint32_t tripleBase = slotOffInt32 + tripleOutOffset_;
+            uint32_t tripleBase = slotOffInt32 + tripleOutOffset;
             outTensorInt32(tripleBase) = epRankId_;
             outTensorInt32(tripleBase + 1) = tokenIdx;
             outTensorInt32(tripleBase + 2) = k;
