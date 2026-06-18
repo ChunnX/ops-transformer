@@ -8,7 +8,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
+start_time=$(date +%s)
 set -e
 RELEASE_TARGETS=("ophost" "opapi" "opgraph" "onnxplugin")
 UT_TARGETS=()
@@ -683,7 +683,36 @@ function build_example()
     return 0
 }
 
+function delete_arch(){
+    TARGET_DIR="${CURRENT_DIR}/mc2"
+    FOLDER_NAME=""
+    if [[ "$ASCEND_SOC_UNITS" == "ascend910b" || "$ASCEND_SOC_UNITS" == "ascend910_93" ]]; then
+        FOLDER_NAME="op_host/op_tiling/arch35"
+    elif [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
+        FOLDER_NAME="op_host/op_tiling/arch22"
+    fi
+
+    if [ -z "$FOLDER_NAME" ]; then
+        return
+    fi
+
+    echo "Cleaning up all $FOLDER_NAMEdirectories in $TARGET_DIR..."
+    python3 "${CURRENT_DIR}/cmake/scripts/delete_arch.py" "$TARGET_DIR" "$FOLDER_NAME"
+
+    if [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
+        FOLDER_NAME="op_host/op_tiling/arch22"
+        python3 "${CURRENT_DIR}/cmake/scripts/delete_arch.py" "$TARGET_DIR" "$FOLDER_NAME"
+    fi
+
+    if [ $? -eq 0 ]; then
+        echo "Finish cleaning up!"
+    else
+        echo "Cleanup failed." >&2
+    fi
+}
+
 function build_package(){
+    delete_arch
     build package
 }
 
@@ -692,6 +721,7 @@ function build_host(){
 }
 
 function build_kernel(){
+    delete_arch
     build ops_transformer_kernel
 }
 
@@ -2027,3 +2057,9 @@ else
     fi
 fi
 } | while IFS= read -r line; do echo "[$(date '+%Y-%m-%d %H:%M:%S')] $line"; done
+
+echo -e "\n========== 脚本执行结束 ==========="
+end_time=$(date +%s)
+total_seconds=$((end_time - start_time))
+echo " 脚本总执行时间：${total_seconds}秒"
+echo -e "\n========== 脚本执行结束 ==========="
