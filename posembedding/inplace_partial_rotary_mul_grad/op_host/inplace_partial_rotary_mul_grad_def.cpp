@@ -32,19 +32,23 @@ public:
         this->Input("dy")
             .ParamType(REQUIRED)
             .DataType(DyDtype)
-            .Format(formatList);
+            .Format(formatList)
+            .AutoContiguous();
         this->Input("cos")
             .ParamType(REQUIRED)
             .DataType(DcosDtype)
-            .Format(formatList);
+            .Format(formatList)
+            .AutoContiguous();
         this->Input("sin")
             .ParamType(REQUIRED)
             .DataType(DcosDtype)
-            .Format(formatList);
+            .Format(formatList)
+            .AutoContiguous();
         this->Input("x")
             .ParamType(OPTIONAL)
             .DataType(DyDtype)
-            .Format(formatList);
+            .Format(formatList)
+            .AutoContiguous();
         this->Output("dy")
             .ParamType(REQUIRED)
             .DataType(DyDtype)
