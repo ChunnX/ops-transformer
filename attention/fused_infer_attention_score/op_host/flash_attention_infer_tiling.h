@@ -15,6 +15,8 @@
 
 #ifndef FLASH_ATTN_INFER_TILING_H
 #define FLASH_ATTN_INFER_TILING_H
+#include <cmath>
+#include <algorithm>
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/tilingdata_base.h"
 #include "fused_infer_attention_score_tiling.h"
@@ -98,6 +100,13 @@ namespace optiling{
     const int64_t SPARSE_MODE_INT_MAX = 2147483647;
     const uint32_t TAIL_TASK_DIVISOR = 2;
 
+    const uint32_t FD_COST_ALIGN_M = 16;       // M(q 行) 轴对齐粒度
+    const uint32_t FD_COST_ALIGN_S2 = 64;      // S2(kv) 轴对齐粒度
+    const uint32_t FD_COST_COEF_M = 10;        // M 轴权重
+    const uint32_t FD_COST_COEF_S2 = 10;       // S2 轴权重
+    const uint32_t FD_TOLERANCE_RATIO = 2;     // 容差比例：容忍半个基本块的负载偏差
+    const uint64_t FD_CORE_LAUNCH_COST = 36;   // 每多启动一个核的端到端开销
+
     enum class MaskType : uint32_t {
         NO_MASK = 0,
         MASK_SPEC = 1,
@@ -121,6 +130,65 @@ namespace optiling{
         uint32_t curKSBlockTile;
         uint32_t curKSBlockNum;
     };
+
+    // 单个基本块（M 行 q × S2 长 kv）的加权代价
+    inline uint64_t CalcFdBlockCost(uint32_t mRows, uint32_t s2Len)
+    {
+        uint32_t alignM = (mRows + FD_COST_ALIGN_M - 1U) / FD_COST_ALIGN_M;
+        uint32_t alignS2 = (s2Len + FD_COST_ALIGN_S2 - 1U) / FD_COST_ALIGN_S2;
+        return static_cast<uint64_t>(FD_COST_COEF_M) * alignM +
+               static_cast<uint64_t>(FD_COST_COEF_S2) * alignS2;
+    }
+
+    // 第 s1Idx 个 S1 块（一个 query 块）的 q 行数（与切核循环内的 remainingQ 口径一致）
+    inline uint32_t CalcFdQRows(const BatchParams &p, uint32_t s1Idx)
+    {
+        return (s1Idx < p.curQSBlockNum - 1U) ?
+                   p.curQSBlockTile :
+                   (p.qSeqlen - s1Idx * p.curQSBlockTile) * p.curQNBlockTile;
+    }
+
+    // 单个 S2 块 (s1Idx, s2Idx) 的加权代价
+    inline uint64_t CalcFdS2BlockCost(const BatchParams &p, uint32_t s1Idx, uint32_t s2Idx)
+    {
+        uint32_t mRows = CalcFdQRows(p, s1Idx);
+        uint32_t s2Len = (s2Idx < p.curKSBlockNum - 1U) ?
+                             p.curKSBlockTile :
+                             (p.kvSeqlen - s2Idx * p.curKSBlockTile);
+        return CalcFdBlockCost(mRows, s2Len);
+    }
+
+    // 单个 S1 块（一个 query 块）在 KV 方向所有 S2 块的总加权代价（满块 + 尾块）
+    inline uint64_t CalcFdS1BlockCost(const BatchParams &p, uint32_t s1Idx)
+    {
+        if (p.curKSBlockNum == 0U) {
+            return 0U;
+        }
+        uint32_t mRows = CalcFdQRows(p, s1Idx);
+        uint32_t tailKv = p.kvSeqlen - (p.curKSBlockNum - 1U) * p.curKSBlockTile;
+        return static_cast<uint64_t>(p.curKSBlockNum - 1U) * CalcFdBlockCost(mRows, p.curKSBlockTile) +
+               CalcFdBlockCost(mRows, tailKv);
+    }
+
+    // 当前 N1 块从 s1Start 起剩余 S1 块的总加权代价
+    inline uint64_t CalcFdN1RestCost(const BatchParams &p, uint32_t s1Start)
+    {
+        uint64_t cost = 0U;
+        for (uint32_t s1 = s1Start; s1 < p.curQSBlockNum; ++s1) {
+            cost += CalcFdS1BlockCost(p, s1);
+        }
+        return cost;
+    }
+
+    // 当前 batch 从 (n1Start, s1Start) 起剩余的总加权代价
+    inline uint64_t CalcFdBatchRestCost(const BatchParams &p, uint32_t n1Start, uint32_t s1Start)
+    {
+        uint64_t cost = CalcFdN1RestCost(p, s1Start);
+        if (p.curQNBlockNum > n1Start + 1U) {
+            cost += static_cast<uint64_t>(p.curQNBlockNum - n1Start - 1U) * CalcFdN1RestCost(p, 0U);
+        }
+        return cost;
+    }
 
     struct FAInferContext {
         int32_t numTokens = 0;
@@ -180,7 +248,8 @@ namespace optiling{
         void splitBN2S1GS2(FAInferTilingData &faTilingData);
         void SplitCoreDecodeBS1GN2(FAInferTilingData &faTilingData);
         BatchParams getBatchParams(uint32_t bIdx, uint32_t groupSize);
-        void fillCoreInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize, uint64_t perCoreTaskNum);
+        uint64_t fillCoreInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize, uint64_t totalCost,
+                                            uint32_t coreNumUsed);
         void fillSplitInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize);
     private:
         FAInferContext faInfo_;
@@ -393,12 +462,14 @@ namespace optiling{
         return p;
     }
 
-    void FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize, uint64_t perCoreTaskNum) {
+    // coreNumUsed：本次方案使用的核数（动态负载上限 = 剩余开销 / 剩余核数）。
+    uint64_t FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize,
+                                                       uint64_t totalCost, uint32_t coreNumUsed) {
         uint32_t nowBIdx = 0;
         uint32_t nowN1Idx = 0;
         uint32_t nowS1Idx = 0;
         uint32_t nowS2Idx = 0;
-        
+
         for (uint32_t coreIdx = 0; coreIdx < blockNum_; coreIdx++) {
             faTilingData.coreInfo.get_startBIdx()[coreIdx] = 0;
             faTilingData.coreInfo.get_startN1Idx()[coreIdx] = 0;
@@ -410,17 +481,39 @@ namespace optiling{
             faTilingData.coreInfo.get_endS2Idx()[coreIdx] = 0;
         }
 
-        auto finishBatch = [&](uint32_t coreIdx) {
-            BatchParams p = getBatchParams(faInfo_.batch - 1, groupSize);
-            faTilingData.coreInfo.get_endBIdx()[coreIdx] = faInfo_.batch - 1;
-            faTilingData.coreInfo.get_endN1Idx()[coreIdx] = p.curQNBlockNum - 1;
-            faTilingData.coreInfo.get_endS1Idx()[coreIdx] = p.curQSBlockNum - 1;
-            faTilingData.coreInfo.get_endS2Idx()[coreIdx] = p.curKSBlockNum;
-            faTilingData.set_needCoreNum(coreIdx + 1);
+        uint64_t remainingCost = totalCost;
+        uint64_t maxCost = 0;
+        uint32_t usedCore = 0;
+
+        // 单核结算：累计已用开销、剩余开销、最慢核开销
+        auto finalizeCore = [&](uint32_t coreIdx, int64_t costLimit, int64_t resTaskNum) {
+            int64_t consumed = costLimit - resTaskNum;
+            if (consumed < 0) { consumed = 0; }
+            uint64_t consumedU = static_cast<uint64_t>(consumed);
+            remainingCost = (consumedU > remainingCost) ? 0U : (remainingCost - consumedU);
+            if (consumedU > maxCost) { maxCost = consumedU; }
+            usedCore = coreIdx + 1;
         };
 
-        for (uint32_t coreIdx = 0; coreIdx < blockNum_; coreIdx++) {
-            int64_t resTaskNum = perCoreTaskNum;
+        auto finishBatch = [&](uint32_t coreIdx, int64_t costLimit, int64_t resTaskNum) {
+            BatchParams pe = getBatchParams(faInfo_.batch - 1, groupSize);
+            faTilingData.coreInfo.get_endBIdx()[coreIdx] = faInfo_.batch - 1;
+            faTilingData.coreInfo.get_endN1Idx()[coreIdx] = pe.curQNBlockNum - 1;
+            faTilingData.coreInfo.get_endS1Idx()[coreIdx] = pe.curQSBlockNum - 1;
+            faTilingData.coreInfo.get_endS2Idx()[coreIdx] = pe.curKSBlockNum;
+            finalizeCore(coreIdx, costLimit, resTaskNum);
+        };
+
+        // 容差：半个满块的代价，避免因微小差异拆 batch/行
+        auto tolOf = [&](const BatchParams &pp) -> int64_t {
+            return static_cast<int64_t>(CalcFdBlockCost(CalcFdQRows(pp, 0U), pp.curKSBlockTile) / FD_TOLERANCE_RATIO);
+        };
+
+        for (uint32_t coreIdx = 0; coreIdx < coreNumUsed; coreIdx++) {
+            // 动态负载上限：剩余开销均摊到剩余核
+            int64_t costLimit = static_cast<int64_t>(remainingCost / (coreNumUsed - coreIdx));
+            int64_t resTaskNum = costLimit;
+
             faTilingData.coreInfo.get_startBIdx()[coreIdx] = nowBIdx;
             faTilingData.coreInfo.get_startN1Idx()[coreIdx] = nowN1Idx;
             faTilingData.coreInfo.get_startS1Idx()[coreIdx] = nowS1Idx;
@@ -434,12 +527,10 @@ namespace optiling{
                 if (nowN1Idx == p.curQNBlockNum) { nowBIdx++; nowN1Idx = 0; nowS1Idx = 0; nowS2Idx = 0; }
             };
 
+            // 阶段1：逐 S2 块消耗当前
             while (nowS2Idx < p.curKSBlockNum && resTaskNum > 0) {
-                p = getBatchParams(nowBIdx, groupSize); 
-                uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile : (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
-                uint32_t remainingKV = (nowS2Idx < p.curKSBlockNum - 1) ? p.curKSBlockTile : (p.kvSeqlen - nowS2Idx * p.curKSBlockTile);
-                uint64_t singleS2Task = remainingQ * remainingKV;
-                resTaskNum -= singleS2Task;
+                p = getBatchParams(nowBIdx, groupSize);
+                resTaskNum -= static_cast<int64_t>(CalcFdS2BlockCost(p, nowS1Idx, nowS2Idx));
                 nowS2Idx += 1;
             }
 
@@ -449,48 +540,49 @@ namespace optiling{
                 faTilingData.coreInfo.get_endS1Idx()[coreIdx] = nowS1Idx;
                 faTilingData.coreInfo.get_endS2Idx()[coreIdx] = nowS2Idx;
             }
-            
-            advanceCounters();
-            if (nowBIdx < static_cast<uint32_t>(faInfo_.batch) && resTaskNum <= 0) continue;
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
 
+            advanceCounters();
+            if (nowBIdx < static_cast<uint32_t>(faInfo_.batch) && resTaskNum <= 0) {
+                finalizeCore(coreIdx, costLimit, resTaskNum);
+                continue;
+            }
+            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx, costLimit, resTaskNum); break; }
+
+            // 阶段2：整 batch 跳（带容差）
             while (nowBIdx < static_cast<uint32_t>(faInfo_.batch) && resTaskNum > 0) {
                 p = getBatchParams(nowBIdx, groupSize);
-                uint32_t remainingQ = p.qSeqlen * (faInfo_.numHeads - p.curQNBlockTile * nowN1Idx) - nowS1Idx * p.curQSBlockTile;
-                uint32_t remainingKV = p.kvSeqlen;
-                uint32_t remainingInBatch = remainingQ * remainingKV;
-
-                if (resTaskNum >= static_cast<int64_t>(remainingInBatch)) {
-                    resTaskNum -= remainingInBatch;
+                int64_t restBatchCost = static_cast<int64_t>(CalcFdBatchRestCost(p, nowN1Idx, nowS1Idx));
+                if (resTaskNum + tolOf(p) >= restBatchCost) {
+                    resTaskNum -= restBatchCost;
                     nowBIdx++; nowN1Idx = 0; nowS1Idx = 0; nowS2Idx = 0;
                 } else {
                     break;
                 }
             }
 
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
+            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx, costLimit, resTaskNum); break; }
             p = getBatchParams(nowBIdx, groupSize);
 
+            // 阶段3：整 N1 块跳（带容差）
             while (nowN1Idx < p.curQNBlockNum && resTaskNum > 0) {
-                uint32_t remainingQ = p.qSeqlen * p.curQNBlockTile - nowS1Idx * p.curQSBlockTile;
-                uint32_t remainingInN1 = remainingQ * p.kvSeqlen;
-                if (resTaskNum >= static_cast<int64_t>(remainingInN1)) {
-                    resTaskNum -= remainingInN1;
+                int64_t restN1Cost = static_cast<int64_t>(CalcFdN1RestCost(p, nowS1Idx));
+                if (resTaskNum + tolOf(p) >= restN1Cost) {
+                    resTaskNum -= restN1Cost;
                     nowN1Idx++; nowS1Idx = 0; nowS2Idx = 0;
                 } else {
                     break;
                 }
             }
-            
+
             advanceCounters();
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
+            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx, costLimit, resTaskNum); break; }
             p = getBatchParams(nowBIdx, groupSize);
 
+            // 阶段4：整 S1 块（一个 query）跳（带容差）
             while (nowS1Idx < p.curQSBlockNum && resTaskNum > 0) {
-                uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile : (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
-                uint64_t remainingInS1 = remainingQ * p.kvSeqlen;
-                if (resTaskNum >= static_cast<int64_t>(remainingInS1)) {
-                    resTaskNum -= remainingInS1;
+                int64_t s1Cost = static_cast<int64_t>(CalcFdS1BlockCost(p, nowS1Idx));
+                if (resTaskNum + tolOf(p) >= s1Cost) {
+                    resTaskNum -= s1Cost;
                     nowS1Idx++; nowS2Idx = 0;
                 } else {
                     break;
@@ -498,26 +590,28 @@ namespace optiling{
             }
 
             advanceCounters();
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
+            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx, costLimit, resTaskNum); break; }
             p = getBatchParams(nowBIdx, groupSize);
 
+            // 阶段5：逐 S2 块精确落点
             while (nowS2Idx < p.curKSBlockNum && resTaskNum > 0) {
-                uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile : (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
-                uint32_t remainingKV = (nowS2Idx < p.curKSBlockNum - 1) ? p.curKSBlockTile : (p.kvSeqlen - nowS2Idx * p.curKSBlockTile);
-                uint64_t singleS2Task = remainingQ * remainingKV;
-                resTaskNum -= singleS2Task;
+                resTaskNum -= static_cast<int64_t>(CalcFdS2BlockCost(p, nowS1Idx, nowS2Idx));
                 nowS2Idx += 1;
             }
 
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
-            
+            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx, costLimit, resTaskNum); break; }
+
             faTilingData.coreInfo.get_endBIdx()[coreIdx] = nowBIdx;
             faTilingData.coreInfo.get_endN1Idx()[coreIdx] = nowN1Idx;
             faTilingData.coreInfo.get_endS1Idx()[coreIdx] = nowS1Idx;
             faTilingData.coreInfo.get_endS2Idx()[coreIdx] = nowS2Idx;
 
+            finalizeCore(coreIdx, costLimit, resTaskNum);
             advanceCounters();
         }
+
+        faTilingData.set_needCoreNum(usedCore == 0U ? 1U : usedCore);
+        return maxCost;
     }
 
     void FAInferTiling::fillSplitInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize) {
@@ -626,15 +720,43 @@ namespace optiling{
     }
 
     void FAInferTiling::splitBN2S1GS2(FAInferTilingData &faTilingData) {
-        uint64_t totalTaskNum = 0;
         uint32_t groupSize = faInfo_.numHeads / faInfo_.kvHeads;
 
+        uint64_t totalCost = 0;
+        uint32_t totalBlockNum = 0;
         for (int32_t batchIdx = 0; batchIdx < faInfo_.batch; batchIdx++) {
             BatchParams p = getBatchParams(batchIdx, groupSize);
-            totalTaskNum += faInfo_.numHeads * p.qSeqlen * p.kvSeqlen;
+            totalCost += static_cast<uint64_t>(p.curQNBlockNum) * CalcFdN1RestCost(p, 0U);
+            totalBlockNum += p.curQNBlockNum * p.curQSBlockNum * p.curKSBlockNum;
         }
-        uint64_t perCoreTaskNum = (totalTaskNum + blockNum_ - 1) / blockNum_;
-        fillCoreInfoForFlashDecode(faTilingData, groupSize, perCoreTaskNum);
+
+        // 无有效任务，退化为单核
+        if (totalBlockNum == 0 || totalCost == 0) {
+            fillCoreInfoForFlashDecode(faTilingData, groupSize, totalCost, 1U);
+            fillSplitInfoForFlashDecode(faTilingData, groupSize);
+            return;
+        }
+
+        // 最优核数搜索：最小化端到端开销 E2E(k) = 最慢核负载(k) + 启动开销 * k
+        uint32_t maxCore = std::min(blockNum_, totalBlockNum);
+        maxCore = std::min(maxCore, static_cast<uint32_t>(MAX_CORE_NUM_FD));
+        uint32_t minCore =
+            static_cast<uint32_t>(std::sqrt(static_cast<float>(totalBlockNum) + 0.25f) + 0.5f);
+        minCore = std::max(1U, std::min(minCore, maxCore));
+
+        uint32_t bestCore = minCore;
+        uint64_t bestE2E = UINT64_MAX;
+        for (uint32_t k = minCore; k <= maxCore; ++k) {
+            uint64_t maxCost = fillCoreInfoForFlashDecode(faTilingData, groupSize, totalCost, k);
+            uint64_t e2e = maxCost + FD_CORE_LAUNCH_COST * static_cast<uint64_t>(k);
+            if (e2e < bestE2E) {
+                bestE2E = e2e;
+                bestCore = k;
+            }
+        }
+
+        // 用最优核数正式分核，并生成 FlashDecode 归约元数据
+        fillCoreInfoForFlashDecode(faTilingData, groupSize, totalCost, bestCore);
         fillSplitInfoForFlashDecode(faTilingData, groupSize);
     }    
 
