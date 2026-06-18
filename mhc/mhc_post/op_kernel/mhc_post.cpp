@@ -16,7 +16,7 @@
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "mhc_post.h"
+#include "arch22/mhc_post.h"
 
 using namespace AscendC;
 using namespace MhcPost;
