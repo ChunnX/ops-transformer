@@ -144,8 +144,7 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
     bool isRegbase = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!isRegbase) {
         return aclnnInnerMoeTokenPermuteGetWorkspaceSize(
-            tokens, indices, numOutTokens, paddedMode, MoeTokenPermuteCheck::QUANT_MODE_NONE, permuteTokensOut,
-            sortedIndicesOut, expandedScaleOut, workspaceSize, executor);
+            tokens, indices, numOutTokens, paddedMode, permuteTokensOut, sortedIndicesOut, workspaceSize, executor);
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
 
