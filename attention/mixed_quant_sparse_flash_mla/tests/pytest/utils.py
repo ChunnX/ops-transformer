@@ -472,7 +472,7 @@ def save_result(params, result, fulfill_percent, result_path):
         'template_run_mode': params.get('template_run_mode'),
         'actlen_mode': params.get('actlen_mode'),
         'S1EQS2': params.get('S1EQS2'),
-        'tc_preifx': params_dict.get('tc_preifx', ' '),
+        'tc_preifx': params.get('tc_preifx', ' '),
         "ori_win_right": params.get('ori_win_right'),
         "kv_quant_mode": params.get('kv_quant_mode'),
         "tile_size": params.get('tile_size'),
