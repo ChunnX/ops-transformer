@@ -21,7 +21,7 @@
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
-constexpr int64_t GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM = 1;
+constexpr int64_t GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM = 2;
 
 template <typename T, typename QuantT = int8_t>
 class MoeGatherOutDynamicQuant {
@@ -52,12 +52,12 @@ private:
 
 private:
     TPipe *pipe_;
-    TQue<QuePosition::VECIN, 1> inputXInQueue_;
-    TQue<QuePosition::VECIN, 1> smoothInQueue_;
-    TQue<QuePosition::VECIN, 1> expandRowIdxInQueue_;
-    TQue<QuePosition::VECOUT, 1> calcQueue_;
-    TQue<QuePosition::VECOUT, 1> inputXOutQueue_;
-    TQue<QuePosition::VECOUT, 1> scaleOutQueue_;
+    TQue<QuePosition::VECIN, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM> inputXInQueue_;
+    TQue<QuePosition::VECIN, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM> smoothInQueue_;
+    TQue<QuePosition::VECIN, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM> expandRowIdxInQueue_;
+    // TQue<QuePosition::VECOUT, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM> calcQueue_;
+    TQue<QuePosition::VECOUT, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM> inputXOutQueue_;
+    TQue<QuePosition::VECOUT, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM> scaleOutQueue_;
 
     GlobalTensor<T> inputXGm_;
     GlobalTensor<int8_t> expandedXGm_;
@@ -645,9 +645,9 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(
                       2 * AlignBytes(perLoopRows_, sizeof(int32_t)));
     pipe_->InitBuffer(smoothInQueue_, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM,
                       AlignBytes(perLoopCols_, sizeof(float)));
-    pipe_->InitBuffer(calcQueue_, 1, AlignBytes(perLoopCols_, sizeof(float)));
-    pipe_->InitBuffer(inputXOutQueue_, 1, AlignBytes(perLoopColsAsInt8_, sizeof(int8_t)));
-    pipe_->InitBuffer(scaleOutQueue_, 1, BLOCK_BYTES + BLOCK_BYTES);
+    // pipe_->InitBuffer(calcQueue_, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(float)));
+    pipe_->InitBuffer(inputXOutQueue_, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM, AlignBytes(perLoopColsAsInt8_, sizeof(int8_t)));
+    pipe_->InitBuffer(scaleOutQueue_, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM, BLOCK_BYTES + BLOCK_BYTES);
 }
 
 template <typename T, typename QuantT>
