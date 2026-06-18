@@ -1532,8 +1532,8 @@ private:
         // and polled by RecvTokensV3. On A3 we don't push flags through
         // peer-mem at all, so this stays 0.
         int64_t offsetFlag{0};
-        uint32_t bufferAlign{64};
-        static constexpr int32_t tokenArrivedFlag{123456789};
+        static constexpr uint32_t bufferAlign{64}; // 64B = 1 个 cache line
+        static constexpr int32_t tokenArrivedFlag{123456789}; // 精准匹配的Flag，非常规值即可
 
         CATLASS_DEVICE
         PeermemInfo() {}
