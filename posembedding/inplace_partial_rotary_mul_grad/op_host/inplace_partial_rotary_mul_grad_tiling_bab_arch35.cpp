@@ -60,7 +60,7 @@ private:
 ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassBAB::DoOpTiling()
 {
     ubSize_ = aicoreParams_.ubSize;
-    coreNum_ = aicoreParams_.numBlocks;
+    coreNum_ = static_cast<int64_t>(aicoreParams_.numBlocks);
 
     ge::graphStatus status = SplitUb();
     if (status != ge::GRAPH_SUCCESS) {
