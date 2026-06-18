@@ -908,7 +908,13 @@ def gen_data(params, template_mode=None):
     else:
         raise ValueError(f"layout_kv is not support {layout_kv}")
 
+<<<<<<< HEAD
     if seqused_ori_kv is not None and cmp_ratio is not None and cmp_ratio != 0:
+=======
+    if seqused_ori_kv is not None and cmp_ratio is not None:
+        if cmp_ratio < 1:
+            raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
+>>>>>>> 7d085aa47... smla支持padding
         if seqused_cmp_kv is None:
             seqused_cmp_kv = seqused_ori_kv // cmp_ratio
         if cmp_residual_kv is None:
