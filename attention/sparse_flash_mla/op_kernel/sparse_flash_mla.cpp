@@ -56,13 +56,13 @@ using namespace SMLAKernel;
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                     \
         op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,             \
-                cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV,                                      \
+                cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV,         \
                 sinks, metadata, attentionOut, softmaxLse, user, tiling_data, tiling, &tPipe);               \
         op.Process();                                                                                        \
     } while (0)
 #endif
 
-template <int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G>
+template <int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G, int HEAD_RATIO_ONE>
 __global__ __aicore__ void
 sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
                  __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
@@ -92,21 +92,23 @@ sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *c
     if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
         if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
             SMLA_OP_IMPL(SparseFlashMlaScfa, SparseFlashMlaTilingData, half, half, half, FLASH_DECODE,
-                         static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE);
+                         static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE,
+                         static_cast<bool>(HEAD_RATIO_ONE));
         } else {
             SMLA_OP_IMPL(SparseFlashMlaSwa, SparseFlashMlaTilingData, half, half, half, FLASH_DECODE,
-                         static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE);
+                         static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE,
+                         static_cast<bool>(HEAD_RATIO_ONE));
         }
     }
     if constexpr (ORIG_DTYPE_Q == DT_BF16 && ORIG_DTYPE_ORI_KV == DT_BF16 && ORIG_DTYPE_ATTN_OUT == DT_BF16) {
         if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
             SMLA_OP_IMPL(SparseFlashMlaScfa, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, bfloat16_t,
                          FLASH_DECODE, static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T),
-                         TEMPLATE_MODE);
+                         TEMPLATE_MODE, static_cast<bool>(HEAD_RATIO_ONE));
         } else {
             SMLA_OP_IMPL(SparseFlashMlaSwa, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, bfloat16_t,
                          FLASH_DECODE, static_cast<SMLA_LAYOUT>(LAYOUT_T), static_cast<SMLA_LAYOUT>(KV_LAYOUT_T),
-                         TEMPLATE_MODE);
+                         TEMPLATE_MODE, static_cast<bool>(HEAD_RATIO_ONE));
         }
     }
 #endif
