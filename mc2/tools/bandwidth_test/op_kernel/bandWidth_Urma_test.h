@@ -505,7 +505,13 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
                                         epRankId_ * expertPerSizeOnWin_ + j * hAlignWinSize_);
                     GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
                                                 epRankId_ * expertPerSizeOnWin_ + j * hAlignWinSize_);
+                    PipeBarrier<PIPE_ALL>();
+                    uint64_t startTime = GetSystemCycle();
                     hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, srcRankGM, hAlignWinSize_);
+                    PipeBarrier<PIPE_ALL>();
+                    uint64_t endTime = GetSystemCycle();
+                    uint64_t sendTime = endTime - startTime;
+                    PRINTF("CommProcess sendTime = %d\n", sendTime);
                     curSumCnt += 1;
                     sendSumTensor_(i - startExpert) = curSumCnt;
                     sendFlag = 0;
