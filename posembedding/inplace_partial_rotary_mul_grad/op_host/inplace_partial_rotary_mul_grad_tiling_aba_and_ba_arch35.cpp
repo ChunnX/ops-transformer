@@ -13,9 +13,10 @@
  * \brief ABA/BA template tiling for InplacePartialRotaryMulGrad (BNSD layout)
  */
 #include "inplace_partial_rotary_mul_grad_tiling.h"
-#include "../op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_key.h"
 
 namespace optiling {
+constexpr uint64_t TILING_KEY_ABA = 201;
+constexpr uint64_t TILING_KEY_BA = 202;
 constexpr uint64_t INPLACE_PARTIAL_ROTARY_MUL_GRAD_ABA_AND_BA_TILING_PRIORITY = 10000;
 constexpr int64_t UB_FACTOR = 4;
 constexpr int64_t HALF_INTERLEAVE_COEF = 2;
@@ -181,8 +182,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassABAAndBA::PostTilin
 {
     SetTilingData();
 
-    uint32_t tilingKey = (cosb_ == 1) ? static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_BA)
-                                       : static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_ABA);
+    uint32_t tilingKey = (cosb_ == 1) ? static_cast<uint32_t>(TILING_KEY_BA)
+                                       : static_cast<uint32_t>(TILING_KEY_ABA);
 
     tilingKey_ = static_cast<uint64_t>(tilingKey);
     context_->SetBlockDim(usedCoreNum_);
