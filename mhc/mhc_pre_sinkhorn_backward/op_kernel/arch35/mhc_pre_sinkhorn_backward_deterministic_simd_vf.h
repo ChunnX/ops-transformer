@@ -134,7 +134,7 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U* gradBiasAddr, __local_me
             auto gradBiasStart = gradBiasAddr + i * vfLen;
             maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             MicroAPI::Duplicate(gradBiasReg, U(0), allMaskReg);
-            for (uint16_t j = 0; j < bsLen; j++) {
+            for (uint16_t j = 0; j < static_cast<uint16_t>(bsLen); j++) {
                 auto gradZAddrStart = gradZAddr + i * colLen;
                 AscendC::MicroAPI::LoadUnAlignPre(u0, gradZAddrStart);
                 AscendC::MicroAPI::LoadUnAlign(gradZReg, u0, gradZAddrStart);
@@ -201,7 +201,7 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U* zAddr, __local_me
             auto biasAddrStart = biasAddr + i * vfLen;
             AscendC::MicroAPI::LoadUnAlignPre(u0, biasAddrStart);
             AscendC::MicroAPI::LoadUnAlign(biasReg, u0, biasAddrStart);
-            for (uint16_t j = 0; j < bsLen; j++) {
+            for (uint16_t j = 0; j < static_cast<uint16_t>(bsLen); j++) {
                 AscendC::MicroAPI::UnalignReg u1;
                 auto hcBeformNormAddrStart = hcBeformNormAddr + j * cLenAlign;
                 auto normOutForwardAddrStart = normOutForwardAddr + j * colLen + i * vfLen;
