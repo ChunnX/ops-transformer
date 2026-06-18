@@ -50,3 +50,51 @@ TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_e8m0)
     ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
+// mode2: rope hifloat8 静态量化 + nope FLOAT4_E2M1 per-group 动态量化。
+// d=256 -> nope=192, 可被 16/32/64 整除; tiling key 应为 2。
+static gert::TilingContextPara MakeMode2Para(int64_t groupSize)
+{
+    return gert::TilingContextPara("KvCompressEpilog",
+        {
+            {{{2048, 384}, {2048, 384}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{1024, 256}, {1024, 256}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+        },
+        {
+            {"quant_group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupSize)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(2.0f)},
+        },
+        nullptr, "Ascend950"
+    );
+}
+
+TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_hif8_fp4_group64)
+{
+    auto para = MakeMode2Para(64);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 0UL);  // 单一 tiling key 0
+}
+
+TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_hif8_fp4_group32)
+{
+    auto para = MakeMode2Para(32);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 0UL);  // 单一 tiling key 0
+}
+
+TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_hif8_fp4_group16)
+{
+    auto para = MakeMode2Para(16);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 0UL);  // 单一 tiling key 0
+}
+
+// mode2 仅支持 group_size in {16,32,64}, 其它取值应 tiling 失败。
+TEST_F(KvCompressEpilogTiling, kv_compress_epilog_tiling_hif8_fp4_bad_group)
+{
+    auto para = MakeMode2Para(128);
+    ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
+}
+

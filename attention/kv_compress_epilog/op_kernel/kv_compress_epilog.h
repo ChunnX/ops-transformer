@@ -55,6 +55,7 @@ private:
     TQue<QuePosition::VECIN, 1> xQue;
     TQue<QuePosition::VECOUT, 1> kvCacheQue;
     TBuf<QuePosition::VECCALC> kvCacheScaleBuf;
+    TBuf<TPosition::VECCALC> scratchBuf;  // mode2(QUANT_MODE_HIF8_FP4) G16/G32 行内 scratch, 仅 mode2 InitBuffer
 
     LocalTensor<T0> xLocal;
     LocalTensor<T1> kvCacheLocal;
@@ -89,6 +90,15 @@ __aicore__ inline void KvCompressEpilog<T0, U, T1>::Init(
         pipe_->InitBuffer(xQue, 2, tilingData->rowFactor * RoundUp<T0>(tilingData->d) * sizeof(T0));
         pipe_->InitBuffer(kvCacheQue, 2, tilingData->rowFactor * RoundUp<T1>(tilingData->kvCacheCol) * sizeof(T1));
 
+        // mode2(QUANT_MODE_HIF8_FP4): G16/G32 行内 scratch, 每行每 64-元素块占 16 个 bf16(32B 对齐)槽位,
+        // 全 rowFactor 行各占独立 slice。mode0/1 不分配。
+        if (tilingData->quantMode == QUANT_MODE_HIF8_FP4) {
+            uint32_t nopeElems = static_cast<uint32_t>(tilingData->d) - ROPE_HIF8_COLS;
+            uint32_t numChunks = nopeElems / FP4_CHUNK_ELEMS;
+            uint32_t scratchRowB16 = numChunks * SCRATCH_BLK_PER_CHUNK;
+            pipe_->InitBuffer(scratchBuf, tilingData->rowFactor * scratchRowB16 * sizeof(T0));
+        }
+
         AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 }
 
@@ -115,6 +125,14 @@ template <typename T0, typename U, typename T1>
         const bool roundScale    = (tilingData->roundScale == 1);
         const uint32_t concatCol = tilingData->concatCol;
         const uint32_t padCol    = tilingData->padCol;
+        // mode2(QUANT_MODE_HIF8_FP4) 专用参数: nope per-group 量化的组数/组大小, 及目标行字节步长。
+        const uint32_t nGroup    = tilingData->scaleCol;
+        const uint32_t groupSize = tilingData->perGroupSize;
+        const uint32_t dstRowStride = static_cast<uint32_t>(cacheColAlign);
+        LocalTensor<T0> scratchLocal;
+        if (quantMode == QUANT_MODE_HIF8_FP4) {
+            scratchLocal = scratchBuf.template Get<T0>();
+        }
 
         int64_t rf0 = (rowOuterLoop == 1) ? tailRowFactor : rowFactorC;
         LocalTensor<T0> x0 = xQue.template AllocTensor<T0>();
@@ -139,7 +157,10 @@ template <typename T0, typename U, typename T1>
             // 量化本块(VEC) —— 取本块搬入结果
             LocalTensor<T0> xl = xQue.template DeQue<T0>();
             LocalTensor<T1> curKv = kvCacheQue.template AllocTensor<T1>();
-            if (quantMode == QUANT_MODE_GROUP_QUANT_BF16) {
+            if (quantMode == QUANT_MODE_HIF8_FP4) {
+                VFProcessHif8Fp4<T0, T1>(curKv, xl, scratchLocal, scalesAttr, static_cast<uint16_t>(curRowFactor),
+                    static_cast<uint32_t>(dCol), nGroup, groupSize, dstRowStride, concatCol, padCol);
+            } else if (quantMode == QUANT_MODE_GROUP_QUANT_BF16) {
                 if (roundScale) {
                     VFProcessFP8PerGroupQuant<T0, T1, true, true>(curKv, xl, maxValue, fp8Min, fp8Max,
                         curRowFactor, dCol, concatCol, padCol);

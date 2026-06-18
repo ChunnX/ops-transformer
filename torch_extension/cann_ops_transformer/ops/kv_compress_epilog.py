@@ -48,22 +48,26 @@ op_module = npu_kv_compress_epilog_op_builder.load()  # Compiles/loads the .so f
 @impl(AS_LIBRARY, npu_kv_compress_epilog_op_builder.name, "PrivateUse1")
 def npu_kv_compress_epilog(cache, x, slot_mapping, *, quant_group_size=64,
                            quant_mode=1, round_scale=True, x_scale=1.0):
-    """在 KV Cache 的 Epilog 阶段对 cache 进行逐组动态量化压缩更新，封装 aclnnKvCompressEpilog。
+    """在 KV Cache 的 Epilog 阶段对 cache 进行量化压缩更新，封装 aclnnKvCompressEpilog。
 
-    将 bfloat16 激活值 x 按尾轴每 64 个元素一组动态量化为 FP8（以 uint8 打包），并按 slot_mapping
-    将量化结果散写到 cache，slot_mapping 中值为 -1 的 token 跳过不处理。返回更新后的 cache（函数式
-    语义，底层 aclnn 接口为原地实现）。
+    将 bfloat16 激活值 x（尾轴 d 的后 64 列为 rope 段、前 d-64 列为 nope 段）量化压缩为 uint8，
+    并按 slot_mapping 将结果散写到 cache，slot_mapping 中值为 -1 的 token 跳过不处理。返回更新后的
+    cache（函数式语义，底层 aclnn 接口为原地实现）。
 
     Args:
-        cache (Tensor): 当前层的 KV Cache 向量缓存，dtype 为 uint8，shape 为 [num_slots, kvCacheCol]，
-            每行包含 rope/fp8/scale/pad 各区段。
+        cache (Tensor): 当前层的 KV Cache 向量缓存，dtype 为 uint8，shape 为 [num_slots, kvCacheCol]。
         x (Tensor): 待量化的激活输入，dtype 为 bfloat16，shape 为 [bs, d]，d 需满足 d % 64 == 0 且 d > 64。
         slot_mapping (Tensor): token 到 cache slot 的索引映射，dtype 为 int32 或 int64，shape 为 [bs]，
             元素取值范围 [-1, num_slots - 1]，-1 表示跳过该 token。维度需等于 x 的维度减 1。
-        quant_group_size (int): 量化分组大小，与内核实现一致固定为 64，默认 64。
-        quant_mode (int): 量化模式，0=group(bf16 scale)、1=group(e8m0 scale)，默认 1。
-        round_scale (bool): group 模式下是否对每组 scale 向上取到 2 的幂，默认 True。
-        x_scale (float): 预留参数，当前未使用，默认 1.0。
+        quant_group_size (int): 量化分组大小，默认 64。mode2 下仅支持 16/32/64 且要求 (d-64)%group==0。
+        quant_mode (int): 量化模式，默认 1：
+            0 = nope 段 per-group(64) FP8 动态量化(bf16 scale)，rope 段保留 bf16；
+            1 = 同 0，但 scale 为 e8m0(uint8) 指数；
+            2 = rope 段 hifloat8 静态量化(乘 x_scale)，nope 段 per-group FLOAT4_E2M1 动态量化
+                (scale=组内 amax/6 以 bf16 写出)。行布局(字节)：
+                [rope hifloat8 64B][nope fp4 (d-64)/2 B][nope bf16 scale nGroup*2 B][pad 对齐128]。
+        round_scale (bool): mode0/1 下是否对每组 scale 向上取到 2 的幂，默认 True；mode2 下被忽略。
+        x_scale (float): mode2 下为 rope 段 hifloat8 静态量化的缩放系数；mode0/1 下未使用，默认 1.0。
 
     Returns:
         Tensor: 更新后的 KV Cache，shape/dtype 与输入 cache 相同。

@@ -23,7 +23,7 @@ namespace {
 constexpr int64_t MIN_TAIL_DIM = 64;     // x 尾轴 d 必须大于 64
 constexpr int64_t TAIL_DIM_ALIGN = 64;   // x 尾轴 d 必须 64 对齐
 constexpr int64_t QUANT_MODE_MIN = 0;
-constexpr int64_t QUANT_MODE_MAX = 1;    // 0:group(bf16) 1:group(e8m0)
+constexpr int64_t QUANT_MODE_MAX = 2;    // 0:group(bf16) 1:group(e8m0) 2:rope hifloat8 + nope FLOAT4_E2M1
 }  // namespace
 
 // 在 KV Cache 的 Epilog 阶段对 cache 进行原地逐组量化压缩更新，封装 aclnnKvCompressEpilog。
@@ -40,7 +40,7 @@ at::Tensor npu_kv_compress_epilog(
         "slot_mapping dim should equal x dim - 1, but got slot_mapping dim ", slot_mapping.dim(),
         " and x dim ", x.dim());
     TORCH_CHECK(quant_mode >= QUANT_MODE_MIN && quant_mode <= QUANT_MODE_MAX,
-        "quant_mode should be 0 or 1, but got ", quant_mode);
+        "quant_mode should be 0, 1 or 2, but got ", quant_mode);
     int64_t tail_dim = x.size(x.dim() - 1);
     TORCH_CHECK(tail_dim > MIN_TAIL_DIM && tail_dim % TAIL_DIM_ALIGN == 0,
         "The last dim (d) of x should be greater than 64 and 64-aligned, but got ", tail_dim);
