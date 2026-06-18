@@ -23,7 +23,7 @@
 using namespace std;
 
 extern "C" __global__ __aicore__ void moe_token_permute(
-    GM_ADDR tokens, GM_ADDR indices, GM_ADDR permuteTokens, GM_ADDR sortedIndices, GM_ADDR expandedScale, GM_ADDR workspace, GM_ADDR tiling);
+    GM_ADDR tokens, GM_ADDR indices, GM_ADDR permuteTokens, GM_ADDR sortedIndices, GM_ADDR workspace, GM_ADDR tiling);
 class moe_token_permute_test : public testing::Test
 {
 protected:
@@ -66,7 +66,7 @@ TEST_F(moe_token_permute_test, test_token_permute_0)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, nullptr, workspace, tiling);
+    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -106,7 +106,7 @@ TEST_F(moe_token_permute_test, test_token_permute_1)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, nullptr, workspace, tiling);
+    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -146,7 +146,7 @@ TEST_F(moe_token_permute_test, test_token_permute_2)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, nullptr, workspace, tiling);
+    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -186,7 +186,7 @@ TEST_F(moe_token_permute_test, test_token_permute_3)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, nullptr, workspace, tiling);
+    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -226,7 +226,7 @@ TEST_F(moe_token_permute_test, test_token_permute_4)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, nullptr, workspace, tiling);
+    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -266,7 +266,7 @@ TEST_F(moe_token_permute_test, test_token_permute_5)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, nullptr, workspace, tiling);
+    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -306,7 +306,7 @@ TEST_F(moe_token_permute_test, test_token_permute_6)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, nullptr, workspace, tiling);
+    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -346,7 +346,7 @@ TEST_F(moe_token_permute_test, test_token_permute_7)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, nullptr, workspace, tiling);
+    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -385,7 +385,7 @@ TEST_F(moe_token_permute_test, test_token_permute_int8)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, nullptr, workspace, tiling);
+    ICPU_RUN_KF(moe_token_permute, blockDim, x, rowIdx, expandedX, expandedExpertIdx, workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
