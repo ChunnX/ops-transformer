@@ -125,7 +125,7 @@ python -c "import torch, einops, numpy; print('CPU OK')"
 
 ## 四、运行方式
 
-### 4.1精度测试(默认)
+### 4.1 精度测试(默认)
 
 ```bash
 # 运行所有case (NPU模式)
@@ -169,7 +169,7 @@ python test_flash_attn.py --case_id TND_05 --meta_only
   ...
 ```
 
-### 4.3性能测试
+### 4.3 性能测试
 
 ```bash
 # 批量性能采集
@@ -179,7 +179,7 @@ python test_flash_attn.py --case_files performance_redline_train --perf_mode --p
 python test_flash_attn.py --perf_mode --one_by_one
 ```
 
-### 4.4三方对比
+### 4.4 三方对比
 
 ```bash
 # CPU vs GPU vs NPU实时对比
@@ -205,17 +205,23 @@ python test_flash_attn.py --case_id BASE_01 --compare_mode \
 | `--use_gpu` | flag | — | 使用GPU后端 |
 | `--gpu_device` | int | `0` | GPU设备ID |
 
+### Golden 持久化参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--save_golden` | str | — | 正常对比流程 + 将 inputs/golden 落盘到指定目录（.pt 格式） |
+| `--load_golden` | str | — | 从指定目录加载 golden，只跑设备对比（跳过 CPU golden 计算） |
+| `--case_timeout` | int | `300` | 子进程隔离模式下单个 case 超时时间（秒） |
+
 ### 调试参数
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--meta_only` | flag | — | 只调用metadata算子，打印分核结果 |
-| `--dump_tensors` | flag | — | 保存Q/K/V及输出为txt |
-| `--dump_dir` | str | `./dump_output` | dump保存目录 |
-| `--verbose_diff` | flag | — | 输出全部超阈值元素 |
-| `--visualize` | flag | — | 生成精度热力图PNG |
-| `--viz_dir` | str | `./viz_output` | 热力图保存目录 |
-| `--fail_analysis` | flag | — | 精度失败时分析各维度误差分布 |
+| `--meta_only` | flag | — | 只调用 metadata 算子，打印分核结果 |
+| `--verbose_diff` | flag | — | 精度不达标时输出全部超阈值元素（默认只打前10个） |
+| `--visualize` | flag | — | 精度不达标时生成热力图 PNG |
+| `--viz_dir` | str | `./viz_output` | 热力图/分析报告保存目录 |
+| `--fail_analysis` | flag | — | 精度不达标时输出多维度失败分布分析报告 |
 | `--compare_mode` | flag | — | 多后端对比 |
 | `--graph_mode` | flag | — | 图模式执行 |
 
@@ -250,7 +256,7 @@ python test_flash_attn.py --case_id BASE_01 --compare_mode \
 
 用例定义在`test_cases/*.py`的`TestCases`字典中。每个字段是列表，框架自动做笛卡尔积展开。
 
-### 6.1字段说明
+### 6.1 字段说明
 
 ```python
 TestCases = {
@@ -318,7 +324,7 @@ TestCases = {
 
 ## 七、执行流程详解
 
-### 7.1用例加载
+### 7.1 用例加载
 
 ```
 test_cases/functional_stc.py::TestCases
@@ -332,7 +338,7 @@ test_cases/functional_stc.py::TestCases
   --case_id TND_05 → 匹配所有包含"/TND_05"的case
 ```
 
-### 7.2参数规范化
+### 7.2 参数规范化
 
 `normalize_params()`补全逻辑：
 
@@ -345,7 +351,7 @@ test_cases/functional_stc.py::TestCases
 | TND + 缺少`cu_seqlens_kv` | 复制`cu_seqlens_q` |
 | PA + 缺少`block_table` | 从`seqused_kv` + `block_size`自动生成 |
 
-### 7.3张量生成
+### 7.3 张量生成
 
 `InputSpec`声明式定义Q/K/V的shape、dtype、生成方法：
 
@@ -360,7 +366,7 @@ flash_attn_inputs = (
 
 特殊token：`total_s1` = `cu_seqlens_q[-1]`，`total_s2` = `cu_seqlens_kv[-1]`。
 
-### 7.4参数组构造
+### 7.4 参数组构造
 
 `build_flash_attn_params()`返回`(meta_kwargs, kernel_kwargs, out_layout)`：
 
@@ -369,7 +375,7 @@ flash_attn_inputs = (
 - **kernel_kwargs** → 传给`npu_flash_attn()`
   - `softmax_scale`, `cu_seqlens_q/kv`, `seqused_q/kv`, `max_seqlen_q/kv` (TND时传实际值，否则 -1), `mask_mode`, `layout_*`
 
-### 7.5精度对比
+### 7.5 精度对比
 
 `check_result()`判定标准：
 
