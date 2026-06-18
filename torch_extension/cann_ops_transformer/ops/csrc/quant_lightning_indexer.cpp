@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_lightning_indexer_v2.cpp
+ * \file quant_lightning_indexer.cpp
  * \brief
  */
 
@@ -101,7 +101,7 @@ std::tuple<at::Tensor, at::Tensor> construct_quant_lightning_indexer_output_tens
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices_out, sparse_values_out);
 }
 
-std::tuple<at::Tensor, at::Tensor> quant_lightning_indexer_v2(
+std::tuple<at::Tensor, at::Tensor> quant_lightning_indexer(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &weights,
     const at::Tensor &query_dequant_scale, const at::Tensor &key_dequant_scale,
     int64_t topk, int64_t quant_mode,
@@ -144,6 +144,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("quant_lightning_indexer_metadata", &quant_lightning_indexer_metadata,
         "quant_lightning_indexer_metadata");
-    m.def("quant_lightning_indexer_v2", &quant_lightning_indexer_v2, "quant_lightning_indexer_v2");
+    m.def("quant_lightning_indexer", &quant_lightning_indexer, "quant_lightning_indexer");
 }
 } // namespace op_api
