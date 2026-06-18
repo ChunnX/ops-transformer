@@ -153,7 +153,6 @@ public:
     BufferManager<BufferType::L0C> l0cBufferManager;
 
     BuffersPolicyDB<BufferType::L1> l1QBuffers;
-    BuffersPolicySingleBuffer<BufferType::L1> PScaleBuffers;
     L1KvType l1KVBuffers;
     BuffersPolicyDB<BufferType::L1> l1VBuffers;
 
@@ -200,7 +199,6 @@ public:
             l1QBuffers.Init((*l1BufferManagerPtr), mm1QSize + mm1QScaleSize);
             l1KVBuffers.Init((*l1BufferManagerPtr), mmKVSize + mmKVScaleSize);
         }
-        PScaleBuffers.Init((*l1BufferManagerPtr), mBaseSize * s2BaseSize / MXFP_GROUP_SIZE * sizeof(SCALE_T));
 
         // L0A B C 当前写死，能否通过基础api获取
         l0aBufferManager.Init(tPipe, 65536);  // 64 * 1024
@@ -409,7 +407,6 @@ public:
     {
         l1QBuffers.Uninit((*l1BufferManagerPtr));
         l1KVBuffers.Uninit((*l1BufferManagerPtr));
-        PScaleBuffers.Uninit((*l1BufferManagerPtr));
         mmL0ABuffers.Uninit(l0aBufferManager);
         mmL0BBuffers.Uninit(l0bBufferManager);
         mmL0CBuffers.Uninit(l0cBufferManager);
@@ -752,10 +749,10 @@ public:
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
         fixpipeParams.nSize = (s2RealSize + 7) >> 3 << 3;
         // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-        fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
+        fixpipeParams.mSize = (runInfo.actMSize + 31) >> 5 << 5;
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
         // 源NZ矩阵中相邻Z排布的起始地址偏移
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+        fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
         fixpipeParams.dstStride = s2SplitSize; // mmResUb上两行之间的间隔，单位：element
         fixpipeParams.dualDstCtl = 1;          // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
@@ -891,25 +888,15 @@ public:
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
-        Buffer<BufferType::L1> mm2AScale = PScaleBuffers.Get();
-        if (unlikely(runInfo.isFirstS2Loop)) {
-            mm2AScale.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
-            LocalTensor<int16_t> mm2AScaleTensor = mm2AScale.GetTensor<int16_t>();
-            InitConstValue(mm2AScaleTensor, {1, mBaseSize * s2BaseSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / 32, 0,
-                                             0x7f7f}); // 构造假的全1P_SCALE传给MX接口
-            mm2AScale.Set<HardEvent::MTE2_MTE1>();
-        } else {
-            mm2AScale = PScaleBuffers.GetPre();
-            mm2AScale.Set<HardEvent::MTE2_MTE1>();
-        }
-        LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2AScale.GetTensor<SCALE_T>();
+        uint32_t pScaleOffset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）; // VScale在mm1B的偏移量（单位：元素）
+        LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
-        mm2AScale.Wait<HardEvent::MTE2_MTE1>();
 
         constexpr uint32_t baseK = s2SplitSize;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
+        uint64_t l1ScaleOffset = baseK / 32 * runInfo.actMSizeAlign32;
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {
@@ -947,12 +934,10 @@ public:
                 mm2BTensor, mmL0ABuffers, mmL0BBuffers,
                 mm2ResL0C.GetTensor<T>(),
                 param,
-                mm2AScaleFakeTensor, mm2BScaleTensor);
+                mm2AScaleFakeTensor[k * l1ScaleOffset], mm2BScaleTensor);
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
-        if (unlikely(runInfo.isLastS2Loop)) {
-            mm2AScale.Set<HardEvent::MTE1_MTE2>();
-        }
+
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
 
@@ -976,8 +961,8 @@ public:
         }
 
         if constexpr (!USE_DN) {
-            fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
-            fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+            fixpipeParams.mSize = (runInfo.actMSize + 31) >> 5 << 5;
+            fixpipeParams.srcStride = ((runInfo.actMSize + 15) / 16) * 16;
         } else {
             fixpipeParams.mSize = mBaseSize;
             fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
