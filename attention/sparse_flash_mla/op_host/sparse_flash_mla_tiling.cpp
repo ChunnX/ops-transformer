@@ -758,10 +758,6 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             OP_LOGE(opName_, "Input sequsedOriKv must be provided when kv layout is PA_BBND");
             return ge::GRAPH_FAILED;
         }
-    } else if (kvLayout_ == SMLALayout::TND) {
-        OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor != nullptr,
-            OP_LOGE(opName_, "Input sequsedOriKv must not be provided when kv layout is TND"),
-            return ge::GRAPH_FAILED);
     } else if (kvLayout_ == SMLALayout::BSND) {
         actualLenDimsKV_ = actualLenDimsOriKV_;
     } else {
