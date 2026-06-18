@@ -106,7 +106,6 @@ public:
     uint32_t coreGS1Loops = 0U;
     uint32_t frontGS1Count = 0U;
     uint32_t invalidGS1Size = 0U;
-    uint32_t accGS1Loops = 0U;
     uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
@@ -400,7 +399,6 @@ public:
         createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         mloop = 0;
-        accGS1Loops = 0;
         headS2Split = false;
         tailS2Split = false;
 
@@ -444,7 +442,13 @@ public:
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        return ((bN2Cur != bN2End_) || (gS1Cur != gS1OEnd_) || (s2Cur != s2OEnd_));
+        if (bN2Cur != bN2End_) {
+            return bN2Cur < bN2End_;
+        }
+        if (gS1Cur != gS1OEnd_) {
+            return gS1Cur < gS1OEnd_;
+        }
+        return s2Cur < s2OEnd_;
     }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
@@ -487,13 +491,9 @@ public:
             prevBN2Idx = bN2Cur;
             prevGS1Idx = gS1Cur;
         }
-
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::S2_END;
-        }
-
+        // 当s2方向出现第一个被mask的基本块后，跳过这行
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP;
+            return TASK_DEAL_MODE::SKIP_REMAINING_S2;
         }
 
         if (s2Cur == curS2Start) {
@@ -746,11 +746,14 @@ public:
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
-        // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
-            s2Cur++;
-            return;
+        if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
+            // 当前S2未处理完
+            if (s2Cur + 1 < s2LoopTimes) {
+                s2Cur++;
+                return;
+            }
         }
+
 
         if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
             taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
@@ -763,11 +766,6 @@ public:
             gS1Cur++;
             return;
         }
-
-        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
-            accGS1Loops++;
-        }
-
         // 当前BN2已处理完
         gS1Cur = 0;
         bN2Cur++;
