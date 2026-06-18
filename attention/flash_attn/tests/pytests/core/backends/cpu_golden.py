@@ -11,7 +11,7 @@
 
 import torch
 import math
-from utils import *
+from utils.data import generate_cpu_mask
 
 
 def tsoftmax(x):
@@ -53,9 +53,6 @@ def _attend(q, k, v, atten_mask, scale, need_fix_invalid):
         softmax_res, x_max, x_sum = tsoftmax(qk)
 
     # softmax_res, x_max, x_sum = tsoftmax(qk)
-
-    if need_fix_invalid:
-        softmax_res, x_max, x_sum = _fix_invalid_rows(softmax_res, x_max, x_sum)
 
     if need_fix_invalid:
         softmax_res, x_max, x_sum = _fix_invalid_rows(softmax_res, x_max, x_sum)
