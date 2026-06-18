@@ -21,6 +21,44 @@ using namespace AscendC;
 using std::map;
 using std::string;
 namespace optiling {
+namespace {
+constexpr uint32_t LI_BASE_TOPK = 2048;
+constexpr uint32_t LI_SPARSE_COUNT_8K = 8192;
+constexpr uint32_t LI_DEFAULT_S1_BASE_SIZE = 8;
+constexpr uint32_t LI_S2_BASE_SIZE = 512;
+constexpr uint64_t UINT32_MAX_U64 = 0xffffffffULL;
+
+uint64_t CeilDiv(uint64_t num, uint64_t div)
+{
+    return div == 0 ? 0 : (num + div - 1) / div;
+}
+
+uint32_t CalcS1BaseSize(uint32_t sparseCount)
+{
+    if (sparseCount <= LI_BASE_TOPK) {
+        return LI_DEFAULT_S1_BASE_SIZE;
+    }
+    return (LI_SPARSE_COUNT_8K / sparseCount) * 2;
+}
+
+uint32_t CalcMaxBaseBlockNum(const LITilingInfo &tilingInfo)
+{
+    uint64_t s1Size = tilingInfo.s1Size;
+    if (tilingInfo.inputQLayout == DataLayout::TND) {
+        s1Size = static_cast<uint64_t>(tilingInfo.opParamInfo.query.shape->GetStorageShape().GetDim(0));
+    }
+    uint64_t s2Size = static_cast<uint64_t>(tilingInfo.s2Size);
+    if (tilingInfo.bSize == 0 || s1Size == 0 || s2Size == 0) {
+        return 1;
+    }
+
+    uint64_t s1BaseBlockNum = CeilDiv(s1Size, CalcS1BaseSize(tilingInfo.sparseCount));
+    uint64_t s2BaseBlockNum = tilingInfo.sparseCount > LI_BASE_TOPK ? 1 : CeilDiv(s2Size, LI_S2_BASE_SIZE);
+    uint64_t totalBlockNum = static_cast<uint64_t>(tilingInfo.bSize) * tilingInfo.n2Size * s1BaseBlockNum * s2BaseBlockNum;
+    return static_cast<uint32_t>(totalBlockNum > UINT32_MAX_U64 ? UINT32_MAX_U64 : totalBlockNum);
+}
+} // namespace
+
 // --------------------------LIInfoParser类成员函数定义-------------------------------------
 ge::graphStatus LIInfoParser::CheckRequiredInOutExistence() const
 {
@@ -736,7 +774,10 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    uint32_t physicalBlockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
+    uint32_t maxBaseBlockNum = CalcMaxBaseBlockNum(*tilingInfo);
+    uint32_t blockDim = maxBaseBlockNum < physicalBlockDim ? maxBaseBlockNum : physicalBlockDim;
+    blockDim = blockDim == 0 ? 1 : blockDim;
     context_->SetBlockDim(blockDim);
 
     // -------------set workspacesize-----------------

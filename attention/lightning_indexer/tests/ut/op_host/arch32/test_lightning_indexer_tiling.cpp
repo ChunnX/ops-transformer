@@ -256,8 +256,77 @@ TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_6)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     int64_t expectTilingKey = 1090722587;
     std::string expectTilingData =
-        "2 167503724608 8796093022224 68719476800 12884901889 "
+        "2 167503724608 8796093022224 68719476746 12884901889 "
         "9223372036854775807 9223372036854775807 0 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+}
+
+TEST_F(LightningIndexerTiling, LongKeyBsndUsesEffectiveCoreNum)
+{
+    struct LightningIndexerCompileInfo {} compileInfo;
+    gert::TilingContextPara tilingContextPara(
+        "LightningIndexer",
+        {
+            {{{1, 1, 1, 128}, {1, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 2048, 1, 128}, {1, 2048, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 1, 1}, {1, 1, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{1, 1, 1, 128}, {1, 1, 1, 128}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{0}, {0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    constexpr uint32_t expectedCoreNum = 4;
+    EXPECT_EQ(tilingInfo.blockNum, expectedCoreNum);
+}
+
+TEST_F(LightningIndexerTiling, ReadmePaLargeUsesEffectiveCoreNum)
+{
+    struct LightningIndexerCompileInfo {} compileInfo;
+    int64_t actualSeqKv[] = {8192};
+    gert::TilingContextPara tilingContextPara(
+        "LightningIndexer",
+        {
+            {{{1, 1, 64, 128}, {1, 1, 64, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{32, 256, 1, 128}, {32, 256, 1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1, 1, 64}, {1, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv},
+            {{{1, 32}, {1, 32}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{1, 1, 1, 2048}, {1, 1, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    constexpr uint32_t expectedCoreNum = 16;
+    EXPECT_EQ(tilingInfo.blockNum, expectedCoreNum);
 }
