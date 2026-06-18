@@ -45,13 +45,12 @@ GELU_TANH_APPROX_FACTOR = 1.0 / 0.044715
 
 
 def grouped_matmul_activation_quant_golden(x, group_list, weight, weight_scale, bias=None, x_scale=None, *,
-                                           activation_type: str = "gelu_tanh", dequant_dtype: int = 0,
-                                           transpose_weight: bool = False, group_list_type: int = 0,
-                                           tuning_config=None, quant_mode: str = "MX",
+                                           activation_type: str = "gelu_tanh", transpose_weight: bool = False,
+                                           group_list_type: int = 0, tuning_config=None, quant_mode: str = "",
                                            y_dtype: int = QUANT_DTYPE_E4M3FN,
                                            round_mode: str = "rint", scale_alg: int = 0,
                                            dst_type_max: float = 0.0, **kwargs):
-    del bias, dequant_dtype, tuning_config, round_mode, dst_type_max
+    del bias, tuning_config, round_mode, dst_type_max
     if activation_type != "gelu_tanh":
         raise ValueError("activation_type only supports gelu_tanh.")
     if quant_mode != "MX":
