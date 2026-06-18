@@ -345,23 +345,10 @@ bool FlashAttnTilingImpl::CheckNeedInitOutput() const
         return faInfo_->s1Size > faInfo_->s2Size;
     }
     if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
-        const int64_t winLeft = faInfo_->winLeft;
-        const int64_t winRight = faInfo_->winRight;
-        const int64_t s1Size = static_cast<int64_t>(faInfo_->s1Size);
-        const int64_t s2Size = static_cast<int64_t>(faInfo_->s2Size);
-        
-        // 检查第一个 query token (i=0) 是否能访问到任何 KV token
-        // 可见范围: [0 - winLeft, 0 + winRight] = [-winLeft, winRight]
-        // 有效范围: [max(0, -winLeft), min(s2Size-1, winRight)]
-        bool firstTokenCovered = (winLeft == -1) || (winRight >= 0);
-        
-        // 检查最后一个 query token (i=s1Size-1) 是否能访问到任何 KV token
-        // 可见范围: [s1Size-1-winLeft, s1Size-1+winRight]
-        // 有效范围: [max(0, s1Size-1-winLeft), min(s2Size-1, s1Size-1+winRight)]
-        bool lastTokenCovered = (winRight == -1) || (s1Size - 1 - winLeft < s2Size);
-        
-        // 如果首尾 token 都能覆盖到 KV，中间 token 也都能覆盖
-        return !(firstTokenCovered && lastTokenCovered);
+        if (faInfo_->winRight == -1) {
+            return false;
+        }
+        return (faInfo_->s1Size - faInfo_->s2Size) > static_cast<uint64_t>(faInfo_->winRight);
     }
     return false;
 }
