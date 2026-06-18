@@ -83,8 +83,13 @@ bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleScenario() 
     const size_t xTensorNum = GetInputTensorSize(gmmParams_.x);
     const size_t weightTensorNum = GetInputTensorSize(gmmParams_.weight);
     const size_t yTensorNum = GetInputTensorSize(gmmParams_.y);
+    const auto weightDtype = GetInputTensor(gmmParams_.weight)->GetDataType();
+    const bool isMxfp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 || gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2) &&
+                         (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2);
+    const bool isMxfp4WithBias = isMxfp4 && gmmParams_.biasOptional != nullptr;
     return gmmParams_.groupType == SPLIT_M && xTensorNum == 1 && yTensorNum == 1 && weightTensorNum > 1 &&
-           GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+           GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ &&
+           !isMxfp4WithBias;
 }
 
 template <typename T>
@@ -349,6 +354,12 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
             "FLOAT16, BFLOAT16, FLOAT32, INT32"));
 
     auto weightTensorNum = GetInputTensorSize(gmmParams_.weight);
+    const bool isWeightNzSingleMultiSingleCandidate =
+        gmmParams_.groupType == SPLIT_M && GetInputTensorSize(gmmParams_.x) == 1 && GetInputTensorSize(gmmParams_.y) == 1 &&
+        weightTensorNum > 1 && GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+    GMM_CHECK_REPORT(!(isWeightNzSingleMultiSingleCandidate && isInputFp4 && gmmParams_.biasOptional != nullptr),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), "biasOptional", "not nullptr",
+            "in weightNz single-multi-single MXFP4 case, biasOptional must be nullptr"));
     if (IsWeightNzSingleMultiSingleScenario()) {
         GMM_CHECK_REPORT(weightTensorNum ==
                 static_cast<size_t>(gmmParams_.groupTensorOptional->GetViewShape().GetDim(0)),
