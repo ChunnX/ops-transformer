@@ -266,7 +266,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
 
 // ---------------------------------------------------------------------------
 // 输出 shape + dtype
-// 4 个输出全部 caller 预分配；A_alloc = recvX.shape[0] ≤ ep × nmt（§8.2）
+// 4 个输出全部 caller 预分配；A_alloc = recvX.shape[0] ≤ ep × nmt × min(topK, numLocalExperts)
 // ---------------------------------------------------------------------------
 static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, const char *nodeName,
                                              const MoeEpDispatchEpilogueInfo &info, int64_t topK)
@@ -280,10 +280,15 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
         return ge::GRAPH_FAILED);
     const int64_t aAlloc = recvXShape->GetStorageShape().GetDim(0);
     const int64_t hidden = recvXShape->GetStorageShape().GetDim(1);
+    const int64_t numLocalExperts = static_cast<int64_t>(info.cfg.numLocalExperts);
+    const int64_t maxHitsPerSlot = (topK < numLocalExperts) ? topK : numLocalExperts;
     const int64_t aUpper = static_cast<int64_t>(info.cfg.epWorldSize)
-                           * static_cast<int64_t>(info.cfg.numMaxTokensPerRank);
+                           * static_cast<int64_t>(info.cfg.numMaxTokensPerRank)
+                           * maxHitsPerSlot;
     OP_TILING_CHECK(aAlloc < 0 || aAlloc > aUpper,
-        OP_LOGE(nodeName, "recvX dim0(A_alloc) must be in [0, ep*nmt=%ld], got %ld.", aUpper, aAlloc),
+        OP_LOGE(nodeName,
+            "recvX dim0(A_alloc) must be in [0, ep*nmt*min(topK,numLocalExperts)=%ld], got %ld.",
+            aUpper, aAlloc),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((hidden < H_MIN) || (hidden > H_MAX),
         OP_LOGE(nodeName, "recvX dim1(hidden) must be in [%ld, %ld], got %ld.", H_MIN, H_MAX, hidden),

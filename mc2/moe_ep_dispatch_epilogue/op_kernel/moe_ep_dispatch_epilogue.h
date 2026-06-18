@@ -86,6 +86,10 @@ private:
     LocalTensor<int32_t> ubLocalSeq_;
     LocalTensor<int64_t> ubRowStart_;
     LocalTensor<int32_t> ubMeta_;
+    LocalTensor<int32_t> ubTopkIds_;
+    LocalTensor<int32_t> ubTargetExpertId_;
+    LocalTensor<int32_t> ubSubExpertId_;
+    LocalTensor<float> ubReduceWork_;
     LocalTensor<int32_t> ubRecvCnt_;
     LocalTensor<int64_t> ubExpertPfx_;
     LocalTensor<int32_t> ubHitCountFull_;
@@ -95,6 +99,10 @@ private:
     TBuf<QuePosition::VECIN> ubLocalSeqBuf_;
     TBuf<QuePosition::VECIN> ubRowStartBuf_;
     TBuf<QuePosition::VECIN> ubMetaBuf_;
+    TBuf<QuePosition::VECIN> ubTopkIdsBuf_;
+    TBuf<QuePosition::VECIN> ubTargetExpertIdBuf_;
+    TBuf<QuePosition::VECIN> ubSubExpertIdBuf_;
+    TBuf<QuePosition::VECIN> ubReduceWorkBuf_;
     TBuf<QuePosition::VECIN> ubRecvCntBuf_;
     TBuf<QuePosition::VECIN> ubExpertPfxBuf_;
     TBuf<QuePosition::VECIN> ubHitCountFullBuf_;
@@ -106,6 +114,7 @@ private:
     uint32_t hitCountOffset_{0};
     uint32_t metaBytes_{0};
     uint32_t paddedMetaElems_{0};
+    uint32_t paddedTopkElems_{0};
     uint32_t ubMetaCapElems_{0};   // ubMeta_ 容纳的 int32 元素数（用于 cached 路径分块拷贝）
     uint32_t numLocalExperts_{0};
     uint32_t aivNum_{0};
@@ -188,8 +197,10 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
 
     metaBytes_ = (2 * topK_ + 2) * sizeof(int32_t);
     paddedMetaElems_ = ((2 * topK_ + 2) + 7) / 8 * 8;
+    paddedTopkElems_ = (topK_ + 7) / 8 * 8;
     uint32_t maxSlotsPerAiv = (numMaxTokensPerRank_ + aivNum_ - 1) / aivNum_;
     uint32_t ubMetaBytes = ALIGN_UP(maxSlotsPerAiv * paddedMetaElems_ * sizeof(int32_t), 32);
+    uint32_t ubTopkIdsBytes = ALIGN_UP(maxSlotsPerAiv * paddedTopkElems_ * sizeof(int32_t), 32);
     ubMetaCapElems_ = ubMetaBytes / sizeof(int32_t);
     uint32_t ubRecvCntBytes = ALIGN_UP(epWorldSize_ * sizeof(int32_t), 32);
     uint32_t ubExpertPfxBytes = ALIGN_UP(numLocalExperts_ * sizeof(int64_t), 32);
@@ -200,6 +211,10 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     tpipe_->InitBuffer(ubLocalSeqBuf_, ubLocalSeqBytes);
     tpipe_->InitBuffer(ubRowStartBuf_, ubRowStartBytes);
     tpipe_->InitBuffer(ubMetaBuf_, ubMetaBytes);
+    tpipe_->InitBuffer(ubTopkIdsBuf_, ubTopkIdsBytes);
+    tpipe_->InitBuffer(ubTargetExpertIdBuf_, ubTopkIdsBytes);
+    tpipe_->InitBuffer(ubSubExpertIdBuf_, ubTopkIdsBytes);
+    tpipe_->InitBuffer(ubReduceWorkBuf_, ubTopkIdsBytes);
     tpipe_->InitBuffer(ubRecvCntBuf_, ubRecvCntBytes);
     tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
     tpipe_->InitBuffer(ubHitCountFullBuf_, ubHitCountFullBytes);
@@ -209,6 +224,10 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     ubLocalSeq_  = ubLocalSeqBuf_.Get<int32_t>();
     ubRowStart_  = ubRowStartBuf_.Get<int64_t>();
     ubMeta_      = ubMetaBuf_.Get<int32_t>();
+    ubTopkIds_   = ubTopkIdsBuf_.Get<int32_t>();
+    ubTargetExpertId_ = ubTargetExpertIdBuf_.Get<int32_t>();
+    ubSubExpertId_ = ubSubExpertIdBuf_.Get<int32_t>();
+    ubReduceWork_ = ubReduceWorkBuf_.Get<float>();
     ubRecvCnt_   = ubRecvCntBuf_.Get<int32_t>();
     ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
     ubHitCountFull_ = ubHitCountFullBuf_.Get<int32_t>();
@@ -276,27 +295,39 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
         uint32_t slotCntPerAiv = slotEnd - slotStart;
         GM_ADDR firstSlotAddrThisAiv = srcRankBase + slotStart * perSlotBytes_;
 
-        GlobalTensor<int32_t> srcMetaGm;
-        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
-        DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
-            perSlotBytes_ - metaBytes_, 0, 0};
-        DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
-        DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
+        GlobalTensor<int32_t> srcTopkIdsGm;
+        srcTopkIdsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
+        uint32_t topkBytes = topK_ * sizeof(int32_t);
+        DataCopyExtParams topkCopyParams{static_cast<uint16_t>(slotCntPerAiv),
+            static_cast<uint32_t>(topkBytes), static_cast<int64_t>(perSlotBytes_ - topkBytes), 0, 0};
+        DataCopyPadExtParams<int32_t> topkPadParams{true, 0,
+            static_cast<uint8_t>(paddedTopkElems_ - topK_), -1};
+        DataCopyPad(ubTopkIds_, srcTopkIdsGm, topkCopyParams, topkPadParams);
         PipeBarrier<PIPE_MTE2>();
 
-        for (uint32_t localSlot = 0; localSlot < slotCntPerAiv; ++localSlot) {
-            uint32_t metaBase = localSlot * paddedMetaElems_;
+        int32_t calCnt = static_cast<int32_t>(slotCntPerAiv * paddedTopkElems_);
+        for (uint32_t localExpertId = 0; localExpertId < numLocalExperts_; ++localExpertId) {
+            int32_t targetExpertId =
+                static_cast<int32_t>(rankId_ * numLocalExperts_ + localExpertId);
 
-            for (uint32_t topkIdx = 0; topkIdx < topK_; ++topkIdx) {
-                int32_t expertId = ubMeta_.GetValue(metaBase + topkIdx);
-                if (expertId < 0) { continue; }
-                uint32_t dstRank = static_cast<uint32_t>(expertId) / numLocalExperts_;
-                if (dstRank != rankId_) { continue; }
-                uint32_t localExpertId = static_cast<uint32_t>(expertId) % numLocalExperts_;
+            SyncFunc<AscendC::HardEvent::S_V>();
+            Duplicate<int32_t>(ubTargetExpertId_, targetExpertId, calCnt);
+            
+            Sub(ubSubExpertId_, ubTopkIds_, ubTargetExpertId_, calCnt);
+            
+            LocalTensor<float> tmpFp32 = ubSubExpertId_.ReinterpretCast<float>();
+            LocalTensor<float> tmpOutFp32 = ubTargetExpertId_.ReinterpretCast<float>();
+            Abs(tmpOutFp32, tmpFp32, calCnt);
+            
+            Mins(ubSubExpertId_, ubTargetExpertId_, 1, calCnt);
+            
+            ReduceSum<float>(tmpOutFp32, tmpFp32, ubReduceWork_, calCnt);
+            SyncFunc<AscendC::HardEvent::V_S>();
 
-                int32_t currentHits = ubHitCount_.GetValue(localExpertId);
-                ubHitCount_.SetValue(localExpertId, currentHits + 1);
-            }
+            int32_t curOtherExpertCnt = ubTargetExpertId_(0);
+            int32_t curExpertCnt = (calCnt >= curOtherExpertCnt) ? (calCnt - curOtherExpertCnt) : 0;
+            int32_t currentHits = ubHitCount_.GetValue(localExpertId);
+            ubHitCount_.SetValue(localExpertId, currentHits + curExpertCnt);
         }
     }
 
