@@ -575,7 +575,7 @@ static ge::graphStatus CheckGroupAttrParams(const gert::TilingContext *context, 
     if (socVersion == "Ascend950") {
         maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A5;
     } else {
-        maxEpworldsize = isLayered ? MAX_TP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A3;
+        maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A3;
     }
     int64_t maxTpworldsize = isLayered ? MAX_TP_WORLD_SIZE_LAYERED : MAX_TP_WORLD_SIZE;
     OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > maxEpworldsize),
