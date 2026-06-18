@@ -78,7 +78,7 @@ ge::graphStatus PostQuantChecker::CheckFeatureAttenOut(const FiaTilingInfo &fiaI
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PostQuantChecker::CheckFeatureQueryDType(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PostQuantChecker::CheckFeatureQueryDType(const FiaTilingInfo &fiaInfo) const
 {
     // Post-quantization scale dtype must be FP32. BF16 is allowed only if the query is BF16
     if (fiaInfo.isOutQuantEnable) {
