@@ -16,6 +16,7 @@
 #define VF_BASIC_BLOCK_UNALIGNED512_NO_UPDATE_H
 
 #include "vf_basic_block_utils.h"
+#include "vf_basic_block_unaligned512_common.h"
 #include "../pse.h"
 
 using namespace regbaseutil;
@@ -25,14 +26,14 @@ namespace FaVectorApi {
 template <typename T, typename T2, typename OUTPUT_T, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 256,
     bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0>
 __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
-    __ubuf__ T2 * expUb1, __ubuf__ T2 * expUb2, __ubuf__ T2 * expUb3, __ubuf__ T2 * expUb4, __ubuf__ OUTPUT_T * pseUb, 
-    __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, __ubuf__ T * srcUb, __ubuf__ uint32_t * maskUb1, __ubuf__ uint32_t * maskUb2, 
-    __ubuf__ uint32_t * maskUb3, __ubuf__ uint32_t * maskUb4, __ubuf__ uint32_t * maskUb5, __ubuf__ uint32_t * maskUb6, 
-    __ubuf__ uint32_t * maskUb7, __ubuf__ uint32_t * maskUb8, const uint32_t nPadding, 
-    const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t oriTailN3, 
-    const uint32_t oriTailN4, const uint32_t tailN1, const uint32_t tailN2, const uint32_t tailN3, const uint32_t tailN4, 
-    uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltOriTailN3, uint32_t pltOriTailN4, 
-    uint32_t pltTailN1, uint32_t pltTailN2, uint32_t pltTailN3, uint32_t pltTailN4, float divValue, const uint16_t m, 
+    __ubuf__ T2 * expUb1, __ubuf__ T2 * expUb2, __ubuf__ T2 * expUb3, __ubuf__ T2 * expUb4, __ubuf__ OUTPUT_T * pseUb,
+    __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, __ubuf__ T * srcUb, __ubuf__ uint32_t * maskUb1, __ubuf__ uint32_t * maskUb2,
+    __ubuf__ uint32_t * maskUb3, __ubuf__ uint32_t * maskUb4, __ubuf__ uint32_t * maskUb5, __ubuf__ uint32_t * maskUb6,
+    __ubuf__ uint32_t * maskUb7, __ubuf__ uint32_t * maskUb8, const uint32_t nPadding,
+    const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t oriTailN3,
+    const uint32_t oriTailN4, const uint32_t tailN1, const uint32_t tailN2, const uint32_t tailN3, const uint32_t tailN4,
+    uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltOriTailN3, uint32_t pltOriTailN4,
+    uint32_t pltTailN1, uint32_t pltTailN2, uint32_t pltTailN3, uint32_t pltTailN4, float divValue, const uint16_t m,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const T minValue)
 {
     RegTensor<float> vreg_min;
@@ -159,7 +160,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
     RegTensor<half> vreg_pse6_f16;
     RegTensor<half> vreg_pse7_f16;
     RegTensor<half> vreg_pse8_f16;
-    
+
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
 
@@ -225,79 +226,28 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
         if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
             if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                 pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-                Abs(vreg_pse1, vreg_alibi1, preg_all);
-                Abs(vreg_pse2, vreg_alibi2, preg_all);
-                Abs(vreg_pse3, vreg_alibi3, preg_all);
-                Abs(vreg_pse4, vreg_alibi4, preg_all);
-                Abs(vreg_pse5, vreg_alibi5, preg_all);
-                Abs(vreg_pse6, vreg_alibi6, preg_all);
-                Abs(vreg_pse7, vreg_alibi7, preg_all);
-                Abs(vreg_pse8, vreg_alibi8, preg_all);
                 if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-                    Sqrt(vreg_pse1, vreg_pse1, preg_all);
-                    Sqrt(vreg_pse2, vreg_pse2, preg_all);
-                    Sqrt(vreg_pse3, vreg_pse3, preg_all);
-                    Sqrt(vreg_pse4, vreg_pse4, preg_all);
-                    Sqrt(vreg_pse5, vreg_pse5, preg_all);
-                    Sqrt(vreg_pse6, vreg_pse6, preg_all);
-                    Sqrt(vreg_pse7, vreg_pse7, preg_all);
-                    Sqrt(vreg_pse8, vreg_pse8, preg_all);
+                    ComputePseInnerMulAddSqrt8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                        vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
+                        vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
+                        slopes, preg_all);
+                } else {
+                    ComputePseInnerMulAdd8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                        vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
+                        vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
+                        slopes, preg_all);
                 }
-                Muls(vreg_pse1, vreg_pse1, slopes, preg_all);
-                Muls(vreg_pse2, vreg_pse2, slopes, preg_all);
-                Muls(vreg_pse3, vreg_pse3, slopes, preg_all);
-                Muls(vreg_pse4, vreg_pse4, slopes, preg_all);
-                Muls(vreg_pse5, vreg_pse5, slopes, preg_all);
-                Muls(vreg_pse6, vreg_pse6, slopes, preg_all);
-                Muls(vreg_pse7, vreg_pse7, slopes, preg_all);
-                Muls(vreg_pse8, vreg_pse8, slopes, preg_all);
-                Adds(vreg_alibi1, vreg_alibi1, -1.0f, preg_all);
-                Adds(vreg_alibi2, vreg_alibi2, -1.0f, preg_all);
-                Adds(vreg_alibi3, vreg_alibi3, -1.0f, preg_all);
-                Adds(vreg_alibi4, vreg_alibi4, -1.0f, preg_all);
-                Adds(vreg_alibi5, vreg_alibi5, -1.0f, preg_all);
-                Adds(vreg_alibi6, vreg_alibi6, -1.0f, preg_all);
-                Adds(vreg_alibi7, vreg_alibi7, -1.0f, preg_all);
-                Adds(vreg_alibi8, vreg_alibi8, -1.0f, preg_all);
             } else {
                 if constexpr (IsSameType<T2, bfloat16_t>::value) {
-                    LoadAlign(vreg_pse_bf16_src1, pseUb + i * pseStride);
-                    LoadAlign(vreg_pse_bf16_src2, pseUb + floatRepSize * 2 + i * pseStride);
-                    LoadAlign(vreg_pse_bf16_src3, pseUb + floatRepSize * 4 + i * pseStride);
-                    LoadAlign(vreg_pse_bf16_src4, pseUb + floatRepSize * 6 + i * pseStride);
-
-                    Interleave(vreg_pse1_bf16, vreg_pse2_bf16, vreg_pse_bf16_src1, vreg_pse_bf16_src1);
-                    Interleave(vreg_pse3_bf16, vreg_pse4_bf16, vreg_pse_bf16_src2, vreg_pse_bf16_src2);
-                    Interleave(vreg_pse5_bf16, vreg_pse6_bf16, vreg_pse_bf16_src3, vreg_pse_bf16_src3);
-                    Interleave(vreg_pse7_bf16, vreg_pse8_bf16, vreg_pse_bf16_src4, vreg_pse_bf16_src4);
-
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse1, vreg_pse1_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse2, vreg_pse2_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse3, vreg_pse3_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse4, vreg_pse4_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse5, vreg_pse5_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse6, vreg_pse6_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse7, vreg_pse7_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse8, vreg_pse8_bf16, preg_all_b16);
+                    LoadCastPseBf16_8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                        pseUb, i, pseStride, preg_all_b16);
                 } else if constexpr (IsSameType<T2, half>::value) {
-                    LoadAlign(vreg_pse_f16_src1, pseUb + i * pseStride);
-                    LoadAlign(vreg_pse_f16_src2, pseUb + floatRepSize * 2 + i * pseStride);
-                    LoadAlign(vreg_pse_f16_src3, pseUb + floatRepSize * 4 + i * pseStride);
-                    LoadAlign(vreg_pse_f16_src4, pseUb + floatRepSize * 6 + i * pseStride);
-
-                    Interleave(vreg_pse1_f16, vreg_pse2_f16, vreg_pse_f16_src1, vreg_pse_f16_src1);
-                    Interleave(vreg_pse3_f16, vreg_pse4_f16, vreg_pse_f16_src2, vreg_pse_f16_src2);
-                    Interleave(vreg_pse5_f16, vreg_pse6_f16, vreg_pse_f16_src3, vreg_pse_f16_src3);
-                    Interleave(vreg_pse7_f16, vreg_pse8_f16, vreg_pse_f16_src4, vreg_pse_f16_src4);
-
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse1, vreg_pse1_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse2, vreg_pse2_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse3, vreg_pse3_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse4, vreg_pse4_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse5, vreg_pse5_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse6, vreg_pse6_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse7, vreg_pse7_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse8, vreg_pse8_f16, preg_all_b16);
+                    LoadCastPseF16_8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                        pseUb, i, pseStride, preg_all_b16);
                 }
             }
             Add(vreg_input_x1, vreg_input_x1, vreg_pse1, preg_all);
@@ -371,18 +321,10 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + floatRepSize * 7 +  i * s2BaseSize, vreg_sel8_new, preg_all);
 
-            Max(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all);
-            Max(vreg_max_tmp2, vreg_sel3, vreg_sel4, preg_all);
-            Max(vreg_max_tmp3, vreg_sel5_new, vreg_sel6_new, preg_all);
-            Max(vreg_max_tmp4, vreg_sel7_new, vreg_sel8_new, preg_all);
-
-            Max(vreg_max_tmp1, vreg_max_tmp1, vreg_max_tmp2, preg_all);
-            Max(vreg_max_tmp3, vreg_max_tmp3, vreg_max_tmp4, preg_all);
-
-            Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp3, preg_all);
-
-            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-                vreg_input_max, vreg_max_tmp3, preg_all);
+            MaxReduce4(vreg_input_max,
+                vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
+                vreg_sel5_new, vreg_sel6_new, vreg_sel7_new, vreg_sel8_new,
+                preg_all);
         } else {
             Select(vreg_input_x5_new, vreg_input_x5, vreg_min, preg_ori_tail_n1);
             Select(vreg_input_x6_new, vreg_input_x6, vreg_min, preg_ori_tail_n2);
@@ -406,20 +348,12 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + floatRepSize * 7 + i * s2BaseSize, vreg_input_x8_new, preg_all);
 
-            Max(vreg_max_tmp1, vreg_input_x1, vreg_input_x2, preg_all);
-            Max(vreg_max_tmp2, vreg_input_x3, vreg_input_x4, preg_all);
-            Max(vreg_max_tmp3, vreg_input_x5_new, vreg_input_x6_new, preg_all);
-            Max(vreg_max_tmp4, vreg_input_x7_new, vreg_input_x8_new, preg_all);
-
-            Max(vreg_max_tmp1, vreg_max_tmp1, vreg_max_tmp2, preg_all);
-            Max(vreg_max_tmp3, vreg_max_tmp3, vreg_max_tmp4, preg_all);
-
-            Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp3, preg_all);
-
-            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-                vreg_input_max, vreg_max_tmp3, preg_all);
+            MaxReduce4(vreg_input_max,
+                vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5_new, vreg_input_x6_new, vreg_input_x7_new, vreg_input_x8_new,
+                preg_all);
         }
-        
+
         StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)maxUb), vreg_input_max, ureg_max, 1);
     }
@@ -450,73 +384,23 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
         ExpSub(vreg_exp_even4, vreg_input_x7, vreg_max_brc, preg_all);
         ExpSub(vreg_exp_odd4, vreg_input_x8, vreg_max_brc, preg_all);
 
-        Add(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all);
-        Add(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all);
-        Add(vreg_exp_sum3, vreg_exp_even3, vreg_exp_odd3, preg_all);
-        Add(vreg_exp_sum4, vreg_exp_even4, vreg_exp_odd4, preg_all);
-
-        Add(vreg_exp_sum1, vreg_exp_sum1, vreg_exp_sum2, preg_all);
-        Add(vreg_exp_sum3, vreg_exp_sum3, vreg_exp_sum4, preg_all);
-
-        Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum3, preg_all);
-
-        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-            vreg_exp_sum3, vreg_exp_sum3, preg_all);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T *&)expSumUb), vreg_exp_sum3, ureg_exp_sum, 1);
+        ExpSumReduceStore512<float, T2>(vreg_exp_sum3,
+            vreg_exp_even1, vreg_exp_odd1, vreg_exp_even2, vreg_exp_odd2,
+            vreg_exp_even3, vreg_exp_odd3, vreg_exp_even4, vreg_exp_odd4,
+            ureg_exp_sum, expSumUb, preg_all);
 
         if constexpr (IsSameType<T2, bfloat16_t>::value) {
-            Cast<T2, T, castTraitZero>(vreg_exp_even1_bf16, vreg_exp_even1, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd1_bf16, vreg_exp_odd1, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even2_bf16, vreg_exp_even2, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd2_bf16, vreg_exp_odd2, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even3_bf16, vreg_exp_even3, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd3_bf16, vreg_exp_odd3, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even4_bf16, vreg_exp_even4, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd4_bf16, vreg_exp_odd4, preg_all);
-
-
-            Or((RegTensor<uint16_t>&)vreg_exp1_bf16, (RegTensor<uint16_t>&)vreg_exp_even1_bf16,
-                (RegTensor<uint16_t>&)vreg_exp_odd1_bf16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp2_bf16, (RegTensor<uint16_t>&)vreg_exp_even2_bf16,
-                (RegTensor<uint16_t>&)vreg_exp_odd2_bf16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp3_bf16, (RegTensor<uint16_t>&)vreg_exp_even3_bf16,
-                (RegTensor<uint16_t>&)vreg_exp_odd3_bf16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp4_bf16, (RegTensor<uint16_t>&)vreg_exp_even4_bf16,
-                (RegTensor<uint16_t>&)vreg_exp_odd4_bf16, preg_all_b16);
-
-
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb1), vreg_exp1_bf16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb2), vreg_exp2_bf16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb3), vreg_exp3_bf16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb4), vreg_exp4_bf16, blockStride, repeatStride, preg_all_b16);
+            CastStoreExpBf16_512<T2>(vreg_exp_even1, vreg_exp_odd1,
+                vreg_exp_even2, vreg_exp_odd2, vreg_exp_even3, vreg_exp_odd3,
+                vreg_exp_even4, vreg_exp_odd4,
+                expUb1, expUb2, expUb3, expUb4,
+                blockStride, repeatStride, preg_all, preg_all_b16);
         } else if constexpr (IsSameType<T2, half>::value) {
-            Cast<T2, T, castTraitZero>(vreg_exp_even1_f16, vreg_exp_even1, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd1_f16, vreg_exp_odd1, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even2_f16, vreg_exp_even2, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd2_f16, vreg_exp_odd2, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even3_f16, vreg_exp_even3, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd3_f16, vreg_exp_odd3, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even4_f16, vreg_exp_even4, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd4_f16, vreg_exp_odd4, preg_all);
-
-            Or((RegTensor<uint16_t>&)vreg_exp1_f16, (RegTensor<uint16_t>&)vreg_exp_even1_f16, (RegTensor<uint16_t>&)vreg_exp_odd1_f16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp2_f16, (RegTensor<uint16_t>&)vreg_exp_even2_f16, (RegTensor<uint16_t>&)vreg_exp_odd2_f16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp3_f16, (RegTensor<uint16_t>&)vreg_exp_even3_f16, (RegTensor<uint16_t>&)vreg_exp_odd3_f16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp4_f16, (RegTensor<uint16_t>&)vreg_exp_even4_f16, (RegTensor<uint16_t>&)vreg_exp_odd4_f16, preg_all_b16);
-
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb1), vreg_exp1_f16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb2), vreg_exp2_f16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb3), vreg_exp3_f16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb4), vreg_exp4_f16, blockStride, repeatStride, preg_all_b16);
+            CastStoreExpF16_512<T2>(vreg_exp_even1, vreg_exp_odd1,
+                vreg_exp_even2, vreg_exp_odd2, vreg_exp_even3, vreg_exp_odd3,
+                vreg_exp_even4, vreg_exp_odd4,
+                expUb1, expUb2, expUb3, expUb4,
+                blockStride, repeatStride, preg_all, preg_all_b16);
         }
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -526,14 +410,14 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
 template <typename T, typename T2, typename OUTPUT_T, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 256,
     bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0>
 __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage1(
-    __ubuf__ T2 * expUb1, __ubuf__ T2 * expUb2, __ubuf__ T2 * expUb3, __ubuf__ T2 * expUb4, __ubuf__ OUTPUT_T * pseUb, 
-    __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, __ubuf__ T * srcUb, __ubuf__ uint32_t * maskUb1, __ubuf__ uint32_t * maskUb2, 
-    __ubuf__ uint32_t * maskUb3, __ubuf__ uint32_t * maskUb4, __ubuf__ uint32_t * maskUb5, __ubuf__ uint32_t * maskUb6, 
-    __ubuf__ uint32_t * maskUb7, __ubuf__ uint32_t * maskUb8, const uint32_t nPadding, 
-    const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t oriTailN3, 
-    const uint32_t oriTailN4, const uint32_t tailN1, const uint32_t tailN2, const uint32_t tailN3, const uint32_t tailN4, 
-    uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltOriTailN3, uint32_t pltOriTailN4, 
-    uint32_t pltTailN1, uint32_t pltTailN2, uint32_t pltTailN3, uint32_t pltTailN4, float divValue, const uint16_t m, 
+    __ubuf__ T2 * expUb1, __ubuf__ T2 * expUb2, __ubuf__ T2 * expUb3, __ubuf__ T2 * expUb4, __ubuf__ OUTPUT_T * pseUb,
+    __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, __ubuf__ T * srcUb, __ubuf__ uint32_t * maskUb1, __ubuf__ uint32_t * maskUb2,
+    __ubuf__ uint32_t * maskUb3, __ubuf__ uint32_t * maskUb4, __ubuf__ uint32_t * maskUb5, __ubuf__ uint32_t * maskUb6,
+    __ubuf__ uint32_t * maskUb7, __ubuf__ uint32_t * maskUb8, const uint32_t nPadding,
+    const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t oriTailN3,
+    const uint32_t oriTailN4, const uint32_t tailN1, const uint32_t tailN2, const uint32_t tailN3, const uint32_t tailN4,
+    uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltOriTailN3, uint32_t pltOriTailN4,
+    uint32_t pltTailN1, uint32_t pltTailN2, uint32_t pltTailN3, uint32_t pltTailN4, float divValue, const uint16_t m,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const T minValue)
 {
     RegTensor<float> vreg_min;
@@ -591,29 +475,20 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage1
         if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
             if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                 pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-                Abs(vreg_pse7, vreg_alibi7, preg_all);
-                Abs(vreg_pse8, vreg_alibi8, preg_all);
                 if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-                    Sqrt(vreg_pse7, vreg_pse7, preg_all);
-                    Sqrt(vreg_pse8, vreg_pse8, preg_all);
+                    ComputePseInnerMulAddSqrt2(vreg_pse7, vreg_pse8,
+                        vreg_alibi7, vreg_alibi8, slopes, preg_all);
+                } else {
+                    ComputePseInnerMulAdd2(vreg_pse7, vreg_pse8,
+                        vreg_alibi7, vreg_alibi8, slopes, preg_all);
                 }
-                Muls(vreg_pse7, vreg_pse7, slopes, preg_all);
-                Muls(vreg_pse8, vreg_pse8, slopes, preg_all);
-                Adds(vreg_alibi7, vreg_alibi7, -1.0f, preg_all);
-                Adds(vreg_alibi8, vreg_alibi8, -1.0f, preg_all);
             } else {
                 if constexpr (IsSameType<T2, bfloat16_t>::value) {
-                    LoadAlign(vreg_pse_bf16_src4, pseUb + floatRepSize * 6 + i * pseStride);
-                    Interleave(vreg_pse7_bf16, vreg_pse8_bf16, vreg_pse_bf16_src4, vreg_pse_bf16_src4);
-
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse7, vreg_pse7_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse8, vreg_pse8_bf16, preg_all_b16);
+                    LoadCastPseBf16_2(vreg_pse7, vreg_pse8,
+                        pseUb, floatRepSize * 6, i, pseStride, preg_all_b16);
                 } else if constexpr (IsSameType<T2, half>::value) {
-                    LoadAlign(vreg_pse_f16_src4, pseUb + floatRepSize * 6 + i * pseStride);
-                    Interleave(vreg_pse7_f16, vreg_pse8_f16, vreg_pse_f16_src4, vreg_pse_f16_src4);
-
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse7, vreg_pse7_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse8, vreg_pse8_f16, preg_all_b16);
+                    LoadCastPseF16_2(vreg_pse7, vreg_pse8,
+                        pseUb, floatRepSize * 6, i, pseStride, preg_all_b16);
                 }
             }
             Add(vreg_input_x7, vreg_input_x7, vreg_pse7, preg_ori_tail_n3);
@@ -657,14 +532,14 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage1
 template <typename T, typename T2, typename OUTPUT_T, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 256,
     bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0>
 __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2(
-    __ubuf__ T2 * expUb1, __ubuf__ T2 * expUb2, __ubuf__ T2 * expUb3, __ubuf__ T2 * expUb4, __ubuf__ OUTPUT_T * pseUb, 
-    __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, __ubuf__ T * srcUb, __ubuf__ uint32_t * maskUb1, __ubuf__ uint32_t * maskUb2, 
-    __ubuf__ uint32_t * maskUb3, __ubuf__ uint32_t * maskUb4, __ubuf__ uint32_t * maskUb5, __ubuf__ uint32_t * maskUb6, 
-    __ubuf__ uint32_t * maskUb7, __ubuf__ uint32_t * maskUb8, const uint32_t nPadding, 
-    const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t oriTailN3, 
-    const uint32_t oriTailN4, const uint32_t tailN1, const uint32_t tailN2, const uint32_t tailN3, const uint32_t tailN4, 
-    uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltOriTailN3, uint32_t pltOriTailN4, 
-    uint32_t pltTailN1, uint32_t pltTailN2, uint32_t pltTailN3, uint32_t pltTailN4, float divValue, const uint16_t m, 
+    __ubuf__ T2 * expUb1, __ubuf__ T2 * expUb2, __ubuf__ T2 * expUb3, __ubuf__ T2 * expUb4, __ubuf__ OUTPUT_T * pseUb,
+    __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart, __ubuf__ T * srcUb, __ubuf__ uint32_t * maskUb1, __ubuf__ uint32_t * maskUb2,
+    __ubuf__ uint32_t * maskUb3, __ubuf__ uint32_t * maskUb4, __ubuf__ uint32_t * maskUb5, __ubuf__ uint32_t * maskUb6,
+    __ubuf__ uint32_t * maskUb7, __ubuf__ uint32_t * maskUb8, const uint32_t nPadding,
+    const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN1, const uint32_t oriTailN2, const uint32_t oriTailN3,
+    const uint32_t oriTailN4, const uint32_t tailN1, const uint32_t tailN2, const uint32_t tailN3, const uint32_t tailN4,
+    uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltOriTailN3, uint32_t pltOriTailN4,
+    uint32_t pltTailN1, uint32_t pltTailN2, uint32_t pltTailN3, uint32_t pltTailN4, float divValue, const uint16_t m,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const T minValue)
 {
     RegTensor<float> vreg_min;
@@ -781,7 +656,7 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
     RegTensor<half> vreg_pse4_f16;
     RegTensor<half> vreg_pse5_f16;
     RegTensor<half> vreg_pse6_f16;
-    
+
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
 
@@ -829,63 +704,28 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
         if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
             if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                 pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-                Abs(vreg_pse1, vreg_alibi1, preg_all);
-                Abs(vreg_pse2, vreg_alibi2, preg_all);
-                Abs(vreg_pse3, vreg_alibi3, preg_all);
-                Abs(vreg_pse4, vreg_alibi4, preg_all);
-                Abs(vreg_pse5, vreg_alibi5, preg_all);
-                Abs(vreg_pse6, vreg_alibi6, preg_all);
                 if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-                    Sqrt(vreg_pse1, vreg_pse1, preg_all);
-                    Sqrt(vreg_pse2, vreg_pse2, preg_all);
-                    Sqrt(vreg_pse3, vreg_pse3, preg_all);
-                    Sqrt(vreg_pse4, vreg_pse4, preg_all);
-                    Sqrt(vreg_pse5, vreg_pse5, preg_all);
-                    Sqrt(vreg_pse6, vreg_pse6, preg_all);
+                    ComputePseInnerMulAddSqrt6(vreg_pse1, vreg_pse2, vreg_pse3,
+                        vreg_pse4, vreg_pse5, vreg_pse6,
+                        vreg_alibi1, vreg_alibi2, vreg_alibi3,
+                        vreg_alibi4, vreg_alibi5, vreg_alibi6,
+                        slopes, preg_all);
+                } else {
+                    ComputePseInnerMulAdd6(vreg_pse1, vreg_pse2, vreg_pse3,
+                        vreg_pse4, vreg_pse5, vreg_pse6,
+                        vreg_alibi1, vreg_alibi2, vreg_alibi3,
+                        vreg_alibi4, vreg_alibi5, vreg_alibi6,
+                        slopes, preg_all);
                 }
-                Muls(vreg_pse1, vreg_pse1, slopes, preg_all);
-                Muls(vreg_pse2, vreg_pse2, slopes, preg_all);
-                Muls(vreg_pse3, vreg_pse3, slopes, preg_all);
-                Muls(vreg_pse4, vreg_pse4, slopes, preg_all);
-                Muls(vreg_pse5, vreg_pse5, slopes, preg_all);
-                Muls(vreg_pse6, vreg_pse6, slopes, preg_all);
-                Adds(vreg_alibi1, vreg_alibi1, -1.0f, preg_all);
-                Adds(vreg_alibi2, vreg_alibi2, -1.0f, preg_all);
-                Adds(vreg_alibi3, vreg_alibi3, -1.0f, preg_all);
-                Adds(vreg_alibi4, vreg_alibi4, -1.0f, preg_all);
-                Adds(vreg_alibi5, vreg_alibi5, -1.0f, preg_all);
-                Adds(vreg_alibi6, vreg_alibi6, -1.0f, preg_all);
             } else {
                 if constexpr (IsSameType<T2, bfloat16_t>::value) {
-                    LoadAlign(vreg_pse_bf16_src1, pseUb + i * pseStride);
-                    LoadAlign(vreg_pse_bf16_src2, pseUb + floatRepSize * 2 + i * pseStride);
-                    LoadAlign(vreg_pse_bf16_src3, pseUb + floatRepSize * 4 + i * pseStride);
-
-                    Interleave(vreg_pse1_bf16, vreg_pse2_bf16, vreg_pse_bf16_src1, vreg_pse_bf16_src1);
-                    Interleave(vreg_pse3_bf16, vreg_pse4_bf16, vreg_pse_bf16_src2, vreg_pse_bf16_src2);
-                    Interleave(vreg_pse5_bf16, vreg_pse6_bf16, vreg_pse_bf16_src3, vreg_pse_bf16_src3);
-
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse1, vreg_pse1_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse2, vreg_pse2_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse3, vreg_pse3_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse4, vreg_pse4_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse5, vreg_pse5_bf16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse6, vreg_pse6_bf16, preg_all_b16);
+                    LoadCastPseBf16_6(vreg_pse1, vreg_pse2, vreg_pse3,
+                        vreg_pse4, vreg_pse5, vreg_pse6,
+                        pseUb, i, pseStride, preg_all_b16);
                 } else if constexpr (IsSameType<T2, half>::value) {
-                    LoadAlign(vreg_pse_f16_src1, pseUb + i * pseStride);
-                    LoadAlign(vreg_pse_f16_src2, pseUb + floatRepSize * 2 + i * pseStride);
-                    LoadAlign(vreg_pse_f16_src3, pseUb + floatRepSize * 4 + i * pseStride);
-
-                    Interleave(vreg_pse1_f16, vreg_pse2_f16, vreg_pse_f16_src1, vreg_pse_f16_src1);
-                    Interleave(vreg_pse3_f16, vreg_pse4_f16, vreg_pse_f16_src2, vreg_pse_f16_src2);
-                    Interleave(vreg_pse5_f16, vreg_pse6_f16, vreg_pse_f16_src3, vreg_pse_f16_src3);
-
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse1, vreg_pse1_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse2, vreg_pse2_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse3, vreg_pse3_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse4, vreg_pse4_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse5, vreg_pse5_f16, preg_all_b16);
-                    Cast<T, OUTPUT_T, castTraitZero>(vreg_pse6, vreg_pse6_f16, preg_all_b16);
+                    LoadCastPseF16_6(vreg_pse1, vreg_pse2, vreg_pse3,
+                        vreg_pse4, vreg_pse5, vreg_pse6,
+                        pseUb, i, pseStride, preg_all_b16);
                 }
             }
             Add(vreg_input_x1, vreg_input_x1, vreg_pse1, preg_all);
@@ -944,19 +784,11 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
                 (__ubuf__ T *&)srcUb + floatRepSize * 4 +  i * s2BaseSize, vreg_sel5_new, preg_all);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + floatRepSize * 5 +  i * s2BaseSize, vreg_sel6_new, preg_all);
-            
-            Max(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all);
-            Max(vreg_max_tmp2, vreg_sel3, vreg_sel4, preg_all);
-            Max(vreg_max_tmp3, vreg_sel5_new, vreg_sel6_new, preg_all);
-            Max(vreg_max_tmp4, vreg_sel7_new, vreg_sel8_new, preg_all);
 
-            Max(vreg_max_tmp1, vreg_max_tmp1, vreg_max_tmp2, preg_all);
-            Max(vreg_max_tmp3, vreg_max_tmp3, vreg_max_tmp4, preg_all);
-
-            Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp3, preg_all);
-
-            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-                vreg_input_max, vreg_max_tmp3, preg_all);
+            MaxReduce4(vreg_input_max,
+                vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
+                vreg_sel5_new, vreg_sel6_new, vreg_sel7_new, vreg_sel8_new,
+                preg_all);
         } else {
             Select(vreg_input_x5_new, vreg_input_x5, vreg_min, preg_ori_tail_n1);
             Select(vreg_input_x6_new, vreg_input_x6, vreg_min, preg_ori_tail_n2);
@@ -975,21 +807,13 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
                 (__ubuf__ T *&)srcUb + floatRepSize * 4 + i * s2BaseSize, vreg_input_x5_new, preg_all);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + floatRepSize * 5 + i * s2BaseSize, vreg_input_x6_new, preg_all);
-            
-            Max(vreg_max_tmp1, vreg_input_x1, vreg_input_x2, preg_all);
-            Max(vreg_max_tmp2, vreg_input_x3, vreg_input_x4, preg_all);
-            Max(vreg_max_tmp3, vreg_input_x5_new, vreg_input_x6_new, preg_all);
-            Max(vreg_max_tmp4, vreg_input_x7_new, vreg_input_x8_new, preg_all);
 
-            Max(vreg_max_tmp1, vreg_max_tmp1, vreg_max_tmp2, preg_all);
-            Max(vreg_max_tmp3, vreg_max_tmp3, vreg_max_tmp4, preg_all);
-
-            Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp3, preg_all);
-
-            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-                vreg_input_max, vreg_max_tmp3, preg_all);
+            MaxReduce4(vreg_input_max,
+                vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5_new, vreg_input_x6_new, vreg_input_x7_new, vreg_input_x8_new,
+                preg_all);
         }
-        
+
         StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)maxUb), vreg_input_max, ureg_max, 1);
     }
@@ -1020,73 +844,23 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
         ExpSub(vreg_exp_even4, vreg_input_x7, vreg_max_brc, preg_all);
         ExpSub(vreg_exp_odd4, vreg_input_x8, vreg_max_brc, preg_all);
 
-        Add(vreg_exp_sum1, vreg_exp_even1, vreg_exp_odd1, preg_all);
-        Add(vreg_exp_sum2, vreg_exp_even2, vreg_exp_odd2, preg_all);
-        Add(vreg_exp_sum3, vreg_exp_even3, vreg_exp_odd3, preg_all);
-        Add(vreg_exp_sum4, vreg_exp_even4, vreg_exp_odd4, preg_all);
-
-        Add(vreg_exp_sum1, vreg_exp_sum1, vreg_exp_sum2, preg_all);
-        Add(vreg_exp_sum3, vreg_exp_sum3, vreg_exp_sum4, preg_all);
-
-        Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum3, preg_all);
-
-        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-            vreg_exp_sum3, vreg_exp_sum3, preg_all);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T *&)expSumUb), vreg_exp_sum3, ureg_exp_sum, 1);
+        ExpSumReduceStore512<float, T2>(vreg_exp_sum3,
+            vreg_exp_even1, vreg_exp_odd1, vreg_exp_even2, vreg_exp_odd2,
+            vreg_exp_even3, vreg_exp_odd3, vreg_exp_even4, vreg_exp_odd4,
+            ureg_exp_sum, expSumUb, preg_all);
 
         if constexpr (IsSameType<T2, bfloat16_t>::value) {
-            Cast<T2, T, castTraitZero>(vreg_exp_even1_bf16, vreg_exp_even1, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd1_bf16, vreg_exp_odd1, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even2_bf16, vreg_exp_even2, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd2_bf16, vreg_exp_odd2, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even3_bf16, vreg_exp_even3, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd3_bf16, vreg_exp_odd3, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even4_bf16, vreg_exp_even4, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd4_bf16, vreg_exp_odd4, preg_all);
-
-
-            Or((RegTensor<uint16_t>&)vreg_exp1_bf16, (RegTensor<uint16_t>&)vreg_exp_even1_bf16,
-                (RegTensor<uint16_t>&)vreg_exp_odd1_bf16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp2_bf16, (RegTensor<uint16_t>&)vreg_exp_even2_bf16,
-                (RegTensor<uint16_t>&)vreg_exp_odd2_bf16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp3_bf16, (RegTensor<uint16_t>&)vreg_exp_even3_bf16,
-                (RegTensor<uint16_t>&)vreg_exp_odd3_bf16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp4_bf16, (RegTensor<uint16_t>&)vreg_exp_even4_bf16,
-                (RegTensor<uint16_t>&)vreg_exp_odd4_bf16, preg_all_b16);
-
-
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb1), vreg_exp1_bf16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb2), vreg_exp2_bf16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb3), vreg_exp3_bf16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb4), vreg_exp4_bf16, blockStride, repeatStride, preg_all_b16);
+            CastStoreExpBf16_512<T2>(vreg_exp_even1, vreg_exp_odd1,
+                vreg_exp_even2, vreg_exp_odd2, vreg_exp_even3, vreg_exp_odd3,
+                vreg_exp_even4, vreg_exp_odd4,
+                expUb1, expUb2, expUb3, expUb4,
+                blockStride, repeatStride, preg_all, preg_all_b16);
         } else if constexpr (IsSameType<T2, half>::value) {
-            Cast<T2, T, castTraitZero>(vreg_exp_even1_f16, vreg_exp_even1, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd1_f16, vreg_exp_odd1, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even2_f16, vreg_exp_even2, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd2_f16, vreg_exp_odd2, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even3_f16, vreg_exp_even3, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd3_f16, vreg_exp_odd3, preg_all);
-            Cast<T2, T, castTraitZero>(vreg_exp_even4_f16, vreg_exp_even4, preg_all);
-            Cast<T2, T, castTraitOne>(vreg_exp_odd4_f16, vreg_exp_odd4, preg_all);
-
-            Or((RegTensor<uint16_t>&)vreg_exp1_f16, (RegTensor<uint16_t>&)vreg_exp_even1_f16, (RegTensor<uint16_t>&)vreg_exp_odd1_f16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp2_f16, (RegTensor<uint16_t>&)vreg_exp_even2_f16, (RegTensor<uint16_t>&)vreg_exp_odd2_f16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp3_f16, (RegTensor<uint16_t>&)vreg_exp_even3_f16, (RegTensor<uint16_t>&)vreg_exp_odd3_f16, preg_all_b16);
-            Or((RegTensor<uint16_t>&)vreg_exp4_f16, (RegTensor<uint16_t>&)vreg_exp_even4_f16, (RegTensor<uint16_t>&)vreg_exp_odd4_f16, preg_all_b16);
-
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb1), vreg_exp1_f16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb2), vreg_exp2_f16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb3), vreg_exp3_f16, blockStride, repeatStride, preg_all_b16);
-            StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)expUb4), vreg_exp4_f16, blockStride, repeatStride, preg_all_b16);
+            CastStoreExpF16_512<T2>(vreg_exp_even1, vreg_exp_odd1,
+                vreg_exp_even2, vreg_exp_odd2, vreg_exp_even3, vreg_exp_odd3,
+                vreg_exp_even4, vreg_exp_odd4,
+                expUb1, expUb2, expUb3, expUb4,
+                blockStride, repeatStride, preg_all, preg_all_b16);
         }
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -1149,20 +923,20 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl512(
 
     if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE && hasAtten == 1) {
         ProcessVec1NoUpdateGeneralImpl512VFStage1<T, T2, OUTPUT_T, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop>(
-            expUb1, expUb2, expUb3, expUb4, pseUb, expSumUb, maxUb, maxUbStart, srcUb, maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, 
-            maskUb7, maskUb8, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2, oriTailN3, oriTailN4, 
-            tailN1, tailN2, tailN3, tailN4, pltOriTailN1, pltOriTailN2, pltOriTailN3, pltOriTailN4, pltTailN1, pltTailN2, pltTailN3, pltTailN4, 
+            expUb1, expUb2, expUb3, expUb4, pseUb, expSumUb, maxUb, maxUbStart, srcUb, maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6,
+            maskUb7, maskUb8, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2, oriTailN3, oriTailN4,
+            tailN1, tailN2, tailN3, tailN4, pltOriTailN1, pltOriTailN2, pltOriTailN3, pltOriTailN4, pltTailN1, pltTailN2, pltTailN3, pltTailN4,
             divValue, m, pseStride, slopes, posShift, scale, minValue);
         ProcessVec1NoUpdateGeneralImpl512VFStage2<T, T2, OUTPUT_T, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop>(
-            expUb1, expUb2, expUb3, expUb4, pseUb, expSumUb, maxUb, maxUbStart, srcUb, maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, 
-            maskUb7, maskUb8, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2, oriTailN3, oriTailN4, 
-            tailN1, tailN2, tailN3, tailN4, pltOriTailN1, pltOriTailN2, pltOriTailN3, pltOriTailN4, pltTailN1, pltTailN2, pltTailN3, pltTailN4, 
+            expUb1, expUb2, expUb3, expUb4, pseUb, expSumUb, maxUb, maxUbStart, srcUb, maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6,
+            maskUb7, maskUb8, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2, oriTailN3, oriTailN4,
+            tailN1, tailN2, tailN3, tailN4, pltOriTailN1, pltOriTailN2, pltOriTailN3, pltOriTailN4, pltTailN1, pltTailN2, pltTailN3, pltTailN4,
             divValue, m, pseStride, slopes, posShift, scale, minValue);
     } else {
         ProcessVec1NoUpdateGeneralImpl512VF<T, T2, OUTPUT_T, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop>(
-            expUb1, expUb2, expUb3, expUb4, pseUb, expSumUb, maxUb, maxUbStart, srcUb, maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, 
-            maskUb7, maskUb8, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2, oriTailN3, oriTailN4, 
-            tailN1, tailN2, tailN3, tailN4, pltOriTailN1, pltOriTailN2, pltOriTailN3, pltOriTailN4, pltTailN1, pltTailN2, pltTailN3, pltTailN4, 
+            expUb1, expUb2, expUb3, expUb4, pseUb, expSumUb, maxUb, maxUbStart, srcUb, maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6,
+            maskUb7, maskUb8, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2, oriTailN3, oriTailN4,
+            tailN1, tailN2, tailN3, tailN4, pltOriTailN1, pltOriTailN2, pltOriTailN3, pltOriTailN4, pltTailN1, pltTailN2, pltTailN3, pltTailN4,
             divValue, m, pseStride, slopes, posShift, scale, minValue);
     }
 }
