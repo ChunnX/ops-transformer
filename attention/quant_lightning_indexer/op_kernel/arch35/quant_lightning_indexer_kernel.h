@@ -71,7 +71,6 @@ public:
     static constexpr LI_LAYOUT K_LAYOUT_T = QLIT::keyLayout;
     using W_T = typename QLIT::weightType;
     using SCALE_T = typename QLIT::scaleType;
-    static constexpr bool IS_MXFP8 = QLIT::isMxFp8;
 
     QLIMatmul<QLIT> matmulService;
     QLIVector<QLIT> vectorService;
@@ -98,7 +97,6 @@ protected:
     uint64_t queryCoreOffset = 0ULL;
     uint64_t keyCoreOffset = 0ULL;
     uint64_t keyScaleCoreOffset = 0ULL;
-    uint64_t qScaleCoreOffset_ = 0ULL;   // MXFP8: qScale 偏移
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
     // ================================Global Buffer区=================================
@@ -177,6 +175,11 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     constInfo.mBaseSize = S1_BASE_SIZE * constInfo.gSize;
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.s1BaseSize = S1_BASE_SIZE;
+
+    if (constInfo.tSize <= 64) {
+        constInfo.mBaseSize /= 2;
+        constInfo.s1BaseSize /= 2;
+    }
 
     constInfo.setL2DisableFlag = constInfo.tSize / constInfo.batchSize <= constInfo.s1BaseSize;
 }
@@ -398,7 +401,7 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx();  // vec:0-47
-        aiCoreIdx = tmpBlockIdx / CVRATIO;
+        aiCoreIdx = tmpBlockIdx / 2;
     } else {
         tmpBlockIdx = GetBlockIdx();  // cube:0-23
         aiCoreIdx = tmpBlockIdx;
@@ -423,12 +426,10 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
         vectorService.InitParams(constInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
-        if constexpr (!IS_MXFP8) {
-            qScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)queryScale);
-            kScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)keyScale);
-            if (constInfo.setL2DisableFlag) {
-                kScaleGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-            }
+        qScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)queryScale);
+        kScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)keyScale);
+        if (constInfo.setL2DisableFlag) {
+            kScaleGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         }
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
@@ -443,13 +444,7 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
         if (constInfo.setL2DisableFlag) {
             keyGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         }
-        if constexpr (IS_MXFP8) {
-            qScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)queryScale);
-            kScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)keyScale);
-            matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm, qScaleGm, kScaleGm);
-        } else {
-            matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
-        }
+        matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
     }
     InitBuffers();
 }
@@ -561,11 +556,6 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
         // B,S1,N2,k/T,N2,k
         indiceOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
-        // MXFP8: qScale offset, shape [B, S1, N1, D/32]
-        if constexpr (IS_MXFP8) {
-            uint64_t qScalePrefixSum = actualSeqQPrefixSum * constInfo.qHeadNum * (constInfo.headDim / MXFP8_BLOCK_SIZE);
-            qScaleCoreOffset_ = qScalePrefixSum + runInfo.gS1Idx * constInfo.mBaseSize * (constInfo.headDim / MXFP8_BLOCK_SIZE);
-        }
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D
@@ -575,17 +565,10 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     }
     uint64_t tndBIdxOffsetForK = actualSeqKPrefixSum * constInfo.kHeadNum * constInfo.headDim;
     keyCoreOffset = tndBIdxOffsetForK + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
-    if constexpr (IS_MXFP8) {
-        // MXFP8: kScale shape [B, S2, N2, D/32]
-        keyScaleCoreOffset = (actualSeqKPrefixSum + runInfo.s2Idx * constInfo.s2BaseSize) *
-                             constInfo.kHeadNum * (constInfo.headDim / MXFP8_BLOCK_SIZE);
-    } else {
-        keyScaleCoreOffset = (actualSeqKPrefixSum + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.kHeadNum;
-    }
+    keyScaleCoreOffset = (actualSeqKPrefixSum + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.kHeadNum;
     runInfo.tensorQueryOffset = queryCoreOffset;
     runInfo.tensorKeyOffset = keyCoreOffset;
     runInfo.tensorKeyScaleOffset = keyScaleCoreOffset;
-    runInfo.tensorQScaleOffset = qScaleCoreOffset_;
     runInfo.tensorWeightsOffset = weightsCoreOffset;
     runInfo.indiceOutOffset = indiceOutCoreOffset;
 }
@@ -606,7 +589,7 @@ template <typename QLIT>
 __aicore__ inline void QLIPreload<QLIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
-        uint32_t aivCoreNum = GetBlockNum() * CVRATIO;
+        uint32_t aivCoreNum = GetBlockNum() * 2;  // 2 means c:v = 1:2
         uint64_t totalOutputSize;
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::BSND) {
             totalOutputSize = constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;

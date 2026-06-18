@@ -46,8 +46,3 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
-
-.open-mem/
-AGENTS.md
-0608.log
-extra-info/
