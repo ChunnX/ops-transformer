@@ -14,22 +14,24 @@ using namespace AscendC;
 
 template<uint32_t ArchTag, uint32_t IsCached>
 __global__ __aicore__ void moe_ep_dispatch_epilogue(
-    GM_ADDR context, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
-    GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
+    GM_ADDR context, GM_ADDR dstBufferSlotIdx,
+    GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
     GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
-    GM_ADDR recvSrcMetadata,
+    GM_ADDR recvSrcMetadata, GM_ADDR recvScales,
     GM_ADDR workspace, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeEpDispatchEpilogueTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeEpDispatchEpilogueTilingData);
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchEpilogueTilingData, tilingData, tilingGM);
+
     AscendC::printf("start moe_ep_dispatch_epilogue kernel\n");
+    return;
     KernelDispatchEpilogue<DTYPE_RECV_X, IsCached> op;
-    op.Init(context, dstBufferSlotIdx, recvSrcMetadataInternal,
-            numRecvPerRankHp, numRecvPerExpertHp,
+    op.Init(context, dstBufferSlotIdx,
+            numRecvPerRank, numRecvPerExpert, cachedRecvSrcMetadata,
             recvX, recvTopkIdx, recvTopkWeights,
-            recvSrcMetadata,
+            recvSrcMetadata, recvScales,
             workspace, tilingGM, &pipe, &tilingData.moeEpDispatchEpilogueInfo);
     op.Process();
 }

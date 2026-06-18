@@ -10,15 +10,15 @@ using namespace op;
 
 extern "C" {
 
-static aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x, const aclTensor *dstBufferSlotIdx,
-                                const aclTensor *recvSrcMetadata, const aclTensor *numRecvTokensPerRank,
+static aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x, const aclTensor *topkIdx,
+                                const aclTensor *recvSrcMetadata, const aclTensor *numRecvTokensPerExpert,
                                 aclTensor *combinedX)
 {
     CHECK_RET(context != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(x != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(dstBufferSlotIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(topkIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(recvSrcMetadata != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(numRecvTokensPerRank != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(numRecvTokensPerExpert != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(combinedX != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
@@ -37,8 +37,8 @@ static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId, int64_t nu
 }
 
 aclnnStatus MoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTensor *x,
-                                         const aclTensor *dstBufferSlotIdx, const aclTensor *recvSrcMetadata,
-                                         const aclTensor *numRecvTokensPerRank, const aclTensor *topkWeightsOptional,
+                                         const aclTensor *topkIdx, const aclTensor *recvSrcMetadata,
+                                         const aclTensor *numRecvTokensPerExpert, const aclTensor *topkWeightsOptional,
                                          const aclTensor *biasOptional0, const aclTensor *biasOptional1,
                                          int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
                                          int64_t numMaxTokensPerRank, int64_t cclBufferSize, aclTensor *combinedX,
@@ -46,28 +46,28 @@ aclnnStatus MoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTens
                                          aclOpExecutor **executor)
 {
     OP_LOGD("MoeEpCombine", "Begin to do MoeEpCombineGetWorkspaceSize");
-    auto retNotNull = CheckNotNull(context, x, dstBufferSlotIdx, recvSrcMetadata, numRecvTokensPerRank, combinedX);
+    auto retNotNull = CheckNotNull(context, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert, combinedX);
     CHECK_RET(retNotNull == ACLNN_SUCCESS, retNotNull);
     auto retParams = CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, biasOptional0,
                           biasOptional1);
     CHECK_RET(retParams == ACLNN_SUCCESS, retParams);
 
-    return aclnnInnerMoeEpCombineGetWorkspaceSize(context, x, dstBufferSlotIdx, recvSrcMetadata, numRecvTokensPerRank,
+    return aclnnInnerMoeEpCombineGetWorkspaceSize(context, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert,
                                                   topkWeightsOptional, biasOptional0, biasOptional1, epWorldSize,
                                                   epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, combinedX,
                                                   combinedTopkWeightsOptional, workspaceSize, executor);
 }
 
 aclnnStatus aclnnMoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTensor *x,
-                                              const aclTensor *dstBufferSlotIdx, const aclTensor *recvSrcMetadata,
-                                              const aclTensor *numRecvTokensPerRank,
+                                              const aclTensor *topkIdx, const aclTensor *recvSrcMetadata,
+                                              const aclTensor *numRecvTokensPerExpert,
                                               const aclTensor *topkWeightsOptional, const aclTensor *biasOptional0,
                                               const aclTensor *biasOptional1, int64_t epWorldSize, int64_t epRankId,
                                               int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
                                               aclTensor *combinedX, aclTensor *combinedTopkWeightsOptional,
                                               uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    return MoeEpCombineGetWorkspaceSize(context, x, dstBufferSlotIdx, recvSrcMetadata, numRecvTokensPerRank,
+    return MoeEpCombineGetWorkspaceSize(context, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert,
                                         topkWeightsOptional, biasOptional0, biasOptional1, epWorldSize, epRankId,
                                         numExperts, numMaxTokensPerRank, cclBufferSize, combinedX,
                                         combinedTopkWeightsOptional, workspaceSize, executor);

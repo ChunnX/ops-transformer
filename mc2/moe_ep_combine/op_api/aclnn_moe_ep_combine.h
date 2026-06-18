@@ -11,9 +11,9 @@ extern "C" {
  *
  * @param [in] context             communication context int32 tensor
  * @param [in] x                     expert-side tokens [A, hidden] bf16
- * @param [in] dstBufferSlotIdx      [num_tokens, top_k] int32 handle field
+ * @param [in] topkIdx      [num_tokens, top_k] int32 handle field
  * @param [in] recvSrcMetadata       [A, 3] int32 handle field
- * @param [in] numRecvTokensPerRank  [ep_world_size] int32 handle field
+ * @param [in] numRecvTokensPerExpert  [ep_world_size] int32 handle field
  * @param [in] topkWeightsOptional   [num_tokens, top_k] float; nullptr for training forward
  * @param [in] biasOptional0         nullptr (reserved, first release must be null)
  * @param [in] biasOptional1         nullptr (reserved, first release must be null)
@@ -31,9 +31,9 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMoeEpCombineGetWorkspaceSize(
     const aclTensor* context,
     const aclTensor* x,
-    const aclTensor* dstBufferSlotIdx,
+    const aclTensor* topkIdx,
     const aclTensor* recvSrcMetadata,
-    const aclTensor* numRecvTokensPerRank,
+    const aclTensor* numRecvTokensPerExpert,
     const aclTensor* topkWeightsOptional,
     const aclTensor* biasOptional0,
     const aclTensor* biasOptional1,

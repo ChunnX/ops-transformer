@@ -16,7 +16,7 @@ public:
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("dst_buffer_slot_idx")
+        this->Input("topk_idx")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
@@ -26,9 +26,9 @@ public:
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("num_recv_tokens_per_rank")
+        this->Input("num_recv_tokens_per_expert")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
+            .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("topk_weights_optional")

@@ -36,10 +36,10 @@ using namespace Mc2Tiling;
 namespace optiling {
 
 constexpr uint32_t CONTEXT_INDEX = 0U;
-constexpr uint32_t X_INDEX = 1U;
-constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 2U;
+constexpr uint32_t RECVX_INDEX = 1U;
+constexpr uint32_t TOPK_IDX_INDEX = 2U;
 constexpr uint32_t RECV_SRC_METADATA_INDEX = 3U;
-constexpr uint32_t NUM_RECV_PER_RANK_INDEX = 4U;
+constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 4U;
 constexpr uint32_t TOPK_WEIGHTS_INDEX = 5U;
 constexpr uint32_t BIAS_0_INDEX = 6U;
 constexpr uint32_t BIAS_1_INDEX = 7U;
@@ -50,6 +50,7 @@ constexpr uint32_t ATTR_NUM_EXPERTS_INDEX = 2;
 constexpr uint32_t ATTR_NUM_MAX_TPR_INDEX = 3;
 constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 
+constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr int64_t MAX_EP_WORLD_SIZE = 768;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
@@ -57,7 +58,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
-constexpr uint64_t METADATA_DTYPE_SIZE = 8UL;  
+constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;  
 constexpr int64_t H_MIN = 1024;
 constexpr int64_t H_MAX = 7168;
 
@@ -81,46 +82,47 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         OP_LOGE(nodeName, "contextShape dims must be 1."),
         return ge::GRAPH_FAILED);
 
-    const gert::StorageShape *xShape = context->GetInputShape(X_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
-    OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "xShape dims must be 2."),
+    const gert::StorageShape *recvxShape = context->GetInputShape(RECVX_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, recvxShape);
+    OP_TILING_CHECK(recvxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "recvxShape dims must be 2."),
         return ge::GRAPH_FAILED);
-    const int64_t xDim0 = xShape->GetStorageShape().GetDim(0);
-    const int64_t xDim1 = xShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK((xDim1 < H_MIN) || (xDim1 > H_MAX),
-        OP_LOGE(nodeName, "xDim1(hidden) is invalid, should be in [%ld, %ld], got %ld.",
-            H_MIN, H_MAX, xDim1),
+    const int64_t recvxDim0 = recvxShape->GetStorageShape().GetDim(0);
+    const int64_t recvxDim1 = recvxShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK((recvxDim1 < H_MIN) || (recvxDim1 > H_MAX),
+        OP_LOGE(nodeName, "recvxDim1(hidden) is invalid, should be in [%ld, %ld], got %ld.",
+            H_MIN, H_MAX, recvxDim1),
         return ge::GRAPH_FAILED);
-    info.cfg.numTokens = static_cast<uint32_t>(xDim0);
-    info.cfg.hidden = static_cast<uint32_t>(xDim1);
+    info.cfg.hidden = static_cast<uint32_t>(recvxDim1);
 
-    const gert::StorageShape *dstBufferSlotIdxShape = context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, dstBufferSlotIdxShape);
-    OP_TILING_CHECK(dstBufferSlotIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "dstBufferSlotIdxShape dims must be 2."), return ge::GRAPH_FAILED);
-    info.cfg.topK = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(1));
+    const gert::StorageShape *topkIdxShape = context->GetInputShape(TOPK_IDX_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, topkIdxShape);
+    OP_TILING_CHECK(topkIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "topkIdxShape dims must be 2."), return ge::GRAPH_FAILED);
+        
+    info.cfg.numTokens = static_cast<uint32_t>(topkIdxShape->GetStorageShape().GetDim(0));
+    info.cfg.topK = static_cast<uint32_t>(topkIdxShape->GetStorageShape().GetDim(1));
 
     const gert::StorageShape *recvSrcMetadataShape = context->GetInputShape(RECV_SRC_METADATA_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetadataShape);
     OP_TILING_CHECK(recvSrcMetadataShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE(nodeName, "recvSrcMetadataShape dims must be 2."), return ge::GRAPH_FAILED);
 
-    const gert::StorageShape *numRecvPerRankShape = context->GetInputShape(NUM_RECV_PER_RANK_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerRankShape);
-    OP_TILING_CHECK(numRecvPerRankShape->GetStorageShape().GetDimNum() != 1,
-        OP_LOGE(nodeName, "numRecvPerRankShape dims must be 1."), return ge::GRAPH_FAILED);
+    const gert::StorageShape *numRecvPerExpertShape = context->GetInputShape(NUM_RECV_PER_EXPERT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertShape);
+    OP_TILING_CHECK(numRecvPerExpertShape->GetStorageShape().GetDimNum() != ONE_DIMS,
+        OP_LOGE(nodeName, "numRecvPerExpertShape dims must be 1."), return ge::GRAPH_FAILED);
 
-    bool hasTopkWeights = (context->GetInputDesc(TOPK_WEIGHTS_INDEX) != nullptr);
+    bool hasTopkWeights = (context->GetOptionalInputDesc(TOPK_WEIGHTS_INDEX) != nullptr);
     if (hasTopkWeights) {
         const gert::StorageShape *topkWeightsShape = context->GetInputShape(TOPK_WEIGHTS_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, topkWeightsShape);
-        OP_TILING_CHECK(topkWeightsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-            OP_LOGE(nodeName, "topkWeightsShape dims must be 2."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(topkWeightsShape->GetStorageShape().GetDimNum() != ONE_DIMS,
+            OP_LOGE(nodeName, "topkWeightsShape dims must be 1."), return ge::GRAPH_FAILED);
     }
     info.hasTopkWeights = hasTopkWeights ? 1 : 0;
 
-    bool hasBias0 = (context->GetInputDesc(BIAS_0_INDEX) != nullptr);
+    bool hasBias0 = (context->GetOptionalInputDesc(BIAS_0_INDEX) != nullptr);
     if (hasBias0) {
         const gert::StorageShape *bias0Shape = context->GetInputShape(BIAS_0_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, bias0Shape);
@@ -128,7 +130,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
             OP_LOGE(nodeName, "bias0Shape dims must be 2."), return ge::GRAPH_FAILED);
     }
 
-    bool hasBias1 = (context->GetInputDesc(BIAS_1_INDEX) != nullptr);
+    bool hasBias1 = (context->GetOptionalInputDesc(BIAS_1_INDEX) != nullptr);
     if (hasBias1) {
         const gert::StorageShape *bias1Shape = context->GetInputShape(BIAS_1_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, bias1Shape);
@@ -223,9 +225,10 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     OP_TILING_CHECK(CheckInputTensorShape(context, nodeName, info) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
+
     uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    info.cfg.perSlotBytes = static_cast<uint32_t>((hAlign32 + kAlign32 + UB_ALIGN));
+    info.cfg.perSlotBytes = static_cast<uint32_t>((hAlign32 + kAlign32 * 2 + UB_ALIGN));
 
     OP_TILING_CHECK(CheckWinSize(context, info, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check window size failed."), return ge::GRAPH_FAILED);

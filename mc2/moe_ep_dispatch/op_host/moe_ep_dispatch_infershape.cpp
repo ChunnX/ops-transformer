@@ -22,12 +22,12 @@ static constexpr size_t DISPATCH_INPUT_CONTEXT_INDEX = 0;
 static constexpr size_t DISPATCH_INPUT_X_INDEX = 1;
 static constexpr size_t DISPATCH_INPUT_TOPK_IDX_INDEX = 2;
 static constexpr size_t DISPATCH_INPUT_TOPK_WEIGHTS_INDEX = 3;
-static constexpr size_t DISPATCH_INPUT_CACHED_SLOT_IDX_INDEX = 4;
+static constexpr size_t DISPATCH_INPUT_SCALES_INDEX = 4;
+static constexpr size_t DISPATCH_INPUT_CACHED_SLOT_IDX_INDEX = 5;
 
-static constexpr size_t DISPATCH_OUTPUT_NUM_RECV_PER_RANK_HP_INDEX = 0;
-static constexpr size_t DISPATCH_OUTPUT_NUM_RECV_PER_EXPERT_HP_INDEX = 1;
+static constexpr size_t DISPATCH_OUTPUT_NUM_RECV_PER_RANK_INDEX = 0;
+static constexpr size_t DISPATCH_OUTPUT_NUM_RECV_PER_EXPERT_INDEX = 1;
 static constexpr size_t DISPATCH_OUTPUT_DST_SLOT_IDX_INDEX = 2;
-static constexpr size_t DISPATCH_OUTPUT_RECV_SRC_META_INTERNAL_INDEX = 3;
 
 static constexpr size_t DISPATCH_ATTR_EP_WORLD_SIZE_INDEX = 0;
 static constexpr size_t DISPATCH_ATTR_EP_RANK_ID_INDEX = 1;
@@ -46,6 +46,8 @@ static ge::graphStatus InferShapeMoeEpDispatch(gert::InferShapeContext *context)
 
     const gert::Shape *xShape = context->GetInputShape(DISPATCH_INPUT_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xShape);
+    const gert::Shape *topkIdxShape = context->GetInputShape(DISPATCH_INPUT_TOPK_IDX_INDEX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, topkIdxShape);
 
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -58,31 +60,21 @@ static ge::graphStatus InferShapeMoeEpDispatch(gert::InferShapeContext *context)
 
     int64_t numTokens = xShape->GetDim(0);
     int64_t hidden = xShape->GetDim(1);
+    int64_t topK =  topkIdxShape->GetDim(1);
     int64_t ep = *epWorldSize;
     int64_t nmt = *numMaxTokensPerRank;
     int64_t numLocalExperts = *numExperts / ep;
     int64_t upperA = ep * nmt;
 
-    int64_t topK = 0;
-    const gert::Shape *topkIdxShape = context->GetOptionalInputShape(DISPATCH_INPUT_TOPK_IDX_INDEX);
-    if (topkIdxShape != nullptr && topkIdxShape->GetDimNum() >= DIM_TWO) {
-        topK = topkIdxShape->GetDim(1);
-    } else {
-        const gert::Shape *cachedSlotShape = context->GetOptionalInputShape(DISPATCH_INPUT_CACHED_SLOT_IDX_INDEX);
-        if (cachedSlotShape != nullptr && cachedSlotShape->GetDimNum() >= DIM_TWO) {
-            topK = cachedSlotShape->GetDim(1);
-        }
-    }
+    gert::Shape *numRecvPerRank = context->GetOutputShape(DISPATCH_OUTPUT_NUM_RECV_PER_RANK_INDEX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, numRecvPerRank);
+    numRecvPerRank->SetDimNum(DIM_ONE);
+    numRecvPerRank->SetDim(0U, ep);
 
-    gert::Shape *numRecvPerRankHp = context->GetOutputShape(DISPATCH_OUTPUT_NUM_RECV_PER_RANK_HP_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, numRecvPerRankHp);
-    numRecvPerRankHp->SetDimNum(DIM_ONE);
-    numRecvPerRankHp->SetDim(0U, ep);
-
-    gert::Shape *numRecvPerExpertHp = context->GetOutputShape(DISPATCH_OUTPUT_NUM_RECV_PER_EXPERT_HP_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertHp);
-    numRecvPerExpertHp->SetDimNum(DIM_ONE);
-    numRecvPerExpertHp->SetDim(0U, numLocalExperts);
+    gert::Shape *numRecvPerExpert = context->GetOutputShape(DISPATCH_OUTPUT_NUM_RECV_PER_EXPERT_INDEX);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpert);
+    numRecvPerExpert->SetDimNum(DIM_ONE);
+    numRecvPerExpert->SetDim(0U, numLocalExperts);
 
     gert::Shape *dstSlotIdx = context->GetOutputShape(DISPATCH_OUTPUT_DST_SLOT_IDX_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, dstSlotIdx);
@@ -90,22 +82,15 @@ static ge::graphStatus InferShapeMoeEpDispatch(gert::InferShapeContext *context)
     dstSlotIdx->SetDim(0U, numTokens);
     dstSlotIdx->SetDim(1U, topK);
 
-    gert::Shape *recvSrcMetaInternal = context->GetOutputShape(DISPATCH_OUTPUT_RECV_SRC_META_INTERNAL_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaInternal);
-    recvSrcMetaInternal->SetDimNum(DIM_TWO);
-    recvSrcMetaInternal->SetDim(0U, upperA);
-    recvSrcMetaInternal->SetDim(1U, 3);
-
     OP_LOGD(context->GetNodeName(), "InferShape for MoeEpDispatch done.");
     return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus InferDataTypeMoeEpDispatch(gert::InferDataTypeContext *context) {
     if (context == nullptr) { return ge::GRAPH_FAILED; }
-    context->SetOutputDataType(DISPATCH_OUTPUT_NUM_RECV_PER_RANK_HP_INDEX, ge::DT_INT32);
-    context->SetOutputDataType(DISPATCH_OUTPUT_NUM_RECV_PER_EXPERT_HP_INDEX, ge::DT_INT64);
+    context->SetOutputDataType(DISPATCH_OUTPUT_NUM_RECV_PER_RANK_INDEX, ge::DT_INT32);
+    context->SetOutputDataType(DISPATCH_OUTPUT_NUM_RECV_PER_EXPERT_INDEX, ge::DT_INT64);
     context->SetOutputDataType(DISPATCH_OUTPUT_DST_SLOT_IDX_INDEX, ge::DT_INT32);
-    context->SetOutputDataType(DISPATCH_OUTPUT_RECV_SRC_META_INTERNAL_INDEX, ge::DT_INT32);
     return ge::GRAPH_SUCCESS;
 }
 

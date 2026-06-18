@@ -10,6 +10,7 @@ struct MoeEpCombineInfo {
     uint32_t aivNum             = 0;
     uint64_t totalWinSizeEp     = 0;
     uint64_t totalUbSize        = 0;
+    
 };
 
 struct MoeEpCombineTilingData {
