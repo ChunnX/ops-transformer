@@ -89,6 +89,9 @@ struct WorkspaceInfo {
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR crossSupernodeSendDataPtr;
+    GM_ADDR crossSupernodeRecvDataPtr;
+    GM_ADDR crossSupernodeSyncFlagPtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -128,6 +131,21 @@ struct WorkspaceInfo {
         int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
+
+        if (tilingData->isCrossSupernode != 0) {
+            crossSupernodeSendDataPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
+
+            crossSupernodeRecvDataPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
+
+            crossSupernodeSyncFlagPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(tilingData->epWorldSize * ALIGN_512, ALIGN_512);
+        } else {
+            crossSupernodeSendDataPtr = nullptr;
+            crossSupernodeRecvDataPtr = nullptr;
+            crossSupernodeSyncFlagPtr = nullptr;
+        }
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H

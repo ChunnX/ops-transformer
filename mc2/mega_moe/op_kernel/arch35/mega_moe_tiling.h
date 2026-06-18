@@ -37,5 +37,7 @@ struct MegaMoeTilingData {
     bool transX;
     bool transW;
     bool transW2;
+    uint8_t isCrossSupernode;
+    uint8_t commMode;
 };
 #endif

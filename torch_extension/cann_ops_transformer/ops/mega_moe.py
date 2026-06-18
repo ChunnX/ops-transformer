@@ -35,7 +35,8 @@ class _MegaMoeOpBuilder(OpBuilder):
             "str comm_alg=\"\", int num_max_tokens_per_rank=0, str activation=\"swiglu\", " \
             "float? activation_clamp=None, " \
             "int? dispatch_quant_out_dtype=None,  " \
-            "int? weight1_type=None, int? weight2_type=None) -> (Tensor, Tensor)"
+            "int? weight1_type=None, int? weight2_type=None, " \
+            "bool is_cross_supernode=False) -> (Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -46,7 +47,8 @@ class _MegaMoeOpBuilder(OpBuilder):
                               combine_quant_mode=0, comm_alg="",
                               num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
                               dispatch_quant_out_dtype=None,
-                              weight1_type=None, weight2_type=None):
+                              weight1_type=None, weight2_type=None,
+                              is_cross_supernode=False):
             torch._check(
                 ep_world_size != 0,
                 lambda: (
@@ -74,13 +76,14 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   combine_quant_mode=0, comm_alg="",
                   num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
                   dispatch_quant_out_dtype=None,
-                  weight1_type=None, weight2_type=None):
+                  weight1_type=None, weight2_type=None,
+                  is_cross_supernode=False):
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
         ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask,
         max_recv_token_num, dispatch_quant_mode, combine_quant_mode, comm_alg,
         num_max_tokens_per_rank, activation, activation_clamp, dispatch_quant_out_dtype,
-        weight1_type, weight2_type)
+        weight1_type, weight2_type, is_cross_supernode)
 
 
 class SymmBuffer:
@@ -96,7 +99,8 @@ class SymmBuffer:
         dispatch_quant_mode: int = 0,
         dispatch_quant_out_dtype: Optional[int] = None,
         combine_quant_mode: int = 0,
-        comm_alg: str = ""
+        comm_alg: str = "",
+        is_cross_supernode: bool = False
     ):
         # Metadata
         self.group = group
@@ -120,13 +124,15 @@ class SymmBuffer:
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
+        self.is_cross_supernode = is_cross_supernode
 
 
 def npu_get_mega_moe_ccl_buffer_size(
     ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
     num_topk: int, hidden: int,
     dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28,
-    combine_quant_mode: int = 0, comm_alg: str = ""
+    combine_quant_mode: int = 0, comm_alg: str = "",
+    is_cross_supernode: bool = False
 ) -> int:
     def inline_align(val, align):
         return (val + align - 1) // align * align
@@ -163,6 +169,11 @@ def npu_get_mega_moe_ccl_buffer_size(
     combine_out = inline_align(num_max_tokens_per_rank * hidden * num_topk * y_out_dtype_size, align_512)
     # 所需总大小
     ccl_buffer_size = peermem_data_offset + mask_recv_size + quant_token_scale_size + combine_out
+    if is_cross_supernode:
+        align_512_int = 512
+        ccl_buffer_size += inline_align(num_max_tokens_per_rank * hidden * 2, align_512_int)  # crossSupernodeSendData
+        ccl_buffer_size += inline_align(num_max_tokens_per_rank * hidden * 2, align_512_int)  # crossSupernodeRecvData
+        ccl_buffer_size += inline_align(ep_world_size * align_512_int, align_512_int)         # crossSupernodeSyncFlag
     ccl_buffer_size = inline_align(inline_align(ccl_buffer_size, mb_conversion) // mb_conversion, 2) // 2
 
     return ccl_buffer_size
@@ -180,7 +191,8 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_mode: int = 0,
     dispatch_quant_out_dtype: Optional[int] = None,
     combine_quant_mode: int = 0,
-    comm_alg: str = ""
+    comm_alg: str = "",
+    is_cross_supernode: bool = False
 ) -> SymmBuffer:
 
     return SymmBuffer(
@@ -194,7 +206,8 @@ def get_symm_buffer_for_mega_moe(
         dispatch_quant_mode,
         dispatch_quant_out_dtype,
         combine_quant_mode,
-        comm_alg
+        comm_alg,
+        is_cross_supernode
     )
 
 
@@ -241,5 +254,6 @@ def mega_moe(
         activation_clamp=activation_clamp,
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
-        weight2_type=weight2_type
+        weight2_type=weight2_type,
+        is_cross_supernode=sym_buffer.is_cross_supernode
     )

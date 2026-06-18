@@ -37,6 +37,7 @@ namespace Mc2Aclnn {
 
 class Mc2Context {
 public:
+    // 获取Mc2MoeContext Tensor，isCrossServer出参标识是否跨超节点，默认false
     static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
                                            aclTensor *&mc2Context, bool &isCrossServer = false);
     static aclnnStatus GetMc2RankSize(const char *groupEp, uint32_t &rankSize);
@@ -63,9 +64,13 @@ private:
                                 uint64_t &hcclBuffSize);
     aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize);
+    // 检查协议支持，遍历组网层判断UB_MEM/URMA协议，isCrossServer出参标识是否跨超节点
     aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum,
                                       bool &isCrossServer);
+    // 获取通信协议，layerNum==1时不跨超选UB_MEM，layerNum>=2时通过CheckProtocolSupport判断是否跨超
     aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol, bool &isCrossServer);
+    // 获取URMA通信句柄，仅对跨超rank通过HcclChannelAcquire获取handle并保存至hcommHandle_，
+    // 同时通过HcclChannelGetHcclBuffer获取URMA buffer地址更新epHcclBuffer_
     aclnnStatus GetHcclCommHandle(const HcclComm &hcclHandle, const CommProtocol &protocol,
                                    Mc2MoeContext *mc2ContextStruct);
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
@@ -80,8 +85,8 @@ private:
     uint64_t hcclBuffSize_ = 0;
     uint32_t epRankSize_ = 0;
     uint32_t rankSizePerServer_ = 0;
-    uint32_t rankNumPerUbDomain_ = 0;
-    uint32_t layerNumMyUbDomain_ = 0;
+    uint32_t rankNumPerUbDomain_ = 0; // 本卡所属UB域内的卡数，用于跨超节点判断
+    uint32_t layerNumMyUbDomain_ = 0; // 本卡所属UB域对应的组网层号，用于区分域内/跨超rank
     std::unordered_map<uint32_t, uint32_t> layerMap; // 记录本卡与其他卡的通信层数，key为其他卡的rankId，value为通信层数
 
     HcclResult (*HcomGetCommHandleByGroup)(const char *, HcclComm *) = nullptr;

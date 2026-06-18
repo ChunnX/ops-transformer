@@ -33,6 +33,9 @@ using namespace Mc2Tiling;
 #define SOC_ASCEND910B 0
 #define SOC_ASCEND910_93 1
 
+#define COMM_MODE_MTE 0
+#define COMM_MODE_URMA 1
+
 struct MegaMoeA2A3TilingData {
     uint32_t M;
     uint32_t K;
@@ -68,6 +71,8 @@ struct MegaMoeA2A3TilingData {
 
     int32_t activationOutDtype;
     uint32_t weight1Interleave;
+    uint32_t isCrossSupernode;
+    uint32_t commMode;
 
     uint64_t initRoutingQuantTilingKey;
 };

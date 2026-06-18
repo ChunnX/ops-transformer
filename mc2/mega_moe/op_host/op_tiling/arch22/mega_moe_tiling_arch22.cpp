@@ -52,6 +52,7 @@ namespace MegaMoeA2A3Tiling {
     constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 12;       // weight1 是否转置
     constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 13;       // weight2 是否转置
     constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 14;      // weight1 交错模式
+    constexpr uint32_t ATTR_IS_CROSS_SUPERNODE_INDEX = 15;     // 是否跨越超节点
 
     // 输入 tensor 索引
     constexpr uint32_t CONTEXT_INDEX = 0;        // context，shape = [?]
@@ -313,6 +314,13 @@ static ge::graphStatus CheckWeight1InterleaveAttr(gert::TilingContext *context, 
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckIsCrossSupernodeAttr(const bool *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr,
+        OP_LOGE(K_INNER_DEBUG, "isCrossSupernode is null."), return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData& info)
 {
     auto attrs = context->GetAttrs();
@@ -333,6 +341,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     auto transposeWeight1Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT1_INDEX);
     auto transposeWeight2Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT2_INDEX);
     auto weight1InterleavePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT1_INTERLEAVE_INDEX);
+    auto isCrossSupernodePtr = attrs->GetAttrPointer<bool>(ATTR_IS_CROSS_SUPERNODE_INDEX);
 
     // 1. moe_expert_num
     OP_TILING_CHECK(CheckMoeExpertNumAttr(moeExpertNumPtr) != ge::GRAPH_SUCCESS,
@@ -395,6 +404,11 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
         OP_LOGE(K_INNER_DEBUG, "CheckWeight1InterleaveAttr failed."),
         return GRAPH_FAILED);
 
+    // 14. is_cross_supernode
+    OP_TILING_CHECK(CheckIsCrossSupernodeAttr(isCrossSupernodePtr) != ge::GRAPH_SUCCESS,
+        OP_LOGE(K_INNER_DEBUG, "CheckIsCrossSupernodeAttr failed."),
+        return GRAPH_FAILED);
+
     info.moeExpertNum = static_cast<uint32_t>(*moeExpertNumPtr);
     info.epWorldSize = static_cast<uint32_t>(*epWorldSizePtr);
     info.cclBufferSize = static_cast<uint32_t>(*cclBufferSizePtr);
@@ -409,6 +423,8 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     info.isTransposeW1 = *transposeWeight1Ptr ? 1U : 0U;
     info.isTransposeW2 = *transposeWeight2Ptr ? 1U : 0U;
     info.weight1Interleave = static_cast<uint32_t>(*weight1InterleavePtr);
+    info.isCrossSupernode = *isCrossSupernodePtr ? 1U : 0U;
+    info.commMode = *isCrossSupernodePtr ? COMM_MODE_URMA : COMM_MODE_MTE;
 
     info.worldSize = info.epWorldSize;
 
@@ -424,6 +440,8 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_LOGD(K_INNER_DEBUG, "transposeWeight1=%u", info.isTransposeW1);
     OP_LOGD(K_INNER_DEBUG, "transposeWeight2=%u", info.isTransposeW2);
     OP_LOGD(K_INNER_DEBUG, "weight1Interleave=%u", info.weight1Interleave);
+    OP_LOGD(K_INNER_DEBUG, "isCrossSupernode=%u", info.isCrossSupernode);
+    OP_LOGD(K_INNER_DEBUG, "commMode=%u", info.commMode);
     OP_LOGD(K_INNER_DEBUG, "worldSize=%u", info.worldSize);
 
     return ge::GRAPH_SUCCESS;
@@ -1177,6 +1195,7 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     uint32_t archCode = socVersion == "Ascend910B" ? SOC_ASCEND910B : SOC_ASCEND910_93;
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(
+        static_cast<int64_t>(info.commMode),
         static_cast<int64_t>(info.isTransposeW1),
         static_cast<int64_t>(info.isTransposeW2),
         static_cast<int64_t>(quantMode),
@@ -1249,6 +1268,12 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                             info.maxRecvTokenNum * info.K + // quantizedToken
                             info.maxRecvTokenNum * k2 + // swiglu mid
                             info.worldSize * sizeof(int32_t) * 16; // sync
+
+    if (info.isCrossSupernode != 0U) {
+        megeMoeWorkspace += ops::CeilAlign(info.maxRecvTokenNum * info.K * sizeof(int16_t), ALIGN_512) + // crossSupernodeSendData
+                            ops::CeilAlign(info.maxRecvTokenNum * info.K * sizeof(int16_t), ALIGN_512) + // crossSupernodeRecvData
+                            ops::CeilAlign(info.epWorldSize * ALIGN_512, ALIGN_512); // crossSupernodeSyncFlag
+    }
 
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + std::max(megeMoeWorkspace, initRoutingWorkspace);
 

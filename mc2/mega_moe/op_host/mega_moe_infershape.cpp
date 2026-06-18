@@ -43,6 +43,7 @@ static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_DISPATCH_QUANT_OUT_DTYPE_INDEX
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_COMBINE_QUANT_MODE_INDEX = 6;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_COMM_ALG_INDEX = 7;
 static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_GLOBAL_BS_INDEX = 8;
+static constexpr size_t DISPATCH_FFN_COMBINE_ATTR_IS_CROSS_SUPERNODE_INDEX = 15;
 
 static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
 {

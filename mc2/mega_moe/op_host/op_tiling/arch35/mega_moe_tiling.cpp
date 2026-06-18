@@ -93,6 +93,9 @@ void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "tripleInfoPtr:              %ld\n", info->tripleInfoPtr);
     OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
+    OP_LOGD(nodeName, "crossSupernodeSendDataPtr:  %ld\n", info->crossSupernodeSendDataPtr);
+    OP_LOGD(nodeName, "crossSupernodeRecvDataPtr:  %ld\n", info->crossSupernodeRecvDataPtr);
+    OP_LOGD(nodeName, "crossSupernodeSyncFlagPtr:  %ld\n", info->crossSupernodeSyncFlagPtr);
 }
 
 void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
@@ -156,10 +159,14 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
 {
     auto attrs = context->GetAttrs();
 
+    auto isCrossSupernodePtr = attrs->GetAttrPointer<bool>((config.attrIsCrossSupernodeIndex));
+    uint64_t commMode = *isCrossSupernodePtr ? COMM_MODE_URMA : COMM_MODE_MTE;
+
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
 
-    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode);
+    return GET_TPL_TILING_KEY(static_cast<int64_t>(commMode),
+        static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode);
 }
 
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
@@ -177,6 +184,7 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    auto isCrossSupernodePtr = attrs->GetAttrPointer<bool>((config.attrIsCrossSupernodeIndex));
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertNum"), return ge::GRAPH_FAILED);
@@ -196,6 +204,8 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "commAlg"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(isCrossSupernodePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "isCrossSupernode"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -347,6 +357,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
 
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
+    auto isCrossSupernodePtr = attrs->GetAttrPointer<bool>((config.attrIsCrossSupernodeIndex));
 
     tilingData->epWorldSize = *epWorldSizePtr;
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ?
@@ -355,6 +366,8 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->dispatchRows = 2;
+    tilingData->isCrossSupernode = *isCrossSupernodePtr ? 1 : 0;
+    tilingData->commMode = *isCrossSupernodePtr ? COMM_MODE_URMA : COMM_MODE_MTE;
 
     return ge::GRAPH_SUCCESS;
 }
