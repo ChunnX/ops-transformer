@@ -70,5 +70,5 @@ def _npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg
 
 def npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
 
-    return torch.ops.npu_ops_transformer.npu_bandwidth_test(
+    return torch.ops.cann_ops_transformer.npu_bandwidth_test(
         x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num)
