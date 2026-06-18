@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file flash_attn_block_kernel_noquant_gqa.h
+ * \file flash_attn_kernel_noquant_gqa.h
  * \brief
  */
 
-#ifndef FLASH_ATTN_BLOCK_KERNEL_NOQUANT_GQA_H_
-#define FLASH_ATTN_BLOCK_KERNEL_NOQUANT_GQA_H_
+#ifndef FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
+#define FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
 
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "kernel_operator_list_tensor_intf.h" // TensorDesc
@@ -845,4 +845,4 @@ public:
 
 } // namespace BaseApi
 
-#endif // FLASH_ATTN_BLOCK_KERNEL_NOQUANT_GQA_H_
+#endif // FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
