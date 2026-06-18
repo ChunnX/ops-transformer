@@ -323,18 +323,16 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
             static_cast<int32_t>(recvTopkIdxDesc->GetDataType())),
         return ge::GRAPH_FAILED);
 
-    // ---- recvTopkWeights [A_alloc, top_k] float ----
+    // ---- recvTopkWeights [A_alloc] float ----
     auto recvTopkWeightsShape = context->GetOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvTopkWeightsShape);
-    OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "recvTopkWeights dims must be 2."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "recvTopkWeights dims must be 1, got %lu.",
+            recvTopkWeightsShape->GetStorageShape().GetDimNum()),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDim(0) != aAlloc,
         OP_LOGE(nodeName, "recvTopkWeights dim0 must equal recvX dim0=%ld, got %ld.",
             aAlloc, recvTopkWeightsShape->GetStorageShape().GetDim(0)),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDim(1) != topK,
-        OP_LOGE(nodeName, "recvTopkWeights dim1 must equal topK=%ld, got %ld.",
-            topK, recvTopkWeightsShape->GetStorageShape().GetDim(1)),
         return ge::GRAPH_FAILED);
     auto recvTopkWeightsDesc = context->GetOutputDesc(OUT_RECV_TOPK_WEIGHTS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvTopkWeightsDesc);
