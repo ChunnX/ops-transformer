@@ -105,6 +105,8 @@ aclnnStatus CheckShapeValue(const aclTensor *x, const aclTensor *groupList, cons
     int64_t e = groupList->GetViewShape().GetDim(DIM_0);
     int64_t n = transposeWeight ? weightScale->GetViewShape().GetDim(DIM_1) :
                                            weightScale->GetViewShape().GetDim(DIM_2);
+    OP_LOGD("In op [%s], CheckShapeValue start. M=%ld, K=%ld, E=%ld, N=%ld, transposeWeight=%d.",
+            OP_NAME, m, k, e, n, static_cast<int>(transposeWeight));
     CHECK_COND(e >= 1 && e <= MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], the first dim of groupList must be in range [1, 1024], but got %ld.", OP_NAME, e);
     CHECK_COND(m == 0 || n == 0 || k > 0, ACLNN_ERR_PARAM_INVALID,
@@ -124,6 +126,9 @@ aclnnStatus CheckShapeValue(const aclTensor *x, const aclTensor *groupList, cons
     op::Shape xScaleExpectShape = {m, CeilDivInt64(k, MX_GROUP_SIZE), MX_SCALE_PAIR};
     op::Shape yExpectShape = {m, n};
     op::Shape yScaleExpectShape = {m, CeilDivInt64(n, MX_GROUP_SIZE), MX_SCALE_PAIR};
+    OP_LOGD("In op [%s], expected xScale shape %s, y shape %s, yScale shape %s.", OP_NAME,
+            op::ToString(xScaleExpectShape).GetString(), op::ToString(yExpectShape).GetString(),
+            op::ToString(yScaleExpectShape).GetString());
     OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(xScaleOptional, xScaleExpectShape, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(y, yExpectShape, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(yScale, yScaleExpectShape, return ACLNN_ERR_PARAM_INVALID);
@@ -137,6 +142,8 @@ aclnnStatus CheckShapeValue(const aclTensor *x, const aclTensor *groupList, cons
         weightExpectShape = {e, CeilDivInt64(n, NZ_LAST_DIM), CeilDivInt64(k, NZ_C0_DIM), NZ_C0_DIM, NZ_LAST_DIM};
         weightScaleExpectShape = {e, CeilDivInt64(k, MX_GROUP_SIZE), n, MX_SCALE_PAIR};
     }
+    OP_LOGD("In op [%s], expected weight storage shape %s, weightScale shape %s.", OP_NAME,
+            op::ToString(weightExpectShape).GetString(), op::ToString(weightScaleExpectShape).GetString());
     CHECK_COND(weightShape == weightExpectShape, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], expected weight storage shape to be %s, but got %s.", OP_NAME,
                op::ToString(weightExpectShape).GetString(), op::ToString(weightShape).GetString());
@@ -151,6 +158,11 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                         const char *roundMode, int64_t scaleAlg, float dstTypeMax, const aclTensor *y,
                         const aclTensor *yScale)
 {
+    OP_LOGD("In op [%s], CheckParams start. activationType=%s, quantMode=%s, roundMode=%s, "
+            "transposeWeight=%d, groupListType=%ld, yDtype=%ld, scaleAlg=%ld, dstTypeMax=%f.",
+            OP_NAME, activationType == nullptr ? "nullptr" : activationType,
+            quantMode == nullptr ? "nullptr" : quantMode, roundMode == nullptr ? "nullptr" : roundMode,
+            static_cast<int>(transposeWeight), groupListType, yDtype, scaleAlg, dstTypeMax);
     CHECK_COND(x != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [x] must not be nullptr.", OP_NAME);
     CHECK_COND(groupList != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [groupList] must not be nullptr.",
                OP_NAME);
@@ -190,9 +202,16 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                OP_NAME, dstTypeMax);
     CHECK_COND(biasOptional == nullptr || biasOptional->Size() == 0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], non-empty bias is not supported in current MX quant mode.", OP_NAME);
+    OP_LOGD("In op [%s], basic attribute check passed. biasOptional size=%zu.", OP_NAME,
+            biasOptional == nullptr ? 0UL : biasOptional->Size());
 
     const aclTensor *w = (*weight)[FIRST_TENSOR_INDEX];
     const aclTensor *wScale = (*weightScale)[FIRST_TENSOR_INDEX];
+    OP_LOGD("In op [%s], tensor dims: x=%zu, xScale=%zu, weight view=%zu, weight storage=%zu, "
+            "weightScale=%zu, groupList=%zu, y=%zu, yScale=%zu.",
+            OP_NAME, x->GetViewShape().GetDimNum(), xScaleOptional->GetViewShape().GetDimNum(),
+            w->GetViewShape().GetDimNum(), w->GetStorageShape().GetDimNum(), wScale->GetViewShape().GetDimNum(),
+            groupList->GetViewShape().GetDimNum(), y->GetViewShape().GetDimNum(), yScale->GetViewShape().GetDimNum());
     OP_CHECK_WRONG_DIMENSION(x, X_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_WRONG_DIMENSION(xScaleOptional, SCALE_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_WRONG_DIMENSION(w, WEIGHT_NZ_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
@@ -230,20 +249,24 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
     CHECK_RET(CheckShapeValue(x, groupList, xScaleOptional, w, wScale, transposeWeight, y, yScale) ==
                   ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
+    OP_LOGD("In op [%s], CheckParams success.", OP_NAME);
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus PrepareTensorListContiguous(const aclTensorList *&tensorList, aclOpExecutor *executor)
 {
+    OP_LOGD("In op [%s], PrepareTensorListContiguous start. tensorList size=%zu.", OP_NAME, tensorList->Size());
     std::vector<const aclTensor *> tensorVec;
     tensorVec.reserve(tensorList->Size());
     for (size_t i = 0; i < tensorList->Size(); ++i) {
+        OP_LOGD("In op [%s], make tensorList[%zu] contiguous.", OP_NAME, i);
         const aclTensor *contiguousTensor = l0op::Contiguous((*tensorList)[i], executor);
         CHECK_RET(contiguousTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
         tensorVec.push_back(contiguousTensor);
     }
     tensorList = executor->AllocTensorList(tensorVec.data(), tensorVec.size());
     CHECK_RET(tensorList != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    OP_LOGD("In op [%s], PrepareTensorListContiguous success.", OP_NAME);
     return ACLNN_SUCCESS;
 }
 } // namespace
@@ -263,6 +286,11 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     L2_DFX_PHASE_1(aclnnGroupedMatmulActivationQuantWeightNz,
                    DFX_IN(x, groupList, weight, weightScale, biasOptional, xScaleOptional),
                    DFX_OUT(y, yScale));
+    OP_LOGD("In op [%s], GetWorkspaceSize start. activationType=%s, quantMode=%s, roundMode=%s, "
+            "transposeWeight=%d, groupListType=%ld, yDtype=%ld, scaleAlg=%ld, dstTypeMax=%f.",
+            OP_NAME, activationType == nullptr ? "nullptr" : activationType,
+            quantMode == nullptr ? "nullptr" : quantMode, roundMode == nullptr ? "nullptr" : roundMode,
+            static_cast<int>(transposeWeight), groupListType, yDtype, scaleAlg, dstTypeMax);
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -270,37 +298,49 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
                           transposeWeight, groupListType, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax, y,
                           yScale) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
+    OP_LOGD("In op [%s], parameter check passed.", OP_NAME);
 
     if (x->IsEmpty() || y->IsEmpty() || yScale->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
+        OP_LOGD("In op [%s], empty tensor path. xEmpty=%d, yEmpty=%d, yScaleEmpty=%d, workspaceSize=0.",
+                OP_NAME, static_cast<int>(x->IsEmpty()), static_cast<int>(y->IsEmpty()),
+                static_cast<int>(yScale->IsEmpty()));
         return ACLNN_SUCCESS;
     }
 
+    OP_LOGD("In op [%s], make x contiguous.", OP_NAME);
     x = l0op::Contiguous(x, uniqueExecutor.get());
     CHECK_RET(x != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    OP_LOGD("In op [%s], make xScaleOptional contiguous.", OP_NAME);
     xScaleOptional = l0op::Contiguous(xScaleOptional, uniqueExecutor.get());
     CHECK_RET(xScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    OP_LOGD("In op [%s], make groupList contiguous.", OP_NAME);
     groupList = l0op::Contiguous(groupList, uniqueExecutor.get());
     CHECK_RET(groupList != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     CHECK_RET(PrepareTensorListContiguous(weightScale, uniqueExecutor.get()) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
     if (biasOptional == nullptr) {
+        OP_LOGD("In op [%s], biasOptional is nullptr, allocate empty tensorList.", OP_NAME);
         biasOptional = uniqueExecutor->AllocTensorList(nullptr, 0);
         CHECK_RET(biasOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
+    OP_LOGD("In op [%s], call l0op::GroupedMatmulActivationQuant.", OP_NAME);
     auto result = l0op::GroupedMatmulActivationQuant(x, groupList, weight, weightScale, biasOptional, xScaleOptional,
         activationType, transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg,
         dstTypeMax, uniqueExecutor.get());
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
+    OP_LOGD("In op [%s], l0op::GroupedMatmulActivationQuant success, do ViewCopy for y.", OP_NAME);
     auto yResult = l0op::ViewCopy(std::get<0>(result), y, uniqueExecutor.get());
     CHECK_RET(yResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    OP_LOGD("In op [%s], ViewCopy for y success, do ViewCopy for yScale.", OP_NAME);
     auto yScaleResult = l0op::ViewCopy(std::get<1>(result), yScale, uniqueExecutor.get());
     CHECK_RET(yScaleResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    OP_LOGD("In op [%s], GetWorkspaceSize success. workspaceSize=%lu.", OP_NAME, *workspaceSize);
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
 }
@@ -309,8 +349,10 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(void *workspace, uint64_t 
     aclOpExecutor *executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGroupedMatmulActivationQuantWeightNz);
+    OP_LOGD("In op [%s], phase2 launch start. workspaceSize=%lu.", OP_NAME, workspaceSize);
     CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS, ACLNN_ERR_INNER,
                "This is an error in aclnnGroupedMatmulActivationQuantWeightNz launch aicore.");
+    OP_LOGD("In op [%s], phase2 launch success.", OP_NAME);
     return ACLNN_SUCCESS;
 }
 
