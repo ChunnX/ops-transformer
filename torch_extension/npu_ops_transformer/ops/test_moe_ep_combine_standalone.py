@@ -14,23 +14,22 @@ def _make_handle_tensors(rank, ep_world_size, num_tokens, top_k, num_experts,
                           num_max_tokens_per_rank, hidden):
     A = ep_world_size * num_max_tokens_per_rank
     device = f"npu:{rank}"
+    num_local_experts = num_experts // ep_world_size
 
-    dst_buffer_slot_idx = torch.zeros(num_tokens, top_k, dtype=torch.int32, device=device)
+    topk_idx = torch.zeros(num_tokens, top_k, dtype=torch.int32, device=device)
     recv_src_metadata = torch.full((A, 3), -1, dtype=torch.int32, device=device)
-    num_recv_tokens_per_rank = torch.zeros(ep_world_size, dtype=torch.int32, device=device)
+    num_recv_tokens_per_expert = torch.zeros(num_local_experts, dtype=torch.int64, device=device)
 
     recv_src_metadata[:num_tokens, 0] = torch.arange(num_tokens, dtype=torch.int32, device=device)
     recv_src_metadata[:num_tokens, 1] = torch.tensor(rank, dtype=torch.int32, device=device)
     recv_src_metadata[:num_tokens, 2] = torch.arange(num_tokens, dtype=torch.int32, device=device)
 
-    num_recv_tokens_per_rank[rank] = num_tokens
-
     slot_val = torch.arange(num_tokens, dtype=torch.int32, device=device)
-    dst_buffer_slot_idx[:, 0] = slot_val
+    topk_idx[:, 0] = slot_val
     if top_k > 1:
-        dst_buffer_slot_idx[:, 1] = slot_val
+        topk_idx[:, 1] = slot_val
 
-    return dst_buffer_slot_idx, recv_src_metadata, num_recv_tokens_per_rank
+    return topk_idx, recv_src_metadata, num_recv_tokens_per_expert
 
 
 def run_test_combine_basic(rank):
@@ -56,13 +55,13 @@ def run_test_combine_basic(rank):
     num_tokens = 8
     A = world_size * num_max_tokens_per_rank
 
-    dst_slot, recv_meta, num_recv_rank = _make_handle_tensors(
+    topk_idx, recv_src_metadata, num_recv_per_expert = _make_handle_tensors(
         rank, world_size, num_tokens, top_k, num_experts, num_max_tokens_per_rank, hidden)
 
     x = torch.randn(A, hidden, dtype=torch.bfloat16, device=f"npu:{rank}")
 
     combined_x, combined_topk_weights = npu_moe_ep_combine(
-        buf.context, x, dst_slot, recv_meta, num_recv_rank,
+        buf.context, x, topk_idx, recv_src_metadata, num_recv_per_expert,
         None, None, None,
         buf.ep_world_size, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size,
     )
@@ -102,14 +101,14 @@ def run_test_combine_with_weights(rank):
     num_tokens = 8
     A = world_size * num_max_tokens_per_rank
 
-    dst_slot, recv_meta, num_recv_rank = _make_handle_tensors(
+    topk_idx, recv_src_metadata, num_recv_per_expert = _make_handle_tensors(
         rank, world_size, num_tokens, top_k, num_experts, num_max_tokens_per_rank, hidden)
 
     x = torch.randn(A, hidden, dtype=torch.bfloat16, device=f"npu:{rank}")
     topk_weights = torch.rand(A, dtype=torch.float32, device=f"npu:{rank}")
 
     combined_x, combined_topk_weights = npu_moe_ep_combine(
-        buf.context, x, dst_slot, recv_meta, num_recv_rank,
+        buf.context, x, topk_idx, recv_src_metadata, num_recv_per_expert,
         topk_weights, None, None,
         buf.ep_world_size, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size,
     )
@@ -150,14 +149,14 @@ def run_test_combine_large_tokens(rank):
     num_tokens = 64
     A = world_size * num_max_tokens_per_rank
 
-    dst_slot, recv_meta, num_recv_rank = _make_handle_tensors(
+    topk_idx, recv_src_metadata, num_recv_per_expert = _make_handle_tensors(
         rank, world_size, num_tokens, top_k, num_experts, num_max_tokens_per_rank, hidden)
 
     x = torch.randn(A, hidden, dtype=torch.bfloat16, device=f"npu:{rank}")
     topk_weights = torch.rand(A, dtype=torch.float32, device=f"npu:{rank}")
 
     combined_x, combined_topk_weights = npu_moe_ep_combine(
-        buf.context, x, dst_slot, recv_meta, num_recv_rank,
+        buf.context, x, topk_idx, recv_src_metadata, num_recv_per_expert,
         topk_weights, None, None,
         buf.ep_world_size, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size,
     )
@@ -196,7 +195,7 @@ def run_test_combine_bias_rejected(rank):
     num_tokens = 8
     A = world_size * num_max_tokens_per_rank
 
-    dst_slot, recv_meta, num_recv_rank = _make_handle_tensors(
+    topk_idx, recv_src_metadata, num_recv_per_expert = _make_handle_tensors(
         rank, world_size, num_tokens, top_k, num_experts, num_max_tokens_per_rank, hidden)
 
     x = torch.randn(A, hidden, dtype=torch.bfloat16, device=f"npu:{rank}")
@@ -204,7 +203,7 @@ def run_test_combine_bias_rejected(rank):
 
     try:
         combined_x, combined_topk_weights = npu_moe_ep_combine(
-            buf.context, x, dst_slot, recv_meta, num_recv_rank,
+            buf.context, x, topk_idx, recv_src_metadata, num_recv_per_expert,
             None, bias, None,
             buf.ep_world_size, rank, num_experts, num_max_tokens_per_rank, buf.ccl_buffer_size,
         )

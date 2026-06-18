@@ -40,23 +40,20 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueBasic)
 
     TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc dstSlotDesc = TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc recvSrcMetaInternalDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc numRecvPerRankHpDesc = TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc numRecvPerExpertHpDesc = TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc numRecvPerRankDesc = TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerExpertDesc = TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc cachedRecvSrcMetadataDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
 
     TensorDesc recvXDesc = TensorDesc({upperA, hidden}, ACL_BF16, ACL_FORMAT_ND);
     TensorDesc recvTopkIdxDesc = TensorDesc({upperA, topK}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc recvTopkWeightsDesc = TensorDesc({upperA}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc recvSrcMetadataDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc numRecvPerRankDesc = TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc numRecvPerExpertDesc = TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND);
 
     auto ut =
         OP_API_UT(aclnnMoeEpDispatchEpilogue,
-                  INPUT(contextDesc, dstSlotDesc, recvSrcMetaInternalDesc, numRecvPerRankHpDesc, numRecvPerExpertHpDesc,
+                  INPUT(contextDesc, dstSlotDesc, numRecvPerRankDesc, numRecvPerExpertDesc, cachedRecvSrcMetadataDesc,
                         epWorldSize, 0, numExperts, numMaxTokensPerRank, cclBufferSize, 1),
-                  OUTPUT(recvXDesc, recvTopkIdxDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, numRecvPerRankDesc,
-                         numRecvPerExpertDesc));
+                  OUTPUT(recvXDesc, recvTopkIdxDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, nullptr));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;

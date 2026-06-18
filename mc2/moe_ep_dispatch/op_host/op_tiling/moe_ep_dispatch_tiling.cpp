@@ -39,7 +39,8 @@ constexpr uint32_t CONTEXT_INDEX = 0U;
 constexpr uint32_t X_INDEX = 1U;
 constexpr uint32_t TOPK_IDX_INDEX = 2U;
 constexpr uint32_t TOPK_WEIGHTS_INDEX = 3U;
-constexpr uint32_t CACHED_SLOT_IDX_INDEX = 4U;
+constexpr uint32_t SCALES_INDEX = 4U;
+constexpr uint32_t CACHED_SLOT_IDX_INDEX = 5U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;

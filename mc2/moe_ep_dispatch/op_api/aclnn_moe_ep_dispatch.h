@@ -22,9 +22,10 @@ extern "C" {
  *        + host-pinned counter (corresponding to DeepEP V2 launch_dispatch).
  *
  * @param [in] context             communication context int32 tensor
- * @param [in] x                   token data [num_tokens, hidden] bf16
+ * @param [in] x                   token data [num_tokens, hidden] bf16/fp16/fp8_e5m2/fp8_e4m3fn
  * @param [in] topkIdx             top-k expert indices [num_tokens, top_k] int32; nullptr in cached mode
  * @param [in] topkWeights         top-k weights [num_tokens, top_k] float; nullptr in cached mode
+ * @param [in] scales              dynamic quantization scales (float or fp8_e8m0); nullptr if not quantized
  * @param [in] cachedHandleDstBufferSlotIdx  [num_tokens, top_k] int32; nullptr in non-cached mode
  * @param [in] epWorldSize         EP world size
  * @param [in] epRankId            EP rank id
@@ -34,10 +35,9 @@ extern "C" {
  * @param [in] expertAlignment     alignment for expert token count
  * @param [in] doCpuSync           true: write host-pinned counter for precise alloc
  * @param [in] hostPinnedCounterAddr device address of host-pinned counter (0 if doCpuSync=false)
- * @param [out] numRecvTokensPerRankHostPinned   [ep_world_size] int32 host-pinned + dev-mapped
- * @param [out] numRecvTokensPerExpertHostPinned [num_local_experts] int64 host-pinned + dev-mapped
- * @param [out] dstBufferSlotIdx   [num_tokens, top_k] int32 device
- * @param [out] recvSrcMetadataInternal [ep*nmt, 3] int32 device (upper-bound alloc)
+ * @param [out] numRecvTokensPerRank   [ep_world_size] int32 device
+ * @param [out] numRecvTokensPerExpert [num_local_experts] int64 device
+ * @param [out] dstBufferSlotIdx       [num_tokens, top_k] int32 device
  * @param [out] workspaceSize      workspace size output
  * @param [out] executor           executor output
  * @return aclnnStatus
@@ -47,6 +47,7 @@ ACLNN_API aclnnStatus aclnnMoeEpDispatchGetWorkspaceSize(
     const aclTensor* x,
     const aclTensor* topkIdx,
     const aclTensor* topkWeights,
+    const aclTensor* scales,
     const aclTensor* cachedHandleDstBufferSlotIdx,
     int64_t epWorldSize,
     int64_t epRankId,
@@ -56,10 +57,9 @@ ACLNN_API aclnnStatus aclnnMoeEpDispatchGetWorkspaceSize(
     int64_t expertAlignment,
     bool doCpuSync,
     int64_t hostPinnedCounterAddr,
-    aclTensor* numRecvTokensPerRankHostPinned,
-    aclTensor* numRecvTokensPerExpertHostPinned,
+    aclTensor* numRecvTokensPerRank,
+    aclTensor* numRecvTokensPerExpert,
     aclTensor* dstBufferSlotIdx,
-    aclTensor* recvSrcMetadataInternal,
     uint64_t* workspaceSize,
     aclOpExecutor** executor);
 

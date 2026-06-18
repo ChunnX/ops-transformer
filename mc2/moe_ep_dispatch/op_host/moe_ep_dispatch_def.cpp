@@ -27,7 +27,7 @@ public:
             .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("topk_idx")
@@ -40,25 +40,26 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("scales")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("cached_handle_dst_buffer_slot_idx")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
-        this->Output("num_recv_tokens_per_rank_host_pinned")
+        this->Output("num_recv_tokens_per_rank")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
-        this->Output("num_recv_tokens_per_expert_host_pinned")
+        this->Output("num_recv_tokens_per_expert")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Output("dst_buffer_slot_idx")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("recv_src_metadata_internal")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
