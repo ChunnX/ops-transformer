@@ -986,6 +986,61 @@ atomic/确定性不是单独拆双 kernel,而是在 `IterateMmDsQFixpout`/`Itera
 
 ---
 
+### 10.2 外 KV 内 Q vs 外 Q 内 KV:输出累加带宽的定量对账
+
+> 接 §10.1 的定性结论(外 KV → dQ atomic 1 份;外 Q → dK/dV atomic 2 份)。这里把它算成闭式:**计算量两序完全相同,差距 100% 落在输出累加带宽,而且砸在 profiling 已认定的 FixPipe bound 上。** 口径沿用 §2.5;实算与对账见随附脚本 `roofline_mfu.py`(理论上限)与 `traffic_gap.py`(工程流量 + profiling 校准)。
+
+**记号:** S1 切 M=S1/Br 块、S2 切 Nn=S2/Bc 块,块 128×128;`dt`=输入字节(BF16=2),`dt_acc`=FP32 累加/workspace=4;`vr`=有效比(causal≈0.5)。
+
+#### (1) 驻留 vs 不驻留:单个输出的省量 ~512×
+
+任一输出两种命运:**驻留**(L0C/UB 累加,只写一遍,流量 ∝ 输出尺寸 ∝ S)vs **不驻留**(每个贡献块 atomic / 写 FP32 partial,流量 ∝ 贡献体积 ∝ S²)。以 dK 为例:
+
+```
+不驻留 / 驻留 = [2·dt_acc·(M·S2·D)] / [dt_out·(S2·D)] = 2·M·(dt_acc/dt_out)
+            = 2·(S/Br)·(4/2)  ─代 S=16384,Br=128→  ≈ 512×
+```
+
+**把一个输出钉成驻留,省掉它自己 ~500 倍搬运量。** 但三输出不能同时驻留(dQ 沿 S2 归约、dK/dV 沿 (G,S1) 归约,两类轴正交;整张 S1×S2 网格远超 L0C 256K/UB 512K)。所以必须流式扫一个轴,**由内层循环索引的那个输出只能不驻留**。循环序 = 选"把 512× 的便宜给谁"。
+
+规则:**外层循环变量索引的输出 → 驻留;内层索引的 → 不驻留。** 外 KV 内 Q:dK/dV(S2 索引)驻留、dQ(S1 索引)不驻留;外 Q 内 KV 反之。
+
+#### (2) 两序输出流量的闭式比值
+
+只数主导(不驻留 ∝ S²)项,每 head full grid:
+
+```
+外KV内Q  不驻留 = dQ      : T_KV = 2·dt_acc · S1·S2·D/Bc · vr
+外Q内KV  不驻留 = dK+dV   : T_Q  = 2·dt_acc · S1·S2·(D+Dv)/Br · vr
+
+T_Q / T_KV = (Bc/Br)·(1 + Dv/D)
+```
+
+- 方块 128×128、D=Dv=256 → **2.0×**
+- D=192/Dv=128 特判 → (1+128/192) ≈ **1.67×**
+- 只要 Dv>0 恒 >1 → **外 KV 在输出带宽上恒优**。
+
+GQA 里 G 在比值中约掉(dQ 也带 N1=N2·G 个 head),只整体放大不改谁赢。驻留写(∝S)是不驻留(∝S²)的 ~0.4% 零头,可忽略;输入再取两序对称(各把内层 2 张量再取 S/B 次),不是区分点。
+
+#### (3) FixPipe 对账(profiling: B=1,N2=2,S=16384,causal,BF16)
+
+`traffic_gap.py` 用该 case 反推出 FixPipe 有效带宽 **3.41 TB/s**,然后扫 splitAxis:
+
+| splitAxis | 跨核张量 | FixPipe 写出体积 | bottleneck | 可达 MFU 上限 |
+|---|---|---|---|---|
+| BN2GS1S2(实跑) | 3 | dQ+dK+dV partial ≈ **51.5 GB** | FixPipe | **84.3%**(实测 82.4%,重叠 98%)|
+| BN2S2 | 1 | dQ partial ≈ 17.2 GB | MAC | 93.2% |
+| BN2 | 0 | 三者驻留写一遍 ≈ 0.34 GB | MAC | 93.2% |
+
+**读法:** 本 shape `B·N2=2 ≪ 32` 且 `S1=S2`(切不出长 S2)→ 既填不满、又走不了 BN2/BN2S2 → 被迫 BN2GS1S2 → 3 张量全 partial → FixPipe 写出 51.5 GB / 3.41 TB/s ≈ 15.1ms 成为 floor → 可达上限 84%、实测 82%。把它换成大 `B·N2` 走 BN2,FixPipe 塌到 0.34 GB,floor 回到 MAC(13.7ms)→ 上限 ~93%。**一档 splitAxis ≈ +10 pts MFU**,这正是当前实现选"外 KV 内 Q / dK·dV 驻留"的定量理由——它把 512× 的驻留红利发给了 2 张量侧(dK/dV),只让 dQ 这 1 张量吃 partial。
+
+#### (4) 工具链接口
+
+- `roofline_mfu.py`:给定 shape → FLOPs / 算术强度(计算访存比)/ ridge / bound 判定 / **理论 MFU 上限**(compute-bound=100%;memory-bound=AI/ridge)/ 最短耗时。这是"绝对天花板"。
+- `traffic_gap.py`:给定 shape + split(loop order / kv_fused / split_axis)→ 各 pipe **工程流量** → 用一份真实 profiling 反推有效带宽(校准)→ 预测任意自定义 shape 的 per-pipe 时间、bottleneck、**可达 MFU 上限**;再喂入该 shape 的 profiling → 输出 **gap(实现离可达上限差多少、差在哪条 pipe、还有多少重叠余量)**。
+
+> 非循环性:per-pipe 流量(shape+split 决定)、bottleneck 判定、"完美重叠 floor=max(per-pipe)" 都是真值/可达下界;`overlap_eff=floor/实测` 是描述量,只读"还有多少重叠余量",不参与预测 floor。要把 floor 当预测用,需在 3~5 个 shape 上验证 per-pipe 预测值与实测一致(§14-B5/B 协议)。
+
 ## 11. 开放优化清单
 
 fixpipe 随路 scale/cast/transpose;exp2 替换 exp;ND→NZ 随路;对角半块 MMAD;LSE 策略;varlen;隔块延迟校正;D≥192 的 L0 切 K 累加。【持续追加】
@@ -1644,6 +1699,257 @@ function NextTndBand(runInfo, loop):
 - TND band:先在带状 envelope 里找候选,再用真实 band 谓词过滤。
 
 和 §4.3 的 L2/Die 亲和关系:这些 FAG swizzle 代码没有显式 Die id 或 STARS group id,源码能证明的是"同一轮按 `cBlockIdx` stride 消费 S2/N2G,且 dense/causal 会尽量让每核拿连续 valid 块";至于满芯片时这些消费核是否被调度到同一 AI Die、是否真的吃到本 Die L2 复用,要看运行时 core-to-Die 映射/profile,不能只靠这段 kernel C++ 写死结论。
+
+
+### 13.6.2 FAG 分核选择的根因 + 各路径优势场景(带硬件实算)
+
+> 本节补 §13.6/§13.6.1 的"为什么"。先给 splitAxis 选择的**根因决策链**(`B·N2 vs aicNum` → 谁跨核归约 → fixpipe 压力),再给每条 splitAxis 与每个枚举器一个**小例子 + 硬件账**,让"哪种 shape 该走哪条、为什么"一眼可判。硬件口径沿用 §2.5(950 BF16:Cube 432 TFLOPS、aicNum=32、L2 128MB、L0C 256KB),profiling 锚用前文那个 `B=1,N2=2,S=16384,causal,BF16` 的反向 case(MFU 82% / HFU 88% / **fixpipe 97.7% 是 bound**)。结论分级沿用 §0.3。
+
+#### 13.6.2.0 一句话总纲
+
+反向分核是**两级决策**,别混在一起看:
+
+- **splitAxis(§13.6)定"并行度 + 谁跨核归约(atomic/workspace)"** —— 由 `B·N2 vs aicNum` 驱动。
+- **枚举器(§13.6.1)定"在选定切法里怎么跳无效块 + 保 L2 局部性 + 配平"** —— 由稀疏几何 + L2 压力驱动,且**只有当 splitAxis 切到最碎(BN2GS1S2/TND)、局部性丢了,才需要 swizzle 挣回来**。
+
+#### 13.6.2.1 根因决策链:为什么是这条 splitAxis
+
+**先记住三个输出的归约轴(这决定切谁会引发跨核归约):**
+
+```text
+dV[s2] = Σ_{g,s1} P·dO     → 归约轴 = (G, S1)
+dK[s2] = Σ_{g,s1} dS·Q     → 归约轴 = (G, S1)
+dQ[s1] = Σ_{s2}   dS·K     → 归约轴 = S2
+```
+
+规则:**切到哪个归约轴跨核,哪个输出就要跨核归约(atomic 或 FP32 workspace + post)。** 切 S2 → dQ 跨核;切 G/S1 → dK/dV 跨核。跨核归约 = 读-改-写 HBM/L2 的 FP32 中间量,直接砸 FixPipe/MTE3。
+
+**决策链(`B·N2 vs aicNum` 是第一变量,因为它决定要不要细切):**
+
+```mermaid
+flowchart TD
+  A{"B·N2 ≥ aicNum?<br/>(够不够填满核)"}
+  A -->|是| BN2["BN2<br/>各核独占一个 (b,n2)<br/>0 跨核归约 ✓"]
+  A -->|否| B{"S2 ≫ S1 (长S2)<br/>且 dtype/sparse 允许?"}
+  B -->|是| BN2S2["BN2S2<br/>只切 S2 → 仅 dQ 跨核 (1)<br/>dK/dV 留核内驻留"]
+  B -->|否| C["BN2GS1S2 (兜底)<br/>切 G/S1/S2 → dQ+dK+dV 跨核 (3)<br/>填满任意 shape, 但归约最重"]
+  BN2 -.->|大 S 时核内多块累加| BN2M["BN2 multi-block<br/>仍 0 跨核归约"]
+  C -->|切得最碎→局部性丢失| SW["→ 触发 §13.6.1 swizzle 枚举器<br/>把 L2 局部性 + 配平挣回来"]
+```
+
+更细版(每条路径标注**填核率 / 跨核归约张量数 / MFU 量级**,底部 profiling 对账栏):
+
+<svg width="100%" viewBox="0 0 760 588" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>FAG splitAxis 决策树:填核率 → 跨核归约张量数 → bound/MFU</title>
+<desc>由 B·N2 vs aicNum 与是否长 S2 决定走 BN2/BN2S2/BN2GS1S2,标注每条路径的跨核归约张量数与 MFU 量级,底部对账 profiling case。</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#9C9A92" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect x="30" y="12" width="700" height="26" rx="6" fill="#EAE8E0"/>
+<text x="380" y="29" text-anchor="middle" font-size="13" font-weight="500" fill="#3D3D3A">FAG splitAxis 决策树:填核率 → 跨核归约张量数 → bound / MFU</text>
+<line x1="332" y1="96" x2="160" y2="146" stroke="#9C9A92" stroke-width="1" marker-end="url(#ar)"/>
+<line x1="428" y1="96" x2="558" y2="144" stroke="#9C9A92" stroke-width="1" marker-end="url(#ar)"/>
+<line x1="505" y1="192" x2="448" y2="248" stroke="#9C9A92" stroke-width="1" marker-end="url(#ar)"/>
+<line x1="618" y1="192" x2="645" y2="248" stroke="#9C9A92" stroke-width="1" marker-end="url(#ar)"/>
+<rect x="270" y="52" width="220" height="44" rx="8" fill="#EAE8E0" stroke="#888780" stroke-width="0.6"/>
+<text x="380" y="73" text-anchor="middle" font-size="13" font-weight="500" fill="#3D3D3A">B·N2 ≥ aicNum ?</text>
+<text x="380" y="88" text-anchor="middle" font-size="11" fill="#6B6A64">够不够填满核</text>
+<rect x="233" y="108" width="24" height="17" rx="8" fill="#EAE8E0"/><text x="245" y="120" text-anchor="middle" font-size="11" fill="#3D3D3A">是</text>
+<rect x="494" y="108" width="24" height="17" rx="8" fill="#EAE8E0"/><text x="506" y="120" text-anchor="middle" font-size="11" fill="#3D3D3A">否</text>
+<rect x="30" y="148" width="252" height="118" rx="8" fill="#E7F2D8" stroke="#639922" stroke-width="0.6"/>
+<text x="46" y="171" font-size="13" font-weight="500" fill="#27500A">BN2</text>
+<rect x="212" y="156" width="58" height="20" rx="10" fill="#C0DD97"/><text x="241" y="170" text-anchor="middle" font-size="11" fill="#27500A">跨核 0</text>
+<text x="46" y="196" font-size="12" fill="#3B6D11">切 B,N2 · 各核独占 (b,n2)</text>
+<text x="46" y="216" font-size="12" fill="#3B6D11">近 MAC-bound · MFU ~93%↑</text>
+<text x="46" y="236" font-size="12" fill="#3B6D11">条件:B·N2 ≥ aicNum</text>
+<text x="46" y="256" font-size="12" fill="#3B6D11">0 跨核 → FixPipe 只写一遍</text>
+<rect x="40" y="276" width="232" height="26" rx="6" fill="#F2F8E8" stroke="#639922" stroke-width="0.6" stroke-dasharray="4 3"/>
+<text x="46" y="293" font-size="11" fill="#3B6D11">BN2 multi-block:大 S 核内累加,仍 0 跨核</text>
+<rect x="440" y="146" width="240" height="44" rx="8" fill="#EAE8E0" stroke="#888780" stroke-width="0.6"/>
+<text x="560" y="167" text-anchor="middle" font-size="12.5" font-weight="500" fill="#3D3D3A">长 S2 (S2 ≫ S1) ?</text>
+<text x="560" y="183" text-anchor="middle" font-size="11" fill="#6B6A64">且 dtype/sparse 允许</text>
+<rect x="443" y="220" width="24" height="17" rx="8" fill="#EAE8E0"/><text x="455" y="232" text-anchor="middle" font-size="11" fill="#3D3D3A">是</text>
+<rect x="633" y="220" width="24" height="17" rx="8" fill="#EAE8E0"/><text x="645" y="232" text-anchor="middle" font-size="11" fill="#3D3D3A">否</text>
+<rect x="350" y="250" width="186" height="112" rx="8" fill="#FBEFD9" stroke="#BA7517" stroke-width="0.6"/>
+<text x="364" y="273" font-size="13" font-weight="500" fill="#633806">BN2S2</text>
+<rect x="470" y="258" width="52" height="20" rx="10" fill="#FAC775"/><text x="496" y="272" text-anchor="middle" font-size="11" fill="#633806">跨核 1</text>
+<text x="364" y="297" font-size="11.5" fill="#854F0B">切 B,N2,S2</text>
+<text x="364" y="315" font-size="11.5" fill="#854F0B">仅 dQ 跨核;dK/dV 核内</text>
+<text x="364" y="333" font-size="11.5" fill="#854F0B">长 S2 填核 · fixpipe 轻</text>
+<text x="364" y="351" font-size="11.5" fill="#854F0B">MFU 量级:中高</text>
+<rect x="555" y="250" width="195" height="128" rx="8" fill="#FAEAE3" stroke="#D85A30" stroke-width="0.6"/>
+<text x="569" y="273" font-size="12" font-weight="500" fill="#712B13">BN2GS1S2(兜底)</text>
+<rect x="688" y="258" width="52" height="20" rx="10" fill="#F5C4B3"/><text x="714" y="272" text-anchor="middle" font-size="11" fill="#712B13">跨核 3</text>
+<text x="569" y="297" font-size="11.5" fill="#993C1D">切 G,S1,S2</text>
+<text x="569" y="315" font-size="11.5" fill="#993C1D">dQ+dK+dV 全跨核</text>
+<text x="569" y="333" font-size="11.5" fill="#993C1D">fixpipe-bound</text>
+<text x="569" y="351" font-size="11.5" fill="#993C1D">MFU 82%(实测)</text>
+<text x="569" y="369" font-size="11.5" fill="#993C1D">→ 触发 swizzle 枚举器</text>
+<rect x="30" y="400" width="700" height="172" rx="8" fill="#F4F2EC" stroke="#B4B2A9" stroke-width="0.6"/>
+<text x="46" y="424" font-size="12.5" font-weight="500" fill="#3D3D3A">对账(profiling:B=1, N2=2, S=16384, causal, BF16)</text>
+<text x="46" y="450" font-size="12" fill="#3D3D3A">B·N2 = 2 ≪ aicNum=32  →  填核率:  BN2 6%  |  BN2·G 50%  |  BN2GS1S2 100%</text>
+<text x="46" y="476" font-size="12" fill="#993C1D">→ 必走 BN2GS1S2 → 3 张量跨核(dQ 256MB FP32 ws + post + atomic)→ FixPipe 97.7% → MFU 82%</text>
+<text x="46" y="502" font-size="12" fill="#27500A">反推:若 B·N2 ≥ 32 → 走 BN2 → 0 跨核归约 → 瓶颈回 MAC → MFU 天花板 ~93%</text>
+<text x="46" y="530" font-size="12" font-weight="500" fill="#3D3D3A">一档 splitAxis(BN2 ↔ BN2GS1S2)≈ 10+ 个点 MFU</text>
+<text x="46" y="555" font-size="11" fill="#6B6A64">跨核归约张量数 = 砸 FixPipe 的根因;0 → 近算力上限,3 → 输出搬运 bound</text>
+</svg>
+
+**把这条链钉到 profiling(根因②的闭环):**
+
+```text
+B·N2 = 1·2 = 2 ≪ aicNum = 32
+  → BN2 只能填 2/32 = 6% 核;BN2G 也只 16/32 = 50% → 必须 BN2GS1S2
+  → 切了 G/S1/S2 → dQ+dK+dV 全跨核归约(FP32 workspace + post + atomic)
+  → dQ FP32 workspace 就 B·N1·S·D·4 = 256MB, 加上逐块 atomic 累加
+  → 砸 FixPipe/MTE3 → 实测 fixpipe_ratio = 0.977 是 bound, MFU 卡在 82%
+```
+
+**反推收益量级(为什么 splitAxis 选对很值钱):** 同样的算法,若 shape 是 `B=16,N2=2`(`B·N2=32`),BN2 直接填满、**0 跨核归约** → FixPipe 不再被 atomic 喂爆 → 瓶颈从 FixPipe 回到 MAC。按该 case 的 `mac_time=13670us` 估,MAC-bound 天花板 MFU `= 5.497e12/(13670e-6·432e12) ≈ 93%`。**即一档 splitAxis(BN2 vs BN2GS1S2)≈ 82%→93%,~10+ 个点 MFU。** 这就是 §13.6 那张 splitAxis 表背后的硬件价值。
+
+#### 13.6.2.2 splitAxis 四路:小例子 + 硬件账
+
+口径 `aicNum=8`(便于画),看每条的填核与跨核归约:
+
+**BN2 —— `B·N2 ≥ aicNum` 时的最优,0 跨核归约。**
+
+```text
+例: B=2, N2=8 → 16 个 (b,n2) 独立单元, aicNum=8
+  core c 独占 2 个 (b,n2): 该核内做完整 G·S1·S2 → dQ/dK/dV 全在核内归约
+  ┌ (b0,n2_0..7) ┐ ┌ (b1,n2_0..7) ┐   16 单元 / 8 核 = 每核 2 单元, 0 atomic
+硬件账: 0 跨核归约 → FixPipe 只搬"写一遍"的 dQ/dK/dV
+        → 不被 atomic 喂爆 → 最有机会逼近 MAC-bound(~93% 那档天花板)
+优势场景: 大 batch / 多 KV 头(B·N2 ≥ 32), 短中 S。
+```
+
+**BN2 multi-block —— BN2 的延伸,大 S 仍 0 跨核归约。**
+
+```text
+例: B·N2 ≥ aicNum 但 S 较大, 单 (b,n2) 跨多个 S1/S2 基本块
+  核内沿 S2 不变时累加 DK/DV(IS_DKV_RESIDENT_L0C, ≤256KB), 到边界 ProcessMulsAndCast 写回
+硬件账: DK/DV 在 L0C 驻留累加、写一遍 → 仍 0 跨核归约, 把 BN2 的好处带到大 S。
+优势场景: B·N2 够、但 S 超出普通 BN2 单块。
+```
+
+**BN2S2 —— 小 B·N2 但长 S2,只让 dQ 跨核(1 个),省下 dK/dV。**
+
+```text
+例: B=1, N2=2, S1=2048, S2=32768(长 S2), aicNum=8
+  B·N2=2 填不满 → 切长 S2: 2·⌈S2/chunk⌉ ≫ 8, 填满
+  只切了 S2 → dQ 跨核归约(1); G/S1 没切 → dK/dV 看得到全部 S1, 核内归约 ✓
+硬件账: 只 1 个张量(dQ)进 FP32 workspace, dK/dV 留核内
+        vs 若走 BN2GS1S2 还要切 S1 → dK/dV 也跨核(再多 2 个张量的 workspace+post)
+        长 S2 下这一步省掉 ~2/3 的跨核归约写回流量。
+优势场景: 长 S2(S2≫S1)、TND/all-same、非 FP32/FP8、无 RoPE、n1==n2。
+```
+
+**BN2GS1S2 —— 兜底,填满任意 shape,代价是 3 个输出全跨核。**
+
+```text
+例: B=1, N2=2, S1=S2=16384, causal, BF16(就是 profiling 那个)
+  B·N2=2, B·N2·G=16 都 <32 → 只能切到 G/S1/S2 才填满 32 核
+  3 个输出全跨核 → FP32 workspace(dQ 256MB+...) + post 归并 + atomic
+硬件账: 跨核归约最重 → FixPipe/MTE3 被喂爆(实测 97.7% bound, MFU 82%)
+        所以这条路径"一定"要配 §13.6.1 的 swizzle 枚举器(下节)把局部性挣回来。
+优势场景: 小 B·N2 且 S1≈S2(切不出长 S2),或 dtype/sparse/RoPE 把前几条都排除时。
+```
+
+对照表(跨核归约张量数 = 砸 FixPipe 的根因):
+
+| splitAxis | 切的轴 | 跨核归约张量数 | 并行度 | bound / MFU 量级 | 何时选 |
+|---|---|---|---|---|---|
+| BN2 | B,N2 | **0** | B·N2 | 近 MAC-bound / **~93%↑** | `B·N2 ≥ aicNum` |
+| BN2 multi | B,N2(+核内多块) | **0** | B·N2 | 同 BN2 | 同上但 S 大 |
+| BN2S2 | B,N2,S2 | **1**(dQ) | B·N2·⌈S2/chunk⌉ | fixpipe 轻 / 中高 | `B·N2<aicNum` 且长 S2 |
+| BN2GS1S2 | B,N2,G,S1,S2 | **3**(dQ+dK+dV) | 最大 | **fixpipe-bound / 82%(实测)** | 兜底/小 B·N2 且 S1≈S2 |
+
+> **回填 §13.6:** 把上面的 `跨核归约张量数` 与 `bound / MFU 量级` 两列加到 §13.6 那张 `SetSplitAxis` 命中表(原表头 `| 路径 | 近似命中条件 | 主要收益 | 主要排除项 |`),即可让那张"命中条件/收益/排除项"表直接带上"切这条会让几个输出跨核、对应 MFU 落在哪档"的硬件账。建议插在 `主要收益` 左侧:`| 路径 | 跨核归约张量数 | bound/MFU 量级 | 近似命中条件 | 主要收益 | 主要排除项 |`,数值同上(BN2=0/~93%↑、BN2 multi=0/同 BN2、BN2S2=1/中高、BN2GS1S2=3/82% 实测)。
+
+#### 13.6.2.3 枚举器五路(§13.6.1):小例子 + 硬件账
+
+**关键嵌套关系(先建立这个):** splitAxis 越粗(BN2),每核天然独占连续 K/V → 局部性自带,**不需要 swizzle**;splitAxis 切到最碎(BN2GS1S2/TND),各核散落在 `(B,N2,G,S1o,S2o)` 网格里 → 不管的话 K/V 重取 + 空扫 + 失衡。所以 **swizzle 枚举器是"细切之后挣回局部性与配平"的补偿**。下面伪代码细节见 §13.6.1,这里只给小例子和硬件账。
+
+**① 普通线性 scan —— host 已粗切,kernel 只顺序跳无效块。**
+
+```text
+例: causal, core0 拿 host 给的 [0,8), 顺序扫, IsValid 跳上三角
+  idx:    0  1  2  3  4  5  6  7
+  causal: ✓  ✓  ·  ✓  ✓  ·  ·  ✓   (·=无效, 空扫)
+硬件账: 无 swizzle 开销, 但 causal 下 ~一半是无效块的空扫(decode+IsValid 几 cycle/块)
+优势场景: 无效区小 / 无 L2 压力 —— 越简单越省。
+```
+
+**② 非 TND dense swizzle —— 压缩 valid-space + AIC stride,造 L2 滑动窗口。**
+
+```text
+例: coreNum=4, 有效块 v0..v7, continuousBlockNum=2
+  round0: core0→[v0,v1] core1→[v2,v3] core2→[v4,v5] core3→[v6,v7]
+  每核拿 2 个"连续有效块" → 同一时刻 4 核聚在相邻 K/V 上(滑动窗口)
+硬件账: 活跃 K/V 工作集 ≈ coreNum·continuousBlockNum·tile ≪ 128MB L2 → L2 命中拉满
+        (同前向 splitCoreMode 的 bound① 机制, 见 §4.3.3 / §2.5(3))
+优势场景: dense/no-mask + 大 invalid 或 L2 压力。
+```
+
+**③ 非 TND causal macro swizzle —— 宏块 + 三角配平,L2 局部性更强。**
+
+```text
+例: 4×4 宏块 causal 网格(M_SWIZZLE×N_SWIZZLE 一组), 对角宏块走三角内交错
+  macroS2: 0    1    2    3
+  macroS1 ┌────┬────┬────┬────┐
+     0    │ △  │    │    │    │   △=对角宏块(三角内 LocalIdxTriangular)
+     1    │ ▦  │ △  │    │    │   ▦=满宏块(LocalIdxDense)
+     2    │ ▦  │ ▦  │ △  │    │   空=SKIP
+     3    │ ▦  │ ▦  │ ▦  │ △  │
+硬件账: 一个宏块的 K/V 在 L2 里被一批核连续吃完再换 → 宏块尺寸贴 §2.6 的 512B Line/128B Sector
+        比逐块 swizzle 命中率更高; 三角内交错免掉对角块的半区空算(§4.1 TPL)
+优势场景: causal + S1==S2 + S 够大。
+```
+
+**④ TND dense swizzle —— batch prefix 免按最大 S 空转。**
+
+```text
+例: 3 个 batch 的 S2 块长 = [2, 4, 2]
+  按最大 S pad:  4×3 = 12 块(其中 4 块全空, 陪着长序列空算)
+  TND prefix 枚举: 2+4+2 = 8 个真实块 → 省 (12-8)/12 = 33%
+硬件账: 省掉的就是 pad 空算; 一般地省 ≈ 1 − avg_len/max_len 的算力
+        (varlen 越参差省越多, 这正是 TND 存在的根本收益)
+优势场景: varlen dense, 序列长度差异大。
+```
+
+**⑤ TND causal swizzle —— 成对 N2G 镜像把三角摊成矩形。**
+
+```text
+例: 两个 N2G group 拼镜像矩形, 再映回各自的 causal 三角
+  group A (正放三角) ◣  +  group B (倒放三角) ◥  →  拼成满矩形 ▦
+  envelopeS1×envelopeS2 矩形里每个点配平地发给核, 再反映射回真实 (s1,s2)
+硬件账: causal 三角 ≈ 半个矩形; 成对镜像后无效半区被另一半填满
+        → 有效率从 ~50% 提到接近 100%, 近 2× 于"按矩形空扫"
+优势场景: varlen causal(N2G 成对, 见 §13.6.1 的 halfN2G 约束)。
+```
+
+**⑥ TND band swizzle —— 只枚举带状 envelope,跳过大片空白。**
+
+```text
+例: 滑窗 band 宽 w=2(块), S=8 块
+  full 矩形: 8×8 = 64 块;  band 只有对角附近 ≈ w·S = 2·8 = 16 块
+  只枚举 band → 省 (64−16)/64 = 75%
+硬件账: 带宽 w ≪ S 时, 计算量从 ~S² 降到 ~w·S → 省 ≈ 1 − w/S, 即 S/w× 加速
+        (sliding-window attention 的 band 越窄收益越大)
+优势场景: band / sliding-window / prefix 类稀疏(varlen)。
+```
+
+#### 13.6.2.4 总表:shape regime → 选哪条 + 为什么
+
+| shape regime | splitAxis | 枚举器 | 硬件根因(一句话) |
+|---|---|---|---|
+| 大 B·N2(≥aicNum), 短中 S | BN2 | scan(无效区小)| 够填核 → 0 跨核归约 → 最接近 MAC-bound |
+| 大 B·N2, 大 S | BN2 multi | scan | 核内多块累加, 仍 0 跨核归约 |
+| 小 B·N2, 长 S2(S2≫S1) | BN2S2 | scan/swizzle | 切长 S2 填核, 只 dQ 跨核, dK/dV 留核内 |
+| 小 B·N2, S1≈S2, dense | BN2GS1S2 | 非TND dense swizzle | 必须细切 → 用 swizzle 挣回 L2 局部性 |
+| 小 B·N2, S1≈S2, causal | BN2GS1S2 | 非TND causal macro | 细切 + 三角配平 + 宏块 L2(就是 profiling 那个) |
+| varlen dense | TND/BN2S2 | TND dense | batch prefix 免最大 S 空转, 省 1−avg/max |
+| varlen causal | TND | TND causal | 成对 N2G 镜像, 三角→矩形, 近 2× |
+| varlen band/滑窗 | TND | TND band | 只枚举 band, 省 1−w/S |
+| FP32/FP8/HIFLOAT8/RoPE/复杂 sparse | BN2GS1S2 | 按 sparse 选 | dtype/optional 把前几条排除, 兜底 |
+
+**一句话收口:`B·N2 vs aicNum` 决定 splitAxis(粗→无跨核归约→近 MAC-bound;细→3 个输出跨核→fixpipe-bound),稀疏几何 + L2 压力决定枚举器(scan 省事 / dense swizzle 保 L2 / causal macro 配平+局部性 / TND 三兄弟分别治 varlen 的空转、三角、带状)。profiling 那个 case 落在"小 B·N2 + causal + 细切"格子里,所以必走 BN2GS1S2 + causal macro swizzle,也因此被 dQ/dK/dV 跨核归约钉成 fixpipe-bound、MFU 82%——而把它换成大 B·N2 走 BN2,理论可上探 ~93%。**
 
 ### 13.7 FAG Cube/Vector 优化点
 
