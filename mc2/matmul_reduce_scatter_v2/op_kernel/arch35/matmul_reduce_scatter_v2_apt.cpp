@@ -24,7 +24,8 @@ using namespace Mc2Tiling;
 #endif
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                    \
-      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))))
+     ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) || \
+     ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)))
 #include "quant_bmm_a2a_vec_reduce_fp8_hif8.h" // 新实现：All2All + Vec Reduce
 #include "quant_bmm_reduce_scatter_fp8_hif8.h" // 旧实现：原生 ReduceScatter
 using namespace Mc2Tiling;
@@ -83,7 +84,7 @@ using namespace MatmulReduceScatterV2Impl;
         }                                                                                                             \
     } while (0)
 
-template<bool TPL_ISPERBLOCK, bool TPL_TRANSA, bool TPL_TRANSB, bool TPL_INPUT, uint8_t TPL_OUTPUTDTYPE,
+template<bool TPL_ISPERBLOCK, bool TPL_TRANSA, bool TPL_TRANSB, uint8_t TPL_INPUT, uint8_t TPL_OUTPUTDTYPE,
          uint8_t TPL_SCALETYPE, uint8_t TPL_COMMALG, uint8_t TPL_COMM_MODE>
 __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
                                                     GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM,
@@ -109,8 +110,8 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
     }
 #elif (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_HIFLOAT8))) || \
        (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                  \
-        ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))))
-// float8/hif8
+       ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))) || \
+       ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)))
 #if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
     if constexpr (TPL_SCALETYPE == TPL_X1_X2_DTYPE_IS_FP8E8M0) {
         if constexpr (TPL_COMMALG == TPL_CCU_ALL2ALL_VEC_REDUCE) {
