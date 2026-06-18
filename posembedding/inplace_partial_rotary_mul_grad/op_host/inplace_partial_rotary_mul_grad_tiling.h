@@ -120,7 +120,6 @@ protected:
     gert::Shape cosShape_;
     uint64_t tilingKey_{0};
     int64_t blockSize_;
-    int64_t vLength_;
     int64_t dSplitCoef_;
     int64_t sliceStart_{0};
     int64_t sliceEnd_{0};
