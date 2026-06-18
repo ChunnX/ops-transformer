@@ -240,31 +240,32 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDtype() const
                 ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
                              ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                 "in mx quant mode, the dtypes of x and weight must be within the range "
-                "DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2/DT_FLOAT4_E1M2/DT_FLOAT4_E2M1"),
+                "DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2/DT_FLOAT4_E2M1"),
             return false);
     } else {
         OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_INT8 ||
                       inputParams_.aDtype == ge::DT_HIFLOAT8),
-                    OP_LOGE(context_->GetNodeName(),
-                            "In K-C/T-C quant mode, the expected dtype of x and weight should be \
-DT_FLOAT8_E4M3FN/DT_INT8/DT_HIFLOAT8, but actual dtype is %s, %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "x, weight",
+                        ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                        "in K-C/T-C quant mode, the dtypes of x and weight must be within the range "
+                        "DT_FLOAT8_E4M3FN/DT_INT8/DT_HIFLOAT8"),
                     return false);
 
         OP_CHECK_IF(!(inputParams_.scaleDtype == ge::DT_FLOAT || inputParams_.scaleDtype == ge::DT_BF16),
-                    OP_LOGE(context_->GetNodeName(),
-                            "In K-C/T-C quant mode, the expected dtype of scale should be \
-DT_FLOAT/DT_BF16, but actual dtype is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        inputParams_.opType, "scale",
+                        ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype),
+                        "in K-C/T-C quant mode, the dtype of scale must be within the range DT_FLOAT/DT_BF16"),
                     return false);
 
         if (context_->GetOptionalInputDesc(PERTOKEN_SCALE_INDEX) != nullptr) {
             OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
-                        OP_LOGE(context_->GetNodeName(),
-                                "In K-C quant mode, the expected dtype of perTokenScaleDtype should be \
-DT_FLOAT, but actual dtype is %s.",
-                                ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            inputParams_.opType, "perTokenScale",
+                            ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype),
+                            "in K-C quant mode, the dtype of perTokenScale must be DT_FLOAT"),
                         return false);
         }
     }
@@ -344,8 +345,10 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckFp4Shape(const gert::Shape &x
                 return false);
     // 2: mxfp4场景下不支持K轴为2
     OP_CHECK_IF(inputParams_.kSize == 2,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x", "2",
-                                                      "when the dtype of x is FLOAT4, k size cannot be 2"),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    inputParams_.opType, "x, weight",
+                    ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
+                    "when the dtype of x is FLOAT4, k size cannot be 2"),
                 return false);
     if (!inputParams_.transB) {
         OP_CHECK_IF(
