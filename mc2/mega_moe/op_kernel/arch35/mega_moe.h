@@ -387,6 +387,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if (coreLen != 0) {
         DataCopyPad(groupFlagListGm_[coreOffset], resetTensor_, rankSyncCopyParams);
     }
+    // combine量化模式下TokenGroupCompleteFlag清零
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        ResetTokenGroupCompleteFlags();
+    }
 }
 
 // ==================================================
@@ -851,7 +855,8 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenGroupCompleteFlags()
 {
     if constexpr(g_coreType == AIV) {
-        int32_t totalCounters = static_cast<int32_t>(static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE);
+        int32_t totalCounters = static_cast<int32_t>(
+            static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE);
         int32_t coreLen, coreOffset;
         TilingByCore(totalCounters, coreLen, coreOffset);
         GlobalTensor<int32_t> tokenGroupCompleteGm;
@@ -1104,9 +1109,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SendAndQuantBuffInit();
     SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
     ResetFlagList();             // 清理workSpace空间上的flag位
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        ResetTokenGroupCompleteFlags();
-    }
+
     QuantProcessInRank();        // 对本卡token的量化
     if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
@@ -1165,7 +1168,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
             QuantScaleOutType, QuantScaleOutType>(
             params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_,
-            vecSetSyncCom_, expertBeforeCnt_, gmm2PingPongIdx_, expertIdx, blockAivNum_);
+            vecSetSyncCom_, expertBeforeCnt_, gmm2PingPongIdx_, expertIdx);
         
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
             ProcessCombine(gmmAddrInfo, gmm2State, expertIdx);
