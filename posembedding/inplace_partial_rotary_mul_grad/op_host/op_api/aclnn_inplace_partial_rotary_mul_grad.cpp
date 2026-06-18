@@ -22,8 +22,8 @@ aclnnStatus aclnnInplacePartialRotaryMulGradGetWorkspaceSize(
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     aclnnStatus ret = aclnnInnerInplacePartialRotaryMulGradGetWorkspaceSize(
-        const_cast<aclTensor*>(dyRef), const_cast<aclTensor*>(cos), const_cast<aclTensor*>(sin),
-        const_cast<aclTensor*>(xOptional), rotaryMode, partialSlice,
+        const_cast<aclTensor*>(dyRef), cos, sin, xOptional,
+        rotaryMode, partialSlice,
         const_cast<aclTensor*>(dcosOut), const_cast<aclTensor*>(dsinOut),
         workspaceSize, executor);
     return ret;
