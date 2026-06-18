@@ -6,7 +6,7 @@
 
 /*!
  * \file moe_ep_dispatch_epilogue_tiling.cpp
- * \brief Expert-sorted epilogue tiling — perSlotBytes = ALIGN_UP(hidden*2, 512) + 512,
+ * \brief Expert-sorted epilogue tiling — perSlotBytes = Ceil(hidden*2, 512) * 512 + 512,
  *        eAlloc from output shape, workspace for rank+expert prefix sums.
  */
 
@@ -19,16 +19,13 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_tiling_utils.h"
+#include "ops_utils.h"
 #include "register/op_def_registry.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/moe_ep_dispatch_epilogue_tiling.h"
 #include "../../op_kernel/moe_ep_dispatch_epilogue_tiling_key.h"
 #include "../moe_ep_dispatch/op_kernel/moe_ep_dispatch_tiling.h"
-
-#ifndef ALIGN_UP
-#define ALIGN_UP(x, align) (((x) + (align)-1) & ~((align)-1))
-#endif
 
 using namespace AscendC;
 using namespace ge;
@@ -460,7 +457,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
-    uint64_t prefixSumBytes = ALIGN_UP(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t), 8UL)
+    uint64_t prefixSumBytes = OpsUtils::Ceil(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t), 8UL) * 8UL
                             + static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int64_t);
     uint64_t hitCountBytes = static_cast<uint64_t>(aivNum) * info.cfg.numLocalExperts * sizeof(int32_t);
     uint64_t rowStartBytes = static_cast<uint64_t>(aivNum) * info.cfg.numLocalExperts * sizeof(int64_t);
