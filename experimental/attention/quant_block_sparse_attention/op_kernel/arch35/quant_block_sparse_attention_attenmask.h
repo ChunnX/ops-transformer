@@ -377,7 +377,7 @@ __aicore__ inline void AttenMaskCopyInDnFun(LocalTensor<uint8_t> attenMaskUb,
             Duplicate<uint8_t>(attenMaskUb[offset], 0, s2Len * (constInfo.s1BaseSize >> 1));
         } else {
             if (needAtten) {
-                maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, true);
+                maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, sparseBlkIdx == runInfo.sparseBlkIdx1);
                 BoolCopyInRegbase(attenMaskUb[offset], srcTensor, maskOffset, s2Len,
                             constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
             } else {
