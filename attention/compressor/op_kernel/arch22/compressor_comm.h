@@ -141,14 +141,6 @@ struct Vec1SplitInfo {
     uint32_t dLoopCount = 0;
 };
 
-struct Vec2SplitInfo {
-    uint32_t dealedScCnt = 0;
-    uint32_t preScCnt = 0;
-    uint32_t dealScNum = 0;
-    uint32_t curBStart = 0;
-    uint32_t curScStart = 0;
-};
-
 struct CmpBlockInfo {
     __aicore__ inline CmpBlockInfo(){};
     __aicore__ inline CmpBlockInfo(uint32_t bIdx, uint32_t sIdx, bool needReset = false)
@@ -337,10 +329,10 @@ __aicore__ inline constexpr uint32_t BlockElementNum()
     return static_cast<uint32_t>(BYTE_BLOCK / sizeof(C));
 }
 
-template <typename T>
-__aicore__ inline constexpr T RepeatElementNum()
+template <typename C>
+__aicore__ inline constexpr uint32_t RepeatElementNum()
 {
-    return REPEAT_BLOCK_BYTE / sizeof(T);
+    return static_cast<uint32_t>(REPEAT_BLOCK_BYTE / sizeof(C));
 }
 
 template <typename T>
