@@ -17,7 +17,7 @@ import torch
 
 import quant_block_sparse_attention_golden
 import check_valid_param
-from quant_block_sparse_attention_paramset import ENABLED_PARAMS
+from quant_block_sparse_attention_paramset_batch import ENABLED_PARAMS
 
 
 SAVE_PATH = "bsa_testcase"
