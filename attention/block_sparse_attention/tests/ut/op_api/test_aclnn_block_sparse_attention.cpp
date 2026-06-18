@@ -13,7 +13,7 @@
 #include "acl/acl.h"
 #include "opdev/platform.h"
 #include <gtest/gtest.h>
-#include "attention\block_sparse_attention\op_host\op_api\aclnn_block_sparse_attention.h"
+#include "attention/block_sparse_attention/op_host/op_api/aclnn_block_sparse_attention.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/scalar_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
