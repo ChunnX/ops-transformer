@@ -155,15 +155,15 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadcast>::ProcessInSLoop(
                                        0};
         int64_t cosGmOffset = sStart * tilingData_->sliceLength;
 
-        LocalTensor<TCOS> cosBuffer = cosInQueue_.AllocTensor<TCOS>();
+        LocalTensor<TCOS> cosBuffer = cosInQueue_.template AllocTensor<TCOS>();
         DataCopyPad(cosBuffer, cosGm_[cosGmOffset], cosParams, padParamsCos_);
         cosInQueue_.EnQue(cosBuffer);
-        cosBuffer = cosInQueue_.DeQue<TCOS>();
+        cosBuffer = cosInQueue_.template DeQue<TCOS>();
 
-        LocalTensor<TCOS> sinBuffer = sinInQueue_.AllocTensor<TCOS>();
+        LocalTensor<TCOS> sinBuffer = sinInQueue_.template AllocTensor<TCOS>();
         DataCopyPad(sinBuffer, sinGm_[cosGmOffset], cosParams, padParamsCos_);
         sinInQueue_.EnQue(sinBuffer);
-        sinBuffer = sinInQueue_.DeQue<TCOS>();
+        sinBuffer = sinInQueue_.template DeQue<TCOS>();
 
         for (uint32_t ubLoopIdx = 0; ubLoopIdx < ubLoopCntB; ubLoopIdx++) {
             int64_t bStart = bBlockStart_ + ubLoopIdx * ubFactorB_;
@@ -184,15 +184,15 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadcast>::ProcessInSLoop(
             int64_t cosGmOffset =
                 bStart * tilingData_->s * tilingData_->sliceLength + sStart * tilingData_->sliceLength;
 
-            LocalTensor<TCOS> cosBuffer = cosInQueue_.AllocTensor<TCOS>();
+            LocalTensor<TCOS> cosBuffer = cosInQueue_.template AllocTensor<TCOS>();
             DataCopyPad(cosBuffer, cosGm_[cosGmOffset], cosParams, padParamsCos_);
             cosInQueue_.EnQue(cosBuffer);
-            cosBuffer = cosInQueue_.DeQue<TCOS>();
+            cosBuffer = cosInQueue_.template DeQue<TCOS>();
 
-            LocalTensor<TCOS> sinBuffer = sinInQueue_.AllocTensor<TCOS>();
+            LocalTensor<TCOS> sinBuffer = sinInQueue_.template AllocTensor<TCOS>();
             DataCopyPad(sinBuffer, sinGm_[cosGmOffset], cosParams, padParamsCos_);
             sinInQueue_.EnQue(sinBuffer);
-            sinBuffer = sinInQueue_.DeQue<TCOS>();
+            sinBuffer = sinInQueue_.template DeQue<TCOS>();
 
             ProcessInSBLoop(sStart, sLength, bStart, bLength, cosBuffer, sinBuffer);
             cosInQueue_.FreeTensor(cosBuffer);
@@ -227,12 +227,12 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadcast>::ProcessInSBLoop(
         DataCopyExtParams inParams = {static_cast<uint16_t>(totalCount), blockLenX, strideBytesX, 0, 0};
         DataCopyExtParams outParams = {static_cast<uint16_t>(totalCount), blockLenX, 0, strideBytesX, 0};
 
-        LocalTensor<TDY> inBuffer = gradInQueue_.AllocTensor<TDY>();
-        LocalTensor<TDY> outBuffer = xGradOutQueue_.AllocTensor<TDY>();
+        LocalTensor<TDY> inBuffer = gradInQueue_.template AllocTensor<TDY>();
+        LocalTensor<TDY> outBuffer = xGradOutQueue_.template AllocTensor<TDY>();
 
         DataCopyPad(inBuffer, gradGm_[gradOffset], inParams, padParamsX_);
         gradInQueue_.EnQue(inBuffer);
-        inBuffer = gradInQueue_.DeQue<TDY>();
+        inBuffer = gradInQueue_.template DeQue<TDY>();
 
         auto *inUb = const_cast<__local_mem__ TDY *>(inBuffer.GetPhyAddr());
         auto *outUb = const_cast<__local_mem__ TDY *>(outBuffer.GetPhyAddr());
@@ -259,7 +259,7 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadcast>::ProcessInSBLoop(
 
         gradInQueue_.FreeTensor(inBuffer);
         xGradOutQueue_.EnQue(outBuffer);
-        outBuffer = xGradOutQueue_.DeQue<TDY>();
+        outBuffer = xGradOutQueue_.template DeQue<TDY>();
         DataCopyPad(dyOutGm_[gradOffset], outBuffer, outParams);
         xGradOutQueue_.FreeTensor(outBuffer);
     }
