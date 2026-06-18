@@ -123,8 +123,8 @@ template <typename TDY, typename TCOS>
 __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::ProcessNLoop(
     int64_t sIdx, uint32_t currSNum, int64_t bIdx)
 {
-    LocalTensor<TCOS> cosBuffer = cosInQue_.AllocTensor<TCOS>();
-    LocalTensor<TCOS> sinBuffer = sinInQue_.AllocTensor<TCOS>();
+    LocalTensor<TCOS> cosBuffer = cosInQue_.template AllocTensor<TCOS>();
+    LocalTensor<TCOS> sinBuffer = sinInQue_.template AllocTensor<TCOS>();
 
     int64_t cosGmOffset = sIdx * tilingData_->sliceLength;
     DataCopyExtParams cosCopyParams = {static_cast<uint16_t>(currSNum * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0,
@@ -132,11 +132,11 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::ProcessNLoop(
 
     DataCopyPad(cosBuffer, cosGm_[cosGmOffset], cosCopyParams, padParamsCos_);
     cosInQue_.EnQue(cosBuffer);
-    cosBuffer = cosInQue_.DeQue<TCOS>();
+    cosBuffer = cosInQue_.template DeQue<TCOS>();
 
     DataCopyPad(sinBuffer, sinGm_[cosGmOffset], cosCopyParams, padParamsCos_);
     sinInQue_.EnQue(sinBuffer);
-    sinBuffer = sinInQue_.DeQue<TCOS>();
+    sinBuffer = sinInQue_.template DeQue<TCOS>();
 
     int64_t baseOffset = (bIdx * tilingData_->s + sIdx) * tilingData_->n * tilingData_->d;
     ProcessN(sIdx, currSNum, bIdx, baseOffset);
@@ -150,24 +150,24 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::ProcessN(
     int64_t sIdx, uint32_t currSNum, int64_t bIdx, int64_t baseOffset)
 {
     uint32_t ubLoopNumN = static_cast<uint32_t>(tilingData_->ubLoopNumN);
-    LocalTensor<TCOS> cosBuffer = cosInQue_.DeQue<TCOS>();
-    LocalTensor<TCOS> sinBuffer = sinInQue_.DeQue<TCOS>();
+    LocalTensor<TCOS> cosBuffer = cosInQue_.template DeQue<TCOS>();
+    LocalTensor<TCOS> sinBuffer = sinInQue_.template DeQue<TCOS>();
 
     for (uint32_t idxN = 0; idxN < ubLoopNumN; idxN++) {
         uint32_t currDNum =
             (idxN == ubLoopNumN - 1) ? static_cast<uint32_t>(tilingData_->ubTailFactorN) : ubFactorN_;
         int64_t offset = baseOffset + idxN * ubFactorN_ * tilingData_->d + tilingData_->sliceStart;
 
-        LocalTensor<TDY> inBuffer = gradInQue_.AllocTensor<TDY>();
+        LocalTensor<TDY> inBuffer = gradInQue_.template AllocTensor<TDY>();
         uint32_t strideBytesX =
             static_cast<uint32_t>((tilingData_->d - tilingData_->sliceLength) * sizeof(TDY));
         uint32_t blockLenX = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY));
         DataCopyExtParams copyInParams = {static_cast<uint16_t>(currSNum * currDNum), blockLenX, strideBytesX, 0, 0};
         DataCopyPad(inBuffer, gradGm_[offset], copyInParams, padParamsX_);
         gradInQue_.EnQue(inBuffer);
-        inBuffer = gradInQue_.DeQue<TDY>();
+        inBuffer = gradInQue_.template DeQue<TDY>();
 
-        LocalTensor<TDY> outBuffer = xGradOutQue_.AllocTensor<TDY>();
+        LocalTensor<TDY> outBuffer = xGradOutQue_.template AllocTensor<TDY>();
 
         // 根据 mode 选择 VF
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
@@ -190,7 +190,7 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::ProcessN(
 
         gradInQue_.FreeTensor(inBuffer);
         xGradOutQue_.EnQue(outBuffer);
-        outBuffer = xGradOutQue_.DeQue<TDY>();
+        outBuffer = xGradOutQue_.template DeQue<TDY>();
 
         DataCopyExtParams copyOutParams = {static_cast<uint16_t>(currSNum * currDNum), blockLenX, 0, strideBytesX, 0};
         DataCopyPad(dyOutGm_[offset], outBuffer, copyOutParams);

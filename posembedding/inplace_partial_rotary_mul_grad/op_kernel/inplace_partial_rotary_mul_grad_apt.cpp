@@ -43,57 +43,45 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
         return;
     }
 
+    REGISTER_TILING_DEFAULT(InplacePartialRotaryMulGradTilingData);
+    GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, tilingData, tiling);
+
     // No-op: empty slice
-    {
-        GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, _noop, tiling);
-        if (_noop.sliceLength == 0) {
-            return;
-        }
+    if (tilingData.sliceLength == 0) {
+        return;
     }
 
     TPipe pipe;
 
-    if (TILING_KEY_IS(InplacePartialRotaryMulGradTilingKey::TILING_KEY_ABA)) {
-        GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, _tiling, tiling);
-        const InplacePartialRotaryMulGradRegbaseParams *__restrict__ tilingData =
-            &_tiling.inplacePartialRotaryMulGradParams;
+    if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_ABA))) {
+        const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
         InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, false> op;
-        op.Init(&pipe, tilingData, dy, cos, sin, dyOut);
+        op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
-    } else if (TILING_KEY_IS(InplacePartialRotaryMulGradTilingKey::TILING_KEY_BA)) {
-        GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, _tiling, tiling);
-        const InplacePartialRotaryMulGradRegbaseParams *__restrict__ tilingData =
-            &_tiling.inplacePartialRotaryMulGradParams;
+    } else if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_BA))) {
+        const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
         InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, true> op;
-        op.Init(&pipe, tilingData, dy, cos, sin, dyOut);
+        op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
-    } else if (TILING_KEY_IS(InplacePartialRotaryMulGradTilingKey::TILING_KEY_BAB)) {
-        GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, _tiling, tiling);
-        const InplacePartialRotaryMulGradRegbaseParams *__restrict__ tilingData =
-            &_tiling.inplacePartialRotaryMulGradParams;
+    } else if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_BAB))) {
+        const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
         InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS> op;
-        op.Init(&pipe, tilingData, dy, cos, sin, dyOut);
+        op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
-    } else if (TILING_KEY_IS(InplacePartialRotaryMulGradTilingKey::TILING_KEY_AB)) {
-        GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, _tiling, tiling);
-        const InplacePartialRotaryMulGradRegbaseABParams *__restrict__ tilingData =
-            &_tiling.inplacePartialRotaryMulGradABParams;
+    } else if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_AB))) {
+        const InplacePartialRotaryMulGradRegbaseABParams &params = tilingData.inplacePartialRotaryMulGradABParams;
         InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS> op;
-        op.Init(&pipe, tilingData, dy, cos, sin, dyOut);
+        op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
-    } else if (TILING_KEY_IS(InplacePartialRotaryMulGradTilingKey::TILING_KEY_A)) {
-        GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, _tiling, tiling);
-        const InplacePartialRotaryMulGradRegbaseParams *__restrict__ tilingData =
-            &_tiling.inplacePartialRotaryMulGradParams;
+    } else if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_A))) {
+        const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
         InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, false> op;
-        op.Init(&pipe, tilingData, dy, cos, sin, dyOut);
+        op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
-    } else if (TILING_KEY_IS(InplacePartialRotaryMulGradTilingKey::TILING_KEY_B)) {
-        GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, _tiling, tiling);
-        const InplacePartialRotaryMulGradRegbaseParams *__restrict__ tilingData =
-            &_tiling.inplacePartialRotaryMulGradParams;
+    } else if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_B))) {
+        const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
         InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, true> op;
-        op.Init(&pipe, tilingData, dy, cos, sin, dyOut);
+        op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
     }
 }
