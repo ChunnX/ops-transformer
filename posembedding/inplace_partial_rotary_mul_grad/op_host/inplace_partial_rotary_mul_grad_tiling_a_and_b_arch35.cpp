@@ -13,9 +13,10 @@
  * \brief A/B template tiling for InplacePartialRotaryMulGrad (NO_BROADCAST / BROADCAST_BSN)
  */
 #include "inplace_partial_rotary_mul_grad_tiling.h"
-#include "../op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_key.h"
 
 namespace optiling {
+constexpr uint64_t TILING_KEY_A = 205;
+constexpr uint64_t TILING_KEY_B = 206;
 constexpr uint64_t INPLACE_PARTIAL_ROTARY_MUL_GRAD_A_AND_B_TILING_PRIORITY = 40000;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t UB_FACTOR = 4;
@@ -150,8 +151,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAAndB::PostTiling()
     SetTilingData();
 
     uint32_t tilingKey = (layout_ == InplacePartialRotaryMulGradLayout::NO_BROADCAST)
-                             ? static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_A)
-                             : static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_B);
+                             ? static_cast<uint32_t>(TILING_KEY_A)
+                             : static_cast<uint32_t>(TILING_KEY_B);
 
     tilingKey_ = static_cast<uint64_t>(tilingKey);
     context_->SetBlockDim(usedCoreNum_);
