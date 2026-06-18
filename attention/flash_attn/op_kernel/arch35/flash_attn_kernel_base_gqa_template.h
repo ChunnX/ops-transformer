@@ -911,8 +911,15 @@ public:
             if (constInfo.aicIdx < constInfo.coreNum) {
                 FlashAttention(sectionIdx);
             }
-            if ASCEND_IS_AIV {
-                FlashDecode(sectionIdx);
+            if (isFd) {
+                // section 级硬同步：FA 完成后 AIC/AIV 对齐，再进入 AIV-only FD；
+                // FD 完成后再次对齐，避免 AIC 提前进入下一 section 的 FA 而在 bmm 跨核等待处
+                // 永久阻塞（AIV 仍在上一个 section 的 FD combine 中）。
+                AscendC::SyncAll();
+                if ASCEND_IS_AIV {
+                    FlashDecode(sectionIdx);
+                }
+                AscendC::SyncAll();
             }
         }
 
