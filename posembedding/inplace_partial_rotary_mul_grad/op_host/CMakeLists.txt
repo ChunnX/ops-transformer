@@ -9,10 +9,10 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnInner PRIVATE
         inplace_partial_rotary_mul_grad_def.cpp
     )
-    add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn_inner)
 endif()
 
 if (BUILD_OPS_RTY_KERNEL)
@@ -25,5 +25,5 @@ if (BUILD_OPS_RTY_KERNEL)
                     --op_relocatable_kernel_binary=true
     )
 else()
-    add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn_inner)
 endif()
