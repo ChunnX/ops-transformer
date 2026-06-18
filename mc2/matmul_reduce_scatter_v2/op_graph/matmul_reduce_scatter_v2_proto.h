@@ -79,7 +79,7 @@ REG_OP(MatmulReduceScatterV2)
     .ATTR(group_size, Int, 0)
     .ATTR(is_amax_out, Bool, false)
     .ATTR(y_dtype, Int, 0)
-    .ATTR(comm_mode, String, "aicpu")
+    .ATTR(comm_mode, String, "ai_cpu")
     .OP_END_FACTORY_REG(MatmulReduceScatterV2)
 }
 #endif  // MATMUL_REDUCE_SCATTER_V2_PROTO_H_
