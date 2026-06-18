@@ -81,12 +81,8 @@ public:
 
     // using ConstInfoX = typename CubeBlockType::ConstInfoX;
 
-    // CV buffers
-    TPipe tPipe;
-    TBuf<TPosition::A1> L1_P0, L1_P1, L1_P2;
-    TBuf<TPosition::A1> L1_PScale;
-    TBuf<TPosition::VECIN> UB_MM1Res0, UB_MM1Res1;
-    TBuf<TPosition::VECIN> UB_MM2Res;
+    __ubuf__ void *mm1Res[2], *mm2Res;
+    __cbuf__ void *p1[3], *pscale;
     int bmm1_id{0};
     int bmm2_id{4};
 
@@ -124,9 +120,6 @@ public:
 
         InitConstInfo();
 
-        cubeBlock.SetTPipe(tPipe);
-        vecFaBlock.SetTPipe(tPipe);
-
         keyPtr = key;
         valuePtr = value;
         actualSeqLengthsGmQ = (__gm__ uint64_t *)actualSeqLengths;
@@ -152,22 +145,22 @@ public:
     {
         constexpr uint32_t mm2LeftSize = 128 * 512;
         constexpr uint32_t pScaleSize = 128 * 512 / 32;
-        // 保存p结果的L1内存，triple buffer
-        tPipe.InitBuffer(L1_P0, mm2LeftSize);
-        tPipe.InitBuffer(L1_P1, mm2LeftSize);
-        tPipe.InitBuffer(L1_P2, mm2LeftSize);
-        tPipe.InitBuffer(L1_PScale, pScaleSize);
+        // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
+        p1[0] = (__cbuf__ void *)get_imm(0);
+        p1[1] = (__cbuf__ void *)get_imm(mm2LeftSize);
+        p1[2] = (__cbuf__ void *)get_imm(mm2LeftSize * 2);
+        pscale = (__cbuf__ void *)get_imm(mm2LeftSize * 3);
 
         constexpr uint32_t mm1ResultSize = 128 / 2 * 512 * 4 / 2;
         constexpr uint32_t mm2ResultSize = 128 / 2 * 128 * 4;
-        tPipe.InitBuffer(UB_MM1Res0, mm1ResultSize);
-        tPipe.InitBuffer(UB_MM1Res1, mm1ResultSize);
-        tPipe.InitBuffer(UB_MM2Res, mm2ResultSize);
+        mm1Res[0] = (__ubuf__ void *)get_imm(0); 
+        mm1Res[1] = (__ubuf__ void *)get_imm(mm1ResultSize);
+        mm2Res = (__ubuf__ void *)get_imm(mm1ResultSize * 2);
 
-        // 填充 pscale 为全 1 MX scale（0x7f7f = half 格式的全 1）
-        if ASCEND_IS_AIC {
-            LocalTensor<int16_t> pscaleTensor = L1_PScale.Get<int16_t>();
-            InitConstValue(pscaleTensor, {1, pScaleSize / 32, 0, 0x7f7f});
+        if ASCEND_IS_AIC{
+            int64_t repeatBit = (static_cast<uint64_t>(128 * 512 / 32) << 16) |
+                            (static_cast<uint64_t>(0) << 32) | 1;
+            create_cbuf_matrix((__cbuf__ int16_t * )pscale, repeatBit, GetScalarBitcodeToHalf(0x7f7f));
         }
     }
 
@@ -258,17 +251,17 @@ public:
     }
 
     __aicore__ inline void prefree_l0ab(){
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)4);
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)5);
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)6);
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)7);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)0);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)1);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)2);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)3);
     }
 
     __aicore__ inline void postalloc_l0ab(){
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)4);
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)5);
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)6);
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)7);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)0);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)1);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)2);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)3);
     }
 
     __aicore__ inline void postalloc_l0c(){
@@ -376,22 +369,19 @@ public:
     }
 
     
-    __aicore__ inline void ExecuteTask_MX(uint64_t loop, bool runInfo[3], uint32_t bIdxp[3], uint32_t n2Idxp[3],
+    __aicore__ inline void ExecuteTask_MX(uint64_t loop, bool runInfo[3], uint32_t bIdxp[3], uint32_t n2Idxp[3], 
                                             uint32_t s2Idxp[3],
-                                                    uint32_t loopIdx[3], uint32_t mloopIdx[3], uint32_t vecMbaseIdxp[3], uint32_t curS2Loop[3],
+                                                    uint32_t loopIdx[3], uint32_t mloopIdx[3], uint32_t vecMbaseIdxp[3], uint32_t curS2Loop[3], 
                                                     bool isFirstS2Loop[3], bool isLastS2Loop[3])
     {
         if (runInfo[loop % 3]) {
             for (uint32_t subLoop = 0; subLoop < 2; ++subLoop) {
                 bmm1_id ++;
                 if ASCEND_IS_AIC {
-                    LocalTensor<float> mm1ResTensor = (subLoop == 0) ? UB_MM1Res0.Get<float>() : UB_MM1Res1.Get<float>();
-                    cubeBlock.IterateBmm1(mm1ResTensor, bmm1_id % 2, bIdxp[loop % 3], n2Idxp[loop % 3],
+                    cubeBlock.IterateBmm1(mm1Res[subLoop], bmm1_id % 2, bIdxp[loop % 3], n2Idxp[loop % 3], 
                                     s2Idxp[loop % 3], curS2Loop[loop % 3], subLoop);
                 } else {
-                    LocalTensor<float> mm1ResTensor = (subLoop == 0) ? UB_MM1Res0.Get<float>() : UB_MM1Res1.Get<float>();
-                    LocalTensor<float8_e4m3_t> p1Tensor = (loop % 3 == 0) ? L1_P0.Get<float8_e4m3_t>() : ((loop % 3 == 1) ? L1_P1.Get<float8_e4m3_t>() : L1_P2.Get<float8_e4m3_t>());
-                    vecFaBlock.ProcessVec1(mm1ResTensor, p1Tensor, bmm1_id % 2, loop % 3, bIdxp[loop % 3], s2Idxp[loop % 3],
+                    vecFaBlock.ProcessVec1(p1[loop % 3], mm1Res[subLoop], bmm1_id % 2, loop % 3, bIdxp[loop % 3], s2Idxp[loop % 3],
                                             loopIdx[loop % 3], mloopIdx[loop % 3], vecMbaseIdxp[loop % 3], curS2Loop[loop % 3], subLoop);
                 }
             }
@@ -399,14 +389,10 @@ public:
         if (loop >= PRELOAD_N) {
             if (runInfo[(loop - 2) % 3]) {
                 if ASCEND_IS_AIC {
-                    LocalTensor<float> mm2ResTensor = UB_MM2Res.Get<float>();
-                    LocalTensor<float8_e4m3_t> p1Tensor = ((loop - 2) % 3 == 0) ? L1_P0.Get<float8_e4m3_t>() : (((loop - 2) % 3 == 1) ? L1_P1.Get<float8_e4m3_t>() : L1_P2.Get<float8_e4m3_t>());
-                    LocalTensor<float8_e8m0_t> pscaleTensor = L1_PScale.Get<float8_e8m0_t>();
-                    cubeBlock.IterateBmm2((loop - 2) % 3, mm2ResTensor, p1Tensor, bmm2_id, pscaleTensor,
+                    cubeBlock.IterateBmm2((loop - 2) % 3, mm2Res, p1[(loop - 2) % 3], bmm2_id, pscale, 
                                             bIdxp[(loop - 2) % 3], n2Idxp[(loop - 2) % 3], s2Idxp[(loop - 2) % 3]);
                 } else {
-                    LocalTensor<float> mm2ResTensor = UB_MM2Res.Get<float>();
-                    vecFaBlock.ProcessVec2(mm2ResTensor, bmm2_id, loopIdx[(loop - 2) % 3], mloopIdx[(loop - 2) % 3], bIdxp[(loop - 2) % 3], n2Idxp[(loop - 2) % 3],
+                    vecFaBlock.ProcessVec2(mm2Res, bmm2_id, loopIdx[(loop - 2) % 3], mloopIdx[(loop - 2) % 3], bIdxp[(loop - 2) % 3], n2Idxp[(loop - 2) % 3], 
                                             vecMbaseIdxp[(loop - 2) % 3],
                                             curS2Loop[(loop - 2) % 3]);
                 }
