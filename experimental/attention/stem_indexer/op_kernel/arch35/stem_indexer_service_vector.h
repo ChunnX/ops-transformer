@@ -74,6 +74,8 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT2 = EVENT_ID3;
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
     static constexpr uint32_t MAX_TOPK_COUNT = 256;
+    static constexpr uint32_t TOPK_ALIGN_SIZE = 256;
+    static constexpr uint32_t VEC_REPEAT_SIZE = 64;
     static constexpr int32_t K_SMALL_SEQ_MAX = 56;
     static constexpr int32_t K_MEDIUM_SEQ_MAX = 160;
 private:
@@ -338,6 +340,7 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(
     uint32_t outputLen, int64_t baseLenOffset, int64_t baseOutOffset, uint32_t curAivGSize,
     int64_t curAivGS1ProcNum, uint32_t actS1Size, uint32_t s1Idx)
 {
+    outputLen = Min(outputLen, MAX_TOPK_COUNT);
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
     Duplicate(indiceLenLocal_, outputLen, 1);
@@ -450,7 +453,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         
         // 动态更新 topK（buffer 布局已在 InitBuffers 按最大 topkCount_ 固定，此处仅更新标量）
         topkOp_.SetTopK(topkSelectNum);
-        uint32_t topkSelectNumAlign256 = SICommon::Align((uint32_t)topkSelectNum, (uint32_t)256);
+        uint32_t topkSelectNumAlign256 = SICommon::Align((uint32_t)topkSelectNum, (uint32_t)TOPK_ALIGN_SIZE);
         
         // 当前基本块的s2范围
         uint32_t s2BlockEnd = Min(s2BlockStart + s2BaseSize_, Max(curS1RealS2Len - windowSize_, 0));
@@ -463,8 +466,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         indiceLenCopyParams.srcStride = 0;
         indiceLenCopyParams.dstStride = 0;
         uint32_t copyCount = s2BlockValidLen;
-        uint64_t copyMask = (copyCount <= 64) ? copyCount : 64;
-        uint8_t copyRepeat = (copyCount + 63) / 64;
+        uint64_t copyMask = (copyCount <= VEC_REPEAT_SIZE) ? copyCount : VEC_REPEAT_SIZE;
+        uint8_t copyRepeat = (copyCount + VEC_REPEAT_SIZE - 1) / VEC_REPEAT_SIZE;
         AscendC::CopyRepeatParams copyRepeatParams{1, 1, 8, 8};
         // 内层循环：遍历同一 S1 位置下的 G 个行
         for (uint32_t gIdx = 0; gIdx < curAivGSize; gIdx++) {
@@ -493,19 +496,19 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 if (topkSelectNumAlign256 != (uint32_t)topkSelectNum) {
                     uint64_t mask[1];
                     mask[0] = ~0;
-                    mask[0] = mask[0] << (topkSelectNum % 64);
-                    Duplicate(mrgValueLocal_[mrgValueOffset + topkSelectNum / 64 * 64], (uint32_t)zero, mask, 1, 1, 0);
-                    Duplicate(mrgValueLocal_[mrgValueOffset + topkSelectNum / 64 * 64 + 64],(uint32_t)zero,
-                              topkSelectNumAlign256 - (topkSelectNum / 64 * 64 + 64));
+                    mask[0] = mask[0] << (topkSelectNum % VEC_REPEAT_SIZE);
+                    Duplicate(mrgValueLocal_[mrgValueOffset + topkSelectNum / VEC_REPEAT_SIZE * VEC_REPEAT_SIZE], (uint32_t)zero, mask, 1, 1, 0);
+                    Duplicate(mrgValueLocal_[mrgValueOffset + topkSelectNum / VEC_REPEAT_SIZE * VEC_REPEAT_SIZE + VEC_REPEAT_SIZE],(uint32_t)zero,
+                              topkSelectNumAlign256 - (topkSelectNum / VEC_REPEAT_SIZE * VEC_REPEAT_SIZE + VEC_REPEAT_SIZE));
                 }
             }
             if (s2BlockValidLenAlign256 != (uint32_t)s2BlockValidLen) {
                 uint64_t mask[1];
                 mask[0] = ~0;
-                mask[0] = mask[0] << (s2BlockValidLen % 64);
-                Duplicate(mrgValueLocal_[mrgValueOffset + topkSelectNumAlign256 + s2BlockValidLen / 64 * 64], (uint32_t)zero, mask, 1, 1, 0);
-                Duplicate(mrgValueLocal_[mrgValueOffset + topkSelectNumAlign256 + s2BlockValidLen / 64 * 64 + 64], (uint32_t)zero,
-                            s2BlockValidLenAlign256 - (s2BlockValidLen / 64 * 64 + 64));
+                mask[0] = mask[0] << (s2BlockValidLen % VEC_REPEAT_SIZE);
+                Duplicate(mrgValueLocal_[mrgValueOffset + topkSelectNumAlign256 + s2BlockValidLen / VEC_REPEAT_SIZE * VEC_REPEAT_SIZE], (uint32_t)zero, mask, 1, 1, 0);
+                Duplicate(mrgValueLocal_[mrgValueOffset + topkSelectNumAlign256 + s2BlockValidLen / VEC_REPEAT_SIZE * VEC_REPEAT_SIZE + VEC_REPEAT_SIZE], (uint32_t)zero,
+                            s2BlockValidLenAlign256 - (s2BlockValidLen / VEC_REPEAT_SIZE * VEC_REPEAT_SIZE + VEC_REPEAT_SIZE));
             }
             if (isFirstS2InnerLoop) {
                 // 如果是首块，需要把initBlock的位置刷0
@@ -526,8 +529,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 PipeBarrier<PIPE_V>();
             }
             copyCount = topkSelectNumAlign256;
-            copyMask = (copyCount <= 64) ? copyCount : 64;
-            copyRepeat = (copyCount + 63) / 64;
+            copyMask = (copyCount <= VEC_REPEAT_SIZE) ? copyCount : VEC_REPEAT_SIZE;
+            copyRepeat = (copyCount + VEC_REPEAT_SIZE - 1) / VEC_REPEAT_SIZE;
             Copy(mrgValueLocal_[mrgValueOffset], scoreOutLocal_, copyMask, copyRepeat, copyRepeatParams);
             Copy(globalIndexLocal_[globalIndexOffset], indicesOutLocal_, copyMask, copyRepeat, copyRepeatParams);
             // ========== 索引重组和GM搬出（仅最后一个基本块）==========
