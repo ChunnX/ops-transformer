@@ -29,8 +29,16 @@ constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t ORI_KV_INPUT_INDEX = 1;
-constexpr uint32_t RETURN_SOFTMAX_INDEX = 11;
+constexpr uint32_t RETURN_SOFTMAX_INDEX = 9;
 constexpr uint32_t LAYOUT_ORI_KEY_ATTR_INDEX = 7;
+
+int64_t GetKvHeadNum(const gert::Shape *oriKvShape, const std::string &inputLayoutOriKey)
+{
+    if (inputLayoutOriKey == "TND") {
+        return oriKvShape->GetDim(DIM_INDEX_1);
+    }
+    return oriKvShape->GetDim(DIM_INDEX_2);
+}
 
 ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
 {
@@ -53,26 +61,20 @@ ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutOriKeyPtr);
     std::string inputLayoutOriKey = std::string(inputLayoutOriKeyPtr);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
+    int64_t kvHeadNum = GetKvHeadNum(oriKvShape, inputLayoutOriKey);
 
     if (returnSoftmaxLse) {
         if (queryShape->GetDimNum() == DIM_NUM_3) {
-            if (inputLayoutOriKey == "PA_BBND") {
-                softmaxLseShape->SetDimNum(DIM_NUM_3);
-                softmaxLseShape->SetDim(DIM_INDEX_0, oriKvShape->GetDim(DIM_INDEX_2));
-                softmaxLseShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
-                softmaxLseShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / oriKvShape->GetDim(DIM_INDEX_2));
-            } else {
-                softmaxLseShape->SetDimNum(DIM_NUM_3);
-                softmaxLseShape->SetDim(DIM_INDEX_0, oriKvShape->GetDim(DIM_INDEX_1));
-                softmaxLseShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
-                softmaxLseShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / oriKvShape->GetDim(DIM_INDEX_1));
-            }
+            softmaxLseShape->SetDimNum(DIM_NUM_3);
+            softmaxLseShape->SetDim(DIM_INDEX_0, kvHeadNum);
+            softmaxLseShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
+            softmaxLseShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / kvHeadNum);
         } else {
             softmaxLseShape->SetDimNum(DIM_NUM_4);
             softmaxLseShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
-            softmaxLseShape->SetDim(DIM_INDEX_1, oriKvShape->GetDim(DIM_INDEX_2));
+            softmaxLseShape->SetDim(DIM_INDEX_1, kvHeadNum);
             softmaxLseShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1));
-            softmaxLseShape->SetDim(DIM_INDEX_3, queryShape->GetDim(DIM_INDEX_2) / oriKvShape->GetDim(DIM_INDEX_2));
+            softmaxLseShape->SetDim(DIM_INDEX_3, queryShape->GetDim(DIM_INDEX_2) / kvHeadNum);
         }
     } else {
         softmaxLseShape->SetDimNum(DIM_NUM_1);
@@ -87,6 +89,7 @@ ge::graphStatus InferDataTypeSparseFlashMla(gert::InferDataTypeContext *context)
             return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(0, inputDataType);
+    context->SetOutputDataType(1, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }
 
