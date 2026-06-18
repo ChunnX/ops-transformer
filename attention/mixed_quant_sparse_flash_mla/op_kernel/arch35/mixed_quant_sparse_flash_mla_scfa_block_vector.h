@@ -139,10 +139,11 @@ public:
 private:
     __aicore__ inline uint32_t StagingMSize(const ConstInfo &constInfo) const
     {
+        (void)constInfo;
         if constexpr (IS_SPLIT_G) {
             return regbaseutil::S2_SPLIT_STAGING_M_SIZE_SPLIT_G;
         } else {
-            return static_cast<uint32_t>(constInfo.gSize);
+            return regbaseutil::S2_SPLIT_STAGING_M_SIZE;
         }
     }
 

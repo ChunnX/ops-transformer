@@ -588,6 +588,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
 
     // -------------set workspacesize-----------------
     constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
+    constexpr uint32_t M_BASE_SIZE = 64;             // N1<64时FD staging仍按64行基本块偏移
     constexpr uint32_t M_BASE_SIZE_SPLIT_G = 128;    // N1=128时FD staging按配对cube的128行逻辑M布局
     constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
     constexpr uint32_t D_SIZE = 512;
@@ -600,7 +601,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     if (tilingInfo->gSize > 64) {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * 2 * TRIPLE_BUFFER_NUM * (aicNum >> 1)); // v0区域仍用bf16
     }
-    uint32_t fdStagingMSize = (tilingInfo->gSize > 64) ? M_BASE_SIZE_SPLIT_G : tilingInfo->gSize;
+    uint32_t fdStagingMSize = (tilingInfo->gSize > 64) ? M_BASE_SIZE_SPLIT_G : M_BASE_SIZE;
     uint32_t fdStagingSlotNum = (tilingInfo->gSize > 64) ? (aicNum >> 1) : aicNum;
     uint32_t s2SplitStagingPerSlot = fdStagingMSize * D_SIZE * VEC_RES_ELEM_SIZE * MAX_S2_SPLIT_NUM
         + fdStagingMSize * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM * 2;

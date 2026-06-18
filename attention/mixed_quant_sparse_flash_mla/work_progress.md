@@ -12,7 +12,7 @@
 - 2026-06-16：确认 `s2SplitIdxCounter` 当前只支持每个 FA staging 起点最多 2 个 S2 split；若一个被切开的 S2 在同一核/同一行对应超过 2 个 split，`firstFdDataWorkspaceIdx + s2SplitIdx` 写 staging 会复用或越过 slot，属于需要 host metadata/workspace 共同约束或扩展的风险点。
 - 2026-06-17：收窄 `s2SplitIdxCounter` 推进条件：仅当 `gS1Index == runParam.gs1LoopEndIdx - 1` 且发生 S2 split 时递增，避免非当前核 S1 循环末端的任务推进 split slot。
 - 2026-06-17：确认 `s2SplitIdx` 实际只在 split task 的末轮 S2 loop 参与 staging 地址计算；普通中间 S2 基本块虽携带该字段，但不会用它写 FD staging。
-- 2026-06-18：适配 N<64 且 N 为 2 的幂次方的 FD staging：确认当前 `sparse_flash_mla_metadata` 在 Ascend950 下 `mBaseSize_=groupSize_`，kernel 非 split-G 的 FD staging 行数从固定 64 改为运行时 `gSize`，host workspace 分配同步改为按 `gSize` 计算，N=128 split-G 继续保持 128 行逻辑 M 布局；新增 `N32_single_batch_3_cores` 单例参数用于覆盖该路径。
+- 2026-06-18：适配 N<64 且 N 为 2 的幂次方的 FD staging：确认当前 `sparse_flash_mla_metadata` 在 Ascend950 下 `mBaseSize_=groupSize_`，FA 有效 `mRealSize` 会随 `gSize` 变小，但内部偏移仍按 64 行基本块组织；因此撤回“按 gSize 缩 FD staging slot”的方案，非 split-G FD staging 行跨度保持 64，host workspace 与 kernel staging stride 同步按 64 计算，N=128 split-G 继续保持 128 行逻辑 M 布局；新增 `N32_single_batch_3_cores` 单例参数用于覆盖该路径。
 
 ## Flash Decode Progress
 
