@@ -13,7 +13,7 @@
  * \brief
  */
 #include "moe_init_routing_v2_tiling.h"
-#include "op_host/tiling_util.h"
+#include "tiling_base/tiling_util.h"
 
 namespace optiling {
 const static int64_t HIST_REGBASE_MAX_EXPERT_NUM = 256;
