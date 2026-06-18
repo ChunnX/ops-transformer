@@ -23,7 +23,7 @@
 #include "register/op_impl_registry.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "op_host/tiling_base.h"
+#include "tiling_base/tiling_base.h"
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
 
