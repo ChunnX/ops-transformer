@@ -212,7 +212,6 @@
     <td>-</td>
   </tr>
   <tr>
-  <tr>
     <td>dcosOut</td>
     <td>输出</td>
     <td>公式中的dcos，输入cos的导数，需与cos数据类型一致。**当前版本暂不支持，输出无意义。**</td>
