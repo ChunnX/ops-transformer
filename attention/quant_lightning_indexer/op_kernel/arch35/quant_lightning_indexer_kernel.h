@@ -50,6 +50,7 @@ struct TempLoopInfo {
     uint32_t s2BasicSizeTail = 0U;         // S2方向循环的尾基本块大小
     uint32_t validS2Len = 0U;
 };
+constexpr uint32_t TRUNK_LEN_8K = 8192;
 
 template <typename QLIT>
 class QLIPreload {
@@ -182,6 +183,7 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     }
 
     constInfo.setL2DisableFlag = constInfo.tSize / constInfo.batchSize <= constInfo.s1BaseSize;
+    constInfo.trunkLen = TRUNK_LEN_8K;
 }
 
 template <typename QLIT>
@@ -671,7 +673,7 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessBaseBlock(uint32_t loop, uint64_
         matmulService.ComputeMm1(runInfo);
     } else {
         vectorService.ProcessVec1(runInfo);
-        if (runInfo.isLastS2InnerLoop) {   //本核s2last
+        if (((runInfo.s2Idx + 1) * constInfo.s2BaseSize) % constInfo.trunkLen == 0 || runInfo.isLastS2InnerLoop) {
             vectorService.ProcessTopK(runInfo);   
         }
     }

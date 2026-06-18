@@ -156,7 +156,7 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     vec1OutUB_ = outBuf_.Get<uint16_t>();
 
     // Topk
-    pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(uint16_t)
+    pipe->InitBuffer(mrgValueBuf_, 2 * (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(uint16_t)
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
     outInvalidLocal_ = mrgValueBuf_.Get<int32_t>();
 
@@ -192,7 +192,7 @@ __aicore__ inline void QLIVector<QLIT>::InitParams(const struct QLICommon::Const
     kCacheBlockSize_ = constInfo.kCacheBlockSize;
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
     blockId_ = GetBlockIdx();
-    trunkLen_ = TRUNK_LEN_16K;
+    trunkLen_ = constInfo.trunkLen;
     topkCount_ = constInfo.sparseCount;
     topkOp_.Init(topkCount_, trunkLen_);
     topkCountAlign256_ = QLICommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256
