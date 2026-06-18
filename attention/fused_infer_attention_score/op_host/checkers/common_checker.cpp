@@ -1381,6 +1381,78 @@ ge::graphStatus CommonChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CommonChecker::CheckKVContiguous(const FiaTilingInfo &fiaInfo) const
+{
+    if (fiaInfo.isTensorV1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const gert::Shape &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
+    const gert::Shape &valueShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
+    uint32_t keyDimNum = keyShape.GetDimNum();
+    uint32_t valueDimNum = valueShape.GetDimNum();
+    int32_t dimIndex = 0;
+
+    if (!fiaInfo.pageAttentionFlag) {
+        OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape,
+                        fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
+                    (CheckTensorContiguous(valueDimNum, valueShape,
+                        fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS),
+                    OP_LOGE(fiaInfo.opName,
+                            "In non-PA scenarios, key/value tensors must be contiguous."),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+
+    if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
+                        CheckTensorContiguous(keyDimNum, keyShape,
+                            fiaInfo.keyStrides, dimIndex)) &&
+                    (dimIndex != 0)),
+                    OP_LOGE(fiaInfo.opName,
+                            "In PA BBND scenarios, key only supports non-contiguous "
+                            "tensors in dimension 0, "
+                            "but the first non-contiguous dimension is index %d.",
+                            dimIndex),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
+                        CheckTensorContiguous(valueDimNum, valueShape,
+                            fiaInfo.valueStrides, dimIndex)) &&
+                    (dimIndex != 0)),
+                    OP_LOGE(fiaInfo.opName,
+                            "In PA BBND scenarios, value only supports non-contiguous "
+                            "tensors in dimension 0, "
+                            "but the first non-contiguous dimension is index %d.",
+                            dimIndex),
+                    return ge::GRAPH_FAILED);
+    } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
+                        CheckTensorContiguous(keyDimNum, keyShape,
+                            fiaInfo.keyStrides, dimIndex)) &&
+                    (dimIndex != 0 && dimIndex != 1)),
+                    OP_LOGE(fiaInfo.opName,
+                            "In PA BNBD/NZ scenarios, key only supports non-contiguous "
+                            "tensors in dimensions 0 or 1, "
+                            "but the first non-contiguous dimension is index %d.",
+                            dimIndex),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
+                        CheckTensorContiguous(valueDimNum, valueShape,
+                            fiaInfo.valueStrides, dimIndex)) &&
+                    (dimIndex != 0 && dimIndex != 1)),
+                    OP_LOGE(fiaInfo.opName,
+                            "In PA BNBD/NZ scenarios, value only supports non-contiguous "
+                            "tensors in dimensions 0 or 1, "
+                            "but the first non-contiguous dimension is index %d.",
+                            dimIndex),
+                    return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
     if (enableNonQuant_) {
@@ -1411,6 +1483,7 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
             return ge::GRAPH_FAILED;
         }
     }
+    
     if (CheckAxis(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckQueryOutConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckKeyValueConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
@@ -1419,6 +1492,11 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
         CheckKeyShape(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckQueryKeyConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckMultiAttr(fiaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B &&
+        enableNonQuant_ && CheckKVContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

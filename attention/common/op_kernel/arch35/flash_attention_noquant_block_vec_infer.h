@@ -202,6 +202,12 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedP
         sharedParams.blockSize = inputParamsRegbase.blockSize;
         sharedParams.paLayoutType = inputParamsRegbase.paLayoutType;
         sharedParams.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
+        sharedParams.keyBnStride = inputParamsRegbase.keyStrides.bnStride;
+        sharedParams.keyN2Stride = inputParamsRegbase.keyStrides.n2Stride;
+        sharedParams.valueBnStride = inputParamsRegbase.valueStrides.bnStride;
+        sharedParams.valueN2Stride = inputParamsRegbase.valueStrides.n2Stride;
+        sharedParams.keyRopeBnStride = inputParamsRegbase.kRopeStrides.bnStride;
+        sharedParams.keyRopeN2Stride = inputParamsRegbase.kRopeStrides.n2Stride;
     }
     // prefix
     if constexpr (enableKVPrefix) {

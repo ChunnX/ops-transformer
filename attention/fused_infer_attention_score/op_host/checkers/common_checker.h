@@ -53,6 +53,7 @@ private:
     ge::graphStatus CheckKeyNHVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape);
     ge::graphStatus CheckKeyDVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape);
     ge::graphStatus CheckKeyShape(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckKVContiguous(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckQueryKeyConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQueryKeyTensorlistConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckMultiAttr(const FiaTilingInfo &fiaInfo);
