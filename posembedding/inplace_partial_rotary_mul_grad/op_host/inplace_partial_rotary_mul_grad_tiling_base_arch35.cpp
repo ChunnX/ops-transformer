@@ -34,6 +34,12 @@ constexpr int64_t HALF_INTERLEAVE_MODE_COEF = 2;
 constexpr int64_t QUARTER_MODE_COEF = 4;
 constexpr int64_t D_LIMIT = 1024;
 
+// UB block size in bytes, consistent with op_kernel/arch35/apply_rotary_pos_emb_common.h
+inline constexpr uint32_t GetUbBlockSize()
+{
+    return 32U;
+}
+
 const std::vector<ge::DataType> SUPPORT_DTYPE = {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16};
 static const std::vector<std::string> inputNames = {"dy", "cos", "sin", "x"};
 static const std::vector<std::string> outputNames = {"dy", "dcos", "dsin"};
@@ -50,8 +56,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::GetPlatformInfo()
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     aicoreParams_.ubSize = ubSizePlatForm;
-    blockSize_ = Ops::Base::GetUbBlockSize(context_);
-    vLength_ = Ops::Base::GetVRegSize(context_);
+    blockSize_ = static_cast<int64_t>(GetUbBlockSize());
     return ge::GRAPH_SUCCESS;
 }
 
