@@ -31,8 +31,6 @@ public:
     ARGS_TRAITS;
     using BaseClass = FlashAttentionScoreGradKernelBase<FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>,
                                                         CubeBlockType, VecBlockType>;
-    __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
-    __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
     __aicore__ inline void Process();
     __aicore__ inline void ComputeDqkvBn2gs1s2(FagRunInfo &prevRunInfo, bool &needSyncDkMM, int64_t taskId);
     __aicore__ inline void ComputeDqkvBn2s2(FagRunInfo &prevRunInfo, bool &needSyncDkMM, bool &needSyncDkDvFixUb,
@@ -40,17 +38,6 @@ public:
     __aicore__ inline void ComputeDqkvBn2(FagRunInfo &prevRunInfo, bool &needSyncDkMM, int64_t taskId);
     __aicore__ inline void ProcessBn2gs1s2LastVec(FagRunInfo &prevRunInfo, bool &needSyncDkMM);
 };
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
-{
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(FagConstInfo &constInfo)
-{
-}
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
@@ -558,6 +545,14 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 }
                 needSyncDkDvFixUb = false; // BN2S2存在l0c累加，不一定每一次mm345的结果都需要搬到mm1，mm2resbuf上
             }
+            
+            LocalTensor<CALC_TYPE> mm1ResTensor =
+                this->mm1ResBuf[runInfos[taskId & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+            this->cubeBlock.IterateMmDyV(mm1ResTensor, this->constInfo, runInfos[taskId & 1], this->preloadArgs);
+            if ASCEND_IS_AIC {
+                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V2_FLAG[taskId & 1]);
+                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C1_TO_V2_FLAG[taskId & 1]);
+            }
 
             LocalTensor<CALC_TYPE> mm2ResTensor =
                 this->mm2ResBuf[runInfos[taskId & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
@@ -565,14 +560,6 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             if ASCEND_IS_AIC {
                 CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C2_TO_V2_FLAG[taskId & 1]);
                 CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C2_TO_V2_FLAG[taskId & 1]);
-            }
-
-            LocalTensor<CALC_TYPE> mm1ResTensor =
-                this->mm1ResBuf[runInfos[taskId & 1].commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-            this->cubeBlock.IterateMmDyV(mm1ResTensor, this->constInfo, runInfos[taskId & 1], this->preloadArgs);
-            if ASCEND_IS_AIC {
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V2_FLAG[taskId & 1]);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C1_TO_V2_FLAG[taskId & 1]);
             }
 
             this->vecBlock.CopyMaxSum(this->constInfo, runInfos[taskId & 1],
