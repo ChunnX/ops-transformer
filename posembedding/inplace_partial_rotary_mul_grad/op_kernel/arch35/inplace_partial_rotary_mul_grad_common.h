@@ -106,7 +106,19 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor,
                                              const LocalTensor<TDY> &outTensor, uint32_t dLen,
                                              uint16_t currSNum, uint16_t currDNum)
 {
-    uint16_t repeatTimes = AscendC::Ceil(dLen, static_cast<uint32_t>(VL_FLOAT32_SIZE));
+    uint16_t loopSize = 2 * VL_FLOAT32_SIZE;
+    uint16_t loopNum = (dLen + loopSize - 1) / loopSize;
+
+    uint32_t halfNum = dLen / HALF_INTERLEAVE_COEF;
+    uint32_t part1Num = (loopNum - 1) * VL_FLOAT32_SIZE;
+    uint32_t part2Num = part1Num;
+    uint32_t tailNum = dLen - part1Num - part2Num;
+    if (tailNum > VL_FLOAT32_SIZE) {
+        part1Num += VL_FLOAT32_SIZE;
+        part2Num += (tailNum - VL_FLOAT32_SIZE);
+    } else {
+        part1Num += tailNum;
+    }
 
     uint32_t cosRowStride = dLen;
 
@@ -116,49 +128,49 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor,
     __local_mem__ TDY *outUb = const_cast<__local_mem__ TDY *>(outTensor.GetPhyAddr());
 
     __VEC_SCOPE__ {
-        MicroAPI::RegTensor<float> vregIn, vregCos, vregSin, vregOut;
-        MicroAPI::RegTensor<float> vregDyEven, vregDyOdd;
-        MicroAPI::RegTensor<float> vregCosEven, vregCosOdd;
-        MicroAPI::RegTensor<float> vregSinEven, vregSinOdd;
-        MicroAPI::MaskReg preg;
+        MicroAPI::RegTensor<float> vregFormerIn, vregLatterIn;
+        MicroAPI::RegTensor<float> vregFormerCos, vregLatterCos;
+        MicroAPI::RegTensor<float> vregFormerSin, vregLatterSin;
+        MicroAPI::MaskReg pregLoop, pregPart1, pregPart2;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             __local_mem__ TCOS *currSinUb = sinUb + sIdx * cosRowStride;
             __local_mem__ TCOS *currCosUb = cosUb + sIdx * cosRowStride;
             for (uint16_t row = 0; row < currDNum; row++) {
                 __local_mem__ TDY *currInUb = inUb + (sIdx * currDNum + row) * dLen;
                 __local_mem__ TDY *currOutUb = outUb + (sIdx * currDNum + row) * dLen;
-                uint32_t updateCnt = dLen;
-                for (uint16_t i = 0; i < repeatTimes; i++) {
-                    preg = MicroAPI::UpdateMask<float>(updateCnt);
-                    int32_t offset = i * VL_FLOAT32_SIZE;
+                uint32_t halfCnt = halfNum;
+                uint32_t part1Cnt = part1Num;
+                uint32_t part2Cnt = part2Num;
+                for (uint16_t i = 0; i < loopNum; i++) {
+                    pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
+                    pregPart1 = MicroAPI::UpdateMask<float>(part1Cnt);
+                    pregPart2 = MicroAPI::UpdateMask<float>(part2Cnt);
+                    int32_t evenOffSet = (i * 2) * VL_FLOAT32_SIZE;
+                    int32_t oddOffset = evenOffSet + VL_FLOAT32_SIZE;
 
-                    // Load full interleaved dy, cos, sin
-                    ops::LoadOneTensorForDtypeT<TDY>(currInUb, vregIn, preg, offset);
-                    ops::LoadOneTensorForDtypeT<TCOS>(currCosUb, vregCos, preg, offset);
-                    ops::LoadOneTensorForDtypeT<TCOS>(currSinUb, vregSin, preg, offset);
+                    // Load two halves of interleaved data
+                    ops::LoadOneTensorForDtypeT<TDY>(currInUb, vregFormerIn, pregPart1, evenOffSet);
+                    ops::LoadOneTensorForDtypeT<TDY>(currInUb, vregLatterIn, pregPart2, oddOffset);
+                    ops::LoadOneTensorForDtypeT<TCOS>(currCosUb, vregFormerCos, pregPart1, evenOffSet);
+                    ops::LoadOneTensorForDtypeT<TCOS>(currCosUb, vregLatterCos, pregPart2, oddOffset);
+                    ops::LoadOneTensorForDtypeT<TCOS>(currSinUb, vregFormerSin, pregPart1, evenOffSet);
+                    ops::LoadOneTensorForDtypeT<TCOS>(currSinUb, vregLatterSin, pregPart2, oddOffset);
 
-                    // Deinterleave to get even/odd elements
-                    MicroAPI::DeInterleave<float>(vregDyEven, vregDyOdd, vregIn, preg);
-                    MicroAPI::DeInterleave<float>(vregCosEven, vregCosOdd, vregCos, preg);
-                    MicroAPI::DeInterleave<float>(vregSinEven, vregSinOdd, vregSin, preg);
+                    Mul(vregFormerCos, vregFormerCos, vregFormerIn, pregPart1);
+                    Mul(vregLatterCos, vregLatterCos, vregLatterIn, pregPart2);
+                    Mul(vregFormerSin, vregFormerSin, vregFormerIn, pregPart1);
+                    Mul(vregLatterSin, vregLatterSin, vregLatterIn, pregPart2);
 
-                    // cos_even * dy_even, cos_odd * dy_odd
-                    Mul(vregCosEven, vregCosEven, vregDyEven, preg);
-                    Mul(vregCosOdd, vregCosOdd, vregDyOdd, preg);
-                    // sin_even * dy_even, sin_odd * dy_odd
-                    Mul(vregSinEven, vregSinEven, vregDyEven, preg);
-                    Mul(vregSinOdd, vregSinOdd, vregDyOdd, preg);
+                    // Swap sin's even/odd: DeInterleave → negate former → Interleave
+                    MicroAPI::DeInterleave<float>(vregFormerSin, vregLatterSin, vregFormerSin, vregLatterSin);
+                    Muls(vregFormerSin, vregFormerSin, float(-1.0), pregLoop);
+                    MicroAPI::Interleave<float>(vregFormerSin, vregLatterSin, vregLatterSin, vregFormerSin);
 
-                    // dx_even = cos_even*dy_even + sin_odd*dy_odd
-                    Add(vregCosEven, vregCosEven, vregSinOdd, preg);
-                    // dx_odd  = cos_odd*dy_odd  - sin_even*dy_even
-                    Muls(vregSinEven, vregSinEven, float(-1.0), preg);
-                    Add(vregCosOdd, vregCosOdd, vregSinEven, preg);
+                    Add(vregFormerCos, vregFormerSin, vregFormerCos, pregPart1);
+                    Add(vregLatterCos, vregLatterSin, vregLatterCos, pregPart2);
 
-                    // Interleave back to full vector
-                    MicroAPI::Interleave<float>(vregOut, vregCosEven, vregCosOdd, preg);
-
-                    ops::StoreOneTensorForDtypeT<TDY>(currOutUb, vregOut, preg, offset);
+                    ops::StoreOneTensorForDtypeT<TDY>(currOutUb, vregFormerCos, pregPart1, evenOffSet);
+                    ops::StoreOneTensorForDtypeT<TDY>(currOutUb, vregLatterCos, pregPart2, oddOffset);
                 }
             }
         }
@@ -498,8 +510,20 @@ __aicore__ inline void BatchInterleaveModeGradVF(
     __local_mem__ TDY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
     int64_t ubFactorS, int64_t ubFactorN)
 {
+    uint32_t loopSize = 2 * VL_FLOAT32_SIZE;
     uint32_t dLen32 = static_cast<uint32_t>(dLen);
-    uint16_t dLoopCount = (dLen + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
+    uint16_t dLoopCount = (dLen32 + loopSize - 1) / loopSize;
+
+    uint32_t halfNum = dLen32 / HALF_INTERLEAVE_COEF;
+    uint32_t part1Num = (dLoopCount - 1) * VL_FLOAT32_SIZE;
+    uint32_t part2Num = part1Num;
+    uint32_t tailNum = dLen32 - part1Num - part2Num;
+    if (tailNum > VL_FLOAT32_SIZE) {
+        part1Num += VL_FLOAT32_SIZE;
+        part2Num += (tailNum - VL_FLOAT32_SIZE);
+    } else {
+        part1Num += tailNum;
+    }
 
     int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
     int32_t nStepUb = ubFactorS * dLen32;
@@ -507,15 +531,18 @@ __aicore__ inline void BatchInterleaveModeGradVF(
     int32_t nStepCosUb = ubFactorS * cosRowStride;
 
     __VEC_SCOPE__ {
-        MicroAPI::RegTensor<float> vregIn, vregCos, vregSin, vregOut;
-        MicroAPI::RegTensor<float> vregDyEven, vregDyOdd, vregCosEven, vregCosOdd, vregSinEven, vregSinOdd;
-        MicroAPI::MaskReg pregLoop;
+        MicroAPI::RegTensor<float> inPart1Reg, inPart2Reg;
+        MicroAPI::RegTensor<float> cosPart1Reg, cosPart2Reg;
+        MicroAPI::RegTensor<float> sinPart1Reg, sinPart2Reg;
+        MicroAPI::MaskReg pregLoop, pregPart1, pregPart2;
         __local_mem__ TDY *currInUb, *currOutUb;
         __local_mem__ TCOS *currSinUb, *currCosUb;
         for (uint16_t bIdx = 0; bIdx < bLength; bIdx++) {
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
-                    uint32_t count = dLen32;
+                    uint32_t halfCnt = halfNum;
+                    uint32_t part1Cnt = part1Num;
+                    uint32_t part2Cnt = part2Num;
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     if constexpr (IsBroadcast) {
@@ -526,36 +553,34 @@ __aicore__ inline void BatchInterleaveModeGradVF(
                         currSinUb = sin + bIdx * nStepCosUb + sIdx * cosRowStride;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
-                        pregLoop = MicroAPI::UpdateMask<float>(count);
-                        int32_t offset = i * VL_FLOAT32_SIZE;
+                        pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
+                        pregPart1 = MicroAPI::UpdateMask<float>(part1Cnt);
+                        pregPart2 = MicroAPI::UpdateMask<float>(part2Cnt);
 
-                        // Load full interleaved dy, cos, sin
-                        ops::LoadOneTensorForDtypeT<TDY>(currInUb, vregIn, pregLoop, offset);
-                        ops::LoadOneTensorForDtypeT<TCOS>(currCosUb, vregCos, pregLoop, offset);
-                        ops::LoadOneTensorForDtypeT<TCOS>(currSinUb, vregSin, pregLoop, offset);
+                        ops::LoadOneTensorForDtypeT<TDY>(currInUb, inPart1Reg, pregPart1, i * loopSize);
+                        ops::LoadOneTensorForDtypeT<TDY>(currInUb, inPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
+                        ops::LoadOneTensorForDtypeT<TCOS>(currCosUb, cosPart1Reg, pregPart1, i * loopSize);
+                        ops::LoadOneTensorForDtypeT<TCOS>(
+                            currCosUb, cosPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
+                        ops::LoadOneTensorForDtypeT<TCOS>(currSinUb, sinPart1Reg, pregPart1, i * loopSize);
+                        ops::LoadOneTensorForDtypeT<TCOS>(
+                            currSinUb, sinPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
 
-                        // Deinterleave to get even/odd elements
-                        MicroAPI::DeInterleave<float>(vregDyEven, vregDyOdd, vregIn, pregLoop);
-                        MicroAPI::DeInterleave<float>(vregCosEven, vregCosOdd, vregCos, pregLoop);
-                        MicroAPI::DeInterleave<float>(vregSinEven, vregSinOdd, vregSin, pregLoop);
+                        Mul(cosPart1Reg, cosPart1Reg, inPart1Reg, pregPart1);
+                        Mul(cosPart2Reg, cosPart2Reg, inPart2Reg, pregPart2);
+                        Mul(sinPart1Reg, sinPart1Reg, inPart1Reg, pregPart1);
+                        Mul(sinPart2Reg, sinPart2Reg, inPart2Reg, pregPart2);
 
-                        // cos_even * dy_even, cos_odd * dy_odd
-                        Mul(vregCosEven, vregCosEven, vregDyEven, pregLoop);
-                        Mul(vregCosOdd, vregCosOdd, vregDyOdd, pregLoop);
-                        // sin_even * dy_even, sin_odd * dy_odd
-                        Mul(vregSinEven, vregSinEven, vregDyEven, pregLoop);
-                        Mul(vregSinOdd, vregSinOdd, vregDyOdd, pregLoop);
+                        MicroAPI::DeInterleave<float>(sinPart1Reg, sinPart2Reg, sinPart1Reg, sinPart2Reg);
+                        Muls(sinPart1Reg, sinPart1Reg, float(-1.0), pregLoop);
+                        MicroAPI::Interleave<float>(sinPart1Reg, sinPart2Reg, sinPart2Reg, sinPart1Reg);
 
-                        // dx_even = cos_even*dy_even + sin_odd*dy_odd
-                        Add(vregCosEven, vregCosEven, vregSinOdd, pregLoop);
-                        // dx_odd  = cos_odd*dy_odd  - sin_even*dy_even
-                        Muls(vregSinEven, vregSinEven, float(-1.0), pregLoop);
-                        Add(vregCosOdd, vregCosOdd, vregSinEven, pregLoop);
+                        Add(cosPart1Reg, sinPart1Reg, cosPart1Reg, pregPart1);
+                        Add(cosPart2Reg, sinPart2Reg, cosPart2Reg, pregPart2);
 
-                        // Interleave back to full vector
-                        MicroAPI::Interleave<float>(vregOut, vregCosEven, vregCosOdd, pregLoop);
-
-                        ops::StoreOneTensorForDtypeT<TDY>(currOutUb, vregOut, pregLoop, offset);
+                        ops::StoreOneTensorForDtypeT<TDY>(currOutUb, cosPart1Reg, pregPart1, i * loopSize);
+                        ops::StoreOneTensorForDtypeT<TDY>(
+                            currOutUb, cosPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
                     }
                 }
             }
