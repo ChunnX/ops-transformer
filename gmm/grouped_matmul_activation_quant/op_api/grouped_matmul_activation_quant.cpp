@@ -10,6 +10,8 @@
 
 #include "grouped_matmul_activation_quant.h"
 
+#include <cstdio>
+
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_log.h"
@@ -27,6 +29,15 @@ constexpr int64_t WEIGHT_SCALE_N_DIM_INDEX = 2L;
 constexpr int64_t MX_GROUP_SIZE = 64L;
 constexpr int64_t MX_SCALE_PAIR = 2L;
 constexpr size_t FIRST_TENSOR_INDEX = 0UL;
+
+template <typename... Args>
+void GmmaqPrint(const char *format, Args... args)
+{
+    std::printf("[GMMAQ L0] ");
+    std::printf(format, args...);
+    std::printf("\n");
+    std::fflush(stdout);
+}
 } // namespace
 
 const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const aclTensor *x,
@@ -37,11 +48,11 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
 {
     L0_DFX(GroupedMatmulActivationQuant, x, groupList, weight, weightScale, bias, xScale, activationType,
            transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax);
-    OP_LOGD("GroupedMatmulActivationQuant L0 start. activationType=%s, quantMode=%s, roundMode=%s, "
-            "transposeWeight=%d, groupListType=%ld, yDtype=%ld, scaleAlg=%ld, dstTypeMax=%f.",
-            activationType == nullptr ? "nullptr" : activationType, quantMode == nullptr ? "nullptr" : quantMode,
-            roundMode == nullptr ? "nullptr" : roundMode, static_cast<int>(transposeWeight), groupListType,
-            yDtype, scaleAlg, dstTypeMax);
+    GmmaqPrint("GroupedMatmulActivationQuant L0 start. activationType=%s, quantMode=%s, roundMode=%s, "
+               "transposeWeight=%d, groupListType=%ld, yDtype=%ld, scaleAlg=%ld, dstTypeMax=%f.",
+               activationType == nullptr ? "nullptr" : activationType, quantMode == nullptr ? "nullptr" : quantMode,
+               roundMode == nullptr ? "nullptr" : roundMode, static_cast<int>(transposeWeight), groupListType,
+               yDtype, scaleAlg, dstTypeMax);
     if (x == nullptr || weightScale == nullptr || weightScale->Size() == 0 || (*weightScale)[FIRST_TENSOR_INDEX] == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x and weightScale must not be nullptr.");
         return std::tuple(nullptr, nullptr);
@@ -54,12 +65,12 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
     gert::Shape outShape({m, n});
     int64_t scaleN = static_cast<int64_t>(Ops::Base::CeilDiv(n, MX_GROUP_SIZE));
     gert::Shape scaleOutShape({m, scaleN, MX_SCALE_PAIR});
-    OP_LOGD("GroupedMatmulActivationQuant L0 infer output shapes. M=%ld, N=%ld, scaleN=%ld.", m, n, scaleN);
+    GmmaqPrint("GroupedMatmulActivationQuant L0 infer output shapes. M=%ld, N=%ld, scaleN=%ld.", m, n, scaleN);
     auto out = executor->AllocTensor(outShape, static_cast<ge::DataType>(yDtype), ge::FORMAT_ND);
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT8_E8M0, ge::FORMAT_ND);
-    OP_LOGD("GroupedMatmulActivationQuant L0 allocated outputs. out=%p, scaleOut=%p.", out, scaleOut);
+    GmmaqPrint("GroupedMatmulActivationQuant L0 allocated outputs. out=%p, scaleOut=%p.", out, scaleOut);
 
-    OP_LOGD("GroupedMatmulActivationQuant L0 call INFER_SHAPE.");
+    GmmaqPrint("GroupedMatmulActivationQuant L0 call INFER_SHAPE.");
     auto ret = INFER_SHAPE(GroupedMatmulActivationQuant,
         OP_INPUT(x, groupList, weight, weightScale, bias, xScale), OP_OUTPUT(out, scaleOut),
         OP_ATTR(activationType, transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg,
@@ -69,7 +80,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
         return std::tuple(nullptr, nullptr);
     }
 
-    OP_LOGD("GroupedMatmulActivationQuant L0 INFER_SHAPE success, call ADD_TO_LAUNCHER_LIST_AICORE.");
+    GmmaqPrint("GroupedMatmulActivationQuant L0 INFER_SHAPE success, call ADD_TO_LAUNCHER_LIST_AICORE.");
     ret = ADD_TO_LAUNCHER_LIST_AICORE(GroupedMatmulActivationQuant,
         OP_INPUT(x, groupList, weight, weightScale, bias, xScale), OP_OUTPUT(out, scaleOut),
         OP_ATTR(activationType, transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg,
@@ -79,7 +90,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
         return std::tuple(nullptr, nullptr);
     }
 
-    OP_LOGD("GroupedMatmulActivationQuant L0 success.");
+    GmmaqPrint("GroupedMatmulActivationQuant L0 success.");
     return std::tie(out, scaleOut);
 }
 } // namespace l0op
