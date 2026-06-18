@@ -155,7 +155,7 @@ __aicore__ inline void CombineQuantizedTokens(
     uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t>& tripleTensor,
     LocalTensor<QuantOutType>& ubQuant, const Params& params)
 {
-    int64_t quantRowSize = n + nScale;
+    int64_t quantTokenSize = n + nScale;
     uint32_t toRankId = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + RANK_ID);
     uint32_t tokenIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOKEN_ID);
     uint32_t topkIdx = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + TOPK_INDEX);
@@ -165,21 +165,21 @@ __aicore__ inline void CombineQuantizedTokens(
     __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset);
     gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(dstPeermemPtr));
 
-    uint64_t dstBaseOffset = (tokenIdx * params.tilingData->topK + topkIdx) * quantRowSize;
+    uint64_t dstBaseOffset = (tokenIdx * params.tilingData->topK + topkIdx) * quantTokenSize;
 
     AscendC::DataCopyExtParams singleCopyParams{
-        1, static_cast<uint32_t>(quantRowSize), 0, 0, 0};
+        1, static_cast<uint32_t>(quantTokenSize), 0, 0, 0};
     AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
 }
 
 // =============================================
-// CombineRowGroup：处理一个 row group 的 Combine 操作，从 GMM2 输出读取数据，量化后发送到目标 rank
+// CombineTokenGroup：处理一个 token group 的 Combine 操作，从 GMM2 输出读取数据，量化后发送到目标 rank
 // =============================================
 template <uint8_t QuantMode, typename T>
-__aicore__ inline void CombineRowGroup(
-    uint32_t rowStart, uint32_t rowCount, uint32_t n, uint32_t groupIdx, uint32_t rankId,
+__aicore__ inline void CombineTokenGroup(
+    uint32_t tokenStart, uint32_t tokenCount, uint32_t n, uint32_t groupIdx, uint32_t rankId,
     GM_ADDR gmm2OutAddr, const Params& params, LocalTensor<int32_t>& tripleTensor,
-    int64_t ubTensorSize, int64_t offset, uint32_t quantRowSizeBytes)
+    int64_t ubTensorSize, int64_t offset, uint32_t quantTokenSizeBytes)
 {
     LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
     offset += ubTensorSize * sizeof(T);
@@ -194,20 +194,20 @@ __aicore__ inline void CombineRowGroup(
 
     using Fp8Type = typename std::conditional<QuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t, fp8_e5m2_t>::type;
 
-    uint32_t singleTokenElems = (nAlign32 * sizeof(T) + quantRowSizeBytes) / sizeof(T);
+    uint32_t singleTokenElems = (nAlign32 * sizeof(T) + quantTokenSizeBytes) / sizeof(T);
     DataCopyPadExtParams<T> copyPadParams{false, 0U, 0U, 0U};
     AscendC::DataCopyExtParams gm2UbParams{
         static_cast<uint16_t>(1),
         static_cast<uint32_t>(n * sizeof(T)), 0, 0, 0};
 
-    for (uint32_t i = 0; i < rowCount; i++) {
+    for (uint32_t i = 0; i < tokenCount; i++) {
         uint32_t pingPong = i % 2;
         LocalTensor<T> ubBf16 = combineUbTensor[pingPong * singleTokenElems];
         LocalTensor<T> ubQuantData = ubBf16[nAlign32];
         
         // MTE2: read from GM
         SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
-        AscendC::DataCopyPad(ubBf16, gmm2OutGm[(rowStart + i) * n], gm2UbParams, copyPadParams);
+        AscendC::DataCopyPad(ubBf16, gmm2OutGm[(tokenStart + i) * n], gm2UbParams, copyPadParams);
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
         
         // V: quantize
