@@ -75,15 +75,20 @@ static aclnnStatus CheckMxfp4WeightNzViewShape(const aclTensor *weight, const op
     if (weight->GetDataType() != DataType::DT_FLOAT4_E2M1 && weight->GetDataType() != DataType::DT_FLOAT4_E1M2) {
         return ACLNN_SUCCESS;
     }
-    CHECK_COND((viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
-               "When weight dtype is DT_FLOAT4, the dimnum of weight viewShape should be 3, but got %lu.",
-               viewShape.GetDimNum());
+    if (unlikely(!(viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT))) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            GMM_SWIGLU_QUANT_V2_OP_NAME, "weight viewShape", std::to_string(viewShape.GetDimNum()),
+            "when the dtype of weight is DT_FLOAT4, the dim num of weight viewShape must be 3");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     int64_t lastSecondDim = viewShape.GetDim(WEIGHT_VIEW_LAST_SECOND_DIM_INDEX);
     int64_t lastDim = viewShape.GetDim(WEIGHT_VIEW_LAST_DIM_INDEX);
-    CHECK_COND((lastSecondDim != 1 && lastDim != 1), ACLNN_ERR_PARAM_INVALID,
-               "When weight dtype is DT_FLOAT4, the last two dimensions of weight should not be 1, but got "
-               "%ld and %ld.",
-               lastSecondDim, lastDim);
+    if (unlikely(!(lastSecondDim != 1 && lastDim != 1))) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            GMM_SWIGLU_QUANT_V2_OP_NAME, "weight viewShape", op::ToString(viewShape).GetString(),
+            "when the dtype of weight is DT_FLOAT4, the last two dimensions of weight viewShape can not be 1");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 
