@@ -280,12 +280,53 @@ static bool IsLastAxisContiguous(const aclTensor *tensor)
     return lastAxisContiguous && (dimNum == 1 || otherAxesNonContiguous);
 }
 
+// 判断单个tensor是否需要走ProcessContiguous物理连续化兜底(kernel无法处理的非连续形态):
+static bool NeedContiguousFallback(const aclTensor *tensor, bool isPaNz)
+{
+    if (tensor == nullptr) {
+        return false;
+    }
+    auto viewShape = tensor->GetViewShape();
+    int64_t dimNum = viewShape.GetDimNum();
+    if (dimNum < 1) {
+        return false;
+    }
+    if (isPaNz) {
+        // dimNum<2时无"非dim0轴", 不可能非连续。
+        return dimNum >= 2 && !IsAxesContiguous(tensor, 1, dimNum);
+    }
+    // ND: 仅判尾轴, size为1视为连续。
+    if (viewShape.GetDim(dimNum - 1) == 1) {
+        return false;
+    }
+    return tensor->GetViewStrides()[dimNum - 1] != 1;
+}
+
+static bool IsRefNonContiguous(const aclTensor *ref)
+{
+    if (ref == nullptr) {
+        return false;
+    }
+    int64_t dimNum = ref->GetViewShape().GetDimNum();
+    if (dimNum < 1) {
+        return false;
+    }
+    return !IsAxesContiguous(ref, 0, dimNum);
+}
+
+static bool NeedContiguousFallbackAny(
+    const aclTensor *keyCache, const aclTensor *valueCache,
+    const aclTensor *keyRef, const aclTensor *valueRef, bool isPaNz)
+{
+    return NeedContiguousFallback(keyCache, isPaNz) || NeedContiguousFallback(valueCache, isPaNz) ||
+           IsRefNonContiguous(keyRef) || IsRefNonContiguous(valueRef);
+}
+
 static bool IsSupportNonContiguousCache(const aclTensor *keyCache, const aclTensor *valueCache)
 {
     bool keyCacheCase1 = IsFirstAxisNonContiguous(keyCache);
     bool valueCacheCase1 = IsFirstAxisNonContiguous(valueCache);
-    // 任一cache首轴非连续即支持(与scatter对齐): 单个cache非连续场景也需走非连续路径,
-    // 否则会落到ProcessContiguous, 丢失view的stride0/offset导致读错block。
+
     return keyCacheCase1 || valueCacheCase1;
 }
 
@@ -386,6 +427,29 @@ static aclnnStatus ProcessNonContiguous(
     return ACLNN_SUCCESS;
 }
 
+static const aclTensor *ContiguousNzCacheAsNd(const aclTensor *cache, UniqueExecutor& uniqueExecutor)
+{
+    auto ndView = uniqueExecutor->CreateView(cache,
+                                             cache->GetViewShape(),
+                                             cache->GetStorageShape(),
+                                             cache->GetViewStrides(),
+                                             cache->GetViewOffset());
+    if (ndView == nullptr) {
+        return nullptr;
+    }
+    ndView->SetViewFormat(op::Format::FORMAT_ND);
+    ndView->SetStorageFormat(op::Format::FORMAT_ND);
+
+    auto ndContiguous = const_cast<aclTensor *>(l0op::Contiguous(ndView, uniqueExecutor.get()));
+    if (ndContiguous == nullptr) {
+        return nullptr;
+    }
+    // 连续化结果贴回NZ format给kernel。
+    ndContiguous->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
+    ndContiguous->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+    return ndContiguous;
+}
+
 static aclnnStatus ProcessContiguous(
     const aclTensor *keyCache,
     const aclTensor *valueCache,
@@ -400,10 +464,15 @@ static aclnnStatus ProcessContiguous(
     aclOpExecutor **executor,
     UniqueExecutor& uniqueExecutor)
 {
-    auto keyCacheContiguous = l0op::Contiguous(keyCache, uniqueExecutor.get());
+    bool isPaNz = (cacheMode != nullptr && strcmp(cacheMode, "PA_NZ") == 0);
+    auto keyCacheContiguous = (isPaNz && NeedContiguousFallback(keyCache, isPaNz))
+        ? ContiguousNzCacheAsNd(keyCache, uniqueExecutor)
+        : l0op::Contiguous(keyCache, uniqueExecutor.get());
     CHECK_RET(keyCacheContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto valueCacheContiguous = l0op::Contiguous(valueCache, uniqueExecutor.get());
+    auto valueCacheContiguous = (isPaNz && NeedContiguousFallback(valueCache, isPaNz))
+        ? ContiguousNzCacheAsNd(valueCache, uniqueExecutor)
+        : l0op::Contiguous(valueCache, uniqueExecutor.get());
     CHECK_RET(valueCacheContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto blockTablesContiguous = l0op::Contiguous(blockTables, uniqueExecutor.get());
@@ -487,12 +556,14 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
     // Norm和PA_NZ模式都支持非连续: PA_NZ非连续view若走ProcessContiguous,
-    // 其连续化无法正确还原NZ view的stride0/offset, 会读错block导致精度错误。
+    bool isPaNz = (cacheMode != nullptr && strcmp(cacheMode, "PA_NZ") == 0);
+    // kernel无法处理的非连续形态(NZ非dim0 / ND尾轴)必须走ProcessContiguous物理连续化兜底,
+    bool mustContiguous = NeedContiguousFallbackAny(keyCache, valueCache, keyRef, valueRef, isPaNz);
+
     bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
     bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
-    if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
+    if (!mustContiguous && (isCacheNonContiguous || isKeyAndCacheNonContiguous)) {
         return ProcessNonContiguous(
             keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
             seqOffsetOptional, cacheMode, isSeqLensCumsum,
