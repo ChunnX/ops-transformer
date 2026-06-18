@@ -238,6 +238,7 @@
 ## 约束说明
 
 - 该算子仅支持Ascend 950 AI Processor。
+- 该算子仅支持连续Tensor，不支持非连续Tensor。
 
 - 输入张量dy支持BSND排布以及其B/S/N维度的广播变体（如111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
   - 输入张量dy和xOptional的最后一维大小D必须相同，且D ≤ 1024。输出张量dyOut的shape与dy完全相同（inplace操作，指向同一内存）。
