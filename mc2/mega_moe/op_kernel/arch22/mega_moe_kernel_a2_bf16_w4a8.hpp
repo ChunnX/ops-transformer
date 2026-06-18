@@ -1044,7 +1044,7 @@ private:
         AscendC::LocalTensor<int32_t> ub = resource.ubBuf.template GetBufferByByte<int32_t>(0);
         AscendC::GlobalTensor<int32_t> flagGt;
         flagGt.SetGlobalBuffer(flagAddr);
-        uint32_t count = 8;
+        uint32_t count = peermemInfo.bufferAlign / sizeof(int32_t);
         do {
             AscendC::DataCopy(ub, flagGt, count);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
