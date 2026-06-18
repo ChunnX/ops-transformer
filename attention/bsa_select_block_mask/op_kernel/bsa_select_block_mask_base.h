@@ -33,6 +33,22 @@ using AscendC::CrossCoreWaitFlag;
 #define BSA_ENABLE_C1_TO_V1_SYNC 1
 #endif
 
+#ifndef BSA_ENABLE_INIT_SYNCALL
+#define BSA_ENABLE_INIT_SYNCALL 0
+#endif
+
+#ifndef BSA_ENABLE_PRE_TOPK_SYNCALL
+#define BSA_ENABLE_PRE_TOPK_SYNCALL 0
+#endif
+
+#ifndef BSA_ENABLE_TOPK_STAGE
+#define BSA_ENABLE_TOPK_STAGE 0
+#endif
+
+#ifndef BSA_ENABLE_HEAD_SYNCALL
+#define BSA_ENABLE_HEAD_SYNCALL 0
+#endif
+
 #define BSA_TILING_VERIFY_PRINTF(...) do {} while (0)
 
 template <typename BSAT> class BSASelectBlockMaskBase {
@@ -320,7 +336,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitWorkspace(__gm__ uint8_
     maskTmpGm.SetGlobalBuffer((__gm__ uint8_t *)(workspace + constInfo.maskOffset),
                               outInfo.maskSize / sizeof(uint8_t));
 
-    SyncAll();
+    if (BSA_ENABLE_INIT_SYNCALL) {
+        SyncAll();
+    }
 }
 
 template <typename BSAT>
@@ -447,7 +465,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 
             if (BSA_ENABLE_PRE_TOPK_PIPELINE) {
                 ProcessPoolingK(batchIdx, headIdx);
-                SyncAll<false>();
+                if (BSA_ENABLE_PRE_TOPK_SYNCALL) {
+                    SyncAll<false>();
+                }
 
                 for (uint32_t qChunkStart = startRow; qChunkStart < endRow;
                      qChunkStart += constInfo.qChunkSize) {
@@ -477,13 +497,19 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 
                     ProcessSoftmaxSecondPass(qChunkStart, qChunkEnd, mFinal, lFinal);
                 }
-                SyncAll<false>();
+                if (BSA_ENABLE_PRE_TOPK_SYNCALL) {
+                    SyncAll<false>();
+                }
             }
 
             if ASCEND_IS_AIV {
-                radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx);
+                if (BSA_ENABLE_TOPK_STAGE) {
+                    radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx);
+                }
             }
-            SyncAll();
+            if (BSA_ENABLE_HEAD_SYNCALL) {
+                SyncAll();
+            }
         }
     }
 
