@@ -17,13 +17,13 @@ LI_V2_METADATA_SIZE = 1024
 LI_V2_METADATA_OP_NAME = "lightning_indexer_metadata"
 
 
-class LightningIndexerV2OpBuilder(OpBuilder):
+class LightningIndexerOpBuilder(OpBuilder):
     def __init__(self):
-        super(LightningIndexerV2OpBuilder, self).__init__("lightning_indexer_v2")
+        super(LightningIndexerOpBuilder, self).__init__("lightning_indexer")
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/csrc/lightning_indexer_v2.cpp']
+        return ['ops/csrc/lightning_indexer.cpp']
 
     def schema(self) -> str:
         """PyTorch operator signature."""
@@ -33,7 +33,7 @@ class LightningIndexerV2OpBuilder(OpBuilder):
             "Tensor? cmp_residual_k=None, int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_k=None, "
             "str? layout_q=None, str? layout_k=None, int? mask_mode=None, int? cmp_ratio=None) -> Tensor",
 
-            "lightning_indexer_v2(Tensor q, Tensor k, Tensor w, "
+            "lightning_indexer(Tensor q, Tensor k, Tensor w, "
             "int topk, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None,"
             "Tensor? seqused_q=None, Tensor? seqused_k=None, "
             "Tensor? cmp_residual_k=None, Tensor? block_table=None, "
@@ -60,7 +60,7 @@ class LightningIndexerV2OpBuilder(OpBuilder):
 
 
         @impl(AS_LIBRARY, self.name, "Meta")
-        def lightning_indexer_v2_meta(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
+        def lightning_indexer_meta(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
                                           seqused_q=None, seqused_k=None, cmp_residual_k=None, block_table=None,
                                           output_idx_offset=None, metadata=None, max_seqlen_q=-1,
                                           layout_q="BSND", layout_k="BSND", mask_mode=0,
@@ -84,8 +84,8 @@ class LightningIndexerV2OpBuilder(OpBuilder):
             return (sparse_indices_out, sparse_values_out)
 
 # Instantiate the builder
-lightning_indexer_v2_op_builder = LightningIndexerV2OpBuilder()
-op_module = lightning_indexer_v2_op_builder.load()  # Compiles/loads the .so file
+lightning_indexer_op_builder = LightningIndexerOpBuilder()
+op_module = lightning_indexer_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, LI_V2_METADATA_OP_NAME, "PrivateUse1")
@@ -130,8 +130,8 @@ def lightning_indexer_metadata_fallback(
 torch.compiler.allow_in_graph(lightning_indexer_metadata)
 
 
-@impl(AS_LIBRARY, lightning_indexer_v2_op_builder.name, "PrivateUse1")
-def lightning_indexer_v2(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
+@impl(AS_LIBRARY, lightning_indexer_op_builder.name, "PrivateUse1")
+def lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
                             seqused_q=None, seqused_k=None, cmp_residual_k=None, block_table=None, 
                             output_idx_offset=None, metadata=None, max_seqlen_q=-1,
                             layout_q="BSND", layout_k="BSND", mask_mode=0, 
@@ -140,6 +140,6 @@ def lightning_indexer_v2(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.lightning_indexer_v2(q, k, w, topk, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, 
+    return op_module.lightning_indexer(q, k, w, topk, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, 
                                               cmp_residual_k, block_table, output_idx_offset, metadata, max_seqlen_q, 
                                               layout_q, layout_k, mask_mode, cmp_ratio, return_value)
