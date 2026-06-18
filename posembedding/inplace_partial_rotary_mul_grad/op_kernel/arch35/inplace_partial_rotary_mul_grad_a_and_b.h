@@ -115,11 +115,11 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
     CopyInCosAndSin(int64_t bStart, int64_t bLength)
 {
     DataCopyExtParams cosParams = {static_cast<uint16_t>(bLength * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0, 0};
-    LocalTensor<TCOS> cosUb = cosInQueue_.AllocTensor<TCOS>();
+    LocalTensor<TCOS> cosUb = cosInQueue_.template AllocTensor<TCOS>();
     DataCopyPad(cosUb, cosGm_[bStart * tilingData_->sliceLength], cosParams, padParamsCos_);
     cosInQueue_.EnQue(cosUb);
 
-    LocalTensor<TCOS> sinUb = sinInQueue_.AllocTensor<TCOS>();
+    LocalTensor<TCOS> sinUb = sinInQueue_.template AllocTensor<TCOS>();
     DataCopyPad(sinUb, sinGm_[bStart * tilingData_->sliceLength], cosParams, padParamsCos_);
     sinInQueue_.EnQue(sinUb);
 }
@@ -186,18 +186,18 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
     DataCopyExtParams inParams = {static_cast<uint16_t>(bUbLength), blockLenX, strideBytesX, 0, 0};
     DataCopyExtParams outParams = {static_cast<uint16_t>(bUbLength), blockLenX, 0, strideBytesX, 0};
 
-    LocalTensor<TDY> inBuffer = gradInQueue_.AllocTensor<TDY>();
-    LocalTensor<TDY> outBuffer = xGradOutQueue_.AllocTensor<TDY>();
+    LocalTensor<TDY> inBuffer = gradInQueue_.template AllocTensor<TDY>();
+    LocalTensor<TDY> outBuffer = xGradOutQueue_.template AllocTensor<TDY>();
 
     DataCopyPad(inBuffer, gradGm_[gradGmOffset], inParams, padParamsX_);
     gradInQueue_.EnQue(inBuffer);
-    inBuffer = gradInQueue_.DeQue<TDY>();
+    inBuffer = gradInQueue_.template DeQue<TDY>();
 
     Compute(cosBuffer, sinBuffer, inBuffer, outBuffer, bUbLength);
 
     gradInQueue_.FreeTensor(inBuffer);
     xGradOutQueue_.EnQue(outBuffer);
-    outBuffer = xGradOutQueue_.DeQue<TDY>();
+    outBuffer = xGradOutQueue_.template DeQue<TDY>();
     DataCopyPad(dyOutGm_[gradGmOffset], outBuffer, outParams);
     xGradOutQueue_.FreeTensor(outBuffer);
 }
@@ -213,8 +213,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
 
     if constexpr (IsBroadcast) {
         CopyInCosAndSin(0, 1);
-        LocalTensor<TCOS> cosBuffer = cosInQueue_.DeQue<TCOS>();
-        LocalTensor<TCOS> sinBuffer = sinInQueue_.DeQue<TCOS>();
+        LocalTensor<TCOS> cosBuffer = cosInQueue_.template DeQue<TCOS>();
+        LocalTensor<TCOS> sinBuffer = sinInQueue_.template DeQue<TCOS>();
 
         for (uint32_t ubLoopIdx = 0; ubLoopIdx < ubLoopCnt; ubLoopIdx++) {
             int64_t bUbLength =
@@ -230,8 +230,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
                 (ubLoopIdx != ubLoopCnt - 1) ? ubFactorB_ : bBlockLength_ - (ubLoopIdx * ubFactorB_);
 
             CopyInCosAndSin(bStart, bUbLength);
-            LocalTensor<TCOS> cosBuffer = cosInQueue_.DeQue<TCOS>();
-            LocalTensor<TCOS> sinBuffer = sinInQueue_.DeQue<TCOS>();
+            LocalTensor<TCOS> cosBuffer = cosInQueue_.template DeQue<TCOS>();
+            LocalTensor<TCOS> sinBuffer = sinInQueue_.template DeQue<TCOS>();
             ProcessInLoop(cosBuffer, sinBuffer, bStart, bUbLength);
             cosInQueue_.FreeTensor(cosBuffer);
             sinInQueue_.FreeTensor(sinBuffer);
