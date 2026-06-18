@@ -31,13 +31,12 @@ constexpr size_t FIRST_TENSOR_INDEX = 0UL;
 
 const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const aclTensor *x,
     const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
-    const aclTensorList *bias, const aclTensor *xScale, const char *activationType, int64_t dequantDtype,
-    bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, const char *quantMode,
-    int64_t yDtype, const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclOpExecutor *executor)
+    const aclTensorList *bias, const aclTensor *xScale, const char *activationType, bool transposeWeight,
+    int64_t groupListType, const aclIntArray *tuningConfig, const char *quantMode, int64_t yDtype,
+    const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclOpExecutor *executor)
 {
     L0_DFX(GroupedMatmulActivationQuant, x, groupList, weight, weightScale, bias, xScale, activationType,
-           dequantDtype, transposeWeight, groupListType, tuningConfigOptional, quantMode, yDtype, roundMode,
-           scaleAlg, dstTypeMax);
+           transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax);
     if (x == nullptr || weightScale == nullptr || weightScale->Size() == 0 || (*weightScale)[FIRST_TENSOR_INDEX] == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x and weightScale must not be nullptr.");
         return std::tuple(nullptr, nullptr);
@@ -54,8 +53,8 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
 
     auto ret = INFER_SHAPE(GroupedMatmulActivationQuant,
         OP_INPUT(x, groupList, weight, weightScale, bias, xScale), OP_OUTPUT(out, scaleOut),
-        OP_ATTR(activationType, dequantDtype, transposeWeight, groupListType, tuningConfigOptional, quantMode, yDtype,
-                roundMode, scaleAlg, dstTypeMax));
+        OP_ATTR(activationType, transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg,
+                dstTypeMax));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
         return std::tuple(nullptr, nullptr);
@@ -63,8 +62,8 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
 
     ret = ADD_TO_LAUNCHER_LIST_AICORE(GroupedMatmulActivationQuant,
         OP_INPUT(x, groupList, weight, weightScale, bias, xScale), OP_OUTPUT(out, scaleOut),
-        OP_ATTR(activationType, dequantDtype, transposeWeight, groupListType, tuningConfigOptional, quantMode, yDtype,
-                roundMode, scaleAlg, dstTypeMax));
+        OP_ATTR(activationType, transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg,
+                dstTypeMax));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return std::tuple(nullptr, nullptr);

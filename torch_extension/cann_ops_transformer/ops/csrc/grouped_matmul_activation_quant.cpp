@@ -87,7 +87,6 @@ constexpr int64_t GE_DTYPE_FLOAT8_E5M2 = 35;
 constexpr int64_t GE_DTYPE_FLOAT8_E4M3FN = 36;
 constexpr int64_t GE_DTYPE_FLOAT8_E8M0 = 37;
 constexpr int64_t ACL_DTYPE_OFFSET = 256;
-constexpr int64_t DEFAULT_DEQUANT_DTYPE = GE_DTYPE_FLOAT;
 constexpr int64_t DEFAULT_Y_DTYPE = GE_DTYPE_FLOAT8_E4M3FN;
 constexpr int64_t DIM_0 = 0;
 constexpr int64_t DIM_1 = 1;
@@ -95,7 +94,7 @@ constexpr int64_t DIM_2 = 2;
 constexpr int64_t DIM_3 = 3;
 constexpr int64_t DIM_4 = 4;
 constexpr int64_t MX_GROUP_SIZE = 64;
-constexpr int64_t MAX_GROUP_NUM = 2048;
+constexpr int64_t MAX_GROUP_NUM = 1024;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0F;
 constexpr float FLOAT_EPS = 1e-6F;
 
@@ -239,9 +238,8 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     const c10::optional<at::Tensor> &xScaleOptional,
     const c10::optional<std::vector<at::Tensor>> &biasOptional,
     std::string activationType,
-    int64_t dequantDtype,
     int64_t groupListType,
-    const c10::optional<std::vector<int64_t>> &tuningConfigOptional,
+    const c10::optional<std::vector<int64_t>> &tuningConfig,
     std::string quantMode,
     int64_t yDtype,
     std::string roundMode,
@@ -258,7 +256,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     TORCH_CHECK(xScaleOptional.has_value() && xScaleOptional.value().defined(),
         "x_scale must be provided in current MXFP8 mode.");
     TORCH_CHECK(activationType == "gelu_tanh", "activation_type only supports gelu_tanh, but got ", activationType, ".");
-    TORCH_CHECK(quantMode == "MX", "quant_mode only supports MX, but got ", quantMode, ".");
+    TORCH_CHECK(quantMode == "MX", "quant_mode is required and only supports MX, but got ", quantMode, ".");
     TORCH_CHECK(roundMode == "rint", "round_mode only supports rint, but got ", roundMode, ".");
     TORCH_CHECK(groupListType == 0 || groupListType == 1, "group_list_type only supports 0 or 1, but got ",
         groupListType, ".");
@@ -266,10 +264,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     TORCH_CHECK(std::fabs(dstTypeMax - DEFAULT_DST_TYPE_MAX) <= FLOAT_EPS,
         "dst_type_max is reserved and only supports 0.0 currently, but got ", dstTypeMax, ".");
 
-    int64_t dequantDtypeValue = NormalizeGeDtype(dequantDtype);
     int64_t yDtypeValue = NormalizeGeDtype(yDtype);
-    TORCH_CHECK(dequantDtypeValue == DEFAULT_DEQUANT_DTYPE,
-        "dequant_dtype only supports FLOAT32 currently, but got ", dequantDtype, ".");
     TORCH_CHECK(yDtypeValue == GE_DTYPE_FLOAT8_E4M3FN || yDtypeValue == GE_DTYPE_FLOAT8_E5M2,
         "y_dtype only supports FLOAT8_E4M3FN or FLOAT8_E5M2, but got ", yDtype, ".");
 
@@ -287,7 +282,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     int64_t m = x.size(DIM_0);
     int64_t k = x.size(DIM_1);
     int64_t e = groupList.size(DIM_0);
-    TORCH_CHECK(e >= 1 && e <= MAX_GROUP_NUM, "group_list first dim must be in [1, 2048], but got ", e, ".");
+    TORCH_CHECK(e >= 1 && e <= MAX_GROUP_NUM, "group_list first dim must be in [1, 1024], but got ", e, ".");
     WeightLayout weightLayout = InferWeightLayout(weightTensor, weightScaleTensor, e, k);
     int64_t n = weightLayout.n;
     TORCH_CHECK(m == 0 || n == 0 || k > 0, "K must be greater than 0 unless M or N is 0.");
@@ -319,8 +314,8 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
         biasRef = at::TensorList();
     }
     c10::optional<at::IntArrayRef> tuningConfigRef = c10::nullopt;
-    if (tuningConfigOptional.has_value()) {
-        tuningConfigRef = at::IntArrayRef(tuningConfigOptional.value());
+    if (tuningConfig.has_value()) {
+        tuningConfigRef = at::IntArrayRef(tuningConfig.value());
     }
 
     TensorWrapper xWrapper = {x, xAclDtype};
@@ -328,14 +323,16 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     TensorListWithFormatWrapper weightWrapper = {weightRef, weightAclDtype, ACL_FORMAT_FRACTAL_NZ};
     TensorListWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype};
     TensorListWrapper biasWrapper = {biasRef, ACL_FLOAT};
+    TensorWithFormatWrapper yWrapper = {y, static_cast<aclDataType>(yDtypeValue), ACL_FORMAT_ND};
+    TensorWithFormatWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0, ACL_FORMAT_ND};
     char *activationTypePtr = const_cast<char *>(activationType.c_str());
     char *quantModePtr = const_cast<char *>(quantMode.c_str());
     char *roundModePtr = const_cast<char *>(roundMode.c_str());
 
     ACLNN_CMD(aclnnGroupedMatmulActivationQuantWeightNz,
         xWrapper, groupList, weightWrapper, weightScaleWrapper, biasWrapper, xScaleWrapper,
-        activationTypePtr, dequantDtypeValue, weightLayout.transpose, groupListType, tuningConfigRef,
-        quantModePtr, yDtypeValue, roundModePtr, scaleAlg, dstTypeMax, y, yScale);
+        activationTypePtr, weightLayout.transpose, groupListType, tuningConfigRef, quantModePtr, yDtypeValue,
+        roundModePtr, scaleAlg, dstTypeMax, yWrapper, yScaleWrapper);
     return std::tie(y, yScale);
 }
 
