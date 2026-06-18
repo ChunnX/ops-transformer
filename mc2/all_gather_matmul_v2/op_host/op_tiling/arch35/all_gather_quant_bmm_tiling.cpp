@@ -243,8 +243,8 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
                                                   .c_str()),
         return ge::GRAPH_FAILED);
     bool isTransB = *context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
-    bool nIsOne = (isTransB) ? (x2Dim0 == 1) : (x2Dim1 == 1);
-    if (!nIsOne) { // TODO nIsOne为什么要特殊处理
+    // bool nIsOne = (isTransB) ? (x2Dim0 == 1) : (x2Dim1 == 1);
+    // if (!nIsOne) { // TODO nIsOne为什么要特殊处理
         if (isTransB) {
             OP_TILING_CHECK((scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) ||
                 (scale2ThirdDim != EVEN_ALIGN),
@@ -259,20 +259,11 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
             scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
             OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
         } else {
-            OP_TILING_CHECK((scale2FirstDim != ceilKAlign) || (scale2SecondDim != args_.nValue) ||
-                (scale2ThirdDim != EVEN_ALIGN),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2Scale",
-                (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + ", " +
-                std::to_string(scale2ThirdDim) + "]")
-                                                          .c_str(),
-                (std::string("The shape of x2Scale must be [") + std::to_string(ceilKAlign) + ", " + std::to_string(args_.nValue) + ", " +
-                std::to_string(EVEN_ALIGN) + "]")
-                                                          .c_str()),
-                return ge::GRAPH_FAILED);
-            scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
-            OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BTrans", std::to_string(args_.isBTrans).c_str(),
+                                                  "x2 only support transpose");
+            return ge::GRAPH_FAILED;
         }
-    }
+    // }
     return ge::GRAPH_SUCCESS;
 }
 
