@@ -158,7 +158,7 @@ __aicore__ inline void CombineTokensWithUrma(uint32_t gsendCnt, const Params& pa
                 index = (index + 1) % needCnt;
             }
             sendTokenCnt.SetValue(rankIndex, curCnt);
-            if (sendTokenCnt(rankIndex) == totalTokenCnt(rankIndex)) {
+            if (curCnt == totalTokenCnt(rankIndex)) {
                 processRank++;
                 if (processRank == processRankNum) {
                     break;
