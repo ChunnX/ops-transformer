@@ -270,7 +270,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
     <tr>
     <td>assistInfoForCombineOut</td>
     <td>输出</td>
-    <td>表示给同一专家发送的token个数，对应Combine系列算子中的assistInfoForCombine。</td>
+    <td>表示每个token的对应的三元组信息：srcrank, token_idx, topk_idx，对应Combine系列算子中的assistInfoForCombine。</td>
     <td>要求为1D Tensor。</td>
     <td>INT32</td>
     <td>ND</td>
