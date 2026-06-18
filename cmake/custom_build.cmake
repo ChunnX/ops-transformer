@@ -285,12 +285,12 @@ endforeach ()
 if(ENABLE_EXPERIMENTAL)
     # genop新增experimental算子分类
     # add_subdirectory(${op_class})
-    add_subdirectory(experimental/attention)
+    # add_subdirectory(experimental/attention)
 else()
     # genop新增非experimental算子分类
     # add_subdirectory(${op_class})
-    add_subdirectory(attention)
-    add_subdirectory(mhc)
+    # add_subdirectory(attention)
+    # add_subdirectory(mhc)
 endif()
 
 # 编译examples目录下算子
