@@ -127,12 +127,10 @@ protected:
     ge::graphStatus CheckTokenCount(int64_t num, const char *tag);
     virtual ge::graphStatus CheckOutShape(bool isRegbase);
     virtual void Tiling4GatherOutCompute();
-    bool CalculateScatterOutCoreAllocation(int64_t actualActivateRows, MoeV2GatherOutComputeTilingData *tilingData,
-                                          int64_t &perCoreRows, int64_t &lastCoreRows);
-    void CalculateScatterOutBufferParams(int64_t ubRowsVal, int64_t cols, int64_t perCoreRows, int64_t lastCoreRows,
-                                        MoeV2GatherOutComputeTilingData *tilingData);
+    bool CalculateScatterOutCoreAllocation(int64_t actualActivateRows, MoeV2GatherOutComputeTilingData *tilingData);
+    void CalculateScatterOutBufferParams(int64_t ubRowsVal, int64_t cols, MoeV2GatherOutComputeTilingData *tilingData);
     void CalculateOutBasicParams(MoeV2GatherOutComputeTilingData *tilingData, int64_t &perCoreRows,
-                                       int64_t &lastCoreRows, int64_t &cols);
+                                 int64_t &lastCoreRows, int64_t &cols);
     void CalculateGatherOutSplitModeParams(int64_t ubSize, int64_t rowSize, int64_t colSize, int64_t cols,
                                            int64_t perCoreRows, int64_t lastCoreRows,
                                            MoeV2GatherOutComputeTilingData *tilingData);
