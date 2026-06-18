@@ -448,19 +448,22 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         float kScaleValue = globalKScale_;
         float qScaleValue = globalQScale_;
         vector1::BatchMulWeightAndReduceSumPerTensor(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
-                                                     qkBase, qkVLstride, (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-                                                     weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
-                                                     kScaleValue, qScaleValue,
-                                                     gSize_, curAivS1ProcNum);
+            qkBase, qkVLstride,
+            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
+            kScaleValue, qScaleValue,
+            gSize_, curAivS1ProcNum);
     } else {
         auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
-        auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ + ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
+        auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ +
+            ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
         vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
-                                            qkBase, qkVLstride, (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-                                            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
-                                            kScaleBase, (uint32_t)0,
-                                            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
-                                            gSize_, curAivS1ProcNum);
+            qkBase, qkVLstride,
+            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
+            kScaleBase, (uint32_t)0,
+            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
+            gSize_, curAivS1ProcNum);
     }
     if (info.isFirstS2InnerLoop) {
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
