@@ -256,7 +256,6 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     TORCH_CHECK(xScaleOptional.has_value() && xScaleOptional.value().defined(),
         "x_scale must be provided in current MXFP8 mode.");
     TORCH_CHECK(activationType == "gelu_tanh", "activation_type only supports gelu_tanh, but got ", activationType, ".");
-    TORCH_CHECK(quantMode == "MX", "quant_mode is required and only supports MX, but got ", quantMode, ".");
     TORCH_CHECK(roundMode == "rint", "round_mode only supports rint, but got ", roundMode, ".");
     TORCH_CHECK(groupListType == 0 || groupListType == 1, "group_list_type only supports 0 or 1, but got ",
         groupListType, ".");
@@ -300,6 +299,11 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     TORCH_CHECK(weightAclDtype == ACL_FLOAT8_E4M3FN, "weight only supports FLOAT8_E4M3FN.");
     TORCH_CHECK(weightScaleAclDtype == ACL_FLOAT8_E8M0, "weight_scale only supports FLOAT8_E8M0.");
     TORCH_CHECK(xScaleAclDtype == ACL_FLOAT8_E8M0, "x_scale only supports FLOAT8_E8M0.");
+    if (quantMode.empty() && (xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2)) {
+        quantMode = "MX";
+    }
+    TORCH_CHECK(!(xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2) || quantMode == "MX",
+        "当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX");
 
     at::Tensor y = at::empty({m, n}, x.options().dtype(GetYScalarType(yDtypeValue)));
     at::Tensor yScale = at::empty({m, CeilDiv(n, MX_GROUP_SIZE), 2},

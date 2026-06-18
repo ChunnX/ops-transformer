@@ -444,7 +444,7 @@ TEST(grouped_matmul_activation_quant_weight_nz_opapi_direct_test, output_tensor_
     }
 }
 
-TEST(grouped_matmul_activation_quant_weight_nz_opapi_direct_test, quant_mode_null_invalid)
+TEST(grouped_matmul_activation_quant_weight_nz_opapi_direct_test, quant_mode_null_uses_fp8_x_dtype)
 {
     TensorDesc xDesc = MakeTensorDesc("0:128", "FLOAT8_E4M3FN", "ND");
     TensorDesc groupListDesc = MakeTensorDesc("1", "INT64", "ND");
@@ -463,11 +463,12 @@ TEST(grouped_matmul_activation_quant_weight_nz_opapi_direct_test, quant_mode_nul
 
     uint64_t workspaceSize = 0U;
     aclOpExecutor *executor = nullptr;
-    EXPECT_NE(aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
+    EXPECT_EQ(aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
                   x.get(), groupList.get(), weight.get(), weightScale.get(), nullptr, xScale.get(), kActivationType,
                   false, kDefaultGroupListType, nullptr, nullptr, kDefaultYDtype, kRoundMode, kDefaultScaleAlg,
                   kDefaultDstTypeMax, y.get(), yScale.get(), &workspaceSize, &executor),
               ACLNN_SUCCESS);
+    EXPECT_EQ(workspaceSize, 0U);
     if (executor != nullptr) {
         delete executor;
     }
