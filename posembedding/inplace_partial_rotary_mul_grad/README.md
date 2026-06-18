@@ -170,9 +170,9 @@
 </thead>
 <tbody>
   <tr>
-    <td>dy</td>
+    <td>dyRef</td>
     <td>输入</td>
-    <td>公式中的dy，表示正向计算输出y的导数，inplace更新为正向输入x的导数。</td>
+    <td>公式中的dy，表示正向计算输出y的导数，inplace更新为正向输入x的导数。Inplace模式，dyRef同时作为输出写入结果。</td>
     <td>BFLOAT16、FLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
@@ -193,7 +193,7 @@
   <tr>
     <td>xOptional</td>
     <td>可选输入</td>
-    <td>公式中的x，正向计算输入，需与dy数据类型一致。**当前版本暂不支持，请传入空指针。** 如果为空指针，则不计算dcosOut和dsinOut。</td>
+    <td>公式中的x，正向计算输入，需与dyRef数据类型一致。**当前版本暂不支持，请传入空指针。** 如果为空指针，则不计算dcosOut和dsinOut。</td>
     <td>BFLOAT16、FLOAT16、FLOAT32</td>
     <td>ND</td>
   </tr>
@@ -212,12 +212,6 @@
     <td>-</td>
   </tr>
   <tr>
-    <td>dyOut</td>
-    <td>输出</td>
-    <td>正向输入x的导数，inplace更新，与dy指向同一内存。</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32</td>
-    <td>ND</td>
-  </tr>
   <tr>
     <td>dcosOut</td>
     <td>输出</td>
@@ -240,15 +234,15 @@
 - 该算子仅支持Ascend 950 AI Processor。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
 
-- 输入张量dy支持BSND排布以及其B/S/N维度的广播变体（如111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
-  - 输入张量dy和xOptional的最后一维大小D必须相同，且D ≤ 1024。输出张量dyOut的shape与dy完全相同（inplace操作，指向同一内存）。
+- 输入张量dyRef支持BSND排布以及其B/S/N维度的广播变体（如111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
+  - 输入张量dyRef和xOptional的最后一维大小D必须相同，且D ≤ 1024。
   - 输入张量cos、sin及输出张量dcosOut、dsinOut的最后一维大小必须等于切片长度(end - start)。
-  - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dy满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dy的B、S、N。
+  - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dyRef满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dyRef的B、S、N。
   - half、interleave和interleave-half模式下，切片长度(end - start)必须能被2整除。
   - quarter模式下，切片长度(end - start)必须能被4整除。
   - 当start等于end时，算子不执行有效计算，直接返回。
   - 输入张量cos和sin的数据类型必须相同。
-  - 输入张量xOptional与dy的数据类型必须相同。
+  - 输入张量xOptional与dyRef的数据类型必须相同。
   - 输出张量dcosOut与cos的数据类型必须相同。
   - 输出张量dsinOut与sin的数据类型必须相同。
   - 当xOptional为空指针时，不计算dcosOut和dsinOut，此时dcosOut和dsinOut无意义。
