@@ -98,8 +98,10 @@ bool GroupedQmmTiling::IsMicroScaling() const
 
 bool GroupedQmmTiling::IsWeightNzSingleMultiSingleScenario() const
 {
+    const bool isMxfp4 = (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
+                         (inputParams_.bDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E1M2);
     return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && !inputParams_.isSingleW && inputParams_.isSingleY &&
-           inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+           inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ && !(isMxfp4 && inputParams_.hasBias);
 }
 
 uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
@@ -352,6 +354,15 @@ bool GroupedQmmTiling::AnalyzeDtype()
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams_.perTokenScaleDtype;
+    const bool isWeightNzSingleMultiSingleCandidate =
+        inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && !inputParams_.isSingleW && inputParams_.isSingleY &&
+        inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+    const bool isMxfp4 = (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
+                         (inputParams_.bDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E1M2);
+    OP_CHECK_IF(isWeightNzSingleMultiSingleCandidate && isMxfp4 && inputParams_.hasBias,
+                OP_LOGE(inputParams_.opName,
+                        "In weightNz single-multi-single MXFP4 case, bias is not supported."),
+                return false);
     if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
         OP_CHECK_IF(!CheckDtypeForWeightNz(nullptr == pertokenScaleDesc),
                     OP_LOGE(inputParams_.opName, "CheckDtypeForWeightNz failed."), return false);
