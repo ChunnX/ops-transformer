@@ -526,8 +526,24 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
     OP_CHECK_IF(DeterministicTilingProcess() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "DeterministicTilingProcess failed."),
                 return ge::GRAPH_FAILED);
-    PrintQuantParams();
+    OP_LOGD(context_->GetNodeName(), "%ld", LogQuantParams());
     return ge::GRAPH_SUCCESS;
+}
+
+int64_t GroupedMatmulFinalizeRoutingQuantTiling::LogQuantParams() const
+{
+    std::ostringstream oss;
+    oss << "GMMQuantParams: groupNum = " << tilingData_.gmmFinalizeRoutingDataParams.groupNum
+        << ", groupListType = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.groupListType)
+        << ", batch = " << tilingData_.gmmFinalizeRoutingDataParams.batch
+        << ", sharedInputOffset = " << tilingData_.gmmFinalizeRoutingDataParams.sharedInputOffset
+        << ", sharedInputLen = " << tilingData_.gmmFinalizeRoutingDataParams.sharedInputLen
+        << ", residualScale = " << tilingData_.gmmFinalizeRoutingDataParams.residualScale
+        << ", aQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.aQuantMode
+        << ", bQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.bQuantMode
+        << ", hasBias = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.hasBias);
+    OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
+    return 0;
 }
 
 uint64_t GroupedMatmulFinalizeRoutingQuantTiling::GetTilingKey() const
@@ -575,7 +591,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
                 (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) + SCALER_FACTOR_DEFAULT;
         }
     }
-    PrintMatmulParams();
+    OP_LOGD(context_->GetNodeName(), "%ld", LogMatmulParams());
 
     return ge::GRAPH_SUCCESS;
 }
@@ -599,38 +615,15 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void GroupedMatmulFinalizeRoutingQuantTiling::PrintMatmulParams()
+int64_t GroupedMatmulFinalizeRoutingQuantTiling::LogMatmulParams() const
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
     std::ostringstream oss;
     oss << "GMM matmul tiling: M = " << tilingData_.matmulTiling.M << ", N = " << tilingData_.matmulTiling.N
         << ", Ka = " << tilingData_.matmulTiling.Ka << ", Kb = " << tilingData_.matmulTiling.Kb
         << ", usedCoreNum = " << tilingData_.matmulTiling.usedCoreNum << ", baseM = " << tilingData_.matmulTiling.baseM
         << ", baseN = " << tilingData_.matmulTiling.baseN << ", baseK = " << tilingData_.matmulTiling.baseK;
     OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
-}
-
-void GroupedMatmulFinalizeRoutingQuantTiling::PrintQuantParams()
-{
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
-
-    std::ostringstream oss;
-    oss << "GMMQuantParams: groupNum = " << tilingData_.gmmFinalizeRoutingDataParams.groupNum
-        << ", groupListType = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.groupListType)
-        << ", batch = " << tilingData_.gmmFinalizeRoutingDataParams.batch
-        << ", sharedInputOffset = " << tilingData_.gmmFinalizeRoutingDataParams.sharedInputOffset
-        << ", sharedInputLen = " << tilingData_.gmmFinalizeRoutingDataParams.sharedInputLen
-        << ", residualScale = " << tilingData_.gmmFinalizeRoutingDataParams.residualScale
-        << ", aQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.aQuantMode
-        << ", bQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.bQuantMode
-        << ", hasBias = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.hasBias);
-    OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
+    return 0;
 }
 
 ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DeterministicTilingProcess()
