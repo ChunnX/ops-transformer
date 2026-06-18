@@ -19,12 +19,18 @@
 
 #include "kernel_operator.h"
 #include "arch35/inplace_partial_rotary_mul_grad_tiling_data.h"
-#include "arch35/inplace_partial_rotary_mul_grad_tiling_key.h"
 #include "arch35/inplace_partial_rotary_mul_grad_common.h"
 #include "arch35/inplace_partial_rotary_mul_grad_ab.h"
 #include "arch35/inplace_partial_rotary_mul_grad_a_and_b.h"
 #include "arch35/inplace_partial_rotary_mul_grad_aba_and_ba.h"
 #include "arch35/inplace_partial_rotary_mul_grad_bab.h"
+
+#define TILING_KEY_ABA 201
+#define TILING_KEY_BA 202
+#define TILING_KEY_BAB 203
+#define TILING_KEY_AB 204
+#define TILING_KEY_A 205
+#define TILING_KEY_B 206
 
 using namespace AscendC;
 using namespace InplacePartialRotaryMulGrad;
@@ -53,32 +59,32 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
 
     TPipe pipe;
 
-    if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_ABA))) {
+    if (TILING_KEY_IS(TILING_KEY_ABA)) {
         const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
         InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, false> op;
         op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
-    } else if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_BA))) {
+    } else if (TILING_KEY_IS(TILING_KEY_BA)) {
         const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
         InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, true> op;
         op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
-    } else if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_BAB))) {
+    } else if (TILING_KEY_IS(TILING_KEY_BAB)) {
         const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
         InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS> op;
         op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
-    } else if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_AB))) {
+    } else if (TILING_KEY_IS(TILING_KEY_AB)) {
         const InplacePartialRotaryMulGradRegbaseABParams &params = tilingData.inplacePartialRotaryMulGradABParams;
         InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS> op;
         op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
-    } else if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_A))) {
+    } else if (TILING_KEY_IS(TILING_KEY_A)) {
         const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
         InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, false> op;
         op.Init(&pipe, &params, dy, cos, sin, dyOut);
         op.Process();
-    } else if (TILING_KEY_IS(static_cast<uint32_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_B))) {
+    } else if (TILING_KEY_IS(TILING_KEY_B)) {
         const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
         InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, true> op;
         op.Init(&pipe, &params, dy, cos, sin, dyOut);

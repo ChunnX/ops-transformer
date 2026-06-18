@@ -13,9 +13,9 @@
  * \brief BAB template tiling for InplacePartialRotaryMulGrad (BSND layout, cosb_==1)
  */
 #include "inplace_partial_rotary_mul_grad_tiling.h"
-#include "../op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_key.h"
 
 namespace optiling {
+constexpr uint64_t TILING_KEY_BAB = 203;
 constexpr uint64_t INPLACE_PARTIAL_ROTARY_MUL_GRAD_BAB_TILING_PRIORITY = 20000;
 constexpr uint32_t MIN_UB_LOAD_D_NUM = 4;
 constexpr uint32_t DOUBLE_BUFFER = 2;
@@ -174,7 +174,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassBAB::PostTiling()
     tilingData_->inplacePartialRotaryMulGradParams.dSplitCoef = dSplitCoef_;
     tilingData_->sliceLength = sliceLength_;
 
-    tilingKey_ = static_cast<uint64_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_BAB);
+    tilingKey_ = static_cast<uint64_t>(TILING_KEY_BAB);
     context_->SetBlockDim(usedCoreNum_);
 
     OP_LOGI(context_->GetNodeName(),

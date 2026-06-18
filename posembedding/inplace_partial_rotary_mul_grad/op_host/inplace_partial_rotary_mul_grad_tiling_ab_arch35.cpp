@@ -14,9 +14,9 @@
  */
 #include "op_host/tiling_templates_registry.h"
 #include "inplace_partial_rotary_mul_grad_tiling.h"
-#include "../op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_key.h"
 
 namespace optiling {
+constexpr uint64_t TILING_KEY_AB = 204;
 constexpr int64_t CONST_TWO = 2;
 constexpr int64_t DB_FLAG = 2;
 
@@ -143,7 +143,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::PostTiling()
     tilingData_->sliceLength = sliceLength_;
 
     // 单 tiling key，不需要 reduce
-    tilingKey_ = static_cast<uint64_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_AB);
+    tilingKey_ = static_cast<uint64_t>(TILING_KEY_AB);
     context_->SetBlockDim(usedCoreNum_);
 
     OP_LOGI(context_->GetNodeName(),
