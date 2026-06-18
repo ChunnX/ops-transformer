@@ -129,10 +129,10 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
     const LocalTensor<TCOS> &cosBuffer, const LocalTensor<TCOS> &sinBuffer,
     const LocalTensor<TDY> &inBuffer, const LocalTensor<TDY> &outBuffer, int64_t bUbLength)
 {
-    auto *inUb = const_cast<__local_mem__ TDY *>(inBuffer.GetPhyAddr());
-    auto *outUb = const_cast<__local_mem__ TDY *>(outBuffer.GetPhyAddr());
-    auto *cosUb = const_cast<__local_mem__ TCOS *>(cosBuffer.GetPhyAddr());
-    auto *sinUb = const_cast<__local_mem__ TCOS *>(sinBuffer.GetPhyAddr());
+    auto *inUb = (__local_mem__ TDY *)inBuffer.GetPhyAddr();
+    auto *outUb = (__local_mem__ TDY *)outBuffer.GetPhyAddr();
+    auto *cosUb = (__local_mem__ TCOS *)cosBuffer.GetPhyAddr();
+    auto *sinUb = (__local_mem__ TCOS *)sinBuffer.GetPhyAddr();
 
     if constexpr (IsBroadcast) {
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
