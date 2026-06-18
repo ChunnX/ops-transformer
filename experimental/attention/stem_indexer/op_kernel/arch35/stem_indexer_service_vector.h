@@ -356,7 +356,7 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(
     copyOut.srcStride = 0;
     copyOut.dstStride = 0;
     for (uint32_t gIdx = 0; gIdx < curAivGSize; gIdx++) {
-        uint32_t mInnerIdx = gIdx * info.actS1Size + s1Idx;
+        uint32_t mInnerIdx = gIdx * actS1Size + s1Idx;
         if (mInnerIdx >= curAivGS1ProcNum) {
             break; 
         }
