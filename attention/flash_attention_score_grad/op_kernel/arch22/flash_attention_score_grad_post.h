@@ -364,6 +364,9 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
 
     uint64_t sLen = (sIdx + sClcSize) > curS ? (curS - sIdx) : sClcSize;
     sLen = sLen > 255 ? 255 : sLen;
+    if (sLen == 0) {
+        return;
+    }
     uint64_t dataLen = sLen * dAlign;
 
     uint64_t ubOffset = 0;
@@ -456,6 +459,9 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
         sLen = sClcSize > curS ? curS : sClcSize;
         sLen = sLen > (curS - sIdx) ? (curS - sIdx) : sLen;
         sLen = sLen > 255 ? 255 : sLen;
+        if (sLen == 0) {
+            break;
+        }
         dataLen = sLen * dAlign;
         if ((sLen > 0) && (inUbOffset + dataLen + dAlign / C0_SIZE * cal_block_num) * sizeof(float) >
                               ubBaseSize * 2 + nzReservedSize) {
@@ -473,6 +479,43 @@ template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32
           const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
 __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::NZProcess()
 {
+    if constexpr (LAYOUT == TND) {
+        if (cBlockIdx == 0) {
+            int64_t t1Full = tilingData->postTilingData.get_t1();
+            int64_t t2Full = tilingData->postTilingData.get_t2();
+            int64_t qEodOffset = qPostBlockTotal;
+            int64_t qEodSize = t1Full * n2 * g * d - qPostBlockTotal;
+            if (qEodSize > 0) {
+                InitOutput<OUT_TYPE>(dqGm[qEodOffset], qEodSize, 0);
+            }
+            int64_t kvEodOffset = kvPostBlockTotal;
+            int64_t kvEodSize = t2Full * n2 * d - kvPostBlockTotal;
+            if (kvEodSize > 0) {
+                InitOutput<OUT_TYPE>(dkGm[kvEodOffset], kvEodSize, 0);
+            }
+            if constexpr (CAST_DV) {
+                int64_t vEodOffset = kvPostBlockTotal;
+                int64_t vEodSize = t2Full * n2 * d - kvPostBlockTotal;
+                if (vEodSize > 0) {
+                    InitOutput<OUT_TYPE>(dvGm[vEodOffset], vEodSize, 0);
+                }
+            }
+            if constexpr (HAS_ROPE == ENABLE) {
+                int64_t qRopeEodOffset = qRopePostBlockTotal;
+                int64_t qRopeEodSize = t1Full * n2 * g * rope_d - qRopePostBlockTotal;
+                if (qRopeEodSize > 0) {
+                    InitOutput<OUT_TYPE>(dqRopeGm[qRopeEodOffset], qRopeEodSize, 0);
+                }
+                int64_t kRopeEodOffset = kRopePostBlockTotal;
+                int64_t kRopeEodSize = t2Full * n2 * rope_d - kRopePostBlockTotal;
+                if (kRopeEodSize > 0) {
+                    InitOutput<OUT_TYPE>(dkRopeGm[kRopeEodOffset], kRopeEodSize, 0);
+                }
+            }
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
+    }
+
     uint64_t qBegin = cBlockIdx * qPostBlockFactor * qPostBaseNum;
     uint64_t qEnd = (cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum;
     if (((cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum) > qPostBlockTotal) {
@@ -1135,6 +1178,9 @@ public:
 
         uint64_t sLen = (sIdx + sClcSize) > curS ? (curS - sIdx) : sClcSize;
         sLen = sLen > 255 ? 255 : sLen;
+        if (sLen == 0) {
+            return;
+        }
         uint64_t dataLen = sLen * dAlign;
 
         uint64_t ubOffset = 0;
@@ -1224,6 +1270,9 @@ public:
             sLen = sClcSize > curS ? curS : sClcSize;
             sLen = sLen > (curS - sIdx) ? (curS - sIdx) : sLen;
             sLen = sLen > 255 ? 255 : sLen;
+            if (sLen == 0) {
+                break;
+            }
             dataLen = sLen * dAlign;
             if ((sLen > 0) && (inUbOffset + dataLen + dAlign / C0_SIZE * cal_block_num) * sizeof(float) >
                                 ubBaseSize * 2 + nzReservedSize) {
@@ -1238,6 +1287,43 @@ public:
     }
     __aicore__ inline void NZProcess()
     {
+        if constexpr (LAYOUT == TND) {
+            if (cBlockIdx == 0) {
+                int64_t t1Full = tilingData->postTilingData.get_t1();
+                int64_t t2Full = tilingData->postTilingData.get_t2();
+                int64_t qEodOffset = qPostBlockTotal;
+                int64_t qEodSize = t1Full * n2 * g * d - qPostBlockTotal;
+                if (qEodSize > 0) {
+                    InitOutput<OUT_TYPE>(dqGm[qEodOffset], qEodSize, 0);
+                }
+                int64_t kvEodOffset = kvPostBlockTotal;
+                int64_t kvEodSize = t2Full * n2 * d - kvPostBlockTotal;
+                if (kvEodSize > 0) {
+                    InitOutput<OUT_TYPE>(dkGm[kvEodOffset], kvEodSize, 0);
+                }
+                if constexpr (CAST_DV) {
+                    int64_t vEodOffset = vPostBlockTotal;
+                    int64_t vEodSize = t2Full * n2 * value_d - vPostBlockTotal;
+                    if (vEodSize > 0) {
+                        InitOutput<OUT_TYPE>(dvGm[vEodOffset], vEodSize, 0);
+                    }
+                }
+                if constexpr (HAS_ROPE == ENABLE) {
+                    int64_t qRopeEodOffset = qRopePostBlockTotal;
+                    int64_t qRopeEodSize = t1Full * n2 * g * rope_d - qRopePostBlockTotal;
+                    if (qRopeEodSize > 0) {
+                        InitOutput<OUT_TYPE>(dqRopeGm[qRopeEodOffset], qRopeEodSize, 0);
+                    }
+                    int64_t kRopeEodOffset = kRopePostBlockTotal;
+                    int64_t kRopeEodSize = t2Full * n2 * rope_d - kRopePostBlockTotal;
+                    if (kRopeEodSize > 0) {
+                        InitOutput<OUT_TYPE>(dkRopeGm[kRopeEodOffset], kRopeEodSize, 0);
+                    }
+                }
+            }
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
+
         uint64_t qBegin = cBlockIdx * qPostBlockFactor * qPostBaseNum;
         uint64_t qEnd = (cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum;
         if (((cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum) > qPostBlockTotal) {
@@ -1805,6 +1891,9 @@ public:
 
         uint64_t sLen = (sIdx + sClcSize) > curS ? (curS - sIdx) : sClcSize;
         sLen = sLen > 255 ? 255 : sLen;
+        if (sLen == 0) {
+            return;
+        }
         uint64_t dataLen = sLen * dAlign;
 
         uint64_t ubOffset = 0;
@@ -1894,6 +1983,9 @@ public:
             sLen = sClcSize > curS ? curS : sClcSize;
             sLen = sLen > (curS - sIdx) ? (curS - sIdx) : sLen;
             sLen = sLen > 255 ? 255 : sLen;
+            if (sLen == 0) {
+                break;
+            }
             dataLen = sLen * dAlign;
             if ((sLen > 0) && (inUbOffset + dataLen + dAlign / C0_SIZE * cal_block_num) * sizeof(float) >
                                 ubBaseSize * 2 + nzReservedSize) {
@@ -1908,6 +2000,43 @@ public:
     }
     __aicore__ inline void NZProcess()
     {
+        if constexpr (LAYOUT == TND) {
+            if (cBlockIdx == 0) {
+                int64_t t1Full = tilingData->postTilingData.get_t1();
+                int64_t t2Full = tilingData->postTilingData.get_t2();
+                int64_t qEodOffset = qPostBlockTotal;
+                int64_t qEodSize = t1Full * n2 * g * d - qPostBlockTotal;
+                if (qEodSize > 0) {
+                    InitOutput<OUT_TYPE>(dqGm[qEodOffset], qEodSize, 0);
+                }
+                int64_t kvEodOffset = kvPostBlockTotal;
+                int64_t kvEodSize = t2Full * n2 * d - kvPostBlockTotal;
+                if (kvEodSize > 0) {
+                    InitOutput<OUT_TYPE>(dkGm[kvEodOffset], kvEodSize, 0);
+                }
+                if constexpr (CAST_DV) {
+                    int64_t vEodOffset = vPostBlockTotal;
+                    int64_t vEodSize = t2Full * n2 * value_d - vPostBlockTotal;
+                    if (vEodSize > 0) {
+                        InitOutput<OUT_TYPE>(dvGm[vEodOffset], vEodSize, 0);
+                    }
+                }
+                if constexpr (HAS_ROPE == ENABLE) {
+                    int64_t qRopeEodOffset = qRopePostBlockTotal;
+                    int64_t qRopeEodSize = t1Full * n2 * g * rope_d - qRopePostBlockTotal;
+                    if (qRopeEodSize > 0) {
+                        InitOutput<OUT_TYPE>(dqRopeGm[qRopeEodOffset], qRopeEodSize, 0);
+                    }
+                    int64_t kRopeEodOffset = kRopePostBlockTotal;
+                    int64_t kRopeEodSize = t2Full * n2 * rope_d - kRopePostBlockTotal;
+                    if (kRopeEodSize > 0) {
+                        InitOutput<OUT_TYPE>(dkRopeGm[kRopeEodOffset], kRopeEodSize, 0);
+                    }
+                }
+            }
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
+
         uint64_t qBegin = cBlockIdx * qPostBlockFactor * qPostBaseNum;
         uint64_t qEnd = (cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum;
         if (((cBlockIdx + 1) * qPostBlockFactor * qPostBaseNum) > qPostBlockTotal) {
