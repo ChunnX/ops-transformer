@@ -23,6 +23,13 @@ using AscendC::QuePosition;
 
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
+constexpr uint32_t MAX_S2_SPLIT_NUM = 2;
+constexpr uint32_t S2_SPLIT_STAGING_M_SIZE = 64;
+constexpr uint32_t S2_SPLIT_STAGING_M_SIZE_SPLIT_G = 128;
+constexpr uint32_t S2_SPLIT_STAGING_ATTEN_OUT_BYTES = S2_SPLIT_STAGING_M_SIZE * 512 * 4; // 64行 × 512(dTemplateAlign64) × 4字节(fp32)，每个split的partial attention output暂存大小
+constexpr uint32_t S2_SPLIT_STAGING_MAX_SUM_BYTES = S2_SPLIT_STAGING_M_SIZE * 8 * 4; // 64行 × 8(广播份数) × 4字节(float)，每个split的max或sum暂存大小（已广播为8-float/行块布局）
+constexpr uint32_t S2_SPLIT_STAGING_ATTEN_OUT_BYTES_SPLIT_G = S2_SPLIT_STAGING_M_SIZE_SPLIT_G * 512 * 4;
+constexpr uint32_t S2_SPLIT_STAGING_MAX_SUM_BYTES_SPLIT_G = S2_SPLIT_STAGING_M_SIZE_SPLIT_G * 8 * 4;
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
@@ -32,6 +39,7 @@ constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
     int64_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
     int64_t s2LineStartIdx = 0;    /* S2方向按行的起始位置 */ \
     int64_t s2LineOriEndIdx;          /* S2方向按行的结束位置 */ \
+    int64_t s2CmpLineStartIdx = 0; \
     int64_t s2CmpLineEndIdx; \
     int64_t s2LineCmpEndIdx; \
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
@@ -69,6 +77,9 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t qSNumInOneBlock;
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
+    int64_t firstFdDataWorkspaceIdx = 0;
+    bool isS2Split = false;
+    int64_t s2SplitIdx = 0;
 };
 
 #define COMMON_RUN_INFO \
@@ -110,6 +121,8 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
     bool    isCmp; \
+    bool    isS2Split = false; \
+    int64_t s2SplitIdx = 0; \
 
 struct RunInfo {
     COMMON_RUN_INFO;
@@ -120,6 +133,17 @@ struct RunInfo {
     int64_t qSNumInOneBlock;
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
+    int64_t firstFdDataWorkspaceIdx = 0;
+};
+
+struct FdRunInfo {
+    bool coreEnable = false;
+    int64_t bn2Idx = 0;
+    int64_t mIdx = 0;
+    int64_t workspaceIdx = 0;
+    int64_t workspaceNum = 0;
+    int64_t mStartIdx = 0;
+    int64_t mNum = 0;
 };
 
 #define COMMON_CONST_INFO \
