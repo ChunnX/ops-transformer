@@ -134,7 +134,7 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params, c
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                 "aclnnGroupedMatmulAddGetWorkspaceSize", "y",
                 Ops::Transformer::Gmm::FormatString("%zu", yDimNum).c_str(),
-                Ops::Transformer::Gmm::FormatString("The shape dim of %s must be %s", "y", "3").c_str());
+                Ops::Transformer::Gmm::FormatString("The shape dim of %s must be %zu", "y", Dim3).c_str());
             return ACLNN_ERR_PARAM_INVALID;
         }
         auto groupNumY = params.yRef->GetViewShape().GetDim(0);
