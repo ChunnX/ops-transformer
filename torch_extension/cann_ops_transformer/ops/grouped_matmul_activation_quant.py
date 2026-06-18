@@ -89,6 +89,21 @@ def _to_torch_dtype(dtype):
     return _GE_DTYPE_TO_TORCH_DTYPE[ge_dtype]
 
 
+def _get_effective_x_ge_dtype(x, x_dtype):
+    if x_dtype is not None:
+        return _normalize_attr_dtype(x_dtype)
+    return _TORCH_DTYPE_TO_GE_DTYPE.get(x.dtype)
+
+
+def _resolve_quant_mode(quant_mode, x, x_dtype):
+    x_ge_dtype = _get_effective_x_ge_dtype(x, x_dtype)
+    if quant_mode in (None, "") and x_ge_dtype in (GE_DTYPE_FLOAT8_E4M3FN, GE_DTYPE_FLOAT8_E5M2):
+        return "MX"
+    if x_ge_dtype in (GE_DTYPE_FLOAT8_E4M3FN, GE_DTYPE_FLOAT8_E5M2) and quant_mode != "MX":
+        raise ValueError("当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX")
+    return quant_mode
+
+
 def _infer_weight_layout(weight, weight_scale, e, k):
     weight_shape = tuple(weight.shape)
     weight_scale_shape = tuple(weight_scale.shape)
@@ -141,8 +156,7 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
                                                      x_scale_dtype=None):
             torch._check(activation_type == "gelu_tanh",
                          lambda: f"activation_type only supports gelu_tanh, but got {activation_type}.")
-            torch._check(quant_mode == "MX",
-                         lambda: f"quant_mode is required and only supports MX, but got {quant_mode}.")
+            quant_mode = _resolve_quant_mode(quant_mode, x, x_dtype)
             torch._check(round_mode == "rint", lambda: f"round_mode only supports rint, but got {round_mode}.")
             torch._check(scale_alg in (0, 1), lambda: f"scale_alg only supports 0 or 1, but got {scale_alg}.")
             torch._check(group_list_type in (0, 1),
@@ -216,6 +230,7 @@ def npu_grouped_matmul_activation_quant(x, weight, weight_scale, group_list, *,
     weight_dtype = _normalize_wrapper_dtype(weight_dtype)
     weight_scale_dtype = _normalize_wrapper_dtype(weight_scale_dtype)
     x_scale_dtype = _normalize_wrapper_dtype(x_scale_dtype)
+    quant_mode = _resolve_quant_mode(quant_mode, x, x_dtype)
     return torch.ops.cann_ops_transformer.npu_grouped_matmul_activation_quant(
         x, weight, weight_scale, group_list, x_scale=x_scale, bias=bias,
         activation_type=activation_type, group_list_type=group_list_type,
