@@ -113,7 +113,7 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     uint64_t doorBellInfo = 0;
     doorBellInfo |= qp_ctx_entry->wqn; // [0:23] DB_TAG (qp_num)
     doorBellInfo |= 0UL << 24UL; // [24:27] DB_CMD = HNS_ROCE_V2_SQ_DB (0)
-    doorBellInfo |= (curHead % 4096UL) << 32UL; // [32:47] DB_PI = sq.head
+    doorBellInfo |= (curHead % 65536UL) << 32UL; // [32:47] DB_PI = sq.head
     doorBellInfo |= (uint64_t)(qp_ctx_entry->sl) << 48UL; // [48:50] DB_SL = qp.sl
 
     __gm__ uint64_t* doorBellAddr = (__gm__ uint64_t* )(qp_ctx_entry->dbAddr);
@@ -183,7 +183,7 @@ __aicore__ inline void AIVRDMAPostSend(
     uint64_t curHead = *(__gm__ uint32_t*)(curHardwareHead);
     auto curHardwareTailAddr = qp_ctx_entry->tailAddr;
     auto QP_DEPTH = qp_ctx_entry->depth;
-    uint64_t shift = 11;
+    // uint64_t shift = 11;
     // uint64_t shift = 63U - AscendC::CountLeadingZero(QP_DEPTH);
 
     PipeBarrier<PIPE_ALL>();
@@ -265,7 +265,7 @@ __aicore__ inline void AIVRDMAPostRead(
     auto curHardwareTailAddr = qp_ctx_entry->tailAddr;
     auto QP_DEPTH = qp_ctx_entry->depth;
     // uint64_t shift = 63U - AscendC::CountLeadingZero(QP_DEPTH);
-    uint64_t shift = 11;
+    // uint64_t shift = 11;
 
     PipeBarrier<PIPE_ALL>();
     if (flag != -1) {
