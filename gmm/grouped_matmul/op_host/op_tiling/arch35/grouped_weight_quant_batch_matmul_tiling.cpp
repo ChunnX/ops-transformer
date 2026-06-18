@@ -613,11 +613,16 @@ bool GroupedWeightQuantBatchMatmulTiling::EnableTailResplit() const {
     // 不使能尾块重切分的场景
     // 1. 多多多
     // 2. 单单单 weight ND B非转置
+    // 3. 单单单 A16W4 PerGroup ND B转置
     if (!isSingleX_ && !isSingleWeight_ && !isSingleY_) {
         return false;
     }
 
     if (!weightNzFlag_ && !transB_) {
+        return false;
+    }
+
+    if (IsA16W4NDPergroup() && transB_) {
         return false;
     }
 
