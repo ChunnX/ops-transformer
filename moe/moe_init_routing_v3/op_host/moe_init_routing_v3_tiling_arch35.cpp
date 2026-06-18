@@ -1671,7 +1671,7 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
                      NUM_TWO) / multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
         }
     } else {
-        if ((quantMode_ == QUANT_MODE_UNQUANT || quantMode_ == QUANT_MODE_DYNAMIC) && dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
+        if ((quantMode_ == QUANT_MODE_UNQUANT) && dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
             SetPerLoopParams4NoQuantDropLess(perLoopParams, perCoreIndicesElements);
         } else {
             SetPerLoopParams4NoQuantDropPad(multipleParams, perLoopParams, perCoreIndicesElements);
@@ -1720,7 +1720,7 @@ void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropPad(const Mu
                                                                         const int64_t perCoreIndicesElements)
 {
     perLoopParams.perLoopMaxIndicesElements =
-            (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
+            (availUbSize_ / NUM_TWO - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
              UB_BLOCK_SIZE * NUM_TWO) /
             multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
     while (perLoopParams.perLoopMaxIndicesElements <= 0 && perLoopParams.perLoopCols > 1) {
