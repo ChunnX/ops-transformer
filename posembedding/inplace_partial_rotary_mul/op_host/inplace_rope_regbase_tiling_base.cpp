@@ -46,14 +46,12 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::GetPlatformInfo()
         uint64_t ubSizePlatForm;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
         aicoreParams_.ubSize = ubSizePlatForm;
-        socVersion_ = ascendcPlatform.GetSocVersion();
     } else {
         auto compileInfoPtr = reinterpret_cast<const InplacePartialRotaryPositionEmbeddingCompileInfo
             *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         aicoreParams_.blockDim = compileInfoPtr->blockDim;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
-        socVersion_ = compileInfoPtr->socVersion;
     }
     blockSize_ = BLOCK_SIZE;
     return ge::GRAPH_SUCCESS;
