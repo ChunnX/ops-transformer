@@ -372,21 +372,48 @@ public:
     {
         // accumOut / softmaxFDSum / softmaxFDMax 在 user workspace 上连续排布
         // （见 InitVecInput：accumOut@workspace, softmaxFDSum@+accumOutSize, softmaxFDMax@+accumOutSize+logSumExpSize），
-        // 总大小为 accumOutSize + 2 * logSumExpSize（单位：float 元素）。整体清零以消除批跑跨启动的脏残留。
-        int64_t totalFdWsSize = (int64_t)constInfo.accumOutSize + 2 * (int64_t)constInfo.logSumExpSize;
+        // 总大小为 accumOutSize + 2 * logSumExpSize（单位：float 元素）。
+        // accumOut/sum 清零；max 置为大负数（combine 的 neutral max），避免批跑残留 max=0 污染规约。
+        const int64_t accumSize = (int64_t)constInfo.accumOutSize;
+        const int64_t lseSize = (int64_t)constInfo.logSumExpSize;
+        const int64_t totalFdWsSize = accumSize + 2 * lseSize;
         if (totalFdWsSize <= 0) {
             return;
         }
-        int64_t singleCoreSize =
+        const int64_t singleCoreSize =
             (totalFdWsSize + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum); // 2 means c:v = 1:2
-        int64_t tailSize = totalFdWsSize - constInfo.aivIdx * singleCoreSize;
-        int64_t singleInitSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
-
-        if (singleInitSize > 0) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            matmul::InitOutput<float>(accumOutGm[constInfo.aivIdx * singleCoreSize], singleInitSize, 0);
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+        const int64_t baseOffset = (int64_t)constInfo.aivIdx * singleCoreSize;
+        if (baseOffset >= totalFdWsSize) {
+            return;
         }
+        const int64_t endOffset =
+            (baseOffset + singleCoreSize < totalFdWsSize) ? (baseOffset + singleCoreSize) : totalFdWsSize;
+        const int64_t initLen = endOffset - baseOffset;
+        if (initLen <= 0) {
+            return;
+        }
+
+        WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+        if (baseOffset < accumSize) {
+            const int64_t accumLen = (endOffset < accumSize) ? initLen : (accumSize - baseOffset);
+            matmul::InitOutput<float>(accumOutGm[baseOffset], accumLen, 0);
+        }
+        const int64_t sumBase = accumSize;
+        const int64_t sumEnd = accumSize + lseSize;
+        if (endOffset > sumBase && baseOffset < sumEnd) {
+            const int64_t segStart = (baseOffset > sumBase) ? baseOffset : sumBase;
+            const int64_t segEnd = (endOffset < sumEnd) ? endOffset : sumEnd;
+            matmul::InitOutput<float>(softmaxFDSumGm[segStart - sumBase], segEnd - segStart, 0);
+        }
+        const int64_t maxBase = accumSize + lseSize;
+        const int64_t maxEnd = totalFdWsSize;
+        if (endOffset > maxBase && baseOffset < maxEnd) {
+            const int64_t segStart = (baseOffset > maxBase) ? baseOffset : maxBase;
+            const int64_t segEnd = (endOffset < maxEnd) ? endOffset : maxEnd;
+            // float 可表示的最大量级约 3.4e38，用作 combine 规约的 neutral max（等效 -inf）
+            matmul::InitOutput<float>(softmaxFDMaxGm[segStart - maxBase], segEnd - segStart, -3e+38f);
+        }
+        SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
     }
 
     // =================================Private Functions=================================

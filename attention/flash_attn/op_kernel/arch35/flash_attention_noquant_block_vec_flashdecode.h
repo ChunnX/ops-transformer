@@ -519,6 +519,10 @@ public:
         if (!fd.fdCoreEnable) {
             return;
         }
+        if (unlikely(fd.fdS2SplitNum == 0)) {
+            // metadata 未携带有效 split 数时不做 combine（与 GetFDSectionInfo 未赋值时行为一致）
+            return;
+        }
         uint32_t fdBalanceMBaseSize = 8U;
         uint32_t fdBalanceMSplitNum = (fd.mLen + fdBalanceMBaseSize - 1) / fdBalanceMBaseSize;
         uint32_t fdBalanceMTailSize =
@@ -532,7 +536,14 @@ public:
         taskInfo.bIdx = fd.fdBN2Idx / constInfo.n2Size;
         taskInfo.n2Idx = fd.fdBN2Idx % constInfo.n2Size;
         taskInfo.gS1Idx = fd.fdMIdx * s1BaseSize;
-        taskInfo.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务kv方向有几份
+        taskInfo.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务 kv 方向有几份（metadata FA_FD_WORKSPACE_NUM）
+        // 稀疏 mask 场景下单个 combine 任务的实际 split 数可能为 1（小于 preLoadNum=2）。
+        // 预取必须按 actualCombineLoopSize 截断，否则预取 2 份、主循环只消费 1 份，
+        // SYNC_MM2RES ping/pong 的 V_MTE2/MTE2_V Set/Wait 不配对，FreeEventID 永久阻塞 → AIV 卡死，
+        // AIC 在下一 section / 下一轮 bmm CrossCoreWaitFlag 处全部 timeout(subErrType 0x4)。
+        // 注释掉 GetFDSectionInfo 中 fdS2SplitNum 赋值后该值为 0、combine 被跳过，故看似“不再 aicore”。
+        const uint32_t effPreLoadNum =
+            preLoadNum < taskInfo.actualCombineLoopSize ? preLoadNum : taskInfo.actualCombineLoopSize;
         uint64_t combineTaskPrefixSum = fd.fdWorkspaceIdx;
         uint64_t taskOffset = combineTaskPrefixSum * s1BaseSize;
 
@@ -553,7 +564,7 @@ public:
             if (unlikely(learnableSinkFlag)) {
                 CopySinkIn(reduceMLoop);
             }
-            for (uint32_t preLoadIdx = 0; preLoadIdx < preLoadNum; preLoadIdx++) {
+            for (uint32_t preLoadIdx = 0; preLoadIdx < effPreLoadNum; preLoadIdx++) {
                 LocalTensor<T> mm2Res = (((reduceGlobaLoop + preLoadIdx) & 1) == 0) ? fdMm2ResBuf1 : fdMm2ResBuf2;
                 WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
                 CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
@@ -596,7 +607,7 @@ public:
 
             for (uint32_t i = 0; i < taskInfo.actualCombineLoopSize; i++) {
                 LocalTensor<T> mm2Res = (reduceGlobaLoop & 1) == 0 ? fdMm2ResBuf1 : fdMm2ResBuf2;
-                if (i >= preLoadNum) {
+                if (i >= effPreLoadNum) {
                     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                     CopyAccumOutIn(mm2Res, i, taskOffset + startRow, actualGSplitSize);
                     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));

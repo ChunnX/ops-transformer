@@ -111,8 +111,9 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     // SyncAll() 保留：用于在 InitSocState 之后、Init/Process 之前对齐所有核的启动时机，
     //   避免在 InitMMResBuf / vecFaBlock.ClearOutput 等阶段出现跨核状态不一致。
     //   SyncAll 内部占用 flagId [11-14]，与本算子静态分配的 mode 4 flagId [0-9] 不冲突。
+    //   Mix 算子启动对齐需 SyncAll<false>，否则 AIC/AIV 启动时序不一致。
     InitSocState();
-    AscendC::SyncAll();
+    AscendC::SyncAll<false>();
     Kernel op;
     op.Init(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, blocktable, learnableSink, softmaxLse, attentionOut,
             workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData);
