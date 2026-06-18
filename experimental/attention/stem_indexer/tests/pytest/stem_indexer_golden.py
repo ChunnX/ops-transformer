@@ -35,6 +35,10 @@ def ceil_div(value, factor):
     return (int(value) + int(factor) - 1) // int(factor)
 
 
+def to_float32(value):
+    return float(torch.tensor(value, dtype=torch.float32).item())
+
+
 def parse_special_setting(setting):
     parsed = {}
     if not setting:
@@ -154,17 +158,21 @@ def calc_topk_budget(case, q_block_idx, q_block_num, kv_block_num, prompt_len):
     if prompt_block_num < K_SMALL_SEQ_MAX:
         k_start = prompt_block_num
     elif prompt_block_num < K_MEDIUM_SEQ_MAX:
-        k_start = int(prompt_block_num * K_BLOCK_NUM_RATE_MEDIUM + K_BLOCK_NUM_BIAS_MEDIUM)
+        k_start = int(to_float32(to_float32(prompt_block_num) * to_float32(K_BLOCK_NUM_RATE_MEDIUM)) +
+                      to_float32(K_BLOCK_NUM_BIAS_MEDIUM))
     else:
-        k_start = int(prompt_block_num * K_BLOCK_NUM_RATE_LARGE + K_BLOCK_NUM_BIAS_LARGE)
+        k_start = int(to_float32(to_float32(prompt_block_num) * to_float32(K_BLOCK_NUM_RATE_LARGE)) +
+                      to_float32(K_BLOCK_NUM_BIAS_LARGE))
 
     s1_pos = q_block_idx + kv_block_num - q_block_num
     decay_len = prompt_block_num - k_start
     if s1_pos < k_start or decay_len < 1:
         return k_start
 
-    k_end = int(k_start * float(case["alpha"]))
-    topk_count = int(k_start + ((s1_pos - k_start) / (decay_len - 1)) * (k_end - k_start))
+    alpha = to_float32(case["alpha"])
+    k_end = int(to_float32(to_float32(k_start) * alpha))
+    t = to_float32(to_float32(s1_pos - k_start) / to_float32(decay_len - 1))
+    topk_count = int(to_float32(to_float32(k_start) + to_float32(t * to_float32(k_end - k_start))))
     return min(max(topk_count, 1), k_start)
 
 
