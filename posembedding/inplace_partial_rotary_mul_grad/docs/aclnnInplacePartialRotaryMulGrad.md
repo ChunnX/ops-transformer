@@ -415,7 +415,6 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
 ## 约束说明
 
 - 该算子仅支持Ascend 950 AI Processor。
-- 该算子支持非连续Tensor，输入非连续时内部会转换为连续Tensor进行计算。
 
 - 确定性计算：
   - aclnnInplacePartialRotaryMulGrad默认确定性实现。
