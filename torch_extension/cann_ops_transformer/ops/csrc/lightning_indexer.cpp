@@ -68,11 +68,11 @@ at::Tensor lightning_indexer_metadata(
 
 // 工具函数，推导输出shape
 std::tuple<at::Tensor, at::Tensor> construct_lightning_indexer_output_tensor(const at::Tensor& query,
-                                                                                const at::Tensor& key,
-                                                                                int64_t topk,
-                                                                                std::string query_layout_str,
-                                                                                std::string key_layout_str,
-                                                                                bool return_value)
+                                                                             const at::Tensor& key,
+                                                                             int64_t topk,
+                                                                             std::string query_layout_str,
+                                                                             std::string key_layout_str,
+                                                                             bool return_value)
 {
     at::SmallVector<int64_t, SIZE> output_size;
     for (size_t i = 0; i < query.sizes().size(); i++) {
