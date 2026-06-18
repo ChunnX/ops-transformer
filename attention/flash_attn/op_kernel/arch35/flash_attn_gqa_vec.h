@@ -57,6 +57,7 @@ using namespace AttentionCommon;
 #include "flash_attention_noquant_block_vec_flashdecode.h"
 
 #include "flash_attn_tiling_data.h"
+#include "flash_attn_task_loop_hooks.h"
 
 using namespace optiling;
 
@@ -95,7 +96,13 @@ public:
     static constexpr uint32_t DB = 2;
     // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误
     static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
+    static constexpr uint32_t PRELOAD_N = 2;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
+    static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1,
+                  "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
+    static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
+                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
     static constexpr bool HAS_MASK = hasAtten;
 
     static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
@@ -137,6 +144,51 @@ public:
     using flashdecodeGmType = GlobalTensor<float>;
 
     using ConstInfoX = ConstInfoXVec;
+    using RunInfoType = RunInfoXVec;
+
+    struct TaskLoopHooks {
+        static constexpr bool HAS_DEAL_ZERO = true;
+
+        static __aicore__ inline void InitLoopState(FlashAttentionNoQuantGqaKernel &) {}
+
+        static __aicore__ inline void ResetLoopState(FlashAttentionNoQuantGqaKernel &self)
+        {
+            self.mloop = 0;
+            self.accGS1Loops = 0;
+            self.headS2Split = false;
+            self.tailS2Split = false;
+        }
+
+        static __aicore__ inline void GetSectionInfo(FlashAttentionNoQuantGqaKernel &self, uint32_t sectionIdx)
+        {
+            self.GetFASectionInfo(sectionIdx);
+        }
+
+        static __aicore__ inline void CreateTask(FlashAttentionNoQuantGqaKernel &self,
+                                                  RunInfoXVec taskRunInfo[PRELOAD_TASK_CACHE_SIZE],
+                                                  uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
+        {
+            self.CreateTask(loop, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+        }
+
+        static __aicore__ inline void ExecuteTask(FlashAttentionNoQuantGqaKernel &self,
+                                                   RunInfoXVec taskRunInfo[PRELOAD_TASK_CACHE_SIZE],
+                                                   uint64_t loop)
+        {
+            self.ExecuteTask(loop, taskRunInfo);
+        }
+
+        static __aicore__ inline void UpdateAxisInfo(FlashAttentionNoQuantGqaKernel &self, TASK_DEAL_MODE taskDealMode,
+                                                      uint32_t &bN2Cur, uint32_t &gS1Cur, uint32_t &s2Cur)
+        {
+            self.UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
+        }
+
+        static __aicore__ inline void DealZeroActSeqLen(FlashAttentionNoQuantGqaKernel &self, uint32_t bN2Cur)
+        {
+            self.DealZeroActSeqLen(bN2Cur);
+        }
+    };
 
     // gm
     GlobalTensor<OUTPUT_T> attentionOutGm;
@@ -1283,13 +1335,6 @@ public:
         }
     }
 
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
-    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
-    static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1,
-                  "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
-    static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
-                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
-
     // ===== 核间共享 buffer slots =====
     LocalTensor<uint8_t> bmm1UbSlot[2];
     LocalTensor<uint8_t> bmm2UbSlot[2];
@@ -1523,51 +1568,7 @@ public:
         if (constInfoXVec.aicIdx >= constInfoXVec.coreNum) {
             return;
         }
-
-        GetFASectionInfo(sectionIdx);
-        RunInfoXVec taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
-
-        createdTaskCount = 0;
-        uint32_t executedTaskCount = 0;
-        mloop = 0;
-        accGS1Loops = 0;
-        headS2Split = false;
-        tailS2Split = false;
-
-        uint32_t bN2Cur = bN2Start_;
-        uint32_t gS1Cur = gS1OStart_;
-        uint32_t s2Cur = s2OStart_;
-        prevBN2Idx = bN2Cur;
-        prevGS1Idx = gS1Cur;
-
-        bool shouldDispatchTask = true;
-        uint32_t validTaskCount = 0;
-        while (shouldDispatchTask || validTaskCount) {
-            shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
-            if (shouldDispatchTask) {
-                TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
-                if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
-                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
-                    createdTaskCount++;
-                    validTaskCount++;
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                    DealZeroActSeqLen(bN2Cur);
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                    continue;
-                } else {
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                    continue;
-                }
-            }
-            if (validTaskCount) {
-                ExecuteTask(executedTaskCount, taskRunInfo);
-                executedTaskCount++;
-                if (executedTaskCount > PRELOAD_N) {
-                    validTaskCount--;
-                }
-            }
-        }
+        CommonTaskLoop(*this, sectionIdx);
     }
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)

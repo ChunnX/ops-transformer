@@ -37,6 +37,7 @@
 #endif
 
 #include "flash_attn_tiling_data.h"
+#include "flash_attn_task_loop_hooks.h"
 
 using namespace AscendC;
 using namespace optiling;
@@ -147,6 +148,42 @@ public:
     using L0BType = typename L0BBuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type;
 
     using ConstInfoX = ConstInfoXCube;
+    using RunInfoType = RunInfoXCube;
+
+    struct TaskLoopHooks {
+        static constexpr bool HAS_DEAL_ZERO = false;
+
+        static __aicore__ inline void InitLoopState(FlashAttentionNoQuantGqaKernel &) {}
+
+        static __aicore__ inline void ResetLoopState(FlashAttentionNoQuantGqaKernel &) {}
+
+        static __aicore__ inline void GetSectionInfo(FlashAttentionNoQuantGqaKernel &self, uint32_t sectionIdx)
+        {
+            self.GetFASectionInfo(sectionIdx);
+        }
+
+        static __aicore__ inline void CreateTask(FlashAttentionNoQuantGqaKernel &self,
+                                                  RunInfoXCube taskRunInfo[PRELOAD_TASK_CACHE_SIZE],
+                                                  uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
+        {
+            self.CreateTask(loop, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+        }
+
+        static __aicore__ inline void ExecuteTask(FlashAttentionNoQuantGqaKernel &self,
+                                                   RunInfoXCube taskRunInfo[PRELOAD_TASK_CACHE_SIZE],
+                                                   uint64_t loop)
+        {
+            self.ExecuteTask(loop, taskRunInfo);
+        }
+
+        static __aicore__ inline void UpdateAxisInfo(FlashAttentionNoQuantGqaKernel &self, TASK_DEAL_MODE,
+                                                      uint32_t &bN2Cur, uint32_t &gS1Cur, uint32_t &s2Cur)
+        {
+            self.UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
+        }
+
+        static __aicore__ inline void DealZeroActSeqLen(FlashAttentionNoQuantGqaKernel &, uint32_t) {}
+    };
 
     // ====== L1/L0C 缓冲区布局常量 ======
     static constexpr bool L1Q_IS_SINGLE = (dBaseSize > 256);
@@ -1206,42 +1243,7 @@ public:
     }
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
     {
-        GetFASectionInfo(sectionIdx);
-        RunInfoXCube taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
-
-        createdTaskCount = 0;
-        uint32_t executedTaskCount = 0;
-
-        uint32_t bN2Cur = bN2Start_;
-        uint32_t gS1Cur = gS1OStart_;
-        uint32_t s2Cur = s2OStart_;
-        prevBN2Idx = bN2Cur;
-        prevGS1Idx = gS1Cur;
-
-        bool shouldDispatchTask = true;
-        uint32_t validTaskCount = 0;
-        while (shouldDispatchTask || validTaskCount) {
-            shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
-            if (shouldDispatchTask) {
-                TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
-                if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
-                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
-                    createdTaskCount++;
-                    validTaskCount++;
-                }
-                UpdateAxisInfo(bN2Cur, gS1Cur, s2Cur);
-                if (taskDealMode != TASK_DEAL_MODE::CREATE_TASK) {
-                    continue;
-                }
-            }
-            if (validTaskCount) {
-                ExecuteTask(executedTaskCount, taskRunInfo);
-                executedTaskCount++;
-                if (executedTaskCount > PRELOAD_N) {
-                    validTaskCount--;
-                }
-            }
-        }
+        CommonTaskLoop(*this, sectionIdx);
     }
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
