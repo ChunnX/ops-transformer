@@ -174,12 +174,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassBAB::PostTiling()
     tilingData_->inplacePartialRotaryMulGradParams.dSplitCoef = dSplitCoef_;
     tilingData_->sliceLength = sliceLength_;
 
+    tilingKey_ = static_cast<uint64_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_BAB);
     context_->SetBlockDim(usedCoreNum_);
-    context_->SetTilingKey(static_cast<uint64_t>(InplacePartialRotaryMulGradTilingKey::TILING_KEY_BAB));
-
-    tilingData_->SaveToBuffer(context_->GetRawTilingData()->GetData(),
-                              context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(tilingData_->GetDataSize());
 
     OP_LOGI(context_->GetNodeName(),
             "InplacePartialRotaryMulGradBAB tiling: B=%ld S=%ld D=%ld N=%ld "
