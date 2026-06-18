@@ -113,7 +113,8 @@ public:
             ProcessAntiqPerChannelOrPerToken(dstTensor, srcTensor, antiqGmCoord);
         }
         // per token + PA
-        else if constexpr ((GM_FORMAT == GmFormat::PA_BnBs) || (GM_FORMAT == GmFormat::PA_BnNBs) || (GM_FORMAT == GmFormat::PA_BnNBs_KS)) {
+        else if constexpr ((GM_FORMAT == GmFormat::PA_BnBs) || (GM_FORMAT == GmFormat::PA_BnNBs) ||
+                           (GM_FORMAT == GmFormat::PA_BnNBs_KS)) {
             ProcessAntiqPA(dstTensor, srcTensor, antiqGmCoord);
         }
     }
@@ -179,7 +180,7 @@ __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FOR
         uint64_t s1Size = 0;
         s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
         uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
-        uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;;
+        uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
 
         uint64_t queryGmbaseOffset =
             offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, 0);
@@ -191,7 +192,8 @@ __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FOR
         dataCopyParams.dstStride = 0; // 外部传入
 
         DataCopyPadExtParams<T> dataCopyPadParams;
-        DataCopyPad(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset + s1IdxStart], dataCopyParams, dataCopyPadParams);
+        DataCopyPad(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset + s1IdxStart],
+                    dataCopyParams, dataCopyPadParams);
     }
 };
 
@@ -226,7 +228,7 @@ private:
 
             uint64_t srcOffset = offsetCalculator.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, curS2Idx);
             CopyKeyScaleNDToND(dstTensor.tensor[dstOffset], srcTensor.gmTensor[srcOffset], 1, copyElemCnt,
-                                      copyElemCnt, copyElemCnt);
+                               copyElemCnt, copyElemCnt);
 
             dstOffset += copyElemCnt;
             copyFinishElmeCnt += copyElemCnt;
