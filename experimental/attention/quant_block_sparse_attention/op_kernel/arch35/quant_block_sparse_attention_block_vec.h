@@ -151,7 +151,7 @@ public:
     TBuf<> firstLoopSumBuf;
     TQue<QuePosition::VECIN, 1> qScaleInputQue;
     TQue<QuePosition::VECIN, 1> kScaleInputQue;
-    TBuf<> vselrIndexesBuf[4];
+    TBuf<> vselrIndexesBuf[5];
     TBuf<> mm2InBuf;
     TBuf<> mm2OutBuf;
     TQue<QuePosition::VECOUT, 1> maxBrdcst;
@@ -675,7 +675,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
     tPipe->InitBuffer(preLoopMaxBuf, 256);
     tPipe->InitBuffer(preLoopSumBuf, 256);
     tPipe->InitBuffer(firstLoopSumBuf, 256);
-    tPipe->InitBuffer(qScaleInputQue, 1, 256);
+    tPipe->InitBuffer(qScaleInputQue, 1, 256 * 8);
     tPipe->InitBuffer(kScaleInputQue, 1, 1024);
 }
 
@@ -728,6 +728,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)], 128);
     tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)], 64);
     tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)], 256);
+    tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::QSCALE_GATHER_INDEX)], 64 * sizeof(uint32_t));
     LocalTensor<uint8_t> vselrIndexesTensor =
         vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
     for (uint32_t i = 0; i < 4; i++) {
@@ -744,6 +745,11 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
         vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
     for (uint32_t i = 0; i < 64; i++) {
         vselrIndexesTensor.SetValue(i, i << 2);
+    }
+    LocalTensor<uint32_t> qGatherTensor =
+        vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::QSCALE_GATHER_INDEX)].template Get<uint32_t>();
+    for (uint32_t i = 0; i < 64; ++i) {
+        qGatherTensor.SetValue(i, i * 8);
     }
 
     InitUniqueLocalBuffer(constInfo);
