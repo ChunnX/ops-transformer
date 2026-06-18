@@ -1441,10 +1441,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
                  (transposeX1 == false && transposeX2 == true &&
                   op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510))) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-            "aclnnGroupedMatmulFinalizeRoutingV3", "x and weight",
-            "x=" + GmmFinalizeRouting::ViewShapeToString(x1) +
-                ", weight=" + GmmFinalizeRouting::ViewShapeToString(x2),
-            "the value of x and weight transpose config must be false/false or false/true on DAV_3510");
+            "aclnnGroupedMatmulFinalizeRoutingV3", "transposeX1 and transposeX2",
+            "transposeX1=" + std::string(transposeX1 ? "true" : "false") +
+                ", transposeX2=" + std::string(transposeX2 ? "true" : "false"),
+            "the value of transposeX1 and transposeX2 must be false/false or false/true on DAV_3510");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // unpack int32 to int4
