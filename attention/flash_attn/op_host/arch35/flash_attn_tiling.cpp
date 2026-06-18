@@ -338,6 +338,10 @@ bool FlashAttnTilingImpl::CheckNeedInitOutput() const
     if (seqUsedQFlag_ || seqUsedKvFlag_) {
         return true;
     }
+    if (faInfo_->qLayout == FaLayout::TND && faInfo_->kvLayout == FaLayout::TND &&
+        faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
+        return false;
+    }
     if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
         return false;
     }
