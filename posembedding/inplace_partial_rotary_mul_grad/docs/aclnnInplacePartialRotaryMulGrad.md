@@ -174,8 +174,8 @@ aclnnStatus aclnnInplacePartialRotaryMulGradGetWorkspaceSize(
     const aclTensor  *xOptional,
     int64_t           rotaryMode,
     const aclIntArray *partialSlice,
-    const aclTensor  *dcosOut,
-    const aclTensor  *dsinOut,
+    aclTensor        *dcosOut,
+    aclTensor        *dsinOut,
     uint64_t         *workspaceSize,
     aclOpExecutor    **executor)
 ```
