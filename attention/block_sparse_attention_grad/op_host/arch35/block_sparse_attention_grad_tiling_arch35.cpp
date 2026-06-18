@@ -9,8 +9,8 @@
  */
 #include "err/ops_err.h"
 #include "log/log.h"
-#include "op_host/tiling_base.h"
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_base/tiling_base.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
 

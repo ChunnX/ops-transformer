@@ -19,7 +19,7 @@
 #include <cstdint>
 #include "tiling/tiling_api.h"
 #include "graph/utils/type_utils.h"
-#include "op_host/tiling_base.h"
+#include "tiling_base/tiling_base.h"
 #include "register/tilingdata_base.h"
 
 namespace optiling {
