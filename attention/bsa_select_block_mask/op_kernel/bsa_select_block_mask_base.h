@@ -53,6 +53,10 @@ using AscendC::CrossCoreWaitFlag;
 #define BSA_ENABLE_HEAD_SYNCALL 0
 #endif
 
+#ifndef BSA_ENABLE_FIXPIPE_PROBE
+#define BSA_ENABLE_FIXPIPE_PROBE 1
+#endif
+
 #define BSA_TILING_VERIFY_PRINTF(...) do {} while (0)
 
 template <typename BSAT> class BSASelectBlockMaskBase {
@@ -589,6 +593,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
             }
             uint32_t kChunkFlagIdx = (kChunkStart / constInfo.kChunkSize) & 1;
             if (BSA_ENABLE_C1_TO_V1_SYNC) {
+                if (BSA_ENABLE_FIXPIPE_PROBE) {
+                    matmulService.EmitFixpipeProbe(kChunkFlagIdx);
+                }
                 CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[kChunkFlagIdx]);
             }
         }
