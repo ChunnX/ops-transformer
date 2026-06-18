@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file flash_attention_noquant_kernel_base.h
+ * \file flash_attn_kernel_gqa.h
  * \brief
  */
 
-#ifndef FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
-#define FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
+#ifndef FLASH_ATTN_KERNEL_GQA_H_
+#define FLASH_ATTN_KERNEL_GQA_H_
 
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "kernel_operator_list_tensor_intf.h" // TensorDesc
@@ -854,4 +854,4 @@ public:
 
 } // namespace BaseApi
 
-#endif // FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
+#endif // FLASH_ATTN_KERNEL_GQA_H_
