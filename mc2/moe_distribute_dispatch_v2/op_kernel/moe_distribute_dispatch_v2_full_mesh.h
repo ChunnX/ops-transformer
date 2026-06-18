@@ -1008,8 +1008,10 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 
             // Copy stride: srcTensor → outTensor_[slot]，slot 在批次内循环复用
             uint32_t slotOffInt32 = (ki - batchStart) * hCommuSize_ / sizeof(int32_t);
-            Copy(outTensorInt32[slotOffInt32], srcTensorInt32, uint64_t(64), uint8_t(blockCntPerToken_), {1, 1, 16, 15});
-            Copy(outTensorInt32[slotOffInt32 + 64], srcTensorInt32[64], uint64_t(56), uint8_t(blockCntPerToken_), {1, 1, 16, 15});
+            Copy(outTensorInt32[slotOffInt32], srcTensorInt32, uint64_t(64),
+                uint8_t(blockCntPerToken_), {1, 1, 16, 15});
+            Copy(outTensorInt32[slotOffInt32 + 64], srcTensorInt32[64], uint64_t(56),
+                uint8_t(blockCntPerToken_), {1, 1, 16, 15});
             SyncFunc<AscendC::HardEvent::V_S>();
 
             // 标量更新 triple（位置经 Copy stride 映射）
@@ -1204,7 +1206,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             tpipe_->InitBuffer(outBuf, hCommuSize_ * BUFFER_NUM);
             outTensor_ = outBuf.Get<XOutType>();
             TBuf<> expertMaskBuf, tokenNumToExpertBuf;
-            maskSizePerExpert_ = Ceil((expertIdsBufSize_ / sizeof(int32_t)) / 8, UB_ALIGN) * UB_ALIGN; // 8 is 1byte->8bit
+            maskSizePerExpert_ = Ceil((expertIdsBufSize_ / sizeof(int32_t)) / 8, UB_ALIGN) * UB_ALIGN;
             uint32_t expertMaskBufSize = maskSizePerExpert_ * Ceil(moeExpertNum_, moeUsedAivNum_);
             tpipe_->InitBuffer(expertMaskBuf, expertMaskBufSize);
             tpipe_->InitBuffer(tokenNumToExpertBuf, Ceil(moeExpertNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
