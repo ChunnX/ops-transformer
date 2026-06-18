@@ -9,7 +9,7 @@
 */
 
 /*!
-* \file lightning_indexer_v2.cpp
+* \file lightning_indexer.cpp
 * \brief
 */
 
@@ -67,12 +67,12 @@ at::Tensor lightning_indexer_metadata(
 }
 
 // 工具函数，推导输出shape
-std::tuple<at::Tensor, at::Tensor> construct_lightning_indexer_v2_output_tensor(const at::Tensor& query,
-                                                                                const at::Tensor& key,
-                                                                                int64_t topk,
-                                                                                std::string query_layout_str,
-                                                                                std::string key_layout_str,
-                                                                                bool return_value)
+std::tuple<at::Tensor, at::Tensor> construct_lightning_indexer_output_tensor(const at::Tensor& query,
+                                                                             const at::Tensor& key,
+                                                                             int64_t topk,
+                                                                             std::string query_layout_str,
+                                                                             std::string key_layout_str,
+                                                                             bool return_value)
 {
     at::SmallVector<int64_t, SIZE> output_size;
     for (size_t i = 0; i < query.sizes().size(); i++) {
@@ -103,7 +103,7 @@ std::tuple<at::Tensor, at::Tensor> construct_lightning_indexer_v2_output_tensor(
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices_out, sparse_values_out);
 }
 
-std::tuple<at::Tensor, at::Tensor> lightning_indexer_v2(
+std::tuple<at::Tensor, at::Tensor> lightning_indexer(
     const at::Tensor &q, const at::Tensor &k, const at::Tensor &w,
     int64_t topk,
     const c10::optional<at::Tensor> &cu_seqlens_q,
@@ -125,11 +125,11 @@ std::tuple<at::Tensor, at::Tensor> lightning_indexer_v2(
     std::string key_layout_str = std::string(layout_k);
 
     // construct the output tensor
-    std::tuple<at::Tensor, at::Tensor> lightning_indexer_v2_output
-        = construct_lightning_indexer_v2_output_tensor(q, k, topk, query_layout_str,
+    std::tuple<at::Tensor, at::Tensor> lightning_indexer_output
+        = construct_lightning_indexer_output_tensor(q, k, topk, query_layout_str,
                                                     key_layout_str, return_value);
-    at::Tensor sparse_indices_out = std::get<0>(lightning_indexer_v2_output);
-    at::Tensor sparse_values_out = std::get<1>(lightning_indexer_v2_output);
+    at::Tensor sparse_indices_out = std::get<0>(lightning_indexer_output);
+    at::Tensor sparse_values_out = std::get<1>(lightning_indexer_output);
     // convert str
     char *query_layout_ptr = const_cast<char *>(query_layout_str.c_str());
     char *key_layout_ptr = const_cast<char *>(key_layout_str.c_str());
@@ -143,6 +143,6 @@ std::tuple<at::Tensor, at::Tensor> lightning_indexer_v2(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("lightning_indexer_metadata", &lightning_indexer_metadata, "lightning_indexer_metadata");
-    m.def("lightning_indexer_v2", &lightning_indexer_v2, "lightning_indexer_v2");
+    m.def("lightning_indexer", &lightning_indexer, "lightning_indexer");
 }
 } // namespace op_api
