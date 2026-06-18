@@ -258,19 +258,18 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckQuantDtypeByFormat(ge::DataType q
         // 仅 NZ+MXFP4 场景：支持 FLOAT4_E1M2
         OP_CHECK_IF(std::find(quantDtypeMxFp4NzSupportList.begin(), quantDtypeMxFp4NzSupportList.end(), quantDtype) ==
                         quantDtypeMxFp4NzSupportList.end(),
-                    OP_LOGE(inputParams_.opName,
-                            "When x and weight are FLOAT4 and weight is NZ, quantDtype should be in "
-                            "{FLOAT8_E4M3, FLOAT4_E2M1, FLOAT4_E1M2}, but actual value is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(quantDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        inputParams_.opType, "quant_dtype", ge::TypeUtils::DataTypeToSerialString(quantDtype),
+                        "when x and weight are FLOAT4 and weight is NZ, quant_dtype must be in "
+                        "{FLOAT8_E4M3, FLOAT4_E2M1, FLOAT4_E1M2}"),
                     return false);
     } else {
         // 其他所有场景（ND/FP8等）：不支持 FLOAT4_E1M2
         OP_CHECK_IF(std::find(quantDtypeSupportList.begin(), quantDtypeSupportList.end(), quantDtype) ==
                         quantDtypeSupportList.end(),
-                    OP_LOGE(inputParams_.opName,
-                            "quantDtype should be in {FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1}, "
-                            "but actual value is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(quantDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        inputParams_.opType, "quant_dtype", ge::TypeUtils::DataTypeToSerialString(quantDtype),
+                        "quant_dtype must be in {FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1}"),
                     return false);
     }
     return true;
@@ -300,17 +299,19 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Sh
                                                                   const gert::Shape &wShape) const
 {
     OP_CHECK_IF(xShape.GetDimNum() < MIN_X_ORIGIN_SHAPE_DIM || wShape.GetDimNum() < MIN_WEIGHT_ORIGIN_SHAPE_DIM,
-                OP_LOGE(context_->GetNodeName(),
-                        "MXFP4 weight NZ requires x dim at least 2 and weight origin dim at least 3."),
+                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+                    inputParams_.opType, "x, weight",
+                    ListToString(std::to_string(xShape.GetDimNum()), std::to_string(wShape.GetDimNum())),
+                    "when x and weight are FLOAT4 and weight is NZ, dim num of x must be at least 2 and dim num of "
+                    "weight must be at least 3"),
                 return false);
 
     int64_t weightLastSecondDim = wShape.GetDim(wShape.GetDimNum() - WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET);
     int64_t weightLastDim = wShape.GetDim(wShape.GetDimNum() - WEIGHT_ORIGIN_LAST_DIM_OFFSET);
     OP_CHECK_IF(weightLastSecondDim == INVALID_MXFP4_WEIGHT_DIM || weightLastDim == INVALID_MXFP4_WEIGHT_DIM,
-                OP_LOGE(context_->GetNodeName(),
-                        "MXFP4 weight NZ requires the last two dimensions of weight origin shape not to be 1, "
-                        "but got %ld and %ld.",
-                        weightLastSecondDim, weightLastDim),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    inputParams_.opType, "weight", ShapeToString(wShape),
+                    "when x and weight are FLOAT4 and weight is NZ, the last two dimensions of weight can not be 1"),
                 return false);
     return true;
 }
@@ -318,8 +319,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Sh
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckWeightNdDtype()
 {
     OP_CHECK_IF(inputParams_.bFormat == ge::FORMAT_ND && inputParams_.bDtype == ge::DT_FLOAT4_E1M2,
-                OP_LOGE(context_->GetNodeName(),
-                        "When weight is ND format, weight dtype cannot be FLOAT4_E1M2."),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    inputParams_.opType, "weight", ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype),
+                    "when the format of weight is ND, the dtype of weight can not be FLOAT4_E1M2"),
                 return false);
     return true;
 }
@@ -680,9 +682,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
         leftL1Size / (std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize)));
     OP_CHECK_IF(
         scaleInit == 0,
-        OP_LOGE(context_->GetNodeName(),
-                "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactor should not be equal to 0.",
-                inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            inputParams_.opType, "m, n, k, groupNum",
+            ListToString(std::to_string(inputParams_.mSize), std::to_string(inputParams_.nSize),
+                         std::to_string(inputParams_.kSize), std::to_string(inputParams_.groupNum)),
+            "when inputs are in mx quant mode, scaleFactor can not be 0"),
         return ge::GRAPH_FAILED);
 
     uint32_t scaleFactorAMax =
