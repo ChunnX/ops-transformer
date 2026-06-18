@@ -30,7 +30,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, 
     const T scale, float deScaleQK, const T minValue, float keepProb, bool needAtten, 
     const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-    const float pScale = 1.0f)
+    const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -128,6 +128,18 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     mem_bar(VST_VLD);
 
     //qscale kscale
+    // repack qscale from [q0x8, q1x8, ..., q63x8] to [q0, q1, ..., q63] using Gather
+    RegTensor<uint32_t> vreg_qgather_idx;
+    MaskReg preg_qstore8;
+    LoadAlign(vreg_qgather_idx, qGatherIdxUb);
+    uint32_t sreg_qmask = (uint32_t)0xFFULL;
+    preg_qstore8 = UpdateMask<uint16_t>(sreg_qmask);
+    for (uint32_t c = 0; c < 8; ++c) {
+        LoadAlign(vreg_data_tmp0, qScaleUb + c * 64);
+        Gather(vreg_data_tmp1, vreg_data_tmp0, vreg_qgather_idx);
+        StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8);
+    }
+    mem_bar(VST_VLD);
     LoadAlign(vreg_qscale_vec, qScaleUb);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
@@ -313,7 +325,7 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
     const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor, const LocalTensor<T>& kScaleTensor, 
     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue, 
-    float keepProb, bool needAtten, const float pScale = 1.0f)
+    float keepProb, bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -334,7 +346,7 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
 
     ProcessVec1DnNoUpdateVF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32,
         new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m, n, originN, scale, deScaleQK, minValue,
-        keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
+        keepProb, needAtten, dScale, blockStride, repeatStride, pScale, qGatherIdxUb);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
@@ -344,7 +356,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, 
     const T scale, float deScaleQK, const T minValue, float keepProb, bool needAtten, 
     const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
-    const float pScale = 1.0f)
+    const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -442,6 +454,18 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     }
     mem_bar(VST_VLD);
     //qscale kscale
+    // repack qscale from [q0x8, q1x8, ..., q63x8] to [q0, q1, ..., q63] using Gather
+    RegTensor<uint32_t> vreg_qgather_idx;
+    MaskReg preg_qstore8;
+    LoadAlign(vreg_qgather_idx, qGatherIdxUb);
+    uint32_t sreg_qmask = (uint32_t)0xFFULL;
+    preg_qstore8 = UpdateMask<uint16_t>(sreg_qmask);
+    for (uint32_t c = 0; c < 8; ++c) {
+        LoadAlign(vreg_data_tmp0, qScaleUb + c * 64);
+        Gather(vreg_data_tmp1, vreg_data_tmp0, vreg_qgather_idx);
+        StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8);
+    }
+    mem_bar(VST_VLD);
     LoadAlign(vreg_qscale_vec, qScaleUb);
     for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
@@ -635,7 +659,7 @@ __aicore__ inline void ProcessVec1DnUpdate(
     const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor, const LocalTensor<T>& kScaleTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, const T minValue, 
-    float keepProb, bool needAtten, const float pScale = 1.0f)
+    float keepProb, bool needAtten, const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     __ubuf__ T2* x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ float* input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -656,7 +680,7 @@ __aicore__ inline void ProcessVec1DnUpdate(
 
     ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32,
         new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb, indexesUb, m, n, originN, scale, deScaleQK, minValue,
-        keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
+        keepProb, needAtten, dScale, blockStride, repeatStride, pScale, qGatherIdxUb);
 }
 
 /*
@@ -686,6 +710,7 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2>& dstTensor, const L
                                        const uint32_t originN, const T scale, float deScaleQK, const T minValue,
                                        float keepProb, bool needAtten, const float pScale = 1.0f)
 {
+    __ubuf__ uint32_t* qGatherIdxUb = (__ubuf__ uint32_t*)(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::QSCALE_GATHER_INDEX)].template Get<uint32_t>().GetPhyAddr());
     if constexpr (!isUpdate) {
         // 索引序列，用于在VF代码中量化cast后的gather指令
         // 在对计算结果进行cast之后，数据从fp32转换成了fp8，可能会得到一个乱序的非紧密排布的结果，需要定义一个索引序列来把结果调整正确
@@ -693,13 +718,13 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2>& dstTensor, const L
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         ProcessVec1DnNoUpdate<T, T2, hasAtten, ubN>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor, kScaleTensor,
-            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale);
+            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, qGatherIdxUb);
     } else {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         ProcessVec1DnUpdate<T, T2, hasAtten, ubN>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, qScaleTensor, kScaleTensor,
-            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale);
+            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, qGatherIdxUb);
     }
 }
 
