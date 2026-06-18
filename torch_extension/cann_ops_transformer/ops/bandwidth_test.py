@@ -11,8 +11,8 @@ import torch
 import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
-from npu_ops_transformer.op_builder.builder import OpBuilder
-from npu_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
 class BandwidthTestOpBuilder(OpBuilder):
