@@ -15,7 +15,7 @@
 #include "grouped_mat_mul_allto_allv_tiling.h"
 #include "op_mc2.h"
 #include "mc2_log.h"
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_comm_utils.h"
 #include "register/op_def_registry.h"

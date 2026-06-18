@@ -29,7 +29,7 @@
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling.h"
 #include "allto_allv_grouped_mat_mul_tiling_base.h"
 #include "register/op_impl_registry.h"
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "context_util.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
 #include "../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
