@@ -246,5 +246,5 @@
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn API | [test_aclnn_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md.md)接口调用SparseFlashMlaMetadata算子 |
+| aclnn API | [test_aclnn_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md)接口调用SparseFlashMlaMetadata算子 |
 | PyTorch API | [test_torch_sparse_flash_mla_metadata.py](./examples/test_torch_sparse_flash_mla_metadata.py) | 通过[torch.ops.cann_ops_transformer.sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_metadata.md)接口调用SparseFlashMlaMetadata算子 |
