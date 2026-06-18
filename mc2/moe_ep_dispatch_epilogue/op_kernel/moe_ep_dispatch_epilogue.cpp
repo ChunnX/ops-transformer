@@ -17,7 +17,7 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(
     GM_ADDR context, GM_ADDR dstBufferSlotIdx,
     GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
     GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
-    GM_ADDR recvSrcMetadata,
+    GM_ADDR recvSrcMetadata, GM_ADDR recvScales,
     GM_ADDR workspace, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeEpDispatchEpilogueTilingData);
@@ -31,7 +31,7 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(
     op.Init(context, dstBufferSlotIdx,
             numRecvPerRank, numRecvPerExpert, cachedRecvSrcMetadata,
             recvX, recvTopkIdx, recvTopkWeights,
-            recvSrcMetadata,
+            recvSrcMetadata, recvScales,
             workspace, tilingGM, &pipe, &tilingData.moeEpDispatchEpilogueInfo);
     op.Process();
 }

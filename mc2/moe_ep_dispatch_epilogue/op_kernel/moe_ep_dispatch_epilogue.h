@@ -37,7 +37,7 @@ public:
         GM_ADDR dstBufferSlotIdx,
         GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
         GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
-        GM_ADDR recvSrcMetadata,
+        GM_ADDR recvSrcMetadata, GM_ADDR recvScales,
         GM_ADDR workspace, GM_ADDR tilingGM,
         TPipe* pipe, const MoeEpDispatchEpilogueInfo* tilingData);
     __aicore__ inline void Process();
@@ -127,7 +127,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     GM_ADDR dstBufferSlotIdx,
     GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
     GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
-    GM_ADDR recvSrcMetadata,
+    GM_ADDR recvSrcMetadata, GM_ADDR recvScales,
     GM_ADDR workspace, GM_ADDR tilingGM,
     TPipe* pipe, const MoeEpDispatchEpilogueInfo* tilingData)
 {
