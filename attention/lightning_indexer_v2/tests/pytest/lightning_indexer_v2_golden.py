@@ -502,8 +502,13 @@ class GeneralizedLIV2:
             actualSeqLengths_k = actual_seq_lengths_key
             k_shape = self.k_shape
 
+<<<<<<< HEAD
         elif layout_key == "PA_BSND":
             self.actual_seq_lengths_key = seqused_k
+=======
+        elif layout_key == "PA_BBND":
+            self.actual_seq_lengths_key = actual_seq_lengths_key
+>>>>>>> b25f41191 (replace PA_BSND with PA_BBND)
             actualSeqLengths_k = self.actual_seq_lengths_key
             k_max_s2 = math.floor(max(actualSeqLengths_k))
             k_shape = [batch_size, k_head_num, k_max_s2, head_dim]
@@ -631,7 +636,7 @@ def liv2_output_single(params):
         block_table = None
         cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
 
-    elif layout_key == "PA_BSND":
+    elif layout_key == "PA_BBND":
         # 以不同batch中最大seq为标准初始化key(bnsd)
         k_max_s2 = math.floor(max(seqused_k))
         k_max_block_num_per_batch = math.ceil(k_max_s2 / block_size) #遍历batch得到的最大的block num
