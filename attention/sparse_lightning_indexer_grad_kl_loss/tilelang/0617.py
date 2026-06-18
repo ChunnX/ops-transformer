@@ -277,40 +277,37 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
                     T.barrier_all()
 
-                    # P_reduced for MY K block
-                    T.copy(bmm1Res[bz, s1_id, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm1_ub)
-                    T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
-                    for g_id in range(G):
-                        T.tile.sub(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_max_ub[g_id])
-                    T.tile.exp(bmm1_ub, bmm1_ub)
-                    T.barrier_all()
-                    for g_id in range(G):
-                        T.tile.div(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_sum_ub[g_id])
-                    T.barrier_all()
-                    T.tile.fill(p_reduced_tmp_ub, 0)
-                    for g_id in range(G):
-                        T.tile.add(p_reduced_tmp_ub, p_reduced_tmp_ub, bmm1_ub[g_id, :])
-                    T.barrier_all()
-                    T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
-                    T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
-
-                    # ReduceSumY for MY K block
-                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm2_ub)
-                    T.tile.fill(rsy_reduce_ub, 0)
-                    for g_id in range(g_num):
-                        T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half_ub)
-                        T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
+                    # P_reduced for ALL K blocks (redundant across cores, avoids cross-core sync)
+                    for n_pr in T.serial(n_num):
+                        T.copy(bmm1Res[bz, s1_id, 0:N1, n_pr * n_block:(n_pr + 1) * n_block], bmm1_ub)
+                        T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
+                        for g_id in range(G):
+                            T.tile.sub(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_max_ub[g_id])
+                        T.tile.exp(bmm1_ub, bmm1_ub)
                         T.barrier_all()
-                        for i in range(vector_baseg):
-                            T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
-                        T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 0, clear=False)
+                        for g_id in range(G):
+                            T.tile.div(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_sum_ub[g_id])
                         T.barrier_all()
-                    T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                        T.tile.fill(p_reduced_tmp_ub, 0)
+                        for g_id in range(G):
+                            T.tile.add(p_reduced_tmp_ub, p_reduced_tmp_ub, bmm1_ub[g_id, :])
+                        T.barrier_all()
+                        T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
+                        T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_pr * n_block:(n_pr + 1) * n_block])
 
-                    # Cross-core barrier: flush MTE3 DMA writes then sync all cores.
-                    # Ensures every core's ReduceSumY is visible before Global SoftmaxI reads it.
-                    T.barrier_all()
-                    T.sync_all()
+                    # ReduceSumY for ALL K blocks (redundant across cores, avoids cross-core sync)
+                    for n_rsy in T.serial(n_num):
+                        T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_rsy * n_block:(n_rsy + 1) * n_block], bmm2_ub)
+                        T.tile.fill(rsy_reduce_ub, 0)
+                        for g_id in range(g_num):
+                            T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half_ub)
+                            T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
+                            T.barrier_all()
+                            for i in range(vector_baseg):
+                                T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
+                            T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 0, clear=False)
+                            T.barrier_all()
+                        T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
 
                     # Global SoftmaxI (all cores execute - must traverse all K blocks)
                     T.tile.fill(rsy_max_ub, -1e30)
