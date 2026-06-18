@@ -36,8 +36,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "smoke_test_swa_decode_pa": {
-        "testcase_name": ["smoke_test_swa_decode_pa"],
+    "test_swa_decode_pa": {
+        "testcase_name": ["test_swa_decode_pa"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -58,8 +58,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "cfa_prefill_tnd": {
-        "testcase_name": ["cfa_prefill_tnd"],
+    "cfa_tnd": {
+        "testcase_name": ["cfa_tnd"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -114,8 +114,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "scfa_decode111":{
-        "testcase_name": ["scfa_decode111"],
+    "scfa_decode_pa":{
+        "testcase_name": ["scfa_decode_pa"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -134,8 +134,6 @@ TEST_PARAMS = {
         "block_size1": [128],
         "block_size2": [128],
         "cu_seqlens_q": [[0, 1]],
-        # "cu_seqlens_ori_kv": [[0, 1024]], # layout_kv不是TND的时候可以不传
-        # "cu_seqlens_cmp_kv": [[0, 256]], # layout_kv不是TND的时候可以不传
         "seqused_ori_kv": [[1024]],
         "seqused_cmp_kv": [[256]],
         "cmp_residual_kv": [[0]],
@@ -147,8 +145,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "ori_scfa_g128_test_decode":{
-        "testcase_name": ["ori_scfa_g128_test_decode"],
+    "scfa_g128_test_decode":{
+        "testcase_name": ["scfa_g128_test_decode"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -180,8 +178,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "ori_scfa_g128_test_decode_B1":{
-        "testcase_name": ["ori_scfa_g128_test_decode_B1"],
+    "scfa_g128_test_decode_B1":{
+        "testcase_name": ["scfa_g128_test_decode_B1"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -213,8 +211,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "ori_scfa_g128_test_decode_B16": {
-        "testcase_name": ["ori_scfa_g128_test_decode_B16"],
+    "scfa_g128_test_decode_B16": {
+        "testcase_name": ["scfa_g128_test_decode_B16"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -277,8 +275,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "ori_scfa_g128_test_prefill":{
-        "testcase_name": ["ori_scfa_g128_test_prefill"],
+    "scfa_g128_test_prefill":{
+        "testcase_name": ["scfa_g128_test_prefill"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -309,10 +307,40 @@ TEST_PARAMS = {
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
         "ori_win_right": [0],
-        # "ori_kv_topk_mode": ["full"]
     },
-    "ori_scfa_g128_test_prefill_TND":{
-        "testcase_name": ["ori_scfa_g128_test_prefill_TND"],
+    "scfa_g128_test_prefill_padding":{
+        "testcase_name": ["scfa_g128_test_prefill_padding"],
+        "layout_q": ["TND"],
+        "layout_kv": ["TND"],
+        "q_type": [torch.bfloat16],
+        "ori_kv_type": [torch.bfloat16],
+        "cmp_kv_type": [torch.bfloat16],
+        "B": [1],
+        "S1": [16],
+        "T1": [16],
+        "T2": [38],
+        "T3": [9],
+        "N1": [128],
+        "N2": [1],
+        "D": [512],
+        "K": [512],
+        "cu_seqlens_q": [[0, 16]],
+        "cu_seqlens_ori_kv": [[0, 38]],
+        "cu_seqlens_cmp_kv": [[0, 9]],
+        "seqused_q": [[10]],
+        "seqused_ori_kv": [[22]],
+        "seqused_cmp_kv": [[5]],
+        "cmp_residual_kv": [[2]], # 残差
+        "softmax_scale": [0.04419417],
+        "cmp_ratio": [4],
+        "return_softmax_lse": [False],
+        "ori_mask_mode": [4],
+        "cmp_mask_mode": [3],
+        "ori_win_left": [127],
+        "ori_win_right": [0],
+    },
+    "scfa_g128_test_prefill_TND":{
+        "testcase_name": ["scfa_g128_test_prefill_TND"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -340,8 +368,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0],
     },
-    "ori_cmp_scfa_g64_test_prefill":{
-        "testcase_name": ["ori_cmp_scfa_g64_test_prefill"],
+    "cmp_scfa_g64_test_prefill":{
+        "testcase_name": ["cmp_scfa_g64_test_prefill"],
         "layout_q": ["BSND"],
         "layout_kv": ["BSND"],
         "q_type": [torch.bfloat16],
@@ -356,7 +384,7 @@ TEST_PARAMS = {
         "N2": [1],
         "D": [512],
         "K": [512],
-        "seqused_ori_q": [[38]],
+        "seqused_q": [[38]],
         "seqused_ori_kv": [[166]],
         "seqused_cmp_kv": [[41]],
         "cmp_residual_kv": [[2]],
