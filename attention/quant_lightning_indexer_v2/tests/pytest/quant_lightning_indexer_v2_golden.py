@@ -860,7 +860,7 @@ def qliv2_output_single(params):
                                     cmp_ratio = cmp_ratio)
 
     metadata = metadata.npu()
-    npu_result, _ = torch.ops.cann_ops_transformer.quant_lightning_indexer_v2(query, key, weights,
+    npu_result, _ = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,
                                                     cu_seqlens_q = cu_seqlens_query,
