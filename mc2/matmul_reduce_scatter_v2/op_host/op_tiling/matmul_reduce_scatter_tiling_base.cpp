@@ -116,7 +116,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
             "The value of matmulOutputSize must not exceed 256MB after splitting into (1, n)"),
                 return ge::GRAPH_FAILED);
 
-    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
+    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, REDUCE_SCATTER_V2_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1size", std::to_string(sizeOfSplitM).c_str(),
             "The value of x1size must not exceed 256MB after splitting M into 16 parts"),
