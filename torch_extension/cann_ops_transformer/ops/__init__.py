@@ -16,6 +16,7 @@ from .mega_moe import (
     mega_moe,
     npu_get_mega_moe_ccl_buffer_size
 )
+from .bandwidth_test import npu_bandwidth_test
 from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch import converter_moe_distribute_dispatch
 from .graph_convert.graph_convert_moe_distribute_combine import convert_npu_moe_distribute_combine
