@@ -795,7 +795,7 @@ CompressorBlockVectorFullLoad<COMP>::SaveToWorkSpace(const LocalTensor<T> &srcLo
     uint64_t srcLocalOffset =
         (sliceInfo.dealedSeqCnt + sliceInfo.validSeqCnt - min(sliceInfo.validSeqCnt, cmpRatio_)) * srcSingleRowElemNum;
     DataCopyWithOutputQue(cacheTcGm[dStartIdx], srcLocal[srcLocalOffset],
-                          curSeqLen - max(curSeqLen - cmpRatio_, sliceInfo.bStartPos), dDealSize, coff_ * dDealSize,
+                          curSeqLen - max((uint64_t)(curSeqLen - cmpRatio_), sliceInfo.bStartPos), dDealSize, coff_ * dDealSize,
                           constInfo_.headDim);
 }
 
