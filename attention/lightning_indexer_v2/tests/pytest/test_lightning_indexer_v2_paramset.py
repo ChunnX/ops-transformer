@@ -34,7 +34,7 @@ TEST_PARAMS = {
         "cmp_residual_k": [[0]],
         "output_idx_offset": [[0]],
         "layout_q": ["BSND"],
-        "layout_k":["PA_BSND"],
+        "layout_k":["PA_BBND"],
         "topk": [128],
         "mask_mode": [0],
         "query_datarange":[[-448,448]],

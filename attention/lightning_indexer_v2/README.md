@@ -108,7 +108,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td><ul><li>不支持空tensor。</li><li>block_num为PageAttention时block总数，block_size为一个block的token数。</li></ul></td>
     <td>BFLOAT16、FLOAT16</td>
     <td>ND</td>
-    <td><ul><li>layout_k为PA_BSND时，shape为(block_num, block_size, N2, D)。</li><li>layout_k为BSND时，shape为(B, S2, N2, D)。</li><li>layout_k为TND时，shape为(T2, N2, D)。</li></ul>
+    <td><ul><li>layout_k为PA_BBND时，shape为(block_num, block_size, N2, D)。</li><li>layout_k为BSND时，shape为(B, S2, N2, D)。</li><li>layout_k为TND时，shape为(T2, N2, D)。</li></ul>
     </td>
     <td>✓</td>
     </tr>
@@ -404,7 +404,7 @@ aclnnStatus aclnnLightningIndexerV2(
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
   - 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
-  - 当layout_k为PA_BSND时，必须传入sequsedKOptional；当layout_k不为PA_BSND时，不支持sequsedKOptional功能，不建议传入该参数。
+  - 当layout_k为PA_BBND时，必须传入sequsedKOptional；当layout_k不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
 
 ## 调用示例
 
