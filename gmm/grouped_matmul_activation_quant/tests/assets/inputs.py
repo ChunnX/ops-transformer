@@ -29,8 +29,10 @@ def grouped_matmul_activation_quant_inputs(x, group_list, weight, weight_scale, 
                                            scale_alg: int = 0, dst_type_max: float = 0.0, **kwargs):
     del activation_type, tuning_config, y_dtype
     del round_mode, scale_alg, dst_type_max
+    if quant_mode in (None, ""):
+        quant_mode = "MX"
     if quant_mode != "MX":
-        raise ValueError("quant_mode only supports MX.")
+        raise ValueError("当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX")
     if x_scale is None:
         raise ValueError("x_scale is required for MX quant mode.")
 
