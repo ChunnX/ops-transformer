@@ -307,11 +307,10 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
                     T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # Cross-core barrier: ensure ALL cores have written their ReduceSumY
-                    # before any core starts reading ReduceSumY for Global SoftmaxI.
-                    # Without this, fast cores read stale data from slow cores → NaN.
-                    T.set_cross_flag("V", 8)
-                    T.wait_cross_flag(8)
+                    # Cross-core barrier: flush MTE3 DMA writes then sync all cores.
+                    # Ensures every core's ReduceSumY is visible before Global SoftmaxI reads it.
+                    T.barrier_all()
+                    T.sync_all()
 
                     # Global SoftmaxI (all cores execute - must traverse all K blocks)
                     T.tile.fill(rsy_max_ub, -1e30)
