@@ -126,13 +126,17 @@ class MoEElasticBuffer:
         else:
             actual_a = ep_world_size * nm * min(self.num_topk, ne // ep_world_size)
 
-        recv_x = torch.empty((actual_a, self.hidden), dtype=torch.bfloat16, device=x.device)
+        recv_x = torch.empty((actual_a, self.hidden), dtype=x.dtype, device=x.device)
         recv_topk_idx = torch.empty((actual_a, self.num_topk), dtype=torch.int32, device=x.device)
         recv_topk_weights = torch.empty((actual_a,), dtype=torch.float32, device=x.device)
         recv_src_meta = torch.empty((actual_a, 3), dtype=torch.int32, device=x.device)
         recv_scales = None
         if scales is not None:
             recv_scales = torch.empty((actual_a, scales.shape[1]), dtype=scales.dtype, device=x.device)
+
+        # 打桩调试 控制epilogue启动时间
+        import time
+        time.sleep(20)
 
         recv_x, recv_topk_idx, recv_topk_weights, recv_src_meta, recv_scales = \
             _op.npu_moe_ep_dispatch_epilogue(
