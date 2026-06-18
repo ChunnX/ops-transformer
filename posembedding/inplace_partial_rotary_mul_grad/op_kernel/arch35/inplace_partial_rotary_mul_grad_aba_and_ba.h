@@ -234,10 +234,10 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadcast>::ProcessInSBLoop(
         gradInQueue_.EnQue(inBuffer);
         inBuffer = gradInQueue_.template DeQue<TDY>();
 
-        auto *inUb = const_cast<__local_mem__ TDY *>(inBuffer.GetPhyAddr());
-        auto *outUb = const_cast<__local_mem__ TDY *>(outBuffer.GetPhyAddr());
-        auto *cosUb = const_cast<__local_mem__ TCOS *>(cosBuffer.GetPhyAddr());
-        auto *sinUb = const_cast<__local_mem__ TCOS *>(sinBuffer.GetPhyAddr());
+        auto *inUb = (__local_mem__ TDY *)inBuffer.GetPhyAddr();
+        auto *outUb = (__local_mem__ TDY *)outBuffer.GetPhyAddr();
+        auto *cosUb = (__local_mem__ TCOS *)cosBuffer.GetPhyAddr();
+        auto *sinUb = (__local_mem__ TCOS *)sinBuffer.GetPhyAddr();
 
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
             BatchHalfGradAlignVF<TDY, TCOS, IsBroadcast>(

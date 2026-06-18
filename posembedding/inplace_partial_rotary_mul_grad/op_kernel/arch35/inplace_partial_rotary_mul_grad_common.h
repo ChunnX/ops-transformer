@@ -52,10 +52,10 @@ __aicore__ inline void HalfGradAlignVF(const LocalTensor<TCOS> &sinTensor,
 
     uint32_t cosRowStride = dLen;
 
-    __local_mem__ TCOS *sinUb = const_cast<__local_mem__ TCOS *>(sinTensor.GetPhyAddr());
-    __local_mem__ TCOS *cosUb = const_cast<__local_mem__ TCOS *>(cosTensor.GetPhyAddr());
-    __local_mem__ TDY *inUb = const_cast<__local_mem__ TDY *>(inTensor.GetPhyAddr());
-    __local_mem__ TDY *outUb = const_cast<__local_mem__ TDY *>(outTensor.GetPhyAddr());
+    __local_mem__ TCOS *sinUb = (__local_mem__ TCOS *)sinTensor.GetPhyAddr();
+    __local_mem__ TCOS *cosUb = (__local_mem__ TCOS *)cosTensor.GetPhyAddr();
+    __local_mem__ TDY *inUb = (__local_mem__ TDY *)inTensor.GetPhyAddr();
+    __local_mem__ TDY *outUb = (__local_mem__ TDY *)outTensor.GetPhyAddr();
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> vregIn, vregHalfIn, vregSin, vregHalfSin, vregCos, vregHalfCos, vregOut, vregHalfOut;
@@ -122,10 +122,10 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor,
 
     uint32_t cosRowStride = dLen;
 
-    __local_mem__ TCOS *sinUb = const_cast<__local_mem__ TCOS *>(sinTensor.GetPhyAddr());
-    __local_mem__ TCOS *cosUb = const_cast<__local_mem__ TCOS *>(cosTensor.GetPhyAddr());
-    __local_mem__ TDY *inUb = const_cast<__local_mem__ TDY *>(inTensor.GetPhyAddr());
-    __local_mem__ TDY *outUb = const_cast<__local_mem__ TDY *>(outTensor.GetPhyAddr());
+    __local_mem__ TCOS *sinUb = (__local_mem__ TCOS *)sinTensor.GetPhyAddr();
+    __local_mem__ TCOS *cosUb = (__local_mem__ TCOS *)cosTensor.GetPhyAddr();
+    __local_mem__ TDY *inUb = (__local_mem__ TDY *)inTensor.GetPhyAddr();
+    __local_mem__ TDY *outUb = (__local_mem__ TDY *)outTensor.GetPhyAddr();
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> vregFormerIn, vregLatterIn;
@@ -196,10 +196,10 @@ __aicore__ inline void QuarterGradAlignVF(const LocalTensor<TCOS> &sinTensor,
 
     uint32_t cosRowStride = dLen;
 
-    __local_mem__ TCOS *sinUb = const_cast<__local_mem__ TCOS *>(sinTensor.GetPhyAddr());
-    __local_mem__ TCOS *cosUb = const_cast<__local_mem__ TCOS *>(cosTensor.GetPhyAddr());
-    __local_mem__ TDY *inUb = const_cast<__local_mem__ TDY *>(inTensor.GetPhyAddr());
-    __local_mem__ TDY *outUb = const_cast<__local_mem__ TDY *>(outTensor.GetPhyAddr());
+    __local_mem__ TCOS *sinUb = (__local_mem__ TCOS *)sinTensor.GetPhyAddr();
+    __local_mem__ TCOS *cosUb = (__local_mem__ TCOS *)cosTensor.GetPhyAddr();
+    __local_mem__ TDY *inUb = (__local_mem__ TDY *)inTensor.GetPhyAddr();
+    __local_mem__ TDY *outUb = (__local_mem__ TDY *)outTensor.GetPhyAddr();
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> vregIn, vregQ1In, vregQ2In, vregQ3In;
@@ -292,10 +292,10 @@ __aicore__ inline void DeepSeekInterleaveModeGradVF(const LocalTensor<TCOS> &sin
 
     uint32_t cosRowStride = dLen;
 
-    __local_mem__ TCOS *sinUb = const_cast<__local_mem__ TCOS *>(sinTensor.GetPhyAddr());
-    __local_mem__ TCOS *cosUb = const_cast<__local_mem__ TCOS *>(cosTensor.GetPhyAddr());
-    __local_mem__ TDY *inUb = const_cast<__local_mem__ TDY *>(inTensor.GetPhyAddr());
-    __local_mem__ TDY *outUb = const_cast<__local_mem__ TDY *>(outTensor.GetPhyAddr());
+    __local_mem__ TCOS *sinUb = (__local_mem__ TCOS *)sinTensor.GetPhyAddr();
+    __local_mem__ TCOS *cosUb = (__local_mem__ TCOS *)cosTensor.GetPhyAddr();
+    __local_mem__ TDY *inUb = (__local_mem__ TDY *)inTensor.GetPhyAddr();
+    __local_mem__ TDY *outUb = (__local_mem__ TDY *)outTensor.GetPhyAddr();
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> vregIn, vregHalfIn, vregSin, vregHalfSin, vregCos, vregHalfCos, vregOut, vregHalfOut;
