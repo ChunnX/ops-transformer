@@ -902,9 +902,11 @@ public:
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount, uint32_t gmDealRowCount)
     {
-        FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb,
-                                      .rowCount = dealRowCount,
-                                      .colCount = (uint32_t)(splitD ? constInfo.dBasicBlock : dTemplateAlign64)};
+        // mxfp8 colCount 只能为64或者128，与dDealSize相等
+        FaUbTensor<OUTPUT_T, false> ubTensor{
+            .tensor = attenOutUb,
+            .rowCount = dealRowCount,
+            .colCount = dTemplateAlign64};
         GmCoord gmCoord{.bIdx = info.bIdx,
                         .n2Idx = info.realN2Idx,
                         .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
@@ -914,7 +916,7 @@ public:
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
     {
         if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
