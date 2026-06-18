@@ -223,7 +223,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>FLOAT8_E4M3FN</td>
         <td>FRACTAL_NZ</td>
         <td>5</td>
-        <td>√</td>
+        <td>×</td>
       </tr>
       <tr>
         <td>weightScale</td>
@@ -297,9 +297,9 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tr>
       <tr>
         <td>quantMode</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>表示量化模式。</td>
-        <td>必选属性。当前仅支持"MX"；不传或传入空字符串时报错。</td>
+        <td>可选属性。当前仅支持"MX"；不传或传入空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2，则默认设置为"MX"。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -482,7 +482,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 ## 约束说明
 
   - 确定性计算：
-      - aclnnGroupedMatmulActivationQuantWeightNz默认为确定性实现。
+      - aclnnGroupedMatmulActivationQuantWeightNz默认确定性实现。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - groupList第1维最小为1，最大为1024。
     - 当前仅支持MXFP8量化场景，激活函数仅支持gelu_tanh。
@@ -564,7 +564,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           </table>
 
         - activationType仅支持"gelu_tanh"。
-        - quantMode为必选属性，仅支持"MX"；不传或传入空字符串时报错。
+        - quantMode为可选属性，仅支持"MX"；不传或传入空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2，则默认设置为"MX"；若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且quantMode不等于"MX"，则报错。
         - N必须为64整数倍。
         - groupListType支持取值0、1；当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
         - yDtype支持FLOAT8_E4M3FN、FLOAT8_E5M2。
