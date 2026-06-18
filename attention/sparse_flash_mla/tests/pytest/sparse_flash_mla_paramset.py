@@ -114,8 +114,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "scfa_decode111":{
-        "testcase_name": ["scfa_decode111"],
+    "scfa_decode_pa":{
+        "testcase_name": ["scfa_decode_pa"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],

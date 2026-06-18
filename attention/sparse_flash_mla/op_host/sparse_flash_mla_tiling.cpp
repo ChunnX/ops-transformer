@@ -758,6 +758,7 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             OP_LOGE(opName_, "Input sequsedOriKv must be provided when kv layout is PA_BBND");
             return ge::GRAPH_FAILED;
         }
+    } else if (kvLayout_ == SMLALayout::TND) {
     } else if (kvLayout_ == SMLALayout::BSND) {
         actualLenDimsKV_ = actualLenDimsOriKV_;
     } else {

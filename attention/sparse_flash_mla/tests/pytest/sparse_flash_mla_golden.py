@@ -472,7 +472,7 @@ class GeneralizedSFA:
         cmp_topk_length_bnsd = None
         cmp_topk_length_shape = None
         attn_out, softmax_lse = self.calculate_by_bnsd(q_bnsd, ori_k_bnsd, ori_sparse_indices_bnsd, cu_seqlens_q, cu_seqlens_ori_kv,
-                                                       seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, template_idx,
+                                                       cu_seqlens_cmp_kv, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, template_idx,
                                                        cmp_k_bnsd, cmp_sparse_indices_bnsd, seqused_q, ori_topk_length_bnsd,
                                                        cmp_topk_length_bnsd,return_softmax_lse)
         attn_out = self.trans_bnsd_to_target_layout(attn_out, self.layout_q, cu_seqlens_q)
