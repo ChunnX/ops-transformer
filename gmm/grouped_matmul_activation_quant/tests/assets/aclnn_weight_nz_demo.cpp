@@ -251,24 +251,22 @@ aclError RunDemo(int32_t deviceId)
                                   &yScale));
 
     const aclTensorList *biasOptional = nullptr;
-    const aclIntArray *tuningConfigOptional = nullptr;
+    const aclIntArray *tuningConfig = nullptr;
     const char *activationType = "gelu_tanh";
-    const int64_t dequantDtypeOptional = 0;
-    const bool transposeWeightOptional = false;
-    const int64_t groupListTypeOptional = 0;
-    const char *quantModeOptional = "MX";
-    const int64_t yDtypeOptional = 36;
-    const char *roundModeOptional = "rint";
-    const int64_t scaleAlgOptional = 0;
-    const float dstTypeMaxOptional = 0.0F;
+    const bool transposeWeight = false;
+    const int64_t groupListType = 0;
+    const char *quantMode = "MX";
+    const int64_t yDtype = 36;
+    const char *roundMode = "rint";
+    const int64_t scaleAlg = 0;
+    const float dstTypeMax = 0.0F;
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     LOG_PRINT("call aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize\n");
     CHECK_ACL_RET(aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
-        x, groupList, weight, weightScale, biasOptional, xScale, activationType, dequantDtypeOptional,
-        transposeWeightOptional, groupListTypeOptional, tuningConfigOptional, quantModeOptional, yDtypeOptional,
-        roundModeOptional, scaleAlgOptional, dstTypeMaxOptional, y, yScale, &workspaceSize, &executor));
+        x, groupList, weight, weightScale, biasOptional, xScale, activationType, transposeWeight, groupListType,
+        tuningConfig, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax, y, yScale, &workspaceSize, &executor));
     LOG_PRINT("workspaceSize=%lu, executor=%p\n", workspaceSize, executor);
 
     if (workspaceSize > 0) {

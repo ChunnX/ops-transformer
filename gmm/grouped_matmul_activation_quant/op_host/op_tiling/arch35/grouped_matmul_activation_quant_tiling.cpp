@@ -34,15 +34,14 @@ constexpr uint32_t X_SCALE_INDEX = 5;
 constexpr uint32_t Y_INDEX = 0;
 constexpr uint32_t Y_SCALE_INDEX = 1;
 constexpr uint32_t ATTR_INDEX_ACTIVATION_TYPE = 0;
-constexpr uint32_t ATTR_INDEX_DEQUANT_DTYPE = 1;
-constexpr uint32_t ATTR_INDEX_TRANS_W = 2;
-constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 3;
-constexpr uint32_t ATTR_INDEX_TUNING_CONFIG = 4;
-constexpr uint32_t ATTR_INDEX_QUANT_MODE = 5;
-constexpr uint32_t ATTR_INDEX_Y_DTYPE = 6;
-constexpr uint32_t ATTR_INDEX_ROUND_MODE = 7;
-constexpr uint32_t ATTR_INDEX_SCALE_ALG = 8;
-constexpr uint32_t ATTR_INDEX_DST_TYPE_MAX = 9;
+constexpr uint32_t ATTR_INDEX_TRANS_W = 1;
+constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 2;
+constexpr uint32_t ATTR_INDEX_TUNING_CONFIG = 3;
+constexpr uint32_t ATTR_INDEX_QUANT_MODE = 4;
+constexpr uint32_t ATTR_INDEX_Y_DTYPE = 5;
+constexpr uint32_t ATTR_INDEX_ROUND_MODE = 6;
+constexpr uint32_t ATTR_INDEX_SCALE_ALG = 7;
+constexpr uint32_t ATTR_INDEX_DST_TYPE_MAX = 8;
 constexpr uint32_t WEIGHT_NZ_DIM_NUM = 5;
 constexpr uint32_t X_SCALE_M_DIM_INDEX = 0;
 constexpr uint32_t X_SCALE_K_BLOCK_DIM_INDEX = 1;
@@ -115,23 +114,19 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
                         inputParams_.groupListType),
                 return false);
 
-    const int64_t *dequantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
     const char *quantModePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_QUANT_MODE);
     const int64_t *yDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_Y_DTYPE);
     const char *roundModePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ROUND_MODE);
     const int64_t *scaleAlgPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SCALE_ALG);
     const char *activationTypePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ACTIVATION_TYPE);
-    OP_CHECK_IF(dequantDtypePtr == nullptr || quantModePtr == nullptr || yDtypePtr == nullptr || roundModePtr == nullptr ||
+    OP_CHECK_IF(quantModePtr == nullptr || yDtypePtr == nullptr || roundModePtr == nullptr ||
                     scaleAlgPtr == nullptr || activationTypePtr == nullptr,
                 OP_LOGE(context_->GetNodeName(), "quant attrs must not be nullptr."), return false);
-    auto dequantDtype = static_cast<ge::DataType>(*dequantDtypePtr);
     auto yDtype = static_cast<ge::DataType>(*yDtypePtr);
     std::string quantMode(quantModePtr);
     OP_CHECK_IF(quantMode != "MX",
                 OP_LOGE(context_->GetNodeName(), "quant_mode only supports MX, actual is %s.", quantMode.c_str()),
                 return false);
-    OP_CHECK_IF(dequantDtype != ge::DT_FLOAT,
-                OP_LOGE(context_->GetNodeName(), "dequant_dtype must be FLOAT in MX mode."), return false);
     OP_CHECK_IF(!IsFp8(yDtype),
                 OP_LOGE(context_->GetNodeName(), "y_dtype must be FLOAT8_E4M3FN or FLOAT8_E5M2."),
                 return false);

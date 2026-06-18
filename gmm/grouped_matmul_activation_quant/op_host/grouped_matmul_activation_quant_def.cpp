@@ -12,7 +12,6 @@
 
 namespace ops {
 namespace {
-constexpr int64_t DEFAULT_DEQUANT_DTYPE = static_cast<int64_t>(ge::DT_FLOAT);
 constexpr int64_t DEFAULT_Y_DTYPE = static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN);
 constexpr int64_t DEFAULT_SCALE_ALG = 0;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
@@ -72,11 +71,10 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND});
 
         this->Attr("activation_type").AttrType(REQUIRED).String();
-        this->Attr("dequant_dtype").AttrType(OPTIONAL).Int(DEFAULT_DEQUANT_DTYPE);
         this->Attr("transpose_weight").AttrType(OPTIONAL).Bool(false);
         this->Attr("group_list_type").AttrType(OPTIONAL).Int(0);
         this->Attr("tuning_config").AttrType(OPTIONAL).ListInt({0});
-        this->Attr("quant_mode").AttrType(OPTIONAL).String("MX");
+        this->Attr("quant_mode").AttrType(REQUIRED).String();
         this->Attr("y_dtype").AttrType(OPTIONAL).Int(DEFAULT_Y_DTYPE);
         this->Attr("round_mode").AttrType(OPTIONAL).String("rint");
         this->Attr("scale_alg").AttrType(OPTIONAL).Int(DEFAULT_SCALE_ALG);
