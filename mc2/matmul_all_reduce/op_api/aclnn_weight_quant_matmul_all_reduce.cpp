@@ -195,7 +195,8 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
-    if (x1->GetViewShape().GetDim(x1Len - 1) != x2Dim0) {
+    uint64_t x1Dim1 = x1->GetViewShape().GetDim(x1Len - 1);
+    if (x1Dim1 != x2Dim0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnWeightQuantMatmulAllReduce", "x1",
             op::ToString(x1->GetViewShape()).GetString(),
             std::string("The shape [last dim] of x1 must be equal to first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
@@ -403,7 +404,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     ret = 0;
 #endif
     if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
+        if (NnopbaseDisableOptionalInput != nullptr && executor != nullptr && *executor != nullptr) {
             NnopbaseDisableOptionalInput(*executor, 6U); // 6 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 7U); // 7 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 8U); // 8 is input irIndex
