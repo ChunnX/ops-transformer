@@ -858,13 +858,6 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::DataCopy(tokenPerExpert, tmp, num);
-        __gm__ int32_t *flagAddr = reinterpret_cast<__gm__ int32_t *>(
-            shmem() + peermemInfo.offsetFlag);
-        AscendC::GlobalTensor<int32_t> recvFlag;
-        recvFlag.SetGlobalBuffer(flagAddr);
-        uint32_t count = sizeof(uint64_t) / sizeof(int32_t) * params.EP;
-        count = AlignUp(count, static_cast<uint32_t>(UB_ALIGN / sizeof(int32_t)));
-        AscendC::DataCopy(recvFlag, tmp, count);
     }
 
     CATLASS_DEVICE
@@ -973,17 +966,12 @@ private:
 
         // -- Path B: same server (IPC direct write) --
         if (dstServerId == serverId_) {
-            AscendC::LocalTensor<uint64_t> bufFlag =
-                bufT[hiddenSize + ALIGN_512 - UB_ALIGN].template ReinterpretCast<uint64_t>();
-            bufFlag.SetValue(0, 0xffffffff);
-            AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             for (int32_t i = 0; i < rows; ++i) {
                 auto offset = i * copyInNum;
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                copyGmToUb(bufT, src[offset], layout::RowMajor{1, copyInNum - UB_ALIGN},
-                           layout::RowMajor{1, copyInNum - UB_ALIGN});
+                copyGmToUb(bufT, src[offset], layout::RowMajor{1, copyInNum},
+                           layout::RowMajor{1, copyInNum});
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
                 copyUbToGm(dst[offset], bufT, layout::RowMajor{1, copyInNum},
@@ -995,8 +983,9 @@ private:
             // Epoch flag (IPC). Receiver waits for value != groupIdx.
             AscendC::GlobalTensor<int32_t> remoteFlag;
             remoteFlag.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-                shmem(0, dstEpIdx) + peermemInfo.offsetFlag + RuntimeRank(params) * sizeof(uint64_t)));
-            flagUb.SetValue(0, groupIdx + 1);
+                shmem(0, dstEpIdx) + peermemInfo.offsetFlag +
+                (RuntimeRank(params) * params.expertPerRank + groupIdx) * peermemInfo.bufferAlign));
+            flagUb.SetValue(0, peermemInfo.tokenArrivedFlag);
             AscendC::PipeBarrier<PIPE_ALL>();
             AscendC::DataCopyPad(remoteFlag, flagUb,
                                  AscendC::DataCopyParams{1, sizeof(int32_t), 0, 0});
@@ -1008,23 +997,13 @@ private:
         AscendC::GlobalTensor<int32_t> localFlagGm;
         localFlagGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
             shmem.windowsOutAddr() + peermemInfo.offsetFlag + RuntimeRank(params) * sizeof(uint64_t)));
-        flagUb.SetValue(0, groupIdx + 1);
-
-        AscendC::LocalTensor<uint64_t> bufFlag =
-            bufT[hiddenSize + ALIGN_512 - UB_ALIGN].template ReinterpretCast<uint64_t>();
-        bufFlag.SetValue(0, 0xffffffff);
+        flagUb.SetValue(0, peermemInfo.tokenArrivedFlag);
 
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::DataCopyPad(localFlagGm, flagUb,
                              AscendC::DataCopyParams{1, sizeof(int32_t), 0, 0});
 
-        for (int32_t i = 0; i < rows; ++i) {
-            copyUbToGm(
-                src[i * copyInNum + hiddenSize + ALIGN_512 - UB_ALIGN],
-                bufT[hiddenSize + ALIGN_512 - UB_ALIGN], layout::RowMajor{1, UB_ALIGN},
-                layout::RowMajor{1, UB_ALIGN});
-        }
         AscendC::PipeBarrier<PIPE_ALL>();
 
         uint64_t totalBytes = static_cast<uint64_t>(rows) * copyInNum * sizeof(T);
@@ -1037,7 +1016,7 @@ private:
         GM_ADDR remoteFlagAddr = reinterpret_cast<GM_ADDR>(
             reinterpret_cast<uintptr_t>(shmem(0, dstEpIdx)) +
             static_cast<uintptr_t>(peermemInfo.offsetFlag) +
-            static_cast<uintptr_t>(RuntimeRank(params)) * sizeof(uint64_t));
+            static_cast<uintptr_t>((RuntimeRank(params) * params.expertPerRank + groupIdx) * peermemInfo.bufferAlign));
         AIVRDMAPostSend(const_cast<GM_ADDR>(reinterpret_cast<const GM_ADDR>(localFlagGm.GetPhyAddr())), remoteFlagAddr,
                         static_cast<uint64_t>(dstEpIdx), sizeof(int32_t),
                         qp_info_, rdmaUbLocal, rdmaUbLocalHead);
@@ -1060,35 +1039,26 @@ private:
         if (srcEpIdx == static_cast<int32_t>(RuntimeRank(params))) return;
         if (rows2 == 0) return;
         __gm__ int32_t *flagAddr = reinterpret_cast<__gm__ int32_t *>(
-            shmem() + peermemInfo.offsetFlag + srcEpIdx * sizeof(uint64_t));
-        gm_signal_wait_until_ne(flagAddr, groupIdx);
-        uint32_t copyInNum = hiddenSize + ALIGN_512;
+            shmem() + peermemInfo.offsetFlag +
+            (srcEpIdx * params.expertPerRank + groupIdx) * peermemInfo.bufferAlign);
+        AscendC::LocalTensor<int32_t> ub = resource.ubBuf.template GetBufferByByte<int32_t>(0);
+        AscendC::GlobalTensor<int32_t> flagGt;
+        flagGt.SetGlobalBuffer(flagAddr);
+        uint32_t count = peermemInfo.bufferAlign / sizeof(int32_t);
+        do {
+            AscendC::DataCopy(ub, flagGt, count);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        } while (ub(0) != peermemInfo.tokenArrivedFlag);
 
+        AscendC::Duplicate(ub, 0, count);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::DataCopy(flagGt, ub, count);
+
+        uint32_t copyInNum = hiddenSize + ALIGN_512;
         AscendC::GlobalTensor<T> gmDstA;
         gmDstA.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(shmem() + peermemInfo.offsetA));
-        AscendC::LocalTensor<T> bufT = resource.ubBuf.template GetBufferByByte<T>(0);
-        AscendC::LocalTensor<uint64_t> bufFlag = bufT.template ReinterpretCast<uint64_t>();
-        using TType = Gemm::GemmType<T, layout::RowMajor>;
-        using CopyGmToUb = Epilogue::Tile::CopyGm2Ub<ArchTag, TType>;
-        using CopyUbToGm = Epilogue::Tile::CopyUb2Gm<ArchTag, TType>;
-        CopyGmToUb copyGmToUb;
-        CopyUbToGm copyUbToGm;
-
-        int32_t srcServerId = srcEpIdx / static_cast<int32_t>(SERVER_RANK_SIZE_A2);
-        bufFlag.SetValue(UB_ALIGN / sizeof(uint64_t), 0x0);
-        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-        for (int32_t i = 0; i < rows2; ++i) {
-            auto offset = (rowStart2 + i) * copyInNum + copyInNum - UB_ALIGN;
-            do {
-                copyGmToUb(bufT, gmDstA[offset],
-                        layout::RowMajor{1, UB_ALIGN}, layout::RowMajor{1, UB_ALIGN});
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
-            } while (bufFlag(0) != 0xffffffff);
-            copyUbToGm(gmDstA[offset], bufT[UB_ALIGN],
-                layout::RowMajor{1, UB_ALIGN}, layout::RowMajor{1, UB_ALIGN});
-        }
         AscendC::PipeBarrier<PIPE_ALL>();
         FetchAndPreprocessInt8ToInt4(gmOffsetA,
             gmPerTokenScale1[rowStart2], gmDstA[rowStart2 * copyInNum], rows2, hiddenSize);
@@ -1320,9 +1290,7 @@ private:
         CombineV2(params, blockEpilogue2);
 
         AscendC::SyncAll<true>();
-#ifndef __CROSSRANKSYNCANDALLGATHERV1__
         ResetTokenPerExpert(params.EP * paddedExpertNumAligned);
-#endif
         shmem.InitStatusTargetSum();
         if (get_subblockid() == 0) {
             AscendC::LocalTensor<int32_t> ctrBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
@@ -1564,6 +1532,8 @@ private:
         // and polled by RecvTokensV3. On A3 we don't push flags through
         // peer-mem at all, so this stays 0.
         int64_t offsetFlag{0};
+        static constexpr uint32_t bufferAlign{64}; // 64B = 1 个 cache line
+        static constexpr int32_t tokenArrivedFlag{123456789}; // 精准匹配的Flag，非常规值即可
 
         CATLASS_DEVICE
         PeermemInfo() {}
