@@ -134,7 +134,7 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U* gradBiasAddr, __local_me
             auto gradBiasStart = gradBiasAddr + i * vfLen;
             maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             MicroAPI::Duplicate(gradBiasReg, U(0), allMaskReg);
-            for (uint16_t j = 0; j < bsLen; j++) {
+            for (uint16_t j = 0; j < static_cast<uint16_t>(bsLen); j++) {
                 auto gradZAddrStart = gradZAddr + i * colLen;
                 AscendC::MicroAPI::LoadUnAlignPre(u0, gradZAddrStart);
                 AscendC::MicroAPI::LoadUnAlign(gradZReg, u0, gradZAddrStart);
