@@ -709,7 +709,6 @@ endif()
 target_link_libraries(
     cust_proto
     PUBLIC ${OPHOST_NAME}_infer_obj
-    PUBLIC $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:${OPHOST_NAME}_tiling_obj>
     PUBLIC $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:${OPGRAPH_NAME}_gentask_obj>
 )
 
