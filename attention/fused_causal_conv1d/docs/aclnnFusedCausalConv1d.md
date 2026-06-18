@@ -678,7 +678,7 @@ aclnnStatus aclnnFusedCausalConv1d(
       - blockIdxFirstScheduledToken[i] <= blockIdxLastScheduledToken[i]
       - blockIdxLastScheduledToken[i] < maxNumBlocks
   - num_accepted_tokens分为None和非None，非None情况下长度为batch，每个元素取值不超过当前batch的seq_len-1且大于0。
-  - num_computed_tokens中每个元素取值大于0。
+  - num_computed_tokens中每个元素取值大于等于0。
   - cache_indices的取值范围为[0, conv_states.dim[0]-1],且元素均不能相等。
   - max_query_len = batch中的最大seq_len。
   - Pangu V2 模式（conv_mode = 1）下，num_computed_tokens不能为 None。
