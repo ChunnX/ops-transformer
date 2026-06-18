@@ -38,13 +38,13 @@ TEST_PARAMS = {
         "cu_seqlens_q": [None],     # BSND: cu_seqlens_q 不传
         "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
         "seqused_q": [[3,3,3,3,3,3,3,3]],
-        "seqused_k": [[28,24,80,96,47,76,0,111]], # PA场景每个batch的实际token数
-        "cmp_residual_k": [[3,3,3,3,3,3,3,3]],
+        "seqused_k": [[280,240,180,196,47,176,0,111]], # PA场景每个batch的实际token数
+        "cmp_residual_k": [None],
         "max_seqlen_q": [-1],
         "quant_mode": [1],
         "layout_query": ["BSND"],
         "layout_key":["PA_BBND"],
-        "sparse_count": [512],
+        "sparse_count": [100],
         "sparse_mode": [3],
         "query_datarange":[[-448,448]],
         "key_datarange":[[-20,20]],
@@ -100,7 +100,7 @@ TEST_PARAMS = {
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
-        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_size": [1024], # 取16的整数倍，最多支持到1024
         "block_num":[17],
         "qk_dtype": [torch.int8],
         "dequant_dtype": [torch.float16],

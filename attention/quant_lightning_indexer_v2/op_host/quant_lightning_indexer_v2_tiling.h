@@ -100,8 +100,10 @@ TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(uint32_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
+TILING_DATA_FIELD_DEF(int32_t, maxSeqlenQ)
 TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
+TILING_DATA_FIELD_DEF(uint32_t, quantMode)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexerV2, QLIV2TilingData)
 
@@ -126,6 +128,7 @@ struct QLIV2ParaInfo {
     TilingRequiredParaInfo sparseValues = {nullptr, nullptr};
 
     const int32_t *quantMode = nullptr;
+    const int32_t *maxSeqlenQ = nullptr;
     const char *layOutQuery = nullptr;
     const char *layOutKey = nullptr;
     const int32_t *blockSize = nullptr;
@@ -165,6 +168,7 @@ public:
     bool returnValue = false;
     uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
+    int32_t maxSeqlenQ = -1;
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKType = ge::DT_FLOAT16;

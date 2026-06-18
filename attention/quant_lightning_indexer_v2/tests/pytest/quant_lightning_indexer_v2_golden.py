@@ -1010,11 +1010,13 @@ def qliv2_output_single(params):
                         key_dequant_scale[cur_block_id, :, i_n] = key_dequant_scale_expand[i_batch, i_n,block_start_pos:block_start_pos+block_size]
         if quant_mode != 4:
             key_dequant_scale = key_dequant_scale.npu()
+            key_dequant_scale_npu = key_dequant_scale
         cpu_result, topk_value = test_qliv2.forward(query, key_bnsd, weights, query_dequant_scale_cpu, key_dequant_scale_cpu, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
     # ======================== metadata 构造 ========================
     # max_seqlen 从个体长度中取
     print(f"quantmode is {quant_mode}")
+    print(f"key_dequant_scale_npu is {key_dequant_scale_npu}")
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
     metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
