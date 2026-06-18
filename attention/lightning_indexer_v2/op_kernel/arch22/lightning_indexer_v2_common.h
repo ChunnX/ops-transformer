@@ -21,12 +21,12 @@ namespace LIV2Common {
 enum class LI_V2_LAYOUT {
     BSND = 0,
     TND = 1,
-    PA_BSND = 2
+    PA_BBND = 2
 };
 
 template <typename Q_T, typename K_T, typename OUT_T, typename QK_T, typename SCORE_T,
           const bool PAGE_ATTENTION = false, LI_V2_LAYOUT LAYOUT_T = LI_V2_LAYOUT::BSND,
-          LI_V2_LAYOUT K_LAYOUT_T = LI_V2_LAYOUT::PA_BSND, bool DT_W_FLAG = false, typename... Args>
+          LI_V2_LAYOUT K_LAYOUT_T = LI_V2_LAYOUT::PA_BBND, bool DT_W_FLAG = false, typename... Args>
 struct LIV2Type {
     static constexpr bool weightsTypeFlag = DT_W_FLAG;   // weight的dtype是否为FP32
     using queryType = Q_T;
