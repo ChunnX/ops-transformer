@@ -150,6 +150,8 @@ __aicore__ inline void QLIMatmul<QLIT>::InitBuffers(TPipe *pipe)
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_BUFFER_OFFSET * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
+    pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK * sizeof(K_T));
+    keyL1_ = bufKeyL1_.Get<K_T>();
     // MXFP8: qScale 使用独立 L1 buffer
     if constexpr (IS_MXFP8) {
         pipe->InitBuffer(bufQScaleL1_, QUERY_BUF_NUM * QSCALE_L1_PINGPONG_SIZE * sizeof(SCALE_T));
@@ -157,8 +159,6 @@ __aicore__ inline void QLIMatmul<QLIT>::InitBuffers(TPipe *pipe)
         pipe->InitBuffer(bufKScaleL1_, KEY_BUF_NUM * KSCALE_L1_SIZE * sizeof(SCALE_T));
         kScaleL1_ = bufKScaleL1_.Get<SCALE_T>();
     }
-    pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK * sizeof(K_T));
-    keyL1_ = bufKeyL1_.Get<K_T>();
 
     pipe->InitBuffer(bufQL0_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0 * sizeof(Q_T));
     queryL0_ = bufQL0_.Get<Q_T>();
