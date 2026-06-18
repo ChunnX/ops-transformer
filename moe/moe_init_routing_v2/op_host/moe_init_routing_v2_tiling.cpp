@@ -60,6 +60,7 @@ const static int64_t TILING_KEY_DROP_PAD_MODE_SORT_MULTI_CORE = 10012;
 const static int64_t TILING_KEY_DROP_PAD_MODE_HIST_REGBASE_SORT_ONE_CORE = 11011;
 const static int64_t TILING_KEY_DROP_PAD_MODE_HIST_REGBASE_SORT_MULTI_CORE = 11012;
 const static int64_t TILING_KEY_HIGH_PERFORMANCE = 20000;
+const static int64_t SCATTER_MODE_MAX_K = 6;
 
 #define CHECK_FAIL(context, cond, ...)                                                                                 \
     do {                                                                                                               \
@@ -842,8 +843,7 @@ void MoeInitRoutingV2TilingBase::Tiling4SrcToDstCapacityCompute()
 }
 
 bool MoeInitRoutingV2TilingBase::CalculateScatterOutCoreAllocation(int64_t actualActivateRows,
-                                                                   MoeV2GatherOutComputeTilingData *tilingData,
-                                                                   int64_t &perCoreRows, int64_t &lastCoreRows)
+                                                                   MoeV2GatherOutComputeTilingData *tilingData)
 {
     if (actualActivateRows <= 0) {
         tilingData->set_needCoreNum(0);
@@ -856,8 +856,6 @@ bool MoeInitRoutingV2TilingBase::CalculateScatterOutCoreAllocation(int64_t actua
     gatherPerCoreRows = CeilDiv(actualActivateRows, gatherNeedCoreNum);
     int64_t gatherLastCoreRows = actualActivateRows - gatherPerCoreRows * (gatherNeedCoreNum - 1);
 
-    perCoreRows = gatherPerCoreRows;
-    lastCoreRows = gatherLastCoreRows;
     tilingData->set_needCoreNum(gatherNeedCoreNum);
     tilingData->set_perCoreRows(gatherPerCoreRows);
     tilingData->set_lastCoreRows(gatherLastCoreRows);
@@ -865,10 +863,12 @@ bool MoeInitRoutingV2TilingBase::CalculateScatterOutCoreAllocation(int64_t actua
     return true;
 }
 
-void MoeInitRoutingV2TilingBase::CalculateScatterOutBufferParams(int64_t ubRowsVal, int64_t cols, int64_t perCoreRows,
-                                                                 int64_t lastCoreRows,
+void MoeInitRoutingV2TilingBase::CalculateScatterOutBufferParams(int64_t ubRowsVal, int64_t cols,
                                                                  MoeV2GatherOutComputeTilingData *tilingData)
 {
+    int64_t perCoreRows = tilingData->get_perCoreRows();
+    int64_t lastCoreRows = tilingData->get_lastCoreRows();
+
     int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize) / NUM_TWO;
     int64_t outputBufferSizePerBuffer =
         (ubRowsVal * cols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
@@ -977,15 +977,16 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
     ubRowsVal = ubRowsVal / (ONE_BLOCK_BYTE / inuptXDtypeSize_) * (ONE_BLOCK_BYTE / inuptXDtypeSize_);
 
     bool colsAligned = (cols * inuptXDtypeSize_ % ONE_BLOCK_BYTE == 0);
+    // 使用moe_v2_scatter_out_batch_row模板
     bool useScatterMode = colsAligned && (ubRowsVal >= NUM_TWO) &&
-                         (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= 6);
+                         (dropPadMode != 1) && (moeInitRoutingTilingData.get_k() <= SCATTER_MODE_MAX_K);
     if (useScatterMode) {
         tilingData->set_scatterMode(1);
         int64_t actualActivateRows = tilingData->get_activateRows();
-        if (!CalculateScatterOutCoreAllocation(actualActivateRows, tilingData, perCoreRows, lastCoreRows)) {
+        if (!CalculateScatterOutCoreAllocation(actualActivateRows, tilingData)) {
             return;
         }
-        CalculateScatterOutBufferParams(ubRowsVal, cols, perCoreRows, lastCoreRows, tilingData);
+        CalculateScatterOutBufferParams(ubRowsVal, cols, tilingData);
     } else if (rowSize + colSize < ubSize) {
         tilingData->set_scatterMode(0);
         tilingData->set_perCorePerLoopRows(perCoreRows);
