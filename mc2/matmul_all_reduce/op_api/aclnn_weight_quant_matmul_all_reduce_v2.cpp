@@ -81,8 +81,6 @@ static bool CheckDtypeValid(
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, biasDtypeSupportList, return false);
-        const auto x1Dtype = x1->GetDataType();
-        const auto biasDtype = bias->GetDataType();
             // 检查x1和bias的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
     }
@@ -160,7 +158,8 @@ static bool IsAntiquantScaleShapeValid(
         return false;
     }
 
-    int64_t kValue = static_cast<int64_t>(CeilDiv(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize));
+    int64_t kValue = static_cast<int64_t>(CeilDiv(static_cast<size_t>(x1->GetViewShape().GetDim(x1Len - 1)),
+        static_cast<size_t>(antiquantGroupSize)));
     if (antiquantGroupSize > 0) {
         if ((scaleLen == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == kValue &&
              scale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
@@ -200,7 +199,8 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
-    if (x1->GetViewShape().GetDim(x1Len - 1) != x2Dim0) {
+    uint64_t x1Dim1 = x1->GetViewShape().GetDim(x1Len - 1);
+    if (x1Dim1 != x2Dim0) {
         OP_LOGE(
             ACLNN_ERR_PARAM_INVALID,
             "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
@@ -257,7 +257,8 @@ static bool CheckShape(
                 op::ToString(scale->GetViewShape()).GetString());
         }
         if (antiquantGroupSize != 0) {
-            size_t kValueGroup = CeilDiv(x1->GetViewShape().GetDim(x1Len - 1), antiquantGroupSize);
+            size_t kValueGroup = CeilDiv(static_cast<size_t>(x1->GetViewShape().GetDim(x1Len - 1)),
+                static_cast<size_t>(antiquantGroupSize));
             OP_LOGE(
                 ACLNN_ERR_PARAM_INVALID,
                 "Expected shape of antiquantScale to be [%zu,%ld] for per-group calculation, but got scale shape: %s.",
@@ -408,29 +409,28 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize(
         transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, const_cast<char*>(commMode), output,
         workspaceSize, executor);
     OP_LOGD("WeightQuantMatmulAllReduceV2, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
-    if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
+    if (ret == ACLNN_SUCCESS && executor != nullptr && *executor != nullptr && commMode != nullptr) {
         // SetUserHandle to pass comm_mode to aclnnWeightQuantMatmulAllReduceV2
-        char* commModePtr = new(std::nothrow) char[strlen(commMode) + 1];
-        if (commModePtr == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                    "[WeightQuantMatmulAllReduceV2] Failed to allocate memory for commMode.");
-            return ACLNN_ERR_INNER;
+        uint8_t commModeEnum = 0;
+        if (strcmp(commMode, COMM_MODE_AICPU) == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+        } else if (strcmp(commMode, COMM_MODE_CCU) == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_CCU;
+        } else if (strcmp(commMode, COMM_MODE_DEFAULT) == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else {
-            errno_t err = strcpy_s(commModePtr, strlen(commMode) + 1, commMode);
-            if (err != EOK) {
-                OP_LOGE(ACLNN_ERR_INNER, "[WeightQuantMatmulAllReduceV2] strcpy_s failed, err = %d", err);
-                delete[] commModePtr;
-                return ACLNN_ERR_INNER;
-            }
-            NnopbaseSetUserHandle(*executor, commModePtr);
-            OP_LOGD("[WeightQuantMatmulAllReduceV2] GetWorkspaceSize set commMode = %s", commMode);
+            OP_LOGE_WITH_INVALID_ATTR("aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize", "commMode",
+                commMode, "empty string, 'ccu' or 'ai_cpu'");
+            return ACLNN_ERR_PARAM_INVALID;
         }
+        void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
+        NnopbaseSetUserHandle(*executor, arg);
     }
 #ifdef MC2_UT
     ret = 0;
 #endif
     if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
+        if (NnopbaseDisableOptionalInput != nullptr && executor != nullptr && *executor != nullptr) {
             NnopbaseDisableOptionalInput(*executor, 6U); // 6 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 7U); // 7 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 8U); // 8 is input irIndex
@@ -447,22 +447,24 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
+    if (executor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER, "Param executor is nullptr.");
+        return ACLNN_ERR_INNER;
+    }
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            char* commMode = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
-            if (strcmp(commMode, COMM_MODE_CCU) == 0) {
-                OP_LOGD("A5 aclnnWeightQuantMatmulAllReduceV2, commMode is 'ccu', use CCU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            } else if (strcmp(commMode, COMM_MODE_AICPU) == 0) {
-                OP_LOGD("A5 aclnnWeightQuantMatmulAllReduceV2, commMode is 'aicpu', use AICPU mode");
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            uint8_t commMode = static_cast<uint8_t>(handleVal);
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                OP_LOGD("A5 aclnnWeightQuantMatmulAllReduceV2: NnopbaseHcclServerType, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else if (strcmp(commMode, COMM_MODE_DEFAULT) == 0) {
-                OP_LOGD("A5 aclnnWeightQuantMatmulAllReduceV2, commMode is '', use CCU mode");
+            } else {
+                OP_LOGD("A5 aclnnWeightQuantMatmulAllReduceV2: NnopbaseHcclServerType, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
-            delete[] commMode;
         } else {
-            OP_LOGD("A2 aclnnWeightQuantMatmulAllReduceV2: use AICPU mode");
+            OP_LOGD("A2 aclnnWeightQuantMatmulAllReduceV2: NnopbaseHcclServerType, use AICPU mode");
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
