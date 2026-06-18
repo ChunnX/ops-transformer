@@ -851,7 +851,8 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenGroupCompleteFlags()
 {
     if constexpr(g_coreType == AIV) {
-        int32_t totalCounters = static_cast<int32_t>(static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE);
+        int32_t totalCounters = static_cast<int32_t>(
+            static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE);
         int32_t coreLen, coreOffset;
         TilingByCore(totalCounters, coreLen, coreOffset);
         GlobalTensor<int32_t> tokenGroupCompleteGm;
