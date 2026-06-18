@@ -68,11 +68,10 @@ public:
     static constexpr FixpipeConfig QLI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};   // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
 
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK * D_BASIC_BLOCK;
-    // MXFP8: 每个 ping-pong buffer 尾部额外预留空间存放 qScale
-    // qScale 需要 s1gL1RealSize * (D/32) 个 fp8_e8m0 元素
-    // = M_BASIC_BLOCK * D_BASIC_BLOCK / 32 = 256 * 128 / 32 = 1024 bytes
-    static constexpr uint64_t MXFP8_SCALE_EXTRA = IS_MXFP8 ? (M_BASIC_BLOCK * D_BASIC_BLOCK / 32) : 0;
-    static constexpr uint64_t QUERY_L1_PINGPONG_STRIDE = M_BASIC_BLOCK * D_BASIC_BLOCK + MXFP8_SCALE_EXTRA;
+    // MXFP8: qScale 使用独立的 L1 buffer，每个 ping-pong 需要 M_BASIC_BLOCK * D_BASIC_BLOCK / 32 个元素
+    static constexpr uint64_t QSCALE_L1_PINGPONG_SIZE = M_BASIC_BLOCK * D_BASIC_BLOCK / 32; // = 1024
+    // MXFP8: kScale 使用独立的 L1 buffer，所有 ping-pong buffer 共享，需要 s2BasicBlock * D_BASIC_BLOCK / 32 个元素
+    static constexpr uint64_t KSCALE_L1_SIZE = S2_BASIC_BLOCK_L0 * D_BASIC_BLOCK / 32; // = 512
     static constexpr uint64_t L0AB_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
     static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0;
 
@@ -100,8 +99,12 @@ protected:
 
     TBuf<TPosition::A1> bufQL1_;
     LocalTensor<Q_T> queryL1_;
+    TBuf<TPosition::A1> bufQScaleL1_;
+    LocalTensor<SCALE_T> qScaleL1_;
     TBuf<TPosition::B1> bufKeyL1_;
     LocalTensor<K_T> keyL1_;
+    TBuf<TPosition::B1> bufKScaleL1_;
+    LocalTensor<SCALE_T> kScaleL1_;
 
     TBuf<TPosition::A2> bufQL0_;
     LocalTensor<Q_T> queryL0_;
@@ -145,14 +148,16 @@ __aicore__ inline void QLIMatmul<QLIT>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(float));  //大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
     mm1ResUB_ = bufUB_.Get<QK_T>();
-    // MXFP8: 额外预留 qScale 空间（与 QUERY_L1_PINGPONG_STRIDE 一致）
-    pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_L1_PINGPONG_STRIDE * sizeof(Q_T));
+    pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * QUERY_BUFFER_OFFSET * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
-    // MXFP8: 额外预留 kScale 空间（所有 ping-pong buffer 之后）
-    // kScale 需要 s2BasicBlock_ * (D/32) 个 fp8_e8m0 元素
-    // = s2BasicBlock_ * D_BASIC_BLOCK / 32 = 128 * 128 / 32 = 512 bytes
-    uint64_t kL1ExtraScale = IS_MXFP8 ? (s2BasicBlock_ * D_BASIC_BLOCK / 32) : 0;
-    pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK * sizeof(K_T) + kL1ExtraScale * sizeof(K_T));
+    // MXFP8: qScale 使用独立 L1 buffer
+    if constexpr (IS_MXFP8) {
+        pipe->InitBuffer(bufQScaleL1_, QUERY_BUF_NUM * QSCALE_L1_PINGPONG_SIZE * sizeof(SCALE_T));
+        qScaleL1_ = bufQScaleL1_.Get<SCALE_T>();
+        pipe->InitBuffer(bufKScaleL1_, KSCALE_L1_SIZE * sizeof(SCALE_T));
+        kScaleL1_ = bufKScaleL1_.Get<SCALE_T>();
+    }
+    pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK * sizeof(K_T));
     keyL1_ = bufKeyL1_.Get<K_T>();
 
     pipe->InitBuffer(bufQL0_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0 * sizeof(Q_T));
@@ -404,17 +409,15 @@ __aicore__ inline void QLIMatmul<QLIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uin
     }
 }
 
-// MXFP8: 加载 qScale 到 L1（存储在当前 queryL1_ ping-pong buffer 的数据之后）
+// MXFP8: 加载 qScale 到独立的 L1 buffer
 // qScale shape: [S1*G, D/32]，每个 token 对应 D/32=4 个 fp8_e8m0 scale
 template <typename QLIT>
 __aicore__ inline void QLIMatmul<QLIT>::LoadQScaleToL1(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
                                                          const QLICommon::RunInfo &runInfo)
 {
-    // qScale 存储在当前 ping-pong buffer 的数据之后
-    // 使用 QUERY_L1_PINGPONG_STRIDE 保持与 InitBuffers/QueryNd2Nz/LoadQueryToL0a 一致
-    uint64_t scaleOffsetInBuf = (queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE
-                                + s1gL1RealSize * D_BASIC_BLOCK;
-    LocalTensor<bfloat16_t> scaleL1 = queryL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
+    // qScale 存储在独立的 bufQScaleL1_ 中
+    uint64_t scaleOffsetInBuf = (queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QSCALE_L1_PINGPONG_SIZE;
+    LocalTensor<bfloat16_t> scaleL1 = qScaleL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
     GlobalTensor<bfloat16_t> scaleGmCast;
     scaleGmCast.SetGlobalBuffer((__gm__ bfloat16_t *)(qScaleGm_.GetPhyAddr()));
 
@@ -432,15 +435,14 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQScaleToL1(uint64_t s1gL1RealSize, u
     DataCopy(scaleL1, scaleGmCast[gmOffset / FP8_TWO], dn2Nzparam);
 }
 
-// MXFP8: 加载 kScale 到 L1（存储在 keyL1_ buffer 的尾部区域）
+// MXFP8: 加载 kScale 到独立的 L1 buffer
 // kScale shape: [S2, D/32]，每个 S2 token 对应 D/32=4 个 fp8_e8m0 scale
 template <typename QLIT>
 __aicore__ inline void QLIMatmul<QLIT>::LoadKScaleToL1(uint64_t s2L1RealSize, uint64_t s2GmOffset,
                                                          const QLICommon::RunInfo &runInfo)
 {
-    // kScale 存储在 keyL1_ buffer 尾部
-    uint64_t scaleOffsetInBuf = KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK;
-    LocalTensor<bfloat16_t> scaleL1 = keyL1_[scaleOffsetInBuf].template ReinterpretCast<bfloat16_t>();
+    // kScale 存储在独立的 bufKScaleL1_ 中
+    LocalTensor<bfloat16_t> scaleL1 = kScaleL1_.template ReinterpretCast<bfloat16_t>();
     GlobalTensor<bfloat16_t> scaleGmCast;
     scaleGmCast.SetGlobalBuffer((__gm__ bfloat16_t *)(kScaleGm_.GetPhyAddr()));
 
@@ -505,8 +507,7 @@ __aicore__ inline void QLIMatmul<QLIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint6
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
-    // MXFP8: 使用 QUERY_L1_PINGPONG_STRIDE（含 scale 空间）而非 QUERY_BUFFER_OFFSET
-    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE],
+    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
              queryGm_[runInfo.tensorQueryOffset + s1gGmOffset * constInfo_.headDim], nd2nzPara);
 }
 
@@ -528,11 +529,9 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uin
         // MXFP8: 使用 LoadData Mx 变体，同时加载数据和 scale 到 L0
         LocalTensor<mx_fp8_e4m3_t> dstTensor =
             queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<mx_fp8_e4m3_t>();
-        // qScale 存储在当前 queryL1_ ping-pong buffer 的数据之后
-        // 使用 QUERY_L1_PINGPONG_STRIDE（含 scale 空间）保持与 InitBuffers/LoadQScaleToL1 一致
-        uint64_t scaleOffsetInBuf = (queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE
-                                    + s1gL1RealSize * D_BASIC_BLOCK;
-        LocalTensor<fp8_e8m0_t> scaleL1 = queryL1_[scaleOffsetInBuf].template ReinterpretCast<fp8_e8m0_t>();
+        // qScale 从独立的 bufQScaleL1_ 读取
+        uint64_t scaleOffsetInBuf = (queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QSCALE_L1_PINGPONG_SIZE;
+        LocalTensor<fp8_e8m0_t> scaleL1 = qScaleL1_[scaleOffsetInBuf].template ReinterpretCast<fp8_e8m0_t>();
 
         LoadData2DMxParams loadAScaleParam;
         loadAScaleParam.xStartPosition = 0;
@@ -543,7 +542,7 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadQueryToL0a(uint64_t s1gGmOffset, uin
         loadAScaleParam.srcStride = CeilDiv(constInfo_.headDim, FP8_BLOCK_CUBE * FP8_TWO);
         loadAScaleParam.dstStride = loadAScaleParam.yStep;
         LoadData(dstTensor,
-                 queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_L1_PINGPONG_STRIDE],
+                 queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
                  scaleL1, loadData2DParams, loadAScaleParam);
     } else {
         LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
@@ -569,9 +568,8 @@ __aicore__ inline void QLIMatmul<QLIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64
         // MXFP8: 使用 LoadData Mx 变体，同时加载数据和 scale 到 L0
         LocalTensor<mx_fp8_e4m3_t> dstTensor =
             keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<mx_fp8_e4m3_t>();
-        // kScale 存储在 keyL1_ buffer 的尾部区域（所有 ping-pong buffer 之后）
-        uint64_t scaleOffsetInBuf = KEY_BUF_NUM * s2BasicBlock_ * D_BASIC_BLOCK;
-        LocalTensor<fp8_e8m0_t> scaleL1 = keyL1_[scaleOffsetInBuf].template ReinterpretCast<fp8_e8m0_t>();
+        // kScale 从独立的 bufKScaleL1_ 读取
+        LocalTensor<fp8_e8m0_t> scaleL1 = kScaleL1_.template ReinterpretCast<fp8_e8m0_t>();
 
         LoadData2DMxParams loadDataMxParams;
         loadDataMxParams.xStartPosition = 0;
