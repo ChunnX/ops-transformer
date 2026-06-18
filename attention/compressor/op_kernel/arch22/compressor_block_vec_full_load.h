@@ -112,7 +112,7 @@ private:
                                              uint32_t stateIdx);
     __aicore__ inline void ReadFromCacheState(const LocalTensor<T> &output, const GlobalTensor<T> &state,
                                               const GlobalTensor<int32_t> &blockTableGm, uint32_t batchIdx,
-                                              uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx,
+                                              uint64_t startSeqIdx, uint64_t endSeqIdx, uint32_t dStartIdx,
                                               uint32_t dDealSize, uint32_t stateIdx);
     __aicore__ inline void SaveState(const LocalTensor<T> &srcLocal, const GlobalTensor<T> &stateGm,
                                      const GlobalTensor<int32_t> &blockTableGm, const Vec1SliceInfo &sliceInfo,
@@ -641,7 +641,7 @@ template <typename COMP>
 __aicore__ inline void
 CompressorBlockVectorFullLoad<COMP>::ReadFromCacheState(const LocalTensor<T> &output, const GlobalTensor<T> &state,
                                                         const GlobalTensor<int32_t> &blockTableGm, uint32_t batchIdx,
-                                                        uint32_t startSeqIdx, uint32_t endSeqIdx, uint32_t dStartIdx,
+                                                        uint64_t startSeqIdx, uint64_t endSeqIdx, uint32_t dStartIdx,
                                                         uint32_t dDealSize, uint32_t stateIdx)
 {
     uint64_t blockTablebaseOffset = batchIdx * constInfo_.maxBlockNumPerBatch;
@@ -718,7 +718,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ReadState(
     // 填充右边
     if (sliceInfo.headHolderSeqCnt > 0) {
         // 整个batch的第一块
-        uint32_t startSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, cmpRatio_);
+        uint64_t startSeqIdx = Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, (uint64_t)cmpRatio_);
         uint32_t endSeqIdx = sliceInfo.bStartPos;
         uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * cmpRatio_ * coff_ * dDealSize;
         if constexpr (COMP::coff == Compressor::COFF::OVERLAP) {
@@ -738,11 +738,11 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ReadState(
             DuplicateFirstBlock<IS_SCORE>(dstLocal[dstBaseOffset], cmpRatio_, dDealSize, coff_ * dDealSize);
         }
         if (sliceInfo.sIdx < cmpRatio_ && (!isFirst || sliceInfo.compressTcSize > 1)) {
-            uint32_t startSeqIdx = sliceInfo.bStartPos < cmpRatio_ ?
+            uint64_t startSeqIdx = sliceInfo.bStartPos < cmpRatio_ ?
                                        0 :
-                                       Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, cmpRatio_) - cmpRatio_;
-            uint32_t endSeqIdx =
-                min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, cmpRatio_) - cmpRatio_,
+                                       Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, (uint64_t)cmpRatio_) - cmpRatio_;
+            uint64_t endSeqIdx =
+                min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, (uint64_t)cmpRatio_) - cmpRatio_,
                     sliceInfo.bStartPos);
             uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * cmpRatio_ * coff_ * dDealSize;
             if (isFirst) {
