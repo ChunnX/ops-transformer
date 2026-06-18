@@ -302,22 +302,31 @@ static bool NeedContiguousFallback(const aclTensor *tensor, bool isPaNz)
     return tensor->GetViewStrides()[dimNum - 1] != 1;
 }
 
-// 任一KV tensor命中即需走ProcessContiguous兜底: 否则保留view下发会因kernel仅用stride0/尾轴按连续搬运
-// 而读错数据(NZ), 或在tiling触发"last dim stride must be 1"报错(ND/NZ尾轴)。
+static bool IsRefNonContiguous(const aclTensor *ref)
+{
+    if (ref == nullptr) {
+        return false;
+    }
+    int64_t dimNum = ref->GetViewShape().GetDimNum();
+    if (dimNum < 1) {
+        return false;
+    }
+    return !IsAxesContiguous(ref, 0, dimNum);
+}
+
 static bool NeedContiguousFallbackAny(
     const aclTensor *keyCache, const aclTensor *valueCache,
     const aclTensor *keyRef, const aclTensor *valueRef, bool isPaNz)
 {
     return NeedContiguousFallback(keyCache, isPaNz) || NeedContiguousFallback(valueCache, isPaNz) ||
-           NeedContiguousFallback(keyRef, isPaNz) || NeedContiguousFallback(valueRef, isPaNz);
+           IsRefNonContiguous(keyRef) || IsRefNonContiguous(valueRef);
 }
 
 static bool IsSupportNonContiguousCache(const aclTensor *keyCache, const aclTensor *valueCache)
 {
     bool keyCacheCase1 = IsFirstAxisNonContiguous(keyCache);
     bool valueCacheCase1 = IsFirstAxisNonContiguous(valueCache);
-    // 任一cache首轴非连续即支持(与scatter对齐): 单个cache非连续场景也需走非连续路径,
-    // 否则会落到ProcessContiguous, 丢失view的stride0/offset导致读错block。
+
     return keyCacheCase1 || valueCacheCase1;
 }
 
@@ -418,10 +427,8 @@ static aclnnStatus ProcessNonContiguous(
     return ACLNN_SUCCESS;
 }
 
-// PA_NZ的cache若为非连续view, 直接对FRACTAL_NZ tensor调l0op::Contiguous会走格式感知路径,
 static const aclTensor *ContiguousNzCacheAsNd(const aclTensor *cache, UniqueExecutor& uniqueExecutor)
 {
-    // CreateView复制元数据(不改用户原tensor), 仅在副本上把format改为ND。
     auto ndView = uniqueExecutor->CreateView(cache,
                                              cache->GetViewShape(),
                                              cache->GetStorageShape(),
@@ -458,13 +465,12 @@ static aclnnStatus ProcessContiguous(
     UniqueExecutor& uniqueExecutor)
 {
     bool isPaNz = (cacheMode != nullptr && strcmp(cacheMode, "PA_NZ") == 0);
-    // PA_NZ的cache若NZ内部轴(轴[1,dimNum))非连续, 走NZ-as-ND连续化; 否则维持原通用连续化。
-    auto keyCacheContiguous = NeedContiguousFallback(keyCache, isPaNz)
+    auto keyCacheContiguous = (isPaNz && NeedContiguousFallback(keyCache, isPaNz))
         ? ContiguousNzCacheAsNd(keyCache, uniqueExecutor)
         : l0op::Contiguous(keyCache, uniqueExecutor.get());
     CHECK_RET(keyCacheContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto valueCacheContiguous = NeedContiguousFallback(valueCache, isPaNz)
+    auto valueCacheContiguous = (isPaNz && NeedContiguousFallback(valueCache, isPaNz))
         ? ContiguousNzCacheAsNd(valueCache, uniqueExecutor)
         : l0op::Contiguous(valueCache, uniqueExecutor.get());
     CHECK_RET(valueCacheContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
