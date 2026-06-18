@@ -19,3 +19,5 @@
 |    接口名   |   说明     | 确定性说明 |
 | ----------- | ------------------- | ------------------- |
 |[flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/npu_flash_attn.md)|完成xx计算。|xx|
+|[mixed_quant_sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla_metadata.md)|mixed_quant_sparse_flash_mla接口的前置接口，用于计算mixed_quant_sparse_flash_mla的负载均衡。|默认支持确定性计算|
+|[sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_metadata.md)|sparse_flash_mla接口的前置接口，用于计算sparse_flash_mla的负载均衡。|默认支持确定性计算|
