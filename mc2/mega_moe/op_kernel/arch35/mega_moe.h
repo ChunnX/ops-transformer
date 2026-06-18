@@ -334,8 +334,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         int64_t tokenGroupResetSize = static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE;
         totalFlagInt32 = (static_cast<int64_t>(totalFlagInt32) > tokenGroupResetSize)
-                         ? static_cast<int64_t>(totalFlagInt32)
-                         : tokenGroupResetSize;
+                         ? static_cast<int64_t>(totalFlagInt32) : tokenGroupResetSize;
     }
     uint32_t resetNumPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
     uint32_t resetTensorSize = Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore),
@@ -405,6 +404,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     if (coreLen != 0) {
         DataCopyPad(swigluToGmm2FlagGm_[coreOffset], resetTensor_, rankSyncCopyParams);
+    }
+    // combine量化模式下TokenGroupCompleteFlag清零
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        ResetTokenGroupCompleteFlags();
     }
 }
 
@@ -915,7 +918,8 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenGroupCompleteFlags()
 {
     if constexpr(g_coreType == AIV) {
-        int32_t totalCounters = static_cast<int32_t>(static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE);
+        int32_t totalCounters = static_cast<int32_t>(
+            static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE);
         int32_t coreLen, coreOffset;
         TilingByCore(totalCounters, coreLen, coreOffset);
         GlobalTensor<int32_t> tokenGroupCompleteGm;
@@ -1227,9 +1231,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SendAndQuantBuffInit();
     SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
     ResetFlagList();             // 清理workSpace空间上的flag位
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        ResetTokenGroupCompleteFlags();
-    }
+
     QuantProcessInRank();        // 对本卡token的量化
     if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();

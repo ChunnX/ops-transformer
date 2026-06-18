@@ -279,8 +279,7 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx,
-    int32_t& vecSetSyncCom2, uint32_t groupCnt, uint16_t& pingpongIdx,
-    uint32_t groupIdx, uint32_t blockAivNum)
+    int32_t& vecSetSyncCom2, uint32_t groupCnt, uint16_t& pingpongIdx, uint32_t groupIdx)
 {
     // 非量化模式：仅 subBlockIdx_==0 的核参与
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
@@ -428,6 +427,7 @@ __aicore__ inline void GroupMatmul2(
                 blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape);
                 NotifyVector(pingpongIdx);
             } else {
+                uint32_t blockAivNum = blockNum * 2;
                 // 量化：输出到 GM
                 GlobalTensor<int32_t> tokenGroupComplete;
                 tokenGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.tokenGroupCompletePtr);
