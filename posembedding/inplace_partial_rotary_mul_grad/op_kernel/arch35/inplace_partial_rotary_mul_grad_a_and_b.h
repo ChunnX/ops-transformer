@@ -129,11 +129,6 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
     const LocalTensor<TCOS> &cosBuffer, const LocalTensor<TCOS> &sinBuffer,
     const LocalTensor<TDY> &inBuffer, const LocalTensor<TDY> &outBuffer, int64_t bUbLength)
 {
-    auto *inUb = (__local_mem__ TDY *)inBuffer.GetPhyAddr();
-    auto *outUb = (__local_mem__ TDY *)outBuffer.GetPhyAddr();
-    auto *cosUb = (__local_mem__ TCOS *)cosBuffer.GetPhyAddr();
-    auto *sinUb = (__local_mem__ TCOS *)sinBuffer.GetPhyAddr();
-
     if constexpr (IsBroadcast) {
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
             HalfGradAlignVF<TDY, TCOS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
@@ -153,6 +148,10 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
                                                             static_cast<uint16_t>(bUbLength), 1);
         }
     } else {
+        auto *inUb = (__local_mem__ TDY *)inBuffer.GetPhyAddr();
+        auto *outUb = (__local_mem__ TDY *)outBuffer.GetPhyAddr();
+        auto *cosUb = (__local_mem__ TCOS *)cosBuffer.GetPhyAddr();
+        auto *sinUb = (__local_mem__ TCOS *)sinBuffer.GetPhyAddr();
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
             BatchHalfGradAlignVF<TDY, TCOS, IsBroadcast>(
                 inUb, cosUb, sinUb, outUb, static_cast<uint16_t>(bUbLength), 1, 1, tilingData_->sliceLength,
