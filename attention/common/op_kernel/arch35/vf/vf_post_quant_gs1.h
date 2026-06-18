@@ -13,7 +13,7 @@
  */
 #ifndef VF_POST_QUANT_V2_H
 #define VF_POST_QUANT_V2_H
-#include "kernel_tensor.h"
+#include "vf_post_quant_common.h"
 namespace FaVectorApi {
 
 __simd_vf__ inline void CastBf16ToFp32VF(__ubuf__ float *dstFp32Ub, __ubuf__ bfloat16_t *srcBf16Ub,
@@ -40,70 +40,38 @@ __simd_vf__ inline void CastBf16ToFp32VF(__ubuf__ float *dstFp32Ub, __ubuf__ bfl
     }
 }
 
-
 template <typename T, typename OUTPUT_T, typename POSTQUANT_PARAMS_T>
 __simd_vf__ inline void
 PostQuantPerChnlNoOffsetImplVF(__ubuf__ OUTPUT_T *dstUb, __ubuf__ T *srcUb, __ubuf__ POSTQUANT_PARAMS_T *scaleUb,
                                uint32_t src1Offset, uint32_t src0Offset, uint32_t floatRepSize, uint32_t mask_all,
-                               uint32_t dLoops, uint32_t dTailLoop, uint32_t mask_tail, uint32_t LoopsOffset)
+                               uint32_t dLoops, uint32_t dTailLoop, uint32_t maskTail, uint32_t loopsOffset)
 {
     RegTensor<T> vregInput;
     RegTensor<T> vregMul;
     RegTensor<half> vregCastB16;
     RegTensor<OUTPUT_T> vregCast;
-
     RegTensor<T> vScale;
     RegTensor<POSTQUANT_PARAMS_T> vScaleTmp;
     RegTensor<POSTQUANT_PARAMS_T> vOffsetTmp;
-
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
-    MaskReg preg_tail = UpdateMask<float>(mask_tail);
-
+    MaskReg preg_tail = UpdateMask<float>(maskTail);
     for (uint16_t k = 0; k < dLoops; ++k) {
-        if constexpr (IsSameType<POSTQUANT_PARAMS_T, T>::value) {
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_NORM>(vScale, scaleUb + src1Offset + k * floatRepSize);
-        } else {
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_UNPACK_B16>(vScaleTmp,
-                                                                     scaleUb + src1Offset + k * floatRepSize);
-            Cast<T, POSTQUANT_PARAMS_T, castTraitP0>(vScale, vScaleTmp, preg_all);
-        }
-        LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + LoopsOffset + k * floatRepSize);
+        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb,
+            src1Offset + k * floatRepSize, preg_all);
+        LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + loopsOffset + k * floatRepSize);
         Mul<T, MaskMergeMode::ZEROING>(vregMul, vregInput, vScale, preg_all);
-        if constexpr (!IsSameType<OUTPUT_T, int8_t>::value) {
-            if constexpr (IsSameType<OUTPUT_T, hifloat8_t>::value) {
-                Cast<OUTPUT_T, T, castTraitP1>(vregCast, vregMul, preg_all);
-            } else {
-                Cast<OUTPUT_T, T, castTraitP0>(vregCast, vregMul, preg_all);
-            }
-        } else {
-            Cast<half, T, castTraitP0>(vregCastB16, vregMul, preg_all);
-            Cast<OUTPUT_T, half, castTraitP0>(vregCast, vregCastB16, preg_all);
-        }
-        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(dstUb + src0Offset + LoopsOffset + k * floatRepSize, vregCast,
-                                                        preg_all);
+        CastToOutputFromMul<T, OUTPUT_T>(vregCastB16, vregCast, vregMul, preg_all);
+        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(
+            dstUb + src0Offset + loopsOffset + k * floatRepSize, vregCast, preg_all);
     }
     for (uint16_t k = 0; k < dTailLoop; ++k) {
-        if constexpr (IsSameType<POSTQUANT_PARAMS_T, T>::value) {
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_NORM>(vScale, scaleUb + src1Offset + dLoops * floatRepSize);
-        } else {
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_UNPACK_B16>(vScaleTmp,
-                                                                     scaleUb + src1Offset + dLoops * floatRepSize);
-            Cast<T, POSTQUANT_PARAMS_T, castTraitP0>(vScale, vScaleTmp, preg_tail);
-        }
-        LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + LoopsOffset + dLoops * floatRepSize);
+        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb,
+            src1Offset + dLoops * floatRepSize, preg_tail);
+        LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + loopsOffset + dLoops * floatRepSize);
         Mul<T, MaskMergeMode::ZEROING>(vregMul, vregInput, vScale, preg_tail);
-        if constexpr (!IsSameType<OUTPUT_T, int8_t>::value) {
-            if constexpr (IsSameType<OUTPUT_T, hifloat8_t>::value) {
-                Cast<OUTPUT_T, T, castTraitP1>(vregCast, vregMul, preg_tail);
-            } else {
-                Cast<OUTPUT_T, T, castTraitP0>(vregCast, vregMul, preg_tail);
-            }
-        } else {
-            Cast<half, T, castTraitP0>(vregCastB16, vregMul, preg_tail);
-            Cast<OUTPUT_T, half, castTraitP0>(vregCast, vregCastB16, preg_tail);
-        }
-        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(dstUb + src0Offset + LoopsOffset + dLoops * floatRepSize,
-                                                        vregCast, preg_tail);
+        CastToOutputFromMul<T, OUTPUT_T>(vregCastB16, vregCast, vregMul, preg_tail);
+        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(
+            dstUb + src0Offset + loopsOffset + dLoops * floatRepSize, vregCast, preg_tail);
     }
 }
 
@@ -112,81 +80,42 @@ __simd_vf__ inline void
 PostQuantPerChnlOffsetImplVF(__ubuf__ OUTPUT_T *dstUb, __ubuf__ T *srcUb, __ubuf__ POSTQUANT_PARAMS_T *scaleUb,
                              __ubuf__ POSTQUANT_PARAMS_T *offsetUb, uint32_t src1Offset, uint32_t src0Offset,
                              uint32_t floatRepSize, uint32_t mask_all, uint32_t dLoops, uint32_t dTailLoop,
-                             uint32_t mask_tail, uint32_t LoopsOffset)
+                             uint32_t maskTail, uint32_t loopsOffset)
 {
     RegTensor<T> vregInput;
     RegTensor<T> vregMul;
     RegTensor<T> vreg_add;
     RegTensor<half> vregCastB16;
     RegTensor<OUTPUT_T> vregCast;
-
     RegTensor<T> vScale;
     RegTensor<T> vOffset;
     RegTensor<POSTQUANT_PARAMS_T> vScaleTmp;
     RegTensor<POSTQUANT_PARAMS_T> vOffsetTmp;
-
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
-    MaskReg preg_tail = UpdateMask<float>(mask_tail);
-
+    MaskReg preg_tail = UpdateMask<float>(maskTail);
     for (uint16_t k = 0; k < dLoops; ++k) {
-        if constexpr (IsSameType<POSTQUANT_PARAMS_T, T>::value) {
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_NORM>(vScale, scaleUb + src1Offset + k * floatRepSize);
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_NORM>(vOffset, offsetUb + src1Offset + k * floatRepSize);
-        } else {
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_UNPACK_B16>(vScaleTmp,
-                                                                     scaleUb + src1Offset + k * floatRepSize);
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_UNPACK_B16>(vOffsetTmp,
-                                                                     offsetUb + src1Offset + k * floatRepSize);
-            Cast<T, POSTQUANT_PARAMS_T, castTraitP0>(vScale, vScaleTmp, preg_all);
-            Cast<T, POSTQUANT_PARAMS_T, castTraitP0>(vOffset, vScaleTmp, preg_all);
-        }
-        LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + LoopsOffset + k * floatRepSize);
+        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb,
+            src1Offset + k * floatRepSize, preg_all);
+        LoadOffsetParam<T, POSTQUANT_PARAMS_T>(vOffset, vOffsetTmp, offsetUb,
+            src1Offset + k * floatRepSize, preg_all);
+        LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + loopsOffset + k * floatRepSize);
         Mul<T, MaskMergeMode::ZEROING>(vregMul, vregInput, vScale, preg_all);
-        if constexpr (!IsSameType<OUTPUT_T, int8_t>::value) {
-            if constexpr (IsSameType<OUTPUT_T, hifloat8_t>::value) {
-                Add<T, MaskMergeMode::ZEROING>(vreg_add, vregMul, vOffset, preg_all);
-                Cast<OUTPUT_T, T, castTraitP1>(vregCast, vregMul, preg_all);
-            } else {
-                Add<T, MaskMergeMode::ZEROING>(vreg_add, vregMul, vOffset, preg_all);
-                Cast<OUTPUT_T, T, castTraitP0>(vregCast, vregMul, preg_all);
-            }
-        } else {
-            Add<T, MaskMergeMode::ZEROING>(vreg_add, vregMul, vOffset, preg_all);
-            Cast<half, T, castTraitP0>(vregCastB16, vregMul, preg_all);
-            Cast<OUTPUT_T, half, castTraitP0>(vregCast, vregCastB16, preg_all);
-        }
-        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(dstUb + src0Offset + LoopsOffset + k * floatRepSize, vregCast,
-                                                        preg_all);
+        Add<T, MaskMergeMode::ZEROING>(vreg_add, vregMul, vOffset, preg_all);
+        CastToOutputFromAdd<T, OUTPUT_T>(vregCastB16, vregCast, vreg_add, preg_all);
+        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(
+            dstUb + src0Offset + loopsOffset + k * floatRepSize, vregCast, preg_all);
     }
     for (uint16_t k = 0; k < dTailLoop; ++k) {
-        if constexpr (IsSameType<POSTQUANT_PARAMS_T, T>::value) {
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_NORM>(vScale, scaleUb + src1Offset + dLoops * floatRepSize);
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_NORM>(vOffset, offsetUb + src1Offset + k * floatRepSize);
-        } else {
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_UNPACK_B16>(vScaleTmp,
-                                                                     scaleUb + src1Offset + dLoops * floatRepSize);
-            LoadAlign<POSTQUANT_PARAMS_T, LoadDist::DIST_UNPACK_B16>(vOffsetTmp,
-                                                                     offsetUb + src1Offset + k * floatRepSize);
-            Cast<T, POSTQUANT_PARAMS_T, castTraitP0>(vScale, vScaleTmp, preg_tail);
-            Cast<T, POSTQUANT_PARAMS_T, castTraitP0>(vOffset, vOffsetTmp, preg_tail);
-        }
-        LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + LoopsOffset + dLoops * floatRepSize);
+        LoadScaleParam<T, POSTQUANT_PARAMS_T>(vScale, vScaleTmp, scaleUb,
+            src1Offset + dLoops * floatRepSize, preg_tail);
+        LoadOffsetParam<T, POSTQUANT_PARAMS_T>(vOffset, vOffsetTmp, offsetUb,
+            src1Offset + dLoops * floatRepSize, preg_tail);
+        LoadAlign<T, LoadDist::DIST_NORM>(vregInput, srcUb + src0Offset + loopsOffset + dLoops * floatRepSize);
         Mul<T, MaskMergeMode::ZEROING>(vregMul, vregInput, vScale, preg_tail);
-        if constexpr (!IsSameType<OUTPUT_T, int8_t>::value) {
-            if constexpr (IsSameType<OUTPUT_T, hifloat8_t>::value) {
-                Add<T, MaskMergeMode::ZEROING>(vreg_add, vregMul, vOffset, preg_tail);
-                Cast<OUTPUT_T, T, castTraitP1>(vregCast, vregMul, preg_tail);
-            } else {
-                Add<T, MaskMergeMode::ZEROING>(vreg_add, vregMul, vOffset, preg_tail);
-                Cast<OUTPUT_T, T, castTraitP0>(vregCast, vregMul, preg_tail);
-            }
-        } else {
-            Add<T, MaskMergeMode::ZEROING>(vreg_add, vregMul, vOffset, preg_tail);
-            Cast<half, T, castTraitP0>(vregCastB16, vregMul, preg_tail);
-            Cast<OUTPUT_T, half, castTraitP0>(vregCast, vregCastB16, preg_tail);
-        }
-        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(dstUb + src0Offset + LoopsOffset + dLoops * floatRepSize,
-                                                        vregCast, preg_tail);
+        Add<T, MaskMergeMode::ZEROING>(vreg_add, vregMul, vOffset, preg_tail);
+        CastToOutputFromAdd<T, OUTPUT_T>(vregCastB16, vregCast, vreg_add, preg_tail);
+        StoreAlign<OUTPUT_T, StoreDist::DIST_PACK4_B32>(
+            dstUb + src0Offset + loopsOffset + dLoops * floatRepSize, vregCast, preg_tail);
     }
 }
 
@@ -200,14 +129,11 @@ PostQuantPerChnlNoOffsetS1GImpl(const LocalTensor<OUTPUT_T> &dstTensor, const Lo
     __ubuf__ OUTPUT_T *dstUb = (__ubuf__ OUTPUT_T *)dstTensor.GetPhyAddr();
     __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
     __ubuf__ POSTQUANT_PARAMS_T *scaleUb = (__ubuf__ POSTQUANT_PARAMS_T *)scaleTensor.GetPhyAddr();
-
     uint16_t preg_all = 64;
     uint16_t preg_tail = colCount % 64;
-
     const uint16_t floatRepSize = 64;
-
-    uint16_t dLoops = dSize / floatRepSize; // colCount / 64
-    uint16_t dTail = dSize % floatRepSize;  // colCount % 64
+    uint16_t dLoops = dSize / floatRepSize;
+    uint16_t dTail = dSize % floatRepSize;
     uint16_t dTailLoop = dTail > 0 ? 1 : 0;
     uint32_t s1IdxStart = gS1Idx / gSize;
     uint32_t gIdxStart = gS1Idx % gSize;
@@ -223,7 +149,6 @@ PostQuantPerChnlNoOffsetS1GImpl(const LocalTensor<OUTPUT_T> &dstTensor, const Lo
                                            dLoops, dTailLoop, preg_tail, i);
             src1Offset += colCount;
         }
-
         for (uint32_t i = s1IdxStart + 1; i < s1IdxEnd; i++) {
             src0Offset += dealSize;
             dealSize = gSize * colCount;
@@ -262,13 +187,11 @@ PostQuantPerChnlNoOffsetGS1Impl(const LocalTensor<OUTPUT_T> &dstTensor, const Lo
     __ubuf__ OUTPUT_T *dstUb = (__ubuf__ OUTPUT_T *)dstTensor.GetPhyAddr();
     __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
     __ubuf__ POSTQUANT_PARAMS_T *scaleUb = (__ubuf__ POSTQUANT_PARAMS_T *)scaleTensor.GetPhyAddr();
-
     uint16_t preg_all = 64;
     uint16_t preg_tail = colCount % 64;
     const uint16_t floatRepSize = 64;
-
-    uint16_t dLoops = dSize / floatRepSize; // colCount / 64
-    uint16_t dTail = dSize % floatRepSize;  // colCount % 64
+    uint16_t dLoops = dSize / floatRepSize;
+    uint16_t dTail = dSize % floatRepSize;
     uint16_t dTailLoop = dTail > 0 ? 1 : 0;
     uint32_t gIdxStart = gS1Idx / s1Size;
     uint32_t s1IdxStart = gS1Idx % s1Size;
@@ -318,13 +241,11 @@ PostQuantPerChnlWithOffsetS1GImpl(const LocalTensor<OUTPUT_T> &dstTensor, const 
     __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
     __ubuf__ POSTQUANT_PARAMS_T *scaleUb = (__ubuf__ POSTQUANT_PARAMS_T *)scaleTensor.GetPhyAddr();
     __ubuf__ POSTQUANT_PARAMS_T *offsetUb = (__ubuf__ POSTQUANT_PARAMS_T *)offsetTensor.GetPhyAddr();
-
     uint16_t preg_all = 64;
     uint16_t preg_tail = colCount % 64;
     const uint16_t floatRepSize = 64;
-
-    uint16_t dLoops = dSize / floatRepSize; // colCount / 64
-    uint16_t dTail = dSize % floatRepSize;  // colCount % 64
+    uint16_t dLoops = dSize / floatRepSize;
+    uint16_t dTail = dSize % floatRepSize;
     uint16_t dTailLoop = dTail > 0 ? 1 : 0;
     uint32_t s1IdxStart = gS1Idx / gSize;
     uint32_t gIdxStart = gS1Idx % gSize;
@@ -340,7 +261,6 @@ PostQuantPerChnlWithOffsetS1GImpl(const LocalTensor<OUTPUT_T> &dstTensor, const 
                                          preg_all, dLoops, dTailLoop, preg_tail, i);
             src1Offset += colCount;
         }
-
         for (uint32_t i = s1IdxStart + 1; i < s1IdxEnd; i++) {
             src0Offset += dealSize;
             dealSize = gSize * colCount;
@@ -381,13 +301,11 @@ PostQuantPerChnlWithOffsetGS1Impl(const LocalTensor<OUTPUT_T> &dstTensor, const 
     __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
     __ubuf__ POSTQUANT_PARAMS_T *scaleUb = (__ubuf__ POSTQUANT_PARAMS_T *)scaleTensor.GetPhyAddr();
     __ubuf__ POSTQUANT_PARAMS_T *offsetUb = (__ubuf__ POSTQUANT_PARAMS_T *)offsetTensor.GetPhyAddr();
-
     uint16_t preg_all = 64;
     uint16_t preg_tail = colCount % 64;
     const uint16_t floatRepSize = 64;
-
-    uint16_t dLoops = dSize / floatRepSize; // colCount / 64
-    uint16_t dTail = dSize % floatRepSize;  // colCount % 64
+    uint16_t dLoops = dSize / floatRepSize;
+    uint16_t dTail = dSize % floatRepSize;
     uint16_t dTailLoop = dTail > 0 ? 1 : 0;
     uint32_t gIdxStart = gS1Idx / s1Size;
     uint32_t s1IdxStart = gS1Idx % s1Size;
@@ -438,7 +356,6 @@ PostQuantPerChnlOffsetImpl(const LocalTensor<OUTPUT_T> &dstTensor, const LocalTe
     uint32_t gS1DealSize = postQuantInfo.gS1DealSize;
     uint32_t gSize = postQuantInfo.gSize;
     uint32_t dSize = postQuantInfo.dSize;
-
     if constexpr (isS1G) {
         PostQuantPerChnlWithOffsetS1GImpl(dstTensor, srcTensor, scaleTensor, offsetTensor, gS1Idx, s1Size, dSize,
                                           gS1Idx, gS1DealSize, colCount);
@@ -459,8 +376,6 @@ PostQuantPerChnlNoOffsetImpl(const LocalTensor<OUTPUT_T> &dstTensor, const Local
     uint32_t gS1DealSize = postQuantInfo.gS1DealSize;
     uint32_t gSize = postQuantInfo.gSize;
     uint32_t dSize = postQuantInfo.dSize;
-
-
     if constexpr (isS1G) {
         PostQuantPerChnlNoOffsetS1GImpl(dstTensor, srcTensor, scaleTensor, gS1Idx, s1Size, dSize, gS1Idx, gS1DealSize,
                                         colCount);
