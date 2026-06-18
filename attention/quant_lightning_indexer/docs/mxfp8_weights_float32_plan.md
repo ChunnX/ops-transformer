@@ -23,11 +23,11 @@
 
 | 模块 | 文件 | 原因 |
 |------|------|------|
-| **VF 计算函数** | `vf/quant_lightning_indexer_vector1.h` | `MulWeightAndReduceSum_NoScale` 和 `MulWeightAndReduceSum2_NoScale` 已有 `float*` 重载（lines 879-949, 1028-1110） |
+| **VF 计算函数** | `vf/quant_lightning_indexer_vector1.h` | `MulWeightAndReduceSum_MxFP8` 和 `MulWeightAndReduceSum2_MxFP8` 已有 `float*` 重载（lines 879-949, 1028-1110） |
 | **weightBuf_ 大小** | `service_vector.h:145` | `2 × CeilDiv(s1Base/CVRATIO) × UB_BANK_DEPTH_STRIDE(512)` = 每行 512B，float32 只需 `gSize×4=256B`，空间足够 |
 | **DataCopyPad dstStride** | `service_vector.h:370` | `(512 - gSize×4) / 32 = 8`，合法 |
 | **weightsCoreOffset** | `kernel.h:564` | 按元素计算，`GlobalTensor<float>` 自动处理字节偏移 |
-| **weightFloatBuf_** | `service_vector.h:147` | MXFP8 NoScale 路径不使用此 buffer |
+| **weightFloatBuf_** | `service_vector.h:147` | MXFP8 MxFP8 路径不使用此 buffer |
 | **service_cube.h** | `service_cube.h` | Cube 核不处理 weights，完全不受影响 |
 
 ### 2.2 需要修改的部分（共 3 处）
@@ -178,12 +178,12 @@ make clean && make
 
 ### 5.1 为什么 VF 计算函数不需要修改？
 
-`MulWeightAndReduceSum_NoScale` 和 `MulWeightAndReduceSum2_NoScale` 已有 `float*` 重载：
+`MulWeightAndReduceSum_MxFP8` 和 `MulWeightAndReduceSum2_MxFP8` 已有 `float*` 重载：
 
 ```cpp
 // vector1.h:879-949
 template <typename QK_T>
-__aicore__ inline void MulWeightAndReduceSum_NoScale(
+__aicore__ inline void MulWeightAndReduceSum_MxFP8(
     __ubuf__ uint16_t* out, __ubuf__ float* qk, uint32_t qkVLStride,
     __ubuf__ float* weight,  // ← float* 重载已存在
     int gSize)

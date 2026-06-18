@@ -281,7 +281,7 @@ if constexpr (isMxFp8) {
     // 不加载 qScale 和 kScale
 
     // 调用简化版 BatchMulWeightAndReduceSum
-    vector1::BatchMulWeightAndReduceSum_NoScale(
+    vector1::BatchMulWeightAndReduceSum_MxFP8(
         outBase, outStride,
         qkBase, qkVLstride, qkStride,
         weightBase, weightStride, weightFloatBase,
@@ -307,12 +307,12 @@ if constexpr (!isMxFp8) {
 
 **目标**: 新增无 scale 版本的 MulWeightAndReduceSum
 
-##### 4.4.1 新增 `MulWeightAndReduceSum_NoScale`
+##### 4.4.1 新增 `MulWeightAndReduceSum_MxFP8`
 
 ```cpp
 // 新流程：QK 已含 qScale×kScale，只需 weights 广播乘法 + Relu + ReduceSum
 template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum_NoScale(
+__simd_vf__ inline void MulWeightAndReduceSum_MxFP8(
     __ubuf__ uint16_t* out_,
     __ubuf__ QK_T* qk_,
     const uint32_t qkVLStride,
@@ -354,15 +354,15 @@ __simd_vf__ inline void MulWeightAndReduceSum_NoScale(
 }
 ```
 
-##### 4.4.2 新增 `MulWeightAndReduceSum2_NoScale` (S1=2 版本)
+##### 4.4.2 新增 `MulWeightAndReduceSum2_MxFP8` (S1=2 版本)
 
 同理，移除 qScale 和 kScale 的处理。
 
-##### 4.4.3 新增 `BatchMulWeightAndReduceSum_NoScale` (调度函数)
+##### 4.4.3 新增 `BatchMulWeightAndReduceSum_MxFP8` (调度函数)
 
 ```cpp
 template<typename QK_T, typename W_T, typename SCORE_T>
-__aicore__ inline void BatchMulWeightAndReduceSum_NoScale(
+__aicore__ inline void BatchMulWeightAndReduceSum_MxFP8(
     const LocalTensor<SCORE_T> &out_,
     uint32_t outStride,
     const LocalTensor<QK_T> &qk_,
@@ -376,9 +376,9 @@ __aicore__ inline void BatchMulWeightAndReduceSum_NoScale(
 {
     // 调用无 scale 版本的 MulWeightAndReduceSum
     if (batch == 1) {
-        MulWeightAndReduceSum_NoScale(out, qk, qkVLStride, weightFloat, gSize);
+        MulWeightAndReduceSum_MxFP8(out, qk, qkVLStride, weightFloat, gSize);
     } else if (batch == 2) {
-        MulWeightAndReduceSum2_NoScale(out0, out1, outStride,
+        MulWeightAndReduceSum2_MxFP8(out0, out1, outStride,
                                         qk0, qk1, qkVLStride, qkStride,
                                         weight0, weight1, weightStride, weightFloat,
                                         gSize);

@@ -251,9 +251,9 @@ auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(float)) / 2 * constInfo_.mBaseS
 | 365 | 同上 | `half*` | 有 |
 | 444 | `MulWeightAndReduceSum` (bf16 weight) | `bfloat16_t*` | 有 |
 | 455 | 同上 | `bfloat16_t*` | 有 |
-| 923 | `MulWeightAndReduceSum_NoScale` (float weight, MXFP8) | `float*` | 无 |
+| 923 | `MulWeightAndReduceSum_MxFP8` (float weight, MXFP8) | `float*` | 无 |
 | 934 | 同上 | `float*` | 无 |
-| 999 | `MulWeightAndReduceSum_NoScale` (bf16 weight, MXFP8) | `bfloat16_t*` | 无 |
+| 999 | `MulWeightAndReduceSum_MxFP8` (bf16 weight, MXFP8) | `bfloat16_t*` | 无 |
 | 1010 | 同上 | `bfloat16_t*` | 无 |
 
 **修改方式**（以 line 923 为例）：
@@ -275,8 +275,8 @@ WeightedAccum<float, 2, false>(regSum0, regQK, regwBrc, maskAllB32);
 | 556-559 | `MulWeightAndReduceSum2` (float weight) | `float*` | 有 |
 | 674-677 | `MulWeightAndReduceSum2` (bf16 weight) | `bfloat16_t*` | 有 |
 | 798-801 | `MulWeightAndReduceSum2` (half weight) | `half*` | 有 |
-| 1088-1091 | `MulWeightAndReduceSum2_NoScale` (float weight, MXFP8) | `float*` | 无 |
-| 1181-1184 | `MulWeightAndReduceSum2_NoScale` (bf16 weight, MXFP8) | `bfloat16_t*` | 无 |
+| 1088-1091 | `MulWeightAndReduceSum2_MxFP8` (float weight, MXFP8) | `float*` | 无 |
+| 1181-1184 | `MulWeightAndReduceSum2_MxFP8` (bf16 weight, MXFP8) | `bfloat16_t*` | 无 |
 
 **修改方式**（以 lines 1088-1091 为例）：
 
@@ -382,7 +382,7 @@ dualDstCtl=0 时（预期）：
 - MXFP8：`dualDstCtl=0` + `reluEn=true`
 - 非 MXFP8：保持 `dualDstCtl=0`（CVRATIO=1 已不需要 dualDstCtl=1），`reluEn` 默认 false
 
-对应地，只修改 `*_NoScale` 函数中的 Relu（6 处 WeightedAccum + 2 处内联 Relu）。
+对应地，只修改 `*_MxFP8` 函数中的 Relu（6 处 WeightedAccum + 2 处内联 Relu）。
 
 ### Step 3：扩展到全路径
 

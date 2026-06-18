@@ -336,8 +336,8 @@
 | 项目 | 验证点 | 结论 |
 |------|--------|:----:|
 | InitBuffers MXFP8 分支 | 跳过 kScaleBuf\_/qScaleBuf\_ 分配 | ✅ |
-| ProcessVec1 NoScale | BatchMulWeightAndReduceSum_NoScale 参数传递 | ✅ |
-| BatchMulWeightAndReduceSum_NoScale | Float→BF16 Cast + ReLU(bf16,bf16) + BrcMul(bf16) + ReduceSum | ✅ |
+| ProcessVec1 MxFP8 | BatchMulWeightAndReduceSum_MxFP8 参数传递 | ✅ |
+| BatchMulWeightAndReduceSum_MxFP8 | Float→BF16 Cast + ReLU(bf16,bf16) + BrcMul(bf16) + ReduceSum | ✅ |
 | qkVLstride 访问边界 | qkBase + (mBaseSize/2−1)×128 + gSize×8192 < 32768 ✓ | ✅ |
 | outBuf_ 交错布局 | 代数证明 max_offset = allocation = 512n | ✅ |
 | FloatToSortableKey XOR 变换 | pos/neg/zero/-0 排序语义正确 | ✅ |
@@ -424,7 +424,7 @@
 |-------|------|---------|
 | Agent A | service_cube.h MXFP8 路径 | InitParams/Buffers, LoadQ/KScale, LoadQuery/Key, Mmad, Fixp |
 | Agent B | kernel.h MXFP8 路径 | Init(Cube vs Vector scale 区分), CalcRunInfo offset 溢出, CrossCore 配对 |
-| Agent C | service_vector.h + vector1.h + topk.h MXFP8 | InitBuffers 跳过 scale, ProcessVec1 NoScale, MulWeightAndReduceSum_NoScale, ProcessTopK |
+| Agent C | service_vector.h + vector1.h + topk.h MXFP8 | InitBuffers 跳过 scale, ProcessVec1 MxFP8, MulWeightAndReduceSum_MxFP8, ProcessTopK |
 | Agent D | common.h + tiling.cpp + vf_topk 系列 | MXFP8 偏特化模板匹配, isMxFp8Scale 校验, stride 计算, 16-bit TopK 全流程 |
 
 ### 第三轮 Agent 分工（定向验证第二轮发现）
@@ -456,6 +456,6 @@
 | quant_lightning_indexer_service_cube.h | 712 | M3,M8 | A深入确认 | C追踪Cube流 | M3(死代码)+M8+D2+D3 |
 | quant_lightning_indexer_service_vector.h | 589 | M9,M10,L2 | C深入确认 | — | M9,M10(MXFP8-only) |
 | quant_lightning_indexer_topk.h | 171 | H3 | D验证TopK | — | **H3 确认** |
-| quant_lightning_indexer_vector1.h | 1242 | M2 | C验证NoScale | — | M2 低风险 |
+| quant_lightning_indexer_vector1.h | 1242 | M2 | C验证MxFP8 | — | M2 低风险 |
 | vf_topk_16_gather.h | 432 | N1(误),N2(误),M1(误),L4 | A,B,D分别验证 | A彻底推翻N1 | L4 低优 |
 | vf_topk.h | 678 | L3 | — | — | L3 低优先死变量 |

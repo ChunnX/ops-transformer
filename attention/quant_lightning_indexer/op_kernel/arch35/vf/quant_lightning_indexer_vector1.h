@@ -859,12 +859,12 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
     }
 }
 
-// ======================== MXFP8 NoScale 变体 ========================
-// QK 已通过 mmad_mx 融合了 qScale×kScale，Vector 核只需 weights 广播 + Relu + ReduceSum
+// ======================== MXFP8 变体 ========================
+// QK 已通过 mmad_mx 融合了 qScale×kScale，Vector 核只需 weights 广播 + ReduceSum
 
 // float in uint16 out, 无 scale 版本（MXFP8）
 template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
+__simd_vf__ inline void MulWeightAndReduceSum_MxFP8(__ubuf__ uint16_t* out_,
                                                        __ubuf__ QK_T* qk_,
                                                        const uint32_t qkVLStride,
                                                        __ubuf__ float* weight_,
@@ -938,7 +938,7 @@ __simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
 
 // bfloat16 weight in, 无 scale 版本（MXFP8）
 template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
+__simd_vf__ inline void MulWeightAndReduceSum_MxFP8(__ubuf__ uint16_t* out_,
                                                        __ubuf__ QK_T* qk_,
                                                        const uint32_t qkVLStride,
                                                        __ubuf__ bfloat16_t* weight_,
@@ -1013,7 +1013,7 @@ __simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
 
 // S1=2 无 scale 版本（MXFP8）, float weight
 template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum2_NoScale(__ubuf__ uint16_t* out0_,
+__simd_vf__ inline void MulWeightAndReduceSum2_MxFP8(__ubuf__ uint16_t* out0_,
                                                         __ubuf__ uint16_t* out1_,
                                                         uint32_t outStride,
                                                         __ubuf__ QK_T* qk0_,
@@ -1095,7 +1095,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2_NoScale(__ubuf__ uint16_t* out0_,
 
 // S1=2 无 scale 版本（MXFP8）, bfloat16 weight
 template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum2_NoScale(__ubuf__ uint16_t* out0_,
+__simd_vf__ inline void MulWeightAndReduceSum2_MxFP8(__ubuf__ uint16_t* out0_,
                                                         __ubuf__ uint16_t* out1_,
                                                         uint32_t outStride,
                                                         __ubuf__ QK_T* qk0_,
@@ -1182,9 +1182,10 @@ __simd_vf__ inline void MulWeightAndReduceSum2_NoScale(__ubuf__ uint16_t* out0_,
     AscendC::MicroAPI::StoreAlign<uint16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1_, regOut[1], maskAllB16);
 }
 
-// MXFP8 调度函数：无 scale 版本
+// MXFP8 调度函数：支持任意 batch（s1Base 最大为 4）
+// 每次处理 2 行（S1=2），循环 batch/2 次，剩余 1 行用 S1=1 处理
 template<typename QK_T, typename W_T, typename SCORE_T>
-__aicore__ inline void BatchMulWeightAndReduceSum_NoScale(const LocalTensor<SCORE_T> &out_,
+__aicore__ inline void BatchMulWeightAndReduceSum_MxFP8(const LocalTensor<SCORE_T> &out_,
                                                           uint32_t outStride,
                                                           const LocalTensor<QK_T> &qk_,
                                                           uint32_t qkVLStride,
@@ -1195,7 +1196,7 @@ __aicore__ inline void BatchMulWeightAndReduceSum_NoScale(const LocalTensor<SCOR
                                                           const int gSize,
                                                           const int batch)
 {
-    if (batch != 2 && batch != 1) {
+    if (batch < 1) {
         return;
     }
     auto weight = (__ubuf__ W_T *)weight_.GetPhyAddr();
@@ -1203,17 +1204,27 @@ __aicore__ inline void BatchMulWeightAndReduceSum_NoScale(const LocalTensor<SCOR
     auto qk = (__ubuf__ QK_T *)qk_.GetPhyAddr();
     auto out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
 
-    if (batch == 2) {
-        auto weight1 = weight + weightStride;
-        auto qk1 = qk + qkStride;
-        auto out1 = out + outStride;
+    int pairCount = batch / 2;
+    for (int p = 0; p < pairCount; p++) {
+        auto curWeight = weight + p * 2 * weightStride;
+        auto curWeight1 = curWeight + weightStride;
+        auto curQk = qk + p * 2 * qkStride;
+        auto curQk1 = curQk + qkStride;
+        auto curOut = out + p * 2 * outStride;
+        auto curOut1 = curOut + outStride;
 
-        MulWeightAndReduceSum2_NoScale(out, out1, outStride,
-                                       qk, qk1, qkVLStride, qkStride,
-                                       weight, weight1, weightStride, weightFloat,
-                                       gSize);
-    } else {
-        MulWeightAndReduceSum_NoScale(out, qk, qkVLStride, weight, gSize);
+        MulWeightAndReduceSum2_MxFP8(curOut, curOut1, outStride,
+                                      curQk, curQk1, qkVLStride, qkStride,
+                                      curWeight, curWeight1, weightStride, weightFloat,
+                                      gSize);
+    }
+
+    // 奇数行：最后一行用 S1=1 处理
+    if (batch % 2 != 0) {
+        auto lastWeight = weight + (batch - 1) * weightStride;
+        auto lastQk = qk + (batch - 1) * qkStride;
+        auto lastOut = out + (batch - 1) * outStride;
+        MulWeightAndReduceSum_MxFP8(lastOut, lastQk, qkVLStride, lastWeight, gSize);
     }
 }
 

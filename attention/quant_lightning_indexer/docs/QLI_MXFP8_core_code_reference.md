@@ -77,9 +77,9 @@ tiling.cpp:                                            kernel.h (QLIPreload):
 
                                                          service_vector.h (QLIVector):
                                                            NO qScale/kScale UB buffers
-                                                           Calls BatchMulWeightAndReduceSum_NoScale
+                                                           Calls BatchMulWeightAndReduceSum_MxFP8
 
-                                                         vf/vector1.h (NoScale variants):
+                                                         vf/vector1.h (MxFP8 variants):
                                                            weights only (no qScale pre-multiply)
                                                            Relu + MulAddDst (no kScale post-multiply)
                                                            → bf16 → sortable uint16 keys
@@ -698,12 +698,12 @@ if constexpr (!IS_MXFP8) {
 ```
 > [service_vector.h L373-384](../op_kernel/arch35/quant_lightning_indexer_service_vector.h#L373)
 
-### 8.4 核心计算 — 调用 NoScale 变体 ★
+### 8.4 核心计算 — 调用 MxFP8 变体 ★
 
 ```cpp
 if constexpr (IS_MXFP8) {
     // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + Relu + ReduceSum
-    vector1::BatchMulWeightAndReduceSum_NoScale(
+    vector1::BatchMulWeightAndReduceSum_MxFP8(
         outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
         qkBase, qkVLstride,
         (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(float)),
@@ -745,21 +745,21 @@ if constexpr (!IS_MXFP8) {
 
 > **文件路径**: [`op_kernel/arch35/vf/quant_lightning_indexer_vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h)
 
-### 9.1 NoScale vs 原版对比
+### 9.1 MxFP8 vs 原版对比
 
-| 步骤 | 原版 (含 Scale) | NoScale 变体 (MXFP8) |
+| 步骤 | 原版 (含 Scale) | MxFP8 变体 (MXFP8) |
 |------|----------------|---------------------|
 | 1. 加载 weight | `weights × qScale` | `weights` (不乘 qScale) |
 | 2. 加载 QK | QK (int32/float) | QK (float, 已含 scale) |
 | 3. 加权累加 | `QK × (weights×qScale)` → `accum × kScale` | `Relu(QK) × weights` → `accum` (不乘 kScale) |
 | 4. 输出 | bf16 → sortable key | bf16 → sortable key |
 
-### 9.2 S1=1, float weight — MulWeightAndReduceSum_NoScale ★
+### 9.2 S1=1, float weight — MulWeightAndReduceSum_MxFP8 ★
 
 ```cpp
 // float in uint16 out, 无 scale 版本（MXFP8）
 template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
+__simd_vf__ inline void MulWeightAndReduceSum_MxFP8(__ubuf__ uint16_t* out_,
                                                        __ubuf__ QK_T* qk_,
                                                        const uint32_t qkVLStride,
                                                        __ubuf__ float* weight_,
@@ -802,12 +802,12 @@ __simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
 ```
 > [vector1.h L877-949](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L877)
 
-### 9.3 S1=1, bfloat16 weight — MulWeightAndReduceSum_NoScale ★
+### 9.3 S1=1, bfloat16 weight — MulWeightAndReduceSum_MxFP8 ★
 
 ```cpp
 // bfloat16 weight in, 无 scale 版本（MXFP8）
 template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
+__simd_vf__ inline void MulWeightAndReduceSum_MxFP8(__ubuf__ uint16_t* out_,
                                                        __ubuf__ QK_T* qk_,
                                                        const uint32_t qkVLStride,
                                                        __ubuf__ bfloat16_t* weight_,
@@ -825,12 +825,12 @@ __simd_vf__ inline void MulWeightAndReduceSum_NoScale(__ubuf__ uint16_t* out_,
 ```
 > [vector1.h L951-1024](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L951)
 
-### 9.4 S1=2, float weight — MulWeightAndReduceSum2_NoScale ★
+### 9.4 S1=2, float weight — MulWeightAndReduceSum2_MxFP8 ★
 
 ```cpp
 // S1=2 无 scale 版本（MXFP8）, float weight
 template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum2_NoScale(
+__simd_vf__ inline void MulWeightAndReduceSum2_MxFP8(
     __ubuf__ uint16_t* out0_, __ubuf__ uint16_t* out1_, uint32_t outStride,
     __ubuf__ QK_T* qk0_, __ubuf__ QK_T* qk1_, uint32_t qkVLStride, uint32_t qkStride,
     __ubuf__ float* weight0_, __ubuf__ float* weight1_, uint32_t weightStride,
@@ -859,12 +859,12 @@ __simd_vf__ inline void MulWeightAndReduceSum2_NoScale(
 ```
 > [vector1.h L1026-1110](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L1026)
 
-### 9.5 S1=2, bfloat16 weight — MulWeightAndReduceSum2_NoScale ★
+### 9.5 S1=2, bfloat16 weight — MulWeightAndReduceSum2_MxFP8 ★
 
 ```cpp
 // S1=2 无 scale 版本（MXFP8）, bfloat16 weight
 template <typename QK_T>
-__simd_vf__ inline void MulWeightAndReduceSum2_NoScale(
+__simd_vf__ inline void MulWeightAndReduceSum2_MxFP8(
     __ubuf__ uint16_t* out0_, __ubuf__ uint16_t* out1_, uint32_t outStride,
     __ubuf__ QK_T* qk0_, __ubuf__ QK_T* qk1_, uint32_t qkVLStride, uint32_t qkStride,
     __ubuf__ bfloat16_t* weight0_, __ubuf__ bfloat16_t* weight1_, uint32_t weightStride,
@@ -883,12 +883,12 @@ __simd_vf__ inline void MulWeightAndReduceSum2_NoScale(
 ```
 > [vector1.h L1112-1203](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L1112)
 
-### 9.6 BatchMulWeightAndReduceSum_NoScale — 调度函数 ★
+### 9.6 BatchMulWeightAndReduceSum_MxFP8 — 调度函数 ★
 
 ```cpp
 // MXFP8 调度函数：无 scale 版本
 template<typename QK_T, typename W_T, typename SCORE_T>
-__aicore__ inline void BatchMulWeightAndReduceSum_NoScale(
+__aicore__ inline void BatchMulWeightAndReduceSum_MxFP8(
     const LocalTensor<SCORE_T> &out_, uint32_t outStride,
     const LocalTensor<QK_T> &qk_, uint32_t qkVLStride, uint32_t qkStride,
     const LocalTensor<W_T> &weight_, uint32_t weightStride,
@@ -905,12 +905,12 @@ __aicore__ inline void BatchMulWeightAndReduceSum_NoScale(
         auto weight1 = weight + weightStride;
         auto qk1 = qk + qkStride;
         auto out1 = out + outStride;
-        MulWeightAndReduceSum2_NoScale(out, out1, outStride,
+        MulWeightAndReduceSum2_MxFP8(out, out1, outStride,
                                        qk, qk1, qkVLStride, qkStride,
                                        weight, weight1, weightStride, weightFloat,
                                        gSize);
     } else {
-        MulWeightAndReduceSum_NoScale(out, qk, qkVLStride, weight, gSize);
+        MulWeightAndReduceSum_MxFP8(out, qk, qkVLStride, weight, gSize);
     }
 }
 ```
@@ -938,12 +938,12 @@ __aicore__ inline void BatchMulWeightAndReduceSum_NoScale(
 | LoadKeyToL0b (Mx) | [`service_cube.h`](../op_kernel/arch35/quant_lightning_indexer_service_cube.h#L530) | L530-557 | `mx_fp8_e4m3_t`, `LoadData` Mx |
 | ComputeL0c (mmad_mx) | [`service_cube.h`](../op_kernel/arch35/quant_lightning_indexer_service_cube.h#L583) | L583-594 | `Mmad(qL0Mx, kL0Mx)` |
 | Vector Buffer 跳过 | [`service_vector.h`](../op_kernel/arch35/quant_lightning_indexer_service_vector.h#L151) | L151-156 | `!IS_MXFP8` |
-| Vector 调用 NoScale | [`service_vector.h`](../op_kernel/arch35/quant_lightning_indexer_service_vector.h#L397) | L397-404 | `BatchMulWeightAndReduceSum_NoScale` |
-| NoScale S1=1 float | [`vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L877) | L877-949 | `MulWeightAndReduceSum_NoScale` |
-| NoScale S1=1 bf16 | [`vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L951) | L951-1024 | `MulWeightAndReduceSum_NoScale` |
-| NoScale S1=2 float | [`vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L1026) | L1026-1110 | `MulWeightAndReduceSum2_NoScale` |
-| NoScale S1=2 bf16 | [`vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L1112) | L1112-1203 | `MulWeightAndReduceSum2_NoScale` |
-| NoScale 调度函数 | [`vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L1205) | L1205-1238 | `BatchMulWeightAndReduceSum_NoScale` |
+| Vector 调用 MxFP8 | [`service_vector.h`](../op_kernel/arch35/quant_lightning_indexer_service_vector.h#L397) | L397-404 | `BatchMulWeightAndReduceSum_MxFP8` |
+| MxFP8 S1=1 float | [`vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L877) | L877-949 | `MulWeightAndReduceSum_MxFP8` |
+| MxFP8 S1=1 bf16 | [`vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L951) | L951-1024 | `MulWeightAndReduceSum_MxFP8` |
+| MxFP8 S1=2 float | [`vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L1026) | L1026-1110 | `MulWeightAndReduceSum2_MxFP8` |
+| MxFP8 S1=2 bf16 | [`vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L1112) | L1112-1203 | `MulWeightAndReduceSum2_MxFP8` |
+| MxFP8 调度函数 | [`vector1.h`](../op_kernel/arch35/vf/quant_lightning_indexer_vector1.h#L1205) | L1205-1238 | `BatchMulWeightAndReduceSum_MxFP8` |
 
 ---
 

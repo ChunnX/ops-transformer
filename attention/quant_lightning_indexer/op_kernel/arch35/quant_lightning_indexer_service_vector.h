@@ -413,8 +413,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(float)) / 2 * constInfo_.mBaseSize;
 
     if constexpr (IS_MXFP8) {
-        // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + Relu + ReduceSum
-        vector1::BatchMulWeightAndReduceSum_NoScale(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
+        // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + ReduceSum
+        vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
                                                     (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(float)),
                                                     weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),

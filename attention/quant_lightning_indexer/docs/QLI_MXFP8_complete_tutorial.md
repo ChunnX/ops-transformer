@@ -760,9 +760,9 @@ MXFP8 流程中，这些步骤全部**移除**，因为 scale 已在 Cube 核由
 ### 12.3 代码对比
 
 ```cpp
-// MXFP8 分支：调用 NoScale 变体
+// MXFP8 分支：调用 MxFP8 变体
 if constexpr (IS_MXFP8) {
-    vector1::BatchMulWeightAndReduceSum_NoScale(
+    vector1::BatchMulWeightAndReduceSum_MxFP8(
         outBase, outStride,
         qkBase, qkVLstride, qkStride,
         weightBase, weightStride, weightFloatBase,
@@ -824,7 +824,7 @@ AIV (Vector核):
   │ 1. 加载 weights: weightsGm → weightUB_ [仅首次 S2]                     │
   │ 2. (MXFP8: 不加载 qScale/kScale)                                       │
   │ 3. CrossCoreWaitFlag(CROSS_CV_EVENT) ← 等 C 核完成                     │
-  │ 4. BatchMulWeightAndReduceSum_NoScale:                                  │
+  │ 4. BatchMulWeightAndReduceSum_MxFP8:                                  │
   │    Relu(QK) × weights → ReduceSum → bf16 → SortableKey → score        │
   │ 5. score → scoreGm                                                     │
   │ 6. CrossCoreSetFlag(CROSS_VC_EVENT) → 通知 C 核                        │
@@ -866,7 +866,7 @@ for bN2LoopIdx in [bN2Start, bN2End]:        ← Batch × N2 循环
 | **mmad_mx** | `service_cube.h` | `ComputeL0c()` | L573-598 |
 | **Fixpipe** | `service_cube.h` | `Fixp()` | L600-634 |
 | **Vec 后处理** | `service_vector.h` | `ProcessVec1()` | L328-436 |
-| **VF NoScale** | `vector1.h` | `MulWeightAndReduceSum_NoScale()` | L877-949 |
+| **VF MxFP8** | `vector1.h` | `MulWeightAndReduceSum_MxFP8()` | L877-949 |
 | **TopK** | `service_vector.h` | `ProcessTopK()` | L438-571 |
 
 ### 14.2 按功能分类
@@ -879,7 +879,7 @@ for bN2LoopIdx in [bN2Start, bN2End]:        ← Batch × N2 循环
 | DN2NZ 格式转换 | `Dn2NzParams`, `nValue = scalePerToken / FP8_TWO` |
 | L0 Mx 加载 | `LoadData(dstTensor, dataL1, scaleL1, params2D, paramsMx)` |
 | mmad_mx 触发 | `ReinterpretCast<mx_fp8_e4m3_t>()` + `Mmad()` |
-| Vector 核简化 | `BatchMulWeightAndReduceSum_NoScale()` |
+| Vector 核简化 | `BatchMulWeightAndReduceSum_MxFP8()` |
 
 ---
 
