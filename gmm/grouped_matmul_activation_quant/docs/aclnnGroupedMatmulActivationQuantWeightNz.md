@@ -42,7 +42,7 @@
       - **输入**：
 
         * $X$：激活矩阵。
-        * $groupList$：分组索引列表，按groupListTypeOptional解释为cumsum或count。
+        * $groupList$：分组索引列表，按groupListType解释为cumsum或count。
         * $weight$：分组weight矩阵。
         * $weightScale$：weight矩阵量化因子。
         * $biasOptional$：MXFP8场景下必须为空，支持nullptr或空tensorlist。
@@ -50,14 +50,14 @@
 
       - **输出**：
 
-        * $Y$：激活并量化后的输出矩阵，数据类型由yDtypeOptional指定。
+        * $Y$：激活并量化后的输出矩阵，数据类型由yDtype指定。
         * $YScale$：输出量化因子。
 
       - **计算过程**
 
         - 1. 根据groupList[i]确定当前分组的token范围，$i \in [0, Len(groupList))$。
 
-        - 2. 根据分组确定的入参进行GroupedMatmul和反量化计算：
+        - 2. 根据分组确定的入参进行GroupedMatmul和反量化计算，中间GroupedMatmul结果默认为FLOAT32类型：
 
           $C_i = (X_i \cdot weight_i) \odot xScale_{i\ Broadcast} \odot weightScale_{i\ Broadcast}$
 
@@ -67,9 +67,9 @@
 
           注：当前kernel底层实现使用gelu_sigmoid函数近似计算gelu_tanh，`GeluTanh(x) = x / (1 + exp(-1.595769121 * (x + 0.044715 * x^3)))`。
 
-        - 4. 对激活结果进行MX量化，目标数据类型DType由yDtypeOptional指定：
+        - 4. 对激活结果进行MX量化，目标数据类型DType由yDtype指定：
 
-          - 场景1，当scaleAlgOptional为0时，表示OCP实现，将激活结果$S_i$在N轴按$k=blocksize$分组，一组$k$个数$\{V_j\}_{j=1}^{k}$动态量化为$\{YScale, \{P_j\}_{j=1}^{k}\}$。
+          - 场景1，当scaleAlg为0时，表示OCP实现，将激活结果$S_i$在N轴按$k=blocksize$分组，一组$k$个数$\{V_j\}_{j=1}^{k}$动态量化为$\{YScale, \{P_j\}_{j=1}^{k}\}$。
 
             $$
             shared\_exp = floor(log_2(max_j(|V_j|))) - emax
@@ -80,7 +80,7 @@
             $$
 
             $$
-            P_j = cast\_to\_dst\_type(V_j / YScale, roundModeOptional), \space j \space from \space 1 \space to \space blocksize
+            P_j = cast\_to\_dst\_type(V_j / YScale, roundMode), \space j \space from \space 1 \space to \space blocksize
             $$
 
             量化后的$P_j$按对应$V_j$的位置组成输出$Y$，$YScale$按对应N轴分组组成输出$YScale$。
@@ -92,7 +92,7 @@
               | FLOAT8_E4M3FN | 8 |
               | FLOAT8_E5M2 | 15 |
 
-          - 场景2，当scaleAlgOptional为1时，表示cuBLAS实现，只涉及FP8类型。将激活结果$S_i$在N轴按$k=blocksize$分组，每块单独计算一个块缩放因子$S_{fp32}^b$，再把块内所有元素用同一个$S_{fp32}^b$映射到目标FP8类型。如果最后一块不足$k$个元素，缺失值视为0并按完整块处理。
+          - 场景2，当scaleAlg为1时，表示cuBLAS实现，只涉及FP8类型。将激活结果$S_i$在N轴按$k=blocksize$分组，每块单独计算一个块缩放因子$S_{fp32}^b$，再把块内所有元素用同一个$S_{fp32}^b$映射到目标FP8类型。如果最后一块不足$k$个元素，缺失值视为0并按完整块处理。
 
             找到该块中数值的最大绝对值：
 
@@ -147,15 +147,14 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     const aclTensorList *biasOptional,
     const aclTensor     *xScaleOptional,
     const char          *activationType,
-    int64_t              dequantDtypeOptional,
-    bool                 transposeWeightOptional,
-    int64_t              groupListTypeOptional,
-    const aclIntArray   *tuningConfigOptional,
-    const char          *quantModeOptional,
-    int64_t              yDtypeOptional,
-    const char          *roundModeOptional,
-    int64_t              scaleAlgOptional,
-    float                dstTypeMaxOptional,
+    bool                 transposeWeight,
+    int64_t              groupListType,
+    const aclIntArray   *tuningConfig,
+    const char          *quantMode,
+    int64_t              yDtype,
+    const char          *roundMode,
+    int64_t              scaleAlg,
+    float                dstTypeMax,
     aclTensor           *y,
     aclTensor           *yScale,
     uint64_t            *workspaceSize,
@@ -210,7 +209,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>groupList</td>
         <td rowspan="1">输入</td>
         <td>表示分组信息，对应公式中的groupList。</td>
-        <td>必选参数。根据groupListTypeOptional输入不同格式数据。</td>
+        <td>必选参数。根据groupListType输入不同格式数据。</td>
         <td>INT64</td>
         <td>ND</td>
         <td>1</td>
@@ -267,17 +266,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>-</td>
       </tr>
       <tr>
-        <td>dequantDtypeOptional</td>
-        <td>可选输入</td>
-        <td>表示中间GroupedMatmul结果的数据类型。</td>
-        <td>可选属性，默认值为0。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>transposeWeightOptional</td>
+        <td>transposeWeight</td>
         <td>可选输入</td>
         <td>表示weight是否转置。</td>
         <td>可选属性，默认值为false。weight非转置输入时配置为false，weight转置输入时配置为true。</td>
@@ -287,17 +276,17 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>-</td>
       </tr>
       <tr>
-        <td>groupListTypeOptional</td>
+        <td>groupListType</td>
         <td>可选输入</td>
         <td>表示groupList的解释方式。</td>
-        <td>可选属性，默认值为0。支持取值0、1；当groupListTypeOptional为0时，groupList必须为非负单调非递减数列；当groupListTypeOptional为1时，groupList必须为非负数列。</td>
+        <td>可选属性，默认值为0。支持取值0、1；当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
       </tr>
       <tr>
-        <td>tuningConfigOptional</td>
+        <td>tuningConfig</td>
         <td>可选输入</td>
         <td>表示调优参数，预留参数。</td>
         <td>可选属性，默认值为[0]，当前暂不使用。</td>
@@ -307,17 +296,17 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>-</td>
       </tr>
       <tr>
-        <td>quantModeOptional</td>
-        <td>可选输入</td>
+        <td>quantMode</td>
+        <td>输入</td>
         <td>表示量化模式。</td>
-        <td>可选属性，默认值为"MX"，当前仅支持"MX"。</td>
+        <td>必选属性。当前仅支持"MX"；不传或传入空字符串时报错。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
       </tr>
       <tr>
-        <td>yDtypeOptional</td>
+        <td>yDtype</td>
         <td>可选输入</td>
         <td>表示输出y的数据类型。</td>
         <td>可选属性，默认值为36，表示FLOAT8_E4M3FN；支持FLOAT8_E4M3FN、FLOAT8_E5M2。</td>
@@ -327,7 +316,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>-</td>
       </tr>
       <tr>
-        <td>roundModeOptional</td>
+        <td>roundMode</td>
         <td>可选输入</td>
         <td>表示量化舍入模式。</td>
         <td>可选属性，默认值为"rint"，当前仅支持"rint"。</td>
@@ -337,7 +326,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>-</td>
       </tr>
       <tr>
-        <td>scaleAlgOptional</td>
+        <td>scaleAlg</td>
         <td>可选输入</td>
         <td>表示量化因子计算算法。</td>
         <td>可选属性，默认值为0。当前MX量化场景下支持0或1，其中0表示OCP实现，1表示cuBLAS实现。</td>
@@ -347,7 +336,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>-</td>
       </tr>
       <tr>
-        <td>dstTypeMaxOptional</td>
+        <td>dstTypeMax</td>
         <td>可选输入</td>
         <td>表示目标量化类型的最大值配置，预留参数。</td>
         <td>可选属性，默认值为0，当前暂不使用。</td>
@@ -407,12 +396,12 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         - weight和weightScale作为必选输入，不支持空tensorlist，tensorlist中的元素不能为nullptr。
         - 支持M为0或N为0的空Tensor场景：x和xScaleOptional支持M为0，weight和weightScale支持N为0；当M或N为0时允许K为0，该场景下第一段接口返回ACLNN_SUCCESS，workspaceSize为0。
         - 当M和N均不为0时，不支持K为0。
-      - roundModeOptional仅支持"rint"。
-      - scaleAlgOptional仅支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
+      - roundMode仅支持"rint"。
+      - scaleAlg仅支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
       - weight、weightScale、biasOptional均为dynamic tensorlist形式，不支持单Tensor。
       - 当前weight和weightScale仅支持tensorlist长度为1。
       - MXFP8场景下biasOptional必须为空，支持nullptr或空tensorlist。
-      - tuningConfigOptional和dstTypeMaxOptional为预留参数，当前暂不使用。
+      - tuningConfig和dstTypeMax为预留参数，当前暂不使用。
 
 - **返回值**
 
@@ -436,7 +425,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>必选参数为空指针，例如x、groupList、xScaleOptional、weight、weightScale、activationType、roundModeOptional、y、yScale、workspaceSize或executor为空。</td>
+      <td>必选参数为空指针，例如x、groupList、xScaleOptional、weight、weightScale、activationType、roundMode、y、yScale、workspaceSize或executor为空。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
@@ -575,11 +564,11 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           </table>
 
         - activationType仅支持"gelu_tanh"。
-        - quantModeOptional仅支持"MX"。
+        - quantMode为必选属性，仅支持"MX"；不传或传入空字符串时报错。
         - N必须为64整数倍。
-        - groupListTypeOptional支持取值0、1；当groupListTypeOptional为0时，groupList必须为非负单调非递减数列；当groupListTypeOptional为1时，groupList必须为非负数列。
-        - yDtypeOptional支持FLOAT8_E4M3FN、FLOAT8_E5M2。
-        - scaleAlgOptional支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
+        - groupListType支持取值0、1；当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
+        - yDtype支持FLOAT8_E4M3FN、FLOAT8_E5M2。
+        - scaleAlg支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
 
 ## 调用示例
 
@@ -808,25 +797,24 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         std::unique_ptr<void, aclError (*)(void *)> yScaleDeviceAddrPtr(yScaleDeviceAddr, aclrtFree);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-        aclIntArray *tuningConfigOptional = nullptr;
+        aclIntArray *tuningConfig = nullptr;
         const char *activationType = "gelu_tanh";
-        int64_t dequantDtypeOptional = 0;
-        bool transposeWeightOptional = false;
-        int64_t groupListTypeOptional = 1;
-        const char *quantModeOptional = "MX";
-        int64_t yDtypeOptional = 36;
-        const char *roundModeOptional = "rint";
-        int64_t scaleAlgOptional = 0;
-        float dstTypeMaxOptional = 0.0F;
+        bool transposeWeight = false;
+        int64_t groupListType = 1;
+        const char *quantMode = "MX";
+        int64_t yDtype = 36;
+        const char *roundMode = "rint";
+        int64_t scaleAlg = 0;
+        float dstTypeMax = 0.0F;
 
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor = nullptr;
         void *workspaceAddr = nullptr;
 
         ret = aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
-            x, groupList, weight, weightScale, biasOptional, xScaleOptional, activationType, dequantDtypeOptional,
-            transposeWeightOptional, groupListTypeOptional, tuningConfigOptional, quantModeOptional, yDtypeOptional,
-            roundModeOptional, scaleAlgOptional, dstTypeMaxOptional, y, yScale, &workspaceSize, &executor);
+            x, groupList, weight, weightScale, biasOptional, xScaleOptional, activationType,
+            transposeWeight, groupListType, tuningConfig, quantMode, yDtype,
+            roundMode, scaleAlg, dstTypeMax, y, yScale, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                   LOG_PRINT("aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret);
                   return ret);
