@@ -15,8 +15,8 @@
 
 #pragma once
 
-#include "op_host/tiling_base.h"
-#include "op_host/tiling_type.h"
+#include "tiling_base/tiling_base.h"
+#include "tiling_base/tiling_type.h"
 #include "sparse_flash_mla_grad_tiling.h"
 
 namespace optiling {
