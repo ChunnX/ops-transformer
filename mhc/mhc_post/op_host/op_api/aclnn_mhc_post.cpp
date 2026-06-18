@@ -269,6 +269,8 @@ aclnnStatus aclnnMhcPostGetWorkspaceSize(const aclTensor *x, const aclTensor *hR
 {
     CHECK_COND(CheckNotNull(x, hRes, hOut, hPost, out) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
                "one of required inputs for aclnnMhcPostGetWorkspaceSize is nullptr.");
+    CHECK_COND(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR, "workspaceSize must not be nullptr.");
+    CHECK_COND(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR, "executor must not be nullptr.");
 
     MhcPostParams params{x, hRes, hOut, hPost, out};
 

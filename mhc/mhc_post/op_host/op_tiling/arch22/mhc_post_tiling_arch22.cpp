@@ -22,13 +22,15 @@
 #include "platform/platform_info.h"
 #include "log/log.h"
 #include "util/math_util.h"
-#include "mhc_post_tiling.h"
+#include "../mhc_post_tiling.h"
+#include "../../../op_kernel/arch22/mhc_post_tiling_data.h"
+#include "../../../op_kernel/arch22/mhc_post_tiling_key.h"
+#include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 
 // Memory alignment constants (in elements)
 constexpr uint32_t BF16_FP16_ALIGN_SIZE = 16;  // 16 elements = 32 bytes for bf16/fp16
-constexpr uint32_t FLOAT32_ALIGN_SIZE = 8;     // 8 elements = 32 bytes for float32
 constexpr uint32_t ALIGN_SIZE_512B = 256;      // 256 elements = 512 bytes for bf16/fp16
 
 constexpr uint32_t SIZE_OF_16BIT = 2;
@@ -37,6 +39,10 @@ constexpr uint32_t SIZE_OF_32BIT = 4;
 // Double Buffer configuration
 constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;  // Double Buffer depth for data tiles
 constexpr uint32_t SINGLE_BUFFER_DEPTH = 1;  // Single Buffer depth for weights
+
+// Tiling parameter constants
+constexpr uint32_t NUM_DATA_STREAMS = 3;     // hOut, x, output (TQue + TBuf each)
+constexpr uint64_t NON_X_BUFFER_COUNT = 2;   // hOut + output (x excluded, counted by n_)
 
 // Input indices
 const static int64_t X_INPUT_INDEX = 0;       // x (B, S, n, D)
@@ -56,9 +62,9 @@ static const int64_t DIM_NUM_2 = 2;
 static const int64_t DIM_NUM_3 = 3;
 static const int64_t DIM_NUM_4 = 4;
 
-class MhcPostTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class MhcPostTilingBaseArch22 : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MhcPostTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {}
+    explicit MhcPostTilingBaseArch22(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {}
 
 protected:
     bool IsCapable() override;
@@ -102,17 +108,15 @@ private:
 
     uint16_t usePermanentX_ = 0;
 
-    ge::DataType dtype_ = ge::DT_UNDEFINED;
-
     MhcPostTilingData *tilingData_ = context_->GetTilingData<MhcPostTilingData>();
 };
 
-bool MhcPostTilingBase::IsCapable()
+bool MhcPostTilingBaseArch22::IsCapable()
 {
     return true;
 }
 
-ge::graphStatus MhcPostTilingBase::GetPlatformInfo()
+ge::graphStatus MhcPostTilingBaseArch22::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -129,7 +133,7 @@ ge::graphStatus MhcPostTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::GetShapeAttrsInfo()
+ge::graphStatus MhcPostTilingBaseArch22::GetShapeAttrsInfo()
 {
     auto xShapePtr = context_->GetInputShape(X_INPUT_INDEX);
     OP_CHECK_IF(xShapePtr == nullptr, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", "null", "input shape cannot be null"), return ge::GRAPH_FAILED);
@@ -141,7 +145,7 @@ ge::graphStatus MhcPostTilingBase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckNullptr()
+ge::graphStatus MhcPostTilingBaseArch22::CheckNullptr()
 {
     // Check all input desc and shape
     for (int64_t i = X_INPUT_INDEX; i <= H_POST_INPUT_INDEX; i++) {
@@ -160,7 +164,7 @@ ge::graphStatus MhcPostTilingBase::CheckNullptr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckInputShapePositive(int64_t idx) const
+ge::graphStatus MhcPostTilingBaseArch22::CheckInputShapePositive(int64_t idx) const
 {
     auto shape = context_->GetInputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
@@ -171,7 +175,7 @@ ge::graphStatus MhcPostTilingBase::CheckInputShapePositive(int64_t idx) const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckShapeAllPositive()
+ge::graphStatus MhcPostTilingBaseArch22::CheckShapeAllPositive()
 {
     // Check all inputs
     for (int64_t i = X_INPUT_INDEX; i <= H_POST_INPUT_INDEX; i++) {
@@ -190,10 +194,10 @@ ge::graphStatus MhcPostTilingBase::CheckShapeAllPositive()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckDataType()
+ge::graphStatus MhcPostTilingBaseArch22::CheckDataType()
 {
     // Get x dtype as reference
-    dtype_ = context_->GetInputDesc(X_INPUT_INDEX)->GetDataType();
+    auto dtype_ = context_->GetInputDesc(X_INPUT_INDEX)->GetDataType();
 
     // Check supported dtype
     const std::vector<ge::DataType> supportedDtype = {ge::DT_BF16, ge::DT_FLOAT16};
@@ -227,7 +231,7 @@ ge::graphStatus MhcPostTilingBase::CheckDataType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckShape3D()
+ge::graphStatus MhcPostTilingBaseArch22::CheckShape3D()
 {
     uint32_t dimNum = xShape_->GetDimNum();
 
@@ -284,7 +288,7 @@ ge::graphStatus MhcPostTilingBase::CheckShape3D()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckShape4D()
+ge::graphStatus MhcPostTilingBaseArch22::CheckShape4D()
 {
     uint32_t dimNum = xShape_->GetDimNum();
     // BSND format validation
@@ -341,7 +345,7 @@ ge::graphStatus MhcPostTilingBase::CheckShape4D()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckShapeConsistency()
+ge::graphStatus MhcPostTilingBaseArch22::CheckShapeConsistency()
 {
     // Support both BSND (4D) and TND (3D) formats
     // BSND: (B, S, n, D) -> totalItems = B * S
@@ -376,7 +380,7 @@ ge::graphStatus MhcPostTilingBase::CheckShapeConsistency()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::CheckParam()
+ge::graphStatus MhcPostTilingBaseArch22::CheckParam()
 {
     OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckNullptr failed"),
                 return ge::GRAPH_FAILED);
@@ -393,7 +397,7 @@ ge::graphStatus MhcPostTilingBase::CheckParam()
     return ge::GRAPH_SUCCESS;
 }
 
-void MhcPostTilingBase::ComputeTiling()
+void MhcPostTilingBaseArch22::ComputeTiling()
 {
     // Core Partitioning - handle remainder properly
     uint32_t coreNum = static_cast<uint32_t>(aicoreParams_.numBlocks);
@@ -407,7 +411,7 @@ void MhcPostTilingBase::ComputeTiling()
     // Calculate bytes per tileD element
     // TQue bf16: 3 * 2 bytes (hOut:1, x:1, output:1)
     // TBuf f32:  3 * 4 bytes (hOutF32:1, xF32:1, outF32:1)
-    uint32_t bytesPerTileD = 3 * (DOUBLE_BUFFER_DEPTH * SIZE_OF_16BIT + SINGLE_BUFFER_DEPTH * SIZE_OF_32BIT);
+    uint32_t bytesPerTileD = NUM_DATA_STREAMS * (DOUBLE_BUFFER_DEPTH * SIZE_OF_16BIT + SINGLE_BUFFER_DEPTH * SIZE_OF_32BIT);
     uint32_t maxTileD = UB_SIZE / bytesPerTileD;
     dOuter_ = 1;
     dInner_ = d_;
@@ -431,24 +435,24 @@ void MhcPostTilingBase::ComputeTiling()
     usedCoreNum_ = Ops::Base::CeilDiv(totalCount, normalCoreProcessNum_);
     tailCoreProcessNum_ = totalCount - (usedCoreNum_ - 1) * normalCoreProcessNum_;
 
-    uint64_t fullyBytesPerTileD = (n_ + 2) * (DOUBLE_BUFFER_DEPTH * SIZE_OF_16BIT + SIZE_OF_32BIT);
+    uint64_t fullyBytesPerTileD = (n_ + NON_X_BUFFER_COUNT) * (DOUBLE_BUFFER_DEPTH * SIZE_OF_16BIT + SIZE_OF_32BIT);
     if (fullyBytesPerTileD * dInner_ <= UB_SIZE) {
         usePermanentX_ = 1;
     }
 }
 
-ge::graphStatus MhcPostTilingBase::DoOpTiling()
+ge::graphStatus MhcPostTilingBaseArch22::DoOpTiling()
 {
     ComputeTiling();
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::DoLibApiTiling()
+ge::graphStatus MhcPostTilingBaseArch22::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::GetWorkspaceSize()
+ge::graphStatus MhcPostTilingBaseArch22::GetWorkspaceSize()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -464,7 +468,7 @@ ge::graphStatus MhcPostTilingBase::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostTilingBase::PostTiling()
+ge::graphStatus MhcPostTilingBaseArch22::PostTiling()
 {
     tilingData_->n = n_;
     tilingData_->d = d_;
@@ -485,11 +489,12 @@ ge::graphStatus MhcPostTilingBase::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t MhcPostTilingBase::GetTilingKey() const
+uint64_t MhcPostTilingBaseArch22::GetTilingKey() const
 {
     OP_LOGI(context_, "Tiling: usePermanentX_=%u", usePermanentX_);
     return GET_TPL_TILING_KEY(usePermanentX_);
 }
 
-REGISTER_OPS_TILING_TEMPLATE(MhcPost, MhcPostTilingBase, 0);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(MhcPost, MhcPostTilingBaseArch22,
+    static_cast<int32_t>(NpuArch::DAV_2201), 0);
 }  // namespace optiling
