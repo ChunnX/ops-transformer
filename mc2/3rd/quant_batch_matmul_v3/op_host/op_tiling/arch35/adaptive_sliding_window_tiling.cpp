@@ -12,7 +12,7 @@
  * \file adaptive_sliding_window_tiling.cc
  * \brief
  */
-#include "op_host/tiling_type.h"
+#include "tiling_base/tiling_type.h"
 #include "quant_batch_matmul_v3_checker.h"
 #include "ops_legacy/op_tiling/op_cache_tiling.h"
 #include "mc2_log_compat.h"

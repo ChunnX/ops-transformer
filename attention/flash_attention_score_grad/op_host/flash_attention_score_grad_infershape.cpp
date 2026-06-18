@@ -14,7 +14,7 @@
  */
 
 #include <register/op_impl_registry.h>
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace ge;
 

@@ -14,8 +14,8 @@
  */
 
 #include <register/op_impl_registry.h>
-#include "op_host/data_copy_transpose_tiling.h"
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_base/data_copy_transpose_tiling.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "block_sparse_attention_grad_tiling.h"
 #include "err/ops_err.h"
 
