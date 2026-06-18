@@ -516,9 +516,11 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
 
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
         if constexpr (isReconstructTemp == true) {
-            if constexpr (quantMode == FULLQUANT_MODE_QKV_MXFP8_PREFILL || quantMode == FULLQUANT_MODE_QKV_MXFP8_DECODE) {
-                run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, half, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                        isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
+            if constexpr (quantMode == FULLQUANT_MODE_QKV_MXFP8_PREFILL ||
+                          quantMode == FULLQUANT_MODE_QKV_MXFP8_DECODE) {
+                run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, half, inOutLayoutType, config, pseMode,
+                                            quantMode, hasAttenMask, hasRope, KvLayoutType,
+                                            isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
                     query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
                     key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
             } else if constexpr (quantMode == FULLQUANT_MODE_QK_PER_TOKEN_HEAD_V_PER_HEAD) {
@@ -576,14 +578,17 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
 
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
         if constexpr (isReconstructTemp == true) {
-            if constexpr (quantMode == FULLQUANT_MODE_QKV_MXFP8_PREFILL || quantMode == FULLQUANT_MODE_QKV_MXFP8_DECODE) {
-                run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                        isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
+            if constexpr (quantMode == FULLQUANT_MODE_QKV_MXFP8_PREFILL ||
+                          quantMode == FULLQUANT_MODE_QKV_MXFP8_DECODE) {
+                run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, config,
+                                            pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
+                                            isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
                     query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
                     key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
             } else if constexpr (quantMode == FULLQUANT_MODE_QK_PER_TOKEN_HEAD_V_PER_HEAD) {
-                run_fia_fullquant_gqa_kernel<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                        isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
+                run_fia_fullquant_gqa_kernel<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, config,
+                                             pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
+                                             isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
                     query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
                     key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
             }
