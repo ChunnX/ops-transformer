@@ -45,7 +45,18 @@
 namespace ops {
 namespace {
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
+constexpr uint32_t HCCL_MTE_MAX_RANK_NUM = 64;
 }
+
+struct Mc2QuantReduceScatterContext {
+    uint64_t workSpace; // client和server之间通信的地址
+    uint64_t workSpaceSize; // client和server之间通信的空间大小
+    uint32_t rankId; // 当前卡rankId
+    uint32_t rankDim; // 总卡数
+    uint64_t winSize; // ccu不使用
+    uint64_t windowsIn[HCCL_MTE_MAX_RANK_NUM]; // ccu不使用, MTE 数据区
+    uint64_t windowsOut[HCCL_MTE_MAX_RANK_NUM]; // ccu不使用，MTE 状态区
+};
 
 struct Mc2MoeContext {
     uint32_t epRankId;
@@ -94,6 +105,11 @@ public:
         ge::Graph& graph, const std::string& contextTag, const std::string& epName,
         const ge::GNode& originalNode, ge::GNode& constNode, int64_t& hcclBuffSize);
 
+    /* get context for quant_reduce_scatter */
+    static ge::graphStatus GetMc2ContextA5ForQrs(ge::Graph& graph, const std::string& contextTag,
+                                                 const std::string& name, const ge::GNode& originalNode,
+                                                 ge::GNode& constNode, int64_t& hcclBuffSize);
+
 private:
     Mc2MoeGraphContext() = default;
     ~Mc2MoeGraphContext();
@@ -134,6 +150,32 @@ private:
     ge::graphStatus CreateNewMc2Context(ge::Graph& graph, const std::string& contextTag,
                                         const std::string& groupEp, const std::string& uniqueKey,
                                         ge::GNode& constNode, int64_t& hcclBuffSize);
+
+    /* create context for quant_reduce_scatter */
+    ge::graphStatus Mc2MoeGraphContext::FillContextBufferForQrs(const HcclComm &hcclHandle, const CommEngine &engine,
+                                                                Mc2QuantReduceScatterContext *context, uint32_t rankId,
+                                                                const std::vector<ChannelHandle> &channels);
+    ge::graphStatus Mc2MoeGraphContext::GetHcclCommResourceForQrs(const HcclComm &hcclHandle,
+                                                                  const CommEngine &engine,
+                                                                  const CommProtocol &protocol,
+                                                                  Mc2QuantReduceScatterContext *context);
+    ge::graphStatus Mc2MoeGraphContext::CreatMc2ContextForQrs(const ContextCreateParams &params,
+                                                              Mc2QuantReduceScatterContext *context);
+    ge::graphStatus Mc2MoeGraphContext::GetMc2ContextForQrs(const ContextAcquireParams &params,
+                                                            Mc2QuantReduceScatterContext *context,
+                                                            int64_t &hcclBuffSize);
+    ge::graphStatus Mc2MoeGraphContext::GetHcclContextForQrs(const std::string &contextTag,
+                                                             const std::string &group,
+                                                             Mc2QuantReduceScatterContext *context,
+                                                             int64_t &hcclBuffSize);
+    ge::graphStatus Mc2MoeGraphContext::CreateContextNodeForQrs(ge::Graph& graph,
+                                                                const Mc2QuantReduceScatterContext& context,
+                                                                ge::GNode& constNode);
+    ge::graphStatus Mc2MoeGraphContext::CreateNewMc2ContextForQrs(ge::Graph& graph, const std::string& contextTag,
+                                                                  const std::string& group,
+                                                                  const std::string& uniqueKey,
+                                                                  ge::GNode& constNode, int64_t& hcclBuffSize);
+
     bool TryGetBufferSizeCache(const std::string& key, int64_t& hcclBuffSize);
     void UpdateBufferSizeCache(const std::string& key, int64_t hcclBuffSize);
     void ResetAllFunctionPointers();
