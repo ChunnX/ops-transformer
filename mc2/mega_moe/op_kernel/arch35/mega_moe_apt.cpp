@@ -14,24 +14,20 @@
  */
 
 #if ASC_DEVKIT_MAJOR >= 9 && ASC_DEVKIT_MINOR > 0
-#define ENABLE_TENSOR_API true
-#else
-#define ENABLE_TENSOR_API false
+#define ENABLE_TENSOR_API
 #endif
 
 #include "kernel_operator.h"
 
-#if ENABLE_TENSOR_API
+#ifdef ENABLE_TENSOR_API
 #include "mega_moe.h"
+using namespace MegaMoeImpl;
 #endif
 
 #include "mega_moe_tiling.h"
 #include "mega_moe_tiling_key.h"
 
 using namespace AscendC;
-#if ENABLE_TENSOR_API
-using namespace MegaMoeImpl;
-#endif
 
 template<uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t CombineQuantOutType>
 __global__ __aicore__ void mega_moe(
@@ -43,7 +39,7 @@ __global__ __aicore__ void mega_moe(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
-#if ENABLE_TENSOR_API
+#ifdef ENABLE_TENSOR_API
     if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
         MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DispatchQuantOutType, CombineQuantOutType> op;
         op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
