@@ -127,6 +127,7 @@ struct ConstInfo {
     uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
     int32_t maxSeqlenQ = -1;
+    uint32_t quantMode = 1;            // quant模式，默认为1
     
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
