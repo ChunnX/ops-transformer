@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file fia_tiling_fullquant_gqa.cpp
@@ -249,7 +249,7 @@ void FiaTilingFullQuantGqaArch35::AdjustSinnerAndSouter()
 }
 
 void FiaTilingFullQuantGqaArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength, int64_t actualSeqLengthKV,
-                                                        int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
+                                                         int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
 {
     if (fiaInfo_->sparseMode == SPARSE_MODE_RIGHT_DOWN) {
         preTokensLeftUp = SPARSE_MODE_INT_MAX;
@@ -273,7 +273,7 @@ void FiaTilingFullQuantGqaArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength
 }
 
 void FiaTilingFullQuantGqaArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV,
-                                                        int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
+                                                         int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
 {
     // 若出现行无效，需要重新计算nexttokens，pretokens，actualseqlen，以便正确计算分核核数
     int64_t nextTokensError = (nextTokensLeftUp < 0) ? -nextTokensLeftUp : 0;
@@ -371,7 +371,7 @@ bool FiaTilingFullQuantGqaArch35::CheckQKVActualSeqLengthsRight()
 }
 
 void FiaTilingFullQuantGqaArch35::CreateSplitInput(split_core_v2::BaseInfo &baseInfo,
-                                                  split_core_v2::SplitParam &splitParam)
+                                                   split_core_v2::SplitParam &splitParam)
 {
     baseInfo.bSize = fiaInfo_->bSize;
     // 采用DN方案，GS1不合轴，kernel循环是BN1->S1->S2
@@ -530,7 +530,7 @@ bool FiaTilingFullQuantGqaArch35::IsExistRowInvalid(const split_core_v2::BaseInf
 }
 
 void FiaTilingFullQuantGqaArch35::GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ,
-                                                 int64_t actSeqLensKv, int64_t &safePreToken, int64_t &safeNextToken)
+                                                  int64_t actSeqLensKv, int64_t &safePreToken, int64_t &safeNextToken)
 {
     if (mode == split_core_v2::SparseMode::DEFAULT_MASK) {
         safePreToken = std::max(-actSeqLensKv, safePreToken);

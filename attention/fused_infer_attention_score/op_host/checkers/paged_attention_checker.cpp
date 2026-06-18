@@ -577,7 +577,8 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
             return ge::GRAPH_FAILED);
     } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) {
         OP_CHECK_IF(dimNum != DIM_NUM_4, OP_LOGE(fiaInfo.opName,
-                    "In FP8 GQA fullquant scenario, KV cache layout must be BnNBsD, PA BnBsH and NZ are not supported."),
+                    "In FP8 GQA fullquant scenario, KV cache layout must be BnNBsD, "
+                    "PA BnBsH and NZ are not supported."),
                     return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         if (dimNum == 4) {
