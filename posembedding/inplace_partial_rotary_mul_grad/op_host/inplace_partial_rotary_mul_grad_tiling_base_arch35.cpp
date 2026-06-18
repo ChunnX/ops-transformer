@@ -12,7 +12,10 @@
  * \file inplace_partial_rotary_mul_grad_tiling_base_arch35.cpp
  * \brief
  */
+#include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 #include <graph/utils/type_utils.h>
 #include "tiling/tiling_api.h"
 #include "inplace_partial_rotary_mul_grad_tiling.h"
