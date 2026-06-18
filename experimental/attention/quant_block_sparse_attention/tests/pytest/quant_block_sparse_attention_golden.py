@@ -404,7 +404,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         case["pa_block_padding_bytes"], case["layout_kv"])
     combined_kv_cache.assert_combined_kv_views(kv_cache_storage, kv_cache_meta)
     case["pa_block_stride"] = kv_cache_meta["pa_block_stride"]
-    atten_mask = torch.zeros((2048, 2048), dtype=torch.uint8)
+    atten_mask = torch.tril(torch.ones((2048, 2048), dtype=torch.uint8)).T
     sparse_indices, sparse_seq_len = _make_sparse_indices(case, q_lengths, kv_lengths, rng)
 
     attention_out, softmax_lse = _reference_attention(
