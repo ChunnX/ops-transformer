@@ -277,23 +277,22 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
                     T.barrier_all()
 
-                    # P_reduced for ALL K blocks (redundant across cores, avoids cross-core sync)
-                    for n_pr in T.serial(n_num):
-                        T.copy(bmm1Res[bz, s1_id, 0:N1, n_pr * n_block:(n_pr + 1) * n_block], bmm1_ub)
-                        T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
-                        for g_id in range(G):
-                            T.tile.sub(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_max_ub[g_id])
-                        T.tile.exp(bmm1_ub, bmm1_ub)
-                        T.barrier_all()
-                        for g_id in range(G):
-                            T.tile.div(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_sum_ub[g_id])
-                        T.barrier_all()
-                        T.tile.fill(p_reduced_tmp_ub, 0)
-                        for g_id in range(G):
-                            T.tile.add(p_reduced_tmp_ub, p_reduced_tmp_ub, bmm1_ub[g_id, :])
-                        T.barrier_all()
-                        T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
-                        T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_pr * n_block:(n_pr + 1) * n_block])
+                    # P_reduced for MY K block (only local block, no cross-core dependency)
+                    T.copy(bmm1Res[bz, s1_id, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm1_ub)
+                    T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
+                    for g_id in range(G):
+                        T.tile.sub(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_max_ub[g_id])
+                    T.tile.exp(bmm1_ub, bmm1_ub)
+                    T.barrier_all()
+                    for g_id in range(G):
+                        T.tile.div(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_sum_ub[g_id])
+                    T.barrier_all()
+                    T.tile.fill(p_reduced_tmp_ub, 0)
+                    for g_id in range(G):
+                        T.tile.add(p_reduced_tmp_ub, p_reduced_tmp_ub, bmm1_ub[g_id, :])
+                    T.barrier_all()
+                    T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
+                    T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
                     # ReduceSumY for ALL K blocks (redundant across cores, avoids cross-core sync)
                     for n_rsy in T.serial(n_num):
