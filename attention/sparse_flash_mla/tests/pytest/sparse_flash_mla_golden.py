@@ -694,8 +694,8 @@ def gen_cmp_kv(layout_q, layout_kv, cmp_kv_type, B, S1, S2, T1, T2, T3, N2, D, K
     data_range_right=DATA_RANGE_RIGHT):
     if cmp_ratio is None:
         raise ValueError(f"cmp_ratio can't be None")
-    if cmp_ratio == 0:
-        raise ValueError(f"cmp_ratio can't be 0")
+    if cmp_ratio < 1 or cmp_ratio > 128:
+        raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
 
     if layout_kv == "PA_BBND":
         ori_max_s2 = max(seqused_ori_kv)
@@ -876,7 +876,9 @@ def gen_data(params, template_mode=None):
     else:
         raise ValueError(f"layout_kv is not support {layout_kv}")
 
-    if seqused_ori_kv is not None and cmp_ratio is not None and cmp_ratio != 0:
+    if seqused_ori_kv is not None and cmp_ratio is not None:
+        if cmp_ratio < 1:
+            raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
         seqused_cmp_kv = seqused_ori_kv // cmp_ratio
         cmp_residual_kv = seqused_ori_kv % cmp_ratio
     # 路由到三个算子的逻辑：
@@ -971,11 +973,12 @@ def gen_data(params, template_mode=None):
             'seqused_ori_kv': seqused_ori_kv,
             'seqused_cmp_kv': seqused_cmp_kv,
             'cmp_residual_kv': cmp_residual_kv,
-            'ori_topk_length': ori_topk_length,
-            'cmp_topk_length': cmp_topk_length,
+            'ori_topk_length': None,
+            'cmp_topk_length': None,
             'B': B,
             'max_seqlen_q': max_seqlen_q,
-            'max_seqlen_kv': max(seqused_ori_kv) if seqused_ori_kv is not None else (T2 if layout_kv == "TND" else S2),
+            'max_seqlen_ori_kv': max(seqused_ori_kv) if seqused_ori_kv is not None else (T2 if layout_kv == "TND" else S2),
+            'max_seqlen_cmp_kv': max(seqused_cmp_kv) if seqused_cmp_kv is not None else 0,
             'K': K,
             'cmp_ratio': cmp_ratio,
             'ori_mask_mode': ori_mask_mode,

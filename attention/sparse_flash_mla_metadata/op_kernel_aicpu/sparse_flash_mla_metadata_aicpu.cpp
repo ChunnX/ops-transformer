@@ -278,6 +278,11 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
     CalcOriMaskMode();
     CalcCmpMaskMode();
     isS1G_ = (layoutQ_ == "BSND" || layoutQ_ == "BSH" || layoutQ_ == "TND");
+    if (numHeadsKv_ == 0) {
+        KERNEL_LOG_ERROR("num_heads_kv should not be 0.");
+        return false;
+    }
+    ValidSocVersion validSocVersion = ProcessSocVersion();
     groupSize_ = numHeadsQ_ / numHeadsKv_;
     if (hasOriKv_ && oriTopK_ != 0) {
         isSparseOriKv_ = true;
@@ -285,9 +290,8 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
     if (hasCmpKv_ && cmpTopK_ != 0) {
         isSparseCmpKv_ = true;
     }
-    ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND910) {
-        mBaseSize_ = groupSize_;
+        mBaseSize_ = isSparseCmpKv_ ? groupSize_ : (256U / groupSize_) * groupSize_;
         s2BaseSize_ = 512U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (numHeadsQ_ == 128) {
