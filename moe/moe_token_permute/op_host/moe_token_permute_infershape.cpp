@@ -22,13 +22,7 @@ using namespace ge;
 namespace ops {
 static constexpr size_t DIM_ONE = 1;
 static constexpr size_t DIM_TWO = 2;
-static constexpr size_t DIM_THREE = 3;
 static constexpr int64_t NEG_ONE = -1;
-static constexpr int64_t QUANT_MODE_MXFP8_E5M2 = 2;
-static constexpr int64_t QUANT_MODE_MXFP8_E4M3FN = 3;
-static constexpr int64_t QUANT_MODE_MXFP4_E2M1 = 9;
-static constexpr int64_t MX_QUANT_BLOCK_SIZE = 32;
-static constexpr int64_t MXFP4_SCALE_BLOCK_SIZE = 64;
 
 static ge::graphStatus InferShape4MoeTokenPermute(gert::InferShapeContext* context)
 {
@@ -43,16 +37,11 @@ static ge::graphStatus InferShape4MoeTokenPermute(gert::InferShapeContext* conte
     OP_CHECK_NULL_WITH_CONTEXT(context, permuteXShape);
     gert::Shape* sortedIndices = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, sortedIndices);
-    gert::Shape* expandedScaleShape = context->GetOutputShape(2);
-    OP_CHECK_NULL_WITH_CONTEXT(context, expandedScaleShape);
 
     // 获取attr
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t* numOutTokensPtr = attrs->GetAttrPointer<int64_t>(0);
-    const int64_t* quantModePtr = attrs->GetAttrPointer<int64_t>(2);
-    OP_CHECK_NULL_WITH_CONTEXT(context, numOutTokensPtr);
-    OP_CHECK_NULL_WITH_CONTEXT(context, quantModePtr);
 
     int64_t sortedIndicesLen = NEG_ONE;
     sortedIndices->SetDimNum(DIM_ONE);
@@ -71,32 +60,11 @@ static ge::graphStatus InferShape4MoeTokenPermute(gert::InferShapeContext* conte
     }
 
     *permuteXShape = *xShape;
-    int64_t outTokens = NEG_ONE;
     if (sortedIndicesLen != NEG_ONE && !Ops::Base::IsUnknownRank(*xShape)) {
-        outTokens = (*numOutTokensPtr <= 0) ? (*numOutTokensPtr) + sortedIndicesLen : *numOutTokensPtr;
+        int64_t outTokens = (*numOutTokensPtr <= 0) ? (*numOutTokensPtr) + sortedIndicesLen : *numOutTokensPtr;
         outTokens = std::min(outTokens, sortedIndicesLen);
         outTokens = std::max(outTokens, (int64_t)0);
         permuteXShape->SetDim(0, outTokens);
-    }
-
-    if (*quantModePtr == QUANT_MODE_MXFP8_E5M2 || *quantModePtr == QUANT_MODE_MXFP8_E4M3FN) {
-        expandedScaleShape->SetDimNum(DIM_TWO);
-        expandedScaleShape->SetDim(0, outTokens);
-        int64_t hiddenSize = Ops::Base::IsUnknownRank(*xShape) ? NEG_ONE : xShape->GetDim(1);
-        int64_t scaleCols = hiddenSize < 0 ? NEG_ONE : (hiddenSize + MX_QUANT_BLOCK_SIZE - 1) / MX_QUANT_BLOCK_SIZE;
-        scaleCols = scaleCols < 0 ? NEG_ONE : ((scaleCols + 1) / 2) * 2;
-        expandedScaleShape->SetDim(1, scaleCols);
-    } else if (*quantModePtr == QUANT_MODE_MXFP4_E2M1) {
-        expandedScaleShape->SetDimNum(DIM_THREE);
-        expandedScaleShape->SetDim(0, outTokens);
-        int64_t hiddenSize = Ops::Base::IsUnknownRank(*xShape) ? NEG_ONE : xShape->GetDim(1);
-        int64_t scaleCols =
-            hiddenSize < 0 ? NEG_ONE : (hiddenSize + MXFP4_SCALE_BLOCK_SIZE - 1) / MXFP4_SCALE_BLOCK_SIZE;
-        expandedScaleShape->SetDim(1, scaleCols);
-        expandedScaleShape->SetDim(2, 2);
-    } else {
-        expandedScaleShape->SetDimNum(DIM_ONE);
-        expandedScaleShape->SetDim(0, 0);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -106,25 +74,8 @@ static ge::graphStatus InferDataType4MoeTokenPermute(gert::InferDataTypeContext*
 {
     OP_LOGD(context->GetNodeName(), "Begin to do MoeTokenPermuteInferDataType.");
     auto xDtype = context->GetInputDataType(0);
-    auto attrs = context->GetAttrs();
-    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t* quantModePtr = attrs->GetAttrPointer<int64_t>(2);
-    OP_CHECK_NULL_WITH_CONTEXT(context, quantModePtr);
-    if (*quantModePtr == QUANT_MODE_MXFP8_E5M2) {
-        context->SetOutputDataType(0, ge::DT_FLOAT8_E5M2);
-    } else if (*quantModePtr == QUANT_MODE_MXFP8_E4M3FN) {
-        context->SetOutputDataType(0, ge::DT_FLOAT8_E4M3FN);
-    } else if (*quantModePtr == QUANT_MODE_MXFP4_E2M1) {
-        context->SetOutputDataType(0, ge::DT_FLOAT4_E2M1);
-    } else {
-        context->SetOutputDataType(0, xDtype);
-    }
+    context->SetOutputDataType(0, xDtype);
     context->SetOutputDataType(1, ge::DT_INT32);
-    context->SetOutputDataType(
-        2, *quantModePtr == QUANT_MODE_MXFP8_E5M2 || *quantModePtr == QUANT_MODE_MXFP8_E4M3FN ||
-                   *quantModePtr == QUANT_MODE_MXFP4_E2M1
-               ? ge::DT_FLOAT8_E8M0
-               : ge::DT_FLOAT);
     OP_LOGD(context->GetNodeName(), "End to do MoeTokenPermuteInferDataType.");
     return ge::GRAPH_SUCCESS;
 }
