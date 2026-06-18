@@ -137,22 +137,24 @@ public:
         ConstInfo &constInfo);
 
 private:
-    static constexpr uint32_t StagingAttenOutBytes()
+    __aicore__ inline uint32_t StagingMSize(const ConstInfo &constInfo) const
     {
-        return IS_SPLIT_G ? regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES_SPLIT_G :
-            regbaseutil::S2_SPLIT_STAGING_ATTEN_OUT_BYTES;
+        if constexpr (IS_SPLIT_G) {
+            return regbaseutil::S2_SPLIT_STAGING_M_SIZE_SPLIT_G;
+        } else {
+            return static_cast<uint32_t>(constInfo.gSize);
+        }
     }
 
-    static constexpr uint32_t StagingMaxSumBytes()
+    __aicore__ inline uint32_t StagingAttenOutBytes(const ConstInfo &constInfo) const
     {
-        return IS_SPLIT_G ? regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES_SPLIT_G :
-            regbaseutil::S2_SPLIT_STAGING_MAX_SUM_BYTES;
+        return StagingMSize(constInfo) * dTemplateAlign64 * sizeof(float);
     }
 
-    static constexpr uint32_t StagingMSize()
+    __aicore__ inline uint32_t StagingMaxSumBytes(const ConstInfo &constInfo) const
     {
-        return IS_SPLIT_G ? regbaseutil::S2_SPLIT_STAGING_M_SIZE_SPLIT_G :
-            regbaseutil::S2_SPLIT_STAGING_M_SIZE;
+        constexpr uint32_t FD_BLOCK_ELEM = 8;
+        return StagingMSize(constInfo) * FD_BLOCK_ELEM * sizeof(float);
     }
 
     __aicore__ inline uint32_t GetStagingSlotNum() const
@@ -917,8 +919,8 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyMaxSumToStaging(
     RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
 {
-    constexpr uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes();
-    constexpr uint32_t MAX_SUM_BYTES = StagingMaxSumBytes();
+    uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes(constInfo);
+    uint32_t MAX_SUM_BYTES = StagingMaxSumBytes(constInfo);
     constexpr uint32_t FD_BLOCK_ELEM = 8;
     uint32_t stagingSlotNum = GetStagingSlotNum();
     __gm__ uint8_t *basePtr = s2SplitStagingBase;
@@ -1004,7 +1006,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
             }
-            constexpr uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes();
+            uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes(constInfo);
             __gm__ uint8_t *basePtr = s2SplitStagingBase;
 
             GlobalTensor<float> stagingOut;
@@ -1046,7 +1048,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     } else {
         seqOffset = fdRunInfo.bn2Idx * constInfo.s1Size;
     }
-    constexpr uint32_t FD_M_BASE_SIZE = StagingMSize();
     int64_t attentionOutOffset = seqOffset * constInfo.n2GDv + // batch维度起始偏移（token数 × 每token所有head的V元素数）
         fdRunInfo.mIdx * constInfo.n2GDv + // 当前M轴基本块之前的所有块的偏移
         fdRunInfo.mStartIdx * constInfo.dSizeV; // 当前核负责的M轴token起始偏移
@@ -1060,8 +1061,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     LocalTensor<float> blockSumUb = this->fdBlockSumBuf.template Get<float>();
     LocalTensor<T> sinkUb; // intentionally unbacked; learnableSinkFlag must remain false (sink already fused in vec1)
 
-    constexpr uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes();
-    constexpr uint32_t MAX_SUM_BYTES = StagingMaxSumBytes();
+    uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes(constInfo);
+    uint32_t MAX_SUM_BYTES = StagingMaxSumBytes(constInfo);
     uint32_t stagingSlotNum = GetStagingSlotNum();
     __gm__ uint8_t *basePtr = s2SplitStagingBase;
     __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * ATTEN_OUT_BYTES;

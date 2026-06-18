@@ -93,6 +93,7 @@
 ## Flash Decode Metadata S2 Range
 
 - Flash decode metadata 中 `FA_S2_START_INDEX`/`FA_S2_END_INDEX` 是 S2 block 级左闭右开区间，kernel 使用前需乘以 `s2BaseSize` 转成 token 级。
+- 当前仓库的 `sparse_flash_mla_metadata` 在 Ascend950 下对 `numHeadsQ < 64`（且 N 为 2 的幂次方的目标场景）使用 `mBaseSize_ = groupSize_`，因此 metadata 的 `FA_M_*`/`FD_M_IDX` 仍可按“每个 S1 对应一个 gSize 行 M 块”理解；kernel 主循环无需把一个 metadata M 块拆成多个 S1。
 - 当 metadata `FA_S2_END_INDEX == 0` 且当前核任务结束于最后一个 batch 的最后一个基本块时，`0` 表示“不额外截断到某个 S2 block”，kernel 应使用当前任务自身的真实 `totalLen` 作为有效右边界，而不是把右边界解释为 token 0。
 - 对应地，`hasNextCore` 判断也应使用转换后的 effective end；否则最后块会被误判为空范围或错误标记为仍有后继 split。
 - 跨 S1 的 metadata 区间按 lexicographic 任务范围理解：首个 S1 行只应用 `S2Start`，末个 S1 行只应用 `S2End`，中间 S1 行应覆盖完整 S2。`isS2Split` 应基于当前行裁剪后的 `[rangeStart, rangeEnd)` 是否小于完整 `[0, totalLen)` 判断，不能仅根据“是否首/末任务”判断，否则中间完整 S1 行会误进 FD staging。
@@ -104,6 +105,7 @@
 - `ReduceFinalRes_const_VF()` 内部会读取 `partialOFp32` 和 `blockSumUb`，并在 `splitIdx > 0` 时读写同一块 `chunkAccumO` 做累加；`SetFlag<V_MTE2>` 前需要先 `PipeBarrier<PIPE_V>()`，让该事件真正表示本轮 V pipe 已经读完 `partialOFp32`、写完 `chunkAccumO`，否则下一 split 的 MTE2/V 可能过早复用这些 UB。
 - 当前 FA 写 staging 的 `s2SplitIdxCounter` 与 workspace 常量都隐含“每个 staging 起点最多 2 个 S2 split”：`MAX_S2_SPLIT_NUM=2`，host workspace 按 2 个 split/slot 分配，FA 写端用 `firstFdDataWorkspaceIdx + s2SplitIdx` 定位 partialO/max/sum。counter 只应在当前核 S1 循环范围的最后一个有效 S1 task 确实发生 S2 split 时推进，即 `gS1Index == runParam.gs1LoopEndIdx - 1`；末个 S2 loop 才会实际写 FD staging。若 metadata 允许同一 `(BN,M/G)` 被 3 个及以上核切分，需要 host metadata/workspace 共同扩展。
 - `runParam.s2SplitIdx` 会通过 `SetRunInfo()` 传给当前 S1 task 的每个 S2 loop，但实际参与 staging 地址计算只在 `isS2Split && s2LoopCount == s2LoopLimit` 的末轮：Vec1 末轮拷出 max/sum，Vec2 末轮拷出 partial attention output。因此它标识的是“当前核负责的这个 S1 task 对应的 split slot”，不是每个普通 S2 基本块都独立消费的索引。
+- N<64 非 split-G FD staging 的逻辑 M 行数应使用运行时 `gSize`，而不是固定 64；N=128 split-G 仍保持配对 cube 的 128 行逻辑 M 布局。host workspace 和 kernel staging 读写 stride 必须使用同一规则。
 
 ## Skills
 
