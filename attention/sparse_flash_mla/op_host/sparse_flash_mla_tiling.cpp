@@ -696,9 +696,6 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             return ge::GRAPH_FAILED;
         }
     } else if (kvLayout_ == SMLALayout::TND) {
-        OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor != nullptr,
-            OP_LOGE(opName_, "Input sequsedOriKv must not be provided when kv layout is TND"),
-            return ge::GRAPH_FAILED);
     } else if (kvLayout_ == SMLALayout::BSND) {
     } else {
         OP_LOGE(opName_, "oriKV and cmpKv only support PA_BBND, TND and BSND layout, but got %d.", kvLayout_);
