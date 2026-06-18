@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attn_block_kernel_noquant_gqa.h
+ * \file flash_attn_block_cube_noquant_gqa.h
  * \brief
  */
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_CUBE_H_
