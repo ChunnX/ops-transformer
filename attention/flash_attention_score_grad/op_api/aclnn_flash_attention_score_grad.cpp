@@ -31,6 +31,7 @@
 #include "runtime/context.h"
 #include "acl/acl_rt.h"
 #include "op_common/log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 #ifdef __cplusplus
