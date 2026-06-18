@@ -83,10 +83,10 @@ moe_distribute_combine_v3(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds
     //         sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, XOut,
     //         workspaceGM, tilingGM, &pipe);
     // }
-    AscendC::printf("[kernel test] printf combine kernel enter before!");
+    AscendC::printf("printf combine kernel enter before!!!");
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
-    MoeDistributeCombineV2Impl::MoeDistributeCombineV2HostKfc<DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp,
-                                                                         QuantMode == TILINGKEY_INT8_QUANT> op;
+    MoeDistributeCombineV2Impl::MoeDistributeCombineV2HostKfc<DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp, QuantMode, false>
+        op;
     op.Init(mc2Context, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, scales, expandScales, xActiveMask, sharedExpertX,
             elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, XOut, workspaceGM, &pipe,
             &tilingData);
