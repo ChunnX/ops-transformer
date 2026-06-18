@@ -32,7 +32,7 @@
 #define QLI_TPL_FLOAT8_E4M3FN 36
 #define QLI_TPL_HIFLOAT8 34
 // 模板参数支持的范围定义
-#if (true)
+#if (__CCE_AICORE__ == 310)
     ASCENDC_TPL_ARGS_DECL(QuantLightningIndexer,  // 算子OpType
                         ASCENDC_TPL_DTYPE_DECL(DT_Q, QLI_TPL_FLOAT8_E4M3FN, QLI_TPL_HIFLOAT8, LI_TPL_IN8),
                         ASCENDC_TPL_DTYPE_DECL(DT_K, QLI_TPL_FLOAT8_E4M3FN, QLI_TPL_HIFLOAT8, LI_TPL_IN8),
