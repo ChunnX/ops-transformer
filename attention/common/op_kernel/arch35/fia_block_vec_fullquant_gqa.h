@@ -184,7 +184,7 @@ public:
             softmaxLse, attentionOut, workspace);
     }
 
-    __aicore__ inline void InitVecInput(__gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *pScale, 
+    __aicore__ inline void InitVecInput(__gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *pScale,
                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                         __gm__ uint8_t *deqScaleV, __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
@@ -443,33 +443,33 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (!isSkipMask) {
                 FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, false, hasAtten, s2BaseSize>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, 
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
-                    runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK, 
+                    runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
                     pScaleValue, negativeFloatScalar, 0.0F, true);
             } else {
                 FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, false, false, s2BaseSize>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, 
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
-                    runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK, 
+                    runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
                     pScaleValue, negativeFloatScalar, 0.0F, true);
             }
         } else {
             if (!isSkipMask) {
                 FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, hasAtten, s2BaseSize>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, 
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
-                    runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK, 
+                    runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
                     pScaleValue, negativeFloatScalar, 0.0F, true);
             } else {
                 FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, false, s2BaseSize>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, 
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb,
                     this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
-                    runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK, 
+                    runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
                     pScaleValue, negativeFloatScalar, 0.0F, true);
             }
         }

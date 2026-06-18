@@ -79,7 +79,7 @@ __aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
     } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
         if constexpr (isPerTokenHead) {
             return GmFormat::NGT;
-        } 
+        }
         if constexpr (!useDn) {
             return GmFormat::NTGD;
         } else {

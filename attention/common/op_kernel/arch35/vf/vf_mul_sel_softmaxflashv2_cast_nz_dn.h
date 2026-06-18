@@ -2179,11 +2179,11 @@ __aicore__ inline void ProcessVec1VfDnCausal(const LocalTensor<T2>& dstTensor, c
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, 
-    __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, 
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
+    __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
     __ubuf__ uint8_t *indexesUb, __ubuf__ float * qScaleUb, __ubuf__ float * kScaleUb,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, 
-    const T minValue, float keepProb, bool needAtten, const float dScale, 
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
+    const T minValue, float keepProb, bool needAtten, const float dScale,
     const uint32_t blockStride, const uint32_t repeatStride, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_x_sum_0;
@@ -2297,7 +2297,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
-        Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);    
+        Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
@@ -2517,11 +2517,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
             /* vreg_x_exp_f16_pack会不连续的存储在x_exp上，shape为2*4*64*16， 其中每64*16个的head之间跳129 * 16
                 个数，中间跳的部分就是vreg_x_exp_f16_1_pack的 */
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);    
+                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
             Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);    
+                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
             Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
         }
@@ -2547,11 +2547,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, 
-    __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, 
+    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32,
+    __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
     __ubuf__ uint8_t *indexesUb, __ubuf__ float * qScaleUb, __ubuf__ float * kScaleUb,
-    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, 
-    const T minValue, float keepProb, bool needAtten, const float dScale, 
+    const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
+    const T minValue, float keepProb, bool needAtten, const float dScale,
     const uint32_t blockStride, const uint32_t repeatStride, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_x_sum_0;
@@ -2666,7 +2666,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
-        Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);    
+        Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
@@ -2824,11 +2824,11 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
             /* vreg_x_exp_bf16_pack会不连续的存储156在x_exp上，shape为2*4*64*16， 其中每64*16个的head之间跳129 * 16
                 个数，中间跳的部分就是vreg_x_exp_bf16_1_pack的 */
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);     
+                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
             Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136); 
+                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
             Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
         } else if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -2892,12 +2892,12 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
             /* vreg_x_exp_f16_pack会不连续的存储在x_exp上，shape为2*4*64*16， 其中每64*16个的head之间跳129 * 16
                 个数，中间跳的部分就是vreg_x_exp_f16_1_pack的 */
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136); 
+                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
             Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
 
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136); 
+                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
             Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
         }
@@ -2925,8 +2925,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
 __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, 
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
+    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleUbTensor, const LocalTensor<T>& kScaleUbTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN,
     const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten)
@@ -2956,15 +2956,15 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
     }
 
     ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, ubN>(
-        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, 
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
         maskUb, indexesUb, qScaleUb, kScaleUb, m, n, originN, scale, deScaleQK, minValue,
         keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
 __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, 
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
+    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
     const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleUbTensor, const LocalTensor<T>& kScaleUbTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN,
     const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten)
@@ -2993,15 +2993,15 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
         repeatStride = 1;
     }
     ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, ubN>(
-        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, 
+        x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
         maskUb, indexesUb, qScaleUb, kScaleUb, m, n, originN, scale, deScaleQK, minValue,
         keepProb, needAtten, dScale, blockStride, repeatStride, pScale);
 }
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256>
 __aicore__ inline void ProcessVec1VfDnPerTokenHead(
-    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, 
-    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, TBuf<> *vselrIndexesBuf, 
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
+    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, TBuf<> *vselrIndexesBuf,
     const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleUbTensor, const LocalTensor<T>& kScaleUbTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN,
     const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten)
@@ -3013,7 +3013,7 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(
             indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1DnNoUpdatePerTokenHead<T, T2, hasAtten, ubN>(
-            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, 
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
             indexesTensor, maskTensor, qScaleUbTensor, kScaleUbTensor,
             m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten);
     } else {
@@ -3023,7 +3023,7 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(
             indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         }
         ProcessVec1DnUpdatePerTokenHead<T, T2, hasAtten, ubN>(
-            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, 
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
             indexesTensor, maskTensor, qScaleUbTensor, kScaleUbTensor,
             m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten);
     }
