@@ -57,16 +57,17 @@ bool InplacePartialRotaryMulGradRegBaseTilingClassABAAndBA::IsCapable()
 
 ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassABAAndBA::SplitCore()
 {
-    auto blockFactorB1 = Ops::Base::CeilDiv(b_, aicoreParams_.numBlocks);
+    auto numBlocks = static_cast<int64_t>(aicoreParams_.numBlocks);
+    auto blockFactorB1 = Ops::Base::CeilDiv(b_, numBlocks);
     auto blockNumB1 = Ops::Base::CeilDiv(b_, blockFactorB1);
-    auto blockNumS1 = std::min(aicoreParams_.numBlocks / blockNumB1, s_);
+    auto blockNumS1 = std::min(numBlocks / blockNumB1, s_);
     auto blockFactorS1 = Ops::Base::CeilDiv(s_, blockNumS1);
     blockNumS1 = Ops::Base::CeilDiv(s_, blockFactorS1);
     auto usedCoreNum1 = blockNumB1 * blockNumS1;
 
-    auto blockFactorS2 = Ops::Base::CeilDiv(s_, aicoreParams_.numBlocks);
+    auto blockFactorS2 = Ops::Base::CeilDiv(s_, numBlocks);
     auto blockNumS2 = Ops::Base::CeilDiv(s_, blockFactorS2);
-    auto blockNumB2 = std::min(aicoreParams_.numBlocks / blockNumS2, b_);
+    auto blockNumB2 = std::min(numBlocks / blockNumS2, b_);
     auto blockFactorB2 = Ops::Base::CeilDiv(b_, blockNumB2);
     blockNumB2 = Ops::Base::CeilDiv(b_, blockFactorB2);
     auto usedCoreNum2 = blockNumB2 * blockNumS2;
