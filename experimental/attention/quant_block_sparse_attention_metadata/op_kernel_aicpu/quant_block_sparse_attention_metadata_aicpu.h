@@ -42,6 +42,7 @@ struct AssignContext {
     uint32_t curS1Idx { 0U };
     uint32_t curS2Idx { 0U };
     uint64_t unassignedBlock { 0U };
+    uint64_t bN1Block { 0U };
     CoreCache coreCache {};
     bool isFinished { false };
 };
@@ -74,9 +75,12 @@ private:
     bool ParamsInit();
     bool ScheduleSection(SplitResult &splitRes);
     bool GenMetadata(const SplitResult &splitRes);
-    uint32_t GetRowBlockNum(uint32_t bn1Idx, uint32_t s1Idx) const;
+    uint32_t GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const;
+    uint64_t GetBatchBlockNum(uint32_t bIdx) const;
     uint64_t CalcBlockNum() const;
     bool AdvanceToValidRow(AssignContext &assignContext) const;
+    void AssignByBatch(AssignContext &assignContext) const;
+    void AssignByRow(AssignContext &assignContext) const;
     void ScheduleFa(uint64_t blockNum, SplitResult &result);
 
 private:
@@ -88,7 +92,7 @@ private:
     Tensor *sequsedQ_ = nullptr;
     Tensor *sequsedKv_ = nullptr;
     // output tensor
-    Tensor *metaData_ = nullptr;
+    Tensor *metadata_ = nullptr;
 
     // attr
     int32_t batchSize_ = 0;
@@ -97,9 +101,9 @@ private:
     int32_t headDim_ = 0;
     int32_t sparseBlockSizeQ_ = 128;
     int32_t sparseBlockSizeKv_ = 128;
-    int32_t quantMode_ = 0; // TODO: confirm default value for quant_mode
+    int32_t quantMode_ = 1; 
     int32_t maskMode_ = 3;
-    std::string layoutQ_ = "BSND"; // TODO: confirm default value for layout_q
+    std::string layoutQ_ = "TND"; 
     std::string layoutKv_ = "PA_BNSD";
     std::string layoutSparseIndices_ = "B_N_Qb_Kb";
 
@@ -123,7 +127,7 @@ private:
         sequsedQ = 3,
         sequsedKv = 4,
         // output
-        metaData = 0,
+        metadata = 0,
     };
 };
 } // namespace aicpu

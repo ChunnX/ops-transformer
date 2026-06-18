@@ -22,7 +22,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttentio
     const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
     int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeKv, int64_t quantMode,
     int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQOptional,
-    const char *layoutKvOptional, const char *layoutSparseIndicesOptional, const aclTensor *metaData,
+    const char *layoutKvOptional, const char *layoutSparseIndicesOptional, const aclTensor *metadata,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 __attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttentionMetadata(

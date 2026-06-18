@@ -45,7 +45,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
     // output
-    metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
+    metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
 
     bool requiredAttrs =
         GetAttrValue(ctx, "soc_version", socVersion_) &&
@@ -77,42 +77,24 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsCheck()
 bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
 {
     // REQUIRED_INPUT tensor check
-    // if (sparseSeqLen_ == nullptr) {
-    //     KERNEL_LOG_ERROR("sparseSeqLen is nullptr");
-    //     return false;
-    // }
-    // if (sparseSeqLen_->GetTensorShape() == nullptr || sparseSeqLen_->GetTensorShape()->GetDims() != 2) {
-    //     KERNEL_LOG_ERROR("sparseSeqLen must be 2D tensor");
-    //     return false;
-    // }
-    // if (sparseSeqLen_->GetTensorShape()->GetDims() > 0 && sparseSeqLen_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("sparseSeqLen data is nullptr");
-    //     return false;
-    // }
-    // // OPTIONAL_INPUT tensor check
-    // if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetTensorShape()->GetDims() > 0 &&
-    //     cuSeqlensQ_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("cuSeqlensQ data is nullptr");
-    //     return false;
-    // }
-    // if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetTensorShape()->GetDims() > 0 &&
-    //     cuSeqlensKv_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("cuSeqlensKv data is nullptr");
-    //     return false;
-    // }
-    // if (sequsedQ_ != nullptr && sequsedQ_->GetTensorShape()->GetDims() > 0 && sequsedQ_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("sequsedQ data is nullptr");
-    //     return false;
-    // }
-    // if (sequsedKv_ != nullptr && sequsedKv_->GetTensorShape()->GetDims() > 0 && sequsedKv_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("sequsedKv data is nullptr");
-    //     return false;
-    // }
-    // // OUTPUT tensor check
-    // if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
-    //     KERNEL_LOG_ERROR("metaData is empty");
-    //     return false;
-    // }
+    if (sparseSeqLen_ == nullptr) {
+        KERNEL_LOG_ERROR("sparseSeqLen is nullptr");
+        return false;
+    }
+    if (sparseSeqLen_->GetTensorShape() == nullptr ||
+        (sparseSeqLen_->GetTensorShape()->GetDims() != 2 && sparseSeqLen_->GetTensorShape()->GetDims() != 3)) {
+        KERNEL_LOG_ERROR("sparseSeqLen must be 2D or 3D tensor");
+        return false;
+    }
+    if (sparseSeqLen_->GetTensorShape()->GetDims() > 0 && sparseSeqLen_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("sparseSeqLen data is nullptr");
+        return false;
+    }
+    // OUTPUT tensor check
+    if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("metadata is empty");
+        return false;
+    }
     return true;
 }
 
@@ -167,33 +149,33 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-uint32_t QuantBlockSparseAttentionMetadataCpuKernel::GetRowBlockNum(uint32_t bn1Idx, uint32_t s1Idx) const
+uint32_t QuantBlockSparseAttentionMetadataCpuKernel::GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const
 {
-    if (bn1Idx >= static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_) || s1Idx >= Qbmax_ ||
-        sparseSeqLen_ == nullptr ||
+    if (bIdx >= static_cast<uint32_t>(batchSize_) || s1Idx >= Qbmax_ || sparseSeqLen_ == nullptr ||
         sparseSeqLen_->GetData() == nullptr) {
         return 0U;
     }
     const int32_t *sparseSeqLenData = static_cast<const int32_t *>(sparseSeqLen_->GetData());
-    uint32_t bIdx = bn1Idx / static_cast<uint32_t>(numHeadsQ_);
-    uint32_t n1Idx = bn1Idx % static_cast<uint32_t>(numHeadsQ_);
     uint32_t idx = bIdx * Qbmax_ + s1Idx;
-    if (sparseSeqLenDimNum_ == 3U) {
-        idx = ((bIdx * static_cast<uint32_t>(numHeadsQ_) + n1Idx) * Qbmax_) + s1Idx;
-    }
     return sparseSeqLenData[idx] > 0 ? static_cast<uint32_t>(sparseSeqLenData[idx]) : 0U;
+}
+
+uint64_t QuantBlockSparseAttentionMetadataCpuKernel::GetBatchBlockNum(uint32_t bIdx) const
+{
+    uint64_t batchBlockNum = 0U;
+    for (uint32_t s1Idx = 0U; s1Idx < Qbmax_; ++s1Idx) {
+        batchBlockNum += GetRowBlockNum(bIdx, s1Idx);
+    }
+    return batchBlockNum;
 }
 
 uint64_t QuantBlockSparseAttentionMetadataCpuKernel::CalcBlockNum() const
 {
-    uint64_t blockNum = 0U;
-    uint32_t totalBN1 = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
-    for (uint32_t bn1Idx = 0U; bn1Idx < totalBN1; ++bn1Idx) {
-        for (uint32_t s1Idx = 0U; s1Idx < Qbmax_; ++s1Idx) {
-            blockNum += GetRowBlockNum(bn1Idx, s1Idx);
-        }
+    uint64_t blockNumPerHead = 0U;
+    for (uint32_t bIdx = 0U; bIdx < static_cast<uint32_t>(batchSize_); ++bIdx) {
+        blockNumPerHead += GetBatchBlockNum(bIdx);
     }
-    return blockNum;
+    return blockNumPerHead * static_cast<uint32_t>(numHeadsQ_);
 }
 
 bool QuantBlockSparseAttentionMetadataCpuKernel::AdvanceToValidRow(AssignContext &assignContext) const
@@ -205,8 +187,11 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::AdvanceToValidRow(AssignContext
     uint32_t totalBN1 = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
     while (assignContext.curBN1Idx < totalBN1) {
         assignContext.curBIdx = assignContext.curBN1Idx / static_cast<uint32_t>(numHeadsQ_);
+        if (assignContext.curS1Idx == 0U && assignContext.bN1Block == 0U) {
+            assignContext.bN1Block = GetBatchBlockNum(assignContext.curBIdx);
+        }
         while (assignContext.curS1Idx < Qbmax_ &&
-               GetRowBlockNum(assignContext.curBN1Idx, assignContext.curS1Idx) == 0U) {
+               GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx) == 0U) {
             assignContext.curS1Idx++;
         }
         if (assignContext.curS1Idx < Qbmax_) {
@@ -215,9 +200,58 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::AdvanceToValidRow(AssignContext
         assignContext.curBN1Idx++;
         assignContext.curS1Idx = 0U;
         assignContext.curS2Idx = 0U;
+        assignContext.bN1Block = 0U;
     }
     assignContext.isFinished = true;
     return false;
+}
+
+void QuantBlockSparseAttentionMetadataCpuKernel::AssignByBatch(AssignContext &assignContext) const
+{
+    if (assignContext.isFinished) {
+        return;
+    }
+
+    const uint32_t totalBN1 = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
+    while (assignContext.curBN1Idx < totalBN1) {
+        if (!AdvanceToValidRow(assignContext)) {
+            return;
+        }
+        if (assignContext.bN1Block == 0U) {
+            assignContext.curBN1Idx++;
+            assignContext.curS1Idx = 0U;
+            assignContext.curS2Idx = 0U;
+            continue;
+        }
+        if (assignContext.coreCache.block + assignContext.bN1Block > assignContext.coreCache.blockLimit) {
+            return;
+        }
+
+        assignContext.coreCache.block += assignContext.bN1Block;
+        assignContext.curBN1Idx++;
+        assignContext.curS1Idx = 0U;
+        assignContext.curS2Idx = 0U;
+        assignContext.bN1Block = 0U;
+    }
+
+    assignContext.isFinished = true;
+}
+
+void QuantBlockSparseAttentionMetadataCpuKernel::AssignByRow(AssignContext &assignContext) const
+{
+    while (!assignContext.isFinished) {
+        if (!AdvanceToValidRow(assignContext)) {
+            break;
+        }
+        uint32_t rowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx);
+        if (assignContext.coreCache.block > 0U &&
+            assignContext.coreCache.block + rowBlock > assignContext.coreCache.blockLimit) {
+            return;
+        }
+        assignContext.coreCache.block += rowBlock;
+        assignContext.bN1Block = assignContext.bN1Block > rowBlock ? assignContext.bN1Block - rowBlock : 0U;
+        assignContext.curS1Idx++;
+    }
 }
 
 void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, SplitResult &result)
@@ -228,6 +262,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, S
     assignContext.curBN1Idx = 0U;
     assignContext.curS1Idx = 0U;
     assignContext.curS2Idx = 0U;
+    assignContext.bN1Block = 0U;
 
     for (uint32_t i = 0; i < static_cast<uint32_t>(aicCoreNum_); i++) {
         if (assignContext.isFinished || assignContext.unassignedBlock == 0U) {
@@ -240,30 +275,14 @@ void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, S
 
         assignContext.coreCache = {};
         uint32_t remainingCore = static_cast<uint32_t>(aicCoreNum_) - i;
-        // 根据剩余基本块数和剩余核数，动态重新计算当前核负载上限。
         assignContext.coreCache.blockLimit =
             (assignContext.unassignedBlock + remainingCore - 1U) / remainingCore;
-        uint32_t curRowBlock = GetRowBlockNum(assignContext.curBN1Idx, assignContext.curS1Idx);
+        uint32_t curRowBlock = GetRowBlockNum(assignContext.curBIdx, assignContext.curS1Idx);
         assignContext.coreCache.blockLimit =
             std::max(assignContext.coreCache.blockLimit, static_cast<uint64_t>(curRowBlock));
 
-        while (!assignContext.isFinished) {
-            if (!AdvanceToValidRow(assignContext)) {
-                break;
-            }
-            uint32_t rowBlock = GetRowBlockNum(assignContext.curBN1Idx, assignContext.curS1Idx);
-            if (rowBlock == 0U) {
-                assignContext.curS1Idx++;
-                continue;
-            }
-            // 当前方案不切S2，一个S1行是最小分配粒度；当前核未分到行时，整行放入以避免空核。
-            if (assignContext.coreCache.block > 0U &&
-                assignContext.coreCache.block + rowBlock > assignContext.coreCache.blockLimit) {
-                break;
-            }
-            assignContext.coreCache.block += rowBlock;
-            assignContext.curS1Idx++;
-        }
+        AssignByBatch(assignContext);
+        AssignByRow(assignContext);
 
         result.bN1End[i] = assignContext.curBN1Idx;
         result.s1End[i] = assignContext.curS1Idx;
@@ -297,43 +316,39 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ScheduleSection(SplitResult &sp
 
 bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetadata(const SplitResult &splitRes)
 {
-    if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
+    if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
         return false;
     }
-    optiling::detail::FaMetaData faMetadata(metaData_->GetData());
-    // uint32_t *ptr = static_cast<uint32_t *>(metaData_->GetData());
-    // ptr[1] = 0U;
-    // ptr[2] = mBaseSize_;
-    // ptr[3] = s2BaseSize_;
+    optiling::detail::qbsaMetaData qbsaMetadata(metadata_->GetData());
     for (uint32_t i = 0; i < optiling::AIC_CORE_NUM; i++) {
-        faMetadata.setFaMetadata(i, optiling::FA_CORE_ENABLE_INDEX, 0U);
-        faMetadata.setFaMetadata(i, optiling::FA_BN1_START_INDEX, 0U);
-        faMetadata.setFaMetadata(i, optiling::FA_M_START_INDEX, 0U);
-        faMetadata.setFaMetadata(i, optiling::FA_S2_START_INDEX, 0U);
-        faMetadata.setFaMetadata(i, optiling::FA_BN1_END_INDEX, 0U);
-        faMetadata.setFaMetadata(i, optiling::FA_M_END_INDEX, 0U);
-        faMetadata.setFaMetadata(i, optiling::FA_S2_END_INDEX, 0U);
-        faMetadata.setFaMetadata(i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_CORE_ENABLE_INDEX, 0U);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_BN1_START_INDEX, 0U);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_M_START_INDEX, 0U);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_S2_START_INDEX, 0U);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_BN1_END_INDEX, 0U);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_M_END_INDEX, 0U);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_S2_END_INDEX, 0U);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
     }
     for (uint32_t i = 0; i < optiling::AIV_CORE_NUM; i++) {
         for (uint32_t j = 0; j < optiling::FD_METADATA_SIZE; j++) {
-            faMetadata.fdMetadata[i * optiling::FD_METADATA_SIZE + j] = 0U;
+            qbsaMetadata.fdMetadata[i * optiling::FD_METADATA_SIZE + j] = 0U;
         }
     }
     for (uint32_t i = 0; i < splitRes.usedCoreNum; i++) {
-        faMetadata.setFaMetadata(i, optiling::FA_CORE_ENABLE_INDEX, 1U);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_CORE_ENABLE_INDEX, 1U);
         uint32_t bn1Start = (i == 0) ? 0U : splitRes.bN1End[i - 1];
         uint32_t bn1End = splitRes.bN1End[i];
         if (i > 0) {
-            faMetadata.setFaMetadata(i, optiling::FA_M_START_INDEX, splitRes.s1End[i - 1]);
-            faMetadata.setFaMetadata(i, optiling::FA_S2_START_INDEX, splitRes.s2End[i - 1]);
+            qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_M_START_INDEX, splitRes.s1End[i - 1]);
+            qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_S2_START_INDEX, splitRes.s2End[i - 1]);
         }
-        faMetadata.setFaMetadata(i, optiling::FA_BN1_START_INDEX, bn1Start);
-        faMetadata.setFaMetadata(i, optiling::FA_BN1_END_INDEX, bn1End);
-        faMetadata.setFaMetadata(i, optiling::FA_M_END_INDEX, splitRes.s1End[i]);
-        faMetadata.setFaMetadata(i, optiling::FA_S2_END_INDEX, splitRes.s2End[i]);
-        faMetadata.setFaMetadata(i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_BN1_START_INDEX, bn1Start);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_BN1_END_INDEX, bn1End);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_M_END_INDEX, splitRes.s1End[i]);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_S2_END_INDEX, splitRes.s2End[i]);
+        qbsaMetadata.setQbsaMetadata(i, optiling::QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX,
                                  splitRes.firstFdDataWorkspaceIdx[i]);
     }
     return true;
