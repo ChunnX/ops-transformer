@@ -290,6 +290,11 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapes()
                         tilingData_.nv, tilingData_.nk),
                 return ge::GRAPH_FAILED);
 
+    uint64_t batchHeadTaskNum = static_cast<uint64_t>(tilingData_.b) * static_cast<uint64_t>(tilingData_.nv);
+    if (batchHeadTaskNum > 0 && batchHeadTaskNum < tilingData_.vectorCoreNum) {
+        tilingData_.vectorCoreNum = static_cast<uint32_t>(batchHeadTaskNum);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
