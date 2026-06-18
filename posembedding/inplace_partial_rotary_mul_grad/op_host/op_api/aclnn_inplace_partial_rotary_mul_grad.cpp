@@ -15,22 +15,20 @@
 extern "C" {
 #endif
 
-aclnnStatus aclnnInplacePartialRotaryMulGradGetWorkspaceSize(
-    const aclTensor* dyRef, const aclTensor* cos, const aclTensor* sin, const aclTensor* xOptional,
-    int64_t rotaryMode, const aclIntArray* partialSlice,
-    const aclTensor* dcosOut, const aclTensor* dsinOut,
-    uint64_t* workspaceSize, aclOpExecutor** executor)
+aclnnStatus aclnnInplacePartialRotaryMulGradGetWorkspaceSize(const aclTensor *dyRef, const aclTensor *cos,
+                                                             const aclTensor *sin, const aclTensor *xOptional,
+                                                             int64_t rotaryMode, const aclIntArray *partialSlice,
+                                                             aclTensor *dcosOut, aclTensor *dsinOut,
+                                                             uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    aclnnStatus ret = aclnnInnerInplacePartialRotaryMulGradGetWorkspaceSize(
-        const_cast<aclTensor*>(dyRef), cos, sin, xOptional,
-        rotaryMode, partialSlice,
-        const_cast<aclTensor*>(dcosOut), const_cast<aclTensor*>(dsinOut),
-        workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerInplacePartialRotaryMulGradGetWorkspaceSize(const_cast<aclTensor *>(dyRef), cos, sin,
+                                                                            xOptional, rotaryMode, partialSlice,
+                                                                            dcosOut, dsinOut, workspaceSize, executor);
     return ret;
 }
 
-aclnnStatus aclnnInplacePartialRotaryMulGrad(void* workspace, uint64_t workspaceSize,
-                                              aclOpExecutor* executor, aclrtStream stream)
+aclnnStatus aclnnInplacePartialRotaryMulGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                             aclrtStream stream)
 {
     aclnnStatus ret = aclnnInnerInplacePartialRotaryMulGrad(workspace, workspaceSize, executor, stream);
     return ret;
