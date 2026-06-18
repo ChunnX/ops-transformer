@@ -682,11 +682,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalWeightNzScaleFactors()
         leftL1Size / (std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize)));
     OP_CHECK_IF(
         scaleInit == 0,
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-            inputParams_.opType, "m, n, k, groupNum",
-            ListToString(std::to_string(inputParams_.mSize), std::to_string(inputParams_.nSize),
-                         std::to_string(inputParams_.kSize), std::to_string(inputParams_.groupNum)),
-            "when inputs are in mx quant mode, scaleFactor can not be 0"),
+        OP_LOGE(context_->GetNodeName(),
+                "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactor should not be equal to 0.",
+                inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum),
         return ge::GRAPH_FAILED);
 
     uint32_t scaleFactorAMax =

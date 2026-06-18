@@ -30,16 +30,17 @@ PR6858 touched 源文件：
 
 ## 结果
 
-- 整改日志数量：8
-- 排除/未改候选数量：8
+- 整改日志数量：7
+- 排除/未改候选数量：9
 - 修改源码文件：
   - `gmm/grouped_matmul_swiglu_quant_v2/op_api/aclnn_grouped_matmul_swiglu_quant_v2.cpp`
   - `gmm/grouped_matmul_swiglu_quant_v2/op_host/op_tiling/arch35/grouped_matmul_swiglu_quant_v2_basic_tiling.cpp`
 
 ## 说明
 
-- PR5419 的用户可修正参数类日志已改为 `EZ0009`、`EZ0012`、`EZ0013`、`EZ0020`、`EZ0027` 模板。
+- PR5419 的用户可修正参数类日志已改为 `EZ0009`、`EZ0012`、`EZ0013`、`EZ0020` 模板。
 - PR5419 中 `CheckXXX failed`、`CalL1Tiling failed`、`CalcLeftL1Size failed`、`L1 space overflow` 按 skill 归为内部汇总/资源类日志，进入排除表。
+- PR5419 中 `CalWeightNzScaleFactors` 的 `scaleInit/scaleFactor` 为 tiling 内部派生计算值，不是外部输入参数，进入排除表并保持内部 `OP_LOGE`。
 - PR6858 diff 中有 3 处新增 OP_LOGE 候选，但当前 `haojie0618` 分支没有这些新增检查代码；为遵守“不改变代码逻辑”，本次未把 PR6858 的检查逻辑新增到源码，只在排除表记录为当前分支不适用。
 
 ## 验证
