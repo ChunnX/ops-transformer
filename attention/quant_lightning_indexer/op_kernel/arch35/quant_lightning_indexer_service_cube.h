@@ -202,12 +202,16 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                 s2GmOffset + s2BasicBlock_ > s2ProcessSize ? s2ProcessSize - s2GmOffset : s2BasicBlock_;
             if (PAGE_ATTENTION) {
                 KeyNd2NzForPA(s2L1RealSize, s2GmBaseOffset + s2GmOffset, runInfo);
-            }else {
+                // MXFP8: PA 路径需要绝对偏移
+                if constexpr (IS_MXFP8) {
+                    LoadKScaleToL1(s2L1RealSize, s2GmBaseOffset + s2GmOffset, runInfo);
+                }
+            } else {
                 KeyNd2Nz(s2L1RealSize, s2GmOffset, runInfo);
-            }
-            // MXFP8: 加载 kScale 到 L1（与 Key 数据一起）
-            if constexpr (IS_MXFP8) {
-                LoadKScaleToL1(s2L1RealSize, s2GmBaseOffset + s2GmOffset, runInfo);
+                // MXFP8: 非 PA 路径只传循环内相对偏移（tensorKeyScaleOffset 已含 s2GmBaseOffset）
+                if constexpr (IS_MXFP8) {
+                    LoadKScaleToL1(s2L1RealSize, s2GmOffset, runInfo);
+                }
             }
 
             SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
