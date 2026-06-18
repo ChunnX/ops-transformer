@@ -33,26 +33,6 @@ using AscendC::CrossCoreWaitFlag;
 #define BSA_ENABLE_C1_TO_V1_SYNC 1
 #endif
 
-#ifndef BSA_ENABLE_INIT_SYNCALL
-#define BSA_ENABLE_INIT_SYNCALL 0
-#endif
-
-#ifndef BSA_ENABLE_PRE_TOPK_SYNCALL
-#define BSA_ENABLE_PRE_TOPK_SYNCALL 0
-#endif
-
-#ifndef BSA_ENABLE_PRE_TOPK_COMPUTE
-#define BSA_ENABLE_PRE_TOPK_COMPUTE 0
-#endif
-
-#ifndef BSA_ENABLE_TOPK_STAGE
-#define BSA_ENABLE_TOPK_STAGE 0
-#endif
-
-#ifndef BSA_ENABLE_HEAD_SYNCALL
-#define BSA_ENABLE_HEAD_SYNCALL 0
-#endif
-
 #ifndef BSA_ENABLE_FIXPIPE_PROBE
 #define BSA_ENABLE_FIXPIPE_PROBE 1
 #endif
@@ -344,9 +324,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitWorkspace(__gm__ uint8_
     maskTmpGm.SetGlobalBuffer((__gm__ uint8_t *)(workspace + constInfo.maskOffset),
                               outInfo.maskSize / sizeof(uint8_t));
 
-    if (BSA_ENABLE_INIT_SYNCALL) {
-        SyncAll();
-    }
+    SyncAll();
 }
 
 template <typename BSAT>
@@ -456,16 +434,10 @@ template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 {
     if ASCEND_IS_AIV {
-        if (BSA_ENABLE_PRE_TOPK_COMPUTE) {
-            vectorService.AllocEventID();
-        }
-        if (BSA_ENABLE_TOPK_STAGE) {
-            radixTopKService.AllocEventID();
-        }
+        vectorService.AllocEventID();
+        radixTopKService.AllocEventID();
     } else {
-        if (BSA_ENABLE_PRE_TOPK_COMPUTE) {
-            matmulService.AllocEventID();
-        }
+        matmulService.AllocEventID();
     }
 
     uint32_t startRow, endRow;
@@ -478,12 +450,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
         for (uint32_t headIdx = 0; headIdx < constInfo.numHeads; headIdx++) {
 
             if (BSA_ENABLE_PRE_TOPK_PIPELINE) {
-                if (BSA_ENABLE_PRE_TOPK_COMPUTE) {
-                    ProcessPoolingK(batchIdx, headIdx);
-                }
-                if (BSA_ENABLE_PRE_TOPK_SYNCALL) {
-                    SyncAll<false>();
-                }
+                ProcessPoolingK(batchIdx, headIdx);
+                SyncAll<false>();
 
                 for (uint32_t qChunkStart = startRow; qChunkStart < endRow;
                      qChunkStart += constInfo.qChunkSize) {
@@ -493,19 +461,17 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 
                     uint32_t tokenStart = qChunkStart * constInfo.blockShapeX;
                     uint32_t tokenEnd = BSAMin(qChunkEnd * constInfo.blockShapeX, constInfo.maxQSeqlen);
-                    if (BSA_ENABLE_PRE_TOPK_COMPUTE) {
-                        ProcessPoolingQ(batchIdx, headIdx, tokenStart, tokenEnd);
-                    }
+                    ProcessPoolingQ(batchIdx, headIdx, tokenStart, tokenEnd);
 
                     uint32_t qChunkFlagIdx = (qChunkStart / constInfo.qChunkSize) & 1;
                     if ASCEND_IS_AIV {
                         if (BSA_ENABLE_V1_TO_C1_SYNC) {
-                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
+                            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
                         }
                     }
                     if ASCEND_IS_AIC {
                         if (BSA_ENABLE_V1_TO_C1_SYNC) {
-                        CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
+                            CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
                         }
                     }
 
@@ -513,37 +479,23 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
                     T lFinal = 0.0f;
                     ProcessMatmulSoftmax(batchIdx, headIdx, qChunkStart, curQChunkSize, mFinal, lFinal);
 
-                    if (BSA_ENABLE_PRE_TOPK_COMPUTE) {
-                        ProcessSoftmaxSecondPass(qChunkStart, qChunkEnd, mFinal, lFinal);
-                    }
+                    ProcessSoftmaxSecondPass(qChunkStart, qChunkEnd, mFinal, lFinal);
                 }
-                if (BSA_ENABLE_PRE_TOPK_SYNCALL) {
-                    SyncAll<false>();
-                }
+                SyncAll<false>();
             }
 
             if ASCEND_IS_AIV {
-                if (BSA_ENABLE_TOPK_STAGE) {
-                    radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx);
-                }
+                radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx);
             }
-            if (BSA_ENABLE_HEAD_SYNCALL) {
-                SyncAll();
-            }
+            SyncAll();
         }
     }
 
     if ASCEND_IS_AIV {
-        if (BSA_ENABLE_PRE_TOPK_COMPUTE) {
-            vectorService.FreeEventID();
-        }
-        if (BSA_ENABLE_TOPK_STAGE) {
-            radixTopKService.FreeEventID();
-        }
+        vectorService.FreeEventID();
+        radixTopKService.FreeEventID();
     } else {
-        if (BSA_ENABLE_PRE_TOPK_COMPUTE) {
-            matmulService.FreeEventID();
-        }
+        matmulService.FreeEventID();
     }
 }
 
@@ -587,10 +539,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
         uint32_t curKChunkSize = kChunkEnd - kChunkStart;
 
         if ASCEND_IS_AIC {
-            if (BSA_ENABLE_PRE_TOPK_COMPUTE) {
-                matmulService.ComputeMatmulChunk(qChunkStart, curQChunkSize,
-                                                 kChunkStart, curKChunkSize);
-            }
+            matmulService.ComputeMatmulChunk(qChunkStart, curQChunkSize,
+                                             kChunkStart, curKChunkSize);
             uint32_t kChunkFlagIdx = (kChunkStart / constInfo.kChunkSize) & 1;
             if (BSA_ENABLE_C1_TO_V1_SYNC) {
                 if (BSA_ENABLE_FIXPIPE_PROBE) {
@@ -605,11 +555,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
             if (BSA_ENABLE_C1_TO_V1_SYNC) {
                 CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[kChunkFlagIdx]);
             }
-            if (BSA_ENABLE_PRE_TOPK_COMPUTE) {
-                vectorService.OnlineSoftmaxFirstPassChunk(
-                    qChunkStart, curQChunkSize, kChunkStart, curKChunkSize,
-                    mFinal, lFinal);
-            }
+            vectorService.OnlineSoftmaxFirstPassChunk(
+                qChunkStart, curQChunkSize, kChunkStart, curKChunkSize,
+                mFinal, lFinal);
         }
     }
 }
