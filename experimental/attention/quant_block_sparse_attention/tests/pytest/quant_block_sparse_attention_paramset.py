@@ -10,112 +10,147 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import os
-
-EXCEL_COLUMNS = [
-    "case_name", "enable",
-    "B", "N1", "N2", "S1", "S2", "D",
-    "sparse_q_block_size", "sparse_kv_block_size",
-    "sparse_count", "sparse_pattern",
-    "block_table_pattern",
-    "layout_q", "layout_kv", "layout_sparse_indices", "output_dtype",
-    "actlen_mode", "quant_mode", "mask_mode",
-    "scale_pattern", "p_scale_value", "softmax_scale",
-    "return_softmax_lse", "seed",
-]
-
-PA_BLOCK_PADDING_BYTES = 0
-
-EXCEL_FILENAME = "cases.xlsx"
-
-_INT_COLS = {"B", "N1", "N2", "S1", "S2", "D",
-             "sparse_q_block_size", "sparse_kv_block_size",
-             "sparse_count", "quant_mode", "mask_mode", "seed"}
-_FLOAT_COLS = {"p_scale_value", "softmax_scale"}
-_BOOL_COLS = {"return_softmax_lse"}
+import torch
 
 
-def _get_excel_path():
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), EXCEL_FILENAME)
+COMMON = {
+    "Testcase_Name": [None],
+    "layout_kv": ["PA_BNSD"],
+    "output_dtype": [torch.bfloat16],
+    "N1": [32],
+    "N2": [4],
+    "D": [128],
+    "sparse_q_block_size": [128],
+    "sparse_kv_block_size": [128],
+    "softmax_scale": [0.088388],
+    "layout_sparse_indices": ["B_N_Qb_Kb"],
+    "quant_mode": [1],
+    "mask_mode": [3],
+    "pa_block_padding_bytes": [0],
+    "S1EQS2": [False],
+}
 
 
-def _get_dtype_map():
-    import torch as _torch
-    return {
-        "bfloat16": _torch.bfloat16,
-        "float16": _torch.float16,
-        "float32": _torch.float32,
-    }
+def _case(**kwargs):
+    params = dict(COMMON)
+    params.update(kwargs)
+    return params
 
 
-def _parse_bool(val):
-    if isinstance(val, bool):
-        return val
-    if isinstance(val, str):
-        return val.strip().upper() == "TRUE"
-    return bool(val)
+TEST_PARAMS = {
+    "TND_TYPICAL_CASE": _case(
+        layout_q=["TND"],
+        B=[4],
+        S1=[1024],
+        S2=[1024],
+        sparse_count=[8],
+        return_softmax_lse=[True],
+        actlen_mode=["full"],
+        sparse_pattern=["sequential"],
+        scale_pattern=["ones"],
+        block_table_pattern=["sequential"],
+        p_scale_value=[1.0],
+        seed=[3],
+    ),
+    "tnd_dense_equiv": _case(
+        layout_q=["TND"],
+        B=[1],
+        S1=[128],
+        S2=[256],
+        sparse_count=[2],
+        return_softmax_lse=[True],
+        actlen_mode=["full"],
+        sparse_pattern=["sequential"],
+        scale_pattern=["ones"],
+        block_table_pattern=["sequential"],
+        p_scale_value=[1.0],
+        seed=[3],
+    ),
+    "bsnd_scale_gradient": _case(
+        layout_q=["BSND"],
+        B=[1],
+        S1=[128],
+        S2=[256],
+        sparse_count=[2],
+        return_softmax_lse=[False],
+        actlen_mode=["full"],
+        sparse_pattern=["sequential"],
+        scale_pattern=["gradient"],
+        block_table_pattern=["sequential"],
+        p_scale_value=[0.125],
+        seed=[7],
+    ),
+    "bsnd_partial_tail": _case(
+        layout_q=["BSND"],
+        B=[1],
+        S1=[128],
+        S2=[192],
+        sparse_count=[2],
+        return_softmax_lse=[True],
+        actlen_mode=["full"],
+        sparse_pattern=["tail"],
+        scale_pattern=["ones"],
+        block_table_pattern=["random"],
+        p_scale_value=[1.0],
+        seed=[11],
+    ),
+    "bsnd_empty_sparse": _case(
+        layout_q=["BSND"],
+        B=[1],
+        S1=[128],
+        S2=[256],
+        sparse_count=[2],
+        return_softmax_lse=[True],
+        actlen_mode=["full"],
+        sparse_pattern=["empty"],
+        scale_pattern=["ones"],
+        block_table_pattern=["sequential"],
+        p_scale_value=[1.0],
+        seed=[13],
+    ),
+    "tnd_random_actlen": _case(
+        layout_q=["TND"],
+        B=[2],
+        S1=[128],
+        S2=[256],
+        sparse_count=[2],
+        return_softmax_lse=[True],
+        actlen_mode=["random"],
+        sparse_pattern=["random"],
+        scale_pattern=["ones"],
+        block_table_pattern=["random"],
+        p_scale_value=[1.0],
+        seed=[17],
+    ),
+    "bsnd_left_up_causal": _case(
+        layout_q=["BSND"],
+        B=[1],
+        S1=[256],
+        S2=[256],
+        sparse_count=[2],
+        return_softmax_lse=[True],
+        actlen_mode=["full"],
+        sparse_pattern=["causal"],
+        scale_pattern=["ones"],
+        block_table_pattern=["sequential"],
+        p_scale_value=[1.0],
+        seed=[19],
+    ),
+    "bsnd_right_down_causal": _case(
+        layout_q=["BSND"],
+        B=[1],
+        S1=[256],
+        S2=[128],
+        sparse_count=[1],
+        return_softmax_lse=[True],
+        actlen_mode=["full"],
+        sparse_pattern=["causal"],
+        scale_pattern=["ones"],
+        block_table_pattern=["sequential"],
+        p_scale_value=[1.0],
+        seed=[23],
+    ),
+}
 
-
-def _parse_int(val):
-    if val is None:
-        return None
-    return int(val)
-
-
-def _parse_float(val):
-    if val is None:
-        return None
-    return float(val)
-
-
-def load_cases_from_excel(excel_path=None):
-    from openpyxl import load_workbook
-    if excel_path is None:
-        excel_path = _get_excel_path()
-    wb = load_workbook(excel_path, read_only=True, data_only=True)
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    wb.close()
-    if not rows:
-        return {}
-    header = [str(c).strip() for c in rows[0]]
-    dtype_map = _get_dtype_map()
-    import torch as _torch
-    cases = {}
-    for row in rows[1:]:
-        record = dict(zip(header, row))
-        case_name = record.get("case_name")
-        if case_name is None:
-            continue
-        case_name = str(case_name).strip()
-        if not case_name:
-            continue
-
-        if not _parse_bool(record.get("enable", False)):
-            continue
-
-        params = {}
-        params["Testcase_Name"] = [case_name]
-        for col in EXCEL_COLUMNS:
-            if col in ("case_name", "enable"):
-                continue
-            val = record.get(col)
-            if col in _INT_COLS:
-                val = _parse_int(val)
-            elif col in _FLOAT_COLS:
-                val = _parse_float(val)
-            elif col in _BOOL_COLS:
-                val = _parse_bool(val)
-            elif col == "output_dtype":
-                val = dtype_map.get(str(val).strip(), _torch.bfloat16)
-            params[col] = [val]
-
-        params["pa_block_padding_bytes"] = [PA_BLOCK_PADDING_BYTES]
-        params["S1EQS2"] = [params["S1"][0] == params["S2"][0]]
-        cases[case_name] = params
-    return cases
-
-
-_excel_path = _get_excel_path()
-TEST_PARAMS = load_cases_from_excel(_excel_path)
-ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
+ENABLED_PARAMS = [TEST_PARAMS["tnd_dense_equiv"]]
+# ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
