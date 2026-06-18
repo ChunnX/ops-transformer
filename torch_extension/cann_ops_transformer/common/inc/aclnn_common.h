@@ -943,7 +943,7 @@ auto DecodeDevice(Ts&... args) -> at::Device
             initMemFunc(nullptr, false);                                                                     \
         }                                                                                                    \
         auto deterministic = at::globalContext().deterministicAlgorithms();                                  \
-        alcrtCtxSetSysParamOpt(aclSysParamOpt::ACL_OPT_DETERMINISTIC, deterministic ? 1 : 0);                \
+        aclrtCtxSetSysParamOpt(aclSysParamOpt::ACL_OPT_DETERMINISTIC, deterministic ? 1 : 0);                \
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr);               \
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);   \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params);                                \
