@@ -74,7 +74,7 @@ public:
         this->Attr("transpose_weight").AttrType(OPTIONAL).Bool(false);
         this->Attr("group_list_type").AttrType(OPTIONAL).Int(0);
         this->Attr("tuning_config").AttrType(OPTIONAL).ListInt({0});
-        this->Attr("quant_mode").AttrType(REQUIRED).String();
+        this->Attr("quant_mode").AttrType(OPTIONAL).String("");
         this->Attr("y_dtype").AttrType(OPTIONAL).Int(DEFAULT_Y_DTYPE);
         this->Attr("round_mode").AttrType(OPTIONAL).String("rint");
         this->Attr("scale_alg").AttrType(OPTIONAL).Int(DEFAULT_SCALE_ALG);
