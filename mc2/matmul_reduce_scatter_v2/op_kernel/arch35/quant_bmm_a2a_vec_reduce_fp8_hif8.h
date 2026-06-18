@@ -485,9 +485,7 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerb
 
     // 单次通信的元素数量 (M * N)
     const uint64_t recvCount = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.N);
-    // A 矩阵单个 Tile 的字节偏移 (M * Ka * sizeof(AType))
     const uint64_t aTileBytes = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.Ka) * sizeof(AType);
-    // Scale 矩阵单个 Tile 的字节偏移
     const uint64_t scaleBlockM = static_cast<uint64_t>(tiling.M / BLOCK_SIZE);
     const uint64_t scaleBlockK = CeilDiv(static_cast<uint64_t>(tiling.Ka), BLOCK_SIZE);
     const uint64_t scaleTileBytes = scaleBlockM * scaleBlockK * sizeof(ScaleType);
