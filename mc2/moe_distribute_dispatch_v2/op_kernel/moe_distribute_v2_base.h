@@ -184,6 +184,7 @@ __aicore__ inline void AIVRDMAPostSend(
     auto curHardwareTailAddr = qp_ctx_entry->tailAddr;
     auto QP_DEPTH = qp_ctx_entry->depth;
     // uint64_t shift = 11;
+    uint64_t shift = 15;
     // uint64_t shift = 63U - AscendC::CountLeadingZero(QP_DEPTH);
 
     PipeBarrier<PIPE_ALL>();
@@ -266,6 +267,7 @@ __aicore__ inline void AIVRDMAPostRead(
     auto QP_DEPTH = qp_ctx_entry->depth;
     // uint64_t shift = 63U - AscendC::CountLeadingZero(QP_DEPTH);
     // uint64_t shift = 11;
+    uint64_t shift = 15;
 
     PipeBarrier<PIPE_ALL>();
     if (flag != -1) {
