@@ -20,7 +20,7 @@ import math
 import ctypes
 import copy
 import cann_ops_transformer
-from cann_ops_transformer.ops import lightning_indexer_v2, lightning_indexer_metadata
+from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
 
 class GeneralizedLIV2:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
@@ -723,7 +723,7 @@ def liv2_output_single(params):
 
     # metadata = metadata.npu()
     metadata = None
-    npu_result, npu_topk_value = lightning_indexer_v2(query, key, weights,
+    npu_result, npu_topk_value = lightning_indexer(query, key, weights,
                                              cu_seqlens_q = cu_seqlens_q,
                                              cu_seqlens_k = cu_seqlens_k,
                                              seqused_q = seqused_q,
