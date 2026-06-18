@@ -345,10 +345,17 @@ bool FlashAttnTilingImpl::CheckNeedInitOutput() const
         return faInfo_->s1Size > faInfo_->s2Size;
     }
     if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
-        if (faInfo_->winRight == -1) {
+        const int64_t seqDiff = static_cast<int64_t>(faInfo_->s1Size) - static_cast<int64_t>(faInfo_->s2Size);
+        if (seqDiff <= 0) {
             return false;
         }
-        return (faInfo_->s1Size - faInfo_->s2Size) > static_cast<uint64_t>(faInfo_->winRight);
+        if (faInfo_->winLeft != -1 && seqDiff > faInfo_->winLeft) {
+            return true;
+        }
+        if (faInfo_->winRight != -1 && seqDiff > faInfo_->winRight) {
+            return true;
+        }
+        return false;
     }
     return false;
 }
