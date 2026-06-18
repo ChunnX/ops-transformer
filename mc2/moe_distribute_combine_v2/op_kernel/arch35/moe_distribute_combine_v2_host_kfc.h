@@ -1,17 +1,3 @@
-/**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- **/
-
-/*!
- * \file moe_distribute_combine_v2_host_kfc.h
- * \brief
- */
 #ifndef MOE_DISTRIBUTE_COMBINE_V2_HOST_KFC_H
 #define MOE_DISTRIBUTE_COMBINE_V2_HOST_KFC_H
 
@@ -23,14 +9,19 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_v2_tiling.h"
+#include "../moe_distribute_combine_v2_quant.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
+// #include "combine_log.h"
 #if __has_include("../../moe_distribute_dispatch_v2/check_winsize.h")
-#include "../../common/inc/kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../moe_distribute_dispatch_v2/check_winsize.h"
 #include "../../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
+#include "../../moe_distribute_dispatch_v2/moe_distribute_v2_constant.h"
 #else
-#include "../../../common/inc/kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/moe_distribute_base.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/check_winsize.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
+#include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_constant.h"
 #endif
 
 namespace MoeDistributeCombineV2Impl {
@@ -83,18 +74,19 @@ constexpr uint32_t BLOCK_COPY_BYTES_SECOND = SPLIT_BLOCK_SIZE - BLOCK_COPY_BYTES
 constexpr uint32_t MIN_AVAIL_UB_SIZE = 8192U; // 单位字节
 constexpr uint32_t SCALE_FACTOR_CONSTANT = 4U; // 单位字节
 
-#define CombineV2HostTypeClass                                                                                         \
-    typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter, bool IsInt8Quant
-#define CombineV2HostTypeFunc ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, IsInt8Quant
+#define CombineV2HostTypeClass typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter, \
+    uint8_t QuantMode, bool HasAddRmsNorm
+#define CombineV2HostTypeFunc ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm
 
 using namespace MoeDistributeV2Base;
 using namespace AscendC;
-
+using namespace Mc2Kernel;
+using namespace Mc2Aclnn;
 template <CombineV2HostTypeClass>
 class MoeDistributeCombineV2HostKfc {
 public:
     __aicore__ inline MoeDistributeCombineV2HostKfc(){};
-    __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
                                 GM_ADDR tpSendCount, GM_ADDR expertScales, GM_ADDR expandScales, GM_ADDR xActiveMask,
                                 GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX, GM_ADDR constExpertAlpha1,
                                 GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR XOut, GM_ADDR workspaceGM,
@@ -107,7 +99,7 @@ private:
                                               GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo,
                                               GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
                                               GM_ADDR constExpertV, GM_ADDR XOut);
-    __aicore__ inline void InitAttrs(const MoeDistributeCombineV2TilingData *tilingData);
+    __aicore__ inline void InitAttrs(GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData);
     __aicore__ inline void InitTilingAttrs(const MoeDistributeCombineV2TilingData *tilingData);
     __aicore__ inline void BuffInit();
     __aicore__ inline void AlltoAllBuffInitAndMaskCal();
@@ -145,25 +137,17 @@ private:
 
     __aicore__ GM_ADDR GetWinAddrByRankId(const int32_t rankId)
     {
-        return GetBaseWindAddrByRankId(epWinContext_, rankId, epRankIdOriginal_) + winDataSizeOffsetEp_;
+        return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffsetEp_;
     }
 
     __aicore__ GM_ADDR GetWinAddrByRankId(const int32_t rankId, const uint8_t domain)
     {
-        if (domain == EP_DOMAIN) {
-            return GetBaseWindAddrByRankId(epWinContext_, rankId, epRankIdOriginal_) + winDataSizeOffsetEp_;
-        } else {
-            return GetBaseWindAddrByRankId(tpWinContext_, rankId, tpRankId_) + winDataSizeOffsetTp_;
-        }
+        return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffsetEp_;
     }
 
     __aicore__ GM_ADDR GetWinStateAddrByRankId(const int32_t rankId, const uint8_t domain)
     {
-        if (domain == EP_DOMAIN) {
-            return GetBaseWindStateAddrByRankId(epWinContext_, rankId, epRankIdOriginal_) + winStatusOffset_;
-        } else {
-            return GetBaseWindStateAddrByRankId(tpWinContext_, rankId, tpRankId_) + winStatusOffset_;
-        }
+        return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + winStatusOffset_;
     }
 
     TPipe *tpipe_{nullptr};
@@ -192,6 +176,8 @@ private:
     GM_ADDR stateGM_;
     GM_ADDR maskCalcWorkspaceGM_;
     GM_ADDR statusDataSpaceGm_;
+
+    __gm__ Mc2MoeContext* mc2Context_{nullptr};
 
     LocalTensor<XType> winTpSendCountTensor_;
     LocalTensor<ExpandXType> gmTpSendCountTensor_;
@@ -437,15 +423,23 @@ private:
     TBuf<> outBuf1_;
     TBuf<> localOutTempBuf_;
     LocalTensor<uint64_t> localCntTensor_;
+
+    // 量化
+    uint32_t hExpandXAlignSize_{0};
+    TBuf<> mulBuf_;
+    TBuf<> rowTmpFloatBuf_;
+    TBuf<> quantTmpBuf_;
+    MoeDistributeCombineQuant<ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm> quantInst_;
 };
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Init(
-    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR tpSendCount,
+    GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR tpSendCount,
     GM_ADDR expertScales, GM_ADDR expandScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo,
     GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR XOut,
     GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData)
 {
+    AscendC::printf("printf Init enter!");
     tpipe_ = pipe;
     coreIdx_ = GetBlockIdx();
     workspaceGM_ = workspaceGM;
@@ -454,10 +448,13 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Ini
     maskCalcWorkspaceGM_ = workspaceGM + SYSTEM_NEED_WORKSPACE + coreIdx_ * MASK_CALC_NEED_WORKSPACE;
     InitInputAndOutput(expandX, expertIds, expandIdx, epSendCount, expertScales, expandScales, xActiveMask,
                        sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, XOut);
-    InitAttrs(tilingData);
-    // 检查hcclwinsize是否越界
-    auto realWinSize = GetWinSize(epWinContext_);
-    CheckWindowSize(totalWinSizeEp_, realWinSize, tpipe_, XOut);
+    // context切换
+    mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
+    InitAttrs(mc2Context, tilingData);
+    if constexpr (QuantMode > UNQUANT) {
+        quantInst_.QuantInit(scaleNum_, hExpandXAlign32Size_, hExpandXAlignSize_, scaleNumAlignSize_,
+            hFloatAlign256Size_, tokenScaleCnt_, axisH_);
+    }
     PipeBarrier<PIPE_ALL>();
     // 当前win区划分为前后两半区，连续两次dispatch，切换半区
     winDataSizeOffsetEp_ =
@@ -506,7 +503,17 @@ MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::CommunInit(const MoeDistri
     tokenDataBytes_ = axisH_ * sizeof(ExpandXType);
     tokenDataBytesAlign_ = RoundUp<uint32_t>(tokenDataBytes_, UB_ALIGN); // UB_ALIGN=32B
     metaBytesAlign_ = RoundUp<uint32_t>(TOKEN_META_BYTES, UB_ALIGN);
-    tokenMetaBytes_ = tokenDataBytesAlign_ + metaBytesAlign_;
+    if constexpr (QuantMode > UNQUANT) {
+        if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+            uint32_t mxfp8TotalBytes = Align256(axisH_) + scaleNum_ * sizeof(uint16_t);
+            tokenMetaBytes_ = RoundUp<uint32_t>(mxfp8TotalBytes, UB_ALIGN) + metaBytesAlign_;
+        } else {
+            uint32_t quantDataSize = tokenScaleCnt_ * sizeof(ExpandXType);
+            tokenMetaBytes_ = RoundUp<uint32_t>(quantDataSize, UB_ALIGN) + metaBytesAlign_;
+        }
+    } else {
+        tokenMetaBytes_ = tokenDataBytesAlign_ + metaBytesAlign_;
+    }
     flagU64CopyCntAlign_ = RoundUp<uint32_t>(FLAG_CNT_U64 * sizeof(uint64_t), UB_ALIGN) / sizeof(uint64_t); // 4
     maxLocalBs_ = globalBs_ * axisK_ / serverRankSize_;
     // token 数据需要的 480B block 数（向上取整）
@@ -597,18 +604,21 @@ MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitTilingAttrs(
 
 template <CombineV2HostTypeClass>
 __aicore__ inline void
-MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitAttrs(const MoeDistributeCombineV2TilingData *tilingData)
+MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitAttrs(GM_ADDR mc2Context, const MoeDistributeCombineV2TilingData *tilingData)
 {
     InitTilingAttrs(tilingData);
+    uint32_t epRankIdHccl{0};
+    uint32_t epWorldSizeHccl{0};
     uint32_t sharedExpertRankNum = tilingData->moeDistributeCombineV2Info.sharedExpertRankNum;
-    auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    epWinContext_ = (__gm__ HcclOpParam *)contextGM0;
-    statusDataSpaceGm_ = GetStatusDataSpaceGm(epWinContext_); // (GM_ADDR)(epWinContext_->localWindowsExp);
+    mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
+    epRankIdHccl = mc2Context_->epRankId;
+    epWorldSizeHccl = tilingData->moeDistributeCombineV2Info.epWorldSize;
+    statusDataSpaceGm_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankIdHccl]);
     selfDataStatusGMTensor_.SetGlobalBuffer(
         (__gm__ uint32_t *)(statusDataSpaceGm_ + STATE_WIN_OFFSET + coreIdx_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
-    dataState_ = 0; // 标志位，标志0区还是1区
+    dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBs_, dataStateBuf); // 标志位，标志0区还是1区
     sharedExpertNum_ = tilingData->moeDistributeCombineV2Info.sharedExpertNum;
     moeSendNum_ = epWorldSize_ * moeExpertPerRankNum_; // 部署在所有Rank上的总专家数
     if (epRankId_ < sharedExpertRankNum) {
@@ -624,6 +634,16 @@ MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::InitAttrs(const MoeDistrib
     hAlignWinSize_ = Ceil(hExpandXTypeSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     hAlignWinCnt_ = hAlignWinSize_ / sizeof(ExpandXType);
     bsKNum_ = axisBS_ * axisK_;
+
+    // INT8/MXFP8 量化
+    if constexpr ((QuantMode == INT8_COMM_QUANT) || (QuantMode == MXFP8_E5M2_COMM_QUANT) ||
+        (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+        constexpr uint32_t kA5FusedQuantAlign = ALIGNED_LEN * INT8_DIVIVE;
+        uint32_t hFloatA5FusedQuantSize = Ceil(hFloatSize, kA5FusedQuantAlign) * kA5FusedQuantAlign;
+        hFloatAlign32Size_ = hFloatA5FusedQuantSize;
+        hFloatAlign256Size_ = hFloatA5FusedQuantSize;
+    }
+    hExpandXAlignSize_ = hExpandXAlign32Size_;
 }
 
 template <CombineV2HostTypeClass>
@@ -637,6 +657,26 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Buf
     tpipe_->InitBuffer(tempBuf_, BATCH_SIZE * tokenMetaBytes_);
     tpipe_->InitBuffer(localOutTempBuf_, hFloatAlign32Size_);
     tpipe_->InitBuffer(shareFlagUbBuf_, (flagU64CopyCntAlign_) * sizeof(uint64_t));
+
+    if constexpr (QuantMode > UNQUANT) {
+        // tpipe_->InitBuffer(gmTpSendCountQueue_, BUFFER_NUM, hExpandXAlignSize_);   // 28K 存储搬入token
+        uint32_t tokenScaleAlign32Size = Ceil(tokenScaleCnt_ * sizeof(ExpandXType), UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(xOutQueue_, BUFFER_NUM, tokenScaleAlign32Size);              // 28K 输出token搬运
+        tpipe_->InitBuffer(xAbsBuf_, hFloatAlign256Size_);                              // 28K blockReduceMax计算及后续Cast计算，256对齐
+        uint32_t hFloatAlign256Cnt = hFloatAlign256Size_ / sizeof(float);
+        tpipe_->InitBuffer(xMaxBuf_, (hFloatAlign256Cnt / REDUCE_NUM) * sizeof(float));  // 3.5K 存储ReduceMax结果
+        tpipe_->InitBuffer(xScaleMulBuf_, hFloatAlign256Size_);                          // 28K 参与Brcb计算，256对齐
+        tpipe_->InitBuffer(winTpSendCountFloatBuf_, hFloatAlign32Size_);                 // 28K 参与Div等token v核运算
+        tpipe_->InitBuffer(quantTmpBuf_, hExpandXAlign32Size_);
+        winTpSendCountFloatTensor_ = winTpSendCountFloatBuf_.Get<float>();
+        absFloatTensor_ = xAbsBuf_.Get<float>();
+        reduceMaxFloatTensor_ = xMaxBuf_.Get<float>();
+        scaleDupLocalTensor_ = xScaleMulBuf_.Get<float>();
+        fp16CastTensor_ = xAbsBuf_.Get<half>();
+        Duplicate(absFloatTensor_, float(0), hFloatAlign256Cnt); // 统一写0
+        quantInst_.SetQuantInitParams(winTpSendCountFloatTensor_, fp16CastTensor_, absFloatTensor_,
+            reduceMaxFloatTensor_, scaleDupLocalTensor_);
+    }
 }
 
 template <CombineV2HostTypeClass>
@@ -664,13 +704,31 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::All
     safeReduceTileSize_ = (safeReduceTileSize_ < 1) ? 1 : safeReduceTileSize_;
     tpipe_->InitBuffer(sumBuf_, floatTokenBytesAlign * safeReduceTileSize_);
     // countBuf_ 需要能容纳 serverNum_ 个元素，取两者较大值避免越界写
-    uint32_t countBufSize = MAX(safeReduceTileSize_, serverNum_);
-    tpipe_->InitBuffer(countBuf_, countBufSize * sizeof(uint32_t));
+    // uint32_t countBufSize = MAX(safeReduceTileSize_, serverNum_);
+    tpipe_->InitBuffer(countBuf_, safeReduceTileSize_ * sizeof(uint32_t));
     // Server间通信buffer初始化
     tpipe_->InitBuffer(localCntBuf_, UB_ALIGN);
     tpipe_->InitBuffer(localTokenIdBuf_, UB_ALIGN);
     tpipe_->InitBuffer(localOutTensorBuf_, tokenDataBytesAlign_);
     tpipe_->InitBuffer(localFlagBuf_, UB_ALIGN);
+    if constexpr (QuantMode > UNQUANT) {
+        // 反量化需要的 buffer
+        tpipe_->InitBuffer(xScaleMulBuf_, hFloatAlign256Size_);   // scaleDupLocalTensor_ Brcb 广播结果
+        tpipe_->InitBuffer(xAbsBuf_, scaleNumAlignSize_);          // scaleDivFloatTensor_ 解析 scale
+        tpipe_->InitBuffer(quantTmpBuf_, hExpandXAlign32Size_);    // 临时量化数据缓冲
+        
+        scaleDupLocalTensor_ = xScaleMulBuf_.Get<float>();
+        scaleDivFloatTensor_ = xAbsBuf_.Get<float>();
+        // fp16CastTensor_ 和 absFloatTensor_ 在 A5 反量化中不使用，但为接口完整性保留
+        fp16CastTensor_ = xScaleMulBuf_.Get<half>();
+        absFloatTensor_ = quantTmpBuf_.Get<float>();
+        // 清零 scaleDupLocalTensor_，防止 DeQuantMxFp8 读到脏数据产生 nan
+        // 这是对 quant.h 中 DeQuantMxFp8 scale 广播 stride bug 的 workaround
+        if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+            Duplicate(scaleDupLocalTensor_, 0.0f, hFloatAlign256Size_ / sizeof(float));
+        }
+        quantInst_.SetDeQuantInitParams(fp16CastTensor_, absFloatTensor_, scaleDupLocalTensor_, scaleDivFloatTensor_);
+    }
 }
 
 template <CombineV2HostTypeClass>
@@ -807,9 +865,9 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Loa
 template <CombineV2HostTypeClass>
 __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::AlltoAllDispatch()
 {
-    if (sendCntNum_ == 0U) {
-        return;
-    }
+    // if (sendCntNum_ == 0U) {
+    //     return;
+    // }
     LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
     const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)), 0U,
                                       0U, 0U};
@@ -856,33 +914,99 @@ __aicore__ inline void
 MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::DispatchTokenInner(uint32_t globalIdx, uint32_t originRankId,
     uint32_t originTokenId, uint32_t topkId, uint32_t tokenIdInServer, uint64_t shareDataAddr)
 {
-    LocalTensor<ExpandXType> tokenUb = tempBuf_.Get<ExpandXType>();
-    DataCopyExtParams inputCopyParams{1U, static_cast<uint32_t>(tokenDataBytes_), 0U, 0U, 0U};
-    DataCopyPadExtParams<ExpandXType> copyPadExtParams{false, 0U, 0U, 0U};
-    // 1) 生成 tokenData 写入 tokenUb
-    DataCopyPad(tokenUb, expandXGM_[globalIdx * axisH_], inputCopyParams, copyPadExtParams);
-    // 2) 写 meta：scaleVal + originRankId + originTokenId
-    float scaleVal = 0.0f;
-    if (topkId >= axisK_) {
-        scaleVal = 1.0f;
-    } else if (globalIdx < selfSendCnt_) {
-        AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                                          AscendC::DcciDst::CACHELINE_OUT>(expandScalesGM_[globalIdx]);
-        scaleVal = expandScalesGM_.GetValue(globalIdx);
+    if constexpr (QuantMode > UNQUANT) {
+        // ========== 量化路径 ==========
+        LocalTensor<ExpandXType> tokenUb = tempBuf_.Get<ExpandXType>();
+        DataCopyExtParams inputCopyParams{1U, static_cast<uint32_t>(tokenDataBytes_), 0U, 0U, 0U};
+        DataCopyPadExtParams<ExpandXType> copyPadExtParams{false, 0U, 0U, 0U};
+        
+        // MXFP8 需要先清零
+        if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+            LocalTensor<uint8_t> singleByteTok = tokenUb.template ReinterpretCast<uint8_t>();
+            uint32_t clearBytes = Align128(axisH_) * sizeof(ExpandXType);
+            Duplicate(singleByteTok, static_cast<uint8_t>(0), clearBytes);
+            SyncFunc<AscendC::HardEvent::V_MTE2>();
+        }
+        
+        // 读入原始数据
+        DataCopyPad(tokenUb, expandXGM_[globalIdx * axisH_], inputCopyParams, copyPadExtParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        
+        // 量化
+        LocalTensor<ExpandXType> quantOut = quantTmpBuf_.Get<ExpandXType>();
+        quantInst_.QuantProcess(quantOut, tokenUb);
+        PipeBarrier<PIPE_ALL>();
+        
+        // 获取 scaleVal
+        float scaleVal = 0.0f;
+        if (topkId >= axisK_) {
+            scaleVal = 1.0f;
+        } else if (globalIdx < selfSendCnt_) {
+            AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                            AscendC::DcciDst::CACHELINE_OUT>(expandScalesGM_[globalIdx]);
+            scaleVal = expandScalesGM_.GetValue(globalIdx);
+        }
+        
+        uint32_t quantDataAlignSize;
+        if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+            // 对齐 QuantMxFp8 的输出布局：
+            // - FP8 数据区: Align256(axisH_) 字节（uint8_t）
+            // - E8M0 scale 起始偏移（按 ExpandXType 索引）: Align256(axisH_) / INT8_DIVIVE
+            // - Scale 区大小: scaleNum_ * sizeof(uint16_t) 字节
+            uint32_t dataEndExpandXIdx = Align256(axisH_) / INT8_DIVIVE;
+            uint32_t scaleExpandXElems = (scaleNum_ * sizeof(uint16_t) + sizeof(ExpandXType) - 1) / sizeof(ExpandXType);
+            uint32_t scaleEndExpandXIdx = dataEndExpandXIdx + scaleExpandXElems;
+            uint32_t totalExpandXElems = (dataEndExpandXIdx > scaleEndExpandXIdx) ? dataEndExpandXIdx : scaleEndExpandXIdx;
+            quantDataAlignSize = RoundUp<uint32_t>(totalExpandXElems * sizeof(ExpandXType), UB_ALIGN);
+        } else {
+            uint32_t quantDataSize = tokenScaleCnt_ * sizeof(ExpandXType);
+            quantDataAlignSize = RoundUp<uint32_t>(quantDataSize, UB_ALIGN);
+        }
+        
+        // 在量化数据之后写入 meta
+        LocalTensor<uint8_t> quantOutBytes = quantOut.template ReinterpretCast<uint8_t>();
+        LocalTensor<float> metaFP32 = quantOutBytes[quantDataAlignSize].template ReinterpretCast<float>();
+        metaFP32.SetValue(0, scaleVal);
+        LocalTensor<uint32_t> metaU32 = quantOutBytes[quantDataAlignSize + sizeof(float)].template ReinterpretCast<uint32_t>();
+        metaU32.SetValue(0, originRankId);
+        metaU32.SetValue(1, tokenIdInServer);
+        PipeBarrier<PIPE_ALL>();
+        
+        // 写 ShareData
+        GlobalTensor<uint8_t> shareDataByteGm;
+        shareDataByteGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(shareDataAddr));
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopy(shareDataByteGm, quantOutBytes, tokenMetaBytes_);
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    } else {
+        // ========== 非量化路径（不变） ==========
+        LocalTensor<ExpandXType> tokenUb = tempBuf_.Get<ExpandXType>();
+        DataCopyExtParams inputCopyParams{1U, static_cast<uint32_t>(tokenDataBytes_), 0U, 0U, 0U};
+        DataCopyPadExtParams<ExpandXType> copyPadExtParams{false, 0U, 0U, 0U};
+        DataCopyPad(tokenUb, expandXGM_[globalIdx * axisH_], inputCopyParams, copyPadExtParams);
+
+        float scaleVal = 0.0f;
+        if (topkId >= axisK_) {
+            scaleVal = 1.0f;
+        } else if (globalIdx < selfSendCnt_) {
+            AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                            AscendC::DcciDst::CACHELINE_OUT>(expandScalesGM_[globalIdx]);
+            scaleVal = expandScalesGM_.GetValue(globalIdx);
+        }
+        LocalTensor<float> metaFP32 = tokenUb.template ReinterpretCast<float>();
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        metaFP32.SetValue(tokenDataBytesAlign_ / sizeof(float), scaleVal);
+        LocalTensor<uint32_t> metaU32 = tokenUb.template ReinterpretCast<uint32_t>();
+        metaU32.SetValue((tokenDataBytesAlign_ + sizeof(float)) / sizeof(uint32_t), originRankId);
+        metaU32.SetValue((tokenDataBytesAlign_ + sizeof(float) + sizeof(uint32_t)) / sizeof(uint32_t), tokenIdInServer);
+
+        LocalTensor<uint8_t> payloadUb = tempBuf_.Get<uint8_t>();
+        GlobalTensor<uint8_t> shareDataByteGm;
+        shareDataByteGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(shareDataAddr));
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopy(shareDataByteGm, payloadUb, tokenMetaBytes_);
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
-    LocalTensor<float> metaFP32 = tokenUb.template ReinterpretCast<float>();
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-    metaFP32.SetValue(tokenDataBytesAlign_ / sizeof(float), scaleVal);
-    LocalTensor<uint32_t> metaU32 = tokenUb.template ReinterpretCast<uint32_t>();
-    metaU32.SetValue((tokenDataBytesAlign_ + sizeof(float)) / sizeof(uint32_t), originRankId);
-    metaU32.SetValue((tokenDataBytesAlign_ + sizeof(float) + sizeof(uint32_t)) / sizeof(uint32_t), tokenIdInServer);
-    // 3) 写 ShareData
-    LocalTensor<uint8_t> payloadUb = tempBuf_.Get<uint8_t>();
-    GlobalTensor<uint8_t> shareDataByteGm;
-    shareDataByteGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(shareDataAddr));
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopy(shareDataByteGm, payloadUb, static_cast<uint32_t>(tokenMetaBytes_));
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <CombineV2HostTypeClass>
@@ -1026,32 +1150,78 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Pro
     LocalTensor<float> sumTileUb, LocalTensor<uint32_t> existFlagUb, LocalTensor<float> tmpUb)
 {
     LocalTensor<uint8_t> batchBytes = inputBatchUb.template ReinterpretCast<uint8_t>();
+
+    // 量化/非量化模式下的有效数据对齐大小, meta 信息紧跟在数据之后
+    uint32_t effectiveDataAlignSize;
+    if constexpr (QuantMode > UNQUANT) {
+        if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+            uint32_t dataEndExpandXIdx = Align256(axisH_) / INT8_DIVIVE;
+            uint32_t scaleExpandXElems = (scaleNum_ * sizeof(uint16_t) + sizeof(ExpandXType) - 1) / sizeof(ExpandXType);
+            uint32_t scaleEndExpandXIdx = dataEndExpandXIdx + scaleExpandXElems;
+            uint32_t totalExpandXElems = (dataEndExpandXIdx > scaleEndExpandXIdx) ? dataEndExpandXIdx : scaleEndExpandXIdx;
+            effectiveDataAlignSize = RoundUp<uint32_t>(totalExpandXElems * sizeof(ExpandXType), UB_ALIGN);
+        } else {
+            effectiveDataAlignSize = RoundUp<uint32_t>(tokenScaleCnt_ * sizeof(ExpandXType), UB_ALIGN);
+        }
+    } else {
+        effectiveDataAlignSize = tokenDataBytesAlign_;
+    }
+
     for (uint32_t k = 0; k < curBatch; ++k) {
         const uint32_t packBaseBytes = k * tokenMetaBytes_;
-        LocalTensor<float> metaF = batchBytes[packBaseBytes + tokenDataBytesAlign_].template ReinterpretCast<float>();
+
+        // 读取 meta 信息
+        LocalTensor<float> metaF = 
+            batchBytes[packBaseBytes + effectiveDataAlignSize].template ReinterpretCast<float>();
         float scaleVal = metaF.GetValue(0);
         LocalTensor<uint32_t> metaU32 =
-        batchBytes[packBaseBytes + tokenDataBytesAlign_ + sizeof(float)].template ReinterpretCast<uint32_t>();
+            batchBytes[packBaseBytes + effectiveDataAlignSize + sizeof(float)].template ReinterpretCast<uint32_t>();
         uint32_t originRankId = metaU32.GetValue(0);
         uint32_t tokenIdInServer = metaU32.GetValue(1);
         AscendC::PipeBarrier<PIPE_ALL>();
+
+        // 过滤条件
         if ((originRankId / serverRankSize_) != targetServerId
             || tokenIdInServer < baseId || tokenIdInServer >= endId) {
             AscendC::PipeBarrier<PIPE_ALL>();
             continue;
         }
+
         uint32_t offsetInTile = tokenIdInServer - baseId;
         const uint32_t sumStrideF = hFloatAlign32Size_ / sizeof(float);
         AscendC::PipeBarrier<PIPE_ALL>();
         existFlagUb.SetValue(offsetInTile, 1U);
-        LocalTensor<ExpandXType> srcToken = batchBytes[packBaseBytes].template ReinterpretCast<ExpandXType>();
         LocalTensor<float> dstSum = sumTileUb[offsetInTile * sumStrideF];
-        Cast(tmpUb, srcToken, AscendC::RoundMode::CAST_NONE, axisH_);
-        PipeBarrier<PIPE_V>();
-        Muls(tmpUb, tmpUb, scaleVal, axisH_);
-        PipeBarrier<PIPE_V>();
-        Add(dstSum, dstSum, tmpUb, axisH_);
-        PipeBarrier<PIPE_V>();
+
+        if constexpr (QuantMode > UNQUANT) {
+                // ===== 量化分支：反量化 + 加权求和 =====
+            if constexpr ((QuantMode == MXFP8_E5M2_COMM_QUANT) || (QuantMode == MXFP8_E4M3_COMM_QUANT)) {
+                Duplicate(scaleDupLocalTensor_, 0.0f, hFloatAlign256Size_ / sizeof(float));
+                PipeBarrier<PIPE_V>();
+                // 使用 ExpandXType 读取量化数据（保持与量化侧一致）
+                LocalTensor<ExpandXType> quantDataTensor =
+                    batchBytes[packBaseBytes].template ReinterpretCast<ExpandXType>();
+                quantInst_.DeQuantProcess(quantDataTensor, quantDataTensor, tmpUb, dstSum, scaleVal);
+            } else {
+                // INT8: 需要先转为 int8_t，再转为 XType
+                LocalTensor<int8_t> quantDataInt8 =
+                    batchBytes[packBaseBytes].template ReinterpretCast<int8_t>();
+                LocalTensor<XType> quantDataTensor = quantDataInt8.template ReinterpretCast<XType>();
+                
+                quantInst_.DeQuantProcess(quantDataTensor, quantDataTensor, tmpUb, dstSum, scaleVal);
+            }
+            AscendC::PipeBarrier<PIPE_ALL>();
+        } else {
+            // ===== 非量化分支 =====
+            LocalTensor<ExpandXType> srcToken =
+                batchBytes[packBaseBytes].template ReinterpretCast<ExpandXType>();
+            Cast(tmpUb, srcToken, AscendC::RoundMode::CAST_NONE, axisH_);
+            PipeBarrier<PIPE_V>();
+            Muls(tmpUb, tmpUb, scaleVal, axisH_);
+            PipeBarrier<PIPE_V>();
+            Add(dstSum, dstSum, tmpUb, axisH_);
+            PipeBarrier<PIPE_V>();
+        }
     }
 }
 
