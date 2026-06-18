@@ -73,6 +73,19 @@ bool IsWeightDtype(DataType dtype)
     return dtype == DataType::DT_FLOAT8_E4M3FN;
 }
 
+bool IsEmptyQuantMode(const char *quantMode)
+{
+    return quantMode == nullptr || quantMode[0] == '\0';
+}
+
+const char *ResolveQuantMode(DataType xDtype, const char *quantMode)
+{
+    if (IsEmptyQuantMode(quantMode) && IsFp8(xDtype)) {
+        return QUANT_MODE_MX;
+    }
+    return quantMode;
+}
+
 bool IsNzFormat(const aclTensor *tensor)
 {
     return tensor != nullptr &&
@@ -166,10 +179,10 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                "In op [%s], [activationType] must not be nullptr.", OP_NAME);
     CHECK_COND(std::strcmp(activationType, GELU_TANH) == 0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], activationType only supports gelu_tanh, but got %s.", OP_NAME, activationType);
-    CHECK_COND(quantMode != nullptr, ACLNN_ERR_PARAM_NULLPTR,
-               "In op [%s], [quantMode] must not be nullptr.", OP_NAME);
-    CHECK_COND(std::strcmp(quantMode, QUANT_MODE_MX) == 0, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], quantMode is required and only supports MX, but got %s.", OP_NAME, quantMode);
+    const char *effectiveQuantMode = ResolveQuantMode(x->GetDataType(), quantMode);
+    CHECK_COND(!IsFp8(x->GetDataType()) || std::strcmp(effectiveQuantMode, QUANT_MODE_MX) == 0,
+               ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], 当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX", OP_NAME);
     CHECK_COND(roundMode != nullptr, ACLNN_ERR_PARAM_NULLPTR,
                "In op [%s], [roundMode] must not be nullptr.",
                OP_NAME);
@@ -266,6 +279,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    const char *effectiveQuantMode = ResolveQuantMode(x == nullptr ? DataType::DT_UNDEFINED : x->GetDataType(),
+                                                      quantMode);
     CHECK_RET(CheckParams(x, groupList, weight, weightScale, biasOptional, xScaleOptional, activationType,
                           transposeWeight, groupListType, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax, y,
                           yScale) == ACLNN_SUCCESS,
@@ -292,7 +307,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     }
 
     auto result = l0op::GroupedMatmulActivationQuant(x, groupList, weight, weightScale, biasOptional, xScaleOptional,
-        activationType, transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg,
+        activationType, transposeWeight, groupListType, tuningConfig, effectiveQuantMode, yDtype, roundMode, scaleAlg,
         dstTypeMax, uniqueExecutor.get());
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
     auto yResult = l0op::ViewCopy(std::get<0>(result), y, uniqueExecutor.get());
