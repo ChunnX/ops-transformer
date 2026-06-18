@@ -1,0 +1,182 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+import torch
+
+# 定义测试参数组合
+TEST_PARAMS = {
+    "fp8_1":{ # 1
+        "batch_size": [1],
+        "q_seq": [4],
+        "k_seq": [512],
+        "q_t_size":[1],
+        "k_t_size":[1],#压缩后的值
+        "q_head_num": [64],
+        "k_head_num": [1],
+        "head_dim": [128],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[4],
+        "qk_dtype": [torch.float8_e4m3fn],
+        "weight_dtype":[torch.bfloat16],
+        "dequant_dtype": [torch.float32],
+        "actual_seq_dtype": [torch.int32],
+        "act_seq_q": [[4]],
+        "act_seq_k": [[512]], #PA场景非前缀和，表示每个batch_size的实际token数
+        "query_quant_mode": [0],
+        "key_quant_mode": [0],
+        "layout_query": ["BSND"],
+        "layout_key":["PA_BSND"],
+        "sparse_count": [2048],
+        "sparse_mode": [3],
+        "query_datarange":[[-1,1]],
+        "key_datarange":[[-1,1]],
+        "weights_datarange":[[-130,130]],
+        "q_scale_datarange":[[0,255]],
+        "k_scale_datarange":[[0,65504]],
+        "cmp_ratio":[1] #1/2/4/8/16/32/64/128
+    },
+    "mxfp8_1":{ # 1
+        "batch_size": [1],
+        "q_seq": [4],
+        "k_seq": [512],
+        "q_t_size":[1],
+        "k_t_size":[1],#压缩后的值
+        "q_head_num": [64],
+        "k_head_num": [1],
+        "head_dim": [128],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[4],
+        "qk_dtype": [torch.float8_e4m3fn],
+        "weight_dtype":[torch.bfloat16],
+        "dequant_dtype": [torch.float8_e8m0fnu],
+        "actual_seq_dtype": [torch.int32],
+        "act_seq_q": [[4]],
+        "act_seq_k": [[512]], #PA场景非前缀和，表示每个batch_size的实际token数
+        "query_quant_mode": [0],
+        "key_quant_mode": [0],
+        "layout_query": ["BSND"],
+        "layout_key":["PA_BSND"],
+        "sparse_count": [2048],
+        "sparse_mode": [3],
+        "query_datarange":[[-1,1]],
+        "key_datarange":[[-1,1]],
+        "weights_datarange":[[-130,130]],
+        "q_scale_datarange":[[0,255]],
+        "k_scale_datarange":[[0,65504]],
+        "cmp_ratio":[1] #1/2/4/8/16/32/64/128
+    },
+    "fp8_2":{ # 1
+        "batch_size": [1],
+        "q_seq": [4],
+        "k_seq": [512],
+        "q_t_size":[1],
+        "k_t_size":[1],#压缩后的值
+        "q_head_num": [64],
+        "k_head_num": [1],
+        "head_dim": [128],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[4],
+        "qk_dtype": [torch.float8_e4m3fn],
+        "weight_dtype":[torch.bfloat16],
+        "dequant_dtype": [torch.float32],
+        "actual_seq_dtype": [torch.int32],
+        "act_seq_q": [[4]],
+        "act_seq_k": [[512]], #PA场景非前缀和，表示每个batch_size的实际token数
+        "query_quant_mode": [0],
+        "key_quant_mode": [0],
+        "layout_query": ["BSND"],
+        "layout_key":["PA_BSND"],
+        "sparse_count": [128],
+        "sparse_mode": [3],
+        "query_datarange":[[-1,1]],
+        "key_datarange":[[-1,1]],
+        "weights_datarange":[[-130,130]],
+        "q_scale_datarange":[[0,255]],
+        "k_scale_datarange":[[0,65504]],
+        "cmp_ratio":[1] #1/2/4/8/16/32/64/128
+    },
+    "mxfp8_2":{ # 1
+        "batch_size": [1],
+        "q_seq": [4],
+        "k_seq": [512],
+        "q_t_size":[1],
+        "k_t_size":[1],#压缩后的值
+        "q_head_num": [64],
+        "k_head_num": [1],
+        "head_dim": [128],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[4],
+        "qk_dtype": [torch.float8_e4m3fn],
+        "weight_dtype":[torch.bfloat16],
+        "dequant_dtype": [torch.float8_e8m0fnu],
+        "actual_seq_dtype": [torch.int32],
+        "act_seq_q": [[4]],
+        "act_seq_k": [[512]], #PA场景非前缀和，表示每个batch_size的实际token数
+        "query_quant_mode": [0],
+        "key_quant_mode": [0],
+        "layout_query": ["BSND"],
+        "layout_key":["PA_BSND"],
+        "sparse_count": [128],
+        "sparse_mode": [3],
+        "query_datarange":[[-1,1]],
+        "key_datarange":[[-1,1]],
+        "weights_datarange":[[-130,130]],
+        "q_scale_datarange":[[0,255]],
+        "k_scale_datarange":[[0,65504]],
+        "cmp_ratio":[1] #1/2/4/8/16/32/64/128
+    },
+    "mxfp8_3":{ # 1
+        "batch_size": [1],
+        "q_seq": [1],
+        "k_seq": [512],
+        "q_t_size":[1],
+        "k_t_size":[1],#压缩后的值
+        "q_head_num": [64],
+        "k_head_num": [1],
+        "head_dim": [128],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[4],
+        "qk_dtype": [torch.float8_e4m3fn],
+        "weight_dtype":[torch.bfloat16],
+        "dequant_dtype": [torch.float8_e8m0fnu],
+        "actual_seq_dtype": [torch.int32],
+        "act_seq_q": [[1]],
+        "act_seq_k": [[512]], #PA场景非前缀和，表示每个batch_size的实际token数
+        "query_quant_mode": [0],
+        "key_quant_mode": [0],
+        "layout_query": ["BSND"],
+        "layout_key":["BSND"],
+        "sparse_count": [128],
+        "sparse_mode": [0],
+        "query_datarange":[[1,1]],
+        "key_datarange":[[1,1]],
+        "weights_datarange":[[-130,130]],
+        "q_scale_datarange":[[1,1]],
+        "k_scale_datarange":[[1,1]],
+        "cmp_ratio":[1] #1/2/4/8/16/32/64/128
+    },
+}
+
+# 按需选择要启用的测试参数（例如默认启用所有）
+properties = torch.npu.get_device_properties()
+print(properties)
+# if "Ascend910_93" in properties.name:
+#     ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a3"]]
+# elif "Ascend950" in properties.name:
+#     ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a5"]]
+ENABLED_PARAMS = [
+    # TEST_PARAMS["fp8_1"],
+    TEST_PARAMS["fp8_2"],
+    # TEST_PARAMS["mxfp8_1"],
+    # TEST_PARAMS["mxfp8_2"],
+    TEST_PARAMS["mxfp8_3"],
+    ]

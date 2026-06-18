@@ -98,11 +98,11 @@ ge::graphStatus QLIInfoParser::GetNpuInfo()
     OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
-    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    npuArch_ = NpuArch::DAV_3510;
     if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
@@ -285,10 +285,12 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
         // hifloat8只支持bf16的weights和fp32的scale
         if (inputQType_ == ge::DT_FLOAT8_E4M3FN) {
             OP_CHECK_IF((weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT) && 
-                        (weightsType_ != ge::DT_FLOAT16|| inputQueryScaleType_ != ge::DT_FLOAT16),
+                        (weightsType_ != ge::DT_FLOAT16|| inputQueryScaleType_ != ge::DT_FLOAT16) &&
+                        (weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT8_E8M0),
                 OP_LOGE(opName_, "When input query and key are float8_e4m3, ",
                         "the data type of the input weights, query_dequant_scale and key_dequant_scale ",
-                        "must be (bfloat16, float32, float32) or (float16, float16, float16)."),
+                        "must be (bfloat16, float32, float32), (float16, float16, float16) or ",
+                        "(bfloat16, float8_e8m0, float8_e8m0)."),
                 return ge::GRAPH_FAILED);
         } else if (inputKType_ == ge::DT_HIFLOAT8) {
             OP_CHECK_IF(weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT,
@@ -734,31 +736,79 @@ ge::graphStatus QLIInfoParser::CheckScaleShape()
     uint32_t kShapeDim = opParamInfo_.key.shape->GetShape().GetDimNum();
     uint32_t qDequantScaleShapeDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDimNum();
     uint32_t kDequantScaleShapeDim = opParamInfo_.key_dequant_scale.shape->GetShape().GetDimNum();
-    OP_CHECK_IF(qDequantScaleShapeDim != (qShapeDim - 1),
-               OP_LOGE(opName_, "the dim num of query_dequant_scale's shape should be %u, but now is %u",
-                         qShapeDim - 1, qDequantScaleShapeDim),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(kDequantScaleShapeDim != (kShapeDim - 1),
-               OP_LOGE(opName_, "the dim num of key_dequant_scale's shape should be %u, but now is %u", kShapeDim - 1,
-                         kDequantScaleShapeDim),
-               return ge::GRAPH_FAILED);
-    // check q scale
-    for (uint32_t i = 0; i < (qShapeDim - 1); i++) {
-        uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
-        uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
-        OP_CHECK_IF(dimValueQueryScale != dimValueQuery,
-                   OP_LOGE(opName_, "query_dequant_scale's shape[%u] %u and query's shape[%u] %u is not same", i,
-                             dimValueQueryScale, i, dimValueQuery),
+
+    // MXFP8: scale 与 data 维度数相同，最后一维为 D/32
+    bool isMxFp8Scale = (inputQueryScaleType_ == ge::DT_FLOAT8_E8M0);
+
+    if (isMxFp8Scale) {
+        // MXFP8: qScale shape [B, S1, N1, D/32]，与 query 维度数相同
+        OP_CHECK_IF(qDequantScaleShapeDim != qShapeDim,
+                   OP_LOGE(opName_, "MXFP8: the dim num of query_dequant_scale's shape should be %u, but now is %u",
+                             qShapeDim, qDequantScaleShapeDim),
                    return ge::GRAPH_FAILED);
-    }
-    // check k scale
-    for (uint32_t i = 0; i < (kShapeDim - 1); i++) {
-        uint32_t dimValueKeyScale = opParamInfo_.key_dequant_scale.shape->GetShape().GetDim(i);
-        uint32_t dimValueKey = opParamInfo_.key.shape->GetShape().GetDim(i);
-        OP_CHECK_IF(dimValueKeyScale != dimValueKey,
-                   OP_LOGE(opName_, "key_dequant_scale's shape[%u] %u and key's shape[%u] %u is not same", i,
-                             dimValueKeyScale, i, dimValueKey),
+        OP_CHECK_IF(kDequantScaleShapeDim != kShapeDim,
+                   OP_LOGE(opName_, "MXFP8: the dim num of key_dequant_scale's shape should be %u, but now is %u",
+                             kShapeDim, kDequantScaleShapeDim),
                    return ge::GRAPH_FAILED);
+        // 检查前 N-1 维相同，最后一维为 D/32
+        for (uint32_t i = 0; i < (qShapeDim - 1); i++) {
+            uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
+            uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
+            OP_CHECK_IF(dimValueQueryScale != dimValueQuery,
+                       OP_LOGE(opName_, "MXFP8: query_dequant_scale's shape[%u] %u and query's shape[%u] %u is not same",
+                                 i, dimValueQueryScale, i, dimValueQuery),
+                       return ge::GRAPH_FAILED);
+        }
+        // 检查 qScale 最后一维 = headDim / 32
+        uint32_t qScaleLastDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(qShapeDim - 1);
+        uint32_t expectedQLastDim = headDim_ / 32;
+        OP_CHECK_IF(qScaleLastDim != expectedQLastDim,
+                   OP_LOGE(opName_, "MXFP8: query_dequant_scale's last dim should be %u (headDim/32), but now is %u",
+                             expectedQLastDim, qScaleLastDim),
+                   return ge::GRAPH_FAILED);
+        // 检查 kScale
+        for (uint32_t i = 0; i < (kShapeDim - 1); i++) {
+            uint32_t dimValueKeyScale = opParamInfo_.key_dequant_scale.shape->GetShape().GetDim(i);
+            uint32_t dimValueKey = opParamInfo_.key.shape->GetShape().GetDim(i);
+            OP_CHECK_IF(dimValueKeyScale != dimValueKey,
+                       OP_LOGE(opName_, "MXFP8: key_dequant_scale's shape[%u] %u and key's shape[%u] %u is not same",
+                                 i, dimValueKeyScale, i, dimValueKey),
+                       return ge::GRAPH_FAILED);
+        }
+        uint32_t kScaleLastDim = opParamInfo_.key_dequant_scale.shape->GetShape().GetDim(kShapeDim - 1);
+        uint32_t expectedKLastDim = headDim_ / 32;
+        OP_CHECK_IF(kScaleLastDim != expectedKLastDim,
+                   OP_LOGE(opName_, "MXFP8: key_dequant_scale's last dim should be %u (headDim/32), but now is %u",
+                             expectedKLastDim, kScaleLastDim),
+                   return ge::GRAPH_FAILED);
+    } else {
+        // 非 MXFP8: scale 维度数比 data 少 1
+        OP_CHECK_IF(qDequantScaleShapeDim != (qShapeDim - 1),
+                   OP_LOGE(opName_, "the dim num of query_dequant_scale's shape should be %u, but now is %u",
+                             qShapeDim - 1, qDequantScaleShapeDim),
+                   return ge::GRAPH_FAILED);
+        OP_CHECK_IF(kDequantScaleShapeDim != (kShapeDim - 1),
+                   OP_LOGE(opName_, "the dim num of key_dequant_scale's shape should be %u, but now is %u", kShapeDim - 1,
+                             kDequantScaleShapeDim),
+                   return ge::GRAPH_FAILED);
+        // check q scale
+        for (uint32_t i = 0; i < (qShapeDim - 1); i++) {
+            uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
+            uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
+            OP_CHECK_IF(dimValueQueryScale != dimValueQuery,
+                       OP_LOGE(opName_, "query_dequant_scale's shape[%u] %u and query's shape[%u] %u is not same", i,
+                                 dimValueQueryScale, i, dimValueQuery),
+                       return ge::GRAPH_FAILED);
+        }
+        // check k scale
+        for (uint32_t i = 0; i < (kShapeDim - 1); i++) {
+            uint32_t dimValueKeyScale = opParamInfo_.key_dequant_scale.shape->GetShape().GetDim(i);
+            uint32_t dimValueKey = opParamInfo_.key.shape->GetShape().GetDim(i);
+            OP_CHECK_IF(dimValueKeyScale != dimValueKey,
+                       OP_LOGE(opName_, "key_dequant_scale's shape[%u] %u and key's shape[%u] %u is not same", i,
+                                 dimValueKeyScale, i, dimValueKey),
+                       return ge::GRAPH_FAILED);
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -800,7 +850,12 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     if (opParamInfo_.keyDequantScaleStride0 != -1) {
         QLIInfo.keyDequantScaleStride0 = opParamInfo_.keyDequantScaleStride0;
     } else {
-        QLIInfo.keyDequantScaleStride0 = blockSize_;
+        // MXFP8: kScale shape [BlockNum, BlockSize, N2, D/32]，stride 需要乘以 D/32
+        if (inputKeyScaleType_ == ge::DT_FLOAT8_E8M0) {
+            QLIInfo.keyDequantScaleStride0 = blockSize_ * (headDim_ / 32);
+        } else {
+            QLIInfo.keyDequantScaleStride0 = blockSize_;
+        }
     }
 
     QLIInfo.inputQLayout = qLayout_;
@@ -881,8 +936,8 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv(); // aicNum; // 1:1时换aicnum
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     context_->SetBlockDim(blockDim);
 
