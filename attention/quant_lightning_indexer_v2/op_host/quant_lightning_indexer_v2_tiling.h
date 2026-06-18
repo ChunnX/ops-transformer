@@ -103,6 +103,7 @@ TILING_DATA_FIELD_DEF(uint32_t, returnValue)
 TILING_DATA_FIELD_DEF(int32_t, maxSeqlenQ)
 TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
+TILING_DATA_FIELD_DEF(uint32_t, quantMode)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexerV2, QLIV2TilingData)
 

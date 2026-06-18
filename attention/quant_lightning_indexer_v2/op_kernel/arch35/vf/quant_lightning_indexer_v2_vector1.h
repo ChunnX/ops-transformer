@@ -637,6 +637,219 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
     }
 }
 
+// per_tensor对应的MulWeightAndReduceSum方法
+// float in uint16 out
+__aicore__ inline void MulWeightAndReduceSumPerTensor(
+    const LocalTensor<uint16_t> &out_,   // out    [S2Base]     [128   ]
+    const LocalTensor<float> &qk_,       // q*k^t  [G, S2Base]  [64 128]
+    const uint32_t qkVLStride,
+    const LocalTensor<float> &weight_,   // w      [G]          [64    ]
+    const float kScaleValue,             // kScale scalar
+    const float qScaleValue,             // qScale scalar
+    const int gSize)                     // G 64
+{
+    auto weight = (__local_mem__ float*)weight_.GetPhyAddr();
+    auto qk = (__local_mem__ float*)qk_.GetPhyAddr();
+    auto out = (__local_mem__ uint16_t*)out_.GetPhyAddr();
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<float> regwBrc;
+        AscendC::MicroAPI::RegTensor<float> regQK[2];
+        AscendC::MicroAPI::RegTensor<float> regW;
+        AscendC::MicroAPI::RegTensor<float> regSum0[2];
+        AscendC::MicroAPI::RegTensor<float> regSum1[2];
+        AscendC::MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float,
+            AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::MicroAPI::MaskReg maskAllB16 = AscendC::MicroAPI::CreateMask<bfloat16_t,
+            AscendC::MicroAPI::MaskPattern::ALL>();
+
+        FloatSortConstCtx<bfloat16_t> bf16Ctx;
+        InitFloatSortConstCtx(bf16Ctx, maskAllB16);
+
+        constexpr static MicroAPI::CastTrait castTraitF32ToF16_EVEN = {MicroAPI::RegLayout::ZERO,
+            MicroAPI::SatMode::NO_SAT, MicroAPI::MaskMergeMode::MERGING,
+            RoundMode::CAST_ROUND};
+        constexpr static MicroAPI::CastTrait castTraitF32ToF16_ODD = {MicroAPI::RegLayout::ONE,
+            MicroAPI::SatMode::NO_SAT, MicroAPI::MaskMergeMode::ZEROING,
+            RoundMode::CAST_ROUND};
+
+        AscendC::MicroAPI::LoadAlign<float>(regW, weight);
+        // AscendC::MicroAPI::LoadAlign<float>(regQScale, qScale);
+        // AscendC::MicroAPI::Mul(regW, regW, regQScale, maskAllB32);
+        AscendC::MicroAPI::Muls(regW, regW, qScaleValue, maskAllB32);
+
+        DuplicateZero(regSum0, maskAllB32);
+        DuplicateZero(regSum1, maskAllB32);
+
+        // MicroAPI::LoadAlign<float>(regKScale[0], kScale);
+        // MicroAPI::LoadAlign<float>(regKScale[1], kScale + 64);
+
+        // unroll2
+        for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i += 2) {
+            MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i); // RowStride是128, 行都落在一个bank上
+            MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
+            BroadcastLane(regwBrc, regW, i);
+            WeightedAccum(regSum0, regQK, regwBrc, maskAllB32);
+
+            MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i + 128);
+            MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + 128 + qkVLStride);
+            BroadcastLane(regwBrc, regW, i + 1);
+            WeightedAccum(regSum1, regQK, regwBrc, maskAllB32);
+        }
+
+        AscendC::MicroAPI::Add(regSum0[0], regSum0[0], regSum1[0], maskAllB32);
+        AscendC::MicroAPI::Add(regSum0[1], regSum0[1], regSum1[1], maskAllB32);
+
+        AscendC::MicroAPI::Muls(regSum0[0], regSum0[0], kScaleValue, maskAllB32);
+        AscendC::MicroAPI::Muls(regSum0[1], regSum0[1], kScaleValue, maskAllB32);
+
+        AscendC::MicroAPI::RegTensor<bfloat16_t> regSumBF16;
+        // interleave cast ==> regSum[1] high regSum[0] low
+        AscendC::MicroAPI::DeInterleave(regSum0[0], regSum0[1], regSum0[0], regSum0[1]);
+        AscendC::MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_ODD>(regSumBF16, regSum0[1], maskAllB32);
+        AscendC::MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_EVEN>(regSumBF16, regSum0[0], maskAllB32);
+
+        AscendC::MicroAPI::RegTensor<uint16_t> regOut;
+        FloatToSortableKey<bfloat16_t>(regOut, regSumBF16, bf16Ctx, maskAllB16);
+        // normal store
+        AscendC::MicroAPI::StoreAlign<uint16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out, regOut, maskAllB16);
+    }
+}
+
+// 计算S1=2
+// float in uint16 out
+__aicore__ inline void MulWeightAndReduceSumPerTensor2(
+    const LocalTensor<uint16_t> &out_,   // out    [2, S2Base]     [128   ]
+    uint32_t outStride,
+    const LocalTensor<float> &qk_,       // q*k^t  [2, G, S2Base]  [64 128]
+    uint32_t qkVLStride,
+    uint32_t qkStride,
+    const LocalTensor<float> &weight_,   // w      [2, G]          [64    ]
+    uint32_t weightStride,
+    const LocalTensor<float> &weightTemp_,
+    const float kScaleValue,             // kScale scalar
+    const float qScaleValue,             // qScale scalar for batch 0和1
+    const int gSize)                     // G 64
+{
+    auto weight0 = (__local_mem__ float*)weight_.GetPhyAddr();
+    auto weightTemp = (__local_mem__ float*)weightTemp_.GetPhyAddr();
+    auto qk0 = (__local_mem__ float*)qk_.GetPhyAddr();
+    auto out0 = (__local_mem__ uint16_t*)out_.GetPhyAddr();
+
+    auto weight1 = weight0 + weightStride;
+    auto qk1 = qk0 + qkStride;
+    auto out1 = out0 + outStride;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<float> regwBrc[2];
+        AscendC::MicroAPI::RegTensor<float> regQK0[2];
+        AscendC::MicroAPI::RegTensor<float> regQK1[2];
+        AscendC::MicroAPI::RegTensor<float> regW[2];
+
+        // AscendC::MicroAPI::RegTensor<float> regQScale[2];
+        // AscendC::MicroAPI::RegTensor<float> regKScale[2];
+        AscendC::MicroAPI::RegTensor<float> regSum0[2];
+        AscendC::MicroAPI::RegTensor<float> regSum1[2];
+        AscendC::MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float,
+            AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::MicroAPI::MaskReg maskAllB16 = AscendC::MicroAPI::CreateMask<bfloat16_t,
+            AscendC::MicroAPI::MaskPattern::ALL>();
+
+        FloatSortConstCtx<bfloat16_t> bf16Ctx;
+        InitFloatSortConstCtx(bf16Ctx, maskAllB16);
+
+        constexpr static MicroAPI::CastTrait castTraitF32ToF16_EVEN = {MicroAPI::RegLayout::ZERO,
+            MicroAPI::SatMode::NO_SAT,
+                                                                       MicroAPI::MaskMergeMode::MERGING,
+                                                                           RoundMode::CAST_ROUND};
+        constexpr static MicroAPI::CastTrait castTraitF32ToF16_ODD = {MicroAPI::RegLayout::ONE,
+            MicroAPI::SatMode::NO_SAT,
+                                                                      MicroAPI::MaskMergeMode::ZEROING,
+                                                                          RoundMode::CAST_ROUND};
+
+        AscendC::MicroAPI::LoadAlign<float>(regW[0], weight0);
+        AscendC::MicroAPI::LoadAlign<float>(regW[1], weight1);
+        AscendC::MicroAPI::Muls(regW[0], regW[0], qScaleValue, maskAllB32);
+        AscendC::MicroAPI::Muls(regW[1], regW[1], qScaleValue, maskAllB32);
+        // regW[0]与weight1混合使用
+        AscendC::MicroAPI::StoreAlign<float, AscendC::MicroAPI::StoreDist::DIST_NORM>(weightTemp, regW[1], maskAllB32);
+        AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
+        DuplicateZero(regSum0, maskAllB32);
+        DuplicateZero(regSum1, maskAllB32);
+
+        for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i++) {
+            MicroAPI::LoadAlign<float>(regQK0[0], qk0 + 128 * i);
+            MicroAPI::LoadAlign<float>(regQK0[1], qk0 + 128 * i + qkVLStride);
+            MicroAPI::LoadAlign<float>(regQK1[0], qk1 + 128 * i);
+            MicroAPI::LoadAlign<float>(regQK1[1], qk1 + 128 * i + qkVLStride);
+            // 混合使用对整体性能更好
+            BroadcastLane(regwBrc[0], regW[0], i);
+            // Weight无bank冲突，用LoadAlign来提取weight标量
+            BroadcastLane(regwBrc[1], weightTemp, i);
+            AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
+            AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
+            AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
+            AscendC::MicroAPI::Relu(regQK1[1], regQK1[1], maskAllB32);
+            AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
+            AscendC::MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
+            AscendC::MicroAPI::MulAddDst(regSum1[0], regQK1[0], regwBrc[1], maskAllB32);
+            AscendC::MicroAPI::MulAddDst(regSum1[1], regQK1[1], regwBrc[1], maskAllB32);
+        }
+
+        AscendC::MicroAPI::Muls(regSum0[0], regSum0[0], kScaleValue, maskAllB32);
+        AscendC::MicroAPI::Muls(regSum0[1], regSum0[1], kScaleValue, maskAllB32);
+        AscendC::MicroAPI::Muls(regSum1[0], regSum1[0], kScaleValue, maskAllB32);
+        AscendC::MicroAPI::Muls(regSum1[1], regSum1[1], kScaleValue, maskAllB32);
+
+        // Convert to bfloat16 and store output channel
+        AscendC::MicroAPI::RegTensor<bfloat16_t> regSumBF16[2];
+        AscendC::MicroAPI::RegTensor<uint16_t> regOut[2];
+        AscendC::MicroAPI::DeInterleave(regSum0[0], regSum0[1], regSum0[0], regSum0[1]);
+        AscendC::MicroAPI::DeInterleave(regSum1[0], regSum1[1], regSum1[0], regSum1[1]);
+        AscendC::MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_ODD>(regSumBF16[0], regSum0[1], maskAllB32);
+        AscendC::MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_ODD>(regSumBF16[1], regSum1[1], maskAllB32);
+        AscendC::MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_EVEN>(regSumBF16[0], regSum0[0], maskAllB32);
+        AscendC::MicroAPI::Cast<bfloat16_t, float, castTraitF32ToF16_EVEN>(regSumBF16[1], regSum1[0], maskAllB32);
+
+        FloatX2ToSortableKey<bfloat16_t>(regOut[0], regOut[1], regSumBF16[0], regSumBF16[1], bf16Ctx, maskAllB16);
+        AscendC::MicroAPI::StoreAlign<uint16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out0, regOut[0], maskAllB16);
+        AscendC::MicroAPI::StoreAlign<uint16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1, regOut[1], maskAllB16);
+    }
+}
+
+
+template<typename QK_T, typename SCORE_T>
+__aicore__ inline void BatchMulWeightAndReduceSumPerTensor(const LocalTensor<SCORE_T> &out_,
+                                                  uint32_t outStride,                 // out    [S2Base]     [128   ]
+                                                  const LocalTensor<QK_T> &qk_,       // q*k^t  [G, S2Base]  [64 128]
+                                                  uint32_t qkVLStride,
+                                                  uint32_t qkStride,
+                                                  const LocalTensor<float> &weight_,   // w      [G]          [64    ]
+                                                  uint32_t weightStride,
+                                                  const LocalTensor<float> &weightTemp_,
+                                                  const float kScaleValue,
+                                                  const float qScaleValue,
+                                                  const int gSize,
+                                                  const int batch)
+{
+    // 暂只支持这两种情况, 后续改成循环
+    if (batch != 2 && batch != 1) {
+        return;
+    }
+    if (batch == 2) {
+        MulWeightAndReduceSumPerTensor2(out_, outStride,
+                               qk_, qkVLStride, qkStride,
+                               weight_, weightStride, weightTemp_,
+                               kScaleValue,
+                               qScaleValue,
+                               gSize);
+    } else {
+        MulWeightAndReduceSumPerTensor(out_, qk_, qkVLStride, weight_, kScaleValue, qScaleValue, gSize);
+    }
+}
+
 }
 
 #endif  // QUANT_LIGHTNING_INDEXER_V2_VECTOR1_H
