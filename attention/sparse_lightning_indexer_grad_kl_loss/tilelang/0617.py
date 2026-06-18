@@ -302,7 +302,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half_ub)
                             T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
                             T.barrier_all()
-                            for i in range(vector_baseg):
+                            for i in T.Parallel(vector_baseg):
                                 T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
                             T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 0, clear=False)
                             T.barrier_all()
@@ -359,7 +359,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     rg_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
                     dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
-                    mask_ub = T.alloc_ub(n_block, calc_dtype)
+                    mask_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     ones_ub = T.alloc_ub(n_block, calc_dtype)
                     weight_ub2 = T.alloc_ub(vector_baseg, calc_dtype)
                     weight_half_ub2 = T.alloc_ub(vector_baseg, input_dtype)
@@ -384,15 +384,15 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
                         T.tile.fill(dw_accum_ub, 0)
 
-                        for i in range(vector_baseg):
+                        for i in T.Parallel(vector_baseg):
                             g_row = g_id * vector_baseg + i
                             T.tile.mul(dw_chunk_ub[i, :], bmm2_ub2[g_row, :], diff_ub)
                             T.tile.mul(rg_ub[i, :], diff_ub, weight_ub2[i])
-                            T.tile.mul(mask_ub, bmm2_ub2[g_row, :], 10000.0)
-                            T.tile.mul(mask_ub, mask_ub, -1.0)
-                            T.tile.exp(mask_ub, mask_ub)
-                            T.tile.sub(mask_ub, ones_ub, mask_ub)
-                            T.tile.mul(rg_ub[i, :], rg_ub[i, :], mask_ub)
+                            T.tile.mul(mask_ub[i, :], bmm2_ub2[g_row, :], 10000.0)
+                            T.tile.mul(mask_ub[i, :], mask_ub[i, :], -1.0)
+                            T.tile.exp(mask_ub[i, :], mask_ub[i, :])
+                            T.tile.sub(mask_ub[i, :], ones_ub, mask_ub[i, :])
+                            T.tile.mul(rg_ub[i, :], rg_ub[i, :], mask_ub[i, :])
                         T.barrier_all()
 
                         T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
