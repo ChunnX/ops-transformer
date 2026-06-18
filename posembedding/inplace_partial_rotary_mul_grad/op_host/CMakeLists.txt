@@ -15,6 +15,15 @@ if (BUILD_OPEN_PROJECT)
     add_modules_sources(OPTYPE inplace_partial_rotary_mul_grad ACLNNTYPE aclnn_inner)
 endif()
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+if("${CONDITION_UNIT}" STREQUAL "ascend950")
+    add_ops_compile_options(
+        OP_NAME InplacePartialRotaryMulGrad
+        COMPUTE_UNIT Ascend950PR_9599
+        OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
+    )
+endif()
+
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
             OP_NAME InplacePartialRotaryMulGrad
