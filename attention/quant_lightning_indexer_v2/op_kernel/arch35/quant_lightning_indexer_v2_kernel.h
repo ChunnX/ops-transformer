@@ -183,6 +183,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.keyStride0 = tilingData->keyStride0;
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
     constInfo.maxSeqlenQ = tilingData->maxSeqlenQ;
+    constInfo.quantMode = tilingData->quantMode;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
@@ -513,7 +514,6 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
     offset += GetBlockNum() * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(int32_t);
 
     if ASCEND_IS_AIV {
-        vectorService.InitParams(constInfo, ldInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         weightsGm.SetGlobalBuffer((__gm__ float *)weights);
         qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
@@ -521,6 +521,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
         vectorService.InitVecWorkspaceTensor(scoreGm, ldScoreGm, ldIndexGm);
+        vectorService.InitParams(constInfo, ldInfo, tiling);
     } else {
         matmulService.InitParams(constInfo);
         queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
