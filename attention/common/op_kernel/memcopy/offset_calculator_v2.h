@@ -1234,7 +1234,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_BnNBs_KS, ACTLEN_T> {
         uint64_t blockIdxInBatch = sIdx / GetDimBlockSize(); // 获取block table上的索引
         uint64_t bsIdx = sIdx % GetDimBlockSize();           // 获取在单个块上超出的行数
         int32_t blockIdx = blockTableParser.GetBlockIdx(bIdx, blockIdxInBatch);
-        uint64_t offset = blockIdx * GetStrideBlockNum() + nIdx * GetStrideN() + bsIdx * GetDimBlockSize() * 33; // 33:1(kScale) + 32(k) 
+        uint64_t offset = blockIdx * GetStrideBlockNum() + nIdx * GetStrideN() + bsIdx * GetDimBlockSize() * 33; // 33:1(kScale) + 32(k)
 
         return offset;
     }
