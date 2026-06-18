@@ -648,7 +648,8 @@ __aicore__ inline void QLIMatmul<QLIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2Gm
         fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2; // 分2个ND搬, S2_BASIC_BLOCK_L0不为128会有问题
         fixpipeParams.params.ndNum = 2;
         fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
-        fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * constInfo_.mBaseSize / 2;
+        // dstNdStride = 第一个ND块的总占用 = mSize × dstStride（含每行padding）
+        fixpipeParams.params.dstNdStride = fixpipeParams.mSize * fixpipeParams.dstStride;
     }
     Fixpipe<QK_T, QK_T, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
                                                 cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);

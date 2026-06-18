@@ -831,8 +831,7 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
                                                   const int gSize,                     // G 64
                                                   const int batch)
 {
-    // 暂只支持这两种情况, 后续改成循环
-    if (batch != 2 && batch != 1) {
+    if (batch < 1) {
         return;
     }
     auto weight = (__ubuf__ W_T *)weight_.GetPhyAddr();
@@ -842,20 +841,32 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
     auto qk = (__ubuf__ QK_T *)qk_.GetPhyAddr();
     auto out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
 
-    if (batch == 2) {
-        auto weight1 = weight + weightStride;
-        auto qScale1 = qScale + qScaleStride;
-        auto qk1 = qk + qkStride;
-        auto out1 = out + outStride;
+    int pairCount = batch / 2;
+    for (int p = 0; p < pairCount; p++) {
+        auto curWeight = weight + p * 2 * weightStride;
+        auto curWeight1 = curWeight + weightStride;
+        auto curQScale = qScale + p * 2 * qScaleStride;
+        auto curQScale1 = curQScale + qScaleStride;
+        auto curQk = qk + p * 2 * qkStride;
+        auto curQk1 = curQk + qkStride;
+        auto curOut = out + p * 2 * outStride;
+        auto curOut1 = curOut + outStride;
 
-        MulWeightAndReduceSum2(out, out1, outStride,
-                               qk, qk1, qkVLStride, qkStride,
-                               weight, weight1, weightStride, weightFloat,
+        MulWeightAndReduceSum2(curOut, curOut1, outStride,
+                               curQk, curQk1, qkVLStride, qkStride,
+                               curWeight, curWeight1, weightStride, weightFloat,
                                kScale, kScaleStride,
-                               qScale, qScale1, qScaleStride,
+                               curQScale, curQScale1, qScaleStride,
                                gSize);
-    } else {
-        MulWeightAndReduceSum(out, qk, qkVLStride, weight, kScale, qScale, gSize);
+    }
+
+    // 奇数行：最后一行用 S1=1 处理
+    if (batch % 2 != 0) {
+        auto lastWeight = weight + (batch - 1) * weightStride;
+        auto lastQScale = qScale + (batch - 1) * qScaleStride;
+        auto lastQk = qk + (batch - 1) * qkStride;
+        auto lastOut = out + (batch - 1) * outStride;
+        MulWeightAndReduceSum(lastOut, lastQk, qkVLStride, lastWeight, kScale, lastQScale, gSize);
     }
 }
 

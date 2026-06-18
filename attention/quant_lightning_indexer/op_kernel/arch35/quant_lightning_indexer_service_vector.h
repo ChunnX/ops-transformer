@@ -410,7 +410,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
     auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))];
     auto weightFloatBase = weightFloatUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(float))];
-    auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(float)) / 2 * constInfo_.mBaseSize;
+    // qkVLstride = 第一个ND块的总占用 = mSize × dstStride（与Fixpipe的dstNdStride一致）
+    auto qkVLstride = constInfo_.mBaseSize * (UB_BANK_DEPTH_STRIDE / sizeof(float));
 
     if constexpr (IS_MXFP8) {
         // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + ReduceSum
