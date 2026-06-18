@@ -248,6 +248,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/mixed_quant_sparse_flash_mla_metadata/README.md">mixed_quant_sparse_flash_mla_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>mixed_quant_sparse_flash_mla算子的前置算子，用于计算mixed_quant_sparse_flash_mla的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/mla_preprocess/README.md">mla_preprocess</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -465,6 +475,16 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，计算sparse_flash_mla注意力的反向输出。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/sparse_flash_mla_metadata/README.md">sparse_flash_mla_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>sparse_flash_mla算子的前置算子，用于计算sparse_flash_mla的负载均衡。</td>
   </tr>
   <tr>
     <td>ffn</td>

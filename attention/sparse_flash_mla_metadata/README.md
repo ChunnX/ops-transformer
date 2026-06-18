@@ -1,29 +1,28 @@
 # SparseFlashMlaMetadata
 
 ## 产品支持情况
+
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>                        | ×  |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        | √  |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | √  |
-|<term>Atlas 200I/500 A2推理系列产品</term>                    | ×  |
-|<term>Atlas 推理系列产品</term>                                | ×  |
-|<term>Atlas 训练系列产品</term>                                | ×  |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
-- 算子功能：`SparseFlashMlaMetadata`算子完成`SparseFlashMla`算子的tiling计算，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`SparseFlashMla`算子使用。
 
-
+- 算子功能：`SparseFlashMlaMetadata`算子旨在生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`SparseFlashMla`算子使用。
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1576px">
-  <colgroup>
-  <col style="width: 170px">
-  <col style="width: 170px">
-  <col style="width: 310px">
-  <col style="width: 212px">
+<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 180px">
   <col style="width: 100px">
+  <col style="width: 700px">
+  <col style="width: 90px">
+  <col style="width: 80px">
   </colgroup>
   <thead>
     <tr>
@@ -36,183 +35,216 @@
   </thead>
   <tbody>
     <tr>
-      <td>num_heads_q</td>
-      <td>属性</td>
-      <td>Q的多头数，目前仅支持64。</td>
-      <td>INT32</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>num_heads_kv</td>
-      <td>属性</td>
-      <td>K和V的多头数，目前仅支持1。</td>
-      <td>INT32</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>head_dim</td>
-      <td>属性</td>
-      <td>注意力头的维度。</td>
-      <td>INT32</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>当layout_query为TND时，表示不同Batch中q的有效token数，维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和。</td>
+      <td>表示不同Batch中Query的有效Sequence Length，维度为B+1，仅layout_q为TND场景需传入</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_ori_kv</td>
       <td>可选输入</td>
-      <td>当layout_kv为TND时，表示不同Batch中ori_kv的有效token数，维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和。目前layout_kv仅支持PA_BNBD，故设置此参数无效。</td>
+      <td>表示不同Batch中ori_kv的有效Sequence Length，维度为B+1，仅layout_kv为TND场景需传入</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_cmp_kv</td>
       <td>可选输入</td>
-      <td>当layout_kv为TND时，表示不同Batch中cmp_kv的有效token数，维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和。目前layout_kv仅支持PA_BNBD，故设置此参数无效。</td>
+      <td>表示不同Batch中cmp_kv的有效Sequence Length，维度为B+1，仅layout_kv为TND场景需传入</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中q实际参与运算的token数，维度为B。目前暂不支持指定该参数。</td>
+      <td>表示不同Batch中Query实际参与运算的Sequence Length，维度为B</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_ori_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中ori_kv实际参与运算的token数，维度为B。</td>
+      <td>表示不同Batch中ori_kv实际参与运算的Sequence Length，维度为B</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
+      <td>seqused_cmp_kv</td>
+      <td>可选输入</td>
+      <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length，维度为B</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>cmp_residual_kv</td>
+      <td>可选输入</td>
+      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_mask_mode=3且cmp_ratio≠1时必须传入，维度为B</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>ori_topk_length</td>
+      <td>可选输入</td>
+      <td>预留参数，当前不生效</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>cmp_topk_length</td>
+      <td>可选输入</td>
+      <td>预留参数，当前不生效</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>num_heads_q</td>
+      <td>属性</td>
+      <td>表示Query的head个数，当前仅支持2/4/8/16/32/64/128</td>
+      <td>INT32</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>num_heads_kv</td>
+      <td>属性</td>
+      <td>表示Key和Value对应的多头数，当前仅支持1</td>
+      <td>INT32</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>head_dim</td>
+      <td>属性</td>
+      <td>表示注意力头的维度，当前仅支持512</td>
+      <td>INT32</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>batch_size</td>
       <td>可选属性</td>
-      <td>输入样本批量大小，默认值为None。</td>
+      <td>表示Batch数量，默认值为0</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>max_seqlen_q</td>
       <td>可选属性</td>
-      <td>表示所有batch中`q`的最大有效token数。</td>
+      <td>表示Query的最长Sequence Length，默认值为0</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>max_seqlen_kv</td>
+      <td>max_seqlen_ori_kv</td>
       <td>可选属性</td>
-      <td>表示所有batch中`ori_kv`的最大有效token数。</td>
+      <td>表示ori_kv的最长Sequence Length，默认值为0</td>
+      <td>INT32</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>max_seqlen_cmp_kv</td>
+      <td>可选属性</td>
+      <td>表示cmp_kv的最长Sequence Length，默认值为0</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_topk</td>
       <td>可选属性</td>
-      <td>表示通过QLI算法从`ori_kv`中筛选出的关键稀疏token的个数。目前暂不支持指定该参数，默认值为None。</td>
+      <td>预留参数，当前不生效，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_topk</td>
       <td>可选属性</td>
-      <td>表示通过QLI算法从`cmp_kv`中筛选出的关键稀疏token的个数，目前仅支持512，默认值为None。</td>
+      <td>表示cmp_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0，当前仅支持512/1024</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对`ori_kv`的压缩率，数据范围支持4/128，默认值为None。</td>
+      <td>表示对cmp_kv的压缩率，取值范围[1, 128]，默认值为1，当前仅支持4/128</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_mask_mode</td>
       <td>可选属性</td>
-      <td>表示q和ori_kv计算的mask模式，仅支持输入默认值4，代表band模式的mask。</td>
+      <td>表示q和ori_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0，当前仅支持4</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_mask_mode</td>
       <td>可选属性</td>
-      <td>表示q和cmp_kv计算的mask模式，仅支持输入默认值3，代表rightDownCausal模式的mask。</td>
+      <td>表示q和cmp_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0，当前仅支持3</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_win_left</td>
       <td>可选属性</td>
-      <td>表示q和ori_kv计算中q对过去token计算的数量，仅支持默认值127。</td>
+      <td>表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1，当前仅支持127</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_win_right</td>
       <td>可选属性</td>
-      <td>表示q和ori_kv计算中q对未来token计算的数量，仅支持默认值0。</td>
+      <td>表示q和ori_kv计算中q对未来token计算的数量，-1表示无穷大，默认值为-1，当前仅支持0</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_q</td>
       <td>可选属性</td>
-      <td>用于标识输入q的数据排布格式，默认值为BSND，目前支持传入BSND和TND。</td>
+      <td>表示Query的排列格式，支持BSND、TND，默认值为BSND</td>
       <td>STRING</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>layout_kv</td>
       <td>可选属性</td>
-      <td>用于标识输入ori_kv和cmp_kv的数据排布格式，目前仅支持传入默认值PA_BNBD。</td>
+      <td>表示Key的排列格式，支持BSND、TND、PA_BBND，默认值为BSND</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>has_ori_kv</td>
       <td>可选属性</td>
-      <td>是否传入ori_kv，默认值为true。</td>
+      <td>用于标识是否含有ori_kv，默认值为true</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
     <tr>
       <td>has_cmp_kv</td>
       <td>可选属性</td>
-      <td>是否传入cmp_kv，默认值为true。</td>
+      <td>用于标识是否含有cmp_kv，默认值为true</td>
       <td>BOOL</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>device</td>
-      <td>可选属性</td>
-      <td>用于获取设备信息，默认值为None。</td>
-      <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>每个cube核上FlashAttention计算任务的Batch、Head、以及Q和K的分块的索引，以及每个vector核上FlashDecode的规约任务索引。</td>
+      <td>表示负载均衡结果输出，shape固定为[1024]</td>
       <td>INT32</td>
-      <td>-</td>
+      <td>ND</td>
     </tr>
   </tbody>
-</table>
+  </table>
 
 ## 约束说明
 
--   该接口支持推理场景下使用。
--   该接口支持aclgraph模式。
--   Tensor不能全传None。
+-   SparseFlashMlaMetadata算子需要与SparseFlashMla算子配套使用。
+-   B（Batch）表示输入样本批量大小。
+-   参数cu_seqlens_q、cu_seqlens_ori_kv及cu_seqlens_cmp_kv要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
+-   参数seqused_q、seqused_ori_kv、seqused_cmp_kv要求其值表示每个Batch中的有效token数。
+-   参数cmp_residual_kv需满足cmp_residual_kv[i] < cmp_ratio。
+-   ori\_mask\_mode及cmp\_mask\_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode参数说明.md)。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnnSparseFlashMlaMetadata](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md)调用SparseFlashMlaMetadata算子 |
+| aclnn API | [test_aclnn_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md.md)接口调用SparseFlashMlaMetadata算子 |
+| PyTorch API | [test_torch_sparse_flash_mla_metadata.py](./examples/test_torch_sparse_flash_mla_metadata.py) | 通过[torch.ops.cann_ops_transformer.sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_metadata.md)接口调用SparseFlashMlaMetadata算子 |

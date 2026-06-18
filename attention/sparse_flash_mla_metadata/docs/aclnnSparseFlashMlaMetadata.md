@@ -1,119 +1,86 @@
 # aclnnSparseFlashMlaMetadata
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/sparse_flash_mla_metadata)
+
 ## 产品支持情况
 
-| 产品                                                     | 是否支持 |
-| :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    ×    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
-| <term>Atlas 推理系列产品</term>                          |    ×    |
-| <term>Atlas 训练系列产品</term>                          |    ×    |
+| 产品                                                         | 是否支持 |
+| :----------------------------------------------------------- | :------: |
+| Ascend 950PR/Ascend 950DT |      √     |
+| Atlas A3 训练系列产品/Atlas A3 推理系列产品     |    √     |
+| Atlas A2 训练系列产品/Atlas A2 推理系列产品 |    √     |
+| Atlas 200I/500 A2 推理产品                      |    x     |
+| Atlas 推理系列产品                              |    x     |
+| Atlas 训练系列产品                              |    x     |
 
 ## 功能说明
 
-- 接口功能：该算子为AICPU算子，`SparseFlashMlaMetadata`算子为`SparseFlashMla`算子的前序算子，负责根据输入的序列长度信息和注意力配置参数，生成负载均衡的分核元数据（metadata）。该元数据包含每个AICore上FlashAttention计算任务的Batch、Head、Query分块和KV分块的索引，以及每个VectorCore上FlashDecode归约任务的索引信息。
-  
+- 接口功能：该接口为AI CPU算子接口，是aclnnSparseFlashMla算子的前置算子接口。根据aclnnSparseFlashMla算子接口的输入信息，计算并输出负载均衡结果。输出结果可以作为aclnnSparseFlashMla算子接口的输入，减少aclnnSparseFlashMla算子接口的执行耗时。
+
   **该算子不建议单独使用，建议与aclnnSparseFlashMla算子配合使用，形成完整的工作流。**
-- 计算公式：
-
-  该算子为AICPU调度算子，不涉及数值计算。核心流程为：解析各Batch的Q/KV序列长度 → 根据mask模式计算每个S1G块的有效S2范围 → 基于开销模型进行负载均衡分核 → 输出分核元数据。
-
-  输出metadata tensor的shape为(1024,)，数据类型为INT32，内部结构如下：
-
-  - FA Metadata区域（AIC_CORE_NUM × 8个INT32），每个AICore的FA阶段任务信息：
-
-    | 索引 | 含义 |
-    | :--- | :--- |
-    | 0 | core_enable，该核是否启用 |
-    | 1 | bn2_start，BN2起始索引 |
-    | 2 | m_start，M（S1G）起始索引 |
-    | 3 | s2_start，S2起始索引 |
-    | 4 | bn2_end，BN2结束索引 |
-    | 5 | m_end，M结束索引 |
-    | 6 | s2_end，S2结束索引 |
-    | 7 | first_fd_data_workspace_idx，第一份FD归约数据的workspace偏移 |
-
-  - FD Metadata区域（AIV_CORE_NUM × 8个INT32），每个AIVCore的FD归约任务信息：
-
-    | 索引 | 含义 |
-    | :--- | :--- |
-    | 0 | core_enable，该核是否启用 |
-    | 1 | bn2_idx，归约任务的BN2索引 |
-    | 2 | m_idx，归约任务的M索引 |
-    | 3 | workspace_idx，归约数据在workspace中的存放位置 |
-    | 4 | workspace_num，S2核间切分份数 |
-    | 5 | m_start，M轴起点 |
-    | 6 | m_num，M轴行数 |
-
-- 符号说明
-
-  | 符号                | 含义                                                      |
-  | ------------------- | --------------------------------------------------------- |
-  | $B$                 | Batch Size                                                |
-  | $N1$/$N2$           | Query/KV头数                                              |
-  | $D$                 | 每个注意力头的维度                                        |
-  | $G$                 | GQA分组比，$G = N1/N2$                                    |
-  | $S1$/$S2$           | Query/KV序列长度                                          |
-  | S1G                 | S1×G方向的分块索引                                        |
-  | mBaseSize           | M轴基本块大小，等于$G$                                    |
-  | s2BaseSize          | S2轴基本块大小，固定为512                                  |
+    1. 接受aclnnSparseFlashMla算子接口输入数据shape信息，包含batchSize、qSeqlen、kSeqlen、mask。通过对输入分块并模拟计算耗时，均匀分配分块到可用核上，以降低aclnnSparseFlashMla算子的整体计算耗时，并提高硬件利用率。
+    2. 分配结果输出后，后续作为输入供aclnnSparseFlashMla算子使用。
+    3. 分配结果包含每个AIC核基本块的起始点和终止点，已经每个AIV核的FD任务信息。详细内容可以参考[调用示例](#调用示例)。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnSparseFlashMlaMetadataGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnSparseFlashMlaMetadata`执行实际计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnSparseFlashMlaMetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnSparseFlashMlaMetadata"执行计算
 
-```c++
+``` cpp
 aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
-    const aclTensor *cuSeqLensQ,
-    const aclTensor *cuSeqLensOriKv,
-    const aclTensor *cuSeqLensCmpKv,
-    const aclTensor *seqUsedQ,
-    const aclTensor *seqUsedOriKv,
-    int64_t          numHeadsQ,
-    int64_t          numHeadsKv,
-    int64_t          headDim,
-    int64_t          batchSize,
-    int64_t          maxSeqlenQ,
-    int64_t          maxSeqlenKv,
-    int64_t          oriTopk,
-    int64_t          cmpTopk,
-    int64_t          cmpRatio,
-    int64_t          oriMaskMode,
-    int64_t          cmpMaskMode,
-    int64_t          oriWinLeft,
-    int64_t          oriWinRight,
-    char            *layoutQ,
-    char            *layoutKv,
-    bool             hasOriKv,
-    bool             hasCmpKv,
-    const aclTensor *metadata,
-    uint64_t       **workspaceSize,
-    aclOpExecutor  **executor)
+    const aclTensor   *cuSeqlensQOptional,
+    const aclTensor   *cuSeqlensOriKvOptional,
+    const aclTensor   *cuSeqlensCmpKvOptional,
+    const aclTensor   *sequsedQOptional,
+    const aclTensor   *sequsedOriKvOptional,
+    const aclTensor   *sequsedCmpKvOptional,
+    const aclTensor   *cmpResidualKvOptional,
+    const aclTensor   *oriTopkLengthOptional,
+    const aclTensor   *cmpTopkLengthOptional,
+    int64_t            numHeadsQ,
+    int64_t            numHeadsKv,
+    int64_t            headDim,
+    int64_t            batchSize,
+    int64_t            maxSeqlenQ,
+    int64_t            maxSeqlenOriKv,
+    int64_t            maxSeqlenCmpKv,
+    int64_t            oriTopk,
+    int64_t            cmpTopk,
+    int64_t            cmpRatio,
+    int64_t            oriMaskMode,
+    int64_t            cmpMaskMode,
+    int64_t            oriWinLeft,
+    int64_t            oriWinRight,
+    char              *layoutQOptional,
+    char              *layoutKvOptional,
+    bool               hasOriKv,
+    bool               hasCmpKv,
+    const aclTensor   *metadata,
+    uint64_t          *workspaceSize,
+    aclOpExecutor    **executor)
 ```
 
-```c++
+``` cpp
 aclnnStatus aclnnSparseFlashMlaMetadata(
-    void          *workspace,
-    uint64_t       workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream    stream)
+    void              *workspace,
+    uint64_t           workspaceSize,
+    aclOpExecutor     *executor,
+    aclrtStream        stream)
 ```
 
 ## aclnnSparseFlashMlaMetadataGetWorkspaceSize
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1500px"><colgroup>
-    <col style="width: 220px">
-    <col style="width: 100px">
-    <col style="width: 300px">
-    <col style="width: 300px">
-    <col style="width: 120px">
-    <col style="width: 100px">
-    <col style="width: 160px">
-    <col style="width: 100px">
+  <table style="undefined;table-layout: fixed; width: 1450px"><colgroup>
+  <col style="width: 240px">
+  <col style="width: 120px">
+  <col style="width: 333px">
+  <col style="width: 160px">
+  <col style="width: 100px">
+  <col style="width: 100px">
+  <col style="width: 170px">
+  <col style="width: 140px">
   </colgroup>
   <thead>
     <tr>
@@ -128,60 +95,100 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     </tr></thead>
   <tbody>
     <tr>
-      <td>cuSeqLensQ（aclTensor*）</td>
+      <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中q的有效token数（前缀和形式）。</td>
-      <td>layoutQ为TND时必须传入。每个元素表示当前batch与之前所有batch的token数总和。</td>
+      <td>表示不同Batch中Query的有效Sequence Length</td>
+      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B+1,)</td>
+      <td>1维，shape固定为(B+1，)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>cuSeqLensOriKv（aclTensor*）</td>
+      <td>cuSeqlensOriKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中oriKv的有效token数（前缀和形式）。</td>
-      <td>layoutKv为TND时必须传入。当前layoutKv仅支持PA_BNBD，故设置此参数无效。</td>
+      <td>表示不同Batch中ori_Kv的有效Sequence Length</td>
+      <td><ul><li>支持空Tensor</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B+1,)</td>
+      <td>1维，shape固定为(B+1，)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>cuSeqLensCmpKv（aclTensor*）</td>
+      <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中cmpKv的有效token数（前缀和形式）。</td>
-      <td>layoutKv为TND且存在cmpKv时必须传入。当前layoutKv仅支持PA_BNBD，故设置此参数无效。</td>
+      <td>表示不同Batch中cmp_Kv的有效Sequence Length</td>
+      <td><ul><li>支持空Tensor</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B+1,)</td>
+      <td>1维，shape固定为(B+1，)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>seqUsedQ（aclTensor*）</td>
+      <td>sequsedQOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中q实际参与运算的token数。</td>
-      <td>当前暂不支持指定该参数。</td>
+      <td>表示不同Batch中Query实际参与运算的Sequence Length。</td>
+      <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B,)</td>
+      <td>1维，shape固定为(B，)</td>
       <td>√</td>
     </tr>
     <tr>
-      <td>seqUsedOriKv（aclTensor*）</td>
+      <td>sequsedOriKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中oriKv实际参与运算的token数。</td>
-      <td>layoutKv为PA_BNBD时必须传入。</td>
+      <td>表示不同Batch中ori_kv实际参与运算的Sequence Length。</td>
+      <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B,)</td>
+      <td>1维，shape固定为(B，)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>sequsedCmpKvOptional（aclTensor*）</td>
+      <td>输入</td>
+      <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length。</td>
+      <td>支持空Tensor</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1维，shape固定为(B，)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>cmpResidualKvOptional（aclTensor*）</td>
+      <td>输入</td>
+      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</td>
+      <td><ul><li>支持空Tensor</li><li>cmpRatio不为1，且mask为3场景下必传。</li></ul></td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1维，shape固定为(B，)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>oriTopkLengthOptional（aclTensor*）</td>
+      <td>输入</td>
+      <td>预留参数，当前不生效。</td>
+      <td>支持空Tensor</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B, S1, N2)或(T1, N2)</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>cmpTopkLengthOptional（aclTensor*）</td>
+      <td>输入</td>
+      <td>预留参数，当前不生效。</td>
+      <td>支持空Tensor</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B, S1, N2)或(T1, N2)</td>
       <td>√</td>
     </tr>
     <tr>
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
-      <td>Query的多头数。</td>
-      <td>仅支持64。</td>
+      <td>表示Query的head个数。</td>
+      <td>支持非负数</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -190,8 +197,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>numHeadsKv（int64_t）</td>
       <td>输入</td>
-      <td>KV的多头数。</td>
-      <td>仅支持1。</td>
+      <td>Key和Value对应的多头数。</td>
+      <td>支持非负数</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -200,8 +207,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>headDim（int64_t）</td>
       <td>输入</td>
-      <td>每个注意力头的维度。</td>
-      <td>仅支持512。</td>
+      <td>注意力头的维度。</td>
+      <td>支持非负数</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -210,8 +217,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>batchSize（int64_t）</td>
       <td>输入</td>
-      <td>输入样本批量大小。</td>
-      <td>默认值为0。layoutQ为TND时从cuSeqLensQ推断，无需手动指定。</td>
+      <td>表示Batch数量。</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -220,18 +227,28 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>maxSeqlenQ（int64_t）</td>
       <td>输入</td>
-      <td>所有Batch中q的最大有效token数。</td>
-      <td>默认值为0。</td>
+      <td>表示Query的最长Sequence Length。</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenKv（int64_t）</td>
+      <td>maxSeqlenOriKv（int64_t）</td>
       <td>输入</td>
-      <td>所有Batch中oriKv的最大有效token数。</td>
-      <td>默认值为0。</td>
+      <td>表示ori_kv的最长Sequence Length。</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>maxSeqlenCmpKv（int64_t）</td>
+      <td>输入</td>
+      <td>表示cmp_kv的最长Sequence Length。</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -240,8 +257,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>oriTopk（int64_t）</td>
       <td>输入</td>
-      <td>从oriKv中筛选的稀疏token个数。</td>
-      <td>当前暂不支持，默认值为0。</td>
+      <td>预留参数，当前不生效。表示ori_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -250,8 +267,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>cmpTopk（int64_t）</td>
       <td>输入</td>
-      <td>从cmpKv中筛选的稀疏token个数。</td>
-      <td>SCFA模式下仅支持512或1024，CFA/SWA模式下为0。</td>
+      <td>表示cmp_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景</td>
+      <td><ul><li>支持非负数</li><li>建议值为0</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -260,8 +277,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
-      <td>对oriKv的压缩率。</td>
-      <td>仅支持4或128。SWA模式下传入-1。</td>
+      <td>表示对cmp_kv的压缩率。</td>
+      <td><ul><li>取值范围[1，128]</li><li>建议值1，表示无压缩。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -270,8 +287,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>oriMaskMode（int64_t）</td>
       <td>输入</td>
-      <td>q和oriKv计算的mask模式。</td>
-      <td>仅支持4（Band模式）。默认值为4。</td>
+      <td>表示q和ori_kv计算的mask模式。</td>
+      <td><ul><li>0: No mask</li><li>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景</li><li>4: sliding window模式的mask，对应由oriWinLeft和oriWinRight划分的窗口场景</li><li>建议值为0</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -280,8 +297,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
-      <td>q和cmpKv计算的mask模式。</td>
-      <td>仅支持3（RightDownCausal模式）。默认值为3。</td>
+      <td>表示q和cmp_kv计算的mask模式。</td>
+      <td><ul><li>0: No mask</li><li>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景</li><li>建议值为0</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -290,8 +307,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>oriWinLeft（int64_t）</td>
       <td>输入</td>
-      <td>滑动窗口向左扩展的token数。</td>
-      <td>仅支持127。默认值为127。</td>
+      <td>表示q和ori_kv计算中q对过去token计算的数量。</td>
+      <td><ul><li>取值范围≥-1，-1表示无穷大</li><li>建议值为-1</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -300,28 +317,28 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>oriWinRight（int64_t）</td>
       <td>输入</td>
-      <td>滑动窗口向右扩展的token数。</td>
-      <td>仅支持0。默认值为0。</td>
+      <td>表示q和ori_kv计算中q对未来token计算的数量。</td>
+      <td><ul><li>取值范围≥-1，-1表示无穷大</li><li>建议值为-1</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutQ（char*）</td>
+      <td>layoutQOptional（char*）</td>
       <td>输入</td>
-      <td>标识输入q的数据排布格式。</td>
-      <td>支持"BSND"和"TND"，默认值为"BSND"。</td>
+      <td>表示Query的排列格式。</td>
+      <td><ul><li>支持 BSND、TND</li><li>建议值为BSND</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutKv（char*）</td>
+      <td>layoutKvOptional（char*）</td>
       <td>输入</td>
-      <td>标识输入KV的数据排布格式。</td>
-      <td>支持"PA_BNBD"、"BSND"和"TND"，默认值为"PA_BNBD"。</td>
+      <td>表示Key的排列格式。</td>
+      <td><ul><li>支持 BSND、TND、PA_BBND</li><li>建议值为BSND</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -330,8 +347,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>hasOriKv（bool）</td>
       <td>输入</td>
-      <td>是否传入oriKv。</td>
-      <td>默认值为true。</td>
+      <td>用于标识是否含有ori_kv。</td>
+      <td><ul><li>true: 含有ori_kv</li><li>false: 不含有ori_kv</li><li>建议值为true</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -340,8 +357,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>hasCmpKv（bool）</td>
       <td>输入</td>
-      <td>是否传入cmpKv。</td>
-      <td>SWA模式为false，CFA/SCFA模式为true。默认值为true。</td>
+      <td>用于标识是否含有cmp_kv。</td>
+      <td><ul><li>true: 含有cmp_kv</li><li>false: 不含有cmp_kv</li><li>建议值为true</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -350,15 +367,15 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>metadata（aclTensor*）</td>
       <td>输出</td>
-      <td>分核元数据输出，供SparseFlashMla算子使用。</td>
+      <td>表示负载均衡结果输出。</td>
       <td>-</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(1024,)</td>
+      <td>1维，shape固定为(1024)</td>
       <td>×</td>
     </tr>
     <tr>
-      <td>workspaceSize（uint64_t**）</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -380,344 +397,458 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   </tbody>
   </table>
 
-- **返回值**
+- **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-  第一段接口完成入参校验，出现以下场景时报错：
+    第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
-  <col style="width: 262px">
-  <col style="width: 121px">
-  <col style="width: 817px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
-    </tr>
-    <tr>
-      <td rowspan="5">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="5">161002</td>
-      <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
-    </tr>
-    <tr>
-      <td>numHeadsKv不为1。</td>
-    </tr>
-    <tr>
-      <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
-    </tr>
-    <tr>
-      <td>oriWinLeft不为127。</td>
-    </tr>
-    <tr>
-      <td>cmpRatio不为4或128（当hasCmpKv为true时）。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_RUNTIME_ERROR</td>
-      <td>361001</td>
-      <td>调用NPU Runtime接口申请内存/创建Tensor失败。</td>
-    </tr>
-  </tbody>
-  </table>
-
+    <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+    <col style="width: 319px">
+    <col style="width: 144px">
+    <col style="width: 671px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
+        <td>561101</td>
+        <td>创建aclOpExecutor失败。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_INNER_NULLPTR</td>
+        <td>561103</td>
+        <td>参数workspaceSize、executor是空指针，或参数cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional、sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、cmpResidualKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional进行Contiguous处理后为空指针。</td>
+      </tr>
+      <tr>
+        <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="2">161002</td>
+        <td>参数cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional、sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、cmpResidualKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、numHeadsQ、numHeadsKv、headDim、batchSize、maxSeqlenQ、maxSeqlenOriKv、maxSeqlenCmpKv、oriTopk、cmpTopk、cmpRatio、oriMaskMode、cmpMaskMode、oriWinLeft、oriWinRight、layoutQOptional、layoutKvOptional、hasOriKv、hasCmpKv的规格不在支持范围内。</td>
+      </tr>
+    </tbody>
+    </table>
 ## aclnnSparseFlashMlaMetadata
 
-- **参数说明**
+- **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
-  <col style="width: 153px">
-  <col style="width: 121px">
-  <col style="width: 880px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>workspace</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnSparseFlashMlaMetadataGetWorkspaceSize获取。</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输入</td>
-      <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-      <td>stream</td>
-      <td>输入</td>
-      <td>指定执行任务的Stream。</td>
-    </tr>
-  </tbody>
-  </table>
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数名</th>
+            <th>输入/输出</th>
+            <th>描述</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>workspace</td>
+            <td>输入</td>
+            <td>在Device侧申请的workspace内存地址</td>
+        </tr>
+        <tr>
+            <td>workspaceSize</td>
+            <td>输入</td>
+            <td>在Device侧申请的workspace大小，由第一段接口aclnnSparseFlashMlaMetadataGetWorkspaceSize获取</td>
+        </tr>
+        <tr>
+            <td>executor</td>
+            <td>输入</td>
+            <td>op执行器，包含了算子计算流程</td>
+        </tr>
+        <tr>
+            <td>stream</td>
+            <td>输入</td>
+            <td>指定执行任务的Stream</td>
+        </tr>
+    </tbody>
+    </table>
 
-- **返回值**
+- **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
-- 确定性计算
+  - aclnnSparseFlashMlaMetadata默认确定性实现
 
-  - aclnnSparseFlashMlaMetadata默认采用确定性实现，相同输入多次调用结果一致。
-
-- 规格约束
-
-  | 规格项        | 规格           | 规格说明                                    |
-  | :------------ | :------------- | :------------------------------------------ |
-  | numHeadsQ   | 64             | Query头数仅支持64。                          |
-  | numHeadsKv  | 1              | KV头数仅支持1。                              |
-  | headDim      | 512            | 每个注意力头的维度仅支持512。                 |
-  | cmpRatio     | 1 / 4 / 128        | 压缩率仅支持4或128。                          |
-  | oriMaskMode | 4              | 原始KV掩码模式仅支持4（Band模式）。            |
-  | cmpMaskMode | 3              | 压缩KV掩码模式仅支持3（RightDownCausal模式）。 |
-  | oriWinLeft  | 127            | 滑动窗口向左扩展仅支持127。                    |
-  | oriWinRight | 0              | 滑动窗口向右扩展仅支持0。                      |
-
-- 使用约束
-  - layoutQ为TND时，`cuSeqLensQ`必须传入。
-  - layoutKv为PA_BNBD时，`seqUsedOriKv`必须传入。
-  - layoutKv为TND时，`cuSeqLensOriKv`必须传入；若hasCmpKv为true，`cuSeqLensCmpKv`也必须传入。
-  - 该算子为AICPU算子，在Host侧CPU上执行，不占用NPU计算资源。
-
+  - Batch取值规则
+    - 优先获取sequsedQOptional中的Batch信息
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND和传入了cuSeqlensQOptional，则获取cuSeqlensQOptional中的Batch信息
+    - 除上所述，使用batchSize
+  - Query Sequence Length取值规则
+    - 优先获取sequsedQOptional中的Sequence Length信息
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND和传入了cuSeqlensQOptional，则获取cuSeqlensQOptional中的Sequence Length信息
+    - 除上所述，使用maxSeqlenQ
+    - ori_kv、cmp_kv Sequence Length与Query的获取规则一致
+  - BSND场景
+    - 当传入的layoutQOptional为"BSND"时，在未传入sequsedQOptional的情况下，必传maxSeqlenQ参数
+    - 当传入的layoutKvOptional为"BSND"时，若hasOriKv为true，在未传入sequsedOriKvOptional的情况下，必传maxSeqlenOriKv参数；若hasCmpKv为true，在未传入sequsedCmpKvOptional的情况下，必传maxSeqlenCmpKv参数
+  - TND场景
+    - 当传入的layoutQOptional为"TND"时，必传cuSeqlensQOptional参数
+    - 当传入的layoutKvOptional为"TND"时，若hasOriKv为true，必传cuSeqlensOriKvOptional；若hasCmpKv为true，必传cuSeqlensCmpKvOptional参数
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-```c++
+``` cpp
 #include <iostream>
 #include <vector>
+#include <cmath>
+#include <cstring>
+#include <limits>
+#include <functional>
+#include <utility>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_sparse_flash_mla_metadata.h"
-#include "../../sparse_flash_mla/op_kernel/sparse_flash_mla_metadata.h"
 
-#define CHECK_RET(cond, return_expr) \
-  do {                               \
-    if (!(cond)) {                   \
-      return_expr;                   \
-    }                                \
-  } while (0)
+#define CHECK_LOG_RET(cond, ret_val, fmt, ...)      \
+    do {                                            \
+        if (!(cond)) {                              \
+            printf(fmt "\n", ##__VA_ARGS__);        \
+            return (ret_val);                       \
+        }                                           \
+    } while (0)
 
-#define LOG_PRINT(message, ...)     \
-  do {                              \
-    printf(message, ##__VA_ARGS__); \
-  } while (0)
+// 参考 sparse_flash_mla_metadata.h
+constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t SMLA_METADATA_TOTAL_SIZE = 1024;
+constexpr uint32_t FA_METADATA_SIZE = 9;
+constexpr uint32_t FD_METADATA_SIZE = 8;
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape)
+// FA Metadata Index Definitions
+constexpr uint32_t FA_CORE_ENABLE_INDEX = 0;
+constexpr uint32_t FA_BN2_START_INDEX = 1;
+constexpr uint32_t FA_M_START_INDEX = 2;
+constexpr uint32_t FA_S2_START_INDEX = 3;
+constexpr uint32_t FA_BN2_END_INDEX = 4;
+constexpr uint32_t FA_M_END_INDEX = 5;
+constexpr uint32_t FA_S2_END_INDEX = 6;
+constexpr uint32_t FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7;
+constexpr uint32_t FA_S2_MAX_NUM = 8;
+
+// FD Metadata Index Definitions
+constexpr uint32_t FD_CORE_ENABLE_INDEX = 0;
+constexpr uint32_t FD_BN2_IDX_INDEX = 1;
+constexpr uint32_t FD_M_IDX_INDEX = 2;
+constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 3;
+constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 4;
+constexpr uint32_t FD_M_START_INDEX = 5;
+constexpr uint32_t FD_M_NUM_INDEX = 6;
+
+struct SmlaMetadata {
+    uint32_t faMetadata[AIC_CORE_MAX_NUM][FA_METADATA_SIZE];
+    uint32_t fdMetadata[AIV_CORE_MAX_NUM][FD_METADATA_SIZE];
+};
+
+struct ScopeGuard
 {
-  int64_t shapeSize = 1;
-  for (auto i : shape) {
-    shapeSize *= i;
-  }
-  return shapeSize;
+    explicit ScopeGuard(std::function<void()> onExitScope) : m_exitFunc(std::move(onExitScope)),
+        m_isDismissed(false) {}
+    // 禁止拷贝
+    ScopeGuard(const ScopeGuard&) = delete;
+    ScopeGuard& operator=(const ScopeGuard&) = delete;
+
+    ~ScopeGuard()
+    {
+        if (!m_isDismissed) {
+            m_exitFunc();
+        }
+    }
+
+    void Dismiss()
+    {
+        m_isDismissed = true;
+    }
+
+    std::function<void()> m_exitFunc;
+    bool m_isDismissed;
+};
+
+struct Tensor {
+    void *hostAddr { nullptr };
+    void *deviceAddr { nullptr };
+    aclTensor *data { nullptr };
+};
+
+struct ArgScenario {
+    bool hasCuSeq { false };
+    bool hasSeqused { false };
+};
+
+struct ArgContext {
+    // required input
+    int64_t numHeadsQ { 0 };
+    int64_t numHeadsKv { 0 };
+    int64_t headDim { 0 };
+    // optional input
+    Tensor cuSeqlensQOptional {};
+    Tensor cuSeqlensOriKvOptional {};
+    Tensor cuSeqlensCmpKvOptional {};
+    Tensor sequsedQOptional {};
+    Tensor sequsedOriKvOptional {};
+    Tensor sequsedCmpKvOptional {};
+    Tensor cmpResidualKvOptional {};
+    Tensor oriTopkLengthOptional {};
+    Tensor cmpTopkLengthOptional {};
+    int64_t batchSize { 0 };
+    int64_t maxSeqlenQ { 0 };
+    int64_t maxSeqlenOriKv { 0 };
+    int64_t maxSeqlenCmpKv { 0 };
+    int64_t oriTopk { 0 };
+    int64_t cmpTopk { 0 };
+    int64_t cmpRatio { 0 };
+    int64_t oriMaskMode { 0 };
+    int64_t cmpMaskMode { 0 };
+    int64_t oriWinLeft { -1 };
+    int64_t oriWinRight { -1 };
+    char *layoutQOptional { nullptr };
+    char *layoutKvOptional { nullptr };
+    bool hasOriKv { true };
+    bool hasCmpKv { true };
+    // output
+    Tensor metadata {};
+};
+
+int64_t GetShapeSize(const std::vector<int64_t>& shape) 
+{
+    int64_t shapeSize = 1;
+    for (auto i : shape) {
+        shapeSize *= i;
+    }
+    return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtContext* context, aclrtStream* stream)
+aclnnStatus Init(int32_t deviceId, aclrtStream* stream) 
 {
-  auto ret = aclInit(nullptr);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
-  ret = aclrtSetDevice(deviceId);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
-  ret = aclrtCreateContext(context, deviceId);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateContext failed. ERROR: %d\n", ret); return ret);
-  ret = aclrtSetCurrentContext(*context);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetCurrentContext failed. ERROR: %d\n", ret); return ret);
-  ret = aclrtCreateStream(stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
-  return 0;
+    // 固定写法，初始化
+    auto ret = aclInit(nullptr);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclInit failed. ERROR: %d", ret);
+    ret = aclrtSetDevice(deviceId);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSetDevice failed. ERROR: %d", ret);
+    ret = aclrtCreateStream(stream);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtCreateStream failed. ERROR: %d", ret);
+    return ACL_SUCCESS;
 }
 
-template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
-                    aclDataType dataType, aclTensor** tensor)
+void Finalize(int32_t deviceId, aclrtStream stream) 
 {
-  auto size = GetShapeSize(shape) * sizeof(T);
-  if (size > 0) {
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
-  } else {
-    *deviceAddr = nullptr;
-  }
-
-  std::vector<int64_t> strides(shape.size(), 1);
-  for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
-    strides[i] = shape[i + 1] * strides[i + 1];
-  }
-
-  *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            shape.data(), shape.size(), *deviceAddr);
-  return 0;
+    aclrtDestroyStream(stream);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
 }
 
-void PrintMetadataSummary(const optiling::detail::SasMetadata& meta)
+aclnnStatus CreateTensor(aclDataType dataType, const std::vector<int64_t> &shape, Tensor &tensor)
 {
-  printf("AIC core0 enable=%u, bn2_end=%u, m_end=%u, s2_end=%u\n",
-         meta.faMetadata[0][optiling::FA_CORE_ENABLE_INDEX],
-         meta.faMetadata[0][optiling::FA_BN2_END_INDEX],
-         meta.faMetadata[0][optiling::FA_M_END_INDEX],
-         meta.faMetadata[0][optiling::FA_S2_END_INDEX]);
+    auto size = GetShapeSize(shape) * aclDataTypeSize(dataType);
+    // 调用aclrtMallocHost申请host侧内存
+    auto ret = aclrtMallocHost(&(tensor.hostAddr), size);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMallocHost failed. ERROR: %d", ret);
+    memset(tensor.hostAddr, 0, size);
+    // 调用aclrtMalloc申请device侧内存
+    ret = aclrtMalloc(&(tensor.deviceAddr), size, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMalloc failed. ERROR: %d", ret);
+    // 调用aclCreateTensor接口创建aclTensor
+    tensor.data = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
+        shape.data(), shape.size(), tensor.deviceAddr);
+    CHECK_LOG_RET(tensor.data != nullptr, ACL_ERROR_FAILURE, "aclCreateTensor failed");
+    // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
+    ret = aclrtMemcpy(tensor.deviceAddr, size, tensor.hostAddr, size, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d", ret);
+    return ACL_SUCCESS;
 }
 
-int main()
+void DestroyTensor(Tensor &tensor)
 {
-  // 1.（固定写法）device/stream初始化，参考acl API手册
-  // 根据自己的实际device填写deviceId
-  int32_t deviceId = 0;
-  aclrtContext context = nullptr;
-  aclrtStream stream = nullptr;
-  auto ret = Init(deviceId, &context, &stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+    if (tensor.data != nullptr) {
+        aclDestroyTensor(tensor.data);
+        tensor.data = nullptr;
+    }
+    if (tensor.deviceAddr != nullptr) {
+        aclrtFree(tensor.deviceAddr);
+        tensor.deviceAddr = nullptr;
+    }
+    if (tensor.hostAddr != nullptr) {
+        aclrtFreeHost(tensor.hostAddr);
+        tensor.hostAddr = nullptr;
+    }
+}
 
-  int64_t B = 4;
-  int64_t S1 = 128;
-  int64_t S2 = 8192;
-  int64_t N1 = 64;
-  int64_t N2 = 1;
-  int64_t D = 512;
-  int64_t K = 512;
-  int64_t s2Act = 4096;
-  int64_t cmpRatio = 4;
-  int64_t oriMaskMode = 4;
-  int64_t cmpMaskMode = 3;
-  int64_t oriWinLeft = 127;
-  int64_t oriWinRight = 0;
-  
-  // 2. 构造输入与输出，需要根据API的接口自定义构造
-  std::vector<int64_t> cuSeqLensQShape = {B + 1};
-  std::vector<int64_t> seqUsedOriKvShape = {B};
-  std::vector<int64_t> metadataShape = {optiling::SAS_META_SIZE};
-  // 对全部5个输入调用Contiguous，optional输入传shape为 {0} 的空tensor。
-  std::vector<int64_t> emptyShape = {0};
-  std::vector<int64_t> seqUsedQShape = emptyShape;
+void DestroyArgs(ArgContext &context)
+{
+    DestroyTensor(context.metadata);
+    DestroyTensor(context.cuSeqlensQOptional);
+    DestroyTensor(context.cuSeqlensOriKvOptional);
+    DestroyTensor(context.cuSeqlensCmpKvOptional);
+    DestroyTensor(context.sequsedQOptional);
+    DestroyTensor(context.sequsedOriKvOptional);
+    DestroyTensor(context.sequsedCmpKvOptional);
+    DestroyTensor(context.cmpResidualKvOptional);
+    DestroyTensor(context.oriTopkLengthOptional);
+    DestroyTensor(context.cmpTopkLengthOptional);
 
-  void* cuSeqLensQDeviceAddr = nullptr;
-  void* cuSeqLensOriKvDeviceAddr = nullptr;
-  void* cuSeqLensCmpKvDeviceAddr = nullptr;
-  void* seqUsedQDeviceAddr = nullptr;
-  void* seqUsedOriKvDeviceAddr = nullptr;
-  void* metadataDeviceAddr = nullptr;
+    if (context.layoutQOptional != nullptr) {
+        free(context.layoutQOptional);
+        context.layoutQOptional = nullptr;
+    }
+    if (context.layoutKvOptional != nullptr) {
+        free(context.layoutKvOptional);
+        context.layoutKvOptional = nullptr;
+    }
+}
 
-  aclTensor* cuSeqLensQ = nullptr;
-  aclTensor* cuSeqLensOriKv = nullptr;
-  aclTensor* cuSeqLensCmpKv = nullptr;
-  aclTensor* seqUsedQ = nullptr;
-  aclTensor* seqUsedOriKv = nullptr;
-  aclTensor* metadata = nullptr;
+aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
+{
+    ScopeGuard argsGuard([&] { DestroyArgs(context); });
+    aclnnStatus ret;
 
-  std::vector<int32_t> cuSeqLensQHostData(B + 1);
-  for (int64_t i = 0; i <= B; i++) {
-    cuSeqLensQHostData[i] = static_cast<int32_t>(i * S1);
-  }
-  std::vector<int32_t> emptyHostData;
-  std::vector<int32_t> seqUsedOriKvHostData(B, static_cast<int32_t>(s2Act));
-  std::vector<int32_t> metadataHostData(optiling::SAS_META_SIZE, 0);
+    context.numHeadsQ = 64;
+    context.numHeadsKv = 1;
+    context.headDim = 512;
+    ret = CreateTensor(aclDataType::ACL_INT32, { SMLA_METADATA_TOTAL_SIZE }, context.metadata);     // 1024: Fix size
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create metadata failed. Error: %d", ret);
+    context.oriTopk = 0;
+    context.cmpTopk = 0;
+    context.cmpRatio = 128;
+    context.oriMaskMode = 4;
+    context.cmpMaskMode = 3;
+    context.oriWinLeft = 127;
+    context.oriWinRight = 0;
+    context.layoutQOptional = (char *)malloc(sizeof(char) * 16);
+    context.layoutKvOptional = (char *)malloc(sizeof(char) * 16);
+    CHECK_LOG_RET(context.layoutQOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutQOptional failed");
+    CHECK_LOG_RET(context.layoutKvOptional != nullptr, ACL_ERROR_FAILURE, "Create layoutKvOptional failed");
+    strcpy(context.layoutQOptional, "BSND");                // BSND,TND
+    strcpy(context.layoutKvOptional, "BSND");               // BSND,TND,PA_BBND
+    context.hasOriKv = true;
+    context.hasCmpKv = true;
 
-  ret = CreateAclTensor(cuSeqLensQHostData, cuSeqLensQShape, &cuSeqLensQDeviceAddr, aclDataType::ACL_INT32, &cuSeqLensQ);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(emptyHostData, emptyShape, &cuSeqLensOriKvDeviceAddr, aclDataType::ACL_INT32, &cuSeqLensOriKv);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(emptyHostData, emptyShape, &cuSeqLensCmpKvDeviceAddr, aclDataType::ACL_INT32, &cuSeqLensCmpKv);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(emptyHostData, seqUsedQShape, &seqUsedQDeviceAddr, aclDataType::ACL_INT32, &seqUsedQ);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(seqUsedOriKvHostData, seqUsedOriKvShape, &seqUsedOriKvDeviceAddr, aclDataType::ACL_INT32, &seqUsedOriKv);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadata);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
+    context.batchSize = 4;
+    context.maxSeqlenOriKv = 1024;
+    context.maxSeqlenCmpKv = 1024;
+    context.maxSeqlenQ = 1024;
 
-  char layoutQ[] = "TND";
-  char layoutKv[] = "PA_BNBD";
+    if (scenario.hasCuSeq) {
+        // (B+1,), first element is always 0
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize + 1 }, context.cuSeqlensQOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqlensQOptional failed. Error: %d", ret);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize + 1 }, context.cuSeqlensOriKvOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqlensOriKvOptional failed. Error: %d", ret);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize + 1 }, context.cuSeqlensCmpKvOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqlensCmpKvOptional failed. Error: %d", ret);
+    }
 
-  uint64_t workspaceSize = 0;
-  aclOpExecutor* executor = nullptr;
-  
-  // 3. 调用CANN算子库API，需要修改为具体的Api名称
-  ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
-      cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
-      seqUsedQ, seqUsedOriKv,
-      N1, N2, D, B, S1, S2,
-      0, K, cmpRatio,
-      oriMaskMode, cmpMaskMode,
-      oriWinLeft, oriWinRight,
-      layoutQ, layoutKv,
-      true, true,
-      metadata,
-      &workspaceSize, &executor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
-            return ret);
+    if (scenario.hasSeqused) {
+        // (B,)
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize }, context.sequsedQOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create sequsedQOptional failed. Error: %d", ret);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize }, context.sequsedOriKvOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create sequsedOriKvOptional failed. Error: %d", ret);
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize }, context.sequsedCmpKvOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create sequsedCmpKvOptional failed. Error: %d", ret);
+    }
 
-  void* workspaceAddr = nullptr;
-  if (workspaceSize > 0) {
-    ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
-  }
+    if (context.hasCmpKv && context.cmpRatio != 1 && context.cmpMaskMode == 3) {
+        // (B,)
+        ret = CreateTensor(aclDataType::ACL_INT32, { context.batchSize }, context.cmpResidualKvOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cmpResidualKvOptional failed. Error: %d", ret);
+    }
 
-  ret = aclnnSparseFlashMlaMetadata(workspaceAddr, workspaceSize, executor, stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaMetadata failed. ERROR: %d\n", ret); return ret);
+    argsGuard.Dismiss();
+    return ACL_SUCCESS;
+}
 
-  // 4.（固定写法）同步等待任务执行结束
-  ret = aclrtSynchronizeStream(stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+int main() {
+    // 1. （固定写法）device/stream初始化，参考对外接口列表
+    // 根据自己的实际device填写deviceId
+    int32_t deviceId = 0;
+    aclrtStream stream;
+    auto ret = Init(deviceId, &stream);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Init acl failed. ERROR: %d", ret);
+    ScopeGuard sysGuard([&] { Finalize(deviceId, stream); });
 
-  optiling::detail::SasMetadata result {};
-  ret = aclrtMemcpy(&result, sizeof(result), metadataDeviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy metadata result failed. ERROR: %d\n", ret); return ret);
-  
-  // 5.获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-  PrintMetadataSummary(result);
-  CHECK_RET(result.faMetadata[0][optiling::FA_CORE_ENABLE_INDEX] == 1U,
-            LOG_PRINT("metadata validation failed: core0 is not enabled\n"); return 1);
-  // 分核可能在batch内按行切分，此时bn2_end仍为0，m_end已推进。
-  CHECK_RET(result.faMetadata[0][optiling::FA_BN2_END_INDEX] > 0U ||
-                result.faMetadata[0][optiling::FA_M_END_INDEX] > 0U,
-            LOG_PRINT("metadata validation failed: core0 has no assigned work\n"); return 1);
+    // 2. 构造输入与输出，需要根据API的接口定义构造
+    ArgScenario scenario {};
+    scenario.hasCuSeq = false;
+    scenario.hasSeqused = false;
+    ArgContext context {};
+    ret = CreateArgs(scenario, context);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create input arguments failed. ERROR: %d", ret);
+    ScopeGuard argsGuard([&] { DestroyArgs(context); });
 
-  // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
-  aclDestroyTensor(cuSeqLensQ);
-  aclDestroyTensor(cuSeqLensOriKv);
-  aclDestroyTensor(cuSeqLensCmpKv);
-  aclDestroyTensor(seqUsedQ);
-  aclDestroyTensor(seqUsedOriKv);
-  aclDestroyTensor(metadata);
+    // 3. 调用CANN算子库API，需要修改为具体的API
+    // 调用aclnnSparseFlashMlaMetadata第一段接口
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    void *workspaceAddr = nullptr;
+    ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
+        context.cuSeqlensQOptional.data, context.cuSeqlensOriKvOptional.data, context.cuSeqlensCmpKvOptional.data,
+        context.sequsedQOptional.data, context.sequsedOriKvOptional.data, context.sequsedCmpKvOptional.data,
+        context.cmpResidualKvOptional.data, context.oriTopkLengthOptional.data, context.cmpTopkLengthOptional.data, 
+        context.numHeadsQ, context.numHeadsKv, context.headDim, context.batchSize, context.maxSeqlenQ,
+        context.maxSeqlenOriKv, context.maxSeqlenCmpKv, context.oriTopk, context.cmpTopk, context.cmpRatio,
+        context.oriMaskMode, context.cmpMaskMode, context.oriWinLeft, context.oriWinRight, context.layoutQOptional,
+        context.layoutKvOptional, context.hasOriKv, context.hasCmpKv, context.metadata.data, &workspaceSize, &executor);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
+        "aclnnSparseFlashMlaMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
 
-  // 7. 释放device资源
-  if (cuSeqLensQDeviceAddr != nullptr) {
-    aclrtFree(cuSeqLensQDeviceAddr);
-  }
-  if (seqUsedOriKvDeviceAddr != nullptr) {
-    aclrtFree(seqUsedOriKvDeviceAddr);
-  }
-  if (metadataDeviceAddr != nullptr) {
-    aclrtFree(metadataDeviceAddr);
-  }
-  if (workspaceSize > 0) {
-    aclrtFree(workspaceAddr);
-  }
-  aclrtDestroyStream(stream);
-  aclrtDestroyContext(context);
-  aclrtResetDevice(deviceId);
-  aclFinalize();
+    if (workspaceSize > static_cast<uint64_t>(0)) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "allocate workspace failed. ERROR: %d\n", ret);
+    }
+    ScopeGuard workspaceGuard([&] {
+        if (workspaceAddr != nullptr) {
+            aclrtFree(workspaceAddr);
+            workspaceAddr = nullptr;
+        }
+    });
+    
+    // 调用aclnnSparseFlashMlaMetadata第二段接口
+    ret = aclnnSparseFlashMlaMetadata(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnSparseFlashMlaMetadata failed. ERROR: %d\n", ret);
 
-  return 0;
+    // 4. （固定写法）同步等待任务执行结束
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSynchronizeStream failed. ERROR: %d\n", ret);
+
+    // 5. 打印输出
+    SmlaMetadata result {};
+    ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d\n", ret);
+
+    for (uint32_t i = 0; i < AIC_CORE_MAX_NUM; ++i) {
+        printf("AIC Core%u\n", i);
+        printf("    Core Enable : %u\n", result.faMetadata[i][FA_CORE_ENABLE_INDEX]);
+        printf("    Start BN2   : %u\n", result.faMetadata[i][FA_BN2_START_INDEX]);
+        printf("    Start M     : %u\n", result.faMetadata[i][FA_M_START_INDEX]);
+        printf("    Start S2    : %u\n", result.faMetadata[i][FA_S2_START_INDEX]);
+        printf("    End BN2     : %u\n", result.faMetadata[i][FA_BN2_END_INDEX]);
+        printf("    End M       : %u\n", result.faMetadata[i][FA_M_END_INDEX]);
+        printf("    End S2      : %u\n", result.faMetadata[i][FA_S2_END_INDEX]);
+        printf("    First Worksapce Index : %u\n", result.faMetadata[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX]);
+        printf("    Max S2 Block Num : %u\n", result.faMetadata[i][FA_S2_MAX_NUM]);
+    }
+    for (uint32_t i = 0; i < AIV_CORE_MAX_NUM; ++i) {
+        printf("AIV Core%u\n", i);
+        printf("    Core Enable             : %u\n", result.fdMetadata[i][FD_CORE_ENABLE_INDEX]);
+        printf("    FD Task BN2 Idx         : %u\n", result.fdMetadata[i][FD_BN2_IDX_INDEX]);
+        printf("    FD Task M Idx           : %u\n", result.fdMetadata[i][FD_M_IDX_INDEX]);
+        printf("    FD Task S2 Idx          : %u\n", result.fdMetadata[i][FD_WORKSPACE_IDX_INDEX]);
+        printf("    FD Task Workspace Num   : %u\n", result.fdMetadata[i][FD_WORKSPACE_NUM_INDEX]);
+        printf("    FD Subtask M Start      : %u\n", result.fdMetadata[i][FD_M_START_INDEX]);
+        printf("    FD Subtask M Num        : %u\n", result.fdMetadata[i][FD_M_NUM_INDEX]);
+    }
+
+    return 0;
 }
 ```
