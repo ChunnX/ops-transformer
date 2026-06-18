@@ -64,7 +64,7 @@ public:
     static constexpr uint64_t D_BASIC_BLOCK_L0 = 512;
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 32;
 
-    static constexpr uint64_t FP8_BLOCK_CUBE = 32;
+    static constexpr uint64_t BF16_BLOCK_CUBE = 16;
     static constexpr FixpipeConfig SI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};   // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
 
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
@@ -75,7 +75,7 @@ public:
 protected:
     __aicore__ inline void Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
                                 uint64_t s2L0RealSize, const SICommon::RunInfo &runInfo);
-    __aicore__ inline void ComuteL0c(uint64_t s1gOffset, uint64_t s2Offset, uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
+    __aicore__ inline void ComuteL0c(uint64_t s1gOffset, uint64_t s2Offset, uint64_t kGmOffset, uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
                                      const SICommon::RunInfo &runInfo);
     __aicore__ inline void LoadKeyToL0b(uint64_t s2L0Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
                                         const SICommon::RunInfo &runInfo);
@@ -190,7 +190,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                         SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
                         WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
 
-                        ComuteL0c(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, s1gL0RealSize, s2L0RealSize, runInfo);
+                        ComuteL0c(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, kGmOffset, s1gL0RealSize, s2L0RealSize, runInfo);
                         SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         l0BufIdx_++;
 
@@ -256,7 +256,7 @@ __aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uint6
     loadData2DParamsV2.mStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
     loadData2DParamsV2.kStartPosition = 0;
     loadData2DParamsV2.mStep = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
-    loadData2DParamsV2.kStep = CeilDiv(512, FP8_BLOCK_CUBE);
+    loadData2DParamsV2.kStep = CeilDiv(D_BASIC_BLOCK_L0, BF16_BLOCK_CUBE);
     loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
     loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
@@ -273,7 +273,7 @@ __aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t
     loadData2DParamsV2.mStartPosition = CeilDiv(s2L1Offset, BLOCK_CUBE);
     loadData2DParamsV2.kStartPosition = 0;
     loadData2DParamsV2.mStep = CeilDiv(s2L0RealSize, BLOCK_CUBE);
-    loadData2DParamsV2.kStep = CeilDiv(512, FP8_BLOCK_CUBE);
+    loadData2DParamsV2.kStep = CeilDiv(D_BASIC_BLOCK_L0, BF16_BLOCK_CUBE);
     loadData2DParamsV2.srcStride = CeilDiv(s2L1RealSize, BLOCK_CUBE);
     loadData2DParamsV2.dstStride = CeilDiv(s2L0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
@@ -283,14 +283,18 @@ __aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::ComuteL0c(uint64_t s1gOffset, uint64_t s2Offset, uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
+__aicore__ inline void SIMatmul<SIT>::ComuteL0c(uint64_t s1gOffset, uint64_t s2Offset, uint64_t kGmOffset, uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
                                                 const SICommon::RunInfo &runInfo)
 {
     MmadParams mmadParams;
     mmadParams.m = CeilAlign(s1gL0RealSize, BLOCK_CUBE);
     mmadParams.n = s2L0RealSize;
     mmadParams.k = D_BASIC_BLOCK_L0;
-    mmadParams.cmatrixInitVal = true;
+    if (kGmOffset == 0) {
+        mmadParams.cmatrixInitVal = true;
+    } else {
+        mmadParams.cmatrixInitVal = false;
+    }
     mmadParams.cmatrixSource = false;
     uint64_t offset = (l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + s2Offset * M_BASIC_BLOCK + s1gOffset * S2_BASIC_BLOCK_L0;
     Mmad(cL0_[offset], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
