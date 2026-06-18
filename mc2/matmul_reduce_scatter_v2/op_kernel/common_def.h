@@ -31,6 +31,21 @@ constexpr uint64_t BLOCK_SIZE = 128;
 constexpr int CCU_COMM_MODE = 0;
 constexpr int AICPU_COMM_MODE = 1;
 
+// ============================================================================
+// 类型特征：定义打包因子（MXFP4场景适配）
+// FP4: 2个fp4打包成1个元素，packFactor=2
+// FP8: 每个元素独立存储，packFactor=1
+// ============================================================================
+template <typename T>
+struct PackFactor {
+    static constexpr uint64_t value = 1UL; // 默认：每个元素包含1个标量（如fp8）
+};
+
+template <>
+struct PackFactor<fp4x2_e2m1_t> {
+    static constexpr uint64_t value = 2UL; // fp4x2：2个fp4打包成1个元素
+};
+
 template <int commMode>
 struct HcclTypeSelector {
     using type = AscendC::Hccl<AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU>;
