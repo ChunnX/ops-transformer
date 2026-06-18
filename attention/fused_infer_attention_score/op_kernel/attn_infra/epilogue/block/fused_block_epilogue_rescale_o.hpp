@@ -254,7 +254,6 @@ public:
         }
     }
 
-
     __aicore__ inline
     void SubCoreCompute(
         AscendC::GlobalTensor<ElementOutput> gOutput,
@@ -1089,7 +1088,6 @@ public:
             }
         }
     }
-
 
 private:
     AscendC::LocalTensor<float> loUbTensor;

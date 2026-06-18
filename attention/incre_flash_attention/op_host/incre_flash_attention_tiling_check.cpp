@@ -1355,8 +1355,7 @@ ge::graphStatus IFATiling::CheckTreeSparseMask()
     OP_CHECK_IF(!(ropeFlag_ && quantFlag_),
         OP_LOGE(ifaContext_->opName, "Tree Sparse9 is only supported in MLA full quant situation."),
         return ge::GRAPH_FAILED);
-
-            
+    
     // tiling下沉场景，获取不到actualseqlen,不进行校验
     if (isWorkspace_) {
         return ge::GRAPH_SUCCESS;
