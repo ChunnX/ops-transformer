@@ -104,9 +104,9 @@ void MatmulReduceScatterTilingBase::DoFormulaticTiling(Mc2Tiling::RCSTiling &rcs
 
 /**
  * Due to communication constraints: 
- * 1. The maximum number of communication attempts is limited to 16
+ * 1. The maximum number of communication attempts is limited to 63
  * 2. The data volume of a single communication shall not exceed 256MB;
- * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 16 parts
+ * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 63 parts
  */
 ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
 {
@@ -116,10 +116,10 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
             "The value of matmulOutputSize must not exceed 256MB after splitting into (1, n)"),
                 return ge::GRAPH_FAILED);
 
-    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
+    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, REDUCE_SCATTER_V2_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1size", std::to_string(sizeOfSplitM).c_str(),
-            "The value of x1size must not exceed 256MB after splitting M into 16 parts"),
+            "The value of x1size must not exceed 256MB after splitting M into 63 parts"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
