@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_block_cube_fullquant_mx.h
@@ -53,8 +53,10 @@ public:
     __gm__ int32_t *blockTableGm = nullptr;
     __gm__ uint8_t* attenMaskGmInt = nullptr;
     __gm__ uint32_t *fiaMetaDataGm = nullptr;
-    __cbuf__ void *q1[2], *kv1[4];
-    __ubuf__ void *pv[2];
+    TPipe *tPipePtr = nullptr;
+    __aicore__ inline void SetTPipe(TPipe& pipe) { tPipePtr = &pipe; }
+    TBuf<TPosition::A1> L1_Q;
+    TBuf<TPosition::A1> L1_KV;
     int ikv{-1};
     int iq{-1};
     int iquse = -1;
@@ -62,9 +64,9 @@ public:
     // int bmm1_id{0};
     int bmm2_id{1};
     int vec1_id{-1};
-    __ca__ void * l0a[2];
-    __cb__ void * l0b[2];
-    __cc__ void * l0c[2];
+    TBuf<TPosition::A2> L0_A;
+    TBuf<TPosition::B2> L0_B;
+    TBuf<TPosition::CO1> L0_C;
     int l0a_id{-1};
     int l0c_id{-1};
     // int mm1_id{-1};
@@ -78,7 +80,7 @@ public:
     static constexpr uint32_t dBaseSize = (uint32_t)128;
     static constexpr uint32_t dVBaseSize = (uint32_t)128;
     static constexpr uint32_t bSize = (uint32_t)2;//修改
-    static constexpr uint32_t n2Size = (uint32_t)8; 
+    static constexpr uint32_t n2Size = (uint32_t)8;
     static constexpr uint32_t gSize = (uint32_t)8;
     static constexpr uint32_t s1Size = (uint32_t)4;
     static constexpr uint32_t s2Size = (uint32_t)512;
@@ -119,18 +121,11 @@ public:
         constexpr uint32_t pScaleSize = 128 * 512 / 32;
 
 
-        q1[0] = (__cbuf__ void *)get_imm(mm2LeftSize * 3 + pScaleSize);
-        q1[1] = (__cbuf__ void *)get_imm(mm2LeftSize * 3 + pScaleSize + mm1QSize + mm1QScaleSize);
-        kv1[0] = (__cbuf__ void *)get_imm(mm2LeftSize * 3 + pScaleSize + (mm1QSize + mm1QScaleSize) * 2);
-        kv1[1] = (__cbuf__ void *)get_imm(mm2LeftSize * 3 + pScaleSize + (mm1QSize + mm1QScaleSize) * 2  + mm1KVSize + mm1KVScaleSize);
-        kv1[2] = (__cbuf__ void *)get_imm(mm2LeftSize * 3 + pScaleSize + (mm1QSize + mm1QScaleSize) * 2  + (mm1KVSize + mm1KVScaleSize) * 2);
-        kv1[3] = (__cbuf__ void *)get_imm(mm2LeftSize * 3 + pScaleSize + (mm1QSize + mm1QScaleSize) * 2  + (mm1KVSize + mm1KVScaleSize) * 3);
-        l0a[0] = (__ca__ void *)get_imm(0); 
-        l0a[1] = (__ca__ void *)get_imm(32 * 1024);
-        l0b[0] = (__cb__ void *)get_imm(0);
-        l0b[1] = (__cb__ void *)get_imm(32 * 1024);
-        l0c[0] = (__cc__ void *)get_imm(0);
-        l0c[1] = (__cc__ void *)get_imm(128 * 256 * 4);//sizeof(fp32)
+        tPipePtr->InitBuffer(L1_Q, (mm1QSize + mm1QScaleSize) * 2);
+        tPipePtr->InitBuffer(L1_KV, (mm1KVSize + mm1KVScaleSize) * 4);
+        tPipePtr->InitBuffer(L0_A, 32 * 1024 * 2);
+        tPipePtr->InitBuffer(L0_B, 32 * 1024 * 2);
+        tPipePtr->InitBuffer(L0_C, 128 * 256 * 4 * 2);
 
     }
 
@@ -191,28 +186,36 @@ public:
         // nd2nzPara.dstNzNStride = 1;
         // nd2nzPara.srcNdMatrixStride = 0;
         // nd2nzPara.dstNzMatrixStride = 0;
-        uint64_t mte2NzPara = static_cast<uint64_t>(0) << 48; // MTE2_NZ_PARA[63:48]
-        mte2NzPara |= static_cast<uint64_t>((actMSize + 31) >> 5 << 5) << 32;         // MTE2_NZ_PARA[47:32]
-        mte2NzPara |= static_cast<uint64_t>(1) << 16;         // MTE2_NZ_PARA[31:16]
-        mte2NzPara |= static_cast<uint64_t>(1);            // MTE2_NZ_PARA[15:0]
-        set_mte2_nz_para(mte2NzPara); // CCE: store parameters for ND2NZ DMA instructions
-        uint8_t cacheMode = ExtractCacheMode((__gm__ float8_e4m3_t *)(queryGm + gmQOffset));
-        copy_gm_to_cbuf_multi_nd2nz((__cbuf__ int8_t*)((__cbuf__ float8_e4m3_t *)q1[iquse % 2] + gIdxStart * dBaseSize),
-                                    (__gm__ int8_t*)((__gm__ float8_e4m3_t *)(queryGm + gmQOffset)), 0, dBaseSize, cacheMode, 
-                                    n2Size - gIdxStart, dBaseSize, 0, false);
+        constexpr uint32_t qSlotSize = 128 * 128 + 128 * 128 / 32;
+        LocalTensor<float8_e4m3_t> q1Tensor = L1_Q.Get<float8_e4m3_t>()[(iquse % 2) * qSlotSize];
+        Nd2NzParams nd2nzPara1;
+        nd2nzPara1.ndNum = 1;
+        nd2nzPara1.nValue = n2Size - gIdxStart;
+        nd2nzPara1.dValue = dBaseSize;
+        nd2nzPara1.srcDValue = dBaseSize;
+        nd2nzPara1.dstNzC0Stride = (actMSize + 31) >> 5 << 5;
+        nd2nzPara1.dstNzNStride = 1;
+        nd2nzPara1.srcNdMatrixStride = 0;
+        nd2nzPara1.dstNzMatrixStride = 0;
+        GlobalTensor<float8_e4m3_t> gmQTensor1;
+        gmQTensor1.SetGlobalBuffer((__gm__ float8_e4m3_t *)(queryGm + gmQOffset));
+        DataCopy(q1Tensor[gIdxStart * dBaseSize], gmQTensor1, nd2nzPara1);
 
         gmQOffset +=  n2Size * n2Size * dBaseSize;
-        uint64_t mte2Q2NzPara = static_cast<uint64_t>(static_cast<uint16_t>(n2Size)) << 48; // MTE2_NZ_PARA[63:48]
-        mte2Q2NzPara |= static_cast<uint64_t>((actMSize + 31) >> 5 << 5) << 32;         // MTE2_NZ_PARA[47:32]
-        mte2Q2NzPara |= static_cast<uint64_t>(1) << 16;         // MTE2_NZ_PARA[31:16]
-        mte2Q2NzPara |= static_cast<uint64_t>(s1IdxEnd - s1IdxStart - 1);            // MTE2_NZ_PARA[15:0]
-        set_mte2_nz_para(mte2Q2NzPara); // CCE: store parameters for ND2NZ DMA instructions
-        cacheMode = ExtractCacheMode((__gm__ float8_e4m3_t *)(queryGm + gmQOffset));
+        Nd2NzParams nd2nzPara2;
+        nd2nzPara2.ndNum = s1IdxEnd - s1IdxStart - 1;
+        nd2nzPara2.nValue = n2Size;
+        nd2nzPara2.dValue = dBaseSize;
+        nd2nzPara2.srcDValue = dBaseSize;
+        nd2nzPara2.dstNzC0Stride = (actMSize + 31) >> 5 << 5;
+        nd2nzPara2.dstNzNStride = 1;
+        nd2nzPara2.srcNdMatrixStride = tStride;
+        nd2nzPara2.dstNzMatrixStride = n2Size * 32;
         // copy_gm_to_cbuf_multi_nd2nz((__cbuf__ float8_e4m3_t *)q1[iquse % 2] + 8 * 32,
         //                             (__gm__ float8_e4m3_t *)(queryGm + gmQOffset), 0, 128, 0, 8, 128, 8 * 128 * 8, false);
-        copy_gm_to_cbuf_multi_nd2nz((__cbuf__ int8_t*)((__cbuf__ float8_e4m3_t *)q1[iquse % 2] + (n2Size - gIdxStart) * 32),
-                                    (__gm__ int8_t*)((__gm__ float8_e4m3_t *)(queryGm + gmQOffset)), 0, dBaseSize, cacheMode,
-                                    n2Size, dBaseSize, tStride, false);
+        GlobalTensor<float8_e4m3_t> gmQTensor2;
+        gmQTensor2.SetGlobalBuffer((__gm__ float8_e4m3_t *)(queryGm + gmQOffset));
+        DataCopy(q1Tensor[(n2Size - gIdxStart) * 32], gmQTensor2, nd2nzPara2);
         // Nd2NzParams nd2nzPara;
         // nd2nzPara.ndNum = s1IdxEnd - s1IdxStart - 1;
         // nd2nzPara.nValue = n2Size; // nd矩阵的行数
@@ -252,15 +255,21 @@ public:
         // dn2nzPara.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
         // dn2nzPara.dstNzMatrixStride = dBaseSize / MXFP_GROUP_SIZE / 2;
 
-        uint64_t mte2QScaleNzPara = static_cast<uint64_t>(dBaseSize / MXFP_GROUP_SIZE / 2 * 2 / 32) << 48; // MTE2_NZ_PARA[63:48]
-        mte2QScaleNzPara |= static_cast<uint64_t>(dBaseSize / MXFP_GROUP_SIZE / 2) << 32;         // MTE2_NZ_PARA[47:32]
-        mte2QScaleNzPara |= static_cast<uint64_t>(1) << 16;         // MTE2_NZ_PARA[31:16]
-        mte2QScaleNzPara |= static_cast<uint64_t>(1);            // MTE2_NZ_PARA[15:0]
-        set_mte2_nz_para(mte2QScaleNzPara); // CCE: store parameters for DN2NZ DMA instructions
-        const uint8_t cacheMode = ExtractCacheMode((__gm__ bfloat16_t *)((__gm__ float8_e8m0_t *)deScaleQGm + gmQScaleOffset));
-        copy_gm_to_cbuf_multi_dn2nz((__cbuf__ bfloat16_t *)((__cbuf__ float8_e8m0_t *)q1[q1use] + qScaleOffset), 
-                                    (__gm__ bfloat16_t *)((__gm__ float8_e8m0_t *)deScaleQGm + gmQScaleOffset),
-                                    0, dBaseSize / MXFP_GROUP_SIZE / 2 * 2, cacheMode, dBaseSize / MXFP_GROUP_SIZE / 2, actMSize, 0, false);
+        constexpr uint32_t qSlotSize = 128 * 128 + 128 * 128 / 32;
+        LocalTensor<float8_e4m3_t> q1Tensor = L1_Q.Get<float8_e4m3_t>()[(q1use) * qSlotSize];
+        Dn2NzParams dn2nzPara;
+        dn2nzPara.dnNum = 1;
+        dn2nzPara.nValue = dBaseSize / MXFP_GROUP_SIZE / 2;
+        dn2nzPara.dValue = actMSize;
+        dn2nzPara.srcDnMatrixStride = 0;
+        dn2nzPara.srcDValue = dBaseSize / MXFP_GROUP_SIZE / 2;
+        dn2nzPara.dstNzC0Stride = dBaseSize / MXFP_GROUP_SIZE / 2;
+        dn2nzPara.dstNzNStride = 1;
+        dn2nzPara.dstNzMatrixStride = dBaseSize / MXFP_GROUP_SIZE / 2;
+        LocalTensor<bfloat16_t> q1ScaleTensor = q1Tensor[qScaleOffset].template ReinterpretCast<bfloat16_t>();
+        GlobalTensor<bfloat16_t> gmQScaleTensor;
+        gmQScaleTensor.SetGlobalBuffer((__gm__ bfloat16_t *)((__gm__ float8_e8m0_t *)deScaleQGm + gmQScaleOffset));
+        DataCopy(q1ScaleTensor, gmQScaleTensor, dn2nzPara);
     }
 
     __aicore__ inline void gm_l1_k(uint64_t s2Idx, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop, int ivkuse)
@@ -290,9 +299,16 @@ public:
         // intriParams.srcStride = 256;
         /* copy_gm_to_cbuf_align_v2((__cbuf__ uint8_t*)dst, (__gm__ uint8_t*)src, 0, blockCount, burstLength,
                                      leftPaddingCnt, rigntPaddingCnt, true, cacheMode, actSrcStride, actDstStride); */
-        const uint8_t cacheMode = ExtractCacheMode((__gm__ float8_e4m3_t *)(keyGm + gmKOffset));
-        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)kv1[ivkuse], (__gm__ float8_e4m3_t *)(keyGm + gmKOffset), 0, dBaseSize / 32,
-                                 256 * 32, 0, 0, true, cacheMode, 256 * 32 * 2, 256 * 32);
+        constexpr uint32_t kvSlotSize = 128 * 256 + 128 * 256 / 32;
+        LocalTensor<float8_e4m3_t> kv1Tensor = L1_KV.Get<float8_e4m3_t>()[ivkuse * kvSlotSize];
+        DataCopyParams intriParamsK;
+        intriParamsK.blockCount = dBaseSize / 32;
+        intriParamsK.blockLen = 256;
+        intriParamsK.dstStride = 0;
+        intriParamsK.srcStride = 256;
+        GlobalTensor<float8_e4m3_t> gmKTensor;
+        gmKTensor.SetGlobalBuffer((__gm__ float8_e4m3_t *)(keyGm + gmKOffset));
+        DataCopy(kv1Tensor, gmKTensor, intriParamsK);
     }
 
     __aicore__ inline void gm_l1_kscale(uint64_t s2Idx, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop, int ivkuse)
@@ -300,7 +316,7 @@ public:
         // uint32_t s2Offset = (subLoop % 2 == 0) ? inner * 512 : inner * 512 + 256;
         uint32_t s2Offset = (subLoop % 2 == 0) ? s2Idx : s2Idx + 256;
         uint64_t bsIdx = s2Offset % 512;            // 获取在单个块上超出的行数
-        
+
         // intriParams.blockCount = 16;修改成1
         // intriParams.blockLen = dBaseSize / MXFP_GROUP_SIZE / 2;修改成32
         // intriParams.dstStride = 0;
@@ -315,21 +331,21 @@ public:
         uint64_t gmKScaleOffset = blockKScaleId * n2Size * 512 / 32 * MXFP_MULTI_BASE_SIZE * dBaseSize / MXFP_GROUP_SIZE / MXFP_MULTI_BASE_SIZE * 32 +
                                   n2Idx * 512 / 32 * MXFP_MULTI_BASE_SIZE * dBaseSize / MXFP_GROUP_SIZE / MXFP_MULTI_BASE_SIZE * 32 +
                                   bsIdx / 16 * dBaseSize / MXFP_GROUP_SIZE / MXFP_MULTI_BASE_SIZE * 32 + bsIdx % 16;
-        
-        set_mark(0x5544226);
-        set_mark(gmKScaleOffset);//0x7800,0x7c00
-        set_mark(s2Idx);//0
-        set_mark(bIdx);//1
-        set_mark(n2Idx);//7
-        set_mark(bsIdx);//0,0x100
-        set_mark(s2Offset);//0,0x100
-        set_mark(maxBlockNumPerBatch);//1
-        set_mark(blockKScaleId);//1
-        const uint8_t cacheMode = ExtractCacheMode((__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset));
+
+
+        constexpr uint32_t kvSlotSize = 128 * 256 + 128 * 256 / 32;
+        LocalTensor<float8_e4m3_t> kv1Tensor = L1_KV.Get<float8_e4m3_t>()[ivkuse * kvSlotSize];
+        DataCopyParams intriParamsKScale;
+        intriParamsKScale.blockCount = 1;
+        intriParamsKScale.blockLen = 32;
+        intriParamsKScale.dstStride = 0;
+        intriParamsKScale.srcStride = 0;
+        GlobalTensor<float8_e8m0_t> gmKScaleTensor;
+        gmKScaleTensor.SetGlobalBuffer((__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset));
         // copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)kv1[ivkuse] + 256 * dBaseSize, (__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset), 0, 16,
         //                          dBaseSize / MXFP_GROUP_SIZE / 2 * 32, 0, 0, true, cacheMode, 0, dBaseSize / MXFP_GROUP_SIZE / 2 * 32);
-        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)kv1[ivkuse] + 256 * 128, (__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset), 0, 1,
-                                 32 * 32, 0, 0, true, cacheMode, 0, 32 * 32);
+        LocalTensor<float8_e8m0_t> kv1ScaleTensor = kv1Tensor[256 * 128];
+        DataCopy(kv1ScaleTensor, gmKScaleTensor, intriParamsKScale);
     }
 
     __aicore__ inline void mm1_l1_l0a_no_trans(int l0a_iduse)
@@ -350,28 +366,31 @@ public:
         // loadData2DMxParamsA.dstStride = 2
         // LoadData(aL0Tensor, aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset >> 5], loadData2DParamsA,
         //              loadData2DMxParamsA);
-        set_mark(0x6636280);
-        set_mark(actMSize);
-        load_cbuf_to_ca(reinterpret_cast<__ca__ float8_e4m3_t *>((__ca__ mx_fp8_e4m3_t *)l0a[l0a_iduse]),
-                    (__cbuf__ float8_e4m3_t *)q1[iquse % 2],
-                    0,
-                    0,
-                    ((actMSize + 15) >> 4 << 4) >> 4,
-                    4,
-                    ((actMSize + 31) >> 5 << 5) >> 4,
-                    ((actMSize + 15) >> 4 << 4) >> 4,
-                    0);
+        constexpr uint32_t qSlotSize = 128 * 128 + 128 * 128 / 32;
+        LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>()[(l0a_iduse - 4) * 32 * 1024];
+        LocalTensor<float8_e4m3_t> aL1Tensor = L1_Q.Get<float8_e4m3_t>()[(iquse % 2) * qSlotSize];
         uint32_t qScaleOffset = 32 * 128;
-        uint64_t mxDstAddr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>((__ca__ mx_fp8_e4m3_t *)l0a[l0a_iduse])) / 16;
-        load_cbuf_to_ca_mx(mxDstAddr,
-            static_cast<__cbuf__ void *>((__cbuf__ float8_e8m0_t *)q1[iquse % 2] + qScaleOffset),
-            0,
-            0,
-            ((actMSize + 15) >> 4 << 4) >> 4,
-            2,
-            2,
-            2);
-        
+        LocalTensor<float8_e8m0_t> aScaleL1Tensor = L1_Q.Get<float8_e8m0_t>()[(iquse % 2) * qSlotSize + qScaleOffset];
+
+        LoadData2DParamsV2 loadData2DParamsA;
+        loadData2DParamsA.mStartPosition = 0;
+        loadData2DParamsA.kStartPosition = 0;
+        loadData2DParamsA.ifTranspose = false;
+        loadData2DParamsA.mStep = ((actMSize + 15) >> 4 << 4) >> 4;
+        loadData2DParamsA.kStep = 4;
+        loadData2DParamsA.srcStride = ((actMSize + 31) >> 5 << 5) >> 4;
+        loadData2DParamsA.dstStride = ((actMSize + 15) >> 4 << 4) >> 4;
+
+        LoadData2DMxParams loadData2DMxParamsA;
+        loadData2DMxParamsA.xStartPosition = 0;
+        loadData2DMxParamsA.yStartPosition = 0;
+        loadData2DMxParamsA.xStep = ((actMSize + 15) >> 4 << 4) >> 4;
+        loadData2DMxParamsA.yStep = 2;
+        loadData2DMxParamsA.srcStride = 2;
+        loadData2DMxParamsA.dstStride = 2;
+
+        LoadData(aL0Tensor, aL1Tensor, aScaleL1Tensor, loadData2DParamsA, loadData2DMxParamsA);
+
     }
     __aicore__ inline void mm1_l1_l0b_no_trans(int ivkuse, int l0b_iduse)
     {
@@ -389,26 +408,30 @@ public:
         // loadData2DMxParamsB.yStep = (dBaseSize + 63)  >> 5 >> 1
         // loadData2DMxParamsB.srcStride = (dBaseSize + 63)  >> 5 >> 1
         // loadData2DMxParamsB.dstStride = (dBaseSize + 63)  >> 5 >> 1
-        load_cbuf_to_cb(reinterpret_cast<__cb__ float8_e4m3_t *>((__cb__ mx_fp8_e4m3_t *)l0b[l0b_iduse]),
-                    (__cbuf__ float8_e4m3_t *)kv1[ivkuse],
-                    0,
-                    0,
-                    16,
-                    ((dBaseSize + 31) >> 5 << 5) >> 5,
-                    16,
-                    16,
-                    0);
-
+        constexpr uint32_t kvSlotSize = 128 * 256 + 128 * 256 / 32;
+        LocalTensor<mx_fp8_e4m3_t> bL0Tensor = L0_B.Get<mx_fp8_e4m3_t>()[((l0b_iduse - 4) % 2) * 32 * 1024];
+        LocalTensor<float8_e4m3_t> bL1Tensor = L1_KV.Get<float8_e4m3_t>()[ivkuse * kvSlotSize];
         uint32_t kScaleOffset = 256 * dBaseSize;
-        uint64_t mxDstAddr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>((__cb__ mx_fp8_e4m3_t *)l0b[l0b_iduse])) / 16;
-        load_cbuf_to_cb_mx(mxDstAddr,
-            static_cast<__cbuf__ void *>((__cbuf__ float8_e8m0_t *)kv1[ivkuse] + kScaleOffset),
-            0,
-            0,
-            16,
-            (dBaseSize + 63)  >> 5 >> 1,
-            (dBaseSize + 63)  >> 5 >> 1,
-            (dBaseSize + 63)  >> 5 >> 1);
+        LocalTensor<float8_e8m0_t> bScaleL1Tensor = L1_KV.Get<float8_e8m0_t>()[ivkuse * kvSlotSize + kScaleOffset];
+
+        LoadData2DParamsV2 loadData2DParamsB;
+        loadData2DParamsB.mStartPosition = 0;
+        loadData2DParamsB.kStartPosition = 0;
+        loadData2DParamsB.ifTranspose = false;
+        loadData2DParamsB.mStep = 16;
+        loadData2DParamsB.kStep = ((dBaseSize + 31) >> 5 << 5) >> 5;
+        loadData2DParamsB.srcStride = 16;
+        loadData2DParamsB.dstStride = 16;
+
+        LoadData2DMxParams loadData2DMxParamsB;
+        loadData2DMxParamsB.xStartPosition = 0;
+        loadData2DMxParamsB.yStartPosition = 0;
+        loadData2DMxParamsB.xStep = 16;
+        loadData2DMxParamsB.yStep = (dBaseSize + 63) >> 5 >> 1;
+        loadData2DMxParamsB.srcStride = (dBaseSize + 63) >> 5 >> 1;
+        loadData2DMxParamsB.dstStride = (dBaseSize + 63) >> 5 >> 1;
+
+        LoadData(bL0Tensor, bL1Tensor, bScaleL1Tensor, loadData2DParamsB, loadData2DMxParamsB);
     }
 
     __aicore__ inline void compute_mm1(int l0c_iduse, int l0a_iduse)
@@ -420,43 +443,51 @@ public:
         // mmadParams.cmatrixInitVal =1;
         // mmadParams.cmatrixSource = 0;
         // mmadParams.unitFlag = 0;
-        using AType = typename GetDstType<mx_fp8_e4m3_t>::Type;
-        using BType = typename GetDstType<mx_fp8_e4m3_t>::Type;
-        mad_mx((__cc__ float *)l0c[l0c_iduse], (__ca__ AType*)l0a[l0a_iduse], (__cb__ BType*)l0b[l0a_iduse],
-                actMSize, dBaseSize, 256, 0, false, false, true);
+        LocalTensor<float> cL0Tensor = L0_C.Get<float>()[l0c_iduse * 128 * 256];
+        LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>()[(l0a_iduse - 4) * 32 * 1024];
+        LocalTensor<mx_fp8_e4m3_t> bL0Tensor = L0_B.Get<mx_fp8_e4m3_t>()[(l0a_iduse - 4) * 32 * 1024];
+
+        MmadParams mmadParams;
+        mmadParams.m = actMSize;
+        mmadParams.n = 256;
+        mmadParams.k = dBaseSize;
+        mmadParams.cmatrixInitVal = 1;
+        mmadParams.cmatrixSource = false;
+        mmadParams.unitFlag = 0;
+
+        Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
     }
 
-    __aicore__ inline void l0c_ub_mm1(__ubuf__ void *mm1Res, int l0c_iduse)
+    __aicore__ inline void l0c_ub_mm1(LocalTensor<float> mm1Res, int l0c_iduse)
     {
         /*
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = 256;
         fixpipeParams.mSize = 32;  (runInfo.actMSize + 1) >> 1 << 1
         fixpipeParams.srcStride = 32;  ((fixpipeParams.mSize + 15) / 16) * 16   ((((runInfo.actMSize + 1) >> 1 << 1) + 15) / 16) * 16
-        fixpipeParams.dstStride = 256; 
+        fixpipeParams.dstStride = 256;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
         */
-        uint64_t loop3Para = static_cast<uint64_t>(0) << 32;  // LOOP3_PARA[63:32]
-        loop3Para |= static_cast<uint64_t>(0) << 16;  // LOOP3_PARA[31:16]
-        loop3Para |= static_cast<uint64_t>(1);              // LOOP3_PARA[15:0]
-        set_loop3_para(loop3Para);
+        LocalTensor<float> srcTensor = L0_C.Get<float>()[l0c_iduse * 128 * 256];
 
-        PipeBarrier<PIPE_FIX>();
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        fixpipeParams.nSize = 256;
+        fixpipeParams.mSize = (actMSize + 1) >> 1 << 1;
+        fixpipeParams.srcStride = ((((actMSize + 1) >> 1 << 1) + 15) / 16) * 16;
+        fixpipeParams.dstStride = 256;
+        fixpipeParams.dualDstCtl = 1;
+        fixpipeParams.params.ndNum = 1;
+        fixpipeParams.params.srcNdStride = 0;
+        fixpipeParams.params.dstNdStride = 0;
 
-        return copy_matrix_cc_to_ub((__ubuf__ float *)mm1Res, (__cc__ float *)l0c[l0c_iduse], 0,
-        256, (actMSize + 1) >> 1 << 1, 256, ((((actMSize + 1) >> 1 << 1) + 15) / 16) * 16, 1,
-        false, 0, 0,
-        static_cast<uint64_t>(QuantMode_t::NoQuant), static_cast<uint8_t>(false),
-        false, true,
-        static_cast<uint64_t>(QuantMode_post::NoConv),
-        0, false, false, 0, false, false, false, false, false, false);
+        Fixpipe<float, float, PFA_CFG_ROW_MAJOR_UB>(mm1Res, srcTensor, fixpipeParams);
     }
 
-    
-    __aicore__ inline void IterateBmm1(__ubuf__ void *mm1Res, int bmm1_id, uint32_t bIdx, uint32_t n2Idx,
+
+    __aicore__ inline void IterateBmm1(LocalTensor<float> mm1Res, int bmm1_id, uint32_t bIdx, uint32_t n2Idx,
                                         uint32_t s2Idx, uint32_t curS2Loop, uint32_t subLoop)
     {
         // q and qscale:gm->l1
@@ -482,14 +513,14 @@ public:
         set_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
         wait_flag(PIPE_MTE2, PIPE_MTE1, iquse);
         wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
-        
+
         //mte1 start
         l0c_id ++ ;
         int l0c_iduse = l0c_id % 2;
         wait_flag(PIPE_FIX, PIPE_M, l0c_iduse);
 
         l0a_id ++ ;
-        int l0a_iduse = l0a_id % 2;
+        int l0a_iduse = l0a_id % 2 + 4;
         wait_flag(PIPE_M, PIPE_MTE1, l0a_iduse);// mte1 alloc l0ab buffer
         mm1_l1_l0a_no_trans(l0a_iduse);
         mm1_l1_l0b_no_trans(ivkuse, l0a_iduse);
@@ -545,9 +576,16 @@ public:
         // set_mark(bsIdx);//0,0x100
         // set_mark(s2Offset);//0,0x100
         // set_mark(blockId);//1
-        const uint8_t cacheMode = ExtractCacheMode((__gm__ float8_e4m3_t *)(valueGm + gmVOffset));
-        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e4m3_t *)kv1[ivkuse], (__gm__ float8_e4m3_t *)(valueGm + gmVOffset), 0, dVBaseSize / 32,
-                                 256 * 32, 0, 0, true, cacheMode, 256 * 32 * 2, 256 * 32);
+        constexpr uint32_t kvSlotSize = 128 * 256 + 128 * 256 / 32;
+        LocalTensor<float8_e4m3_t> kv1Tensor = L1_KV.Get<float8_e4m3_t>()[ivkuse * kvSlotSize];
+        DataCopyParams intriParamsV;
+        intriParamsV.blockCount = dVBaseSize / 32;
+        intriParamsV.blockLen = 256;
+        intriParamsV.dstStride = 0;
+        intriParamsV.srcStride = 256;
+        GlobalTensor<float8_e4m3_t> gmVTensor;
+        gmVTensor.SetGlobalBuffer((__gm__ float8_e4m3_t *)(valueGm + gmVOffset));
+        DataCopy(kv1Tensor, gmVTensor, intriParamsV);
     }
 
      __aicore__ inline void gm_l1_vscale(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, uint32_t k, int ivkuse)
@@ -561,25 +599,26 @@ public:
         // uint64_t gmVScaleOffset = blockVscaleId * 8 * 512 / 64 * dVBaseSize * 2 / 32 * 32+ n2Idx * 512 / 64 * dVBaseSize * 2 / 32 * 32 + bsVscaleIdx * 32;
         uint64_t gmVScaleOffset = blockVscaleId * n2Size * dVBaseSize * MXFP_MULTI_BASE_SIZE / 32 * 512 / MXFP_DIVISOR_SIZE * 32 +
                                   n2Idx * dVBaseSize * MXFP_MULTI_BASE_SIZE / 32 * 512 / MXFP_DIVISOR_SIZE * 32 + bsVscaleIdx * 32;
-        set_mark(0x5544229);
-        set_mark(gmVScaleOffset);//0x7800,0x7880
-        set_mark(inner);//0
-        set_mark(bIdx);//1
-        set_mark(n2Idx);//7
-        set_mark(bsVscaleIdx);//0,4
-        set_mark(s2VscaleScaleOffset);//0,4
-        set_mark(blockVscaleId);//1
+
 
         //intriParams.blockCount = dVBaseSize * MXFP_MULTI_BASE_SIZE / 32;
         // intriParams.blockLen = 256 / MXFP_DIVISOR_SIZE;
         // intriParams.dstStride = 0;
         // intriParams.srcStride = dVBaseSize * MXFP_MULTI_BASE_SIZE / 32 - 256 / MXFP_DIVISOR_SIZE;
-        const uint8_t cacheMode = ExtractCacheMode((__gm__ float8_e8m0_t *)(deScaleVGm + gmVScaleOffset));
-        copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)kv1[ivkuse] + 256 * dVBaseSize, (__gm__ float8_e8m0_t *)(deScaleVGm + gmVScaleOffset), 0, dVBaseSize * MXFP_MULTI_BASE_SIZE / 32,
-                                 256 / MXFP_DIVISOR_SIZE * 32, 0, 0, true, 0, 256 / MXFP_DIVISOR_SIZE * 32 * 2, 4 * 32);
+        constexpr uint32_t kvSlotSize = 128 * 256 + 128 * 256 / 32;
+        LocalTensor<float8_e4m3_t> kv1Tensor = L1_KV.Get<float8_e4m3_t>()[ivkuse * kvSlotSize];
+        DataCopyParams intriParamsVScale;
+        intriParamsVScale.blockCount = dVBaseSize * MXFP_MULTI_BASE_SIZE / 32;
+        intriParamsVScale.blockLen = 256 / MXFP_DIVISOR_SIZE;
+        intriParamsVScale.dstStride = 0;
+        intriParamsVScale.srcStride = dVBaseSize * MXFP_MULTI_BASE_SIZE / 32 - 256 / MXFP_DIVISOR_SIZE;
+        GlobalTensor<float8_e8m0_t> gmVScaleTensor;
+        gmVScaleTensor.SetGlobalBuffer((__gm__ float8_e8m0_t *)(deScaleVGm + gmVScaleOffset));
+        LocalTensor<float8_e8m0_t> kv1VScaleTensor = kv1Tensor[256 * dVBaseSize];
+        DataCopy(kv1VScaleTensor, gmVScaleTensor, intriParamsVScale);
     }
 
-    __aicore__ inline void mm2_l1_l0a_no_trans(__cbuf__ void *p1, __cbuf__ void *pscale, uint32_t k, int ipuse, int l0a_iduse)
+    __aicore__ inline void mm2_l1_l0a_no_trans(uint64_t actMSize, LocalTensor<float8_e4m3_t> p1Tensor, LocalTensor<float8_e8m0_t> pscaleTensor, uint32_t k, int ipuse, int l0a_iduse)
     {
         // loadData2DParamsA.mStartPosition = 0
         // loadData2DParamsA.kStartPosition = 0
@@ -600,32 +639,36 @@ public:
         //set_mark(0x7766880);
         //set_mark(k);
         //set_mark(k * 256 * 128);
-        load_cbuf_to_ca(reinterpret_cast<__ca__ float8_e4m3_t *>((__ca__ mx_fp8_e4m3_t *)l0a[l0a_iduse]),
-                    (__cbuf__ float8_e4m3_t *)p1 + k * 256 * dBaseSize,
-                    0,
-                    0,
-                    ((actMSize + 15) >> 4 << 4) >> 4,
-                    8,
-                    8,
-                    ((actMSize + 15) >> 4 << 4) >> 4,
-                    0);
-        uint64_t mxDstAddr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>((__ca__ mx_fp8_e4m3_t *)l0a[l0a_iduse])) / 16;
-        load_cbuf_to_ca_mx(mxDstAddr,
-            static_cast<__cbuf__ void *>((__cbuf__ float8_e8m0_t *)pscale),
-            0,
-            0,
-            ((actMSize + 15) >> 4 << 4) >> 4,
-            4,
-            4,
-            4);
-        
+        LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>()[(l0a_iduse - 4) * 32 * 1024];
+        LocalTensor<float8_e4m3_t> aL1Tensor = p1Tensor[k * 256 * dBaseSize];
+        LocalTensor<float8_e8m0_t> aScaleL1Tensor = pscaleTensor;
+
+        LoadData2DParamsV2 loadData2DParamsA;
+        loadData2DParamsA.mStartPosition = 0;
+        loadData2DParamsA.kStartPosition = 0;
+        loadData2DParamsA.ifTranspose = false;
+        loadData2DParamsA.mStep = ((actMSize + 15) >> 4 << 4) >> 4;
+        loadData2DParamsA.kStep = 8;
+        loadData2DParamsA.srcStride = 8;
+        loadData2DParamsA.dstStride = ((actMSize + 15) >> 4 << 4) >> 4;
+
+        LoadData2DMxParams loadData2DMxParamsA;
+        loadData2DMxParamsA.xStartPosition = 0;
+        loadData2DMxParamsA.yStartPosition = 0;
+        loadData2DMxParamsA.xStep = ((actMSize + 15) >> 4 << 4) >> 4;
+        loadData2DMxParamsA.yStep = 4;
+        loadData2DMxParamsA.srcStride = 4;
+        loadData2DMxParamsA.dstStride = 4;
+
+        LoadData(aL0Tensor, aL1Tensor, aScaleL1Tensor, loadData2DParamsA, loadData2DMxParamsA);
+
     }
     __aicore__ inline void mm2_l1_l0b_trans(int ivkuse, int l0b_iduse)
     {
          // loadData2DParamsB.mStartPosition = 0
         // loadData2DParamsB.kStartPosition = 0
         // loadData2DParamsB.ifTranspose = 1
-        // loadData2DParamsB.mStep = 16 
+        // loadData2DParamsB.mStep = 16
         // loadData2DParamsB.kStep = 4 ((dVBaseSize + 31) >> 5 << 5) >> 5;
         // loadData2DParamsB.srcStride = 16
         // loadData2DParamsB.dstStride = 8  (dVBaseSize + 15) >> 4;
@@ -636,25 +679,30 @@ public:
         // loadData2DMxParamsB.yStep = 4
         // loadData2DMxParamsB.srcStride =4
         // loadData2DMxParamsB.dstStride = 4
-        load_cbuf_to_cb(reinterpret_cast<__cb__ float8_e4m3_t *>((__cb__ mx_fp8_e4m3_t *)l0b[l0b_iduse]),
-                    (__cbuf__ float8_e4m3_t *)kv1[ivkuse],
-                    0,
-                    0,
-                    16,
-                    4,
-                    16,
-                    8,
-                    1);
+        constexpr uint32_t kvSlotSize = 128 * 256 + 128 * 256 / 32;
+        LocalTensor<mx_fp8_e4m3_t> bL0Tensor = L0_B.Get<mx_fp8_e4m3_t>()[((l0b_iduse - 4) % 2) * 32 * 1024];
+        LocalTensor<float8_e4m3_t> bL1Tensor = L1_KV.Get<float8_e4m3_t>()[ivkuse * kvSlotSize];
         uint32_t vScaleOffset = 256 * dVBaseSize;
-        uint64_t mxDstAddr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>((__cb__ mx_fp8_e4m3_t *)l0b[l0b_iduse])) / 16;
-        load_cbuf_to_cb_mx(mxDstAddr,
-            static_cast<__cbuf__ void *>((__cbuf__ float8_e8m0_t *)kv1[ivkuse] + vScaleOffset),
-            0,
-            0,
-            8,
-            4,
-            4,
-            4);
+        LocalTensor<float8_e8m0_t> bScaleL1Tensor = L1_KV.Get<float8_e8m0_t>()[ivkuse * kvSlotSize + vScaleOffset];
+
+        LoadData2DParamsV2 loadData2DParamsB;
+        loadData2DParamsB.mStartPosition = 0;
+        loadData2DParamsB.kStartPosition = 0;
+        loadData2DParamsB.ifTranspose = true;
+        loadData2DParamsB.mStep = 16;
+        loadData2DParamsB.kStep = 4;
+        loadData2DParamsB.srcStride = 16;
+        loadData2DParamsB.dstStride = 8;
+
+        LoadData2DMxParams loadData2DMxParamsB;
+        loadData2DMxParamsB.xStartPosition = 0;
+        loadData2DMxParamsB.yStartPosition = 0;
+        loadData2DMxParamsB.xStep = 8;
+        loadData2DMxParamsB.yStep = 4;
+        loadData2DMxParamsB.srcStride = 4;
+        loadData2DMxParamsB.dstStride = 4;
+
+        LoadData(bL0Tensor, bL1Tensor, bScaleL1Tensor, loadData2DParamsB, loadData2DMxParamsB);
     }
 
     __aicore__ inline void compute_mm2(int l0c_iduse, int l0a_iduse, uint32_t k)
@@ -666,13 +714,22 @@ public:
         // mmadParams.cmatrixInitVal =1,0;
         // mmadParams.cmatrixSource = 0;
         // mmadParams.unitFlag = 0;
-        using AType = typename GetDstType<mx_fp8_e4m3_t>::Type;
-        using BType = typename GetDstType<mx_fp8_e4m3_t>::Type;
-        mad_mx((__cc__ float *)l0c[l0c_iduse], (__ca__ AType*)l0a[l0a_iduse], (__cb__ BType*)l0b[l0a_iduse],
-                actMSize, 256, dVBaseSize, 0, false, false, k == 0);
+        LocalTensor<float> cL0Tensor = L0_C.Get<float>()[l0c_iduse * 128 * 256];
+        LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>()[(l0a_iduse - 4) * 32 * 1024];
+        LocalTensor<mx_fp8_e4m3_t> bL0Tensor = L0_B.Get<mx_fp8_e4m3_t>()[(l0a_iduse - 4) * 32 * 1024];
+
+        MmadParams mmadParams;
+        mmadParams.m = actMSize;
+        mmadParams.n = dVBaseSize;
+        mmadParams.k = 256;
+        mmadParams.cmatrixInitVal = k == 0 ? 1 : 0;
+        mmadParams.cmatrixSource = false;
+        mmadParams.unitFlag = 0;
+
+        Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
     }
 
-    __aicore__ inline void l0c_ub_mm2(__ubuf__ void *mm2Res, int l0c_iduse)
+    __aicore__ inline void l0c_ub_mm2(LocalTensor<float> mm2Res, int l0c_iduse)
     {
 
         /*
@@ -686,23 +743,22 @@ public:
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
         */
-        uint64_t loop3Para = static_cast<uint64_t>(0) << 32;  // LOOP3_PARA[63:32]
-        loop3Para |= static_cast<uint64_t>(0) << 16;  // LOOP3_PARA[31:16]
-        loop3Para |= static_cast<uint64_t>(1);              // LOOP3_PARA[15:0]
-        set_loop3_para(loop3Para);
+        LocalTensor<float> srcTensor = L0_C.Get<float>()[l0c_iduse * 128 * 256];
 
-        PipeBarrier<PIPE_FIX>();
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        fixpipeParams.nSize = (dVBaseSize + 7) >> 3 << 3;
+        fixpipeParams.mSize = (actMSize + 1) >> 1 << 1;
+        fixpipeParams.srcStride = ((((actMSize + 1) >> 1 << 1) + 15) / 16) * 16;
+        fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
+        fixpipeParams.dualDstCtl = 1;
+        fixpipeParams.params.ndNum = 1;
+        fixpipeParams.params.srcNdStride = 0;
+        fixpipeParams.params.dstNdStride = 0;
 
-        return copy_matrix_cc_to_ub((__ubuf__ float *)mm2Res, (__cc__ float *)l0c[l0c_iduse], 0,
-                                    dVBaseSize, (actMSize + 1) >> 1 << 1, dVBaseSize, ((((actMSize + 1) >> 1 << 1) + 15) / 16) * 16, 1,
-                                    false, 0, 0,
-                                    static_cast<uint64_t>(QuantMode_t::NoQuant), static_cast<uint8_t>(false),
-                                    false, true,
-                                    static_cast<uint64_t>(QuantMode_post::NoConv),
-                                    0, false, false, 0, false, false, false, false, false, false);
+        Fixpipe<float, float, PFA_CFG_ROW_MAJOR_UB>(mm2Res, srcTensor, fixpipeParams);
     }
 
-    __aicore__ inline void IterateBmm2(int ipuse, __ubuf__ void *mm2Res, __cbuf__ void *p1, int bmm2_id, __cbuf__ void *pscale, uint32_t bIdx, uint32_t n2Idx,
+    __aicore__ inline void IterateBmm2(int ipuse, LocalTensor<float> mm2Res, LocalTensor<float8_e4m3_t> p1Tensor, int bmm2_id, LocalTensor<float8_e8m0_t> pscaleTensor, uint32_t bIdx, uint32_t n2Idx,
                                         uint32_t s2Idx)
     {
         // mm2A.WaitCrossCore();
@@ -724,9 +780,9 @@ public:
             wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
             //mte1 start
             l0a_id ++ ;
-            int l0a_iduse = l0a_id % 2;
+            int l0a_iduse = l0a_id % 2 + 4;
             wait_flag(PIPE_M, PIPE_MTE1, l0a_iduse);// mte1 alloc l0ab buffer
-            mm2_l1_l0a_no_trans(p1, pscale, k, ipuse, l0a_iduse);
+            mm2_l1_l0a_no_trans(actMSize, p1Tensor, pscaleTensor, k, ipuse, l0a_iduse);
             mm2_l1_l0b_trans(ivkuse, l0a_iduse);
             set_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
             wait_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
@@ -787,8 +843,9 @@ public:
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    __aicore__ inline void SetTPipe(TPipe&) {}
     __aicore__ inline FAFullQuantMxBlockCubeDummy(ConstInfoX &constInfo) {};
 };
 } // namespace BaseApi
 
-#endif // FIA_BLOCK_CUBE_FULLQUANT_MX_H_
+#endif // FIA_BLOCK_CUBE_FULLQUANT_MX_MX2_H_
