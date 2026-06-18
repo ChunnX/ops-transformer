@@ -185,6 +185,16 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckMxScaleDim(const gert::Storage
     uint64_t x2ScaleDim1 = static_cast<uint64_t>(x2ScaleShape->GetStorageShape().GetDim(1));
     uint64_t x2ScaleDim2 = static_cast<uint64_t>(x2ScaleShape->GetStorageShape().GetDim(2));
 
+    // MXFP4特有约束：K和ceilDiv(K,32)必须为偶数（详细设计书1.2节）
+    if (isMxfp4_) {
+        uint64_t kValue = x1Dim1;  // K轴值
+        uint64_t kDivGroupSize = ((kValue + MXFP8_SIZE_K - 1) / MXFP8_SIZE_K);  // ceilDiv(K, 32)
+        OP_TILING_CHECK((kValue % 2 != 0) || (kDivGroupSize % 2 != 0),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "K-axis",
+                (std::to_string(kValue) + "/" + std::to_string(kDivGroupSize)).c_str(),
+                "In MXFP4 quant mode, K and ceilDiv(K,32) must be even"), return ge::GRAPH_FAILED);
+    }
+
     OP_TILING_CHECK((x1ScaleDim0 != x1Dim0) ||
                     (x1ScaleDim1 != x1Dim1DivMxFp8Size) || (x1ScaleDim2 != EVEN_ALIGN),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale",
@@ -278,11 +288,18 @@ bool QuantBmmReduceScatterTiling::PerblockSceneParamCheck(const gert::StorageSha
 bool QuantBmmReduceScatterTiling::MxfpSceneParamCheck(const gert::StorageShape* x1ScaleShape,
                                                            const gert::StorageShape* x2ScaleShape)
 {
-    OP_TILING_CHECK(!mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::MXFP8DTYPE_SUPPORT_LIST) ||
-                    !mc2tiling::CheckDataTypeVaild(args_.geBType, mc2tiling::MXFP8DTYPE_SUPPORT_LIST),
+    OP_TILING_CHECK(!mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::MXDTYPE_SUPPORT_LIST) ||
+                    !mc2tiling::CheckDataTypeVaild(args_.geBType, mc2tiling::MXDTYPE_SUPPORT_LIST),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1/x2",
                     (std::string(Ops::Base::ToString(args_.geAType).c_str()) + "/" + std::string(Ops::Base::ToString(args_.geBType).c_str())).c_str(),
-                    "The dtype of x1 and x2 must be float8_e4m3fn or float8_e5m2"), return false);
+                    "The dtype of x1 and x2 must be float8_e4m3fn, float8_e5m2 or float4_e2m1"), return false);
+    // MXFP4场景强制x1/x2类型相同（详细设计书1.2节）
+    if (isMxfp4_) {
+        OP_TILING_CHECK(args_.geAType != args_.geBType,
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "x1/x2",
+                        (std::string(Ops::Base::ToString(args_.geAType).c_str()) + "/" + std::string(Ops::Base::ToString(args_.geBType).c_str())).c_str(),
+                        "In MXFP4 quant mode, the dtype of x1 and x2 must be the same (DT_FLOAT4_E2M1)"), return false);
+    }
     OP_TILING_CHECK(CheckMxScaleDim(x1ScaleShape, x2ScaleShape) == ge::GRAPH_FAILED,
                     OP_LOGE(opName_, "CheckMxScaleDim failed!"), return false);
     return true;
@@ -403,6 +420,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
 void QuantBmmReduceScatterTiling::SetScene()
 {
     quantMode_ = mc2tiling::Mc2QuantMode::INVALID_MODE;
+    isMxfp4_ = false;  // 初始化为false
     auto x1ScaleShape = context_->GetOptionalInputShape(X1SCALE_INDEX);
     auto x2ScaleShape = context_->GetOptionalInputShape(X2SCALE_INDEX);
     auto x1ScaleDesc = context_->GetOptionalInputDesc(X1SCALE_INDEX);
@@ -422,6 +440,11 @@ void QuantBmmReduceScatterTiling::SetScene()
                (x1ScaleDesc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0) &&
                (x2ScaleDesc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) {
         quantMode_ = mc2tiling::Mc2QuantMode::MXFP_MODE;
+        // MXFP4场景识别：当x1/x2为FP4_E2M1时，设置isMxfp4_=true（详细设计书4.1节）
+        if (args_.geAType == ge::DataType::DT_FLOAT4_E2M1) {
+            isMxfp4_ = true;
+            OP_LOGI(opName_, "MXFP4 quant scene detected: x1/x2 dtype is DT_FLOAT4_E2M1");
+        }
     } else if ((x1ScaleShape->GetStorageShape().GetDimNum() == PERBLOCK_SCALE_DIM) &&
                (x2ScaleShape->GetStorageShape().GetDimNum() == PERBLOCK_SCALE_DIM) &&
                (x1ScaleDesc->GetDataType() == ge::DataType::DT_FLOAT) &&
@@ -484,13 +507,20 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
         scaleType = static_cast<uint8_t>(0);
     }
 
+    // MXFP4场景设置inputType为INPUT_TYPE_IS_FP4（详细设计书5.1节）
+    uint8_t inputType = INPUT_TYPE_IS_FP8;
+    if (isMxfp4_) {
+        inputType = INPUT_TYPE_IS_FP4;
+        OP_LOGD(opName_, "MXFP4 scene detected, setting inputType to INPUT_TYPE_IS_FP4 (2)");
+    }
+
     bool isPerBlock = quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE;
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(   \
-        isPerBlock, args_.isATrans, args_.isBTrans, INPUT_TYPE_IS_FP8, outputType, scaleType, commAlg, \
+        isPerBlock, args_.isATrans, args_.isBTrans, inputType, outputType, scaleType, commAlg, \
         commMode_);
     OP_LOGD(opName_, "isPerBlock, transA, transB is: [%d, %d, %d]", isPerBlock, args_.isATrans, args_.isBTrans);
-    OP_LOGD(opName_, "outputType, scaleType is: [%u, %u]", outputType, scaleType);
+    OP_LOGD(opName_, "inputType, outputType, scaleType is: [%u, %u, %u]", inputType, outputType, scaleType);
     return tilingKey;
 }
 
