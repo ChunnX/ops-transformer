@@ -14,8 +14,8 @@
  */
 
 #include "sparse_flash_mla_grad_tiling_bs1_regbase.h"
-#include "op_host/tiling_templates_registry.h"
-#include "op_host/tiling_type.h"
+#include "tiling_base/tiling_templates_registry.h"
+#include "tiling_base/tiling_type.h"
 
 namespace optiling {
 namespace smlag {
