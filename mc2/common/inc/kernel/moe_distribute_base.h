@@ -415,10 +415,15 @@ __aicore__ inline void cacheWriteThrough(__gm__ uint8_t* sourceAddr, uint64_t le
         (__gm__ uint8_t*)(((uint64_t)sourceAddr + length) / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
     AscendC::GlobalTensor<uint8_t> global;
     global.SetGlobalBuffer(start);
+    
     for (uint32_t i = 0; i <= end - start; i += AscendC::CACHE_LINE_SIZE) {
+        AscendC::Barrier();
+        __asm__("NOP");
         AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(global[i]);
+        AscendC::DataSyncBarrier<AscendC::MemDsbT::ALL>();
     }
+    
 }
 __aicore__ inline DataplaneMode GetDataplaneMode(GM_ADDR contextGM0) {
     __gm__ HcclA2CombineOpParam *winContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;

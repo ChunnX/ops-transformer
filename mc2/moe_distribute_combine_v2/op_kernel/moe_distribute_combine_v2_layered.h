@@ -57,7 +57,7 @@ public:
     constexpr static uint32_t BUFFER_NUM = 2U;                   // 多buf
     constexpr static uint32_t STATE_OFFSET = 512U;              // 状态空间偏移地址
     constexpr static uint32_t STATE_SPACE_SIZE = 1024U * 1024U;  // 1M
-    constexpr static uint32_t SUM_WINDOW_FLAG = 1088U;
+    constexpr static uint32_t SUM_WINDOW_FLAG = 3072U;
     constexpr static uint32_t UB_ALIGN = 32U;                   // UB按32字节对齐
     constexpr static uint32_t SELF_STATE_OFFSET = 512U * 1024U;  // 本卡状态空间偏移地址
     constexpr static uint32_t BLOCK_SIZE = 32U;
@@ -71,7 +71,7 @@ public:
     constexpr static uint32_t RDMA_DATA_SIZE = 400U * 1024U * 1024U;
     constexpr static uint32_t VEC_LEN = 256U;
     constexpr static uint32_t SRCSTRIDE_BLOCK = 15U;
-    constexpr static uint32_t MAX_LOCAL_BS = 256U;
+    constexpr static uint32_t MAX_LOCAL_BS = 512U;
     constexpr static uint32_t MAGIC_OFFSET = 2U * 1024U * 1024U - 32U * 32U;
     constexpr static uint32_t EXTRA_TOKEN_INFO_NUM = 4U; // 专家信息 权重信息 量化Scale 到达标志位
     constexpr static uint64_t MB_SIZE = 1024UL * 1024UL;
@@ -182,6 +182,7 @@ private:
     GlobalTensor<int16_t> countInnerGlobal_;
     GlobalTensor<int32_t> offsetOuterGlobal_;
     GlobalTensor<int32_t> countOuterGlobal_;
+    GlobalTensor<uint32_t> testdumpGlobal_;
 
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
     uint32_t axisBS_{0};
@@ -375,6 +376,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     readStateGlobal_.SetGlobalBuffer((__gm__ int32_t *)(windowOutGM_ + dataSpaceSize_));
     statusSpaceGm_ = windowInGM_ + dataSpaceSize_;
     statusSpaceGlobal_.SetGlobalBuffer((__gm__ int32_t *)statusSpaceGm_);
+    testdumpGlobal_.SetGlobalBuffer((__gm__ uint32_t*)((GM_ADDR)winContext_->localWindowsExp + coreIdx_ * 64));
     GlobalTensor<int32_t> selfStatusTensor;
     selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusSpaceGm_ + SELF_STATE_OFFSET));
     // coreIdx_ < serverNum_
@@ -772,7 +774,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
                 aivDstGlobal.SetGlobalBuffer((__gm__ ExpandXTransType *)(dstrdmaAddr));
                 AIVRDMAPostSend((GM_ADDR)(srcrdmaAddr + copyLenAlign * (copySum - 1)),
                                 (GM_ADDR)(dstrdmaAddr + copyLenAlign * (copySum - 1)),
-                                tragRankId, copyLen, qp_info_, ubLocal_, ubLocalHead_);
+                                tragRankId, copyLen, qp_info_, ubLocal_, ubLocalHead_, testdumpGlobal_, -1);
             } else {
                 aivSrcGlobal.SetGlobalBuffer((__gm__ ExpandXTransType *)(srcrdmaAddr));
                 aivDstGlobal.SetGlobalBuffer((__gm__ ExpandXTransType *)(dstrdmaAddr));
@@ -819,7 +821,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
         AIVRDMAPostSend((GM_ADDR)((uint64_t)(readStateGlobal_.GetPhyAddr())),
                         ((GetWindInAddrByRankId(tragRankId) +
                             halfWinSize_ * bufferId_ + dataSpaceSize_ + selfServerID * STATE_OFFSET)),
-                        tragRankId, UB_ALIGN, qp_info_, ubLocal_, ubLocalHead_);
+                        tragRankId, UB_ALIGN, qp_info_, ubLocal_, ubLocalHead_, testdumpGlobal_, -1);
     }
     SyncAll<true>();
 }
