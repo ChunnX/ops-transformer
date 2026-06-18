@@ -17,7 +17,7 @@
 
 #include "mc2_grouped_matmul_tiling.h"
 #include "../op_kernel/grouped_matmul_tiling_data_apt.h"
-#include "op_host/tiling_base.h"
+#include "tiling_base/tiling_base.h"
 
 namespace optiling {
 namespace Mc2GroupedMatmulTiling {
