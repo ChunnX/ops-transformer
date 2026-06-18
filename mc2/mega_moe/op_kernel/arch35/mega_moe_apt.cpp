@@ -21,13 +21,15 @@
 
 #ifdef ENABLE_TENSOR_API
 #include "mega_moe.h"
-using namespace MegaMoeImpl;
 #endif
 
 #include "mega_moe_tiling.h"
 #include "mega_moe_tiling_key.h"
 
 using namespace AscendC;
+#ifdef ENABLE_TENSOR_API
+using namespace MegaMoeImpl;
+#endif
 
 template<uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t CombineQuantOutType>
 __global__ __aicore__ void mega_moe(
