@@ -79,13 +79,12 @@ int main()
     int64_t rotaryMode = 1;
     std::vector<int64_t> partialSliceData = {0, 128};
 
-    void* dyDeviceAddr = nullptr;
+    void* dyRefDeviceAddr = nullptr;
     void* cosDeviceAddr = nullptr;
     void* sinDeviceAddr = nullptr;
-    aclTensor* dy = nullptr;
+    aclTensor* dyRef = nullptr;
     aclTensor* cos = nullptr;
     aclTensor* sin = nullptr;
-    aclTensor* dyOut = nullptr;
     aclTensor* dcosOut = nullptr;
     aclTensor* dsinOut = nullptr;
 
@@ -111,8 +110,8 @@ int main()
         30, 52,  71,  42,  123, 69,  4,   5,  116, 97,  38,  107, 8,   4,   65, 120, 40,  22,  60, 44,  48,  66,
         68, 125, 4,   93,  112, 112, 113, 90, 94,  23,  104, 39,  85,  84,  64, 128, 96,  119};
 
-    // 创建dy aclTensor（inplace操作，dy和dyOut指向同一device内存）
-    ret = CreateAclTensor(dyHostData, dyShape, &dyDeviceAddr, aclDataType::ACL_FLOAT, &dy);
+    // 创建dyRef aclTensor（inplace操作，dyRef同时作为输入和输出）
+    ret = CreateAclTensor(dyHostData, dyShape, &dyRefDeviceAddr, aclDataType::ACL_FLOAT, &dyRef);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建cos aclTensor
     ret = CreateAclTensor(cosHostData, cosShape, &cosDeviceAddr, aclDataType::ACL_FLOAT, &cos);
@@ -120,10 +119,6 @@ int main()
     // 创建sin aclTensor
     ret = CreateAclTensor(sinHostData, sinShape, &sinDeviceAddr, aclDataType::ACL_FLOAT, &sin);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    // dyOut与dy指向同一内存（inplace），使用相同的deviceAddr和shape
-    dyOut = aclCreateTensor(dyShape.data(), dyShape.size(), aclDataType::ACL_FLOAT,
-                            nullptr, 0, aclFormat::ACL_FORMAT_ND,
-                            dyShape.data(), dyShape.size(), dyDeviceAddr);
     // 创建partialSlice aclIntArray
     aclIntArray* partialSlice = aclCreateIntArray(partialSliceData.data(), partialSliceData.size());
     // 创建dcosOut和dsinOut（xOptional为空时无效，此处创建空shape tensor）
@@ -139,8 +134,8 @@ int main()
     // 调用aclnnInplacePartialRotaryMulGrad第一段接口
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
-    ret = aclnnInplacePartialRotaryMulGradGetWorkspaceSize(dy, cos, sin, nullptr, rotaryMode, partialSlice,
-                                                            dyOut, dcosOut, dsinOut, &workspaceSize, &executor);
+    ret = aclnnInplacePartialRotaryMulGradGetWorkspaceSize(dyRef, cos, sin, nullptr, rotaryMode, partialSlice,
+                                                            dcosOut, dsinOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnInplacePartialRotaryMulGradGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
@@ -158,10 +153,10 @@ int main()
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    // 获取dyOut结果（inplace，直接从dyDeviceAddr读取即可）
+    // 获取结果（inplace，直接从dyRefDeviceAddr读取即可）
     auto size = GetShapeSize(dyShape);
     std::vector<float> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), dyDeviceAddr,
+    ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), dyRefDeviceAddr,
                       size * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
 
@@ -171,14 +166,13 @@ int main()
 
     // 释放资源
     aclDestroyIntArray(partialSlice);
-    aclDestroyTensor(dy);
+    aclDestroyTensor(dyRef);
     aclDestroyTensor(cos);
     aclDestroyTensor(sin);
-    aclDestroyTensor(dyOut);
     aclDestroyTensor(dcosOut);
     aclDestroyTensor(dsinOut);
 
-    aclrtFree(dyDeviceAddr);
+    aclrtFree(dyRefDeviceAddr);
     aclrtFree(cosDeviceAddr);
     aclrtFree(sinDeviceAddr);
     if (workspaceSize > 0) {
