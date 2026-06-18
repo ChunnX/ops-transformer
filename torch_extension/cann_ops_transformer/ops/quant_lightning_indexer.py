@@ -17,9 +17,9 @@ QLI_V2_METADATA_SIZE = 1024
 QLI_V2_METADATA_OP_NAME = "quant_lightning_indexer_metadata"
 
 
-class QuantLightningIndexerV2OpBuilder(OpBuilder):
+class QuantLightningIndexerOpBuilder(OpBuilder):
     def __init__(self):
-        super(QuantLightningIndexerV2OpBuilder, self).__init__("quant_lightning_indexer")
+        super(QuantLightningIndexerOpBuilder, self).__init__("quant_lightning_indexer")
 
     def sources(self):
         """Path to C++ source code."""
@@ -59,7 +59,7 @@ class QuantLightningIndexerV2OpBuilder(OpBuilder):
 
 
         @impl(AS_LIBRARY, self.name, "Meta")
-        def quant_lightning_indexer_v2_meta(query, key, weights, query_dequant_scale, key_dequant_scale, topk,
+        def quant_lightning_indexer_meta(query, key, weights, query_dequant_scale, key_dequant_scale, topk,
                                                 quant_mode, *, cu_seqlens_q=None, cu_seqlens_k=None,
                                                 block_table=None, output_idx_offset=None, metadata=None, 
                                                 max_seqlen_q=-1, layout_q="BSND", layout_k="BSND",
