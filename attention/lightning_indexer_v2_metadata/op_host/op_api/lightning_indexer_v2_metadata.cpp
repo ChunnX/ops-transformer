@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file l0_lightning_indexer_v2_metadata.cpp
+ * \file lightning_indexer_v2_metadata.cpp
  * \brief
  */
 
-#include "l0_lightning_indexer_v2_metadata.h"
+#include "lightning_indexer_v2_metadata.h"
 #include "opdev/aicpu/aicpu_task.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
