@@ -16,6 +16,7 @@
 #if (__CCE_AICORE__ == 220)
 #include "arch22/compressor_kernel.h"
 #include "arch22/compressor_kernel_perf.h"
+#include "arch22/compressor_kernel_full_load.h"
 #else
 #include "arch35/compressor_kernel.h"
 #include "arch35/compressor_kernel_full_load.h"
@@ -59,10 +60,10 @@ __global__ __aicore__ void compressor(
     constexpr auto coff = static_cast<COFF>(Coff);
     constexpr auto cacheMode = static_cast<CACHE_MODE>(CacheMode);
     #if (__CCE_AICORE__ == 220)
-        if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::PERF) {
-            INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernelPerf, xLayout, xDtype, coff);
+        if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
+            INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernelFullLoad, xLayout, xDtype, coff, rotaryMode);
         } else {
-            INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernel, xLayout, xDtype, coff);
+            INVOKE_COMPRESSOR_GENERAL_OP_IMPL(CompressorKernelPerf, xLayout, xDtype, coff, rotaryMode);
         }
     #else
         if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::FULL_LOAD) {
