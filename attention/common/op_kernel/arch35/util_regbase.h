@@ -299,7 +299,14 @@ struct RunInfo<false> {
     int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
     bool learnableSinkFlag = false; /* attentionsink */ \
     float pScale;\
-    float sinkValue = SINK_MIN_INF
+    float sinkValue = SINK_MIN_INF; \
+    /* strides */ \
+    uint64_t keyBnStride; \
+    uint64_t keyN2Stride; \
+    uint64_t valueBnStride; \
+    uint64_t valueN2Stride; \
+    uint64_t keyRopeBnStride; \
+    uint64_t keyRopeN2Stride
 
 
 #define ROPE_INFO \
@@ -520,6 +527,13 @@ struct CVSharedParams<true, true> {
     int32_t blockTableDim2;
     int32_t paBlockNumSum;
     uint32_t paLayoutType;
+
+    uint64_t keyBnStride;
+    uint64_t keyN2Stride;
+    uint64_t valueBnStride;
+    uint64_t valueN2Stride;
+    uint64_t keyRopeBnStride;
+    uint64_t keyRopeN2Stride;
 
     // prefix
     bool isActualSharedPrefixLenNull;

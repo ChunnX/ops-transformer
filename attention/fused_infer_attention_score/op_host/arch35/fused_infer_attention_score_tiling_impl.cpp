@@ -1865,6 +1865,16 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_s2Size(fiaInfo.s2Size);
     inputParams.set_dSize(fiaInfo.qkHeadDim);
     inputParams.set_dSizeV(fiaInfo.vHeadDim);
+    if (!fiaInfo.isTensorV1) {
+        inputParams.keyStrides.set_bnStride(fiaInfo.keyStrides->GetStride(0));
+        inputParams.keyStrides.set_n2Stride(fiaInfo.keyStrides->GetStride(1));
+        inputParams.valueStrides.set_bnStride(fiaInfo.valueStrides->GetStride(0));
+        inputParams.valueStrides.set_n2Stride(fiaInfo.valueStrides->GetStride(1));
+        if (fiaInfo.kRopeStrides != nullptr) {
+            inputParams.kRopeStrides.set_bnStride(fiaInfo.kRopeStrides->GetStride(0));
+            inputParams.kRopeStrides.set_n2Stride(fiaInfo.kRopeStrides->GetStride(1));
+        }
+    }
     inputParams.set_dSizeRope(DSIZE_64);
     inputParams.set_scaleValue(fiaInfo.scaleValue);
     inputParams.set_preTokens(fiaInfo.preToken);
