@@ -44,7 +44,7 @@ struct TensorDescParam {
 constexpr size_t INPUT_TENSOR_COUNT = 6U;
 constexpr size_t OUTPUT_TENSOR_COUNT = 2U;
 constexpr size_t TENSOR_FIELD_COUNT = 4U;
-constexpr size_t SCALAR_FIELD_COUNT = 19U;
+constexpr size_t SCALAR_FIELD_COUNT = 18U;
 constexpr size_t CSV_COLUMN_COUNT = SCALAR_FIELD_COUNT + (INPUT_TENSOR_COUNT + OUTPUT_TENSOR_COUNT) *
                                                            TENSOR_FIELD_COUNT;
 constexpr uint32_t DEFAULT_L1_SIZE = 1048576U;
@@ -71,7 +71,6 @@ struct GroupedMatmulActivationQuantTilingCase {
             "GroupedMatmulActivationQuant", BuildTensorDescs(inputs), BuildTensorDescs(outputs),
             {
                 {"activation_type", Ops::Transformer::AnyValue::CreateFrom<string>(activationType)},
-                {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantDtype)},
                 {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
                 {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
                 {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(tuningConfigVec)},
@@ -104,7 +103,6 @@ struct GroupedMatmulActivationQuantTilingCase {
     uint64_t ubSize = DEFAULT_UB_SIZE;
     bool transposeWeight = false;
     int64_t groupListType = 0;
-    int64_t dequantDtype = 0;
     string quantMode;
     int64_t yDtype = 0;
     string roundMode;
@@ -188,7 +186,6 @@ vector<GroupedMatmulActivationQuantTilingCase> LoadCases(const string &socVersio
             tc.aivNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
             tc.ubSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
             tc.activationType = Trim(items[idx++]);
-            tc.dequantDtype = stoll(Trim(items[idx++]));
             tc.transposeWeight = ParseBool(Trim(items[idx++]));
             tc.groupListType = stoll(Trim(items[idx++]));
             tc.tuningConfig = Trim(items[idx++]);
