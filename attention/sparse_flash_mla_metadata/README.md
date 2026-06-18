@@ -149,7 +149,7 @@
     <tr>
       <td>ori_topk</td>
       <td>可选属性</td>
-      <td>预留参数，当前不生效，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0</td>
+      <td>预留参数，当前不生效，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0，当前仅支持0</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -163,21 +163,21 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对cmp_kv的压缩率，取值范围[1, 128]，默认值为1，当前仅支持4/128</td>
+      <td>表示对cmp_kv的压缩率，默认值为1，当前仅支持1/4/128</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_mask_mode</td>
       <td>可选属性</td>
-      <td>表示q和ori_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，4表示sliding window模式，默认值为0，当前仅支持4</td>
+      <td>表示q和ori_kv计算的mask模式，默认值为0，当前仅支持4，表示sliding window模式</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_mask_mode</td>
       <td>可选属性</td>
-      <td>表示q和cmp_kv计算的mask模式，0表示No mask，3表示rightDownCausal模式，默认值为0，当前仅支持3</td>
+      <td>表示q和cmp_kv计算的mask模式，默认值为0，当前仅支持3，表示rightDownCausal模式</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
