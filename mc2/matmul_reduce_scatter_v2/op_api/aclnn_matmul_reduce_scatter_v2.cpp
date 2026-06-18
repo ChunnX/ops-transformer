@@ -123,13 +123,14 @@ enum class CaseOption {
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
     op::DataType::DT_BF16, op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2,
-    op::DataType::DT_HIFLOAT8};
+    op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E2M1};
 static const std::initializer_list<op::DataType> BIAS_OUTPUT_SUPPORT_TYPE = {
     op::DataType::DT_BF16, op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> INPUT_SUPPORT_TYPE_HIGH_ACCURACY = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> INPUT_SUPPORT_TYPE_LOW_ACCURACY = {
-    op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_HIFLOAT8};
+    op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_HIFLOAT8,
+    op::DataType::DT_FLOAT4_E2M1};
 
 static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* output)
 {
@@ -291,6 +292,20 @@ static enum CaseOption CheckLowAccuracyCase(const aclTensor* x1, const aclTensor
     // 矩阵入参为Hifloat8时，x1x2必须类型相同。
     if (x1->GetDataType() == op::DataType::DT_HIFLOAT8) {
         OP_CHECK_DTYPE_NOT_SAME(x1, x2, return CaseOption::INVALID);
+    }
+    // MXFP4场景：x1和x2必须为DT_FLOAT4_E2M1且类型相同
+    if (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 ||
+        x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1) {
+        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return CaseOption::INVALID);
+        // MXFP4场景：K和ceilDiv(K,32)必须为偶数（详细设计书1.2节）
+        int64_t kVal = x1->GetViewShape().GetDim(1);
+        int64_t kDivGroupSize = ((kVal + 31) / 32);  // ceilDiv(K, 32)
+        if ((kVal % 2 != 0) || (kDivGroupSize % 2 != 0)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSize", "K-axis",
+                (std::to_string(kVal) + "/" + std::to_string(kDivGroupSize)).c_str(),
+                "In MXFP4 quant mode, K and ceilDiv(K,32) must be even.");
+            return CaseOption::INVALID;
+        }
     }
     
     if (!CheckEmptyTensor(x1Scale, "x1Scale") || !CheckEmptyTensor(x2Scale, "x2Scale")) {
