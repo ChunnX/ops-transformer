@@ -31,7 +31,7 @@ using namespace arch35FIA;
 constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
 
 // CheckSingle
-ge::graphStatus PostQuantChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PostQuantChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo) const
 {
     // QuantScale2 and quantOffset2 only support bf16/fp32 data type.
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.quantScale2.desc, QUANT_SCALE2_NAME)) {
