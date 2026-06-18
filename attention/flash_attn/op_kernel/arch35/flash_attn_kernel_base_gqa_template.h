@@ -103,6 +103,12 @@ public:
     GlobalTensor<int32_t> seqUsedGmKv;
     GlobalTensor<uint32_t> faMetaDataGm;
     GlobalTensor<uint32_t> fdMetaDataGm;
+    __gm__ uint32_t *fiaMetaDataRaw_ = nullptr;
+    uint32_t fdMetaRegionWords_ = 0U;
+    static constexpr uint32_t FA_METADATA_HDR_WORDS = 16U;
+    // metadata buffer 按 host 侧 8192 uint32 分配；sectionNum 异常时限制上界防 OOB
+    static constexpr uint32_t FA_METADATA_MAX_SECTIONS = 4U;
+    static constexpr uint32_t FA_METADATA_MAX_WORDS = 8192U;
     GlobalTensor<float> softmaxLseGm;
     GlobalTensor<INPUT_T> sinkGm;
     __gm__ uint8_t *keyPtr = nullptr;
@@ -194,22 +200,20 @@ public:
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
         }
         sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
+        if (sectionNum_ == 0U || sectionNum_ > FA_METADATA_MAX_SECTIONS) {
+            sectionNum_ = 1U;
+        }
         isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
 
-        faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-                                     FA_AIC_CORE_NUM * 16U * sectionNum_);
-        
+        fiaMetaDataRaw_ = (__gm__ uint32_t *)fiaMetaData;
+        const uint32_t faRegionWords = FA_AIC_CORE_NUM * FLASH_ATTN_METADATA_SIZE * sectionNum_;
+        fdMetaRegionWords_ = FA_AIV_CORE_NUM * FA_FD_METADATA_SIZE * sectionNum_;
 
-        InitQCuSeqLensParser();
-        InitKvCuSeqLensParser();
-
-        InitMMResBuf(workspace);
+        faMetaDataGm.SetGlobalBuffer(fiaMetaDataRaw_ + FA_METADATA_HDR_WORDS, faRegionWords);
 
         if ASCEND_IS_AIV {
-            fdMetaDataGm.SetGlobalBuffer(
-            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-            FA_AIV_CORE_NUM * 16U * sectionNum_);
+            // FD 段绝对起点: 16 + sectionNum*36*16（uint32 元素下标），与 AICPU FaMetaData / pytests 一致
+            fdMetaDataGm.SetGlobalBuffer(fiaMetaDataRaw_ + FA_METADATA_HDR_WORDS + faRegionWords, fdMetaRegionWords_);
             vecFaBlock.isFd = isFd;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock.InitVecBlock(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
@@ -222,6 +226,11 @@ public:
             }
             vecFaBlock.ClearOutput();
         }
+
+        InitQCuSeqLensParser();
+        InitKvCuSeqLensParser();
+
+        InitMMResBuf(workspace);
 
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
@@ -366,6 +375,30 @@ public:
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
         return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
+    }
+
+    // FD metadata 绝对 uint32 下标（与 AICPU setFdMetadata / pytests 打印公式一致）:
+    // 16 + sectionNum*36*16 + sectionIdx*72*16 + aivIdx*16 + field
+    __aicore__ inline uint32_t CalcFdMetaAbsWordIndex(uint32_t aivIdx, uint32_t metaIdx, uint32_t sectionIdx) const
+    {
+        return FA_METADATA_HDR_WORDS + sectionNum_ * FA_AIC_CORE_NUM * FLASH_ATTN_METADATA_SIZE +
+               sectionIdx * FA_AIV_CORE_NUM * FA_FD_METADATA_SIZE + aivIdx * FA_FD_METADATA_SIZE + metaIdx;
+    }
+
+    // 带边界保护的 FD 字段读取，避免 fdMetaDataGm 相对索引/长度与 host buffer 不一致时 OOB 踩内存。
+    __aicore__ inline uint32_t ReadFdMetaFieldSafe(uint32_t aivIdx, uint32_t metaIdx, uint32_t sectionIdx) const
+    {
+        if (fiaMetaDataRaw_ == nullptr || aivIdx >= FA_AIV_CORE_NUM || metaIdx >= FA_FD_METADATA_SIZE ||
+            sectionIdx >= sectionNum_) {
+            return 0U;
+        }
+        const uint32_t absIdx = CalcFdMetaAbsWordIndex(aivIdx, metaIdx, sectionIdx);
+        const uint32_t fdBase = FA_METADATA_HDR_WORDS + sectionNum_ * FA_AIC_CORE_NUM * FLASH_ATTN_METADATA_SIZE;
+        const uint32_t fdEnd = fdBase + fdMetaRegionWords_;
+        if (absIdx < fdBase || absIdx >= fdEnd || absIdx >= FA_METADATA_MAX_WORDS) {
+            return 0U;
+        }
+        return fiaMetaDataRaw_[absIdx];
     }
 
     __aicore__ inline void CrossCoreBufferInit()
@@ -823,45 +856,41 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
-        vecFdBlock.InitBuffers();
-        AscendC::ICachePreLoad(2);
-        // 进入 FD 前先排干 FA mask V→MTE2 ping/pong 反向同步预置：
-        // FA AllocEventID 预置的 V_MTE2[0]/[1] 会一直挂到所有 section 结束，若残留进入 FD，
-        // 会与 FD 的 V_MTE2 同步(SYNC_*=8~13)在物理 flag 上冲突，导致 FD WaitFlag<V_MTE2> 卡死。
-        // 必须在 FD AllocEventID 之前 Wait 排干，FD 结束后再由 PresetMaskReverseSync 恢复。
-        if (constInfo.aicIdx < constInfo.coreNum) {
-            if ASCEND_IS_AIV {
-                vecFaBlock.DrainMaskReverseSync();
+        if ASCEND_IS_AIV {
+            vecFdBlock.InitBuffers();
+            AscendC::ICachePreLoad(2);
+            // AIV 内 barrier 必须在 AllocEventID 之前：AllocEventID 会 Set V_MTE2[8~13]，
+            // 而 SyncAll 硬同步内部占用 CrossCore flagId [11-14]，二者时序重叠会污染 flag，
+            // 批跑第 2 轮起 AIC 在 FA CrossCoreWaitFlag 处全部 timeout(subErrType 0x4)。
+            AscendC::SyncAll();
+            if (fdParams_.fdCoreEnable) {
+                // 进入 FD 前先排干 FA mask V→MTE2 ping/pong 反向同步预置：
+                // FA AllocEventID 预置的 V_MTE2[0]/[1] 会一直挂到所有 section 结束，若残留进入 FD，
+                // 会与 FD 的 V_MTE2 同步(SYNC_*=8~13)在物理 flag 上冲突，导致 FD WaitFlag<V_MTE2> 卡死。
+                // 必须在 FD AllocEventID 之前 Wait 排干，FD 结束后再由 PresetMaskReverseSync 恢复。
+                if (constInfo.aicIdx < constInfo.coreNum) {
+                    vecFaBlock.DrainMaskReverseSync();
+                }
+                vecFdBlock.AllocEventID();
+                vecFdBlock.InitDecodeParams();
+                // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
+                // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
+                // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
+                if (constInfo.aicIdx < constInfo.coreNum) {
+                    WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                    SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                    AscendC::PipeBarrier<PIPE_MTE3>();
+                    AscendC::PipeBarrier<PIPE_V>();
+                }
+                vecFdBlock.FlashDecode(fdParams_);
+                vecFdBlock.FreeEventID();
+                // FD 结束后恢复 FA mask V→MTE2 ping/pong 预置（与上面的 DrainMaskReverseSync 成对），
+                // 供下一 section 的 FA 使用，并保证 vecFaBlock.FreeEventID 退出时配平。
+                if (constInfo.aicIdx < constInfo.coreNum) {
+                    vecFaBlock.PresetMaskReverseSync();
+                }
             }
-        }
-        vecFdBlock.AllocEventID();
-        vecFdBlock.InitDecodeParams();
-        // 进入 FD 前：排干 AIV 侧 FA 路径上残留的 V/MTE3 流水。
-        // 对于参与 FA 的 AIV (aicIdx<coreNum)，需消费/重置 FA AllocEventID 预置的 MTE3_V[0] flag，
-        // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
-        if (constInfo.aicIdx < constInfo.coreNum) {
-            if ASCEND_IS_AIV {
-                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                AscendC::PipeBarrier<PIPE_MTE3>();
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-        }
-        // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
-        // - SyncAll 默认 isAIVOnly=true，在 Mix 算子(__mix__(1,2)) 上仅同步全部 AIV 核（与 FlashDecode 仅 AIV 进入的语义一致）；
-        // - SyncAll 内部占用 flagId [11-14]，本算子静态分配的 mode 4 flagId [0-9] 不冲突；
-        // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
-        //   不会触发 aicore subErrType 0x4 timeout-trap。
-        AscendC::SyncAll();
-        vecFdBlock.FlashDecode(fdParams_);
-        AscendC::SyncAll();
-        vecFdBlock.FreeEventID();
-        // FD 结束后恢复 FA mask V→MTE2 ping/pong 预置（与上面的 DrainMaskReverseSync 成对），
-        // 供下一 section 的 FA 使用，并保证 vecFaBlock.FreeEventID 退出时配平。
-        if (constInfo.aicIdx < constInfo.coreNum) {
-            if ASCEND_IS_AIV {
-                vecFaBlock.PresetMaskReverseSync();
-            }
+            AscendC::SyncAll();
         }
     }
 
@@ -879,19 +908,24 @@ public:
 
     __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
     {
-        fdParams_.mLen = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
+        // 每个 section 先清零，避免跨 section / 仅部分字段赋值时残留脏值误触发 FD combine。
+        fdParams_.fdCoreEnable = 0U;
+        fdParams_.fdS2SplitNum = 0U;
+        fdParams_.mLen = ReadFdMetaFieldSafe(constInfo.aivIdx, FA_FD_M_NUM_INDEX, sectionIdx);
         fdParams_.fdCoreEnable = fdParams_.mLen > 0 ? 1U : 0U;
         if (!fdParams_.fdCoreEnable) {
             return;
         }
-        fdParams_.fdBN2Idx =
-            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
-        fdParams_.fdMIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
-        fdParams_.fdWorkspaceIdx =
-            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
-        fdParams_.fdS2SplitNum =
-            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+        fdParams_.fdBN2Idx = ReadFdMetaFieldSafe(constInfo.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx);
+        fdParams_.fdMIdx = ReadFdMetaFieldSafe(constInfo.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx);
+        fdParams_.fdWorkspaceIdx = ReadFdMetaFieldSafe(constInfo.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx);
+        fdParams_.fdS2SplitNum = ReadFdMetaFieldSafe(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx);
+        fdParams_.mStart = ReadFdMetaFieldSafe(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx);
+        // WORKSPACE_NUM 若因 OOB/脏数据异常偏大，combine 会访问 workspace 外 GM → 批跑 aicore 卡死
+        if (fdParams_.fdS2SplitNum == 0U || fdParams_.fdS2SplitNum > FA_AIC_CORE_NUM) {
+            fdParams_.fdS2SplitNum = 0U;
+            fdParams_.fdCoreEnable = 0U;
+        }
     }
 
 
@@ -911,8 +945,15 @@ public:
             if (constInfo.aicIdx < constInfo.coreNum) {
                 FlashAttention(sectionIdx);
             }
-            if ASCEND_IS_AIV {
-                FlashDecode(sectionIdx);
+            if (isFd) {
+                // Mix(__mix__(1,2)) 必须用 SyncAll<false>：默认 isAIVOnly=true 只同步 AIV，
+                // AIC 会提前进入下一 section / FreeEventID，而 AIV 仍在 FD combine 中，
+                // 导致 AIC CrossCoreWaitFlag timeout(subErrType 0x4)。批跑第 2 轮必现。
+                AscendC::SyncAll<false>();
+                if ASCEND_IS_AIV {
+                    FlashDecode(sectionIdx);
+                }
+                AscendC::SyncAll<false>();
             }
         }
 
