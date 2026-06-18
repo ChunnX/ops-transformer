@@ -208,6 +208,7 @@ private:
     void Tinlig4VBSMultiCoreCompute(MoeV3VBSComputeTilingData *tilingData);
     void Tinlig4VBSOneCoreCompute(MoeV3VBSComputeTilingData *tilingData);
     bool IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168() const;
+    bool ShouldEnableCountingSortByShape() const;
     bool IsFullLoad();
     int64_t IsGatherFirstFullLoad();
     void SetGatherTilingData(MoeV3SrcToDstCapacityComputeTilingData *tilingData, int64_t perCoreRows,
@@ -738,6 +739,19 @@ bool MoeInitRountingV3TilingBase::IsFullLoad() {
     return remainUb > 0;
 }
 
+bool MoeInitRountingV3TilingBase::ShouldEnableCountingSortByShape() const
+{
+    int64_t actualExpertNum = expertEnd_ - expertStart_;
+    bool expertNumValid = expertNum_ <= 1024;
+    bool dropPadValid = (dropPadMode_ == DROP_PAD) ||
+                        (dropPadMode_ == DROP_LESS && actualExpertNum * NUM_TWO <= expertNum_);
+    bool quantValid = quantMode_ != DYNAMIC_QUANT;
+    bool excludeNonDropPadSmallN = !(n_ <= 2560 && dropPadMode_ == DROP_LESS && quantMode_ == STATIC_QUANT);
+    bool excludeDropPadTinyN = !(dropPadMode_ == DROP_PAD && n_ < 512);
+    return expertNumValid && dropPadValid && quantValid &&
+           excludeNonDropPadSmallN && excludeDropPadTinyN;
+}
+
 void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
 {
     int64_t actualExpertNum = expertEnd_ - expertStart_;
@@ -749,6 +763,10 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
         (expertEnd_ - expertStart_) <= PERFORMANCE_MODE_RANGE_MAX && quantMode_ == UN_QUANT &&
         k_ == PERFORMANCE_MODE_TOP_K && dropPadMode_ == DROP_LESS && expertTokensNumType_ == COUNT &&
         actualExpertNum <= COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM && actualExpertNum > 0) {
+        return;
+    }
+
+    if (!ShouldEnableCountingSortByShape()) {
         return;
     }
 
@@ -876,6 +894,11 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortCutOriginTiling(
     int64_t csLastLoopCols = cols_ - (csColsLoops - 1) * csPerLoopCols;
     int64_t csPerLoopColsAligned =
         Ops::Base::CeilDiv(csPerLoopCols * inuptXDtypeSize_, ONE_BLOCK_BYTE) * ONE_BLOCK_BYTE / inuptXDtypeSize_;
+    
+    if (csColsLoops > 1 && quantMode_ != UN_QUANT) {
+        countingSortFullLoad_ = -1;
+        return;
+    }
 
     // Phase C size (accurate estimation matching kernel layout)
     int64_t phaseCSize = phaseCFixedOverhead;
