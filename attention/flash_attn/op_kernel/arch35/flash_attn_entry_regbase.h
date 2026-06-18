@@ -28,7 +28,7 @@
 
 #include "../utils/flash_attn_utils.h"
 #include "../utils/flash_attn_common_def.h"
-#include "flash_attn_kernel_gqa.h"
+#include "flash_attn_block_kernel_noquant_gqa.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "flash_attn_tiling_data.h"
 
