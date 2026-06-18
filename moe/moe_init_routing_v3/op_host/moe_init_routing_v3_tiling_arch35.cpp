@@ -697,6 +697,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::ValidateExpertTokensNumType()
                                            std::to_string(EXPERT_TOKENS_TYPE_COUNT) + " or " +
                                            std::to_string(EXPERT_TOKENS_TYPE_KEY_VALUE))),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dropPadMode_ == DROP_PAD_MODE_DROPPAD && expertTokensNumType_ != EXPERT_TOKENS_TYPE_COUNT,
+                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_tokens_num_type",
+                                          std::to_string(expertTokensNumType_),
+                                          std::to_string(EXPERT_TOKENS_TYPE_COUNT) +
+                                              " when drop_pad_mode is " + std::to_string(DROP_PAD_MODE_DROPPAD)),
+                return ge::GRAPH_FAILED);
     tilingDataPtr_->expertTokensNumType = expertTokensNumType_;
     return ge::GRAPH_SUCCESS;
 }

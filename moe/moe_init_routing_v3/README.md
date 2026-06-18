@@ -235,6 +235,7 @@
 - <term>Ascend 950PR/Ascend 950DT</term> DropPad模式特殊约束（dropPadMode=1时）：
   - rowIdxType仅支持取值为0（gather索引）。
   - activeExpertRangeOptional必须为[0, expertNum]。
+  - expertTokensNumType仅支持取值为1（count模式）。
   - quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8。
   - expandedXOut必须是3D Tensor，shape为[expertNum, expertCapacity, H]。
   
