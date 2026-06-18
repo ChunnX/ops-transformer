@@ -146,7 +146,7 @@ public:
                         uint64_t dstStrideTmp = offsetCalculator.GetStrideS1() * sizeof(OUT_T) - blockLenTmp; // 单位为Byte
 
                         // blockCount = offsetCalculator.GetDimG() * (s1IdxEnd - s1IdxStart -1);
-                        SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], 
+                        SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset],
                             blockCountTmp, blockLenTmp, srcStrideTmp, dstStrideTmp);
                         gmOffset += offsetCalculator.GetStrideS1() * blockCountTmp;
                         ubOffset += offsetCalculator.GetDimG() * srcTensor.colCount * blockCountTmp;
