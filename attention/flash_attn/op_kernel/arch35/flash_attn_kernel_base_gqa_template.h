@@ -24,7 +24,7 @@
 #include "flash_attn_block_cube_noquant_gqa.h"
 #include "flash_attn_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
-#include "flash_attention_noquant_block_vec_flashdecode.h"
+#include "flash_attn_block_vec_noquant_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
