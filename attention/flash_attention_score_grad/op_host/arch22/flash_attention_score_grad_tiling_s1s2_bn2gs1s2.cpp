@@ -747,7 +747,14 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::GetBaseShapeInfo()
             const int64_t *kvValue = actualSeqKvlenTensor->GetData<int64_t>();
             OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
                     OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [qValue or kvValue is null]."), return ge::GRAPH_FAILED);
-            for (size_t i = 0; i < seqQShapeSize; i++) {
+            // EOD场景: 累加和尾部连续为0的batch为无效数据，需跳过
+            size_t realBSize = seqQShapeSize;
+            while (realBSize > 0 && qValue[realBSize - 1] == 0 && kvValue[realBSize - 1] == 0) {
+                --realBSize;
+            }
+            fBaseParams.b = realBSize;
+
+            for (size_t i = 0; i < realBSize; i++) {
                 if (i == 0) {
                     fBaseParams.actualSeqQlen.push_back(qValue[i]);
                     fBaseParams.actualSeqKvlen.push_back(kvValue[i]);
@@ -756,17 +763,9 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::GetBaseShapeInfo()
                     fBaseParams.actualSeqKvlen.push_back(kvValue[i] - kvValue[i - 1]);
                 }
                 fBaseParams.sumS1S2Product += fBaseParams.actualSeqQlen[i] * fBaseParams.actualSeqKvlen[i];
+                fBaseParams.effectiveT1 += fBaseParams.actualSeqQlen[i];
+                fBaseParams.effectiveT2 += fBaseParams.actualSeqKvlen[i];
             }
-
-            uint64_t tailZeroCount = 0;
-            for (auto i = seqQShapeSize - 1; i >= 1; --i) {
-                if (fBaseParams.actualSeqQlen[i] <= 0 && fBaseParams.actualSeqKvlen[i] <= 0) {
-                    ++tailZeroCount;
-                } else {
-                    break;
-                }
-            }
-            fBaseParams.b = seqQShapeSize - tailZeroCount;
             fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqQlen.begin(), fBaseParams.actualSeqQlen.end());
             fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
         } else {
@@ -2469,6 +2468,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoPostTiling()
                              BUFFER_NUM / // 开DB预留2份nzReservedSize
                              WORKSPACE_NUM_ALIGN * WORKSPACE_NUM_ALIGN;
 
+    // NZ+TND布局下Post阶段, 若存在EOD padding, t1/t2会大于有效token数, 需用effectiveT1/effectiveT2重算PostBlockTotal
+    bool nzPostNeedEffectiveT = fBaseParams.mm2IsNZOut && fBaseParams.layoutType == INPUT_FORMAT_TND &&
+                                (fBaseParams.effectiveT1 != fBaseParams.t1 || fBaseParams.effectiveT2 != fBaseParams.t2);
+
     int64_t qPostBaseNum = fBaseParams.mm2IsNZOut ?
                                (postUbBaseSize / fBaseParams.dataTypeSize / dAlign * fBaseParams.d) :
                                (postUbBaseSize / fBaseParams.dataTypeSize);
@@ -2476,7 +2479,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoPostTiling()
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(fBaseParams.blockOuter == 0,
                OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [divisor fBaseParams.blockOuter is 0.]"), return ge::GRAPH_FAILED);
-    int64_t qPostBlockTotal = fBaseParams.qSize;
+    int64_t qPostBlockTotal = nzPostNeedEffectiveT ? fBaseParams.effectiveT1 * fBaseParams.n2 * fBaseParams.g * fBaseParams.d
+                                                   : fBaseParams.qSize;
     int64_t qPostTailNumTmp = qPostBlockTotal % qPostBaseNum;
     int64_t qPostTailNum = qPostTailNumTmp == 0 ? qPostBaseNum : qPostTailNumTmp;
     int64_t qPostBlockOuterTotal = (qPostBlockTotal + qPostBaseNum - 1) / qPostBaseNum;
@@ -2486,7 +2490,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoPostTiling()
         int64_t kvPostBaseNum = qPostBaseNum;
         OP_CHECK_IF(kvPostBaseNum == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [divisor kvPostBaseNum is 0.]"),
                    return ge::GRAPH_FAILED);
-        int64_t kvPostBlockTotal = fBaseParams.kvSize;
+        int64_t kvPostBlockTotal = nzPostNeedEffectiveT ? fBaseParams.effectiveT2 * fBaseParams.n2 * fBaseParams.d
+                                                       : fBaseParams.kvSize;
         int64_t kvPostTailNumTmp = kvPostBlockTotal % kvPostBaseNum;
         int64_t kvPostTailNum = kvPostTailNumTmp == 0 ? kvPostBaseNum : kvPostTailNumTmp;
         int64_t kvPostBlockOuterTotal = (kvPostBlockTotal + kvPostBaseNum - 1) / kvPostBaseNum;
@@ -2508,7 +2513,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoPostTiling()
         OP_CHECK_IF(fBaseParams.blockOuter == 0,
                    OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [divisor fBaseParams.blockOuter is 0.]"),
                    return ge::GRAPH_FAILED);
-        int64_t qRopePostBlockTotal = fBaseParams.qRopeSize;
+        int64_t qRopePostBlockTotal = nzPostNeedEffectiveT ? fBaseParams.effectiveT1 * fBaseParams.n2 * fBaseParams.g * fBaseParams.rope_d
+                                                           : fBaseParams.qRopeSize;
         int64_t qRopePostTailNumTmp = qRopePostBlockTotal % qRopePostBaseNum;
         int64_t qRopePostTailNum = qRopePostTailNumTmp == 0 ? qRopePostBaseNum : qRopePostTailNumTmp;
         int64_t qRopePostBlockOuterTotal = (qRopePostBlockTotal + qRopePostBaseNum - 1) / qRopePostBaseNum;
@@ -2517,7 +2523,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoPostTiling()
         int64_t kRopePostBaseNum = qRopePostBaseNum;
         OP_CHECK_IF(kRopePostBaseNum == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [divisor kRopePostBaseNum is 0.]"),
                    return ge::GRAPH_FAILED);
-        int64_t kRopePostBlockTotal = fBaseParams.kRopeSize;
+        int64_t kRopePostBlockTotal = nzPostNeedEffectiveT ? fBaseParams.effectiveT2 * fBaseParams.n2 * fBaseParams.rope_d
+                                                           : fBaseParams.kRopeSize;
         int64_t kRopePostTailNumTmp = kRopePostBlockTotal % kRopePostBaseNum;
         int64_t kRopePostTailNum = kRopePostTailNumTmp == 0 ? kRopePostBaseNum : kRopePostTailNumTmp;
         int64_t kRopePostBlockOuterTotal = (kRopePostBlockTotal + kRopePostBaseNum - 1) / kRopePostBaseNum;
@@ -2539,7 +2546,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoPostTiling()
         int64_t vPostBaseNum = qPostBaseNum;
         OP_CHECK_IF(vPostBaseNum == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [divisor vPostBaseNum is 0.]"),
                    return ge::GRAPH_FAILED);
-        int64_t vPostBlockTotal = fBaseParams.vSize;
+        int64_t vPostBlockTotal = nzPostNeedEffectiveT ? fBaseParams.effectiveT2 * fBaseParams.n2 * fBaseParams.value_d
+                                                       : fBaseParams.vSize;
         int64_t vPostTailNumTmp = vPostBlockTotal % vPostBaseNum;
         int64_t vPostTailNum = vPostTailNumTmp == 0 ? vPostBaseNum : vPostTailNumTmp;
         int64_t vPostBlockOuterTotal = (vPostBlockTotal + vPostBaseNum - 1) / vPostBaseNum;
@@ -2589,6 +2597,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DoPostTiling()
     tilingData->postTilingData.set_d(fBaseParams.d);
     tilingData->postTilingData.set_value_d(fBaseParams.value_d);
     tilingData->postTilingData.set_rope_d(fBaseParams.rope_d);
+    tilingData->postTilingData.set_t1(fBaseParams.t1);
+    tilingData->postTilingData.set_t2(fBaseParams.t2);
     return ge::GRAPH_SUCCESS;
 }
 
