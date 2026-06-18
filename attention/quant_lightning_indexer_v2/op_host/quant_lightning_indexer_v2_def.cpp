@@ -12,6 +12,7 @@
  * \file quant_lightning_indexer_v2_def.cpp
  * \brief
  */
+
 #include "register/op_def_registry.h"
 
 namespace ops {
@@ -92,11 +93,11 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-        this->Attr("topk").AttrType(REQUIRED).Int(2048);  // 2048: 默认值，筛选前2048
-        this->Attr("quant_mode").AttrType(REQUIRED).Int(1);    // 1: 默认值，per-token-head
+        this->Attr("topk").AttrType(REQUIRED).Int(2048);  // 2048: 筛选前2048个作为输出index
+        this->Attr("quant_mode").AttrType(REQUIRED).Int(1);    // 1: per-token-head
+        this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);  // -1: 默认值，表示任意可能长度
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_k").AttrType(OPTIONAL).String("BSND");
-        this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);  // -1: 默认值，表示任意可能长度
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);      // 0: 默认值，无mask
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0);               //  0: 默认值
@@ -184,12 +185,6 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-        aicore_config_95.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true);
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)

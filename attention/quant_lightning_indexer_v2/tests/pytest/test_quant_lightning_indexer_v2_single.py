@@ -13,9 +13,9 @@
 import itertools
 import torch
 import torch_npu
-from test_quant_lightning_indexer_paramset import ENABLED_PARAMS
+from test_quant_lightning_indexer_v2_paramset import ENABLED_PARAMS
 import result_compare_method
-import quant_lightning_indexer_golden
+import quant_lightning_indexer_v2_golden
 import pytest
 
 for _, params in enumerate(ENABLED_PARAMS):
@@ -26,7 +26,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     param_names = [
         "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim", 
         "block_size", "block_num", "qk_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
-        "cu_seqlens_k", "act_seq_q", "act_seq_k", "cmp_residual_k", "max_seqlen_q", "quant_mode",
+        "cu_seqlens_k", "seqused_q", "seqused_k", "cmp_residual_k", "max_seqlen_q", "quant_mode",
         "layout_query", "layout_key", "sparse_count", "sparse_mode",  "query_datarange", "key_datarange",
         "weights_datarange", "q_scale_datarange", "k_scale_datarange", "cmp_ratio", "return_value"
     ]
@@ -46,8 +46,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_actual_seq_dtype"],
         locals()["param_cu_seqlens_q"],
         locals()["param_cu_seqlens_k"],
-        locals()["param_act_seq_q"],
-        locals()["param_act_seq_k"],
+        locals()["param_seqused_q"],
+        locals()["param_seqused_k"],
         locals()["param_cmp_residual_k"],
         locals()["param_max_seqlen_q"],
         locals()["param_quant_mode"],
@@ -72,7 +72,7 @@ for _, params in enumerate(ENABLED_PARAMS):
 
     @pytest.mark.ci
     @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
-    def test_qli(param_combinations):   # 初始化参数和tensor
+    def test_qliv2(param_combinations):   # 初始化参数和tensor
         batch_size = param_combinations['batch_size']
         q_seq = param_combinations['q_seq']
         k_seq = param_combinations['k_seq']
@@ -88,8 +88,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         actual_seq_dtype = param_combinations['actual_seq_dtype']
         cu_seqlens_q = param_combinations['cu_seqlens_q']
         cu_seqlens_k = param_combinations['cu_seqlens_k']
-        act_seq_q = param_combinations['act_seq_q']
-        act_seq_k = param_combinations['act_seq_k']
+        seqused_q = param_combinations['seqused_q']
+        seqused_k = param_combinations['seqused_k']
         cmp_residual_k = param_combinations['cmp_residual_k']
         max_seqlen_q = param_combinations['max_seqlen_q']
         quant_mode = param_combinations['quant_mode']
@@ -106,13 +106,13 @@ for _, params in enumerate(ENABLED_PARAMS):
         return_value = param_combinations['return_value']
         torch_npu.npu.set_device(0)
         test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
-                    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,\
-                    act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
+                    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
+                    seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
                     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
                     k_scale_datarange, cmp_ratio, return_value
 
         # 获得cpu结果(真值)和算子结果（测试值）
-        cpu_result, npu_result, topk_value = quant_lightning_indexer_golden.qli_output_single(test_data)
+        cpu_result, npu_result, topk_value = quant_lightning_indexer_v2_golden.qliv2_output_single(test_data)
         print("npu_result", npu_result)
         print("cpu_result:", cpu_result)
         # 结果精度对比

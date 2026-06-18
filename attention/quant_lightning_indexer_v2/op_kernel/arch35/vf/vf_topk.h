@@ -1,22 +1,22 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
-* \file vf_topk_gather.h
+* \file vf_topk.h
 * \brief
 */
 
-#ifndef VF_TOP_K_GATHER_H
-#define VF_TOP_K_GATHER_H
+#ifndef VF_TOPK_H
+#define VF_TOPK_H
 
-namespace topkb32gather {
+namespace topkb32 {
 template<typename T>
 __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf, uint16_t vfLoop,
     bool init)
@@ -551,11 +551,9 @@ __simd_vf__ void FindIdxGTOutputVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__
 }
 
 __simd_vf__ void FindIdxEQOutputVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint32_t* inputBuf, uint32_t beginIdx,
-    __ubuf__ uint32_t* kValue, uint16_t vfLoop)
+    __ubuf__ uint32_t* kValue)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-
-    MicroAPI::MaskReg poutEQ;
 
     MicroAPI::UnalignRegForStore alignIdx;
 
@@ -563,104 +561,81 @@ __simd_vf__ void FindIdxEQOutputVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__
     MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(kthValue, kValue);
 
     MicroAPI::RegTensor<uint32_t> vregInput;
+
     MicroAPI::RegTensor<int32_t> idxC;
+    MicroAPI::Arange(idxC, beginIdx);
+
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputBuf);
+
+    MicroAPI::MaskReg poutEQ = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
     MicroAPI::RegTensor<uint32_t> sqzIdxOut;
+    MicroAPI::Compare<uint32_t, CMPMODE::EQ>(poutEQ, vregInput, kthValue, pregB32);
 
-    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        MicroAPI::Arange(idxC, beginIdx + i * 64);
-
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputBuf + i * 64);
-
-        MicroAPI::Compare<uint32_t, CMPMODE::EQ>(poutEQ, vregInput, kthValue, pregB32);
-
-        MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzIdxOut,
-            (MicroAPI::RegTensor<uint32_t>&)idxC, poutEQ);
-        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputIdxBuf, sqzIdxOut, alignIdx);
-    }
+    MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzIdxOut, (MicroAPI::RegTensor<uint32_t>&)idxC,
+        poutEQ);
+    MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputIdxBuf, sqzIdxOut, alignIdx);
     MicroAPI::StoreUnAlignPost(outputIdxBuf, alignIdx);
 }
 
-/**
-    输出最终的Value
- */
-__simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint32_t* outputValueBuf, __ubuf__ uint32_t* inputValueBuf,
-    __ubuf__ uint32_t* tmpIdxBuf, uint16_t vfLoop)
+__simd_vf__ void FindValueGTOutputVFImpl(__ubuf__ uint32_t* outputValueBuf, __ubuf__ uint32_t* inputBuf,
+    __ubuf__ uint32_t* kValue, uint16_t vfLoop)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
-    MicroAPI::RegTensor<uint32_t> tmpIdx;
-    MicroAPI::RegTensor<uint32_t> outputValue;
+    MicroAPI::ClearSpr<AscendC::SpecialPurposeReg::AR>();
+
+    MicroAPI::UnalignRegForStore alignValue;
+
+    MicroAPI::RegTensor<uint32_t> kthValue;
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(kthValue, kValue);
+
+    MicroAPI::RegTensor<uint32_t> vregInput;
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(tmpIdx, tmpIdxBuf + i * 64);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputBuf + i * 64);
 
-        MicroAPI::Gather(outputValue, inputValueBuf, tmpIdx, pregB32);
+        MicroAPI::MaskReg poutGT = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outputValueBuf + i * 64, outputValue, pregB32);
+        MicroAPI::RegTensor<uint32_t> sqzValueOut;
+        MicroAPI::Compare<uint32_t, CMPMODE::GT>(poutGT, vregInput, kthValue, pregB32);
+
+        MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzValueOut, vregInput, poutGT);
+        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputValueBuf, sqzValueOut,
+            alignValue);
     }
+    MicroAPI::StoreUnAlignPost(outputValueBuf, alignValue);
 }
 
-/**
-    输出最终的Idx
- */
-__simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint32_t* tmpIdxBuf,
-    __ubuf__ uint32_t* hisIdxBuf, uint32_t topK, uint32_t loopIndex, uint16_t vfLoop)
+__simd_vf__ void FindValueEQOutputVFImpl(__ubuf__ uint32_t* outputValueBuf, __ubuf__ uint32_t* inputBuf,
+    __ubuf__ uint32_t* kValue)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
-    MicroAPI::MaskReg pregNow;
-    MicroAPI::MaskReg pregHis;
+    MicroAPI::UnalignRegForStore alignValue;
 
-    MicroAPI::RegTensor<uint32_t> tmpIdx;
-    MicroAPI::RegTensor<uint32_t> outputGatherIdx;
-    MicroAPI::RegTensor<uint32_t> outputAddsIdx;
+    MicroAPI::RegTensor<uint32_t> kthValue;
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(kthValue, kValue);
 
-    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(tmpIdx, tmpIdxBuf + i * 64);
+    MicroAPI::RegTensor<uint32_t> vregInput;
 
-        MicroAPI::Compares<uint32_t, CMPMODE::GT>(pregNow, tmpIdx, topK - 1, pregB32);
-        MicroAPI::Xor(pregHis, pregNow, pregB32, pregB32);
+    MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputBuf);
 
-        MicroAPI::Gather(outputGatherIdx, hisIdxBuf, tmpIdx, pregHis);
-        MicroAPI::Adds(outputAddsIdx, tmpIdx, loopIndex, pregNow);
+    MicroAPI::MaskReg poutEQ = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
-        MicroAPI::Add(outputGatherIdx, outputGatherIdx, outputAddsIdx, pregB32);
+    MicroAPI::RegTensor<uint32_t> sqzValueOut;
+    MicroAPI::Compare<uint32_t, CMPMODE::EQ>(poutEQ, vregInput, kthValue, pregB32);
 
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outputIdxBuf + i * 64, outputGatherIdx, pregB32);
-    }
+    MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzValueOut, vregInput, poutEQ);
+    MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(outputValueBuf, sqzValueOut, alignValue);
+    MicroAPI::StoreUnAlignPost(outputValueBuf, alignValue);
 }
 
-__simd_vf__ void IndicesAddOffsetVF(__ubuf__ uint32_t* indicesOutBuf, uint32_t outputIdxOffset, uint32_t vfLoop)
-{
-    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-
-    MicroAPI::RegTensor<uint32_t> outIndices;
-
-    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(outIndices, indicesOutBuf + i * 64);
-        MicroAPI::Adds(outIndices, outIndices, outputIdxOffset, pregB32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(indicesOutBuf + i * 64, outIndices, pregB32);
-    }
-}
-
-/**
- * @brief LiTopKVF 对一个validLen的输入进行topk算法，输出idx_tmp
- * @param tmpIdxLocal Temp阶段输出的TopKIndex;如果s2SeqLen < 8K作为最终输出 validLen * 4B
- * @param outputValueLocal 如果s2SeqLen > 8K并且是首轮输出Value topK * 4B
- * @param inputValueLocal 输入Value validLen * 4B
- * @param histogramsLocal 直方图 256 * 4B
- * @param idx0Local 目标桶第一个八位 256 * 4B
- * @param idx1Local 目标桶第二个八位 256 * 4B
- * @param idx2Local 目标桶第三个八位 256 * 4B
- * @param idx3Local 目标桶第四个八位 256 * 4B
- * @param nkValueLocal 存储next_k的值 64 * 4B
- * @param topK topK元素
- * @param validLen 有效元素个数:QLICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256)
- */
-template<bool ISOUTVALUE>
-__aicore__ inline void LiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
+__aicore__ inline void LiTopKVF(const LocalTensor<uint32_t>& outputIdxLocal,
                                 const LocalTensor<uint32_t>& outputValueLocal,
-                                const LocalTensor<uint32_t>& inputValueLocal,
+                                const LocalTensor<uint32_t>& inputLocal,
+                                const LocalTensor<uint32_t>& tmpIdxLocal,
+                                const LocalTensor<uint32_t>& tmpValueLocal,
                                 const LocalTensor<uint32_t>& histogramsLocal,
                                 const LocalTensor<uint32_t>& idx0Local,
                                 const LocalTensor<uint32_t>& idx1Local,
@@ -668,11 +643,13 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
                                 const LocalTensor<uint32_t>& idx3Local,
                                 const LocalTensor<uint32_t>& nkValueLocal,
                                 uint32_t topK,
-                                uint32_t validLen)
+                                uint32_t s2SeqLen)
 {
-    __ubuf__ uint32_t* tmpIdxBuf = (__ubuf__ uint32_t*)tmpIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t* outputIdxBuf = (__ubuf__ uint32_t*)outputIdxLocal.GetPhyAddr();
     __ubuf__ uint32_t* outputValueBuf = (__ubuf__ uint32_t*)outputValueLocal.GetPhyAddr();
-    __ubuf__ uint32_t* inputValueBuf = (__ubuf__ uint32_t*)inputValueLocal.GetPhyAddr();
+    __ubuf__ uint32_t* inputBuf = (__ubuf__ uint32_t*)inputLocal.GetPhyAddr();
+    __ubuf__ uint32_t* tmpIdxBuf = (__ubuf__ uint32_t*)tmpIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t* tmpValueBuf = (__ubuf__ uint32_t*)tmpValueLocal.GetPhyAddr();
     __ubuf__ uint32_t* histogramsBuf = (__ubuf__ uint32_t*)histogramsLocal.GetPhyAddr();
     __ubuf__ uint32_t* idx0Buf = (__ubuf__ uint32_t*)idx0Local.GetPhyAddr();
     __ubuf__ uint32_t* idx1Buf = (__ubuf__ uint32_t*)idx1Local.GetPhyAddr();
@@ -680,77 +657,59 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
     __ubuf__ uint32_t* idx3Buf = (__ubuf__ uint32_t*)idx3Local.GetPhyAddr();
     __ubuf__ uint32_t* nkValueBuf = (__ubuf__ uint32_t*)nkValueLocal.GetPhyAddr();
 
-    uint32_t bottomK = validLen - topK + 1;
+    uint32_t bottomK = s2SeqLen - topK + 1;
     uint32_t beginIdx = 0;
     bool flag = true;
 
     const uint16_t repeatSize8 = 256;
     const uint16_t repeatSize32 = 64;
 
-    uint16_t histogramsLoopNum = (validLen + repeatSize8 - 1) / repeatSize8;
-    uint16_t inputLoopNum = (validLen + repeatSize32 - 1) / repeatSize32;
+    uint16_t histogramsLoopNum = (s2SeqLen + repeatSize8 - 1) / repeatSize8;
+    uint16_t inputLoopNum = (s2SeqLen + repeatSize32 - 1) / repeatSize32;
     uint16_t topkLoopNum = (topK + 64 - 1) / 64;
 
     // find kth-value
-    HistogramsFirstVFImpl<uint32_t>(histogramsBuf, inputValueBuf, histogramsLoopNum, flag);
+    HistogramsFirstVFImpl<uint32_t>(histogramsBuf, inputBuf, histogramsLoopNum, flag);
     FindFirstTargetBinVFImpl(idx0Buf, nkValueBuf, histogramsBuf, bottomK);
-    HistogramsSecondVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, histogramsLoopNum, flag);
+    HistogramsSecondVFImpl<uint32_t>(histogramsBuf, inputBuf, idx0Buf, histogramsLoopNum, flag);
     FindSecondTargetBinVFImpl(idx1Buf, nkValueBuf, nkValueBuf, histogramsBuf);
-    HistogramsThirdVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, histogramsLoopNum, flag);
+    HistogramsThirdVFImpl<uint32_t>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, histogramsLoopNum, flag);
     FindThirdTargetBinVFImpl(idx2Buf, nkValueBuf, nkValueBuf, histogramsBuf);
-    HistogramsLastVFImpl<uint32_t>(histogramsBuf, inputValueBuf, idx0Buf, idx1Buf, idx2Buf, histogramsLoopNum, flag);
+    HistogramsLastVFImpl<uint32_t>(histogramsBuf, inputBuf, idx0Buf, idx1Buf, idx2Buf, histogramsLoopNum, flag);
     FindKthVFImpl(nkValueBuf, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf);
 
     // filter
-    // 输出大于k-value的值idx
-    FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
-    // 输出等于k-value的值idx
-    FindIdxEQOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
+    // 输出大于k-value的值value
+    FindValueGTOutputVFImpl(outputValueBuf, inputBuf, nkValueBuf, inputLoopNum);
+    // value-当前偏移大于k-value的值在AR特殊寄存器中的有效字节数
+    int64_t arValueNum = AscendC::GetSpr<AscendC::SpecialPurposeReg::AR>();
+    // value-剩余需要输出等于k-value的数量
+    int64_t remainValueNum = topK - (arValueNum / sizeof(uint32_t));
+    for(uint16_t i = 0; i < inputLoopNum; ++i) {
+        int64_t arValueNumPerLoop = AscendC::GetSpr<AscendC::SpecialPurposeReg::AR>();
+        if (((arValueNumPerLoop - arValueNum) / sizeof(uint32_t)) < remainValueNum) {
+            // 调用一次查找等于k-value情况的过程
+            FindValueEQOutputVFImpl(outputValueBuf, inputBuf + i * 64, nkValueBuf);
+        } else {
+            break;
+        }
+    }
 
-    if constexpr (ISOUTVALUE) {
-        FindValueOutputVFImpl(outputValueBuf, inputValueBuf, tmpIdxBuf, topkLoopNum);
+    // 输出大于k-value的值idx
+    FindIdxGTOutputVFImpl(outputIdxBuf, inputBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
+    // idx-当前偏移大于k-value的值在AR特殊寄存器中的有效字节数
+    int64_t arIdxNum = AscendC::GetSpr<AscendC::SpecialPurposeReg::AR>();
+    int64_t remainIdxNum = topK - (arIdxNum / sizeof(uint32_t));
+    for(uint16_t i = 0; i < inputLoopNum; ++i) {
+        int64_t arIdxNumPerLoop = AscendC::GetSpr<AscendC::SpecialPurposeReg::AR>();
+        if (((arIdxNumPerLoop - arIdxNum) / sizeof(uint32_t)) < remainIdxNum) {
+            // 调用一次查找等于k-value情况的过程
+            beginIdx = i * 64;
+            FindIdxEQOutputVFImpl(outputIdxBuf, inputBuf + i * 64, beginIdx, nkValueBuf);
+        } else {
+            break;
+        }
     }
 }
-
-/**
- * @brief 通过idx_tmp gather出实际的TopKIndex，s2SeqLen > 8K才会执行
- * @param outputIdxLocal 输出Idx 有效:topK * 4B
- * @param outputValueLocal 输出Value topK * 4B(以后需要输出实际value使用)
- * @param inputValueLocal 输入Value validLen * 4B
- * @param tmpIdxLocal 本轮tmpIdx输入 validLen * 4B (0 ~ validLen - 1)
- * @param hisIdxLocal 上一轮实际Idx输入 有效:topK * 4B
- * @param topK topK元素个数
- * @param loopBasicIdx 当前循环需要加上得基准Index
- * @param validLen 有效元素个数
- */
-__aicore__ inline void LiTopKGatherVF(const LocalTensor<uint32_t>& outputIdxLocal,
-                                      const LocalTensor<uint32_t>& outputValueLocal,
-                                      const LocalTensor<uint32_t>& inputValueLocal,
-                                      const LocalTensor<uint32_t>& tmpIdxLocal,
-                                      const LocalTensor<uint32_t>& hisIdxLocal,
-                                      uint32_t topK,
-                                      uint32_t loopBasicIdx,
-                                      uint32_t validLen)
-{
-    __ubuf__ uint32_t* outputIdxBuf = (__ubuf__ uint32_t*)outputIdxLocal.GetPhyAddr();
-    __ubuf__ uint32_t* outputValueBuf = (__ubuf__ uint32_t*)outputValueLocal.GetPhyAddr();
-    __ubuf__ uint32_t* inputValueBuf = (__ubuf__ uint32_t*)inputValueLocal.GetPhyAddr();
-    __ubuf__ uint32_t* tmpIdxBuf = (__ubuf__ uint32_t*)tmpIdxLocal.GetPhyAddr();
-    __ubuf__ uint32_t* hisIdxBuf = (__ubuf__ uint32_t*)hisIdxLocal.GetPhyAddr();
-
-    const uint16_t repeatSize32 = 64;
-    uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
-
-    FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topK, loopBasicIdx, topkLoopNum32);
 }
-
-__aicore__ inline void IndicesAddOffset(const LocalTensor<uint32_t>& indicesOutLocal, uint32_t outputIdxOffset,
-    uint32_t topK)
-{
-    __ubuf__ uint32_t* indicesOutBuf = (__ubuf__ uint32_t*)indicesOutLocal.GetPhyAddr();
-    const uint16_t repeatSize32 = 64;
-    uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
-    IndicesAddOffsetVF(indicesOutBuf, outputIdxOffset, topkLoopNum32);
-}
-}
-#endif
+#endif  // VF_TOPK_H

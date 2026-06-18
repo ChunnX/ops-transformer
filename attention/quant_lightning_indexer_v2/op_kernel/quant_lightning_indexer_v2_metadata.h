@@ -13,40 +13,40 @@
 * \brief
 */
 
-#ifndef QUANT_LIGHTNING_INDEXER_v2_METADATA_H
-#define QUANT_LIGHTNING_INDEXER_v2_METADATA_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_METADATA_H
+#define QUANT_LIGHTNING_INDEXER_V2_METADATA_H
 
 #include <cstdint>
 
 namespace optiling {
 
 // Constants
-inline constexpr uint32_t AIC_CORE_NUM = 36;
-inline constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t QLI_META_SIZE = 1024;
-using QLI_METADATA_T = int32_t;
+inline constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+inline constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t QLI_V2_METADATA_TOTAL_SIZE = 1024;
+using QLI_V2_METADATA_T = int32_t;
 
-inline constexpr uint32_t LI_METADATA_SIZE = 8;
-inline constexpr uint32_t LD_METADATA_SIZE = 8;
+inline constexpr uint32_t QLI_V2_METADATA_SIZE = 8;
+inline constexpr uint32_t QLD_V2_METADATA_SIZE = 8;
 
 // LI Metadata Index Definitions
-inline constexpr uint32_t LI_CORE_ENABLE_INDEX = 0;
-inline constexpr uint32_t LI_BN2_START_INDEX = 1;
-inline constexpr uint32_t LI_M_START_INDEX = 2;
-inline constexpr uint32_t LI_S2_START_INDEX = 3;
-inline constexpr uint32_t LI_BN2_END_INDEX = 4;
-inline constexpr uint32_t LI_M_END_INDEX = 5;
-inline constexpr uint32_t LI_S2_END_INDEX = 6;
-inline constexpr uint32_t LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX = 7;
+inline constexpr uint32_t QLI_V2_CORE_ENABLE_INDEX = 0;
+inline constexpr uint32_t QLI_V2_BN2_START_INDEX = 1;
+inline constexpr uint32_t QLI_V2_M_START_INDEX = 2;
+inline constexpr uint32_t QLI_V2_S2_START_INDEX = 3;
+inline constexpr uint32_t QLI_V2_BN2_END_INDEX = 4;
+inline constexpr uint32_t QLI_V2_M_END_INDEX = 5;
+inline constexpr uint32_t QLI_V2_S2_END_INDEX = 6;
+inline constexpr uint32_t QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX = 7;
 
 // LD Metadata Index Definitions
-inline constexpr uint32_t LD_CORE_ENABLE_INDEX = 0;
-inline constexpr uint32_t LD_BN2_IDX_INDEX = 1;
-inline constexpr uint32_t LD_M_IDX_INDEX = 2;
-inline constexpr uint32_t LD_WORKSPACE_IDX_INDEX = 3;
-inline constexpr uint32_t LD_WORKSPACE_NUM_INDEX = 4;
-inline constexpr uint32_t LD_M_START_INDEX = 5;
-inline constexpr uint32_t LD_M_NUM_INDEX = 6;
+inline constexpr uint32_t QLD_V2_CORE_ENABLE_INDEX = 0;
+inline constexpr uint32_t QLD_V2_BN2_IDX_INDEX = 1;
+inline constexpr uint32_t QLD_V2_M_IDX_INDEX = 2;
+inline constexpr uint32_t QLD_V2_WORKSPACE_IDX_INDEX = 3;
+inline constexpr uint32_t QLD_V2_WORKSPACE_NUM_INDEX = 4;
+inline constexpr uint32_t QLD_V2_M_START_INDEX = 5;
+inline constexpr uint32_t QLD_V2_M_NUM_INDEX = 6;
 
  /**
  * @brief 获取属性的绝对索引
@@ -56,25 +56,24 @@ inline constexpr uint32_t LD_M_NUM_INDEX = 6;
  * @return 返回属性的绝对索引
  */
 #ifdef __CCE_AICORE__
-__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx,
-                                           bool isAIV = false)
+__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, bool isAIV = false)
 {
     if (isAIV) {
-        return LI_METADATA_SIZE * AIC_CORE_NUM + LD_METADATA_SIZE * coreIdx + metaIdx;
+        return QLI_V2_METADATA_SIZE * AIC_CORE_MAX_NUM + QLD_V2_METADATA_SIZE * coreIdx + metaIdx;
     } else {
-        return LI_METADATA_SIZE * coreIdx + metaIdx;
+        return QLI_V2_METADATA_SIZE * coreIdx + metaIdx;
     }
 }
 #endif
 
 namespace detail {
-    struct QliMetaData {
-        uint32_t LIMetadata[AIC_CORE_NUM][LI_METADATA_SIZE];
-        uint32_t LDMetadata[AIV_CORE_NUM][LD_METADATA_SIZE];
+    struct QliV2Metadata {
+        uint32_t qliV2Metadata[AIC_CORE_MAX_NUM][QLI_V2_METADATA_SIZE];
+        uint32_t qldV2Metadata[AIV_CORE_MAX_NUM][QLD_V2_METADATA_SIZE];
     };
 };
 
-static_assert(QLI_META_SIZE * sizeof(QLI_METADATA_T) >= sizeof(detail::QliMetaData));
+static_assert(QLI_V2_METADATA_TOTAL_SIZE * sizeof(QLI_V2_METADATA_T) >= sizeof(detail::QliV2Metadata));
 };
 
-#endif
+#endif  // QUANT_LIGHTNING_INDEXER_V2_METADATA_H

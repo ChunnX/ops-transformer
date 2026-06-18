@@ -9,12 +9,12 @@
  */
 
 /*!
-* \file vf_top_k_16_gather.h
+* \file vf_topk_16_gather.h
 * \brief
 */
 
-#ifndef VF_TOP_K_16_GATHER_H
-#define VF_TOP_K_16_GATHER_H
+#ifndef VF_TOPK_16_GATHER_H
+#define VF_TOPK_16_GATHER_H
 
 namespace topkb16gather {
 
@@ -351,19 +351,6 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ u
     }
 }
 
-__simd_vf__ void IndicesAddOffsetVF(__ubuf__ uint32_t* indicesOutBuf, uint32_t outputIdxOffset, uint32_t vfLoop)
-{
-    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-
-    MicroAPI::RegTensor<uint32_t> outIndices;
-
-    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(outIndices, indicesOutBuf + i * 64);
-        MicroAPI::Adds(outIndices, outIndices, outputIdxOffset, pregB32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(indicesOutBuf + i * 64, outIndices, pregB32);
-    }
-}
-
 /**
  * @brief LiTopKVF 对一个validLen的输入进行topk算法，输出idx_tmp
  * @param tmpIdxLocal Temp阶段输出的TopKIndex;如果s2SeqLen < 16K作为最终输出 validLen * 2B
@@ -374,7 +361,7 @@ __simd_vf__ void IndicesAddOffsetVF(__ubuf__ uint32_t* indicesOutBuf, uint32_t o
  * @param idxLowLocal 目标桶低八位 256 * 4B
  * @param nkValueLocal 存储next_k的值 64 * 4B
  * @param topK topK元素
- * @param validLen 有效元素个数:QLICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256)
+ * @param validLen 有效元素个数:QLIV2Common::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256)
  */
 template<bool ISOUTVALUE> // 是否输出VALUE
 __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
@@ -416,6 +403,7 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
     FindKthVFImpl(nkValueBuf, histogramsBuf, idxHighBuf, idxLowBuf);
 
     // filter
+    AscendC::Duplicate(tmpIdxLocal, (uint16_t)(0), QLIV2Common::Align(topK, (uint32_t)128));
     // 输出大于k-value的值idx
     FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
     // 输出等于k-value的值idx
@@ -424,6 +412,26 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
     // 是否输出Value
     if constexpr (ISOUTVALUE) {
         FindValueOutputVFImpl(outputValueBuf, inputValueBuf, tmpIdxBuf, topkLoopNum16);
+    }
+}
+
+/**
+    LD:输出最终的Idx
+*/
+__simd_vf__ void FindLDRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint16_t* tmpIdxBuf,
+    __ubuf__ uint32_t* hisIdxBuf, uint16_t vfLoop)
+{
+    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
+    MicroAPI::RegTensor<uint16_t> tmpIdx;
+    MicroAPI::RegTensor<uint32_t> outputIdx;
+
+    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+        MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(tmpIdx, tmpIdxBuf + i * 64);
+
+        MicroAPI::Gather(outputIdx, hisIdxBuf, (MicroAPI::RegTensor<uint32_t>&)tmpIdx, pregB32);
+
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outputIdxBuf + i * 64, outputIdx, pregB32);
     }
 }
 
@@ -461,13 +469,24 @@ __aicore__ inline void LiTopKGatherVF(const LocalTensor<uint32_t>& outputIdxLoca
     FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topK, loopBasicIdx, topkLoopNum32);
 }
 
-__aicore__ inline void IndicesAddOffset(const LocalTensor<uint32_t>& indicesOutLocal, uint32_t outputIdxOffset,
-    uint32_t topK)
+/**
+    LD:gather最终的Idx
+*/
+__aicore__ inline void LiTopKLDGatherVF(const LocalTensor<uint32_t>& outputIdxLocal, // 输出Idx topK * 2B
+                                        const LocalTensor<uint16_t>& tmpIdxLocal, // 本轮tmpIdx输入 validLen * 2B
+                                        const LocalTensor<uint32_t>& hisIdxLocal, // 上一轮Idx输入 topK * 4B
+                                        uint32_t topK) // topK元素个数
 {
-    __ubuf__ uint32_t* indicesOutBuf = (__ubuf__ uint32_t*)indicesOutLocal.GetPhyAddr();
+    __ubuf__ uint32_t* outputIdxBuf = (__ubuf__ uint32_t*)outputIdxLocal.GetPhyAddr();
+    __ubuf__ uint16_t* tmpIdxBuf = (__ubuf__ uint16_t*)tmpIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t* hisIdxBuf = (__ubuf__ uint32_t*)hisIdxLocal.GetPhyAddr();
+
     const uint16_t repeatSize32 = 64;
+    const uint16_t repeatSize16 = 128;
+    uint16_t topkLoopNum16 = (topK + repeatSize16 - 1) / repeatSize16;
     uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
-    IndicesAddOffsetVF(indicesOutBuf, outputIdxOffset, topkLoopNum32);
+
+    FindLDRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topkLoopNum32);
 }
 }
-#endif
+#endif  // VF_TOPK_16_GATHER_H

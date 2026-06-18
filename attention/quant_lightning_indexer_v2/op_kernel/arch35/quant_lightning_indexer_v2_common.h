@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_lightning_indexer_v2_common.h
@@ -15,20 +15,19 @@
 #ifndef QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 #define QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 using namespace AscendC;
-
-namespace QLICommon {
+namespace QLIV2Common {
 
 // 与tiling的layout保持一致
 enum class LI_LAYOUT : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BSND = 2
+    PA_BBND = 2
 };
 
 template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T,
     const bool PAGE_ATTENTION = false,
-          LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND, typename... Args>
-struct QLIType {
+          LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BBND, typename... Args>
+struct QLIV2Type {
     static_assert(
         (std::is_same_v<QK_T, float> &&
          (std::is_same_v<SCORE_T, uint32_t> || std::is_same_v<SCORE_T, uint16_t>)) ||
@@ -54,6 +53,11 @@ struct RunInfo {
     uint32_t n2Idx = 0;
     uint32_t gS1Idx;
     uint32_t s2Idx;
+    uint32_t s2Start;
+    uint32_t s2LoopEnd;
+    uint32_t validS2Len;
+    uint32_t qScaleLoop;
+    uint32_t kScaleLoop;
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
@@ -67,18 +71,18 @@ struct RunInfo {
     uint64_t tensorKeyScaleOffset;
     uint64_t tensorWeightsOffset;
     uint64_t indiceOutOffset;
-    uint64_t outputIdxCoreOffset;
-    bool isOutputIdxOffsetValid;
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
     bool isAllLoopEnd = false;
     bool isValid = false;
+    bool isNeedLD = false;
+    uint32_t saveWorkSpaceIdx = 0;
 };
 
 struct ConstInfo {
     // CUBE与VEC核间同步的模式
-    static constexpr uint32_t QLI_SYNC_MODE4 = 4;
+    static constexpr uint32_t QLIV2_SYNC_MODE4 = 4;
     static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
     static constexpr uint32_t CROSS_VC_EVENT = 0;
     static constexpr uint32_t CROSS_CV_EVENT = 2;
@@ -120,15 +124,31 @@ struct ConstInfo {
     LI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1;
-    bool batchSupperFlag = false;      // Qactual_seq长度是否为sB+1
-    uint32_t keyStride = 0;   // key pa 0轴stride
-    uint32_t keyScaleStride = 0;  // keyScale pa 0轴stride
-
+    uint32_t keyStride0 = 0;
+    uint32_t keyDequantScaleStride0 = 0;
+    int32_t maxSeqlenQ = -1;
+    uint32_t quantMode = 1;            // quant模式，默认为1
+    
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
+    uint32_t cmpResiduaKLenDims = 0U;   // cmpResidualK的维度
     bool isAccumSeqS1 = false;     // 是否累加模式
     bool isAccumSeqS2 = false;     // 是否累加模式
     bool isLDOpen = false;
+};
+
+struct LdSplitCoreInfo {
+    bool isLdCoreEnable = false;     // 当前核是否参与规约任务
+    uint32_t saveWorkSpaceIdx = 0U;  // 存放LD参数的地址
+    uint32_t bn2Idx = 0U;            // 归约任务
+    uint32_t bIdx = 0U;
+    uint32_t n2Idx = 0U;
+    uint32_t mIdx = 0U;
+    uint32_t workspaceIdx = 0U;      // 当前AIV核上规约任务的索引
+    uint32_t workspaceNum = 0U;      // 当前AIV核上规约任务的S2切分数量
+    uint32_t mStart = 0U;
+    uint32_t mNum = 0U;
+    uint64_t indiceOutCoreOffset = 0U;  // 最终输出索引搬出Topk的初始偏移地址
 };
 
 struct SplitCoreInfo {
@@ -165,7 +185,7 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 {
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
-}  // namespace QLICommon
+}  // namespace QLIV2Common
 
 // bank冲突优化
 // david 256KB bank layout
@@ -180,4 +200,4 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 #define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
 #define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 512B
 
-#endif  // quant_lightning_indexer_COMMON_H
+#endif  // QUANT_LIGHTNING_INDEXER_V2_COMMON_H

@@ -16,45 +16,45 @@ PATH1="./excel/*"
 PATH2="./pt_path"
 
 # 脚本路径
-QLI_PT_SAVE_SCRIPT="./batch/quant_lightning_indexer_pt_save.py"
-TEST_QLI_BATCH_SCRIPT="test_quant_lightning_indexer_batch.py"
+QLIV2_PT_SAVE_SCRIPT="./batch/quant_lightning_indexer_v2_pt_save.py"
+TEST_QLIV2_BATCH_SCRIPT="test_quant_lightning_indexer_v2_batch.py"
 REPLACE_PATH_SCRIPT="./batch/replace_path.py"
-TEST_QLI_SINGLE_SCRIPT="test_quant_lightning_indexer_single.py"
+TEST_QLIV2_SINGLE_SCRIPT="test_quant_lightning_indexer_v2_single.py"
 
 # ====================== 执行区======================
 
 # 单用例算子调测
 run_single() {
     echo "===== 执行单用例算子调测 ====="
-    python3 -m pytest -rA -s $TEST_QLI_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    python3 -m pytest -rA -s $TEST_QLIV2_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
 # 用例批量生成调试
 run_batch() {
     echo "===== 执行用例批量生成测试 ====="
 
-    echo -e "\n===== 第一步：执行quant_lightning_indexer_pt_save.py ====="
-    python3 $QLI_PT_SAVE_SCRIPT $PATH1 $PATH2
+    echo -e "\n===== 第一步：执行quant_lightning_indexer_v2_pt_save.py ====="
+    python3 $QLIV2_PT_SAVE_SCRIPT $PATH1 $PATH2
     if [ $? -ne 0 ]; then
-        echo "quant_lightning_indexer_pt_save.py 执行失败，退出"
+        echo "quant_lightning_indexer_v2_pt_save.py 执行失败，退出"
         exit 1
     fi
 
-    echo -e "\n===== 第二步：替换test_quant_lightning_indexer_batch.py中的路径 ====="
-    python3 $REPLACE_PATH_SCRIPT $TEST_QLI_BATCH_SCRIPT $PATH2
+    echo -e "\n===== 第二步：替换test_quant_lightning_indexer_v2_batch.py中的路径 ====="
+    python3 $REPLACE_PATH_SCRIPT $TEST_QLIV2_BATCH_SCRIPT $PATH2
     if [ $? -ne 0 ]; then
         echo "替换路径失败，退出"
         exit 1
     fi
 
     echo -e "\n===== 第三步：执行pytest命令 ====="
-    python3 -m pytest -rA -s $TEST_QLI_BATCH_SCRIPT -v -m ci
+    python3 -m pytest -rA -s $TEST_QLIV2_BATCH_SCRIPT -v -m ci
     if [ $? -ne 0 ]; then
         echo "pytest执行失败"
         exit 1
     fi
 
-    cp test_quant_lightning_indexer_batch.py.bak test_quant_lightning_indexer_batch.py
+    cp test_quant_lightning_indexer_v2_batch.py.bak test_quant_lightning_indexer_v2_batch.py
 
     echo -e "\n=====执行完成！====="
 }

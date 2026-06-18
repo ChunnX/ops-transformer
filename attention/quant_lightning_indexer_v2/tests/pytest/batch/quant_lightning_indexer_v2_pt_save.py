@@ -12,7 +12,7 @@
 
 import os
 from functools import partial
-from quant_lightning_indexer_golden import GeneralizedQLI
+from quant_lightning_indexer_v2_golden import GeneralizedQLIV2
 import pandas as pd
 import numpy as np
 import torch
@@ -106,7 +106,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         return None
 
 
-def qli_output_single(data_case):
+def qliv2_output_single(data_case):
     casename = data_case[0]
     params = data_case[1:]
 
@@ -153,7 +153,7 @@ def qli_output_single(data_case):
     k_scale_datarange = [float(x.strip()) for x in k_scale_datarange.split(',')]
 
 
-    test_qli = GeneralizedQLI(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,
+    test_qliv2 = GeneralizedQLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,
                               qk_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,
                               key_quant_mode, layout_query, layout_key, sparse_count, sparse_mode, cmp_ratio)
 
@@ -163,7 +163,7 @@ def qli_output_single(data_case):
         actual_seq_lengths_query = torch.tensor(act_seq_q).to(actual_seq_dtype).npu()
     if layout_key == "BSND":
         actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq*cmp_ratio, k_seq*cmp_ratio, batch_size)).to(actual_seq_dtype).npu()
-    elif layout_key == "TND" or layout_key == "PA_BSND":
+    elif layout_key == "TND" or layout_key == "PA_BBND":
         actual_seq_lengths_key = torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
 
     if layout_query == "BSND":
@@ -180,15 +180,15 @@ def qli_output_single(data_case):
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(qk_dtype).npu()
         key_dequant_scale = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], (batch_size, k_seq, k_head_num))).to(dequant_dtype).npu()
         block_table = None
-        cpu_result, topk_value = test_qli.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
 
     elif layout_key == "TND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (k_t_size, k_head_num, head_dim))).to(qk_dtype).npu()
         key_dequant_scale = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], (k_t_size, k_head_num))).to(dequant_dtype).npu()
         block_table = None
-        cpu_result, topk_value = test_qli.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
 
-    elif layout_key == "PA_BSND":
+    elif layout_key == "PA_BBND":
         # 以不同batch中最大seq为标准初始化key(bnsd)和key_dequant_scale(bns)
         k_max_s2 = math.floor(max(act_seq_k)/cmp_ratio)
         k_max_block_num_per_batch = math.ceil(k_max_s2 / block_size) #遍历batch得到的最大的block num
@@ -246,7 +246,7 @@ def qli_output_single(data_case):
                     for i_n in range(k_head_num):
                         key_dequant_scale[cur_block_id, :, i_n] = key_dequant_scale_expand[i_batch, i_n,block_start_pos:block_start_pos+block_size]
         key_dequant_scale = key_dequant_scale.npu()
-        cpu_result, topk_value = test_qli.forward(query, key_bnsd, weights, query_dequant_scale, key_dequant_scale_bns, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_qliv2.forward(query, key_bnsd, weights, query_dequant_scale, key_dequant_scale_bns, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
     max_seqlen_q = actual_seq_lengths_query.max().item()
     max_seqlen_k = actual_seq_lengths_key.max().item()
@@ -307,7 +307,7 @@ def save_test_case(test_cases, file_path):
 
     for idx, case in enumerate(test_cases):
         try:
-            case_name, output_tensors = qli_output_single(case)
+            case_name, output_tensors = qliv2_output_single(case)
             # 生成文件名
             input_filename = f"{case_name}.pt"
             input_filepath = os.path.join(file_path, input_filename)
@@ -321,7 +321,7 @@ def save_test_case(test_cases, file_path):
             print(f"错误详情: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description='qli_pt_save.py 接收路径参数')
+    parser = argparse.ArgumentParser(description='qliv2_pt_save.py 接收路径参数')
     parser.add_argument('path1', type=str, help='第一个路径')
     parser.add_argument('path2', type=str, help='第二个路径')
     args = parser.parse_args()
