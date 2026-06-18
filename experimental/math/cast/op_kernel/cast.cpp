@@ -73,6 +73,7 @@ constexpr int CAST_X = ORIG_DTYPE_X;
 constexpr int CAST_Y = ORIG_DTYPE_Y;
 constexpr int BUFFER_NUM = 2;
 constexpr int64_t DATA_BLOCK_BYTES = 32;
+constexpr int64_t BF16_TRANSPOSE_CHUNK = 4080;
 
 // Storage type: bf16 input is uint16_t; int64 is two uint32_t lanes per element.
 template <int D> struct DtMap;
@@ -118,6 +119,18 @@ public:
     static_assert(Y != DT_BF16, "BF16 output is not supported by this task");
     static constexpr bool HASBF = (X == DT_BF16);
     static constexpr bool DST_BOOL = (Y == DT_BOOL) && !HASBF;
+    static constexpr bool BF_BOOL = HASBF && (Y == DT_BOOL);
+    static constexpr bool BF_F16_BIT = HASBF && (Y == DT_FLOAT16);
+    static constexpr bool BF_DST8_F16_BIT = HASBF && (Y == DT_INT8 || Y == DT_UINT8);
+    // bf16 numeric dtypes eligible for the v4dtrans (T) expansion. i64 is excluded: it always ends
+    // in the scalar Widen64 (no dav_m200 i64 vector path), so T gives no net win and adds a tile-edge
+    // staging hazard -> i64 keeps the correct scalar bit-splice. bf16->f16 and bf16->i8/u8 are
+    // handled through the formal 16-bit bitpack path to avoid the v4dtrans lane expansion.
+    static constexpr bool BF_F32_GATHER = HASBF && (Y == DT_FLOAT);
+    static constexpr bool BF_INT_GATHER = HASBF && (Y == DT_INT32 || Y == DT_INT16);
+    static constexpr bool BF_GATHER = BF_F32_GATHER || BF_INT_GATHER;
+    static constexpr bool BF_T = HASBF && (Y != DT_BOOL) && (Y != DT_INT64) && !BF_F16_BIT && !BF_DST8_F16_BIT && !BF_F32_GATHER && !BF_INT_GATHER;
+    static constexpr bool NEED_DST8_F16_BUF = BF_DST8_F16_BIT;
     static constexpr bool SCALAR_I16_F32 = (X == DT_INT16 && Y == DT_FLOAT);
     static constexpr bool DIRECT = !DST_BOOL && !HAS64 && !HASBF && !SCALAR_I16_F32 && IsDirectPair(X, Y);
     static constexpr bool TWO_CAST = !DST_BOOL && !DIRECT && !HAS64 && !HASBF;
@@ -145,13 +158,32 @@ public:
         xGm_.SetGlobalBuffer((__gm__ TX*)x + blockOffset * LanesOf(X));
         yGm_.SetGlobalBuffer((__gm__ TY*)y + blockOffset * LanesOf(Y));
 
-        pipe_.InitBuffer(inQue_, BUFFER_NUM, ubFormer_ * sizeof(TX) * LanesOf(X));
+        // HASBF numeric path: v4dtrans writes/reads AlignDataBlockLanes(count) (>= count, up to +15)
+        // per chunk; add 32-elem slack so transpose padding never overflows into the adjacent
+        // double-buffer (inQue) or the neighbouring scratch (mid/mid2).
+        int64_t bfSlack = BF_T ? DATA_BLOCK_BYTES : 0;
+        pipe_.InitBuffer(inQue_, BUFFER_NUM, BF_T ? (ubFormer_ + bfSlack) * sizeof(float)
+                                                  : BF_GATHER ? (ubFormer_ + 16 + bfSlack) * sizeof(uint16_t)
+                                                  : ubFormer_ * sizeof(TX) * LanesOf(X));
         pipe_.InitBuffer(outQue_, BUFFER_NUM, ubFormer_ * sizeof(TY) * LanesOf(Y));
         if constexpr (NEED_MID) {
-            pipe_.InitBuffer(midBuf_, ubFormer_ * STAGE_BYTES);
+            pipe_.InitBuffer(midBuf_, (ubFormer_ + bfSlack) * STAGE_BYTES);
         }
         if constexpr (HAS64 || HASBF) {
-            pipe_.InitBuffer(mid2Buf_, ubFormer_ * STAGE_BYTES);
+            pipe_.InitBuffer(mid2Buf_, (ubFormer_ + bfSlack) * STAGE_BYTES);
+        }
+        if constexpr (NEED_DST8_F16_BUF) {
+            pipe_.InitBuffer(dst8F16Buf_, ubFormer_ * sizeof(half));
+        }
+        if constexpr (BF_GATHER) {
+            int64_t off2 = (ubFormer_ + bfSlack) * 2;
+            pipe_.InitBuffer(gOffBuf_, off2 * sizeof(uint32_t));
+            AscendC::LocalTensor<uint32_t> goff = gOffBuf_.Get<uint32_t>();
+            for (int64_t gi = 0; gi < ubFormer_ + bfSlack; ++gi) {
+                goff.SetValue(2 * gi, 0u);
+                goff.SetValue(2 * gi + 1, static_cast<uint32_t>(32 + 2 * gi));
+            }
+            SyncEvent<AscendC::HardEvent::S_V>();
         }
         if constexpr (NEED_DEQ) {
             AscendC::SetDeqScale(static_cast<half>(1.0));
@@ -191,8 +223,33 @@ private:
     __aicore__ inline void CopyIn(int64_t loop, int64_t count)
     {
         AscendC::LocalTensor<TX> inLocal = inQue_.AllocTensor<TX>();
-        int64_t lanes = count * LanesOf(X);
-        AscendC::DataCopy(inLocal, xGm_[loop * ubFormer_ * LanesOf(X)], AlignDataBlockLanes<TX>(lanes));
+        if constexpr (BF_GATHER) {
+            AscendC::LocalTensor<uint16_t> s = inLocal.template ReinterpretCast<uint16_t>();
+            AscendC::Duplicate(s, static_cast<uint16_t>(0), 16);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::DataCopy(s[16], xGm_[loop * ubFormer_], AlignDataBlockLanes<uint16_t>(count));
+        } else if constexpr (BF_T) {
+            // H014: build [zero...][bf16...] then v4dtrans NCHW2NHWC -> [0,bf16,0,bf16,...] = FP32 bits.
+            AscendC::LocalTensor<uint16_t> dst = inLocal.template ReinterpretCast<uint16_t>();
+            AscendC::LocalTensor<uint16_t> tmp = midBuf_.Get<uint16_t>();
+            int64_t done = 0;
+            while (done < count) {
+                int64_t chunk = (count - done > BF16_TRANSPOSE_CHUNK) ? BF16_TRANSPOSE_CHUNK : (count - done);
+                int64_t aligned = AlignDataBlockLanes<uint16_t>(chunk);
+                AscendC::Duplicate(tmp, static_cast<uint16_t>(0), static_cast<uint32_t>(aligned));
+                AscendC::DataCopy(tmp[aligned], xGm_[loop * ubFormer_ + done], aligned);
+                SyncEvent<AscendC::HardEvent::MTE2_V>();
+                AscendC::TransposeParamsExt params(1, 2, 1, static_cast<uint16_t>(aligned),
+                    AscendC::TransposeType::TRANSPOSE_NCHW2NHWC);
+                AscendC::Transpose<uint16_t>(dst[done * 2], tmp, tmp.template ReinterpretCast<uint8_t>(), params);
+                AscendC::PipeBarrier<PIPE_V>();
+                SyncEvent<AscendC::HardEvent::V_MTE2>();  // next chunk DataCopy must not race this transpose's tmp read
+                done += chunk;
+            }
+        } else {
+            int64_t lanes = count * LanesOf(X);
+            AscendC::DataCopy(inLocal, xGm_[loop * ubFormer_ * LanesOf(X)], AlignDataBlockLanes<TX>(lanes));
+        }
         inQue_.EnQue(inLocal);
     }
 
@@ -230,6 +287,192 @@ private:
         for (int64_t i = 0; i < count; ++i) {
             d32.SetValue(i, static_cast<uint32_t>(src.GetValue(i)) << 16);
         }
+    }
+
+    __aicore__ inline void BuildGeMask01(const AscendC::LocalTensor<uint16_t>& src,
+                                         const AscendC::LocalTensor<uint16_t>& dst,
+                                         uint16_t threshold, uint32_t calc)
+    {
+        AscendC::Duplicate(dst, static_cast<uint16_t>(0x7FFF), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::And(dst, src, dst, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<int16_t> d = dst.ReinterpretCast<int16_t>();
+        int16_t base = static_cast<int16_t>(threshold - 1U);
+        AscendC::Maxs(d, d, base, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(d, d, static_cast<int16_t>(-base), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Mins(d, d, static_cast<int16_t>(1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline void BuildRangeFullMask(const AscendC::LocalTensor<uint16_t>& src,
+                                              const AscendC::LocalTensor<uint16_t>& dst,
+                                              const AscendC::LocalTensor<uint16_t>& scratch,
+                                              uint16_t lo, uint16_t hi, uint32_t calc)
+    {
+        BuildGeMask01(src, dst, lo, calc);
+        BuildGeMask01(src, scratch, hi, calc);
+        AscendC::LocalTensor<int16_t> s = scratch.ReinterpretCast<int16_t>();
+        AscendC::Muls(s, s, static_cast<int16_t>(-1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(s, s, static_cast<int16_t>(1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<int16_t> d = dst.ReinterpretCast<int16_t>();
+        AscendC::Min(d, d, s, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Muls(d, d, static_cast<int16_t>(-1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline void AddConstByRange(const AscendC::LocalTensor<uint16_t>& out,
+                                           const AscendC::LocalTensor<uint16_t>& src,
+                                           const AscendC::LocalTensor<uint16_t>& candidate,
+                                           const AscendC::LocalTensor<uint16_t>& mask,
+                                           const AscendC::LocalTensor<uint16_t>& scratch,
+                                           uint16_t lo, uint16_t hi, uint16_t value, uint32_t calc)
+    {
+        BuildRangeFullMask(src, mask, scratch, lo, hi, calc);
+        AscendC::Duplicate(candidate, value, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::And(candidate, candidate, mask, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Or(out, out, candidate, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline void AddSubnormalRange(const AscendC::LocalTensor<uint16_t>& out,
+                                             const AscendC::LocalTensor<uint16_t>& src,
+                                             const AscendC::LocalTensor<uint16_t>& nBuf,
+                                             const AscendC::LocalTensor<uint16_t>& candidate,
+                                             const AscendC::LocalTensor<uint16_t>& scaleBuf,
+                                             const AscendC::LocalTensor<uint16_t>& mask,
+                                             uint32_t calc)
+    {
+        // BF16 exponent 102..112 maps to half subnormal.
+        // mantissa = rint((128 + bf16_mant) * 2^(bf16_exp - 110)).
+        // Build the per-lane scale as half bits: scale = 2^(exp-110),
+        // half_exp_bits = (bf16_exp - 95) << 10 = (bf16_exp_bits - 0x2F80) * 8.
+        AscendC::Duplicate(nBuf, static_cast<uint16_t>(0x007F), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::And(nBuf, src, nBuf, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<int16_t> n = nBuf.ReinterpretCast<int16_t>();
+        AscendC::Adds(n, n, static_cast<int16_t>(128), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::LocalTensor<half> h = candidate.ReinterpretCast<half>();
+        AscendC::Cast(h, n, RoundMode::CAST_NONE, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::Duplicate(scaleBuf, static_cast<uint16_t>(0x7F80), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::And(scaleBuf, src, scaleBuf, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<int16_t> scaleBits = scaleBuf.ReinterpretCast<int16_t>();
+        AscendC::Adds(scaleBits, scaleBits, static_cast<int16_t>(-0x2F80), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Muls(scaleBits, scaleBits, static_cast<int16_t>(8), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<half> scale = scaleBuf.ReinterpretCast<half>();
+        AscendC::Mul(h, h, scale, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::Cast(n, h, RoundMode::CAST_RINT, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        BuildRangeFullMask(src, mask, scaleBuf, static_cast<uint16_t>(0x3300), static_cast<uint16_t>(0x3880), calc);
+        AscendC::And(nBuf, nBuf, mask, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Or(out, out, nBuf, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    __aicore__ inline void Bf16ToF16BitpackFormal(const AscendC::LocalTensor<uint16_t>& src,
+                                                  const AscendC::LocalTensor<half>& dst, uint32_t calc)
+    {
+        AscendC::LocalTensor<uint16_t> out = dst.template ReinterpretCast<uint16_t>();
+        AscendC::LocalTensor<uint16_t> midA = midBuf_.Get<uint16_t>();
+        AscendC::LocalTensor<uint16_t> midB = midA[calc];
+        AscendC::LocalTensor<uint16_t> midC = mid2Buf_.Get<uint16_t>();
+        AscendC::LocalTensor<uint16_t> midD = midC[calc];
+
+        AscendC::Duplicate(out, static_cast<uint16_t>(0), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::Duplicate(midB, static_cast<uint16_t>(0x7F80), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::And(midC, src, midB, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<int16_t> normal = midC.ReinterpretCast<int16_t>();
+        AscendC::Adds(normal, normal, static_cast<int16_t>(-0x3800), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Muls(normal, normal, static_cast<int16_t>(8), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Duplicate(midB, static_cast<uint16_t>(0x007F), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::And(midB, src, midB, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<int16_t> mant = midB.ReinterpretCast<int16_t>();
+        AscendC::Muls(mant, mant, static_cast<int16_t>(8), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Or(midC, midC, midB, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        BuildRangeFullMask(src, midD, midA, static_cast<uint16_t>(0x3880), static_cast<uint16_t>(0x4780), calc);
+        AscendC::And(midC, midC, midD, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Or(out, out, midC, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AddSubnormalRange(out, src, midA, midB, midC, midD, calc);
+
+        AddConstByRange(out, src, midB, midD, midA, static_cast<uint16_t>(0x4780), static_cast<uint16_t>(0x7F81), static_cast<uint16_t>(0x7C00), calc);
+        AddConstByRange(out, src, midB, midD, midA, static_cast<uint16_t>(0x7F81), static_cast<uint16_t>(0x7FFF), static_cast<uint16_t>(0x7E00), calc);
+
+        AscendC::Duplicate(midA, static_cast<uint16_t>(0x8000), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::And(midA, src, midA, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Or(out, out, midA, calc);
+    }
+
+    // bf16 (u16) -> bool, vectorized to match golden: nan_to_num(nan->0) then (x != 0).
+    // result = 1 iff magnitude m=(bits&0x7FFF) in [1, 0x7F80]; m==0 (incl -0) -> 0; m>0x7F80 (NaN) -> 0.
+    __aicore__ inline void Bf16ToBool(const AscendC::LocalTensor<uint16_t>& src,
+                                      const AscendC::LocalTensor<int8_t>& dst, int64_t count, uint32_t calc)
+    {
+        // m = bits & 0x7FFF (clear sign; -0 -> 0). Held in mid2Buf as int16 [0, 0x7FFF].
+        AscendC::LocalTensor<uint16_t> mask = midBuf_.Get<uint16_t>();
+        AscendC::Duplicate(mask, static_cast<uint16_t>(0x7FFF), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<uint16_t> mU = mid2Buf_.Get<uint16_t>();
+        AscendC::And(mU, src, mask, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::LocalTensor<int16_t> m = mU.ReinterpretCast<int16_t>();
+        // a = (m != 0) ? 1 : 0   (NaN also yields 1 here; removed below). Held in midBuf.
+        AscendC::LocalTensor<int16_t> a = midBuf_.Get<int16_t>();
+        AscendC::Mins(a, m, static_cast<int16_t>(1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        // nan = (m > 0x7F80) ? 1 : 0, computed in-place on m.
+        AscendC::Maxs(m, m, static_cast<int16_t>(0x7F80), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(m, m, static_cast<int16_t>(-0x7F80), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Mins(m, m, static_cast<int16_t>(1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        // notnan = 1 - nan
+        AscendC::Muls(m, m, static_cast<int16_t>(-1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(m, m, static_cast<int16_t>(1), calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        // res = a AND notnan = min(a, notnan)
+        AscendC::Min(a, a, m, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        // 0/1 int16 -> half -> int8 bool
+        AscendC::LocalTensor<half> h = mid2Buf_.Get<half>();
+        AscendC::Cast(h, a, RoundMode::CAST_NONE, calc);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Cast(dst, h, RoundMode::CAST_ROUND, calc);
     }
 
     __aicore__ inline void Compute(int64_t count)
@@ -311,7 +554,7 @@ private:
             AscendC::PipeBarrier<PIPE_V>();
             SyncEvent<AscendC::HardEvent::V_S>();
             Widen64(mid, dst, count);
-        } else {  // DT_BF16 -> i64: bits->f32->i32->widen
+        } else {  // DT_BF16 -> i64: scalar bit-splice (i64 path is scalar-Widen64 dominated anyway)
             AscendC::LocalTensor<float> midF = midBuf_.Get<float>();
             AscendC::LocalTensor<int32_t> midI = mid2Buf_.Get<int32_t>();
             Bf16ToF32(inLocal.template ReinterpretCast<uint16_t>(), midF, count);
@@ -325,15 +568,51 @@ private:
     __aicore__ inline void ComputeFromBf16(const AscendC::LocalTensor<TX>& inLocal,
                                            const AscendC::LocalTensor<TY>& outLocal, int64_t count, uint32_t calc)
     {
-        AscendC::LocalTensor<uint16_t> src = inLocal.template ReinterpretCast<uint16_t>();
-        if constexpr (Y == DT_FLOAT) {
-            Bf16ToF32(src, outLocal.template ReinterpretCast<float>(), count);
+        if constexpr (Y == DT_BOOL) {
+            // bf16 stays raw uint16 in inLocal (no transpose); bitwise nan-aware path.
+            Bf16ToBool(inLocal.template ReinterpretCast<uint16_t>(), outLocal.template ReinterpretCast<int8_t>(), count, calc);
             return;
         }
-        AscendC::LocalTensor<float> midF = midBuf_.Get<float>();
-        Bf16ToF32(src, midF, count);
-        SyncEvent<AscendC::HardEvent::S_V>();
+        if constexpr (Y == DT_FLOAT) {
+            AscendC::LocalTensor<uint16_t> s = inLocal.template ReinterpretCast<uint16_t>();
+            AscendC::LocalTensor<uint16_t> outU = outLocal.template ReinterpretCast<uint16_t>();
+            AscendC::LocalTensor<uint32_t> goff = gOffBuf_.Get<uint32_t>();
+            AscendC::Gather(outU, s, goff, static_cast<uint32_t>(0), static_cast<uint32_t>(count * 2));
+            return;
+        }
+        if constexpr (BF_INT_GATHER) {
+            AscendC::LocalTensor<uint16_t> s = inLocal.template ReinterpretCast<uint16_t>();
+            AscendC::LocalTensor<uint16_t> midU = midBuf_.Get<uint16_t>();
+            AscendC::LocalTensor<uint32_t> goff = gOffBuf_.Get<uint32_t>();
+            AscendC::Gather(midU, s, goff, static_cast<uint32_t>(0), static_cast<uint32_t>(count * 2));
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::LocalTensor<float> midF = midBuf_.Get<float>();
+            if constexpr (Y == DT_INT32) {
+                AscendC::Cast(outLocal, midF, RoundMode::CAST_RINT, calc);
+            } else {
+                AscendC::LocalTensor<int32_t> midI = mid2Buf_.Get<int32_t>();
+                AscendC::Cast(midI, midF, RoundMode::CAST_RINT, calc);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Cast(outLocal, midI, RoundMode::CAST_NONE, calc);
+            }
+            return;
+        }
         if constexpr (Y == DT_FLOAT16) {
+            Bf16ToF16BitpackFormal(inLocal.template ReinterpretCast<uint16_t>(), outLocal.template ReinterpretCast<half>(), calc);
+            return;
+        }
+        if constexpr (Y == DT_INT8 || Y == DT_UINT8) {
+            AscendC::LocalTensor<half> midH = dst8F16Buf_.Get<half>();
+            Bf16ToF16BitpackFormal(inLocal.template ReinterpretCast<uint16_t>(), midH, calc);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Cast(outLocal, midH, RoundMode::CAST_ROUND, calc);
+            return;
+        }
+        // H014: inLocal already holds FP32 bit layout (built in CopyIn via v4dtrans).
+        AscendC::LocalTensor<float> midF = inLocal.template ReinterpretCast<float>();
+        if constexpr (Y == DT_FLOAT) {
+            AscendC::Adds(outLocal.template ReinterpretCast<float>(), midF, static_cast<float>(0.0), calc);
+        } else if constexpr (Y == DT_FLOAT16) {
             AscendC::Cast(outLocal, midF, RoundMode::CAST_NONE, calc);
         } else if constexpr (Y == DT_INT32) {
             AscendC::Cast(outLocal, midF, RoundMode::CAST_RINT, calc);
@@ -347,15 +626,6 @@ private:
             AscendC::Cast(midH, midF, RoundMode::CAST_NONE, calc);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Cast(outLocal, midH, RoundMode::CAST_ROUND, calc);
-        } else {  // bool
-            AscendC::LocalTensor<half> midH = mid2Buf_.Get<half>();
-            AscendC::Cast(midH, midF, RoundMode::CAST_NONE, calc);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Abs(midH, midH, calc);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Mins(midH, midH, static_cast<half>(1.0), calc);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Cast(outLocal, midH, RoundMode::CAST_CEIL, calc);
         }
     }
 
@@ -372,6 +642,8 @@ private:
     AscendC::TQue<AscendC::QuePosition::VECOUT, BUFFER_NUM> outQue_;
     AscendC::TBuf<AscendC::TPosition::VECCALC> midBuf_;
     AscendC::TBuf<AscendC::TPosition::VECCALC> mid2Buf_;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> dst8F16Buf_;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> gOffBuf_;
     AscendC::GlobalTensor<TX> xGm_;
     AscendC::GlobalTensor<TY> yGm_;
     int64_t ubFormer_ = 0;

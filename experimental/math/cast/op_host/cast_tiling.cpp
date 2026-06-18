@@ -123,6 +123,12 @@ static ge::graphStatus TilingForCast(gert::TilingContext* context)
     int64_t midBytes = NeedMidF16(xDtype, yDtype) ? MID_F16_BYTES : 0;
     if (Is64OrBf16(xDtype) || Is64OrBf16(yDtype)) {
         midBytes = 8;  // two 4-byte staging buffers (f32/i32) for i64/bf16 software paths
+        if (xDtype == ge::DT_BF16 && (yDtype == ge::DT_INT8 || yDtype == ge::DT_UINT8)) {
+            midBytes += MID_F16_BYTES;  // separate f16 result buffer for bf16->f16->i8/u8
+        }
+        if (xDtype == ge::DT_BF16 && (yDtype == ge::DT_FLOAT || yDtype == ge::DT_INT32 || yDtype == ge::DT_INT16)) {
+            midBytes += 8;
+        }
     }
     int64_t bytesPerElem = BUFFER_NUM * (inBytes + outBytes) + midBytes;
     int64_t ubFormer = (ubSize - UB_RESERVE_BYTES) / bytesPerElem / UB_ELEM_ALIGN * UB_ELEM_ALIGN;
