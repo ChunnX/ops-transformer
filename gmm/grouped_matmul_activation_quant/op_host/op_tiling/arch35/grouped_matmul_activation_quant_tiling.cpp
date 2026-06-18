@@ -119,13 +119,13 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
     const char *roundModePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ROUND_MODE);
     const int64_t *scaleAlgPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SCALE_ALG);
     const char *activationTypePtr = attrs->GetAttrPointer<char>(ATTR_INDEX_ACTIVATION_TYPE);
-    OP_CHECK_IF(quantModePtr == nullptr || yDtypePtr == nullptr || roundModePtr == nullptr ||
-                    scaleAlgPtr == nullptr || activationTypePtr == nullptr,
+    OP_CHECK_IF(yDtypePtr == nullptr || roundModePtr == nullptr || scaleAlgPtr == nullptr ||
+                    activationTypePtr == nullptr,
                 OP_LOGE(context_->GetNodeName(), "quant attrs must not be nullptr."), return false);
     auto yDtype = static_cast<ge::DataType>(*yDtypePtr);
-    std::string quantMode(quantModePtr);
+    std::string quantMode = (quantModePtr == nullptr || quantModePtr[0] == '\0') ? "MX" : quantModePtr;
     OP_CHECK_IF(quantMode != "MX",
-                OP_LOGE(context_->GetNodeName(), "quant_mode only supports MX, actual is %s.", quantMode.c_str()),
+                OP_LOGE(context_->GetNodeName(), "当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX"),
                 return false);
     OP_CHECK_IF(!IsFp8(yDtype),
                 OP_LOGE(context_->GetNodeName(), "y_dtype must be FLOAT8_E4M3FN or FLOAT8_E5M2."),
