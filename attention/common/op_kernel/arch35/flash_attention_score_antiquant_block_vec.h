@@ -324,7 +324,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLocalBu
 {
     this->InitAntiquantBuffer();
     this->SoftmaxInitBuffer();
-    this->tPipe->InitBuffer(commonTBuf, 512); // 0.5K 内存
+    this->tPipe->InitBuffer(commonTBuf, COMMON_TEMP_BUF_SIZE); // 0.5K 内存
     if constexpr (hasPseOuter) {
         this->tPipe->InitBuffer(pseInQue, 1, pseInputSize);
     }
@@ -339,8 +339,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLocalBu
     this->tPipe->InitBuffer(this->stage1OutQue[0], 1, stage1OutQueSize);
     this->tPipe->InitBuffer(this->stage2OutQue[0], 1, stage2OutQueSize);
     if constexpr (POST_QUANT) {
-        this->tPipe->InitBuffer(postQuantScaleQue, 1, 2048); // 2K Buffer
-        this->tPipe->InitBuffer(postQuantOffsetQue, 1, 2048); // 2K Buffer
+        this->tPipe->InitBuffer(postQuantScaleQue, 1, POST_QUANT_BUF_SIZE_KB * KB_TO_BYTES); // 2K Buffer
+        this->tPipe->InitBuffer(postQuantOffsetQue, 1, POST_QUANT_BUF_SIZE_KB * KB_TO_BYTES); // 2K Buffer
     }
 }
 
@@ -361,17 +361,17 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitAntiqua
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxInitBuffer()
 {
-    this->tPipe->InitBuffer(this->softmaxSumBuf[0], 256); // [64, 1] SOFTMAXSUMBUF_SIZE:256
-    this->tPipe->InitBuffer(this->softmaxSumBuf[1], 256); // [64, 1] 1 is second buffer,
-    this->tPipe->InitBuffer(this->softmaxSumBuf[2], 256); // [64, 1] 2 is third buffer
-    this->tPipe->InitBuffer(this->maxBrdcst, 1, 2048); // [64, 8] SUMBRDCST_SIZE:2048
-    this->tPipe->InitBuffer(this->sumBrdcst, 1, 2048); // [64, 8] SUMBRDCST_SIZE:2048
-    this->tPipe->InitBuffer(this->softmaxMaxBuf[0], 256); // [64, 1] SOFTMAXMAXBUF_SIZE:256
-    this->tPipe->InitBuffer(this->softmaxMaxBuf[1], 256); // [64, 1] 1 is second buffer
-    this->tPipe->InitBuffer(this->softmaxMaxBuf[2], 256); // [64, 1] 2 is the third buffer
-    this->tPipe->InitBuffer(this->softmaxExpBuf[0], 256); // [64, 1] SOFTMAXEXPBUF_SIZE:256
-    this->tPipe->InitBuffer(this->softmaxExpBuf[1], 256); // [64, 1] 1 is second buffer
-    this->tPipe->InitBuffer(this->softmaxExpBuf[2], 256); // [64, 1] 2 is the third buffer
+    this->tPipe->InitBuffer(this->softmaxSumBuf[0], SOFTMAX_ROW_BUF_SIZE); // [64, 1] SOFTMAXSUMBUF_SIZE:256
+    this->tPipe->InitBuffer(this->softmaxSumBuf[1], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 1 is second buffer,
+    this->tPipe->InitBuffer(this->softmaxSumBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 2 is third buffer
+    this->tPipe->InitBuffer(this->maxBrdcst, 1, SOFTMAX_BRDCST_BUF_SIZE); // [64, 8] SUMBRDCST_SIZE:2048
+    this->tPipe->InitBuffer(this->sumBrdcst, 1, SOFTMAX_BRDCST_BUF_SIZE); // [64, 8] SUMBRDCST_SIZE:2048
+    this->tPipe->InitBuffer(this->softmaxMaxBuf[0], SOFTMAX_ROW_BUF_SIZE); // [64, 1] SOFTMAXMAXBUF_SIZE:256
+    this->tPipe->InitBuffer(this->softmaxMaxBuf[1], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 1 is second buffer
+    this->tPipe->InitBuffer(this->softmaxMaxBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 2 is the third buffer
+    this->tPipe->InitBuffer(this->softmaxExpBuf[0], SOFTMAX_ROW_BUF_SIZE); // [64, 1] SOFTMAXEXPBUF_SIZE:256
+    this->tPipe->InitBuffer(this->softmaxExpBuf[1], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 1 is second buffer
+    this->tPipe->InitBuffer(this->softmaxExpBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 2 is the third buffer
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
