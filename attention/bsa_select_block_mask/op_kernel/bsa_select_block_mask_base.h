@@ -22,7 +22,15 @@ using AscendC::CrossCoreWaitFlag;
 #endif
 
 #ifndef BSA_ENABLE_PRE_TOPK_PIPELINE
-#define BSA_ENABLE_PRE_TOPK_PIPELINE 0
+#define BSA_ENABLE_PRE_TOPK_PIPELINE 1
+#endif
+
+#ifndef BSA_ENABLE_V1_TO_C1_SYNC
+#define BSA_ENABLE_V1_TO_C1_SYNC 0
+#endif
+
+#ifndef BSA_ENABLE_C1_TO_V1_SYNC
+#define BSA_ENABLE_C1_TO_V1_SYNC 0
 #endif
 
 #define BSA_TILING_VERIFY_PRINTF(...) do {} while (0)
@@ -453,10 +461,14 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 
                     uint32_t qChunkFlagIdx = (qChunkStart / constInfo.qChunkSize) & 1;
                     if ASCEND_IS_AIV {
+                        if (BSA_ENABLE_V1_TO_C1_SYNC) {
                         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
+                        }
                     }
                     if ASCEND_IS_AIC {
+                        if (BSA_ENABLE_V1_TO_C1_SYNC) {
                         CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkFlagIdx]);
+                        }
                     }
 
                     T mFinal = SOFTMAX_NEG_INF;
@@ -526,12 +538,16 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
             matmulService.ComputeMatmulChunk(qChunkStart, curQChunkSize,
                                              kChunkStart, curKChunkSize);
             uint32_t kChunkFlagIdx = (kChunkStart / constInfo.kChunkSize) & 1;
-            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[kChunkFlagIdx]);
+            if (BSA_ENABLE_C1_TO_V1_SYNC) {
+                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[kChunkFlagIdx]);
+            }
         }
 
         if ASCEND_IS_AIV {
             uint32_t kChunkFlagIdx = (kChunkStart / constInfo.kChunkSize) & 1;
-            CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[kChunkFlagIdx]);
+            if (BSA_ENABLE_C1_TO_V1_SYNC) {
+                CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[kChunkFlagIdx]);
+            }
             vectorService.OnlineSoftmaxFirstPassChunk(
                 qChunkStart, curQChunkSize, kChunkStart, curKChunkSize,
                 mFinal, lFinal);
