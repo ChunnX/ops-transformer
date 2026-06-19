@@ -23,6 +23,7 @@ using namespace AscendC;
 
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t DOUBLE_BUFFER = 2;
+constexpr uint64_t MAX_BLOCK_CNT = 4095;  // DataCopyPad blockCount 上限
 
 template <typename T, typename T_INDEX, bool isSeqLensCumsum, bool hasSeqOffset>
 class GatherPaKvCacheNd {
@@ -47,6 +48,11 @@ public:
     __aicore__ inline void GatherNcContigRun(GlobalTensor<T> dstGm, GlobalTensor<T> srcGm,
                                              uint64_t dstByteOff, uint64_t srcByteOff,
                                              uint64_t totalBytes, bool isFilledWithZero);
+    // head轴非连续优化: 用DataCopyPad的blockCount=head数 + srcStride=head间gap,
+    // 一条指令跳搬一个slot的多个head进UB(UB内紧密), 再整slot连续写出。避免逐head循环+逐次同步。
+    __aicore__ inline void GatherNcStridedRun(GlobalTensor<T> dstGm, GlobalTensor<T> srcGm,
+                                              uint64_t dstByteOff, uint64_t srcByteOff,
+                                              uint64_t numHeads, uint64_t headBytes, uint64_t headStrideBytes);
     __aicore__ inline T_INDEX CalcKvCoreOffset(int64_t reduceLen);
 
 private:
@@ -435,12 +441,10 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
             uint64_t srcByteOff = slot * slotStrideBytes;
             GatherNcContigRun(dstGm, srcGm, dstByteOff, srcByteOff, hiddenSize, false);
         } else {
-            // Case C: head轴也非连续, 逐head搬运(每个head内连续)
-            for (uint64_t h = 0; h < numHeads; h++) {
-                uint64_t srcByteOff = slot * slotStrideBytes + h * headStrideBytes;
-                uint64_t dstHeadOff = dstByteOff + h * headBytes;
-                GatherNcContigRun(dstGm, srcGm, dstHeadOff, srcByteOff, headBytes, false);
-            }
+            // Case C: head轴也非连续。对齐scatter: 一条DataCopyPad(blockCount=numHeads,
+            // srcStride=head间gap)跳搬整slot所有head, 避免逐head循环+逐次同步。
+            uint64_t srcByteOff = slot * slotStrideBytes;
+            GatherNcStridedRun(dstGm, srcGm, dstByteOff, srcByteOff, numHeads, headBytes, headStrideBytes);
         }
     }
 }
@@ -486,6 +490,64 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
         cacheQueue_.FreeTensor(cacheLocal);
 
         handled += curBytes;
+    }
+}
+
+// head轴非连续: 一条DataCopyPad(blockCount=多head, srcStride=head间gap)把一个slot的多个head
+// 跳搬进UB(UB内紧密排列), 再整批连续写出。受UB容量限制时按head分批。
+// 所有偏移/长度均为字节粒度。仅处理非填零场景(填零由调用侧的isFilledWithZero分支统一走Contig路径)。
+template <typename T, typename T_INDEX, bool isSeqLensCumsum, bool hasSeqOffset>
+__aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffset>::GatherNcStridedRun(
+    GlobalTensor<T> dstGm, GlobalTensor<T> srcGm,
+    uint64_t dstByteOff, uint64_t srcByteOff,
+    uint64_t numHeads, uint64_t headBytes, uint64_t headStrideBytes)
+{
+    const uint64_t srcGapBytes = headStrideBytes - headBytes;  // 相邻head源端间隙(字节)
+    // UB一次能装的head数: 受maxUbHiddenSize_约束, 且blockCount上限MAX_BLOCK_CNT(4095)。
+    uint64_t headsPerBatch = (headBytes > 0) ? (maxUbHiddenSize_ / headBytes) : numHeads;
+    if (headsPerBatch == 0) {
+        headsPerBatch = 1;  // 单head超UB的极端情况, 退化为逐head(每head内再由下面整块搬)
+    }
+    if (headsPerBatch > MAX_BLOCK_CNT) {
+        headsPerBatch = MAX_BLOCK_CNT;
+    }
+    if (headsPerBatch > numHeads) {
+        headsPerBatch = numHeads;
+    }
+
+    uint64_t headDone = 0;
+    while (headDone < numHeads) {
+        uint64_t curHeads = numHeads - headDone;
+        if (curHeads > headsPerBatch) {
+            curHeads = headsPerBatch;
+        }
+        uint64_t curBytes = curHeads * headBytes;
+
+        LocalTensor<T> cacheLocal = cacheQueue_.AllocTensor<T>();
+        // 读: blockCount=curHeads个head, 每个head headBytes字节, head间跳srcGapBytes, UB内紧密(dstStride=0)
+        DataCopyExtParams inParams;
+        inParams.blockCount = static_cast<uint16_t>(curHeads);
+        inParams.blockLen = static_cast<uint32_t>(headBytes);
+        inParams.srcStride = static_cast<uint32_t>(srcGapBytes);
+        inParams.dstStride = 0;
+        DataCopyPad<T, PaddingMode::Normal>(
+            cacheLocal, srcGm[srcByteOff + headDone * headStrideBytes], inParams, padExtParams_);
+        cacheQueue_.EnQue<T>(cacheLocal);
+        cacheLocal = cacheQueue_.DeQue<T>();
+
+        // 写: 输出端head紧密排列, 整批一次连续写出
+        DataCopyExtParams outParams;
+        outParams.blockCount = 1;
+        outParams.blockLen = static_cast<uint32_t>(curBytes);
+        outParams.srcStride = 0;
+        outParams.dstStride = 0;
+        DataCopyPad<T, PaddingMode::Normal>(dstGm[dstByteOff + headDone * headBytes], cacheLocal, outParams);
+        event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+        SetFlag<HardEvent::MTE3_MTE2>(eventId);
+        WaitFlag<HardEvent::MTE3_MTE2>(eventId);
+        cacheQueue_.FreeTensor(cacheLocal);
+
+        headDone += curHeads;
     }
 }
 
