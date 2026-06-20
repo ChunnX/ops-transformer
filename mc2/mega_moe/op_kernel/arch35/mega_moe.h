@@ -24,6 +24,7 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
+#include "mega_moe_combine_send.h"
 #include "moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/hcomm/hcomm.h"
@@ -116,6 +117,7 @@ private:
     uint32_t maskSlotSize_ = 0;    // 单个 win 槽位 = maskAlignSize_(mask) + 32B(count)
     uint64_t maskWinOffset_ = 0;   // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
     uint64_t quantWinOffset_ = 0;  // quantTokenScalePtr 相对 win 基址的偏移
+    uint64_t notifyWinOffset_ = 0; // notifyRecvPtr 相对 win 基址的偏移(urma notify 接收区)
     uint64_t totalSendCntInExp_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
     int32_t compareCount_ = 0;
@@ -142,6 +144,12 @@ private:
     LocalTensor<bfloat16_t> dataResTensor_;
     LocalTensor<float> dataResFp32Tensor_;
     LocalTensor<float> topKWeightsTensor_;
+
+    // ======================== urma 通信相关 ========================
+    LocalTensor<uint8_t> hcommBuf_;                     // hcomm 初始化所需 UB 缓冲区
+    GlobalTensor<uint8_t> urmaSendBufGm_;               // urma 发送本地 GM 中转区（UB→GM→远程）
+    GlobalTensor<int32_t> urmaNotifyRecvGm_;             // urma notify 接收区（本卡）
+    bool hcommInited_ = false;                          // hcomm 是否已初始化（后续用户补充初始化后置 true）
 
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, bfloat16_t,
         QuantScaleOutType, QuantScaleOutType, true>;
@@ -206,6 +214,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         params_.peermemInfo.rankSyncInWorldPtr);
     quantWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.quantTokenScalePtr -
         params_.peermemInfo.rankSyncInWorldPtr);
+    notifyWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.notifyRecvPtr -
+        params_.peermemInfo.rankSyncInWorldPtr);
     // maskAlignSize_ 必与 PeermemInfo 中 maskAlignSize 公式数值一致。
     compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t);
@@ -217,6 +227,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     mxFp8ScaleAlignBytes_ = mxFp8ScaleNumAlignPerToken_ * sizeof(uint8_t);
     mxFp8TokenScaleAlignBytes_ = Ops::Base::CeilAlign(mxFp8TokenAlignBytes_ + mxFp8ScaleAlignBytes_,
         static_cast<uint32_t>(ALIGN_32));
+
+    // ============ urma 通信初始化框架（后续用户补充 hcommHandle_ 填充后生效） ============
+    // 绑定 urma 发送本地 GM 中转区 & notify 接收区(本卡 peermem 上的 notify 区)
+    urmaSendBufGm_.SetGlobalBuffer((__gm__ uint8_t*)params_.workspaceInfo.urmaSendBufferPtr);
+    urmaNotifyRecvGm_.SetGlobalBuffer((__gm__ int32_t*)params_.peermemInfo.notifyRecvPtr);
+    // TODO: 用户后续在此处补充 hcomm_ 初始化:
+    //   hcommBuf_ = LocalTensor<uint8_t>(TPosition::VECCALC, <addr>, HCOMM_INIT_SIZE / sizeof(uint8_t));
+    //   hcomm_.Init(hcommBuf_, HCOMM_INIT_SIZE);
+    //   hcommInited_ = true;
 }
 
 // =================================================================================================
@@ -402,6 +421,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
 // ------------------------------------------------------------------------------------------------------
 //   Phase 1: 本卡 topk 的搬入；
 //   Phase 2: 根据专家id进行CompareScalar & GatherMask，生成mask位与count总数，doubleBuffer进行计算并进行发送；
+//   Phase 3: (urma) 将 mask+count 搬到本地 GM 中转区，通过 WriteWithNotifyNbi 发送数据+notify 到目标专家卡；
+//            notify 值写入目标卡的 urmaNotifyRecvGm_，接收端无需轮询 count，直接等 notify 即可。
 // ======================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
@@ -431,6 +452,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
     DataCopyExtParams maskCopyParams{1U, static_cast<uint32_t>(maskSlotSize_), 0U, 0U, 0U};
     int32_t iter = 0;
     GlobalTensor<uint8_t> dstGlobalTensor;
+    // urma 发送本地 GM 中转区：每个 (expert, srcRank) 槽位对应 maskSlotSize_ 大小
+    // 布局: [expertPerRank * worldSize * maskSlotSize_]
+    GlobalTensor<uint8_t> urmaSendLocalGm;
+    urmaSendLocalGm.SetGlobalBuffer((__gm__ uint8_t*)params_.workspaceInfo.urmaSendBufferPtr);
     for (int32_t curExpertId = aivCoreIdx_; curExpertId < totalExperts; curExpertId += blockAivNum_, ++iter) {
         int32_t dstRank = curExpertId / static_cast<int32_t>(expertPerRank_);
         int32_t expertNumPer = curExpertId % static_cast<int32_t>(expertPerRank_);
@@ -452,13 +477,47 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
         uint64_t dstOffset = maskWinOffset_ +
             static_cast<uint64_t>(expertNumPer * static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
             static_cast<uint64_t>(maskSlotSize_);
+        // ---- 路径1(保留): peermem 直写, dispatch 仍用 MTE 读取 ----
         dstGlobalTensor.SetGlobalBuffer(
             (__gm__ uint8_t*)GetRankWinAddrWithOffset(dstRank, dstOffset));
         DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
+
+        // ---- 路径2(新增): urma 通信, 通过 WriteWithNotifyNbi 发数据 + notify ----
+        // WriteNbi 要求 src 为 GM 地址, 故先将 UB 中 mask+count 搬到本地 GM 中转区
+        if (hcommInited_ && dstRank != static_cast<int32_t>(rankId_)) {
+            // 本地 GM 中转偏移: 按 curExpertId 索引分配槽位
+            uint64_t localGmOffset = static_cast<uint64_t>(curExpertId) * maskSlotSize_;
+            DataCopyPad(urmaSendLocalGm[localGmOffset], maskBuf, maskCopyParams);
+            SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID4>();  // 等 MTE3 搬运完成
+
+            // 远程目标地址: 目标卡的 mask 接收区
+            GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, dstRank, dstOffset);
+            // notify 地址: 目标卡的 notify 接收区, 按 (expert, srcRank) 索引
+            uint64_t notifyOffset = static_cast<uint64_t>(expertNumPer * worldSize_ + rankId_) * sizeof(int32_t);
+            GM_ADDR remoteNotifyAddr = GetUrmaAddrByRankId(mc2Context_, dstRank,
+                notifyWinOffset_ + notifyOffset);
+            // 获取 urma 通信句柄
+            uint64_t channelHandle = GetUrmaCommHandle(mc2Context_, dstRank, rankId_);
+            // 本地 GM 中转区基址 + 槽位偏移
+            GM_ADDR localGmAddr = params_.workspaceInfo.urmaSendBufferPtr + localGmOffset;
+            // WriteWithNotifyNbi: 发送 mask+count 数据, 同时向目标卡 notify 区写入 1
+            // 注意: 需确认 Hcomm 类是否提供 WriteWithNotifyNbi 方法; 若不可用则改用 WriteNbi + 单独 notify
+            hcomm_.WriteWithNotifyNbi(channelHandle, remoteDataAddr,
+                localGmAddr, maskSlotSize_, remoteNotifyAddr, 1);
+        }
         SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
     }
     for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
+    }
+    // 等 urma 发送完成: 遍历所有目标 rank drain
+    if (hcommInited_) {
+        for (uint32_t dr = 0; dr < worldSize_; ++dr) {
+            if (dr == rankId_) {
+                continue;
+            }
+            hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
+        }
     }
 }
 
@@ -1024,7 +1083,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
-                
+                // GMM2 循环内: subBlockIdx_==1 的 AIV 核空闲, 可做 combine 准备工作
+                // (CombineTokensWithUrma 的 per-tile 写本地 GM 已在 GroupMatmul2Combine 内部完成)
             }
         }
     }
@@ -1032,11 +1092,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
+    // 3.5 urma combine 发送: GMM2 全部完成后, 轮询本地 workspace 数据, 通过 urma 发送到目标卡
+    if constexpr(g_coreType == AIV) {
+        MegaMoeCombineImpl::CombineTokensWithUrmaSend<QuantOutType>(
+            params_, mc2Context_, hcomm_, hcommInited_, rankId_);
+    }
+
     // 4. 本卡数据Unpermute
     if constexpr(g_coreType == AIV) {
         UnpermuteBuffInit();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
+    }
+    // 若 combine 切换为 CombineTokensWithUrma(urma WriteNbi), 需在恢复 overflow mode 前 drain 所有 urma 发送
+    if (hcommInited_) {
+        for (uint32_t dr = 0; dr < worldSize_; ++dr) {
+            if (dr == rankId_) {
+                continue;
+            }
+            hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
+        }
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }

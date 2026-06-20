@@ -79,6 +79,7 @@ constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t FP4_NUM = 2U;
 constexpr int64_t HALF_TO_FP32 = 2U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
+constexpr uint32_t TRIPLE_SIZE = 200 * 1024U; // combine 三元组缓冲区基址偏移
 } // namespace
 
 struct WorkspaceInfo {
@@ -92,6 +93,9 @@ struct WorkspaceInfo {
     GM_ADDR flagDispatchToGmm1Ptr;
     GM_ADDR combineDataPtr;
     GM_ADDR combineNotifyPtr;
+    // urma 通信 workspace 地址（后续由 tiling 侧精确分配，此处先给出默认布局）
+    GM_ADDR urmaSendBufferPtr;   // urma 发送本地 GM 中转区（UB→GM→远程）
+    GM_ADDR urmaNotifyRecvPtr;   // (保留备用) urma notify 接收区; 当前 notify 走 PeermemInfo.notifyRecvPtr
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -139,7 +143,31 @@ struct WorkspaceInfo {
         combineNotifyPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(tilingData->bs * sizeof(uint32_t) * tilingData->epWorldSize, ALIGN_512);// todo:
 
+        // urma 发送本地 GM 中转区: 包含 mask 发送区和 quant 发送区两部分。
+        // Part1: mask 发送区 = worldSize * expertPerRank * maskSlotSize
+        // Part2: quant 发送区 = bs * mxFp8TokenScaleAlignBytes (每个 token 的量化结果)
+        // 后续 tiling 侧会精确分配，此处先给出足够大的默认值。
+        urmaSendBufferPtr = base + workspaceSize;
+        int64_t sendTotalNumUrma = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
+        int64_t compareCountUrma = Ops::Base::CeilAlign(sendTotalNumUrma * (int64_t)sizeof(int32_t),
+            ALIGN_256) / (int64_t)sizeof(int32_t);
+        int64_t maskAlignSizeUrma = Ops::Base::CeilAlign(compareCountUrma / 8, ALIGN_32);
+        int64_t maskSlotSizeUrma = maskAlignSizeUrma + ALIGN_32;
+        int64_t maskSendSize = Ops::Base::CeilAlign(
+            tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSizeUrma, ALIGN_512);
+        // quant 发送区: 每个 token 的量化数据(token+scale)大小
+        uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+        uint32_t dataBytesQuant = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+        uint32_t scaleBytesQuant = mxScaleNum * sizeof(int8_t);
+        uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytesQuant + scaleBytesQuant, static_cast<uint32_t>(ALIGN_32));
+        int64_t quantSendSize = Ops::Base::CeilAlign(
+            (int64_t)tilingData->bs * tokenScaleBytes, ALIGN_512);
+        workspaceSize += Ops::Base::CeilAlign(maskSendSize + quantSendSize, ALIGN_512);
 
+        // urma notify 接收区: 每个 (expert, srcRank) 槽位一个 notify 值(int32)。
+        urmaNotifyRecvPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            tilingData->expertPerRank * tilingData->epWorldSize * sizeof(int32_t), ALIGN_512);
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H

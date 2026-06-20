@@ -26,6 +26,9 @@ struct Mc2MoeContext {
     uint32_t epRankSize;
     uint64_t winSize;
     uint64_t epHcclBuffer[1024];
+    // urma 通信句柄数组，每对 rank 一个句柄；后续由 host 侧初始化填充。
+    // 索引规则与 urma.h 一致: index = (rankId > epRankId) ? rankId - 1 : rankId
+    uint64_t hcommHandle_[1024];
 };
 
 struct GMMAddrInfo {
@@ -42,6 +45,7 @@ struct PeermemInfo {
     GM_ADDR maskRecvPtr;             // 源卡算好的 send-mask 接收区, 布局 [localExpert][srcRank]
     GM_ADDR quantTokenScalePtr;      // 量化结果，包括data+scale
     GM_ADDR combineSendPtr;
+    GM_ADDR notifyRecvPtr;           // urma notify 接收区, 布局 [expert][srcRank], 每槽位 int32
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
     {
@@ -66,6 +70,11 @@ struct PeermemInfo {
         uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
         uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
         offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+        // urma notify 接收区: 每个 (expert, srcRank) 一个 int32 槽位, 按 512 对齐。
+        // 放在 quant 区之后、combineSend 区之前, 保证跨卡读写布局一致。
+        notifyRecvPtr = base + offset;
+        offset += Ops::Base::CeilAlign(
+            (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * sizeof(int32_t), (int64_t)ALIGN_512);
         combineSendPtr = base + offset;
     }
 };
@@ -172,6 +181,22 @@ inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
 __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset)
 {
     return (GM_ADDR)(winRankAddr_[rankId] + offset);
+}
+
+// ======================== urma 通信辅助函数（参考 urma.h 写法） ========================
+// 获取指定 rank 的 urma 通信句柄。
+// 索引规则: 跳过自身 rankId，与 urma.h GetCommHandle 一致。
+__aicore__ inline uint64_t GetUrmaCommHandle(__gm__ Mc2MoeContext* context, uint32_t rankId, uint32_t epRankId)
+{
+    uint32_t index = rankId > epRankId ? rankId - 1 : rankId;
+    return context->hcommHandle_[index];
+}
+
+// 获取指定 rank 的 urma 通信数据区地址（在远程 rank 通信窗口基址 + offset）。
+// offset 由调用方根据具体数据布局计算（如 maskWinOffset_ / quantWinOffset_ 等）。
+__aicore__ inline GM_ADDR GetUrmaAddrByRankId(__gm__ Mc2MoeContext* context, uint32_t rankId, uint64_t offset)
+{
+    return (GM_ADDR)(context->epHcclBuffer[rankId]) + offset;
 }
 
 __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
