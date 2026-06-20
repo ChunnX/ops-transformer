@@ -640,8 +640,13 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
     uint64_t srcSlotStrideBytes, uint64_t dstSlotStrideBytes,
     bool isFilledWithZero)
 {
-    // 单slot超UB: 批量化blockLen=unitBytes会越界, 退回逐slot按字节切块。
-    if (unitBytes > maxUbHiddenSize_) {
+    // 多block DataCopyPad在UB里每个block按32B对齐占位(硬件语义), 故容量按【对齐后】尺寸估算。
+    // 与scatter InitLoopInfo一致(用RoundUp(headSize,32)算可装数, blockLen仍用真实尺寸)。
+    // 若按紧密unitBytes估算会高估slot数 → UB溢出(踩坏内存致rtFree invalid value)+精度错乱。
+    const uint64_t unitBytesAligned = (unitBytes + BLOCK_SIZE - 1) / BLOCK_SIZE * BLOCK_SIZE;
+
+    // 单slot对齐占位超UB: 批量化会越界, 退回逐slot按字节切块(GatherNcContigRun内部再切)。
+    if (unitBytesAligned > maxUbHiddenSize_) {
         for (uint64_t s = 0; s < numSlots; s++) {
             GatherNcContigRun(dstGm, srcGm,
                               dstBaseOff + s * dstSlotStrideBytes,
@@ -654,8 +659,8 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
     const uint64_t srcGapBytes = srcSlotStrideBytes - unitBytes;  // 源相邻slot间隙(字节)
     const uint64_t dstGapBytes = dstSlotStrideBytes - unitBytes;  // 目标相邻slot间隙(字节)
 
-    // UB一次能装的slot数: 受maxUbHiddenSize_约束, 且blockCount上限MAX_BLOCK_CNT(4095)。
-    uint64_t slotsPerBatch = (unitBytes > 0) ? (maxUbHiddenSize_ / unitBytes) : numSlots;
+    // UB一次能装的slot数: 用对齐占位算容量(防溢出), 且blockCount上限MAX_BLOCK_CNT(4095)。
+    uint64_t slotsPerBatch = (unitBytesAligned > 0) ? (maxUbHiddenSize_ / unitBytesAligned) : numSlots;
     if (slotsPerBatch == 0) slotsPerBatch = 1;
     if (slotsPerBatch > MAX_BLOCK_CNT) slotsPerBatch = MAX_BLOCK_CNT;
     if (slotsPerBatch > numSlots) slotsPerBatch = numSlots;
@@ -664,14 +669,16 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
     while (slotDone < numSlots) {
         uint64_t curSlots = numSlots - slotDone;
         if (curSlots > slotsPerBatch) curSlots = slotsPerBatch;
-        uint64_t curBytes = curSlots * unitBytes;
 
         LocalTensor<T> cacheLocal = cacheQueue_.AllocTensor<T>();
         if (isFilledWithZero) {
+            // UB按对齐占位(每block unitBytesAligned), 写出从各对齐偏移读, 故须把含padding在内的
+            // 对齐占位区整体清零(curSlots*unitBytesAligned), 否则padding读到脏数据。容量已保证不越界。
+            uint64_t zeroBytes = curSlots * unitBytesAligned;
             AscendC::TEventID e1 = GetTPipePtr()->FetchEventID(HardEvent::MTE3_V);
             SetFlag<HardEvent::MTE3_V>(e1);
             WaitFlag<HardEvent::MTE3_V>(e1);
-            Duplicate<T>(cacheLocal, 0, curBytes);
+            Duplicate<T>(cacheLocal, 0, zeroBytes);
             AscendC::TEventID e2 = GetTPipePtr()->FetchEventID(HardEvent::V_MTE3);
             SetFlag<HardEvent::V_MTE3>(e2);
             WaitFlag<HardEvent::V_MTE3>(e2);
