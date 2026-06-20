@@ -384,6 +384,25 @@ Vector 校正  │ corr(i-2) │ corr(i-1)  │   与 QKᵀ 无依赖,可并行
 - **SIMT(取消不规整税,硬件确认 / lowering 待证):** mask 物化→分支跳过、pad 空算→ragged 边界、gather 退化→逐 lane 寻址。当前 C++ 层未直接出现 `SIMT`,能定位 `__simd_vf__`/`MicroAPI::MaskReg`/`UpdateMask`;是否真落 SIMT 待汇编/profile(§10)。
 - **双发射(藏延迟,硬件确认 / 槽位待证):** 同核并发发射互不依赖指令流(`exp(i) ‖ rowmax(i+1)`、`O 校正 ‖ 地址计算`)。能藏的延迟换 N 降一档。具体槽位组合待汇编/profile(§11)。
 
+### 5.6 MM 输出去向:UB 还是 GM(分数型 vs 输出型)
+
+> **一句话:** 一个 MM 的输出落 UB 还是 GM,看头维 D 在它里面是"被收缩掉的轴"还是"输出的自由轴"——D 被收缩的(分数型)输出恒小、恒驻 UB;D 是自由轴的(输出型)输出随 D/Dv 涨,大 D 才落 GM。FA/FAG 都守这条,只是各自的"输出型 MM"不同。
+
+- **机制:** 矩阵乘 `C[M,N]=Σ_K A[M,K]·B[K,N]`,收缩维 K 在 MAC 阵列内累加掉、**不进输出 buffer**;输出只随 M、N 涨,K 大只压输入(L0A/L0B)。
+- **两类 MM:**
+  - **分数型(D=收缩轴):** 输出 `[Br,Bc]`,与 D 无关,恒 `128·128·4=64KB` → **恒驻 UB**。
+  - **输出型(D=自由轴):** 输出含头维,随 D/Dv 涨 → **大 D 落 GM**。
+
+| MM | 算的是 | 输出 [M,N] | 收缩维 | D 角色 | 输出去向 |
+|---|---|---|---|---|---|
+| FA BMM1 | S=Q·Kᵀ | [Br,Bc] | D | 收缩 | 分数型 → 恒 UB |
+| FA **BMM2** | O=P̃·V | **[Br,Dv]** | Bc | **自由** | 输出型 → **大 Dv 落 GM** |
+| FAG MM1 | dP=dO·Vᵀ | [Br,Bc] | Dv | 收缩 | 分数型 → 恒 UB |
+| FAG MM2 | S=Q·Kᵀ | [Br,Bc] | D | 收缩 | 分数型 → 恒 UB |
+| FAG **MM3/4/5** | dQ/dK/dV | **[·,D/Dv]** | Bc/Br | **自由** | 输出型 → **大 D 落 GM** |
+
+- **注(两处去向不同的触发):** FA BMM2 与 FAG MM3/4/5 **都有 UB/GM 两种去向**,但落 GM 的原因不完全相同——FA BMM2 是单任务内的容量/路径 staging(GM 3-buffer 暂存最终 O);FAG MM3/4/5 还多了"跨核归约写 FP32 partial workspace + post"(§7.4/§11)和"非 FP32 输出"两条,**跨核归约即便容量够也要落 GM**。详见 §6.2 / §7.2。
+
 ## 6. FA 前向机制
 
 > **一句话:** 前向算力密度低(2 MM),Cube 容易空,所以前向的全部功夫是"把 Vector 藏住 + 让 K/V 在 L2 复用别反复打 HBM"——前者靠 2 AIV+RegFile,后者靠 splitCoreMode。
@@ -407,10 +426,10 @@ AIV: online update/校正/div/cast → GM attentionOut + LSE
 |---|---|---|---|
 | `bmm1Buffers` | UB DB | AIC BMM1→AIV Vec1 | S 是 C→V 主跨界张量,UB 承接 half-S1 |
 | `l1PBuffers` | L1 3-buffer | AIV Vec1→AIC BMM2 | **P 走 L1 更贴 Cube 读路径**(§2.4),3-buffer 吸收抖动 |
-| `bmm2Buffers` | UB DB/Single | AIC BMM2→AIV Vec2 | 小 D 省 GM 往返 |
-| `bmm2ResGmBuffers` | GM 3-buffer | AIC BMM2→AIV Vec2 | 大 D/FP32/optional 用 GM pingpong 解耦 |
+| `bmm2Buffers` | UB DB/Single | AIC BMM2→AIV Vec2 | O partial;**O=[Br,Dv] 是输出型(§5.6),Dv 小才放得下 UB** |
+| `bmm2ResGmBuffers` | GM 3-buffer | AIC BMM2→AIV Vec2 | **大 Dv/FP32/optional 时 O 撑出 UB/L0C → GM 暂存,Vec2 分块读回 rescale/div** |
 
-模板:常规 `128×128`;长 S2 简洁路径 `128×256`;HIFLOAT8 `128×512`;D>256 降 S2,FP32 降 S1 到 64(推导见 §5.2)。BMM2 写 UB/GM 由 `GetC2Position` 按 D/optional/FP8/MLA 边界决定。
+模板:常规 `128×128`;长 S2 简洁路径 `128×256`;HIFLOAT8 `128×512`;D>256 降 S2,FP32 降 S1 到 64(推导见 §5.2)。其中 **BMM1(S=Q·Kᵀ)是分数型、输出 [Br,Bc] 与 D 无关 → 恒驻 UB(bmm1Buffers);BMM2(O=P̃·V)是输出型、Dv 是自由轴**,由 `GetC2Position` 按 D/optional/FP8/MLA 边界在 UB / GM 3-buffer 间选(大 Dv/FP32 落 GM),细节口径见 §5.6 与 Track A1。
 
 ### 6.3 FA causal 网格分类与负载
 
@@ -487,6 +506,29 @@ core3 | KV1 | KV3           core3 | KV3 | KV3
 
 **2-Die / L2 亲和边界:** 源码 strided 重排已把逻辑窗口整理成 L2 友好;但能否落成本地 Die 内 L2 复用,取决于 `logical aicIdx → 物理 AI Core → AI Die` 的运行时映射(源码看不到,待 profile §14-B6)。L2 微架构见 §2.6。
 
+### 6.4.1 三种 dispatch 的硬件账(为什么各治一种 bound)
+
+> **一句话:** 门(开不开)由 L2 工作集决定(§2.5);形(选哪种)由"计算量分布"决定——均匀只需保 L2(Sequential),单调要额外抵消长尾(Symmetric),不规则要鲁棒摊匀(Cyclic)。三者共享同一个 L2 目标,区别在多治不治负载长尾。
+
+**公共硬件单位:** 单份 K/V(一个 head 的整列)= `S2·(D+Dv)·dt`,S2=16384/D=Dv=256/BF16 → **16.8 MB**。L2 = 128MB → 最多并发驻留 ~7.6 份 K/V。
+
+**① Sequential —— 治 bound①(L2 工作集)。**
+- 机制:strided 轮转 `idx = times·coreNum + aicIdx`,相邻核同拍取相邻一维 task。
+- 硬件账:活跃 K/V 份数从连续分核的 `min(coreNum, totalN)`(≈ n2Num,默认 ~2·coreNum)压到 `≈ ceil(coreNum/fullLenPerN)`(几份)。代入:连续 ≈ 64 份 × 16.8MB ≈ **1074 MB ≫ 128MB**(撑爆 → 重取打 HBM);strided ≈ 2~7 份 × 16.8MB ≈ **34~118 MB ≤ 128MB**(命中 → K/V 在 L2 取一次喂多核)。
+- 根因:这正是 §2.5(3) 的量化落地——把活跃份数压进 L2 容量,保住有效 AI 不塌缩。均匀负载下 bound② 平凡(无长尾),所以只剩这一件事。
+
+**② Symmetric —— 在保 L2 之上,额外治 bound②(causal 单调长尾)。**
+- 机制:partial 区行负载随 S1Outer **单调**(§6.3:行 i 的有效 KV ∝ i);连续分核会让某些核全拿轻档、某些全拿重档。上半 N 正向 + 下半 N 用镜像 residue 配平。
+- 硬件账:wall-clock = 最慢核。三角负载下连续分核的"最重核/最轻核" ≈ `(N)/(1)`,wall-clock 被最重核拖到 ~2× 均值(其余核空等)。镜像后每核 ≈ `(轻档 + 重档)/2 ≈ 均值` → wall-clock 逼近理想 → 多核利用率从 ~50% 抬到接近 100%。
+- 根因:这是"用核号镜像近似首尾行配对"(§6.3 注),抵消同余类长尾;残差由 `partialLen % coreNum` 决定,无 gcd 级修正(待 §14-A5 纸面推演)。
+
+**③ Forward-Reverse Cyclic —— 保 L2 + 治 varlen 不规则长尾。**
+- 机制:TND varlen 映射不规则,放弃 partial/full 切段,每 `2·coreNum` 正反折返(phase0 正序 aicIdx,phase1 倒序 `2coreNum-1-aicIdx`)。
+- 硬件账:varlen 下连续分核可能让某核连拿长序列(重)、某核连拿短序列(轻)→ 系统性长尾。折返让每核一个周期内既吃正向位置又吃反向位置 → 负载摊匀。**代价:** 更频繁切逻辑位置 → L2 局部性可能降一档(用局部性换均衡),这个 tradeoff 的实际刻度源码推不出,待 profile(§14-B2)。
+- 根因:`2·coreNum` 折返周期与 1C:2V 的"2"同形但语义不同(那是 AIC/AIV 配块),这里纯是均衡折返周期。
+
+**一句话收口三者:** 都先靠 strided/折返把活跃 K/V 压进 128MB L2(bound①),Sequential 到此为止(均匀无长尾);Symmetric/Cyclic 再分别用镜像/折返抵消 causal 单调长尾、varlen 不规则长尾(bound②)。
+
 ## 7. FAG 反向机制
 
 > **一句话:** 后向算力密度高(5 MM、Cube-bound),Cube 不愁喂满,真正的痛点是 §1.5 那三个正交归约轴——切哪条轴跨核,哪个输出就跨核归约、砸 FixPipe;所以后向机制围绕"选最粗的能填满核的切法,把驻留红利发给多张量侧"。
@@ -501,12 +543,20 @@ core3 | KV1 | KV3           core3 | KV3 | KV3
 
 ```text
 pre:  清 workspace / 预处理 softmax grad / dropmask·sink
-main: MM1(dY·V)→UB ; MM2(Q·K)→UB ; Vec(生成 dS→L1, P→L1)
-      MM3(dS·K)=DQ ; MM4(dSᵀ·Q)=DK ; MM5(Pᵀ·dY)=DV  → UB 或 FP32 GM workspace
+main: MM1(dY·V)→UB ; MM2(Q·K)→UB   # 分数型: 输出 [Br,Bc] 与 D 无关, 恒驻 UB(§5.6)
+      Vec(生成 dS→L1, P→L1)
+      MM3(dS·K)=DQ ; MM4(dSᵀ·Q)=DK ; MM5(Pᵀ·dY)=DV   # 输出型: [·,D/Dv] 随 D 涨 → UB 或 FP32 GM workspace
 post: FP32 workspace cast/归并到输出 dtype, 处理 RoPE/sink/deterministic
 ```
 
-模板:常规 `128×128`,FP32 且 D>256 为 `64×128`,FP8 `64×256`,HIFLOAT8 `512×512`(推导同 §5.2)。`IS_DKV_RESIDENT_L0C` 成立时 DK/DV 钉 L0C 累加,免反复 GM 往返(L0C 256K 够放"最大临时 MM + DK + DV")。
+模板:常规 `128×128`,FP32 且 D>256 为 `64×128`,FP8 `64×256`,HIFLOAT8 `512×512`(推导同 §5.2)。
+
+**MM3/4/5 是输出型(§5.6),落 GM 有三条触发(与 FA BMM2 的区别在后两条):**
+1. **容量:** 大 D 让 `IS_DKV_RESIDENT_L0C`(最大临时 MM + DK + DV ≤ 256KB)失败 → dK/dV 退 GM。D=Dv=256 时 dK+dV 就 `128KB+128KB=256KB` 占满 L0C,再叠当拍临时结果即溢出。
+2. **跨核归约(常为主因):** splitAxis 切到输出的归约轴(§1.5/§7.4),该输出被迫写 FP32 partial workspace、post 归并——**即便单核容量够,跨核也要落 GM**(对账见 §11)。
+3. **dtype:** 非 FP32 输出先写 FP32 workspace,post 再 cast。
+
+对照 FA:FA BMM2 落 GM 几乎只是①类(单任务容量/路径);FAG MM3/4/5 多了②③,且②跨核归约往往是它落 GM 的主导原因——这也是后向 FixPipe-bound 的根(§11)。
 
 ### 7.3 循环序:外 KV 内 Q vs 外 Q 内 KV
 
@@ -602,6 +652,33 @@ splitAxis = BN2        if isBn2 or isBn2MultiBlk
 
 根因(跨核归约张量数 = 砸 FixPipe 的根):切 S2→dQ 跨核;切 G/S1→dK/dV 跨核。BN2 一条轴都不切到归约轴 → 0 跨核;BN2GS1S2 全切 → 3 张量全 partial。完整对账见 §11。
 
+### 7.4.1 splitAxis 的硬件账:为什么切得越碎越砸 FixPipe(输出 AI vs FixPipe ridge)
+
+> **一句话:** splitAxis 切到哪个归约轴(§1.5:dQ 沿 S2、dK/dV 沿 G,S1),那个输出就跨核归约、写 FP32 partial;跨核张量数越多,FixPipe 写出体积越大、输出 AI 越低——一旦低于 FixPipe ridge 127 就 FixPipe-bound。这和 §6.4.1 / §7.5.1 是同一套"需求 vs lane 容量"账,只是换到了输出写这条 lane。
+
+**硬件单位:** FixPipe 实现带宽 ≈ 3.41 TB/s → **FixPipe ridge = 432 / 3.41 ≈ 127 FLOP/byte**。输出 AI = `FLOPs / FixPipe 写出字节`;`输出 AI < 127` → FixPipe-bound,否则瓶颈回 MAC(~93%)。口径同 §11(B=1,N2=2,S=16384,causal,FLOPs 5.497 TFLOP)。
+
+| splitAxis | 硬件账(跨核张量数 → FixPipe 体积 → 输出 AI vs ridge 127) | 落点/优势场景 |
+|---|---|---|
+| BN2 | 0 跨核 → 驻留写一遍 ≈ **0.34 GB** → 输出 AI ≈ **16000 ≫ 127** → 远离 FixPipe → **MAC-bound ~93%** | `B·N2 ≥ aicNum`,短中 S |
+| BN2 multi-block | 同 BN2(0 跨核,核内多块累加,DK/DV 钉 L0C ≤256KB) | B·N2 够 + S 大 |
+| BN2S2 | 1 跨核(dQ)→ dQ partial ≈ **17.2 GB** → 输出 AI ≈ **320 > 127** → 仍 **MAC-bound 93.2%** | 小 B·N2 + 长 S2(S2≫S1) |
+| BN2GS1S2 | 3 跨核(dQ+dK+dV)→ partial ≈ **51.5 GB** → 输出 AI ≈ **107 < 127** → **FixPipe-bound 84.3%(实测 82%)** | 小 B·N2 且 S1≈S2 / dtype·sparse·RoPE 排除前几条 |
+
+**根因链(算法 → 硬件):** §1.5 三归约轴正交 → 切 S2 让 dQ 跨核、切 G/S1 让 dK/dV 跨核;跨核 = 写 ∝S² 的 FP32 partial(驻留只写 ∝S 一遍,差 ~512×,§7.3)→ 跨核张量数 {0,1,3} 直接决定 FixPipe 体积 {0.34, 17.2, 51.5} GB → 输出 AI {16000, 320, 107} 跨过 ridge 127 → bound 落在 {MAC, MAC, FixPipe}。**所以"一档 splitAxis ≈ +10 pts MFU"不是经验值,是输出 AI 跨过 FixPipe ridge 的结果。**
+
+#### 三层对齐(FA dispatch / FAG splitAxis / FAG 枚举器一眼平行对照)
+
+三层分核虽各治不同 bound,但都是**同一套账:某条 lane 的需求 vs 该 lane 的容量/ridge,谁先越界谁 bound。**
+
+| 层 | 治哪条 lane | 需求量 | 容量 / ridge | 越界判据 | 详见 |
+|---|---|---|---|---|---|
+| FA dispatch | 输入 L2/HBM | 活跃 K/V 份数 × 16.8MB | L2 **128MB** | 份数压进 L2 → 命中,否则打 HBM | §6.4.1 |
+| **FAG splitAxis** | **输出 FixPipe** | **跨核张量数 → partial 体积** | **FixPipe ridge 127** | **输出 AI < 127 → FixPipe-bound** | 本节 |
+| FAG 枚举器 | 输入 L2/HBM | 活跃列跨度 × 128KB | L2 **128MB** | 列跨度压进 L2 → 命中,否则打 HBM | §7.5.1 |
+
+**收口:** FA dispatch 和 FAG 枚举器治**输入侧**(K/V 重取能否落 L2,判据 = L2 容量 128MB),FAG splitAxis 治**输出侧**(归约 partial 会不会写爆 FixPipe,判据 = FixPipe ridge 127)。**所以 §12 那句"前向堵在进、后向堵在出",在分核这一层就已经被这三张账决定了**——前向只有输入侧一层(splitCoreMode 把 K/V 喂进 L2),后向是输入(枚举器保 L2)+ 输出(splitAxis 减 FixPipe partial)两层叠加,而输出侧那层(3 输出型 MM 跨核,§5.6/§12)才是它 82% 的真正天花板。
+
 ### 7.5 分核枚举器 GetNextValidIdx(骨架伪代码 + 优势场景)
 
 > **一句话:** splitAxis 越粗(BN2)每核天然独占连续 K/V、局部性自带,不用 swizzle;切到最碎(BN2GS1S2/TND)各核散落网格,**swizzle 枚举器就是"细切之后挣回局部性与配平"的补偿**。
@@ -632,6 +709,25 @@ global = aicCoreNum*continuousBlockNum*(loop/cbn) + cBlockIdx*cbn + loop%cbn
 > 这些枚举器没有显式 Die id;源码能证"同轮按 cBlockIdx stride 消费 S2/N2G、dense/causal 尽量让每核拿连续 valid 块",至于满芯片是否落同一 Die 吃本地 L2,待 profile(§14-B6)。完整伪代码(供 Python 承载)与 mask 谓词细节,留作脚本实现的对象;本节只给骨架与优势场景。
 
 ---
+
+### 7.5.1 枚举器的硬件账:为什么 swizzle 能保 L2(结合活跃列工作集)
+
+> **一句话:** splitAxis 切到最碎(BN2GS1S2/TND)后各核散落在 `(S1o,S2o)` 网格,**普通 scan 让各核读分散的 K/V 列、活跃工作集铺满 L2 → 重取打 HBM**;swizzle 把各核挤到相邻列形成"滑动窗口",活跃工作集压进 L2 → 命中。枚举器治的就是细切之后丢掉的 L2 局部性。
+
+**硬件单位:** 一个 S2 列块的 K/V = `Bc·(D+Dv)·dt` = 128·512·2 ≈ **128 KB**。活跃 K/V 工作集 ≈ `活跃列跨度 × coreNum × 128KB`。L2 = 128MB。
+
+**活跃列跨度实测(toy coreNum=4,见 §17 工具图):** 线性 scan ≈ **10.85**,dense swizzle ≈ **1.71**,causal macro ≈ **3.56** —— **swizzle 把活跃列跨度压 ~6×,工作集同比压 ~6×。**
+
+| 枚举器 | 硬件账(活跃工作集 / 节省) | 落点 |
+|---|---|---|
+| 普通线性 scan | 各核散在三角不同列 → 活跃列跨度大(~10.85)→ 工作集可达 `coreNum × 分散列 × 128KB`,大 shape 易 **>128MB 撑爆**(这正是"无效区大或 L2 压力大才需 swizzle"的根) | 无效区小/无 L2 压力时用 |
+| 非TND dense swizzle | 相邻核挤同列 + cbn 连续块 + 整体滑动 → 活跃列跨度 ~`coreNum·cbn`(~1.71)→ 工作集 ≈ `coreNum·cbn·128KB` ≈ **8 MB ≪ 128MB**,深度命中 | dense + 大 invalid/L2 压力 |
+| 非TND causal macro | 宏块内一批核吃完再换 → 宏块尺寸贴 §2.6 的 512B Line/128B Sector → 命中率比逐块更高;三角内交错免对角半区空算(§6.3 TPL ~半算力浪费) | causal + S1==S2 + S 大 |
+| TND dense | batch prefix 按真实长度枚举,免按最大 S pad 空算 → 省 ≈ **1 − avg_len/max_len**(varlen 越参差省越多) | varlen dense |
+| TND causal | 成对 N2G 镜像把 causal 三角拼成满矩形 → 有效率从 ~50% 抬到 ~100% → 近 **2×** | varlen causal |
+| TND band | 只枚举对角附近 band envelope(宽 w 块)→ 计算量从 ~S² 降到 ~w·S → 省 ≈ **1 − w/S**,即 **S/w×** 加速 | band/滑窗/prefix |
+
+**两层关系收口:** splitAxis(§7.4)选"切哪条轴 → 几个输出跨核归约"(治 FixPipe/§11);枚举器(本节)选"在选定切法里怎么遍历 → 活跃 K/V 工作集能否落 L2"(治 MTE2/重取)。**前者是输出侧带宽,后者是输入侧带宽**——细切让两者同时变差(3 输出跨核 + 各核散列),所以 BN2GS1S2/TND 才必须配 swizzle 把输入侧的 L2 局部性挣回来,这也是为什么 §11 那个 case 是"BN2GS1S2 + causal macro swizzle"成对出现。
 
 ## 第三篇 性能建模与实测闭环(roofline → 工程 → 实测)
 
@@ -784,23 +880,30 @@ T_Q / T_KV = (Bc/Br)·(1 + Dv/D)
 
 ## 12. FA vs FAG 对比差异(收口)
 
-> **一句话:** 前向被**输入侧 MTE2(K/V 重取)**钉住,后向被**输出侧 FixPipe(跨核归约)**钉住——同一套硬件,瓶颈位完全相反,根因是 §1.4 的算力密度差(2.5×)。
+> **一句话:** 前向被**输入侧 MTE2(K/V 重取)**钉住,后向被**输出侧 FixPipe(跨核归约)**钉住——同一套硬件瓶颈位完全相反,根因是 §1.4 的算力密度差(2.5×):它不只让后向 Cube-bound,更把**输出型 MM 从 1 个(O)涨到 3 个(dQ/dK/dV)**,输出侧自然变重。
 
 | 维度 | FA 前向 | FAG 反向 |
 |---|---|---|
 | 算力密度 | 低(2 MM,Vector 占比高) | 高(5 MM,2.5× FLOPs,Cube-bound) |
-| 实测 MFU | 65.5% | 82.4% |
+| MM 构成(§5.6) | 1 分数型(S) + **1 输出型(O)** | 2 分数型(dP,S) + **3 输出型(dQ,dK,dV)** |
+| 输出型 MM 个数 | **1** | **3** |
+| 输出落 GM 的触发 | 主要容量(大 Dv);O 多数留 UB | 容量 + **跨核归约(常主因)** + 非 FP32 dtype |
+| GM 输出流量量级 | ~O(S)(O 写一遍,轻) | ~O(S²)×partial,**51.5 GB**(BN2GS1S2) |
 | 瓶颈 pipe | **MTE2(输入侧)** | **FixPipe(输出侧)** |
-| 根因特征 | 重取 K/V 打 HBM(shape 未融合 + 算法 §1.2) | 填不满核被迫细切 → 跨核归约(shape B·N2 + 算法 §1.5) |
+| 实测 MFU | 65.5% | 82.4% |
+| 根因特征 | 重取 K/V 打 HBM(shape 未融合 + 算法 §1.2) | 3 输出型 MM 全跨核 partial(shape B·N2 + 算法 §1.5) |
+| 第一变量 | K/V 工作集 vs L2 | B·N2 vs aicNum |
 | 优化抓手 | splitCoreMode/融合 → K/V 落 L2 | 选粗 splitAxis(BN2)→ 0 跨核归约 |
 | 优化后上限 | 82% → ~93% | 82% → ~93%(换 BN2) |
-| 第一变量 | K/V 工作集 vs L2 | B·N2 vs aicNum |
 
-**为什么瓶颈位相反:** 前向算力密度低、Cube 容易空,所以谁把 Cube 喂不上谁就是瓶颈——而喂 Cube 靠从 HBM/L2 取 K/V,于是**输入带宽(MTE2)**先卡。后向算力密度高、Cube 本就忙,输入侧反而不缺(工程 AI 319 > ridge),真正的拥堵在 3 个输出的 FP32 partial 同时往 GM 写,于是**输出带宽(FixPipe)**先卡。**两边都是"带宽 bound",只是一个堵在进、一个堵在出。** 对应的优化也对称:前向把进的 K/V 塞进 L2,后向把出的归约张量数从 3 降到 0。
+**为什么瓶颈位相反(结构性原因):** 2.5× 算力密度差不是一句空话,它的具体后果是**输出型 MM 从 1 个涨到 3 个**(§5.6)——而瓶颈卡在进还是出,正由"输出型 MM 个数 × 是否跨核"决定。
 
-> 共同的元结论:**arch35 上 FA/FAG 的天花板几乎都不是算力,而是带宽落在哪条 pipe;选对 split(前向 splitCoreMode 进 L2 / 后向 splitAxis 减跨核)≈ 10+ pts MFU。** 这把第二篇的机制和第三篇的实测连成一条线。
+- **前向(输出侧轻 → 卡在进):** 只有 1 个输出型 MM,O 一份、online 累加、多数留 UB(大 Dv 才落 GM,且是写一遍的最终输出),GM 输出流量 ∝ S、很轻 → 输出侧不卡。于是瓶颈落回输入侧:Cube 算力密度低容易空,谁喂不上 K/V 谁卡 → **MTE2**。
+- **后向(输出侧重 → 卡在出):** 有 3 个输出型 MM,每个还可能 partial(跨核)、写 FP32 workspace、post cast;B·N2 填不满核时三者全跨核 → GM 输出流量 ∝ S²×3、量级 **51.5 GB** → 输出侧重到把 **FixPipe** 压成瓶颈。输入侧反而不缺(工程 AI 319 > ridge)。
 
----
+**两边都是带宽 bound,一个堵在进、一个堵在出;而"堵在出"的轻重,本质由输出型 MM 的个数 × 跨核归约决定。** 对应优化也对称:前向把进的 K/V 塞进 L2(降输入重取),后向把出的(3 个输出型 MM 的)跨核归约张量数从 3 降到 0(降输出 partial)。
+
+> 共同的元结论:**arch35 上 FA/FAG 的天花板几乎都不是算力,而是带宽落在哪条 pipe;而落哪条 pipe,前向看"输入 K/V 重取能否进 L2"、后向看"几个输出型 MM 被迫跨核 partial"。选对 split(前向 splitCoreMode 进 L2 / 后向 splitAxis 减跨核)≈ 10+ pts MFU。** 这把第一篇的算力密度(§1.4)、第二篇的 MM 输出去向(§5.6)、第三篇的实测(§10/§11)连成一条线。
 
 ## 第四篇 代码导读(只讲怎么读 C++,分核策略已在第二篇)
 
