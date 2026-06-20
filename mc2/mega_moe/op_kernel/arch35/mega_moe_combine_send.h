@@ -127,9 +127,9 @@ __aicore__ inline void CombineTokensWithUrmaSend(
         params.tilingData->h * sizeof(ElementMMadOut2)) * params.tilingData->bs * params.tilingData->expertPerRank;
     LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, 0, 32);
 
-    // 分核: 按 aiv 核数均分 worldSize 个 rank (替代不存在的 SplitToCore)
-    uint32_t aivIdx = GetBlockIdx();
-    uint32_t aivNum = params.combineSendInfo.aivNum;
+    // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
+    uint32_t aivIdx = GetBlockIdx() / GetTaskRation();  // block 级别索引
+    uint32_t aivNum = GetBlockNum();  // 核1参与, 使用 blockNum
     uint32_t worldSize = params.tilingData->epWorldSize;
     uint32_t rankPerCore = worldSize / aivNum;
     uint32_t remainder = worldSize % aivNum;
@@ -244,13 +244,87 @@ __aicore__ inline void CombineTokensWithUrmaSend(
         rankIndex = (rankIndex + 1) % processRankNum;
     }
 
-    // Phase 4: drain 所有 urma 发送
+    // Phase 4: drain 本核负责的 rank 的 urma 发送 (仅 startRankId..endRankId-1)
     if (hcommInited) {
-        for (uint32_t dr = 0; dr < worldSize; ++dr) {
+        for (uint32_t dr = startRankId; dr < endRankId; ++dr) {
             if (dr == rankId) {
                 continue;
             }
             hcomm.Drain(GetUrmaCommHandle(mc2Context, dr, rankId));
+        }
+    }
+}
+
+// ==================================================================================================
+// CombineTokensWithUrmaSendPerExpert: GMM2 循环内 per-expert 的 urma 发送
+// --------------------------------------------------------------------------------------------------
+//   在每个 expert 的 GMM2 计算完成后, subBlockIdx_==1 的 AIV 核调用;
+//   轮询 combineNotifyPtr 中当前 expert 已到达的数据, 通过 urma WriteNbi 发送到目标卡 combineSend 区;
+//   参数 expertIdx: 当前专家索引; params.combineSendInfo.sendCnt 记录已发送数量;
+// ==================================================================================================
+template <typename ElementMMadOut2>
+__aicore__ inline void CombineTokensWithUrmaSendPerExpert(
+    const Params& params, __gm__ Mc2MoeContext* mc2Context,
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP>& hcomm, bool hcommInited,
+    uint32_t rankId, uint32_t expertIdx, uint32_t worldSize)
+{
+    if (!hcommInited) {
+        return;
+    }
+    uint32_t maxDataLength = L1_TILE_N * sizeof(ElementMMadOut2);
+    uint32_t maxDataSize = (Ops::Base::CeilDiv(params.tilingData->h, L1_TILE_N) * 32 +
+        params.tilingData->h * sizeof(ElementMMadOut2)) * params.tilingData->bs * params.tilingData->expertPerRank;
+    LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, 0, 32);
+    AscendC::GlobalTensor<int32_t> gmLocalDTriple;
+
+    // combineSendPtr 相对 win 基址的偏移
+    uint64_t combineWinOffset = static_cast<uint64_t>(params.peermemInfo.combineSendPtr -
+        params.peermemInfo.rankSyncInWorldPtr);
+
+    // 轮询所有目标 rank 的 notify, 发送当前 expert 已到达的数据
+    for (uint32_t dstRank = 0; dstRank < worldSize; ++dstRank) {
+        if (dstRank == rankId) {
+            continue;
+        }
+        // 读当前 expert 对该 dstRank 的 notify count
+        // notify 布局: [expert][srcRank], 每个 int32
+        // 注意: CombineTokensWithUrma 中 notifyAddr = combineNotifyPtr + toRankId * sizeof(int32_t)
+        // 这里我们是接收端, 读自己卡上 dstRank(作为数据源)发来的 notify
+        // 但 CombineTokensWithUrma 的 notify 是写到目标 rank 的 combineNotifyPtr, 所以本卡读自己的 combineNotifyPtr
+        GM_ADDR notifyAddr = params.workspaceInfo.combineNotifyPtr + rankId * sizeof(int32_t);
+        uint32_t curCnt = ReadGmByPassDCache(notifyAddr);
+        if (curCnt == 0) {
+            continue;
+        }
+        // 遍历该 rank 的数据槽位, 发送未处理的
+        for (uint32_t i = 0; i < curCnt; ++i) {
+            GM_ADDR dataAddr = params.workspaceInfo.combineDataPtr +
+                rankId * maxDataSize + i * (maxDataLength + 32);
+            gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dataAddr + maxDataLength));
+            AscendC::Nop<20>();
+            AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+            if (sendTensor.GetValue(7) == 1) {
+                uint32_t toRankId = sendTensor.GetValue(0);
+                uint32_t tokenIdx = sendTensor.GetValue(1);
+                uint32_t topkIdx = sendTensor.GetValue(2);
+                uint32_t nLoc = sendTensor.GetValue(3);
+                uint32_t n = sendTensor.GetValue(4);
+                uint32_t dataLen = sendTensor.GetValue(5);
+                if (toRankId != rankId) {
+                    uint64_t channelHandle = GetUrmaCommHandle(mc2Context, toRankId, rankId);
+                    uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
+                    GM_ADDR remoteAddr = GetUrmaAddrByRankId(mc2Context, toRankId,
+                        combineWinOffset + gmDstOffset * sizeof(ElementMMadOut2));
+                    hcomm.WriteNbi(channelHandle, remoteAddr, dataAddr, dataLen);
+                }
+                // 标记已处理
+                sendTensor.SetValue(7, 0);
+                AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
+                AscendC::DataCopy(gmLocalDTriple, sendTensor, 8);
+            }
         }
     }
 }

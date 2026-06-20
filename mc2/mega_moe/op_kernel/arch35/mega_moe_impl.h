@@ -371,7 +371,8 @@ __aicore__ inline void GroupMatmul2Combine(
             tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
                 (groupCnt + mLoc) * 32));
             AscendC::DataCopy(tripleTensor, tripleGm, lenTile * 8); // 拷贝三元组
-            MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
+            // urma 版: 写本地 GM workspace + AtomicAdd notify; per-expert 发送由上层 CombineTokensWithUrmaSendPerExpert 完成
+            MegaMoeCombineImpl::CombineTokensWithUrma<ElementC, decltype(actualShape)>(
                 mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);

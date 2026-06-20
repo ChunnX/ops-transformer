@@ -1070,6 +1070,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     vecSetSyncCom_ = 0;
     expertBeforeCnt_ = 0;
     ExpertLoopState gmm2State{initShape, initOffset};
+
+    // 3.1 核1(subBlockIdx_==1)先启动 urma combine 轮询发送, 与 GMM2 并行
+    if constexpr(g_coreType == AIV) {
+        if (subBlockIdx_ == 1) {
+            MegaMoeCombineImpl::CombineTokensWithUrmaSend<QuantOutType>(
+                params_, mc2Context_, hcomm_, hcommInited_, rankId_);
+        }
+    }
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
             continue;
@@ -1081,37 +1089,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 expertBeforeCnt_, gmm2PingPongIdx_);
         }
-        if constexpr(g_coreType == AIV) {
-            if (subBlockIdx_ == 1) {
-                // GMM2 循环内: subBlockIdx_==1 的 AIV 核空闲, 可做 combine 准备工作
-                // (CombineTokensWithUrma 的 per-tile 写本地 GM 已在 GroupMatmul2Combine 内部完成)
-            }
-        }
     }
     EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
-    // 3.5 urma combine 发送: GMM2 全部完成后, 轮询本地 workspace 数据, 通过 urma 发送到目标卡
-    if constexpr(g_coreType == AIV) {
-        MegaMoeCombineImpl::CombineTokensWithUrmaSend<QuantOutType>(
-            params_, mc2Context_, hcomm_, hcommInited_, rankId_);
-    }
+    // 3.5 GMM2 完成后, 核0等待核1 urma 发送完成 (核1的 CombineTokensWithUrmaSend 内含 drain)
 
     // 4. 本卡数据Unpermute
     if constexpr(g_coreType == AIV) {
         UnpermuteBuffInit();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
-    }
-    // 若 combine 切换为 CombineTokensWithUrma(urma WriteNbi), 需在恢复 overflow mode 前 drain 所有 urma 发送
-    if (hcommInited_) {
-        for (uint32_t dr = 0; dr < worldSize_; ++dr) {
-            if (dr == rankId_) {
-                continue;
-            }
-            hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
-        }
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
