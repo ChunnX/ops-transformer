@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MEGA_MOE_H
-#define MEGA_MOE_H
+#ifndef MEGA_MOE_LAYERED_H
+#define MEGA_MOE_LAYERED_H
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
@@ -1192,4 +1192,4 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
 }
 
 }   // namespace MegaMoeImpl
-#endif
+#endif // MEGA_MOE_LAYERED_H
