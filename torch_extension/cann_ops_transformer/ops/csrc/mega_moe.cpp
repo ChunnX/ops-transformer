@@ -10,6 +10,7 @@
 
 #include <torch/extension.h>
 #include "aclnn_common.h"
+#include <iostream>
 
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
@@ -131,7 +132,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     TensorListWrapper weight_scales2_wrapper = {weight_scales2_ref, weight_scales2_dtype};
     TensorListWrapper bias1_wrapper = {bias1_ref, aclDataType::ACL_FLOAT};
     TensorListWrapper bias2_wrapper = {bias2_ref, aclDataType::ACL_FLOAT};
-
+    std::cout<<"megaMoe "<<1<<std::endl;
     ACLNN_CMD(aclnnMegaMoe, context, x, topk_ids, topk_weights, weight1_wrapper,
         weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, bias1_wrapper, bias2_wrapper,
         x_active_mask, moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,

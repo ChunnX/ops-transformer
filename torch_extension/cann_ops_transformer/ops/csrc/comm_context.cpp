@@ -35,6 +35,8 @@ struct CommContext {
     uint32_t rankSizePerServer = 0;
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
+    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE] = {};   // 支持ROCE或者URMA
+    uint64_t urmacclBuffer_[HCCL_MAX_RANK_SIZE] = {};  // URMA通信buffer
 };
 
 // ======================== Common Types and Utilities ========================
@@ -237,13 +239,14 @@ public:
         }
 
         ASCEND_LOGI("start CheckProtocolSupport, layerNum is %d", layerNum);
-        CheckProtocolSupport(commHandle, layerList, layerNum);
+        CheckProtocolSupport(commHandle, layerList, layerNum, CommProtocol::COMM_PROTOCOL_UB_MEM);
 
         ASCEND_LOGI("CheckProtocolSupport success!");
         protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
     }
 
-    void CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layerList, uint32_t &layerNum)
+    void CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layerList, uint32_t &layerNum,
+                              CommProtocol protocol)
     {
         uint32_t srcRankId = 0;
         uint32_t dstRankId = 0;
@@ -270,17 +273,18 @@ public:
                 TORCH_CHECK(hcclRet == HCCL_SUCCESS,
                             "Get HCCL links failed when checking protocol support, ret: ", hcclRet);
                 TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
-                TORCH_CHECK(CheckLinks(netLinkNum, linksList), "No HCCL links support UB_MEM srcRankID ", srcRankId,
+                TORCH_CHECK(CheckLinks(netLinkNum, linksList, protocol), "No HCCL links support protocol ",
+                            static_cast<int>(protocol), " srcRankID ", srcRankId,
                             ", dstRankID ", dstRankId, ", layer ", layerList[layerIndex]);
                 layerMap_[rankIdLists[rankId]] = layerList[layerIndex];
             }
         }
     }
 
-    static bool CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
+    static bool CheckLinks(uint32_t &netLinkNum, CommLink *linksList, CommProtocol protocol)
     {
         for (uint32_t j = 0; j < netLinkNum; ++j) {
-            if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+            if (linksList[j].linkAttr.linkProtocol == protocol) {
                 return true;
             }
         }
@@ -378,6 +382,49 @@ public:
         }
         ASCEND_LOGI("Get HCCL CommResource success");
     }
+    void AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &mc2ContextTag,
+                                    uint32_t rankId, void* &devicePtr)
+    {
+        
+    }
+
+    // ---- URMA (UBC_CTP) resource helpers ----
+    // 参考mc2_context.cpp，URMA协议使用独立的hcommHandle_存储channel句柄，urmacclBuffer_存储buffer
+    void GetUrmaCommResource(const HcclComm &commHandle, const CommEngine &engine,
+                              CommContext *commContextStruct, uint32_t rankSize)
+    {
+        ASCEND_LOGI("Start to get URMA communication resource");
+        uint32_t rankId = commContextStruct->epRankId;
+        uint32_t channelNum = rankSize - 1;
+        CommProtocol urmaProtocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+        std::vector<HcclChannelDesc> channelDesc(channelNum);
+
+        InitHcclChannel(commHandle, rankSize, rankId, urmaProtocol, channelDesc);
+
+        // 将URMA channel句柄存入hcommHandle_，参考mc2_context.cpp中的HcclChannelAcquire用法
+        auto hcclRet = HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum,
+            commContextStruct->hcommHandle_);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire URMA HCCL channel failed, ret: ", hcclRet);
+        ASCEND_LOGI("Acquire URMA HCCL channel success, channel num is: %u", channelNum);
+
+        for (uint32_t i = 0; i < rankSize; ++i) {
+            void *tempBuffer = nullptr;
+            uint64_t bufSize = 0;
+
+            if (i == rankId) {
+                hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &bufSize);
+            } else {
+                uint32_t idx = (i < rankId) ? i : (i - 1);
+                hcclRet = HcclChannelGetHcclBufferFunc(commHandle,commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
+            }
+
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get URMA HCCL buffer failed, src: ", rankId, ", dst: ", i,
+                        ", ret: ", hcclRet);
+
+            commContextStruct->urmacclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
+        }
+        ASCEND_LOGI("Get URMA CommResource success");
+    }
 
     // ---- Context lifecycle helpers ----
 
@@ -401,6 +448,9 @@ public:
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
         GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
+
+        // 获取URMA(UBC_CTP)协议的通信资源，存入hcommHandle_和urmacclBuffer_
+        //GetUrmaCommResource(commHandle, engine, commContextStruct, rankSize);
 
         hcclRet =
             HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), commContextStruct, commContextSize, 0);
