@@ -3,7 +3,7 @@
 ## 产品支持情况
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>                        | ×  |
+|<term>Ascend 950PR/Ascend 950DT</term>                        | √  |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        | √  |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | √  |
 |<term>Atlas 200I/500 A2推理系列产品</term>                    | ×  |
@@ -11,7 +11,7 @@
 |<term>Atlas 训练系列产品</term>                                | ×  |
 
 ## 功能说明
-- 算子功能：`SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
+- 算子功能：`SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持C1A、C4A、C128A三类Attention计算场景。
 
 - 计算公式：
 
@@ -135,7 +135,7 @@
     <tr>
       <td>cmp_residual_kv</td>
       <td>可选输入</td>
-      <td>压缩KV余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度。该参数是主算子和metadata算子的可选入参；在CFA/SCFA、`cmp_ratio != 1`且`cmp_mask_mode = 3`场景必传，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BBND"`均可使用。</td>
+      <td>压缩KV余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度。该参数是主算子和metadata算子的可选入参；在C4A/C128A、`cmp_ratio != 1`且`cmp_mask_mode = 3`场景必传，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BBND"`均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -177,7 +177,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对`ori_kv`的压缩率。A2/A3支持1、4、128，0为非法值；A5支持[1,128]。</td>
+      <td>表示对`ori_kv`的压缩率。资料支持范围为1、4、128，0为非法值；C1A传1，C4A传4，C128A传128。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -250,16 +250,16 @@
 ## 约束说明
 - 该接口支持推理场景下使用。
 - 该接口支持aclgraph模式。
-- 该接口当前支持三种计算场景：场景一，仅传入`ori_kv`时为Sliding Window Attention计算；场景二，传入`ori_kv`及`cmp_kv`时为Sliding Window Attention + Compressed Attention计算；场景三，传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`时为Sliding Window Attention + Sparse Compressed Attention计算。
+- 该接口当前支持三种计算场景：C1A场景仅传入`ori_kv`，执行Sliding Window Attention计算；C4A场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`，执行Sliding Window Attention + TopK稀疏压缩KV计算；C128A场景传入`ori_kv`及`cmp_kv`，执行Sliding Window Attention + 稠密压缩KV计算。
 
 - 当`layout_q`为TND时，功能使用限制如下：
-  - `q`的shape需要为[T1,N1,D]，其中N1取值范围为[1,128]。N1/N2在A2/A3上必须为[1,128]范围内的2的幂，在A5上支持[1,128]范围内任意整数。
+  - `q`的shape需要为[T1,N1,D]，其中N1/N2仅支持[1,128]范围内的2的幂；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1、2、4、8、16、32、64、128；<term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64、128，不支持1。
   - `ori_sparse_indices`当前暂不支持。
   - `cmp_sparse_indices`的shape需要为[Q\_T, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2支持512或1024。
   - `cu_seqlens_q`必须传入，输入维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须>=前一个元素的值。
 
 - 当`layout_q`为BSND时，功能使用限制如下：
-  - `q`的shape需要为[B, Q\_S, N1, D]，其中N1取值范围为[1,128]。N1/N2在A2/A3上必须为[1,128]范围内的2的幂，在A5上支持[1,128]范围内任意整数。
+  - `q`的shape需要为[B, Q\_S, N1, D]，其中N1/N2仅支持[1,128]范围内的2的幂；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1、2、4、8、16、32、64、128；<term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64、128，不支持1。
   - `ori_sparse_indices`当前暂不支持。
   - `cmp_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2支持512或1024。
 
@@ -274,6 +274,7 @@
 - `return_softmax_lse`为False时返回占位Tensor；为True时返回softmax的log-sum-exp结果。
 - 目前暂不支持指定`q`中参与运算的token数，因此设置`seqused_q`无效。
 - 目前暂不支持对`ori_kv`进行稀疏计算，因此设置`ori_sparse_indices`无效。
+- 资料支持范围内，`ori_topk_length`和`cmp_topk_length`为预留输入，<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>与<term>Ascend 950PR/Ascend 950DT</term>均不支持传入非空Tensor；未传或空Tensor保持旧语义。
 - 目前所有输入不支持传入空tensor。
 - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度；未传时由`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA block table相关语义推导。
 - `cmp_residual_kv`为主算子和metadata算子的可选入参；传入后用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度，其中`cmp_len`优先来自显式传入的`seqused_cmp_kv`。
@@ -284,5 +285,5 @@
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnnSparseFlashMla](./examples/test_aclnn_sparse_flash_mla.cpp) | 通过[aclnnSparseFlashMla](./docs/aclnnSparseFlashMla.md)调用SparseFlashMla算子 |
-| torch_npu扩展接口 | [sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla`调用SparseFlashMla算子 |
+| aclnn API | [test_aclnnSparseFlashMla](./examples/test_aclnn_sparse_flash_mla.cpp) | 通过[aclnnSparseFlashMla](./docs/aclnnSparseFlashMla.md)调用SparseFlashMla算子 |
+| PyTorch API | [sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla`调用SparseFlashMla算子 |
