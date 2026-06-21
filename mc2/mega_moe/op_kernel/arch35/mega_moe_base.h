@@ -166,25 +166,23 @@ __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp
 }
 
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
-inline uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
-inline uint64_t urmacclBuffer_[HCCL_MAX_RANK_SIZE];
 __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset)
 {
     return (GM_ADDR)(winRankAddr_[rankId] + offset);
 }
 
 
-__aicore__ inline uint64_t GetUrmaCommHandle(uint32_t rankId, uint32_t epRankId)
+__aicore__ inline uint64_t GetUrmaCommHandle(__gm__ Mc2MoeContext* mc2Context_, uint32_t rankId, uint32_t epRankId)
 {
     uint32_t index = rankId > epRankId ? rankId - 1 : rankId;
-    return hcommHandle_[index];
+    return mc2Context_->hcommHandle_[index];
 }
  	 
 // 获取指定 rank 的 urma 通信数据区地址（在远程 rank 通信窗口基址 + offset）。
 // offset 由调用方根据具体数据布局计算（如 maskWinOffset_ / quantWinOffset_ 等）。
-__aicore__ inline GM_ADDR GetUrmaAddrByRankId(uint32_t rankId)
+__aicore__ inline GM_ADDR GetUrmaAddrByRankId(__gm__ Mc2MoeContext* mc2Context_, uint32_t rankId)
 {
-    return (GM_ADDR)urmacclBuffer_[rankId];
+    return (GM_ADDR)mc2Context_->urmacclBuffer_[rankId];
 }
 
 __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)

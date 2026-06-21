@@ -188,10 +188,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
-        urmacclBuffer_[i] = mc2Context_->urmacclBuffer_[i];
-        if(i != worldSize_ - 1) {
-            hcommHandle_[i] = mc2Context_->hcommHandle_[i];
-        }
     }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
@@ -478,17 +474,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
             if (curRankId == rankId_) {
                 dstGlobalTensor.SetGlobalBuffer(
-                    (__gm__ uint8_t*)(GetUrmaAddrByRankId(curRankId) + dstOffset));
+                    (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset));
             }
             DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
             PipeBarrier<PIPE_ALL>(); //todo:后续优化
             if (curRankId != rankId_) {
-                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(curRankId) + dstOffset;
+                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset;
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 GM_ADDR remoteNotifyAddr = ;//todo
-                hcomm_.WriteNbi(GetUrmaCommHandle(curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
-                hcomm_.Drain(GetUrmaCommHandle(curRankId, rankId_)); // todo:后续优化
+                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
+                hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_)); // todo:后续优化
             }
         }
     }
@@ -576,7 +572,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
     // Phase 1: 从本卡 win 读本 localExpert 的全部 worldSize_ 个 [mask|count] 槽位
 
     GlobalTensor<uint8_t> maskSrcGlobal;
-    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(rankId_) +
+    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) +
         static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_));
     DataCopy(gatherMaskTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();   // count 读取(标量)就绪
