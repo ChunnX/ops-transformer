@@ -25,12 +25,17 @@ namespace l0op {
  * @param [in] cuSeqLensCmpKvOptional: Prefix-sum of valid cmpKv token counts per batch, shape is (B+1,), dtype is INT32
  * @param [in] sequsedQOptional: Actual q token counts per batch, shape is (B,), dtype is INT32
  * @param [in] sequsedOriKvOptional: Actual oriKv token counts per batch, shape is (B,), dtype is INT32
+ * @param [in] sequsedCmpKvOptional: Actual cmpKv token counts per batch, shape is (B,), dtype is INT32
+ * @param [in] cmpResidualKvOptional: Residual length for reconstructing original cmp-side mask length, dtype is INT32
+ * @param [in] oriTopkLengthOptional: Reserved input, must be empty in current version
+ * @param [in] cmpTopkLengthOptional: Reserved input, must be empty in current version
  * @param [in] numHeadsQ: Number of query heads (N1)
  * @param [in] numHeadsKv: Number of kv heads (N2)
  * @param [in] headDim: Head dimension (D)
  * @param [in] batchSize: Batch size (B), 0 means inferred from cuSeqLensQ when layoutQ is TND
  * @param [in] maxSeqlenQ: Maximum valid q sequence length across batches
- * @param [in] maxSeqlenKv: Maximum valid oriKv sequence length across batches
+ * @param [in] maxSeqlenOriKv: Maximum valid oriKv sequence length across batches
+ * @param [in] maxSeqlenCmpKv: Maximum valid cmpKv sequence length across batches
  * @param [in] oriTopK: Sparse token count selected from oriKv
  * @param [in] cmpTopK: Sparse token count selected from cmpKv
  * @param [in] cmpRatio: Compression ratio of oriKv
@@ -39,7 +44,7 @@ namespace l0op {
  * @param [in] oriWinLeft: Sliding-window left extension token count
  * @param [in] oriWinRight: Sliding-window right extension token count
  * @param [in] layoutQOptional: Layout string of q, e.g. "BSND" or "TND"
- * @param [in] layoutKvOptional: Layout string of kv, e.g. "PA_BNBD", "BSND" or "TND"
+ * @param [in] layoutKvOptional: Layout string of kv, e.g. "PA_BBND", "BSND" or "TND"
  * @param [in] hasOriKv: Whether oriKv is provided
  * @param [in] hasCmpKv: Whether cmpKv is provided
  * @param [in] socVersion: SoC version string for core capability query
@@ -52,10 +57,13 @@ namespace l0op {
 const aclTensor* SparseFlashMlaMetadata(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional,
     const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedOriKvOptional,
-    int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-    int64_t oriTopK, int64_t cmpTopK, int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft,
-    int64_t oriWinRight, char *layoutQOptional, char *layoutKvOptional, bool hasOriKv, bool hasCmpKv,
-    const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor* metadata, aclOpExecutor* executor);
+    const aclTensor* sequsedCmpKvOptional, const aclTensor* cmpResidualKvOptional,
+    const aclTensor* oriTopkLengthOptional, const aclTensor* cmpTopkLengthOptional, int64_t numHeadsQ,
+    int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenOriKv,
+    int64_t maxSeqlenCmpKv, int64_t oriTopK, int64_t cmpTopK, int64_t cmpRatio, int64_t oriMaskMode,
+    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, char *layoutQOptional, char *layoutKvOptional,
+    bool hasOriKv, bool hasCmpKv, const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
+    const aclTensor* metadata, aclOpExecutor* executor);
 } // namespace l0op
 
 #endif

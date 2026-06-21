@@ -43,6 +43,10 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     actSeqLenCmpKv_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenCmpKv));
     seqUsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
     seqUsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedKv));
+    seqUsedCmpKv_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedCmpKv));
+    cmpResidualKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpResidualKv));
+    oriTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::oriTopkLength));
+    cmpTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpTopkLength));
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
 
@@ -59,7 +63,8 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "aiv_core_num", aivCoreNum_);
     GetAttrValueOpt(ctx, "batch_size", batchSize_);
     GetAttrValueOpt(ctx, "max_seqlen_q", querySeqSize_);
-    GetAttrValueOpt(ctx, "max_seqlen_kv", kvSeqSize_);
+    GetAttrValueOpt(ctx, "max_seqlen_ori_kv", kvSeqSize_);
+    GetAttrValueOpt(ctx, "max_seqlen_cmp_kv", cmpKvSeqSize_);
     GetAttrValueOpt(ctx, "ori_topk", oriTopK_);
     GetAttrValueOpt(ctx, "cmp_topk", cmpTopK_);
     GetAttrValueOpt(ctx, "cmp_ratio", cmpRatio_);
@@ -167,6 +172,36 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
     }
     // 3. 如果不是 TND，或者 actSeqLenOriKv_ 为空，使用 kvSeqSize_
     return static_cast<uint32_t>(kvSeqSize_);
+}
+
+uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bIdx)
+{
+    if (!hasCmpKv_) {
+        return 0;
+    }
+    if (seqUsedCmpKv_ != nullptr && seqUsedCmpKv_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedCmpKv_->GetData());
+        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
+    }
+    if (layoutKv_ == "TND") {
+        if (actSeqLenCmpKv_ != nullptr && actSeqLenCmpKv_->GetData() != nullptr) {
+            const int32_t *s2Ptr = static_cast<const int32_t*>(actSeqLenCmpKv_->GetData());
+            return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
+        }
+    }
+    return static_cast<uint32_t>(cmpKvSeqSize_);
+}
+
+uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpOriginS2SeqSize(uint32_t bIdx)
+{
+    uint32_t cmpS2Size = GetCmpS2SeqSize(bIdx);
+    int32_t cmpResidual = 0;
+    if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
+        const int32_t *cmpResidualPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
+        cmpResidual = cmpResidualPtr[bIdx];
+    }
+    int64_t originS2Size = static_cast<int64_t>(cmpS2Size) * cmpRatio_ + cmpResidual;
+    return originS2Size <= 0 ? 0U : static_cast<uint32_t>(originS2Size);
 }
 
 uint32_t SparseFlashMlaMetadataCpuKernel::GetS1ValidSeqSize(uint32_t bIdx)
@@ -405,7 +440,18 @@ void SparseFlashMlaMetadataCpuKernel::CalcBlockRangeAndTailSize(Range<int64_t> &
     // cmp部分s2起止和tailSize
     s1GCache.cmpS2Start = s1GCache.winS2End;
     // 计算CmpS2LastToken的长度
-    uint32_t cmpS2LastTokenSize = hasCmpKv_ ? (oriS2LastToken + 1) / cmpRatio_ : 0;
+    uint32_t cmpS2LastTokenSize = 0;
+    if (hasCmpKv_) {
+        if (cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK)) {
+            cmpS2LastTokenSize = GetCmpS2SeqSize(batchCache.bIdx);
+        } else {
+            int64_t cmpOriginS2LastToken = oriS2LastToken +
+                static_cast<int64_t>(GetCmpOriginS2SeqSize(batchCache.bIdx)) -
+                static_cast<int64_t>(batchCache.s2Size);
+            cmpS2LastTokenSize = (cmpOriginS2LastToken < 0) ? 0U :
+                static_cast<uint32_t>((cmpOriginS2LastToken + 1) / cmpRatio_);
+        }
+    }
     uint32_t actCmpS2LastTokenSize = 0;
     if (isCFA) {
         actCmpS2LastTokenSize = cmpS2LastTokenSize;
@@ -413,6 +459,7 @@ void SparseFlashMlaMetadataCpuKernel::CalcBlockRangeAndTailSize(Range<int64_t> &
         // CmpS2LastToken与topk取最小
         actCmpS2LastTokenSize = std::min(cmpS2LastTokenSize,  static_cast<uint32_t>(cmpTopK_));
     }
+    actCmpS2LastTokenSize = std::min(actCmpS2LastTokenSize, GetCmpS2SeqSize(batchCache.bIdx));
     // 将token长度转化为token索引，然后由token索引计算s2索引
     s1GCache.cmpS2End = (actCmpS2LastTokenSize == 0) ? s1GCache.cmpS2Start : s1GCache.cmpS2Start +
                         (actCmpS2LastTokenSize - 1) / s2BaseSize_ + 1U;
@@ -981,4 +1028,3 @@ namespace {
 }
 
 }; // namespace aicpu
-

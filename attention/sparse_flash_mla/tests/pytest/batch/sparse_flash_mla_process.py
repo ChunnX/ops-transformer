@@ -72,7 +72,13 @@ def call_npu(input_data):
     layout_q = tensor_input['layout_q'] if type(tensor_input['layout_q']) == type('TND') else tensor_input['layout_q'][0]
     layout_kv = tensor_input['layout_kv']
     max_seqlen_q = metadata_input['max_seqlen_q']
-    ori_max_s2 = metadata_input['max_seqlen_kv']
+    ori_max_s2 = metadata_input.get('max_seqlen_ori_kv', metadata_input.get('max_seqlen_kv', 0))
+    if 'max_seqlen_cmp_kv' in metadata_input:
+        cmp_max_s2 = metadata_input['max_seqlen_cmp_kv']
+    elif cmp_kv is not None:
+        cmp_max_s2 = cmp_kv.shape[0] if layout_kv == 'TND' else cmp_kv.shape[1]
+    else:
+        cmp_max_s2 = 0
     ori_sparse_indices = tensor_input['ori_sparse_indices']
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
     cmp_block_table = tensor_input['cmp_block_table']
@@ -105,8 +111,8 @@ def call_npu(input_data):
         cmp_topk_length=cmp_topk_length,
         batch_size=B,
         max_seqlen_q=max_seqlen_q,
-        # max_seqlen_ori_kv=max_seqlen_ori_kv,
-        # max_seqlen_cmp_kv=max_seqlen_cmp_kv,
+        max_seqlen_ori_kv=ori_max_s2,
+        max_seqlen_cmp_kv=cmp_max_s2,
         # ori_topk=K,
         cmp_topk=K,
         cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
