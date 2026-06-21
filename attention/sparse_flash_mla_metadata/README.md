@@ -3,7 +3,7 @@
 ## 产品支持情况
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>                        | ×  |
+|<term>Ascend 950PR/Ascend 950DT</term>                        | √  |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        | √  |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | √  |
 |<term>Atlas 200I/500 A2推理系列产品</term>                    | ×  |
@@ -157,7 +157,7 @@
     <tr>
       <td>cmp_topk</td>
       <td>可选属性</td>
-      <td>表示通过QLI算法从`cmp_kv`中筛选出的关键稀疏token的个数，SCFA模式支持512或1024，CFA/SWA模式传0。</td>
+      <td>表示通过QLI算法从`cmp_kv`中筛选出的关键稀疏token的个数，C4A场景支持512或1024，C1A/C128A场景传0。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -250,5 +250,5 @@
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnnSparseFlashMlaMetadata](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md)调用SparseFlashMlaMetadata算子 |
-| torch_npu扩展接口 | [sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla_metadata`生成SparseFlashMla主算子使用的metadata |
+| aclnn API | [test_aclnnSparseFlashMlaMetadata](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md)调用SparseFlashMlaMetadata算子 |
+| PyTorch API | [sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla_metadata`生成SparseFlashMla主算子使用的metadata |

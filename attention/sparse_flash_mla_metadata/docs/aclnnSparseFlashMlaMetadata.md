@@ -4,7 +4,7 @@
 
 | 产品                                                     | 是否支持 |
 | :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    ×    |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
@@ -196,7 +196,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpResidualKv（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于按cmp_len * cmpRatio + residual恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>在CFA/SCFA、cmpRatio不等于1且cmpMaskMode为3场景必传，layoutKv为BSND、TND、PA_BBND时均可使用。</td>
+      <td>在C4A/C128A、cmpRatio不等于1且cmpMaskMode为3场景必传，layoutKv为BSND、TND、PA_BBND时均可使用。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -226,7 +226,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>Query的多头数。</td>
-      <td>取值范围为[1,128]。numHeadsQ / numHeadsKv在A2/A3上必须为[1,128]范围内的2的幂，在A5上支持[1,128]范围内任意整数。</td>
+      <td>取值范围为[1,128]，numHeadsQ / numHeadsKv取值范围为[1,128]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -306,7 +306,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpTopk（int64_t）</td>
       <td>输入</td>
       <td>从cmpKv中筛选的稀疏token个数。</td>
-      <td>SCFA模式下仅支持512或1024，CFA/SWA模式下为0。</td>
+      <td>C4A场景下仅支持512或1024，C1A/C128A场景下为0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -316,7 +316,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>对oriKv的压缩率。</td>
-      <td>A2/A3支持1、4、128，0为非法值；A5支持[1,128]。</td>
+      <td>支持[1,128]，0为非法值。C1A场景下建议传1，C4A/C128A场景下用于表示oriKv到cmpKv的压缩率。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -396,7 +396,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>hasCmpKv（bool）</td>
       <td>输入</td>
       <td>是否传入cmpKv。</td>
-      <td>SWA模式为false，CFA/SCFA模式为true。默认值为true。</td>
+      <td>C1A场景为false，C4A/C128A场景为true。默认值为true。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -435,6 +435,10 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   </tbody>
   </table>
 
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - `numHeadsQ / numHeadsKv`仅支持[1,128]范围内的2的幂。
+    - `cmpRatio`仅支持1、4、128。
+
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -455,31 +459,43 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   </thead>
   <tbody>
     <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
+      <td>ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
+      <td>561101</td>
+      <td>创建aclOpExecutor失败。</td>
     </tr>
     <tr>
-      <td rowspan="5">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="5">161002</td>
-      <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
+      <td>ACLNN_ERR_INNER_NULLPTR</td>
+      <td>561103</td>
+      <td>workspaceSize或executor为空指针；可选输入做连续化处理后为空指针；或添加SparseFlashMlaMetadata AICPU任务失败。</td>
     </tr>
     <tr>
-      <td>numHeadsKv不为1。</td>
+      <td rowspan="9">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="9">161002</td>
+      <td>batchSize或maxSeqlenQ为负数。</td>
     </tr>
     <tr>
-      <td>oriMaskMode不在支持范围内，或cmpMaskMode不为0/3。</td>
+      <td>numHeadsQ不在[1,128]范围内，numHeadsKv不为1，numHeadsQ不能被numHeadsKv整除，或numHeadsQ/numHeadsKv不在[1,128]范围内。</td>
     </tr>
     <tr>
-      <td>oriWinLeft不为127。</td>
+      <td>A2/A3场景下numHeadsQ/numHeadsKv不是[1,128]范围内的2的幂。</td>
+    </tr>
+    <tr>
+      <td>headDim不为512。</td>
+    </tr>
+    <tr>
+      <td>oriMaskMode不在支持范围内，或cmpMaskMode不在支持范围内。</td>
+    </tr>
+    <tr>
+      <td>oriWinLeft或oriWinRight不在支持范围内。</td>
     </tr>
     <tr>
       <td>A2/A3场景下cmpRatio不为1、4或128，或A5场景下cmpRatio不在[1,128]范围内。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_RUNTIME_ERROR</td>
-      <td>361001</td>
-      <td>调用NPU Runtime接口申请内存/创建Tensor失败。</td>
+      <td>cmpTopk不为0、512或1024。</td>
+    </tr>
+    <tr>
+      <td>layoutQ、layoutKv、cuSeqLens、sequence used或metadata的shape、数据类型、必选关系不在支持范围内。</td>
     </tr>
   </tbody>
   </table>
@@ -537,21 +553,25 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
 
   | 规格项        | 规格           | 规格说明                                    |
   | :------------ | :------------- | :------------------------------------------ |
-  | numHeadsQ   | 1到128          | Query头数。numHeadsQ / numHeadsKv在A2/A3上必须为2的幂，在A5上支持[1,128]范围内任意整数。 |
+  | numHeadsQ   | 1到128          | Query头数，numHeadsQ / numHeadsKv取值范围为[1,128]。 |
   | numHeadsKv  | 1              | KV头数仅支持1。                              |
   | headDim      | 512            | 每个注意力头的维度仅支持512。                 |
-  | cmpRatio     | A2/A3：1 / 4 / 128；A5：[1,128] | 0为非法值；A2/A3仅支持1、4、128，A5支持1到128的连续取值。 |
+  | cmpRatio     | 1到128 | 0为非法值。 |
   | oriMaskMode | 4              | 原始KV掩码模式仅支持4（Band模式）。            |
   | cmpMaskMode | 0 / 3          | 压缩KV掩码模式支持0（No mask）或3（RightDownCausal模式）。 |
   | oriWinLeft  | 127            | 滑动窗口向左扩展仅支持127。                    |
   | oriWinRight | 0              | 滑动窗口向右扩展仅支持0。                      |
+
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>补充约束：
+    - `numHeadsQ / numHeadsKv`仅支持[1,128]范围内的2的幂。
+    - `cmpRatio`仅支持1、4、128。
 
 - 使用约束
   - layoutQ为TND时，`cuSeqLensQ`必须传入。
   - layoutKv为PA_BBND时，`seqUsedOriKv`必须传入。BSND场景可选传入`seqUsedOriKv`覆盖每个batch的oriKv有效长度；TND场景使用`cuSeqLensOriKv`表达oriKv序列边界。
   - layoutKv为TND时，`cuSeqLensOriKv`必须传入；若hasCmpKv为true，`cuSeqLensCmpKv`也必须传入。
   - `seqUsedCmpKv`为所有layoutKv下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
-  - `cmpResidualKv`为`aclnnSparseFlashMlaMetadata`和`aclnnSparseFlashMla`的可选输入，在CFA/SCFA、cmpRatio不等于1且cmpMaskMode为3场景必传，用于恢复cmp侧mask使用的压缩前长度。
+  - `cmpResidualKv`为`aclnnSparseFlashMlaMetadata`和`aclnnSparseFlashMla`的可选输入，在C4A/C128A、cmpRatio不等于1且cmpMaskMode为3场景必传，用于恢复cmp侧mask使用的压缩前长度。
   - 该算子为AICPU算子，在Host侧CPU上执行，不占用NPU计算资源。
 
 
