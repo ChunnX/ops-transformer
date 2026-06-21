@@ -385,6 +385,7 @@ public:
 
     uint64_t GetHcclBufferMaxSize()
     {
+        constexpr char HCCL_BUFFSIZE[] = "HCCL_BUFFSIZE";
         uint16_t defaultHcclBuffSize = 400;
         if (getenv(HCCL_BUFFSIZE) == nullptr) {
             ASCEND_LOGI("Env HCCL_BUFFSIZE don't set");
