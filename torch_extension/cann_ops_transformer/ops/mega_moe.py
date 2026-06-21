@@ -216,8 +216,6 @@ def mega_moe(
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
 ):
-
-    print("megaMoe   2")
     return torch.ops.cann_ops_transformer.npu_mega_moe(
         sym_buffer.context,
         x,

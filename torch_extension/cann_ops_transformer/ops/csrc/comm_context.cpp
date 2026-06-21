@@ -17,6 +17,7 @@
 #include <torch/extension.h>
 #include <acl/acl_rt.h>
 #include "hccl_common.h"
+#include <iostream>
 
 namespace op_api {
 
@@ -370,6 +371,7 @@ public:
 
             if (i == rankId) {
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
+                std::cout<<"hccl tempBuffer "<<tempBuffer<<std::endl;
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
                 hcclRet = HcclChannelGetHcclBufferFunc(commHandle, channels[idx], &tempBuffer, &bufSize);
@@ -413,6 +415,7 @@ public:
 
             if (i == rankId) {
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &bufSize);
+                std::cout<<"urma tempBuffer "<<tempBuffer<<std::endl;
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
                 hcclRet = HcclChannelGetHcclBufferFunc(commHandle,commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
@@ -450,7 +453,7 @@ public:
         GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
 
         // 获取URMA(UBC_CTP)协议的通信资源，存入hcommHandle_和urmacclBuffer_
-        //GetUrmaCommResource(commHandle, engine, commContextStruct, rankSize);
+        GetUrmaCommResource(commHandle, engine, commContextStruct, rankSize);
 
         hcclRet =
             HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), commContextStruct, commContextSize, 0);
