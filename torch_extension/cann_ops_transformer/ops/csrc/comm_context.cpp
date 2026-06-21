@@ -17,7 +17,6 @@
 #include <torch/extension.h>
 #include <acl/acl_rt.h>
 #include "hccl_common.h"
-#include <iostream>
 
 namespace op_api {
 
@@ -223,7 +222,7 @@ public:
         GetOrCreateContext(hcclHandle, mc2ContextTag, engine, protocol,
                            ctx, hcclBuffSize, commContextStruct);
 
-        cclBufferSize = hcclBuffSize;
+        cclBufferSize = hcclBuffSize / 2;
     }
 
     void GetCommProtocol(const HcclComm &commHandle, CommProtocol &protocol)
@@ -371,7 +370,6 @@ public:
 
             if (i == rankId) {
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
-                std::cout<<"hccl tempBuffer "<<tempBuffer<<std::endl;
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
                 hcclRet = HcclChannelGetHcclBufferFunc(commHandle, channels[idx], &tempBuffer, &bufSize);
@@ -384,10 +382,26 @@ public:
         }
         ASCEND_LOGI("Get HCCL CommResource success");
     }
-    void AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &mc2ContextTag,
-                                    uint32_t rankId, void* &devicePtr)
+
+    uint64_t GetHcclBufferMaxSize()
     {
-        
+        uint16_t defaultHcclBuffSize = 400;
+        if (getenv(HCCL_BUFFSIZE) == nullptr) {
+            ASCEND_LOGI("Env HCCL_BUFFSIZE don't set");
+        } else {
+            try {
+                std::string envStr(getenv(HCCL_BUFFSIZE));
+                defaultHcclBuffSize = std::stoi(envStr);
+                ASCEND_LOGI("Get HCCL_BUFFSIZE is %d", defaultHcclBuffSize);
+            } catch (...) {
+                ASCEND_LOGI("Get HCCL_BUFFSIZE failed");
+                defaultHcclBuffSize = 400;
+            }
+        }
+        const uint64_t maxWindowSize =
+            static_cast<uint64_t>(defaultHcclBuffSize) * 1024UL * 1024UL / 2;
+        ASCEND_LOGI("Get maxWindowSize is %lu", maxWindowSize);
+        return maxWindowSize;
     }
 
     // ---- URMA (UBC_CTP) resource helpers ----
@@ -408,14 +422,13 @@ public:
             commContextStruct->hcommHandle_);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire URMA HCCL channel failed, ret: ", hcclRet);
         ASCEND_LOGI("Acquire URMA HCCL channel success, channel num is: %u", channelNum);
-
+        uint64_t maxWindowSize = GetHcclBufferMaxSize();
         for (uint32_t i = 0; i < rankSize; ++i) {
             void *tempBuffer = nullptr;
             uint64_t bufSize = 0;
 
             if (i == rankId) {
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &bufSize);
-                std::cout<<"urma tempBuffer "<<tempBuffer<<std::endl;
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
                 hcclRet = HcclChannelGetHcclBufferFunc(commHandle,commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
@@ -424,7 +437,7 @@ public:
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get URMA HCCL buffer failed, src: ", rankId, ", dst: ", i,
                         ", ret: ", hcclRet);
 
-            commContextStruct->urmacclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
+            commContextStruct->urmacclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer + maxWindowSize);
         }
         ASCEND_LOGI("Get URMA CommResource success");
     }
@@ -481,6 +494,9 @@ public:
     {
         void *tempBuffer = nullptr;
         auto hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
+        if (hcclRet == HCCL_SUCCESS) {
+            hcclBuffSize /= 2;
+        }
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Buffer Size failed, ret: ", hcclRet);
     }
 
