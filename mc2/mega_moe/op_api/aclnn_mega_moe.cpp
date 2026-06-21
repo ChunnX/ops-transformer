@@ -128,13 +128,13 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
             weight2 = ConvertTensorListToInt4(weight2, *executor);
         }
     }
-
+    //暂时is_cross_server参数使用FALSE参数，后续根据需求调整
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
         xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
-        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, yOut, expertTokenNumsOut,
+        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, false, yOut, expertTokenNumsOut,
         workspaceSize, executor);
 
     return getWorkspaceSizesRes;
