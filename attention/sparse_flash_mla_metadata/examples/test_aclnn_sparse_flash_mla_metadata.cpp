@@ -10,7 +10,7 @@
 
 /*!
  * \file test_aclnn_sparse_flash_mla_metadata.cpp
- * \brief SparseFlashMlaMetadata 算子调用示例（SCFA / layout_q=TND, layout_kv=PA_BNBD）
+ * \brief SparseFlashMlaMetadata 算子调用示例（SCFA / layout_q=TND, layout_kv=PA_BBND）
  */
 
 #include <iostream>
@@ -108,16 +108,18 @@ int main()
   int64_t K = 512;
   int64_t s2Act = 4096;
   int64_t cmpRatio = 4;
+  int64_t cmpKvLen = s2Act / cmpRatio;
   int64_t oriMaskMode = 4;
   int64_t cmpMaskMode = 3;
   int64_t oriWinLeft = 127;
   int64_t oriWinRight = 0;
-  
+
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> cuSeqLensQShape = {B + 1};
   std::vector<int64_t> seqUsedOriKvShape = {B};
+  std::vector<int64_t> cmpResidualKvShape = {B};
   std::vector<int64_t> metadataShape = {optiling::SMLA_META_SIZE};
-  // 对全部 5 个输入调用 Contiguous，optional 输入传 shape 为 {0} 的空 tensor。
+  // 对全部 optional 输入调用 Contiguous，optional 输入传 shape 为 {0} 的空 tensor。
   std::vector<int64_t> emptyShape = {0};
   std::vector<int64_t> seqUsedQShape = emptyShape;
 
@@ -126,6 +128,10 @@ int main()
   void* cuSeqLensCmpKvDeviceAddr = nullptr;
   void* seqUsedQDeviceAddr = nullptr;
   void* seqUsedOriKvDeviceAddr = nullptr;
+  void* seqUsedCmpKvDeviceAddr = nullptr;
+  void* cmpResidualKvDeviceAddr = nullptr;
+  void* oriTopkLengthDeviceAddr = nullptr;
+  void* cmpTopkLengthDeviceAddr = nullptr;
   void* metadataDeviceAddr = nullptr;
 
   aclTensor* cuSeqLensQ = nullptr;
@@ -133,6 +139,10 @@ int main()
   aclTensor* cuSeqLensCmpKv = nullptr;
   aclTensor* seqUsedQ = nullptr;
   aclTensor* seqUsedOriKv = nullptr;
+  aclTensor* seqUsedCmpKv = nullptr;
+  aclTensor* cmpResidualKv = nullptr;
+  aclTensor* oriTopkLength = nullptr;
+  aclTensor* cmpTopkLength = nullptr;
   aclTensor* metadata = nullptr;
 
   std::vector<int32_t> cuSeqLensQHostData(B + 1);
@@ -141,6 +151,7 @@ int main()
   }
   std::vector<int32_t> emptyHostData;
   std::vector<int32_t> seqUsedOriKvHostData(B, static_cast<int32_t>(s2Act));
+  std::vector<int32_t> cmpResidualKvHostData(B, 0);
   std::vector<int32_t> metadataHostData(optiling::SMLA_META_SIZE, 0);
 
   ret = CreateAclTensor(cuSeqLensQHostData, cuSeqLensQShape, &cuSeqLensQDeviceAddr, aclDataType::ACL_INT32, &cuSeqLensQ);
@@ -153,20 +164,29 @@ int main()
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(seqUsedOriKvHostData, seqUsedOriKvShape, &seqUsedOriKvDeviceAddr, aclDataType::ACL_INT32, &seqUsedOriKv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(emptyHostData, emptyShape, &seqUsedCmpKvDeviceAddr, aclDataType::ACL_INT32, &seqUsedCmpKv);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(cmpResidualKvHostData, cmpResidualKvShape, &cmpResidualKvDeviceAddr, aclDataType::ACL_INT32, &cmpResidualKv);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(emptyHostData, emptyShape, &oriTopkLengthDeviceAddr, aclDataType::ACL_INT32, &oriTopkLength);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(emptyHostData, emptyShape, &cmpTopkLengthDeviceAddr, aclDataType::ACL_INT32, &cmpTopkLength);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadata);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   char layoutQ[] = "TND";
-  char layoutKv[] = "PA_BNBD";
+  char layoutKv[] = "PA_BBND";
 
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
-  
+
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
       cuSeqLensQ, cuSeqLensOriKv, cuSeqLensCmpKv,
-      seqUsedQ, seqUsedOriKv,
-      N1, N2, D, B, S1, S2,
+      seqUsedQ, seqUsedOriKv, seqUsedCmpKv,
+      cmpResidualKv, oriTopkLength, cmpTopkLength,
+      N1, N2, D, B, S1, S2, cmpKvLen,
       0, K, cmpRatio,
       oriMaskMode, cmpMaskMode,
       oriWinLeft, oriWinRight,
@@ -193,7 +213,7 @@ int main()
   optiling::detail::SasMetadata result {};
   ret = aclrtMemcpy(&result, sizeof(result), metadataDeviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy metadata result failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5.获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintMetadataSummary(result);
   CHECK_RET(result.faMetadata[0][optiling::FA_CORE_ENABLE_INDEX] == 1U,

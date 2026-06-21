@@ -976,6 +976,8 @@ def gen_data(params, template_mode=None):
             'B': B,
             'max_seqlen_q': max_seqlen_q,
             'max_seqlen_kv': max(seqused_ori_kv) if seqused_ori_kv is not None else (T2 if layout_kv == "TND" else S2),
+            'max_seqlen_ori_kv': max(seqused_ori_kv) if seqused_ori_kv is not None else (T2 if layout_kv == "TND" else S2),
+            'max_seqlen_cmp_kv': max(seqused_cmp_kv) if seqused_cmp_kv is not None else (T3 if layout_kv == "TND" else S2 // cmp_ratio),
             'K': K,
             'cmp_ratio': cmp_ratio,
             'ori_mask_mode': ori_mask_mode,
