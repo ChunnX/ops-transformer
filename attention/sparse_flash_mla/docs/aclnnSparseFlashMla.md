@@ -4,7 +4,7 @@
 
 | 产品                                                     | 是否支持 |
 | :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    ×    |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
@@ -364,7 +364,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>对oriKv的压缩率。</td>
-      <td>A2/A3支持1、4、128，0为非法值；A5支持[1,128]。</td>
+      <td>支持[1,128]，0为非法值。SWA模式下建议传1，CFA/SCFA模式下用于表示oriKv到cmpKv的压缩率。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -444,7 +444,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>returnSoftmaxLse（bool）</td>
       <td>输入</td>
       <td>是否返回softmaxLse。</td>
-      <td>当前仅支持False。</td>
+      <td>支持true或false，默认值为false。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -467,7 +467,13 @@ aclnnStatus aclnnSparseFlashMla(
       <td>returnSoftmaxLse为false时返回占位Tensor；returnSoftmaxLse为true时返回softmax的log-sum-exp结果。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>与q的shape一致（最后一维为1）</td>
+      <td>
+        <ul>
+          <li>layoutQ为BSND时：(B, N2, S1, N1/N2)</li>
+          <li>layoutQ为TND时：(N2, T1, N1/N2)</li>
+          <li>returnSoftmaxLse为false时：占位Tensor</li>
+        </ul>
+      </td>
       <td>×</td>
     </tr>
     <tr>
@@ -492,6 +498,10 @@ aclnnStatus aclnnSparseFlashMla(
     </tr>
   </tbody>
   </table>
+
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - `N1/N2`仅支持[1,128]范围内的2的幂。
+    - `cmpRatio`仅支持1、4、128。
 
 - **返回值**
 
@@ -518,15 +528,15 @@ aclnnStatus aclnnSparseFlashMla(
       <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
     </tr>
     <tr>
-      <td rowspan="5">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="5">161002</td>
+      <td rowspan="7">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="7">161002</td>
       <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>N1不在[1,128]范围内；或A2/A3场景下N1/N2不是[1,128]范围内的2的幂；或A5场景下N1/N2不在[1,128]范围内。</td>
+      <td>N1不在[1,128]范围内，或N2不为1，或N1不能被N2整除，或N1/N2不在[1,128]范围内。</td>
     </tr>
     <tr>
-      <td>N2不为1。</td>
+      <td>A2/A3场景下N1/N2不是[1,128]范围内的2的幂。</td>
     </tr>
     <tr>
       <td>D不为512。</td>
@@ -535,9 +545,10 @@ aclnnStatus aclnnSparseFlashMla(
       <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_RUNTIME_ERROR</td>
-      <td>361001</td>
-      <td>调用NPU Runtime接口申请内存/创建Tensor失败。</td>
+      <td>A2/A3场景下cmpRatio不为1、4或128，或A5场景下cmpRatio不在[1,128]范围内。</td>
+    </tr>
+    <tr>
+      <td>layoutQ、layoutKv、topkValueMode、oriWinLeft、oriWinRight、cmpSparseIndices、metadata、sinks、cuSeqLens或sequence used相关参数规格不在支持范围内。</td>
     </tr>
   </tbody>
   </table>
@@ -595,16 +606,20 @@ aclnnStatus aclnnSparseFlashMla(
 
   | 规格项        | 规格         | 规格说明                                           |
   | :------------ | :----------- | :------------------------------------------------- |
-  | N1            | 1到128           | Query头数。N1/N2在A2/A3上必须为2的幂，在A5上支持[1,128]范围内任意整数。 |
+  | N1            | 1到128           | Query头数，N1/N2取值范围为[1,128]。 |
   | N2            | 1            | KV头数仅支持1（共享KV + GQA）。                     |
   | D             | 512          | 每个注意力头的维度仅支持512。                        |
-  | cmpRatio     | A2/A3：1 / 4 / 128；A5：[1,128] | 0为非法值；A2/A3仅支持1、4、128，A5支持1到128的连续取值。 |
+  | cmpRatio     | 1到128 | 0为非法值。 |
   | oriMaskMode | 4            | 原始KV掩码模式仅支持4（Band模式）。                   |
   | cmpMaskMode | 3            | 压缩KV掩码模式仅支持3（RightDownCausal模式）。        |
   | oriWinLeft  | 127          | 滑动窗口向左扩展仅支持127。                           |
   | oriWinRight | 0            | 滑动窗口向右扩展仅支持0。                             |
   | block_size    | 16的倍数，≤1024 | PageAttention的block_size取值范围。               |
   | layout组合    | -           | Q支持BSND/TND；KV支持BSND/TND/PA_BBND。        |
+
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>补充约束：
+    - `N1/N2`仅支持[1,128]范围内的2的幂。
+    - `cmpRatio`仅支持1、4、128。
 
 - 使用约束
 
