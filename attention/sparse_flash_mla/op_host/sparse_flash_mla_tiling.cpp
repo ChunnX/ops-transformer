@@ -46,6 +46,19 @@ static bool IsPowerOfTwoInRange(uint32_t value, uint32_t minValue, uint32_t maxV
     return value >= minValue && value <= maxValue && (value & (value - 1U)) == 0U;
 }
 
+static bool IsA5Arch(NpuArch npuArch)
+{
+    return npuArch == NpuArch::DAV_3510;
+}
+
+static bool IsPaBlockSizeSupport(NpuArch npuArch, int32_t blockSize)
+{
+    if (IsA5Arch(npuArch)) {
+        return blockSize >= 1 && blockSize <= static_cast<int32_t>(BLOCK_SIZE_LIMIT);
+    }
+    return blockSize >= 16 && blockSize <= static_cast<int32_t>(BLOCK_SIZE_LIMIT) && blockSize % 16 == 0;
+}
+
 static const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME,                  {ge::DT_FLOAT16, ge::DT_BF16}},
     {ORI_KV_NAME,                    {ge::DT_FLOAT16, ge::DT_BF16}},
@@ -1115,6 +1128,25 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaKvHeadNums() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaOriSparseIndices() const
 {
+    if (opParamInfo_.oriSparseIndices.tensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(!IsA5Arch(npuArch_),
+                OP_LOGE(opName_, "ori_sparse_indices is only supported on A5."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor->GetStorageShape().GetShapeSize() == 0,
+                OP_LOGE(opName_, "ori_sparse_indices cannot be empty tensor."),
+                return ge::GRAPH_FAILED);
+    const std::vector<size_t> oriSparseIndicesDimNumList = {DIM_NUM_THREE, DIM_NUM_FOUR};
+    if (
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.oriSparseIndices.desc, ORI_SPARSE_INDICES) ||
+        ge::GRAPH_SUCCESS != CheckLayoutSupport(oriSparseIndicesLayout_, ORI_SPARSE_INDICES) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriSparseIndices.tensor->GetShape(),
+            oriSparseIndicesDimNumList, ORI_SPARSE_INDICES) ||
+        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(oriSparseIndicesLayout_,
+            &opParamInfo_.oriSparseIndices.tensor->GetShape(), ORI_SPARSE_INDICES)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1151,9 +1183,10 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriBlockTable() const
             oriBlockTableDimNumList, ORI_BLOCK_TABLE_NAME)) {
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF((oriBlockSize_ <= 0 || oriBlockSize_ > BLOCK_SIZE_LIMIT),
-                OP_LOGE(opName_, "oriBlockSize_ should be in range [1, 1024], but got: %d.",
-                oriBlockSize_),
+    OP_CHECK_IF(!IsPaBlockSizeSupport(npuArch_, oriBlockSize_),
+                OP_LOGE(opName_,
+                    "oriBlockSize_ should be in [1, 1024] on A5 or 16-aligned [16, 1024] on A2/A3, but got: %d.",
+                    oriBlockSize_),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1165,18 +1198,20 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpBlockTable() const
     }
     if (smlaInfo_.perfMode == optiling::SMLATemplateMode::SCFA_TEMPLATE_MODE ||
         smlaInfo_.perfMode == optiling::SMLATemplateMode::CFA_TEMPLATE_MODE) {
-            const std::vector<size_t> cmpBlockTableDimNumList = {DIM_NUM_TWO};
-            if (
-                ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpBlockTable.desc, CMP_BLOCK_TABLE_NAME) ||
-                ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpBlockTable.tensor->GetShape(),
+        const std::vector<size_t> cmpBlockTableDimNumList = {DIM_NUM_TWO};
+        if (
+            ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpBlockTable.desc, CMP_BLOCK_TABLE_NAME) ||
+            ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpBlockTable.tensor->GetShape(),
                 cmpBlockTableDimNumList, CMP_BLOCK_TABLE_NAME)) {
-                return ge::GRAPH_FAILED;
-                }
-            OP_CHECK_IF((cmpBlockSize_ <= 0 || cmpBlockSize_ > BLOCK_SIZE_LIMIT),
-                        OP_LOGE(opName_, "cmpBlockSize should be in [1, 1024], but got: %d.",
-                        cmpBlockSize_),
-                        return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED;
         }
+        OP_CHECK_IF(!IsPaBlockSizeSupport(npuArch_, cmpBlockSize_),
+                    OP_LOGE(opName_,
+                        "cmpBlockSize should be in [1, 1024] on A5 or 16-aligned [16, 1024] on A2/A3, "
+                        "but got: %d.",
+                        cmpBlockSize_),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1218,13 +1253,20 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaMetadata() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
 {
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (IsA5Arch(npuArch_)) {
         OP_CHECK_IF(cmpRatio_ < 1 || cmpRatio_ > 128,
                     OP_LOGE(opName_, "cmpRatio should be in range [1, 128], but got %ld", cmpRatio_),
                     return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(cmpRatio_ != 1 && cmpRatio_ != 4 && cmpRatio_ != 128,
-                    OP_LOGE(opName_, "cmpRatio should be 1, 4 or 128, but got %ld", cmpRatio_),
+        uint32_t expectedCmpRatio = 1;
+        if (smlaInfo_.perfMode == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
+            expectedCmpRatio = 4;
+        } else if (smlaInfo_.perfMode == SMLATemplateMode::CFA_TEMPLATE_MODE) {
+            expectedCmpRatio = 128;
+        }
+        OP_CHECK_IF(cmpRatio_ != expectedCmpRatio,
+                    OP_LOGE(opName_, "cmpRatio should be %u in current template mode on A2/A3, but got %ld.",
+                        expectedCmpRatio, cmpRatio_),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1256,9 +1298,20 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpResidualKv() const
         smlaInfo_.perfMode == SMLATemplateMode::SCFA_TEMPLATE_MODE;
     if (isCmpTemplate && *opParamInfo_.cmpMaskMode == 3 && cmpRatio_ != 1) {
         OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor == nullptr,
-            OP_LOGE(opName_, "cmp_redisual_kv is required when cmp_mask_mode=3 and cmp_ratio != 1"),
+            OP_LOGE(opName_, "cmp_residual_kv is required when cmp_mask_mode=3 and cmp_ratio != 1"),
             return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SMLATilingCheck::CheckSingleParaTopkLength() const
+{
+    OP_CHECK_IF(IsNonEmptyOptionalTensor(opParamInfo_.oriTopkLength.tensor),
+                OP_LOGE(opName_, "ori_topk_length is reserved and must be empty in current version."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(IsNonEmptyOptionalTensor(opParamInfo_.cmpTopkLength.tensor),
+                OP_LOGE(opName_, "cmp_topk_length is reserved and must be empty in current version."),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1272,8 +1325,10 @@ ge::graphStatus SMLATilingCheck::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaCuSeqLensCmpKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpResidualKv() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaTopkLength() ||
         ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaOriSparseIndices() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpSparseIndices() ||
         ge::GRAPH_SUCCESS != CheckSingleParaOriBlockTable() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpBlockTable() ||
@@ -1367,9 +1422,15 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                 OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(n1Size_ < 1 || n1Size_ > 128,
-                OP_LOGE(opName_, "q_head_num should be in [1, 128], but got %u", n1Size_),
-                return ge::GRAPH_FAILED);
+    if (IsA5Arch(npuArch_)) {
+        OP_CHECK_IF(n1Size_ < 1 || n1Size_ > 128,
+                    OP_LOGE(opName_, "q_head_num should be in [1, 128], but got %u", n1Size_),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(!IsPowerOfTwoInRange(n1Size_, 1, 128),
+                    OP_LOGE(opName_, "q_head_num should be power of two in [1, 128], but got %u", n1Size_),
+                    return ge::GRAPH_FAILED);
+    }
 
     OP_CHECK_IF(n2Size_ != 1,
                 OP_LOGE(opName_, "kv_head_num should be 1, but got %u", n2Size_),
@@ -1378,7 +1439,7 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
     OP_CHECK_IF(n1Size_ % n2Size_ != 0,
                 OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
                 return ge::GRAPH_FAILED);
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (IsA5Arch(npuArch_)) {
         OP_CHECK_IF(gSize_ < 1 || gSize_ > 128,
                     OP_LOGE(opName_, "group num should be in [1, 128], but got %u", gSize_),
                     return ge::GRAPH_FAILED);
@@ -1407,7 +1468,7 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                 SMLADataTypeToSerialString(oriKvType_).c_str()),
                 return ge::GRAPH_FAILED);
 
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (IsA5Arch(npuArch_)) {
         OP_CHECK_IF(*opParamInfo_.oriMaskMode != 0 && *opParamInfo_.oriMaskMode != 3 && *opParamInfo_.oriMaskMode != 4,
                     OP_LOGE(opName_, "oriMaskMode should be {0, 3, 4}, but got %d", *opParamInfo_.oriMaskMode),
                     return ge::GRAPH_FAILED);
@@ -1417,6 +1478,12 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
         OP_CHECK_IF(topkValueMode_ != 1,
                     OP_LOGE(opName_, "topkValueMode should be 1, but got %d", topkValueMode_),
                     return ge::GRAPH_FAILED);
+        OP_CHECK_IF(oriWinLeft_ < -1,
+                    OP_LOGE(opName_, "oriWinLeft_ should be -1 or non-negative, but got %d", oriWinLeft_),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(oriWinRight_ < -1,
+                    OP_LOGE(opName_, "oriWinRight_ should be -1 or non-negative, but got %d", oriWinRight_),
+                    return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(*opParamInfo_.oriMaskMode != 4,
                     OP_LOGE(opName_, "oriMaskMode should be 4, but got %d", *opParamInfo_.oriMaskMode),
@@ -1424,14 +1491,13 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
         OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 3,
                     OP_LOGE(opName_, "cmpMaskMode should be 3, but got %d", *opParamInfo_.cmpMaskMode),
                     return ge::GRAPH_FAILED);
+        OP_CHECK_IF(oriWinLeft_ != 127,
+                    OP_LOGE(opName_, "oriWinLeft_ should be 127, but got %d", oriWinLeft_),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(oriWinRight_ != 0,
+                    OP_LOGE(opName_, "oriWinRight_ should be 0, but got %d", oriWinRight_),
+                    return ge::GRAPH_FAILED);
     }
-
-    OP_CHECK_IF(oriWinLeft_ != 127,
-                OP_LOGE(opName_, "oriWinLeft_ should be 127, but got %d", oriWinLeft_),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(oriWinRight_ != 0,
-                OP_LOGE(opName_, "oriWinRight_ should be 0, but got %d", oriWinRight_),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
