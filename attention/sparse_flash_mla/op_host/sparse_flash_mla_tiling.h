@@ -275,7 +275,7 @@ public:
     // Others Flag
     uint32_t sparseCount = 0;
     bool returnSoftmaxLse = false;
-    
+
     // PageAttention
     uint32_t blockTypeSize = 0;
     uint32_t oriMaxBlockNumPerBatch = 0;
@@ -336,6 +336,7 @@ private:
     ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
     ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
     ge::graphStatus CheckSingleParaCmpResidualKv() const;
+    ge::graphStatus CheckSingleParaTopkLength() const;
     ge::graphStatus CheckSingleParaNumHeads() const;
     ge::graphStatus CheckSingleParaKvHeadNums() const;
     ge::graphStatus CheckSingleParaOriSparseIndices() const;
@@ -593,7 +594,7 @@ private:
     uint32_t sInnerSize_ = 512; // s2固定切分512
     uint32_t sInnerSizeAlign_ = 0;
     uint32_t usedCoreNum_ = 0;
-    
+
     uint32_t headDimAlign_ = 0;
     uint32_t mBaseSize_ = 64;
 };
