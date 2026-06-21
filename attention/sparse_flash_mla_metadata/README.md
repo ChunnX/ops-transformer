@@ -3,7 +3,7 @@
 ## 产品支持情况
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>                        | ×  |
+|<term>Ascend 950PR/Ascend 950DT</term>                        | √  |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        | √  |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | √  |
 |<term>Atlas 200I/500 A2推理系列产品</term>                    | ×  |
@@ -38,7 +38,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>Q的多头数，取值范围为[1,128]。num_heads_q / num_heads_kv在A2/A3上必须为[1,128]范围内的2的幂，在A5上支持[1,128]范围内任意整数。</td>
+      <td>Q的多头数按平台资料支持范围支持。num_heads_q / num_heads_kv仅支持[1,128]范围内的2的幂；<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1、2、4、8、16、32、64、128；<term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64、128，不支持1。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -157,14 +157,14 @@
     <tr>
       <td>cmp_topk</td>
       <td>可选属性</td>
-      <td>表示通过QLI算法从`cmp_kv`中筛选出的关键稀疏token的个数，SCFA模式支持512或1024，CFA/SWA模式传0。</td>
+      <td>表示通过QLI算法从`cmp_kv`中筛选出的关键稀疏token的个数，C4A场景支持512或1024，C1A/C128A场景传0。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对`ori_kv`的压缩率。A2/A3支持1、4、128，0为非法值；A5支持[1,128]。</td>
+      <td>表示对`ori_kv`的压缩率。资料支持范围为1、4、128；C1A传1，C4A传4，C128A传128。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -244,11 +244,12 @@
 
 -   该接口支持推理场景下使用。
 -   该接口支持aclgraph模式。
+-   `ori_topk_length`和`cmp_topk_length`为预留输入，全平台均不支持传入非空Tensor；未传或空Tensor保持旧语义。
 -   Tensor不能全传None。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnnSparseFlashMlaMetadata](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md)调用SparseFlashMlaMetadata算子 |
-| torch_npu扩展接口 | [sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla_metadata`生成SparseFlashMla主算子使用的metadata |
+| aclnn API | [test_aclnnSparseFlashMlaMetadata](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md)调用SparseFlashMlaMetadata算子 |
+| PyTorch API | [sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla_metadata`生成SparseFlashMla主算子使用的metadata |
