@@ -51,15 +51,12 @@ __global__ __aicore__ void mega_moe(
             op.Process();
         }
     } else if constexpr (CommMode == TILINGKEY_TPL_URAMA) {
-        printf("start to urama\n");
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-            printf("dispatch quant mode is mxfp\n");
             MegaMoeLayered<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DispatchQuantOutType, CombineQuantOutType> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
             op.Process();
         }
-        printf("end to urama\n");
     }
     
 #endif

@@ -100,6 +100,7 @@ struct WorkspaceInfo {
     GM_ADDR flagDispatchToGmm1Ptr;
     GM_ADDR gmmOutPtr;
     GM_ADDR rowGroupCompletePtr;
+    GM_ADDR maskSlotPtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -159,6 +160,8 @@ struct WorkspaceInfo {
                 maxRowGroupsPerExpert * perCoreRowGroupsStride, ALIGN_128);
             workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * maxRowGroupsStride;
         }
+        maskSlotPtr = base + workspaceSize + 10UL * 1024 * 1024; //todo:
+        
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H
