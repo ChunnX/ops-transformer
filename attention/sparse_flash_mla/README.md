@@ -3,7 +3,7 @@
 ## 产品支持情况
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>                        | ×  |
+|<term>Ascend 950PR/Ascend 950DT</term>                        | √  |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        | √  |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | √  |
 |<term>Atlas 200I/500 A2推理系列产品</term>                    | ×  |
@@ -11,7 +11,7 @@
 |<term>Atlas 训练系列产品</term>                                | ×  |
 
 ## 功能说明
-- 算子功能：`SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
+- 算子功能：`SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持C1A、C4A、C128A三类Attention计算场景。
 
 - 计算公式：
 
@@ -25,10 +25,10 @@
 
 <table style="undefined;table-layout: fixed; width: 1576px">
   <colgroup>
-  <col style="width: 170px">
-  <col style="width: 170px">
-  <col style="width: 310px">
-  <col style="width: 212px">
+  <col style="width: 220px">
+  <col style="width: 150px">
+  <col style="width: 700px">
+  <col style="width: 180px">
   <col style="width: 100px">
   </colgroup>
   <thead>
@@ -44,222 +44,241 @@
     <tr>
       <td>q</td>
       <td>输入</td>
-      <td>对应公式中的$Q$。</td>
+      <td>对应公式中的Q。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>ori_kv</td>
       <td>可选输入</td>
-      <td>对应公式中的$\tilde{K}和\tilde{V}$的一部分，为原始不经压缩的KV。</td>
+      <td>对应公式中K和V的一部分，表示原始不经压缩的KV。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_kv</td>
       <td>可选输入</td>
-      <td>对应公式中的$\tilde{K}和\tilde{V}$的一部分，为经过压缩的KV。</td>
+      <td>对应公式中K和V的一部分，表示经过压缩的KV。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>ori_sparse_indices</td>
       <td>可选输入</td>
-      <td>代表离散取oriKvCache的索引。</td>
+      <td>表示从`ori_kv`中离散取数的索引。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_sparse_indices</td>
       <td>可选输入</td>
-      <td>代表离散取cmpKvCache的索引。</td>
+      <td>表示从`cmp_kv`中离散取数的索引。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>ori_block_table</td>
       <td>可选输入</td>
-      <td>表示PageAttention中oriKvCache存储使用的block映射表。</td>
+      <td>表示PageAttention中`ori_kv`使用的block映射表。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_block_table</td>
       <td>可选输入</td>
-      <td>表示PageAttention中cmpKvCache存储使用的block映射表。</td>
+      <td>表示PageAttention中`cmp_kv`使用的block映射表。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中`q`的有效token数。</td>
+      <td>表示TND布局下不同batch中`q`的累积序列长度。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_ori_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中`ori_kv`的有效token数。</td>
+      <td>表示TND布局下不同batch中`ori_kv`的累积序列长度。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_cmp_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中`cmp_kv`的有效token数。</td>
+      <td>表示TND布局下不同batch中`cmp_kv`的累积序列长度。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中`q`实际参与运算的token数。</td>
+      <td>表示不同batch中`q`实际参与计算的token数。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_ori_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中`ori_kv`实际参与运算的token数。`layout_kv="PA_BBND"`时必须传入；`layout_kv="BSND"`时可作为每个batch的`ori_kv`有效长度覆盖值；`layout_kv="TND"`时使用`cu_seqlens_ori_kv`表达序列边界。</td>
+      <td>表示不同batch中`ori_kv`实际参与计算的token数。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_cmp_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中`cmp_kv`实际参与运算的token数。显式传入时作为每个batch的cmp逻辑有效长度，优先于`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA block table推导，`layout_kv="BSND"`、`"TND"`、`"PA_BBND"`均可使用。</td>
+      <td>表示不同batch中`cmp_kv`实际参与计算的token数。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_residual_kv</td>
       <td>可选输入</td>
-      <td>压缩KV余数，用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度。该参数是主算子和metadata算子的可选入参；在CFA/SCFA、`cmp_ratio != 1`且`cmp_mask_mode = 3`场景必传，`layout_kv="BSND"`、`layout_kv="TND"`、`layout_kv="PA_BBND"`均可使用。</td>
+      <td>表示压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>ori_topk_length</td>
       <td>可选输入</td>
-      <td>预留输入，当前版本不支持传入非空Tensor；未传或空Tensor保持旧语义，非空会被拦截。</td>
+      <td>预留输入，当前版本不支持传入非空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_topk_length</td>
       <td>可选输入</td>
-      <td>预留输入，当前版本不支持传入非空Tensor；未传或空Tensor保持旧语义，非空会被拦截。</td>
+      <td>预留输入，当前版本不支持传入非空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>sinks</td>
       <td>可选输入</td>
-      <td>注意力下沉tensor。</td>
-      <td>FLOAT32</td>
+      <td>表示attention sinks输入。</td>
+      <td>FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>metadata</td>
       <td>可选输入</td>
-      <td>aicpu算子（sparse_flash_mla_metadata）的分核结果。</td>
+      <td>`SparseFlashMlaMetadata`生成的任务切分结果。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>softmax_scale</td>
       <td>可选属性</td>
-      <td>代表缩放系数，对应公式中的$\text{softmax\_scale}$，默认值为None。</td>
-      <td>FLOAT32</td>
+      <td>对应公式中的softmax_scale。默认值为1.0。</td>
+      <td>FLOAT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对`ori_kv`的压缩率。A2/A3支持1、4、128，0为非法值；A5支持[1,128]。</td>
-      <td>INT32</td>
+      <td>表示对`ori_kv`的压缩率。默认值为1。</td>
+      <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_mask_mode</td>
       <td>可选属性</td>
-      <td>表示`q`和`ori_kv`计算的mask模式，仅支持输入默认值4。</td>
-      <td>INT32</td>
+      <td>表示`q`和`ori_kv`计算的mask模式。默认值为0。</td>
+      <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_mask_mode</td>
       <td>可选属性</td>
-      <td>表示`q`和`cmp_kv`计算的mask模式，仅支持输入默认值3。</td>
-      <td>INT32</td>
+      <td>表示`q`和`cmp_kv`计算的mask模式。默认值为0。</td>
+      <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_win_left</td>
       <td>可选属性</td>
-      <td>表示`q`和`ori_kv`计算中q对过去token计算的数量，仅支持输入默认值127。</td>
-      <td>INT32</td>
+      <td>表示`q`和`ori_kv`计算中`q`对过去token计算的数量。默认值为-1。</td>
+      <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_win_right</td>
       <td>可选属性</td>
-      <td>表示`q`和`ori_kv`计算中q对未来token计算的数量，仅支持输入默认值0。</td>
-      <td>INT32</td>
+      <td>表示`q`和`ori_kv`计算中`q`对未来token计算的数量。默认值为-1。</td>
+      <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_q</td>
       <td>可选属性</td>
-      <td>用于标识输入`q`的数据排布格式，支持输入"TND"和"BSND"，默认值为"BSND"。</td>
+      <td>表示输入`q`的数据排布格式。默认值为"BSND"。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_kv</td>
       <td>可选属性</td>
-      <td>用于标识输入`ori_kv`和`cmp_kv`的数据排布格式，支持输入"BSND"、"TND"和"PA_BBND"，默认值为"BSND"。</td>
+      <td>表示输入`ori_kv`和`cmp_kv`的数据排布格式。默认值为"BSND"。</td>
       <td>STRING</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>topk_value_mode</td>
+      <td>可选属性</td>
+      <td>表示TopK索引取值模式。默认值为1。</td>
+      <td>INT</td>
       <td>-</td>
     </tr>
     <tr>
       <td>return_softmax_lse</td>
       <td>可选属性</td>
-      <td>表示是否返回`softmax_lse`。True表示返回，False表示不返回，默认值为False。</td>
+      <td>表示是否返回`softmax_lse`。默认值为False。</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>attention_out</td>
+      <td>attn_out</td>
       <td>输出</td>
-      <td>公式中的输出。</td>
+      <td>对应公式中的输出O。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>softmax_lse</td>
-      <td>输出</td>
-      <td>返回的`softmax_lse`。</td>
-      <td>FLOAT32</td>
+      <td>可选输出</td>
+      <td>返回softmax的log-sum-exp结果。</td>
+      <td>FLOAT</td>
       <td>ND</td>
     </tr>
   </tbody>
 </table>
 
+表格中数据类型为各产品支持的数据类型并集。
+
 ## 约束说明
 - 该接口支持推理场景下使用。
 - 该接口支持aclgraph模式。
-- 该接口当前支持三种计算场景：场景一，仅传入`ori_kv`时为Sliding Window Attention计算；场景二，传入`ori_kv`及`cmp_kv`时为Sliding Window Attention + Compressed Attention计算；场景三，传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`时为Sliding Window Attention + Sparse Compressed Attention计算。
+- 该接口当前支持三种计算场景：C1A场景仅传入`ori_kv`，执行Sliding Window Attention计算；C4A场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`，执行Sliding Window Attention + TopK稀疏压缩KV计算；C128A场景传入`ori_kv`及`cmp_kv`，执行Sliding Window Attention + 稠密压缩KV计算。
+- 规格约束如下：
+  - N2仅支持1，D仅支持512。
+  - `cmp_ratio`支持1、4、128；C1A场景传1，C4A场景传4，C128A场景传128。
+  - `ori_mask_mode`仅支持4，`cmp_mask_mode`仅支持3，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
+  - `cmp_sparse_indices`的TopK长度支持512或1024。
+  - PageAttention的block_size支持16的倍数，且不超过1024。
+  - `layout_q`支持"BSND"和"TND"，`layout_kv`支持"BSND"、"TND"和"PA_BBND"。
+  - `ori_topk_length`和`cmp_topk_length`为预留输入，全平台均不支持传入非空Tensor。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128。
+  - <term>Ascend 950PR/Ascend 950DT</term>：N1/N2支持2、4、8、16、32、64、128，不支持1。
 
 - 当`layout_q`为TND时，功能使用限制如下：
-  - `q`的shape需要为[T1,N1,D]，其中N1取值范围为[1,128]。N1/N2在A2/A3上必须为[1,128]范围内的2的幂，在A5上支持[1,128]范围内任意整数。
+  - `q`的shape需要为[T1,N1,D]。
   - `ori_sparse_indices`当前暂不支持。
   - `cmp_sparse_indices`的shape需要为[Q\_T, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2支持512或1024。
   - `cu_seqlens_q`必须传入，输入维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须>=前一个元素的值。
 
 - 当`layout_q`为BSND时，功能使用限制如下：
-  - `q`的shape需要为[B, Q\_S, N1, D]，其中N1取值范围为[1,128]。N1/N2在A2/A3上必须为[1,128]范围内的2的幂，在A5上支持[1,128]范围内任意整数。
+  - `q`的shape需要为[B, Q\_S, N1, D]。
   - `ori_sparse_indices`当前暂不支持。
   - `cmp_sparse_indices`的shape需要为[B, Q\_S, KV\_N, K2]，其中K2为对`cmp_kv`一次离散选取的token数，K2支持512或1024。
 
@@ -284,5 +303,5 @@
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnnSparseFlashMla](./examples/test_aclnn_sparse_flash_mla.cpp) | 通过[aclnnSparseFlashMla](./docs/aclnnSparseFlashMla.md)调用SparseFlashMla算子 |
-| torch_npu扩展接口 | [sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla`调用SparseFlashMla算子 |
+| aclnn API | [test_aclnnSparseFlashMla](./examples/test_aclnn_sparse_flash_mla.cpp) | 通过[aclnnSparseFlashMla](./docs/aclnnSparseFlashMla.md)调用SparseFlashMla算子 |
+| PyTorch API | [sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla`调用SparseFlashMla算子 |
