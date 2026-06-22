@@ -35,15 +35,6 @@ std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*> MoeInitRo
     L0_DFX(MoeInitRoutingV3, x, expertIdx, scale, offset, topk_weight, activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
             quantMode, activeExpertRange, rowIdxType, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, expanded_topk_weight);
     
-    // Optional输入topk_weight: 如非空则Contiguous
-    const aclTensor* topkWeightContiguous = nullptr;
-    if (topk_weight != nullptr) {
-        topkWeightContiguous = l0op::Contiguous(topk_weight, executor);
-        if (topkWeightContiguous == nullptr) {
-            return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(nullptr, nullptr, nullptr, nullptr, nullptr);
-        }
-    }
-
     auto expandedXOut = executor->AllocTensor(expandedX->GetViewShape(), expandedX->GetDataType(), Format::FORMAT_ND); 
     auto expandedRowIdxOut = executor->AllocTensor(expandedRowIdx->GetViewShape(), expandedRowIdx->GetDataType(), Format::FORMAT_ND);
     auto expertTokensCountOrCumsumOut = executor->AllocTensor(expertTokensCountOrCumsum->GetViewShape(), expertTokensCountOrCumsum->GetDataType(), Format::FORMAT_ND);
@@ -63,7 +54,7 @@ std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*> MoeInitRo
     }
 
     ADD_TO_LAUNCHER_LIST_AICORE(
-        MoeInitRoutingV3, OP_INPUT(x, expertIdx, scale, offset, topkWeightContiguous), OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut, expandedTopkWeightOut), OP_ATTR(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRange, rowIdxType));
+        MoeInitRoutingV3, OP_INPUT(x, expertIdx, scale, offset, topk_weight), OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut, expandedTopkWeightOut), OP_ATTR(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRange, rowIdxType));
     return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut, expandedTopkWeightOut);
 }
 
