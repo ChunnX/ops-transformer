@@ -218,6 +218,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/lightning_indexer_v2_metadata/README.md">lightning_indexer_v2_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>lightning_indexer_v2算子的前置算子，用于计算lightning_indexer_v2的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/masked_causal_conv1d/README.md">masked_causal_conv1d</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -405,6 +415,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>推理场景下，SparseFlashAttention前处理的计算，选出关键的稀疏token，并对输入query和key进行量化实现存8算8。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/quant_lightning_indexer_v2_metadata/README.md">quant_lightning_indexer_v2_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>quant_lightning_indexer_v2算子的前置算子，用于计算quant_lightning_indexer_v2的负载均衡。</td>
   </tr>
   <tr>
     <td>attention</td>
