@@ -368,11 +368,6 @@ protected:
             gmmDsqParams_.transposeWeight = true;
         }
 
-        if (IsMxWeightNzMultiTensorSupported() && (transposeWeight || transposeWeightScale)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MX weight NZ multi tensor does not support transposed weight.");
-            return false;
-        }
-
         if (transposeWeightScale != transposeWeight) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 apiName_.c_str(), "weightScale and weight",
@@ -384,17 +379,20 @@ protected:
 
         if (transposeWeightScale && transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
-            auto uniqueExecutor = CREATE_EXECUTOR();
-            CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-            aclOpExecutor *executorPtr = uniqueExecutor.get();
-            CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-            std::vector<aclTensor *> scaleTensorList;
-            std::vector<aclTensor *> weightTensorList;
-            CreateContiguousTensorListForMXTypeMScale(gmmDsqParams_.weightScale, scaleTensorList, executorPtr);
-            gmmDsqParams_.weightScale = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
-            CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr);
-            gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
-            uniqueExecutor.ReleaseTo(executor_);
+            if (!IsMxWeightNzMultiTensorSupported()) {
+                auto uniqueExecutor = CREATE_EXECUTOR();
+                CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+                aclOpExecutor *executorPtr = uniqueExecutor.get();
+                CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+                std::vector<aclTensor *> scaleTensorList;
+                std::vector<aclTensor *> weightTensorList;
+                CreateContiguousTensorListForMXTypeMScale(gmmDsqParams_.weightScale, scaleTensorList, executorPtr);
+                gmmDsqParams_.weightScale =
+                    executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+                CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr);
+                gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+                uniqueExecutor.ReleaseTo(executor_);
+            }
         }
 
         if ((gmmDsqParams_.x->GetViewShape().GetDim(0) == 1 && gmmDsqParams_.x->GetViewShape().GetDim(1) == 1) ||
@@ -447,9 +445,10 @@ protected:
         int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0); // 从x的第0维获取m
         int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1); // 从x的第1维获取k
         bool isMxWeightNzMultiTensor = IsMxWeightNzMultiTensorSupported();
-        // 转置情况下从weight的第1维获取n，非转置情况下从weight的第2维获取n
+        // Single tensor transpose is converted to a contiguous view; multi tensor keeps the original [N,K] view.
         int64_t n = isMxWeightNzMultiTensor ?
-                        ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
+                        (gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0) :
+                                                         ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1)) :
                         (gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
                                                          ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2));
         int64_t e = isMxWeightNzMultiTensor ?
@@ -484,9 +483,11 @@ protected:
         GMM_SWIGLU_CHECK_SHAPE(outputScale, "outputScale", outputScaleExpectShape, return false);
 
         if (isMxWeightNzMultiTensor) {
-            op::Shape multiWeightExpectShape = {k, n};
-            op::Shape multiWeightScaleExpectShape = {Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), n,
-                                                     SWIGLU_SPLIT_FACTOR};
+            op::Shape multiWeightExpectShape = gmmDsqParams_.transposeWeight ? op::Shape({n, k}) :
+                                                                             op::Shape({k, n});
+            op::Shape multiWeightScaleExpectShape = gmmDsqParams_.transposeWeight ?
+                op::Shape({n, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), SWIGLU_SPLIT_FACTOR}) :
+                op::Shape({Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), n, SWIGLU_SPLIT_FACTOR});
             for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
                 GMM_SWIGLU_CHECK_SHAPE((*gmmDsqParams_.weight)[i], "weight", multiWeightExpectShape, return false);
                 GMM_SWIGLU_CHECK_SHAPE((*gmmDsqParams_.weightScale)[i], "weightScale",
@@ -861,9 +862,12 @@ protected:
         // 从x的第1维获取k
         int64_t kInX = gmmDsqParams_.x->GetViewShape().GetDim(1);
         // 根据是否转置从weight中读取维度k
+        bool transposeWeight = IsTransposeLastTwoDims((*gmmDsqParams_.weight)[0]);
         int64_t kInWeight = IsMxWeightNzMultiTensorSupported() ?
-                                ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0) :
-                                (gmmDsqParams_.transposeWeight ?
+                                (transposeWeight ?
+                                     ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
+                                     ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0)) :
+                                (transposeWeight ?
                                      ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2) :
                                      ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1));
         if (kInX != kInWeight) {

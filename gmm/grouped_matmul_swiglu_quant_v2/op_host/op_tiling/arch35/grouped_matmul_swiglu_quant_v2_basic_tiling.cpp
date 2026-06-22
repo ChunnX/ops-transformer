@@ -47,6 +47,7 @@ size_t GetDynamicInputCount(gert::TilingContext *context, size_t inputIndex)
 void GroupedMatmulSwigluQuantV2Tiling950::Reset()
 {
     tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
+    isMxWeightNzMultiTensor_ = false;
     return;
 }
 
@@ -306,6 +307,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp4WeightNz() const
     return IsFp4Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
 }
 
+bool GroupedMatmulSwigluQuantV2Tiling950::IsMxWeightNzMultiTensor(const gert::Shape &wShape) const
+{
+    return wShape.GetDimNum() == MIN_WEIGHT_ORIGIN_SHAPE_DIM && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+}
+
 bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Shape &xShape,
                                                                   const gert::Shape &wShape) const
 {
@@ -477,8 +483,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
     auto scaleDimNum = wScaleShape.GetDimNum();
     size_t weightCount = GetDynamicInputCount(context_, WEIGHT_INDEX);
     size_t scaleCount = GetDynamicInputCount(context_, SCALE_INDEX);
-    bool isMultiWeightNz = wShape.GetDimNum() == MIN_WEIGHT_ORIGIN_SHAPE_DIM &&
-                            inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+    bool isMultiWeightNz = IsMxWeightNzMultiTensor(wShape);
+    isMxWeightNzMultiTensor_ = isMultiWeightNz;
     size_t expectedScaleDim = isMultiWeightNz ? MX_MULTI_WEIGHT_SCALE_DIM : MX_WEIGHT_SCALE_DIM;
     OP_CHECK_IF(scaleDimNum != expectedScaleDim,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight_scale", std::to_string(scaleDimNum),
@@ -507,15 +513,14 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
                                                       "weightScale tensor list size must equal weight tensor list size"),
                 return false);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-    OP_CHECK_IF(isMultiWeightNz && inputParams_.transB,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "transposeWeight",
-                                                      std::to_string(inputParams_.transB),
-                                                      "MX weight NZ multi tensor does not support transposed weight"),
-                return false);
     OP_CHECK_IF(!CheckDims(xShape, wShape), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         if (isMultiWeightNz) {
             auto expectedKDimValue = GroupedMatmul::CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
+            uint64_t expectedWeightDim0 = inputParams_.transB ? inputParams_.nSize : inputParams_.kSize;
+            uint64_t expectedWeightDim1 = inputParams_.transB ? inputParams_.kSize : inputParams_.nSize;
+            uint64_t expectedScaleDim0 = inputParams_.transB ? inputParams_.nSize : expectedKDimValue;
+            uint64_t expectedScaleDim1 = inputParams_.transB ? expectedKDimValue : inputParams_.nSize;
             for (size_t i = 0; i < weightCount; ++i) {
                 auto curWStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, i);
                 auto curScaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, i);
@@ -527,18 +532,18 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
                 const gert::Shape &curWShape = curWStorageShape->GetOriginShape();
                 const gert::Shape &curScaleShape = curScaleStorageShape->GetOriginShape();
                 OP_CHECK_IF(curWShape.GetDimNum() != MIN_WEIGHT_ORIGIN_SHAPE_DIM ||
-                                static_cast<uint64_t>(curWShape.GetDim(0)) != inputParams_.kSize ||
-                                static_cast<uint64_t>(curWShape.GetDim(1)) != inputParams_.nSize,
+                                static_cast<uint64_t>(curWShape.GetDim(0)) != expectedWeightDim0 ||
+                                static_cast<uint64_t>(curWShape.GetDim(1)) != expectedWeightDim1,
                             OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight", ShapeToString(curWShape),
-                                                      ShapeDimsToString(inputParams_.kSize, inputParams_.nSize)),
+                                                      ShapeDimsToString(expectedWeightDim0, expectedWeightDim1)),
                             return false);
                 OP_CHECK_IF(curScaleShape.GetDimNum() != MX_MULTI_WEIGHT_SCALE_DIM ||
-                                static_cast<uint64_t>(curScaleShape.GetDim(0)) != expectedKDimValue ||
-                                static_cast<uint64_t>(curScaleShape.GetDim(1)) != inputParams_.nSize ||
+                                static_cast<uint64_t>(curScaleShape.GetDim(0)) != expectedScaleDim0 ||
+                                static_cast<uint64_t>(curScaleShape.GetDim(1)) != expectedScaleDim1 ||
                                 static_cast<uint64_t>(curScaleShape.GetDim(2)) != MXFP_MULTI_BASE_SIZE,
                             OP_LOGE_FOR_INVALID_SHAPE(inputParams_.opType, "weight_scale",
                                                       ShapeToString(curScaleShape),
-                                                      ShapeDimsToString(expectedKDimValue, inputParams_.nSize,
+                                                      ShapeDimsToString(expectedScaleDim0, expectedScaleDim1,
                                                                         MXFP_MULTI_BASE_SIZE)),
                             return false);
             }
@@ -575,6 +580,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTiling()
 {
     tilingData_.gmmSwigluQuantParams.set_groupNum(inputParams_.groupNum);
     tilingData_.gmmSwigluQuantParams.set_groupListType(static_cast<uint8_t>(inputParams_.groupListType));
+    tilingData_.gmmSwigluQuantParams.set_isMxWeightNzMultiTensor(
+        static_cast<uint8_t>(isMxWeightNzMultiTensor_));
     auto attrs = context_->GetAttrs();
     if (attrs != nullptr) {
         const int64_t *dequantDtypeTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE);
@@ -599,7 +606,8 @@ int64_t GroupedMatmulSwigluQuantV2Tiling950::LogQuantParams()
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.get_groupNum()
         << ", groupListType = " << static_cast<uint32_t>(params.get_groupListType())
-        << ", quant_dtype = " << static_cast<int32_t>(params.get_quantDtype());
+        << ", quant_dtype = " << static_cast<int32_t>(params.get_quantDtype())
+        << ", isMxWeightNzMultiTensor = " << static_cast<int32_t>(params.get_isMxWeightNzMultiTensor());
     OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
     return 0;
 }
