@@ -23,8 +23,8 @@ using namespace matmul;
 using namespace regbaseutil;
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
-static constexpr uint32_t sparseModeZero = 0;
 static constexpr uint32_t sparseModeThree = 3;
+static constexpr uint32_t sparseModeZero = 0;
 
 TEMPLATE_INTF
 __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo &constInfo,
@@ -71,13 +71,12 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
 
     runParam.actualS1Size = qsfaActualS1Size;
     runParam.actualS2Size = qsfaActualS2Size;
+    runParam.preTokensPerBatch = runParam.actualS1Size;
     if (constInfo.sparseMode == sparseModeZero) {
         runParam.nextTokensPerBatch = MAX_PRE_NEXT_TOKENS;
     } else {
         runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
     }
-
-    runParam.preTokensPerBatch = runParam.actualS1Size;
 }
 
 TEMPLATE_INTF
@@ -91,8 +90,8 @@ TEMPLATE_INTF
 __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo, bool lastBN,
     int64_t nextGs1Idx, int64_t gS1StartIdx)
 {
-    runParam.qSNumInOneBlock = 1; // qsfa 不切G轴, 计算每个基本块可以拷贝多少行s
     runParam.gs1LoopStartIdx = gS1StartIdx;
+    runParam.qSNumInOneBlock = 1; // qsfa 不切G轴, 计算每个基本块可以拷贝多少行s
 
     if (runParam.nextTokensPerBatch < 0) {
         uint64_t invalidTokenCount = static_cast<uint64_t>(-(runParam.nextTokensPerBatch + 1)) + 1ULL;
@@ -136,11 +135,11 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     runParam.cubeMOuterOffset = qsfaCubeSOuterOffset * constInfo.gSize;
     runParam.halfMRealSize = (runParam.mRealSize + 1) >> 1;
     runParam.firstHalfMRealSize = runParam.halfMRealSize;
-    if (constInfo.subBlockIdx == 1) {
+    if (constInfo.subBlockIdx == 0) {
+        runParam.mOuterOffset = runParam.cubeMOuterOffset;
+    } else {
         runParam.halfMRealSize = runParam.mRealSize - runParam.halfMRealSize;
         runParam.mOuterOffset = runParam.cubeMOuterOffset + runParam.firstHalfMRealSize;
-    } else {
-        runParam.mOuterOffset = runParam.cubeMOuterOffset;
     }
     runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
@@ -190,7 +189,8 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
         }
     }
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
-    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQAddr);
+    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo,
+        runParam.boIdx, cuSeqlensQAddr);
     return false;
 }
 
