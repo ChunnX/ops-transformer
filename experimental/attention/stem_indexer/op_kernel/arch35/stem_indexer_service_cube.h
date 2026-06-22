@@ -105,7 +105,6 @@ protected:
 
     uint64_t keyL1BufIdx_ = 0;
     uint64_t queryBufIdx_ = 0;
-    uint64_t queryBufIdx_ = 0;
     uint64_t l0BufIdx_ = 0;
     uint64_t l0cBufIdx_ = 0;
 
