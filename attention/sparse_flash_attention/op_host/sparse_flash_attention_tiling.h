@@ -551,6 +551,7 @@ public:
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
     void GenerateInfo(SFATilingInfo &sfaInfo);
+    void FillTilingInfoAttrsAndLayouts(SFATilingInfo &sfaInfo);
     ge::graphStatus Parse(SFATilingInfo &sfaInfo);
 
     const gert::TilingContext *context_ = nullptr;
