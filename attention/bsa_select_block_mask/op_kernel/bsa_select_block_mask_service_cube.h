@@ -22,7 +22,6 @@ public:
     __aicore__ inline void AllocEventID();
     __aicore__ inline void ComputeMatmulChunk(uint32_t qChunkStart, uint32_t qChunkSize,
                                                uint32_t kChunkStart, uint32_t kChunkSize);
-    __aicore__ inline void EmitFixpipeSyncAnchor(uint32_t kChunkFlagIdx);
     __aicore__ inline void FreeEventID();
 
 private:
@@ -122,28 +121,6 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
     // 3. MmadInner + FixCopyOut
     // score[qChunkStart:qChunkStart+qChunkSize, kChunkStart:kChunkStart+kChunkSize]
     //   = q_cmp[qChunkStart:] × k_cmp[kChunkStart:].T
-}
-
-template <typename BSAT>
-__aicore__ inline void BSAMatmulService<BSAT>::EmitFixpipeSyncAnchor(uint32_t kChunkFlagIdx)
-{
-    uint64_t gmOffset = (static_cast<uint64_t>(constInfo.aicIdx) * 2 + (kChunkFlagIdx & 1)) *
-                        BSA_FIXPIPE_SYNC_ANCHOR_ELEMS;
-
-    FixpipeParamsV220 fixpipeParams;
-    fixpipeParams.nSize = BSA_FIXPIPE_SYNC_ANCHOR_N;
-    fixpipeParams.mSize = BSA_FIXPIPE_SYNC_ANCHOR_M;
-    fixpipeParams.srcStride = BSA_FIXPIPE_SYNC_ANCHOR_M;
-    fixpipeParams.dstStride = BSA_FIXPIPE_SYNC_ANCHOR_M;
-    fixpipeParams.ndNum = 1;
-    fixpipeParams.srcNdStride = 0;
-    fixpipeParams.dstNdStride = 0;
-    fixpipeParams.reluEn = false;
-
-    // Keep a real FIX pipe instruction before the C1->V1 PIPE_FIX cross-core flag.
-    Fixpipe<MM_OUT_T, MM_OUT_T>(scoreGmLocal[gmOffset],
-                                cL0TensorPingPong[kChunkFlagIdx & 1],
-                                fixpipeParams);
 }
 
 template <typename BSAT>
