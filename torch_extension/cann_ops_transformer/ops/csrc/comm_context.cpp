@@ -408,7 +408,7 @@ public:
     // ---- URMA (UBC_CTP) resource helpers ----
     // 参考mc2_context.cpp，URMA协议使用独立的hcommHandle_存储channel句柄，urmacclBuffer_存储buffer
     void GetUrmaCommResource(const HcclComm &commHandle, const CommEngine &engine,
-                              CommContext *commContextStruct, uint32_t rankSize)
+                              CommContext *commContextStruct, uint32_t rankSize, uint64_t &hcclBuffSize)
     {
         ASCEND_LOGI("Start to get URMA communication resource");
         uint32_t rankId = commContextStruct->epRankId;
@@ -429,7 +429,7 @@ public:
             uint64_t bufSize = 0;
 
             if (i == rankId) {
-                hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &bufSize);
+                hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
                 hcclRet = HcclChannelGetHcclBufferFunc(commHandle,commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
@@ -467,7 +467,7 @@ public:
         // GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
 
         // 获取URMA(UBC_CTP)协议的通信资源，存入hcommHandle_和urmacclBuffer_
-        GetUrmaCommResource(commHandle, engine, commContextStruct, rankSize);
+        GetUrmaCommResource(commHandle, engine, commContextStruct, rankSize, hcclBuffSize);
 
         hcclRet =
             HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), commContextStruct, commContextSize, 0);
