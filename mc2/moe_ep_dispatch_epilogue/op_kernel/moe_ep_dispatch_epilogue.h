@@ -58,6 +58,7 @@ private:
     GlobalTensor<int64_t> numRecvPerExpertGm_;
 
     GlobalTensor<XType> recvXGm_;
+    GlobalTensor<int32_t> recvTopkIdxGm_;
     GlobalTensor<float> recvTopkWeightsGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
     GlobalTensor<int32_t> cachedRecvSrcMetadataGm_;   // cached 路径专用：来自上一轮 dispatch 的 recv_src_metadata
@@ -69,9 +70,14 @@ private:
     LocalTensor<int32_t> ubLocalSeq_;
     LocalTensor<int64_t> ubRowStart_;
     LocalTensor<int32_t> ubMeta_;
+    LocalTensor<int32_t> ubTopkIds_;
+    LocalTensor<int32_t> ubTargetExpertId_;
+    LocalTensor<int32_t> ubSubExpertId_;
+    LocalTensor<float> ubReduceWork_;
     LocalTensor<int32_t> ubRecvCnt_;
     LocalTensor<int64_t> ubExpertPfx_;
     LocalTensor<int32_t> ubHitCountFull_;
+    LocalTensor<int64_t> ubHitCountRowI64_;
     LocalTensor<float> ubStageWeights_;
     LocalTensor<int32_t> ubStageMeta_;
 
@@ -80,9 +86,14 @@ private:
     TBuf<QuePosition::VECIN> ubLocalSeqBuf_;
     TBuf<QuePosition::VECIN> ubRowStartBuf_;
     TBuf<QuePosition::VECIN> ubMetaBuf_;
+    TBuf<QuePosition::VECIN> ubTopkIdsBuf_;
+    TBuf<QuePosition::VECIN> ubTargetExpertIdBuf_;
+    TBuf<QuePosition::VECIN> ubSubExpertIdBuf_;
+    TBuf<QuePosition::VECIN> ubReduceWorkBuf_;
     TBuf<QuePosition::VECIN> ubRecvCntBuf_;
     TBuf<QuePosition::VECIN> ubExpertPfxBuf_;
     TBuf<QuePosition::VECIN> ubHitCountFullBuf_;
+    TBuf<QuePosition::VECIN> ubHitCountRowI64Buf_;
     TBuf<QuePosition::VECIN> ubStageWeightsBuf_;
     TBuf<QuePosition::VECIN> ubStageMetaBuf_;
 
@@ -94,11 +105,12 @@ private:
     uint32_t hitCountOffset_{0};
     uint32_t metaBytes_{0};
     uint32_t paddedMetaElems_{0};
+    uint32_t axisKAlign_{0};
+    uint32_t paddedTopkElems_{0};
     uint32_t ubMetaCapElems_{0};   // ubMeta_ 容纳的 int32 元素数（用于 cached 路径分块拷贝）
     uint32_t numLocalExperts_{0};
     uint32_t aivNum_{0};
     uint32_t axisK_{0};
-    uint32_t axisKAlign_{0};
     uint32_t axisH_{0};
     uint32_t epWorldSize_{0};
     uint32_t numMaxTokensPerRank_{0};
@@ -146,7 +158,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     epRankId_ = mc2Context_->epRankId;
     localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_);
-    metaOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    metaOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
 
     numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRank);
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
@@ -164,15 +176,18 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     uint32_t ubLocalSeqBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubRowStartBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
 
+    axisKAlign_ = Ceil(axisK_, 8U) * 8U;
     metaBytes_ = (2 * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
     paddedMetaElems_ = Ceil(2 * axisKAlign_ + 2, 8U) * 8U;
+    paddedTopkElems_ = axisKAlign_;
     uint32_t maxSlotsPerAiv = Ceil(numMaxTokensPerRank_, aivNum_);
     uint32_t ubMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
- 
+    uint32_t ubTopkIdsBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedTopkElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     ubMetaCapElems_ = ubMetaBytes / sizeof(int32_t);
     uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     maxSlotsPerAiv_ = maxSlotsPerAiv;
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubStageMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
@@ -182,9 +197,14 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     tpipe_->InitBuffer(ubLocalSeqBuf_, ubLocalSeqBytes);
     tpipe_->InitBuffer(ubRowStartBuf_, ubRowStartBytes);
     tpipe_->InitBuffer(ubMetaBuf_, ubMetaBytes);
+    tpipe_->InitBuffer(ubTopkIdsBuf_, ubTopkIdsBytes);
+    tpipe_->InitBuffer(ubTargetExpertIdBuf_, ubTopkIdsBytes);
+    tpipe_->InitBuffer(ubSubExpertIdBuf_, ubTopkIdsBytes);
+    tpipe_->InitBuffer(ubReduceWorkBuf_, ubTopkIdsBytes);
     tpipe_->InitBuffer(ubRecvCntBuf_, ubRecvCntBytes);
     tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
     tpipe_->InitBuffer(ubHitCountFullBuf_, ubHitCountFullBytes);
+    tpipe_->InitBuffer(ubHitCountRowI64Buf_, ubHitCountRowI64Bytes);
     tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
     tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
 
@@ -193,13 +213,20 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     ubLocalSeq_  = ubLocalSeqBuf_.Get<int32_t>();
     ubRowStart_  = ubRowStartBuf_.Get<int64_t>();
     ubMeta_      = ubMetaBuf_.Get<int32_t>();
+    ubTopkIds_   = ubTopkIdsBuf_.Get<int32_t>();
+    ubTargetExpertId_ = ubTargetExpertIdBuf_.Get<int32_t>();
+    ubSubExpertId_ = ubSubExpertIdBuf_.Get<int32_t>();
+    ubReduceWork_ = ubReduceWorkBuf_.Get<float>();
     ubRecvCnt_   = ubRecvCntBuf_.Get<int32_t>();
     ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
     ubHitCountFull_ = ubHitCountFullBuf_.Get<int32_t>();
+    ubHitCountRowI64_ = ubHitCountRowI64Buf_.Get<int64_t>();
     ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
     ubStageMeta_    = ubStageMetaBuf_.Get<int32_t>();
 
-    DataCopy(ubExpertPfx_, numRecvPerExpertGm_, numLocalExperts_);
+    DataCopyExtParams expertPfxCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int64_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int64_t> expertPfxPadParams{false, 0U, 0U, 0};
+    DataCopyPad(ubExpertPfx_, numRecvPerExpertGm_, expertPfxCopyParams, expertPfxPadParams);
     PipeBarrier<PIPE_MTE2>();
     uint32_t expertSum = 0;
     for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
@@ -207,7 +234,9 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     }
     expertSum_ = expertSum;
 
-    DataCopy(ubRecvCnt_, numRecvPerRankGm_, epWorldSize_);
+    DataCopyExtParams recvCntCopyParams{1U, static_cast<uint32_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> recvCntPadParams{false, 0U, 0U, 0};
+    DataCopyPad(ubRecvCnt_, numRecvPerRankGm_, recvCntCopyParams, recvCntPadParams);
     PipeBarrier<PIPE_MTE2>();
 }
 
@@ -261,31 +290,44 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
                               + (int64_t)rankId * numMaxTokensPerRank_ * perSlotBytes_;
         GM_ADDR firstSlotAddrThisAiv = srcRankBase + (int64_t)slotStart * perSlotBytes_;
 
-        GlobalTensor<int32_t> srcMetaGm;
-        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
-        DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
-            perSlotBytes_ - metaBytes_, 0, 0};
-        DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
-        DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
+        GlobalTensor<int32_t> srcTopkIdsGm;
+        srcTopkIdsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
+        uint32_t topkBytes = axisK_ * sizeof(int32_t);
+        DataCopyExtParams topkCopyParams{static_cast<uint16_t>(slotCntPerAiv),
+            static_cast<uint32_t>(topkBytes), static_cast<int64_t>(perSlotBytes_ - topkBytes), 0, 0};
+        DataCopyPadExtParams<int32_t> topkPadParams{true, 0,
+            static_cast<uint8_t>(paddedTopkElems_ - axisK_), -1};
+        DataCopyPad(ubTopkIds_, srcTopkIdsGm, topkCopyParams, topkPadParams);
         PipeBarrier<PIPE_MTE2>();
 
-        for (uint32_t localSlot = 0; localSlot < slotCntPerAiv; ++localSlot) {
-            uint32_t metaBase = localSlot * paddedMetaElems_;
+        int32_t calCnt = static_cast<int32_t>(slotCntPerAiv * paddedTopkElems_);
+        for (uint32_t localExpertId = 0; localExpertId < numLocalExperts_; ++localExpertId) {
+            int32_t targetExpertId =
+                static_cast<int32_t>(epRankId_ * numLocalExperts_ + localExpertId);
 
-            for (uint32_t topkIdx = 0; topkIdx < axisK_; ++topkIdx) {
-                int32_t expertId = ubMeta_.GetValue(metaBase + topkIdx);
-                if (expertId < 0) { continue; }
-                uint32_t dstRank = static_cast<uint32_t>(expertId) / numLocalExperts_;
-                if (dstRank != epRankId_) { continue; }
-                uint32_t localExpertId = static_cast<uint32_t>(expertId) % numLocalExperts_;
+            SyncFunc<AscendC::HardEvent::S_V>();
+            Duplicate<int32_t>(ubTargetExpertId_, targetExpertId, calCnt);
+            
+            Sub(ubSubExpertId_, ubTopkIds_, ubTargetExpertId_, calCnt);
+            
+            LocalTensor<float> tmpFp32 = ubSubExpertId_.ReinterpretCast<float>();
+            LocalTensor<float> tmpOutFp32 = ubTargetExpertId_.ReinterpretCast<float>();
+            Abs(tmpOutFp32, tmpFp32, calCnt);
+            
+            Mins(ubSubExpertId_, ubTargetExpertId_, 1, calCnt);
+            
+            ReduceSum<float>(tmpOutFp32, tmpFp32, ubReduceWork_, calCnt);
+            SyncFunc<AscendC::HardEvent::V_S>();
 
-                // Direct increment: UB read-modify-write is fast for LocalTensor
-                ubHitCount_.SetValue(localExpertId, ubHitCount_.GetValue(localExpertId) + 1);
-            }
+            int32_t curOtherExpertCnt = ubTargetExpertId_(0);
+            int32_t curExpertCnt = (calCnt >= curOtherExpertCnt) ? (calCnt - curOtherExpertCnt) : 0;
+            int32_t currentHits = ubHitCount_.GetValue(localExpertId);
+            ubHitCount_.SetValue(localExpertId, currentHits + curExpertCnt);
         }
     }
 
-    DataCopy(hitCountGm_[(int64_t)aivId_ * numLocalExperts_], ubHitCount_, numLocalExperts_);
+    DataCopyExtParams hitCountCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPad(hitCountGm_[(int64_t)aivId_ * numLocalExperts_], ubHitCount_, hitCountCopyParams);
     PipeBarrier<PIPE_MTE3>();
 }
 
@@ -294,15 +336,19 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
 {
     Duplicate(ubLocalSeq_, (int32_t)0, numLocalExperts_);
 
-    DataCopy(ubHitCountFull_, hitCountGm_, aivNum_ * numLocalExperts_);
+    DataCopyExtParams hitCountFullCopyParams{1U,
+        static_cast<uint32_t>(aivNum_ * numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> hitCountFullPadParams{false, 0U, 0U, 0};
+    DataCopyPad(ubHitCountFull_, hitCountGm_, hitCountFullCopyParams, hitCountFullPadParams);
     PipeBarrier<PIPE_MTE2>();
 
-    for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
-        int64_t expertGlobalRowStart = ubExpertPfx_.GetValue(localExpertIdx);
-        for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
-            expertGlobalRowStart += ubHitCountFull_.GetValue(aiv * numLocalExperts_ + localExpertIdx);
-        }
-        ubRowStart_.SetValue(localExpertIdx, expertGlobalRowStart);
+    Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
+    PipeBarrier<PIPE_V>();
+    for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
+        Cast(ubHitCountRowI64_, ubHitCountFull_[aiv * numLocalExperts_], RoundMode::CAST_NONE, numLocalExperts_);
+        PipeBarrier<PIPE_V>();
+        Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
+        PipeBarrier<PIPE_V>();
     }
 
     // Per-expert outer loop: accumulate weights/metadata into UB staging buffers,
@@ -328,7 +374,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
             srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
             DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
                 perSlotBytes_ - metaBytes_, 0, 0};
-            DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
+            DataCopyPadExtParams<int32_t> metaPadParams{
+                true, 0, static_cast<uint8_t>(paddedMetaElems_ - (2 * axisKAlign_ + 2)), 0};
             DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
             PipeBarrier<PIPE_MTE2>();
 
@@ -353,6 +400,9 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     PipeBarrier<PIPE_MTE2>();
 
                     DataCopy(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, axisH_);
+                    DataCopyExtParams topkIdxOutParams{1U, static_cast<uint32_t>(axisK_ * sizeof(int32_t)),
+                        0U, 0U, 0U};
+                    DataCopyPad(recvTopkIdxGm_[(int64_t)globalRow * axisK_], ubMeta_[metaBase], topkIdxOutParams);
                     int32_t weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
                     ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 0,
@@ -368,9 +418,11 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
         }
 
         if (stageIdx > 0) {
-            DataCopy(recvTopkWeightsGm_[expertRowStart], ubStageWeights_, stageIdx);
-            DataCopy(recvSrcMetadataGm_[expertRowStart * RECV_META_FIELDS],
-                     ubStageMeta_, stageIdx * RECV_META_FIELDS);
+            DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(stageIdx * sizeof(float)), 0U, 0U, 0U};
+            DataCopyExtParams metaOutParams{1U,
+                static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
+            DataCopyPad(recvTopkWeightsGm_[expertRowStart], ubStageWeights_, weightOutParams);
+            DataCopyPad(recvSrcMetadataGm_[expertRowStart * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
             PipeBarrier<PIPE_MTE3>();
         }
         ubLocalSeq_.SetValue(targetExpert, localWrittenRow);
