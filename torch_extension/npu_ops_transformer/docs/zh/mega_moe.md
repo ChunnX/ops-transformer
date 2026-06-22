@@ -16,20 +16,34 @@ Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为�
     [mega\_moe](#mega_moe接口说明)与 [get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明) 配套使用，该算子将 MoE 层的专家 FFN 的完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
 
 - 计算公式：
+    - 符号约定：
+        - **维度符号**：$n$（总 token 数，动态变量），$H$（隐藏层维度，静态超参数），$K$（每个 token 选择的专家数量，静态超参数），$E$（专家总数，静态超参数），$D$（中间层维度，静态超参数）。
+        - **记法约定**：矩阵用斜体粗体大写字母（如 $\boldsymbol{X}$），向量用斜体粗体小写字母（如 $\boldsymbol{x}$），标量用斜体非粗体小写字母（如 $s$）。
+        - **输入/输出张量与算子入参的对应关系**：
+
+            | 符号 | 形状 | 含义 | 算子入参 |
+            | :---: | :---: | :---: | :---: |
+            | $\boldsymbol{X}$ | $\mathbb{R}^{n \times H}$ | 激活矩阵 | `x` |
+            | $\boldsymbol{I}$ | $\mathbb{Z}^{n \times K}$ | token 选择的专家编号 | `topk_idx` |
+            | $\boldsymbol{G}$ | $\mathbb{R}^{n \times K}$ | token 选择的专家的门控权重 | `topk_weights` |
+            | $\boldsymbol{W}_1$ | $\mathbb{R}^{E \times H \times 2D}$ | Linear1 的权重矩阵 | `l1_weights` |
+            | $\boldsymbol{W}_2$ | $\mathbb{R}^{E \times D \times H}$ | Linear2 的权重矩阵 | `l2_weights` |
+            | $\boldsymbol{Y}$ | $\mathbb{R}^{n \times H}$ | 最终输出矩阵 | `y_out` |
+
     - 输入：
-        - $\mathbf{x} \in \mathbb{R}^{\text{total\_num\_tokens} \times \text{hidden}}$：激活矩阵，$\text{total\_num\_tokens}$ 是总 token 数，hidden 是隐藏层维度。
-        - $topk\_idx \in \mathbb{Z}^{\text{total\_num\_tokens} \times \text{num\_topk}}$：token 选择的专家编号，num\_topk 是每个 token 选择的专家数量。
-        - $topk\_weights \in \mathbb{R}^{\text{total\_num\_tokens} \times \text{num\_topk}}$：token 选择的专家的门控权重。
-        - $l1\_weights \in \mathbb{R}^{\text{num\_experts} \times \text{hidden} \times (2\times \text{intermediate\_hidden})}$：Linear1 的权重矩阵，num\_experts 是专家数量，intermediate\_hidden 是中间层维度。
-        - $l2\_weights \in \mathbb{R}^{\text{num\_experts} \times \text{intermediate\_hidden} \times \text{hidden}}$：Linear2 的权重矩阵。
+        - $\boldsymbol{X} \in \mathbb{R}^{n \times H}$：激活矩阵，$n$ 是总 token 数，$H$ 是隐藏层维度。
+        - $\boldsymbol{I} \in \mathbb{Z}^{n \times K}$：token 选择的专家编号，$K$ 是每个 token 选择的专家数量。
+        - $\boldsymbol{G} \in \mathbb{R}^{n \times K}$：token 选择的专家的门控权重。
+        - $\boldsymbol{W}_1 \in \mathbb{R}^{E \times H \times 2D}$：Linear1 的权重矩阵，$E$ 是专家数量，$D$ 是中间层维度。
+        - $\boldsymbol{W}_2 \in \mathbb{R}^{E \times D \times H}$：Linear2 的权重矩阵。
     - 输出：
-        - $y$：最终输出矩阵。
+        - $\boldsymbol{Y}$：最终输出矩阵。
     - 约定：
         - $⋅$ 表示矩阵乘法，$⊙$ 表示逐元素乘法。
         - $\left \lfloor z\right \rceil$ 表示将 $z$ 四舍五入到最近的整数，$\left \lfloor z\right \rfloor$ 表示将 $z$ 向下取整。
-        - 全体 token 的集合为 $\{ \text{token}_i \mid i \in \{0, 1, \dots, \text{total\_num\_tokens} - 1\} \}$。
-        - $\text{token}_i$ 的 token 表示（即隐藏状态向量）为 $\mathbf{x}_i \in \mathbb{R}^{1 \times \text{hidden}}$，且 $\mathbf{x}_i = \mathbf{x}[i,:]$。
-        - $\text{token}_i$ 的专家索引为 $e_{i,k} = topk\_idx[i,k],\quad k \in \{0,\dots,\text{num\_topk} - 1\},\quad e_{i,k} \in \{0,\dots,\text{num\_experts} - 1\}$。
+        - 全体 token 的集合为 $\{ \text{token}_i \mid i \in \{0, 1, \dots, n - 1\} \}$。
+        - $\text{token}_i$ 的 token 表示（即隐藏状态向量）为 $\boldsymbol{x}_i \in \mathbb{R}^{1 \times H}$，且 $\boldsymbol{x}_i = \boldsymbol{X}[i,:]$。
+        - $\text{token}_i$ 的专家索引为 $e_{i,k} = I_{i,k},\quad k \in \{0,\dots,K - 1\},\quad e_{i,k} \in \{0,\dots,E - 1\}$。
         - 激活函数 $\text{SiLU}(z) = z \cdot \sigma(z) = \frac{z}{1+e^{-z}}$
         - $\mathbb{Z_4} = \{ x \in \mathbb{Z} \mid -8 \le x \le 7 \}, \quad \mathbb{Z_8} = \{ x \in \mathbb{Z} \mid -127 \le x \le 127 \}$。
         - 张量切片操作采用 Python 风格的 `start:stop:step` 表示法，例如，$[0::2, :]$ 代表取偶数行、$[1::2, :]$ 代表取奇数行。
@@ -47,11 +61,11 @@ Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为�
 
         - **EP Dispatch**
 
-            在 Dispatch 阶段，每个 $\text{token}_i$ 将其token表示 $\mathbf{x}_i$ 发送给专家 $e_{i,0}, e_{i,1}, \dots, e_{i,\text{num\_topk}-1}$。即对于每个 $k$，专家 $e_{i,k}$ 接收一份 $\mathbf{x}_i$。
+            在 Dispatch 阶段，每个 $\text{token}_i$ 将其token表示 $\boldsymbol{x}_i$ 发送给专家 $e_{i,0}, e_{i,1}, \dots, e_{i,K-1}$。即对于每个 $k$，专家 $e_{i,k}$ 接收一份 $\boldsymbol{x}_i$。
 
-            记 $I_e = \{\, i \mid \exists k,\ \text{topk\_idx}[i,k]=e \,\}$ 为所有被分派给专家 $e$ 的 token 索引集合，集合 $I_e$ 的大小 $N_e = |I_e|$ 即为专家 $e$ 需要处理的 token 总数，则有 $\mathbf{X}_e \in \mathbb{R}^{N_e \times \text{hidden}}$ 是由所有满足 $i \in I_e$ 的token表示 $\mathbf{x}_i$ **按任意固定顺序行堆叠**而成的矩阵，该矩阵即为专家 $e$ 经过 Dispatch 后收到的全部 token 表示。
+            记 $I_e = \{\, i \mid \exists k,\ I_{i,k}=e \,\}$ 为所有被分派给专家 $e$ 的 token 索引集合，集合 $I_e$ 的大小 $m_e = |I_e|$ 即为专家 $e$ 需要处理的 token 总数，则有 $\boldsymbol{X}_e \in \mathbb{R}^{m_e \times H}$ 是由所有满足 $i \in I_e$ 的token表示 $\boldsymbol{x}_i$ **按任意固定顺序行堆叠**而成的矩阵，该矩阵即为专家 $e$ 经过 Dispatch 后收到的全部 token 表示。
 
-            对于每个 $\text{token}_i$ 及其选中的第 $k$ 个专家 $e_{i,k}$，存在唯一的行索引 $\operatorname{row}(i,k) \in \{0,\dots,N_{e_{i,k}}-1\}$，使得 $\mathbf{X}_{e_{i,k}}[\operatorname{row}(i,k), :] = \mathbf{x}_i$。该映射记录了 $\mathbf{x}_i$ 在专家 $e_{i,k}$ 的输入矩阵 $\mathbf{X}_{e_{i,k}}$ 中的位置。
+            对于每个 $\text{token}_i$ 及其选中的第 $k$ 个专家 $e_{i,k}$，存在唯一的行索引 $\operatorname{row}(i,k) \in \{0,\dots,m_{e_{i,k}}-1\}$，使得 $\boldsymbol{X}_{e_{i,k}}[\operatorname{row}(i,k), :] = \boldsymbol{x}_i$。该映射记录了 $\boldsymbol{x}_i$ 在专家 $e_{i,k}$ 的输入矩阵 $\boldsymbol{X}_{e_{i,k}}$ 中的位置。
 
         - **Expert Compute**
 
@@ -61,68 +75,68 @@ Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为�
 
             Linear1 投影是专家网络的第一层线性变换，同时产生 **gate 部分** 和 **up 部分** 所需的预激活值。其计算公式为
             $$
-            \mathbf{H}_e = \mathbf{X}_e \cdot \text{l1\_weights}[e]
-            \quad\bigl(\in \mathbb{R}^{N_e \times 2\cdot\text{intermediate\_hidden}}\bigr)
+            \boldsymbol{Z}_e = \boldsymbol{X}_e \cdot \boldsymbol{W}_{1,e}
+            \quad\bigl(\in \mathbb{R}^{m_e \times 2D}\bigr)
             $$
             **2. SwiGLU 激活**
 
-            首先将 $\mathbf{H}_e$ 沿列维度拆分为 **gate 部分** $\mathbf{H}_{\text{gate}}$ 和 **up 部分** $\mathbf{H}_{\text{up}}$，然后对 gate 部分应用 SiLU 激活函数，再与 up 部分逐元素相乘，得到专家 $e$ 的中间激活表示 $\mathbf{A}_e$。
+            首先将 $\boldsymbol{Z}_e$ 沿列维度拆分为 **gate 部分** $\boldsymbol{Z}_{\text{gate}}$ 和 **up 部分** $\boldsymbol{Z}_{\text{up}}$，然后对 gate 部分应用 SiLU 激活函数，再与 up 部分逐元素相乘，得到专家 $e$ 的中间激活表示 $\boldsymbol{A}_e$。
             $$
-            \mathbf{H}_{\text{gate}} = \mathbf{H}_e\bigl[:,\;\text{:intermediate\_hidden}\bigr], \qquad
-            \mathbf{H}_{\text{up}} = \mathbf{H}_e\bigl[:,\;\text{intermediate\_hidden:}\bigr]
+            \boldsymbol{Z}_{\text{gate}} = \boldsymbol{Z}_e\bigl[:,\; :D\bigr], \qquad
+            \boldsymbol{Z}_{\text{up}} = \boldsymbol{Z}_e\bigl[:,\; D:\bigr]
             $$
             $$
-            \mathbf{A}_e = \text{SiLU}\bigl(\mathbf{H}_{\text{gate}}\bigr) \;\odot\; \mathbf{H}_{\text{up}}
-            \quad\bigl(\in \mathbb{R}^{N_e \times \text{intermediate\_hidden}}\bigr)
+            \boldsymbol{A}_e = \text{SiLU}\bigl(\boldsymbol{Z}_{\text{gate}}\bigr) \;\odot\; \boldsymbol{Z}_{\text{up}}
+            \quad\bigl(\in \mathbb{R}^{m_e \times D}\bigr)
             $$
 
             **3. Linear2 投影**
 
-            Linear2 投影作为第二层线性变换，将中间激活表示 $\mathbf{A}_e$ 从高维空间投影回原始的隐藏维度 $\text{hidden}$，使专家输出能够与残差连接等后续操作兼容。
+            Linear2 投影作为第二层线性变换，将中间激活表示 $\boldsymbol{A}_e$ 从高维空间投影回原始的隐藏维度 $H$，使专家输出能够与残差连接等后续操作兼容。
             $$
-            \mathbf{Y}_e = \mathbf{A}_e \cdot \text{l2\_weights}[e]
-            \quad\bigl(\in \mathbb{R}^{N_e \times \text{hidden}}\bigr)
+            \boldsymbol{Y}_e = \boldsymbol{A}_e \cdot \boldsymbol{W}_{2,e}
+            \quad\bigl(\in \mathbb{R}^{m_e \times H}\bigr)
             $$
 
-            经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 $\text{token}_i$，它在专家 $e_{i,k}$ 中的输出行即为 $\mathbf{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$。
+            经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 $\text{token}_i$，它在专家 $e_{i,k}$ 中的输出行即为 $\boldsymbol{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$。
         - **Token Combine**
 
             Combine 负责收集所有专家计算出的输出向量，按照每个 token 原先分配到的专家权重进行加权求和，最终为每个 token 生成一个融合后的输出。利用之前记录的位置索引 $\operatorname{row}(i,k)$，从专家 $e_{i,k}$ 的输出矩阵中收回属于 $\text{token}_i$ 的行，并与门控权重相乘后求和：
 
             $$
-            \mathbf{y}_i = \sum_{k=0}^{\text{num\_topk} - 1} w_k \;\cdot\;
-            \mathbf{Y}_{e_{i,k}}\!\bigl[\,\operatorname{row}(i,k),\,:\,\bigr]
-            \qquad\bigl(\in \mathbb{R}^{1 \times \text{hidden}}\bigr)
+            \boldsymbol{y}_i = \sum_{k=0}^{K - 1} w_k \;\cdot\;
+            \boldsymbol{Y}_{e_{i,k}}\!\bigl[\,\operatorname{row}(i,k),\,:\,\bigr]
+            \qquad\bigl(\in \mathbb{R}^{1 \times H}\bigr)
             $$
 
-            其中 $w_k = \text{topk\_weights}[i,k]$ 为 $\text{token}_i$ 对专家 $e_{i,k}$ 的门控权重。
+            其中 $w_k = G_{i,k}$ 为 $\text{token}_i$ 对专家 $e_{i,k}$ 的门控权重。
 
-            所有 token 的输出按输入顺序堆叠为最终输出 $\mathbf{Y} \in \mathbb{R}^{\text{total\_num\_tokens} \times \text{hidden}}$。
+            所有 token 的输出按输入顺序堆叠为最终输出 $\boldsymbol{Y} \in \mathbb{R}^{n \times H}$。
         </details>
 
         <details>
         <summary> A8W8-INT 量化场景</summary>
 
         - **输入**
-            - $l1\_weights\_sf \in \mathbb{R}^{\text{num\_experts} \times (2\times \text{intermediate\_hidden})}$：Linear1 权重矩阵的逐通道缩放因子
-            - $l2\_weights\_sf \in \mathbb{R}^{\text{num\_experts} \times \text{hidden}}$：Linear2 权重矩阵的逐通道缩放因子
+            - $\boldsymbol{S}_1 \in \mathbb{R}^{E \times 2D}$：Linear1 权重矩阵的逐通道缩放因子（对应 `l1_weights_sf`）
+            - $\boldsymbol{S}_2 \in \mathbb{R}^{E \times H}$：Linear2 权重矩阵的逐通道缩放因子（对应 `l2_weights_sf`）
 
         - **EP Dispatch**
 
-            在 Dispatch 通信之前，首先将原始 BF16 激活矩阵 $\mathbf{x}$ 量化为 INT8。对每个 $\text{token}_i$，计算其逐 token 缩放因子：
+            在 Dispatch 通信之前，首先将原始 BF16 激活矩阵 $\boldsymbol{X}$ 量化为 INT8。对每个 $\text{token}_i$，计算其逐 token 缩放因子：
             $$
-            s_i = \frac{\max(|\mathbf{x}[i,:]|)}{127} \in \mathbb{R}
+            s_i = \frac{\max(|\boldsymbol{X}[i,:]|)}{127} \in \mathbb{R}
             $$
             然后量化得到 INT8 表示：
             $$
-            \mathbf{q}_i = \left\lfloor \frac{\mathbf{x}[i,:]}{s_i} \right\rceil \quad \in \mathbb{Z}_8^{1 \times \text{hidden}}
+            \boldsymbol{q}_i = \left\lfloor \frac{\boldsymbol{X}[i,:]}{s_i} \right\rceil \quad \in \mathbb{Z}_8^{1 \times H}
             $$
 
-            在 Dispatch 通信阶段，每个 $\text{token}_i$ 将其量化后的向量 $\mathbf{q}_i$ 和缩放因子 $s_i$ 发送给专家 $e_{i,0}, e_{i,1}, \dots, e_{i,\text{num\_topk}-1}$（$e_{i,k} = \text{topk\_idx}[i,k]$）。
+            在 Dispatch 通信阶段，每个 $\text{token}_i$ 将其量化后的向量 $\boldsymbol{q}_i$ 和缩放因子 $s_i$ 发送给专家 $e_{i,0}, e_{i,1}, \dots, e_{i,K-1}$（$e_{i,k} = I_{i,k}$）。
 
-            记 $I_e = \{\, i \mid \exists k,\ \text{topk\_idx}[i,k]=e \,\}$ 为所有被分派给专家 $e$ 的 token 索引集合，集合 $I_e$ 的大小 $N_e = |I_e|$ 即为专家 $e$ 需要处理的 token 总数。则有 $\mathbf{Q}_e \in \mathbb{Z}_8^{N_e \times \text{hidden}}$ 是由所有满足 $i \in I_e$ 的 $\mathbf{q}_i$ **按任意固定顺序行堆叠**而成的矩阵，该矩阵即为专家 $e$ 经过 Dispatch 后收到的全部 token 表示；同理，对应的专家 $e$ 收到的缩放因子向量记为 $\mathbf{s}_e \in \mathbb{R}^{N_e}$，其元素由所有满足 $i \in I_e$ 的 $s_i$ 按与 $\mathbf{Q}_e$ 相同的行顺序堆叠而成。
+            记 $I_e = \{\, i \mid \exists k,\ I_{i,k}=e \,\}$ 为所有被分派给专家 $e$ 的 token 索引集合，集合 $I_e$ 的大小 $m_e = |I_e|$ 即为专家 $e$ 需要处理的 token 总数。则有 $\boldsymbol{Q}_e \in \mathbb{Z}_8^{m_e \times H}$ 是由所有满足 $i \in I_e$ 的 $\boldsymbol{q}_i$ **按任意固定顺序行堆叠**而成的矩阵，该矩阵即为专家 $e$ 经过 Dispatch 后收到的全部 token 表示；同理，对应的专家 $e$ 收到的缩放因子向量记为 $\boldsymbol{s}_e \in \mathbb{R}^{m_e}$，其元素由所有满足 $i \in I_e$ 的 $s_i$ 按与 $\boldsymbol{Q}_e$ 相同的行顺序堆叠而成。
 
-            对于每个 $\text{token}_i$ 及其选中的第 $k$ 个专家 $e_{i,k}$，存在唯一的行索引 $\operatorname{row}(i,k) \in \{0,\dots,N_{e_{i,k}}-1\}$，使得 $\mathbf{Q}_{e_{i,k}}[\operatorname{row}(i,k), :] = \mathbf{q}_i$。该映射记录了 $\mathbf{q}_i$ 在专家 $e_{i,k}$ 的输入矩阵中的位置。
+            对于每个 $\text{token}_i$ 及其选中的第 $k$ 个专家 $e_{i,k}$，存在唯一的行索引 $\operatorname{row}(i,k) \in \{0,\dots,m_{e_{i,k}}-1\}$，使得 $\boldsymbol{Q}_{e_{i,k}}[\operatorname{row}(i,k), :] = \boldsymbol{q}_i$。该映射记录了 $\boldsymbol{q}_i$ 在专家 $e_{i,k}$ 的输入矩阵中的位置。
 
         - **Expert Compute**
 
@@ -132,54 +146,54 @@ Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为�
 
             Linear1 投影是专家网络的第一层线性变换，同时产生 **gate 部分** 和 **up 部分** 所需的预激活值。计算时执行 INT8 矩阵乘法，得到 INT32 计算结果：
             $$
-            \mathbf{C}_e^{\text{int32}} = \mathbf{Q}_e \cdot \text{l1\_weights}[e]^{\text{int8}} \quad \in \mathbb{Z}_{32}^{N_e \times 2\cdot\text{intermediate\_hidden}}
+            \boldsymbol{C}_e^{\text{int32}} = \boldsymbol{Q}_e \cdot \boldsymbol{W}_{1,e}^{\text{int8}} \quad \in \mathbb{Z}_{32}^{m_e \times 2D}
             $$
-            然后反量化为预激活值 $\mathbf{H}_e$：
+            然后反量化为预激活值 $\boldsymbol{Z}_e$：
             $$
-            \mathbf{H}_e = \left( \mathbf{C}_e^{\text{int32}} \odot \text{l1\_weights\_sf}[e] \right) \odot \mathbf{s}_e \quad \in \mathbb{R}^{N_e \times 2\cdot\text{intermediate\_hidden}}
+            \boldsymbol{Z}_e = \left( \boldsymbol{C}_e^{\text{int32}} \odot \boldsymbol{S}_{1,e} \right) \odot \boldsymbol{s}_e \quad \in \mathbb{R}^{m_e \times 2D}
             $$
 
             **2. SwiGLU 激活**
 
-            首先将 $\mathbf{H}_e$ 沿列维度拆分为 **gate 部分** $\mathbf{H}_{\text{gate}}$ 和 **up 部分** $\mathbf{H}_{\text{up}}$，然后对 gate 部分应用 SiLU 激活函数，再与 up 部分逐元素相乘，得到专家 $e$ 的中间激活表示 $\mathbf{A}_e$。
+            首先将 $\boldsymbol{Z}_e$ 沿列维度拆分为 **gate 部分** $\boldsymbol{Z}_{\text{gate}}$ 和 **up 部分** $\boldsymbol{Z}_{\text{up}}$，然后对 gate 部分应用 SiLU 激活函数，再与 up 部分逐元素相乘，得到专家 $e$ 的中间激活表示 $\boldsymbol{A}_e$。
             $$
-            \mathbf{H}_{\text{gate}} = \mathbf{H}_e[:, :\text{intermediate\_hidden}], \qquad
-            \mathbf{H}_{\text{up}} = \mathbf{H}_e[:, \text{intermediate\_hidden}:]
+            \boldsymbol{Z}_{\text{gate}} = \boldsymbol{Z}_e[:, :D], \qquad
+            \boldsymbol{Z}_{\text{up}} = \boldsymbol{Z}_e[:, D:]
             $$
             $$
-            \mathbf{A}_e = \operatorname{SiLU}(\mathbf{H}_{\text{gate}}) \odot \mathbf{H}_{\text{up}}
+            \boldsymbol{A}_e = \operatorname{SiLU}(\boldsymbol{Z}_{\text{gate}}) \odot \boldsymbol{Z}_{\text{up}}
             $$
 
             **3. Linear2 投影（量化 + INT8 矩阵乘 + 反量化）**
 
-            Linear2 投影作为第二层线性变换，将中间激活表示 $\mathbf{A}_e$ 从高维空间投影回原始的隐藏维度 $\text{hidden}$，使专家输出能够与残差连接等后续操作兼容。
-            在 A8W8 场景下，需要将激活值量化为 INT8，因此先对 $\mathbf{A}_e$ 的每一行（每个 token）计算缩放因子：
+            Linear2 投影作为第二层线性变换，将中间激活表示 $\boldsymbol{A}_e$ 从高维空间投影回原始的隐藏维度 $H$，使专家输出能够与残差连接等后续操作兼容。
+            在 A8W8 场景下，需要将激活值量化为 INT8，因此先对 $\boldsymbol{A}_e$ 的每一行（每个 token）计算缩放因子：
             $$
-            t_i = \frac{\max(|\mathbf{A}_e[i,:]|)}{127}, \quad i=0,\dots,N_e-1
+            t_i = \frac{\max(|\boldsymbol{A}_e[i,:]|)}{127}, \quad i=0,\dots,m_e-1
             $$
-            得到专家 $e$ 在 Linear2 计算时的激活缩放因子 $\mathbf{t}_e \in \mathbb{R}^{N_e}$。然后量化：
+            得到专家 $e$ 在 Linear2 计算时的激活缩放因子 $\boldsymbol{t}_e \in \mathbb{R}^{m_e}$。然后量化：
             $$
-            \mathbf{A}_e^{\text{int8}}[i,:] = \left\lfloor \frac{\mathbf{A}_e[i,:]}{t_i} \right\rceil \quad \in \mathbb{Z}_8^{N_e \times \text{intermediate\_hidden}}
+            \boldsymbol{A}_e^{\text{int8}}[i,:] = \left\lfloor \frac{\boldsymbol{A}_e[i,:]}{t_i} \right\rceil \quad \in \mathbb{Z}_8^{m_e \times D}
             $$
             再执行 INT8 矩阵乘法并反量化：
             $$
-            \mathbf{D}_e^{\text{int32}} = \mathbf{A}_e^{\text{int8}} \cdot \text{l2\_weights}[e]^{\text{int8}} \quad \in \mathbb{Z}_{32}^{N_e \times \text{hidden}}
+            \boldsymbol{D}_e^{\text{int32}} = \boldsymbol{A}_e^{\text{int8}} \cdot \boldsymbol{W}_{2,e}^{\text{int8}} \quad \in \mathbb{Z}_{32}^{m_e \times H}
             $$
             $$
-            \mathbf{Y}_e = \left( \mathbf{D}_e^{\text{int32}} \odot \text{l2\_weights\_sf}[e] \right) \odot \mathbf{t}_e \quad \in \mathbb{R}^{N_e \times \text{hidden}}
+            \boldsymbol{Y}_e = \left( \boldsymbol{D}_e^{\text{int32}} \odot \boldsymbol{S}_{2,e} \right) \odot \boldsymbol{t}_e \quad \in \mathbb{R}^{m_e \times H}
             $$
 
-            经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 $\text{token}_i$，它在专家 $e_{i,k}$ 中的输出行即为 $\mathbf{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$。
+            经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 $\text{token}_i$，它在专家 $e_{i,k}$ 中的输出行即为 $\boldsymbol{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$。
 
         - **Token Combine**
 
             Combine 负责收集所有专家计算出的输出向量，按照每个 token 原先分配到的专家权重进行加权求和，最终为每个 token 生成一个融合后的输出。利用之前记录的位置索引 $\operatorname{row}(i,k)$，从专家 $e_{i,k}$ 的输出矩阵中收回属于 $\text{token}_i$ 的行，并与门控权重相乘后求和：
             $$
-            \mathbf{y}_i = \sum_{k=0}^{\text{num\_topk} - 1} w_k \;\cdot\; \mathbf{Y}_{e_{i,k}}\!\bigl[\,\operatorname{row}(i,k),\,:\,\bigr] \quad \in \mathbb{R}^{1 \times \text{hidden}}
+            \boldsymbol{y}_i = \sum_{k=0}^{K - 1} w_k \;\cdot\; \boldsymbol{Y}_{e_{i,k}}\!\bigl[\,\operatorname{row}(i,k),\,:\,\bigr] \quad \in \mathbb{R}^{1 \times H}
             $$
-            其中 $w_k = \text{topk\_weights}[i,k]$ 为 $\text{token}_i$ 对专家 $e_{i,k}$ 的门控权重。
+            其中 $w_k = G_{i,k}$ 为 $\text{token}_i$ 对专家 $e_{i,k}$ 的门控权重。
 
-            所有 token 的输出按输入顺序堆叠为最终输出 $\mathbf{Y} \in \mathbb{R}^{\text{total\_num\_tokens} \times \text{hidden}}$。
+            所有 token 的输出按输入顺序堆叠为最终输出 $\boldsymbol{Y} \in \mathbb{R}^{n \times H}$。
 
         </details>
 
@@ -187,27 +201,27 @@ Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为�
         <summary> A8W4-INT 量化场景</summary>
 
         - **输入**
-            - $l1\_weights\_sf \in \mathbb{R}^{\text{num\_experts} \times (2\times \text{intermediate\_hidden})}$：Linear1 权重矩阵的逐通道缩放因子
-            - $l2\_weights\_sf \in \mathbb{R}^{\text{num\_experts} \times \text{hidden}}$：Linear2 权重矩阵的逐通道缩放因子
-            - $l1\_bias \in \mathbb{R}^{\text{num\_experts} \times (2\times \text{intermediate\_hidden})}$：Linear1 的偏置矩阵，由 INT4 量化过程离线生成
-            - $l2\_bias \in \mathbb{R}^{\text{num\_experts} \times \text{hidden}}$：Linear2 的偏置矩阵，由 INT4 量化过程离线生成
+            - $\boldsymbol{S}_1 \in \mathbb{R}^{E \times 2D}$：Linear1 权重矩阵的逐通道缩放因子（对应 `l1_weights_sf`）
+            - $\boldsymbol{S}_2 \in \mathbb{R}^{E \times H}$：Linear2 权重矩阵的逐通道缩放因子（对应 `l2_weights_sf`）
+            - $\boldsymbol{B}_1 \in \mathbb{R}^{E \times 2D}$：Linear1 的偏置矩阵，由 INT4 量化过程离线生成（对应 `l1_bias`）
+            - $\boldsymbol{B}_2 \in \mathbb{R}^{E \times H}$：Linear2 的偏置矩阵，由 INT4 量化过程离线生成（对应 `l2_bias`）
 
         - **EP Dispatch**
 
-            在 Dispatch 通信之前，首先将原始 BF16 激活矩阵 $\mathbf{x}$ 量化为 INT8。对每个 $\text{token}_i$，计算其逐 token 缩放因子：
+            在 Dispatch 通信之前，首先将原始 BF16 激活矩阵 $\boldsymbol{X}$ 量化为 INT8。对每个 $\text{token}_i$，计算其逐 token 缩放因子：
             $$
-            s_i = \frac{\max(|\mathbf{x}[i,:]|)}{127} \in \mathbb{R}
+            s_i = \frac{\max(|\boldsymbol{X}[i,:]|)}{127} \in \mathbb{R}
             $$
             然后量化得到 INT8 表示：
             $$
-            \mathbf{q}_i = \left\lfloor \frac{\mathbf{x}[i,:]}{s_i} \right\rceil \quad \in \mathbb{Z}_8^{1 \times \text{hidden}}
+            \boldsymbol{q}_i = \left\lfloor \frac{\boldsymbol{X}[i,:]}{s_i} \right\rceil \quad \in \mathbb{Z}_8^{1 \times H}
             $$
 
-            在 Dispatch 通信阶段，每个 $\text{token}_i$ 将其量化后的向量 $\mathbf{q}_i$ 和缩放因子 $s_i$ 发送给专家 $e_{i,0}, e_{i,1}, \dots, e_{i,\text{num\_topk}-1}$
+            在 Dispatch 通信阶段，每个 $\text{token}_i$ 将其量化后的向量 $\boldsymbol{q}_i$ 和缩放因子 $s_i$ 发送给专家 $e_{i,0}, e_{i,1}, \dots, e_{i,K-1}$
 
-            记 $I_e = \{\, i \mid \exists k,\ \text{topk\_idx}[i,k]=e \,\}$ 为所有被分派给专家 $e$ 的 token 索引集合，集合 $I_e$ 的大小 $N_e = |I_e|$ 即为专家 $e$ 需要处理的 token 总数。则有 $\mathbf{Q}_e \in \mathbb{Z}_8^{N_e \times \text{hidden}}$ 是由所有满足 $i \in I_e$ 的 $\mathbf{q}_i$ **按任意固定顺序行堆叠**而成的矩阵，该矩阵即为专家 $e$ 经过 Dispatch 后收到的全部 token 表示；同理，对应的专家 $e$ 收到的缩放因子向量记为 $\mathbf{s}_e \in \mathbb{R}^{N_e}$，其元素由所有满足 $i \in I_e$ 的 $s_i$ 按与 $\mathbf{Q}_e$ 相同的行顺序堆叠而成。
+            记 $I_e = \{\, i \mid \exists k,\ I_{i,k}=e \,\}$ 为所有被分派给专家 $e$ 的 token 索引集合，集合 $I_e$ 的大小 $m_e = |I_e|$ 即为专家 $e$ 需要处理的 token 总数。则有 $\boldsymbol{Q}_e \in \mathbb{Z}_8^{m_e \times H}$ 是由所有满足 $i \in I_e$ 的 $\boldsymbol{q}_i$ **按任意固定顺序行堆叠**而成的矩阵，该矩阵即为专家 $e$ 经过 Dispatch 后收到的全部 token 表示；同理，对应的专家 $e$ 收到的缩放因子向量记为 $\boldsymbol{s}_e \in \mathbb{R}^{m_e}$，其元素由所有满足 $i \in I_e$ 的 $s_i$ 按与 $\boldsymbol{Q}_e$ 相同的行顺序堆叠而成。
 
-            对于每个 $\text{token}_i$ 及其选中的第 $k$ 个专家 $e_{i,k}$，存在唯一的行索引 $\operatorname{row}(i,k) \in \{0,\dots,N_{e_{i,k}}-1\}$，使得 $\mathbf{Q}_{e_{i,k}}[\operatorname{row}(i,k), :] = \mathbf{q}_i$。该映射记录了 $\mathbf{q}_i$ 在专家 $e_{i,k}$ 的输入矩阵中的位置。
+            对于每个 $\text{token}_i$ 及其选中的第 $k$ 个专家 $e_{i,k}$，存在唯一的行索引 $\operatorname{row}(i,k) \in \{0,\dots,m_{e_{i,k}}-1\}$，使得 $\boldsymbol{Q}_{e_{i,k}}[\operatorname{row}(i,k), :] = \boldsymbol{q}_i$。该映射记录了 $\boldsymbol{q}_i$ 在专家 $e_{i,k}$ 的输入矩阵中的位置。
 
         - **Expert Compute**
 
@@ -215,27 +229,27 @@ Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为�
 
             **1. 生成精度补偿的偏置矩阵（离线生成，在算子外完成，并作为算子输入）**
 
-            MSD 方案的核心是将量化后的 INT8 激活值二进制重解释地拆分为两个 INT4 分量。由于低位 INT4 分量按 $(X^{\text{int8}} \mathbin{\&} 0x0F) - 8$ 定义，其数值范围被映射到 $[-8, 7]$，这相当于在原始无符号低 4 位（0~15）的基础上减去了 8。当将高、低位的 INT4 分别与权重矩阵做矩阵乘并合并时，该偏移会引入一个常数项，需要在最终结果中予以补偿。
+            MSD 方案的核心是将量化后的 INT8 激活值二进制重解释地拆分为两个 INT4 分量。由于低位 INT4 分量按 $(\boldsymbol{X}^{\text{int8}} \mathbin{\&} 0x0F) - 8$ 定义，其数值范围被映射到 $[-8, 7]$，这相当于在原始无符号低 4 位（0~15）的基础上减去了 8。当将高、低位的 INT4 分别与权重矩阵做矩阵乘并合并时，该偏移会引入一个常数项，需要在最终结果中予以补偿。
 
-            记原始 INT8 激活矩阵为 $X^{\text{int8}}$，拆分后的高位和低位 INT4 激活矩阵分别为 $X_1^{\text{int4}}$ 和 $X_2^{\text{int4}}$，权重矩阵为 $W$。恢复关系为：
-
-            $$
-            X^{\text{int8}} = 16 \times X_1^{\text{int4}} + (X_2^{\text{int4}} + 8 \cdot \mathbf{1}_{\text{mat}}),
-            $$
-
-            其中 $\mathbf{1}_{\text{mat}}$ 为与 $X_2^{\text{int4}}$ 形状相同的全 1 矩阵，用于逐元素加 8。令 $\mathbf{1}$ 为形状与输入特征维度一致的全 1 列向量，则矩阵乘展开为：
+            记原始 INT8 激活矩阵为 $\boldsymbol{X}^{\text{int8}}$，拆分后的高位和低位 INT4 激活矩阵分别为 $\boldsymbol{X}_1^{\text{int4}}$ 和 $\boldsymbol{X}_2^{\text{int4}}$，权重矩阵为 $\boldsymbol{W}$。恢复关系为：
 
             $$
-            X^{\text{int8}} \cdot W = 16 \cdot (X_1^{\text{int4}} \cdot W) + (X_2^{\text{int4}} \cdot W) + 8 \cdot (\mathbf{1}^\top \cdot W).
+            \boldsymbol{X}^{\text{int8}} = 16 \times \boldsymbol{X}_1^{\text{int4}} + (\boldsymbol{X}_2^{\text{int4}} + 8 \cdot \boldsymbol{1}_{\text{mat}}),
             $$
 
-            这里 $\mathbf{1}^\top \cdot W$ 表示对权重矩阵 $W$ 的每一列求和，其结果为一个行向量（形状与输出维度相同）。在具体实现中，该行向量会被广播到批次维度，加到所有 token 的输出上。可见，若只计算前两项，会缺失一个正数项。为了精确恢复结果，需预先计算补偿偏置：
+            其中 $\boldsymbol{1}_{\text{mat}}$ 为与 $\boldsymbol{X}_2^{\text{int4}}$ 形状相同的全 1 矩阵，用于逐元素加 8。令 $\boldsymbol{1}$ 为形状与输入特征维度一致的全 1 列向量，则矩阵乘展开为：
 
             $$
-            \text{bias} = 8 \cdot (\mathbf{1}^\top \cdot W),
+            \boldsymbol{X}^{\text{int8}} \cdot \boldsymbol{W} = 16 \cdot (\boldsymbol{X}_1^{\text{int4}} \cdot \boldsymbol{W}) + (\boldsymbol{X}_2^{\text{int4}} \cdot \boldsymbol{W}) + 8 \cdot (\boldsymbol{1}^\top \cdot \boldsymbol{W}).
             $$
 
-            $\text{l1\_bias}$ 和 $\text{l2\_bias}$ 均按此法，分别使用对应的全 1 列向量（维度分别为 $\text{hidden}$ 和 $\text{intermediate\_hidden}$）与各自的权重矩阵相乘，得到形状匹配的偏置行向量。这些偏置在离线阶段计算完成后传入算子，在合并高低位结果时直接参与加法，从而消除偏移引入的误差。
+            这里 $\boldsymbol{1}^\top \cdot \boldsymbol{W}$ 表示对权重矩阵 $\boldsymbol{W}$ 的每一列求和，其结果为一个行向量（形状与输出维度相同）。在具体实现中，该行向量会被广播到批次维度，加到所有 token 的输出上。可见，若只计算前两项，会缺失一个正数项。为了精确恢复结果，需预先计算补偿偏置：
+
+            $$
+            \text{bias} = 8 \cdot (\boldsymbol{1}^\top \cdot \boldsymbol{W}),
+            $$
+
+            $\boldsymbol{B}_1$ 和 $\boldsymbol{B}_2$ 均按此法，分别使用对应的全 1 列向量（维度分别为 $H$ 和 $D$）与各自的权重矩阵相乘，得到形状匹配的偏置行向量。这些偏置在离线阶段计算完成后传入算子，在合并高低位结果时直接参与加法，从而消除偏移引入的误差。
 
             **2. Linear1 投影（INT4 × INT4 矩阵乘 + 反量化）**
 
@@ -243,145 +257,145 @@ Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为�
 
             **(1) 激活重解释为INT4**
 
-            将 INT8 激活张量 $\mathbf{Q}_e^{\text{int8}} \in \mathbb{Z}_8^{N_e \times \text{hidden}}$ 二进制重解释为两个 INT4 交替拼接的视图：
+            将 INT8 激活张量 $\boldsymbol{Q}_e^{\text{int8}} \in \mathbb{Z}_8^{m_e \times H}$ 二进制重解释为两个 INT4 交替拼接的视图：
 
             $$
-            \mathbf{Q}_e^{\text{int4}} = \mathrm{bitcast}_{\mathbb{Z}_4^{2N_e \times \text{hidden}}} \left( \mathbf{Q}_e^{\text{int8}} \right) \in \mathbb{Z}_4^{2N_e \times \text{hidden}}
+            \boldsymbol{Q}_e^{\text{int4}} = \mathrm{bitcast}_{\mathbb{Z}_4^{2m_e \times H}} \left( \boldsymbol{Q}_e^{\text{int8}} \right) \in \mathbb{Z}_4^{2m_e \times H}
             $$
 
-            其中高位和低位分量直接由 $\mathbf{Q}_e^{\text{int4}}$ 的偶数行和奇数行给出：
+            其中高位和低位分量直接由 $\boldsymbol{Q}_e^{\text{int4}}$ 的偶数行和奇数行给出：
 
             $$
-            \mathbf{Q}_e^{\text{high}} = \mathbf{Q}_e^{\text{int4}}[0::2, :] \in \mathbb{Z}_4^{N_e \times \text{hidden}}, \quad
-            \mathbf{Q}_e^{\text{low}} = \mathbf{Q}_e^{\text{int4}}[1::2, :] \in \mathbb{Z}_4^{N_e \times \text{hidden}}
+            \boldsymbol{Q}_e^{\text{high}} = \boldsymbol{Q}_e^{\text{int4}}[0::2, :] \in \mathbb{Z}_4^{m_e \times H}, \quad
+            \boldsymbol{Q}_e^{\text{low}} = \boldsymbol{Q}_e^{\text{int4}}[1::2, :] \in \mathbb{Z}_4^{m_e \times H}
             $$
 
             它们在数值上可以由原 INT8 经如下计算得到：
 
             $$
-            \mathbf{Q}_e^{\text{high}} = \left\lfloor \frac{\mathbf{Q}_e^{\text{int8}}}{16} \right\rfloor, \quad
-            \mathbf{Q}_e^{\text{low}} = (\mathbf{Q}_e^{\text{int8}} \mathbin{\&} 0x0F) - 8
+            \boldsymbol{Q}_e^{\text{high}} = \left\lfloor \frac{\boldsymbol{Q}_e^{\text{int8}}}{16} \right\rfloor, \quad
+            \boldsymbol{Q}_e^{\text{low}} = (\boldsymbol{Q}_e^{\text{int8}} \mathbin{\&} 0x0F) - 8
             $$
 
-            恢复关系为 $\mathbf{Q}_e^{\text{int8}} = 16\mathbf{Q}_e^{\text{high}} + (\mathbf{Q}_e^{\text{low}} + 8)$。由于 $\mathrm{bitcast}$ 仅改变类型视图，$\mathbf{Q}_e^{\text{int4}}$ 与 $\mathbf{Q}_e^{\text{int8}}$ 共享底层物理内存，无需任何数据重排或拷贝。
+            恢复关系为 $\boldsymbol{Q}_e^{\text{int8}} = 16\boldsymbol{Q}_e^{\text{high}} + (\boldsymbol{Q}_e^{\text{low}} + 8)$。由于 $\mathrm{bitcast}$ 仅改变类型视图，$\boldsymbol{Q}_e^{\text{int4}}$ 与 $\boldsymbol{Q}_e^{\text{int8}}$ 共享底层物理内存，无需任何数据重排或拷贝。
 
             **(2) INT4 × INT4 矩阵乘与权重反量化**
 
-            将重解释后的 INT4 激活视图 $\mathbf{Q}_e^{\text{int4}} \in \mathbb{Z}_4^{2N_e \times \text{hidden}}$ 与权重矩阵 $\text{l1\_weights}[e] \in \mathbb{R}^{\text{hidden} \times 2\cdot\text{intermediate\_hidden}}$ 执行矩阵乘，并应用权重缩放因子 $\text{l1\_weights\_sf}[e]$ 进行反量化，得到结果：
+            将重解释后的 INT4 激活视图 $\boldsymbol{Q}_e^{\text{int4}} \in \mathbb{Z}_4^{2m_e \times H}$ 与权重矩阵 $\boldsymbol{W}_{1,e} \in \mathbb{R}^{H \times 2D}$ 执行矩阵乘，并应用权重缩放因子 $\boldsymbol{S}_{1,e}$ 进行反量化，得到结果：
 
             $$
-            \mathbf{C}_e = \bigl( \mathbf{Q}_e^{\text{int4}} \cdot \text{l1\_weights}[e] \bigr) \odot \text{l1\_weights\_sf}[e]
-            \;\in\; \mathbb{R}^{2N_e \times 2\cdot\text{intermediate\_hidden}}
+            \boldsymbol{C}_e = \bigl( \boldsymbol{Q}_e^{\text{int4}} \cdot \boldsymbol{W}_{1,e} \bigr) \odot \boldsymbol{S}_{1,e}
+            \;\in\; \mathbb{R}^{2m_e \times 2D}
             $$
 
-            将结果按偶数行和奇数行分别记为如下的矩阵视图，它们即对应于$\mathbf{Q}_e^{\text{high}}$和$\mathbf{Q}_e^{\text{low}}$的计算结果：
+            将结果按偶数行和奇数行分别记为如下的矩阵视图，它们即对应于$\boldsymbol{Q}_e^{\text{high}}$和$\boldsymbol{Q}_e^{\text{low}}$的计算结果：
 
             $$
-            \mathbf{C}_e^{\text{high}} = \mathbf{C}_e[0::2, :] \in \mathbb{R}^{N_e \times 2\cdot\text{intermediate\_hidden}}, \qquad
-            \mathbf{C}_e^{\text{low}}  = \mathbf{C}_e[1::2, :] \in \mathbb{R}^{N_e \times 2\cdot\text{intermediate\_hidden}}
+            \boldsymbol{C}_e^{\text{high}} = \boldsymbol{C}_e[0::2, :] \in \mathbb{R}^{m_e \times 2D}, \qquad
+            \boldsymbol{C}_e^{\text{low}}  = \boldsymbol{C}_e[1::2, :] \in \mathbb{R}^{m_e \times 2D}
             $$
 
             **(3) 精度补偿与激活反量化**
 
-            利用偏置 $\text{l1\_bias}[e]$ 和激活缩放因子 $\mathbf{s}_e$（行向量）分别进行精度补偿和激活反量化，最终预激活值为：
+            利用偏置 $\boldsymbol{b}_{1,e}$ 和激活缩放因子 $\boldsymbol{s}_e$（行向量）分别进行精度补偿和激活反量化，最终预激活值为：
 
             $$
-            \mathbf{H}_e = \Bigl( 16 \cdot \mathbf{C}_e^{\text{high}} + \mathbf{C}_e^{\text{low}} + \text{l1\_bias}[e] \Bigr) \odot \mathbf{s}_e \quad\in \mathbb{R}^{N_e \times 2\cdot\text{intermediate\_hidden}}
+            \boldsymbol{Z}_e = \Bigl( 16 \cdot \boldsymbol{C}_e^{\text{high}} + \boldsymbol{C}_e^{\text{low}} + \boldsymbol{b}_{1,e} \Bigr) \odot \boldsymbol{s}_e \quad\in \mathbb{R}^{m_e \times 2D}
             $$
 
-            其中 $\odot \mathbf{s}_e$ 表示将矩阵的每一行乘以 $\mathbf{s}_e$ 中对应的标量。
+            其中 $\odot \boldsymbol{s}_e$ 表示将矩阵的每一行乘以 $\boldsymbol{s}_e$ 中对应的标量。
 
             **3. SwiGLU 激活**
 
-            首先将 $\mathbf{H}_e$ 沿列维度拆分为 **gate 部分** $\mathbf{H}_{\text{gate}}$ 和 **up 部分** $\mathbf{H}_{\text{up}}$，然后对 gate 部分应用 SiLU 激活函数，再与 up 部分逐元素相乘，得到专家 $e$ 的中间激活表示 $\mathbf{A}_e$。
+            首先将 $\boldsymbol{Z}_e$ 沿列维度拆分为 **gate 部分** $\boldsymbol{Z}_{\text{gate}}$ 和 **up 部分** $\boldsymbol{Z}_{\text{up}}$，然后对 gate 部分应用 SiLU 激活函数，再与 up 部分逐元素相乘，得到专家 $e$ 的中间激活表示 $\boldsymbol{A}_e$。
             $$
-            \mathbf{H}_{\text{gate}} = \mathbf{H}_e[:,\; :\!\text{intermediate\_hidden}], \qquad
-            \mathbf{H}_{\text{up}} = \mathbf{H}_e[:,\; \text{intermediate\_hidden}:]
+            \boldsymbol{Z}_{\text{gate}} = \boldsymbol{Z}_e[:,\; :D], \qquad
+            \boldsymbol{Z}_{\text{up}} = \boldsymbol{Z}_e[:,\; D:]
             $$
             $$
-            \mathbf{A}_e = \operatorname{SiLU}(\mathbf{H}_{\text{gate}}) \odot \mathbf{H}_{\text{up}}
-            \quad\in \mathbb{R}^{N_e \times \text{intermediate\_hidden}}
+            \boldsymbol{A}_e = \operatorname{SiLU}(\boldsymbol{Z}_{\text{gate}}) \odot \boldsymbol{Z}_{\text{up}}
+            \quad\in \mathbb{R}^{m_e \times D}
             $$
 
             **4. Linear2 投影（量化 + INT4 × INT4 矩阵乘 + 反量化）**
 
-            Linear2 投影作为第二层线性变换，将中间激活表示 $\mathbf{A}_e$ 从高维空间投影回原始的隐藏维度 $\text{hidden}$，使专家输出能够与残差连接等后续操作兼容。
+            Linear2 投影作为第二层线性变换，将中间激活表示 $\boldsymbol{A}_e$ 从高维空间投影回原始的隐藏维度 $H$，使专家输出能够与残差连接等后续操作兼容。
             在 A8W4 场景下，首先将激活值量化为 INT8，再通过二进制重解释为两个 INT4 的拼接视图，以一次矩阵乘完成计算，过程如下。
 
             **(1) 激活量化**
 
-            对 $\mathbf{A}_e$ 的每一行计算缩放因子并量化至 INT8：
+            对 $\boldsymbol{A}_e$ 的每一行计算缩放因子并量化至 INT8：
             $$
-            t_i = \frac{\max(|\mathbf{A}_e[i,:]|)}{127}, \quad i=0,\dots,N_e-1
+            t_i = \frac{\max(|\boldsymbol{A}_e[i,:]|)}{127}, \quad i=0,\dots,m_e-1
             $$
-            得到专家 $e$ 在 Linear2 计算时的激活缩放因子 $\mathbf{t}_e \in \mathbb{R}^{N_e}$，并计算量化结果：
+            得到专家 $e$ 在 Linear2 计算时的激活缩放因子 $\boldsymbol{t}_e \in \mathbb{R}^{m_e}$，并计算量化结果：
             $$
-            \mathbf{A}_e^{\text{int8}}[i,:] = \left\lfloor \frac{\mathbf{A}_e[i,:]}{t_i} \right\rceil \quad \in \mathbb{Z}_8^{N_e \times \text{intermediate\_hidden}}
+            \boldsymbol{A}_e^{\text{int8}}[i,:] = \left\lfloor \frac{\boldsymbol{A}_e[i,:]}{t_i} \right\rceil \quad \in \mathbb{Z}_8^{m_e \times D}
             $$
 
             **(2) 激活重解释为 INT4**
 
-            将 INT8 激活张量 $\mathbf{A}_e^{\text{int8}} \in \mathbb{Z}_8^{N_e \times \text{intermediate\_hidden}}$ 二进制重解释为两个 INT4 交替拼接的视图：
+            将 INT8 激活张量 $\boldsymbol{A}_e^{\text{int8}} \in \mathbb{Z}_8^{m_e \times D}$ 二进制重解释为两个 INT4 交替拼接的视图：
 
             $$
-            \mathbf{A}_e^{\text{int4}} = \mathrm{bitcast}_{\mathbb{Z}_4^{2N_e \times \text{intermediate\_hidden}}} \left( \mathbf{A}_e^{\text{int8}} \right) \in \mathbb{Z}_4^{2N_e \times \text{intermediate\_hidden}}
+            \boldsymbol{A}_e^{\text{int4}} = \mathrm{bitcast}_{\mathbb{Z}_4^{2m_e \times D}} \left( \boldsymbol{A}_e^{\text{int8}} \right) \in \mathbb{Z}_4^{2m_e \times D}
             $$
 
-            其中高位和低位分量直接由 $\mathbf{A}_e^{\text{int4}}$ 的偶数行和奇数行给出：
+            其中高位和低位分量直接由 $\boldsymbol{A}_e^{\text{int4}}$ 的偶数行和奇数行给出：
 
             $$
-            \mathbf{A}_e^{\text{high}} = \mathbf{A}_e^{\text{int4}}[0::2, :] \in \mathbb{Z}_4^{N_e \times \text{intermediate\_hidden}}, \quad
-            \mathbf{A}_e^{\text{low}} = \mathbf{A}_e^{\text{int4}}[1::2, :] \in \mathbb{Z}_4^{N_e \times \text{intermediate\_hidden}}
+            \boldsymbol{A}_e^{\text{high}} = \boldsymbol{A}_e^{\text{int4}}[0::2, :] \in \mathbb{Z}_4^{m_e \times D}, \quad
+            \boldsymbol{A}_e^{\text{low}} = \boldsymbol{A}_e^{\text{int4}}[1::2, :] \in \mathbb{Z}_4^{m_e \times D}
             $$
 
             它们在数值上可以由原 INT8 经如下计算得到：
 
             $$
-            \mathbf{A}_e^{\text{high}} = \left\lfloor \frac{\mathbf{A}_e^{\text{int8}}}{16} \right\rfloor, \quad
-            \mathbf{A}_e^{\text{low}} = (\mathbf{A}_e^{\text{int8}} \mathbin{\&} 0x0F) - 8
+            \boldsymbol{A}_e^{\text{high}} = \left\lfloor \frac{\boldsymbol{A}_e^{\text{int8}}}{16} \right\rfloor, \quad
+            \boldsymbol{A}_e^{\text{low}} = (\boldsymbol{A}_e^{\text{int8}} \mathbin{\&} 0x0F) - 8
             $$
 
-            恢复关系为 $\mathbf{A}_e^{\text{int8}} = 16\mathbf{A}_e^{\text{high}} + (\mathbf{A}_e^{\text{low}} + 8)$。由于 $\mathrm{bitcast}$ 仅改变类型视图，$\mathbf{A}_e^{\text{int4}}$ 与 $\mathbf{A}_e^{\text{int8}}$ 共享底层物理内存，无需任何数据重排或拷贝。
+            恢复关系为 $\boldsymbol{A}_e^{\text{int8}} = 16\boldsymbol{A}_e^{\text{high}} + (\boldsymbol{A}_e^{\text{low}} + 8)$。由于 $\mathrm{bitcast}$ 仅改变类型视图，$\boldsymbol{A}_e^{\text{int4}}$ 与 $\boldsymbol{A}_e^{\text{int8}}$ 共享底层物理内存，无需任何数据重排或拷贝。
 
             **(3) INT4 × INT4 矩阵乘与权重反量化**
 
-            将重解释后的 INT4 激活视图 $\mathbf{A}_e^{\text{int4}} \in \mathbb{Z}_4^{2N_e \times \text{intermediate\_hidden}}$ 与权重矩阵 $\text{l2\_weights}[e] \in \mathbb{R}^{\text{intermediate\_hidden} \times \text{hidden}}$ 执行矩阵乘，并应用权重缩放因子 $\text{l2\_weights\_sf}[e]$ 进行反量化，得到结果：
+            将重解释后的 INT4 激活视图 $\boldsymbol{A}_e^{\text{int4}} \in \mathbb{Z}_4^{2m_e \times D}$ 与权重矩阵 $\boldsymbol{W}_{2,e} \in \mathbb{R}^{D \times H}$ 执行矩阵乘，并应用权重缩放因子 $\boldsymbol{S}_{2,e}$ 进行反量化，得到结果：
 
             $$
-            \mathbf{D}_e = \bigl( \mathbf{A}_e^{\text{int4}} \cdot \text{l2\_weights}[e] \bigr) \odot \text{l2\_weights\_sf}[e]
-            \;\in\; \mathbb{R}^{2N_e \times \text{hidden}}
+            \boldsymbol{D}_e = \bigl( \boldsymbol{A}_e^{\text{int4}} \cdot \boldsymbol{W}_{2,e} \bigr) \odot \boldsymbol{S}_{2,e}
+            \;\in\; \mathbb{R}^{2m_e \times H}
             $$
 
-            将结果按偶数行和奇数行分别记为如下的矩阵视图，它们即对应于 $\mathbf{A}_e^{\text{high}}$ 和 $\mathbf{A}_e^{\text{low}}$ 的计算结果：
+            将结果按偶数行和奇数行分别记为如下的矩阵视图，它们即对应于 $\boldsymbol{A}_e^{\text{high}}$ 和 $\boldsymbol{A}_e^{\text{low}}$ 的计算结果：
 
             $$
-            \mathbf{D}_e^{\text{high}} = \mathbf{D}_e[0::2, :] \in \mathbb{R}^{N_e \times \text{hidden}}, \qquad
-            \mathbf{D}_e^{\text{low}}  = \mathbf{D}_e[1::2, :] \in \mathbb{R}^{N_e \times \text{hidden}}
+            \boldsymbol{D}_e^{\text{high}} = \boldsymbol{D}_e[0::2, :] \in \mathbb{R}^{m_e \times H}, \qquad
+            \boldsymbol{D}_e^{\text{low}}  = \boldsymbol{D}_e[1::2, :] \in \mathbb{R}^{m_e \times H}
             $$
 
             **(4) 精度补偿与激活反量化**
 
-            利用偏置 $\text{l2\_bias}[e]$ 和激活缩放因子 $\mathbf{t}_e$（行向量）分别进行精度补偿和激活反量化，最终输出为：
+            利用偏置 $\boldsymbol{b}_{2,e}$ 和激活缩放因子 $\boldsymbol{t}_e$（行向量）分别进行精度补偿和激活反量化，最终输出为：
 
             $$
-            \mathbf{Y}_e = \Bigl( 16 \cdot \mathbf{D}_e^{\text{high}} + \mathbf{D}_e^{\text{low}} + \text{l2\_bias}[e] \Bigr) \odot \mathbf{t}_e
-            \quad\in \mathbb{R}^{N_e \times \text{hidden}}
+            \boldsymbol{Y}_e = \Bigl( 16 \cdot \boldsymbol{D}_e^{\text{high}} + \boldsymbol{D}_e^{\text{low}} + \boldsymbol{b}_{2,e} \Bigr) \odot \boldsymbol{t}_e
+            \quad\in \mathbb{R}^{m_e \times H}
             $$
 
-            其中 $\odot \mathbf{t}_e$ 表示将矩阵的每一行乘以 $\mathbf{t}_e$ 中对应的标量。
+            其中 $\odot \boldsymbol{t}_e$ 表示将矩阵的每一行乘以 $\boldsymbol{t}_e$ 中对应的标量。
 
-            经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 $\text{token}_i$，它在专家 $e_{i,k}$ 中的输出行即为 $\mathbf{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$。
+            经过以上计算，专家 $e$ 的每一行输出对应其批次中的一个 token。对于 $\text{token}_i$，它在专家 $e_{i,k}$ 中的输出行即为 $\boldsymbol{Y}_{e_{i,k}}\bigl[\operatorname{row}(i,k),\,:\bigr]$。
 
         - **Token Combine**
 
             Combine 负责收集所有专家计算出的输出向量，按照每个 token 原先分配到的专家权重进行加权求和，最终为每个 token 生成一个融合后的输出。利用之前记录的位置索引 $\operatorname{row}(i,k)$，从专家 $e_{i,k}$ 的输出矩阵中收回属于 $\text{token}_i$ 的行，并与门控权重相乘后求和：
             $$
-            \mathbf{y}_i = \sum_{k=0}^{\text{num\_topk} - 1} w_k \;\cdot\; \mathbf{Y}_{e_{i,k}}\!\bigl[\,\operatorname{row}(i,k),\,:\,\bigr]
-            \qquad\bigl(\in \mathbb{R}^{1 \times \text{hidden}}\bigr)
+            \boldsymbol{y}_i = \sum_{k=0}^{K - 1} w_k \;\cdot\; \boldsymbol{Y}_{e_{i,k}}\!\bigl[\,\operatorname{row}(i,k),\,:\,\bigr]
+            \qquad\bigl(\in \mathbb{R}^{1 \times H}\bigr)
             $$
-            其中 $w_k = \text{topk\_weights}[i,k]$ 为 $\text{token}_i$ 对专家 $e_{i,k}$ 的门控权重。
+            其中 $w_k = G_{i,k}$ 为 $\text{token}_i$ 对专家 $e_{i,k}$ 的门控权重。
 
-            所有 token 的输出按输入顺序堆叠为最终输出 $\mathbf{Y} \in \mathbb{R}^{\text{total\_num\_tokens} \times \text{hidden}}$。
+            所有 token 的输出按输入顺序堆叠为最终输出 $\boldsymbol{Y} \in \mathbb{R}^{n \times H}$。
 
         </details>
 
@@ -389,57 +403,57 @@ Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为�
         <summary> A8W8-FP 量化场景</summary>
 
         第一阶段对输入 Token 按专家分组收集后做 MXFP8 量化，生成各专家的量化输入与缩放因子：
-        
+
         $$
-        \hat{X}_e,\ S_{X,e} = \mathrm{Q}_{\text{MX}}\!\left(X[\mathcal{T}_e]\right), \quad e = 0, 1, \ldots, E_{\text{local}}-1
+        \hat{\boldsymbol{X}}_e,\ \boldsymbol{S}_{X,e} = \mathrm{Q}_{\text{MX}}\!\left(\boldsymbol{X}[\mathcal{T}_e]\right), \quad e = 0, 1, \ldots, E_{\text{local}}-1
         $$
-        
-        说明：根据 `topkIds` 将 Token 按专家排序收集，$\mathcal{T}_e$ 为分配到专家 $e$ 的 Token 索引集合，$E_{local}$表示当前专家收到的最大token数，每个专家数值可能不同，$X[\mathcal{T}_e]$ 为对应的子矩阵。$\mathrm{Q}_{\text{MX}}$ 表示 MX 逐组量化（group size = 32），对每组 32 个元素提取共享指数后量化为 FP8 目标类型（FLOAT8_E5M2 或 FLOAT8_E4M3FN），同时输出 FLOAT8_E8M0 缩放因子。量化后的数据将作为 GMM1 的输入。
-        
-        第二阶段对每个专家执行 GMM1 矩阵乘法（将 $W_1$ 沿列方向分为两半分别计算）、SwiGLU 激活和 MX 量化：
-        
+
+        说明：根据 `topkIds` 将 Token 按专家排序收集，$\mathcal{T}_e$ 为分配到专家 $e$ 的 Token 索引集合，$E_{\text{local}}$ 表示当前 Rank 的专家数（即 $E / \text{ep\_world\_size}$），$\boldsymbol{X}[\mathcal{T}_e]$ 为对应的子矩阵。$\mathrm{Q}_{\text{MX}}$ 表示 MX 逐组量化（group size = 32），对每组 32 个元素提取共享指数后量化为 FP8 目标类型（FLOAT8_E5M2 或 FLOAT8_E4M3FN），同时输出 FLOAT8_E8M0 缩放因子。量化后的数据将作为 GMM1 的输入。
+
+        第二阶段对每个专家执行 GMM1 矩阵乘法（将 $\boldsymbol{W}_1$ 沿列方向分为两半分别计算）、SwiGLU 激活和 MX 量化：
+
         $$
-        Z_e^{(x)} = \mathrm{DQ}_{\text{MX}}(\hat{X}_e, S_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{1,e}^{(x)}, S_{1,e}^{(x)}), \quad Z_e^{(y)} = \mathrm{DQ}_{\text{MX}}(\hat{X}_e, S_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{1,e}^{(y)}, S_{1,e}^{(y)})
+        \boldsymbol{Z}_e^{(x)} = \mathrm{DQ}_{\text{MX}}(\hat{\boldsymbol{X}}_e, \boldsymbol{S}_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(\boldsymbol{W}_{1,e}^{(x)}, \boldsymbol{S}_{1,e}^{(x)}), \quad \boldsymbol{Z}_e^{(y)} = \mathrm{DQ}_{\text{MX}}(\hat{\boldsymbol{X}}_e, \boldsymbol{S}_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(\boldsymbol{W}_{1,e}^{(y)}, \boldsymbol{S}_{1,e}^{(y)})
         $$
-        
+
         $$
-        U_e = Z_e^{(x)} \odot \sigma\!\left(Z_e^{(x)}\right) \odot Z_e^{(y)}
+        \boldsymbol{A}_e = \boldsymbol{Z}_e^{(x)} \odot \sigma\!\left(\boldsymbol{Z}_e^{(x)}\right) \odot \boldsymbol{Z}_e^{(y)}
         $$
-        
+
         $$
-        \hat{U}_e,\ S_{U,e} = \mathrm{Q}_{\text{MX}}(U_e)
+        \hat{\boldsymbol{A}}_e,\ \boldsymbol{S}_{A,e} = \mathrm{Q}_{\text{MX}}(\boldsymbol{A}_e)
         $$
-        
-        说明：将 $W_1$ 的前 $N/2$ 列 $W_{1,e}^{(x)}$ 和后 $N/2$ 列 $W_{1,e}^{(y)}$ 分别与 MX 反量化后的输入做矩阵乘法，得到 Swish 分支 $Z_e^{(x)}$ 和门控分支 $Z_e^{(y)}$。SwiGLU 激活对两个分支做逐元素乘积 $x \cdot \sigma(x) \cdot y$，其中 $\sigma$ 为 Sigmoid 函数，将中间维度从 $N$ 减半为 $N/2$。随后对 SwiGLU 输出做 MX 量化，得到 GMM2 的量化输入 $\hat{U}_e$。
-        
+
+        说明：将 $\boldsymbol{W}_1$ 的前 $D$ 列 $\boldsymbol{W}_{1,e}^{(x)}$ 和后 $D$ 列 $\boldsymbol{W}_{1,e}^{(y)}$ 分别与 MX 反量化后的输入做矩阵乘法，得到 Swish 分支 $\boldsymbol{Z}_e^{(x)}$ 和门控分支 $\boldsymbol{Z}_e^{(y)}$。SwiGLU 激活对两个分支做逐元素乘积 $x \cdot \sigma(x) \cdot y$，其中 $\sigma$ 为 Sigmoid 函数，将中间维度从 $2D$ 减半为 $D$。随后对 SwiGLU 输出做 MX 量化，得到 GMM2 的量化输入 $\hat{\boldsymbol{A}}_e$。
+
         第三阶段对每个专家执行 GMM2 矩阵乘法，并将结果按目标 Rank 分发：
-        
+
         $$
-        O_e = \mathrm{DQ}_{\text{MX}}(\hat{U}_e, S_{U,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{2,e}, S_{2,e})
+        \boldsymbol{Y}_e = \mathrm{DQ}_{\text{MX}}(\hat{\boldsymbol{A}}_e, \boldsymbol{S}_{A,e}) \cdot \mathrm{DQ}_{\text{MX}}(\boldsymbol{W}_{2,e}, \boldsymbol{S}_{2,e})
         $$
-        
-        说明：将量化后的 SwiGLU 输出与第二组权重 $W_2$ 做 MX 反量化后的矩阵乘法，将 $N/2$ 维中间表示映射回 $H$ 维隐藏空间，得到每个专家的输出 $O_e$。计算完成后通过 RDMA peermem 将结果按目标 Rank 的专家偏移地址写入远端，实现跨 Rank 聚合。
-        
+
+        说明：将量化后的 SwiGLU 输出与第二组权重 $\boldsymbol{W}_2$ 做 MX 反量化后的矩阵乘法，将 $D$ 维中间表示映射回 $H$ 维隐藏空间，得到每个专家的输出 $\boldsymbol{Y}_e$。计算完成后通过 RDMA peermem 将结果按目标 Rank 的专家偏移地址写入远端，实现跨 Rank 聚合。
+
         第四阶段对所有 Token 按路由权重加权求和，恢复为与输入相同形状的输出：
-        
+
         $$
-        Y[i] = \sum_{k=0}^{K-1} W[i,\, k] \cdot O[\pi(i,\, k)]
+        \boldsymbol{Y}[i] = \sum_{k=0}^{K-1} G_{i,k} \cdot \boldsymbol{Y}_{e_{i,k}}[\pi(i,\, k)]
         $$
-        
-        说明：对每个 Token $i$，根据排序后的路由索引 $\pi(i,k)$ 从聚合后的专家结果中取出对应行，按 `topkWeights` 中的权重逐元素加权累加，得到最终输出 $Y$。
-        
-        其中，$X$ 表示参数 `x`，$W$ 表示参数 `topkWeights`，$W_1$ 表示参数 `weight1`，$W_2$ 表示参数 `weight2`，$Y$ 表示参数 `y`，$E_{\text{local}}$ 表示属性 `moeExpertNum / epWorldSize`（每个 Rank 的专家数），$K$ 表示 `topkIds` 的第二维度（top-K 值，取值 6 或 8）。
-        
+
+        说明：对每个 Token $i$，根据排序后的路由索引 $\pi(i,k)$ 从聚合后的专家结果中取出对应行，按 `topkWeights` 中的权重逐元素加权累加，得到最终输出 $\boldsymbol{Y}$。
+
+        其中，$\boldsymbol{X}$ 表示参数 `x`（对应算子入参 `x`），$\boldsymbol{G}$ 表示参数 `topkWeights`（对应算子入参 `topk_weights`），$\boldsymbol{W}_1$ 表示参数 `weight1`（对应算子入参 `l1_weights`），$\boldsymbol{W}_2$ 表示参数 `weight2`（对应算子入参 `l2_weights`），$\boldsymbol{Y}$ 表示参数 `y`（对应算子入参 `y_out`），$E_{\text{local}}$ 表示属性 `moeExpertNum / epWorldSize`（每个 Rank 的专家数），$K$ 表示 `topkIds` 的第二维度（top-K 值，取值 6 或 8）。
+
         局部变量说明：
         - $\mathcal{T}_e$：被路由到专家 $e$ 的 Token 索引集合，由 `topkIds` 排序后确定。
-        - $\hat{X}_e,\ S_{X,e}$：专家 $e$ 的量化输入及其 MX 缩放因子，第一阶段中间结果。
-        - $W_{1,e}^{(x)}$、$W_{1,e}^{(y)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由 `weight1` 按 SwiGLU 拆分推导。
-        - $S_{1,e}^{(x)}$、$S_{1,e}^{(y)}$：$W_{1,e}^{(x)}$ 和 $W_{1,e}^{(y)}$ 对应的 MX 缩放因子，从 `weightScales1` 按维度截取。
-        - $S_{2,e}$：$W_{2,e}$ 对应的 MX 缩放因子，来自参数 `weightScales2`。
-        - $Z_e^{(x)},\ Z_e^{(y)}$：GMM1 的两路矩阵乘法输出（Swish 分支和门控分支），中间结果。
-        - $U_e$：SwiGLU 激活输出，维度 $m_e \times N/2$，中间结果。
-        - $\hat{U}_e,\ S_{U,e}$：量化后的 SwiGLU 输出及其 MX 缩放因子，中间结果。
-        - $O_e$：GMM2 的专家级输出，维度 $m_e \times H$，中间结果。
+        - $\hat{\boldsymbol{X}}_e,\ \boldsymbol{S}_{X,e}$：专家 $e$ 的量化输入及其 MX 缩放因子，第一阶段中间结果。
+        - $\boldsymbol{W}_{1,e}^{(x)}$、$\boldsymbol{W}_{1,e}^{(y)}$：$\boldsymbol{W}_1$ 对应专家 $e$ 的前 $D$ 列和后 $D$ 列子矩阵，由 `weight1` 按 SwiGLU 拆分推导。
+        - $\boldsymbol{S}_{1,e}^{(x)}$、$\boldsymbol{S}_{1,e}^{(y)}$：$\boldsymbol{W}_{1,e}^{(x)}$ 和 $\boldsymbol{W}_{1,e}^{(y)}$ 对应的 MX 缩放因子，从 `weightScales1` 按维度截取。
+        - $\boldsymbol{S}_{2,e}$：$\boldsymbol{W}_{2,e}$ 对应的 MX 缩放因子，来自参数 `weightScales2`。
+        - $\boldsymbol{Z}_e^{(x)},\ \boldsymbol{Z}_e^{(y)}$：GMM1 的两路矩阵乘法输出（Swish 分支和门控分支），中间结果。
+        - $\boldsymbol{A}_e$：SwiGLU 激活输出，维度 $m_e \times D$，中间结果。
+        - $\hat{\boldsymbol{A}}_e,\ \boldsymbol{S}_{A,e}$：量化后的 SwiGLU 输出及其 MX 缩放因子，中间结果。
+        - $\boldsymbol{Y}_e$：GMM2 的专家级输出，维度 $m_e \times H$，中间结果。
         - $\pi(i, k)$：Token $i$ 的第 $k$ 个 top-k 专家在展开排序后的行索引，由路由排序确定。
         - $\mathrm{Q}_{\text{MX}}(\cdot)$：MX 逐组量化操作，block size = 32，输出 FP8 数据和 E8M0 缩放因子。
         - $\mathrm{DQ}_{\text{MX}}(\cdot)$：MX 逐组反量化操作，在 matmul 内部隐式执行。
