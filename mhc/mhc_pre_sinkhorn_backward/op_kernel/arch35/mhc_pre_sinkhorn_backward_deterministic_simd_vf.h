@@ -17,6 +17,8 @@
 #define MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_SIMD_VF_H
 
 #include "kernel_operator.h"
+#include "op_kernel/platform_util.h"
+#include "op_kernel/math_util.h"
 
 using namespace AscendC;
 
@@ -47,7 +49,8 @@ constexpr T AlignUp(T value, T align) {
 
 
 template <typename PARAM_T>
-__aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const GlobalTensor<PARAM_T>& srcTensor, int64_t repTime, int64_t dataLen, 
+__aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const GlobalTensor<PARAM_T>& srcTensor, \
+                                int64_t repTime, int64_t dataLen, 
                                 uint32_t ubStride, uint32_t gmStride)
 {
     DataCopyExtParams copyParams = {
@@ -59,7 +62,8 @@ __aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const Globa
 }
 
 template <typename PARAM_T>
-__aicore__ inline void CopyOut(const GlobalTensor<PARAM_T>& dstTensor, const LocalTensor<PARAM_T>& srcTensor, int64_t repTime, int64_t dataLen, 
+__aicore__ inline void CopyOut(const GlobalTensor<PARAM_T>& dstTensor, const LocalTensor<PARAM_T>& srcTensor, 
+                                int64_t repTime, int64_t dataLen, 
                                 uint32_t ubStride, uint32_t gmStride)
 {
     DataCopyExtParams copyParams = {
@@ -130,7 +134,7 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U* gradBiasAddr, __local_me
             auto gradBiasStart = gradBiasAddr + i * vfLen;
             maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             MicroAPI::Duplicate(gradBiasReg, U(0), allMaskReg);
-            for (uint16_t j = 0; j < bsLen; j++) {
+            for (uint16_t j = 0; j < static_cast<uint16_t>(bsLen); j++) {
                 auto gradZAddrStart = gradZAddr + i * colLen;
                 AscendC::MicroAPI::LoadUnAlignPre(u0, gradZAddrStart);
                 AscendC::MicroAPI::LoadUnAlign(gradZReg, u0, gradZAddrStart);
@@ -240,6 +244,59 @@ __aicore__ inline void ComputeForwardPart(__local_mem__ U* hcBeformNormAddr, __l
             MicroAPI::StoreUnAlignPost<U>(normOutForwardAddrStart, unStoreNormOutForwardReg, 0);
         }
     } 
+}
+/*****************************************************************************
+* 计算GradNormOut和GradHcBeforeNorm的值
+* 注意事项：
+*   1、需要将该函数插入到GradNormPre,GradNormPre,GradNormRes每核每次BS计算完成后
+*   2、计算完成GradHcBeforeNorm后需添加syncAll，保证matmul的确定性。
+******************************************************************************/
+template <typename T>
+__aicore__ inline void ComputeGradNormOutAndGradHcBeforeNorm(
+    const LocalTensor<T>& gradZLocal, const GlobalTensor<T>& gradNormOut, const GlobalTensor<T>& gradHcBeforeNorm,
+    T alpha, T invRms, uint32_t dataCount, uint32_t offset)
+{
+    Muls(gradZLocal, gradZLocal, alpha, dataCount);
+    DataCopyExtParams copyParams = {0, static_cast<uint32_t>(dataCount * sizeof(T)), 0, 0, 0};
+    DataCopyPad(gradNormOut[offset], gradZLocal, copyParams);
+    Muls(gradZLocal, gradZLocal, invRms, dataCount);
+    DataCopyPad(gradHcBeforeNorm[offset], gradZLocal, copyParams);
+}
+
+template <typename T>
+__aicore__ inline void ComputeGradInvRms(const LocalTensor<T>& gradNormOutLocal, const LocalTensor<T>& hcBeforeNormLocal,
+    int64_t count, T& gradInvRms)
+{
+    Mul(hcBeforeNormLocal, gradNormOutLocal, hcBeforeNormLocal, count);
+    ReduceSum<T>(hcBeforeNormLocal, hcBeforeNormLocal, hcBeforeNormLocal, count);
+    gradInvRms = hcBeforeNormLocal(0);
+}
+
+template <typename T>
+__aicore__ inline void ComputeGradXFromRms(const LocalTensor<T>& xFp32Local, T gradInvRms, T invRms, int64_t count, int64_t ncCount)
+{
+    __local_mem__ T* xFp32Addr = (__local_mem__ T*)xFp32Local.GetPhyAddr();
+    uint32_t repeatCount = Ops::Base::GetVRegSize() / sizeof(T);
+    uint32_t maskCount = count;
+    uint16_t repeatTimes = Ops::Base::CeilDiv(maskCount, repeatCount);
+    
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<T> xFp32Reg;
+        MicroAPI::RegTensor<T> ncCountReg;
+        MicroAPI::MaskReg preg = MicroAPI::UpdateMask<T>(maskCount);;
+        MicroAPI::Duplicate(ncCountReg, static_cast<T>(ncCount));
+
+        for (uint16_t i = 0; i < repeatTimes; i++) {
+            MicroAPI::AddrReg offset = MicroAPI::CreateAddrReg<T>(i, repeatCount);
+            MicroAPI::DataCopy(xFp32Reg, (__local_mem__ T*)xFp32Addr, offset);
+            MicroAPI::Muls(xFp32Reg, xFp32Reg, static_cast<T>(-1), preg);
+            MicroAPI::Muls(xFp32Reg, xFp32Reg, gradInvRms, preg);
+            MicroAPI::Muls(xFp32Reg, xFp32Reg, invRms, preg);
+            MicroAPI::Div(xFp32Reg, xFp32Reg, ncCountReg, preg);
+            MicroAPI::DataCopy(xFp32Addr, xFp32Reg, preg);
+        }
+    }
 }
 
 #endif  //  MHC_PRE_SINKHORN_BACKWARD_DETERMINISTIC_SIMD_VF_H
