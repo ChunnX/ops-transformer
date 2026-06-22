@@ -400,7 +400,7 @@ public:
             }
         }
         const uint64_t maxWindowSize =
-            static_cast<uint64_t>(defaultHcclBuffSize) * 1024UL * 1024UL / 2;
+            static_cast<uint64_t>(defaultHcclBuffSize) * 1024UL * 1024UL;
         ASCEND_LOGI("Get maxWindowSize is %lu", maxWindowSize);
         return maxWindowSize;
     }
@@ -464,7 +464,7 @@ public:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
-        GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
+        // GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
 
         // 获取URMA(UBC_CTP)协议的通信资源，存入hcommHandle_和urmacclBuffer_
         GetUrmaCommResource(commHandle, engine, commContextStruct, rankSize);
