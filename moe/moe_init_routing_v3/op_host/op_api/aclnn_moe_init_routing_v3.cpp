@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <algorithm>
 #include <tuple>
@@ -54,9 +54,7 @@ static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_ROW_IDX
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPERT_TOKENS_COUNT_OR_CUMSUMOUT = {DataType::DT_INT64};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT = {DataType::DT_FLOAT};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT_REGBASE = {DataType::DT_FLOAT,
-                                                                                               DataType::DT_FLOAT8_E8M0};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_TOPK_WEIGHT = {DataType::DT_FLOAT};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_TOPK_WEIGHT_OUT = {DataType::DT_FLOAT};
+                                                                                              DataType::DT_FLOAT8_E8M0};
 
 static inline bool CheckNotNull(const aclTensor *x, const aclTensor *expertIdx, const aclTensor *expandedXOut,
                                 const aclTensor *expandedRowIdxOut, const aclTensor *expertTokensCountOrCumsumOut,
@@ -74,11 +72,9 @@ static inline bool CheckNotNull(const aclTensor *x, const aclTensor *expertIdx, 
 
 static inline bool CheckDtypeValidRegbase(const aclTensor *x, const aclTensor *expertIdx,
                                           const aclTensor *scaleOptional, const aclTensor *offsetOptional,
-                                          const aclTensor *topkWeightOptional, const aclTensor *expandedXOut,
-                                          const aclTensor *expandedRowIdxOut,
+                                          const aclTensor *expandedXOut, const aclTensor *expandedRowIdxOut,
                                           const aclTensor *expertTokensCountOrCumsumOut,
-                                          const aclTensor *expandedScaleOut,
-                                          const aclTensor *expandedTopkWeightOut)
+                                          const aclTensor *expandedScaleOut)
 {
     if (x != nullptr && x->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x, DTYPE_SUPPORT_LIST_X_REGBASE, return false);
@@ -91,9 +87,6 @@ static inline bool CheckDtypeValidRegbase(const aclTensor *x, const aclTensor *e
     }
     if (offsetOptional != nullptr && offsetOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(offsetOptional, DTYPE_SUPPORT_LIST_OFFSET, return false);
-    }
-    if (topkWeightOptional != nullptr && topkWeightOptional->GetViewShape().GetShapeSize() != 0) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(topkWeightOptional, DTYPE_SUPPORT_LIST_TOPK_WEIGHT, return false);
     }
     if (expandedXOut != nullptr && expandedXOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedXOut, DTYPE_SUPPORT_LIST_EXPANDED_X_OUT_REGBASE, return false);
@@ -108,47 +101,21 @@ static inline bool CheckDtypeValidRegbase(const aclTensor *x, const aclTensor *e
     if (expandedScaleOut != nullptr && expandedScaleOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedScaleOut, DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT_REGBASE, return false);
     }
-    if (expandedTopkWeightOut != nullptr && expandedTopkWeightOut->GetViewShape().GetShapeSize() != 0) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(expandedTopkWeightOut, DTYPE_SUPPORT_LIST_EXPANDED_TOPK_WEIGHT_OUT, return false);
-    }
     return true;
 }
 
-ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(const aclTensor *x, 
-                                                            const aclTensor *expertIdx,
-                                                            const aclTensor *scaleOptional,
-                                                            const aclTensor *offsetOptional, 
-                                                            const aclTensor *topk_weightOptional,
-                                                            int64_t activeNum, 
-                                                            int64_t expertCapacity, 
-                                                            int64_t expertNum, 
-                                                            int64_t dropPadMode, 
-                                                            int64_t expertTokensNumType, 
-                                                            bool expertTokensNumFlag, 
-                                                            int64_t quantMode, 
-                                                            const aclIntArray *activeExpertRangeOptional, 
-                                                            int64_t rowIdxType, 
-                                                            const aclTensor *expandedXOut, 
-                                                            const aclTensor *expandedRowIdxOut, 
-                                                            const aclTensor *expertTokensCountOrCumsumOut, 
-                                                            const aclTensor *expandedScaleOut, 
-                                                            const aclTensor *expanded_topk_weightOut, 
-                                                            uint64_t *workspaceSize, 
-                                                            aclOpExecutor **executor)                                                                                
-{   
-    L2_DFX_PHASE_1(aclnnMoeInitRoutingV3, 
-                    DFX_IN(x, expertIdx, scaleOptional, offsetOptional, topk_weightOptional,
-                            activeNum, expertCapacity, expertNum, dropPadMode, 
-                            expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRangeOptional, rowIdxType), 
-                    DFX_OUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut, expanded_topk_weightOut));
-
-    // 联动约束校验：topk_weight和expanded_topk_weight必须同时传入或同时不传入
-    if ((topk_weightOptional != nullptr && expanded_topk_weightOut == nullptr) ||
-        (topk_weightOptional == nullptr && expanded_topk_weightOut != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "topk_weight and expanded_topk_weight must be both present or both absent.");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
+ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(
+    const aclTensor *x, const aclTensor *expertIdx, const aclTensor *scaleOptional, const aclTensor *offsetOptional,
+    int64_t activeNum, int64_t expertCapacity, int64_t expertNum, int64_t dropPadMode, int64_t expertTokensNumType,
+    bool expertTokensNumFlag, int64_t quantMode, const aclIntArray *activeExpertRangeOptional, int64_t rowIdxType,
+    const aclTensor *expandedXOut, const aclTensor *expandedRowIdxOut, const aclTensor *expertTokensCountOrCumsumOut,
+    const aclTensor *expandedScaleOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    L2_DFX_PHASE_1(aclnnMoeInitRoutingV3,
+                   DFX_IN(x, expertIdx, scaleOptional, offsetOptional, activeNum, expertCapacity, expertNum,
+                          dropPadMode, expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRangeOptional,
+                          rowIdxType),
+                   DFX_OUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut));
     // 参数检查
     auto ret =
         CheckNotNull(x, expertIdx, expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut);
@@ -161,9 +128,8 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(const aclTensor *x,
 
     // regbase场景下dtype校验
     if (Ops::Transformer::AclnnUtil::IsRegbase()) {
-        CHECK_RET(CheckDtypeValidRegbase(x, expertIdx, scaleOptional, offsetOptional, topk_weightOptional,
-                                         expandedXOut, expandedRowIdxOut,
-                                         expertTokensCountOrCumsumOut, expandedScaleOut, expanded_topk_weightOut),
+        CHECK_RET(CheckDtypeValidRegbase(x, expertIdx, scaleOptional, offsetOptional, expandedXOut, expandedRowIdxOut,
+                                         expertTokensCountOrCumsumOut, expandedScaleOut),
                   ACLNN_ERR_PARAM_INVALID);
     }
 
@@ -185,31 +151,17 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(const aclTensor *x,
         CHECK_RET(offsetContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     }
 
-    // Optional输入topk_weight: 如非空则Contiguous
-    const aclTensor* topkWeightContiguous = nullptr;
-    if (topk_weightOptional != nullptr) {
-        topkWeightContiguous = l0op::Contiguous(topk_weightOptional, uniqueExecutor.get());
-        CHECK_RET(topkWeightContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-    }
-
     auto routingResult =
-        std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(nullptr, nullptr, nullptr, nullptr, nullptr);
+        std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *>(nullptr, nullptr, nullptr, nullptr, nullptr);
     // 调用v3版本的l0接口进行计算
     routingResult = l0op::MoeInitRoutingV3(
-        xContiguous, expertIdxContiguous, scaleContiguous, offsetContiguous, 
-        topkWeightContiguous, activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
-        quantMode, activeExpertRangeOptional, rowIdxType, expandedXOut, expandedRowIdxOut, 
-        expertTokensCountOrCumsumOut, expandedScaleOut, expanded_topk_weightOut, uniqueExecutor.get());
+        xContiguous, expertIdxContiguous, scaleContiguous, offsetContiguous, nullptr, activeNum, expertCapacity, expertNum,
+        dropPadMode, expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRangeOptional, rowIdxType,
+        expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut, nullptr, uniqueExecutor.get());
     auto [expandedXOut_, expandedRowIdxOut_, expertTokensCountOrCumsumOut_, expandedScaleOut_, expandedTopkWeightOut_] = routingResult;
     bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr) ||
-        (expertTokensCountOrCumsumOut_ == nullptr) || (expandedScaleOut_ == nullptr);
-
+                      (expertTokensCountOrCumsumOut_ == nullptr) || (expandedScaleOut_ == nullptr);
     CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
-
-    // 当topk_weight传入时，expandedTopkWeightOut_不应为nullptr
-    if (topk_weightOptional != nullptr) {
-        CHECK_RET(expandedTopkWeightOut_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
 
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto viewCopyExpandedXOutResult = l0op::ViewCopy(expandedXOut_, expandedXOut, uniqueExecutor.get());
@@ -223,12 +175,6 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(const aclTensor *x,
 
     auto viewCopyExpandedScaleOutResult = l0op::ViewCopy(expandedScaleOut_, expandedScaleOut, uniqueExecutor.get());
     CHECK_RET(viewCopyExpandedScaleOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-    // ViewCopy 仅在expanded_topk_weight传入时执行
-    if (expanded_topk_weightOut != nullptr && expandedTopkWeightOut_ != nullptr) {
-        auto viewCopyExpandedTopkWeightOutResult = l0op::ViewCopy(expandedTopkWeightOut_, expanded_topk_weightOut, uniqueExecutor.get());
-        CHECK_RET(viewCopyExpandedTopkWeightOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
 
     // 获取计算过程中需要使用的workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
