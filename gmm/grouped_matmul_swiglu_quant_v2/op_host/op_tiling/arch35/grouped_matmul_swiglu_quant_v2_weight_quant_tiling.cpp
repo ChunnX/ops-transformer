@@ -59,17 +59,24 @@ constexpr T GetOrDefault(const T* ptr, T defaultValue)
 
 bool CheckCoreNum(gert::TilingContext *context, uint32_t aicNum, uint32_t aivNum)
 {
-    OP_CHECK_IF(aicNum <= 0 || aivNum <= 0,
-        OP_LOGE(OP_NAME, "Invalid aicNum[%u] or aivNum[%u], expect greater than 0",
-            aicNum, aivNum),
-        return false);
+    if (unlikely(aicNum <= 0)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "aicNum", std::to_string(aicNum),
+            "The aicNum must be greater than 0");
+        return false;
+    }
 
-    OP_CHECK_IF(aicNum * AIC_AIV_CORE_RATIO != aivNum,
-        OP_LOGE(OP_NAME,
-            "Invalid cube/vector core ratio. Expected cube:vector = 1:%u, "
-            "but got cube=%u, vector=%u",
-            AIC_AIV_CORE_RATIO, aicNum, aivNum),
-        return false);
+    if (unlikely(aivNum <= 0)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "aivNum", std::to_string(aivNum),
+            "The aivNum must be greater than 0");
+        return false;
+    }
+
+    if(unlikely(aicNum * AIC_AIV_CORE_RATIO != aivNum)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "AIC_AIV_CORE_RATIO",
+            std::to_string(aicNum) + ":" + std::to_string(aivNum),
+            "The cube:vector core ratio must be 1:" + std::to_string(AIC_AIV_CORE_RATIO));
+        return false;
+    }
     return true;
 }
 
