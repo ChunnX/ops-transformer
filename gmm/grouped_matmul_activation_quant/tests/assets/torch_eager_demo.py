@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 import argparse
+import importlib.util
 import os
 import sys
 import traceback
@@ -17,7 +18,24 @@ TORCH_EXTENSION_DIR = os.path.join(REPO_ROOT, "torch_extension")
 if TORCH_EXTENSION_DIR not in sys.path:
     sys.path.insert(0, TORCH_EXTENSION_DIR)
 
-from cann_ops_transformer.ops import npu_grouped_matmul_activation_quant  # noqa: E402
+
+def load_grouped_matmul_activation_quant():
+    op_module_path = os.path.join(
+        TORCH_EXTENSION_DIR,
+        "cann_ops_transformer",
+        "ops",
+        "grouped_matmul_activation_quant.py",
+    )
+    spec = importlib.util.spec_from_file_location("gmmaq_torch_extension_op", op_module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"failed to load module spec from {op_module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module.npu_grouped_matmul_activation_quant
+
+
+npu_grouped_matmul_activation_quant = load_grouped_matmul_activation_quant()
 
 try:
     from golden import grouped_matmul_activation_quant_golden  # noqa: E402
