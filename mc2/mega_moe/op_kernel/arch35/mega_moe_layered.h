@@ -180,12 +180,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
             //printf("dst addr = %d\n", mc2Context_->urmacclBuffer[1]);
             //GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 1);// + dstOffset;
             hcomm_.WriteNbi(mc2Context_->hcommHandle[0], (GM_ADDR)mc2Context_->urmacclBuffer[1], workspaceGM, 10);
-            hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
+            hcomm_.Drain(mc2Context_->hcommHandle[0]); // todo:后续优化  
         } else {
             //printf("dst addr = %d\n", mc2Context_->urmacclBuffer[0]);
             //GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 0);// + dstOffset;
             hcomm_.WriteNbi(mc2Context_->hcommHandle[0], (GM_ADDR)mc2Context_->urmacclBuffer[0], workspaceGM, 10);
-            hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
+            hcomm_.Drain(mc2Context_->hcommHandle[0]); // todo:后续优化  
         }
     }
     
