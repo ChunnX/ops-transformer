@@ -229,9 +229,9 @@ ge::graphStatus MoeReRoutingTilingBase::CheckOutputShape() const
                         context_->GetInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape(),
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         context_->GetNodeName(), "per_token_scales and permute_per_token_scales",
-                        (Ops::Base::ToString(context_->GetInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape()) + " and " +
-                         Ops::Base::ToString(outScaleShapePtr->GetStorageShape())).c_str(),
-                        "The output permute_per_token_scales shape should be the same as input per_token_scales shape."),
+                        (Ops::Base::ToString(context_->GetInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape())
+                         + " and " + Ops::Base::ToString(outScaleShapePtr->GetStorageShape())).c_str(),
+                        "The output permute_per_token_scales shape should be the same as per_token_scales."),
                     return ge::GRAPH_FAILED);
     }
     const gert::StorageShape *tokenIdxShapePtr = context_->GetOutputShape(OUT_PERMUTE_TOKEN_IDX_IDNEX);
