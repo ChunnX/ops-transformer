@@ -631,11 +631,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::PostTiling()
             tilingData_.coreNum, sizeof(tilingData_));
 
     context_->SetBlockDim(tilingData_.coreNum);
-    const auto *rawTiling = context_->GetRawTilingData();
+    auto *rawTiling = context_->GetRawTilingData();
     OP_CHECK_IF(rawTiling == nullptr, OP_LOGE(OP_NAME, "RawTilingData is nullptr."),
                 return ge::GRAPH_FAILED);
-    errno_t ret = memcpy_s(const_cast<void *>(rawTiling->GetData()), rawTiling->GetCapacity(),
-                           reinterpret_cast<void *>(&tilingData_), sizeof(tilingData_));
+    errno_t ret = memcpy_s(rawTiling->GetData(), rawTiling->GetCapacity(),
+                           static_cast<void *>(&tilingData_), sizeof(tilingData_));
     if (ret != EOK) {
         OP_LOGE(OP_NAME, "memcpy_s failed, ret = %d", ret);
         return ge::GRAPH_FAILED;
@@ -649,11 +649,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::PostTiling()
 void GroupedMatmulSwigluQuantV2WeightQuantTiling::Reset()
 {
     tilingData_ = GMMSQArch35Tiling::GMMSQWeightQuantTilingData();
-    const auto *rawTiling = context_->GetRawTilingData();
+    auto *rawTiling = context_->GetRawTilingData();
     if (rawTiling == nullptr || rawTiling->GetData() == nullptr) {
         return;
     }
-    OP_CHECK_IF(memset_s(const_cast<void *>(rawTiling->GetData()), rawTiling->GetCapacity(), 0,
+    OP_CHECK_IF(memset_s(rawTiling->GetData(), rawTiling->GetCapacity(), 0,
                          rawTiling->GetCapacity()) != EOK,
                 OP_LOGE(OP_NAME, "Fail to clear tiling data"), return);
 }
