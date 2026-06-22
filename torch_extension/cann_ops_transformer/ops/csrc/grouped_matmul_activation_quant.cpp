@@ -17,70 +17,6 @@
 
 #include "aclnn_common.h"
 
-struct TensorWithFormatWrapper {
-    const at::Tensor &tensor_;
-    aclDataType dtype;
-    aclFormat format;
-};
-
-struct TensorListWithFormatWrapper {
-    const at::TensorList &tensor_list_;
-    aclDataType dtype;
-    aclFormat format;
-};
-
-aclTensor *ConvertType(const TensorWithFormatWrapper &tensorWrapper)
-{
-    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
-    if (aclCreateTensor == nullptr) {
-        return nullptr;
-    }
-
-    const at::Tensor &atTensor = tensorWrapper.tensor_;
-    if (!atTensor.defined()) {
-        return nullptr;
-    }
-
-    c10::SmallVector<int64_t, MAX_DIM_NUM> storageDims;
-    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperStride = op_infer::array_to_small_vector(atTensor.strides());
-    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperShape = op_infer::array_to_small_vector(atTensor.sizes());
-    if (tensorWrapper.format == ACL_FORMAT_FRACTAL_NZ) {
-        for (auto dim : wrapperShape) {
-            storageDims.push_back(dim);
-        }
-    } else if (tensorWrapper.dtype != ACL_STRING) {
-        TORCH_CHECK(atTensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
-        if (Is4BitDtype(tensorWrapper.dtype)) {
-            storageDims.push_back(atTensor.storage().nbytes() / atTensor.itemsize() * FP4_IN_INT8);
-            CollectB4ShapeInfo(atTensor, wrapperStride, wrapperShape);
-        } else {
-            storageDims.push_back(atTensor.storage().nbytes() / atTensor.itemsize());
-        }
-    }
-
-    return aclCreateTensor(wrapperShape.data(), atTensor.sizes().size(), tensorWrapper.dtype, wrapperStride.data(),
-        atTensor.storage_offset(), tensorWrapper.format, storageDims.data(), storageDims.size(),
-        const_cast<void *>(atTensor.storage().data()));
-}
-
-aclTensorList *ConvertType(const TensorListWithFormatWrapper &tensorListWrapper)
-{
-    if (tensorListWrapper.tensor_list_.size() == 0) {
-        return nullptr;
-    }
-    static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
-    if (aclCreateTensorList == nullptr) {
-        return nullptr;
-    }
-
-    std::vector<const aclTensor *> tensorList(tensorListWrapper.tensor_list_.size());
-    for (size_t i = 0; i < tensorList.size(); ++i) {
-        tensorList[i] = ConvertType(TensorWithFormatWrapper{
-            tensorListWrapper.tensor_list_[i], tensorListWrapper.dtype, tensorListWrapper.format});
-    }
-    return aclCreateTensorList(tensorList.data(), tensorList.size());
-}
-
 namespace op_api {
 namespace {
 constexpr int64_t GE_DTYPE_FLOAT = 0;
@@ -111,10 +47,7 @@ void PrintTorchTensorFormats(const at::Tensor &x, const at::Tensor &groupList, c
                 static_cast<long>(at_npu::native::get_npu_format(xScale)),
                 static_cast<long>(at_npu::native::get_npu_format(y)),
                 static_cast<long>(at_npu::native::get_npu_format(yScale)));
-    std::printf("[GMMAQ torch] acl wrapper formats: x=%d, groupList=%d, weight=%d, weightScale=%d, "
-                "xScale=%d, y=%d, yScale=%d.\n",
-                ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-                ACL_FORMAT_ND);
+    std::printf("[GMMAQ torch] using common TensorWrapper/TensorListWrapper conversion.\n");
     std::fflush(stdout);
 }
 
@@ -342,14 +275,14 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
         tuningConfigRef = at::IntArrayRef(tuningConfig.value());
     }
 
-    TensorWithFormatWrapper xWrapper = {x, xAclDtype, ACL_FORMAT_ND};
-    TensorWithFormatWrapper groupListWrapper = {groupList, ACL_INT64, ACL_FORMAT_ND};
-    TensorWithFormatWrapper xScaleWrapper = {xScale, xScaleAclDtype, ACL_FORMAT_ND};
-    TensorListWithFormatWrapper weightWrapper = {weightRef, weightAclDtype, ACL_FORMAT_FRACTAL_NZ};
-    TensorListWithFormatWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype, ACL_FORMAT_ND};
+    TensorWrapper xWrapper = {x, xAclDtype};
+    TensorWrapper groupListWrapper = {groupList, ACL_INT64};
+    TensorWrapper xScaleWrapper = {xScale, xScaleAclDtype};
+    TensorListWrapper weightWrapper = {weightRef, weightAclDtype};
+    TensorListWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype};
     TensorListWrapper biasWrapper = {biasRef, ACL_FLOAT};
-    TensorWithFormatWrapper yWrapper = {y, static_cast<aclDataType>(yDtypeValue), ACL_FORMAT_ND};
-    TensorWithFormatWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0, ACL_FORMAT_ND};
+    TensorWrapper yWrapper = {y, static_cast<aclDataType>(yDtypeValue)};
+    TensorWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0};
     PrintTorchTensorFormats(x, groupList, weightTensor, weightScaleTensor, xScale, y, yScale);
     char *activationTypePtr = const_cast<char *>(activationType.c_str());
     char *quantModePtr = const_cast<char *>(quantMode.c_str());
