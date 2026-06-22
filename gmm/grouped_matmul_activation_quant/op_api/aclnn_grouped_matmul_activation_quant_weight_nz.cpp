@@ -259,14 +259,24 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                "In op [%s], y dtype must be the same as yDtype.", OP_NAME);
     CHECK_COND(yScale->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], yScale only supports FLOAT8_E8M0.", OP_NAME);
-    CHECK_COND(x->GetStorageFormat() == op::Format::FORMAT_ND &&
-                   xScaleOptional->GetStorageFormat() == op::Format::FORMAT_ND &&
-                   groupList->GetStorageFormat() == op::Format::FORMAT_ND &&
-                   wScale->GetStorageFormat() == op::Format::FORMAT_ND &&
-                   y->GetStorageFormat() == op::Format::FORMAT_ND &&
-                   yScale->GetStorageFormat() == op::Format::FORMAT_ND,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], x, xScaleOptional, groupList, weightScale, y and yScale only support ND.", OP_NAME);
+    CHECK_COND(x->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], x only supports ND, but got %s.", OP_NAME,
+               op::ToString(x->GetStorageFormat()).GetString());
+    CHECK_COND(xScaleOptional->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], xScaleOptional only supports ND, but got %s.", OP_NAME,
+               op::ToString(xScaleOptional->GetStorageFormat()).GetString());
+    CHECK_COND(groupList->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], groupList only supports ND, but got %s.", OP_NAME,
+               op::ToString(groupList->GetStorageFormat()).GetString());
+    CHECK_COND(wScale->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], weightScale only supports ND, but got %s.", OP_NAME,
+               op::ToString(wScale->GetStorageFormat()).GetString());
+    CHECK_COND(y->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], y only supports ND, but got %s.", OP_NAME,
+               op::ToString(y->GetStorageFormat()).GetString());
+    CHECK_COND(yScale->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], yScale only supports ND, but got %s.", OP_NAME,
+               op::ToString(yScale->GetStorageFormat()).GetString());
     CHECK_COND(IsNzFormat(w), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], weight only supports FRACTAL_NZ format.", OP_NAME);
     CHECK_RET(CheckShapeValue(x, groupList, xScaleOptional, w, wScale, transposeWeight, y, yScale) ==
