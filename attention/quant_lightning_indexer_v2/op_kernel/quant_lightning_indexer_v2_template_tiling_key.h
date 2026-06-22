@@ -29,7 +29,7 @@
 #define ASCENDC_TPL_4_BW 4
 
 // 模板参数支持的范围定义
-#if (__CCE_AICORE__ == 310)
+#if (true)
     ASCENDC_TPL_ARGS_DECL(QuantLightningIndexerV2,  // 算子OpType
                         ASCENDC_TPL_DTYPE_DECL(DT_Q, QLIV2_TPL_FLOAT32_E4M3FN, QLIV2_TPL_HIFLOAT8),
                         ASCENDC_TPL_DTYPE_DECL(DT_K, QLIV2_TPL_FLOAT32_E4M3FN, QLIV2_TPL_HIFLOAT8),

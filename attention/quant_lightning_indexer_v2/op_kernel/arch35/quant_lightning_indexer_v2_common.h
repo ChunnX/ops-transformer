@@ -15,6 +15,19 @@
 #ifndef QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 #define QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 using namespace AscendC;
+
+// ===================== MXFP8 类型定义 =====================
+using FP8E4M3 = fp8_e4m3fn_t;
+using FP8E8M0 = fp8_e8m0_t;
+
+constexpr uint32_t MXFP8_BLOCK_SIZE = 32;  // 每32个D维度元素一个scale
+constexpr uint32_t FP8_TWO = 2;            // 2个fp8_e8m0打包成1个bf16
+
+// ===================== AIC:AIV核数比值宏定义 =====================
+// CUBE与VEC核数比值（AIC:AIV Ratio）
+// 默认值：2（表示1:2比值，一个AIC对应两个AIV，arch35原始配置）
+#define CVRATIO 1  // 默认值：1:2比值，可通过编译选项修改
+
 namespace QLIV2Common {
 
 // 与tiling的layout保持一致
@@ -26,7 +39,8 @@ enum class LI_LAYOUT : uint32_t {
 
 template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T,
     const bool PAGE_ATTENTION = false,
-          LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BBND, typename... Args>
+          LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BBND,
+          typename W_T = half, typename SCALE_T = half, typename... Args>
 struct QLIV2Type {
     static_assert(
         (std::is_same_v<QK_T, float> &&
@@ -40,10 +54,13 @@ struct QLIV2Type {
     using queryKeyType = QK_T;
     using scoreType = SCORE_T;
     using outputType = OUT_T;
+    using weightType = W_T;
+    using scaleType = SCALE_T;
 
     static constexpr bool pageAttention = PAGE_ATTENTION;
     static constexpr LI_LAYOUT layout = Q_LAYOUT_T;
     static constexpr LI_LAYOUT keyLayout = K_LAYOUT_T;
+    static constexpr bool isMxFp8 = std::is_same_v<Q_T, FP8E4M3> && std::is_same_v<SCALE_T, FP8E8M0>;
 };
 
 struct RunInfo {
@@ -69,6 +86,7 @@ struct RunInfo {
     uint64_t tensorQueryOffset;
     uint64_t tensorKeyOffset;
     uint64_t tensorKeyScaleOffset;
+    uint64_t tensorQScaleOffset;   // MXFP8: qScale在Cube核使用的偏移
     uint64_t tensorWeightsOffset;
     uint64_t indiceOutOffset;
 
