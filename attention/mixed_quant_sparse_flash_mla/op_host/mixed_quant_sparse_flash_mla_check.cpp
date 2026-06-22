@@ -178,8 +178,7 @@ static ge::graphStatus ValidateKvContiguous(const char *opName, const std::vecto
     for (size_t i = 0; i < expectedStrides.size(); ++i) {
         if (strides[i] != expectedStrides[i]) {
             OP_LOGE(opName, "%s 's expected stride[%zu]=%ld, but got %ld",
-                tensorName.c_str(), QSMLALayoutToSerialString(kvLayout).c_str(),
-                i, expectedStrides[i], strides[i]);
+                tensorName.c_str(), i, expectedStrides[i], strides[i]);
             return ge::GRAPH_FAILED;
         }
     }
@@ -200,6 +199,7 @@ ge::graphStatus QSMLATilingCheck::CheckKvContiguous() const
             return ge::GRAPH_FAILED;
         }
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::Process()
