@@ -298,31 +298,14 @@ public:
 
     __aicore__ inline void ClearOutput()
     {
-        bool needOutputInit = IsInitAttentionOutGm();
-        // 静态Tensor迁移：FD 中间结果 GM workspace(accumOut/softmaxFDSum/softmaxFDMax) 复用同一段
-        // user workspace，运行时不会在 kernel 启动间清零。稀疏(mask)场景下 FA 实际写入的 split 槽位
-        // 可能少于 FD combine 读取的槽位；未写槽位在批跑时残留上一个用例的大值(attention/LSE)，导致
-        // 第二个及之后的 mask 用例 FD 规约读到脏数据而精度崩坏（单跑/首个用例因 workspace 为全新清零
-        // 内存而恰好通过）。因此 isFd 时在 kernel 入口整体清零该 workspace，使批跑与单跑行为一致。
-        bool needFdWsInit = this->isFd;
-        if (needOutputInit || needFdWsInit) {
+        if (IsInitAttentionOutGm()) {
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
-            if (needOutputInit) {
-                InitOutputSingleCore();
-                if (constInfo.isSoftmaxLseEnable) {
-                    InitLseOutputSingleCore();
-                }
-            }
-            if (needFdWsInit) {
-                InitFdWorkspaceSingleCore();
+            InitOutputSingleCore();
+            if (constInfo.isSoftmaxLseEnable) {
+                InitLseOutputSingleCore();
             }
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
-            // - 默认 isAIVOnly=true，仅同步全部 AIV 核，与 ClearOutput 仅 AIV 进入的语义一致；
-            // - SyncAll 内部占用 flagId [11-14]，与本算子静态分配的 mode 4 flagId [0-9] 不冲突；
-            // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
-            //   不会触发 aicore subErrType 0x4 timeout-trap。
-            AscendC::SyncAll();
+            SyncAll();
         }
     }
 
