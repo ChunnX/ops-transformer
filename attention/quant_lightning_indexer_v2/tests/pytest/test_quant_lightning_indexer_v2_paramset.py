@@ -58,7 +58,7 @@ TEST_PARAMS = {
     # Ascend950 hifp8 场景: BSND query + PA_BBND key
     "quant_li_default_hifp8_a5":{
         "batch_size": [8],
-        "q_seq": [15],
+        "q_seq": [32],
         "k_seq": [111],
         "q_t_size":[8],
         "k_t_size":[15],#压缩后的值
@@ -72,8 +72,8 @@ TEST_PARAMS = {
         "actual_seq_dtype": [torch.int32],
         "cu_seqlens_q": [None],     # BSND: cu_seqlens_q 不传
         "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
-        "seqused_q": [[3,3,3,3,3,3,3,3]],
-        "seqused_k": [[28,24,80,96,47,76,0,111]],
+        "seqused_q": [[30,21,13,2,5,18,31,32]],
+        "seqused_k": [[2080,2114,1180,2496,1047,7600,0,2111]],
         "max_seqlen_q": [-1],
         "cmp_residual_k":[[3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]],
         "quant_mode": [1],
@@ -86,7 +86,7 @@ TEST_PARAMS = {
         "weights_datarange":[[-123,123]],
         "q_scale_datarange":[[0,255]],
         "k_scale_datarange":[[0,65504]],
-        "cmp_ratio":[1], #1/2/4/8/16/32/64/128
+        "cmp_ratio":[4], #1/2/4/8/16/32/64/128
         "return_value":[0]
     },
 
