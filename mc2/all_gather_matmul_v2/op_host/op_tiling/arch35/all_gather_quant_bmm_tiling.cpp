@@ -287,7 +287,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
         (std::to_string(scaleInv1Shape->GetStorageShape().GetDimNum()) + "D and " +
         std::to_string(scaleInv2Shape->GetStorageShape().GetDimNum()) + "D")
                                                   .c_str(),
-        "The shape dims of x1Scale and x2Scale must be the same"),
+        "The shape dims of x1Scale and x2Scale must be the same."),
         return ge::GRAPH_FAILED);
     if ((scaleInv1Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_ONE) &&
         (scaleInv2Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_ONE)) {
