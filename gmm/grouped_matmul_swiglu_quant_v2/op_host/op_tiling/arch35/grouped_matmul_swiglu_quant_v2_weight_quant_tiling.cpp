@@ -209,7 +209,8 @@ bool CheckAttrs([[maybe_unused]] const gert::TilingContext& context, const GMMSQ
     if (unlikely(params.dequantDtype != ge::DataType::DT_FLOAT)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "dequantDtype",
             std::to_string(params.dequantDtype),
-            "dequantDtype must be " + std::to_string(ge::DataType::DT_FLOAT) + " (DT_FLOAT)");
+            "dequantDtype must be " + std::to_string(ge::DataType::DT_FLOAT) +
+            " (" + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT) + ")");
         return false;
     }
 
@@ -223,7 +224,8 @@ bool CheckAttrs([[maybe_unused]] const gert::TilingContext& context, const GMMSQ
     if (unlikely(params.quantDtype != ge::DataType::DT_FLOAT8_E4M3FN)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "quantDtype",
             std::to_string(params.quantDtype),
-            "quantDtype must be " + std::to_string(ge::DataType::DT_FLOAT8_E4M3FN) + " (DT_FLOAT8_E4M3FN)");
+            "quantDtype must be " + std::to_string(ge::DataType::DT_FLOAT8_E4M3FN) +
+            " (" + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT8_E4M3FN) + ")");
         return false;
     }
 
@@ -252,38 +254,38 @@ bool CheckDtypes(const gert::TilingContext& context, const GMMSQWeightQuantInput
     const auto *wScaleDesc = context.GetInputDesc(WEIGHT_SCALE_INDEX);
     const auto *groupListDesc = context.GetInputDesc(GROUPLIST_INDEX);
 
-    if (unlikely(xDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)) {
+    if (unlikely(xDesc->GetDataType() != ge::DataType::DT_FLOAT8_E4M3FN)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "x",
             ge::TypeUtils::DataTypeToSerialString(xDesc->GetDataType()),
-            "The dtype of x must be FLOAT8_E4M3FN");
+            "The dtype of x must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT8_E4M3FN));
         return false;
     }
 
-    if (unlikely(wDesc->GetDataType() != ge::DT_FLOAT4_E2M1)) {
+    if (unlikely(wDesc->GetDataType() != ge::DataType::DT_FLOAT4_E2M1)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "weight",
             ge::TypeUtils::DataTypeToSerialString(wDesc->GetDataType()),
-            "The dtype of weight must be FLOAT4_E2M1");
+            "The dtype of weight must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT4_E2M1));
         return false;
     }
 
-    if (unlikely(xScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0)) {
+    if (unlikely(xScaleDesc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "xScale",
             ge::TypeUtils::DataTypeToSerialString(xScaleDesc->GetDataType()),
-            "The dtype of xScale must be FLOAT8_E8M0");
+            "The dtype of xScale must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT8_E8M0));
         return false;
     }
 
-    if (unlikely(wScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0)) {
+    if (unlikely(wScaleDesc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "weightScale",
             ge::TypeUtils::DataTypeToSerialString(wScaleDesc->GetDataType()),
-            "The dtype of weightScale must be FLOAT8_E8M0");
+            "The dtype of weightScale must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT8_E8M0));
         return false;
     }
 
-    if (unlikely(groupListDesc->GetDataType() != ge::DT_INT64)) {
+    if (unlikely(groupListDesc->GetDataType() != ge::DataType::DT_INT64)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "groupList",
             ge::TypeUtils::DataTypeToSerialString(groupListDesc->GetDataType()),
-            "The dtype of groupList must be INT64");
+            "The dtype of groupList must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_INT64));
         return false;
     }
 
