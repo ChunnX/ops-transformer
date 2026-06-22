@@ -519,8 +519,19 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTiling()
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
         return DoOpTilingPertoken();
     }
-    PrintQuantParams();
+    OP_LOGD(inputParams_.opName, "%ld", LogQuantParams());
     return ge::GRAPH_SUCCESS;
+}
+
+int64_t GroupedMatmulSwigluQuantV2Tiling950::LogQuantParams()
+{
+    auto &params = tilingData_.gmmSwigluQuantParams;
+    std::ostringstream oss;
+    oss << "GMMQuantParams: groupNum = " << params.get_groupNum()
+        << ", groupListType = " << static_cast<uint32_t>(params.get_groupListType())
+        << ", quant_dtype = " << static_cast<int32_t>(params.get_quantDtype());
+    OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
+    return 0;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
@@ -723,20 +734,6 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void GroupedMatmulSwigluQuantV2Tiling950::PrintQuantParams()
-{
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
-    optiling::GMMSwigluQuantParams &params = tilingData_.gmmSwigluQuantParams;
-    std::ostringstream oss;
-    oss << "GMMQuantParams: groupNum = " << params.get_groupNum()
-        << ", groupListType = " << static_cast<uint32_t>(params.get_groupListType())
-        << ", quant_dtype = " << static_cast<int32_t>(params.get_quantDtype());
-    OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
-}
-
 uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA));
@@ -833,17 +830,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTilingPertoken()
     uint32_t ubAvail = static_cast<uint32_t>(maxUseUbSize / calcDbSize);
     tilingData_.gmmSwigluQuantParams.set_rowLen(rowLen);
     tilingData_.gmmSwigluQuantParams.set_ubAvail(ubAvail);
-    PrintPertokenQuantParams();
+    OP_LOGD(inputParams_.opName, "%ld", LogPertokenQuantParams());
     return ge::GRAPH_SUCCESS;
 }
 
-void GroupedMatmulSwigluQuantV2Tiling950::PrintPertokenQuantParams()
+int64_t GroupedMatmulSwigluQuantV2Tiling950::LogPertokenQuantParams()
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
-    optiling::GMMSwigluQuantParams &params = tilingData_.gmmSwigluQuantParams;
+    auto &params = tilingData_.gmmSwigluQuantParams;
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.get_groupNum()
         << ", groupListType = " << static_cast<uint32_t>(params.get_groupListType())
@@ -851,6 +844,7 @@ void GroupedMatmulSwigluQuantV2Tiling950::PrintPertokenQuantParams()
         << ", dequantDtype = " << static_cast<uint32_t>(params.get_dequantDtype())
         << ", rowLen = " << params.get_rowLen() << ", ubAvail = " << params.get_ubAvail();
     OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
+    return 0;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetWorkspaceSize()
