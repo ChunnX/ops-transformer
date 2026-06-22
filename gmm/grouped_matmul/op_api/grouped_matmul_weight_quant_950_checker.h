@@ -61,9 +61,6 @@ private:
     std::string GetDataFlowString() const;
     const char* GetAclnnName() const;
 
-    static constexpr size_t MX_A8W4_MULTI_WEIGHT_DIM = 2UL;
-    static constexpr size_t MX_A8W4_MULTI_WEIGHT_NZ_DIM = 4UL;
-
 private:
     GroupedMatmulParams gmmParams_;
     DataType xDtype_ = ge::DT_UNDEFINED;

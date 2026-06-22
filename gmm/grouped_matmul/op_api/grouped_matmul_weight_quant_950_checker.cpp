@@ -20,6 +20,8 @@ static constexpr int64_t Y_SEPARATED = 1L;    // x split
 static constexpr int64_t X_SEPARATED = 2L;    // y split
 static constexpr int64_t NO_SEPARATED = 3L;   // x,y split
 static constexpr int64_t MAX_GROUP_LIST_SIZE_ARRAY = 128L;
+static constexpr int64_t MULTI_WEIGHT_DIM = 2UL;
+static constexpr int64_t MULTI_WEIGHT_NZ_DIM = 4UL;
 }  // namespace
 
 std::string AclnnGroupedMatmulWeightQuantDAV3510Checker::GetDataFlowString() const
@@ -83,7 +85,7 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4() const
 bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsMultiTensorWeight() const
 {
     auto wDimNum = (*gmmParams_.weight)[0]->GetViewShape().GetDimNum();
-    return wDimNum == MX_A8W4_MULTI_WEIGHT_DIM;
+    return wDimNum == MULTI_WEIGHT_DIM;
 }
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorNotNull(size_t xIdx, size_t yIdx, size_t wIdx) const
@@ -333,12 +335,11 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
                 std::to_string(xDimNum), reason);
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (IsMxA8W4NZ() && IsMultiTensorWeight()) {
-            if (unlikely(weightDimNum != MX_A8W4_MULTI_WEIGHT_DIM &&
-                         weightDimNum != MX_A8W4_MULTI_WEIGHT_NZ_DIM)) {
-                std::string reason = "The shape dim of weight[" + std::to_string(wIdx) +
-                    "] must be " + std::to_string(MX_A8W4_MULTI_WEIGHT_DIM) + " or " +
-                    std::to_string(MX_A8W4_MULTI_WEIGHT_NZ_DIM) + " in MxA8W4 multi-weight scenario";
+        if (IsMxA8W4NZ()) {
+            if (unlikely(weightDimNum != MULTI_WEIGHT_DIM &&
+                         weightDimNum != SPLIT_M_SINGLE_WEIGHT_DIM)) {
+                std::string reason = "In weight quant case fp8_e4m3-fp4_e2m1, The shape dim of weight[" +
+                                     std::to_string(wIdx) + "] must be 2 or 3";
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "weight",
                     std::to_string(weightDimNum), reason);
                 return ACLNN_ERR_PARAM_INVALID;

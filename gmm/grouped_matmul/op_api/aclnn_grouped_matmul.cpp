@@ -2050,6 +2050,11 @@ static aclnnStatus CheckCaseNoSplit(const gmm::GroupedMatmulParams &gmmParams, c
     return ACLNN_SUCCESS;
 }
 
+static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams)
+{
+    return (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MX_A8W4_MULTI_WEIGHT_DIM;
+}
+
 static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
 {
     CHECK_COND(!(gmmParams.transposeX && gmmParams.transposeWeight), ACLNN_ERR_PARAM_INVALID,
@@ -2076,6 +2081,9 @@ static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &
         IsWeightQuant(gmmParams.xDtype, weightDtype)) {
         if (gmmParams.groupType == gmm::SPLIT_M) {
             size_t batchSizeWeight = (*gmmParams.weight)[0]->GetViewShape().GetDim(0);
+            if (IsMultiTensorWeight(gmmParams)) {
+                batchSizeWeight = gmmParams.weight->size();
+            }
             CHECK_COND(CheckGroupListSplitM(gmmParams, true, false, false, batchSizeWeight, opName) == ACLNN_SUCCESS,
                        ACLNN_ERR_PARAM_INVALID,
                        "In op [%s], when DAV_3510 weight quant and groupType == 0(split-M), [%s] check failed.", opName,
