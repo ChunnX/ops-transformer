@@ -90,6 +90,7 @@ ge::graphStatus LIV2InfoParser::GetNpuInfo()
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
+    socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if ((npuArch_ != NpuArch::DAV_2201) &&
         (npuArch_ != NpuArch::DAV_3510)) {
