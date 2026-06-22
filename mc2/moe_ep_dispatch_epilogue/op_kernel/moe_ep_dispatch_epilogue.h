@@ -58,7 +58,6 @@ private:
     GlobalTensor<int64_t> numRecvPerExpertGm_;
 
     GlobalTensor<XType> recvXGm_;
-    GlobalTensor<int32_t> recvTopkIdxGm_;
     GlobalTensor<float> recvTopkWeightsGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
     GlobalTensor<int32_t> cachedRecvSrcMetadataGm_;   // cached 路径专用：来自上一轮 dispatch 的 recv_src_metadata
@@ -111,6 +110,7 @@ private:
     uint32_t numLocalExperts_{0};
     uint32_t aivNum_{0};
     uint32_t axisK_{0};
+    uint32_t axisKAlign_{0};
     uint32_t axisH_{0};
     uint32_t epWorldSize_{0};
     uint32_t numMaxTokensPerRank_{0};
@@ -149,6 +149,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     numLocalExperts_ = tilingData->cfg.numLocalExperts;
     aivNum_ = tilingData->aivNum;
     axisK_ = tilingData->cfg.topK;
+    axisKAlign_ = Ceil(axisK_ * (uint32_t)sizeof(int32_t), UB_ALIGN) / (uint32_t)sizeof(int32_t);
     axisH_ = tilingData->cfg.hidden;
     epWorldSize_ = tilingData->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData->cfg.numMaxTokensPerRank;
@@ -163,7 +164,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
     cachedRecvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)cachedRecvSrcMetadata);
     recvXGm_.SetGlobalBuffer((__gm__ XType*)recvX);
-    recvTopkIdxGm_.SetGlobalBuffer((__gm__ int32_t*)recvTopkIdx);
     recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
 
