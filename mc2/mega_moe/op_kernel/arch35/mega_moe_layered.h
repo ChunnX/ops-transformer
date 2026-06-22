@@ -169,6 +169,26 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR yOut,
     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
+    if (g_coreType ==  AscendC::AIV) {
+        LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0,
+            512);
+        hcomm_.Init(hcommTensor_, 512);
+        mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
+        rankId_ = mc2Context_->epRankId;
+        printf("handle = %d\n", mc2Context_->hcommHandle[0]);
+        if (rankId_ == 0) {
+            printf("dst addr = %d\n", mc2Context_->urmacclBuffer[1]);
+            //GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 1);// + dstOffset;
+            hcomm_.WriteNbi(mc2Context_->hcommHandle[0], (GM_ADDR)mc2Context_->urmacclBuffer[1], workspaceGM, 10);
+            // hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
+        } else {
+            printf("dst addr = %d\n", mc2Context_->urmacclBuffer[0]);
+            //GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 0);// + dstOffset;
+            hcomm_.WriteNbi(mc2Context_->hcommHandle[0], (GM_ADDR)mc2Context_->urmacclBuffer[0], workspaceGM, 10);
+            // hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
+        }
+    }
+    
     m_ = tilingData->bs;
     k_ = tilingData->h;
     aicNum_ = tilingData->aicNum;
@@ -186,6 +206,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
+    printf("rankId_ = %d\n", rankId_);
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
@@ -310,9 +331,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     }
     // Tensor用处：SendMaskCal 函数中搬运本卡的 topkIds；
     // Tensor大小：该Tensor在进行CompareScalar时，compareCount_要求256B对齐，申请大小256字节对齐；
-    LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512);
-    hcomm_.Init(hcommTensor_, ALIGN_512);
-    uint32_t topkIdsTensorAddr = ALIGN_512;
+    uint32_t topkIdsTensorAddr = 0;
     uint32_t topkIdsTensorSize = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256));
     topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
@@ -482,7 +501,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
             PipeBarrier<PIPE_ALL>(); //todo:后续优化
             if (curRankId != rankId_) {
-                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset;
+                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId);// + dstOffset;
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 // GM_ADDR remoteNotifyAddr = ;//todo
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
@@ -1121,92 +1140,93 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
 {
+   
     // 1.本卡数据处理
-    int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
-    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
-    SendAndQuantBuffInit();
-    SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
-    ResetFlagList();             // 清理workSpace空间上的flag位
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        ResetRowGroupCompleteFlags();
-    }
-    QuantProcessInRank();        // 对本卡token的量化
-    if constexpr(g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
-    }
-    CrossRankSyncInWorldSize();  // 全卡同步
+    // int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
+    // SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
+    // SendAndQuantBuffInit();
+    // SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
+    // ResetFlagList();             // 清理workSpace空间上的flag位
+    // if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+    //     ResetRowGroupCompleteFlags();
+    // }
+    // QuantProcessInRank();        // 对本卡token的量化
+    // if constexpr(g_coreType == AIV) {
+    //     PipeBarrier<PIPE_ALL>();
+    //     SyncAll<true>();
+    // }
+    // CrossRankSyncInWorldSize();  // 全卡同步
 
-    // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
-    DispatchBuffInit();
-    GMMAddrInfo gmmAddrInfo;
-    TupleShape initShape;
-    Get<N_VALUE>(initShape) = hiddenDim_;
-    Get<K_VALUE>(initShape) = k_;
-    BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    ExpertLoopState gmm1State{initShape, initOffset};
-    for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
-        if constexpr(g_coreType == AIV) {
-            if (subBlockIdx_ == 1) {
-                SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
-            }
-        }
-        if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
-            continue;
-        }
-        UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
-        if constexpr(g_coreType == AIV) {
-            if (subBlockIdx_ == 1) {
-                TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
-            }
-        }
-        if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
-        }
-    }
-    EndSync(vecSetSyncCom_);
-    if constexpr(g_coreType == AIV) {
-        if (subBlockIdx_ == 1) {
-            ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
-        }
-    }
+    // // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
+    // DispatchBuffInit();
+    // GMMAddrInfo gmmAddrInfo;
+    // TupleShape initShape;
+    // Get<N_VALUE>(initShape) = hiddenDim_;
+    // Get<K_VALUE>(initShape) = k_;
+    // BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    // ExpertLoopState gmm1State{initShape, initOffset};
+    // for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
+    //     if constexpr(g_coreType == AIV) {
+    //         if (subBlockIdx_ == 1) {
+    //             SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
+    //         }
+    //     }
+    //     if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
+    //         continue;
+    //     }
+    //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
+    //     if constexpr(g_coreType == AIV) {
+    //         if (subBlockIdx_ == 1) {
+    //             TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
+    //         }
+    //     }
+    //     if (subBlockIdx_ == 0) {
+    //         MegaMoeImpl::GroupMatmulSwigluQuant<
+    //             QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+    //             epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+    //     }
+    // }
+    // EndSync(vecSetSyncCom_);
+    // if constexpr(g_coreType == AIV) {
+    //     if (subBlockIdx_ == 1) {
+    //         ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
+    //     }
+    // }
 
-    // 3. 本卡专家接收数据GroupMatmul2 & Combine
-    vecSetSyncCom_ = 0;
-    expertBeforeCnt_ = 0;
-    ExpertLoopState gmm2State{initShape, initOffset};
-    InitCombineBuffers();
+    // // 3. 本卡专家接收数据GroupMatmul2 & Combine
+    // vecSetSyncCom_ = 0;
+    // expertBeforeCnt_ = 0;
+    // ExpertLoopState gmm2State{initShape, initOffset};
+    // InitCombineBuffers();
 
-    for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
-            continue;
-        }
-        UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmmAddrInfo, gmm2State);
+    // for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+    //     if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
+    //         continue;
+    //     }
+    //     UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmmAddrInfo, gmm2State);
         
-        MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-            QuantScaleOutType, QuantScaleOutType>(
-            params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_,
-            vecSetSyncCom_, expertBeforeCnt_, gmm2PingPongIdx_, expertIdx, maxRowGroupsStride_);
+    //     MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
+    //         QuantScaleOutType, QuantScaleOutType>(
+    //         params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_,
+    //         vecSetSyncCom_, expertBeforeCnt_, gmm2PingPongIdx_, expertIdx, maxRowGroupsStride_);
         
-        if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
-            ProcessCombine(gmmAddrInfo, gmm2State, expertIdx);
-        }
-    }
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
-    }
-    PipeBarrier<PIPE_ALL>();
-    SyncAll<true>();
+    //     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
+    //         ProcessCombine(gmmAddrInfo, gmm2State, expertIdx);
+    //     }
+    // }
+    // if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+    //     EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
+    // }
+    // PipeBarrier<PIPE_ALL>();
+    // SyncAll<true>();
 
-    // 4. 本卡数据Unpermute
-    if constexpr(g_coreType == AIV) {
-        UnpermuteBuffInit();
-        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        Unpermute();
-    }
-    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    // // 4. 本卡数据Unpermute
+    // if constexpr(g_coreType == AIV) {
+    //     UnpermuteBuffInit();
+    //     CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+    //     Unpermute();
+    // }
+    // SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
 }   // namespace MegaMoeImpl
