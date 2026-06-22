@@ -97,20 +97,16 @@ public:
         }
     }
 
-    // sendBuffer: scale发送缓冲区
-    // permuteOutBuffer: scale重排后的输出缓冲区（按专家排列），用于GMM计算
-    // commOutBuffer: scale AlltoAllV通信输出缓冲区（按rank排列），用于PermuteScale输入
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer)
     {
         sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)sendBuffer);
         recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)commOutBuffer);
         scalePermuteOutBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)permuteOutBuffer);
-        // 初始化scale重排用的UB Buffer
         TPipe *pipe = GetTPipePtr();
         pipe->InitBuffer(scaleTBuf_, taskTilingInfo_->ubSize);
     }
 
-    // PermuteScale: 将scaleCommOutBuffer（按rank排列）重排到recvScaleGlobalBuffer（按专家排列）
+    __aicore__ inline void PermuteScale()
     __aicore__ inline void PermuteScale()
     {
         if ASCEND_IS_AIC {
@@ -307,6 +303,9 @@ public:
             alltoAllvRecvOffset[i] = alltoAllvRecvOffsetLastSum;
             alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
         }
+        AscendC::printf(
+            "alltoAllvHandleId_[%d], sendGlobalBuffer_.GetPhyAddr() = [%d], recvGlobalBuffer_.GetPhyAddr() = [%d]\n",
+            turnIdx, sendGlobalBuffer_.GetPhyAddr(), recvGlobalBuffer_.GetPhyAddr());
         alltoAllvHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
@@ -398,17 +397,21 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
+        AscendC::printf("outputPermuteSrcBuffer_.GetPhyAddr() = %d\n", outputPermuteSrcBuffer_.GetPhyAddr());
+        AscendC::printf("outputPermuteDstBuffer_.GetPhyAddr() = %d\n", outputPermuteDstBuffer_.GetPhyAddr());
+
         uint32_t startExpertIdx = turnIdx * taskTilingInfo_->combineExpertSize;
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
         static constexpr uint64_t DATACOPY_MAX_BLOCK_LEN = 65535UL;
 
-        uint32_t totalPairs     = realCombineSize * rankDim_;
-        uint32_t pairsPerBlock  = totalPairs / GetBlockNum();
-        uint32_t pairsRemainder = totalPairs % GetBlockNum();
+        uint32_t totalPairs     = realCombineSize * rankDim_; // 总块数
+        uint32_t pairsPerBlock  = totalPairs / GetBlockNum(); // 每个核处理的块数
+        uint32_t pairsRemainder = totalPairs % GetBlockNum(); // 剩余块数
         uint32_t pairStart      = GetBlockIdx() * pairsPerBlock +
                                   (GetBlockIdx() < pairsRemainder ? GetBlockIdx() : pairsRemainder);
         uint32_t pairEnd        = pairStart + pairsPerBlock +
                                   (GetBlockIdx() < pairsRemainder ? 1U : 0U);
+        AscendC::printf("PermuteOutput pairStart = %d\n, pairEnd = %d\n", pairStart, pairEnd);
 
         uint64_t recvSumCntSrc[MAX_EXPERT_SIZE] = {0UL};
         uint64_t recvSumCntDst[MAX_EXPERT_SIZE] = {0UL};
@@ -468,9 +471,11 @@ public:
 
                 DataCopyParams dataCopyParams{static_cast<uint16_t>(tileLen), 0U, 0U, 0U};
                 DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
-
+                AscendC::printf("DataCopyPad outputPermuteSrcBuffer_ srcOffset + tileStart = %d\n", srcOffset + tileStart);
+                AscendC::DumpTensor(ubBuf, 474, 16);
                 DataCopyPad(ubBuf, outputPermuteSrcBuffer_[srcOffset + tileStart],
                             dataCopyParams, dataCopyPadParams);
+                AscendC::DumpTensor(outputPermuteSrcBuffer_[srcOffset + tileStart], 474, 16);
                 int32_t readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
                 SetFlag<HardEvent::MTE2_MTE3>(readEvent);
                 WaitFlag<HardEvent::MTE2_MTE3>(readEvent);

@@ -47,12 +47,17 @@ public:
         isCombinedMode_ = tilingData_->taskTilingInfo.combineExpertSize > 1U;
         // workspace偏移
         uint64_t workspaceOffset = 0;
-        uint64_t commOutLen =
-            Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
-                          PACK_FACTOR) * X_TYPE_SIZE,
-                  TENSOR_LIST_SIZE);
+        /**
+         * workspace排布：
+         * 0、通信重排输出，大小为commOutLen
+         * 1、
+        **/
         if (isCombinedMode_ || !tilingData_->isPermuteOut) {
+            // 0、合并通信模式用来存储未重排的通信结果、无permuteOut输出用来存储通信结果
             commOutGm_ = workspaceGM + workspaceOffset;
+            uint64_t commOutLen = Align(
+                CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), PACK_FACTOR) * X_TYPE_SIZE,
+                TENSOR_LIST_SIZE);
             workspaceOffset += commOutLen;
         } else {
             commOutGm_ = permuteOutOptionalGM;
@@ -88,6 +93,7 @@ public:
             yOffsetListGm_ = workspaceGM + workspaceOffset;
             workspaceOffset += yOffsetListSize;
             if (tilingData_->isPermuteOut) {
+                AscendC::printf("InitOutputPermuteBuffer commOutGm_ = %p, permuteOutOptionalGM = %p\n", commOutGm_, permuteOutOptionalGM);
                 commOp.InitOutputPermuteBuffer(commOutGm_, permuteOutOptionalGM);
             }
         }
@@ -187,16 +193,20 @@ private:
 
             if (isPermuteOut) {
                 uint32_t notifyFlagId = NOTIFY_FLAG_ID_BASE + (turnIdx % FLAG_ID_ROTATE_COUNT);
+                SyncAll<false>();
                 if ASCEND_IS_AIC {
-                    CrossCoreSetFlag<0x2, PIPE_FIX>(notifyFlagId);
+                    AscendC::printf("CrossCoreSetFlag notifyFlagId = %d\n", notifyFlagId);
                 }
                 if ASCEND_IS_AIV {
-                    CrossCoreWaitFlag(notifyFlagId);
+                    AscendC::printf("CrossCoreWaitFlag notifyFlagId = %d\n", notifyFlagId);
+                    // CrossCoreWaitFlag(notifyFlagId);
+                    AscendC::printf("PermuteOutput turnIdx = %d, realCombineSize = %d\n", turnIdx, realCombineSize);
                     commOp.PermuteOutput(turnIdx, realCombineSize);
                 }
             }
 
             if constexpr (MX_QUANT_MODE) {
+                AscendC::printf("WaitScaleCombinedAic turnIdx = %d\n", turnIdx);
                 commOp.WaitScaleCombinedAic(turnIdx);
             }
 
