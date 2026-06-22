@@ -45,7 +45,7 @@ __global__ __aicore__ void mhc_pre_sinkhorn_backward(
     if constexpr (DETERMINISTIC) {
         REGISTER_TILING_FOR_TILINGKEY("DETERMINISTIC == true", MhcPreSinkhornBackwardArch35DeterminiticTilingData);
         GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornBackwardArch35DeterminiticTilingData, tilingData, tiling);
-        MhcPreSinkhornBackwardDeterministic<DTYPE_PHI, DTYPE_GRAD_X, float> op;
+        MhcPreSinkhornBackwardDeterministic<DTYPE_X, DTYPE_GRAD_HIN, float> op;
         op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias,
             hc_before_norm, inv_rms, sum_out, norm_out, grad_x, grad_phi,
             grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
