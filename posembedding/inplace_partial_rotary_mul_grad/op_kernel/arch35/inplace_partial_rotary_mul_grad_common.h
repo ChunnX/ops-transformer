@@ -56,7 +56,6 @@ __aicore__ inline void HalfGradAlignVF(const LocalTensor<TCOS> &sinTensor,
     uint32_t halfD = dLen / HALF_INTERLEAVE_COEF;
     uint16_t repeatTimes = AscendC::Ceil(halfD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
-    uint32_t cosRowStride = dLen;
 
     __local_mem__ TCOS *sinUb = (__local_mem__ TCOS *)sinTensor.GetPhyAddr();
     __local_mem__ TCOS *cosUb = (__local_mem__ TCOS *)cosTensor.GetPhyAddr();
@@ -67,8 +66,8 @@ __aicore__ inline void HalfGradAlignVF(const LocalTensor<TCOS> &sinTensor,
         MicroAPI::RegTensor<float> vregIn, vregHalfIn, vregSin, vregHalfSin, vregCos, vregHalfCos, vregOut, vregHalfOut;
         MicroAPI::MaskReg preg;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
-            __local_mem__ TCOS *currSinUb = sinUb + sIdx * cosRowStride;
-            __local_mem__ TCOS *currCosUb = cosUb + sIdx * cosRowStride;
+            __local_mem__ TCOS *currSinUb = sinUb + sIdx * dLen;
+            __local_mem__ TCOS *currCosUb = cosUb + sIdx * dLen;
             for (uint16_t row = 0; row < currDNum; row++) {
                 __local_mem__ TDY *currInUb = inUb + (sIdx * currDNum + row) * dLen;
                 __local_mem__ TDY *currOutUb = outUb + (sIdx * currDNum + row) * dLen;
@@ -126,7 +125,6 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor,
         part1Num += tailNum;
     }
 
-    uint32_t cosRowStride = dLen;
 
     __local_mem__ TCOS *sinUb = (__local_mem__ TCOS *)sinTensor.GetPhyAddr();
     __local_mem__ TCOS *cosUb = (__local_mem__ TCOS *)cosTensor.GetPhyAddr();
@@ -139,8 +137,8 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor,
         MicroAPI::RegTensor<float> vregFormerSin, vregLatterSin;
         MicroAPI::MaskReg pregLoop, pregPart1, pregPart2;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
-            __local_mem__ TCOS *currSinUb = sinUb + sIdx * cosRowStride;
-            __local_mem__ TCOS *currCosUb = cosUb + sIdx * cosRowStride;
+            __local_mem__ TCOS *currSinUb = sinUb + sIdx * dLen;
+            __local_mem__ TCOS *currCosUb = cosUb + sIdx * dLen;
             for (uint16_t row = 0; row < currDNum; row++) {
                 __local_mem__ TDY *currInUb = inUb + (sIdx * currDNum + row) * dLen;
                 __local_mem__ TDY *currOutUb = outUb + (sIdx * currDNum + row) * dLen;
@@ -200,7 +198,6 @@ __aicore__ inline void QuarterGradAlignVF(const LocalTensor<TCOS> &sinTensor,
     uint32_t quarterD = dLen / QUARTER_MODE_COEF;
     uint16_t repeatTimes = AscendC::Ceil(quarterD, static_cast<uint32_t>(VL_FLOAT32_SIZE));
 
-    uint32_t cosRowStride = dLen;
 
     __local_mem__ TCOS *sinUb = (__local_mem__ TCOS *)sinTensor.GetPhyAddr();
     __local_mem__ TCOS *cosUb = (__local_mem__ TCOS *)cosTensor.GetPhyAddr();
@@ -214,8 +211,8 @@ __aicore__ inline void QuarterGradAlignVF(const LocalTensor<TCOS> &sinTensor,
         MicroAPI::RegTensor<float> vregOut, vregQ1Out, vregQ2Out, vregQ3Out;
         MicroAPI::MaskReg preg;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
-            __local_mem__ TCOS *currSinUb = sinUb + sIdx * cosRowStride;
-            __local_mem__ TCOS *currCosUb = cosUb + sIdx * cosRowStride;
+            __local_mem__ TCOS *currSinUb = sinUb + sIdx * dLen;
+            __local_mem__ TCOS *currCosUb = cosUb + sIdx * dLen;
             for (uint16_t row = 0; row < currDNum; row++) {
                 __local_mem__ TDY *currInUb = inUb + (sIdx * currDNum + row) * dLen;
                 __local_mem__ TDY *currOutUb = outUb + (sIdx * currDNum + row) * dLen;
@@ -296,7 +293,6 @@ __aicore__ inline void DeepSeekInterleaveModeGradVF(const LocalTensor<TCOS> &sin
         part1Num += tailNum;
     }
 
-    uint32_t cosRowStride = dLen;
 
     __local_mem__ TCOS *sinUb = (__local_mem__ TCOS *)sinTensor.GetPhyAddr();
     __local_mem__ TCOS *cosUb = (__local_mem__ TCOS *)cosTensor.GetPhyAddr();
@@ -307,8 +303,8 @@ __aicore__ inline void DeepSeekInterleaveModeGradVF(const LocalTensor<TCOS> &sin
         MicroAPI::RegTensor<float> vregIn, vregHalfIn, vregSin, vregHalfSin, vregCos, vregHalfCos, vregOut, vregHalfOut;
         MicroAPI::MaskReg pregLoop, pregPart1, pregPart2;
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
-            __local_mem__ TCOS *currSinUb = sinUb + sIdx * cosRowStride;
-            __local_mem__ TCOS *currCosUb = cosUb + sIdx * cosRowStride;
+            __local_mem__ TCOS *currSinUb = sinUb + sIdx * dLen;
+            __local_mem__ TCOS *currCosUb = cosUb + sIdx * dLen;
             for (uint16_t row = 0; row < currDNum; row++) {
                 __local_mem__ TDY *currInUb = inUb + (sIdx * currDNum + row) * dLen;
                 __local_mem__ TDY *currOutUb = outUb + (sIdx * currDNum + row) * dLen;
@@ -368,8 +364,7 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ TDY *in, __local_mem__
 
     int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
     int32_t nStepUb = ubFactorS * dLen32;
-    uint32_t cosRowStride = dLen32;
-    int32_t nStepCosUb = ubFactorS * cosRowStride;
+    int32_t nStepCosUb = ubFactorS * dLen32;
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> inPart1Reg, inPart2Reg, cosPart1Reg, cosPart2Reg, sinPart1Reg, sinPart2Reg;
@@ -383,11 +378,11 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ TDY *in, __local_mem__
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     if constexpr (IsBroadcast) {
-                        currCosUb = cos + sIdx * cosRowStride;
-                        currSinUb = sin + sIdx * cosRowStride;
+                        currCosUb = cos + sIdx * dLen;
+                        currSinUb = sin + sIdx * dLen;
                     } else {
-                        currCosUb = cos + bIdx * nStepCosUb + sIdx * cosRowStride;
-                        currSinUb = sin + bIdx * nStepCosUb + sIdx * cosRowStride;
+                        currCosUb = cos + bIdx * nStepCosUb + sIdx * dLen;
+                        currSinUb = sin + bIdx * nStepCosUb + sIdx * dLen;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
                         pregLoop = MicroAPI::UpdateMask<float>(count);
@@ -435,8 +430,7 @@ __aicore__ inline void BatchQuarterGradAlignVF(
 
     int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
     int32_t nStepUb = ubFactorS * dLen32;
-    uint32_t cosRowStride = dLen32;
-    int32_t nStepCosUb = ubFactorS * cosRowStride;
+    int32_t nStepCosUb = ubFactorS * dLen32;
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> inPart1Reg, inPart2Reg, inPart3Reg, inPart4Reg;
@@ -452,11 +446,11 @@ __aicore__ inline void BatchQuarterGradAlignVF(
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     if constexpr (IsBroadcast) {
-                        currCosUb = cos + sIdx * cosRowStride;
-                        currSinUb = sin + sIdx * cosRowStride;
+                        currCosUb = cos + sIdx * dLen;
+                        currSinUb = sin + sIdx * dLen;
                     } else {
-                        currCosUb = cos + bIdx * nStepCosUb + sIdx * cosRowStride;
-                        currSinUb = sin + bIdx * nStepCosUb + sIdx * cosRowStride;
+                        currCosUb = cos + bIdx * nStepCosUb + sIdx * dLen;
+                        currSinUb = sin + bIdx * nStepCosUb + sIdx * dLen;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
                         pregLoop = MicroAPI::UpdateMask<float>(count);
@@ -533,8 +527,7 @@ __aicore__ inline void BatchInterleaveModeGradVF(
 
     int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
     int32_t nStepUb = ubFactorS * dLen32;
-    uint32_t cosRowStride = dLen32;
-    int32_t nStepCosUb = ubFactorS * cosRowStride;
+    int32_t nStepCosUb = ubFactorS * dLen32;
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> inPart1Reg, inPart2Reg;
@@ -552,11 +545,11 @@ __aicore__ inline void BatchInterleaveModeGradVF(
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     if constexpr (IsBroadcast) {
-                        currCosUb = cos + sIdx * cosRowStride;
-                        currSinUb = sin + sIdx * cosRowStride;
+                        currCosUb = cos + sIdx * dLen;
+                        currSinUb = sin + sIdx * dLen;
                     } else {
-                        currCosUb = cos + bIdx * nStepCosUb + sIdx * cosRowStride;
-                        currSinUb = sin + bIdx * nStepCosUb + sIdx * cosRowStride;
+                        currCosUb = cos + bIdx * nStepCosUb + sIdx * dLen;
+                        currSinUb = sin + bIdx * nStepCosUb + sIdx * dLen;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
                         pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
@@ -623,8 +616,7 @@ __aicore__ inline void BatchDeepSeekInterleaveModeGradVF(
 
     int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
     int32_t nStepUb = ubFactorS * dLen32;
-    uint32_t cosRowStride = dLen32;
-    int32_t nStepCosUb = ubFactorS * cosRowStride;
+    int32_t nStepCosUb = ubFactorS * dLen32;
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> vregIn, vregHalfIn, vregCos, vregHalfCos, vregSin, vregHalfSin, vregOut, vregHalfOut;
@@ -640,11 +632,11 @@ __aicore__ inline void BatchDeepSeekInterleaveModeGradVF(
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
                     if constexpr (IsBroadcast) {
-                        currCosUb = cos + sIdx * cosRowStride;
-                        currSinUb = sin + sIdx * cosRowStride;
+                        currCosUb = cos + sIdx * dLen;
+                        currSinUb = sin + sIdx * dLen;
                     } else {
-                        currCosUb = cos + bIdx * nStepCosUb + sIdx * cosRowStride;
-                        currSinUb = sin + bIdx * nStepCosUb + sIdx * cosRowStride;
+                        currCosUb = cos + bIdx * nStepCosUb + sIdx * dLen;
+                        currSinUb = sin + bIdx * nStepCosUb + sIdx * dLen;
                     }
                     for (uint16_t i = 0; i < dLoopCount; i++) {
                         pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
