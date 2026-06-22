@@ -106,6 +106,7 @@ protected:
     uint64_t keyScaleCoreOffset = 0ULL;
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
+    uint64_t valueOutCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
@@ -116,6 +117,7 @@ protected:
     GlobalTensor<uint32_t> metadataGm;
 
     GlobalTensor<int32_t> indiceOutGm;
+    GlobalTensor<bfloat16_t> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
@@ -198,6 +200,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.mBaseSize = M_BASE_SIZE;
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.s1BaseSize = (constInfo.mBaseSize + constInfo.gSize - 1) / constInfo.gSize;
+    constInfo.returnValue = tilingData->returnValue;
 }
 
 template <typename QLIV2T>
@@ -697,6 +700,17 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessInvalid()
                 (baseSize + singleCoreSize <= totalOutputSize) ? singleCoreSize : totalOutputSize - baseSize;
             GlobalTensor<OUT_T> output = indiceOutGm[baseSize];
             AscendC::InitGlobalMemory(output, dealSize, constInfo.INVALID_IDX);
+            if (constInfo.returnValue) {
+                event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+                WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+                
+                GlobalTensor<uint32_t> valueOutGmTmp;
+                valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
+                GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
+
+                AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_FLOAT);
+            }
         }
     }
 }
