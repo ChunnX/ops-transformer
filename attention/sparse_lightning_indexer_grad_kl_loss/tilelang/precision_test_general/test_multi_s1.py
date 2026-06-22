@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""测试不同 S1  (BSND 格式，S1>1 官方可能卡住因此只测 TileLang 性能)"""
+import torch, torch_npu, math, sys, os, time
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from importlib import import_module
+mod = import_module("0622")
+sparse_lightning_indexer_grad_kl_loss = mod.sparse_lightning_indexer_grad_kl_loss
+
+WARMUP, BENCH = 3, 5
+
+CASES = [
+    {"B": 1, "S1": 1,  "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
+     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "S1=1  (baseline)"},
+    {"B": 1, "S1": 2,  "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
+     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "S1=2"},
+    {"B": 1, "S1": 4,  "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
+     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "S1=4"},
+    {"B": 1, "S1": 8,  "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
+     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "S1=8"},
+    {"B": 1, "S1": 16, "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
+     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "S1=16"},
+]
+
+
+def gen_inputs(cfg, seed=42):
+    B, S1, S2 = cfg["B"], cfg["S1"], cfg["S2"]
+    N1, N2 = cfg["N1"], cfg["N2"]
+    Nidx1, Nidx2 = cfg["Nidx1"], cfg["Nidx2"]
+    D, DI, dr = cfg["DQuery"], cfg["DQueryIndex"], cfg["d_rope"]
+    K, G = cfg["K"], N1 // N2
+    scale = 1.0 / math.sqrt(D)
+    torch.manual_seed(seed)
+    dt = torch.float16
+
+    q = torch.randn(B, S1, N1, D, dtype=dt).npu()
+    k = torch.randn(B, S2, N2, D, dtype=dt).npu()
+    qi = torch.randn(B, S1, Nidx1, DI, dtype=dt).npu()
+    ki = torch.randn(B, S2, Nidx2, DI, dtype=dt).npu()
+    qr = torch.randn(B, S1, N1, dr, dtype=dt).npu()
+    kr = torch.randn(B, S2, N2, dr, dtype=dt).npu()
+    w = torch.randn(B, S1, Nidx1, dtype=dt).npu()
+    si = torch.zeros(B, S1, Nidx2, K, dtype=torch.int32).npu()
+
+    s2_rl = min(S2, K)
+    idx = torch.randperm(S2)[:s2_rl]
+    for s in range(S1):
+        si[0, s, 0, :s2_rl] = idx.to(torch.int32).npu()
+        if s2_rl < K:
+            si[0, s, 0, s2_rl:] = -1
+    torch.npu.synchronize()
+
+    with torch.no_grad():
+        km = k.squeeze(2); krm = kr.squeeze(2)
+        qf = torch.cat([q, qr], dim=-1)
+        kf = torch.cat([km, krm], dim=-1)
+        kft = kf.transpose(-1, -2).unsqueeze(1)
+        mx_list, sm_list = [], []
+        for s in range(S1):
+            row = torch.matmul(qf[:, s:s+1], kft)
+            rs = row.float() * scale
+            rm = rs.max(dim=-1).values
+            rsum = torch.exp(rs - rm.unsqueeze(-1)).sum(dim=-1)
+            mx_list.append(rm); sm_list.append(rsum)
+        mx = torch.cat(mx_list, dim=1); sm = torch.cat(sm_list, dim=1)
+        sm_max = mx.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
+        sm_sum = sm.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float()
+    return q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr
+
+
+def call_tl(q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr, cfg):
+    return sparse_lightning_indexer_grad_kl_loss(
+        q, k, qi, ki, w, si, sm_max, sm_sum, scale,
+        query_rope=qr, key_rope=kr, layout_query="BSND",
+        actual_seq_lengths_query=[cfg["S1"]] * cfg["B"],
+        actual_seq_lengths_key=[cfg["S2"]] * cfg["B"], sparse_mode=3)
+
+
+def bench(fn, warmup=WARMUP, iters=BENCH):
+    for _ in range(warmup):
+        fn(); torch.npu.synchronize()
+    ts = []
+    for _ in range(iters):
+        t0 = time.perf_counter()
+        fn(); torch.npu.synchronize()
+        ts.append(time.perf_counter() - t0)
+    ts.sort()
+    return sum(ts)/len(ts), ts[len(ts)//2], ts[0]
+
+
+def main():
+    print("=" * 60)
+    print("Multi-S1 性能测试 (0622.py, BSND)")
+    print("注意: S1>1 官方算子可能卡住，只测 TileLang 性能和内在一致性")
+    print("=" * 60)
+    for i, cfg in enumerate(CASES):
+        print(f"\n--- [{i}] {cfg['desc']} ---")
+        q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr = gen_inputs(cfg)
+
+        try:
+            torch.npu.synchronize()
+            dqi, dki, dw, loss = call_tl(q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr, cfg)
+            torch.npu.synchronize()
+        except Exception as e:
+            print(f"  TileLang FAIL: {e}")
+            continue
+
+        has_nan = dqi.isnan().any().item() or dki.isnan().any().item() or dw.isnan().any().item()
+        has_inf = dqi.isinf().any().item() or dki.isinf().any().item() or dw.isinf().any().item()
+        print(f"  NaN:{has_nan} Inf:{has_inf} loss={loss.float().item():.6e}")
+
+        avg, med, mn = bench(lambda: call_tl(q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr, cfg))
+        print(f"  Perf: avg={avg*1e3:.3f}ms med={med*1e3:.3f}ms min={mn*1e3:.3f}ms")
+
+
+if __name__ == "__main__":
+    main()
