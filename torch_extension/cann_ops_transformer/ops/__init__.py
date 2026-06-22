@@ -50,3 +50,5 @@ from .compressor import compressor
 from .graph_convert.graph_convert_compressor import convert_compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .graph_convert.graph_convert_inplace_partial_rotary_mul import convert_inplace_partial_rotary_mul
+from .elastic_buffer import ElasticBuffer
+
