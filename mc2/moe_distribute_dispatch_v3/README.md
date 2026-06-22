@@ -343,7 +343,7 @@ $$
         - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/npu_ops_transformer/ops/deep_ep.py)。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
-        - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
+        - `BS`：表示batch sequence size，即本卡最终输出的token数量，依`comm_alg`取值，"fullmesh_v2"取值范围为(0 < BS ≤ 256)，"fullmesh_v1"和""取值范围为(0 < BS ≤ 512)。
 
 ## 调用说明
 
