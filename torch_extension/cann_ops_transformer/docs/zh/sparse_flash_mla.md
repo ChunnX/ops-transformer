@@ -88,10 +88,10 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
     cmp_residual_kv=None,
     ori_topk_length=None,
     cmp_topk_length=None,
-    batch_size=None,
-    max_seqlen_q=None,
-    max_seqlen_ori_kv=None,
-    max_seqlen_cmp_kv=None,
+    batch_size=0,
+    max_seqlen_q=0,
+    max_seqlen_ori_kv=0,
+    max_seqlen_cmp_kv=0,
     ori_topk=0,
     cmp_topk=0,
     cmp_ratio=1,
@@ -131,11 +131,11 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
 | sinks | 可选输入 | attention sinks输入。 | FLOAT | ND |
 | metadata | 输入 | `sparse_flash_mla_metadata`生成的任务切分结果。 | INT32 | ND |
 | softmax_scale | 可选属性 | QK矩阵乘后的缩放系数。默认值为1.0。 | FLOAT | - |
-| cmp_ratio | 可选属性 | 表示`ori_kv`和`cmp_kv`之间的压缩率。默认值为1。 | INT | - |
-| ori_mask_mode | 可选属性 | 表示`q`和`ori_kv`计算的mask模式。默认值为0。 | INT | - |
-| cmp_mask_mode | 可选属性 | 表示`q`和`cmp_kv`计算的mask模式。默认值为0。 | INT | - |
-| ori_win_left | 可选属性 | 表示`q`和`ori_kv`计算中`q`对过去token计算的数量。默认值为-1。 | INT | - |
-| ori_win_right | 可选属性 | 表示`q`和`ori_kv`计算中`q`对未来token计算的数量。默认值为-1。 | INT | - |
+| cmp_ratio | 可选属性 | 表示`ori_kv`和`cmp_kv`之间的压缩率，支持1、4、128。默认值为1。 | INT | - |
+| ori_mask_mode | 可选属性 | 表示`q`和`ori_kv`计算的mask模式，当前支持4。默认值为0。 | INT | - |
+| cmp_mask_mode | 可选属性 | 表示`q`和`cmp_kv`计算的mask模式，支持0和3。默认值为0。 | INT | - |
+| ori_win_left | 可选属性 | 表示`q`和`ori_kv`计算中`q`对过去token计算的数量，当前支持127。默认值为-1。 | INT | - |
+| ori_win_right | 可选属性 | 表示`q`和`ori_kv`计算中`q`对未来token计算的数量，当前支持0。默认值为-1。 | INT | - |
 | layout_q | 可选属性 | 表示输入`q`的数据排布格式。默认值为"BSND"。 | STRING | - |
 | layout_kv | 可选属性 | 表示输入`ori_kv`和`cmp_kv`的数据排布格式。默认值为"BSND"。 | STRING | - |
 | topk_value_mode | 可选属性 | 表示TopK索引取值模式。默认值为1。 | INT | - |
@@ -147,7 +147,7 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
 
 | 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
 | :--- | :--- | :--- | :--- | :--- |
-| num_heads_q | 属性 | Query head数。 | INT | - |
+| num_heads_q | 属性 | Query head数，支持1、2、4、8、16、32、64、128。 | INT | - |
 | num_heads_kv | 属性 | KV head数。 | INT | - |
 | head_dim | 属性 | 每个注意力头的维度。 | INT | - |
 | cu_seqlens_q | 可选输入 | TND场景下`q`的累积序列长度。 | INT32 | ND |
@@ -159,17 +159,17 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
 | cmp_residual_kv | 可选输入 | 压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。 | INT32 | ND |
 | ori_topk_length | 可选输入 | 预留输入，当前版本不支持传入非空Tensor。 | INT32 | ND |
 | cmp_topk_length | 可选输入 | 预留输入，当前版本不支持传入非空Tensor。 | INT32 | ND |
-| batch_size | 可选属性 | batch大小。默认值为None。 | INT | - |
-| max_seqlen_q | 可选属性 | 所有batch中`q`的最大有效长度。默认值为None。 | INT | - |
-| max_seqlen_ori_kv | 可选属性 | 所有batch中`ori_kv`的最大有效长度。默认值为None。 | INT | - |
-| max_seqlen_cmp_kv | 可选属性 | 所有batch中`cmp_kv`的最大有效长度。默认值为None。 | INT | - |
+| batch_size | 可选属性 | batch大小。默认值为0。 | INT | - |
+| max_seqlen_q | 可选属性 | 所有batch中`q`的最大有效长度。默认值为0。 | INT | - |
+| max_seqlen_ori_kv | 可选属性 | 所有batch中`ori_kv`的最大有效长度。默认值为0。 | INT | - |
+| max_seqlen_cmp_kv | 可选属性 | 所有batch中`cmp_kv`的最大有效长度。默认值为0。 | INT | - |
 | ori_topk | 可选属性 | 原始KV TopK长度。默认值为0。 | INT | - |
 | cmp_topk | 可选属性 | 压缩KV TopK长度。默认值为0。 | INT | - |
-| cmp_ratio | 可选属性 | 表示`ori_kv`和`cmp_kv`之间的压缩率。默认值为1。 | INT | - |
-| ori_mask_mode | 可选属性 | 表示`q`和`ori_kv`计算的mask模式。默认值为0。 | INT | - |
-| cmp_mask_mode | 可选属性 | 表示`q`和`cmp_kv`计算的mask模式。默认值为0。 | INT | - |
-| ori_win_left | 可选属性 | 表示`q`和`ori_kv`计算中`q`对过去token计算的数量。默认值为-1。 | INT | - |
-| ori_win_right | 可选属性 | 表示`q`和`ori_kv`计算中`q`对未来token计算的数量。默认值为-1。 | INT | - |
+| cmp_ratio | 可选属性 | 表示`ori_kv`和`cmp_kv`之间的压缩率，支持1、4、128。默认值为1。 | INT | - |
+| ori_mask_mode | 可选属性 | 表示`q`和`ori_kv`计算的mask模式，当前支持4。默认值为0。 | INT | - |
+| cmp_mask_mode | 可选属性 | 表示`q`和`cmp_kv`计算的mask模式，支持0和3。默认值为0。 | INT | - |
+| ori_win_left | 可选属性 | 表示`q`和`ori_kv`计算中`q`对过去token计算的数量，当前支持127。默认值为-1。 | INT | - |
+| ori_win_right | 可选属性 | 表示`q`和`ori_kv`计算中`q`对未来token计算的数量，当前支持0。默认值为-1。 | INT | - |
 | layout_q | 可选属性 | 表示输入`q`的数据排布格式。默认值为"BSND"。 | STRING | - |
 | layout_kv | 可选属性 | 表示输入`ori_kv`和`cmp_kv`的数据排布格式。默认值为"BSND"。 | STRING | - |
 | has_ori_kv | 可选属性 | 表示`SparseFlashMla`主算子是否传入`ori_kv`。默认值为True。 | BOOL | - |

@@ -55,11 +55,11 @@ inline bool IsA5Smla(const char *socVersion)
 
 inline bool IsCmpRatioSupportSmla(bool isA5, bool hasCmpKv, int64_t cmpTopk, int64_t cmpRatio)
 {
+    if (!hasCmpKv) {
+        return isA5 || cmpRatio == 1;
+    }
     if (isA5) {
         return cmpRatio >= SMLA_CMP_RATIO_LOWER_BOUND && cmpRatio <= SMLA_CMP_RATIO_UPPER_BOUND;
-    }
-    if (!hasCmpKv) {
-        return cmpRatio == 1;
     }
     return (cmpTopk > 0) ? (cmpRatio == 4) : (cmpRatio == 128);
 }
@@ -433,13 +433,12 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                                  const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, bool isA5,
                                  const aclTensor *metadata)
 {
+    (void)isA5;
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     int64_t dimNum = -1;
-    if (!isA5) {
-        if (CheckReservedOptionalTensorSmla(oriTopkLengthOptional, "ori_topk_length") != ACLNN_SUCCESS ||
-            CheckReservedOptionalTensorSmla(cmpTopkLengthOptional, "cmp_topk_length") != ACLNN_SUCCESS) {
-            return ACLNN_ERR_PARAM_INVALID;
-        }
+    if (CheckReservedOptionalTensorSmla(oriTopkLengthOptional, "ori_topk_length") != ACLNN_SUCCESS ||
+        CheckReservedOptionalTensorSmla(cmpTopkLengthOptional, "cmp_topk_length") != ACLNN_SUCCESS) {
+        return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验 cu_seqlens_q
     if (IsTensorExistSmla(cuSeqlensQOptional)) {
@@ -506,7 +505,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             }
         }
         // 校验 ori_topk_length
-        if (!isA5 && IsTensorExistSmla(oriTopkLengthOptional)) {
+        if (IsTensorExistSmla(oriTopkLengthOptional)) {
             // 校验 ori_topk_length 维度
             dimNum = GetDimNumSmla(oriTopkLengthOptional);
             if (strcmp(layoutQOptional, "TND") == 0) {
@@ -581,7 +580,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             }
         }
         // 校验 cmp_topk_length
-        if (!isA5 && IsTensorExistSmla(cmpTopkLengthOptional)) {
+        if (IsTensorExistSmla(cmpTopkLengthOptional)) {
             // 校验 cmp_topk_length 维度
             dimNum = GetDimNumSmla(cmpTopkLengthOptional);
             if (strcmp(layoutQOptional, "TND") == 0) {
