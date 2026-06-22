@@ -252,7 +252,7 @@ static ge::graphStatus GetAndCheckAttrQuantMode(const gert::RuntimeAttrs *attrs,
     }
     quantMode = *quantModePtr;
     if (validQuantModes.count(quantMode) == 0) {
-        OP_LOGE(context, "The quant_mode should be in [%d, %d], %d, %d or %d. But it is %d.", QuantMode::NON_QUANT,
+        OP_LOGE(context, "The quant_mode should be in [%d, %d], %d, %d or %d, but it is %d.", QuantMode::NON_QUANT,
                 QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST, QuantMode::HIF8_PERTENSOR,
                 QuantMode::HIF8_PERTOKEN, quantMode);
         return ge::GRAPH_FAILED;
