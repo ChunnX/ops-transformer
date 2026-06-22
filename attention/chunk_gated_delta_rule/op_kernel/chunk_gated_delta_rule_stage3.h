@@ -25,7 +25,6 @@ using namespace matmul;
 
 constexpr uint8_t STAGE3_AIC_AIV_SYNC_MODE = 0x2;
 constexpr uint32_t STAGE3_TMP_GM_SLOT_COUNT = 4;
-constexpr uint16_t STAGE3_FLAG_ID_MAX = 16;
 constexpr uint16_t STAGE3_AIV_READY_AIC_FLAG_BASE = 0x4;
 constexpr uint16_t STAGE3_AIC_DONE_AIV_FLAG_BASE = 0x8;
 
@@ -80,6 +79,9 @@ public:
             return;
         }
         coreId_ /= AIC_AIV_1_1;
+        if (subBlockIdx_ != 0) {
+            return;
+        }
         uint64_t subBlockElementNum = static_cast<uint64_t>(halfChunkSize_) *
                                       AscendC::Std::max((int64_t)chunkSize_, paddedDv_) * sizeof(bfloat16_t);
         pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, subBlockElementNum);
@@ -97,6 +99,11 @@ public:
 
     __aicore__ inline void Process()
     {
+        if ASCEND_IS_AIV {
+            if (subBlockIdx_ != 0) {
+                return;
+            }
+        }
         int64_t totalChunks = Nv_ * chunkNum_;  // Nv Nc 融合
         int64_t chunksPerCore = (totalChunks + coreNum_ - 1) / coreNum_;
         int64_t lastChunkSize = seqLength_ % chunkSize_ == 0 ? chunkSize_ : seqLength_ % chunkSize_;
@@ -112,24 +119,18 @@ public:
             uint64_t slotOffset = GetTmpGmSlotOffset(slotIdx);
             if ASCEND_IS_AIV {
                 if (localIdx >= STAGE3_TMP_GM_SLOT_COUNT) {
-                    CrossCoreWaitFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_MTE3>(
-                        GetAicDoneAivFlag(slotIdx, subBlockIdx_));
+                    CrossCoreWaitFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_MTE3>(GetAicDoneAivFlag(slotIdx));
                 }
-                SetSubValidRows();
-                CalMaskedQKT(tmpGM_[slotOffset + coreId_ * chunkSize_ * chunkSize_ +
-                             subOffset_ * curChunkSize_], nvId, chunkPos);
-                CrossCoreSetFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_MTE3>(
-                    GetAivReadyAicFlag(slotIdx, subBlockIdx_));
+                CalFullMaskedQKT(tmpGM_[slotOffset + coreId_ * chunkSize_ * chunkSize_], nvId, chunkPos);
+                CrossCoreSetFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_MTE3>(GetAivReadyAicFlag(slotIdx));
             }
 
             if ASCEND_IS_AIC {
-                CrossCoreWaitFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_FIX>(GetAivReadyAicFlag(slotIdx, 0));
-                CrossCoreWaitFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_FIX>(GetAivReadyAicFlag(slotIdx, 1));
+                CrossCoreWaitFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_FIX>(GetAivReadyAicFlag(slotIdx));
                 AICProcess(tmpGM_[slotOffset + coreId_ * chunkSize_ * chunkSize_],
                            sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
                            sTP_->attnOut[nvId * Dv_ + chunkPos * Nv_ * Dv_]);
-                CrossCoreSetFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_FIX>(GetAicDoneAivFlag(slotIdx, 0));
-                CrossCoreSetFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_FIX>(GetAicDoneAivFlag(slotIdx, 1));
+                CrossCoreSetFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_FIX>(GetAicDoneAivFlag(slotIdx));
             }
             localIdx++;
         }
@@ -138,9 +139,18 @@ public:
                                  localIdx : static_cast<int64_t>(STAGE3_TMP_GM_SLOT_COUNT);
             for (int64_t drainIdx = localIdx - drainCount; drainIdx < localIdx; drainIdx++) {
                 uint32_t slotIdx = static_cast<uint32_t>(drainIdx % STAGE3_TMP_GM_SLOT_COUNT);
-                CrossCoreWaitFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_MTE3>(
-                    GetAicDoneAivFlag(slotIdx, subBlockIdx_));
+                CrossCoreWaitFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_MTE3>(GetAicDoneAivFlag(slotIdx));
             }
+        }
+    }
+
+    __aicore__ inline void CalFullMaskedQKT(GlobalTensor<bfloat16_t> outGM, int nvId, int chunkPos)
+    {
+        for (int32_t rowBlock = 0; rowBlock < TASK_RATIO; rowBlock++) {
+            subOffset_ = rowBlock * halfChunkSize_;
+            LoadMaskToBuffer(subOffset_);
+            SetSubValidRows();
+            CalMaskedQKT(outGM[subOffset_ * curChunkSize_], nvId, chunkPos);
         }
     }
 
@@ -149,16 +159,14 @@ public:
         return static_cast<uint64_t>(slotIdx) * coreNum_ * chunkSize_ * chunkSize_;
     }
 
-    __aicore__ inline uint16_t GetAivReadyAicFlag(uint32_t slotIdx, uint32_t subBlockIdx)
+    __aicore__ inline uint16_t GetAivReadyAicFlag(uint32_t slotIdx)
     {
-        return STAGE3_AIV_READY_AIC_FLAG_BASE + static_cast<uint16_t>(slotIdx) +
-               static_cast<uint16_t>(subBlockIdx) * STAGE3_FLAG_ID_MAX;
+        return STAGE3_AIV_READY_AIC_FLAG_BASE + static_cast<uint16_t>(slotIdx);
     }
 
-    __aicore__ inline uint16_t GetAicDoneAivFlag(uint32_t slotIdx, uint32_t subBlockIdx)
+    __aicore__ inline uint16_t GetAicDoneAivFlag(uint32_t slotIdx)
     {
-        return STAGE3_AIC_DONE_AIV_FLAG_BASE + static_cast<uint16_t>(slotIdx) +
-               static_cast<uint16_t>(subBlockIdx) * STAGE3_FLAG_ID_MAX;
+        return STAGE3_AIC_DONE_AIV_FLAG_BASE + static_cast<uint16_t>(slotIdx);
     }
 
     __aicore__ inline void LoadMaskToBuffer(int32_t rowOffset)
