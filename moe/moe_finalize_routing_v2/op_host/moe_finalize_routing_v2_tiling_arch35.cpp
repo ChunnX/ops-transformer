@@ -192,7 +192,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scal
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrsPtr);
     const int64_t* attrKPtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrKPtr);
-    OP_LOGD(context_->GetNodeName(), "get k is %ld", *attrKPtr)
+    OP_LOGD(context_->GetNodeName(), "get k is %ld", *attrKPtr);
     if (!scalesShape) {
         hasScales_ = false;
         OP_CHECK_IF(
