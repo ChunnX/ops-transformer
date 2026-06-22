@@ -33,6 +33,7 @@ TEST_PARAMS = {
         "block_size": [512], # 取16的整数倍，最多支持到1024
         "block_num":[8],
         "qk_dtype": [torch.float8_e4m3fn],
+        "weight_dtype": [torch.bfloat16],
         "dequant_dtype": [torch.float32],
         "actual_seq_dtype": [torch.int32],
         "cu_seqlens_q": [None],     # BSND: cu_seqlens_q 不传
@@ -55,6 +56,42 @@ TEST_PARAMS = {
         "return_value":[0]
     },
 
+    # Ascend950 MXFP8 场景: BSND query + PA_BBND key, scale=fp8_e8m0
+    "quant_li_mxfp8_a5":{
+        "batch_size": [8],
+        "q_seq": [15],
+        "k_seq": [111],
+        "q_t_size":[8],
+        "k_t_size":[15],
+        "q_head_num": [64],
+        "k_head_num": [1],
+        "head_dim": [128],
+        "block_size": [512],
+        "block_num":[8],
+        "qk_dtype": [torch.float8_e4m3fn],
+        "weight_dtype": [torch.bfloat16],
+        "dequant_dtype": [torch.float8_e8m0fnu],
+        "actual_seq_dtype": [torch.int32],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_k": [None],
+        "seqused_q": [[3,3,3,3,3,3,3,3]],
+        "seqused_k": [[28,24,80,96,47,76,0,111]],
+        "cmp_residual_k": [None],
+        "max_seqlen_q": [-1],
+        "quant_mode": [1],
+        "layout_query": ["BSND"],
+        "layout_key":["PA_BBND"],
+        "sparse_count": [512],
+        "sparse_mode": [3],
+        "query_datarange":[[-448,448]],
+        "key_datarange":[[-20,20]],
+        "weights_datarange":[[-123,123]],
+        "q_scale_datarange":[[0,255]],
+        "k_scale_datarange":[[0,65504]],
+        "cmp_ratio":[1],
+        "return_value":[0]
+    },
+
     # Ascend950 hifp8 场景: BSND query + PA_BBND key
     "quant_li_default_hifp8_a5":{
         "batch_size": [8],
@@ -68,6 +105,7 @@ TEST_PARAMS = {
         "block_size": [512], # 取16的整数倍，最多支持到1024
         "block_num":[8],
         "qk_dtype": [torch.uint8],
+        "weight_dtype": [torch.bfloat16],
         "dequant_dtype": [torch.float32],
         "actual_seq_dtype": [torch.int32],
         "cu_seqlens_q": [None],     # BSND: cu_seqlens_q 不传
@@ -103,6 +141,7 @@ TEST_PARAMS = {
         "block_size": [1024], # 取16的整数倍，最多支持到1024
         "block_num":[17],
         "qk_dtype": [torch.int8],
+        "weight_dtype": [torch.bfloat16],
         "dequant_dtype": [torch.float16],
         "actual_seq_dtype": [torch.int32],
         "cu_seqlens_q": [[0, 1]],   # TND: cu_seqlens_q 必传 [B+1]

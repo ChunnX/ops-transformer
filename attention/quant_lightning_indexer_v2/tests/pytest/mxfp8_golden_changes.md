@@ -1,0 +1,416 @@
+# MXFP8 Golden 代码修改与优化文档
+
+**来源提交**: `43bb5362a4e1299a415b038ebf91474be9be8a28` (mxfp8 pytest)
+**涉及文件**: `quant_lightning_indexer_golden.py` 及相关测试文件
+
+---
+
+## 一、MXFP8 功能新增
+
+### 1.1 E8M0 与 Float 互转工具函数
+
+新增两个工具函数，用于 MXFP8 scale 的格式转换：
+
+```python
+def float_to_e8m0(x: torch.Tensor) -> torch.Tensor:
+    """float -> E8M0: E = clamp(floor(log2(|x|)) + 127, 1, 254), 零值 E=0"""
+    x_abs = x.float().abs()
+    zero_mask = (x_abs == 0)
+    x_safe = torch.where(zero_mask, torch.ones_like(x_abs), x_abs)
+    biased_exp = torch.clamp(torch.floor(torch.log2(x_safe)) + 127.0, 1.0, 254.0)
+    biased_exp = torch.where(zero_mask, torch.zeros_like(biased_exp), biased_exp)
+    return biased_exp.to(torch.uint8).view(torch.float8_e8m0fnu)
+
+
+def e8m0_to_float(x: torch.Tensor) -> torch.Tensor:
+    """E8M0 -> float: E=0 -> 0.0, E=1~254 -> 2^(E-127), E=255 -> NaN"""
+    raw = x.view(torch.uint8).float()
+    result = torch.pow(2.0, raw - 127.0)
+    result = torch.where(raw == 0, torch.zeros_like(result), result)
+    result = torch.where(raw == 255, torch.full_like(result, float('nan')), result)
+    return result
+```
+
+### 1.2 MXFP8 计算路径 `cal_atten_per_batch_mxfp8`
+
+新增 MXFP8 专用的 per-batch 计算函数，核心差异：
+- **Scale 类型**: 使用 `e8m0_to_float` 将 E8M0 scale 转为 float
+- **Scale 应用时机**: 在 QK 矩阵乘之前先乘 scale（`cur_q = cur_q * cur_q_scale`）
+- **无 kScale 后乘**: 不像 fp8 路径在 reduce_sum 后再乘 kScale
+
+```python
+def cal_atten_per_batch_mxfp8(self, b_idx):
+    cur_q = self.cur_q.to(dtype=torch.float32)
+    cur_k = self.cur_k.to(dtype=torch.float32)
+    cur_wt = self.cur_wt.to(dtype=torch.float32)
+    cur_q_scale = e8m0_to_float(self.cur_q_scale)
+    cur_k_scale = e8m0_to_float(self.cur_k_scale)
+
+    # 先乘 scale 再做矩阵乘
+    cur_q = cur_q * cur_q_scale
+    cur_k = cur_k * cur_k_scale
+
+    qk_bmm_res = torch.bmm(
+        cur_q.squeeze(0),
+        cur_k.permute(0, 1, 3, 2).squeeze(0)
+    ).unsqueeze(0)
+
+    qk_relu_out = (qk_bmm_res.to(dtype=torch.float32)).clamp_min(0.0)
+
+    brc_vmul = torch.bmm(
+        cur_wt.permute(0, 2, 3, 1).to(dtype=torch.float32).squeeze(0),
+        qk_relu_out.permute(0, 2, 1, 3).to(dtype=torch.float32).squeeze(0)
+    ).unsqueeze(0)
+    # ... 后续 reduce_sum + topk 逻辑与 fp8 路径一致
+```
+
+### 1.3 `cal_atten_bnsd` 中的 MXFP8 分支
+
+```python
+elif self.qk_dtype == torch.float8_e4m3fn:
+    if self.mxfp8_flag == 0:
+        y[...], y_value[...] = self.cal_atten_per_batch_fp8(b_idx)
+    else:
+        y[...], y_value[...] = self.cal_atten_per_batch_mxfp8(b_idx)
+```
+
+### 1.4 MXFP8 Scale Shape 处理
+
+MXFP8 的 scale 维度为 `[B, S, N, D/32]`（per-block scale），需要额外处理：
+
+```python
+# 在 qli_output_single 中
+if dequant_dtype == torch.float8_e8m0fnu:
+    mxfp8_flag = 1
+    query_dequant_scale_shape.append(head_dim // 32)  # 增加 D/32 维度
+    key_dequant_scale_shape.append(head_dim // 32)
+```
+
+### 1.5 D 轴广播 `broadcast_d_axis`
+
+MXFP8 scale 的 D 维度为 D/32，需要广播到完整 D 维度才能与 Q/K 做乘法：
+
+```python
+def broadcast_d_axis(self, temp_tensor):
+    dg = 32
+    return temp_tensor.repeat_interleave(dg, dim=-1)
+```
+
+在 `forward` 中调用：
+
+```python
+if mxfp8_flag == 1:
+    q_scale_bnsd_tensor = self.broadcast_d_axis(q_scale_bnsd_tensor)
+    k_scale_bnsd_tensor = self.broadcast_d_axis(k_scale_bnsd_tensor)
+```
+
+### 1.6 MXFP8 数据生成
+
+```python
+if mxfp8_flag == 1:
+    query_dequant_scale = float_to_e8m0(
+        torch.tensor(np.random.uniform(q_scale_datarange[0], q_scale_datarange[1],
+                                       query_dequant_scale_shape))
+    ).cpu()
+    key_dequant_scale = float_to_e8m0(
+        torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1],
+                                       key_dequant_scale_shape))
+    ).cpu()
+```
+
+### 1.7 MXFP8 下 kScale 的 N 轴广播
+
+MXFP8 场景下 k_head_num 广播时，kScale 也需要广播：
+
+```python
+if q_head_num != k_head_num:
+    k_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_bnsd_tensor)
+    if mxfp8_flag == 1:
+        k_scale_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_scale_bnsd_tensor)
+```
+
+### 1.8 PA_BSND 场景下 MXFP8 kScale 处理
+
+PA 场景构建 key_dequant_scale 时，MXFP8 需要额外处理 D/32 维度：
+
+```python
+key_dequant_scale_expand_shape = [batch_size, k_head_num, k_max_block_num_per_batch * block_size]
+key_dequant_scale_shape = [block_num, block_size, k_head_num]
+if mxfp8_flag == 1:
+    key_dequant_scale_expand_shape.append(head_dim // 32)
+    key_dequant_scale_shape.append(head_dim // 32)
+
+# 构建时
+if mxfp8_flag == 1:
+    key_dequant_scale[cur_block_id, :, i_n, :] = \
+        key_dequant_scale_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size, :]
+else:
+    key_dequant_scale[cur_block_id, :, i_n] = \
+        key_dequant_scale_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size]
+```
+
+---
+
+## 二、代码优化（重构）
+
+### 2.1 `trans_shape_to_bnsd` 简化
+
+**修改前**: 需要传入 `shape` 参数和 `is_weights` 标志，返回 `(tensor, shape)` 元组
+
+**修改后**: 直接从 `tensor.shape` 获取维度，用 `len(tensor.shape)` 判断是否为 weight，只返回 tensor
+
+```python
+# 修改前
+def trans_shape_to_bnsd(self, tensor, shape, layout, headnums=None, act_seq=None, is_weights=False, tensor_name=None):
+    if layout in ["BSND"]:
+        B = shape[0]; S = shape[1]; N = shape[2]; D = 1
+        if is_weights:
+            tensor = torch.unsqueeze(tensor, dim=-1)
+        else:
+            D = shape[3]
+        ...
+        return tensor, [B, N, S, D]
+
+# 修改后
+def trans_shape_to_bnsd(self, tensor, layout, headnums=None, act_seq=None, tensor_name=None):
+    if layout == "BSND":
+        B = tensor.shape[0]; S = tensor.shape[1]; N = tensor.shape[2]; D = 1
+        if len(tensor.shape) == 3:
+            tensor = torch.unsqueeze(tensor, dim=-1)
+        else:
+            D = tensor.shape[3]
+        ...
+        return tensor
+```
+
+**删除的分支**: `BSN`、`TN` 布局分支（不再需要，统一用 `len(tensor.shape)` 判断）
+
+**新增分支**: `PA_BSND` 布局
+
+```python
+elif layout == "PA_BSND":
+    if len(tensor.shape) == 3:
+        tensor = torch.unsqueeze(tensor, dim=-1)
+    return tensor
+```
+
+### 2.2 移除冗余 shape 成员变量
+
+**修改前**: 维护 `q_bnsd_shape`、`k_bnsd_shape`、`wt_bnsd_shape` 等成员变量
+
+**修改后**: 直接使用 `.shape` 属性
+
+```python
+# 修改前
+self.q_bnsd_shape = q_bnsd_shape
+m_shape_std = [q_bnsd_shape[2], k_bnsd_shape[2]]
+
+# 修改后
+m_shape_std = [q_bnsd_tensor.shape[2], k_bnsd_tensor.shape[2]]
+```
+
+### 2.3 `broadcast_n_axis` 简化
+
+移除 `input_dtype` 参数，不再返回 shape：
+
+```python
+# 修改前
+def broadcast_n_axis(self, n1, n2, temp_tensor, input_dtype):
+    ...
+    return modify_tensor, modify_tensor.shape
+
+# 修改后
+def broadcast_n_axis(self, n1, n2, temp_tensor):
+    ...
+    return modify_tensor
+```
+
+### 2.4 `forward` 接口变更
+
+新增 `mxfp8_flag` 参数，移除 `q_shape` 相关逻辑：
+
+```python
+# 修改前
+def forward(self, query, key, weights, query_dequant_scale, key_dequant_scale,
+            actual_seq_lengths_query, actual_seq_lengths_key, block_table):
+
+# 修改后
+def forward(self, query, key, weights, query_dequant_scale, key_dequant_scale,
+            actual_seq_lengths_query, actual_seq_lengths_key, block_table, mxfp8_flag):
+```
+
+### 2.5 `__init__` 接口变更
+
+新增 `weight_dtype` 和 `cmp_ratio` 参数，移除 `q_shape`/`k_shape`/`w_shape` 成员变量：
+
+```python
+# 修改前
+def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
+             head_dim, block_size, block_num, qk_dtype, dequant_dtype, actual_seq_dtype,
+             act_seq_q, act_seq_k, query_quant_mode, key_quant_mode, layout_query,
+             layout_key, sparse_count, sparse_mode):
+    self.w_dtype = dequant_dtype
+    # 内部计算 q_shape, k_shape, w_shape
+
+# 修改后
+def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
+             head_dim, block_size, block_num, qk_dtype, weight_dtype, dequant_dtype,
+             actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode, key_quant_mode,
+             layout_query, layout_key, sparse_count, sparse_mode, cmp_ratio):
+    self.weight_dtype = weight_dtype
+    self.cmp_ratio = cmp_ratio
+    self.w_dtype = torch.bfloat16
+    self.mxfp8_flag = 0
+```
+
+### 2.6 依赖变更
+
+```python
+# 修改前
+import npu_ops_transformer
+
+# 修改后
+import torchair
+import torch.nn as nn
+from torchair.configs.compiler_config import CompilerConfig
+```
+
+### 2.7 NPU 调用简化
+
+移除 metadata 构建，直接调用 `torch_npu.npu_quant_lightning_indexer`：
+
+```python
+# 修改前
+metadata = npu_ops_transformer.ops.npu_quant_lightning_indexer_metadata(...)
+npu_result = npu_ops_transformer.ops.npu_quant_lightning_indexer_v2(
+    query, key, weights, ..., metadata=metadata, ...)
+
+# 修改后
+npu_result = torch_npu.npu_quant_lightning_indexer(
+    query, key, weights, ..., sparse_mode=sparse_mode)
+```
+
+### 2.8 结果排序对齐
+
+CPU 和 NPU 结果都先排序再比较，消除 topk 顺序差异：
+
+```python
+cpu_result, _ = torch.sort(cpu_result)
+npu_result, _ = torch.sort(npu_result)
+```
+
+---
+
+## 三、cmp_ratio（压缩比）支持
+
+### 3.1 概述
+
+`cmp_ratio` 用于支持 Key 序列压缩场景，影响：
+- `actualSeqLengths_k` 的有效长度 = `actualSeqLengths_k / cmp_ratio`
+- Mask 生成中的有效位置计算
+- PA 场景下 block 数量计算
+
+### 3.2 Mask 生成中的 cmp_ratio
+
+```python
+def create_mask(self, m_shape, act_k, S1):
+    cmp_ratio = self.cmp_ratio
+    tmp_pos_orig = act_k - S1
+    for i in range(S1):
+        if ((tmp_pos_orig + i + 1) / cmp_ratio) < 0:
+            atten_masks[i, :] = 1
+        else:
+            atten_masks[i, math.floor((tmp_pos_orig + i + 1) / cmp_ratio):] = 1
+```
+
+### 3.3 `create_mask_right_down` 中的 cmp_ratio
+
+```python
+S2 = math.floor(actualSeqLengthsK[i] / cmp_ratio)
+```
+
+### 3.4 `cal_atten_bnsd` 中的 cmp_ratio
+
+```python
+curr_actualSeq_k = math.floor(actualSeqLengths_k[b_idx] / cmp_ratio)
+out_shape_bnss[-1] = math.floor(max(actualSeqLengths_k) / cmp_ratio)
+```
+
+### 3.5 PA 场景中的 cmp_ratio
+
+```python
+k_max_s2 = math.floor(max(act_seq_k) / cmp_ratio)
+cur_cmp_act_k = math.floor(cur_act_k / cmp_ratio)
+```
+
+### 3.6 `qli_output_single` 中的 cmp_ratio
+
+```python
+actual_seq_lengths_key = torch.tensor(
+    np.random.uniform(k_seq * cmp_ratio, k_seq * cmp_ratio, batch_size)
+).to(actual_seq_dtype).cpu()
+
+k_bnsd_tensor = self.trans_shape_to_bnsd(
+    key, layout_key, k_head_num,
+    torch.floor(actualSeqLengths_k / cmp_ratio).to(actual_seq_dtype))
+```
+
+---
+
+## 四、测试基础设施变更
+
+### 4.1 新增参数
+
+| 参数 | 位置 | 说明 |
+|------|------|------|
+| `weight_dtype` | params[11] | weight 数据类型（如 `torch.bfloat16`） |
+| `cmp_ratio` | params[27] | Key 压缩比（1/2/4/8/16/32/64/128） |
+
+### 4.2 新增测试参数集
+
+```python
+TEST_PARAMS = {
+    "fp8_1":    { "dequant_dtype": [torch.float32],       "sparse_count": [2048], ... },
+    "mxfp8_1":  { "dequant_dtype": [torch.float8_e8m0fnu], "sparse_count": [2048], ... },
+    "fp8_2":    { "dequant_dtype": [torch.float32],       "sparse_count": [128],  ... },
+    "mxfp8_2":  { "dequant_dtype": [torch.float8_e8m0fnu], "sparse_count": [128],  ... },
+    "mxfp8_3":  { "dequant_dtype": [torch.float8_e8m0fnu], "query_datarange": [[1,1]], ... },  # 全1
+    "mxfp8_4":  { "dequant_dtype": [torch.float8_e8m0fnu], "query_datarange": [[-1,1]], ... }, # 非全1
+}
+```
+
+### 4.3 `result_compare_method.py` 变更
+
+- 新增 `compare_topk_invalid` 函数：检查 invalid 部分是否全为 -1
+- `check_result` 新增 `weight_dtype` 和 `cmp_ratio` 参数解包
+- TND 场景 `act_seq_q` 的前缀和处理移到更早位置
+
+### 4.4 `test_quant_lightning_indexer_single.py` 变更
+
+- 参数组合生成从循环内移到循环外（`all_param_combinations` 全局收集）
+- 新增 `cmp_ratio` 到 `param_names` 和 `param_values`
+- 添加 `assert` 断言确保精度校验失败时测试失败
+
+### 4.5 `test_run.sh` 变更
+
+- 添加 `set -euo pipefail` 增强错误处理
+- 移除末尾 `exit 0`
+
+### 4.6 `quant_lightning_indexer_pt_save.py` 变更
+
+- `q_t_size`/`k_t_size` 添加 `int()` 转换
+- TND 场景 `act_seq_k` 前缀和转换提前
+- 修复 `k_datarange` -> `key_datarange` 变量名错误
+
+---
+
+## 五、关键设计决策总结
+
+| 决策 | 说明 |
+|------|------|
+| `mxfp8_flag` 通过 `dequant_dtype == torch.float8_e8m0fnu` 判断 | 不依赖 Q_T 类型，只看 scale 类型 |
+| MXFP8 scale 先乘再做矩阵乘 | 与 fp8 路径（先做矩阵乘再乘 scale）不同 |
+| `broadcast_d_axis` 将 D/32 广播到 D | 使 scale 能与 Q/K 直接做元素乘 |
+| 移除 `npu_ops_transformer` 依赖 | 改用 `torch_npu` 直调，简化接口 |
+| CPU/NPU 结果都先排序 | 消除 topk 同值时顺序不确定的问题 |
+| `cmp_ratio` 全局传递 | 支持 Key 序列压缩场景的 golden 计算 |

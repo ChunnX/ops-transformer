@@ -220,6 +220,20 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
                     max_re = max(max_re, npu_re)
     return npu_pass, max_re
 
+def compare_topk_invalid(cur_npu, cur_cpu, bsn, diff_npu, diff_cpu):
+    """检查 invalid 部分是否全为 -1"""
+    b_idx, s1_idx, n2_idx = bsn
+    npu_pass = True
+    for i in range(len(cur_cpu)):
+        element_npu = cur_npu[i]
+        element_cpu = cur_cpu[i]
+        if element_npu != -1:
+            print(f'b_idx={b_idx} n2_idx={n2_idx} s1_idx={s1_idx} invalid部分不全是-1')
+            print(f'    npu={element_npu}, cpu={element_cpu}')
+            npu_pass = False
+            diff_npu.append(element_npu)
+    return npu_pass
+
 def trans_tnd_actseq(list):
     list_len = len(list)
     if list_len == 0:
@@ -236,7 +250,7 @@ def trans_tnd_actseq(list):
 
 def check_result(expect, result, topk_value, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
-    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
+    block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
     seqused_k, cmp_residual_k, output_idx_offset, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
     k_scale_datarange, cmp_ratio, return_value = params

@@ -25,7 +25,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     # 生成所有参数组合
     param_names = [
         "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim", 
-        "block_size", "block_num", "qk_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
+        "block_size", "block_num", "qk_dtype", "weight_dtype", "dequant_dtype", "actual_seq_dtype", "cu_seqlens_q",
         "cu_seqlens_k", "seqused_q", "seqused_k", "cmp_residual_k", "max_seqlen_q", "quant_mode",
         "layout_query", "layout_key", "sparse_count", "sparse_mode",  "query_datarange", "key_datarange",
         "weights_datarange", "q_scale_datarange", "k_scale_datarange", "cmp_ratio", "return_value"
@@ -42,6 +42,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_block_size"],
         locals()["param_block_num"],
         locals()["param_qk_dtype"],
+        locals()["param_weight_dtype"],
         locals()["param_dequant_dtype"],
         locals()["param_actual_seq_dtype"],
         locals()["param_cu_seqlens_q"],
@@ -84,6 +85,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         block_size = param_combinations['block_size']
         block_num = param_combinations['block_num']
         qk_dtype= param_combinations['qk_dtype']
+        weight_dtype = param_combinations['weight_dtype']
         dequant_dtype = param_combinations['dequant_dtype']
         actual_seq_dtype = param_combinations['actual_seq_dtype']
         cu_seqlens_q = param_combinations['cu_seqlens_q']
@@ -106,7 +108,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         return_value = param_combinations['return_value']
         torch_npu.npu.set_device(0)
         test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
-                    block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
+                    block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
                     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
                     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
                     k_scale_datarange, cmp_ratio, return_value
@@ -119,3 +121,4 @@ for _, params in enumerate(ENABLED_PARAMS):
         result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, test_data)
         print("result", result)
         print("result", fulfill_percent)
+        assert result == "Pass", f"精度校验失败: result={result}, fulfill_percent={fulfill_percent}%"
