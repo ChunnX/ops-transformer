@@ -27,6 +27,7 @@
 #include "../../../common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h"
 #include "../../../common/op_kernel/arch35/fia_kernel_noquant_gqa.h"
 #include "../../../common/op_kernel/arch35/fia_kernel_fullquant_mx.h"
+#include "../../../common/op_kernel/arch35/fia_kernel_fullquant_gqa.h"
 #include "../../../common/op_kernel/arch35/fia_template_dispatcher.h"
 #else
 #include "../../common/arch35/flash_attention_score_kernel_infer.h"
@@ -36,6 +37,7 @@
 #include "../../common/arch35/flash_attention_kernel_noquant_mla.h"
 #include "../../common/arch35/fia_kernel_noquant_gqa.h"
 #include "../../common/arch35/fia_kernel_fullquant_mx.h"
+#include "../../common/arch35/fia_kernel_fullquant_gqa.h"
 #endif
 
 
@@ -276,14 +278,14 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(FlashAttentionScoreSimplifiedTilingData);
     REGISTER_TILING_FOR_TILINGKEY(
-        "(((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 22) & 0x1f) != 19 && ((TILING_KEY_VAR >> 22) & 0x1f) != 20) && ((TILING_KEY_VAR >> 28) & 0x1) == 1 && ((TILING_KEY_VAR >> 8) & 0x12) == 9",
+        "(((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 22) & 0x1f) != 19 && ((TILING_KEY_VAR >> 22) & 0x1f) != 20 && ((TILING_KEY_VAR >> 22) & 0x1f) != 21) && ((TILING_KEY_VAR >> 28) & 0x1) == 1 && ((TILING_KEY_VAR >> 8) & 0x12) == 9",
         FlashAttentionScoreSimplifiedTilingData);
     REGISTER_TILING_FOR_TILINGKEY(
-        "((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 22) & 0x1f) != 19 && ((TILING_KEY_VAR >> 22) & 0x1f) != 20 && ((TILING_KEY_VAR >> 8) & 0x12) != 9",
+        "((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 22) & 0x1f) != 19 && ((TILING_KEY_VAR >> 22) & 0x1f) != 20 && ((TILING_KEY_VAR >> 22) & 0x1f) != 21 && ((TILING_KEY_VAR >> 8) & 0x12) != 9",
         FusedInferAttentionScoreTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19 || ((TILING_KEY_VAR >> 22) & 0x1f) == 20",
+    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19 || ((TILING_KEY_VAR >> 22) & 0x1f) == 20 || ((TILING_KEY_VAR >> 22) & 0x1f) == 21",
         FusedInferAttentionScoreFullQuantTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) != 19 && ((TILING_KEY_VAR >> 22) & 0x1f) != 20",
+    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) != 19 && ((TILING_KEY_VAR >> 22) & 0x1f) != 20 && ((TILING_KEY_VAR >> 22) & 0x1f) != 21",
         FlashAttentionScoreSimplifiedTilingData);
     if constexpr (emptyTensor == true) {
         # if (ORIG_DTYPE_ATTENTION_OUT != DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT != DT_BF16)
@@ -514,10 +516,20 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
 
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
         if constexpr (isReconstructTemp == true) {
-            run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, half, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                    isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
-                query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
-                key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+            if constexpr (quantMode == FULLQUANT_MODE_QKV_MXFP8_PREFILL ||
+                          quantMode == FULLQUANT_MODE_QKV_MXFP8_DECODE) {
+                run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, half, inOutLayoutType, config, pseMode,
+                                            quantMode, hasAttenMask, hasRope, KvLayoutType,
+                                            isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
+                    query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
+                    key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+            } else if constexpr (quantMode == FULLQUANT_MODE_QK_PER_TOKEN_HEAD_V_PER_HEAD) {
+                run_fia_fullquant_gqa_kernel<fp8_e4m3fn_t, half, inOutLayoutType, config, pseMode,
+                                            quantMode, hasAttenMask, hasRope, KvLayoutType,
+                                            isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
+                    query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
+                    key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+            }
         } else {
             PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
             constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
@@ -567,10 +579,20 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
 
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
         if constexpr (isReconstructTemp == true) {
-            run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                    isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
-                query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
-                key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+            if constexpr (quantMode == FULLQUANT_MODE_QKV_MXFP8_PREFILL ||
+                          quantMode == FULLQUANT_MODE_QKV_MXFP8_DECODE) {
+                run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, config,
+                                            pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
+                                            isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
+                    query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
+                    key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+            } else if constexpr (quantMode == FULLQUANT_MODE_QK_PER_TOKEN_HEAD_V_PER_HEAD) {
+                run_fia_fullquant_gqa_kernel<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, config,
+                                             pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
+                                             isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
+                    query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
+                    key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
+            }
         } else {
             PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix);
             constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
