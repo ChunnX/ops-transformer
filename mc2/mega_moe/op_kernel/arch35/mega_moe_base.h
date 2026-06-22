@@ -20,7 +20,7 @@
 #include "mega_moe_tiling.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_workspace_info.h"
-1
+
 struct Mc2MoeContext {
     uint32_t epRankId = 0;
     uint32_t rankSizePerServer = 0;
