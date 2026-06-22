@@ -58,6 +58,7 @@ public:
     static constexpr uint16_t CROSS_CORE_SYNC_GMAX_L1_TO_UB = 7;
     static constexpr uint16_t CROSS_CORE_SYNC_PSCALE_C2 = 6;
     static constexpr uint16_t CROSS_CORE_SYNC_C2_V2 = 5;
+    static constexpr uint16_t CROSS_CORE_SYNC_V2_C2 = 4;
 
     static constexpr uint32_t PRELOAD_N = 20;
     static constexpr uint32_t DELAY_P_SCALE_N = 3;
@@ -409,6 +410,10 @@ public:
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2 + 16);
                 }
+                if (runInfo20.isUpdatePScale) {
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
+                }
                 ComputeMm2(runInfo20);
                 if (runInfo20.isUpdatePScale) {
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2);
@@ -418,6 +423,7 @@ public:
                 if (runInfo20.isUpdatePScale) {
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_S>(CROSS_CORE_SYNC_C2_V2);
                     ComputeVec2(runInfo20);
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
                 }
             }
             runInfo20.isValid = false;
@@ -519,6 +525,7 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
+        info.isLastSecondS2Loop = (s2Cur + 2 == curS2End);
         info.isUpdatePScale = (info.isLastS2Loop || ((info.curS2LoopIdx + 1) % TILE_N == 0));
         info.isC2Sync = (info.curS2LoopIdx % TILE_N == 0);
         if (info.isFirstS2Loop) {
@@ -642,6 +649,8 @@ public:
                 if ASCEND_IS_AIV {
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_S>(CROSS_CORE_SYNC_V1_C1[0]);
                     CrossCoreSetFlag<SYNC_MODE_4, PIPE_S>(CROSS_CORE_SYNC_V1_C1[1]);
+
+                    CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
                     vectorBlock.InitTensors();
                 } else {
                     cubeBlock.InitTensors();
@@ -651,6 +660,8 @@ public:
                     vectorBlock.ReleaseTensors();
                 } else {
                     cubeBlock.ReleaseTensors();
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
+                    CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[0]);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[0] + 16);
                     CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[1]);
