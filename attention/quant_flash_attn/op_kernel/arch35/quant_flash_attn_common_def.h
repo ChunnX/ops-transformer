@@ -122,6 +122,7 @@ struct RunInfo {
     bool isValid = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
+    bool isLastSecondS2Loop = false;
     bool isUpdatePScale = false;
     bool isC2Sync = false; // s2上16个softmax是一个tile，这是每一个tile的第一个softmax 任务
     uint32_t s2FirstStartVecCore = 0; // s2上第一个softmax分给哪个vec core
@@ -182,7 +183,7 @@ public:
 
     __aicore__ inline uint64_t GetActualSeqLength(uint32_t bIdx)
     {
-        if constexpr (LAYOUT_Q != QFA_LAYOUT::TND) {
+        if constexpr (LAYOUT_Q == QFA_LAYOUT::TND) {
             return cuSeqLensParser.GetActualSeqLength(bIdx);
         } else {
             return seqUsedParser.GetActualSeqLength(bIdx);
