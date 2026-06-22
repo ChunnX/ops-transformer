@@ -46,19 +46,6 @@ def get_format(tensor):
         return f"get format failed: {err}"
 
 
-def pack_weight_to_nz(weight_kn):
-    # non-transposed WeightNz storage shape:
-    # (E, ceil(N / 32), ceil(K / 16), 16, 32)
-    e, k, n = weight_kn.shape
-    nz = np.zeros((e, ceil_div(n, 32), ceil_div(k, 16), 16, 32), dtype=np.float32)
-    for group_idx in range(e):
-        for k_idx in range(k):
-            for n_idx in range(n):
-                nz[group_idx, n_idx // 32, k_idx // 16, k_idx % 16, n_idx % 32] = \
-                    weight_kn[group_idx, k_idx, n_idx]
-    return nz
-
-
 def make_inputs(seed=20260617):
     e, m, k, n = 1, 64, 128, 128
     log(f"prepare inputs: E={e}, M={m}, K={k}, N={n}, seed={seed}")
@@ -71,7 +58,7 @@ def make_inputs(seed=20260617):
     weight_cpu = torch.from_numpy(weight_f32).to(torch.float8_e4m3fn)
 
     x_golden = x_cpu.to(torch.float32).numpy()
-    weight_golden = pack_weight_to_nz(weight_cpu.to(torch.float32).numpy())
+    weight_golden = weight_cpu.to(torch.float32).numpy()
 
     x_scale_golden = np.ones((m, ceil_div(k, 64), 2), dtype=np.float32)
     weight_scale_golden = np.ones((e, ceil_div(k, 64), n, 2), dtype=np.float32)
@@ -82,7 +69,7 @@ def make_inputs(seed=20260617):
     x_npu = torch_npu.npu_format_cast(x_npu, ACL_FORMAT_ND)
 
     # weight: must be FRACTAL_NZ
-    weight_npu = torch.from_numpy(weight_golden).to(torch.float8_e4m3fn).npu()
+    weight_npu = weight_cpu.npu()
     log(f"format cast weight to FRACTAL_NZ: before shape={tuple(weight_npu.shape)}, dim={weight_npu.dim()}")
     weight_npu = torch_npu.npu_format_cast(
         weight_npu,
@@ -90,8 +77,8 @@ def make_inputs(seed=20260617):
         customize_dtype=torch.float8_e4m3fn,
     )
     log(f"format cast weight done: after shape={tuple(weight_npu.shape)}, dim={weight_npu.dim()}")
-    if weight_npu.dim() != 5:
-        raise RuntimeError(f"weight must keep 5D WeightNz storage, but got {weight_npu.dim()}D.")
+    if weight_npu.dim() != 3:
+        raise RuntimeError(f"weight should keep 3D logical shape after npu_format_cast, but got {weight_npu.dim()}D.")
 
     # scale and group_list: must be ND
     weight_scale_npu = torch.full(
