@@ -1,0 +1,22 @@
+{
+    "op_type": "EngramFetchWait",
+    "op_list": [
+        {
+            "bin_filename": "EngramFetchWait_int32",
+            "inputs": [
+                {
+                    "name": "bufferHandle",
+                    "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [
+                        -2
+                    ],
+                    "format_match_mode": "FormatAgnostic"
+                }
+            ],
+            "attrs": []
+        }
+    ]
+}
