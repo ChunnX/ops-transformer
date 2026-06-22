@@ -106,7 +106,6 @@ public:
     uint32_t mloop = 0;
     bool headS2Split = false;
     bool tailS2Split = false;
-    uint32_t bandHeadTokenOffset = 0U; // intra-block offset of first valid token (token-level precision)
 
     ActualSeqLensParser<Q_MODE> qActSeqLensParser;
     ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
