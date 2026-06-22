@@ -93,7 +93,7 @@ public:
             yOffsetListGm_ = workspaceGM + workspaceOffset;
             workspaceOffset += yOffsetListSize;
             if (tilingData_->isPermuteOut) {
-                AscendC::printf("InitOutputPermuteBuffer commOutGm_ = %p, permuteOutOptionalGM = %p\n", commOutGm_, permuteOutOptionalGM);
+                // AscendC::printf("InitOutputPermuteBuffer commOutGm_ = %p, permuteOutOptionalGM = %p\n", commOutGm_, permuteOutOptionalGM);
                 commOp.InitOutputPermuteBuffer(commOutGm_, permuteOutOptionalGM);
             }
         }
@@ -182,7 +182,7 @@ private:
                 (e_ - turnIdx * combineExpertSize) : combineExpertSize;
             commOp.LaunchCombinedAic(turnIdx, realCombineSize);
             if constexpr (MX_QUANT_MODE) {
-                commOp.LaunchScaleCombinedAic(turnIdx, realCombineSize);
+                // commOp.LaunchScaleCombinedAic(turnIdx, realCombineSize);
             }
         }
 
@@ -193,24 +193,24 @@ private:
 
             if (isPermuteOut) {
                 uint32_t notifyFlagId = NOTIFY_FLAG_ID_BASE + (turnIdx % FLAG_ID_ROTATE_COUNT);
-                SyncAll<false>();
                 if ASCEND_IS_AIC {
                     AscendC::printf("CrossCoreSetFlag notifyFlagId = %d\n", notifyFlagId);
+                    CrossCoreSetFlag<0x2, PIPE_FIX>(notifyFlagId);
                 }
                 if ASCEND_IS_AIV {
                     AscendC::printf("CrossCoreWaitFlag notifyFlagId = %d\n", notifyFlagId);
-                    // CrossCoreWaitFlag(notifyFlagId);
+                    CrossCoreWaitFlag(notifyFlagId);
                     AscendC::printf("PermuteOutput turnIdx = %d, realCombineSize = %d\n", turnIdx, realCombineSize);
                     commOp.PermuteOutput(turnIdx, realCombineSize);
                 }
             }
 
             if constexpr (MX_QUANT_MODE) {
-                AscendC::printf("WaitScaleCombinedAic turnIdx = %d\n", turnIdx);
-                commOp.WaitScaleCombinedAic(turnIdx);
+                // AscendC::printf("WaitScaleCombinedAic turnIdx = %d\n", turnIdx);
+                // commOp.WaitScaleCombinedAic(turnIdx);
             }
 
-            computeOp.ProcessCombined(turnIdx, realCombineSize, combinedGroupListGm_, yOffsetListGm_);
+            // computeOp.ProcessCombined(turnIdx, realCombineSize, combinedGroupListGm_, yOffsetListGm_);
         }
     }
 
