@@ -451,10 +451,20 @@ ge::graphStatus QSMLAInfoParser::GetKvstride()
     auto oriKvStrides = context_->GetDynamicInputStride(ORI_KV_INDEX, 0);
     auto cmpKvStrides = context_->GetDynamicInputStride(CMP_KV_INDEX, 0);
     if (oriKvStrides != nullptr && oriKvStrides->GetDimNum() > 0) {
-        oriKvStride_ = oriKvStrides->GetStride(0);
+        for (size_t i = 0; i < oriKvStrides->GetDimNum(); i++) {
+            oriKvStridesVec_.push_back(oriKvStrides->GetStride(i));
+        }
+        if (kvLayout_ == QSMLALayout::PA_BBND) {
+            oriKvStride_ = oriKvStrides->GetStride(0);
+        }
     }
     if (cmpKvStrides != nullptr && cmpKvStrides->GetDimNum() > 0) {
-        cmpKvStride_ = cmpKvStrides->GetStride(0);
+        for (size_t i = 0; i < cmpKvStrides->GetDimNum(); i++) {
+            cmpKvStridesVec_.push_back(cmpKvStrides->GetStride(i));
+        }
+        if (kvLayout_ == QSMLALayout::PA_BBND) {
+            cmpKvStride_ = cmpKvStrides->GetStride(0);
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -501,6 +511,10 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
     qsmlaInfo.oriKvStride = oriKvStride_;
     qsmlaInfo.cmpKvStride = cmpKvStride_;
+    qsmlaInfo.oriKvStrides = oriKvStridesVec_;
+    qsmlaInfo.cmpKvStrides = cmpKvStridesVec_;
+    qsmlaInfo.oriKvStorageShape = oriKvShape_;
+    qsmlaInfo.cmpKvStorageShape = cmpKvShape_;
     qsmlaInfo.cmpRatio = *opParamInfo_.cmpRatio;
     qsmlaInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     qsmlaInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
