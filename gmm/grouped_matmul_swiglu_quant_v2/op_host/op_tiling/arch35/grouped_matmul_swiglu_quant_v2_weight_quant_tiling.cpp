@@ -114,66 +114,66 @@ bool IsDynamicInputEmpty(const gert::TilingContext& context, uint32_t index)
     return storageShape.GetShapeSize() == 0 || storageShape.GetShapeSize() == 1;
 }
 
-ge::graphStatus CheckTilingDataCapacity(gert::TilingContext& context, uint64_t tilingDataSize)
+bool CheckTilingDataCapacity(gert::TilingContext& context, uint64_t tilingDataSize)
 {
     const auto *rawTiling = context.GetRawTilingData();
     OP_CHECK_IF(rawTiling == nullptr,
         OP_LOGE(OP_NAME, "GetRawTilingData can not be empty."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(rawTiling->GetData() == nullptr,
         OP_LOGE(OP_NAME, "RawTilingData cannot be a null pointer."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(rawTiling->GetCapacity() < tilingDataSize,
         OP_LOGE(OP_NAME,
             "context tiling data capacity %zu < actual tiling data size %zu.",
             rawTiling->GetCapacity(), tilingDataSize),
-        return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
+        return false);
+    return true;
 }
 
-ge::graphStatus CheckContext(gert::TilingContext& context, uint64_t tilingDataSize)
+bool CheckContext(gert::TilingContext& context, uint64_t tilingDataSize)
 {
     const auto *attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr,
         OP_LOGE(OP_NAME, "Function context.GetAttrs() failed!"),
-        return ge::GRAPH_FAILED);
+        return false);
 
     OP_CHECK_IF(context.GetInputDesc(X_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "InputDesc x is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetInputDesc(X_SCALE_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "InputDesc xScale is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetInputDesc(GROUPLIST_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "InputDesc groupList is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetInputDesc(WEIGHT_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "InputDesc weight is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetInputDesc(WEIGHT_SCALE_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "InputDesc weightScale is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetOutputDesc(Y_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "OutputDesc y is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetOutputDesc(Y_SCALE_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "OutputDesc yScale is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
 
     if (unlikely(!IsDynamicInputEmpty(context, WEIGHT_ASSIST_MATRIX_INDEX))) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "weightAssistMatrix",
             "not nullptr", "weightAssistMatrix is not supported, please pass a null pointer or an empty list");
-        return ge::GRAPH_FAILED;
+        return false;
     }
     if (unlikely(context.GetOptionalInputDesc(BIAS_INDEX) != nullptr)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "bias",
             "not nullptr", "bias is not supported, please pass a null pointer");
-        return ge::GRAPH_FAILED;
+        return false;
     }
     if (unlikely(context.GetOptionalInputDesc(SMOOTH_SCALE_INDEX) != nullptr)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "smoothScale",
             "not nullptr", "smoothScale is not supported, please pass a null pointer");
-        return ge::GRAPH_FAILED;
+        return false;
     }
 
     return CheckTilingDataCapacity(context, tilingDataSize);
@@ -558,38 +558,35 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetPlatformInfo()
         compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_, compileInfoPtr_->ubSize_,
         compileInfoPtr_->baseM_, compileInfoPtr_->baseN_, compileInfoPtr_->supportL12BtBf16);
 
-    OP_CHECK_IF(!CheckCoreNum(context_, compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_),
-        OP_LOGE(OP_NAME, "Invalid core number ratio"),
-        return ge::GRAPH_FAILED);
+    if (!CheckCoreNum(context_, compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetShapeAttrsInfo()
 {
-    OP_CHECK_IF(!GetContext(inputParams_, *context_),
-        OP_LOGE(OP_NAME, "Failed to get context."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckContext(*context_, sizeof(GMMSQArch35Tiling::GMMSQWeightQuantTilingData)) != ge::GRAPH_SUCCESS,
-        OP_LOGE(OP_NAME, "Invalid context."),
-        return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(!GetAttrs(inputParams_, *context_),
-        OP_LOGE(OP_NAME, "Failed to GetAttrs."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!CheckAttrs(*context_, inputParams_),
-        OP_LOGE(OP_NAME, "Failed to check attrs."),
-        return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(!CheckDtypes(*context_, inputParams_),
-        OP_LOGE(OP_NAME, "Failed to check dtypes."),
-        return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(!GetInputs(inputParams_, *context_),
-        OP_LOGE(OP_NAME, "Failed to GetInputs."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!CheckInputs(*context_, inputParams_),
-        OP_LOGE(OP_NAME, "Failed to check inputs."),
-        return ge::GRAPH_FAILED);
+    if (!GetContext(inputParams_, *context_)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!CheckContext(*context_, sizeof(GMMSQArch35Tiling::GMMSQWeightQuantTilingData))) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!GetAttrs(inputParams_, *context_)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!CheckAttrs(*context_, inputParams_)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!CheckDtypes(*context_, inputParams_)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!GetInputs(inputParams_, *context_)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!CheckInputs(*context_, inputParams_)) {
+        return ge::GRAPH_FAILED;
+    }
 
     PrintInputParams(*context_, inputParams_);
     return ge::GRAPH_SUCCESS;
