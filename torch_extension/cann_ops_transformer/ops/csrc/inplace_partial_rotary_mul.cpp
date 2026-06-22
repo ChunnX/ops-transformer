@@ -33,6 +33,8 @@ void inplace_partial_rotary_mul(at::Tensor &x, const at::Tensor &r1,
     auto it = mode_map.find(rotary_mode);
     TORCH_CHECK(it != mode_map.end(),
         "rotary_mode must be one of 'half', 'interleave', 'quarter', 'interleave-half', got '", rotary_mode, "'.");
+    TORCH_CHECK(rotary_mode == "interleave",
+        "rotary_mode only supports 'interleave', got '", rotary_mode, "'.");
     int64_t mode_int = it->second;
 
     ACLNN_CMD(aclnnInplacePartialRotaryMul, x, r1, r2, mode_int, partial_slice);
