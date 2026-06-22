@@ -231,7 +231,19 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_); // CV_Ratio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 128U * 1024U * 1024U;     // 128: 128MB, 1024: Mb2Kb, 1024:Kb2Mb
+    // 根据 S2*Dim 计算 L2 大小
+    // 公式: L2(MB) = ceil(5*(S2-7168)/13 + 48), 基于(7168,48)和(33792,128)两点线性拟合+向上取整
+    int64_t s2Dim = static_cast<int64_t>(maxSeqlenKv_) * headDim_;
+    uint32_t l2MB = 0U;
+    if (s2Dim <= 262144) {        // 2048*128: 不限制L2
+        l2MB = 0U;
+    } else if (s2Dim <= 917504) { // 7168*128: 最小16MB
+        l2MB = 16U;
+    } else {
+        int64_t numerator = 5 * (static_cast<int64_t>(maxSeqlenKv_) - 7168); // 5*(S2-7168)
+        l2MB = static_cast<uint32_t>((numerator + 1663) / 1664 + 48);         // ceil(a/1664) = (a+1663)/1664
+    }
+    param.l2Byte = l2MB * 1024U * 1024U;
     param.fdTolerance = 300;                 // 300: least block
     param.fdOn = (maskMode_ != 4);           // TODO: turn off fd for flash attn
     return true;

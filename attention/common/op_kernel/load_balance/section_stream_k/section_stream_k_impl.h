@@ -292,26 +292,15 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
         }
     }
 
-    // 计算所有head的最大数据量，用于判断是否需要开启section切分
-    int64_t maxHeadTokenCost = 0U;
-    int64_t headDim = static_cast<int64_t>(baseInfo.GetHeadDim());
-    for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
-        int64_t s2Size = static_cast<int64_t>(baseInfo.GetKvSeqSize(bIdx));
-        int64_t tokenCost = s2Size * headDim *
-            static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;  // 2: K和V两份数据
-        if (tokenCost > maxHeadTokenCost) {
-            maxHeadTokenCost = tokenCost;
-        }
-    }
-
-    // 如果L2未设置，或者最大单个head数据量不超过每个核可用的L2容量，则不进行section切分
-    if (m_param.l2Byte == 0U || maxHeadTokenCost <= m_param.l2Byte / computeContext.deviceInfo.aicCoreMaxNum) {
+    // 如果L2未设置，则不进行section切分
+    if (m_param.l2Byte == 0U) {
         gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
         gridInfo.sectionNum = 1;
         return;
     }
 
     // calc section
+    int64_t headDim = static_cast<int64_t>(baseInfo.GetHeadDim());
     int64_t tokenSize = 0L;
     uint32_t bn2Idx = 0U;
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
