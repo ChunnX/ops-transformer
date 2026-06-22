@@ -259,6 +259,13 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                "In op [%s], y dtype must be the same as yDtype.", OP_NAME);
     CHECK_COND(yScale->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], yScale only supports FLOAT8_E8M0.", OP_NAME);
+    GmmaqPrint("In op [%s], storage formats: x=%s, xScaleOptional=%s, groupList=%s, weightScale=%s, "
+               "y=%s, yScale=%s.",
+               OP_NAME, op::ToString(x->GetStorageFormat()).GetString(),
+               op::ToString(xScaleOptional->GetStorageFormat()).GetString(),
+               op::ToString(groupList->GetStorageFormat()).GetString(),
+               op::ToString(wScale->GetStorageFormat()).GetString(), op::ToString(y->GetStorageFormat()).GetString(),
+               op::ToString(yScale->GetStorageFormat()).GetString());
     CHECK_COND(x->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], x only supports ND, but got %s.", OP_NAME,
                op::ToString(x->GetStorageFormat()).GetString());
