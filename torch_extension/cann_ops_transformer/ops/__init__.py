@@ -28,8 +28,10 @@ from .graph_convert.graph_convert_mixed_quant_sparse_flash_mla import (
 )
 from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
 from .graph_convert.graph_convert_sparse_flash_mla import convert_sparse_flash_mla_metadata
-from .npu_sparse_lightning_indexer_kl_loss_grad import npu_sparse_lightning_indexer_kl_loss_grad
-from .npu_sparse_lightning_indexer_kl_loss_grad_metadata import npu_sparse_lightning_indexer_kl_loss_grad_metadata
+from .sparse_lightning_indexer_kl_loss_grad import (
+    sparse_lightning_indexer_kl_loss_grad,
+    sparse_lightning_indexer_kl_loss_grad_metadata
+)
 from .lightning_indexer import lightning_indexer, lightning_indexer_metadata
 from .graph_convert.graph_convert_lightning_indexer import convert_lightning_indexer_metadata
 from .quant_lightning_indexer import quant_lightning_indexer, quant_lightning_indexer_metadata
