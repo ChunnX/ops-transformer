@@ -17,7 +17,6 @@
 #define ROPE_CHECKER_H
 
 #include <map>
-#include <numeric>
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
@@ -35,22 +34,22 @@ public:
 
 private:
     // 公共校验函数
-    ge::graphStatus CheckQDsizeSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckQDsizeSupport(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckRopeDtype(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckRopeDtypeConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQKAndQKRopeShapeConsistency(const FiaTilingInfo &fiaInfo,
-        const gert::Shape shape, const gert::Shape ropeShape, const std::string &inputName);
+        const gert::Shape shape, const gert::Shape ropeShape, const std::string &inputName) const;
     ge::graphStatus CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo,
-        const gert::Shape &keyShape, const gert::Shape &keyRopeShape);
-    ge::graphStatus CheckTensorlistKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckRopeExistence(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureAntiQuant(const FiaTilingInfo &fiaInfo);
+        const gert::Shape &keyShape, const gert::Shape &keyRopeShape) const;
+    ge::graphStatus CheckTensorlistKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckRopeExistence(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureSupport(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureAntiQuant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckShapeSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckQSSize(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckNSize(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckQSSize(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckNSize(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckAxisSupport(const FiaTilingInfo &fiaInfo);
 
 private:

@@ -16,7 +16,6 @@
 #ifndef BASE_CHECKER_H
 #define BASE_CHECKER_H
 
-#include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
 
@@ -46,7 +45,7 @@ protected:
     ge::graphStatus CheckValueSupport(const T value, const std::vector<T> &expectValList) const;
 
     // public funcs
-    std::string DataTypeToSerialString(ge::DataType type);
+    std::string DataTypeToSerialString(ge::DataType type) const;
 
 protected:
     bool enableNonQuant_ = false;
