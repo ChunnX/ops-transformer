@@ -432,7 +432,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetPlatformInfo()
     const auto *compileInfoPtr = reinterpret_cast<const MoeInitRoutingV3CompileInfo *>(context_->GetCompileInfo());
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "compileInfo"),
                 return ge::GRAPH_FAILED);
-    aivCoreNum_ = 56;
+    aivCoreNum_ = static_cast<int64_t>(compileInfoPtr->aivNum);
     totalUbSize_ = static_cast<int64_t>(compileInfoPtr->ubSize);
     socVersion_ = compileInfoPtr->socVersion;
 
