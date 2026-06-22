@@ -1433,7 +1433,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                     </ul>
                 </td>
                 <td rowspan="2">
-                    numHeads需可整除numKeyValueHeads，numHeads与numKeyValueHeads的比值无限制；GQA全量化场景下，G<=64
+                    numHeads需可整除numKeyValueHeads，numHeads与numKeyValueHeads的比值无限制
                 </td>
             </tr>
             <tr>
@@ -1747,13 +1747,14 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - Q_S、KV_S仅支持64对齐
       - inputLayout仅支持TND
       - 支持PagedAttention场景和非PagedAttention场景，PagedAttention场景仅支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
+      - 支持传入独立Rope，若传入Rope，Rope和attentionOut的dtype仅支持BFLOAT16
       - 不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
     - GQA全量化
       - query、key、value的dtype仅支持FLOAT8_E4M3FN
       - attentionOut的dtype支持FLOAT16、BFLOAT16
       - inputLayout仅支持NTD_TND
       - 仅支持PagedAttention场景，kv cache排布仅支持BnNBsD（blocknum, KV_N, blocksize, D）
-      - G<=64，D仅支持128
+      - D仅支持128
       - Q_S支持[1, 64K]，KV_S支持[0, 256K]
       - 不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持左padding场景、不支持tensorlist场景、不支持rope场景、不支持后量化场景
 
@@ -1822,7 +1823,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当query的数据类型为FP8_E4M3FN/HIFLOAT8，且inputLayout为BNSD、TND、BNSD_NBSD、TND_NTD时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum, KV_N, blocksize, D）和NZ（blocknum，KV_N，D/D0，blocksize，D0）三种格式
       - 当query的数据类型为INT8时，kv cache排布仅支持NZ，且kv cache排布为(blocknum，KV_N，D/D0，blocksize，D0)
       - 当kv cache排布为NZ时，最后一维D0是32, keyRope最后一维D0是16
-    - GQA全量化场景下，除MxFP8和GQA全量化外均不支持PagedAttention
+    - GQA全量化场景下，除MxFP8和GQA全量化（queryQuantMode = 3，keyAntiquantMode = 3，valueAntiquantMode = 2）外均不支持PagedAttention
     - MxFP8全量化支持非PagedAttention场景，kv cache排布支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
 
 #### 左padding参数组
