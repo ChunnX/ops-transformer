@@ -501,7 +501,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
         // GM_ADDR remoteStateAddr = (GM_ADDR)(GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + epRankId_ * cntPerRankSizeAlign_);
         
         if (dstRankId != epRankId_) {   // 远端 使用URMA发送 count + state
-            printf("START WRITR TOKEN");
             // hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteStateAddr,
             //                 scaleupCounterAddr_ + dstRankId * cntPerRankSizeAlign_, cntPerRankSizeAlign_);
             hcomm_.WriteWithNotifyNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteCountAddr, srcWorkspaceAddr,
@@ -619,7 +618,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSen
     uint32_t nSeen = 0;
     for (uint32_t k = 0; k < axisK_; k++) {
         int32_t expertId = topkIdxTensor_.GetValue(k);
-        if (expertId == -1) {
+        if (expertId < 0) {
             dstSlotIdxTensor_.SetValue(k, -1);
             continue;
         }
@@ -664,6 +663,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteSlotTo
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemoteWindow()
 {
+    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_, true); // 按卡分核
     if (startRankId_ >= epWorldSize_) { // 空闲核，直接返回
         return;
     }
