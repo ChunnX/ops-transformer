@@ -486,10 +486,6 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
 
 bool FiaTilingFullQuantMxArch35::IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo)
 {
-    if (!baseInfo.attenMaskFlag) {
-        return false;
-    }
-
     auto mode = static_cast<split_core_v2::SparseMode>(baseInfo.sparseMode);
     if (mode == split_core_v2::SparseMode::LEFT_UP_CAUSAL) {
         return false;
@@ -502,8 +498,11 @@ bool FiaTilingFullQuantMxArch35::IsExistRowInvalid(const split_core_v2::BaseInfo
     for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
         int32_t s1Size = split_core_v2::GetS1SeqSize(bIdx, baseInfo);
         int32_t s2Size = split_core_v2::GetS2SeqSize(bIdx, baseInfo);
-        if ((s1Size == 0) || (s2Size == 0)) {
-            // 空tensor认为不会有无效行
+        if (s2Size == 0) {
+ 	        return true;
+ 	    }
+ 	    if (!baseInfo.attenMaskFlag || s1Size == 0) {
+            // 非mask场景或空Qtensor，跳过
             continue;
         }
 
