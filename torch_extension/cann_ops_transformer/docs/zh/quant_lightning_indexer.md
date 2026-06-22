@@ -23,7 +23,7 @@ cann_ops_transformer.quant_lightning_indexer_metadata(num_heads_q, num_heads_k, 
 
 ## 参数说明
 
-### lightning_indexer_metadata
+### quant_lightning_indexer_metadata
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
@@ -50,7 +50,7 @@ cann_ops_transformer.quant_lightning_indexer_metadata(num_heads_q, num_heads_k, 
 
 ## 返回值说明
 
-### lightning_indexer_metadata
+### quant_lightning_indexer_metadata
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|

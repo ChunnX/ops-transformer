@@ -23,7 +23,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(num_heads_q, num_head
 
 ## 参数说明
 
-### sparse_flash_mla_metadata
+### mixed_quant_sparse_flash_mla_metadata
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
@@ -59,7 +59,7 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(num_heads_q, num_head
 
 ## 返回值说明
 
-### sparse_flash_mla_metadata
+### mixed_quant_sparse_flash_mla_metadata
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
