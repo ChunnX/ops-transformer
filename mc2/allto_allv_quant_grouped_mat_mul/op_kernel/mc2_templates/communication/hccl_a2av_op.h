@@ -505,8 +505,8 @@ public:
                 DataCopyPad(ubBuf, outputPermuteSrcBuffer_[srcOffset + tileStart],
                             dataCopyParams, dataCopyPadParams);
                 int32_t readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
-                permutePipe->SetFlag<HardEvent::MTE2_MTE3>(readEvent);
-                permutePipe->WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
+                SetFlag<HardEvent::MTE2_MTE3>(readEvent);
+                WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
 
                 // [READ] 直接读 UB 验证 + DumpTensor
                 if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U && pairIdx < 2U && tile == 0UL) {
@@ -519,8 +519,8 @@ public:
 
                 DataCopyPad(outputPermuteDstBuffer_[dstOffset + tileStart], ubBuf, dataCopyParams);
                 int32_t writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
-                permutePipe->SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
-                permutePipe->WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
 
                 // [WRITE] 直接读 dst GM 验证 + DumpTensor
                 if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U && tile == 0UL && pairIdx < 4U) {
