@@ -110,6 +110,8 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
         const int64_t group_size = (p != nullptr ? *p : 0);
         if (CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
                 ge::GRAPH_SUCCESS) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "scale", "invalid",
+                "antiquant scale shape check failed");
             return ge::GRAPH_FAILED;
         }
     }
@@ -143,6 +145,7 @@ static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* conte
     OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(kInnerDebug, "context"), return ge::GRAPH_FAILED);
     MatmulShapeInfo shape;
     if (InferShapeForMatmul(context, shape, true) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context->GetNodeName(), "Failed to infer shape for matmul all reduce.");
         return ge::GRAPH_FAILED;
     }
     size_t residual_idx = static_cast<size_t>(MC2AddRmsNormInputIdx::K_RESIDUAL);

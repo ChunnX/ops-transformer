@@ -14,6 +14,7 @@
  */
 #include "all_gather_matmul_tiling_base.h"
 #include "ops_utils.h"
+#include "mc2_log.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -168,6 +169,7 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
         return ge::GRAPH_FAILED);
 
     if (!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context))) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "output", "output_dim0_mismatch", "output dim0 check failed");
         return ge::GRAPH_FAILED;
     }
 
@@ -571,6 +573,7 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
     mc2tiling::TilingArgs args;
     auto group = context->GetAttrs()->GetAttrPointer<char>(index++);
     if (AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context->GetNodeName(), "AllGatherParamsCheck failed");
         return ge::GRAPH_FAILED;
     }
 
