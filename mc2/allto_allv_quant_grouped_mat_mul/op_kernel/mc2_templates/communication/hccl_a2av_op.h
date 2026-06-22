@@ -510,8 +510,8 @@ public:
 
                 // [READ] 直接读 UB 验证 + DumpTensor
                 if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U && pairIdx < 2U && tile == 0UL) {
-                    AscendC::printf("[READ] turn=%u pair=%u ub[0..3]=%f,%f,%f,%f\n",
-                        turnIdx, pairIdx,
+                    AscendC::printf("[READ] turn=%u pair=%u srcOffset=%lu tileStart=%lu ub[0..3]=%f,%f,%f,%f\n",
+                        turnIdx, pairIdx, srcOffset, tileStart,
                         (float)ubBuf.GetValue(0), (float)ubBuf.GetValue(1),
                         (float)ubBuf.GetValue(2), (float)ubBuf.GetValue(3));
                     AscendC::DumpTensor(ubBuf, 700U + turnIdx * 8U + pairIdx, 16U);
@@ -528,8 +528,8 @@ public:
                     hcclDataType dstV1 = outputPermuteDstBuffer_.GetValue(dstOffset + tileStart + 1);
                     hcclDataType dstV2 = outputPermuteDstBuffer_.GetValue(dstOffset + tileStart + 2);
                     hcclDataType dstV3 = outputPermuteDstBuffer_.GetValue(dstOffset + tileStart + 3);
-                    AscendC::printf("[WRITE] turn=%u pair=%u dst[0..3]=%f,%f,%f,%f\n",
-                        turnIdx, pairIdx,
+                    AscendC::printf("[WRITE] turn=%u pair=%u dstOffset=%lu tileStart=%lu dst[0..3]=%f,%f,%f,%f\n",
+                        turnIdx, pairIdx, dstOffset, tileStart,
                         (float)dstV0, (float)dstV1, (float)dstV2, (float)dstV3);
                     AscendC::DumpTensor(outputPermuteDstBuffer_[dstOffset + tileStart], 400U + turnIdx * 8U + pairIdx, 16U);
                 }
