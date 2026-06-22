@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file inplace_partial_rotary_mul_grad_tiling.h
+ * \file inplace_partial_rotary_mul_grad_regbase_tiling.h
  * \brief
  */
 #ifndef OPS_BUILD_IN_OP_TILING_RUNTIME_INPLACE_PARTIAL_ROTARY_MUL_GRAD_H
@@ -53,25 +53,6 @@ public:
     {
         TilingBaseClass::Reset(context);
     }
-
-private:
-    bool IsInplacePartialRotaryMulGradMode(const int32_t mode) const;
-    ge::graphStatus CheckNullptr();
-    ge::graphStatus CheckShape();
-    ge::graphStatus CheckDtype();
-    ge::graphStatus CheckDtypeDyGroup();
-    ge::graphStatus CheckDtypeCosGroup();
-    ge::graphStatus CheckAttr();
-    ge::graphStatus CheckParam();
-    ge::graphStatus CheckShapeLimit();
-    ge::graphStatus CheckOptionalInput() const;
-    ge::graphStatus CheckShapeDim() const;
-    ge::graphStatus JudgeLayoutByShape(const gert::Shape &xShape, const gert::Shape &cosShape);
-    ge::graphStatus CheckRotaryModeShapeRelation(const int64_t sliceLen);
-    ge::graphStatus CheckInPutShapeAllPositive(const int64_t idx) const;
-    ge::graphStatus CheckOutPutShapeAllPositive(const int64_t idx) const;
-
-    ge::graphStatus CheckShapeAllPositive() const;
 
 protected:
     ge::graphStatus GetPlatformInfo() override;
@@ -124,6 +105,25 @@ protected:
     int64_t sliceEnd_{0};
     int64_t sliceLength_{0};
     bool is1snd_ = false;
+
+private:
+    bool IsInplacePartialRotaryMulGradMode(const int32_t mode) const;
+    ge::graphStatus CheckNullptr();
+    ge::graphStatus CheckShape();
+    ge::graphStatus CheckDtype();
+    ge::graphStatus CheckDtypeDyGroup();
+    ge::graphStatus CheckDtypeCosGroup();
+    ge::graphStatus CheckAttr();
+    ge::graphStatus CheckParam();
+    ge::graphStatus CheckShapeLimit();
+    ge::graphStatus CheckOptionalInput() const;
+    ge::graphStatus CheckShapeDim() const;
+    ge::graphStatus JudgeLayoutByShape(const gert::Shape &xShape, const gert::Shape &cosShape);
+    ge::graphStatus CheckRotaryModeShapeRelation(const int64_t sliceLen);
+    ge::graphStatus CheckInPutShapeAllPositive(const int64_t idx) const;
+    ge::graphStatus CheckOutPutShapeAllPositive(const int64_t idx) const;
+
+    ge::graphStatus CheckShapeAllPositive() const;
 };
 
 } // namespace optiling

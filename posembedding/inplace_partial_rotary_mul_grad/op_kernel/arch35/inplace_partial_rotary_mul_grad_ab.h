@@ -129,8 +129,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Process()
                                  : bsBlockCount_ - (bsLoopIdx * tilingData_->ubFactorBS);
 
         // 搬运 cos/sin（沿 sliceLength，无 stride）
-        DataCopyExtParams cosCopyParams = {static_cast<uint16_t>(currBSNum * tilingData_->dSplitCoef), dSplitSizeCos_, 0,
-                                           0, 0};
+        DataCopyExtParams cosCopyParams = {
+            static_cast<uint16_t>(currBSNum * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0, 0};
 
         LocalTensor<TCOS> cosBuffer = cosInQueue_.template AllocTensor<TCOS>();
         LocalTensor<TCOS> sinBuffer = sinInQueue_.template AllocTensor<TCOS>();

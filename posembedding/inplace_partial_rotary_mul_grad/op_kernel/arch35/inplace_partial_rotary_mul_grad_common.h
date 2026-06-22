@@ -554,7 +554,8 @@ __aicore__ inline void BatchInterleaveModeGradVF(
                         pregPart2 = MicroAPI::UpdateMask<float>(part2Cnt);
 
                         ops::LoadOneTensorForDtypeT<TDY>(currInUb, inPart1Reg, pregPart1, i * loopSize);
-                        ops::LoadOneTensorForDtypeT<TDY>(currInUb, inPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
+                        ops::LoadOneTensorForDtypeT<TDY>(
+                            currInUb, inPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<TCOS>(currCosUb, cosPart1Reg, pregPart1, i * loopSize);
                         ops::LoadOneTensorForDtypeT<TCOS>(
                             currCosUb, cosPart2Reg, pregPart2, i * loopSize + VL_FLOAT32_SIZE);
