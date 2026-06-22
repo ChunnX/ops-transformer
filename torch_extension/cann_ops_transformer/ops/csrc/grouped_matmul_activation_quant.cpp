@@ -16,11 +16,6 @@
 #include <vector>
 
 #include "aclnn_common.h"
-#if __has_include("torch_npu/csrc/core/NPUBridge.h")
-#include "torch_npu/csrc/core/NPUBridge.h"
-#elif __has_include("torch_npu/csrc/core/npu/NPUBridge.h")
-#include "torch_npu/csrc/core/npu/NPUBridge.h"
-#endif
 
 namespace op_api {
 namespace {
@@ -190,19 +185,6 @@ std::vector<int64_t> GetExpectedWeightStorageShape(const WeightLayout &weightLay
     return {e, CeilDiv(weightLayout.n, 32), CeilDiv(k, 16), 16, 32};
 }
 
-bool IsSameShape(const std::vector<int64_t> &actual, const std::vector<int64_t> &expected)
-{
-    if (actual.size() != expected.size()) {
-        return false;
-    }
-    for (size_t i = 0; i < actual.size(); ++i) {
-        if (actual[i] != expected[i]) {
-            return false;
-        }
-    }
-    return true;
-}
-
 template <typename ShapeT>
 std::string ShapeToString(const ShapeT &shape)
 {
@@ -226,20 +208,8 @@ at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, const We
 
     auto expectedStorageShape = GetExpectedWeightStorageShape(weightLayout, e, k);
     auto storageSizes = at_npu::native::get_npu_storage_sizes(weightForNz);
-    bool needFixNzDesc = !IsSameShape(storageSizes, expectedStorageShape);
-    std::printf("[GMMAQ torch] weight storage sizes before fix: actual=%s, expected=%s, needFixNzDesc=%d.\n",
-        ShapeToString(storageSizes).c_str(), ShapeToString(expectedStorageShape).c_str(),
-        static_cast<int>(needFixNzDesc));
-    if (needFixNzDesc) {
-        weightForNz = weightForNz.clone();
-        auto &desc = torch_npu::NPUBridge::GetNpuStorageImpl(weightForNz)->npu_desc_;
-        desc.npu_format_ = ACL_FORMAT_FRACTAL_NZ;
-        desc.storage_sizes_ = op_infer::array_to_small_vector(
-            c10::IntArrayRef(expectedStorageShape.data(), expectedStorageShape.size()));
-        auto fixedStorageSizes = at_npu::native::get_npu_storage_sizes(weightForNz);
-        std::printf("[GMMAQ torch] weight storage sizes after fix: actual=%s.\n",
-            ShapeToString(fixedStorageSizes).c_str());
-    }
+    std::printf("[GMMAQ torch] weight storage sizes: actual=%s, expected=%s.\n",
+        ShapeToString(storageSizes).c_str(), ShapeToString(expectedStorageShape).c_str());
     std::fflush(stdout);
     weightVec.clear();
     weightVec.emplace_back(weightForNz);
