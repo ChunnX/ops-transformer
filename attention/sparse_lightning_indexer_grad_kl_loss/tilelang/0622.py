@@ -294,8 +294,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # ReduceSumY for ALL K blocks (redundant across cores, avoids cross-core sync)
-                    for n_rsy in T.serial(n_num):
+                    # ReduceSumY for ALL K blocks (redundant, MTE-bound → Pipelined overlaps MTE+VEC)
+                    for n_rsy in T.Pipelined(n_num, num_stages=2):
                         T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_rsy * n_block:(n_rsy + 1) * n_block], bmm2_ub)
                         T.tile.fill(rsy_reduce_ub, 0)
                         for g_id in range(g_num):
