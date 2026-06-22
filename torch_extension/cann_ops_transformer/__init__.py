@@ -11,4 +11,3 @@
 import torch
 import torch_npu
 from . import ops
-from .ops import sparse_flash_mla, sparse_flash_mla_metadata

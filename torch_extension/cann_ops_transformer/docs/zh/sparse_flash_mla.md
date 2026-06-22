@@ -16,8 +16,8 @@
   `sparse_flash_mla`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`SparseFlashMla`算子完成共享KV（Key和Value使用同一份输入）的稀疏注意力计算。该接口支持以下三类计算模式：
 
   - **C1A**：仅使用`ori_kv`，对原始KV做滑动窗口注意力。
-  - **C128A**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
   - **C4A**：同时使用`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
+  - **C128A**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
 
   `sparse_flash_mla_metadata`是`SparseFlashMlaMetadata`的torch扩展接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子必须传入该metadata。典型调用流程如下：
 
@@ -40,7 +40,7 @@
 ## 函数原型
 
 ```python
-cann_ops_transformer.sparse_flash_mla(
+cann_ops_transformer.ops.sparse_flash_mla(
     q,
     *,
     ori_kv=None,
@@ -74,7 +74,7 @@ cann_ops_transformer.sparse_flash_mla(
 ```
 
 ```python
-cann_ops_transformer.sparse_flash_mla_metadata(
+cann_ops_transformer.ops.sparse_flash_mla_metadata(
     num_heads_q,
     num_heads_kv,
     head_dim,
@@ -270,7 +270,7 @@ q = torch.randn(B, S1, N1, D, dtype=dtype, device="npu")
 ori_kv = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")
 sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 
-metadata = cann_ops_transformer.sparse_flash_mla_metadata(
+metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
     N1,
     N2,
     D,
@@ -290,7 +290,7 @@ metadata = cann_ops_transformer.sparse_flash_mla_metadata(
     has_cmp_kv=False,
 )
 
-attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
+attn_out, softmax_lse = cann_ops_transformer.ops.sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     sinks=sinks,
@@ -337,7 +337,7 @@ ori_kv = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")
 cmp_kv = torch.randn(B, S3, N2, D, dtype=dtype, device="npu")
 sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 
-metadata = cann_ops_transformer.sparse_flash_mla_metadata(
+metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
     N1,
     N2,
     D,
@@ -358,7 +358,7 @@ metadata = cann_ops_transformer.sparse_flash_mla_metadata(
     has_cmp_kv=True,
 )
 
-attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
+attn_out, softmax_lse = cann_ops_transformer.ops.sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     cmp_kv=cmp_kv,
@@ -415,7 +415,7 @@ sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 cmp_sparse_indices = torch.full((sum(q_lens), N2, K), -1, dtype=torch.int32, device="npu")
 cmp_sparse_indices[:, :, :1] = torch.arange(1, dtype=torch.int32, device="npu").view(1, 1, 1)
 
-metadata = cann_ops_transformer.sparse_flash_mla_metadata(
+metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
     N1,
     N2,
     D,
@@ -438,7 +438,7 @@ metadata = cann_ops_transformer.sparse_flash_mla_metadata(
     has_cmp_kv=True,
 )
 
-attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
+attn_out, softmax_lse = cann_ops_transformer.ops.sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     cmp_kv=cmp_kv,
@@ -536,7 +536,7 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
     cmp_residual_kv = torch.tensor(residuals, dtype=torch.int32, device="npu")
     cmp_sparse_indices = make_cmp_sparse_indices(q_lens, ori_prefix_lens, cmp_lens)
 
-    metadata = cann_ops_transformer.sparse_flash_mla_metadata(
+    metadata = cann_ops_transformer.ops.sparse_flash_mla_metadata(
         N1,
         N2,
         D,
@@ -559,7 +559,7 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
         has_cmp_kv=True,
     )
 
-    attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
+    attn_out, softmax_lse = cann_ops_transformer.ops.sparse_flash_mla(
         q,
         ori_kv=ori_kv,
         cmp_kv=cmp_kv,
