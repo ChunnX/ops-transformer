@@ -564,9 +564,17 @@ bool GatherPaKvCacheTiling::IsCapable()
 
 ge::graphStatus GatherPaKvCacheTiling::DoOpTiling()
 {
-    // batch分核
+    // 分核策略(按连续性隔离, 连续路径零改动):
+    //   ND非连续(cache任一轴非连续): 按"全局block轮询"分核, kernel用 globalBlk % needCoreNum 分配,
+    //             故直接用满所有核。解决batch少(如batchCount=3/6)时按batch分核只用极少核的瓶颈。
+    //   其余(ND连续 / NZ): 维持按batch分核, 行为完全不变。
+    bool isNdNonContig = isCacheModeNorm_ && (!isKCacheContiguous_ || !isVCacheContiguous_);
     int64_t batchPerCore = Ops::Base::CeilDiv(batchCount_, coreNum_);
-    needCoreNum_ = static_cast<uint32_t>(std::min(Ops::Base::CeilDiv(batchCount_, batchPerCore), coreNum_));
+    if (isNdNonContig) {
+        needCoreNum_ = static_cast<uint32_t>(coreNum_);
+    } else {
+        needCoreNum_ = static_cast<uint32_t>(std::min(Ops::Base::CeilDiv(batchCount_, batchPerCore), coreNum_));
+    }
     // uint32_t batchTail = batchCount_ - batchPerCore * (needCoreNum - 1);
     uint32_t tileBase = BLOCK_SIZE;
 

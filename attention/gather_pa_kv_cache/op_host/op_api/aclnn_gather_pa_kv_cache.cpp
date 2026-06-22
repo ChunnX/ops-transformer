@@ -348,6 +348,19 @@ static bool IsSupportNonContiguousKeyAndCache(
     return allLastAxisContiguous && anyNonContiguous;
 }
 
+// 仅ND(Norm)模式: cache内部轴(dim1 slot / dim2 head)非连续, ref连续。
+// 此形态kernel可零拷贝(arch35 nd kernel Case B/C用stride1/stride2搬运), tiling从view stride检测。
+// 尾轴连续性由调用侧mustContiguous=false保证(NeedContiguousFallback对ND判尾轴), 故此处只需判整体非连续。
+// !isPaNz守卫: NZ kernel不支持内部轴非连续(tiling硬拦截GRAPH_FAILED), 必须走连续化兜底。
+static bool IsSupportNonContiguousCacheNdInner(
+    const aclTensor *keyCache, const aclTensor *valueCache, bool isPaNz)
+{
+    if (isPaNz) {
+        return false;
+    }
+    return !IsContiguous(keyCache) || !IsContiguous(valueCache);
+}
+
 static aclnnStatus ProcessNonContiguous(
     const aclTensor *keyCache,
     const aclTensor *valueCache,
@@ -444,6 +457,7 @@ static const aclTensor *ContiguousNzCacheAsNd(const aclTensor *cache, UniqueExec
     if (ndContiguous == nullptr) {
         return nullptr;
     }
+
     // 连续化结果贴回NZ format给kernel。
     ndContiguous->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
     ndContiguous->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
@@ -556,6 +570,7 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
     // Norm和PA_NZ模式都支持非连续: PA_NZ非连续view若走ProcessContiguous,
     bool isPaNz = (cacheMode != nullptr && strcmp(cacheMode, "PA_NZ") == 0);
     // kernel无法处理的非连续形态(NZ非dim0 / ND尾轴)必须走ProcessContiguous物理连续化兜底,
@@ -563,12 +578,30 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
 
     bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
     bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
-    if (!mustContiguous && (isCacheNonContiguous || isKeyAndCacheNonContiguous)) {
+    // ND模式cache内部轴(dim1/dim2)非连续、ref连续: kernel可零拷贝, 放行进ProcessNonContiguous。
+    bool isNdCacheInner = IsSupportNonContiguousCacheNdInner(keyCache, valueCache, isPaNz);
+
+    // ===== 分支判定打印(调试用): 各条件取值 + cache/ref连续性 + 最终走向 =====
+    OP_LOGI("GatherPaKvCache route: isPaNz=%d, mustContiguous=%d | isCacheNonContiguous=%d, "
+            "isKeyAndCacheNonContiguous=%d, isNdCacheInner=%d",
+            static_cast<int>(isPaNz), static_cast<int>(mustContiguous),
+            static_cast<int>(isCacheNonContiguous), static_cast<int>(isKeyAndCacheNonContiguous),
+            static_cast<int>(isNdCacheInner));
+    OP_LOGI("GatherPaKvCache contiguity: keyCache=%d, valueCache=%d, keyRef=%d, valueRef=%d "
+            "(1=contiguous, 0=non-contiguous)",
+            static_cast<int>(IsContiguous(keyCache)), static_cast<int>(IsContiguous(valueCache)),
+            static_cast<int>(IsContiguous(keyRef)), static_cast<int>(IsContiguous(valueRef)));
+
+    if (!mustContiguous && (isCacheNonContiguous || isKeyAndCacheNonContiguous || isNdCacheInner)) {
+        OP_LOGI("GatherPaKvCache route -> ProcessNonContiguous (zero-copy), "
+                "isKeyAndCacheNonContiguous=%d passed to ref handling.",
+                static_cast<int>(isKeyAndCacheNonContiguous));
         return ProcessNonContiguous(
             keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
             seqOffsetOptional, cacheMode, isSeqLensCumsum,
             workspaceSize, executor, uniqueExecutor, isKeyAndCacheNonContiguous);
     }
+    OP_LOGI("GatherPaKvCache route -> ProcessContiguous (contiguous fallback).");
     return ProcessContiguous(
         keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
         seqOffsetOptional, cacheMode, isSeqLensCumsum,
