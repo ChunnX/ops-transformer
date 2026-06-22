@@ -105,8 +105,8 @@ struct WorkspaceInfo {
     GM_ADDR gmmOutPtr;
     GM_ADDR rowGroupCompletePtr;
     GM_ADDR cumsumInfoPtr;
-    GM_ADDR ptrGmm1MmadRes;
-    GM_ADDR ptrGmm2MmadRes;
+    GM_ADDR gmm1MmadResPtr;
+    GM_ADDR gmm2MmadResPtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -171,9 +171,9 @@ struct WorkspaceInfo {
         workspaceSize += Ops::Base::CeilAlign(
             static_cast<int64_t>(SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize), ALIGN_32) *
             tilingData->aicNum;
-        ptrGmm1MmadRes = base + workspaceSize;
+        gmm1MmadResPtr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->maxOutputSize * tilingData->hiddenDim;
-        ptrGmm2MmadRes = base + workspaceSize;
+        gmm2MmadResPtr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->maxOutputSize * tilingData->h;
     }
 };
