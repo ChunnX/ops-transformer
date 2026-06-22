@@ -22,7 +22,7 @@ using namespace std;
 
 extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(
     GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR x,
-    GM_ADDR dyOut, GM_ADDR dcos, GM_ADDR dsin,
+    GM_ADDR dx, GM_ADDR dcos, GM_ADDR dsin,
     GM_ADDR workspace, GM_ADDR tiling);
 
 class inplace_partial_rotary_mul_grad_test : public testing::Test
@@ -45,12 +45,12 @@ TEST_F(inplace_partial_rotary_mul_grad_test, test_case_mode1_interleave_fp32)
     size_t inputCosByteSize = B * S * N * D * sizeof(float);
     size_t tilingDataSize = sizeof(InplacePartialRotaryMulGradUTTilingData);
 
-    // inplace: dy and dyOut share the same buffer
+    // inplace: dy and dx share the same buffer
     uint8_t* dy = (uint8_t*)AscendC::GmAlloc(inputDyByteSize);
     uint8_t* cos = (uint8_t*)AscendC::GmAlloc(inputCosByteSize);
     uint8_t* sin = (uint8_t*)AscendC::GmAlloc(inputCosByteSize);
     uint8_t* x = nullptr;      // x is nullptr (unsupported)
-    uint8_t* dyOut = dy;       // inplace: same as dy
+    uint8_t* dx = dy;       // inplace: same as dy
     uint8_t* dcos = (uint8_t*)AscendC::GmAlloc(inputCosByteSize);
     uint8_t* dsin = (uint8_t*)AscendC::GmAlloc(inputCosByteSize);
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024);
@@ -76,7 +76,7 @@ TEST_F(inplace_partial_rotary_mul_grad_test, test_case_mode1_interleave_fp32)
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(10012);
     ICPU_RUN_KF(
-        inplace_partial_rotary_mul_grad, blockDim, dy, cos, sin, x, dyOut, dcos, dsin, workspace,
+        inplace_partial_rotary_mul_grad, blockDim, dy, cos, sin, x, dx, dcos, dsin, workspace,
         (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(dy);
@@ -100,7 +100,7 @@ TEST_F(inplace_partial_rotary_mul_grad_test, test_case_mode0_half_fp16)
     uint8_t* cos = (uint8_t*)AscendC::GmAlloc(inputCosByteSize);
     uint8_t* sin = (uint8_t*)AscendC::GmAlloc(inputCosByteSize);
     uint8_t* x = nullptr;
-    uint8_t* dyOut = dy;
+    uint8_t* dx = dy;
     uint8_t* dcos = (uint8_t*)AscendC::GmAlloc(inputCosByteSize);
     uint8_t* dsin = (uint8_t*)AscendC::GmAlloc(inputCosByteSize);
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024);
@@ -122,7 +122,7 @@ TEST_F(inplace_partial_rotary_mul_grad_test, test_case_mode0_half_fp16)
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(10012);
     ICPU_RUN_KF(
-        inplace_partial_rotary_mul_grad, blockDim, dy, cos, sin, x, dyOut, dcos, dsin, workspace,
+        inplace_partial_rotary_mul_grad, blockDim, dy, cos, sin, x, dx, dcos, dsin, workspace,
         (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(dy);

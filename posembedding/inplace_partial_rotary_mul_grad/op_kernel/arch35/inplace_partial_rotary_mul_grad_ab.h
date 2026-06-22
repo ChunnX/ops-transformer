@@ -29,7 +29,7 @@ class InplacePartialRotaryMulGradAB {
 public:
     __aicore__ inline InplacePartialRotaryMulGradAB() {}
     __aicore__ inline void Init(TPipe *pipe, const InplacePartialRotaryMulGradRegbaseABParams *tiling, GM_ADDR dy,
-                                GM_ADDR cos, GM_ADDR sin, GM_ADDR dyOut);
+                                GM_ADDR cos, GM_ADDR sin, GM_ADDR dx);
     __aicore__ inline void Process();
 
 private:
@@ -41,10 +41,10 @@ private:
     TQue<QuePosition::VECIN, 1> gradInQueue_;
     TQue<QuePosition::VECIN, 1> cosInQueue_;
     TQue<QuePosition::VECIN, 1> sinInQueue_;
-    TQue<QuePosition::VECOUT, 1> dyOutQueue_;
+    TQue<QuePosition::VECOUT, 1> dxQueue_;
 
     GlobalTensor<TDY> gradGm_;
-    GlobalTensor<TDY> dyOutGm_;
+    GlobalTensor<TDY> dxGm_;
     GlobalTensor<TCOS> cosGm_;
     GlobalTensor<TCOS> sinGm_;
 
@@ -62,7 +62,7 @@ private:
 template <typename TDY, typename TCOS>
 __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Init(
     TPipe *pipe, const InplacePartialRotaryMulGradRegbaseABParams *tiling, GM_ADDR dy, GM_ADDR cos, GM_ADDR sin,
-    GM_ADDR dyOut)
+    GM_ADDR dx)
 {
     pipe_ = pipe;
     tilingData_ = tiling;
@@ -83,7 +83,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Init(
 
     // cos/sin 偏移：沿 BS 维连续 sliceLength 元素
     int64_t cosOffset = blockDimBS * tilingData_->blockFactorBS * tilingData_->sliceLength;
-    // dy/dyOut 偏移：沿 BS 维跨越完整 D，沿 N 维分块
+    // dx 偏移：沿 BS 维跨越完整 D，沿 N 维分块
     int64_t offset = blockDimBS * tilingData_->blockFactorBS * tilingData_->d;
     int64_t gradOffset = offset * tilingData_->n + blockDimN * tilingData_->blockFactorN * tilingData_->d +
                          tilingData_->sliceStart;
@@ -91,7 +91,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Init(
     cosGm_.SetGlobalBuffer((__gm__ TCOS *)cos + cosOffset);
     sinGm_.SetGlobalBuffer((__gm__ TCOS *)sin + cosOffset);
     gradGm_.SetGlobalBuffer((__gm__ TDY *)dy + gradOffset);
-    dyOutGm_.SetGlobalBuffer((__gm__ TDY *)dyOut + gradOffset);
+    dxGm_.SetGlobalBuffer((__gm__ TDY *)dx + gradOffset);
 
     // 统一按 max(sizeof(TDY), sizeof(TCOS)) 对齐分配所有 buffer
     // 确保 dy=fp16+cos=fp32 或 dy=fp32+cos=fp16 两种混合方向都能容纳
@@ -105,7 +105,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Init(
 
     int64_t bufferSizeCos = sliceAlignX_ * sizeof(TCOS) * tilingData_->ubFactorBS;
     pipe_->InitBuffer(gradInQueue_, DB_FLAG, bufferSizeX * tilingData_->ubFactorN);
-    pipe_->InitBuffer(dyOutQueue_, DB_FLAG, bufferSizeX * tilingData_->ubFactorN);
+    pipe_->InitBuffer(dxQueue_, DB_FLAG, bufferSizeX * tilingData_->ubFactorN);
     pipe_->InitBuffer(cosInQueue_, DB_FLAG, bufferSizeCos);
     pipe_->InitBuffer(sinInQueue_, DB_FLAG, bufferSizeCos);
 }
@@ -174,7 +174,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::ProcessLoop(
     DataCopyExtParams outParams = {static_cast<uint16_t>(totalCount), blockLenX, 0, strideBytesX, 0};
 
     LocalTensor<TDY> inBuffer = gradInQueue_.template AllocTensor<TDY>();
-    LocalTensor<TDY> outBuffer = dyOutQueue_.template AllocTensor<TDY>();
+    LocalTensor<TDY> outBuffer = dxQueue_.template AllocTensor<TDY>();
 
     DataCopyPad(inBuffer,
                 gradGm_[gradGmOffset + ubIdx * tilingData_->ubFactorN * tilingData_->d], inParams,
@@ -201,12 +201,12 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::ProcessLoop(
                                                         static_cast<uint16_t>(nCount));
     }
 
-    dyOutQueue_.EnQue(outBuffer);
-    outBuffer = dyOutQueue_.template DeQue<TDY>();
+    dxQueue_.EnQue(outBuffer);
+    outBuffer = dxQueue_.template DeQue<TDY>();
     gradInQueue_.FreeTensor(inBuffer);
 
-    DataCopyPad(dyOutGm_[gradGmOffset + ubIdx * tilingData_->ubFactorN * tilingData_->d], outBuffer, outParams);
-    dyOutQueue_.FreeTensor(outBuffer);
+    DataCopyPad(dxGm_[gradGmOffset + ubIdx * tilingData_->ubFactorN * tilingData_->d], outBuffer, outParams);
+    dxQueue_.FreeTensor(outBuffer);
 }
 
 } // namespace InplacePartialRotaryMulGrad

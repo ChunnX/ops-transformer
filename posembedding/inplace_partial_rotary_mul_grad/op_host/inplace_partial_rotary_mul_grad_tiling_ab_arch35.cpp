@@ -80,7 +80,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::DoOpTiling()
     usedCoreNum_ = blockNumBS_ * blockNumN_;
 
     // UB 分块
-    // UB 布局: gradInQueue(DB=2) + dyOutQueue(DB=2) + cosInQueue(DB=2) + sinInQueue(DB=2)
+    // UB 布局: gradInQueue(DB=2) + dxQueue(DB=2) + cosInQueue(DB=2) + sinInQueue(DB=2)
     // 所有 buffer 统一按 dAlign_ * maxTypeSize 对齐，适配所有 dtype 组合
     int64_t dSizeX = dAlign_ * maxTypeSize;
 
