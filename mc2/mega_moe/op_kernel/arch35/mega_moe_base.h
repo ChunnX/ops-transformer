@@ -20,15 +20,14 @@
 #include "mega_moe_tiling.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_workspace_info.h"
-
-constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
+1
 struct Mc2MoeContext {
     uint32_t epRankId = 0;
     uint32_t rankSizePerServer = 0;
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
-    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
-    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};   // 支持ROCE或者URMA
-    uint64_t urmacclBuffer[HCCL_MAX_RANK_SIZE] = {};  // URMA通信buffer
+    uint64_t epHcclBuffer[1024] = {};
+    uint64_t hcommHandle[1024] = {};   // 支持ROCE或者URMA
+    uint64_t urmacclBuffer[1024] = {};  // URMA通信buffer
 };
 
 struct GMMAddrInfo {
