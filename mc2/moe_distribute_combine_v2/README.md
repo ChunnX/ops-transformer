@@ -419,7 +419,7 @@
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，依commAlg取值，"fullmesh_v2"和"hierarchy"取值范围为(0 < BS ≤ 256), "fullmesh_v1"和""取值范围为(0 < BS ≤ 512)。
     - 参数约束：
-        - `epWorldSize`：取值支持[2, 768]。
+        - `epWorldSize`：取值支持[2, 1024]。
         - `moeExpertNum`：取值范围(0, 1024]。
         - `groupTp`当前版本不支持，传空字符即可。
         - `tpWorldSize`当前版本不支持，传0即可。
