@@ -422,7 +422,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
     if constexpr (ENABLE_A8W4) {
         DataCopyPad(cumsumInfoTensor_, cumsumInfoGlobalTensor_,
                 {1U, static_cast<uint32_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), 0U, 0U, 0U},
-                {false, 0U, 0U, 0U});
+                {true, 0U, 0U, 0U});
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
     }
@@ -592,7 +592,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
             // A8W4 路径下 cumsum 被 SwigluQuant 覆盖，从 GM 加载前序 expert 的 cumsum
             DataCopyPad(cumsumInfoTensor_, cumsumInfoGlobalTensor_,
                         {1U, static_cast<uint32_t>(worldSize_ * localExpertId * sizeof(int32_t)), 0U, 0U, 0U},
-                        {false, 0U, 0U, 0U});
+                        {true, 0U, 0U, 0U});
         }
     }
 
@@ -862,8 +862,9 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
 }
 
 // ==================================================================================
-// UpdateGlobalBuffer：更新当前expertIdx gmmAddrInfo中的地址，
-//                     该地址用于后续GroupMatmulSwigluQuant 与 GroupMatmul2运算；
+// UpdateGlobalBuffer：更新当前 expert 的 GMM 地址视图。
+//                     GMM1 始终写 ptrGmm1MmadRes；
+//                     GMM2 默认写 ptrGmm2MmadRes，在 combine-quant 路径下改写到 gmmOutPtr。
 // ==================================================================================
 template <TemplateMegaMoeTypeClass>
 template <AddrUpdateMode Mode>
@@ -947,7 +948,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitCombineBuffers()
 }
 
 // =============================================
-// ProcessCombine：量化路径的 Combine 处理，等待 GMM2 完成，读取结果，量化后发送到目标 rank
+// ProcessCombine：generic combine-quant 路径的 AIV 后处理。
+//                 等待本 expert 的 row-group 计数满足后，读取 triple 和 GMM2 输出，
+//                 再执行 row-group 级 CombineRowGroup。
 // =============================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
@@ -1163,7 +1166,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 }
 
 // ===============================================================
-// GroupMatmulWithSwigluQuant：按 Weight1Type/QuantOutType 编译期分发到 generic 或 A8W4 路径
+// GroupMatmulWithSwigluQuant：按实现路径分发到 A8W4 或 generic GMM1。
+//                            A8W4 由 ENABLE_A8W4 控制；generic 路径仍只在 subBlockIdx_ == 0 上发起。
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQuant(
@@ -1183,7 +1187,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
 }
 
 // ===============================================================
-// GroupMatmulWithCombine：按 Weight1Type/QuantOutType 编译期分发到 generic 或 A8W4 路径
+// GroupMatmulWithCombine：先按实现路径分发，再按 combine 模式分发。
+//                        A8W4 仅支持非量化 combine；
+//                        generic 路径同时承载非量化 combine 和 combine-quant 主线实现。
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
