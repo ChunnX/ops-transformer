@@ -178,8 +178,13 @@ cann_ops_transformer.sparse_flash_mla_metadata(
 
 ## 返回值说明
 
+### sparse_flash_mla
+
 - **attention_out**：`sparse_flash_mla`的第一个输出，shape和`q`一致，dtype和`q`一致。
 - **softmax_lse**：`sparse_flash_mla`的第二个输出。`return_softmax_lse=False`时返回FLOAT32标量占位Tensor；`return_softmax_lse=True`时返回FLOAT32的log-sum-exp结果。
+
+### sparse_flash_mla_metadata
+
 - **metadata**：`sparse_flash_mla_metadata`的输出，shape固定为`[1024]`，dtype为`int32`。
 
 ## 约束说明
