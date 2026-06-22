@@ -20,6 +20,7 @@
 #include "moe_re_routing_r_tiling.h"
 
 namespace optiling {
+constexpr int64_t BYTE_LENGTH_FOUR = 4;
 constexpr int64_t RESERVE_UB_GAP = 32;
 constexpr uint64_t MOE_RE_ROUTING_R_WITHOUT_SCALE = 210000;
 constexpr uint64_t MOE_RE_ROUTING_R_WITH_SCALE_FLOAT = 210100;
@@ -96,7 +97,7 @@ ge::graphStatus MoeReRoutingRTiling::PostTiling()
 {
     tilingData_.set_tokenSize(tokenSize_);
     if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2) && scaleDtype_ == ge::DT_FLOAT) {
-        tilingData_.set_scaleSize(scaleSize_ * 4);
+        tilingData_.set_scaleSize(scaleSize_ * BYTE_LENGTH_FOUR);
     } else {
         tilingData_.set_scaleSize(scaleSize_);
     }
