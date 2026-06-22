@@ -20,7 +20,7 @@ template class AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<aclTensor>;
 }
 
 namespace {
-constexpr const char *QGMM_INPLACE_ADD_ACLNN_OP_NAME = "aclnnQuantGroupedMatmulInplaceAdd";
+constexpr const char *QGMM_INPLACE_ADD_ACLNN_OP_NAME = "aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize";
 constexpr size_t DIM_NUM_2D = 2U;
 
 #define QGMM_INPLACE_ADD_CHECK_REPORT(cond, retExpr, reportExpr) \
