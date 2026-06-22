@@ -131,7 +131,7 @@ static graphStatus InferDataType4GroupedMatmulSwigluQuantV2(gert::InferDataTypeC
                     ListToString(ge::TypeUtils::DataTypeToSerialString(xDtype),
                                  ge::TypeUtils::DataTypeToSerialString(weightDtype)),
                     "on this platform, the dtypes of x and weight must be within the range FLOAT8_E4M3, "
-                    "FLOAT8_E5M2, FLOAT4_E2M1, INT_8 or HIFLOAT8"),
+                    "FLOAT8_E5M2, FLOAT4_E2M1, INT8 or HIFLOAT8"),
                 return GRAPH_FAILED);
 
         OP_CHECK_IF(*quantMode != QUANT_MODE_MX_TYPE && *quantMode != QUANT_MODE_PERTOKEN_TYPE,
