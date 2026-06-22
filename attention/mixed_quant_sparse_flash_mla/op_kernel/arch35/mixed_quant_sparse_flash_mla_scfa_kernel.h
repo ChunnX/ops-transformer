@@ -333,7 +333,12 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
     }
 
-    uint32_t v0RegionSize = IS_SPLIT_G ? (128U * 512U * 2U * 3U * (GetBlockNum() >> 1U)) : 0U;
+    // V0 workspace = 一个S2块 * 一个D块 * bf16元素大小 * 三缓冲 * 配对AIC数量。
+    constexpr uint32_t V0_S2_BLOCK_SIZE = 128U;
+    constexpr uint32_t V0_D_SIZE = 512U;
+    constexpr uint32_t V0_BUFFER_NUM = 3U;
+    uint32_t v0RegionSize = IS_SPLIT_G ?
+        (V0_S2_BLOCK_SIZE * V0_D_SIZE * sizeof(Q_T) * V0_BUFFER_NUM * (GetBlockNum() >> 1U)) : 0U;
     s2SplitStagingBase = workspace + v0RegionSize;
 }
 
@@ -573,6 +578,7 @@ __aicore__ inline bool MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     int64_t cmpLen = cmpEnd - cmpStart;
     int64_t totalLen = oriLen + cmpLen;
 
+    // metadata以0表示最后一个任务未指定S2终点，此时覆盖剩余的全部KV。
     int64_t effectiveS2EndPoint = (isLastS2RangeTask && s2EndPoint == 0) ? totalLen : s2EndPoint;
     int64_t rangeStart = isFirstS2RangeTask ? s2StartPoint : 0;
     rangeStart = rangeStart < 0 ? 0 : rangeStart;

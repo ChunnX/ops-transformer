@@ -127,6 +127,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     if (!lastBN) {
         runParam.gs1LoopEndIdx = gs1LoopEndIdx;
     } else {
+        // s2EndIdx为0表示该任务没有S2尾块；否则需把S2尾块计入末尾GS1索引。
         uint32_t actualNextGs1Idx = s2EndIdx == 0 ? nextGs1Idx : nextGs1Idx + 1;
         runParam.gs1LoopEndIdx = (nextGs1Idx == 0 && s2EndIdx == 0) ? gs1LoopEndIdx : actualNextGs1Idx;
     }

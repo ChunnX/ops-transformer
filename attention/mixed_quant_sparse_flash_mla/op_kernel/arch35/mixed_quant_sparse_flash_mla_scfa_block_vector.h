@@ -77,7 +77,7 @@ public:
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dVTemplateType = 512;
     static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
-    static constexpr uint32_t dVTemplateTypeInput = 608;
+    static constexpr uint32_t dVTemplateTypeInput = 608; // D=604的KV输入按32B对齐后的宽度
     static constexpr float R0 = 1.0f;
     static constexpr uint64_t SYNC_SINKS_BUF_FLAG = 6;
 
@@ -159,6 +159,7 @@ private:
     __aicore__ inline uint32_t GetStagingSlotNum() const
     {
         if constexpr (IS_SPLIT_G) {
+            // Split-G的两个AIC组成一个逻辑M块，共用一个FD staging slot。
             return regbaseutil::MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
         } else {
             return regbaseutil::MAX_S2_SPLIT_NUM * GetBlockNum();
@@ -173,9 +174,11 @@ private:
 
     __aicore__ inline uint32_t GetFaStagingMOffset(const RunInfo &runInfo, const ConstInfo &constInfo) const
     {
+        // subBlockIdx==1表示后半块，需越过前半块已写入的M行。
         uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
             static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
         if constexpr (IS_SPLIT_G) {
+            // goIdx==64表示配对Cube中的后半个G块，继续偏移64行。
             if (runInfo.goIdx == regbaseutil::S2_SPLIT_STAGING_M_SIZE) {
                 stagingMOffset += regbaseutil::S2_SPLIT_STAGING_M_SIZE;
             }
@@ -338,8 +341,8 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t st
     intriParams.dstStride = 0;
     intriParams.srcStride = 0;
     DataCopyPadExtParams<KV_T> padParams;
-    // 当前仅支持COMBINE模式
-    uint32_t combineBytes = 608;
+    // 当前仅支持COMBINE模式；D=604的KV记录按32B对齐为608B。
+    uint32_t combineBytes = dVTemplateTypeInput;
     intriParams.blockLen = combineBytes;
     uint32_t combineDim = combineBytes / sizeof(KV_T);
     uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
@@ -931,12 +934,14 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyMaxSumToStaging(
     uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
     uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
 
-    // 广播暂存复用dequantScaleBuff(vec1阶段空闲, 8192B足够放max+sum各一份)
+    // 广播暂存复用dequantScaleBuff；单个vec子块最多32行，max/sum各占32 * 8 * sizeof(float)字节。
+    constexpr uint32_t MAX_SUM_BLOCK_BYTES = 1024;
     LocalTensor<float> tmpMaxBlockUb = this->dequantScaleBuff.template Get<float>();
-    LocalTensor<float> tmpSumBlockUb = tmpMaxBlockUb[1024 / sizeof(float)];
+    LocalTensor<float> tmpSumBlockUb = tmpMaxBlockUb[MAX_SUM_BLOCK_BYTES / sizeof(float)];
     uint32_t mSizeAlign8 = (runInfo.halfMRealSize + regbaseutil::FD_BROADCAST_ELEMS_PER_ROW - 1) /
         regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * regbaseutil::FD_BROADCAST_ELEMS_PER_ROW;
     uint32_t brcbRepeat = mSizeAlign8 / regbaseutil::FD_BROADCAST_ELEMS_PER_ROW;
+    // Brcb参数{1, 8}表示连续读取一个标量，并将其扩展为8个float的广播块。
     Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, regbaseutil::FD_BROADCAST_ELEMS_PER_ROW});
     Brcb(tmpSumBlockUb, sumUb, brcbRepeat, {1, regbaseutil::FD_BROADCAST_ELEMS_PER_ROW});
     SetFlag<HardEvent::V_MTE3>(vToMte3Id);
@@ -945,6 +950,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyMaxSumToStaging(
     uint32_t floatOffset = workspaceIdx * (MAX_SUM_BYTES / sizeof(float)) +
         stagingMOffset * regbaseutil::FD_BROADCAST_ELEMS_PER_ROW;
     // blockCount=行数, blockLen=每行8float字节数(广播block布局)
+    // 连续写GM，因此src/dst stride及保留字段均为0。
     DataCopyExtParams lseOutParams{static_cast<uint16_t>(runInfo.halfMRealSize),
         static_cast<uint32_t>(regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float)), 0, 0, 0};
     DataCopyPad(sumGm[floatOffset], tmpSumBlockUb, lseOutParams);
@@ -1038,6 +1044,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     FdRunInfo &fdRunInfo, ConstInfo &constInfo,
     mm2ResPos &tempBuf)
 {
+    // FD复用事件槽0同步max/sum，槽1同步partial output，避免两类GM读回互相覆盖。
     InitFDBuffers(fdRunInfo, constInfo);
     int64_t vec2CalcSize = fdRunInfo.mNum * dTemplateAlign64;
     int64_t seqOffset = 0;
@@ -1274,7 +1281,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
 
     SoftmaxInitBuffer();
 
-    tPipe->InitBuffer(commonTBuf, 1024); // commonTBuf内存申请1024B (FD需要存allMax+allSum)
+    // allMax和allSum各保存一个16行 * 8个float的FD规约块。
+    constexpr uint32_t FD_COMMON_TBUF_SIZE = 2U * regbaseutil::FD_REDUCE_CHUNK_ROWS *
+        regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+    tPipe->InitBuffer(commonTBuf, FD_COMMON_TBUF_SIZE);
     tPipe->InitBuffer(sinksBuf, 512); // sinksBuf内存申请512B
 
     tPipe->InitBuffer(stage0InBuf[0], dVTemplateTypeInput * 16 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer

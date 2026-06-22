@@ -23,11 +23,11 @@ using AscendC::QuePosition;
 
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
-constexpr uint32_t MAX_S2_SPLIT_NUM = 2;
-constexpr uint32_t S2_SPLIT_STAGING_M_SIZE = 64;
-constexpr uint32_t S2_SPLIT_STAGING_M_SIZE_SPLIT_G = 128;
-constexpr uint32_t FD_BROADCAST_ELEMS_PER_ROW = 8;
-constexpr uint32_t FD_REDUCE_CHUNK_ROWS = 16;
+constexpr uint32_t MAX_S2_SPLIT_NUM = 2; // 单个AIV核最多参与两个S2分片的FD规约
+constexpr uint32_t S2_SPLIT_STAGING_M_SIZE = 64; // 一个Cube负责的G方向M行数
+constexpr uint32_t S2_SPLIT_STAGING_M_SIZE_SPLIT_G = 128; // Split-G配对Cube合并后的M行数
+constexpr uint32_t FD_BROADCAST_ELEMS_PER_ROW = 8; // max/sum标量广播后的每行float元素数
+constexpr uint32_t FD_REDUCE_CHUNK_ROWS = 16; // 单次FD规约加载的M行数，受UB容量约束
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
@@ -37,7 +37,7 @@ constexpr uint32_t FD_REDUCE_CHUNK_ROWS = 16;
     int64_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
     int64_t s2LineStartIdx = 0;    /* S2方向按行的起始位置 */ \
     int64_t s2LineOriEndIdx;          /* S2方向按行的结束位置 */ \
-    int64_t s2CmpLineStartIdx = 0; \
+    int64_t s2CmpLineStartIdx = 0; /* 当前S2范围内cmp_kv的起始行，0表示无偏移 */ \
     int64_t s2CmpLineEndIdx; \
     int64_t s2LineCmpEndIdx; \
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
