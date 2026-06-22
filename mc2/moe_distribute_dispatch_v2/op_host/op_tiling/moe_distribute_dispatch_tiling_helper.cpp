@@ -146,12 +146,7 @@ inline bool MoeDistributeDispatchTilingHelper::CheckEpTpRecvTensorDim(
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "epRecvCountShape", std::to_string(epRecvCountStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of epRecvCountShape must be 1D."), return false);
     OP_LOGD(nodeName, "epRecvCount dim0 = %ld", epRecvCountStorageShape->GetStorageShape().GetDim(0));
 
-    const gert::StorageShape *tpRecvCountStorageShape = context->GetOutputShape(OUTPUT_TP_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(tpRecvCountStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRecvCountShape"), return false);
-    OP_TILING_CHECK(tpRecvCountStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "tpRecvCountShape", std::to_string(tpRecvCountStorageShape->GetStorageShape().GetDimNum()).c_str(), "The shape dim of tpRecvCountShape must be 1D."), return false);
-    OP_LOGD(nodeName, "tpRecvCount dim0 = %ld", tpRecvCountStorageShape->GetStorageShape().GetDim(0));
+
     return true;
 }
 
@@ -214,17 +209,6 @@ inline bool MoeDistributeDispatchTilingHelper::CheckCommonOutputTensorDataType(
     if (epRecvCountsDesc->GetDataType() != ge::DT_INT32) {
         std::string dtypeStr = Ops::Base::ToString(epRecvCountsDesc->GetDataType());
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "epRecvCounts", dtypeStr.c_str(), "INT32");
-        return false;
-    }
-
-    auto tpRecvCountsDesc = context->GetOutputDesc(OUTPUT_TP_RECV_COUNTS_INDEX);
-    if (tpRecvCountsDesc == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRecvCountsDesc");
-        return false;
-    }
-    if (tpRecvCountsDesc->GetDataType() != ge::DT_INT32) {
-        std::string dtypeStr = Ops::Base::ToString(tpRecvCountsDesc->GetDataType());
-        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "tpRecvCounts", dtypeStr.c_str(), "INT32");
         return false;
     }
 
@@ -535,17 +519,7 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
         return false;
     }
 
-    auto tpRecvCountsDesc = context->GetOutputDesc(OUTPUT_TP_RECV_COUNTS_INDEX);
-    if (tpRecvCountsDesc == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRecvCountsDesc");
-        return false;
-    }
-    auto tpRecvCountsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(tpRecvCountsDesc->GetStorageFormat()));
-    if (tpRecvCountsDescFormat == ge::FORMAT_FRACTAL_NZ) {
-        std::string fmtStr = Ops::Base::ToString(tpRecvCountsDescFormat);
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tpRecvCounts", fmtStr.c_str(), "ND");
-        return false;
-    }
+
 
     return true;
 }
