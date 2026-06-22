@@ -20,24 +20,63 @@
 #define ORIG_DTYPE_START DT_BF16
 #define __CCE_UT_TEST__
 
-struct InplacePartialRotaryMulGradUTTilingData {
+// Mirrors InplacePartialRotaryMulGradTilingData layout from
+// op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_data.h.
+//
+// TEST STRUCT LAYOUT (must match byte-for-byte with the real struct):
+//   [0..7]    sliceLength              (int64_t, offset 0)
+//   [8..159]  params (19 int64_t)       (offset 8)
+//   [160..295] abParams (17 int64_t)    (offset 160)
+//   Total: 296 bytes
+
+struct InplacePartialRotaryMulGradRegbaseParams {
     int64_t b;
     int64_t s;
-    int64_t n;
     int64_t d;
-    int64_t partialStart;
-    int64_t sliceLen;
-    int64_t rotaryMode;
-    int64_t dSplitCoef;
-    int64_t dyDtypeCode;
-    int64_t cosDtypeCode;
-    int64_t cosStrideB;
-    int64_t cosStrideS;
-    int64_t cosStrideN;
+    int64_t n;
+    int64_t blockNumB;
+    int64_t blockFactorB;
+    int64_t blockNumS;
+    int64_t blockFactorS;
+    int64_t ubFactorS;
+    int64_t ubFactorB;
+    int64_t ubLoopNumN;
+    int64_t ubFactorN;
+    int64_t ubTailFactorN;
     int64_t usedCoreNum;
-    int64_t blockFactorM;
-    int64_t ubFactorM;
-    int64_t isFullBroadcast;
+    int64_t rotaryMode;
+    int64_t sliceStart;
+    int64_t sliceEnd;
+    int64_t sliceLength;
+    int64_t dSplitCoef;
+};
+
+struct InplacePartialRotaryMulGradRegbaseABParams {
+    int64_t b;
+    int64_t s;
+    int64_t d;
+    int64_t n;
+    int64_t dAlign;
+    int64_t dSplitCoef;
+    int64_t blockNumBS;
+    int64_t blockFactorBS;
+    int64_t blockTailBS;
+    int64_t blockNumN;
+    int64_t blockFactorN;
+    int64_t blockTailN;
+    int64_t ubFactorBS;
+    int64_t ubFactorN;
+    int64_t usedCoreNum;
+    int64_t rotaryMode;
+    int64_t sliceStart;
+    int64_t sliceEnd;
+    int64_t sliceLength;
+};
+
+struct InplacePartialRotaryMulGradUTTilingData {
+    int64_t sliceLength;                                         // offset 0
+    InplacePartialRotaryMulGradRegbaseParams params;             // offset 8
+    InplacePartialRotaryMulGradRegbaseABParams abParams;         // offset 160
 };
 
 inline void InitInplacePartialRotaryMulGradTilingData(
