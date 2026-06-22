@@ -110,11 +110,13 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::Process()
 
     uint32_t sLoopCnt = AscendC::Ceil(static_cast<uint64_t>(sNum_), static_cast<uint64_t>(tilingData_->ubFactorS));
 
-    for (int64_t bIdx = bIdx_; bIdx < bIdx_ + bNum_; bIdx++) {
+    for (int64_t bIdx = bIdx_ * tilingData_->blockFactorB;
+         bIdx < bIdx_ * tilingData_->blockFactorB + bNum_; bIdx++) {
         for (uint32_t loopIdx = 0; loopIdx < sLoopCnt; loopIdx++) {
             uint32_t currSNum = (loopIdx != sLoopCnt - 1) ? tilingData_->ubFactorS
                                     : sNum_ - (loopIdx * tilingData_->ubFactorS);
-            ProcessNLoop(sIdx_ + loopIdx * tilingData_->ubFactorS, currSNum, bIdx);
+            ProcessNLoop(sIdx_ * tilingData_->blockFactorS + loopIdx * tilingData_->ubFactorS,
+                         currSNum, bIdx);
         }
     }
 }
