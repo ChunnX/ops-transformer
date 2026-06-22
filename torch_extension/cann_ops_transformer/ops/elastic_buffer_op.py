@@ -9,7 +9,7 @@ from cann_ops_transformer.op_builder.builder import OpBuilder, AS_LIBRARY
 
 
 class ElasticBufferOpBuilder(OpBuilder):
-    """OpBuilder for ElasticBuffer engram_fetch operations"""
+    """OpBuilder for ElasticBuffer operations"""
     
     def __init__(self):
         super(ElasticBufferOpBuilder, self).__init__("npu_elastic_buffer")
@@ -18,18 +18,27 @@ class ElasticBufferOpBuilder(OpBuilder):
         """Path to C++ source code."""
         return ['ops/csrc/elastic_buffer.cpp']
     
-    def schema(self) -> str:
+    def schema(self):
         """PyTorch operator signature."""
-        return None  # Not using schema registration
+        return None
     
     def register_meta(self):
         """Meta implementation (optional for JIT compiled ops)"""
         pass
     
+    def extra_ldflags(self):
+        """
+        Extra link flags for HCCL and ACL libraries
+        """
+        flags = super().extra_ldflags()
+        flags.append('-L' + os.path.join(self._cann_path, 'lib64'))
+        flags.append('-lhcomm')
+        flags.append('-lascendcl')
+        return flags
+    
     def include_paths(self):
         """
-        Override include paths to ensure CANN 9.1.0 headers are prioritized
-        over torch_npu's old ACL headers
+        Override include paths to ensure CANN headers are prioritized
         """
         paths = [
             os.path.join(self._cann_path, 'include'),
@@ -43,4 +52,4 @@ class ElasticBufferOpBuilder(OpBuilder):
 
 # Instantiate the builder and load module
 elastic_buffer_op_builder = ElasticBufferOpBuilder()
-_elastic_buffer_ops = elastic_buffer_op_builder.load()  # Compiles/loads the .so file
+_elastic_buffer_ops = elastic_buffer_op_builder.load()
