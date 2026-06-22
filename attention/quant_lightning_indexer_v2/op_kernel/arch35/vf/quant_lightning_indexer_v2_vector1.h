@@ -660,10 +660,10 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
 
 // float in uint16 out, 无 scale 版本（MXFP8）
 template <typename QK_T>
-__aicore__ inline void MulWeightAndReduceSum_MxFP8(uint16_t* out,
-                                                   QK_T* qk,
+__aicore__ inline void MulWeightAndReduceSum_MxFP8(__ubuf__ uint16_t* out,
+                                                   __ubuf__ QK_T* qk,
                                                    const uint32_t qkVLStride,
-                                                   float* weight,
+                                                   __ubuf__ float* weight,
                                                    const int gSize)
 {
 
@@ -798,14 +798,14 @@ __aicore__ inline void MulWeightAndReduceSum_MxFP8(const LocalTensor<uint16_t> &
 
 // 计算S1=2, 无 scale 版本（MXFP8）, float weight
 template <typename QK_T>
-__aicore__ inline void MulWeightAndReduceSum2_MxFP8(uint16_t* out0,
+__aicore__ inline void MulWeightAndReduceSum2_MxFP8(__ubuf__ uint16_t* out0,
                                                     uint32_t outStride,
-                                                    QK_T* qk0,
+                                                    __ubuf__ QK_T* qk0,
                                                     uint32_t qkVLStride,
                                                     uint32_t qkStride,
-                                                    float* weight0,
+                                                    __ubuf__ float* weight0,
                                                     uint32_t weightStride,
-                                                    float* weightTemp,
+                                                    __ubuf__ float* weightTemp,
                                                     const int gSize)
 {
     auto weight1 = weight0 + weightStride;
