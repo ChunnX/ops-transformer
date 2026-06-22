@@ -77,26 +77,33 @@ class SparseFlashMlaGradOpBuilder(OpBuilder):
                                 ori_win_left=-1, ori_win_right=-1,
                                 layout_q="BSND", layout_kv="BSND"):
             dq = q.new_empty(q.shape, dtype=q.dtype, device='meta')
-            dOriKv = ori_kv.new_empty(ori_kv.shape, dtype=ori_kv.dtype, device='meta') if ori_kv != None else None
-            dCmpKv = cmp_kv.new_empty(cmp_kv.shape, dtype=cmp_kv.dtype, device='meta') if cmp_kv != None else None
-            dSinks = sinks.new_empty(sinks.shape, dtype=sinks.dtype, device='meta') if sinks != None else None
-            oriSoftmaxL1Norm = ori_sparse_indices.new_empty(ori_sparse_indices.shape, dtype=ori_sparse_indices.dtype, device='meta') if ori_sparse_indices != None else None
-            cmpSoftmaxL1Norm = cmp_sparse_indices.new_empty(cmp_sparse_indices.shape, dtype=cmp_sparse_indices.dtype, device='meta') if cmp_sparse_indices != None else None
+            dori_kv = ori_kv.new_empty(ori_kv.shape, dtype=ori_kv.dtype, device='meta') if ori_kv is not None else None
+            dcmp_kv = cmp_kv.new_empty(cmp_kv.shape, dtype=cmp_kv.dtype, device='meta') if cmp_kv is not None else None
+            dsinks = sinks.new_empty(sinks.shape, dtype=sinks.dtype, device='meta') if sinks is not None else None
+            ori_softmax_l1_norm = \
+                ori_sparse_indices.new_empty(ori_sparse_indices.shape, dtype=ori_sparse_indices.dtype, device='meta') \
+                if ori_sparse_indices is not None else None
+            cmp_softmax_l1_norm = \
+                cmp_sparse_indices.new_empty(cmp_sparse_indices.shape, dtype=cmp_sparse_indices.dtype, device='meta') \
+                if cmp_sparse_indices is not None else None
 
-            return (dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm)
+            return (dq, dori_kv, dcmp_kv, dsinks, ori_softmax_l1_norm, cmp_softmax_l1_norm)
 
 
 # Instantiate the builder
 smlag_op_builder = SparseFlashMlaGradOpBuilder()
 op_module = smlag_op_builder.load()  # Compiles/loads the .so file
 
+
 @impl(AS_LIBRARY, "sparse_flash_mla_grad_metadata", "PrivateUse1")
 def sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
                                         *, cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
                                         seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
                                         cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
-                                        batch_size=None, max_seqlen_q=None, max_seqlen_ori_kv=None, max_seqlen_cmp_kv=None,
-                                        ori_topk=None, cmp_topk=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
+                                        batch_size=None, max_seqlen_q=None, 
+                                        max_seqlen_ori_kv=None, max_seqlen_cmp_kv=None,
+                                        ori_topk=None, cmp_topk=None, cmp_ratio=None, 
+                                        ori_mask_mode=0, cmp_mask_mode=0,
                                         ori_win_left=-1, ori_win_right=-1,
                                         layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True
                                     ):
@@ -114,15 +121,19 @@ def sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
                                         layout_q, layout_kv, has_ori_kv, has_cmp_kv
                                     )
 
+
 @torch.library.register_kernel("cann_ops_transformer::sparse_flash_mla_grad_metadata", None)
 def sparse_flash_mla_grad_metadata_fallback(num_heads_q, num_heads_kv, head_dim,
                                         *, cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
                                         seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
                                         cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
-                                        batch_size=None, max_seqlen_q=None, max_seqlen_ori_kv=None, max_seqlen_cmp_kv=None,
-                                        ori_topk=None, cmp_topk=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
+                                        batch_size=None, max_seqlen_q=None, 
+                                        max_seqlen_ori_kv=None, max_seqlen_cmp_kv=None,
+                                        ori_topk=None, cmp_topk=None, cmp_ratio=None, 
+                                        ori_mask_mode=0, cmp_mask_mode=0,
                                         ori_win_left=-1, ori_win_right=-1,
-                                        layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True
+                                        layout_q="BSND", layout_kv="BSND", 
+                                        has_ori_kv=True, has_cmp_kv=True
                                     ):
     # 处理所有 tensor 都为 None 的情况
     # 调用 NPU 实现
@@ -137,6 +148,7 @@ def sparse_flash_mla_grad_metadata_fallback(num_heads_q, num_heads_kv, head_dim,
                                     )
 
 torch.compiler.allow_in_graph(sparse_flash_mla_grad_metadata)
+
 
 @impl(AS_LIBRARY, smlag_op_builder.name, "PrivateUse1")
 def sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_kv=None,
