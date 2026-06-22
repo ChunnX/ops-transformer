@@ -160,7 +160,7 @@ bool AllGatherMatmulTilingBase::CheckInputParaArraySize()
         OP_TILING_CHECK((x1Dim1 != x2KValue) || (x1Dim1 == 0) || (x2KValue == 0),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Dim1 and x2KValue",
             (std::to_string(x1Dim1) + " and " + std::to_string(x2KValue)).c_str(),
-            "If the dtype of input is fp8, the value of x1Dim1 must be equal to that of x2KValue"),
+            "If the dtype of input is fp8 or fp4, the value of x1Dim1 must be equal to that of x2KValue"),
             return false);
     }
 
