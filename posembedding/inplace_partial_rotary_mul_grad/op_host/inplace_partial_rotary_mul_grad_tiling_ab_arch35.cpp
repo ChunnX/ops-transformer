@@ -17,6 +17,7 @@
 
 namespace optiling {
 constexpr uint64_t TILING_KEY_AB = 204;
+constexpr uint64_t INPLACE_PARTIAL_ROTARY_MUL_GRAD_AB_TILING_PRIORITY = 25000;
 constexpr int64_t CONST_TWO = 2;
 constexpr int64_t DB_FLAG = 2;
 
@@ -88,8 +89,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::DoOpTiling()
     int64_t baseBlockX = baseBlockInUb / dSizeX;
 
     // 同精度时 cos+sin 占 1 份 dSizeX；混合精度时也占 1 份（buffer 统一大小）
-    OP_CHECK_IF(baseBlockX < 1,
-                OP_LOGE(context_->GetNodeName(), "ubSize can't load AB grad, d = %ld.", sliceLength_),
+    OP_CHECK_IF(baseBlockX < 1, OP_LOGE(context_->GetNodeName(), "ubSize can't load AB grad, d = %ld.", sliceLength_),
                 return ge::GRAPH_FAILED);
 
     ubFactorN_ = std::min(blockFactorN_, baseBlockX - 1);
@@ -153,8 +153,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClassAB::PostTiling()
             "ubFactorBS=%ld ubFactorN=%ld usedCoreNum=%ld rotaryMode=%ld "
             "sliceStart=%ld sliceEnd=%ld sliceLength=%ld",
             b_, s_, bn_, d_, dAlign_, dSplitCoef_, blockNumBS_, blockFactorBS_, blockTailBS_, blockNumN_, blockFactorN_,
-            blockTailN_, ubFactorBS_, ubFactorN_, usedCoreNum_, static_cast<int64_t>(rotaryMode_), sliceStart_, sliceEnd_,
-            sliceLength_);
+            blockTailN_, ubFactorBS_, ubFactorN_, usedCoreNum_, static_cast<int64_t>(rotaryMode_), sliceStart_,
+            sliceEnd_, sliceLength_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -167,5 +167,6 @@ bool InplacePartialRotaryMulGradRegBaseTilingClassAB::IsCapable()
     return layout_ == InplacePartialRotaryMulGradLayout::SBND;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(InplacePartialRotaryMulGrad, InplacePartialRotaryMulGradRegBaseTilingClassAB, 25000);
+REGISTER_OPS_TILING_TEMPLATE(InplacePartialRotaryMulGrad, InplacePartialRotaryMulGradRegBaseTilingClassAB,
+                             INPLACE_PARTIAL_ROTARY_MUL_GRAD_AB_TILING_PRIORITY);
 } // namespace optiling
