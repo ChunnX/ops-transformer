@@ -700,6 +700,13 @@ public:
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
+        if (info.isLastS2Loop) {
+            uint32_t s2LastToken = s2FirstTokenAlign64 + bandLength;
+            info.actSingleLoopS2Size = s2LastToken - info.s2Idx;
+            info.actSingleLoopS2SizeAlign =
+                AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+        }
+
         if constexpr (USE_DN) {
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
             info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
