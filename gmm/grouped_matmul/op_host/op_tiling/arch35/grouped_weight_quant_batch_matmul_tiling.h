@@ -256,11 +256,20 @@ protected:
     bool IsA16W4ND() const;
     bool IsMxA8W4() const;
     bool CheckPerTokenScale(const gert::TilingContext* context) const;
+<<<<<<< Updated upstream
     bool CheckUnsupportDataFlow() const;
     bool CheckAntiQuantDtype() const;
     bool CheckBiasDtype() const;
     bool CheckGroupTypeAndSplitItem() const;
     bool CheckTransposeStatus() const;
+=======
+    bool CheckUnsupportDataFlow(const gert::TilingContext *context) const;
+    bool CheckUnsupportedRemainingCases() const;
+    bool CheckAntiQuantDtype(const gert::TilingContext *context) const;
+    bool CheckBiasDtype(const gert::TilingContext *context) const;
+    bool CheckGroupTypeAndSplitItem(const gert::TilingContext *context) const;
+    bool CheckTransposeStatus(const gert::TilingContext *context) const;
+>>>>>>> Stashed changes
     bool SetShapeListSplitMSingleXSingleWeightSingleY(const gert::TilingContext *context);
     bool SetShapeListMultiXMultiWeightMultiY(const gert::TilingContext *context);
     uint16_t GetTensorListSize(const gert::TilingContext *context, uint32_t attrIdx) const;

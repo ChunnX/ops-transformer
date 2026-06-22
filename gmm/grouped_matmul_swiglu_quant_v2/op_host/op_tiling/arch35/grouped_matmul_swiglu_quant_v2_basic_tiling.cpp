@@ -106,6 +106,12 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeAttrs()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "attrs", "nullptr",
                                                       "attrs cannot be nullptr"),
                 return false);
+    return ValidateAttrsCommon();
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::ValidateAttrsCommon()
+{
+    auto attrs = context_->GetAttrs();
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
     const int64_t *dequantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE);
@@ -139,12 +145,12 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeAttrs()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "quant_dtype", "nullptr",
                                                       "quantDtypePtr cannot be nullptr"),
                 return false);
-    // gmm quant tiling need groupType to calculate L1 tiling 
-  	inputParams_.groupType = SPLIT_M;
+    // gmm quant tiling need groupType to calculate L1 tiling
+    inputParams_.groupType = SPLIT_M;
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
+bool GroupedMatmulSwigluQuantV2Tiling950::LoadDescsAndDtypes()
 {
     auto xDesc = context_->GetInputDesc(X_INDEX);
     OP_CHECK_IF(xDesc == nullptr,
@@ -179,6 +185,35 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                                                       "outScaleDesc cannot be nullptr"),
                 return false);
     inputParams_.outScaleDtype = outScaleDesc->GetDataType();
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckWeightNzDtype(
+    const gert::Shape &xShape, const gert::Shape &wShape, ge::Format weightFormat)
+{
+    OP_CHECK_IF(!((inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN &&
+                   inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN) ||
+                  ((inputParams_.aDtype == ge::DT_FLOAT4_E2M1 ||
+                   inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
+                   (inputParams_.bDtype == ge::DT_FLOAT4_E2M1 ||
+                    inputParams_.bDtype == ge::DT_FLOAT4_E1M2))),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    inputParams_.opType, "x, weight",
+                    ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                    "when the format of weight is FRACTAL_NZ, the dtypes of x and weight must be both "
+                    "DT_FLOAT8_E4M3FN or FLOAT4"),
+                return false);
+    if (IsMxFp4WeightNz() && !CheckMxFp4WeightNzShape(xShape, wShape)) {
+        return false;
+    }
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
+{
+    OP_CHECK_IF(!LoadDescsAndDtypes(),
+                OP_LOGE(inputParams_.opName, "LoadDescsAndDtypes failed."), return false);
     auto x1ScaleStorageShape = context_->GetInputShape(PER_TOKEN_SCALE_INDEX);
     OP_CHECK_IF(x1ScaleStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "per_token_scale", "nullptr",
@@ -203,6 +238,13 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                                                       "wStorageShape cannot be nullptr"),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    return ValidateDtypeAndQuantParams(xShape, wShape, wScaleShape, xScaleShape);
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::ValidateDtypeAndQuantParams(
+    const gert::Shape &xShape, const gert::Shape &wShape,
+    const gert::Shape &wScaleShape, const gert::Shape &xScaleShape)
+{
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "attrs", "nullptr",
@@ -213,42 +255,25 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(wScaleShape, xScaleShape),
                 OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
+    auto wDesc = context_->GetInputDesc(WEIGHT_INDEX);
     auto weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetFormat().GetStorageFormat()));
     inputParams_.bFormat = weightFormat;
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
         return CheckDtypePertoken();
     }
     if (weightFormat == ge::FORMAT_FRACTAL_NZ) {
-        const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
-        OP_CHECK_IF(!((inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN &&
-                       inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN) ||
-                      ((inputParams_.aDtype == ge::DT_FLOAT4_E2M1 ||
-                       inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
-                       (inputParams_.bDtype == ge::DT_FLOAT4_E2M1 ||
-                        inputParams_.bDtype == ge::DT_FLOAT4_E1M2))),
-                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                        inputParams_.opType, "x, weight",
-                        ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
-                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
-                        "when the format of weight is FRACTAL_NZ, the dtypes of x and weight must be both "
-                        "DT_FLOAT8_E4M3FN or FLOAT4"),
-                    return false);
-        if (IsMxFp4WeightNz() && !CheckMxFp4WeightNzShape(xShape, wShape)) {
-            return false;
-        }
+        OP_CHECK_IF(!CheckWeightNzDtype(xShape, wShape, weightFormat),
+                    OP_LOGE(inputParams_.opName, "CheckWeightNzDtype failed."), return false);
     }
-
     OP_CHECK_IF(!CheckWeightNdDtype(),
                 OP_LOGE(context_->GetNodeName(), "CheckWeightNdDtype failed."),
                 return false);
-
     const int64_t *quantDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE);
     if (quantDtypePtr != nullptr) {
         ge::DataType quantDtype = static_cast<ge::DataType>(*quantDtypePtr);
         OP_CHECK_IF(!CheckQuantDtypeByFormat(quantDtype, weightFormat),
                     OP_LOGE(context_->GetNodeName(), "CheckQuantDtypeByFormat failed."), return false);
     }
-    
     return CheckDtype();
 }
 
