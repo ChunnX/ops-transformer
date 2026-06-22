@@ -28,6 +28,7 @@ __aicore__ inline void CombineTokens(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t>& tripleTensor,
     LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const Params& params)
 {
+    printf("CombineTokens no quant\n");
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;

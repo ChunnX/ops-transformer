@@ -909,6 +909,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
     GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State, uint32_t expertIdx)
 {
+    printf("ProcessCombine quant\n");
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
 
     GlobalTensor<int32_t> rowGroupComplete;
