@@ -452,7 +452,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnSparseLightningIndexerKLLossGrad外部接口不提供deterministic入参，kernel侧优先使用运行时上下文中的确定性配置。
+  - aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 
 - 公共约束：
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
