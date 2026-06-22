@@ -99,12 +99,11 @@ private:
 */
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
            bool BTrans, bool IsMxFp4, uint8_t ServerMode>
-__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, IsMxFp4, ServerMode>::Init(
-                                GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM1,
-                                GM_ADDR dequantGM2, GM_ADDR biasGM, GM_ADDR scaleGM, GM_ADDR cGM,
-                                GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR contextGM,
-                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, __gm__ void* mc2InitTiling, 
-                                __gm__ void* mc2CcTiling, TPipe* tPipe)
+__aicore__ inline void
+AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, IsMxFp4, ServerMode>::Init(GM_ADDR aGM,
+    GM_ADDR bGM, GM_ADDR dequantGM1, GM_ADDR dequantGM2, GM_ADDR biasGM, GM_ADDR scaleGM, GM_ADDR cGM,
+    GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR contextGM, Mc2Tiling::AllGatherMatmulTilingDataFp8 *tilingData,
+    __gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling, TPipe *tPipe)
 {
     auto &&cfg = tilingData->param;
 
@@ -224,8 +223,8 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
 */
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
            bool BTrans, bool IsMxFp4, uint8_t ServerMode>
-__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
-                                         X2ScaleType, CType, ATrans, BTrans, IsMxFp4, ServerMode>::QuantMatmulLocalCompute()
+__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
+                                         CType, ATrans, BTrans, IsMxFp4, ServerMode>::QuantMatmulLocalCompute()
 {
     auto &&cfg = tilingData_->param;
     // 当N=0时，跳过本地计算
@@ -259,8 +258,8 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
  * @param isTail: 当前块是否为尾块
  * @return void
 */
-template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
-           bool BTrans, bool IsMxFp4,  uint8_t ServerMode>
+template <typename AType, typename BType, typename BiasType,
+          typename X2ScaleType, typename CType, bool ATrans, bool BTrans, bool IsMxFp4, uint8_t ServerMode>
 __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
                                          CType, ATrans, BTrans, IsMxFp4, ServerMode>::MatmulKernelComputeGather(
     GM_ADDR aGM, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& qMmv3Tiling, uint32_t count, bool isLast,
@@ -342,11 +341,10 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
     QuantMatmulGatherCompute();
 }
 
-template <
-    typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans, bool BTrans, bool IsMxFp4,
-    uint8_t ServerMode>
-__aicore__ inline void
-AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, IsMxFp4, ServerMode>::QuantMatmulGatherCompute()
+template <typename AType, typename BType, typename BiasType,
+          typename X2ScaleType, typename CType, bool ATrans, bool BTrans, bool IsMxFp4, uint8_t ServerMode>
+__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
+                                         CType, ATrans, BTrans, IsMxFp4, ServerMode>::QuantMatmulGatherCompute()
 {
     auto &&cfg = tilingData_->param;
     // 处理gather主块
