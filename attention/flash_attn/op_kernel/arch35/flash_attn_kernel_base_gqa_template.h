@@ -220,7 +220,6 @@ public:
                                         workspace);
                 vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
-            vecFaBlock.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
@@ -901,6 +900,7 @@ public:
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {
                 vecFaBlock.InitBuffers();
+                vecFaBlock.ClearOutput();
                 vecFaBlock.AllocEventID();
             } else {
                 cubeBlock.InitBuffers();
