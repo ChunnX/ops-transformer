@@ -203,6 +203,7 @@ ge::graphStatus QSMLAInfoParser::GetKvLayout()
     const map<string, QSMLALayout> layoutKVMap = {
         {"PA_BBND",     QSMLALayout::PA_BBND},
         {"TND",       QSMLALayout::TND},
+        {"BSND",       QSMLALayout::BSND},
     };
 
     std::string layout(opParamInfo_.layoutKv);
