@@ -510,52 +510,97 @@ aclnnStatus aclnnSparseFlashMla(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
-  <col style="width: 262px">
-  <col style="width: 121px">
-  <col style="width: 817px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
-    </tr>
-    <tr>
-      <td rowspan="7">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="7">161002</td>
-      <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
-    </tr>
-    <tr>
-      <td>N1不在[1,128]范围内，或N2不为1，或N1不能被N2整除，或N1/N2不在[1,128]范围内。</td>
-    </tr>
-    <tr>
-      <td>N1/N2不是平台支持范围内的2的幂。</td>
-    </tr>
-    <tr>
-      <td>D不为512。</td>
-    </tr>
-    <tr>
-      <td>oriMaskMode或cmpMaskMode不在平台支持范围内。</td>
-    </tr>
-    <tr>
-      <td>cmpRatio不在平台支持范围内，或cmpRatio与C1A/C4A/C128A场景不匹配。</td>
-    </tr>
-    <tr>
-      <td>layoutQOptional、layoutKvOptional、topkValueMode、oriWinLeft、oriWinRight、cmpSparseIndicesOptional、metadataOptional、sinksOptional、cuSeqlens或seqused相关参数规格不在支持范围内。</td>
-    </tr>
-  </tbody>
-  </table>
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128；oriMaskMode仅支持4，cmpMaskMode仅支持3；cmpRatio支持1、4、128，C1A场景传1，C4A场景传4，C128A场景传128。
-  - <term>Ascend 950PR/Ascend 950DT</term>：N1/N2支持2、4、8、16、32、64、128，不支持1；oriMaskMode支持0、3、4，cmpMaskMode支持0、3；cmpRatio支持[1,128]。
+    <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
+    <col style="width: 262px">
+    <col style="width: 121px">
+    <col style="width: 817px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_PARAM_NULLPTR</td>
+        <td>161001</td>
+        <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
+      </tr>
+      <tr>
+        <td rowspan="7">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="7">161002</td>
+        <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
+      </tr>
+      <tr>
+        <td>N1不在[1,128]范围内，或N2不为1，或N1不能被N2整除，或N1/N2不是[1,128]范围内的2的幂。</td>
+      </tr>
+      <tr>
+        <td>D不为512。</td>
+      </tr>
+      <tr>
+        <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
+      </tr>
+      <tr>
+        <td>cmpRatio不为1、4、128，或cmpRatio与C1A/C4A/C128A场景不匹配。</td>
+      </tr>
+      <tr>
+        <td>oriWinLeft不为127，或oriWinRight不为0。</td>
+      </tr>
+      <tr>
+        <td>layoutQOptional、layoutKvOptional、topkValueMode、cmpSparseIndicesOptional、metadataOptional、sinksOptional、cuSeqlens或seqused相关参数规格不在支持范围内。</td>
+      </tr>
+    </tbody>
+    </table>
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+
+    <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
+    <col style="width: 262px">
+    <col style="width: 121px">
+    <col style="width: 817px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_PARAM_NULLPTR</td>
+        <td>161001</td>
+        <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
+      </tr>
+      <tr>
+        <td rowspan="7">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="7">161002</td>
+        <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
+      </tr>
+      <tr>
+        <td>N1不在[1,128]范围内，或N2不为1，或N1不能被N2整除，或N1/N2不在[1,128]范围内。</td>
+      </tr>
+      <tr>
+        <td>D不为512。</td>
+      </tr>
+      <tr>
+        <td>oriMaskMode不为0、3、4，或cmpMaskMode不为0、3。</td>
+      </tr>
+      <tr>
+        <td>hasCmpKv为true时，cmpRatio不在[1,128]范围内。</td>
+      </tr>
+      <tr>
+        <td>oriWinLeft或oriWinRight小于-1。</td>
+      </tr>
+      <tr>
+        <td>layoutQOptional、layoutKvOptional、topkValueMode、cmpSparseIndicesOptional、metadataOptional、sinksOptional、cuSeqlens或seqused相关参数规格不在支持范围内。</td>
+      </tr>
+    </tbody>
+    </table>
 
 ## aclnnSparseFlashMla
 

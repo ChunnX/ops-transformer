@@ -444,63 +444,119 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
-  <col style="width: 262px">
-  <col style="width: 121px">
-  <col style="width: 817px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
-      <td>561101</td>
-      <td>创建aclOpExecutor失败。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_INNER_NULLPTR</td>
-      <td>561103</td>
-      <td>workspaceSize或executor为空指针；可选输入做连续化处理后为空指针；或添加SparseFlashMlaMetadata AICPU任务失败。</td>
-    </tr>
-    <tr>
-      <td rowspan="9">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="9">161002</td>
-      <td>batchSize或maxSeqlenQ为负数。</td>
-    </tr>
-    <tr>
-      <td>numHeadsQ不在[1,128]范围内，numHeadsKv不为1，numHeadsQ不能被numHeadsKv整除，或numHeadsQ/numHeadsKv不在[1,128]范围内。</td>
-    </tr>
-    <tr>
-      <td>numHeadsQ/numHeadsKv不是平台支持范围内的2的幂。</td>
-    </tr>
-    <tr>
-      <td>headDim不为512。</td>
-    </tr>
-    <tr>
-      <td>oriMaskMode不在支持范围内，或cmpMaskMode不在支持范围内。</td>
-    </tr>
-    <tr>
-      <td>oriWinLeft或oriWinRight不在平台支持范围内。</td>
-    </tr>
-    <tr>
-      <td>cmpRatio不在平台支持范围内，或cmpRatio与C1A/C4A/C128A场景不匹配。</td>
-    </tr>
-    <tr>
-      <td>cmpTopk不为0、512或1024。</td>
-    </tr>
-    <tr>
-      <td>layoutQOptional、layoutKvOptional、cuSeqlens、seqused或metaData的shape、数据类型、必选关系不在支持范围内。</td>
-    </tr>
-  </tbody>
-  </table>
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numHeadsQ/numHeadsKv支持1、2、4、8、16、32、64、128；oriWinLeft仅支持127，oriWinRight仅支持0；cmpRatio支持1、4、128，C1A场景传1，C4A场景传4，C128A场景传128。
-  - <term>Ascend 950PR/Ascend 950DT</term>：numHeadsQ/numHeadsKv支持2、4、8、16、32、64、128，不支持1；oriWinLeft和oriWinRight支持-1或非负数；cmpRatio支持[1,128]。
+    <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
+    <col style="width: 262px">
+    <col style="width: 121px">
+    <col style="width: 817px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
+        <td>561101</td>
+        <td>创建aclOpExecutor失败。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_INNER_NULLPTR</td>
+        <td>561103</td>
+        <td>workspaceSize或executor为空指针；可选输入做连续化处理后为空指针；或添加SparseFlashMlaMetadata AICPU任务失败。</td>
+      </tr>
+      <tr>
+        <td rowspan="9">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="9">161002</td>
+        <td>batchSize或maxSeqlenQ为负数。</td>
+      </tr>
+      <tr>
+        <td>numHeadsQ不在[1,128]范围内，numHeadsKv不为1，numHeadsQ不能被numHeadsKv整除，或numHeadsQ/numHeadsKv不是[1,128]范围内的2的幂。</td>
+      </tr>
+      <tr>
+        <td>headDim不为512。</td>
+      </tr>
+      <tr>
+        <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
+      </tr>
+      <tr>
+        <td>oriWinLeft不为127，或oriWinRight不为0。</td>
+      </tr>
+      <tr>
+        <td>cmpRatio不为1、4、128，或cmpRatio与C1A/C4A/C128A场景不匹配。</td>
+      </tr>
+      <tr>
+        <td>cmpTopk不为0、512或1024。</td>
+      </tr>
+      <tr>
+        <td>oriTopkLengthOptional或cmpTopkLengthOptional传入非空Tensor。</td>
+      </tr>
+      <tr>
+        <td>layoutQOptional、layoutKvOptional、cuSeqlens、seqused或metaData的shape、数据类型、必选关系不在支持范围内。</td>
+      </tr>
+    </tbody>
+    </table>
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+
+    <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
+    <col style="width: 262px">
+    <col style="width: 121px">
+    <col style="width: 817px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
+        <td>561101</td>
+        <td>创建aclOpExecutor失败。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_INNER_NULLPTR</td>
+        <td>561103</td>
+        <td>workspaceSize或executor为空指针；可选输入做连续化处理后为空指针；或添加SparseFlashMlaMetadata AICPU任务失败。</td>
+      </tr>
+      <tr>
+        <td rowspan="9">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="9">161002</td>
+        <td>batchSize或maxSeqlenQ为负数。</td>
+      </tr>
+      <tr>
+        <td>numHeadsQ不在[1,128]范围内，numHeadsKv不为1，numHeadsQ不能被numHeadsKv整除，或numHeadsQ/numHeadsKv不在[1,128]范围内。</td>
+      </tr>
+      <tr>
+        <td>headDim不为512。</td>
+      </tr>
+      <tr>
+        <td>oriMaskMode不为0、3、4，或cmpMaskMode不为0、3。</td>
+      </tr>
+      <tr>
+        <td>oriWinLeft或oriWinRight小于-1。</td>
+      </tr>
+      <tr>
+        <td>hasCmpKv为true时，cmpRatio不在[1,128]范围内。</td>
+      </tr>
+      <tr>
+        <td>hasCmpKv为true时，cmpTopk为负数。</td>
+      </tr>
+      <tr>
+        <td>oriTopkLengthOptional或cmpTopkLengthOptional传入非空Tensor。</td>
+      </tr>
+      <tr>
+        <td>layoutQOptional、layoutKvOptional、cuSeqlens、seqused或metaData的shape、数据类型、必选关系不在支持范围内。</td>
+      </tr>
+    </tbody>
+    </table>
 
 ## aclnnSparseFlashMlaMetadata
 
