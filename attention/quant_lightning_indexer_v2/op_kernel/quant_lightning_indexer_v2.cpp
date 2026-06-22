@@ -15,7 +15,7 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#if (__CCE_AICORE__ == 310)
+#if (true)
     #include "arch35/quant_lightning_indexer_v2_kernel.h"
 #else
     #include "arch22/quant_lightning_indexer_v2_kernel.h"
@@ -50,7 +50,7 @@ __global__ __aicore__ void quant_lightning_indexer_v2(__gm__ uint8_t *query, __g
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);  // 修改为1:1比值
 
-#if (__CCE_AICORE__ == 310)
+#if (true)
     if (ORIG_DTYPE_Q == DT_FLOAT8_E4M3FN) {
 #ifdef ORIG_DTYPE_QUERY_DEQUANT_SCALE
         if (ORIG_DTYPE_QUERY_DEQUANT_SCALE == DT_FLOAT8_E8M0) {

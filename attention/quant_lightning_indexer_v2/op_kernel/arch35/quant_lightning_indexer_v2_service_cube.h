@@ -144,7 +144,7 @@ template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInfo)
 {
     constInfo_ = constInfo;
-    s2BasicBlock_ = (constInfo_.maxSeqlenQ <= 4 && constInfo_.maxSeqlenQ >= 0) ? 256 : 128;
+    s2BasicBlock_ = 128;
     keyBufferOffset_ = s2BasicBlock_ * D_BASIC_BLOCK;
 }
 
