@@ -60,7 +60,7 @@ void EngramEmbedingUtilsBuilder::BuildContext(const HcclComm &hcclHandle, const 
     CreateContext(hcclHandle, mc2ContextTag, engine, ctx, commContextStruct);
 }
 
-void EngramEmbedingUtilsBuilder::AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &memTag,
+void EngramEmbedingUtilsBuilder::AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &memBufferTag,
                                     uint32_t rankId)
 {
     void *hostPtr = nullptr;
@@ -79,9 +79,9 @@ void EngramEmbedingUtilsBuilder::AllocateAndRegisterBuffer(const HcclComm &commH
     mem.type = COMM_MEM_TYPE_DEVICE;
     mem.addr = devPtr;
     mem.size = bufBytes_;
-    auto hcclRet = HcclCommMemRegFunc(commHandle, memTag.c_str(), &mem, &memHandle_);
+    auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &memHandle_);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS,
-                "HcclCommMemReg(tag='", memTag, "', size=", bufBytes_, ") failed, ret=", hcclRet);
+                "HcclCommMemReg(tag='", memBufferTag, "', size=", bufBytes_, ") failed, ret=", hcclRet);
 
     myBufHost_ = hostPtr;
     selfBufDev_ = devPtr;
@@ -171,17 +171,18 @@ void EngramEmbedingUtilsBuilder::GetHcclCommResource(const HcclComm &commHandle,
         // 取自己注册的buffer作为通信buffer
         bool hasTargetMem = false;
         for (uint32_t j = 0; j < memNum; j++) {
-            if (memTags = nullptr || remoteMems = nullptr) {
+            if (memTags == nullptr || remoteMems == nullptr) {
                 break;
             }
-            if (memTags[j] == targetTag) {
+            if (memTags[j] != nullptr && targetTag == memTags[j]) {
                 uint64_t targetMemAddr = reinterpret_cast<uint64_t>(remoteMems[j].addr);
-                commContextStruct->virtualAddrList[j] = targetMemAddr;
+                commContextStruct->virtualAddrList[i] = targetMemAddr;
                 ASCEND_LOGI("Get Targe Mem(%s) Success, Mem id is %d, Addr is %lu", targetTag.c_str(), j, targetMemAddr);
                 hasTargetMem = true;
+                break;
             }
         }
-        TORCH_CHECK(!hasTargetMem, "Target Mem : ", targetTag, " is not found.");
+        TORCH_CHECK(hasTargetMem, "Target Mem : ", targetTag, " is not found.");
     }
 }
 
@@ -199,10 +200,10 @@ void EngramEmbedingUtilsBuilder::CreateContext(const HcclComm &commHandle, const
     hcclRet = HcclGetRankSizeFunc(commHandle, &commContextStruct.rankSize);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
 
-    std::string memTag = mc2ContextTag + "_buffer";
-    AllocateAndRegisterBuffer(commHandle, memTag, commContextStruct.epRankId);
+    std::string memBufferTag = mc2ContextTag + "_buffer";
+    AllocateAndRegisterBuffer(commHandle, memBufferTag, commContextStruct.epRankId);
 
-    GetHcclCommResource(commHandle, engine, &commContextStruct, commContextStruct.rankSize, memTag);
+    GetHcclCommResource(commHandle, engine, &commContextStruct, commContextStruct.rankSize, memBufferTag);
 
     hcclRet = HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), &commContextStruct, commContextSize, 0);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Copy context from host to device failed, ret: ", hcclRet);

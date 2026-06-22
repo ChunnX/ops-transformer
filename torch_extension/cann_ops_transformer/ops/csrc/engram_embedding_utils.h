@@ -61,14 +61,15 @@ public:
     void BuildContext(const HcclComm &hcclHandle, const std::string &group,
                       CommContext &commContextStruct);
     static bool CheckLinks(uint32_t &netLinkNum, CommLink *linksList);
-    void AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &mc2ContextTag,
+    void AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &memBufferTag,
                                     uint32_t rankId);
     void BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim,
                            std::vector<HcclChannelDesc> &channelDesc);
     void GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
                              ChannelHandle *channels, uint32_t length);
     void GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine,
-                              CommContext *commContextStruct, uint32_t rankSize);
+                              CommContext *commContextStruct, uint32_t rankSize,
+                              const std::string &targetTag);
     void CreateContext(const HcclComm &commHandle, const std::string &mc2ContextTag,
                         const CommEngine &engine, void *&ctx,
                         CommContext &commContextStruct);
