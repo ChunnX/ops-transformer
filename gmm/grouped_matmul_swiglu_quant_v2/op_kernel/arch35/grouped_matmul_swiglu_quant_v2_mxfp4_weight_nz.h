@@ -25,7 +25,6 @@ namespace Block {
 namespace {
 constexpr uint64_t MX_SCALE_FACTOR_BIT = 8UL;
 constexpr uint64_t MX_SCALE_FACTOR_MASK = 0xFFUL;
-constexpr uint64_t MX_SCALE_FACTOR_DEFAULT = 1UL;
 constexpr uint64_t MX_L1_BUFFER_NUM = 2UL;
 constexpr uint64_t K_DIM = 2UL;
 } // namespace
@@ -43,8 +42,6 @@ public:
         (void)tpipe;
         uint64_t scaleFactorA = matmulTiling->mxTypePara & MX_SCALE_FACTOR_MASK;
         uint64_t scaleFactorB = (matmulTiling->mxTypePara >> MX_SCALE_FACTOR_BIT) & MX_SCALE_FACTOR_MASK;
-        scaleFactorA = scaleFactorA == 0 ? MX_SCALE_FACTOR_DEFAULT : scaleFactorA;
-        scaleFactorB = scaleFactorB == 0 ? MX_SCALE_FACTOR_DEFAULT : scaleFactorB;
         uint64_t kAL1 = static_cast<uint64_t>(matmulTiling->stepKa) * static_cast<uint64_t>(matmulTiling->baseK);
         uint64_t kBL1 = static_cast<uint64_t>(matmulTiling->stepKb) * static_cast<uint64_t>(matmulTiling->baseK);
         uint64_t scaleKL1 = Cgmct::Gemm::Min(
