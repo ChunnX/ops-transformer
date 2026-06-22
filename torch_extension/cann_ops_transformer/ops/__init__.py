@@ -7,8 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from .sparse_flash_mla_grad import npu_sparse_flash_mla_grad
-from .sparse_flash_mla_grad_metadata import npu_sparse_flash_mla_grad_metadata
+from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .moe_distribute_combine import npu_moe_distribute_combine
 from .mega_moe import (
