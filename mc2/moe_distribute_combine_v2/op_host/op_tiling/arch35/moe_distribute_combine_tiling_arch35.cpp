@@ -323,7 +323,7 @@ static bool CheckSharedAttrs(const gert::TilingContext *context, const MoeDistri
     OP_TILING_CHECK(((sharedExpertNum == 0U) && (sharedExpertRankNum > 0U)) ||
         ((sharedExpertNum > 0U) && (sharedExpertRankNum == 0U)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "sharedExpertRankNum/sharedExpertNum",
-            std::to_string(sharedExpertRankNum).c_str() + "/" + std::to_string(sharedExpertNum),
+            std::to_string(sharedExpertRankNum) + "/" + std::to_string(sharedExpertNum),
             "both must be zero or both non-zero"),
         return false);
 
