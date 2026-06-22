@@ -498,11 +498,9 @@ bool FiaTilingFullQuantMxArch35::IsExistRowInvalid(const split_core_v2::BaseInfo
     for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
         int32_t s1Size = split_core_v2::GetS1SeqSize(bIdx, baseInfo);
         int32_t s2Size = split_core_v2::GetS2SeqSize(bIdx, baseInfo);
-
         if (s2Size == 0) {
  	        return true;
  	    }
-
  	    if (!baseInfo.attenMaskFlag || s1Size == 0) {
             // 非mask场景或空Qtensor，跳过
             continue;
