@@ -60,8 +60,8 @@ public:
     static constexpr uint64_t D_BASIC_BLOCK_L1 = 512;
     static constexpr uint64_t S2_BASIC_BLOCK_L1 = 32;
 
-    static constexpr uint64_t M_BASIC_BLOCK_L0 = 32;
-    static constexpr uint64_t D_BASIC_BLOCK_L0 = 512;
+    static constexpr uint64_t M_BASIC_BLOCK_L0 = 96;
+    static constexpr uint64_t D_BASIC_BLOCK_L0 = 128;
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 32;
 
     static constexpr uint64_t BF16_BLOCK_CUBE = 16;
@@ -77,10 +77,10 @@ protected:
                                 uint64_t s2L0RealSize, const SICommon::RunInfo &runInfo);
     __aicore__ inline void ComuteL0c(uint64_t s1gOffset, uint64_t s2Offset, uint64_t kGmOffset, uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
                                      const SICommon::RunInfo &runInfo);
-    __aicore__ inline void LoadKeyToL0b(uint64_t s2L0Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
+    __aicore__ inline void LoadKeyToL0b(uint64_t s2L0Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize, uint64_t kL1Offset,
                                         const SICommon::RunInfo &runInfo);
     __aicore__ inline void LoadQueryToL0a(uint64_t s1gL0Offset, uint64_t s1gL1RealSize,
-                                          uint64_t s1gL0RealSize, const SICommon::RunInfo &runInfo);
+                                          uint64_t s1gL0RealSize, uint64_t kL1Offset, const SICommon::RunInfo &runInfo);
     __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, uint64_t kGmOffset, const SICommon::RunInfo &runInfo);
     __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset, const SICommon::RunInfo &runInfo);
     GlobalTensor<int32_t> blkTableGm_;
@@ -181,20 +181,22 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                 for (uint64_t s2L1Offset = 0; s2L1Offset < s2L1RealSize; s2L1Offset += S2_BASIC_BLOCK_L0) {
                     uint64_t s2L0RealSize =
                         s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
-                    for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1RealSize; s1gL1Offset += M_BASIC_BLOCK_L0) {
-                        uint64_t s1gL0RealSize =
-                        s1gL1Offset + M_BASIC_BLOCK_L0 > s1gL1RealSize ? s1gL1RealSize - s1gL1Offset : M_BASIC_BLOCK_L0;
-                        WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                        LoadQueryToL0a(s1gL1Offset, s1gL1RealSize, s1gL0RealSize, runInfo);
-                        LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, runInfo);
+                    for (uint64_t kL1Offset = 0; kL1Offset < D_BASIC_BLOCK_L1; kL1Offset += D_BASIC_BLOCK_L0) {
+                        for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1RealSize; s1gL1Offset += M_BASIC_BLOCK_L0) {
+                            uint64_t s1gL0RealSize =
+                            s1gL1Offset + M_BASIC_BLOCK_L0 > s1gL1RealSize ? s1gL1RealSize - s1gL1Offset : M_BASIC_BLOCK_L0;
+                            WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
+                            LoadQueryToL0a(s1gL1Offset, s1gL1RealSize, s1gL0RealSize, kL1Offset, runInfo);
+                            LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, kL1Offset, runInfo);
 
-                        SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
-                        WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
+                            SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
+                            WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
 
-                        ComuteL0c(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, kGmOffset, s1gL0RealSize, s2L0RealSize, runInfo);
-                        SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                        l0BufIdx_++;
+                            ComuteL0c(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, kGmOffset + kL1Offset, s1gL0RealSize, s2L0RealSize, runInfo);
+                            SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
+                            l0BufIdx_++;
 
+                        }
                     }
                 }
                 if (s2GmOffset + S2_BASIC_BLOCK_L1 >= s2ProcessSize && runInfo.isLastS2InnerLoop) {
@@ -250,11 +252,11 @@ __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
-                                                     uint64_t s1gL0RealSize, const SICommon::RunInfo &runInfo)
+                                                     uint64_t s1gL0RealSize, uint64_t kL1Offset, const SICommon::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
-    loadData2DParamsV2.kStartPosition = 0;
+    loadData2DParamsV2.kStartPosition = CeilDiv(kL1Offset, BLOCK_CUBE);
     loadData2DParamsV2.mStep = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.kStep = CeilDiv(D_BASIC_BLOCK_L0, BF16_BLOCK_CUBE);
     loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
@@ -266,12 +268,12 @@ __aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uint6
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
+__aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize, uint64_t kL1Offset,
                                                    const SICommon::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = CeilDiv(s2L1Offset, BLOCK_CUBE);
-    loadData2DParamsV2.kStartPosition = 0;
+    loadData2DParamsV2.kStartPosition = CeilDiv(kL1Offset, BLOCK_CUBE);
     loadData2DParamsV2.mStep = CeilDiv(s2L0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.kStep = CeilDiv(D_BASIC_BLOCK_L0, BF16_BLOCK_CUBE);
     loadData2DParamsV2.srcStride = CeilDiv(s2L1RealSize, BLOCK_CUBE);
