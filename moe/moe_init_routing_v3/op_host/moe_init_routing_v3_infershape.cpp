@@ -124,7 +124,7 @@ static ge::graphStatus GetAndCheckAttrActiveExpertRange(const gert::RuntimeAttrs
 }
 
 static ge::graphStatus GetAndCheckAttrActiveNum(const gert::RuntimeAttrs *attrs, gert::InferShapeContext *context,
-                                                int64_t &activeNum, int64_t &dropPadMode)
+                                                int64_t &activeNum, const int64_t &dropPadMode)
 {
     OP_LOGD(context, "Begin to do GetAndCheckAttrActiveNum.");
     const int64_t *activeNumPtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_ACTIVE_NUM);
@@ -144,7 +144,7 @@ static ge::graphStatus GetAndCheckAttrActiveNum(const gert::RuntimeAttrs *attrs,
 
 static ge::graphStatus GetAndCheckAttrExpertCapacity(const gert::RuntimeAttrs *attrs, gert::InferShapeContext *context,
                                                      const gert::Shape *xShape, int64_t &expertCapacity,
-                                                     int64_t &dropPadMode)
+                                                     const int64_t &dropPadMode)
 {
     OP_LOGD(context, "Begin to do GetAndCheckAttrExpertCapacity.");
     const int64_t *expertCapacityPtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_EXPERT_CAPACITY);
@@ -402,7 +402,6 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
 }
 
 static ge::graphStatus CheckInputOffsetShape(gert::InferShapeContext *context, const gert::Shape *offsetShape,
-                                             const int64_t expertStart, const int64_t expertEnd,
                                              const int64_t quantMode)
 {
     // The shape of offset can be none.
@@ -481,7 +480,7 @@ static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const g
     }
 
     // Check the shape of offset
-    if (CheckInputOffsetShape(context, offsetShape, expertStart, expertEnd, quantMode) != ge::GRAPH_SUCCESS) {
+    if (CheckInputOffsetShape(context, offsetShape, quantMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
