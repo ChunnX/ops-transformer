@@ -169,6 +169,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR yOut,
     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
+    mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
+    rankId_ = mc2Context_->epRankId;
+
+    if (rankId_ == 0) {
+        GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 1);// + dstOffset;
+        hcomm_.WriteNbi(mc2Context_->hcommHandle_[0], mc2Context_->urmacclBuffer_[1], workspaceGM, 1);
+        hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
+    } else {
+        GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 0);// + dstOffset;
+        hcomm_.WriteNbi(mc2Context_->hcommHandle_[0], mc2Context_->urmacclBuffer_[0], workspaceGM, 1);
+        hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
+    }
+
+
     m_ = tilingData->bs;
     k_ = tilingData->h;
     aicNum_ = tilingData->aicNum;
@@ -186,6 +200,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
+    printf("rankId_ = %d\n", rankId_);
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
@@ -1119,11 +1134,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
 {
+   
     // 1.本卡数据处理
-    int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
-    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
-    SendAndQuantBuffInit();
-    SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
+    // int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
+    // SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
+    // SendAndQuantBuffInit();
+    // SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
     // ResetFlagList();             // 清理workSpace空间上的flag位
     // if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
     //     ResetRowGroupCompleteFlags();
