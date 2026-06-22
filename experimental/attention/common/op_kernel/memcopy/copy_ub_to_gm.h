@@ -154,6 +154,15 @@ public:
                                     srcStride, dstStride);
                 }
             }
+        } else if constexpr (UB_FORMAT == UbFormat::NO_S1G) {
+            auto &offsetCalculator = dstTensor.offsetCalculator;
+            uint64_t gmOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, gmCoord.gS1Idx, 0);
+            uint32_t blockCount = gmCoord.gS1DealSize;
+            uint32_t blockLen = gmCoord.dDealSize * sizeof(OUT_T);
+            uint32_t srcStride =
+                (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
+            uint64_t dstStride = (offsetCalculator.GetStrideS1() - gmCoord.dDealSize) * sizeof(OUT_T);
+            SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor, blockCount, blockLen, srcStride, dstStride);
         }
     }
 };
