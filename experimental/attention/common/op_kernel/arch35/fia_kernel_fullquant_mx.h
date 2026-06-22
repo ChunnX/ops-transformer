@@ -689,7 +689,7 @@ public:
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
-        if (info.isLastS2Loop) {
+        if (IsSpecialBandSparse() && info.isLastS2Loop) {
             uint32_t s2LastToken = s2FirstTokenAlign64 + bandLength;
             info.actSingleLoopS2Size = s2LastToken - info.s2Idx;
             info.actSingleLoopS2SizeAlign =
