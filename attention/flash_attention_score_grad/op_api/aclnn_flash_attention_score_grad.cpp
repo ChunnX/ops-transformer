@@ -426,10 +426,19 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
         fagShape.dkDim = keyShape.GetDim(3); // key Head-dim
         fagShape.dvDim = valueShape.GetDim(3); // value Head-dim
     } else {
+        if (!(isLayoutBNSD || isLayoutBSND)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "inputLayout",
+                fagShape.inputLayoutStr.c_str(), "The value of inputLayout must be BNSD or BSND or BSH or SBH or TND");
+        }
         // query dimNum <= 3 and layout is not BSH/SBH/TND
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FlashAttentionScoreGrad", "query",
-            std::to_string(queryShape.GetDimNum()).c_str(),
-            "When inputLayout is not BSH or SBH or TND, the shape dim of query cannot be less than or equal to 3");
+        if (queryShape.GetDimNum() <= MIN_DIM || keyShape.GetDimNum() <= MIN_DIM || valueShape.GetDimNum() <= MIN_DIM) {
+            std::string dimsMsg = "{" + std::to_string(queryShape.GetDimNum()) + ", " +
+                                  std::to_string(keyShape.GetDimNum()) + ", " +
+                                  std::to_string(valueShape.GetDimNum()) + "}";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FlashAttentionScoreGrad", "query, keyIn, value",
+                std::to_string(queryShape.GetDimNum()).c_str(),
+                "When inputLayout is BNSD or BSND, the shape dims of query or keyIn or value must be greater than 3");
+        }
         return ACLNN_ERR_PARAM_INVALID;
     }
 
