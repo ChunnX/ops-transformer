@@ -202,11 +202,7 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
   - `ori_kv`和`cmp_kv`允许存在行间padding类非连续内存，接口会通过aclnn获取stride信息传给底层算子。
 
 - 产品型号约束：
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-    - C1A：当前PyTorch API不支持。
-    - C4A：当前PyTorch API不支持。
-    - C128A：当前PyTorch API不支持。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 公共参数约束：
       - `head_dim`仅支持512，`num_heads_kv`仅支持1。
       - `num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128。
@@ -223,27 +219,6 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
       - `cmp_ratio`仅支持128，`cmp_mask_mode`仅支持3。
       - 不传入`cmp_sparse_indices`；`cmp_topk`传0。
       - `cmp_residual_kv`必须传入，长度必须等于batch大小。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    - 公共参数约束：
-      - `head_dim`仅支持512，`num_heads_kv`仅支持1。
-      - `num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128。
-      - `ori_mask_mode`仅支持4，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
-      - PageAttention的block_size支持16的倍数，且不超过1024。
-    - C1A：
-      - `cmp_ratio`仅支持1；不传入`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`。
-      - `cmp_topk`传0，`cmp_mask_mode`传0。
-    - C4A：
-      - `cmp_ratio`仅支持4，`cmp_mask_mode`仅支持3。
-      - `cmp_sparse_indices`必须传入，最后一维支持512或1024；`cmp_topk`对应传512或1024。
-      - `cmp_residual_kv`必须传入，长度必须等于batch大小。
-    - C128A：
-      - `cmp_ratio`仅支持128，`cmp_mask_mode`仅支持3。
-      - 不传入`cmp_sparse_indices`；`cmp_topk`传0。
-      - `cmp_residual_kv`必须传入，长度必须等于batch大小。
-  - <term>Atlas 200I/500 A2 推理产品</term>、<term>Atlas 推理系列产品</term>、<term>Atlas 训练系列产品</term>：
-    - C1A：当前PyTorch API不支持。
-    - C4A：当前PyTorch API不支持。
-    - C128A：当前PyTorch API不支持。
 
 ## 调用示例
 
