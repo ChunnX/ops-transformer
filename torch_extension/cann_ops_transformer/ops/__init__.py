@@ -39,3 +39,5 @@ from .graph_convert.graph_convert_quant_lightning_indexer import (
 )
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
+from .moe_init_routing import moe_init_routing
+from .graph_convert.graph_convert_moe_init_routing import convert_npu_moe_init_routing
