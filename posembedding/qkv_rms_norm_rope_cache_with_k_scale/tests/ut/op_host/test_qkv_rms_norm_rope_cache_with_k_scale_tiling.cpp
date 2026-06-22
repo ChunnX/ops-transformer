@@ -17,6 +17,7 @@
 #include <initializer_list>
 #include <limits>
 #include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -25,6 +26,16 @@
 
 #include "../../../op_host/op_tiling/arch35/qkv_rms_norm_rope_cache_with_k_scale_base_tiling.h"
 #include "../../../op_host/op_tiling/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
+#include "../../../op_kernel/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling_key.h"
+
+namespace optiling {
+namespace QkvRmsNormRopeCacheWithKScale {
+static uint64_t MakeExpectedTilingKey(uint64_t inputLayout)
+{
+    return GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128, inputLayout);
+}
+} // namespace QkvRmsNormRopeCacheWithKScale
+} // namespace optiling
 
 namespace {
 using QkvTiling = optiling::QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleBaseTiling;
@@ -32,6 +43,7 @@ using ContractInput = optiling::QkvRmsNormRopeCacheWithKScale::ContractInput;
 using ContractTiling = optiling::QkvRmsNormRopeCacheWithKScale::ContractTiling;
 using TensorContractInfo = optiling::QkvRmsNormRopeCacheWithKScale::TensorContractInfo;
 using TileParam = optiling::QkvRmsNormRopeCacheWithKScale::TileParam;
+using optiling::QkvRmsNormRopeCacheWithKScale::MakeExpectedTilingKey;
 
 constexpr uint32_t OUTPUT_PREPROCESS_BUFFER_ID = 0U;
 constexpr uint32_t OUTPUT_QK_BUFFER_ID = 1U;
@@ -41,6 +53,8 @@ constexpr uint64_t TEST_BLOCK_SIZE = 128U;
 constexpr uint64_t TEST_MAX_SEQ_LEN = 256U;
 constexpr uint64_t TEST_OP_WORKSPACE_SIZE = 4096U;
 constexpr uint64_t RESERVED_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
+constexpr uint64_t TEST_LAYOUT_NTD = 0U;
+constexpr uint64_t TEST_LAYOUT_TND = 1U;
 
 struct AivSliceForTest {
     uint64_t tokenOffset = 0;
@@ -112,7 +126,11 @@ gert::Stride Stride(std::initializer_list<uint64_t> strides)
 void RefreshShapes(ContractInput &input)
 {
     const uint64_t qkvN = input.numQHeads + input.numKHeads + input.numVHeads;
-    SetShape(input.qkv, {qkvN, input.totalTokens, input.headDim});
+    if (input.inputLayout == TEST_LAYOUT_TND) {
+        SetShape(input.qkv, {input.totalTokens, qkvN, input.headDim});
+    } else {
+        SetShape(input.qkv, {qkvN, input.totalTokens, input.headDim});
+    }
     SetShape(input.qGamma, {input.headDim});
     SetShape(input.kGamma, {input.headDim});
     SetShape(input.cosSin, {input.maxSeqLen, input.headDim});
@@ -265,6 +283,7 @@ struct ConcurrentTilingCase {
     uint64_t tokenTile;
     uint64_t coreTokenTile;
     uint64_t coreGroupNum;
+    uint64_t inputLayout = TEST_LAYOUT_NTD;
 };
 
 struct ConcurrentTilingResult {
@@ -297,8 +316,11 @@ gert::TilingContextPara::TensorDescription MakeTensorDesc(
 std::vector<gert::TilingContextPara::TensorDescription> BuildTilingInputs(const ConcurrentTilingCase &item)
 {
     const uint64_t qkvN = item.numQHeads + item.numKHeads + item.numVHeads;
+    const bool isTnd = item.inputLayout == TEST_LAYOUT_TND;
     return {
-        MakeTensorDesc({ToI64(qkvN), ToI64(item.totalTokens), ToI64(item.headDim)}, ge::DT_BF16),
+        MakeTensorDesc({ToI64(isTnd ? item.totalTokens : qkvN), ToI64(isTnd ? qkvN : item.totalTokens),
+                           ToI64(item.headDim)},
+                       ge::DT_BF16),
         MakeTensorDesc({ToI64(item.headDim)}, ge::DT_FLOAT),
         MakeTensorDesc({ToI64(item.headDim)}, ge::DT_FLOAT),
         MakeTensorDesc({ToI64(TEST_MAX_SEQ_LEN), ToI64(item.headDim)}, ge::DT_FLOAT),
@@ -318,9 +340,14 @@ std::vector<gert::TilingContextPara::TensorDescription> BuildTilingInputs(const 
 
 std::vector<gert::TilingContextPara::TensorDescription> BuildTilingOutputs(const ConcurrentTilingCase &item)
 {
+    const bool isTnd = item.inputLayout == TEST_LAYOUT_TND;
     return {
-        MakeTensorDesc({ToI64(item.numQHeads), ToI64(item.totalTokens), ToI64(item.headDim)}, ge::DT_FLOAT8_E4M3FN),
-        MakeTensorDesc({ToI64(item.numQHeads), ToI64(item.totalTokens)}, ge::DT_FLOAT),
+        MakeTensorDesc({ToI64(isTnd ? item.totalTokens : item.numQHeads),
+                           ToI64(isTnd ? item.numQHeads : item.totalTokens), ToI64(item.headDim)},
+                       ge::DT_FLOAT8_E4M3FN),
+        MakeTensorDesc({ToI64(isTnd ? item.totalTokens : item.numQHeads),
+                           ToI64(isTnd ? item.numQHeads : item.totalTokens)},
+                       ge::DT_FLOAT),
         MakeTensorDesc({ToI64(TEST_BLOCK_NUM), ToI64(item.numKHeads), ToI64(TEST_BLOCK_SIZE), ToI64(item.headDim)},
                        ge::DT_FLOAT8_E4M3FN),
         MakeTensorDesc({ToI64(TEST_BLOCK_NUM), ToI64(item.numVHeads), ToI64(TEST_BLOCK_SIZE), ToI64(item.headDim)},
@@ -338,6 +365,8 @@ std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(const ConcurrentTi
     };
     return {
         {"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
+        {"inputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>(
+                            item.inputLayout == TEST_LAYOUT_TND ? "TND" : "NTD")},
         {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
     };
 }
@@ -346,6 +375,7 @@ std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(std::initializer_l
 {
     return {
         {"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>(headNums))},
+        {"inputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>("NTD")},
         {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
     };
 }
@@ -433,6 +463,21 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, PreservesQ8K1V1HeadFieldsInRawTili
     EXPECT_EQ(tilingData->coreTokenTile, 4U);
     EXPECT_EQ(tilingData->coreGroupNum, 32U);
     EXPECT_EQ(tilingInfo.blockNum, 32U);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, LayoutAttrSelectsTilingKey)
+{
+    const ConcurrentTilingCase ntdItem = {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 4, 32, TEST_LAYOUT_NTD};
+    TilingInfo ntdTilingInfo;
+    ASSERT_TRUE(ExecuteConcurrentTilingCase(ntdItem, ntdTilingInfo));
+    EXPECT_EQ(static_cast<uint64_t>(ntdTilingInfo.tilingKey), MakeExpectedTilingKey(QKV_RRC_LAYOUT_NTD));
+
+    const ConcurrentTilingCase tndItem = {128, 16, 2, 2, 128, 32, ge::GRAPH_SUCCESS, 14, 4, 32, TEST_LAYOUT_TND};
+    TilingInfo tndTilingInfo;
+    ASSERT_TRUE(ExecuteConcurrentTilingCase(tndItem, tndTilingInfo));
+    EXPECT_EQ(static_cast<uint64_t>(tndTilingInfo.tilingKey), MakeExpectedTilingKey(QKV_RRC_LAYOUT_TND));
+    EXPECT_NE(ntdTilingInfo.tilingKey, tndTilingInfo.tilingKey);
+    EXPECT_TRUE(MatchesConcurrentTilingCase(tndItem, true, tndTilingInfo));
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, TypicalHeadTableMatchesDesign)

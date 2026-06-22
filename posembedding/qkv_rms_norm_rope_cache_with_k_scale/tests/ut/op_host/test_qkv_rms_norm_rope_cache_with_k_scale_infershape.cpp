@@ -10,9 +10,12 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+
 #include "infer_shape_case_executor.h"
 
 namespace {
+using OpAttr = gert::InfershapeContextPara::OpAttr;
 
 std::vector<gert::InfershapeContextPara::TensorDescription> BuildInputs()
 {
@@ -44,14 +47,23 @@ std::vector<gert::InfershapeContextPara::TensorDescription> BuildOutputs()
     };
 }
 
+std::vector<OpAttr> BuildAttrs(const std::vector<int64_t> &headNums, const std::string &inputLayout = "NTD",
+                               float epsilon = 1e-6f)
+{
+    return {
+        {"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
+        {"inputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>(inputLayout)},
+        {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(epsilon)},
+    };
+}
+
 } // namespace
 
 TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersOutputAndCacheShapes)
 {
     std::vector<int64_t> headNums = {16, 2, 2};
     gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
 
     std::vector<std::vector<int64_t>> expected = {
         {16, 17, 128},
@@ -63,26 +75,73 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersOutputAndCacheShapes)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
 }
 
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersTndOutputAndCacheShapes)
+{
+    std::vector<int64_t> headNums = {16, 2, 2};
+    auto inputs = BuildInputs();
+    inputs[0] = {{{17, 20, 128}, {17, 20, 128}}, ge::DT_BF16, ge::FORMAT_ND};
+    gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
+        BuildAttrs(headNums, "TND"));
+
+    std::vector<std::vector<int64_t>> expected = {
+        {17, 16, 128},
+        {17, 16},
+        {8, 2, 128, 128},
+        {8, 2, 128, 128},
+        {8, 2, 128, 1},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidInputLayout)
+{
+    std::vector<int64_t> headNums = {16, 2, 2};
+    gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
+        BuildAttrs(headNums, "tnd"));
+
+    std::vector<std::vector<int64_t>> expected;
+    ExecuteTestCase(para, ge::GRAPH_FAILED, expected);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsMissingInputLayout)
+{
+    std::vector<int64_t> headNums = {16, 2, 2};
+    gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
+        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)}});
+
+    std::vector<std::vector<int64_t>> expected;
+    ExecuteTestCase(para, ge::GRAPH_FAILED, expected);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsLayoutHeadMismatch)
+{
+    std::vector<int64_t> headNums = {16, 2, 2};
+    auto inputs = BuildInputs();
+    inputs[0] = {{{17, 21, 128}, {17, 21, 128}}, ge::DT_BF16, ge::FORMAT_ND};
+    gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
+        BuildAttrs(headNums, "TND"));
+
+    std::vector<std::vector<int64_t>> expected;
+    ExecuteTestCase(para, ge::GRAPH_FAILED, expected);
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidHeadNumsAttr)
 {
     std::vector<int64_t> headNums = {16, 2};
     gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
 
     std::vector<std::vector<int64_t>> expected;
     ExecuteTestCase(para, ge::GRAPH_FAILED, expected);
 
     headNums = {0, 2, 2};
     gert::InfershapeContextPara zeroHeadPara("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
     ExecuteTestCase(zeroHeadPara, ge::GRAPH_FAILED, expected);
 
     headNums = {16, -1, 2};
     gert::InfershapeContextPara negativeHeadPara("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
     ExecuteTestCase(negativeHeadPara, ge::GRAPH_FAILED, expected);
 }
 
@@ -94,36 +153,31 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidInputDimNum)
     auto inputs = BuildInputs();
     inputs[0] = {{{20, 17}, {20, 17}}, ge::DT_BF16, ge::FORMAT_ND};
     gert::InfershapeContextPara qkvPara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
     ExecuteTestCase(qkvPara, ge::GRAPH_FAILED, expected);
 
     inputs = BuildInputs();
     inputs[5] = {{{8, 2, 128}, {8, 2, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND};
     gert::InfershapeContextPara kCachePara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
     ExecuteTestCase(kCachePara, ge::GRAPH_FAILED, expected);
 
     inputs = BuildInputs();
     inputs[6] = {{{8, 2, 128}, {8, 2, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND};
     gert::InfershapeContextPara vCachePara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
     ExecuteTestCase(vCachePara, ge::GRAPH_FAILED, expected);
 
     inputs = BuildInputs();
     inputs[7] = {{{8, 2, 128}, {8, 2, 128}}, ge::DT_FLOAT, ge::FORMAT_ND};
     gert::InfershapeContextPara kScaleCachePara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
     ExecuteTestCase(kScaleCachePara, ge::GRAPH_FAILED, expected);
 
     inputs = BuildInputs();
     inputs[9] = {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND};
     gert::InfershapeContextPara actualSeqLensRankPara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
     ExecuteTestCase(actualSeqLensRankPara, ge::GRAPH_FAILED, expected);
 }
 
@@ -135,21 +189,18 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsNonPositiveInputDims)
     auto inputs = BuildInputs();
     inputs[0] = {{{20, -1, 128}, {20, -1, 128}}, ge::DT_BF16, ge::FORMAT_ND};
     gert::InfershapeContextPara qkvPara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
     ExecuteTestCase(qkvPara, ge::GRAPH_FAILED, expected);
 
     inputs = BuildInputs();
     inputs[5] = {{{8, 2, 0, 128}, {8, 2, 0, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND};
     gert::InfershapeContextPara kCachePara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
     ExecuteTestCase(kCachePara, ge::GRAPH_FAILED, expected);
 
     inputs = BuildInputs();
     inputs[9] = {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND};
     gert::InfershapeContextPara actualSeqLensPara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+        BuildAttrs(headNums));
     ExecuteTestCase(actualSeqLensPara, ge::GRAPH_FAILED, expected);
 }

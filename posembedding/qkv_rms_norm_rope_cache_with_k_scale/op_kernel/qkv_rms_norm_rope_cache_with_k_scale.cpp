@@ -22,7 +22,7 @@ using QkvRmsNormRopeCacheWithKScale::QKV_RRC_HEAD_DIM_D128;
 using QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleController;
 using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTilingData;
 
-template <uint32_t HEAD_DIM>
+template <uint32_t HEAD_DIM, uint32_t INPUT_LAYOUT>
 __global__ __aicore__ void
 qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gamma, GM_ADDR cos_sin,
                                      GM_ADDR slot_mapping, GM_ADDR k_cache, GM_ADDR v_cache, GM_ADDR k_scale_cache,
@@ -32,6 +32,8 @@ qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gam
                                      GM_ADDR workspace, GM_ADDR tiling)
 {
     static_assert(HEAD_DIM == QKV_RRC_HEAD_DIM_D128, "QkvRmsNormRopeCacheWithKScale only supports D128 kernel.");
+    static_assert(INPUT_LAYOUT == QKV_RRC_LAYOUT_NTD || INPUT_LAYOUT == QKV_RRC_LAYOUT_TND,
+                  "QkvRmsNormRopeCacheWithKScale only supports NTD/TND inputLayout.");
     AscendC::InitSocState();
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     // enable overflow mode to avoid nan/inf value

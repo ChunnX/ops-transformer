@@ -72,6 +72,7 @@ public:
             .UnknownShapeFormat(ndFormats);
 
         this->Attr("head_nums").AttrType(REQUIRED).ListInt();
+        this->Attr("inputLayout").AttrType(REQUIRED).String();
         this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6f);
 
         this->AICore().AddConfig("ascend950");

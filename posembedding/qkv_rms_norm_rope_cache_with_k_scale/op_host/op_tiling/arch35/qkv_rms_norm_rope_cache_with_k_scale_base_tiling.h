@@ -37,6 +37,7 @@ struct ContractInput {
     uint64_t maxSeqLen = 0;
     uint64_t blockNum = 0;
     uint64_t blockSize = 0;
+    uint64_t inputLayout = 0;
 
     TensorContractInfo qkv;
     TensorContractInfo qGamma;
@@ -162,6 +163,7 @@ private:
                                                          const gert::Shape &storageShapeInfo, TensorContractInfo &info);
     static ge::graphStatus ToCacheTensorInfo(gert::TilingContext *context, uint64_t index, TensorContractInfo &info);
     static TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, uint64_t index);
+    static const char *InputLayoutName(uint64_t inputLayout);
     void LogTensorInfo(const char *tensorName, const TensorContractInfo &info) const;
     void LogContractInput() const;
     static ge::graphStatus SetWorkspace(gert::TilingContext *context,
@@ -169,6 +171,7 @@ private:
                                         uint64_t &workspaceSize);
     void LogTilingData() const;
     ge::graphStatus ParseHeadNumsAttr();
+    ge::graphStatus ParseInputLayoutAttr();
     float ParseEpsilonAttr() const;
     ge::graphStatus FillShapeDerivedFields();
     ge::graphStatus FillRequiredTensorInputs();
