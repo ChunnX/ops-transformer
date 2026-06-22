@@ -59,6 +59,8 @@ constexpr uint32_t STAGE_ONE_THREE = 3;
 constexpr uint32_t STAGE_ONE_PARA_NUM = 4;
 constexpr uint32_t MASK_NUM = 4;
 constexpr int64_t P_NUM = 2;
+constexpr int64_t STAGE3_TMP_GM_SLOT_COUNT = 4;
+constexpr int64_t STAGE3_DONE_STATE_BYTES_PER_SLOT = 32;
 
 // 初始化编译信息，读取平台资源，并缓存核数到 tilingData_
 void ChunkGatedDeltaRuleTiling::InitCompileInfo()
@@ -136,6 +138,8 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.stageWorkspaceSz =
         sizeHigh * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
+    tilingData_.stageWorkspaceSz +=
+        STAGE3_TMP_GM_SLOT_COUNT * STAGE3_DONE_STATE_BYTES_PER_SLOT * tilingData_.aiCoreNum;
 
     PrintTilingData();
     return ge::GRAPH_SUCCESS;
