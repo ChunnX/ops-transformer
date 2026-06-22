@@ -188,8 +188,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
-        printf("mc2Context_->hcommHandle_[%d] = %d\n", i, mc2Context_->hcommHandle_[i]);
-        printf("mc2Context_->urmacclBuffer_[%d] = %d\n", i, mc2Context_->urmacclBuffer_[i]);
     }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
@@ -485,8 +483,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset;
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 // GM_ADDR remoteNotifyAddr = ;//todo
-                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
-                hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_)); // todo:后续优化
+                // hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
+                // hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_)); // todo:后续优化
             }
         }
     }
@@ -1125,7 +1123,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
-    // SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
+    SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
     // ResetFlagList();             // 清理workSpace空间上的flag位
     // if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
     //     ResetRowGroupCompleteFlags();
