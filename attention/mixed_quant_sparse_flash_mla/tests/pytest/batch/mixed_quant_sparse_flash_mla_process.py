@@ -227,6 +227,8 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
                                 )
     torch.npu.synchronize()
     metadata.npu()
+    # print(f"ori_kv shape={ori_kv.shape if ori_kv else None}, dtype={ori_kv.dtype if ori_kv else None}")
+    # print(f"cmp_kv shape={cmp_kv.shape if cmp_kv else None}, dtype={cmp_kv.dtype if cmp_kv else None}")
     print("mixed_quant_sparse_flash_mla...")
     npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
