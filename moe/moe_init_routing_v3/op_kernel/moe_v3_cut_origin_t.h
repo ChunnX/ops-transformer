@@ -1663,7 +1663,6 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
                 static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE3_V))
             };
             int64_t colsTileLength = perLoopCols_;
-            // printf("..........colsLoops_:%d..............", colsLoops_);
             for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
                 if (colsLoop == colsLoops_ - 1) {
                     colsTileLength = lastLoopCols_;
