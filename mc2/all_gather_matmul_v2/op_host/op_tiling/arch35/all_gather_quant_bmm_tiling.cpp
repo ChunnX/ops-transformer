@@ -242,8 +242,8 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
         std::to_string(EVEN_ALIGN) + "]")
                                                   .c_str()),
         return ge::GRAPH_FAILED);
+    
     bool isTransB = *context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
-
     OP_TILING_CHECK((!isTransB),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BTrans", std::to_string(args_.isBTrans).c_str(),
                                                 "x2 only support transpose"),
