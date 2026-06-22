@@ -13,8 +13,8 @@ import torch
 import torch_npu
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
-from npu_ops_transformer.op_builder.builder import OpBuilder
-from npu_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
 _QUANT_MODE_NONE = -1
@@ -122,7 +122,7 @@ def npu_moe_token_permute(
     padded_mode: bool = False,
     quant_mode: int = _QUANT_MODE_NONE,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    return torch.ops.npu_ops_transformer.npu_moe_token_permute(
+    return torch.ops.cann_ops_transformer.npu_moe_token_permute(
         tokens,
         indices,
         num_out_tokens,
