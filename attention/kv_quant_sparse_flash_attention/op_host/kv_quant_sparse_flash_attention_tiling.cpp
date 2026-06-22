@@ -1821,6 +1821,27 @@ ge::graphStatus QSFAInfoParser::GetActualseqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus QSFAInfoParser::GetShapeAndSizeInfo()
+{
+    SetQSFAShape();
+    if (ge::GRAPH_SUCCESS != GetN1Size() ||
+        ge::GRAPH_SUCCESS != GetN2Size() ||
+        ge::GRAPH_SUCCESS != GetGSize() ||
+        ge::GRAPH_SUCCESS != GetBatchSize() ||
+        ge::GRAPH_SUCCESS != GetQTSize() ||
+        ge::GRAPH_SUCCESS != GetKVTSize() ||
+        ge::GRAPH_SUCCESS != GetS1Size() ||
+        ge::GRAPH_SUCCESS != GetQHeadDim() ||
+        ge::GRAPH_SUCCESS != GetKHeadDim() ||
+        ge::GRAPH_SUCCESS != GetS2Size() ||
+        ge::GRAPH_SUCCESS != GetValueHeadDim() ||
+        ge::GRAPH_SUCCESS != GetDSizeKV() ||
+        ge::GRAPH_SUCCESS != GetSparseBlockCount()) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
 {
     qsfaInfo.opName = opName_;
@@ -1905,21 +1926,7 @@ ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &qsfaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    SetQSFAShape();
-    if (
-        ge::GRAPH_SUCCESS != GetN1Size() ||
-        ge::GRAPH_SUCCESS != GetN2Size() ||
-        ge::GRAPH_SUCCESS != GetGSize() ||
-        ge::GRAPH_SUCCESS != GetBatchSize() ||
-        ge::GRAPH_SUCCESS != GetQTSize() ||
-        ge::GRAPH_SUCCESS != GetKVTSize() ||
-        ge::GRAPH_SUCCESS != GetS1Size() ||
-        ge::GRAPH_SUCCESS != GetQHeadDim() ||
-        ge::GRAPH_SUCCESS != GetKHeadDim() ||
-        ge::GRAPH_SUCCESS != GetS2Size() ||
-        ge::GRAPH_SUCCESS != GetValueHeadDim() ||
-        ge::GRAPH_SUCCESS != GetDSizeKV() ||
-        ge::GRAPH_SUCCESS != GetSparseBlockCount()) {
+    if (ge::GRAPH_SUCCESS != GetShapeAndSizeInfo()) {
         return ge::GRAPH_FAILED;
     }
 
