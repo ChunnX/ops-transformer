@@ -56,6 +56,8 @@ static const int64_t DIM_NUM_2 = 2;
 static const int64_t DIM_NUM_3 = 3;
 static const int64_t DIM_NUM_4 = 4;
 
+constexpr uint8_t N_DIM_IDX = 2;
+
 class MhcPostTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MhcPostTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {}
@@ -392,6 +394,24 @@ ge::graphStatus MhcPostTilingBase::CheckParam()
 
     return ge::GRAPH_SUCCESS;
 }
+
+#if __CCE_AICORE__ == 220
+ge::graphStatus MhcPostTilingBase::CheckConstraints()
+{
+    int64_t n = xShape.GetDim(N_DIM_IDX);
+
+    OP_CHECK_IF(c <= 0 || c >= 100000 || c % 128 != 0,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "c must be > 0, < 100000 and divisible by 128, but got %ld", c),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(n != N_SIZE_4,
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "n must be %ld, but got %ld", N_SIZE_4, n),
+            return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+#endif
 
 void MhcPostTilingBase::ComputeTiling()
 {
