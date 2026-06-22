@@ -216,6 +216,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     }
 
     ubXBytes_ = ALIGN_UP(2 * axisH_ * sizeof(XType), 32);
+    uint32_t XTypeAlign32Size = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
     uint32_t ubAccBytes = axisH_ * sizeof(float);
     uint32_t ubTmpBytes = axisH_ * sizeof(float);
     uint32_t ubWeightBytes = topK_ * sizeof(float);
@@ -224,6 +225,8 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     tpipe_->InitBuffer(ubAccFp32Buf_, ubAccBytes);
     tpipe_->InitBuffer(ubTmpFp32Buf_, ubTmpBytes);
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);  // 32
+    tpipe_->InitBuffer(xQueue_, 1, XTypeAlign32Size);
+    tpipe_->InitBuffer(weightQueue_, 1, sizeof(float)); 
     if constexpr (HasTopkWeight == 1) {
         tpipe_->InitBuffer(ubWeightedBuf_, ubWeightBytes);
     }
@@ -467,6 +470,7 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseReduce()
 {
     SplitToCore(numTokens_, aivNum_, tStart_, tEnd_, tPerCore_);
+    if (tStart_ >= numTokens_) {return;}
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     tpipe_->InitBuffer(tokenStatusBuf_, Ceil(tPerCore_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
