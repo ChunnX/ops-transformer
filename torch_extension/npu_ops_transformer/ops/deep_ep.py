@@ -15,7 +15,7 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
 from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
-from .update_context import update_context
+from .update_context import init_mc2_context
 
 
 class IntWrapper:
@@ -33,7 +33,7 @@ class MoeDistributeBuffer:
         context_tensor_size = ((context_struct_size * 8) + 3) // 4
         self.context = torch.zeros(context_tensor_size, dtype=torch.int32).npu()
         self.ccl_buffer_size = IntWrapper()
-        res = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
+        res = init_mc2_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
 
     @staticmethod
     def get_low_latency_ccl_buffer_size(world_size: int, num_max_dispatch_tokens_per_rank: int, hidden: int,
@@ -101,7 +101,7 @@ class MoeDistributeBuffer:
                     lambda: (f"New world size should be the same as orginal world size, "
                             f"but got {new_world_size=}, orginial={self.world_size}"
                             f"{ops_error(ErrCode.VALUE)}."),)
-        res = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
+        res = init_mc2_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
         return res
 
     def npu_low_latency_dispatch(self, x, topk_idx, num_experts: int, *,

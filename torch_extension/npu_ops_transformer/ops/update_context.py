@@ -7,6 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import os
 import torch
 import torch_npu
 from torch.library import impl
@@ -47,3 +48,19 @@ def update_context(group_ep, ep_world_size, ccl_buffer_size, context_tensor):
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     return op_module.update_context(group_ep, ep_world_size, ccl_buffer_size, context_tensor)
+
+
+def init_mc2_context(group_ep, ep_world_size, ccl_buffer_size, context_tensor):
+    """
+    Fill Mc2MoeContext for notify/dispatch_normal/dispatch_v3.
+
+    Uses HCCL channel context when MC2_USE_HCCL_CHANNEL_CONTEXT=1 (same path as mega_moe /
+    mc2_context.cpp); otherwise KFC + HcclGetRemoteIpcHcclBuf (dispatch_v3 deep_ep default).
+    """
+    if os.getenv("MC2_USE_HCCL_CHANNEL_CONTEXT", "0") == "1":
+        from .update_context_by_hccl_channel import update_context_by_hccl_channel
+
+        if not hasattr(ep_world_size, "value"):
+            ep_world_size = type(ccl_buffer_size)(ep_world_size)
+        return update_context_by_hccl_channel(group_ep, ep_world_size, ccl_buffer_size, context_tensor)
+    return update_context(group_ep, ep_world_size, ccl_buffer_size, context_tensor)

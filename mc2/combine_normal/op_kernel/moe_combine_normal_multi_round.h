@@ -350,7 +350,8 @@ MoeCombineNormalMultiRound<TemplateMC2TypeFunc>::Init(GM_ADDR recvX, GM_ADDR tok
     InitBuffLen();
     combineDataBuffSize_ = perRoundTokens_ * axisK_ * h512AlignRecvXLen_;
     PipeBarrier<PIPE_ALL>();
-    winDataSizeOffset_ = static_cast<uint64_t>(magic_) * (tilingData->moeCombineNormalInfo.totalWinSize / 2UL);
+    winDataSizeOffset_ = static_cast<uint64_t>(magic_) *
+        ((tilingData->moeCombineNormalInfo.totalWinSize - Moe::EP_HCCL_STATE_SIZE) / 2UL);
     DataCacheCleanAndInvalid<SrcInfoType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         epRecvCountGM_[moeExpertNum_ - 1]);
 

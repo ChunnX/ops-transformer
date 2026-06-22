@@ -8,6 +8,9 @@
 namespace Moe {
 constexpr int CAM_MAX_RANK_SIZE = 384;  // Maximum number of NPU cards supported by the communication library
 
+// EP HCCL buffer state region size; align dispatch_v2 Mc2Kernel::STATE_SIZE (1MB).
+constexpr uint32_t EP_HCCL_STATE_SIZE = 1024U * 1024U;
+
 constexpr uint64_t NOTIFY_DISPATCH_BUFF_OFFSET = 102UL * 1024UL * 1024UL;
 constexpr int64_t IPC_BUFF_MAX_SIZE = 100 * 1024 * 1024;
 constexpr int64_t IPC_DATA_OFFSET = 2 * 1024 * 1024;  // First 2MB as flag, then 100MB as data storage

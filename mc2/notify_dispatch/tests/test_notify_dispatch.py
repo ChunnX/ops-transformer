@@ -52,8 +52,7 @@ import torch
 import torch_npu
 import torch.distributed as dist
 import npu_ops_transformer  # noqa: F401
-from npu_ops_transformer.ops.update_context import update_context
-from npu_ops_transformer.ops.update_context_by_hccl_channel import update_context_by_hccl_channel
+from npu_ops_transformer.ops.update_context import init_mc2_context
 
 
 class IntWrapper:
@@ -89,15 +88,15 @@ def build_context(group, rank, world_size, ccl_buffer_size):
     group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
     use_hccl_channel = os.getenv("MOE_NOTIFY_USE_HCCL_CHANNEL_CONTEXT", "0") == "1"
     if use_hccl_channel:
-        ep_world_size = IntWrapper(world_size)
-        ok = update_context_by_hccl_channel(group_name, ep_world_size, ccl_buffer_size, context)
+        os.environ["MC2_USE_HCCL_CHANNEL_CONTEXT"] = "1"
+    ok = init_mc2_context(group_name, world_size, ccl_buffer_size, context)
+    if use_hccl_channel:
         print(
             f"[rank {rank}] context via update_context_by_hccl_channel: "
-            f"ep_world_size={ep_world_size.value} ccl_buffer_size={ccl_buffer_size.value}",
+            f"ccl_buffer_size={ccl_buffer_size.value}",
             flush=True,
         )
     else:
-        ok = update_context(group_name, world_size, ccl_buffer_size, context)
         print(
             f"[rank {rank}] context via update_context: ccl_buffer_size={ccl_buffer_size.value}",
             flush=True,

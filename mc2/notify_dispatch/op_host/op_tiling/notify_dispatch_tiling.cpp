@@ -298,12 +298,19 @@ static bool CheckTensorDataType(gert::TilingContext *context, const char *nodeNa
                         return false);
     }
 
-    // Verify the size of the win area (context mode uses ccl_buffer_size from attrs)
+    // ccl_buffer_size is total raw bytes (1MB state + data). Ping-pong uses each half of the data region.
     NotifyDispatchTilingData *tilingData = context->GetTilingData<NotifyDispatchTilingData>();
+    constexpr uint64_t EP_HCCL_STATE_SIZE = 1024UL * 1024UL;
     uint64_t maxWindowSize = tilingData->notifyDispatchInfo.totalWinSize;
-    uint64_t actualSize = dataSize * tilingData->notifyDispatchInfo.sendCount + 2 * 1024 * 1024;  // 2MB flag位
-    if (actualSize > maxWindowSize) {
-        OP_LOGE(nodeName, "ccl_buffer_size is too SMALL, should larger than %luMB.", actualSize / MB_SIZE);
+    uint64_t dataWinSize = maxWindowSize - EP_HCCL_STATE_SIZE;
+    uint64_t halfWinSize = dataWinSize / 2;
+    uint64_t actualPerHalf =
+        static_cast<uint64_t>(dataSize) * tilingData->notifyDispatchInfo.sendCount + 2 * 1024 * 1024;  // flag + payload
+    if (actualPerHalf > halfWinSize) {
+        OP_LOGE(nodeName,
+                "ccl_buffer_size is too SMALL, need %luMB per ping-pong half (data region %luMB = ccl_buffer_size - 1MB "
+                "state), but payload+flag need %luMB.",
+                halfWinSize / MB_SIZE, dataWinSize / MB_SIZE, actualPerHalf / MB_SIZE + 1UL);
         return false;
     }
     return true;

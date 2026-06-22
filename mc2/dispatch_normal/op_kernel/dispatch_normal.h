@@ -270,7 +270,7 @@ DispatchNormal<CamTypeFunc>::Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertI
 
     uint64_t hSizeAlignCombine = Ceil(h * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     hSizeAlignCombine = round > 1 ? hSizeAlignCombine * 2 : hSizeAlignCombine;
-    winDataSizeOffset = dataState * (tilingData->dispatchNormalInfo.totalWinSize / 2) +
+    winDataSizeOffset = dataState * ((tilingData->dispatchNormalInfo.totalWinSize - Moe::EP_HCCL_STATE_SIZE) / 2) +
                         min(realMaxBatchSize, perRoundTokens) * topK * hSizeAlignCombine; // *2 是因为double buffer
     shareGM = GetWindAddrByRankId(epRankId);
 

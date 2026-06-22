@@ -565,8 +565,9 @@ static ge::graphStatus CombineNormalTilingFuncImpl(gert::TilingContext *context)
     tokenNeedSizeCombine = maxRound > 1 ? tokenNeedSizeCombine * 2 : tokenNeedSizeCombine;
     uint64_t actualSize = (realBs * k * tokenNeedSizeCombine + COMBINE_STATE_WIN_OFFSET + NOTIFY_DISPATCH_WIN_OFFSET) *
                         DOUBLE_DATA_BUFFER;
+    constexpr uint64_t EP_HCCL_STATE_SIZE = 1024UL * 1024UL;
     OP_TILING_CHECK(
-        (actualSize > maxWindowSize),
+        (actualSize + EP_HCCL_STATE_SIZE > maxWindowSize),
         OP_LOGE(nodeName,
                 "HCCL_BUFFSIZE is too SMALL, realBs = %lu, h = %lu, epWorldSize = %lu, localMoeExpertNum = %u,"
                 " tokenNeedSizeCombine = %lu, k = %lu, NEEDED_HCCL_BUFFSIZE("

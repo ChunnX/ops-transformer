@@ -17,7 +17,7 @@ Pipeline:
 import torch
 import torch_npu
 from torch_npu.utils._error_code import ErrCode, ops_error
-from .update_context import update_context
+from .update_context import init_mc2_context
 from .dispatch_layout import op_module as dispatch_layout_op_module
 
 # Handle tuple for npu_combine, produced by npu_dispatch:
@@ -82,7 +82,7 @@ class Buffer:
         self.context = torch.zeros(context_tensor_size, dtype=torch.int32, device="npu")
         self.ccl_buffer_size = IntWrapper()
 
-        ok = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
+        ok = init_mc2_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
         torch._check(
             ok,
             lambda: f"update_context failed for group {self.group_name}.{ops_error(ErrCode.VALUE)}",
@@ -211,7 +211,7 @@ class Buffer:
                 f"{ops_error(ErrCode.VALUE)}"
             ),
         )
-        ok = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
+        ok = init_mc2_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
         torch._check(
             ok and self.ccl_buffer_size.value > 0,
             lambda: (

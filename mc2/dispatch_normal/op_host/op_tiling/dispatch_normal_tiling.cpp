@@ -608,11 +608,12 @@ static ge::graphStatus DispatchNormalA3TilingFuncImpl(gert::TilingContext *conte
     uint64_t tokenNeedSizeCombine = ((h * MAX_OUT_DTYPE_SIZE + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     tokenNeedSizeCombine =
         round > 1 ? tokenNeedSizeCombine * 2 : tokenNeedSizeCombine; // round > 1 combine要使用double buffer
-    // 未考虑双流时大小
+    // 未考虑双流时大小；maxWindowSize 为 ccl_buffer_size 整段 raw（含 1MB state）
+    constexpr uint64_t EP_HCCL_STATE_SIZE = 1024UL * 1024UL;
     uint64_t actualSize = (maxBs * k * (tokenNeedSizeCombine + tokenNeedSizeDispatch) + COMBINE_STATE_WIN_OFFSET +
                            NOTIFY_DISPATCH_WIN_OFFSET) *
                               DOUBLE_DATA_BUFFER +
-                          MB_SIZE;
+                          EP_HCCL_STATE_SIZE;
     OP_TILING_CHECK((actualSize > maxWindowSize),
                     OP_LOGE(nodeName,
                             "HCCL_BUFFSIZE is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu,"
