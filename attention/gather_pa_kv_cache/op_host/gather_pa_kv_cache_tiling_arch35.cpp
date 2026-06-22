@@ -151,12 +151,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
 
     // ===== 非连续支持: stride信息已在前面GetTensorInfo中获取 =====
     if (kCacheStride_.GetDimNum() > 0) {
-        // 校验最后一轴必须连续
-        OP_CHECK_IF(kCacheStride_.GetStride(kCacheDimNum_ - 1) != 1,
-                    OP_LOGE(context_, "key_cache last dim stride must be 1, but got %ld.",
-                            kCacheStride_.GetStride(kCacheDimNum_ - 1)),
-                    return ge::GRAPH_FAILED);
-
         // 判断连续性 (size为1的轴stride不影响连续性)
         int64_t contigStride = 1;
         isKCacheContiguous_ = true;
@@ -178,14 +172,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
                 // NZ模式: 仅支持dim0(blockNum)非连续
                 int64_t expectedStride1 = kCacheShape_.GetDim(2) * kCacheShape_.GetDim(3);
                 int64_t expectedStride2 = kCacheShape_.GetDim(3);
-                OP_CHECK_IF(kCacheStride_.GetStride(1) != expectedStride1,
-                            OP_LOGE(context_, "NZ key_cache only supports non-contiguous on dim0. "
-                                    "stride[1]=%ld, expected=%ld.", kCacheStride_.GetStride(1), expectedStride1),
-                            return ge::GRAPH_FAILED);
-                OP_CHECK_IF(kCacheStride_.GetStride(2) != expectedStride2,
-                            OP_LOGE(context_, "NZ key_cache only supports non-contiguous on dim0. "
-                                    "stride[2]=%ld, expected=%ld.", kCacheStride_.GetStride(2), expectedStride2),
-                            return ge::GRAPH_FAILED);
             }
         }
     } else {
@@ -242,11 +228,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
 
     // ===== 非连续支持: valueCache stride信息已在前面GetTensorInfo中获取 =====
     if (vCacheStride_.GetDimNum() > 0) {
-        OP_CHECK_IF(vCacheStride_.GetStride(vCacheDimNum_ - 1) != 1,
-                    OP_LOGE(context_, "value_cache last dim stride must be 1, but got %ld.",
-                            vCacheStride_.GetStride(vCacheDimNum_ - 1)),
-                    return ge::GRAPH_FAILED);
-
         int64_t contigStride = 1;
         isVCacheContiguous_ = true;
         for (int i = static_cast<int>(vCacheDimNum_) - 1; i >= 0; i--) {
@@ -266,14 +247,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
                 // NZ模式: 仅支持dim0非连续
                 int64_t expectedStride1 = vCacheShape_.GetDim(2) * vCacheShape_.GetDim(3);
                 int64_t expectedStride2 = vCacheShape_.GetDim(3);
-                OP_CHECK_IF(vCacheStride_.GetStride(1) != expectedStride1,
-                            OP_LOGE(context_, "NZ value_cache only supports non-contiguous on dim0. "
-                                    "stride[1]=%ld, expected=%ld.", vCacheStride_.GetStride(1), expectedStride1),
-                            return ge::GRAPH_FAILED);
-                OP_CHECK_IF(vCacheStride_.GetStride(2) != expectedStride2,
-                            OP_LOGE(context_, "NZ value_cache only supports non-contiguous on dim0. "
-                                    "stride[2]=%ld, expected=%ld.", vCacheStride_.GetStride(2), expectedStride2),
-                            return ge::GRAPH_FAILED);
             }
         }
     } else {
@@ -420,6 +393,11 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
             }
             contigStride *= keyShape_.GetDim(i);
         }
+        // ND模式(3维): 单独判断head(dim1)轴是否非连续, 用于kernel决定是否按head拆分散写。
+        // dim1连续stride = head_size = keyShape[2]。
+        if (isCacheModeNorm_ && keyDimNum == uint32_t(DIM_THREE) && keyShape_.GetDim(DIM_ONE) != 1) {
+            isKeyOutHeadNonContig_ = (keyOutStride_.GetStride(DIM_ONE) != keyShape_.GetDim(DIM_TWO));
+        }
     } else {
         isKeyOutContiguous_ = true;
     }
@@ -495,6 +473,10 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
             }
             contigStride *= valueShape_.GetDim(i);
         }
+        // ND模式(3维): 单独判断head(dim1)轴是否非连续。dim1连续stride = head_size = valueShape[2]。
+        if (isCacheModeNorm_ && valueDimNum == uint32_t(DIM_THREE) && valueShape_.GetDim(DIM_ONE) != 1) {
+            isValueOutHeadNonContig_ = (valueOutStride_.GetStride(DIM_ONE) != valueShape_.GetDim(DIM_TWO));
+        }
     } else {
         isValueOutContiguous_ = true;
     }
@@ -564,9 +546,18 @@ bool GatherPaKvCacheTiling::IsCapable()
 
 ge::graphStatus GatherPaKvCacheTiling::DoOpTiling()
 {
-    // batch分核
+    // 分核策略(按连续性隔离, 连续路径零改动):
+    //   ND非连续(cache任一轴 或 ref任一轴非连续): 按"全局block轮询"分核, kernel用 globalBlk % needCoreNum 分配,
+    //             故直接用满所有核。解决batch少(如batchCount=3/6)时按batch分核只用极少核的瓶颈。
+    //   其余(ND连续 / NZ): 维持按batch分核, 行为完全不变。
+    bool isNdNonContig = isCacheModeNorm_ &&
+        (!isKCacheContiguous_ || !isVCacheContiguous_ || !isKeyOutContiguous_ || !isValueOutContiguous_);
     int64_t batchPerCore = Ops::Base::CeilDiv(batchCount_, coreNum_);
-    needCoreNum_ = static_cast<uint32_t>(std::min(Ops::Base::CeilDiv(batchCount_, batchPerCore), coreNum_));
+    if (isNdNonContig) {
+        needCoreNum_ = static_cast<uint32_t>(coreNum_);
+    } else {
+        needCoreNum_ = static_cast<uint32_t>(std::min(Ops::Base::CeilDiv(batchCount_, batchPerCore), coreNum_));
+    }
     // uint32_t batchTail = batchCount_ - batchPerCore * (needCoreNum - 1);
     uint32_t tileBase = BLOCK_SIZE;
 
@@ -624,6 +615,8 @@ ge::graphStatus GatherPaKvCacheTiling::DoOpTiling()
     }
     if (!isKeyOutContiguous_)   nonContigFlag |= (1 << 2);
     if (!isValueOutContiguous_) nonContigFlag |= (1 << 3);
+    if (isKeyOutHeadNonContig_)   nonContigFlag |= (1 << 8);
+    if (isValueOutHeadNonContig_) nonContigFlag |= (1 << 9);
 
     tilingData_.set_nonContiguousFlag(nonContigFlag);
 
@@ -636,7 +629,8 @@ ge::graphStatus GatherPaKvCacheTiling::DoOpTiling()
         // 连续时填充连续stride值
         tilingData_.set_kCacheStride0(static_cast<int64_t>(blockSize_) * hiddenSizeK_);
         tilingData_.set_kCacheStride1(hiddenSizeK_);
-        tilingData_.set_kCacheStride2(isCacheModeNorm_ ? kCacheShape_.GetDim(3) : kCacheShape_.GetDim(3));
+        // 连续时dim2(N轴)步长=尾轴长度: ND为head_size, NZ为elenum_aligned, 均取GetDim(3)。
+        tilingData_.set_kCacheStride2(kCacheShape_.GetDim(3));
     }
 
     // valueCache stride
@@ -647,17 +641,21 @@ ge::graphStatus GatherPaKvCacheTiling::DoOpTiling()
     } else {
         tilingData_.set_vCacheStride0(static_cast<int64_t>(blockSize_) * hiddenSizeV_);
         tilingData_.set_vCacheStride1(hiddenSizeV_);
-        tilingData_.set_vCacheStride2(isCacheModeNorm_ ? vCacheShape_.GetDim(3) : vCacheShape_.GetDim(3));
+        // 连续时dim2(N轴)步长=尾轴长度: ND为head_size, NZ为elenum_aligned, 均取GetDim(3)。
+        tilingData_.set_vCacheStride2(vCacheShape_.GetDim(3));
     }
 
     // key/value输出stride (ND和NZ模式都支持)
+    // stride0=token(dim0)步长, stride1=head(dim1)步长。连续时填稠密值:
+    //   ND: stride0=hiddenSize(=num_heads*head_size), stride1=head_size; NZ: 无dim1, stride1填hiddenSize(不被kernel使用)。
     if (!isKeyOutContiguous_) {
         tilingData_.set_keyOutStride0(keyOutStride_.GetStride(0));
         tilingData_.set_keyOutStride1(keyOutStride_.GetStride(1));
     } else {
         tilingData_.set_keyOutStride0(static_cast<int64_t>(keyShape_.GetDim(0)) > 0 ?
             static_cast<int64_t>(hiddenSizeK_) : 0);
-        tilingData_.set_keyOutStride1(hiddenSizeK_);
+        tilingData_.set_keyOutStride1((isCacheModeNorm_ && numHeadsK_ > 0) ?
+            static_cast<int64_t>(hiddenSizeK_ / numHeadsK_) : static_cast<int64_t>(hiddenSizeK_));
     }
 
     if (!isValueOutContiguous_) {
@@ -666,7 +664,8 @@ ge::graphStatus GatherPaKvCacheTiling::DoOpTiling()
     } else {
         tilingData_.set_valueOutStride0(static_cast<int64_t>(valueShape_.GetDim(0)) > 0 ?
             static_cast<int64_t>(hiddenSizeV_) : 0);
-        tilingData_.set_valueOutStride1(hiddenSizeV_);
+        tilingData_.set_valueOutStride1((isCacheModeNorm_ && numHeadsV_ > 0) ?
+            static_cast<int64_t>(hiddenSizeV_ / numHeadsV_) : static_cast<int64_t>(hiddenSizeV_));
     }
 
     tilingData_.set_numHeadsK(numHeadsK_);
