@@ -302,11 +302,7 @@ static bool NeedContiguousFallback(const aclTensor *tensor, bool isPaNz)
     return tensor->GetViewStrides()[dimNum - 1] != 1;
 }
 
-// ref是否必须走连续化兜底。本次只放行 dim0(token) 非连续走零拷贝, 其余形态仍兜底:
-//   - NeedContiguousFallback: ND判尾轴非连续 / NZ判非dim0轴非连续 → 兜底(kernel无法处理)
-//   - ND额外: dim1..尾轴前 若有非连续(非纯dim0) → 兜底(dim1非连续留待后续方案)
-//   - 仅dim0非连续(其余轴连续): 放行, 进ProcessNonContiguous由kernel按stride0散写原内存
-static bool IsRefNonContiguous(const aclTensor *ref, bool isPaNz)
+static bool IsRefNonContiguous(const aclTensor *ref)
 {
     if (ref == nullptr) {
         return false;
@@ -315,14 +311,7 @@ static bool IsRefNonContiguous(const aclTensor *ref, bool isPaNz)
     if (dimNum < 1) {
         return false;
     }
-    if (NeedContiguousFallback(ref, isPaNz)) {
-        return true;
-    }
-    // ND: 只允许dim0非连续, dim1..尾轴必须连续(NZ的非dim0轴已由NeedContiguousFallback覆盖)
-    if (!isPaNz && dimNum >= 2 && !IsAxesContiguous(ref, 1, dimNum)) {
-        return true;
-    }
-    return false;
+    return !IsAxesContiguous(ref, 0, dimNum);
 }
 
 static bool NeedContiguousFallbackAny(
@@ -330,7 +319,7 @@ static bool NeedContiguousFallbackAny(
     const aclTensor *keyRef, const aclTensor *valueRef, bool isPaNz)
 {
     return NeedContiguousFallback(keyCache, isPaNz) || NeedContiguousFallback(valueCache, isPaNz) ||
-           IsRefNonContiguous(keyRef, isPaNz) || IsRefNonContiguous(valueRef, isPaNz);
+           IsRefNonContiguous(keyRef) || IsRefNonContiguous(valueRef);
 }
 
 static bool IsSupportNonContiguousCache(const aclTensor *keyCache, const aclTensor *valueCache)
@@ -408,10 +397,7 @@ static aclnnStatus ProcessNonContiguous(
     CHECK_RET(seqLensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor *keyRefView = nullptr;
-    // 能进ProcessNonContiguous的keyRef已通过入口IsRefNonContiguous过滤: 要么完全连续, 要么仅dim0非连续
-    // (尾轴+中间轴连续)。非连续 → CreateView保stride, 让kernel按keyOutStride0散写原内存(零拷贝, 无ViewCopy
-    // 写回, 故必须保stride不能连续化成新temp); 完全连续 → l0op::Contiguous(no-op)。
-    if (!IsContiguous(keyRef)) {
+    if (isKeyAndCacheNonContiguous && IsLastAxisContiguous(keyRef)) {
         keyRefView = uniqueExecutor->CreateView(keyRef,
                                                  keyRef->GetViewShape(),
                                                  keyRef->GetStorageShape(),
@@ -424,7 +410,7 @@ static aclnnStatus ProcessNonContiguous(
     }
 
     const aclTensor *valueRefView = nullptr;
-    if (!IsContiguous(valueRef)) {
+    if (isKeyAndCacheNonContiguous && IsLastAxisContiguous(valueRef)) {
         valueRefView = uniqueExecutor->CreateView(valueRef,
                                                    valueRef->GetViewShape(),
                                                    valueRef->GetStorageShape(),
