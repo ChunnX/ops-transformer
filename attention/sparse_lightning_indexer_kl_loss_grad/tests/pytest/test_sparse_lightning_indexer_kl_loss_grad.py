@@ -462,7 +462,7 @@ def run_fused_op(case, tensors, golden, device, cmp_ratio):
     print("layout:", case.layout, "mask_mode:", case.sparse_mode, "cmp_ratio:", cmp_ratio)
     print("##################### END fused inputs #######################")
 
-    metadata = torch.ops.cann_ops_transformer.npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+    metadata = torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad_metadata(
         case.n_query_index,
         case.n_key,
         case.d_index,
@@ -480,7 +480,7 @@ def run_fused_op(case, tensors, golden, device, cmp_ratio):
     )
     print_slig_metadata(metadata)
 
-    dq, dk, dw, softmax_out = torch.ops.cann_ops_transformer.npu_sparse_lightning_indexer_kl_loss_grad(
+    dq, dk, dw, softmax_out = torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad(
         q,
         k,
         w,
