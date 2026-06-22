@@ -279,7 +279,6 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     TensorWrapper xScaleWrapper = {xScale, xScaleAclDtype};
     TensorListWrapper weightWrapper = {weightRef, weightAclDtype};
     TensorListWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype};
-    TensorListWrapper biasWrapper = {biasRef, ACL_FLOAT};
     TensorWrapper yWrapper = {y, static_cast<aclDataType>(yDtypeValue)};
     TensorWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0};
     PrintTorchTensorFormats(x, groupList, weightTensor, weightScaleTensor, xScale, y, yScale);
@@ -288,7 +287,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     char *roundModePtr = const_cast<char *>(roundMode.c_str());
 
     ACLNN_CMD(aclnnGroupedMatmulActivationQuantWeightNz,
-        xWrapper, groupList, weightWrapper, weightScaleWrapper, biasWrapper, xScaleWrapper,
+        xWrapper, groupList, weightWrapper, weightScaleWrapper, biasRef, xScaleWrapper,
         activationTypePtr, weightLayout.transpose, groupListType, tuningConfigRef, quantModePtr, yDtypeValue,
         roundModePtr, scaleAlg, dstTypeMax, yWrapper, yScaleWrapper);
     return std::tie(y, yScale);
