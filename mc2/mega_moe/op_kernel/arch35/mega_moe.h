@@ -38,6 +38,7 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                                   int32_t QuantMode, int32_t CombineQuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode, CombineQuantMode
 
+
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
 public:
