@@ -678,7 +678,7 @@ ge::graphStatus MoeInitRountingV3TilingBase::GetShapeAttrsInfo()
 
 void MoeInitRountingV3TilingBase::ShowTilingData()
 {   
-    int64_t isFullloadInt = 1 ? isFullload_ == true : 0;
+    int64_t isFullloadInt = isFullload_ ? 1 : 0;
     OP_LOGI(context_, "isFullload: %ld, gatherFirstFullload: %ld, ep: %ld, countingSortFullLoad: %ld", isFullloadInt,
         gatherFirstFullload_, ep_, countingSortFullLoad_);
 }
