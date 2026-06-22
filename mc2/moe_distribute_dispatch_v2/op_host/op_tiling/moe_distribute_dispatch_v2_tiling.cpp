@@ -215,18 +215,17 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, const char *
     const gert::StorageShape *expertIdStorageShape = context->GetInputShape(config.expertIdsIndex);
     if (isLayered) {
         const gert::StorageShape *expertScaleStorageShape = context->GetOptionalInputShape(config.expertScalesIndex);
-        if (IsPresentTensorShape(expertScaleStorageShape)) {
-            auto expertscaleDimNum = expertScaleStorageShape->GetStorageShape().GetDimNum();
-            if (expertscaleDimNum != TWO_DIMS) {
-                std::string dimStr = std::to_string(expertscaleDimNum) + "D";
-                OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "expertScaleShape", dimStr.c_str(), "2D");
-                return false;
-            }
-            const int64_t expertScalesDim0 = expertScaleStorageShape->GetStorageShape().GetDim(0);
-            const int64_t expertScalesDim1 = expertScaleStorageShape->GetStorageShape().GetDim(1);
-            OP_LOGD(nodeName, "expertScales dim0 = %ld", expertScalesDim0);
-            OP_LOGD(nodeName, "expertScales dim1 = %ld", expertScalesDim1);
+        OP_TILING_CHECK(expertScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScaleShape"), return false);
+        auto expertscaleDimNum = expertScaleStorageShape->GetStorageShape().GetDimNum();
+        if (expertscaleDimNum != TWO_DIMS) {
+            std::string dimStr = std::to_string(expertscaleDimNum) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "expertScaleShape", dimStr.c_str(), "2D");
+            return false;
         }
+        const int64_t expertScalesDim0 = expertScaleStorageShape->GetStorageShape().GetDim(0);
+        const int64_t expertScalesDim1 = expertScaleStorageShape->GetStorageShape().GetDim(1);
+        OP_LOGD(nodeName, "expertScales dim0 = %ld", expertScalesDim0);
+        OP_LOGD(nodeName, "expertScales dim1 = %ld", expertScalesDim1);
     }
     OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertIdShape"), return false);
     OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
@@ -971,15 +970,13 @@ static ge::graphStatus CheckXAndExpertIdsTensorShape(const gert::TilingContext *
         return ge::GRAPH_FAILED);
     if (isLayered) {
         const gert::StorageShape *expertScaleStorageShape = context->GetOptionalInputShape(EXPERT_SCALES_INDEX);
-        if (IsPresentTensorShape(expertScaleStorageShape)) {
-            const int64_t expertScalesDim0 = expertScaleStorageShape->GetStorageShape().GetDim(0);
-            const int64_t expertScalesDim1 = expertScaleStorageShape->GetStorageShape().GetDim(1);
-            OP_TILING_CHECK((expertScalesDim0 != expertIdsDim0) || (expertScalesDim1 != expertIdsDim1),
-                OP_LOGE(nodeName, "expertScaleShape's dim not equal to expertIdShape's dim, "
-                "expertScaleShape's dim0 is %ld, expertIdShape's dim0 is %ld. ",
-                "expertScaleShape's dim1 is %ld, expertIdShape's dim1 is %ld.",
-                expertScalesDim0, expertIdsDim0, expertScalesDim1, expertIdsDim1), return ge::GRAPH_FAILED);
-        }
+        const int64_t expertScalesDim0 = expertScaleStorageShape->GetStorageShape().GetDim(0);
+        const int64_t expertScalesDim1 = expertScaleStorageShape->GetStorageShape().GetDim(1);
+        OP_TILING_CHECK((expertScalesDim0 != expertIdsDim0) || (expertScalesDim1 != expertIdsDim1),
+            OP_LOGE(nodeName, "expertScaleShape's dim not equal to expertIdShape's dim, "
+            "expertScaleShape's dim0 is %ld, expertIdShape's dim0 is %ld. ",
+            "expertScaleShape's dim1 is %ld, expertIdShape's dim1 is %ld.",
+            expertScalesDim0, expertIdsDim0, expertScalesDim1, expertIdsDim1), return ge::GRAPH_FAILED);
     }
     tilingData.moeDistributeDispatchV2Info.k = static_cast<uint32_t>(expertIdsDim1);
 
