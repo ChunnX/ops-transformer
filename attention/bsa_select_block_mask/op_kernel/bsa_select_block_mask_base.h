@@ -26,7 +26,7 @@ using AscendC::CrossCoreWaitFlag;
 #endif
 
 #ifndef BSA_ENABLE_V1_TO_C1_SYNC
-#define BSA_ENABLE_V1_TO_C1_SYNC 0
+#define BSA_ENABLE_V1_TO_C1_SYNC 1
 #endif
 
 #ifndef BSA_ENABLE_C1_TO_V1_SYNC
