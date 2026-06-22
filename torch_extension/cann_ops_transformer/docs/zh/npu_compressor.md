@@ -5,6 +5,7 @@
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
 |<term>Atlas A3 推理系列产品</term>   | √  |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 
 ## 功能说明
 
@@ -29,26 +30,17 @@
         - C4A: $C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};$
         - C128A: $C_{i}^{\text{Comp}} = \left[1\right]_{1\times128} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{128};$
 
-    后处理阶段：
-
-    6. 计算RMSNorm：
-        - $\text{RMS}(C^{\text{Comp}}) = \sqrt{\frac{1}{N} \sum_{i=j* N}^{(j+1)* N} {(C_{i}^{\text{Comp}})}^{\text{2}} + norm\_eps} ,N=head\_dim, ~j=1,2,\cdots, \frac{s}{cmp\_ratio}$
-        - $\text{RmsNorm}(C^{\text{Comp}}) = norm\_weight \cdot \frac{C_{i}^{\text{Comp}}}{\text{RMS}(C^{\text{Comp}})}$
-    7. 计算Rope；
-   
 -   主要计算过程为：
     1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
     2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
     3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
-    4. 根据输入数据norm_weight、rope_sin、rope_cos，进行RMSNorm和Rope运算，得到$cmp\_kv$结果输出。
 
 ## 函数原型
 
 ```
-custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_cos, rope_head_dim, cmp_ratio, *, state_block_table = None, cu_seqlens = None, seqused = None, start_pos = None, coff = 1, norm_eps = 1e-6, rotary_mode = 1, cache_mode = 1) -> (Tensor)
+custom.compressor(x, wkv, wgate, state_cache, ape, cmp_ratio, *, state_block_table = None, cu_seqlens = None, seqused = None, start_pos = None, coff = 1, cache_mode = 1) -> (Tensor)
 ```
-- Transformer Compressor算子实现参考: [Compressor](https://gitcode.com/cann/ops-transformer/tree/master/experimental/attention/compressor)
-- Transformer Compressor算子编译安装参考: [Compressor编译安装指导](https://gitcode.com/cann/ops-transformer/blob/master/experimental/attention/Attention%E8%9E%8D%E5%90%88%E7%AE%97%E5%AD%90Experimental%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.md)
+- Transformer Compressor算子实现参考: [Compressor](https://gitcode.com/cann/ops-transformer/tree/master/attention/compressor)
 
 ## 参数说明
 
@@ -62,17 +54,9 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
     
 -   **wgate**（`Tensor`）：必选参数，表示gate压缩权重，对应公式中的$W^{Gate}$。不支持非连续，数据格式支持ND，数据类型支持`bfloat16`、`float16`。支持输入shape[coff* D,H]。
 
--   **state\_cache**（`Tensor`）：必选参数，表示kv\_state和score\_state的历史数据，对应公式中的$\left[kv\_state, score\_state\right]$。不支持非连续，数据格式支持ND，数据类型支持`folat32`。支持输入shape[block_num,block_size,2* coff* D]，要求block_num>0。
+-   **state\_cache**（`Tensor`）：必选参数，表示kv\_state和score\_state的历史数据，对应公式中的$\left[kv\_state, score\_state\right]$。不支持非连续，数据格式支持ND，数据类型支持`float32`。支持输入shape[block_num,block_size,2* coff* D]，要求block_num>0。
 
--   **ape**（`Tensor`）：必选参数，表示positional biases，对应公式中的$Ape$。不支持非连续，数据格式支持ND，数据类型支持`folat32`。支持输入shape[cmp_ratio,coff* D]。
-
--   **norm\_weight**（`Tensor`）：必选参数，表示计算RmsNorm时的权重系数。数据类型支持`folat32`。支持输入shape[D,]。
-
--   **rope\_sin**（`Tensor`）：必选参数，表示Rope计算时sin的权重系数。数据类型支持`folat32`。当x的shape为[B,S,H]时，要求输入shape为[B,ceil(S/cmp_ratio),rope_head_dim]；当x的shape为[T,H]时，要求输入shape为[min(T,T//cmp_ratio+B),rope_head_dim]。
-
--   **rope\_cos**（`Tensor`）：必选参数，表示Rope计算时cos的权重系数。数据类型支持`folat32`。当x的shape为[B,S,H]时，要求输入shape为[B,ceil(S/cmp_ratio),rope_head_dim]；当x的shape为[T,H]时，要求输入shape为[min(T,T//cmp_ratio+B),rope_head_dim]。
-
--   **rope\_head\_dim**（`int`）：必选参数，表示rope_cos和rope_sin的hidden层最小单元大小。目前仅支持64。
+-   **ape**（`Tensor`）：必选参数，表示positional biases，对应公式中的$Ape$。不支持非连续，数据格式支持ND，数据类型支持`float32`。支持输入shape[cmp_ratio,coff* D]。
 
 -   **cmp\_ratio**（`int`）：必选参数，表示数据压缩率。
 
@@ -88,11 +72,11 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
 
 -   **coff**（`int`）：可选参数，默认值1，支持1/2。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。
 
--   **norm\_eps**（`float`）：可选参数，表示RmsNorm计算的权重系数。默认值1e-6。
+-   **cache\_mode**（`int`）：可选参数，表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。
 
--   **rotary\_mode**（`int`）：可选参数，表示Rope计算的模式。默认值1，支持1/2。rotary\_mode为1时，代表half模式。rotary\_mode为2时，代表interleave模式。
-
--   **cache\_mode**（`int`）：可选参数，表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。**目前暂不支持输入2**。
+>**说明：**<br> 
+>
+>- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：cacheMode不支持输入2。
 
 ## 返回值说明
 
@@ -139,16 +123,17 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
     </div>
 -   支持D为128/512。
 -   支持H为1K~10K，512对齐。
--   支持cmp_ratio为4/128。支持如下三种情况：
+-   支持cmp_ratio为2、4、8、16、32、64、128。
+-   当cmp_ratio为4/128时，支持如下三种情况：
     -   C4A: D=512, coff=2, cmp_ratio=4;
     -   C4Li: D=128, coff=2, cmp_ratio=4;
     -   C128A: D=512, coff=1, cmp_ratio=128。
--   支持rotary_mode为2，Rope计算模式为interleave。
 -   该接口支持aclgraph模式。
 
-## Atlas A3 推理系列产品 调用说明
+## 调用说明
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 示例代码如下
 
-- 单算子模式调用
+  - 单算子模式调用
 
     ```python
     import torch
@@ -169,11 +154,8 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
 
     data_type = torch.bfloat16
     hidden_size = 4096
-    rope_head_dim = 64
-    norm_eps = 1e-6
     coff = 1 # 1:no overlap 2:overlap
     cmp_ratio = 128
-    rotary_mode = 2
     cache_mode = 1
     head_dim = 512
     cu_seqlens = [0, 1]
@@ -256,29 +238,45 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
         else:
             kv_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
             score_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+    else:
+        block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
+        token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
+        if B==0:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+        else:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
         x_shape = (cu_seqlens[-1], hidden_size)
-        rope_sin_shape = (min(x_shape[0], x_shape[0] // cmp_ratio + B), rope_head_dim)
-        rope_cos_shape = rope_sin_shape
     else:
         x_shape = (B, S, hidden_size)
-        rope_sin_shape = (B, (S + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
-        rope_cos_shape = rope_sin_shape
 
     x = torch.tensor(np.random.uniform(-10.0, 10.0, x_shape)).to(data_type).npu()
     wkv = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     wgate = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32).npu()
-    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(torch.float32).npu()
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32).npu()
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32).npu()
     if cache_mode == 1:  # 连续buffer
         state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
         state_cache = state_cache.npu()
         state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
         state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+    else:
+        layer_pad = random.randint(1, 50)
+        layer_start_idx = random.randint(0, layer_pad-1)
+        print(f"layer_pad: {layer_pad}")
+        print(f"layer_start_idx: {layer_start_idx}")
+        state_cache_pad = torch.zeros((kv_state.shape[0],kv_state.shape[1]*kv_state.shape[2]*2+layer_pad))
+        print(f"state_cache_pad: shape {state_cache_pad.shape}")
+        state_cache_pad = state_cache_pad.to("npu:%s" % DEVICE_ID)
+        state_cache = state_cache_pad[:, layer_start_idx : layer_start_idx + kv_state.shape[1]*kv_state.shape[2]*2].view(-1, kv_state.shape[1], kv_state.shape[2]*2)
+        state_cache = state_cache.to("npu:%s" % DEVICE_ID)
+        state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
+        state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+        print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride0: {state_cache.stride(0)}")
+
     block_table = block_table.npu()
     start_pos = torch.tensor(start_pos).to(torch.int32).npu()
     if cu_seqlens is not None:
@@ -293,23 +291,17 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
             wgate,
             state_cache,
             ape,
-            norm_weight, 
-            rope_sin,
-            rope_cos,
-            rope_head_dim = rope_head_dim,
             cmp_ratio = cmp_ratio,
             state_block_table = block_table,
             cu_seqlens = cu_seqlens,
             seqused = seqused,
             start_pos = start_pos,
             coff = coff,
-            norm_eps = norm_eps,
-            rotary_mode = rotary_mode,
             cache_mode = cache_mode
         )
     )
     ```
-- aclgraph调用
+  - aclgraph调用
 
     ```python
     import torch
@@ -331,11 +323,8 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
 
     data_type = torch.bfloat16
     hidden_size = 4096
-    rope_head_dim = 64
-    norm_eps = 1e-6
     coff = 1 # 1:no overlap 2:overlap
     cmp_ratio = 128
-    rotary_mode = 2
     cache_mode = 1
     head_dim = 512
     cu_seqlens = [0, 1]
@@ -418,29 +407,45 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
         else:
             kv_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
             score_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+    else:
+        block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
+        token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
+        if B==0:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+        else:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
         x_shape = (cu_seqlens[-1], hidden_size)
-        rope_sin_shape = (min(x_shape[0], x_shape[0] // cmp_ratio + B), rope_head_dim)
-        rope_cos_shape = rope_sin_shape
     else:
         x_shape = (B, S, hidden_size)
-        rope_sin_shape = (B, (S + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
-        rope_cos_shape = rope_sin_shape
 
     x = torch.tensor(np.random.uniform(-10.0, 10.0, x_shape)).to(data_type).npu()
     wkv = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     wgate = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32).npu()
-    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(torch.float32).npu()
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32).npu()
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32).npu()
     if cache_mode == 1:  # 连续buffer
         state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
         state_cache = state_cache.npu()
         state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
         state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+    else:
+        layer_pad = random.randint(1, 50)
+        layer_start_idx = random.randint(0, layer_pad-1)
+        print(f"layer_pad: {layer_pad}")
+        print(f"layer_start_idx: {layer_start_idx}")
+        state_cache_pad = torch.zeros((kv_state.shape[0],kv_state.shape[1]*kv_state.shape[2]*2+layer_pad))
+        print(f"state_cache_pad: shape {state_cache_pad.shape}")
+        state_cache_pad = state_cache_pad.to("npu:%s" % DEVICE_ID)
+        state_cache = state_cache_pad[:, layer_start_idx : layer_start_idx + kv_state.shape[1]*kv_state.shape[2]*2].view(-1, kv_state.shape[1], kv_state.shape[2]*2)
+        state_cache = state_cache.to("npu:%s" % DEVICE_ID)
+        state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
+        state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+        print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride0: {state_cache.stride(0)}")
+
     block_table = block_table.npu()
     start_pos = torch.tensor(start_pos).to(torch.int32).npu()
     if cu_seqlens is not None:
@@ -452,9 +457,8 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
         def __init__(self):
             super(CompressorNetwork, self).__init__()
 
-        def forward(self, x, wkv, wgate, state_cache, ape, norm_weight, rope_sin,         
-                    rope_cos, rope_head_dim, cmp_ratio, state_block_table = None, cu_seqlens = None, 
-                    seqused = None, start_pos = None, coff = 1, norm_eps = 1e-6, rotary_mode = 1, cache_mode = 1):
+        def forward(self, x, wkv, wgate, state_cache, ape, cmp_ratio, state_block_table = None, cu_seqlens = None, 
+                    seqused = None, start_pos = None, coff = 1, cache_mode = 1):
             cmp_kv = (
                 torch.ops.custom.compressor(
                     x,
@@ -462,18 +466,12 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
                     wgate,
                     state_cache,
                     ape,
-                    norm_weight, 
-                    rope_sin,
-                    rope_cos,
+                    cmp_ratio = cmp_ratio,
                     state_block_table = state_block_table,
                     cu_seqlens = cu_seqlens,
                     seqused = seqused,
                     start_pos = start_pos,
-                    rope_head_dim = rope_head_dim,
-                    cmp_ratio = cmp_ratio,
                     coff = coff,
-                    norm_eps = norm_eps,
-                    rotary_mode = rotary_mode,
                     cache_mode = cache_mode
                 )
             )
@@ -485,23 +483,17 @@ custom.compressor(x, wkv, wgate, state_cache, ape, norm_weight, rope_sin, rope_c
     npu_backend = torchair.get_npu_backend(compiler_config=config)
     torch._dynamo.reset()
     npu_mode = torch.compile(CompressorNetwork(), fullgraph=True, backend=npu_backend, dynamic=False)
-    cmp_kv = npu_mode(                    
+    cmp_kv = npu_mode(
                     x,
                     wkv,
                     wgate,
                     state_cache,
                     ape,
-                    norm_weight, 
-                    rope_sin,
-                    rope_cos,
-                    rope_head_dim = rope_head_dim,
                     cmp_ratio = cmp_ratio,
                     state_block_table = block_table,
                     cu_seqlens = cu_seqlens,
                     seqused = seqused,
                     start_pos = start_pos,
                     coff = coff,
-                    norm_eps = norm_eps,
-                    rotary_mode = rotary_mode,
                     cache_mode = cache_mode)
     ```

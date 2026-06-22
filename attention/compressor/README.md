@@ -33,19 +33,11 @@
     5. 沿着压缩轴分组求和：
         - C4A: $C_{i}^{\text{Comp}} = \left[1\right]_{1\times8} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{4};$
         - C128A: $C_{i}^{\text{Comp}} = \left[1\right]_{1\times128} @ (S_H)_i, ~i=1,2,\cdots, \frac{s}{128};$
-
-    后处理阶段：
-
-    6. 计算RMSNorm：
-        - $\text{RMS}(C^{\text{Comp}}) = \sqrt{\frac{1}{N} \sum_{i=j* N}^{(j+1)* N} {(C_{i}^{\text{Comp}})}^{\text{2}} + norm\_eps} ,N=head\_dim, ~j=1,2,\cdots, \frac{s}{cmp\_ratio}$
-        - $\text{RmsNorm}(C^{\text{Comp}}) = norm\_weight \cdot \frac{C_{i}^{\text{Comp}}}{\text{RMS}(C^{\text{Comp}})}$
-    7. 计算Rope；
    
 - 主要计算过程为：
     1. 将输入$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将输入$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
     2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
     3. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
-    4. 根据输入数据norm_weight、rope_sin、rope_cos，进行RMSNorm和Rope运算，得到$cmp\_kv$结果输出。
 
 ## 参数说明
 
@@ -55,21 +47,18 @@
 | wkv | 输入 | 公式中的$W^{KV}$，表示kv压缩权重。  | FLOAT16、BFLOAT16 | ND |
 | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重。 | FLOAT16、BFLOAT16 | ND |
 | state_cache | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 | FLOAT32     | ND         |
-| ape | 输入 | 公式中的$Ape$，表示positional biases。 | FLOAT32       | ND         |
-| norm\_weight | 输入 | 表示计算RmsNorm时的权重系数。 | FLOAT32       | ND         |
-| rope\_sin | 输入 | 表示Rope计算时sin的权重系数。 | FLOAT32       | ND         |
-| rope\_cos | 输入 | 表示Rope计算时cos的权重系数。 | FLOAT32       | ND         |
-| rope\_head\_dim | 属性 | 表示rope_cos和rope_sin的hidden层最小单元大小，当前仅支持64。 | INT32       | -         |
+| ape | 输入 | 公式中的$Ape$，表示positional biases。 | FLOAT32       | ND         |-         |
 | cmp\_ratio | 属性 | 用于稀疏计算，表示数据压缩率。 | INT32          | -         |
 | state\_block\_table | 可选输入 | 表示state\_cache存储使用的block映射表。当其中元素的值为0时，表示当前位置无需进行更新state\_cache操作。 | INT32 | ND         |
 | cu\_seqlens | 可选输入 | 表示不同Batch中的有效token数。  | INT32          | ND         |
 | seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数，如果指定为None时，表示和每个Batch上的Sequence Length长度相同。 | INT32          | ND         |
 | start\_pos | 可选输入 | 表示计算起始位置。 | INT32          | ND         |
 | coff | 可选属性 | 默认值1，支持1/2。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。  | INT32          | -         |
-| norm\_eps | 可选属性 | 表示RmsNorm计算的权重系数。默认值1e-6。 | FLOAT32          | -         |
-| rotary\_mode | 可选属性 | 表示Rope计算的模式。默认值1，支持1/2。rotary\_mode为1时，代表half模式。rotary\_mode为2时，代表interleave模式。 | INT32          | -         |
-| cache\_mode | 可选属性 | 表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。**目前A3暂不支持输入2**。 | INT32          | -         |
+| cache\_mode | 可选属性 | 表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。 | INT32          | -         |
 | cmp\_kv | 输出 | 表示压缩后的数据。 | FLOAT16、BFLOAT16         | ND          |
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+ cacheMode不支持输入2。
 
 ## 约束说明
 
@@ -79,16 +68,13 @@
     - wgate支持输入shape[coff* D,H]
     - state\_cache支持输入shape[block_num,block_size,2* coff* D]，要求block_num>0。
     - ape支持输入shape[cmp_ratio,coff* D]
-    - norm\_weight支持输入shape[D,]
     - start\_pos支持输入shape[B,]
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]
-        - rope_sin、rope_cos要求输入shape为[min(T,T//cmp_ratio+B),rope_head_dim]。
         - cu\_seqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
         - state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+max(cu\_seqlens[n+1] - cu\_seqlens[n])。
         - cmp\_kv，输出shape为[min(T,T//cmp_ratio+B),D]：<batch0>compressed_tokens + <batch1>compressed_tokens + ... + <batchN>compressed_tokens + pad。
     - 若x的维度不采用BS合轴，即x的输入shape为[B,S,H]
-        - rope_sin、rope_cos要求输入shape为[B,ceil(S/cmp_ratio),rope_head_dim]。
         - cu\_seqlens，参数必须为空。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求seqused[n] <= S，且不小于0。
         - state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+S。
@@ -134,16 +120,17 @@
 - 输入属性限制：
   - 支持D为128/512。
   - 支持H为1K~10K，512对齐。
-  - 支持cmp_ratio为4/128。支持如下三种情况：
+  - 支持cmp_ratio为2、4、8、16、32、64、128。
+  - 当cmp_ratio为4/128时，支持如下三种情况：
       - C4A: D=512, coff=2, cmp_ratio=4；
       - C4Li: D=128, coff=2, cmp_ratio=4；
       - C128A: D=512, coff=1, cmp_ratio=128。
-  - 支持rotary_mode为2，Rope计算模式为interleave。
   - 该接口支持aclgraph模式。
 
-## Atlas A3 推理系列产品 调用说明
+## 调用说明
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 示例代码如下
 
-- 单算子模式调用
+  - 单算子模式调用
 
     ```python
     import torch
@@ -164,11 +151,8 @@
 
     data_type = torch.bfloat16
     hidden_size = 4096
-    rope_head_dim = 64
-    norm_eps = 1e-6
     coff = 1 # 1:no overlap 2:overlap
     cmp_ratio = 128
-    rotary_mode = 2
     cache_mode = 1
     head_dim = 512
     cu_seqlens = [0, 1]
@@ -264,20 +248,13 @@
     # other input
     if bs_combine_flag:
         x_shape = (cu_seqlens[-1], hidden_size)
-        rope_sin_shape = (min(x_shape[0], x_shape[0] // cmp_ratio + B), rope_head_dim)
-        rope_cos_shape = rope_sin_shape
     else:
         x_shape = (B, S, hidden_size)
-        rope_sin_shape = (B, (S + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
-        rope_cos_shape = rope_sin_shape
 
     x = torch.tensor(np.random.uniform(-10.0, 10.0, x_shape)).to(data_type).npu()
     wkv = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     wgate = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32).npu()
-    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(torch.float32).npu()
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32).npu()
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32).npu()
     if cache_mode == 1:  # 连续buffer
         state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
         state_cache = state_cache.npu()
@@ -311,23 +288,17 @@
             wgate,
             state_cache,
             ape,
-            norm_weight, 
-            rope_sin,
-            rope_cos,
-            rope_head_dim = rope_head_dim,
             cmp_ratio = cmp_ratio,
             state_block_table = block_table,
             cu_seqlens = cu_seqlens,
             seqused = seqused,
             start_pos = start_pos,
             coff = coff,
-            norm_eps = norm_eps,
-            rotary_mode = rotary_mode,
             cache_mode = cache_mode
         )
     )
     ```
-- aclgraph调用
+  - aclgraph调用
 
     ```python
     import torch
@@ -349,11 +320,8 @@
 
     data_type = torch.bfloat16
     hidden_size = 4096
-    rope_head_dim = 64
-    norm_eps = 1e-6
     coff = 1 # 1:no overlap 2:overlap
     cmp_ratio = 128
-    rotary_mode = 2
     cache_mode = 1
     head_dim = 512
     cu_seqlens = [0, 1]
@@ -449,20 +417,13 @@
     # other input
     if bs_combine_flag:
         x_shape = (cu_seqlens[-1], hidden_size)
-        rope_sin_shape = (min(x_shape[0], x_shape[0] // cmp_ratio + B), rope_head_dim)
-        rope_cos_shape = rope_sin_shape
     else:
         x_shape = (B, S, hidden_size)
-        rope_sin_shape = (B, (S + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
-        rope_cos_shape = rope_sin_shape
 
     x = torch.tensor(np.random.uniform(-10.0, 10.0, x_shape)).to(data_type).npu()
     wkv = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     wgate = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32).npu()
-    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(torch.float32).npu()
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32).npu()
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32).npu()
     if cache_mode == 1:  # 连续buffer
         state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
         state_cache = state_cache.npu()
@@ -493,9 +454,8 @@
         def __init__(self):
             super(CompressorNetwork, self).__init__()
 
-        def forward(self, x, wkv, wgate, state_cache, ape, norm_weight, rope_sin,         
-                    rope_cos, rope_head_dim, cmp_ratio, state_block_table = None, cu_seqlens = None, 
-                    seqused = None, start_pos = None, coff = 1, norm_eps = 1e-6, rotary_mode = 1, cache_mode = 1):
+        def forward(self, x, wkv, wgate, state_cache, ape, cmp_ratio, state_block_table = None, cu_seqlens = None, 
+                    seqused = None, start_pos = None, coff = 1, cache_mode = 1):
             cmp_kv = (
                 torch.ops.custom.compressor(
                     x,
@@ -503,18 +463,12 @@
                     wgate,
                     state_cache,
                     ape,
-                    norm_weight, 
-                    rope_sin,
-                    rope_cos,
-                    rope_head_dim = rope_head_dim,
                     cmp_ratio = cmp_ratio,
                     state_block_table = state_block_table,
                     cu_seqlens = cu_seqlens,
                     seqused = seqused,
                     start_pos = start_pos,
                     coff = coff,
-                    norm_eps = norm_eps,
-                    rotary_mode = rotary_mode,
                     cache_mode = cache_mode
                 )
             )
@@ -532,18 +486,12 @@
                     wgate,
                     state_cache,
                     ape,
-                    norm_weight, 
-                    rope_sin,
-                    rope_cos,
-                    rope_head_dim = rope_head_dim,
                     cmp_ratio = cmp_ratio,
                     state_block_table = block_table,
                     cu_seqlens = cu_seqlens,
                     seqused = seqused,
                     start_pos = start_pos,
                     coff = coff,
-                    norm_eps = norm_eps,
-                    rotary_mode = rotary_mode,
                     cache_mode = cache_mode)
     ```
 
