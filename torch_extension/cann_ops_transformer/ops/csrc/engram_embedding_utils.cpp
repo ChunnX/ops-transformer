@@ -146,7 +146,7 @@ void EngramEmbedingUtilsBuilder::GetHcclCommChannel(const HcclComm &commHandle, 
 }
 
 void EngramEmbedingUtilsBuilder::GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine,
-                              CommContext *commContextStruct, uint32_t rankSize)
+                              CommContext *commContextStruct, uint32_t rankSize, const std::string &targetTag)
 {
     uint32_t rankId = commContextStruct->epRankId;
     ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE] = {};
@@ -168,10 +168,20 @@ void EngramEmbedingUtilsBuilder::GetHcclCommResource(const HcclComm &commHandle,
         auto hcclRet = HcclChannelGetRemoteMemsFunc(commHandle, commContextStruct->hcommHandle_[i],
                                                       &memNum, &remoteMems, &memTags);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") failed, ret=", hcclRet);
-        // 取第一个remote mem作为peer的注册buffer地址
-        if (memNum > 0 && remoteMems != nullptr) {
-            commContextStruct->virtualAddrList[i] = reinterpret_cast<uint64_t>(remoteMems[0].addr);
+        // 取自己注册的buffer作为通信buffer
+        bool hasTargetMem = false;
+        for (uint32_t j = 0; j < memNum; j++) {
+            if (memTags = nullptr || remoteMems = nullptr) {
+                break;
+            }
+            if (memTags[j] == targetTag) {
+                uint64_t targetMemAddr = reinterpret_cast<uint64_t>(remoteMems[j].addr);
+                commContextStruct->virtualAddrList[j] = targetMemAddr;
+                ASCEND_LOGI("Get Targe Mem(%s) Success, Mem id is %d, Addr is %lu", targetTag.c_str(), j, targetMemAddr);
+                hasTargetMem = true;
+            }
         }
+        TORCH_CHECK(!hasTargetMem, "Target Mem : ", targetTag, " is not found.");
     }
 }
 
@@ -192,7 +202,7 @@ void EngramEmbedingUtilsBuilder::CreateContext(const HcclComm &commHandle, const
     std::string memTag = mc2ContextTag + "_buffer";
     AllocateAndRegisterBuffer(commHandle, memTag, commContextStruct.epRankId);
 
-    GetHcclCommResource(commHandle, engine, &commContextStruct, commContextStruct.rankSize);
+    GetHcclCommResource(commHandle, engine, &commContextStruct, commContextStruct.rankSize, memTag);
 
     hcclRet = HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), &commContextStruct, commContextSize, 0);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Copy context from host to device failed, ret: ", hcclRet);
