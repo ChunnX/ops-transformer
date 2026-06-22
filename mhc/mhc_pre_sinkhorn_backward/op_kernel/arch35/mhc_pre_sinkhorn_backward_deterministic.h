@@ -69,7 +69,7 @@ private:
     using A0Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
     using A1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U, true>;
     using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
-    using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, X_T>;
+    using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
     using C2Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
 
     matmul::MatmulImpl<A0Type, BType, C1Type, C1Type, MHC_PRE_GRAD_MM1_CFG> mm1_;
