@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dispatch_min 编译运行指南</title>
+<style>
+  :root{--fg:#24292f;--muted:#57606a;--bg:#fff;--line:#d0d7de;--accent:#0969da;
+        --code-bg:#0d1117;--code-fg:#e6edf3;--ok:#1a7f37;--no:#cf222e;--warn:#9a6700;--chip:#eaeef2;}
+  *{box-sizing:border-box;}
+  body{max-width:980px;margin:0 auto;padding:28px 22px 80px;
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+       line-height:1.65;color:var(--fg);background:var(--bg);}
+  h1{font-size:26px;border-bottom:2px solid var(--line);padding-bottom:10px;margin:0 0 6px;}
+  h2{font-size:20px;margin:34px 0 10px;padding-left:10px;border-left:4px solid var(--accent);}
+  h3{font-size:16px;margin:20px 0 8px;color:var(--muted);}
+  p,li{font-size:14.5px;}
+  code{background:var(--chip);padding:1px 6px;border-radius:4px;font-size:13px;
+       font-family:"SF Mono",Menlo,Consolas,monospace;word-break:break-word;}
+  pre{background:var(--code-bg);color:var(--code-fg);padding:14px 16px;border-radius:8px;
+      font-size:13px;line-height:1.55;overflow-x:auto;white-space:pre-wrap;word-break:break-word;
+      font-family:"SF Mono",Menlo,Consolas,monospace;}
+  pre code{background:none;padding:0;color:inherit;}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px;}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;word-break:break-word;}
+  th{background:#f6f8fa;font-weight:600;}
+  .ok{color:var(--ok);font-weight:600;}.no{color:var(--no);font-weight:600;}.warn{color:var(--warn);font-weight:600;}
+  .lead{color:var(--muted);font-size:14px;margin:4px 0 0;}
+  .note{background:#fff8c5;border:1px solid #d4a72c55;border-radius:8px;padding:10px 14px;margin:14px 0;font-size:13.5px;}
+  .danger{background:#ffebe9;border:1px solid #ff818266;border-radius:8px;padding:10px 14px;margin:14px 0;font-size:13.5px;}
+  .tree{background:var(--code-bg);color:var(--code-fg);}
+  kbd{background:#eaeef2;border:1px solid #afb8c1;border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:12px;}
+  .flow{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:14px 0;}
+  .box{flex:1 1 220px;min-width:200px;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#f6f8fa;}
+  .box b{display:block;margin-bottom:4px;}
+  .arrow{align-self:center;color:var(--accent);font-weight:700;font-size:18px;}
+  .small{font-size:12.5px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<h1>dispatch_min 编译运行指南</h1>
+<p class="lead">dispatch_setup（CCU 写状态位）+ dispatch_teardown（AIV aclnn 等状态位）·单 die·两条流·写/等状态位串行同步</p>
+<p class="small">目标平台 <b>a6（Ascend 950PR）</b>；本机为 a5，仅用于编译验证（a5 已实测：teardown 编译打包通过、driver 骨架链接通过）。</p>
+
+<h2>1. 它做什么（最小机制）</h2>
+<div class="flow">
+  <div class="box"><b>dispatch_setup（CCU）</b>在 <code>streamSetup</code> 上用 <code>LocalCopyNb</code> 把 <code>1</code> 写进本卡共享状态区 <code>statusGm</code>（int32, slot0）。</div>
+  <div class="arrow">→ 状态位 →</div>
+  <div class="box"><b>dispatch_teardown（AIV/aclnn）</b>在 <code>streamTeardown</code> 上忙等 <code>statusGm[0]==1</code>，等到后写 <code>done[0]=1</code> 收尾。</div>
+</div>
+<p>两条流无显式 event 依赖——<b>teardown 的忙等轮询本身就是跨流同步</b>。状态区契约（字节级）：<code>int32</code> 元素、slot0、就绪值 <code>1</code>、按 32B 对齐分配（AIV 一次 <code>DataCopy</code> 搬 32B，避免越界）。<code>LocalCopyNb</code> 是裸字节 DMA，状态字保持 4 字节，不受 CCU Variable 8 字节规则约束。</p>
+
+<h2>2. 工程结构</h2>
+<pre class="tree">experimental/mc2/
+├── dispatch_setup/                     # CCU 算子 + 集成驱动（standalone cmake）
+│   ├── dispatch_setup_ccu.h / .cpp     # CcuKernel 子类：段1建资源→段2 Load→段10 LocalCopyNb 写 1（a6-only 部分 #ifdef DISPATCH_CCU_A6）
+│   ├── dispatch_min_driver.cpp         # 拉起两算子 + 两条流 + 状态位同步 + 校验
+│   ├── CMakeLists.txt                  # 建 driver exe；find_path/find_library 兜底；DISPATCH_CCU_A6 开关
+│   ├── run.sh                          # 一键构建（TARGET=a5|a6）
+│   ├── rank_table.json.tmpl            # 单 die HCCL ranktable 模板
+│   └── BUILD_RUN_GUIDE.html            # 本文档
+└── dispatch_teardown/                  # AIV aclnn 注册算子（BUILD_OPEN_PROJECT 注册框架）
+    ├── op_host/dispatch_teardown_def.cpp + CMakeLists.txt
+    ├── op_host/op_tiling/dispatch_teardown_tiling.h / .cpp
+    ├── op_kernel/dispatch_teardown.cpp     # AIV 忙等 status==1 → 写 done=1
+    └── op_api/aclnn_dispatch_teardown.h / .cpp</pre>
+
+<h2>3. 环境准备（每次会话）</h2>
+<pre><code>ssh ops950                                      # = ssh root@123.60.114.41 -p 20028
+source /root/miniconda3/etc/profile.d/conda.sh
+conda activate mc2_py310
+source /home/0617/env/set_env.sh                # a6 换成 a6 的 CANN set_env.sh</code></pre>
+
+<h2>4. 一键构建（推荐）</h2>
+<p>脚本 <code>run.sh</code> 用一个 <code>TARGET</code> 开关切换两种模式，自动定位散装 opapi 库、处理 CCU 围栏与装包：</p>
+<pre><code>cd /home/developer/ops-transformer/experimental/mc2/dispatch_setup
+
+TARGET=a5 ./run.sh     # a5 骨架验证：CCU 关、不装包、直链散装 libcust_opapi.so（已实测 build OK）
+TARGET=a6 ./run.sh     # a6 全功能：-DDISPATCH_CCU_A6=ON + 安装算子包（运行所需）</code></pre>
+<p class="small">可用 env 覆盖：<code>SOC_VERSION</code> / <code>BUILD_SOC</code> / <code>ASCEND_HOME_PATH</code> / <code>OPS_TRANSFORMER_ROOT</code> / <code>CONDA_ENV</code> / <code>JOBS</code>。</p>
+
+<h2>5. 手动分步（等价于 run.sh，便于排错）</h2>
+
+<h3>5.1 编译 teardown（AIV aclnn 注册算子）<span class="ok">✅ a5 实测 EXIT=0</span></h3>
+<pre><code>cd /home/developer/ops-transformer
+bash build.sh --pkg --experimental --soc=ascend950 --ops=dispatch_teardown -j16</code></pre>
+<p>产物：<code>build_out/cann-ops-transformer-custom_linux-x86_64.run</code>（算子包）、<code>build/libcust_opapi.so</code>（散装库，导出 <code>aclnnDispatchTeardown</code>）。<br>
+<b>注意</b>：<code>experimental/mc2</code> 下的算子<b>必须</b>带 <code>--experimental</code>，否则不会被扫描编译。</p>
+<p>要<b>运行</b>还需装包（让 aclnn 运行时能加载并拉起 kernel）：</p>
+<pre><code>./build_out/cann-ops-transformer-custom_linux-x86_64.run --force   # 共享机谨慎：会写 CANN opp vendor</code></pre>
+
+<h3>5.2 编译 driver（CCU 算子 + 集成驱动）</h3>
+<p><b>a5 骨架验证（CCU 围栏关）</b><span class="ok"> ✅ 实测 build=0、产出可执行</span>：</p>
+<pre><code>cd /home/developer/ops-transformer/experimental/mc2/dispatch_setup
+rm -rf build &amp;&amp; mkdir build
+cmake -B build \
+  -DASCEND_CANN_PACKAGE_PATH=/home/0617/env/ascend-toolkit/latest \
+  -DSOC_VERSION=ascend950pr_9599 \
+  -DLIB_cust_opapi=/home/developer/ops-transformer/build/libcust_opapi.so
+cmake --build build -j8
+# 产物 build/dispatch_min_driver（CCU 关，仅编译/链接验证，不可有意义运行）</code></pre>
+<p><b>a6 全功能（开 CCU 路径）</b><span class="warn"> ⏳ 待 a6</span>：</p>
+<pre><code>cmake -B build \
+  -DASCEND_CANN_PACKAGE_PATH=&lt;a6 CANN 路径&gt; \
+  -DSOC_VERSION=&lt;a6 SoC 串&gt; \
+  -DDISPATCH_CCU_A6=ON          # ← 编入 CCU kernel + 启用拉起 + 段10 LocalCopyNb 真实写
+cmake --build build -j8
+# 装了算子包后 find_library 通常能自动找到 cust_opapi，可省 -DLIB_cust_opapi</code></pre>
+
+<h2>6. 运行 <span class="warn">⏳ 仅 a6 且 TARGET=a6 有意义</span></h2>
+<div class="danger"><b>a5 别跑</b>：CCU 围栏关 → 没人往状态区写 1 → teardown 的 AIV 会<b>死等</b>（§24）。运行是 a6 的事。</div>
+<pre><code># (1) §8 清场（跑 NPU 前必做）
+npu-smi info; pkill -9 python; sleep 3; npu-smi info
+
+# (2) 单 die rank table：填本卡 NPU device_ip
+cp rank_table.json.tmpl rank_table.json
+hccn_tool -i 0 -ip -g                 # 取 device_ip，填进 rank_table.json 的 FILL_NPU_DEVICE_IP
+
+# (3) 运行库路径（CANN lib64 + 散装 opapi 目录；装了包则只需 CANN lib64）
+export LD_LIBRARY_PATH=&lt;CANN&gt;/x86_64-linux/lib64:/home/developer/ops-transformer/build:$LD_LIBRARY_PATH
+
+# (4) 跑
+./build/dispatch_min_driver ./rank_table.json
+# 期望: [driver] PASS: teardown observed status==1 (done=1)</code></pre>
+
+<h2>7. <code>DISPATCH_CCU_A6</code> 开关</h2>
+<p>唯一总开关，同时控制 CCU kernel 段10 的 <code>LocalCopyNb</code> 真实写 与 驱动里的 CCU 拉起段。</p>
+<table>
+  <tr><th>状态</th><th>cmake</th><th>效果</th></tr>
+  <tr><td><b>OFF</b>（默认）</td><td>不传</td><td>不编 <code>dispatch_setup_ccu.cpp</code>、驱动 CCU 拉起桩掉 → a5 可编可链骨架</td></tr>
+  <tr><td><b>ON</b></td><td><code>-DDISPATCH_CCU_A6=ON</code></td><td>编入 CCU kernel + 启用拉起 + 段10 真实写 → 需 a6 libhcomm（含 CCU 符号）</td></tr>
+</table>
+
+<h2>8. a5 已验证状态（机器证据，非自评）</h2>
+<table>
+  <tr><th>环节</th><th>命令</th><th>状态</th></tr>
+  <tr><td>teardown 编译打包</td><td><code>build.sh --pkg --experimental --soc=ascend950 --ops=dispatch_teardown</code></td><td class="ok">✅ EXIT=0（AIV kernel .o / proto / aclnnInner / .run）</td></tr>
+  <tr><td>driver + CCU 两源文件编译</td><td>—</td><td class="ok">✅ .o 均产出</td></tr>
+  <tr><td>driver（CCU 关）链接</td><td>a5 cmake + 散装 cust_opapi</td><td class="ok">✅ build=0，产出 dispatch_min_driver</td></tr>
+  <tr><td>CCU 侧（kernel + 拉起）链接</td><td><code>-DDISPATCH_CCU_A6=ON</code></td><td class="no">❌ a6-only（见 §10）</td></tr>
+  <tr><td>上板运行</td><td>—</td><td class="no">❌ 需 a6 硬件</td></tr>
+</table>
+
+<h2>9. 待 a6 手抄校准（a5 看不到，代码里 <code>[Tx]</code> 标注）</h2>
+<table>
+  <tr><th>标记</th><th>待确认</th></tr>
+  <tr><td><b>T1</b></td><td><code>LocalCopyNb</code> a6 6 参原型 + <code>CreateBlockCcuBuf</code> 签名</td></tr>
+  <tr><td><b>T2</b></td><td><code>WaitEvent</code> a6 是 <code>SetMask</code>+1 参形式（a5 头为 2 参）</td></tr>
+  <tr><td><b>T3</b></td><td>状态字<b>跨流可见性/cache</b>——AIV 读 GM 是否需 dcci/非 cache 才能看到 CCU 的写（最可能上板才暴露）</td></tr>
+  <tr><td><b>T7</b></td><td>单 die rank_table 的 device_ip；或单 die CCU 是否需要建链/channel</td></tr>
+  <tr><td><b>T8</b></td><td>SoC 串 <code>ascend950pr_9599</code> 是否 a6 目标真值；CANN 路径</td></tr>
+  <tr><td><b>T9</b></td><td>teardown 装包 opapi 库名（a5 已用散装 <code>build/libcust_opapi.so</code> 解决）</td></tr>
+</table>
+
+<h2>10. 排错 / a5↔a6 边界</h2>
+<h3>编译期揪出并已修的 4 类（对抗核验看不见、只有编译器/链接器能逮）</h3>
+<table>
+  <tr><th>现象</th><th>根因</th><th>修法</th></tr>
+  <tr><td><code>ACLNN_API / ACLNN_SUCCESS does not name a type / not declared</code></td><td>本 CANN 版本公共 aclnn 头未导出这俩宏（只在注册内部 <code>aclnn_util.h</code>），对外头不自洽</td><td>对外头/驱动 <code>#ifndef</code> 兜底定义</td></tr>
+  <tr><td><code>hccl_types.h: No such file or directory</code></td><td><code>ccu_kernel.h</code> 内部 plain <code>#include "hccl_types.h"</code>，缺 include 根</td><td>driver include 加 <code>${HCOMM_INT_INC}/hccl</code></td></tr>
+  <tr><td><code>undefined reference to aclCreateTensor</code></td><td>该符号在 <code>libnnopbase</code>；CANN 公共头根实为 <code>x86_64-linux/include</code></td><td>链 <code>libnnopbase</code>；<code>find_path</code> 多后缀兜底</td></tr>
+  <tr><td><code>undefined reference to HcclCcuKernel* / hcomm::CcuKernel::CcuKernel</code></td><td><b>a5 libhcomm 未导出 CCU 拉起符号（nm 实测为空）= a6-only</b></td><td>CCU 侧整体 <code>#ifdef DISPATCH_CCU_A6</code> 围栏；a6 上开</td></tr>
+</table>
+<div class="note"><b>本质边界</b>：CCU kernel 继承 <code>hcomm::CcuKernel</code>、拉起走 <code>HcclCcuKernel*</code>——这些符号在 a5 libhcomm <b>不存在</b>，故 CCU 路径在 a5 <b>链接无解</b>（编译能过）。这是硬件/库代际边界，非代码缺陷。a6 上 <code>-DDISPATCH_CCU_A6=ON</code> + a6 libhcomm 即解。</div>
+<h3>运行期常见（参考项目 §8 / 卡死类）</h3>
+<ul>
+  <li>HCCL 建链失败（<code>ERR02005</code> / <code>store-&gt;get got 0 bytes</code>）→ 别人占卡，跑前 §8 清场。</li>
+  <li>teardown 无返回/卡死 → 状态区没被写 1（CCU 没跑/状态地址不一致/cache 未刷 [T3]）；PRINTF + DumpTensor 看 statusGm 实际值。</li>
+  <li>aclnn 返回 <code>561002</code> → 算子包未装或环境不符（先 <code>.run --force</code> 装包）。</li>
+</ul>
+
+<p class="small" style="margin-top:40px;border-top:1px solid var(--line);padding-top:12px;">
+本文档与 <code>run.sh</code> 的命令均来自 a5 实编验证（teardown EXIT=0 / driver build=0）。CCU 链接与上板运行待 a6。</p>
+
+</body>
+</html>
