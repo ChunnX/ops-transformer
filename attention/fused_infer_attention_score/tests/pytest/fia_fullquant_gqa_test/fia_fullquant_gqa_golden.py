@@ -486,7 +486,10 @@ def fa_run_npu(q, k, v, mask, actual_seq_q, actual_seq_kv,
     # mask 如果有的话，转换为 bool 类型
     if mask is not None:
         mask = mask.bool().npu()
-    
+    k = k[:, :, :128, :]
+    v = v[:, :, :128, :]
+    dequant_scale_k = dequant_scale_k[:, :, :128, :]
+
     # 打印调试信息
     print(f"[INFO] q dtype: {q.dtype}, shape: {q.shape}")
     print(f"[INFO] k dtype: {k.dtype}, shape: {k.shape}")
