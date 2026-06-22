@@ -3,7 +3,7 @@
 ## 产品支持情况
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>                        | ×  |
+|<term>Ascend 950PR/Ascend 950DT</term>                        | √  |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        | √  |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | √  |
 |<term>Atlas 200I/500 A2推理系列产品</term>                    | ×  |
@@ -38,7 +38,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>Q的多头数，目前仅支持64。</td>
+      <td>Q的多头数，取值范围为[1,128]。num_heads_q / num_heads_kv在A2/A3上必须为[1,128]范围内的2的幂，在A5上支持[1,128]范围内任意整数。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -66,14 +66,14 @@
     <tr>
       <td>cu_seqlens_ori_kv</td>
       <td>可选输入</td>
-      <td>当layout_kv为TND时，表示不同Batch中ori_kv的有效token数，维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和。目前layout_kv仅支持PA_BNBD，故设置此参数无效。</td>
+      <td>当layout_kv为TND时，表示不同Batch中ori_kv的有效token数，维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_cmp_kv</td>
       <td>可选输入</td>
-      <td>当layout_kv为TND时，表示不同Batch中cmp_kv的有效token数，维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和。目前layout_kv仅支持PA_BNBD，故设置此参数无效。</td>
+      <td>当layout_kv为TND时，表示不同Batch中cmp_kv的有效token数，维度为B+1，大小为参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -87,7 +87,35 @@
     <tr>
       <td>seqused_ori_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中ori_kv实际参与运算的token数，维度为B。</td>
+      <td>表示不同Batch中ori_kv实际参与运算的token数，维度为B。PA_BBND场景必须传入；BSND场景可作为每个batch的ori_kv有效长度覆盖值；TND场景使用cu_seqlens_ori_kv表达序列边界。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>seqused_cmp_kv</td>
+      <td>可选输入</td>
+      <td>表示不同Batch中`cmp_kv`实际参与运算的token数，维度为B。显式传入时作为每个batch的cmp逻辑有效长度，BSND、TND、PA_BBND场景均可使用。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>cmp_residual_kv</td>
+      <td>可选输入</td>
+      <td>表示压缩KV余数，用于按`cmp_len * cmp_ratio + residual`恢复压缩前KV长度，维度为B。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>ori_topk_length</td>
+      <td>可选输入</td>
+      <td>预留输入，当前版本不支持传入非空Tensor；未传或空Tensor保持旧语义，非空会被拦截。</td>
+      <td>INT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>cmp_topk_length</td>
+      <td>可选输入</td>
+      <td>预留输入，当前版本不支持传入非空Tensor；未传或空Tensor保持旧语义，非空会被拦截。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -106,9 +134,16 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>max_seqlen_kv</td>
+      <td>max_seqlen_ori_kv</td>
       <td>可选属性</td>
       <td>表示所有batch中`ori_kv`的最大有效token数。</td>
+      <td>INT32</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>max_seqlen_cmp_kv</td>
+      <td>可选属性</td>
+      <td>表示所有batch中`cmp_kv`的最大有效token数。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -122,14 +157,14 @@
     <tr>
       <td>cmp_topk</td>
       <td>可选属性</td>
-      <td>表示通过QLI算法从`cmp_kv`中筛选出的关键稀疏token的个数，目前仅支持512，默认值为None。</td>
+      <td>表示通过QLI算法从`cmp_kv`中筛选出的关键稀疏token的个数，C4A场景支持512或1024，C1A/C128A场景传0。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对`ori_kv`的压缩率，数据范围支持4/128，默认值为None。</td>
+      <td>表示对`ori_kv`的压缩率。A2/A3支持1、4、128，0为非法值；A5支持[1,128]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -170,7 +205,7 @@
     <tr>
       <td>layout_kv</td>
       <td>可选属性</td>
-      <td>用于标识输入ori_kv和cmp_kv的数据排布格式，目前仅支持传入默认值PA_BNBD。</td>
+      <td>用于标识输入ori_kv和cmp_kv的数据排布格式，支持BSND、TND、PA_BBND，默认值为BSND。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
@@ -215,4 +250,5 @@
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnnSparseFlashMlaMetadata](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md)调用SparseFlashMlaMetadata算子 |
+| aclnn API | [test_aclnnSparseFlashMlaMetadata](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[aclnnSparseFlashMlaMetadata](./docs/aclnnSparseFlashMlaMetadata.md)调用SparseFlashMlaMetadata算子 |
+| PyTorch API | [sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md) | 通过`cann_ops_transformer.ops.sparse_flash_mla_metadata`生成SparseFlashMla主算子使用的metadata |
