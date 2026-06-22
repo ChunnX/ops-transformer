@@ -29,6 +29,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "fa_static_init_output.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -63,7 +64,7 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
 
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 8U; // InitOutput 专用 MTE3_V，勿与 FA_MTE3_TO_V_0/1(0/1) 混用
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr LAYOUT_Q MASK_LAYOUT =
@@ -113,7 +114,7 @@ public:
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
 
-    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 8U; // InitOutput 专用 MTE3_V，勿与 FA_MTE3_TO_V_0/1(0/1) 混用
     // 静态 event ID 常量（避开 6/7，都在各自硬件通道独立）
     static constexpr uint32_t FA_MTE3_TO_V_0     = 0U;
     static constexpr uint32_t FA_MTE3_TO_V_1     = 1U;
@@ -197,6 +198,7 @@ public:
     LocalTensor<float> sumBrdcstBuf;
     LocalTensor<float> lseBuf;
     LocalTensor<INPUT_T> sinkBuf;
+    LocalTensor<uint8_t> initOutputScratchBuf;
 
     const ConstInfoX &constInfo;
     T negativeFloatScalar;
@@ -289,31 +291,15 @@ public:
 
     __aicore__ inline void ClearOutput()
     {
-        bool needOutputInit = IsInitAttentionOutGm();
-        // 静态Tensor迁移：FD 中间结果 GM workspace(accumOut/softmaxFDSum/softmaxFDMax) 复用同一段
-        // user workspace，运行时不会在 kernel 启动间清零。稀疏(mask)场景下 FA 实际写入的 split 槽位
-        // 可能少于 FD combine 读取的槽位；未写槽位在批跑时残留上一个用例的大值(attention/LSE)，导致
-        // 第二个及之后的 mask 用例 FD 规约读到脏数据而精度崩坏（单跑/首个用例因 workspace 为全新清零
-        // 内存而恰好通过）。因此 isFd 时在 kernel 入口整体清零该 workspace，使批跑与单跑行为一致。
-        bool needFdWsInit = this->isFd;
-        if (needOutputInit || needFdWsInit) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
-            if (needOutputInit) {
-                InitOutputSingleCore();
-                if (constInfo.isSoftmaxLseEnable) {
-                    InitLseOutputSingleCore();
-                }
-            }
-            if (needFdWsInit) {
-                InitFdWorkspaceSingleCore();
+        if (IsInitAttentionOutGm()) {
+            LocalTensor<uint8_t> scratch = BindInitOutputScratchBuf();
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            InitOutputSingleCore(scratch);
+            if (constInfo.isSoftmaxLseEnable) {
+                InitLseOutputSingleCore(scratch);
             }
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            // 跨核 barrier：使用 AscendC 内置 SyncAll() 硬同步接口。
-            // - 默认 isAIVOnly=true，仅同步全部 AIV 核，与 ClearOutput 仅 AIV 进入的语义一致；
-            // - SyncAll 内部占用 flagId [11-14]，与本算子静态分配的 mode 4 flagId [0-9] 不冲突；
-            // - 相比手动 CrossCoreSetFlag<0,PIPE_ALL>，SyncAll 内部 pipe/Set/Wait 配对经过充分验证，
-            //   不会触发 aicore subErrType 0x4 timeout-trap。
-            AscendC::SyncAll();
+            SyncAll();
         }
     }
 
@@ -322,7 +308,7 @@ public:
         return constInfo.needInitOutput;
     }
 
-    __aicore__ inline void InitOutputSingleCore()
+    __aicore__ inline void InitOutputSingleCore(const LocalTensor<uint8_t> &scratch)
     {
         int64_t tSize = constInfo.bSize * constInfo.s1Size;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
@@ -339,16 +325,17 @@ public:
             if constexpr (IsSameType<OUTPUT_T, int8_t>::value) {
                 GlobalTensor<half> attentionOutTmpGm;
                 attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
-                matmul::InitOutput<half>(attentionOutTmpGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
+                fa_static::InitOutput<half>(attentionOutTmpGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
+                    0, scratch);
             } else {
-                matmul::InitOutput<OUTPUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
-                    0);
+                fa_static::InitOutput<OUTPUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
+                    0, scratch);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 
-    __aicore__ inline void InitLseOutputSingleCore()
+    __aicore__ inline void InitLseOutputSingleCore(const LocalTensor<uint8_t> &scratch)
     {
         int64_t tSize = constInfo.bSize * constInfo.s1Size;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
@@ -362,29 +349,8 @@ public:
 
         if (singleInitOutputSize > 0) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            matmul::InitOutput<float>(softmaxLseGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
-                                      3e+99); // 3e+99: set the value of invalid batch to inf
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-        }
-    }
-
-    __aicore__ inline void InitFdWorkspaceSingleCore()
-    {
-        // accumOut / softmaxFDSum / softmaxFDMax 在 user workspace 上连续排布
-        // （见 InitVecInput：accumOut@workspace, softmaxFDSum@+accumOutSize, softmaxFDMax@+accumOutSize+logSumExpSize），
-        // 总大小为 accumOutSize + 2 * logSumExpSize（单位：float 元素）。整体清零以消除批跑跨启动的脏残留。
-        int64_t totalFdWsSize = (int64_t)constInfo.accumOutSize + 2 * (int64_t)constInfo.logSumExpSize;
-        if (totalFdWsSize <= 0) {
-            return;
-        }
-        int64_t singleCoreSize =
-            (totalFdWsSize + (2 * constInfo.coreNum) - 1) / (2 * constInfo.coreNum); // 2 means c:v = 1:2
-        int64_t tailSize = totalFdWsSize - constInfo.aivIdx * singleCoreSize;
-        int64_t singleInitSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
-
-        if (singleInitSize > 0) {
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            matmul::InitOutput<float>(accumOutGm[constInfo.aivIdx * singleCoreSize], singleInitSize, 0);
+            fa_static::InitOutput<float>(softmaxLseGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
+                                      3e+99, scratch); // 3e+99: set the value of invalid batch to inf
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
@@ -1168,6 +1134,27 @@ public:
         sumBrdcstBuf     = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 4352U,  2048U).template ReinterpretCast<float>();
     }
 
+    static constexpr uint32_t GetInitOutputScratchByteOffset()
+    {
+        constexpr uint32_t mm1Sz = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
+        constexpr uint32_t mm2Sz = bmm2Write2Ub ?
+            (mBaseSize / CV_RATIO * (uint32_t)dVTemplateType * sizeof(T)) : 0U;
+        constexpr uint32_t mm2InBufSz = bmm2Write2Ub ? 0U : 32768U;
+        constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U + mm2InBufSz;
+        constexpr bool hasCommonBuf = (s2BaseSize == 256U) ? (mBaseSize != 128U) : (!useDn);
+        constexpr uint32_t commonBufSz = hasCommonBuf ? 512U : 0U;
+        constexpr uint32_t OFF_LSE = BASE + 121600U + commonBufSz;
+        constexpr uint32_t LSE_BUF_SZ = (mBaseSize >> 1U) * 8U * sizeof(float);
+        constexpr uint32_t SINK_BUF_SLOT_SZ = 256U;
+        return OFF_LSE + LSE_BUF_SZ + SINK_BUF_SLOT_SZ;
+    }
+
+    __aicore__ inline LocalTensor<uint8_t> BindInitOutputScratchBuf()
+    {
+        return LocalTensor<uint8_t>(TPosition::VECIN, GetInitOutputScratchByteOffset(),
+            fa_static::INIT_OUTPUT_SCRATCH_BYTES);
+    }
+
     __aicore__ inline void InitBuffers()
     {
         // 完全自主管理：使用 LocalTensor 构造函数直接指定绝对字节偏移，
@@ -1216,6 +1203,9 @@ public:
             sinkBuf = LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSE + LSE_BUF_SZ,
                           256U).template ReinterpretCast<INPUT_T>();
         }
+
+        // InitOutput scratch：位于 lse/sink 槽位之后，8192B；ClearOutput/DealActSeqLenIsZero 顺序复用同一槽
+        initOutputScratchBuf = BindInitOutputScratchBuf();
     }
 
     // 反向同步事件预置 SetFlag：完全静态、直接使用编译期常量（参考 quant_flash_attn AllocEventID 风格）
@@ -1331,16 +1321,19 @@ public:
             OffsetCalculator<GmFormat::BSNGD, int32_t> offsetCalculator;
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                   constInfo.dSizeV, *qActSeqLensParser);
-            DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+            fa_static::DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm,
+                initOutputScratchBuf);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             OffsetCalculator<GmFormat::BNGSD, int32_t> offsetCalculator;
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                   constInfo.dSizeV, *qActSeqLensParser);
-            DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+            fa_static::DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm,
+                initOutputScratchBuf);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             OffsetCalculator<GmFormat::TNGD, int32_t, true> offsetCalculator;
             offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
-            DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+            fa_static::DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm,
+                initOutputScratchBuf);
         }
     }
 };
