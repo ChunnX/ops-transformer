@@ -169,18 +169,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR yOut,
     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
-    // mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
-    // rankId_ = mc2Context_->epRankId;
+    mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
+    rankId_ = mc2Context_->epRankId;
 
-    // if (rankId_ == 0) {
-    //     GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 1);// + dstOffset;
-    //     hcomm_.WriteNbi(mc2Context_->hcommHandle_[0], (GM_ADDR)mc2Context_->urmacclBuffer_[1], workspaceGM, 1);
-    //     hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
-    // } else {
-    //     GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 0);// + dstOffset;
-    //     hcomm_.WriteNbi(mc2Context_->hcommHandle_[0], (GM_ADDR)mc2Context_->urmacclBuffer_[0], workspaceGM, 1);
-    //     hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
-    // }
+    if (rankId_ == 0) {
+        GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 1);// + dstOffset;
+        hcomm_.WriteNbi(mc2Context_->hcommHandle_[0], (GM_ADDR)mc2Context_->urmacclBuffer_[1], workspaceGM, 1);
+        hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
+    } else {
+        GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 0);// + dstOffset;
+        hcomm_.WriteNbi(mc2Context_->hcommHandle_[0], (GM_ADDR)mc2Context_->urmacclBuffer_[0], workspaceGM, 1);
+        hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
+    }
 
 
     m_ = tilingData->bs;
