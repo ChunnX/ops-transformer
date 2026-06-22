@@ -868,12 +868,6 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortCutOriginTiling(
     int64_t colBytesPerElement = NUM_TWO * inuptXDtypeSize_;
     if (quantMode_ == STATIC_QUANT) {
         colBytesPerElement += SIZE_FP32 + SIZE_INT8 * NUM_TWO; // quantFloat + quantInt8
-    } else if (quantMode_ == DYNAMIC_QUANT) {
-        colBytesPerElement += NUM_TWO * SIZE_FP32 + SIZE_INT8; // quantFloat + quantTemp + quantInt8
-        if (smoothType_ != 0) {
-            // smooth buffer sized by perLoopCols (only curLoopCols loaded per iteration)
-            colBytesPerElement += SIZE_FP32 * NUM_TWO; // 2 smooth slots (non-droppad)
-        }
     } else if (isInputScale_) {
         // unquant with inputScale: 2 scale slots (fixed 32B each)
         phaseCFixedOverhead += Ops::Base::CeilAlign(ONE_BLOCK_ELEMENT * SIZE_FP32, ONE_BLOCK_BYTE) * NUM_TWO;
@@ -907,16 +901,10 @@ void MoeInitRountingV3TilingBase::ComputeCountingSortCutOriginTiling(
         phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
         phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_INT8, ONE_BLOCK_BYTE) * NUM_TWO;
         phaseCSize += ONE_BLOCK_BYTE;
-    } else if (quantMode_ == DYNAMIC_QUANT) {
-        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
-        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_INT8, ONE_BLOCK_BYTE);
-        phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
-        if (smoothType_ != 0) {
-            phaseCSize += Ops::Base::CeilAlign(csPerLoopColsAligned * SIZE_FP32, ONE_BLOCK_BYTE);
-        }
     }
 
     int64_t totalUB = persistentSize + std::max({phaseASize, phaseBSize, phaseCSize});
+    OP_LOGI(context_, "totalUB is: %ld", totalUB);
 
     // Set tiling params
     auto gatherOp = &moeInitRoutingV3TilingData.gatherOutComputeParamsOp;
