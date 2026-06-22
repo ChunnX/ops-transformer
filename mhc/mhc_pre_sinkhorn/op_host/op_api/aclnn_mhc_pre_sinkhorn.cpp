@@ -237,6 +237,40 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
     return true;
 }
 
+static bool IsFormatSupport(const aclTensor *tensor, const std::string &tensorName)
+{
+    if (tensor != nullptr && op::IsPrivateFormat(tensor->GetStorageFormat())) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s's format should be ND, but got %s.",
+                tensorName.c_str(), op::ToString(tensor->GetStorageFormat()).GetString());
+        return false;
+    }
+    return true;
+}
+
+static bool CheckFormat(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
+                        const aclTensor *hin, const aclTensor *hPost, const aclTensor *hRes,
+                        const aclTensor *hPre, const aclTensor *hcBeforeNorm, const aclTensor *invRms,
+                        const aclTensor *sumOut, const aclTensor *normOut, bool needBackward)
+{
+    CHECK_RET(IsFormatSupport(x, "x"), false);
+    CHECK_RET(IsFormatSupport(phi, "phi"), false);
+    CHECK_RET(IsFormatSupport(alpha, "alpha"), false);
+    CHECK_RET(IsFormatSupport(bias, "bias"), false);
+    CHECK_RET(IsFormatSupport(hin, "hin"), false);
+    CHECK_RET(IsFormatSupport(hPost, "hPost"), false);
+    CHECK_RET(IsFormatSupport(hRes, "hRes"), false);
+    
+    if (needBackward) {
+        CHECK_RET(IsFormatSupport(hPre, "hPre"), false);
+        CHECK_RET(IsFormatSupport(hcBeforeNorm, "hcBeforeNorm"), false);
+        CHECK_RET(IsFormatSupport(invRms, "invRms"), false);
+        CHECK_RET(IsFormatSupport(sumOut, "sumOut"), false);
+        CHECK_RET(IsFormatSupport(normOut, "normOut"), false);
+    }
+    
+    return true;
+}
+
 static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
                                       const aclTensor *bias, const aclTensor *hin, const aclTensor *hPost,
                                       const aclTensor *hRes, const aclTensor *hPre, const aclTensor *hcBeforeNorm,
@@ -247,6 +281,9 @@ static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, 
     CHECK_RET(CheckDtypeValid(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, needBackward),
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hcMult, numIters, needBackward),
+              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckFormat(x, phi, alpha, bias, hin, hPost, hRes, hPre,
+                          hcBeforeNorm, invRms, sumOut, normOut, needBackward),
               ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
