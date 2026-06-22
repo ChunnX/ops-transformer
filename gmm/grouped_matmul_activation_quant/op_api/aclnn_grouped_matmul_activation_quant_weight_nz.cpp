@@ -43,6 +43,7 @@ constexpr size_t WEIGHT_SCALE_DIM_NUM = 4UL;
 constexpr size_t GROUP_LIST_DIM_NUM = 1UL;
 constexpr size_t OUT_DIM_NUM = 2UL;
 constexpr size_t OUT_SCALE_DIM_NUM = 3UL;
+constexpr size_t WEIGHT_LOGICAL_DIM_NUM = 3UL;
 constexpr size_t WEIGHT_NZ_DIM_NUM = 5UL;
 constexpr int64_t DIM_0 = 0L;
 constexpr int64_t DIM_1 = 1L;
@@ -138,6 +139,7 @@ aclnnStatus CheckShapeValue(const aclTensor *x, const aclTensor *groupList, cons
                "In op [%s], N must be divisible by 64, but got %ld.", OP_NAME, n);
 
     const auto &weightShape = weight->GetStorageShape();
+    const auto &weightViewShape = weight->GetViewShape();
     const auto &weightScaleShape = weightScale->GetViewShape();
     CHECK_COND(weightShape.GetDim(DIM_0) == e, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], weight dim 0 must equal E, but got %ld and %ld.", OP_NAME,
@@ -167,6 +169,14 @@ aclnnStatus CheckShapeValue(const aclTensor *x, const aclTensor *groupList, cons
     }
     GmmaqPrint("In op [%s], expected weight storage shape %s, weightScale shape %s.", OP_NAME,
                op::ToString(weightExpectShape).GetString(), op::ToString(weightScaleExpectShape).GetString());
+    if (weightViewShape.GetDimNum() == WEIGHT_LOGICAL_DIM_NUM) {
+        op::Shape weightViewExpectShape = transposeWeight ? op::Shape({e, n, k}) : op::Shape({e, k, n});
+        GmmaqPrint("In op [%s], expected weight logical view shape %s.", OP_NAME,
+                   op::ToString(weightViewExpectShape).GetString());
+        CHECK_COND(weightViewShape == weightViewExpectShape, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], expected weight logical view shape to be %s, but got %s.", OP_NAME,
+                   op::ToString(weightViewExpectShape).GetString(), op::ToString(weightViewShape).GetString());
+    }
     CHECK_COND(weightShape == weightExpectShape, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], expected weight storage shape to be %s, but got %s.", OP_NAME,
                op::ToString(weightExpectShape).GetString(), op::ToString(weightShape).GetString());
@@ -237,7 +247,11 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                groupList->GetViewShape().GetDimNum(), y->GetViewShape().GetDimNum(), yScale->GetViewShape().GetDimNum());
     OP_CHECK_WRONG_DIMENSION(x, X_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_WRONG_DIMENSION(xScaleOptional, SCALE_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_WRONG_DIMENSION(w, WEIGHT_NZ_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
+    CHECK_COND(w->GetViewShape().GetDimNum() == WEIGHT_LOGICAL_DIM_NUM ||
+                   w->GetViewShape().GetDimNum() == WEIGHT_NZ_DIM_NUM,
+               ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], weight view shape dim num must be 3 or 5, but got %zu.", OP_NAME,
+               w->GetViewShape().GetDimNum());
     OP_CHECK_WRONG_DIMENSION(wScale, WEIGHT_SCALE_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_WRONG_DIMENSION(groupList, GROUP_LIST_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_WRONG_DIMENSION(y, OUT_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
