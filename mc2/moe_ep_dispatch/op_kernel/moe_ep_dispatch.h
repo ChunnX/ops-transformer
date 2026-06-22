@@ -653,7 +653,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::DedupAndSen
         // atomicAdd 计算 计算本卡发送到dstRankId的token数量  预留槽位
         __gm__ int32_t* dstCounterAddr = reinterpret_cast<__gm__ int32_t*>(scaleupCounterAddr_ + dstRankId * sizeof(int32_t));
         uint32_t slot = AscendC::AtomicAdd(dstCounterAddr, 1);
-        printf("cur 643 dstRankId %d, slot %d, epRankId_ %d, aivId %d\n", dstRankId, slot, epRankId_, aivId_);
+        printf("cur 643 slot %d, dstRankId %d, epRankId_ %d, aivId %d\n", slot, dstRankId, epRankId_, aivId_);
         dstSlotIdxTensor_.SetValue(k, slot);
         seenDst[nSeen]  = dstRankId;
         seenSlot[nSeen] = slot;
@@ -737,6 +737,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
 {
+    SplitToCore(axisBS_, aivNum_, startTokenId_, endTokenId_, sendTokenNum_, true); // 按卡分核
     if (startTokenId_ >= axisBS_) {
         return;
     }
@@ -768,10 +769,12 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
         dstSlotIdxTensor_ = dstSlotQueue_.AllocTensor<int32_t>();
 
         if constexpr (!IsCached) {
+            printf("no Cached epRankId_ %d, aivId %d\n", epRankId_, aivId_);
             DedupAndSendDirect(tokenId);
             dstSlotQueue_.EnQue(dstSlotIdxTensor_);
             dstSlotIdxTensor_ = dstSlotQueue_.DeQue<int32_t>();
         } else {
+            printf("IsCached epRankId_ %d, aivId %d\n", epRankId_, aivId_);
             DataCopyPad(dstSlotIdxTensor_, cachedSlotIdxGMTensor_[topkOffset], topkCopyParams_, padParams_);
             dstSlotQueue_.EnQue(dstSlotIdxTensor_);
             dstSlotIdxTensor_ = dstSlotQueue_.DeQue<int32_t>();
