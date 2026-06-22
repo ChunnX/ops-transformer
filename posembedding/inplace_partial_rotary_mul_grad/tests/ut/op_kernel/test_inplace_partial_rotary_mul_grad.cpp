@@ -62,7 +62,7 @@ TEST_F(inplace_partial_rotary_mul_grad_test, test_case_mode1_interleave_fp32)
         "inplace_partial_rotary_mul_grad_data ./");
     system("chmod -R 755 ./inplace_partial_rotary_mul_grad_data/");
     system("cd ./inplace_partial_rotary_mul_grad_data/ && rm -rf ./*bin");
-    system("cd ./inplace_partial_rotary_mul_grad_data/ && python3 gen_data.py 1 1 1 128 float32");
+    system("cd ./inplace_partial_rotary_mul_grad_data/ && python3 gen_data.py 1 1 1 128 1 1 1 128 float32 float32");
     system("cd ./inplace_partial_rotary_mul_grad_data/ && python3 gen_tiling.py case0");
     char* path_ = get_current_dir_name();
     string path(path_);
@@ -74,7 +74,7 @@ TEST_F(inplace_partial_rotary_mul_grad_test, test_case_mode1_interleave_fp32)
     ReadFile(path + "/inplace_partial_rotary_mul_grad_data/tiling.bin", tilingDataSize, tilingDatafromBin, tilingDataSize);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    ICPU_SET_TILING_KEY(10012);
+    ICPU_SET_TILING_KEY(205);  // TILING_KEY_A: NO_BROADCAST → AAndB
     ICPU_RUN_KF(
         inplace_partial_rotary_mul_grad, blockDim, dy, cos, sin, x, dx, dcos, dsin, workspace,
         (uint8_t*)(tilingDatafromBin));
@@ -108,7 +108,7 @@ TEST_F(inplace_partial_rotary_mul_grad_test, test_case_mode0_half_fp16)
     uint32_t blockDim = 32;
 
     system("cd ./inplace_partial_rotary_mul_grad_data/ && rm -rf ./*bin");
-    system("cd ./inplace_partial_rotary_mul_grad_data/ && python3 gen_data.py 2 4 8 64 float16");
+    system("cd ./inplace_partial_rotary_mul_grad_data/ && python3 gen_data.py 2 4 8 64 1 4 1 64 float16 float16");
     system("cd ./inplace_partial_rotary_mul_grad_data/ && python3 gen_tiling.py case1");
     char* path_ = get_current_dir_name();
     string path(path_);
@@ -120,7 +120,7 @@ TEST_F(inplace_partial_rotary_mul_grad_test, test_case_mode0_half_fp16)
     ReadFile(path + "/inplace_partial_rotary_mul_grad_data/tiling.bin", tilingDataSize, tilingDatafromBin, tilingDataSize);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    ICPU_SET_TILING_KEY(10012);
+    ICPU_SET_TILING_KEY(204);  // TILING_KEY_AB: SBND → AB
     ICPU_RUN_KF(
         inplace_partial_rotary_mul_grad, blockDim, dy, cos, sin, x, dx, dcos, dsin, workspace,
         (uint8_t*)(tilingDatafromBin));

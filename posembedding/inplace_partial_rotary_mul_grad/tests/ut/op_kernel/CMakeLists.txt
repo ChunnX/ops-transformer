@@ -16,5 +16,13 @@ if (UT_TEST_ALL OR OP_KERNEL_UT)
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_aba_and_ba_arch35.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_bab_arch35.cpp
         )
-    AddOpTestCase(inplace_partial_rotary_mul_grad "ascend950" "-DDTYPE_DY=float -DDTYPE_COS=float -DDTYPE_SIN=float" "${inplace_partial_rotary_mul_grad_tiling_files}")
+    # 同精度: fp16+fp16, fp32+fp32, bf16+bf16
+    AddOpTestCase(inplace_partial_rotary_mul_grad "ascend950" "-DDTYPE_DY=half -DDTYPE_COS=half" "${inplace_partial_rotary_mul_grad_tiling_files}")
+    AddOpTestCase(inplace_partial_rotary_mul_grad "ascend950" "-DDTYPE_DY=float -DDTYPE_COS=float" "${inplace_partial_rotary_mul_grad_tiling_files}")
+    AddOpTestCase(inplace_partial_rotary_mul_grad "ascend950" "-DDTYPE_DY=bfloat16_t -DDTYPE_COS=bfloat16_t" "${inplace_partial_rotary_mul_grad_tiling_files}")
+    # 混合精度: fp16+fp32, fp32+fp16, bf16+fp32, fp32+bf16
+    AddOpTestCase(inplace_partial_rotary_mul_grad "ascend950" "-DDTYPE_DY=half -DDTYPE_COS=float" "${inplace_partial_rotary_mul_grad_tiling_files}")
+    AddOpTestCase(inplace_partial_rotary_mul_grad "ascend950" "-DDTYPE_DY=float -DDTYPE_COS=half" "${inplace_partial_rotary_mul_grad_tiling_files}")
+    AddOpTestCase(inplace_partial_rotary_mul_grad "ascend950" "-DDTYPE_DY=bfloat16_t -DDTYPE_COS=float" "${inplace_partial_rotary_mul_grad_tiling_files}")
+    AddOpTestCase(inplace_partial_rotary_mul_grad "ascend950" "-DDTYPE_DY=float -DDTYPE_COS=bfloat16_t" "${inplace_partial_rotary_mul_grad_tiling_files}")
 endif()
