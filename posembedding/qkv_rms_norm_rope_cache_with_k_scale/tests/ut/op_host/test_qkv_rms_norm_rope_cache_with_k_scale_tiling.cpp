@@ -129,6 +129,7 @@ void RefreshShapes(ContractInput &input)
     input.kScaleCache.stride = Stride({input.numKHeads * input.blockSize, input.blockSize, 1, 1});
     input.kScaleCache.stridePresent = true;
     SetShape(input.cuSeqLen, {static_cast<uint64_t>(input.batch) + 1});
+    SetShape(input.actualSeqLens, {static_cast<uint64_t>(input.batch)});
     SetShape(input.qRotation, {input.headDim, input.headDim});
     SetShape(input.kRotation, {input.headDim, input.headDim});
     SetShape(input.vScale, {input.numVHeads});
@@ -157,6 +158,7 @@ ContractInput BuildInput(uint64_t totalTokens = 128, uint64_t numQHeads = 16, ui
     input.vCache.dtype = ge::DT_FLOAT8_E4M3FN;
     input.kScaleCache.dtype = ge::DT_FLOAT;
     input.cuSeqLen.dtype = ge::DT_INT32;
+    input.actualSeqLens.dtype = ge::DT_INT32;
     input.qRotation.dtype = ge::DT_BF16;
     input.kRotation.dtype = ge::DT_BF16;
     input.vScale.dtype = ge::DT_FLOAT;
@@ -307,6 +309,7 @@ std::vector<gert::TilingContextPara::TensorDescription> BuildTilingInputs(const 
                        ge::DT_FLOAT8_E4M3FN),
         MakeTensorDesc({ToI64(TEST_BLOCK_NUM), ToI64(item.numKHeads), ToI64(TEST_BLOCK_SIZE), 1}, ge::DT_FLOAT),
         MakeTensorDesc({ToI64(TEST_BATCH + 1)}, ge::DT_INT32),
+        MakeTensorDesc({ToI64(TEST_BATCH)}, ge::DT_INT32),
         MakeTensorDesc({ToI64(item.headDim), ToI64(item.headDim)}, ge::DT_BF16),
         MakeTensorDesc({ToI64(item.headDim), ToI64(item.headDim)}, ge::DT_BF16),
         MakeTensorDesc({ToI64(item.numVHeads)}, ge::DT_FLOAT),
@@ -790,6 +793,14 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsInvalidShapeAndDtype)
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
     input = BuildInput();
+    input.actualSeqLens.shape[0] = 0;
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+
+    input = BuildInput();
+    input.actualSeqLens.shape[0] = input.batch + 1;
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+
+    input = BuildInput();
     input.kCache.shape[2] = -1;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 
@@ -815,6 +826,10 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsInvalidShapeAndDtype)
 
     input = BuildInput();
     input.kRotation.dtype = ge::DT_FLOAT;
+    EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
+
+    input = BuildInput();
+    input.actualSeqLens.dtype = ge::DT_FLOAT;
     EXPECT_EQ(ValidateContractInput(input), ge::GRAPH_FAILED);
 }
 

@@ -61,9 +61,19 @@ contract:
 
 | Index | Input | Shape |
 |---:|---|---|
-| 9 | `q_rotation` | `[headDim, headDim]` |
-| 10 | `k_rotation` | `[headDim, headDim]` |
-| 11 | `v_scale` | `[numVHeads]` |
+| 9 | `actual_seq_lens` | `[batch]` |
+| 10 | `q_rotation` | `[headDim, headDim]` |
+| 11 | `k_rotation` | `[headDim, headDim]` |
+| 12 | `v_scale` | `[numVHeads]` |
+
+`cu_seq_len` is the prefix sum for the tokens in the current invocation.
+`actual_seq_lens` stores each batch sequence length after the current tokens are
+appended. The kernel derives each batch history offset as
+`max(actual_seq_lens[batch] - (cu_seq_len[batch + 1] - cu_seq_len[batch]), 0)`
+and adds it to the local token position before indexing the full `cos_sin`
+table. For example, `cu_seq_len=[0,17,18]` and
+`actual_seq_lens=[8209,1]` means batch0 uses RoPE positions `8192..8208`,
+while batch1 starts from position `0`.
 
 Both rotation tensors must be present and BF16; missing inputs report
 `missing_q_rotation` or `missing_k_rotation`. Existing callers that used one

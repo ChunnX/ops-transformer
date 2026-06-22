@@ -19,6 +19,8 @@ constexpr uint64_t QKV_INDEX = 0;
 constexpr uint64_t K_CACHE_INDEX = 5;
 constexpr uint64_t V_CACHE_INDEX = 6;
 constexpr uint64_t K_SCALE_CACHE_INDEX = 7;
+constexpr uint64_t CU_SEQ_LEN_INDEX = 8;
+constexpr uint64_t ACTUAL_SEQ_LENS_INDEX = 9;
 constexpr uint64_t HEAD_NUMS_ATTR_INDEX = 0;
 
 constexpr uint64_t Q_OUT_INDEX = 0;
@@ -30,6 +32,7 @@ constexpr uint64_t K_SCALE_CACHE_OUT_INDEX = 4;
 constexpr uint64_t HEAD_NUMS_SIZE = 3;
 constexpr uint64_t QKV_DIM_NUM = 3;
 constexpr uint64_t CACHE_DIM_NUM = 4;
+constexpr uint64_t SEQ_LEN_DIM_NUM = 1;
 
 ge::graphStatus ValidateDimNum(gert::InferShapeContext *context, const char *tensorName, const gert::Shape *shape,
                                uint64_t expectedDimNum)
@@ -85,17 +88,30 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheShape);
     const gert::Shape *kScaleCacheShape = context->GetInputShape(K_SCALE_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kScaleCacheShape);
+    const gert::Shape *cuSeqLenShape = context->GetInputShape(CU_SEQ_LEN_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, cuSeqLenShape);
+    const gert::Shape *actualSeqLensShape = context->GetInputShape(ACTUAL_SEQ_LENS_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, actualSeqLensShape);
 
     if (ValidateDimNum(context, "qkv", qkvShape, QKV_DIM_NUM) != ge::GRAPH_SUCCESS ||
         ValidateDimNum(context, "k_cache", kCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
         ValidateDimNum(context, "v_cache", vCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
-        ValidateDimNum(context, "k_scale_cache", kScaleCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS) {
+        ValidateDimNum(context, "k_scale_cache", kScaleCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        ValidateDimNum(context, "cu_seq_len", cuSeqLenShape, SEQ_LEN_DIM_NUM) != ge::GRAPH_SUCCESS ||
+        ValidateDimNum(context, "actual_seq_lens", actualSeqLensShape, SEQ_LEN_DIM_NUM) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (ValidatePositiveDims(context, "qkv", qkvShape) != ge::GRAPH_SUCCESS ||
         ValidatePositiveDims(context, "k_cache", kCacheShape) != ge::GRAPH_SUCCESS ||
         ValidatePositiveDims(context, "v_cache", vCacheShape) != ge::GRAPH_SUCCESS ||
-        ValidatePositiveDims(context, "k_scale_cache", kScaleCacheShape) != ge::GRAPH_SUCCESS) {
+        ValidatePositiveDims(context, "k_scale_cache", kScaleCacheShape) != ge::GRAPH_SUCCESS ||
+        ValidatePositiveDims(context, "cu_seq_len", cuSeqLenShape) != ge::GRAPH_SUCCESS ||
+        ValidatePositiveDims(context, "actual_seq_lens", actualSeqLensShape) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (cuSeqLenShape->GetDim(0) < 2 || actualSeqLensShape->GetDim(0) != cuSeqLenShape->GetDim(0) - 1) {
+        OP_LOGE(context, "actual_seq_lens shape must be [cu_seq_len dim0 - 1], got actual=%ld cu_seq_len=%ld.",
+                actualSeqLensShape->GetDim(0), cuSeqLenShape->GetDim(0));
         return ge::GRAPH_FAILED;
     }
 

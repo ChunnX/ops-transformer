@@ -281,7 +281,10 @@ private:
             const uint64_t seqBegin = static_cast<uint64_t>(cuSeqLenGm_.GetValue(batchIdx));
             const uint64_t seqEnd = static_cast<uint64_t>(cuSeqLenGm_.GetValue(batchIdx + 1U));
             if (tokenOffset >= seqBegin && tokenOffset < seqEnd) {
-                return tokenOffset - seqBegin;
+                const uint64_t localLen = seqEnd - seqBegin;
+                const uint64_t actualLen = static_cast<uint64_t>(actualSeqLensGm_.GetValue(batchIdx));
+                const uint64_t historyOffset = actualLen > localLen ? actualLen - localLen : 0U;
+                return historyOffset + tokenOffset - seqBegin;
             }
         }
         return tokenOffset;
@@ -583,6 +586,7 @@ private:
         vCacheInGm_.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.vCache);
         kScaleCacheInGm_.SetGlobalBuffer((__gm__ float *)tensors.kScaleCache);
         cuSeqLenGm_.SetGlobalBuffer((__gm__ int32_t *)tensors.cuSeqLen);
+        actualSeqLensGm_.SetGlobalBuffer((__gm__ int32_t *)tensors.actualSeqLens);
         vScaleGm_.SetGlobalBuffer((__gm__ float *)tensors.vScale);
         qOutGm_.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.qOut);
         qScaleGm_.SetGlobalBuffer((__gm__ float *)tensors.qScale);
@@ -604,6 +608,7 @@ private:
     GlobalTensor<fp8_e4m3fn_t> vCacheInGm_;
     GlobalTensor<float> kScaleCacheInGm_;
     GlobalTensor<int32_t> cuSeqLenGm_;
+    GlobalTensor<int32_t> actualSeqLensGm_;
     GlobalTensor<float> vScaleGm_;
     GlobalTensor<fp8_e4m3fn_t> qOutGm_;
     GlobalTensor<float> qScaleGm_;

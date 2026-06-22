@@ -30,9 +30,10 @@ constexpr uint64_t K_CACHE_INDEX = 5;
 constexpr uint64_t V_CACHE_INDEX = 6;
 constexpr uint64_t K_SCALE_CACHE_INDEX = 7;
 constexpr uint64_t CU_SEQ_LEN_INDEX = 8;
-constexpr uint64_t Q_ROTATION_INDEX = 9;
-constexpr uint64_t K_ROTATION_INDEX = 10;
-constexpr uint64_t V_SCALE_INDEX = 11;
+constexpr uint64_t ACTUAL_SEQ_LENS_INDEX = 9;
+constexpr uint64_t Q_ROTATION_INDEX = 10;
+constexpr uint64_t K_ROTATION_INDEX = 11;
+constexpr uint64_t V_SCALE_INDEX = 12;
 
 constexpr uint64_t HEAD_NUMS_ATTR_INDEX = 0;
 constexpr uint64_t EPSILON_ATTR_INDEX = 1;
@@ -141,6 +142,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateDtypes() const
         {"cosSin", &input_.cosSin, ge::DT_FLOAT},
         {"slotMapping", &input_.slotMapping, ge::DT_INT32},
         {"cuSeqLen", &input_.cuSeqLen, ge::DT_INT32},
+        {"actualSeqLens", &input_.actualSeqLens, ge::DT_INT32},
         {"kCache", &input_.kCache, ge::DT_FLOAT8_E4M3FN},
         {"vCache", &input_.vCache, ge::DT_FLOAT8_E4M3FN},
         {"kScaleCache", &input_.kScaleCache, ge::DT_FLOAT},
@@ -181,6 +183,13 @@ QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeInputsForDerivedFields() c
                 OP_LOGE(context_,
                         "QkvRmsNormRopeCacheWithKScale contract reject: cuSeqLen dim0=%ld, expected dim0>=2.",
                         input_.cuSeqLen.shape.GetDim(0)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!input_.actualSeqLens.shapePresent || input_.actualSeqLens.shape.GetDimNum() != 1,
+                OP_LOGE(context_,
+                        "QkvRmsNormRopeCacheWithKScale contract reject: actualSeqLens present=%u rank=%u, "
+                        "expected rank=1.",
+                        input_.actualSeqLens.shapePresent ? 1U : 0U,
+                        static_cast<uint32_t>(input_.actualSeqLens.shape.GetDimNum())),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.kCache.shapePresent || input_.kCache.shape.GetDimNum() != 4,
                 OP_LOGE(context_,
@@ -244,6 +253,11 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidatePositionInputSh
     OP_CHECK_IF(static_cast<uint64_t>(input_.cuSeqLen.shape.GetDim(0)) != input_.batch + 1,
                 OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale contract reject: cuSeqLen dim0=%ld.",
                         input_.cuSeqLen.shape.GetDim(0)),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(input_.actualSeqLens.shape.GetDim(0) <= 0 ||
+                    static_cast<uint64_t>(input_.actualSeqLens.shape.GetDim(0)) != input_.batch,
+                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale contract reject: actualSeqLens dim0=%ld.",
+                        input_.actualSeqLens.shape.GetDim(0)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -794,6 +808,7 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogContractInput() const
     LogTensorInfo("vCache", input_.vCache);
     LogTensorInfo("kScaleCache", input_.kScaleCache);
     LogTensorInfo("cuSeqLen", input_.cuSeqLen);
+    LogTensorInfo("actualSeqLens", input_.actualSeqLens);
     LogTensorInfo("qRotation", input_.qRotation);
     LogTensorInfo("kRotation", input_.kRotation);
     LogTensorInfo("vScale", input_.vScale);
@@ -925,6 +940,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillRequiredTensorInput
                 OP_LOGE(context_, "failed to parse kScaleCache tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToTensorInfo(context_, "cuSeqLen", CU_SEQ_LEN_INDEX, input_.cuSeqLen) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to parse cuSeqLen tensor info."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ToTensorInfo(context_, "actualSeqLens", ACTUAL_SEQ_LENS_INDEX, input_.actualSeqLens) !=
+                    ge::GRAPH_SUCCESS,
+                OP_LOGE(context_, "failed to parse actualSeqLens tensor info."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

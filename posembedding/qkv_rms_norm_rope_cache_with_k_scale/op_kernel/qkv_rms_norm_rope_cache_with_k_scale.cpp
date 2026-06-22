@@ -26,9 +26,10 @@ template <uint32_t HEAD_DIM>
 __global__ __aicore__ void
 qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gamma, GM_ADDR cos_sin,
                                      GM_ADDR slot_mapping, GM_ADDR k_cache, GM_ADDR v_cache, GM_ADDR k_scale_cache,
-                                     GM_ADDR cu_seq_len, GM_ADDR q_rotation, GM_ADDR k_rotation, GM_ADDR v_scale,
-                                     GM_ADDR q_out, GM_ADDR q_scale, GM_ADDR k_cache_out, GM_ADDR v_cache_out,
-                                     GM_ADDR k_scale_cache_out, GM_ADDR workspace, GM_ADDR tiling)
+                                     GM_ADDR cu_seq_len, GM_ADDR actual_seq_lens, GM_ADDR q_rotation,
+                                     GM_ADDR k_rotation, GM_ADDR v_scale, GM_ADDR q_out, GM_ADDR q_scale,
+                                     GM_ADDR k_cache_out, GM_ADDR v_cache_out, GM_ADDR k_scale_cache_out,
+                                     GM_ADDR workspace, GM_ADDR tiling)
 {
     static_assert(HEAD_DIM == QKV_RRC_HEAD_DIM_D128, "QkvRmsNormRopeCacheWithKScale only supports D128 kernel.");
     AscendC::InitSocState();
@@ -43,8 +44,9 @@ qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gam
 
     const GlobalTensors tensors = {
         qkv,     q_gamma,       k_gamma,     cos_sin,     slot_mapping,      k_cache,
-        v_cache, k_scale_cache, cu_seq_len,  q_rotation,  k_rotation,        v_scale,
-        q_out,   q_scale,       k_cache_out, v_cache_out, k_scale_cache_out, workspace,
+        v_cache, k_scale_cache, cu_seq_len,  actual_seq_lens, q_rotation,    k_rotation,
+        v_scale, q_out,         q_scale,     k_cache_out, v_cache_out,       k_scale_cache_out,
+        workspace,
     };
 
     QkvRmsNormRopeCacheWithKScaleController controller;

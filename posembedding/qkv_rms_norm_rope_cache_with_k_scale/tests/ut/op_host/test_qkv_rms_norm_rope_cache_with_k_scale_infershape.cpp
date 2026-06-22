@@ -26,6 +26,7 @@ std::vector<gert::InfershapeContextPara::TensorDescription> BuildInputs()
         {{{8, 2, 128, 128}, {8, 2, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
         {{{8, 2, 128, 1}, {8, 2, 128, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
         {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{128, 128}, {128, 128}}, ge::DT_BF16, ge::FORMAT_ND},
         {{{128, 128}, {128, 128}}, ge::DT_BF16, ge::FORMAT_ND},
         {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -117,6 +118,13 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidInputDimNum)
         {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
             {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
     ExecuteTestCase(kScaleCachePara, ge::GRAPH_FAILED, expected);
+
+    inputs = BuildInputs();
+    inputs[9] = {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND};
+    gert::InfershapeContextPara actualSeqLensRankPara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
+        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+    ExecuteTestCase(actualSeqLensRankPara, ge::GRAPH_FAILED, expected);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsNonPositiveInputDims)
@@ -137,4 +145,11 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsNonPositiveInputDims)
         {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
             {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
     ExecuteTestCase(kCachePara, ge::GRAPH_FAILED, expected);
+
+    inputs = BuildInputs();
+    inputs[9] = {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND};
+    gert::InfershapeContextPara actualSeqLensPara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
+        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
+            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}});
+    ExecuteTestCase(actualSeqLensPara, ge::GRAPH_FAILED, expected);
 }
