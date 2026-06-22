@@ -19,6 +19,8 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "op_kernel/platform_util.h"
+#include "op_kernel/math_util.h"
 #include "mhc_pre_sinkhorn_backward_deterministic_simd_vf.h"
 
 using namespace AscendC;
@@ -165,7 +167,6 @@ private:
     int64_t nnAlignFp32_ = 0;
     int64_t cLenAlignFp32_ = 0;
     int64_t cLenAlignFp16_ = 0;
-    int64_t nnAlignFp32_ = 0;
     int64_t bsnAlignFp32_ = 0;
     int64_t bsAlignFp32_ = 0;
     int64_t bsnnAlignFp32_ = 0;
@@ -867,84 +868,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
         }
     }
     gradHResQueue_.FreeTensor(gradHResLocal);
-}
-
-template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeFirst(uint64_t bsIdx, uint64_t bsLen)
-{
-    LocalTensor<U> gradHPreLocal = gradHPreBuf_.Get<U>();   //buf 中间结果
-    Duplicate(gradHPreLocal, float(0), bsLen * n_);
-
-    uint64_t cLoopDataLen = cLoopDataLen_;
-    uint64_t cLoopNum = Ops::Base::CeilDiv(c_, cLoopDataLen_);
-    uint64_t cTailDataLen = c_ - cLoopDataLen * (cLoopNum - 1);
-    uint64_t bsOffset = blockIdx_ * curCoreProcessbsTask_ + bsIdx * bsLoopDataLen_;
-    uint64_t hPreOffset = bsOffset * n_;
-    uint64_t gradHPostOffset = bsOffset * n_;
-    uint64_t xOffset = bsOffset * n_ * c_;
-    uint64_t gradHinOffset = bsOffset * c_;
-    uint64_t hcBeforeNormOffset = bsOffset * k_;
-    uint64_t invRmsOffset = bsOffset;
-    uint64_t gradXFromHinOffset = bsOffset * n_ * c_;
-    CopyInHpreAndGradHPost(hPreGm_[hPreOffset], bsLen);
-    LocalTensor<U> hPreLocal = hPreAndGradHPostQue_.DeQue<U>();
-
-    Process1Info info;
-    info.bsLen = bsLen;
-    info.n = n_;
-    info.vRegSize = V_REG_SIZE;
-    uint32_t vfLen = V_REG_SIZE / uTypeSize;
-    for (uint64_t cIdx = 0; cIdx < cLoopNum; cIdx++) {
-        auto cLen = cIdx == cLoopNum - 1 ? cTailDataLen : cLoopDataLen;
-        int64_t cLenXTAlign = Ops::Base::CeilDiv(int64_t(cLen * xTypeSize), blockSize_) / xTypeSize;
-        int64_t cLenUAlign = Ops::Base::CeilDiv(int64_t(cLen * uTypeSize), blockSize_) / uTypeSize;
-        int64_t cLenGRADHINTAlign = Ops::Base::CeilDiv(int64_t(cLen * gradHinTypeSize), blockSize_) / gradHinTypeSize;
-        info.cLen = cLen;
-        info.cLenXTAlign = cLenXTAlign;
-        info.cLenUAlign = cLenUAlign;
-        info.cLenGRADHINTAlign = cLenGRADHINTAlign;
-        uint64_t xStartOft = xOffset + cIdx * cLoopDataLen;
-        uint64_t gradHinStartOft = gradHinOffset + cIdx * cLoopDataLen;
-        uint64_t gradXFromHinStartOft = gradXFromHinOffset + cIdx * cLoopDataLen;
-        CopyInXandGradHin(xStartOft, gradHinStartOft, bsLen, cLen);
-        ComputeGradHpreAndXFromIn(hPreLocal, gradHPreLocal, info);
-        LocalTensor<U> xFp32Local = xFp32Que_.DeQue<U>();     //out
-        LocalTensor<U> gradXFromHinLocal = gradXFromHinAndAlphaAndBiasQue_.DeQue<U>();       //out        
-        CopyOut(xFp32Ws_[xStartOft], xFp32Local, bsLen * n_, cLen, 0, (c_ - cLoopDataLen) * uTypeSize);       //搬运x_f32到workspace
-        CopyOut(gradXFromHinWs_[gradXFromHinStartOft], gradXFromHinLocal, bsLen * n_, cLen, 0, (c_ - cLoopDataLen) * uTypeSize);       //搬运grad_x_from_hin到workspace
-        xFp32Que_.FreeTensor(xFp32Local);
-        gradXFromHinAndAlphaAndBiasQue_.FreeTensor(gradXFromHinLocal);
-    }
-    hPreAndGradHPostQue_.FreeTensor(hPreLocal);
-    CopyInInvRms(bsLen, invRmsOffset);
-    LocalTensor<U> invRmsLocal = invRmsQue_.DeQue<U>();
-    ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, 0, alphaPre_);
-    ComputeSigmoidGrad(bsLen, n_, NUMONE);
-    ComputeGradAlphaAndBias(bsLen, n_);
-    CopyOutAlphaAndBias(blockIdx_, blockIdx_ * n_);
-    //grad_Z_pre ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
-    LocalTensor<U> gradZLocal = gradZBuf_.Get<U>();
-    for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
-        int64_t curBsIdx = bsOffset + bsLoop;
-        U invRms = invRmsLocal(bsLoop);
-        ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPre_, invRms, n_, curBsIdx * k_);
-    }
-
-    ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, n_, alphaPost_);
-    CopyInHpreAndGradHPost(gradHPostGm_[gradHPostOffset], bsLen);
-    ComputeSigmoidGrad(bsLen, n_, NUMTWO);
-    ComputeGradAlphaAndBias(bsLen, n_);
-    CopyOutAlphaAndBias(blockIdx_ + 64, blockIdx_ * n_ + 64 * n_);
-
-    // grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
-    for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
-        int64_t curBsIdx = bsOffset + bsLoop;
-        U invRms = invRmsLocal(bsLoop);
-        ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPost_, invRms, n_, curBsIdx * k_ + n_);
-    }
-
-    ComputeZAndNormOutForward(invRmsLocal, bsLen, n_ * n_, 2 * n_, alphaRes_);
-    invRmsQue_.FreeTensor(invRmsLocal);
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
