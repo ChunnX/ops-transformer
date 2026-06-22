@@ -249,29 +249,29 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 
 #ifndef __CCE_KT_TEST__
 #if defined(V310_GMM_QUANT) // Quant: A8W8, A4W4
-    #if defined(V310_GMM_QUANT_MX)
-    REGISTER_TILING_DEFAULT(GMMQuantBasicApiTilingData);
-    #else
-    REGISTER_TILING_DEFAULT(GMMQuantTilingData);
-    #endif
+    REGISTER_NONE_TILING;
 #if defined(V310_GMM_QUANT_MX) // mx
     if constexpr (wFormat == CubeFormat::ND) {
         if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                       KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+            GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
             GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor,
                                               Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
                                               AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
         } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                              KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+            GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
             GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor,
                                               Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
                                               AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
         } else if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_TRANS &&
                              KERNEL_TYPE == GMM_DEQUANT_FIXP) {
             if ASCEND_IS_AIV {
+                GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
                 GMM_QUANT_BASIC_API_EMPTY_TENSOR_WITHOUT_BIAS_IMPL_CLASS();
             }
             if ASCEND_IS_AIC {
+                GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
                 GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor,
                                                   Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::DNExtLayoutPtn,
                                                   AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
@@ -280,11 +280,13 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     } else {
         if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                       KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+            GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
             GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz,
                                               Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
                                               AscendC::Te::NZLayoutPtn, AscendC::Te::NDExtLayoutPtn);
         } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                              KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+            GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
             GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn,
                                               Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
                                               AscendC::Te::ZNLayoutPtn, AscendC::Te::NDExtLayoutPtn);
