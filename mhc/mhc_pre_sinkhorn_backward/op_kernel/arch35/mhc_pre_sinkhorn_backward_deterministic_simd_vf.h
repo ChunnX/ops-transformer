@@ -109,7 +109,7 @@ __aicore__ inline void SigmoidGrad(__local_mem__ U* gradHAddr, __local_mem__ U* 
             AscendC::MicroAPI::Mul(dysigma2Reg, sigmaReg, dysigmaReg, maskReg);
             AscendC::MicroAPI::Sub(gradZReg, dysigmaReg, dysigma2Reg, maskReg);
             if constexpr(!ISPRE) {
-                AscendC::MicroAPI::Muls(gradZReg, gradZReg, U(2),maskReg)；
+                AscendC::MicroAPI::Muls(gradZReg, gradZReg, U(2),maskReg);
             }
             AscendC::MicroAPI::DataCopy(gradZAddr, gradZReg, gradZOfst, maskReg);
         }
