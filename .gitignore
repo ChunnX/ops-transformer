@@ -48,3 +48,7 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# local test files
+torch_extension/test_inplace_partial_rotary_mul.py
+torch_extension/test_inplace_partial_rotary_mul_standalone.cpp
