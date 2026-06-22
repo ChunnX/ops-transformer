@@ -54,7 +54,7 @@ __global__ __aicore__ void quant_lightning_indexer(__gm__ uint8_t *query, __gm__
             // MXFP8: q/k=fp8_e4m3, scale=fp8_e8m0, mmad_mx 输出 float
             INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
                 PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
-                bfloat16_t, fp8_e8m0_t, float32_t);
+                float32_t, fp8_e8m0_t, float32_t);
         } else
 #endif
         if (ORIG_DTYPE_WEIGHTS == DT_FLOAT16) {
