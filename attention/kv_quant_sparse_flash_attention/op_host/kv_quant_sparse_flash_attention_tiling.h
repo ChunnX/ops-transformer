@@ -438,6 +438,8 @@ private:
     ge::graphStatus CheckMultiParaConsistency();
 
     ge::graphStatus CheckFeatureMlaAntiquantShape() const;
+    ge::graphStatus CheckFeatureMlaAntiquantShapeSizes() const;
+    ge::graphStatus CheckFeatureMlaAntiquantShapeSparseAndHeadDim() const;
     ge::graphStatus CheckFeatureMlaAntiquantLayout() const;
     ge::graphStatus CheckFeatureMlaAntiquantDtype() const;
     ge::graphStatus CheckFeatureMlaAntiquantAttr() const;
@@ -545,6 +547,7 @@ public:
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
     void GenerateInfo(QSFATilingInfo &qsfaInfo);
+    void FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo);
     ge::graphStatus Parse(QSFATilingInfo &qsfaInfo);
 
     const gert::TilingContext *context_ = nullptr;
