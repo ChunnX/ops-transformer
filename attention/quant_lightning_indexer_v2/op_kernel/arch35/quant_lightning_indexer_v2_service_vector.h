@@ -247,11 +247,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitParams(const struct QLIV2Common:
 }
 
 template <typename QLIV2T>
-__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<float> weightsGm,
-    GlobalTensor<float> qScaleGm,
-                                                           GlobalTensor<float> kScaleGm,
-                                                           GlobalTensor<int32_t> indiceOutGm,
-                                                           GlobalTensor<int32_t> blockTableGm)
+__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<W_T> weightsGm,
+    GlobalTensor<SCALE_T> qScaleGm,
+                                                            GlobalTensor<SCALE_T> kScaleGm,
+                                                            GlobalTensor<int32_t> indiceOutGm,
+                                                            GlobalTensor<int32_t> blockTableGm)
 {
     this->weightsGm = weightsGm;
     this->qScaleGm = qScaleGm;
