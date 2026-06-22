@@ -86,7 +86,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
 
     mm1Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
-    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bf16DataType);
+    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetOrgShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetBias(false);
@@ -193,8 +193,8 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DumpTilingInfo()
     mm1M_ = tile_ * 2;
     mm1N_ = n_ * c_;
 
-    mm2K_ = tile_ * 2;
-    mm2M_ = n_ * n_ + 2 * n_;
+    mm2K_ = batchSize_ * seqLength_;
+    mm2M_ = 1;
     mm2N_ = n_ * c_;
     std::ostringstream info;
     info << "batchSize: " << batchSize_ << std::endl;

@@ -1165,7 +1165,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 }
 
 // mm2K_ = B * S;
-// mm2M_ = calcKPerTask_;
+// mm2M_ = 1;
 // mm2N_ = n_ * c_;
 
 template<typename X_T, typename GRADHIN_T, typename U>
@@ -1177,7 +1177,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     mm2_.SetTensorA(gradNormOutWs_[taskOffset], true);
     mm2_.SetTensorB(xFp32Ws_);
     mm2_.SetHF32(true, 1);
-    mm2_.SetSingleShape(mm2M_, mm2N_, mm2K_);
+    mm2_.SetSingleShape(mm2M, mm2N_, mm2K_);
     mm2_.template IterateAll<false> (gradPhiGm_[taskOffset * (n_ * c_)], 1);
     mm2_.End();
 }
