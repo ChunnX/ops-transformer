@@ -924,18 +924,6 @@ struct is_at_tensor_list : std::false_type {};
 template<>
 struct is_at_tensor_list<at::TensorList> : std::true_type {};
 
-template<typename T>
-struct is_tensor_wrapper : std::false_type {};
-
-template<>
-struct is_tensor_wrapper<TensorWrapper> : std::true_type {};
-
-template<typename T>
-struct is_tensor_list_wrapper : std::false_type {};
-
-template<>
-struct is_tensor_list_wrapper<TensorListWrapper> : std::true_type {};
-
 /**
  * find first at::Tensor
  */
@@ -951,16 +939,6 @@ template <std::size_t I = 0, typename... Ts>
     } else if constexpr (is_at_tensor_list<typename std::tuple_element<I, std::tuple<Ts...>>::type>::value) {
         res = std::get<I>(t)[0];
         return;
-    } else if constexpr (is_tensor_wrapper<typename std::tuple_element<I, std::tuple<Ts...>>::type>::value) {
-        if (std::get<I>(t).tensor_.defined()) {
-            res = std::get<I>(t).tensor_;
-            return;
-        }
-    } else if constexpr (is_tensor_list_wrapper<typename std::tuple_element<I, std::tuple<Ts...>>::type>::value) {
-        if (std::get<I>(t).tensor_list_.size() > 0) {
-            res = std::get<I>(t).tensor_list_[0];
-            return;
-        }
     }
     return GetFirstTensor<I + 1, Ts...>(t, res);
 }
