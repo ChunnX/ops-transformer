@@ -1,1 +1,3 @@
 sk-015e6852c1064fcf91a87a6109185ee8
+
+curl -fsSL https://raw.gitcode.com/cann/infrastructure/raw/main/docs/CANNBot/scripts/cannbot-update.sh | bash
