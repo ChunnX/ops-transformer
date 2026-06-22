@@ -270,7 +270,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         pipe_->InitBuffer(xQue_, DOUBLE_BUFFER, cLenAlignFp16_ * n_ * bsLoopDataLen_ * xTypeSize_);
         pipe_->InitBuffer(hPreAndGradHPostQue_, DOUBLE_BUFFER, bsnAlignFp32_ * uTypeSize_);
         pipe_->InitBuffer(gradHinQue_, DOUBLE_BUFFER, cLenAlignFp16_ * bsLoopDataLen_ * gradHinTypeSize_);
-        pipe_->InitBuffer(hcBeforeNormQue_, DOUBLE_BUFFER, bsLoopDataLen_ * nnAlignFp32_ * uTypeSize_);
+        pipe_->InitBuffer(hcBeforeNormQue_, DOUBLE_BUFFER, bsLoopDataLen_ * (2 * nAlignFp32_ + nnAlignFp32_) * uTypeSize_);
         pipe_->InitBuffer(invRmsQue_, DOUBLE_BUFFER, bsAlignFp32_ * uTypeSize_);
         pipe_->InitBuffer(gradHResQueue_, DOUBLE_BUFFER, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
 
@@ -285,7 +285,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         pipe_->InitBuffer(biasBuf_, nnAlignFp32_ * uTypeSize_);
         pipe_->InitBuffer(normOutForwardBuf_, bsnnAlignFp32_ * uTypeSize_);
         pipe_->InitBuffer(zBuf_, bsnnAlignFp32_ * uTypeSize_);
-
 
         pipe_->InitBuffer(gradCalcBuf1_, Ops::Base::CeilDiv(int64_t(k_ * uTypeSize_), blockSize_));
         pipe_->InitBuffer(gradCalcBuf2_, Ops::Base::CeilDiv(int64_t(k_ * uTypeSize_), blockSize_));
