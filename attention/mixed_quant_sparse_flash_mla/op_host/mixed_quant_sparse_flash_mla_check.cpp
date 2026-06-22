@@ -176,6 +176,9 @@ static ge::graphStatus ValidateKvContiguous(const char *opName, const std::vecto
     }
 
     for (size_t i = 0; i < expectedStrides.size(); ++i) {
+        if (kvLayout == QSMLALayout::PA_BBND && i == 0) {
+            continue;
+        }
         if (strides[i] != expectedStrides[i]) {
             OP_LOGE(opName, "%s 's expected stride[%zu]=%ld, but got %ld",
                 tensorName.c_str(), i, expectedStrides[i], strides[i]);
