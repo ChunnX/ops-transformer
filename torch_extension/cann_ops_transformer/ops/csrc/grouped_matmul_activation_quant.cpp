@@ -16,6 +16,11 @@
 #include <vector>
 
 #include "aclnn_common.h"
+#if __has_include("torch_npu/csrc/core/NPUBridge.h")
+#include "torch_npu/csrc/core/NPUBridge.h"
+#elif __has_include("torch_npu/csrc/core/npu/NPUBridge.h")
+#include "torch_npu/csrc/core/npu/NPUBridge.h"
+#endif
 
 namespace op_api {
 namespace {
@@ -181,6 +186,23 @@ void CheckBias(const c10::optional<std::vector<at::Tensor>> &biasOptional)
     TORCH_CHECK(!biasOptional.has_value() || biasOptional.value().empty(),
         "bias must be None or an empty tensor list in current MXFP8 mode.");
 }
+
+at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, c10::SmallVector<at::Tensor, 1> &weightVec)
+{
+    at::Tensor weightForNz = weight[DIM_0];
+    auto storageSizes = at_npu::native::get_npu_storage_sizes(weightForNz);
+    bool needFixNzDesc = at_npu::native::get_npu_format(weightForNz) != ACL_FORMAT_FRACTAL_NZ ||
+                         storageSizes.size() != static_cast<size_t>(weightForNz.dim());
+    if (needFixNzDesc) {
+        weightForNz = weightForNz.clone();
+        auto &desc = torch_npu::NPUBridge::GetNpuStorageImpl(weightForNz)->npu_desc_;
+        desc.npu_format_ = ACL_FORMAT_FRACTAL_NZ;
+        desc.storage_sizes_ = op_infer::array_to_small_vector(weightForNz.sizes());
+    }
+    weightVec.clear();
+    weightVec.emplace_back(weightForNz);
+    return at::TensorList(weightVec);
+}
 } // namespace
 
 std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
@@ -262,7 +284,8 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     at::Tensor yScale = at::empty({m, CeilDiv(n, MX_GROUP_SIZE), 2},
         x.options().dtype(at::ScalarType::Float8_e8m0fnu));
 
-    at::TensorList weightRef = weight;
+    c10::SmallVector<at::Tensor, 1> weightVec;
+    at::TensorList weightRef = PrepareWeightList(weight, weightVec);
     at::TensorList weightScaleRef = weightScale;
     at::TensorList biasRef;
     if (biasOptional.has_value()) {
