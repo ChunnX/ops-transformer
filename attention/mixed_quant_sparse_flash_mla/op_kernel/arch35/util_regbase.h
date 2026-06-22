@@ -26,10 +26,8 @@ constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
 constexpr uint32_t MAX_S2_SPLIT_NUM = 2;
 constexpr uint32_t S2_SPLIT_STAGING_M_SIZE = 64;
 constexpr uint32_t S2_SPLIT_STAGING_M_SIZE_SPLIT_G = 128;
-constexpr uint32_t S2_SPLIT_STAGING_ATTEN_OUT_BYTES = S2_SPLIT_STAGING_M_SIZE * 512 * 4; // 64行 × 512(dTemplateAlign64) × 4字节(fp32)，每个split的partial attention output暂存大小
-constexpr uint32_t S2_SPLIT_STAGING_MAX_SUM_BYTES = S2_SPLIT_STAGING_M_SIZE * 8 * 4; // 64行 × 8(广播份数) × 4字节(float)，每个split的max或sum暂存大小（已广播为8-float/行块布局）
-constexpr uint32_t S2_SPLIT_STAGING_ATTEN_OUT_BYTES_SPLIT_G = S2_SPLIT_STAGING_M_SIZE_SPLIT_G * 512 * 4;
-constexpr uint32_t S2_SPLIT_STAGING_MAX_SUM_BYTES_SPLIT_G = S2_SPLIT_STAGING_M_SIZE_SPLIT_G * 8 * 4;
+constexpr uint32_t FD_BROADCAST_ELEMS_PER_ROW = 8;
+constexpr uint32_t FD_REDUCE_CHUNK_ROWS = 16;
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
@@ -154,7 +152,7 @@ struct FdRunInfo {
     uint32_t s2BaseSize; \
     int64_t dSize; /* query d 512 */ \
     int64_t dSizeV; /* key d 512 */ \
-    int64_t dSizeVInput; /* key inpue d 640 = rope + nope + scale + pad */ \
+    int64_t dSizeVInput; /* key input Dsize 608 = rope + nope + scale + pad */ \
     int64_t dSizeNope; /* key nope d 448 */ \
     int64_t dSizeRope; /* key rope d 64 */ \
     int64_t tileSize; /* 64 */ \

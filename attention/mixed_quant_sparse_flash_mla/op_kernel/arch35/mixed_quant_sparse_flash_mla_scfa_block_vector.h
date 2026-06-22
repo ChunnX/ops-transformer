@@ -77,7 +77,7 @@ public:
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dVTemplateType = 512;
     static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
-    static constexpr uint32_t dVTemplateTypeInput = 608;
+    static constexpr uint32_t dVTemplateTypeInput = 608; // Dsize
     static constexpr float R0 = 1.0f;
     static constexpr uint64_t SYNC_SINKS_BUF_FLAG = 6;
 
@@ -153,17 +153,15 @@ private:
 
     __aicore__ inline uint32_t StagingMaxSumBytes(const ConstInfo &constInfo) const
     {
-        constexpr uint32_t FD_BLOCK_ELEM = 8;
-        return StagingMSize(constInfo) * FD_BLOCK_ELEM * sizeof(float);
+        return StagingMSize(constInfo) * regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
     }
 
     __aicore__ inline uint32_t GetStagingSlotNum() const
     {
-        constexpr uint32_t MAX_S2_SPLIT_NUM = regbaseutil::MAX_S2_SPLIT_NUM;
         if constexpr (IS_SPLIT_G) {
-            return MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
+            return regbaseutil::MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
         } else {
-            return MAX_S2_SPLIT_NUM * GetBlockNum();
+            return regbaseutil::MAX_S2_SPLIT_NUM * GetBlockNum();
         }
     }
 
@@ -341,7 +339,7 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t st
     intriParams.srcStride = 0;
     DataCopyPadExtParams<KV_T> padParams;
     // 当前仅支持COMBINE模式
-    uint32_t combineBytes = 608;
+    uint32_t combineBytes = 608; // Dsize
     intriParams.blockLen = combineBytes;
     uint32_t combineDim = combineBytes / sizeof(KV_T);
     uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
@@ -419,7 +417,7 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T* ubKRopeNzAddr, __ubuf__ in
     __ubuf__ Q_T* ubDstAddr, __ubuf__ Q_T* ubScaleSrcAddr, __ubuf__ int8_t* ubKRopeAddr,
     uint32_t dealRowCount)
 {
-    uint32_t combineDim = 608; // 32对齐
+    uint32_t combineDim = 608; // Dsize，32对齐
     MicroAPI::RegTensor<KV_T> vKvData0;
     MicroAPI::RegTensor<KV_T> vKvData1;
     MicroAPI::RegTensor<Q_T> vScale0Bf16;
@@ -921,7 +919,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyMaxSumToStaging(
 {
     uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes(constInfo);
     uint32_t MAX_SUM_BYTES = StagingMaxSumBytes(constInfo);
-    constexpr uint32_t FD_BLOCK_ELEM = 8;
     uint32_t stagingSlotNum = GetStagingSlotNum();
     __gm__ uint8_t *basePtr = s2SplitStagingBase;
     __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * ATTEN_OUT_BYTES;
@@ -936,19 +933,20 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyMaxSumToStaging(
 
     // 广播暂存复用dequantScaleBuff(vec1阶段空闲, 8192B足够放max+sum各一份)
     LocalTensor<float> tmpMaxBlockUb = this->dequantScaleBuff.template Get<float>();
-    LocalTensor<float> tmpSumBlockUb = tmpMaxBlockUb[1024 / sizeof(float)];
-    uint32_t mSizeAlign8 = (runInfo.halfMRealSize + FD_BLOCK_ELEM - 1) / FD_BLOCK_ELEM * FD_BLOCK_ELEM;
-    uint32_t brcbRepeat = mSizeAlign8 / FD_BLOCK_ELEM;
-    Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, FD_BLOCK_ELEM});
-    Brcb(tmpSumBlockUb, sumUb, brcbRepeat, {1, FD_BLOCK_ELEM});
+    LocalTensor<float> tmpSumBlockUb = tmpMaxBlockUb[1024 / sizeof(float)]; // 1024B为max广播暂存区大小
+    uint32_t mSizeAlign8 = (runInfo.halfMRealSize + regbaseutil::FD_BROADCAST_ELEMS_PER_ROW - 1) /
+        regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * regbaseutil::FD_BROADCAST_ELEMS_PER_ROW;
+    uint32_t brcbRepeat = mSizeAlign8 / regbaseutil::FD_BROADCAST_ELEMS_PER_ROW;
+    Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, regbaseutil::FD_BROADCAST_ELEMS_PER_ROW});
+    Brcb(tmpSumBlockUb, sumUb, brcbRepeat, {1, regbaseutil::FD_BROADCAST_ELEMS_PER_ROW});
     SetFlag<HardEvent::V_MTE3>(vToMte3Id);
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
 
     uint32_t floatOffset = workspaceIdx * (MAX_SUM_BYTES / sizeof(float)) +
-        stagingMOffset * FD_BLOCK_ELEM;
+        stagingMOffset * regbaseutil::FD_BROADCAST_ELEMS_PER_ROW;
     // blockCount=行数, blockLen=每行8float字节数(广播block布局)
     DataCopyExtParams lseOutParams{static_cast<uint16_t>(runInfo.halfMRealSize),
-        static_cast<uint32_t>(FD_BLOCK_ELEM * sizeof(float)), 0, 0, 0};
+        static_cast<uint32_t>(regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float)), 0, 0, 0};
     DataCopyPad(sumGm[floatOffset], tmpSumBlockUb, lseOutParams);
     DataCopyPad(maxGm[floatOffset], tmpMaxBlockUb, lseOutParams);
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
@@ -1051,9 +1049,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     int64_t attentionOutOffset = seqOffset * constInfo.n2GDv + // batch维度起始偏移（token数 × 每token所有head的V元素数）
         fdRunInfo.mIdx * constInfo.n2GDv + // 当前M轴基本块之前的所有块的偏移
         fdRunInfo.mStartIdx * constInfo.dSizeV; // 当前核负责的M轴token起始偏移
-    constexpr uint32_t DEAL_ROW_COUNT = 16;
-    constexpr uint32_t BLOCK_ELEM = 8; // common VF按每行8 float块布局访问max/sum/lse
-
     // ========== 1. 内存准备：分配UB buffer、定位GM staging区域 ==========
     LocalTensor<T> accumulatedO = this->fdAccumOutBuf.template Get<T>();
     LocalTensor<float> lseExpUb = this->fdLseExpBuf.template Get<float>();
@@ -1081,10 +1076,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     uint32_t outSplitStride = ATTEN_OUT_BYTES / sizeof(float);
     LocalTensor<T> partialOFp32 = this->fdPartialBuf.template Get<T>();
 
-    uint32_t mChunks = (fdRunInfo.mNum + DEAL_ROW_COUNT - 1) / DEAL_ROW_COUNT;
+    uint32_t mChunks = (fdRunInfo.mNum + regbaseutil::FD_REDUCE_CHUNK_ROWS - 1) /
+        regbaseutil::FD_REDUCE_CHUNK_ROWS;
     for (uint32_t chunkIdx = 0; chunkIdx < mChunks; chunkIdx++) {
-        uint32_t startRow = chunkIdx * DEAL_ROW_COUNT;
-        uint32_t dealRowCount = DEAL_ROW_COUNT;
+        uint32_t startRow = chunkIdx * regbaseutil::FD_REDUCE_CHUNK_ROWS;
+        uint32_t dealRowCount = regbaseutil::FD_REDUCE_CHUNK_ROWS;
         if (startRow + dealRowCount > fdRunInfo.mNum) {
             dealRowCount = fdRunInfo.mNum - startRow;
         }
@@ -1094,10 +1090,13 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
         // wait until the previous chunk's final V computation has consumed the old scale values.
         WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
         for (uint32_t splitIdx = 0; splitIdx < fdRunInfo.workspaceNum; splitIdx++) {
-            uint32_t srcOffset = splitIdx * splitStride + (fdMOffset + startRow) * BLOCK_ELEM;
-            uint32_t dstOffset = splitIdx * dealRowCount * BLOCK_ELEM;
-            DataCopy(blockMaxUb[dstOffset], maxGm[srcOffset], dealRowCount * BLOCK_ELEM);
-            DataCopy(blockSumUb[dstOffset], sumGm[srcOffset], dealRowCount * BLOCK_ELEM);
+            uint32_t srcOffset = splitIdx * splitStride +
+                (fdMOffset + startRow) * regbaseutil::FD_BROADCAST_ELEMS_PER_ROW;
+            uint32_t dstOffset = splitIdx * dealRowCount * regbaseutil::FD_BROADCAST_ELEMS_PER_ROW;
+            DataCopy(blockMaxUb[dstOffset], maxGm[srcOffset],
+                dealRowCount * regbaseutil::FD_BROADCAST_ELEMS_PER_ROW);
+            DataCopy(blockSumUb[dstOffset], sumGm[srcOffset],
+                dealRowCount * regbaseutil::FD_BROADCAST_ELEMS_PER_ROW);
         }
         SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
         WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
@@ -1278,7 +1277,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
 
     SoftmaxInitBuffer();
 
-    tPipe->InitBuffer(commonTBuf, 1024); // commonTBuf内存申请1024B (FD需要存allMax+allSum)
+    tPipe->InitBuffer(commonTBuf, 512); // commonTBuf内存申请512B
     tPipe->InitBuffer(sinksBuf, 512); // sinksBuf内存申请512B
 
     tPipe->InitBuffer(stage0InBuf[0], dVTemplateTypeInput * 16 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
@@ -1316,12 +1315,12 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo, ConstInfo &constInfo)
 {
     this->tPipe->Reset();
-    constexpr uint32_t DEAL_ROW_COUNT = 16;
-    constexpr uint32_t BLOCK_ELEM = 8;
-    uint32_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * DEAL_ROW_COUNT * BLOCK_ELEM * sizeof(float);
-    uint32_t lseExpSize = DEAL_ROW_COUNT * BLOCK_ELEM * sizeof(float);
+    uint32_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * regbaseutil::FD_REDUCE_CHUNK_ROWS *
+        regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+    uint32_t lseExpSize = regbaseutil::FD_REDUCE_CHUNK_ROWS *
+        regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
     uint32_t accumOutSize = static_cast<uint32_t>(fdRunInfo.mNum) * dTemplateAlign64 * sizeof(T);
-    uint32_t partialOSize = DEAL_ROW_COUNT * dTemplateAlign64 * sizeof(T);
+    uint32_t partialOSize = regbaseutil::FD_REDUCE_CHUNK_ROWS * dTemplateAlign64 * sizeof(T);
     this->tPipe->InitBuffer(fdAccumOutBuf, accumOutSize);
     this->tPipe->InitBuffer(fdBlockMaxBuf, maxSumTotal);
     this->tPipe->InitBuffer(fdBlockSumBuf, maxSumTotal);
