@@ -45,16 +45,16 @@ constexpr int64_t WQ_MAX_NUM_EXPERTS = 1024L;
 constexpr int64_t K_ALIGN_SIZE = 32L;
 constexpr int64_t N_ALIGN_SIZE = 32L;
 
-static const std::initializer_list<op::DataType> A8W4_X_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
-static const std::initializer_list<op::DataType> A8W4_W_TYPE_LIST = {op::DataType::DT_FLOAT4_E2M1};
-static const std::initializer_list<op::DataType> A8W4_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT8_E8M0};
-static const std::initializer_list<op::DataType> A8W4_PERTOKEN_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT8_E8M0};
-static const std::initializer_list<op::DataType> A8W4_BIAS_TYPE_LIST = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> A8W4_GROUP_LIST_TYPE_LIST = {op::DataType::DT_INT64};
-static const std::initializer_list<op::DataType> A8W4_SHARED_INPUT_TYPE_LIST = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> A8W4_LOGIT_TYPE_LIST = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> A8W4_ROW_INDEX_TYPE_LIST = {op::DataType::DT_INT64};
-static const std::initializer_list<op::DataType> A8W4_OUT_TYPE_LIST = {op::DataType::DT_FLOAT};
+inline const std::vector<op::DataType> A8W4_X_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
+inline const std::vector<op::DataType> A8W4_W_TYPE_LIST = {op::DataType::DT_FLOAT4_E2M1};
+inline const std::vector<op::DataType> A8W4_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT8_E8M0};
+inline const std::vector<op::DataType> A8W4_PERTOKEN_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT8_E8M0};
+inline const std::vector<op::DataType> A8W4_BIAS_TYPE_LIST = {op::DataType::DT_BF16};
+inline const std::vector<op::DataType> A8W4_GROUP_LIST_TYPE_LIST = {op::DataType::DT_INT64};
+inline const std::vector<op::DataType> A8W4_SHARED_INPUT_TYPE_LIST = {op::DataType::DT_BF16};
+inline const std::vector<op::DataType> A8W4_LOGIT_TYPE_LIST = {op::DataType::DT_FLOAT};
+inline const std::vector<op::DataType> A8W4_ROW_INDEX_TYPE_LIST = {op::DataType::DT_INT64};
+inline const std::vector<op::DataType> A8W4_OUT_TYPE_LIST = {op::DataType::DT_FLOAT};
 
 class GroupedMatmulFinalizeRoutingWeightQuant950Checker {
 public:

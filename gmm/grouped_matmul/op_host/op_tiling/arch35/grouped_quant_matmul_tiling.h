@@ -15,9 +15,9 @@
 #ifndef GROUPED_QUANT_MATMUL_TILING_H
 #define GROUPED_QUANT_MATMUL_TILING_H
 
-#include <initializer_list>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "../grouped_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
@@ -117,7 +117,7 @@ std::string StrCat(const Args &...args)
     return oss.str();
 }
 
-inline std::string ShapesToString(std::initializer_list<std::string> shapes)
+inline std::string ShapesToString(const std::vector<std::string> &shapes)
 {
     std::ostringstream oss;
     bool isFirst = true;

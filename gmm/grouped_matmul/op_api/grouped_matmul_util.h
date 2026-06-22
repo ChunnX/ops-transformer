@@ -9,8 +9,35 @@
  */
 #ifndef OP_API_INC_GROUPED_MATMUL_UTIL_H
 #define OP_API_INC_GROUPED_MATMUL_UTIL_H
+#include <algorithm>
+#include <sstream>
+#include <vector>
 #include "opdev/common_types.h"
+#include "opdev/data_type_utils.h"
 #include "opdev/op_executor.h"
+
+template <typename T>
+inline bool CheckType(const T &value, const std::vector<T> &list)
+{
+    return std::find(list.begin(), list.end(), value) != list.end();
+}
+
+namespace op {
+template <typename T>
+inline String ToString(const std::vector<T> &list)
+{
+    std::ostringstream oss;
+    oss << "[";
+    for (size_t i = 0; i < list.size(); ++i) {
+        if (i > 0) {
+            oss << ", ";
+        }
+        oss << ToString(list[i]).GetString();
+    }
+    oss << "]";
+    return String(oss.str().c_str());
+}
+} // namespace op
 
 namespace gmm {
 using namespace op;
@@ -126,8 +153,8 @@ const std::map<DataType, std::string> DTYPE_STRING{
     {DataType::DT_HIFLOAT8, "HIFLOAT8"}
 };
 
-const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
-                                                                DataType::DT_BF16};
+inline const std::vector<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
+                                                             DataType::DT_BF16};
 
 bool IsTransposeLastTwoDims(const aclTensor *tensor);
 bool IsTransposeForMxShape(const aclTensor *tensor);

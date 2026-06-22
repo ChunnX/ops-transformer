@@ -15,6 +15,8 @@
 #include "log/log.h"
 #include "platform/platform_info.h"
 
+#include <vector>
+
 namespace ops {
 
 constexpr size_t GMM_INDEX_IN_X = 0UL;
@@ -108,8 +110,8 @@ enum class GMMActType : int64_t {
     END_ACT_TYPE_ENUM
 };
 
-const std::initializer_list<ge::DataType> BIAS_DTYPE_SUPPORT_LIST = {ge::DataType::DT_FLOAT, ge::DataType::DT_FLOAT16,
-                                                                     ge::DataType::DT_BF16};
+inline const std::vector<ge::DataType> BIAS_DTYPE_SUPPORT_LIST = {ge::DataType::DT_FLOAT, ge::DataType::DT_FLOAT16,
+                                                                  ge::DataType::DT_BF16};
 
 class GroupedMatmulCommonUtil {
 public:

@@ -471,13 +471,13 @@ bool GroupedQmmTiling::CheckFp4Shape(const gert::Shape &xShape, const gert::Shap
 {
     OP_CHECK_IF(inputParams_.kSize % EVEN_FACTOR != 0,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(inputParams_.opType, "x, weight",
-                                                       ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
+                                                       ShapesToString(std::vector<std::string>{ShapeToString(xShape), ShapeToString(wShape)}),
                                                        "when the dtype of x is FLOAT4, k size must be even number"),
                 return false);
     // 2: mxfp4场景下不支持K轴为2
     OP_CHECK_IF(inputParams_.kSize == 2,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(inputParams_.opType, "x, weight",
-                                                       ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
+                                                       ShapesToString(std::vector<std::string>{ShapeToString(xShape), ShapeToString(wShape)}),
                                                        "when the dtype of x is FLOAT4, k size cannot be 2"),
                 return false);
     if (!inputParams_.transB) {
@@ -908,7 +908,7 @@ bool GroupedQmmTiling::SetMKN(const gert::Shape &xShape, const gert::Shape &wSha
     // K = 0, tiling should be able to intercept.
     OP_CHECK_IF((xShape.GetShapeSize() == 0 || wShape.GetShapeSize() == 0) && inputParams_.groupType == SPLIT_M,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(inputParams_.opType, "x, weight",
-                                                       ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
+                                                       ShapesToString(std::vector<std::string>{ShapeToString(xShape), ShapeToString(wShape)}),
                                                        "unsupported empty tensor here, please check k dimension"),
                 return false);
     inputParams_.mSize = mSize;

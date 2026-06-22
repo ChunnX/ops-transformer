@@ -411,7 +411,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
     OP_CHECK_IF(
         IsFp4Input() && (aInnerSize % B4_DATACOPY_MIN_NUM != 0 || bInnerSize % B4_DATACOPY_MIN_NUM != 0),
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(inputParams_.opType, "x, weight",
-                                               ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
+                                               ShapesToString(std::vector<std::string>{ShapeToString(xShape), ShapeToString(wShape)}),
                                                "when inputs are FLOAT4, inner axis element number must be even"),
         return false);
 
@@ -419,7 +419,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
     OP_CHECK_IF(IsFp4Input() && inputParams_.kSize == MXFP4_K_MIN_VALUE,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     inputParams_.opType, "x, weight",
-                    ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
+                    ShapesToString(std::vector<std::string>{ShapeToString(xShape), ShapeToString(wShape)}),
                     "when the dtypes of x and weight are FLOAT4, k value must be greater than 2"),
                 return false);
     // MXFP4场景下，当输出类型为FP4时，N需要满足为大于等于4的偶数

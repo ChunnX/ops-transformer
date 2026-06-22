@@ -10,6 +10,8 @@
 #include <dlfcn.h>
 #include <new>
 #include <string>
+#include <vector>
+#include "../../grouped_matmul/op_api/grouped_matmul_util.h"
 #include "aclnn_kernels/contiguous.h"
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
@@ -62,17 +64,17 @@ static constexpr size_t INT4_PER_INT32 = 8UL;
 bool isEnableWeightAssistanceMatrix = false;
 int dequantMode = 0;
 
-static const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
-static const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8, DataType::DT_INT4};
-static const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {
+inline const std::vector<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
+inline const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8, DataType::DT_INT4};
+inline const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {
     DataType::DT_FLOAT, DataType::DT_FLOAT16, DataType::DT_BF16};
-static const std::initializer_list<DataType> WEIGHT_SCALE_A8W4_DTYPE_SUPPORT_LIST = {DataType::DT_UINT64};
-static const std::initializer_list<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
-                                                                           DataType::DT_BF16};
-static const std::initializer_list<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
-static const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
-static const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
-static const std::initializer_list<DataType> BIAS_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
+inline const std::vector<DataType> WEIGHT_SCALE_A8W4_DTYPE_SUPPORT_LIST = {DataType::DT_UINT64};
+inline const std::vector<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
+                                                                 DataType::DT_BF16};
+inline const std::vector<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
+inline const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
+inline const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
+inline const std::vector<DataType> BIAS_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
 
 static std::string GetSwigluQuantScenarioName(const DataType &xDtype, const DataType &weightDtype)
 {

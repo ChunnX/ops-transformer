@@ -12,10 +12,12 @@
 #define OP_HOST_OP_API_GROUPED_MATMUL_SWIGLU_QUANT_V2_UTILS_H
 
 #include "grouped_matmul_swiglu_quant_utils.h"
+#include "../../grouped_matmul/op_api/grouped_matmul_util.h"
 #include "util/math_util.h"
 #include "log/log.h"
 
 #include <sstream>
+#include <vector>
 
 namespace gmmSwigluQuantV2 {
 
@@ -121,30 +123,30 @@ constexpr int64_t MXA8W4_N_MIN = 128LL;
 constexpr int64_t MXA8W4_SCALE_BLOCK = 128LL;
 constexpr const char *GMM_SWIGLU_ACLNN_OP_NAME = "aclnnGroupedMatmulSwigluQuantV2";
 
-const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
-const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
-const std::initializer_list<DataType> XW_DTYPE_SUPPORT_LIST_PERTOKEN = {
+inline const std::vector<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
+inline const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
+inline const std::vector<DataType> XW_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
-const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN,
-                                                                   DataType::DT_FLOAT8_E5M2};
-const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1,
-                                                                         DataType::DT_FLOAT4_E1M2};
-const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
-const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XINT8 = {
+inline const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN,
+                                                                DataType::DT_FLOAT8_E5M2};
+inline const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1,
+                                                                      DataType::DT_FLOAT4_E1M2};
+inline const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
+inline const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XINT8 = {
     DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_FLOAT};
-const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XFP8HIF8 = {DataType::DT_BF16,
-                                                                                           DataType::DT_FLOAT};
-const std::initializer_list<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
-const std::initializer_list<DataType> X_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
-const std::initializer_list<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
-const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4 = {
+inline const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XFP8HIF8 = {DataType::DT_BF16,
+                                                                                         DataType::DT_FLOAT};
+inline const std::vector<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
+inline const std::vector<DataType> X_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
+inline const std::vector<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
+inline const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4 = {
     DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
-const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {
+inline const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
-const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
-const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
-const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT8_E4M3FN};
-const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT4_E2M1};
+inline const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
+inline const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
+inline const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT8_E4M3FN};
+inline const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT4_E2M1};
 
 inline const char *GetGroupedMatmulSwigluQuantV2ScenarioName(const GroupedMatmulSwigluQuantParamsBase &params)
 {

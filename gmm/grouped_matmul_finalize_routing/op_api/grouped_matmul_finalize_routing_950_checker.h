@@ -77,25 +77,25 @@ constexpr int64_t MOD2 = 2L;
 constexpr int64_t MAX_NUM_EXPERTS = 1024L;
 constexpr const char *GMMFR_ACLNN_OP_NAME = "aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize";
 
-const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX = {
+inline const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
-const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP4 = {op::DataType::DT_FLOAT4_E2M1};
-const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP8 = {op::DataType::DT_FLOAT4_E2M1};
-static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
-static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_INT64};
-static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
-static const std::initializer_list<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
-static const std::initializer_list<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+inline const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP4 = {op::DataType::DT_FLOAT4_E2M1};
+inline const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP8 = {op::DataType::DT_FLOAT4_E2M1};
+inline const std::vector<op::DataType> SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
+inline const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_INT64};
+inline const std::vector<op::DataType> BIAS_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_BF16};
+inline const std::vector<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
+inline const std::vector<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
+inline const std::vector<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
+inline const std::vector<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+inline const std::vector<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 
-const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
-static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT, op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8 = {op::DataType::DT_INT64, op::DataType::DT_INT32};
-static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_FP8HIFLOAT8 = {op::DataType::DT_INT64};
+inline const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
+inline const std::vector<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT};
+inline const std::vector<op::DataType> BIAS_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_BF16};
+inline const std::vector<op::DataType> SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT, op::DataType::DT_BF16};
+inline const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8 = {op::DataType::DT_INT64, op::DataType::DT_INT32};
+inline const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_FP8HIFLOAT8 = {op::DataType::DT_INT64};
 enum class QuantMode {
     PERTOKEN = 0, // pertoken 量化
     MX = 2        // MX量化
