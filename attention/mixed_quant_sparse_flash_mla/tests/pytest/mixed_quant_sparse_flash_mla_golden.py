@@ -962,7 +962,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     nope_head_dim = D - rope_head_dim
     quant_scale_head_dim = (nope_head_dim + tile_size - 1) // tile_size
     d_aligned_32 = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim * 2 + 18
-    d_combined = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim
+    d_combined = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim * 2
     print(f"d_aligned_32={d_aligned_32}, nope_head_dim={nope_head_dim}, rope_head_dim={rope_head_dim}, quant_scale_head_dim={quant_scale_head_dim}")
     pad_d = d_aligned_32 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim * 2
     block_num = block_num1 if block_num1 >= block_num2 else block_num2
