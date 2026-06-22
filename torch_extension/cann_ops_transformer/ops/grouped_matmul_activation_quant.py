@@ -109,13 +109,13 @@ def _infer_weight_layout(weight, weight_scale, e, k):
     weight_scale_shape = tuple(weight_scale.shape)
 
     non_trans_n = weight_scale.shape[2]
-    non_trans_weight_shape = (e, math.ceil(non_trans_n / 32), math.ceil(k / 16), 16, 32)
+    non_trans_weight_shape = (e, k, non_trans_n)
     non_trans_weight_scale_shape = (e, math.ceil(k / 64), non_trans_n, 2)
     if weight_shape == non_trans_weight_shape and weight_scale_shape == non_trans_weight_scale_shape:
         return non_trans_n
 
     trans_n = weight_scale.shape[1]
-    trans_weight_shape = (e, math.ceil(k / 32), math.ceil(trans_n / 16), 16, 32)
+    trans_weight_shape = (e, trans_n, k)
     trans_weight_scale_shape = (e, trans_n, math.ceil(k / 64), 2)
     if weight_shape == trans_weight_shape and weight_scale_shape == trans_weight_scale_shape:
         return trans_n
@@ -169,8 +169,8 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
                          lambda: "bias must be None or an empty tensor list in current MXFP8 mode.")
             torch._check(x_scale is not None, lambda: "x_scale must be provided in current MXFP8 mode.")
             torch._check(x.dim() == 2, lambda: f"x must be 2D, but got {x.dim()}D.")
-            torch._check(weight[0].dim() == 5,
-                         lambda: f"weight must be a 5D WeightNz tensor, but got {weight[0].dim()}D.")
+            torch._check(weight[0].dim() == 3,
+                         lambda: f"weight must be a 3D logical tensor, but got {weight[0].dim()}D.")
             torch._check(weight_scale[0].dim() == 4,
                          lambda: f"weight_scale must be 4D, but got {weight_scale[0].dim()}D.")
             torch._check(x_scale.dim() == 3, lambda: f"x_scale must be 3D, but got {x_scale.dim()}D.")
