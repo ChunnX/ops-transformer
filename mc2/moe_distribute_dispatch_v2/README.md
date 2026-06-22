@@ -13,17 +13,13 @@
 
 ## 功能说明
 
-算子功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
+算子功能：对token数据进行量化（可选），进行EP（Expert Parallelism）域的AllToAllV通信。TP（Tensor Parallelism）域通信当前版本不再支持，TP相关参数为预留参数。
 
 - 情形1：如果quantMode=0（非量化场景）：
 
 $$
 allToAllXOut = AllToAllV(X)\\
-expandXOut =
-\begin{cases}
-AllToAllV(X), & 无TP通信域 \\
-AllGatherV(allToAllXOut), & 有TP通信域 \\
-\end{cases}
+expandXOut = AllToAllV(X)
 $$
 
 - 情形2：如果quantMode=1（静态量化场景）：
@@ -32,11 +28,7 @@ $$
 xFp32 = CastToFp32(X) \times scales \\
 quantOut = Cast(xFp32, dstType) \\
 allToAllXOut = AllToAllV(quantOut)\\
-expandXOut =
-\begin{cases}
-AllToAllV(quantOut), & 无TP通信域 \\
-AllGatherV(allToAllXOut), & 有TP通信域 \\
-\end{cases}
+expandXOut = AllToAllV(quantOut)
 $$
 
 - 情形3：如果quantMode=2（pertoken动态量化场景）：
@@ -47,16 +39,8 @@ dynamicScales = dstTypeMax/Max(Abs(xFp32)) \\
 quantOut = CastToInt8(xFp32 \times dynamicScales) \\
 allToAllXOut = AllToAllV(quantOut) \\
 allToAllDynamicScalesOut = AllToAllV(1.0/dynamicScales) \\
-expandXOut =
-\begin{cases}
-AllToAllV(quantOut), & 无TP通信域 \\
-AllGatherV(allToAllXOut), & 有TP通信域 \\
-\end{cases} \\
-dynamicScalesOut =
-\begin{cases}
-allToAllDynamicScalesOut, & 无TP通信域 \\
-AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
-\end{cases}
+expandXOut = AllToAllV(quantOut) \\
+dynamicScalesOut = allToAllDynamicScalesOut
 $$
 
 - 情形4：如果quantMode=3（pertile动态量化场景）：
@@ -67,16 +51,8 @@ dynamicScales = dstTypeMax/Max(Abs(xFp32)) \\
 quantOut = CastToInt8(xFp32 \times dynamicScales) \\
 allToAllXOut = AllToAllV(quantOut) \\
 allToAllDynamicScalesOut = AllToAllV(1.0/dynamicScales) \\
-expandXOut =
-\begin{cases}
-AllToAllV(quantOut), & 无TP通信域 \\
-AllGatherV(allToAllXOut), & 有TP通信域 \\
-\end{cases} \\
-dynamicScalesOut =
-\begin{cases}
-allToAllDynamicScalesOut, & 无TP通信域 \\
-AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
-\end{cases}
+expandXOut = AllToAllV(quantOut) \\
+dynamicScalesOut = allToAllDynamicScalesOut
 $$
 
 - 情形5：如果quantMode=4（mx量化场景）：
@@ -87,15 +63,8 @@ dynamicScales = 2^{sharedExp} \\
 quantOut = CastToFp8(X / dynamicScales) \\
 allToAllXOut = AllToAllV(quantOut) \\
 allToAllDynamicScalesOut = AllToAllV(1.0 / dynamicScales) \\
-expandXOut =
-\begin{cases}
-AllToAllV(quantOut), & 无TP通信域 \\
-AllGatherV(allToAllXOut), & 有TP通信域 \\
-\end{cases} \\
-dynamicScalesOut =
-\begin{cases}
-allToAllDynamicScalesOut, & 无TP通信域 \\
-AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
+expandXOut = AllToAllV(quantOut) \\
+dynamicScalesOut = allToAllDynamicScalesOut
 \end{cases}
 $$
 
@@ -184,7 +153,7 @@ $$
   <tr>
    <td>groupEp</td>
    <td>属性</td>
-   <td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)，不能和groupTp相同。</td>
+    <td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)。</td>
    <td>STRING</td>
    <td>ND</td>
   </tr>
@@ -212,21 +181,21 @@ $$
   <tr>
    <td>groupTp</td>
    <td>可选属性</td>
-   <td><li>TP通信域名称（数据并行通信域）。</li><li>默认值为""。</li></td>
+   <td><li>TP通信域名称（预留参数，当前版本不支持）。</li><li>默认值为""。</li></td>
    <td>STRING</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>tpWorldSize</td>
    <td>可选属性</td>
-   <td><li>TP通信域大小，取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。</li><li>默认值为0。</li></td>
+   <td><li>TP通信域大小（预留参数，当前版本不支持，仅支持传0或1）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>tpRankId</td>
    <td>可选属性</td>
-   <td><li>TP域本卡ID，取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。</li><li>默认值为0。</li></td>
+   <td><li>TP域本卡ID（预留参数，当前版本不支持，仅支持传0）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -338,7 +307,7 @@ $$
   <tr>
    <td>tpRecvCountsOut</td>
    <td>输出</td>
-   <td>从TP通信域各卡接收的token数（对应CombineV2系列算子中的tpSendCountsOptional），有TP域通信则有该输出，无TP域通信则无该输出。</td>
+   <td>从TP通信域各卡接收的token数（预留输出，当前版本不支持，传空指针即可），无TP域通信则无该输出。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
@@ -359,7 +328,7 @@ $$
     * 当`commAlg` = "hierarchy"，`expandScalesOut`内容有效。
     * 不支持常量专家场景，不支持`constExpertNum`，使用默认值即可。
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
-    * commAlg支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板，该模板仅支持tpWorldSize为1场景；"hierarchy": 开启跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
+    * commAlg支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不开启fullmesh_v2模板；"fullmesh_v1"：不开启fullmesh_v2模板；"fullmesh_v2"：开启fullmesh_v2模板，不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下开启；"hierarchy": 开启跨超模板，仅支持共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
     * expertScalesOptional当commAlg="hierarchy"场景时，要求为2D Tensor，shape为(BS, K)；当commAlg=""，"fullmesh_v1"，
     * epWorldSize取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
     * moeExpertNum取值范围(0, 1024]；当commAlg="hierarchy"场景时，取值范围为(0, 512]。
@@ -385,7 +354,7 @@ $$
     - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moeExpertNum` + `zeroExpertNum` + `copyExpertNum` + `constExpertNum`。
     - `localExpertNum`：表示本卡专家数量。
         - 对于共享专家卡，`localExpertNum` = 1
-        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，`localExpertNum` > 1时，不支持TP域通信。
+        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，当前版本不支持TP域通信。
 
 - 属性约束：
     - `zeroExpertNum`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的零专家的ID的值是[`moeExpertNum`, `moeExpertNum` + `zeroExpertNum`)。
@@ -395,7 +364,7 @@ $$
 - 本文公式中的"/"表示整除。
 - 通信域使用约束：
     - 一个模型中的`CombineV2`系列算子和`MoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
-    - 一个模型中的`CombineV2`系列算子和`MoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
+    - 当前不支持TP域通信。
 
 - 通信方式约束：
     - <term>Ascend 950DT</term>：仅支持UB Memory通信。
@@ -429,14 +398,14 @@ $$
         - `elasticInfoOptional`：当前版本不支持，传空指针即可。
         - `epWorldSize`：取值范围[2, 768]。
         - `moeExpertNum`：取值范围(0, 1024]。
-        - `groupTp`：字符串长度范围为[1, 128)，不能和`groupEp`相同。
+        - `groupTp`：预留参数，TP域通信不再支持。
         - `sharedExpertNum`：取值支持[0, 4]。
         - `commAlg`：当前版本仅支持""，"fullmesh_v1"，"fullmesh_v2"，"hierarchy"三种输入方式。
             - ""：默认值，开启fullmesh_v1模板。
             - "fullmesh_v1"：开启fullmesh_v1模板。
-            - "fullmesh_v2"：开启fullmesh_v2模板，其中`commAlg`仅在`tpWorldSize`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下开启。
+            - "fullmesh_v2"：开启fullmesh_v2模板，不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下开启。
             - "hierarchy": 开启ROCE分层直驱能力，需要根据不同的逻辑超节点设置环境变量`HCCL_LOGIC_SUPERPOD_ID`，例如两机分别设为`export HCCL_LOGIC_SUPERPOD_ID=0`和`export HCCL_LOGIC_SUPERPOD_ID=1`。
-        - `epRecvCountsOut`：要求shape为(`epWorldSize` * max(`tpWorldSize`, 1) * `localExpertNum`, )。
+        - `epRecvCountsOut`：要求shape为 (`epWorldSize` * `localExpertNum`, )。
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
@@ -452,8 +421,8 @@ $$
         - `commAlg`：当前版本仅支持""，"fullmesh_v1"，"fullmesh_v2"三种输入方式。
             - ""：默认值，开启fullmesh_v1模板。
             - "fullmesh_v1"：开启fullmesh_v1模板。
-            - "fullmesh_v2"：开启fullmesh_v2模板，其中`commAlg`仅在`tpWorldSize`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下开启。
-        - `epRecvCountsOut`：要求shape为(`epWorldSize` * max(`tpWorldSize`, 1) * `localExpertNum`, )。
+            - "fullmesh_v2"：开启fullmesh_v2模板，不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下开启。
+        - `epRecvCountsOut`：要求shape为 (`epWorldSize` * `localExpertNum`, )。
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mx动态量化）。
