@@ -151,7 +151,7 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
         (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
+        (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_))) {
         OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
         return GRAPH_FAILED;
     }
@@ -294,7 +294,7 @@ ge::graphStatus LIInfoParser::GetAndCheckInOutDataType()
             LIDataTypeToSerialString(inputQType_) + " and " + LIDataTypeToSerialString(inputKType_),
             "The dtype of query and key must be float16 or bfloat16."),
         return ge::GRAPH_FAILED);
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF((inputQType_ != weightsType_),
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key, and weights",
                 LIDataTypeToSerialString(inputQType_) + ", " + LIDataTypeToSerialString(inputKType_) +

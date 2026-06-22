@@ -587,7 +587,8 @@ ge::graphStatus QLIInfoParser::GetGSize()
     }
     gSize_ = n1Size_ / n2Size_;
 
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (    if (npuArch_ == NpuArch::DAV_3510) {
+ == NpuArch::DAV_3510) {
         OP_CHECK_IF(gSize_ != G_SIZE_LIMIT_950 && gSize_ != G_SIZE_LIMIT &&
                     gSize_ != G_SIZE_LIMIT_32_950 && gSize_ != G_SIZE_LIMIT_16_950 &&
                     gSize_ != G_SIZE_LIMIT_8_950,
