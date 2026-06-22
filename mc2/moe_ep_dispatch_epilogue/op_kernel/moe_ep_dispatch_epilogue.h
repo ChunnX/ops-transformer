@@ -406,9 +406,9 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     int32_t weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
                     ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 0,
-                        ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
-                    ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 1,
                         ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
+                    ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 1,
+                        ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
                     ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 2,
                         static_cast<int32_t>(topkIdx));
                     stageIdx++;
