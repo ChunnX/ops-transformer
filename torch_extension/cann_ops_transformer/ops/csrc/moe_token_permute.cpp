@@ -9,6 +9,7 @@
 // -----------------------------------------------------------------------------------------------------------
 
 #include <algorithm>
+#include <cstring>
 #include <tuple>
 
 #include <torch/extension.h>
@@ -29,6 +30,12 @@ bool IsMxQuantMode(int64_t quantMode)
 {
     return quantMode == QUANT_MODE_MXFP8_E5M2 || quantMode == QUANT_MODE_MXFP8_E4M3FN ||
            quantMode == QUANT_MODE_MXFP4_E2M1;
+}
+
+bool IsAscend950()
+{
+    const char *socName = aclrtGetSocName();
+    return socName != nullptr && std::strstr(socName, "Ascend950") != nullptr;
 }
 
 int64_t CeilDiv(int64_t value, int64_t divisor)
@@ -61,7 +68,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_moe_token_permute(
         ? std::min(num_out_tokens_value, flatten_size)
         : std::max<int64_t>(num_out_tokens_value + flatten_size, 0);
 
-    bool is_ascend950 = c10_npu::GetSocVersion() == c10_npu::SocVersion::Ascend950;
+    bool is_ascend950 = IsAscend950();
     int64_t effective_quant_mode = is_ascend950 ? quant_mode : QUANT_MODE_NONE;
     TORCH_CHECK(effective_quant_mode == QUANT_MODE_NONE || IsMxQuantMode(effective_quant_mode),
         "quant_mode only supports -1, 2, 3 or 9 on Ascend 950.");

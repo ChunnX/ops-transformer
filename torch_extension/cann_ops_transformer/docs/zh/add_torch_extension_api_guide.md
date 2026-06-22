@@ -1,6 +1,6 @@
 # 在 ops-transformer 中新增 Torch API 的开发指引
 
-本文以 `MoeTokenPermute` 为例，说明当不允许在 `op-plugin` 新增或修改 `torch_npu` API 时，如何在 `ops-transformer-public/torch_extension/npu_ops_transformer/ops` 下新增一个可被 PyTorch 调用的 API。
+本文以 `MoeTokenPermute` 为例，说明当不允许在 `op-plugin` 新增或修改 `torch_npu` API 时，如何在 `ops-transformer-public/torch_extension/cann_ops_transformer/ops` 下新增一个可被 PyTorch 调用的 API。
 
 ## 适用场景
 
@@ -16,8 +16,8 @@
 
 ```text
 Python 用户代码
-  -> npu_ops_transformer.ops.npu_moe_token_permute
-  -> torch.ops.npu_ops_transformer.npu_moe_token_permute
+  -> cann_ops_transformer.ops.npu_moe_token_permute
+  -> torch.ops.cann_ops_transformer.npu_moe_token_permute
   -> torch_extension C++ bridge
   -> aclnnMoeTokenPermute
   -> 算子侧按平台分流，例如 Ascend 950 调 MoeInitRoutingV3
@@ -28,7 +28,7 @@ Python 用户代码
 新增一个 torch extension API 通常需要三个文件：
 
 ```text
-torch_extension/npu_ops_transformer/ops/
+torch_extension/cann_ops_transformer/ops/
   __init__.py
   moe_token_permute.py
   csrc/
@@ -67,8 +67,8 @@ class MoeTokenPermuteOpBuilder(OpBuilder):
 
 关键点：
 
-- builder 名称 `npu_moe_token_permute` 会成为 `torch.ops.npu_ops_transformer.npu_moe_token_permute` 的 op 名。
-- `sources()` 返回 C++ 文件相对 `npu_ops_transformer` 包的路径。
+- builder 名称 `npu_moe_token_permute` 会成为 `torch.ops.cann_ops_transformer.npu_moe_token_permute` 的 op 名。
+- `sources()` 返回 C++ 文件相对 `cann_ops_transformer` 包的路径。
 - `schema()` 必须和 Python Meta 函数、PrivateUse1 函数、C++ pybind 入参保持一致。
 - `register_meta()` 负责 FakeTensor、编译期 shape/dtype 推导。
 
@@ -137,7 +137,7 @@ def _npu_moe_token_permute(tokens, indices, num_out_tokens=None, padded_mode=Fal
 
 ```python
 def npu_moe_token_permute(tokens, indices, num_out_tokens=None, padded_mode=False, quant_mode=-1):
-    return torch.ops.npu_ops_transformer.npu_moe_token_permute(
+    return torch.ops.cann_ops_transformer.npu_moe_token_permute(
         tokens,
         indices,
         num_out_tokens,
@@ -189,7 +189,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 如果需求要求“非 Ascend 950 静默忽略量化参数”，应在 C++ runtime 层处理：
 
 ```cpp
-bool is_ascend950 = c10_npu::GetSocVersion() == c10_npu::SocVersion::Ascend950;
+const char *soc_name = aclrtGetSocName();
+bool is_ascend950 = soc_name != nullptr && std::strstr(soc_name, "Ascend950") != nullptr;
 int64_t effective_quant_mode = is_ascend950 ? quant_mode : QUANT_MODE_NONE;
 ```
 
@@ -281,21 +282,21 @@ from .moe_token_permute import npu_moe_token_permute
 这样用户可以：
 
 ```python
-from npu_ops_transformer.ops import npu_moe_token_permute
+from cann_ops_transformer.ops import npu_moe_token_permute
 ```
 
 也可以：
 
 ```python
-import npu_ops_transformer
+import cann_ops_transformer
 
-npu_ops_transformer.ops.npu_moe_token_permute(...)
+cann_ops_transformer.ops.npu_moe_token_permute(...)
 ```
 
 底层 dispatcher 入口为：
 
 ```python
-torch.ops.npu_ops_transformer.npu_moe_token_permute(...)
+torch.ops.cann_ops_transformer.npu_moe_token_permute(...)
 ```
 
 ## 用户调用示例
@@ -314,7 +315,7 @@ python3 -m pip install dist/*.whl --force-reinstall --no-deps
 ```python
 import torch
 import torch_npu
-from npu_ops_transformer.ops import npu_moe_token_permute
+from cann_ops_transformer.ops import npu_moe_token_permute
 
 tokens = torch.randn((8, 128), dtype=torch.float16, device="npu")
 indices = torch.randint(0, 4, (8, 2), dtype=torch.int32, device="npu")
@@ -360,7 +361,7 @@ permuted_tokens, sorted_indices, expanded_scale = npu_moe_token_permute(
 
 ```bash
 PYTHONPYCACHEPREFIX=/tmp/python-pycache python3 -m py_compile \
-  torch_extension/npu_ops_transformer/ops/moe_token_permute.py
+  torch_extension/cann_ops_transformer/ops/moe_token_permute.py
 ```
 
 代码格式检查：
@@ -388,13 +389,13 @@ git diff --check
 不会。本文方式注册的是：
 
 ```python
-torch.ops.npu_ops_transformer.npu_moe_token_permute
+torch.ops.cann_ops_transformer.npu_moe_token_permute
 ```
 
 对外推荐入口是：
 
 ```python
-from npu_ops_transformer.ops import npu_moe_token_permute
+from cann_ops_transformer.ops import npu_moe_token_permute
 ```
 
 ### 是否需要修改 op-plugin？
