@@ -276,7 +276,6 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     }
 
     TensorWrapper xWrapper = {x, xAclDtype};
-    TensorWrapper groupListWrapper = {groupList, ACL_INT64};
     TensorWrapper xScaleWrapper = {xScale, xScaleAclDtype};
     TensorListWrapper weightWrapper = {weightRef, weightAclDtype};
     TensorListWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype};
@@ -289,7 +288,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     char *roundModePtr = const_cast<char *>(roundMode.c_str());
 
     ACLNN_CMD(aclnnGroupedMatmulActivationQuantWeightNz,
-        xWrapper, groupListWrapper, weightWrapper, weightScaleWrapper, biasWrapper, xScaleWrapper,
+        xWrapper, groupList, weightWrapper, weightScaleWrapper, biasWrapper, xScaleWrapper,
         activationTypePtr, weightLayout.transpose, groupListType, tuningConfigRef, quantModePtr, yDtypeValue,
         roundModePtr, scaleAlg, dstTypeMax, yWrapper, yScaleWrapper);
     return std::tie(y, yScale);
