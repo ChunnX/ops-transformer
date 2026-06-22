@@ -104,8 +104,8 @@ protected:
     LocalTensor<QK_T> mm1ResUB_;
 
     uint64_t keyL1BufIdx_ = 0;
-    uint64_t queryL1Mte2BufIdx_ = 0;
-    uint64_t queryL1Mte1BufIdx_ = 0;
+    uint64_t queryBufIdx_ = 0;
+    uint64_t queryBufIdx_ = 0;
     uint64_t l0BufIdx_ = 0;
     uint64_t l0cBufIdx_ = 0;
 
@@ -171,11 +171,13 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                 uint64_t s1gL1RealSize =
                 s1gGmOffset + M_BASIC_BLOCK_L1 > s1gProcessSize ? s1gProcessSize - s1gGmOffset : M_BASIC_BLOCK_L1;
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
-                    queryL1Mte2BufIdx_++;
-                    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
+                    queryBufIdx_ = kGmOffset / D_BASIC_BLOCK_L1;
+                    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryBufIdx_ % QUERY_BUF_NUM);
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, kGmOffset, runInfo);
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
+                } else {
+                    queryBufIdx_ = kGmOffset / D_BASIC_BLOCK_L1;
                 }
                 for (uint64_t s2L1Offset = 0; s2L1Offset < s2L1RealSize; s2L1Offset += S2_BASIC_BLOCK_L0) {
                     uint64_t s2L0RealSize =
@@ -197,8 +199,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                     }
                 }
                 if (s2GmOffset + S2_BASIC_BLOCK_L1 >= s2ProcessSize && runInfo.isLastS2InnerLoop) {
-                    queryL1Mte1BufIdx_++;
-                    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte1BufIdx_ % QUERY_BUF_NUM);
+                    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryBufIdx_ % QUERY_BUF_NUM);
                 }
             }
             SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
@@ -244,7 +245,7 @@ __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
-    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
+    DataCopy(queryL1_[(queryBufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
              queryGm_[runInfo.tensorQueryOffset + s1gGmOffset * constInfo_.headDim + kGmOffset], nd2nzPara);
 }
 
@@ -262,7 +263,7 @@ __aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uint6
     loadData2DParamsV2.ifTranspose = false;
     
     LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
-             queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
+             queryL1_[(queryBufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
 }
 
 template <typename SIT>
