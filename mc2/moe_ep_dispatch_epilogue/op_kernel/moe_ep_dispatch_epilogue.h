@@ -58,7 +58,6 @@ private:
     GlobalTensor<int64_t> numRecvPerExpertGm_;
 
     GlobalTensor<XType> recvXGm_;
-    GlobalTensor<int32_t> recvTopkIdxGm_;
     GlobalTensor<float> recvTopkWeightsGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
     GlobalTensor<int32_t> cachedRecvSrcMetadataGm_;   // cached 路径专用：来自上一轮 dispatch 的 recv_src_metadata
@@ -99,6 +98,7 @@ private:
     uint32_t numLocalExperts_{0};
     uint32_t aivNum_{0};
     uint32_t axisK_{0};
+    uint32_t axisKAlign_{0};
     uint32_t axisH_{0};
     uint32_t epWorldSize_{0};
     uint32_t numMaxTokensPerRank_{0};
@@ -137,6 +137,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     numLocalExperts_ = tilingData->cfg.numLocalExperts;
     aivNum_ = tilingData->aivNum;
     axisK_ = tilingData->cfg.topK;
+    axisKAlign_ = Ceil(axisK_ * (uint32_t)sizeof(int32_t), UB_ALIGN) / (uint32_t)sizeof(int32_t);
     axisH_ = tilingData->cfg.hidden;
     epWorldSize_ = tilingData->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData->cfg.numMaxTokensPerRank;
@@ -151,7 +152,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
     cachedRecvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)cachedRecvSrcMetadata);
     recvXGm_.SetGlobalBuffer((__gm__ XType*)recvX);
-    recvTopkIdxGm_.SetGlobalBuffer((__gm__ int32_t*)recvTopkIdx);
     recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
 
@@ -164,8 +164,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     uint32_t ubLocalSeqBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubRowStartBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
 
-    metaBytes_ = (2 * axisK_ + 2) * sizeof(int32_t);
-    paddedMetaElems_ = Ceil(2 * axisK_ + 2, 8U) * 8U;
+    metaBytes_ = (2 * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
+    paddedMetaElems_ = Ceil(2 * axisKAlign_ + 2, 8U) * 8U;
     uint32_t maxSlotsPerAiv = Ceil(numMaxTokensPerRank_, aivNum_);
     uint32_t ubMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
  
@@ -353,13 +353,12 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     PipeBarrier<PIPE_MTE2>();
 
                     DataCopy(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, axisH_);
-                    DataCopy(recvTopkIdxGm_[(int64_t)globalRow * axisK_], ubMeta_[metaBase], axisK_);
-                    int32_t weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisK_ + topkIdx);
+                    int32_t weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
                     ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 0,
-                        ubMeta_.GetValue(metaBase + 2 * axisK_ + 1));
+                        ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
                     ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 1,
-                        ubMeta_.GetValue(metaBase + 2 * axisK_));
+                        ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
                     ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 2,
                         static_cast<int32_t>(topkIdx));
                     stageIdx++;
