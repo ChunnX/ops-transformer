@@ -526,7 +526,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
     </table>
 
 - 规格约束：
-
     <table style="undefined;table-layout: fixed; width: 942px">
         <colgroup>
             <col style="width: 100px">
@@ -542,22 +541,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
         </thead>
         <tbody>
             <tr>
-                <td>B</td>
-                <td>1~256<br> 
-                950不做限制</td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td>S1、S2</td>
-                <td>S1支持1~8K，S2支持1~512K<br>950不做限制</td>
-                <td>S1、S2支持不等长。</td>
-            </tr>
-            <tr>
-                <td>N1</td>
-                <td>8、16、32、64<br>950支持1~128</td>
-                <td>N1需要能被N2整除。</td>
-            </tr>
-            <tr>
                 <td>N2</td>
                 <td>1</td>
                 <td>当前仅支持N2=1。</td>
@@ -568,17 +551,33 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>q和k最后一维需保持一致。</td>
             </tr>
             <tr>
-                <td>K</td>
-                <td>512、1024、2048、4096、8192<br>950支持1~2048</td>
-                <td>top-k大小。</td>
-            </tr>
-            <tr>
                 <td>cmpRatio</td>
                 <td>1~128</td>
                 <td>-</td>
             </tr>
         </tbody>
     </table>
+
+  - 参数B的支持情况:
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+        - B支持1~256。
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+        - B>0。
+  - 参数S1、S2的支持情况:
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+        - S1支持1~8K，S2支持1~512K。
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+        - S1>0，S2>0。
+  - 参数N1的支持情况:
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+        - N1支持8、16、32、64。
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+        - N1支持1~128。
+  - 参数K的支持情况:
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+        - K支持512、1024、2048、4096、8192。
+    - <term>Ascend 950PR/Ascend 950DT</term>：
+        - K支持0~2048。
 
 ## 调用示例
 
