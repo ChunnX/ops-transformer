@@ -86,7 +86,7 @@ bool GroupedWeightQuantBatchMatmulTiling:: SetShapeList(const gert::TilingContex
     return true;
 }
 
-bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize(const gert::TilingContext *context) const
+bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize() const
 {
     OP_CHECK_IF(
         numX_ >= GroupedMatmul::MAX_TENSOR_CONT,
@@ -505,18 +505,18 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
 
     // 参数校验
     OP_CHECK_IF(!CheckCoreNum(context), OP_LOGE(context->GetNodeName(), "Invalid core number ratio"), return false);
-    OP_CHECK_IF(!CheckUnsupportDataFlow(context),
+    OP_CHECK_IF(!CheckUnsupportDataFlow(),
                 OP_LOGE(context->GetNodeName(), "Input data contains unsupported dtype or format."), return false);
-    OP_CHECK_IF(!CheckTransposeStatus(context), OP_LOGE(context->GetNodeName(), "CheckTransposeStatus failed."),
+    OP_CHECK_IF(!CheckTransposeStatus(), OP_LOGE(context->GetNodeName(), "CheckTransposeStatus failed."),
                 return false);
-    OP_CHECK_IF(!CheckGroupTypeAndSplitItem(context), OP_LOGE(context->GetNodeName(), "CheckParam failed."),
+    OP_CHECK_IF(!CheckGroupTypeAndSplitItem(), OP_LOGE(context->GetNodeName(), "CheckParam failed."),
                 return false);
-    OP_CHECK_IF(!CheckTensorListSize(context), OP_LOGE(context->GetNodeName(), "CheckTensorListSize failed."),
+    OP_CHECK_IF(!CheckTensorListSize(), OP_LOGE(context->GetNodeName(), "CheckTensorListSize failed."),
                 return false);
     OP_CHECK_IF(!CheckEmptyTensor(context), OP_LOGE(context->GetNodeName(), "CheckEmptyTensor failed."), return false);
-    OP_CHECK_IF(!CheckAntiQuantDtype(context), OP_LOGE(context->GetNodeName(), "CheckAntiQuantDtype failed."),
+    OP_CHECK_IF(!CheckAntiQuantDtype(), OP_LOGE(context->GetNodeName(), "CheckAntiQuantDtype failed."),
                 return false);
-    OP_CHECK_IF(!CheckBiasDtype(context), OP_LOGE(context->GetNodeName(), "CheckBiasDtype failed."), return false);
+    OP_CHECK_IF(!CheckBiasDtype(), OP_LOGE(context->GetNodeName(), "CheckBiasDtype failed."), return false);
     OP_CHECK_IF(!CheckGroupList(context), OP_LOGE(context->GetNodeName(), "CheckGroupList failed."), return false);
     OP_CHECK_IF(!CheckEveryTensor(context), OP_LOGE(context->GetNodeName(), "CheckEveryTensor failed."), return false);
 
@@ -760,7 +760,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetCustomParam(gert::TilingContext *co
     OP_CHECK_IF(context->GetRawTilingData() == nullptr, OP_LOGE(context->GetNodeName(), "RawTilingData is nullptr."),
                 return false);
     errno_t ret = memcpy_s(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity(),
-                           reinterpret_cast<void *>(&tilingData_), sizeof(tilingData_));
+                           static_cast<void *>(&tilingData_), sizeof(tilingData_));
     if (ret != EOK) {
         OP_LOGE(context->GetNodeName(), "memcpy_s failed, ret = %d", ret);
         return false;
@@ -787,7 +787,7 @@ bool GroupedWeightQuantBatchMatmulTiling::IsMxA8W4() const
     return false;
 }
 
-bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::TilingContext *context) const
+bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow() const
 {
     if (ge::GetSizeByDataType(xDType_) == B16_DATA_SIZE &&
         (weightDtype_ == ge::DT_INT8 || weightDtype_ == ge::DT_INT32 || weightDtype_ == ge::DT_INT4)) {
@@ -840,7 +840,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::Til
     return true;
 }
 
-bool GroupedWeightQuantBatchMatmulTiling::CheckAntiQuantDtype(const gert::TilingContext *context) const
+bool GroupedWeightQuantBatchMatmulTiling::CheckAntiQuantDtype() const
 {
     if (IsA16W4ND()) {
         OP_CHECK_IF(antiquantScaleDtype_ != xDType_,
@@ -887,7 +887,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckPerTokenScale(const gert::TilingC
     return true;
 }
 
-bool GroupedWeightQuantBatchMatmulTiling::CheckBiasDtype(const gert::TilingContext *context) const
+bool GroupedWeightQuantBatchMatmulTiling::CheckBiasDtype() const
 {
     if (IsA16W4ND()) {
         if (hasBias_) {
@@ -907,7 +907,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckBiasDtype(const gert::TilingConte
     return true;
 }
 
-bool GroupedWeightQuantBatchMatmulTiling::CheckGroupTypeAndSplitItem(const gert::TilingContext *context) const
+bool GroupedWeightQuantBatchMatmulTiling::CheckGroupTypeAndSplitItem() const
 {
     if (IsA16W4ND()) {
         OP_CHECK_IF(
@@ -934,7 +934,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupTypeAndSplitItem(const gert:
     return true;
 }
 
-bool GroupedWeightQuantBatchMatmulTiling::CheckTransposeStatus(const gert::TilingContext *context) const
+bool GroupedWeightQuantBatchMatmulTiling::CheckTransposeStatus() const
 {
     OP_CHECK_IF(transA_,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "transposeX",
@@ -1086,7 +1086,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListMultiXMultiWeightMultiY(co
     return true;
 }
 
-bool GroupedWeightQuantBatchMatmulTiling::CheckGroupSize(const gert::TilingContext *context) const
+bool GroupedWeightQuantBatchMatmulTiling::CheckGroupSize() const
 {
     if (xDType_ != ge::DT_INT8 || weightDtype_ != ge::DT_INT4) {
         return true;
@@ -1135,7 +1135,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetAntiquantGroupSize(const gert::Tili
         groupSize_ = groupNum > 0 ? kSize_ / static_cast<uint64_t>(groupNum) : 0;
     }
 
-    OP_CHECK_IF(!CheckGroupSize(context), OP_LOGE(context->GetNodeName(), "CheckGroupSize failed."), return false);
+    OP_CHECK_IF(!CheckGroupSize(), OP_LOGE(context->GetNodeName(), "CheckGroupSize failed."), return false);
 
     return true;
 }
