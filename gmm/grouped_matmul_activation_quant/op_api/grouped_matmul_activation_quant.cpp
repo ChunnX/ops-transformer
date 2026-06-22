@@ -13,8 +13,11 @@
 #include <cstdio>
 
 #include "opdev/make_op_executor.h"
+#include "opdev/data_type_utils.h"
+#include "opdev/format_utils.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_log.h"
+#include "opdev/shape_utils.h"
 #include "util/math_util.h"
 
 using namespace op;
@@ -37,6 +40,51 @@ void GmmaqPrint(const char *format, Args... args)
     std::printf(format, args...);
     std::printf("\n");
     std::fflush(stdout);
+}
+
+void PrintTensorInfo(const char *name, const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        GmmaqPrint("launch tensor %s: nullptr.", name);
+        return;
+    }
+    GmmaqPrint("launch tensor %s: dtype=%s, storageFormat=%s, viewShape=%s, storageShape=%s, "
+               "viewDim=%zu, storageDim=%zu, isEmpty=%d.",
+               name, op::ToString(tensor->GetDataType()).GetString(),
+               op::ToString(tensor->GetStorageFormat()).GetString(),
+               op::ToString(tensor->GetViewShape()).GetString(),
+               op::ToString(tensor->GetStorageShape()).GetString(),
+               tensor->GetViewShape().GetDimNum(), tensor->GetStorageShape().GetDimNum(),
+               static_cast<int>(tensor->IsEmpty()));
+}
+
+void PrintTensorListInfo(const char *name, const aclTensorList *tensorList)
+{
+    if (tensorList == nullptr) {
+        GmmaqPrint("launch tensorList %s: nullptr.", name);
+        return;
+    }
+    GmmaqPrint("launch tensorList %s: size=%zu.", name, tensorList->Size());
+    for (size_t i = 0; i < tensorList->Size(); ++i) {
+        char tensorName[128] = {};
+        std::snprintf(tensorName, sizeof(tensorName), "%s[%zu]", name, i);
+        PrintTensorInfo(tensorName, (*tensorList)[i]);
+    }
+}
+
+void PrintLaunchInfo(const aclTensor *x, const aclTensor *groupList, const aclTensorList *weight,
+    const aclTensorList *weightScale, const aclTensorList *bias, const aclTensor *xScale, const aclTensor *out,
+    const aclTensor *scaleOut)
+{
+    GmmaqPrint("GroupedMatmulActivationQuant L0 launch tensor info before ADD_TO_LAUNCHER_LIST_AICORE.");
+    PrintTensorInfo("x", x);
+    PrintTensorInfo("groupList", groupList);
+    PrintTensorListInfo("weight", weight);
+    PrintTensorListInfo("weightScale", weightScale);
+    PrintTensorListInfo("bias", bias);
+    PrintTensorInfo("xScale", xScale);
+    PrintTensorInfo("out", out);
+    PrintTensorInfo("scaleOut", scaleOut);
 }
 } // namespace
 
@@ -81,6 +129,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
     }
 
     GmmaqPrint("GroupedMatmulActivationQuant L0 INFER_SHAPE success, call ADD_TO_LAUNCHER_LIST_AICORE.");
+    PrintLaunchInfo(x, groupList, weight, weightScale, bias, xScale, out, scaleOut);
     ret = ADD_TO_LAUNCHER_LIST_AICORE(GroupedMatmulActivationQuant,
         OP_INPUT(x, groupList, weight, weightScale, bias, xScale), OP_OUTPUT(out, scaleOut),
         OP_ATTR(activationType, transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg,
