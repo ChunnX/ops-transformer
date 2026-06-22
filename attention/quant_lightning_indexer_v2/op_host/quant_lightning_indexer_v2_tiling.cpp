@@ -269,9 +269,6 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
             OP_LOGE(opName_, "input attr quant_mode only supported 1 and 4."),
             return ge::GRAPH_FAILED);
     }
-    
-    OP_CHECK_IF(*opParamInfo_.returnValue, OP_LOGE(opName_, "input attr returnValue only supported False."),
-               return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -977,12 +974,6 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
 
     QLIV2Info.keyStridesVec = keyStridesVec_;
     QLIV2Info.keyDequantScaleStridesVec = keyDequantScaleStridesVec_;
-    if (opParamInfo_.key.shape != nullptr) {
-        QLIV2Info.keyStorageShape = opParamInfo_.key.shape->GetStorageShape();
-    }
-    if (opParamInfo_.key_dequant_scale.shape != nullptr) {
-        QLIV2Info.keyDequantScaleStorageShape = opParamInfo_.key_dequant_scale.shape->GetStorageShape();
-    }
     if (!keyStridesVec_.empty()) {
         QLIV2Info.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
     } else {
