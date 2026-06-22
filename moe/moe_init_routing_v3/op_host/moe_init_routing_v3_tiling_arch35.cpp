@@ -1893,8 +1893,8 @@ int64_t MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopFP8Quant(int64_t 
 
     int64_t xInSize = AlignBytes(perLoopCols, inputXDtypeSize_);
     int64_t xOutSize = AlignBytes(perLoopCols, sizeof(uint8_t));
-    int64_t scaleSize =
-        AlignBytes(Ops::Base::CeilDiv(perLoopCols, FP8_PERBLOCK_BLOCK_SIZE * NUM_TWO), sizeof(float)) * NUM_TWO;
+    int64_t scaleSize = std::max(
+        AlignBytes(Ops::Base::CeilDiv(perLoopCols, FP8_PERBLOCK_BLOCK_SIZE), sizeof(float)), Ops::Base::GetVRegSize());
     return (availUbSize_ / DOUBLE_BUFFER - (xInSize + xOutSize + scaleSize)) / static_cast<int64_t>(sizeof(int32_t));
 }
 
