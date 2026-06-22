@@ -37,129 +37,29 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const T minValue)
 {
     RegTensor<float> vreg_min;
-    RegTensor<float> vreg_sel1;
-    RegTensor<float> vreg_sel2;
-    RegTensor<float> vreg_sel3;
-    RegTensor<float> vreg_sel4;
-    RegTensor<float> vreg_sel5;
-    RegTensor<float> vreg_sel6;
-    RegTensor<float> vreg_sel7;
-    RegTensor<float> vreg_sel8;
+    VREG_FLOAT_DECL_8(vreg_sel);
     RegTensor<float> vreg_sel5_new;
     RegTensor<float> vreg_sel6_new;
     RegTensor<float> vreg_sel7_new;
     RegTensor<float> vreg_sel8_new;
 
-
-    RegTensor<float> vreg_input_x1;
-    RegTensor<float> vreg_input_x2;
-    RegTensor<float> vreg_input_x3;
-    RegTensor<float> vreg_input_x4;
-    RegTensor<float> vreg_input_x5;
-    RegTensor<float> vreg_input_x6;
-    RegTensor<float> vreg_input_x7;
-    RegTensor<float> vreg_input_x8;
+    VREG_FLOAT_DECL_8(vreg_input_x);
     RegTensor<float> vreg_input_x5_new;
     RegTensor<float> vreg_input_x6_new;
     RegTensor<float> vreg_input_x7_new;
     RegTensor<float> vreg_input_x8_new;
 
-    RegTensor<float> vreg_max_tmp1;
-    RegTensor<float> vreg_max_tmp2;
-    RegTensor<float> vreg_max_tmp3;
-    RegTensor<float> vreg_max_tmp4;
-
     RegTensor<float> vreg_input_max;
     RegTensor<float> vreg_max_brc;
     RegTensor<float> vreg_zero;
 
-    RegTensor<float> vreg_exp_sum1;
-    RegTensor<float> vreg_exp_sum2;
     RegTensor<float> vreg_exp_sum3;
-    RegTensor<float> vreg_exp_sum4;
 
-    RegTensor<float> vreg_exp_even1;
-    RegTensor<float> vreg_exp_odd1;
-    RegTensor<float> vreg_exp_even2;
-    RegTensor<float> vreg_exp_odd2;
-    RegTensor<float> vreg_exp_even3;
-    RegTensor<float> vreg_exp_odd3;
-    RegTensor<float> vreg_exp_even4;
-    RegTensor<float> vreg_exp_odd4;
+    VREG_FLOAT_DECL_EXP_PAIRS_4(vreg_exp);
 
-    RegTensor<float> vreg_pse1;
-    RegTensor<float> vreg_pse2;
-    RegTensor<float> vreg_pse3;
-    RegTensor<float> vreg_pse4;
-    RegTensor<float> vreg_pse5;
-    RegTensor<float> vreg_pse6;
-    RegTensor<float> vreg_pse7;
-    RegTensor<float> vreg_pse8;
+    VREG_FLOAT_DECL_8(vreg_pse);
 
-    RegTensor<float> vreg_alibi1;
-    RegTensor<float> vreg_alibi2;
-    RegTensor<float> vreg_alibi3;
-    RegTensor<float> vreg_alibi4;
-    RegTensor<float> vreg_alibi5;
-    RegTensor<float> vreg_alibi6;
-    RegTensor<float> vreg_alibi7;
-    RegTensor<float> vreg_alibi8;
-
-    RegTensor<bfloat16_t> vreg_exp_even1_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd1_bf16;
-    RegTensor<bfloat16_t> vreg_exp_even2_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd2_bf16;
-    RegTensor<bfloat16_t> vreg_exp_even3_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd3_bf16;
-    RegTensor<bfloat16_t> vreg_exp_even4_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd4_bf16;
-
-    RegTensor<bfloat16_t> vreg_exp1_bf16;
-    RegTensor<bfloat16_t> vreg_exp2_bf16;
-    RegTensor<bfloat16_t> vreg_exp3_bf16;
-    RegTensor<bfloat16_t> vreg_exp4_bf16;
-
-    RegTensor<bfloat16_t> vreg_pse_bf16_src1;
-    RegTensor<bfloat16_t> vreg_pse_bf16_src2;
-    RegTensor<bfloat16_t> vreg_pse_bf16_src3;
-    RegTensor<bfloat16_t> vreg_pse_bf16_src4;
-
-    RegTensor<bfloat16_t> vreg_pse1_bf16;
-    RegTensor<bfloat16_t> vreg_pse2_bf16;
-    RegTensor<bfloat16_t> vreg_pse3_bf16;
-    RegTensor<bfloat16_t> vreg_pse4_bf16;
-    RegTensor<bfloat16_t> vreg_pse5_bf16;
-    RegTensor<bfloat16_t> vreg_pse6_bf16;
-    RegTensor<bfloat16_t> vreg_pse7_bf16;
-    RegTensor<bfloat16_t> vreg_pse8_bf16;
-
-    RegTensor<half> vreg_exp_even1_f16;
-    RegTensor<half> vreg_exp_odd1_f16;
-    RegTensor<half> vreg_exp_even2_f16;
-    RegTensor<half> vreg_exp_odd2_f16;
-    RegTensor<half> vreg_exp_even3_f16;
-    RegTensor<half> vreg_exp_odd3_f16;
-    RegTensor<half> vreg_exp_even4_f16;
-    RegTensor<half> vreg_exp_odd4_f16;
-
-    RegTensor<half> vreg_exp1_f16;
-    RegTensor<half> vreg_exp2_f16;
-    RegTensor<half> vreg_exp3_f16;
-    RegTensor<half> vreg_exp4_f16;
-
-    RegTensor<half> vreg_pse_f16_src1;
-    RegTensor<half> vreg_pse_f16_src2;
-    RegTensor<half> vreg_pse_f16_src3;
-    RegTensor<half> vreg_pse_f16_src4;
-
-    RegTensor<half> vreg_pse1_f16;
-    RegTensor<half> vreg_pse2_f16;
-    RegTensor<half> vreg_pse3_f16;
-    RegTensor<half> vreg_pse4_f16;
-    RegTensor<half> vreg_pse5_f16;
-    RegTensor<half> vreg_pse6_f16;
-    RegTensor<half> vreg_pse7_f16;
-    RegTensor<half> vreg_pse8_f16;
+    VREG_FLOAT_DECL_8(vreg_alibi);
 
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
@@ -181,47 +81,23 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
 
     MaskReg preg_reduce_n = CreateMask<float, MaskPattern::VL8>();
 
-    MaskReg preg_compare1;
-    MaskReg preg_compare2;
-    MaskReg preg_compare3;
-    MaskReg preg_compare4;
-    MaskReg preg_compare5;
-    MaskReg preg_compare6;
-    MaskReg preg_compare7;
-    MaskReg preg_compare8;
+    VREG_PREG_COMPARE_DECL_8();
 
     Duplicate(vreg_min, minValue);
     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                     pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-        Arange(vreg_alibi1, posShift);
-        Adds(vreg_alibi2, vreg_alibi1, floatRepSize, preg_all);
-        Adds(vreg_alibi3, vreg_alibi2, floatRepSize, preg_all);
-        Adds(vreg_alibi4, vreg_alibi3, floatRepSize, preg_all);
-        Adds(vreg_alibi5, vreg_alibi4, floatRepSize, preg_all);
-        Adds(vreg_alibi6, vreg_alibi5, floatRepSize, preg_all);
-        Adds(vreg_alibi7, vreg_alibi6, floatRepSize, preg_all);
-        Adds(vreg_alibi8, vreg_alibi7, floatRepSize, preg_all);
+        InitAlibiOffsets8(vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
+            vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8, posShift, preg_all);
     }
     for (uint16_t i = 0; i < m; ++i) {
-        LoadAlign(vreg_input_x1, srcUb + i * s2BaseSize);
-        LoadAlign(vreg_input_x2, srcUb + floatRepSize + i * s2BaseSize);
-        LoadAlign(vreg_input_x3, srcUb + floatRepSize * 2 + i * s2BaseSize);
-        LoadAlign(vreg_input_x4, srcUb + floatRepSize * 3 + i * s2BaseSize);
-        LoadAlign(vreg_input_x5, srcUb + floatRepSize * 4 + i * s2BaseSize);
-        LoadAlign(vreg_input_x6, srcUb + floatRepSize * 5 + i * s2BaseSize);
-        LoadAlign(vreg_input_x7, srcUb + floatRepSize * 6 + i * s2BaseSize);
-        LoadAlign(vreg_input_x8, srcUb + floatRepSize * 7 + i * s2BaseSize);
+        LoadInput8<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+            vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+            srcUb, i, s2BaseSize);
 
         if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-            Muls(vreg_input_x1, vreg_input_x1, scale, preg_all);
-            Muls(vreg_input_x2, vreg_input_x2, scale, preg_all);
-            Muls(vreg_input_x3, vreg_input_x3, scale, preg_all);
-            Muls(vreg_input_x4, vreg_input_x4, scale, preg_all);
-
-            Muls(vreg_input_x5, vreg_input_x5, scale, preg_ori_tail_n1);
-            Muls(vreg_input_x6, vreg_input_x6, scale, preg_ori_tail_n2);
-            Muls(vreg_input_x7, vreg_input_x7, scale, preg_ori_tail_n3);
-            Muls(vreg_input_x8, vreg_input_x8, scale, preg_ori_tail_n4);
+            ScaleInput4x4(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+                scale, preg_all, preg_ori_tail_n1, preg_ori_tail_n2, preg_ori_tail_n3, preg_ori_tail_n4);
         }
         if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
             if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
@@ -250,76 +126,40 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
                         pseUb, i, pseStride, preg_all_b16);
                 }
             }
-            Add(vreg_input_x1, vreg_input_x1, vreg_pse1, preg_all);
-            Add(vreg_input_x2, vreg_input_x2, vreg_pse2, preg_all);
-            Add(vreg_input_x3, vreg_input_x3, vreg_pse3, preg_all);
-            Add(vreg_input_x4, vreg_input_x4, vreg_pse4, preg_all);
-            Add(vreg_input_x5, vreg_input_x5, vreg_pse5, preg_ori_tail_n1);
-            Add(vreg_input_x6, vreg_input_x6, vreg_pse6, preg_ori_tail_n2);
-            Add(vreg_input_x7, vreg_input_x7, vreg_pse7, preg_ori_tail_n3);
-            Add(vreg_input_x8, vreg_input_x8, vreg_pse8, preg_ori_tail_n4);
+            AddPseToInput4x4(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+                vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                preg_all, preg_ori_tail_n1, preg_ori_tail_n2, preg_ori_tail_n3, preg_ori_tail_n4);
         }
         if constexpr (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-            Muls(vreg_input_x1, vreg_input_x1, scale, preg_all);
-            Muls(vreg_input_x2, vreg_input_x2, scale, preg_all);
-            Muls(vreg_input_x3, vreg_input_x3, scale, preg_all);
-            Muls(vreg_input_x4, vreg_input_x4, scale, preg_all);
-
-            Muls(vreg_input_x5, vreg_input_x5, scale, preg_ori_tail_n1);
-            Muls(vreg_input_x6, vreg_input_x6, scale, preg_ori_tail_n2);
-            Muls(vreg_input_x7, vreg_input_x7, scale, preg_ori_tail_n3);
-            Muls(vreg_input_x8, vreg_input_x8, scale, preg_ori_tail_n4);
+            ScaleInput4x4(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+                scale, preg_all, preg_ori_tail_n1, preg_ori_tail_n2, preg_ori_tail_n3, preg_ori_tail_n4);
         }
 
         if constexpr (hasAtten == 1) {
             // atten mask
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare1, (__ubuf__ uint32_t *&)maskUb1, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare5, (__ubuf__ uint32_t *&)maskUb5, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare6, (__ubuf__ uint32_t *&)maskUb6, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare7, (__ubuf__ uint32_t *&)maskUb7, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare8, (__ubuf__ uint32_t *&)maskUb8, nPadding);
+            LoadAttenMask8(preg_compare1, preg_compare2, preg_compare3, preg_compare4,
+                preg_compare5, preg_compare6, preg_compare7, preg_compare8,
+                maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, maskUb7, maskUb8, nPadding);
 
-            Select(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
-            Select(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
-            Select(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
-            Select(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
-            Select(vreg_sel5, vreg_min, vreg_input_x5, preg_compare5);
-            Select(vreg_sel6, vreg_min, vreg_input_x6, preg_compare6);
-            Select(vreg_sel7, vreg_min, vreg_input_x7, preg_compare7);
-            Select(vreg_sel8, vreg_min, vreg_input_x8, preg_compare8);
+            ApplyAttenMaskSelect8(vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
+                vreg_sel5, vreg_sel6, vreg_sel7, vreg_sel8,
+                vreg_min,
+                vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+                preg_compare1, preg_compare2, preg_compare3, preg_compare4,
+                preg_compare5, preg_compare6, preg_compare7, preg_compare8);
 
             Select(vreg_sel5_new, vreg_sel5, vreg_min, preg_ori_tail_n1);
             Select(vreg_sel6_new, vreg_sel6, vreg_min, preg_ori_tail_n2);
             Select(vreg_sel7_new, vreg_sel7, vreg_min, preg_ori_tail_n3);
             Select(vreg_sel8_new, vreg_sel8, vreg_min, preg_ori_tail_n4);
 
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel1, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_sel2, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 2 + i * s2BaseSize, vreg_sel3, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 3 +  i * s2BaseSize, vreg_sel4, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 4 +  i * s2BaseSize, vreg_sel5_new, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 5 +  i * s2BaseSize, vreg_sel6_new, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 6 +  i * s2BaseSize, vreg_sel7_new, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 7 +  i * s2BaseSize, vreg_sel8_new, preg_all);
+            StoreAlign8<T>(vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
+                vreg_sel5_new, vreg_sel6_new, vreg_sel7_new, vreg_sel8_new,
+                srcUb, i, s2BaseSize, preg_all);
 
             MaxReduce4(vreg_input_max,
                 vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
@@ -331,22 +171,9 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
             Select(vreg_input_x7_new, vreg_input_x7, vreg_min, preg_ori_tail_n3);
             Select(vreg_input_x8_new, vreg_input_x8, vreg_min, preg_ori_tail_n4);
 
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x1, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_input_x2, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 2 + i * s2BaseSize, vreg_input_x3, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 3 + i * s2BaseSize, vreg_input_x4, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 4 + i * s2BaseSize, vreg_input_x5_new, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 5 + i * s2BaseSize, vreg_input_x6_new, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 6 + i * s2BaseSize, vreg_input_x7_new, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 7 + i * s2BaseSize, vreg_input_x8_new, preg_all);
+            StoreAlign8<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5_new, vreg_input_x6_new, vreg_input_x7_new, vreg_input_x8_new,
+                srcUb, i, s2BaseSize, preg_all);
 
             MaxReduce4(vreg_input_max,
                 vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
@@ -365,24 +192,22 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(
             vreg_max_brc, maxUbStart + i);
 
-        LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-            vreg_input_x1, vreg_input_x2, srcUb + i * s2BaseSize);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-            vreg_input_x3, vreg_input_x4, srcUb + floatRepSize * 2 + i * s2BaseSize);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-            vreg_input_x5, vreg_input_x6, srcUb + floatRepSize * 4 + i * s2BaseSize);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-            vreg_input_x7, vreg_input_x8, srcUb + floatRepSize * 6 + i * s2BaseSize);
+        LoadInputDinterleave4<T>(vreg_input_x1, vreg_input_x2,
+            vreg_input_x3, vreg_input_x4,
+            vreg_input_x5, vreg_input_x6,
+            vreg_input_x7, vreg_input_x8,
+            srcUb, i, s2BaseSize);
 
 
-        ExpSub(vreg_exp_even1, vreg_input_x1, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_odd1, vreg_input_x2, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_even2, vreg_input_x3, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_odd2, vreg_input_x4, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_even3, vreg_input_x5, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_odd3, vreg_input_x6, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_even4, vreg_input_x7, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_odd4, vreg_input_x8, vreg_max_brc, preg_all);
+        ExpSub8(vreg_exp_even1, vreg_exp_odd1,
+            vreg_exp_even2, vreg_exp_odd2,
+            vreg_exp_even3, vreg_exp_odd3,
+            vreg_exp_even4, vreg_exp_odd4,
+            vreg_input_x1, vreg_input_x2,
+            vreg_input_x3, vreg_input_x4,
+            vreg_input_x5, vreg_input_x6,
+            vreg_input_x7, vreg_input_x8,
+            vreg_max_brc, preg_all);
 
         ExpSumReduceStore512<float, T2>(vreg_exp_sum3,
             vreg_exp_even1, vreg_exp_odd1, vreg_exp_even2, vreg_exp_odd2,
@@ -437,16 +262,6 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage1
     RegTensor<float> vreg_alibi1;
     RegTensor<float> vreg_alibi7;
     RegTensor<float> vreg_alibi8;
-
-    RegTensor<bfloat16_t> vreg_pse_bf16_src4;
-
-    RegTensor<bfloat16_t> vreg_pse7_bf16;
-    RegTensor<bfloat16_t> vreg_pse8_bf16;
-
-    RegTensor<half> vreg_pse_f16_src4;
-
-    RegTensor<half> vreg_pse7_f16;
-    RegTensor<half> vreg_pse8_f16;
 
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
@@ -543,119 +358,29 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const T minValue)
 {
     RegTensor<float> vreg_min;
-    RegTensor<float> vreg_sel1;
-    RegTensor<float> vreg_sel2;
-    RegTensor<float> vreg_sel3;
-    RegTensor<float> vreg_sel4;
-    RegTensor<float> vreg_sel5;
-    RegTensor<float> vreg_sel6;
+    VREG_FLOAT_DECL_6(vreg_sel);
     RegTensor<float> vreg_sel5_new;
     RegTensor<float> vreg_sel6_new;
     RegTensor<float> vreg_sel7_new;
     RegTensor<float> vreg_sel8_new;
 
-
-    RegTensor<float> vreg_input_x1;
-    RegTensor<float> vreg_input_x2;
-    RegTensor<float> vreg_input_x3;
-    RegTensor<float> vreg_input_x4;
-    RegTensor<float> vreg_input_x5;
-    RegTensor<float> vreg_input_x6;
-    RegTensor<float> vreg_input_x7;
-    RegTensor<float> vreg_input_x8;
+    VREG_FLOAT_DECL_8(vreg_input_x);
     RegTensor<float> vreg_input_x5_new;
     RegTensor<float> vreg_input_x6_new;
     RegTensor<float> vreg_input_x7_new;
     RegTensor<float> vreg_input_x8_new;
 
-    RegTensor<float> vreg_max_tmp1;
-    RegTensor<float> vreg_max_tmp2;
-    RegTensor<float> vreg_max_tmp3;
-    RegTensor<float> vreg_max_tmp4;
-
     RegTensor<float> vreg_input_max;
     RegTensor<float> vreg_max_brc;
     RegTensor<float> vreg_zero;
 
-    RegTensor<float> vreg_exp_sum1;
-    RegTensor<float> vreg_exp_sum2;
     RegTensor<float> vreg_exp_sum3;
-    RegTensor<float> vreg_exp_sum4;
 
-    RegTensor<float> vreg_exp_even1;
-    RegTensor<float> vreg_exp_odd1;
-    RegTensor<float> vreg_exp_even2;
-    RegTensor<float> vreg_exp_odd2;
-    RegTensor<float> vreg_exp_even3;
-    RegTensor<float> vreg_exp_odd3;
-    RegTensor<float> vreg_exp_even4;
-    RegTensor<float> vreg_exp_odd4;
+    VREG_FLOAT_DECL_EXP_PAIRS_4(vreg_exp);
 
-    RegTensor<float> vreg_pse1;
-    RegTensor<float> vreg_pse2;
-    RegTensor<float> vreg_pse3;
-    RegTensor<float> vreg_pse4;
-    RegTensor<float> vreg_pse5;
-    RegTensor<float> vreg_pse6;
-    RegTensor<float> vreg_pse7;
-    RegTensor<float> vreg_pse8;
+    VREG_FLOAT_DECL_8(vreg_pse);
 
-    RegTensor<float> vreg_alibi1;
-    RegTensor<float> vreg_alibi2;
-    RegTensor<float> vreg_alibi3;
-    RegTensor<float> vreg_alibi4;
-    RegTensor<float> vreg_alibi5;
-    RegTensor<float> vreg_alibi6;
-
-    RegTensor<bfloat16_t> vreg_exp_even1_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd1_bf16;
-    RegTensor<bfloat16_t> vreg_exp_even2_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd2_bf16;
-    RegTensor<bfloat16_t> vreg_exp_even3_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd3_bf16;
-    RegTensor<bfloat16_t> vreg_exp_even4_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd4_bf16;
-
-    RegTensor<bfloat16_t> vreg_exp1_bf16;
-    RegTensor<bfloat16_t> vreg_exp2_bf16;
-    RegTensor<bfloat16_t> vreg_exp3_bf16;
-    RegTensor<bfloat16_t> vreg_exp4_bf16;
-
-    RegTensor<bfloat16_t> vreg_pse_bf16_src1;
-    RegTensor<bfloat16_t> vreg_pse_bf16_src2;
-    RegTensor<bfloat16_t> vreg_pse_bf16_src3;
-
-    RegTensor<bfloat16_t> vreg_pse1_bf16;
-    RegTensor<bfloat16_t> vreg_pse2_bf16;
-    RegTensor<bfloat16_t> vreg_pse3_bf16;
-    RegTensor<bfloat16_t> vreg_pse4_bf16;
-    RegTensor<bfloat16_t> vreg_pse5_bf16;
-    RegTensor<bfloat16_t> vreg_pse6_bf16;
-
-    RegTensor<half> vreg_exp_even1_f16;
-    RegTensor<half> vreg_exp_odd1_f16;
-    RegTensor<half> vreg_exp_even2_f16;
-    RegTensor<half> vreg_exp_odd2_f16;
-    RegTensor<half> vreg_exp_even3_f16;
-    RegTensor<half> vreg_exp_odd3_f16;
-    RegTensor<half> vreg_exp_even4_f16;
-    RegTensor<half> vreg_exp_odd4_f16;
-
-    RegTensor<half> vreg_exp1_f16;
-    RegTensor<half> vreg_exp2_f16;
-    RegTensor<half> vreg_exp3_f16;
-    RegTensor<half> vreg_exp4_f16;
-
-    RegTensor<half> vreg_pse_f16_src1;
-    RegTensor<half> vreg_pse_f16_src2;
-    RegTensor<half> vreg_pse_f16_src3;
-
-    RegTensor<half> vreg_pse1_f16;
-    RegTensor<half> vreg_pse2_f16;
-    RegTensor<half> vreg_pse3_f16;
-    RegTensor<half> vreg_pse4_f16;
-    RegTensor<half> vreg_pse5_f16;
-    RegTensor<half> vreg_pse6_f16;
+    VREG_FLOAT_DECL_6(vreg_alibi);
 
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
@@ -667,39 +392,21 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
 
     MaskReg preg_ori_tail_n2 = UpdateMask<float>(pltOriTailN2);
 
-    MaskReg preg_compare1;
-    MaskReg preg_compare2;
-    MaskReg preg_compare3;
-    MaskReg preg_compare4;
-    MaskReg preg_compare5;
-    MaskReg preg_compare6;
+    VREG_PREG_COMPARE_DECL_6();
 
     Duplicate(vreg_min, minValue);
     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                     pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-        Arange(vreg_alibi1, posShift);
-        Adds(vreg_alibi2, vreg_alibi1, floatRepSize, preg_all);
-        Adds(vreg_alibi3, vreg_alibi2, floatRepSize, preg_all);
-        Adds(vreg_alibi4, vreg_alibi3, floatRepSize, preg_all);
-        Adds(vreg_alibi5, vreg_alibi4, floatRepSize, preg_all);
-        Adds(vreg_alibi6, vreg_alibi5, floatRepSize, preg_all);
+        InitAlibiOffsets6(vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
+            vreg_alibi5, vreg_alibi6, posShift, preg_all);
     }
     for (uint16_t i = 0; i < m; ++i) {
-        LoadAlign(vreg_input_x1, srcUb + i * s2BaseSize);
-        LoadAlign(vreg_input_x2, srcUb + floatRepSize + i * s2BaseSize);
-        LoadAlign(vreg_input_x3, srcUb + floatRepSize * 2 + i * s2BaseSize);
-        LoadAlign(vreg_input_x4, srcUb + floatRepSize * 3 + i * s2BaseSize);
-        LoadAlign(vreg_input_x5, srcUb + floatRepSize * 4 + i * s2BaseSize);
-        LoadAlign(vreg_input_x6, srcUb + floatRepSize * 5 + i * s2BaseSize);
+        LoadInput6<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+            vreg_input_x5, vreg_input_x6, srcUb, i, s2BaseSize);
 
         if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-            Muls(vreg_input_x1, vreg_input_x1, scale, preg_all);
-            Muls(vreg_input_x2, vreg_input_x2, scale, preg_all);
-            Muls(vreg_input_x3, vreg_input_x3, scale, preg_all);
-            Muls(vreg_input_x4, vreg_input_x4, scale, preg_all);
-
-            Muls(vreg_input_x5, vreg_input_x5, scale, preg_ori_tail_n1);
-            Muls(vreg_input_x6, vreg_input_x6, scale, preg_ori_tail_n2);
+            ScaleInput4x2(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, scale, preg_all, preg_ori_tail_n1, preg_ori_tail_n2);
         }
         if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
             if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
@@ -728,62 +435,38 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
                         pseUb, i, pseStride, preg_all_b16);
                 }
             }
-            Add(vreg_input_x1, vreg_input_x1, vreg_pse1, preg_all);
-            Add(vreg_input_x2, vreg_input_x2, vreg_pse2, preg_all);
-            Add(vreg_input_x3, vreg_input_x3, vreg_pse3, preg_all);
-            Add(vreg_input_x4, vreg_input_x4, vreg_pse4, preg_all);
-            Add(vreg_input_x5, vreg_input_x5, vreg_pse5, preg_ori_tail_n1);
-            Add(vreg_input_x6, vreg_input_x6, vreg_pse6, preg_ori_tail_n2);
+            AddPseToInput4x2(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6,
+                vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                vreg_pse5, vreg_pse6,
+                preg_all, preg_ori_tail_n1, preg_ori_tail_n2);
         }
         if constexpr (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-            Muls(vreg_input_x1, vreg_input_x1, scale, preg_all);
-            Muls(vreg_input_x2, vreg_input_x2, scale, preg_all);
-            Muls(vreg_input_x3, vreg_input_x3, scale, preg_all);
-            Muls(vreg_input_x4, vreg_input_x4, scale, preg_all);
-
-            Muls(vreg_input_x5, vreg_input_x5, scale, preg_ori_tail_n1);
-            Muls(vreg_input_x6, vreg_input_x6, scale, preg_ori_tail_n2);
+            ScaleInput4x2(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, scale, preg_all, preg_ori_tail_n1, preg_ori_tail_n2);
         }
 
         if constexpr (hasAtten == 1) {
             // atten mask
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare1, (__ubuf__ uint32_t *&)maskUb1, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare2, (__ubuf__ uint32_t *&)maskUb2, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare5, (__ubuf__ uint32_t *&)maskUb5, nPadding);
-            LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-                preg_compare6, (__ubuf__ uint32_t *&)maskUb6, nPadding);
+            LoadAttenMask6(preg_compare1, preg_compare2, preg_compare3,
+                preg_compare4, preg_compare5, preg_compare6,
+                maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, nPadding);
 
-            Select(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
-            Select(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
-            Select(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
-            Select(vreg_sel4, vreg_min, vreg_input_x4, preg_compare4);
-            Select(vreg_sel5, vreg_min, vreg_input_x5, preg_compare5);
-            Select(vreg_sel6, vreg_min, vreg_input_x6, preg_compare6);
+            ApplyAttenMaskSelect6(vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
+                vreg_sel5, vreg_sel6,
+                vreg_min,
+                vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6,
+                preg_compare1, preg_compare2, preg_compare3,
+                preg_compare4, preg_compare5, preg_compare6);
 
             Select(vreg_sel5_new, vreg_sel5, vreg_min, preg_ori_tail_n1);
             Select(vreg_sel6_new, vreg_sel6, vreg_min, preg_ori_tail_n2);
             LoadAlign(vreg_sel7_new, srcUb + floatRepSize * 6 + i * s2BaseSize);
             LoadAlign(vreg_sel8_new, srcUb + floatRepSize * 7 + i * s2BaseSize);
 
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel1, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_sel2, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 2 + i * s2BaseSize, vreg_sel3, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 3 +  i * s2BaseSize, vreg_sel4, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 4 +  i * s2BaseSize, vreg_sel5_new, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 5 +  i * s2BaseSize, vreg_sel6_new, preg_all);
+            StoreAlign6<T>(vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
+                vreg_sel5_new, vreg_sel6_new, srcUb, i, s2BaseSize, preg_all);
 
             MaxReduce4(vreg_input_max,
                 vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
@@ -795,18 +478,8 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
             LoadAlign(vreg_input_x7_new, srcUb + floatRepSize * 6 + i * s2BaseSize);
             LoadAlign(vreg_input_x8_new, srcUb + floatRepSize * 7 + i * s2BaseSize);
 
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x1, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_input_x2, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 2 + i * s2BaseSize, vreg_input_x3, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 3 + i * s2BaseSize, vreg_input_x4, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 4 + i * s2BaseSize, vreg_input_x5_new, preg_all);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize * 5 + i * s2BaseSize, vreg_input_x6_new, preg_all);
+            StoreAlign6<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5_new, vreg_input_x6_new, srcUb, i, s2BaseSize, preg_all);
 
             MaxReduce4(vreg_input_max,
                 vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
@@ -825,24 +498,22 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(
             vreg_max_brc, maxUbStart + i);
 
-        LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-            vreg_input_x1, vreg_input_x2, srcUb + i * s2BaseSize);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-            vreg_input_x3, vreg_input_x4, srcUb + floatRepSize * 2 + i * s2BaseSize);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-            vreg_input_x5, vreg_input_x6, srcUb + floatRepSize * 4 + i * s2BaseSize);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-            vreg_input_x7, vreg_input_x8, srcUb + floatRepSize * 6 + i * s2BaseSize);
+        LoadInputDinterleave4<T>(vreg_input_x1, vreg_input_x2,
+            vreg_input_x3, vreg_input_x4,
+            vreg_input_x5, vreg_input_x6,
+            vreg_input_x7, vreg_input_x8,
+            srcUb, i, s2BaseSize);
 
 
-        ExpSub(vreg_exp_even1, vreg_input_x1, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_odd1, vreg_input_x2, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_even2, vreg_input_x3, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_odd2, vreg_input_x4, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_even3, vreg_input_x5, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_odd3, vreg_input_x6, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_even4, vreg_input_x7, vreg_max_brc, preg_all);
-        ExpSub(vreg_exp_odd4, vreg_input_x8, vreg_max_brc, preg_all);
+        ExpSub8(vreg_exp_even1, vreg_exp_odd1,
+            vreg_exp_even2, vreg_exp_odd2,
+            vreg_exp_even3, vreg_exp_odd3,
+            vreg_exp_even4, vreg_exp_odd4,
+            vreg_input_x1, vreg_input_x2,
+            vreg_input_x3, vreg_input_x4,
+            vreg_input_x5, vreg_input_x6,
+            vreg_input_x7, vreg_input_x8,
+            vreg_max_brc, preg_all);
 
         ExpSumReduceStore512<float, T2>(vreg_exp_sum3,
             vreg_exp_even1, vreg_exp_odd1, vreg_exp_even2, vreg_exp_odd2,
