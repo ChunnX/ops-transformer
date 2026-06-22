@@ -220,7 +220,12 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
       - 不传入`cmp_sparse_indices`；`cmp_topk`传0。
       - `cmp_residual_kv`必须传入，长度必须等于batch大小。
 
-## 调用示例
+## 确定性计算
+
+默认支持确定性计算。
+默认支持batch invariance。
+
+## 调用说明
 
 ### C1A，BSND输入
 
