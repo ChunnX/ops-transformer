@@ -493,16 +493,6 @@ bool FiaTilingFullQuantMxArch35::IsActualSeqLengthsKVHasZero(const split_core_v2
     return false;
 }
 
-bool FiaTilingFullQuantMxArch35::IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo) {
-    for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
-        int32_t s2Size = split_core_v2::GetS2SeqSize(bIdx, baseInfo);
-        if (s2Size == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool FiaTilingFullQuantMxArch35::IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo)
 {
     if (!baseInfo.attenMaskFlag) {
