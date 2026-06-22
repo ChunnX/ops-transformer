@@ -295,27 +295,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
 
         pipe_->InitBuffer(gradCalcBuf1_, Ops::Base::CeilDiv(int64_t(k_ * uTypeSize_), blockSize_));
         pipe_->InitBuffer(gradCalcBuf2_, Ops::Base::CeilDiv(int64_t(k_ * uTypeSize_), blockSize_));
-    }
-
-    if ASCEND_IS_AIV {
-        pipe_->InitBuffer(gradHPreBuf_, bsnAlignFp32_ * uTypeSize_);
-        pipe_->InitBuffer(zBuf_, bskAlignFp32_ * uTypeSize_);
-        pipe_->InitBuffer(normOutForwardBuf_, bskAlignFp32_ * uTypeSize_);
-        pipe_->InitBuffer(gradZBuf_, bsnAlignFp32_ * uTypeSize_);
-        pipe_->InitBuffer(biasBuf_, bsAlignFp32_ * uTypeSize_);
-
-        pipe_->InitBuffer(gradCalcBuf1_, Ops::Base::CeilDiv(int64_t(k_ * uTypeSize_), blockSize_));
-        pipe_->InitBuffer(gradCalcBuf2_, Ops::Base::CeilDiv(int64_t(k_ * uTypeSize_), blockSize_));
-        avcNum_ = tilingData->aivNum / AIV_AIC_RATE;
-        calcBSPerTask_ = tilingData->bsTaskCount * AIV_AIC_RATE;
-        totalAicTasks_ = batchSize_ * seqLength_;
-        totalAicTasksAligned_ = Ops::Base::CeilAlign(totalAicTasks_, avcNum_ * calcBSPerTask_);
-        mm1K_ = n_ * n_ + 2 * n_;
-        mm1M_ = calcBSPerTask_;
-        mm1N_ = n_ * c_;
-        mm2K_ = batchSize_ * seqLength_;
-        mm2M_ = 1;
-        mm2N_ = n_ * c_;
         // hbj
         pipe_->InitBuffer(tmpDiv3Buf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(tmpMulBuf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
@@ -327,6 +306,19 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         pipe_->InitBuffer(gradXRowNormedBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(skGradBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(expGradBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
+    }
+
+    if ASCEND_IS_AIC {
+        avcNum_ = tilingData->aivNum / AIV_AIC_RATE;
+        calcBSPerTask_ = tilingData->bsTaskCount * AIV_AIC_RATE;
+        totalAicTasks_ = batchSize_ * seqLength_;
+        totalAicTasksAligned_ = Ops::Base::CeilAlign(totalAicTasks_, avcNum_ * calcBSPerTask_);
+        mm1K_ = n_ * n_ + 2 * n_;
+        mm1M_ = calcBSPerTask_;
+        mm1N_ = n_ * c_;
+        mm2K_ = batchSize_ * seqLength_;
+        mm2M_ = 1;
+        mm2N_ = n_ * c_;
     }
 }
 
@@ -507,7 +499,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPre_, invRms, n_, curBsIdx * k_);
     }
 
-    ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, n_, alphaPost_);
+    ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, hcBeforeNormOffset + n_, alphaPost_, n_);
     CopyInHpreAndGradHPost(gradHPostGm_[gradHPostOffset], bsLen);
     ComputeSigmoidGrad(bsLen, n_, NUMTWO);
     ComputeGradAlphaAndBias(bsLen, n_);
@@ -520,7 +512,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPost_, invRms, n_, curBsIdx * k_ + n_);
     }
 
-    ComputeZAndNormOutForward(invRmsLocal, bsLen, n_ * n_, 2 * n_, alphaRes_);
+    ComputeZAndNormOutForward(invRmsLocal, bsLen, n_ * n_, hcBeforeNormOffset + 2 * n_, alphaRes_, 2 * n_);
     invRmsQue_.FreeTensor(invRmsLocal);
 }
 
