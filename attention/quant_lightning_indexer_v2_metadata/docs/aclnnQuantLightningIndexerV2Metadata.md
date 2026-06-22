@@ -283,7 +283,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
   </tbody>
   </table>
 
-  <td><ul><li><term>Ascend 950PR/Ascend 950DT</term> ：不支持quantMode = 2。</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品</term> ：不支持numHeadsQ = 32，不支持quantMode = 1/4，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/12。</li></ul></td>
+  <td><ul><li><term>Ascend 950PR/Ascend 950DT</term> ：不支持quantMode = 2。</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品</term> ：不支持numHeadsQ = 32，不支持quantMode = 1/4，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li></ul></td>
 
 - **返回值：**
 
