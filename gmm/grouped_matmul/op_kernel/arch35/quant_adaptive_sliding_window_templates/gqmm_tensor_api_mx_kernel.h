@@ -39,17 +39,18 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     }
     using AType = xType;
     using BType = wType;
-    using BiasType = float;
+    using BiasType = biasType;
     using YType = yType;
     using LayoutA = xLayout;
     using LayoutB = wLayout;
     using LayoutC = yLayout;
     using ProblemShape = Blaze::Gemm::MatmulShape;
     using BlockMmadPolicy = Blaze::Gemm::MatmulWithScaleMx<0>;
-    using QgmmBlockMmad = Blaze::Gemm::Block::BlockMmadQGmmMx<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType,
-                                                              LayoutC, BiasType, LayoutC>;
+    using QgmmBlockMmad =
+        Blaze::Gemm::Block::BlockMmadGroupedMatmulMx<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC,
+                                                     BiasType, LayoutC>;
     using BlockEpilogue = void;
-    using QgmmKernel = Blaze::Gemm::Kernel::KernelQGmmMx<ProblemShape, QgmmBlockMmad, BlockEpilogue>;
+    using QgmmKernel = Blaze::Gemm::Kernel::KernelGroupedMatmulMx<ProblemShape, QgmmBlockMmad, BlockEpilogue>;
     using Params = typename QgmmKernel::Params;
     using GMMTiling = typename QgmmKernel::GMMTiling;
 
@@ -77,8 +78,7 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
                                     : nullptr;
     GM_ADDR perTokenScaleDataAddr = perTokenScale;
     GM_ADDR scaleDataAddr =
-        scale == nullptr ? nullptr
-                         : reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale));
+        reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale));
     GM_ADDR groupListDataAddr = groupList;
 
     Params params = {
