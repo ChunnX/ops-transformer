@@ -79,7 +79,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
     constexpr uint32_t maxTypeSize =
         sizeof(TDY) > sizeof(TCOS) ? sizeof(TDY) : sizeof(TCOS);
     dAlign_ = AscendC::Ceil(tilingData_->sliceLength / tilingData_->dSplitCoef,
-                              static_cast<uint32_t>(DEFAULT_BLOCK_SIZE / maxTypeSize)) *
+                              static_cast<uint32_t>(BLOCK_TYPE_SIZE / maxTypeSize)) *
                tilingData_->dSplitCoef;
     dSplitSizeX_ = tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TDY);
     dSplitSizeCos_ = tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TCOS);
