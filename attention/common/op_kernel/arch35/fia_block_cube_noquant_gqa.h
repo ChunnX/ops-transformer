@@ -561,7 +561,7 @@ public:
         fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
         // 源NZ矩阵中相邻Z排布的起始地址偏移
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+        fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element
         fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
@@ -756,7 +756,7 @@ public:
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5; // 双目标模式, 按照N方向切分，N必须为32的倍数
         fixpipeParams.mSize = runInfo.actSingleLoopS2Size;
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+        fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = fixpipeParams.nSize / 2;
         fixpipeParams.dualDstCtl = 2; // 按照N方向切分
         fixpipeParams.params.ndNum = 1;
@@ -840,8 +840,7 @@ public:
         uint32_t realN = baseN;
         for (uint32_t n = 0; n < nLoops; ++n) {
             if (n == nLoops - 1) {
-                uint32_t tailSize = (uint32_t)constInfo.dSizeV % baseN;
-                realN = tailSize ? tailSize : baseN;
+                realN = constInfo.dSizeV - n * baseN;
             }
             Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
             mm2B.Wait<HardEvent::MTE1_MTE2>();
@@ -887,10 +886,10 @@ public:
 
         if constexpr (!useDn) {
             fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
-            fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+            fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         } else {
             fixpipeParams.mSize = mBaseSize;
-            fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
+            fixpipeParams.srcStride = (mBaseSize + 15) >> 4 << 4;
         }
 
         if constexpr (bmm2Write2Ub || splitD) {
@@ -921,16 +920,9 @@ public:
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-        MMParam param = {
-            (uint32_t)mBaseSize,                   // singleM 128
-            (uint32_t)constInfo.dSizeV,            // singleN 128
-            (uint32_t)runInfo.actSingleLoopS2Size, // singleK
-            useDn,                                 // isLeftTranspose
-            false                                  // isRightTranspose
-        };
-        if constexpr (!useDn) {
-            param.realM = (uint32_t)runInfo.actMSize;
-        }
+        MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
+                                    (uint32_t)runInfo.actSingleLoopS2Size, useDn, false,
+                                    true, true, 0, useDn ? 0 : (uint32_t)runInfo.actMSize);
         mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
 
         if constexpr ((uint32_t)dVTemplateType > 128) {
