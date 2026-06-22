@@ -423,7 +423,7 @@ public:
             commContextStruct->hcommHandle_);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire URMA HCCL channel failed, ret: ", hcclRet);
         ASCEND_LOGI("Acquire URMA HCCL channel success, channel num is: %u", channelNum);
-        uint64_t maxWindowSize = GetHcclBufferMaxSize();
+        uint64_t maxWindowSize = 0;//GetHcclBufferMaxSize();
         for (uint32_t i = 0; i < rankSize; ++i) {
             void *tempBuffer = nullptr;
             uint64_t bufSize = 0;
