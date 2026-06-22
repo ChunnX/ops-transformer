@@ -362,7 +362,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
 {
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
     Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
-    mm2A.WaitCrossCore();
+    // mm2A.WaitCrossCore();
     mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
     LocalTensor<INPUT_T> mm2BTensor = mm2B.GetTensor<INPUT_T>();
     int32_t remainBlocks = runInfo.actSparseLen - runInfo.s2LoopCount * 2;
@@ -416,6 +416,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outpu
     }
     mm2B.Set<HardEvent::MTE2_MTE1>(); // 通知
 
+    mm2A.WaitCrossCore();
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
     mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
     MMParam param = {(uint32_t)s1BaseSize,  // singleM 128
