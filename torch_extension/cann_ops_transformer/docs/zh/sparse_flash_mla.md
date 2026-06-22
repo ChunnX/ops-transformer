@@ -15,9 +15,9 @@
 
 `sparse_flash_mla`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`SparseFlashMla`算子完成共享KV（Key和Value使用同一份输入）的稀疏注意力计算。该接口支持以下三类计算模式：
 
-- **SWA（Sliding Window Attention）**：仅使用`ori_kv`，对原始KV做滑动窗口注意力。
-- **CFA（Compressed Flash Attention）**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
-- **SCFA（Sparse Compressed Flash Attention）**：同时使用`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
+- **C1A**：仅使用`ori_kv`，对原始KV做滑动窗口注意力。
+- **C128A**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
+- **C4A**：同时使用`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
 
 计算公式如下：
 
@@ -40,9 +40,7 @@ $$
 ## 函数原型
 
 ```python
-from cann_ops_transformer.ops import sparse_flash_mla
-
-sparse_flash_mla(
+cann_ops_transformer.sparse_flash_mla(
     q,
     *,
     ori_kv=None,
@@ -76,9 +74,7 @@ sparse_flash_mla(
 ```
 
 ```python
-from cann_ops_transformer.ops import sparse_flash_mla_metadata
-
-sparse_flash_mla_metadata(
+cann_ops_transformer.sparse_flash_mla_metadata(
     num_heads_q,
     num_heads_kv,
     head_dim,
@@ -208,14 +204,13 @@ sparse_flash_mla_metadata(
 
 ## 调用示例
 
-### SWA，BSND输入
+### C1A，BSND输入
 
 ```python
 import math
 import torch
 import torch_npu
-from cann_ops_transformer.ops import sparse_flash_mla
-from cann_ops_transformer.ops import sparse_flash_mla_metadata
+import cann_ops_transformer
 
 torch_npu.npu.set_device(0)
 
@@ -226,13 +221,13 @@ S2 = 64
 N1 = 64
 N2 = 1
 D = 512
-cmp_ratio = 1  # SWA示例不传cmp_kv，cmp_ratio使用合法默认值1。
+cmp_ratio = 1  # C1A示例不传cmp_kv，cmp_ratio使用合法默认值1。
 
 q = torch.randn(B, S1, N1, D, dtype=dtype, device="npu")
 ori_kv = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")
 sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 
-metadata = sparse_flash_mla_metadata(
+metadata = cann_ops_transformer.sparse_flash_mla_metadata(
     N1,
     N2,
     D,
@@ -252,7 +247,7 @@ metadata = sparse_flash_mla_metadata(
     has_cmp_kv=False,
 )
 
-attn_out, softmax_lse = sparse_flash_mla(
+attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     sinks=sinks,
@@ -274,14 +269,13 @@ assert softmax_lse.shape == torch.Size([])
 assert torch.isfinite(attn_out.float()).all().item()
 ```
 
-### CFA，BSND输入
+### C128A，BSND输入
 
 ```python
 import math
 import torch
 import torch_npu
-from cann_ops_transformer.ops import sparse_flash_mla
-from cann_ops_transformer.ops import sparse_flash_mla_metadata
+import cann_ops_transformer
 
 torch_npu.npu.set_device(0)
 
@@ -300,7 +294,7 @@ ori_kv = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")
 cmp_kv = torch.randn(B, S3, N2, D, dtype=dtype, device="npu")
 sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 
-metadata = sparse_flash_mla_metadata(
+metadata = cann_ops_transformer.sparse_flash_mla_metadata(
     N1,
     N2,
     D,
@@ -321,7 +315,7 @@ metadata = sparse_flash_mla_metadata(
     has_cmp_kv=True,
 )
 
-attn_out, softmax_lse = sparse_flash_mla(
+attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     cmp_kv=cmp_kv,
@@ -344,14 +338,13 @@ assert softmax_lse.shape == torch.Size([])
 assert torch.isfinite(attn_out.float()).all().item()
 ```
 
-### SCFA，TND输入并使能cmp_residual_kv
+### C4A，TND输入并使能cmp_residual_kv
 
 ```python
 import math
 import torch
 import torch_npu
-from cann_ops_transformer.ops import sparse_flash_mla
-from cann_ops_transformer.ops import sparse_flash_mla_metadata
+import cann_ops_transformer
 
 torch_npu.npu.set_device(0)
 
@@ -379,7 +372,7 @@ sinks = torch.zeros(N1, dtype=torch.float32, device="npu")
 cmp_sparse_indices = torch.full((sum(q_lens), N2, K), -1, dtype=torch.int32, device="npu")
 cmp_sparse_indices[:, :, :1] = torch.arange(1, dtype=torch.int32, device="npu").view(1, 1, 1)
 
-metadata = sparse_flash_mla_metadata(
+metadata = cann_ops_transformer.sparse_flash_mla_metadata(
     N1,
     N2,
     D,
@@ -402,7 +395,7 @@ metadata = sparse_flash_mla_metadata(
     has_cmp_kv=True,
 )
 
-attn_out, softmax_lse = sparse_flash_mla(
+attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
     q,
     ori_kv=ori_kv,
     cmp_kv=cmp_kv,
@@ -430,7 +423,7 @@ assert softmax_lse.shape == torch.Size([])
 assert torch.isfinite(attn_out.float()).all().item()
 ```
 
-### CP切分示例，TND + SCFA，rank0切开第二个seq
+### CP切分示例，TND + C4A，rank0切开第二个seq
 
 下面示例用单进程顺序模拟两个CP rank，说明全局TND数据与每个rank入参之间的关系。假设全局有2个序列，`cmp_ratio=4`：
 
@@ -446,8 +439,7 @@ rank1虽然只计算seq1的`[8,18)`，但`ori_kv`和`cmp_kv`需要传到当前�
 import math
 import torch
 import torch_npu
-from cann_ops_transformer.ops import sparse_flash_mla
-from cann_ops_transformer.ops import sparse_flash_mla_metadata
+import cann_ops_transformer
 
 
 torch_npu.npu.set_device(0)
@@ -501,7 +493,7 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
     cmp_residual_kv = torch.tensor(residuals, dtype=torch.int32, device="npu")
     cmp_sparse_indices = make_cmp_sparse_indices(q_lens, ori_prefix_lens, cmp_lens)
 
-    metadata = sparse_flash_mla_metadata(
+    metadata = cann_ops_transformer.sparse_flash_mla_metadata(
         N1,
         N2,
         D,
@@ -524,7 +516,7 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
         has_cmp_kv=True,
     )
 
-    attn_out, softmax_lse = sparse_flash_mla(
+    attn_out, softmax_lse = cann_ops_transformer.sparse_flash_mla(
         q,
         ori_kv=ori_kv,
         cmp_kv=cmp_kv,
