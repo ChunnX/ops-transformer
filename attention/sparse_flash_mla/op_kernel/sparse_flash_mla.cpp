@@ -13,43 +13,17 @@
  * \brief
  */
 
-#if (__CCE_AICORE__ == 310)
-#include "kernel_operator.h"
-#include "lib/matmul_intf.h"
-#include "sparse_flash_mla_template_tiling_key.h"
-#include "arch35/sparse_flash_mla_scfa_kernel.h"
-#include "arch35/sparse_flash_mla_swa_kernel.h"
-#include "sparse_flash_mla_metadata.h"
-#else
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "arch22/sparse_flash_mla_template_tiling_key.h"
 #include "arch22/sparse_flash_mla_scfa_kernel.h"
 #include "arch22/sparse_flash_mla_swa_kernel.h"
 #include "arch22/sparse_flash_mla_metadata.h"
-#endif
 
 using namespace AscendC;
 using namespace optiling::detail;
 using namespace SMLAKernel;
 
-#if (__CCE_AICORE__ == 310)
-#define SMLA_OP_IMPL(templateClass, tilingdataClass, ...)                                               \
-    do {                                                                                               \
-        using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,                    \
-            SMLAKernel::SCFABlockCube<__VA_ARGS__>, SMLAKernel::SCFABlockCubeDummy<__VA_ARGS__>>::type;  \
-        using VecBlockType = typename std::conditional<g_coreType == AscendC::AIC,                     \
-            SMLAKernel::SCFABlockVecDummy<__VA_ARGS__>, SMLAKernel::SCFABlockVec<__VA_ARGS__>>::type;    \
-        templateClass<CubeBlockType, VecBlockType> op;                                                 \
-        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling);                            \
-        const tilingdataClass *__restrict tilingData = &tilingDataIn;                                  \
-        op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, \
-                cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV,      \
-                cmpResidualKV, oriTopkLength,                                                          \
-                cmpTopkLength, sinks, metadata, attentionOut, softmaxLse, user, tilingData, &tPipe);   \
-        op.Process();                                                                                  \
-    } while (0)
-#else
 #define SMLA_OP_IMPL(templateClass, tilingdataClass, ...)                                                    \
     do {                                                                                                     \
         templateClass<SMLAType<__VA_ARGS__>> op;                                                             \
@@ -60,7 +34,6 @@ using namespace SMLAKernel;
                 sinks, metadata, attentionOut, softmaxLse, user, tiling_data, tiling, &tPipe);               \
         op.Process();                                                                                        \
     } while (0)
-#endif
 
 template <int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G>
 __global__ __aicore__ void
@@ -78,17 +51,6 @@ sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *c
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     
-#if (__CCE_AICORE__ == 310)
-    if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
-        SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaScfaKernel, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, float,
-            bfloat16_t, FLASH_DECODE, (KV_LAYOUT_T == SMLA_LAYOUT_PA_BBND), static_cast<SMLA_LAYOUT>(LAYOUT_T),
-            static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
-    } else {
-        SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaSwaKernel, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, float,
-            bfloat16_t, FLASH_DECODE, (KV_LAYOUT_T == SMLA_LAYOUT_PA_BBND), static_cast<SMLA_LAYOUT>(LAYOUT_T),
-            static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
-    }
-#else
     if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
         if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
             SMLA_OP_IMPL(SparseFlashMlaScfa, SparseFlashMlaTilingData, half, half, half, FLASH_DECODE,
@@ -109,5 +71,4 @@ sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *c
                          TEMPLATE_MODE);
         }
     }
-#endif
 }
