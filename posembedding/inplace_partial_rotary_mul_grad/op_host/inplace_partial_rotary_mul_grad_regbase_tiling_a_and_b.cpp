@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file inplace_partial_rotary_mul_grad_tiling_a_and_b.cpp
+ * \file inplace_partial_rotary_mul_grad_regbase_tiling_a_and_b.cpp
  * \brief A/B template tiling for InplacePartialRotaryMulGrad (NO_BROADCAST / BROADCAST_BSN)
  */
 #include "inplace_partial_rotary_mul_grad_regbase_tiling.h"

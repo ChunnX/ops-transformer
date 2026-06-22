@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file inplace_partial_rotary_mul_grad_tiling_bab.cpp
+ * \file inplace_partial_rotary_mul_grad_regbase_tiling_bab.cpp
  * \brief BAB template tiling for InplacePartialRotaryMulGrad (BSND layout, cosb_==1)
  */
 #include "inplace_partial_rotary_mul_grad_regbase_tiling.h"

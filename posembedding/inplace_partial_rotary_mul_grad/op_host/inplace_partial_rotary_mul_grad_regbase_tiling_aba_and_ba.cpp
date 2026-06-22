@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file inplace_partial_rotary_mul_grad_tiling_aba_and_ba.cpp
+ * \file inplace_partial_rotary_mul_grad_regbase_tiling_aba_and_ba.cpp
  * \brief ABA/BA template tiling for InplacePartialRotaryMulGrad (BNSD layout)
  */
 #include "inplace_partial_rotary_mul_grad_regbase_tiling.h"
