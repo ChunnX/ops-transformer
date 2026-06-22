@@ -9,10 +9,10 @@
  */
 
 /*!
- * \file inplace_partial_rotary_mul_grad_tiling_a_and_b_arch35.cpp
+ * \file inplace_partial_rotary_mul_grad_tiling_a_and_b.cpp
  * \brief A/B template tiling for InplacePartialRotaryMulGrad (NO_BROADCAST / BROADCAST_BSN)
  */
-#include "inplace_partial_rotary_mul_grad_tiling.h"
+#include "inplace_partial_rotary_mul_grad_regbase_tiling.h"
 
 namespace optiling {
 constexpr uint64_t TILING_KEY_A = 205;

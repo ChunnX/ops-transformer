@@ -18,7 +18,7 @@
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "tiling/tiling_api.h"
-#include "inplace_partial_rotary_mul_grad_tiling.h"
+#include "inplace_partial_rotary_mul_grad_regbase_tiling.h"
 
 namespace {
 constexpr int64_t DY_INPUT_INDEX = 0;
@@ -406,7 +406,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::CheckRotaryModeSh
 {
     auto &dyShape = context_->GetInputShape(DY_INPUT_INDEX)->GetStorageShape();
     int64_t dyD = dyShape.GetDim(DIM_3);
-
     if (sliceStart_ < 0 || sliceEnd_ > dyD) {
         std::string sliceStr = "[" + std::to_string(sliceStart_) + ", " + std::to_string(sliceEnd_) + ")";
         std::string reasonMsg = "partial_slice [start, end) must satisfy 0 <= start <= end <= D, "

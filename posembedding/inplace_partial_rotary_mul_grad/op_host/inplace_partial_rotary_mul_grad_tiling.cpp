@@ -12,7 +12,7 @@
  * \file inplace_partial_rotary_mul_grad_tiling.cpp
  * \brief
  */
-#include "inplace_partial_rotary_mul_grad_tiling.h"
+#include "inplace_partial_rotary_mul_grad_regbase_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_templates_registry.h"

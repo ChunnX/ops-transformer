@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file inplace_partial_rotary_mul_grad_tiling_ab_arch35.cpp
+ * \file inplace_partial_rotary_mul_grad_tiling_ab.cpp
  * \brief AB template tiling for InplacePartialRotaryMulGrad (SBND layout)
  */
 #include "op_host/tiling_templates_registry.h"
-#include "inplace_partial_rotary_mul_grad_tiling.h"
+#include "inplace_partial_rotary_mul_grad_regbase_tiling.h"
 
 namespace optiling {
 constexpr uint64_t TILING_KEY_AB = 204;

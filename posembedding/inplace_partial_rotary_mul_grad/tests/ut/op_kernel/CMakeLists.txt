@@ -11,10 +11,10 @@
 if (UT_TEST_ALL OR OP_KERNEL_UT)
     set(inplace_partial_rotary_mul_grad_tiling_files
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_base_arch35.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_ab_arch35.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_a_and_b_arch35.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_aba_and_ba_arch35.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_bab_arch35.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_ab.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_a_and_b.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_aba_and_ba.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/inplace_partial_rotary_mul_grad_tiling_bab.cpp
         )
     # 同精度: fp16+fp16, fp32+fp32, bf16+bf16
     AddOpTestCase(inplace_partial_rotary_mul_grad "ascend950" "-DDTYPE_DY=half -DDTYPE_COS=half" "${inplace_partial_rotary_mul_grad_tiling_files}")

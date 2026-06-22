@@ -9,10 +9,10 @@
  */
 
 /*!
- * \file inplace_partial_rotary_mul_grad_tiling_aba_and_ba_arch35.cpp
+ * \file inplace_partial_rotary_mul_grad_tiling_aba_and_ba.cpp
  * \brief ABA/BA template tiling for InplacePartialRotaryMulGrad (BNSD layout)
  */
-#include "inplace_partial_rotary_mul_grad_tiling.h"
+#include "inplace_partial_rotary_mul_grad_regbase_tiling.h"
 
 namespace optiling {
 constexpr uint64_t TILING_KEY_ABA = 201;

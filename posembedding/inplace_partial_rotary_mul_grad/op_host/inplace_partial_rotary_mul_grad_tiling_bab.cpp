@@ -9,10 +9,10 @@
  */
 
 /*!
- * \file inplace_partial_rotary_mul_grad_tiling_bab_arch35.cpp
+ * \file inplace_partial_rotary_mul_grad_tiling_bab.cpp
  * \brief BAB template tiling for InplacePartialRotaryMulGrad (BSND layout, cosb_==1)
  */
-#include "inplace_partial_rotary_mul_grad_tiling.h"
+#include "inplace_partial_rotary_mul_grad_regbase_tiling.h"
 
 namespace optiling {
 constexpr uint64_t TILING_KEY_BAB = 203;
