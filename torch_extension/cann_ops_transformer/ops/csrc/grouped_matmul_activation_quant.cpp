@@ -203,6 +203,20 @@ bool IsSameShape(const std::vector<int64_t> &actual, const std::vector<int64_t> 
     return true;
 }
 
+template <typename ShapeT>
+std::string ShapeToString(const ShapeT &shape)
+{
+    std::string result = "[";
+    for (size_t i = 0; i < shape.size(); ++i) {
+        if (i > 0) {
+            result += ", ";
+        }
+        result += std::to_string(shape[i]);
+    }
+    result += "]";
+    return result;
+}
+
 at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, const WeightLayout &weightLayout,
     int64_t e, int64_t k, c10::SmallVector<at::Tensor, 1> &weightVec)
 {
@@ -213,13 +227,20 @@ at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, const We
     auto expectedStorageShape = GetExpectedWeightStorageShape(weightLayout, e, k);
     auto storageSizes = at_npu::native::get_npu_storage_sizes(weightForNz);
     bool needFixNzDesc = !IsSameShape(storageSizes, expectedStorageShape);
+    std::printf("[GMMAQ torch] weight storage sizes before fix: actual=%s, expected=%s, needFixNzDesc=%d.\n",
+        ShapeToString(storageSizes).c_str(), ShapeToString(expectedStorageShape).c_str(),
+        static_cast<int>(needFixNzDesc));
     if (needFixNzDesc) {
         weightForNz = weightForNz.clone();
         auto &desc = torch_npu::NPUBridge::GetNpuStorageImpl(weightForNz)->npu_desc_;
         desc.npu_format_ = ACL_FORMAT_FRACTAL_NZ;
         desc.storage_sizes_ = op_infer::array_to_small_vector(
             c10::IntArrayRef(expectedStorageShape.data(), expectedStorageShape.size()));
+        auto fixedStorageSizes = at_npu::native::get_npu_storage_sizes(weightForNz);
+        std::printf("[GMMAQ torch] weight storage sizes after fix: actual=%s.\n",
+            ShapeToString(fixedStorageSizes).c_str());
     }
+    std::fflush(stdout);
     weightVec.clear();
     weightVec.emplace_back(weightForNz);
     return at::TensorList(weightVec);
