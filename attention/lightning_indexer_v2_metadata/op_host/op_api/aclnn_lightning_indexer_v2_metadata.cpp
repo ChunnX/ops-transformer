@@ -149,8 +149,6 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t t
         "AIC num should be larger than 0, but got %u", aicCoreNum);
     CHECK_COND(aivCoreNum > 0, ACLNN_ERR_PARAM_INVALID,
         "AIV num should be larger than 0, but got %u", aivCoreNum);
-    CHECK_COND(socVersion.find("Ascend950") != std::string::npos, ACLNN_ERR_PARAM_INVALID,
-        "This operator supports [Ascend950], but now is on %s", socVersion.c_str());
     return ACLNN_SUCCESS;
 }
 
