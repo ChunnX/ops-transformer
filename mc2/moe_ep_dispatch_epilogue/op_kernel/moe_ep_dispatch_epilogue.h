@@ -104,7 +104,6 @@ private:
     uint32_t metaOffset_{0};
     uint32_t hitCountOffset_{0};
     uint32_t metaBytes_{0};
-    uint32_t metaElems_{0};
     uint32_t paddedMetaElems_{0};
     uint32_t axisKAlign_{0};
     uint32_t paddedTopkElems_{0};
@@ -178,9 +177,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     uint32_t ubRowStartBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
 
     axisKAlign_ = Ceil(axisK_, 8U) * 8U;
-    metaElems_ = 2 * axisKAlign_ + 2;
-    metaBytes_ = metaElems_ * sizeof(int32_t);
-    paddedMetaElems_ = Ceil(metaElems_, 8U) * 8U;
+    metaBytes_ = (2 * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
+    paddedMetaElems_ = Ceil(2 * axisKAlign_ + 2, 8U) * 8U;
     paddedTopkElems_ = axisKAlign_;
     uint32_t maxSlotsPerAiv = Ceil(numMaxTokensPerRank_, aivNum_);
     uint32_t ubMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
@@ -377,7 +375,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
             DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
                 perSlotBytes_ - metaBytes_, 0, 0};
             DataCopyPadExtParams<int32_t> metaPadParams{
-                true, 0, static_cast<uint8_t>(paddedMetaElems_ - metaElems_), 0};
+                true, 0, static_cast<uint8_t>(paddedMetaElems_ - (2 * axisKAlign_ + 2)), 0};
             DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
             PipeBarrier<PIPE_MTE2>();
 
