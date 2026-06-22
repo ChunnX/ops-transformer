@@ -305,23 +305,23 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::IterateBmm2QSFA(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
-    ConstInfo &constInfo)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
+    RunInfo &runInfo, ConstInfo &constInfo)
 {
     inputRightBuf.WaitCrossCore();
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
     mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
 
-    MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),   // singleM 64
-                     static_cast<uint32_t>(constInfo.dSizeNope), // singleN 576->512
-                     static_cast<uint32_t>(runInfo.s2RealSize),  // singleK 128
-                     0, 0};
+    MMParam qsfaParam = {static_cast<uint32_t>(runInfo.mRealSize),   // singleM 64
+                         static_cast<uint32_t>(constInfo.dSizeNope), // singleN 576->512
+                         static_cast<uint32_t>(runInfo.s2RealSize),  // singleK 128
+                         0, 0};
 
     MatmulN<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         inputRightBuf.GetTensor<Q_T>(s2BaseSize * constInfo.dSizeNope), // 左矩阵P 来自rope位置
         inputRightBuf.GetTensor<Q_T>(), // 右矩阵V nope
         mmL0ABuffers, mmL0BBuffers,
-        mm2ResL0C.GetTensor<T>(), param);
+        mm2ResL0C.GetTensor<T>(), qsfaParam);
 
     inputRightBuf.SetCrossCore();   // bmm2才释放KV，在这里释放
     mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知
@@ -368,15 +368,15 @@ struct CubeBlockTraits;  // 声明
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
-#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
+#define DEFINE_QSFA_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
     TEMPLATES_DEF_NO_DEFAULT \
     struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
         QSFA_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
         QSFA_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     }
 
-DEFINE_CUBE_BLOCK_TRAITS(QSFAMatmulService);
-DEFINE_CUBE_BLOCK_TRAITS(QSFAMatmulServiceDummy);
+DEFINE_QSFA_CUBE_BLOCK_TRAITS(QSFAMatmulService);
+DEFINE_QSFA_CUBE_BLOCK_TRAITS(QSFAMatmulServiceDummy);
 
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
