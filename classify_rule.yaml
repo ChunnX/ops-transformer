@@ -473,6 +473,7 @@ gmm@ops-transformer:
                 - ops/ops-transformer/gmm/grouped_matmul
                 - ops/ops-transformer/gmm/grouped_matmul_finalize_routing
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2
+                - ops/ops-transformer/gmm/grouped_matmul_activation_quant
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add
             opensource_style: null 
             kernel_style: null  
@@ -489,6 +490,8 @@ gmm@ops-transformer:
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/tests
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/examples
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/examples_david
+                - ops/ops-transformer/gmm/grouped_matmul_activation_quant/tests
+                - ops/ops-transformer/gmm/grouped_matmul_activation_quant/examples
                 - ops/ops-transformer/gmm/grouped_matmul_add/tests
                 - ops/ops-transformer/gmm/grouped_matmul_add/examples
             non_delivery: null  
