@@ -171,14 +171,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
 {
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
-    printf("handle = %d\n", mc2Context_->hcommHandle_[0]);
+    printf("handle = %d\n", mc2Context_->hcommHandle[0]);
     if (rankId_ == 0) {
-        printf("dst addr = %d\n", mc2Context_->urmacclBuffer_[1]);
+        printf("dst addr = %d\n", mc2Context_->urmacclBuffer[1]);
         //GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 1);// + dstOffset;
         // hcomm_.WriteNbi(mc2Context_->hcommHandle_[0], (GM_ADDR)mc2Context_->urmacclBuffer_[1], workspaceGM, 1);
         // hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
     } else {
-        printf("dst addr = %d\n", mc2Context_->urmacclBuffer_[0]);
+        printf("dst addr = %d\n", mc2Context_->urmacclBuffer[0]);
         //GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, 0);// + dstOffset;
         // hcomm_.WriteNbi(mc2Context_->hcommHandle_[0], (GM_ADDR)mc2Context_->urmacclBuffer_[0], workspaceGM, 1);
         // hcomm_.Drain(mc2Context_->hcommHandle_[0]); // todo:后续优化  
