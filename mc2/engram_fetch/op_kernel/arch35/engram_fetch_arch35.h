@@ -116,20 +116,22 @@ __aicore__ inline void EngramFetchArch35::Process()
         DataCopyPad(indicesLocal, indicesGlobal, params, pad);
         PipeBarrier<PIPE_ALL>();
         // PipeBarrier<PIPE_MTE2>();
-        uint32_t rankStart = ownerRank * numEntriesPerRank_;
-        uint32_t rankEnd = rankStart + numEntriesPerRank_;
+        uint32_t idxStart = ownerRank * numEntriesPerRank_;
+        uint32_t idxEnd = idxStart + numEntriesPerRank_;
 
+        uint32_t pendingReadCount = 0;
+        uint32_t channelIdx = ownerRank;
         for (uint32_t i = 0; i < numTokens_; i++) {
             int32_t globalIdx = indicesLocal(i);
             if (globalIdx < 0) {
                 continue;
             }
-            if (static_cast<uint32_t>(globalIdx) < rankStart ||
-                static_cast<uint32_t>(globalIdx) >= rankEnd) {
+            if (static_cast<uint32_t>(globalIdx) < idxStart ||
+                static_cast<uint32_t>(globalIdx) >= idxEnd) {
                 continue;
             }
 
-            uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - rankStart;
+            uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - idxStart;
             GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(i) * hiddenBytes_;
 
             if (ownerRank == rankId_) {
@@ -143,18 +145,22 @@ __aicore__ inline void EngramFetchArch35::Process()
                 AscendC::printf("[aiv]ssssss\n");
                 PipeBarrier<PIPE_ALL>();
                 // uint32_t channelIdx = ownerRank > rankId_ ? ownerRank - 1 : ownerRank;
-                uint32_t channelIdx = ownerRank;
                 AscendC::printf("[kernel] channelIdx: %u\n", channelIdx);
                 GM_ADDR remoteSrcAddr =
                     (GM_ADDR)bhPtr_->commBuffer[ownerRank] +
                     static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
                 PipeBarrier<PIPE_ALL>();
                 AscendC::printf("[kernel] rankid: %lu, bhPtr_->hcommHandle_[channelIdx]: %lu, dst = %lu ,remoteSrcAddr = %lu \n", rankId_, bhPtr_->hcommHandle_[channelIdx], (uint64_t)dst, (uint64_t)remoteSrcAddr);
-                hcomm_.ReadNbi<true>(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
-                PipeBarrier<PIPE_ALL>();
-                hcomm_.Drain(bhPtr_->hcommHandle_[channelIdx]);
-                PipeBarrier<PIPE_ALL>();
+                hcomm_.ReadNbi<false>(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
+                pendingReadCount++;
              }
+        }
+
+        if (pendingReadCount > 0) {
+            PipeBarrier<PIPE_ALL>();
+            hcomm_.Commit(bhPtr_->hcommHandle_[channelIdx]);
+            // hcomm_.Drain(bhPtr_->hcommHandle_[channelIdx]);
+            PipeBarrier<PIPE_ALL>();
         }
     }
 }
