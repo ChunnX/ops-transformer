@@ -107,8 +107,8 @@ aclnnStatus aclnnSparseFlashMlaGetWorkspaceSize(
     char            *layoutKvOptional,
     int64_t          topkValueMode,
     bool             returnSoftmaxLse,
-    const aclTensor *attnOut,
-    const aclTensor *softmaxLseOptional,
+    const aclTensor *attnOutOut,
+    const aclTensor *softmaxLseOutOptional,
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
@@ -453,7 +453,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>-</td>
     </tr>
     <tr>
-      <td>attnOut（aclTensor*）</td>
+      <td>attnOutOut（aclTensor*）</td>
       <td>输出</td>
       <td>注意力计算输出。</td>
       <td>-</td>
@@ -463,7 +463,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>×</td>
     </tr>
     <tr>
-      <td>softmaxLseOptional（aclTensor*）</td>
+      <td>softmaxLseOutOptional（aclTensor*）</td>
       <td>输出</td>
       <td>softmax的log-sum-exp结果。</td>
       <td>returnSoftmaxLse为false时返回占位Tensor；returnSoftmaxLse为true时返回softmax的log-sum-exp结果。</td>
