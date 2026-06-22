@@ -481,7 +481,7 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
         flashDecodeFlag_ = (result.fdRes.fdNum > 0);
     }
 
-    fiaInfo_->isExistRowInvalid = IsExistRowInvalid(baseInfo);
+    fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo));
 }
 
 bool FiaTilingFullQuantMxArch35::IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo)
