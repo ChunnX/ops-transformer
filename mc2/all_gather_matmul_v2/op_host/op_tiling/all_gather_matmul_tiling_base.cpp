@@ -597,8 +597,9 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "comm_mode", commMode_,
         "The value of comm_mode must be ccu, ai_cpu or empty string"),
         return false);
-    OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_),
-        OP_LOGE_WITH_INVALID_INPUT(opName_, "group"), return false);
+    if (!mc2tiling::GetRankSize(opName_, group_, rankSize_)) {
+        return false;
+    }
     OP_TILING_CHECK(SUPPORT_RANK_SIZE.find(rankSize_) == SUPPORT_RANK_SIZE.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankSize", std::to_string(rankSize_).c_str(),
         "The value of rankSize must be 2, 4, 8, 16, 32 or 64"),
