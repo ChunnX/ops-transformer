@@ -123,8 +123,9 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     int64_t totalBs = batchSize_ * seqLength_;
     bsTaskCount_ = totalBs / coreNumAiv_;
     tailBsTaskCount_ = totalBs - bsTaskCount_ * coreNumAiv_;
+    cLoopDataLen_ = c_
     constexpr int64_t FP32_BYTE_SIZE = 4;
-    
+
     int64_t nAlignFp32 = AlignUp(n_ * FP32_BYTE_SIZE, ALIGN_32) / FP32_BYTE_SIZE;
     int64_t cAlignFp32 = AlignUp(c_ * FP32_BYTE_SIZE, ALIGN_32) / FP32_BYTE_SIZE;
     int64_t cAlignFp16 = AlignUp(c_ * BF16_BYTE_SIZE, ALIGN_32) / BF16_BYTE_SIZE;
