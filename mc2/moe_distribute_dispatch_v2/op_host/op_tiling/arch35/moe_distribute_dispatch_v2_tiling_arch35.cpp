@@ -1282,7 +1282,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::CheckQuantModePtr(
 }
 
 struct MoeDistributeDispatchCompileInfo {};
-static ge::graphStatus TilingParseForMoeDistributeDispatchV2(gert::TilingParseContext *context)
+static ge::graphStatus TilingParseForMoeDistributeDispatchV2(const gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

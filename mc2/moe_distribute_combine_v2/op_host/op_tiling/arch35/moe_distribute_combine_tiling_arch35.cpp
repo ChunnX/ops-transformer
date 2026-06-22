@@ -30,7 +30,6 @@
 #include <unistd.h>
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "mc2_log.h"
 #include "register/tilingdata_base.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/moe_distribute_combine_v2_tiling.h"
@@ -839,7 +838,7 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncA5::MoeDistributeCombineTilingFu
 }
 
 struct MoeDistributeCombineCompileInfo {};
-static ge::graphStatus TilingParseForMoeDistributeCombineV2(gert::TilingParseContext *context)
+static ge::graphStatus TilingParseForMoeDistributeCombineV2(const gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
