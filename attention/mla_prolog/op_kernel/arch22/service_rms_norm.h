@@ -52,11 +52,7 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(rmsNormParams.col * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
-    if constexpr (std::is_same<T, float>::value && std::is_same<U, FP8E8M0>::value) {
-        DataCopyPad(xFp32Local, inputGm, copyParams, padParams);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-    } else if constexpr (std::is_same<T, float>::value && std::is_same<U, float>::value) {
+    if constexpr (std::is_same<T, float>::value && std::is_same<U, float>::value) {
         DataCopyPad(xFp32Local, inputGm, copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
