@@ -102,7 +102,6 @@ protected:
     {
         return true;
     }
-    ge::graphStatus InitTilingData();
     const static int64_t MAX_COPY_BLOCK_COUNT = 4095;
     int64_t b_{0};
     int64_t s_{0};
