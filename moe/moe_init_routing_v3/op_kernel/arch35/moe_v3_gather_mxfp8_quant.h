@@ -22,9 +22,18 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
-template <typename T, typename U>
-__simd_vf__ inline void vfComputeMaxExp(__ubuf__ T *xAddr, __ubuf__ uint16_t *maxExpOutAddr, uint32_t xElemNum,
-                                        uint16_t vfLoopNum, uint32_t vlForT, uint32_t numVRegBlocks)
+constexpr uint32_t FP32_MANT_MASK = 0x007fffff;
+constexpr float MXFP8_E4M3_MAX_VALUE = 448.0f;
+constexpr float MXFP8_E5M2_MAX_VALUE = 57344.0f;
+constexpr uint16_t BF16_ABS_MASK = 0x7fff;
+constexpr uint16_t BF16_AMAX_CLAMP_VALUE = 0x38d1; // bfloat16 truncation of 0.0001f
+constexpr int32_t MIN_ROUNDED_EXP = -126;
+constexpr int32_t E8M0_BIAS = 127;
+constexpr int32_t BF16_EXP_VALUE_SCALE = 1 << BF16_EXP_SHR_BITS;
+
+template <typename T, typename U, bool CLAMP_AMAX>
+__simd_vf__ inline void vfComputeAmax(__ubuf__ T *xAddr, __ubuf__ uint16_t *amaxOutAddr, uint32_t xElemNum,
+                                      uint16_t vfLoopNum, uint32_t vlForT, uint32_t numVRegBlocks)
 {
     using namespace AscendC::MicroAPI;
 
@@ -35,11 +44,12 @@ __simd_vf__ inline void vfComputeMaxExp(__ubuf__ T *xAddr, __ubuf__ uint16_t *ma
     // 0存奇数位元素，1存偶数位元素
     RegTensor<T> x0, x1;
     RegTensor<bfloat16_t> x0BF16, x1BF16;
-    RegTensor<uint16_t> exp0, exp1, exp0FP16, exp1FP16, maxExp;
+    RegTensor<uint16_t> abs0, abs1, exp0FP16, exp1FP16, amax;
     // 存储FP16/BF16的指数位为1的mask
-    RegTensor<uint16_t> emaskFP16, emaskBF16;
+    RegTensor<uint16_t> emaskFP16, absMask, infBF16;
     Duplicate(emaskFP16, FP16_EMASK_AND_INF_VAL);
-    Duplicate(emaskBF16, BF16_EMASK_AND_INF_VAL);
+    Duplicate(absMask, BF16_ABS_MASK);
+    Duplicate(infBF16, BF16_EMASK_AND_INF_VAL);
     // 2字节Reg的MaskALL
     MaskReg maskAllB16 = CreateMask<uint16_t, MaskPattern::ALL>();
     MaskReg mask0, mask1, mask0FP16NanInf, mask1FP16NanInf;
@@ -64,88 +74,97 @@ __simd_vf__ inline void vfComputeMaxExp(__ubuf__ T *xAddr, __ubuf__ uint16_t *ma
             // fp16要先转成bf16
             Cast<bfloat16_t, T, traitFP16ToBF16>(x0BF16, x0, mask0);
             Cast<bfloat16_t, T, traitFP16ToBF16>(x1BF16, x1, mask1);
-            // 用BF16_EMASK_AND_INF_VAL提取BF16的指数位
-            And(exp0, (RegTensor<uint16_t> &)x0BF16, emaskBF16, mask0);
-            And(exp1, (RegTensor<uint16_t> &)x1BF16, emaskBF16, mask1);
+            And(abs0, (RegTensor<uint16_t> &)x0BF16, absMask, mask0);
+            And(abs1, (RegTensor<uint16_t> &)x1BF16, absMask, mask1);
 
-            //exp[expFP16==nan/inf]=nan/inf
-            Select(exp0, emaskBF16, exp0, mask0FP16NanInf);
-            Select(exp1, emaskBF16, exp1, mask1FP16NanInf);
+            // FP16 NaN/Inf must be detected before BF16 truncation.
+            Select(abs0, infBF16, abs0, mask0FP16NanInf);
+            Select(abs1, infBF16, abs1, mask1FP16NanInf);
         } else {
-            // 用BF16_EMASK_AND_INF_VAL提取BF16的指数位
-            And(exp0, (RegTensor<uint16_t> &)x0, emaskBF16, mask0);
-            And(exp1, (RegTensor<uint16_t> &)x1, emaskBF16, mask1);
+            And(abs0, (RegTensor<uint16_t> &)x0, absMask, mask0);
+            And(abs1, (RegTensor<uint16_t> &)x1, absMask, mask1);
         }
         // 先计算奇数位、偶数位之间的最大值，即每2个元素的最大值，放在maxExp
         // 由于mask0和mask1相同或是比mask1多一个元素，使用mask0保证不漏元素
-        Max(maxExp, exp0, exp1, mask0);
+        Max(amax, abs0, abs1, mask0);
         // 再每32B（对于T来说就是每16个元素）取一个最大值，此时maskExp里放的是每2个元素的最大值，且末尾数据为0，因此用MaskALL
-        ReduceMaxWithDataBlock(maxExp, maxExp, maskAllB16);
+        ReduceMaxWithDataBlock(amax, amax, maskAllB16);
+        if constexpr (CLAMP_AMAX) {
+            Maxs(amax, amax, BF16_AMAX_CLAMP_VALUE, maskAllB16);
+        }
         // 非对齐搬出，每次写出numVRegBlocks个元素（ReduceMaxWithDataBlock后放在maxExp头部）
-        DataCopyUnAlign<uint16_t, PostLiteral::POST_MODE_UPDATE>(maxExpOutAddr, maxExp, uReg, numVRegBlocks);
+        DataCopyUnAlign<uint16_t, PostLiteral::POST_MODE_UPDATE>(amaxOutAddr, amax, uReg, numVRegBlocks);
     }
     // 非对齐搬出收尾，尾部多出的位置写0
-    DataCopyUnAlignPost(maxExpOutAddr, uReg, 0);
+    DataCopyUnAlignPost(amaxOutAddr, uReg, 0);
 }
 
 template <typename T, typename U>
-__simd_vf__ inline void vfComputeScale(__ubuf__ uint16_t *maxExpInAddr, __ubuf__ uint16_t *mxScaleOutAddr,
-                                       __ubuf__ uint16_t *invScaleOutAddr, uint32_t scaleElemNum, uint32_t validScaleElemNum, uint16_t vfLoopNum,
-                                       uint32_t vlForT, uint16_t expLowerBoundValue)
+__simd_vf__ inline void vfComputeRoundScale(__ubuf__ uint16_t *amaxInAddr, __ubuf__ uint16_t *mxScaleOutAddr,
+                                            __ubuf__ uint16_t *invScaleOutAddr, uint32_t scaleElemNum,
+                                            uint32_t validScaleElemNum, uint16_t vfLoopNum, uint32_t vlForT,
+                                            float fp8MaxValue)
 {
     using namespace AscendC::MicroAPI;
 
-    RegTensor<uint16_t> maxExp, sharedExp, mxScale, invScale;
+    static constexpr DivSpecificMode divMode = {MaskMergeMode::ZEROING, false};
+    static constexpr CastTrait traitB16ToB32 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
+                                                RoundMode::UNKNOWN};
+    static constexpr CastTrait traitS32ToU16 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING,
+                                                RoundMode::CAST_TRUNC};
+
+    RegTensor<uint16_t> amax, mxScale, invScale;
+    RegTensor<float> amaxFP32, fp8Max, rawScale;
+    RegTensor<int32_t> scaleBits, expBits, mantBits, roundedExp, mxScaleS32, invScaleS32;
+    RegTensor<int32_t> fp32ExpMask, fp32MantMask, zeroS32;
     // infBF16存放bf16指数的inf值
     RegTensor<uint16_t> infBF16;
     Duplicate(infBF16, BF16_EMASK_AND_INF_VAL);
     // zeroB16存放B16长度的0值
     RegTensor<uint16_t> zeroB16;
     Duplicate(zeroB16, 0);
-    // expLowerBound存放对于maxExp来说过小的值
-    RegTensor<uint16_t> expLowerBound;
-    Duplicate(expLowerBound, expLowerBoundValue);
     // nanForE8M0以16位的低8位存放float8_e8m0的nan值
     RegTensor<uint16_t> nanForE8M0;
     Duplicate(nanForE8M0, FP8_E8M0_NAN_VAL);
-    // invSub用于计算invSCale=BF16_EXP_INVSUB-sharedExp，得到的invScale==1/realScale，可用于量化x
-    RegTensor<uint16_t> invSub;
-    Duplicate(invSub, BF16_EXP_INVSUB);
     // nanBF16存放bf16的nan值
     RegTensor<uint16_t> nanBF16;
     Duplicate(nanBF16, BF16_NAN_VAL);
     // specialMinE8M0存放float8_e8m0的特殊极小值
     RegTensor<uint16_t> specialMinE8M0;
     Duplicate(specialMinE8M0, FP8_E8M0_SPECIAL_MIN);
+    Duplicate(fp8Max, fp8MaxValue);
+    Duplicate(fp32ExpMask, FP32_EMASK_AND_INF_VAL);
+    Duplicate(fp32MantMask, FP32_MANT_MASK);
+    Duplicate(zeroS32, 0);
 
     // 循环用mask
     MaskReg maskLoop, maskValid;
     // 存储compare后的结果用的mask
-    MaskReg maskInfBF16, maskZero, maskLowExp, maskSpecialMin;
+    MaskReg maskInfBF16, maskZero, maskMantNonZero, maskSpecialMin;
 
     for (uint16_t i = 0; i < vfLoopNum; i++) {
         maskLoop = UpdateMask<uint16_t>(scaleElemNum);
         maskValid = UpdateMask<uint16_t>(validScaleElemNum);
-        // 拷入vfComputeMaxExp算好的maxExp
-        DataCopy<uint16_t, PostLiteral::POST_MODE_UPDATE>(maxExp, maxExpInAddr, vlForT);
+        DataCopy<uint16_t, PostLiteral::POST_MODE_UPDATE>(amax, amaxInAddr, vlForT);
 
-        // 1.计算并拷出mxScale（float8_e8m0）
+        Cast<float, bfloat16_t, traitB16ToB32>(amaxFP32, (RegTensor<bfloat16_t> &)amax, maskValid);
+        Div<float, &divMode>(rawScale, amaxFP32, fp8Max, maskValid);
 
-        // maskLowExp提取maxExp过小的位置
-        Compare<uint16_t, CMPMODE::LT>(maskLowExp, maxExp, expLowerBound, maskValid);
-        // maxExp[<expLowerBound]=expLowerBound
-        Select<uint16_t>(maxExp, expLowerBound, maxExp, maskLowExp);
+        And(scaleBits, (RegTensor<int32_t> &)rawScale, fp32ExpMask, maskValid);
+        ShiftRights(expBits, scaleBits, FP32_EXP_SHR_BITS, maskValid);
+        Adds(roundedExp, expBits, FP32_BIAS_NEG, maskValid);
+        And(mantBits, (RegTensor<int32_t> &)rawScale, fp32MantMask, maskValid);
+        Compare<int32_t, CMPMODE::NE>(maskMantNonZero, mantBits, zeroS32, maskValid);
+        Adds(expBits, roundedExp, 1, maskValid);
+        Select<int32_t>(roundedExp, expBits, roundedExp, maskMantNonZero);
+        Maxs(roundedExp, roundedExp, MIN_ROUNDED_EXP, maskValid);
 
-        // sharedExp=maxExp-expLowerBound
-        Sub(sharedExp, maxExp, expLowerBound, maskValid);
-        // mxScale=sharedExp>>BF16_EXP_SHR_BITS) 即把sharedExp存储的指数位右移到低8位，以便存放在float8_e8m0中
-        ShiftRights(mxScale, sharedExp, BF16_EXP_SHR_BITS, maskValid);
+        Adds(mxScaleS32, roundedExp, E8M0_BIAS, maskValid);
+        Cast<uint16_t, int32_t, traitS32ToU16>(mxScale, mxScaleS32, maskValid);
 
-        // mxScale[maxExp==infBF16]=nanE8M0
-        Compare<uint16_t, CMPMODE::EQ>(maskInfBF16, maxExp, infBF16, maskValid);
+        Compare<uint16_t, CMPMODE::EQ>(maskInfBF16, amax, infBF16, maskValid);
         Select<uint16_t>(mxScale, nanForE8M0, mxScale, maskInfBF16);
-        // mxScale[maxExp==0]=0
-        Compare<uint16_t, CMPMODE::EQ>(maskZero, maxExp, zeroB16, maskValid);
+        Compare<uint16_t, CMPMODE::EQ>(maskZero, amax, zeroB16, maskValid);
         Select<uint16_t>(mxScale, zeroB16, mxScale, maskZero);
 
         // 拷出算好的mxScale，即为算子输出expandedScale的值。
@@ -153,17 +172,13 @@ __simd_vf__ inline void vfComputeScale(__ubuf__ uint16_t *maxExpInAddr, __ubuf__
         DataCopy<uint16_t, PostLiteral::POST_MODE_UPDATE, StoreDist::DIST_PACK_B16>(mxScaleOutAddr, mxScale, vlForT / 2,
                                                                                     maskLoop);
 
-        // 2.计算并拷出invScale（bfloat16）
-
-        // invScale=invSub-sharedExp
-        Sub<uint16_t>(invScale, invSub, sharedExp, maskValid);
-        // invScale[maxExp==InfBF16]=nanBF16
-        Select<uint16_t>(invScale, nanBF16, invScale, maskInfBF16);
-        // invScale[maxExp==0]=0
-        Select<uint16_t>(invScale, zeroB16, invScale, maskZero);
-        // invScale[(invScale=invSub-sharedExp)==0]=FP8_E8M0_SPECIAL_MIN
-        Compare<uint16_t, CMPMODE::EQ>(maskSpecialMin, invSub, sharedExp, maskValid);
+        Muls(invScaleS32, roundedExp, -BF16_EXP_VALUE_SCALE, maskValid);
+        Adds(invScaleS32, invScaleS32, BF16_EXP_INVSUB, maskValid);
+        Cast<uint16_t, int32_t, traitS32ToU16>(invScale, invScaleS32, maskValid);
+        Compare<uint16_t, CMPMODE::EQ>(maskSpecialMin, invScale, zeroB16, maskValid);
         Select<uint16_t>(invScale, specialMinE8M0, invScale, maskSpecialMin);
+        Select<uint16_t>(invScale, nanBF16, invScale, maskInfBF16);
+        Select<uint16_t>(invScale, zeroB16, invScale, maskZero);
 
         // 拷出算好的invScale，用于在后续量化xQuant=invScale*x，以uint16的长度拷出，实际存储的为bfloat16类型的二进制值
         DataCopy<uint16_t, PostLiteral::POST_MODE_UPDATE>(invScaleOutAddr, invScale, vlForT, maskLoop);
@@ -285,12 +300,12 @@ __simd_vf__ inline void vfComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t *invS
     }
 }
 
-template <typename T, typename U>
+template <typename T, typename U, bool CLAMP_AMAX = false>
 class MoeGatherOutMxfp8Quant {
 public:
     __aicore__ inline MoeGatherOutMxfp8Quant(){};
-    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR expandedRowIdxAddr,
-                                GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr, GM_ADDR sortedExpertIdxAddr,
+    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR sortedExpertIdxAddr,
+                                GM_ADDR expandedRowIdxAddr, GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
                                 const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -308,7 +323,7 @@ private:
     TQue<QuePosition::VECIN, 1> sortedRowIdxInQueue_;
     TQue<QuePosition::VECOUT, 1> xQuantOutQueue_;
     TQue<QuePosition::VECOUT, 1> mxScaleOutQueue_;
-    TBuf<QuePosition::VECCALC> maxExpBuffer_;
+    TBuf<QuePosition::VECCALC> amaxBuffer_;
     TBuf<QuePosition::VECCALC> invScaleBuffer_;
 
     GlobalTensor<T> xInGm_;
@@ -341,8 +356,7 @@ private:
     int64_t indicesOffset_;
     int64_t rowIdxType_ = 0;
 
-    // 会赋值为计算maxExp时，maxExp对应不同的目标fp8类型U的下限
-    uint16_t lowerBoundOfB16MaxExp_ = 0;
+    float fp8MaxValue_ = 0.0f;
 
     // 一个RegTensor的长度Bytes
     const uint32_t vRegSize_ = Ops::Base::GetVRegSize();
@@ -357,8 +371,8 @@ private:
     const uint32_t numElemPerUbBlock_ = ubBlockSize_ / sizeof(T);
 };
 
-template <typename T, typename U>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr,
+template <typename T, typename U, bool CLAMP_AMAX>
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr,
                                                           GM_ADDR sortedExpertIdxAddr, GM_ADDR expandedRowIdxAddr,
                                                           GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
                                                           const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
@@ -388,17 +402,17 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::Init(GM_ADDR xAddr, GM_ADDR
     pipe_->InitBuffer(xInQueue_, 1, AlignBytes(perLoopCols_, sizeof(T)));
     pipe_->InitBuffer(xQuantOutQueue_, 1, AlignBytes(perLoopCols_ / 4, sizeof(int8_t)) * 4);
     pipe_->InitBuffer(mxScaleOutQueue_, 1, AlignBytes(perLoopScaleCols_, sizeof(int8_t)));
-    pipe_->InitBuffer(maxExpBuffer_, AlignBytes(perLoopScaleCols_, sizeof(T)));
+    pipe_->InitBuffer(amaxBuffer_, AlignBytes(perLoopScaleCols_, sizeof(T)));
     pipe_->InitBuffer(invScaleBuffer_, AlignBytes(perLoopScaleCols_, sizeof(T)));
     if constexpr (IsSameType<U, fp8_e4m3fn_t>::value) {
-        lowerBoundOfB16MaxExp_ = LOWER_BOUND_OF_MAX_EXP_FOR_E4M3;
+        fp8MaxValue_ = MXFP8_E4M3_MAX_VALUE;
     } else {
-        lowerBoundOfB16MaxExp_ = LOWER_BOUND_OF_MAX_EXP_FOR_E5M2;
+        fp8MaxValue_ = MXFP8_E5M2_MAX_VALUE;
     }
 }
 
-template <typename T, typename U>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr, const MoeInitRoutingV3Arch35TilingData *tilingData)
+template <typename T, typename U, bool CLAMP_AMAX>
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr, const MoeInitRoutingV3Arch35TilingData *tilingData)
 {
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
     cols_ = tilingData->cols;
@@ -438,8 +452,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::InitKernelTiling(GM_ADDR so
     lastLoopScaleCols_ = scaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
 }
 
-template <typename T, typename U>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::Process()
+template <typename T, typename U, bool CLAMP_AMAX>
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
         currentLoopRows_ = perLoopRows_;
@@ -454,8 +468,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::Process()
     }
 }
 
-template <typename T, typename U>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::CopyInExpandedExpertIdx(int64_t progress)
+template <typename T, typename U, bool CLAMP_AMAX>
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyInExpandedExpertIdx(int64_t progress)
 {
     indicesOffset_ = progress * perLoopRows_;
     LocalTensor<int32_t> indicesLocal = sortedRowIdxInQueue_.AllocTensor<int32_t>();
@@ -465,8 +479,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::CopyInExpandedExpertIdx(int
     sortedRowIdxInQueue_.EnQue<int32_t>(indicesLocal);
 }
 
-template <typename T, typename U>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::CopyExpandedXandMXQuant(int64_t progress)
+template <typename T, typename U, bool CLAMP_AMAX>
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyExpandedXandMXQuant(int64_t progress)
 {
     LocalTensor<int32_t> indicesLocal = sortedRowIdxInQueue_.DeQue<int32_t>();
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
@@ -486,8 +500,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::CopyExpandedXandMXQuant(int
     }
 }
 
-template <typename T, typename U>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols)
+template <typename T, typename U, bool CLAMP_AMAX>
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols)
 {
     LocalTensor<T> inLocal = xInQueue_.AllocTensor<T>();
     DataCopyExtParams copyInParam = {1, static_cast<uint32_t>(loopCols * sizeof(T)), 0, 0, 0};
@@ -505,8 +519,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::CopyIn(int64_t srcIdx, int6
     xInQueue_.EnQue(inLocal);
 }
 
-template <typename T, typename U>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::Compute(uint32_t xElemNum, uint32_t scaleElemNum, uint32_t validScaleElemNum)
+template <typename T, typename U, bool CLAMP_AMAX>
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Compute(uint32_t xElemNum, uint32_t scaleElemNum, uint32_t validScaleElemNum)
 {
     // deque input
     LocalTensor<T> xLocal = xInQueue_.DeQue<T>();
@@ -517,8 +531,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::Compute(uint32_t xElemNum, 
     LocalTensor<uint16_t> mxScaleLocal = mxScaleOutQueue_.AllocTensor<uint16_t>();
     auto mxScaleLocalAddr = reinterpret_cast<__ubuf__ uint16_t *>(mxScaleLocal.GetPhyAddr());
     // get tmp buffers
-    LocalTensor<uint16_t> maxExpLocal = maxExpBuffer_.Get<uint16_t>();
-    auto maxExpLocalAddr = reinterpret_cast<__ubuf__ uint16_t *>(maxExpLocal.GetPhyAddr());
+    LocalTensor<uint16_t> amaxLocal = amaxBuffer_.Get<uint16_t>();
+    auto amaxLocalAddr = reinterpret_cast<__ubuf__ uint16_t *>(amaxLocal.GetPhyAddr());
     LocalTensor<uint16_t> invScaleLocal = invScaleBuffer_.Get<uint16_t>();
     auto invScaleLocalAddr = reinterpret_cast<__ubuf__ uint16_t *>(invScaleLocal.GetPhyAddr());
 
@@ -526,10 +540,10 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::Compute(uint32_t xElemNum, 
     uint16_t vfLoopNumForX = (xElemNum + vlForB16_ * 2 - 1) / (vlForB16_ * 2);
     uint16_t vfLoopNumForScale = (scaleElemNum + vlForB16_ - 1) / vlForB16_;
 
-    VF_CALL<vfComputeMaxExp<T, U>>(xLocalAddr, maxExpLocalAddr, xElemNum, vfLoopNumForX, vlForB16_,
-                                   numUbBlocksPerVReg_);
-    VF_CALL<vfComputeScale<T, U>>(maxExpLocalAddr, mxScaleLocalAddr, invScaleLocalAddr, scaleElemNum, validScaleElemNum, vfLoopNumForScale,
-                                  vlForB16_, lowerBoundOfB16MaxExp_);
+    VF_CALL<vfComputeAmax<T, U, CLAMP_AMAX>>(xLocalAddr, amaxLocalAddr, xElemNum, vfLoopNumForX, vlForB16_,
+                                             numUbBlocksPerVReg_);
+    VF_CALL<vfComputeRoundScale<T, U>>(amaxLocalAddr, mxScaleLocalAddr, invScaleLocalAddr, scaleElemNum,
+                                       validScaleElemNum, vfLoopNumForScale, vlForB16_, fp8MaxValue_);
     VF_CALL<vfComputeData<T, U>>(xLocalAddr, invScaleLocalAddr, xQuantLocalAddr, xElemNum, vfLoopNumForX, vlForB16_,
                                  numUbBlocksPerVReg_);
 
@@ -540,8 +554,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::Compute(uint32_t xElemNum, 
     mxScaleOutQueue_.EnQue(mxScaleLocal);
 }
 
-template <typename T, typename U>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::CopyOut(int64_t dstIdx, int64_t colIdx, int64_t loopCols,
+template <typename T, typename U, bool CLAMP_AMAX>
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyOut(int64_t dstIdx, int64_t colIdx, int64_t loopCols,
                                                              int64_t loopScaleCols)
 {
     LocalTensor<uint8_t> mxScaleLocal = mxScaleOutQueue_.DeQue<uint8_t>();
