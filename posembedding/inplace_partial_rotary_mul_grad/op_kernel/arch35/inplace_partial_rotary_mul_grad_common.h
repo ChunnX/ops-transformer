@@ -24,7 +24,13 @@ using namespace AscendC;
 
 constexpr uint32_t HALF_INTERLEAVE_COEF = 2;
 constexpr uint32_t QUARTER_MODE_COEF = 4;
-constexpr uint32_t BLOCK_TYPE_SIZE = 32U;                            // bytes, = GetUbBlockSize()
+
+__aicore__ inline constexpr uint32_t GetUbBlockSize()
+{
+    return 32U;
+}
+
+constexpr uint32_t BLOCK_TYPE_SIZE = GetUbBlockSize();
 constexpr uint32_t VREG_SIZE_BITS = 256U;                            // Ascend950 vector register width
 constexpr uint32_t VL_FLOAT32_SIZE = VREG_SIZE_BITS / sizeof(float); // 256/4 = 64 floats per vector
 

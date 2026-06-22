@@ -99,7 +99,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Init(
         sizeof(TDY) > sizeof(TCOS) ? sizeof(TDY) : sizeof(TCOS);
     sliceAlignX_ =
         AscendC::Ceil(static_cast<uint64_t>(tilingData_->sliceLength * maxTypeSize),
-                      static_cast<uint64_t>(AscendC::DEFAULT_BLOCK_SIZE)) /
+                      static_cast<uint64_t>(BLOCK_TYPE_SIZE)) /
         sizeof(TDY);
     int64_t bufferSizeX = sliceAlignX_ * sizeof(TDY) * tilingData_->ubFactorBS;
 
