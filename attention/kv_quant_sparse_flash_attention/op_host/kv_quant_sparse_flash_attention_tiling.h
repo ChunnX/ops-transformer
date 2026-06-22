@@ -17,11 +17,12 @@
 
 #include <sstream>
 #include <graph/utils/type_utils.h>
-#include <tiling/platform/platform_ascendc.h>
 #include <exe_graph/runtime/tiling_context.h>
+#include <tiling/platform/platform_ascendc.h>
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/soc_spec.h"
+
 namespace optiling {
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -156,10 +157,10 @@ TILING_DATA_FIELD_DEF(uint32_t, seqSize)
 TILING_DATA_FIELD_DEF(uint32_t, qSeqSize)
 TILING_DATA_FIELD_DEF(int64_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
-TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsQ)
-TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsKV)
 TILING_DATA_FIELD_DEF(float, scaleValue)
 TILING_DATA_FIELD_DEF(uint32_t, nNumOfQInOneGroup)
+TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsQ)
+TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsKV)
 TILING_DATA_FIELD_DEF(uint32_t, outputLayout)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
@@ -510,14 +511,14 @@ public:
     ge::graphStatus CheckRequiredParaExistence() const;
 
     ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
-    ge::graphStatus GetNpuInfo();
     ge::graphStatus GetOpName();
+    ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
     void GetOutputParaInfo();
     ge::graphStatus GetAttrParaInfo();
-    ge::graphStatus GetOpParaInfo();
     ge::graphStatus GetKvCache();
+    ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetInOutDataType();
     ge::graphStatus GetBatchSize();
