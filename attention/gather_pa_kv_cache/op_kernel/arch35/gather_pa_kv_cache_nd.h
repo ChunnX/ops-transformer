@@ -348,6 +348,7 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
 }
 
 // 非连续专用Process: 全局block轮询分核。每核遍历所有batch/block, 仅处理 globalBlk % needCoreNum == coreIdx 的block。
+// 这样225021 token的工作量能均摊到所有核, 突破"按batch分核只用batchCount个核"的瓶颈。
 // 输出offset按绝对token位置计算(每block独立), 故跨核跳过block不影响正确性。
 template <typename T, typename T_INDEX, bool isSeqLensCumsum, bool hasSeqOffset>
 __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffset>::ProcessNonContig()
@@ -552,11 +553,12 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
     const uint64_t slotStrideBytes = static_cast<uint64_t>(stride1) * elemSize;  // slot间源步长(字节)
     const uint64_t headStrideBytes = static_cast<uint64_t>(stride2) * elemSize;  // head间源步长(字节)
 
-    // 输出侧: 判断是否非连续写回, 计算token(slot)间目标步长(字节)
+    // 输出侧: 判断是否非连续写回, 计算token(slot)间目标步长(字节)。
+    // ND ref为[token,head,headDim], token=dim0, 故token间步长用keyOutStride0_(不是stride1)。
     bool isOutNonContig = isKey ? ((nonContiguousFlag_ >> 2) & 1) : ((nonContiguousFlag_ >> 3) & 1);
-    int64_t outStride1 = isKey ? keyOutStride1_ : valueOutStride1_;
+    int64_t outStride0 = isKey ? keyOutStride0_ : valueOutStride0_;
     const uint64_t dstSlotStrideBytes = isOutNonContig
-                                            ? static_cast<uint64_t>(outStride1) * elemSize  // 输出非连续: token间有间隙
+                                            ? static_cast<uint64_t>(outStride0) * elemSize  // 输出非连续: token间有间隙
                                             : hiddenSize;                                    // 输出连续: 紧密排列
 
     uint64_t numHeads = isKey ? numHeadsK_ : numHeadsV_;
