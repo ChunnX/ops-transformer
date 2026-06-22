@@ -202,23 +202,37 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
         return ge::GRAPH_FAILED);
     int64_t nk = expandedRowIdxShape.GetDim(DIM_INDEX_0);
     int64_t attrK = *(attrsPtr->GetAttrPointer<int64_t>(4));
-    k_ = attrK;
     if (scalesShape != nullptr) {
         OP_CHECK_IF(
             scalesShape->GetStorageShape().GetDimNum() != SHAPE_SIZE_V2,
             OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scales",
                 std::to_string(scalesShape->GetStorageShape().GetDimNum()).c_str(), "2D"),
             return ge::GRAPH_FAILED);
-        k_ = (params.scalesShape)->GetStorageShape().GetDim(DIM_INDEX_1);
-
+        int64_t scalesK = scalesShape->GetStorageShape().GetDim(DIM_INDEX_1);
+        if (attrK > 0) {
+            OP_CHECK_IF(
+                attrK != scalesK,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
+                    std::to_string(attrK).c_str(), "k must equal scales dim1"),
+                return ge::GRAPH_FAILED);
+        }
+        k_ = scalesK;
         OP_CHECK_IF(
-            k_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "K",
-                std::to_string(k_).c_str(), "K can not be 0."), return ge::GRAPH_FAILED);
+            k_ <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
+                std::to_string(k_).c_str(), "k must be greater than 0."),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(
+            attrK == 0,
+            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "k",
+                "0", "k is required when scales is not provided"),
+            return ge::GRAPH_FAILED);
+        k_ = attrK;
+        OP_CHECK_IF(
+            k_ <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
+                std::to_string(k_).c_str(), "k must be greater than 0 when scales is null."),
+            return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(
-        k_ <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
-            std::to_string(k_).c_str(), "k must be greater than 0 when scales is null."),
-        return ge::GRAPH_FAILED);
 
     int64_t n = nk / k_;
     totalRowNum_ = n;

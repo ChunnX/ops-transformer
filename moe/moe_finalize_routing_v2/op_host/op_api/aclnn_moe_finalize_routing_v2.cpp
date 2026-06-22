@@ -144,39 +144,13 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor* expandedX, const aclTensor* expandedRowIdx, const aclTensor* x1Optional,
     const aclTensor* x2Optional, const aclTensor* biasOptional, const aclTensor* scalesOptional,
-    const aclTensor* expertIdxOptional, const aclTensor* xOptional, const aclTensor* alpha1Optional,
-    const aclTensor* alpha2Optional, const aclTensor* vOptional, int64_t dropPadMode,
-    const aclIntArray* zeroExpertRange, const aclIntArray* copyExpertRange,
-    const aclIntArray* constantExpertRange, int64_t k, const aclTensor* out,
+    const aclTensor* expertIdxOptional, int64_t dropPadMode, const aclTensor* out,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize k is %ld", k);
-    if (zeroExpertRange == nullptr) {
-        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize zeroExpertRange is null");
-    } else {
-        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize zeroExpertRange is not null");
-        // OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize zeroExpertRange is [%ld,%ld]", (*zeroExpertRange)[0], (*zeroExpertRange)[1]);
-    }
-
-    if (copyExpertRange == nullptr) {
-        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize copyExpertRange is null");
-    } else {
-        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize copyExpertRange is not null");
-        // OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize copyExpertRange is [%ld,%ld]", (*copyExpertRange)[0], (*copyExpertRange)[1]);
-    }
-
-    if (constantExpertRange == nullptr) {
-        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize constantExpertRange is null");
-    } else {
-        OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize constantExpertRange is not null");
-        // OP_LOGI("aclnnMoeFinalizeRoutingV2GetWorkspaceSize constantExpertRange is [%ld,%ld]", (*constantExpertRange)[0], (*constantExpertRange)[1]);
-    }
-
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2,
         DFX_IN(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
-            scalesOptional, expertIdxOptional, xOptional, alpha1Optional, alpha2Optional, dropPadMode,
-            zeroExpertRange, copyExpertRange, constantExpertRange, k),
+               scalesOptional, expertIdxOptional, dropPadMode),
                    DFX_OUT(out));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -231,36 +205,12 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
         CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    const aclTensor* xContiguous = nullptr;
-    if (xContiguous != nullptr) {
-        xContiguous = l0op::Contiguous(xOptional, uniqueExecutor.get());
-        CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
-    const aclTensor* alpha1Contiguous = nullptr;
-    if (alpha1Contiguous != nullptr) {
-        alpha1Contiguous = l0op::Contiguous(alpha1Optional, uniqueExecutor.get());
-        CHECK_RET(alpha1Contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
-    const aclTensor* alpha2Contiguous = nullptr;
-    if (alpha2Contiguous != nullptr) {
-        alpha2Contiguous = l0op::Contiguous(alpha2Optional, uniqueExecutor.get());
-        CHECK_RET(alpha2Contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
-    const aclTensor* vContiguous = nullptr;
-    if (vContiguous != nullptr) {
-        vContiguous = l0op::Contiguous(vOptional, uniqueExecutor.get());
-        CHECK_RET(vContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
     // 调用l0接口进行计算，传入out参数
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
                                            x2Contiguous, biasContiguous, scalesContiguous,
-                                           expertIdxContiguous, xContiguous, alpha1Contiguous, alpha2Contiguous, vContiguous,
-                                           dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange,
-                                           k, out, uniqueExecutor.get());
+                                           expertIdxContiguous, nullptr, nullptr, nullptr, nullptr,
+                                           dropPadMode, nullptr, nullptr, nullptr,
+                                           0, out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续

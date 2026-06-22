@@ -24,9 +24,7 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor* expandedX, const aclTensor* expandedRowIdx, const aclTensor* x1Optional,
     const aclTensor* x2Optional, const aclTensor* biasOptional, const aclTensor* scalesOptional,
-    const aclTensor* expertIdxOptional, const aclTensor* xOptional, const aclTensor* alpha1Optional,
-    const aclTensor* alpha2Optional, const aclTensor* vOptional, int64_t dropPadMode, const aclIntArray* zeroExpertRange,
-    const aclIntArray* copyExpertRange, const aclIntArray* constantExpertRange, int64_t k, const aclTensor* out,
+    const aclTensor* expertIdxOptional, int64_t dropPadMode, const aclTensor* out,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /* @brief aclnnMoeFinalizeRoutingV2的第二段接口，用于执行计算。 */
