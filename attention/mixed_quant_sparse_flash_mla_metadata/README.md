@@ -37,210 +37,210 @@
     <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length，维度为B+1，仅layout_q为TND场景需传入</td>
+      <td>表示不同Batch中Query的有效Sequence Length，维度为B+1，仅layout_q为TND场景需传入。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_ori_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中ori_kv的有效Sequence Length，维度为B+1，仅layout_kv为TND场景需传入</td>
+      <td>表示不同Batch中ori_kv的有效Sequence Length，维度为B+1，仅layout_kv为TND场景需传入。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_cmp_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv的有效Sequence Length，维度为B+1，仅layout_kv为TND场景需传入</td>
+      <td>表示不同Batch中cmp_kv的有效Sequence Length，维度为B+1，仅layout_kv为TND场景需传入。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query实际参与运算的Sequence Length，维度为B</td>
+      <td>表示不同Batch中Query实际参与运算的Sequence Length，维度为B。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_ori_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中ori_kv实际参与运算的Sequence Length，维度为B</td>
+      <td>表示不同Batch中ori_kv实际参与运算的Sequence Length，维度为B。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_cmp_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length，维度为B</td>
+      <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length，维度为B。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_residual_kv</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_mask_mode=3且cmp_ratio≠1时必须传入，维度为B</td>
+      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_mask_mode=3且cmp_ratio≠1时必须传入，维度为B。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>ori_topk_length</td>
       <td>可选输入</td>
-      <td>预留参数，当前不生效</td>
+      <td>预留参数，当前不生效。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_topk_length</td>
       <td>可选输入</td>
-      <td>预留参数，当前不生效</td>
+      <td>预留参数，当前不生效。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示Query的head个数，当前仅支持2/4/8/16/32/64/128</td>
+      <td>表示Query的head个数，当前仅支持2/4/8/16/32/64/128。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>num_heads_kv</td>
       <td>属性</td>
-      <td>表示Key和Value对应的多头数，当前仅支持1</td>
+      <td>表示Key和Value对应的多头数，当前仅支持1。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>head_dim</td>
       <td>属性</td>
-      <td>表示注意力头的维度，当前仅支持512</td>
+      <td>表示注意力头的维度，当前仅支持512。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>quant_mode</td>
       <td>属性</td>
-      <td>表示量化模式，1表示K、V nope为per-token-group量化，scale类型为bfloat16，2表示K、V nope为per-token-group量化，scale类型为float8_e8m0</td>
+      <td>表示量化模式，1表示K、V nope为per-token-group量化，scale类型为bfloat16，2表示K、V nope为per-token-group量化，scale类型为float8_e8m0。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>batch_size</td>
       <td>可选属性</td>
-      <td>表示Batch数量，默认值为0</td>
+      <td>表示Batch数量，默认值为0。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>max_seqlen_q</td>
       <td>可选属性</td>
-      <td>表示Query的最长Sequence Length，默认值为0</td>
+      <td>表示Query的最长Sequence Length，默认值为0。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>max_seqlen_ori_kv</td>
       <td>可选属性</td>
-      <td>表示ori_kv的最长Sequence Length，默认值为0</td>
+      <td>表示ori_kv的最长Sequence Length，默认值为0。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>max_seqlen_cmp_kv</td>
       <td>可选属性</td>
-      <td>表示cmp_kv的最长Sequence Length，默认值为0</td>
+      <td>表示cmp_kv的最长Sequence Length，默认值为0。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_topk</td>
       <td>可选属性</td>
-      <td>预留参数，当前不生效，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0，当前仅支持0</td>
+      <td>预留参数，当前不生效，表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0，当前仅支持0。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_topk</td>
       <td>可选属性</td>
-      <td>表示cmp_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0，当前仅支持512/1024</td>
+      <td>表示cmp_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景，默认值为0，当前仅支持512/1024。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>rope_head_dim</td>
       <td>可选属性</td>
-      <td>表示rope头的维度，默认值为64，当前仅支持64</td>
+      <td>表示rope头的维度，默认值为64，当前仅支持64。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对cmp_kv的压缩率，默认值为1，当前仅支持1/4/128</td>
+      <td>表示对cmp_kv的压缩率，默认值为1，当前仅支持1/4/128。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_mask_mode</td>
       <td>可选属性</td>
-      <td>表示q和ori_kv计算的mask模式，默认值为0，当前仅支持4，表示sliding window模式</td>
+      <td>表示q和ori_kv计算的mask模式，默认值为0，当前仅支持4，表示sliding window模式。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>cmp_mask_mode</td>
       <td>可选属性</td>
-      <td>表示q和cmp_kv计算的mask模式，默认值为0，当前仅支持3，表示rightDownCausal模式</td>
+      <td>表示q和cmp_kv计算的mask模式，默认值为0，当前仅支持3，表示rightDownCausal模式。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_win_left</td>
       <td>可选属性</td>
-      <td>表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1，当前仅支持127</td>
+      <td>表示q和ori_kv计算中q对过去token计算的数量，-1表示无穷大，默认值为-1，当前仅支持127。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>ori_win_right</td>
       <td>可选属性</td>
-      <td>表示q和ori_kv计算中q对未来token计算的数量，-1表示无穷大，默认值为-1，当前仅支持0</td>
+      <td>表示q和ori_kv计算中q对未来token计算的数量，-1表示无穷大，默认值为-1，当前仅支持0。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_q</td>
       <td>可选属性</td>
-      <td>表示Query的排列格式，支持BSND、TND，默认值为BSND</td>
+      <td>表示Query的排列格式，支持BSND、TND，默认值为BSND。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_kv</td>
       <td>可选属性</td>
-      <td>表示Key的排列格式，支持BSND、TND、PA_BBND，默认值为BSND</td>
+      <td>表示Key的排列格式，支持BSND、TND、PA_BBND，默认值为BSND。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>has_ori_kv</td>
       <td>可选属性</td>
-      <td>用于标识是否含有ori_kv，默认值为true</td>
+      <td>用于标识是否含有ori_kv，默认值为true。</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
     <tr>
       <td>has_cmp_kv</td>
       <td>可选属性</td>
-      <td>用于标识是否含有cmp_kv，默认值为true</td>
+      <td>用于标识是否含有cmp_kv，默认值为true。</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>表示负载均衡结果输出，shape固定为[1024]</td>
+      <td>表示负载均衡结果输出，shape固定为[1024]。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
