@@ -390,7 +390,7 @@ __aicore__ inline void MatmulFullMX(const LocalTensor<A> &aL1Tensor,
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor,
-                                     param, 0, param.singleK, param.singleM); // d,s2
+                                     param, 0, param.singleK, param.singleM);
     } else {
         LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
     }

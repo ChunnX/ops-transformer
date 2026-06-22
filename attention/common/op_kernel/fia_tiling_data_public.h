@@ -51,6 +51,16 @@ constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 4;
 constexpr uint32_t FD_M_START_INDEX = 5;
 constexpr uint32_t FD_M_NUM_INDEX = 6;
 
+struct stridesParams {
+    uint64_t bnStride = 0;
+    uint64_t n2Stride = 0;
+
+    void set_bnStride(uint64_t bnStride) {this->bnStride = bnStride;}
+    uint64_t get_bnStride() const {return bnStride;}
+    void set_n2Stride(uint64_t n2Stride) {this->n2Stride = n2Stride;}
+    uint64_t get_n2Stride() const {return n2Stride;}
+};
+
 struct FiaBaseParams {
     uint32_t bSize = 0;
     uint32_t t1Size = 0;
@@ -69,6 +79,12 @@ struct FiaBaseParams {
     uint8_t isSoftMaxLseEnable = 0;
     uint32_t coreNum = 0;
     uint32_t outputLayout = 0;
+    // 增加strides参数
+    stridesParams keyStrides;
+    stridesParams valueStrides;
+    stridesParams kRopeStrides;
+    stridesParams kScaleStrides;
+    stridesParams vScaleStrides;
 };
 
 struct FiaAttenMaskParams {

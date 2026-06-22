@@ -78,7 +78,7 @@ public:
                                 __gm__ uint8_t *workspace,
                                 const NsaSelectAttentionInferTilingData *__restrict tiling, __gm__ uint8_t *gmTiling,
                                 TPipe *tPipe);
-    
+
     __aicore__ inline void Process();
     __aicore__ inline bool IsFinish(uint32_t loop);
 
@@ -133,7 +133,7 @@ protected:
     // L0 buffer size
     static constexpr uint32_t L0A_PP_SIZE = (32 * 1024); // 128*128*2
     static constexpr uint32_t L0B_PP_SIZE = (32 * 1024);
-    static constexpr uint32_t L0C_PP_SIZE = (64 * 1024); // 128 * 128 *4 
+    static constexpr uint32_t L0C_PP_SIZE = (64 * 1024); // 128 * 128 *4
 
     // mte2 <> mte1 EventID
     static constexpr uint32_t KP_EVENT0 = EVENT_ID4;
@@ -336,7 +336,7 @@ protected:
 
     __aicore__ inline void DealBmm2ResBaseBlock(const uint32_t loop, uint32_t startRow, uint32_t dealRowCount,
                                                 uint32_t columnCount, uint32_t actualColumnCount);
-    
+
     __aicore__ inline void ProcessVec2Inner(uint32_t loop);
 
     __aicore__ inline void SoftmaxFlashV2Compute(uint32_t loop, LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
@@ -414,7 +414,7 @@ template <typename NSAT> __aicore__ inline void NsaSelectAttentionInfer<NSAT>::I
         }
         pipe->InitBuffer(softmaxMaxDefaultBuff, BUFFER_SIZE_BYTE_256B * numEight);
         pipe->InitBuffer(softmaxSumDefaultBuff, BUFFER_SIZE_BYTE_256B * numEight);
-    } else {  
+    } else {
     // L1
     pipe->InitBuffer(queryBufL1, L1_Q_SIZE);
     qL1Tensor = queryBufL1.Get<Q_T>();
@@ -460,8 +460,9 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::InitActualQSeqLen(__gm__ u
 template <typename NSAT>
 __aicore__ inline void NsaSelectAttentionInfer<NSAT>::InitAllZeroOutput(uint32_t bIdx, uint32_t n2Idx)
 {
-    uint32_t copySize = gSize * headDimV;
-    matmul::InitOutput<OUT_T>(attentionOutGm[(bIdx * kvHeadNum + n2Idx) * copySize], copySize, 0);
+    uint64_t copySize = static_cast<uint64_t>(gSize) * headDimV;
+    matmul::InitOutput<OUT_T>(
+        attentionOutGm[(static_cast<uint64_t>(bIdx) * kvHeadNum + n2Idx) * copySize], copySize, 0);
 }
 
 template <typename NSAT> __aicore__ inline void NsaSelectAttentionInfer<NSAT>::GetActualSeqLen()
@@ -472,18 +473,20 @@ template <typename NSAT> __aicore__ inline void NsaSelectAttentionInfer<NSAT>::G
     bool lastIndexFlag = false;
     bool lastIndexFlag2 = false;
     curBatchQseqlen = actualQSeqLengthsGm.GetValue(bIdx);
-    uint32_t curTotalQSeqLenOffset = 0;
+    uint64_t curTotalQSeqLenOffset = 0;
     if constexpr (LAYOUT_T == LAYOUT::TND) {
         for (uint64_t i = 0; i < bIdx; ++i) {
-            curTotalQSeqLenOffset += actualQSeqLengthsGm.GetValue(i);
+            curTotalQSeqLenOffset += static_cast<uint64_t>(actualQSeqLengthsGm.GetValue(i));
         }
     }
     for (uint64_t topkIdx = 0; topkIdx < selectedBlockCount; topkIdx++) {
         uint64_t baseOffset = 0;
         if constexpr (LAYOUT_T == LAYOUT::TND) {
-            baseOffset = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount + s1Idx * kvHeadNum * selectedBlockCount;
+            baseOffset = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount +
+                         static_cast<uint64_t>(s1Idx) * kvHeadNum * selectedBlockCount;
         } else {
-            baseOffset = bIdx * qSeqSize * kvHeadNum * selectedBlockCount + s1Idx * kvHeadNum * selectedBlockCount;
+            baseOffset = static_cast<uint64_t>(bIdx) * qSeqSize * kvHeadNum * selectedBlockCount +
+                         static_cast<uint64_t>(s1Idx) * kvHeadNum * selectedBlockCount;
         }
         int32_t topKIndices = topKGm.GetValue(baseOffset + topkIdx);
         if (topKIndices > -1) {
@@ -590,7 +593,7 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::Init(
     // init global buffer
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
-    
+
     // batch连续时,只需要初始化一次;不连续时,需要在使用时根据batchIdx初始化
     keyGm.SetGlobalBuffer((__gm__ KV_T *)key);
     valueGm.SetGlobalBuffer((__gm__ KV_T *)value);
@@ -673,13 +676,13 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::SoftmaxFlashV2Compute(uint
     AscendC::SoftmaxFlashV2<T, true, true, false, false, IFA_SOFTMAX_FLASHV2_CFG>(
         mmResUb,  // dstTensor
         softmaxSumUb[outIdx][baseOffset],  // expSumTensor 输出tensor
-        softmaxMaxUb[outIdx][baseOffset],   // maxTensor rowmax 
+        softmaxMaxUb[outIdx][baseOffset],   // maxTensor rowmax
         mmResUb,  // srcTensor
         softmaxExpUb[outIdx][baseOffset],  // expMaxTensor maxi
         inSumTensor,  // inExpSumTensor
-        inMaxTensor, 
+        inMaxTensor,
         softmaxTmpUb,  // 临时空间
-        newTiling, 
+        newTiling,
         srcShape);
     PipeBarrier<PIPE_V>();
 }
@@ -753,7 +756,7 @@ NsaSelectAttentionInfer<NSAT>::DealBmm1ResBaseBlock(const uint32_t loop, uint32_
     outputQue1.EnQue(tmpMMResCastTensor);
     outputQue1.DeQue<KV_T>();
     DataCopy(vec1ResGm[inOutGmOffset], tmpMMResCastTensor, computeSize);
-    
+
     outputQue1.FreeTensor(tmpMMResCastTensor);
 }
 
@@ -919,16 +922,24 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::CalcParams(uint32_t loop) 
     info.bn2IdxInCurCore = bn2IdxInCurCore - 1;
     if (info.isFirstSInnerLoop) {
         if constexpr (LAYOUT_T == LAYOUT::TND) {
-            uint32_t curTotalQSeqLenOffset = 0;
+            uint64_t curTotalQSeqLenOffset = 0;
             for (uint64_t i = 0; i < info.bIdx; ++i) {
-                curTotalQSeqLenOffset += actualQSeqLengthsGm.GetValue(i);
+                curTotalQSeqLenOffset += static_cast<uint64_t>(actualQSeqLengthsGm.GetValue(i));
             }
-            tensorACoreOffset = curTotalQSeqLenOffset * qHeadNum * headDim + info.s1Idx * qHeadNum * headDim + info.n2Idx * gSize * headDim;
-            tensorAttenOutCoreOffset = curTotalQSeqLenOffset * qHeadNum * headDimV + info.s1Idx * qHeadNum * headDimV + info.n2Idx * gSize * headDimV; //bsnd
+            tensorACoreOffset = curTotalQSeqLenOffset * qHeadNum * headDim +
+                static_cast<uint64_t>(info.s1Idx) * qHeadNum * headDim +
+                static_cast<uint64_t>(info.n2Idx) * gSize * headDim;
+            tensorAttenOutCoreOffset = curTotalQSeqLenOffset * qHeadNum * headDimV +
+                static_cast<uint64_t>(info.s1Idx) * qHeadNum * headDimV +
+                static_cast<uint64_t>(info.n2Idx) * gSize * headDimV;
         } else {
             // B,S1,N2,G,D
-            tensorACoreOffset = info.bIdx * qSeqSize * qHeadNum * headDim + info.s1Idx * qHeadNum * headDim + info.n2Idx * gSize * headDim; //bsnd
-            tensorAttenOutCoreOffset = info.bIdx * qSeqSize * qHeadNum * headDimV + info.s1Idx * qHeadNum * headDimV + info.n2Idx * gSize * headDimV; //bsnd
+            tensorACoreOffset = static_cast<uint64_t>(info.bIdx) * qSeqSize * qHeadNum * headDim +
+                static_cast<uint64_t>(info.s1Idx) * qHeadNum * headDim +
+                static_cast<uint64_t>(info.n2Idx) * gSize * headDim;
+            tensorAttenOutCoreOffset = static_cast<uint64_t>(info.bIdx) * qSeqSize * qHeadNum * headDimV +
+                static_cast<uint64_t>(info.s1Idx) * qHeadNum * headDimV +
+                static_cast<uint64_t>(info.n2Idx) * gSize * headDimV;
         }
     }
     info.tensorAOffset = tensorACoreOffset;
@@ -1011,7 +1022,7 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::CopyInMm1AToL1(LocalTensor
         mm1Nd2NzParamsForA.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
         mm1Nd2NzParamsForA.dstNzC0Stride = 16; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数  16
         mm1Nd2NzParamsForA.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
-        mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移   
+        mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移
         DataCopy(l1Tensor[i * copyStride], queryGm[info.tensorAOffset + i * copyStride], mm1Nd2NzParamsForA);
     }
 }
@@ -1053,7 +1064,7 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::CopyInMm1BToL1ForPA(
     Nd2NzParams mm1Nd2NzParamsForB;
     mm1Nd2NzParamsForB.dValue = headDim;
     mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
-    mm1Nd2NzParamsForB.dstNzC0Stride = baseN; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数 
+    mm1Nd2NzParamsForB.dstNzC0Stride = baseN; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
     mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
     if (nHead != 0) {
         mm1Nd2NzParamsForB.ndNum = 1;
@@ -1093,7 +1104,7 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::CopyInMm1BToL1ForPA(
         mm1Nd2NzParamsForB.dValue = headDim; // 单个ND矩阵的列数, 单位为元素个数   128
         mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 0
         mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
-        mm1Nd2NzParamsForB.dstNzC0Stride = dstNzC0StrideTail;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数 
+        mm1Nd2NzParamsForB.dstNzC0Stride = dstNzC0StrideTail; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数  0
 
@@ -1162,15 +1173,17 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::ComputeMm1(uint32_t loop) 
         LocalTensor<KV_T> bL1Tensor = kpL1Tensor[(kpL1BufIter % 2) * (L1_KP_SIZE / sizeof(KV_T))];
         int64_t topKBaseOffsetmm1 = 0;
         if constexpr (LAYOUT_T == LAYOUT::TND) {
-            uint32_t curTotalQSeqLenOffset = 0;
+            uint64_t curTotalQSeqLenOffset = 0;
             for (uint64_t i = 0; i < info.bIdx; ++i) {
-                curTotalQSeqLenOffset += actualQSeqLengthsGm.GetValue(i);
+                curTotalQSeqLenOffset += static_cast<uint64_t>(actualQSeqLengthsGm.GetValue(i));
             }
-            topKBaseOffsetmm1 = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount + info.s1Idx * kvHeadNum * selectedBlockCount;
+            topKBaseOffsetmm1 = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount +
+                                static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
         } else {
-            topKBaseOffsetmm1 = info.bIdx * qSeqSize * kvHeadNum * selectedBlockCount + info.s1Idx * kvHeadNum * selectedBlockCount;
+            topKBaseOffsetmm1 = static_cast<uint64_t>(info.bIdx) * qSeqSize * kvHeadNum * selectedBlockCount +
+                                static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
         }
-        int64_t blockTableBaseOffset = info.bIdx * maxBlockNumPerBatch;
+        int64_t blockTableBaseOffset = static_cast<int64_t>(info.bIdx) * maxBlockNumPerBatch;
         int64_t curSeqIdx = info.s2BatchOffset + nCopyIdx * nCopyRowCount;
         int64_t copyStartRowCnt = 0;
         while (copyStartRowCnt < nActCopyRowCount) {
@@ -1420,15 +1433,17 @@ __aicore__ inline void NsaSelectAttentionInfer<NSAT>::ComputeMm2(uint32_t loop) 
         WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + (vL1BufIter % 2));
         int64_t topKBaseOffsetmm2 = 0;
         if constexpr (LAYOUT_T == LAYOUT::TND) {
-            uint32_t curTotalQSeqLenOffset = 0;
+            uint64_t curTotalQSeqLenOffset = 0;
             for (uint64_t i = 0; i < info.bIdx; ++i) {
-                curTotalQSeqLenOffset += actualQSeqLengthsGm.GetValue(i);
+                curTotalQSeqLenOffset += static_cast<uint64_t>(actualQSeqLengthsGm.GetValue(i));
             }
-            topKBaseOffsetmm2 = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount + info.s1Idx * kvHeadNum * selectedBlockCount;
+            topKBaseOffsetmm2 = curTotalQSeqLenOffset * kvHeadNum * selectedBlockCount +
+                                static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
         } else {
-            topKBaseOffsetmm2 = info.bIdx * qSeqSize * kvHeadNum * selectedBlockCount + info.s1Idx * kvHeadNum * selectedBlockCount;
+            topKBaseOffsetmm2 = static_cast<uint64_t>(info.bIdx) * qSeqSize * kvHeadNum * selectedBlockCount +
+                                static_cast<uint64_t>(info.s1Idx) * kvHeadNum * selectedBlockCount;
         }
-        int64_t blockTableBaseOffset = info.bIdx * maxBlockNumPerBatch;
+        int64_t blockTableBaseOffset = static_cast<int64_t>(static_cast<uint64_t>(info.bIdx) * maxBlockNumPerBatch);
         int64_t curSeqIdx = info.s2BatchOffset + kCopyIdx * kCopyRowCount;
         int64_t copyStartRowCnt = 0;
         uint64_t curActualSeqLenCurBatch = actualSeqLengthsGm.GetValue(info.bIdx);

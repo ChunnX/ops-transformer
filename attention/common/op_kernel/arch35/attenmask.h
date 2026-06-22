@@ -18,6 +18,7 @@
 
 #include "util_regbase.h"
 #include "flash_attention_score_common_regbase.h"
+#include "../const_def.h"
 
 using namespace AscendC;
 using namespace AscendC::MicroAPI;
@@ -225,14 +226,14 @@ __aicore__ inline int64_t ComputeOffsetForCausal(const int64_t &delta, const uin
 {
     if (useDn) {
         if (delta >= 0) {
-            return Min(delta, s2BaseSize) + vecCoreOffset + 1;
+            return AttentionCommon::Min(delta, s2BaseSize) + vecCoreOffset + 1;
         }
-        return (Min(-1 * delta, s1BaseSize)) * attenMaskS2Size + vecCoreOffset + 1;
+        return (AttentionCommon::Min(-1 * delta, s1BaseSize)) * attenMaskS2Size + vecCoreOffset + 1;
     }
     if (delta <= 0) {
-        return Min(-1 * delta, s1BaseSize) + vecCoreOffset * attenMaskS2Size;
+        return AttentionCommon::Min(-1 * delta, s1BaseSize) + vecCoreOffset * attenMaskS2Size;
     }
-    return (Min(delta, s2BaseSize) + vecCoreOffset) * attenMaskS2Size;
+    return (AttentionCommon::Min(delta, s2BaseSize) + vecCoreOffset) * attenMaskS2Size;
 }
 
 __aicore__ inline int64_t ComputeOffsetForPrefixRectangle(const int64_t &delta, const uint32_t &s2BaseSize,
@@ -368,8 +369,8 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
             } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
                 int64_t tmpPre = attenMaskInfo.preTokens;
                 int64_t tmpNext = attenMaskInfo.nextTokens;
-                int64_t transPreTokens = runInfo.actualS1Size - Max(runInfo.actualS2Size - tmpPre, 0);
-                int64_t transNextTokens = runInfo.actualS2Size - Max(runInfo.actualS1Size - tmpNext, 0);
+                int64_t transPreTokens = runInfo.actualS1Size - AttentionCommon::Max(runInfo.actualS2Size - tmpPre, 0);
+                int64_t transNextTokens = runInfo.actualS2Size - AttentionCommon::Max(runInfo.actualS1Size - tmpNext, 0);
                 deltaPre = s1Offset - s2Offset - transPreTokens - 1;
                 int64_t maskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize, constInfo.s2BaseSize,
                                                                attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset);
@@ -380,8 +381,8 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
                 if (runInfo.boIdx == attenMaskInfo.bandIndex) {
                     int64_t tmpPre = attenMaskInfo.preTokens;
                     int64_t tmpNext = attenMaskInfo.nextTokens;
-                    int64_t transPreTokens = runInfo.actualS1Size - Max(runInfo.actualS2Size - tmpPre, 0);
-                    int64_t transNextTokens = runInfo.actualS2Size - Max(runInfo.actualS1Size - tmpNext, 0);
+                    int64_t transPreTokens = runInfo.actualS1Size - AttentionCommon::Max(runInfo.actualS2Size - tmpPre, 0);
+                    int64_t transNextTokens = runInfo.actualS2Size - AttentionCommon::Max(runInfo.actualS1Size - tmpNext, 0);
                     deltaPre = s1Offset - s2Offset - transPreTokens - 1;
                     int64_t maskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize, constInfo.s2BaseSize,
                                                                 attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset);
@@ -395,8 +396,8 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
                 if (runInfo.boIdx == attenMaskInfo.bandIndex) {
                     int64_t tmpPre = attenMaskInfo.preTokens;
                     int64_t tmpNext = attenMaskInfo.nextTokens;
-                    int64_t transPreTokens = runInfo.actualS1Size - Max(runInfo.actualS2Size - tmpPre, 0);
-                    int64_t transNextTokens = runInfo.actualS2Size - Max(runInfo.actualS1Size - tmpNext, 0);
+                    int64_t transPreTokens = runInfo.actualS1Size - AttentionCommon::Max(runInfo.actualS2Size - tmpPre, 0);
+                    int64_t transNextTokens = runInfo.actualS2Size - AttentionCommon::Max(runInfo.actualS1Size - tmpNext, 0);
                     deltaPre = s1Offset - s2Offset - transPreTokens - 1;
                     int64_t maskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize, constInfo.s2BaseSize,
                                                                 attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset);
@@ -420,7 +421,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
             }
             GetAttenMaskComputeMode<hasAtten>(delta, deltaPre, s1Offset, runInfo, constInfo, attenMaskInfo);
             return ComputeOffsetForCausal(delta, constInfo.s1BaseSize, constInfo.s2BaseSize,
-                                          attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset);
+                                          attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset, useDn);
         }
         // compress mode, 推理场景的TND和TND的offset计算相同，因为mask被padding到了最大的s2Size
         int64_t deltaCausalOrNext = 0;
@@ -598,7 +599,8 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
     }
 }
 
-template <bool hasAtten, bool hasRope = false, bool isInfer = false, bool isMxfp8FullQuant = false>
+template <bool hasAtten, bool hasRope = false, bool isInfer = false, bool isMxfp8FullQuant = false,
+          bool optionalDn = false>
 __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskInQue,
                                          GlobalTensor<uint8_t> &srcTensor,
                                          RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
@@ -606,16 +608,27 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
 {
     if constexpr (hasAtten) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
-        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, false, false, false, isInfer, DTemplateType::Aligned128, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, true, subLoop);
-        if (attenMaskInfo.computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
-            int32_t s2RealSize = runInfo.s2RealSize;
-            if constexpr (isMxfp8FullQuant) {
-                if (runInfo.s2RealSize > 256) {
-                    s2RealSize = subLoop == 0 ? 256 : runInfo.s2RealSize - 256;
+        if constexpr (optionalDn) {
+            if (needAtten) {
+                int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, false, false, false, isInfer, DTemplateType::Aligned128, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, true, subLoop);
+                if (attenMaskInfo.computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
+                    BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, constInfo.s2BaseSize,
+                                               runInfo.s1RealSizeAlign64 >> 1, attenMaskInfo.attenMaskS2Size,
+                                               runInfo.s1RealSizeAlign64 >> 1, constInfo);
                 }
             }
-            BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, s2RealSize,
-                                       constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+        } else {
+            int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, false, false, false, isInfer, DTemplateType::Aligned128, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, true, subLoop);
+            if (attenMaskInfo.computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
+                int32_t s2RealSize = runInfo.s2RealSize;
+                if constexpr (isMxfp8FullQuant) {
+                    if (runInfo.s2RealSize > 256) {
+                        s2RealSize = subLoop == 0 ? 256 : runInfo.s2RealSize - 256;
+                    }
+                }
+                BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, s2RealSize,
+                                        constInfo.s1BaseSize >> 1, attenMaskInfo.attenMaskS2Size, constInfo.s1BaseSize >> 1, constInfo);
+            }
         }
         attenMaskInQue.template EnQue(attenMaskUb);
     }

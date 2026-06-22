@@ -444,7 +444,7 @@ ge::graphStatus FiaTilingCheck::CheckFeatureLeftPadding() const
     }
 
     if (fiaInfo_.kvPaddingSizeFlag) {
-        OP_CHECK_IF(!(fiaInfo_.actualLenDims != 0U),
+        OP_CHECK_IF(!(fiaInfo_.actualLenKvDims != 0U),
             OP_LOGE(opName_, "when kv_padding_size exists, the key/value's actual sequence lengths are required."),
             return ge::GRAPH_FAILED);
     }
