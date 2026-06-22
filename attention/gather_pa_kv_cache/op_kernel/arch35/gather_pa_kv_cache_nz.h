@@ -142,7 +142,10 @@ private:
         valueOutStride0_ = tl_->valueOutStride0;
 
         isSmallShape =
-            (maxUbHiddenSizeK_ >= blockSize_ * hiddenSizeK_) && (maxUbHiddenSizeV_ >= blockSize_ * hiddenSizeV_);
+            (maxUbHiddenSizeK_ >= blockSize_ * hiddenSizeK_) && (maxUbHiddenSizeV_ >= blockSize_ * hiddenSizeV_) &&
+            // 输出非连续(ref dim0非连续)时不走small-shape的DataCopyFromeCache(它整block连续写, 无法按token散写),
+            // 改走RestoreFromCache逐token循环按keyOutStride0散写。bit2:keyOut非连续, bit3:valueOut非连续。
+            ((nonContiguousFlag_ & ((1U << 2) | (1U << 3))) == 0);
     }
 
 public:
@@ -231,8 +234,11 @@ public:
                 if (isSmallShape) {
                     DataCopyFromeCache(curLen, keyCacheOffset, keyOffset, isFulledWithZero, true);
                 } else {
+                    // ref dim0非连续(bit2)时token间按keyOutStride0散写; 连续时token紧密排列(=hiddenSizeK_)
                     RestoreFromCache(outKeyGm_[keyOffset], keyCacheGm_[keyCacheOffset], hiddenSizeK_, curLen,
-                                     isFulledWithZero);
+                                     isFulledWithZero,
+                                     (nonContiguousFlag_ & (1 << 2)) ?
+                                         (keyOutStride0_ * sizeof(DTYPE_KEY)) : hiddenSizeK_);
                 }
 
                 keyOffset += (nonContiguousFlag_ & (1 << 2)) ?
@@ -273,8 +279,11 @@ public:
                 if (isSmallShape) {
                     DataCopyFromeCache(curLen, valueCacheOffset, valueOffset, isFulledWithZero, false);
                 } else {
+                    // ref dim0非连续(bit3)时token间按valueOutStride0散写; 连续时token紧密排列(=hiddenSizeV_)
                     RestoreFromCache(outValueGm_[valueOffset], valueCacheGm_[valueCacheOffset], hiddenSizeV_, curLen,
-                                     isFulledWithZero);
+                                     isFulledWithZero,
+                                     (nonContiguousFlag_ & (1 << 3)) ?
+                                         (valueOutStride0_ * sizeof(DTYPE_VALUE)) : hiddenSizeV_);
                 }
 
                 valueOffset += (nonContiguousFlag_ & (1 << 3)) ?
@@ -375,8 +384,10 @@ private:
         cacheQueue_.FreeTensor(cacheLocal);
     }
 
+    // dstTokenStrideBytes: 输出端相邻token间步长(字节)。输出连续时=hiddenSize; ref dim0非连续时=keyOutStride0*元素宽,
+    // 使block内每个token按stride散写到原ref内存(否则按hiddenSize稠密写会错位)。
     __aicore__ inline void RestoreFromCache(GlobalTensor<T> dstGm, GlobalTensor<T> scrGm, uint64_t hiddenSize,
-                                            uint32_t curblockSize, bool isFulledWithZero)
+                                            uint32_t curblockSize, bool isFulledWithZero, uint64_t dstTokenStrideBytes)
     {
         uint32_t fracBlockSize = hiddenSize / eleNumPerBlk;
         uint16_t inBlkCnt = 0;
@@ -386,7 +397,7 @@ private:
 
         for (int i = 0; i < curblockSize; i++) {
             uint32_t scroffset = i * eleNumPerBlk;
-            uint32_t dstoffset = i * hiddenSize;
+            uint32_t dstoffset = i * dstTokenStrideBytes;
 
             uint32_t ubLoops = CeilDivision(fracBlockSize, MAX_BLOCK_CNT);
             for (int j = 0; j < ubLoops; j++) {
