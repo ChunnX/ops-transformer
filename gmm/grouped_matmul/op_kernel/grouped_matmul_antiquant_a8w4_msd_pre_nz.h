@@ -102,7 +102,7 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR x_out, GM_AD
     k = tilingData.k;
 
     pipe->InitBuffer(vecInQueueX, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int8_t));
-    pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int4b_t) * TWO);
+    pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int4b_t) * 2); // high and low int4 planes per int8 element
 
     pipe->InitBuffer(groupListBuff,
         Ceil(static_cast<uint32_t>(groupNum * sizeof(int64_t)), DATA_BLOCK_SIZE_32_NZ) * DATA_BLOCK_SIZE_32_NZ);
@@ -116,7 +116,7 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR x_out, GM_AD
 
     pipe->InitBuffer(xLowHalfBuff, A8W4PRE_VECTOR_BASE_M * A8W4PRE_VECTOR_BASE_K * sizeof(half));
     xLowHalfTensor = xLowHalfBuff.Get<half>();
-    xLowI16Tensor = xLowHalfBuff.GetWithOffset<int16_t>(A8W4PRE_VECTOR_BASE_M * A8W4PRE_VECTOR_BASE_K / TWO, A8W4PRE_VECTOR_BASE_M * A8W4PRE_VECTOR_BASE_K);
+    xLowI16Tensor = xLowHalfBuff.GetWithOffset<int16_t>(vectorBaseSize / 2, vectorBaseSize); // int16 element count: 2 int8 bytes per int16
     xLowI4Tensor = xLowHalfBuff.Get<int4b_t>();
 
     pipe->InitBuffer(maskBuff, MASK_LEN);
@@ -170,8 +170,10 @@ __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx
     DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), 1, static_cast<uint16_t>(curVecBaseK / kNZInt4BlockSize - 1), 1};
     auto loopCnt = curVecBaseK / kNZInt4BlockSize;
     for(int i = 0; i < loopCnt; i++) {
-        DataCopy(tensorOut[i * curVecBaseM * TWO * kNZInt4BlockSize], xHighI4Tensor[i * kNZInt4BlockSize],dataCopyParams);
-        DataCopy(tensorOut[kNZInt4BlockSize + i * curVecBaseM * TWO * kNZInt4BlockSize], xLowI4Tensor[i * kNZInt4BlockSize],dataCopyParams);
+        DataCopy(tensorOut[i * curVecBaseM * 2 * kNZInt4BlockSize], // stride per K block: 2 int4 planes along M
+            xHighI4Tensor[i * kNZInt4BlockSize], dataCopyParams);
+        DataCopy(tensorOut[kNZInt4BlockSize + i * curVecBaseM * 2 * kNZInt4BlockSize], // low plane slot; stride *2 for two planes along M
+            xLowI4Tensor[i * kNZInt4BlockSize], dataCopyParams);
     }
 
     vecOutQueue.EnQue(tensorOut);
