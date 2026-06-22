@@ -37,7 +37,6 @@ else()
             OP_NAME FlashAttentionScore
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
-                    -Werror
     )
     add_modules_sources_with_soc(
         # 该变量用于判断op_api目录是否从op_host移出

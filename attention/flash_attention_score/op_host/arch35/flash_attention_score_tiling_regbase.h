@@ -500,10 +500,13 @@ protected:
 
     DTemplateType dTemplateType = DTemplateType::DTEMPLATEBOTTOM;
     DTemplateType dVTemplateType = DTemplateType::DTEMPLATEBOTTOM;
-    FlashAttentionScoreSimplifiedTilingData *tilingData = context_->GetTilingData<FlashAttentionScoreSimplifiedTilingData>();
-    InputParamsRegbase *inputParamsRegbase_ = &tilingData->inputParamsRegbase;
-    MultiCoreParamsRegbase *multiCoreParamsRegbase_ = &tilingData->multiCoreParamsRegbase;
-    DropmaskParamsRegbase *dropmaskParamsRegbase_ = &tilingData->dropmaskParamsRegbase;
+    OpTiling *tilingData = context_->GetTilingData<OpTiling>();
+    InputParamsRegbase inputParamsRegbaseCache_{};
+    MultiCoreParamsRegbase multiCoreParamsRegbaseCache_{};
+    DropmaskParamsRegbase dropmaskParamsRegbaseCache_{};
+    InputParamsRegbase *inputParamsRegbase_ = &inputParamsRegbaseCache_;
+    MultiCoreParamsRegbase *multiCoreParamsRegbase_ = &multiCoreParamsRegbaseCache_;
+    DropmaskParamsRegbase *dropmaskParamsRegbase_ = &dropmaskParamsRegbaseCache_;
 };
 } // namespace FA
 } // namespace optiling
