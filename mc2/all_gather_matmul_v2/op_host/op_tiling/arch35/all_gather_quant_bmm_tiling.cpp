@@ -685,7 +685,7 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     CutResult result = tileFormulate.GetTiling();
 
     if (isFp4_) {
-        AdjustCutResultForHCCL(result, args_.mValue, args_.kValue / 2, 1, args_.rankDim, opName_);
+        AdjustCutResultForHCCL(result, args_.mValue, args_.kValue / EVEN_ALIGN, 1, args_.rankDim, opName_);
     } else {
         AdjustCutResultForHCCL(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
     }
