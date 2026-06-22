@@ -134,7 +134,7 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>max_seqlen_ori_kv</td>
+      <td>max_seqlen_kv</td>
       <td>可选属性</td>
       <td>表示所有batch中`ori_kv`的最大有效token数。默认值为0。</td>
       <td>INT</td>
@@ -201,7 +201,6 @@
       <td>可选属性</td>
       <td>表示输入`q`的数据排布格式，支持"BSND"和"TND"。默认值为"BSND"。</td>
       <td>STRING</td>
-      <td>-</td>
     </tr>
     <tr>
       <td>layout_kv</td>
@@ -225,11 +224,18 @@
       <td>-</td>
     </tr>
     <tr>
+      <td>device</td>
+      <td>可选属性</td>
+      <td>用于获取设备信息，默认值为None。</td>
+      <td>STRING</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>metadata</td>
       <td>输出</td>
       <td>表示`SparseFlashMla`主算子使用的任务切分结果。</td>
       <td>INT32</td>
-      <td>ND</td>
+      <td>-</td>
     </tr>
   </tbody>
 </table>
