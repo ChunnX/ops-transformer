@@ -53,7 +53,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegBaseTilingClass::GetPlatformInfo()
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     aicoreParams_.ubSize = ubSizePlatForm;
-    blockSize_ = Ops::Base::GetUbBlockSize(context_);
+    blockSize_ = 32;  // UB block size is always 32 bytes on Ascend
     return ge::GRAPH_SUCCESS;
 }
 
