@@ -419,7 +419,7 @@ public:
         GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer, commContextStruct);
         commContextStruct->rankSizePerServer = rankSizePerServer;
         ASCEND_LOGI("Get URMA communication channel success, channel num is: %zu", channels.size());
-        uint64_t maxWindowSize = GetHcclBufferMaxSize();
+        uint64_t maxWindowSize =0;// GetHcclBufferMaxSize();
         for (uint32_t i = 0; i < rankSize; ++i) {
             void *tempBuffer = nullptr;
             uint64_t bufSize = 0;
