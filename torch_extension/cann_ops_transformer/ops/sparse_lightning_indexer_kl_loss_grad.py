@@ -18,31 +18,39 @@ from cann_ops_transformer.op_builder.builder import OpBuilder
 
 SLI_KL_LOSS_GRAD_METADATA_SIZE = 64
 SLI_KL_LOSS_GRAD_METADATA_MAX_CORE_NUM = 25
+SLI_KL_LOSS_GRAD_METADATA_OP_NAME = "sparse_lightning_indexer_kl_loss_grad_metadata"
 
 
-class SparseLightningIndexerKLLossGradMetadataOpBuilder(OpBuilder):
+class SparseLightningIndexerKLLossGradOpBuilder(OpBuilder):
     def __init__(self):
-        super(SparseLightningIndexerKLLossGradMetadataOpBuilder, self).__init__(
-            "npu_sparse_lightning_indexer_kl_loss_grad_metadata"
+        super(SparseLightningIndexerKLLossGradOpBuilder, self).__init__(
+            "sparse_lightning_indexer_kl_loss_grad"
         )
 
     def sources(self):
-        return ["ops/csrc/npu_sparse_lightning_indexer_kl_loss_grad_metadata.cpp"]
+        return ["ops/csrc/sparse_lightning_indexer_kl_loss_grad.cpp"]
 
     def schema(self) -> str:
-        return (
-            "npu_sparse_lightning_indexer_kl_loss_grad_metadata("
+        return [
+            "sparse_lightning_indexer_kl_loss_grad_metadata("
             "int num_heads_q, int num_heads_k, int head_dim, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, "
             "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, int? batch_size=None, "
             "int? max_seqlen_q=None, int? max_seqlen_k=None, int? topk=None, "
             "str? layout_q=None, str? layout_k=None, int? mask_mode=None, "
-            "int? cmp_ratio=None) -> Tensor"
-        )
+            "int? cmp_ratio=None) -> Tensor",
+
+            "sparse_lightning_indexer_kl_loss_grad("
+            "Tensor q, Tensor k, Tensor w, Tensor sparse_indices, Tensor attn_softmax_l1_norm, "
+            "*, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, "
+            "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, Tensor? metadata=None, "
+            "str layout_q=\"TND\", str layout_k=\"TND\", int mask_mode=3, "
+            "int cmp_ratio=1) -> (Tensor, Tensor, Tensor, Tensor)"
+        ]
 
     def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_sparse_lightning_indexer_kl_loss_grad_metadata_meta(
+        @torch.library.register_fake("cann_ops_transformer::" + SLI_KL_LOSS_GRAD_METADATA_OP_NAME)
+        def sparse_lightning_indexer_kl_loss_grad_metadata_meta(
             num_heads_q,
             num_heads_k,
             head_dim,
@@ -63,13 +71,42 @@ class SparseLightningIndexerKLLossGradMetadataOpBuilder(OpBuilder):
         ):
             return torch.empty((SLI_KL_LOSS_GRAD_METADATA_SIZE,), dtype=torch.int32, device="meta")
 
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def sparse_lightning_indexer_kl_loss_grad_meta(
+            q,
+            k,
+            w,
+            sparse_indices,
+            attn_softmax_l1_norm,
+            *,
+            cu_seqlens_q=None,
+            cu_seqlens_k=None,
+            seqused_q=None,
+            seqused_k=None,
+            cmp_residual_k=None,
+            metadata=None,
+            layout_q="TND",
+            layout_k="TND",
+            mask_mode=3,
+            cmp_ratio=1,
+        ):
+            dq = q.new_empty(q.shape, dtype=q.dtype, device="meta")
+            dk = k.new_empty(k.shape, dtype=k.dtype, device="meta")
+            dw = w.new_empty(w.shape, dtype=w.dtype, device="meta")
+            softmax_out = attn_softmax_l1_norm.new_empty(
+                attn_softmax_l1_norm.shape,
+                dtype=attn_softmax_l1_norm.dtype,
+                device="meta"
+            )
+            return dq, dk, dw, softmax_out
 
-sparse_lightning_indexer_kl_loss_grad_metadata_op_builder = SparseLightningIndexerKLLossGradMetadataOpBuilder()
-op_module = sparse_lightning_indexer_kl_loss_grad_metadata_op_builder.load()
+
+sparse_lightning_indexer_kl_loss_grad_op_builder = SparseLightningIndexerKLLossGradOpBuilder()
+op_module = sparse_lightning_indexer_kl_loss_grad_op_builder.load()
 
 
-@impl(AS_LIBRARY, sparse_lightning_indexer_kl_loss_grad_metadata_op_builder.name, "PrivateUse1")
-def npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+@impl(AS_LIBRARY, SLI_KL_LOSS_GRAD_METADATA_OP_NAME, "PrivateUse1")
+def sparse_lightning_indexer_kl_loss_grad_metadata(
     num_heads_q,
     num_heads_k,
     head_dim,
@@ -97,7 +134,7 @@ def npu_sparse_lightning_indexer_kl_loss_grad_metadata(
     mask_mode = 0 if mask_mode is None else mask_mode
     cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
 
-    return op_module.npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+    return op_module.sparse_lightning_indexer_kl_loss_grad_metadata(
         num_heads_q,
         num_heads_k,
         head_dim,
@@ -117,10 +154,8 @@ def npu_sparse_lightning_indexer_kl_loss_grad_metadata(
     )
 
 
-@torch.library.register_kernel(
-    "cann_ops_transformer::npu_sparse_lightning_indexer_kl_loss_grad_metadata", None
-)
-def npu_sparse_lightning_indexer_kl_loss_grad_metadata_fallback(
+@torch.library.register_kernel("cann_ops_transformer::" + SLI_KL_LOSS_GRAD_METADATA_OP_NAME, None)
+def sparse_lightning_indexer_kl_loss_grad_metadata_fallback(
     num_heads_q,
     num_heads_k,
     head_dim,
@@ -139,7 +174,7 @@ def npu_sparse_lightning_indexer_kl_loss_grad_metadata_fallback(
     mask_mode=None,
     cmp_ratio=None,
 ):
-    return npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+    return sparse_lightning_indexer_kl_loss_grad_metadata(
         num_heads_q,
         num_heads_k,
         head_dim,
@@ -159,6 +194,47 @@ def npu_sparse_lightning_indexer_kl_loss_grad_metadata_fallback(
     )
 
 
+torch.compiler.allow_in_graph(sparse_lightning_indexer_kl_loss_grad_metadata)
+
+
+@impl(AS_LIBRARY, sparse_lightning_indexer_kl_loss_grad_op_builder.name, "PrivateUse1")
+def sparse_lightning_indexer_kl_loss_grad(
+    q,
+    k,
+    w,
+    sparse_indices,
+    attn_softmax_l1_norm,
+    *,
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    metadata=None,
+    layout_q="TND",
+    layout_k="TND",
+    mask_mode=3,
+    cmp_ratio=1,
+):
+    return op_module.sparse_lightning_indexer_kl_loss_grad(
+        q,
+        k,
+        w,
+        sparse_indices,
+        attn_softmax_l1_norm,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        metadata,
+        layout_q,
+        layout_k,
+        mask_mode,
+        cmp_ratio,
+    )
+
+
 try:
     import torchair
     from torchair._ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
@@ -172,9 +248,55 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
     @register_fx_node_ge_converter(
-        torch.ops.cann_ops_transformer.npu_sparse_lightning_indexer_kl_loss_grad_metadata.default
+        torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad.default
     )
-    def convert_npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+    def convert_sparse_lightning_indexer_kl_loss_grad(
+        q: Tensor,
+        k: Tensor,
+        w: Tensor,
+        sparse_indices: Tensor,
+        attn_softmax_l1_norm: Tensor,
+        *,
+        cu_seqlens_q: Optional[Tensor] = None,
+        cu_seqlens_k: Optional[Tensor] = None,
+        seqused_q: Optional[Tensor] = None,
+        seqused_k: Optional[Tensor] = None,
+        cmp_residual_k: Optional[Tensor] = None,
+        metadata: Optional[Tensor] = None,
+        layout_q: str = "TND",
+        layout_k: str = "TND",
+        mask_mode: int = 3,
+        cmp_ratio: int = 1,
+        meta_outputs: TensorSpec = None,
+    ):
+        return torchair.ge.custom_op(
+            "SparseLightningIndexerKLLossGrad",
+            inputs={
+                "q": q,
+                "k": k,
+                "w": w,
+                "sparse_indices": sparse_indices,
+                "attn_softmax_l1_norm": attn_softmax_l1_norm,
+                "cu_seqlens_q": cu_seqlens_q,
+                "cu_seqlens_k": cu_seqlens_k,
+                "seqused_q": seqused_q,
+                "seqused_k": seqused_k,
+                "cmp_residual_k": cmp_residual_k,
+                "metadata": metadata,
+            },
+            attrs={
+                "layout_q": attr.Str(layout_q),
+                "layout_k": attr.Str(layout_k),
+                "mask_mode": attr.Int(mask_mode),
+                "cmp_ratio": attr.Int(cmp_ratio),
+            },
+            outputs=["dq", "dk", "dw", "softmax_out"],
+        )
+
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad_metadata.default
+    )
+    def convert_sparse_lightning_indexer_kl_loss_grad_metadata(
         num_heads_q: int,
         num_heads_k: int,
         head_dim: int,
