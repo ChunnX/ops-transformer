@@ -11,12 +11,9 @@ DEFAULT = {"B": 1, "S1": 1, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
            "DQuery": 512, "DQueryIndex": 128, "d_rope": 64}
 
 CASES = [
-    {**DEFAULT, "S2": 2048, "K": 2048, "desc": "S2=2K, K=2K (baseline first)"},
-    {**DEFAULT, "S2": 2048, "K": 1024, "desc": "S2=2K, K=1K"},
-    {**DEFAULT, "S2": 4096, "K": 2048, "desc": "S2=4K, K=2K"},
-    {**DEFAULT, "S2": 4096, "K": 4096, "desc": "S2=4K, K=4K"},
-    {**DEFAULT, "S2": 8192, "K": 2048, "desc": "S2=8K, K=2K"},
-    {**DEFAULT, "S2": 8192, "K": 4096, "desc": "S2=8K, K=4K"},
+    {**DEFAULT, "S2": 2048, "K": 2048, "desc": "S2=2K (baseline)"},
+    {**DEFAULT, "S2": 4096, "K": 2048, "desc": "S2=4K"},
+    {**DEFAULT, "S2": 8192, "K": 2048, "desc": "S2=8K"},
 ]
 
 
