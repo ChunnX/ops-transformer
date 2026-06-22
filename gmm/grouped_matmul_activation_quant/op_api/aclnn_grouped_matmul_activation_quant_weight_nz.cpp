@@ -322,7 +322,6 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclTensor *y, aclTensor *yScale,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    GmmaqPrint("In op [%s], zsl0622!!!", OP_NAME);
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulActivationQuantWeightNz,
                    DFX_IN(x, groupList, weight, weightScale, biasOptional, xScaleOptional),
