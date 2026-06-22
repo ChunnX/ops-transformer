@@ -52,3 +52,7 @@ from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .graph_convert.graph_convert_inplace_partial_rotary_mul import convert_inplace_partial_rotary_mul
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
+from .moe_init_routing import moe_init_routing
+from .graph_convert.graph_convert_moe_init_routing import convert_moe_init_routing
+from .moe_re_routing import moe_re_routing
+from .graph_convert.graph_convert_moe_re_routing import convert_moe_re_routing
