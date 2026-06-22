@@ -189,23 +189,61 @@ cann_ops_transformer.sparse_flash_mla_metadata(
 
 ## 约束说明
 
-- 该接口支持推理场景。
-- 输入数据类型限制：`q`、`ori_kv`、`cmp_kv`的数据类型必须一致，支持FLOAT16和BFLOAT16。
-- 输入shape限制：`layout_q="BSND"`时，`q`必须为4维；`layout_q="TND"`时，`q`必须为3维。
-- 输入shape限制：`layout_kv="BSND"`或`layout_kv="PA_BBND"`时，`ori_kv`和`cmp_kv`必须为4维；`layout_kv="TND"`时，`ori_kv`和`cmp_kv`必须为3维。
-- 输入shape限制：`head_dim`仅支持512，`num_heads_kv`仅支持1。
-- 输入shape限制：`cmp_sparse_indices`最后一维支持512或1024。
-- 输入shape限制：`metadata`固定为1024个INT32元素。
-- 输入属性限制：`layout_q`支持"BSND"和"TND"；`layout_kv`支持"BSND"、"TND"和"PA_BBND"。
-- 输入属性限制：`topk_value_mode`仅支持1，`ori_topk`仅支持0，`cmp_topk`在C4A场景支持512或1024，C1A/C128A场景传0。
-- 输入属性限制：`ori_topk_length`和`cmp_topk_length`为预留输入，当前版本不支持传入非空Tensor。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：`num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128；`cmp_ratio`支持1、4、128；`ori_mask_mode`仅支持4；`cmp_mask_mode`仅支持3；`ori_win_left`仅支持127；`ori_win_right`仅支持0；PageAttention的block_size支持16的倍数，且不超过1024。
-- 其他限制：`layout_q="TND"`时必须传入`cu_seqlens_q`。
-- 其他限制：`layout_kv="TND"`时必须传入`cu_seqlens_ori_kv`；若同时存在`cmp_kv`，还必须传入`cu_seqlens_cmp_kv`。
-- 其他限制：`layout_kv="PA_BBND"`时必须传入`seqused_ori_kv`和`ori_block_table`；传入`cmp_kv`时还必须传入`cmp_block_table`。
-- 其他限制：`seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
-- 其他限制：`cmp_residual_kv`用于修正cmp侧mask语义，主算子和metadata均可传入；在C4A/C128A、`cmp_ratio`不等于1且`cmp_mask_mode`为3场景必传，长度必须等于batch大小。
-- 其他限制：`ori_kv`和`cmp_kv`允许存在行间padding类非连续内存，接口会通过aclnn获取stride信息传给底层算子。
+- 公共约束：
+  - 适用场景：该接口支持训练、推理场景下使用。
+  - 调用方式：该接口支持单算子模式和TorchAir图模式调用。
+  - `q`、`ori_kv`、`cmp_kv`的数据类型必须一致，支持FLOAT16和BFLOAT16。
+  - `layout_q`支持"BSND"和"TND"；`layout_q="BSND"`时，`q`必须为4维；`layout_q="TND"`时，`q`必须为3维且必须传入`cu_seqlens_q`。
+  - `layout_kv`支持"BSND"、"TND"和"PA_BBND"；`layout_kv="BSND"`或`layout_kv="PA_BBND"`时，`ori_kv`和`cmp_kv`必须为4维；`layout_kv="TND"`时，`ori_kv`和`cmp_kv`必须为3维。
+  - `layout_kv="TND"`时必须传入`cu_seqlens_ori_kv`；传入`cmp_kv`时，还必须传入`cu_seqlens_cmp_kv`。
+  - `layout_kv="PA_BBND"`时必须传入`seqused_ori_kv`和`ori_block_table`；传入`cmp_kv`时，还必须传入`cmp_block_table`。
+  - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度。
+  - `metadata`固定为1024个INT32元素，`topk_value_mode`仅支持1，`ori_sparse_indices`、`ori_topk_length`和`cmp_topk_length`当前版本不支持传入非空Tensor。
+  - `ori_kv`和`cmp_kv`允许存在行间padding类非连续内存，接口会通过aclnn获取stride信息传给底层算子。
+
+- 产品型号约束：
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - C1A：当前PyTorch API不支持。
+    - C4A：当前PyTorch API不支持。
+    - C128A：当前PyTorch API不支持。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - 公共参数约束：
+      - `head_dim`仅支持512，`num_heads_kv`仅支持1。
+      - `num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128。
+      - `ori_mask_mode`仅支持4，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
+      - PageAttention的block_size支持16的倍数，且不超过1024。
+    - C1A：
+      - `cmp_ratio`仅支持1；不传入`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`。
+      - `cmp_topk`传0，`cmp_mask_mode`传0。
+    - C4A：
+      - `cmp_ratio`仅支持4，`cmp_mask_mode`仅支持3。
+      - `cmp_sparse_indices`必须传入，最后一维支持512或1024；`cmp_topk`对应传512或1024。
+      - `cmp_residual_kv`必须传入，长度必须等于batch大小。
+    - C128A：
+      - `cmp_ratio`仅支持128，`cmp_mask_mode`仅支持3。
+      - 不传入`cmp_sparse_indices`；`cmp_topk`传0。
+      - `cmp_residual_kv`必须传入，长度必须等于batch大小。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - 公共参数约束：
+      - `head_dim`仅支持512，`num_heads_kv`仅支持1。
+      - `num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128。
+      - `ori_mask_mode`仅支持4，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
+      - PageAttention的block_size支持16的倍数，且不超过1024。
+    - C1A：
+      - `cmp_ratio`仅支持1；不传入`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`。
+      - `cmp_topk`传0，`cmp_mask_mode`传0。
+    - C4A：
+      - `cmp_ratio`仅支持4，`cmp_mask_mode`仅支持3。
+      - `cmp_sparse_indices`必须传入，最后一维支持512或1024；`cmp_topk`对应传512或1024。
+      - `cmp_residual_kv`必须传入，长度必须等于batch大小。
+    - C128A：
+      - `cmp_ratio`仅支持128，`cmp_mask_mode`仅支持3。
+      - 不传入`cmp_sparse_indices`；`cmp_topk`传0。
+      - `cmp_residual_kv`必须传入，长度必须等于batch大小。
+  - <term>Atlas 200I/500 A2 推理产品</term>、<term>Atlas 推理系列产品</term>、<term>Atlas 训练系列产品</term>：
+    - C1A：当前PyTorch API不支持。
+    - C4A：当前PyTorch API不支持。
+    - C128A：当前PyTorch API不支持。
 
 ## 调用示例
 
