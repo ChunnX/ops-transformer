@@ -65,3 +65,7 @@ from .dense_lightning_indexer_softmax_lse import (
     dense_lightning_indexer_softmax_lse,
     dense_lightning_indexer_softmax_lse_metadata,
 )
+from .moe_init_routing import moe_init_routing
+from .graph_convert.graph_convert_moe_init_routing import convert_moe_init_routing
+from .moe_re_routing import moe_re_routing
+from .graph_convert.graph_convert_moe_re_routing import convert_moe_re_routing
