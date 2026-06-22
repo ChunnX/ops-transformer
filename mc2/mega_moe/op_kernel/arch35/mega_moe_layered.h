@@ -171,7 +171,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
 {
     LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0,
         512);
-    hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
+    hcomm_.Init(hcommTensor_, 512);
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
     printf("handle = %d\n", mc2Context_->hcommHandle[0]);
