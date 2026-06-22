@@ -167,9 +167,9 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
             "The value of shape dim must not be 0"),
         return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context)),
-        OP_LOGE(context->GetNodeName(), "the output's dim0 is invalid"),
-        return ge::GRAPH_FAILED);
+    if (!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context))) {
+        return ge::GRAPH_FAILED;
+    }
 
     if (context->GetAttrs() == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs");
@@ -570,8 +570,9 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
         context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
     mc2tiling::TilingArgs args;
     auto group = context->GetAttrs()->GetAttrPointer<char>(index++);
-    OP_TILING_CHECK(AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "param is invalid"), return ge::GRAPH_FAILED);
+    if (AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(index++);
     auto isTransB = context->GetAttrs()->GetAttrPointer<bool>(index++);
