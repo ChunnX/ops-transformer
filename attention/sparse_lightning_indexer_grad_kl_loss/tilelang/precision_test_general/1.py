@@ -1,4 +1,6 @@
-import torch, tilelang, tilelang.language as T
+import torch
+import tilelang
+import tilelang.language as T
 
 tilelang.disable_cache()
 
