@@ -516,7 +516,6 @@ public:
 
         softmaxLseQueue.FreeTensor(lseUb);
     }
-
     // __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar,
     //                                                SoftMaxShapeInfo &softmaxShapeInfo)
     // {
