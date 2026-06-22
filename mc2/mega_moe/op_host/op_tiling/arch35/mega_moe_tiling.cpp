@@ -308,12 +308,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     ge::DataType refWeightDataType = GetDataTypeByOpQuantMode(opQuantMode);
-    if (refWeightDataType == ge::DT_UNDEFINED) {
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatchQuantMode",
-            std::to_string(dispatchQuantMode).c_str(),
-            "a valid value that leads to a defined output data type");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(refWeightDataType == ge::DT_UNDEFINED,
+        OP_LOGE(nodeName,
+            "unsupported dispatchQuantMode(%ld), leading out data type to being DT_UNDEFINED.", dispatchQuantMode),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK((refWeightDataType != weightOneDesc->GetDataType()) &&
                     (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightOne",
@@ -375,20 +373,14 @@ static ge::graphStatus CheckAttrAndSetTilingData(const gert::TilingContext *cont
 {
     const char *nodeName = context->GetNodeName();
 
-    if (CheckAttrPtrNullptr(context, config, nodeName) != ge::GRAPH_SUCCESS) {
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckAttrPtrNullptr(context, config, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
 
-    if (CheckAttrParams(context, config, nodeName) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(nodeName, "check attr params failed.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckAttrParams(context, config, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "check attr params failed."), return ge::GRAPH_FAILED);
 
-    if (SetAttrParams(context, config, tilingData, nodeName, aicNum) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(nodeName, "set attr params failed.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(SetAttrParams(context, config, tilingData, nodeName, aicNum) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "set attr params failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -687,20 +679,14 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, MegaMo
             "The shape [dim1] of topkIds and topkWeights must be equal."),
         return ge::GRAPH_FAILED);
 
-    if (CheckWeightTensorDim(context, config, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "weight params shape is invalid.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckWeightTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "weight params shape is invalid."), return ge::GRAPH_FAILED);
 
-    if (CheckWeightScalesTensorDim(context, config, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "optional params shape is invalid.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckWeightScalesTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "optional params shape is invalid."), return ge::GRAPH_FAILED);
 
-    if (CheckOutputTensorDim(context, config, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "output params shape is invalid.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckOutputTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "output params shape is invalid."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -806,68 +792,53 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
     auto yDesc = context->GetOutputDesc(config.yIndex);
     auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
 
-    if (static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()))).c_str(),
-            "should not be FRACTAL_NZ");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "x format is invalid."), return ge::GRAPH_FAILED);
 
-    if (static_cast<ge::Format>(ge::GetPrimaryFormat(topkIdsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "topkIds",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(topkIdsDesc->GetStorageFormat()))).c_str(),
-            "should not be FRACTAL_NZ");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(topkIdsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "topkIds format is invalid."), return ge::GRAPH_FAILED);
+    
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(topkWeightsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "topkWeights format is invalid."), return ge::GRAPH_FAILED);
+    
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "weightOne format is invalid."), return ge::GRAPH_FAILED);
+    
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(weightTwoDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "weightTwo format is invalid."), return ge::GRAPH_FAILED);
+    
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(weightScalesOneDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "weightScalesOne format is invalid."), return ge::GRAPH_FAILED);
+    
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(weightScalesTwoDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "weightScalesTwo format is invalid."), return ge::GRAPH_FAILED);
 
-    if (static_cast<ge::Format>(ge::GetPrimaryFormat(topkWeightsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "topkWeights",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(topkWeightsDesc->GetStorageFormat()))).c_str(),
-            "should not be FRACTAL_NZ");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "weightOne",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat()))).c_str(),
-            "should not be FRACTAL_NZ");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (static_cast<ge::Format>(ge::GetPrimaryFormat(weightTwoDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "weightTwo",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(weightTwoDesc->GetStorageFormat()))).c_str(),
-            "should not be FRACTAL_NZ");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (static_cast<ge::Format>(ge::GetPrimaryFormat(weightScalesOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "weightScalesOne",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(weightScalesOneDesc->GetStorageFormat()))).c_str(),
-            "should not be FRACTAL_NZ");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (static_cast<ge::Format>(ge::GetPrimaryFormat(weightScalesTwoDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "weightScalesTwo",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(weightScalesTwoDesc->GetStorageFormat()))).c_str(),
-            "should not be FRACTAL_NZ");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (static_cast<ge::Format>(ge::GetPrimaryFormat(yDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "y",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(yDesc->GetStorageFormat()))).c_str(),
-            "should not be FRACTAL_NZ");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (static_cast<ge::Format>(ge::GetPrimaryFormat(expertTokenNumsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertTokenNums",
-            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(expertTokenNumsDesc->GetStorageFormat()))).c_str(),
-            "should not be FRACTAL_NZ");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(yDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "y format is invalid."), return ge::GRAPH_FAILED);
+    
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(expertTokenNumsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "expertTokenNums format is invalid."), return ge::GRAPH_FAILED);
     
     return ge::GRAPH_SUCCESS;
 }
@@ -875,26 +846,18 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
 static ge::graphStatus TilingCheckMegaMoe(const gert::TilingContext *context,
     MegaMoeConfig &config, const char *nodeName)
 {
-    if (CheckTensorPtrNullptr(context, config, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "tensor");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckTensorPtrNullptr(context, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "params check nulld failed."), return ge::GRAPH_FAILED);
 
-    if (CheckTensorDim(context, config, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "params shape is invalid.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "params shape is invalid."), return ge::GRAPH_FAILED);
 
-    if (CheckTensorDataType(context, config, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "params dataType is invalid.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckTensorDataType(context, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "params dataType is invalid."), return ge::GRAPH_FAILED);
 
-    if (CheckTensorFormat(context, config, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "params format is invalid.");
-        return ge::GRAPH_FAILED;
-    }
-
+    OP_TILING_CHECK(CheckTensorFormat(context, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "params format is invalid."), return ge::GRAPH_FAILED);
+    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -969,21 +932,15 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context,
 static ge::graphStatus CheckAndSetInput(const gert::TilingContext *context, MegaMoeTilingData *tilingData,
     MegaMoeConfig &config, const char *nodeName)
 {
-    if (TilingCheckMegaMoe(context, config, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "check input failed.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(TilingCheckMegaMoe(context, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "check input failed."), return ge::GRAPH_FAILED);
 
-    if (CheckInputParam(context, config, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "check input param failed.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckInputParam(context, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "check input param failed."), return ge::GRAPH_FAILED);
 
-    if (SetInputParam(context, tilingData, config) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "set input param failed.");
-        return ge::GRAPH_FAILED;
-    }
-
+    OP_TILING_CHECK(SetInputParam(context, tilingData, config) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "set input param failed."), return ge::GRAPH_FAILED);
+    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -997,10 +954,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
         return ge::GRAPH_FAILED);
 
     // Input check & set
-    if (CheckAndSetInput(context, tilingData, config, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "Check and set input failed.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckAndSetInput(context, tilingData, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "Check and set input failed."), return ge::GRAPH_FAILED);
 
     // Platform Info
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -1008,12 +963,11 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     tilingData->aicNum = aicNum;
     tilingData->blockAivNum = aivNum;
-    if (aivNum <= 0 || aicNum <= 0) {
+    OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
             (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),
-            "should both be > 0");
-        return ge::GRAPH_FAILED;
-    }
+            "should both be > 0"),
+        return ge::GRAPH_FAILED);
 
     uint64_t ubSize = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
@@ -1022,10 +976,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     OP_LOGI(nodeName, "TilingData Init: aivNum: %u, aicNum: %u, ubSize:%lu \n", aivNum, aicNum, ubSize);
 
     // Attr check & set
-    if (CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "Getting attr failed.");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
 
     // Cal TilingKey
     uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
@@ -1034,10 +986,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
 
     // WorkspaceSize
     WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData);
-    if (SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED) {
-        OP_LOGE(nodeName, "Tiling set workspace Failed");
-        return ge::GRAPH_FAILED;
-    }
+    OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
+                    OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
     // Print Info
     PrintMegaMoeTilingData(tilingData, nodeName);
