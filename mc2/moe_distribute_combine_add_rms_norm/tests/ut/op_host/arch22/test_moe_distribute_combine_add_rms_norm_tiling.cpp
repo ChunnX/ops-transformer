@@ -124,7 +124,7 @@ TEST_P(MoeDistributeCombineAddRmsNormArch22TilingTest, CommonTest)
     if (testParam.status == ge::GRAPH_FAILED) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
     } else {
-        uint64_t expectTilingKey = 32UL;
+        uint64_t expectTilingKey = 16UL;
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
     }
 }

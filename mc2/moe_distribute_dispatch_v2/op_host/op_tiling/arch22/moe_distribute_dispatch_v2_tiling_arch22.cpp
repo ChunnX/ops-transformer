@@ -42,7 +42,6 @@ using namespace AscendC;
 using namespace ge;
 
 namespace {
-constexpr int64_t MAX_TP_WORLD_SIZE = 2;
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 constexpr uint32_t ATTR_COMM_ALG_INDEX = 13;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 2;
@@ -132,7 +131,6 @@ static ge::graphStatus MoeDistributeDispatchA2CheckCommAlg(const gert::TilingCon
 
 static uint64_t MoeDistributeDispatchA2CalcTilingKey(const gert::TilingContext *context, const bool isLayered)
 {
-    bool tp = false;
     bool scaleMode = false;
     uint32_t commMode = TILINGKEY_TPL_MTE;
 
@@ -144,7 +142,7 @@ static uint64_t MoeDistributeDispatchA2CalcTilingKey(const gert::TilingContext *
     if (isScales) {
         scaleMode = true;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, TILINGKEY_NO_QUANT, scaleMode,
+    uint64_t tilingKey = GET_TPL_TILING_KEY(TILINGKEY_NO_QUANT, scaleMode,
                                             TILINGKEY_NO_FULLMESH, commMode, TILINGKEY_TPL_A2);
     OP_LOGD(K_INNER_DEBUG, "tilingKey=%lu", tilingKey);
 
@@ -292,6 +290,9 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
     }
     OP_TILING_CHECK(tpWorldSizePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpWorldSize"), return GRAPH_FAILED);
+    OP_TILING_CHECK(*tpWorldSizePtr >= 2,
+        OP_LOGE(K_INNER_DEBUG, "tpWorldSize >= 2 is NOT supported, got tpWorldSize=%ld.", *tpWorldSizePtr),
+        return GRAPH_FAILED);
     OP_TILING_CHECK(tpRankIdPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpRankId"), return GRAPH_FAILED);
     OP_TILING_CHECK(expertSharedTypePtr == nullptr,
@@ -381,9 +382,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
     OP_LOGD(K_INNER_DEBUG, "sharedExpertRankNum=%d", info.sharedExpertRankNum);
     OP_LOGD(K_INNER_DEBUG, "moeExpertNum=%d", info.moeExpertNum);
     OP_LOGD(K_INNER_DEBUG, "epWorldSize=%d", info.epWorldSize);
-    OP_LOGD(K_INNER_DEBUG, "tpWorldSize=%d", info.tpWorldSize);
     OP_LOGD(K_INNER_DEBUG, "epRankId=%d", info.epRankId);
-    OP_LOGD(K_INNER_DEBUG, "tpRankId=%d", info.tpRankId);
     OP_LOGD(K_INNER_DEBUG, "zeroComputeExpertNum=%d", info.zeroComputeExpertNum);
     OP_LOGD(K_INNER_DEBUG, "maxMoeExpertNum=%d", info.maxMoeExpertNum);
 
@@ -553,10 +552,9 @@ static ge::graphStatus MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(
 }
 
 uint64_t MoeDistributeDispatchV2TilingFuncA2A3::CalTilingKey(const bool isScales, const uint32_t quantMode,
-    const uint32_t tpWorldSize, const bool isSetFullMeshV2, bool isLayered)
+    const bool isSetFullMeshV2, bool isLayered)
 {
     uint32_t templateDispatch = TILINGKEY_NO_FULLMESH;
-    bool tp = false;
     uint32_t tilingKeyQuantMode = quantMode;
     bool scaleMode = false;
     uint64_t tilingKey;
@@ -570,10 +568,7 @@ uint64_t MoeDistributeDispatchV2TilingFuncA2A3::CalTilingKey(const bool isScales
     if (isLayered) {
         templateDispatch = TILINGKEY_ENABLE_HIERARCHY;
     }
-    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
-        tp = true;
-    }
-    tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode,
+    tilingKey = GET_TPL_TILING_KEY(tilingKeyQuantMode, scaleMode,
         templateDispatch, commMode, TILINGKEY_TPL_A3);
     return tilingKey;
 }
