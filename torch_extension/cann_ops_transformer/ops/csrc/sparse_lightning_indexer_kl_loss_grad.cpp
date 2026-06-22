@@ -10,12 +10,13 @@
 
 #include <torch/extension.h>
 #include <string>
+#include <tuple>
 #include "aclnn_common.h"
 
 namespace op_api {
 constexpr int64_t SLI_KL_LOSS_GRAD_METADATA_SIZE = 64;
 
-at::Device get_metadata_output_device(
+at::Device get_sparse_lightning_kl_loss_grad_metadata_device(
     const c10::optional<at::Tensor> &cu_seqlens_q,
     const c10::optional<at::Tensor> &cu_seqlens_k,
     const c10::optional<at::Tensor> &seqused_q,
@@ -40,7 +41,7 @@ at::Device get_metadata_output_device(
     return at::Device(torch_npu::utils::get_npu_device_type());
 }
 
-at::Tensor npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+at::Tensor sparse_lightning_indexer_kl_loss_grad_metadata(
     int64_t num_heads_q,
     int64_t num_heads_k,
     int64_t head_dim,
@@ -60,7 +61,7 @@ at::Tensor npu_sparse_lightning_indexer_kl_loss_grad_metadata(
 {
     at::Tensor output = at::empty(
         {SLI_KL_LOSS_GRAD_METADATA_SIZE},
-        at::TensorOptions().dtype(at::kInt).device(get_metadata_output_device(
+        at::TensorOptions().dtype(at::kInt).device(get_sparse_lightning_kl_loss_grad_metadata_device(
             cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k)));
 
     char *layout_q_ptr = const_cast<char *>(layout_q.c_str());
@@ -74,12 +75,49 @@ at::Tensor npu_sparse_lightning_indexer_kl_loss_grad_metadata(
     return output;
 }
 
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> sparse_lightning_indexer_kl_loss_grad(
+    const at::Tensor &q,
+    const at::Tensor &k,
+    const at::Tensor &w,
+    const at::Tensor &sparse_indices,
+    const at::Tensor &attn_softmax_l1_norm,
+    const c10::optional<at::Tensor> &cu_seqlens_q,
+    const c10::optional<at::Tensor> &cu_seqlens_k,
+    const c10::optional<at::Tensor> &seqused_q,
+    const c10::optional<at::Tensor> &seqused_k,
+    const c10::optional<at::Tensor> &cmp_residual_k,
+    const c10::optional<at::Tensor> &metadata,
+    std::string layout_q,
+    std::string layout_k,
+    int64_t mask_mode,
+    int64_t cmp_ratio)
+{
+    at::Tensor dq = at::empty_like(q);
+    at::Tensor dk = at::empty_like(k);
+    at::Tensor dw = at::empty_like(w);
+    at::Tensor softmax_out = at::empty_like(attn_softmax_l1_norm);
+
+    char *layout_q_ptr = const_cast<char *>(layout_q.c_str());
+    char *layout_k_ptr = const_cast<char *>(layout_k.c_str());
+
+    ACLNN_CMD(aclnnSparseLightningIndexerKLLossGrad,
+        q, k, w, sparse_indices, attn_softmax_l1_norm, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, metadata, layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio,
+        dq, dk, dw, softmax_out);
+
+    return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(dq, dk, dw, softmax_out);
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def(
-        "npu_sparse_lightning_indexer_kl_loss_grad_metadata",
-        &npu_sparse_lightning_indexer_kl_loss_grad_metadata,
-        "npu_sparse_lightning_indexer_kl_loss_grad_metadata");
+        "sparse_lightning_indexer_kl_loss_grad_metadata",
+        &sparse_lightning_indexer_kl_loss_grad_metadata,
+        "sparse_lightning_indexer_kl_loss_grad_metadata");
+    m.def(
+        "sparse_lightning_indexer_kl_loss_grad",
+        &sparse_lightning_indexer_kl_loss_grad,
+        "sparse_lightning_indexer_kl_loss_grad");
 }
 
 }  // namespace op_api
