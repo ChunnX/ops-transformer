@@ -72,7 +72,7 @@ __global__ __aicore__ void quant_lightning_indexer_v2(__gm__ uint8_t *query, __g
     } else {
         INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, int8_t, int8_t, float, uint16_t, int32_t,
                                 PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
-                                float, half, int32_t);
+                                float, float, int32_t);
     }
 #else
     INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, int8_t, int8_t, float, uint16_t, int32_t,

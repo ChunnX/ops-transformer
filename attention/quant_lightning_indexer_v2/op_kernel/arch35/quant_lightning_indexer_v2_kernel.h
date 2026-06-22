@@ -521,8 +521,8 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
         if constexpr (!IS_MXFP8) {
-            qScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)queryScale);
-            kScaleGm.SetGlobalBuffer((__gm__ SCALE_T *)keyScale);
+            qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
+            kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
         }
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
