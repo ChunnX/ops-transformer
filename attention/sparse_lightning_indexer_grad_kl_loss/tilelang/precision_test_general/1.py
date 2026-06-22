@@ -4,25 +4,21 @@ import tilelang.language as T
 
 tilelang.disable_cache()
 
-
 @tilelang.jit(out_idx=[-1])
 def test_indirect(N, dtype="float16"):
     @T.prim_func
     def main(
-        Src: T.Tensor((N,), dtype),  # 源数据
-        Idx: T.Tensor((2,), "int32"),  # 索引值
-        Dst: T.Tensor((2,), dtype),  # 输出
+        Src: T.Tensor((N,), dtype),
+        Idx: T.Tensor((2,), "int32"),
+        Dst: T.Tensor((2,), dtype),
     ):
         with T.Kernel(1, is_npu=True) as (cid, vid):
             with T.Scope("V"):
+                idx_ub = T.alloc_ub(1, "int32")
                 for i in T.serial(2):
-                    # 关键测试：用变量做索引
-                    idx_val = T.alloc_var("int32")
-                    T.copy(Idx[i], idx_val)
-                    T.copy(Src[idx_val], Dst[i])
-
+                    T.copy(Idx[i], idx_ub)
+                    T.copy(Src[idx_ub[0]], Dst[i])
     return main
-
 
 N = 128
 src = torch.arange(N, dtype=torch.float16).npu()
