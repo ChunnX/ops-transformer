@@ -520,8 +520,8 @@ public:
     ge::graphStatus GetKvCache();
 
     ge::graphStatus GetInOutDataType();
-    ge::graphStatus GetBatchSize();
     ge::graphStatus GetQTSize();
+    ge::graphStatus GetBatchSize();
     ge::graphStatus GetKVTSize();
     ge::graphStatus GetQHeadDim();
     ge::graphStatus GetKHeadDim();
@@ -544,6 +544,7 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
+    ge::graphStatus GetShapeAndSizeInfo();
     void GenerateInfo(QSFATilingInfo &qsfaInfo);
     ge::graphStatus Parse(QSFATilingInfo &qsfaInfo);
 
