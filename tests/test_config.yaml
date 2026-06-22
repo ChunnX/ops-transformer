@@ -128,6 +128,7 @@ attention:
       - attention/fused_infer_attention_score/README.md
     ut_cov_exclude:
       - attention/fused_infer_attention_score/op_kernel
+      - attention/fused_infer_attention_score/op_api
       - attention/fused_infer_attention_score/tests
       - attention/fused_infer_attention_score/op_host/arch22
     test:
@@ -303,6 +304,7 @@ attention:
         - attention/mla_prolog/docs
         - attention/mla_prolog/tests
         - attention/mla_prolog/op_kernel
+        - attention/mla_prolog/op_api
         - attention/mla_prolog_v2/examples
         - attention/mla_prolog_v2/docs
         - attention/mla_prolog/op_graph
