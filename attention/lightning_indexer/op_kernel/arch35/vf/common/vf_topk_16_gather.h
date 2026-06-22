@@ -21,7 +21,7 @@ namespace topkb16gather {
 template <typename T>
 __aicore__ inline T TopKGatherAlign(T num, T rnd)
 {
-    return (rnd == 0) ? 0 : ((num + rnd - 1) / rnd * rnd);
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
 template<typename T>
