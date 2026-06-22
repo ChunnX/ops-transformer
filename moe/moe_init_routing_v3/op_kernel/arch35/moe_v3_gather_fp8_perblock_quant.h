@@ -245,7 +245,9 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::InitBuffer()
 {
     int64_t inQueueBuffer = AlignBytes(perLoopCols_, sizeof(T));
     int64_t outQueueBuffer = AlignBytes(perLoopCols_, sizeof(U));
-    int64_t scaleQueueBuffer = AlignBytes(perLoopScaleCols_, sizeof(float));
+    // scale buffer至少分配一个VReg大小，避免Duplicate等向量指令写入时溢出
+    int64_t scaleQueueBuffer = Max(static_cast<int64_t>(AlignBytes(perLoopScaleCols_, sizeof(float))),
+                                   static_cast<int64_t>(AscendC::VECTOR_REG_WIDTH));
 
     pipe_->InitBuffer(inQueue_, GATHER_OUT_BUFFER_NUM, inQueueBuffer);
     pipe_->InitBuffer(outQueue_, GATHER_OUT_BUFFER_NUM, outQueueBuffer);
@@ -300,6 +302,7 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyExpandedXandFP8Qu
             CopyOut(dstIdx, j, loopCols, loopScaleCols);
         }
     }
+    sortedRowIdxInQueue_.FreeTensor(indicesLocal);
 }
 
 template <typename T, typename U>
