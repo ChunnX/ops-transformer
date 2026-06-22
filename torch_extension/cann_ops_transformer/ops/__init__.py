@@ -46,3 +46,5 @@ from .graph_convert.graph_convert_kv_compress_epilog import convert_kv_compress_
 from .graph_convert.graph_convert_indexer_quant_cache import convert_indexer_quant_cache
 from .moe_init_routing import moe_init_routing
 from .graph_convert.graph_convert_moe_init_routing import convert_npu_moe_init_routing
+from .moe_re_routing import moe_re_routing
+from .graph_convert.graph_convert_moe_re_routing import convert_npu_moe_re_routing
