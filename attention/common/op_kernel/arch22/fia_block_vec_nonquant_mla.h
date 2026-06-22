@@ -51,6 +51,7 @@ public:
     static constexpr FIA_LAYOUT KV_LAYOUT_T = FIAT::kvLayout;
 
     static constexpr bool SOFTMAX_WITH_BRC = FIAT::softmaxWithBrc;
+    static constexpr bool ENABLE_TREE = FIAT::enableTree;
     using UPDATE_T = T;
     using TMP_T = T;
     using COMPUTE_T = T;
@@ -460,7 +461,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         // TND场景下mask传入∑s1²，其余场景传入[B,S1,S1]
         LocalTensor<bool> maskUb = inputBuff2.Get<bool>();
         maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
-        if (maskInfo.sparseMode == fa_base_vector::TREE) {
+        if constexpr (ENABLE_TREE) {
             LocalTensor<int16_t> mask16 = maskUb.template ReinterpretCast<int16_t>();
             AscendC::Duplicate(mask16, static_cast<int16_t>(0), INPUT2_BUFFER_OFFSET / sizeof(int16_t));
             maskUb = mask16.template ReinterpretCast<bool>();
@@ -478,13 +479,10 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         }
         LocalTensor<bool> attenMaskTmpUb = attenMaskTmpBuff.Get<bool>();
         LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
-        if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
+        if (!fa_base_vector::IsSkipAttentionmask<ENABLE_TREE>(maskInfo)) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
-            if (maskInfo.sparseMode == fa_base_vector::TREE) {
-                fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
-            } else {
-                fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
-            }
+            fa_base_vector::AttentionmaskCopyIn<bool, bool, ENABLE_TREE>(maskUb, attenMaskBoolGm, attenMaskTmpUb,
+                maskInfo);
             AscendC::PipeBarrier<PIPE_V>();
             fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
@@ -494,7 +492,8 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
             attenMaskTmpUb = attenMaskTmpBuff.Get<bool>(); // 后续改成attenMaskTmpBuff，加上pingpong
             maskUb = inputBuff2.Get<bool>();
             maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
-            fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
+            fa_base_vector::AttentionmaskCopyIn<bool, bool, ENABLE_TREE>(maskUb, attenMaskBoolGm, attenMaskTmpUb,
+                maskInfo, true);
             fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
         }
@@ -734,7 +733,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessAmlaNupdate(const At
     constexpr uint32_t dGroupSize = 128U;
     constexpr uint32_t mSplitSize = 64U; // tmpQue size 32KB，一次只能处理64个N，最大保存的数据大小：64*128*sizeof(int32)
     constexpr uint32_t ONE_BLOCK_SIZE = 32U; // 32B
-    uint32_t subMSize = Align(mSplitInfo.vecDealM, 16U);
+    uint32_t subMSize = AttentionCommon::Align(mSplitInfo.vecDealM, 16U);
     constexpr uint16_t elementPerBlock = ONE_BLOCK_SIZE / sizeof(int32_t); // 单个datablock的元素数，int32_t类型的为32/4=8
     
     uint32_t loopCount = (subMSize + mSplitSize - 1) / mSplitSize;

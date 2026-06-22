@@ -11,7 +11,7 @@
 /*!
  * \file fia_tiling_nonquant.h
  * \brief
-*/
+ */
 #ifndef FIA_TILING_NONQUANT_GQA_H
 #define FIA_TILING_NONQUANT_GQA_H
 
@@ -57,9 +57,7 @@ struct FiaPlatFormInfo {
     uint64_t defaultSysWorkspaceSize = 0;
 };
 
-// TODO，删除无效变量
-
-class FiaTilingNonQuantArch35 : public FiaTilingBase { // TODO，类名与A3一致会报重复定义，是否要保持一致？
+class FiaTilingNonQuantArch35 : public FiaTilingBase {
 public:
     explicit FiaTilingNonQuantArch35(gert::TilingContext *context) : FiaTilingBase(context)
     {
@@ -87,9 +85,9 @@ private:
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void AdjustSinnerAndSouter();
-    void GetPreNextTokensLeftUp(int64_t actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
+    void GetPreNextTokensLeftUp(int64_t actualSeqLengthQ, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
                                 int64_t &nextTokensLeftUp);
-    void FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
+    void FixParamWithRowInvalid(int64_t &actualSeqLengthQ, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
                                 int64_t &nextTokensLeftUp);
     void InitImplParam();
     bool IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo);
