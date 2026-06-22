@@ -87,6 +87,9 @@ static constexpr size_t GROUP_LIST_SPARSE_DIM_NUM = 2UL;
 static constexpr int ANTIQUANT_SCALE_3D_DIMS = 3;
 static constexpr int ANTIQUANT_SCALE_4D_DIMS = 4;
 static constexpr int SCALE_TENSOR_EXPECTED_DIMS = 2;
+
+static constexpr int64_t MULTI_WEIGHT_DIM = 2L;
+
 static bool IsFormatNZWithC0(const aclTensor *tensor)
 {
     return ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ_C0_2 ||
@@ -2052,7 +2055,7 @@ static aclnnStatus CheckCaseNoSplit(const gmm::GroupedMatmulParams &gmmParams, c
 
 static bool IsMultiTensorWeight(const gmm::GroupedMatmulParams &gmmParams)
 {
-    return (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MX_A8W4_MULTI_WEIGHT_DIM;
+    return (*gmmParams.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
 }
 
 static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
@@ -2082,7 +2085,7 @@ static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &
         if (gmmParams.groupType == gmm::SPLIT_M) {
             size_t batchSizeWeight = (*gmmParams.weight)[0]->GetViewShape().GetDim(0);
             if (IsMultiTensorWeight(gmmParams)) {
-                batchSizeWeight = gmmParams.weight->size();
+                batchSizeWeight = gmmParams.weight->Size();
             }
             CHECK_COND(CheckGroupListSplitM(gmmParams, true, false, false, batchSizeWeight, opName) == ACLNN_SUCCESS,
                        ACLNN_ERR_PARAM_INVALID,
