@@ -328,7 +328,7 @@ public:
 
     void GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
                              const CommProtocol &protocol, const CommEngine &engine,
-                             std::vector<ChannelHandle> &channels, uint32_t &rankSizePerServer)
+                             std::vector<ChannelHandle> &channels, uint32_t &rankSizePerServer, CommContext *commContextStruct)
     {
         ASCEND_LOGI("Start to get HCCL communication channel");
         uint32_t channelNum = rankDim - 1;
@@ -345,7 +345,7 @@ public:
 
         InitHcclChannel(commHandle, rankDim, srcRankId, protocol, channelDesc);
 
-        auto hcclRet = HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, channels.data());
+        auto hcclRet = HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, commContextStruct->hcommHandle_);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire HCCL channel failed, ret: ", hcclRet);
     }
 
@@ -359,7 +359,7 @@ public:
         std::vector<ChannelHandle> channels;
 
         uint32_t rankSizePerServer = 0;
-        GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer);
+        GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer, commContextStruct);
         commContextStruct->rankSizePerServer = rankSizePerServer;
         ASCEND_LOGI("Get HCCL communication channel success, channel num is: %zu", channels.size());
 
@@ -372,7 +372,7 @@ public:
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, channels[idx], &tempBuffer, &bufSize);
+                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
             }
 
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
@@ -405,37 +405,34 @@ public:
         return maxWindowSize;
     }
 
+    // uint64_t maxWindowSize = 0;//GetHcclBufferMaxSize();
     // ---- URMA (UBC_CTP) resource helpers ----
     // 参考mc2_context.cpp，URMA协议使用独立的hcommHandle_存储channel句柄，urmacclBuffer_存储buffer
-    void GetUrmaCommResource(const HcclComm &commHandle, const CommEngine &engine,
+    void GetUrmaCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
                               CommContext *commContextStruct, uint32_t rankSize, uint64_t &hcclBuffSize)
     {
         ASCEND_LOGI("Start to get URMA communication resource");
         uint32_t rankId = commContextStruct->epRankId;
-        uint32_t channelNum = rankSize - 1;
-        CommProtocol urmaProtocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
-        std::vector<HcclChannelDesc> channelDesc(channelNum);
+        std::vector<ChannelHandle> channels;
 
-        InitHcclChannel(commHandle, rankSize, rankId, urmaProtocol, channelDesc);
-
-        // 将URMA channel句柄存入hcommHandle_，参考mc2_context.cpp中的HcclChannelAcquire用法
-        auto hcclRet = HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum,
-            commContextStruct->hcommHandle_);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire URMA HCCL channel failed, ret: ", hcclRet);
-        ASCEND_LOGI("Acquire URMA HCCL channel success, channel num is: %u", channelNum);
-        uint64_t maxWindowSize = 0;//GetHcclBufferMaxSize();
+        uint32_t rankSizePerServer = 0;
+        GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer, commContextStruct);
+        commContextStruct->rankSizePerServer = rankSizePerServer;
+        ASCEND_LOGI("Get URMA communication channel success, channel num is: %zu", channels.size());
+        uint64_t maxWindowSize = GetHcclBufferMaxSize();
         for (uint32_t i = 0; i < rankSize; ++i) {
             void *tempBuffer = nullptr;
             uint64_t bufSize = 0;
+            HcclResult hcclRet;
 
             if (i == rankId) {
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle,commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
+                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
             }
 
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get URMA HCCL buffer failed, src: ", rankId, ", dst: ", i,
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
                         ", ret: ", hcclRet);
 
             commContextStruct->urmacclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer + maxWindowSize);
@@ -464,10 +461,11 @@ public:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
-        // GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
+        GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
 
+        protocol == CommProtocol::COMM_PROTOCOL_UBC_CTP;
         // 获取URMA(UBC_CTP)协议的通信资源，存入hcommHandle_和urmacclBuffer_
-        GetUrmaCommResource(commHandle, engine, commContextStruct, rankSize, hcclBuffSize);
+        GetUrmaCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
 
         hcclRet =
             HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), commContextStruct, commContextSize, 0);
