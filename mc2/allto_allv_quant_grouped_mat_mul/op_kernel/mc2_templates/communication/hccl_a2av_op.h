@@ -62,19 +62,6 @@ public:
         for (int i = 0; i < e_ * rankDim_; i++) {
             recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         }
-    }
-
-    __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum)
-    {
-        if ASCEND_IS_AIC {
-            return;
-        }
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() != 0) {
-                return;
-            }
-        }
-        // comm hccl datatype
         if constexpr (AscendC::IsSameType<hcclDataType, bfloat16_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_BFP16;
         } else if constexpr (AscendC::IsSameType<hcclDataType, half>::value) {
@@ -90,6 +77,18 @@ public:
         } else {
             hcclDataType_ = HCCL_DATA_TYPE_INT8;
         }
+    }
+
+    __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum)
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
         // comm and compute order
         if constexpr (commBeforeComputeFlag) {
             LaunchCommBeforeCompute(startExpertIdx, expertNum);
@@ -98,20 +97,15 @@ public:
         }
     }
 
-    // sendBuffer: scale发送缓冲区
-    // permuteOutBuffer: scale重排后的输出缓冲区（按专家排列），用于GMM计算
-    // commOutBuffer: scale AlltoAllV通信输出缓冲区（按rank排列），用于PermuteScale输入
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer)
     {
         sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)sendBuffer);
         recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)commOutBuffer);
         scalePermuteOutBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)permuteOutBuffer);
-        // 初始化scale重排用的UB Buffer
         TPipe *pipe = GetTPipePtr();
         pipe->InitBuffer(scaleTBuf_, taskTilingInfo_->ubSize);
     }
 
-    // PermuteScale: 将scaleCommOutBuffer（按rank排列）重排到recvScaleGlobalBuffer（按专家排列）
     __aicore__ inline void PermuteScale()
     {
         if ASCEND_IS_AIC {
@@ -277,12 +271,244 @@ public:
         }
     }
 
-    __aicore__ inline void End()
+    __aicore__ inline void LaunchCombinedAic(uint32_t turnIdx, uint32_t realCombineSize)
     {
-        SyncAll<false>();
+        if ASCEND_IS_AIV {
+            return;
+        }
+        if ASCEND_IS_AIC {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        uint32_t startExpertIdx = turnIdx * taskTilingInfo_->combineExpertSize;
+        const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
+        uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
+        for (uint64_t i = 0UL; i < rankDim_; i++) {
+            alltoAllvSendCnt[i] = 0UL;
+            alltoAllvRecvCnt[i] = 0UL;
+            for (uint64_t j = 0UL; j < realCombineSize; j++) {
+                alltoAllvSendCnt[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + j + i * e_]) * axis;
+                alltoAllvRecvCnt[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + j + i * e_]) * axis;
+            }
+        }
+        alltoAllvSendOffset[0] = 0UL;
+        for (uint32_t j = 0U; j < startExpertIdx; j++) {
+            alltoAllvSendOffset[0] += static_cast<uint64_t>(sendCnt[j]) * axis;
+        }
+        for (uint32_t i = 1U; i < rankDim_; i++) {
+            alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U];
+            for (uint32_t j = 0U; j < e_; j++) {
+                alltoAllvSendOffset[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + (i - 1U) * e_ + j]) * axis;
+            }
+        }
+        for (uint32_t i = 0U; i < rankDim_; i++) {
+            alltoAllvRecvOffset[i] = alltoAllvRecvOffsetLastSum;
+            alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
+        }
+        // AscendC::printf(
+        //     "alltoAllvHandleId_[%d], sendGlobalBuffer_.GetPhyAddr() = [%d], recvGlobalBuffer_.GetPhyAddr() = [%d]\n",
+        //     turnIdx, sendGlobalBuffer_.GetPhyAddr(), recvGlobalBuffer_.GetPhyAddr());
+        // AscendC::printf("alltoallv sendGlobalBuffer_ turnIdx = %d\n", turnIdx);
+        AscendC::DumpTensor(sendGlobalBuffer_, 0, 16);
+        alltoAllvHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
+            (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
+            (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
+    }
+
+    __aicore__ inline void WaitCombinedAic(uint32_t turnIdx)
+    {
+        if ASCEND_IS_AIV {
+            return;
+        }
+        if ASCEND_IS_AIC {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        hccl_.Wait(alltoAllvHandleId_[turnIdx]);
+    }
+
+    __aicore__ inline void LaunchScaleCombinedAic(uint32_t turnIdx, uint32_t realCombineSize)
+    {
+        if ASCEND_IS_AIV {
+            return;
+        }
+        if ASCEND_IS_AIC {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        uint32_t startExpertIdx = turnIdx * taskTilingInfo_->combineExpertSize;
+        const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
+        uint64_t scaleAxis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
+        for (uint64_t i = 0UL; i < rankDim_; i++) {
+            alltoAllvScaleSendCnt[i] = 0UL;
+            alltoAllvScaleRecvCnt[i] = 0UL;
+            for (uint64_t j = 0UL; j < realCombineSize; j++) {
+                alltoAllvScaleSendCnt[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + j + i * e_]) * scaleAxis;
+                alltoAllvScaleRecvCnt[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + j + i * e_]) * scaleAxis;
+            }
+        }
+        alltoAllvScaleSendOffset[0] = 0UL;
+        for (uint32_t j = 0U; j < startExpertIdx; j++) {
+            alltoAllvScaleSendOffset[0] += static_cast<uint64_t>(sendCnt[j]) * scaleAxis;
+        }
+        for (uint32_t i = 1U; i < rankDim_; i++) {
+            alltoAllvScaleSendOffset[i] = alltoAllvScaleSendOffset[i - 1U];
+            for (uint32_t j = 0U; j < e_; j++) {
+                alltoAllvScaleSendOffset[i] += static_cast<uint64_t>(sendCnt[startExpertIdx + (i - 1U) * e_ + j]) * scaleAxis;
+            }
+        }
+        for (uint32_t i = 0U; i < rankDim_; i++) {
+            alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffsetLastSum;
+            alltoAllvScaleRecvOffsetLastSum += alltoAllvScaleRecvCnt[i];
+        }
+        alltoAllvScaleHandleId_[turnIdx] = hccl_.template AlltoAllV<true>(
+            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
+            HCCL_DATA_TYPE_FP8E8M0,
+            (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt, alltoAllvScaleRecvOffset,
+            HCCL_DATA_TYPE_FP8E8M0);
+    }
+
+    __aicore__ inline void WaitScaleCombinedAic(uint32_t turnIdx)
+    {
+        if ASCEND_IS_AIV {
+            return;
+        }
+        if ASCEND_IS_AIC {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        hccl_.Wait(alltoAllvScaleHandleId_[turnIdx]);
+    }
+
+    __aicore__ inline void InitOutputPermuteBuffer(GM_ADDR srcBuffer, GM_ADDR dstBuffer)
+    {
         if ASCEND_IS_AIC {
             return;
         }
+        outputPermuteSrcBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)srcBuffer);
+        outputPermuteDstBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)dstBuffer);
+        TPipe *pipe = GetTPipePtr();
+        uint64_t halfUbLen = taskTilingInfo_->ubSize / 2;
+        pipe->InitBuffer(outputPermuteBufPing_, halfUbLen);
+        pipe->InitBuffer(outputPermuteBufPong_, halfUbLen);
+    }
+
+    __aicore__ inline void PermuteOutput(uint32_t turnIdx, uint32_t realCombineSize)
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        // AscendC::printf("outputPermuteSrcBuffer_.GetPhyAddr() = %d\n", outputPermuteSrcBuffer_.GetPhyAddr());
+        // AscendC::printf("outputPermuteDstBuffer_.GetPhyAddr() = %d\n", outputPermuteDstBuffer_.GetPhyAddr());
+
+        uint32_t startExpertIdx = turnIdx * taskTilingInfo_->combineExpertSize;
+        uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
+        static constexpr uint64_t DATACOPY_MAX_BLOCK_LEN = 65535UL;
+
+        uint32_t totalPairs     = realCombineSize * rankDim_; // 总块数
+        uint32_t pairsPerBlock  = totalPairs / GetBlockNum(); // 每个核处理的块数
+        uint32_t pairsRemainder = totalPairs % GetBlockNum(); // 剩余块数
+        uint32_t pairStart      = GetBlockIdx() * pairsPerBlock +
+                                (GetBlockIdx() < pairsRemainder ? GetBlockIdx() : pairsRemainder);
+        uint32_t pairEnd        = pairStart + pairsPerBlock +
+                                (GetBlockIdx() < pairsRemainder ? 1U : 0U);
+        AscendC::printf("PermuteOutput pairStart = %d\n, pairEnd = %d\n", pairStart, pairEnd);
+
+        uint64_t recvSumCntSrc[MAX_EXPERT_SIZE] = {0UL};
+        uint64_t recvSumCntDst[MAX_EXPERT_SIZE] = {0UL};
+        for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+            for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
+                uint32_t posBefore = rankIndex * realCombineSize + localIdx;
+                uint32_t globalExpertIdx = startExpertIdx + localIdx;
+                uint64_t cnt = static_cast<uint64_t>(recvCounts_[globalExpertIdx + rankIndex * e_]);
+                recvSumCntSrc[posBefore] = cnt * axis;
+                if (posBefore != 0U) {
+                    recvSumCntSrc[posBefore] += recvSumCntSrc[posBefore - 1U];
+                }
+            }
+        }
+        for (uint32_t localIdx = 0U; localIdx < realCombineSize; localIdx++) {
+            for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+                uint32_t posAfter = localIdx * rankDim_ + rankIndex;
+                uint32_t globalExpertIdx = startExpertIdx + localIdx;
+                recvSumCntDst[posAfter] = static_cast<uint64_t>(recvCounts_[globalExpertIdx + rankIndex * e_]) * axis;
+                if (posAfter != 0U) {
+                    recvSumCntDst[posAfter] += recvSumCntDst[posAfter - 1U];
+                }
+            }
+        }
+        TPipe *permutePipe = GetTPipePtr();
+        LocalTensor<hcclDataType> ubBuf = outputPermuteBufPing_.Get<hcclDataType>();
+        for (uint32_t pairIdx = pairStart; pairIdx < pairEnd; pairIdx++) {
+            uint32_t localIdx  = pairIdx % realCombineSize;
+            uint32_t rankIndex = pairIdx / realCombineSize;
+            uint32_t posBefore = rankIndex * realCombineSize + localIdx;
+            uint32_t posAfter  = localIdx * rankDim_ + rankIndex;
+            uint32_t globalExpertIdx = startExpertIdx + localIdx;
+            uint64_t srcOffset = outputPermuteSrcBaseOffset_;
+            if (posBefore != 0U) {
+                srcOffset += recvSumCntSrc[posBefore - 1U];
+            }
+            uint64_t dstOffset = outputPermuteDstBaseOffset_;
+            if (posAfter != 0U) {
+                dstOffset += recvSumCntDst[posAfter - 1U];
+            }
+            uint64_t totalCnt = static_cast<uint64_t>(recvCounts_[globalExpertIdx + rankIndex * e_]) * axis;
+
+            if (totalCnt == 0UL) {
+                continue;
+            }
+
+            uint64_t subBaseLen  = totalCnt / GetSubBlockNum();
+            uint64_t subRemainder = totalCnt % GetSubBlockNum();
+            uint64_t subStart = GetSubBlockIdx() * subBaseLen +
+                                (GetSubBlockIdx() < subRemainder ? GetSubBlockIdx() : subRemainder);
+            uint64_t subLen   = subBaseLen + ((GetSubBlockIdx() < subRemainder) ? 1UL : 0UL);
+
+            for (uint64_t tile = 0UL; tile * DATACOPY_MAX_BLOCK_LEN < subLen; tile++) {
+                uint64_t tileStart = subStart + tile * DATACOPY_MAX_BLOCK_LEN;
+                uint64_t remaining = subLen - tile * DATACOPY_MAX_BLOCK_LEN;
+                uint64_t tileLen = (remaining >= DATACOPY_MAX_BLOCK_LEN) ? DATACOPY_MAX_BLOCK_LEN : remaining;
+
+                DataCopyParams dataCopyParams{static_cast<uint16_t>(tileLen), 0U, 0U, 0U};
+                DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
+                AscendC::printf("DataCopyPad outputPermuteSrcBuffer_ srcOffset + tileStart = %d\n", srcOffset + tileStart);
+                DataCopyPad(ubBuf, outputPermuteSrcBuffer_[srcOffset + tileStart],
+                            dataCopyParams, dataCopyPadParams);
+                AscendC::DumpTensor(outputPermuteSrcBuffer_[srcOffset + tileStart], 111, 16);
+                for (int i = 0; i < 16; i++) {
+                    AscendC::printf("DataCopyPad ubBuf[%d] = %d\n", i, ubBuf.GetValue(i));
+                }
+                int32_t readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
+                SetFlag<HardEvent::MTE2_MTE3>(readEvent);
+                WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
+                AscendC::printf("DataCopyPad outputPermuteDstBuffer_ dstOffset + tileStart = %d\n", dstOffset + tileStart);
+                DataCopyPad(outputPermuteDstBuffer_[dstOffset + tileStart], ubBuf, dataCopyParams);
+                int32_t writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
+                SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
+            }
+        }
+
+        uint64_t turnTotalData = 0UL;
+        for (uint32_t pairIdx = 0U; pairIdx < totalPairs; pairIdx++) {
+            uint32_t localIdx  = pairIdx % realCombineSize;
+            uint32_t rankIndex = pairIdx / realCombineSize;
+            turnTotalData += static_cast<uint64_t>(recvCounts_[startExpertIdx + localIdx + rankIndex * e_]) * axis;
+        }
+        outputPermuteSrcBaseOffset_ += turnTotalData;
+        outputPermuteDstBaseOffset_ += turnTotalData;
+
+        SyncAll<true>();
+    }
+
+    __aicore__ inline void End()
+    {
+        SyncAll<false>();
         hccl_.Finalize();
     }
 
@@ -406,6 +632,13 @@ private:
 
     // recvCounts
     uint64_t recvCounts_[MAX_EXPERT_SIZE] = {0UL};
+
+    GlobalTensor<hcclDataType> outputPermuteSrcBuffer_;
+    GlobalTensor<hcclDataType> outputPermuteDstBuffer_;
+    TBuf<QuePosition::VECIN> outputPermuteBufPing_;
+    TBuf<QuePosition::VECIN> outputPermuteBufPong_;
+    uint64_t outputPermuteSrcBaseOffset_ = 0UL;
+    uint64_t outputPermuteDstBaseOffset_ = 0UL;
 };
 }; // namespace MC2KernelTemplate
 

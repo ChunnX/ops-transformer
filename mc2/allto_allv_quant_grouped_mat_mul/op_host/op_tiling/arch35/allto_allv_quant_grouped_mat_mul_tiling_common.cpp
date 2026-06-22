@@ -95,16 +95,40 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
+uint64_t AlltoAllvQuantGmmTilingCommon::GetCommOutSize() const
+{
+    uint64_t packFactor = (gmmXDataType_ == ge::DataType::DT_FLOAT4_E2M1) ? MXFP4_PACK_FACTOR : 1U;
+    uint64_t xTypeSize = ge::GetSizeByDataType(gmmXDataType_);
+    uint64_t commOutLen = Ops::Base::CeilAlign(
+        Ops::Base::CeilDiv(a_ * h1_, packFactor) * xTypeSize,
+        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    return commOutLen;
+}
+
+uint64_t AlltoAllvQuantGmmTilingCommon::GetScaleCommOutSize() const
+{
+    uint64_t hSize = Ops::Base::CeilDiv(h1_, static_cast<uint64_t>(MX_BASIC_FACTOR));
+    uint64_t scaleCommOutLen = Ops::Base::CeilAlign(
+        a_ * hSize * 2U * GetSizeByDataType(gmmWeightDataType_),
+        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    return scaleCommOutLen;
+}
+
 ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
 {
     OP_LOGD(context_->GetNodeName(), "start GetWorkspaceSize.");
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
         return ge::GRAPH_FAILED);
-    const uint64_t tensorListSize = 512;
+    const uint64_t tensorListSize = 512; // tensorListSize为kernel侧tensorlist开辟的空间
     uint64_t groupListSize = sizeof(int64_t) * e_; // GMM计算所需的groupList GM空间大小
-    // tensorListSize为kernel侧tensorlist开辟的空间
     workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize_ + permuteScaleOutSize_ + groupListSize + tensorListSize;
+    if (combineExpertSize_ > 1U) {
+        workspaces[0] += GetCommOutSize();
+        workspaces[0] += GetScaleCommOutSize();
+        uint64_t combinedGroupListSize = sizeof(int64_t) * combineExpertSize_ * epWorldSize_;
+        workspaces[0] += combinedGroupListSize;
+    }
     OP_LOGD(context_->GetNodeName(), "end GetWorkspaceSize.");
     return ge::GRAPH_SUCCESS;
 }
@@ -165,6 +189,15 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
         tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];
+    }
+    uint32_t callsPerTurn = (*gmmXQuantModePtr_ == static_cast<int64_t>(MX_QUANT_MODE)) ? 2U : 1U;
+    uint32_t maxCommTurn = MAX_COMM_CALLS / callsPerTurn;
+    combineExpertSize_ = static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(maxCommTurn)));
+    commTurn_ = static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(combineExpertSize_)));
+    tilingData->taskTilingInfo.combineExpertSize = combineExpertSize_;
+    tilingData->taskTilingInfo.commTurn = commTurn_;
+    if (combineExpertSize_ > 1U) {
+        tilingData->gmmQuantTilingData.gmmQuantParams.groupNum = combineExpertSize_ * static_cast<uint32_t>(epWorldSize_);
     }
     PrintTaskTilingInfo(tilingData->taskTilingInfo);
     OP_LOGD(context_->GetNodeName(), "end PostTiling.");

@@ -52,6 +52,7 @@ constexpr uint64_t MX_GROUP_SIZE_M = 1;
 constexpr uint64_t MX_GROUP_SIZE_N = 1;
 constexpr uint64_t MXFP4_PACK_FACTOR = 2;
 constexpr uint32_t SCALE_BATCH_THRESHOLD = 32;
+constexpr uint32_t MAX_COMM_CALLS = 63U; // HCCL handleId 上限
 // quant mode offset
 const std::vector<uint32_t> QUANT_MODE_MAP = {0, 0, 1, 2, 4, 5, 3};
 
@@ -82,8 +83,12 @@ protected:
     ge::graphStatus QuantGetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;
     void PrintGMMQuantTilingData(const Mc2GroupedMatmulTilingData::GMMQuantTilingData &data) const;
     void PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo &taskTilingInfo) const;
+    uint64_t GetCommOutSize() const;
+    uint64_t GetScaleCommOutSize() const;
     uint64_t permuteScaleOutSize_{0};
     uint64_t permuteOutSize_{0};
+    uint32_t combineExpertSize_{0};
+    uint32_t commTurn_{0};
 };
 }  // namespace optiling
 #endif  // ALLTO_ALLV_QUANT_GROUPED_MATMUL_TILING_COMMON_H
