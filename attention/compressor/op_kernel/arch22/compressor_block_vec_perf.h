@@ -198,6 +198,8 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::InitParams(const ConstIn
 {
     this->constInfo_ = constInfo;
     this->tools_ = tools;
+    coff_ = static_cast<uint32_t>(COMP::coff);
+    cmpRatio_ = constInfo.cmpRatio;
 }
 
 template <typename COMP>

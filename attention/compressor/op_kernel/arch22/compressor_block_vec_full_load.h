@@ -742,8 +742,8 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ReadState(
                                        0 :
                                        Trunc(sliceInfo.bStartPos + sliceInfo.sIdx, (uint64_t)cmpRatio_) - cmpRatio_;
             uint64_t endSeqIdx =
-                min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, (uint64_t)cmpRatio_) - cmpRatio_,
-                    sliceInfo.bStartPos);
+                min(Trunc(sliceInfo.bStartPos + sliceInfo.sIdx + sliceInfo.validSeqCnt, (uint64_t)cmpRatio_) -
+                cmpRatio_, sliceInfo.bStartPos);
             uint64_t dstBaseOffset = sliceInfo.compressoredScCnt * cmpRatio_ * coff_ * dDealSize;
             if (isFirst) {
                 dstBaseOffset += cmpRatio_ * coff_ * dDealSize;
@@ -795,8 +795,8 @@ CompressorBlockVectorFullLoad<COMP>::SaveToWorkSpace(const LocalTensor<T> &srcLo
     uint64_t srcLocalOffset =
         (sliceInfo.dealedSeqCnt + sliceInfo.validSeqCnt - min(sliceInfo.validSeqCnt, cmpRatio_)) * srcSingleRowElemNum;
     DataCopyWithOutputQue(cacheTcGm[dStartIdx], srcLocal[srcLocalOffset],
-                          curSeqLen - max((uint64_t)(curSeqLen - cmpRatio_), sliceInfo.bStartPos), dDealSize, coff_ * dDealSize,
-                          constInfo_.headDim);
+                          curSeqLen - max((uint64_t)(curSeqLen - cmpRatio_), sliceInfo.bStartPos),
+                          dDealSize, coff_ * dDealSize, constInfo_.headDim);
 }
 
 template <typename COMP>
