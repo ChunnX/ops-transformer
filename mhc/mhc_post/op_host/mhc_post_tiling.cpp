@@ -394,7 +394,7 @@ ge::graphStatus MhcPostTilingBase::CheckParam()
                 return ge::GRAPH_FAILED);
     
     if (socVer_ != SOC_VER_950_CODE){
-        int64_t n = xShape.GetDim(DIM_2);
+        int64_t n = xShape_->GetDim(DIM_2);
 
         OP_CHECK_IF(c <= 0 || c >= 100000 || c % 128 != 0,
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
