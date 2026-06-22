@@ -11,6 +11,7 @@
 #include <torch/extension.h>
 
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -97,6 +98,25 @@ constexpr int64_t MX_GROUP_SIZE = 64;
 constexpr int64_t MAX_GROUP_NUM = 1024;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0F;
 constexpr float FLOAT_EPS = 1e-6F;
+
+void PrintTorchTensorFormats(const at::Tensor &x, const at::Tensor &groupList, const at::Tensor &weightTensor,
+    const at::Tensor &weightScaleTensor, const at::Tensor &xScale, const at::Tensor &y, const at::Tensor &yScale)
+{
+    std::printf("[GMMAQ torch] raw npu formats: x=%ld, groupList=%ld, weight=%ld, weightScale=%ld, "
+                "xScale=%ld, y=%ld, yScale=%ld.\n",
+                static_cast<long>(at_npu::native::get_npu_format(x)),
+                static_cast<long>(at_npu::native::get_npu_format(groupList)),
+                static_cast<long>(at_npu::native::get_npu_format(weightTensor)),
+                static_cast<long>(at_npu::native::get_npu_format(weightScaleTensor)),
+                static_cast<long>(at_npu::native::get_npu_format(xScale)),
+                static_cast<long>(at_npu::native::get_npu_format(y)),
+                static_cast<long>(at_npu::native::get_npu_format(yScale)));
+    std::printf("[GMMAQ torch] acl wrapper formats: x=%d, groupList=%d, weight=%d, weightScale=%d, "
+                "xScale=%d, y=%d, yScale=%d.\n",
+                ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+                ACL_FORMAT_ND);
+    std::fflush(stdout);
+}
 
 bool IsKnownGeDtype(int64_t dtype)
 {
@@ -330,6 +350,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     TensorListWrapper biasWrapper = {biasRef, ACL_FLOAT};
     TensorWithFormatWrapper yWrapper = {y, static_cast<aclDataType>(yDtypeValue), ACL_FORMAT_ND};
     TensorWithFormatWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0, ACL_FORMAT_ND};
+    PrintTorchTensorFormats(x, groupList, weightTensor, weightScaleTensor, xScale, y, yScale);
     char *activationTypePtr = const_cast<char *>(activationType.c_str());
     char *quantModePtr = const_cast<char *>(quantMode.c_str());
     char *roundModePtr = const_cast<char *>(roundMode.c_str());
