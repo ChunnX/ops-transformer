@@ -227,7 +227,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     moeExpertNum_ = moeExpertNumPerRank_ * epWorldSize_;
 
     uint32_t numPerCore = (moeExpertNum_ + epWorldSize_) / aivNum_;
-    calRankCoreNum_ =  Ceil(epWorldSize_, numPerCore);
+    calRankCoreNum_ =  numPerCore > 0 ? Ceil(epWorldSize_, numPerCore) : epWorldSize_;
     calExpertCoreNum_ = aivNum_ - calRankCoreNum_;
 
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
@@ -444,8 +444,14 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
 
     if (aivId_ < calExpertCoreNum_) {  // 前面的核做per expert count计算
         SplitToCore(moeExpertNum_, calExpertCoreNum_, startId, endId, numPerCore, true);
+        if (startId > moeExpertNum_) {
+            return;
+        }
     } else {    // 后面的核做per rank count计算
         SplitToCore(epWorldSize_, calRankCoreNum_, startId, endId, numPerCore, false);
+        if (startId > epWorldSize_) {
+            return;
+        }
         // 两两一组，每组第一个位置填充1，作为状态位
         // uint64_t mask[2] = { 0x5555555555555555, 0 };
         // Duplicate<int32_t>(sendCntTensor_, 1, mask, maxSizePerCore / 64, 1, 8);
@@ -524,7 +530,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
         GM_ADDR remoteCountAddr = remoteStateAddr + cntPerRankSizeAlign512_ + epRankId_ * moeExpertNumPerRank_ * sizeof(int32_t);
         GM_ADDR srcWorkspaceAddr = sendCntWorkspaceAddr_ + cntPerRankSizeAlign512_ + dstRankId * moeExpertNumPerRank_ * sizeof(int32_t);
         // GM_ADDR remoteStateAddr = (GM_ADDR)(GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + epRankId_ * cntPerRankSizeAlign_);
-        
+
         if (dstRankId != epRankId_) {   // 远端 使用URMA发送 count + state
             // hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteStateAddr,
             //                 scaleupCounterAddr_ + dstRankId * cntPerRankSizeAlign_, cntPerRankSizeAlign_);
