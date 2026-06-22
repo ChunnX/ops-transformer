@@ -149,7 +149,7 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseOpTiling()
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
 
     hcMultAlign_ = RoundUp(hcMult_, BLOCK_SIZE / sizeof(float));
-    int64_t mixSize = rowOnceLoop * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float));
+    int64_t mixSize = rowOnceLoop * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float)) * sizeof(float);
     int64_t xSize = rowOnceLoop * hcMult_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER; // x是bfloat16_t 类型
     int64_t ySize = rowOnceLoop * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
     int64_t postSize = rowOnceLoop * hcMultAlign_ * sizeof(float) * DOUBLE_BUFFER;
@@ -260,7 +260,7 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcRegbaseOpGradoutTiling()
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
 
     hcMultAlign_ = RoundUp(hcMult_, BLOCK_SIZE / sizeof(float));
-    int64_t mixSize = rowOnceLoop * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float));
+    int64_t mixSize = rowOnceLoop * RoundUp(hcMix_, BLOCK_SIZE / sizeof(float)) * sizeof(float);
     int64_t xSize = rowOnceLoop * hcMult_ * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER; // x是bfloat16_t 类型
     int64_t ySize = rowOnceLoop * RoundUp(d_, 16) * 2 * DOUBLE_BUFFER;
     int64_t postSize = rowOnceLoop * hcMultAlign_ * sizeof(float) * DOUBLE_BUFFER;
@@ -618,6 +618,11 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::CalcOpTiling()
     uint64_t mDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(bs_, M_L1_MAX_SIZE)));
     uint64_t singleCoreM = RoundUp(CeilDiv(bs_, mDimNum), AscendC::BLOCK_CUBE);
     uint64_t kDimNum = aicCoreNum_ / mDimNum;
+
+    // 如果开启了一致性，则强制走M分核模板
+    if (context_->GetDeterministicLevel() == 2) {
+        kDimNum = 1;
+    }
 
     uint64_t splitKSize = RoundUp(CeilDiv(kSize, kDimNum), K_MULIT_CORE_SPLIT_BASE_SIZE);
     uint64_t actualKBlockNum = CeilDiv(kSize, splitKSize);
