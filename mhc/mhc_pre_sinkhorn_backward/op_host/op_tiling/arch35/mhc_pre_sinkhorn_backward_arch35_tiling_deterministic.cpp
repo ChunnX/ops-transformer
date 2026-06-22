@@ -46,6 +46,7 @@ constexpr float DEFAULT_EPS = 1e-6f;
 constexpr uint8_t ITER_COUNT_IDX = 0;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr uint8_t BF16_BYTE_SIZE = 2;
+constexpr int64_t FP32_BYTE_SIZE = 4;
 constexpr int64_t ALPHA_SIZE_3 = 3;
 constexpr int64_t N_SIZE_4 = 4;
 constexpr int64_t ALIGN_32 = 32;
@@ -123,8 +124,7 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     int64_t totalBs = batchSize_ * seqLength_;
     bsTaskCount_ = totalBs / coreNumAiv_;
     tailBsTaskCount_ = totalBs - bsTaskCount_ * coreNumAiv_;
-    cLoopDataLen_ = c_
-    constexpr int64_t FP32_BYTE_SIZE = 4;
+    cLoopDataLen_ = c_;
 
     int64_t nAlignFp32 = AlignUp(n_ * FP32_BYTE_SIZE, ALIGN_32) / FP32_BYTE_SIZE;
     int64_t cAlignFp32 = AlignUp(c_ * FP32_BYTE_SIZE, ALIGN_32) / FP32_BYTE_SIZE;
