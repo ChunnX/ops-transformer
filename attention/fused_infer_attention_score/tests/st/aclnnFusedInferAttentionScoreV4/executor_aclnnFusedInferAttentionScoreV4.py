@@ -9,7 +9,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-
 import os
 import torch
 import logging
@@ -23,6 +22,9 @@ import copy
 import tensorflow as tf
 from functools import wraps
 from enum import Enum
+from array import array
+from ml_dtypes import bfloat16
+from dataclasses import dataclass
 from collections import defaultdict
 from dataclasses import dataclass
 from atk.configs.dataset_config import InputDataset
@@ -216,6 +218,33 @@ def _create_mask(m_shape, pre_tokens, next_tokens):
 
     return atten_masks
 
+def _create_mask_band(m_shape, pre_tokens, next_tokens, actualSeqLengths, actualSeqLengthsKV, actualprefixKV,
+                      prefix_kvs, batch, numheads, kvs_list, m_dtype):
+    mask_s_q = m_shape[0]
+    mask_s_kv = m_shape[1]
+
+    pre_tokens_list = []
+    next_tokens_list = []
+    re_mask_batch = []
+    for i in range(batch):
+        if len(actualSeqLengths) == 0:
+            S1 = mask_s_q
+        else:
+            S1 = actualSeqLengths[i]
+        if len(actualSeqLengthsKV) != 0:
+            S2 = actualSeqLengthsKV[i] + actualprefixKV
+        elif len(kvs_list) > 1:
+            S2 = kvs_list[i] + actualprefixKV
+        else:
+            S2 = mask_s_kv - prefix_kvs + actualprefixKV
+        pre_tokens_new = S1 - S2 + pre_tokens
+        pre_tokens_list.append(pre_tokens_new)
+
+        next_tokens_new = S2 - S1 + next_tokens
+        next_tokens_list.append(next_tokens_new)
+        atten_masks = _create_mask(m_shape, pre_tokens_new, next_tokens_new)
+        re_mask_batch.append(atten_masks)
+    return re_mask_batch, pre_tokens_list, next_tokens_list
 
 def get_attention_mask_batch_num(npu_m_shape, q_bnsd_shape):
     batch, numhead = None, None
@@ -259,6 +288,40 @@ def _create_mask_right_down(m_shape, pre_tokens, next_tokens, actualSeqLengths, 
         atten_masks = _create_mask(m_shape, pre_tokens, next_tokens)
         re_mask_batch.append(atten_masks)
     return re_mask_batch, next_tokens_list
+
+def _random_fill_tensor(tensor, shape, random_number, value=0):
+    for i in range(0, random_number):
+        point = []
+        for k in range(0, len(shape)):
+            point.append(random.randint(1, shape[k]) - 1)
+        tensor[point[0], point[1]] = value
+    return tensor
+
+
+def _t_broadcastKV_sigle(numHeads, numKeyValueHeads, kv_tensor):
+    factor = numHeads // numKeyValueHeads
+    kv_shape = kv_tensor.shape
+    B = kv_shape[0]
+    S = kv_shape[2]
+    D = kv_shape[3]
+    kv_res = torch.zeros([B, numHeads, S, D])
+    for i in range(numHeads):
+        j = i // factor
+        kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+    return kv_res, kv_res.shape
+
+
+def _np_broadcastKV_sigle(numHeads, numKeyValueHeads, kv_tensor, dtype):
+    factor = numHeads // numKeyValueHeads
+    kv_shape = kv_tensor.shape
+    B = kv_shape[0]
+    S = kv_shape[2]
+    D = kv_shape[3]
+    kv_res = np.zeros([B, numHeads, S, D], dtype=dtype)
+    for i in range(numHeads):
+        j = i // factor
+        kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+    return kv_res, kv_res.shape
 
 
 def _create_random_mask_by_spars(cpu_m_shape, npu_m_shape, m_dtype, pre_tokens, next_tokens, actualSeqLengths,
@@ -1945,7 +2008,7 @@ def _trans_antiparam_to_1n1d(shape, tensor, layout, numKeyValueHeads, d, mode):
             h = shape[0]
             d_num = int(h / numKeyValueHeads)
             print(f"[INFO]_trans_h_to_1n1d: layout={layout}, h={h}, n={numKeyValueHeads} ,d(h/n)={d_num}")
-            new_tensor = tensor.reshape(1, 1, numKeyValueHeads, d_num).transpose(0, 2, 1, 3)
+            new_tensor = tensor.reshape(1, 1, numKeyValueHeads, d_num).transpose(1, 2)
         elif len(shape) == 2:
             if shape[0] == 1:
                 h = shape[1]
@@ -1954,18 +2017,17 @@ def _trans_antiparam_to_1n1d(shape, tensor, layout, numKeyValueHeads, d, mode):
                 new_tensor = tensor.reshape(1, 1, numKeyValueHeads, d_num).transpose(1, 2)
             else:
                 print(f"[INFO]_trans_nd_to_1n1d : layout={layout}, n={shape[0]} ,d={shape[1]}")
-                new_tensor = tensor.reshape(1, 1, shape[0], shape[1]).transpose(0, 2, 1, 3)
+                new_tensor = tensor.reshape(1, 1, shape[0], shape[1]).transpose(1, 2)
         elif len(shape) == 3:
             if shape[0] == 1:
-                print(f"[INFO]_trans_1nd_to_1n1d : layout={layout}, n={shape[1]} ,d={shape[2]}")
-                new_tensor = tensor.reshape(1, 1, shape[1], shape[2]).transpose(0, 2, 1, 3)
+                new_tensor = tensor.reshape(1, 1, shape[1], shape[2]).transpose(1, 2)
             else:
                 print(f"[INFO]_trans_n1d_to_1n1d : layout={layout}, n={shape[0]} ,d={shape[2]}")
-                new_tensor = tensor.reshape(1, 1, shape[0], shape[2]).transpose(0, 2, 1, 3)
+                new_tensor = tensor.reshape(1, 1, shape[0], shape[2]).transpose(1, 2)
         elif len(shape) == 4:
             if shape[1] == 1:
                 print(f"[INFO]_trans_11nd_to_1n1d : layout={layout}, n={shape[2]} ,d={shape[3]}")
-                new_tensor = tensor.transpose(0, 2, 1, 3)
+                new_tensor = tensor.transpose(1, 2)
             else:
                 new_tensor = tensor
         else:
@@ -3328,22 +3390,8 @@ def deepseek_inquant_preprocessing(ifa_param, params):
                                             actualSeqLengths_q)
     k_int8_npu = trans_bnsd_to_input_layout(k_int8_bnsd_tensor, k_shape, kv_layout, actualSeqLengths)
 
-    tools.modify_alcnn_input_file(ids=0, origin_index=[0], type='tensor', mode='rewrite', tensors=q_int8_npu,
-                                  params=params, data_range=[qmin_datarange, qmax_datarange], data_dtype="int8")
-    tools.modify_alcnn_input_file(ids=1, origin_index=[1], type='tensor_list', mode='rewrite',
-                                  tensors=[k_int8_npu], params=params, data_range=[[kmin_datarange, kmax_datarange]],
-                                  data_dtype="int8")
-    tools.modify_alcnn_input_file(ids=2, origin_index=[2], type='tensor_list', mode='rewrite',
-                                  tensors=[k_int8_npu], params=params, data_range=[[kmin_datarange, kmax_datarange]],
-                                  data_dtype="int8")
     dequantScaleQ = torch.from_numpy(scaleQ).to(torch.float32)
     dequantScaleQ = trans_bnsd_to_dequant_layout(dequantScaleQ, dequantScaleQ.shape, inputLayout, actualSeqLengths_q)
-    tools.modify_alcnn_input_file(ids=27, origin_index=[27], type='tensor', mode='rewrite', tensors=dequantScaleQ,
-                                  params=params)
-    tools.modify_alcnn_input_file(ids=15, origin_index=[15], type='tensor', mode='rewrite', tensors=dequantScale2,
-                                  params=params)
-    tools.modify_alcnn_input_file(ids=17, origin_index=[17], type='tensor', mode='rewrite', tensors=dequantScale2,
-                                  params=params)
 
     ifa_param['k_tensor_list_bnsd'] = k_tensor_list
     ifa_param['v_tensor_list_bnsd'] = v_tensor_list
@@ -3391,10 +3439,6 @@ def deepseek_inquant_preprocessing_for_recovery(ifa_param, torch_tensor_list, pa
         g_q_rope = trans_bnsd_to_input_layout(g_q_rope, rope_shape, inputLayout, actualSeqLengths_q)
         npu_q_rope = trans_bnsd_to_input_layout(npu_q_rope, rope_shape, inputLayout, actualSeqLengths_q)
 
-        tools.modify_alcnn_input_file(ids=28, origin_index=[28], type='tensor', mode='add', tensors=g_q_rope,
-                                      params=params)
-        tools.modify_alcnn_input_file(ids=23, origin_index=[23], type='tensor', mode='rewrite', tensors=npu_q_rope,
-                                      params=params)
     else:
         q_rope_bnsd_tensor, q_rope_bnsd_shape = _n_trans_shape_to_bnsd(torch_tensor_list[28], rope_shape,
                                                                        inputLayout, numHeads, actualSeqLengths_q)
@@ -3592,12 +3636,7 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
 
         if action_type in ["bm_output", "bm_output_gold"]:
             pass
-        else:
-            tools.modify_alcnn_input_file(ids=4, origin_index=[4], type='tensor', mode='rewrite', tensors=npu_m_tensor,
-                                          params=params)
-
         if sparse_mode == 0 or sparse_mode == 1:
-            # m_bnsd_tensor = _np_broadcast_mask_n(cpu_m_tensor, npu_m_shape, cpu_m_shape, numHeads, q_bnsd_shape[0])
             pass
         else:
             cpu_m_tensor = np.array(cpu_m_tensor)
@@ -3664,10 +3703,6 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
                 block_idx += 1
             block_table_batch_idx += 1
         ifa_param['block_table'] = block_table
-        # 将block_table 覆盖原有的input
-        tools.modify_alcnn_input_file(ids=12, origin_index=[12], type='tensor', mode='rewrite',
-                                      tensors=torch.tensor(block_table, dtype=torch.int32),
-                                      params=params)
         k_np_dtype = tools.get_np_dtype(params['dtype_input'][1])
         v_np_dtype = tools.get_np_dtype(params['dtype_input'][2])
         ifa_param['k_np_dtype'] = k_np_dtype
@@ -3767,16 +3802,6 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
 
             k_cache_index = 21
             v_cache_index = 22
-            tools.modify_alcnn_input_file(ids=k_cache_index, origin_index=[k_cache_index], type='tensor_list',
-                                          mode='rewrite',
-                                          tensors=[k_cache],
-                                          params=params,
-                                          data_dtype=params['dtype_input'][1])
-            tools.modify_alcnn_input_file(ids=v_cache_index, origin_index=[v_cache_index], type='tensor_list',
-                                          mode='rewrite',
-                                          tensors=[v_cache],
-                                          params=params,
-                                          data_dtype=params['dtype_input'][2])
         else:
             print('[INFO]:PA + Deepseek！')
             if ifa_param['in_quant_flag']:
@@ -4386,7 +4411,6 @@ def npSoftmax(x):
     ans = y / x_sum
     return ans, x_max, x_sum
 
-
 def npSoftmax_new(x, sinks=None):
     x_max = x.max(axis=-1, keepdims=True)
     x_sub = x - x_max
@@ -4399,7 +4423,6 @@ def npSoftmax_new(x, sinks=None):
         x_sum += sink_exp.sum(axis=-1, keepdims=True)
     ans = y
     return ans, x_max, x_sum
-
 
 def softmax_flashv2(x, max_front=None, sum_front=None, update=None, is_fp16=False):
     """
@@ -4451,7 +4474,6 @@ def softmax_flashv2(x, max_front=None, sum_front=None, update=None, is_fp16=Fals
             # exp_max = exp_max.astype(np.float16)
 
         return out, x_max, x_sum, exp_max
-
 
 def _np_pfaattention_act_int8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, scalar, act_seq, act_kv_seq, preTokens, nextTokens,pfa_param,
                              dequant_scale1=None,
@@ -4715,7 +4737,6 @@ def _np_pfaattention_act_fp8(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tens
 
     return o_front, lse
 
-
 def _np_pfaattention_act_hifp8(q_tensor_hifp8, k_tensor_hifp8, v_tensor_hifp8, pse_tensor, mask_tensor, scalar, act_seq,
                                act_kv_seq, preTokens, nextTokens, pfa_param,
                                dequant_scale1=None,
@@ -4854,7 +4875,6 @@ def _np_pfaattention_act_hifp8(q_tensor_hifp8, k_tensor_hifp8, v_tensor_hifp8, p
 
     return o_front, lse
 
-
 def _t_pfaattention_act_innerprecise(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, scalar, act_seq, act_kv_seq,
                                      preTokens, nextTokens, dequant_scale1=None,
                                      dequant_scale2=None, quant_scale1=None, quant_scale2=None, quant_offset2=None):
@@ -4912,7 +4932,6 @@ def _t_pfaattention_act_innerprecise(q_tensor, k_tensor, v_tensor, pse_tensor, m
     print("end matmul2")
     print(f"return shape:{bmm2Res.shape}")
     return bmm2Res
-
 
 def _t_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, scalar, act_seq, act_kv_seq, preTokens,
                         nextTokens, dequant_scale1=None,
@@ -4972,7 +4991,6 @@ def _t_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, s
     print(f"return shape:{bmm2Res.shape}")
     return bmm2Res
 
-
 def _np_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, scalar, act_seq, act_kv_seq, preTokens,
                          nextTokens, pfa_param, quant_scale2=None, quant_offset2=None, antiquant_scale_k=None,
                          antiquant_scale_v=None, antiquant_offset_k=None, antiquant_offset_v=None,
@@ -4995,7 +5013,6 @@ def _np_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, 
     k_tensor = k_tensor[:, :, kvs_begin:kvs_end, :]
     v_tensor = v_tensor[:, :, kvs_begin:kvs_end, :]
     qDtype = q_tensor.dtype
-
     # KVcahce反量化  这块逻辑需要修改
     if k_tensor.dtype == np.int8:
         k_tensor = k_tensor.astype(np.float16)
@@ -5069,17 +5086,8 @@ def _np_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, 
         bmm2Res = np.where(bmm2Res < -128, -128, bmm2Res)
         bmm2Res = bmm2Res.astype(np.int8)
 
-    # if q_tensor.shape[2] > k_tensor.shape[2] + preTokens:
-    #     ss0 = k_tensor.shape[2] + preTokens
-    #     bmm2Res[:, :, ss0:, :] = 0
-    #
-    # if nextTokens < 0:
-    #     ss1 = -nextTokens
-    #     bmm2Res[:, :, :ss1, :] = 0
-
     print(f"return shape:{bmm2Res.shape}")
     return bmm2Res, lse
-
 
 def _t_promtattention_bnsd(q_tensor, q_shape, k_tensor, k_shape, v_tensor, v_shape, pse_tensor, mask_tensor, scale,
                            actseqlens,
@@ -5175,7 +5183,6 @@ def _t_promtattention_bnsd(q_tensor, q_shape, k_tensor, k_shape, v_tensor, v_sha
 
     return y
 
-
 def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_tensor_list, v_shape_list,
                             pse_bnsd_tensor, mask_tensor, scale, actseqlens,
                             actkvseqlens, preTokens_list, nextTokens_list, sparse, pfa_param, dequant_scale1=None,
@@ -5253,9 +5260,9 @@ def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_te
 
         # bnsd
         if sparse == 4:
-            preTokens = preTokens_list[b_index]
+            preTokens =  preTokens_list[b_index] if isinstance(preTokens_list, list) else preTokens_list
         if sparse == 3 or sparse == 4:
-            nextTokens = nextTokens_list[b_index]
+            nextTokens = nextTokens_list[b_index] if isinstance(nextTokens_list, list) else nextTokens_list
 
         for n_index in range(numhead_value):
             if len(q_shape) == 4 and len(k_shape) == 4 and len(v_shape) == 4:
@@ -5439,7 +5446,6 @@ def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_te
 
     return y, lse
 
-
 def conv_float_to_u32(data_f):
     fp = ctypes.pointer(ctypes.c_float(data_f))
     cp = ctypes.cast(fp, ctypes.POINTER(ctypes.c_uint))
@@ -5448,7 +5454,6 @@ def conv_float_to_u32(data_f):
     result = (data_hex // 8192) * 8192
 
     return result
-
 
 def trans_19bit(deqscale):
     res_19bit = np.zeros(deqscale.shape[0], dtype=np.uint64)
@@ -5459,7 +5464,6 @@ def trans_19bit(deqscale):
         res_19bit[idx] = val
 
     return res_19bit
-
 
 def qtensor_seqlength(q_shape, inputLayout):
     if inputLayout == "SH":  # SH格式
@@ -5592,7 +5596,6 @@ def get_attention_mask_batch_num(npu_m_shape, q_bnsd_shape):
         s2 = npu_m_shape[3]
         return batch, numhead, s1, s2
 
-
 def _trans_2h_to_2n1d(shape, tensor, numKeyValueHeads):
     if len(shape) == 4:  # 2N1D
         print("2N1D")
@@ -5611,7 +5614,6 @@ def _trans_2h_to_2n1d(shape, tensor, numKeyValueHeads):
     else:
         print(f"[ERROR]_n_trans_2h_to_2n1d : len(shape):{len(shape)}")
         return tensor
-
 
 def _t_trans_2h_to_2n1d(shape, tensor, numKeyValueHeads):
     if len(shape) == 4:  # 2N1D
@@ -5632,7 +5634,6 @@ def _t_trans_2h_to_2n1d(shape, tensor, numKeyValueHeads):
         print(f"[ERROR]_n_trans_2h_to_2n1d : len(shape):{len(shape)}")
         return tensor
 
-
 def _trans_h_to_n1d(shape, tensor, numKeyValueHeads):
     if len(shape) == 3:  # N1D
         print("N1D")
@@ -5652,7 +5653,6 @@ def _trans_h_to_n1d(shape, tensor, numKeyValueHeads):
         print(f"[ERROR]_n_trans_1h_to_1n1d : len(shape):{len(shape)}")
         return tensor
 
-
 def _t_trans_h_to_n1d(shape, tensor, numKeyValueHeads):
     if len(shape) == 3:  # N1D
         print("N1D")
@@ -5671,7 +5671,6 @@ def _t_trans_h_to_n1d(shape, tensor, numKeyValueHeads):
     else:
         print(f"[ERROR]_n_trans_1h_to_1n1d : len(shape):{len(shape)}")
         return tensor
-
 
 def _t_trans_1h_to_1n1d(shape, tensor, numHeads, inputLayout):
     if len(shape) == 4:
@@ -5710,7 +5709,6 @@ def _t_trans_1h_to_1n1d(shape, tensor, numHeads, inputLayout):
         print("[ERROR]trans_to_1n1d: Unknown input shape!")
         exit(1)
 
-
 def _trans_1h_to_1n1d(shape, tensor, numHeads, inputLayout):
     if len(shape) == 4:
         # 1n1d->1n1d
@@ -5748,7 +5746,6 @@ def _trans_1h_to_1n1d(shape, tensor, numHeads, inputLayout):
         print("[ERROR]trans_to_1n1d: Unknown input shape!")
         exit(1)
 
-
 def gen_outshape(layout, qshape, vshape, numKeyValueHeads, numHeads):
     outshape = copy.deepcopy(qshape)
     if layout == "BSH":
@@ -5758,7 +5755,6 @@ def gen_outshape(layout, qshape, vshape, numKeyValueHeads, numHeads):
     else:
         outshape[-1] = vshape[-1]
         return outshape
-
 
 def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
     if len(shape1) != len(shape2):
@@ -5958,21 +5954,6 @@ def deepseek_ds_pa_preprocessing(pfa_param, params,torch_tensor_list):
         v_cache = torch.from_numpy(v_cache.astype(kv_dtype))
         k_rope_cache = torch.from_numpy(k_rope_cache.astype(kv_dtype))
 
-    tools.modify_alcnn_input_file(ids=21, origin_index=[21], type='tensor_list',
-                                  mode='rewrite',
-                                  tensors=[k_cache],
-                                  params=params,
-                                  data_dtype=params['dtype_input'][1])
-    tools.modify_alcnn_input_file(ids=22, origin_index=[22], type='tensor_list',
-                                  mode='rewrite',
-                                  tensors=[v_cache],
-                                  params=params,
-                                  data_dtype=params['dtype_input'][2])
-    tools.modify_alcnn_input_file(ids=25, origin_index=[25], type='tensor',
-                                  mode='rewrite',
-                                  tensors=k_rope_cache,
-                                  params=params,
-                                  data_dtype=params['dtype_input'][1])
 def deepseek_preprocessing(params, pfa_param, torch_tensor_list, numHeads, numKeyValueHeads, tnd_flag):
     v_end_index = pfa_param['v_end_index']
     # >> q rope info
@@ -6000,7 +5981,6 @@ def deepseek_preprocessing(params, pfa_param, torch_tensor_list, numHeads, numKe
     pfa_param['k_shape_list'][0] = k_new_shape
 
     return pfa_param
-
 
 def pfa_get_param_fus(torch_tensor_list, params, qdim):
     pfa_param = {}
@@ -6256,7 +6236,7 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
     if flagList[3] == 0 or 0 in pse_shift_shape:
         pse_bnsd_tensor = None
     else:
-        pse_dtype_torch = tools.get_pt_dtype(params['dtype_input'][v_end_index + 1])
+        pse_dtype_torch = get_pt_dtype(params['dtype_input'][v_end_index + 1])
         pse_shift = None
         pse_shift_random_flag = True
         if action_type in gold:
@@ -6276,9 +6256,6 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                 pse_shift[:, :, :, kvs:] = 1
                 npu_pse_shift = torch.from_numpy(pse_shift).to(pse_dtype_torch)
                 pse_shift = npu_pse_shift.to(torch.float32).numpy().astype(np.float32)
-                tools.modify_alcnn_input_file(ids=3, origin_index=[3], type='tensor', mode='rewrite',
-                                              tensors=npu_pse_shift,
-                                              params=params)
         cpu_pse_shift = pse_shift[:, :, :qs, :kvs]
 
         pse_bnsd_tensor = _np_broadcast_pseShift_n(cpu_pse_shift, pse_shift_shape, q_bnsd_shape[0])  # to bnsd
@@ -6320,8 +6297,6 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
             npu_m_tensor[..., :randoms] = 1
 
         npu_m_tensor = torch.from_numpy(npu_m_tensor)
-        tools.modify_alcnn_input_file(ids=4, origin_index=[4], type='tensor', mode='rewrite', tensors=npu_m_tensor,
-                                      params=params)
 
         if sp_mode == 0 or sp_mode == 1:
             m_bnsd_tensor = _np_broadcast_mask_n(cpu_m_tensor, npu_m_shape, cpu_m_shape, numHeads, q_bnsd_shape[0])
@@ -6511,9 +6486,6 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                 for j in range(block_per_b):
                     block_table[idx][j] = (block_idx_list[block_idx])
                     block_idx += 1
-            tools.modify_alcnn_input_file(ids=12, origin_index=[12], type='tensor', mode='rewrite',
-                                          tensors=torch.from_numpy(block_table),
-                                          params=params)
             pfa_param['blockNumPerBlock'] = blockNumPerBlock
             pfa_param['block_table'] = block_table
             if  flagList[26]:
@@ -6621,17 +6593,6 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                         params['dtype_input'][1] != "float8_e4m3fn":
                     k_cache = torch.from_numpy(k_cache.astype(kv_dtype))
                     v_cache = torch.from_numpy(v_cache.astype(kv_dtype))
-
-                tools.modify_alcnn_input_file(ids=21, origin_index=[21], type='tensor_list',
-                                              mode='rewrite',
-                                              tensors=[k_cache],
-                                              params=params,
-                                              data_dtype=params['dtype_input'][1])
-                tools.modify_alcnn_input_file(ids=22, origin_index=[22], type='tensor_list',
-                                              mode='rewrite',
-                                              tensors=[v_cache],
-                                              params=params,
-                                              data_dtype=params['dtype_input'][2])
 
     if flagList[15]:
         pfa_param['queryPaddingSize'] = torch_tensor_list[v_end_index + 11]
@@ -8291,7 +8252,8 @@ class FiaOpPreprocess():
         self.preprocess_shared_prefix()
         self.preprocess_pse_shift()
         # 需要保证输入的mask是正确的
-        # self.preprocess_atten_mask()
+        if self.op_params.sparse_mode in [2, 3, 4] and self.op_params.query.S > 1 :
+            self.preprocess_atten_mask()
         self.preprocess_block_table()
         self.preprocess_kv_cache()
         self.preprocess_post_quant()
@@ -8491,7 +8453,6 @@ class FiaOpPreprocess():
             mrandom_type = self.params['mrandomtype']
             if mrandom_type == 'ones':
                 randoms = int(self.params['mrandom'])
-
         if (not self.op_params.atten_mask_flag) or self.op_params.atten_mask.empty():
             self.op_params.pre_tokens = 214748647
             self.op_params.next_tokens = 214748647
@@ -8531,11 +8492,7 @@ class FiaOpPreprocess():
                 npu_m_tensor[..., :randoms] = 1
             if self.op_params.is_mask_bs:
                 npu_m_tensor = npu_m_tensor.reshape(self.op_params.atten_mask.shape)
-
             atten_mask_index = FiaOpParam.get_param_index("atten_mask")
-            # tools.modify_alcnn_input_file(ids=atten_mask_index, origin_index=[atten_mask_index],
-            #                               type='tensor', mode='rewrite', tensors=torch.from_numpy(npu_m_tensor),
-            #                               params=self.params)
 
             if (sparse_mode == 0 or sparse_mode == 1) and (not self.op_params.is_mask_bs):
                 m_tensor = _np_broadcast_mask_n(cpu_m_tensor, self.op_params.atten_mask.shape, cpu_m_shape,
@@ -9007,8 +8964,8 @@ class FiaOpForward():
 
     def route_to_old_ifa(self):
         if self.op_params.sparse_mode == 4:
-            fia_debug("*********************************ROUTE TO PFA")
-            return False
+            self.op_params.sparse_mode = 0
+        
         if (self.op_params.query.S == 1) or (self.op_params.rope_flag and self.op_params.query.D == 512) or \
                 (self.op_params.query.dtype != self.op_params.key.dtype):
             fia_debug("*********************************ROUTE TO IFA")
@@ -9031,8 +8988,6 @@ class FiaOpForward():
             return torch.zeros(self.op_params.output.shape)
 
         self.fia_op_preprocess.preprocess()
-        if self.params['is_preprocess']:
-            return
 
         self.query = self.op_params.query
         self.key = self.op_params.key
@@ -9108,6 +9063,788 @@ class FiaOpForward():
         else:
             raise ValueError(f"Unsupported mode {self.mode}")
 
+# SplitFuse
+
+IS_INF_FLAG=False
+SPARSE_MODE_INT_MAX = 2147483647
+
+dtypeMap = {
+    torch.float16: np.float16,
+    torch.bfloat16: bfloat16,
+    torch.float32: np.float32
+}
+
+maskTypeMap = {
+    ## sparseMode : golden maskType
+    0: 0,
+    3: 1,
+    4: 2
+}
+
+class TestFIAV4SplitFuse():
+    @dataclass
+    class AuxAttrs:
+        preTokens: int
+        nextTokens: int
+        num_heads: int
+        kv_heads: int
+        head_size: int
+        num_blocks: int
+        block_size: int
+        mask_type: int
+        dtype: any
+        kv_dtype: int
+        layout_dtype: int
+        max_q_seqlen: int
+        max_kv_seqlen: int
+        inner_prec: int
+        scale: float
+        sparseMode: int
+
+    
+    @dataclass
+    class AttentionInputs:
+        query: any
+        key_cache: any
+        value_cache: any
+        block_tables: any
+        q_seqlen_list: any
+        k_seqlen_list: any
+        global_mask: any
+        learnable_sink: any
+        auxAttrs: any
+
+    @classmethod
+    def group_matmul(cls, head, kv_head, left, right, high_prec = 1,is_benchmark_task=True):
+        group_num = head // kv_head
+        score = None
+        dtype = np.float32
+        if is_benchmark_task:
+            dtype = np.float64
+        for i in range(kv_head):
+            group_score = np.matmul(left[i * group_num:(i + 1) * group_num, :, :].astype(dtype),
+                                    right[i:(i + 1), :, :].astype(dtype))
+            if score is None:
+                score = group_score
+            else:
+                score = np.concatenate((score, group_score), 0)
+        return score
+
+    @classmethod
+    def softmax_numpy(cls, sim, sink_matrix, batch_i):
+        row_max = np.max(sim, axis=-1, keepdims=True)
+        valid_row_mask = ~np.isneginf(row_max)
+        # add sink rowmax
+        if sink_matrix is not None:
+            assert sink_matrix.shape == row_max.shape, \
+                f"sink_matrix 形状 {sink_matrix.shape} 与 row_max 形状 {row_max.shape} 不一致！"
+            row_max[valid_row_mask] = np.maximum(
+                row_max[valid_row_mask], 
+                sink_matrix[valid_row_mask]
+            )
+        
+        sim_sub = sim - row_max
+        sim_sub_high = sim.astype(np.float64) - row_max.astype(np.float64)
+
+        sim_sub = np.exp(sim_sub)
+        sim_sub_high = np.exp(sim_sub_high)
+        row_sum = np.sum(sim_sub, axis=-1, keepdims=True)
+        row_sum_high = np.sum(sim_sub_high, axis=-1, keepdims=True)
+
+        if sink_matrix is not None:
+            sink_exp = np.exp(sink_matrix - row_max)
+            sink_exp_high = np.exp(sink_matrix.astype(np.float64) - row_max.astype(np.float64))
+            row_sum = row_sum + sink_exp
+            row_sum_high = row_sum_high + sink_exp_high
+
+        soft_res = sim_sub / row_sum
+        lse = np.squeeze((np.log(row_sum_high) + row_max.astype(np.float64)), axis=-1)
+
+        return soft_res, lse, row_max
+
+    def softmax1(
+        self,
+        qk_result,
+        is_first,
+        gm,
+        is_kvs_last_loop,
+        sink_matrix,
+        interm_dtype = np.float16
+    ):
+        sim = qk_result.astype(interm_dtype)
+        lm = np.max(sim, axis=-1, keepdims=True)
+        if is_first:
+            hm = lm
+            dm = 0
+
+        else:
+            hm = np.maximum(gm, lm)
+            dm = gm - hm
+        
+        valid_hm_mask = ~np.isneginf(hm)
+        if sink_matrix is not None and is_kvs_last_loop:
+            assert sink_matrix.shape == hm.shape, \
+            f"sink_matrix 形状 {sink_matrix.shape} 与 hm 形状 {hm.shape} 不一致！"
+            hm[valid_hm_mask] = np.maximum(
+                hm[valid_hm_mask], 
+                sink_matrix[valid_hm_mask]
+            )
+            dm = gm - hm if not is_first else 0
+
+        gm = hm
+        sim_sub = sim - hm
+        sim_sub = np.exp(sim_sub.astype(interm_dtype))
+
+        row_sum = np.sum(sim_sub, axis=-1, keepdims=True)
+
+        sink_exp = None
+        if sink_matrix is not None and is_kvs_last_loop:
+            sink_exp = np.exp((sink_matrix - hm).astype(interm_dtype)).astype(interm_dtype)
+
+        return sim_sub, row_sum, dm, gm, sink_exp
+
+
+    def qkMM1(
+        self,
+        query,
+        key,
+        is_benchmark_task
+    ):
+        result = None
+        qk_k = key.shape[1]
+        qk_k_split = 128
+        qk_k_loop = (qk_k + 127) // 128
+        for qk_k_loop_idx in range(qk_k_loop):
+            sub_k = 128 if qk_k_loop_idx != (qk_k_loop - 1) else (qk_k - qk_k_loop_idx * 128)
+            partial_Query = query[:, :, qk_k_loop_idx * 128: qk_k_loop_idx * 128 + sub_k]
+            partial_Key = key[:, qk_k_loop_idx * 128: qk_k_loop_idx * 128 + sub_k, :]
+            result_split = self.group_matmul(partial_Query.shape[0], partial_Key.shape[0], partial_Query, partial_Key, 0, is_benchmark_task)
+            if result is None:
+                result = result_split
+            else:
+                result = result + result_split
+        return result
+    
+    def pvMM2(
+        self,
+        p,
+        value,
+        is_benchmark_task
+    ):
+        result = None
+        pv_k = value.shape[1]
+        pv_k_split = 128
+        pv_k_loop = (pv_k + 127) // 128
+        for pv_k_loop_idx in range(pv_k_loop):
+            sub_k = 128 if pv_k_loop_idx != (pv_k_loop - 1) else (pv_k - pv_k_loop_idx * 128)
+            partial_P = p[:, :, pv_k_loop_idx * 128: pv_k_loop_idx * 128 + sub_k]
+            partial_Value = value[:, pv_k_loop_idx * 128: pv_k_loop_idx * 128 + sub_k, :]
+            result_split = self.group_matmul(partial_P.shape[0], partial_Value.shape[0], partial_P, partial_Value, 0, is_benchmark_task)
+            if result is None:
+                result = result_split
+            else:
+                result = result + result_split
+        return result
+
+    # ===================== 核心SWA计算函数（你的参数版）=====================
+    def calc_swa_kvsLoop(
+        self,
+        preToken, 
+        nextToken, 
+        qSeqlen, 
+        kvSeqlen,
+        qSBlockIdx,        # 传入：q_id（Q分块索引）
+        qSBlockSize,       # 传入：q_sub_len（Q子块长度）
+        curQSBlockTile,    # 传入：q_chunk_size（Q分块大小）
+        MAX_KV_STACK_LEN   # 传入：kv_chunk_size（KV分块大小）
+    ):
+        # 初始化变量（和C++完全一致）
+        leftPointPreToken = kvSeqlen
+        leftPointNextToken = 0
+        startIdx = 0
+        kvSLoopNumTotal = 0
+        preTokenEndLen = 0
+        preTokenStartLen = 0
+        nextTokenStartLen = 0
+
+        # ===================== 1. 计算左窗口 startIdx =====================
+        if preToken < 0 and (-preToken) >= qSeqlen:
+            startIdx = (kvSeqlen // MAX_KV_STACK_LEN) + 1
+        elif preToken != SPARSE_MODE_INT_MAX:
+            leftPointPreToken = kvSeqlen - qSeqlen - preToken
+            preTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointPreToken
+            preTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointPreToken
+            startIdx = max(0, preTokenStartLen) // MAX_KV_STACK_LEN
+        else:
+            startIdx = 0
+
+        # ===================== 2. 计算右窗口 kvSLoopNumTotal =====================
+        if nextToken < 0 and (-nextToken) >= kvSeqlen:
+            kvSLoopNumTotal = 0
+        elif nextToken != SPARSE_MODE_INT_MAX:
+            leftPointNextToken = kvSeqlen - qSeqlen + nextToken
+            nextTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointNextToken
+            nextTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointNextToken
+            
+            noSkipKvS = min(kvSeqlen, (nextTokenEndLen + MAX_KV_STACK_LEN - 1) // MAX_KV_STACK_LEN * MAX_KV_STACK_LEN)
+            noSkipKvS = kvSeqlen if noSkipKvS <= 0 else noSkipKvS
+            kvSLoopNumTotal = (noSkipKvS + MAX_KV_STACK_LEN - 1) // MAX_KV_STACK_LEN
+        else:
+            noSkipKvS = kvSeqlen
+            (noSkipKvS + MAX_KV_STACK_LEN - 1) // MAX_KV_STACK_LEN
+
+        return startIdx, kvSLoopNumTotal
+
+    def ref_flash_attention(
+        self,
+        query,
+        key,
+        value,
+        scale,
+        mask,
+        attention_inputs: AttentionInputs,
+        sink_matrix,
+        batch_i,
+        swa_auxAttrs: AuxAttrs,
+        is_benchmark_task
+    ):
+        data_type = attention_inputs.auxAttrs.dtype
+        inner_prec = attention_inputs.auxAttrs.inner_prec
+        interm_dtype = np.float16 if inner_prec == 1 else np.float32
+        query = np.transpose(query, (1, 0, 2))
+        print(f"lwg_query.shape:{query.shape}")
+        key = np.transpose(key, (1, 2, 0))
+        print(f"lwg_key.shape:{key.shape}")
+        value = np.transpose(value, (1, 0, 2))
+        scale = np.float16(scale) if inner_prec == 1 else np.float32(scale)
+        sparseMode = swa_auxAttrs.sparseMode         
+        preToken = swa_auxAttrs.preTokens
+        nextToken = swa_auxAttrs.nextTokens
+
+        kv_seqlen = key.shape[2]        # KV总长度
+        q_seqlen = query.shape[1]       # Q总长度
+        kv_chunk_size = 512             # KV分块大小
+        q_chunk_size = 128              # Q分块大小：128
+        num_heads = query.shape[0]
+        head_size_vo = value.shape[2]
+
+        # 存储最终结果
+        out_shape = (num_heads, q_seqlen, head_size_vo)
+        final_output = np.zeros(out_shape, dtype=np.float32)
+        # ✅ 修复1：初始化完整的LSE存储数组（和Q长度对齐）
+        final_lse = np.zeros((num_heads, q_seqlen), dtype=np.float32)
+        if is_benchmark_task:
+            final_output = np.transpose(final_output, (1, 0, 2))
+            return final_output, final_lse
+
+        # ============== 外层循环：Q 按 128 切块 ==============
+        for q_id, q_start in enumerate(range(0, q_seqlen, q_chunk_size)):
+            # 1. 切分当前 Q 小块
+            q_sub_len = min(q_chunk_size, q_seqlen - q_start)
+            sub_query = query[:, q_start : q_start + q_sub_len, :]
+            
+            # 每个 Q 小块独立初始化中间状态
+            gm_chunk = None
+            gl_chunk = None
+            go_chunk = None
+            
+            kvSLoopNumTotal = 0
+            MASK_TYPE = 0 # no mask
+            startIdx = 0
+            if mask is not None:
+                if sparseMode == 3: # causal
+                    MASK_TYPE = 3
+                    diffS = kv_seqlen - q_seqlen
+                    diffS  = 0 if diffS < 0 else diffS
+                    noSkipKvS = (q_id+1) * q_chunk_size + diffS
+                    noSkipKvS = min(noSkipKvS, kv_seqlen)
+                    kvSLoopNumTotal = (noSkipKvS + kv_chunk_size -1) // kv_chunk_size
+                elif sparseMode == 4: #swa mask
+                    MASK_TYPE = 4
+                    startIdx, kvSLoopNumTotal = self.calc_swa_kvsLoop(preToken, nextToken, q_seqlen, kv_seqlen, qSBlockIdx = q_id,  
+                        qSBlockSize = q_sub_len, curQSBlockTile=q_chunk_size,  MAX_KV_STACK_LEN = kv_chunk_size)
+                    if startIdx >= kvSLoopNumTotal or kvSLoopNumTotal <= 0:
+                        continue
+            sink_matrix_sub = None
+            if sink_matrix is not None:
+                sink_matrix_sub = sink_matrix[:, q_start : q_start + q_sub_len, :]
+
+            is_kvs_last_loop  = False
+
+            # ============== 内层循环：KV 按 512 切块 ==============
+            for kv_id, kv_start in enumerate(range(0, kv_seqlen, kv_chunk_size)):
+                sub_kv_len = min(kv_chunk_size, kv_seqlen - kv_start)
+                if MASK_TYPE == 0: # no mask
+                    is_kvs_last_loop = (kv_start + kv_chunk_size >= kv_seqlen)
+                elif MASK_TYPE == 3 or MASK_TYPE == 4: # causal & swa
+                    is_kvs_last_loop = (kv_id+1) >= kvSLoopNumTotal
+                else:
+                    exit(-99)
+                sub_key = key[:, :, kv_start : kv_start + sub_kv_len]
+                sub_value = value[:, kv_start : kv_start + sub_kv_len, :]
+                sub_mask = None
+                if mask is not None:
+                    sub_mask = mask[q_start : q_start + q_sub_len, kv_start : kv_start + sub_kv_len].astype(interm_dtype)
+
+                # QK 计算
+                qk_result = self.qkMM1(sub_query, sub_key,is_benchmark_task).astype(interm_dtype)
+                qk_result = qk_result * scale
+                if mask is not None:
+                    qk_result += sub_mask
+            
+                # 分块 Softmax
+                p_result, row_sum, dm, gm_chunk, sink_exp = self.softmax1(
+                    qk_result, 
+                    kv_start == 0, 
+                    gm_chunk, 
+                    is_kvs_last_loop, 
+                    sink_matrix_sub, 
+                    interm_dtype
+                )
+                p_result = p_result.astype(data_type)
+
+                # PV 计算
+                lo = self.pvMM2(p_result, sub_value, is_benchmark_task).astype(interm_dtype)
+
+                # 累积中间结果
+                if kv_start == 0:
+                    gl_chunk = row_sum
+                    go_chunk = lo
+                else:
+                    dm = np.exp(dm)
+                    gl_chunk = gl_chunk * dm
+                    gl_chunk = gl_chunk + row_sum
+                    go_chunk = go_chunk * dm
+                    go_chunk = go_chunk + lo
+
+                # sink 处理
+                if is_kvs_last_loop and sink_exp is not None:
+                    gl_chunk = gl_chunk + sink_exp
+                
+                if is_kvs_last_loop:
+                    break
+
+            # ============== 当前 Q 小块计算完成 ==============
+            # 计算当前块的输出O
+            go_chunk = go_chunk / gl_chunk
+            final_output[:, q_start : q_start + q_sub_len, :] = go_chunk
+
+            # ✅ 修复2：计算当前Q块的LSE，并存入对应位置（核心！）
+            lse_chunk = np.squeeze((np.log(gl_chunk) + gm_chunk), axis=-1).astype(np.float32)
+            final_lse[:, q_start : q_start + q_sub_len] = lse_chunk
+        final_output = np.transpose(final_output, (1, 0, 2))
+        # ✅ 修复3：返回拼接完成的完整LSE
+        return final_output.astype(data_type), final_lse
+
+    def ref_masked_attention(self,
+            query,  # (q_seqlen, num_heads, head_size)
+            key,    # (k_seqlen, kv_heads, head_size)
+            value,
+            scale: float,
+            mask,    # (q_seqlen, k_seqlen)
+            sink_matrix,
+            batch_i,
+            is_benchmark_task
+    ):
+        if not is_benchmark_task:
+            q_seqlen = query.shape[0]       # Q总长度
+            num_heads = query.shape[1]
+            head_size_vo = value.shape[2]
+
+            out_shape = (q_seqlen, num_heads, head_size_vo)
+            final_output = np.zeros(out_shape, dtype=np.float32)
+            # ✅ 修复1：初始化完整的LSE存储数组（和Q长度对齐）
+            final_lse = np.zeros((num_heads, q_seqlen), dtype=np.float32)
+            return final_output, final_lse
+
+        query = np.transpose(query, (1, 0, 2))
+        key = np.transpose(key, (1, 2, 0))
+        sim_high = self.group_matmul(query.shape[0], key.shape[0], query, key, 1, is_benchmark_task)  # (head_num, q_seqlen, k_seqlen)
+        sim_high = sim_high * scale
+        if mask is not None:
+            sim_high = sim_high + (
+                mask[:sim_high.shape[-2], :sim_high.shape[-1]]
+                ).astype(np.float32)
+        p_high, lse_high, gm = self.softmax_numpy(sim_high, sink_matrix, batch_i)
+        lse_high = lse_high.astype(np.float64)
+        p = p_high.astype(query.dtype)
+        p_high = p_high.astype(np.float32)
+        value = np.transpose(value, (1, 0, 2))
+        
+        out_high = self.group_matmul(query.shape[0], key.shape[0], p_high, value, 1, is_benchmark_task)
+        out_high = np.transpose(out_high, (1, 0, 2))
+        return out_high, lse_high
+
+    def ref_single_query_cached_kv_attention(self, attention_inputs: AttentionInputs, output, golden_gpu_output, golden_lse_output, golden_gpu_lse_output, is_benchmark_task) -> None:
+        num_heads = attention_inputs.auxAttrs.num_heads
+        kv_heads = attention_inputs.auxAttrs.kv_heads
+        head_size_qk = attention_inputs.auxAttrs.head_size
+        head_size_vo = attention_inputs.auxAttrs.head_size
+        block_size = attention_inputs.auxAttrs.block_size
+        max_q_seqlen = attention_inputs.auxAttrs.max_q_seqlen
+        inner_prec = attention_inputs.auxAttrs.inner_prec
+        scale = attention_inputs.auxAttrs.scale
+        learnable_sink = attention_inputs.learnable_sink
+        sparseMode = attention_inputs.auxAttrs.sparseMode
+        if learnable_sink is not None:
+            learnable_sink = learnable_sink.astype(np.float32)
+
+        swa_auxAttrs = attention_inputs.auxAttrs
+
+        batch = len(attention_inputs.q_seqlen_list)
+        cu_seqlen = 0
+        kv_seqlen_now = 0
+        for i in range(batch):
+            q_seqlen = int(attention_inputs.q_seqlen_list[i])
+            k_seqlen = int(attention_inputs.k_seqlen_list[i])
+
+            q = None
+            if attention_inputs.auxAttrs.layout_dtype == 1:
+                q = attention_inputs.query[cu_seqlen:(cu_seqlen + q_seqlen), :, :]
+            else:
+                q = attention_inputs.query[i * max_q_seqlen:(i * max_q_seqlen + q_seqlen), :, :]
+            keys = None
+            values = None
+            if attention_inputs.auxAttrs.kv_dtype == 1:
+                keys = []
+                values = []
+                block_table = attention_inputs.block_tables[i]
+                for j in range(k_seqlen):
+                    if block_size == 0:
+                        print(f"block_size: {block_size} \n")
+                    else:
+                        block_number = int(block_table[j // block_size])
+                        block_offset = j % block_size
+
+                    k = attention_inputs.key_cache[block_number, block_offset, :, :]
+                    k = k.reshape(kv_heads, head_size_qk)
+                    keys.append(k)
+
+                    v = attention_inputs.value_cache[block_number, block_offset, :, :]
+                    v = v.reshape(kv_heads, head_size_vo)
+                    values.append(v)
+                keys = np.stack(keys, axis=0)
+                values = np.stack(values, axis=0)
+            elif attention_inputs.auxAttrs.kv_dtype == 0:
+                if attention_inputs.auxAttrs.layout_dtype == 1:
+                    keys = attention_inputs.key_cache[kv_seqlen_now: kv_seqlen_now + k_seqlen, :, :]
+                    values = attention_inputs.value_cache[kv_seqlen_now: kv_seqlen_now + k_seqlen, :, :]
+                else:
+                    keys = attention_inputs.key_cache[i, :, :, :]
+                    values = attention_inputs.value_cache[i, :, :, :]
+            
+            if attention_inputs.auxAttrs.mask_type == 1:
+                mask = attention_inputs.global_mask[cu_seqlen:(cu_seqlen + q_seqlen), :]
+            elif attention_inputs.auxAttrs.mask_type == 2:
+                mask = attention_inputs.global_mask[cu_seqlen:(cu_seqlen + q_seqlen), :]
+            elif attention_inputs.auxAttrs.mask_type == 0:
+                mask = None
+
+            sink_matrix = None
+            if learnable_sink is not None:
+                # [num_heads → [num_heads, 1, 1]
+                sink_expanded = np.expand_dims(learnable_sink, axis=1)
+                sink_expanded = np.expand_dims(sink_expanded, axis=2)
+                # [num_heads, 1, 1] → [num_heads, q_seqlen, 1]
+                sink_matrix = np.broadcast_to(sink_expanded, shape=(learnable_sink.shape[0], q_seqlen, 1))
+
+            preTokens = attention_inputs.auxAttrs.preTokens
+            nextTokens = attention_inputs.auxAttrs.nextTokens
+            
+            preTokensChange = preTokens - k_seqlen + q_seqlen
+            nextTokensChange = nextTokens + k_seqlen - q_seqlen
+            nextTokensError = -nextTokensChange if nextTokensChange < 0 else 0
+            preTokensError = (q_seqlen - k_seqlen - preTokensChange) if q_seqlen > k_seqlen + preTokensChange else 0
+            actualSeq = q_seqlen
+            
+            actualSeq -= nextTokensError
+            actualSeq -= preTokensError
+            print(f"ljl-2 {i},:{preTokens},{nextTokens},{preTokensChange},{nextTokensChange},{preTokensError},{nextTokensError},{actualSeq}")
+            if actualSeq != q_seqlen and sparseMode == 4:
+                if nextTokensError != 0:
+                    # 前n行置0
+                    actualSeq = q_seqlen - actualSeq
+                elif preTokensError != 0:
+                    # 后n行置0
+                    actualSeq = actualSeq
+            
+            out_normal, lse = self.ref_masked_attention(q, keys, values, scale, mask, sink_matrix, i , is_benchmark_task)
+            out_gpu, lse_gpu = self.ref_flash_attention(q, keys, values, scale, mask, attention_inputs, sink_matrix, i, swa_auxAttrs ,is_benchmark_task)
+            out_gpu_test = torch.from_numpy(out_gpu.astype(np.float32))
+            nan_out_gpu = torch.isnan(out_gpu_test)
+            nan_count = nan_out_gpu.sum().item()
+
+            out = out_normal.reshape(-1, num_heads, head_size_vo)
+            out = out.reshape(-1, num_heads, head_size_vo)
+            out_gpu = out_gpu.reshape(-1, num_heads, head_size_vo)
+
+            if attention_inputs.auxAttrs.layout_dtype == 1:
+                output[cu_seqlen: cu_seqlen + q_seqlen, :, :] = out
+                golden_gpu_output[cu_seqlen: cu_seqlen + q_seqlen, :, :] = out_gpu
+
+                golden_lse_output[:, cu_seqlen: cu_seqlen + q_seqlen] = lse
+                golden_gpu_lse_output[:, cu_seqlen: cu_seqlen + q_seqlen] = lse_gpu
+                
+                if actualSeq != q_seqlen and sparseMode == 4:
+                    if nextTokensError != 0:
+                        output[cu_seqlen : cu_seqlen  + actualSeq, :, :] = 0  # 前n行置0
+                        golden_gpu_output[cu_seqlen: cu_seqlen + actualSeq, :, :] = 0
+                        golden_lse_output[:, cu_seqlen: cu_seqlen + actualSeq] = np.inf
+                        golden_gpu_lse_output[:, cu_seqlen: cu_seqlen + actualSeq] = np.inf
+                    elif preTokensError != 0:
+                        output[cu_seqlen + actualSeq: cu_seqlen  + q_seqlen, :, :] = 0  # 后n行置0
+                        golden_gpu_output[cu_seqlen + actualSeq: cu_seqlen + q_seqlen, :, :] = 0
+                        golden_lse_output[:, cu_seqlen + actualSeq: cu_seqlen  + q_seqlen] =  np.inf
+                        golden_gpu_lse_output[:, cu_seqlen + actualSeq: cu_seqlen + q_seqlen] =  np.inf
+            else:
+                output[i * max_q_seqlen: i * max_q_seqlen + q_seqlen, :, :] = out
+                golden_gpu_output[i * max_q_seqlen: i * max_q_seqlen + q_seqlen, :, :] = out_gpu
+
+                golden_lse_output[:, i * max_q_seqlen: i * max_q_seqlen + q_seqlen] = lse
+                golden_gpu_lse_output[:, i * max_q_seqlen: i * max_q_seqlen + q_seqlen] = lse_gpu
+                if actualSeq != q_seqlen and sparseMode == 4:
+                    if nextTokensError != 0:
+                        output[i * max_q_seqlen: i * max_q_seqlen + actualSeq, :, :] = 0
+                        golden_gpu_output[i * max_q_seqlen: i * max_q_seqlen + actualSeq, :, :] = 0
+
+                        golden_lse_output[:, i * max_q_seqlen: i * max_q_seqlen + actualSeq] = np.inf
+                        golden_gpu_lse_output[:, i * max_q_seqlen: i * max_q_seqlen + actualSeq] = np.inf
+                    elif preTokensError != 0:
+                        output[i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen, :, :] = 0
+                        golden_gpu_output[i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen, :, :] = 0
+
+                        golden_lse_output[:, i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen] = np.inf
+                        golden_gpu_lse_output[:, i * max_q_seqlen + actualSeq : i * max_q_seqlen + q_seqlen] = np.inf
+            
+            cu_seqlen += q_seqlen
+            kv_seqlen_now += k_seqlen
+    
+    def calc_data(self, attention_inputs:AttentionInputs, is_benchmark_task):
+        num_tokens = attention_inputs.query.shape[0]
+        shape_out = (num_tokens, attention_inputs.auxAttrs.num_heads, attention_inputs.auxAttrs.head_size)
+        golden_output = np.zeros(shape_out, dtype=np.float32)
+        golden_gpu_output = np.zeros(shape_out, dtype=np.float32)
+
+        lse_shape_out = (attention_inputs.auxAttrs.num_heads, num_tokens)
+        golden_lse_output = np.zeros(lse_shape_out, dtype=np.float32)
+        golden_gpu_lse_output = np.zeros(lse_shape_out, dtype=np.float32)
+
+        self.ref_single_query_cached_kv_attention(
+            attention_inputs,
+            golden_output,
+            golden_gpu_output,
+            golden_lse_output,
+            golden_gpu_lse_output,
+            is_benchmark_task
+        )
+
+        golden_lse_output = np.transpose(golden_lse_output, (1, 0))
+        golden_lse_output = np.expand_dims(golden_lse_output, axis=2)
+        golden_gpu_lse_output = np.transpose(golden_gpu_lse_output, (1, 0))
+        golden_gpu_lse_output = np.expand_dims(golden_gpu_lse_output, axis=2)
+
+        return golden_output, golden_gpu_output, golden_lse_output, golden_gpu_lse_output
+        
+
+def construct_all_inf_rows(Q, K, seed=42):
+    """
+    构造函数：修改 Q 的部分行为 -inf，并调整 K 以确保 S 对应行为全 -inf。
+    
+    参数:
+        Q: torch.Tensor, 形状 (T, N, D), 类型建议为 float16 或 float32
+        K: torch.Tensor, 形状 (T, N, D)
+        seed: 随机种子，用于选择失效的行
+    返回:
+        Q_mod: 修改后的 Q
+        K_mod: 修改后的 K (全正数)
+        target_rows: 被设置为无效的行索引列表
+    """
+    T, N, D = Q.shape
+    # 局部生成器，保证函数内部行为只受 seed 影响
+    gen = torch.Generator(device="cpu").manual_seed(seed)
+    Q_mod = Q.clone()
+    # 修改 K：确保全正且无零，防止 NaN
+    K_mod = torch.abs(K) + 1e-3
+    # 随机选择要“作废”的行数 (1 到 T/2 行)
+    num_rows = torch.randint(1, max(2, T // 2 + 1), (1,), generator=gen).item()
+    target_rows = torch.randperm(T, generator=gen)[:num_rows].tolist()
+    # 注入 -inf
+    for row in target_rows:
+        Q_mod[row, :, :] = float('-inf')
+    return Q_mod, K_mod, target_rows
+
+def gen_list_from_cumSum(seqlenArray):
+    seqlenList = []
+    preSeqSum = 0
+    for i in range(len(seqlenArray)):
+        seqlenList.append(seqlenArray[i] - preSeqSum)
+        preSeqSum = seqlenArray[i]
+    return seqlenList
+
+def gen_actual_seqlen_list_golden(actualseqlengths, actualseqlengthskv, inputLayout, pagedAttentionFlag):
+    qSeqlenList = []
+    kvSeqlenList = []
+    if inputLayout == 'TND':
+        qSeqlenList = gen_list_from_cumSum(actualseqlengths)
+        if pagedAttentionFlag:
+            kvSeqlenList = list(actualseqlengthskv)
+        else:
+            kvSeqlenList = gen_list_from_cumSum(actualseqlengthskv)
+    else:
+        qSeqlenList = list(actualseqlengths)
+        kvSeqlenList = list(actualseqlengthskv)
+    return qSeqlenList, kvSeqlenList
+
+def create_binary_matrix(qSeqlen, kvSeqlen, preToken, nextToken):
+    preToken = kvSeqlen - qSeqlen - preToken
+    nextToken = kvSeqlen - qSeqlen + nextToken
+    matrix = [[0 for _ in range(kvSeqlen)] for _ in range(qSeqlen)]
+    for i in range(qSeqlen):
+        for j in range(kvSeqlen):
+            is_below_pretoken_line = (-i + j) < preToken
+            is_above_nexttoken_line = (-i + j) > nextToken
+            if is_below_pretoken_line or is_above_nexttoken_line:
+                matrix[i][j] = 1
+    
+    return np.array(matrix)
+
+def aclnn_op_func_fia_split_fuse_golden(input_data : InputDataset, is_benchmark_task):
+    input_data_dtype = input_data.kwargs["query"].dtype
+
+    if input_data_dtype == torch.float16:
+         query = input_data.kwargs["query"].numpy()
+    elif input_data_dtype == torch.bfloat16:
+        query = input_data.kwargs["query"].to(torch.float32).numpy().astype(bfloat16)
+    else:
+        query = input_data.kwargs["query"].numpy()
+
+    if input_data_dtype == torch.float16:
+        key = input_data.kwargs["key"][0].numpy()
+    elif input_data_dtype == torch.bfloat16:
+        key = input_data.kwargs["key"][0].to(torch.float32).numpy().astype(bfloat16)
+    else:
+        key = input_data.kwargs["key"][0].numpy()
+
+    if input_data_dtype == torch.float16:
+        value = input_data.kwargs["value"][0].numpy()
+    elif input_data_dtype == torch.bfloat16:
+        value = input_data.kwargs["value"][0].to(torch.float32).numpy().astype(bfloat16)
+    else:
+        value = input_data.kwargs["value"][0].numpy()
+
+    blockTable = None
+    pagedAttentionFlag = False
+    if input_data.kwargs["blockTableOptional"] != None:
+        blockTable = input_data.kwargs["blockTableOptional"].numpy()
+        pagedAttentionFlag = True
+    ## gen actual seqlen
+    inputLayout = input_data.kwargs["inputLayout"]
+    batch = len(input_data.kwargs["actualSeqLengthsOptional"])
+    actualseqlengths = [0] * batch
+    actualseqlengthsKv = [0] * batch
+    for i in range(batch):
+        actualseqlengths[i] = input_data.kwargs["actualSeqLengthsOptional"][i]
+        actualseqlengthsKv[i] = input_data.kwargs["actualSeqLengthsKvOptional"][i]
+    qSeqlenList, kvSeqlenList = gen_actual_seqlen_list_golden(actualseqlengths, actualseqlengthsKv, inputLayout, pagedAttentionFlag)
+    maxKvSeqlen = max(kvSeqlenList)
+    maxQSeqlen = max(qSeqlenList)
+    totalQTokens = sum(qSeqlenList)
+    preTokens = input_data.kwargs["preTokens"]
+    nextTokens = input_data.kwargs["nextTokens"]
+    ## gen mask
+    fullMask = None
+    pre_mask_factor = -3e38 if input_data_dtype == torch.bfloat16 or input_data_dtype == torch.float32 else -6e4
+    if input_data.kwargs["attenMaskOptional"] != None and input_data.kwargs["sparseMode"] == 3:
+        maskDtype = dtypeMap[input_data_dtype]
+        fullMask = np.zeros(shape=(totalQTokens, maxKvSeqlen)).astype(maskDtype)
+        prevQseqlen = 0
+        for i in range(len(qSeqlenList)):
+            qSeqlen = qSeqlenList[i]
+            kSeqlen = kvSeqlenList[i]
+            tri = np.ones((qSeqlen, qSeqlen))
+            tri = np.triu(tri, 1)
+            tri *= pre_mask_factor
+            fullMask[prevQseqlen : (prevQseqlen + qSeqlen), kSeqlen - qSeqlen : kSeqlen] = tri
+            prevQseqlen += qSeqlen
+
+    if  input_data.kwargs["sparseMode"] == 4:
+        pre_mask_factor = -3e38
+        maskDtype = bfloat16
+        print(f"ljl-totalQTokens:{totalQTokens},maxKvSeqlen:{maxKvSeqlen},{kvSeqlenList}")
+        fullMask = np.zeros(shape=(totalQTokens, maxKvSeqlen)).astype(maskDtype)
+        prevQseqlen = 0
+        for i in range(len(qSeqlenList)):
+            qSeqlen = qSeqlenList[i]
+            kSeqlen = kvSeqlenList[i]
+            tri = create_binary_matrix(qSeqlen, kSeqlen, preTokens, nextTokens)
+            tri = tri.astype(maskDtype)
+            tri *= pre_mask_factor
+            fullMask[prevQseqlen : (prevQseqlen + qSeqlen), :kSeqlen] = tri
+            prevQseqlen += qSeqlen
+
+    learnable_sink = None 
+    if input_data.kwargs.get("learnableSinkOptional") is not None:
+        sink_torch_dtype = input_data.kwargs["learnableSinkOptional"].dtype
+        if sink_torch_dtype == torch.float16:
+            learnable_sink = input_data.kwargs["learnableSinkOptional"].numpy()
+            learnable_sink = learnable_sink.astype(np.float32)
+        elif sink_torch_dtype == torch.bfloat16:
+            learnable_sink = input_data.kwargs["learnableSinkOptional"].to(torch.float32).numpy()
+            learnable_sink_bf16 = np.array(learnable_sink, dtype=bfloat16)
+        # 2. 强制第三头的sink值为BF16近似值（关键：和NPU侧完全一致）
+            learnable_sink = learnable_sink_bf16.astype(np.float32)
+        else:
+            learnable_sink = input_data.kwargs["learnableSinkOptional"].numpy()
+    else:
+        print("golden, sink为空 \n")
+    
+    numHeads = input_data.kwargs["numHeads"]
+    # if numHeads == 0:
+        # exit(-100)
+    kvHeads = input_data.kwargs["numKeyValueHeads"]
+    headSize = query.shape[2] if inputLayout == 'TND' else 0
+    numBlocks = key.shape[0] if pagedAttentionFlag == True else 0
+    blockSize = input_data.kwargs["blockSize"]
+    maskType = maskTypeMap[input_data.kwargs["sparseMode"]]
+    sparseMode = input_data.kwargs["sparseMode"]
+    dtype = dtypeMap[input_data_dtype]
+    kvOrgMode = 1 if pagedAttentionFlag == True else 0
+    layoutMode = 1 if inputLayout == 'TND' else 0
+    goldenGpuPrecision = input_data.kwargs["innerPrecise"]
+    softmaxLseFlag = input_data.kwargs["softmaxLseFlag"]
+    scale = float(input_data.kwargs["scaleValue"])
+
+    if pagedAttentionFlag == True:
+        key = key.reshape(key.shape[:-1] + (kvHeads, headSize))
+        value = value.reshape(value.shape[:-1] + (kvHeads, headSize))
+    # print(key.shape)
+    testObj = TestFIAV4SplitFuse()
+    auxAttrs = testObj.AuxAttrs(preTokens, nextTokens, numHeads, kvHeads, headSize, numBlocks, blockSize, maskType, dtype, kvOrgMode, layoutMode, maxQSeqlen, maxKvSeqlen, goldenGpuPrecision, scale, sparseMode)
+    attentionInputs = testObj.AttentionInputs(query, key, value, blockTable, qSeqlenList, kvSeqlenList, fullMask, learnable_sink, auxAttrs)
+    golden_output, golden_gpu_output, golden_lse_output, golden_gpu_lse_output = testObj.calc_data(attentionInputs, is_benchmark_task)
+    if golden_output.dtype == "bfloat16":
+        print("=================================走入bf16分支",golden_output.dtype)
+        golden_output = torch.from_numpy(golden_output.astype(np.float32))
+        print(f"golden_output_dtype:{golden_output.dtype} \n")
+        golden_gpu_output = torch.from_numpy(golden_gpu_output.astype(np.float32))
+        golden_lse_output = torch.from_numpy(golden_lse_output.astype(np.float32))
+        golden_gpu_lse_output = torch.from_numpy(golden_gpu_lse_output.astype(np.float32))
+    else:
+        golden_output = torch.from_numpy(golden_output)
+        golden_gpu_output = torch.from_numpy(golden_gpu_output)
+        golden_lse_output = torch.from_numpy(golden_lse_output)
+        golden_gpu_lse_output = torch.from_numpy(golden_gpu_lse_output)
+    if not softmaxLseFlag:
+        golden_lse_output = torch.tensor([])
+        golden_gpu_lse_output = torch.tensor([])
+
+    if not is_benchmark_task:
+        # 标杆返回这个
+        return golden_gpu_output, golden_gpu_lse_output
+    else:
+        # 真值返回下面的
+        return golden_output, golden_lse_output
+
 # ATK 处理逻辑
 arr_tuple_none = -9223372036854775808
 dtype_map = {
@@ -9119,6 +9856,7 @@ dtype_map = {
     torch.int32: "int32",
     torch.int64: "int32",
     torch.uint8: "uin8",
+    torch.int4: "int4",
     torch.float64: "fp64"
 }
 
@@ -9198,20 +9936,19 @@ def overwrite_structured_mask(input_data):
     input_data.kwargs['attenMaskOptional'] = new_mask_tensor
     return input_data
 
+def get_split_fuse_flag(input_data):
+    layout = input_data.kwargs["inputLayout"]
+    return layout == "TND"
+
 def load_kv_cache(input_data: InputDataset):
     key_shape = list(input_data.kwargs["key"][0].shape)
     if len(key_shape) == 3:
         H = key_shape[2]
     else:
-        # 注意：这里如果 GQA 场景下 numKeyValueHeads != numHeads，计算 H 可能需要调整
-        # 但既然我们约束了 GQA=1，这里暂时安全
         H = input_data.kwargs["numHeads"] * key_shape[3]
 
     blocktable_shape = list(input_data.kwargs["blockTableOptional"].shape)
-    
-    # [关键修正]
-    # 原错误逻辑: cache_shape = [blocktable_shape[1], input_data.kwargs["blockSize"], H]
-    # 修正逻辑: cache_shape[0] 应该是总 Block 数 (Batch * MaxBlocks)
+
     total_blocks = blocktable_shape[0] * blocktable_shape[1]
     cache_shape = [total_blocks, input_data.kwargs["blockSize"], H]
 
@@ -9438,12 +10175,12 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
         dtype_input[20] = dtype_map[input_data.kwargs["valueSharedPrefixOptional"].dtype]
         shape_input[20] = list(input_data.kwargs["valueSharedPrefixOptional"].shape)
     
-    if input_data.kwargs["queryRopeOptional"]is not None:
+    if input_data.kwargs["queryRopeOptional"] is not None:
         params['flaglist'][26] = 1
         dtype_input[23] = dtype_map[input_data.kwargs["queryRopeOptional"].dtype]
         shape_input[23] = list(input_data.kwargs["queryRopeOptional"].shape)
         
-    if input_data.kwargs["keyRopeOptional"]is not None:
+    if input_data.kwargs["keyRopeOptional"] is not None:
         params['flaglist'][27] = 1
         dtype_input[24] = dtype_map[input_data.kwargs["keyRopeOptional"].dtype]
         shape_input[24] = list(input_data.kwargs["keyRopeOptional"].shape)
@@ -9475,7 +10212,6 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
     params["v_antiquant_mode"] = input_data.kwargs["valueAntiquantMode"]
     params["query_quant_mode"] = input_data.kwargs["queryQuantMode"]
     params["softmax_lse_flag"] = input_data.kwargs["softmaxLseFlag"]
-
     params['shape_input'] = shape_input
     params['dtype_input'] = dtype_input
     params['range_input'] = range_input
@@ -9494,7 +10230,6 @@ def init_kv_cache(input_data : InputDataset, is_benchmark_task, is_preprocess=Tr
 def aclnn_op_func_fia_cpu(input_data : InputDataset, is_benchmark_task, is_preprocess=False):
     
     tensor_list, params = trans_input_to_params(input_data, is_benchmark_task, is_preprocess)
-  
     if input_data.kwargs["softmaxLseFlag"]:
         output, output_lse = FiaOpForward(tensor_list, params).forward()
         output_lse = output_lse.to(dtype=torch.float32)
@@ -9519,30 +10254,61 @@ class fusedInferAttentionScoreApi(BaseApi):
     def init_by_input_data(self, input_data: InputDataset):
         # 将cache生成逻辑数据直接存放input_data里
         input_data = overwrite_structured_mask(input_data)
-        if input_data.kwargs["blockTableOptional"] is not None: 
+        self.split_fuse_flag = get_split_fuse_flag(input_data)
+        if not self.split_fuse_flag and input_data.kwargs["blockTableOptional"] != None: 
             init_kv_cache(input_data, is_benchmark_task = True, is_preprocess=True)
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
-
-        if input_data.kwargs["softmaxLseFlag"]:
-            output, output_lse = aclnn_op_func_fia_cpu(input_data, is_benchmark_task = True, is_preprocess=False)
-            return output, output_lse
+        if self.split_fuse_flag :
+            output, output_lse = aclnn_op_func_fia_split_fuse_golden(input_data, self.task_result.is_benchmark_task)
+            if input_data.kwargs["softmaxLseFlag"] == True:
+                return output, output_lse
+            else:
+                return output
         else:
-            output = aclnn_op_func_fia_cpu(input_data, is_benchmark_task = True, is_preprocess=False)
-            # print("cpu output is: ", output)
-            return output
+            is_benchmark_task = True # 单标杆
+            # is_benchmark_task = self.task_result.is_benchmark_task # 双标杆
+            if input_data.kwargs["softmaxLseFlag"]:
+                output, output_lse = aclnn_op_func_fia_cpu(input_data, is_benchmark_task, is_preprocess=False)
+                return output, output_lse
+            else:
+                output = aclnn_op_func_fia_cpu(input_data, is_benchmark_task, is_preprocess=False)
+                return output
 
 @register("executor_aclnn_fused_infer_attention_score_v4")
 class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
     def __init__(self, task_result: TaskResult, backend):
         super(aclnnFusedInferAttentionScoreApi, self).__init__(task_result, backend)
+
+    def gen_compressed_triU_mask(self, dim_num, mask_dtype):
+        mask_shape_four_dims = (1, 1, 2048, 2048)
+        mask_four_dims = torch.zeros(mask_shape_four_dims, dtype = mask_dtype)
+        mask_triU = torch.triu(torch.ones(2048, 2048), diagonal=1)
+        mask_four_dims[:] = mask_triU
+        if dim_num == 2:
+            return mask_four_dims[0][0]
+        elif dim_num == 3:
+            return mask_four_dims[0]
+        elif dim_num == 4:
+            return mask_four_dims
+        else:
+            print("invalid dim num, will provide a four dim mask anyway")
+            return mask_four_dims
+        return mask_four_dims[0][0]
     
     def init_by_input_data(self, input_data: InputDataset):
         torch.npu.synchronize()
-        input_args = []  # 算子的入参列表
-        if input_data.kwargs["blockTableOptional"] is not None: 
-            load_kv_cache(input_data)
+        self.split_fuse_flag = get_split_fuse_flag(input_data)
+        if self.split_fuse_flag:
+            np.random.seed(self.task_result.case_config.id)
+            if input_data.kwargs["attenMaskOptional"] != None:
+                mask_dim_num = len(input_data.kwargs["attenMaskOptional"].shape)
+                mask_dtype = input_data.kwargs["attenMaskOptional"].dtype
+                input_data.kwargs["attenMaskOptional"] = self.gen_compressed_triU_mask(mask_dim_num, mask_dtype).npu()
 
+        input_args = []  # 算子的入参列表
+        if not self.split_fuse_flag and input_data.kwargs["blockTableOptional"] is not None: 
+            load_kv_cache(input_data)
         
         # 处理actual输入None
         input_args, output_packages = super().init_by_input_data(input_data)
@@ -9583,6 +10349,7 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
         output = []
         for output_pack in output_packages:
             temp_output_pack = self.acl_tensor_to_torch(output_pack)
+            if self.split_fuse_flag:
+                temp_output_pack = temp_output_pack.to(dtype=torch.float32)
             output.append(temp_output_pack)
-        # print("gloden output is: ", output)
         return output
