@@ -357,10 +357,12 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, TilingRunInf
     OP_TILING_CHECK(xShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xShape"), return false);
     // 校验x维度数量合法性
     if (!CheckXDimValid(context, opType)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "x", "x_dim_invalid", "x dim check failed");
         return false;
     }
     // 校验x.shape合法性
     if (!CheckXShapeValid(context, runInfo, opType)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "x_shape_invalid", "x shape check failed");
         return false;
     }
 
@@ -372,6 +374,7 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, TilingRunInf
     OP_TILING_CHECK(scalesShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scales"), return false);
     // 校验scales维度和shape是否正确
     if (!CheckScalesValid(context, expectedScalesDims, runInfo)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "scales", "scales_shape_invalid", "scales shape check failed");
         return false;
     }
     return true;
@@ -673,6 +676,7 @@ ge::graphStatus QuantReduceScatterUtilTiling::CheckTilingFunc(gert::TilingContex
     const char *nodeName = context->GetNodeName();
     // set group
     if (CheckAttrsInfo(context, runInfo) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(nodeName, "CheckAttrsInfo failed");
         return ge::GRAPH_FAILED;
     }
     // set rankSize
@@ -680,15 +684,19 @@ ge::graphStatus QuantReduceScatterUtilTiling::CheckTilingFunc(gert::TilingContex
                     return ge::GRAPH_FAILED);
     // set quantMode
     if (!CheckTensorDataType(context, runInfo)) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "tensor", "tensor_dtype_invalid", "check dtype failed");
         return ge::GRAPH_FAILED;
     }
     if (!CheckInputTensorDim(context, runInfo, opType)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "input tensor", "input_dim_invalid", "check input dim failed");
         return ge::GRAPH_FAILED;
     }
     if (!CheckOutputTensorDim(context, runInfo, opType)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "output tensor", "output_dim_invalid", "check output dim failed");
         return ge::GRAPH_FAILED;
     }
     if (!CheckTensorFormat(context)) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(nodeName, "tensor", "tensor_format_invalid", "check format failed");
         return ge::GRAPH_FAILED;
     }
     OP_TILING_CHECK(!CheckWindowSize(context, runInfo), OP_LOGE(nodeName, "HCCL_BUFFSIZE is too small."),

@@ -379,6 +379,7 @@ ge::graphStatus AllGatherMatmulTilingBase::AnalyzeShapeAttr()
 {
     opName_ = context_->GetNodeName();
     if ((!AnalyzeAttrs()) || (!AnalyzeInputs()) || (!SetCommAlgo())) {
+        OP_LOGE(opName_, "fail to analyze context info.");
         return ge::GRAPH_FAILED;
     }
     commAlgorithm_ = static_cast<uint64_t>(args_.commAlg);
@@ -598,6 +599,7 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
         "The value of comm_mode must be ccu, ai_cpu or empty string"),
         return false);
     if (!mc2tiling::GetRankSize(opName_, group_, rankSize_)) {
+        OP_LOGE(opName_, "GetRankSize failed.");
         return false;
     }
     OP_TILING_CHECK(SUPPORT_RANK_SIZE.find(rankSize_) == SUPPORT_RANK_SIZE.end(),
