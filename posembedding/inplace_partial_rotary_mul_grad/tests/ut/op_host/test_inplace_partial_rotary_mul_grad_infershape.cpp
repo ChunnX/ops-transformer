@@ -38,7 +38,7 @@ TEST_F(InplacePartialRotaryMulGrad, infer_shape_fp16)
             {{{1, 64, 1, 64}, {1, 64, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
-            // output info: dyOut, dcosOut, dsinOut
+            // output info: dx, dcos, dsin
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
