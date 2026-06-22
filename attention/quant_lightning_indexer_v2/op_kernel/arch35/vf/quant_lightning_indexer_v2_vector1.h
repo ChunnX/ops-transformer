@@ -653,7 +653,6 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
         auto lastOut = out + (batch - 1) * outStride;
         MulWeightAndReduceSum(lastOut, lastQk, qkVLStride, lastWeight, kScale, lastQScale, gSize);
     }
-    }
 }
 
 // ======================== MXFP8 变体 ========================
