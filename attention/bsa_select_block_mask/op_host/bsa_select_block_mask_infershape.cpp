@@ -17,7 +17,11 @@ enum InputIdx {
 };
 
 enum OutputIdx {
-    maskOutEnum = 0
+    maskOutEnum = 0,
+    qCompOutEnum,
+    kCompOutEnum,
+    scoreOutEnum,
+    softmaxOutEnum
 };
 
 ge::graphStatus InferShapeBSASelectBlockMask(gert::InferShapeContext *context)
@@ -79,6 +83,10 @@ ge::graphStatus InferDataTypeBSASelectBlockMask(gert::InferDataTypeContext *cont
 
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeBSASelectBlockMask");
     context->SetOutputDataType(maskOutEnum, DT_INT8);
+    context->SetOutputDataType(qCompOutEnum, DT_FLOAT);
+    context->SetOutputDataType(kCompOutEnum, DT_FLOAT);
+    context->SetOutputDataType(scoreOutEnum, DT_FLOAT);
+    context->SetOutputDataType(softmaxOutEnum, DT_FLOAT16);
     OP_LOGD(context->GetNodeName(), "End to do InferDataTypeBSASelectBlockMask");
     return ge::GRAPH_SUCCESS;
 }

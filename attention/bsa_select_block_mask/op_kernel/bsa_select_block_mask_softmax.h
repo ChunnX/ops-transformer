@@ -23,8 +23,15 @@ public:
     __aicore__ inline void InitParams(const BSAConstInfo &constInfo,
                                       const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TBuf<>* uBuf_);
+    // __aicore__ inline void InitGM(GlobalTensor<float> &qCmpGm, GlobalTensor<float> &kCmpGm,
+    //                                GlobalTensor<half> &softmaxOutGm, GlobalTensor<T> &ScoreFp32Gm,
+    //                                GlobalTensor<uint8_t> &maskTmpGm,
+    //                                GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
+    //                                GlobalTensor<int64_t> &actualBlockLenQGm,
+    //                                GlobalTensor<int64_t> &actualBlockLenKVGm,
+    //                                GlobalTensor<OUT_T> &maskOutGm);
     __aicore__ inline void InitGM(
-        GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<half> &attnScoreFp16Gm);
+        GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<half> &attnScoreFp16Gm, GlobalTensor<half> &softmaxOutGm);
 
 
     /**
@@ -73,6 +80,7 @@ private:
     // ---- GM 全局张量引用 ----
     GlobalTensor<half> attnScoreFp16GmTensor;              //< 注意力分数 [xBlocks * yBlocks] (FP32→FP16)
     GlobalTensor<T> scoreFp32GmTensor;                 //< Softmax 临时缓冲 (FP32)
+    GlobalTensor<half> softmaxOutGmTensor; 
 
     TBuf<> uBuf_; //< 统一 UB 缓冲区 (192KB)
 
@@ -99,7 +107,14 @@ private:
 
 };
 
-
+/**
+ * @brief 初始化 Vector 服务运行参数
+ * @details 将 Host 端 Tiling 阶段计算得到的常量信息和张量配置加载到 Vector 服务实例中，
+ *          供后续所有 Pooling / Softmax / MaskGen 操作使用。
+ * @tparam BSAT 算子模板类型（包含数据类型和 Layout 信息）
+ * @param constInfo BSA 常量信息（含 blockShape、dSize、yBlocks 等推导结果）
+ * @param tilingData Host 端 Tiling 阶段生成的多核切分参数
+ */
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::InitParams(const BSAConstInfo &constInfo,
                                                           const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
@@ -107,6 +122,12 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitParams(const BSAConstInfo &con
     this->constInfo = constInfo;
     this->tilingData = tilingData;
     vecSubBlockIdx = constInfo.subBlockIdx; // 0 or 1
+    // 同步事件赋值
+//     eventIdMte2ToV;    // MTE2→Vector 同步 (GM→UB 数据搬运完成通知 Vector)
+//     eventIdVToMte3;    // Vector→MTE3 同步 (Vector 计算完成通知 MTE3 写回)
+//     // event_t eventIdMte3ToV;    // MTE3→Vector 同步 (MTE3 写回完成通知 Vector)
+//     eventIdVToMte2;    // Vector→MTE2 同步 Vector 计算完成通知 MTE2 写入)
+//     eventIdMte3ToMte2; // MTE3→MTE2   同步 (MTE3 写回完成通知 MTE2 写入)
 }
 
 
@@ -178,10 +199,11 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<>* uBuf_)
 
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::InitGM(
-    GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<half> &attnScoreFp16Gm)
+    GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<half> &attnScoreFp16Gm, GlobalTensor<half> &softmaxOutGm)
 {
     this->attnScoreFp16GmTensor = attnScoreFp16Gm;
     this->scoreFp32GmTensor = ScoreFp32Gm;
+    this->softmaxOutGmTensor = softmaxOutGm;
 }
 
 __aicore__ inline
@@ -680,6 +702,22 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     WaitFlag<HardEvent::V_MTE3>(eventSft);
 
     DataCopyPad(attnScoreFp16GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
+        scoreFp16Ub,
+        {static_cast<uint16_t>(actualQExcuteRow),
+            static_cast<uint32_t>(kChunkSize * sizeof(half)),
+            0,
+            static_cast<uint32_t>((constInfo.yBlocks -1) * sizeof(half)),
+            0});  // FIX: add missing semicolon after closing brace
+
+    uint32_t yBlocks = constInfo.yBlocks;
+    uint32_t xBlocks = constInfo.xBlocks;
+    uint32_t numHeads = constInfo.numHeads;
+
+    uint64_t perHead = static_cast<uint64_t>(xBlocks) * static_cast<uint64_t>(yBlocks);
+    uint64_t perBatch = perHead * numHeads;
+
+    uint32_t sftOutELeOffset = batchIdx * perBatch + headIdx * perHead;
+    DataCopyPad(softmaxOutGmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart + sftOutELeOffset],
         scoreFp16Ub,
         {static_cast<uint16_t>(actualQExcuteRow),
             static_cast<uint32_t>(kChunkSize * sizeof(half)),

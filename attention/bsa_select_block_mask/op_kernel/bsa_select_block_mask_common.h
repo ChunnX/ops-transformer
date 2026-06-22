@@ -10,6 +10,9 @@ using namespace AscendC;
 constexpr uint8_t SYNC_V1_TO_C1_FLAG[2] = {0, 1};
 constexpr uint8_t SYNC_C1_TO_V1_FLAG[2] = {2, 3};
 constexpr uint8_t SYNC_MODE = 2;
+constexpr uint32_t BSA_FIXPIPE_SYNC_ANCHOR_M = 16;
+constexpr uint32_t BSA_FIXPIPE_SYNC_ANCHOR_N = 16;
+constexpr uint32_t BSA_FIXPIPE_SYNC_ANCHOR_ELEMS = BSA_FIXPIPE_SYNC_ANCHOR_M * BSA_FIXPIPE_SYNC_ANCHOR_N;
 
 static constexpr uint32_t N_WORKSPACE_SIZE = 1024;
 static constexpr uint32_t S1_BASE_STEP = 128;
@@ -83,7 +86,8 @@ struct BSAConstInfo {
     uint32_t subBlockIdx;
     uint32_t aivNum;
     uint32_t aicNum;
-
+    uint32_t activeYVecCoreNum;
+    
     uint32_t batchSize;
     uint32_t numHeads;
     uint32_t maxQSeqlen;
@@ -114,7 +118,6 @@ struct BSAConstInfo {
     uint64_t softmaxTmpOffset;
     uint64_t topkWorkspaceOffset;
     uint64_t maskOffset;
-    uint32_t activeYVecCoreNum;
 };
 
 struct BSARunInfo {
