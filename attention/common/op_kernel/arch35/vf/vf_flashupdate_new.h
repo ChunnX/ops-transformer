@@ -463,12 +463,24 @@ __simd_vf__ inline void InvalidLineUpdateVF(__ubuf__ T * dstUb, __ubuf__ T * src
     MaskReg preg_compare;
     const uint16_t dLoops = d >> 6;
 
+    uint32_t negInfBits = 0xFF800000;
+    T negInf = *reinterpret_cast<T*>(&negInfBits);
+
     Duplicate(vreg_invalid_value, invalidValue);
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max, maxUb + i);
+        // Check for NEGATIVE_MIN_VALUE (sentinel from atten mask)
         Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input, srcUb + i * d + j * floatRepSize);
+            Select(vreg_input_brc, vreg_invalid_value, vreg_input, preg_compare);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+                (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_input_brc, preg_all);
+        }
+        // Also check for -inf (BMM1 with -inf key produces ±inf, not NEGATIVE_MIN_VALUE)
+        Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, negInf, preg_all);
+        for (uint16_t j = 0; j < dLoops; ++j) {
+            LoadAlign(vreg_input, dstUb + i * d + j * floatRepSize);
             Select(vreg_input_brc, vreg_invalid_value, vreg_input, preg_compare);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_input_brc, preg_all);
@@ -499,12 +511,15 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     MicroAPI::RegTensor<T> vregRes;
     MicroAPI::RegTensor<T> vregResFinal;
     MicroAPI::RegTensor<float> vregMinValue;
+    MicroAPI::RegTensor<float> vregNegInfValue;
     MicroAPI::RegTensor<float> vregInfValue;
     MicroAPI::MaskReg pregCompare;
     constexpr uint32_t dealRows = 8;
     constexpr uint32_t  floatRepSize = 64; // 64: 一个寄存器存64个float
     constexpr float infValue = 3e+99; // 3e+99 for float inf
     const float minValue = *((float*)&min);
+    constexpr uint32_t negInfBits = 0xFF800000;
+    const float negInfValue = *((float*)&negInfBits);
     uint16_t updateLoops = dealCount / dealRows;
     uint16_t tailLSize = dealCount % dealRows * 8;
     uint32_t pltTail = static_cast<uint32_t>(tailLSize);
@@ -512,6 +527,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregTail = MicroAPI::UpdateMask<T>(pltTail);
     MicroAPI::Duplicate<float, float>(vregMinValue, minValue);
+    MicroAPI::Duplicate<float, float>(vregNegInfValue, negInfValue);
     MicroAPI::Duplicate<float, float>(vregInfValue, infValue);
 
     for (uint16_t i = 0; i < updateLoops; ++i) {
@@ -523,6 +539,9 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
 
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregAll);
         MicroAPI::Select<T>(vregResFinal, vregInfValue, vregRes, pregCompare);
+        // Also check for -inf
+        MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregNegInfValue, pregAll);
+        MicroAPI::Select<T>(vregResFinal, vregInfValue, vregResFinal, pregCompare);
 
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + (i * floatRepSize), vregResFinal, pregAll);
     }
@@ -536,6 +555,9 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
 
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregTail);
         MicroAPI::Select<T>(vregResFinal, vregInfValue, vregRes, pregCompare);
+        // Also check for -inf
+        MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregNegInfValue, pregTail);
+        MicroAPI::Select<T>(vregResFinal, vregInfValue, vregResFinal, pregCompare);
 
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + floatRepSize * updateLoops, vregResFinal, pregTail);
     }
@@ -673,7 +695,10 @@ __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *
     constexpr uint32_t tmpZero = 0x00000000; // zero value of fp16 and fp32
     const T zeroValue = *((T*)&tmpZero);
     const float minValue = *((float*)&min);
+    constexpr uint32_t negInfBits = 0xFF800000;
+    const float negInfValue = *((float*)&negInfBits);
     MicroAPI::RegTensor<float> vregMinValue;
+    MicroAPI::RegTensor<float> vregNegInfValue;
     MicroAPI::RegTensor<T> vregZeroValue;
     MicroAPI::RegTensor<float> vregMax;
     MicroAPI::RegTensor<T> vregFinal;
@@ -685,10 +710,26 @@ __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *
     MicroAPI::MaskReg pregCompare;
 
     MicroAPI::Duplicate<float, float>(vregMinValue, minValue);
+    MicroAPI::Duplicate<float, float>(vregNegInfValue, negInfValue);
     MicroAPI::Duplicate<T, T>(vregZeroValue, zeroValue);
     for (uint16_t i = 0; i < m; ++i) {
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vregMax, maxUb + i);
+        // Check for NEGATIVE_MIN_VALUE (sentinel from atten mask)
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregAll);
+        for (uint16_t j = 0; j < dLoops; ++j) {
+            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + j * floatRepSize);
+            MicroAPI::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
+            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + j * floatRepSize,
+                vregFinalNew, pregAll);
+        }
+        for (uint16_t t = 0; t < hasTail; ++t) {
+            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + dLoops * floatRepSize);
+            MicroAPI::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);
+            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(finalUb + i * dSize + dLoops * floatRepSize,
+                vregFinalNew, pregTailD);
+        }
+        // Also check for -inf (BMM1 with -inf key produces ±inf, not NEGATIVE_MIN_VALUE)
+        MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregNegInfValue, pregAll);
         for (uint16_t j = 0; j < dLoops; ++j) {
             MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregFinal, finalUb + i * dSize + j * floatRepSize);
             MicroAPI::Select<T>(vregFinalNew, vregZeroValue, vregFinal, pregCompare);

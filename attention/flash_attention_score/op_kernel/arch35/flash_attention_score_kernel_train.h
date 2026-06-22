@@ -286,12 +286,9 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
             s2LoopLimit = CeilDiv(runParam.s2LineEndIdx - runParam.s2LineStartIdx, this->s2BaseSize) - 1;
         }
         if ASCEND_IS_AIV {
-            if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION ||
-                        IsSameType<INPUT_T, float>::value) {
-                if (this->sharedParams.implMode ==
-                    static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-                    this->constInfo.softMaxCheckRes = true;
-                }
+            if (this->sharedParams.implMode ==
+                static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+                this->constInfo.softMaxCheckRes = true;
             }
         }
         if (s2LoopLimit != -1) {
