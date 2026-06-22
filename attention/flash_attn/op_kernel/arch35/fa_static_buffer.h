@@ -54,6 +54,8 @@ using namespace AscendC;
 
 namespace fa_base_matmul {
 
+__BLOCK_LOCAL__ __inline__ uint32_t idCounterNum;
+
 // ============================================================
 // 仅保留 matmul.h 内部所需的最小类型：
 //   BufferType (L0A, L0B)
