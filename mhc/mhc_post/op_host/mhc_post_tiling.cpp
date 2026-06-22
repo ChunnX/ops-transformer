@@ -57,6 +57,7 @@ static const int64_t DIM_NUM_3 = 3;
 static const int64_t DIM_NUM_4 = 4;
 
 constexpr int64_t N_SIZE_4 = 4;
+constexpr uint32_t SOC_VER_950_CODE = 4;
 
 class MhcPostTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -393,19 +394,24 @@ ge::graphStatus MhcPostTilingBase::CheckParam()
     OP_CHECK_IF(CheckShapeAllPositive() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeAllPositive failed"),
                 return ge::GRAPH_FAILED);
     
-    if (socVer_ != SOC_VER_950_CODE){
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
+    uint32_t socVer = static_cast<uint32_t>(ascendcPlatform.GetSocVersion());
+    
+    if (socVer != SOC_VER_950_CODE) {
         int64_t n = xShape_->GetDim(DIM_2);
+        int64_t c = xShape_->GetDim(DIM_3);
 
         OP_CHECK_IF(c <= 0 || c >= 100000 || c % 128 != 0,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                            "c must be > 0, < 100000 and divisible by 128, but got %ld", c),
-                return ge::GRAPH_FAILED);
+                    OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                                                "c must be > 0, < 100000 and divisible by 128, but got %ld", c),
+                    return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(n != N_SIZE_4,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "n must be %ld, but got %ld", N_SIZE_4, n),
-                return ge::GRAPH_FAILED);
+                    OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), 
+                                                "n must be %ld, but got %ld", N_SIZE_4, n),
+                    return ge::GRAPH_FAILED);
     }
-
+    
     return ge::GRAPH_SUCCESS;
 }
 
