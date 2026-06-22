@@ -461,11 +461,11 @@ public:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
-        // GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
+        //GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
 
-        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+        CommProtocol protocol1 = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         // 获取URMA(UBC_CTP)协议的通信资源，存入hcommHandle_和urmacclBuffer_
-        GetUrmaCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
+        GetUrmaCommResource(commHandle, engine, protocol1, commContextStruct, rankSize, hcclBuffSize);
 
         hcclRet =
             HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), commContextStruct, commContextSize, 0);
