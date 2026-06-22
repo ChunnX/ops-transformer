@@ -359,7 +359,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::Process()
         SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
         if (quantMode_ == -1) {
             PadZerosForDropPad<-1>();
-        } else {
+        } else if (quantMode_ == 0) {
             PadZerosForDropPad<0>();
         }
         GatherAndWriteDroppad();
@@ -1541,16 +1541,6 @@ __aicore__ inline void MoeV3CutOriginT<T>::PadZerosForDropPad()
                 DataCopyExtParams cp{static_cast<uint16_t>(1),
                     static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - off) * sizeof(T)), 0, 0, 0};
                 DataCopyPad(expandedXGm_[gmStart + off], zb, cp);
-            }
-        }
-
-        // Zero-fill expandedScale（仅动态量化需要 pad scale）
-        if constexpr (QUANT_MODE == 1) {
-            int64_t scaleStart = (expertStart_ + e) * expertCapacity_ + actualWritten;
-            LocalTensor<float> zf = zeroBufI32.ReinterpretCast<float>();
-            DataCopyExtParams cp{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-            for (int64_t i = 0; i < padCount; i++) {
-                DataCopyPad(expandedScaleGm_[scaleStart + i], zf, cp);
             }
         }
     }
