@@ -160,19 +160,19 @@ static ge::graphStatus ValidateKvContiguous(const char *opName, const std::vecto
     std::vector<int64_t> expectedStrides;
     const size_t dimNum = shape.GetDimNum();
     if (kvLayout == QSMLALayout::BSND) {
-        const int64_t Skv = shape.GetDim(1);
-        const int64_t Nkv = shape.GetDim(2);
-        const int64_t Dkv = shape.GetDim(3);
-        expectedStrides = {Skv * Nkv * Dkv, Nkv * Dkv, Dkv, 1};
+        const int64_t S2 = shape.GetDim(1);
+        const int64_t N2 = shape.GetDim(2);
+        const int64_t D2 = shape.GetDim(3);
+        expectedStrides = {S2 * N2 * D2, N2 * D2, D2, 1};
     } else if (kvLayout == QSMLALayout::TND) {
-        const int64_t Nkv = shape.GetDim(1);
-        const int64_t Dkv = shape.GetDim(2);
-        expectedStrides = {Nkv * Dkv, Dkv, 1};
+        const int64_t N2 = shape.GetDim(1);
+        const int64_t D2 = shape.GetDim(2);
+        expectedStrides = {N2 * D2, D2, 1};
     } else if (kvLayout == QSMLALayout::PA_BBND) {
         const int64_t Bs = shape.GetDim(1);
-        const int64_t Nkv = shape.GetDim(2);
-        const int64_t Dkv = shape.GetDim(3);
-        expectedStrides = {Bs * Nkv * Dkv, Nkv * Dkv, Dkv, 1};
+        const int64_t N2 = shape.GetDim(2);
+        const int64_t D2 = shape.GetDim(3);
+        expectedStrides = {Bs * N2 * D2, N2 * D2, D2, 1};
     }
 
     for (size_t i = 0; i < expectedStrides.size(); ++i) {
