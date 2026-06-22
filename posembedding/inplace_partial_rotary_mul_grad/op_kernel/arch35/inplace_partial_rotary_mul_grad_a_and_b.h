@@ -29,7 +29,7 @@ class InplacePartialRotaryMulGradAAndB {
 public:
     __aicore__ inline InplacePartialRotaryMulGradAAndB() {}
     __aicore__ inline void Init(TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling, GM_ADDR dy,
-                                GM_ADDR cos, GM_ADDR sin, GM_ADDR dyOut);
+                                GM_ADDR cos, GM_ADDR sin, GM_ADDR dx);
     __aicore__ inline void Process();
 
 private:
@@ -47,7 +47,7 @@ private:
     TQue<QuePosition::VECIN, IsBroadcast ? 1 : 2> sinInQueue_;
 
     GlobalTensor<TDY> gradGm_;
-    GlobalTensor<TDY> dyOutGm_;
+    GlobalTensor<TDY> dxGm_;
     GlobalTensor<TCOS> cosGm_;
     GlobalTensor<TCOS> sinGm_;
 
@@ -66,7 +66,7 @@ private:
 template <typename TDY, typename TCOS, bool IsBroadcast>
 __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>::Init(
     TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling, GM_ADDR dy, GM_ADDR cos, GM_ADDR sin,
-    GM_ADDR dyOut)
+    GM_ADDR dx)
 {
     pipe_ = pipe;
     tilingData_ = tiling;
@@ -86,7 +86,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
     ubFactorB_ = tilingData_->ubFactorB;
 
     gradGm_.SetGlobalBuffer((__gm__ TDY *)dy);
-    dyOutGm_.SetGlobalBuffer((__gm__ TDY *)dyOut);
+    dxGm_.SetGlobalBuffer((__gm__ TDY *)dx);
     cosGm_.SetGlobalBuffer((__gm__ TCOS *)cos);
     sinGm_.SetGlobalBuffer((__gm__ TCOS *)sin);
 
@@ -197,7 +197,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
     gradInQueue_.FreeTensor(inBuffer);
     xGradOutQueue_.EnQue(outBuffer);
     outBuffer = xGradOutQueue_.template DeQue<TDY>();
-    DataCopyPad(dyOutGm_[gradGmOffset], outBuffer, outParams);
+    DataCopyPad(dxGm_[gradGmOffset], outBuffer, outParams);
     xGradOutQueue_.FreeTensor(outBuffer);
 }
 
