@@ -52,6 +52,8 @@ public:
     struct ExpertLoopState {
         TupleShape problemShape;
         BlockOffset baseOffset;
+        // Rows before the current expert, kept per cursor for dispatch/GMM prefetch state split.
+        uint32_t expertBeforeCnt = 0;
     };
     __aicore__ inline MegaMoe() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
@@ -121,7 +123,6 @@ private:
     uint32_t mxQuantTokenAlignBytes_ = 0;
     uint32_t mxQuantScaleAlignBytes_ = 0;
     uint32_t mxQuantTokenScaleAlignBytes_ = 0;
-    uint32_t expertBeforeCnt_ = 0;
     uint32_t ubBufferUsedAddr_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
     uint64_t sendTotalNum_ = 0;
@@ -804,7 +805,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
         uint64_t m = Get<M_VALUE>(state.problemShape);
         uint64_t n = Get<N_VALUE>(state.problemShape);
         uint64_t k = Get<K_VALUE>(state.problemShape);
-        expertBeforeCnt_ += m;
+        state.expertBeforeCnt += m;
         Get<IDX_A_OFFSET>(state.baseOffset) += m * k / A_ELEMS_PER_BYTE;
         Get<IDX_B_OFFSET>(state.baseOffset) += (n * k) / B_ELEMS_PER_BYTE;
         // only splitM
@@ -906,7 +907,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
     // wave-grain dispatch-gmm1 flag: per-expert 步长是 dispatchFlagSlotsPerExpert_,而不是 INT_CACHELINE。
     gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
                                 Get<IDX_FLAG_OFFSET>(state.baseOffset) * dispatchFlagSlotsPerExpert_;
-    groupFlagListGm_.SetGlobalBuffer(gmmAddrInfo.groupFlagList);
 }
 
 // =============================================
@@ -994,7 +994,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
         offset += myRowCount * TRIPLE_SIZE * sizeof(int32_t);
         AscendC::GlobalTensor<int32_t> tripleGm;
         tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.tripleInfoPtr
-            + (expertBeforeCnt_ + rowStart + myRowOffset) * TRIPLE_SIZE * sizeof(int32_t)));
+            + (gmm2State.expertBeforeCnt + rowStart + myRowOffset) * TRIPLE_SIZE * sizeof(int32_t)));
         AscendC::DataCopy(tripleTensor, tripleGm, myRowCount * TRIPLE_SIZE);
         PipeBarrier<PIPE_MTE2>();
         MegaMoeCombineImpl::CombineRowGroup<CombineQuantMode, bfloat16_t>(
@@ -1200,14 +1200,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
             MegaMoeImpl::GroupMatmul2CombineA8W4<
                 QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                expertBeforeCnt_, gmm2PingPongIdx_);
+                state.expertBeforeCnt, gmm2PingPongIdx_);
         }
     } else {
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
                 QuantScaleOutType, QuantScaleOutType>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                expertBeforeCnt_, gmm2PingPongIdx_, expertIdx, maxRowGroupsStride_);
+                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx, maxRowGroupsStride_);
 
             if constexpr (g_coreType == AIV) {
                 ProcessCombine(gmmAddrInfo, state, expertIdx);
@@ -1217,7 +1217,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
                 MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
                     QuantScaleOutType, QuantScaleOutType>(
                     params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                    expertBeforeCnt_, gmm2PingPongIdx_, expertIdx, maxRowGroupsStride_);
+                    state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx, maxRowGroupsStride_);
             }
         }
     }
@@ -1244,28 +1244,29 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBuffInit();
-    GMMAddrInfo gmmAddrInfo;
+    GMMAddrInfo dispatchAddrInfo;
+    GMMAddrInfo gmm1AddrInfo;
     TupleShape initShape;
     Get<N_VALUE>(initShape) = hiddenDim_;
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    ExpertLoopState gmm1State{initShape, initOffset};
+    ExpertLoopState dispatchState{initShape, initOffset, 0};
+    ExpertLoopState gmm1State{initShape, initOffset, 0};
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
                 SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
+                if (UpdateGroupParams<AddrUpdateMode::kGmm1>(dispatchState, localExpertId)) {
+                    UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(dispatchAddrInfo, dispatchState);
+                    TripleInfoCalAndDispatch(dispatchAddrInfo, localExpertId); // 三元组组装以及token dispatch
+                }
             }
         }
         if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
             continue;
         }
-        UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
-        if constexpr(g_coreType == AIV) {
-            if (subBlockIdx_ == 1) {
-                TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
-            }
-        }
-        GroupMatmulWithSwigluQuant(gmmAddrInfo, gmm1State);
+        UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmm1AddrInfo, gmm1State); // 更新地址
+        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
     }
     EndSync(vecSetSyncCom_);
     if constexpr(g_coreType == AIV) {
@@ -1276,16 +1277,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     vecSetSyncCom_ = 0;
-    expertBeforeCnt_ = 0;
-    ExpertLoopState gmm2State{initShape, initOffset};
+    GMMAddrInfo gmm2AddrInfo;
+    ExpertLoopState gmm2State{initShape, initOffset, 0};
     InitCombineBuffers();
 
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
             continue;
         }
-        UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmmAddrInfo, gmm2State);
-        GroupMatmulWithCombine(gmmAddrInfo, gmm2State, expertIdx);
+        UpdateGlobalBuffer<AddrUpdateMode::kGmm2>(gmm2AddrInfo, gmm2State);
+        GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx);
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
