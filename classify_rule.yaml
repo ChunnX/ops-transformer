@@ -216,14 +216,18 @@ transformer-vf@ops-transformer:
     src:  
         release:
             huawei_style:  
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_128_common_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_aligned128_no_update_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_aligned128_update_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned128_no_update_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned128_update_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned64_common_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned64_no_update_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned64_update_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned1024_common.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned1024_no_update.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned1024_update.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned512_common.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned512_no_update.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned512_update.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_flash_decode.h
