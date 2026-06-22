@@ -41,4 +41,4 @@ from .graph_convert.graph_convert_quant_lightning_indexer import (
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
-from .graph_convert.graph_convert_inplace_partial_rotary_mul import convert_inplace_partial_rotary_mul_metadata
+from .graph_convert.graph_convert_inplace_partial_rotary_mul import convert_inplace_partial_rotary_mul
