@@ -597,7 +597,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         AscendC::MicroAPI::MaskReg valueMaskReg;
         AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
 
-        for (uint16_t i = 0; i < info.bsLen; i++) {
+        for (uint16_t i = 0; i < static_cast<uint16_t>(info.bsLen); i++) {
             auto gradHPreStart = gradHPreAddr + i * n_;
             uint32_t maskLen = static_cast<uint32_t>(info.cLen);
             for (uint16_t j = 0; j < loopCnt; j++) {
@@ -605,7 +605,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
                 valueMaskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
                 AscendC::MicroAPI::DataCopy<GRADHIN_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(gradHInReg, gradHInStart);
                 AscendC::MicroAPI::Cast<U, GRADHIN_T, castTrait16ToFloat>(gradHInCastReg, gradHInReg, valueMaskReg);
-                for (uint16_t k = 0; k < info.n; k++) {
+                for (uint16_t k = 0; k < static_cast<uint16_t>(info.n); k++) {
                     AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::SCALAR_LOAD>();
                     U hPre = *(hPreAddr + i * info.n + k);
                     U gradHPre = *(gradHPreStart + k);
@@ -1053,9 +1053,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         LocalTensor<U> xLocal = xQue_.AllocTensor<U>();
         LocalTensor<U> gradXFromHinLocal = gradHinQue_.AllocTensor<U>();
         LocalTensor<U> gradXFromMatMulLocal = hPreAndGradHPostQue_.AllocTensor<U>();
-        CopyIn(xLocal, xFp32Ws_[calcOffset], 0, calcCount, 0, 0);
-        CopyIn(gradXFromHinLocal, gradXFromHinWs_[calcOffset], 0, calcCount, 0, 0);
-        CopyIn(gradXFromMatMulLocal, gradXGm_[calcOffset], 0, calcCount, 0, 0);
+        CopyIn<U>(xLocal, xFp32Ws_[calcOffset], 0, calcCount, 0, 0);
+        CopyIn<U>(gradXFromHinLocal, gradXFromHinWs_[calcOffset], 0, calcCount, 0, 0);
+        CopyIn<U>(gradXFromMatMulLocal, gradXGm_[calcOffset], 0, calcCount, 0, 0);
         Add(xFp32Local, xLocal, gradXFromHinLocal, calcCount);
         Add(xFp32Local, xFp32Local, gradXFromMatMulLocal, calcCount);
         if constexpr(!std::is_same<X_T, U>::value){
