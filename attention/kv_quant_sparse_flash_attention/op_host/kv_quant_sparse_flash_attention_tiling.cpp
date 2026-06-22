@@ -1097,6 +1097,15 @@ ge::graphStatus QSFATilingCheck::CheckMultiParaConsistency()
 
 ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
 {
+    if (ge::GRAPH_SUCCESS != CheckFeatureMlaAntiquantShapeSizes() ||
+        ge::GRAPH_SUCCESS != CheckFeatureMlaAntiquantShapeSparseAndHeadDim()) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSizes() const
+{
     OP_CHECK_IF(bSize_ <= 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "batch_size", std::to_string(bSize_).c_str(),
             "batch_size should be greater than 0."),
@@ -1137,6 +1146,11 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
             return ge::GRAPH_FAILED);
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSparseAndHeadDim() const
+{
     if (isA5_) {
         if (inputKvType_ == ge::DT_HIFLOAT8) {
             OP_CHECK_IF(sparseBlockCount_ != 2048,
@@ -1857,6 +1871,11 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
     qsfaInfo.blockTypeSize =  sizeof(float);
     qsfaInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
+    FillTilingInfoAttrsAndLayouts(qsfaInfo);
+}
+
+void QSFAInfoParser::FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo)
+{
     qsfaInfo.actualLenDimsQ = actualLenDimsQ_;
     qsfaInfo.actualLenDimsKV = actualLenDimsKV_;
     qsfaInfo.maxActualseq = maxActualseq_;
